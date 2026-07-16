@@ -1,6 +1,6 @@
 # PRD — Agent Connection Reliability and Durable Dispatch Fabric
 
-Status: **C0 CONTRACT CANDIDATE IMPLEMENTED — INDEPENDENT ACCEPTANCE REQUIRED; NO LIVE ADOPTION AUTHORITY**
+Status: **C0 ACCEPTED AND COMMITTED (`4e3d96d3`) — C0.5 PLANNED; NO LIVE ADOPTION AUTHORITY**
 Date: 2026-07-16
 Owner intent: every local, remote, IDE, and future agent node uses one durable, observable,
 fail-closed collaboration connection instead of fragile caller-owned background processes.
@@ -120,7 +120,20 @@ parked and fold late evidence when it arrives.
 - cancellation can target only the daemon-owned process/cgroup/receipt for that task;
 - malformed/unknown contracts and unavailable broker fail closed before provider work;
 - same-user schema-valid forgery remains a residual threat until the future authority/state-spine
-  service separates writer credentials from agent credentials.
+service separates writer credentials from agent credentials.
+
+### 2.1 Model-tier and modality routing
+
+Dispatch authority is independent of model price or vendor. Reasoning rounds use a flat expert-team
+baseline. Once a slice is frozen, admission selects the cheapest healthy eligible implementer from
+declared capabilities and current telemetry. Independent flagship reviewers accept or request a
+bounded revision; only the orchestrator submits the accepted hash.
+
+The local adapter exposes separate declared modalities for agentic coding/tools, bounded logic/direct
+generation, and embedded retrieval. They share identity, policy, lifecycle, privacy, evidence, and
+monitoring contracts, but have distinct hardware-aware context, phase-timeout, token, concurrency,
+and tool budgets. Embedded retrieval cannot receive a role, execute tools, or cast a verdict. No lane
+may bypass dispatch by calling a raw local or remote inference endpoint.
 
 Zero trust means bounded capability and verified transitions, not loss of connectivity. Adapters may
 retain full declared local or remote connectivity; no single agent receives general process, network,
@@ -140,6 +153,11 @@ The fabric is incomplete unless all three service-coverage gates ship together:
 
 Blank fields, stale running rows, zero-byte unexplained exits, or registered-without-executor states
 are contract failures. Alerts are bounded and low-cardinality.
+
+Review and feedback are operational state. Agent Ops and the dashboard expose each review pass and
+baseline, required/received/parked/unavailable lanes, model tier and role lineage, subject hash,
+verdict, revision/supersession, oldest wait, and feedback-promotion state. A delivered file without a
+valid receipt is not a completed review.
 
 ## 6. Adapter-specific requirements
 
@@ -165,6 +183,12 @@ are contract failures. Alerts are bounded and low-cardinality.
 - 0 raw prompt/secret/argv/output values in registry, journal summary, cards, or metric labels.
 - 100% adapter dashboard and `aq-qa` coverage before activation.
 - no manual registry repair in the acceptance soak.
+- 100% of critical reasoning/review passes record one baseline across participants and distinguish
+  unavailable lanes from abstention.
+- 100% of implementation candidates record economical eligibility evidence and receive independent
+  flagship acceptance before submission.
+- 100% of accepted findings link to an issue, regression/eval fixture, or explicit non-propagation
+  reason; promoted corrections prove convergence and rollback across affected consumers.
 
 ## 8. Non-goals and stop conditions
 

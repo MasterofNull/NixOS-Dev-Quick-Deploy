@@ -1,0 +1,11 @@
+{
+  "schema_version": "aq.review-feedback-policy.v1",
+  "policy_version": "review-feedback-policy-20260716",
+  "binding_count": 2,
+  "minimum_independent_principals": 2,
+  "minimum_independent_families": 2,
+  "critical_advisory_blocks": true,
+  "decision_precedence": ["incomplete", "rejected", "revision_required", "accepted"],
+  "max_lanes": 16,
+  "max_findings": 64
+}

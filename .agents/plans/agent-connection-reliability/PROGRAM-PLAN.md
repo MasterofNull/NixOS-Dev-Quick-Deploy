@@ -1,6 +1,6 @@
 # Agent Connection Reliability — Program Plan
 
-Status: **C0 CANDIDATE BUILT — ACCEPTANCE PENDING; NO LIVE ROUTE AUTHORITY**
+Status: **C0 ACCEPTED/COMMITTED (`4e3d96d3`) — C0.5 NEXT; NO LIVE ROUTE AUTHORITY**
 Parent: `.agent/PROJECT-AGENT-CONNECTION-RELIABILITY-PRD.md`
 Date: 2026-07-16
 
@@ -16,9 +16,23 @@ Nix, traffic, or lifecycle-store mutation.
 Exit: all current wrapper defects reproduce as fixtures; schemas reject unknown/unbounded data;
 dashboard contract-health projection exists from pure fixtures.
 
-Candidate state: implemented under `auth-agent-connection-reliability-c0-am1-20260716`; focused
-contract, Agent Ops, and local-reliability suites pass. Independent flagship acceptance and exact
-candidate hashes remain required before commit. C1 remains unimplemented and unauthorized.
+Completion state: implemented under `auth-agent-connection-reliability-c0-am1-20260716`, independently
+accepted by Antigravity against exact hashes, and committed as `4e3d96d3`. Focused contract, Agent
+Ops, local-reliability, and Tier0 suites passed. Receipt:
+`.agents/plans/agent-connection-reliability/antigravity-c0-acceptance.md`. C1 remains unimplemented
+and unauthorized.
+
+### C0.5 — Review receipts and recursive-feedback contract
+
+Before C1 implementation, define closed, bounded review-round receipt and learning-candidate
+contracts for every later slice. Bind subject hashes, same-baseline pass IDs, dynamic required roster,
+role/model lineage, per-criterion evidence, verdicts, unavailable/parked reasons,
+revision/supersession, and feedback disposition. Add only pure Agent Ops review/feedback health; do
+not add a lifecycle store or claim live orchestration.
+
+Exit: hermetic fixtures prove missing lanes are not converted to abstention, self-review cannot count
+as flagship acceptance, reviewer-authored changes create new hashes requiring independent re-review,
+and every accepted finding resolves to a regression/eval candidate or typed non-propagation reason.
 
 ### C1 — Socket-activated broker with fake adapter
 
@@ -29,6 +43,10 @@ and web dashboard health together. Existing wrappers remain unchanged and no rea
 
 Exit: accepted fake tasks survive client/sandbox death and daemon restart; duplicate requests execute
 once; cancellation affects only owned fake work; live dashboard and `aq-qa` pass.
+
+C1 fixtures also cover same-baseline reasoning admission, cheapest eligible implementer selection,
+independent flagship receipts, and distinct local coding/logic/embedded modalities. The fake adapter
+emits typed feedback candidates without directly mutating prompts, policy, tools, or routing.
 
 ### C2 — Claude canary adapter
 
@@ -52,6 +70,10 @@ Add one adapter at a time under separate activation:
 Each adapter must pass caller-death, duplicate, cancellation, privacy, dashboard, and live-canary gates
 before the next begins. Retired Gemini remains fail closed.
 
+The local activation separately certifies agentic coding/tools, bounded logic/direct generation, and
+embedded retrieval against measured hardware/model profiles and shared authority/evidence contracts.
+Failure in one modality cannot silently disable, promote, or reroute another.
+
 ### C4 — Park/resume and collaboration-round integration
 
 Implement RSI R8 failure classification, durable parked state on the existing lifecycle spine,
@@ -60,6 +82,10 @@ late review folding. No silent local fallback.
 
 Exit: simulated long `Retry-After` survives daemon/session restart, resumes exactly once, and closes a
 required-lane collaboration round with visible parked latency.
+
+C4 also closes recursive propagation: findings are deduplicated, attached to issues and reproducible
+evals, routed to affected shared/flagship/implementer/local/embedded consumers, and promoted only
+after shadow evaluation, independent flagship acceptance, canary/soak, and rollback capture.
 
 ### C5 — Atomic universal cutover and legacy removal preparation
 
@@ -70,18 +96,18 @@ are removed only in a later archive-reviewed cleanup slice.
 Exit: static and dynamic gates prove every supported route traverses the broker; a seven-day soak has
 zero manual repairs, duplicate executions, dark tasks, or unexplained terminal states.
 
-## Immediate next slice: C0
+## Immediate next slice: C0.5
 
 Proposed inventory must be separately reviewed before activation. Expected categories:
 
-- strict schemas and policy under `config/`;
-- pure contract/adapter model under `scripts/ai/lib/`;
-- golden fixtures and focused tests;
-- pure Agent Ops/dashboard contract-health projection;
+- strict review-receipt and learning-candidate schemas/policy under `config/`;
+- pure validation, quorum/separation, feedback-disposition, and projection logic;
+- golden same-baseline, partial-roster, self-review, revision, local-modality, and propagation fixtures;
+- pure Agent Ops review/feedback contract-health projection;
 - PRD/plan status only.
 
-C0 must not edit delegation wrappers, Nix services, live registry data, provider configurations,
-credentials, or network routes.
+C0.5 must not edit delegation wrappers, Nix services, live registry data, provider configurations,
+credentials, network routes, prompts, model artifacts, training data, or inference weights.
 
 ## Relationship to existing programs
 

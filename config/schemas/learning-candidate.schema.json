@@ -1,0 +1,59 @@
+{
+  "$defs": {
+    "AffectedConsumer": {"enum": ["shared_contract", "flagship_prompt", "implementer_prompt", "local_agent_profile", "local_logic_template", "embedded_corpus", "skill_or_instruction", "tool_contract", "routing_policy", "evaluator", "regression_fixture", "monitoring_rule"], "title": "AffectedConsumer", "type": "string"},
+    "EvidenceRef": {
+      "additionalProperties": false,
+      "properties": {
+        "artifact_hash": {"pattern": "^[0-9a-f]{64}$", "title": "Artifact Hash", "type": "string"},
+        "redacted": {"title": "Redacted", "type": "boolean"},
+        "ref": {"maxLength": 256, "minLength": 8, "title": "Ref", "type": "string"},
+        "sanitized": {"title": "Sanitized", "type": "boolean"},
+        "source_event_hash": {"pattern": "^[0-9a-f]{64}$", "title": "Source Event Hash", "type": "string"},
+        "trust_class": {"enum": ["dispatch_bound", "independently_verified", "legacy_manual"], "title": "Trust Class", "type": "string"},
+        "verifier_principal": {"maxLength": 128, "minLength": 1, "pattern": "^[A-Za-z0-9][A-Za-z0-9._:+/-]*$", "title": "Verifier Principal", "type": "string"}
+      },
+      "required": ["ref", "artifact_hash", "source_event_hash", "trust_class", "verifier_principal", "sanitized", "redacted"],
+      "title": "EvidenceRef", "type": "object"
+    },
+    "LearningEvidence": {
+      "additionalProperties": false,
+      "properties": {
+        "canary_soak": {"anyOf": [{"$ref": "#/$defs/EvidenceRef"}, {"type": "null"}], "default": null},
+        "fixture": {"anyOf": [{"$ref": "#/$defs/EvidenceRef"}, {"type": "null"}], "default": null},
+        "original_failure": {"$ref": "#/$defs/EvidenceRef"},
+        "reproduction": {"$ref": "#/$defs/EvidenceRef"},
+        "rollback_target_hash": {"anyOf": [{"pattern": "^[0-9a-f]{64}$", "type": "string"}, {"type": "null"}], "default": null, "title": "Rollback Target Hash"},
+        "shadow_evaluation": {"anyOf": [{"$ref": "#/$defs/EvidenceRef"}, {"type": "null"}], "default": null},
+        "successful_retry": {"anyOf": [{"$ref": "#/$defs/EvidenceRef"}, {"type": "null"}], "default": null}
+      },
+      "required": ["original_failure", "reproduction"], "title": "LearningEvidence", "type": "object"
+    },
+    "LearningState": {"enum": ["captured", "triaged", "fixture_bound", "candidate_prepared", "shadow_validated", "flagship_accepted", "canary", "promoted", "rolled_back", "non_propagated"], "title": "LearningState", "type": "string"},
+    "LocalModality": {"enum": ["agentic_coding", "bounded_logic", "embedded_retrieval"], "title": "LocalModality", "type": "string"}
+  },
+  "additionalProperties": false,
+  "properties": {
+    "accepted_receipt_hash": {"anyOf": [{"pattern": "^[0-9a-f]{64}$", "type": "string"}, {"type": "null"}], "default": null, "title": "Accepted Receipt Hash"},
+    "affected_consumers": {"items": {"$ref": "#/$defs/AffectedConsumer"}, "maxItems": 12, "minItems": 1, "title": "Affected Consumers", "type": "array"},
+    "candidate_author": {"maxLength": 128, "minLength": 1, "pattern": "^[A-Za-z0-9][A-Za-z0-9._:+/-]*$", "title": "Candidate Author", "type": "string"},
+    "candidate_hash": {"pattern": "^[0-9a-f]{64}$", "title": "Candidate Hash", "type": "string"},
+    "candidate_id": {"maxLength": 128, "minLength": 1, "pattern": "^[A-Za-z0-9][A-Za-z0-9._:+/-]*$", "title": "Candidate Id", "type": "string"},
+    "consumer_freshness_plan_hash": {"anyOf": [{"pattern": "^[0-9a-f]{64}$", "type": "string"}, {"type": "null"}], "default": null, "title": "Consumer Freshness Plan Hash"},
+    "deduplication_hash": {"pattern": "^[0-9a-f]{64}$", "title": "Deduplication Hash", "type": "string"},
+    "evaluated_at": {"maxLength": 35, "minLength": 20, "pattern": "^\\d{4}-\\d{2}-\\d{2}T\\d{2}:\\d{2}:\\d{2}(?:\\.\\d{1,9})?(?:Z|[+-]\\d{2}:\\d{2})$", "title": "Evaluated At", "type": "string"},
+    "evaluator_principal": {"anyOf": [{"maxLength": 128, "minLength": 1, "pattern": "^[A-Za-z0-9][A-Za-z0-9._:+/-]*$", "type": "string"}, {"type": "null"}], "default": null, "title": "Evaluator Principal"},
+    "evidence": {"$ref": "#/$defs/LearningEvidence"},
+    "expected_revision": {"maximum": 2147483647, "minimum": 0, "title": "Expected Revision", "type": "integer"},
+    "hardware_profile": {"anyOf": [{"maxLength": 128, "minLength": 1, "pattern": "^[A-Za-z0-9][A-Za-z0-9._:+/-]*$", "type": "string"}, {"type": "null"}], "default": null, "title": "Hardware Profile"},
+    "independent_verifier": {"maxLength": 128, "minLength": 1, "pattern": "^[A-Za-z0-9][A-Za-z0-9._:+/-]*$", "title": "Independent Verifier", "type": "string"},
+    "local_modality": {"anyOf": [{"$ref": "#/$defs/LocalModality"}, {"type": "null"}], "default": null},
+    "model_profile": {"anyOf": [{"maxLength": 128, "minLength": 1, "pattern": "^[A-Za-z0-9][A-Za-z0-9._:+/-]*$", "type": "string"}, {"type": "null"}], "default": null, "title": "Model Profile"},
+    "non_propagation_reason": {"anyOf": [{"maxLength": 512, "minLength": 1, "type": "string"}, {"type": "null"}], "default": null, "title": "Non Propagation Reason"},
+    "schema_version": {"const": "aq.learning-candidate.v1", "title": "Schema Version", "type": "string"},
+    "severity": {"enum": ["low", "medium", "high", "critical"], "title": "Severity", "type": "string"},
+    "source_event_hash": {"pattern": "^[0-9a-f]{64}$", "title": "Source Event Hash", "type": "string"},
+    "state": {"$ref": "#/$defs/LearningState"}
+  },
+  "required": ["schema_version", "candidate_id", "candidate_hash", "source_event_hash", "deduplication_hash", "severity", "state", "affected_consumers", "candidate_author", "independent_verifier", "expected_revision", "evidence", "evaluated_at"],
+  "title": "LearningCandidate", "type": "object"
+}

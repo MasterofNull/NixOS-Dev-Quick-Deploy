@@ -1,0 +1,45 @@
+{
+  "$defs": {
+    "TerminalDecision": {
+      "enum": ["accepted", "revision_required", "rejected", "incomplete"],
+      "title": "TerminalDecision",
+      "type": "string"
+    }
+  },
+  "additionalProperties": false,
+  "properties": {
+    "baseline_hash": {"pattern": "^[0-9a-f]{64}$", "title": "Baseline Hash", "type": "string"},
+    "baseline_id": {"maxLength": 128, "minLength": 1, "pattern": "^[A-Za-z0-9][A-Za-z0-9._:+/-]*$", "title": "Baseline Id", "type": "string"},
+    "adjudication_input_hash": {"pattern": "^[0-9a-f]{64}$", "title": "Adjudication Input Hash", "type": "string"},
+    "binding_passes": {"maximum": 64, "minimum": 0, "title": "Binding Passes", "type": "integer"},
+    "blocking_codes": {"items": {"maxLength": 128, "minLength": 1, "pattern": "^[A-Za-z0-9][A-Za-z0-9._:+/-]*$", "type": "string"}, "maxItems": 128, "title": "Blocking Codes", "type": "array"},
+    "canonical_hash": {"pattern": "^[0-9a-f]{64}$", "title": "Canonical Hash", "type": "string"},
+    "criteria_hash": {"pattern": "^[0-9a-f]{64}$", "title": "Criteria Hash", "type": "string"},
+    "evaluated_at": {"maxLength": 35, "minLength": 20, "pattern": "^\\d{4}-\\d{2}-\\d{2}T\\d{2}:\\d{2}:\\d{2}(?:\\.\\d{1,9})?(?:Z|[+-]\\d{2}:\\d{2})$", "title": "Evaluated At", "type": "string"},
+    "eligibility_source": {"maxLength": 128, "minLength": 1, "pattern": "^[A-Za-z0-9][A-Za-z0-9._:+/-]*$", "title": "Eligibility Source", "type": "string"},
+    "expert_roles": {"items": {"maxLength": 128, "minLength": 1, "pattern": "^[A-Za-z0-9][A-Za-z0-9._:+/-]*$", "type": "string"}, "maxItems": 32, "minItems": 1, "title": "Expert Roles", "type": "array"},
+    "expires_at": {"maxLength": 35, "minLength": 20, "pattern": "^\\d{4}-\\d{2}-\\d{2}T\\d{2}:\\d{2}:\\d{2}(?:\\.\\d{1,9})?(?:Z|[+-]\\d{2}:\\d{2})$", "title": "Expires At", "type": "string"},
+    "independence_met": {"title": "Independence Met", "type": "boolean"},
+    "independent_families": {"maximum": 64, "minimum": 0, "title": "Independent Families", "type": "integer"},
+    "independent_principals": {"maximum": 64, "minimum": 0, "title": "Independent Principals", "type": "integer"},
+    "pass_id": {"maxLength": 128, "minLength": 1, "pattern": "^[A-Za-z0-9][A-Za-z0-9._:+/-]*$", "title": "Pass Id", "type": "string"},
+    "pass_index": {"maximum": 1024, "minimum": 0, "title": "Pass Index", "type": "integer"},
+    "policy_hash": {"pattern": "^[0-9a-f]{64}$", "title": "Policy Hash", "type": "string"},
+    "policy_version": {"maxLength": 128, "minLength": 1, "pattern": "^[A-Za-z0-9][A-Za-z0-9._:+/-]*$", "title": "Policy Version", "type": "string"},
+    "predecessor_hash": {"anyOf": [{"pattern": "^[0-9a-f]{64}$", "type": "string"}, {"type": "null"}], "default": null, "title": "Predecessor Hash"},
+    "quorum_met": {"title": "Quorum Met", "type": "boolean"},
+    "roster_hash": {"pattern": "^[0-9a-f]{64}$", "title": "Roster Hash", "type": "string"},
+    "required_lane_ids": {"items": {"maxLength": 128, "minLength": 1, "pattern": "^[A-Za-z0-9][A-Za-z0-9._:+/-]*$", "type": "string"}, "maxItems": 64, "title": "Required Lane Ids", "type": "array"},
+    "round_id": {"maxLength": 128, "minLength": 1, "pattern": "^[A-Za-z0-9][A-Za-z0-9._:+/-]*$", "title": "Round Id", "type": "string"},
+    "schema_version": {"const": "aq.review-round-receipt.v1", "title": "Schema Version", "type": "string"},
+    "subject_hash": {"pattern": "^[0-9a-f]{64}$", "title": "Subject Hash", "type": "string"},
+    "subject_package_hash": {"pattern": "^[0-9a-f]{64}$", "title": "Subject Package Hash", "type": "string"},
+    "supersedes_hash": {"anyOf": [{"pattern": "^[0-9a-f]{64}$", "type": "string"}, {"type": "null"}], "default": null, "title": "Supersedes Hash"},
+    "optional_lane_ids": {"items": {"maxLength": 128, "minLength": 1, "pattern": "^[A-Za-z0-9][A-Za-z0-9._:+/-]*$", "type": "string"}, "maxItems": 64, "title": "Optional Lane Ids", "type": "array"},
+    "terminal_accounted": {"maximum": 64, "minimum": 0, "title": "Terminal Accounted", "type": "integer"},
+    "terminal_decision": {"$ref": "#/$defs/TerminalDecision"}
+  },
+  "required": ["schema_version", "round_id", "pass_id", "pass_index", "baseline_id", "baseline_hash", "subject_hash", "subject_package_hash", "criteria_hash", "roster_hash", "policy_hash", "policy_version", "expert_roles", "eligibility_source", "required_lane_ids", "optional_lane_ids", "adjudication_input_hash", "expires_at", "terminal_decision", "binding_passes", "independent_principals", "independent_families", "terminal_accounted", "quorum_met", "independence_met", "blocking_codes", "evaluated_at", "canonical_hash"],
+  "title": "ReviewRoundReceipt",
+  "type": "object"
+}
