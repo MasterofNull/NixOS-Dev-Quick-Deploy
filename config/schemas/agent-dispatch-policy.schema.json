@@ -1,0 +1,30 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "aq.agent-dispatch-policy.v1",
+  "type": "object",
+  "additionalProperties": false,
+  "required": ["schema_version", "contract_version", "limits", "transitions", "retry", "required_capabilities", "adapters", "coverage_gates"],
+  "properties": {
+    "schema_version": {"const": "aq.dispatch.policy.v1"},
+    "contract_version": {"const": "aq.dispatch.contract.v1"},
+    "limits": {
+      "type": "object", "additionalProperties": false,
+      "required": ["max_envelope_bytes", "max_attempts", "max_retry_seconds", "max_park_seconds"],
+      "properties": {
+        "max_envelope_bytes": {"type": "integer", "minimum": 1024, "maximum": 1048576},
+        "max_attempts": {"type": "integer", "minimum": 1, "maximum": 8},
+        "max_retry_seconds": {"type": "integer", "minimum": 1, "maximum": 3600},
+        "max_park_seconds": {"type": "integer", "minimum": 60, "maximum": 604800}
+      }
+    },
+    "transitions": {"type": "object", "minProperties": 11, "maxProperties": 11, "additionalProperties": {"type": "array", "maxItems": 6, "uniqueItems": true, "items": {"enum": ["submitted", "queued", "starting", "running", "waiting", "parked", "cancelling", "cancelled", "done", "failed", "stale"]}}},
+    "retry": {"type": "object", "additionalProperties": false, "required": ["transient_reasons", "park_reasons", "terminal_reasons"], "properties": {
+      "transient_reasons": {"type": "array", "minItems": 1, "maxItems": 3, "uniqueItems": true, "items": {"enum": ["launch_failed", "provider_transient"]}},
+      "park_reasons": {"type": "array", "minItems": 1, "maxItems": 1, "uniqueItems": true, "items": {"const": "quota_parked"}},
+      "terminal_reasons": {"type": "array", "minItems": 1, "maxItems": 10, "uniqueItems": true, "items": {"enum": ["admission_denied", "auth_failed", "policy_blocked", "timeout", "cancelled", "output_incomplete", "integrity_failed", "executor_lost"]}}
+    }},
+    "required_capabilities": {"type": "array", "minItems": 6, "maxItems": 6, "uniqueItems": true, "items": {"enum": ["preflight", "start", "observe", "cancel_owned", "classify_exit", "collect"]}},
+    "adapters": {"type": "array", "minItems": 4, "maxItems": 4, "uniqueItems": true, "items": {"enum": ["local", "claude", "codex", "antigravity"]}},
+    "coverage_gates": {"type": "array", "minItems": 3, "maxItems": 3, "uniqueItems": true, "items": {"enum": ["aq_qa", "agent_ops", "web_dashboard"]}}
+  }
+}

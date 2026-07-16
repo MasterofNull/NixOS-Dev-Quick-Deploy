@@ -32,7 +32,10 @@ MAX_REGISTRY = 4096
 MAX_INBOX = 1024
 MAX_ARGV = 128
 MAX_TEXT = 4096
-SENSITIVE_KEYS = {"prompt", "description", "output", "raw_command", "cmdline", "secret"}
+SENSITIVE_KEYS = {
+    "argv", "cmdline", "command", "credential", "credentials", "description", "environment",
+    "headers", "output", "path", "prompt", "prompt_digest", "raw_command", "raw_error", "secret", "token",
+}
 
 
 class ProjectionError(ValueError):
@@ -83,7 +86,9 @@ class ProcessFact:
         )
 
     def identity(self) -> dict[str, Any]:
-        return {k: v for k, v in asdict(self).items() if k not in {"argv", "readable", "executable"}}
+        value = {k: v for k, v in asdict(self).items() if k not in {"argv", "readable", "executable"}}
+        value["cgroup"] = f"cgroup:{stable_digest(self.cgroup)[:16]}" if self.cgroup else None
+        return value
 
 
 def executable_kind(proc: ProcessFact) -> tuple[str, str]:
@@ -170,7 +175,8 @@ def _registry_pid(record: Mapping[str, Any]) -> tuple[int, int] | None:
 
 
 def project_agent_ops(*, now: int, registry: Sequence[Mapping[str, Any]],
-                      processes: Sequence[Mapping[str, Any]], inbox: Sequence[Mapping[str, Any]]) -> dict[str, Any]:
+                      processes: Sequence[Mapping[str, Any]], inbox: Sequence[Mapping[str, Any]],
+                      dispatch_contract: Mapping[str, Any] | None = None) -> dict[str, Any]:
     if len(registry) > MAX_REGISTRY:
         raise ProjectionError("registry_snapshot_too_large")
     if len(inbox) > MAX_INBOX:
@@ -291,6 +297,17 @@ def project_agent_ops(*, now: int, registry: Sequence[Mapping[str, Any]],
     work.sort(key=lambda item: (item["visibility"] != "blocked", item["work_id"]))
     reasons = sorted({item["reason_code"] for item in work if item["visibility"] != "tracked"})
     verdict = "blocked" if any(item["visibility"] == "blocked" for item in work) else ("degraded" if reasons else "tracked")
+    dispatch = {
+        "contract_version": "aq.dispatch.contract.v1",
+        "health": "unavailable",
+        "broker_state": "not_assessed",
+        "adapter_health": {lane: "unavailable" for lane in ("local", "claude", "codex", "antigravity")},
+        "counts": {"queued": None, "running": None, "parked": None, "terminal": None},
+        "coverage_health": {gate: "unavailable" for gate in ("aq_qa", "agent_ops", "web_dashboard")},
+        "reason_codes": ["dispatch_broker_not_assessed"],
+    }
+    if dispatch_contract is not None:
+        dispatch = json.loads(json.dumps(dispatch_contract))
     return {
         "schema_version": SCHEMA_VERSION, "generated_at": _iso(now),
         "health": {"verdict": verdict, "reason_codes": reasons, "source_freshness": "fresh"},
@@ -299,6 +316,7 @@ def project_agent_ops(*, now: int, registry: Sequence[Mapping[str, Any]],
             "inbox_processing_duration_seconds": max(pending_durations) if pending_durations else None,
             "cgroup_correlation_failures_total": cgroup_failures,
         },
+        "dispatch_contract": dispatch,
         "work": work,
     }
 
@@ -322,4 +340,10 @@ def contract_health(projection: Mapping[str, Any]) -> dict[str, Any]:
         raise ProjectionError("projection_version_invalid")
     if set(projection.get("metrics", {})) != set(METRICS):
         raise ProjectionError("projection_metrics_invalid")
-    return {"healthy": True, "digest": stable_digest(projection), "work_count": len(projection.get("work", []))}
+    dispatch = projection.get("dispatch_contract", {})
+    return {
+        "healthy": dispatch.get("health") == "healthy",
+        "dispatch_health": dispatch.get("health", "unavailable"),
+        "digest": stable_digest(projection),
+        "work_count": len(projection.get("work", [])),
+    }

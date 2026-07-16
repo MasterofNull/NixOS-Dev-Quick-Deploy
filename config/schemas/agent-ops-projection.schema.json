@@ -3,7 +3,7 @@
   "$id": "aq.agent-ops-projection.v1",
   "type": "object",
   "additionalProperties": false,
-  "required": ["schema_version", "generated_at", "health", "metrics", "work"],
+  "required": ["schema_version", "generated_at", "health", "metrics", "dispatch_contract", "work"],
   "properties": {
     "schema_version": {"const": "aq.agent-ops-projection.v1"},
     "generated_at": {"type": "string", "format": "date-time"},
@@ -12,7 +12,7 @@
       "required": ["verdict", "reason_codes", "source_freshness"],
       "properties": {
         "verdict": {"enum": ["tracked", "degraded", "blocked"]},
-        "reason_codes": {"type": "array", "uniqueItems": true, "items": {"type": "string", "pattern": "^[a-z0-9_]+$"}},
+        "reason_codes": {"type": "array", "maxItems": 128, "uniqueItems": true, "items": {"type": "string", "minLength": 1, "maxLength": 64, "pattern": "^[a-z0-9_]+$"}},
         "source_freshness": {"enum": ["fresh", "stale", "unavailable"]}
       }
     },
@@ -25,7 +25,34 @@
         "cgroup_correlation_failures_total": {"type": "integer", "minimum": 0}
       }
     },
-    "work": {"type": "array", "items": {"$ref": "#/$defs/work"}}
+    "dispatch_contract": {
+      "type": "object", "additionalProperties": false,
+      "required": ["contract_version", "health", "broker_state", "adapter_health", "counts", "coverage_health", "reason_codes"],
+      "properties": {
+        "contract_version": {"const": "aq.dispatch.contract.v1"},
+        "health": {"enum": ["healthy", "degraded", "blocked", "unavailable"]},
+        "broker_state": {"enum": ["healthy", "degraded", "blocked", "not_assessed"]},
+        "adapter_health": {"type": "object", "additionalProperties": false, "required": ["local", "claude", "codex", "antigravity"], "properties": {
+          "local": {"enum": ["healthy", "degraded", "blocked", "unavailable"]},
+          "claude": {"enum": ["healthy", "degraded", "blocked", "unavailable"]},
+          "codex": {"enum": ["healthy", "degraded", "blocked", "unavailable"]},
+          "antigravity": {"enum": ["healthy", "degraded", "blocked", "unavailable"]}
+        }},
+        "counts": {"type": "object", "additionalProperties": false, "required": ["queued", "running", "parked", "terminal"], "properties": {
+          "queued": {"type": ["integer", "null"], "minimum": 0, "maximum": 1000000},
+          "running": {"type": ["integer", "null"], "minimum": 0, "maximum": 1000000},
+          "parked": {"type": ["integer", "null"], "minimum": 0, "maximum": 1000000},
+          "terminal": {"type": ["integer", "null"], "minimum": 0, "maximum": 1000000}
+        }},
+        "coverage_health": {"type": "object", "additionalProperties": false, "required": ["aq_qa", "agent_ops", "web_dashboard"], "properties": {
+          "aq_qa": {"enum": ["healthy", "blocked", "unavailable"]},
+          "agent_ops": {"enum": ["healthy", "blocked", "unavailable"]},
+          "web_dashboard": {"enum": ["healthy", "blocked", "unavailable"]}
+        }},
+        "reason_codes": {"type": "array", "maxItems": 32, "uniqueItems": true, "items": {"type": "string", "minLength": 1, "maxLength": 64, "pattern": "^[a-z0-9_]+$"}}
+      }
+    },
+    "work": {"type": "array", "maxItems": 9216, "items": {"$ref": "#/$defs/work"}}
   },
   "$defs": {
     "pid_identity": {
@@ -37,7 +64,7 @@
         "ppid": {"type": "integer", "minimum": 0},
         "pgid": {"type": "integer", "minimum": 0},
         "session": {"type": "integer", "minimum": 0},
-        "cgroup": {"type": ["string", "null"]}
+        "cgroup": {"type": ["string", "null"], "maxLength": 64}
       }
     },
     "work": {
@@ -46,19 +73,19 @@
       "properties": {
         "work_id": {"type": "string", "pattern": "^[a-z0-9][a-z0-9._:-]{0,127}$"},
         "lane": {"enum": ["local", "claude", "codex", "antigravity", "system", "unknown"]},
-        "role": {"type": ["string", "null"]},
-        "model_profile": {"type": ["string", "null"]},
+        "role": {"type": ["string", "null"], "maxLength": 64},
+        "model_profile": {"type": ["string", "null"], "maxLength": 64},
         "authority": {"enum": ["delegation_registry", "antigravity_inbox", "process_observer", "collaboration_event"]},
         "state": {"enum": ["queued", "running", "waiting", "cancelling", "terminal", "idle", "untracked", "conflict", "stale"]},
-        "phase": {"type": ["string", "null"]},
+        "phase": {"type": ["string", "null"], "maxLength": 64},
         "progress_age_s": {"type": ["integer", "null"], "minimum": 0},
         "pid_identity": {"anyOf": [{"$ref": "#/$defs/pid_identity"}, {"type": "null"}]},
-        "dedup_group": {"type": ["string", "null"]},
+        "dedup_group": {"type": ["string", "null"], "maxLength": 128},
         "access": {"enum": ["writer", "read_only", "none"]},
-        "terminal_reason": {"type": ["string", "null"]},
+        "terminal_reason": {"type": ["string", "null"], "maxLength": 64},
         "artifact": {"enum": ["expected", "present", "missing", "not_applicable"]},
         "visibility": {"enum": ["tracked", "degraded", "blocked"]},
-        "reason_code": {"type": "string", "pattern": "^[a-z0-9_]+$"},
+        "reason_code": {"type": "string", "minLength": 1, "maxLength": 64, "pattern": "^[a-z0-9_]+$"},
         "freshness": {"enum": ["fresh", "stale", "unavailable"]}
       }
     }

@@ -1,0 +1,125 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "aq.agent-dispatch-envelope.v1",
+  "title": "AQ durable agent dispatch envelopes",
+  "oneOf": [
+    {"$ref": "#/$defs/request"},
+    {"$ref": "#/$defs/ack"},
+    {"$ref": "#/$defs/status"},
+    {"$ref": "#/$defs/event"},
+    {"$ref": "#/$defs/adapter"},
+    {"$ref": "#/$defs/failure"}
+  ],
+  "$defs": {
+    "identifier": {"type": "string", "pattern": "^[a-z0-9][a-z0-9._:-]{0,127}$"},
+    "reason": {"enum": ["admission_denied", "launch_failed", "provider_transient", "quota_parked", "auth_failed", "policy_blocked", "timeout", "cancelled", "output_incomplete", "integrity_failed", "executor_lost"]},
+    "state": {"enum": ["submitted", "queued", "starting", "running", "waiting", "parked", "cancelling", "cancelled", "done", "failed", "stale"]},
+    "lane": {"enum": ["local", "claude", "codex", "antigravity"]},
+    "sealed_input": {
+      "type": "object", "additionalProperties": false,
+      "required": ["transport", "handle", "byte_length"],
+      "properties": {
+        "transport": {"enum": ["stdin", "sealed_fd", "inbox"]},
+        "handle": {"$ref": "#/$defs/identifier"},
+        "byte_length": {"type": "integer", "minimum": 0, "maximum": 1048576}
+      }
+    },
+    "budget": {
+      "type": "object", "additionalProperties": false,
+      "required": ["attempts", "output_bytes"],
+      "properties": {
+        "attempts": {"type": "integer", "minimum": 1, "maximum": 8},
+        "output_bytes": {"type": "integer", "minimum": 1, "maximum": 16777216}
+      }
+    },
+    "request": {
+      "type": "object", "additionalProperties": false,
+      "required": ["schema_version", "idempotency_key", "lane", "role", "access", "task_class", "model_tier", "profile", "execution_mode", "output_expectation", "timeout_seconds", "budget", "review_required", "input_ref"],
+      "properties": {
+        "schema_version": {"const": "aq.dispatch.request.v1"},
+        "idempotency_key": {"type": "string", "pattern": "^[A-Za-z0-9_-]{32,128}$"},
+        "lane": {"$ref": "#/$defs/lane"},
+        "role": {"enum": ["orchestrator", "implementer", "reviewer", "researcher"]},
+        "access": {"enum": ["read_only", "workspace_write"]},
+        "task_class": {"$ref": "#/$defs/identifier"},
+        "model_tier": {"enum": ["economy", "balanced", "flagship", "local"]},
+        "profile": {"type": ["string", "null"], "pattern": "^[a-z0-9][a-z0-9._-]{0,63}$"},
+        "execution_mode": {"enum": ["batch", "review", "interactive_bridge"]},
+        "output_expectation": {"enum": ["json", "markdown", "artifact", "none"]},
+        "timeout_seconds": {"type": "integer", "minimum": 1, "maximum": 86400},
+        "budget": {"$ref": "#/$defs/budget"},
+        "review_required": {"type": "boolean"},
+        "input_ref": {"$ref": "#/$defs/sealed_input"}
+      }
+    },
+    "ack": {
+      "type": "object", "additionalProperties": false,
+      "required": ["schema_version", "task_id", "idempotency_key", "revision", "state", "adapter", "contract_version", "reason"],
+      "properties": {
+        "schema_version": {"const": "aq.dispatch.ack.v1"},
+        "task_id": {"$ref": "#/$defs/identifier"},
+        "idempotency_key": {"type": "string", "pattern": "^[A-Za-z0-9_-]{32,128}$"},
+        "revision": {"type": "integer", "minimum": 0, "maximum": 9007199254740991},
+        "state": {"enum": ["queued", "failed"]},
+        "adapter": {"$ref": "#/$defs/lane"},
+        "contract_version": {"const": "aq.dispatch.contract.v1"},
+        "reason": {"anyOf": [{"$ref": "#/$defs/reason"}, {"type": "null"}]}
+      }
+    },
+    "status": {
+      "type": "object", "additionalProperties": false,
+      "required": ["schema_version", "task_id", "revision", "fencing_epoch", "state", "adapter", "lease_owner", "attempt", "earliest_resume_epoch", "reason"],
+      "properties": {
+        "schema_version": {"const": "aq.dispatch.status.v1"},
+        "task_id": {"$ref": "#/$defs/identifier"},
+        "revision": {"type": "integer", "minimum": 0, "maximum": 9007199254740991},
+        "fencing_epoch": {"type": "integer", "minimum": 1, "maximum": 9007199254740991},
+        "state": {"$ref": "#/$defs/state"},
+        "adapter": {"$ref": "#/$defs/lane"},
+        "lease_owner": {"anyOf": [{"$ref": "#/$defs/identifier"}, {"type": "null"}]},
+        "attempt": {"type": "integer", "minimum": 0, "maximum": 8},
+        "earliest_resume_epoch": {"type": ["integer", "null"], "minimum": 0, "maximum": 4102444800},
+        "reason": {"anyOf": [{"$ref": "#/$defs/reason"}, {"type": "null"}]}
+      }
+    },
+    "event": {
+      "type": "object", "additionalProperties": false,
+      "required": ["schema_version", "event_id", "task_id", "revision", "state", "reason", "observed_epoch"],
+      "properties": {
+        "schema_version": {"const": "aq.dispatch.event.v1"},
+        "event_id": {"$ref": "#/$defs/identifier"},
+        "task_id": {"$ref": "#/$defs/identifier"},
+        "revision": {"type": "integer", "minimum": 0, "maximum": 9007199254740991},
+        "state": {"$ref": "#/$defs/state"},
+        "reason": {"anyOf": [{"$ref": "#/$defs/reason"}, {"type": "null"}]},
+        "observed_epoch": {"type": "integer", "minimum": 0, "maximum": 4102444800}
+      }
+    },
+    "adapter": {
+      "type": "object", "additionalProperties": false,
+      "required": ["schema_version", "adapter", "capabilities", "network_boundary", "credential_boundary", "progress_evidence", "concurrency_limit", "cancellation_ownership"],
+      "properties": {
+        "schema_version": {"const": "aq.dispatch.adapter.v1"},
+        "adapter": {"$ref": "#/$defs/lane"},
+        "capabilities": {"type": "array", "minItems": 6, "maxItems": 6, "uniqueItems": true, "items": {"enum": ["preflight", "start", "observe", "cancel_owned", "classify_exit", "collect"]}},
+        "network_boundary": {"enum": ["none", "local_only", "declared_remote"]},
+        "credential_boundary": {"enum": ["none", "service_environment", "runtime_secret"]},
+        "progress_evidence": {"enum": ["process_receipt", "provider_event", "inbox_receipt"]},
+        "concurrency_limit": {"type": "integer", "minimum": 1, "maximum": 64},
+        "cancellation_ownership": {"const": "lease_and_fence"}
+      }
+    },
+    "failure": {
+      "type": "object", "additionalProperties": false,
+      "required": ["schema_version", "task_id", "reason", "disposition", "retry_after_seconds", "evidence_codes"],
+      "properties": {
+        "schema_version": {"const": "aq.dispatch.failure.v1"},
+        "task_id": {"$ref": "#/$defs/identifier"},
+        "reason": {"$ref": "#/$defs/reason"},
+        "disposition": {"enum": ["retry", "park", "terminal"]},
+        "retry_after_seconds": {"type": ["integer", "null"], "minimum": 0, "maximum": 604800},
+        "evidence_codes": {"type": "array", "maxItems": 16, "uniqueItems": true, "items": {"type": "string", "pattern": "^[a-z0-9_]{1,64}$"}}
+      }
+    }
+  }
+}

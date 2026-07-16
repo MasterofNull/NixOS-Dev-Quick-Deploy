@@ -120,6 +120,32 @@ class AgentOpsProjectionM0(unittest.TestCase):
         second = ops.contract_health(json.loads(json.dumps(self.projection)))
         self.assertEqual(first, second)
         self.assertEqual(first["work_count"], self.fixture["expected"]["work_count"])
+        self.assertFalse(first["healthy"])
+        self.assertEqual(first["dispatch_health"], "unavailable")
+
+    def test_13b_dispatch_contract_is_unavailable_until_injected(self) -> None:
+        dispatch = self.projection["dispatch_contract"]
+        self.assertEqual((dispatch["health"], dispatch["broker_state"]), ("unavailable", "not_assessed"))
+        self.assertTrue(all(value is None for value in dispatch["counts"].values()))
+        injected = json.loads(json.dumps(dispatch))
+        injected.update(health="healthy", broker_state="healthy", reason_codes=[])
+        injected["adapter_health"] = {lane: "healthy" for lane in injected["adapter_health"]}
+        injected["coverage_health"] = {gate: "healthy" for gate in injected["coverage_health"]}
+        injected["counts"] = {"queued": 1, "running": 2, "parked": 3, "terminal": 4}
+        projection = ops.project_agent_ops(
+            now=self.fixture["now"], registry=self.fixture["registry"],
+            processes=self.fixture["processes"], inbox=self.fixture["inbox"],
+            dispatch_contract=injected,
+        )
+        Draft202012Validator(self.schema).validate(projection)
+        self.assertTrue(ops.contract_health(projection)["healthy"])
+
+    def test_13c_cgroup_and_sensitive_dispatch_values_are_redacted(self) -> None:
+        rendered = json.dumps(self.projection)
+        self.assertNotIn("/agent/", rendered)
+        bad = json.loads(json.dumps(self.projection)); bad["dispatch_contract"]["prompt_digest"] = "canary"
+        with self.assertRaisesRegex(ops.ProjectionError, "sensitive_field_exposed"):
+            ops.assert_redacted(bad)
 
     def test_14_snapshot_and_argv_bounds_fail_closed(self) -> None:
         with self.assertRaisesRegex(ops.ProjectionError, "process_snapshot_too_large"):
