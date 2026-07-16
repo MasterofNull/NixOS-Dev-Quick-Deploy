@@ -2073,3 +2073,8 @@ Action: CLOSE THE LOOP — DONE: (a) extract_contribution structured/prose/log f
   Severity: high
   Action: keep the no-key IDE/OAuth inbox lane as the Antigravity collaboration authority; add a preflight health signal that exposes credential/endpoint compatibility without secrets, and configure any intentional remote diagnostic provider as a separately named route.
   File: scripts/ai/delegate-to-antigravity; task antigravity-20260716-154459-ro8ura
+
+[OPEN] local-delegation-false-launch-acknowledgement — `delegate-to-local` reported task `local-20260716-155448-nrjxv5` started with a PID and output path, but immediately afterward there was no registry row, output/progress artifact, or surviving process; the read-only monitor remained at 666 tasks.
+  Severity: critical
+  Action: require durable broker admission plus registry receipt before printing `started`; if admission/receipt is absent, return a typed launch failure. Add a golden test proving a caller-owned child killed during managed sandbox teardown cannot produce a success acknowledgement.
+  File: scripts/ai/delegate-to-local; scripts/ai/lib/dispatch.py; task local-20260716-155448-nrjxv5
