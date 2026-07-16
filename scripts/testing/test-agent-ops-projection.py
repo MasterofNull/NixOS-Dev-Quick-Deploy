@@ -10,6 +10,7 @@ import sys
 import tempfile
 import unittest
 from pathlib import Path
+from unittest import mock
 
 from jsonschema import Draft202012Validator
 
@@ -688,6 +689,178 @@ class AgentOpsProjectionM2A(unittest.TestCase):
             self.assertIn("recon-t1", result["reconciled"])
             rec = r.show_m2a("recon-t1")
             self.assertEqual(rec["status"], "stale")
+
+    # ─── read-only show snapshot ───────────────────────────────────────────────
+
+    @staticmethod
+    def _record(task_id: str, revision: int = 1) -> dict:
+        return {
+            "record_version": 1, "task_id": task_id, "lane": "codex",
+            "role": "reviewer", "access": "read_only", "task_class": "code_review",
+            "artifact_expectation": "none", "created_epoch": 1784127600,
+            "record_revision": revision, "admission_producer": "dispatcher",
+            "status": "queued",
+        }
+
+    @staticmethod
+    def _write_records(path: Path, records: list[dict]) -> None:
+        path.parent.mkdir(parents=True, exist_ok=True)
+        path.write_text(
+            "".join(json.dumps(record, separators=(",", ":")) + "\n" for record in records),
+            encoding="utf-8",
+        )
+
+    def test_m2a_33_show_without_lock_does_not_create_lock(self) -> None:
+        with tempfile.TemporaryDirectory() as d:
+            r = self._make_registry(Path(d))
+            self._write_records(r.registry_file, [self._record("read-t1")])
+            lock_path = r._m2a_lock_path()
+            self.assertFalse(lock_path.exists())
+            self.assertEqual(r.show_m2a("read-t1")["record_revision"], 1)
+            self.assertFalse(lock_path.exists(), "read-only show created the writer lock")
+
+    def test_m2a_34_show_never_uses_writer_transaction(self) -> None:
+        with tempfile.TemporaryDirectory() as d:
+            r = self._make_registry(Path(d))
+            self._write_records(r.registry_file, [self._record("read-t2")])
+            with mock.patch.object(
+                r, "_m2a_transact", side_effect=AssertionError("writer transaction used")
+            ):
+                self.assertEqual(r.show_m2a("read-t2")["task_id"], "read-t2")
+
+    def test_m2a_35_missing_show_creates_no_directory_or_lock(self) -> None:
+        with tempfile.TemporaryDirectory() as d:
+            root = Path(d)
+            reg_dir = root / "absent" / "delegation"
+            r = self.tr_mod.TaskRegistry(reg_dir, repo_root=root)
+            with self.assertRaisesRegex(self.tr_mod.RegistryError, "task_not_found"):
+                r.show_m2a("missing")
+            self.assertFalse(reg_dir.exists())
+            self.assertFalse(r._m2a_lock_path().exists())
+
+    def test_m2a_36_show_opens_no_write_capable_descriptor(self) -> None:
+        with tempfile.TemporaryDirectory() as d:
+            r = self._make_registry(Path(d))
+            self._write_records(r.registry_file, [self._record("read-t3")])
+            real_open = os.open
+            observed_flags: list[int] = []
+
+            def read_only_open(path, flags, *args, **kwargs):
+                if Path(path) == r.registry_file:
+                    observed_flags.append(flags)
+                    self.assertEqual(flags & os.O_ACCMODE, os.O_RDONLY)
+                    self.assertFalse(flags & (os.O_CREAT | os.O_TRUNC | os.O_APPEND))
+                return real_open(path, flags, *args, **kwargs)
+
+            with mock.patch.object(self.tr_mod.os, "open", side_effect=read_only_open):
+                self.assertEqual(r.show_m2a("read-t3")["task_id"], "read-t3")
+            self.assertEqual(len(observed_flags), 1)
+
+    def test_m2a_37_show_rejects_symlink_and_non_regular_registry(self) -> None:
+        with tempfile.TemporaryDirectory() as d:
+            r = self._make_registry(Path(d))
+            real = r.registry_file.parent / "real.jsonl"
+            self._write_records(real, [self._record("read-t4")])
+            r.registry_file.symlink_to(real)
+            with self.assertRaisesRegex(self.tr_mod.RegistryError, "symlink"):
+                r.show_m2a("read-t4")
+            r.registry_file.unlink()
+            r.registry_file.mkdir()
+            with self.assertRaisesRegex(self.tr_mod.RegistryError, "not_regular"):
+                r.show_m2a("read-t4")
+
+    def test_m2a_38_show_reads_opened_inode_across_atomic_replace(self) -> None:
+        with tempfile.TemporaryDirectory() as d:
+            r = self._make_registry(Path(d))
+            self._write_records(r.registry_file, [self._record("old", 1)])
+            replacement = r.registry_file.parent / "replacement.jsonl"
+            self._write_records(replacement, [self._record("new", 2)])
+            real_open = os.open
+            swapped = False
+
+            def open_then_replace(path, flags, *args, **kwargs):
+                nonlocal swapped
+                fd = real_open(path, flags, *args, **kwargs)
+                if Path(path) == r.registry_file and not swapped:
+                    os.replace(replacement, r.registry_file)
+                    swapped = True
+                return fd
+
+            with mock.patch.object(self.tr_mod.os, "open", side_effect=open_then_replace):
+                self.assertEqual(r.show_m2a("old")["record_revision"], 1)
+            self.assertEqual(r.show_m2a("new")["record_revision"], 2)
+
+    def test_m2a_39_show_preserves_malformed_and_record_bounds_failures(self) -> None:
+        with tempfile.TemporaryDirectory() as d:
+            r = self._make_registry(Path(d))
+            r.registry_file.write_text("{bad json}\n", encoding="utf-8")
+            with self.assertRaisesRegex(self.tr_mod.RegistryError, "malformed"):
+                r.show_m2a("bad")
+            r.registry_file.write_text(
+                json.dumps({"task_id": "big", "data": "A" * 5000}) + "\n",
+                encoding="utf-8",
+            )
+            with self.assertRaisesRegex(self.tr_mod.RegistryError, "record_too_large"):
+                r.show_m2a("big")
+
+    def test_m2a_40_cli_show_leaves_registry_tree_unchanged(self) -> None:
+        import subprocess
+
+        with tempfile.TemporaryDirectory() as d:
+            tmp = Path(d)
+            registry = tmp / "delegation" / "registry.jsonl"
+            self._write_records(registry, [self._record("cli-read")])
+            before = (
+                sorted(path.name for path in registry.parent.iterdir()),
+                registry.stat().st_ino,
+                registry.stat().st_mtime_ns,
+                registry.read_bytes(),
+            )
+            result = subprocess.run(
+                [sys.executable, str(REPO / "scripts/ai/aq-delegation-registry"),
+                 "--registry", str(registry), "show", "cli-read"],
+                capture_output=True, text=True, check=False,
+            )
+            self.assertEqual(result.returncode, 0, result.stderr)
+            self.assertEqual(json.loads(result.stdout)["record"]["task_id"], "cli-read")
+            after = (
+                sorted(path.name for path in registry.parent.iterdir()),
+                registry.stat().st_ino,
+                registry.stat().st_mtime_ns,
+                registry.read_bytes(),
+            )
+            self.assertEqual(after, before)
+            self.assertFalse((registry.parent / "registry.jsonl.lock").exists())
+
+    def test_m2a_41_concurrent_atomic_replace_show_is_whole_snapshot(self) -> None:
+        import threading
+
+        with tempfile.TemporaryDirectory() as d:
+            r = self._make_registry(Path(d))
+            task_id = "concurrent-read"
+            self._write_records(r.registry_file, [self._record(task_id, 1)])
+            errors: list[BaseException] = []
+
+            def writer() -> None:
+                try:
+                    for revision in range(2, 102):
+                        replacement = r.registry_file.parent / f"swap-{revision}.jsonl"
+                        self._write_records(replacement, [self._record(task_id, revision)])
+                        os.replace(replacement, r.registry_file)
+                except BaseException as exc:  # pragma: no cover - reported in parent thread
+                    errors.append(exc)
+
+            thread = threading.Thread(target=writer)
+            thread.start()
+            observed: list[int] = []
+            while thread.is_alive():
+                observed.append(r.show_m2a(task_id)["record_revision"])
+            thread.join()
+            observed.append(r.show_m2a(task_id)["record_revision"])
+            self.assertEqual(errors, [])
+            self.assertTrue(observed)
+            self.assertTrue(all(1 <= revision <= 101 for revision in observed))
+            self.assertEqual(observed[-1], 101)
 
 
 if __name__ == "__main__":
