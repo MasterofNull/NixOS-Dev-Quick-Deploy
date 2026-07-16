@@ -14,6 +14,7 @@ corrupt the registry — a real concern when fanout dispatches 2–4 tasks in
 parallel.
 """
 
+import errno
 import fcntl
 import json
 import os
@@ -814,14 +815,53 @@ class TaskRegistry:
                 time.sleep(0.05)
 
     def _m2a_read_records(self) -> list[dict]:
-        """Read and parse registry under caller-held lock. Enforces size and type bounds."""
-        if not self.registry_file.exists():
+        """Read one bounded registry inode without creating or mutating filesystem state.
+
+        Mutation callers hold the stable writer lock before entering this method.  Read-only
+        callers intentionally do not: atomic replacement gives them a complete old-or-new inode,
+        while a later mutation still has to prove freshness with CAS.
+        """
+        flags = os.O_RDONLY | os.O_CLOEXEC
+        if hasattr(os, "O_NOFOLLOW"):
+            flags |= os.O_NOFOLLOW
+        try:
+            fd = os.open(str(self.registry_file), flags)
+        except FileNotFoundError:
             return []
-        self._assert_regular_not_symlink(self.registry_file)
-        if self.registry_file.stat().st_size > _M2A_MAX_REGISTRY_BYTES:
-            raise RegistryError("registry_file_too_large")
+        except OSError as exc:
+            # Preserve the existing typed symlink rejection on platforms where O_NOFOLLOW
+            # reports ELOOP, including for a link swapped in immediately before open.
+            if exc.errno == errno.ELOOP:
+                raise RegistryError(
+                    f"registry_source_symlink: {self.registry_file.name}"
+                ) from exc
+            raise RegistryError(f"registry_read_open_failed: {exc.errno}") from exc
+
+        try:
+            st = os.fstat(fd)
+            if not _stat.S_ISREG(st.st_mode):
+                raise RegistryError(
+                    f"registry_source_not_regular: {self.registry_file.name}"
+                )
+            if st.st_size > _M2A_MAX_REGISTRY_BYTES:
+                raise RegistryError("registry_file_too_large")
+
+            chunks: list[bytes] = []
+            remaining = _M2A_MAX_REGISTRY_BYTES + 1
+            while remaining:
+                chunk = os.read(fd, min(64 * 1024, remaining))
+                if not chunk:
+                    break
+                chunks.append(chunk)
+                remaining -= len(chunk)
+            content = b"".join(chunks)
+            if len(content) > _M2A_MAX_REGISTRY_BYTES:
+                raise RegistryError("registry_file_too_large")
+        finally:
+            os.close(fd)
+
         records: list[dict] = []
-        for raw_line in self.registry_file.read_bytes().split(b"\n"):
+        for raw_line in content.split(b"\n"):
             raw_line = raw_line.strip()
             if not raw_line:
                 continue
@@ -1008,13 +1048,10 @@ class TaskRegistry:
 
         DORMANT: No live wrapper calls this. Activation is M2B wrapper adoption.
         """
-        def _read_only(records: list[dict]) -> tuple[dict, list[dict]]:
-            for rec in records:
-                if rec.get("task_id") == task_id or rec.get("id") == task_id:
-                    return dict(rec), records
-            raise RegistryError(f"registry_task_not_found: {task_id}")
-
-        return self._m2a_transact(_read_only)
+        for rec in self._m2a_read_records():
+            if rec.get("task_id") == task_id or rec.get("id") == task_id:
+                return dict(rec)
+        raise RegistryError(f"registry_task_not_found: {task_id}")
 
     def reconcile_m2a(self) -> dict:
         """Mark M2A active records with dead PIDs as stale via one transactional write.
