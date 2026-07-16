@@ -1,11 +1,11 @@
 {
   "$schema": "https://json-schema.org/draft/2020-12/schema",
-  "$id": "aq.agent-ops-projection.v1",
+  "$id": "aq.agent-ops-projection.v2",
   "type": "object",
   "additionalProperties": false,
-  "required": ["schema_version", "generated_at", "health", "metrics", "dispatch_contract", "work"],
+  "required": ["schema_version", "generated_at", "health", "metrics", "dispatch_contract", "review_feedback", "work"],
   "properties": {
-    "schema_version": {"const": "aq.agent-ops-projection.v1"},
+    "schema_version": {"const": "aq.agent-ops-projection.v2"},
     "generated_at": {"type": "string", "format": "date-time"},
     "health": {
       "type": "object", "additionalProperties": false,
@@ -18,11 +18,28 @@
     },
     "metrics": {
       "type": "object", "additionalProperties": false,
-      "required": ["inbox_pending_count", "inbox_processing_duration_seconds", "cgroup_correlation_failures_total"],
+      "required": [
+        "inbox_pending_count", "inbox_processing_duration_seconds", "cgroup_correlation_failures_total",
+        "review_required_lanes_count", "review_received_lanes_count", "review_parked_lanes_count",
+        "review_unavailable_lanes_count", "review_abstained_lanes_count", "review_oldest_wait_seconds",
+        "review_revision_count", "review_open_findings_count", "review_critical_undisposed_count",
+        "feedback_promotion_pending_count", "feedback_freshness_age_seconds"
+      ],
       "properties": {
         "inbox_pending_count": {"type": "integer", "minimum": 0},
         "inbox_processing_duration_seconds": {"type": ["integer", "null"], "minimum": 0},
-        "cgroup_correlation_failures_total": {"type": "integer", "minimum": 0}
+        "cgroup_correlation_failures_total": {"type": "integer", "minimum": 0},
+        "review_required_lanes_count": {"type": ["integer", "null"], "minimum": 0, "maximum": 64},
+        "review_received_lanes_count": {"type": ["integer", "null"], "minimum": 0, "maximum": 64},
+        "review_parked_lanes_count": {"type": ["integer", "null"], "minimum": 0, "maximum": 64},
+        "review_unavailable_lanes_count": {"type": ["integer", "null"], "minimum": 0, "maximum": 64},
+        "review_abstained_lanes_count": {"type": ["integer", "null"], "minimum": 0, "maximum": 64},
+        "review_oldest_wait_seconds": {"type": ["integer", "null"], "minimum": 0, "maximum": 31536000},
+        "review_revision_count": {"type": ["integer", "null"], "minimum": 0, "maximum": 1000000},
+        "review_open_findings_count": {"type": ["integer", "null"], "minimum": 0, "maximum": 1000000},
+        "review_critical_undisposed_count": {"type": ["integer", "null"], "minimum": 0, "maximum": 1000000},
+        "feedback_promotion_pending_count": {"type": ["integer", "null"], "minimum": 0, "maximum": 1000000},
+        "feedback_freshness_age_seconds": {"type": ["integer", "null"], "minimum": 0, "maximum": 31536000}
       }
     },
     "dispatch_contract": {
@@ -52,6 +69,50 @@
         "reason_codes": {"type": "array", "maxItems": 32, "uniqueItems": true, "items": {"type": "string", "minLength": 1, "maxLength": 64, "pattern": "^[a-z0-9_]+$"}}
       }
     },
+    "review_feedback": {
+      "type": "object", "additionalProperties": false,
+      "required": [
+        "contract_version", "health", "assessment", "subject_hash", "pass_id", "baseline_state",
+        "terminal_decision", "revision", "superseded", "binding_required", "binding_received",
+        "roster_complete", "required_lanes", "received_lanes", "parked_lanes", "unavailable_lanes",
+        "abstained_lanes", "oldest_wait_s", "finding_state", "open_findings", "critical_undisposed",
+        "disposed_findings", "promotion_state", "promotion_pending", "freshness", "freshness_age_s",
+        "lanes", "reason_codes"
+      ],
+      "properties": {
+        "contract_version": {"const": "aq.review-feedback-facts.v1"},
+        "health": {"enum": ["healthy", "degraded", "blocked", "unavailable"]},
+        "assessment": {"enum": ["assessed", "not_assessed"]},
+        "subject_hash": {"type": ["string", "null"], "pattern": "^[0-9a-f]{64}$"},
+        "pass_id": {"type": ["string", "null"], "minLength": 1, "maxLength": 128, "pattern": "^[a-z0-9][a-z0-9._:-]*$"},
+        "baseline_state": {"enum": ["aligned", "mismatched", "not_assessed"]},
+        "terminal_decision": {"enum": ["accepted", "revision_required", "rejected", "incomplete", "not_assessed"]},
+        "revision": {"type": ["integer", "null"], "minimum": 0, "maximum": 1000000},
+        "superseded": {"type": ["boolean", "null"]},
+        "binding_required": {"type": ["integer", "null"], "minimum": 0, "maximum": 64},
+        "binding_received": {"type": ["integer", "null"], "minimum": 0, "maximum": 64},
+        "roster_complete": {"type": ["boolean", "null"]},
+        "required_lanes": {"type": ["integer", "null"], "minimum": 0, "maximum": 64},
+        "received_lanes": {"type": ["integer", "null"], "minimum": 0, "maximum": 64},
+        "parked_lanes": {"type": ["integer", "null"], "minimum": 0, "maximum": 64},
+        "unavailable_lanes": {"type": ["integer", "null"], "minimum": 0, "maximum": 64},
+        "abstained_lanes": {"type": ["integer", "null"], "minimum": 0, "maximum": 64},
+        "oldest_wait_s": {"type": ["integer", "null"], "minimum": 0, "maximum": 31536000},
+        "finding_state": {"enum": ["clear", "open", "blocked", "not_assessed"]},
+        "open_findings": {"type": ["integer", "null"], "minimum": 0, "maximum": 1000000},
+        "critical_undisposed": {"type": ["integer", "null"], "minimum": 0, "maximum": 1000000},
+        "disposed_findings": {"type": ["integer", "null"], "minimum": 0, "maximum": 1000000},
+        "promotion_state": {"enum": [
+          "captured", "triaged", "fixture_bound", "candidate_prepared", "shadow_validated",
+          "flagship_accepted", "canary", "promoted", "rolled_back", "non_propagated", "not_assessed"
+        ]},
+        "promotion_pending": {"type": ["integer", "null"], "minimum": 0, "maximum": 1000000},
+        "freshness": {"enum": ["fresh", "stale", "unavailable"]},
+        "freshness_age_s": {"type": ["integer", "null"], "minimum": 0, "maximum": 31536000},
+        "lanes": {"type": "array", "maxItems": 64, "items": {"$ref": "#/$defs/review_lane"}},
+        "reason_codes": {"type": "array", "maxItems": 32, "uniqueItems": true, "items": {"type": "string", "minLength": 1, "maxLength": 64, "pattern": "^[a-z0-9_]+$"}}
+      }
+    },
     "work": {"type": "array", "maxItems": 9216, "items": {"$ref": "#/$defs/work"}}
   },
   "$defs": {
@@ -65,6 +126,18 @@
         "pgid": {"type": "integer", "minimum": 0},
         "session": {"type": "integer", "minimum": 0},
         "cgroup": {"type": ["string", "null"], "maxLength": 64}
+      }
+    },
+    "review_lane": {
+      "type": "object", "additionalProperties": false,
+      "required": ["lane", "role", "model_tier", "eligibility", "state", "verdict"],
+      "properties": {
+        "lane": {"type": "string", "minLength": 1, "maxLength": 64, "pattern": "^[a-z0-9][a-z0-9._:-]*$"},
+        "role": {"enum": ["architect", "implementer", "orchestrator", "reviewer"]},
+        "model_tier": {"enum": ["flagship", "economical", "local", "embedded"]},
+        "eligibility": {"enum": ["advisory", "binding_flagship", "recused"]},
+        "state": {"enum": ["submitted", "failed", "timed_out", "parked", "unavailable", "nonterminal"]},
+        "verdict": {"type": ["string", "null"], "enum": ["pass", "revision_required", "fail", "abstain", null]}
       }
     },
     "work": {
