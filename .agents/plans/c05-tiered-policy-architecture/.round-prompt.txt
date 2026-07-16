@@ -1,0 +1,5 @@
+COLLABORATIVE ROUND 'c05-tiered-policy-architecture'.
+TASK:
+Same-baseline expert review: architecture, security, SRE. Review only the exact staged changes in docs/architecture/role-matrix.md, docs/architecture/local-agent-task-eligibility.md, .agent/PROJECT-LOCAL-AI-FACTORY-REFERENCE-ARCHITECTURE-PRD.md, .agent/PROJECT-AGENT-CONNECTION-RELIABILITY-PRD.md, and .agents/plans/agent-connection-reliability/PROGRAM-PLAN.md. Determine whether they correctly enforce flat reasoning collaboration, cheapest eligible bounded implementers, independent flagship review and re-review after edits, orchestrator-only submission, first-class but hardware-aware local coding/logic/embedded modalities, and eval-gated recursive correction propagation. Read-only. Check contradictions, authority escalation, poisoning, monitoring, and implementability. End with exact VERDICT: PASS or REQUEST_REVISION or FAIL — reason.
+
+Write your contribution to YOUR OWN file ONLY: .agents/plans/c05-tiered-policy-architecture/<AGENT>.md (<AGENT> = codex | local | antigravity). Do NOT edit any shared file. Do NOT read the artifact file (it is inlined above). Be decisive and concise.
