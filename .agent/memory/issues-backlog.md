@@ -2068,3 +2068,8 @@ Action: CLOSE THE LOOP — DONE: (a) extract_contribution structured/prose/log f
   Severity: medium
   Action: add a changed-file/explicit-path mode and separately baseline or quarantine legacy/archive link debt without weakening active-document enforcement.
   File: scripts/governance/check-doc-links.sh
+
+[OPEN] antigravity-direct-route-credential-endpoint-mismatch — A traced independent C0.6 review delegation failed before inference with HTTP 503 because `REMOTE_LLM_URL` targets Google Gemini direct while the configured credential is an OpenRouter key; the switchboard correctly refused silent provider fallback.
+  Severity: high
+  Action: keep the no-key IDE/OAuth inbox lane as the Antigravity collaboration authority; add a preflight health signal that exposes credential/endpoint compatibility without secrets, and configure any intentional remote diagnostic provider as a separately named route.
+  File: scripts/ai/delegate-to-antigravity; task antigravity-20260716-154459-ro8ura
