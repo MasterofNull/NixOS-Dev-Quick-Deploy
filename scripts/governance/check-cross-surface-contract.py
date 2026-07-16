@@ -60,7 +60,11 @@ def changed_files_from_git(mode: str) -> list[str]:
     if mode == "--pre-commit":
         cmd = ["git", "diff", "--cached", "--name-only", "--diff-filter=ACM"]
     else:
-        cmd = ["bash", "-lc", "{ git diff --name-only --diff-filter=ACM origin/main...HEAD 2>/dev/null || true; git diff --name-only --diff-filter=ACM 2>/dev/null || true; } | awk 'NF && !seen[$0]++'"]
+        cmd = [
+            "bash",
+            "-lc",
+            "{ git diff --name-only --diff-filter=ACM origin/main...HEAD 2>/dev/null || true; git diff --name-only --diff-filter=ACM 2>/dev/null || true; } | awk 'NF && !seen[$0]++'",
+        ]
     out = subprocess.check_output(cmd, text=True)
     return [line.strip() for line in out.splitlines() if line.strip()]
 
@@ -79,11 +83,18 @@ def is_runtime(path: str) -> bool:
 
 def is_doc(path: str) -> bool:
     name = Path(path).name
-    return path.startswith(DOC_PREFIXES) or name in DOC_FILENAMES or path.endswith("/README.md")
+    return (
+        path.startswith(DOC_PREFIXES)
+        or name in DOC_FILENAMES
+        or path.endswith("/README.md")
+    )
 
 
 def is_dashboard(path: str) -> bool:
-    return path.startswith(DASHBOARD_PREFIXES) or path in {"dashboard.html", "dashboard-v2.html"}
+    return path.startswith(DASHBOARD_PREFIXES) or path in {
+        "dashboard.html",
+        "dashboard-v2.html",
+    }
 
 
 def summarize(paths: Iterable[str]) -> str:
@@ -92,8 +103,14 @@ def summarize(paths: Iterable[str]) -> str:
 
 def main() -> int:
     parser = argparse.ArgumentParser(description=__doc__)
-    parser.add_argument("--mode", default="--pre-commit", choices=("--pre-commit", "--pre-deploy", "--ci", "--pre-push", "--full"))
-    parser.add_argument("files", nargs="*", help="Optional explicit file list for tests/dry-runs")
+    parser.add_argument(
+        "--mode",
+        default="--pre-commit",
+        choices=("--pre-commit", "--pre-deploy", "--ci", "--pre-push", "--full"),
+    )
+    parser.add_argument(
+        "files", nargs="*", help="Optional explicit file list for tests/dry-runs"
+    )
     args = parser.parse_args()
 
     changed = args.files or changed_files_from_git(args.mode)
@@ -110,13 +127,23 @@ def main() -> int:
             surfaces.append(f"docs/handoff surfaces: {len(docs)}")
         if dashboard:
             surfaces.append(f"dashboard surfaces: {len(dashboard)}")
-        print("PASS: runtime changes include connected visibility surface (" + ", ".join(surfaces) + ")")
+        print(
+            "PASS: runtime changes include connected visibility surface ("
+            + ", ".join(surfaces)
+            + ")"
+        )
         return 0
 
-    print("FAIL: runtime/module/service changes need connected documentation, dashboard visibility, or handoff evidence.", file=sys.stderr)
+    print(
+        "FAIL: runtime/module/service changes need connected documentation, dashboard visibility, or handoff evidence.",
+        file=sys.stderr,
+    )
     print("Runtime changes:", file=sys.stderr)
     print(summarize(runtime), file=sys.stderr)
-    print("\nStage at least one relevant docs/plan/handoff file or Command Center/dashboard surface.", file=sys.stderr)
+    print(
+        "\nStage at least one relevant docs/plan/handoff file or Command Center/dashboard surface.",
+        file=sys.stderr,
+    )
     return 1
 
 
