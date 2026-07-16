@@ -1,0 +1,73 @@
+{
+  "schema_version": "1.0",
+  "round_id": "unified-program",
+  "state": "COLLECTED",
+  "task": {
+    "prompt": "Independent ratification review of the AQ-OS unified program package at commit aa2e4452. SUBJECTS: (1) .agents/plans/UNIFIED-PROGRAM-PLAN.md — consolidation of all four AQ-OS corpora + L-series + Track V into one spine (precedence, state ledger, traceability, loose threads, owner decisions Q1-Q9); (2) .agent/PROJECT-VERIFIED-FACTORY-PRD.md — Track V, 9 slices VF-1..VF-9; (3) .agent/PROJECT-CHECK-KERNEL-PRD.md — CheckSpec SSOT + aq check runner + section-6 amendments to the Antigravity ARE plan; (4) .agent/PROJECT-LOCAL-AI-FACTORY-CODEX-FABLE-SYNTHESIS.md as parent architecture (owner decision Q1). PRODUCE in your own file: per-subject score 1-10 with specific defects (file+section refs); APPROVE/REVISE per owner decision Q1-Q9 (plan section 6); answers to CK PRD section 9 questions (interim runner: focused-CI vs minimal aq check; ratchet unit: directory vs module; biome vs eslint); VF PRD section 3 disposition challenges; slices your lane claims per lane eligibility. END with explicit verdict APPROVE / REQUEST_REVISION / BLOCKED per subject plus overall. RULES: do not read other lanes' files; claude-fable-5 authored subjects 1-3 and abstains from scoring its own artifacts; evidence over assertion — cite file:line where you contest; codex lane is offline until 2026-07-15 and the round stays OPEN for its late fold-in. Load skills: multi-agent-collab, context-efficiency, system-dev.",
+    "target": ".agents/plans/unified-program",
+    "scope_files": []
+  },
+  "opened_at": "2026-07-13T17:49:47Z",
+  "quorum_policy": {
+    "min_lanes": 2,
+    "required_agents": [],
+    "late_local_admissible": true,
+    "timeout_seconds": null,
+    "deadline": null,
+    "timeout_action": "lock_with_present"
+  },
+  "lanes": [
+    {
+      "agent": "claude",
+      "dispatch_id": null,
+      "idempotency_hash": "d44cda4cbb598e5d85a44c14142a58ac803c8d731ef6fb327876e17b30ff1158",
+      "status": "submitted",
+      "landed_at": null
+    },
+    {
+      "agent": "codex",
+      "dispatch_id": null,
+      "idempotency_hash": "b48bdc03e8318a02e5e889eb926675cf336339e8c4e6f41c66a84f70ded7223f",
+      "status": "submitted",
+      "landed_at": null
+    },
+    {
+      "agent": "local",
+      "dispatch_id": null,
+      "idempotency_hash": "ef66061f750db8241772fe9d6b11f6166fc22dbf044bd031e760e86a5facf65e",
+      "status": "submitted",
+      "landed_at": null
+    },
+    {
+      "agent": "antigravity",
+      "dispatch_id": null,
+      "idempotency_hash": "b196f3c8138f367b338f1c0406a77772597e2e6176e9b3c392b6ed3a8d68131c",
+      "status": "submitted",
+      "landed_at": null
+    }
+  ],
+  "contributions": {},
+  "conflicts": [],
+  "consensus_hash": null,
+  "aggregate_path": null,
+  "aggregate_hash": null,
+  "locked_at": null,
+  "history": [
+    {
+      "transition": "CREATED->DISPATCHED",
+      "timestamp": "2026-07-13T17:49:47Z",
+      "actor": "aq-collab-round"
+    },
+    {
+      "transition": "DISPATCHED->CONTRIBUTING",
+      "timestamp": "2026-07-13T18:32:22Z",
+      "actor": "aq-collab-round"
+    },
+    {
+      "transition": "CONTRIBUTING->COLLECTED",
+      "timestamp": "2026-07-13T18:32:22Z",
+      "actor": "aq-collab-round"
+    }
+  ],
+  "predecessor_round_id": null
+}
