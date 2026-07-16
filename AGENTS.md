@@ -196,7 +196,15 @@ Statuses: `[OPEN]` · `[PENDING-REBUILD]` · `[IN-FLIGHT]` · `[DONE]`
 - Search first: `agrep "<keyword>" .` (Agentic Grep) before editing
 - Use the canonical low-friction tool order in `docs/agent-guides/47-AGENT-TOOL-CONTRACT.md`
 - Validate before commit: `scripts/governance/tier0-validation-gate.sh --pre-commit`
-- Commit format: `type(scope): msg\n\nCo-Authored-By: <agent-name> <noreply@harness.local>`
+- Commit evidence contract: keep one slice per atomic commit and follow `.agent/WORKFLOW-CANON.md`
+  Step 8. Every non-trivial body must record root cause/objective; material file and contract changes;
+  reasoning/tradeoffs; key measurements or failure evidence; implementer and independent
+  reviewer identities/roles; the exact reviewed subject hash when applicable; exact validation
+  commands/results; authority, activation, and explicit exclusions; and the next gate/blocker. End
+  with truthful machine-parseable authorship/review trailers. Only a final independent `PASS` earns
+  review trailers; earlier revision verdicts remain body evidence. Unavailable, timed-out, parked, or
+  abstaining agents must not be credited as reviewers. Omit inapplicable authorship/review trailers.
+  Trivial single-line commits may use the compact Step 8 form but retain atomicity and truthful evidence
 
 ## Session Initialization (Mandatory)
 Every session MUST start with:

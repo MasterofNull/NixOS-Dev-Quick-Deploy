@@ -424,7 +424,40 @@ Future agents reading a stale wiki will get wrong context. Keep it current.
 git add <specific files — never git add -A>
 scripts/governance/tier0-validation-gate.sh --pre-commit   # gate must pass (after DOC-UPDATE)
 git commit -m "$(cat <<'EOF'
-...
+type(scope): imperative one-slice summary
+
+Root cause / objective:
+- <the observed failure, risk, or objective this slice addresses>
+
+Material changes:
+- <file or contract>: <behavioral change; name schema/API/SSOT versions>
+
+Reasoning / tradeoffs:
+- <why this approach; important alternatives rejected or deferred>
+
+Evidence / measurements:
+- <before/failure evidence and after measurements, including exact counts/latency/hash when material>
+
+Collaboration:
+- Implementer: <agent or human identity> — <implementer role and bounded contribution>
+- Independent reviewer: <identity> — <reviewer role and final PASS verdict; otherwise NOT_APPLICABLE>
+- Reviewed subject: sha256:<exact final-PASS candidate/diff/artifact hash, when review is hash-bound>
+
+Validation:
+- `<exact command>` — <PASS/FAIL and concise measured result>
+- `scripts/governance/tier0-validation-gate.sh --pre-commit` — PASS
+
+Authority / activation:
+- Authority: <authorization ID/scope, or NOT_APPLICABLE with reason>
+- Activated: <what was already activated and live-verified, or NONE — pending Step 8.5>
+- Excluded: <explicitly unauthorized, dormant, deferred, or not-cut-over surfaces>
+
+Next gate / blocker:
+- <next required review, activation, migration, owner decision, or NONE>
+
+Co-Authored-By: <actual contributing co-author; omit for solo work> <noreply@harness.local>
+Reviewed-By: <actual independent final-PASS reviewer; omit when not applicable> <noreply@harness.local>
+Reviewed-Subject-SHA256: <exact lowercase final-PASS SHA-256; omit when not applicable>
 EOF
 )"
 
@@ -436,8 +469,26 @@ EOF
 
 **Rules**:
 - One slice = one commit. If you find yourself writing "and also..." in the message, split it
-- Always name the actual agent that generated the work in `Co-Authored-By`
-- Include validation evidence in the commit body (tests passed, gate passed)
+- Every non-trivial commit body is an audit record, not an optional narrative. It must contain all
+  template sections above: root cause/objective; material file and contract changes; reasoning and
+  tradeoffs; key measurements or failure evidence; collaboration identities and roles; the exact
+  reviewed subject hash when review is hash-bound; exact validation commands and results; authority,
+  activation, and explicit exclusions; and the next gate or blocker
+- Credit only work actually performed. `Co-Authored-By` names actual authors/implementers.
+  `Reviewed-By` names only an independent reviewer who examined the recorded subject and returned a
+  final `PASS`. Preserve earlier `REQUEST_REVISION`/`FAIL` verdicts and their corrective effect in the
+  body as historical evidence, never as acceptance trailers. An unavailable, timed-out,
+  failed-to-respond, parked, or abstaining agent is recorded in the body when operationally relevant
+  but MUST NOT be credited as a reviewer
+- When no independent review was required or completed, write
+  `Independent reviewer: NOT_APPLICABLE — <reason>` in the body and omit both `Reviewed-By` and
+  `Reviewed-Subject-SHA256`; never fabricate review credit or a subject hash
+- Trailers must remain machine-parseable and truthful. Include `Co-Authored-By` for every actual
+  contributing co-author, plus `Reviewed-By` and `Reviewed-Subject-SHA256` only when applicable.
+  Do not list the committer themself as an independent reviewer
+- A trivial single-line commit may use a conventional subject plus one concise validation/evidence
+  line and only truthful applicable trailers. It remains one atomic slice and must not imply review,
+  authorization, or activation that did not occur
 - Never commit without running `tier0-validation-gate.sh --pre-commit`
 
 ---
@@ -450,8 +501,10 @@ complete — it is *paused pending activation*. This step is the canonical Defin
 **SSOT: `.agent/DEFINITION-OF-DONE.md` · Behavioral Rule 15.**
 
 For every feature the slice ships, attest all five dimensions with **evidence** (a command + result,
-or a file:line — not a claim), then record the attestation in the commit body AND as a row in
-`.agent/ACTIVATION-AUDIT.md`:
+or a file:line — not a claim), then record the attestation as a row in `.agent/ACTIVATION-AUDIT.md`.
+If activation preceded the implementation commit, include it in that commit body. Otherwise the
+implementation commit must say `Activated: NONE — pending Step 8.5`, and a separate atomic activation
+commit records the live evidence after this step:
 
 | # | Dimension | Evidence required |
 |---|-----------|-------------------|
@@ -622,7 +675,7 @@ MEMORY   →  mcp_server_store_memory / aq-memory store (before executing)
 EXECUTE  →  one slice, read before edit, no hallucinated deps
 VALIDATE →  tier0-validation-gate.sh + security checklist + tests
 DOC      →  aq-wiki --update (after code changes) + HANDOFF.md + RAG seed
-COMMIT   →  git add <specific files> + small message with evidence + Co-Authored-By
+COMMIT   →  git add <specific files> + Step 8 audit body (or documented trivial form) + truthful conditional trailers
 ```
 
 ---
