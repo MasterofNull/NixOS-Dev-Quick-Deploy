@@ -15,15 +15,30 @@ from pathlib import PurePosixPath
 from typing import Any, Iterable, Mapping, Sequence
 
 
-SCHEMA_VERSION = "aq.agent-ops-projection.v1"
+SCHEMA_VERSION = "aq.agent-ops-projection.v2"
+REVIEW_FACTS_VERSION = "aq.review-feedback-facts.v1"
 ACTIVE_STATES = {"queued", "running", "waiting", "cancelling"}
 TERMINAL_STATES = {"done", "completed", "failed", "cancelled", "orphaned", "error"}
 LANES = {"local", "claude", "codex", "antigravity", "system", "unknown"}
-METRICS = (
+LEGACY_METRICS = (
     "inbox_pending_count",
     "inbox_processing_duration_seconds",
     "cgroup_correlation_failures_total",
 )
+REVIEW_METRICS = (
+    "review_required_lanes_count",
+    "review_received_lanes_count",
+    "review_parked_lanes_count",
+    "review_unavailable_lanes_count",
+    "review_abstained_lanes_count",
+    "review_oldest_wait_seconds",
+    "review_revision_count",
+    "review_open_findings_count",
+    "review_critical_undisposed_count",
+    "feedback_promotion_pending_count",
+    "feedback_freshness_age_seconds",
+)
+METRICS = LEGACY_METRICS + REVIEW_METRICS
 # M2A: queued grace window constants (dormant — used by projector for M2A new_record rows)
 _M2A_QUEUED_GRACE_S = 30   # fresh PID-less dispatcher row visible as degraded/queued
 _M2A_FUTURE_SKEW_S = 5     # created_epoch more than this many seconds in the future → stale
@@ -36,6 +51,30 @@ SENSITIVE_KEYS = {
     "argv", "cmdline", "command", "credential", "credentials", "description", "environment",
     "headers", "output", "path", "prompt", "prompt_digest", "raw_command", "raw_error", "secret", "token",
 }
+REVIEW_FACT_KEYS = {
+    "contract_version", "receipt_schema_version", "candidate_schema_version", "subject_hash",
+    "pass_id", "baseline_hash", "baseline_state", "terminal_decision", "revision", "superseded",
+    "binding_required", "binding_received", "roster_complete", "required_lanes", "received_lanes",
+    "parked_lanes", "unavailable_lanes", "abstained_lanes", "oldest_wait_s", "open_findings",
+    "critical_undisposed", "disposed_findings", "promotion_state", "promotion_pending",
+    "feedback_freshness", "feedback_freshness_age_s", "lanes", "reason_codes",
+}
+REVIEW_LANE_KEYS = {"lane", "role", "model_tier", "eligibility", "state", "verdict"}
+REVIEW_ROLES = {"architect", "implementer", "orchestrator", "reviewer"}
+MODEL_TIERS = {"flagship", "economical", "local", "embedded"}
+REVIEW_ELIGIBILITY = {"advisory", "binding_flagship", "recused"}
+REVIEW_LANE_STATES = {"submitted", "failed", "timed_out", "parked", "unavailable", "nonterminal"}
+REVIEW_VERDICTS = {"pass", "revision_required", "fail", "abstain"}
+TERMINAL_DECISIONS = {"accepted", "revision_required", "rejected", "incomplete"}
+BASELINE_STATES = {"aligned", "mismatched"}
+FEEDBACK_FRESHNESS = {"fresh", "stale", "unavailable"}
+PROMOTION_STATES = {
+    "captured", "triaged", "fixture_bound", "candidate_prepared", "shadow_validated",
+    "flagship_accepted", "canary", "promoted", "rolled_back", "non_propagated", "not_assessed",
+}
+_SAFE_TOKEN = re.compile(r"^[a-z0-9][a-z0-9._:-]*$")
+_SAFE_REASON = re.compile(r"^[a-z0-9_]+$")
+_SHA256 = re.compile(r"^[0-9a-f]{64}$")
 
 
 class ProjectionError(ValueError):
@@ -54,6 +93,240 @@ def _safe_id(value: str, fallback: str = "unknown") -> str:
 def stable_digest(value: Any) -> str:
     raw = json.dumps(value, sort_keys=True, separators=(",", ":"), ensure_ascii=False)
     return hashlib.sha256(raw.encode("utf-8")).hexdigest()
+
+
+def _exact_keys(value: Mapping[str, Any], expected: set[str], reason: str) -> None:
+    if not isinstance(value, Mapping) or set(value) != expected:
+        raise ProjectionError(reason)
+
+
+def _bounded_int(value: Any, reason: str, *, maximum: int = 1_000_000) -> int:
+    if isinstance(value, bool) or not isinstance(value, int) or not 0 <= value <= maximum:
+        raise ProjectionError(reason)
+    return value
+
+
+def _bounded_token(value: Any, reason: str, *, maximum: int = 128) -> str:
+    if not isinstance(value, str) or not 1 <= len(value) <= maximum or not _SAFE_TOKEN.fullmatch(value):
+        raise ProjectionError(reason)
+    return value
+
+
+def _default_review_feedback() -> dict[str, Any]:
+    return {
+        "contract_version": REVIEW_FACTS_VERSION,
+        "health": "unavailable",
+        "assessment": "not_assessed",
+        "subject_hash": None,
+        "pass_id": None,
+        "baseline_state": "not_assessed",
+        "terminal_decision": "not_assessed",
+        "revision": None,
+        "superseded": None,
+        "binding_required": None,
+        "binding_received": None,
+        "roster_complete": None,
+        "required_lanes": None,
+        "received_lanes": None,
+        "parked_lanes": None,
+        "unavailable_lanes": None,
+        "abstained_lanes": None,
+        "oldest_wait_s": None,
+        "finding_state": "not_assessed",
+        "open_findings": None,
+        "critical_undisposed": None,
+        "disposed_findings": None,
+        "promotion_state": "not_assessed",
+        "promotion_pending": None,
+        "freshness": "unavailable",
+        "freshness_age_s": None,
+        "lanes": [],
+        "reason_codes": ["review_feedback_not_assessed"],
+    }
+
+
+def _review_metrics(review: Mapping[str, Any]) -> dict[str, int | None]:
+    return {
+        "review_required_lanes_count": review["required_lanes"],
+        "review_received_lanes_count": review["received_lanes"],
+        "review_parked_lanes_count": review["parked_lanes"],
+        "review_unavailable_lanes_count": review["unavailable_lanes"],
+        "review_abstained_lanes_count": review["abstained_lanes"],
+        "review_oldest_wait_seconds": review["oldest_wait_s"],
+        "review_revision_count": review["revision"],
+        "review_open_findings_count": review["open_findings"],
+        "review_critical_undisposed_count": review["critical_undisposed"],
+        "feedback_promotion_pending_count": review["promotion_pending"],
+        "feedback_freshness_age_seconds": review["freshness_age_s"],
+    }
+
+
+def project_review_feedback(facts: Mapping[str, Any] | None) -> dict[str, Any]:
+    """Project already-adjudicated C0.5A facts without consulting any live authority."""
+    if facts is None:
+        return _default_review_feedback()
+    _exact_keys(facts, REVIEW_FACT_KEYS, "review_facts_shape_invalid")
+    if facts["contract_version"] != REVIEW_FACTS_VERSION:
+        raise ProjectionError("review_facts_version_invalid")
+    if facts["receipt_schema_version"] != "aq.review-round-receipt.v1":
+        raise ProjectionError("review_receipt_version_invalid")
+    if facts["candidate_schema_version"] != "aq.learning-candidate.v1":
+        raise ProjectionError("learning_candidate_version_invalid")
+    if not isinstance(facts["subject_hash"], str) or not _SHA256.fullmatch(facts["subject_hash"]):
+        raise ProjectionError("review_subject_hash_invalid")
+    if not isinstance(facts["baseline_hash"], str) or not _SHA256.fullmatch(facts["baseline_hash"]):
+        raise ProjectionError("review_baseline_hash_invalid")
+    pass_id = _bounded_token(facts["pass_id"], "review_pass_id_invalid")
+    baseline_state = facts["baseline_state"]
+    decision = facts["terminal_decision"]
+    freshness = facts["feedback_freshness"]
+    promotion_state = facts["promotion_state"]
+    if baseline_state not in BASELINE_STATES: raise ProjectionError("review_baseline_state_invalid")
+    if decision not in TERMINAL_DECISIONS: raise ProjectionError("review_terminal_decision_invalid")
+    if freshness not in FEEDBACK_FRESHNESS: raise ProjectionError("feedback_freshness_invalid")
+    if promotion_state not in PROMOTION_STATES: raise ProjectionError("promotion_state_invalid")
+    if not isinstance(facts["superseded"], bool) or not isinstance(facts["roster_complete"], bool):
+        raise ProjectionError("review_boolean_invalid")
+
+    values = {
+        name: _bounded_int(facts[name], f"review_{name}_invalid",
+                           maximum=31_536_000 if name.endswith("_s") else 1_000_000)
+        for name in (
+            "revision", "binding_required", "binding_received", "required_lanes", "received_lanes",
+            "parked_lanes", "unavailable_lanes", "abstained_lanes", "oldest_wait_s", "open_findings",
+            "critical_undisposed", "disposed_findings", "promotion_pending", "feedback_freshness_age_s",
+        )
+    }
+    for name in ("binding_required", "binding_received", "required_lanes", "received_lanes",
+                 "parked_lanes", "unavailable_lanes", "abstained_lanes"):
+        if values[name] > 64:
+            raise ProjectionError(f"review_{name}_invalid")
+    if values["binding_received"] > values["binding_required"]:
+        raise ProjectionError("review_binding_totals_invalid")
+    if values["received_lanes"] > values["required_lanes"]:
+        raise ProjectionError("review_roster_totals_invalid")
+    if values["abstained_lanes"] > values["received_lanes"]:
+        raise ProjectionError("review_abstention_totals_invalid")
+    if values["parked_lanes"] + values["unavailable_lanes"] > values["required_lanes"]:
+        raise ProjectionError("review_unavailable_totals_invalid")
+
+    raw_lanes = facts["lanes"]
+    if not isinstance(raw_lanes, list) or len(raw_lanes) > 64:
+        raise ProjectionError("review_lanes_invalid")
+    lanes: list[dict[str, Any]] = []
+    seen_lanes: set[str] = set()
+    for raw in raw_lanes:
+        _exact_keys(raw, REVIEW_LANE_KEYS, "review_lane_shape_invalid")
+        lane = _bounded_token(raw["lane"], "review_lane_id_invalid", maximum=64)
+        if lane in seen_lanes: raise ProjectionError("review_lane_duplicate")
+        seen_lanes.add(lane)
+        if raw["role"] not in REVIEW_ROLES: raise ProjectionError("review_lane_role_invalid")
+        if raw["model_tier"] not in MODEL_TIERS: raise ProjectionError("review_lane_model_tier_invalid")
+        if raw["eligibility"] not in REVIEW_ELIGIBILITY: raise ProjectionError("review_lane_eligibility_invalid")
+        if raw["state"] not in REVIEW_LANE_STATES: raise ProjectionError("review_lane_state_invalid")
+        if raw["verdict"] is not None and raw["verdict"] not in REVIEW_VERDICTS:
+            raise ProjectionError("review_lane_verdict_invalid")
+        if raw["state"] == "submitted" and raw["verdict"] is None:
+            raise ProjectionError("review_lane_verdict_missing")
+        if raw["state"] != "submitted" and raw["verdict"] is not None:
+            raise ProjectionError("review_lane_verdict_unexpected")
+        lanes.append({key: raw[key] for key in sorted(REVIEW_LANE_KEYS)})
+    lanes.sort(key=lambda lane: lane["lane"])
+
+    if values["required_lanes"] < 1 or values["binding_required"] < 1:
+        raise ProjectionError("review_roster_policy_invalid")
+    if len(lanes) > values["required_lanes"]:
+        raise ProjectionError("review_lane_roster_overflow")
+    observed_submitted = sum(lane["state"] == "submitted" for lane in lanes)
+    observed_parked = sum(lane["state"] == "parked" for lane in lanes)
+    observed_unavailable = sum(lane["state"] == "unavailable" for lane in lanes)
+    observed_abstained = sum(
+        lane["state"] == "submitted" and lane["verdict"] == "abstain" for lane in lanes
+    )
+    observed_binding = sum(
+        lane["state"] == "submitted"
+        and lane["verdict"] == "pass"
+        and lane["eligibility"] == "binding_flagship"
+        and lane["model_tier"] == "flagship"
+        and lane["role"] == "reviewer"
+        for lane in lanes
+    )
+    observed = {
+        "received_lanes": observed_submitted,
+        "parked_lanes": observed_parked,
+        "unavailable_lanes": observed_unavailable,
+        "abstained_lanes": observed_abstained,
+        "binding_received": observed_binding,
+    }
+    for name, count in observed.items():
+        if values[name] != count:
+            raise ProjectionError(f"review_{name}_observation_mismatch")
+    if facts["roster_complete"]:
+        if len(lanes) != values["required_lanes"] or any(
+                lane["state"] == "nonterminal" for lane in lanes):
+            raise ProjectionError("review_complete_roster_unrepresented")
+
+    reasons = facts["reason_codes"]
+    if (not isinstance(reasons, list) or len(reasons) > 32 or len(set(reasons)) != len(reasons)
+            or not all(isinstance(reason, str) and 1 <= len(reason) <= 64
+                       and _SAFE_REASON.fullmatch(reason) for reason in reasons)):
+        raise ProjectionError("review_reason_codes_invalid")
+    derived_reasons = set(reasons)
+    finding_state = "blocked" if values["critical_undisposed"] else ("open" if values["open_findings"] else "clear")
+    blocked = False
+    degraded = False
+    blocking_evidence = {
+        "review_subject_drift", "review_policy_drift", "review_roster_drift", "review_criteria_drift",
+        "review_self_review", "review_material_rewriter",
+    }
+    if blocking_evidence.intersection(derived_reasons):
+        blocked = True
+    if baseline_state == "mismatched": blocked = True; derived_reasons.add("review_baseline_mismatch")
+    if decision == "rejected": blocked = True; derived_reasons.add("review_rejected")
+    if values["critical_undisposed"]: blocked = True; derived_reasons.add("critical_finding_undisposed")
+    if facts["superseded"]: blocked = True; derived_reasons.add("review_subject_superseded")
+    if decision in {"incomplete", "revision_required"}: degraded = True; derived_reasons.add(f"review_{decision}")
+    if not facts["roster_complete"]: degraded = True; derived_reasons.add("review_roster_incomplete")
+    if values["binding_received"] < values["binding_required"]: degraded = True; derived_reasons.add("review_quorum_incomplete")
+    if values["parked_lanes"]: degraded = True; derived_reasons.add("review_lane_parked")
+    if values["unavailable_lanes"]: degraded = True; derived_reasons.add("review_lane_unavailable")
+    if freshness != "fresh": degraded = True; derived_reasons.add(f"feedback_{freshness}")
+    healthy_contract = (
+        baseline_state == "aligned" and decision == "accepted" and facts["roster_complete"]
+        and values["binding_received"] >= values["binding_required"]
+        and values["critical_undisposed"] == 0 and not facts["superseded"] and freshness == "fresh"
+    )
+    health = "blocked" if blocked else ("degraded" if degraded or not healthy_contract else "healthy")
+    return {
+        "contract_version": REVIEW_FACTS_VERSION,
+        "health": health,
+        "assessment": "assessed",
+        "subject_hash": facts["subject_hash"],
+        "pass_id": pass_id,
+        "baseline_state": baseline_state,
+        "terminal_decision": decision,
+        "revision": values["revision"],
+        "superseded": facts["superseded"],
+        "binding_required": values["binding_required"],
+        "binding_received": values["binding_received"],
+        "roster_complete": facts["roster_complete"],
+        "required_lanes": values["required_lanes"],
+        "received_lanes": values["received_lanes"],
+        "parked_lanes": values["parked_lanes"],
+        "unavailable_lanes": values["unavailable_lanes"],
+        "abstained_lanes": values["abstained_lanes"],
+        "oldest_wait_s": values["oldest_wait_s"],
+        "finding_state": finding_state,
+        "open_findings": values["open_findings"],
+        "critical_undisposed": values["critical_undisposed"],
+        "disposed_findings": values["disposed_findings"],
+        "promotion_state": promotion_state,
+        "promotion_pending": values["promotion_pending"],
+        "freshness": freshness,
+        "freshness_age_s": values["feedback_freshness_age_s"],
+        "lanes": lanes,
+        "reason_codes": sorted(derived_reasons),
+    }
 
 
 @dataclass(frozen=True)
@@ -176,7 +449,8 @@ def _registry_pid(record: Mapping[str, Any]) -> tuple[int, int] | None:
 
 def project_agent_ops(*, now: int, registry: Sequence[Mapping[str, Any]],
                       processes: Sequence[Mapping[str, Any]], inbox: Sequence[Mapping[str, Any]],
-                      dispatch_contract: Mapping[str, Any] | None = None) -> dict[str, Any]:
+                      dispatch_contract: Mapping[str, Any] | None = None,
+                      review_feedback_facts: Mapping[str, Any] | None = None) -> dict[str, Any]:
     if len(registry) > MAX_REGISTRY:
         raise ProjectionError("registry_snapshot_too_large")
     if len(inbox) > MAX_INBOX:
@@ -308,15 +582,19 @@ def project_agent_ops(*, now: int, registry: Sequence[Mapping[str, Any]],
     }
     if dispatch_contract is not None:
         dispatch = json.loads(json.dumps(dispatch_contract))
+    review_feedback = project_review_feedback(review_feedback_facts)
+    metrics = {
+        "inbox_pending_count": sum(1 for entry in inbox if entry.get("pending") is True),
+        "inbox_processing_duration_seconds": max(pending_durations) if pending_durations else None,
+        "cgroup_correlation_failures_total": cgroup_failures,
+    }
+    metrics.update(_review_metrics(review_feedback))
     return {
         "schema_version": SCHEMA_VERSION, "generated_at": _iso(now),
         "health": {"verdict": verdict, "reason_codes": reasons, "source_freshness": "fresh"},
-        "metrics": {
-            "inbox_pending_count": sum(1 for entry in inbox if entry.get("pending") is True),
-            "inbox_processing_duration_seconds": max(pending_durations) if pending_durations else None,
-            "cgroup_correlation_failures_total": cgroup_failures,
-        },
+        "metrics": metrics,
         "dispatch_contract": dispatch,
+        "review_feedback": review_feedback,
         "work": work,
     }
 
@@ -341,9 +619,13 @@ def contract_health(projection: Mapping[str, Any]) -> dict[str, Any]:
     if set(projection.get("metrics", {})) != set(METRICS):
         raise ProjectionError("projection_metrics_invalid")
     dispatch = projection.get("dispatch_contract", {})
+    review = projection.get("review_feedback", {})
     return {
-        "healthy": dispatch.get("health") == "healthy",
+        "healthy": dispatch.get("health") == "healthy" and review.get("health") == "healthy",
         "dispatch_health": dispatch.get("health", "unavailable"),
+        "review_feedback_health": review.get("health", "unavailable"),
+        "review_terminal_decision": review.get("terminal_decision", "not_assessed"),
+        "feedback_promotion_state": review.get("promotion_state", "not_assessed"),
         "digest": stable_digest(projection),
         "work_count": len(projection.get("work", [])),
     }

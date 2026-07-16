@@ -2,6 +2,7 @@
 """Executable M0 contract tests for the read-only Agent Ops projector."""
 from __future__ import annotations
 
+import ast
 import importlib.util
 from importlib.machinery import SourceFileLoader
 import json
@@ -33,6 +34,44 @@ sys.modules[tui_spec.name] = tui
 tui_spec.loader.exec_module(tui)
 
 
+def _healthy_review_facts() -> dict:
+    return {
+        "contract_version": "aq.review-feedback-facts.v1",
+        "receipt_schema_version": "aq.review-round-receipt.v1",
+        "candidate_schema_version": "aq.learning-candidate.v1",
+        "subject_hash": "a" * 64,
+        "pass_id": "pass-1",
+        "baseline_hash": "b" * 64,
+        "baseline_state": "aligned",
+        "terminal_decision": "accepted",
+        "revision": 1,
+        "superseded": False,
+        "binding_required": 2,
+        "binding_received": 2,
+        "roster_complete": True,
+        "required_lanes": 2,
+        "received_lanes": 2,
+        "parked_lanes": 0,
+        "unavailable_lanes": 0,
+        "abstained_lanes": 0,
+        "oldest_wait_s": 0,
+        "open_findings": 0,
+        "critical_undisposed": 0,
+        "disposed_findings": 0,
+        "promotion_state": "not_assessed",
+        "promotion_pending": 0,
+        "feedback_freshness": "fresh",
+        "feedback_freshness_age_s": 0,
+        "lanes": [
+            {"lane": "claude", "role": "reviewer", "model_tier": "flagship",
+             "eligibility": "binding_flagship", "state": "submitted", "verdict": "pass"},
+            {"lane": "codex", "role": "reviewer", "model_tier": "flagship",
+             "eligibility": "binding_flagship", "state": "submitted", "verdict": "pass"},
+        ],
+        "reason_codes": [],
+    }
+
+
 class AgentOpsProjectionM0(unittest.TestCase):
     @classmethod
     def setUpClass(cls) -> None:
@@ -53,8 +92,9 @@ class AgentOpsProjectionM0(unittest.TestCase):
         expected = self.fixture["expected"]
         self.assertEqual(self.projection["health"]["verdict"], expected["health"])
         self.assertEqual(len(self.projection["work"]), expected["work_count"])
-        for metric in ops.METRICS:
+        for metric in ops.LEGACY_METRICS:
             self.assertEqual(self.projection["metrics"][metric], expected[metric])
+        self.assertTrue(all(self.projection["metrics"][metric] is None for metric in ops.REVIEW_METRICS))
         self.assertTrue(set(expected["required_reasons"]).issubset(self.projection["health"]["reason_codes"]))
 
     def test_03_registry_pid_start_time_and_phase_correlation(self) -> None:
@@ -136,7 +176,7 @@ class AgentOpsProjectionM0(unittest.TestCase):
         projection = ops.project_agent_ops(
             now=self.fixture["now"], registry=self.fixture["registry"],
             processes=self.fixture["processes"], inbox=self.fixture["inbox"],
-            dispatch_contract=injected,
+            dispatch_contract=injected, review_feedback_facts=_healthy_review_facts(),
         )
         Draft202012Validator(self.schema).validate(projection)
         self.assertTrue(ops.contract_health(projection)["healthy"])
@@ -281,6 +321,295 @@ class AgentOpsProjectionM0(unittest.TestCase):
             item = next(v for v in second["work"] if v["work_id"] == "claude-m1")
             self.assertEqual((item["state"], item["reason_code"]),
                              ("stale", "registry_process_missing"))
+
+
+class AgentOpsProjectionC05B(unittest.TestCase):
+    """C0.5B pure injected review/feedback health contract."""
+
+    @classmethod
+    def setUpClass(cls) -> None:
+        cls.schema = json.loads(SCHEMA.read_text(encoding="utf-8"))
+
+    def projection(self, facts: dict | None = None, dispatch: dict | None = None) -> dict:
+        return ops.project_agent_ops(
+            now=1784127600, registry=[], processes=[], inbox=[],
+            dispatch_contract=dispatch, review_feedback_facts=facts,
+        )
+
+    def assertProjectionError(self, reason: str, facts: dict) -> None:
+        with self.assertRaisesRegex(ops.ProjectionError, f"^{reason}$"):
+            ops.project_review_feedback(facts)
+
+    def test_c05b_01_absent_is_unavailable_not_assessed_and_null(self) -> None:
+        projection = self.projection()
+        review = projection["review_feedback"]
+        self.assertEqual((review["health"], review["assessment"]), ("unavailable", "not_assessed"))
+        self.assertEqual((review["baseline_state"], review["terminal_decision"]),
+                         ("not_assessed", "not_assessed"))
+        nullable = {key for key, value in review.items() if value is None}
+        self.assertEqual(nullable, {
+            "subject_hash", "pass_id", "revision", "superseded", "binding_required",
+            "binding_received", "roster_complete", "required_lanes", "received_lanes",
+            "parked_lanes", "unavailable_lanes", "abstained_lanes", "oldest_wait_s",
+            "open_findings", "critical_undisposed", "disposed_findings", "promotion_pending",
+            "freshness_age_s",
+        })
+        self.assertTrue(all(projection["metrics"][name] is None for name in ops.REVIEW_METRICS))
+        self.assertEqual(review["reason_codes"], ["review_feedback_not_assessed"])
+
+    def test_c05b_02_complete_aligned_binding_acceptance_is_healthy(self) -> None:
+        review = ops.project_review_feedback(_healthy_review_facts())
+        self.assertEqual((review["health"], review["assessment"], review["finding_state"]),
+                         ("healthy", "assessed", "clear"))
+
+    def test_c05b_03_missing_required_lane_is_incomplete_degraded(self) -> None:
+        facts = _healthy_review_facts()
+        facts.update(terminal_decision="incomplete", roster_complete=False,
+                     received_lanes=1, binding_received=1, oldest_wait_s=30)
+        facts["lanes"][1].update(state="nonterminal", verdict=None)
+        review = ops.project_review_feedback(facts)
+        self.assertEqual(review["health"], "degraded")
+        self.assertIn("review_roster_incomplete", review["reason_codes"])
+
+    def test_c05b_04_parked_lane_accounts_but_never_satisfies_quorum(self) -> None:
+        facts = _healthy_review_facts()
+        facts.update(terminal_decision="incomplete", roster_complete=True, received_lanes=1,
+                     binding_received=1, parked_lanes=1, oldest_wait_s=120)
+        facts["lanes"][1].update(state="parked", verdict=None)
+        review = ops.project_review_feedback(facts)
+        self.assertEqual((review["health"], review["parked_lanes"], review["binding_received"]),
+                         ("degraded", 1, 1))
+
+    def test_c05b_05_unavailable_is_distinct_from_explicit_abstention(self) -> None:
+        unavailable = _healthy_review_facts()
+        unavailable.update(terminal_decision="incomplete", roster_complete=True, received_lanes=1,
+                           binding_received=1, unavailable_lanes=1)
+        unavailable["lanes"][1].update(state="unavailable", verdict=None)
+        abstain = _healthy_review_facts()
+        abstain.update(terminal_decision="incomplete", binding_received=1, abstained_lanes=1)
+        abstain["lanes"][1]["verdict"] = "abstain"
+        left = ops.project_review_feedback(unavailable)
+        right = ops.project_review_feedback(abstain)
+        self.assertEqual((left["unavailable_lanes"], left["abstained_lanes"]), (1, 0))
+        self.assertEqual((right["unavailable_lanes"], right["abstained_lanes"]), (0, 1))
+
+    def test_c05b_06_baseline_mismatch_blocks(self) -> None:
+        facts = _healthy_review_facts(); facts["baseline_state"] = "mismatched"
+        review = ops.project_review_feedback(facts)
+        self.assertEqual(review["health"], "blocked")
+        self.assertIn("review_baseline_mismatch", review["reason_codes"])
+
+    def test_c05b_07_subject_policy_roster_and_criteria_drift_block(self) -> None:
+        for reason in ("review_subject_drift", "review_policy_drift", "review_roster_drift", "review_criteria_drift"):
+            facts = _healthy_review_facts(); facts["reason_codes"] = [reason]
+            self.assertEqual(ops.project_review_feedback(facts)["health"], "blocked", reason)
+
+    def test_c05b_08_self_review_and_material_rewriter_cannot_bind(self) -> None:
+        for reason in ("review_self_review", "review_material_rewriter"):
+            facts = _healthy_review_facts(); facts["reason_codes"] = [reason]
+            self.assertEqual(ops.project_review_feedback(facts)["health"], "blocked", reason)
+
+    def test_c05b_09_insufficient_binding_quorum_fails_closed(self) -> None:
+        facts = _healthy_review_facts(); facts.update(binding_received=1, terminal_decision="incomplete")
+        facts["lanes"][1]["verdict"] = "fail"
+        review = ops.project_review_feedback(facts)
+        self.assertEqual(review["health"], "degraded")
+        self.assertIn("review_quorum_incomplete", review["reason_codes"])
+
+    def test_c05b_10_revision_required_exposes_revision(self) -> None:
+        facts = _healthy_review_facts(); facts.update(terminal_decision="revision_required", revision=2)
+        review = ops.project_review_feedback(facts)
+        self.assertEqual((review["health"], review["terminal_decision"], review["revision"]),
+                         ("degraded", "revision_required", 2))
+
+    def test_c05b_11_superseded_receipt_is_blocked(self) -> None:
+        facts = _healthy_review_facts(); facts["superseded"] = True
+        review = ops.project_review_feedback(facts)
+        self.assertEqual(review["health"], "blocked")
+        self.assertIn("review_subject_superseded", review["reason_codes"])
+
+    def test_c05b_12_critical_undisposed_advisory_finding_blocks(self) -> None:
+        facts = _healthy_review_facts(); facts.update(open_findings=1, critical_undisposed=1)
+        review = ops.project_review_feedback(facts)
+        self.assertEqual((review["health"], review["finding_state"]), ("blocked", "blocked"))
+
+    def test_c05b_13_disposition_preserves_history_without_blocking(self) -> None:
+        facts = _healthy_review_facts(); facts.update(open_findings=0, critical_undisposed=0, disposed_findings=1)
+        review = ops.project_review_feedback(facts)
+        self.assertEqual((review["health"], review["finding_state"], review["disposed_findings"]),
+                         ("healthy", "clear", 1))
+
+    def test_c05b_14_promotion_and_freshness_project_deterministically(self) -> None:
+        facts = _healthy_review_facts()
+        facts.update(promotion_state="canary", promotion_pending=1,
+                     feedback_freshness="stale", feedback_freshness_age_s=90)
+        review = ops.project_review_feedback(facts)
+        self.assertEqual((review["health"], review["promotion_state"], review["freshness"]),
+                         ("degraded", "canary", "stale"))
+
+    def test_c05b_15_missing_promotion_facts_are_not_assessed(self) -> None:
+        review = self.projection()["review_feedback"]
+        self.assertEqual((review["promotion_state"], review["promotion_pending"]), ("not_assessed", None))
+
+    def test_c05b_16_malformed_unknown_enum_hash_bounds_fail_closed(self) -> None:
+        cases = []
+        unknown = _healthy_review_facts(); unknown["unknown"] = True
+        cases.append(("review_facts_shape_invalid", unknown))
+        enum = _healthy_review_facts(); enum["baseline_state"] = "maybe"
+        cases.append(("review_baseline_state_invalid", enum))
+        bad_hash = _healthy_review_facts(); bad_hash["subject_hash"] = "x"
+        cases.append(("review_subject_hash_invalid", bad_hash))
+        negative = _healthy_review_facts(); negative["revision"] = -1
+        cases.append(("review_revision_invalid", negative))
+        oversized = _healthy_review_facts(); oversized["lanes"] = oversized["lanes"] * 33
+        cases.append(("review_lanes_invalid", oversized))
+        long_id = _healthy_review_facts(); long_id["pass_id"] = "a" * 129
+        cases.append(("review_pass_id_invalid", long_id))
+        nested = _healthy_review_facts(); nested["lanes"][0]["unknown"] = True
+        cases.append(("review_lane_shape_invalid", nested))
+        for reason, facts in cases:
+            self.assertProjectionError(reason, facts)
+
+    def test_c05b_17_inconsistent_totals_fail_closed(self) -> None:
+        cases = []
+        binding = _healthy_review_facts(); binding["binding_received"] = 3
+        cases.append(("review_binding_totals_invalid", binding))
+        roster = _healthy_review_facts(); roster["received_lanes"] = 3
+        cases.append(("review_roster_totals_invalid", roster))
+        abstain = _healthy_review_facts(); abstain["abstained_lanes"] = 3
+        cases.append(("review_abstention_totals_invalid", abstain))
+        unavailable = _healthy_review_facts(); unavailable.update(parked_lanes=2, unavailable_lanes=1)
+        cases.append(("review_unavailable_totals_invalid", unavailable))
+        for reason, facts in cases:
+            self.assertProjectionError(reason, facts)
+
+    def test_c05b_17b_empty_missing_and_incomplete_lane_rosters_fail_closed(self) -> None:
+        empty = _healthy_review_facts(); empty["lanes"] = []
+        self.assertProjectionError("review_received_lanes_observation_mismatch", empty)
+        missing = _healthy_review_facts(); missing.pop("lanes")
+        self.assertProjectionError("review_facts_shape_invalid", missing)
+        incomplete = _healthy_review_facts()
+        incomplete.update(received_lanes=1, binding_received=1)
+        incomplete["lanes"] = incomplete["lanes"][:1]
+        self.assertProjectionError("review_complete_roster_unrepresented", incomplete)
+
+    def test_c05b_17c_claimed_counters_must_match_lane_states(self) -> None:
+        received = _healthy_review_facts(); received["received_lanes"] = 1
+        parked = _healthy_review_facts()
+        parked.update(received_lanes=1, binding_received=1, parked_lanes=0,
+                      terminal_decision="incomplete", roster_complete=True)
+        parked["lanes"][1].update(state="parked", verdict=None)
+        unavailable = _healthy_review_facts()
+        unavailable.update(received_lanes=1, binding_received=1, unavailable_lanes=0,
+                           terminal_decision="incomplete", roster_complete=True)
+        unavailable["lanes"][1].update(state="unavailable", verdict=None)
+        abstained = _healthy_review_facts(); abstained["lanes"][1]["verdict"] = "abstain"
+        for reason, facts in (
+            ("review_received_lanes_observation_mismatch", received),
+            ("review_parked_lanes_observation_mismatch", parked),
+            ("review_unavailable_lanes_observation_mismatch", unavailable),
+            ("review_abstained_lanes_observation_mismatch", abstained),
+        ):
+            self.assertProjectionError(reason, facts)
+
+    def test_c05b_17d_recused_advisory_and_abstaining_lanes_cannot_bind(self) -> None:
+        for field, value in (("eligibility", "recused"), ("eligibility", "advisory"),
+                             ("verdict", "abstain")):
+            facts = _healthy_review_facts(); facts["lanes"][1][field] = value
+            if field == "verdict":
+                facts["abstained_lanes"] = 1
+            self.assertProjectionError("review_binding_received_observation_mismatch", facts)
+
+    def test_c05b_17e_embedded_or_nonreviewer_lanes_cannot_bind(self) -> None:
+        for field, value in (("model_tier", "embedded"), ("role", "implementer")):
+            facts = _healthy_review_facts(); facts["lanes"][1][field] = value
+            self.assertProjectionError("review_binding_received_observation_mismatch", facts)
+
+    def test_c05b_18_lane_permutation_has_stable_output_and_digest(self) -> None:
+        first = _healthy_review_facts(); second = json.loads(json.dumps(first))
+        second["lanes"].reverse()
+        left = ops.project_review_feedback(first); right = ops.project_review_feedback(second)
+        self.assertEqual(left, right)
+        self.assertEqual(ops.stable_digest(left), ops.stable_digest(right))
+
+    def test_c05b_19_sensitive_fields_and_raw_prose_are_rejected(self) -> None:
+        facts = _healthy_review_facts(); facts["prompt"] = "secret"
+        self.assertProjectionError("review_facts_shape_invalid", facts)
+        projection = self.projection(_healthy_review_facts())
+        projection["review_feedback"]["raw_error"] = "provider prose"
+        with self.assertRaisesRegex(ops.ProjectionError, "sensitive_field_exposed"):
+            ops.assert_redacted(projection)
+
+    def test_c05b_20_input_is_not_mutated(self) -> None:
+        facts = _healthy_review_facts(); before = json.dumps(facts, sort_keys=True)
+        ops.project_review_feedback(facts)
+        self.assertEqual(json.dumps(facts, sort_keys=True), before)
+
+    def test_c05b_21_projection_path_has_no_live_authority_or_clock(self) -> None:
+        tree = ast.parse(MODULE.read_text(encoding="utf-8"))
+        imports = {node.names[0].name for node in ast.walk(tree) if isinstance(node, ast.Import)}
+        from_imports = {node.module for node in ast.walk(tree) if isinstance(node, ast.ImportFrom)}
+        forbidden = {"os", "subprocess", "socket", "random", "time", "task_registry"}
+        self.assertFalse(forbidden.intersection(imports | from_imports))
+        with mock.patch.object(ops, "_iso", side_effect=AssertionError("clock/output path used")):
+            self.assertEqual(ops.project_review_feedback(_healthy_review_facts())["health"], "healthy")
+
+    def test_c05b_22_v2_schema_is_closed_at_all_new_boundaries(self) -> None:
+        Draft202012Validator.check_schema(self.schema)
+        projection = self.projection(_healthy_review_facts())
+        Draft202012Validator(self.schema).validate(projection)
+        for mutate in (
+            lambda value: value.update(unknown=True),
+            lambda value: value["review_feedback"].update(unknown=True),
+            lambda value: value["review_feedback"]["lanes"][0].update(unknown=True),
+        ):
+            bad = json.loads(json.dumps(projection)); mutate(bad)
+            self.assertTrue(list(Draft202012Validator(self.schema).iter_errors(bad)))
+
+    def test_c05b_23_metrics_are_fixed_numeric_or_null(self) -> None:
+        projection = self.projection(_healthy_review_facts())
+        self.assertEqual(set(projection["metrics"]), set(ops.METRICS))
+        self.assertTrue(all(value is None or (isinstance(value, int) and not isinstance(value, bool))
+                            for value in projection["metrics"].values()))
+        self.assertFalse(any(name in {"subject_hash", "pass_id", "lane", "prompt", "path"}
+                             for name in projection["metrics"]))
+
+    def test_c05b_24_legacy_projection_contract_remains_present(self) -> None:
+        projection = self.projection()
+        self.assertEqual(set(ops.LEGACY_METRICS), {
+            "inbox_pending_count", "inbox_processing_duration_seconds",
+            "cgroup_correlation_failures_total",
+        })
+        self.assertIn("dispatch_contract", projection)
+        self.assertIn("work", projection)
+
+    def test_c05b_25_m2a_read_only_show_tests_are_frozen_and_not_imported(self) -> None:
+        source = Path(__file__).read_text(encoding="utf-8")
+        for number in range(33, 42):
+            self.assertIn(f"def test_m2a_{number}_", source)
+        module_source = MODULE.read_text(encoding="utf-8")
+        self.assertNotIn("show_m2a", module_source)
+        self.assertNotRegex(module_source, r"(?:import|from)\s+[^\n]*task_registry")
+
+    def test_c05b_26_contract_health_requires_dispatch_and_review_health(self) -> None:
+        projection = self.projection()
+        health = ops.contract_health(projection)
+        self.assertFalse(health["healthy"])
+        self.assertEqual((health["review_feedback_health"], health["review_terminal_decision"],
+                          health["feedback_promotion_state"]),
+                         ("unavailable", "not_assessed", "not_assessed"))
+        dispatch = json.loads(json.dumps(projection["dispatch_contract"]))
+        dispatch.update(health="healthy", broker_state="healthy", reason_codes=[])
+        dispatch["adapter_health"] = {lane: "healthy" for lane in dispatch["adapter_health"]}
+        dispatch["coverage_health"] = {gate: "healthy" for gate in dispatch["coverage_health"]}
+        dispatch["counts"] = {"queued": 0, "running": 0, "parked": 0, "terminal": 0}
+        self.assertTrue(ops.contract_health(self.projection(_healthy_review_facts(), dispatch))["healthy"])
+
+    def test_c05b_27_repeated_projection_has_stable_canonical_digest(self) -> None:
+        facts = _healthy_review_facts()
+        first = self.projection(facts); second = self.projection(json.loads(json.dumps(facts)))
+        self.assertEqual(first, second)
+        self.assertEqual(ops.contract_health(first)["digest"], ops.contract_health(second)["digest"])
 
 
 class AgentOpsProjectionM2A(unittest.TestCase):
