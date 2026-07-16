@@ -384,6 +384,7 @@ in {
     userDirs = {
       enable = true;
       createDirectories = true;
+      setSessionVariables = false;
       desktop = "${config.home.homeDirectory}/Desktop";
       documents = "${config.home.homeDirectory}/Documents";
       download = "${config.home.homeDirectory}/Downloads";
@@ -522,7 +523,7 @@ in {
     clippy
     rustfmt
     ruby
-    # vscodium is installed via programs.vscode below; listing it here too
+    # vscodium is installed via programs.vscodium below; listing it here too
     # would create a duplicate entry in the nix profile.
     # neovim is provided by system packages; avoid duplicate nvim.desktop.
 
@@ -660,6 +661,7 @@ in {
   # ---- Zsh ----------------------------------------------------------------
   programs.zsh = {
     enable = true;
+    dotDir = "${config.xdg.configHome}/zsh";
     autosuggestion.enable = true;
     syntaxHighlighting.enable = true;
     enableCompletion = true;
@@ -812,11 +814,11 @@ in {
   programs.ssh = {
     enable = true;
     enableDefaultConfig = false;
-    matchBlocks."*" = {
-      addKeysToAgent = "yes";
-      serverAliveInterval = 60;
-      serverAliveCountMax = 3;
-      extraOptions = {
+    settings = {
+      "*" = {
+        AddKeysToAgent = "yes";
+        ServerAliveInterval = 60;
+        ServerAliveCountMax = 3;
         HashKnownHosts = "yes";
       };
     };
@@ -849,15 +851,15 @@ in {
   # Applies to every host/profile because VSCodium ships in all three
   # profileData.systemPackageNames lists (ai-dev, gaming, minimal).
   # Per-host home.nix files may extend userSettings or add extensions via
-  # programs.vscode.profiles.default.* using the same vsExt guard pattern.
+  # programs.vscodium.profiles.default.* using the same vsExt guard pattern.
   # =========================================================================
 
-  # ---- programs.vscode (vscodium) -----------------------------------------
+  # ---- programs.vscodium (vscodium) -----------------------------------------
   # The module writes ~/.config/VSCodium/User/settings.json and links
   # extensions into the VSCodium extensions directory.
   # Do NOT create home.file.".config/VSCodium/User/settings.json" in any
   # other module — that would conflict with this managed file.
-  programs.vscode = {
+  programs.vscodium = {
     enable = true;
     # vscodiumWrapped defined in let block above — extracted so the
     # activation hook can reference its store path directly.

@@ -1,7 +1,7 @@
 {
   # Profile package names only. Core packages are declared in
   # nix/modules/core/base.nix, and final package selection is deduplicated.
-  # VSCodium is managed via Home Manager (nix/home/base.nix -> programs.vscode),
+  # VSCodium is managed via Home Manager (nix/home/base.nix -> programs.vscodium),
   # so it must not be duplicated in system package profiles.
   ai-dev = [
     "nodejs"
