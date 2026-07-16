@@ -375,6 +375,29 @@ ORIENT → RESEARCH → INTENT/PRD → REVIEW/CONSENSUS → AUTHORIZE
 - Interface seams are negotiated as versioned contracts before parallel implementation. A commit queue
   serializes accepted artifacts after review.
 
+### 9.1 Reasoning and execution topology
+
+The collaboration plane is flat; the execution plane is capability- and cost-aware:
+
+1. **Reason together:** all admitted reasoning lanes receive the same expert-team baseline within a
+   pass. No vendor or model tier owns architecture truth. Multiple passes cover architecture/security,
+   implementation/verification, and operations/product angles.
+2. **Freeze the executable specification:** PRD, plan, interfaces, exact slice, tests, success metrics,
+   threat model, monitoring, and rollback are bound before implementation routing.
+3. **Implement economically:** select the cheapest healthy eligible model and modality that satisfies
+   measured task, tool, context, latency, and hardware constraints. Decompose before escalating model
+   cost. Never lower safety, evidence, or review requirements to save tokens.
+4. **Review with independent flagships:** risk-tier policy selects flagship reviewers. Findings create
+   a bounded revision slice and new subject hash; reviewers may author that revision only after an
+   explicit role transition, and another independent flagship must accept it.
+5. **Submit exactly:** the orchestrator commits/promotes only the accepted hash with complete receipts.
+
+Local inference participates through explicit modalities: agentic coding/tool use, bounded
+logic/generation, and embedded retrieval. It shares common contracts and authority rules, while
+routing adapts context, concurrency, phase timeouts, token budgets, quantization, and tool surfaces to
+measured hardware/model capability. Embedded outputs are retrieval evidence, not agents, roles,
+votes, or verdicts.
+
 ## 10. Data, memory, learning, and retention
 
 - Operational state, evidence, knowledge, and semantic search are distinct data classes.
@@ -387,6 +410,28 @@ ORIENT → RESEARCH → INTENT/PRD → REVIEW/CONSENSUS → AUTHORIZE
 - Retention/GC operates from reachability and policy over the CAS; it cannot purge evidence referenced
   by active authorization, review, release, incident, or promotion records.
 
+### 10.1 Recursive correction propagation
+
+Every agent lane emits the same bounded finding/learning-candidate shape for errors, warnings, review
+revisions, timeouts, quota/capacity failures, routing mistakes, tool misuse, security findings,
+monitoring gaps, and successful remediations. The record binds subject and contract versions, model
+artifact/profile/modality, role and lineage, phase/resource evidence, reproduction, severity,
+disposition, and privacy-safe evidence references.
+
+The affected-consumer taxonomy is owned by `aq.learning-candidate.v1` in C0.5; prose lists in PRDs are
+illustrative projections and cannot extend or rename that closed enum.
+
+```text
+capture -> deduplicate/classify -> issue + regression fixture
+-> identify affected shared/flagship/implementer/local/embedded consumers
+-> propose versioned prompt/profile/tool/routing/eval candidates
+-> shadow/replay/evaluate -> independent flagship acceptance
+-> canary/soak -> promote or roll back -> verify consumer projection freshness
+```
+
+A successful retry does not erase the original failure. Raw findings cannot directly modify trusted
+prompts, skills, routing, tool permissions, memory, training corpora, or model weights.
+
 ## 11. Observability and operator plane
 
 Canonical events project into OpenTelemetry traces:
@@ -396,6 +441,9 @@ Canonical events project into OpenTelemetry traces:
   artifact publication, and promotion;
 - metrics: queue/TTFT/inference/total latency, tokens, tool use, errors, resources, fallback deltas,
   lease denials/revocations, eval quality/variance, scorer trust, and projection lag.
+- review/learning metrics: required and received roster by same-baseline pass, disagreements,
+  unavailable versus abstaining lanes, revision count, superseded hashes, finding backlog and age,
+  promotion disposition, rollback readiness, and prompt/profile/tool/router/index projection freshness.
 
 Prompt/tool content is opt-in, redacted, size-bounded, and separately access-controlled. Default
 telemetry stores digests and safe metadata. The dashboard exposes run waterfall, queue/resources,

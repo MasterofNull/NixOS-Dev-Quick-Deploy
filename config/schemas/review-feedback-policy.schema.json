@@ -1,0 +1,17 @@
+{
+  "additionalProperties": false,
+  "properties": {
+    "binding_count": {"maximum": 16, "minimum": 1, "title": "Binding Count", "type": "integer"},
+    "critical_advisory_blocks": {"const": true, "title": "Critical Advisory Blocks", "type": "boolean"},
+    "decision_precedence": {"items": {"enum": ["incomplete", "rejected", "revision_required", "accepted"], "type": "string"}, "maxItems": 4, "minItems": 4, "title": "Decision Precedence", "type": "array"},
+    "max_findings": {"maximum": 256, "minimum": 1, "title": "Max Findings", "type": "integer"},
+    "max_lanes": {"maximum": 64, "minimum": 1, "title": "Max Lanes", "type": "integer"},
+    "minimum_independent_families": {"maximum": 16, "minimum": 1, "title": "Minimum Independent Families", "type": "integer"},
+    "minimum_independent_principals": {"maximum": 16, "minimum": 1, "title": "Minimum Independent Principals", "type": "integer"},
+    "policy_version": {"maxLength": 128, "minLength": 1, "pattern": "^[A-Za-z0-9][A-Za-z0-9._:+/-]*$", "title": "Policy Version", "type": "string"},
+    "schema_version": {"const": "aq.review-feedback-policy.v1", "title": "Schema Version", "type": "string"}
+  },
+  "required": ["schema_version", "policy_version", "binding_count", "minimum_independent_principals", "minimum_independent_families", "critical_advisory_blocks", "decision_precedence", "max_lanes", "max_findings"],
+  "title": "ReviewFeedbackPolicy",
+  "type": "object"
+}

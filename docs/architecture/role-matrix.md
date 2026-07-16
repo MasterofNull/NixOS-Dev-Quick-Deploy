@@ -10,6 +10,35 @@ This document is the single source of truth (SSOT) for agent roles in the harnes
 
 Roles are defined by their authority and constraints over the five kernel objects (intent, route/execution profile, workflow session, delegation/review, memory/evidence). They are not defined by which model currently fills them.
 
+## Flat Reasoning, Economical Execution, and Flagship Acceptance
+
+**Clarification slice:** model-tier-routing-and-feedback-policy, 2026-07-16. This does not expand any
+role authority. Model capability/cost and workflow authority remain orthogonal.
+
+- **Flat reasoning plane:** every admitted reasoning model receives the same expert-team baseline
+  within a review/design pass. Models do not gain authority because they are flagship, remote, or
+  local. Passes provide angle diversity; agents provide model diversity. Dissent and unavailable
+  lanes are recorded rather than collapsed into consensus.
+- **Economical execution plane:** after the PRD, plan, contracts, acceptance criteria, and exact slice
+  are frozen, the orchestrator routes implementation to the cheapest healthy model whose measured
+  capability, tools, context envelope, hardware budget, and task eligibility satisfy the slice.
+  Cost never overrides eligibility, authorization, monitoring, or stop conditions.
+- **Flagship acceptance plane:** risk-tier policy selects independent flagship reviewers. A flagship
+  that implemented or materially rewrote the candidate cannot provide its binding acceptance.
+  Reviewers may request changes; changes become a new bounded implementation/revision slice with new
+  hashes and must be revalidated and independently accepted. A reviewer does not silently edit the
+  accepted subject and reuse a stale verdict.
+- **Submission authority:** only the orchestrator submits/commits the exact accepted subject after
+  typed review receipts and required validation evidence pass. Model output alone is never authority.
+- **Recursive feedback:** findings, errors, warnings, near misses, timeouts, capacity limits, routing
+  mistakes, and successful corrections become typed learning candidates. They flow through issue
+  evidence, regression/eval fixtures, prompt/profile/tool/routing candidates, independent evaluation,
+  and promotion/rollback. Raw model feedback never directly mutates trusted prompts or policy.
+
+The review receipt must bind subject hash, pass/baseline, role and model lineage, required roster,
+per-criterion evidence, verdict, unavailable-lane reason, revision/supersession, and monitoring state.
+Missing or malformed required evidence fails closed.
+
 ---
 
 ## Role Definitions
@@ -21,7 +50,7 @@ Roles are defined by their authority and constraints over the five kernel object
 | Dimension | Detail |
 |---|---|
 | **May** | open and close workflow sessions; assign slices to implementers; accept or reject delegated work; produce final commit after review; run tier0 validation gate; escalate to architect for design questions |
-| **Must** | maintain `.agent/collaboration/PENDING.json` intent lock before complex multi-file operations; produce `.agent/collaboration/HANDOFF.md` at slice close; run `scripts/governance/tier0-validation-gate.sh --pre-commit` before every commit |
+| **Must** | maintain `.agent/collaboration/PENDING.json` intent lock before complex multi-file operations; produce `.agent/collaboration/HANDOFF.md` at slice close; run `scripts/governance/tier0-validation-gate.sh --pre-commit` before every commit; ensure accepted findings have a typed feedback disposition before submission |
 | **May not** | bypass review for destructive, dual-use, or external-account-affecting work; re-delegate without updating `.agents/delegation/registry.jsonl`; accept its own work without a separate reviewer pass |
 | **Escalation trigger** | design question → architect; destructive action → explicit user confirmation |
 
@@ -60,7 +89,7 @@ Roles are defined by their authority and constraints over the five kernel object
 | Dimension | Detail |
 |---|---|
 | **May** | reject delegated work for any acceptance-criteria failure; request revision with a specific finding; produce a review artifact (written verdict in HANDOFF.md or inline comment) |
-| **Must** | check artifact against the slice's declared acceptance criteria; produce an explicit pass/fail/request-revision verdict; not accept work on behalf of the same agent that implemented it |
+| **Must** | check artifact against the slice's declared acceptance criteria; produce an explicit pass/fail/request-revision verdict; not accept work on behalf of the same agent that implemented it; emit typed findings with severity, evidence, affected consumers, and propagation recommendation |
 | **May not** | accept work without checking against acceptance criteria; propose new scope during review; skip the review step because the implementer "seems correct" |
 | **Escalation trigger** | fundamental design question → escalate to architect before verdict; destructive or irreversible action found in implementation → escalate to orchestrator |
 
@@ -78,6 +107,20 @@ Roles are defined by their authority and constraints over the five kernel object
 
 5. **Unassigned role = implementer.** If a session has no explicit role assignment, all agents default to implementer constraints until an orchestrator assigns roles.
 
+### Orthogonal routing axes
+
+Every assignment records four independent decisions:
+
+| Axis | Question | Examples |
+|---|---|---|
+| Role | What authority applies? | architect, implementer, reviewer, orchestrator |
+| AgentType/modality | What execution shape is used? | agent/tool loop, planner, chat/logic, embedded retrieval |
+| Capability/resource class | Can this model and host execute the slice within bounds? | flagship reasoning, economical coding, local hardware profile |
+| Review eligibility | Can this identity provide advisory input or binding acceptance? | advisory, independent flagship acceptor, recused |
+
+Flat participation in reasoning does not imply binding acceptance eligibility. Conversely, an
+economical implementer remains a full protocol participant but cannot accept its own subject.
+
 ---
 
 ## Model Defaults (Illustrative, Not Binding)
@@ -89,7 +132,7 @@ These are current typical assignments. Any model may fill any role when the orch
 | Claude (Sonnet/Opus) | orchestrator, architect, reviewer | Primary orchestrator for Phase 58A |
 | Codex | orchestrator (own sequences), implementer, reviewer | Final acceptance on most 58A slices per team plan |
 | Gemini (Antigravity IDE) | **proposal, findings review, cross-check reviewer** | See lane-state rule below — NOT default implementer for stateful slices |
-| Qwen local | implementer (bounded tasks only) | Constrained by task class eligibility (see 58A.5) |
+| Local inference (current Qwen) | bounded reasoner or implementer; embedded retrieval | First-class lane under common contracts, shaped by measured hardware/model/tool limits; see 58A.5 |
 
 ### Lane state-observability rule (2026-07-11, from the C0.2 incident)
 

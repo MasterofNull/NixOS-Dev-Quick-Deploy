@@ -10,17 +10,41 @@
 
 ## Purpose
 
-Define the task classes Qwen may take as implementer, the complexity bounds within which it operates without escalation, and the promotion path if a task proves larger than the bounded scope.
+Define the task classes the active local model may take as implementer, the complexity bounds within
+which it operates without escalation, and the promotion path if a task proves larger than the bounded
+scope.
 
 Qwen (Qwen3.6-35B, local llama.cpp, ~90–120 s/response, 27 GB RAM, 12 GPU layers) is the primary local inference engine. Its strengths are bounded file-scope work, compact summaries, template checks, and simple validation helpers. Its constraints are large-context synthesis, cross-file policy decisions, and tasks requiring extended multi-turn reasoning.
+
+The local lane is not a lower-trust or second-class agent. It uses the same identity, role,
+authorization, lifecycle, evidence, privacy, monitoring, and review contracts as remote lanes. It is
+treated differently only where measured capability and physical constraints require different task
+shaping, concurrency, context, timeout, generation, and tool budgets. Those constraints must be
+declared in routing policy and telemetry; they must not be hidden in prompts or converted into a
+claim that local reasoning is categorically ineligible.
+
+Local execution has three distinct modalities:
+
+| Modality | Canonical use | Contract distinction |
+|---|---|---|
+| `local-agent` / coding | bounded edits and tool loops | role injection, strict tool allowlist, task eligibility, progress phases, flagship review |
+| local logic/direct | ballots, classification, bounded analysis, fixture generation | compact structured output, explicit token/time budget, no tool authority unless assigned |
+| embedded | retrieval and similarity only | no role or instruction injection; vectors are evidence inputs, never review verdicts |
+
+The router selects among these modalities; callers must not bypass it by constructing raw local
+payloads. All llama.cpp generation must use `build_llama_payload()` and a named switchboard profile,
+enforced by the payload-SSOT gate. This is a target invariant: known direct-path drift remains a C1
+adoption blocker until static and live parity evidence proves convergence.
 
 ---
 
 ## Eligible task classes
 
-### Tier A — fully autonomous (no review gate required before commit)
+### Tier A — autonomous implementation, flagship integration review required
 
-Qwen may complete these and propose a commit with validation evidence:
+The local agent may complete these without intermediate supervision and propose a candidate with
+validation evidence. Integration still requires an independent risk-appropriate flagship review;
+the lighter Tier-A distinction affects implementation autonomy, not acceptance authority.
 
 | Task class | Examples | Size bound |
 |---|---|---|
@@ -33,11 +57,14 @@ Qwen may complete these and propose a commit with validation evidence:
 | Bounded inventory | list files matching a pattern, grep for occurrences, count entries | read-only |
 | Simple validation helper | run aq-qa, bash -n, py_compile, nix-instantiate --parse | read-only or one-command |
 
-Even for Tier A, Qwen must: run all applicable tier-0 gates before proposing a commit; record PULSE.log pulses after each file write; stay within the declared slice scope.
+Even for Tier A, the local agent must: run all applicable tier-0 gates before proposing a candidate;
+record PULSE.log pulses after each file write; stay within the declared slice scope; and emit a typed
+implementation receipt for flagship review. It does not commit directly.
 
 ### Tier B — bounded, review gate required
 
-Qwen may implement these but the output must pass a review gate (Claude or Gemini reviewer) before integration:
+The local agent may implement these, but the output must pass an independent reviewer whose active
+review policy resolves eligibility as `binding_flagship` before integration:
 
 | Task class | Examples | Gate requirement |
 |---|---|---|
@@ -49,18 +76,19 @@ Qwen may implement these but the output must pass a review gate (Claude or Gemin
 
 ### Tier C — ineligible (escalate to orchestrator)
 
-Qwen must **not** attempt these. Surface them to the orchestrator instead:
+The local agent must **not** attempt these as binding implementation or acceptance authority. Surface
+them to the orchestrator instead:
 
 | Task class | Reason |
 |---|---|
 | Open-ended architecture design | requires large-context synthesis across many files |
 | Cross-file policy decisions | routing, trust, delegation policy affecting multiple surfaces |
-| Multi-agent coordination | routing other agents, assigning slices, review verdicts |
+| Multi-agent coordination or binding review | routing agents, assigning slices, or final acceptance; bounded advisory review/dissent remains eligible |
 | Final acceptance of its own work | implementer may not self-promote to reviewer |
 | Destructive operations without explicit scope | deleting canonical surfaces, retiring modules |
 | New kernel object proposals | must go through a named kernel-revision slice |
 | Remote or external-account operations | push to remote, PR creation, API writes |
-| Tasks requiring > 300 s inference time | use timeout; surface to orchestrator if Qwen times out |
+| Tasks whose measured phase budgets exceed the active hardware profile | park or surface with typed phase/timeout evidence; never apply a universal 300 s cutoff or retry silently |
 
 ---
 
@@ -70,7 +98,7 @@ Qwen must **not** attempt these. Surface them to the orchestrator instead:
 |---|---|---|
 | Files changed per slice | ≤ 4 (Tier A: 1, Tier B: ≤ 4) | Escalate to orchestrator for decomposition |
 | Total lines changed | ≤ 200 (Tier A), ≤ 400 (Tier B) | Escalate |
-| Inference timeout | 300 s per call | Surface timeout to orchestrator; do not retry silently |
+| Inference timeout | phase-specific and profile-driven; never below the measured minimum viable budget | Park or surface the exact prefill/generation/tool phase; do not retry silently |
 | Context window | compact per profile card (local-tool-calling: 2400 tok input) | Use memory/context offload via `aq-context-bootstrap` early |
 | Max tool calls per task | 30 (aq-agent-loop default) | Stop and surface partial result |
 
@@ -78,18 +106,20 @@ Qwen must **not** attempt these. Surface them to the orchestrator instead:
 
 ## Escalation protocol
 
-When Qwen determines a task exceeds its eligibility:
+When the local agent determines a task exceeds its eligibility:
 
 1. **Stop.** Do not attempt the out-of-scope portion.
 2. **Record.** Write to `.agent/collaboration/PULSE.log`: task, scope, reason for escalation.
-3. **Preserve partial work.** If any Tier A sub-tasks were completed, commit those first with appropriate evidence.
+3. **Preserve partial work.** If Tier A sub-tasks were completed, submit them as a bounded candidate
+   with evidence; do not commit or integrate them from the implementer role.
 4. **Surface.** Return the escalation note to the orchestrator for decomposition.
 
 ---
 
 ## Promotion path
 
-If Qwen successfully completes a task class at Tier B multiple times with clean review verdicts, the orchestrator may note it as a promotion candidate. Promotion to Tier A requires:
+If the active local model successfully completes a task class at Tier B multiple times with clean
+review verdicts, the orchestrator may note it as a promotion candidate. Promotion to Tier A requires:
 - ≥ 3 clean PASS verdicts from a reviewer on equivalent tasks.
 - Orchestrator decision recorded in a HANDOFF.md.
 - Eligibility document updated in a named eligibility-revision slice.
@@ -98,14 +128,36 @@ If Qwen successfully completes a task class at Tier B multiple times with clean 
 
 ## Review gate integration
 
-Tasks in Tier B are subject to the Gemini review-gate contract (`docs/architecture/gemini-review-gate.md`) applied to Qwen's work:
-- Reviewer may be Claude or Gemini (not Qwen itself).
-- Qwen must produce the required artifact form: diff + validation evidence + acceptance criteria check + risk note.
+All local implementation tiers are subject to the common flagship review receipt contract; Tier B
+requires the more detailed multi-file/security checklist:
+- Reviewer is selected from healthy eligible flagship lanes and cannot be the implementing identity.
+- The local implementer must produce the required artifact form: diff + validation evidence + acceptance criteria check + risk note.
 - No self-acceptance: if no reviewer is available, mark `PENDING_REVIEW` in HANDOFF.md.
+
+## Recursive feedback and promotion
+
+Every local timeout, truncation, malformed tool call, capability escalation, review defect, hardware
+pressure event, and successful correction is recorded with the effective model artifact, profile,
+modality, phase budgets, prompt/tool contract version, and subject hash. The feedback path is:
+
+```text
+typed finding -> issue/evidence -> reproducible fixture or eval case
+-> candidate prompt/profile/tool/routing change -> shadow comparison
+-> independent flagship review -> canary/soak -> promote or roll back
+```
+
+Feedback may improve the shared agent contract or a modality-specific projection. It must not
+automatically train, rewrite prompts, expand tools, or promote task eligibility from a single result.
+Repeated clean evidence may trigger the existing promotion path; failures remain visible after a
+successful retry.
 
 ---
 
 ## Hardware and inference notes
+
+These are a versioned deployment snapshot, not universal local-agent policy. Routing consumes the
+active model/hardware capability record and measured telemetry; changing the local model or hardware
+does not weaken the common authority, evidence, review, or feedback contract.
 
 - Qwen3.6-35B runs at `--n-gpu-layers 12` on Renoir APU. Full 41-layer offload causes `ErrorDeviceLost`.
 - Inference: ~90–120 s/response. All callers must use 300 s+ timeout.
