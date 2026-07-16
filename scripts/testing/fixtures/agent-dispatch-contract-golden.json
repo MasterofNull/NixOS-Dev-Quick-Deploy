@@ -1,0 +1,38 @@
+{
+  "schema_version": "aq.dispatch.golden.v1",
+  "request": {
+    "schema_version": "aq.dispatch.request.v1",
+    "idempotency_key": "C0GoldenVector_0123456789abcdefghijklmnop",
+    "lane": "claude",
+    "role": "reviewer",
+    "access": "read_only",
+    "task_class": "flagship-review",
+    "model_tier": "flagship",
+    "profile": "review-strict",
+    "execution_mode": "review",
+    "output_expectation": "markdown",
+    "timeout_seconds": 3600,
+    "budget": {"attempts": 3, "output_bytes": 1048576},
+    "review_required": true,
+    "input_ref": {"transport": "sealed_fd", "handle": "input:c0-golden-1", "byte_length": 4096}
+  },
+  "vectors": [
+    {"name": "caller_parent_death", "operation": "reconcile_uncertain", "expected_error": null, "next_state": "stale", "reason": "executor_lost", "respawn_allowed": false},
+    {"name": "background_pid_disappearance", "operation": "reconcile_uncertain", "expected_error": null, "next_state": "stale", "reason": "executor_lost", "respawn_allowed": false},
+    {"name": "zero_byte_exit", "operation": "hard_failure", "reason": "output_incomplete", "next_state": "failed", "disposition": "terminal"},
+    {"name": "supervisor_stderr_before_log", "operation": "hard_failure", "reason": "launch_failed", "next_state": "queued", "disposition": "retry"},
+    {"name": "shell_metacharacters", "operation": "opaque_input", "value": "$(touch /tmp/nope); `id`; a'b\"c", "expected_error": null},
+    {"name": "duplicate_idempotency_key", "operation": "duplicate", "expected_new": false, "start_allowed": false},
+    {"name": "stale_cas", "operation": "transition", "mutation": "revision", "expected_error": "cas_revision_mismatch"},
+    {"name": "fence_loss", "operation": "transition", "mutation": "fence", "expected_error": "fencing_epoch_mismatch"},
+    {"name": "pid_namespace_mismatch", "operation": "reconcile_uncertain", "expected_error": null, "next_state": "stale", "reason": "executor_lost", "respawn_allowed": false},
+    {"name": "daemon_restart_uncertain_executor", "operation": "reconcile_uncertain", "expected_error": null, "next_state": "stale", "reason": "executor_lost", "respawn_allowed": false},
+    {"name": "short_transient_retry", "operation": "classify", "reason": "provider_transient", "retry_after_seconds": 30, "disposition": "retry", "next_state": "queued"},
+    {"name": "long_quota_parking", "operation": "classify", "reason": "quota_parked", "retry_after_seconds": 7200, "disposition": "park", "next_state": "parked"},
+    {"name": "auth_policy_hard_failure", "operation": "classify", "reason": "auth_failed", "retry_after_seconds": null, "disposition": "terminal", "next_state": "failed"},
+    {"name": "cancellation_ownership_mismatch", "operation": "transition", "mutation": "lease", "expected_error": "lease_ownership_mismatch"},
+    {"name": "oversized_envelope", "operation": "oversize", "expected_error": "envelope_too_large"},
+    {"name": "unknown_fields", "operation": "unknown", "expected_error": "schema_invalid"},
+    {"name": "privacy_canaries", "operation": "privacy", "expected_error": "privacy_field_forbidden"}
+  ]
+}

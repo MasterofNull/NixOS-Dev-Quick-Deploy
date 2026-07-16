@@ -1,0 +1,26 @@
+{
+  "schema_version": "aq.dispatch.policy.v1",
+  "contract_version": "aq.dispatch.contract.v1",
+  "limits": {"max_envelope_bytes": 65536, "max_attempts": 3, "max_retry_seconds": 300, "max_park_seconds": 604800},
+  "transitions": {
+    "submitted": ["queued", "failed"],
+    "queued": ["starting", "cancelled", "failed", "stale"],
+    "starting": ["running", "failed", "stale"],
+    "running": ["waiting", "parked", "cancelling", "done", "failed", "stale"],
+    "waiting": ["running", "parked", "done", "failed", "stale"],
+    "parked": ["queued", "cancelled", "failed"],
+    "cancelling": ["cancelled", "failed", "stale"],
+    "cancelled": [],
+    "done": [],
+    "failed": [],
+    "stale": []
+  },
+  "retry": {
+    "transient_reasons": ["launch_failed", "provider_transient"],
+    "park_reasons": ["quota_parked"],
+    "terminal_reasons": ["admission_denied", "auth_failed", "policy_blocked", "timeout", "cancelled", "output_incomplete", "integrity_failed", "executor_lost"]
+  },
+  "required_capabilities": ["preflight", "start", "observe", "cancel_owned", "classify_exit", "collect"],
+  "adapters": ["local", "claude", "codex", "antigravity"],
+  "coverage_gates": ["aq_qa", "agent_ops", "web_dashboard"]
+}
