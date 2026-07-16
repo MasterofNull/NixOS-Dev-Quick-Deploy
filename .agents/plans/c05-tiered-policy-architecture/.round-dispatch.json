@@ -1,0 +1,36 @@
+{
+  "schema_version": "1.0",
+  "opened": "2026-07-16T20:59:47Z",
+  "classification": "legacy_non_authorizing_review",
+  "subject_commit": "9dfde8f829bff3ca678ab47c379a8387a210992b",
+  "dispatch": {
+    "claude": "claude-20260716-140014-4vkvqn",
+    "codex": "codex-20260716-135947-30egerxxxxxx",
+    "local": "local-20260716-135947-j7t073",
+    "antigravity": "inbox:.agent/collaboration/antigravity-inbox/c05-tiered-policy-architecture.md"
+  },
+  "outcomes": {
+    "claude": {
+      "state": "submitted",
+      "result_path": "claude.md",
+      "landed_at": "2026-07-16T21:03:25Z"
+    },
+    "codex": {
+      "state": "timed_out",
+      "result_path": null,
+      "output_bytes": 0,
+      "reason": "dispatch ended stale with no contribution"
+    },
+    "local": {
+      "state": "submitted_incomplete",
+      "result_path": "local.md",
+      "landed_at": "2026-07-16T21:08:39Z",
+      "verdict": "ABSTAIN"
+    },
+    "antigravity": {
+      "state": "submitted",
+      "result_path": "antigravity.md",
+      "landed_at": "2026-07-16T21:10:04Z"
+    }
+  }
+}

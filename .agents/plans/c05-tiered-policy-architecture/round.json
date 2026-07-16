@@ -1,0 +1,88 @@
+{
+  "schema_version": "1.0",
+  "round_id": "c05-tiered-policy-architecture",
+  "state": "COLLECTED",
+  "task": {
+    "prompt": "Same-baseline expert review: architecture, security, SRE. Review only the exact staged changes in docs/architecture/role-matrix.md, docs/architecture/local-agent-task-eligibility.md, .agent/PROJECT-LOCAL-AI-FACTORY-REFERENCE-ARCHITECTURE-PRD.md, .agent/PROJECT-AGENT-CONNECTION-RELIABILITY-PRD.md, and .agents/plans/agent-connection-reliability/PROGRAM-PLAN.md. Determine whether they correctly enforce flat reasoning collaboration, cheapest eligible bounded implementers, independent flagship review and re-review after edits, orchestrator-only submission, first-class but hardware-aware local coding/logic/embedded modalities, and eval-gated recursive correction propagation. Read-only. Check contradictions, authority escalation, poisoning, monitoring, and implementability. End with exact VERDICT: PASS or REQUEST_REVISION or FAIL — reason.",
+    "target": "commit:9dfde8f829bff3ca678ab47c379a8387a210992b",
+    "scope_files": [
+      "docs/architecture/role-matrix.md",
+      "docs/architecture/local-agent-task-eligibility.md",
+      ".agent/PROJECT-LOCAL-AI-FACTORY-REFERENCE-ARCHITECTURE-PRD.md",
+      ".agent/PROJECT-AGENT-CONNECTION-RELIABILITY-PRD.md",
+      ".agents/plans/agent-connection-reliability/PROGRAM-PLAN.md"
+    ]
+  },
+  "opened_at": "2026-07-16T20:59:47Z",
+  "quorum_policy": {
+    "min_lanes": 2,
+    "required_agents": [],
+    "late_local_admissible": true,
+    "timeout_seconds": null,
+    "deadline": null,
+    "timeout_action": "lock_with_present"
+  },
+  "lanes": [
+    {
+      "agent": "claude",
+      "dispatch_id": "claude-20260716-140014-4vkvqn",
+      "idempotency_hash": "b3f6751ee40fc2cfa0349feeba369483804799348b085a6cf9b9643b65d2c271",
+      "status": "submitted",
+      "landed_at": "2026-07-16T21:03:25Z"
+    },
+    {
+      "agent": "codex",
+      "dispatch_id": "codex-20260716-135947-30egerxxxxxx",
+      "idempotency_hash": "4848f1ab863aa3474ebf982f36a5636fcfb4933f5c1ebaf9985fbc05d196999e",
+      "status": "timed_out",
+      "landed_at": null
+    },
+    {
+      "agent": "local",
+      "dispatch_id": "local-20260716-135947-j7t073",
+      "idempotency_hash": "8db23343878a83ec44fa3d5d6a665a39c68c01f3c8d3ccb28420d09f912a9611",
+      "status": "submitted",
+      "landed_at": "2026-07-16T21:08:39Z"
+    },
+    {
+      "agent": "antigravity",
+      "dispatch_id": "inbox:c05-tiered-policy-architecture.md",
+      "idempotency_hash": "7b23addd8a1fc8896de3ec7b1247bf258eb3d8b83f08dfaf83b8fd0bc8ba86c3",
+      "status": "submitted",
+      "landed_at": "2026-07-16T21:10:04Z"
+    }
+  ],
+  "contributions": {
+    "claude": "claude.md",
+    "local": "local.md",
+    "antigravity": "antigravity.md"
+  },
+  "conflicts": [],
+  "consensus_hash": null,
+  "aggregate_path": "AGGREGATE.md",
+  "aggregate_hash": "2330593f4b2ed6a1b02ec4ab428bcc3624b816f5b63029e58c720dfb607a7354",
+  "locked_at": null,
+  "history": [
+    {
+      "transition": "CREATED->DISPATCHED",
+      "timestamp": "2026-07-16T20:59:47Z",
+      "actor": "aq-collab-round"
+    },
+    {
+      "transition": "DISPATCHED->CONTRIBUTING",
+      "timestamp": "2026-07-16T21:03:47Z",
+      "actor": "aq-collab-round"
+    },
+    {
+      "transition": "CONTRIBUTING->COLLECTED",
+      "timestamp": "2026-07-16T21:03:47Z",
+      "actor": "aq-collab-round"
+    },
+    {
+      "transition": "COLLECTED->COLLECTED_EVIDENCE_RECONCILED",
+      "timestamp": "2026-07-16T22:54:20Z",
+      "actor": "codex-evidence-reconciliation"
+    }
+  ],
+  "predecessor_round_id": null
+}
