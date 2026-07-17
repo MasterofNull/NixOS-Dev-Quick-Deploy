@@ -2078,3 +2078,13 @@ Action: CLOSE THE LOOP — DONE: (a) extract_contribution structured/prose/log f
   Severity: critical
   Action: require durable broker admission plus registry receipt before printing `started`; if admission/receipt is absent, return a typed launch failure. Add a golden test proving a caller-owned child killed during managed sandbox teardown cannot produce a success acknowledgement.
   File: scripts/ai/delegate-to-local; scripts/ai/lib/dispatch.py; task local-20260716-155448-nrjxv5
+
+[DONE] flake-temporal-guard-shell-syntax-and-home-manager-dotdir-drift — The fail-closed offline temporal guard was independently accepted in `f7ecc381`; the atomic Nix candidate with XDG-derived absolute `programs.zsh.dotDir` passed five Home Manager and three concrete NixOS evaluations and was independently accepted and committed in `08203901`.
+  Severity: high
+  Action: complete; track the unrelated generic-host flake-check assertions under the separate open issue below before any build/deployment activation claim.
+  File: scripts/governance/check-flake-age.sh; nix/home/base.nix; flake.lock; nix/data/profile-system-packages.nix
+
+[OPEN] generic-nixos-ai-dev-flake-check-baseline — Full `nix flake check --offline --no-build` reaches pre-existing assertions in the generic `nixos-ai-dev` template: AI role enabled with secrets disabled, declared RAM 8 GiB below the 12 GiB minimum, missing `nix/hosts/nixos/facts.nix`, and Secure Boot enabled while firmware capability is unknown. The three concrete hyperd NixOS profiles and five Home Manager activation packages evaluate successfully.
+  Severity: high
+  Action: define valid generated facts and template defaults or explicitly exclude the incomplete generic host from the flake check through a reviewed, named baseline that cannot mask concrete-host regressions; retain CrowdSec missing-acquisition warnings as a separate operational prerequisite.
+  File: flake.nix; nix/hosts/nixos; nix/modules/roles/ai-stack.nix
