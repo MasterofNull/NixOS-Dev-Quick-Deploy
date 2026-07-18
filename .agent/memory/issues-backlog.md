@@ -2148,3 +2148,8 @@ File: .agents/plans/qa-provider-probe-reliability/C1A-CONTRACT-AMENDMENT-DESIGN-
 Severity: critical
 Action: independently accept and owner-activate the revised B2-M1A design before implementation; preserve `aidb@head`/`aidb@-1`, DB-enforced CAS, disposable bootstrap CREATE grant/revoke, static-only validation, and the separate M1E execution gate.
 File: .agents/plans/aqos-foundation-b2/B2-M1-DESIGN-PACKET.md; ai-stack/migrations/test-migrations.sh; nix/modules/services/mcp-servers.nix
+
+[IN-FLIGHT] b2-m1a-prohibited-integration-flag-invocation — The authorized M1A implementer invoked the dormant integration entry point with `--integration` but without a DSN or evidence token. The harness failed closed with `M1E_NOT_AUTHORIZED`/77 before credential read, driver import, socket, subprocess, database, DDL, or candidate mutation; however, passing integration mode itself violated the explicit M1A stop condition and invalidated acceptance under that authorization.
+Severity: high
+Action: preserve the exact candidate, issue a formal procedural-stop review, consume/retire the violated authorization, and prepare a fresh hash-bound acceptance-only authorization that forbids rerunning integration mode and requires static evidence plus independent review before commit.
+File: scripts/testing/test-workflow-shadow-migration.py; .agents/plans/aqos-foundation-b2/B2-M1A-IMPLEMENTATION-ACCEPTANCE.md
