@@ -1,0 +1,350 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://aq-os.local/schemas/qa-provider-probe-contract.v1.json",
+  "title": "QA provider probe C1 contracts",
+  "oneOf": [
+    { "$ref": "#/$defs/result" },
+    { "$ref": "#/$defs/policy" },
+    { "$ref": "#/$defs/vector_set" }
+  ],
+  "$defs": {
+    "provider_id": {
+      "enum": ["codex", "qwen", "claude", "pi"]
+    },
+    "profile_id": {
+      "enum": ["codex_help", "qwen_help", "claude_help", "pi_help"]
+    },
+    "failure_class": {
+      "enum": [
+        "none",
+        "executable_missing",
+        "spawn_failed",
+        "exit_nonzero",
+        "provider_reported_failure",
+        "machine_output_missing",
+        "machine_output_invalid",
+        "deadline_exceeded",
+        "output_limit_exceeded",
+        "cleanup_failed",
+        "interrupted",
+        "probe_busy",
+        "contract_invalid"
+      ]
+    },
+    "termination_action": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["action", "outcome", "at_ms"],
+      "properties": {
+        "action": { "enum": ["sigcont", "sigterm", "sigkill", "quiescence", "reap"] },
+        "outcome": { "enum": ["sent", "not_needed", "esrch_verified", "complete", "failed"] },
+        "at_ms": { "type": "integer", "minimum": 0, "maximum": 50000 }
+      }
+    },
+    "disposition": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["class", "redelivered", "coalesced_signals"],
+      "properties": {
+        "class": {
+          "oneOf": [
+            { "enum": ["default_terminating", "ignored", "custom"] },
+            { "type": "null" }
+          ]
+        },
+        "redelivered": { "type": "boolean" },
+        "coalesced_signals": { "type": "integer", "minimum": 0, "maximum": 1000000 }
+      },
+      "allOf": [
+        {
+          "if": { "properties": { "class": { "type": "null" } }, "required": ["class"] },
+          "then": { "properties": { "redelivered": { "const": false } } }
+        },
+        {
+          "if": { "properties": { "redelivered": { "const": true } }, "required": ["redelivered"] },
+          "then": { "properties": { "class": { "type": "string" } } }
+        }
+      ]
+    },
+    "result": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "schema_version",
+        "invocation_id",
+        "provider_id",
+        "profile_id",
+        "lifecycle_state",
+        "started_monotonic_ms",
+        "ended_monotonic_ms",
+        "duration_ms",
+        "deadline_ms",
+        "exit_code",
+        "result",
+        "failure_class",
+        "termination_actions",
+        "stdout_truncated",
+        "stderr_truncated",
+        "stderr_summary",
+        "disposition",
+        "evidence_digest"
+      ],
+      "properties": {
+        "schema_version": { "const": "qa.provider-probe-result.v1" },
+        "invocation_id": { "type": "string", "format": "uuid" },
+        "provider_id": { "$ref": "#/$defs/provider_id" },
+        "profile_id": { "$ref": "#/$defs/profile_id" },
+        "lifecycle_state": { "const": "terminal" },
+        "started_monotonic_ms": { "type": "integer", "minimum": 0 },
+        "ended_monotonic_ms": { "type": "integer", "minimum": 0 },
+        "duration_ms": { "type": "integer", "minimum": 0, "maximum": 300000 },
+        "deadline_ms": { "const": 45000 },
+        "exit_code": {
+          "oneOf": [
+            { "type": "integer", "minimum": -255, "maximum": 255 },
+            { "type": "null" }
+          ]
+        },
+        "result": { "enum": ["pass", "fail"] },
+        "failure_class": { "$ref": "#/$defs/failure_class" },
+        "termination_actions": {
+          "type": "array",
+          "maxItems": 8,
+          "items": { "$ref": "#/$defs/termination_action" }
+        },
+        "stdout_truncated": { "type": "boolean" },
+        "stderr_truncated": { "type": "boolean" },
+        "stderr_summary": { "type": "string", "maxLength": 4096 },
+        "disposition": { "$ref": "#/$defs/disposition" },
+        "evidence_digest": { "type": "string", "pattern": "^sha256:[0-9a-f]{64}$" }
+      },
+      "allOf": [
+        {
+          "if": { "properties": { "result": { "const": "pass" } }, "required": ["result"] },
+          "then": { "properties": { "failure_class": { "const": "none" } } },
+          "else": { "properties": { "failure_class": { "not": { "const": "none" } } } }
+        },
+        {
+          "if": { "properties": { "failure_class": { "const": "none" } }, "required": ["failure_class"] },
+          "then": { "properties": { "result": { "const": "pass" } } }
+        }
+      ]
+    },
+    "budgets": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "provider_deadline_seconds",
+        "sigterm_grace_seconds",
+        "sigkill_reap_seconds",
+        "aggregate_deadline_seconds",
+        "attempts_per_provider",
+        "stderr_retention_bytes",
+        "stdout_retention_bytes"
+      ],
+      "properties": {
+        "provider_deadline_seconds": { "const": 45 },
+        "sigterm_grace_seconds": { "const": 2 },
+        "sigkill_reap_seconds": { "const": 1 },
+        "aggregate_deadline_seconds": { "const": 200 },
+        "attempts_per_provider": { "const": 1 },
+        "stderr_retention_bytes": { "const": 4096 },
+        "stdout_retention_bytes": { "const": 65536 }
+      }
+    },
+    "profile": {
+      "oneOf": [
+        {
+          "type": "object",
+          "additionalProperties": false,
+          "required": ["provider_id", "profile_id", "mode", "executable", "argv"],
+          "properties": {
+            "provider_id": { "const": "codex" },
+            "profile_id": { "const": "codex_help" },
+            "mode": { "const": "exit_only" },
+            "executable": { "const": "codex" },
+            "argv": { "const": ["codex", "--help"] }
+          }
+        },
+        {
+          "type": "object",
+          "additionalProperties": false,
+          "required": ["provider_id", "profile_id", "mode", "executable", "argv"],
+          "properties": {
+            "provider_id": { "const": "qwen" },
+            "profile_id": { "const": "qwen_help" },
+            "mode": { "const": "exit_only" },
+            "executable": { "const": "qwen" },
+            "argv": { "const": ["qwen", "--help"] }
+          }
+        },
+        {
+          "type": "object",
+          "additionalProperties": false,
+          "required": ["provider_id", "profile_id", "mode", "executable", "argv"],
+          "properties": {
+            "provider_id": { "const": "claude" },
+            "profile_id": { "const": "claude_help" },
+            "mode": { "const": "exit_only" },
+            "executable": { "const": "claude" },
+            "argv": { "const": ["claude", "--help"] }
+          }
+        },
+        {
+          "type": "object",
+          "additionalProperties": false,
+          "required": ["provider_id", "profile_id", "mode", "executable", "argv"],
+          "properties": {
+            "provider_id": { "const": "pi" },
+            "profile_id": { "const": "pi_help" },
+            "mode": { "const": "exit_only" },
+            "executable": { "const": "pi" },
+            "argv": { "const": ["pi", "--help"] }
+          }
+        }
+      ]
+    },
+    "policy": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["schema_version", "budgets", "profiles"],
+      "properties": {
+        "schema_version": { "const": "qa.provider-probe-policy.v1" },
+        "budgets": { "$ref": "#/$defs/budgets" },
+        "profiles": {
+          "type": "array",
+          "minItems": 4,
+          "maxItems": 4,
+          "prefixItems": [
+            {
+              "const": {
+                "provider_id": "codex",
+                "profile_id": "codex_help",
+                "mode": "exit_only",
+                "executable": "codex",
+                "argv": ["codex", "--help"]
+              }
+            },
+            {
+              "const": {
+                "provider_id": "qwen",
+                "profile_id": "qwen_help",
+                "mode": "exit_only",
+                "executable": "qwen",
+                "argv": ["qwen", "--help"]
+              }
+            },
+            {
+              "const": {
+                "provider_id": "claude",
+                "profile_id": "claude_help",
+                "mode": "exit_only",
+                "executable": "claude",
+                "argv": ["claude", "--help"]
+              }
+            },
+            {
+              "const": {
+                "provider_id": "pi",
+                "profile_id": "pi_help",
+                "mode": "exit_only",
+                "executable": "pi",
+                "argv": ["pi", "--help"]
+              }
+            }
+          ],
+          "items": false
+        }
+      }
+    },
+    "normalization_vector": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "id",
+        "mode",
+        "stdout",
+        "exit_code",
+        "lifecycle_failure",
+        "stdout_truncated",
+        "stderr_truncated",
+        "expected_result",
+        "expected_failure_class",
+        "spawn_count"
+      ],
+      "properties": {
+        "id": { "type": "string", "pattern": "^[a-z0-9_]+$" },
+        "mode": { "enum": ["exit_only", "machine_json_v1"] },
+        "stdout": { "type": "string", "maxLength": 66000 },
+        "exit_code": { "type": ["integer", "null"] },
+        "lifecycle_failure": { "$ref": "#/$defs/failure_class" },
+        "stdout_truncated": { "type": "boolean" },
+        "stderr_truncated": { "type": "boolean" },
+        "expected_result": { "enum": ["pass", "fail"] },
+        "expected_failure_class": { "$ref": "#/$defs/failure_class" },
+        "spawn_count": { "const": 1 }
+      }
+    },
+    "adversarial_vector": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["id", "fixture", "expected_failure_class", "invariants"],
+      "properties": {
+        "id": { "type": "string", "pattern": "^[a-z0-9_]+$" },
+        "fixture": {
+          "enum": [
+            "self_stop",
+            "timeout_fork",
+            "leader_exit_zero_live_child",
+            "outer_interrupt",
+            "concurrent_owner",
+            "stderr_flood",
+            "direct_child_reaped_race",
+            "esrch_race",
+            "new_session_escape"
+          ]
+        },
+        "expected_failure_class": { "$ref": "#/$defs/failure_class" },
+        "invariants": {
+          "type": "array",
+          "minItems": 1,
+          "uniqueItems": true,
+          "items": {
+            "enum": [
+              "sigcont_before_sigterm",
+              "sigterm_before_sigkill",
+              "two_pass_quiescence",
+              "owned_descendants_reaped",
+              "no_retry",
+              "no_stale_group_signal",
+              "one_redelivery",
+              "prior_disposition_restored",
+              "bounded_stderr",
+              "owner_undisturbed",
+              "escaped_process_not_signalled"
+            ]
+          }
+        }
+      }
+    },
+    "vector_set": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["schema_version", "normalization_vectors", "adversarial_vectors"],
+      "properties": {
+        "schema_version": { "const": "qa.provider-probe-vectors.v1" },
+        "normalization_vectors": {
+          "type": "array",
+          "minItems": 10,
+          "items": { "$ref": "#/$defs/normalization_vector" }
+        },
+        "adversarial_vectors": {
+          "type": "array",
+          "minItems": 9,
+          "maxItems": 9,
+          "items": { "$ref": "#/$defs/adversarial_vector" }
+        }
+      }
+    }
+  }
+}
