@@ -1,25 +1,29 @@
 # AQ-OS Unified Program Plan — One Trajectory, All Sources Bound
 
-**Status:** REVISION CANDIDATE — `unified-program` aggregate returned REQUEST_REVISION; this remains
-a projection/index and grants no implementation authority.
+**Status:** POST-RATIFICATION PROJECTION — the historical Q1/Q2 subjects were owner-ratified
+2026-07-18; this current projection/index grants no implementation authority. B2-C1 authorization
+preparation and independent review are unblocked; implementation is not.
 **Prepared:** 2026-07-13 by claude-fable-5 (analysis lane) at explicit owner request.
 **Maintenance rule:** this file is a **projection, not an authority**. On any conflict, the source
 document wins per the precedence order in §1. Update this file at every cycle transition; a stale
 row here is a bug, not a license.
+**Ratified historical subject:**
+`2cab0bdd2f560052f315a14be1b64b4e173cee7b4239dcac3e582af815924ac2`; this post-decision projection
+has different bytes. See `unified-program/Q1-Q2-OWNER-RATIFICATION-20260718.md`.
 
 ---
 
 ## 1. Document authority map (precedence order, highest first)
 
-| # | Document | Role | Status (2026-07-13) |
+| # | Document | Role | Current status |
 |---|----------|------|---------------------|
 | 1 | `OWNER-POLICY-RATIFICATION.md` (cycle0 dir) + explicit owner statements | Owner authority — activates everything below | standing |
 | 2 | `docs/architecture/canonical-kernel-declaration.md` | Frozen kernel objects + `local-orchestrator` front door; changes need a named revision | frozen |
 | 3 | `docs/architecture/aqos-cycle1-state-spine-adr.md` | Per-authority consolidation proposal; ten SPLIT_BRAIN rows | Proposed, NOT authorized |
-| 4 | `.agent/PROJECT-LOCAL-AI-FACTORY-CODEX-FABLE-SYNTHESIS.md` | **Parent architecture** — reconciles Fable + Codex corpora | round-approved; owner ratification Q1 pending |
+| 4 | `.agent/PROJECT-LOCAL-AI-FACTORY-CODEX-FABLE-SYNTHESIS.md` | **Parent architecture** — reconciles Fable + Codex corpora | Q1 RATIFIED 2026-07-18 against historical SHA-256 `00c7dbc5…` |
 | 5 | `.agent/PROJECT-LOCAL-AI-FACTORY-REFERENCE-ARCHITECTURE-PRD.md` | Ground-up target + Cycles 0–6 roadmap + delivery gates | trajectory doc; Cycle 1A executing under it |
 | 6 | `.agent/PROJECT-LOCAL-INFERENCE-CONTRACT-PRD.md` + L-series plans | Current implementation track (Cycle 1A / Foundation B1) | L1A+L2A+L2B-A landed; L2B-B unauthorized |
-| 7 | `.agent/PROJECT-AQOS-CYCLE0-TRUTH-PRD.md` + `aqos-refoundation-cycle0/` | Cycle 0 record: evidence algebra, authority inventory, threat register, incidents | evidence integrated `c9fe3974`; exit adjudication pending |
+| 7 | `.agent/PROJECT-AQOS-CYCLE0-TRUTH-PRD.md` + `aqos-refoundation-cycle0/` | Cycle 0 record: evidence algebra, authority inventory, threat register, incidents | evidence integrated `c9fe3974`; 10/10 logical targets adjudicated; physical convergence pending |
 | 8 | `.agent/PROJECT-AQOS-PRD.md` + `.agents/plans/aqos-v1/` | Fable AQ-OS v1: WS1–WS10, 7 beats, horizon/unknowns, command-center roadmap | never ratified standalone; **absorbed as product backlog** (see §4) |
 | 9 | `.agent/PROJECT-VERIFIED-FACTORY-PRD.md` + companion meta-prompt | Cross-cutting verification/throughput layer (VF-1…VF-9) | REQUEST_REVISION; amended candidate awaits re-review |
 | 10 | `.agents/plans/epic-flat-collaborative-factory.md` + F1/F2/F3 briefs | Flat-factory operating model + foundation critiques | F1 done; F2 partial (F2.5 dormant); F3 unimplemented |
@@ -55,9 +59,9 @@ this table is the single naming bridge. Every other artifact maps INTO these tra
 
 | Track | = Ref-arch cycle | Content | Gate to start | Status |
 |-------|------------------|---------|---------------|--------|
-| **Foundation A** — Cycle-0 truth exit | Cycle 0 exit | Owner adjudicates target/transition-owner/deadline/rollback for all ten SPLIT_BRAIN/UNOWNED rows | owner session over `system-state-authorities.yaml` | **BLOCKING; pending owner** |
+| **Foundation A** — Cycle-0 truth exit | Cycle 0 exit | Owner adjudicates target/transition-owner/deadline/rollback for all ten SPLIT_BRAIN/UNOWNED rows | owner session over `system-state-authorities.yaml` | **OWNER-ADJUDICATED: 10/10; physical convergence remains Cycle 1 work** |
 | **Foundation B1** — contract kernel + parity vectors | Cycle 1A | L-series: L1A ✅, L2A ✅, L2B-A ✅, L2B-B, then chat/batch parity in shadow | fresh authorization per slice | EXECUTING |
-| **Foundation B2** — one shadow state vertical | Cycle 1B | CAS + outbox/replay for ONE owner-selected workflow-run authority; legacy stays authoritative | Q8 row adjudication + exact first-vertical authority hypothesis ratified under Q2 | NOT AUTHORIZED |
+| **Foundation B2** — one shadow state vertical | Cycle 1B | CAS + outbox/replay for owner-selected workflow-run-task authority; legacy stays authoritative | Q1/Q2 ratified; each implementation slice still needs exact independent review and owner activation | **B2-D0 ACCEPTED; B2-C1 AUTHORIZATION PREPARATION/REVIEW ONLY** |
 | **Foundation B3** — projector + canon-compiler shadow | Cycle 1B/2 seam | Extend `aq-event` projector to one dashboard surface; canon compiler (docs/clients/cards; never runtime authority) | B1 contracts stable | partial (aq-event live) |
 | **Foundation C** — identity, leases, execution cells | Cycle 2 | Principal envelopes, CapabilityLease, effect brokers, network profiles, cells; absorbs F3 + WS9 core | B1 + ratified security model (Q3) | NOT STARTED |
 | **Product D** — inference/client live convergence | Cycle 3 | Switchboard sole gateway; delegate-to-local/aq-chat as coordinator clients; **global scheduler activation closes F2.5 HIGH**; route/profile registry consolidation | B1 parity fixtures + C boundaries | NOT STARTED |
@@ -112,8 +116,10 @@ only) · **STANDING** (independent of this program).
 ## 5. Loose-thread register (nothing silently dropped)
 
 1. **F2.5 dormant HIGH** — scheduler built, unwired; closes in Product D; remains in issues-backlog until then.
-2. **Cycle-0 exit adjudication** — ten rows need owner target/owner/deadline/rollback (Foundation A). Blocks B2.
-3. **State-spine decision** — per-authority ADR vs Postgres/outbox+CAS hypothesis (owner decision Q2). Blocks B2.
+2. **Cycle-0 exit adjudication** — retained as Foundation A authority evidence; the selected
+   workflow-run-task row feeds the ratified B2 hypothesis.
+3. **State-spine decision** — Q2 RATIFIED for workflow-run-task only at B2-D0 commit `c11bf7a1`;
+   evidence must precede any expansion or replacement.
 4. **aqos-v1 Beat-0 round** — never dispatched; folded into the §6 consolidated round (this is the recorded disposition, not a skip).
 5. **Agent-parity 5-file follow-up** (from opus RESUME snapshot) — due with next canonical change; mechanized permanently by B3 canon compiler.
 6. **Pending operator restarts** — dashboard restart (scorecard p95 projection), switchboard restart (fable-parity key file). Batch at next end-of-cycle.
@@ -127,8 +133,8 @@ only) · **STANDING** (independent of this program).
 
 | Q | Decision | Unblocks |
 |---|----------|----------|
-| Q1 | Ratify the **synthesis** as parent architecture (with this plan's §3/§4 as its execution projection) | everything below |
-| Q2 | Ratify the exact authority hypothesis for the first owner-selected shadow vertical before writes; B2 evidence decides expansion/replacement | Foundation B2 |
+| Q1 | **RATIFIED 2026-07-18:** synthesis historical SHA-256 `00c7dbc5…` is parent; this plan's historical `2cab0bdd…` subject is its non-authoritative projection | parent trajectory decided |
+| Q2 | **RATIFIED 2026-07-18:** workflow-run-task legacy-live/Postgres-shadow hypothesis at `c11bf7a1`; migration owner `hyperd`; historical PRD §9 frozen | B2-C1 authorization preparation/review only |
 | Q3 | Security model: principal attestations + CapabilityLease, no fail-open modes; + eight network profiles (connected zero trust) | Foundation C |
 | Q4 | Fable behavior contract → model-neutral versioned canon policy | B3 canon migration |
 | Q5 | Measured, expiring **lane-eligibility registry** (roles stay model-neutral) | all delegation; VF-8 feeds it |
@@ -142,9 +148,10 @@ only) · **STANDING** (independent of this program).
 
 ```
 DONE       L2B-A accepted and committed fbeffbab
-NOW        Amend/re-review unified plan, VF, and CK; hold Foundation A owner adjudication (Q8)
+DONE       Q1/Q2 ratified; B2-D0 accepted at c11bf7a1
+NOW        Prepare and independently review an exact B2-C1 authorization; no implementation
 NEXT B1    Separately authorize L2B-B live payload adoption
-THEN       Ratify one exact B2 shadow-authority hypothesis (Q2) before its first writes
+THEN       Owner may activate the independently reviewed B2-C1 contract-only slice
 TRACK V    VF-7 may prepare after conflict review; VF-1 waits for L2B-B unless an exact
            hash-bound non-overlap authorization confines it to warn-only metadata
 THEN       Foundation B2 evidence decides expansion/replacement; no retroactive authority
