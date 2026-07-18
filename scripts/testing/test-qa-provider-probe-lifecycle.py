@@ -282,6 +282,115 @@ class ContractTests(unittest.TestCase):
         with self.assertRaises(jsonschema.ValidationError):
             validator.validate(bad)
 
+    def test_heartbeat_schema_accepts_exact_boundary_records(self) -> None:
+        validator = _validator_for("heartbeat")
+        idle = {
+            "schema_version": "qa.provider-probe-active.v1",
+            "qa_invocation_id": "00000000-0000-4000-8000-000000000001",
+            "provider_id": None,
+            "lifecycle_state": "idle",
+            "elapsed_ms": 0,
+            "heartbeat_utc": "2026-07-18T17:23:48Z",
+            "deadline_ms": 45000,
+            "last_terminal_failure_class": None,
+        }
+        terminal = {
+            **idle,
+            "provider_id": "pi",
+            "lifecycle_state": "terminal",
+            "elapsed_ms": 300000,
+            "last_terminal_failure_class": "none",
+        }
+        validator.validate(idle)
+        validator.validate(terminal)
+        for state in ("starting", "running", "terminating", "reaping"):
+            validator.validate(
+                {
+                    **idle,
+                    "provider_id": "codex",
+                    "lifecycle_state": state,
+                    "elapsed_ms": 1,
+                }
+            )
+        terminal["last_terminal_failure_class"] = "deadline_exceeded"
+        validator.validate(terminal)
+        jsonschema.Draft202012Validator(
+            self.schema, format_checker=jsonschema.FormatChecker()
+        ).validate(terminal)
+
+    def test_heartbeat_schema_rejects_invalid_and_sensitive_records(self) -> None:
+        validator = _validator_for("heartbeat")
+        base = {
+            "schema_version": "qa.provider-probe-active.v1",
+            "qa_invocation_id": "00000000-0000-4000-8000-000000000001",
+            "provider_id": "claude",
+            "lifecycle_state": "running",
+            "elapsed_ms": 1,
+            "heartbeat_utc": "2026-07-18T17:23:48Z",
+            "deadline_ms": 45000,
+            "last_terminal_failure_class": None,
+        }
+        invalid_values = (
+            ("schema_version", "qa.provider-probe-active.v2"),
+            ("qa_invocation_id", "not-a-uuid"),
+            ("provider_id", "other"),
+            ("lifecycle_state", "unknown"),
+            ("elapsed_ms", -1),
+            ("elapsed_ms", 300001),
+            ("heartbeat_utc", "not-a-time"),
+            ("heartbeat_utc", "2026-07-18T17:23:48+01:00"),
+            ("deadline_ms", 45001),
+            ("last_terminal_failure_class", "unknown"),
+        )
+        for field, value in invalid_values:
+            bad = dict(base)
+            bad[field] = value
+            with self.assertRaises(jsonschema.ValidationError, msg=(field, value)):
+                validator.validate(bad)
+
+        invalid_relationships = (
+            {**base, "provider_id": None},
+            {**base, "provider_id": "codex", "lifecycle_state": "idle"},
+            {**base, "last_terminal_failure_class": "none"},
+            {
+                **base,
+                "lifecycle_state": "terminal",
+                "last_terminal_failure_class": None,
+            },
+        )
+        for bad in invalid_relationships:
+            with self.assertRaises(jsonschema.ValidationError, msg=bad):
+                validator.validate(bad)
+
+        for missing in base:
+            bad = dict(base)
+            del bad[missing]
+            with self.assertRaises(jsonschema.ValidationError, msg=missing):
+                validator.validate(bad)
+
+        prohibited = (
+            "pid",
+            "pgid",
+            "sid",
+            "argv",
+            "executable",
+            "stdout",
+            "stderr",
+            "output",
+            "path",
+            "environment",
+            "prompt",
+            "credential",
+            "model",
+            "host_identifier",
+            "acceptance_verdict",
+        )
+        for field in prohibited:
+            bad = dict(base)
+            bad[field] = "canary"
+            with self.assertRaises(jsonschema.ValidationError, msg=field):
+                validator.validate(bad)
+
     def test_golden_normalization_is_one_spawn_and_covers_every_failure(self) -> None:
         seen = set()
         for vector in self.vectors["normalization_vectors"]:
