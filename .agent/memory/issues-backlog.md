@@ -2094,12 +2094,42 @@ Action: CLOSE THE LOOP — DONE: (a) extract_contribution structured/prose/log f
   Action: (1) check whether `lean-ctx init --agent <name>` or an env var supports per-cwd/per-project session scoping — if yes, wire it declaratively (per-repo .mcp.json arg or env) as the clean fix; (2) if not, upstream an issue and document mandatory fresh-session-per-repo workaround in the lean-ctx skill + agent instruction files; (3) do NOT run destructive `sessions cleanup` on the 31.3M-token session without operator approval — behavior on accumulated state is unverified. Feeds the multi-repo/workspace-identity gap in the connection-reliability PRD (workspace_id must be first-class in the dispatch envelope before C1).
   File: ~/.lean-ctx/sessions/latest.json; lean-ctx binary v3.3.7 (third-party); .agent/skills/lean-ctx/SKILL.md
 
-[OPEN] provider-capacity-reset-not-scheduled — The orchestrator left Claude marked unavailable after a provider session-limit response even though the response exposed a reopen window; no durable retry timestamp, timer, or dashboard reminder caused a new monitored probe when the window reopened. The owner had to prompt the retry manually. A tracked probe at 2026-07-17T17:00Z then immediately proved Claude Sonnet available.
+[OPEN] provider-capacity-reset-not-scheduled — The orchestrator left Claude marked unavailable after a provider session-limit response even though the response exposed a reopen window; no durable retry timestamp, timer, or dashboard reminder caused a new monitored probe when the window reopened. The owner had to prompt the retry manually. A tracked probe at 2026-07-17T17:00Z then immediately proved Claude Sonnet available. On 2026-07-18, two monitored Codex sub-agent lanes (tracker implementation and independent B2 design review) were simultaneously terminated by a provider usage ceiling carrying retry time 2026-07-24T04:31Z; the tracker lease was left safely partial with only its new asset written and all four existing predecessors unchanged.
   Severity: high
   Action: extend the agent-connection reliability lifecycle with typed `retry_not_before`, provider-window provenance, a host-owned scheduled probe, and dashboard visibility. A capacity result must park the task until the recorded window and automatically re-probe through the registry; it must not become an indefinite static outage or an unbounded retry loop.
-  File: .agent/PROJECT-AGENT-CONNECTION-RELIABILITY-PRD.md; scripts/ai/delegate-to-claude; task claude-20260717-100007-l40896
+  File: .agent/PROJECT-AGENT-CONNECTION-RELIABILITY-PRD.md; scripts/ai/delegate-to-claude; task claude-20260717-100007-l40896; Codex tasks tracker_implementation and foundation_b2_design_review
 
 [IN-FLIGHT] registry-compatibility-fifo-open-hangs-r01-suite — The R0.1 focused projection suite repeatedly blocks in the FIFO-substitution adversarial case because `_m2a_compat_scan_impl()` opens the registry with `O_RDONLY|O_CLOEXEC` before descriptor-type validation; unlike `_m2a_read_records()`, it omits `O_NONBLOCK`, so opening an attacker-substituted FIFO waits for a writer and never reaches `fstat()`.
   Severity: high
   Action: within the active exact seven-file R0.1 lease, add `O_NONBLOCK` to the compatibility reader open flags, retain regular-file semantics after `fstat()`, and prove the FIFO case terminates with `registry_source_not_regular`. Add a per-test or suite watchdog so a future nonblocking regression fails with evidence instead of wedging the agent lane.
   File: scripts/ai/lib/task_registry.py ~line 1196; scripts/testing/test-agent-ops-projection.py ~line 1427; task claude-20260717-174439-n6ye93
+
+[OPEN] playwright-cli-wrapper-config-version-skew — The bundled Playwright skill wrapper appends `--config ~/.config/playwright/cli.config.json` to every command. The installed CLI accepts it for `open` but rejects it for interaction commands such as `click` and `snapshot` with `Unknown option: --config`. Direct CLI interaction can attach to the wrapper-opened browser, but a fresh direct `open` fails because it cannot discover the configured NixOS Chromium executable and searches `/opt/google/chrome/chrome`.
+  Severity: medium
+  Action: make wrapper configuration command-aware or move browser executable selection to a supported environment/session mechanism; add a smoke test covering open → snapshot → click → resize → requests on NixOS.
+  File: /home/hyperd/.codex/skills/playwright/scripts/playwright_cli.sh; ~/.config/playwright/cli.config.json
+
+[DONE] dashboard-agent-monitor-apparmor-lock-denial — The dashboard AppArmor profile denied the shared lock required by read-only `TaskRegistry._read_registry()`. The exact registry file now has `rk`; deployed generation `5q4v1fk46r1xymwqscvw6wwx61sngiqa` returns a healthy registry-backed monitor with no new matching denial.
+  Severity: high
+  Action: complete — exact `rk` grant deployed; live monitor, Phase-0, focused tracker tests, and Tier0 23/23 passed. Preserve the no-write boundary.
+  File: nix/modules/services/mcp-servers.nix ~line 2662; dashboard/backend/api/routes/aistack.py ~line 5634; scripts/ai/lib/task_registry.py ~line 238
+
+[DONE] program-tracker-volatile-provenance-gate — The original tracker candidate treated high-churn `PULSE.log`, delegation registry, RESUME, and issue backlog hashes as stable governing-source gates. AM3 now distinguishes stable `governing` sources from historically bound `operational_snapshot` sources, so legitimate operations do not halt future agent work.
+Severity: critical
+Action: complete — focused tests prove operational drift passes while governing drift fails; independently accepted after live Phase-0 and Tier0 23/23.
+File: assets/aqos-progress-tracker.html; scripts/testing/test-dashboard-program-progress.py
+
+[OPEN] quick-deploy-active-model-selector-drift — The live deploy selector presented `qwen3.6-35b-mtp-q5` as the current model but did not recognize that same key as a valid selection. Accepting the displayed default emitted an unknown-key warning and preserved the on-disk model rather than round-tripping the declarative selection.
+Severity: medium
+Action: derive displayed current keys and accepted selector keys from one model inventory, then add a regression that every displayed current key is accepted unchanged.
+File: nixos-quick-deploy.sh; model inventory consumed by Phase 1 selection
+
+[OPEN] phase0-provider-help-probe-suspends-completion — Post-deploy `aq-qa 0 --json` repeatedly spawned `timeout --foreground 45 claude --help`; the Claude child entered stopped state and consumed all four completion-summary retries. A later direct `aq-qa 0 --machine` passed, so deployment succeeded but its bounded completion evidence was unnecessarily delayed and unavailable.
+Severity: high
+Action: make provider capability probes non-interactive with stdin detached and stopped-child handling, record provider-specific failure details, and add a watchdog regression proving Phase-0 cannot be delayed by a suspended CLI help process.
+File: scripts/testing/harness_qa/phases/phase0.py; scripts/ai/aq-qa; nixos-quick-deploy.sh completion tests
+
+[OPEN] quick-deploy-previous-fsck-false-positive — Quick deploy blocked a live switch for a claimed previous-boot root-filesystem failure even though the current root fsck unit reported `Result=success`/`ExecMainStatus=0` and a targeted previous-boot journal search found none of the script's documented failure phrases. Owner-authorized `--allow-prev-fsck-fail` was required to activate an otherwise clean generation.
+Severity: high
+Action: emit the exact matched journal line and predicate when blocking, distinguish unavailable evidence from positive failure evidence, and add fixtures for clean prior boots and true fsck failures.
+File: nixos-quick-deploy.sh ~line 2448
