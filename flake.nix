@@ -88,9 +88,13 @@
     hostHomeDeployOptionsPath = hostName: hostPath hostName + "/home-deploy-options.nix";
 
     hostEntries = builtins.readDir ./nix/hosts;
+    isSourceVisibleHost = name:
+      hostEntries.${name} == "directory"
+      && builtins.pathExists (hostDefaultPath name)
+      && builtins.pathExists (factsPath name);
     hostDirs = lib.sort builtins.lessThan (
       builtins.filter
-      (name: hostEntries.${name} == "directory" && builtins.pathExists (hostDefaultPath name))
+      isSourceVisibleHost
       (builtins.attrNames hostEntries)
     );
 

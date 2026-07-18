@@ -146,25 +146,111 @@ jobs:
         env:
           NIXPKGS_ALLOW_UNFREE: 1
         run: |
-          nix flake show --no-write-lock-file path:.
-          nix flake check --no-build path:.
+          nix flake show --no-write-lock-file .
+          nix flake check --offline --no-build --no-write-lock-file .
 
       - name: Profile eval smoke tests
         run: |
           set -euo pipefail
           export NIXPKGS_ALLOW_UNFREE=1
-          mapfile -t hosts < <(find nix/hosts -mindepth 1 -maxdepth 1 -type d \
-            -exec test -f '{}/default.nix' ';' -printf '%f\n' | sort)
-          profiles=(ai-dev gaming minimal)
-          for host in "${hosts[@]}"; do
-            for profile in "${profiles[@]}"; do
-              target="${host}-${profile}"
-              value=$(nix eval --raw "path:.#nixosConfigurations.${target}.config.mySystem.profile")
-              if [[ "$value" != "$profile" ]]; then
-                echo "Profile mismatch for ${target}: expected ${profile}, got ${value}" >&2
-                exit 1
-              fi
+          [[ $- == *e* ]] || { echo "errexit is not active" >&2; exit 1; }
+          [[ $- == *u* ]] || { echo "nounset is not active" >&2; exit 1; }
+          shopt -qo pipefail || { echo "pipefail is not active" >&2; exit 1; }
+
+          read_attrs() {
+            nix eval --offline --json ".#$1" --apply 'x: builtins.attrNames x' \
+              | python3 -c 'import json, sys; print("\n".join(json.load(sys.stdin)))'
+          }
+
+          mapfile -t nixos_targets < <(read_attrs nixosConfigurations)
+          mapfile -t home_targets < <(read_attrs homeConfigurations)
+          ((${#nixos_targets[@]} > 0)) || { echo "No exported NixOS configurations" >&2; exit 1; }
+          ((${#home_targets[@]} > 0)) || { echo "No exported Home Manager configurations" >&2; exit 1; }
+
+          contains_target() {
+            local wanted="$1"
+            shift
+            local candidate
+            for candidate in "$@"; do
+              [[ "$candidate" == "$wanted" ]] && return 0
             done
+            return 1
+          }
+
+          for target in hyperd-ai-dev hyperd-gaming hyperd-minimal; do
+            contains_target "$target" "${nixos_targets[@]}" || {
+              echo "Required concrete NixOS output is missing: $target" >&2
+              exit 1
+            }
+          done
+
+          for target in \
+            nixos-ai-dev nixos-gaming nixos-minimal \
+            sbc-minimal-ai-dev sbc-minimal-gaming sbc-minimal-minimal; do
+            if contains_target "$target" "${nixos_targets[@]}"; then
+              echo "Incomplete host was exported by the Git-backed flake: $target" >&2
+              exit 1
+            fi
+          done
+
+          for target in "${nixos_targets[@]}"; do
+            case "$target" in
+              *-ai-dev) expected=ai-dev ;;
+              *-gaming) expected=gaming ;;
+              *-minimal) expected=minimal ;;
+              *) echo "Unrecognized profile output: $target" >&2; exit 1 ;;
+            esac
+            value=$(nix eval --offline --raw ".#nixosConfigurations.${target}.config.mySystem.profile")
+            [[ "$value" == "$expected" ]] || {
+              echo "Profile mismatch for ${target}: expected ${expected}, got ${value}" >&2
+              exit 1
+            }
+          done
+
+          for target in "${home_targets[@]}"; do
+            nix eval --offline --raw ".#homeConfigurations.\"${target}\".activationPackage.drvPath" >/dev/null
+          done
+
+          for target in hyperd-ai-dev hyperd-gaming hyperd-minimal; do
+            nix eval --offline --raw ".#nixosConfigurations.${target}.config.system.build.toplevel.drvPath" >/dev/null
+          done
+
+          negative_dir=$(mktemp -d)
+          git_flake_ref="git+file://$(pwd)"
+          expect_assertion() {
+            local name="$1" expected="$2" module_override="$3"
+            local expression
+            expression="let f = builtins.getFlake \"$git_flake_ref\"; c = f.nixosConfigurations.\"hyperd-ai-dev\".extendModules { modules = [ ($module_override) ]; }; in c.config.system.build.toplevel.drvPath"
+            if nix eval --offline --impure --expr "$expression" \
+              >"$negative_dir/$name.stdout" 2>"$negative_dir/$name.stderr"; then
+              echo "Negative assertion unexpectedly evaluated successfully: $name" >&2
+              exit 1
+            fi
+            grep -F -- "$expected" "$negative_dir/$name.stderr" >/dev/null || {
+              echo "Negative assertion $name did not emit expected text: $expected" >&2
+              sed -n '1,160p' "$negative_dir/$name.stderr" >&2
+              exit 1
+            }
+          }
+
+          expect_assertion secrets \
+            'requires mySystem.secrets.enable=true' \
+            '{ lib, ... }: { mySystem.secrets.enable = lib.mkForce false; }'
+          expect_assertion ram \
+            'minimum 12 GB RAM required' \
+            '{ lib, ... }: { mySystem.hardware.systemRamGb = lib.mkForce 8; }'
+          expect_assertion firmware \
+            'requires hardware.firmwareType = "efi"' \
+            '{ lib, ... }: { mySystem.secureboot.enable = lib.mkForce true; mySystem.hardware.firmwareType = lib.mkForce "unknown"; }'
+
+          # Local deployment uses path:<repo-root>. When generated facts exist,
+          # they must remain visible without being added to the Git-backed source.
+          for host in nixos sbc-minimal; do
+            if [[ -f "nix/hosts/$host/facts.nix" ]]; then
+              nix eval --offline --json "path:.#nixosConfigurations" --apply 'x: builtins.attrNames x' \
+                | python3 -c 'import json, sys; assert sys.argv[1] in json.load(sys.stdin)' \
+                    "$host-ai-dev"
+            fi
           done
 
       - name: Package count drift check
