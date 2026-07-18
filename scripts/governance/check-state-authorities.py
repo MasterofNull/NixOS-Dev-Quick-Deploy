@@ -34,11 +34,15 @@ Exit codes:
 from __future__ import annotations
 
 import argparse
+import hashlib
 import json
 import re
+import stat
 import subprocess
 import sys
 import time
+import unicodedata
+from datetime import date, datetime, timezone
 from pathlib import Path
 from typing import Any
 
@@ -61,6 +65,11 @@ RSS_CEILING_MIB = 256
 
 CONDITIONS = ("SINGLE", "SPLIT_BRAIN", "UNKNOWN", "UNOWNED")
 BLOCKING_CONDITIONS = ("SPLIT_BRAIN", "UNKNOWN", "UNOWNED")
+ADJUDICATION_STATUSES = ("PENDING", "ADJUDICATED")
+PLACEHOLDER_TOKENS = frozenset({"unassigned", "unknown", "tbd", "none", "pending"})
+PLACEHOLDER_VALUES = frozenset({
+    "", "owner", "system owner", "to be determined", "n a", "na", "decider",
+})
 
 # Scan only text-like source; skip anything that would read as binary or that is
 # large-generated. Belt-and-suspenders alongside the registry's path exclusions.
@@ -161,7 +170,9 @@ def _validate_schema(registry: Any, findings: list[dict]) -> bool:
 
 
 def _f(kind: str, obj: str, severity: str, detail: str,
-       blocks_ratification: bool, path: str | None = None, line: int | None = None) -> dict:
+       blocks_ratification: bool, path: str | None = None, line: int | None = None,
+       *, owner_decision_blocker: bool = False,
+       observed_convergence_blocker: bool = False) -> dict:
     return {
         "kind": kind,
         "object": obj,
@@ -170,11 +181,218 @@ def _f(kind: str, obj: str, severity: str, detail: str,
         "path": path,
         "line": line,
         "blocks_ratification": blocks_ratification,
+        "owner_decision_blocker": owner_decision_blocker,
+        "observed_convergence_blocker": observed_convergence_blocker,
     }
 
 
+def _normalized_identity(value: Any) -> str:
+    """Return the frozen NFKC/casefold/punctuation-normalized identity."""
+    normalized = unicodedata.normalize("NFKC", str(value or "")).casefold()
+    alphanumeric_or_space = "".join(char if char.isalnum() else " " for char in normalized)
+    return " ".join(alphanumeric_or_space.split())
+
+
+def _is_placeholder_identity(value: Any) -> bool:
+    normalized = _normalized_identity(value)
+    return normalized in PLACEHOLDER_VALUES or bool(
+        PLACEHOLDER_TOKENS.intersection(normalized.split())
+    )
+
+
+def _is_placeholder_owner(value: Any) -> bool:
+    """Owners are placeholders only when the entire normalized identity is one."""
+    normalized = _normalized_identity(value)
+    return normalized in PLACEHOLDER_VALUES or normalized in PLACEHOLDER_TOKENS
+
+
+def _parse_calendar_date(value: Any) -> date | None:
+    if not isinstance(value, str) or re.fullmatch(r"[0-9]{4}-[0-9]{2}-[0-9]{2}", value) is None:
+        return None
+    try:
+        return date.fromisoformat(value)
+    except ValueError:
+        return None
+
+
+def _provenance_failure(aid: str, detail: str, findings: list[dict],
+                        path: str | None = None) -> None:
+    findings.append(_f(
+        "adjudication_provenance_invalid", aid, "ratification-blocker", detail,
+        blocks_ratification=True, path=path, owner_decision_blocker=True,
+    ))
+
+
+def _validate_provenance(aid: str, provenance: dict[str, Any],
+                         findings: list[dict]) -> tuple[date | None, bool]:
+    """Validate content-bound owner provenance without interpreting its prose."""
+    valid = True
+    decision_date = _parse_calendar_date(provenance.get("decision_date"))
+    if decision_date is None:
+        _provenance_failure(aid, "decision_date is not a real YYYY-MM-DD calendar date", findings)
+        valid = False
+
+    source_value = provenance.get("source_path")
+    source_path = str(source_value or "")
+    rel = Path(source_path)
+    if not source_path or rel.is_absolute() or ".." in rel.parts:
+        _provenance_failure(aid, "source_path must be a non-escaping repo-relative path", findings,
+                            source_path or None)
+        return decision_date, False
+
+    root = REPO_ROOT.resolve()
+    candidate = REPO_ROOT / rel
+    try:
+        cursor = candidate
+        while cursor != REPO_ROOT:
+            if cursor.is_symlink():
+                raise ValueError("source_path or one of its parents is a symlink")
+            cursor = cursor.parent
+        resolved = candidate.resolve(strict=True)
+        resolved.relative_to(root)
+        mode = resolved.stat().st_mode
+        if not stat.S_ISREG(mode):
+            raise ValueError("source_path is not a regular file")
+    except (OSError, RuntimeError, ValueError) as exc:
+        _provenance_failure(aid, f"invalid source artifact: {str(exc)[:220]}", findings, source_path)
+        return decision_date, False
+
+    try:
+        actual_sha = hashlib.sha256(resolved.read_bytes()).hexdigest()
+    except OSError as exc:
+        _provenance_failure(aid, f"source artifact is unreadable: {str(exc)[:220]}", findings,
+                            source_path)
+        return decision_date, False
+    if actual_sha != provenance.get("source_sha256"):
+        _provenance_failure(aid, "source_sha256 does not match the exact source artifact bytes",
+                            findings, source_path)
+        valid = False
+    return decision_date, valid
+
+
+def _validate_adjudications(authorities: list[dict], findings: list[dict],
+                            check_date: date) -> set[str]:
+    """Validate owner decisions and return authority IDs blocked on owner adjudication."""
+    owner_blocked: set[str] = set()
+    for authority in authorities:
+        aid = str(authority.get("id", "<unnamed>"))
+        status_value = authority.get("adjudication_status", "PENDING")
+        status = status_value if status_value in ADJUDICATION_STATUSES else "PENDING"
+        condition = authority.get("current_condition")
+
+        if status == "PENDING":
+            owner_blocked.add(aid)
+            # A non-SINGLE condition finding carries the pending-decision dimension so
+            # legacy Stage A retains exactly one blocker finding per row.
+            if condition not in BLOCKING_CONDITIONS:
+                findings.append(_f(
+                    "adjudication_incomplete", aid, "ratification-blocker",
+                    "owner adjudication is pending",
+                    blocks_ratification=True, owner_decision_blocker=True,
+                ))
+            continue
+
+        required = {
+            "selected_target_authority": authority.get("selected_target_authority"),
+            "transition_owner": authority.get("transition_owner"),
+            "decision_provenance": authority.get("decision_provenance"),
+            "rollback_boundary": authority.get("rollback_boundary"),
+            "resolution_deadline": authority.get("resolution_deadline"),
+        }
+        missing = [key for key, value in required.items()
+                   if value is None or (isinstance(value, str) and not value.strip())]
+        if missing:
+            owner_blocked.add(aid)
+            findings.append(_f(
+                "adjudication_incomplete", aid, "ratification-blocker",
+                "adjudicated row is incomplete: " + ", ".join(sorted(missing)),
+                blocks_ratification=True, owner_decision_blocker=True,
+            ))
+            continue
+
+        provenance = required["decision_provenance"]
+        rollback = required["rollback_boundary"]
+        if not isinstance(provenance, dict) or not isinstance(rollback, dict):
+            owner_blocked.add(aid)
+            findings.append(_f(
+                "adjudication_incomplete", aid, "ratification-blocker",
+                "decision_provenance and rollback_boundary must be closed objects",
+                blocks_ratification=True, owner_decision_blocker=True,
+            ))
+            continue
+
+        if _is_placeholder_identity(provenance.get("decided_by")):
+            owner_blocked.add(aid)
+            findings.append(_f(
+                "adjudication_placeholder_decided_by", aid, "ratification-blocker",
+                "decided_by is a forbidden placeholder identity",
+                blocks_ratification=True, owner_decision_blocker=True,
+            ))
+
+        placeholder_owners = [
+            name for name, value in (
+                ("transition_owner", required["transition_owner"]),
+                ("rollback_boundary.owner", rollback.get("owner")),
+            ) if _is_placeholder_owner(value)
+        ]
+        if placeholder_owners:
+            owner_blocked.add(aid)
+            findings.append(_f(
+                "adjudication_incomplete", aid, "ratification-blocker",
+                "placeholder owner fields: " + ", ".join(placeholder_owners),
+                blocks_ratification=True, owner_decision_blocker=True,
+            ))
+
+        blank_rollback_fields = [
+            key for key in ("trigger", "action", "authority_during_rollback")
+            if not isinstance(rollback.get(key), str) or not rollback[key].strip()
+        ]
+        if blank_rollback_fields:
+            owner_blocked.add(aid)
+            findings.append(_f(
+                "adjudication_incomplete", aid, "ratification-blocker",
+                "blank rollback fields: " + ", ".join(blank_rollback_fields),
+                blocks_ratification=True, owner_decision_blocker=True,
+            ))
+
+        decision_date, provenance_valid = _validate_provenance(aid, provenance, findings)
+        if not provenance_valid:
+            owner_blocked.add(aid)
+
+        deadline = _parse_calendar_date(required["resolution_deadline"])
+        if deadline is None:
+            owner_blocked.add(aid)
+            findings.append(_f(
+                "adjudication_incomplete", aid, "ratification-blocker",
+                "resolution_deadline is not a real YYYY-MM-DD calendar date",
+                blocks_ratification=True, owner_decision_blocker=True,
+            ))
+        if decision_date is not None and decision_date > check_date:
+            owner_blocked.add(aid)
+            findings.append(_f(
+                "adjudication_decision_date_future", aid, "ratification-blocker",
+                f"decision_date {decision_date.isoformat()} is later than checker UTC date "
+                f"{check_date.isoformat()}",
+                blocks_ratification=True, owner_decision_blocker=True,
+            ))
+        if decision_date is not None and deadline is not None and decision_date > deadline:
+            owner_blocked.add(aid)
+            findings.append(_f(
+                "adjudication_chronology_invalid", aid, "ratification-blocker",
+                "decision_date is later than resolution_deadline",
+                blocks_ratification=True, owner_decision_blocker=True,
+            ))
+        if deadline is not None and deadline < check_date:
+            findings.append(_f(
+                "adjudication_deadline_expired", aid, "ratification-blocker",
+                f"resolution_deadline {deadline.isoformat()} has expired and requires amendment",
+                blocks_ratification=True,
+            ))
+    return owner_blocked
+
+
 def _check_contract(authorities: list[dict], findings: list[dict]) -> bool:
-    """Structural contract: rebuild sources, shim owner/telemetry/deadline, no invented singleton."""
+    """Structural contract: rebuild sources and fully owned compatibility shims."""
     ok = True
     for a in authorities:
         aid = a.get("id", "<unnamed>")
@@ -183,12 +401,6 @@ def _check_contract(authorities: list[dict], findings: list[dict]) -> bool:
             ok = False
             findings.append(_f("invalid_condition", aid, "error",
                               f"current_condition={cond!r} not in {CONDITIONS}", blocks_ratification=False))
-        # No invented singleton: non-SINGLE must not assert a selected_target_authority.
-        if cond in BLOCKING_CONDITIONS and a.get("selected_target_authority") is not None:
-            ok = False
-            findings.append(_f("invented_singleton", aid, "error",
-                              f"selected_target_authority is set while condition={cond} "
-                              "(discovery may not invent a single owner)", blocks_ratification=False))
         # Every projection needs a rebuild source.
         for proj in a.get("projections", []):
             if not str(proj.get("rebuild_source", "")).strip():
@@ -207,15 +419,29 @@ def _check_contract(authorities: list[dict], findings: list[dict]) -> bool:
     return ok
 
 
-def _condition_findings(authorities: list[dict], findings: list[dict]) -> None:
+def _condition_findings(authorities: list[dict], findings: list[dict],
+                        owner_blocked: set[str]) -> None:
     for a in authorities:
         cond = a.get("current_condition")
         if cond in BLOCKING_CONDITIONS:
+            aid = str(a.get("id", "<unnamed>"))
+            decision_pending = aid in owner_blocked
+            if decision_pending:
+                detail = (
+                    f"{a.get('domain','')}: {cond} — blocks C0.3 ratification until adjudicated "
+                    f"(target hypothesis: {a.get('target_hypothesis','')[:160]})"
+                )
+            else:
+                detail = (
+                    f"{a.get('domain','')}: {cond} — target is adjudicated; physical convergence "
+                    "is pending"
+                )
             findings.append(_f(
-                f"condition_{cond.lower()}", a.get("id", "<unnamed>"), "ratification-blocker",
-                f"{a.get('domain','')}: {cond} — blocks C0.3 ratification until adjudicated "
-                f"(target hypothesis: {a.get('target_hypothesis','')[:160]})",
-                blocks_ratification=True))
+                f"condition_{cond.lower()}", aid, "ratification-blocker", detail,
+                blocks_ratification=True,
+                owner_decision_blocker=decision_pending,
+                observed_convergence_blocker=True,
+            ))
 
 
 def _scan_undeclared_writers(
@@ -254,9 +480,10 @@ def _scan_undeclared_writers(
                     break  # one hit per (file, authority) is enough evidence
 
 
-def run(mode: str, strict: bool) -> tuple[dict, list[dict], int]:
+def run(mode: str, strict: bool, *, check_date: date | None = None) -> tuple[dict, list[dict], int]:
     started = time.monotonic()
     findings: list[dict] = []
+    effective_date = check_date or datetime.now(timezone.utc).date()
 
     if not REGISTRY_PATH.exists():
         meta = _base_meta(mode, registry_valid=False, files_scanned=0, truncated=False,
@@ -289,7 +516,8 @@ def run(mode: str, strict: bool) -> tuple[dict, list[dict], int]:
                           f"{len(authorities)} authorities > {OBJECT_CEILING} object ceiling",
                           blocks_ratification=False))
     structural_ok = _check_contract(authorities, findings) and structural_ok
-    _condition_findings(authorities, findings)
+    owner_blocked = _validate_adjudications(authorities, findings, effective_date)
+    _condition_findings(authorities, findings, owner_blocked)
 
     # Bounded scan.
     if mode == "incremental":
@@ -312,10 +540,13 @@ def run(mode: str, strict: bool) -> tuple[dict, list[dict], int]:
 
     duration = time.monotonic() - started
     cond_counts = {c: 0 for c in CONDITIONS}
+    adjudication_counts = {status: 0 for status in ADJUDICATION_STATUSES}
     for a in authorities:
         c = a.get("current_condition")
         if c in cond_counts:
             cond_counts[c] += 1
+        status = a.get("adjudication_status", "PENDING")
+        adjudication_counts[status if status in adjudication_counts else "PENDING"] += 1
 
     budget_s = INCREMENTAL_BUDGET_S if mode == "incremental" else FULL_BUDGET_S
     rss = _peak_rss_mib()
@@ -330,6 +561,12 @@ def run(mode: str, strict: bool) -> tuple[dict, list[dict], int]:
         "measured_baseline": baseline,
         "exclusions_count": len(exclusions),
         "condition_counts": cond_counts,
+        "adjudication_counts": adjudication_counts,
+        "owner_decision_blocker_count": len(owner_blocked),
+        "observed_convergence_blocker_count": sum(
+            1 for authority in authorities
+            if authority.get("current_condition") in BLOCKING_CONDITIONS
+        ),
         "blocker_count": sum(1 for f in findings if f["blocks_ratification"]),
         "error_count": sum(1 for f in findings if f["severity"] == "error"),
         "peak_rss_mib": rss,
@@ -365,6 +602,9 @@ def _base_meta(mode: str, *, registry_valid: bool, files_scanned: int,
         "truncated": truncated,
         "authorities_total": authorities_total,
         "cycle1_authority": "NOT_AUTHORIZED",
+        "adjudication_counts": {"PENDING": 0, "ADJUDICATED": 0},
+        "owner_decision_blocker_count": 0,
+        "observed_convergence_blocker_count": 0,
     }
 
 
@@ -392,15 +632,15 @@ def main(argv: list[str] | None = None) -> int:
         return _explain(args.explain)
 
     mode = "incremental" if args.changed else "full"
-    meta, findings, exit_code = run(mode, args.strict)
+    checker_utc_date = datetime.now(timezone.utc).date()
+    meta, findings, exit_code = run(mode, args.strict, check_date=checker_utc_date)
     payload = {"meta": meta, "findings": findings}
     encoded = json.dumps(payload, indent=2, sort_keys=False)
     meta["output_bytes"] = len(encoded.encode("utf-8"))
 
     if meta["output_bytes"] > OUTPUT_BYTE_CEILING:
         # Enforce the output budget without printing an oversized blob.
-        trimmed = {"meta": meta, "findings": findings[:64],
-                   "_truncated_output": True}
+        trimmed = {"meta": meta, "findings": findings[:64]}
         print(json.dumps(trimmed, indent=2))
         return 3
 
