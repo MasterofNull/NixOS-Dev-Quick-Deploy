@@ -1677,6 +1677,8 @@ _check 1 "0.10.5" "model catalog/profile freshness" \
       python3 "${REPO_ROOT}/scripts/testing/test-local-inference-l2a.py"
     _check 1 "0.10.39" "local inference contract L2B-A: shadow payload adapter, strict stream observations, dashboard health" \
       python3 "${REPO_ROOT}/scripts/testing/test-local-inference-l2b.py"
+    _check 5 "0.10.41" "workflow shadow pure contract: fixture-only legacy authority and coverage" \
+      python3 "${REPO_ROOT}/scripts/testing/test-workflow-shadow-contract.py"
     _check 1 "0.10.30" "analysis-only local-agent observation loops force final synthesis" \
       python3 "${REPO_ROOT}/scripts/testing/test-agent-executor-analysis-finalization.py"
     _check 1 "0.10.31" "vectorization visualization dashboard surface" \

@@ -1724,6 +1724,25 @@
       "tier": "behavioral",
       "timeout_seconds": 20,
       "enabled": true
+    },
+    {
+      "id": "workflow-shadow-contract-b2-c1",
+      "phase": "B2-C1",
+      "description": "Pure closed workflow-shadow contracts, opaque fixed phase tokens, deterministic replay decisions, privacy vectors, and fixture-only legacy-authority health",
+      "trigger_paths": [
+        "config/schemas/workflow-shadow-contracts.schema.json",
+        "config/workflow-shadow-phase-tokens.json",
+        "scripts/ai/lib/workflow_shadow_contract.py",
+        "scripts/testing/fixtures/workflow-shadow-contract-v1-golden.json",
+        "scripts/testing/test-workflow-shadow-contract.py",
+        "scripts/testing/harness_qa/phases/phase0.py",
+        "scripts/ai/_aq-qa-bash",
+        "config/validation-check-registry.json"
+      ],
+      "command": ["python3", "scripts/testing/test-workflow-shadow-contract.py"],
+      "tier": "behavioral",
+      "timeout_seconds": 60,
+      "enabled": true
     }
   ]
 }

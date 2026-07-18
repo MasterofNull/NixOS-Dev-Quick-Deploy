@@ -1,0 +1,158 @@
+{
+  "fixture_version": "aq.workflow-shadow-contract-golden.v1",
+  "source_blueprint_sha256": "12ba465a5ede653579ac52752558ed9068fe0bbfd407dbc44cb2b80b70c72374",
+  "base_receipt": {
+    "event_id": "evt-0001",
+    "outbox_id": "out-0001",
+    "workflow_id": "wf-0001",
+    "expected_revision": 0,
+    "revision": 1,
+    "transition_kind": "run_start",
+    "status": "started",
+    "phase_id": "intake",
+    "action": "start",
+    "terminal": false,
+    "live_commit_digest": "sha256:1111111111111111111111111111111111111111111111111111111111111111",
+    "occurred_at": "2026-07-18T10:48:05Z",
+    "writer_identity": "hybrid-coordinator",
+    "writer_version": "b2-c1-v1"
+  },
+  "expected_contracts": {
+    "event": {
+      "schema_version": "aq.workflow-shadow-event.v1",
+      "event_id": "evt-0001",
+      "vertical_id": "workflow-run-task",
+      "workflow_id": "wf-0001",
+      "expected_revision": 0,
+      "revision": 1,
+      "transition_kind": "run_start",
+      "status": "started",
+      "phase_token": "sha256:850460eae2d043439122798305f3d06a63ddcff12f3b3cd72a8d18aa1d4ad1fe",
+      "phase_index": 6,
+      "action": "start",
+      "terminal": false,
+      "live_commit_digest": "sha256:1111111111111111111111111111111111111111111111111111111111111111",
+      "occurred_at": "2026-07-18T10:48:05Z",
+      "writer_identity": "hybrid-coordinator",
+      "writer_version": "b2-c1-v1"
+    },
+    "snapshot": {
+      "schema_version": "aq.workflow-shadow-snapshot.v1",
+      "workflow_id": "wf-0001",
+      "revision": 1,
+      "last_event_id": "evt-0001",
+      "status": "started",
+      "phase_token": "sha256:850460eae2d043439122798305f3d06a63ddcff12f3b3cd72a8d18aa1d4ad1fe",
+      "phase_index": 6,
+      "action": "start",
+      "terminal": false,
+      "live_commit_digest": "sha256:1111111111111111111111111111111111111111111111111111111111111111",
+      "created_at": "2026-07-18T10:48:05Z",
+      "updated_at": "2026-07-18T10:48:05Z"
+    },
+    "immutable_outbox": {
+      "schema_version": "aq.workflow-shadow-outbox.v1",
+      "outbox_id": "out-0001",
+      "event_id": "evt-0001",
+      "workflow_id": "wf-0001",
+      "revision": 1,
+      "event_digest": "sha256:49ebd07d1906ac27cf8fdeb6069ef42bed898ae4794bcf1aaf5bb2759cee8a10",
+      "transaction_at": "2026-07-18T10:48:05Z"
+    },
+    "delivery_control": {
+      "schema_version": "aq.workflow-shadow-delivery-control.v1",
+      "event_id": "evt-0001",
+      "lease_epoch": 0,
+      "attempt_count": 0,
+      "next_attempt_at": null,
+      "disposition": "pending",
+      "last_error": null,
+      "created_at": "2026-07-18T10:48:05Z",
+      "updated_at": "2026-07-18T10:48:05Z"
+    },
+    "health": {
+      "schema_version": "aq.workflow-shadow-health.v1",
+      "authority": "legacy_json_authoritative",
+      "enabled_state": "disabled",
+      "health_state": "ready",
+      "last_successful_write_age_bucket": "not_measured",
+      "lag_bucket": "not_measured",
+      "counts": {
+        "transitions": 0,
+        "cas_conflicts": 0,
+        "duplicates": 0,
+        "gaps": 0,
+        "terminal_conflicts": 0,
+        "privacy_failures": 0
+      },
+      "parked_reason": null,
+      "disk_budget_state": "not_measured",
+      "evidence_freshness": "fixture_only",
+      "coverage": {"aq_qa": "ready", "web_dashboard": "not_wired"}
+    }
+  },
+  "expected_canonical_event_utf8": "{\"action\":\"start\",\"event_id\":\"evt-0001\",\"expected_revision\":0,\"live_commit_digest\":\"sha256:1111111111111111111111111111111111111111111111111111111111111111\",\"occurred_at\":\"2026-07-18T10:48:05Z\",\"phase_index\":6,\"phase_token\":\"sha256:850460eae2d043439122798305f3d06a63ddcff12f3b3cd72a8d18aa1d4ad1fe\",\"revision\":1,\"schema_version\":\"aq.workflow-shadow-event.v1\",\"status\":\"started\",\"terminal\":false,\"transition_kind\":\"run_start\",\"vertical_id\":\"workflow-run-task\",\"workflow_id\":\"wf-0001\",\"writer_identity\":\"hybrid-coordinator\",\"writer_version\":\"b2-c1-v1\"}",
+  "expected_golden_digests": {
+    "event": "sha256:6f55cb11893f831109a11a8b5ad70c14c1f0c0c7271149a00a64ca09cb875b2b",
+    "snapshot": "sha256:70bcdc83e99a8be935c7c2f4eb895527ecd885dc75e455f58b52c635386fae64",
+    "immutable_outbox": "sha256:a74d81a42126859782166df02f5e660595c139e57855716346471ad0795c392f",
+    "delivery_control": "sha256:93191ae2a4469e409a71ec647743ed73eacde6ed6164ab7df4c488b55e13845a",
+    "health": "sha256:3c91e126d822059788526b15397d12ad64cc92c24aecbd841d1e20f4d4055811"
+  },
+  "phase_inputs": ["assign", "commit", "decide", "delegate", "discover", "execute", "intake", "learn", "plan", "prd", "propose", "scope_lock", "validate", "verify"],
+  "expected_phase_outputs": [
+    {"phase_index": 0, "phase_token": "sha256:a07e8aa35ef87d777d3f12ef637b0ad962f63a0ec374b67915b475d43e9b9d9f"},
+    {"phase_index": 1, "phase_token": "sha256:0bea302ecb71670082516b31e1a95c7b59e22402d7943252ce2a801589b1bd75"},
+    {"phase_index": 2, "phase_token": "sha256:7a43e0fdf66ba825f301959695d0168b166815aea295c26b5212be4267aea0ec"},
+    {"phase_index": 3, "phase_token": "sha256:3756c4e2a3ec79e06d021375f37457549247e7e150ebcb0a74a69c45b0c34248"},
+    {"phase_index": 4, "phase_token": "sha256:1a11cd07844c2be44f813b15da1e12a0a87e8ec7b9b408ba7b83c0f53c52a47b"},
+    {"phase_index": 5, "phase_token": "sha256:5e27f1f8de48447bdf39a55d64957e15b0be630dc05bb23cb09a23059c335846"},
+    {"phase_index": 6, "phase_token": "sha256:850460eae2d043439122798305f3d06a63ddcff12f3b3cd72a8d18aa1d4ad1fe"},
+    {"phase_index": 7, "phase_token": "sha256:dfd73cc0e0b0a7414f8cd4d65d02c9ef3352b15a632ea3e8be02f847679fa8b4"},
+    {"phase_index": 8, "phase_token": "sha256:25ff70e33e55caa5dfbb0ed52380912af4d80aeda1fb065e6da1df343a9f3fd0"},
+    {"phase_index": 9, "phase_token": "sha256:2d88612d72764e7b2a363ef6bf259d45490295faaf8e362726a42e53e1ac29c0"},
+    {"phase_index": 10, "phase_token": "sha256:8a5763d54c3d1b87f47e2fa3677039f8c0a3f62597392656bdb10670220ec45d"},
+    {"phase_index": 11, "phase_token": "sha256:d82f8f4d8df467b146d85f73025dae770b2bcd7d0c63a057e2939cdbc4fd264d"},
+    {"phase_index": 12, "phase_token": "sha256:43af273e2bcb6def794b7d5a2b62da36916614e1759c4bfc206ba6a326b1365b"},
+    {"phase_index": 13, "phase_token": "sha256:81003da22fab9aee69d7e30d8648203e2d5d479614d23f356aa39e2740a12aad"}
+  ],
+  "decisions": [
+    {"name": "insert", "expected_revision": 0, "revision": 1, "stored": null},
+    {"name": "advance", "expected_revision": 1, "revision": 2, "stored": {"revision": 1, "event_id": "evt-prior", "live_commit_digest": "sha256:2222222222222222222222222222222222222222222222222222222222222222", "terminal": false}},
+    {"name": "exact_replay", "expected_revision": 1, "revision": 2, "stored": {"revision": 2, "event_id": "evt-0001", "live_commit_digest": "sha256:1111111111111111111111111111111111111111111111111111111111111111", "terminal": false}},
+    {"name": "revision_gap", "expected_revision": 2, "revision": 3, "stored": {"revision": 1, "event_id": "evt-prior", "live_commit_digest": "sha256:2222222222222222222222222222222222222222222222222222222222222222", "terminal": false}},
+    {"name": "stale_conflict", "expected_revision": 1, "revision": 2, "stored": {"revision": 3, "event_id": "evt-newer", "live_commit_digest": "sha256:3333333333333333333333333333333333333333333333333333333333333333", "terminal": false}},
+    {"name": "event_collision", "expected_revision": 1, "revision": 2, "stored": {"revision": 2, "event_id": "evt-other", "live_commit_digest": "sha256:4444444444444444444444444444444444444444444444444444444444444444", "terminal": false}},
+    {"name": "terminal_conflict", "expected_revision": 1, "revision": 2, "stored": {"revision": 1, "event_id": "evt-terminal", "live_commit_digest": "sha256:5555555555555555555555555555555555555555555555555555555555555555", "terminal": true}}
+  ],
+  "capacity_vectors": [
+    {"pending": 0, "disposition": "accepted"},
+    {"pending": 64, "disposition": "accepted"},
+    {"pending": 65, "disposition": "parked"}
+  ],
+  "event_size_vectors": [
+    {"bytes": 2048, "accepted": true},
+    {"bytes": 2049, "accepted": false}
+  ],
+  "privacy_canaries": [
+    {"field": "objective", "value": "private-objective-canary"},
+    {"field": "query", "value": "private-query-canary"},
+    {"field": "prompt", "value": "private-prompt-canary"},
+    {"field": "phase_note", "value": "private-phase-note-canary"},
+    {"field": "output", "value": "private-output-canary"},
+    {"field": "tool_input", "value": "private-tool-input-canary"},
+    {"field": "tool_result", "value": "private-tool-result-canary"},
+    {"field": "agent_message", "value": "private-agent-message-canary"},
+    {"field": "secret", "value": "private-secret-canary"},
+    {"field": "path", "value": "private-path-canary"},
+    {"field": "environment", "value": "private-environment-canary"},
+    {"field": "isolation_detail", "value": "private-isolation-canary"},
+    {"field": "lesson_reference", "value": "private-lesson-canary"},
+    {"field": "extension", "value": "private-extension-canary"},
+    {"field": "raw_phase_id", "value": "model-private-phase"},
+    {"field": "model_phase_name", "value": "model-private-name"},
+    {"field": "model_phase_description", "value": "model-private-description"},
+    {"field": "encoded_phase_text", "value": "cHJpdmF0ZS1waGFzZS1ub3RlLWNhbmFyeQ=="},
+    {"field": "hashed_phase_text", "value": "sha256:7d2a45ad2c113e75ff447ad969fb769f26511a2f602b2c120369641739f5f399"}
+  ]
+}

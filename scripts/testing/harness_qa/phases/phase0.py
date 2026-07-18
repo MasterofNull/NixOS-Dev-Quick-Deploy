@@ -1815,6 +1815,7 @@ def run(ctx: RunContext) -> list[CheckResult]:
     results.extend(_check_state_authorities(ctx))
     results.extend(_check_registry_lookup_compatibility(ctx))
     results.extend(_check_dashboard_program_progress(ctx))
+    results.extend(_check_workflow_shadow_contract(ctx))
     results.extend(_check_golden_eval_parity(ctx))
     results.extend(_check_agentic_parity(ctx))
     results.extend(_check_delegation_feedback_contract(ctx))
@@ -2209,6 +2210,37 @@ def _check_registry_lookup_compatibility(ctx: RunContext) -> list[CheckResult]:
         5, "0.10.30",
         f"bounded legacy lookup + strict mutation + closed projection + TUI visibility: {summary}",
     )]
+
+
+def _check_workflow_shadow_contract(ctx: RunContext) -> list[CheckResult]:
+    """0.10.41: fixture-only B2-C1 pure contract readiness."""
+    checker = ctx.repo_root / "scripts" / "testing" / "test-workflow-shadow-contract.py"
+    if not checker.exists():
+        return [failed(5, "0.10.41", "workflow shadow pure contract", "focused test missing")]
+    try:
+        run = subprocess.run(
+            ["python3", str(checker)], cwd=ctx.repo_root,
+            capture_output=True, text=True, timeout=60,
+        )
+    except Exception as exc:
+        return [failed(5, "0.10.41", "workflow shadow pure contract", str(exc)[:200])]
+    if run.returncode != 0:
+        detail = (run.stderr or run.stdout or f"exit {run.returncode}").strip()[-500:]
+        return [failed(5, "0.10.41", "workflow shadow pure contract", detail)]
+    prefix = "B2_C1_CONTRACT_HEALTH="
+    line = next((item for item in run.stdout.splitlines() if item.startswith(prefix)), "")
+    try:
+        health = json.loads(line[len(prefix):])
+    except (json.JSONDecodeError, TypeError):
+        return [failed(5, "0.10.41", "workflow shadow pure contract", "health marker missing or invalid")]
+    expected = {
+        "authority": "legacy_json_authoritative",
+        "coverage": {"aq_qa": "ready", "web_dashboard": "not_wired"},
+    }
+    if health != expected:
+        return [failed(5, "0.10.41", "workflow shadow pure contract", "fixture health contract drift")]
+    detail = json.dumps(health, sort_keys=True, separators=(",", ":"))
+    return [passed(5, "0.10.41", f"fixture-only workflow shadow contract {detail}")]
 
 
 def _check_dashboard_program_progress(ctx: RunContext) -> list[CheckResult]:
