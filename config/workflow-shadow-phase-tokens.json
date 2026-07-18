@@ -1,0 +1,25 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "registry_version": "aq.workflow-shadow-phase-tokens.v1",
+  "source": {
+    "path": "config/workflow-blueprints.json",
+    "sha256": "12ba465a5ede653579ac52752558ed9068fe0bbfd407dbc44cb2b80b70c72374"
+  },
+  "domain": "aq.workflow-shadow.phase.v1",
+  "entries": [
+    {"phase_id": "assign", "phase_index": 0, "token": "sha256:a07e8aa35ef87d777d3f12ef637b0ad962f63a0ec374b67915b475d43e9b9d9f"},
+    {"phase_id": "commit", "phase_index": 1, "token": "sha256:0bea302ecb71670082516b31e1a95c7b59e22402d7943252ce2a801589b1bd75"},
+    {"phase_id": "decide", "phase_index": 2, "token": "sha256:7a43e0fdf66ba825f301959695d0168b166815aea295c26b5212be4267aea0ec"},
+    {"phase_id": "delegate", "phase_index": 3, "token": "sha256:3756c4e2a3ec79e06d021375f37457549247e7e150ebcb0a74a69c45b0c34248"},
+    {"phase_id": "discover", "phase_index": 4, "token": "sha256:1a11cd07844c2be44f813b15da1e12a0a87e8ec7b9b408ba7b83c0f53c52a47b"},
+    {"phase_id": "execute", "phase_index": 5, "token": "sha256:5e27f1f8de48447bdf39a55d64957e15b0be630dc05bb23cb09a23059c335846"},
+    {"phase_id": "intake", "phase_index": 6, "token": "sha256:850460eae2d043439122798305f3d06a63ddcff12f3b3cd72a8d18aa1d4ad1fe"},
+    {"phase_id": "learn", "phase_index": 7, "token": "sha256:dfd73cc0e0b0a7414f8cd4d65d02c9ef3352b15a632ea3e8be02f847679fa8b4"},
+    {"phase_id": "plan", "phase_index": 8, "token": "sha256:25ff70e33e55caa5dfbb0ed52380912af4d80aeda1fb065e6da1df343a9f3fd0"},
+    {"phase_id": "prd", "phase_index": 9, "token": "sha256:2d88612d72764e7b2a363ef6bf259d45490295faaf8e362726a42e53e1ac29c0"},
+    {"phase_id": "propose", "phase_index": 10, "token": "sha256:8a5763d54c3d1b87f47e2fa3677039f8c0a3f62597392656bdb10670220ec45d"},
+    {"phase_id": "scope_lock", "phase_index": 11, "token": "sha256:d82f8f4d8df467b146d85f73025dae770b2bcd7d0c63a057e2939cdbc4fd264d"},
+    {"phase_id": "validate", "phase_index": 12, "token": "sha256:43af273e2bcb6def794b7d5a2b62da36916614e1759c4bfc206ba6a326b1365b"},
+    {"phase_id": "verify", "phase_index": 13, "token": "sha256:81003da22fab9aee69d7e30d8648203e2d5d479614d23f356aa39e2740a12aad"}
+  ]
+}

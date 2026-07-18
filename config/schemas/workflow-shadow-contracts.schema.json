@@ -1,0 +1,126 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "aq.workflow-shadow-contracts.v1",
+  "title": "AQ workflow shadow pure contracts",
+  "oneOf": [
+    {"$ref": "#/$defs/event"},
+    {"$ref": "#/$defs/snapshot"},
+    {"$ref": "#/$defs/immutable_outbox"},
+    {"$ref": "#/$defs/delivery_control"},
+    {"$ref": "#/$defs/health"}
+  ],
+  "$defs": {
+    "digest": {"type": "string", "pattern": "^sha256:[0-9a-f]{64}$"},
+    "opaque_id": {"type": "string", "pattern": "^[A-Za-z0-9][A-Za-z0-9._:-]{0,127}$"},
+    "timestamp": {"type": "string", "format": "date-time", "maxLength": 35},
+    "phase_token": {"type": "string", "pattern": "^sha256:[0-9a-f]{64}$"},
+    "event": {
+      "type": "object", "additionalProperties": false,
+      "allOf": [
+        {"if": {"properties": {"terminal": {"const": true}}}, "then": {"properties": {"status": {"enum": ["completed", "failed", "cancelled"]}, "transition_kind": {"const": "terminal_completion"}, "action": {"enum": ["complete", "fail", "cancel"]}}}},
+        {"if": {"properties": {"terminal": {"const": false}}}, "then": {"properties": {"status": {"enum": ["started", "running"]}, "transition_kind": {"enum": ["run_start", "manual_phase_transition"]}, "action": {"enum": ["start", "advance"]}}}}
+      ],
+      "required": ["schema_version", "event_id", "vertical_id", "workflow_id", "expected_revision", "revision", "transition_kind", "status", "phase_token", "phase_index", "action", "terminal", "live_commit_digest", "occurred_at", "writer_identity", "writer_version"],
+      "properties": {
+        "schema_version": {"const": "aq.workflow-shadow-event.v1"},
+        "event_id": {"$ref": "#/$defs/opaque_id"},
+        "vertical_id": {"const": "workflow-run-task"},
+        "workflow_id": {"$ref": "#/$defs/opaque_id"},
+        "expected_revision": {"type": "integer", "minimum": 0, "maximum": 100000, "x-aq-json-lexical-type": "integer-no-decimal"},
+        "revision": {"type": "integer", "minimum": 1, "maximum": 100000, "x-aq-json-lexical-type": "integer-no-decimal"},
+        "transition_kind": {"enum": ["run_start", "manual_phase_transition", "terminal_completion"]},
+        "status": {"enum": ["started", "running", "completed", "failed", "cancelled"]},
+        "phase_token": {"$ref": "#/$defs/phase_token"},
+        "phase_index": {"type": "integer", "minimum": 0, "maximum": 13},
+        "action": {"enum": ["start", "advance", "complete", "fail", "cancel"]},
+        "terminal": {"type": "boolean"},
+        "live_commit_digest": {"$ref": "#/$defs/digest"},
+        "occurred_at": {"$ref": "#/$defs/timestamp"},
+        "writer_identity": {"type": "string", "minLength": 1, "maxLength": 64, "pattern": "^[A-Za-z0-9._:-]+$"},
+        "writer_version": {"type": "string", "minLength": 1, "maxLength": 32, "pattern": "^[A-Za-z0-9._-]+$"}
+      }
+    },
+    "snapshot": {
+      "type": "object", "additionalProperties": false,
+      "allOf": [
+        {"if": {"properties": {"terminal": {"const": true}}}, "then": {"properties": {"status": {"enum": ["completed", "failed", "cancelled"]}, "action": {"enum": ["complete", "fail", "cancel"]}}}},
+        {"if": {"properties": {"terminal": {"const": false}}}, "then": {"properties": {"status": {"enum": ["started", "running"]}, "action": {"enum": ["start", "advance"]}}}}
+      ],
+      "required": ["schema_version", "workflow_id", "revision", "last_event_id", "status", "phase_token", "phase_index", "action", "terminal", "live_commit_digest", "created_at", "updated_at"],
+      "properties": {
+        "schema_version": {"const": "aq.workflow-shadow-snapshot.v1"},
+        "workflow_id": {"$ref": "#/$defs/opaque_id"},
+        "revision": {"type": "integer", "minimum": 1, "maximum": 100000},
+        "last_event_id": {"$ref": "#/$defs/opaque_id"},
+        "status": {"enum": ["started", "running", "completed", "failed", "cancelled"]},
+        "phase_token": {"$ref": "#/$defs/phase_token"},
+        "phase_index": {"type": "integer", "minimum": 0, "maximum": 13},
+        "action": {"enum": ["start", "advance", "complete", "fail", "cancel"]},
+        "terminal": {"type": "boolean"},
+        "live_commit_digest": {"$ref": "#/$defs/digest"},
+        "created_at": {"$ref": "#/$defs/timestamp"},
+        "updated_at": {"$ref": "#/$defs/timestamp"}
+      }
+    },
+    "immutable_outbox": {
+      "type": "object", "additionalProperties": false,
+      "required": ["schema_version", "outbox_id", "event_id", "workflow_id", "revision", "event_digest", "transaction_at"],
+      "properties": {
+        "schema_version": {"const": "aq.workflow-shadow-outbox.v1"},
+        "outbox_id": {"$ref": "#/$defs/opaque_id"},
+        "event_id": {"$ref": "#/$defs/opaque_id"},
+        "workflow_id": {"$ref": "#/$defs/opaque_id"},
+        "revision": {"type": "integer", "minimum": 1, "maximum": 100000},
+        "event_digest": {"$ref": "#/$defs/digest"},
+        "transaction_at": {"$ref": "#/$defs/timestamp"}
+      }
+    },
+    "delivery_control": {
+      "type": "object", "additionalProperties": false,
+      "required": ["schema_version", "event_id", "lease_epoch", "attempt_count", "next_attempt_at", "disposition", "last_error", "created_at", "updated_at"],
+      "properties": {
+        "schema_version": {"const": "aq.workflow-shadow-delivery-control.v1"},
+        "event_id": {"$ref": "#/$defs/opaque_id"},
+        "lease_epoch": {"type": "integer", "minimum": 0, "maximum": 1000000},
+        "attempt_count": {"type": "integer", "minimum": 0, "maximum": 1000},
+        "next_attempt_at": {"oneOf": [{"$ref": "#/$defs/timestamp"}, {"type": "null"}]},
+        "disposition": {"enum": ["pending", "delivering", "delivered", "parked"]},
+        "last_error": {"oneOf": [{"type": "null"}, {"enum": ["disabled", "deadline_exceeded", "database_unavailable", "schema_unready", "schema_invalid", "privacy_rejected", "cas_mismatch", "revision_gap", "event_collision", "terminal_conflict", "transaction_failed", "projection_gap", "integrity_failed", "disk_budget_exceeded", "parked"]}]},
+        "created_at": {"$ref": "#/$defs/timestamp"},
+        "updated_at": {"$ref": "#/$defs/timestamp"}
+      }
+    },
+    "health": {
+      "type": "object", "additionalProperties": false,
+      "required": ["schema_version", "authority", "enabled_state", "health_state", "last_successful_write_age_bucket", "lag_bucket", "counts", "parked_reason", "disk_budget_state", "evidence_freshness", "coverage"],
+      "properties": {
+        "schema_version": {"const": "aq.workflow-shadow-health.v1"},
+        "authority": {"const": "legacy_json_authoritative"},
+        "enabled_state": {"enum": ["disabled", "observing", "parked"]},
+        "health_state": {"enum": ["ready", "invalid", "not_measured"]},
+        "last_successful_write_age_bucket": {"enum": ["not_measured", "lt_5s", "5s_to_60s", "gt_60s"]},
+        "lag_bucket": {"enum": ["not_measured", "within_budget", "warning", "parked"]},
+        "counts": {
+          "type": "object", "additionalProperties": false,
+          "required": ["transitions", "cas_conflicts", "duplicates", "gaps", "terminal_conflicts", "privacy_failures"],
+          "properties": {
+            "transitions": {"type": "integer", "minimum": 0, "maximum": 100000},
+            "cas_conflicts": {"type": "integer", "minimum": 0, "maximum": 100000},
+            "duplicates": {"type": "integer", "minimum": 0, "maximum": 100000},
+            "gaps": {"type": "integer", "minimum": 0, "maximum": 100000},
+            "terminal_conflicts": {"type": "integer", "minimum": 0, "maximum": 100000},
+            "privacy_failures": {"type": "integer", "minimum": 0, "maximum": 100000}
+          }
+        },
+        "parked_reason": {"oneOf": [{"type": "null"}, {"enum": ["revision_gap", "stale_conflict", "event_collision", "terminal_conflict", "privacy_rejected", "capacity_exceeded", "integrity_failed"]}]},
+        "disk_budget_state": {"enum": ["not_measured", "within_budget", "warning", "disabled"]},
+        "evidence_freshness": {"enum": ["fixture_only", "fresh", "stale", "unknown"]},
+        "coverage": {
+          "type": "object", "additionalProperties": false,
+          "required": ["aq_qa", "web_dashboard"],
+          "properties": {"aq_qa": {"const": "ready"}, "web_dashboard": {"const": "not_wired"}}
+        }
+      }
+    }
+  }
+}
