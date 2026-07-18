@@ -1,15 +1,14 @@
-# AQ-OS System State Authority & Retirement Ledger — Slice C0.3 (DISCOVERY, read-only)
+# AQ-OS System State Authority & Retirement Ledger — Slice C0.3 (DISCOVERY + owner adjudication, read-only)
 #
 # One current owner and one target disposition for every critical cross-system state
-# BEFORE Cycle 1 moves durable truth. This artifact is discovery evidence only; it
-# confers NO runtime implementation authority and does NOT authorize any Cycle 1
-# storage move (meta.cycle1_authority = NOT_AUTHORIZED).
+# BEFORE Cycle 1 moves durable truth. This artifact contains discovery evidence and
+# owner-adjudicated logical targets only; it confers NO runtime implementation authority
+# and does NOT authorize any Cycle 1 storage move (meta.cycle1_authority = NOT_AUTHORIZED).
 #
 # current_condition is a truthful observation. SINGLE|SPLIT_BRAIN|UNKNOWN|UNOWNED are
-# all valid discovery values; SPLIT_BRAIN/UNKNOWN/UNOWNED block C0.3 *ratification*
-# (not discovery) until an adjudicated target disposition + deadline exist. A convenient
-# singleton is never invented: selected_target_authority is null wherever a single owner
-# has not actually been adjudicated.
+# all valid discovery values; SPLIT_BRAIN/UNKNOWN/UNOWNED remain physical-convergence
+# and aggregate ratification blockers after owner adjudication. A selected logical target
+# does not change current_condition or claim that competing writers have retired.
 #
 # Source: .agents/plans/aqos-refoundation-cycle0/CURRENT-AUTHORITY-INVENTORY.md
 #         (source-verified read-only snapshot, 2026-07-10). file:line refs are the
@@ -17,10 +16,10 @@
 # Schema: config/schemas/system-state-authorities.schema.json
 
 meta:
-  version: "1.0.0"
+  version: "1.1.0"
   slice: "C0.3"
-  generated: "2026-07-11"
-  source: "CURRENT-AUTHORITY-INVENTORY.md @ HEAD 5d9aab85 (issuance); ratified plan CONSOLIDATED-PLAN.md §C0.3"
+  generated: "2026-07-18"
+  source: "CURRENT-AUTHORITY-INVENTORY.md @ HEAD 5d9aab85 (observations); FOUNDATION-A-OWNER-ADJUDICATION-20260718.md @ SHA-256 3c05728f8011db002b8c1504757dd1b43421f151268718a0c275219ccd15bc7a (logical targets); ratified plan CONSOLIDATED-PLAN.md §C0.3"
   cycle1_authority: "NOT_AUTHORIZED"
   scan:
     file_cap: 8000
@@ -60,7 +59,21 @@ authorities:
       - {path: "scripts/ai/aq-collab-round", line: 320, note: "agents write independent Markdown/JSON (320-348)"}
       - {path: "scripts/ai/lib/round_state.py", line: 169, note: "save temp/fsync/replaces round.json"}
     current_condition: SPLIT_BRAIN
-    selected_target_authority: null
+    adjudication_status: ADJUDICATED
+    selected_target_authority: "One versioned RoundState / round.json manifest mutation boundary. Dispatch logs, agent contributions, aggregate documents, and status views are evidence or projections and carry no independent authorization weight."
+    transition_owner: "hyperd"
+    decision_provenance:
+      decision_id: "foundation-a-authority-targets-20260718"
+      authority: OWNER
+      decided_by: "hyperd"
+      decision_date: "2026-07-18"
+      source_path: ".agents/plans/aqos-refoundation-cycle0/FOUNDATION-A-OWNER-ADJUDICATION-20260718.md"
+      source_sha256: "3c05728f8011db002b8c1504757dd1b43421f151268718a0c275219ccd15bc7a"
+    rollback_boundary:
+      owner: "hyperd"
+      trigger: "Any schema/CAS invariant failure or nonzero replay mismatch between RoundState and its projections."
+      action: "Stop the failing projection/adapter, preserve its evidence, and rebuild it from the last accepted round.json; do not re-enable document writers."
+      authority_during_rollback: "Versioned RoundState / round.json mutation boundary."
     projections:
       - {name: "round.json manifest", reader_path: "scripts/ai/aq-collab-round", rebuild_source: "replay of dispatch log + validated contribution sidecars"}
       - {name: "status view (Markdown-presence=landed)", reader_path: "scripts/ai/lib/round_contribution.py", rebuild_source: "re-derive from valid JSON sidecar precedence"}
@@ -95,7 +108,21 @@ authorities:
       - {path: "ai-stack/mcp-servers/hybrid-coordinator/dispatch.py", line: 1224, note: "direct registry writes (1224,1474)"}
       - {path: "scripts/ai/aq-agent-reap", line: 137, note: "second reconciler rewrites registry.jsonl (json.dumps + fh.write + os.replace, 133-139)"}
     current_condition: SPLIT_BRAIN
-    selected_target_authority: null
+    adjudication_status: ADJUDICATED
+    selected_target_authority: "One host/coordinator dispatch-broker mutation boundary using TaskRegistry under its canonical lock/CAS contract. Provider wrappers and aq-agent-reap cease to be independent writers/reconcilers after measured migration."
+    transition_owner: "hyperd"
+    decision_provenance:
+      decision_id: "foundation-a-authority-targets-20260718"
+      authority: OWNER
+      decided_by: "hyperd"
+      decision_date: "2026-07-18"
+      source_path: ".agents/plans/aqos-refoundation-cycle0/FOUNDATION-A-OWNER-ADJUDICATION-20260718.md"
+      source_sha256: "3c05728f8011db002b8c1504757dd1b43421f151268718a0c275219ccd15bc7a"
+    rollback_boundary:
+      owner: "hyperd"
+      trigger: "Missing durable admission receipt, CAS violation, or registry replay mismatch greater than zero."
+      action: "Park new admissions, disable the failing broker adapter, preserve receipts, and reconcile only through the canonical registry boundary."
+      authority_during_rollback: "TaskRegistry under the host/coordinator broker lock and CAS contract."
     projections:
       - {name: "monitor inference overlay (PID>heartbeat>terminal>markers>stale)", reader_path: "scripts/ai/lib/task_registry.py", rebuild_source: "recompute from registry.jsonl + process table"}
       - {name: "dashboard/report delegation view", reader_path: "scripts/ai/aq-report", rebuild_source: "re-read registry.jsonl overlay (aq-report:8120)"}
@@ -131,7 +158,21 @@ authorities:
       - {path: "scripts/ai/aq-loop-queue", line: 47, note: "direct write"}
       - {path: "scripts/ai/aq-local-training-loop", line: 1130, note: "direct write"}
     current_condition: SPLIT_BRAIN
-    selected_target_authority: null
+    adjudication_status: ADJUDICATED
+    selected_target_authority: "Separate typed Intent Lock authority from delegation lifecycle. One aq-event append authority owns continuity events; PENDING, RESUME, and PULSE are rebuildable projections with no direct writers after migration."
+    transition_owner: "hyperd"
+    decision_provenance:
+      decision_id: "foundation-a-authority-targets-20260718"
+      authority: OWNER
+      decided_by: "hyperd"
+      decision_date: "2026-07-18"
+      source_path: ".agents/plans/aqos-refoundation-cycle0/FOUNDATION-A-OWNER-ADJUDICATION-20260718.md"
+      source_sha256: "3c05728f8011db002b8c1504757dd1b43421f151268718a0c275219ccd15bc7a"
+    rollback_boundary:
+      owner: "hyperd"
+      trigger: "Missing/duplicate continuity event or any mismatch rebuilding PENDING, RESUME, or PULSE."
+      action: "Stop the failing projector, retain the append log, and rebuild projections; do not restore direct projection writers."
+      authority_during_rollback: "Typed Intent Lock plus the single aq-event append authority."
     projections:
       - {name: "RESUME.json (resume_projector per-field latest producer)", reader_path: "scripts/ai/lib/resume_projector.py", rebuild_source: "aq-event project resume over a2a-events.jsonl (first-ID-wins)"}
       - {name: "PULSE.log", reader_path: "scripts/ai/aq-resume", rebuild_source: "aq-event project pulse"}
@@ -165,7 +206,21 @@ authorities:
       - {path: "scripts/ai/sync-workflow-sessions.py", line: 26, note: "third writer (26-43)"}
       - {path: "ai-stack/mcp-servers/hybrid-coordinator/orchestration_graph_runner.py", line: 32, note: "separate graph-run JSON (32-62)"}
     current_condition: SPLIT_BRAIN
-    selected_target_authority: null
+    adjudication_status: ADJUDICATED
+    selected_target_authority: "The hybrid coordinator owns workflow/run/task state transitions. Legacy coordinator JSON remains live during the first shadow vertical; a Postgres outbox/CAS path is shadow-only until separate evidence and cutover authority. Retire standalone/sync writers after parity."
+    transition_owner: "hyperd"
+    decision_provenance:
+      decision_id: "foundation-a-authority-targets-20260718"
+      authority: OWNER
+      decided_by: "hyperd"
+      decision_date: "2026-07-18"
+      source_path: ".agents/plans/aqos-refoundation-cycle0/FOUNDATION-A-OWNER-ADJUDICATION-20260718.md"
+      source_sha256: "3c05728f8011db002b8c1504757dd1b43421f151268718a0c275219ccd15bc7a"
+    rollback_boundary:
+      owner: "hyperd"
+      trigger: "Any shadow outbox/CAS parity mismatch, duplicate transition, or dropped transition."
+      action: "Disable Postgres shadow reads/writes, retain shadow evidence, and continue the existing coordinator state path; do not cut over."
+      authority_during_rollback: "Hybrid coordinator with legacy coordinator JSON during the shadow vertical."
     projections:
       - {name: "API/report session view", reader_path: "ai-stack/mcp-servers/hybrid-coordinator/workflow_session_handlers.py", rebuild_source: "re-read workflow-sessions.json"}
     ordering_revision: "locks are process-local; no cross-process revision across the three writers"
@@ -197,7 +252,21 @@ authorities:
       - {path: "scripts/ai/_aq-qa-bash", line: 2812, note: "overwrites same latest QA (2812-2834)"}
       - {path: "scripts/ai/aq-report", line: 7707, note: "writes separate latest report + scorecard (7707-7910)"}
     current_condition: SPLIT_BRAIN
-    selected_target_authority: null
+    adjudication_status: ADJUDICATED
+    selected_target_authority: "Immutable C0.2 QA invocation evidence plus one versioned scorecard reducer is authoritative. Latest pointers, reports, and dashboard views are projections; competing score calculators and clobber writers retire after parity."
+    transition_owner: "hyperd"
+    decision_provenance:
+      decision_id: "foundation-a-authority-targets-20260718"
+      authority: OWNER
+      decided_by: "hyperd"
+      decision_date: "2026-07-18"
+      source_path: ".agents/plans/aqos-refoundation-cycle0/FOUNDATION-A-OWNER-ADJUDICATION-20260718.md"
+      source_sha256: "3c05728f8011db002b8c1504757dd1b43421f151268718a0c275219ccd15bc7a"
+    rollback_boundary:
+      owner: "hyperd"
+      trigger: "Any scorecard replay mismatch or missing invocation-evidence digest."
+      action: "Stop publishing the candidate reducer output and recompute from immutable evidence with the last accepted reducer version."
+      authority_during_rollback: "Immutable QA invocation evidence plus the last accepted versioned scorecard reducer."
     projections:
       - {name: "dashboard scorecard card", reader_path: "dashboard/backend/api/routes/aistack.py", rebuild_source: "recompute from immutable QA invocation artifact (C0.2 evidence store)"}
       - {name: "remediation reader", reader_path: "scripts/ai/aq-report", rebuild_source: "re-read verified QA evidence"}
@@ -227,7 +296,21 @@ authorities:
       - {path: "ai-stack/mcp-servers/switchboard/switchboard.py", line: 289, note: "profile merge/config (289,461-510,611-640)"}
       - {path: "nix/modules/roles/switchboard.nix", line: 409, note: "sets YAML+JSON, YAML wins (409,510-511)"}
     current_condition: SPLIT_BRAIN
-    selected_target_authority: null
+    adjudication_status: ADJUDICATED
+    selected_target_authority: "The coordinator owns canonical route decisions (ResolvedRunPlan); switchboard is the sole model-generation execution gateway. Direct llama/eval generation bypasses retire after measured parity. Sole gateway does not transfer route-decision authority from coordinator to switchboard."
+    transition_owner: "hyperd"
+    decision_provenance:
+      decision_id: "foundation-a-authority-targets-20260718"
+      authority: OWNER
+      decided_by: "hyperd"
+      decision_date: "2026-07-18"
+      source_path: ".agents/plans/aqos-refoundation-cycle0/FOUNDATION-A-OWNER-ADJUDICATION-20260718.md"
+      source_sha256: "3c05728f8011db002b8c1504757dd1b43421f151268718a0c275219ccd15bc7a"
+    rollback_boundary:
+      owner: "hyperd"
+      trigger: "Any ResolvedRunPlan/executed-model mismatch, unreceipted generation, or direct-gateway bypass."
+      action: "Park the affected route, disable the failing adapter/bypass, and replay only from the accepted plan through switchboard."
+      authority_during_rollback: "Coordinator ResolvedRunPlan for routing and switchboard for generation execution."
     projections:
       - {name: "provider decision", reader_path: "ai-stack/mcp-servers/switchboard/switchboard.py", rebuild_source: "re-derive from profile/headers/mode/model-prefix/intent/default (switchboard.py:2389-2465)"}
     ordering_revision: "profile precedence: built-ins < YAML < JSON/inline; Nix YAML wins over JSON"
@@ -257,7 +340,21 @@ authorities:
       - {path: "scripts/ai/aq-local-training-loop", line: 56, note: "result JSONL/progress/checkpoint/spools (56-69,99-112,403-413)"}
       - {path: "ai-stack/mcp-servers/hybrid-coordinator/model_optimization.py", line: 211, note: "separate captured corpora (211-305)"}
     current_condition: SPLIT_BRAIN
-    selected_target_authority: null
+    adjudication_status: ADJUDICATED
+    selected_target_authority: "One coordinator-owned, versioned EvaluationRun / PromotionDecision ledger governs eval and promotion. Loop JSONL, spools, checkpoints, corpora, and artifacts retain lineage as evidence/CAS content, not competing promotion authority."
+    transition_owner: "hyperd"
+    decision_provenance:
+      decision_id: "foundation-a-authority-targets-20260718"
+      authority: OWNER
+      decided_by: "hyperd"
+      decision_date: "2026-07-18"
+      source_path: ".agents/plans/aqos-refoundation-cycle0/FOUNDATION-A-OWNER-ADJUDICATION-20260718.md"
+      source_sha256: "3c05728f8011db002b8c1504757dd1b43421f151268718a0c275219ccd15bc7a"
+    rollback_boundary:
+      owner: "hyperd"
+      trigger: "Any non-reproducible evaluation digest, promotion replay mismatch, or unlinked artifact."
+      action: "Freeze new promotions, preserve candidate evidence, and recompute from the last accepted ledger version."
+      authority_during_rollback: "Coordinator-owned EvaluationRun / PromotionDecision ledger."
     projections:
       - {name: "dashboard newest-by-mtime eval result", reader_path: "dashboard/backend/api/routes/aistack.py", rebuild_source: "re-read declared eval authority (Postgres relationship must be defined first)"}
     ordering_revision: "dashboard adjudicates newest-by-mtime across result/progress/checkpoint/spool (aistack.py:2136-2325)"
@@ -287,7 +384,21 @@ authorities:
       - {path: "scripts/data/seed-rag-knowledge.py", line: null, note: "direct Qdrant write (bypasses broker)"}
       - {path: "ai-stack/mcp-servers/aidb/collective_memory.py", line: null, note: "direct Qdrant write"}
     current_condition: SPLIT_BRAIN
-    selected_target_authority: null
+    adjudication_status: ADJUDICATED
+    selected_target_authority: "MemoryBroker is the sole mutation gateway, backed by a typed durable fact/lineage log; Qdrant collections are rebuildable projections. Direct Qdrant writers migrate behind broker/collection ownership and then retire."
+    transition_owner: "hyperd"
+    decision_provenance:
+      decision_id: "foundation-a-authority-targets-20260718"
+      authority: OWNER
+      decided_by: "hyperd"
+      decision_date: "2026-07-18"
+      source_path: ".agents/plans/aqos-refoundation-cycle0/FOUNDATION-A-OWNER-ADJUDICATION-20260718.md"
+      source_sha256: "3c05728f8011db002b8c1504757dd1b43421f151268718a0c275219ccd15bc7a"
+    rollback_boundary:
+      owner: "hyperd"
+      trigger: "Any missing lineage entry, unauthorized direct collection write, or broker/Qdrant replay mismatch."
+      action: "Disable the failing projection writer, preserve the durable lineage log, and rebuild Qdrant through MemoryBroker."
+      authority_during_rollback: "MemoryBroker plus its typed durable fact/lineage log."
     projections:
       - {name: "typed Qdrant collection", reader_path: "ai-stack/mcp-servers/aidb/memory_manager.py", rebuild_source: "re-embed from broker queue + declared backup/rebuild"}
     ordering_revision: "broker applies expiry/supersession (memory_broker.py:131-175); direct writers unordered vs broker"
@@ -316,7 +427,21 @@ authorities:
       - {path: "nix/modules/core/options.nix", line: 1901, note: "option SSOT (1901-1975)"}
       - {path: "ai-stack/mcp-servers/hybrid-coordinator/core/config.py", line: 31, note: "runtime precedence env>YAML>defaults (31-75,196-294)"}
     current_condition: SPLIT_BRAIN
-    selected_target_authority: null
+    adjudication_status: ADJUDICATED
+    selected_target_authority: "Nix options through evaluated systemd environment into typed Python consumers form the durable configuration authority. Dashboard configuration is read-only/proposal projection; process-local _CONFIG, aliases, and undeclared overrides are not durable authority."
+    transition_owner: "hyperd"
+    decision_provenance:
+      decision_id: "foundation-a-authority-targets-20260718"
+      authority: OWNER
+      decided_by: "hyperd"
+      decision_date: "2026-07-18"
+      source_path: ".agents/plans/aqos-refoundation-cycle0/FOUNDATION-A-OWNER-ADJUDICATION-20260718.md"
+      source_sha256: "3c05728f8011db002b8c1504757dd1b43421f151268718a0c275219ccd15bc7a"
+    rollback_boundary:
+      owner: "hyperd"
+      trigger: "Any evaluated-value/type mismatch between Nix, systemd environment, and typed Python consumer."
+      action: "Reject the candidate proposal/override and restore the last accepted evaluated configuration generation; do not write dashboard-local config."
+      authority_during_rollback: "Evaluated Nix -> systemd environment -> typed Python configuration chain."
     projections:
       - {name: "deployed config (mostly SINGLE)", reader_path: "ai-stack/mcp-servers/hybrid-coordinator/core/config.py", rebuild_source: "re-eval Nix options -> systemd env"}
       - {name: "dashboard /api/config process-local overlay", reader_path: "dashboard/backend/api/routes/aistack.py", rebuild_source: "N/A (mutates _CONFIG, not Nix/runtime authority) — retire/rename"}
@@ -349,7 +474,21 @@ authorities:
       - {path: "dashboard/backend/api/routes/deployments.py", line: 27, note: "deployment/event writes (27-36,474-601)"}
       - {path: "dashboard/backend/api/services/runtime_controls.py", line: 90, note: "approval dict + audit hash-chain (90-325)"}
     current_condition: SPLIT_BRAIN
-    selected_target_authority: null
+    adjudication_status: ADJUDICATED
+    selected_target_authority: "A coordinator-owned typed ApprovalStore is authoritative and may reuse the existing SQLite ContextStore as its physical store. In-memory approval dictionaries retire; dashboard and audit-chain surfaces are projections/evidence. SQLite reuse does not grant arbitrary dashboard code independent authority."
+    transition_owner: "hyperd"
+    decision_provenance:
+      decision_id: "foundation-a-authority-targets-20260718"
+      authority: OWNER
+      decided_by: "hyperd"
+      decision_date: "2026-07-18"
+      source_path: ".agents/plans/aqos-refoundation-cycle0/FOUNDATION-A-OWNER-ADJUDICATION-20260718.md"
+      source_sha256: "3c05728f8011db002b8c1504757dd1b43421f151268718a0c275219ccd15bc7a"
+    rollback_boundary:
+      owner: "hyperd"
+      trigger: "Any approval CAS conflict, missing audit link, or mismatch between API response and durable approval record."
+      action: "Freeze new approvals, preserve the audit chain, and serve the last accepted durable record read-only until repaired."
+      authority_during_rollback: "Coordinator-owned typed ApprovalStore backed by its approved ContextStore physical store."
     projections:
       - {name: "operator audit integrity (hash-chain)", reader_path: "dashboard/backend/api/routes/audit.py", rebuild_source: "replay operator-audit JSONL hash chain"}
       - {name: "approval history", reader_path: "dashboard/backend/api/services/runtime_controls.py", rebuild_source: "re-read SQLite ContextStore"}

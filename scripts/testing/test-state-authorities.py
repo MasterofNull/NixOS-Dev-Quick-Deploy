@@ -22,7 +22,7 @@ REPO = Path(__file__).resolve().parents[2]
 CHECKER = REPO / "scripts" / "governance" / "check-state-authorities.py"
 REGISTRY = REPO / "config" / "system-state-authorities.yaml"
 SCHEMA = REPO / "config" / "schemas" / "system-state-authorities.schema.json"
-FIXED_DATE = date(2026, 7, 17)
+FIXED_DATE = date(2026, 7, 18)
 
 _FAILURES: list[str] = []
 
@@ -108,6 +108,16 @@ def _adjudication_findings(mod, root: Path, authority: dict,
         mod.REPO_ROOT = original_root
 
 
+def _semantic_run(mod, mode: str, *, strict: bool, check_date: date):
+    """Run semantic fixtures without inheriting the test runner's lifetime RSS peak."""
+    original_peak_rss = mod._peak_rss_mib
+    try:
+        mod._peak_rss_mib = lambda: 0.0
+        return mod.run(mode, strict=strict, check_date=check_date)
+    finally:
+        mod._peak_rss_mib = original_peak_rss
+
+
 def _run_temp_registry(mod, root: Path, registry: dict,
                        check_date: date = FIXED_DATE) -> tuple[dict, list[dict], int]:
     import yaml
@@ -122,33 +132,56 @@ def _run_temp_registry(mod, root: Path, registry: dict,
         mod.REGISTRY_PATH = registry_path
         mod._git_tracked = lambda: []
         mod._git_changed = lambda: []
-        return mod.run("full", strict=False, check_date=check_date)
+        return _semantic_run(mod, "full", strict=False, check_date=check_date)
     finally:
         mod.REPO_ROOT, mod.REGISTRY_PATH = original_root, original_registry
         mod._git_tracked, mod._git_changed = original_tracked, original_changed
 
 
-def test_01_legacy_registry_normalizes_pending() -> None:
+def test_01_production_registry_is_content_bound_adjudicated() -> None:
     mod = _load_checker()
     registry = _load_registry()
-    check(all("adjudication_status" not in row for row in registry["authorities"]),
-          "Stage A registry must remain byte-contract legacy/unadjudicated")
-    meta, _, code = mod.run("incremental", strict=False, check_date=FIXED_DATE)
-    check(code == 0, f"legacy registry run failed with {code}")
-    check(meta["adjudication_counts"] == {"PENDING": 10, "ADJUDICATED": 0},
-          f"absent statuses did not normalize to PENDING: {meta['adjudication_counts']}")
+    expected_ids = {
+        "planning-round", "delegation-lifecycle", "intent-resume", "workflow-run-task",
+        "qa-effectiveness", "routing-model-execution", "learning-eval", "memory-rag",
+        "configuration", "dashboard-operator",
+    }
+    check({row["id"] for row in registry["authorities"]} == expected_ids,
+          "production registry authority IDs changed")
+    check(all(row.get("adjudication_status") == "ADJUDICATED"
+              for row in registry["authorities"]),
+          "production registry must contain ten adjudicated rows")
+    check(all(row["current_condition"] == "SPLIT_BRAIN"
+              for row in registry["authorities"]),
+          "owner adjudication must not rewrite observed SPLIT_BRAIN conditions")
+    check(registry["meta"]["cycle1_authority"] == "NOT_AUTHORIZED",
+          "owner adjudication must not authorize Cycle 1")
+    expected_source_sha = "3c05728f8011db002b8c1504757dd1b43421f151268718a0c275219ccd15bc7a"
+    check(all(row["decision_provenance"]["decision_id"] ==
+              "foundation-a-authority-targets-20260718" and
+              row["decision_provenance"]["source_sha256"] == expected_source_sha
+              for row in registry["authorities"]),
+          "production adjudications are not content-bound to the accepted owner decision")
+    meta, _, code = _semantic_run(mod, "incremental", strict=False, check_date=FIXED_DATE)
+    check(code == 0, f"adjudicated production registry run failed with {code}")
+    check(meta["adjudication_counts"] == {"PENDING": 0, "ADJUDICATED": 10},
+          f"production adjudication counts are wrong: {meta['adjudication_counts']}")
 
 
-def test_02_legacy_blocker_dimensions_remain_ten() -> None:
+def test_02_production_registry_retains_convergence_only_blockers() -> None:
     mod = _load_checker()
-    meta, findings, code = mod.run("incremental", strict=False, check_date=FIXED_DATE)
-    check(code == 0, f"legacy dimension run failed with {code}")
-    check(meta["owner_decision_blocker_count"] == 10, "expected 10 decision-blocked rows")
+    meta, findings, code = _semantic_run(
+        mod, "incremental", strict=False, check_date=FIXED_DATE
+    )
+    check(code == 0, f"production blocker-dimension run failed with {code}")
+    check(meta["owner_decision_blocker_count"] == 0,
+          "accepted owner decisions must clear all owner-decision blockers")
     check(meta["observed_convergence_blocker_count"] == 10,
           "expected 10 convergence-blocked rows")
-    check(all(f["owner_decision_blocker"] and f["observed_convergence_blocker"]
+    check(meta["blocker_count"] == 10, "expected 10 aggregate convergence blockers")
+    check(all(not f["owner_decision_blocker"] and f["observed_convergence_blocker"]
               for f in findings if f["kind"] == "condition_split_brain"),
-          "legacy SPLIT_BRAIN findings must carry both blocker dimensions")
+          "adjudicated SPLIT_BRAIN findings must be convergence-only blockers")
 
 
 def test_03_pending_all_adjudication_fields_absent_valid() -> None:
@@ -361,7 +394,7 @@ def test_19_injected_utc_date_future_is_distinct() -> None:
     with tempfile.TemporaryDirectory() as td:
         root = Path(td)
         future = _adjudicated_authority(root)
-        future["decision_provenance"]["decision_date"] = "2026-07-18"
+        future["decision_provenance"]["decision_date"] = "2026-07-19"
         findings, _ = _adjudication_findings(mod, root, future, FIXED_DATE)
         date_kinds = [f["kind"] for f in findings if "date" in f["kind"] or "chronology" in f["kind"]]
         check(date_kinds == ["adjudication_decision_date_future"],
@@ -420,19 +453,21 @@ def test_22_complete_split_brain_retains_convergence_only_finding() -> None:
 
 def test_23_exact_stage_a_and_fully_adjudicated_counts() -> None:
     mod = _load_checker()
-    meta, findings, code = mod.run("incremental", strict=False, check_date=FIXED_DATE)
-    expected_stage_a = {
+    meta, findings, code = _semantic_run(
+        mod, "incremental", strict=False, check_date=FIXED_DATE
+    )
+    expected_production = {
         "authorities_total": 10,
         "condition_counts": {"SINGLE": 0, "SPLIT_BRAIN": 10, "UNKNOWN": 0, "UNOWNED": 0},
-        "adjudication_counts": {"PENDING": 10, "ADJUDICATED": 0},
-        "owner_decision_blocker_count": 10,
+        "adjudication_counts": {"PENDING": 0, "ADJUDICATED": 10},
+        "owner_decision_blocker_count": 0,
         "observed_convergence_blocker_count": 10,
         "blocker_count": 10,
         "error_count": 0,
     }
-    check(code == 0, f"Stage A checker exit {code}")
-    for key, value in expected_stage_a.items():
-        check(meta[key] == value, f"Stage A {key}={meta[key]!r}, expected {value!r}")
+    check(code == 0, f"production checker exit {code}")
+    for key, value in expected_production.items():
+        check(meta[key] == value, f"production {key}={meta[key]!r}, expected {value!r}")
     required_finding_keys = {
         "kind", "object", "severity", "detail", "path", "line", "blocks_ratification",
         "owner_decision_blocker", "observed_convergence_blocker",
@@ -483,7 +518,7 @@ def test_23_exact_stage_a_and_fully_adjudicated_counts() -> None:
 
 def test_24_adjudication_never_grants_cycle1_authority() -> None:
     mod = _load_checker()
-    meta, _, _ = mod.run("incremental", strict=False, check_date=FIXED_DATE)
+    meta, _, _ = _semantic_run(mod, "incremental", strict=False, check_date=FIXED_DATE)
     check(meta["cycle1_authority"] == "NOT_AUTHORIZED", "Stage A granted Cycle 1 authority")
     with tempfile.TemporaryDirectory() as td:
         root = Path(td)
