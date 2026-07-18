@@ -2133,3 +2133,18 @@ File: scripts/testing/harness_qa/phases/phase0.py; scripts/ai/aq-qa; nixos-quick
 Severity: high
 Action: emit the exact matched journal line and predicate when blocking, distinguish unavailable evidence from positive failure evidence, and add fixtures for clean prior boots and true fsck failures.
 File: nixos-quick-deploy.sh ~line 2448
+
+[OPEN] program-tracker-semantic-state-lag — The canonical dashboard tracker still renders Foundation B2 as blocked at 0% and Q2 as PENDING after independently reviewed owner ratification and accepted B2-C1 implementation commits. The AM4 provenance rebind kept source hashes current but did not project the corresponding semantic state transition, so the default operator surface now understates program progress.
+Severity: high
+Action: prepare an independently reviewed tracker amendment that derives Q2 and Foundation B2 status from the ratification/B2 acceptance records, updates the visible projection and focused tests atomically, and preserves the governing-versus-operational provenance distinction.
+File: assets/aqos-progress-tracker.html ~lines 516,652; scripts/testing/test-dashboard-program-progress.py
+
+[IN-FLIGHT] qppr-heartbeat-observer-contract-omission — Accepted QPPR-C1 defined provider result/policy/vector contracts but omitted the closed active-provider heartbeat and lifecycle-observer interface required by QPPR-A1 Phase-0 and dashboard adoption. Without those contracts, terminal failure classification and freshness could not be projected truthfully.
+Severity: high
+Action: independently review, activate, implement, and accept the prepared pure C1A heartbeat plus C1B observer amendments before QPPR-A1/A2 adoption; retain exact-once terminal join, FD_CLOEXEC, passive projection, and bounded-polling gates.
+File: .agents/plans/qa-provider-probe-reliability/C1A-CONTRACT-AMENDMENT-DESIGN-PACKET.md; .agents/plans/qa-provider-probe-reliability/C1B-OBSERVER-INTERFACE-DESIGN-PACKET.md
+
+[IN-FLIGHT] b2-migration-multihead-and-bootstrap-contract-gap — Foundation B2-M1 inventory found the canonical Alembic service and test harness use unqualified lineage commands, while the first migration design lacked database-enforced snapshot CAS and an executable least-privilege bootstrap/ownership lifecycle. A dormant second branch could therefore auto-apply, break tests, or rely on impossible privileges if implemented naively.
+Severity: critical
+Action: independently accept and owner-activate the revised B2-M1A design before implementation; preserve `aidb@head`/`aidb@-1`, DB-enforced CAS, disposable bootstrap CREATE grant/revoke, static-only validation, and the separate M1E execution gate.
+File: .agents/plans/aqos-foundation-b2/B2-M1-DESIGN-PACKET.md; ai-stack/migrations/test-migrations.sh; nix/modules/services/mcp-servers.nix
