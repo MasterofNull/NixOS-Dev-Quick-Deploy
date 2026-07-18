@@ -76,6 +76,14 @@ def _build_security_headers() -> Dict[str, str]:
     return headers
 
 
+def _tracker_content_security_policy(policy: str) -> str:
+    """Allow only the canonical tracker asset to be framed by this origin."""
+    directives = [part.strip() for part in policy.split(";") if part.strip()]
+    filtered = [part for part in directives if not part.lower().startswith("frame-ancestors ")]
+    filtered.append("frame-ancestors 'self'")
+    return "; ".join(filtered)
+
+
 @asynccontextmanager
 async def lifespan(app: FastAPI):
     """Startup and shutdown events"""
@@ -136,8 +144,17 @@ app.add_middleware(
 async def security_headers_middleware(request: Request, call_next):
     """Apply baseline security headers to dashboard HTTP responses."""
     response = await call_next(request)
-    for name, value in _build_security_headers().items():
-        response.headers.setdefault(name, value)
+    headers = _build_security_headers()
+    if request.url.path == "/assets/aqos-progress-tracker.html":
+        headers["X-Frame-Options"] = "SAMEORIGIN"
+        headers["Content-Security-Policy"] = _tracker_content_security_policy(
+            headers["Content-Security-Policy"]
+        )
+    for name, value in headers.items():
+        if request.url.path == "/assets/aqos-progress-tracker.html":
+            response.headers[name] = value
+        else:
+            response.headers.setdefault(name, value)
     return response
 
 

@@ -1814,6 +1814,7 @@ def run(ctx: RunContext) -> list[CheckResult]:
     results.extend(_check_immutable_qa_effectiveness(ctx))
     results.extend(_check_state_authorities(ctx))
     results.extend(_check_registry_lookup_compatibility(ctx))
+    results.extend(_check_dashboard_program_progress(ctx))
     results.extend(_check_golden_eval_parity(ctx))
     results.extend(_check_agentic_parity(ctx))
     results.extend(_check_delegation_feedback_contract(ctx))
@@ -2208,6 +2209,41 @@ def _check_registry_lookup_compatibility(ctx: RunContext) -> list[CheckResult]:
         5, "0.10.30",
         f"bounded legacy lookup + strict mutation + closed projection + TUI visibility: {summary}",
     )]
+
+
+def _check_dashboard_program_progress(ctx: RunContext) -> list[CheckResult]:
+    """0.10.40: canonical tracker is linked, tested, and live when dashboard is available."""
+    checker = ctx.repo_root / "scripts" / "testing" / "test-dashboard-program-progress.py"
+    if not checker.exists():
+        return [failed(5, "0.10.40", "program progress tracker", "focused test missing")]
+    try:
+        run = subprocess.run(
+            ["python3", str(checker), "--static-only"], cwd=ctx.repo_root,
+            capture_output=True, text=True, timeout=60,
+        )
+    except Exception as exc:
+        return [failed(5, "0.10.40", "program progress tracker", str(exc)[:200])]
+    if run.returncode != 0:
+        detail = (run.stderr or run.stdout or f"exit {run.returncode}").strip()[-500:]
+        return [failed(5, "0.10.40", "program progress tracker", detail)]
+
+    dashboard_url = f"http://127.0.0.1:{getattr(ctx, 'dashboard_port', 8889)}"
+    try:
+        status, body = http_get(f"{dashboard_url}/assets/aqos-progress-tracker.html", timeout=5)
+    except Exception as exc:
+        return [skipped(5, "0.10.40", "program progress tracker live asset", str(exc)[:160])]
+    if status != 200:
+        return [failed(5, "0.10.40", "program progress tracker live asset", f"HTTP {status}")]
+    if "FROZEN_IMPLEMENTATION_SNAPSHOT" not in body:
+        return [failed(5, "0.10.40", "program progress tracker live asset", "stale deployed asset")]
+    try:
+        root_status, root_body = http_get(dashboard_url, timeout=5)
+    except Exception as exc:
+        return [failed(5, "0.10.40", "program progress tracker dashboard linkage", str(exc)[:160])]
+    if root_status != 200 or 'id="tab-program"' not in root_body:
+        return [failed(5, "0.10.40", "program progress tracker dashboard linkage",
+                       f"HTTP {root_status}; Program tab absent={root_status == 200}")]
+    return [passed(5, "0.10.40", "canonical tracker static contract + live asset/dashboard HTTP 200")]
 
 
 def _check_golden_eval_parity(ctx: RunContext) -> list[CheckResult]:

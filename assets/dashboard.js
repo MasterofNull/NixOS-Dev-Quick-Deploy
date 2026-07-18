@@ -141,14 +141,29 @@ function updateSpark(svgId, arr) {
 }
 
 // ─── LENS MANAGEMENT ─────────────────────────────────────────────────────────
-function setLens(id) {
+function setLens(id, options = {}) {
   activeLens = id;
-  document.querySelectorAll(".panel").forEach((p) => p.classList.remove("on"));
-  document.querySelectorAll(".tab").forEach((t) => t.classList.remove("on"));
+  document.querySelectorAll(".panel").forEach((p) => {
+    p.classList.remove("on");
+    p.hidden = true;
+  });
+  document.querySelectorAll(".tab").forEach((t) => {
+    t.classList.remove("on");
+    t.setAttribute("aria-selected", "false");
+    t.tabIndex = -1;
+  });
   const panel = document.getElementById("panel-" + id);
   const tab = document.getElementById("tab-" + id);
-  if (panel) panel.classList.add("on");
-  if (tab) tab.classList.add("on");
+  if (panel) {
+    panel.classList.add("on");
+    panel.hidden = false;
+  }
+  if (tab) {
+    tab.classList.add("on");
+    tab.setAttribute("aria-selected", "true");
+    tab.tabIndex = 0;
+  }
+  if (options.focusPanel && panel) panel.focus();
   if (!lazyLoaded.has(id)) {
     lazyLoaded.add(id);
     loadLens(id);
@@ -170,6 +185,39 @@ function loadLens(id) {
   else if (id === "spider") loadSpider();
   else if (id === "observe") loadObservability();
   else if (id === "logs") loadLogs();
+}
+
+function initLensTabs() {
+  const tabs = Array.from(document.querySelectorAll(".lens-tabs .tab"));
+  tabs.forEach((tab) => {
+    const id = tab.id.replace(/^tab-/, "");
+    const panel = document.getElementById(`panel-${id}`);
+    tab.setAttribute("role", "tab");
+    tab.setAttribute("aria-controls", `panel-${id}`);
+    tab.setAttribute("aria-selected", id === activeLens ? "true" : "false");
+    tab.tabIndex = id === activeLens ? 0 : -1;
+    if (panel) {
+      panel.setAttribute("role", "tabpanel");
+      panel.setAttribute("aria-labelledby", tab.id);
+      panel.tabIndex = -1;
+      panel.hidden = id !== activeLens;
+    }
+    tab.addEventListener("keydown", (event) => {
+      const current = tabs.indexOf(tab);
+      let next = null;
+      if (event.key === "ArrowRight") next = (current + 1) % tabs.length;
+      else if (event.key === "ArrowLeft") next = (current - 1 + tabs.length) % tabs.length;
+      else if (event.key === "Home") next = 0;
+      else if (event.key === "End") next = tabs.length - 1;
+      if (next !== null) {
+        event.preventDefault();
+        tabs[next].focus();
+      } else if (event.key === "Enter" || event.key === " ") {
+        event.preventDefault();
+        setLens(id, { focusPanel: true });
+      }
+    });
+  });
 }
 
 // ─── HEALTH SPIDER ────────────────────────────────────────────────────────────
@@ -7138,6 +7186,7 @@ window.addEventListener("error", (e) => {
 });
 
 document.addEventListener("DOMContentLoaded", () => {
+  initLensTabs();
   // Immediate: fast data (hardware state included — thermal is real-time critical)
   Promise.allSettled([
     loadKPIs(),

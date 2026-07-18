@@ -6,10 +6,6 @@
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
   <meta name="google" content="notranslate">
   <title>AI Command Center</title>
-  <link rel="preconnect" href="https://fonts.googleapis.com">
-  <link
-    href="https://fonts.googleapis.com/css2?family=JetBrains+Mono:wght@300;400;600;700&family=Orbitron:wght@700;900&display=swap"
-    rel="stylesheet">
   <!-- D3 and Mermaid loaded at end of body as vendor scripts — see below -->
   <style>
     :root {
@@ -29,8 +25,8 @@
       --red: #ff3644;
       --red-g: rgba(255, 54, 68, .18);
       --border: rgba(0, 217, 255, .14);
-      --font: 'JetBrains Mono', monospace;
-      --hud: 'Orbitron', sans-serif;
+      --font: ui-monospace, 'Cascadia Mono', 'Segoe UI Mono', 'Liberation Mono', monospace;
+      --hud: ui-sans-serif, 'Segoe UI', system-ui, -apple-system, sans-serif;
       --r: 3px;
     }
 
@@ -223,6 +219,44 @@
 
     .tab:hover {
       color: var(--fg2)
+    }
+
+    .tab:focus-visible {
+      outline: 2px solid var(--cyan);
+      outline-offset: -2px
+    }
+
+    .program-shell {
+      min-height: calc(100vh - 14rem);
+      display: grid;
+      grid-template-rows: auto minmax(42rem, 1fr);
+      gap: .65rem
+    }
+
+    .program-toolbar {
+      display: flex;
+      justify-content: space-between;
+      align-items: center;
+      gap: .75rem;
+      flex-wrap: wrap;
+      color: var(--fg3);
+      font-size: .62rem
+    }
+
+    .program-link {
+      color: var(--cyan);
+      font-weight: 700;
+      letter-spacing: .05em;
+      text-transform: uppercase
+    }
+
+    .program-frame {
+      width: 100%;
+      min-height: 42rem;
+      height: calc(100vh - 15rem);
+      border: 1px solid var(--line);
+      border-radius: 4px;
+      background: var(--bg2)
     }
 
     /* ── RAG STRIP ── */
@@ -1226,7 +1260,7 @@
       <div class="kpi" title="Banded local-slot queue depth (F2.5)"><span class="kpi-l">Queue:</span><span
           class="kpi-v" id="kpiQueueDepth">--</span></div>
     </div>
-    <div class="lens-tabs">
+    <div class="lens-tabs" role="tablist" aria-label="Command Center views">
       <button class="tab on" onclick="setLens('overview')" id="tab-overview">Overview</button>
       <button class="tab" onclick="setLens('intelligence')" id="tab-intelligence">Intelligence</button>
       <button class="tab" onclick="setLens('security')" id="tab-security">Security</button>
@@ -1237,6 +1271,7 @@
       <button class="tab" onclick="setLens('logic')" id="tab-logic">Logic DAG</button>
       <button class="tab" onclick="setLens('observe')" id="tab-observe">Agent Observability</button>
       <button class="tab" onclick="setLens('logs')" id="tab-logs">Logs</button>
+      <button class="tab" onclick="setLens('program')" id="tab-program">Program</button>
     </div>
   </header>
 
@@ -2162,6 +2197,22 @@
           <div style="color:var(--fg3);font-size:.6rem">Loading...</div>
         </div>
       </div>
+    </div>
+  </div>
+
+  <!-- ── PROGRAM — canonical AQ-OS progress projection ── -->
+  <div class="panel" id="panel-program" tabindex="-1" aria-labelledby="tab-program">
+    <div class="program-shell">
+      <div class="program-toolbar">
+        <span>Canonical program projection · governing source records remain authoritative</span>
+        <a class="program-link" href="/assets/aqos-progress-tracker.html">Open full-page tracker</a>
+      </div>
+      <iframe
+        class="program-frame"
+        src="/assets/aqos-progress-tracker.html"
+        title="AQ-OS unified program progress tracker"
+        sandbox="allow-scripts"
+        loading="lazy"></iframe>
     </div>
   </div>
 
