@@ -1813,6 +1813,7 @@ def run(ctx: RunContext) -> list[CheckResult]:
     results.extend(_check_round_decision_authorization(ctx))
     results.extend(_check_immutable_qa_effectiveness(ctx))
     results.extend(_check_state_authorities(ctx))
+    results.extend(_check_registry_lookup_compatibility(ctx))
     results.extend(_check_golden_eval_parity(ctx))
     results.extend(_check_agentic_parity(ctx))
     results.extend(_check_delegation_feedback_contract(ctx))
@@ -2182,6 +2183,31 @@ def _check_state_authorities(ctx: RunContext) -> list[CheckResult]:
     return [passed(5, "0.10.29",
                    f"bounded authority checker + validated projection: {blockers} ratification-blockers, "
                    f"conditions {conds}, {dur}s")]
+
+
+def _check_registry_lookup_compatibility(ctx: RunContext) -> list[CheckResult]:
+    """R0.1: bounded legacy lookup, closed facts, pure projection, and visible TUI state."""
+    checker = ctx.repo_root / "scripts" / "testing" / "test-agent-ops-projection.py"
+    if not checker.exists():
+        return [failed(5, "0.10.30", "registry lookup compatibility", "focused test missing")]
+    try:
+        run = subprocess.run(
+            ["python3", str(checker)], cwd=ctx.repo_root,
+            capture_output=True, text=True, timeout=180,
+        )
+    except Exception as exc:
+        return [failed(5, "0.10.30", "registry lookup compatibility", str(exc)[:200])]
+    if run.returncode != 0:
+        detail = (run.stderr or run.stdout or f"exit {run.returncode}").strip()[-500:]
+        return [failed(5, "0.10.30", "registry lookup compatibility", detail)]
+    summary = next(
+        (line.strip() for line in reversed(run.stderr.splitlines()) if "Ran " in line),
+        "focused projection/compatibility suite passed",
+    )
+    return [passed(
+        5, "0.10.30",
+        f"bounded legacy lookup + strict mutation + closed projection + TUI visibility: {summary}",
+    )]
 
 
 def _check_golden_eval_parity(ctx: RunContext) -> list[CheckResult]:

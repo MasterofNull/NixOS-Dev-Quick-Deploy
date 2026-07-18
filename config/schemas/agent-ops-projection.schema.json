@@ -3,7 +3,7 @@
   "$id": "aq.agent-ops-projection.v2",
   "type": "object",
   "additionalProperties": false,
-  "required": ["schema_version", "generated_at", "health", "metrics", "dispatch_contract", "review_feedback", "work"],
+  "required": ["schema_version", "generated_at", "health", "metrics", "dispatch_contract", "review_feedback", "registry_compatibility", "work"],
   "properties": {
     "schema_version": {"const": "aq.agent-ops-projection.v2"},
     "generated_at": {"type": "string", "format": "date-time"},
@@ -111,6 +111,37 @@
         "freshness_age_s": {"type": ["integer", "null"], "minimum": 0, "maximum": 31536000},
         "lanes": {"type": "array", "maxItems": 64, "items": {"$ref": "#/$defs/review_lane"}},
         "reason_codes": {"type": "array", "maxItems": 32, "uniqueItems": true, "items": {"type": "string", "minLength": 1, "maxLength": 64, "pattern": "^[a-z0-9_]+$"}}
+      }
+    },
+    "registry_compatibility": {
+      "type": "object", "additionalProperties": false,
+      "required": [
+        "schema_version", "lookup_health", "strict_mutation_health",
+        "oversized_legacy_rows", "ambiguous_or_corrupt_rows",
+        "max_legacy_bound_bytes", "reason_codes"
+      ],
+      "properties": {
+        "schema_version": {"const": "aq.registry-compatibility-facts.v1"},
+        "lookup_health": {"enum": ["healthy", "degraded", "blocked", "unavailable"]},
+        "strict_mutation_health": {"enum": ["healthy", "blocked", "unavailable"]},
+        "oversized_legacy_rows": {"type": ["integer", "null"], "minimum": 0, "maximum": 1000000},
+        "ambiguous_or_corrupt_rows": {"type": ["integer", "null"], "minimum": 0, "maximum": 1000000},
+        "max_legacy_bound_bytes": {"const": 65536},
+        "reason_codes": {
+          "type": "array", "maxItems": 32, "uniqueItems": true,
+          "items": {"enum": [
+            "legacy_identity_ambiguous", "legacy_oversized_rows_present",
+            "legacy_row_over_compatibility_bound", "registry_duplicate_target",
+            "registry_file_too_large", "registry_identity_ambiguous",
+            "registry_identity_invalid", "registry_identity_missing",
+            "registry_legacy_m2a_versioned", "registry_legacy_row_over_compatibility_bound",
+            "registry_read_open_failed", "registry_record_bad_framing",
+            "registry_record_duplicate_key", "registry_record_invalid_utf8",
+            "registry_record_malformed", "registry_record_not_object",
+            "registry_source_changed_during_read", "registry_source_not_regular",
+            "registry_source_symlink", "registry_source_unavailable"
+          ]}
+        }
       }
     },
     "work": {"type": "array", "maxItems": 9216, "items": {"$ref": "#/$defs/work"}}

@@ -34,10 +34,55 @@ _MAX_HANDOFF_LINES = 300  # max delegation tracking lines in HANDOFF.md
 # ── M2A: bounds and vocabulary (dormant — activation requires M2B authorization) ──
 _M2A_MAX_REGISTRY_BYTES = 50 * 1024 * 1024
 _M2A_MAX_RECORD_BYTES = 4096
+_M2A_MAX_LEGACY_LOOKUP_BYTES = 65536
 _M2A_MAX_TASK_ID_LEN = 128
 _M2A_LOCK_TIMEOUT_S = 10.0
 _M2A_RECORD_SCHEMA_VERSION = 1
 _M2A_RELEASE_BYTE = b"\x01"
+
+_R01_COMPAT_FACTS_VERSION = "aq.registry-compatibility-facts.v1"
+_R01_LOOKUP_RESULT_VERSION = "aq.registry-lookup-result.v1"
+_R01_REASON_CODES = frozenset({
+    "legacy_oversized_rows_present",
+    "registry_duplicate_target",
+    "registry_file_too_large",
+    "registry_identity_ambiguous",
+    "registry_identity_invalid",
+    "registry_identity_missing",
+    "registry_legacy_m2a_versioned",
+    "registry_legacy_row_over_compatibility_bound",
+    "registry_read_open_failed",
+    "registry_record_bad_framing",
+    "registry_record_duplicate_key",
+    "registry_record_invalid_utf8",
+    "registry_record_malformed",
+    "registry_record_not_object",
+    "registry_source_changed_during_read",
+    "registry_source_not_regular",
+    "registry_source_symlink",
+    "registry_source_unavailable",
+})
+_R01_INTEGRITY_CODES = frozenset({
+    "registry_duplicate_target",
+    "registry_file_too_large",
+    "registry_identity_ambiguous",
+    "registry_identity_invalid",
+    "registry_identity_missing",
+    "registry_legacy_m2a_versioned",
+    "registry_legacy_row_over_compatibility_bound",
+    "registry_record_bad_framing",
+    "registry_record_duplicate_key",
+    "registry_record_invalid_utf8",
+    "registry_record_malformed",
+    "registry_record_not_object",
+    "registry_source_changed_during_read",
+    "registry_source_not_regular",
+    "registry_source_symlink",
+})
+_R01_UNAVAILABLE_CODES = frozenset({
+    "registry_read_open_failed",
+    "registry_source_unavailable",
+})
 
 _M2A_LANES = frozenset({"local", "claude", "codex", "antigravity"})
 _M2A_ROLES = frozenset({"implementer", "reviewer", "researcher", "orchestrator", "validator"})
@@ -821,7 +866,9 @@ class TaskRegistry:
         callers intentionally do not: atomic replacement gives them a complete old-or-new inode,
         while a later mutation still has to prove freshness with CAS.
         """
-        flags = os.O_RDONLY | os.O_CLOEXEC
+        # O_NONBLOCK prevents a substituted FIFO/device from blocking before
+        # descriptor type validation; regular-file reads retain normal semantics.
+        flags = os.O_RDONLY | os.O_CLOEXEC | getattr(os, "O_NONBLOCK", 0)
         if hasattr(os, "O_NOFOLLOW"):
             flags |= os.O_NOFOLLOW
         try:
@@ -1079,3 +1126,294 @@ class TaskRegistry:
             return {"reconciled": reconciled, "count": len(reconciled)}, new_records
 
         return self._m2a_transact(_mutate)
+
+    # ── R0.1: read-only compatibility lookup ──────────────────────────────────
+
+    @staticmethod
+    def _m2a_valid_id_str(value: object) -> bool:
+        """Pure task-ID validator for record fields (same grammar as the writer)."""
+        return (isinstance(value, str) and 1 <= len(value) <= _M2A_MAX_TASK_ID_LEN
+                and bool(_re.match(r"^[a-zA-Z0-9][a-zA-Z0-9._:-]{0,127}$", value)))
+
+    @staticmethod
+    def _m2a_parse_dup_check(payload: bytes) -> dict:
+        """Decode payload as UTF-8 and parse JSON with duplicate-key rejection at every depth."""
+        def hook(pairs: list) -> dict:
+            seen: set = set()
+            result: dict = {}
+            for key, value in pairs:
+                if key in seen:
+                    raise RegistryError("registry_record_duplicate_key")
+                seen.add(key)
+                result[key] = value
+            return result
+        try:
+            text = payload.decode("utf-8")
+        except UnicodeDecodeError as exc:
+            raise RegistryError("registry_record_invalid_utf8") from exc
+        try:
+            result = json.loads(text, object_pairs_hook=hook)
+        except RegistryError:
+            raise
+        except json.JSONDecodeError as exc:
+            raise RegistryError("registry_record_malformed") from exc
+        if not isinstance(result, dict):
+            raise RegistryError("registry_record_not_object")
+        return result
+
+    def _m2a_compat_scan_impl(self, target_id: Optional[str]) -> dict:
+        """Physical-line scanner for compatibility lookup and aggregate health.
+
+        Returns dict: error_code, matched_record, is_legacy_target, compat_facts.
+        """
+        def _make_compat(lookup_health: str, strict_health: str,
+                         oversized: Optional[int], ambiguous: Optional[int],
+                         reason_codes: list) -> dict:
+            if any(code not in _R01_REASON_CODES for code in reason_codes):
+                raise RegistryError("registry_compatibility_reason_invalid")
+            return {
+                "schema_version": _R01_COMPAT_FACTS_VERSION,
+                "lookup_health": lookup_health,
+                "strict_mutation_health": strict_health,
+                "oversized_legacy_rows": oversized,
+                "ambiguous_or_corrupt_rows": ambiguous,
+                "max_legacy_bound_bytes": _M2A_MAX_LEGACY_LOOKUP_BYTES,
+                "reason_codes": sorted(set(reason_codes)),
+            }
+
+        def _unavail(code: str) -> dict:
+            return {
+                "error_code": code, "matched_record": None, "is_legacy_target": False,
+                "compat_facts": _make_compat("unavailable", "unavailable", None, None, [code]),
+            }
+
+        def _blocked(code: str) -> dict:
+            return {
+                "error_code": code, "matched_record": None, "is_legacy_target": False,
+                "compat_facts": _make_compat("blocked", "blocked", None, None, [code]),
+            }
+
+        # Prevent an attacker-substituted FIFO/device from blocking before
+        # descriptor validation. Regular-file reads retain normal semantics.
+        flags = os.O_RDONLY | os.O_CLOEXEC | getattr(os, "O_NONBLOCK", 0)
+        if hasattr(os, "O_NOFOLLOW"):
+            flags |= os.O_NOFOLLOW
+        try:
+            fd = os.open(str(self.registry_file), flags)
+        except FileNotFoundError:
+            return _unavail("registry_source_unavailable")
+        except OSError as exc:
+            code = ("registry_source_symlink" if exc.errno == errno.ELOOP
+                    else "registry_read_open_failed")
+            return _blocked(code) if code in _R01_INTEGRITY_CODES else _unavail(code)
+
+        try:
+            try:
+                st = os.fstat(fd)
+            except OSError:
+                return _unavail("registry_source_unavailable")
+            if not _stat.S_ISREG(st.st_mode):
+                return _blocked("registry_source_not_regular")
+            if st.st_size > _M2A_MAX_REGISTRY_BYTES:
+                return _blocked("registry_file_too_large")
+
+            oversized_legacy_rows = 0
+            ambiguous_or_corrupt_rows = 0
+            target_match_count = 0
+            matched_record: Optional[dict] = None
+            is_legacy_target = False
+            scan_error: Optional[str] = None
+            cumulative = 0
+            buf = bytearray()
+            eof_reached = False
+
+            def _classify_line(payload: bytes) -> Optional[str]:
+                nonlocal oversized_legacy_rows, ambiguous_or_corrupt_rows
+                nonlocal target_match_count, matched_record, is_legacy_target
+
+                if not payload.strip():
+                    return None
+
+                n = len(payload)
+                if n > _M2A_MAX_LEGACY_LOOKUP_BYTES:
+                    return "registry_legacy_row_over_compatibility_bound"
+
+                legacy = n > _M2A_MAX_RECORD_BYTES
+
+                try:
+                    rec = TaskRegistry._m2a_parse_dup_check(payload)
+                except RegistryError as exc:
+                    ambiguous_or_corrupt_rows += 1
+                    return str(exc)
+
+                id_present = "id" in rec
+                task_id_present = "task_id" in rec
+                id_val = rec.get("id")
+                task_id_val = rec.get("task_id")
+
+                if not id_present and not task_id_present:
+                    ambiguous_or_corrupt_rows += 1
+                    return "registry_identity_missing"
+                if ((id_present and not self._m2a_valid_id_str(id_val))
+                        or (task_id_present and not self._m2a_valid_id_str(task_id_val))):
+                    ambiguous_or_corrupt_rows += 1
+                    return "registry_identity_invalid"
+                if id_present and task_id_present and id_val != task_id_val:
+                    ambiguous_or_corrupt_rows += 1
+                    return "registry_identity_ambiguous"
+                row_id = id_val if id_present else task_id_val
+
+                if legacy:
+                    oversized_legacy_rows += 1
+                    if "record_version" in rec:
+                        ambiguous_or_corrupt_rows += 1
+                        return "registry_legacy_m2a_versioned"
+                    if target_id is not None and row_id == target_id:
+                        target_match_count += 1
+                        if target_match_count >= 2:
+                            return "registry_duplicate_target"
+                        is_legacy_target = True
+                else:
+                    if target_id is not None and row_id == target_id:
+                        target_match_count += 1
+                        if target_match_count >= 2:
+                            return "registry_duplicate_target"
+                        if target_match_count == 1 and matched_record is None:
+                            matched_record = dict(rec)
+
+                return None
+
+            while True:
+                remaining = _M2A_MAX_REGISTRY_BYTES + 1 - cumulative
+                if remaining <= 0:
+                    break
+                try:
+                    chunk = os.read(fd, min(65536, remaining))
+                except InterruptedError:
+                    continue
+                except OSError:
+                    scan_error = "registry_source_unavailable"
+                    break
+                if not chunk:
+                    eof_reached = True
+                    break
+                cumulative += len(chunk)
+                if cumulative > _M2A_MAX_REGISTRY_BYTES:
+                    scan_error = "registry_file_too_large"
+                    break
+                buf.extend(chunk)
+                while True:
+                    lf = buf.find(b"\n")
+                    if lf == -1:
+                        if len(buf) > _M2A_MAX_LEGACY_LOOKUP_BYTES + 2:
+                            scan_error = "registry_legacy_row_over_compatibility_bound"
+                        break
+                    payload = bytes(buf[:lf])
+                    buf = buf[lf + 1:]
+                    if payload.endswith(b"\r"):
+                        payload = payload[:-1]
+                    if b"\r" in payload:
+                        scan_error = "registry_record_bad_framing"
+                        break
+                    line_err = _classify_line(payload)
+                    if line_err:
+                        scan_error = line_err
+                        break
+                if scan_error:
+                    break
+
+            # A final unterminated record is accepted, but a CR there is bare and
+            # therefore invalid; CR stripping is permitted only immediately before LF.
+            if eof_reached and not scan_error and buf:
+                payload = bytes(buf)
+                if b"\r" in payload:
+                    scan_error = "registry_record_bad_framing"
+                else:
+                    scan_error = _classify_line(payload)
+
+            if eof_reached and not scan_error:
+                # EOF before the initial descriptor size is a changed snapshot even
+                # when a later fstat happens to describe the truncated inode cleanly.
+                if cumulative != st.st_size:
+                    scan_error = "registry_source_changed_during_read"
+                try:
+                    st2 = os.fstat(fd)
+                except OSError:
+                    scan_error = "registry_source_unavailable"
+                if (not scan_error and
+                        (st2.st_dev != st.st_dev or st2.st_ino != st.st_ino
+                        or st2.st_size != st.st_size
+                        or getattr(st2, "st_mtime_ns", 0) != getattr(st, "st_mtime_ns", 0)
+                        or getattr(st2, "st_ctime_ns", 0) != getattr(st, "st_ctime_ns", 0))):
+                    scan_error = "registry_source_changed_during_read"
+
+        finally:
+            try:
+                os.close(fd)
+            except OSError:
+                pass
+
+        if scan_error:
+            lh = "unavailable" if scan_error in _R01_UNAVAILABLE_CODES else "blocked"
+            return {
+                "error_code": scan_error, "matched_record": None, "is_legacy_target": False,
+                "compat_facts": _make_compat(lh, lh, None, None, [scan_error]),
+            }
+
+        obs = oversized_legacy_rows if eof_reached else None
+        amb = ambiguous_or_corrupt_rows if eof_reached else None
+        if oversized_legacy_rows > 0:
+            lh, sh, codes = "degraded", "blocked", ["legacy_oversized_rows_present"]
+        else:
+            lh, sh, codes = "healthy", "healthy", []
+        compat = _make_compat(lh, sh, obs, amb, codes)
+
+        return {
+            "error_code": None, "matched_record": matched_record,
+            "is_legacy_target": is_legacy_target, "compat_facts": compat,
+        }
+
+    def lookup_m2a_compatible(self, task_id: str) -> dict:
+        """Read-only compatibility lookup returning aq.registry-lookup-result.v1.
+
+        Tolerates classified oversized legacy rows so unrelated bounded targets
+        remain reachable. The strict 4 KiB mutation bound is unchanged.
+        """
+        _blank_compat = {
+            "schema_version": _R01_COMPAT_FACTS_VERSION,
+            "lookup_health": "unavailable", "strict_mutation_health": "unavailable",
+            "oversized_legacy_rows": None, "ambiguous_or_corrupt_rows": None,
+            "max_legacy_bound_bytes": _M2A_MAX_LEGACY_LOOKUP_BYTES, "reason_codes": [],
+        }
+
+        def _result(ok: bool, record: Optional[dict], error_code: Optional[str],
+                    compat: dict) -> dict:
+            return {
+                "schema_version": _R01_LOOKUP_RESULT_VERSION, "ok": ok,
+                "record": record, "error_code": error_code,
+                "registry_compatibility": compat,
+            }
+
+        if not self._m2a_valid_id_str(task_id):
+            return _result(False, None, "registry_task_id_invalid", _blank_compat)
+
+        scan = self._m2a_compat_scan_impl(task_id)
+        compat = scan["compat_facts"]
+        error_code = scan["error_code"]
+
+        if error_code == "registry_task_not_found":
+            return _result(False, None, "registry_task_not_found", compat)
+        if error_code:
+            return _result(False, None, error_code, compat)
+        if scan["is_legacy_target"] and scan["matched_record"] is None:
+            return _result(False, None, "registry_target_legacy_oversized", compat)
+        if scan["matched_record"] is not None:
+            return _result(True, scan["matched_record"], None, compat)
+        return _result(False, None, "registry_task_not_found", compat)
+
+    def scan_registry_compat_facts(self) -> dict:
+        """Aggregate registry compatibility health for projection injection.
+
+        Returns aq.registry-compatibility-facts.v1 without a target lookup.
+        """
+        return self._m2a_compat_scan_impl(None)["compat_facts"]

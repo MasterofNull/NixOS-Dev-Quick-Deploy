@@ -17,6 +17,21 @@ from typing import Any, Iterable, Mapping, Sequence
 
 SCHEMA_VERSION = "aq.agent-ops-projection.v2"
 REVIEW_FACTS_VERSION = "aq.review-feedback-facts.v1"
+REGISTRY_COMPAT_FACTS_VERSION = "aq.registry-compatibility-facts.v1"
+REGISTRY_COMPAT_LOOKUP_HEALTH = {"healthy", "degraded", "blocked", "unavailable"}
+REGISTRY_COMPAT_MUTATION_HEALTH = {"healthy", "blocked", "unavailable"}
+REGISTRY_COMPAT_REASON_CODES = {
+    "legacy_oversized_rows_present", "legacy_identity_ambiguous",
+    "legacy_row_over_compatibility_bound", "registry_source_unavailable",
+    "registry_record_bad_framing", "registry_record_duplicate_key",
+    "registry_record_invalid_utf8", "registry_record_malformed",
+    "registry_record_not_object", "registry_legacy_m2a_versioned",
+    "registry_source_changed_during_read", "registry_duplicate_target",
+    "registry_identity_ambiguous", "registry_identity_invalid",
+    "registry_identity_missing", "registry_legacy_row_over_compatibility_bound",
+    "registry_file_too_large", "registry_read_open_failed",
+    "registry_source_not_regular", "registry_source_symlink",
+}
 ACTIVE_STATES = {"queued", "running", "waiting", "cancelling"}
 TERMINAL_STATES = {"done", "completed", "failed", "cancelled", "orphaned", "error"}
 LANES = {"local", "claude", "codex", "antigravity", "system", "unknown"}
@@ -447,10 +462,60 @@ def _registry_pid(record: Mapping[str, Any]) -> tuple[int, int] | None:
     return (int(pid), int(start)) if pid is not None and start is not None else None
 
 
+def project_registry_compatibility(facts: Mapping[str, Any] | None) -> dict[str, Any]:
+    """Project injected aq.registry-compatibility-facts.v1 without any registry I/O."""
+    _default = {
+        "schema_version": REGISTRY_COMPAT_FACTS_VERSION,
+        "lookup_health": "unavailable",
+        "strict_mutation_health": "unavailable",
+        "oversized_legacy_rows": None,
+        "ambiguous_or_corrupt_rows": None,
+        "max_legacy_bound_bytes": 65536,
+        "reason_codes": [],
+    }
+    if facts is None:
+        return _default
+    _KEYS = {"schema_version", "lookup_health", "strict_mutation_health",
+              "oversized_legacy_rows", "ambiguous_or_corrupt_rows",
+              "max_legacy_bound_bytes", "reason_codes"}
+    if not isinstance(facts, Mapping) or set(facts) != _KEYS:
+        raise ProjectionError("registry_compat_facts_shape_invalid")
+    if facts["schema_version"] != REGISTRY_COMPAT_FACTS_VERSION:
+        raise ProjectionError("registry_compat_facts_version_invalid")
+    lh = facts["lookup_health"]
+    sh = facts["strict_mutation_health"]
+    if lh not in REGISTRY_COMPAT_LOOKUP_HEALTH:
+        raise ProjectionError("registry_compat_lookup_health_invalid")
+    if sh not in REGISTRY_COMPAT_MUTATION_HEALTH:
+        raise ProjectionError("registry_compat_mutation_health_invalid")
+    for field in ("oversized_legacy_rows", "ambiguous_or_corrupt_rows"):
+        v = facts[field]
+        if v is not None and (isinstance(v, bool) or not isinstance(v, int) or v < 0 or v > 1_000_000):
+            raise ProjectionError(f"registry_compat_{field}_invalid")
+    mlb = facts["max_legacy_bound_bytes"]
+    if mlb != 65536:
+        raise ProjectionError("registry_compat_max_legacy_bound_invalid")
+    codes = facts["reason_codes"]
+    if (not isinstance(codes, list) or len(codes) > 32 or len(set(codes)) != len(codes)
+            or not all(isinstance(c, str) and c in REGISTRY_COMPAT_REASON_CODES
+                       for c in codes)):
+        raise ProjectionError("registry_compat_reason_codes_invalid")
+    return {
+        "schema_version": REGISTRY_COMPAT_FACTS_VERSION,
+        "lookup_health": lh,
+        "strict_mutation_health": sh,
+        "oversized_legacy_rows": facts["oversized_legacy_rows"],
+        "ambiguous_or_corrupt_rows": facts["ambiguous_or_corrupt_rows"],
+        "max_legacy_bound_bytes": 65536,
+        "reason_codes": sorted(set(codes)),
+    }
+
+
 def project_agent_ops(*, now: int, registry: Sequence[Mapping[str, Any]],
                       processes: Sequence[Mapping[str, Any]], inbox: Sequence[Mapping[str, Any]],
                       dispatch_contract: Mapping[str, Any] | None = None,
-                      review_feedback_facts: Mapping[str, Any] | None = None) -> dict[str, Any]:
+                      review_feedback_facts: Mapping[str, Any] | None = None,
+                      registry_compatibility_facts: Mapping[str, Any] | None = None) -> dict[str, Any]:
     if len(registry) > MAX_REGISTRY:
         raise ProjectionError("registry_snapshot_too_large")
     if len(inbox) > MAX_INBOX:
@@ -583,6 +648,7 @@ def project_agent_ops(*, now: int, registry: Sequence[Mapping[str, Any]],
     if dispatch_contract is not None:
         dispatch = json.loads(json.dumps(dispatch_contract))
     review_feedback = project_review_feedback(review_feedback_facts)
+    registry_compat = project_registry_compatibility(registry_compatibility_facts)
     metrics = {
         "inbox_pending_count": sum(1 for entry in inbox if entry.get("pending") is True),
         "inbox_processing_duration_seconds": max(pending_durations) if pending_durations else None,
@@ -595,6 +661,7 @@ def project_agent_ops(*, now: int, registry: Sequence[Mapping[str, Any]],
         "metrics": metrics,
         "dispatch_contract": dispatch,
         "review_feedback": review_feedback,
+        "registry_compatibility": registry_compat,
         "work": work,
     }
 
@@ -620,10 +687,25 @@ def contract_health(projection: Mapping[str, Any]) -> dict[str, Any]:
         raise ProjectionError("projection_metrics_invalid")
     dispatch = projection.get("dispatch_contract", {})
     review = projection.get("review_feedback", {})
+    registry = projection.get("registry_compatibility", {})
+    coverage = dispatch.get("coverage_health", {}) if isinstance(dispatch, Mapping) else {}
+    web_health = coverage.get("web_dashboard", "unavailable") if isinstance(coverage, Mapping) else "unavailable"
+    registry_healthy = (
+        registry.get("lookup_health") == "healthy"
+        and registry.get("strict_mutation_health") == "healthy"
+    )
     return {
-        "healthy": dispatch.get("health") == "healthy" and review.get("health") == "healthy",
+        "healthy": (
+            dispatch.get("health") == "healthy"
+            and review.get("health") == "healthy"
+            and registry_healthy
+            and web_health == "healthy"
+        ),
         "dispatch_health": dispatch.get("health", "unavailable"),
         "review_feedback_health": review.get("health", "unavailable"),
+        "registry_lookup_health": registry.get("lookup_health", "unavailable"),
+        "registry_strict_mutation_health": registry.get("strict_mutation_health", "unavailable"),
+        "web_dashboard_health": web_health,
         "review_terminal_decision": review.get("terminal_decision", "not_assessed"),
         "feedback_promotion_state": review.get("promotion_state", "not_assessed"),
         "digest": stable_digest(projection),

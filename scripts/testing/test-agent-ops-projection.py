@@ -3,12 +3,14 @@
 from __future__ import annotations
 
 import ast
+import errno
 import importlib.util
 from importlib.machinery import SourceFileLoader
 import json
 import os
 import sys
 import tempfile
+import threading
 import unittest
 from pathlib import Path
 from unittest import mock
@@ -68,6 +70,18 @@ def _healthy_review_facts() -> dict:
             {"lane": "codex", "role": "reviewer", "model_tier": "flagship",
              "eligibility": "binding_flagship", "state": "submitted", "verdict": "pass"},
         ],
+        "reason_codes": [],
+    }
+
+
+def _healthy_registry_facts() -> dict:
+    return {
+        "schema_version": "aq.registry-compatibility-facts.v1",
+        "lookup_health": "healthy",
+        "strict_mutation_health": "healthy",
+        "oversized_legacy_rows": 0,
+        "ambiguous_or_corrupt_rows": 0,
+        "max_legacy_bound_bytes": 65536,
         "reason_codes": [],
     }
 
@@ -177,6 +191,7 @@ class AgentOpsProjectionM0(unittest.TestCase):
             now=self.fixture["now"], registry=self.fixture["registry"],
             processes=self.fixture["processes"], inbox=self.fixture["inbox"],
             dispatch_contract=injected, review_feedback_facts=_healthy_review_facts(),
+            registry_compatibility_facts=_healthy_registry_facts(),
         )
         Draft202012Validator(self.schema).validate(projection)
         self.assertTrue(ops.contract_health(projection)["healthy"])
@@ -330,10 +345,12 @@ class AgentOpsProjectionC05B(unittest.TestCase):
     def setUpClass(cls) -> None:
         cls.schema = json.loads(SCHEMA.read_text(encoding="utf-8"))
 
-    def projection(self, facts: dict | None = None, dispatch: dict | None = None) -> dict:
+    def projection(self, facts: dict | None = None, dispatch: dict | None = None,
+                   registry_facts: dict | None = None) -> dict:
         return ops.project_agent_ops(
             now=1784127600, registry=[], processes=[], inbox=[],
             dispatch_contract=dispatch, review_feedback_facts=facts,
+            registry_compatibility_facts=registry_facts,
         )
 
     def assertProjectionError(self, reason: str, facts: dict) -> None:
@@ -603,7 +620,9 @@ class AgentOpsProjectionC05B(unittest.TestCase):
         dispatch["adapter_health"] = {lane: "healthy" for lane in dispatch["adapter_health"]}
         dispatch["coverage_health"] = {gate: "healthy" for gate in dispatch["coverage_health"]}
         dispatch["counts"] = {"queued": 0, "running": 0, "parked": 0, "terminal": 0}
-        self.assertTrue(ops.contract_health(self.projection(_healthy_review_facts(), dispatch))["healthy"])
+        self.assertTrue(ops.contract_health(
+            self.projection(_healthy_review_facts(), dispatch, _healthy_registry_facts())
+        )["healthy"])
 
     def test_c05b_27_repeated_projection_has_stable_canonical_digest(self) -> None:
         facts = _healthy_review_facts()
@@ -1190,6 +1209,378 @@ class AgentOpsProjectionM2A(unittest.TestCase):
             self.assertTrue(observed)
             self.assertTrue(all(1 <= revision <= 101 for revision in observed))
             self.assertEqual(observed[-1], 101)
+
+
+class RegistryCompatibilityR01(unittest.TestCase):
+    """R0.1 compatibility reader, CLI, pure projection, and TUI contract."""
+
+    @classmethod
+    def setUpClass(cls) -> None:
+        lib = REPO / "scripts/ai/lib/task_registry.py"
+        spec = importlib.util.spec_from_file_location("task_registry_r01", lib)
+        assert spec and spec.loader
+        cls.tr = importlib.util.module_from_spec(spec)
+        spec.loader.exec_module(cls.tr)  # type: ignore[union-attr]
+        cls.cli = REPO / "scripts/ai/aq-delegation-registry"
+
+    def _registry(self, root: Path):
+        directory = root / "delegation"
+        directory.mkdir(parents=True, exist_ok=True)
+        return self.tr.TaskRegistry(directory, repo_root=root)
+
+    @staticmethod
+    def _record(task_id: str, **extra) -> dict:
+        record = {"id": task_id, "agent": "codex", "status": "completed"}
+        record.update(extra)
+        return record
+
+    @staticmethod
+    def _encoded(record: dict) -> bytes:
+        return json.dumps(record, separators=(",", ":"), ensure_ascii=False).encode("utf-8")
+
+    def _sized_record(self, task_id: str, size: int, **extra) -> bytes:
+        record = self._record(task_id, pad="", **extra)
+        empty = self._encoded(record)
+        self.assertGreaterEqual(size, len(empty))
+        record["pad"] = "x" * (size - len(empty))
+        encoded = self._encoded(record)
+        self.assertEqual(len(encoded), size)
+        return encoded
+
+    @staticmethod
+    def _write(path: Path, lines: list[bytes], terminator: bytes = b"\n") -> None:
+        path.write_bytes(terminator.join(lines) + (terminator if terminator else b""))
+
+    def _cli(self, registry: Path, task_id: str):
+        import subprocess
+        return subprocess.run(
+            [sys.executable, str(self.cli), "--registry", str(registry), "show", task_id],
+            capture_output=True, text=True, check=False,
+        )
+
+    def test_r01_01_bounded_after_multiple_legacy_rows(self) -> None:
+        with tempfile.TemporaryDirectory() as d:
+            r = self._registry(Path(d))
+            rows = [self._sized_record(f"legacy-{i}", 4097 + i) for i in range(3)]
+            rows.append(self._encoded(self._record("wanted")))
+            self._write(r.registry_file, rows)
+            result = r.lookup_m2a_compatible("wanted")
+            self.assertTrue(result["ok"])
+            self.assertEqual(result["record"]["id"], "wanted")
+            self.assertEqual(result["registry_compatibility"]["oversized_legacy_rows"], 3)
+            self.assertEqual(result["registry_compatibility"]["lookup_health"], "degraded")
+
+    def test_r01_02_scan_to_eof_rejects_hidden_duplicate(self) -> None:
+        with tempfile.TemporaryDirectory() as d:
+            r = self._registry(Path(d))
+            self._write(r.registry_file, [
+                self._encoded(self._record("wanted")),
+                self._sized_record("other", 5000),
+                self._sized_record("wanted", 5001),
+            ])
+            result = r.lookup_m2a_compatible("wanted")
+            self.assertEqual((result["ok"], result["error_code"]),
+                             (False, "registry_duplicate_target"))
+
+    def test_r01_03_legacy_target_is_private_and_exit_four(self) -> None:
+        with tempfile.TemporaryDirectory() as d:
+            r = self._registry(Path(d)); canary = "R01_PRIVATE_CANARY"
+            self._write(r.registry_file, [self._sized_record("legacy-target", 6000, secret=canary)])
+            run = self._cli(r.registry_file, "legacy-target")
+            self.assertEqual(run.returncode, 4)
+            self.assertEqual(json.loads(run.stderr)["error_code"], "registry_target_legacy_oversized")
+            self.assertNotIn(canary, run.stdout + run.stderr)
+
+    def test_r01_04_payload_boundaries_all_terminators(self) -> None:
+        for size, expected in ((4096, "healthy"), (4097, "degraded"), (65536, "degraded")):
+            for terminator in (b"\n", b"\r\n", b""):
+                with self.subTest(size=size, terminator=terminator):
+                    with tempfile.TemporaryDirectory() as d:
+                        r = self._registry(Path(d)); row = self._sized_record("edge", size)
+                        r.registry_file.write_bytes(row + terminator)
+                        facts = r.scan_registry_compat_facts()
+                        self.assertEqual(facts["lookup_health"], expected)
+        with tempfile.TemporaryDirectory() as d:
+            r = self._registry(Path(d)); r.registry_file.write_bytes(self._sized_record("too-big", 65537) + b"\n")
+            self.assertEqual(r.lookup_m2a_compatible("x")["error_code"],
+                             "registry_legacy_row_over_compatibility_bound")
+
+    def test_r01_05_physical_line_framing_matrix(self) -> None:
+        good = [b"\n", b" \t\n", self._encoded(self._record("ok")) + b"\n",
+                self._encoded(self._record("ok")) + b"\r\n",
+                self._encoded(self._record("ok"))]
+        for raw in good:
+            with self.subTest(raw=raw[-8:]):
+                with tempfile.TemporaryDirectory() as d:
+                    r = self._registry(Path(d)); r.registry_file.write_bytes(raw)
+                    self.assertNotEqual(r.scan_registry_compat_facts()["lookup_health"], "blocked")
+        bad = [self._encoded(self._record("bad")) + b"\r",
+               self._encoded(self._record("bad")) + b"\r\r\n",
+               b'{"id":"bad","x":"raw\nnewline"}\n']
+        for raw in bad:
+            with tempfile.TemporaryDirectory() as d:
+                r = self._registry(Path(d)); r.registry_file.write_bytes(raw)
+                self.assertEqual(r.lookup_m2a_compatible("bad")["registry_compatibility"]["lookup_health"], "blocked")
+        with tempfile.TemporaryDirectory() as d:
+            r = self._registry(Path(d)); self._write(r.registry_file, [self._encoded(self._record("escaped", note="a\nb"))])
+            self.assertTrue(r.lookup_m2a_compatible("escaped")["ok"])
+
+    def test_r01_06_cumulative_limit_and_sentinel(self) -> None:
+        self.assertEqual(self.tr._M2A_MAX_REGISTRY_BYTES, 50 * 1024 * 1024)
+        with tempfile.TemporaryDirectory() as d, mock.patch.object(self.tr, "_M2A_MAX_REGISTRY_BYTES", 1024):
+            r = self._registry(Path(d)); r.registry_file.write_bytes((b" \n" * 512))
+            self.assertEqual(r.scan_registry_compat_facts()["lookup_health"], "healthy")
+            r.registry_file.write_bytes((b" \n" * 512) + b"x")
+            self.assertEqual(r.lookup_m2a_compatible("x")["error_code"], "registry_file_too_large")
+
+    def test_r01_07_short_read_eintr_early_eof_and_io_typing(self) -> None:
+        with tempfile.TemporaryDirectory() as d:
+            r = self._registry(Path(d)); self._write(r.registry_file, [self._encoded(self._record("ok"))])
+            real_read = os.read; calls = 0
+            def short_read(fd, count):
+                nonlocal calls
+                calls += 1
+                if calls == 1:
+                    raise InterruptedError(errno.EINTR, "interrupted")
+                return real_read(fd, min(count, 3))
+            with mock.patch.object(self.tr.os, "read", side_effect=short_read):
+                self.assertTrue(r.lookup_m2a_compatible("ok")["ok"])
+            real_fstat = os.fstat; fstat_calls = 0
+            def early_stat(fd):
+                nonlocal fstat_calls
+                fstat_calls += 1; st = real_fstat(fd)
+                if fstat_calls == 1:
+                    values = list(st); values[6] = st.st_size + 1
+                    return os.stat_result(values)
+                return st
+            with mock.patch.object(self.tr.os, "fstat", side_effect=early_stat):
+                self.assertEqual(r.lookup_m2a_compatible("ok")["error_code"], "registry_source_changed_during_read")
+            with mock.patch.object(self.tr.os, "read", side_effect=OSError(errno.EIO, "private")):
+                self.assertEqual(r.lookup_m2a_compatible("ok")["error_code"], "registry_source_unavailable")
+            with mock.patch.object(self.tr.os, "fstat", side_effect=OSError(errno.EIO, "private")):
+                self.assertEqual(r.lookup_m2a_compatible("ok")["error_code"], "registry_source_unavailable")
+
+    def test_r01_08_duplicate_keys_at_every_depth(self) -> None:
+        rows = [b'{"id":"x","id":"x"}', b'{"id":"x","nested":{"a":1,"a":2}}',
+                b'{"task_id":"x","record_version":1,"record_version":1}']
+        for row in rows:
+            for padded in (False, True):
+                with tempfile.TemporaryDirectory() as d:
+                    r = self._registry(Path(d))
+                    payload = row if not padded else row[:-1] + b',"pad":"' + b"x" * 5000 + b'"}'
+                    r.registry_file.write_bytes(payload + b"\n")
+                    self.assertEqual(r.lookup_m2a_compatible("x")["error_code"], "registry_record_duplicate_key")
+
+    def test_r01_09_identity_and_corruption_matrix(self) -> None:
+        cases = [
+            ({"pad": "x" * 5000, "record_version": 1, "id": "x"}, "registry_legacy_m2a_versioned"),
+            ({"status": "x"}, "registry_identity_missing"),
+            ({"id": " bad", "task_id": "valid"}, "registry_identity_invalid"),
+            ({"id": "a", "task_id": "b"}, "registry_identity_ambiguous"),
+            ({"id": 7}, "registry_identity_invalid"),
+        ]
+        for record, code in cases:
+            with tempfile.TemporaryDirectory() as d:
+                r = self._registry(Path(d)); self._write(r.registry_file, [self._encoded(record)])
+                self.assertEqual(r.lookup_m2a_compatible("valid")["error_code"], code)
+        raw_cases = [(b"[]\n", "registry_record_not_object"), (b"{bad}\n", "registry_record_malformed"),
+                     (b'{"id":"\xff"}\n', "registry_record_invalid_utf8")]
+        for raw, code in raw_cases:
+            with tempfile.TemporaryDirectory() as d:
+                r = self._registry(Path(d)); r.registry_file.write_bytes(raw)
+                self.assertEqual(r.lookup_m2a_compatible("x")["error_code"], code)
+
+    def test_r01_10_identity_grammar_is_exact(self) -> None:
+        allowed = ["a", "A" * 128, "a.b_c:d-e"]
+        denied = ["", "a" * 129, ".lead", " has-space", "trail ", "\u00e9", "e\u0301", "../x", "%2Fx"]
+        for value in allowed:
+            self.assertTrue(self.tr.TaskRegistry._m2a_valid_id_str(value), value)
+        for value in denied:
+            self.assertFalse(self.tr.TaskRegistry._m2a_valid_id_str(value), value)
+        self.assertNotEqual("Case", "case")
+
+    def test_r01_11_duplicate_order_and_size_cross_product(self) -> None:
+        bounded = self._encoded(self._record("target")); legacy = self._sized_record("target", 5000)
+        for rows in ([bounded, bounded], [bounded, legacy], [legacy, bounded], [legacy, legacy]):
+            with tempfile.TemporaryDirectory() as d:
+                r = self._registry(Path(d)); self._write(r.registry_file, list(rows))
+                self.assertEqual(r.lookup_m2a_compatible("target")["error_code"], "registry_duplicate_target")
+        with tempfile.TemporaryDirectory() as d, mock.patch.object(self.tr, "_M2A_MAX_REGISTRY_BYTES", 512 * 1024):
+            r = self._registry(Path(d)); rows = [self._encoded(self._record(f"id-{i}")) for i in range(5000)]
+            self._write(r.registry_file, rows)
+            self.assertEqual(r.lookup_m2a_compatible("missing")["error_code"], "registry_task_not_found")
+
+    def test_r01_12_not_found_only_after_safe_classification(self) -> None:
+        with tempfile.TemporaryDirectory() as d:
+            r = self._registry(Path(d)); self._write(r.registry_file, [self._encoded(self._record("other"))])
+            self.assertEqual(r.lookup_m2a_compatible("missing")["error_code"], "registry_task_not_found")
+            r.registry_file.write_bytes(b'{"id":"other"}\n{bad}\n')
+            self.assertEqual(r.lookup_m2a_compatible("missing")["error_code"], "registry_record_malformed")
+
+    def test_r01_13_source_types_permissions_and_bounds(self) -> None:
+        with tempfile.TemporaryDirectory() as d:
+            root = Path(d); r = self._registry(root); real = r.registry_file.parent / "real"
+            real.write_bytes(self._encoded(self._record("x")) + b"\n"); r.registry_file.symlink_to(real)
+            self.assertEqual(r.lookup_m2a_compatible("x")["error_code"], "registry_source_symlink")
+            r.registry_file.unlink(); r.registry_file.mkdir()
+            self.assertEqual(r.lookup_m2a_compatible("x")["error_code"], "registry_source_not_regular")
+            r.registry_file.rmdir(); os.mkfifo(r.registry_file)
+            results: list[dict] = []
+            errors: list[BaseException] = []
+            done = threading.Event()
+            def lookup_fifo() -> None:
+                try:
+                    results.append(r.lookup_m2a_compatible("x"))
+                except BaseException as exc:  # Preserve worker failure for the test thread.
+                    errors.append(exc)
+                finally:
+                    done.set()
+            worker = threading.Thread(target=lookup_fifo, daemon=True)
+            worker.start()
+            self.assertTrue(done.wait(timeout=1.0), "FIFO compatibility scan exceeded watchdog")
+            if errors:
+                raise errors[0]
+            self.assertEqual(results[0]["error_code"], "registry_source_not_regular")
+        with tempfile.TemporaryDirectory() as d:
+            r = self._registry(Path(d))
+            with mock.patch.object(self.tr.os, "open", side_effect=PermissionError(errno.EACCES, "private")):
+                self.assertEqual(r.lookup_m2a_compatible("x")["error_code"], "registry_read_open_failed")
+
+    def test_r01_14_descriptor_is_read_only_and_no_writer_artifacts(self) -> None:
+        with tempfile.TemporaryDirectory() as d:
+            r = self._registry(Path(d)); self._write(r.registry_file, [self._encoded(self._record("x"))])
+            before = (r.registry_file.read_bytes(), r.registry_file.stat().st_ino,
+                      r.registry_file.stat().st_mode, r.registry_file.stat().st_mtime_ns,
+                      sorted(p.name for p in r.registry_file.parent.iterdir()))
+            real_open = os.open; flags_seen = []
+            def observe(path, flags, *args, **kwargs):
+                if Path(path) == r.registry_file:
+                    flags_seen.append(flags)
+                    self.assertEqual(flags & os.O_ACCMODE, os.O_RDONLY)
+                    self.assertFalse(flags & (os.O_CREAT | os.O_TRUNC | os.O_APPEND))
+                    if hasattr(os, "O_NOATIME"):
+                        self.assertFalse(flags & os.O_NOATIME)
+                return real_open(path, flags, *args, **kwargs)
+            with mock.patch.object(self.tr.os, "open", side_effect=observe):
+                self.assertTrue(r.lookup_m2a_compatible("x")["ok"])
+            after = (r.registry_file.read_bytes(), r.registry_file.stat().st_ino,
+                     r.registry_file.stat().st_mode, r.registry_file.stat().st_mtime_ns,
+                     sorted(p.name for p in r.registry_file.parent.iterdir()))
+            self.assertEqual(before, after); self.assertEqual(len(flags_seen), 1)
+
+    def test_r01_15_privacy_canary_absent_everywhere(self) -> None:
+        with tempfile.TemporaryDirectory() as d:
+            r = self._registry(Path(d)); canary = "R01_SECRET_PROMPT_CANARY"
+            self._write(r.registry_file, [self._sized_record("legacy", 7000, description=canary),
+                                          self._encoded(self._record("safe"))])
+            result = r.lookup_m2a_compatible("safe")
+            rendered = json.dumps(result) + json.dumps(ops.project_registry_compatibility(result["registry_compatibility"]))
+            self.assertNotIn(canary, rendered)
+
+    def test_r01_16_strict_show_and_mutation_still_block(self) -> None:
+        with tempfile.TemporaryDirectory() as d:
+            r = self._registry(Path(d)); self._write(r.registry_file, [self._sized_record("legacy", 5000),
+                                                                      self._encoded(self._record("safe"))])
+            self.assertTrue(r.lookup_m2a_compatible("safe")["ok"])
+            with self.assertRaisesRegex(self.tr.RegistryError, "registry_record_too_large"):
+                r.show_m2a("safe")
+            with self.assertRaisesRegex(self.tr.RegistryError, "registry_record_too_large"):
+                r.begin("new", "codex", "reviewer", "read_only", "code_review", "none")
+
+    def test_r01_17_cli_and_facts_shapes_are_closed_and_exit_codes_exact(self) -> None:
+        facts_keys = {"schema_version", "lookup_health", "strict_mutation_health", "oversized_legacy_rows",
+                      "ambiguous_or_corrupt_rows", "max_legacy_bound_bytes", "reason_codes"}
+        with tempfile.TemporaryDirectory() as d:
+            r = self._registry(Path(d)); self._write(r.registry_file, [self._encoded(self._record("ok"))])
+            success = self._cli(r.registry_file, "ok"); self.assertEqual(success.returncode, 0)
+            document = json.loads(success.stdout)
+            self.assertEqual(set(document), {"schema_version", "ok", "record", "error_code", "registry_compatibility"})
+            self.assertEqual(set(document["registry_compatibility"]), facts_keys)
+            self.assertEqual(self._cli(r.registry_file, "missing").returncode, 3)
+            r.registry_file.write_bytes(b"{bad}\n"); self.assertEqual(self._cli(r.registry_file, "x").returncode, 5)
+            r.registry_file.unlink(); self.assertEqual(self._cli(r.registry_file, "x").returncode, 6)
+            self.assertEqual(self._cli(r.registry_file, "../bad").returncode, 2)
+        with self.assertRaisesRegex(ops.ProjectionError, "reason_codes_invalid"):
+            ops.project_registry_compatibility({
+                "schema_version": "aq.registry-compatibility-facts.v1", "lookup_health": "blocked",
+                "strict_mutation_health": "blocked", "oversized_legacy_rows": None,
+                "ambiguous_or_corrupt_rows": None, "max_legacy_bound_bytes": 65536,
+                "reason_codes": ["invented_reason"],
+            })
+
+    def test_r01_18_projector_is_pure_with_injected_facts(self) -> None:
+        facts = {"schema_version": "aq.registry-compatibility-facts.v1", "lookup_health": "degraded",
+                 "strict_mutation_health": "blocked", "oversized_legacy_rows": 2,
+                 "ambiguous_or_corrupt_rows": 0, "max_legacy_bound_bytes": 65536,
+                 "reason_codes": ["legacy_oversized_rows_present"]}
+        with mock.patch("builtins.open", side_effect=AssertionError("I/O used")), \
+             mock.patch.object(os, "getenv", side_effect=AssertionError("env used")), \
+             mock.patch("time.time", side_effect=AssertionError("clock used")):
+            self.assertEqual(ops.project_registry_compatibility(facts)["oversized_legacy_rows"], 2)
+        source = MODULE.read_text(encoding="utf-8")
+        self.assertNotIn("import task_registry", source)
+
+    def test_r01_19_concurrent_atomic_replace_is_whole_snapshot(self) -> None:
+        with tempfile.TemporaryDirectory() as d:
+            r = self._registry(Path(d)); self._write(r.registry_file, [self._encoded(self._record("old"))])
+            replacement = r.registry_file.parent / "replacement"
+            self._write(replacement, [self._encoded(self._record("new"))])
+            real_open = os.open; replaced = False
+            def swap_after_open(path, flags, *args, **kwargs):
+                nonlocal replaced
+                fd = real_open(path, flags, *args, **kwargs)
+                if Path(path) == r.registry_file and not replaced:
+                    os.replace(replacement, r.registry_file); replaced = True
+                return fd
+            with mock.patch.object(self.tr.os, "open", side_effect=swap_after_open):
+                self.assertTrue(r.lookup_m2a_compatible("old")["ok"])
+            self.assertTrue(r.lookup_m2a_compatible("new")["ok"])
+
+    def test_r01_20_contract_health_requires_registry_and_web(self) -> None:
+        fixture = json.loads(FIXTURE.read_text(encoding="utf-8"))
+        base = ops.project_agent_ops(now=fixture["now"], registry=[], processes=[], inbox=[])
+        dispatch = json.loads(json.dumps(base["dispatch_contract"]))
+        dispatch.update(health="healthy", broker_state="healthy", reason_codes=[])
+        dispatch["adapter_health"] = {lane: "healthy" for lane in dispatch["adapter_health"]}
+        dispatch["coverage_health"] = {gate: "healthy" for gate in dispatch["coverage_health"]}
+        dispatch["counts"] = {"queued": 0, "running": 0, "parked": 0, "terminal": 0}
+        healthy_facts = {"schema_version": "aq.registry-compatibility-facts.v1", "lookup_health": "healthy",
+                         "strict_mutation_health": "healthy", "oversized_legacy_rows": 0,
+                         "ambiguous_or_corrupt_rows": 0, "max_legacy_bound_bytes": 65536, "reason_codes": []}
+        projection = ops.project_agent_ops(now=fixture["now"], registry=[], processes=[], inbox=[],
+                                           dispatch_contract=dispatch, review_feedback_facts=_healthy_review_facts(),
+                                           registry_compatibility_facts=healthy_facts)
+        self.assertTrue(ops.contract_health(projection)["healthy"])
+        projection["registry_compatibility"]["lookup_health"] = "degraded"
+        self.assertFalse(ops.contract_health(projection)["healthy"])
+        projection["registry_compatibility"]["lookup_health"] = "healthy"
+        projection["dispatch_contract"]["coverage_health"]["web_dashboard"] = "unavailable"
+        self.assertFalse(ops.contract_health(projection)["healthy"])
+
+    def test_r01_21_tui_injects_machine_facts_and_renders_state(self) -> None:
+        from rich.console import Console
+        with tempfile.TemporaryDirectory() as d:
+            root = Path(d); proc = root / "proc"; outputs = root / "outputs"
+            inbox = root / "inbox"; archive = root / "archive"; registry = root / "delegation" / "registry.jsonl"
+            for path in (proc, outputs, inbox, archive, registry.parent): path.mkdir(parents=True, exist_ok=True)
+            private_canary = "R01_PRIVATE_TASK_CONTENT_CANARY_7E4C2A"
+            registry.write_bytes(
+                self._sized_record(private_canary, 5000, description=private_canary)
+                + b"\n" + self._encoded(self._record("safe")) + b"\n"
+            )
+            projection = tui.read_agent_ops_projection(proc_root=proc, registry_path=registry,
+                                                       outputs_dir=outputs, inbox_dir=inbox,
+                                                       archive_root=archive, use_cache=False)
+            facts = projection["registry_compatibility"]
+            self.assertEqual((facts["lookup_health"], facts["strict_mutation_health"]), ("degraded", "blocked"))
+            self.assertNotIn(private_canary, json.dumps(facts))
+            with mock.patch.object(tui, "read_agent_ops_projection", return_value=projection), \
+                 mock.patch.object(tui, "probe_services", return_value=[]):
+                console = Console(record=True, width=120); console.print(tui.panel_health())
+                rendered = console.export_text()
+            self.assertNotIn(private_canary, rendered)
+            self.assertIn("available / migration required", rendered)
+            self.assertIn("registry mutation", rendered)
 
 
 if __name__ == "__main__":
