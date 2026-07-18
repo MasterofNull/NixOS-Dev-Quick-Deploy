@@ -57,6 +57,7 @@ from agent_ops_projection import (  # noqa: E402
     contract_health,
     project_agent_ops,
 )
+from task_registry import TaskRegistry  # noqa: E402
 
 console = Console()
 REPO_ROOT = Path(__file__).resolve().parent.parent.parent
@@ -317,6 +318,26 @@ def read_registry_facts(registry_path: Path = REGISTRY,
     return rows, sorted(set(errors))
 
 
+def read_registry_compatibility_facts(registry_path: Path = REGISTRY) -> dict:
+    """Run the sole bounded compatibility scanner and return sanitized facts only."""
+    registry = TaskRegistry(registry_path.parent, repo_root=REPO_ROOT)
+    registry.registry_file = registry_path
+    try:
+        facts = registry.scan_registry_compat_facts()
+    except Exception:
+        # The adapter never exposes a path, record, ID, line, or parser exception.
+        return {
+            "schema_version": "aq.registry-compatibility-facts.v1",
+            "lookup_health": "unavailable",
+            "strict_mutation_health": "unavailable",
+            "oversized_legacy_rows": None,
+            "ambiguous_or_corrupt_rows": None,
+            "max_legacy_bound_bytes": 65536,
+            "reason_codes": ["registry_source_unavailable"],
+        }
+    return facts
+
+
 def _declared_output_present(task_path: Path, raw: bytes) -> bool:
     match = OUTPUT_PATH.search(raw.decode("utf-8", "replace"))
     if not match:
@@ -390,12 +411,17 @@ def read_agent_ops_projection(*, proc_root: Path = PROC_ROOT, registry_path: Pat
         return cached
     processes, proc_errors = read_proc_facts(proc_root)
     registry, registry_errors = read_registry_facts(registry_path, outputs_dir)
+    registry_compatibility = read_registry_compatibility_facts(registry_path)
     inbox, inbox_errors = read_inbox_facts(inbox_dir, archive_root)
     try:
         projection = project_agent_ops(now=int(_now()), registry=registry,
-                                       processes=processes, inbox=inbox)
+                                       processes=processes, inbox=inbox,
+                                       registry_compatibility_facts=registry_compatibility)
     except ProjectionError as exc:
-        projection = project_agent_ops(now=int(_now()), registry=[], processes=[], inbox=[])
+        projection = project_agent_ops(
+            now=int(_now()), registry=[], processes=[], inbox=[],
+            registry_compatibility_facts=registry_compatibility,
+        )
         proc_errors.append(str(exc))
     source_errors = sorted(set(proc_errors + registry_errors + inbox_errors))
     if source_errors:
@@ -695,6 +721,26 @@ def panel_health() -> Panel:
     for s in probe_services():
         style = "bold green" if s["state"] == "ok" else "bold red"
         t.add_row(s["name"], Text(s["state"], style=style), str(s["port"]))
+    compat = read_agent_ops_projection().get("registry_compatibility", {})
+    lookup = compat.get("lookup_health", "unavailable")
+    mutation = compat.get("strict_mutation_health", "unavailable")
+    lookup_label = {
+        "healthy": "healthy",
+        "degraded": "available / migration required",
+        "blocked": "blocked",
+        "unavailable": "unavailable",
+    }.get(lookup, "unavailable")
+    lookup_style = "bold green" if lookup == "healthy" else (
+        "yellow" if lookup == "degraded" else "bold red"
+    )
+    mutation_label = "healthy" if mutation == "healthy" else (
+        "migration required" if mutation == "blocked" else "unavailable"
+    )
+    mutation_style = "bold green" if mutation == "healthy" else (
+        "yellow" if mutation == "blocked" else "bold red"
+    )
+    t.add_row("registry lookup", Text(lookup_label, style=lookup_style), "—")
+    t.add_row("registry mutation", Text(mutation_label, style=mutation_style), "—")
     return Panel(t, title="Service Health (live probe)", border_style="cyan")
 
 

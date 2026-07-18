@@ -195,13 +195,23 @@ def main() -> int:
             return 1
 
     if args.cmd == "show":
-        try:
-            result = reg.show_m2a(args.task_id)
-            print(json.dumps({"ok": True, "record": result}, indent=2))
+        result = reg.lookup_m2a_compatible(args.task_id)
+        _EXIT = {
+            None: 0,
+            "registry_task_not_found": 3,
+            "registry_target_legacy_oversized": 4,
+            "registry_task_id_invalid": 2,
+        }
+        # Exit 5 means the source was read but cannot be trusted. Exit 6 is
+        # reserved for access/read availability, never integrity ambiguity.
+        _UNAVAIL = frozenset({"registry_read_open_failed", "registry_source_unavailable"})
+        error_code = result.get("error_code")
+        if result["ok"]:
+            print(json.dumps(result, indent=2))
             return 0
-        except RegistryError as exc:
-            print(json.dumps({"ok": False, "error": str(exc)}), file=sys.stderr)
-            return 1
+        code = _EXIT.get(error_code, 6 if error_code in _UNAVAIL else 5)
+        print(json.dumps(result, indent=2), file=sys.stderr)
+        return code
 
     if args.cmd == "reconcile-m2a":
         try:
