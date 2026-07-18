@@ -1,0 +1,744 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>AQ-OS Unified Program — Progress Tracker</title>
+<style>
+  :root {
+    --bg: #f3f5f8;
+    --surface: #ffffff;
+    --surface-2: #eaeef3;
+    --border: #d7dde5;
+    --ink: #1a212c;
+    --ink-muted: #5b6472;
+    --ink-faint: #8993a2;
+    --accent: #256b80;
+    --accent-soft: rgba(37, 107, 128, 0.10);
+    --good: #29885c;
+    --active: #a6690a;
+    --blocked: #b83f3f;
+    --notstarted: #8a93a1;
+    --good-soft: rgba(41, 136, 92, 0.14);
+    --active-soft: rgba(166, 105, 10, 0.14);
+    --blocked-soft: rgba(184, 63, 63, 0.14);
+    --notstarted-soft: rgba(138, 147, 161, 0.16);
+    --shadow: 0 1px 2px rgba(20, 26, 36, 0.06), 0 8px 24px -12px rgba(20, 26, 36, 0.12);
+    --radius: 7px;
+    --font-mono: ui-monospace, "JetBrains Mono", "Cascadia Code", "SF Mono", Consolas, "Liberation Mono", monospace;
+    --font-sans: ui-sans-serif, "Segoe UI", system-ui, -apple-system, "Helvetica Neue", Arial, sans-serif;
+  }
+
+  @media (prefers-color-scheme: dark) {
+    :root {
+      --bg: #10141b;
+      --surface: #161c25;
+      --surface-2: #1d2531;
+      --border: #2b3444;
+      --ink: #e6ecf4;
+      --ink-muted: #93a0b2;
+      --ink-faint: #626d7e;
+      --accent: #6fc2d6;
+      --accent-soft: rgba(111, 194, 214, 0.14);
+      --good: #4fbd85;
+      --active: #e0aa4a;
+      --blocked: #e2695a;
+      --notstarted: #6b7688;
+      --good-soft: rgba(79, 189, 133, 0.14);
+      --active-soft: rgba(224, 170, 74, 0.14);
+      --blocked-soft: rgba(226, 105, 90, 0.16);
+      --notstarted-soft: rgba(107, 118, 136, 0.18);
+      --shadow: 0 1px 2px rgba(0, 0, 0, 0.3), 0 10px 30px -14px rgba(0, 0, 0, 0.5);
+    }
+  }
+  :root[data-theme="dark"] {
+    --bg: #10141b; --surface: #161c25; --surface-2: #1d2531; --border: #2b3444;
+    --ink: #e6ecf4; --ink-muted: #93a0b2; --ink-faint: #626d7e;
+    --accent: #6fc2d6; --accent-soft: rgba(111, 194, 214, 0.14);
+    --good: #4fbd85; --active: #e0aa4a; --blocked: #e2695a; --notstarted: #6b7688;
+    --good-soft: rgba(79, 189, 133, 0.14); --active-soft: rgba(224, 170, 74, 0.14);
+    --blocked-soft: rgba(226, 105, 90, 0.16); --notstarted-soft: rgba(107, 118, 136, 0.18);
+    --shadow: 0 1px 2px rgba(0, 0, 0, 0.3), 0 10px 30px -14px rgba(0, 0, 0, 0.5);
+  }
+  :root[data-theme="light"] {
+    --bg: #f3f5f8; --surface: #ffffff; --surface-2: #eaeef3; --border: #d7dde5;
+    --ink: #1a212c; --ink-muted: #5b6472; --ink-faint: #8993a2;
+    --accent: #256b80; --accent-soft: rgba(37, 107, 128, 0.10);
+    --good: #29885c; --active: #a6690a; --blocked: #b83f3f; --notstarted: #8a93a1;
+    --good-soft: rgba(41, 136, 92, 0.14); --active-soft: rgba(166, 105, 10, 0.14);
+    --blocked-soft: rgba(184, 63, 63, 0.14); --notstarted-soft: rgba(138, 147, 161, 0.16);
+    --shadow: 0 1px 2px rgba(20, 26, 36, 0.06), 0 8px 24px -12px rgba(20, 26, 36, 0.12);
+  }
+
+  * { box-sizing: border-box; }
+  body {
+    margin: 0;
+    background: var(--bg);
+    color: var(--ink);
+    font-family: var(--font-sans);
+    font-size: 15px;
+    line-height: 1.45;
+    -webkit-font-smoothing: antialiased;
+  }
+  .wrap { max-width: 1180px; margin: 0 auto; padding: 28px 24px 60px; }
+
+  a { color: var(--accent); }
+  h1, h2, h3 { text-wrap: balance; }
+
+  /* ---------- header ---------- */
+  .top {
+    display: flex;
+    align-items: flex-end;
+    justify-content: space-between;
+    gap: 16px;
+    flex-wrap: wrap;
+    border-bottom: 1px solid var(--border);
+    padding-bottom: 18px;
+    margin-bottom: 22px;
+  }
+  .eyebrow {
+    font-family: var(--font-mono);
+    font-size: 0.72rem;
+    letter-spacing: 0.08em;
+    text-transform: uppercase;
+    color: var(--ink-faint);
+    margin: 0 0 6px;
+  }
+  h1 {
+    font-family: var(--font-mono);
+    font-size: 1.5rem;
+    font-weight: 600;
+    letter-spacing: -0.01em;
+    margin: 0;
+  }
+  .top-right { display: flex; align-items: center; gap: 10px; }
+  .updated {
+    font-family: var(--font-mono);
+    font-size: 0.72rem;
+    color: var(--ink-faint);
+  }
+  .chip {
+    display: inline-flex;
+    align-items: center;
+    gap: 5px;
+    font-family: var(--font-mono);
+    font-size: 0.68rem;
+    letter-spacing: 0.05em;
+    text-transform: uppercase;
+    padding: 4px 9px;
+    border-radius: 100px;
+    border: 1px solid currentColor;
+    white-space: nowrap;
+  }
+  .chip-revision { color: var(--active); background: var(--active-soft); }
+
+  /* ---------- stats ---------- */
+  .stats {
+    display: grid;
+    grid-template-columns: repeat(4, 1fr);
+    gap: 12px;
+    margin-bottom: 30px;
+  }
+  .stat {
+    background: var(--surface);
+    border: 1px solid var(--border);
+    border-radius: var(--radius);
+    padding: 14px 16px;
+    box-shadow: var(--shadow);
+  }
+  .stat-num {
+    display: block;
+    font-family: var(--font-mono);
+    font-size: 1.5rem;
+    font-weight: 600;
+    font-variant-numeric: tabular-nums;
+    color: var(--ink);
+  }
+  .stat-label {
+    display: block;
+    font-size: 0.74rem;
+    color: var(--ink-muted);
+    margin-top: 2px;
+  }
+  .stat.warn .stat-num { color: var(--active); }
+  .stat.crit .stat-num { color: var(--blocked); }
+
+  section { margin-bottom: 34px; }
+  .section-head { display: flex; align-items: baseline; justify-content: space-between; gap: 12px; margin-bottom: 12px; flex-wrap: wrap; }
+  h2 {
+    font-family: var(--font-mono);
+    font-size: 0.82rem;
+    font-weight: 600;
+    text-transform: uppercase;
+    letter-spacing: 0.05em;
+    color: var(--ink);
+    margin: 0;
+  }
+  .hint { font-size: 0.78rem; color: var(--ink-faint); margin: 0; }
+
+  /* ---------- gantt ---------- */
+  .gantt {
+    background: var(--surface);
+    border: 1px solid var(--border);
+    border-radius: var(--radius);
+    box-shadow: var(--shadow);
+    padding: 14px 18px 18px;
+    overflow-x: auto;
+  }
+  .lane {
+    display: grid;
+    grid-template-columns: 250px 1fr 56px;
+    align-items: center;
+    gap: 14px;
+    padding: 7px 0;
+    border-bottom: 1px solid var(--border);
+    position: relative;
+  }
+  .lane:last-child { border-bottom: none; }
+  .lane-label {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    min-width: 0;
+  }
+  .stripe { width: 4px; align-self: stretch; border-radius: 2px; flex: none; min-height: 18px; }
+  .lane-name { font-size: 0.8rem; min-width: 0; }
+  .lane-code { font-family: var(--font-mono); color: var(--ink-faint); font-size: 0.72rem; display: block; }
+  .lane-title { color: var(--ink); }
+  .lane-sub { display: block; font-size: 0.68rem; color: var(--ink-faint); margin-top: 1px; }
+  .bar-track {
+    appearance: none;
+    display: block;
+    width: 100%;
+    padding: 0;
+    position: relative;
+    height: 20px;
+    background: var(--surface-2);
+    border: 1px solid var(--border);
+    border-radius: 4px;
+    overflow: hidden;
+    cursor: default;
+  }
+  .bar-track:focus-visible, a:focus-visible, summary:focus-visible {
+    outline: 3px solid var(--accent);
+    outline-offset: 3px;
+  }
+  .bar-fill {
+    position: absolute;
+    inset: 0;
+    width: 0%;
+    border-radius: 3px;
+  }
+  .bar-fill.st-active { background: var(--active); }
+  .bar-fill.st-blocked { background: repeating-linear-gradient(135deg, var(--blocked) 0 6px, transparent 6px 12px); opacity: 0.8; width: 100% !important; }
+  .bar-fill.st-notstarted { background: transparent; }
+  .bar-pct {
+    font-family: var(--font-mono);
+    font-size: 0.72rem;
+    font-variant-numeric: tabular-nums;
+    color: var(--ink-muted);
+    text-align: right;
+  }
+  .lane[data-status="notstarted"] .bar-pct { color: var(--ink-faint); }
+
+  .legend { display: flex; flex-wrap: wrap; gap: 16px; margin-top: 14px; padding-top: 12px; border-top: 1px solid var(--border); }
+  .legend-item { display: flex; align-items: center; gap: 6px; font-size: 0.72rem; color: var(--ink-muted); }
+  .legend-swatch { width: 10px; height: 10px; border-radius: 2px; flex: none; }
+
+  #tooltip {
+    position: fixed;
+    max-width: 280px;
+    background: var(--ink);
+    color: var(--bg);
+    font-size: 0.75rem;
+    line-height: 1.4;
+    padding: 8px 10px;
+    border-radius: 6px;
+    pointer-events: none;
+    opacity: 0;
+    transform: translateY(4px);
+    transition: opacity 0.12s ease, transform 0.12s ease;
+    z-index: 50;
+    box-shadow: var(--shadow);
+  }
+  #tooltip.show { opacity: 1; transform: translateY(0); }
+
+  /* ---------- kanban ---------- */
+  .board {
+    display: grid;
+    grid-template-columns: repeat(4, 1fr);
+    gap: 14px;
+    align-items: start;
+  }
+  .col {
+    background: var(--surface);
+    border: 1px solid var(--border);
+    border-radius: var(--radius);
+    box-shadow: var(--shadow);
+    padding: 10px;
+    min-width: 0;
+  }
+  .col-head {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    padding: 4px 4px 10px;
+  }
+  .col-title {
+    font-family: var(--font-mono);
+    font-size: 0.68rem;
+    letter-spacing: 0.06em;
+    text-transform: uppercase;
+    color: var(--ink-muted);
+  }
+  .col-count {
+    font-family: var(--font-mono);
+    font-size: 0.68rem;
+    color: var(--ink-faint);
+    background: var(--surface-2);
+    border-radius: 100px;
+    padding: 1px 7px;
+  }
+  .col[data-col="done"] .col-title { color: var(--good); }
+  .col[data-col="active"] .col-title { color: var(--active); }
+  .col[data-col="blocked"] .col-title { color: var(--blocked); }
+
+  .card {
+    background: var(--surface-2);
+    border: 1px solid var(--border);
+    border-left: 3px solid var(--notstarted);
+    border-radius: 5px;
+    padding: 9px 10px;
+    margin-bottom: 8px;
+    font-size: 0.78rem;
+  }
+  .card:last-child { margin-bottom: 0; }
+  .col[data-col="done"] .card { border-left-color: var(--good); }
+  .col[data-col="active"] .card { border-left-color: var(--active); }
+  .col[data-col="blocked"] .card { border-left-color: var(--blocked); }
+  .card-title { color: var(--ink); font-weight: 600; display: flex; align-items: center; gap: 6px; }
+  .card-note { color: var(--ink-muted); font-size: 0.72rem; margin-top: 3px; }
+  .live-dot {
+    width: 6px; height: 6px; border-radius: 50%; background: var(--active); flex: none;
+    box-shadow: 0 0 0 0 var(--active-soft);
+    animation: pulse 2s infinite;
+  }
+  @keyframes pulse {
+    0% { box-shadow: 0 0 0 0 var(--active-soft); }
+    70% { box-shadow: 0 0 0 6px transparent; }
+    100% { box-shadow: 0 0 0 0 transparent; }
+  }
+
+  /* ---------- two-col: gate + issues ---------- */
+  .two-col { display: grid; grid-template-columns: 1.3fr 1fr; gap: 16px; align-items: start; }
+  .panel {
+    background: var(--surface);
+    border: 1px solid var(--border);
+    border-radius: var(--radius);
+    box-shadow: var(--shadow);
+    padding: 14px 16px 16px;
+  }
+  table { width: 100%; border-collapse: collapse; font-size: 0.76rem; }
+  th, td { text-align: left; padding: 6px 8px; border-bottom: 1px solid var(--border); vertical-align: top; }
+  th { font-family: var(--font-mono); font-size: 0.65rem; text-transform: uppercase; letter-spacing: 0.05em; color: var(--ink-faint); font-weight: 600; }
+  td.qid { font-family: var(--font-mono); color: var(--ink-faint); width: 34px; }
+  tr:last-child td { border-bottom: none; }
+  .table-wrap { overflow-x: auto; }
+
+  .issue { padding: 9px 0; border-bottom: 1px solid var(--border); }
+  .issue:last-child { border-bottom: none; padding-bottom: 0; }
+  .issue:first-child { padding-top: 0; }
+  .issue-head { display: flex; align-items: center; gap: 8px; }
+  .issue-title { font-family: var(--font-mono); font-size: 0.78rem; color: var(--ink); }
+  .sev {
+    font-family: var(--font-mono); font-size: 0.62rem; text-transform: uppercase; letter-spacing: 0.04em;
+    padding: 1px 6px; border-radius: 100px; background: var(--blocked-soft); color: var(--blocked);
+  }
+  .issue-note { font-size: 0.74rem; color: var(--ink-muted); margin-top: 3px; }
+
+  footer {
+    margin-top: 30px;
+    padding-top: 14px;
+    border-top: 1px solid var(--border);
+    font-size: 0.7rem;
+    color: var(--ink-faint);
+    font-family: var(--font-mono);
+  }
+  .provenance { margin-top: 10px; }
+  .provenance summary { cursor: pointer; color: var(--accent); }
+  .provenance-list { margin: 8px 0 0; padding-left: 20px; overflow-wrap: anywhere; }
+  .provenance-list li { margin: 4px 0; }
+  .sr-only {
+    position: absolute; width: 1px; height: 1px; padding: 0; margin: -1px;
+    overflow: hidden; clip: rect(0, 0, 0, 0); white-space: nowrap; border: 0;
+  }
+
+  @media (max-width: 880px) {
+    .stats { grid-template-columns: repeat(2, 1fr); }
+    .board { grid-template-columns: 1fr; }
+    .two-col { grid-template-columns: 1fr; }
+    .lane { grid-template-columns: 150px 1fr 40px; }
+    .lane-sub { display: none; }
+  }
+
+  @media (prefers-reduced-motion: reduce) {
+    * { animation: none !important; transition: none !important; }
+  }
+</style>
+</head>
+<body>
+
+<div class="wrap">
+  <header class="top">
+    <div>
+      <p class="eyebrow">NixOS-Dev-Quick-Deploy · AQ-OS Unified Program</p>
+      <h1>Refactor Progress Tracker</h1>
+    </div>
+    <div class="top-right">
+      <span class="chip chip-revision">Frozen Evidence Snapshot</span>
+      <span class="updated">updated 2026-07-18 04:01 UTC</span>
+    </div>
+  </header>
+
+  <section class="stats" aria-label="Program summary">
+    <div class="stat">
+      <span class="stat-num" id="track-count">&mdash;</span>
+      <span class="stat-label">tracks with active work</span>
+    </div>
+    <div class="stat warn">
+      <span class="stat-num" id="foundation-a-gate-count">&mdash;</span>
+      <span class="stat-label">blocking gate (Foundation A)</span>
+    </div>
+    <div class="stat warn">
+      <span class="stat-num" id="pending-decision-count">&mdash;</span>
+      <span class="stat-label">Q decisions pending ratification</span>
+    </div>
+    <div class="stat crit">
+      <span class="stat-num" id="high-issue-count">&mdash;</span>
+      <span class="stat-label">open high-severity issues</span>
+    </div>
+  </section>
+
+  <section class="roadmap">
+    <div class="section-head">
+      <h2>Program sequence</h2>
+      <p class="hint">Ordered by dependency, not calendar date — hover a bar for detail.</p>
+    </div>
+    <div class="gantt" id="gantt"></div>
+    <div class="legend">
+      <span class="legend-item"><span class="legend-swatch" style="background:var(--good)"></span>Done</span>
+      <span class="legend-item"><span class="legend-swatch" style="background:var(--active)"></span>Active</span>
+      <span class="legend-item"><span class="legend-swatch" style="background:var(--blocked)"></span>Blocked</span>
+      <span class="legend-item"><span class="legend-swatch" style="background:var(--notstarted)"></span>Not started</span>
+    </div>
+  </section>
+
+  <section class="kanban">
+    <div class="section-head">
+      <h2>Work items</h2>
+    </div>
+    <div class="board" id="board"></div>
+  </section>
+
+  <section class="two-col">
+    <div class="panel">
+      <h2 style="margin-bottom:10px;">Owner decision gate — Q1&ndash;Q10</h2>
+      <div class="table-wrap">
+        <table>
+          <thead><tr><th>#</th><th>Decision</th><th>Unblocks</th></tr></thead>
+          <tbody id="gate-body"></tbody>
+        </table>
+      </div>
+    </div>
+    <div class="panel">
+      <h2 style="margin-bottom:10px;">Open issues</h2>
+      <div id="issues-body"></div>
+    </div>
+  </section>
+
+  <section class="panel" aria-labelledby="authority-heading">
+    <div class="section-head">
+      <h2 id="authority-heading">Foundation A authority targets</h2>
+      <p class="hint">Owner direction recorded; observed state remains SPLIT_BRAIN until convergence.</p>
+    </div>
+    <div class="table-wrap">
+      <table>
+        <thead><tr><th>Area</th><th>Selected target authority</th><th>Observed</th></tr></thead>
+        <tbody id="authority-body"></tbody>
+      </table>
+    </div>
+  </section>
+
+  <footer>
+    Frozen implementation snapshot <time datetime="2026-07-18T04:01:14Z">2026-07-18 04:01 UTC</time> · source records govern
+    <details class="provenance">
+      <summary>Evidence provenance — 8-source frozen snapshot</summary>
+      <p>Governing sources remain current-byte gates. Operational records are historical commitments
+        captured at this snapshot and may advance without rewriting the frozen evidence.</p>
+      <ol class="provenance-list" id="provenance-list"></ol>
+    </details>
+  </footer>
+</div>
+
+<div id="tooltip" role="tooltip" aria-hidden="true"></div>
+
+<script type="application/json" id="tracker-provenance">
+{
+  "manifest_state": "FROZEN_IMPLEMENTATION_SNAPSHOT",
+  "snapshot_at": "2026-07-18T04:01:14Z",
+  "sources": [
+    {"path": ".agents/plans/UNIFIED-PROGRAM-PLAN.md", "source_class": "governing", "sha256": "2cab0bdd2f560052f315a14be1b64b4e173cee7b4239dcac3e582af815924ac2"},
+    {"path": ".agents/plans/unified-program/OWNER-DECISION-SHEET.md", "source_class": "governing", "sha256": "66744ec9efd08604dd58c86e6f864bf5a11d5c82707a2081914964a84d02b467"},
+    {"path": "config/system-state-authorities.yaml", "source_class": "governing", "sha256": "d45c83720847f6342d5ff13597810b46c7c2ad58c1c1342fdbc3e9236452ac1a"},
+    {"path": ".agents/plans/aqos-refoundation-cycle0/FOUNDATION-A-OWNER-ADJUDICATION-20260718.md", "source_class": "governing", "sha256": "3c05728f8011db002b8c1504757dd1b43421f151268718a0c275219ccd15bc7a"},
+    {"path": ".agent/memory/issues-backlog.md", "source_class": "operational_snapshot", "sha256": "50404205a540eeaf20cf47a33dc7a0ca4b0e319f3485de32eeb5320791b81957"},
+    {"path": ".agent/collaboration/RESUME.json", "source_class": "operational_snapshot", "sha256": "4ad36b7936e56bc2e9ceb3e193daca3fffd7199eca7653cad0f3a089a81f895a"},
+    {"path": ".agent/collaboration/PULSE.log", "source_class": "operational_snapshot", "sha256": "d67d06e59e6ef464d23ed8d593b2561a2fc829691f9c0c685b1aeaefab55516f"},
+    {"path": ".agents/delegation/registry.jsonl", "source_class": "operational_snapshot", "sha256": "8c7d13da7141fd62b1446a4acb0ae49d7497c6eca99577196df5facc232783ad"}
+  ],
+  "expected_counts": {
+    "tracks": 10,
+    "active_tracks": 2,
+    "foundation_a_blocking_gates": 1,
+    "pending_q_decisions": 9,
+    "authority_rows": 10,
+    "open_high_severity_issues": 2
+  }
+}
+</script>
+
+<script>
+  const tracks = [
+    { code: 'A',  name: 'Foundation A', sub: 'Cycle-0 truth exit', status: 'blocked', inclusion_status: 'INCLUDED', gate_status: 'BLOCKING', pct: 0,
+      note: 'Owner adjudication and the exact ten-row authority projection are complete. All ten observed rows remain SPLIT_BRAIN, so convergence still blocks Foundation A exit.' },
+    { code: 'B1', name: 'Foundation B1', sub: 'contract kernel + parity vectors', status: 'active', inclusion_status: 'INCLUDED', gate_status: 'NONE', pct: 75,
+      note: 'L1A, L2A, L2B-A landed. L2B-B (live payload adoption) is the next candidate — not yet authorized.' },
+    { code: 'B2', name: 'Foundation B2', sub: 'one shadow-state vertical', status: 'blocked', inclusion_status: 'INCLUDED', gate_status: 'NONE', pct: 0,
+      note: 'Blocked on Foundation A exit plus owner ratification of the first shadow-authority hypothesis (Q2).' },
+    { code: 'B3', name: 'Foundation B3', sub: 'projector + canon-compiler shadow', status: 'active', inclusion_status: 'INCLUDED', gate_status: 'NONE', pct: 35,
+      note: 'aq-event PULSE/RESUME projector is live. Canon compiler and dashboard-surface extension still pending.' },
+    { code: 'C',  name: 'Foundation C', sub: 'identity, leases, execution cells', status: 'notstarted', inclusion_status: 'INCLUDED', gate_status: 'NONE', pct: 0,
+      note: 'Needs B1 stable plus a ratified security model (Q3) before it can begin.' },
+    { code: 'D',  name: 'Product D', sub: 'inference / client convergence', status: 'notstarted', inclusion_status: 'INCLUDED', gate_status: 'NONE', pct: 0,
+      note: 'Switchboard becomes sole gateway; closes the dormant F2.5 scheduler-wiring gap when it lands.' },
+    { code: 'E',  name: 'Product E', sub: 'evaluation & learning factory', status: 'notstarted', inclusion_status: 'INCLUDED', gate_status: 'NONE', pct: 0,
+      note: 'Absorbs aq-eval / inference-bench PRDs and VF-4/5/8 (golden tasks, certified scorers, promotion ledger).' },
+    { code: 'F',  name: 'Product F', sub: 'unified CLI + command center', status: 'notstarted', inclusion_status: 'INCLUDED', gate_status: 'NONE', pct: 0,
+      note: 'One `aq` gateway plus typed console — built only after D delivers authoritative telemetry.' },
+    { code: 'G',  name: 'Product G', sub: 'edge, release, retirement', status: 'notstarted', inclusion_status: 'INCLUDED', gate_status: 'NONE', pct: 0,
+      note: 'Hardware-class probes, restore drills, semver v1.0, legacy retirement after two clean cycles.' },
+    { code: 'V',  name: 'Track V', sub: 'Verified Factory (cross-cutting)', status: 'blocked', inclusion_status: 'INCLUDED', gate_status: 'NONE', pct: 15,
+      note: 'REQUEST_REVISION — amended oracle/tier/evidence gates await re-review; interleaves with B2 through E.' },
+  ];
+
+  const statusLabel = { active: 'Active', blocked: 'Blocked', notstarted: 'Not started', done: 'Done' };
+  const statusVar = { active: 'var(--active)', blocked: 'var(--blocked)', notstarted: 'var(--notstarted)', done: 'var(--good)' };
+
+  const gantt = document.getElementById('gantt');
+  tracks.forEach(t => {
+    const lane = document.createElement('div');
+    lane.className = 'lane';
+    lane.dataset.status = t.status;
+
+    const pctDisplay = t.status === 'notstarted' ? '—' : (t.pct + '%');
+    const fillClass = t.status === 'blocked' ? 'st-blocked' : (t.status === 'active' ? 'st-active' : 'st-notstarted');
+    const fillWidth = t.status === 'blocked' ? 100 : t.pct;
+
+    lane.innerHTML = `
+      <div class="lane-label">
+        <span class="stripe" style="background:${statusVar[t.status]}"></span>
+        <span class="lane-name" id="lane-${t.code}-name">
+          <span class="lane-code">${t.code} · ${statusLabel[t.status]}</span>
+          <span class="lane-title">${t.name}</span>
+          <span class="lane-sub">${t.sub}</span>
+        </span>
+      </div>
+      <button class="bar-track" type="button" aria-labelledby="lane-${t.code}-name" aria-describedby="lane-${t.code}-detail" data-note="${t.note.replace(/"/g, '&quot;')}" data-title="${t.name} — ${t.sub}">
+        <span class="bar-fill ${fillClass}" style="width:${fillWidth}%"></span>
+      </button>
+      <span class="sr-only" id="lane-${t.code}-detail">${t.note}</span>
+      <div class="bar-pct">${pctDisplay}</div>
+    `;
+    gantt.appendChild(lane);
+  });
+
+  const tooltip = document.getElementById('tooltip');
+  const showTooltip = (bar, x, y) => {
+      tooltip.innerHTML = `<strong>${bar.dataset.title}</strong><br>${bar.dataset.note}`;
+      tooltip.classList.add('show');
+      tooltip.setAttribute('aria-hidden', 'false');
+      tooltip.style.left = Math.max(8, Math.min(x, window.innerWidth - 300)) + 'px';
+      tooltip.style.top = Math.max(8, Math.min(y, window.innerHeight - 90)) + 'px';
+  };
+  const hideTooltip = () => {
+    tooltip.classList.remove('show');
+    tooltip.setAttribute('aria-hidden', 'true');
+  };
+  gantt.querySelectorAll('.bar-track').forEach(bar => {
+    bar.addEventListener('mousemove', e => {
+      showTooltip(bar, e.clientX + 14, e.clientY + 14);
+    });
+    bar.addEventListener('mouseleave', hideTooltip);
+    bar.addEventListener('focus', () => {
+      const box = bar.getBoundingClientRect();
+      showTooltip(bar, box.left, box.bottom + 8);
+    });
+    bar.addEventListener('blur', hideTooltip);
+    bar.addEventListener('keydown', e => {
+      if (e.key === 'Escape') {
+        hideTooltip();
+        bar.blur();
+      }
+    });
+  });
+
+  const columns = [
+    { key: 'done', title: 'Done', items: [
+      'F1 round-state machine (aq-collab-round wiring)',
+      'Closed learning loop — capture → correct → HITL → ingest → train → eval, guarded and observable',
+      'Cycle-0 core C0.1–C0.3 integrated (c9fe3974)',
+      'L1A / L2A / L2B-A contract + shadow kernel + transport',
+      'R0.1 registry foundation completion (d4780ca5)',
+      'Foundation A owner adjudication + ten-row projection (bec9bc0d)',
+      'Generic flake exports + source-complete package baseline (befc4141)',
+      'aq-event PULSE/RESUME projector — files are now projections',
+      'Qwen3-35B promoted primary local agent',
+      'Flake-age guard fix + Nix/Home-Manager refresh (f7ecc381, 08203901)',
+    ]},
+    { key: 'active', title: 'Active', items: [
+      { live: true, title: 'Program tracker → Command Center', note: 'canonical six-file integration is implementing the frozen, provenance-bound projection' },
+      { title: 'C0.6 second-family design review', note: 'Codex requested three revisions; Antigravity second-model-family review remains pending' },
+      { title: 'L2B-B live payload adoption', note: 'next Foundation B1 slice — needs fresh authorization' },
+    ]},
+    { key: 'blocked', title: 'Blocked', items: [
+      { title: 'Foundation B2 shadow-state vertical', note: 'needs Foundation A exit + Q2 ratification' },
+      { title: 'F2.5 scheduler wiring', note: 'built and tested, dormant until Product D' },
+      { title: 'Track V / Verified Factory', note: 'REQUEST_REVISION — amended candidate pending' },
+      { title: 'lean-ctx global session pointer', note: 'issue, high severity, third-party' },
+    ]},
+    { key: 'notstarted', title: 'Not started', items: [
+      'Foundation C — identity, leases, execution cells',
+      'Product D — inference / client convergence',
+      'Product E — evaluation & learning factory',
+      'Product F — unified CLI + command center',
+      'Product G — edge, release, retirement',
+    ]},
+  ];
+
+  const board = document.getElementById('board');
+  columns.forEach(col => {
+    const colEl = document.createElement('div');
+    colEl.className = 'col';
+    colEl.dataset.col = col.key;
+    const head = document.createElement('div');
+    head.className = 'col-head';
+    head.innerHTML = `<span class="col-title">${col.title}</span><span class="col-count">${col.items.length}</span>`;
+    colEl.appendChild(head);
+    col.items.forEach(item => {
+      const card = document.createElement('div');
+      card.className = 'card';
+      if (typeof item === 'string') {
+        card.innerHTML = `<div class="card-title">${item}</div>`;
+      } else {
+        card.innerHTML = `<div class="card-title">${item.live ? '<span class="live-dot"></span>' : ''}${item.title}</div><div class="card-note">${item.note}</div>`;
+      }
+      colEl.appendChild(card);
+    });
+    board.appendChild(colEl);
+  });
+
+  const gateRows = [
+    { id: 'Q1', decision: 'Ratify the synthesis as parent architecture', unblocks: 'everything below', status: 'PENDING' },
+    { id: 'Q2', decision: 'Ratify the first shadow-vertical authority hypothesis', unblocks: 'Foundation B2', status: 'PENDING' },
+    { id: 'Q3', decision: 'Security model — leases, attestations, zero-trust network profiles', unblocks: 'Foundation C', status: 'PENDING' },
+    { id: 'Q4', decision: 'Fable behavior contract → model-neutral versioned canon policy', unblocks: 'B3 canon migration', status: 'PENDING' },
+    { id: 'Q5', decision: 'Measured, expiring lane-eligibility registry', unblocks: 'all delegation + VF-8', status: 'PENDING' },
+    { id: 'Q6', decision: 'Kernel front door: keep local-orchestrator or revise to `aq` gateway', unblocks: 'Product F CLI', status: 'PENDING' },
+    { id: 'Q7', decision: 'Eval factory as universal promotion gate', unblocks: 'Product E', status: 'PENDING' },
+    { id: 'Q8', decision: 'Adjudicate the 10 Cycle-0 authority rows', unblocks: 'B2 vertical selection', status: 'DIRECTION_RECORDED' },
+    { id: 'Q9', decision: 'Activate Track V (Verified Factory) after its VF-0 round', unblocks: 'oracle / tier / evidence gates', status: 'PENDING' },
+    { id: 'Q10', decision: 'Rebudget the 27GB envelope for a resident small model / speculative decoding', unblocks: 'Product D/E stacking work', status: 'PENDING' },
+  ];
+  const gateBody = document.getElementById('gate-body');
+  gateRows.forEach(row => {
+    const tr = document.createElement('tr');
+    const id = document.createElement('td');
+    const decision = document.createElement('td');
+    const unblocks = document.createElement('td');
+    id.className = 'qid';
+    id.textContent = row.id;
+    decision.textContent = `${row.decision} [${row.status}]`;
+    unblocks.textContent = row.unblocks;
+    tr.append(id, decision, unblocks);
+    gateBody.appendChild(tr);
+  });
+
+  const issues = [
+    { title: 'lean-ctx-global-session-pointer-cross-repo-root-pinning', sev: 'High', status: 'OPEN',
+      note: 'lean-ctx keeps one machine-global "latest session" pointer, so any invocation in any repo can silently resume this repo\'s session and root tools to the wrong project. Third-party defect (lean-ctx v3.3.7); workaround pending.' },
+    { title: 'provider-capacity-reset-not-scheduled', sev: 'High', status: 'OPEN',
+      note: 'Claude capacity exposed a reopen window, but no durable retry_not_before or scheduled monitored probe fired. The owner had to request a retry; the reopened Sonnet lane then passed immediately.' },
+  ];
+  const issuesBody = document.getElementById('issues-body');
+  issues.forEach(i => {
+    const el = document.createElement('div');
+    el.className = 'issue';
+    el.innerHTML = `<div class="issue-head"><span class="issue-title">${i.title}</span><span class="sev">${i.sev}</span></div><div class="issue-note">${i.note}</div>`;
+    issuesBody.appendChild(el);
+  });
+
+  const authorityTargets = [
+    { area: 'planning-round', target: 'RoundState / round.json mutation boundary', status: 'DIRECTION_RECORDED', observed: 'SPLIT_BRAIN' },
+    { area: 'delegation-lifecycle', target: 'Host/coordinator dispatch broker through TaskRegistry', status: 'DIRECTION_RECORDED', observed: 'SPLIT_BRAIN' },
+    { area: 'intent-resume', target: 'Separate intent lock; aq-event authority; files are projections', status: 'DIRECTION_RECORDED', observed: 'SPLIT_BRAIN' },
+    { area: 'workflow-run-task', target: 'Coordinator logical authority; Postgres outbox/CAS shadow only', status: 'DIRECTION_RECORDED', observed: 'SPLIT_BRAIN' },
+    { area: 'qa-effectiveness', target: 'Immutable invocation evidence plus one versioned reducer', status: 'DIRECTION_RECORDED', observed: 'SPLIT_BRAIN' },
+    { area: 'routing-model-execution', target: 'Coordinator route decisions; switchboard generation gateway', status: 'DIRECTION_RECORDED', observed: 'SPLIT_BRAIN' },
+    { area: 'learning-eval', target: 'Coordinator-owned EvaluationRun / PromotionDecision ledger', status: 'DIRECTION_RECORDED', observed: 'SPLIT_BRAIN' },
+    { area: 'memory-rag', target: 'MemoryBroker mutation gateway; Qdrant is a projection', status: 'DIRECTION_RECORDED', observed: 'SPLIT_BRAIN' },
+    { area: 'configuration', target: 'Nix → systemd environment → typed Python chain', status: 'DIRECTION_RECORDED', observed: 'SPLIT_BRAIN' },
+    { area: 'dashboard-operator', target: 'Coordinator-owned typed ApprovalStore', status: 'DIRECTION_RECORDED', observed: 'SPLIT_BRAIN' },
+  ];
+  const authorityBody = document.getElementById('authority-body');
+  authorityTargets.forEach(authority => {
+    const row = document.createElement('tr');
+    const areaCell = document.createElement('td');
+    const targetCell = document.createElement('td');
+    const observedCell = document.createElement('td');
+    areaCell.textContent = authority.area;
+    targetCell.textContent = `${authority.target} [${authority.status}]`;
+    observedCell.textContent = authority.observed;
+    row.append(areaCell, targetCell, observedCell);
+    authorityBody.appendChild(row);
+  });
+
+  const provenance = JSON.parse(document.getElementById('tracker-provenance').textContent);
+  const computedCounts = {
+    tracks: tracks.filter(track => track.inclusion_status === 'INCLUDED').length,
+    active_tracks: tracks.filter(track => track.status === 'active').length,
+    foundation_a_blocking_gates: tracks.filter(track => track.code === 'A' && track.gate_status === 'BLOCKING').length,
+    pending_q_decisions: gateRows.filter(row => row.status === 'PENDING').length,
+    authority_rows: authorityTargets.filter(authority => authority.status === 'DIRECTION_RECORDED').length,
+    open_high_severity_issues: issues.filter(issue => issue.status === 'OPEN' && issue.sev === 'High').length,
+  };
+  const mismatches = Object.entries(provenance.expected_counts)
+    .filter(([key, expected]) => computedCounts[key] !== expected);
+  if (mismatches.length) {
+    document.body.dataset.provenanceStatus = 'mismatch';
+    throw new Error('Tracker count reconciliation failed');
+  }
+  document.body.dataset.provenanceStatus = 'reconciled';
+  document.getElementById('track-count').textContent = `${computedCounts.active_tracks} / ${computedCounts.tracks}`;
+  document.getElementById('foundation-a-gate-count').textContent = computedCounts.foundation_a_blocking_gates;
+  document.getElementById('pending-decision-count').textContent = computedCounts.pending_q_decisions;
+  document.getElementById('high-issue-count').textContent = computedCounts.open_high_severity_issues;
+
+  const provenanceList = document.getElementById('provenance-list');
+  provenance.sources.forEach(source => {
+    const item = document.createElement('li');
+    item.textContent = `${source.path} · ${source.source_class} · sha256:${source.sha256}`;
+    provenanceList.appendChild(item);
+  });
+</script>
+</body>
+</html>
