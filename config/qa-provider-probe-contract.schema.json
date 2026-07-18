@@ -5,7 +5,8 @@
   "oneOf": [
     { "$ref": "#/$defs/result" },
     { "$ref": "#/$defs/policy" },
-    { "$ref": "#/$defs/vector_set" }
+    { "$ref": "#/$defs/vector_set" },
+    { "$ref": "#/$defs/heartbeat" }
   ],
   "$defs": {
     "provider_id": {
@@ -127,6 +128,70 @@
         {
           "if": { "properties": { "failure_class": { "const": "none" } }, "required": ["failure_class"] },
           "then": { "properties": { "result": { "const": "pass" } } }
+        }
+      ]
+    },
+    "heartbeat": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "schema_version",
+        "qa_invocation_id",
+        "provider_id",
+        "lifecycle_state",
+        "elapsed_ms",
+        "heartbeat_utc",
+        "deadline_ms",
+        "last_terminal_failure_class"
+      ],
+      "properties": {
+        "schema_version": { "const": "qa.provider-probe-active.v1" },
+        "qa_invocation_id": { "type": "string", "format": "uuid" },
+        "provider_id": {
+          "oneOf": [
+            { "$ref": "#/$defs/provider_id" },
+            { "type": "null" }
+          ]
+        },
+        "lifecycle_state": {
+          "enum": ["idle", "starting", "running", "terminating", "reaping", "terminal"]
+        },
+        "elapsed_ms": { "type": "integer", "minimum": 0, "maximum": 300000 },
+        "heartbeat_utc": {
+          "type": "string",
+          "format": "date-time",
+          "pattern": "Z$"
+        },
+        "deadline_ms": { "const": 45000 },
+        "last_terminal_failure_class": {
+          "oneOf": [
+            { "$ref": "#/$defs/failure_class" },
+            { "type": "null" }
+          ]
+        }
+      },
+      "allOf": [
+        {
+          "if": {
+            "properties": { "lifecycle_state": { "const": "idle" } },
+            "required": ["lifecycle_state"]
+          },
+          "then": { "properties": { "provider_id": { "type": "null" } } },
+          "else": { "properties": { "provider_id": { "$ref": "#/$defs/provider_id" } } }
+        },
+        {
+          "if": {
+            "properties": { "lifecycle_state": { "const": "terminal" } },
+            "required": ["lifecycle_state"]
+          },
+          "then": {
+            "properties": {
+              "last_terminal_failure_class": { "$ref": "#/$defs/failure_class" }
+            }
+          },
+          "else": {
+            "properties": { "last_terminal_failure_class": { "type": "null" } }
+          }
         }
       ]
     },
