@@ -2660,6 +2660,8 @@ in {
 
             # Repo read (dashboard reads Python directly from repo)
             ${repoSource}/** r,
+            # TaskRegistry readers take a shared lock while projecting delegation counts.
+            ${mcp.repoPath}/.agents/delegation/registry.jsonl rk,
 
             # Nix store
             /nix/store/** r,
