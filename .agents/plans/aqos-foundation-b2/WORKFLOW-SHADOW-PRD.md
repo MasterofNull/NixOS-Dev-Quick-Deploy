@@ -1,12 +1,15 @@
 # Foundation B2 PRD: workflow-run shadow state vertical
 
-**Lifecycle:** DRAFT / DESIGN ONLY / NOT AUTHORIZED
+**Lifecycle:** B2-D0 ACCEPTED / B2-C1 AUTHORIZATION PREPARATION ONLY / IMPLEMENTATION NOT AUTHORIZED
 
 **Parent decision candidate:** `WORKFLOW-SHADOW-ADR.md`
 
 **Program position:** Foundation B2, first state vertical
 
-**Owner gates:** Q1 and exact Q2 ratification remain open
+**Owner gates:** Q1/Q2 RATIFIED 2026-07-18; B2-C1 implementation authorization remains open
+**Historical reviewed subject:**
+`1496651ee11f20a82e953098489d866937ceb21d8cbda68553d5c18ea1b709c4`. This post-ratification status
+projection has different bytes and is not a replacement for the exact B2-D0 review subject.
 
 ## 1. Problem
 
@@ -233,8 +236,8 @@ conventional.
 
 ## 9. Non-functional budgets
 
-These are proposed freeze values requiring Q2 owner ratification; implementation may tighten but not
-relax them without re-review.
+The owner froze these values exactly as written on 2026-07-18 under Q2. Implementation may tighten
+but not relax them without fresh independent review and owner authority.
 
 | Budget | Proposed ceiling / policy |
 |---|---|
@@ -368,12 +371,16 @@ an atomic commit. No slice inherits authority merely because this PRD exists.
 
 ## 15. Gates and open decisions
 
-Blocking before B2-C1 or any later implementation authorization:
+Satisfied design/owner gates for preparing a B2-C1 authorization:
 
-- Q1 parent-architecture ratification or explicit replacement.
-- Q2 owner ratification of the exact ADR hypothesis, named migration owner and resource envelope.
-- Independent design review over the exact three-document subject.
-- Resolution of any reviewer-requested revision and new subject hashes.
+- Q1 parent-architecture ratification: satisfied 2026-07-18.
+- Q2 exact ADR hypothesis, migration owner `hyperd`, and complete §9 envelope: satisfied 2026-07-18.
+- Independent design review over the exact three-document B2-D0 subject: `PASS` at SHA-256
+  `6b97c09bfa1a79a928999533f779a3a4dfa59733b379ae318a47696bc781ec7e`.
+- Reviewer-requested D0 revisions: resolved in commit `c11bf7a12c8582d8554f3d816cf83e5a9edab15b`.
+
+Still blocking B2-C1 implementation: an exact hash-bound B2-C1 authorization, independent review of
+that authorization, and a separate owner activation. Ratification authorizes preparation/review only.
 
 Blocking before runtime activation:
 
@@ -383,4 +390,7 @@ Blocking before runtime activation:
 - Phase-0/dashboard/service-coverage parity;
 - a separately recorded owner activation with expiry and trial ceiling.
 
-No current statement in this PRD asserts that Q1 or Q2 has been decided.
+The owner decision record is
+`.agents/plans/unified-program/Q1-Q2-OWNER-RATIFICATION-20260718.md`. It does not authorize B2-C1
+implementation, DDL, database connections or writes, runtime hooks, deployment, traffic, cutover,
+later slices, cleanup, or rollback.

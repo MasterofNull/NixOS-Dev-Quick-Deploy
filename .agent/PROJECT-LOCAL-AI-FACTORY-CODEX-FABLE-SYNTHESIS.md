@@ -1,9 +1,13 @@
 # Codex–Fable Synthesis — AQ-OS Local AI Factory Remake
 
-**Status:** REQUEST_REVISION BEFORE OWNER RATIFICATION
+**Status:** POST-RATIFICATION STATUS PROJECTION — HISTORICAL SUBJECT OWNER-RATIFIED (Q1, 2026-07-18)
 **Date:** 2026-07-13
 **Purpose:** reconcile the Claude Fable AQ-OS design with the Codex ground-up reference
 architecture into one implementable trajectory without erasing disagreements.
+**Ratified historical subject:**
+`00c7dbc5cadb24c4e4a4e7c1c66ad7ccc32d48a749dfd3de2d739445cdcbc163`. This status projection changes
+the file bytes after ratification; the historical subject remains the owner-ratified architecture.
+See `.agents/plans/unified-program/Q1-Q2-OWNER-RATIFICATION-20260718.md`.
 
 ## 1. Source perspectives
 
@@ -267,12 +271,12 @@ No slice passes because code exists, a model says PASS, or a service answers `/h
 
 ## 10. Immediate decisions and next-cycle objective
 
-Owner decisions still required:
+Owner decision status:
 
-1. Ratify this synthesis as the parent architecture for future PRDs.
-2. Adjudicate the ten Cycle-0 authority rows, select one first shadow vertical, and ratify its exact
-   per-authority or Postgres/outbox hypothesis before any shadow writes. Evidence decides whether to
-   expand, replace, or retire that hypothesis.
+1. **Q1 RATIFIED 2026-07-18:** the historical subject above is the parent architecture.
+2. **Q2 RATIFIED 2026-07-18 for workflow-run-task only:** legacy remains live authority and Postgres
+   is the shadow target under B2-D0 commit `c11bf7a1`; migration owner is `hyperd`; the historical
+   PRD §9 envelope is frozen. Only B2-C1 authorization preparation/review is unblocked.
 3. Ratify connected zero trust and the eight initial network profiles.
 4. Convert the named Fable behavior contract into a model-neutral versioned canon policy.
 5. Keep the role matrix model-neutral. Ratify a separate measured, expiring lane-eligibility registry;
@@ -281,10 +285,10 @@ Owner decisions still required:
 6. Issue a named kernel revision before changing the five frozen kernel objects or replacing
    `local-orchestrator` as the declared CLI front door.
 
-The next implementation PRD should cover one bounded objective: **minimal local-inference contract
-schemas + pure resolver + golden batch/chat parity vectors**, with Phase-0 and dashboard contract
-health. State spine, projector, canon compiler, identity enforcement, and live traffic cutover remain
-separate owner-authorized slices.
+The next Foundation B2 action is preparation and independent review of a hash-bound B2-C1
+authorization for schemas, a canonical mapper/phase-token registry, a receipt-order model, fixtures,
+and pure contract tests. No B2 implementation, database use, runtime hook, deployment, traffic, or
+cutover is authorized by Q1/Q2 ratification.
 
 ## 11. Current governance lesson
 
