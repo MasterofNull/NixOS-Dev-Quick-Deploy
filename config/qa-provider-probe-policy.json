@@ -1,0 +1,42 @@
+{
+  "schema_version": "qa.provider-probe-policy.v1",
+  "budgets": {
+    "provider_deadline_seconds": 45,
+    "sigterm_grace_seconds": 2,
+    "sigkill_reap_seconds": 1,
+    "aggregate_deadline_seconds": 200,
+    "attempts_per_provider": 1,
+    "stderr_retention_bytes": 4096,
+    "stdout_retention_bytes": 65536
+  },
+  "profiles": [
+    {
+      "provider_id": "codex",
+      "profile_id": "codex_help",
+      "mode": "exit_only",
+      "executable": "codex",
+      "argv": ["codex", "--help"]
+    },
+    {
+      "provider_id": "qwen",
+      "profile_id": "qwen_help",
+      "mode": "exit_only",
+      "executable": "qwen",
+      "argv": ["qwen", "--help"]
+    },
+    {
+      "provider_id": "claude",
+      "profile_id": "claude_help",
+      "mode": "exit_only",
+      "executable": "claude",
+      "argv": ["claude", "--help"]
+    },
+    {
+      "provider_id": "pi",
+      "profile_id": "pi_help",
+      "mode": "exit_only",
+      "executable": "pi",
+      "argv": ["pi", "--help"]
+    }
+  ]
+}

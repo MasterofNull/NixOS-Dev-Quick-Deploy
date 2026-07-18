@@ -1,0 +1,289 @@
+{
+  "schema_version": "qa.provider-probe-vectors.v1",
+  "normalization_vectors": [
+    {
+      "id": "exit_only_zero",
+      "mode": "exit_only",
+      "stdout": "ignored help text",
+      "exit_code": 0,
+      "lifecycle_failure": "none",
+      "stdout_truncated": false,
+      "stderr_truncated": false,
+      "expected_result": "pass",
+      "expected_failure_class": "none",
+      "spawn_count": 1
+    },
+    {
+      "id": "exit_only_nonzero",
+      "mode": "exit_only",
+      "stdout": "",
+      "exit_code": 7,
+      "lifecycle_failure": "none",
+      "stdout_truncated": false,
+      "stderr_truncated": false,
+      "expected_result": "fail",
+      "expected_failure_class": "exit_nonzero",
+      "spawn_count": 1
+    },
+    {
+      "id": "machine_pass_zero",
+      "mode": "machine_json_v1",
+      "stdout": "{\"schema_version\":\"qa.provider-probe-machine.v1\",\"status\":\"pass\",\"reason_code\":\"ok\"}",
+      "exit_code": 0,
+      "lifecycle_failure": "none",
+      "stdout_truncated": false,
+      "stderr_truncated": false,
+      "expected_result": "pass",
+      "expected_failure_class": "none",
+      "spawn_count": 1
+    },
+    {
+      "id": "machine_pass_nonzero",
+      "mode": "machine_json_v1",
+      "stdout": "{\"schema_version\":\"qa.provider-probe-machine.v1\",\"status\":\"pass\",\"reason_code\":\"ok\"}",
+      "exit_code": 9,
+      "lifecycle_failure": "none",
+      "stdout_truncated": false,
+      "stderr_truncated": false,
+      "expected_result": "fail",
+      "expected_failure_class": "exit_nonzero",
+      "spawn_count": 1
+    },
+    {
+      "id": "machine_fail_zero",
+      "mode": "machine_json_v1",
+      "stdout": "{\"schema_version\":\"qa.provider-probe-machine.v1\",\"status\":\"fail\",\"reason_code\":\"unhealthy\"}",
+      "exit_code": 0,
+      "lifecycle_failure": "none",
+      "stdout_truncated": false,
+      "stderr_truncated": false,
+      "expected_result": "fail",
+      "expected_failure_class": "provider_reported_failure",
+      "spawn_count": 1
+    },
+    {
+      "id": "machine_fail_nonzero",
+      "mode": "machine_json_v1",
+      "stdout": "{\"schema_version\":\"qa.provider-probe-machine.v1\",\"status\":\"fail\",\"reason_code\":\"auth_required\"}",
+      "exit_code": 3,
+      "lifecycle_failure": "none",
+      "stdout_truncated": false,
+      "stderr_truncated": false,
+      "expected_result": "fail",
+      "expected_failure_class": "provider_reported_failure",
+      "spawn_count": 1
+    },
+    {
+      "id": "machine_missing",
+      "mode": "machine_json_v1",
+      "stdout": "",
+      "exit_code": 0,
+      "lifecycle_failure": "none",
+      "stdout_truncated": false,
+      "stderr_truncated": false,
+      "expected_result": "fail",
+      "expected_failure_class": "machine_output_missing",
+      "spawn_count": 1
+    },
+    {
+      "id": "machine_malformed",
+      "mode": "machine_json_v1",
+      "stdout": "{not-json",
+      "exit_code": 0,
+      "lifecycle_failure": "none",
+      "stdout_truncated": false,
+      "stderr_truncated": false,
+      "expected_result": "fail",
+      "expected_failure_class": "machine_output_invalid",
+      "spawn_count": 1
+    },
+    {
+      "id": "machine_multiple",
+      "mode": "machine_json_v1",
+      "stdout": "{\"schema_version\":\"qa.provider-probe-machine.v1\",\"status\":\"pass\",\"reason_code\":\"ok\"} {}",
+      "exit_code": 0,
+      "lifecycle_failure": "none",
+      "stdout_truncated": false,
+      "stderr_truncated": false,
+      "expected_result": "fail",
+      "expected_failure_class": "machine_output_invalid",
+      "spawn_count": 1
+    },
+    {
+      "id": "machine_unknown_field",
+      "mode": "machine_json_v1",
+      "stdout": "{\"schema_version\":\"qa.provider-probe-machine.v1\",\"status\":\"pass\",\"reason_code\":\"ok\",\"extra\":true}",
+      "exit_code": 0,
+      "lifecycle_failure": "none",
+      "stdout_truncated": false,
+      "stderr_truncated": false,
+      "expected_result": "fail",
+      "expected_failure_class": "machine_output_invalid",
+      "spawn_count": 1
+    },
+    {
+      "id": "stdout_truncated",
+      "mode": "exit_only",
+      "stdout": "bounded-prefix",
+      "exit_code": 0,
+      "lifecycle_failure": "none",
+      "stdout_truncated": true,
+      "stderr_truncated": false,
+      "expected_result": "fail",
+      "expected_failure_class": "output_limit_exceeded",
+      "spawn_count": 1
+    },
+    {
+      "id": "stderr_truncated",
+      "mode": "exit_only",
+      "stdout": "",
+      "exit_code": 0,
+      "lifecycle_failure": "none",
+      "stdout_truncated": false,
+      "stderr_truncated": true,
+      "expected_result": "fail",
+      "expected_failure_class": "output_limit_exceeded",
+      "spawn_count": 1
+    },
+    {
+      "id": "lifecycle_executable_missing",
+      "mode": "exit_only",
+      "stdout": "",
+      "exit_code": null,
+      "lifecycle_failure": "executable_missing",
+      "stdout_truncated": false,
+      "stderr_truncated": false,
+      "expected_result": "fail",
+      "expected_failure_class": "executable_missing",
+      "spawn_count": 1
+    },
+    {
+      "id": "lifecycle_spawn_failed",
+      "mode": "exit_only",
+      "stdout": "",
+      "exit_code": null,
+      "lifecycle_failure": "spawn_failed",
+      "stdout_truncated": false,
+      "stderr_truncated": false,
+      "expected_result": "fail",
+      "expected_failure_class": "spawn_failed",
+      "spawn_count": 1
+    },
+    {
+      "id": "lifecycle_deadline",
+      "mode": "exit_only",
+      "stdout": "",
+      "exit_code": null,
+      "lifecycle_failure": "deadline_exceeded",
+      "stdout_truncated": false,
+      "stderr_truncated": false,
+      "expected_result": "fail",
+      "expected_failure_class": "deadline_exceeded",
+      "spawn_count": 1
+    },
+    {
+      "id": "lifecycle_cleanup_failed",
+      "mode": "exit_only",
+      "stdout": "",
+      "exit_code": null,
+      "lifecycle_failure": "cleanup_failed",
+      "stdout_truncated": false,
+      "stderr_truncated": false,
+      "expected_result": "fail",
+      "expected_failure_class": "cleanup_failed",
+      "spawn_count": 1
+    },
+    {
+      "id": "lifecycle_interrupted",
+      "mode": "exit_only",
+      "stdout": "",
+      "exit_code": null,
+      "lifecycle_failure": "interrupted",
+      "stdout_truncated": false,
+      "stderr_truncated": false,
+      "expected_result": "fail",
+      "expected_failure_class": "interrupted",
+      "spawn_count": 1
+    },
+    {
+      "id": "lifecycle_probe_busy",
+      "mode": "exit_only",
+      "stdout": "",
+      "exit_code": null,
+      "lifecycle_failure": "probe_busy",
+      "stdout_truncated": false,
+      "stderr_truncated": false,
+      "expected_result": "fail",
+      "expected_failure_class": "probe_busy",
+      "spawn_count": 1
+    },
+    {
+      "id": "lifecycle_contract_invalid",
+      "mode": "exit_only",
+      "stdout": "",
+      "exit_code": null,
+      "lifecycle_failure": "contract_invalid",
+      "stdout_truncated": false,
+      "stderr_truncated": false,
+      "expected_result": "fail",
+      "expected_failure_class": "contract_invalid",
+      "spawn_count": 1
+    }
+  ],
+  "adversarial_vectors": [
+    {
+      "id": "stopped_process_cleanup",
+      "fixture": "self_stop",
+      "expected_failure_class": "deadline_exceeded",
+      "invariants": ["sigcont_before_sigterm", "sigterm_before_sigkill", "two_pass_quiescence"]
+    },
+    {
+      "id": "fork_timeout_cleanup",
+      "fixture": "timeout_fork",
+      "expected_failure_class": "deadline_exceeded",
+      "invariants": ["owned_descendants_reaped", "two_pass_quiescence", "no_stale_group_signal"]
+    },
+    {
+      "id": "zero_leader_residual_cleanup",
+      "fixture": "leader_exit_zero_live_child",
+      "expected_failure_class": "cleanup_failed",
+      "invariants": ["owned_descendants_reaped", "two_pass_quiescence"]
+    },
+    {
+      "id": "outer_signal_cleanup",
+      "fixture": "outer_interrupt",
+      "expected_failure_class": "interrupted",
+      "invariants": ["one_redelivery", "prior_disposition_restored", "two_pass_quiescence"]
+    },
+    {
+      "id": "concurrent_probe_rejected",
+      "fixture": "concurrent_owner",
+      "expected_failure_class": "probe_busy",
+      "invariants": ["owner_undisturbed", "no_retry"]
+    },
+    {
+      "id": "stderr_pipe_flood",
+      "fixture": "stderr_flood",
+      "expected_failure_class": "output_limit_exceeded",
+      "invariants": ["bounded_stderr", "no_retry"]
+    },
+    {
+      "id": "direct_child_reap_race",
+      "fixture": "direct_child_reaped_race",
+      "expected_failure_class": "none",
+      "invariants": ["two_pass_quiescence", "no_stale_group_signal"]
+    },
+    {
+      "id": "esrch_needs_quiescence",
+      "fixture": "esrch_race",
+      "expected_failure_class": "cleanup_failed",
+      "invariants": ["two_pass_quiescence", "no_stale_group_signal"]
+    },
+    {
+      "id": "escaped_session_is_policy_failure",
+      "fixture": "new_session_escape",
+      "expected_failure_class": "cleanup_failed",
+      "invariants": ["escaped_process_not_signalled", "no_stale_group_signal"]
+    }
+  ]
+}
