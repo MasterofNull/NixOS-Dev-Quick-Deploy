@@ -90,6 +90,16 @@ class LifecycleContractError(RuntimeError):
     """Raised only for programmer misuse before a process can be owned."""
 
 
+class _PublicationContractViolation(RuntimeError):
+    """Raised only when the synchronous publication barrier (R2) returns late (R5).
+
+    Dedicated type so the generic ``except Exception:`` recovery branch cannot misclassify
+    this as its own recovery case; shared restoration state is neutralized by the raiser
+    before this is ever raised, and the pre-existing "already neutralized" re-raise gate in
+    that handler is what lets this propagate untouched.
+    """
+
+
 @dataclass(frozen=True)
 class _ProcIdentity:
     pid: int
@@ -186,6 +196,63 @@ class _LifecycleObserver:
                 self.close()
 
 
+@dataclass
+class _PublicationObserver:
+    """Pure caller-owned, nonblocking publication-status pipe.
+
+    Anchored exclusively to the synchronous ``publication`` callback invocation (R1); it
+    never observes process spawn, the probe deadline, or process exit, and never computes
+    its deadline from ``deadline_s``.
+    """
+
+    fd: int
+    sequence: int = 0
+    enabled: bool = True
+    terminal_attempted: bool = False
+
+    def close(self) -> None:
+        descriptor, self.fd = self.fd, -1
+        if descriptor >= 0:
+            try:
+                os.close(descriptor)
+            except OSError:
+                pass
+
+    def _write(self, record: bytes) -> None:
+        try:
+            if len(record) > 96:
+                raise ValueError("publication record exceeds fixed bound")
+            written = os.write(self.fd, record)
+            if written != len(record):
+                self.enabled = False
+        except (BlockingIOError, BrokenPipeError, OSError, ValueError):
+            self.enabled = False
+
+    def emit_running(self, deadline_monotonic_ms: int) -> None:
+        if self.terminal_attempted or not self.enabled:
+            return
+        self.sequence = 1
+        self._write(
+            f"qa.provider-publication.v1|1|running|{deadline_monotonic_ms}\n".encode("ascii")
+        )
+        if not self.enabled:
+            self.close()
+
+    def emit_terminal(self, state: str, observed_monotonic_ms: int) -> None:
+        if self.terminal_attempted or not self.enabled:
+            return
+        self.terminal_attempted = True
+        self.sequence = 2
+        if state not in ("completed", "cancelled", "contract_violation"):
+            self.enabled = False
+            self.close()
+            return
+        self._write(
+            f"qa.provider-publication.v1|2|{state}|{observed_monotonic_ms}\n".encode("ascii")
+        )
+        self.close()
+
+
 def _open_lifecycle_observer(observer_fd: int | None, started: float) -> _LifecycleObserver | None:
     """Validate without mutating the caller fd, then own a CLOEXEC duplicate."""
     if observer_fd is None:
@@ -225,6 +292,135 @@ def _open_lifecycle_observer(observer_fd: int | None, started: float) -> _Lifecy
             except OSError:
                 pass
         raise LifecycleContractError("invalid lifecycle observer descriptor") from None
+
+
+def _open_publication_observer(publication_fd: int | None) -> _PublicationObserver | None:
+    """Validate without mutating the caller fd, then own a CLOEXEC duplicate.
+
+    Deliberately independent of ``deadline_s``: R3 binds the barrier deadline to the
+    synchronous publication callback invocation, not to the probe's own deadline.
+    """
+    if publication_fd is None:
+        return None
+    duplicate = -1
+    try:
+        if isinstance(publication_fd, bool) or not isinstance(publication_fd, int) or publication_fd < 0:
+            raise OSError(errno.EBADF, "invalid publication descriptor")
+        caller_fd_flags = fcntl.fcntl(publication_fd, fcntl.F_GETFD)
+        caller_status_flags = fcntl.fcntl(publication_fd, fcntl.F_GETFL)
+        caller_stat = os.fstat(publication_fd)
+        if not caller_fd_flags & fcntl.FD_CLOEXEC:
+            raise OSError(errno.EINVAL, "publication descriptor must be close-on-exec")
+        if caller_status_flags & os.O_ACCMODE != os.O_WRONLY:
+            raise OSError(errno.EINVAL, "publication descriptor must be write-only")
+        if not caller_status_flags & os.O_NONBLOCK:
+            raise OSError(errno.EINVAL, "publication descriptor must be nonblocking")
+        if not stat.S_ISFIFO(caller_stat.st_mode):
+            raise OSError(errno.EINVAL, "publication descriptor must be a pipe or FIFO")
+        duplicate = fcntl.fcntl(publication_fd, fcntl.F_DUPFD_CLOEXEC, 0)
+        duplicate_fd_flags = fcntl.fcntl(duplicate, fcntl.F_GETFD)
+        duplicate_status_flags = fcntl.fcntl(duplicate, fcntl.F_GETFL)
+        duplicate_stat = os.fstat(duplicate)
+        if not duplicate_fd_flags & fcntl.FD_CLOEXEC:
+            raise OSError(errno.EINVAL, "publication duplicate must be close-on-exec")
+        if duplicate_status_flags & os.O_ACCMODE != os.O_WRONLY:
+            raise OSError(errno.EINVAL, "publication duplicate must be write-only")
+        if not duplicate_status_flags & os.O_NONBLOCK:
+            raise OSError(errno.EINVAL, "publication duplicate must be nonblocking")
+        if not stat.S_ISFIFO(duplicate_stat.st_mode):
+            raise OSError(errno.EINVAL, "publication duplicate must be a pipe or FIFO")
+        return _PublicationObserver(duplicate)
+    except (AttributeError, OSError, TypeError, ValueError):
+        if duplicate >= 0:
+            try:
+                os.close(duplicate)
+            except OSError:
+                pass
+        raise LifecycleContractError("invalid publication observer descriptor") from None
+
+
+def parse_publication_record(raw: bytes) -> tuple[int, str, int] | None:
+    """Fail-closed parse of exactly one publication-status record (R7).
+
+    Returns ``(sequence, state, value_ms)`` for a syntactically and semantically valid
+    record, or ``None`` for anything malformed, oversized, or carrying an unexpected
+    sequence/state pairing. Never raises.
+    """
+    if not isinstance(raw, (bytes, bytearray)) or len(raw) > 96:
+        return None
+    try:
+        text = raw.decode("ascii")
+    except UnicodeDecodeError:
+        return None
+    if not text.endswith("\n"):
+        return None
+    parts = text[:-1].split("|")
+    if len(parts) != 4:
+        return None
+    schema, sequence_text, state, value_text = parts
+    if schema != "qa.provider-publication.v1":
+        return None
+    if sequence_text not in ("1", "2"):
+        return None
+    sequence = int(sequence_text)
+    if sequence == 1 and state != "running":
+        return None
+    if sequence == 2 and state not in ("completed", "cancelled", "contract_violation"):
+        return None
+    if not value_text.isdigit() or len(value_text) > 13:
+        return None
+    return sequence, state, int(value_text)
+
+
+def accept_publication_record(
+    raw: bytes,
+    *,
+    last_sequence: int,
+    terminal: bool,
+) -> tuple[int, str, int] | None:
+    """Fail-closed stream acceptance for publication records (R7).
+
+    Rejects duplicate, backward, and post-terminal records. ``last_sequence`` is the
+    highest sequence number already accepted (``0`` if none yet); ``terminal`` is true once
+    a sequence-2 record has been accepted. A record arriving after ``terminal`` is refused
+    outright, so a classification already reached cannot be downgraded (R6) by later input.
+    """
+    if terminal:
+        return None
+    parsed = parse_publication_record(raw)
+    if parsed is None:
+        return None
+    sequence, _state, _value = parsed
+    if sequence != last_sequence + 1:
+        return None
+    return parsed
+
+
+def classify_publication_contract(
+    last_record_state: str | None,
+    deadline_ms: int,
+    observer_now_ms: int,
+    has_seq2_ack: bool,
+) -> str:
+    """Pure authoritative classifier for the publication contract (AM2 rule, corrected).
+
+    Depends only on the validated record, the bound deadline, injected observer monotonic
+    time, and sequence-2 presence — no callback state, thread inspection, wall time, PID, or
+    stuck-owner marker. A missing or invalid record is never healthy and never violated: it
+    is always ``unavailable``, regardless of elapsed time. Only a validated ``running``
+    record can transition to ``contract_violation``, and a terminal classification
+    (``completed``/``cancelled``/``contract_violation``) is retained rather than downgraded
+    by later input.
+    """
+    if last_record_state is None:
+        return "unavailable"
+    if last_record_state == "running":
+        if observer_now_ms > deadline_ms and not has_seq2_ack:
+            return "contract_violation"
+        return "running"
+    if last_record_state in ("completed", "cancelled", "contract_violation"):
+        return last_record_state
+    return "unavailable"
 
 
 def _now_ms(start: float) -> int:
@@ -754,6 +950,7 @@ def run_owned_process(
     mode: str = "exit_only",
     publication: Callable[[dict[str, Any]], None] | None = None,
     observer_fd: int | None = None,
+    publication_fd: int | None = None,
 ) -> dict[str, Any]:
     """Run one local fixture command with descriptor-bound process-session ownership.
 
@@ -785,9 +982,19 @@ def run_owned_process(
         return _terminal_without_spawn(
             invocation_id, provider_id, profile_id, deadline_s, "contract_invalid", started
         )
+    try:
+        publication_observer = _open_publication_observer(publication_fd)
+    except LifecycleContractError:
+        if observer is not None:
+            observer.close()
+        return _terminal_without_spawn(
+            invocation_id, provider_id, profile_id, deadline_s, "contract_invalid", started
+        )
     if not _INVOCATION_LOCK.acquire(blocking=False):
         if observer is not None:
             observer.close()
+        if publication_observer is not None:
+            publication_observer.close()
         return _terminal_without_spawn(
             invocation_id, provider_id, profile_id, deadline_s, "probe_busy", started
         )
@@ -1052,9 +1259,46 @@ def run_owned_process(
             signal_started = controller.first_signal_at or time.monotonic()
             # Reserve a small deterministic margin for handler/mask restoration and the one kill.
             remaining = max(0.0, signal_started + 4.9 - time.monotonic())
-            worker = threading.Thread(target=publication, args=(dict(provisional),), daemon=True)
-            worker.start()
-            worker.join(timeout=remaining)
+            if publication_fd is not None:
+                # R2: synchronous opt-in barrier — no background worker, daemon, task, queue,
+                # retry, or second writer on this path.
+                barrier_deadline_ms = int((signal_started + 4.9) * 1000)
+                if publication_observer is not None:
+                    publication_observer.emit_running(barrier_deadline_ms)
+                if remaining <= 0.0:
+                    # R4: the budget was already zero before invocation — skip the callback.
+                    if publication_observer is not None:
+                        publication_observer.emit_terminal(
+                            "cancelled", int(time.monotonic() * 1000)
+                        )
+                else:
+                    publication(dict(provisional))
+                    observed_ms = int(time.monotonic() * 1000)
+                    if observed_ms > barrier_deadline_ms:
+                        # R5: late return. Neutralize the shared restoration state before
+                        # raising: the lock is not released (lock_held False, lock object
+                        # stays held so every later run_owned_process returns probe_busy),
+                        # and the controller must not reach _restore_and_redeliver. Both are
+                        # consumed by the pre-existing "already neutralized" re-raise gate in
+                        # the except Exception: handler below, which skips its own recovery
+                        # logic (lock release, redelivery) entirely for this exception.
+                        if publication_observer is not None:
+                            publication_observer.emit_terminal("contract_violation", observed_ms)
+                        lock_held = False
+                        controller = None
+                        raise _PublicationContractViolation(
+                            "publication contract violation: synchronous callback returned "
+                            "after the bound deadline"
+                        )
+                    if publication_observer is not None:
+                        publication_observer.emit_terminal("completed", observed_ms)
+            else:
+                # Legacy path (no publication_fd): byte-for-byte prior worker-thread semantics.
+                worker = threading.Thread(target=publication, args=(dict(provisional),), daemon=True)
+                worker.start()
+                worker.join(timeout=remaining)
+        elif publication_observer is not None:
+            publication_observer.close()
         if previous_subreaper is not None:
             _prctl(_PR_SET_CHILD_SUBREAPER, previous_subreaper)
             previous_subreaper = None
@@ -1184,12 +1428,17 @@ def run_owned_process(
             _restore_and_redeliver(redelivery_controller)
         if observer is not None:
             observer.close()
+        if publication_observer is not None:
+            publication_observer.close()
 
 
 __all__ = [
     "FAILURE_CLASSES",
     "LifecycleContractError",
+    "accept_publication_record",
+    "classify_publication_contract",
     "normalize_probe_output",
+    "parse_publication_record",
     "run_owned_process",
     "sanitize_stderr",
     "validate_policy",
