@@ -1743,6 +1743,24 @@
       "tier": "behavioral",
       "timeout_seconds": 60,
       "enabled": true
+    },
+    {
+      "id": "workflow-shadow-migration-b2-m1a",
+      "phase": "B2-M1A",
+      "description": "Offline dormant workflow-shadow migration, branch isolation, least-privilege, and integration fail-closure contract",
+      "trigger_paths": [
+        "ai-stack/migrations/versions/20260125_01_add_llm_used_column.py",
+        "ai-stack/migrations/versions/20260718_01_b2_workflow_shadow.py",
+        "nix/modules/services/mcp-servers.nix",
+        "config/workflow-shadow-db-privileges.json",
+        "scripts/testing/test-workflow-shadow-migration.py",
+        "config/validation-check-registry.json",
+        "ai-stack/migrations/test-migrations.sh"
+      ],
+      "command": ["python3", "scripts/testing/test-workflow-shadow-migration.py"],
+      "tier": "behavioral",
+      "timeout_seconds": 30,
+      "enabled": true
     }
   ]
 }

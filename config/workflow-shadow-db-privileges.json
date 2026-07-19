@@ -1,0 +1,226 @@
+{
+  "schema_version": "aq.workflow-shadow-db-privileges.v1",
+  "authority": "legacy_json_authoritative",
+  "coverage": "static_only",
+  "migration": {
+    "revision": "20260718_01_b2_shadow",
+    "branch_label": "b2_workflow_shadow",
+    "down_revision": null,
+    "canonical_config": "ai-stack/migrations/alembic.ini",
+    "aidb_target": "aidb@head",
+    "b2_target": "b2_workflow_shadow@head"
+  },
+  "objects": {
+    "schema": "aq_b2_workflow_shadow_v1",
+    "tables": [
+      "workflow_snapshot",
+      "workflow_outbox_event",
+      "workflow_delivery_control"
+    ],
+    "columns": {
+      "workflow_snapshot": [
+        "workflow_id", "revision", "status", "terminal", "phase_token", "phase_index",
+        "action", "last_event_id", "live_commit_digest", "occurred_at"
+      ],
+      "workflow_outbox_event": [
+        "event_id", "workflow_id", "revision", "live_commit_digest", "event_json", "transaction_at"
+      ],
+      "workflow_delivery_control": [
+        "event_id", "lease_epoch", "attempt_count", "next_attempt_at", "disposition",
+        "typed_error", "updated_at"
+      ]
+    },
+    "column_types": {
+      "workflow_snapshot": {
+        "workflow_id": "varchar(128)", "revision": "integer", "status": "text",
+        "terminal": "boolean", "phase_token": "varchar(71)", "phase_index": "integer",
+        "action": "text", "last_event_id": "varchar(128)",
+        "live_commit_digest": "varchar(71)", "occurred_at": "timestamptz"
+      },
+      "workflow_outbox_event": {
+        "event_id": "varchar(128)", "workflow_id": "varchar(128)", "revision": "integer",
+        "live_commit_digest": "varchar(71)", "event_json": "jsonb",
+        "transaction_at": "timestamptz"
+      },
+      "workflow_delivery_control": {
+        "event_id": "varchar(128)", "lease_epoch": "integer", "attempt_count": "integer",
+        "next_attempt_at": "timestamptz", "disposition": "text", "typed_error": "text",
+        "updated_at": "timestamptz"
+      }
+    },
+    "enums": {
+      "status": ["started", "running", "completed", "failed", "cancelled"],
+      "action": ["start", "advance", "complete", "fail", "cancel"],
+      "transition_kind": ["run_start", "manual_phase_transition", "terminal_completion"],
+      "delivery_disposition": ["pending", "delivering", "delivered", "parked"],
+      "typed_error": [
+        "disabled", "deadline_exceeded", "database_unavailable", "schema_unready",
+        "schema_invalid", "privacy_rejected", "cas_mismatch", "revision_gap",
+        "event_collision", "terminal_conflict", "transaction_failed", "projection_gap",
+        "integrity_failed", "disk_budget_exceeded", "parked"
+      ]
+    },
+    "functions": [
+      "apply_workflow_transition_v1",
+      "reject_workflow_outbox_mutation_v1"
+    ],
+    "triggers": ["workflow_outbox_immutable_v1"],
+    "indexes": [
+      "workflow_outbox_event_workflow_revision_uq",
+      "workflow_delivery_control_next_attempt_idx"
+    ],
+    "constraints": [
+      "workflow_snapshot_revision_ck",
+      "workflow_snapshot_digest_ck",
+      "workflow_snapshot_terminal_ck",
+      "workflow_outbox_event_revision_ck",
+      "workflow_outbox_event_digest_ck",
+      "workflow_outbox_event_size_ck",
+      "workflow_outbox_event_schema_ck",
+      "workflow_delivery_control_lease_ck",
+      "workflow_delivery_control_attempt_ck",
+      "workflow_delivery_control_disposition_ck",
+      "workflow_delivery_control_error_ck",
+      "workflow_outbox_snapshot_fk",
+      "workflow_delivery_outbox_fk"
+    ],
+    "foreign_keys": {
+      "workflow_outbox_snapshot_fk": ["workflow_outbox_event.workflow_id", "workflow_snapshot.workflow_id"],
+      "workflow_delivery_outbox_fk": ["workflow_delivery_control.event_id", "workflow_outbox_event.event_id"]
+    }
+  },
+  "roles": {
+    "owner": {
+      "name": "aq_b2_shadow_owner_v1",
+      "attributes": [
+        "NOLOGIN",
+        "NOSUPERUSER",
+        "NOCREATEDB",
+        "NOCREATEROLE",
+        "NOREPLICATION",
+        "NOBYPASSRLS"
+      ],
+      "retained_members": []
+    },
+    "writer": {
+      "name": "aq_b2_shadow_writer_v1",
+      "attributes": [
+        "NOLOGIN",
+        "NOSUPERUSER",
+        "NOCREATEDB",
+        "NOCREATEROLE",
+        "NOREPLICATION",
+        "NOBYPASSRLS"
+      ]
+    },
+    "delivery": {
+      "name": "aq_b2_shadow_delivery_v1",
+      "attributes": [
+        "NOLOGIN",
+        "NOSUPERUSER",
+        "NOCREATEDB",
+        "NOCREATEROLE",
+        "NOREPLICATION",
+        "NOBYPASSRLS"
+      ]
+    },
+    "reader": {
+      "name": "aq_b2_shadow_reader_v1",
+      "attributes": [
+        "NOLOGIN",
+        "NOSUPERUSER",
+        "NOCREATEDB",
+        "NOCREATEROLE",
+        "NOREPLICATION",
+        "NOBYPASSRLS"
+      ]
+    }
+  },
+  "bootstrap_executor": {
+    "name_pattern": "aq_b2_m1e_bootstrap_<authorization-token>",
+    "database_prefix": "aq_b2_m1e_",
+    "attributes_before": [
+      "LOGIN",
+      "CREATEROLE",
+      "NOSUPERUSER",
+      "NOCREATEDB",
+      "NOREPLICATION",
+      "NOBYPASSRLS"
+    ],
+    "initial_b2_memberships": [],
+    "owner_temporary_database_privileges": ["CREATE"],
+    "temporary_alembic_version_privileges": ["SELECT", "INSERT", "UPDATE", "DELETE"],
+    "temporary_owner_membership": true,
+    "post_commit_actions": [
+      "revoke_owner_database_create",
+      "prove_database_acl",
+      "revoke_alembic_version_privileges",
+      "revoke_createrole",
+      "terminate_session",
+      "drop_bootstrap_login"
+    ],
+    "retained": false,
+    "threat_boundary": "disposable_m1e_database_only"
+  },
+  "grants": {
+    "public": [],
+    "writer": {
+      "schema": ["USAGE"],
+      "tables": {},
+      "functions": {"apply_workflow_transition_v1": ["EXECUTE"]}
+    },
+    "delivery": {
+      "schema": ["USAGE"],
+      "tables": {
+        "workflow_outbox_event": ["SELECT"],
+        "workflow_delivery_control": ["SELECT", "UPDATE"]
+      },
+      "functions": {}
+    },
+    "reader": {
+      "schema": ["USAGE"],
+      "tables": {
+        "workflow_snapshot": ["SELECT"],
+        "workflow_outbox_event": ["SELECT"],
+        "workflow_delivery_control": ["SELECT"]
+      },
+      "functions": {}
+    }
+  },
+  "denials": {
+    "wildcard_privileges": true,
+    "public_grants": true,
+    "durable_login_roles": true,
+    "runtime_role_ownership": true,
+    "writer_direct_table_dml": true,
+    "runtime_ddl": ["CREATE", "ALTER", "DROP", "TRUNCATE"],
+    "unqualified_objects": true,
+    "retained_bootstrap_membership": true,
+    "existing_workflow_objects": true
+  },
+  "limits": {
+    "event_bytes": 2048,
+    "revision": 100000,
+    "lease_epoch": 1000000,
+    "attempt_count": 1000,
+    "static_test_seconds": 30,
+    "disposable_suite_seconds": 60,
+    "database_mib": 256,
+    "migration_attempts": 1
+  },
+  "transaction": {
+    "advisory_lock_identity": "20260718_01_b2_shadow",
+    "lock_timeout": "2s",
+    "statement_timeout": "10s",
+    "idle_in_transaction_session_timeout": "15s",
+    "transactional_ddl": true,
+    "destructive_downgrade": false
+  },
+  "integration_gate": {
+    "required_flags": ["--integration", "--dsn-file", "--evidence-token"],
+    "dsn_file": {"regular": true, "symlink": false, "mode": "0600"},
+    "denylisted_databases": ["aidb", "postgres", "template0", "template1"],
+    "loopback_only": true,
+    "default_result": "M1E_NOT_AUTHORIZED"
+  }
+}
