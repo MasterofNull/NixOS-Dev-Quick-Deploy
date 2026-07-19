@@ -15,6 +15,7 @@ import json
 import os
 import re
 import signal
+import stat
 import subprocess
 import threading
 import time
@@ -43,6 +44,13 @@ FAILURE_CLASSES = frozenset(
     }
 )
 LIFECYCLE_STATES = frozenset({"starting", "running", "terminating", "reaping", "terminal"})
+_LIFECYCLE_STATE_RANK = {
+    "starting": 1,
+    "running": 2,
+    "terminating": 3,
+    "reaping": 4,
+    "terminal": 5,
+}
 PROVIDERS = frozenset({"codex", "qwen", "claude", "pi"})
 PROFILES = frozenset({"codex_help", "qwen_help", "claude_help", "pi_help"})
 PROFILE_BINDINGS = {
@@ -121,6 +129,102 @@ class _SignalController:
                 os.close(descriptor)
             except OSError:
                 pass
+
+
+@dataclass
+class _LifecycleObserver:
+    """Best-effort, descriptor-only projection of lifecycle state transitions."""
+
+    fd: int
+    started: float
+    sequence: int = 0
+    states: set[str] = field(default_factory=set)
+    last_rank: int = 0
+    enabled: bool = True
+    terminal_attempted: bool = False
+
+    def close(self) -> None:
+        descriptor, self.fd = self.fd, -1
+        if descriptor >= 0:
+            try:
+                os.close(descriptor)
+            except OSError:
+                pass
+
+    def emit(self, state: str) -> None:
+        if self.terminal_attempted:
+            return
+        if state not in LIFECYCLE_STATES:
+            self.enabled = False
+            self.close()
+            return
+        rank = _LIFECYCLE_STATE_RANK[state]
+        if rank <= self.last_rank:
+            return
+        self.states.add(state)
+        self.last_rank = rank
+        self.sequence += 1
+        if state == "terminal":
+            self.terminal_attempted = True
+        try:
+            if self.enabled:
+                elapsed_ms = min(300000, _now_ms(self.started))
+                record = (
+                    f"qa.provider-probe-state.v1|{self.sequence}|{state}|{elapsed_ms}\n"
+                ).encode("ascii")
+                if len(record) > 96:
+                    raise ValueError("observer record exceeds fixed bound")
+                written = os.write(self.fd, record)
+                if written != len(record):
+                    self.enabled = False
+                    self.close()
+        except (BlockingIOError, BrokenPipeError, OSError, ValueError):
+            self.enabled = False
+            self.close()
+        finally:
+            if state == "terminal":
+                self.close()
+
+
+def _open_lifecycle_observer(observer_fd: int | None, started: float) -> _LifecycleObserver | None:
+    """Validate without mutating the caller fd, then own a CLOEXEC duplicate."""
+    if observer_fd is None:
+        return None
+    duplicate = -1
+    try:
+        if isinstance(observer_fd, bool) or not isinstance(observer_fd, int) or observer_fd < 0:
+            raise OSError(errno.EBADF, "invalid observer descriptor")
+        caller_fd_flags = fcntl.fcntl(observer_fd, fcntl.F_GETFD)
+        caller_status_flags = fcntl.fcntl(observer_fd, fcntl.F_GETFL)
+        caller_stat = os.fstat(observer_fd)
+        if not caller_fd_flags & fcntl.FD_CLOEXEC:
+            raise OSError(errno.EINVAL, "observer descriptor must be close-on-exec")
+        if caller_status_flags & os.O_ACCMODE != os.O_WRONLY:
+            raise OSError(errno.EINVAL, "observer descriptor must be write-only")
+        if not caller_status_flags & os.O_NONBLOCK:
+            raise OSError(errno.EINVAL, "observer descriptor must be nonblocking")
+        if not stat.S_ISFIFO(caller_stat.st_mode):
+            raise OSError(errno.EINVAL, "observer descriptor must be a pipe or FIFO")
+        duplicate = fcntl.fcntl(observer_fd, fcntl.F_DUPFD_CLOEXEC, 0)
+        duplicate_fd_flags = fcntl.fcntl(duplicate, fcntl.F_GETFD)
+        duplicate_status_flags = fcntl.fcntl(duplicate, fcntl.F_GETFL)
+        duplicate_stat = os.fstat(duplicate)
+        if not duplicate_fd_flags & fcntl.FD_CLOEXEC:
+            raise OSError(errno.EINVAL, "observer duplicate must be close-on-exec")
+        if duplicate_status_flags & os.O_ACCMODE != os.O_WRONLY:
+            raise OSError(errno.EINVAL, "observer duplicate must be write-only")
+        if not duplicate_status_flags & os.O_NONBLOCK:
+            raise OSError(errno.EINVAL, "observer duplicate must be nonblocking")
+        if not stat.S_ISFIFO(duplicate_stat.st_mode):
+            raise OSError(errno.EINVAL, "observer duplicate must be a pipe or FIFO")
+        return _LifecycleObserver(duplicate, started)
+    except (AttributeError, OSError, TypeError, ValueError):
+        if duplicate >= 0:
+            try:
+                os.close(duplicate)
+            except OSError:
+                pass
+        raise LifecycleContractError("invalid lifecycle observer descriptor") from None
 
 
 def _now_ms(start: float) -> int:
@@ -298,6 +402,7 @@ def _exceptional_teardown(
     baseline_children: set[int],
     actions: list[dict[str, Any]],
     started: float,
+    observer: _LifecycleObserver | None = None,
 ) -> bool:
     """Best-effort descriptor-bound teardown used when the primary controller faults.
 
@@ -309,6 +414,8 @@ def _exceptional_teardown(
     def record(name: str, outcome: str) -> None:
         actions.append({"action": name, "outcome": outcome, "at_ms": _now_ms(started)})
 
+    if observer is not None:
+        observer.emit("terminating")
     for name, child_signal in (
         ("sigcont", signal.SIGCONT),
         ("sigterm", signal.SIGTERM),
@@ -348,6 +455,8 @@ def _exceptional_teardown(
     else:
         record("sigkill", "not_needed")
 
+    if observer is not None:
+        observer.emit("reaping")
     reap_end = time.monotonic() + 1.0
     quiet = False
     while time.monotonic() < reap_end:
@@ -644,6 +753,7 @@ def run_owned_process(
     stderr_limit_bytes: int = 4096,
     mode: str = "exit_only",
     publication: Callable[[dict[str, Any]], None] | None = None,
+    observer_fd: int | None = None,
 ) -> dict[str, Any]:
     """Run one local fixture command with descriptor-bound process-session ownership.
 
@@ -669,7 +779,15 @@ def run_owned_process(
         return _terminal_without_spawn(
             invocation_id, provider_id, profile_id, 45.0, "contract_invalid", started
         )
+    try:
+        observer = _open_lifecycle_observer(observer_fd, started)
+    except LifecycleContractError:
+        return _terminal_without_spawn(
+            invocation_id, provider_id, profile_id, deadline_s, "contract_invalid", started
+        )
     if not _INVOCATION_LOCK.acquire(blocking=False):
+        if observer is not None:
+            observer.close()
         return _terminal_without_spawn(
             invocation_id, provider_id, profile_id, deadline_s, "probe_busy", started
         )
@@ -703,6 +821,8 @@ def run_owned_process(
                 invocation_id, provider_id, profile_id, deadline_s, "contract_invalid", started
             )
 
+        if observer is not None:
+            observer.emit("starting")
         try:
             process = subprocess.Popen(
                 list(argv),
@@ -720,6 +840,27 @@ def run_owned_process(
         except OSError:
             failure = "spawn_failed"
         if process is None:
+            if observer is not None:
+                observer.emit("reaping")
+            _provisional_result = _result(
+                invocation_id=invocation_id,
+                provider_id=provider_id,
+                profile_id=profile_id,
+                started=started,
+                deadline_s=deadline_s,
+                exit_code=None,
+                result="fail",
+                failure_class=failure,
+                actions=actions,
+                stdout_truncated=False,
+                stderr_truncated=False,
+                stderr_summary="",
+                disposition_class=None,
+                redelivered=False,
+                coalesced_signals=controller.coalesced,
+            )
+            if observer is not None:
+                observer.emit("terminal")
             if previous_subreaper is not None:
                 _prctl(_PR_SET_CHILD_SUBREAPER, previous_subreaper)
                 previous_subreaper = None
@@ -728,7 +869,7 @@ def run_owned_process(
             redelivery_controller = controller
             controller = None
             disposition, redelivered = _restore_and_redeliver(redelivery_controller)
-            return _result(
+            terminal_result = _result(
                 invocation_id=invocation_id,
                 provider_id=provider_id,
                 profile_id=profile_id,
@@ -745,6 +886,7 @@ def run_owned_process(
                 redelivered=redelivered,
                 coalesced_signals=controller.coalesced if controller else 0,
             )
+            return terminal_result
 
         stat = _proc_stat(process.pid)
         try:
@@ -772,6 +914,8 @@ def run_owned_process(
         else:
             _state, _ppid, pgid, sid, start_time = stat
             identity = _ProcIdentity(process.pid, pgid, sid, start_time, pidfd)
+            if observer is not None:
+                observer.emit("running")
 
         if identity is not None:
             assert process.stdout is not None and process.stderr is not None
@@ -814,6 +958,8 @@ def run_owned_process(
             needs_cleanup = failure in {"deadline_exceeded", "interrupted"} or residual_seen
             if needs_cleanup:
                 cleanup_started = time.monotonic()
+                if observer is not None:
+                    observer.emit("terminating")
                 action("sigcont", _send_group(identity, signal.SIGCONT))
                 action("sigterm", _send_group(identity, signal.SIGTERM))
                 grace_end = min(cleanup_started + term_grace_s, cleanup_started + 2.0)
@@ -839,6 +985,8 @@ def run_owned_process(
             for reader in readers:
                 reader.join(timeout=1.0)
 
+            if observer is not None:
+                observer.emit("reaping")
             owned_now = _children_of(os.getpid()) - baseline_children - {identity.pid}
             escaped_live = False
             for child_pid in owned_now:
@@ -866,6 +1014,8 @@ def run_owned_process(
             if actions[-1]["outcome"] != "complete":
                 failure = "cleanup_failed"
 
+        if identity is None and observer is not None:
+            observer.emit("reaping")
         sanitized, sanitize_truncated = sanitize_stderr(bytes(stderr_capture.data), stderr_limit_bytes)
         stderr_capture.truncated = stderr_capture.truncated or sanitize_truncated
         result, normalized_failure = normalize_probe_output(
@@ -896,6 +1046,8 @@ def run_owned_process(
             redelivered=False,
             coalesced_signals=coalesced,
         )
+        if observer is not None:
+            observer.emit("terminal")
         if controller.first_signal is not None and publication is not None:
             signal_started = controller.first_signal_at or time.monotonic()
             # Reserve a small deterministic margin for handler/mask restoration and the one kill.
@@ -935,8 +1087,12 @@ def run_owned_process(
             raise
         failure = "cleanup_failed"
         if identity is not None:
-            _exceptional_teardown(identity, process, baseline_children, actions, started)
+            _exceptional_teardown(
+                identity, process, baseline_children, actions, started, observer
+            )
             identity = None
+        elif observer is not None:
+            observer.emit("reaping")
         for reader in readers:
             reader.join(timeout=0.5)
         if process is not None:
@@ -962,6 +1118,25 @@ def run_owned_process(
             _INVOCATION_LOCK.release()
             lock_held = False
         if controller is not None:
+            provisional = _result(
+                invocation_id=invocation_id,
+                provider_id=provider_id,
+                profile_id=profile_id,
+                started=started,
+                deadline_s=deadline_s,
+                exit_code=exit_code,
+                result="fail",
+                failure_class=failure,
+                actions=actions[-8:],
+                stdout_truncated=stdout_capture.truncated,
+                stderr_truncated=stderr_capture.truncated,
+                stderr_summary=sanitized,
+                disposition_class=None,
+                redelivered=False,
+                coalesced_signals=coalesced,
+            )
+            if observer is not None:
+                observer.emit("terminal")
             redelivery_controller = controller
             controller = None
             disposition_class, redelivered = _restore_and_redeliver(redelivery_controller)
@@ -985,7 +1160,9 @@ def run_owned_process(
     finally:
         if identity is not None:
             try:
-                _exceptional_teardown(identity, process, baseline_children, actions, started)
+                _exceptional_teardown(
+                    identity, process, baseline_children, actions, started, observer
+                )
             except Exception:
                 try:
                     os.close(identity.pidfd)
@@ -1005,6 +1182,8 @@ def run_owned_process(
             redelivery_controller = controller
             controller = None
             _restore_and_redeliver(redelivery_controller)
+        if observer is not None:
+            observer.close()
 
 
 __all__ = [
