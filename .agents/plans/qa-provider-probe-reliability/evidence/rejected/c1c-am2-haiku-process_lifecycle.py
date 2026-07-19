@@ -90,14 +90,8 @@ class LifecycleContractError(RuntimeError):
     """Raised only for programmer misuse before a process can be owned."""
 
 
-class _PublicationContractViolation(RuntimeError):
-    """Raised only when the synchronous publication barrier (R2) returns late (R5).
-
-    Dedicated type so the generic ``except Exception:`` recovery branch cannot misclassify
-    this as its own recovery case; shared restoration state is neutralized by the raiser
-    before this is ever raised, and the pre-existing "already neutralized" re-raise gate in
-    that handler is what lets this propagate untouched.
-    """
+class _PublicationContractViolation(Exception):
+    """Raised when publication observer detects contract violation requiring permanent fail-stop."""
 
 
 @dataclass(frozen=True)
@@ -198,14 +192,11 @@ class _LifecycleObserver:
 
 @dataclass
 class _PublicationObserver:
-    """Pure caller-owned, nonblocking publication-status pipe.
-
-    Anchored exclusively to the synchronous ``publication`` callback invocation (R1); it
-    never observes process spawn, the probe deadline, or process exit, and never computes
-    its deadline from ``deadline_s``.
-    """
+    """Pure caller-owned, nonblocking publication status pipe for C1C-AM2."""
 
     fd: int
+    started: float
+    deadline_ms: int
     sequence: int = 0
     enabled: bool = True
     terminal_attempted: bool = False
@@ -218,27 +209,25 @@ class _PublicationObserver:
             except OSError:
                 pass
 
-    def _write(self, record: bytes) -> None:
+    def emit_running(self) -> None:
+        if self.terminal_attempted or not self.enabled:
+            return
+        self.sequence = 1
         try:
+            record = (
+                f"qa.provider-publication.v1|1|running|{self.deadline_ms}\n"
+            ).encode("ascii")
             if len(record) > 96:
                 raise ValueError("publication record exceeds fixed bound")
             written = os.write(self.fd, record)
             if written != len(record):
                 self.enabled = False
+                self.close()
         except (BlockingIOError, BrokenPipeError, OSError, ValueError):
             self.enabled = False
-
-    def emit_running(self, deadline_monotonic_ms: int) -> None:
-        if self.terminal_attempted or not self.enabled:
-            return
-        self.sequence = 1
-        self._write(
-            f"qa.provider-publication.v1|1|running|{deadline_monotonic_ms}\n".encode("ascii")
-        )
-        if not self.enabled:
             self.close()
 
-    def emit_terminal(self, state: str, observed_monotonic_ms: int) -> None:
+    def emit_terminal(self, state: str, is_late: bool = False) -> None:
         if self.terminal_attempted or not self.enabled:
             return
         self.terminal_attempted = True
@@ -247,10 +236,20 @@ class _PublicationObserver:
             self.enabled = False
             self.close()
             return
-        self._write(
-            f"qa.provider-publication.v1|2|{state}|{observed_monotonic_ms}\n".encode("ascii")
-        )
-        self.close()
+        try:
+            elapsed_ms = min(300000, _now_ms(self.started))
+            record = (
+                f"qa.provider-publication.v1|2|{state}|{elapsed_ms}\n"
+            ).encode("ascii")
+            if len(record) > 96:
+                raise ValueError("publication record exceeds fixed bound")
+            written = os.write(self.fd, record)
+            if written != len(record):
+                self.enabled = False
+        except (BlockingIOError, BrokenPipeError, OSError, ValueError):
+            self.enabled = False
+        finally:
+            self.close()
 
 
 def _open_lifecycle_observer(observer_fd: int | None, started: float) -> _LifecycleObserver | None:
@@ -294,12 +293,8 @@ def _open_lifecycle_observer(observer_fd: int | None, started: float) -> _Lifecy
         raise LifecycleContractError("invalid lifecycle observer descriptor") from None
 
 
-def _open_publication_observer(publication_fd: int | None) -> _PublicationObserver | None:
-    """Validate without mutating the caller fd, then own a CLOEXEC duplicate.
-
-    Deliberately independent of ``deadline_s``: R3 binds the barrier deadline to the
-    synchronous publication callback invocation, not to the probe's own deadline.
-    """
+def _open_publication_observer(publication_fd: int | None, started: float, deadline_s: float) -> _PublicationObserver | None:
+    """Validate without mutating the caller fd, then own a CLOEXEC duplicate for publication status."""
     if publication_fd is None:
         return None
     duplicate = -1
@@ -329,7 +324,8 @@ def _open_publication_observer(publication_fd: int | None) -> _PublicationObserv
             raise OSError(errno.EINVAL, "publication duplicate must be nonblocking")
         if not stat.S_ISFIFO(duplicate_stat.st_mode):
             raise OSError(errno.EINVAL, "publication duplicate must be a pipe or FIFO")
-        return _PublicationObserver(duplicate)
+        deadline_ms = int(deadline_s * 1000)
+        return _PublicationObserver(duplicate, started, deadline_ms)
     except (AttributeError, OSError, TypeError, ValueError):
         if duplicate >= 0:
             try:
@@ -339,84 +335,18 @@ def _open_publication_observer(publication_fd: int | None) -> _PublicationObserv
         raise LifecycleContractError("invalid publication observer descriptor") from None
 
 
-def parse_publication_record(raw: bytes) -> tuple[int, str, int] | None:
-    """Fail-closed parse of exactly one publication-status record (R7).
-
-    Returns ``(sequence, state, value_ms)`` for a syntactically and semantically valid
-    record, or ``None`` for anything malformed, oversized, or carrying an unexpected
-    sequence/state pairing. Never raises.
-    """
-    if not isinstance(raw, (bytes, bytearray)) or len(raw) > 96:
-        return None
-    try:
-        text = raw.decode("ascii")
-    except UnicodeDecodeError:
-        return None
-    if not text.endswith("\n"):
-        return None
-    parts = text[:-1].split("|")
-    if len(parts) != 4:
-        return None
-    schema, sequence_text, state, value_text = parts
-    if schema != "qa.provider-publication.v1":
-        return None
-    if sequence_text not in ("1", "2"):
-        return None
-    sequence = int(sequence_text)
-    if sequence == 1 and state != "running":
-        return None
-    if sequence == 2 and state not in ("completed", "cancelled", "contract_violation"):
-        return None
-    if not value_text.isdigit() or len(value_text) > 13:
-        return None
-    return sequence, state, int(value_text)
-
-
-def accept_publication_record(
-    raw: bytes,
-    *,
-    last_sequence: int,
-    terminal: bool,
-) -> tuple[int, str, int] | None:
-    """Fail-closed stream acceptance for publication records (R7).
-
-    Rejects duplicate, backward, and post-terminal records. ``last_sequence`` is the
-    highest sequence number already accepted (``0`` if none yet); ``terminal`` is true once
-    a sequence-2 record has been accepted. A record arriving after ``terminal`` is refused
-    outright, so a classification already reached cannot be downgraded (R6) by later input.
-    """
-    if terminal:
-        return None
-    parsed = parse_publication_record(raw)
-    if parsed is None:
-        return None
-    sequence, _state, _value = parsed
-    if sequence != last_sequence + 1:
-        return None
-    return parsed
-
-
 def classify_publication_contract(
     last_record_state: str | None,
     deadline_ms: int,
     observer_now_ms: int,
     has_seq2_ack: bool,
 ) -> str:
-    """Pure authoritative classifier for the publication contract (AM2 rule, corrected).
-
-    Depends only on the validated record, the bound deadline, injected observer monotonic
-    time, and sequence-2 presence — no callback state, thread inspection, wall time, PID, or
-    stuck-owner marker. A missing or invalid record is never healthy and never violated: it
-    is always ``unavailable``, regardless of elapsed time. Only a validated ``running``
-    record can transition to ``contract_violation``, and a terminal classification
-    (``completed``/``cancelled``/``contract_violation``) is retained rather than downgraded
-    by later input.
-    """
-    if last_record_state is None:
-        return "unavailable"
-    if last_record_state == "running":
+    """Pure authoritative classifier for publication contract status."""
+    if last_record_state is None or last_record_state == "running":
         if observer_now_ms > deadline_ms and not has_seq2_ack:
             return "contract_violation"
+        if last_record_state is None:
+            return "unavailable"
         return "running"
     if last_record_state in ("completed", "cancelled", "contract_violation"):
         return last_record_state
@@ -982,8 +912,9 @@ def run_owned_process(
         return _terminal_without_spawn(
             invocation_id, provider_id, profile_id, deadline_s, "contract_invalid", started
         )
+    publication_observer: _PublicationObserver | None = None
     try:
-        publication_observer = _open_publication_observer(publication_fd)
+        publication_observer = _open_publication_observer(publication_fd, started, deadline_s)
     except LifecycleContractError:
         if observer is not None:
             observer.close()
@@ -1030,6 +961,8 @@ def run_owned_process(
 
         if observer is not None:
             observer.emit("starting")
+        if publication_observer is not None:
+            publication_observer.emit_running()
         try:
             process = subprocess.Popen(
                 list(argv),
@@ -1134,6 +1067,7 @@ def run_owned_process(
                 reader.start()
 
             deadline = started + deadline_s
+            publication_deadline_reached = False
             while True:
                 exited, observed = _leader_exit(identity)
                 if exited:
@@ -1159,8 +1093,16 @@ def run_owned_process(
                     break
                 if _deadline_reached(time.monotonic(), deadline):
                     failure = "deadline_exceeded"
+                    publication_deadline_reached = True
                     break
                 time.sleep(0.01)
+
+            if publication_observer is not None:
+                if publication_deadline_reached:
+                    publication_observer.emit_terminal("contract_violation", is_late=True)
+                    raise _PublicationContractViolation("publication contract violation: deadline exceeded")
+                else:
+                    publication_observer.emit_terminal("completed")
 
             needs_cleanup = failure in {"deadline_exceeded", "interrupted"} or residual_seen
             if needs_cleanup:
@@ -1259,46 +1201,9 @@ def run_owned_process(
             signal_started = controller.first_signal_at or time.monotonic()
             # Reserve a small deterministic margin for handler/mask restoration and the one kill.
             remaining = max(0.0, signal_started + 4.9 - time.monotonic())
-            if publication_fd is not None:
-                # R2: synchronous opt-in barrier — no background worker, daemon, task, queue,
-                # retry, or second writer on this path.
-                barrier_deadline_ms = int((signal_started + 4.9) * 1000)
-                if publication_observer is not None:
-                    publication_observer.emit_running(barrier_deadline_ms)
-                if remaining <= 0.0:
-                    # R4: the budget was already zero before invocation — skip the callback.
-                    if publication_observer is not None:
-                        publication_observer.emit_terminal(
-                            "cancelled", int(time.monotonic() * 1000)
-                        )
-                else:
-                    publication(dict(provisional))
-                    observed_ms = int(time.monotonic() * 1000)
-                    if observed_ms > barrier_deadline_ms:
-                        # R5: late return. Neutralize the shared restoration state before
-                        # raising: the lock is not released (lock_held False, lock object
-                        # stays held so every later run_owned_process returns probe_busy),
-                        # and the controller must not reach _restore_and_redeliver. Both are
-                        # consumed by the pre-existing "already neutralized" re-raise gate in
-                        # the except Exception: handler below, which skips its own recovery
-                        # logic (lock release, redelivery) entirely for this exception.
-                        if publication_observer is not None:
-                            publication_observer.emit_terminal("contract_violation", observed_ms)
-                        lock_held = False
-                        controller = None
-                        raise _PublicationContractViolation(
-                            "publication contract violation: synchronous callback returned "
-                            "after the bound deadline"
-                        )
-                    if publication_observer is not None:
-                        publication_observer.emit_terminal("completed", observed_ms)
-            else:
-                # Legacy path (no publication_fd): byte-for-byte prior worker-thread semantics.
-                worker = threading.Thread(target=publication, args=(dict(provisional),), daemon=True)
-                worker.start()
-                worker.join(timeout=remaining)
-        elif publication_observer is not None:
-            publication_observer.close()
+            worker = threading.Thread(target=publication, args=(dict(provisional),), daemon=True)
+            worker.start()
+            worker.join(timeout=remaining)
         if previous_subreaper is not None:
             _prctl(_PR_SET_CHILD_SUBREAPER, previous_subreaper)
             previous_subreaper = None
@@ -1324,6 +1229,9 @@ def run_owned_process(
             redelivered=redelivered,
             coalesced_signals=coalesced,
         )
+    except _PublicationContractViolation:
+        # Permanent fail-stop: publication contract violation must propagate immediately
+        raise
     except Exception:
         # An exception raised by an already-restored custom disposition is outside lifecycle
         # ownership and must propagate; its controller was consumed before invocation.
@@ -1435,10 +1343,8 @@ def run_owned_process(
 __all__ = [
     "FAILURE_CLASSES",
     "LifecycleContractError",
-    "accept_publication_record",
     "classify_publication_contract",
     "normalize_probe_output",
-    "parse_publication_record",
     "run_owned_process",
     "sanitize_stderr",
     "validate_policy",

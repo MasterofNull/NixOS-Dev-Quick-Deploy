@@ -4,11 +4,9 @@
 from __future__ import annotations
 
 import copy
-import fcntl
 import importlib.util
 import json
 import os
-import select
 import signal
 import subprocess
 import sys
@@ -19,15 +17,8 @@ import unittest
 from pathlib import Path
 
 # Keep ordinary child fixtures independent of the comparatively heavy test/schema imports.  This
-# also proves the lifecycle deadline measures the child, not test-harness import overhead.  "pub:"
-# fixtures are excluded the same way "outer:" ones are -- they need the fully imported LIFECYCLE
-# module below, not this fast path.
-if (
-    len(sys.argv) == 3
-    and sys.argv[1] == "--fixture"
-    and not sys.argv[2].startswith("outer:")
-    and not sys.argv[2].startswith("pub:")
-):
+# also proves the lifecycle deadline measures the child, not test-harness import overhead.
+if len(sys.argv) == 3 and sys.argv[1] == "--fixture" and not sys.argv[2].startswith("outer:"):
     _early_mode = sys.argv[2]
     if _early_mode == "exit_zero":
         raise SystemExit(0)
@@ -92,75 +83,6 @@ SPEC.loader.exec_module(LIFECYCLE)
 
 def _fixture(mode: str) -> list[str]:
     return [sys.executable, str(Path(__file__).resolve()), "--fixture", mode]
-
-
-def _policy() -> dict[str, object]:
-    return json.loads(POLICY_PATH.read_text(encoding="utf-8"))
-
-
-def _pubsub_pipe() -> tuple[int, int]:
-    return os.pipe2(os.O_NONBLOCK | os.O_CLOEXEC)
-
-
-def _read_all(descriptor: int) -> bytes:
-    chunks: list[bytes] = []
-    while True:
-        try:
-            chunk = os.read(descriptor, 65536)
-        except BlockingIOError:
-            break
-        if not chunk:
-            break
-        chunks.append(chunk)
-    return b"".join(chunks)
-
-
-def _drain_publication(read_fd: int, *, timeout: float) -> list[bytes]:
-    """Event-driven (select-based) read of newline-delimited records, bounded by ``timeout``.
-
-    Never a bare sleep-then-check: each iteration blocks only until the descriptor is
-    actually readable or the overall deadline expires.
-    """
-    deadline = time.monotonic() + timeout
-    lines: list[bytes] = []
-    buffer = bytearray()
-    while time.monotonic() < deadline:
-        remaining = max(0.0, deadline - time.monotonic())
-        ready, _write_ready, _err_ready = select.select([read_fd], [], [], min(0.5, remaining))
-        if not ready:
-            continue
-        try:
-            chunk = os.read(read_fd, 4096)
-        except BlockingIOError:
-            continue
-        if not chunk:
-            break
-        buffer.extend(chunk)
-        while b"\n" in buffer:
-            line, _sep, rest = buffer.partition(b"\n")
-            lines.append(bytes(line) + b"\n")
-            buffer[:] = rest
-    return lines
-
-
-def _read_stdout_line(child: "subprocess.Popen[bytes]", *, timeout: float) -> str | None:
-    """Event-driven (select-based) read of one stdout line from a still-running child."""
-    deadline = time.monotonic() + timeout
-    buffer = bytearray()
-    fd = child.stdout.fileno()  # type: ignore[union-attr]
-    while time.monotonic() < deadline:
-        remaining = max(0.0, deadline - time.monotonic())
-        ready, _write_ready, _err_ready = select.select([fd], [], [], min(0.5, remaining))
-        if not ready:
-            continue
-        chunk = os.read(fd, 4096)
-        if not chunk:
-            return None
-        buffer.extend(chunk)
-        if b"\n" in buffer:
-            line, _sep, _rest = buffer.partition(b"\n")
-            return line.decode()
-    return None
 
 
 def _run_fixture(mode: str, **kwargs: object) -> dict[str, object]:
@@ -678,6 +600,148 @@ class LifecycleTests(unittest.TestCase):
         self.assertFalse(set(result) & {"stdout", "stderr", "argv", "pid", "pgid", "sid", "env"})
 
 
+class PublicationObserverTests(unittest.TestCase):
+    def test_publication_observer_emits_running_and_completed_on_clean_exit(self) -> None:
+        read_fd, write_fd = os.pipe2(os.O_NONBLOCK | os.O_CLOEXEC)
+        try:
+            result = LIFECYCLE.run_owned_process(
+                _fixture("exit_zero"),
+                provider_id="codex",
+                profile_id="codex_help",
+                invocation_id="00000000-0000-4000-8000-00000000000c",
+                policy=json.loads(POLICY_PATH.read_text(encoding="utf-8")),
+                env={},
+                publication_fd=write_fd,
+            )
+            os.close(write_fd)
+            write_fd = -1
+            raw = b""
+            while True:
+                try:
+                    chunk = os.read(read_fd, 65536)
+                except BlockingIOError:
+                    break
+                if not chunk:
+                    break
+                raw += chunk
+            events = []
+            for line in raw.decode("ascii").splitlines():
+                parts = line.split("|")
+                events.append((parts[1], parts[2], line))
+        finally:
+            for fd in (read_fd, write_fd):
+                if fd >= 0:
+                    try:
+                        os.close(fd)
+                    except OSError:
+                        pass
+        self.assertEqual(result["failure_class"], "none")
+        self.assertEqual(len(events), 2)
+        self.assertEqual(events[0][0], "1")
+        self.assertEqual(events[0][1], "running")
+        self.assertEqual(events[1][0], "2")
+        self.assertEqual(events[1][1], "completed")
+
+    def test_publication_observer_fail_stops_on_late_return(self) -> None:
+        read_fd, write_fd = os.pipe2(os.O_NONBLOCK | os.O_CLOEXEC)
+        try:
+            original_deadline = LIFECYCLE._deadline_reached
+            forced_at = time.monotonic() + 0.12
+            LIFECYCLE._deadline_reached = lambda now, _deadline: now >= forced_at
+            try:
+                with self.assertRaises((RuntimeError, Exception)) as ctx:
+                    LIFECYCLE.run_owned_process(
+                        _fixture("sleep"),
+                        provider_id="codex",
+                        profile_id="codex_help",
+                        invocation_id="00000000-0000-4000-8000-00000000000d",
+                        policy=json.loads(POLICY_PATH.read_text(encoding="utf-8")),
+                        env={},
+                        publication_fd=write_fd,
+                    )
+                self.assertIn("contract violation", str(ctx.exception))
+            finally:
+                LIFECYCLE._deadline_reached = original_deadline
+            os.close(write_fd)
+            write_fd = -1
+            raw = b""
+            while True:
+                try:
+                    chunk = os.read(read_fd, 65536)
+                except BlockingIOError:
+                    break
+                if not chunk:
+                    break
+                raw += chunk
+            events = []
+            for line in raw.decode("ascii").splitlines():
+                parts = line.split("|")
+                events.append((parts[1], parts[2]))
+        finally:
+            for fd in (read_fd, write_fd):
+                if fd >= 0:
+                    try:
+                        os.close(fd)
+                    except OSError:
+                        pass
+        self.assertEqual(len(events), 2)
+        self.assertEqual(events[0][0], "1")
+        self.assertEqual(events[0][1], "running")
+        self.assertEqual(events[1][0], "2")
+        self.assertEqual(events[1][1], "contract_violation")
+
+    def test_publication_classifier_detects_violations(self) -> None:
+        deadline_ms = 1000
+        self.assertEqual(
+            LIFECYCLE.classify_publication_contract("running", deadline_ms, 500, False),
+            "running",
+        )
+        self.assertEqual(
+            LIFECYCLE.classify_publication_contract("running", deadline_ms, 1001, False),
+            "contract_violation",
+        )
+        self.assertEqual(
+            LIFECYCLE.classify_publication_contract("running", deadline_ms, 1001, True),
+            "running",
+        )
+        self.assertEqual(
+            LIFECYCLE.classify_publication_contract("completed", deadline_ms, 2000, False),
+            "completed",
+        )
+        self.assertEqual(
+            LIFECYCLE.classify_publication_contract(None, deadline_ms, 500, False),
+            "unavailable",
+        )
+
+    def test_invalid_publication_descriptors_fail_closed(self) -> None:
+        policy = json.loads(POLICY_PATH.read_text(encoding="utf-8"))
+        read_fd, write_fd = os.pipe2(os.O_NONBLOCK | os.O_CLOEXEC)
+        try:
+            result = LIFECYCLE.run_owned_process(
+                _fixture("exit_zero"),
+                provider_id="codex",
+                profile_id="codex_help",
+                invocation_id="00000000-0000-4000-8000-00000000000e",
+                policy=policy,
+                env={},
+                publication_fd=read_fd,
+            )
+            self.assertEqual(result["failure_class"], "contract_invalid")
+            result = LIFECYCLE.run_owned_process(
+                _fixture("exit_zero"),
+                provider_id="codex",
+                profile_id="codex_help",
+                invocation_id="00000000-0000-4000-8000-00000000000f",
+                policy=policy,
+                env={},
+                publication_fd=-1,
+            )
+            self.assertEqual(result["failure_class"], "contract_invalid")
+        finally:
+            os.close(read_fd)
+            os.close(write_fd)
+
+
 class OuterSignalTests(unittest.TestCase):
     def _outer(self, disposition: str, sig: int, second: bool = False) -> subprocess.CompletedProcess[str]:
         return subprocess.run(
@@ -770,486 +834,8 @@ class OuterSignalTests(unittest.TestCase):
         payload = json.loads(completed.stdout.strip().splitlines()[-1])
         self.assertLess(payload["signal_to_redelivery_elapsed"], 5.0)
 
-    def test_legacy_publication_without_barrier_fd_still_uses_a_worker_thread(self) -> None:
-        # R2/Proof 5: the legacy path (publication without publication_fd) is byte-frozen --
-        # it must still spawn exactly the same daemon worker thread as before AM3.
-        original_thread_cls = LIFECYCLE.threading.Thread
-        constructed_targets: list[object] = []
-
-        class _TrackedThread(original_thread_cls):  # type: ignore[misc,valid-type]
-            def __init__(self, *args: object, **kwargs: object) -> None:
-                constructed_targets.append(kwargs.get("target"))
-                super().__init__(*args, **kwargs)
-
-        def publication(_record: dict[str, object]) -> None:
-            pass
-
-        def sender() -> None:
-            time.sleep(0.15)
-            os.kill(os.getpid(), signal.SIGTERM)
-
-        # A returning custom handler must be the prior disposition, or redelivery terminates
-        # this test process via default SIG_DFL (see the in-process barrier tests).
-        def returning_handler(_signum: int, _frame: object) -> None:
-            pass
-
-        prior = signal.getsignal(signal.SIGTERM)
-        signal.signal(signal.SIGTERM, returning_handler)
-        threading.Thread(target=sender, daemon=True).start()
-        LIFECYCLE.threading.Thread = _TrackedThread
-        try:
-            result = LIFECYCLE.run_owned_process(
-                _fixture("sleep"),
-                provider_id="codex",
-                profile_id="codex_help",
-                policy=_policy(),
-                invocation_id="00000000-0000-4000-8000-000000000010",
-                env={},
-                publication=publication,
-            )
-        finally:
-            LIFECYCLE.threading.Thread = original_thread_cls
-            signal.signal(signal.SIGTERM, prior)
-        self.assertEqual(result["failure_class"], "interrupted")
-        self.assertIn(publication, constructed_targets)
-
-
-class PublicationBarrierInProcessTests(unittest.TestCase):
-    """R1-R4 in-process proofs: the synchronous barrier does not need subprocess isolation
-    for the on-time/completed and zero-budget/cancelled cases, since neither one blocks the
-    calling thread beyond a bounded, short interval."""
-
-    def test_on_time_publication_barrier_invokes_callback_and_emits_exact_sequence(self) -> None:
-        read_fd, write_fd = _pubsub_pipe()
-        prior = signal.getsignal(signal.SIGTERM)
-        invoked = {"count": 0}
-
-        def publication(_record: dict[str, object]) -> None:
-            invoked["count"] += 1
-
-        def sender() -> None:
-            time.sleep(0.15)
-            os.kill(os.getpid(), signal.SIGTERM)
-
-        # A returning custom handler, installed before the call, becomes the "prior"
-        # disposition that _restore_and_redeliver restores and then redelivers to -- without
-        # this, redelivery would fall through to the default SIG_DFL disposition and
-        # terminate this very test process instead of just returning.
-        def returning_handler(_signum: int, _frame: object) -> None:
-            pass
-
-        signal.signal(signal.SIGTERM, returning_handler)
-        threading.Thread(target=sender, daemon=True).start()
-        try:
-            result = LIFECYCLE.run_owned_process(
-                _fixture("sleep"),
-                provider_id="codex",
-                profile_id="codex_help",
-                policy=_policy(),
-                invocation_id="00000000-0000-4000-8000-00000000000e",
-                env={},
-                publication=publication,
-                publication_fd=write_fd,
-            )
-        finally:
-            signal.signal(signal.SIGTERM, prior)
-            os.close(write_fd)
-        raw = _read_all(read_fd)
-        os.close(read_fd)
-        lines = raw.splitlines(keepends=True)
-        self.assertEqual(len(lines), 2)
-        first = LIFECYCLE.parse_publication_record(lines[0])
-        second = LIFECYCLE.parse_publication_record(lines[1])
-        self.assertIsNotNone(first)
-        self.assertIsNotNone(second)
-        self.assertEqual((first[0], first[1]), (1, "running"))
-        self.assertEqual((second[0], second[1]), (2, "completed"))
-        self.assertEqual(invoked["count"], 1)
-        self.assertEqual(result["failure_class"], "interrupted")
-        self.assertEqual(
-            LIFECYCLE.classify_publication_contract("completed", first[2], second[2], True),
-            "completed",
-        )
-
-    def test_zero_budget_publication_barrier_emits_cancelled_without_invoking_callback(self) -> None:
-        read_fd, write_fd = _pubsub_pipe()
-        prior = signal.getsignal(signal.SIGTERM)
-        invoked = {"count": 0}
-
-        def publication(_record: dict[str, object]) -> None:
-            invoked["count"] += 1
-
-        def sender() -> None:
-            time.sleep(0.15)
-            os.kill(os.getpid(), signal.SIGTERM)
-
-        # See test_on_time_publication_barrier_...: a returning custom handler must be the
-        # prior disposition, or redelivery terminates this test process via default SIG_DFL.
-        def returning_handler(_signum: int, _frame: object) -> None:
-            pass
-
-        signal.signal(signal.SIGTERM, returning_handler)
-
-        # Deterministically exhaust the ~4.9s barrier budget via a single, targeted, real-time
-        # injection at normalize_probe_output -- the one call site guaranteed to run exactly
-        # once, immediately before the barrier is reached, regardless of any other process's
-        # residual child-table state in this shared test interpreter (unlike patching a reap
-        # helper that may or may not run depending on adopted-child bookkeeping). Not a blind
-        # sleep-and-hope race: the delay is unconditional and singular by construction.
-        original_normalize = LIFECYCLE.normalize_probe_output
-
-        def delayed_normalize(**kwargs: object) -> tuple[str, str]:
-            time.sleep(3.3)
-            return original_normalize(**kwargs)
-
-        threading.Thread(target=sender, daemon=True).start()
-        LIFECYCLE.normalize_probe_output = delayed_normalize
-        try:
-            result = LIFECYCLE.run_owned_process(
-                _fixture("ignore_term_sleep"),
-                provider_id="codex",
-                profile_id="codex_help",
-                policy=_policy(),
-                invocation_id="00000000-0000-4000-8000-00000000000f",
-                env={},
-                publication=publication,
-                publication_fd=write_fd,
-            )
-        finally:
-            LIFECYCLE.normalize_probe_output = original_normalize
-            signal.signal(signal.SIGTERM, prior)
-            os.close(write_fd)
-        raw = _read_all(read_fd)
-        os.close(read_fd)
-        lines = raw.splitlines(keepends=True)
-        self.assertEqual(len(lines), 2)
-        first = LIFECYCLE.parse_publication_record(lines[0])
-        second = LIFECYCLE.parse_publication_record(lines[1])
-        self.assertIsNotNone(first)
-        self.assertIsNotNone(second)
-        self.assertEqual((first[0], first[1]), (1, "running"))
-        self.assertEqual((second[0], second[1]), (2, "cancelled"))
-        self.assertEqual(invoked["count"], 0)
-        self.assertEqual(result["failure_class"], "interrupted")
-
-
-class PublicationRecordAndClassifierTests(unittest.TestCase):
-    """R6/R7/Proof 4: fail-closed record validation and the pure authoritative classifier."""
-
-    def test_parse_publication_record_accepts_exact_wire_format(self) -> None:
-        self.assertEqual(
-            LIFECYCLE.parse_publication_record(b"qa.provider-publication.v1|1|running|1234\n"),
-            (1, "running", 1234),
-        )
-        self.assertEqual(
-            LIFECYCLE.parse_publication_record(b"qa.provider-publication.v1|2|completed|1235\n"),
-            (2, "completed", 1235),
-        )
-        self.assertEqual(
-            LIFECYCLE.parse_publication_record(b"qa.provider-publication.v1|2|cancelled|1235\n"),
-            (2, "cancelled", 1235),
-        )
-        self.assertEqual(
-            LIFECYCLE.parse_publication_record(
-                b"qa.provider-publication.v1|2|contract_violation|1235\n"
-            ),
-            (2, "contract_violation", 1235),
-        )
-
-    def test_parse_publication_record_fails_closed_on_malformed_input(self) -> None:
-        bad_records = (
-            b"",
-            b"\n",
-            b"qa.provider-publication.v1|1|running|1234",
-            b"qa.provider-publication.v2|1|running|1234\n",
-            b"qa.provider-publication.v1|1|completed|1234\n",
-            b"qa.provider-publication.v1|2|running|1234\n",
-            b"qa.provider-publication.v1|3|running|1234\n",
-            b"qa.provider-publication.v1|1|running|-1\n",
-            b"qa.provider-publication.v1|1|running|12.5\n",
-            b"qa.provider-publication.v1|1|running|\n",
-            b"qa.provider-publication.v1|1|running|1234|extra\n",
-            b"qa.provider-publication.v1|1|running\n",
-            "qa.provider-publication.v1|1|running|1234\n".encode("utf-8") + b"\xff",
-            b"qa.provider-publication.v1|1|running|" + b"9" * 20 + b"\n",
-            b"x" * 200,
-        )
-        for record in bad_records:
-            self.assertIsNone(LIFECYCLE.parse_publication_record(record), record)
-
-    def test_accept_publication_record_rejects_duplicate_backward_and_post_terminal(self) -> None:
-        running = b"qa.provider-publication.v1|1|running|1000\n"
-        completed = b"qa.provider-publication.v1|2|completed|1001\n"
-
-        self.assertEqual(
-            LIFECYCLE.accept_publication_record(running, last_sequence=0, terminal=False),
-            (1, "running", 1000),
-        )
-        self.assertIsNone(
-            LIFECYCLE.accept_publication_record(running, last_sequence=1, terminal=False)
-        )
-        self.assertIsNone(
-            LIFECYCLE.accept_publication_record(running, last_sequence=2, terminal=True)
-        )
-        self.assertEqual(
-            LIFECYCLE.accept_publication_record(completed, last_sequence=1, terminal=False),
-            (2, "completed", 1001),
-        )
-        self.assertIsNone(
-            LIFECYCLE.accept_publication_record(completed, last_sequence=2, terminal=True)
-        )
-        violation = b"qa.provider-publication.v1|2|contract_violation|2000\n"
-        self.assertIsNone(
-            LIFECYCLE.accept_publication_record(violation, last_sequence=1, terminal=True)
-        )
-
-    def test_classify_publication_contract_matches_am2_rule_and_never_treats_missing_as_violated(
-        self,
-    ) -> None:
-        self.assertEqual(
-            LIFECYCLE.classify_publication_contract(None, 1000, 999999, False), "unavailable"
-        )
-        self.assertEqual(
-            LIFECYCLE.classify_publication_contract(None, 1000, 500, False), "unavailable"
-        )
-        self.assertEqual(
-            LIFECYCLE.classify_publication_contract("running", 1000, 999, False), "running"
-        )
-        self.assertEqual(
-            LIFECYCLE.classify_publication_contract("running", 1000, 1000, False), "running"
-        )
-        self.assertEqual(
-            LIFECYCLE.classify_publication_contract("running", 1000, 1001, False),
-            "contract_violation",
-        )
-        self.assertEqual(
-            LIFECYCLE.classify_publication_contract("running", 1000, 1001, True), "running"
-        )
-        for state in ("completed", "cancelled", "contract_violation"):
-            self.assertEqual(
-                LIFECYCLE.classify_publication_contract(state, 1000, 999999, False), state
-            )
-        self.assertEqual(
-            LIFECYCLE.classify_publication_contract("bogus", 1000, 1, False), "unavailable"
-        )
-
-    def test_classifier_composed_with_stream_acceptance_cannot_be_downgraded_after_violation(
-        self,
-    ) -> None:
-        running = b"qa.provider-publication.v1|1|running|1000\n"
-        stray_completed = b"qa.provider-publication.v1|2|completed|1002\n"
-
-        accepted = LIFECYCLE.accept_publication_record(running, last_sequence=0, terminal=False)
-        self.assertIsNotNone(accepted)
-        last_sequence, last_state, _value = accepted
-        classification = LIFECYCLE.classify_publication_contract(last_state, 1000, 1001, False)
-        self.assertEqual(classification, "contract_violation")
-
-        # The consumer marks the stream terminal once it classifies a violation, matching how
-        # the production observer's own terminal_attempted latch behaves.
-        terminal = True
-        last_state = "contract_violation"
-
-        rejected = LIFECYCLE.accept_publication_record(
-            stray_completed, last_sequence=last_sequence, terminal=terminal
-        )
-        self.assertIsNone(rejected)
-        self.assertEqual(
-            LIFECYCLE.classify_publication_contract(last_state, 1000, 1001, False),
-            "contract_violation",
-        )
-
-
-class PublicationBarrierSubprocessTests(unittest.TestCase):
-    """R5/R6/Proofs 2-3: subprocess-fixture, event-barrier proofs of structural fail-stop.
-
-    Both scenarios run the synchronous barrier in an isolated child process because a
-    never-returning (or slow-returning past the deadline) callback blocks the owner thread
-    synchronously by design (R6) -- exercising that safely requires a process the parent can
-    observe from outside and, for the never-return case, terminate and reap.
-    """
-
-    def _spawn(self, pub_mode: str, write_fd: int) -> "subprocess.Popen[bytes]":
-        env = dict(os.environ)
-        env["QPPR_PUBLICATION_FD"] = str(write_fd)
-        return subprocess.Popen(
-            [sys.executable, str(Path(__file__).resolve()), "--fixture", f"pub:{pub_mode}"],
-            stdin=subprocess.DEVNULL,
-            stdout=subprocess.PIPE,
-            stderr=subprocess.PIPE,
-            pass_fds=(write_fd,),
-            env=env,
-        )
-
-    def test_never_returning_callback_blocks_owner_with_no_restoration_and_isolated_reap(
-        self,
-    ) -> None:
-        read_fd, write_fd = _pubsub_pipe()
-        child = self._spawn("never_return", write_fd)
-        os.close(write_fd)
-        try:
-            records = _drain_publication(read_fd, timeout=5.0)
-            self.assertEqual(len(records), 1, records)
-            running = LIFECYCLE.parse_publication_record(records[0])
-            self.assertIsNotNone(running)
-            self.assertEqual((running[0], running[1]), (1, "running"))
-            deadline_ms = running[2]
-            # Injected classifier time one millisecond past the bound: the classifier is a
-            # pure function, so there is no need to wait for real time to elapse.
-            self.assertEqual(
-                LIFECYCLE.classify_publication_contract(
-                    "running", deadline_ms, deadline_ms + 1, False
-                ),
-                "contract_violation",
-            )
-
-            # The watcher-thread evidence line proves the owner thread is inside the
-            # synchronous call with the invocation lock still held.
-            evidence_line = _read_stdout_line(child, timeout=5.0)
-            self.assertIsNotNone(evidence_line)
-            evidence = json.loads(evidence_line)
-            self.assertTrue(evidence["lock_held_in_callback"])
-
-            # No further output ever arrives on either channel: no ordinary return, no
-            # redelivery report, no follow-up probe report, no second publication record --
-            # the owner is blocked synchronously inside the callback and structurally cannot
-            # reach any of that code.
-            self.assertIsNone(_read_stdout_line(child, timeout=1.5))
-            self.assertEqual(_drain_publication(read_fd, timeout=0.5), [])
-        finally:
-            child.kill()
-            child.wait(timeout=5.0)
-            if child.stdout is not None:
-                child.stdout.close()
-            if child.stderr is not None:
-                child.stderr.close()
-            os.close(read_fd)
-
-    def test_late_return_permanently_fail_stops_and_blocks_a_later_provider(self) -> None:
-        read_fd, write_fd = _pubsub_pipe()
-        child = self._spawn("late_return", write_fd)
-        os.close(write_fd)
-        try:
-            stdout_data, stderr_data = child.communicate(timeout=15.0)
-            self.assertEqual(child.returncode, 0, stderr_data)
-            records = _drain_publication(read_fd, timeout=1.0)
-            self.assertEqual(len(records), 2, records)
-            running = LIFECYCLE.parse_publication_record(records[0])
-            violation = LIFECYCLE.parse_publication_record(records[1])
-            self.assertIsNotNone(running)
-            self.assertIsNotNone(violation)
-            self.assertEqual((running[0], running[1]), (1, "running"))
-            self.assertEqual((violation[0], violation[1]), (2, "contract_violation"))
-            self.assertEqual(
-                LIFECYCLE.classify_publication_contract(
-                    "contract_violation", running[2], violation[2], False
-                ),
-                "contract_violation",
-            )
-            payload = json.loads(stdout_data.decode())
-            self.assertTrue(payload["lock_held_after_violation"])
-            self.assertNotIn(True, payload["thread_constructions"])
-            self.assertEqual(payload["follow_up_failure_class"], "probe_busy")
-        finally:
-            if child.poll() is None:
-                child.kill()
-                child.wait(timeout=5.0)
-            os.close(read_fd)
-
-
-def _fixture_publication_main(pub_mode: str) -> int:
-    """Child-process entry point for the subprocess-isolated publication-barrier fixtures.
-
-    Runs a real ``run_owned_process`` invocation with the synchronous opt-in barrier wired to
-    the ``QPPR_PUBLICATION_FD`` descriptor inherited (via ``pass_fds``) from the parent test.
-    """
-    fd = int(os.environ["QPPR_PUBLICATION_FD"])
-    # pass_fds necessarily clears FD_CLOEXEC to survive exec; the barrier contract requires it
-    # set, so it is restored here -- exactly the shape of a caller handing off a prepared fd.
-    fd_flags = fcntl.fcntl(fd, fcntl.F_GETFD)
-    fcntl.fcntl(fd, fcntl.F_SETFD, fd_flags | fcntl.FD_CLOEXEC)
-    status_flags = fcntl.fcntl(fd, fcntl.F_GETFL)
-    if not status_flags & os.O_NONBLOCK:
-        fcntl.fcntl(fd, fcntl.F_SETFL, status_flags | os.O_NONBLOCK)
-
-    constructed_targets: list[object] = []
-    original_thread_cls = LIFECYCLE.threading.Thread
-
-    class _TrackedThread(original_thread_cls):  # type: ignore[misc,valid-type]
-        def __init__(self, *args: object, **kwargs: object) -> None:
-            constructed_targets.append(kwargs.get("target"))
-            super().__init__(*args, **kwargs)
-
-    LIFECYCLE.threading.Thread = _TrackedThread
-
-    def sender() -> None:
-        time.sleep(0.3)
-        os.kill(os.getpid(), signal.SIGTERM)
-
-    threading.Thread(target=sender, daemon=True).start()
-
-    entered = threading.Event()
-    evidence: dict[str, object] = {}
-
-    def publication(_record: dict[str, object]) -> None:
-        evidence["lock_held_in_callback"] = LIFECYCLE._INVOCATION_LOCK.locked()
-        entered.set()
-        if pub_mode == "never_return":
-            threading.Event().wait()
-        else:
-            threading.Event().wait(timeout=6.0)
-
-    if pub_mode == "never_return":
-
-        def watcher() -> None:
-            if entered.wait(timeout=4.0):
-                print(json.dumps(evidence, sort_keys=True), flush=True)
-
-        threading.Thread(target=watcher, daemon=True).start()
-
-    policy = _policy()
-    try:
-        LIFECYCLE.run_owned_process(
-            _fixture("sleep"),
-            provider_id="codex",
-            profile_id="codex_help",
-            policy=policy,
-            invocation_id="00000000-0000-4000-8000-00000000000c",
-            env={},
-            publication=publication,
-            publication_fd=fd,
-        )
-    except LIFECYCLE._PublicationContractViolation:
-        follow_up = LIFECYCLE.run_owned_process(
-            _fixture("exit_zero"),
-            provider_id="codex",
-            profile_id="codex_help",
-            policy=policy,
-            invocation_id="00000000-0000-4000-8000-00000000000d",
-            env={},
-        )
-        print(
-            json.dumps(
-                {
-                    "lock_held_after_violation": LIFECYCLE._INVOCATION_LOCK.locked(),
-                    "thread_constructions": [
-                        target is publication for target in constructed_targets
-                    ],
-                    "follow_up_failure_class": follow_up["failure_class"],
-                },
-                sort_keys=True,
-            ),
-            flush=True,
-        )
-        return 0
-    # An ordinary return is not exercised by either fixture mode; treat it as an unexpected
-    # outcome so a regression cannot silently pass as a "late" or "never" proof.
-    return 65
-
 
 def _fixture_main(mode: str) -> int:
-    if mode.startswith("pub:"):
-        return _fixture_publication_main(mode[len("pub:") :])
     if mode == "exit_zero":
         return 0
     if mode == "exit_nonzero":
