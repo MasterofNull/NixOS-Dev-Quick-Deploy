@@ -10,7 +10,7 @@ import sqlalchemy as sa
 
 revision = "20260125_01"
 down_revision = "20260109_02"
-branch_labels = None
+branch_labels = ("aidb",)
 depends_on = None
 
 

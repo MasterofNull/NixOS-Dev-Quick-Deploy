@@ -931,7 +931,7 @@ in {
           ${lib.optionalString sec.enable ''
             export AIDB_POSTGRES_PASSWORD_FILE=${secretPath postgresPasswordSecret}
           ''}
-          ${aidbPython}/bin/alembic -c ${migrationsIni} upgrade head
+          ${aidbPython}/bin/alembic -c ${migrationsIni} upgrade aidb@head
         '';
         serviceConfig =
           commonServiceConfig
