@@ -2164,6 +2164,11 @@ Severity: medium
 Action: future recovery authorizations must explicitly permit bounded orientation/read/hash/search primitives or provide a single reviewed verifier command, and reviewers must record planned commands before execution.
 File: .agents/plans/aqos-foundation-b2/B2-M1A-ACCEPTANCE-RECOVERY-AUTHORIZATION.md; .agents/plans/aqos-foundation-b2/B2-M1A-RECOVERY-ACCEPTANCE.md
 
+[IN-FLIGHT] b2-am1-authorization-conflicts-with-mandatory-agent-workflow — B2-M1A-AM1 forbade session hydration, RESUME reads, skill loading, and general bounded discovery even though AGENTS.md requires session start, auto-selected skill loading, and recovery context. The orchestrator then delegated those mandatory actions, consuming the authorization before any candidate edit. This is an authorization-design and dispatch-review failure, not a candidate-code failure.
+Severity: critical
+Action: retire the consumed AM1 authorization and prepare an AM2 grant that explicitly permits mandatory read-only orientation, exact named skill reads, and bounded lean-ctx/rg/hash/status discovery while continuing to prohibit every runtime, integration, Alembic, DB, process, Nix, deploy, and extra-file action. Add a governance check that rejects authorizations contradicting mandatory workflow prerequisites.
+File: .agents/plans/aqos-foundation-b2/B2-M1A-AM1-IMPLEMENTATION-AUTHORIZATION.md; AGENTS.md; .agent/WORKFLOW-CANON.md
+
 [OPEN] validation-environment-time-binary-absence — The bounded C1B implementer could not use `/usr/bin/time` because it is absent from the current environment; unittest still emitted suite timings, so acceptance evidence remained available but command portability was weaker than expected.
 Severity: low
 Action: use shell-builtin timing or an explicitly packaged timing tool in future validation contracts; do not assume `/usr/bin/time` exists on NixOS.
