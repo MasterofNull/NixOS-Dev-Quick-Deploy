@@ -2153,3 +2153,18 @@ File: .agents/plans/aqos-foundation-b2/B2-M1-DESIGN-PACKET.md; ai-stack/migratio
 Severity: high
 Action: preserve the exact candidate, issue a formal procedural-stop review, consume/retire the violated authorization, and prepare a fresh hash-bound acceptance-only authorization that forbids rerunning integration mode and requires static evidence plus independent review before commit.
 File: scripts/testing/test-workflow-shadow-migration.py; .agents/plans/aqos-foundation-b2/B2-M1A-IMPLEMENTATION-ACCEPTANCE.md
+
+[IN-FLIGHT] b2-m1a-static-oracle-contract-coverage-gap — Recovery review proved that the M1A oracle lists but does not read/assert the AIDB branch-label source, incompletely checks delivery/reader schema and function privilege cells, and does not bind all required function, trigger, index, constraint, and foreign-key identities to migration source and policy. Malformed excess privilege or missing-source changes could therefore pass the static gate.
+Severity: critical
+Action: prepare, review, activate, implement, and independently accept a one-file oracle-coverage amendment before the seven-file M1A candidate can commit; keep all integration, Alembic, database, Nix, and deployment paths disabled.
+File: scripts/testing/test-workflow-shadow-migration.py; .agents/plans/aqos-foundation-b2/B2-M1A-RECOVERY-ACCEPTANCE.md
+
+[IN-FLIGHT] b2-recovery-literal-command-allowlist-drift — The static-only recovery operator used preliminary lean-ctx help/file-discovery calls that were outside the recovery authorization's literal entire-command allowlist. No candidate, integration, database, Alembic, Nix, or external state was touched, but exact procedural compliance could not be attested.
+Severity: medium
+Action: future recovery authorizations must explicitly permit bounded orientation/read/hash/search primitives or provide a single reviewed verifier command, and reviewers must record planned commands before execution.
+File: .agents/plans/aqos-foundation-b2/B2-M1A-ACCEPTANCE-RECOVERY-AUTHORIZATION.md; .agents/plans/aqos-foundation-b2/B2-M1A-RECOVERY-ACCEPTANCE.md
+
+[OPEN] validation-environment-time-binary-absence — The bounded C1B implementer could not use `/usr/bin/time` because it is absent from the current environment; unittest still emitted suite timings, so acceptance evidence remained available but command portability was weaker than expected.
+Severity: low
+Action: use shell-builtin timing or an explicitly packaged timing tool in future validation contracts; do not assume `/usr/bin/time` exists on NixOS.
+File: validation command contracts; Nix development shell package inventory
