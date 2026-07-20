@@ -4,8 +4,10 @@
 from __future__ import annotations
 
 import argparse
+import hashlib
 import json
 import shutil
+import subprocess
 import sys
 from datetime import datetime, timezone
 from pathlib import Path
@@ -15,6 +17,12 @@ from typing import Any
 REPO = Path(__file__).resolve().parents[2]
 INBOX = REPO / ".agent" / "collaboration" / "antigravity-inbox"
 STATE = INBOX / ".lane-state.json"
+
+# Fixed argv for the CLI wake nudge (Rule 7: never string-interpolate task
+# content into a shelled-out command). Mirrors the previously ad hoc,
+# unlogged invocation named in issues-backlog
+# antigravity-cli-wake-has-no-attributable-claim-receipt.
+WAKE_ARGV = ["antigravity", "chat", "--reuse-window", "--mode", "agent"]
 
 
 def _pending() -> list[Path]:
@@ -29,6 +37,85 @@ def _archive_dir() -> Path:
 
 def _rel(path: Path) -> str:
     return str(path.relative_to(REPO))
+
+
+def _now_iso() -> str:
+    return datetime.now(timezone.utc).isoformat()
+
+
+def _task_id(name: str) -> str:
+    """Derive a slash-free task_id from an inbox file name (drop `.md`), or
+    from an already-claimed `.claimed-<task_id>` marker name. Marker names
+    start with a dot and contain no other `.`, so Path.stem alone would
+    treat the whole name as the stem (dotfile rule) instead of stripping the
+    prefix — handle that case explicitly.
+    """
+    base = Path(name).name
+    if base.startswith(".claimed-"):
+        return base[len(".claimed-"):]
+    return Path(base).stem
+
+
+def _resolve_inbox_member(name: str) -> Path:
+    """Resolve `name` the same way cmd_complete always has: absolute path,
+    repo-relative path, or bare inbox-relative name. Shared by claim/complete
+    so the containment check below is checked once against one resolution,
+    not re-derived per subcommand.
+    """
+    path = Path(name)
+    if not path.is_absolute():
+        candidate = REPO / path
+        path = candidate if candidate.exists() else INBOX / name
+    return path
+
+
+def _inbox_contained(path: Path) -> bool:
+    """The path-containment check `cmd_complete` has always used, reused
+    verbatim by claim/complete to block traversal via a crafted `name`.
+    """
+    return path.exists() and path.parent.resolve() == INBOX.resolve()
+
+
+def _receipts_dir() -> Path:
+    # Resolved off the current INBOX global at call time (not a frozen
+    # constant) so callers/tests that repoint module.INBOX at a sandbox
+    # (e.g. test-antigravity-inbox.py) get receipts written there too,
+    # instead of silently falling back to the real repo's inbox dir.
+    return INBOX / "receipts"
+
+
+def _receipt_path(task_id: str) -> Path:
+    return _receipts_dir() / f"{task_id}.json"
+
+
+def _load_receipt(task_id: str) -> dict[str, Any]:
+    path = _receipt_path(task_id)
+    if path.exists():
+        try:
+            data = json.loads(path.read_text(encoding="utf-8"))
+            if isinstance(data, dict) and isinstance(data.get("records"), list):
+                return data
+        except json.JSONDecodeError:
+            pass
+    return {"task_id": task_id, "records": []}
+
+
+def _append_receipt(task_id: str, record: dict[str, Any]) -> Path:
+    """Append one typed record to the per-task receipt ledger.
+
+    Hashes and paths only — never full prompt/output content (DESIGN §4).
+    Whole-file read + tmp-write + atomic replace: good enough for a
+    single-operator CLI where the real exclusivity primitive (the claim
+    rename below) lives elsewhere, not here.
+    """
+    _receipts_dir().mkdir(parents=True, exist_ok=True)
+    data = _load_receipt(task_id)
+    data["records"].append(record)
+    path = _receipt_path(task_id)
+    tmp = path.with_suffix(".json.tmp")
+    tmp.write_text(json.dumps(data, indent=2, sort_keys=True), encoding="utf-8")
+    tmp.replace(path)
+    return path
 
 
 def _state_payload() -> dict[str, Any]:
@@ -84,20 +171,140 @@ def cmd_next(args: argparse.Namespace) -> int:
     return 0
 
 
+def cmd_claim(args: argparse.Namespace) -> int:
+    """Atomically claim a pending inbox file: os.rename() to `.claimed-<task_id>`.
+
+    Same-filesystem rename is a real CAS primitive — it can only succeed
+    once, so two racing claimants cannot both win (DESIGN §3.2 item 2).
+    """
+    name = args.name
+    task_id = _task_id(name)
+    path = _resolve_inbox_member(name)
+    if not _inbox_contained(path):
+        print(f"no pending Antigravity inbox file to claim: {name}", file=sys.stderr)
+        return 1
+    content_hash = hashlib.sha256(path.read_bytes()).hexdigest()
+    claimed_marker = INBOX / f".claimed-{task_id}"
+    try:
+        path.rename(claimed_marker)
+    except (FileNotFoundError, OSError):
+        print(f"claim lost the race: {name} was already claimed or removed", file=sys.stderr)
+        return 1
+    record = {
+        "type": "claim",
+        "task_id": task_id,
+        "ts": _now_iso(),
+        "actor": args.actor,
+        "content_hash": content_hash,
+    }
+    _append_receipt(task_id, record)
+    return _emit(
+        {"ok": True, "task_id": task_id, "claimed": _rel(claimed_marker), "content_hash": content_hash},
+        args.json,
+    )
+
+
+def cmd_wake(args: argparse.Namespace) -> int:
+    """Log an attributable wake nudge. Never proof of processing by itself —
+    only an appended, attributable input to the receipt timeline (DESIGN
+    §3.2 item 1). argv is a fixed list; task content is never interpolated
+    into the shelled-out command (Rule 7).
+    """
+    name = args.name
+    task_id = _task_id(name)
+    try:
+        proc_live = subprocess.run(
+            ["pgrep", "-fa", "antigravity"], capture_output=True, text=True, timeout=5
+        ).returncode == 0
+    except Exception:
+        proc_live = False
+
+    method = "passive-drop-only"
+    argv_used: list[str] | None = None
+    exit_code: int | None = None
+    if proc_live and not args.passive_only:
+        argv_used = list(WAKE_ARGV)
+        try:
+            result = subprocess.run(argv_used, capture_output=True, text=True, timeout=args.timeout)
+            exit_code = result.returncode
+            method = "cli-nudge"
+        except FileNotFoundError:
+            method = "cli-nudge-binary-missing"
+        except subprocess.TimeoutExpired:
+            method = "cli-nudge-timeout"
+
+    record = {
+        "type": "wake_attempt",
+        "task_id": task_id,
+        "ts": _now_iso(),
+        "actor": args.actor,
+        "method": method,
+        "argv": argv_used,
+        "exit_code": exit_code,
+        "proc_live_before": proc_live,
+    }
+    _append_receipt(task_id, record)
+    return _emit(
+        {"ok": True, "task_id": task_id, "method": method, "exit_code": exit_code},
+        args.json,
+    )
+
+
 def cmd_complete(args: argparse.Namespace) -> int:
     name = args.name
-    path = Path(name)
-    if not path.is_absolute():
-        candidate = REPO / path
-        path = candidate if candidate.exists() else INBOX / name
-    if not path.exists() or path.parent.resolve() != INBOX.resolve():
-        print(f"no pending Antigravity inbox file: {name}", file=sys.stderr)
-        return 1
+    task_id = _task_id(name)
+    path = _resolve_inbox_member(name)
+    if not _inbox_contained(path):
+        claimed = INBOX / f".claimed-{task_id}"
+        if _inbox_contained(claimed):
+            path = claimed
+        else:
+            print(f"no pending Antigravity inbox file: {name}", file=sys.stderr)
+            return 1
+
+    receipt = _load_receipt(task_id)
+    claim_record = next(
+        (r for r in reversed(receipt["records"]) if r.get("type") == "claim"), None
+    )
+
     dest_dir = _archive_dir()
     dest_dir.mkdir(parents=True, exist_ok=True)
     dest = dest_dir / path.name
     shutil.move(str(path), str(dest))
-    return _emit({"ok": True, "archived": _rel(dest)}, args.json)
+
+    completion_record: dict[str, Any] = {
+        "type": "completion",
+        "task_id": task_id,
+        "ts": _now_iso(),
+        "archived_path": _rel(dest),
+        "completed_without_claim": claim_record is None,
+    }
+    if claim_record is not None:
+        completion_record["claim_actor"] = claim_record.get("actor")
+
+    output_path = Path(args.output) if args.output else (REPO / ".agents" / "plans" / task_id / "antigravity.md")
+    if not output_path.is_absolute():
+        output_path = REPO / output_path
+    if output_path.exists():
+        output_hash = hashlib.sha256(output_path.read_bytes()).hexdigest()
+        completion_record["output_path"] = _rel(output_path)
+        completion_record["output_hash"] = output_hash
+        _append_receipt(
+            task_id,
+            {
+                "type": "output_hash",
+                "task_id": task_id,
+                "ts": _now_iso(),
+                "path": _rel(output_path),
+                "hash": output_hash,
+            },
+        )
+
+    _append_receipt(task_id, completion_record)
+    return _emit(
+        {"ok": True, "archived": _rel(dest), "completed_without_claim": claim_record is None},
+        args.json,
+    )
 
 
 def build_parser() -> argparse.ArgumentParser:
@@ -113,8 +320,23 @@ def build_parser() -> argparse.ArgumentParser:
     next_cmd.add_argument("--print-content", action="store_true")
     next_cmd.set_defaults(func=cmd_next)
 
+    claim = sub.add_parser("claim", help="Atomically claim a pending inbox task (CAS)")
+    claim.add_argument("name", help="Inbox file name or repo-relative path")
+    claim.add_argument("--actor", required=True, choices=["ide-watch", "owner-manual"])
+    claim.add_argument("--json", action="store_true")
+    claim.set_defaults(func=cmd_claim)
+
+    wake = sub.add_parser("wake", help="Log an attributable wake nudge (never proof of processing)")
+    wake.add_argument("name", help="Inbox file name (task_id source), pending or already claimed")
+    wake.add_argument("--actor", default="owner-manual", help="owner-manual | script:<name>")
+    wake.add_argument("--passive-only", action="store_true", help="Log the attempt without shelling out")
+    wake.add_argument("--timeout", type=int, default=10, help="Wake subprocess timeout (s)")
+    wake.add_argument("--json", action="store_true")
+    wake.set_defaults(func=cmd_wake)
+
     complete = sub.add_parser("complete", help="Archive a consumed inbox task")
     complete.add_argument("name", help="Inbox file name or repo-relative path")
+    complete.add_argument("--output", default=None, help="Output artifact path to hash (default: .agents/plans/<task_id>/antigravity.md)")
     complete.add_argument("--json", action="store_true")
     complete.set_defaults(func=cmd_complete)
 
