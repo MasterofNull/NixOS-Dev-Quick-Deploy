@@ -8,13 +8,22 @@
 **Single use after independent review and owner activation:** first complete exact five-file
 candidate report
 
-## 0. Revision notice (2026-07-19, this revision)
+## 0. Revision notice (revised 2026-07-19; re-revised 2026-07-20 for runtime-surface adjacency)
 
 This authorization is revised in place. It was never activated, so revision is legitimate under
 its own non-activatable status; its technical content (five-file ceiling, frozen future grant,
 stops) is preserved unchanged except where this notice states otherwise. Full binding evidence is
-recorded in `A2-ADJACENCY-REBIND.md` (companion document, this cycle); this notice summarizes only
-what changed here.
+recorded in `A2-ADJACENCY-REBIND-R2.md` (companion document; supersedes the R1
+`A2-ADJACENCY-REBIND.md`); this notice summarizes only what changed here.
+
+**Revision-2 note (2026-07-20):** R1's independent review returned REQUEST_REVISION because the
+adjacency proof went stale (governance commits landed after A1-AM3) and one C1C hash digit was
+dropped. Both are corrected in `A2-ADJACENCY-REBIND-R2.md`. Item 2 below is superseded by the
+owner's structured **runtime-surface adjacency** waiver (PULSE `[owner] [design-rule-waiver]`
+2026-07-20 / recorded 2026-07-19): design-packet §5.4 no longer requires literal consecutive
+landing — it requires that A2 commit after A1-AM3 with no commit in `3396f9df..HEAD` modifying A1's
+heartbeat runtime surface or A2's five targets (governance/doc commits exempt), re-verified at
+A2-commit time. All other items below stand.
 
 1. **A1 identity and both UNRESOLVED fields closed.** The prerequisite this checkpoint could not
    resolve — "accepted A1 commit" and "A1 implementation acceptance" — is now resolved. A1-AM3 is
@@ -23,10 +32,12 @@ what changed here.
    and committed at `3396f9df0493796e56c9f7ba34895c9b00667f01`, acceptance record
    `A1-AM3-REV2-ACCEPTANCE.md` (VERDICT: PASS,
    `d308e3ba1fb66d28ac4cf6ab833524e24ad36b0c31dd0a0a26eda90f26607ea2`). See §1 below.
-2. **Adjacency confirmed, not assumed.** Current branch HEAD equals `3396f9df` exactly — no commit
-   of any kind has landed since A1-AM3, so a future A2 commit satisfies the design packet's
-   "immediately after A1, no unrelated intervening commit" requirement by construction. Recomputed
-   in `A2-ADJACENCY-REBIND.md` §1.
+2. **Adjacency — runtime-surface, per owner waiver (superseded from R1's literal claim).** A future
+   A2 commit satisfies design-packet §5.4 as reinterpreted by the owner: A2 commits after A1-AM3
+   (`3396f9df`) and no commit in `3396f9df..HEAD` modifies A1's heartbeat runtime surface or A2's
+   five targets. The two governance commits that have landed (`28bff4a4`, `30f3f70b`) are verified
+   disjoint from both sets; the invariant is re-verified at A2-commit time. See
+   `A2-ADJACENCY-REBIND-R2.md` §1.
 3. **Five-file ceiling reconfirmed byte-exact, zero drift.** All four MODIFY predecessor hashes in
    §2 below and the NEW path's absence were recomputed against the live working tree this cycle and
    match this document's original checkpoint values exactly. No inventory expansion, substitution,
@@ -64,11 +75,11 @@ what changed here.
 | `C1B-AM1-IMPLEMENTATION-ACCEPTANCE.md` | `1373f508e80311c657e303ea8896616ac3aa943d923e3ccd6d0fd421b270c868` |
 | A1 accepted commit | `3396f9df0493796e56c9f7ba34895c9b00667f01` |
 | A1 implementation acceptance | `A1-AM3-REV2-ACCEPTANCE.md` = `d308e3ba1fb66d28ac4cf6ab833524e24ad36b0c31dd0a0a26eda90f26607ea2` (VERDICT: PASS) |
-| Adjacency rebind (this cycle) | `A2-ADJACENCY-REBIND.md` |
+| Adjacency rebind (this cycle) | `A2-ADJACENCY-REBIND-R2.md` (supersedes R1 `A2-ADJACENCY-REBIND.md`) |
 
 This checkpoint now resolves C1A, C1B-AM1, and A1. It is still not eligible for owner activation
 until an independent reviewer issues a fresh flagship `PASS` over this revised document and
-`A2-ADJACENCY-REBIND.md` together — a self-prepared rebind cannot activate itself.
+`A2-ADJACENCY-REBIND-R2.md` together — a self-prepared rebind cannot activate itself.
 
 ## 2. Exact maximum-five ceiling and current checkpoint
 
@@ -81,12 +92,14 @@ until an independent reviewer issues a fresh flagship `PASS` over this revised d
 | 5 | NEW | `scripts/testing/test-dashboard-qa-provider-probe.py` | absent, including no symlink |
 
 These exact five paths remain the ceiling. The four hashes and one absence are observation-only
-until reconfirmed immediately after A1. Any unrelated intervening commit or byte/absence drift is a
-hard stop requiring another reviewed rebind.
+until reconfirmed at A2-commit time. Any commit in `3396f9df..HEAD` that modifies an A1 heartbeat
+runtime-surface file or one of these five targets, or any byte/absence drift on these five, is a
+hard stop requiring another reviewed rebind (runtime-surface adjacency, `A2-ADJACENCY-REBIND-R2.md`
+§1). Governance/doc-only commits do not trip this stop.
 
 ## 3. Frozen future grant
 
-After independent review of this revised authorization plus `A2-ADJACENCY-REBIND.md`, and distinct
+After independent review of this revised authorization plus `A2-ADJACENCY-REBIND-R2.md`, and distinct
 owner activation, `claude-subagent-qppr-a2-am1-implementer` (balanced / Sonnet tier — see §0 item 4)
 may implement only design sections 4.1-4.2: one pure bounded passive projection reader; the existing
 Phase-0 route's `projection_only=true` early-return branch; the fixed low-cardinality
@@ -103,23 +116,27 @@ the same atomic A2 commit.
 ## 4. Stops, review, and activation
 
 All stops in the original A2 authorization and rebind amendment remain mandatory. Stop on absent
-A1 acceptance, non-adjacent branch state, any sixth file, predecessor/absence drift, foreign
+A1 acceptance, runtime-surface-adjacency violation (a commit in `3396f9df..HEAD` touching an A1
+heartbeat runtime-surface file or an A2 target), any sixth file, predecessor/absence drift, foreign
 overlap, live provider/network/API/browser action, QA/cache/evidence mutation, new route/card/store,
 projection-as-authority, unsafe HTML, unbounded or symlink-following read, sensitive display, new
-env/port/dependency, Nix/service/deploy/traffic action, staging, commit, rollback, or deletion.
+env/port/dependency, Nix/service/deploy/traffic action, unauthorized staging/commit, rollback, or
+deletion.
 
-A1 acceptance and adjacency are now bound (§1, and `A2-ADJACENCY-REBIND.md`), but this authorization
-remains non-activatable until an independent flagship reviewer — a different agent/session than the
-one that prepared this revision and `A2-ADJACENCY-REBIND.md` — issues an exact-hash `PASS` over both
-documents together. Only then may the owner explicitly activate this exact authorization hash,
-naming `claude-subagent-qppr-a2-am1-implementer` and a window no longer than 24 hours while
-affirming the five-file ceiling and stops. The A1 activation did not and cannot activate A2. A
-different agent/session than the implementer must accept the exact five-file candidate; only the
-orchestrator commits it, immediately after `3396f9df` with no unrelated intervening commit.
+A1 acceptance and adjacency are now bound (§1, and `A2-ADJACENCY-REBIND-R2.md`), but this
+authorization remains non-activatable until an independent flagship reviewer — a different
+agent/session than any that prepared this revision or the R1/R2 rebind — issues an exact-hash `PASS`
+over this document and `A2-ADJACENCY-REBIND-R2.md` together. Only then may the owner explicitly
+activate this exact authorization hash, naming `claude-subagent-qppr-a2-am1-implementer` and a
+window no longer than 24 hours while affirming the five-file ceiling and stops. The A1 activation
+did not and cannot activate A2. A different agent/session than the implementer must accept the exact
+five-file candidate — under the staged-for-codex operating model that binding acceptance is codex
+on its 2026-07-25 return, with the candidate staged and queued meanwhile; only the orchestrator
+commits it after codex `PASS`, re-verifying runtime-surface adjacency at that time.
 
 Neither A1 nor A2 authorizes a real provider run, live API/browser vet, deployment, traffic,
 cutover, or rollback. Those require the separate paired live-vetting grant.
 
-`RECORD: PREPARED_ONLY AND NOT ACTIVATABLE. Accepted A1 and adjacency are now bound; independent
-flagship review of this document plus A2-ADJACENCY-REBIND.md, and explicit owner activation, remain
-mandatory.`
+`RECORD: PREPARED_ONLY AND NOT ACTIVATABLE. Accepted A1 and runtime-surface adjacency are now bound;
+independent flagship review of this document plus A2-ADJACENCY-REBIND-R2.md, and explicit owner
+activation, remain mandatory.`

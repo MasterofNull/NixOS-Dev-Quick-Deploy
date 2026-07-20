@@ -20,7 +20,7 @@ from functools import lru_cache
 from pathlib import Path
 from urllib.parse import quote, urlsplit, urlunsplit
 from ..config import service_endpoints
-from ..services.qa_runner import run_phase_json
+from ..services.qa_runner import run_phase_json, get_provider_probe_projection
 from ..services.systemd_units import get_ai_runtime_units
 from ..services.ai_insights import AIInsightsService, get_insights_service
 
@@ -6144,7 +6144,18 @@ async def _run_aq_qa_background(phase: str, aq_qa_script: Path, env: Dict[str, s
 
 
 @router.get("/aq-qa/run/{phase}")
-async def run_aq_qa_phase(phase: str) -> Dict[str, Any]:
+async def run_aq_qa_phase(
+    phase: str,
+    projection_only: bool = Query(
+        False,
+        description=(
+            "A2 dashboard-projection mode (phase 0 only): return only the "
+            "bounded provider_probe heartbeat projection, before any QA "
+            "cache lookup, background execution, or evidence access. "
+            "Read-only and never pass/fail authority."
+        ),
+    ),
+) -> Dict[str, Any]:
     """
     Run aq-qa <phase> --json and return structured pass/fail results.
     Results are cached for 5 minutes to protect the inference stack.
@@ -6152,8 +6163,22 @@ async def run_aq_qa_phase(phase: str) -> Dict[str, Any]:
     Background execution is opt-in via DASHBOARD_AQ_QA_BACKGROUND=1 because
     aq-qa phase 0 can fan out into report-backed checks on local-model hosts.
     Append ?force=1 to bypass the cache.
+
+    ?projection_only=true (phase 0 only) short-circuits before any of the
+    above: it returns only the bounded C1A provider-probe heartbeat
+    projection and never touches the QA cache, background-task admission,
+    evidence, or provider execution.
     """
     phase = phase.strip().lstrip("0") or "0"
+
+    if projection_only and phase == "0":
+        return {
+            "phase": "0",
+            "projection_only": True,
+            "provider_probe": get_provider_probe_projection(),
+            "timestamp": datetime.now(timezone.utc).isoformat(),
+        }
+
     if phase not in _VALID_QA_PHASES:
         raise HTTPException(status_code=400, detail=f"Invalid phase '{phase}'. Must be 0-10 or all.")
 
