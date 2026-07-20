@@ -182,6 +182,7 @@ nix/hosts/*/.sops.yaml
 .agents/attention/ATTENTION.json
 .agents/attention/ATTENTION_ARCHIVE.jsonl
 .agents/delegation/registry.jsonl
+.agents/delegation/.codex-quota-cooldown
 .agents/delegation/scheduler-state.json
 .agents/delegation/scheduler-state.lock
 .agents/delegation/streams/

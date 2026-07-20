@@ -13,24 +13,34 @@
 #   edit      — bypass sandbox for trusted edit-only tasks (no destructive shell)
 #
 # Options:
-#   --prompt TEXT      Task prompt
-#   --prompt-file FILE Read prompt from file
-#   --mode MODE        Execution mode: safe|edit  [default: safe]
-#   --model MODEL      Model override (e.g. o3, o4-mini)
-#   --wait             Block until task completes
-#   --check ID         Print output of a completed task
-#   --status ID        Show task status
-#   --list             List all registered tasks
-#   --help             Show this help
+#   --prompt TEXT         Task prompt
+#   --prompt-file FILE    Read prompt from file
+#   --mode MODE           Execution mode: safe|edit  [default: safe]
+#   --model MODEL         Model override (e.g. o3, o4-mini)
+#   --wait                Block until task completes
+#   --force-quota-retry   Bypass an active quota cooldown for one call
+#   --check ID            Print output of a completed task
+#   --status ID           Show task status
+#   --list                List all registered tasks
+#   --help                Show this help
+#
+# Quota-aware pre-check: after a "usage limit" error, dispatches fast-fail
+# until the parsed reset time (.agents/delegation/.codex-quota-cooldown).
+# Bypass once: DELEGATE_CODEX_IGNORE_COOLDOWN=1 or --force-quota-retry.
 
 set -euo pipefail
 
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
+SCRIPT_PATH="$SCRIPT_DIR/$(basename "${BASH_SOURCE[0]}")"
 REPO_ROOT="$(cd "$SCRIPT_DIR/../.." && pwd)"
 DELEGATION_DIR="$REPO_ROOT/.agents/delegation"
 OUTPUTS_DIR="$DELEGATION_DIR/outputs"
 REGISTRY="$DELEGATION_DIR/registry.jsonl"
 CODEX_BIN="${CODEX_BIN:-$HOME/.npm-global/bin/codex}"
+# delegate-codex-quota-precheck: single ISO-8601 UTC timestamp = the parsed
+# codex quota reset time. Absent/empty = no known cooldown. Runtime state
+# only — gitignored, never a candidate artifact.
+COOLDOWN_FILE="$DELEGATION_DIR/.codex-quota-cooldown"
 
 # Phase 56.1/56.7 — delegation audit bridge
 # shellcheck disable=SC1091
@@ -164,6 +174,99 @@ check_pid_alive() {
     [[ -n "$pid" ]] && [[ "$pid" != "null" ]] && kill -0 "$pid" 2>/dev/null
 }
 
+# ── quota-aware pre-check (delegate-codex-quota-precheck slice) ─────────────
+# See .agents/plans/delegate-codex-quota-precheck/SLICE-DESIGN-AND-AUTHORIZATION.md
+
+# Prints the cooldown_until timestamp and returns 0 if a cooldown is currently
+# active. Clears a stale/expired/corrupt cooldown file and returns 1 otherwise.
+# Never fails the caller under set -e.
+quota_cooldown_active() {
+    [[ -f "$COOLDOWN_FILE" ]] || return 1
+    local cooldown_until; cooldown_until="$(tr -d '[:space:]' < "$COOLDOWN_FILE" 2>/dev/null || true)"
+    if [[ -z "$cooldown_until" ]]; then
+        rm -f "$COOLDOWN_FILE" 2>/dev/null || true
+        return 1
+    fi
+    local cooldown_epoch; cooldown_epoch="$(date -u -d "$cooldown_until" +%s 2>/dev/null || true)"
+    if [[ -z "$cooldown_epoch" ]]; then
+        # Corrupt/unparseable stored value — treat as stale, clear it.
+        rm -f "$COOLDOWN_FILE" 2>/dev/null || true
+        return 1
+    fi
+    local now_epoch; now_epoch="$(date -u +%s)"
+    if [[ "$now_epoch" -lt "$cooldown_epoch" ]]; then
+        echo "$cooldown_until"
+        return 0
+    fi
+    rm -f "$COOLDOWN_FILE" 2>/dev/null || true
+    return 1
+}
+
+# quota_capture_from_output <output_file>
+# Scans a completed codex run's output for the quota-exhausted error. On a
+# match, parses the "try again at <date>" reset time to ISO-8601 UTC and
+# atomically writes it to $COOLDOWN_FILE. Fail-safe: an unparseable reset line
+# writes a bounded default (now + 1h) — never unbounded, never absent, never
+# crashes the dispatch path. A healthy run (no match) writes nothing. Never
+# fails the caller under set -e.
+quota_capture_from_output() {
+    local output_file="$1"
+    [[ -f "$output_file" ]] || return 0
+    local reset_ts
+    reset_ts="$(python3 - "$output_file" <<'PYEOF' 2>/dev/null || true
+import re, sys
+from datetime import datetime, timedelta, timezone
+
+path = sys.argv[1]
+try:
+    with open(path, "r", encoding="utf-8", errors="replace") as f:
+        text = f.read()
+except Exception:
+    sys.exit(0)
+
+if "You've hit your usage limit" not in text:
+    sys.exit(0)
+
+now = datetime.now(timezone.utc)
+fallback = (now + timedelta(hours=1)).strftime("%Y-%m-%dT%H:%M:%SZ")
+
+m = re.search(r"try again at\s+([^\n\r.]+)", text)
+if not m:
+    print(fallback)
+    sys.exit(0)
+
+raw = re.sub(r"(\d+)(st|nd|rd|th)\b", r"\1", m.group(1).strip())
+parsed = None
+for fmt in ("%Y-%m-%dT%H:%M:%SZ", "%Y-%m-%d %H:%M:%S", "%Y-%m-%d",
+            "%b %d %Y", "%B %d %Y", "%b %d", "%B %d"):
+    try:
+        parsed = datetime.strptime(raw, fmt)
+        break
+    except ValueError:
+        continue
+
+if parsed is None:
+    print(fallback)
+    sys.exit(0)
+
+if parsed.year == 1900:
+    # Year-less format (e.g. "Jul 25") — anchor to the nearest future occurrence.
+    parsed = parsed.replace(year=now.year)
+    if parsed.replace(tzinfo=timezone.utc) < now:
+        parsed = parsed.replace(year=now.year + 1)
+if parsed.tzinfo is None:
+    parsed = parsed.replace(tzinfo=timezone.utc)
+
+print(parsed.strftime("%Y-%m-%dT%H:%M:%SZ"))
+PYEOF
+)"
+    [[ -n "$reset_ts" ]] || return 0
+    mkdir -p "$DELEGATION_DIR" 2>/dev/null || true
+    local tmp; tmp="$(mktemp "${COOLDOWN_FILE}.XXXXXX" 2>/dev/null || echo "${COOLDOWN_FILE}.tmp.$$")"
+    printf '%s\n' "$reset_ts" > "$tmp" 2>/dev/null && mv -f "$tmp" "$COOLDOWN_FILE" 2>/dev/null || true
+    return 0
+}
+
 # ── subcommands ──────────────────────────────────────────────────────────────
 
 cmd_list() {
@@ -230,7 +333,7 @@ PYEOF
 }
 
 cmd_delegate() {
-    local prompt="$1" mode="${2:-safe}" model_flag="${3:-}" wait_mode="${4:-false}"
+    local prompt="$1" mode="${2:-safe}" model_flag="${3:-}" wait_mode="${4:-false}" force_quota_retry="${5:-false}"
 
     require_codex
     ensure_dirs
@@ -240,6 +343,19 @@ cmd_delegate() {
     policy_gate_action codex "$mode" "$id"
     guard_outbound_prompt "$prompt" "$id"
     budget_gate_dispatch codex
+
+    # Quota-aware pre-check: fast-fail before spawning codex if a prior run
+    # recorded a quota-exhausted cooldown. Bypass once with
+    # DELEGATE_CODEX_IGNORE_COOLDOWN=1 or --force-quota-retry (a forced
+    # attempt that still hits the limit re-arms the cooldown below).
+    if [[ "${DELEGATE_CODEX_IGNORE_COOLDOWN:-0}" != "1" && "$force_quota_retry" != "true" ]]; then
+        local _cooldown_until
+        if _cooldown_until="$(quota_cooldown_active)"; then
+            die "Codex quota cooldown active until ${_cooldown_until} (recorded from a prior 'usage limit' error).
+  Bypass once with: export DELEGATE_CODEX_IGNORE_COOLDOWN=1  (or --force-quota-retry)"
+        fi
+    fi
+
     local output_file="$OUTPUTS_DIR/${id}.log"
     local rel_output=".agents/delegation/outputs/${id}.log"
 
@@ -297,8 +413,17 @@ ${prompt}"
     if [[ "$wait_mode" == "true" ]]; then
         info "Running in blocking mode..."
         # < /dev/null: codex exec reads stdin by default; close it so it doesn't block
-        "${cmd[@]}" < /dev/null 2>&1 | tee "$output_file"
-        local exit_code="${PIPESTATUS[0]}"
+        # exit_code defaults to 0; on a non-zero pipeline exit (set -e + pipefail would
+        # otherwise abort here) the `||` branch captures PIPESTATUS[0] — the true codex
+        # exit code — into exit_code. A bare `|| true` would run `true` as its own
+        # one-element pipeline and reset PIPESTATUS[0] to 0, masking every failure; a
+        # plain variable assignment does not invoke a pipeline, so PIPESTATUS[0] still
+        # reflects the codex|tee pipeline when it is read here. This keeps both the
+        # failure path (status update + quota capture) reachable AND the real exit
+        # code intact, so the success/failure branches below are accurate.
+        local exit_code=0
+        "${cmd[@]}" < /dev/null 2>&1 | tee "$output_file" || exit_code="${PIPESTATUS[0]}"
+        quota_capture_from_output "$output_file" || true
         if [[ "$exit_code" -eq 0 ]]; then
             update_registry "$REGISTRY" "$id" "status" "done"
             audit_event_end "codex" "$id" "success" "0" "completed: ${prompt:0:100}" "$mode"
@@ -320,6 +445,7 @@ ${prompt}"
             exit_code=\$?
             _end_ms=\$(date +%s%3N 2>/dev/null || echo 0)
             _lat=\$(( _end_ms - _start_ms ))
+            \"$SCRIPT_PATH\" --internal-quota-capture \"$output_file\" >/dev/null 2>&1 || true
             if [[ \$exit_code -eq 0 ]]; then
                 bash \"$_audit_helper\" \"$_coord_url\" task_completed codex success \"\$_lat\" \"$id\" \"completed: $_prompt_brief\" \"$mode\" \"$prompt\" \"$output_file\" || true
             else
@@ -359,6 +485,7 @@ PROMPT_FILE=""
 MODE="safe"
 MODEL=""
 WAIT=false
+FORCE_QUOTA_RETRY=false
 SUBCMD=""
 SUBCMD_ARG=""
 
@@ -369,9 +496,11 @@ while [[ $# -gt 0 ]]; do
         --mode)        MODE="$2";         shift 2 ;;
         --model)       MODEL="$2";        shift 2 ;;
         --wait)        WAIT=true;         shift   ;;
+        --force-quota-retry) FORCE_QUOTA_RETRY=true; shift ;;
         --check)       SUBCMD="check";   SUBCMD_ARG="$2"; shift 2 ;;
         --status)      SUBCMD="status";  SUBCMD_ARG="$2"; shift 2 ;;
         --list)        SUBCMD="list";    shift   ;;
+        --internal-quota-capture) SUBCMD="quota-capture"; SUBCMD_ARG="$2"; shift 2 ;;
         --help|-h)     grep "^#" "$0" | sed 's/^# \?//'; exit 0 ;;
         *) die "Unknown option: $1 (run with --help for usage)" ;;
     esac
@@ -386,12 +515,17 @@ case "${SUBCMD:-}" in
     list)   ensure_dirs; cmd_list ;;
     status) ensure_dirs; cmd_status "$SUBCMD_ARG" ;;
     check)  ensure_dirs; cmd_check "$SUBCMD_ARG" ;;
+    # Internal re-entry point: the background (nohup) run mode is a separate
+    # bash process that cannot see this script's functions, so it re-invokes
+    # the script itself to run quota_capture_from_output after the run
+    # completes. Not part of the public CLI surface.
+    quota-capture) ensure_dirs; quota_capture_from_output "$SUBCMD_ARG" ;;
     "")
         if [[ -n "$PROMPT_FILE" ]]; then
             [[ -f "$PROMPT_FILE" ]] || die "Prompt file not found: $PROMPT_FILE"
             PROMPT="$(cat "$PROMPT_FILE")"
         fi
         [[ -n "$PROMPT" ]] || die "Provide --prompt TEXT or --prompt-file FILE (or --help)"
-        cmd_delegate "$PROMPT" "$MODE" "$MODEL" "$WAIT"
+        cmd_delegate "$PROMPT" "$MODE" "$MODEL" "$WAIT" "$FORCE_QUOTA_RETRY"
         ;;
 esac
