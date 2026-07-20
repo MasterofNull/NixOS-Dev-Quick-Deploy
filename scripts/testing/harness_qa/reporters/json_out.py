@@ -21,12 +21,7 @@ class JsonReporter:
         layers: dict[str, list] = {}
         tests = []
         for r in rs.results:
-            item = {
-                "layer": r.layer,
-                "id": r.id,
-                "status": r.status.value,
-                "description": f"{r.description} ({r.reason})" if r.reason else r.description,
-            }
+            item = r.to_dict()
             tests.append(item)
             layers.setdefault(str(r.layer), []).append(item)
 
