@@ -267,3 +267,21 @@ config/.harness-prompt-ext.meta.json
 
 # Generated per-machine quickstart (aq-quickstart --write)
 docs/QUICKSTART.generated.md
+
+# Playwright CLI scratch page dumps (browser-test transient output)
+.playwright-cli/
+
+# Generated governance state snapshot (check-state-authorities.py --write)
+.agents/governance/state-authorities-latest.json
+
+# Runtime coordination state for the antigravity inbox (churns per drop)
+.agent/collaboration/antigravity-inbox/.lane-state.json
+
+# Quarantined rejected-collector evidence — retained on disk for audit, never committed
+# (see .agents/plans/aqos-refoundation-cycle0/evidence/rejected/DISPOSITION.md)
+.agents/plans/aqos-refoundation-cycle0/evidence/rejected/c0.3-antigravity-unauthorized-collector.py
+.agents/plans/aqos-refoundation-cycle0/evidence/rejected/c0.3-antigravity-unauthorized-collector.py.gz
+
+# Shell-wrapper mangled-command debris (accidental, empty/garbage)
+/1ncat
+/1necho
