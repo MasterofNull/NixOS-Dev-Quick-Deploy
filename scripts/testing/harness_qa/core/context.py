@@ -6,6 +6,7 @@ import pwd
 import subprocess
 from pathlib import Path
 from functools import cached_property
+from typing import Any
 
 
 class RunContext:
@@ -24,6 +25,7 @@ class RunContext:
         port_retry_attempts: int = 4,
         port_retry_delay_s: float = 1.0,
         dashboard_safe: bool = False,
+        evidence_invocation: Any | None = None,
     ) -> None:
         self.repo_root = repo_root
         self.layer_filter = layer_filter
@@ -35,6 +37,11 @@ class RunContext:
         self.port_retry_attempts = port_retry_attempts
         self.port_retry_delay_s = port_retry_delay_s
         self.dashboard_safe = dashboard_safe
+        self.evidence_invocation = evidence_invocation
+
+    @property
+    def qa_invocation_id(self) -> str | None:
+        return getattr(self.evidence_invocation, "run_id", None)
 
     def should_run(self, layer: int) -> bool:
         if self.layer_filter == 0:

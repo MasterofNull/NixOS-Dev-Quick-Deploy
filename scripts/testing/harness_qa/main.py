@@ -14,6 +14,7 @@ import argparse
 import os
 import sys
 import time
+import uuid
 from pathlib import Path
 
 # Allow direct execution (python3 main.py) as well as package import (python3 -m harness_qa.main)
@@ -273,6 +274,14 @@ def main(argv: list[str] | None = None) -> int:
     from .reporters.json_out import JsonReporter
     from .phases import ALL_PHASES
 
+    try:
+        evidence_store = production_store()
+        # The provider lifecycle contract shares this immutable UUID with Phase-0 evidence.
+        evidence_invocation = evidence_store.reserve_invocation(str(uuid.uuid4()))
+    except EvidenceStoreError as exc:
+        print(f"[aq-qa] immutable evidence unavailable: {exc}", file=sys.stderr)
+        return 2
+
     ctx = RunContext(
         repo_root=_REPO_ROOT,
         layer_filter=ns.layer,
@@ -284,14 +293,8 @@ def main(argv: list[str] | None = None) -> int:
         port_retry_attempts=int(os.environ.get("AQ_QA_PORT_RETRY_ATTEMPTS", "4")),
         port_retry_delay_s=float(os.environ.get("AQ_QA_PORT_RETRY_DELAY_SECONDS", "1")),
         dashboard_safe=dashboard_safe,
+        evidence_invocation=evidence_invocation,
     )
-
-    try:
-        evidence_store = production_store()
-        evidence_invocation = evidence_store.reserve_invocation()
-    except EvidenceStoreError as exc:
-        print(f"[aq-qa] immutable evidence unavailable: {exc}", file=sys.stderr)
-        return 2
 
     start = time.monotonic()
 
@@ -323,11 +326,7 @@ def main(argv: list[str] | None = None) -> int:
     try:
         tests = []
         for r in rs.results:
-            item = {
-                "layer": r.layer, "id": r.id, "status": r.status.value,
-                "description": f"{r.description} ({r.reason})" if r.reason else r.description,
-            }
-            tests.append(item)
+            tests.append(r.to_dict())
         output = {
             "phase": rs.phase, "passed": rs.passed, "failed": rs.failed,
             "skipped": rs.skipped, "duration_s": rs.duration_s,

@@ -6,6 +6,7 @@ Checks: services, ports, databases, inference endpoints, editor/IDE, routing, li
 from __future__ import annotations
 
 import json
+import importlib.util
 import os
 import subprocess
 import time
@@ -468,20 +469,29 @@ def _check_flagship_cli(ctx: RunContext) -> list[CheckResult]:
     results = []
     if not ctx.should_run(7):
         return results
-    env = {
-        **os.environ,
-        "AQ_PRIMARY_USER": ctx.primary_user,
-        "AQ_PRIMARY_HOME": ctx.primary_home,
-    }
-    script = ctx.repo_root / "scripts" / "testing" / "smoke-flagship-cli-surfaces.sh"
-    if cmd_ok("bash", str(script), env=env):
-        results.append(passed(7, "0.6.1", "flagship agent CLI help smokes"))
-    else:
-        results.append(failed(7, "0.6.1", "flagship agent CLI help smokes"))
+    runner_path = ctx.repo_root / "scripts" / "testing" / "qa-provider-probe.py"
+    spec = importlib.util.spec_from_file_location("qa_provider_probe", runner_path)
+    if spec is None or spec.loader is None:
+        return [failed(7, "0.6.1", "flagship agent CLI help smokes", "probe runner unavailable")]
+    module = importlib.util.module_from_spec(spec)
+    spec.loader.exec_module(module)
+    aggregate = module.run_provider_probe(
+        repo_root=ctx.repo_root,
+        qa_invocation_id=ctx.qa_invocation_id,
+        executable_path=ctx.primary_user_path,
+        primary_home=ctx.primary_home,
+        canonical=True,
+    )
+    factory = passed if all(item["result"] == "pass" for item in aggregate) else failed
+    result = factory(7, "0.6.1", "flagship agent CLI help smokes")
+    result.details = aggregate
+    results.append(result)
 
     gemini_script = ctx.repo_root / "scripts" / "health" / "gemini-cli-health.sh"
     env2 = {
-        **env,
+        **os.environ,
+        "AQ_PRIMARY_USER": ctx.primary_user,
+        "AQ_PRIMARY_HOME": ctx.primary_home,
         "PATH": f"{ctx.primary_home}/.npm-global/bin:{os.environ.get('PATH', '')}",
     }
     if cmd_ok("bash", str(gemini_script), "--check", env=env2):
