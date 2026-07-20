@@ -2,11 +2,57 @@
 
 **Authorization ID:** `auth-qa-provider-probe-reliability-a2-am1-20260719`
 **Idempotency key:** `qa-provider-probe-reliability:a2:existing-card-visibility:am1:20260719`
-**Status:** **PREPARED_ONLY / BLOCKED ON ACCEPTED A1 / NOT ACTIVATABLE**
-**Prepared:** 2026-07-19
-**Single use after final rebind:** first complete exact five-file candidate report
+**Required implementer:** `claude-subagent-qppr-a2-am1-implementer` (balanced / Sonnet tier)
+**Status:** **PREPARED_ONLY / NON-ACTIVATABLE — awaiting independent review of the adjacency rebind**
+**Prepared:** 2026-07-19 (revised 2026-07-19, this revision)
+**Single use after independent review and owner activation:** first complete exact five-file
+candidate report
 
-## 1. Exact bound prerequisites and unresolved A1 edge
+## 0. Revision notice (2026-07-19, this revision)
+
+This authorization is revised in place. It was never activated, so revision is legitimate under
+its own non-activatable status; its technical content (five-file ceiling, frozen future grant,
+stops) is preserved unchanged except where this notice states otherwise. Full binding evidence is
+recorded in `A2-ADJACENCY-REBIND.md` (companion document, this cycle); this notice summarizes only
+what changed here.
+
+1. **A1 identity and both UNRESOLVED fields closed.** The prerequisite this checkpoint could not
+   resolve — "accepted A1 commit" and "A1 implementation acceptance" — is now resolved. A1-AM3 is
+   the accepted final A1 (the original A1/A1-AM2 grants were superseded for activation purposes once
+   C1C was found mandatory, per `A1-AM3-PREREQUISITE-REBIND.md` §1). It is independently accepted
+   and committed at `3396f9df0493796e56c9f7ba34895c9b00667f01`, acceptance record
+   `A1-AM3-REV2-ACCEPTANCE.md` (VERDICT: PASS,
+   `d308e3ba1fb66d28ac4cf6ab833524e24ad36b0c31dd0a0a26eda90f26607ea2`). See §1 below.
+2. **Adjacency confirmed, not assumed.** Current branch HEAD equals `3396f9df` exactly — no commit
+   of any kind has landed since A1-AM3, so a future A2 commit satisfies the design packet's
+   "immediately after A1, no unrelated intervening commit" requirement by construction. Recomputed
+   in `A2-ADJACENCY-REBIND.md` §1.
+3. **Five-file ceiling reconfirmed byte-exact, zero drift.** All four MODIFY predecessor hashes in
+   §2 below and the NEW path's absence were recomputed against the live working tree this cycle and
+   match this document's original checkpoint values exactly. No inventory expansion, substitution,
+   or predecessor drift occurred. See `A2-ADJACENCY-REBIND.md` §3.1.
+4. **Required implementer named.** Per Rule 17 (dispatch at the cheapest capable tier, deviations
+   recorded): Codex CLI remains quota-exhausted until 2026-07-25 (same constraint already recorded
+   for the A1-AM3 implementer). The local-Qwen envelope is measured as bounded single-command /
+   single-edit only (`reference-local-agent-capability-envelope.md`); this slice requires
+   coordinated edits across four existing files plus one new test file in one candidate, which is
+   multi-site work the envelope does not cover. No Haiku-tier precedent exists for this specific
+   slice, but its backend half (`qa_runner.py` reader) carries the same class of adversarial-input
+   rejection rigor (non-regular/symlinked/oversized/malformed/unbound/stale) as the C1A heartbeat
+   writer and the process-lifecycle observer work, both of which required balanced-tier precision in
+   this same slice family; its frontend half requires coordinated, spec-exact behavior across
+   `dashboard.html` and `assets/dashboard.js` (AbortController lifecycle, visibility-aware cadence
+   switching, `setText`-only rendering) that is easy to under-specify at a lighter tier. Balanced
+   (Sonnet) tier — `claude-subagent-qppr-a2-am1-implementer` — is therefore the cheapest capable
+   tier available under current constraints. This is a recorded deviation, not a preference.
+5. **No design-technical content changed.** Section 2 (five-file ceiling), section 3 (frozen future
+   grant), and section 4 (stops) below are otherwise unchanged from the original checkpoint. C1C and
+   A1-AM3 changed only *how reliably* the projection file A2 reads gets written (fewer, more
+   trustworthy heartbeat writes); they did not change its schema, shape, or freshness semantics, and
+   A2 never depended on the legacy daemon-publication path or an old verifier pattern. Full analysis
+   in `A2-ADJACENCY-REBIND.md` §5.
+
+## 1. Exact bound prerequisites — now fully resolved
 
 | Subject | SHA-256 or Git object |
 |---|---|
@@ -16,13 +62,13 @@
 | `C1A-IMPLEMENTATION-ACCEPTANCE.md` | `73808146d65e877a15e0396f8e8adb5b726b986f7a01baccf5a5aa14b21d1987` |
 | corrected C1B-AM1 commit | `f54cd8c8257a43dd8666209648d4976c323dfbff` |
 | `C1B-AM1-IMPLEMENTATION-ACCEPTANCE.md` | `1373f508e80311c657e303ea8896616ac3aa943d923e3ccd6d0fd421b270c868` |
-| A1 accepted commit | **UNRESOLVED — required before final rebind** |
-| A1 implementation acceptance | **UNRESOLVED — required before final rebind** |
+| A1 accepted commit | `3396f9df0493796e56c9f7ba34895c9b00667f01` |
+| A1 implementation acceptance | `A1-AM3-REV2-ACCEPTANCE.md` = `d308e3ba1fb66d28ac4cf6ab833524e24ad36b0c31dd0a0a26eda90f26607ea2` (VERDICT: PASS) |
+| Adjacency rebind (this cycle) | `A2-ADJACENCY-REBIND.md` |
 
-This checkpoint resolves C1A/C1B but intentionally cannot resolve A1. It is not eligible for
-independent activation approval or owner activation. After A1 acceptance and commit, a minimal
-final amendment must bind the exact A1 authorization, candidate, acceptance, commit, current branch
-HEAD, and recomputed target predecessors below. Broad preauthorization cannot fill those subjects.
+This checkpoint now resolves C1A, C1B-AM1, and A1. It is still not eligible for owner activation
+until an independent reviewer issues a fresh flagship `PASS` over this revised document and
+`A2-ADJACENCY-REBIND.md` together — a self-prepared rebind cannot activate itself.
 
 ## 2. Exact maximum-five ceiling and current checkpoint
 
@@ -40,9 +86,10 @@ hard stop requiring another reviewed rebind.
 
 ## 3. Frozen future grant
 
-After final post-A1 rebind, independent review, and distinct owner activation, one named bounded
-implementer may implement only design sections 4.1-4.2: one pure bounded passive projection reader;
-the existing Phase-0 route's `projection_only=true` early-return branch; the fixed low-cardinality
+After independent review of this revised authorization plus `A2-ADJACENCY-REBIND.md`, and distinct
+owner activation, `claude-subagent-qppr-a2-am1-implementer` (balanced / Sonnet tier — see §0 item 4)
+may implement only design sections 4.1-4.2: one pure bounded passive projection reader; the existing
+Phase-0 route's `projection_only=true` early-return branch; the fixed low-cardinality
 `provider_probe` shape; exactly six accessible rows on the existing QA Phase 0 Status card; safe
 text-only rendering; one visibility-aware, cancellable, single-flight one/two-second poller; and
 focused offline API/browser DOM tests.
@@ -53,7 +100,7 @@ counts, badge, cache, or acceptance. No new route, card, control, store, depende
 variable, or visual system is permitted. Dashboard parity and service coverage are mandatory in
 the same atomic A2 commit.
 
-## 4. Stops, final review, and activation
+## 4. Stops, review, and activation
 
 All stops in the original A2 authorization and rebind amendment remain mandatory. Stop on absent
 A1 acceptance, non-adjacent branch state, any sixth file, predecessor/absence drift, foreign
@@ -61,14 +108,18 @@ overlap, live provider/network/API/browser action, QA/cache/evidence mutation, n
 projection-as-authority, unsafe HTML, unbounded or symlink-following read, sensitive display, new
 env/port/dependency, Nix/service/deploy/traffic action, staging, commit, rollback, or deletion.
 
-The final post-A1 authorization subject requires an independent exact-hash flagship review. Only
-then may the owner explicitly activate that final hash by naming one implementer and a window no
-longer than 24 hours while affirming the five-file ceiling and stops. The A1 activation cannot
-activate A2. A different agent/session must accept the exact five-file implementation; only the
-orchestrator commits it immediately after A1.
+A1 acceptance and adjacency are now bound (§1, and `A2-ADJACENCY-REBIND.md`), but this authorization
+remains non-activatable until an independent flagship reviewer — a different agent/session than the
+one that prepared this revision and `A2-ADJACENCY-REBIND.md` — issues an exact-hash `PASS` over both
+documents together. Only then may the owner explicitly activate this exact authorization hash,
+naming `claude-subagent-qppr-a2-am1-implementer` and a window no longer than 24 hours while
+affirming the five-file ceiling and stops. The A1 activation did not and cannot activate A2. A
+different agent/session than the implementer must accept the exact five-file candidate; only the
+orchestrator commits it, immediately after `3396f9df` with no unrelated intervening commit.
 
 Neither A1 nor A2 authorizes a real provider run, live API/browser vet, deployment, traffic,
 cutover, or rollback. Those require the separate paired live-vetting grant.
 
-`RECORD: PREPARED_ONLY AND NOT ACTIVATABLE. Accepted A1, final consecutive-state rebind,
-independent review, and explicit owner activation remain mandatory.`
+`RECORD: PREPARED_ONLY AND NOT ACTIVATABLE. Accepted A1 and adjacency are now bound; independent
+flagship review of this document plus A2-ADJACENCY-REBIND.md, and explicit owner activation, remain
+mandatory.`
