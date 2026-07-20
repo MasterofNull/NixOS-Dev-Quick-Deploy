@@ -24,6 +24,18 @@ aq-loop --check                        # show current LOOP_STATE.json
 agent loop (aq-agent-loop), detects the `COMPLETED:` signal, retries up to 3× on failure,
 and escalates to the backlog if exhausted. Implementer agents run Steps 1–8 directly.
 
+**Cheapest-eligible implementer (Canonical — all agents, all orchestrators):** whichever model is
+filling the orchestrator role for a given session — Claude, Codex, Gemini, or otherwise — does not
+self-implement bounded slices and does not default-dispatch a same-tier-or-higher sub-agent for
+implementer work. Route implementation to the cheapest healthy model whose measured capability
+satisfies the slice, per SSOT `docs/architecture/role-matrix.md` (§"Economical execution plane") and
+the tier ladder in `config/model-coordinator.json`. Every Agent-tool / `delegate-to-*` dispatch for an
+implementer role must pass an explicit cheap/fast model override — never leave it unset to silently
+inherit the orchestrator's own tier. A stalled or refusing implementer dispatch is grounds to fix the
+dispatch (correct model tier, better evidence, a genuine authorization amendment), not to pull the
+work back to the orchestrator. Any deviation requires a stated capability-insufficiency reason
+recorded in the dispatch/PULSE record.
+
 ---
 
 ## The 8-Step Workflow
