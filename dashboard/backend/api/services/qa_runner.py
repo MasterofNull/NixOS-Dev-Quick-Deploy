@@ -5,8 +5,11 @@ from __future__ import annotations
 import asyncio
 import json
 import os
+import re
 import shutil
+import stat
 import sys
+from datetime import datetime, timezone
 from pathlib import Path
 from typing import Any, Dict, Optional
 
@@ -263,3 +266,211 @@ async def run_phase_json(
         async with _TASKS_LOCK:
             if _RUNNING_TASKS.get(phase) is task and task.done():
                 _RUNNING_TASKS.pop(phase, None)
+
+
+# ---------------------------------------------------------------------------
+# A2 — bounded passive projection reader for the C1A provider-probe heartbeat
+# (`.agent/qa/provider-probe-active.json`, schema `qa.provider-probe-active.v1`).
+# Binds only to that file path and schema — never to qa-provider-probe.py
+# internals or its publication barrier. Read-only; never QA pass/fail
+# authority; never starts, mutates, or extends any QA/provider/evidence state.
+# ---------------------------------------------------------------------------
+_PROBE_ACTIVE_REL_PARTS = (".agent", "qa", "provider-probe-active.json")
+_PROBE_ACTIVE_MAX_BYTES = 16384
+_PROBE_FRESHNESS_MS = 5000
+
+_PROBE_PROVIDER_IDS = frozenset({"codex", "qwen", "claude", "pi"})
+_PROBE_LIFECYCLE_STATES = frozenset(
+    {"idle", "starting", "running", "terminating", "reaping", "terminal"}
+)
+_PROBE_FAILURE_CLASSES = frozenset(
+    {
+        "none",
+        "executable_missing",
+        "spawn_failed",
+        "exit_nonzero",
+        "provider_reported_failure",
+        "machine_output_missing",
+        "machine_output_invalid",
+        "deadline_exceeded",
+        "output_limit_exceeded",
+        "cleanup_failed",
+        "interrupted",
+        "probe_busy",
+        "contract_invalid",
+    }
+)
+_PROBE_ACTIVE_REQUIRED_FIELDS = frozenset(
+    {
+        "schema_version",
+        "qa_invocation_id",
+        "provider_id",
+        "lifecycle_state",
+        "elapsed_ms",
+        "heartbeat_utc",
+        "deadline_ms",
+        "last_terminal_failure_class",
+    }
+)
+_PROBE_UUID_RE = re.compile(
+    r"^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$", re.IGNORECASE
+)
+
+
+def _probe_active_path() -> Path:
+    return _repo_root().joinpath(*_PROBE_ACTIVE_REL_PARTS)
+
+
+def _parse_probe_heartbeat_utc(value: Any) -> Optional[datetime]:
+    if not isinstance(value, str) or not value.endswith("Z"):
+        return None
+    for fmt in ("%Y-%m-%dT%H:%M:%S.%fZ", "%Y-%m-%dT%H:%M:%SZ"):
+        try:
+            return datetime.strptime(value, fmt).replace(tzinfo=timezone.utc)
+        except ValueError:
+            continue
+    return None
+
+
+def _read_probe_active_raw() -> Optional[Dict[str, Any]]:
+    """Read and structurally validate the C1A heartbeat file.
+
+    Returns None (rejects) for any non-regular, symlinked, oversized,
+    malformed, unbound (schema/enum mismatch), or future-dated object —
+    "missing/stale/malformed" per the projection contract are always
+    treated as non-healthy. Never inspects QA cache, evidence, or
+    qa-provider-probe.py internals; the only I/O is one bounded read of
+    this one file.
+    """
+    path = _probe_active_path()
+    flags = os.O_RDONLY | getattr(os, "O_NOFOLLOW", 0) | getattr(os, "O_CLOEXEC", 0)
+    try:
+        fd = os.open(str(path), flags)
+    except OSError:
+        return None
+    try:
+        try:
+            st = os.fstat(fd)
+        except OSError:
+            return None
+        if not stat.S_ISREG(st.st_mode):
+            return None
+        if st.st_size <= 0 or st.st_size > _PROBE_ACTIVE_MAX_BYTES:
+            return None
+        try:
+            raw = os.read(fd, _PROBE_ACTIVE_MAX_BYTES + 1)
+        except OSError:
+            return None
+    finally:
+        try:
+            os.close(fd)
+        except OSError:
+            pass
+    if len(raw) > _PROBE_ACTIVE_MAX_BYTES:
+        return None
+    try:
+        obj = json.loads(raw.decode("utf-8"))
+    except (UnicodeDecodeError, json.JSONDecodeError):
+        return None
+    if not isinstance(obj, dict) or set(obj.keys()) != _PROBE_ACTIVE_REQUIRED_FIELDS:
+        return None
+    if obj.get("schema_version") != "qa.provider-probe-active.v1":
+        return None
+    invocation_id = obj.get("qa_invocation_id")
+    if not isinstance(invocation_id, str) or not _PROBE_UUID_RE.match(invocation_id):
+        return None
+    lifecycle_state = obj.get("lifecycle_state")
+    if lifecycle_state not in _PROBE_LIFECYCLE_STATES:
+        return None
+    provider_id = obj.get("provider_id")
+    if lifecycle_state == "idle":
+        if provider_id is not None:
+            return None
+    elif provider_id not in _PROBE_PROVIDER_IDS:
+        return None
+    elapsed_ms = obj.get("elapsed_ms")
+    if isinstance(elapsed_ms, bool) or not isinstance(elapsed_ms, int):
+        return None
+    if elapsed_ms < 0 or elapsed_ms > 300000:
+        return None
+    if obj.get("deadline_ms") != 45000:
+        return None
+    last_failure_class = obj.get("last_terminal_failure_class")
+    if lifecycle_state == "terminal":
+        if last_failure_class not in _PROBE_FAILURE_CLASSES:
+            return None
+    elif last_failure_class is not None:
+        return None
+    heartbeat_dt = _parse_probe_heartbeat_utc(obj.get("heartbeat_utc"))
+    if heartbeat_dt is None:
+        return None
+    if heartbeat_dt > datetime.now(timezone.utc):
+        return None  # future-dated — never trusted; folded into "unavailable"
+    return {
+        "qa_invocation_id": invocation_id,
+        "provider_id": provider_id,
+        "lifecycle_state": lifecycle_state,
+        "elapsed_ms": elapsed_ms,
+        "last_failure_class": last_failure_class,
+        "heartbeat_dt": heartbeat_dt,
+    }
+
+
+def _probe_dashboard_confined() -> bool:
+    # Same env var and truthy-set already used for phase-0 dashboard
+    # confinement elsewhere in this module; no new env var introduced.
+    return os.environ.get("AQ_QA_DASHBOARD_SAFE", "0").strip().lower() in {
+        "1",
+        "true",
+        "yes",
+        "on",
+    }
+
+
+def get_provider_probe_projection() -> Dict[str, Any]:
+    """Pure bounded projection of the C1A heartbeat for dashboard display.
+
+    Returns only the fixed `provider_probe` shape (design-packet SS4.1):
+    availability, provider_id, lifecycle_state, elapsed_ms,
+    last_failure_class, freshness_ms, qa_invocation_id, host_execution.
+    Never starts a probe, never touches the QA cache/evidence, and is
+    never pass/fail authority — a stale or unavailable projection cannot
+    change Phase-0 status, counts, badge, cache, or acceptance.
+    """
+    confined = _probe_dashboard_confined()
+    raw = _read_probe_active_raw()
+    if raw is None:
+        return {
+            "availability": "unavailable",
+            "provider_id": None,
+            "lifecycle_state": "unavailable",
+            "elapsed_ms": None,
+            "last_failure_class": None,
+            "freshness_ms": None,
+            "qa_invocation_id": None,
+            "host_execution": "dashboard_confined_skip" if confined else "unavailable",
+        }
+
+    now = datetime.now(timezone.utc)
+    freshness_ms = int((now - raw["heartbeat_dt"]).total_seconds() * 1000.0)
+    if freshness_ms < 0:
+        freshness_ms = 0
+    availability = "current" if freshness_ms <= _PROBE_FRESHNESS_MS else "stale"
+
+    if confined:
+        host_execution = "dashboard_confined_skip"
+    elif raw["lifecycle_state"] == "terminal":
+        host_execution = "terminal"
+    else:
+        host_execution = "active"
+
+    return {
+        "availability": availability,
+        "provider_id": raw["provider_id"],
+        "lifecycle_state": raw["lifecycle_state"],
+        "elapsed_ms": raw["elapsed_ms"],
+        "last_failure_class": raw["last_failure_class"],
+        "freshness_ms": freshness_ms,
+        "qa_invocation_id": raw["qa_invocation_id"],
+        "host_execution": host_execution,
+    }

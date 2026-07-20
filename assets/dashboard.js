@@ -168,6 +168,7 @@ function setLens(id, options = {}) {
     lazyLoaded.add(id);
     loadLens(id);
   }
+  qaProbeNotifyVisibility();
 }
 function loadLens(id) {
   if (id === "overview") {
@@ -3862,6 +3863,110 @@ async function loadQA() {
     badge.className = `card-badge ${d.failed === 0 ? "badge-ok" : "badge-err"}`;
   }
 }
+
+// ─── A2 — QA provider-probe projection poller ──────────────────────────────
+// Dedicated, bounded, single-flight, cancellable poller for the C1A
+// heartbeat projection. Renders text-only (setText) into the existing QA
+// Phase 0 Status card; never touches the card's own PASS/FAIL badge/counts
+// and never calls loadQA()/the active QA route. 1s cadence only while the
+// last observed probe is genuinely active (availability "current" and a
+// non-idle, non-terminal lifecycle), 2s cadence otherwise (idle, terminal,
+// stale, unavailable, or on error).
+let _qaProbeTimer = null;
+let _qaProbeController = null;
+let _qaProbeInFlight = false;
+let _qaProbeActive = false;
+
+function _qaProbePanelVisible() {
+  return !document.hidden && activeLens === "operations";
+}
+
+function _qaProbeRenderState(probe) {
+  const p = probe || {};
+  setText("qaProbeProvider", p.provider_id ?? "none");
+  setText("qaProbeState", p.lifecycle_state ?? "unavailable");
+  setText(
+    "qaProbeElapsed",
+    p.elapsed_ms != null ? `${p.elapsed_ms}ms` : "--"
+  );
+  setText("qaProbeFailureClass", p.last_failure_class ?? "none");
+  setText(
+    "qaProbeFreshness",
+    p.freshness_ms != null ? `${p.freshness_ms}ms (${p.availability ?? "unavailable"})` : "unavailable"
+  );
+  setText("qaProbeInvocation", p.qa_invocation_id ?? "--");
+  const invocationEl = document.getElementById("qaProbeInvocation");
+  if (invocationEl) invocationEl.title = p.qa_invocation_id ?? "";
+  _qaProbeActive =
+    p.availability === "current" &&
+    !["idle", "terminal", "unavailable"].includes(
+      p.lifecycle_state ?? "unavailable"
+    );
+}
+
+async function _qaProbePollOnce() {
+  if (_qaProbeInFlight) return;
+  _qaProbeInFlight = true;
+  if (_qaProbeController) {
+    try {
+      _qaProbeController.abort();
+    } catch { }
+  }
+  const ctrl = new AbortController();
+  _qaProbeController = ctrl;
+  const timer = setTimeout(() => ctrl.abort(), 750);
+  try {
+    const r = await fetch(
+      `${BASE}/api/aistack/aq-qa/run/0?projection_only=true`,
+      { signal: ctrl.signal, cache: "no-store" }
+    );
+    if (r.ok) {
+      const ct = r.headers.get("content-type") || "";
+      if (ct.includes("json")) {
+        const d = await r.json();
+        _qaProbeRenderState(d && d.provider_probe);
+      } else {
+        _qaProbeRenderState(null);
+      }
+    } else {
+      _qaProbeRenderState(null);
+    }
+  } catch {
+    _qaProbeRenderState(null);
+  } finally {
+    clearTimeout(timer);
+    if (_qaProbeController === ctrl) _qaProbeController = null;
+    _qaProbeInFlight = false;
+    _qaProbeScheduleNext();
+  }
+}
+
+function _qaProbeScheduleNext() {
+  if (_qaProbeTimer) {
+    clearTimeout(_qaProbeTimer);
+    _qaProbeTimer = null;
+  }
+  if (!_qaProbePanelVisible()) return;
+  _qaProbeTimer = setTimeout(_qaProbePollOnce, _qaProbeActive ? 1000 : 2000);
+}
+
+function qaProbeNotifyVisibility() {
+  if (_qaProbePanelVisible()) {
+    if (!_qaProbeInFlight && !_qaProbeTimer) _qaProbePollOnce();
+  } else {
+    if (_qaProbeTimer) {
+      clearTimeout(_qaProbeTimer);
+      _qaProbeTimer = null;
+    }
+    if (_qaProbeController) {
+      try {
+        _qaProbeController.abort();
+      } catch { }
+      _qaProbeController = null;
+    }
+  }
+}
+document.addEventListener("visibilitychange", qaProbeNotifyVisibility);
 
 async function loadDeployments() {
   const d = await apiFetch("/deployments/history");
