@@ -1,0 +1,73 @@
+{
+  "schema_version": "1.0",
+  "round_id": "antigravity-routing-honesty-accept",
+  "state": "COLLECTED",
+  "task": {
+    "prompt": "Independent acceptance review (reviewers only, no code changes). Review the 3 STAGED (uncommitted) files of the antigravity-routing-consolidation fix against its spec .agents/plans/antigravity-lane-restoration/ROUTING-CONSOLIDATION-SPEC.md: (1) scripts/ai/aq-antigravity-agent set enable_fallback=False so a forced-remote review FAILS LOUDLY instead of silently returning hybrid-coordinator RAG hits dressed as a review — confirm the _fallback_to_remote path is truly unreachable for a reviewer task; (2) scripts/ai/delegate-to-antigravity docstring/failure messages no longer advise a Google/Studio API key and now name aq-collab-round as the sanctioned no-key Antigravity lane; (3) new scripts/testing/test-antigravity-routing-honesty.py proves failure-is-explicit-not-RAG (17 checks). Adjudicate the implementer's in-scope deviation: the --loop --wait path now propagates the real subprocess exit code (sys.exit proc.returncode) instead of returning 0 on failure. Confirm NO api key/secret/credential added anywhere, exactly 3 files changed, and no regression to legitimate non-antigravity dispatch. End with a clear line: VERDICT: PASS or VERDICT: REQUEST_REVISION with reasons.",
+    "target": "",
+    "scope_files": []
+  },
+  "opened_at": "2026-07-20T20:56:33Z",
+  "quorum_policy": {
+    "min_lanes": 2,
+    "required_agents": [],
+    "late_local_admissible": true,
+    "timeout_seconds": null,
+    "deadline": null,
+    "timeout_action": "lock_with_present"
+  },
+  "lanes": [
+    {
+      "agent": "claude",
+      "dispatch_id": null,
+      "idempotency_hash": "6940c9244259ef67953b31bca96d4f298c8a2246e92e6bf86a1a464597e8daa0",
+      "status": "pending",
+      "landed_at": null
+    },
+    {
+      "agent": "codex",
+      "dispatch_id": null,
+      "idempotency_hash": "345619b489fac2858448c0552a5664e78666fbea903c9199efb33000838fbad2",
+      "status": "submitted",
+      "landed_at": null
+    },
+    {
+      "agent": "local",
+      "dispatch_id": null,
+      "idempotency_hash": "b0ea27842c6346d5ae57d727a68ff19745f46a60ebf359e66cd5e0f648495d07",
+      "status": "submitted",
+      "landed_at": null
+    },
+    {
+      "agent": "antigravity",
+      "dispatch_id": null,
+      "idempotency_hash": "d2604bbeb623f431423b312dfa6c32db3a87f9d0e3c9bd00017a3a5b7ac5a51c",
+      "status": "pending",
+      "landed_at": null
+    }
+  ],
+  "contributions": {},
+  "conflicts": [],
+  "consensus_hash": null,
+  "aggregate_path": null,
+  "aggregate_hash": null,
+  "locked_at": null,
+  "history": [
+    {
+      "transition": "CREATED->DISPATCHED",
+      "timestamp": "2026-07-20T20:56:33Z",
+      "actor": "aq-collab-round"
+    },
+    {
+      "transition": "DISPATCHED->CONTRIBUTING",
+      "timestamp": "2026-07-21T01:31:29Z",
+      "actor": "aq-collab-round"
+    },
+    {
+      "transition": "CONTRIBUTING->COLLECTED",
+      "timestamp": "2026-07-21T01:31:29Z",
+      "actor": "aq-collab-round"
+    }
+  ],
+  "predecessor_round_id": null
+}
