@@ -95,7 +95,12 @@ async def run_agent(
         tool_registry=registry,
         fallback_endpoint=COORDINATOR_URL,
         llama_endpoint=LLAMA_URL,
-        enable_fallback=True,
+        # enable_fallback=False (was True): a failed remote/Antigravity call must
+        # surface as an explicit FAILED task, never silently degrade into a
+        # hybrid-coordinator RAG search dressed up as a "result". See
+        # .agents/plans/antigravity-lane-restoration/ROUTING-FIX-PROPOSAL.md (D1).
+        # The sanctioned Antigravity lane is aq-collab-round (inbox drop, IDE OAuth).
+        enable_fallback=False,
         offline_mode=False,
         allow_degraded_local_execution=False,
     )

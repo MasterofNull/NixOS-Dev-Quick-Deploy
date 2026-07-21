@@ -1,16 +1,29 @@
 #!/usr/bin/env python3
-"""delegate-to-antigravity — Headless AI delegation via switchboard antigravity-collective profile.
+"""delegate-to-antigravity — legacy keyed-switchboard dispatch. NOT the sanctioned
+Antigravity lane. Under the no-API-key policy the keyed remote route this script
+drives is non-functional for real Antigravity identity/review work — use it only
+for diagnostics.
 
-Routes through the local switchboard (http://127.0.0.1:8085) using a remote
-profile that forces provider=remote and uses the configured remote backend.
-Remote backend = Google Gemini direct (generativelanguage.googleapis.com/v1beta/openai);
-the "antigravity" name reflects Google's Gemini agentic product. All remote model
-aliases are bare Gemini model ids (gemini-2.5-pro/flash/flash-lite). On remote
-error (429/5xx) or when the remote key is absent, delegation falls back to the
-local Qwen3-35B profile (local-coding).
+THE SANCTIONED ANTIGRAVITY LANE IS `aq-collab-round`: it drops a task file into
+`.agent/collaboration/antigravity-inbox/<name>.md`; the Antigravity IDE picks it
+up via its OWN Google OAuth session and writes the response back. No API key,
+no switchboard, no headless keyed call. Use that for any real Antigravity review,
+PRD, plan, or research task.
 
-Auth: handled by switchboard via /run/secrets/remote_llm_api_key (SOPS-managed).
-That secret must hold a Google AI Studio API key (NOT an OpenRouter key).
+What this script actually does: routes through the local switchboard
+(http://127.0.0.1:8085) using a remote profile that forces provider=remote
+against Google Gemini direct (generativelanguage.googleapis.com/v1beta/openai).
+Under the no-key policy there is no valid Google AI Studio key wired to that
+profile, so the keyed call fails (commonly 502/503/400/401/403) and this script
+falls back to the local Qwen3-35B profile (local-coding) — a local completion,
+not an Antigravity review. `--loop` (aq-antigravity-agent) additionally refuses
+to silently mask a remote failure as a hybrid-coordinator RAG result (see
+.agents/plans/antigravity-lane-restoration/ROUTING-FIX-PROPOSAL.md, D1/D2) — a
+failed keyed dispatch surfaces as an explicit failure, not fake output.
+
+Do NOT add or rotate any secret to try to make this path work; it is
+policy-forbidden, not merely broken. Route real Antigravity work through
+`aq-collab-round` instead.
 
 Note: @google/gemini-cli (npm) and the oauth-personal/Code Assist path are RETIRED
 as of 2026-07 (IneligibleTierError for free-tier). Do NOT use 'gemini' npm binary.
@@ -403,7 +416,11 @@ def _run_switchboard(task_id: str, prompt: str, role: str, model: str,
                 break  # try next profile
 
     with open(log_path, "a") as f:
-        f.write("ERROR: all profiles exhausted — remote rate-limited and local fallback failed\n")
+        f.write(
+            "ERROR: all profiles exhausted — remote rate-limited and local fallback failed. "
+            "The keyed switchboard route is not the sanctioned Antigravity lane; use "
+            "aq-collab-round (inbox drop, IDE OAuth, no keys) for a real Antigravity review.\n"
+        )
     return "failed", 0, 0
 
 # ── pending / audit helpers ─────────────────────────────────────────────────
@@ -558,11 +575,24 @@ def cmd_delegate(prompt: str, role: str, mode: str,
                 return
             os.setsid()
             _redirect_background_stdio(log_path)
-            subprocess.run(agent_cmd)
+            proc = subprocess.run(agent_cmd)
+            if proc.returncode != 0:
+                with open(log_path, "a") as f:
+                    f.write(
+                        "\n[delegate-to-antigravity] Antigravity agent-loop dispatch FAILED "
+                        "(keyed switchboard route). This is not the sanctioned Antigravity "
+                        "lane; use aq-collab-round (inbox drop, IDE OAuth, no keys) instead.\n"
+                    )
             os._exit(0)
         else:
-            subprocess.run(agent_cmd)
-            return
+            proc = subprocess.run(agent_cmd)
+            if proc.returncode != 0:
+                sys.stderr.write(
+                    "[delegate-to-antigravity] Antigravity agent-loop dispatch FAILED "
+                    "(keyed switchboard route). This is not the sanctioned Antigravity "
+                    "lane; use aq-collab-round (inbox drop, IDE OAuth, no keys) instead.\n"
+                )
+            sys.exit(proc.returncode)
 
     # Register before dispatch
     _registry_append(tid, role, prompt, log_path)
