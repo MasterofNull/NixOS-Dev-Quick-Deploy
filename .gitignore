@@ -176,6 +176,8 @@ nix/hosts/*/.sops.yaml
 .agent/collaboration/PENDING.json
 .agent/collaboration/PULSE.log
 .agent/collaboration/RESUME.json
+# Atomic slice-claim locks (aq-slice-claim): ephemeral CAS lock files, not history.
+.agent/collaboration/slice-claims/
 .agent/comms/command.json
 .agent/comms/output.json
 .agent/comms/output.txt
