@@ -7,7 +7,9 @@ import codecs
 import copy
 import hashlib
 import json
+import math
 import re
+import unicodedata
 from dataclasses import dataclass
 from pathlib import Path
 from typing import Any, Callable, Mapping, Sequence
@@ -1128,13 +1130,223 @@ def assemble_terminal_candidate(
     }
 
 
+
+# ─── L2B-B — pure payload normalization & canonical transformer ────────────
+# Enforces the four L2B-B invariants ahead of dispatch to either local
+# endpoint: (1) NFC UTF-8 + key-sorted canonical form, (2) non-finite floats
+# removed rather than rejected outright, (3) no external credential fields
+# ever touch the normalized envelope, (4) fail-closed schema validation with
+# an opaque, non-leaking rejection on any violation.
+
+_NORMALIZATION_ENDPOINTS = {"/v1/chat/completions", "/v1/completions"}
+
+_FORBIDDEN_PAYLOAD_KEYS = {
+    "authorization",
+    "api_key",
+    "apikey",
+    "api-key",
+    "bearer_token",
+    "cookie",
+    "proxy-authorization",
+    "x-api-key",
+}
+
+# Approximate resident VRAM footprint per known local model, used only to
+# enforce the single-model 27 GB budget below — never to route or dispatch.
+_KNOWN_MODEL_VRAM_GB: dict[str, float] = {
+    "qwen3-35b": 22.5,
+    "qwen3-8b": 8.0,
+    "llama-8b": 8.0,
+}
+
+_VRAM_BUDGET_GB = 27.0
+
+
+def _scan_forbidden_keys(value: Any) -> None:
+    if isinstance(value, Mapping):
+        for key, val in value.items():
+            if isinstance(key, str) and key.lower() in _FORBIDDEN_PAYLOAD_KEYS:
+                _fail(
+                    "forbidden_credential_field",
+                    "Payload must not carry external credential fields",
+                    "unauthorized",
+                )
+            _scan_forbidden_keys(val)
+    elif isinstance(value, list):
+        for item in value:
+            _scan_forbidden_keys(item)
+
+
+def _reject_non_string_keys(value: Any) -> None:
+    """Fail closed on any non-string mapping key before it can reach a bare
+    comparison (e.g. ``sorted()``) that would raise an uncaught ``TypeError``.
+    """
+    if isinstance(value, Mapping):
+        for key, val in value.items():
+            if not isinstance(key, str):
+                _fail(
+                    "normalization_key_invalid",
+                    "Payload object keys must be strings",
+                    "invalid_request",
+                )
+            _reject_non_string_keys(val)
+    elif isinstance(value, list):
+        for item in value:
+            _reject_non_string_keys(item)
+
+
+def _strip_non_finite(value: Any) -> Any:
+    if isinstance(value, bool):
+        return value
+    if isinstance(value, float):
+        return value if math.isfinite(value) else None
+    if isinstance(value, Mapping):
+        return {key: _strip_non_finite(val) for key, val in value.items()}
+    if isinstance(value, list):
+        return [_strip_non_finite(item) for item in value]
+    return value
+
+
+def _nfc_normalize(value: Any) -> Any:
+    if isinstance(value, str):
+        return unicodedata.normalize("NFC", value)
+    if isinstance(value, Mapping):
+        # Keys are guaranteed str by `_reject_non_string_keys` before this
+        # runs; normalize them to NFC same as values so a decomposed-Unicode
+        # key canonicalizes deterministically instead of slipping through.
+        return {
+            unicodedata.normalize("NFC", key): _nfc_normalize(val)
+            for key, val in value.items()
+        }
+    if isinstance(value, list):
+        return [_nfc_normalize(item) for item in value]
+    return value
+
+
+def _deep_sorted(value: Any) -> Any:
+    if isinstance(value, Mapping):
+        return {key: _deep_sorted(value[key]) for key in sorted(value)}
+    if isinstance(value, list):
+        return [_deep_sorted(item) for item in value]
+    return value
+
+
+def validate_vram_budget(
+    resident_vram_gb: Mapping[str, float], *, budget_gb: float = _VRAM_BUDGET_GB
+) -> None:
+    """Reject concurrent model residency exceeding the strict VRAM budget."""
+    if not isinstance(resident_vram_gb, Mapping) or not resident_vram_gb:
+        _fail(
+            "vram_budget_shape_invalid",
+            "Resident VRAM declaration is invalid",
+            "invalid_request",
+        )
+    total = 0.0
+    for name, size in resident_vram_gb.items():
+        if (
+            not isinstance(name, str)
+            or not isinstance(size, (int, float))
+            or isinstance(size, bool)
+            or size < 0
+        ):
+            _fail(
+                "vram_budget_shape_invalid",
+                "Resident VRAM declaration is invalid",
+                "invalid_request",
+            )
+        total += float(size)
+    if total > budget_gb:
+        _fail(
+            "vram_budget_exceeded",
+            "Concurrent model residency exceeds the VRAM budget",
+            "unavailable_profile",
+        )
+
+
+def normalize_endpoint_payload(
+    payload: Mapping[str, Any], *, endpoint: str
+) -> dict[str, Any]:
+    """Pure, deterministic canonical-form normalization for one dispatch payload.
+
+    Applies NFC UTF-8 normalization, recursive key sorting, and non-finite
+    float removal. Never mutates the input; never performs I/O.
+    """
+    if endpoint not in _NORMALIZATION_ENDPOINTS:
+        _fail(
+            "normalization_endpoint_unknown",
+            "Normalization endpoint is unknown",
+            "unavailable_profile",
+        )
+    if not isinstance(payload, Mapping):
+        _fail(
+            "normalization_payload_invalid",
+            "Normalization payload must be a JSON object",
+            "invalid_request",
+        )
+    _reject_non_string_keys(payload)
+    _scan_forbidden_keys(payload)
+    working = _strip_non_finite(copy.deepcopy(dict(payload)))
+    working = _nfc_normalize(working)
+    return _deep_sorted(working)
+
+
+def canonical_transformer(
+    payload: Mapping[str, Any],
+    *,
+    endpoint: str,
+    repo_root: Path,
+    resident_vram_gb: Mapping[str, float] | None = None,
+) -> dict[str, Any]:
+    """Normalize, schema-validate, and canonically transform a dispatch payload.
+
+    Fail-closed: any invariant violation (unknown endpoint, malformed shape,
+    forbidden credential field, VRAM budget breach, or schema mismatch)
+    returns a ``REJECTED_SCHEMA_INVALID`` envelope carrying only a safe
+    message and reason code — never a raw exception, stack trace, or file
+    system path.
+    """
+    try:
+        if resident_vram_gb is not None:
+            validate_vram_budget(resident_vram_gb)
+        normalized = normalize_endpoint_payload(payload, endpoint=endpoint)
+        envelope: dict[str, Any] = {
+            "document_kind": "normalized_local_inference_payload",
+            "schema_version": "1",
+            "endpoint": endpoint,
+            "payload": normalized,
+        }
+        if resident_vram_gb is not None:
+            envelope["resident_vram_gb"] = _deep_sorted(dict(resident_vram_gb))
+        schema = _schema(repo_root, "local-inference-payload-v1.json")
+        _validate(envelope, schema)
+        wire = canonical_bytes(envelope)
+        return {
+            "document_kind": "normalization_result",
+            "status": "ACCEPTED",
+            "endpoint": endpoint,
+            "canonical_wire_utf8": wire.decode("utf-8"),
+            "schema_signature": _digest("local-inference-payload-v1:schema", envelope),
+        }
+    except TransportError as exc:
+        return {
+            "document_kind": "normalization_result",
+            "status": "REJECTED_SCHEMA_INVALID",
+            "endpoint": endpoint,
+            "reason_code": exc.reason_code,
+            "message": exc.safe_message,
+            "audit_trace": {"code": exc.code, "reason_code": exc.reason_code},
+        }
+
+
 _ASSETS = (
     "config/local-inference-transport-policy.json",
     "config/schemas/local-inference-transport.schema.json",
     "config/schemas/local-inference-transport-policy.schema.json",
+    "config/schemas/local-inference-payload-v1.json",
     "scripts/ai/lib/local_inference_transport.py",
     "scripts/testing/fixtures/local-inference-l2b-payload-golden.json",
     "scripts/testing/fixtures/local-inference-l2b-stream-golden.json",
+    "scripts/testing/fixtures/l2b_b_golden_payloads.json",
 )
 
 
@@ -1204,6 +1416,7 @@ def transport_health(repo_root: Path) -> dict[str, Any]:
         "stream_parity": "unavailable",
         "source_shape_parity": "unavailable",
         "actual_ssot_parity": "unavailable",
+        "payload_normalization_status": "unavailable",
         "target_decisions": {},
         "payload_vector_count": 0,
         "stream_vector_count": 0,
@@ -1394,6 +1607,22 @@ def transport_health(repo_root: Path) -> dict[str, Any]:
                     "Stream split parity failed",
                     "malformed_result",
                 )
+        normalization_probe = canonical_transformer(
+            {
+                "model": "fixture-model",
+                "messages": [{"role": "user", "content": "normalization probe"}],
+                "max_tokens": 1,
+                "temperature": 0.0,
+            },
+            endpoint="/v1/chat/completions",
+            repo_root=repo_root,
+        )
+        if normalization_probe["status"] != "ACCEPTED":
+            _fail(
+                "payload_normalization_probe_failed",
+                "Payload normalization self-check failed",
+                "malformed_result",
+            )
         return {
             "status": "healthy",
             "mode": "shadow_fixture_only",
@@ -1405,6 +1634,7 @@ def transport_health(repo_root: Path) -> dict[str, Any]:
             "stream_parity": "pass",
             "source_shape_parity": "pass",
             "actual_ssot_parity": "pass",
+            "payload_normalization_status": "pass",
             "target_decisions": {
                 name: value["status"] for name, value in policy["targets"].items()
             },
@@ -1427,6 +1657,7 @@ def transport_health(repo_root: Path) -> dict[str, Any]:
             "stream_parity": "fail",
             "source_shape_parity": "fail",
             "actual_ssot_parity": "fail",
+            "payload_normalization_status": "fail",
             "reason_code": "transport_fixture_invalid",
         }
     except Exception:
@@ -1437,6 +1668,7 @@ def transport_health(repo_root: Path) -> dict[str, Any]:
             "stream_parity": "fail",
             "source_shape_parity": "fail",
             "actual_ssot_parity": "fail",
+            "payload_normalization_status": "fail",
             "reason_code": "transport_fixture_invalid",
         }
 
@@ -1447,10 +1679,13 @@ __all__ = [
     "assemble_terminal_candidate",
     "build_transport_plan",
     "canonical_bytes",
+    "canonical_transformer",
     "characterize_source_shapes",
     "load_policy",
+    "normalize_endpoint_payload",
     "parse_exact_json",
     "transport_asset_digest",
     "transport_health",
     "validate_headers",
+    "validate_vram_budget",
 ]

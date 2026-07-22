@@ -1,0 +1,252 @@
+{
+  "document_kind": "l2b_b_golden_payloads",
+  "schema_version": "1",
+  "description": "Canonical request/response test vectors for L2B-B payload normalization across the qwen3-35b and llama-8b local endpoints (chat + batch).",
+  "vectors": [
+    {
+      "id": "chat-basic-key-sort",
+      "endpoint": "/v1/chat/completions",
+      "input_payload": {
+        "model": "qwen3-35b",
+        "temperature": 0.2,
+        "max_tokens": 64,
+        "messages": [
+          {
+            "role": "user",
+            "content": "hello there"
+          }
+        ],
+        "z_field": 9,
+        "a_field": 1
+      },
+      "expected_status": "ACCEPTED",
+      "expected_payload": {
+        "a_field": 1,
+        "max_tokens": 64,
+        "messages": [
+          {
+            "content": "hello there",
+            "role": "user"
+          }
+        ],
+        "model": "qwen3-35b",
+        "temperature": 0.2,
+        "z_field": 9
+      }
+    },
+    {
+      "id": "chat-nfc-normalization",
+      "endpoint": "/v1/chat/completions",
+      "input_payload": {
+        "model": "qwen3-35b",
+        "max_tokens": 32,
+        "temperature": 0.0,
+        "messages": [
+          {
+            "role": "user",
+            "content": "Café latte please"
+          }
+        ]
+      },
+      "expected_status": "ACCEPTED",
+      "expected_payload": {
+        "max_tokens": 32,
+        "messages": [
+          {
+            "content": "Café latte please",
+            "role": "user"
+          }
+        ],
+        "model": "qwen3-35b",
+        "temperature": 0.0
+      }
+    },
+    {
+      "id": "chat-non-finite-strip",
+      "endpoint": "/v1/chat/completions",
+      "input_payload": {
+        "model": "llama-8b",
+        "max_tokens": 16,
+        "temperature": 0.5,
+        "logit_bias": null,
+        "frequency_penalty": NaN,
+        "presence_penalty": Infinity,
+        "messages": [
+          {
+            "role": "user",
+            "content": "strip me"
+          }
+        ]
+      },
+      "expected_status": "ACCEPTED",
+      "expected_payload": {
+        "frequency_penalty": null,
+        "logit_bias": null,
+        "max_tokens": 16,
+        "messages": [
+          {
+            "content": "strip me",
+            "role": "user"
+          }
+        ],
+        "model": "llama-8b",
+        "presence_penalty": null,
+        "temperature": 0.5
+      }
+    },
+    {
+      "id": "batch-prompts-key-sort",
+      "endpoint": "/v1/completions",
+      "input_payload": {
+        "model": "qwen3-35b",
+        "prompt": [
+          "first prompt",
+          "second prompt",
+          "third prompt"
+        ],
+        "max_tokens": 32,
+        "temperature": 0.0,
+        "z_field": "z",
+        "a_field": "a"
+      },
+      "expected_status": "ACCEPTED",
+      "expected_payload": {
+        "a_field": "a",
+        "max_tokens": 32,
+        "model": "qwen3-35b",
+        "prompt": [
+          "first prompt",
+          "second prompt",
+          "third prompt"
+        ],
+        "temperature": 0.0,
+        "z_field": "z"
+      }
+    },
+    {
+      "id": "batch-non-finite-strip",
+      "endpoint": "/v1/completions",
+      "input_payload": {
+        "model": "llama-8b",
+        "prompt": [
+          "batch a",
+          "batch b"
+        ],
+        "max_tokens": 32,
+        "temperature": 0.0,
+        "top_p": -Infinity,
+        "logprobs": NaN
+      },
+      "expected_status": "ACCEPTED",
+      "expected_payload": {
+        "logprobs": null,
+        "max_tokens": 32,
+        "model": "llama-8b",
+        "prompt": [
+          "batch a",
+          "batch b"
+        ],
+        "temperature": 0.0,
+        "top_p": null
+      }
+    },
+    {
+      "id": "vram-single-model-ok",
+      "endpoint": "/v1/chat/completions",
+      "input_payload": {
+        "model": "qwen3-35b",
+        "max_tokens": 8,
+        "temperature": 0.0,
+        "messages": [
+          {
+            "role": "user",
+            "content": "vram ok"
+          }
+        ]
+      },
+      "expected_status": "ACCEPTED",
+      "expected_payload": {
+        "max_tokens": 8,
+        "messages": [
+          {
+            "content": "vram ok",
+            "role": "user"
+          }
+        ],
+        "model": "qwen3-35b",
+        "temperature": 0.0
+      },
+      "resident_vram_gb": {
+        "qwen3-35b": 22.5
+      }
+    },
+    {
+      "id": "vram-concurrent-35b-8b-exceeded",
+      "endpoint": "/v1/chat/completions",
+      "input_payload": {
+        "model": "qwen3-35b",
+        "max_tokens": 8,
+        "temperature": 0.0,
+        "messages": [
+          {
+            "role": "user",
+            "content": "vram exceed"
+          }
+        ]
+      },
+      "expected_status": "REJECTED_SCHEMA_INVALID",
+      "expected_reason_code": "vram_budget_exceeded",
+      "resident_vram_gb": {
+        "qwen3-35b": 22.5,
+        "llama-8b": 8.0
+      }
+    },
+    {
+      "id": "credential-leak-authorization-header",
+      "endpoint": "/v1/chat/completions",
+      "input_payload": {
+        "model": "qwen3-35b",
+        "max_tokens": 8,
+        "temperature": 0.0,
+        "messages": [
+          {
+            "role": "user",
+            "content": "hi"
+          }
+        ],
+        "authorization": "not-a-real-credential"
+      },
+      "expected_status": "REJECTED_SCHEMA_INVALID",
+      "expected_reason_code": "forbidden_credential_field"
+    },
+    {
+      "id": "credential-leak-nested-api-key",
+      "endpoint": "/v1/completions",
+      "input_payload": {
+        "model": "llama-8b",
+        "prompt": [
+          "hi"
+        ],
+        "max_tokens": 8,
+        "temperature": 0.0,
+        "extra": {
+          "nested": {
+            "api_key": "not-a-real-credential"
+          }
+        }
+      },
+      "expected_status": "REJECTED_SCHEMA_INVALID",
+      "expected_reason_code": "forbidden_credential_field"
+    },
+    {
+      "id": "unknown-endpoint-embeddings",
+      "endpoint": "/v1/embeddings",
+      "input_payload": {
+        "model": "qwen3-35b",
+        "input": "some text"
+      },
+      "expected_status": "REJECTED_SCHEMA_INVALID",
+      "expected_reason_code": "normalization_endpoint_unknown"
+    }
+  ]
+}
