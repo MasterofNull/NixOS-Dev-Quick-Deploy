@@ -646,6 +646,26 @@ gate_llama_payload_ssot() {
   fi
 }
 
+# Gate: B3-C1 canon-compiler determinism (read-only schema-to-docs/client
+# generator). Runs the offline test suite, which proves zero side-effect
+# imports, fail-closed validation, and byte-for-byte identical output across
+# repeated in-process and fresh-subprocess invocations. Additive-only: does
+# not touch any other gate's behavior.
+gate_canon_compiler_determinism() {
+  log "Checking canon-compiler determinism..."
+  local test_script="${REPO_ROOT}/scripts/testing/test-aq-canon-compiler.py"
+  if [[ ! -f "${test_script}" ]]; then
+    pass "Canon-compiler determinism (skipped — test suite absent)"
+    return 0
+  fi
+  if python3 "${test_script}" >/dev/null 2>&1; then
+    pass "Canon-compiler determinism (offline suite passed)"
+  else
+    fail "Canon-compiler determinism check failed"
+    return 1
+  fi
+}
+
 log "=== Tier 0 Validation Gate ==="
 log "Mode: ${MODE}"
 log ""
@@ -671,6 +691,7 @@ gate_qa_phase0 || true
 gate_env_contract || true
 gate_cross_surface_contract || true
 gate_llama_payload_ssot || true
+gate_canon_compiler_determinism || true
 
 # Pre-deploy gates
 if [[ "$MODE" == "--pre-deploy" ]]; then
