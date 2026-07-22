@@ -34,6 +34,8 @@ run_secret_scan() {
     'tests/fixtures/*'
     'tests/*/fixtures/*'
     '*/test_*.py'
+    '*/test-*.py'
+    'scripts/testing/fixtures/*'
     '*_test.go'
     '*.test.js'
     '*.test.ts'
