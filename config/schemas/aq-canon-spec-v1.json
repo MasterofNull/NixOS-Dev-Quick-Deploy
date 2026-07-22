@@ -1,0 +1,42 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "aq.canon-compiler-spec/1.0",
+  "title": "AQ Canon-Compiler Input Spec",
+  "description": "Draft 2020-12 schema for the input manifest consumed by scripts/governance/aq-canon-compiler.py. A canon spec lists one or more frozen JSON Schema documents under config/schemas/ to compile into a typed client interface, API markdown, and a dashboard view-model stub. This document validates the manifest itself, not the referenced target schemas — each referenced schema is separately checked with jsonschema.Draft202012Validator.check_schema() before compilation, giving fail-closed rejection of malformed manifests and malformed target schemas alike.",
+  "type": "object",
+  "additionalProperties": false,
+  "required": ["spec_version", "modules"],
+  "properties": {
+    "spec_version": {
+      "const": "1.0"
+    },
+    "modules": {
+      "type": "array",
+      "minItems": 1,
+      "uniqueItems": true,
+      "items": {
+        "type": "object",
+        "additionalProperties": false,
+        "required": ["name", "schema_path"],
+        "properties": {
+          "name": {
+            "type": "string",
+            "pattern": "^[a-z][a-z0-9_]{0,127}$",
+            "description": "Deterministic identifier used as the output artifact stem (e.g. <name>.client.ts, <name>.api.md, <name>.viewmodel.js)."
+          },
+          "schema_path": {
+            "type": "string",
+            "minLength": 1,
+            "maxLength": 1024,
+            "pattern": "^config/schemas/[A-Za-z0-9_.-]+\\.(json|yaml|yml)$",
+            "description": "Repo-root-relative path to the frozen JSON/YAML schema to compile. Must live under config/schemas/."
+          },
+          "description": {
+            "type": "string",
+            "maxLength": 2048
+          }
+        }
+      }
+    }
+  }
+}
