@@ -1,0 +1,76 @@
+#!/usr/bin/env bash
+# aq-verify-committed — verify a file's committed bytes match its working-tree bytes
+# and (optionally) an expected SHA-256, using git's own blob object IDs.
+#
+# WHY: hashing piped git output — e.g. `git show HEAD:<path> | sha256sum` — is unreliable
+# in this harness because output-rewriting PreToolUse hooks (lean-ctx compression) can alter
+# the piped bytes before they reach sha256sum, producing a FALSE hash mismatch. That caused a
+# spurious "committed != accepted" integrity alarm during the AQ-OS B3-C1 commit (2026-07-22).
+# Git blob object IDs (`git rev-parse HEAD:<path>`, `git hash-object <path>`) are computed by
+# git itself, emit a single short line, and are immune to output-pipe rewriting — so this is
+# the correct way to confirm "the committed bytes == the accepted/working bytes".
+#
+# Usage:
+#   aq-verify-committed <path> [<expected_sha256>]
+#   aq-verify-committed --staged <path> [<expected_sha256>]   # compare STAGED index vs working
+#
+# Exit 0 = verified; non-zero = mismatch or error (fail-closed).
+
+set -euo pipefail
+
+compare_staged=0
+if [[ "${1:-}" == "--staged" ]]; then
+  compare_staged=1
+  shift
+fi
+
+path="${1:-}"
+expected="${2:-}"
+
+if [[ -z "$path" ]]; then
+  echo "usage: aq-verify-committed [--staged] <path> [<expected_sha256>]" >&2
+  exit 2
+fi
+if [[ ! -f "$path" ]]; then
+  echo "FAIL: file not found: $path" >&2
+  exit 2
+fi
+
+# git blob id of the working-tree file (git-native, not piped)
+work_blob="$(git hash-object "$path" 2>/dev/null || true)"
+if [[ -z "$work_blob" ]]; then
+  echo "FAIL: could not compute git blob id for working file: $path" >&2
+  exit 2
+fi
+
+if [[ "$compare_staged" -eq 1 ]]; then
+  ref_blob="$(git ls-files -s -- "$path" 2>/dev/null | awk '{print $2}' | head -1 || true)"
+  ref_label="staged index"
+else
+  ref_blob="$(git rev-parse "HEAD:$path" 2>/dev/null || true)"
+  ref_label="HEAD commit"
+fi
+
+if [[ -z "$ref_blob" ]]; then
+  echo "FAIL: $path is not present in $ref_label" >&2
+  exit 1
+fi
+
+if [[ "$work_blob" != "$ref_blob" ]]; then
+  echo "MISMATCH: $path working ($work_blob) != $ref_label ($ref_blob)" >&2
+  echo "  -> the committed/staged bytes are NOT the working-tree bytes." >&2
+  exit 1
+fi
+
+# Optional: confirm the working file's SHA-256 equals an expected value (read the file
+# directly — never pipe git output — so the hash is the real content hash).
+if [[ -n "$expected" ]]; then
+  actual="$(sha256sum "$path" | awk '{print $1}')"
+  if [[ "$actual" != "$expected" ]]; then
+    echo "MISMATCH: $path sha256 ($actual) != expected ($expected)" >&2
+    exit 1
+  fi
+  echo "OK: $path — working==$ref_label (blob $work_blob) and sha256==$expected"
+else
+  echo "OK: $path — working bytes == $ref_label bytes (blob $work_blob)"
+fi
