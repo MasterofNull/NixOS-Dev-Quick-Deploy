@@ -36,6 +36,20 @@ dispatch (correct model tier, better evidence, a genuine authorization amendment
 work back to the orchestrator. Any deviation requires a stated capability-insufficiency reason
 recorded in the dispatch/PULSE record.
 
+**Agent-agnostic roles + catch-up queue (Canonical — all agents; owner directive 2026-07-22):** No
+role, gate, funnel, review lane, or acceptance authority is permanently tied to one model/agent — this
+is a model/agent-agnostic, locally-hosted software factory that must keep progressing when any single
+agent is down. For every role instance (orchestrator, architect, implementer, reviewer,
+binding-acceptance), the orchestrator routes at dispatch time to whichever lane is available + eligible
+(role-matrix × `config/model-coordinator.json` tiers) + independent (never self-review) + cheapest.
+Binding acceptance is any independent eligible flagship (Codex OR Claude-flagship OR Gemini/Antigravity
+OR local Qwen) — whichever is up; if the first choice is down, route to the next eligible and record the
+substitution, never block. Local Qwen is the always-available floor (never-skip-local). A returning
+agent plays catch-up via `.agent/collaboration/AGENT-CATCHUP-QUEUE.md`: work committed while it was
+unavailable is queued (with exact subject hashes/commit) for its confirmatory audit / late findings on
+return — advisory unless it surfaces a real defect (then a bounded follow-up, never a history rewrite).
+SSOT: `.agents/plans/agent-agnostic-factory/DESIGN.md`.
+
 ---
 
 ## The 8-Step Workflow

@@ -39,6 +39,23 @@ The review receipt must bind subject hash, pass/baseline, role and model lineage
 per-criterion evidence, verdict, unavailable-lane reason, revision/supersession, and monitoring state.
 Missing or malformed required evidence fails closed.
 
+### Agnostic execution (owner directive 2026-07-22)
+
+No role, gate, funnel, review lane, or acceptance authority is permanently bound to one model/agent —
+this is a model/agent-agnostic, locally-hosted software factory that keeps progressing when any single
+agent is unavailable. For every role instance (orchestrator, architect, implementer, reviewer,
+binding-acceptance), the orchestrator selects the filler at dispatch time by **availability** (lane
+reachable, not quota-exhausted, route healthy) × **capability/tier** (this matrix ×
+`config/model-coordinator.json`) × **independence** (never self-review) × **cost** (cheapest eligible).
+The filler is never hardcoded. Binding acceptance in particular may be Codex OR a fresh Claude flagship
+OR Gemini/Antigravity OR local Qwen (bounded) — whichever is up, eligible, and independent; if the
+first choice is down, route to the next eligible, proceed, and record the substitution in the receipt's
+unavailable-lane reason. Local Qwen is the always-available floor (never skipped). Work committed while
+an eligible agent was down is not permanently unreviewed by it — it is filed to the **catch-up queue**
+(`.agent/collaboration/AGENT-CATCHUP-QUEUE.md`) with the exact subject hashes, and that agent folds in
+its confirmatory audit / late findings on return (advisory unless it surfaces a real defect → bounded
+follow-up; never a committed-history rewrite). Design SSOT: `.agents/plans/agent-agnostic-factory/DESIGN.md`.
+
 ---
 
 ## Role Definitions
