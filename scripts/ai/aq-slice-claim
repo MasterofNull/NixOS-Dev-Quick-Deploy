@@ -1,0 +1,367 @@
+#!/usr/bin/env python3
+"""aq-slice-claim — atomic single-owner slice claim.
+
+Fixes the structural gap that let two orchestration loops (Fable + Codex)
+independently claim and build the same slice (L2B-B, tier0-isolation),
+producing duplicate/tangled work. DESIGN SSOT:
+`.agents/plans/agent-agnostic-factory/DESIGN.md` §3 item 1.
+
+CAS primitive: reuses the exact atomic-rename pattern from
+`scripts/ai/aq-antigravity-inbox::cmd_claim` — same-filesystem
+`Path.rename()` can only succeed once, so two racing claimants cannot both
+win. Here the rename target is the claim file itself: a claim is created
+with `os.open(..., O_CREAT | O_EXCL)` (the create-side CAS — there is no
+pre-existing "pending" file to rename the way the inbox lane has one) and
+released/reclaimed by removing that file. Fail-closed throughout: any
+unexpected OSError during the CAS refuses the operation rather than
+silently allowing a double-claim.
+
+No network, no credentials.
+"""
+
+from __future__ import annotations
+
+import argparse
+import json
+import os
+import sys
+import time
+from datetime import datetime, timezone
+from pathlib import Path
+from typing import Any
+
+REPO = Path(__file__).resolve().parents[2]
+CLAIMS_DIR = REPO / ".agent" / "collaboration" / "slice-claims"
+
+DEFAULT_TTL_SECONDS = 4 * 60 * 60  # 4h — long enough for a bounded implementer slice
+
+
+def _now() -> float:
+    return time.time()
+
+
+def _now_iso() -> str:
+    return datetime.now(timezone.utc).isoformat()
+
+
+def _rel(path: Path) -> str:
+    try:
+        return str(path.relative_to(REPO))
+    except ValueError:
+        return str(path)
+
+
+def _claim_path(slice_id: str) -> Path:
+    # slice_id is used as a bare filename component only — no path separators
+    # allowed, so a crafted slice-id cannot traverse outside CLAIMS_DIR.
+    if "/" in slice_id or "\\" in slice_id or slice_id in (".", ".."):
+        raise ValueError(f"invalid slice-id: {slice_id!r}")
+    return CLAIMS_DIR / f"{slice_id}.claim"
+
+
+def _load_claim(path: Path) -> dict[str, Any] | None:
+    try:
+        raw = path.read_text(encoding="utf-8")
+    except FileNotFoundError:
+        return None
+    try:
+        data = json.loads(raw)
+    except json.JSONDecodeError:
+        return {"_corrupt": True}
+    return data if isinstance(data, dict) else {"_corrupt": True}
+
+
+def _is_expired(claim: dict[str, Any]) -> bool:
+    expires = claim.get("expires")
+    if not isinstance(expires, (int, float)):
+        return False
+    return _now() >= expires
+
+
+def _emit(payload: dict[str, Any], as_json: bool) -> int:
+    if as_json:
+        print(json.dumps(payload, indent=2, sort_keys=True))
+    else:
+        for key, value in payload.items():
+            if isinstance(value, (dict, list)):
+                value = json.dumps(value, sort_keys=True)
+            print(f"{key}: {value}")
+    return 0 if payload.get("ok", True) else 1
+
+
+def _write_claim_exclusive(path: Path, record: dict[str, Any]) -> bool:
+    """Create `path` iff it does not already exist. O_CREAT|O_EXCL open is
+    the atomic create-side CAS primitive (POSIX guarantees the open()
+    syscall itself is the exclusivity check — no separate exists()-then-
+    create() race window). Mirrors the rename-based CAS in
+    aq-antigravity-inbox but for a from-scratch claim file rather than an
+    already-existing pending drop. Fail-closed: any OSError other than
+    "already exists" propagates so the caller refuses to proceed.
+    """
+    path.parent.mkdir(parents=True, exist_ok=True)
+    fd = None
+    try:
+        fd = os.open(str(path), os.O_CREAT | os.O_EXCL | os.O_WRONLY, 0o644)
+    except FileExistsError:
+        return False
+    try:
+        with os.fdopen(fd, "w", encoding="utf-8") as fh:
+            fh.write(json.dumps(record, indent=2, sort_keys=True) + "\n")
+    except OSError:
+        # Fail-closed: writing the payload failed after create — remove the
+        # partial claim rather than leave a corrupt lock nobody can trust.
+        try:
+            path.unlink()
+        except OSError:
+            pass
+        raise
+    return True
+
+
+def _reclaim_stale(path: Path, slice_id: str) -> dict[str, Any] | None:
+    """Atomically remove an expired claim so a fresh acquire can proceed.
+
+    Reads the claim, confirms it is expired, then unlinks it. The unlink
+    itself is the CAS: if another process already reclaimed/replaced it,
+    FileNotFoundError means we lost the race and must not proceed as if we
+    own the reclaim — the caller re-attempts the normal exclusive-create
+    path, which will correctly fail-closed against whatever now holds it.
+    """
+    claim = _load_claim(path)
+    if claim is None or not _is_expired(claim):
+        return None
+    try:
+        path.unlink()
+    except FileNotFoundError:
+        return None  # someone else reclaimed it first — not our stale claim to clear
+    return claim
+
+
+def cmd_acquire(args: argparse.Namespace) -> int:
+    slice_id = args.slice_id
+    owner = args.owner
+    ttl = args.ttl if args.ttl and args.ttl > 0 else DEFAULT_TTL_SECONDS
+    try:
+        path = _claim_path(slice_id)
+    except ValueError as exc:
+        return _emit({"ok": False, "reason": "invalid-slice-id", "error": str(exc)}, args.json)
+
+    record = {
+        "slice_id": slice_id,
+        "owner": owner,
+        "head": args.head,
+        "ts": _now_iso(),
+        "acquired_at": _now(),
+        "expires": _now() + ttl,
+        "ttl_seconds": ttl,
+    }
+
+    try:
+        created = _write_claim_exclusive(path, record)
+    except OSError as exc:
+        # Fail-closed: CAS mechanism itself broke (disk/dir issue) — refuse
+        # rather than assume we're safe to proceed unclaimed.
+        return _emit(
+            {"ok": False, "reason": "cas-error", "error": str(exc), "slice_id": slice_id}, args.json
+        )
+
+    if created:
+        return _emit(
+            {
+                "ok": True,
+                "slice_id": slice_id,
+                "owner": owner,
+                "claim": _rel(path),
+                "expires": record["expires"],
+                "reason": "acquired",
+            },
+            args.json,
+        )
+
+    # Claim file already exists — inspect it. It may be held (fail with the
+    # current owner's identity) or stale/expired (reclaim once, then retry
+    # the exclusive create exactly once more).
+    existing = _load_claim(path)
+    if existing is not None and not existing.get("_corrupt") and _is_expired(existing):
+        reclaimed = _reclaim_stale(path, slice_id)
+        if reclaimed is not None:
+            try:
+                created = _write_claim_exclusive(path, record)
+            except OSError as exc:
+                return _emit(
+                    {"ok": False, "reason": "cas-error", "error": str(exc), "slice_id": slice_id},
+                    args.json,
+                )
+            if created:
+                return _emit(
+                    {
+                        "ok": True,
+                        "slice_id": slice_id,
+                        "owner": owner,
+                        "claim": _rel(path),
+                        "expires": record["expires"],
+                        "reason": "acquired-after-stale-reclaim",
+                        "previous_owner": reclaimed.get("owner"),
+                    },
+                    args.json,
+                )
+        # Lost the reclaim race — fall through to reporting current holder below.
+        existing = _load_claim(path)
+
+    if existing is None:
+        # Vanished between exclusive-create failure and read (released by
+        # holder concurrently) — fail closed rather than assume it's free;
+        # caller should retry.
+        return _emit(
+            {"ok": False, "reason": "transient-race-retry", "slice_id": slice_id}, args.json
+        )
+
+    if existing.get("_corrupt"):
+        # Fail-closed: cannot verify current holder identity from a corrupt
+        # claim file — refuse rather than silently overwrite.
+        return _emit(
+            {"ok": False, "reason": "corrupt-claim-refuse", "slice_id": slice_id, "claim": _rel(path)},
+            args.json,
+        )
+
+    return _emit(
+        {
+            "ok": False,
+            "reason": "already-held",
+            "slice_id": slice_id,
+            "current_owner": existing.get("owner"),
+            "current_head": existing.get("head"),
+            "held_since": existing.get("ts"),
+            "expires": existing.get("expires"),
+        },
+        args.json,
+    )
+
+
+def cmd_release(args: argparse.Namespace) -> int:
+    slice_id = args.slice_id
+    owner = args.owner
+    try:
+        path = _claim_path(slice_id)
+    except ValueError as exc:
+        return _emit({"ok": False, "reason": "invalid-slice-id", "error": str(exc)}, args.json)
+
+    existing = _load_claim(path)
+    if existing is None:
+        return _emit({"ok": False, "reason": "no-such-claim", "slice_id": slice_id}, args.json)
+    if existing.get("_corrupt"):
+        return _emit(
+            {"ok": False, "reason": "corrupt-claim-refuse", "slice_id": slice_id}, args.json
+        )
+    if existing.get("owner") != owner:
+        # Only the holder releases — fail-closed against a non-holder
+        # clearing someone else's active claim.
+        return _emit(
+            {
+                "ok": False,
+                "reason": "not-holder",
+                "slice_id": slice_id,
+                "current_owner": existing.get("owner"),
+                "requested_by": owner,
+            },
+            args.json,
+        )
+
+    try:
+        path.unlink()
+    except FileNotFoundError:
+        return _emit({"ok": False, "reason": "no-such-claim", "slice_id": slice_id}, args.json)
+
+    return _emit({"ok": True, "slice_id": slice_id, "owner": owner, "reason": "released"}, args.json)
+
+
+def cmd_status(args: argparse.Namespace) -> int:
+    slice_id = args.slice_id
+    try:
+        path = _claim_path(slice_id)
+    except ValueError as exc:
+        return _emit({"ok": False, "reason": "invalid-slice-id", "error": str(exc)}, args.json)
+
+    existing = _load_claim(path)
+    if existing is None:
+        return _emit({"ok": True, "slice_id": slice_id, "held": False}, args.json)
+    if existing.get("_corrupt"):
+        return _emit(
+            {"ok": True, "slice_id": slice_id, "held": True, "corrupt": True}, args.json
+        )
+    return _emit(
+        {
+            "ok": True,
+            "slice_id": slice_id,
+            "held": not _is_expired(existing),
+            "expired": _is_expired(existing),
+            "owner": existing.get("owner"),
+            "head": existing.get("head"),
+            "ts": existing.get("ts"),
+            "expires": existing.get("expires"),
+        },
+        args.json,
+    )
+
+
+def cmd_list(args: argparse.Namespace) -> int:
+    if not CLAIMS_DIR.exists():
+        return _emit({"ok": True, "claims": []}, args.json)
+    claims = []
+    for path in sorted(CLAIMS_DIR.glob("*.claim")):
+        data = _load_claim(path)
+        if data is None:
+            continue
+        if data.get("_corrupt"):
+            claims.append({"slice_id": path.stem, "corrupt": True})
+            continue
+        claims.append(
+            {
+                "slice_id": data.get("slice_id", path.stem),
+                "owner": data.get("owner"),
+                "head": data.get("head"),
+                "ts": data.get("ts"),
+                "expires": data.get("expires"),
+                "expired": _is_expired(data),
+            }
+        )
+    return _emit({"ok": True, "claims": claims}, args.json)
+
+
+def build_parser() -> argparse.ArgumentParser:
+    parser = argparse.ArgumentParser(description=__doc__)
+    sub = parser.add_subparsers(dest="cmd", required=True)
+
+    acquire = sub.add_parser("acquire", help="Atomically claim a slice (CAS, fail-closed)")
+    acquire.add_argument("slice_id")
+    acquire.add_argument("--owner", required=True)
+    acquire.add_argument("--head", default=None, help="Commit/hash the claim is scoped to")
+    acquire.add_argument("--ttl", type=int, default=DEFAULT_TTL_SECONDS, help="Claim TTL in seconds")
+    acquire.add_argument("--json", action="store_true")
+    acquire.set_defaults(func=cmd_acquire)
+
+    release = sub.add_parser("release", help="Release a held slice (holder only)")
+    release.add_argument("slice_id")
+    release.add_argument("--owner", required=True)
+    release.add_argument("--json", action="store_true")
+    release.set_defaults(func=cmd_release)
+
+    status = sub.add_parser("status", help="Show a single slice's claim state")
+    status.add_argument("slice_id")
+    status.add_argument("--json", action="store_true")
+    status.set_defaults(func=cmd_status)
+
+    listp = sub.add_parser("list", help="List all known claims")
+    listp.add_argument("--json", action="store_true")
+    listp.set_defaults(func=cmd_list)
+
+    return parser
+
+
+def main(argv: list[str] | None = None) -> int:
+    args = build_parser().parse_args(argv)
+    return int(args.func(args))
+
+
+if __name__ == "__main__":
+    raise SystemExit(main())
