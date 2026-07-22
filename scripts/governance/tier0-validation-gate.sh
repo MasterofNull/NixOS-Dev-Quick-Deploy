@@ -1,6 +1,6 @@
 #!/usr/bin/env bash
 # Tier 0 Validation Gate — Enforce AGENTS.md workflow contract
-# Usage: ./scripts/governance/tier0-validation-gate.sh [--pre-commit|--pre-deploy]
+# Usage: ./scripts/governance/tier0-validation-gate.sh [--pre-commit|--pre-deploy] [--staged-isolated] [--tap]
 
 set -euo pipefail
 
@@ -8,17 +8,29 @@ SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 REPO_ROOT="$(cd "${SCRIPT_DIR}/../.." && pwd)"
 cd "${REPO_ROOT}"
 
-# Parse args: --pre-commit | --pre-deploy set MODE; --tap enables TAP output.
-# --tap may appear in any position and does not override MODE.
+# Parse args: --pre-commit | --pre-deploy set MODE; --tap enables TAP output;
+# --staged-isolated opts into validating the STAGED INDEX in a clean temp
+# worktree instead of the live (possibly dirty, possibly mid-edit-by-another-
+# slice) working tree. --tap and --staged-isolated may appear in any position
+# and do not override MODE.
 MODE="--pre-commit"
 TAP_MODE=0
+STAGED_ISOLATED=0
 TAP_JSON_FILE="${TIER0_TAP_JSON:-}"
 for arg in "$@"; do
   case "$arg" in
     --pre-commit|--pre-deploy) MODE="$arg" ;;
     --tap) TAP_MODE=1 ;;
+    --staged-isolated) STAGED_ISOLATED=1 ;;
   esac
 done
+
+# Preserve the original repo root before any isolation swap re-points
+# REPO_ROOT/SCRIPT_DIR at a temp worktree — cleanup must run git commands
+# from here, never from inside the worktree it is about to remove.
+ORIG_REPO_ROOT="${REPO_ROOT}"
+ISOLATION_TMPDIR=""
+ISOLATION_PATCH=""
 
 pass_count=0
 fail_count=0
@@ -97,6 +109,190 @@ skip() {
   [[ $TAP_MODE -eq 1 ]] && printf 'ok %d - # SKIP %s\n' "$tap_index" "$*"
   _tap_results+=("skip:${tap_index}:$*")
 }
+
+# --- Staged-index isolation (opt-in via --staged-isolated) -----------------
+#
+# Problem: every gate below either scans changed files returned by
+# collect_changed_files() (which reads file *content* off the live working
+# tree, not the staged blob) or shells out to a sub-script/grep that scans
+# the live working tree wholesale (repo-structure-lint.sh, aq-qa,
+# run-focused-ci-checks.sh, verify-flake-first-roadmap-completion.sh, the
+# gate_llama_payload_ssot grep over ai-stack/). All of those sub-scripts
+# self-locate their own root via their own ${BASH_SOURCE[0]} and cd there
+# (verified by inspection — this is a repo-wide convention, not something
+# introduced here). That means an unrelated in-flight edit anywhere in the
+# tree (a different slice mid-edit) can flip an unrelated gate here, because
+# the sub-scripts always read the live dirty tree regardless of what this
+# commit actually stages.
+#
+# Fix: materialize a clean git worktree of HEAD, apply the *staged* diff
+# (index vs HEAD — exactly what `git commit` would record) on top of it via
+# `git apply --index`, then re-point REPO_ROOT/SCRIPT_DIR at that worktree
+# before running any gate. Every downstream sub-script self-locates into the
+# worktree automatically because it derives its own root the same way this
+# script does — no other file needs to change. Working-tree-only edits
+# elsewhere (unstaged, or staged in a different index entirely — there is
+# only one index per worktree) are structurally invisible to the snapshot.
+#
+# Fail-closed: because --staged-isolated is explicit, any failure while
+# building or hydrating that snapshot exits nonzero. It must never silently
+# validate the live tree under a different isolation contract.
+ISOLATION_OPERATIONAL_INPUTS=(
+  ".agent/collaboration/PULSE.log"
+  ".agent/collaboration/RESUME.json"
+  ".agents/improvement/candidates.json"
+  ".agents/delegation/registry.jsonl"
+)
+ISOLATION_OPERATIONAL_MAX_BYTES=$((4 * 1024 * 1024))
+ISOLATION_OPERATIONAL_COPY_ATTEMPTS=2
+
+copy_isolation_operational_input() {
+  local relative_path="$1"
+  local destination_root="$2"
+  local source="${ORIG_REPO_ROOT}/${relative_path}"
+  local destination="${destination_root}/${relative_path}"
+  local attempt size_before size_after hash_before hash_copy hash_after temp
+
+  if [[ ! -f "${source}" || -L "${source}" ]]; then
+    log "ERROR: --staged-isolated operational input is missing, non-regular, or a symlink: ${relative_path}"
+    return 1
+  fi
+
+  for ((attempt = 1; attempt <= ISOLATION_OPERATIONAL_COPY_ATTEMPTS; attempt++)); do
+    if [[ ! -f "${source}" || -L "${source}" ]]; then
+      log "ERROR: --staged-isolated operational input changed type during copy: ${relative_path}"
+      return 1
+    fi
+    size_before="$(stat -c '%s' -- "${source}" 2>/dev/null)" || return 1
+    if (( size_before > ISOLATION_OPERATIONAL_MAX_BYTES )); then
+      log "ERROR: --staged-isolated operational input exceeds ${ISOLATION_OPERATIONAL_MAX_BYTES} bytes: ${relative_path}"
+      return 1
+    fi
+    hash_before="$(sha256sum -- "${source}" 2>/dev/null | awk '{print $1}')" || return 1
+
+    mkdir -p "$(dirname "${destination}")" || return 1
+    temp="${destination}.tmp.$$.${attempt}"
+    if ! head -c "${size_before}" -- "${source}" > "${temp}"; then
+      rm -f "${temp}" 2>/dev/null || true
+      continue
+    fi
+    chmod 0600 "${temp}" || {
+      rm -f "${temp}" 2>/dev/null || true
+      return 1
+    }
+    hash_copy="$(sha256sum -- "${temp}" 2>/dev/null | awk '{print $1}')" || {
+      rm -f "${temp}" 2>/dev/null || true
+      continue
+    }
+    if [[ ! -f "${source}" || -L "${source}" ]]; then
+      rm -f "${temp}" 2>/dev/null || true
+      return 1
+    fi
+    size_after="$(stat -c '%s' -- "${source}" 2>/dev/null)" || {
+      rm -f "${temp}" 2>/dev/null || true
+      continue
+    }
+    hash_after="$(sha256sum -- "${source}" 2>/dev/null | awk '{print $1}')" || {
+      rm -f "${temp}" 2>/dev/null || true
+      continue
+    }
+    if [[ "${size_before}" == "${size_after}" && "${hash_before}" == "${hash_copy}" && "${hash_before}" == "${hash_after}" ]]; then
+      mv -f -- "${temp}" "${destination}" || return 1
+      chmod 0600 "${destination}" || return 1
+      return 0
+    fi
+    rm -f "${temp}" 2>/dev/null || true
+  done
+
+  log "ERROR: --staged-isolated operational input was unstable after ${ISOLATION_OPERATIONAL_COPY_ATTEMPTS} attempts: ${relative_path}"
+  return 1
+}
+
+hydrate_isolation_operational_inputs() {
+  local destination_root="$1"
+  local relative_path staged_path qa_dir
+
+  for relative_path in "${ISOLATION_OPERATIONAL_INPUTS[@]}"; do
+    staged_path="$(git -C "${ORIG_REPO_ROOT}" diff --cached --name-only --diff-filter=ACMRD -- "${relative_path}" 2>/dev/null)" || return 1
+    if [[ -n "${staged_path}" ]]; then
+      log "ERROR: --staged-isolated refuses staged operational input: ${relative_path}"
+      return 1
+    fi
+    if ! git -C "${destination_root}" check-ignore -q -- "${relative_path}"; then
+      log "ERROR: --staged-isolated operational input is not ignored by the snapshot: ${relative_path}"
+      return 1
+    fi
+    copy_isolation_operational_input "${relative_path}" "${destination_root}" || return 1
+  done
+
+  qa_dir="${destination_root}/.agent/qa"
+  if [[ -e "${qa_dir}" && ( ! -d "${qa_dir}" || -L "${qa_dir}" ) ]]; then
+    log "ERROR: --staged-isolated QA lock path is not a safe directory"
+    return 1
+  fi
+  mkdir -p "${qa_dir}" || return 1
+  chmod 0700 "${qa_dir}" || return 1
+}
+
+setup_staged_isolation() {
+  if [[ "${MODE}" != "--pre-commit" ]]; then
+    log "ERROR: --staged-isolated only supports --pre-commit (staged-index) mode"
+    return 1
+  fi
+
+  local tmpdir patchfile
+  tmpdir="$(mktemp -d "${TMPDIR:-/tmp}/tier0-staged-isolation.XXXXXX" 2>/dev/null)" || {
+    log "ERROR: --staged-isolated: mktemp failed"
+    return 1
+  }
+  patchfile="${tmpdir}.patch"
+  # `git worktree add` wants to create its own target directory.
+  rmdir "${tmpdir}" 2>/dev/null || true
+
+  if ! git worktree add --detach --quiet "${tmpdir}" HEAD >/dev/null 2>&1; then
+    log "ERROR: --staged-isolated: git worktree add failed"
+    rm -rf "${tmpdir}" 2>/dev/null || true
+    return 1
+  fi
+  ISOLATION_TMPDIR="${tmpdir}"
+  ISOLATION_PATCH="${patchfile}"
+
+  if ! git diff --cached --binary > "${patchfile}" 2>/dev/null; then
+    log "ERROR: --staged-isolated: failed to capture staged diff"
+    return 1
+  fi
+
+  if [[ -s "${patchfile}" ]]; then
+    if ! git -C "${tmpdir}" apply --index "${patchfile}" 2>/dev/null; then
+      log "ERROR: --staged-isolated: failed to apply staged diff onto clean HEAD checkout"
+      return 1
+    fi
+  fi
+
+  hydrate_isolation_operational_inputs "${tmpdir}" || return 1
+  REPO_ROOT="${tmpdir}"
+  SCRIPT_DIR="${tmpdir}/scripts/governance"
+  cd "${REPO_ROOT}"
+  log "Staged-isolated mode: validating clean HEAD+staged-index snapshot at ${REPO_ROOT}"
+  log "  (unstaged/in-flight edits elsewhere in the working tree are invisible to this run)"
+  return 0
+}
+
+cleanup_isolation() {
+  if [[ -n "${ISOLATION_TMPDIR}" ]]; then
+    git -C "${ORIG_REPO_ROOT}" worktree remove --force "${ISOLATION_TMPDIR}" >/dev/null 2>&1 \
+      || rm -rf "${ISOLATION_TMPDIR}" 2>/dev/null || true
+    [[ -n "${ISOLATION_PATCH}" ]] && rm -f "${ISOLATION_PATCH}" 2>/dev/null || true
+  fi
+}
+trap cleanup_isolation EXIT
+
+if [[ ${STAGED_ISOLATED} -eq 1 ]]; then
+  if ! setup_staged_isolation; then
+    log "ERROR: explicit staged isolation could not be established"
+    exit 1
+  fi
+fi
 
 # Gate 1: Python syntax validation
 gate_python_syntax() {
