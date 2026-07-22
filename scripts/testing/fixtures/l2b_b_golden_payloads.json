@@ -69,8 +69,8 @@
         "max_tokens": 16,
         "temperature": 0.5,
         "logit_bias": null,
-        "frequency_penalty": NaN,
-        "presence_penalty": Infinity,
+        "frequency_penalty": null,
+        "presence_penalty": null,
         "messages": [
           {
             "role": "user",
@@ -134,8 +134,8 @@
         ],
         "max_tokens": 32,
         "temperature": 0.0,
-        "top_p": -Infinity,
-        "logprobs": NaN
+        "top_p": null,
+        "logprobs": null
       },
       "expected_status": "ACCEPTED",
       "expected_payload": {

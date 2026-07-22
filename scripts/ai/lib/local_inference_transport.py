@@ -1214,10 +1214,17 @@ def _nfc_normalize(value: Any) -> Any:
         # Keys are guaranteed str by `_reject_non_string_keys` before this
         # runs; normalize them to NFC same as values so a decomposed-Unicode
         # key canonicalizes deterministically instead of slipping through.
-        return {
-            unicodedata.normalize("NFC", key): _nfc_normalize(val)
-            for key, val in value.items()
-        }
+        normalized: dict[str, Any] = {}
+        for key, val in value.items():
+            normalized_key = unicodedata.normalize("NFC", key)
+            if normalized_key in normalized:
+                _fail(
+                    "nfc_key_collision",
+                    "Payload object keys collide after NFC normalization",
+                    "invalid_request",
+                )
+            normalized[normalized_key] = _nfc_normalize(val)
+        return normalized
     if isinstance(value, list):
         return [_nfc_normalize(item) for item in value]
     return value
@@ -1241,7 +1248,7 @@ def validate_vram_budget(
             "Resident VRAM declaration is invalid",
             "invalid_request",
         )
-    total = 0.0
+    effective_residency: dict[str, float] = {}
     for name, size in resident_vram_gb.items():
         if (
             not isinstance(name, str)
@@ -1254,7 +1261,21 @@ def validate_vram_budget(
                 "Resident VRAM declaration is invalid",
                 "invalid_request",
             )
-        total += float(size)
+        canonical_name = unicodedata.normalize("NFC", name).strip().casefold()
+        if not canonical_name:
+            _fail(
+                "vram_budget_shape_invalid",
+                "Resident VRAM declaration is invalid",
+                "invalid_request",
+            )
+        effective_size = float(size)
+        known_floor = _KNOWN_MODEL_VRAM_GB.get(canonical_name)
+        if known_floor is not None:
+            effective_size = max(effective_size, known_floor)
+        effective_residency[canonical_name] = max(
+            effective_residency.get(canonical_name, 0.0), effective_size
+        )
+    total = sum(effective_residency.values())
     if total > budget_gb:
         _fail(
             "vram_budget_exceeded",

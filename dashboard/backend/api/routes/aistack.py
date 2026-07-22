@@ -2299,6 +2299,7 @@ def _local_inference_l2b_health_sync() -> Dict[str, Any]:
         "adapter_version": None, "digest_version": None, "schema_status": "unavailable",
         "payload_parity": "unavailable", "stream_parity": "unavailable",
         "source_shape_parity": "unavailable", "actual_ssot_parity": "unavailable",
+        "payload_normalization_status": "unavailable",
         "target_decisions": {}, "payload_vector_count": None, "stream_vector_count": None,
         "digest": None, "freshness": "commit_fixture", "reason_code": "transport_assets_missing",
     }
@@ -2333,6 +2334,7 @@ def _local_inference_l2b_health_sync() -> Dict[str, Any]:
     stream_parity = raw.get("stream_parity")
     source_shape_parity = raw.get("source_shape_parity")
     actual_ssot_parity = raw.get("actual_ssot_parity")
+    payload_normalization_status = raw.get("payload_normalization_status")
     decisions = raw.get("target_decisions")
     payload_count = raw.get("payload_vector_count")
     stream_count = raw.get("stream_vector_count")
@@ -2352,6 +2354,7 @@ def _local_inference_l2b_health_sync() -> Dict[str, Any]:
         or stream_parity not in {"pass", "fail", "unavailable"}
         or source_shape_parity not in {"pass", "fail", "unavailable"}
         or actual_ssot_parity not in {"pass", "fail", "unavailable"}
+        or payload_normalization_status not in {"pass", "fail", "unavailable"}
         or not isinstance(decisions, dict) or set(decisions) != expected_targets
         or any(value not in decision_states for value in decisions.values())
         or not all(isinstance(value, int) and not isinstance(value, bool) and value >= 0 for value in (payload_count, stream_count))
@@ -2363,6 +2366,7 @@ def _local_inference_l2b_health_sync() -> Dict[str, Any]:
     if status == "healthy" and not (
         schema_status == "valid" and payload_parity == "pass" and stream_parity == "pass"
         and source_shape_parity == "pass" and actual_ssot_parity == "pass"
+        and payload_normalization_status == "pass"
         and payload_count > 0 and stream_count > 0 and reason_code == "transport_fixture_parity_pass"
     ):
         return {**default, "status": "degraded", "reason_code": "transport_fixture_invalid"}
@@ -2372,6 +2376,7 @@ def _local_inference_l2b_health_sync() -> Dict[str, Any]:
         "schema_status": schema_status, "payload_parity": payload_parity,
         "stream_parity": stream_parity, "source_shape_parity": source_shape_parity,
         "actual_ssot_parity": actual_ssot_parity,
+        "payload_normalization_status": payload_normalization_status,
         "target_decisions": {name: decisions[name] for name in sorted(expected_targets)},
         "payload_vector_count": payload_count, "stream_vector_count": stream_count,
         "digest": digest, "freshness": "commit_fixture", "reason_code": reason_code,

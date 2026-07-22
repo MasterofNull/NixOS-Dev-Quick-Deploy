@@ -891,8 +891,16 @@ def test_health_dashboard_qa_and_inventory() -> None:
         projected["status"] == "healthy"
         and projected["mode"] == "shadow_fixture_only"
         and projected["source_shape_parity"] == "pass"
-        and projected["actual_ssot_parity"] == "pass",
+        and projected["actual_ssot_parity"] == "pass"
+        and projected["payload_normalization_status"] == "pass",
         "dashboard health projection failed",
+    )
+    check(
+        aistack._LOCAL_INFERENCE_TRANSPORT_CACHE["payload"].get(
+            "payload_normalization_status"
+        )
+        == "pass",
+        "dashboard cache omitted payload normalization status",
     )
 
     class HealthStub:
@@ -913,7 +921,11 @@ def test_health_dashboard_qa_and_inventory() -> None:
     original_module = aistack._LOCAL_INFERENCE_TRANSPORT_MODULE
     try:
         adversarial = []
-        for field in ("source_shape_parity", "actual_ssot_parity"):
+        for field in (
+            "source_shape_parity",
+            "actual_ssot_parity",
+            "payload_normalization_status",
+        ):
             missing = copy.deepcopy(baseline)
             missing.pop(field)
             adversarial.append((f"missing {field}", missing))
@@ -934,6 +946,13 @@ def test_health_dashboard_qa_and_inventory() -> None:
                 f"{label} escaped the closed parity enum",
             )
             check(
+                result["payload_normalization_status"] in {
+                    "fail",
+                    "unavailable",
+                },
+                f"{label} escaped the closed normalization enum",
+            )
+            check(
                 "internal/path/secret" not in json.dumps(result),
                 f"{label} exposed untrusted health content",
             )
@@ -946,6 +965,7 @@ def test_health_dashboard_qa_and_inventory() -> None:
             failed_closed["status"] == "unavailable"
             and failed_closed["source_shape_parity"] == "unavailable"
             and failed_closed["actual_ssot_parity"] == "unavailable"
+            and failed_closed["payload_normalization_status"] == "unavailable"
             and "secret" not in json.dumps(failed_closed),
             "transport exception did not fail closed",
         )
@@ -1024,6 +1044,8 @@ def test_normalize_payload_nfc_keys_and_non_finite() -> None:
         "normalization is not idempotent on its own output",
     )
     finite_vector = _l2b_b_vector("chat-non-finite-strip")
+    finite_vector["input_payload"]["frequency_penalty"] = float("nan")
+    finite_vector["input_payload"]["presence_penalty"] = float("inf")
     stripped = T.normalize_endpoint_payload(
         copy.deepcopy(finite_vector["input_payload"]), endpoint=finite_vector["endpoint"]
     )
@@ -1071,6 +1093,8 @@ def test_normalize_batch_payload_prompts() -> None:
         "batch prompt order must never be reordered by key sorting",
     )
     strip_vector = _l2b_b_vector("batch-non-finite-strip")
+    strip_vector["input_payload"]["top_p"] = float("-inf")
+    strip_vector["input_payload"]["logprobs"] = float("nan")
     stripped = T.normalize_endpoint_payload(
         copy.deepcopy(strip_vector["input_payload"]), endpoint=strip_vector["endpoint"]
     )
@@ -1160,6 +1184,23 @@ def test_normalize_decomposed_unicode_key_nfc() -> None:
         result["status"] == "ACCEPTED",
         "canonical_transformer rejected a payload with a decomposed-Unicode key",
     )
+    collision_payload = copy.deepcopy(vector["input_payload"])
+    collision_payload["nested"] = {"e\u0301": "first", "\u00e9": "second"}
+    expect(
+        "nfc_key_collision",
+        lambda: T.normalize_endpoint_payload(
+            copy.deepcopy(collision_payload), endpoint=vector["endpoint"]
+        ),
+        "nested NFC-equivalent key collision",
+    )
+    collision_result = T.canonical_transformer(
+        copy.deepcopy(collision_payload), endpoint=vector["endpoint"], repo_root=ROOT
+    )
+    check(
+        collision_result["status"] == "REJECTED_SCHEMA_INVALID"
+        and collision_result["reason_code"] == "nfc_key_collision",
+        "canonical_transformer did not fail closed on an NFC key collision",
+    )
 
 
 def test_normalize_malformed_key_fails_closed() -> None:
@@ -1198,6 +1239,11 @@ def test_vram_budget_enforced() -> None:
         "concurrent 35B+8B VRAM budget",
     )
     expect(
+        "vram_budget_exceeded",
+        lambda: T.validate_vram_budget({"QWEN3-35B": 1.0, "qwen3-8b": 1.0}),
+        "underreported canonical 35B+8B VRAM budget",
+    )
+    expect(
         "vram_budget_shape_invalid",
         lambda: T.validate_vram_budget({}),
         "empty VRAM declaration",
@@ -1208,6 +1254,7 @@ def test_vram_budget_enforced() -> None:
         "malformed VRAM declaration",
     )
     exceeded = _l2b_b_vector("vram-concurrent-35b-8b-exceeded")
+    exceeded["resident_vram_gb"] = {"qwen3-35b": 1.0, "llama-8b": 1.0}
     result = T.canonical_transformer(
         copy.deepcopy(exceeded["input_payload"]),
         endpoint=exceeded["endpoint"],
