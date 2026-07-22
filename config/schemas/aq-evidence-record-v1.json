@@ -1,0 +1,113 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "aq.evidence-record/1.0",
+  "title": "AQ VF-7 Unwrapped Evidence Record",
+  "description": "Draft 2020-12 schema for one record appended by scripts/governance/aq-evidence-collector.py. The record is deliberately shaped as a valid contracts.events.Envelope (contracts/events/envelope.py, extra=\"forbid\") so it can share .agents/events/a2a-events.jsonl with aq-event's resume.update/pulse.append records without breaking existing readers. The `type` field and the payload's `kind` discriminator both identify this as a VF-7 evidence record, distinct from aq-event's own event types, so consumers can filter unambiguously.",
+  "type": "object",
+  "additionalProperties": false,
+  "required": ["schema_version", "event_id", "ts", "agent", "type", "payload"],
+  "properties": {
+    "schema_version": {
+      "const": 1
+    },
+    "event_id": {
+      "type": "string",
+      "description": "uuid4 hex idempotency key for this record."
+    },
+    "ts": {
+      "type": "number",
+      "description": "Epoch seconds, matching the envelope convention (sortable, timezone-free)."
+    },
+    "agent": {
+      "type": "string",
+      "description": "Caller agent id (mirrors payload.caller_agent_id)."
+    },
+    "type": {
+      "const": "vf7.evidence.v1"
+    },
+    "subject": {
+      "type": ["string", "null"],
+      "description": "Optional scope/label for the captured evidence (e.g. a phase or slice name)."
+    },
+    "payload": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "kind",
+        "digest",
+        "digest_algorithm",
+        "digest_over",
+        "timestamp",
+        "caller_agent_id",
+        "stream",
+        "byte_length",
+        "redacted",
+        "evidence_text"
+      ],
+      "properties": {
+        "kind": {
+          "const": "vf7.evidence.v1",
+          "description": "Discriminator so existing a2a-events.jsonl consumers (aq-event resume/pulse projectors) can filter these records from their own event types."
+        },
+        "digest": {
+          "type": "string",
+          "pattern": "^[0-9a-f]{64}$",
+          "description": "SHA-256 hex digest of (timestamp + payload_bytes + caller_agent_id), computed over the RAW pre-redaction bytes. The raw bytes themselves are never persisted."
+        },
+        "digest_algorithm": {
+          "const": "sha256"
+        },
+        "digest_over": {
+          "type": "array",
+          "items": {"type": "string"},
+          "const": ["timestamp", "payload_bytes", "caller_agent_id"]
+        },
+        "timestamp": {
+          "type": "string",
+          "description": "ISO-8601 UTC timestamp used as one of the three digest inputs."
+        },
+        "caller_agent_id": {
+          "type": "string",
+          "minLength": 1
+        },
+        "stream": {
+          "enum": ["combined", "stdin"],
+          "description": "combined = subprocess stdout+stderr captured directly; stdin = raw bytes piped into the collector."
+        },
+        "command": {
+          "type": "string",
+          "description": "Shell command executed, when stream=combined."
+        },
+        "exit_code": {
+          "type": "integer",
+          "description": "Exit code of the captured command, when stream=combined."
+        },
+        "byte_length": {
+          "type": "integer",
+          "minimum": 0,
+          "description": "Length in bytes of the original raw evidence (pre-redaction)."
+        },
+        "redacted": {
+          "type": "boolean",
+          "description": "True if redaction changed the decoded text (i.e. a secret pattern was found and stripped)."
+        },
+        "evidence_text": {
+          "type": "string",
+          "description": "The captured evidence, UTF-8 decoded and redacted. Never truncated or line-stripped — this is the unwrapped guarantee minus only the redacted secret spans."
+        }
+      }
+    },
+    "sig": {
+      "type": ["string", "null"]
+    },
+    "trace_id": {
+      "type": ["string", "null"]
+    },
+    "span_id": {
+      "type": ["string", "null"]
+    },
+    "parent_span_id": {
+      "type": ["string", "null"]
+    }
+  }
+}
