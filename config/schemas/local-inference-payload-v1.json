@@ -1,0 +1,37 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "aq.local-inference-payload/1.0",
+  "title": "Normalized Local Inference Payload Envelope (L2B-B)",
+  "description": "Canonical, NFC UTF-8, key-sorted envelope produced by canonical_transformer() prior to dispatch to /v1/chat/completions or /v1/completions (batch). Never carries external API keys or cloud bearer tokens.",
+  "type": "object",
+  "additionalProperties": false,
+  "required": ["document_kind", "schema_version", "endpoint", "payload"],
+  "properties": {
+    "document_kind": {"const": "normalized_local_inference_payload"},
+    "schema_version": {"const": "1"},
+    "endpoint": {
+      "type": "string",
+      "enum": ["/v1/chat/completions", "/v1/completions"]
+    },
+    "payload": {
+      "type": "object",
+      "not": {
+        "anyOf": [
+          {"required": ["authorization"]},
+          {"required": ["api_key"]},
+          {"required": ["apikey"]},
+          {"required": ["api-key"]},
+          {"required": ["bearer_token"]},
+          {"required": ["cookie"]},
+          {"required": ["proxy-authorization"]},
+          {"required": ["x-api-key"]}
+        ]
+      }
+    },
+    "resident_vram_gb": {
+      "type": "object",
+      "propertyNames": {"type": "string", "minLength": 1},
+      "additionalProperties": {"type": "number", "minimum": 0}
+    }
+  }
+}

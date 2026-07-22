@@ -6714,6 +6714,46 @@ async function loadSystemHealthInsights() {
     .join("");
 }
 
+// ─── L2B-B — payload normalization status projection (AI Services panel) ──
+// Renders the live L2B-B payload-normalization self-check into the AI
+// Services Health Detail card. The row is (re)built with safe DOM APIs
+// only (createElement/appendChild, never innerHTML) — including after the
+// card's per-poll entries innerHTML replacement wipes it — and its value
+// is updated via setText/setColor, never markup. Independent data source
+// and DOM ids from the A2 QA provider-probe poller above — never touches
+// that poller's timers, controller, or elements.
+function _ensurePayloadNormRow() {
+  const container = document.getElementById("aiSvcDetailDetails");
+  if (!container) return null;
+  let row = document.getElementById("aiSvcPayloadNormRow");
+  if (row) return row;
+  row = document.createElement("div");
+  row.id = "aiSvcPayloadNormRow";
+  row.className = "fw-row";
+  row.style.marginTop = ".35rem";
+  row.style.paddingTop = ".3rem";
+  row.style.borderTop = "1px solid rgba(255,255,255,.05)";
+  const label = document.createElement("span");
+  label.className = "fk";
+  label.textContent = "Payload Normalization";
+  const value = document.createElement("span");
+  value.id = "aiSvcPayloadNormStatus";
+  value.className = "fv";
+  row.appendChild(label);
+  row.appendChild(value);
+  container.appendChild(row);
+  return row;
+}
+
+async function _renderPayloadNormalizationStatus() {
+  if (!_ensurePayloadNormRow()) return;
+  const d = await apiFetch("/harness/overview");
+  const l2b = (d && d.harness && d.harness.local_inference_l2b) || {};
+  const status = closedParityState(l2b.payload_normalization_status);
+  setText("aiSvcPayloadNormStatus", status);
+  setColor("aiSvcPayloadNormStatus", status === "pass" ? "ok" : "warn");
+}
+
 async function loadAIServicesDetail() {
   const d = await apiFetch("/health/services/all", {}, 8000);
   const el = document.getElementById("aiSvcDetailDetails");
@@ -6740,6 +6780,7 @@ async function loadAIServicesDetail() {
       return fwRow(id.replace(/^ai-/, ""), `${st} · ${rt}`, col);
     })
     .join("");
+  await _renderPayloadNormalizationStatus();
 }
 
 async function loadSystemActions() {

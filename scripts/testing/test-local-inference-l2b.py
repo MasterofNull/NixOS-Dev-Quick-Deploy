@@ -11,6 +11,7 @@ import os
 import subprocess
 import sys
 import textwrap
+import unicodedata
 from pathlib import Path
 
 import jsonschema
@@ -991,6 +992,272 @@ def test_health_dashboard_qa_and_inventory() -> None:
     )
 
 
+# ─── L2B-B — payload normalization & canonical transformer checks ─────────
+
+L2B_B_GOLDEN = json.loads(
+    (ROOT / "scripts/testing/fixtures/l2b_b_golden_payloads.json").read_text(
+        encoding="utf-8"
+    )
+)
+
+
+def _l2b_b_vector(vector_id: str) -> dict:
+    return next(v for v in L2B_B_GOLDEN["vectors"] if v["id"] == vector_id)
+
+
+def test_normalize_payload_nfc_keys_and_non_finite() -> None:
+    vector = _l2b_b_vector("chat-nfc-normalization")
+    normalized = T.normalize_endpoint_payload(
+        copy.deepcopy(vector["input_payload"]), endpoint=vector["endpoint"]
+    )
+    check(
+        normalized == vector["expected_payload"],
+        "NFC normalization did not match the golden canonical form",
+    )
+    check(
+        unicodedata.normalize("NFC", normalized["messages"][0]["content"])
+        == normalized["messages"][0]["content"],
+        "normalized content is not already in NFC form",
+    )
+    check(
+        normalize_is_idempotent(normalized, vector["endpoint"]),
+        "normalization is not idempotent on its own output",
+    )
+    finite_vector = _l2b_b_vector("chat-non-finite-strip")
+    stripped = T.normalize_endpoint_payload(
+        copy.deepcopy(finite_vector["input_payload"]), endpoint=finite_vector["endpoint"]
+    )
+    check(
+        stripped["frequency_penalty"] is None and stripped["presence_penalty"] is None,
+        "non-finite floats were not removed",
+    )
+    check(deep_sorted_keys(stripped), "normalized payload keys are not deep-sorted")
+    expect(
+        "normalization_endpoint_unknown",
+        lambda: T.normalize_endpoint_payload(
+            {"model": "qwen3-35b"}, endpoint="/v1/embeddings"
+        ),
+        "unknown normalization endpoint",
+    )
+
+
+def normalize_is_idempotent(payload: dict, endpoint: str) -> bool:
+    once = T.normalize_endpoint_payload(copy.deepcopy(payload), endpoint=endpoint)
+    return once == payload
+
+
+def deep_sorted_keys(value) -> bool:
+    if isinstance(value, dict):
+        keys = list(value.keys())
+        return keys == sorted(keys) and all(
+            deep_sorted_keys(v) for v in value.values()
+        )
+    if isinstance(value, list):
+        return all(deep_sorted_keys(v) for v in value)
+    return True
+
+
+def test_normalize_batch_payload_prompts() -> None:
+    vector = _l2b_b_vector("batch-prompts-key-sort")
+    normalized = T.normalize_endpoint_payload(
+        copy.deepcopy(vector["input_payload"]), endpoint=vector["endpoint"]
+    )
+    check(
+        normalized == vector["expected_payload"],
+        "batch prompt normalization did not match the golden canonical form",
+    )
+    check(
+        normalized["prompt"] == vector["input_payload"]["prompt"],
+        "batch prompt order must never be reordered by key sorting",
+    )
+    strip_vector = _l2b_b_vector("batch-non-finite-strip")
+    stripped = T.normalize_endpoint_payload(
+        copy.deepcopy(strip_vector["input_payload"]), endpoint=strip_vector["endpoint"]
+    )
+    check(
+        stripped["top_p"] is None and stripped["logprobs"] is None,
+        "batch non-finite floats were not removed",
+    )
+
+
+def test_canonical_transformer_accepts_golden_vectors() -> None:
+    for vector in L2B_B_GOLDEN["vectors"]:
+        if vector["expected_status"] != "ACCEPTED":
+            continue
+        result = T.canonical_transformer(
+            copy.deepcopy(vector["input_payload"]),
+            endpoint=vector["endpoint"],
+            repo_root=ROOT,
+            resident_vram_gb=vector.get("resident_vram_gb"),
+        )
+        check(
+            result["status"] == "ACCEPTED",
+            f"{vector['id']}: expected ACCEPTED, got {result['status']}",
+        )
+        wire = json.loads(result["canonical_wire_utf8"])
+        check(
+            wire["payload"] == vector["expected_payload"],
+            f"{vector['id']}: canonical wire payload mismatch",
+        )
+        check(
+            list(wire.keys()) == sorted(wire.keys()),
+            f"{vector['id']}: canonical wire envelope keys are not sorted",
+        )
+
+
+def test_canonical_transformer_rejects_and_fails_closed() -> None:
+    for vector in L2B_B_GOLDEN["vectors"]:
+        if vector["expected_status"] == "ACCEPTED":
+            continue
+        result = T.canonical_transformer(
+            copy.deepcopy(vector["input_payload"]),
+            endpoint=vector["endpoint"],
+            repo_root=ROOT,
+            resident_vram_gb=vector.get("resident_vram_gb"),
+        )
+        check(
+            result["status"] == "REJECTED_SCHEMA_INVALID",
+            f"{vector['id']}: did not fail closed with REJECTED_SCHEMA_INVALID",
+        )
+        check(
+            result["reason_code"] == vector["expected_reason_code"],
+            f"{vector['id']}: reason_code {result.get('reason_code')} != "
+            f"{vector['expected_reason_code']}",
+        )
+        dumped = json.dumps(result)
+        check(
+            "Traceback" not in dumped
+            and str(ROOT) not in dumped
+            and "/home" not in dumped
+            and "site-packages" not in dumped,
+            f"{vector['id']}: rejection leaked internal path or stack trace",
+        )
+
+
+def test_normalize_decomposed_unicode_key_nfc() -> None:
+    vector = _l2b_b_vector("chat-basic-key-sort")
+    payload = copy.deepcopy(vector["input_payload"])
+    # "cafe" + combining acute accent (U+0301), i.e. decomposed "café", used
+    # as an object KEY rather than a value.
+    decomposed_key = "café_field"
+    composed_key = unicodedata.normalize("NFC", decomposed_key)
+    payload[decomposed_key] = "value"
+    normalized = T.normalize_endpoint_payload(
+        copy.deepcopy(payload), endpoint=vector["endpoint"]
+    )
+    check(
+        composed_key in normalized and decomposed_key not in normalized,
+        "decomposed-Unicode object key was not NFC-normalized",
+    )
+    check(
+        normalized.get(composed_key) == "value",
+        "NFC-normalized key lost its associated value",
+    )
+    result = T.canonical_transformer(
+        copy.deepcopy(payload), endpoint=vector["endpoint"], repo_root=ROOT
+    )
+    check(
+        result["status"] == "ACCEPTED",
+        "canonical_transformer rejected a payload with a decomposed-Unicode key",
+    )
+
+
+def test_normalize_malformed_key_fails_closed() -> None:
+    vector = _l2b_b_vector("chat-basic-key-sort")
+    payload = copy.deepcopy(vector["input_payload"])
+    payload[42] = "mixed-type key"  # not valid wire JSON, but a real internal shape
+    expect(
+        "normalization_key_invalid",
+        lambda: T.normalize_endpoint_payload(
+            copy.deepcopy(payload), endpoint=vector["endpoint"]
+        ),
+        "mixed-type mapping key",
+    )
+    result = T.canonical_transformer(
+        copy.deepcopy(payload), endpoint=vector["endpoint"], repo_root=ROOT
+    )
+    check(
+        result["status"] == "REJECTED_SCHEMA_INVALID"
+        and result["reason_code"] == "normalization_key_invalid",
+        "canonical_transformer did not fail closed on a malformed mapping key",
+    )
+    dumped = json.dumps(result)
+    check(
+        "Traceback" not in dumped
+        and "TypeError" not in dumped
+        and str(ROOT) not in dumped,
+        "malformed-key rejection leaked exception/path detail",
+    )
+
+
+def test_vram_budget_enforced() -> None:
+    T.validate_vram_budget({"qwen3-35b": 22.5})
+    expect(
+        "vram_budget_exceeded",
+        lambda: T.validate_vram_budget({"qwen3-35b": 22.5, "llama-8b": 8.0}),
+        "concurrent 35B+8B VRAM budget",
+    )
+    expect(
+        "vram_budget_shape_invalid",
+        lambda: T.validate_vram_budget({}),
+        "empty VRAM declaration",
+    )
+    expect(
+        "vram_budget_shape_invalid",
+        lambda: T.validate_vram_budget({"qwen3-35b": "not-a-number"}),
+        "malformed VRAM declaration",
+    )
+    exceeded = _l2b_b_vector("vram-concurrent-35b-8b-exceeded")
+    result = T.canonical_transformer(
+        copy.deepcopy(exceeded["input_payload"]),
+        endpoint=exceeded["endpoint"],
+        repo_root=ROOT,
+        resident_vram_gb=exceeded["resident_vram_gb"],
+    )
+    check(
+        result["status"] == "REJECTED_SCHEMA_INVALID"
+        and result["reason_code"] == "vram_budget_exceeded",
+        "canonical_transformer did not enforce the VRAM budget end to end",
+    )
+
+
+def test_no_external_credential_forwarding() -> None:
+    for vector_id in (
+        "credential-leak-authorization-header",
+        "credential-leak-nested-api-key",
+    ):
+        vector = _l2b_b_vector(vector_id)
+        expect(
+            "forbidden_credential_field",
+            lambda v=vector: T.normalize_endpoint_payload(
+                copy.deepcopy(v["input_payload"]), endpoint=v["endpoint"]
+            ),
+            f"{vector_id}: credential field was not rejected",
+        )
+        result = T.canonical_transformer(
+            copy.deepcopy(vector["input_payload"]),
+            endpoint=vector["endpoint"],
+            repo_root=ROOT,
+        )
+        check(
+            result["status"] == "REJECTED_SCHEMA_INVALID"
+            and result["reason_code"] == "forbidden_credential_field",
+            f"{vector_id}: canonical_transformer forwarded a credential field",
+        )
+        check(
+            "not-a-real-credential" not in json.dumps(result),
+            f"{vector_id}: rejected result echoed the credential value",
+        )
+    schema_text = (
+        ROOT / "config/schemas/local-inference-payload-v1.json"
+    ).read_text(encoding="utf-8")
+    for forbidden in ("authorization", "api_key", "bearer_token", "x-api-key"):
+        check(
+            forbidden in schema_text,
+            f"schema does not declare {forbidden} as forbidden",
+        )
+
+
 for fn in (
     test_schemas_policy_and_manifest,
     test_actual_ssot_golden_subprocess,
@@ -1000,6 +1267,14 @@ for fn in (
     test_adversarial_decoder_shapes,
     test_strict_json_and_candidate,
     test_health_dashboard_qa_and_inventory,
+    test_normalize_payload_nfc_keys_and_non_finite,
+    test_normalize_batch_payload_prompts,
+    test_canonical_transformer_accepts_golden_vectors,
+    test_canonical_transformer_rejects_and_fails_closed,
+    test_normalize_decomposed_unicode_key_nfc,
+    test_normalize_malformed_key_fails_closed,
+    test_vram_budget_enforced,
+    test_no_external_credential_forwarding,
 ):
     try:
         fn()
@@ -1007,8 +1282,8 @@ for fn in (
         FAILURES.append(f"{fn.__name__}: {type(exc).__name__}: {exc}")
 
 if FAILURES:
-    print("FAIL: local-inference L2B-A")
+    print("FAIL: local-inference L2B-B")
     for failure in FAILURES:
         print(f" - {failure}")
     raise SystemExit(1)
-print("PASS: 8 local-inference L2B-A checks")
+print("PASS: 16 local-inference L2B checks")
