@@ -666,6 +666,27 @@ gate_canon_compiler_determinism() {
   fi
 }
 
+# Gate: VF-7 evidence-collector suite (unwrapped evidence recorder — see
+# scripts/governance/aq-evidence-collector.py). Runs the offline offline test
+# suite, which proves digest hashing/immutability, secret redaction, and
+# append-only+flock ledger writes on a temp ledger only — never touches the
+# real .agents/events/a2a-events.jsonl. Additive-only, alongside
+# gate_canon_compiler_determinism: does not touch any other gate's behavior.
+gate_evidence_collector() {
+  log "Checking VF-7 evidence-collector suite..."
+  local test_script="${REPO_ROOT}/scripts/testing/test-aq-evidence-collector.py"
+  if [[ ! -f "${test_script}" ]]; then
+    pass "Evidence-collector suite (skipped — test suite absent)"
+    return 0
+  fi
+  if python3 "${test_script}" >/dev/null 2>&1; then
+    pass "Evidence-collector suite (offline suite passed)"
+  else
+    fail "Evidence-collector suite failed"
+    return 1
+  fi
+}
+
 log "=== Tier 0 Validation Gate ==="
 log "Mode: ${MODE}"
 log ""
@@ -692,6 +713,7 @@ gate_env_contract || true
 gate_cross_surface_contract || true
 gate_llama_payload_ssot || true
 gate_canon_compiler_determinism || true
+gate_evidence_collector || true
 
 # Pre-deploy gates
 if [[ "$MODE" == "--pre-deploy" ]]; then
