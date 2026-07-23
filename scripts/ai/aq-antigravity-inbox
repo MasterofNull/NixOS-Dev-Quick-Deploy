@@ -24,6 +24,36 @@ STATE = INBOX / ".lane-state.json"
 # antigravity-cli-wake-has-no-attributable-claim-receipt.
 WAKE_ARGV = ["antigravity", "chat", "--reuse-window", "--mode", "agent"]
 
+# Harness tooling whose command lines contain "antigravity" and would falsely
+# match a bare `pgrep -fa antigravity` — excluded so only a genuine Antigravity
+# IDE process counts as live (otherwise wake tries to cli-nudge a lane nobody
+# is serving, and status claims the IDE is running when it is not).
+_ANTIGRAVITY_PROC_EXCLUDE = (
+    "aq-collab-round", "aq-antigravity-inbox", "delegate-to-antigravity",
+    "aq-antigravity-agent", "aq-event", "pgrep", "snapshot-zsh", "/claude",
+)
+
+
+def _antigravity_proc_live() -> bool:
+    """True iff a REAL Antigravity IDE process is running — not merely a command
+    line that contains the word 'antigravity' (the harness's own helpers and the
+    shell running this check all do)."""
+    try:
+        out = subprocess.run(
+            ["pgrep", "-fa", "antigravity"], capture_output=True, text=True, timeout=5
+        )
+    except Exception:
+        return False
+    if out.returncode != 0:
+        return False
+    for line in out.stdout.splitlines():
+        parts = line.split(None, 1)
+        cmd = parts[1] if len(parts) > 1 else ""
+        if any(tok in cmd for tok in _ANTIGRAVITY_PROC_EXCLUDE):
+            continue
+        return True
+    return False
+
 
 def _pending() -> list[Path]:
     if not INBOX.exists():
@@ -212,12 +242,7 @@ def cmd_wake(args: argparse.Namespace) -> int:
     """
     name = args.name
     task_id = _task_id(name)
-    try:
-        proc_live = subprocess.run(
-            ["pgrep", "-fa", "antigravity"], capture_output=True, text=True, timeout=5
-        ).returncode == 0
-    except Exception:
-        proc_live = False
+    proc_live = _antigravity_proc_live()
 
     method = "passive-drop-only"
     argv_used: list[str] | None = None
