@@ -196,6 +196,15 @@ NEVER append to a shared file. The orchestrator aggregates into `AGGREGATE.md`.
 """
 
 
+# Local (on-host APU) runs with a ~12000-char context budget (agent_executor
+# _CTX_CHAR_BUDGET). Inline no more than this for local so the task text, system
+# prompt, and the model's own reasoning still fit without triggering the
+# pinned+sliding prune that evicts the very content under review. Genuinely large
+# artifacts need chunked map-reduce, not a bigger inline (see the local-lane
+# large-context note in docs/operations/collab-workflow-exposure.md).
+LOCAL_INLINE_CAP = 7000
+
+
 def _write_prompt(rd: Path, name: str, task: str, target: str) -> Path:
     # INLINE the target artifact (do not make agents READ a file). local[Qwen] chunk-reads a
     # --target file and burns its whole run on re-reading (observed: it never designs). Inlining
@@ -218,6 +227,42 @@ def _write_prompt(rd: Path, name: str, task: str, target: str) -> Path:
               f"Be decisive and concise.")
     pf = rd / ".round-prompt.txt"
     pf.write_text(prompt)
+
+    # LOCAL variant — the on-host APU agent runs with a hard ~12000-char context
+    # budget (agent_executor _CTX_CHAR_BUDGET; Qwen3-35B re-prefills fully every
+    # call, so context is capped for latency). A full multi-file review blows that
+    # budget: reading files via tool calls evicts their content (pinned+sliding
+    # prune), so the model sees fragments, believes the content is "compacted",
+    # re-reads in a loop, and abstains — the exact failure observed in the f1/
+    # dispatch-integration rounds. So local gets: (a) a SMALLER inlined slice that
+    # fits with reasoning headroom, and (b) explicit leaf-node rules — never read
+    # more files, never delegate/hand off, judge only what is inlined.
+    local_target_block = ""
+    if target:
+        try:
+            tp = Path(target) if Path(target).is_absolute() else (REPO / target)
+            _c = tp.read_text(encoding="utf-8")
+            local_target_block = (
+                f"=== REVIEW SLICE ({target}) — INLINED (may be truncated to fit your "
+                f"context budget); judge ONLY what is shown ===\n{_c[:LOCAL_INLINE_CAP]}\n"
+                f"=== END SLICE ===\n\n")
+        except OSError:
+            local_target_block = ""
+    local_prompt = (
+        f"COLLABORATIVE ROUND '{name}' — LOCAL lane (on-host APU, small context).\n"
+        f"{local_target_block}TASK:\n{task}\n\n"
+        f"LEAF-NODE RULES (hard — you are the final responder on this lane):\n"
+        f"- Do NOT read additional files. Your context is small; reading evicts prior "
+        f"content and you lose your work. Judge ONLY the material inlined above.\n"
+        f"- Do NOT delegate, hand off, or emit another agent's name/tag. There is no "
+        f"agent after you on this lane; produce YOUR OWN verdict.\n"
+        f"- Never reply that content is 'compacted' or ask to re-read — work with what "
+        f"is inlined. If a full verdict needs more than is shown, give a decisive verdict "
+        f"on the specific aspect(s) you CAN assess from the inlined slice, and name the "
+        f"one thing you could not see. A scoped, real insight beats an abstention.\n\n"
+        f"Write your contribution to YOUR OWN file ONLY: .agents/plans/{name}/local.md. "
+        f"Be decisive and concise (a few short paragraphs).")
+    (rd / ".round-prompt-local.txt").write_text(local_prompt)
     return pf
 
 
@@ -228,9 +273,13 @@ def _dispatch_process(agent: str, prompt_file: Path, local_timeout: int) -> str:
             cmd = ["bash", str(SCRIPTS / "delegate-to-codex"), "--mode", "edit",
                    "--prompt-file", str(prompt_file)]
             env = os.environ
-        else:  # local — never-skip: agent-mode, inlined, generous timeout, async
+        else:  # local — never-skip: agent-mode, budget-fitting local prompt, async
+            # Use the local-specific bounded prompt (smaller inline + leaf-node rules)
+            # when present; fall back to the shared prompt for older/dry callers.
+            local_pf = prompt_file.parent / ".round-prompt-local.txt"
+            use_pf = local_pf if local_pf.exists() else prompt_file
             cmd = ["bash", str(SCRIPTS / "delegate-to-local"), "--mode", "agent", "--role",
-                   "reviewer", "--timeout", str(local_timeout), "--prompt-file", str(prompt_file)]
+                   "reviewer", "--timeout", str(local_timeout), "--prompt-file", str(use_pf)]
             env = {**os.environ, "AQ_AGENT_ROLE": "reviewer"}
         out = subprocess.run(cmd, capture_output=True, text=True, timeout=30, env=env).stdout
         return (out.strip().splitlines() or ["?"])[-1]
