@@ -1,0 +1,400 @@
+#!/usr/bin/env python3
+"""aq-local-review — chunked map-reduce review of a large artifact via the local model.
+
+Slice 1 of the "embed model as first-class local-inference context layer" design
+(.agents/plans/local-embed-context/DESIGN.md). Local (Qwen3-35B) has a hard
+~12000-char context budget and re-prefills fully every call, so a large artifact
+either blows the budget outright or gets positionally pruned until local sees only
+fragments and abstains. This tool splits the artifact into budget-fitting,
+line-aware chunks, reviews each chunk with a small fast local call (MAP), uses the
+embed model (:8081) + an ephemeral Qdrant collection as a relevance cache instead
+of holding every finding in context, and produces one synthesized verdict (REDUCE).
+
+The embed/Qdrant cache is fail-open: any embed or Qdrant error at any point
+degrades to an in-memory findings list — the review MUST still complete.
+
+Usage:
+    aq-local-review --target <file> --question "<text>" [--out <file>]
+                     [--chunk-chars 5500] [--timeout 300] [--dry-run] [--json]
+"""
+
+import argparse
+import json
+import os
+import re
+import subprocess
+import sys
+import tempfile
+import uuid
+
+import requests
+
+SCRIPT_DIR = os.path.dirname(os.path.abspath(__file__))
+REPO_ROOT = os.path.dirname(os.path.dirname(SCRIPT_DIR))
+DELEGATE_SCRIPT = os.path.join(REPO_ROOT, "scripts", "ai", "delegate-to-local")
+OUTPUT_DIR = os.path.join(REPO_ROOT, ".agents", "delegation", "outputs")
+
+DEFAULT_EMBED_URL = "http://127.0.0.1:8081"
+DEFAULT_QDRANT_URL = "http://127.0.0.1:6333"
+EMBED_MODEL = "bge-m3"
+
+NO_FINDINGS = "NO FINDINGS"
+
+MAP_PROMPT_TEMPLATE = (
+    "Reviewing chunk {i} of {n} of {target} for this question: {question}\n\n"
+    "--- CHUNK ---\n{chunk}\n--- END CHUNK ---\n\n"
+    "Report ONLY findings about THIS chunk, concise. If nothing relevant here, "
+    "reply exactly: NO FINDINGS."
+)
+
+REDUCE_PROMPT_TEMPLATE = (
+    "Synthesize these per-chunk findings into ONE decisive, coverage-complete "
+    "verdict for: {question}\n\nFINDINGS:\n{findings}\n\nGive a concise verdict. "
+    "Do not ask to see more."
+)
+
+
+# ── chunking ──────────────────────────────────────────────────────────────────
+
+def chunk_text(text: str, cap: int) -> list:
+    """Split text into ~cap-char chunks, accumulating whole lines only.
+
+    Never splits mid-line: a line is only ever appended in full to the current
+    chunk, or the current chunk is flushed and the line starts the next one. A
+    single line longer than cap becomes its own over-cap chunk rather than being
+    truncated or split.
+    """
+    lines = text.splitlines(keepends=True)
+    if not lines:
+        return [""]
+
+    chunks = []
+    current = []
+    current_len = 0
+    for line in lines:
+        line_len = len(line)
+        if current and current_len + line_len > cap:
+            chunks.append("".join(current))
+            current = [line]
+            current_len = line_len
+        else:
+            current.append(line)
+            current_len += line_len
+    if current:
+        chunks.append("".join(current))
+    return chunks
+
+
+def build_map_prompt(target: str, i: int, n: int, question: str, chunk: str) -> str:
+    return MAP_PROMPT_TEMPLATE.format(i=i, n=n, target=target, question=question, chunk=chunk)
+
+
+def build_reduce_prompt(question: str, findings: list) -> str:
+    joined = "\n\n".join(findings) if findings else NO_FINDINGS
+    return REDUCE_PROMPT_TEMPLATE.format(question=question, findings=joined)
+
+
+def build_chunk_plan(target: str, question: str, chunks: list) -> list:
+    n = len(chunks)
+    plan = []
+    for idx, ch in enumerate(chunks, start=1):
+        plan.append({
+            "index": idx,
+            "total": n,
+            "chars": len(ch),
+            "prompt": build_map_prompt(target, idx, n, question, ch),
+        })
+    return plan
+
+
+# ── local model calls (MAP/REDUCE) ───────────────────────────────────────────
+
+def run_local(prompt_text: str, timeout: int, max_tokens: int = 600) -> str:
+    """Invoke delegate-to-local --mode direct --wait via a prompt file and return
+    the completed task's output text. Raises RuntimeError on any failure — the
+    caller decides whether that aborts the review.
+
+    max_tokens bounds the generation length via LLAMA_MAX_TOKENS: on the APU the
+    local model generates at ~10 tok/s, so an unbounded review of a code chunk can
+    run many minutes and blow the timeout (observed: one chunk > 460s). Capping the
+    output keeps each map call bounded and fast; findings are meant to be concise."""
+    fd, tmp_path = tempfile.mkstemp(suffix=".prompt.txt", prefix="aq-local-review-")
+    try:
+        with os.fdopen(fd, "w", encoding="utf-8") as tf:
+            tf.write(prompt_text)
+        argv = [
+            DELEGATE_SCRIPT, "--mode", "direct", "--wait",
+            "--timeout", str(timeout), "--prompt-file", tmp_path,
+        ]
+        _env = {**os.environ, "LLAMA_MAX_TOKENS": str(max_tokens)}
+        proc = subprocess.run(argv, capture_output=True, text=True,
+                              timeout=timeout + 60, env=_env)
+    finally:
+        try:
+            os.unlink(tmp_path)
+        except OSError:
+            pass
+
+    combined = f"{proc.stdout or ''}\n{proc.stderr or ''}"
+    match = re.search(r"Delegating task:\s*(\S+)", combined)
+    if not match:
+        raise RuntimeError(f"could not parse task id from delegate-to-local output: {combined[:400]!r}")
+    task_id = match.group(1)
+    output_path = os.path.join(OUTPUT_DIR, f"{task_id}.log")
+
+    if proc.returncode != 0:
+        detail = ""
+        if os.path.isfile(output_path):
+            with open(output_path, "r", encoding="utf-8", errors="replace") as f:
+                detail = f.read()
+        raise RuntimeError(f"delegate-to-local failed (rc={proc.returncode}) task={task_id}: {(detail or combined)[:400]}")
+
+    if not os.path.isfile(output_path):
+        raise RuntimeError(f"delegate-to-local reported success but output file missing: {output_path}")
+    with open(output_path, "r", encoding="utf-8", errors="replace") as f:
+        return f.read().strip()
+
+
+def map_chunk(target: str, i: int, n: int, question: str, chunk: str, timeout: int) -> str:
+    prompt = build_map_prompt(target, i, n, question, chunk)
+    # Map findings are concise per-chunk notes — cap tight so each call stays fast.
+    return run_local(prompt, timeout, max_tokens=600)
+
+
+def reduce_findings(question: str, findings: list, timeout: int) -> str:
+    prompt = build_reduce_prompt(question, findings)
+    # The synthesis may be longer than a single chunk finding — allow more room.
+    return run_local(prompt, timeout, max_tokens=1000)
+
+
+# ── embed + ephemeral Qdrant cache (fail-open) ───────────────────────────────
+
+def embed(text: str, timeout: float = 20.0):
+    """Embed text via the local embed model. Returns the vector, or None on any
+    failure — callers must treat None as "cache unavailable", never abort."""
+    embed_url = os.environ.get("AI_STACK_EMBED_ENDPOINT", DEFAULT_EMBED_URL)
+    try:
+        resp = requests.post(
+            f"{embed_url}/v1/embeddings",
+            json={"model": EMBED_MODEL, "input": text},
+            timeout=timeout,
+        )
+        if resp.status_code != 200:
+            return None
+        return resp.json()["data"][0]["embedding"]
+    except Exception:
+        return None
+
+
+def cache_create(collection: str, vector_size: int, timeout: float = 20.0) -> bool:
+    qdrant_url = os.environ.get("QDRANT_URL", DEFAULT_QDRANT_URL)
+    try:
+        resp = requests.put(
+            f"{qdrant_url}/collections/{collection}",
+            json={"vectors": {"size": vector_size, "distance": "Cosine"}},
+            timeout=timeout,
+        )
+        return resp.status_code in (200, 201)
+    except Exception:
+        return False
+
+
+def cache_upsert(collection: str, point_id: int, vector: list, payload: dict, timeout: float = 20.0) -> bool:
+    qdrant_url = os.environ.get("QDRANT_URL", DEFAULT_QDRANT_URL)
+    try:
+        resp = requests.put(
+            f"{qdrant_url}/collections/{collection}/points",
+            json={"points": [{"id": point_id, "vector": vector, "payload": payload}]},
+            timeout=timeout,
+        )
+        return resp.status_code in (200, 201)
+    except Exception:
+        return False
+
+
+def cache_search(collection: str, vector: list, limit: int, timeout: float = 20.0):
+    """Returns a list of Qdrant hits, or None on failure."""
+    qdrant_url = os.environ.get("QDRANT_URL", DEFAULT_QDRANT_URL)
+    try:
+        resp = requests.post(
+            f"{qdrant_url}/collections/{collection}/points/search",
+            json={"vector": vector, "limit": limit, "with_payload": True},
+            timeout=timeout,
+        )
+        if resp.status_code != 200:
+            return None
+        return resp.json().get("result", [])
+    except Exception:
+        return None
+
+
+def cache_delete(collection: str, timeout: float = 20.0) -> None:
+    """Best-effort cleanup — always fail-open, never raises."""
+    qdrant_url = os.environ.get("QDRANT_URL", DEFAULT_QDRANT_URL)
+    try:
+        requests.delete(f"{qdrant_url}/collections/{collection}", timeout=timeout)
+    except Exception:
+        pass
+
+
+# ── orchestration ─────────────────────────────────────────────────────────────
+
+def parse_args(argv=None):
+    p = argparse.ArgumentParser(
+        prog="aq-local-review",
+        description="Chunked map-reduce review of a large artifact via the local model, "
+                     "using the embed model as an ephemeral relevance cache.",
+    )
+    p.add_argument("--target", required=True, help="File to review")
+    p.add_argument("--question", required=True, help="Focused review question")
+    p.add_argument("--out", default=None, help="Write verdict here (default: stdout)")
+    p.add_argument("--chunk-chars", type=int, default=5500, help="Approx chars per chunk (default 5500)")
+    p.add_argument("--timeout", type=int, default=300, help="Per local call timeout, seconds (default 300)")
+    p.add_argument("--dry-run", action="store_true", help="Print the chunk plan + prompts, make NO local/embed calls")
+    p.add_argument("--json", action="store_true", help="Emit JSON instead of plain text")
+    return p.parse_args(argv)
+
+
+def _print_dry_run(target: str, question: str, chunk_chars: int, plan: list, as_json: bool) -> None:
+    if as_json:
+        print(json.dumps({
+            "dry_run": True,
+            "target": target,
+            "question": question,
+            "chunk_chars_cap": chunk_chars,
+            "chunk_count": len(plan),
+            "chunks": plan,
+        }, indent=2))
+        return
+    print(f"aq-local-review dry-run: target={target} question={question!r}")
+    print(f"chunk_chars_cap={chunk_chars} chunk_count={len(plan)}")
+    for c in plan:
+        print(f"--- chunk {c['index']}/{c['total']} ({c['chars']} chars) ---")
+        print(c["prompt"])
+        print()
+
+
+def main(argv=None) -> int:
+    args = parse_args(argv)
+
+    try:
+        with open(args.target, "r", encoding="utf-8", errors="replace") as f:
+            text = f.read()
+    except OSError as e:
+        print(f"ERROR: cannot read --target {args.target}: {e}", file=sys.stderr)
+        return 1
+
+    chunks = chunk_text(text, args.chunk_chars)
+    n = len(chunks)
+
+    if args.dry_run:
+        plan = build_chunk_plan(args.target, args.question, chunks)
+        _print_dry_run(args.target, args.question, args.chunk_chars, plan, args.json)
+        return 0
+
+    # MAP — one small-context local call per chunk. Per-chunk FAIL-OPEN: a slow or
+    # failed chunk (e.g. the local model timing out on the APU) must NOT abort the
+    # whole review — record it as an unavailable-chunk marker and press on, so the
+    # reduce step still synthesizes a verdict from the chunks that did complete. A
+    # partial, honest review beats no review (never-skip-local).
+    findings = []
+    failed_chunks = 0
+    for idx, chunk in enumerate(chunks, start=1):
+        try:
+            finding = map_chunk(args.target, idx, n, args.question, chunk, args.timeout)
+        except Exception as e:
+            failed_chunks += 1
+            print(f"WARN: chunk {idx}/{n} unavailable ({type(e).__name__}: {str(e)[:120]}) — "
+                  f"continuing with remaining chunks", file=sys.stderr)
+            finding = f"[chunk {idx}/{n} review UNAVAILABLE — local call failed/timed out; not assessed]"
+        findings.append((idx, finding))
+
+    if failed_chunks == n:
+        # Every chunk failed — there is nothing to synthesize. Report honestly.
+        print(f"ERROR: all {n} chunks failed to review (local unavailable/too slow); "
+              f"no verdict produced", file=sys.stderr)
+        return 1
+
+    # A "real" finding is non-empty, not NO_FINDINGS, and not an unavailable-chunk
+    # marker (those must not be embedded into the cache as if they were findings).
+    real_findings = [
+        (i, f) for i, f in findings
+        if f.strip() and f.strip() != NO_FINDINGS and "review UNAVAILABLE" not in f
+    ]
+
+    # CACHE — ephemeral Qdrant collection, fail-open at every step.
+    collection = f"local-review-{uuid.uuid4().hex}"
+    cache_live = False
+    if real_findings:
+        first_idx, first_text = real_findings[0]
+        first_vec = embed(first_text)
+        if first_vec is not None and cache_create(collection, len(first_vec)):
+            cache_live = cache_upsert(collection, first_idx, first_vec, {"chunk_index": first_idx, "finding": first_text})
+            if cache_live:
+                for idx, ftext in real_findings[1:]:
+                    vec = embed(ftext)
+                    if vec is None:
+                        continue
+                    cache_upsert(collection, idx, vec, {"chunk_index": idx, "finding": ftext})
+
+    # REDUCE — retrieve top-K relevant findings if the cache is live, else use all.
+    fallback_findings = [f for _, f in real_findings] if real_findings else [f for _, f in findings]
+    selected = fallback_findings
+    if cache_live:
+        q_vec = embed(args.question)
+        if q_vec is not None:
+            k = min(n, 12)
+            hits = cache_search(collection, q_vec, k)
+            if hits:
+                retrieved = [h.get("payload", {}).get("finding", "") for h in hits if h.get("payload")]
+                if retrieved:
+                    selected = retrieved
+                else:
+                    cache_live = False
+            else:
+                cache_live = False
+        else:
+            cache_live = False
+
+    if not selected:
+        selected = [NO_FINDINGS]
+
+    # Keep the synthesis honest about coverage when some chunks could not be reviewed.
+    if failed_chunks:
+        selected = list(selected) + [
+            f"COVERAGE NOTE: {failed_chunks} of {n} chunks could not be reviewed "
+            f"(local timed out / failed); this verdict covers only the "
+            f"{n - failed_chunks} assessed chunk(s). State this limitation."
+        ]
+
+    try:
+        verdict = reduce_findings(args.question, selected, args.timeout)
+    except Exception as e:
+        print(f"ERROR: reduce step failed: {e}", file=sys.stderr)
+        cache_delete(collection)
+        return 1
+
+    cache_delete(collection)
+
+    if args.json:
+        out_text = json.dumps({
+            "target": args.target,
+            "question": args.question,
+            "chunk_count": n,
+            "cache_used": cache_live,
+            "verdict": verdict,
+        }, indent=2)
+    else:
+        out_text = verdict
+
+    if args.out:
+        with open(args.out, "w", encoding="utf-8") as f:
+            f.write(out_text + "\n")
+    else:
+        print(out_text)
+
+    return 0
+
+
+if __name__ == "__main__":
+    sys.exit(main())
