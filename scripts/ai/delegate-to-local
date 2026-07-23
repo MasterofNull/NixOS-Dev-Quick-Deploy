@@ -34,6 +34,9 @@
 #   --list             List all registered tasks
 #   --cancel ID        Cancel a running task
 #   --kill-all         Kill all running tasks
+#   --no-consult       Skip the router/claim consult gate before real dispatch
+#                       (also: AQ_NO_CONSULT=1). Read-only subcommands above
+#                       never consult regardless of this flag.
 #   --help             Show this help
 
 set -euo pipefail
@@ -93,6 +96,14 @@ TASK_TYPE=""  # Phase 173: "research"|"analysis"|"prd" raises stagnation read li
 SUBCMD=""
 SUBCMD_ARG=""
 REPAIR_STALE_APPLY=false
+# Resolution B (DISPATCH-INTEGRATION-DESIGN.md amendment): dispatch.py stays
+# frozen (L2B golden-manifest pin) — the router/claim consult seam lives here
+# in the shim instead. Escape hatch for callers that must bypass it (e.g. the
+# consult tooling's own self-tests, or a known-solo run).
+NO_CONSULT=false
+if [[ "${AQ_NO_CONSULT:-0}" == "1" || "${AQ_NO_CONSULT:-}" == "true" ]]; then
+    NO_CONSULT=true
+fi
 
 while [[ $# -gt 0 ]]; do
     case "$1" in
@@ -114,6 +125,7 @@ while [[ $# -gt 0 ]]; do
         --monitor)       SUBCMD="monitor";       shift   ;;
         --cancel)        SUBCMD="cancel";        SUBCMD_ARG="${2:-}"; shift; [[ $# -gt 0 ]] && shift ;;
         --kill-all)      SUBCMD="kill-all";      shift   ;;
+        --no-consult)    NO_CONSULT=true;        shift   ;;
         --help|-h)     grep "^#" "$0" | sed 's/^# \?//'; exit 0 ;;
         *) die "Unknown option: $1 (run with --help for usage)" ;;
     esac
@@ -183,6 +195,44 @@ case "${SUBCMD:-}" in
         info "Role:            $ROLE"
         info "Output file:     $OUTPUT_FILE"
 
+        # ── router/claim consult gate (advisory, fail-open) ─────────────────
+        # Only the real-dispatch branch consults — --check/--status/--list/
+        # --monitor/--cancel/--kill-all/--repair* never reach here. A missing/
+        # erroring/timing-out consult CLI must never block a dispatch, so any
+        # failure to get a parseable JSON reply is treated as proceed.
+        CONSULT_SUBJECT="$ID"
+        CONSULT_ROLE="$ROLE"
+        [[ "$CONSULT_ROLE" == "auto" ]] && CONSULT_ROLE="implementer"
+        consult_blocked=false
+        consult_owner="unknown"
+        if [[ "$NO_CONSULT" != "true" ]]; then
+            GIT_HEAD="$(git -C "$REPO_ROOT" rev-parse HEAD 2>/dev/null || true)"
+            CONSULT_ARGS=(timeout 15 python3 "$LIB_DIR/dispatch_consult.py" consult
+                --subject "$CONSULT_SUBJECT" --role "$CONSULT_ROLE" --lane local)
+            [[ -n "$GIT_HEAD" ]] && CONSULT_ARGS+=(--head "$GIT_HEAD")
+            CONSULT_JSON="$("${CONSULT_ARGS[@]}" 2>/dev/null)" || CONSULT_JSON=""
+            if [[ -n "$CONSULT_JSON" ]]; then
+                if consult_owner="$(python3 -c '
+import json, sys
+try:
+    d = json.loads(sys.argv[1])
+except Exception:
+    sys.exit(1)
+if d.get("blocked"):
+    print(d.get("current_owner") or "unknown")
+    sys.exit(0)
+sys.exit(1)
+' "$CONSULT_JSON" 2>/dev/null)"; then
+                    consult_blocked=true
+                fi
+            fi
+        fi
+
+        if [[ "$consult_blocked" == "true" ]]; then
+            echo "REFUSED: subject '$CONSULT_SUBJECT' is already claimed by owner '$consult_owner' — not dispatching (see aq-slice-claim). Retry later, or pass --no-consult / AQ_NO_CONSULT=1 to override." >&2
+            exit 2
+        fi
+
         audit_event_start "local" "$ID" "${PROMPT:0:200}"
 
         # Build dispatch.py argument list (bash array preserves quoting for prompts
@@ -210,18 +260,27 @@ case "${SUBCMD:-}" in
                 audit_event_end "local" "$ID" "success" "0" \
                     "completed mode=${MODE}: ${PROMPT:0:100}" "$MODE"
                 audit_save_session "local-${MODE}" "$ID" "$PROMPT" "$OUTPUT_FILE"
+                [[ "$NO_CONSULT" != "true" ]] && { timeout 10 python3 "$LIB_DIR/dispatch_consult.py" release --subject "$CONSULT_SUBJECT" --owner local >/dev/null 2>&1 || true; }
                 info "Task $ID completed."
                 cat "$OUTPUT_FILE"
             else
                 audit_event_end "local" "$ID" "error" "0" \
                     "failed mode=${MODE}: ${PROMPT:0:100}" "$MODE"
                 audit_save_session "local-${MODE}" "$ID" "$PROMPT" "$OUTPUT_FILE"
+                [[ "$NO_CONSULT" != "true" ]] && { timeout 10 python3 "$LIB_DIR/dispatch_consult.py" release --subject "$CONSULT_SUBJECT" --owner local >/dev/null 2>&1 || true; }
                 info "Task $ID failed. Output:"
                 cat "$OUTPUT_FILE"
                 exit 1
             fi
         else
-            # Background: setsid dispatch.py into its OWN session so it survives the caller's
+            # Background mode: this shim's own lifetime ends right after launch
+            # while the real task keeps running detached (setsid) — there is no
+            # "dispatch completed" event for the shim to observe here, so the
+            # claim is deliberately NOT released in this branch. It stays held
+            # under the requested lane until aq-slice-claim's own TTL/owner
+            # path clears it; releasing now would let a second concurrent
+            # dispatch race the still-running background task.
+            # setsid dispatch.py into its OWN session so it survives the caller's
             # process-group being reaped (e.g. a round-driver/Bash call returning). Without
             # setsid, dispatch.py stayed in the caller's pgroup, was SIGKILLed when that group
             # died, and its aq-agent-loop child then orphaned (ppid=1) → the self-watchdog

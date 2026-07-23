@@ -1,0 +1,73 @@
+{
+  "schema_version": "1.0",
+  "round_id": "dispatch-integration-review",
+  "state": "COLLECTED",
+  "task": {
+    "prompt": "INDEPENDENT CRITIQUE REVIEW. Read the full brief at .agents/plans/agent-agnostic-factory/DISPATCH-INTEGRATION-REVIEW-BRIEF.md and rule on it. Summary: the router/claim dispatch-integration slice (design: DISPATCH-INTEGRATION-DESIGN.md; staged files scripts/ai/lib/dispatch_consult.py + scripts/ai/lib/dispatch.py edit + scripts/testing/test-dispatch-consult.py) drifts a COMMITTED L2B frozen-source manifest (scripts/testing/fixtures/local-inference-l2b-payload-golden.json pins dispatch.py's hash). Rule A-vs-B: (A) re-pin dispatch.py hash in the manifest; (B) revert the dispatch.py edit and instead wire the consult via a small CLI on dispatch_consult.py called from the delegate-* bash shims (keeps all 9 frozen files untouched, uniform across lanes). Orchestrator recommends B. Also critique dispatch_consult.py's fail-open contract, release-cross-claim safety, and whether the 8 tests (esp fail-open negative control) are load-bearing. Write verdict to .agents/plans/agent-agnostic-factory/DISPATCH-INTEGRATION-ANTIGRAVITY-REVIEW.md with terminal VERDICT: ADOPT-B | ADOPT-A | REVISE.",
+    "target": "",
+    "scope_files": []
+  },
+  "opened_at": "2026-07-23T03:45:39Z",
+  "quorum_policy": {
+    "min_lanes": 2,
+    "required_agents": [],
+    "late_local_admissible": true,
+    "timeout_seconds": null,
+    "deadline": null,
+    "timeout_action": "lock_with_present"
+  },
+  "lanes": [
+    {
+      "agent": "claude",
+      "dispatch_id": null,
+      "idempotency_hash": "487aad4a4b273757b61586ab40f9bd82fc930b8786b77b91d4672210a4911f0f",
+      "status": "pending",
+      "landed_at": null
+    },
+    {
+      "agent": "codex",
+      "dispatch_id": null,
+      "idempotency_hash": "473375020177701d7fbf3d9f5e6110cb37a418e80ec6e4cb1ca7112da0f1c54a",
+      "status": "submitted",
+      "landed_at": null
+    },
+    {
+      "agent": "local",
+      "dispatch_id": null,
+      "idempotency_hash": "6520964263251fc3bf6115d9632eead0dabfb4f12bc7a6ee7a1c744faf2e45dc",
+      "status": "submitted",
+      "landed_at": null
+    },
+    {
+      "agent": "antigravity",
+      "dispatch_id": null,
+      "idempotency_hash": "e41d20108d26502001cd3204d7fe1344fd2e9b606e504ef0694283d491691a4e",
+      "status": "submitted",
+      "landed_at": null
+    }
+  ],
+  "contributions": {},
+  "conflicts": [],
+  "consensus_hash": null,
+  "aggregate_path": null,
+  "aggregate_hash": null,
+  "locked_at": null,
+  "history": [
+    {
+      "transition": "CREATED->DISPATCHED",
+      "timestamp": "2026-07-23T03:45:39Z",
+      "actor": "aq-collab-round"
+    },
+    {
+      "transition": "DISPATCHED->CONTRIBUTING",
+      "timestamp": "2026-07-23T05:33:54Z",
+      "actor": "aq-collab-round"
+    },
+    {
+      "transition": "CONTRIBUTING->COLLECTED",
+      "timestamp": "2026-07-23T05:33:54Z",
+      "actor": "aq-collab-round"
+    }
+  ],
+  "predecessor_round_id": null
+}
