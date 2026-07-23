@@ -18,7 +18,44 @@ module = importlib.util.module_from_spec(importlib.util.spec_from_loader("ag_inb
 loader.exec_module(module)
 
 
+class _FakePgrep:
+    """Stand-in for subprocess.run(["pgrep","-fa","antigravity"], ...)."""
+
+    def __init__(self, stdout: str, rc: int = 0):
+        self.stdout = stdout
+        self.returncode = rc
+
+
+def _check_proc_live() -> None:
+    """_antigravity_proc_live must ignore command lines that merely contain the
+    word 'antigravity' (the harness's own helpers + the shell running the check)
+    and report live ONLY for a genuine Antigravity IDE process."""
+    real_run = module.subprocess.run
+
+    # Only harness tooling matches -> NOT live (the bug: bare pgrep said live).
+    harness_only = (
+        "111 /bin/zsh -c ... aq-collab-round open --round r\n"
+        "222 python3 scripts/ai/aq-antigravity-inbox status\n"
+        "333 /bin/sh -c pgrep -fa antigravity\n"
+    )
+    module.subprocess.run = lambda *a, **k: _FakePgrep(harness_only, 0)
+    try:
+        assert module._antigravity_proc_live() is False, "harness tooling falsely counted as live IDE"
+
+        # A real IDE process present -> live.
+        with_ide = harness_only + "444 /run/current-system/sw/bin/antigravity chat --mode agent\n"
+        module.subprocess.run = lambda *a, **k: _FakePgrep(with_ide, 0)
+        assert module._antigravity_proc_live() is True, "genuine IDE process not detected"
+
+        # pgrep found nothing (rc=1) -> not live.
+        module.subprocess.run = lambda *a, **k: _FakePgrep("", 1)
+        assert module._antigravity_proc_live() is False, "empty pgrep must be not-live"
+    finally:
+        module.subprocess.run = real_run
+
+
 def main() -> int:
+    _check_proc_live()
     with tempfile.TemporaryDirectory() as td:
         tmp = Path(td)
         module.REPO = tmp
@@ -39,7 +76,7 @@ def main() -> int:
         assert len(archived) == 1
         assert module._state_payload()["last_drop_consumed"] is True
 
-    print("PASS: antigravity inbox helper checks")
+    print("PASS: antigravity inbox helper checks (incl. proc-liveness excludes harness tooling)")
     return 0
 
 
