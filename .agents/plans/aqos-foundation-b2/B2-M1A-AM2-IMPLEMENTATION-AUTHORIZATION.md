@@ -242,3 +242,8 @@ Before activation:
 `RECORD: PREPARED_ONLY. This document authorizes no action until independently reviewed and explicitly
 activated by the owner. Candidate acceptance, M1E, database/Alembic/DDL activity, Nix/deployment,
 runtime adoption, staging, commit, and later B2 slices remain unauthorized.`
+
+
+## Owner Activation Record (reconciled 2026-07-23)
+**Activation state: ACTIVATED** (record reconciled from the authoritative event ledger).
+Owner activation recorded as a `pulse.append` in `.agents/events/*.jsonl` — subject `auth-aqos-foundation-b2-m1a-am2-20260719`, event_id `811d26fe3b374c279e0172fa160fd5ed`, ts `2026-07-19T03:38:59Z`. Any `PREPARED_ONLY / NOT ACTIVATED` status earlier in this record is a **stale header** predating the activation; the owner activation and any independently-accepted, committed candidate stand. Reconciled by fable-5 (no scope, ceiling, or hash change — header hygiene only).

@@ -247,3 +247,8 @@ Until that explicit record exists, no file in section 2 may be created or modifi
 
 `RECORD: PREPARED_ONLY. B2-C1 implementation, DDL, connections, writes, runtime hooks, services,
 deployment, traffic, cutover, later slices, cleanup, and rollback remain unauthorized.`
+
+
+## Owner Activation Record (reconciled 2026-07-23)
+**Activation state: ACTIVATED** (record reconciled from the authoritative event ledger).
+Owner activation recorded as a `pulse.append` in `.agents/events/*.jsonl` — subject `auth-aqos-foundation-b2-c1-20260718`, event_id `0839962a117540a784331466023789e7`, ts `2026-07-18T14:21:00Z`. Any `PREPARED_ONLY / NOT ACTIVATED` status earlier in this record is a **stale header** predating the activation; the owner activation and any independently-accepted, committed candidate stand. Reconciled by fable-5 (no scope, ceiling, or hash change — header hygiene only).

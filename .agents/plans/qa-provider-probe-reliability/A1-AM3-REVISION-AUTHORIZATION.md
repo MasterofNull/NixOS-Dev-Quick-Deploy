@@ -53,3 +53,8 @@ reviewer session. Tier-0/staging/commit remain orchestrator-only after that PASS
 
 `RECORD: single use. Activation under the owner's standing authorization must name this document's
 exact SHA-256, the implementer identity, and a ≤24h window.`
+
+
+## Owner Activation Record (reconciled 2026-07-23)
+**Activation state: ACTIVATED** (record reconciled from the authoritative event ledger).
+Owner activation recorded as a `pulse.append` in `.agents/events/*.jsonl` — subject `auth-qa-provider-probe-reliability-a1-am3-rev2-20260719`, event_id `2f37d479a954456ab281daa1ef5a0ba4`, ts `2026-07-19T19:08:32Z`. Any `PREPARED_ONLY / NOT ACTIVATED` status earlier in this record is a **stale header** predating the activation; the owner activation and any independently-accepted, committed candidate stand. Reconciled by fable-5 (no scope, ceiling, or hash change — header hygiene only).

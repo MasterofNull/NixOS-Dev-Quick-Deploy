@@ -86,3 +86,8 @@ implementer `claude-subagent-l2b-b-implementer`, window 2026-07-22T04:20:00Z→2
 implementer = claude-subagent-l2b-b-implementer; corrected_contract_hash = 468899d47fa107d87db10f3d45491d395472a46071116aa8fb9a66a142b651fe; acceptance_lane = codex`
 
 The 6-file ceiling, invariants, and verification gates in Sections 2–4 remain binding and unchanged.
+
+
+## Owner Activation Record (reconciled 2026-07-23)
+**Activation state: ACTIVATED** (record reconciled from the authoritative event ledger).
+Owner activation recorded as a `pulse.append` in `.agents/events/*.jsonl` — subject `auth-local-inference-l2b-b`, event_id `8293337f1915426cbf9557afbceedf2a`, ts `2026-07-21T01:41:57Z`. Any `PREPARED_ONLY / NOT ACTIVATED` status earlier in this record is a **stale header** predating the activation; the owner activation and any independently-accepted, committed candidate stand. Reconciled by fable-5 (no scope, ceiling, or hash change — header hygiene only).

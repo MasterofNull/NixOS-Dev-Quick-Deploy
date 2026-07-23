@@ -83,3 +83,8 @@ implementer = claude-subagent-b3-c1-implementer; contract_soundness_reviewed_has
 The file ceiling, invariants, and verification gates in Sections 2–4 remain binding and unchanged.
 This activation authorizes implementation and its independent acceptance only; it does not grant the
 compiler runtime authority.
+
+
+## Owner Activation Record (reconciled 2026-07-23)
+**Activation state: ACTIVATED** (record reconciled from the authoritative event ledger).
+Owner activation recorded as a `pulse.append` in `.agents/events/*.jsonl` — subject `auth-aqos-foundation-b3-c1`, event_id `8293337f1915426cbf9557afbceedf2a`, ts `2026-07-21T01:41:57Z`. Any `PREPARED_ONLY / NOT ACTIVATED` status earlier in this record is a **stale header** predating the activation; the owner activation and any independently-accepted, committed candidate stand. Reconciled by fable-5 (no scope, ceiling, or hash change — header hygiene only).
