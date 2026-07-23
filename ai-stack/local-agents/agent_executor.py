@@ -85,6 +85,14 @@ try:
 except Exception:  # noqa: BLE001
     training_capture = None  # type: ignore
 
+# Slice 2b (local-embed-context): embed-backed semantic context cache for the prune
+# path — best-effort, fail-open. Lives at ai-stack/local-agents/context_cache.py
+# (same dir as this module; see F5 in SLICE2-LOCAL-DECOMPOSITION.md).
+try:
+    import context_cache  # noqa: E402  (same dir: ai-stack/local-agents/)
+except Exception:  # noqa: BLE001 — never let an optional import break the executor
+    context_cache = None  # type: ignore
+
 # Phase 164B — MIC-G context sanitizer: scrub prompt-injection patterns from tool results
 # before they are injected into the LLM context window.  Import is best-effort; if the
 # security module is unavailable (e.g. minimal install) the agent continues without it.
@@ -1131,10 +1139,28 @@ class LocalAgentExecutor:
                         asyncio.create_task(
                             _store_prune_checkpoint(self.fallback_endpoint, task.id, _prune_text)
                         )
-                messages = pinned + sliding
+                # Slice 2b — semantic scratchpad: recover the evicted middle by relevance
+                # to the current objective, inserted AFTER the pinned prefix (index 4,
+                # never spliced into it) so llama.cpp prefix-cache reuse is preserved.
+                # context_cache is sync (httpx.Client) — offload via asyncio.to_thread so
+                # the event loop never blocks. Fail-open: any error → no scratchpad, same
+                # as today's pinned+sliding behavior.
+                _scratch = None
+                if context_cache is not None:
+                    try:
+                        _dropped_texts = [m.get("content") or "" for m in messages[4:-4]
+                                          if m.get("role") in {"assistant", "tool"} and m.get("content")]
+                        if _dropped_texts:
+                            _coll = await asyncio.to_thread(context_cache.cache_evicted, str(task.id), _dropped_texts)
+                            if _coll:
+                                _retr = await asyncio.to_thread(context_cache.retrieve_ctx, _coll, str(task.objective), 6)
+                                _scratch = context_cache.scratchpad_message(_retr)  # pure, no I/O
+                    except Exception:
+                        _scratch = None
+                messages = pinned + ([_scratch] if _scratch else []) + sliding
                 logger.debug(
-                    "context_prune(pinned+sliding): pinned=%d sliding=%d total=%d chars_before=%d",
-                    len(pinned), len(sliding), len(messages), _ctx_chars,
+                    "context_prune(pinned+sliding): pinned=%d sliding=%d total=%d chars_before=%d scratch=%s",
+                    len(pinned), len(sliding), len(messages), _ctx_chars, bool(_scratch),
                 )
             elif _ctx_chars > _CTX_CHAR_BUDGET and len(messages) > 6:
                 # Fallback for 6 < len ≤ 8: can't do full pinned+sliding, just shed oldest pair.

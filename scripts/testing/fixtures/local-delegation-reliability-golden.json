@@ -1,77 +1,338 @@
 {
   "fixture_version": "aq.local-delegation-reliability.r0.v1",
   "live_sources": [
-    {"path": "scripts/ai/aq-agent-loop", "sha256": "e4fe98972fbddd21c7b5353fcba21d6bebf49fbdbde031302d94500e1e4c76db", "defects": ["D1", "D4", "D5"], "characterizations": [
-      {"kind": "regex_count", "pattern": "task_id\\s*=\\s*f\"aq-\\{int\\(time\\.time\\(\\)\\)\\}\"", "count": 1},
-      {"kind": "regex_present", "pattern": "max\\(420\\.0,\\s*min\\(1800\\.0,\\s*float\\(timeout_secs\\)\\s*\\*\\s*0\\.5\\)\\)"},
-      {"kind": "regex_present", "pattern": "_install_self_watchdog\\(_watchdog_secs\\)"}
-    ]},
-    {"path": "scripts/ai/lib/dispatch.py", "sha256": "1b083b1025877385cb4e295234edd23a61a85aae554393fb87792c732e01dd92", "defects": ["D2", "D9", "D11"], "characterizations": [
-      {"kind": "block_absent", "start": "class AgentRunner:.*?cmd\\s*=\\s*\\[", "end": "\\]", "pattern": "--max-tokens"},
-      {"kind": "block_absent", "start": "class AgentRunner:", "end": "def _service_ok", "pattern": "writer[_ -]lease|stable_descriptor_lock"},
-      {"kind": "block_absent", "start": "heartbeat_path\\.with_suffix", "end": "_tmp\\.rename\\(heartbeat_path\\)", "pattern": "[\"']phase[\"']"}
-    ]},
-    {"path": "scripts/ai/lib/task_registry.py", "sha256": "70cee61f1873d3e4a1960ce69f8bc4ee5c0e59cde31813962dfaf1ac7d485dba", "defects": ["D8", "D11"], "characterizations": [
-      {"kind": "regex_present", "pattern": "os\\.kill\\(pid,\\s*signal\\.SIGTERM\\).*?update_status\\(task_id,\\s*\"cancelled\"\\).*?record_completion\\(task_id,\\s*\"cancelled\"\\)"},
-      {"kind": "regex_present", "pattern": "heartbeat_liveness[\"']?\\]?[ ]*=\\s*True|observed\\[\"heartbeat_liveness\"\\]\\s*=\\s*True"}
-    ]},
-    {"path": "scripts/ai/lib/task_config.py", "sha256": "115501ee9762fd47627c02b0161ed5d3a5e9c998aa8585cb3eeae560829e5f1c", "defects": ["D2", "D10"], "characterizations": [
-      {"kind": "regex_present", "pattern": "resolved_tokens\\s*=\\s*cls\\._resolve_tokens"}
-    ]},
-    {"path": "ai-stack/local-agents/agent_executor.py", "sha256": "988de1b5a9cfe2ec1ebf989cf49c9b6f4c3c758745a0217a77fd37b7a5184dc2", "defects": ["D3", "D4", "D6", "D7"], "characterizations": [
-      {"kind": "regex_present", "pattern": "from shared\\.llm_config import build_llama_payload, AGENT_TOOL_CALL_MAX_TOKENS, AGENT_TASK_MAX_TOKENS"},
-      {"kind": "regex_present", "pattern": "max_tokens=512.*?max_tokens=256"},
-      {"kind": "regex_present", "pattern": "_stream_start\\s*=\\s*time\\.monotonic\\(\\).*?first_token_timeout"},
-      {"kind": "regex_present", "pattern": "_IMPLEMENTATION_READS_HARD_LIMIT\\s*=\\s*_env_int\\([^\\n]*,\\s*12\\)"},
-      {"kind": "regex_present", "pattern": "_OBSERVATIONS_HARD_LIMIT\\s*=\\s*10"}
-    ]},
-    {"path": "ai-stack/mcp-servers/shared/llm_config.py", "sha256": "be5a098687c92c4345c80307175144887c262174afbf6da9fc2ca8012d961905", "defects": ["D3", "D10"], "characterizations": [
-      {"kind": "regex_count", "pattern": "AGENT_TOOL_CALL_MAX_TOKENS\\s*=\\s*256", "count": 1},
-      {"kind": "regex_count", "pattern": "AGENT_TASK_MAX_TOKENS\\s*=\\s*800", "count": 1}
-    ]},
-    {"path": "ai-stack/switchboard/switchboard.py", "sha256": "8744a455e6e3e196490d083ebb03bcb6caabc5d91157a17367cc11d6621ea230", "defects": ["D9"], "characterizations": [
-      {"kind": "regex_count", "pattern": "_local_sem\\s*=\\s*asyncio\\.Semaphore\\(LOCAL_CONCURRENCY\\)", "count": 1}
-    ]},
-    {"path": ".agent/skills/llm-config/SKILL.md", "sha256": "4cc186266a657d8ede85d87139a44c45c77e829e1bc321ebe428451d419605ee", "defects": ["D10"], "characterizations": [
-      {"kind": "regex_present", "pattern": "\"max_tokens\"\\s*:\\s*512"}
-    ]}
+    {
+      "path": "scripts/ai/aq-agent-loop",
+      "sha256": "e4fe98972fbddd21c7b5353fcba21d6bebf49fbdbde031302d94500e1e4c76db",
+      "defects": [
+        "D1",
+        "D4",
+        "D5"
+      ],
+      "characterizations": [
+        {
+          "kind": "regex_count",
+          "pattern": "task_id\\s*=\\s*f\"aq-\\{int\\(time\\.time\\(\\)\\)\\}\"",
+          "count": 1
+        },
+        {
+          "kind": "regex_present",
+          "pattern": "max\\(420\\.0,\\s*min\\(1800\\.0,\\s*float\\(timeout_secs\\)\\s*\\*\\s*0\\.5\\)\\)"
+        },
+        {
+          "kind": "regex_present",
+          "pattern": "_install_self_watchdog\\(_watchdog_secs\\)"
+        }
+      ]
+    },
+    {
+      "path": "scripts/ai/lib/dispatch.py",
+      "sha256": "1b083b1025877385cb4e295234edd23a61a85aae554393fb87792c732e01dd92",
+      "defects": [
+        "D2",
+        "D9",
+        "D11"
+      ],
+      "characterizations": [
+        {
+          "kind": "block_absent",
+          "start": "class AgentRunner:.*?cmd\\s*=\\s*\\[",
+          "end": "\\]",
+          "pattern": "--max-tokens"
+        },
+        {
+          "kind": "block_absent",
+          "start": "class AgentRunner:",
+          "end": "def _service_ok",
+          "pattern": "writer[_ -]lease|stable_descriptor_lock"
+        },
+        {
+          "kind": "block_absent",
+          "start": "heartbeat_path\\.with_suffix",
+          "end": "_tmp\\.rename\\(heartbeat_path\\)",
+          "pattern": "[\"']phase[\"']"
+        }
+      ]
+    },
+    {
+      "path": "scripts/ai/lib/task_registry.py",
+      "sha256": "70cee61f1873d3e4a1960ce69f8bc4ee5c0e59cde31813962dfaf1ac7d485dba",
+      "defects": [
+        "D8",
+        "D11"
+      ],
+      "characterizations": [
+        {
+          "kind": "regex_present",
+          "pattern": "os\\.kill\\(pid,\\s*signal\\.SIGTERM\\).*?update_status\\(task_id,\\s*\"cancelled\"\\).*?record_completion\\(task_id,\\s*\"cancelled\"\\)"
+        },
+        {
+          "kind": "regex_present",
+          "pattern": "heartbeat_liveness[\"']?\\]?[ ]*=\\s*True|observed\\[\"heartbeat_liveness\"\\]\\s*=\\s*True"
+        }
+      ]
+    },
+    {
+      "path": "scripts/ai/lib/task_config.py",
+      "sha256": "115501ee9762fd47627c02b0161ed5d3a5e9c998aa8585cb3eeae560829e5f1c",
+      "defects": [
+        "D2",
+        "D10"
+      ],
+      "characterizations": [
+        {
+          "kind": "regex_present",
+          "pattern": "resolved_tokens\\s*=\\s*cls\\._resolve_tokens"
+        }
+      ]
+    },
+    {
+      "path": "ai-stack/local-agents/agent_executor.py",
+      "sha256": "ad40178818172078c485d53fd10ef3a10afc7384ecf98b2dc6af7d2e25e44a98",
+      "defects": [
+        "D3",
+        "D4",
+        "D6",
+        "D7"
+      ],
+      "characterizations": [
+        {
+          "kind": "regex_present",
+          "pattern": "from shared\\.llm_config import build_llama_payload, AGENT_TOOL_CALL_MAX_TOKENS, AGENT_TASK_MAX_TOKENS"
+        },
+        {
+          "kind": "regex_present",
+          "pattern": "max_tokens=512.*?max_tokens=256"
+        },
+        {
+          "kind": "regex_present",
+          "pattern": "_stream_start\\s*=\\s*time\\.monotonic\\(\\).*?first_token_timeout"
+        },
+        {
+          "kind": "regex_present",
+          "pattern": "_IMPLEMENTATION_READS_HARD_LIMIT\\s*=\\s*_env_int\\([^\\n]*,\\s*12\\)"
+        },
+        {
+          "kind": "regex_present",
+          "pattern": "_OBSERVATIONS_HARD_LIMIT\\s*=\\s*10"
+        }
+      ]
+    },
+    {
+      "path": "ai-stack/mcp-servers/shared/llm_config.py",
+      "sha256": "be5a098687c92c4345c80307175144887c262174afbf6da9fc2ca8012d961905",
+      "defects": [
+        "D3",
+        "D10"
+      ],
+      "characterizations": [
+        {
+          "kind": "regex_count",
+          "pattern": "AGENT_TOOL_CALL_MAX_TOKENS\\s*=\\s*256",
+          "count": 1
+        },
+        {
+          "kind": "regex_count",
+          "pattern": "AGENT_TASK_MAX_TOKENS\\s*=\\s*800",
+          "count": 1
+        }
+      ]
+    },
+    {
+      "path": "ai-stack/switchboard/switchboard.py",
+      "sha256": "8744a455e6e3e196490d083ebb03bcb6caabc5d91157a17367cc11d6621ea230",
+      "defects": [
+        "D9"
+      ],
+      "characterizations": [
+        {
+          "kind": "regex_count",
+          "pattern": "_local_sem\\s*=\\s*asyncio\\.Semaphore\\(LOCAL_CONCURRENCY\\)",
+          "count": 1
+        }
+      ]
+    },
+    {
+      "path": ".agent/skills/llm-config/SKILL.md",
+      "sha256": "4cc186266a657d8ede85d87139a44c45c77e829e1bc321ebe428451d419605ee",
+      "defects": [
+        "D10"
+      ],
+      "characterizations": [
+        {
+          "kind": "regex_present",
+          "pattern": "\"max_tokens\"\\s*:\\s*512"
+        }
+      ]
+    }
   ],
   "defects": {
-    "D1": {"current": "same_second_identity_collision", "fixed": "collision_safe_propagated_identity"},
-    "D2": {"current": "outer_budget_not_bound_to_agent_loop", "fixed": "single_resolved_budget"},
-    "D3": {"current": "static_256_800_and_literal_overrides", "fixed": "turn_class_policy_budget"},
-    "D4": {"current": "queue_and_prefill_share_timer", "fixed": "phase_specific_silence_leases"},
-    "D5": {"current": "fixed_elapsed_watchdog", "fixed": "finite_epoch_with_progress_and_requeue"},
-    "D6": {"current": "novel_read_count_abort", "fixed": "duplicate_fingerprint_stagnation"},
-    "D7": {"current": "novel_observation_count_abort", "fixed": "context_budgeted_checkpoint"},
-    "D8": {"current": "cancelled_before_death_confirmation", "fixed": "linearizable_cancellation"},
-    "D9": {"current": "slots_poll_toctou_and_no_writer_lease", "fixed": "switchboard_admission_and_fenced_writer_lease"},
-    "D10": {"current": "budget_claim_drift", "fixed": "schema_validated_policy_provenance"},
-    "D11": {"current": "generic_heartbeat_without_phase", "fixed": "trusted_sequence_bound_phase_evidence"}
+    "D1": {
+      "current": "same_second_identity_collision",
+      "fixed": "collision_safe_propagated_identity"
+    },
+    "D2": {
+      "current": "outer_budget_not_bound_to_agent_loop",
+      "fixed": "single_resolved_budget"
+    },
+    "D3": {
+      "current": "static_256_800_and_literal_overrides",
+      "fixed": "turn_class_policy_budget"
+    },
+    "D4": {
+      "current": "queue_and_prefill_share_timer",
+      "fixed": "phase_specific_silence_leases"
+    },
+    "D5": {
+      "current": "fixed_elapsed_watchdog",
+      "fixed": "finite_epoch_with_progress_and_requeue"
+    },
+    "D6": {
+      "current": "novel_read_count_abort",
+      "fixed": "duplicate_fingerprint_stagnation"
+    },
+    "D7": {
+      "current": "novel_observation_count_abort",
+      "fixed": "context_budgeted_checkpoint"
+    },
+    "D8": {
+      "current": "cancelled_before_death_confirmation",
+      "fixed": "linearizable_cancellation"
+    },
+    "D9": {
+      "current": "slots_poll_toctou_and_no_writer_lease",
+      "fixed": "switchboard_admission_and_fenced_writer_lease"
+    },
+    "D10": {
+      "current": "budget_claim_drift",
+      "fixed": "schema_validated_policy_provenance"
+    },
+    "D11": {
+      "current": "generic_heartbeat_without_phase",
+      "fixed": "trusted_sequence_bound_phase_evidence"
+    }
   },
-  "identity": {"count": 10000, "same_time_ns": 1784127735000000000, "propagation": ["wrapper", "run", "event", "progress", "stream", "tool", "cancellation", "result"]},
+  "identity": {
+    "count": 10000,
+    "same_time_ns": 1784127735000000000,
+    "propagation": [
+      "wrapper",
+      "run",
+      "event",
+      "progress",
+      "stream",
+      "tool",
+      "cancellation",
+      "result"
+    ]
+  },
   "budget_vectors": [
-    {"class": "code", "expected": 4096}, {"class": "structured", "expected": 2048},
-    {"class": "research", "expected": 4096}, {"class": "tool_call", "expected": 768},
-    {"class": "repair", "expected": 1024}, {"class": "synthesis", "expected": 2048}
+    {
+      "class": "code",
+      "expected": 4096
+    },
+    {
+      "class": "structured",
+      "expected": 2048
+    },
+    {
+      "class": "research",
+      "expected": 4096
+    },
+    {
+      "class": "tool_call",
+      "expected": 768
+    },
+    {
+      "class": "repair",
+      "expected": 1024
+    },
+    {
+      "class": "synthesis",
+      "expected": 2048
+    }
   ],
-  "phase_vector": {"queue_elapsed_s": 1200, "prefill_tokens": 12000, "prefill_tps": 20.0, "cold_headroom_s": 120, "generation_elapsed_s": 3600, "generation_silence_s": 30},
-  "fairness": {
-    "now": 600, "aging_s": 100,
-    "items": [{"run_id": "old-low", "enqueued_at": 0, "priority": 0}, {"run_id": "new-high", "enqueued_at": 550, "priority": 5}, {"run_id": "mid", "enqueued_at": 300, "priority": 1}],
-    "expected_order": ["old-low", "new-high", "mid"]
+  "phase_vector": {
+    "queue_elapsed_s": 1200,
+    "prefill_tokens": 12000,
+    "prefill_tps": 20.0,
+    "cold_headroom_s": 120,
+    "generation_elapsed_s": 3600,
+    "generation_silence_s": 30
   },
-  "environment": {"declared_overrides": [], "undeclared_alias": "LOCAL_AGENT_UNREGISTERED_TIMEOUT"},
-  "clock_drift_seconds": [-300, 300],
-  "metrics": [
-    "phase_duration_seconds", "phase_silence_seconds", "progress_renewals_total",
-    "progress_rejections_total", "budget_provenance_total", "queue_age_seconds",
-    "slot_contention_latency_ms", "lease_contention_latency_ms", "identity_collisions_total",
-    "epoch_yields_total", "epoch_requeues_total", "cancellation_term_total",
-    "cancellation_kill_total", "cancellation_failures_total", "oom_cleanup_total",
-    "telemetry_integrity_rejections_total", "terminal_reasons_total",
-    "compaction_bytes_saved", "compaction_cycles_total"
+  "fairness": {
+    "now": 600,
+    "aging_s": 100,
+    "items": [
+      {
+        "run_id": "old-low",
+        "enqueued_at": 0,
+        "priority": 0
+      },
+      {
+        "run_id": "new-high",
+        "enqueued_at": 550,
+        "priority": 5
+      },
+      {
+        "run_id": "mid",
+        "enqueued_at": 300,
+        "priority": 1
+      }
+    ],
+    "expected_order": [
+      "old-low",
+      "new-high",
+      "mid"
+    ]
+  },
+  "environment": {
+    "declared_overrides": [],
+    "undeclared_alias": "LOCAL_AGENT_UNREGISTERED_TIMEOUT"
+  },
+  "clock_drift_seconds": [
+    -300,
+    300
   ],
-  "stable_digests": {"vectors": "2512115fca4745d728887e8c0ca4aa6c9e9fdef93164896ae13277ad3f06e822", "source_manifest": "73ae480f4b791bf6b0990862bbc94cfc840f6bc0e2111acd972ef97409aa3ec3", "fixed_contract": "d439cf7568df80d0d1081972f45f1361ee28124728b2a0d42588ba99b7377240"},
-  "sanitized_terminal_reasons": ["queue_timeout", "prefill_timeout", "generation_silence", "tool_timeout", "orphaned", "operator_cap", "cancelled", "cancel_failed", "context_overflow", "oom_cleanup", "phase_evidence_unavailable", "stagnation_duplicate_evidence", "capability_exhausted"]
+  "metrics": [
+    "phase_duration_seconds",
+    "phase_silence_seconds",
+    "progress_renewals_total",
+    "progress_rejections_total",
+    "budget_provenance_total",
+    "queue_age_seconds",
+    "slot_contention_latency_ms",
+    "lease_contention_latency_ms",
+    "identity_collisions_total",
+    "epoch_yields_total",
+    "epoch_requeues_total",
+    "cancellation_term_total",
+    "cancellation_kill_total",
+    "cancellation_failures_total",
+    "oom_cleanup_total",
+    "telemetry_integrity_rejections_total",
+    "terminal_reasons_total",
+    "compaction_bytes_saved",
+    "compaction_cycles_total"
+  ],
+  "stable_digests": {
+    "vectors": "2512115fca4745d728887e8c0ca4aa6c9e9fdef93164896ae13277ad3f06e822",
+    "source_manifest": "df4d94d97dd61ff3e3e6bf0acd4296fa11e9d7d553ffe3085351f8388ec6fff9",
+    "fixed_contract": "d439cf7568df80d0d1081972f45f1361ee28124728b2a0d42588ba99b7377240"
+  },
+  "sanitized_terminal_reasons": [
+    "queue_timeout",
+    "prefill_timeout",
+    "generation_silence",
+    "tool_timeout",
+    "orphaned",
+    "operator_cap",
+    "cancelled",
+    "cancel_failed",
+    "context_overflow",
+    "oom_cleanup",
+    "phase_evidence_unavailable",
+    "stagnation_duplicate_evidence",
+    "capability_exhausted"
+  ]
 }
