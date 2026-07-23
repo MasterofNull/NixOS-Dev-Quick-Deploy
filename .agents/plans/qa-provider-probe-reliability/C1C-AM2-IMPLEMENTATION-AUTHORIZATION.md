@@ -59,3 +59,8 @@ A1-AM3 four-file recovery remains NON-ACTIVATABLE pending C1C-AM2 acceptance/com
 rebind. A2 remains blocked.
 
 `RECORD: PREPARED_ONLY / SINGLE USE. Implementation and all live actions remain unauthorized.`
+
+
+## Owner Activation Record (reconciled 2026-07-23)
+**Activation state: ACTIVATED** (record reconciled from the authoritative event ledger).
+Owner activation recorded as a `pulse.append` in `.agents/events/*.jsonl` — subject `auth-qa-provider-probe-reliability-c1c-am2-20260719`, event_id `a0ffc92911844ec7963762a60d5848e2`, ts `2026-07-19T03:39:01Z`. Any `PREPARED_ONLY / NOT ACTIVATED` status earlier in this record is a **stale header** predating the activation; the owner activation and any independently-accepted, committed candidate stand. Reconciled by fable-5 (no scope, ceiling, or hash change — header hygiene only).

@@ -140,3 +140,8 @@ cutover, or rollback. Those require the separate paired live-vetting grant.
 `RECORD: PREPARED_ONLY AND NOT ACTIVATABLE. Accepted A1 and runtime-surface adjacency are now bound;
 independent flagship review of this document plus A2-ADJACENCY-REBIND-R2.md, and explicit owner
 activation, remain mandatory.`
+
+
+## Owner Activation Record (reconciled 2026-07-23)
+**Activation state: ACTIVATED** (record reconciled from the authoritative event ledger).
+Owner activation recorded as a `pulse.append` in `.agents/events/*.jsonl` — subject `auth-qa-provider-probe-reliability-a2-am1`, event_id `0638253e796d4b72bba20ce4166f1013`, ts `2026-07-20T14:52:53Z`. Any `PREPARED_ONLY / NOT ACTIVATED` status earlier in this record is a **stale header** predating the activation; the owner activation and any independently-accepted, committed candidate stand. Reconciled by fable-5 (no scope, ceiling, or hash change — header hygiene only).

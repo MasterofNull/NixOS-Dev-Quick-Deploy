@@ -140,3 +140,8 @@ acceptance and commit, then receives a separate adjacency rebind and activation.
 `RECORD: PREPARED_ONLY / NON-ACTIVATABLE. Missing independent flagship PASS over
 A1-AM3-FINAL-REBIND.md and missing owner activation prohibit A1-AM3 activation; A2 and every live
 action remain unauthorized.`
+
+
+## Owner Activation Record (reconciled 2026-07-23)
+**Activation state: ACTIVATED** (record reconciled from the authoritative event ledger).
+Owner activation recorded as a `pulse.append` in `.agents/events/*.jsonl` — subject `auth-qa-provider-probe-reliability-a1-am3`, event_id `a719801e943d4383b05d9cbaa7029dc7`, ts `2026-07-19T14:41:17Z`. Any `PREPARED_ONLY / NOT ACTIVATED` status earlier in this record is a **stale header** predating the activation; the owner activation and any independently-accepted, committed candidate stand. Reconciled by fable-5 (no scope, ceiling, or hash change — header hygiene only).

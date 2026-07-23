@@ -51,3 +51,8 @@ commits only after that PASS.
 
 `RECORD: PREPARED / single use. Activation under owner standing authorization names this hash, the
 implementer identity, and a ≤24h window.`
+
+
+## Owner Activation Record (reconciled 2026-07-23)
+**Activation state: ACTIVATED** (record reconciled from the authoritative event ledger).
+Owner activation recorded as a `pulse.append` in `.agents/events/*.jsonl` — subject `auth-local-inference-l2b-b-rev`, event_id `6b738ae183f341dc8d6ae386ff6981cb`, ts `2026-07-22T16:44:07Z`. Any `PREPARED_ONLY / NOT ACTIVATED` status earlier in this record is a **stale header** predating the activation; the owner activation and any independently-accepted, committed candidate stand. Reconciled by fable-5 (no scope, ceiling, or hash change — header hygiene only).

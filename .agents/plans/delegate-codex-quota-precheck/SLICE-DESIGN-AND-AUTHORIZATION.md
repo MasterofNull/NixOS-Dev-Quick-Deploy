@@ -82,3 +82,8 @@ staging.
 
 `RECORD: PREPARED_ONLY. Authorizes no edit until owner activation; implementation is staged for codex
 binding acceptance, not committed, and all live actions remain unauthorized.`
+
+
+## Owner Activation Record (reconciled 2026-07-23)
+**Activation state: ACTIVATED** (record reconciled from the authoritative event ledger).
+Owner activation recorded as a `pulse.append` in `.agents/events/*.jsonl` — subject `auth-delegate-codex-quota-precheck`, event_id `e2e1c83f82a6420ebe790ba31b993da3`, ts `2026-07-20T14:52:53Z`. Any `PREPARED_ONLY / NOT ACTIVATED` status earlier in this record is a **stale header** predating the activation; the owner activation and any independently-accepted, committed candidate stand. Reconciled by fable-5 (no scope, ceiling, or hash change — header hygiene only).

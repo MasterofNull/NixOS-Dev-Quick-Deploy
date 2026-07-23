@@ -84,3 +84,8 @@ authorization; the activation event is recorded in `.agent/collaboration/PULSE.l
 implementer = claude-subagent-vf-7-implementer; contract_soundness_reviewed_hash = 71c5df38e736c48d86371c9aff294299e1c1dd0896adb80e4186b762547a1741; acceptance_lane = codex`
 
 The 5-file ceiling, invariants, and verification gates in Sections 2–4 remain binding and unchanged.
+
+
+## Owner Activation Record (reconciled 2026-07-23)
+**Activation state: ACTIVATED** (record reconciled from the authoritative event ledger).
+Owner activation recorded as a `pulse.append` in `.agents/events/*.jsonl` — subject `auth-verified-factory-vf-7`, event_id `6b738ae183f341dc8d6ae386ff6981cb`, ts `2026-07-22T16:44:07Z`. Any `PREPARED_ONLY / NOT ACTIVATED` status earlier in this record is a **stale header** predating the activation; the owner activation and any independently-accepted, committed candidate stand. Reconciled by fable-5 (no scope, ceiling, or hash change — header hygiene only).

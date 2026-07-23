@@ -53,3 +53,8 @@ commits only after that PASS.
 
 `RECORD: PREPARED_ONLY / single use. Activation under owner standing authorization names this exact
 SHA-256, the implementer identity, and a ≤24h window.`
+
+
+## Owner Activation Record (reconciled 2026-07-23)
+**Activation state: ACTIVATED** (record reconciled from the authoritative event ledger).
+Owner activation recorded as a `pulse.append` in `.agents/events/*.jsonl` — subject `auth-delegate-codex-quota-rev`, event_id `099715d110ed459b92ca169133bcaea2`, ts `2026-07-20T15:22:22Z`. Any `PREPARED_ONLY / NOT ACTIVATED` status earlier in this record is a **stale header** predating the activation; the owner activation and any independently-accepted, committed candidate stand. Reconciled by fable-5 (no scope, ceiling, or hash change — header hygiene only).
