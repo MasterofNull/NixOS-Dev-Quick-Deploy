@@ -109,3 +109,43 @@ the eventual PREPARED_ONLY authorization small, fail-closed, and collision-free.
 Independent design review of this packet (resolve §6), then draft
 `B1-PARITY-IMPLEMENTATION-AUTHORIZATION.md` (PREPARED_ONLY, 2-file ceiling, frozen
 predecessor hashes, single-use owner activation) matching the L2B-B / B2-C1 format.
+
+---
+## 8. Design Review Resolution (2026-07-23, independent Opus reviewer)
+Review: `CHAT-BATCH-PARITY-DESIGN-REVIEW.md` — VERDICT: REVISE (additive, within the
+2-file ceiling); scope, offline-first strategy, and ceiling APPROVED. Corrections
+carried into the authorization:
+
+1. **§6.1 RESOLVED — harness-drive (option a), ceiling stays 2 NEW / 0 MODIFY.**
+   Verified in code: `aq-chat`'s `_build_coordinator_delegate_payload` /
+   `_build_fast_path_payload` read only `self.temperature` and
+   `self.local_tools_enabled` in their bodies (`self.switchboard_url` is used at the
+   send site, not the builder). So the oracle drives them via an `importlib`-loaded
+   `aq-chat` module + a `SimpleNamespace` stub self (never running `AQChat.__init__`)
+   — zero aq-chat modification. Extraction (option b) stays a separate future
+   micro-slice, triggered ONLY if the tier0 import proves infeasible.
+2. **BLOCKING FIX — add a pure canonical-projection layer.** §4's "byte-equivalence
+   on PRD line-480 fields" is not directly testable: the three builders emit DISJOINT
+   OpenAI/llama WIRE payloads, and `mode`/`fallback`/`version` have no producer in
+   any of them. Line 480 is the CONTRACT's canonical request schema, not the wire
+   payload. The oracle must therefore include a pure `canonical_projection(adapter,
+   wire_payload) -> {line-480 schema}` mapping (lives INSIDE the oracle test file —
+   no third file), and compare on the PROJECTION with a legitimate-difference
+   allowlist. Fields with no producer are asserted absent-in-all (parity by absence),
+   not fabricated.
+3. **Import the REAL builder.** Import `llm_config.build_llama_payload` (the L2B
+   canonical builder), NOT `dispatch.py:64`'s ImportError fallback clone.
+4. **§6.2 difference lists (from review):** legitimate/allowlist = transport framing,
+   stream flags, usage-option presence (compare DECODED content+usage, never
+   framing). MUST-FAIL divergences = `enable_thinking`, `frequency_penalty`,
+   `temperature`, budgets, role/profile/authority, sampling params, model-id.
+   Expected first-run divergences (`max_tokens` 1024-vs-budget;
+   `repeat_penalty`/`repeat_last_n` set-vs-unset) are VALID EVIDENCE that scopes
+   L3/L4, NOT slice failure — the oracle records them as a typed divergence report.
+5. **§6.3 confirmed:** the offline oracle satisfies the B1 shadow-exit item but is
+   NOT license for L4 duplicated-logic removal (that gates on a later live-shadow
+   parity pass). Sharpened scope: this slice is the offline shadow of PRD §14
+   Required-Suite #2 (golden resolver matrix).
+
+**Status after resolution: APPROVED-FOR-AUTHORIZATION** (corrections above are
+binding inputs to the authorization; ceiling unchanged at 2 new files).
