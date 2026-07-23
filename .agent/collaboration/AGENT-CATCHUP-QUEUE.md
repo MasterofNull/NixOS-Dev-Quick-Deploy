@@ -41,3 +41,10 @@ Generalizes the former `CODEX-REVIEW-QUEUE.md` to ALL agents. SSOT principle:
   (do NOT silently rewrite committed history).
 - Superseded lane-specific note: the earlier `CODEX-REVIEW-QUEUE.md` is retained as history; Codex is
   now one eligible lane among several, not the sole acceptance authority.
+
+## local-embed-context program (queued 2026-07-23 for confirmatory audit)
+Committed while Codex quota-down; independent acceptance via Antigravity (2b design lane) + fresh Opus. On Codex return, confirmatory-audit these subjects against current bytes:
+- `6b018b00` Slice 1 aq-local-review (chunked review tool) + `457fd467` DIRECT_MAX_TOKENS/timeout fix
+- `44530e73` Slice 2a context_cache.py (embed cache library)
+- `0846b83f` Slice 2b — agent_executor prune-path hook + local-delegation-reliability-golden.json re-pin (agent_executor sha ad401788, source_manifest df4d94d9). **Priority:** this re-pinned the reliability track's OWN golden manifest — the reliability-track authority should confirm the re-pin is honest (defect characterizations D3/D4/D6/D7 intact, matches_frozen True) and net-clean (HEAD baseline fails identical test_02/15/16 = pre-existing task_registry drift).
+Advisory unless a real defect surfaces → then a bounded follow-up, never rewrite history.
