@@ -15,7 +15,7 @@ degrades to an in-memory findings list — the review MUST still complete.
 
 Usage:
     aq-local-review --target <file> --question "<text>" [--out <file>]
-                     [--chunk-chars 5500] [--timeout 300] [--dry-run] [--json]
+                     [--chunk-chars 5500] [--timeout 600] [--dry-run] [--json]
 """
 
 import argparse
@@ -114,10 +114,11 @@ def run_local(prompt_text: str, timeout: int, max_tokens: int = 600) -> str:
     the completed task's output text. Raises RuntimeError on any failure — the
     caller decides whether that aborts the review.
 
-    max_tokens bounds the generation length via LLAMA_MAX_TOKENS: on the APU the
-    local model generates at ~10 tok/s, so an unbounded review of a code chunk can
-    run many minutes and blow the timeout (observed: one chunk > 460s). Capping the
-    output keeps each map call bounded and fast; findings are meant to be concise."""
+    max_tokens bounds the generation length (see the DIRECT_MAX_TOKENS note below):
+    on the APU the local model generates at ~10 tok/s, so an unbounded review of a
+    code chunk can run many minutes and blow the timeout (observed: one chunk >460s,
+    then every chunk timing out at 4096 tokens). Capping the output keeps each map
+    call bounded and fast; findings are meant to be concise."""
     fd, tmp_path = tempfile.mkstemp(suffix=".prompt.txt", prefix="aq-local-review-")
     try:
         with os.fdopen(fd, "w", encoding="utf-8") as tf:
@@ -126,7 +127,14 @@ def run_local(prompt_text: str, timeout: int, max_tokens: int = 600) -> str:
             DELEGATE_SCRIPT, "--mode", "direct", "--wait",
             "--timeout", str(timeout), "--prompt-file", tmp_path,
         ]
-        _env = {**os.environ, "LLAMA_MAX_TOKENS": str(max_tokens)}
+        # delegate-to-local --mode direct resolves its generation cap from
+        # DIRECT_MAX_TOKENS (default 4096), NOT LLAMA_MAX_TOKENS — setting only the
+        # latter left generation unbounded, so a chunk review ran to ~4096 tokens
+        # and blew the timeout. Set DIRECT_MAX_TOKENS (the var direct mode reads);
+        # keep LLAMA_MAX_TOKENS too as a belt-and-braces fallback for other modes.
+        _env = {**os.environ,
+                "DIRECT_MAX_TOKENS": str(max_tokens),
+                "LLAMA_MAX_TOKENS": str(max_tokens)}
         proc = subprocess.run(argv, capture_output=True, text=True,
                               timeout=timeout + 60, env=_env)
     finally:
@@ -249,7 +257,9 @@ def parse_args(argv=None):
     p.add_argument("--question", required=True, help="Focused review question")
     p.add_argument("--out", default=None, help="Write verdict here (default: stdout)")
     p.add_argument("--chunk-chars", type=int, default=5500, help="Approx chars per chunk (default 5500)")
-    p.add_argument("--timeout", type=int, default=300, help="Per local call timeout, seconds (default 300)")
+    p.add_argument("--timeout", type=int, default=600,
+                   help="Per local call timeout, seconds (default 600 — generous for "
+                        "constrained/slow hardware; bounded generation keeps calls finite)")
     p.add_argument("--dry-run", action="store_true", help="Print the chunk plan + prompts, make NO local/embed calls")
     p.add_argument("--json", action="store_true", help="Emit JSON instead of plain text")
     return p.parse_args(argv)
