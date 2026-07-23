@@ -64,3 +64,23 @@ still runs, just without top-K retrieval (all findings go to REDUCE).
 - Embed-cache correctness (retrieval relevance/hit-rate) is unmeasured here —
   Slice 1 acceptance is "coverage-complete verdict, fail-open when `:8081`
   down", not retrieval quality; that's Slices 2–4's measured territory.
+
+---
+## Follow-up fixes (2026-07-23, from real self-tests on the constrained APU)
+1. **Bounded generation actually enforced.** `delegate-to-local --mode direct`
+   reads `DIRECT_MAX_TOKENS` (default 4096), NOT `LLAMA_MAX_TOKENS`. The first fix
+   set only the latter, so generation stayed unbounded and every chunk ran to
+   ~4096 tokens and timed out. run_local now sets `DIRECT_MAX_TOKENS`
+   (+ LLAMA_MAX_TOKENS as fallback) → map calls are genuinely capped (600 tok) and
+   finite.
+2. **Default per-call timeout raised to 600s** for constrained/slow hardware.
+3. **Single-slot contention (known limitation, issues-backlog):** the APU has ONE
+   serialized local inference slot. Running aq-local-review concurrently with other
+   local-model users (e.g. tier0 phase0 QA) gets rejected ("banded slot"). Run it
+   SERIALIZED via `aq-loop-queue --no-fanout` (overnight/idle), never concurrently.
+   It is an overnight/queue tool, not interactive-concurrent. The per-chunk
+   fail-open handles contention gracefully (honest "no verdict" rather than crash),
+   but a real verdict needs an idle local slot.
+
+The per-chunk fail-open + all-fail honest-report behavior is validated by both real
+runs (it continued past every failure and reported truthfully).
