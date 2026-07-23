@@ -16,16 +16,33 @@ released/reclaimed by removing that file. Fail-closed throughout: any
 unexpected OSError during the CAS refuses the operation rather than
 silently allowing a double-claim.
 
+Stale-claim reclaim additionally serializes against every other mutation
+of the same slice's claim file via a per-slice advisory `flock` (see
+`_locked_claim`): both `_write_claim_exclusive` (fresh O_CREAT|O_EXCL
+create) and `_reclaim_stale` (expired-claim rename) take this lock before
+touching a given claim path, so a reclaimer's "is this still expired?"
+check and the rename that acts on it happen as one atomic step relative to
+every other claimant — no other thread can install or evict a claim at
+that path in between. This closes a narrow TOCTOU where an unlocked
+read-then-unlink-by-path (or an unlocked read-then-rename) could let a
+"straggler" reclaimer — one holding a now-outdated read of an
+already-expired claim — clobber a claim a different actor legitimately
+installed in the meantime. See
+`.agents/plans/agent-agnostic-factory/ROUTER-CORE-ACCEPTANCE.md` Item 1.
+
 No network, no credentials.
 """
 
 from __future__ import annotations
 
 import argparse
+import contextlib
+import fcntl
 import json
 import os
 import sys
 import time
+import uuid
 from datetime import datetime, timezone
 from pathlib import Path
 from typing import Any
@@ -89,6 +106,51 @@ def _emit(payload: dict[str, Any], as_json: bool) -> int:
     return 0 if payload.get("ok", True) else 1
 
 
+def _slice_lock_path(path: Path) -> Path:
+    return path.with_name(f".{path.name}.lock")
+
+
+@contextlib.contextmanager
+def _locked_claim(path: Path):
+    """Serialize every mutation of ONE slice's claim file against every
+    other mutation of that same claim file, via a per-slice advisory
+    `flock`. Both `_write_claim_exclusive` (fresh O_CREAT|O_EXCL create)
+    and `_reclaim_stale` (expired-claim rename) take this lock before
+    touching `path`.
+
+    This is what makes `_reclaim_stale`'s "is this claim still expired?"
+    check race-safe against the rename that immediately follows it: while
+    the lock is held, no other thread can be inside its own locked section
+    for the same path, so nothing else can install a fresh claim (a
+    concurrent create) or evict/replace the current one (a concurrent
+    reclaim) between the check and the rename. What the check observes is
+    still true one Python statement later — there is no read-then-act gap
+    left to race, unlike a plain read that isn't lock-protected.
+
+    Advisory `flock` is sufficient here (not `fcntl.lockf`/POSIX record
+    locks) because every mutator in this file — the only writers of claim
+    paths — goes through this same helper; nothing outside this process
+    family touches `.agent/collaboration/slice-claims/`. `cmd_release`'s
+    unlink is intentionally NOT lock-gated: it races safely against a
+    concurrent reclaim's rename because unlink() and rename() are each
+    individually atomic on the same directory entry — whichever runs first
+    wins cleanly and the other gets FileNotFoundError, with no torn state
+    possible either way.
+    """
+    lock_path = _slice_lock_path(path)
+    lock_path.parent.mkdir(parents=True, exist_ok=True)
+    fd = os.open(str(lock_path), os.O_CREAT | os.O_RDWR, 0o644)
+    try:
+        fcntl.flock(fd, fcntl.LOCK_EX)
+        yield
+    finally:
+        try:
+            fcntl.flock(fd, fcntl.LOCK_UN)
+        except OSError:
+            pass
+        os.close(fd)
+
+
 def _write_claim_exclusive(path: Path, record: dict[str, Any]) -> bool:
     """Create `path` iff it does not already exist. O_CREAT|O_EXCL open is
     the atomic create-side CAS primitive (POSIX guarantees the open()
@@ -97,44 +159,97 @@ def _write_claim_exclusive(path: Path, record: dict[str, Any]) -> bool:
     aq-antigravity-inbox but for a from-scratch claim file rather than an
     already-existing pending drop. Fail-closed: any OSError other than
     "already exists" propagates so the caller refuses to proceed.
+
+    Runs inside `_locked_claim` alongside `_reclaim_stale` — see that
+    function's docstring for why a fresh create needs to serialize against
+    a concurrent stale-reclaim on the same path.
     """
     path.parent.mkdir(parents=True, exist_ok=True)
-    fd = None
-    try:
-        fd = os.open(str(path), os.O_CREAT | os.O_EXCL | os.O_WRONLY, 0o644)
-    except FileExistsError:
-        return False
-    try:
-        with os.fdopen(fd, "w", encoding="utf-8") as fh:
-            fh.write(json.dumps(record, indent=2, sort_keys=True) + "\n")
-    except OSError:
-        # Fail-closed: writing the payload failed after create — remove the
-        # partial claim rather than leave a corrupt lock nobody can trust.
+    with _locked_claim(path):
+        fd = None
         try:
-            path.unlink()
+            fd = os.open(str(path), os.O_CREAT | os.O_EXCL | os.O_WRONLY, 0o644)
+        except FileExistsError:
+            return False
+        try:
+            with os.fdopen(fd, "w", encoding="utf-8") as fh:
+                fh.write(json.dumps(record, indent=2, sort_keys=True) + "\n")
         except OSError:
-            pass
-        raise
-    return True
+            # Fail-closed: writing the payload failed after create — remove
+            # the partial claim rather than leave a corrupt lock nobody can
+            # trust.
+            try:
+                path.unlink()
+            except OSError:
+                pass
+            raise
+        return True
 
 
 def _reclaim_stale(path: Path, slice_id: str) -> dict[str, Any] | None:
     """Atomically remove an expired claim so a fresh acquire can proceed.
 
-    Reads the claim, confirms it is expired, then unlinks it. The unlink
-    itself is the CAS: if another process already reclaimed/replaced it,
-    FileNotFoundError means we lost the race and must not proceed as if we
-    own the reclaim — the caller re-attempts the normal exclusive-create
-    path, which will correctly fail-closed against whatever now holds it.
+    RACE-SAFETY (lock-protected re-verify-then-rename, not a bare
+    read-then-unlink/rename-by-path):
+
+    An earlier version of this function read the claim, confirmed it was
+    expired, then unlinked (and later, a still-unsafe revision, renamed) it
+    BY PATH with no synchronization against other mutators. That action was
+    not protected from a concurrent actor installing a FRESH claim at the
+    same path between the confirming read and the unlink/rename — the
+    unlink/rename would then destroy that fresh claim instead, silently
+    clobbering a legitimate holder (the exact double-claim this tool exists
+    to prevent). Worse, a purely content-bound "rename blind, then detect a
+    mismatch and try to restore" design still has a residual gap: the
+    restore itself can lose to a THIRD concurrent actor grabbing the
+    momentarily-freed path, permanently orphaning whichever claim got
+    caught in the shuffle — confirmed empirically under real multi-thread
+    contention (a raw stress harness with 6 racing threads against one
+    already-expired claim reproduced two believed-holders in ~5% of runs
+    before this fix). See
+    `.agents/plans/agent-agnostic-factory/ROUTER-CORE-ACCEPTANCE.md` Item 1.
+
+    Fix: hold `_locked_claim(path)` across BOTH the expiry re-check and the
+    rename that acts on it. Because every mutator of this path (this
+    function and `_write_claim_exclusive`) takes the same per-slice lock,
+    nothing else can be mid-mutation of `path` while we hold it — so the
+    fact we just observed ("this claim is expired") is still true at the
+    very next statement, and the rename can never grab anything other than
+    exactly the expired claim we just confirmed. No post-hoc content
+    comparison or restore-on-mismatch is needed, because there is nothing
+    left to mismatch: by construction, whatever is at `path` when the
+    rename executes IS what `_load_claim` just read, one statement earlier,
+    under the same lock.
+
+    If a straggler reaches this function after the world has already moved
+    on (someone else reclaimed it, or a fresh claim was installed on a now-
+    free path), its lock-protected re-read sees that directly — either
+    `path` is gone (`_load_claim` returns `None`) or it holds a non-expired
+    claim — and it no-ops without ever attempting a rename. Nothing is ever
+    evicted "speculatively."
+
+    Any OSError other than the expected FileNotFoundError propagates
+    (fail-closed) rather than being silently swallowed, matching the
+    contract `_write_claim_exclusive` uses elsewhere in this file.
     """
-    claim = _load_claim(path)
-    if claim is None or not _is_expired(claim):
-        return None
-    try:
-        path.unlink()
-    except FileNotFoundError:
-        return None  # someone else reclaimed it first — not our stale claim to clear
-    return claim
+    with _locked_claim(path):
+        claim = _load_claim(path)
+        if claim is None or not _is_expired(claim):
+            return None  # already gone, or already replaced by a fresh claim
+
+        tmp_path = path.with_name(f".{path.name}.reclaim.{os.getpid()}.{uuid.uuid4().hex}")
+        try:
+            os.rename(path, tmp_path)
+        except FileNotFoundError:
+            # Should not happen under the lock (nothing else can be
+            # concurrently mutating `path`), but fail closed rather than
+            # assume success if it somehow does.
+            return None
+        try:
+            tmp_path.unlink()
+        except OSError:
+            pass  # non-fatal cleanup — path is free either way
+        return claim
 
 
 def cmd_acquire(args: argparse.Namespace) -> int:
@@ -183,7 +298,15 @@ def cmd_acquire(args: argparse.Namespace) -> int:
     # the exclusive create exactly once more).
     existing = _load_claim(path)
     if existing is not None and not existing.get("_corrupt") and _is_expired(existing):
-        reclaimed = _reclaim_stale(path, slice_id)
+        try:
+            reclaimed = _reclaim_stale(path, slice_id)
+        except OSError as exc:
+            # Fail-closed: the reclaim's CAS machinery itself broke — refuse
+            # rather than assume it's safe to proceed as if unclaimed.
+            return _emit(
+                {"ok": False, "reason": "cas-error", "error": str(exc), "slice_id": slice_id},
+                args.json,
+            )
         if reclaimed is not None:
             try:
                 created = _write_claim_exclusive(path, record)
