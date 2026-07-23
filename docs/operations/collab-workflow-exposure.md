@@ -98,8 +98,16 @@ and the safeguard + monitoring/control point on each flow. Companion to
 
 ## Known gaps (this map stays honest)
 - Stages 5–6 not automated (manual/orchestrator today).
-- Antigravity inbox lane: harness side (drop dir + protocol) to be built; the IDE must be configured
-  to WATCH the inbox (IDE-side rule) — that config is the operator's, using the IDE's own OAuth.
+- Antigravity inbox lane: harness side (drop dir + protocol) is BUILT and verified; the IDE must be
+  configured to WATCH the inbox (IDE-side rule) — that config is the operator's, using the IDE's own
+  OAuth. **Boundary (honest):** the harness can drop a task, report lane liveness, and *nudge* the
+  running IDE (`aq-antigravity-inbox wake` opens the inbox folder in the reused IDE window so the
+  pending drop is surfaced); it CANNOT drive the in-IDE Gemini agent to actually perform + write the
+  review — that action runs under the operator's OAuth inside the GUI. So "IDE running but no
+  inbox-watch workflow" means: the IDE is up, but its operator-side watch rule / agent is not
+  consuming drops. The wake nudge argv was corrected 2026-07-23: the prior
+  `antigravity chat --mode agent` was inert (the IDE is a VS Code/Electron fork with no `chat`
+  subcommand); it now opens the inbox folder (a valid, effect-having surface action).
 - `aq-collab-round`: `--aggregate` synthesis, local-verdict auto-extract, PASS-2 multi-pass — TODO.
 
 ## Role & Tool auto-selection — WHERE and WHEN (with code anchors)
