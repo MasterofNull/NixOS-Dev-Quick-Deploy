@@ -96,8 +96,44 @@ and the safeguard + monitoring/control point on each flow. Companion to
 ## Round-driver notes
 - `aq-collab-round` now INLINES the `--target` artifact into the fan-out prompt (local[Qwen] chunk-reads a --target file and burns its run; inlining fixes it) — live finding from the f1 round.
 
+## Passing large context to the LOCAL lane (context budget + strategy)
+Local (on-host APU) runs with a hard ~12000-char (~3000-token) context budget
+(`agent_executor._CTX_CHAR_BUDGET`) because Qwen3-35B re-prefills the *entire*
+context on every call (SWA, no KV reuse) — at ~10 tok/s a 7k-token context is
+~12 min/call, so context is capped for latency. Consequences + the tiered
+strategy for feeding it large content:
+
+1. **Bounded inline slice (implemented).** For a small, self-contained artifact,
+   inline ≤ `LOCAL_INLINE_CAP` (7000 chars) into the local prompt so the task +
+   system + the model's reasoning still fit without triggering the pinned+sliding
+   prune. Local also gets LEAF-NODE rules: never read more files (reading evicts
+   prior content — the model then sees fragments, believes the content is
+   "compacted", loops re-reading, and abstains: the observed f1/dispatch-integration
+   failure), never delegate/hand off, judge only what is inlined, give a decisive
+   *scoped* verdict over an abstention. One fast call. Not a solution for genuinely
+   large files.
+2. **Chunked map-reduce (the scalable answer — TODO).** For content that must be
+   FULLY covered but exceeds the budget (whole-file review/analysis): split into
+   budget-fitting chunks (~5–6k chars), MAP one *fast small-context* local call per
+   chunk with the focused question → per-chunk finding, then REDUCE (local or
+   orchestrator) the findings into one verdict. N fast calls beat one impossible
+   huge call. Per-chunk findings persist via the working-memory cache (below) so
+   the reduce step retrieves them instead of holding all chunks in context.
+3. **Agentic cache / RAG (complementary).** For cross-call memory and
+   retrieval-style questions over a large corpus (not full coverage): embed chunks
+   once (:8081 → Qdrant) and let local RETRIEVE only the relevant chunk per
+   sub-question via `query_aidb`/`hybrid_search`, rather than stuffing everything in
+   context. `_store_prune_checkpoint → get_working_memory` already persists evicted
+   findings — a weak form of this that map-reduce's reduce step can build on.
+
+Rule of thumb: **whole-artifact review → map-reduce chunking; targeted Q&A over a
+big corpus → RAG retrieval; small artifact → bounded inline.** Never grow the
+inline cap to force-fit — that just moves the eviction, it doesn't remove it.
+
 ## Known gaps (this map stays honest)
 - Stages 5–6 not automated (manual/orchestrator today).
+- Local large-context: bounded-inline + leaf-node rules shipped; chunked map-reduce
+  (item 2 above) still TODO — until then, hand local only budget-fitting review slices.
 - Antigravity inbox lane: harness side (drop dir + protocol) is BUILT and verified; the IDE must be
   configured to WATCH the inbox (IDE-side rule) — that config is the operator's, using the IDE's own
   OAuth. **Boundary (honest):** the harness can drop a task, report lane liveness, and *nudge* the
