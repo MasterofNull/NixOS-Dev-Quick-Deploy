@@ -426,10 +426,24 @@ def _dispatch_antigravity(name: str, prompt_file: Path) -> str:
             {"last_drop": {"name": f"{name}.md", "ts": time.time()}}))
     except Exception:
         pass
+    # AUTO-TRIGGER: nudge the IDE agent to process this drop now, removing the
+    # manual-nudge friction. `aq-antigravity-inbox wake` self-gates on the precise
+    # proc-liveness check — it runs `antigravity chat --mode agent <strict scope
+    # prompt>` only when a real IDE process is live, else it is a harmless
+    # passive-drop no-op. Fire-and-forget; never let it block or fail the dispatch.
+    triggered = ""
+    try:
+        subprocess.Popen(
+            [str(SCRIPTS / "aq-antigravity-inbox"), "wake", name, "--actor", "aq-collab-round"],
+            stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL,
+        )
+        triggered = " (auto-triggered)"
+    except Exception:
+        pass
     arch = f" (archived {archived} stale)" if archived else ""
     if live:
-        return f"{marker} (IDE consuming — {why}){arch}"
-    return f"{marker} UNAVAILABLE: {why}{arch}"
+        return f"{marker} (IDE consuming — {why}){triggered}{arch}"
+    return f"{marker} UNAVAILABLE: {why}{triggered}{arch}"
 
 
 def cmd_open(args) -> int:

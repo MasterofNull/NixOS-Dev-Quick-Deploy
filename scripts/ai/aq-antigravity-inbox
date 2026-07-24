@@ -18,16 +18,29 @@ REPO = Path(__file__).resolve().parents[2]
 INBOX = REPO / ".agent" / "collaboration" / "antigravity-inbox"
 STATE = INBOX / ".lane-state.json"
 
-# Fixed argv for the CLI wake nudge (Rule 7: never string-interpolate task
-# content into a shelled-out command — the only variable, INBOX, is a fixed
-# harness path, not task input). The prior value
-# `["antigravity","chat","--reuse-window","--mode","agent"]` was inert: the
-# Antigravity IDE is a VS Code / Electron fork whose CLI has no `chat`
-# subcommand and no `--mode` flag, so the nudge accepted the args and did
-# nothing (opened no agent, surfaced no task). This opens the watched inbox
-# folder in the already-running IDE window so the pending drop is actually
-# surfaced to the IDE-side agent/operator — a valid, effect-having nudge.
-WAKE_ARGV = ["antigravity", "--reuse-window", str(INBOX)]
+# Fixed argv for the CLI wake nudge (Rule 7: never string-interpolate TASK content
+# into a shelled-out command — the prompt below is a FIXED harness string that tells
+# the agent to read the task itself; it carries no per-task input).
+#
+# Correction (2026-07-23): `antigravity chat --mode agent <prompt>` IS valid — the
+# Antigravity binary (a VS Code/Electron fork) exposes a `chat` subcommand with
+# `-m/--mode ask|edit|agent` and a positional prompt (confirmed via `antigravity
+# chat --help`). An earlier revision wrongly concluded `chat` was inert; it was inert
+# only because it was invoked with NO prompt (empty agent chat). This wake now
+# AUTO-TRIGGERS the IDE agent with a strict, scope-reinforcing prompt so drops get
+# processed without a manual nudge AND the agent is pushed to stay in its read-only
+# advisory lane (the off-lane implementation failures this guards against).
+WAKE_PROMPT = (
+    "You are the Antigravity ADVISORY node (review / PRD / plan / research ONLY). "
+    "Run `aq-antigravity-inbox next` to get the single pending task and do EXACTLY "
+    "what it says, nothing more. Write ONLY the one output file the task names "
+    "(e.g. .agents/plans/<round>/antigravity.md). Do NOT edit, create, or delete any "
+    "other file. Do NOT implement code, run builds, or stage/commit — you have no "
+    "implementation authority. When finished, run `aq-antigravity-inbox complete "
+    "<task-name>`. If the task is unclear or would require editing anything beyond "
+    "your output file, write that limitation in your output file and STOP."
+)
+WAKE_ARGV = ["antigravity", "chat", "--reuse-window", "--mode", "agent", WAKE_PROMPT]
 
 # Harness tooling whose command lines contain "antigravity" and would falsely
 # match a bare `pgrep -fa antigravity` — excluded so only a genuine Antigravity
