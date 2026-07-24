@@ -1336,13 +1336,20 @@ in {
       # Phase 3.5 — Suspend/resume recovery for llama-cpp inference server.
       # ROCm GPU state can become invalid after suspend; restart llama-cpp to
       # reinitialize the GPU context cleanly. Uses systemd sleep hooks.
+      #
+      # --no-block: the restart is synchronous by default, so on the APU a cold
+      # GPU re-init (minutes) can exceed the job timeout or transiently fail the
+      # readiness probe, latching this oneshot into `failed` even though
+      # llama-cpp recovers seconds later (trips QA phase-0 "no AI units failed").
+      # This hook's job is to TRIGGER the restart, not to own llama-cpp readiness
+      # — llama-cpp.service tracks its own health/restart policy. Fire-and-forget.
       systemd.services.llama-cpp-resume = {
         description = "Restart llama.cpp after system resume";
         wantedBy = ["sleep.target"];
         after = ["sleep.target"];
         serviceConfig = {
           Type = "oneshot";
-          ExecStart = "${pkgs.systemd}/bin/systemctl restart llama-cpp.service";
+          ExecStart = "${pkgs.systemd}/bin/systemctl restart --no-block llama-cpp.service";
         };
       };
 
