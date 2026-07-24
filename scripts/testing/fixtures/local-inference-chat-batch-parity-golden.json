@@ -1,0 +1,322 @@
+{
+  "adapters": [
+    "batch",
+    "coordinator_delegate",
+    "fast_path"
+  ],
+  "authorization_id": "auth-aqos-foundation-b1-parity-20260723",
+  "description": "Frozen tier x adapter caller matrix + expected canonical projections for the Foundation B1 chat/batch parity (shadow) oracle. Offline shadow of PRD section 14 required-suite #2 (golden resolver matrix).",
+  "document_kind": "local-inference-chat-batch-parity-golden",
+  "live_source_manifest": {
+    "ai-stack/mcp-servers/shared/llm_config.py": "be5a098687c92c4345c80307175144887c262174afbf6da9fc2ca8012d961905",
+    "scripts/ai/aq-chat": "4302af375b25aa98dfb6d923e671e9d7597c814759b45b5c12fe3c84cb6d8392"
+  },
+  "manifest_digest": "739682b9df117106863632565d3d2cf2e288109a425eb89e2f8f977aba659437",
+  "schema_version": "1",
+  "tiers": {
+    "budget": {
+      "expected_projections": {
+        "batch": {
+          "projection": {
+            "budgets": {
+              "input_tokens": null,
+              "max_tokens": 800
+            },
+            "enable_thinking": false,
+            "fallback": null,
+            "frequency_penalty": 0.0,
+            "mode": null,
+            "model": null,
+            "profile": null,
+            "repeat_last_n": 64,
+            "repeat_penalty": 1.08,
+            "role": null,
+            "task_type": null,
+            "temperature": 0.1,
+            "tools": null,
+            "version": null
+          },
+          "sha256": "2c720ddd9f4ff84c1ca7223ae3d4bdb7442f9b8b1ac736f0c0dc6252073cbb36"
+        },
+        "coordinator_delegate": {
+          "projection": {
+            "budgets": {
+              "input_tokens": null,
+              "max_tokens": 1024
+            },
+            "enable_thinking": false,
+            "fallback": null,
+            "frequency_penalty": 0.0,
+            "mode": null,
+            "model": null,
+            "profile": "local-tool-calling",
+            "repeat_last_n": null,
+            "repeat_penalty": null,
+            "role": "orchestrator",
+            "task_type": null,
+            "temperature": 0.1,
+            "tools": {
+              "enabled": true,
+              "list": null,
+              "tool_choice": null
+            },
+            "version": null
+          },
+          "sha256": "b31a52d9cd1fc45f27a589fd06259a84bba3f12d7ca7f5ad74dcbc596508ca17"
+        },
+        "fast_path": {
+          "projection": {
+            "budgets": {
+              "input_tokens": null,
+              "max_tokens": 1024
+            },
+            "enable_thinking": false,
+            "fallback": null,
+            "frequency_penalty": 0.0,
+            "mode": null,
+            "model": "local",
+            "profile": null,
+            "repeat_last_n": null,
+            "repeat_penalty": null,
+            "role": null,
+            "task_type": null,
+            "temperature": 0.1,
+            "tools": null,
+            "version": null
+          },
+          "sha256": "f93ef5d37eeade371b9bb628aa3f1f7b80018090ddf353b0f642d0a5f8867d24"
+        }
+      },
+      "task_type": "lookup",
+      "temperature": 0.1
+    },
+    "deterministic": {
+      "expected_projections": {
+        "batch": {
+          "projection": {
+            "budgets": {
+              "input_tokens": null,
+              "max_tokens": 800
+            },
+            "enable_thinking": false,
+            "fallback": null,
+            "frequency_penalty": 0.0,
+            "mode": null,
+            "model": null,
+            "profile": null,
+            "repeat_last_n": 64,
+            "repeat_penalty": 1.08,
+            "role": null,
+            "task_type": null,
+            "temperature": 0.0,
+            "tools": null,
+            "version": null
+          },
+          "sha256": "ac5807eca1dbead998011e1da8f69e243a883a97a19d277607c115125dd7107c"
+        },
+        "coordinator_delegate": {
+          "projection": {
+            "budgets": {
+              "input_tokens": null,
+              "max_tokens": 1024
+            },
+            "enable_thinking": false,
+            "fallback": null,
+            "frequency_penalty": 0.0,
+            "mode": null,
+            "model": null,
+            "profile": "local-tool-calling",
+            "repeat_last_n": null,
+            "repeat_penalty": null,
+            "role": "orchestrator",
+            "task_type": null,
+            "temperature": 0.0,
+            "tools": {
+              "enabled": true,
+              "list": null,
+              "tool_choice": null
+            },
+            "version": null
+          },
+          "sha256": "a535d3c925889f0ee030ab385a2224c54fb2a6a6b1a2cf1620145ec2550048e4"
+        },
+        "fast_path": {
+          "projection": {
+            "budgets": {
+              "input_tokens": null,
+              "max_tokens": 1024
+            },
+            "enable_thinking": false,
+            "fallback": null,
+            "frequency_penalty": 0.0,
+            "mode": null,
+            "model": "local",
+            "profile": null,
+            "repeat_last_n": null,
+            "repeat_penalty": null,
+            "role": null,
+            "task_type": null,
+            "temperature": 0.0,
+            "tools": null,
+            "version": null
+          },
+          "sha256": "1347efb78aa6b705aa6b16af156f923fe3c8207d4e69bddda00232f4f1bede8c"
+        }
+      },
+      "task_type": "structured",
+      "temperature": 0.0
+    },
+    "flagship": {
+      "expected_projections": {
+        "batch": {
+          "projection": {
+            "budgets": {
+              "input_tokens": null,
+              "max_tokens": 800
+            },
+            "enable_thinking": false,
+            "fallback": null,
+            "frequency_penalty": 0.0,
+            "mode": null,
+            "model": null,
+            "profile": null,
+            "repeat_last_n": 64,
+            "repeat_penalty": 1.08,
+            "role": null,
+            "task_type": null,
+            "temperature": 0.5,
+            "tools": null,
+            "version": null
+          },
+          "sha256": "b002bcdc57d04f81cef206b87784b5b4b843aeb8703f27bf91deb9296122e221"
+        },
+        "coordinator_delegate": {
+          "projection": {
+            "budgets": {
+              "input_tokens": null,
+              "max_tokens": 1024
+            },
+            "enable_thinking": false,
+            "fallback": null,
+            "frequency_penalty": 0.0,
+            "mode": null,
+            "model": null,
+            "profile": "local-tool-calling",
+            "repeat_last_n": null,
+            "repeat_penalty": null,
+            "role": "orchestrator",
+            "task_type": null,
+            "temperature": 0.5,
+            "tools": {
+              "enabled": true,
+              "list": null,
+              "tool_choice": null
+            },
+            "version": null
+          },
+          "sha256": "29d629fe32711288cc13156f702326b1e0a08f3cc09a5c8713f8c1e4414488c0"
+        },
+        "fast_path": {
+          "projection": {
+            "budgets": {
+              "input_tokens": null,
+              "max_tokens": 1024
+            },
+            "enable_thinking": false,
+            "fallback": null,
+            "frequency_penalty": 0.0,
+            "mode": null,
+            "model": "local",
+            "profile": null,
+            "repeat_last_n": null,
+            "repeat_penalty": null,
+            "role": null,
+            "task_type": null,
+            "temperature": 0.5,
+            "tools": null,
+            "version": null
+          },
+          "sha256": "da48e1855f0cb65a6937d68e1f7c35ee2feac26d9e7910cf219cab01dae9a3f4"
+        }
+      },
+      "task_type": "reasoning",
+      "temperature": 0.5
+    },
+    "standard": {
+      "expected_projections": {
+        "batch": {
+          "projection": {
+            "budgets": {
+              "input_tokens": null,
+              "max_tokens": 800
+            },
+            "enable_thinking": false,
+            "fallback": null,
+            "frequency_penalty": 0.0,
+            "mode": null,
+            "model": null,
+            "profile": null,
+            "repeat_last_n": 64,
+            "repeat_penalty": 1.08,
+            "role": null,
+            "task_type": null,
+            "temperature": 0.3,
+            "tools": null,
+            "version": null
+          },
+          "sha256": "b75f5adc5cb8fc440948b5e3e61637b896efaa8618b781a669169c6827a0d5dc"
+        },
+        "coordinator_delegate": {
+          "projection": {
+            "budgets": {
+              "input_tokens": null,
+              "max_tokens": 1024
+            },
+            "enable_thinking": false,
+            "fallback": null,
+            "frequency_penalty": 0.0,
+            "mode": null,
+            "model": null,
+            "profile": "local-tool-calling",
+            "repeat_last_n": null,
+            "repeat_penalty": null,
+            "role": "orchestrator",
+            "task_type": null,
+            "temperature": 0.3,
+            "tools": {
+              "enabled": true,
+              "list": null,
+              "tool_choice": null
+            },
+            "version": null
+          },
+          "sha256": "7ed95ca3232a6354ddb81c888ceb4f81cf0d656af587d9f52e68aa6e9357f2de"
+        },
+        "fast_path": {
+          "projection": {
+            "budgets": {
+              "input_tokens": null,
+              "max_tokens": 1024
+            },
+            "enable_thinking": false,
+            "fallback": null,
+            "frequency_penalty": 0.0,
+            "mode": null,
+            "model": "local",
+            "profile": null,
+            "repeat_last_n": null,
+            "repeat_penalty": null,
+            "role": null,
+            "task_type": null,
+            "temperature": 0.3,
+            "tools": null,
+            "version": null
+          },
+          "sha256": "2f96fad7f18bc767507e24149d278ea47aa5423e24cf0fb59e82b40b7466b924"
+        }
+      },
+      "task_type": "agent",
+      "temperature": 0.3
+    }
+  }
+}
