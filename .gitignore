@@ -176,6 +176,9 @@ nix/hosts/*/.sops.yaml
 .agent/collaboration/PENDING.json
 .agent/collaboration/PULSE.log
 .agent/collaboration/RESUME.json
+# Foundation C1 shadow admission->issuance log (aq-capability-shadow): runtime
+# observability spool, not history — never committed.
+.agent/collaboration/capability-lease-shadow.jsonl
 # Atomic slice-claim locks (aq-slice-claim): ephemeral CAS lock files, not history.
 .agent/collaboration/slice-claims/
 .agent/comms/command.json
