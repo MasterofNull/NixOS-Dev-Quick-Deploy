@@ -46,7 +46,132 @@ def _candidate_by_id(registry: dict[str, Any], candidate_id: str) -> dict[str, A
     raise KeyError(f"candidate not found: {candidate_id}")
 
 
-def _risk_flags(candidate: dict[str, Any]) -> list[str]:
+def _levenshtein_distance(s1: str, s2: str) -> int:
+    if len(s1) < len(s2):
+        return _levenshtein_distance(s2, s1)
+    if len(s2) == 0:
+        return len(s1)
+    previous_row = range(len(s2) + 1)
+    for i, c1 in enumerate(s1):
+        current_row = [i + 1]
+        for j, c2 in enumerate(s2):
+            insertions = previous_row[j + 1] + 1
+            deletions = current_row[j] + 1
+            substitutions = previous_row[j] + (c1 != c2)
+            current_row.append(min(insertions, deletions, substitutions))
+        previous_row = current_row
+    return previous_row[-1]
+
+
+# Param names that indicate command-execution capability. Matched by
+# substring containment (case-insensitive) so both bare "command" and
+# "command_override" are caught. "run" is included deliberately (spawns
+# processes); "args" is handled separately below as a review-not-block
+# signal since it is commonly legitimate (e.g. "search_args", "extra_args").
+_HARD_RESTRICTED_PARAM_KEYWORDS = {"exec", "cmd", "command", "shell", "entrypoint", "run"}
+_REVIEW_ONLY_PARAM_KEYWORDS = {"args"}
+
+
+def _param_is_admitted(param_schema: dict[str, Any]) -> bool:
+    """A flagged param is admitted only if it is bound to a strict enum, a
+    regex pattern, or a bounded maxLength — an unconstrained free-form
+    string is not admitted regardless of param name.
+    """
+    if not isinstance(param_schema, dict):
+        return False
+    enum = param_schema.get("enum")
+    if isinstance(enum, list) and len(enum) > 0:
+        return True
+    pattern = param_schema.get("pattern")
+    if isinstance(pattern, str) and pattern.strip():
+        return True
+    max_length = param_schema.get("maxLength")
+    if isinstance(max_length, (int, float)) and not isinstance(max_length, bool) and max_length > 0:
+        return True
+    return False
+
+
+def _validate_schema(schema: dict[str, Any]) -> tuple[bool, bool]:
+    """Recursively validate a JSON Schema for dangerous parameters.
+
+    Flags parameter names indicating command-execution capability (exec,
+    cmd, command, shell, entrypoint, run — including compound names like
+    "command_override") unless the param is admitted (enum/pattern/
+    maxLength). Also flags "args"-named params under the same admission
+    rule, but as a softer needs-review signal rather than a hard block,
+    since bulk-argument params are commonly legitimate.
+
+    Recurses into properties, items (array schemas, list or dict form),
+    additionalProperties, patternProperties, $defs/definitions, and
+    allOf/anyOf/oneOf — so a command param hidden in a nested object, an
+    array-of-objects, or a map value cannot bypass detection.
+
+    Returns (hard_unsafe, needs_review).
+    """
+    hard_unsafe = False
+    needs_review = False
+    if not isinstance(schema, dict):
+        return hard_unsafe, needs_review
+
+    def _merge(sub_schema: Any) -> None:
+        nonlocal hard_unsafe, needs_review
+        if isinstance(sub_schema, dict):
+            sub_hard, sub_review = _validate_schema(sub_schema)
+            hard_unsafe = hard_unsafe or sub_hard
+            needs_review = needs_review or sub_review
+
+    # 1. Named properties
+    properties = schema.get("properties", {})
+    if isinstance(properties, dict):
+        for param_name, param_schema in properties.items():
+            if not isinstance(param_schema, dict):
+                continue
+            param_name_lower = str(param_name).lower()
+            matched_hard = any(kw in param_name_lower for kw in _HARD_RESTRICTED_PARAM_KEYWORDS)
+            matched_review = any(kw in param_name_lower for kw in _REVIEW_ONLY_PARAM_KEYWORDS)
+            if (matched_hard or matched_review) and not _param_is_admitted(param_schema):
+                if matched_hard:
+                    hard_unsafe = True
+                else:
+                    needs_review = True
+            # Recurse into the param's own nested schema.
+            _merge(param_schema)
+
+    # 2. Array items — object or tuple form.
+    items = schema.get("items")
+    if isinstance(items, dict):
+        _merge(items)
+    elif isinstance(items, list):
+        for sub_schema in items:
+            _merge(sub_schema)
+
+    # 3. additionalProperties (map-of-objects). Bool form carries no schema.
+    _merge(schema.get("additionalProperties"))
+
+    # 4. patternProperties (regex-keyed maps).
+    pattern_properties = schema.get("patternProperties")
+    if isinstance(pattern_properties, dict):
+        for sub_schema in pattern_properties.values():
+            _merge(sub_schema)
+
+    # 5. $defs / definitions (referenced sub-schemas defined inline).
+    for defs_key in ("$defs", "definitions"):
+        defs = schema.get(defs_key)
+        if isinstance(defs, dict):
+            for sub_schema in defs.values():
+                _merge(sub_schema)
+
+    # 6. allOf / anyOf / oneOf combinators.
+    for combinator in ("allOf", "anyOf", "oneOf"):
+        combo_items = schema.get(combinator)
+        if isinstance(combo_items, list):
+            for sub_schema in combo_items:
+                _merge(sub_schema)
+
+    return hard_unsafe, needs_review
+
+
+def _risk_flags(candidate: dict[str, Any], known_ids: list[str] | None = None) -> list[str]:
     flags: list[str] = []
     install = candidate.get("install") if isinstance(candidate.get("install"), dict) else {}
     command = str(install.get("command", "")).strip()
@@ -72,6 +197,40 @@ def _risk_flags(candidate: dict[str, Any]) -> list[str]:
         flags.append("network-capable")
     if re.search(r"\b(sudo|rm|delete|exec|shell)\b", joined):
         flags.append("dangerous-command-keyword")
+
+    # Typo-squatting check against known candidate IDs
+    if known_ids:
+        # Tokenize joined string of command and args
+        tokens = set(re.split(r'[^a-zA-Z0-9\-_]', joined))
+        for token in tokens:
+            if not token:
+                continue
+            token_lower = token.lower()
+            for kid in known_ids:
+                kid_lower = kid.lower()
+                # If they are similar but not identical
+                if token_lower != kid_lower:
+                    if len(token_lower) >= 4 and len(kid_lower) >= 4:
+                        if _levenshtein_distance(token_lower, kid_lower) <= 2:
+                            flags.append("typo-squatting-detected")
+                            break
+            if "typo-squatting-detected" in flags:
+                break
+
+    # Schema parameter validation check
+    tool_schemas = candidate.get("tool_schemas") or candidate.get("schemas") or {}
+    if isinstance(tool_schemas, dict):
+        schema_hard_unsafe = False
+        schema_needs_review = False
+        for tool_name, schema in tool_schemas.items():
+            if isinstance(schema, dict):
+                hard_unsafe, needs_review = _validate_schema(schema)
+                schema_hard_unsafe = schema_hard_unsafe or hard_unsafe
+                schema_needs_review = schema_needs_review or needs_review
+        if schema_hard_unsafe:
+            flags.append("unsafe-parameter-schema")
+        elif schema_needs_review:
+            flags.append("unbound-args-parameter-schema")
 
     for risk in candidate.get("risks", []):
         if isinstance(risk, str) and risk and risk not in flags:
@@ -99,22 +258,36 @@ def _admission(candidate: dict[str, Any], risk_flags: list[str], tool_results: l
     hard_blockers = {
         "curl-pipe-install",
         "dangerous-command-keyword",
+        "unsafe-parameter-schema",
+        "typo-squatting-detected",
     }
     if any(flag in hard_blockers for flag in risk_flags):
         return "blocked"
     if any(result.get("safe") is False for result in tool_results):
         return "needs-review"
-    if any(flag.startswith("dynamic-installer:") or flag in {"unpinned-version", "secret-or-token-required"} for flag in risk_flags):
+    if any(
+        flag.startswith("dynamic-installer:")
+        or flag in {"unpinned-version", "secret-or-token-required", "unbound-args-parameter-schema"}
+        for flag in risk_flags
+    ):
         return "needs-review"
     if risk_flags:
         return "review-recommended"
     return "low-risk"
 
 
-def audit_candidate(candidate: dict[str, Any]) -> dict[str, Any]:
+def audit_candidate(candidate: dict[str, Any], known_ids: list[str] | None = None) -> dict[str, Any]:
     auditor = _load_auditor()
     install = candidate.get("install") if isinstance(candidate.get("install"), dict) else {}
     tool_results: list[dict[str, Any]] = []
+
+    if known_ids is None:
+        try:
+            registry = _load_registry(REGISTRY_PATH)
+            known_ids = [c.get("id") for c in registry.get("candidates", []) if c.get("id")]
+        except Exception:
+            known_ids = []
+
     for tool_name in candidate.get("tool_allowlist", []):
         if not isinstance(tool_name, str) or not tool_name.strip():
             continue
@@ -136,7 +309,7 @@ def audit_candidate(candidate: dict[str, Any]) -> dict[str, Any]:
         }
         tool_results.append(auditor.audit_tool(tool_name, metadata))
 
-    flags = _risk_flags(candidate)
+    flags = _risk_flags(candidate, known_ids)
     return {
         "id": candidate.get("id"),
         "name": candidate.get("name"),
@@ -180,7 +353,8 @@ def cmd_audit(args: argparse.Namespace) -> int:
         candidates = registry["candidates"]
     else:
         candidates = [_candidate_by_id(registry, args.candidate_id)]
-    reports = [audit_candidate(candidate) for candidate in candidates]
+    known_ids = [c.get("id") for c in registry.get("candidates", []) if c.get("id")]
+    reports = [audit_candidate(candidate, known_ids) for candidate in candidates]
     if args.json:
         print(json.dumps({"version": registry.get("version"), "reports": reports}, indent=2, sort_keys=True))
         return 0
