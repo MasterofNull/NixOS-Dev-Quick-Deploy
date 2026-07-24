@@ -48,3 +48,8 @@ Committed while Codex quota-down; independent acceptance via Antigravity (2b des
 - `44530e73` Slice 2a context_cache.py (embed cache library)
 - `0846b83f` Slice 2b — agent_executor prune-path hook + local-delegation-reliability-golden.json re-pin (agent_executor sha ad401788, source_manifest df4d94d9). **Priority:** this re-pinned the reliability track's OWN golden manifest — the reliability-track authority should confirm the re-pin is honest (defect characterizations D3/D4/D6/D7 intact, matches_frozen True) and net-clean (HEAD baseline fails identical test_02/15/16 = pre-existing task_registry drift).
 Advisory unless a real defect surfaces → then a bounded follow-up, never rewrite history.
+
+### [QUEUED] codex — Foundation C design packet confirmatory audit
+- Subject: `.agents/plans/aqos-foundation-c/DESIGN-PACKET.md` (Foundation C security spine; absorbs F3 4/4 consensus + keystone zero_trust; Q3-ratified direction).
+- Why queued: codex in quota-cooldown at design time; independent review ran via fresh Opus. codex = deepest F3 contributor (epoch revocation, bwrap⇄lease, allowed_output_paths) → on return, confirm the packet is faithful to its F3 additions + sanity-check C0→C6 decomposition.
+- Status: advisory on return (real defect → bounded follow-up, never rewrite). Solicited 2026-07-24.
