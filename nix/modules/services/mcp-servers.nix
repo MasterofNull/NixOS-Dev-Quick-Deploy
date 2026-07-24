@@ -734,43 +734,21 @@ in {
       ];
     })
 
-    # ── Playwright MCP sandbox — narrowly-scoped NOPASSWD systemd-run ────────
-    # capability-intake finding (tasks_inbox/capability-intake-playwright-mcp.md,
-    # "Follow-up Patch Scope" item 1): confine the playwright-mcp browser's
-    # network egress to loopback only. playwright-mcp is a client-spawned
-    # stdio process (npx, launched by Claude/Gemini/Continue — see
-    # .claude/settings.json, .gemini/settings.json, ai-stack/continue/config.json),
-    # not a systemd-managed daemon, so it cannot get IPAddressAllow/Deny via a
-    # normal systemd.services unit. scripts/ai/mcp-playwright-sandboxed wraps
-    # it in a transient systemd-run scope with the same loopback-only
-    # IPAddressAllow/IPAddressDeny directive already used for the persistent
-    # MCP daemons above and in nix/modules/roles/ai-stack.nix /
-    # nix/modules/services/llama-router.nix.
-    #
-    # Verified 2026-07-23: an UNPRIVILEGED (--user) systemd-run scope records
-    # the IPAddressAllow/Deny properties but does not enforce them on this
-    # host — kernel.unprivileged_bpf_disabled=2 blocks the cgroup BPF egress
-    # filter from attaching for non-CAP_BPF callers. Root-context systemd-run
-    # is not gated by that sysctl, so this rule grants svcUser passwordless
-    # sudo to exactly the loopback-confining systemd-run invocation the
-    # wrapper needs (fixed IP properties + npx target), nothing broader.
-    # Wildcards only cover the per-launch unit-name suffix and the pinned
-    # playwright-mcp's own trailing CLI flags — the sudoers pattern still
-    # requires the literal systemd-run prefix and IP properties, so it cannot
-    # be used to run an arbitrary command as root.
-    (lib.mkIf active {
-      security.sudo.extraRules = [
-        {
-          users = [svcUser];
-          commands = [
-            {
-              command = "${pkgs.systemd}/bin/systemd-run --collect --quiet --unit=mcp-playwright-* -p IPAddressDeny=any -p IPAddressAllow=127.0.0.1/8 -p IPAddressAllow=::1/128 -- */bin/npx -y @playwright/mcp@0.0.76 *";
-              options = ["NOPASSWD"];
-            }
-          ];
-        }
-      ];
-    })
+    # ── Playwright MCP sandbox: sudo rule REMOVED 2026-07-23 ─────────────────
+    # The prior security.sudo.extraRules block (passwordless root-context
+    # systemd-run for loopback egress confinement) is removed for two reasons:
+    #   1. It broke sudoers compilation — `sudoers-in:...: syntax error` on the
+    #      wildcard command spec — which failed the ENTIRE nixos-rebuild.
+    #   2. A NOPASSWD sudoers rule whose command spec ends in `*` is
+    #      over-permissive and argument-injection-prone (a wildcard command is a
+    #      classic sudo privilege-escalation footgun), so even fixed it is unsafe.
+    # scripts/ai/mcp-playwright-sandboxed falls back to its unprivileged
+    # systemd-run scope with an explicit warning (it never claims confinement it
+    # is not enforcing), and the @playwright/mcp version+integrity check stays
+    # ACTIVE in that wrapper. Egress-confinement to be redone with a safer
+    # mechanism (a dedicated no-wildcard wrapper as the sole sudo target, or a
+    # first-class systemd unit) — tracked in issues-backlog. tasks_inbox stays
+    # REQUEST_REVISION.
 
     (lib.mkIf active {
       systemd.services.ai-otel-collector = {
