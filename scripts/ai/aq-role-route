@@ -31,6 +31,7 @@ from __future__ import annotations
 
 import argparse
 import json
+import os
 import sys
 from datetime import datetime, timezone
 from pathlib import Path
@@ -40,6 +41,36 @@ REPO = Path(__file__).resolve().parents[2]
 DELEGATION_DIR = REPO / ".agents" / "delegation"
 CODEX_COOLDOWN_FILE = DELEGATION_DIR / ".codex-quota-cooldown"
 MODEL_COORDINATOR = REPO / "config" / "model-coordinator.json"
+
+# Q5 lane-eligibility registry (DESIGN SSOT:
+# `.agents/plans/agent-agnostic-factory/Q5-LANE-ELIGIBILITY-REGISTRY-DESIGN.md`).
+# Override via env var so tests never mutate the real registry file.
+LANE_ELIGIBILITY_REGISTRY_ENV = "AQ_LANE_ELIGIBILITY_REGISTRY"
+DEFAULT_LANE_ELIGIBILITY_REGISTRY = REPO / "config" / "lane-eligibility-registry.json"
+
+# The registry is keyed by finer-grained lane ids than the routing LANES dict
+# (which has one "claude" lane for all Claude tiers, and treats "antigravity"
+# as an alias of the "gemini" lane — see LANES["gemini"]["aliases"] above).
+# A routing lane is eligible for a role iff ANY of its mapped registry lanes
+# carries a non-expired eligible[role] entry, UNLESS ANY mapped registry lane
+# carries a hard-ineligible[role] entry (hard block always wins — e.g. the
+# antigravity/implementer governance rule below, reached via the "gemini"
+# routing lane since antigravity has no separate routing lane today).
+LANE_TO_REGISTRY_LANES: dict[str, list[str]] = {
+    "codex": ["codex"],
+    "claude": ["opus", "sonnet"],
+    "gemini": ["gemini", "antigravity"],
+    "local": ["local"],
+}
+
+# Fail-safe backstop: even if the registry is missing/unparseable, the
+# antigravity-implementer hard-ineligibility is load-bearing governance and
+# must still apply. Antigravity has no dedicated routing lane today — it is
+# reached only via the "gemini" lane's alias set — so the backstop blocks
+# that lane for the implementer role specifically.
+HARDCODED_BACKSTOP_BLOCKS: dict[str, set[str]] = {
+    "implementer": {"gemini"},
+}
 
 # Lane identity: canonical id, aliases an --exclude token may name (matched
 # exactly), and the model-coordinator "models" key used to look up cost.
@@ -98,6 +129,91 @@ def _load_json(path: Path) -> dict[str, Any]:
         return json.loads(path.read_text(encoding="utf-8"))
     except (FileNotFoundError, json.JSONDecodeError):
         return {}
+
+
+def _registry_path(override: Path | None = None) -> Path:
+    if override is not None:
+        return override
+    env_val = os.environ.get(LANE_ELIGIBILITY_REGISTRY_ENV)
+    if env_val:
+        return Path(env_val)
+    return DEFAULT_LANE_ELIGIBILITY_REGISTRY
+
+
+def _load_registry(override: Path | None = None) -> tuple[dict[str, Any] | None, str]:
+    """Load the lane-eligibility registry. Returns (data, status) where
+    status is "ok", "missing", or "unparseable". Never raises — callers use
+    the status to decide whether to fail safe."""
+    path = _registry_path(override)
+    try:
+        raw = path.read_text(encoding="utf-8")
+    except OSError:
+        return None, "missing"
+    try:
+        data = json.loads(raw)
+    except json.JSONDecodeError:
+        return None, "unparseable"
+    if not isinstance(data, dict) or not isinstance(data.get("lanes"), dict):
+        return None, "unparseable"
+    return data, "ok"
+
+
+def _registry_entry_valid(entry: dict[str, Any], now: datetime) -> tuple[bool, bool]:
+    """Return (is_valid_now, is_expired). An entry with no expires_at is a
+    permanent grant (valid, not expired). Unparseable expires_at is treated
+    conservatively as expired (fail-safe bias)."""
+    expires_at = entry.get("expires_at")
+    if not expires_at:
+        return True, False
+    try:
+        exp = datetime.fromisoformat(str(expires_at).replace("Z", "+00:00"))
+    except ValueError:
+        return False, True
+    if exp.tzinfo is None:
+        exp = exp.replace(tzinfo=timezone.utc)
+    if now < exp:
+        return True, False
+    return False, True
+
+
+def _registry_eligibility(lane_id: str, role: str, registry: dict[str, Any]) -> tuple[bool, str | None]:
+    """Check whether routing lane `lane_id` is eligible for `role` per the
+    registry. Returns (eligible, exclusion_reason) where exclusion_reason is
+    one of "hard-ineligible" | "expired" | "not-listed" when not eligible."""
+    registry_lanes = registry.get("lanes", {})
+    mapped = LANE_TO_REGISTRY_LANES.get(lane_id, [lane_id])
+    now = datetime.now(timezone.utc)
+
+    hard_blocked = False
+    has_valid_eligible = False
+    has_expired_eligible = False
+
+    for reg_lane_id in mapped:
+        lane_entry = registry_lanes.get(reg_lane_id, {})
+        if not isinstance(lane_entry, dict):
+            continue
+        ineligible = lane_entry.get("ineligible", {})
+        if isinstance(ineligible, dict):
+            block = ineligible.get(role)
+            if isinstance(block, dict) and block.get("hard") is True:
+                hard_blocked = True
+        eligible_map = lane_entry.get("eligible", {})
+        if isinstance(eligible_map, dict):
+            entry = eligible_map.get(role)
+            if isinstance(entry, dict):
+                valid, expired = _registry_entry_valid(entry, now)
+                if valid:
+                    has_valid_eligible = True
+                elif expired:
+                    has_expired_eligible = True
+
+    if hard_blocked:
+        return False, "hard-ineligible"
+    if has_valid_eligible:
+        return True, None
+    if has_expired_eligible:
+        return False, "expired"
+    return False, "not-listed"
 
 
 def _lane_cost(lane_id: str, coordinator: dict[str, Any]) -> float:
@@ -173,7 +289,12 @@ def _emit(payload: dict[str, Any], as_json: bool) -> int:
     return 0 if payload.get("ok", True) else 1
 
 
-def route(role: str, subject: str, exclude: list[str]) -> dict[str, Any]:
+def route(
+    role: str,
+    subject: str,
+    exclude: list[str],
+    registry_path: Path | None = None,
+) -> dict[str, Any]:
     normalized = _normalize_role(role)
     if normalized is None:
         return {
@@ -189,7 +310,59 @@ def route(role: str, subject: str, exclude: list[str]) -> dict[str, Any]:
         lane_id for lane_id in candidates
         if any(_matches_exclude(lane_id, token) for token in exclude)
     }
-    eligible = [lane_id for lane_id in candidates if lane_id not in excluded_lanes]
+
+    # Q5 lane-eligibility registry filter (FAIL-SAFE: registry missing or
+    # unparseable falls back to the hardcoded LANES/ROLE_ELIGIBILITY
+    # membership above, minus the hardcoded backstop blocks, rather than
+    # ever breaking routing).
+    registry, registry_status = _load_registry(registry_path)
+    registry_degraded = registry_status != "ok"
+    excluded_lanes_registry: list[dict[str, Any]] = []
+
+    if registry_degraded:
+        registry_eligible = set(candidates)
+        for lane_id in HARDCODED_BACKSTOP_BLOCKS.get(normalized, set()):
+            if lane_id in registry_eligible:
+                registry_eligible.discard(lane_id)
+                excluded_lanes_registry.append({
+                    "lane": lane_id,
+                    "role": normalized,
+                    "reason": "hard-ineligible",
+                })
+    else:
+        registry_eligible = set()
+        for lane_id in candidates:
+            ok, reason = _registry_eligibility(lane_id, normalized, registry or {})
+            if ok:
+                registry_eligible.add(lane_id)
+            else:
+                excluded_lanes_registry.append({
+                    "lane": lane_id,
+                    "role": normalized,
+                    "reason": reason,
+                })
+
+    eligible = [
+        lane_id for lane_id in candidates
+        if lane_id not in excluded_lanes and lane_id in registry_eligible
+    ]
+
+    if not eligible:
+        result: dict[str, Any] = {
+            "ok": False,
+            "role": normalized,
+            "subject": subject,
+            "reason": "no-eligible-lane",
+            "chosen_agent": None,
+            "alternates": [],
+            "excluded": sorted(excluded_lanes),
+            "excluded_lanes": excluded_lanes_registry,
+            "registry_degraded": registry_degraded,
+            "ts": _now_iso(),
+        }
+        if registry_degraded:
+            result["registry_note"] = f"registry-degraded ({registry_status}); used hardcoded LANES fallback"
+        return result
 
     # Cheapest eligible first; DESIGN.md table order is the tiebreak so
     # binding-acceptance still prefers Codex among equal-cost lanes without
@@ -231,8 +404,12 @@ def route(role: str, subject: str, exclude: list[str]) -> dict[str, Any]:
         "role": normalized,
         "subject": subject,
         "excluded": sorted(excluded_lanes),
+        "excluded_lanes": excluded_lanes_registry,
+        "registry_degraded": registry_degraded,
         "ts": _now_iso(),
     }
+    if registry_degraded:
+        result["registry_note"] = f"registry-degraded ({registry_status}); used hardcoded LANES fallback"
     if chosen is not None:
         result["chosen_agent"] = chosen
         result["reason"] = chosen_reason

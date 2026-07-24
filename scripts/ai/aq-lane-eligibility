@@ -1,0 +1,348 @@
+#!/usr/bin/env python3
+"""aq-lane-eligibility — admin CLI for the Q5 lane-eligibility registry.
+
+Queries and administers `config/lane-eligibility-registry.json`: the
+measured, EXPIRING registry that governs which lane (codex/opus/sonnet/
+antigravity/local/gemini/...) may fill which role (orchestrator/architect/
+implementer/reviewer/binding-acceptance/research). DESIGN SSOT:
+`.agents/plans/agent-agnostic-factory/Q5-LANE-ELIGIBILITY-REGISTRY-DESIGN.md`.
+Owner ratification: `.agents/plans/unified-program/Q3-Q10-OWNER-RATIFICATION-20260723.md`.
+
+Eligibility is EARNED (evidence) and EXPIRES (must be re-earned) — `promote`
+refuses to run without `--evidence`. `scripts/ai/aq-role-route` reads this
+same file (with a fail-safe fallback if it's missing/unparseable) to filter
+its lane candidates before ranking by availability x cost.
+
+All mutating subcommands write atomically (temp file + os.replace) so a
+crash mid-write can never corrupt the registry.
+"""
+
+from __future__ import annotations
+
+import argparse
+import json
+import os
+import sys
+from datetime import datetime, timedelta, timezone
+from pathlib import Path
+from typing import Any
+
+REPO = Path(__file__).resolve().parents[2]
+REGISTRY_ENV = "AQ_LANE_ELIGIBILITY_REGISTRY"
+DEFAULT_REGISTRY_PATH = REPO / "config" / "lane-eligibility-registry.json"
+
+DEFAULT_ROLES = [
+    "orchestrator", "architect", "implementer", "reviewer",
+    "binding-acceptance", "research",
+]
+
+
+class RegistryError(Exception):
+    """Registry file missing, unparseable, or malformed."""
+
+
+def _now() -> datetime:
+    return datetime.now(timezone.utc)
+
+
+def _now_iso() -> str:
+    return _now().isoformat().replace("+00:00", "Z")
+
+
+def _iso(dt: datetime) -> str:
+    if dt.tzinfo is None:
+        dt = dt.replace(tzinfo=timezone.utc)
+    return dt.isoformat().replace("+00:00", "Z")
+
+
+def _registry_path(args: argparse.Namespace) -> Path:
+    if getattr(args, "registry_path", None):
+        return Path(args.registry_path)
+    env_val = os.environ.get(REGISTRY_ENV)
+    if env_val:
+        return Path(env_val)
+    return DEFAULT_REGISTRY_PATH
+
+
+def _load_registry(path: Path) -> dict[str, Any]:
+    try:
+        raw = path.read_text(encoding="utf-8")
+    except OSError as exc:
+        raise RegistryError(f"registry not found or unreadable: {path} ({exc})") from exc
+    try:
+        data = json.loads(raw)
+    except json.JSONDecodeError as exc:
+        raise RegistryError(f"registry is not valid JSON: {path} ({exc})") from exc
+    if not isinstance(data, dict) or not isinstance(data.get("lanes"), dict):
+        raise RegistryError(f"registry missing required 'lanes' object: {path}")
+    data.setdefault("roles", list(DEFAULT_ROLES))
+    data.setdefault("default_ttl_days", 45)
+    return data
+
+
+def _atomic_write_registry(path: Path, data: dict[str, Any]) -> None:
+    path.parent.mkdir(parents=True, exist_ok=True)
+    tmp = path.with_name(f".{path.name}.tmp-{os.getpid()}")
+    try:
+        tmp.write_text(json.dumps(data, indent=2, sort_keys=True) + "\n", encoding="utf-8")
+        os.replace(tmp, path)
+    finally:
+        if tmp.exists():
+            try:
+                tmp.unlink()
+            except OSError:
+                pass
+
+
+def _entry_status(entry: dict[str, Any] | None, now: datetime) -> str:
+    """eligible | expired | absent, for a single eligible[role] entry."""
+    if entry is None:
+        return "absent"
+    expires_at = entry.get("expires_at")
+    if not expires_at:
+        return "eligible"
+    try:
+        exp = datetime.fromisoformat(str(expires_at).replace("Z", "+00:00"))
+    except ValueError:
+        return "expired"
+    if exp.tzinfo is None:
+        exp = exp.replace(tzinfo=timezone.utc)
+    return "eligible" if now < exp else "expired"
+
+
+def _check(registry: dict[str, Any], lane: str, role: str) -> dict[str, Any]:
+    now = _now()
+    lane_entry = registry.get("lanes", {}).get(lane, {})
+    ineligible = lane_entry.get("ineligible", {}) if isinstance(lane_entry, dict) else {}
+    hard_block = ineligible.get(role) if isinstance(ineligible, dict) else None
+    eligible_map = lane_entry.get("eligible", {}) if isinstance(lane_entry, dict) else {}
+    entry = eligible_map.get(role) if isinstance(eligible_map, dict) else None
+    status = _entry_status(entry, now)
+
+    if isinstance(hard_block, dict) and hard_block.get("hard") is True:
+        return {
+            "lane": lane, "role": role, "eligible": False, "status": "hard-ineligible",
+            "reason": hard_block.get("reason"),
+        }
+    if status == "eligible":
+        result = {
+            "lane": lane, "role": role, "eligible": True, "status": "eligible",
+            "measured_at": entry.get("measured_at"), "expires_at": entry.get("expires_at"),
+            "evidence": entry.get("evidence"),
+        }
+        if entry.get("capability_note"):
+            result["capability_note"] = entry["capability_note"]
+        return result
+    if status == "expired":
+        return {
+            "lane": lane, "role": role, "eligible": False, "status": "expired",
+            "measured_at": entry.get("measured_at"), "expires_at": entry.get("expires_at"),
+            "evidence": entry.get("evidence"),
+        }
+    return {"lane": lane, "role": role, "eligible": False, "status": "not-listed"}
+
+
+def _emit(payload: dict[str, Any] | list[Any], as_json: bool) -> int:
+    if as_json:
+        print(json.dumps(payload, indent=2, sort_keys=True))
+    else:
+        rows = payload if isinstance(payload, list) else [payload]
+        for row in rows:
+            print(" ".join(f"{k}={v}" for k, v in row.items()))
+    if isinstance(payload, dict):
+        return 0 if payload.get("ok", payload.get("eligible", True)) else 1
+    return 0
+
+
+def cmd_check(args: argparse.Namespace) -> int:
+    try:
+        registry = _load_registry(_registry_path(args))
+    except RegistryError as exc:
+        return _emit({"ok": False, "reason": "registry-error", "error": str(exc)}, args.json)
+    result = _check(registry, args.lane, args.role)
+    result["ok"] = True
+    return _emit(result, args.json)
+
+
+def cmd_list(args: argparse.Namespace) -> int:
+    try:
+        registry = _load_registry(_registry_path(args))
+    except RegistryError as exc:
+        return _emit({"ok": False, "reason": "registry-error", "error": str(exc)}, args.json)
+
+    roles = [args.role] if args.role else registry.get("roles", DEFAULT_ROLES)
+    lanes = [args.lane] if args.lane else sorted(registry.get("lanes", {}))
+
+    rows: list[dict[str, Any]] = []
+    for lane in lanes:
+        for role in roles:
+            rows.append(_check(registry, lane, role))
+    # Drop pure not-listed noise only when scanning the full matrix (both
+    # unfiltered); keep it when the caller explicitly asked about one
+    # lane/role so `check`-equivalent queries via `list` still get an answer.
+    if not args.lane and not args.role:
+        rows = [r for r in rows if r["status"] != "not-listed"]
+    return _emit(rows, args.json)
+
+
+def cmd_promote(args: argparse.Namespace) -> int:
+    if not args.evidence:
+        return _emit({
+            "ok": False, "reason": "evidence-required",
+            "error": "promote refuses without --evidence (eligibility is earned, not assumed)",
+        }, args.json)
+
+    path = _registry_path(args)
+    try:
+        registry = _load_registry(path)
+    except RegistryError as exc:
+        return _emit({"ok": False, "reason": "registry-error", "error": str(exc)}, args.json)
+
+    if args.role not in registry.get("roles", DEFAULT_ROLES):
+        return _emit({
+            "ok": False, "reason": "unknown-role", "role": args.role,
+            "known_roles": registry.get("roles", DEFAULT_ROLES),
+        }, args.json)
+
+    ttl_days = args.ttl_days if args.ttl_days is not None else registry.get("default_ttl_days", 45)
+    now = _now()
+    entry: dict[str, Any] = {
+        "measured_at": _iso(now),
+        "expires_at": _iso(now + timedelta(days=ttl_days)),
+        "evidence": args.evidence,
+    }
+    if args.capability_note:
+        entry["capability_note"] = args.capability_note
+
+    lanes = registry.setdefault("lanes", {})
+    lane_entry = lanes.setdefault(args.lane, {})
+    lane_entry.setdefault("eligible", {})[args.role] = entry
+    # Promotion is an affirmative earned grant; a fresh promote clears any
+    # prior hard-ineligible block for the same lane+role so re-earning
+    # actually restores eligibility instead of being silently overridden.
+    ineligible = lane_entry.get("ineligible")
+    if isinstance(ineligible, dict) and args.role in ineligible:
+        del ineligible[args.role]
+        if not ineligible:
+            del lane_entry["ineligible"]
+
+    _atomic_write_registry(path, registry)
+    return _emit({"ok": True, "lane": args.lane, "role": args.role, **entry}, args.json)
+
+
+def cmd_revoke(args: argparse.Namespace) -> int:
+    if not args.reason:
+        return _emit({
+            "ok": False, "reason": "reason-required",
+            "error": "revoke refuses without --reason",
+        }, args.json)
+
+    path = _registry_path(args)
+    try:
+        registry = _load_registry(path)
+    except RegistryError as exc:
+        return _emit({"ok": False, "reason": "registry-error", "error": str(exc)}, args.json)
+
+    lanes = registry.setdefault("lanes", {})
+    lane_entry = lanes.setdefault(args.lane, {})
+
+    eligible_map = lane_entry.get("eligible", {})
+    if isinstance(eligible_map, dict) and args.role in eligible_map:
+        del eligible_map[args.role]
+
+    if args.hard:
+        lane_entry.setdefault("ineligible", {})[args.role] = {
+            "hard": True, "reason": args.reason, "revoked_at": _now_iso(),
+        }
+
+    _atomic_write_registry(path, registry)
+    return _emit({
+        "ok": True, "lane": args.lane, "role": args.role,
+        "hard": bool(args.hard), "reason": args.reason,
+    }, args.json)
+
+
+def cmd_expire_scan(args: argparse.Namespace) -> int:
+    try:
+        registry = _load_registry(_registry_path(args))
+    except RegistryError as exc:
+        return _emit({"ok": False, "reason": "registry-error", "error": str(exc)}, args.json)
+
+    now = _now()
+    horizon = now + timedelta(days=args.days)
+    rows: list[dict[str, Any]] = []
+    for lane, lane_entry in sorted(registry.get("lanes", {}).items()):
+        if not isinstance(lane_entry, dict):
+            continue
+        for role, entry in lane_entry.get("eligible", {}).items():
+            if not isinstance(entry, dict):
+                continue
+            expires_at = entry.get("expires_at")
+            if not expires_at:
+                continue
+            try:
+                exp = datetime.fromisoformat(str(expires_at).replace("Z", "+00:00"))
+            except ValueError:
+                rows.append({"lane": lane, "role": role, "status": "unparseable-expiry", "expires_at": expires_at})
+                continue
+            if exp.tzinfo is None:
+                exp = exp.replace(tzinfo=timezone.utc)
+            if exp <= now:
+                rows.append({"lane": lane, "role": role, "status": "expired", "expires_at": expires_at})
+            elif exp <= horizon:
+                rows.append({"lane": lane, "role": role, "status": "expiring-soon", "expires_at": expires_at})
+    return _emit(rows, args.json)
+
+
+def build_parser() -> argparse.ArgumentParser:
+    parser = argparse.ArgumentParser(description=__doc__, formatter_class=argparse.RawDescriptionHelpFormatter)
+    parser.add_argument(
+        "--registry-path", default=None,
+        help=f"Override registry file path (also honors ${REGISTRY_ENV}); test-only in normal use",
+    )
+    sub = parser.add_subparsers(dest="command", required=True)
+
+    p_check = sub.add_parser("check", help="Check eligibility for a lane/role")
+    p_check.add_argument("lane")
+    p_check.add_argument("role")
+    p_check.add_argument("--json", action="store_true")
+    p_check.set_defaults(func=cmd_check)
+
+    p_list = sub.add_parser("list", help="List the eligibility matrix")
+    p_list.add_argument("--role", default=None)
+    p_list.add_argument("--lane", default=None)
+    p_list.add_argument("--json", action="store_true")
+    p_list.set_defaults(func=cmd_list)
+
+    p_promote = sub.add_parser("promote", help="Record/renew an earned eligibility (requires --evidence)")
+    p_promote.add_argument("lane")
+    p_promote.add_argument("role")
+    p_promote.add_argument("--evidence", default=None, required=False, help="Pointer/note justifying this grant (REQUIRED)")
+    p_promote.add_argument("--ttl-days", type=int, default=None)
+    p_promote.add_argument("--capability-note", default=None)
+    p_promote.add_argument("--json", action="store_true")
+    p_promote.set_defaults(func=cmd_promote)
+
+    p_revoke = sub.add_parser("revoke", help="Remove an eligibility, optionally hard-block it")
+    p_revoke.add_argument("lane")
+    p_revoke.add_argument("role")
+    p_revoke.add_argument("--hard", action="store_true")
+    p_revoke.add_argument("--reason", default=None, required=False, help="REQUIRED")
+    p_revoke.add_argument("--json", action="store_true")
+    p_revoke.set_defaults(func=cmd_revoke)
+
+    p_scan = sub.add_parser("expire-scan", help="List entries expired or expiring within --days")
+    p_scan.add_argument("--days", type=int, default=14)
+    p_scan.add_argument("--json", action="store_true")
+    p_scan.set_defaults(func=cmd_expire_scan)
+
+    return parser
+
+
+def main(argv: list[str] | None = None) -> int:
+    args = build_parser().parse_args(argv)
+    return int(args.func(args))
+
+
+if __name__ == "__main__":
+    raise SystemExit(main())
