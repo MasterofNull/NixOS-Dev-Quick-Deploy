@@ -1,0 +1,94 @@
+#!/usr/bin/env bash
+# Sandbox launcher for the playwright-mcp capability-intake candidate.
+#
+# Implements the two REQUEST_REVISION mitigations from
+# tasks_inbox/capability-intake-playwright-mcp.md ("Follow-up Patch Scope"):
+#   1. Private sandbox execution — systemd-run --user confines network
+#      egress to loopback only, mirroring the IPAddressAllow/IPAddressDeny
+#      pattern already used for MCP daemons (nix/modules/roles/ai-stack.nix,
+#      nix/modules/services/mcp-servers.nix, nix/modules/services/llama-router.nix)
+#      applied here to this ephemeral, client-spawned stdio process.
+#   2. Dynamic version check — re-resolves the pinned version + npm dist
+#      integrity hash against the registry on every launch and refuses to
+#      run on drift, mismatch, or lookup failure (fail closed). This is the
+#      concrete defense against the finding's "npx dynamic installer which
+#      fetches mutable remote packages" risk: a same-version-string
+#      republish under the pinned tag changes dist.integrity and is caught
+#      here, not just a floating/@latest tag.
+#
+# All Playwright MCP client entries (.claude/settings.json, .gemini/settings.json,
+# ai-stack/continue/config.json, config/agent-capability-intake-candidates.json)
+# invoke this wrapper instead of calling npx directly. Each still declares
+# "-y" "@playwright/mcp@0.0.76" as its first two args (asserted by
+# scripts/testing/test-enabled-external-mcp-candidates.py) — this wrapper
+# checks those two args match its own hardcoded pin before doing anything
+# network-facing, so a config file edited out of step with this wrapper's
+# pin is caught immediately rather than silently launching a different
+# version.
+set -euo pipefail
+
+PINNED_PACKAGE="@playwright/mcp"
+PINNED_VERSION="0.0.76"
+PINNED_SPEC="${PINNED_PACKAGE}@${PINNED_VERSION}"
+# Captured 2026-07-23 via: npm view @playwright/mcp@0.0.76 dist.integrity
+PINNED_INTEGRITY="sha512-ICcW6wAV+HoNEco19eni+JTVylCIIedruWkrRl2Rsv/qcGhBZLT/c0I1VounjIjSVSupw3pHmcr3CNCikTHTBQ=="
+
+# --- Mitigation 2a: config/wrapper pin agreement ---
+if [[ "${1:-}" != "-y" || "${2:-}" != "${PINNED_SPEC}" ]]; then
+  echo "mcp-playwright-sandboxed: refusing to launch — expected '-y ${PINNED_SPEC}' as the first two args, got '${1:-}' '${2:-}' (client config / wrapper pin drift)" >&2
+  exit 1
+fi
+shift 2
+
+# --- Mitigation 2b: dynamic registry version + integrity check (fail closed) ---
+resolved_version="$(npm view "${PINNED_SPEC}" version 2>/dev/null || true)"
+if [[ -z "${resolved_version}" ]]; then
+  echo "mcp-playwright-sandboxed: could not resolve ${PINNED_SPEC} from the npm registry — refusing to launch (fail closed; offline or registry unreachable)" >&2
+  exit 1
+fi
+if [[ "${resolved_version}" != "${PINNED_VERSION}" ]]; then
+  echo "mcp-playwright-sandboxed: version drift detected — expected ${PINNED_VERSION}, registry reports ${resolved_version} — refusing to launch" >&2
+  exit 1
+fi
+
+resolved_integrity="$(npm view "${PINNED_SPEC}" dist.integrity 2>/dev/null || true)"
+if [[ -z "${resolved_integrity}" ]]; then
+  echo "mcp-playwright-sandboxed: could not resolve dist.integrity for ${PINNED_SPEC} — refusing to launch (fail closed)" >&2
+  exit 1
+fi
+if [[ "${resolved_integrity}" != "${PINNED_INTEGRITY}" ]]; then
+  echo "mcp-playwright-sandboxed: dist.integrity drift detected for ${PINNED_SPEC} — expected ${PINNED_INTEGRITY}, registry reports ${resolved_integrity} — refusing to launch (possible tampered republish under the pinned version)" >&2
+  exit 1
+fi
+
+# --- Mitigation 1: private sandbox execution (loopback-only egress) ---
+# Verified 2026-07-23 on this host: an UNPRIVILEGED (--user) systemd-run
+# scope records IPAddressAllow/IPAddressDeny on the unit correctly but does
+# NOT enforce them — kernel.unprivileged_bpf_disabled=2 blocks the cgroup
+# BPF egress filter from attaching for non-CAP_BPF callers (confirmed by a
+# live test: curl to an external IP inside such a scope succeeded). A
+# root-context systemd-run is not gated by that sysctl (it only restricts
+# callers without CAP_BPF), so real enforcement requires the narrowly-scoped
+# NOPASSWD sudo rule declared in nix/modules/services/mcp-servers.nix
+# ("Playwright MCP sandbox" block) — commit-time declaration, requires
+# `nixos-rebuild switch` to activate. Try that path first; if it is not
+# deployed yet (or sudo is unavailable), fall back to the unprivileged scope
+# and say so loudly rather than silently claiming confinement that isn't
+# happening — app-level confinement (--host 127.0.0.1, --allowed-origins
+# localhost-only, --isolated) still applies either way.
+if sudo -n true 2>/dev/null; then
+  exec sudo -n systemd-run --collect --quiet \
+    --unit="mcp-playwright-$$" \
+    -p IPAddressDeny=any \
+    -p IPAddressAllow=127.0.0.1/8 \
+    -p IPAddressAllow=::1/128 \
+    -- npx -y "${PINNED_SPEC}" "$@"
+fi
+
+echo "mcp-playwright-sandboxed: WARNING — no passwordless sudo for the pinned systemd-run invocation; falling back to an unprivileged --user scope, which does NOT enforce network-egress confinement on this host (kernel.unprivileged_bpf_disabled=2 blocks the cgroup BPF filter for non-root). Deploy the NOPASSWD systemd-run sudo rule in nix/modules/services/mcp-servers.nix + nixos-rebuild switch for real loopback-only enforcement. Continuing with app-level confinement only (--host 127.0.0.1, --allowed-origins localhost, --isolated)." >&2
+exec systemd-run --user --scope --collect --quiet \
+  --unit="mcp-playwright-$$" \
+  -p IPAddressDeny=any \
+  -p IPAddressAllow=127.0.0.1/8 \
+  -p IPAddressAllow=::1/128 \
+  -- npx -y "${PINNED_SPEC}" "$@"

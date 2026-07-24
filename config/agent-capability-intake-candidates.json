@@ -26,6 +26,8 @@
       "review_status": "accepted-with-mitigations",
       "mitigations": [
         "pinned npm package version",
+        "dynamic npm registry version + dist.integrity check on every launch (fail closed)",
+        "private sandbox execution (systemd-run) confining browser network egress to loopback",
         "headless browser mode",
         "isolated browser profile",
         "localhost host binding",
@@ -38,7 +40,7 @@
       ],
       "install": {
         "type": "mcp",
-        "command": "npx",
+        "command": "scripts/ai/mcp-playwright-sandboxed",
         "args": [
           "-y",
           "@playwright/mcp@0.0.76",
@@ -74,7 +76,7 @@
       },
       "value": "Live dashboard verification, visual regression, accessibility snapshots, and UI workflow checks for agents.",
       "risks": ["browser-network-egress", "npm-package-execution"],
-      "activation_notes": "Enabled with pinned npm package, headless isolated context, localhost origin preference, service workers blocked, image responses omitted, and no unrestricted file access flag."
+      "activation_notes": "Enabled with pinned npm package, headless isolated context, localhost origin preference, service workers blocked, image responses omitted, and no unrestricted file access flag. All client entries (.claude/settings.json, .gemini/settings.json, ai-stack/continue/config.json) launch via scripts/ai/mcp-playwright-sandboxed, which (1) re-checks the pinned version and npm dist.integrity hash against the registry before every launch, failing closed on drift, and (2) wraps the process in a systemd-run scope with the harness's standard IPAddressAllow=loopback/IPAddressDeny=any confinement. Loopback-only enforcement requires the root-context sudo path (NOPASSWD systemd-run rule in nix/modules/services/mcp-servers.nix) deployed via nixos-rebuild switch; until that rebuild lands, the wrapper falls back to an unprivileged systemd-run scope that does NOT enforce egress confinement on hosts with kernel.unprivileged_bpf_disabled=2 (verified 2026-07-23) and prints an explicit warning rather than silently claiming confinement."
     },
     {
       "id": "semgrep-mcp",
