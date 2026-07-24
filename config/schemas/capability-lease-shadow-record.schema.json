@@ -1,0 +1,54 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "aq.capability-lease-shadow-record.v1",
+  "title": "AQ CapabilityLease shadow issuance record (Foundation C1 — SHADOW / LOG-ONLY)",
+  "description": "One JSONL entry emitted by scripts/ai/aq-capability-shadow. Report-only: records the CapabilityLease that WOULD be issued (or the denial that WOULD apply) for a given aq-capability-intake admission verdict. Never consumed by any enforcement path in this slice — see .agents/plans/aqos-foundation-c/C1-IMPLEMENTATION-SPEC.md.",
+  "$ref": "#/$defs/shadow_record",
+  "$defs": {
+    "shadow_record": {
+      "type": "object",
+      "title": "CapabilityLeaseShadowRecord",
+      "additionalProperties": false,
+      "required": ["ts", "candidate_id", "admission", "would_issue", "lease", "deny_reason", "risk_flags", "dev_key"],
+      "properties": {
+        "ts": {
+          "type": "string",
+          "format": "date-time",
+          "description": "When this shadow decision was computed."
+        },
+        "candidate_id": {
+          "type": ["string", "null"],
+          "description": "The aq-capability-intake candidate id this record was computed for."
+        },
+        "admission": {
+          "type": ["string", "null"],
+          "description": "The admission verdict as returned by aq-capability-intake audit_candidate() (e.g. low-risk, accepted-with-mitigations, review-recommended, needs-review, blocked). Not restricted to a fixed enum here so an unrecognized/future admission value still validates as a would-deny record rather than failing schema validation."
+        },
+        "would_issue": {
+          "type": "boolean",
+          "description": "Whether the shadow policy would issue a lease for this admission verdict."
+        },
+        "lease": {
+          "description": "The signed CapabilityLease that WOULD be issued, or null when would_issue is false.",
+          "oneOf": [
+            {"type": "null"},
+            {"$ref": "capability-lease.schema.json#/$defs/capability_lease"}
+          ]
+        },
+        "deny_reason": {
+          "type": ["string", "null"],
+          "description": "Set when would_issue is false (e.g. needs-review, blocked, unknown-admission:<value>); null when a lease was issued."
+        },
+        "risk_flags": {
+          "type": "array",
+          "items": {"type": "string"},
+          "description": "The risk_flags carried on the source audit result at the time this shadow decision was computed."
+        },
+        "dev_key": {
+          "type": "boolean",
+          "description": "True when the C0 DEV signing key (capability_lease.DEV_SIGNING_KEY) was used, or would have been used, to sign this decision's lease — never a trust-rooted signature. Present on every record (issued or denied) so a caller can tell a dev-signed shadow lease apart without inspecting the signature itself."
+        }
+      }
+    }
+  }
+}

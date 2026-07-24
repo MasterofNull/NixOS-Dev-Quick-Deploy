@@ -1,0 +1,254 @@
+#!/usr/bin/env python3
+"""SHADOW / LOG-ONLY capability-lease issuance observer — Foundation C1.
+
+Report-only. Consumes the EXISTING `aq-capability-intake` admission verdict
+as data (via subprocess `audit <id> --json`, or an offline `--audit-json`
+file) and records the CapabilityLease that WOULD be issued (or the denial
+that would apply) — it never edits, calls into, or changes the outcome of
+`aq-capability-intake`. Always exits 0 regardless of admission verdicts;
+only the CLI's OWN errors (bad args, unreadable files) produce a non-zero
+exit. See `.agents/plans/aqos-foundation-c/C1-IMPLEMENTATION-SPEC.md`.
+"""
+
+from __future__ import annotations
+
+import argparse
+import json
+import subprocess
+import sys
+from collections import Counter
+from pathlib import Path
+from typing import Any
+
+REPO_ROOT = Path(__file__).resolve().parents[2]
+LIB_DIR = REPO_ROOT / "scripts" / "ai" / "lib"
+sys.path.insert(0, str(LIB_DIR))
+
+from capability_lease_issuance import (  # noqa: E402
+    DEFAULT_SHADOW_LOG_PATH,
+    append_shadow_log,
+    shadow_issue,
+)
+from capability_lease import DEV_KEY_BANNER  # noqa: E402
+
+INTAKE_SCRIPT = REPO_ROOT / "scripts" / "ai" / "aq-capability-intake"
+REGISTRY_PATH = REPO_ROOT / "config" / "agent-capability-intake-candidates.json"
+
+
+def _load_registry(path: Path) -> dict[str, Any]:
+    with path.open("r", encoding="utf-8") as handle:
+        payload = json.load(handle)
+    if not isinstance(payload, dict) or not isinstance(payload.get("candidates"), list):
+        raise ValueError(f"invalid candidate registry: {path}")
+    return payload
+
+
+def _candidate_by_id(registry: dict[str, Any], candidate_id: str) -> dict[str, Any]:
+    for candidate in registry["candidates"]:
+        if candidate.get("id") == candidate_id:
+            return candidate
+    raise KeyError(f"candidate not found in registry: {candidate_id}")
+
+
+def _normalize_audit_reports(data: Any) -> list[dict[str, Any]]:
+    """Accepts any of: the `aq-capability-intake audit --json` wrapped form
+    (`{"version":..,"reports":[...]}`), a single report dict, or a bare
+    list of report dicts."""
+    if isinstance(data, dict) and isinstance(data.get("reports"), list):
+        return data["reports"]
+    if isinstance(data, dict) and "id" in data:
+        return [data]
+    if isinstance(data, list):
+        return data
+    raise ValueError("--audit-json did not contain a recognizable audit report shape")
+
+
+def _audit_via_subprocess(registry_path: Path, candidate_id: str) -> dict[str, Any]:
+    result = subprocess.run(
+        [
+            sys.executable,
+            str(INTAKE_SCRIPT),
+            "--registry",
+            str(registry_path),
+            "audit",
+            candidate_id,
+            "--json",
+        ],
+        capture_output=True,
+        text=True,
+        check=False,
+        timeout=120,
+    )
+    if result.returncode != 0:
+        raise RuntimeError(
+            f"aq-capability-intake audit {candidate_id} failed (exit {result.returncode}): {result.stderr.strip()}"
+        )
+    payload = json.loads(result.stdout)
+    reports = _normalize_audit_reports(payload)
+    if not reports:
+        raise RuntimeError(f"aq-capability-intake returned no report for {candidate_id}")
+    return reports[0]
+
+
+def _collect_pairs(args: argparse.Namespace) -> list[tuple[dict[str, Any], dict[str, Any]]]:
+    """Returns [(audit_result, candidate), ...] for the requested scope."""
+    registry_path = Path(args.registry)
+    registry = _load_registry(registry_path)
+
+    if args.audit_json:
+        data = json.loads(Path(args.audit_json).read_text(encoding="utf-8"))
+        reports = _normalize_audit_reports(data)
+        if args.candidate:
+            reports = [r for r in reports if r.get("id") == args.candidate]
+            if not reports:
+                raise RuntimeError(f"candidate {args.candidate!r} not found in --audit-json")
+        pairs = []
+        for report in reports:
+            candidate_id = report.get("id")
+            candidate = _candidate_by_id(registry, candidate_id)
+            pairs.append((report, candidate))
+        return pairs
+
+    if args.candidate:
+        candidate_ids = [args.candidate]
+    else:
+        candidate_ids = [c.get("id") for c in registry["candidates"] if c.get("id")]
+
+    pairs = []
+    for candidate_id in candidate_ids:
+        candidate = _candidate_by_id(registry, candidate_id)
+        audit_result = _audit_via_subprocess(registry_path, candidate_id)
+        pairs.append((audit_result, candidate))
+    return pairs
+
+
+def cmd_run(args: argparse.Namespace) -> int:
+    try:
+        pairs = _collect_pairs(args)
+    except Exception as exc:  # noqa: BLE001 - this IS the tool's own error path
+        print(f"aq-capability-shadow run: error: {exc}", file=sys.stderr)
+        return 1
+
+    log_path = Path(args.log) if args.log else DEFAULT_SHADOW_LOG_PATH
+    records = []
+    banner_printed = False
+    for audit_result, candidate in pairs:
+        record = shadow_issue(audit_result, candidate)
+        if record.get("dev_key") and not banner_printed:
+            # A shadow lease signed with the DEV key must never be mistaken
+            # for a trust-rooted one — same contract as aq-lease's
+            # _maybe_banner(). Printed once per invocation, not per record.
+            print(f"aq-capability-shadow: {DEV_KEY_BANNER}", file=sys.stderr)
+            banner_printed = True
+        append_shadow_log(record, log_path)
+        records.append(record)
+
+    if args.json:
+        print(json.dumps(records, indent=2, sort_keys=True))
+    else:
+        for record in records:
+            verdict = "would-issue" if record["would_issue"] else "would-deny"
+            reason = f" reason={record['deny_reason']}" if record["deny_reason"] else ""
+            print(
+                f"{record['candidate_id']}: admission={record['admission']} {verdict}{reason}"
+            )
+    # Always exit 0 — this is a SHADOW observer, never an enforcement gate.
+    # Admission verdicts (accepted/denied) are data, not tool errors.
+    return 0
+
+
+def cmd_report(args: argparse.Namespace) -> int:
+    log_path = Path(args.log) if args.log else DEFAULT_SHADOW_LOG_PATH
+    if not log_path.is_file():
+        summary = {
+            "log_path": str(log_path),
+            "total_records": 0,
+            "by_admission": {},
+            "would_issue": 0,
+            "would_deny": 0,
+            "top_risk_flags": [],
+        }
+    else:
+        by_admission: Counter = Counter()
+        risk_flag_counts: Counter = Counter()
+        would_issue = 0
+        would_deny = 0
+        total = 0
+        for line in log_path.read_text(encoding="utf-8").splitlines():
+            line = line.strip()
+            if not line:
+                continue
+            try:
+                record = json.loads(line)
+            except json.JSONDecodeError:
+                continue
+            total += 1
+            by_admission[str(record.get("admission"))] += 1
+            if record.get("would_issue"):
+                would_issue += 1
+            else:
+                would_deny += 1
+            for flag in record.get("risk_flags") or []:
+                risk_flag_counts[flag] += 1
+
+        summary = {
+            "log_path": str(log_path),
+            "total_records": total,
+            "by_admission": dict(by_admission),
+            "would_issue": would_issue,
+            "would_deny": would_deny,
+            "top_risk_flags": [
+                {"flag": flag, "count": count}
+                for flag, count in risk_flag_counts.most_common(10)
+            ],
+        }
+
+    if args.json:
+        print(json.dumps(summary, indent=2, sort_keys=True))
+    else:
+        print(f"log: {summary['log_path']}")
+        print(f"total records: {summary['total_records']}")
+        print(f"would-issue: {summary['would_issue']}  would-deny: {summary['would_deny']}")
+        for admission, count in summary["by_admission"].items():
+            print(f"  admission={admission}: {count}")
+        for entry in summary["top_risk_flags"]:
+            print(f"  risk_flag={entry['flag']}: {entry['count']}")
+    return 0
+
+
+def build_parser() -> argparse.ArgumentParser:
+    parser = argparse.ArgumentParser(description=__doc__)
+    sub = parser.add_subparsers(dest="cmd", required=True)
+
+    run_parser = sub.add_parser("run", help="Produce shadow issuance records (report-only)")
+    run_parser.add_argument("--registry", default=str(REGISTRY_PATH), help="Candidate registry path")
+    run_parser.add_argument("--candidate", default=None, help="Restrict to one candidate id")
+    run_parser.add_argument(
+        "--audit-json",
+        default=None,
+        help="Read pre-computed audit result(s) from this file instead of invoking aq-capability-intake",
+    )
+    run_parser.add_argument(
+        "--log", default=str(DEFAULT_SHADOW_LOG_PATH), help="Shadow log JSONL path (default: %(default)s)"
+    )
+    run_parser.add_argument("--json", action="store_true", help="Emit JSON")
+    run_parser.set_defaults(func=cmd_run)
+
+    report_parser = sub.add_parser("report", help="Summarize the shadow log (pure read)")
+    report_parser.add_argument(
+        "--log", default=str(DEFAULT_SHADOW_LOG_PATH), help="Shadow log JSONL path (default: %(default)s)"
+    )
+    report_parser.add_argument("--json", action="store_true", help="Emit JSON")
+    report_parser.set_defaults(func=cmd_report)
+
+    return parser
+
+
+def main(argv: list[str] | None = None) -> int:
+    parser = build_parser()
+    args = parser.parse_args(argv)
+    return int(args.func(args))
+
+
+if __name__ == "__main__":
+    raise SystemExit(main())
