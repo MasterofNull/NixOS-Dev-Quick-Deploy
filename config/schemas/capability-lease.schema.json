@@ -1,0 +1,119 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "aq.capability-lease.v1",
+  "title": "AQ CapabilityLease (Foundation C0 — report-only inert primitive)",
+  "description": "Validates a signed CapabilityLease document. NOTE on signing: the `signature` field is EXCLUDED from the signable digest — canonical_payload() in scripts/ai/lib/capability_lease.py serializes every other field (deterministic JSON, sorted keys, no whitespace, UTF-8) and HMAC-SHA256's that payload. `signature` itself is never part of what it signs. This slice is report-only: no evaluator/executor consumes this schema yet (C1+).",
+  "$ref": "#/$defs/capability_lease",
+  "$defs": {
+    "principal": {
+      "type": "object",
+      "title": "Principal",
+      "description": "The attested identity a lease is issued to. Derived/verified at the trust boundary — never taken from the caller's own claim.",
+      "additionalProperties": false,
+      "required": ["principal_id", "kind", "attestation", "trust_tier", "session_epoch"],
+      "properties": {
+        "principal_id": {
+          "type": "string",
+          "minLength": 1,
+          "description": "Stable identifier for the principal (agent/service/human/remote-lane instance)."
+        },
+        "kind": {
+          "enum": ["agent", "service", "human", "remote-lane"]
+        },
+        "attestation": {
+          "type": "string",
+          "minLength": 1,
+          "description": "How the principal was proven: OAuth-session-ref | systemd-unit-cred | signed-a2a-envelope (free-text reference, not the credential itself)."
+        },
+        "trust_tier": {
+          "type": "integer",
+          "minimum": 0
+        },
+        "session_epoch": {
+          "type": "integer",
+          "minimum": 0
+        }
+      }
+    },
+    "permissions": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["actions", "resources", "constraints"],
+      "properties": {
+        "actions": {
+          "type": "array",
+          "items": {"type": "string", "minLength": 1}
+        },
+        "resources": {
+          "type": "array",
+          "items": {"type": "string", "minLength": 1}
+        },
+        "constraints": {
+          "type": "object",
+          "description": "Free-form tightening constraints (e.g. rate/ttl/path scoping). Attenuation (scripts/ai/lib/capability_lease.py attenuate()) may only add keys or narrow existing ones, never widen — narrowing is type-dependent: numeric values must not increase, list/tuple/set values must shrink to a subset, and any other value type (str/bool/dict/mismatched types) must match the parent exactly since no partial-order narrowing is defined for it.",
+          "additionalProperties": true
+        }
+      }
+    },
+    "capability_lease": {
+      "type": "object",
+      "title": "CapabilityLease",
+      "additionalProperties": false,
+      "required": [
+        "lease_id",
+        "version",
+        "source",
+        "owner",
+        "issued_to",
+        "issued_at",
+        "expires_at",
+        "permissions",
+        "input_schema",
+        "output_schema",
+        "trust_tier",
+        "zero_trust_behavior",
+        "cost_class",
+        "parent_lease_id",
+        "revocation_epoch",
+        "signature"
+      ],
+      "properties": {
+        "lease_id": {"type": "string", "minLength": 1},
+        "version": {"type": "integer", "minimum": 1},
+        "source": {"type": "string", "minLength": 1},
+        "owner": {"type": "string", "minLength": 1},
+        "issued_to": {
+          "type": "string",
+          "minLength": 1,
+          "description": "principal_id of the Principal (see #/$defs/principal) this lease was issued to."
+        },
+        "issued_at": {"type": "string", "format": "date-time"},
+        "expires_at": {"type": "string", "format": "date-time"},
+        "permissions": {"$ref": "#/$defs/permissions"},
+        "input_schema": {
+          "type": "object",
+          "description": "Arbitrary JSON Schema fragment constraining tool input.",
+          "additionalProperties": true
+        },
+        "output_schema": {
+          "type": "object",
+          "description": "Arbitrary JSON Schema fragment constraining tool output.",
+          "additionalProperties": true
+        },
+        "trust_tier": {"type": "integer", "minimum": 0},
+        "zero_trust_behavior": {"enum": ["none", "strip"]},
+        "cost_class": {"type": "string", "minLength": 1},
+        "parent_lease_id": {
+          "type": ["string", "null"],
+          "description": "lease_id of the parent this lease was attenuated from, or null for a top-level lease."
+        },
+        "revocation_epoch": {"type": "integer", "minimum": 0},
+        "signature": {
+          "type": "string",
+          "minLength": 1,
+          "description": "HMAC-SHA256 hex digest over canonical_payload(lease) — i.e. over every OTHER field in this object. Excluded from its own signable payload."
+        }
+      }
+    }
+  }
+}

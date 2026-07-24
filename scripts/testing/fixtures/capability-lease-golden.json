@@ -1,0 +1,170 @@
+{
+  "_comment": "Golden fixtures for scripts/testing/test-capability-lease.py — all signed with the deterministic DEV key (capability_lease.DEV_SIGNING_KEY). Offline-reproducible; no /run/secrets dependency.",
+  "child": {
+    "cost_class": "local",
+    "expires_at": "2026-11-01T00:00:00Z",
+    "input_schema": {
+      "type": "object"
+    },
+    "issued_at": "2026-07-24T00:00:00Z",
+    "issued_to": "principal-agent-local-qwen-sub",
+    "lease_id": "lease-c0-child-001",
+    "output_schema": {
+      "type": "object"
+    },
+    "owner": "aq-harness",
+    "parent_lease_id": "lease-c0-parent-001",
+    "permissions": {
+      "actions": [
+        "read"
+      ],
+      "constraints": {
+        "max_bytes": 1048576
+      },
+      "resources": [
+        "repo:NixOS-Dev-Quick-Deploy"
+      ]
+    },
+    "revocation_epoch": 1,
+    "signature": "bf75fa969c7c48fa7018e64b942101706a056a6424f243a852dbe8ded2d426fd",
+    "source": "capability-intake",
+    "trust_tier": 2,
+    "version": 1,
+    "zero_trust_behavior": "none"
+  },
+  "expired": {
+    "cost_class": "local",
+    "expires_at": "2020-06-01T00:00:00Z",
+    "input_schema": {
+      "type": "object"
+    },
+    "issued_at": "2020-01-01T00:00:00Z",
+    "issued_to": "principal-agent-local-qwen",
+    "lease_id": "lease-c0-expired-001",
+    "output_schema": {
+      "type": "object"
+    },
+    "owner": "aq-harness",
+    "parent_lease_id": null,
+    "permissions": {
+      "actions": [
+        "read",
+        "write"
+      ],
+      "constraints": {
+        "max_bytes": 1048576
+      },
+      "resources": [
+        "repo:NixOS-Dev-Quick-Deploy"
+      ]
+    },
+    "revocation_epoch": 1,
+    "signature": "cc19dfe2055dec43ba3a016d467fb698c4c9d203af3208477458b9174f13ba09",
+    "source": "capability-intake",
+    "trust_tier": 2,
+    "version": 1,
+    "zero_trust_behavior": "none"
+  },
+  "parent": {
+    "cost_class": "local",
+    "expires_at": "2026-12-31T00:00:00Z",
+    "input_schema": {
+      "type": "object"
+    },
+    "issued_at": "2026-07-24T00:00:00Z",
+    "issued_to": "principal-agent-local-qwen",
+    "lease_id": "lease-c0-parent-001",
+    "output_schema": {
+      "type": "object"
+    },
+    "owner": "aq-harness",
+    "parent_lease_id": null,
+    "permissions": {
+      "actions": [
+        "read",
+        "write",
+        "delegate"
+      ],
+      "constraints": {
+        "max_bytes": 2097152
+      },
+      "resources": [
+        "repo:NixOS-Dev-Quick-Deploy",
+        "repo:other"
+      ]
+    },
+    "revocation_epoch": 1,
+    "signature": "7edc8d74ca37a07efa4b7a4a4e6034c5b0f50c84c895f17c878353acf7973984",
+    "source": "capability-intake",
+    "trust_tier": 3,
+    "version": 1,
+    "zero_trust_behavior": "none"
+  },
+  "tampered": {
+    "cost_class": "local",
+    "expires_at": "2026-12-31T00:00:00Z",
+    "input_schema": {
+      "type": "object"
+    },
+    "issued_at": "2026-07-24T00:00:00Z",
+    "issued_to": "principal-agent-local-qwen",
+    "lease_id": "lease-c0-tampered-001",
+    "output_schema": {
+      "type": "object"
+    },
+    "owner": "aq-harness",
+    "parent_lease_id": null,
+    "permissions": {
+      "actions": [
+        "read",
+        "write",
+        "delete"
+      ],
+      "constraints": {
+        "max_bytes": 1048576
+      },
+      "resources": [
+        "repo:NixOS-Dev-Quick-Deploy"
+      ]
+    },
+    "revocation_epoch": 1,
+    "signature": "8b3705b672b775654e2397ab0bbcc7363dff294af4f91223c1bd38950a6e15b5",
+    "source": "capability-intake",
+    "trust_tier": 2,
+    "version": 1,
+    "zero_trust_behavior": "none"
+  },
+  "valid": {
+    "cost_class": "local",
+    "expires_at": "2026-12-31T00:00:00Z",
+    "input_schema": {
+      "type": "object"
+    },
+    "issued_at": "2026-07-24T00:00:00Z",
+    "issued_to": "principal-agent-local-qwen",
+    "lease_id": "lease-c0-valid-001",
+    "output_schema": {
+      "type": "object"
+    },
+    "owner": "aq-harness",
+    "parent_lease_id": null,
+    "permissions": {
+      "actions": [
+        "read",
+        "write"
+      ],
+      "constraints": {
+        "max_bytes": 1048576
+      },
+      "resources": [
+        "repo:NixOS-Dev-Quick-Deploy"
+      ]
+    },
+    "revocation_epoch": 1,
+    "signature": "bbc66ebe1181e245c99084e9f02d5e8a62a14f7557db450a855b4a032014ec48",
+    "source": "capability-intake",
+    "trust_tier": 2,
+    "version": 1,
+    "zero_trust_behavior": "none"
+  }
+}
