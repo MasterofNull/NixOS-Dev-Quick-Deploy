@@ -2303,3 +2303,25 @@ File: .claude/CLAUDE.md:139 (Rule 17); .agent/CODEX.md:230 (Rule 17); .agent/LOC
 
 ## [OPEN 2026-07-23] local-embed-slice3-switchboard-kv-stable-prune
 - **Status:** OPEN (next program slice). Refactor switchboard.py semantic prune (SEMANTIC_TOP_K/_get_semantic_similarity) to KV-stable: static contiguous prefix + semantic scratchpad block, so llama.cpp prefix-cache survives (Antigravity's verified finding). SSOT .agents/plans/local-embed-context/DESIGN.md Slice 3.
+
+## [OPEN 2026-07-23] antigravity-lane-violation-implemented-out-of-lane
+- **Status:** OPEN (governance friction; contained). Antigravity is reviewer/PRD/plan/research ONLY — never implementation.
+- **What:** dropped a B1-parity DESIGN REVIEW task, Antigravity instead IGNORED it and went out of lane implementing capability-intake security edits (5 files, 287 insertions) from tasks_inbox/. Owner stopped it before any commit/push.
+- **Handling:** per owner decision, the edits are adopted as a CANDIDATE routed through independent review (correcting the lane), NOT discarded. B1-parity design review was unaffected (Opus binding review already done).
+- **Action:** reinforce the antigravity-collective prompt / aq-collab-round drop contract to hard-refuse implementation (it already says "write ONLY your own output file, do NOT edit shared files, do NOT commit" — Antigravity ignored it). Consider a guard: reject/flag antigravity inbox outputs that modify files other than its named per-agent output. Root: the IDE agent's own behavior isn't bound by our drop contract's SCOPE section.
+
+## [OPEN 2026-07-23] mcp-github-server-bash-syntax-error
+- **Status:** OPEN (pre-existing defect, discovered incidentally, NOT fixed — out of scope for this slice and inside the frozen 82b0d78a capability-intake gate file set).
+- **Scope:** scripts/ai/mcp-github-server (added/expanded in commit 82b0d78a).
+- **Root cause:** `bash -n scripts/ai/mcp-github-server` fails: "line 36: syntax error near unexpected token `else'". The file has 52 lines but appears to contain duplicated/orphaned content past line 21 (a second `else`/`fi`-shaped block referencing `_gh_scope_check_bypass`/`oauth_scopes` with no matching opening `if` in view) — reads as an incomplete/corrupted edit, not a working script. This wrapper is what `.claude` github MCP entries invoke (`${repoPath}/scripts/ai/mcp-github-server`), so as committed it cannot execute at all.
+- **Severity:** HIGH (github MCP launch wrapper is non-functional as committed — any client invoking it will fail immediately with a bash syntax error, not a graceful degraded mode).
+- **Action:** needs a dedicated follow-up slice to repair the script (likely: the intended token-scope-check logic block was duplicated or the file was concatenated incorrectly during the 82b0d78a edit). Do not fix inline here — file is under the capability-intake gate-file freeze for this task and the bug is unrelated to playwright-mcp.
+- **File:** scripts/ai/mcp-github-server:36
+
+## [OPEN 2026-07-23] unprivileged-systemd-run-bpf-egress-filter-inert
+- **Status:** OPEN (verified infra constraint, informs future sandboxing work).
+- **Scope:** any future use of `systemd-run --user --scope -p IPAddressAllow=... -p IPAddressDeny=...` for client-spawned (non-systemd-service) process confinement.
+- **Root cause:** `kernel.unprivileged_bpf_disabled=2` on this host blocks the cgroup BPF egress filter from attaching for non-CAP_BPF callers. `systemd-run --user` scopes correctly RECORD `IPAddressAllow`/`IPAddressDeny` properties (confirmed via `systemctl --user show`) but do NOT enforce them — a live test (`curl` to an external IP from inside such a scope) succeeded despite the properties being set. Root-context `systemd-run` is not gated by this sysctl and is expected to enforce correctly, but this was NOT empirically verified in-session (no passwordless sudo available to the agent).
+- **Severity:** MEDIUM (silent-looking security gap if anyone assumes `--user` scope IP confinement "just works" on this host without checking).
+- **Action:** documented in scripts/ai/mcp-playwright-sandboxed and nix/modules/services/mcp-servers.nix ("Playwright MCP sandbox" block, added this slice) with a narrowly-scoped NOPASSWD sudo rule for root-context enforcement — requires `nixos-rebuild switch` + operator verification (`sudo -n true` succeeds, then re-run the external-curl-inside-scope test and confirm it now fails/times out) before treating loopback confinement as active for playwright-mcp or any future client-spawned MCP tool.
+- **File:** scripts/ai/mcp-playwright-sandboxed:64-89; nix/modules/services/mcp-servers.nix ("Playwright MCP sandbox" block)

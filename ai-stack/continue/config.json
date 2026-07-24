@@ -186,7 +186,7 @@
     },
     {
       "name": "Playwright MCP",
-      "command": "npx",
+      "command": "/home/hyperd/Documents/NixOS-Dev-Quick-Deploy/scripts/ai/mcp-playwright-sandboxed",
       "args": [
         "-y",
         "@playwright/mcp@0.0.76",
