@@ -11,3 +11,10 @@ Reference skills: `capability-intake`, `nixos-system`, `understand-anything`, `a
 
 ### Follow-up Patch Scope:
 1. Add dashboard telemetry integration showing Nix evaluation performance and AST node metrics.
+
+## Resolution (2026-07-23) — DEFERRED (verdict unchanged, PASS stands)
+
+Not addressed in this cycle — out of scope for the capability-intake security revision (which covered the
+`mcp-admission-controller` and `github-mcp-readonly` findings only). This is a non-critical dashboard
+enhancement on an already-PASSing finding; the underlying PASS verdict is unaffected. No security regression
+from deferral.

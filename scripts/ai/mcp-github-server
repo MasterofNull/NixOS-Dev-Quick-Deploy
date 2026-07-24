@@ -14,6 +14,68 @@ if [[ -z "${GITHUB_PERSONAL_ACCESS_TOKEN:-}" ]]; then
     printf '{"error":"No GitHub token available — add SOPS github_mcp_token or run: gh auth login"}\n' >&2
     exit 1
 fi
+
+# Enforce repo-scoped read-only tokens at the token registration gateway.
+# This is defense-in-depth ONLY — `--read-only` on the exec line below is the
+# real enforcement boundary. Every failure mode here (offline, rate-limited,
+# unverifiable token format) therefore fails OPEN: it must never block
+# sandbox/CI/local startup. Only a confirmed write/admin scope on a 200
+# response aborts startup.
+_gh_scope_check_bypass() {
+    # $1 = machine-readable reason. Warn on stderr AND emit to the harness
+    # event log so a skipped/unverified check is observable, not silent.
+    local reason="$1"
+    printf '{"warning":"GitHub token scope pre-check bypassed: %s. --read-only remains the enforcement boundary."}\n' "$reason" >&2
+    "$(dirname "${BASH_SOURCE[0]}")/aq-event" emit \
+        --agent mcp-github-server \
+        --type security.token_scope_check.bypassed \
+        --subject github-mcp-readonly \
+        --payload "{\"reason\":\"${reason}\"}" \
+        >/dev/null 2>&1 || true
+}
+
+if command -v curl >/dev/null 2>&1; then
+    # Skip verification if offline (connect timeout 2s)
+    if curl -sI --connect-timeout 2 https://api.github.com/ >/dev/null 2>&1; then
+        # Classic PATs (ghp_...) expose granted scopes via X-OAuth-Scopes, so
+        # they can be checked. Fine-grained PATs (github_pat_...) and GitHub
+        # App/installation tokens (gho_/ghu_/ghs_) do NOT populate that
+        # header with their real permission set — treating them as
+        # "read-only" would be a false assurance, since fine-grained PATs
+        # can absolutely carry Contents:write and other write permissions.
+        if [[ "$GITHUB_PERSONAL_ACCESS_TOKEN" =~ ^ghp_ ]]; then
+            # Pass the Authorization header via curl's -K/--config-from-stdin
+            # mechanism instead of -H on the command line, so the token never
+            # appears in argv (and is not `ps`/`/proc/<pid>/cmdline` visible).
+            headers=$(printf 'header = "Authorization: token %s"\n' "$GITHUB_PERSONAL_ACCESS_TOKEN" \
+                | curl -sI -K - --connect-timeout 3 https://api.github.com/ 2>/dev/null || true)
+            status_line=$(printf '%s' "$headers" | head -n1 | tr -d '\r')
+            if [[ "$status_line" =~ ^HTTP/[0-9.]+[[:space:]]+200([[:space:]]|$) ]]; then
+                oauth_scopes=$(printf '%s' "$headers" | grep -i "^X-OAuth-Scopes" || true)
+                if [[ -n "$oauth_scopes" ]] && [[ "$oauth_scopes" =~ ([\ ,]|^)(repo|public_repo|write:packages|admin:org|admin:public_key|admin:repo_hook|admin:org_hook|gist|delete:packages)([\ ,]|$) ]]; then
+                    printf '{"error":"Token has write/admin scopes (detected in classic OAuth scopes: %s). Repo-scoped read-only tokens are required."}\n' "$oauth_scopes" >&2
+                    exit 1
+                fi
+                # 200 + no disqualifying scope in X-OAuth-Scopes -> verified.
+            else
+                # Any non-200 (401 unauthorized, 403 rate-limited, or
+                # anything else) is NOT a confirmed write/admin scope and
+                # must not fail closed — a rate-limited-but-valid token is
+                # the common case and must not block server startup.
+                _gh_scope_check_bypass "non-200 response from scope probe (${status_line:-no response})"
+            fi
+        else
+            # Fine-grained/App token: cannot be verified via X-OAuth-Scopes.
+            # --read-only at the github-mcp-server layer is the sole
+            # enforcement boundary for these; permission scope must be
+            # confirmed manually at token-creation time.
+            _gh_scope_check_bypass "non-classic token format; fine-grained/App token permissions are not verifiable via X-OAuth-Scopes and are NOT guaranteed read-only"
+        fi
+    else
+        _gh_scope_check_bypass "GitHub API unreachable (offline/CI)"
+    fi
+fi
+
 export GITHUB_PERSONAL_ACCESS_TOKEN
 exec github-mcp-server stdio \
     --read-only \

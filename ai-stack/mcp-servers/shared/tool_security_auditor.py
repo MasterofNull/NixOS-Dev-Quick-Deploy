@@ -68,6 +68,23 @@ def _default_policy() -> Dict[str, Any]:
     }
 
 
+def _levenshtein_distance(s1: str, s2: str) -> int:
+    if len(s1) < len(s2):
+        return _levenshtein_distance(s2, s1)
+    if len(s2) == 0:
+        return len(s1)
+    previous_row = range(len(s2) + 1)
+    for i, c1 in enumerate(s1):
+        current_row = [i + 1]
+        for j, c2 in enumerate(s2):
+            insertions = previous_row[j + 1] + 1
+            deletions = current_row[j] + 1
+            substitutions = previous_row[j] + (c1 != c2)
+            current_row.append(min(insertions, deletions, substitutions))
+        previous_row = current_row
+    return previous_row[-1]
+
+
 class ToolSecurityAuditor:
     def __init__(
         self,
@@ -208,6 +225,14 @@ class ToolSecurityAuditor:
         blocked_tools = {str(t).strip().lower() for t in policy.get("blocked_tools", [])}
         if name in blocked_tools:
             reasons.append("blocked_tool_name")
+        else:
+            # Fuzzy match check against blocked tool names (Levenshtein distance <= 2)
+            # Only for names of length >= 4 to avoid false positives on very short names
+            for bt in blocked_tools:
+                if len(name) >= 4 and len(bt) >= 4:
+                    if _levenshtein_distance(name, bt) <= 2:
+                        reasons.append("blocked_tool_name_fuzzy")
+                        break
 
         endpoint_exempt_tools = {
             str(t).strip().lower()
