@@ -2325,3 +2325,10 @@ File: .claude/CLAUDE.md:139 (Rule 17); .agent/CODEX.md:230 (Rule 17); .agent/LOC
 - **Severity:** MEDIUM (silent-looking security gap if anyone assumes `--user` scope IP confinement "just works" on this host without checking).
 - **Action:** documented in scripts/ai/mcp-playwright-sandboxed and nix/modules/services/mcp-servers.nix ("Playwright MCP sandbox" block, added this slice) with a narrowly-scoped NOPASSWD sudo rule for root-context enforcement — requires `nixos-rebuild switch` + operator verification (`sudo -n true` succeeds, then re-run the external-curl-inside-scope test and confirm it now fails/times out) before treating loopback confinement as active for playwright-mcp or any future client-spawned MCP tool.
 - **File:** scripts/ai/mcp-playwright-sandboxed:64-89; nix/modules/services/mcp-servers.nix ("Playwright MCP sandbox" block)
+
+## [FIXED 2026-07-23] playwright-sudo-rule-broke-nixos-rebuild
+- **Status:** FIXED (rule removed). Was a HARD degradation — blocked all nixos-rebuild.
+- **Scope:** nix/modules/services/mcp-servers.nix (committed 3b66e152, playwright sandbox block).
+- **Root cause:** the NOPASSWD security.sudo.extraRules command spec `systemd-run ... -- */bin/npx -y @playwright/mcp@0.0.76 *` failed sudoers compilation (`sudoers-in:7:224: syntax error` on the wildcard command spec) -> the whole system config would not build. Also a security footgun: a NOPASSWD rule ending in `*` is over-permissive/injection-prone.
+- **Fix:** removed the extraRules block. Wrapper (mcp-playwright-sandboxed) already falls back to unprivileged systemd-run + warning; version-integrity check stays active. tasks_inbox playwright stays REQUEST_REVISION.
+- **Redo (safer):** egress confinement via a dedicated NO-WILDCARD wrapper as the sole sudo target, or a first-class systemd unit — NOT a wildcard sudoers command. Lesson: never commit a Nix change touching sudoers/system config without a build/eval check before the operator rebuilds.
