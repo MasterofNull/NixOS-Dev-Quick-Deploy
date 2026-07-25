@@ -37,7 +37,11 @@ DONE_MARKERS = ("ACCEPTED", "COMPLETE", "COMPLETED", "SHIPPED", "DONE", "PASS")
 ACTIVE_DAYS = 21
 DORMANT_DAYS = 90
 
-STATUS_ORDER = {"blocked": 0, "active": 1, "untracked": 2, "dormant": 3, "done": 4}
+STATUS_ORDER = {"blocked": 0, "active": 1, "untracked": 2, "dormant": 3,
+                "done": 4, "complete": 4, "superseded": 5, "retired": 6}
+# Lifecycle statuses declared explicitly in a plan's .plan-lifecycle.json override
+# every projected/heuristic status (an owner/orchestrator retirement decision wins).
+LIFECYCLE_STATUSES = ("active", "complete", "superseded", "retired")
 
 
 def _today() -> str:
@@ -124,6 +128,22 @@ def _doc_markers(plan_path: Path) -> tuple[bool, bool]:
     return has_open, has_done
 
 
+def _read_lifecycle(plan_path: Path) -> dict | None:
+    """A .plan-lifecycle.json declares an explicit retirement/completion decision:
+    {"lifecycle":"superseded|retired|complete|active","superseded_by":"<id/doc>",
+     "date":"YYYY-MM-DD","reason":"..."}. It OVERRIDES projected status."""
+    f = plan_path / ".plan-lifecycle.json"
+    if not f.is_file():
+        return None
+    try:
+        d = json.loads(f.read_text(encoding="utf-8"))
+    except (OSError, json.JSONDecodeError):
+        return None
+    if str(d.get("lifecycle", "")).lower() not in LIFECYCLE_STATUSES:
+        return None
+    return d
+
+
 def _plan_record(plan_path: Path) -> dict:
     pid = plan_path.name
     rel = f".agents/plans/{pid}"
@@ -133,6 +153,19 @@ def _plan_record(plan_path: Path) -> dict:
     last = _git_last_date(rel)
     days = _days_since(last)
     has_open, has_done = _doc_markers(plan_path)
+
+    lifecycle = _read_lifecycle(plan_path)
+    if lifecycle is not None:
+        status = str(lifecycle["lifecycle"]).lower()
+        rec_extra = {"superseded_by": lifecycle.get("superseded_by", ""),
+                     "lifecycle_reason": lifecycle.get("reason", "")}
+        doc_count = sum(1 for p in plan_path.iterdir() if p.is_file() and p.suffix == ".md")
+        return {
+            "id": pid, "title": _title(doc, pid), "status": status,
+            "untracked": not has_tracker, "has_tracker": has_tracker,
+            "primary_doc": (f"{rel}/{doc.name}" if doc else ""),
+            "doc_count": doc_count, "last_activity": last, **rec_extra,
+        }
 
     if has_tracker:
         # A per-plan tracker.json gives a ground-truth rollup (blocked/active/done).
@@ -201,10 +234,13 @@ def _neg_date(datestr: str) -> str:
 
 _STATUS_META = {
     "done": ("Done", "--good"),
+    "complete": ("Complete", "--good"),
     "active": ("Active", "--active"),
     "blocked": ("Blocked", "--blocked"),
     "dormant": ("Dormant", "--notstarted"),
     "untracked": ("Untracked", "--accent"),
+    "superseded": ("Superseded", "--notstarted"),
+    "retired": ("Retired", "--notstarted"),
 }
 
 
@@ -216,21 +252,29 @@ def render_html(data: dict) -> str:
         title = _html.escape(p["title"])
         pid = _html.escape(p["id"])
         tracker_badge = "●" if p["has_tracker"] else "<span class='no-tracker'>no tracker</span>"
+        sub = ""
+        if p["status"] in ("superseded", "retired") and p.get("superseded_by"):
+            sub = f'<span class="supby">→ {_html.escape(str(p["superseded_by"]))}</span>'
         rows.append(
             f'<tr data-status="{p["status"]}" data-search="{pid.lower()} {title.lower()}">'
             f'<td><span class="dot" style="background:var({var})"></span>'
             f'<span class="st">{label}</span></td>'
             f'<td class="name"><a href="../../{doc}" title="{doc}">{title}</a>'
-            f'<span class="pid">{pid}</span></td>'
+            f'<span class="pid">{pid}</span>{sub}</td>'
             f'<td class="act">{_html.escape(p["last_activity"] or "—")}</td>'
             f'<td class="trk">{tracker_badge}</td>'
             f'<td class="dc">{p["doc_count"]}</td></tr>'
         )
     by = data["by_status"]
+
+    def _count(s: str) -> int:
+        # 'untracked' is a cross-cutting flag, not a status bucket — use the real count.
+        return data["untracked_count"] if s == "untracked" else by.get(s, 0)
+
     stat_cards = "".join(
-        f'<div class="stat"><span class="stat-num" style="color:var({_STATUS_META.get(s,("", "--ink"))[1]})">{by.get(s,0)}</span>'
+        f'<div class="stat"><span class="stat-num" style="color:var({_STATUS_META.get(s,("", "--ink"))[1]})">{_count(s)}</span>'
         f'<span class="stat-label">{_STATUS_META.get(s,(s,""))[0]}</span></div>'
-        for s in ("active", "blocked", "untracked", "dormant", "done")
+        for s in ("active", "dormant", "superseded", "complete", "untracked")
     )
     return _TEMPLATE.replace("__GENERATED__", _html.escape(data["generated"])) \
         .replace("__TOTAL__", str(data["total"])) \
@@ -269,6 +313,8 @@ tr:last-child td{border-bottom:none}
 .name a{color:var(--ink);text-decoration:none;font-weight:600}
 .name a:hover{color:var(--accent);text-decoration:underline}
 .pid{display:block;font-family:var(--mono);font-size:.66rem;color:var(--ink-faint)}
+.supby{display:block;font-size:.66rem;color:var(--ink-muted);font-style:italic;margin-top:1px}
+tr[data-status="superseded"] .name a,tr[data-status="retired"] .name a{color:var(--ink-faint);text-decoration:line-through}
 .act{font-family:var(--mono);font-size:.74rem;color:var(--ink-muted);white-space:nowrap}
 .trk{text-align:center;color:var(--good)}.no-tracker{color:var(--active);font-family:var(--mono);font-size:.62rem}
 .dc{text-align:center;color:var(--ink-faint);font-family:var(--mono);font-size:.74rem}
@@ -285,7 +331,8 @@ footer{margin-top:22px;font-family:var(--mono);font-size:.68rem;color:var(--ink-
 <button class="filter" data-f="active">Active</button>
 <button class="filter" data-f="blocked">Blocked</button>
 <button class="filter" data-f="untracked">Untracked</button>
-<button class="filter" data-f="done">Done</button>
+<button class="filter" data-f="superseded">Superseded</button>
+<button class="filter" data-f="complete">Complete</button>
 </div>
 <div class="panel"><table><thead><tr><th>Status</th><th>Plan</th><th>Last activity</th><th class="trk">Trk</th><th class="dc">Docs</th></tr></thead><tbody id="rows">
 __ROWS__

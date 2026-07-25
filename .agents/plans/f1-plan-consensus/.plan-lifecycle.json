@@ -1,0 +1,8 @@
+{
+  "lifecycle": "superseded",
+  "superseded_by": "agent-agnostic-factory",
+  "date": "2026-07-25",
+  "reason": "F1 consensus round; F1 round-state machine shipped (aq-collab-round) and folded into the agent-agnostic factory",
+  "decided_by": "fable-5 (orchestrator); owner-approved medium-confidence batch 2026-07-25",
+  "note": "NO DELETE \u2014 dir retained."
+}

@@ -1,0 +1,8 @@
+{
+  "lifecycle": "superseded",
+  "superseded_by": "aqos-foundation-c",
+  "date": "2026-07-25",
+  "reason": "Foundation C design packet explicitly ABSORBS F3 (CapabilityLease + OTel + signed A2A). The F3 brief is now executing as Foundation C C0-C6.",
+  "decided_by": "fable-5 (orchestrator); high-confidence, hard evidence",
+  "note": "NO DELETE \u2014 dir retained; marker sets lifecycle for aq-plans-index."
+}
