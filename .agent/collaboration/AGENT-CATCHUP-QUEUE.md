@@ -53,3 +53,19 @@ Advisory unless a real defect surfaces → then a bounded follow-up, never rewri
 - Subject: `.agents/plans/aqos-foundation-c/DESIGN-PACKET.md` (Foundation C security spine; absorbs F3 4/4 consensus + keystone zero_trust; Q3-ratified direction).
 - Why queued: codex in quota-cooldown at design time; independent review ran via fresh Opus. codex = deepest F3 contributor (epoch revocation, bwrap⇄lease, allowed_output_paths) → on return, confirm the packet is faithful to its F3 additions + sanity-check C0→C6 decomposition.
 - Status: advisory on return (real defect → bounded follow-up, never rewrite). Solicited 2026-07-24.
+
+### [QUEUED] codex — Foundation C **C0** confirmatory audit
+- Subject: commit `0319488b` — `config/schemas/capability-lease.schema.json`, `scripts/ai/lib/capability_lease.py`, `scripts/ai/aq-lease`, tests+fixtures (report-only CapabilityLease primitive).
+- Why queued: codex in cooldown at build time; independent crypto review ran via fresh Opus (caught + fixed a non-numeric-constraint widen fail-open in attenuate()). codex = deepest F3 crypto/epoch contributor → confirm HMAC canonicalization + attenuation monotonicity + verify() fail-closed ordering.
+- Status: advisory on return (real defect → bounded follow-up, never rewrite). Solicited 2026-07-24.
+
+### [QUEUED] codex — Foundation C **C1** confirmatory audit
+- Subject: commit `f121c713` — capability_lease_issuance.py + aq-capability-shadow + shadow-record schema + tests (shadow admission→issuance, log-only, decoupled).
+- Why queued: codex in cooldown; independent Opus review PASSED (0 blocking; 2 SHOULD-FIX folded). Confirm the additive/non-enforcing decoupling + admission→lease policy mapping + no false would-issue on blocked/needs-review.
+- Status: advisory on return. Solicited 2026-07-24.
+
+### [QUEUED] flagship reviewer — Foundation C **C2** independent DESIGN review (blocking for activation)
+- Subject: `.agents/plans/aqos-foundation-c/C2-DESIGN-AND-AUTHORIZATION.md` (first enforcement slice; flag-gated default-off tool-lease gate at switchboard _resolve_tool_lease).
+- Why queued: first reviewer (Claude flagship/Opus) hit the Anthropic session limit 2026-07-25 (resets 11:40am); codex in cooldown. Rule 18 substitution recorded — route to next flagship reviewer on return (fresh Opus post-reset OR codex). Antigravity NOT used (untrusted-advisory; security-enforcement design).
+- Focus: fail-open audit, off-is-inert parity, hash-bound governance, ceiling, F3 faithfulness (S1/S3/S4 + property tests).
+- Status: **BLOCKING** — C2 cannot be frozen/owner-activated until this PASSES. Solicited 2026-07-25.
