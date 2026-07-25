@@ -1,0 +1,350 @@
+#!/usr/bin/env python3
+"""aq-plans-index — master SSOT dashboard of every plan under .agents/plans/.
+
+Projects each plan's status from GROUND TRUTH (a per-plan tracker.json rollup when
+present, else git-last-activity + doc markers) so the owner has ONE entry point and
+never has to search for a plan doc. Apex of the PM-tracker system
+(.agents/plans/pm-tracker-standard/DESIGN.md §"Three scopes").
+
+Usage:
+  aq-plans-index --json            # the projected index (data)
+  aq-plans-index render            # terminal table
+  aq-plans-index --html <out>      # write the self-contained dashboard HTML
+  aq-plans-index --check --baseline <json>   # exit 1 on drift (ignores 'generated')
+
+Read-only w.r.t. git/plans. git is called via subprocess (the shell wrapper truncates
+`git log`; subprocess sees full history). Never raises on a missing dir/doc.
+"""
+from __future__ import annotations
+
+import argparse
+import datetime
+import html as _html
+import json
+import os
+import re
+import subprocess
+import sys
+from pathlib import Path
+
+REPO = Path(__file__).resolve().parents[2]
+PLANS_DIR = REPO / ".agents" / "plans"
+
+DOC_PRIORITY = ("DESIGN.md", "SPEC.md", "PLAN.md", "README.md")
+OPEN_MARKERS = ("FROZEN", "PREPARED_ONLY", "REQUEST_REVISION", "REVISE", "BLOCKED",
+                "awaiting", "PENDING", "NOT AUTHORIZED", "NOT STARTED")
+DONE_MARKERS = ("ACCEPTED", "COMPLETE", "COMPLETED", "SHIPPED", "DONE", "PASS")
+ACTIVE_DAYS = 21
+DORMANT_DAYS = 90
+
+STATUS_ORDER = {"blocked": 0, "active": 1, "untracked": 2, "dormant": 3, "done": 4}
+
+
+def _today() -> str:
+    return datetime.date.today().isoformat()
+
+
+def _git_last_date(rel: str) -> str:
+    try:
+        out = subprocess.run(
+            ["git", "-C", str(REPO), "log", "-1", "--format=%cs", "--", rel],
+            capture_output=True, text=True, timeout=20,
+        ).stdout.strip()
+        return out
+    except Exception:
+        return ""
+
+
+def _days_since(datestr: str) -> int | None:
+    if not datestr:
+        return None
+    try:
+        d = datetime.date.fromisoformat(datestr)
+    except ValueError:
+        return None
+    return (datetime.date.today() - d).days
+
+
+def _primary_doc(plan_path: Path) -> Path | None:
+    mds = [p for p in plan_path.iterdir() if p.is_file() and p.suffix == ".md"]
+    if not mds:
+        return None
+    for name in DOC_PRIORITY:
+        for p in mds:
+            if p.name == name:
+                return p
+    return sorted(mds)[0]
+
+
+def _title(doc: Path | None, fallback: str) -> str:
+    if doc is not None:
+        try:
+            for line in doc.read_text(encoding="utf-8", errors="ignore").splitlines():
+                s = line.strip()
+                if s.startswith("# "):
+                    return s[2:].strip()
+        except OSError:
+            pass
+    return fallback.replace("-", " ").replace("_", " ").title()
+
+
+def _rollup_tracker(tracker: Path) -> str | None:
+    """Roll a per-plan tracker.json up to a single status, if present + parseable."""
+    try:
+        data = json.loads(tracker.read_text(encoding="utf-8"))
+    except (OSError, json.JSONDecodeError):
+        return None
+    items = data.get("items") or data.get("tracks") or []
+    statuses = {str(i.get("status", "")).lower() for i in items if isinstance(i, dict)}
+    if not statuses:
+        return None
+    if "blocked" in statuses:
+        return "blocked"
+    if statuses & {"active", "frozen", "in_progress", "in-progress"}:
+        return "active"
+    if statuses and statuses <= {"done", "shipped", "activated", "complete", "completed"}:
+        return "done"
+    return "active"
+
+
+def _doc_markers(plan_path: Path) -> tuple[bool, bool]:
+    """Scan docs for (has_open_marker, has_done_marker) — bounded read."""
+    has_open = has_done = False
+    for p in plan_path.iterdir():
+        if not (p.is_file() and p.suffix == ".md"):
+            continue
+        try:
+            txt = p.read_text(encoding="utf-8", errors="ignore")[:8000]
+        except OSError:
+            continue
+        if any(m in txt for m in OPEN_MARKERS):
+            has_open = True
+        if any(m in txt for m in DONE_MARKERS):
+            has_done = True
+    return has_open, has_done
+
+
+def _plan_record(plan_path: Path) -> dict:
+    pid = plan_path.name
+    rel = f".agents/plans/{pid}"
+    doc = _primary_doc(plan_path)
+    tracker = plan_path / "tracker.json"
+    has_tracker = tracker.is_file()
+    last = _git_last_date(rel)
+    days = _days_since(last)
+    has_open, has_done = _doc_markers(plan_path)
+
+    if has_tracker:
+        # A per-plan tracker.json gives a ground-truth rollup (blocked/active/done).
+        status = _rollup_tracker(tracker) or "active"
+        untracked = False
+    else:
+        # No tracker yet → we cannot reliably infer a FINE status (done/blocked)
+        # from doc text (design docs mention FROZEN/REVISE/PENDING in passing, which
+        # false-flags them). Be honest: drive off git RECENCY only. `untracked` is
+        # surfaced separately so the dashboard nudges PM-tracker adoption.
+        untracked = True
+        if days is None:
+            status = "dormant"
+        elif days <= DORMANT_DAYS:
+            status = "active"
+        else:
+            status = "dormant"
+
+    doc_count = sum(1 for p in plan_path.iterdir() if p.is_file() and p.suffix == ".md")
+    return {
+        "id": pid,
+        "title": _title(doc, pid),
+        "status": status,
+        "untracked": untracked,
+        "has_tracker": has_tracker,
+        "primary_doc": (f"{rel}/{doc.name}" if doc else ""),
+        "doc_count": doc_count,
+        "last_activity": last,
+    }
+
+
+def index() -> dict:
+    plans = []
+    if PLANS_DIR.is_dir():
+        for entry in sorted(PLANS_DIR.iterdir()):
+            if entry.is_dir():
+                try:
+                    plans.append(_plan_record(entry))
+                except Exception:
+                    plans.append({"id": entry.name, "title": entry.name,
+                                  "status": "dormant", "untracked": True,
+                                  "has_tracker": False, "primary_doc": "",
+                                  "doc_count": 0, "last_activity": ""})
+    plans.sort(key=lambda p: (STATUS_ORDER.get(p["status"], 9),
+                              _neg_date(p["last_activity"]), p["id"]))
+    by_status: dict[str, int] = {}
+    for p in plans:
+        by_status[p["status"]] = by_status.get(p["status"], 0) + 1
+    return {
+        "generated": _today(),
+        "total": len(plans),
+        "by_status": by_status,
+        "untracked_count": sum(1 for p in plans if p["untracked"]),
+        "plans": plans,
+    }
+
+
+def _neg_date(datestr: str) -> str:
+    # sort most-recent first: invert the ISO date so plain string sort is desc
+    if not datestr:
+        return "0000-00-00"
+    return "".join(str(9 - int(c)) if c.isdigit() else c for c in datestr)
+
+
+# ---- rendering ----------------------------------------------------------
+
+_STATUS_META = {
+    "done": ("Done", "--good"),
+    "active": ("Active", "--active"),
+    "blocked": ("Blocked", "--blocked"),
+    "dormant": ("Dormant", "--notstarted"),
+    "untracked": ("Untracked", "--accent"),
+}
+
+
+def render_html(data: dict) -> str:
+    rows = []
+    for p in data["plans"]:
+        label, var = _STATUS_META.get(p["status"], ("?", "--notstarted"))
+        doc = _html.escape(p["primary_doc"])
+        title = _html.escape(p["title"])
+        pid = _html.escape(p["id"])
+        tracker_badge = "●" if p["has_tracker"] else "<span class='no-tracker'>no tracker</span>"
+        rows.append(
+            f'<tr data-status="{p["status"]}" data-search="{pid.lower()} {title.lower()}">'
+            f'<td><span class="dot" style="background:var({var})"></span>'
+            f'<span class="st">{label}</span></td>'
+            f'<td class="name"><a href="../../{doc}" title="{doc}">{title}</a>'
+            f'<span class="pid">{pid}</span></td>'
+            f'<td class="act">{_html.escape(p["last_activity"] or "—")}</td>'
+            f'<td class="trk">{tracker_badge}</td>'
+            f'<td class="dc">{p["doc_count"]}</td></tr>'
+        )
+    by = data["by_status"]
+    stat_cards = "".join(
+        f'<div class="stat"><span class="stat-num" style="color:var({_STATUS_META.get(s,("", "--ink"))[1]})">{by.get(s,0)}</span>'
+        f'<span class="stat-label">{_STATUS_META.get(s,(s,""))[0]}</span></div>'
+        for s in ("active", "blocked", "untracked", "dormant", "done")
+    )
+    return _TEMPLATE.replace("__GENERATED__", _html.escape(data["generated"])) \
+        .replace("__TOTAL__", str(data["total"])) \
+        .replace("__UNTRACKED__", str(data["untracked_count"])) \
+        .replace("__STATCARDS__", stat_cards) \
+        .replace("__ROWS__", "\n".join(rows))
+
+
+_TEMPLATE = """<title>AQ-OS — Master Plans Dashboard</title>
+<style>
+:root{--bg:#f3f5f8;--surface:#fff;--surface-2:#eaeef3;--border:#d7dde5;--ink:#1a212c;--ink-muted:#5b6472;--ink-faint:#8993a2;--accent:#256b80;--good:#29885c;--active:#a6690a;--blocked:#b83f3f;--notstarted:#8a93a1;--radius:7px;--mono:ui-monospace,"SF Mono",Consolas,monospace;--sans:ui-sans-serif,system-ui,-apple-system,"Segoe UI",sans-serif}
+@media(prefers-color-scheme:dark){:root{--bg:#10141b;--surface:#161c25;--surface-2:#1d2531;--border:#2b3444;--ink:#e6ecf4;--ink-muted:#93a0b2;--ink-faint:#626d7e;--accent:#6fc2d6;--good:#4fbd85;--active:#e0aa4a;--blocked:#e2695a;--notstarted:#6b7688}}
+:root[data-theme="dark"]{--bg:#10141b;--surface:#161c25;--surface-2:#1d2531;--border:#2b3444;--ink:#e6ecf4;--ink-muted:#93a0b2;--ink-faint:#626d7e;--accent:#6fc2d6;--good:#4fbd85;--active:#e0aa4a;--blocked:#e2695a;--notstarted:#6b7688}
+:root[data-theme="light"]{--bg:#f3f5f8;--surface:#fff;--surface-2:#eaeef3;--border:#d7dde5;--ink:#1a212c;--ink-muted:#5b6472;--ink-faint:#8993a2;--accent:#256b80;--good:#29885c;--active:#a6690a;--blocked:#b83f3f;--notstarted:#8a93a1}
+*{box-sizing:border-box}body{margin:0;background:var(--bg);color:var(--ink);font-family:var(--sans);font-size:15px;line-height:1.45}
+.wrap{max-width:1080px;margin:0 auto;padding:26px 22px 60px}
+.eyebrow{font-family:var(--mono);font-size:.72rem;letter-spacing:.08em;text-transform:uppercase;color:var(--ink-faint);margin:0 0 5px}
+h1{font-family:var(--mono);font-size:1.45rem;font-weight:600;margin:0 0 2px}
+.updated{font-family:var(--mono);font-size:.72rem;color:var(--ink-faint)}
+.top{border-bottom:1px solid var(--border);padding-bottom:16px;margin-bottom:20px;display:flex;justify-content:space-between;align-items:flex-end;flex-wrap:wrap;gap:12px}
+.stats{display:grid;grid-template-columns:repeat(5,1fr);gap:10px;margin-bottom:20px}
+.stat{background:var(--surface);border:1px solid var(--border);border-radius:var(--radius);padding:12px 14px}
+.stat-num{display:block;font-family:var(--mono);font-size:1.4rem;font-weight:600;font-variant-numeric:tabular-nums}
+.stat-label{display:block;font-size:.72rem;color:var(--ink-muted);margin-top:2px}
+.controls{display:flex;gap:8px;margin-bottom:12px;flex-wrap:wrap}
+input[type=search]{flex:1;min-width:180px;background:var(--surface);border:1px solid var(--border);border-radius:var(--radius);padding:8px 11px;color:var(--ink);font-size:.85rem;font-family:var(--sans)}
+.filter{font-family:var(--mono);font-size:.7rem;text-transform:uppercase;letter-spacing:.04em;padding:6px 11px;border-radius:100px;border:1px solid var(--border);background:var(--surface);color:var(--ink-muted);cursor:pointer}
+.filter.on{background:var(--accent);color:#fff;border-color:var(--accent)}
+.panel{background:var(--surface);border:1px solid var(--border);border-radius:var(--radius);overflow:hidden}
+table{width:100%;border-collapse:collapse;font-size:.82rem}
+th,td{text-align:left;padding:8px 12px;border-bottom:1px solid var(--border);vertical-align:middle}
+th{font-family:var(--mono);font-size:.64rem;text-transform:uppercase;letter-spacing:.05em;color:var(--ink-faint)}
+tr:last-child td{border-bottom:none}
+.dot{display:inline-block;width:8px;height:8px;border-radius:50%;margin-right:7px;vertical-align:middle}
+.st{font-family:var(--mono);font-size:.72rem;color:var(--ink-muted)}
+.name a{color:var(--ink);text-decoration:none;font-weight:600}
+.name a:hover{color:var(--accent);text-decoration:underline}
+.pid{display:block;font-family:var(--mono);font-size:.66rem;color:var(--ink-faint)}
+.act{font-family:var(--mono);font-size:.74rem;color:var(--ink-muted);white-space:nowrap}
+.trk{text-align:center;color:var(--good)}.no-tracker{color:var(--active);font-family:var(--mono);font-size:.62rem}
+.dc{text-align:center;color:var(--ink-faint);font-family:var(--mono);font-size:.74rem}
+footer{margin-top:22px;font-family:var(--mono);font-size:.68rem;color:var(--ink-faint)}
+.hidden{display:none}
+@media(max-width:760px){.stats{grid-template-columns:repeat(3,1fr)}.dc,th.dc{display:none}}
+</style>
+<div class="wrap">
+<header class="top"><div><p class="eyebrow">NixOS-Dev-Quick-Deploy · AQ-OS</p><h1>Master Plans Dashboard</h1></div><span class="updated">generated __GENERATED__ · projected from ground truth</span></header>
+<section class="stats">__STATCARDS__</section>
+<div class="controls">
+<input type="search" id="q" placeholder="Filter __TOTAL__ plans by name/id… (__UNTRACKED__ have no tracker yet)">
+<button class="filter on" data-f="all">All</button>
+<button class="filter" data-f="active">Active</button>
+<button class="filter" data-f="blocked">Blocked</button>
+<button class="filter" data-f="untracked">Untracked</button>
+<button class="filter" data-f="done">Done</button>
+</div>
+<div class="panel"><table><thead><tr><th>Status</th><th>Plan</th><th>Last activity</th><th class="trk">Trk</th><th class="dc">Docs</th></tr></thead><tbody id="rows">
+__ROWS__
+</tbody></table></div>
+<footer>SSOT: projected by <code>aq-plans-index</code> from .agents/plans/ + git history + per-plan tracker.json — regenerate, never hand-edit.</footer>
+</div>
+<script>
+const q=document.getElementById('q'),rows=[...document.querySelectorAll('#rows tr')];let f='all';
+function apply(){const t=q.value.trim().toLowerCase();rows.forEach(r=>{const okF=(f==='all'||r.dataset.status===f||(f==='untracked'&&r.querySelector('.no-tracker')));const okQ=!t||r.dataset.search.includes(t);r.classList.toggle('hidden',!(okF&&okQ))})}
+q.addEventListener('input',apply);
+document.querySelectorAll('.filter').forEach(b=>b.addEventListener('click',()=>{document.querySelectorAll('.filter').forEach(x=>x.classList.remove('on'));b.classList.add('on');f=b.dataset.f;apply()}));
+</script>
+"""
+
+
+def main(argv=None) -> int:
+    ap = argparse.ArgumentParser(description=__doc__)
+    ap.add_argument("mode", nargs="?", default="json", choices=["json", "render", "html"])
+    ap.add_argument("--json", action="store_true")
+    ap.add_argument("--html", metavar="OUT")
+    ap.add_argument("--check", action="store_true")
+    ap.add_argument("--baseline", metavar="JSON")
+    args = ap.parse_args(argv)
+
+    data = index()
+
+    if args.check:
+        if not args.baseline:
+            print("--check requires --baseline", file=sys.stderr)
+            return 2
+        try:
+            base = json.loads(Path(args.baseline).read_text())
+        except Exception as exc:
+            print(f"baseline unreadable: {exc}", file=sys.stderr)
+            return 2
+        a = {k: v for k, v in data.items() if k != "generated"}
+        b = {k: v for k, v in base.items() if k != "generated"}
+        if a != b:
+            print("DRIFT detected: plans index differs from baseline", file=sys.stderr)
+            return 1
+        return 0
+
+    if args.html:
+        Path(args.html).write_text(render_html(data), encoding="utf-8")
+        print(f"wrote {args.html} ({data['total']} plans)")
+        return 0
+
+    if args.json or args.mode == "json":
+        print(json.dumps(data, indent=2))
+        return 0
+
+    # render
+    print(f"AQ-OS Master Plans Dashboard — {data['total']} plans "
+          f"({data['untracked_count']} untracked), generated {data['generated']}")
+    for p in data["plans"]:
+        print(f"  {p['status']:9} {p['last_activity'] or '—':12} "
+              f"{'T' if p['has_tracker'] else ' '} {p['id']}")
+    return 0
+
+
+if __name__ == "__main__":
+    raise SystemExit(main())
