@@ -1,0 +1,388 @@
+{
+  "_comment": "Declarative manifest for scripts/ai/lib/refactor_status.py. Carries EDITORIAL content (name/sub/note/decision/unblocks/issues) so descriptions live in one editable place. STATUS is never stored here \u2014 it is always projected from ground truth (git log / activation events / freeze records / slice-claims / blocker_note) by the projector. Hand-editing a status field here would be pointless: the projector recomputes status and ignores any such field. See .agents/plans/aqos-refactor-status/SPEC.md.",
+  "tracks": [
+    {
+      "code": "A",
+      "name": "Foundation A",
+      "sub": "Cycle-0 truth exit",
+      "note": "Owner-adjudicated 10/10 SPLIT_BRAIN/UNOWNED authority rows (Q8 resolved). The old blocking gate is cleared; physical convergence of the selected authority remains Cycle-1 work under B2.",
+      "order": 10,
+      "ongoing": false,
+      "detection": {
+        "commit_match": [
+          "decision gate CLOSED"
+        ]
+      }
+    },
+    {
+      "code": "B1",
+      "name": "Foundation B1",
+      "sub": "contract kernel + parity vectors",
+      "note": "EXECUTING \u2014 L1A/L2A/L2B-A landed; chat/batch parity (shadow) design packet is the next slice.",
+      "order": 20,
+      "ongoing": true,
+      "pct": 80,
+      "detection": {
+        "commit_match": [
+          "\\bparity\\b",
+          "local-inference"
+        ]
+      }
+    },
+    {
+      "code": "B2",
+      "name": "Foundation B2",
+      "sub": "one shadow-state vertical",
+      "note": "Q1/Q2 ratified; B2-D0 design/review packet accepted; B2-C1 implementation authorization is in preparation/review only.",
+      "order": 30,
+      "ongoing": true,
+      "pct": 25,
+      "detection": {
+        "commit_match": [
+          "define Foundation B2 shadow vertical",
+          "\\(b2\\)"
+        ]
+      },
+      "editorial_note": "Q1/Q2 ratified; B2-D0 design/review packet accepted; B2-C1 implementation authorization is in preparation/review only. [RECONCILE: no matching shipping commits found by projection \u2014 prior hand-tracker 'active' was unbacked; status shown is ground-truth. Audit which commits delivered this track.]"
+    },
+    {
+      "code": "B3",
+      "name": "Foundation B3",
+      "sub": "projector + canon-compiler shadow",
+      "note": "aq-event projector pattern is live (PULSE/RESUME event-sourced); canon-compiler extension pending.",
+      "order": 40,
+      "ongoing": true,
+      "pct": 40,
+      "detection": {
+        "commit_match": [
+          "\\(foundation-b3\\)",
+          "canon-compiler"
+        ]
+      },
+      "editorial_note": "aq-event projector pattern is live (PULSE/RESUME event-sourced); canon-compiler extension pending. [RECONCILE: no matching shipping commits found by projection \u2014 prior hand-tracker 'active' was unbacked; status shown is ground-truth. Audit which commits delivered this track.]"
+    },
+    {
+      "code": "C",
+      "name": "Foundation C",
+      "sub": "identity, leases, execution cells",
+      "note": "Zero-trust security spine: shadow admission/issuance (C0/C1) shipped; C2 enforcement design independently reviewed and FROZEN, awaiting owner activation (blocked on a built-in-tool lease gap found pre-activation); C3-C6 not started.",
+      "order": 50,
+      "ongoing": true,
+      "pct": 35,
+      "detection": {
+        "commit_match": [
+          "\\(foundation-c\\)"
+        ]
+      }
+    },
+    {
+      "code": "C0",
+      "name": "Foundation C0",
+      "sub": "CapabilityLease primitive",
+      "note": "Schema + local signer + aq-lease CLI, report-only. Shipped.",
+      "order": 51,
+      "parent": "C",
+      "ongoing": false,
+      "detection": {
+        "commit_match": [
+          "C0 CapabilityLease"
+        ]
+      }
+    },
+    {
+      "code": "C1",
+      "name": "Foundation C1",
+      "sub": "shadow admission -> issuance",
+      "note": "Log-only, additive, decoupled from live execution. Shipped.",
+      "order": 52,
+      "parent": "C",
+      "ongoing": false,
+      "detection": {
+        "commit_match": [
+          "C1 shadow admission"
+        ]
+      }
+    },
+    {
+      "code": "C2",
+      "name": "Foundation C2",
+      "sub": "tool-lease enforcement (flag-gated)",
+      "note": "Design independently re-reviewed PASS and FROZEN (C2-FREEZE-AND-ACTIVATION.md), eligible for single-use owner activation. BLOCKED pre-activation: enforcement has no lease source for built-in/first-party tools (run_command, file_edit, ...) -- flag-ON would deny the harness's own tool-calling. Design amendment + re-freeze required before activation.",
+      "order": 53,
+      "parent": "C",
+      "ongoing": false,
+      "pct": 80,
+      "detection": {
+        "commit_match": [
+          "C2 enforcement design FROZEN"
+        ],
+        "activation_subject": "aqos-foundation-c-c2-tool-lease-enforcement",
+        "freeze_record": ".agents/plans/aqos-foundation-c/C2-FREEZE-AND-ACTIVATION.md",
+        "blocker_note": "OPEN-BLOCKS-C2-ACTIVATION (issues-backlog, logged 2026-07-25): C2 admits a tool only if an admitted candidate lease lists it; built-in bundle tools (run_command, file_edit, ...) are not registry candidates -- 0/39 candidate-allowlisted tools are built-ins. Flag-ON would drop run_command at :1673, breaking core tool-calling. Severity HIGH; caught pre-activation."
+      }
+    },
+    {
+      "code": "D",
+      "name": "Product D",
+      "sub": "inference/client live convergence",
+      "note": "Switchboard sole gateway; delegate-to-local/aq-chat as coordinator clients; global scheduler activation closes F2.5 HIGH; route/profile registry consolidation. Gate to start: B1 parity fixtures + C boundaries.",
+      "order": 60,
+      "ongoing": false,
+      "detection": {
+        "commit_match": [
+          "\\(product-d\\)"
+        ]
+      }
+    },
+    {
+      "code": "E",
+      "name": "Product E",
+      "sub": "evaluation & learning factory",
+      "note": "Dataset/scorer/prompt registries, sealed answers, certified scorers, counterfactual replay, promotion ledger, small-model admission. Gate to start: B2 evidence store + C integrity.",
+      "order": 70,
+      "ongoing": false,
+      "detection": {
+        "commit_match": [
+          "\\(product-e\\)"
+        ]
+      }
+    },
+    {
+      "code": "F",
+      "name": "Product F",
+      "sub": "one CLI + command center",
+      "note": "`aq <noun> <verb>` + shims; OTel traces; SLO burn; typed console (Fleet/Runs/Evals/Approvals). Gate to start: authoritative telemetry from C/D.",
+      "order": 80,
+      "ongoing": false,
+      "detection": {
+        "commit_match": [
+          "\\(product-f\\)"
+        ]
+      }
+    },
+    {
+      "code": "G",
+      "name": "Product G",
+      "sub": "edge, release, retirement",
+      "note": "Hardware-class probes, install profiles, restore/upgrade drills, semver v1.0, legacy retirement after 2 clean cycles. Gate to start: everything prior.",
+      "order": 90,
+      "ongoing": false,
+      "detection": {
+        "commit_match": [
+          "\\(product-g\\)"
+        ]
+      }
+    },
+    {
+      "code": "V",
+      "name": "Track V",
+      "sub": "Verified Factory (cross-cutting)",
+      "note": "REQUEST_REVISION -- amended acceptance gates (VF contracts) await independent re-review before Track V activates (Q9). Feeds Cycles 4-5; gates acceptance only after authority activation.",
+      "order": 100,
+      "ongoing": true,
+      "pct": 60,
+      "detection": {
+        "blocker_note": "Track V status is REQUEST_REVISION per UNIFIED-PROGRAM-PLAN.md Sec 3 (unified track structure table): amended VF contracts + exact authorization pending; VF-1 waits for L2B-B unless hash-bound non-overlap proves warn-only isolation."
+      }
+    },
+    {
+      "code": "AAF",
+      "name": "Agent-Agnostic Factory",
+      "sub": "delegation kernel (Rule 18)",
+      "note": "Router + slice-claim + dispatch-integration + catch-up queue shipped; Q5 measured/expiring lane-eligibility registry now also shipped (owner-ratified).",
+      "order": 110,
+      "ongoing": true,
+      "pct": 90,
+      "detection": {
+        "commit_match": [
+          "\\(agent-agnostic\\)"
+        ]
+      }
+    },
+    {
+      "code": "Q5",
+      "name": "Q5 lane-eligibility registry",
+      "sub": "measured/expiring lane eligibility",
+      "note": "Owner-ratified decision (Q5) implemented as a concrete registry slice under the agent-agnostic-factory track.",
+      "order": 111,
+      "parent": "AAF",
+      "ongoing": false,
+      "detection": {
+        "commit_match": [
+          "lane-eligibility registry"
+        ]
+      }
+    },
+    {
+      "code": "LEC",
+      "name": "Local-Embed-Context",
+      "sub": "embed model as context layer",
+      "note": "Slice 1 + Slice 2a committed. Slice 2b (context_cache wired into agent_executor prune path) has an OPEN binding-acceptance verdict: REQUEST_REVISION (SLICE2B-ACCEPTANCE.md) -- fixture re-pin incomplete (stable_digests.source_manifest not regenerated), 2 golden-test regressions. Code change itself verified correct; blocker is the mechanically incomplete re-pin.",
+      "order": 120,
+      "ongoing": true,
+      "pct": 75,
+      "detection": {
+        "commit_match": [
+          "\\(local-embed-context\\)",
+          "\\(lec\\)"
+        ],
+        "blocker_note": "Slice 2b binding acceptance verdict is REQUEST_REVISION per .agents/plans/local-embed-context/SLICE2B-ACCEPTANCE.md: fixture re-pin incomplete (stable_digests.source_manifest not regenerated after agent_executor.py sha256 change), causing 2 new golden-test regressions (test_15, test_16). Not yet committed as of this projection."
+      }
+    },
+    {
+      "code": "Q10B",
+      "name": "Q10 inference-envelope baseline",
+      "sub": "measure-first pass",
+      "note": "Direct measurement of the live 27GB target (llama.cpp :8080 spec-decode, llama-embed :8081, RAM envelope) per the owner's 'measure first' directive.",
+      "order": 130,
+      "ongoing": false,
+      "detection": {
+        "commit_match": [
+          "inference-envelope baseline"
+        ]
+      }
+    },
+    {
+      "code": "RESUME",
+      "name": "llama-cpp-resume fix",
+      "sub": "fire-and-forget restart",
+      "note": "Fixed the resume hook latching systemd 'failed' on slow APU cold-load (ExecStart switched to --no-block) so it no longer trips the tier0 QA phase-0 no-failed-units check.",
+      "order": 140,
+      "ongoing": false,
+      "detection": {
+        "commit_match": [
+          "llama-cpp-resume fire-and-forget"
+        ]
+      }
+    }
+  ],
+  "gate": [
+    {
+      "id": "Q1",
+      "decision": "Ratify synthesis as parent architecture",
+      "unblocks": "everything",
+      "detection": {
+        "ratified_commit_match": [
+          "owner ratification of Q1",
+          "decision gate CLOSED"
+        ]
+      }
+    },
+    {
+      "id": "Q2",
+      "decision": "First shadow-vertical authority hypothesis",
+      "unblocks": "B2",
+      "detection": {
+        "ratified_commit_match": [
+          "owner ratification of Q2",
+          "decision gate CLOSED"
+        ]
+      }
+    },
+    {
+      "id": "Q3",
+      "decision": "Security model -- leases/attestations/zero-trust profiles",
+      "unblocks": "Foundation C",
+      "detection": {
+        "ratified_commit_match": [
+          "ratification of Q3-Q10",
+          "decision gate CLOSED"
+        ]
+      }
+    },
+    {
+      "id": "Q4",
+      "decision": "Fable contract -> model-neutral canon",
+      "unblocks": "B3 canon",
+      "detection": {
+        "ratified_commit_match": [
+          "ratification of Q3-Q10",
+          "decision gate CLOSED"
+        ]
+      }
+    },
+    {
+      "id": "Q5",
+      "decision": "Measured expiring lane-eligibility registry",
+      "unblocks": "all delegation",
+      "detection": {
+        "ratified_commit_match": [
+          "ratification of Q3-Q10",
+          "decision gate CLOSED"
+        ]
+      }
+    },
+    {
+      "id": "Q6",
+      "decision": "Kernel front door: local-orchestrator vs aq gateway",
+      "unblocks": "Product F",
+      "detection": {
+        "ratified_commit_match": [
+          "ratification of Q3-Q10",
+          "decision gate CLOSED"
+        ]
+      }
+    },
+    {
+      "id": "Q7",
+      "decision": "Eval factory as universal promotion gate",
+      "unblocks": "Product E",
+      "detection": {
+        "ratified_commit_match": [
+          "ratification of Q3-Q10",
+          "decision gate CLOSED"
+        ]
+      }
+    },
+    {
+      "id": "Q8",
+      "decision": "Adjudicate 10 Cycle-0 authority rows",
+      "unblocks": "Foundation A",
+      "detection": {
+        "ratified_commit_match": [
+          "ratification of Q3-Q10",
+          "decision gate CLOSED"
+        ]
+      }
+    },
+    {
+      "id": "Q9",
+      "decision": "Activate Track V after VF-0",
+      "unblocks": "oracle-tier-evidence gates",
+      "detection": {
+        "ratified_commit_match": [
+          "ratification of Q3-Q10",
+          "decision gate CLOSED"
+        ]
+      }
+    },
+    {
+      "id": "Q10",
+      "decision": "Rebudget 27GB for resident small model / spec decoding",
+      "unblocks": "Product D-E",
+      "detection": {
+        "ratified_commit_match": [
+          "ratification of Q3-Q10",
+          "decision gate CLOSED"
+        ]
+      }
+    }
+  ],
+  "issues": [
+    {
+      "title": "local-single-inference-slot-contention",
+      "sev": "High",
+      "note": "F2 Phase A (scheduler.py MLFQ+aging, backpressure.py LOCAL_DELAYED admission, model_tier.py routing) built + unit-tested but F2.5 wiring into dispatch.py was never done -- local dispatch still single-slot serialized on the Renoir APU; the never-skip-local contract is enforced only in tests, not the live admission path."
+    },
+    {
+      "title": "task_registry-golden-pin-stale",
+      "sev": "Med",
+      "note": "Golden reliability fixture re-pin left internally inconsistent after an agent_executor.py sha256 change: stable_digests.source_manifest wasn't regenerated, producing 2 new golden-test regressions (test_15, test_16) on the hash-frozen reliability contract (see SLICE2B-ACCEPTANCE.md)."
+    },
+    {
+      "title": "C2 built-in-tool lease gap",
+      "sev": "High",
+      "note": "C2 enforcement admits only candidate-lease tools; built-in bundle tools (run_command/file_edit) have no lease -- would be denied under enforcement. Blocks C2 activation until a first-party tool lease source is added."
+    }
+  ]
+}

@@ -1,0 +1,145 @@
+#!/usr/bin/env python3
+"""aq-refactor-status — AQ-OS refactor progress projector CLI.
+
+Projects the current refactor status from ground truth (git commits,
+activation events, freeze records, slice-claims, blocker notes) using
+scripts/ai/lib/refactor_status.py. Never hand-edited: the manifest
+(config/refactor-milestones.json) carries editorial text only, status is
+always computed fresh. See .agents/plans/aqos-refactor-status/SPEC.md.
+
+Usage:
+  aq-refactor-status               # render: plain-text table for terminal use
+  aq-refactor-status render        # same as above, explicit
+  aq-refactor-status --json        # the structured projection the HTML
+                                    # progress tracker consumes
+  aq-refactor-status --check --baseline FILE
+                                    # exit 1 if FILE (a prior --json capture)
+                                    # differs from a fresh projection, ignoring
+                                    # the "updated" date -- drift gate for tier0
+"""
+
+from __future__ import annotations
+
+import argparse
+import json
+import sys
+from pathlib import Path
+
+_REPO_ROOT = Path(__file__).resolve().parents[2]
+_LIB = Path(__file__).resolve().parent / "lib"
+sys.path.insert(0, str(_LIB))
+
+import refactor_status  # noqa: E402
+
+_DEFAULT_MANIFEST = _REPO_ROOT / "config" / "refactor-milestones.json"
+
+_STATUS_LABEL = {
+    "done": "DONE",
+    "active": "ACTIVE",
+    "blocked": "BLOCKED",
+    "notstarted": "NOT STARTED",
+}
+
+
+def _render_text(projection: dict) -> str:
+    lines: list[str] = []
+    lines.append(f"AQ-OS refactor status — updated {projection.get('updated')}")
+    lines.append("")
+
+    lines.append("TRACKS")
+    for t in projection.get("tracks", []):
+        label = _STATUS_LABEL.get(t["status"], t["status"].upper())
+        parent = f" (child of {t['parent']})" if t.get("parent") else ""
+        lines.append(
+            f"  [{label:11s}] {t['code']:6s} {t['name']}{parent} — {t.get('sub', '')} ({t['pct']}%)"
+        )
+        if t.get("note"):
+            lines.append(f"               {t['note']}")
+
+    lines.append("")
+    lines.append("DECISION GATE (Q1-Q10)")
+    for g in projection.get("gate", []):
+        mark = "RESOLVED" if g["resolved"] else "PENDING "
+        lines.append(f"  [{mark}] {g['id']}: {g['decision']} -> unblocks {g['unblocks']}")
+
+    lines.append("")
+    lines.append("ISSUES")
+    for i in projection.get("issues", []):
+        lines.append(f"  [{i.get('sev', '?'):4s}] {i.get('title')} — {i.get('note', '')}")
+
+    stats = projection.get("stats", {})
+    lines.append("")
+    lines.append(
+        "STATS: tracks_done_or_active={tracks_done_or_active} blocking_gates={blocking_gates} "
+        "decisions_pending={decisions_pending} open_high_issues={open_high_issues}".format(**stats)
+    )
+    return "\n".join(lines) + "\n"
+
+
+def _cmd_render(args: argparse.Namespace) -> int:
+    projection = refactor_status.project(args.manifest, _REPO_ROOT)
+    sys.stdout.write(_render_text(projection))
+    return 0
+
+
+def _cmd_json(args: argparse.Namespace) -> int:
+    print(json.dumps(refactor_status.project(args.manifest, _REPO_ROOT), indent=2))
+    return 0
+
+
+def _cmd_check(args: argparse.Namespace) -> int:
+    if not args.baseline:
+        sys.stderr.write("aq-refactor-status --check requires --baseline FILE\n")
+        return 2
+    baseline_path = Path(args.baseline)
+    try:
+        baseline = json.loads(baseline_path.read_text(encoding="utf-8"))
+    except Exception as exc:
+        sys.stderr.write(f"aq-refactor-status --check: cannot read baseline {baseline_path}: {exc}\n")
+        return 1
+
+    fresh = refactor_status.project(args.manifest, _REPO_ROOT)
+
+    baseline_cmp = refactor_status.strip_updated(baseline)
+    fresh_cmp = refactor_status.strip_updated(fresh)
+
+    if baseline_cmp == fresh_cmp:
+        print("aq-refactor-status --check: no drift")
+        return 0
+
+    sys.stderr.write("aq-refactor-status --check: DRIFT detected between baseline and fresh projection\n")
+    sys.stderr.write(f"  baseline: {baseline_path}\n")
+    sys.stderr.write("  baseline stats: " + json.dumps(baseline_cmp.get("stats", {})) + "\n")
+    sys.stderr.write("  fresh    stats: " + json.dumps(fresh_cmp.get("stats", {})) + "\n")
+    return 1
+
+
+def main(argv: list[str] | None = None) -> int:
+    parser = argparse.ArgumentParser(prog="aq-refactor-status")
+    parser.add_argument(
+        "--manifest",
+        default=str(_DEFAULT_MANIFEST),
+        help="path to the refactor-milestones manifest (default: config/refactor-milestones.json)",
+    )
+    parser.add_argument("--json", action="store_true", help="emit the structured JSON projection")
+    parser.add_argument("--check", action="store_true", help="drift-check a --baseline JSON capture")
+    parser.add_argument("--baseline", default=None, help="path to a prior --json capture, for --check")
+    parser.add_argument(
+        "command",
+        nargs="?",
+        default="render",
+        choices=["render"],
+        help="default: render a plain-text table",
+    )
+
+    args = parser.parse_args(argv)
+
+    if args.check:
+        return _cmd_check(args)
+    if args.json:
+        return _cmd_json(args)
+    return _cmd_render(args)
+
+
+if __name__ == "__main__":
+    raise SystemExit(main())
