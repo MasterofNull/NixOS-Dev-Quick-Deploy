@@ -1,0 +1,8 @@
+{
+  "lifecycle": "superseded",
+  "superseded_by": "unified-program",
+  "date": "2026-07-25",
+  "reason": "UNIFIED-PROGRAM-PLAN explicitly folds aqos-v1 Beat-0 + synthesis ratification + VF-0 into ONE unified-program round; the 7-beat aqos-v1 plan is replaced by the unified program.",
+  "decided_by": "fable-5 (orchestrator); high-confidence, hard evidence",
+  "note": "NO DELETE \u2014 dir retained; marker sets lifecycle for aq-plans-index."
+}

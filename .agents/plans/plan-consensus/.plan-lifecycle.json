@@ -1,0 +1,8 @@
+{
+  "lifecycle": "superseded",
+  "superseded_by": ".agent/WORKFLOW-CANON.md",
+  "date": "2026-07-25",
+  "reason": "early plan-consensus round; now the canonical flat-collaborative workflow, not a standalone plan",
+  "decided_by": "fable-5 (orchestrator); owner-approved medium-confidence batch 2026-07-25",
+  "note": "NO DELETE \u2014 dir retained."
+}

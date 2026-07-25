@@ -1,0 +1,8 @@
+{
+  "lifecycle": "superseded",
+  "superseded_by": "aqos-refactor-status + aq-plans-index",
+  "date": "2026-07-25",
+  "reason": "The hand-maintained progress tracker is replaced by the ground-truth projectors (aq-refactor-status program rollup + aq-plans-index master dashboard). Same subject, projected not hand-edited.",
+  "decided_by": "fable-5 (orchestrator); high-confidence, hard evidence",
+  "note": "NO DELETE \u2014 dir retained; marker sets lifecycle for aq-plans-index."
+}

@@ -1,0 +1,8 @@
+{
+  "lifecycle": "superseded",
+  "superseded_by": "aqos-foundation-c",
+  "date": "2026-07-25",
+  "reason": "F2 consensus round; F2 scheduler Phase-A done, F2.5 wiring tracked under Product D / foundations",
+  "decided_by": "fable-5 (orchestrator); owner-approved medium-confidence batch 2026-07-25",
+  "note": "NO DELETE \u2014 dir retained."
+}
