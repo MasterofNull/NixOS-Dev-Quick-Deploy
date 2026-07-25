@@ -1,0 +1,8 @@
+{
+  "lifecycle": "superseded",
+  "date": "2026-07-25",
+  "reason": "AGGREGATE 'COLLECTED/LEGACY/NON-AUTHORIZING'; C0.5 tiered-policy folded into agent-connection C0.5",
+  "decided_by": "owner-approved batch 2026-07-25 (delegated analysis, superseded+retire applied; complete held)",
+  "note": "NO DELETE \u2014 dir retained; reversible by removing this marker.",
+  "superseded_by": "agent-connection-reliability"
+}

@@ -53,3 +53,26 @@ owner confirm. Good delegated task (cheap implementer) when the lane returns.
 `echo '{"lifecycle":"superseded","superseded_by":"<id>","date":"<d>","reason":"..."}' >
 .agents/plans/<plan>/.plan-lifecycle.json` (or lifecycle `complete`/`retired`), then
 `aq-plans-index --html` regenerates the dashboard. Reversible: delete the marker to restore.
+
+## Delegated review-needed analysis (2026-07-25) — verdicts + applied decisions
+Per-dir classification (Explore agent, evidence = doc verdict headers + closeout worklist +
+file mtimes; git dates non-discriminating — all 22 in one bulk commit).
+
+**APPLIED (owner-approved 'superseded + retire' batch; 'complete' held):**
+- superseded: agent-ops-traceability-r0m→agent-connection-reliability (SUPERSEDED header);
+  c05-tiered-policy-architecture→agent-connection-reliability (LEGACY/NON-AUTHORIZING);
+  usability-parity→usability-parity-v2 (v2 cites it as prior round).
+- retired (empty dirs, NO DELETE): phase-173, tiered-agent-memory.
+
+**HELD — 'complete' (terminal PASS/RATIFIED, subjects live elsewhere; owner chose to keep
+visible as active for now):** antigravity-lane-restoration (caveat: own DESIGN reads
+PREPARED_ONLY), antigravity-routing-honesty-accept, delegate-codex-quota-precheck,
+dispatch-integration-review, local-delegation-reliability-r0, qa-provider-probe-reliability,
+reentry-intent, rsi-readiness, stream-auth-rereview, usability-parity-v2. Apply later with
+`lifecycle: complete` if desired.
+
+**KEPT ACTIVE (open/design-only/in-flight):** agent-connection-reliability (C1 unimplemented),
+capability-intake-security (REVISE loop open), generic-flake-baseline (open HIGH),
+lean-ctx-workspace-identity (design-only, no impl auth), multi-agent-edge-harness (self-active
+but stalest — owner call flagged), security-validation-reliability (PREPARED_ONLY),
+b1-parity-design-review (current forward slice).
