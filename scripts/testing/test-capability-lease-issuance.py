@@ -197,6 +197,24 @@ def test_accepted_with_mitigations_issues_tier2() -> None:
     check("accepted-with-mitigations: record schema-validates", schema_validate_record(record))
 
 
+def test_scope_receipts_and_reports_not_write_capable() -> None:
+    # Real registry value (t3mp3st candidate); must be treated as report-only,
+    # NOT write-capable. Regression guard for the pre-C2 classification fix.
+    candidate = make_candidate("cand-t3mp3st", ["z"], network=False, writes="scope-receipts-and-reports")
+    audit = make_audit("cand-t3mp3st", "low-risk")
+
+    record = cli_policy.shadow_issue(audit, candidate, key=KEY)
+    lease = record["lease"]
+    check(
+        "scope-receipts-and-reports: NOT write-capable (resources exclude 'write')",
+        "write" not in lease["permissions"]["resources"],
+    )
+    check(
+        "scope-receipts-and-reports: lease VERIFIES ok",
+        cl.verify(lease, KEY) == cl.VERIFY_OK,
+    )
+
+
 # ---------------------------------------------------------------------
 # 3. review-recommended -> issues but strip, tier 1
 # ---------------------------------------------------------------------
@@ -431,6 +449,7 @@ def test_cli_prints_dev_key_banner() -> None:
 def main() -> int:
     test_low_risk_issues_tier3()
     test_accepted_with_mitigations_issues_tier2()
+    test_scope_receipts_and_reports_not_write_capable()
     test_review_recommended_issues_but_strips()
     test_secret_or_token_required_forces_strip()
     test_needs_review_and_blocked_deny()

@@ -50,7 +50,7 @@ _FORCE_STRIP_RISK_FLAGS = {"secret-or-token-required"}
 
 # `permissions.writes` values that indicate report/output-only writes — NOT
 # treated as write-capable for the purpose of the "write" resource grant.
-_REPORT_ONLY_WRITE_VALUES = {"reports-only", "report-output-only", "knowledge-graph-output", False, "false", None}
+_REPORT_ONLY_WRITE_VALUES = {"reports-only", "report-output-only", "knowledge-graph-output", "scope-receipts-and-reports", False, "false", None}
 
 SHADOW_SOURCE = "capability-intake-shadow"
 SHADOW_LEASE_TTL = timedelta(hours=1)

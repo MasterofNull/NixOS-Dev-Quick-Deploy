@@ -83,3 +83,15 @@ no OTel spans, no SOPS key. Turning the shadow lease into the AUTHORITATIVE gate
 Implementer = cheapest-eligible (multi-file > local envelope ⇒ Claude fast tier, Rule 17
 override recorded). Independent review of the RESULT (additive-proof + policy correctness +
 no live-path edit). never-skip-local. codex confirmatory audit queued.
+
+## Post-review fix (2026-07-24, pre-C2)
+The C1 Opus review flagged (NICE-TO-HAVE) that `_build_permissions`'s report-only-writes
+exclusion set omitted the real registry value `scope-receipts-and-reports` (t3mp3st),
+mis-classifying it as write-capable (safe in shadow — over-surfaces — but a real over-grant
+once C2 reuses this under enforcement). Fixed: added `scope-receipts-and-reports` to
+`_REPORT_ONLY_WRITE_VALUES` + a regression test (`test_scope_receipts_and_reports_not_write_capable`),
+57/0. **Rule-17 deviation recorded:** made directly by the orchestrator because no eligible
+implementer lane was available at the time — local agent-mode tool execution failed
+(emitted an unexecuted text tool-call, `tool_calls: []`), the Claude flagship lane hit its
+session limit (reset 11:40am 2026-07-25), and codex was in quota cooldown. Bounded 1-value
++ 1-test change; independent confirmation deferred to the queued codex C1 catch-up audit.
