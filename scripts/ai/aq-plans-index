@@ -244,6 +244,60 @@ _STATUS_META = {
 }
 
 
+def _viz_html(data: dict) -> str:
+    """Self-contained CSS visualizations: a status-distribution bar + an
+    activity-by-month histogram. No external libs (artifact CSP)."""
+    total = max(1, data["total"])
+    by = data["by_status"]
+    # status distribution stacked bar (active/superseded/dormant + untracked overlay)
+    segs = []
+    for s in ("active", "dormant", "superseded", "complete"):
+        n = by.get(s, 0)
+        if n:
+            _, var = _STATUS_META.get(s, ("", "--notstarted"))
+            pct = n / total * 100
+            segs.append(
+                f'<span class="seg" style="width:{pct:.1f}%;background:var({var})" '
+                f'title="{_STATUS_META.get(s,(s,))[0]}: {n}"></span>'
+            )
+    dist = "".join(segs)
+    tracked = data["total"] - data["untracked_count"]
+    tracked_pct = tracked / total * 100
+
+    # activity histogram: plans per YYYY-MM of last commit (last 8 buckets)
+    from collections import Counter
+    months = Counter()
+    for p in data["plans"]:
+        la = p.get("last_activity") or ""
+        if len(la) >= 7:
+            months[la[:7]] += 1
+    keys = sorted(months)[-8:]
+    mx = max([months[k] for k in keys], default=1)
+    bars = "".join(
+        f'<span class="hbar-col" title="{k}: {months[k]} plans">'
+        f'<span class="hbar" style="height:{max(6, months[k]/mx*100):.0f}%"></span>'
+        f'<span class="hlab">{k[5:]}</span></span>'
+        for k in keys
+    )
+    return (
+        '<section class="viz">'
+        '<div class="viz-card"><div class="viz-t">Lifecycle distribution</div>'
+        f'<div class="distbar">{dist}</div>'
+        '<div class="viz-legend">'
+        f'<span><i style="background:var(--active)"></i>Active {by.get("active",0)}</span>'
+        f'<span><i style="background:var(--notstarted)"></i>Superseded {by.get("superseded",0)}</span>'
+        f'<span><i style="background:var(--notstarted);opacity:.5"></i>Dormant {by.get("dormant",0)}</span>'
+        '</div></div>'
+        '<div class="viz-card"><div class="viz-t">Tracker adoption</div>'
+        f'<div class="pbar"><span class="pbar-fill" style="width:{tracked_pct:.1f}%"></span>'
+        f'<span class="pbar-lab">{tracked}/{data["total"]} plans have a tracker.json</span></div>'
+        '<div class="viz-sub">PM-tracker rollout target: 100%</div></div>'
+        '<div class="viz-card"><div class="viz-t">Activity by month</div>'
+        f'<div class="hist">{bars}</div></div>'
+        '</section>'
+    )
+
+
 def render_html(data: dict) -> str:
     rows = []
     for p in data["plans"]:
@@ -255,12 +309,27 @@ def render_html(data: dict) -> str:
         sub = ""
         if p["status"] in ("superseded", "retired") and p.get("superseded_by"):
             sub = f'<span class="supby">→ {_html.escape(str(p["superseded_by"]))}</span>'
+        # honest progress: completion % from a tracker rollup when present; settled
+        # (done/complete/superseded/retired) reads full; open+untracked has no % yet.
+        pv = p.get("progress")
+        if pv is None:
+            if p["status"] in ("done", "complete", "superseded", "retired"):
+                pv = 100
+        if pv is None:
+            prog = '<span class="prog"><span class="prog-track"></span></span>'
+        else:
+            pcol = "--good" if p["status"] in ("done", "complete") else (
+                "--notstarted" if p["status"] in ("superseded", "retired") else "--active")
+            prog = (f'<span class="prog"><span class="prog-track">'
+                    f'<span class="prog-fill" style="width:{pv}%;background:var({pcol})"></span>'
+                    f'</span></span>')
         rows.append(
             f'<tr data-status="{p["status"]}" data-search="{pid.lower()} {title.lower()}">'
             f'<td><span class="dot" style="background:var({var})"></span>'
             f'<span class="st">{label}</span></td>'
             f'<td class="name"><a href="../../{doc}" title="{doc}">{title}</a>'
             f'<span class="pid">{pid}</span>{sub}</td>'
+            f'<td class="prog-td">{prog}</td>'
             f'<td class="act">{_html.escape(p["last_activity"] or "—")}</td>'
             f'<td class="trk">{tracker_badge}</td>'
             f'<td class="dc">{p["doc_count"]}</td></tr>'
@@ -280,6 +349,7 @@ def render_html(data: dict) -> str:
         .replace("__TOTAL__", str(data["total"])) \
         .replace("__UNTRACKED__", str(data["untracked_count"])) \
         .replace("__STATCARDS__", stat_cards) \
+        .replace("__VIZ__", _viz_html(data)) \
         .replace("__ROWS__", "\n".join(rows))
 
 
@@ -320,11 +390,29 @@ tr[data-status="superseded"] .name a,tr[data-status="retired"] .name a{color:var
 .dc{text-align:center;color:var(--ink-faint);font-family:var(--mono);font-size:.74rem}
 footer{margin-top:22px;font-family:var(--mono);font-size:.68rem;color:var(--ink-faint)}
 .hidden{display:none}
-@media(max-width:760px){.stats{grid-template-columns:repeat(3,1fr)}.dc,th.dc{display:none}}
+.viz{display:grid;grid-template-columns:1.4fr 1fr 1.2fr;gap:12px;margin-bottom:22px}
+.viz-card{background:var(--surface);border:1px solid var(--border);border-radius:var(--radius);padding:13px 15px}
+.viz-t{font-family:var(--mono);font-size:.64rem;text-transform:uppercase;letter-spacing:.05em;color:var(--ink-faint);margin-bottom:10px}
+.distbar{display:flex;height:16px;border-radius:5px;overflow:hidden;background:var(--surface-2)}
+.distbar .seg{height:100%;transition:width .3s}
+.viz-legend{display:flex;flex-wrap:wrap;gap:12px;margin-top:9px;font-size:.7rem;color:var(--ink-muted)}
+.viz-legend i{display:inline-block;width:9px;height:9px;border-radius:2px;margin-right:5px;vertical-align:middle}
+.pbar{position:relative;height:22px;border-radius:5px;background:var(--surface-2);overflow:hidden;display:flex;align-items:center}
+.pbar-fill{position:absolute;left:0;top:0;bottom:0;background:var(--accent);border-radius:5px;transition:width .3s}
+.pbar-lab{position:relative;font-size:.68rem;color:var(--ink);padding-left:9px;z-index:1;mix-blend-mode:normal}
+.viz-sub{font-size:.66rem;color:var(--ink-faint);margin-top:7px}
+.hist{display:flex;align-items:flex-end;gap:5px;height:56px}
+.hbar-col{flex:1;display:flex;flex-direction:column;align-items:center;justify-content:flex-end;height:100%;gap:3px}
+.hbar{width:100%;max-width:22px;background:var(--active);border-radius:2px 2px 0 0;min-height:6px}
+.hlab{font-family:var(--mono);font-size:.56rem;color:var(--ink-faint)}
+.prog{width:46px}.prog-track{height:5px;border-radius:3px;background:var(--surface-2);overflow:hidden}
+.prog-fill{height:100%;border-radius:3px}
+@media(max-width:760px){.stats{grid-template-columns:repeat(3,1fr)}.dc,th.dc,.prog,th.prog{display:none}.viz{grid-template-columns:1fr}}
 </style>
 <div class="wrap">
 <header class="top"><div><p class="eyebrow">NixOS-Dev-Quick-Deploy · AQ-OS</p><h1>Master Plans Dashboard</h1></div><span class="updated">generated __GENERATED__ · projected from ground truth</span></header>
 <section class="stats">__STATCARDS__</section>
+__VIZ__
 <div class="controls">
 <input type="search" id="q" placeholder="Filter __TOTAL__ plans by name/id… (__UNTRACKED__ have no tracker yet)">
 <button class="filter on" data-f="all">All</button>
@@ -334,7 +422,7 @@ footer{margin-top:22px;font-family:var(--mono);font-size:.68rem;color:var(--ink-
 <button class="filter" data-f="superseded">Superseded</button>
 <button class="filter" data-f="complete">Complete</button>
 </div>
-<div class="panel"><table><thead><tr><th>Status</th><th>Plan</th><th>Last activity</th><th class="trk">Trk</th><th class="dc">Docs</th></tr></thead><tbody id="rows">
+<div class="panel"><table><thead><tr><th>Status</th><th>Plan</th><th class="prog">Progress</th><th>Last activity</th><th class="trk">Trk</th><th class="dc">Docs</th></tr></thead><tbody id="rows">
 __ROWS__
 </tbody></table></div>
 <footer>SSOT: projected by <code>aq-plans-index</code> from .agents/plans/ + git history + per-plan tracker.json — regenerate, never hand-edit.</footer>

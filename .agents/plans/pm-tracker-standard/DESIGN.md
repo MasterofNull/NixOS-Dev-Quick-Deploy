@@ -93,6 +93,15 @@ artifact CSP) + ADD a **Goals & Validation** panel: per phase/item show goal + v
 Non-enforcement/observability tooling ⇒ standing-authorization class (like C0/C1); PM4 is a
 canonical doc change (agent parity), not hash-bound.
 
+## Status (2026-07-25)
+- **Master dashboard LIVE** (`aq-plans-index`, artifact f4056ac0): all 47 plans + lifecycle
+  (11 superseded) + **data visualizations** — lifecycle-distribution stacked bar,
+  tracker-adoption progress bar (0/47 → 100% target), activity-by-month histogram, per-plan
+  progress column (real % where a `tracker.json` exists; settled plans read full; open-
+  untracked honestly empty — no faked %). Offline test suite `test-plans-index.py` (20/20).
+- **Program rollup LIVE** (`aq-refactor-status`).
+- **Per-plan trackers (PM0–PM5)**: not yet built — that's what drops "untracked" from 47→0.
+
 ## Acceptance (whole standard)
 - A new plan created via `/plan-feature` ships with a `tracker.json` + a rendered gantt+kanban
   HTML showing its slices/goals/validation, status all NOT-STARTED, deps drawn.
