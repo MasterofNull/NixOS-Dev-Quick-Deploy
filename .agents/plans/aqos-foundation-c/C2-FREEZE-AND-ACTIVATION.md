@@ -1,17 +1,23 @@
 # Foundation C — C2 Freeze & Owner Activation
 
-**C2 design is FROZEN and eligible for owner activation.** Independent flagship review
-(REVISE, 2 BLOCKING closed) → independent flagship RE-REVIEW (**PASS**, both fail-opens
-verified closed against live source, no new fail-open). This record freezes the reviewed
-subject; it does NOT itself activate anything.
+> **REV2 (2026-07-25): supersedes the rev1 freeze below.** Post-freeze, a BLOCKING gap was
+> found (built-in bundle tools have no candidate lease → enforcement would deny run_command/
+> file_edit → breaks tool-calling; evidence: aq-capability-shadow 11/11 would-issue, 0
+> built-ins). The **C2-AMENDMENT-BUILTIN-TOOLS.md** (first-party tool lease source) closes it
+> and is now PART OF the frozen subject. Its own review chain: codex REQUEST_REVISION (4
+> findings) → folded → Opus confirmatory re-review REVISE (codex-2/3/4 closed; codex-1 line-32
+> contradiction) → fixed → CLEARED. **rev2 frozen subject = the PAIR below; ceiling 4→5.**
 
-## Frozen subject
-- **Authorization idempotency key:** `aqos-foundation-c:c2:tool-lease-enforcement-flag-gated:v1:20260724`
-- **Subject (design+authorization record) SHA-256:**
-  `313b723b4e1039f6b339a302056b14fc9b5c6cb5c922990d283fbee0ac4526eb`
-  (`.agents/plans/aqos-foundation-c/C2-DESIGN-AND-AUTHORIZATION.md`, byte-identical to the
-  re-reviewed artifact).
-- **Reviews:** `C2-REVIEW-OPUS.md` (REVISE) + `C2-REREVIEW-OPUS.md` (PASS).
+## Frozen subject (rev2)
+- **Authorization idempotency key:** `aqos-foundation-c:c2:tool-lease-enforcement-flag-gated:v2:20260725`
+- **Subject = the pair (both byte-identical to the reviewed artifacts):**
+  - `C2-DESIGN-AND-AUTHORIZATION.md` SHA-256 `313b723b4e1039f6b339a302056b14fc9b5c6cb5c922990d283fbee0ac4526eb`
+  - `C2-AMENDMENT-BUILTIN-TOOLS.md` SHA-256 `633926c008b04edd89fef53ec6f6c63c4badf312b07f45520f1f8d827f8923f6`
+- **Reviews:** design `C2-REVIEW-OPUS.md`(REVISE)+`C2-REREVIEW-OPUS.md`(PASS); amendment
+  `C2-AMENDMENT-REVIEW-CODEX.md`(REQUEST_REVISION)+`C2-AMENDMENT-REREVIEW-OPUS.md`(REVISE→fixed).
+- **Ceiling: 5 files** — the original 4 + NEW `config/first-party-tools.json`.
+- **Build base HEAD (rev2):** `8c24dd78ef4cce3a75f7f6925c7dc691b20bbaa8` (the amendment-fix
+  commit) or later with these two subject hashes unchanged — verify before implementing.
 - **Predecessor hashes C2 reuses (must be unchanged at build time):**
   - `scripts/ai/lib/capability_lease.py` → `a6f923924071618b…`
   - `scripts/ai/lib/capability_lease_issuance.py` → `bf9229eac6ba4c21…`
@@ -37,13 +43,14 @@ Broad/standing authorization does NOT activate this slice. To authorize implemen
 ```
 scripts/ai/aq-event emit --agent owner --type activation.grant \
   --subject aqos-foundation-c-c2-tool-lease-enforcement \
-  --payload '{"idempotency_key":"aqos-foundation-c:c2:tool-lease-enforcement-flag-gated:v1:20260724","subject_sha256":"313b723b4e1039f6b339a302056b14fc9b5c6cb5c922990d283fbee0ac4526eb","build_head":"<paste current git rev-parse HEAD>","implementer":"claude-fast","window_hours":24,"note":"C2 enforcement code, flag DEFAULT-OFF; flipping the flag is a separate later act"}'
+  --payload '{"idempotency_key":"aqos-foundation-c:c2:tool-lease-enforcement-flag-gated:v2:20260725","subject_design_sha256":"313b723b4e1039f6b339a302056b14fc9b5c6cb5c922990d283fbee0ac4526eb","subject_amendment_sha256":"633926c008b04edd89fef53ec6f6c63c4badf312b07f45520f1f8d827f8923f6","build_head":"<paste current git rev-parse HEAD>","implementer":"claude-fast","window_hours":24,"note":"C2 rev3 enforcement code incl. first-party tool lease source, 5-file ceiling, flag DEFAULT-OFF; flipping the flag is a separate later act"}'
 ```
 
-After you run that, the orchestrator will: verify the subject hash + predecessor hashes +
-HEAD are unchanged (drift check), route the cheapest-eligible implementer to build the exact
-4-file ceiling, independent-review the result, and commit with the flag **default-off**.
-Turning enforcement ON in the running system remains a further, separate owner act.
+After you run that, the orchestrator will: verify BOTH subject hashes + the predecessor hashes
++ HEAD are unchanged (drift check), route the cheapest-eligible implementer to build the exact
+**5-file** ceiling (4 + `config/first-party-tools.json`), independent-review the result, and
+commit with the flag **default-off**. Turning enforcement ON in the running system remains a
+further, separate owner act.
 
 ## If you do NOT want to activate now
 That is a valid stop: the entire Foundation C shadow spine (C0/C1) is already shipped and
