@@ -28,8 +28,11 @@ A tool is admitted for execution iff **EITHER**:
 2. it is in `config/first-party-tools.json` AND a **first-party lease** (issued by the trust
    root from that manifest) admits it: signature-valid, non-expired, not epoch-stale.
 
-Both are real leases through the same `verify` path. The first-party lease is issued at
-startup by the signer from the manifest (long-TTL, re-issued on epoch bump).
+Both are real leases through the same `verify` path. The first-party lease is issued from the
+manifest by the signer ONLY by a deliberate operator step — at startup, or an explicit
+re-issue AFTER the operator clears an epoch bump — **never automatically on an epoch bump**
+(auto-reissue would mint a current-epoch lease that immediately re-admits `run_command`,
+defeating revocation — forbidden; see the non-self-healing invariant below).
 
 ### Load-bearing invariants preserved (the amendment does NOT reopen any B1/B2 fail-open)
 - **`zero_trust_behavior: strip` STILL applies to first-party tools.** Under a stripped
@@ -87,9 +90,16 @@ REQUEST_REVISION on four amendment-specific edges — all folded:
 - **First-party DEV-key (codex-4):** a valid first-party lease created under the DEV key →
   safe-read degrade, admits nothing under the DEV key.
 
-## Next
-rev2 (codex REQUEST_REVISION folded). Needs a confirmatory RE-REVIEW that codex-1..4 are
-closed and no new fail-open was introduced — route to a fresh flagship OR codex confirm. On
-PASS → fold into C2 rev3 (design doc + ceiling 5: adds config/first-party-tools.json) →
-re-freeze (new subject hash) → single-use owner activation. Still owner-gated; still
-flag-default-OFF; the prior freeze (313b723b) is superseded.
+## Review outcome — CLEARED for C2 rev3
+- codex (C2-AMENDMENT-REVIEW-CODEX.md): REQUEST_REVISION, 4 findings — folded (rev2).
+- Opus confirmatory re-review (C2-AMENDMENT-REREVIEW-OPUS.md): REVISE — codex-2/3/4 confirmed
+  genuinely closed; codex-1 had a residual contradiction (line 32 "re-issued on epoch bump"
+  vs the non-self-healing invariant). **Fixed** (line 32 now: deliberate re-issue only, never
+  auto on epoch bump) — the reviewer named this exact one-line fix and stated the amendment is
+  then "safe to fold into C2 rev3 and re-freeze." Two NICE-TO-HAVEs deferred to C2
+  implementation: define `lease_tools`/duplicate/`actions==[tool]` handling; name the signed-
+  constraints field carrying the risk metadata.
+
+**Status: CLEARED to fold into C2 rev3 + re-freeze.** The frozen C2 subject becomes the pair
+{C2-DESIGN-AND-AUTHORIZATION.md, this amendment}, ceiling 4→5 (+ config/first-party-tools.json).
+Still owner-gated, flag-default-OFF; prior freeze `313b723b` superseded (see C2-FREEZE rev2).
