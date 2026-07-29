@@ -10,9 +10,12 @@ import sys
 from pathlib import Path
 from typing import Any
 
+from jsonschema import Draft202012Validator, FormatChecker
+
 
 REPO_ROOT = Path(__file__).resolve().parents[2]
 REGISTRY_PATH = REPO_ROOT / "config" / "agent-capability-intake-candidates.json"
+REGISTRY_SCHEMA_PATH = REPO_ROOT / "config" / "schemas" / "agent-capability-intake-candidates.schema.json"
 POLICY_PATH = REPO_ROOT / "config" / "runtime-tool-security-policy.json"
 CACHE_PATH = REPO_ROOT / ".cache" / "capability-intake-tool-audit-cache.json"
 
@@ -34,8 +37,18 @@ def _load_auditor():
 def _load_registry(path: Path = REGISTRY_PATH) -> dict[str, Any]:
     with path.open("r", encoding="utf-8") as handle:
         payload = json.load(handle)
-    if not isinstance(payload, dict) or not isinstance(payload.get("candidates"), list):
-        raise ValueError(f"invalid candidate registry: {path}")
+    with REGISTRY_SCHEMA_PATH.open("r", encoding="utf-8") as handle:
+        schema = json.load(handle)
+    validator = Draft202012Validator(schema, format_checker=FormatChecker())
+    if next(validator.iter_errors(payload), None) is not None:
+        raise ValueError("invalid candidate registry: schema validation failed")
+
+    seen_ids: set[str] = set()
+    for candidate in payload["candidates"]:
+        candidate_id = candidate["id"]
+        if candidate_id in seen_ids:
+            raise ValueError("invalid candidate registry: duplicate candidate id")
+        seen_ids.add(candidate_id)
     return payload
 
 
@@ -385,7 +398,10 @@ def build_parser() -> argparse.ArgumentParser:
 def main(argv: list[str] | None = None) -> int:
     parser = build_parser()
     args = parser.parse_args(argv)
-    return int(args.func(args))
+    try:
+        return int(args.func(args))
+    except ValueError as exc:
+        parser.exit(2, f"ERROR: {exc}\n")
 
 
 if __name__ == "__main__":
