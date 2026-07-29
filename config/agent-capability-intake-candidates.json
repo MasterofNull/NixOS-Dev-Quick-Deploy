@@ -437,6 +437,87 @@
         "npm-package-execution"
       ],
       "activation_notes": "Scope-gated readiness is enabled for authorized self red-team preparation. Active runtime attachment still requires pinned packaging, SBOM/license review, loopback/private target scope receipts, and deny-by-default MCP admission."
+    },
+    {
+      "id": "piyaz-patterns",
+      "name": "Piyaz agent-system patterns reference",
+      "category": "agent-system-pattern-reference",
+      "source_url": "https://github.com/FrkAk/piyaz",
+      "maturity": "third-party-reference",
+      "priority": "medium",
+      "state": "proposed",
+      "review_status": "incomplete",
+      "blocked_reason": "Source, AGPL/license, hosted/plugin permission, data-flow, and architecture-parity evidence are absent; this record grants no lifecycle or data authority.",
+      "unblock_condition": "Complete a clean-room source, license, permission, data-flow, and architecture-parity review before considering any pattern use.",
+      "install": {
+        "type": "disabled-external-repo",
+        "command": "disabled-until-intake",
+        "args": []
+      },
+      "tool_allowlist": [],
+      "permissions": {
+        "network": false,
+        "filesystem": "none",
+        "writes": false,
+        "secrets": false
+      },
+      "value": "Potential cross-track reference for A2A task, claim, and review patterns, human-readable project tracking, and vector/RAG/DAG maintenance without adopting its lifecycle or data authority.",
+      "risks": ["agpl-license-uncertainty", "authority-duplication", "hosted-plugin-surface"],
+      "activation_notes": "Metadata-only reference. No source acquisition, runtime use, A2A communication, project tracking, vector/RAG/DAG state access, or tool enablement is admitted."
+    },
+    {
+      "id": "sn1per-reference",
+      "name": "Sn1per security workflow reference",
+      "category": "security-workflow-reference",
+      "source_url": "https://github.com/1N3/Sn1per",
+      "maturity": "third-party-reference",
+      "priority": "medium",
+      "state": "quarantined",
+      "review_status": "incomplete",
+      "blocked_reason": "Pinned source and EULA digest, legal disposition, SBOM, privileged-install analysis, and runtime review evidence are absent.",
+      "unblock_condition": "Obtain a pinned source and EULA digest, owner/legal disposition, SBOM, and separately authorized runtime review before any pattern use.",
+      "install": {
+        "type": "disabled-external-repo",
+        "command": "disabled-until-intake",
+        "args": []
+      },
+      "tool_allowlist": [],
+      "permissions": {
+        "network": false,
+        "filesystem": "none",
+        "writes": false,
+        "secrets": false
+      },
+      "value": "Quarantined metadata record for a possible attack-surface and validation workflow reference; it grants no vendor, install, execution, scanning, or external integration authority.",
+      "risks": ["custom-eula-restrictions", "privileged-install", "active-exploitation", "external-integration"],
+      "activation_notes": "No runtime or pattern use is admitted. This record is not a scanner, target authorization, scope receipt, or execution path."
+    },
+    {
+      "id": "raptor-loop-hunt-reference",
+      "name": "RAPTOR loop-hunt workflow reference",
+      "category": "security-workflow-reference",
+      "source_url": "https://github.com/dinosn/raptor-loop-hunt",
+      "maturity": "third-party-reference",
+      "priority": "medium",
+      "state": "proposed",
+      "review_status": "incomplete",
+      "blocked_reason": "Source, license, prompt, hook, command, loop-bound, prompt-injection, and runtime evidence are absent.",
+      "unblock_condition": "Complete source/license, hook, command, loop-bound, prompt-injection, and runtime review before considering sanitized defensive workflow patterns.",
+      "install": {
+        "type": "disabled-external-repo",
+        "command": "disabled-until-intake",
+        "args": []
+      },
+      "tool_allowlist": [],
+      "permissions": {
+        "network": false,
+        "filesystem": "none",
+        "writes": false,
+        "secrets": false
+      },
+      "value": "Potential metadata-only reference for multi-altitude vulnerability-hunt workflow and review patterns without importing prompts, executable loops, tools, targets, or runtime authority.",
+      "risks": ["autonomous-loop", "prompt-injection", "scope-escape", "tool-execution", "resource-exhaustion"],
+      "activation_notes": "No prompt or executable workflow is imported. This record cannot scan, execute tools, issue scope receipts, or communicate externally."
     }
   ]
 }
