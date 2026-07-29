@@ -12,7 +12,7 @@
     "ai-stack/mcp-servers/hybrid-coordinator/core/llm_client.py": "7c6299c915f4348c47f94a1cf0d4325a1c4165ed5856ba18e311f54cb0839a6a",
     "ai-stack/mcp-servers/hybrid-coordinator/extensions/ai_coordinator_handlers.py": "59c06e29b7d607712ed8f97288b734d9138d57e5302d6d210da5a9284f9e3ea0",
     "ai-stack/agents/runtimes/local_agent_runtime.py": "5a95b74b2479bf4d05ea80ee927ed4741d64cd71fdee8d696fa4b59a9d6b97d3",
-    "ai-stack/switchboard/switchboard.py": "8744a455e6e3e196490d083ebb03bcb6caabc5d91157a17367cc11d6621ea230",
+    "ai-stack/switchboard/switchboard.py": "8fbc28b9d099a4a734cbbb7aaba626ff2f1323073661ae5e88f9b9c0fbfa9008",
     "ai-stack/mcp-servers/ralph-wiggum/server.py": "4ce2dda70c9a9e506f03b1b4f334173486b672202b351c0d261566af1fda714a"
   },
   "source_shapes": [
