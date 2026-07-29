@@ -1,0 +1,56 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://nixos-dev-quick-deploy.local/schemas/capability-lease-gate-decision.schema.json",
+  "title": "Capability Lease Gate — Audit Decision Record",
+  "description": "One admit/deny decision emitted by ai-stack/switchboard/capability_lease_gate.py::enforce() for a single requested tool at the per-call admission chokepoint (Foundation C2). Observability contract only — the gate itself never blocks on this schema; a producer/consumer mismatch is a bug to fix in the producer, never a reason to widen this schema (additionalProperties:false is intentional).",
+  "type": "object",
+  "additionalProperties": false,
+  "required": [
+    "ts",
+    "tool",
+    "decision",
+    "source",
+    "reason",
+    "degraded",
+    "zero_trust_stripped",
+    "lease_id"
+  ],
+  "properties": {
+    "ts": {
+      "type": "string",
+      "format": "date-time",
+      "description": "UTC ISO-8601 timestamp (YYYY-MM-DDTHH:MM:SSZ) of the decision."
+    },
+    "tool": {
+      "type": "string",
+      "minLength": 1,
+      "description": "The requested tool name this decision applies to."
+    },
+    "decision": {
+      "type": "string",
+      "enum": ["admit", "deny"],
+      "description": "Final admission verdict for this tool this call. 'deny' covers no-lease, expired, bad-signature, epoch-stale, zero-trust-strip, manifest mismatch, and gate-exception outcomes alike — see `reason` for which."
+    },
+    "source": {
+      "type": ["string", "null"],
+      "enum": ["candidate", "first-party", "degrade", null],
+      "description": "Which admission path produced the decision: an external candidate lease, a first-party manifest-issued lease, the S4 authority-unavailable degrade allowlist, or null when no path admitted the tool at all."
+    },
+    "reason": {
+      "type": "string",
+      "description": "Short machine-stable reason code, e.g. 'candidate-lease-verified', 'first-party-lease-verified', 'first-party-lease-epoch-stale', 'first-party-lease-bad-signature', 'lease-manifest-mismatch', 'zero-trust-strip', 'no-admitting-lease', 'first-party-manifest-bundle-mismatch', 'dev-key-authority-unavailable', 'epoch-source-unresolvable', or 'gate-exception:<ExceptionClassName>'."
+    },
+    "degraded": {
+      "type": "boolean",
+      "description": "True iff this decision was produced under the S4 authority-unavailable degrade (DEV-key or unresolvable epoch) rather than normal lease evaluation."
+    },
+    "zero_trust_stripped": {
+      "type": "boolean",
+      "description": "True iff this tool was dropped specifically because the request's zero_trust_behavior is 'strip' and the admitting lease's bound risk classification is write/network/exec-capable."
+    },
+    "lease_id": {
+      "type": ["string", "null"],
+      "description": "The `lease_id` of the lease that admitted or was evaluated for this tool, or null when no lease was found (e.g. 'no-admitting-lease', degrade-path decisions, or a gate-internal exception)."
+    }
+  }
+}

@@ -647,6 +647,13 @@ LOCAL_AGENTS_PATH = os.environ.get("LOCAL_AGENTS_PATH", f"{REPO_PATH}/ai-stack/l
 LOCAL_TOOL_CALL_LIMIT = int(os.environ.get("SWB_LOCAL_TOOL_CALL_LIMIT", "40"))
 ACTIVE_TOOL_SCHEMA_LIMIT = max(1, int(os.environ.get("SWB_ACTIVE_TOOL_SCHEMA_LIMIT", "12")))
 TOOL_WORKING_SET_ENABLED = os.environ.get("SWB_TOOL_WORKING_SET_ENABLED", "1").strip() not in ("0", "false", "no")
+# Foundation C2 (owner-activated 2026-07-29, event 14ca3fff): per-call
+# capability-lease admission gate at the tool-executor chokepoint. DEFAULT
+# OFF — when off, tool-call admission is byte-for-byte identical to pre-C2
+# (allowed_names membership is the sole criterion). See
+# .agents/plans/aqos-foundation-c/C2-DESIGN-AND-AUTHORIZATION.md +
+# C2-AMENDMENT-BUILTIN-TOOLS.md (the frozen spec this flag implements).
+CAPABILITY_LEASE_ENFORCEMENT = os.environ.get("CAPABILITY_LEASE_ENFORCEMENT", "0").strip().lower() not in ("0", "false", "no", "")
 REMOTE_TOOL_WORKING_SET_ENABLED = os.environ.get("SWB_REMOTE_TOOL_WORKING_SET_ENABLED", "1").strip() not in ("0", "false", "no")
 CONTEXT_OUTPUT_GC_ENABLED = os.environ.get("SWB_CONTEXT_OUTPUT_GC_ENABLED", "1").strip() not in ("0", "false", "no")
 CONTEXT_OUTPUT_GC_MIN_CHARS = max(256, int(os.environ.get("SWB_CONTEXT_OUTPUT_GC_MIN_CHARS", "5000")))
@@ -1127,6 +1134,94 @@ def _cap_active_tool_names(selected_names: set[str]) -> set[str]:
         key=lambda name: (_TOOL_LEASE_PRIORITY.get(name, 1000), name),
     )
     return set(ordered[:ACTIVE_TOOL_SCHEMA_LIMIT])
+
+
+def _capability_lease_request_ctx() -> dict:
+    """Request context passed to the C2 capability-lease gate at the
+    per-call admission chokepoint (:1673 region). No per-request candidate
+    leases or zero-trust escalation exist on this path yet — those are
+    forward-compatible hooks (C2-remote / a future session-lease source);
+    today this only supplies the live first-party bundle-tool set so the
+    gate can run its codex-2 manifest<->bundle equality check.
+
+    `zero_trust_behavior: "none"` here is ONLY the inherited-request-policy
+    contribution (there is no session-strip source yet) — it is NOT the
+    effective posture. The gate independently OR's in each admitting
+    lease's own SIGNED `zero_trust_behavior`, so a lease that is itself
+    signed "strip" is still stripped even though this hardcoded value is
+    "none". Do not remove these forward-compat hooks when a real
+    session-strip source lands."""
+    return {
+        "zero_trust_behavior": "none",
+        "candidate_leases": [],
+        "bundle_tools": set(_TOOL_LEASE_PRIORITY.keys()),
+    }
+
+
+def _lease_gate_exception_decision(tool_name: str, exc: BaseException) -> dict:
+    """Schema-conformant (`config/schemas/capability-lease-gate-decision.schema.json`)
+    audit record for a chokepoint-level failure (import error / gate raised
+    despite its own fail-closed wrapper) — so a denial from THIS boundary is
+    still auditable, not silently blank like pre-finding-3."""
+    return {
+        "ts": datetime.datetime.now(datetime.timezone.utc).strftime("%Y-%m-%dT%H:%M:%SZ"),
+        "tool": tool_name,
+        "decision": "deny",
+        "source": None,
+        "reason": f"chokepoint-exception:{type(exc).__name__}",
+        "degraded": False,
+        "zero_trust_stripped": False,
+        "lease_id": None,
+    }
+
+
+def _emit_lease_decision_audit(decision: Optional[dict]) -> None:
+    """Emit a schema-conformant capability-lease-gate decision record to
+    stderr for audit observability (finding 3). Callers MUST only invoke
+    this from inside the CAPABILITY_LEASE_ENFORCEMENT-ON branch — never
+    when the flag is OFF (flag-OFF must stay byte-for-byte pre-C2 behavior,
+    including no new stderr output). Logging itself must never affect
+    admission: any failure here (I/O error, serialization error, etc.) is
+    swallowed silently."""
+    if not decision:
+        return
+    try:
+        sys.stderr.write("capability-lease-gate-decision " + json.dumps(decision, sort_keys=True) + "\n")
+        sys.stderr.flush()
+    except Exception:
+        pass
+
+
+def _admit_tool_call(tool_name: str, allowed_names: set[str]) -> tuple[bool, Optional[dict]]:
+    """Per-call tool admission at the executor chokepoint (C2 design §"The
+    gate"). Flag OFF: byte-for-byte identical to pre-C2 — membership in
+    `allowed_names` is the sole admission criterion, the gate is never
+    imported or called, and nothing is emitted. Flag ON: additionally
+    requires the capability-lease gate to admit the tool; any gate failure
+    (import error, exception, denial) drops the tool — deny-closed, never
+    fail-open — and every flag-ON decision is emitted for audit (finding 3)."""
+    if tool_name not in allowed_names:
+        return False, None
+    if not CAPABILITY_LEASE_ENFORCEMENT:
+        return True, None
+    try:
+        _gate_dir = os.path.dirname(os.path.abspath(__file__))
+        if _gate_dir not in sys.path:
+            sys.path.insert(0, _gate_dir)
+        import capability_lease_gate as _clg  # guarded lazy import
+        admitted, decisions = _clg.enforce(
+            {tool_name},
+            _capability_lease_request_ctx(),
+            None,
+            None,
+        )
+        decision = next((d for d in decisions if d.get("tool") == tool_name), None)
+        _emit_lease_decision_audit(decision)
+        return tool_name in admitted, decision
+    except Exception as exc:
+        decision = _lease_gate_exception_decision(tool_name, exc)
+        _emit_lease_decision_audit(decision)
+        return False, decision
 
 
 def _resolve_tool_lease(arguments: dict, available_names: set[str], current_allowed: set[str]) -> tuple[set[str], dict]:
@@ -1670,7 +1765,8 @@ async def _execute_local_tool_calling(payload: dict, run_id: str = "unknown-run"
                 tool_call_id = str(tool_call.get("id", "")).strip() or hashlib.md5(
                     f"{tool_name}:{time.time()}".encode("utf-8")
                 ).hexdigest()[:16]
-                if tool_name not in allowed_names:
+                _tool_admitted, _lease_decision = _admit_tool_call(tool_name, allowed_names)
+                if not _tool_admitted:
                     tool_result_text = json.dumps({
                         "tool": tool_name,
                         "status": "error",

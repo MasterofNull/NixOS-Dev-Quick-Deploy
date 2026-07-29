@@ -1,0 +1,283 @@
+{
+  "version": 1,
+  "source": "_TOOL_BUNDLES@ai-stack/switchboard/switchboard.py",
+  "description": "Authoritative first-party/built-in tool set for Foundation C2 capability-lease enforcement. Every distinct tool referenced across _TOOL_BUNDLES (switchboard.py:912) plus the virtual lease_tools selector. Bidirectional set equality with the live _TOOL_LEASE_PRIORITY/_TOOL_BUNDLES tool union is enforced at admission time (C2-AMENDMENT codex-2) — a bundle tool missing here, or an entry here absent from the bundles, fails the whole first-party path closed.",
+  "generated_at": "2026-07-29",
+  "tools": [
+    {
+      "tool": "lease_tools",
+      "actions": ["lease_tools"],
+      "resources": [],
+      "constraints": {"scope": "tool-lease-selection"},
+      "trust_tier": 3,
+      "zero_trust_behavior": "none",
+      "write_capable": false,
+      "network_capable": false,
+      "exec_capable": false
+    },
+    {
+      "tool": "git_status",
+      "actions": ["git_status"],
+      "resources": ["git-read"],
+      "constraints": {},
+      "trust_tier": 3,
+      "zero_trust_behavior": "none",
+      "write_capable": false,
+      "network_capable": false,
+      "exec_capable": false
+    },
+    {
+      "tool": "git_diff",
+      "actions": ["git_diff"],
+      "resources": ["git-read"],
+      "constraints": {},
+      "trust_tier": 3,
+      "zero_trust_behavior": "none",
+      "write_capable": false,
+      "network_capable": false,
+      "exec_capable": false
+    },
+    {
+      "tool": "search_files",
+      "actions": ["search_files"],
+      "resources": ["filesystem-read"],
+      "constraints": {},
+      "trust_tier": 3,
+      "zero_trust_behavior": "none",
+      "write_capable": false,
+      "network_capable": false,
+      "exec_capable": false
+    },
+    {
+      "tool": "read_file",
+      "actions": ["read_file"],
+      "resources": ["filesystem-read"],
+      "constraints": {},
+      "trust_tier": 3,
+      "zero_trust_behavior": "none",
+      "write_capable": false,
+      "network_capable": false,
+      "exec_capable": false
+    },
+    {
+      "tool": "list_files",
+      "actions": ["list_files"],
+      "resources": ["filesystem-read"],
+      "constraints": {},
+      "trust_tier": 3,
+      "zero_trust_behavior": "none",
+      "write_capable": false,
+      "network_capable": false,
+      "exec_capable": false
+    },
+    {
+      "tool": "check_service",
+      "actions": ["check_service"],
+      "resources": ["service-status-read"],
+      "constraints": {},
+      "trust_tier": 3,
+      "zero_trust_behavior": "none",
+      "write_capable": false,
+      "network_capable": false,
+      "exec_capable": false
+    },
+    {
+      "tool": "get_system_info",
+      "actions": ["get_system_info"],
+      "resources": ["system-info-read"],
+      "constraints": {},
+      "trust_tier": 3,
+      "zero_trust_behavior": "none",
+      "write_capable": false,
+      "network_capable": false,
+      "exec_capable": false
+    },
+    {
+      "tool": "get_hint",
+      "actions": ["get_hint"],
+      "resources": ["knowledge-read"],
+      "constraints": {},
+      "trust_tier": 3,
+      "zero_trust_behavior": "none",
+      "write_capable": false,
+      "network_capable": false,
+      "exec_capable": false
+    },
+    {
+      "tool": "query_context",
+      "actions": ["query_context"],
+      "resources": ["knowledge-read"],
+      "constraints": {},
+      "trust_tier": 3,
+      "zero_trust_behavior": "none",
+      "write_capable": false,
+      "network_capable": false,
+      "exec_capable": false
+    },
+    {
+      "tool": "harness_health",
+      "actions": ["harness_health"],
+      "resources": ["health-read"],
+      "constraints": {},
+      "trust_tier": 3,
+      "zero_trust_behavior": "none",
+      "write_capable": false,
+      "network_capable": false,
+      "exec_capable": false
+    },
+    {
+      "tool": "get_working_memory",
+      "actions": ["get_working_memory"],
+      "resources": ["memory-read"],
+      "constraints": {},
+      "trust_tier": 3,
+      "zero_trust_behavior": "none",
+      "write_capable": false,
+      "network_capable": false,
+      "exec_capable": false
+    },
+    {
+      "tool": "get_prsi_pending",
+      "actions": ["get_prsi_pending"],
+      "resources": ["prsi-read"],
+      "constraints": {},
+      "trust_tier": 3,
+      "zero_trust_behavior": "none",
+      "write_capable": false,
+      "network_capable": false,
+      "exec_capable": false
+    },
+    {
+      "tool": "query_aidb",
+      "actions": ["query_aidb"],
+      "resources": ["aidb-read"],
+      "constraints": {},
+      "trust_tier": 3,
+      "zero_trust_behavior": "none",
+      "write_capable": false,
+      "network_capable": false,
+      "exec_capable": false
+    },
+    {
+      "tool": "mesh_discovery",
+      "actions": ["mesh_discovery"],
+      "resources": ["mesh-read"],
+      "constraints": {},
+      "trust_tier": 3,
+      "zero_trust_behavior": "none",
+      "write_capable": false,
+      "network_capable": false,
+      "exec_capable": false
+    },
+    {
+      "tool": "recommend_agent_for_task",
+      "actions": ["recommend_agent_for_task"],
+      "resources": ["mesh-read"],
+      "constraints": {},
+      "trust_tier": 3,
+      "zero_trust_behavior": "none",
+      "write_capable": false,
+      "network_capable": false,
+      "exec_capable": false
+    },
+    {
+      "tool": "collective_memory_search",
+      "actions": ["collective_memory_search"],
+      "resources": ["memory-read"],
+      "constraints": {},
+      "trust_tier": 3,
+      "zero_trust_behavior": "none",
+      "write_capable": false,
+      "network_capable": false,
+      "exec_capable": false
+    },
+    {
+      "tool": "get_screen_size",
+      "actions": ["get_screen_size"],
+      "resources": ["display-read"],
+      "constraints": {},
+      "trust_tier": 3,
+      "zero_trust_behavior": "none",
+      "write_capable": false,
+      "network_capable": false,
+      "exec_capable": false
+    },
+    {
+      "tool": "screenshot",
+      "actions": ["screenshot"],
+      "resources": ["display-read"],
+      "constraints": {},
+      "trust_tier": 3,
+      "zero_trust_behavior": "none",
+      "write_capable": false,
+      "network_capable": false,
+      "exec_capable": false
+    },
+    {
+      "tool": "validate_before_commit",
+      "actions": ["validate_before_commit"],
+      "resources": ["validation-exec-bounded"],
+      "constraints": {},
+      "trust_tier": 2,
+      "zero_trust_behavior": "none",
+      "write_capable": false,
+      "network_capable": false,
+      "exec_capable": false
+    },
+    {
+      "tool": "store_memory",
+      "actions": ["store_memory"],
+      "resources": ["memory-write"],
+      "constraints": {},
+      "trust_tier": 2,
+      "zero_trust_behavior": "none",
+      "write_capable": true,
+      "network_capable": false,
+      "exec_capable": false
+    },
+    {
+      "tool": "write_file",
+      "actions": ["write_file"],
+      "resources": ["filesystem-write"],
+      "constraints": {},
+      "trust_tier": 1,
+      "zero_trust_behavior": "none",
+      "write_capable": true,
+      "network_capable": false,
+      "exec_capable": false
+    },
+    {
+      "tool": "prsi_orchestrate",
+      "actions": ["prsi_orchestrate"],
+      "resources": ["prsi-write"],
+      "constraints": {},
+      "trust_tier": 1,
+      "zero_trust_behavior": "none",
+      "write_capable": true,
+      "network_capable": false,
+      "exec_capable": false
+    },
+    {
+      "tool": "delegate_to_remote",
+      "actions": ["delegate_to_remote"],
+      "resources": ["remote-delegate", "network"],
+      "constraints": {},
+      "trust_tier": 1,
+      "zero_trust_behavior": "none",
+      "write_capable": false,
+      "network_capable": true,
+      "exec_capable": false
+    },
+    {
+      "tool": "run_command",
+      "actions": ["run_command"],
+      "resources": ["shell-exec", "filesystem-write", "network"],
+      "constraints": {},
+      "trust_tier": 0,
+      "zero_trust_behavior": "none",
+      "write_capable": true,
+      "network_capable": true,
+      "exec_capable": true
+    }
+  ]
+}
