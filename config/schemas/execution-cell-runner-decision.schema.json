@@ -1,0 +1,86 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://nixos-dev-quick-deploy.local/schemas/execution-cell-runner-decision.schema.json",
+  "title": "Execution Cell Runner — Typed Decision / Receipt Record",
+  "description": "One terminal outcome emitted by ai-stack/switchboard/execution_cell_runner.py::process_grant() for a single UDS request (Foundation C, C3b R3, default-OFF). Observability contract only — matches the precedent set by capability-lease-gate-decision.schema.json (a bounded set of enum reason/stage codes, booleans, small ints, and the two correlation identifiers receipt_id/grant_digest). NEVER carries a grant's raw fields, logical paths, file content, prompts, or argv — additionalProperties:false is intentional; a producer/consumer mismatch is a bug to fix in the producer, never a reason to widen this schema.",
+  "type": "object",
+  "additionalProperties": false,
+  "required": [
+    "ts",
+    "receipt_id",
+    "grant_digest",
+    "decision",
+    "reason",
+    "stage",
+    "degraded",
+    "command_kind",
+    "duration_ms",
+    "cgroup_kill_used",
+    "tree_proven_absent"
+  ],
+  "properties": {
+    "ts": {
+      "type": "string",
+      "format": "date-time",
+      "description": "UTC ISO-8601 timestamp (YYYY-MM-DDTHH:MM:SSZ) of the decision."
+    },
+    "receipt_id": {
+      "type": "string",
+      "minLength": 1,
+      "description": "Runner-generated correlation identifier for this single request (uuid4 hex), bound into the runner's own liveness heartbeat ({grant_digest, receipt_id, pid, proc_starttime, cgroup_path}) for the lifetime of any cell it produced."
+    },
+    "grant_digest": {
+      "type": ["string", "null"],
+      "description": "The verified grant's own grant_digest (R1), or null when the request was denied before/at grant verification (flag-off, peer-rejected, request-malformed, or any grant-verify-stage Denial)."
+    },
+    "decision": {
+      "type": "string",
+      "enum": ["green", "red", "quarantined", "denied"],
+      "description": "Terminal verdict. 'green': the grant verified, the cell ran, the out-of-cell validator confirmed exactly the declared path(s) changed, and the final epoch fence re-confirmed freshness/epoch immediately before publication — never an auto-merge, only a retained diff for separate orchestrator review. 'red': the request proceeded past grant verification but is not trustworthy (supervision terminal trigger, validator RED, malformed self-report, command failure, or a final-fence failure that flipped a would-be green). 'quarantined': the runner could not PROVE the tracked process tree (or a cell-creation/teardown attempt) is gone — never claimed as green nor as a false finite-redelivery. 'denied': stopped before any cell was constructed (flag off, peer rejected, malformed request, grant denial, unsupported command descriptor, unknown trusted repo, or confinement-unavailable)."
+    },
+    "reason": {
+      "type": "string",
+      "minLength": 1,
+      "description": "Short, machine-stable reason code — e.g. 'flag-off', 'peer-rejected', 'request-malformed', one of execution_grant.py's DENY_* codes (grant-verify stage), 'command-descriptor-unsupported', 'unknown-trusted-repo', one of execution_cell_clone.py's FAILURE_*/DENY_* codes (cell-create stage), 'confinement-unavailable', 'path-escape-at-run', a supervision trigger ('timeout'|'heartbeat-miss'|'epoch-bump'|'peer-receipt-mismatch'), 'tree-not-proven-absent', 'malformed-cell-result', 'command-failed', 'validator:<validator-reason>', 'final-epoch-fence-failed', 'ok', or 'runner-internal-error:<ExceptionClassName>'."
+    },
+    "stage": {
+      "type": "string",
+      "enum": [
+        "flag",
+        "peer",
+        "request",
+        "grant-verify",
+        "command-derive",
+        "confine-preflight",
+        "cell-create",
+        "confine-run",
+        "supervise",
+        "validate",
+        "final-fence"
+      ],
+      "description": "Which pipeline stage produced the terminal decision (design §4's fixed order: flag -> peer -> request -> grant-verify -> command-derive -> confine-preflight -> cell-create -> confine-run -> supervise -> validate -> final-fence)."
+    },
+    "degraded": {
+      "type": "boolean",
+      "description": "True iff this decision was produced under an authority-unavailable degrade (e.g. an unresolvable epoch source forcing deny-privileged behavior) rather than normal grant evaluation."
+    },
+    "command_kind": {
+      "type": ["string", "null"],
+      "enum": ["noop", "read-validate", "single-file-write", null],
+      "description": "The R3 closed command-descriptor vocabulary (Q-R3-4) derived from the verified grant's classified effects, or null when the decision terminated before a command could be derived (flag-off, peer-rejected, request-malformed, or any grant-verify-stage denial)."
+    },
+    "duration_ms": {
+      "type": "integer",
+      "minimum": 0,
+      "description": "Wall-clock milliseconds from request acceptance to this terminal decision."
+    },
+    "cgroup_kill_used": {
+      "type": "boolean",
+      "description": "True iff the cgroup.kill (SIGKILL-the-whole-tree) escalation was needed — the cgroup-scoped SIGTERM alone did not clear the tracked process tree within the grace window (design §6)."
+    },
+    "tree_proven_absent": {
+      "type": ["boolean", "null"],
+      "description": "True iff the runner PROVED the tracked process tree is gone (re-checked absent, not merely 'the kill call did not error'); false iff it could not prove this within budget (always paired with decision='quarantined'); null when no cell/process tree was ever constructed for this request (denied before confine-run)."
+    }
+  }
+}
