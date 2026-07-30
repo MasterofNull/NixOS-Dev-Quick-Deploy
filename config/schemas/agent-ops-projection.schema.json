@@ -3,7 +3,7 @@
   "$id": "aq.agent-ops-projection.v2",
   "type": "object",
   "additionalProperties": false,
-  "required": ["schema_version", "generated_at", "health", "metrics", "dispatch_contract", "review_feedback", "registry_compatibility", "work"],
+  "required": ["schema_version", "generated_at", "health", "metrics", "dispatch_contract", "review_feedback", "registry_compatibility", "local_direct_health", "work"],
   "properties": {
     "schema_version": {"const": "aq.agent-ops-projection.v2"},
     "generated_at": {"type": "string", "format": "date-time"},
@@ -144,6 +144,7 @@
         }
       }
     },
+    "local_direct_health": {"$ref": "#/$defs/local_direct_health"},
     "work": {"type": "array", "maxItems": 9216, "items": {"$ref": "#/$defs/work"}}
   },
   "$defs": {
@@ -171,6 +172,69 @@
         "verdict": {"type": ["string", "null"], "enum": ["pass", "revision_required", "fail", "abstain", null]}
       }
     },
+    "local_direct_health": {
+      "type": "object", "additionalProperties": false,
+      "required": ["schema_version", "assessment", "health", "source_freshness", "deadline_health", "phase_counts", "oldest_queue_age_s", "oldest_prefill_age_s", "oldest_generation_age_s", "active_deadline_count", "expired_active_count", "minimum_remaining_ms", "timeout_counts", "generation_silence_exceeded_count", "stale_owner_count", "reconciliation_count", "output_incomplete_count", "budget_mismatch_count", "terminal_convergence_gap_count", "coverage", "reason_codes"],
+      "properties": {
+        "schema_version": {"const": "aq.local-direct-health.v1"},
+        "assessment": {"enum": ["assessed", "not_assessed"]},
+        "health": {"enum": ["healthy", "degraded", "blocked", "unavailable"]},
+        "source_freshness": {"enum": ["fresh", "stale", "unavailable"]},
+        "deadline_health": {"enum": ["healthy", "degraded", "blocked", "unavailable"]},
+        "phase_counts": {"$ref": "#/$defs/local_phase_counts"},
+        "oldest_queue_age_s": {"$ref": "#/$defs/local_age"},
+        "oldest_prefill_age_s": {"$ref": "#/$defs/local_age"},
+        "oldest_generation_age_s": {"$ref": "#/$defs/local_age"},
+        "active_deadline_count": {"$ref": "#/$defs/local_count"},
+        "expired_active_count": {"$ref": "#/$defs/local_count"},
+        "minimum_remaining_ms": {"type": ["integer", "null"], "minimum": 0, "maximum": 86400000},
+        "timeout_counts": {"$ref": "#/$defs/local_timeout_counts"},
+        "generation_silence_exceeded_count": {"$ref": "#/$defs/local_count"},
+        "stale_owner_count": {"$ref": "#/$defs/local_count"},
+        "reconciliation_count": {"$ref": "#/$defs/local_count"},
+        "output_incomplete_count": {"$ref": "#/$defs/local_count"},
+        "budget_mismatch_count": {"$ref": "#/$defs/local_count"},
+        "terminal_convergence_gap_count": {"$ref": "#/$defs/local_count"},
+        "coverage": {"type": "object", "additionalProperties": false, "required": ["projection", "phase0", "web_dashboard"], "properties": {"projection": {"enum": ["healthy", "blocked", "unavailable"]}, "phase0": {"enum": ["healthy", "blocked", "unavailable"]}, "web_dashboard": {"enum": ["healthy", "blocked", "unavailable"]}}},
+        "reason_codes": {"type": "array", "minItems": 1, "maxItems": 16, "uniqueItems": true, "items": {"enum": ["source_not_instrumented", "source_stale", "source_invalid", "phase_invalid", "deadline_missing", "deadline_expired_active", "queue_age_exceeded", "prefill_age_exceeded", "generation_silence_exceeded", "timeout_observed", "stale_owner_observed", "output_incomplete_observed", "budget_mismatch_observed", "terminal_convergence_gap", "coverage_incomplete", "healthy"]}}
+      },
+      "allOf": [
+        {
+          "if": {"properties": {"assessment": {"const": "not_assessed"}}},
+          "then": {"properties": {
+            "health": {"enum": ["blocked", "unavailable"]}, "source_freshness": {"const": "unavailable"}, "deadline_health": {"const": "unavailable"},
+            "phase_counts": {"properties": {"queue": {"type": "null"}, "prefill": {"type": "null"}, "generation": {"type": "null"}, "cleanup": {"type": "null"}, "terminal": {"type": "null"}}},
+            "oldest_queue_age_s": {"type": "null"}, "oldest_prefill_age_s": {"type": "null"}, "oldest_generation_age_s": {"type": "null"},
+            "active_deadline_count": {"type": "null"}, "expired_active_count": {"type": "null"}, "minimum_remaining_ms": {"type": "null"},
+            "timeout_counts": {"properties": {"queue": {"type": "null"}, "prefill": {"type": "null"}, "generation": {"type": "null"}, "cleanup": {"type": "null"}}},
+            "generation_silence_exceeded_count": {"type": "null"}, "stale_owner_count": {"type": "null"}, "reconciliation_count": {"type": "null"},
+            "output_incomplete_count": {"type": "null"}, "budget_mismatch_count": {"type": "null"}, "terminal_convergence_gap_count": {"type": "null"}
+          }},
+          "else": {"properties": {
+            "health": {"enum": ["healthy", "degraded", "blocked"]}, "source_freshness": {"enum": ["fresh", "stale"]}, "deadline_health": {"enum": ["healthy", "degraded", "blocked"]},
+            "phase_counts": {"properties": {"queue": {"type": "integer"}, "prefill": {"type": "integer"}, "generation": {"type": "integer"}, "cleanup": {"type": "integer"}, "terminal": {"type": "integer"}}},
+            "oldest_queue_age_s": {"type": "integer"}, "oldest_prefill_age_s": {"type": "integer"}, "oldest_generation_age_s": {"type": "integer"},
+            "active_deadline_count": {"type": "integer"}, "expired_active_count": {"type": "integer"}, "minimum_remaining_ms": {"type": "integer"},
+            "timeout_counts": {"properties": {"queue": {"type": "integer"}, "prefill": {"type": "integer"}, "generation": {"type": "integer"}, "cleanup": {"type": "integer"}}},
+            "generation_silence_exceeded_count": {"type": "integer"}, "stale_owner_count": {"type": "integer"}, "reconciliation_count": {"type": "integer"},
+            "output_incomplete_count": {"type": "integer"}, "budget_mismatch_count": {"type": "integer"}, "terminal_convergence_gap_count": {"type": "integer"}
+          }}
+        },
+        {"if": {"properties": {"health": {"const": "healthy"}}}, "then": {"properties": {
+          "source_freshness": {"const": "fresh"}, "deadline_health": {"const": "healthy"},
+          "coverage": {"properties": {"projection": {"const": "healthy"}, "phase0": {"const": "healthy"}, "web_dashboard": {"const": "healthy"}}},
+          "expired_active_count": {"const": 0}, "generation_silence_exceeded_count": {"const": 0}, "stale_owner_count": {"const": 0}, "reconciliation_count": {"const": 0},
+          "output_incomplete_count": {"const": 0}, "budget_mismatch_count": {"const": 0}, "terminal_convergence_gap_count": {"const": 0},
+          "timeout_counts": {"properties": {"queue": {"const": 0}, "prefill": {"const": 0}, "generation": {"const": 0}, "cleanup": {"const": 0}}},
+          "reason_codes": {"const": ["healthy"]}
+        }}},
+        {"if": {"properties": {"reason_codes": {"contains": {"const": "healthy"}}}}, "then": {"properties": {"health": {"const": "healthy"}, "reason_codes": {"const": ["healthy"]}}}}
+      ]
+    },
+    "local_count": {"type": ["integer", "null"], "minimum": 0, "maximum": 1000000},
+    "local_age": {"type": ["integer", "null"], "minimum": 0, "maximum": 31536000},
+    "local_phase_counts": {"type": "object", "additionalProperties": false, "required": ["queue", "prefill", "generation", "cleanup", "terminal"], "properties": {"queue": {"$ref": "#/$defs/local_count"}, "prefill": {"$ref": "#/$defs/local_count"}, "generation": {"$ref": "#/$defs/local_count"}, "cleanup": {"$ref": "#/$defs/local_count"}, "terminal": {"$ref": "#/$defs/local_count"}}},
+    "local_timeout_counts": {"type": "object", "additionalProperties": false, "required": ["queue", "prefill", "generation", "cleanup"], "properties": {"queue": {"$ref": "#/$defs/local_count"}, "prefill": {"$ref": "#/$defs/local_count"}, "generation": {"$ref": "#/$defs/local_count"}, "cleanup": {"$ref": "#/$defs/local_count"}}},
     "work": {
       "type": "object", "additionalProperties": false,
       "required": ["work_id", "lane", "role", "model_profile", "authority", "state", "phase", "progress_age_s", "pid_identity", "dedup_group", "access", "terminal_reason", "artifact", "visibility", "reason_code", "freshness"],

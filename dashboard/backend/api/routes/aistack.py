@@ -14,6 +14,7 @@ import re
 import shutil
 import subprocess
 import sys
+import threading
 import time
 from datetime import datetime, timedelta, timezone
 from functools import lru_cache
@@ -56,6 +57,12 @@ _LOCAL_INFERENCE_CONTRACT_MODULE: Optional[Any] = None
 _LOCAL_INFERENCE_POLICY_MODULE: Optional[Any] = None
 _LOCAL_INFERENCE_TRANSPORT_MODULE: Optional[Any] = None
 _LOCAL_INFERENCE_TRANSPORT_CACHE: Dict[str, Any] = {"digest": None, "payload": None}
+_LOCAL_DIRECT_HEALTH_CACHE: Dict[str, Any] = {
+    "accepted_at": 0.0, "source_age_s": None, "payload_bytes": None,
+}
+_LOCAL_DIRECT_HEALTH_REFRESH: Optional[asyncio.Task] = None
+_LOCAL_DIRECT_HEALTH_TTL_S = 2.0
+_LOCAL_DIRECT_HEALTH_MAX_BYTES = 65536
 
 # Service endpoints (declarative + env-overridable)
 SERVICES = {
@@ -2975,6 +2982,328 @@ def _hybrid_dual_auth_headers() -> Dict[str, str]:
 def _append_query(url: str, request: Request) -> str:
     query = str(request.url.query or "")
     return f"{url}?{query}" if query else url
+
+
+_LOCAL_DIRECT_FIELDS = {
+    "schema_version", "assessment", "health", "source_freshness", "deadline_health",
+    "phase_counts", "oldest_queue_age_s", "oldest_prefill_age_s", "oldest_generation_age_s",
+    "active_deadline_count", "expired_active_count", "minimum_remaining_ms", "timeout_counts",
+    "generation_silence_exceeded_count", "stale_owner_count", "reconciliation_count",
+    "output_incomplete_count", "budget_mismatch_count", "terminal_convergence_gap_count",
+    "coverage", "reason_codes",
+}
+_LOCAL_DIRECT_REASONS = {
+    "source_not_instrumented", "source_stale", "source_invalid", "phase_invalid",
+    "deadline_missing", "deadline_expired_active", "queue_age_exceeded",
+    "prefill_age_exceeded", "generation_silence_exceeded", "timeout_observed",
+    "stale_owner_observed", "output_incomplete_observed", "budget_mismatch_observed",
+    "terminal_convergence_gap", "coverage_incomplete", "healthy",
+}
+
+
+def _local_direct_unavailable() -> Dict[str, Any]:
+    return {
+        "schema_version": "aq.local-direct-health.v1", "assessment": "not_assessed",
+        "health": "unavailable", "source_freshness": "unavailable",
+        "deadline_health": "unavailable",
+        "phase_counts": {key: None for key in ("queue", "prefill", "generation", "cleanup", "terminal")},
+        "oldest_queue_age_s": None, "oldest_prefill_age_s": None,
+        "oldest_generation_age_s": None, "active_deadline_count": None,
+        "expired_active_count": None, "minimum_remaining_ms": None,
+        "timeout_counts": {key: None for key in ("queue", "prefill", "generation", "cleanup")},
+        "generation_silence_exceeded_count": None, "stale_owner_count": None,
+        "reconciliation_count": None, "output_incomplete_count": None,
+        "budget_mismatch_count": None, "terminal_convergence_gap_count": None,
+        "coverage": {"projection": "healthy", "phase0": "unavailable", "web_dashboard": "unavailable"},
+        "reason_codes": ["source_not_instrumented", "coverage_incomplete"],
+    }
+
+
+def _local_direct_payload_valid(payload: Any) -> bool:
+    if not isinstance(payload, dict) or set(payload) != _LOCAL_DIRECT_FIELDS:
+        return False
+    if payload["schema_version"] != "aq.local-direct-health.v1":
+        return False
+    if payload["assessment"] not in {"assessed", "not_assessed"}:
+        return False
+    if payload["health"] not in {"healthy", "degraded", "blocked", "unavailable"}:
+        return False
+    if payload["source_freshness"] not in {"fresh", "stale", "unavailable"}:
+        return False
+    if payload["deadline_health"] not in {"healthy", "degraded", "blocked", "unavailable"}:
+        return False
+    phase_counts = payload["phase_counts"]
+    timeout_counts = payload["timeout_counts"]
+    if (not isinstance(phase_counts, dict)
+            or set(phase_counts) != {"queue", "prefill", "generation", "cleanup", "terminal"}
+            or not isinstance(timeout_counts, dict)
+            or set(timeout_counts) != {"queue", "prefill", "generation", "cleanup"}):
+        return False
+    number_fields = (
+        "oldest_queue_age_s", "oldest_prefill_age_s", "oldest_generation_age_s",
+        "active_deadline_count", "expired_active_count", "minimum_remaining_ms",
+        "generation_silence_exceeded_count", "stale_owner_count", "reconciliation_count",
+        "output_incomplete_count", "budget_mismatch_count", "terminal_convergence_gap_count",
+    )
+    values = list(phase_counts.values()) + list(timeout_counts.values()) + [payload[key] for key in number_fields]
+    for value in values:
+        if value is not None and (isinstance(value, bool) or not isinstance(value, int) or value < 0):
+            return False
+    count_values = list(phase_counts.values()) + list(timeout_counts.values()) + [
+        payload[key] for key in (
+            "active_deadline_count", "expired_active_count", "generation_silence_exceeded_count",
+            "stale_owner_count", "reconciliation_count", "output_incomplete_count",
+            "budget_mismatch_count", "terminal_convergence_gap_count",
+        )
+    ]
+    if any(isinstance(value, int) and value > 1_000_000 for value in count_values):
+        return False
+    if any(isinstance(payload[key], int) and payload[key] > 31_536_000 for key in (
+        "oldest_queue_age_s", "oldest_prefill_age_s", "oldest_generation_age_s",
+    )):
+        return False
+    if payload["minimum_remaining_ms"] is not None and payload["minimum_remaining_ms"] > 86_400_000:
+        return False
+    no_data = payload["assessment"] == "not_assessed"
+    if no_data != all(value is None for value in values):
+        return False
+    if not no_data and any(value is None for value in values):
+        return False
+    coverage = payload["coverage"]
+    if (not isinstance(coverage, dict) or set(coverage) != {"projection", "phase0", "web_dashboard"}
+            or any(value not in {"healthy", "blocked", "unavailable"} for value in coverage.values())):
+        return False
+    if no_data:
+        if (payload["source_freshness"] != "unavailable"
+                or payload["deadline_health"] != "unavailable"
+                or payload["health"] not in {"blocked", "unavailable"}):
+            return False
+    elif (payload["source_freshness"] not in {"fresh", "stale"}
+          or payload["deadline_health"] not in {"healthy", "degraded", "blocked"}
+          or payload["health"] not in {"healthy", "degraded", "blocked"}):
+        return False
+    reasons = payload["reason_codes"]
+    if not (isinstance(reasons, list) and 1 <= len(reasons) <= 16
+            and len(reasons) == len(set(reasons)) and set(reasons) <= _LOCAL_DIRECT_REASONS):
+        return False
+    healthy = payload["health"] == "healthy"
+    anomaly_fields = (
+        "expired_active_count", "generation_silence_exceeded_count", "stale_owner_count",
+        "reconciliation_count", "output_incomplete_count", "budget_mismatch_count",
+        "terminal_convergence_gap_count",
+    )
+    if healthy and not (
+        payload["assessment"] == "assessed"
+        and payload["source_freshness"] == "fresh"
+        and payload["deadline_health"] == "healthy"
+        and all(value == "healthy" for value in coverage.values())
+        and all(payload[key] == 0 for key in anomaly_fields)
+        and all(value == 0 for value in timeout_counts.values())
+        and reasons == ["healthy"]
+    ):
+        return False
+    if "healthy" in reasons and not healthy:
+        return False
+    return True
+
+
+def _local_direct_remaining(deadline: float) -> float:
+    remaining = deadline - time.monotonic()
+    if remaining <= 0:
+        raise asyncio.TimeoutError("local_direct_deadline_expired")
+    return remaining
+
+
+async def _local_direct_await(awaitable: Any, deadline: float, *, cap_s: float | None = None) -> Any:
+    """Await one lifecycle operation without opening a second timeout window."""
+    try:
+        remaining = _local_direct_remaining(deadline)
+    except asyncio.TimeoutError:
+        close = getattr(awaitable, "close", None)
+        if callable(close):
+            close()
+        raise
+    timeout = min(remaining, cap_s) if cap_s is not None else remaining
+    return await asyncio.wait_for(awaitable, timeout=timeout)
+
+
+async def _local_direct_sync(call: Any, deadline: float) -> Any:
+    """Run a normally nonblocking child-control call without trusting it to return."""
+    loop = asyncio.get_running_loop()
+    result = loop.create_future()
+
+    def settle(value: Any = None, error: BaseException | None = None) -> None:
+        if result.done():
+            return
+        if error is None:
+            result.set_result(value)
+        else:
+            result.set_exception(error)
+
+    def invoke() -> None:
+        try:
+            value = call()
+        except BaseException as exc:  # Child-control integrity must preserve the exact failure.
+            loop.call_soon_threadsafe(settle, None, exc)
+        else:
+            loop.call_soon_threadsafe(settle, value, None)
+
+    threading.Thread(target=invoke, daemon=True, name="local-direct-child-control").start()
+    return await _local_direct_await(result, deadline)
+
+
+async def _terminate_local_direct_child(proc: Any, deadline: float) -> None:
+    """Terminate, kill if needed, and confirm reap inside the caller's single deadline."""
+    if proc.returncode is None:
+        try:
+            await _local_direct_sync(proc.terminate, deadline)
+        except (AttributeError, ProcessLookupError, asyncio.TimeoutError) as exc:
+            raise RuntimeError("local_direct_cleanup_unconfirmed") from exc
+        try:
+            remaining = _local_direct_remaining(deadline)
+            await _local_direct_await(proc.wait(), deadline, cap_s=min(0.25, remaining / 2.0))
+        except (asyncio.TimeoutError, ProcessLookupError):
+            try:
+                await _local_direct_sync(proc.kill, deadline)
+            except (AttributeError, ProcessLookupError, asyncio.TimeoutError) as exc:
+                raise RuntimeError("local_direct_cleanup_unconfirmed") from exc
+            try:
+                await _local_direct_await(proc.wait(), deadline)
+            except (asyncio.TimeoutError, ProcessLookupError) as exc:
+                raise RuntimeError("local_direct_cleanup_unconfirmed") from exc
+    if proc.returncode is None:
+        raise RuntimeError("local_direct_cleanup_unconfirmed")
+
+
+async def _bounded_local_direct_output(proc: Any, deadline: float) -> bytes:
+    """Read stdout and stderr incrementally under one combined max-plus-one cap."""
+    total = 0
+    stdout = bytearray()
+    lock = asyncio.Lock()
+
+    async def consume(stream: Any, *, retain: bool) -> None:
+        nonlocal total
+        if stream is None:
+            return
+        while True:
+            chunk = await _local_direct_await(stream.read(8192), deadline)
+            if not chunk:
+                return
+            async with lock:
+                total += len(chunk)
+                if total > _LOCAL_DIRECT_HEALTH_MAX_BYTES:
+                    raise ValueError("local_direct_adapter_oversize")
+                if retain:
+                    stdout.extend(chunk)
+
+    readers = [asyncio.create_task(consume(proc.stdout, retain=True)),
+               asyncio.create_task(consume(proc.stderr, retain=False))]
+    try:
+        await _local_direct_await(asyncio.gather(*readers), deadline)
+        await _local_direct_await(proc.wait(), deadline)
+    finally:
+        for reader in readers:
+            if not reader.done():
+                reader.cancel()
+        await asyncio.gather(*readers, return_exceptions=True)
+    return bytes(stdout)
+
+
+def _local_direct_expired(cached: Dict[str, Any]) -> Dict[str, Any]:
+    expired = _local_direct_unavailable()
+    coverage = cached.get("coverage")
+    if isinstance(coverage, dict):
+        expired["coverage"] = json.loads(json.dumps(coverage))
+    reasons = [reason for reason in cached.get("reason_codes", []) if reason != "healthy"]
+    reasons.append("source_stale")
+    if any(value != "healthy" for value in expired["coverage"].values()):
+        reasons.append("coverage_incomplete")
+    expired["reason_codes"] = sorted(set(reasons))[:16]
+    if cached.get("health") == "blocked" or "blocked" in expired["coverage"].values():
+        expired["health"] = "blocked"
+    return expired if _local_direct_payload_valid(expired) else _local_direct_unavailable()
+
+
+def _local_direct_effective_cache(now: float) -> Dict[str, Any]:
+    raw = _LOCAL_DIRECT_HEALTH_CACHE.get("payload_bytes")
+    accepted = _LOCAL_DIRECT_HEALTH_CACHE.get("accepted_at")
+    base_age = _LOCAL_DIRECT_HEALTH_CACHE.get("source_age_s")
+    if not isinstance(raw, bytes) or isinstance(accepted, bool) or not isinstance(accepted, (int, float)):
+        return _local_direct_unavailable()
+    try:
+        cached = json.loads(raw.decode("utf-8", "strict"))
+    except (UnicodeError, json.JSONDecodeError):
+        return _local_direct_unavailable()
+    if not isinstance(cached, dict) or not _local_direct_payload_valid(cached):
+        return _local_direct_unavailable()
+    if (cached["assessment"] != "assessed" or isinstance(base_age, bool)
+            or not isinstance(base_age, (int, float)) or base_age < 0):
+        return _local_direct_unavailable()
+    effective_age = max(0.0, float(base_age)) + max(0.0, now - accepted)
+    if effective_age > 60.0:
+        return _local_direct_expired(cached)
+    fallback = json.loads(json.dumps(cached))
+    if effective_age > 10.0:
+        fallback["source_freshness"] = "stale"
+        if fallback["health"] == "healthy":
+            fallback["health"] = "degraded"
+        reasons = [reason for reason in fallback["reason_codes"] if reason != "healthy"]
+        fallback["reason_codes"] = sorted(set(reasons + ["source_stale"]))
+    return fallback if _local_direct_payload_valid(fallback) else _local_direct_unavailable()
+
+
+async def _refresh_local_direct_health() -> Dict[str, Any]:
+    command = Path(__file__).resolve().parents[4] / "scripts" / "ai" / "aq-tui-dashboard"
+    proc = None
+    deadline = time.monotonic() + 2.0
+    try:
+        proc = await _local_direct_await(asyncio.create_subprocess_exec(
+            sys.executable or "python3", str(command), "--local-direct-health-json",
+            cwd=str(Path(__file__).resolve().parents[4]),
+            stdout=asyncio.subprocess.PIPE, stderr=asyncio.subprocess.PIPE,
+            limit=_LOCAL_DIRECT_HEALTH_MAX_BYTES,
+        ), deadline)
+        stdout = await _bounded_local_direct_output(proc, deadline)
+        if proc.returncode != 0:
+            raise ValueError("local_direct_adapter_failed")
+        payload = json.loads(stdout.decode("utf-8", "strict"))
+        if not _local_direct_payload_valid(payload):
+            raise ValueError("local_direct_contract_invalid")
+        accepted_at = time.monotonic()
+        # Fresh is a bucket (0..10s), so conservatively carry its upper bound.  Stale payloads
+        # cannot be safely replayed after another adapter failure without an exact source age.
+        represented_age = 10.0 if payload["assessment"] == "assessed" and payload["source_freshness"] == "fresh" else (
+            60.0 if payload["assessment"] == "assessed" else None
+        )
+        _LOCAL_DIRECT_HEALTH_CACHE.update(
+            accepted_at=accepted_at, source_age_s=represented_age, payload_bytes=bytes(stdout),
+        )
+        return _local_direct_effective_cache(accepted_at)
+    except asyncio.CancelledError:
+        if proc is not None:
+            await _terminate_local_direct_child(proc, deadline)
+        raise
+    except (asyncio.TimeoutError, UnicodeError, json.JSONDecodeError, OSError, ValueError):
+        if proc is not None:
+            await _terminate_local_direct_child(proc, deadline)
+        return _local_direct_effective_cache(time.monotonic())
+
+
+@router.get("/agent-ops/local-direct-health")
+async def get_local_direct_health() -> Dict[str, Any]:
+    """Sanitized cached local-direct lifecycle aggregate; accepts no request arguments."""
+    global _LOCAL_DIRECT_HEALTH_REFRESH
+    now = time.monotonic()
+    cached = _LOCAL_DIRECT_HEALTH_CACHE.get("payload_bytes")
+    accepted = _LOCAL_DIRECT_HEALTH_CACHE.get("accepted_at")
+    if (isinstance(cached, bytes) and isinstance(accepted, (int, float))
+            and not isinstance(accepted, bool) and now - float(accepted) < _LOCAL_DIRECT_HEALTH_TTL_S):
+        return _local_direct_effective_cache(now)
+    if _LOCAL_DIRECT_HEALTH_REFRESH is None or _LOCAL_DIRECT_HEALTH_REFRESH.done():
+        _LOCAL_DIRECT_HEALTH_REFRESH = asyncio.create_task(_refresh_local_direct_health())
+    # A cancelled route waiter must not cancel the one shared refresh/owned child.
+    await asyncio.shield(_LOCAL_DIRECT_HEALTH_REFRESH)
+    return _local_direct_effective_cache(time.monotonic())
 
 
 @router.get("/agent-ops/status")

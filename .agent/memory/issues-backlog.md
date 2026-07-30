@@ -76,10 +76,20 @@
   Action: add phase-separated connection/prefill/generation/total deadlines, a durable heartbeat/progress receipt, and a finally-equivalent timeout transition; reproduce with a fake delayed direct provider before routing local advisory ballots through this path.
   File: scripts/ai/delegate-to-local; scripts/ai/lib/dispatch.py; .agents/delegation/registry.jsonl
 
-[OPEN] antigravity-cli-wake-has-no-attributable-claim-receipt — Two `antigravity chat --reuse-window --mode agent` wake attempts returned after option warnings while the exact C0.5A inbox item remained pending; the item completed only after the owner also manually prompted Antigravity, so the system cannot attribute which action caused processing — Root cause / fix notes: CLI exit is not bound to task ID/revision/workspace, the inbox has no CAS claim, and completion/archive does not bind wake generation or claimant. A running IDE or disappearing inbox file is insufficient causal evidence.
+[IN-FLIGHT] antigravity-cli-wake-has-no-attributable-claim-receipt — Two `antigravity chat --reuse-window --mode agent` wake attempts returned after option warnings while the exact C0.5A inbox item remained pending; the item completed only after the owner also manually prompted Antigravity, so the system cannot attribute which action caused processing — Root cause / fix notes: the thin receipt slice added claim primitives, but its fixed wake prompt omitted the claim step, completion remained fail-open for absent claims/output, and no host-owned retry/parking transition continuously drove the lane. A running IDE, successful CLI exit, or disappearing inbox file is insufficient causal evidence.
   Severity: high
-  Action: SUPERSEDED (2026-07-20) — the original action line assumed the fix lives inside the planned broker-owned Antigravity adapter (agent-connection-reliability C3.3), which sits behind unimplemented C1/C2 and is disproportionate for this gap. `.agents/plans/antigravity-lane-restoration/DESIGN.md` (owner-directed, PULSE `[owner] [acceptance-lane-directive]` 2026-07-20) instead specifies a thin, additive, non-broker-dependent claim-receipt ledger on top of the existing inbox transport; implemented (staged, not yet committed) 2026-07-20 in `scripts/ai/aq-antigravity-inbox`: `wake` (fixed-argv, argv-never-interpolated, pgrep-gated) and `claim` (atomic `os.rename` CAS to `.claimed-<task_id>`) subcommands, plus `complete` extended to flag `completed_without_claim: true` when no matching claim precedes it (fail-open-but-visible) and to bind an `output_hash` record when the expected artifact exists. Hermetic offline fixtures in `scripts/testing/test-antigravity-claim-receipt.py` prove CAS exclusivity, the without-claim flag, output-hash mismatch detectability, and that a `wake_attempt` alone never implies completion. `scripts/ai/aq-collab-round`'s liveness heuristic was deliberately left unchanged (DESIGN §4 permitted skipping it when not cleanly minimal) — still deletion-inferred, not yet reading the receipt ledger; a follow-up slice can wire that in. **Still open/unresolved after this slice**: (1) independent acceptance review of the staged implementation has not yet run; (2) the IDE-side workflow/rule that watches `.agent/collaboration/antigravity-inbox/` remains an owner-only external configuration gap (`.agent/ACTIVATION-AUDIT.md` line 52, unchanged by this design) — even a perfect receipt ledger will only show `wake_attempt` records with no matching `claim` until that is configured.
+  Action: A0 is active under `.agents/plans/antigravity-autonomous-bridge/A0-DESIGN-PACKET.md`: require claim-first IDE execution, fail-closed output-bound completion, lock-safe receipts, and bounded `dispatch-once` retry/parking. A1 is prepared-only in `A1-SERVICE-COVERAGE-DESIGN.md` to add the host timer plus Phase-0/TUI/web coverage after dirty shared surfaces clear. The future universal broker adapter remains the retirement target.
   File: scripts/ai/aq-antigravity-inbox; scripts/testing/test-antigravity-claim-receipt.py; scripts/ai/aq-collab-round (unchanged, deferred); .agent/ACTIVATION-AUDIT.md; .agents/plans/antigravity-lane-restoration/DESIGN.md
+
+[OPEN] delegate-to-local-status-machine-mode-flag-mismatch — `delegate-to-local --status <task> --json` rejects `--json` even though the status command already emits JSON and machine-mode-first policy expects an explicit stable machine interface.
+  Severity: low
+  Action: normalize status/monitor CLI machine-mode flags across all delegation wrappers and add parser-parity tests; until then consume the existing JSON emitted without `--json`.
+  File: scripts/ai/delegate-to-local
+
+[OPEN] local-agent-review-prefill-progress-misclassified-as-silence — Advisory review `local-20260728-222458-wy1txd` ran for 1,311.2s, completed two bounded `read_file` calls, emitted no review output, and failed with `LLM no-progress timeout` after 420s of server silence. Tool progress did not translate into generation/prefill progress, so the local slot remained occupied for over 21 minutes without a usable result.
+  Severity: high
+  Action: separate queue, prefill, generation, and tool-turn progress deadlines; emit trusted phase heartbeats from the inference server/adapter; preflight context size against measured local capacity; park or cancel/retry a silent phase without crediting review completion.
+  File: scripts/ai/aq-agent-loop; scripts/ai/delegate-to-local; .agents/delegation/outputs/local-20260728-222458-wy1txd.log
 
 [DONE] delegation-registry-read-path-requires-write-lock — `aq-delegation-registry show <task>` failed in a read-only monitoring context because the read transaction opened `.agents/delegation/registry.jsonl.lock` with `O_CREAT|O_RDWR`; commit `297728db` added the descriptor-bound lock-free snapshot read while preserving writer locking and CAS.
   Severity: high
@@ -2332,3 +2342,347 @@ File: .claude/CLAUDE.md:139 (Rule 17); .agent/CODEX.md:230 (Rule 17); .agent/LOC
 - **Root cause:** the NOPASSWD security.sudo.extraRules command spec `systemd-run ... -- */bin/npx -y @playwright/mcp@0.0.76 *` failed sudoers compilation (`sudoers-in:7:224: syntax error` on the wildcard command spec) -> the whole system config would not build. Also a security footgun: a NOPASSWD rule ending in `*` is over-permissive/injection-prone.
 - **Fix:** removed the extraRules block. Wrapper (mcp-playwright-sandboxed) already falls back to unprivileged systemd-run + warning; version-integrity check stays active. tasks_inbox playwright stays REQUEST_REVISION.
 - **Redo (safer):** egress confinement via a dedicated NO-WILDCARD wrapper as the sole sudo target, or a first-class systemd unit — NOT a wildcard sudoers command. Lesson: never commit a Nix change touching sudoers/system config without a build/eval check before the operator rebuilds.
+
+## [OPEN 2026-07-27] c03-accepted-evidence-disconnected-from-main-ancestry
+- **Status:** OPEN (behavior remains green; provenance/lifecycle debt).
+- **Scope:** Cycle-0 C0.3 integration and acceptance history.
+- **Root cause:** current `main` descends from parentless snapshot `a0bd5520`; accepted implementation commit `c9fe3974` and reviewed HEAD `d918a21a` remain as Git objects but are not ancestors of any branch. Their accepted bytes and evidence were copied into the snapshot, while the parent authorization still reads `UNCONSUMED`.
+- **Severity:** HIGH (future Git GC, sync, audit, or lifecycle claims could lose or misstate the reviewed lineage even though current focused behavior passes).
+- **Action:** create a bounded provenance-reconciliation slice that preserves the reviewed objects with an explicit durable reference and reconciles the authorization-consumption record without rewriting accepted evidence.
+- **File:** `.agents/plans/aqos-refoundation-cycle0/C0.3-CURRENT-SUBJECT-ACCEPTANCE.md`
+
+## [OPEN 2026-07-27] c06t-am6-never-implemented-stale-candidate-misclassified
+- **Status:** OPEN (AM6 expired; no AM6 writes, acceptance, or commit).
+- **Scope:** C0.6-T local-direct telemetry visibility candidate.
+- **Root cause:** all nine candidate files still match the rejected AM5/pre-AM6 hashes and retain the AM5 defects; the AM6 activation expired after HEAD drift without implementation. The unified closeout worklist incorrectly labels the slice accepted/committed.
+- **Severity:** HIGH (unaccepted telemetry code is dirty in the shared worktree and program status overclaims delivery).
+- **Action:** correct the worklist, freeze a current-HEAD AM7 correction package, independently review it, then require exact owner activation, implementation, binding acceptance, and an atomic commit.
+- **File:** `.agents/plans/unified-program/ACTIVATION-AND-CLOSEOUT-WORKLIST.md`
+
+## [DONE 2026-07-29] capability-intake-registry-references-missing-schema
+- **Status:** DONE (independently accepted and committed in `50d5630b87a235e72668fabc73205c92353b27c3`).
+- **Scope:** `config/agent-capability-intake-candidates.json`.
+- **Root cause:** the registry declared a missing closed-schema SSOT. S0-A now supplies an exact schema/registry/test candidate with focused offline evidence, but it is not accepted or committed yet.
+- **Severity:** HIGH (external tools with shell/network/write authority must not be admitted against an absent contract).
+- **Action:** closed schema, bounded registry, audit tooling, negative vectors, and disabled/incomplete external records shipped atomically; runtime promotion remains a separate gated lifecycle.
+- **File:** `config/agent-capability-intake-candidates.json:2`
+
+## [OPEN 2026-07-27] program-progress-focused-tests-pin-superseded-snapshot
+- **Status:** OPEN (tracker content corrected; test baseline stale).
+- **Scope:** AQ-OS full-page progress tracker.
+- **Root cause:** `assets/aqos-progress-tracker.html` now reflects current projected truth, but 5/13 focused tests assert the superseded July 18 track set, counts, and status text.
+- **Severity:** MEDIUM (stale tests block honest tracker integration and can pressure agents to restore incorrect status).
+- **Action:** a bounded one-test-file design/authorization is in preparation against `config/refactor-milestones.json`/projector output with negative controls that reject hand-authored stale state. This failure currently blocks the otherwise accepted, exactly staged C0.3 provenance consumption commit from earning a clean isolated Tier0 gate.
+- **File:** `scripts/testing/test-dashboard-program-progress.py`
+
+## [DONE 2026-07-29] capability-intake-test-expects-retired-playwright-npx-risk
+- **Status:** DONE (focused capability-intake suite passes after the reviewed S0-A release).
+- **Scope:** capability-intake regression suite.
+- **Root cause:** the Playwright candidate now launches through the pinned integrity-checking sandbox wrapper, but `test-capability-intake.py` still requires the old `dynamic-installer:npx` risk flag. `audit --all --json` successfully reports 11/11 accepted-with-mitigations candidates, while the focused suite aborts on that stale assertion.
+- **Severity:** MEDIUM (blocks honest S0-A intake validation and can pressure restoration of an obsolete risk classification).
+- **Action:** resolved by the accepted wrapper-mediated risk contract and regression suite; post-release focused validation passes.
+- **File:** `scripts/testing/test-capability-intake.py:40`
+
+## [OPEN 2026-07-27] claude-flagship-track-s-review-zero-output-failure
+- **Status:** OPEN (advisory lane unavailable; Track S local work remains non-gated).
+- **Scope:** monitored Claude delegations `claude-20260726-232552-lrl6ts`, `claude-20260726-232752-pl8caa`, and `claude-20260726-232858-p4prcw`.
+- **Root cause:** the wrapper resolved and registered Fable (`flagship`), Sonnet 4.6 (`balanced`), and Opus 4.8 (`flagship_fallback`), but all three processes exited as `failed` before producing review evidence. The identical signature across model tiers isolates this to the headless connection/lifecycle path rather than model capability or prompt size; model availability is not proof of durable task execution.
+- **Severity:** HIGH (independent flagship perspective is lost and unattended collaboration can silently degrade without broker-owned retry/parking).
+- **Action:** preserve the failed registry record, let the Agent Connection Reliability broker own retry/parking when available, and accept only a later hash-bound review with actual output. Do not credit this lane as a reviewer.
+- **File:** `.agents/delegation/outputs/claude-20260726-232552-lrl6ts.log`
+
+## [OPEN 2026-07-27] local-hybrid-review-returns-retrieval-only-output
+- **Status:** OPEN (local advisory lane abstains; Track S remains non-gated).
+- **Scope:** monitored local delegation `local-20260726-232707-554dxo`.
+- **Root cause:** the hybrid reviewer route terminated with inferred `failed` while its output contained only three unrelated retrieval hits and no requested verdict, findings, or local-lane constraints. Retrieval evidence was surfaced as if it were task output without a typed completion contract.
+- **Severity:** HIGH (a retrieval-only response can be mistaken for completed reasoning and corrupt review tallies).
+- **Action:** require the local hybrid route to distinguish retrieval context from synthesized answer, validate the reviewer output schema before terminal `done`, and park/retry on missing verdict. Do not credit this task as a review.
+- **File:** `.agents/delegation/outputs/local-20260726-232707-554dxo.log`
+
+## [IN-FLIGHT 2026-07-30] foundation-c2-post-release-contract-gaps
+- **Status:** IN-FLIGHT (C2 committed at `97131faa` with enforcement default-OFF; activation remains prohibited pending residual correction).
+- **Scope:** Foundation C2 capability-lease enforcement and its mandatory operational coverage.
+- **Root cause:** the post-review candidate closed signed zero-trust downgrades, signed-lease/manifest risk drift, decision emission, and live-bundle equality; 83/83 focused checks pass. The committed code still introduces `CAPABILITY_LEASE_ENFORCEMENT` and `AQ_LEASE_POLICY_EPOCH` without `config/env-contract.yaml`, has no aq-qa integration or dashboard indicator, and labels network-backed or sensitive operations such as `query_aidb`, `mesh_discovery`, collective memory, and `screenshot` as fixed “non-network, non-exec” degraded safe reads. The release commit also exceeded the original five implementation paths by adding a review record and L2B golden re-pin; those additions need lifecycle/inventory reconciliation even though the L2B suite is green.
+- **Severity:** HIGH while default-OFF; CRITICAL if activation is attempted before correction.
+- **Action:** keep the flag OFF. Prepare and independently review a bounded residual slice that registers both environment variables, narrows degraded admission to demonstrably local non-sensitive reads, adds adversarial classification tests, ships aq-qa/dashboard Service Coverage, and reconciles the seven-path release inventory. Flag/Nix activation remains a separate later owner act.
+- **File:** `ai-stack/switchboard/capability_lease_gate.py`; `config/env-contract.yaml`; `scripts/testing/harness_qa/phases/phase0.py`; `assets/dashboard.js`; `97131faac372e89273f14372edbfa5e52b816d64`
+
+## [OPEN 2026-07-27] catch-up-queue-has-no-executable-redispatch-owner
+- **Status:** OPEN (Claude Track S review is durably recorded but not automatically runnable).
+- **Scope:** model/agent-agnostic catch-up workflow.
+- **Root cause:** `.agent/collaboration/AGENT-CATCHUP-QUEUE.md` is a human-readable durable ledger, but no repository script, daemon, timer, or broker consumer references it. “Queue on return” therefore depends on a later interactive agent reading the file and is not an active retry loop.
+- **Severity:** HIGH (the UI can imply parked work will resume automatically when no execution owner exists).
+- **Action:** add a typed catch-up task store owned by the dispatch broker, an eligibility/availability-triggered single-flight requeue transition, expiry/backoff/deduplication, task receipts, and dashboard/aq-qa coverage. Until then, label entries `durable/manual-dispatch-required`.
+- **File:** `.agent/collaboration/AGENT-CATCHUP-QUEUE.md`
+
+## [OPEN 2026-07-27] session-start-machine-mode-contract-gap
+- **Status:** OPEN (interactive fallback succeeded).
+- **Scope:** canonical session initialization.
+- **Root cause:** the Lights-Out rule requires machine-mode CLI use, but
+  `aq-session-start --machine` rejects `--machine` as an unknown argument.
+- **Severity:** LOW (initialization still works, but automation must parse
+  presentation output or violate the machine-mode-first policy).
+- **Action:** add a stable machine-mode result schema and focused CLI contract
+  test, then update the canonical initialization example.
+- **File:** `scripts/ai/aq-session-start`
+
+## [DONE 2026-07-27] codex-subagent-deprecated-hook-and-root-trust-drift
+- **Status:** DONE (effective config repaired; durable projection guarded).
+- **Scope:** Codex root and inherited native sub-agent configuration.
+- **Root cause:** `~/.codex/config.toml` retained both the removed
+  `features.codex_hooks` alias and a blanket trusted-project entry for `/`.
+  Every child startup re-parsed the deprecated key and emitted the warning;
+  trusting `/` also made every project eligible to load project-scoped Codex
+  configuration.
+- **Severity:** HIGH.
+- **Action:** removed both effective entries; retained `features.hooks = true`
+  and explicit trust for this repository; updated the Home Manager projection
+  and focused regression test. `codex features list` now reports stable
+  `hooks=true` and `multi_agent=true` without a deprecation warning.
+- **File:** `nix/home/base.nix`;
+  `scripts/testing/test-agent-mcp-client-projection.py`
+
+## [OPEN 2026-07-27] model-coordinator-registry-is-unvalidated-and-stale
+- **Status:** OPEN (native Codex sub-agents are not blocked; cross-provider
+  wrapper routing remains unreliable).
+- **Scope:** model/role/tier configuration shared by Claude, Antigravity,
+  local, and role-routing adapters.
+- **Root cause:** `config/model-coordinator.json` declares
+  `$schema: ./schemas/model-coordinator-schema.json`, but that schema does not
+  exist. The registry also still names retired/unavailable provider identities
+  such as OpenAI `gpt-5.5` and Claude `claude-fable-5`, while current native
+  Codex uses the independently configured `gpt-5.6-sol` root model and
+  `gpt-5.6-terra` implementation class.
+- **Severity:** HIGH.
+- **Action:** freeze a closed model-coordinator schema and provider capability
+  inventory; separate native-Codex inheritance from external wrapper routing;
+  validate model IDs against observed provider availability; add
+  machine-readable config drift, role, hook, monitoring, and fallback checks
+  before updating any live routing default.
+- **File:** `config/model-coordinator.json`
+
+## [DONE 2026-07-27] codex-reviewer-agent-omitted-no-routing-clause
+- **Status:** DONE (caught before acceptance).
+- **Scope:** project-scoped native Codex reviewer role.
+- **Root cause:** the first reviewer agent draft prohibited editing, activation,
+  staging, commit, deployment, and scope widening but did not explicitly
+  prohibit routing other agents.
+- **Severity:** MEDIUM.
+- **Action:** the focused configuration test rejected the draft; the reviewer
+  instructions now explicitly prohibit agent routing.
+- **File:** `.codex/agents/aq-reviewer.toml`
+
+## [OPEN 2026-07-27] delegation-registry-list-lacks-machine-json-mode
+- **Status:** OPEN (human output remains usable).
+- **Scope:** monitored delegation preflight and acceptance evidence.
+- **Root cause:** `aq-delegation-registry list --json` rejects `--json`, despite
+  the machine-mode-first operating contract.
+- **Severity:** MEDIUM.
+- **Action:** add a stable bounded JSON result for list/status operations and a
+  focused CLI contract test; keep human presentation as a separate mode.
+- **File:** `scripts/ai/aq-delegation-registry`
+
+## [OPEN 2026-07-27] codex-read-only-child-path-alias-warning
+- **Status:** OPEN (benign; child continued and configuration smoke passed).
+- **Scope:** native Codex read-only reviewer/explorer startup.
+- **Root cause:** `codex features list` attempts to create PATH aliases even
+  inside a child whose sandbox is intentionally read-only, then warns:
+  `proceeding, even though we could not create PATH aliases: Read-only file
+  system (os error 30)`.
+- **Severity:** LOW.
+- **Action:** preserve the read-only sandbox; identify a supported no-write
+  startup/cache/alias setting or upstream fix and add it only if it removes the
+  warning without broadening permissions. Do not make reviewers writable to
+  silence it.
+- **File:** `.codex/agents/aq-reviewer.toml`;
+  `.codex/agents/aq-explorer.toml`
+
+## [IN-FLIGHT 2026-07-29] codex-effective-config-deprecated-hook-regression
+- **Status:** IN-FLIGHT (live key removed; durable effective-config gate pending).
+- **Scope:** Codex parent and native sub-agent configuration inheritance.
+- **Root cause:** the repository Nix reconciliation deletes
+  `[features].codex_hooks`, but that candidate has not been activated into the
+  current Home Manager generation. The focused tests validate the declarative
+  transform and project child profiles, not the effective merged
+  `$HOME/.codex/config.toml`, so the deprecated key could reappear without a
+  failing runtime/config-health check.
+- **Severity:** HIGH.
+- **Action:** keep `[features].hooks = true`, add a hermetic effective-config
+  validator plus a live smoke/Phase-0 projection, and include config source,
+  merged-result, model/role/tool/sandbox/monitoring lineage in the cross-provider
+  configuration parity contract.
+- **File:** `nix/home/base.nix`; `scripts/testing/test-codex-subagent-configuration.py`;
+  `/home/hyperd/.codex/config.toml`
+
+## [OPEN 2026-07-29] collaboration-skills-fail-own-validator
+- **Status:** OPEN (skills remain readable; selector reports `valid=false`).
+- **Scope:** automatic skill selection for multi-agent role/slice work.
+- **Root cause:** `multi-agent-collab`, `role-contracts`, and `slice-authoring`
+  have frontmatter descriptions but lack the validator's required body
+  `Description` section; all three also lack recommended usage/example/notes
+  sections.
+- **Severity:** MEDIUM.
+- **Action:** align the skill validator with frontmatter or add the required
+  body sections in a separate skill-hygiene slice, then require selected skills
+  to validate before delegation.
+- **File:** `.agent/skills/multi-agent-collab/SKILL.md`;
+  `.agent/skills/role-contracts/SKILL.md`;
+  `.agent/skills/slice-authoring/SKILL.md`
+
+## [IN-FLIGHT 2026-07-29] cross-provider-agent-deployment-contract-drift
+- **Status:** IN-FLIGHT (PRD/plan created; Codex C1A candidate underway).
+- **Scope:** Codex, Claude, Antigravity/Gemini, local-agent/logic, embedded
+  retrieval, and their delegation payload/lifecycle projections.
+- **Root cause:** role, model, payload, tool, budget, retry, sandbox,
+  observability, and review policy are duplicated across provider wrappers and
+  config surfaces without one typed effective `AgentDeployment` record.
+  Concrete failures include undeclared Codex custom roles, Antigravity loop
+  lifecycle bypass and ignored budgets, unbounded Claude execution, generative
+  embedded prefetch, mechanical `aq-chat` role elevation, unenforced local
+  eligibility, and missing effective model/payload/tool lineage in receipts.
+- **Severity:** CRITICAL.
+- **Action:** execute contract-first C0–C5 sequence; fix Codex declarations,
+  build an effective-config doctor, repair remote lifecycle ownership, correct
+  local modality/role enforcement, then add Phase-0 and dashboard health before
+  adoption or legacy cleanup.
+- **File:** `.agent/PROJECT-AGENT-MODEL-CONFIGURATION-PARITY-PRD.md`;
+  `.agents/plans/agent-model-config-parity/PROGRAM-PLAN.md`
+
+## [OPEN 2026-07-29] codex-client-version-not-declaratively-pinned
+- **Status:** OPEN (0.145.0 works; native doctor reports 0.146.0 available).
+- **Scope:** Codex parent/sub-agent runtime provenance and reproducibility.
+- **Root cause:** the active Codex executable is an npm-global installation,
+  while agent configuration and Home Manager projections are repository/Nix
+  managed. Client version therefore changes on a separate lifecycle and is not
+  bound into configuration acceptance evidence.
+- **Severity:** MEDIUM.
+- **Action:** add client version/feature-schema compatibility to the effective
+  configuration health record; evaluate and canary 0.146.0 in a separate
+  version-adoption slice rather than updating during C1A.
+- **File:** `.agents/plans/agent-model-config-parity/C1B-DESIGN-PACKET.md`
+
+## [OPEN 2026-07-29] pre-commit-focused-ci-leaks-unstaged-subjects
+- **Status:** OPEN (reproduced during the Track S S0-A AM2 release attempt).
+- **Scope:** atomic commit-train validation in a shared dirty worktree.
+- **Root cause:** `.githooks/pre-commit` invokes focused CI from the primary
+  working tree, and the documentation metadata gate scans unrelated unstaged
+  agent documents. An exact 18-path staged subject was therefore blocked by
+  invalid frontmatter in the separate, untracked
+  `.agent/PROJECT-AGENT-MODEL-CONFIGURATION-PARITY-PRD.md`.
+- **Severity:** HIGH (unrelated in-flight slices can indefinitely block atomic,
+  independently accepted commits and pressure unsafe stashing or hook bypass).
+- **Action:** validate the unchanged normal hook against an exact
+  HEAD-plus-index isolated worktree, then design a permanent staged-subject
+  boundary for focused CI. Keep hook edits, skip variables, stashing, and
+  unrelated-file repair outside the Track S release.
+- **File:** `.githooks/pre-commit`; `scripts/governance/run-focused-ci-checks.sh`
+
+## [OPEN] Tree-wide commit gate blocked by foreign incomplete artifacts (found 2026-07-29, opus-orchestrator)
+Discovered while committing Foundation C C2 (97131faa). The tier0 `--pre-commit` gate scans the
+whole working tree, so incomplete foreign artifacts block ALL commits factory-wide, not just the
+committing agent's slice. Two concrete blockers found and worked around (moved aside / stashed,
+then restored — non-destructive):
+
+1. **Malformed PRD frontmatter (structural, HIGH — blocks every commit).**
+   `.agent/PROJECT-AGENT-MODEL-CONFIGURATION-PARITY-PRD.md` frontmatter: `status: DRAFT`
+   (must be lowercase `draft`), missing required `title` and `owner`. `check-doc-frontmatter.py
+   --all` (focused-ci `doc-frontmatter`) walks the filesystem incl. UNTRACKED files, so this one
+   untracked doc fails the gate for everyone. ACTION: its owner must fix frontmatter (title/owner/
+   status) or `--fix-missing`. Sub-issue: consider whether `--all` should skip untracked files not
+   part of the staged commit (gate over-reach) — file:line scripts/governance/check-doc-frontmatter.py:176.
+
+2. **Incomplete coupled tracker slice (MEDIUM — blocks QA 0.10.40).**
+   `.agents/plans/UNIFIED-PROGRAM-PLAN.md` + `config/refactor-milestones.json` +
+   `assets/aqos-progress-tracker.html` are modified together (legit ground-truth projection
+   update: B1 COMPLETE, C2 rev3, etc.) but the slice is unfinished: (a) `governing_drift` — the
+   tracker provenance pins UNIFIED-PROGRAM-PLAN.md's hash and the re-pin in refactor-milestones.json
+   is out of sync with the edited plan; (b) the regenerated HTML dropped the phrase
+   `owner adjudication + ten-row projection (bec9bc0d)` that the COMMITTED contract test
+   `test-dashboard-program-progress.py::test_truthful_foundation_projection` requires — the test
+   was not updated in the same slice. ACTION: the tracker owner must finish the slice (reconcile
+   provenance hashes + regenerate HTML + update the contract test together) before it can commit.
+   NOTE: C2's own switchboard.py re-pin of the local-inference-l2b golden manifest (8744a455→8fbc28b9)
+   is committed and unrelated to this.
+
+Severity: HIGH (blocker #1 gates the entire factory). Root cause: shared working tree accumulates
+incomplete multi-file foreign slices; the tree-wide gate has no per-slice isolation.
+
+## [OPEN] Foundation C effect-brokering blocked by inaccurate tool-effect manifest + pervasive net/subprocess (found 2026-07-29, opus-orchestrator + codex 3-round review)
+C3a design (policy effect brokers) went through 3 codex binding review rounds (codex-20260729-171430
+REVISE 8-BLOCKING; -172222 REVISE 10-open + mandatory C3a-1/C3a-2 split; -173023 C3a-1 REVISE
+5-BLOCKING). Round 3 read the ACTUAL handler source and proved a foundational problem:
+- **`config/first-party-tools.json` effect classifications are materially inaccurate.** Tier-3
+  tools marked write:False/net:False actually perform network/subprocess effects:
+  get_hint/query_context/store_memory/harness_health/query_aidb/get_working_memory/mesh_discovery/
+  recommend_agent_for_task/collective_memory_search = httpx HTTP to coordinator (ai_coordination.py:62,
+  HYBRID_COORDINATOR_URL:34). store_memory = HTTP POST (NOT a filesystem write — the openat2 write
+  broker cannot mediate it). git_status/git_diff = subprocess (git_tools.py:48). screenshot =
+  subprocess + caller-path write (computer_use.py:40).
+- **Import-time filesystem write:** `computer_use.py:35` runs `SCREENSHOT_DIR.mkdir()` at MODULE
+  IMPORT — an unbrokered write occurs merely from loading the registry (switchboard.py:874), before
+  any per-tool admission.
+- **Singular effect_class insufficient:** run_command = exec+network+write; delegate_to_remote =
+  network+delegate — needs a signed multi-effect closed set with per-effect scopes.
+Root architectural conclusion: **in-process effect-brokering cannot safely cover the current
+toolset before the confinement substrate exists** — nearly every tool does network (needs C4
+profiles) or subprocess (needs C3b bwrap cells). A truly safe in-process C3a-1 would deny almost
+everything. Decision needed on resequencing (C3b/C4 before brokers) vs narrow deny-gate vs a
+handler-effect audit slice first. Severity: HIGH (blocks C3 track). Design docs:
+.agents/plans/aqos-foundation-c/C3A-1-DESIGN-AND-AUTHORIZATION.md (REVISE, not freezable as-is).
+Also: computer_use.py import-time mkdir is a standalone bug worth fixing regardless.
+
+## [OPEN] C3b execution cells: switchboard hardening blocks in-process bwrap (found 2026-07-29, codex review codex-20260729-184020)
+Codex C3b binding review REVISE (9 BLOCKING), verified against live system:
+- **switchboard.nix:534 `RestrictNamespaces = true` + `NoNewPrivileges = true` + `CapabilityBoundingSet=""`**
+  block the switchboard service from creating the user/mount namespaces bwrap requires. bwrap 0.11.2
+  runs fine in a normal shell but CANNOT run inside the hardened switchboard service. So C3b cells
+  cannot run in-process in the switchboard.
+- Convergent findings (#1 child-runner protocol, #5 separately-confined supervisor, #9 hardening
+  block) all point to: **cells must run in a DEDICATED cell-runner service/worker**, not inside the
+  switchboard. Switchboard stays hardened + delegates confined execution to the cell-runner.
+- Other BLOCKING (foldable into rev2): executor doesn't receive verified lease (needs execution
+  grant from the gate, same handoff gap as C3a); exec_class not in schema/manifest; worktree bind
+  incompatible with caller-facing $HOME/Documents write paths (needs path-rebasing from the grant);
+  git worktree .git-pointer breaks isolation (needs safe git model: ro common metadata / self-
+  contained clone / confined validator); WorkspaceManager non-atomic create + delete-and-report-
+  success cleanup (needs atomic worktree add w/ verified base OID, typed failures, rollback-failed
+  quarantine); mid-run revocation not real (C2 checks epoch at admission only — needs supervising
+  epoch-watcher + cgroup/process-tree kill + epoch fence before GREEN); §8 perf budgets have no
+  numbers (pin p95 worktree-add/bwrap-spawn/RSS/concurrency before freeze).
+DECISION NEEDED (owner): dedicated cell-runner service (recommended) is a new systemd service +
+relaxed RestrictNamespaces on THAT service only (switchboard stays hardened) — a contained security-
+surface addition. Design doc: C3B-DESIGN-AND-AUTHORIZATION.md (REVISE, not freezable as-is).
+
+[OPEN] aq-event CLI contract drift — The active workflow guidance describes phase/message-style
+event updates, but `aq-event pulse` currently requires `--action` and accepts only
+`--agent/--action/--scope/--outcome`; a resumed session initially used the obsolete shape.
+  Severity: low
+  Action: align the workflow examples/help contract and add a focused CLI compatibility test.
+  File: scripts/ai/aq-event
+
+[OPEN] C3b R1 epoch-authority contract disagrees with live C2 semantics — The reviewed C3b
+Rev3 names `resolve_current_epoch` reading `config/capability-lease-epoch` as sole authority,
+but that file is absent and the current function prefers `AQ_LEASE_POLICY_EPOCH`, then the
+file, then silently returns `0`. R1 cannot freeze a false file-only authority claim.
+  Severity: high
+  Action: prepare an independently reviewed R1 boundary that either hardens/replaces the
+  epoch-source contract before wiring or keeps pure R1 classification on an explicit trusted
+  epoch snapshot; do not activate a runner from the current fallback semantics.
+  File: ai-stack/switchboard/capability_lease_gate.py
+
+[OPEN] Local inference L3-A cannot freeze against current adoption and overlap state — No
+production caller uses the shared contract/policy/transport modules, immutable trusted-fact
+producers are unspecified, and mandatory Service Coverage paths are dirty under L2B/C0.3
+ownership. `PENDING.json` also still presents L2B-B AM4 as running.
+  Severity: high
+  Action: settle the L2B ownership record and shared dashboard/AQ-QA bytes, then prepare a
+  trusted-fact-producer/adoption-seam amendment before any L3-A implementation authorization.
+  File: .agents/plans/local-inference-l3/L3-G0-ADOPTION-BOUNDARY-DESIGN.md
+
+## [OPEN-LOW] R1 execution_grant.verify_epoch brittle isinstance(dict) (found 2026-07-29, R2 impl)
+`scripts/ai/lib/execution_grant.py::verify_epoch` gates on `isinstance(grant, dict)`, which is False
+for `types.MappingProxyType` (what `VerifiedGrant.raw` is). R1's own flow is unaffected (it passes the
+plain `validated` dict), and R2 correctly adapts via `dict(verified_grant.raw)` without modifying the
+frozen R1 file. LOW-pri hardening: a future R1 patch should accept any `collections.abc.Mapping` for
+robustness. Not urgent (R2 adapter is correct; R1 frozen/committed f3a39f52). Flag for codex Aug-4
+confirmatory audit.

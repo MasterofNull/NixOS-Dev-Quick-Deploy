@@ -1,8 +1,10 @@
 # PRD — Check Kernel (CK): World-Class Lint + Agentic Verification SSOT
 
-**Status**: REQUEST_REVISION / PREPARED_ONLY — amended after `unified-program`; bounded re-review
-and explicit per-slice owner activation are required before implementation.
-**Owner lane**: claude-fable-5 (analysis/orchestration). **Date**: 2026-07-13.
+**Status**: REVISION_CANDIDATE / PREPARED_ONLY — corrected after the bounded Track-V review;
+independent re-review and explicit per-slice owner activation are required before implementation.
+**Historical authoring lane**: claude-fable-5 (analysis/orchestration only; no continuing role
+entitlement). Execution roles are model-neutral and selected through the measured, expiring
+lane-eligibility registry ratified in Q5. **Date**: 2026-07-13.
 **Origin**: owner request (research linters + agentic workflow; source video: IndyDevDan,
 "FORGET Loop Engineering. Agentic Engineering is about THIS") + Antigravity ARE plan (received
 2026-07-13, reviewed in §6).
@@ -67,11 +69,49 @@ surfaces: [pre-commit, ci, agent-loop, phase0, dashboard]
 output: {format: json, findings_schema: ck.finding.v1}
 ```
 
-`ck.finding.v1` is a closed record with `schema_version`, `check_id`, `rule_id`, severity
-(`info|warning|error`), bounded message, optional normalized repo-relative path/line/column,
-`fixable`, `fix_applied`, and optional evidence digest. Its closed run envelope contains profile,
-scope, selected check IDs, deterministic status, bounded findings, exit classification, duration,
-truncation, and evidence digest. It never contains raw environment, secrets, or unrestricted output.
+`ck.finding.v1` is a Draft-2020-12 closed record (`additionalProperties: false`) with these required
+fields and bounds:
+
+```yaml
+schema_version: {const: ck.finding.v1}
+run_id:         {type: string, pattern: "^[a-z0-9][a-z0-9._:-]{0,127}$"}
+check_id:       {type: string, pattern: "^[a-z0-9](?:[a-z0-9-]{0,126}[a-z0-9])?$"}
+rule_id:        {type: [string, "null"], maxLength: 128}
+severity:       {enum: [info, warning, error]}
+message:        {type: string, minLength: 1, maxLength: 4096}
+path:           {type: [string, "null"], maxLength: 4096} # normalized repo-relative; no '..'
+line:           {type: [integer, "null"], minimum: 1, maximum: 2147483647}
+column:         {type: [integer, "null"], minimum: 1, maximum: 2147483647}
+fixable:        {type: boolean}
+fix_applied:    {type: boolean} # true implies fixable=true
+subject_digest: {type: string, pattern: "^sha256:[0-9a-f]{64}$"}
+evidence_digest: {type: [string, "null"], pattern: "^sha256:[0-9a-f]{64}$"}
+ordinal:        {type: integer, minimum: 0, maximum: 9999}
+```
+
+The closed `ck.run.v1` envelope requires `schema_version`, `run_id`, `subject` (kind, stable ID,
+SHA-256 digest), `runner_identity` (binary SHA-256 + version), `verifier_identity` (principal ID and
+nullable lease ID), `profile`, `scope`, `selected_check_ids`, `status`, `exit_classification`,
+nullable `exit_code`, `duration_ms`, `truncation`, `findings`, and `evidence_digest`.
+String identities are 1–128 characters; digests use the `sha256:<64 lowercase hex>` form;
+`selected_check_ids` is unique, lexicographically sorted, and capped at 1024; `findings` is capped
+at 10,000; `duration_ms` is an integer from 0 through 86,400,000; profile and scope are the CLI
+enums in §3.2. Status is `pass|warn|fail|runner_error`; exit classification is
+`success|finding|timeout|tool_missing|policy_refused|spawn_failed|runner_failed`; truncation is a
+closed `{state: none|prefix, original_bytes, captured_bytes}` object with non-negative 64-bit
+counts and `captured_bytes <= original_bytes`. Raw environment, secrets, unrestricted output, and
+unknown fields are forbidden.
+
+Digest semantics are domain-separated and deterministic. A finding digest is SHA-256 over RFC-8785
+canonical JSON of the complete finding excluding only `evidence_digest`, prefixed with the UTF-8
+bytes `ck.finding.v1\0`. The run evidence digest uses the same rule over the complete run envelope
+excluding only its `evidence_digest`, prefixed `ck.run.v1\0`; it therefore binds subject, runner,
+verifier, selected checks, ordering, truncation, and every finding. Before serialization, findings
+are stably sorted by `(path|null-last, line|null-last, column|null-last, severity-rank,
+check_id, rule_id|null-last, message, ordinal)` where severity rank is
+`error < warning < info`; `ordinal` disambiguates otherwise identical tool emissions and is
+assigned before sorting. Any producer that cannot normalize into this contract returns
+`runner_error` rather than emitting a partially trusted finding.
 
 ### 3.2 One runner, many surfaces
 
@@ -180,7 +220,8 @@ Amendments (blocking):
 3. **JS gap**: dashboard assets get biome (CK-3); ARE covers only Python/Bash/Nix.
 4. **mypy is a separate ratchet** (type debt ≠ style debt; different burn-down).
 5. **Lane eligibility**: Antigravity is currently implementation-INELIGIBLE (owner policy);
-   ARE is design input — implementation routes to codex/opus with a sealed oracle.
+ARE is design input — implementation routes to the cheapest healthy bounded lane whose measured,
+unexpired eligibility covers the slice, with a sealed oracle and independent acceptance.
 6. **tier0 is a governance surface**: CK-1/CK-2 edits require T2 authorization with subject
    binding; evidence via `aq-evidence` (VF-7) once available.
 
@@ -205,10 +246,10 @@ Amendments (blocking):
 | Risk | Mitigation |
 |---|---|
 | Pre-commit latency creep | changed-scope default, content-hash cache, budgets in CheckSpec, p95 gate in §7 |
-| Format churn colliding with in-flight lanes (Codex L2B) | staged-scope only; no repo-wide format until CK-3 ratchet; freeze window coordination via RESUME |
+| Format churn colliding with concurrently authorized lanes (Foundation B1 itself is complete) | staged-scope only; no repo-wide format until CK-3 ratchet; freeze window coordination via RESUME |
 | Rule fatigue / warn blindness | warn budget per profile; warn→enforce ratchet with dates; every rule has an owner or is deleted |
 | `--fix` vs anti-gaming | fixers are deterministic tool-native only; verifier re-runs post-fix; no LLM-authored auto-fixes in kernel |
-| 80-script triage stalls | batched local-lane audit slices (measured envelope: single-file classification passes) |
+| 80-script triage stalls | batched audits routed to the cheapest measured eligible lane (single-file classification passes) |
 | Registry becomes a god-file | schema versioned (L1A pattern); entries owned; split by class if >300 entries |
 
 ## 9. Review protocol

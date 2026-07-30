@@ -3,6 +3,9 @@
 **Reviewer identity:** claude-opus-4-8 (Claude Opus 4.8), fresh session, independent of the Sonnet implementer.
 **Role:** independent flagship BINDING ACCEPTANCE reviewer (review-only; no edits, no commit).
 **Date:** 2026-07-23
+**Current verdict:** PASS — the initial REQUEST_REVISION was resolved by the
+recorded `df4d94d9…` source-manifest regeneration and net-clean verification in
+the resolution section below.
 **Substitution note (agent-agnostic failover, Rule 18):** Codex is the first-choice binding-acceptance lane but is quota-down. This acceptance correctly routed to an independent Claude flagship (Opus 4.8). Substitution recorded per Rule 18 — no single point of failure; binding acceptance may be any independent flagship when the first choice is down.
 
 **Slice under review:** wire the Slice 2a embed cache (`ai-stack/local-agents/context_cache.py`, already committed) into `ai-stack/local-agents/agent_executor.py`'s context-prune path, and re-pin `agent_executor.py`'s sha256 in `scripts/testing/fixtures/local-delegation-reliability-golden.json`.

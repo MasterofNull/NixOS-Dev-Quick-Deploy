@@ -1938,6 +1938,9 @@ if changed:
     codex_tmp="$(mktemp)"
     ${pkgs.yq-go}/bin/yq -p toml -o toml '
       del(.features.codex_hooks)
+      | del(.projects."/")
+      | .projects."${repoPath}".trust_level = "trusted"
+      | .features.hooks = true
       | .mcp_servers."hybrid-coordinator" = {
           "command": "python3",
           "args": ["${repoPath}/scripts/ai/mcp-bridge-hybrid.py"],

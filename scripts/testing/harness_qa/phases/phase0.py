@@ -1824,6 +1824,8 @@ def run(ctx: RunContext) -> list[CheckResult]:
     results.extend(_check_immutable_qa_effectiveness(ctx))
     results.extend(_check_state_authorities(ctx))
     results.extend(_check_registry_lookup_compatibility(ctx))
+    results.extend(_check_local_direct_health_contract(ctx))
+    results.extend(_check_local_direct_health_card(ctx))
     results.extend(_check_dashboard_program_progress(ctx))
     results.extend(_check_workflow_shadow_contract(ctx))
     results.extend(_check_golden_eval_parity(ctx))
@@ -2220,6 +2222,101 @@ def _check_registry_lookup_compatibility(ctx: RunContext) -> list[CheckResult]:
         5, "0.10.30",
         f"bounded legacy lookup + strict mutation + closed projection + TUI visibility: {summary}",
     )]
+
+
+def _check_local_direct_health_contract(ctx: RunContext) -> list[CheckResult]:
+    """0.10.42: pure aggregate, sanitized route adapter, and canonical deployed GET."""
+    description = "local-direct lifecycle route contract"
+    checkers = [
+        ctx.repo_root / "scripts/testing/test-agent-ops-projection.py",
+        ctx.repo_root / "scripts/testing/test-agent-ops-local-direct-health-web.py",
+    ]
+    for checker in checkers:
+        if not checker.exists():
+            return [failed(5, "0.10.42", description)]
+        try:
+            run = subprocess.run(
+                ["python3", str(checker)], cwd=ctx.repo_root,
+                capture_output=True, text=True, timeout=180,
+            )
+        except Exception as exc:
+            return [failed(5, "0.10.42", description)]
+        if run.returncode != 0:
+            detail = (run.stderr or run.stdout or f"exit {run.returncode}").strip()[-500:]
+            return [failed(5, "0.10.42", description)]
+    if ctx.dashboard_safe:
+        return [skipped(5, "0.10.42", description)]
+    try:
+        port_block = (ctx.repo_root / "nix/modules/core/options.nix").read_text(
+            encoding="utf-8"
+        ).split("commandCenterApi = lib.mkOption", 1)[1].split("};", 1)[0]
+        dashboard_port = int(next(
+            line.split("=", 1)[1].strip().removesuffix(";")
+            for line in port_block.splitlines() if line.strip().startswith("default =")
+        ))
+        if not 1 <= dashboard_port <= 65535:
+            raise ValueError("commandCenterApi port out of range")
+    except (OSError, IndexError, StopIteration, ValueError):
+        return [failed(5, "0.10.42", description)]
+    dashboard_url = f"http://127.0.0.1:{dashboard_port}"
+    try:
+        status, body = http_get(f"{dashboard_url}/api/aistack/agent-ops/local-direct-health", timeout=5)
+    except Exception as exc:
+        return [skipped(5, "0.10.42", description)]
+    if status == -1:
+        return [skipped(5, "0.10.42", description)]
+    if status != 200:
+        return [failed(5, "0.10.42", description)]
+    try:
+        payload = json.loads(body)
+    except json.JSONDecodeError:
+        return [failed(5, "0.10.42", description)]
+    try:
+        from jsonschema import Draft202012Validator
+        schema = json.loads((ctx.repo_root / "config/schemas/agent-ops-local-direct-health.schema.json").read_text())
+        Draft202012Validator.check_schema(schema)
+        Draft202012Validator(schema).validate(payload)
+    except Exception:
+        return [failed(5, "0.10.42", description)]
+    return [passed(5, "0.10.42", description)]
+
+
+def _check_local_direct_health_card(ctx: RunContext) -> list[CheckResult]:
+    """0.10.43: existing deployed Agent Ops card and loader expose truthful typed no-data."""
+    description = "local-direct Agent Ops card visibility"
+    if ctx.dashboard_safe:
+        return [skipped(5, "0.10.43", description)]
+    try:
+        port_block = (ctx.repo_root / "nix/modules/core/options.nix").read_text(
+            encoding="utf-8"
+        ).split("commandCenterApi = lib.mkOption", 1)[1].split("};", 1)[0]
+        dashboard_port = int(next(
+            line.split("=", 1)[1].strip().removesuffix(";")
+            for line in port_block.splitlines() if line.strip().startswith("default =")
+        ))
+        if not 1 <= dashboard_port <= 65535:
+            raise ValueError("commandCenterApi port out of range")
+    except (OSError, IndexError, StopIteration, ValueError):
+        return [failed(5, "0.10.43", description)]
+    dashboard_url = f"http://127.0.0.1:{dashboard_port}"
+    try:
+        root_status, root = http_get(dashboard_url, timeout=5)
+        js_status, loader = http_get(f"{dashboard_url}/assets/dashboard.js", timeout=5)
+    except Exception as exc:
+        return [skipped(5, "0.10.43", description)]
+    if root_status == -1 or js_status == -1:
+        return [skipped(5, "0.10.43", description)]
+    if root_status != 200 or js_status != 200:
+        return [failed(5, "0.10.43", description)]
+    if 'id="agentOpsDetails"' not in root or 'id="agentOpsBadge"' not in root:
+        return [failed(5, "0.10.43", description)]
+    start = loader.find("async function loadAgentOpsStatus()")
+    end = loader.find("// ─── INTELLIGENCE: AGENT LESSONS", start)
+    section = loader[start:end] if start >= 0 and end > start else ""
+    required = ("/agent-ops/local-direct-health", "Local Direct Lifecycle", "Not instrumented")
+    if not section or any(item not in section for item in required) or '"--"' in section:
+        return [failed(5, "0.10.43", description)]
+    return [passed(5, "0.10.43", description)]
 
 
 def _check_workflow_shadow_contract(ctx: RunContext) -> list[CheckResult]:
