@@ -19,5 +19,6 @@
     ./nvd-sync.nix
     ./data-retention.nix
     ./agent-reap.nix
+    ./execution-cell-runner.nix
   ];
 }

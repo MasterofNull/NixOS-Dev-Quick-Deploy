@@ -1273,3 +1273,10 @@ variables:
     layer: all
     consumers: [hybrid-coordinator]
     description: "Path to YAML safety rails evaluated by evidence safety handlers"
+
+  - canonical: CAPABILITY_EXECUTION_CELLS
+    aliases: []
+    default: "0"
+    layer: all
+    consumers: [execution-cell-runner (ai-stack/switchboard/execution_cell_runner.py)]
+    description: "Foundation C C3b R3 default-OFF execution-cell-runner flag. '0' (default): the runner refuses to construct any cell — every request is denied before R1 grant verification, R2 cell creation, or bwrap confinement is ever touched. '1' authorizes cell construction; standing enablement of this flag is NOT itself live-traffic activation (see mySystem.ai.executionCellRunner.enable / .flagOn, R6 canary act)."
