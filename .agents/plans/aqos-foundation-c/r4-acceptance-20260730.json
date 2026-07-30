@@ -1,0 +1,79 @@
+{
+  "build_revision": "8b033ba65a65a3130c39e2adedcbd85906d768b3",
+  "cgroup_available": true,
+  "cohorts": [
+    {
+      "attempted_samples": 40,
+      "cache_cohort": "cold",
+      "command_class": "noop",
+      "invalid_reason": null,
+      "successful_samples": 40,
+      "valid": true
+    },
+    {
+      "attempted_samples": 40,
+      "cache_cohort": "warm",
+      "command_class": "noop",
+      "invalid_reason": null,
+      "successful_samples": 40,
+      "valid": true
+    },
+    {
+      "attempted_samples": 40,
+      "cache_cohort": "cold",
+      "command_class": "read-validate",
+      "invalid_reason": null,
+      "successful_samples": 40,
+      "valid": true
+    },
+    {
+      "attempted_samples": 40,
+      "cache_cohort": "warm",
+      "command_class": "read-validate",
+      "invalid_reason": null,
+      "successful_samples": 40,
+      "valid": true
+    },
+    {
+      "attempted_samples": 40,
+      "cache_cohort": "cold",
+      "command_class": "single-file-write",
+      "invalid_reason": null,
+      "successful_samples": 40,
+      "valid": true
+    },
+    {
+      "attempted_samples": 40,
+      "cache_cohort": "warm",
+      "command_class": "single-file-write",
+      "invalid_reason": null,
+      "successful_samples": 40,
+      "valid": true
+    }
+  ],
+  "evidence": {
+    "jsonl_path": ".agents/plans/aqos-foundation-c/r4-acceptance-20260730.jsonl",
+    "jsonl_sha256": "c589d507aad777e0cadac6c35e7c968657a364b7fd90a3f1d7aa375982756f34",
+    "row_count": 240
+  },
+  "generated_at": "2026-07-30T15:48:34.942572+00:00",
+  "host_fingerprint": {
+    "cpu_governor": "schedutil",
+    "hostname": "hyperd",
+    "kernel": "7.1.3",
+    "machine": "x86_64",
+    "mem_total_bytes": 29237157888
+  },
+  "idle_baseline_bytes": 0,
+  "revocation_under_load": null,
+  "run_id": "aae31a92de4f4fcc886a1ff4e43803b2",
+  "schema_version": 1,
+  "verdict": {
+    "failures": [],
+    "invalid_cohorts": [],
+    "metrics_unavailable": [
+      "teardown_latency_p95_s"
+    ],
+    "status": "PASS"
+  }
+}
