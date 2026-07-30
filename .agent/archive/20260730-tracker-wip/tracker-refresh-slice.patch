@@ -1,0 +1,677 @@
+diff --git a/.agents/plans/UNIFIED-PROGRAM-PLAN.md b/.agents/plans/UNIFIED-PROGRAM-PLAN.md
+index 450647fd..90cf16ec 100644
+--- a/.agents/plans/UNIFIED-PROGRAM-PLAN.md
++++ b/.agents/plans/UNIFIED-PROGRAM-PLAN.md
+@@ -1,8 +1,9 @@
+ # AQ-OS Unified Program Plan — One Trajectory, All Sources Bound
+ 
+-**Status:** POST-RATIFICATION PROJECTION — the historical Q1/Q2 subjects were owner-ratified
+-2026-07-18; this current projection/index grants no implementation authority. B2-C1 authorization
+-preparation and independent review are unblocked; implementation is not.
++**Status:** POST-RATIFICATION PROJECTION — Q1–Q10 are resolved (Q1/Q2/Q8 on 2026-07-18;
++Q3–Q7/Q9/Q10 on 2026-07-23). This current projection/index grants no implementation authority.
++Foundation B1 is complete; B2 C1/M1 evidence is accepted and queued for evidence-led next-slice
++preparation; Foundation C C0/C1 shipped and C2 awaits exact activation.
+ **Prepared:** 2026-07-13 by claude-fable-5 (analysis lane) at explicit owner request.
+ **Maintenance rule:** this file is a **projection, not an authority**. On any conflict, the source
+ document wins per the precedence order in §1. Update this file at every cycle transition; a stale
+@@ -10,6 +11,8 @@ row here is a bug, not a license.
+ **Ratified historical subject:**
+ `2cab0bdd2f560052f315a14be1b64b4e173cee7b4239dcac3e582af815924ac2`; this post-decision projection
+ has different bytes. See `unified-program/Q1-Q2-OWNER-RATIFICATION-20260718.md`.
++Q3–Q10 current direction is recorded in
++`unified-program/Q3-Q10-OWNER-RATIFICATION-20260723.md`.
+ 
+ ---
+ 
+@@ -19,13 +22,13 @@ has different bytes. See `unified-program/Q1-Q2-OWNER-RATIFICATION-20260718.md`.
+ |---|----------|------|---------------------|
+ | 1 | `OWNER-POLICY-RATIFICATION.md` (cycle0 dir) + explicit owner statements | Owner authority — activates everything below | standing |
+ | 2 | `docs/architecture/canonical-kernel-declaration.md` | Frozen kernel objects + `local-orchestrator` front door; changes need a named revision | frozen |
+-| 3 | `docs/architecture/aqos-cycle1-state-spine-adr.md` | Per-authority consolidation proposal; ten SPLIT_BRAIN rows | Proposed, NOT authorized |
++| 3 | `docs/architecture/aqos-cycle1-state-spine-adr.md` | Per-authority consolidation proposal; ten SPLIT_BRAIN rows | Q8 targets adjudicated; physical convergence remains per-slice |
+ | 4 | `.agent/PROJECT-LOCAL-AI-FACTORY-CODEX-FABLE-SYNTHESIS.md` | **Parent architecture** — reconciles Fable + Codex corpora | Q1 RATIFIED 2026-07-18 against historical SHA-256 `00c7dbc5…` |
+-| 5 | `.agent/PROJECT-LOCAL-AI-FACTORY-REFERENCE-ARCHITECTURE-PRD.md` | Ground-up target + Cycles 0–6 roadmap + delivery gates | trajectory doc; Cycle 1A executing under it |
+-| 6 | `.agent/PROJECT-LOCAL-INFERENCE-CONTRACT-PRD.md` + L-series plans | Current implementation track (Cycle 1A / Foundation B1) | L1A+L2A+L2B-A landed; L2B-B unauthorized |
++| 5 | `.agent/PROJECT-LOCAL-AI-FACTORY-REFERENCE-ARCHITECTURE-PRD.md` | Ground-up target + Cycles 0–6 roadmap + delivery gates | trajectory doc; B1 complete, B2/C advancing per slice |
++| 6 | `.agent/PROJECT-LOCAL-INFERENCE-CONTRACT-PRD.md` + L-series plans | Foundation B1 implementation record | L1A+L2A+L2B-A+L2B-B+offline chat/batch parity landed; B1 complete |
+ | 7 | `.agent/PROJECT-AQOS-CYCLE0-TRUTH-PRD.md` + `aqos-refoundation-cycle0/` | Cycle 0 record: evidence algebra, authority inventory, threat register, incidents | evidence integrated `c9fe3974`; 10/10 logical targets adjudicated; physical convergence pending |
+ | 8 | `.agent/PROJECT-AQOS-PRD.md` + `.agents/plans/aqos-v1/` | Fable AQ-OS v1: WS1–WS10, 7 beats, horizon/unknowns, command-center roadmap | never ratified standalone; **absorbed as product backlog** (see §4) |
+-| 9 | `.agent/PROJECT-VERIFIED-FACTORY-PRD.md` + companion meta-prompt | Cross-cutting verification/throughput layer (VF-1…VF-9) | REQUEST_REVISION; amended candidate awaits re-review |
++| 9 | `.agent/PROJECT-VERIFIED-FACTORY-PRD.md` + companion meta-prompt | Cross-cutting verification/throughput layer (VF-1…VF-9) | bounded correction candidate; independent re-review required before per-slice activation |
+ | 10 | `.agents/plans/epic-flat-collaborative-factory.md` + F1/F2/F3 briefs | Flat-factory operating model + foundation critiques | F1 done; F2 partial (F2.5 dormant); F3 unimplemented |
+ | — | Owner meta-prompts (`LOCAL-AI-FACTORY-NEXT-CYCLE…`, `VERIFIED-FACTORY-CYCLE…`, `AQOS_OWNER_NEXT_CYCLE…`) | Process constitutions for rounds | standing |
+ 
+@@ -45,12 +48,20 @@ is the merge point; the other three remain source corpora, not competitors.
+ | L1A local-inference contract foundation (schemas, pure resolver, golden parity vectors) | DONE | `0c171504` |
+ | L2A canonical request/context/policy shadow kernel | DONE | `499e5a26` |
+ | L2B-A shadow transport kernel | DONE | `fbeffbab` |
++| L2B-B live payload adoption + offline chat/batch shadow parity | DONE; Foundation B1 COMPLETE | activation/acceptance corpus; `config/refactor-milestones.json` |
++| Foundation B2 C1/M1 contract and static migration evidence | ACCEPTED; legacy remains authoritative | B2 activation/acceptance corpus; execution-readiness queue Q2.1 |
++| Foundation B3 canon compiler | SHIPPED; tracker reconciliation pending | activation/close-out worklist |
++| Foundation C C0 CapabilityLease + C1 shadow admission | SHIPPED, report/log-only | `config/refactor-milestones.json` C0/C1 |
++| Foundation C C2 enforcement | FROZEN; AWAITING EXACT ACTIVATION, flag default OFF | C2 freeze record; execution-readiness queue Q1.5 |
++| Track V VF-7 evidence path | SHIPPED | activation/close-out worklist |
+ | a2a event log + PULSE/RESUME projector (`aq-event`) — files are projections now | LIVE (partial WS2/B3 delivery) | `.agents/events/a2a-events.jsonl` |
+-| Fable-parity behavior contract injected in payloads/profiles | LIVE (pending model-neutral rename, owner decision Q4) | FABLE-PARITY-CONTRACT |
++| Fable-parity behavior contract injected in payloads/profiles | LIVE; Q4 migration to model-neutral versioned canon is ratified but not yet executed | FABLE-PARITY-CONTRACT |
+ | Qwen3-35B promoted primary local agent; measured envelope = bounded single-edit | MEASURED | memory |
+ 
+-**NEXT B1 CANDIDATE (not authorized):** L2B-B live payload normalization/adoption. M1 Agent Ops
+-traceability is a separate monitored projection slice and does not authorize L2B-B.
++**CURRENT FOUNDATION FRONTIER:** B1 is complete. B2 may prepare only the next evidence-led,
++single-authority slice after reconciling accepted C1/M1 evidence; legacy remains authoritative.
++Foundation C2 remains a separately frozen, flag-default-OFF enforcement slice awaiting exact
++activation.
+ 
+ ## 3. Unified track structure (the one spine)
+ 
+@@ -60,15 +71,15 @@ this table is the single naming bridge. Every other artifact maps INTO these tra
+ | Track | = Ref-arch cycle | Content | Gate to start | Status |
+ |-------|------------------|---------|---------------|--------|
+ | **Foundation A** — Cycle-0 truth exit | Cycle 0 exit | Owner adjudicates target/transition-owner/deadline/rollback for all ten SPLIT_BRAIN/UNOWNED rows | owner session over `system-state-authorities.yaml` | **OWNER-ADJUDICATED: 10/10; physical convergence remains Cycle 1 work** |
+-| **Foundation B1** — contract kernel + parity vectors | Cycle 1A | L-series: L1A ✅, L2A ✅, L2B-A ✅, L2B-B, then chat/batch parity in shadow | fresh authorization per slice | EXECUTING |
+-| **Foundation B2** — one shadow state vertical | Cycle 1B | CAS + outbox/replay for owner-selected workflow-run-task authority; legacy stays authoritative | Q1/Q2 ratified; each implementation slice still needs exact independent review and owner activation | **B2-D0 ACCEPTED; B2-C1 AUTHORIZATION PREPARATION/REVIEW ONLY** |
+-| **Foundation B3** — projector + canon-compiler shadow | Cycle 1B/2 seam | Extend `aq-event` projector to one dashboard surface; canon compiler (docs/clients/cards; never runtime authority) | B1 contracts stable | partial (aq-event live) |
+-| **Foundation C** — identity, leases, execution cells | Cycle 2 | Principal envelopes, CapabilityLease, effect brokers, network profiles, cells; absorbs F3 + WS9 core | B1 + ratified security model (Q3) | NOT STARTED |
++| **Foundation B1** — contract kernel + parity vectors | Cycle 1A | L-series: L1A ✅, L2A ✅, L2B-A ✅, L2B-B ✅, chat/batch parity in shadow ✅ | fresh authorization per slice | **COMPLETE** |
++| **Foundation B2** — one shadow state vertical | Cycle 1B | CAS + outbox/replay for owner-selected workflow-run-task authority; legacy stays authoritative | Q1/Q2 ratified; each implementation slice still needs exact independent review and owner activation | **C1/M1 ACCEPTED; NEXT EVIDENCE REVIEW READY_FOR_PREPARATION** |
++| **Foundation B3** — projector + canon-compiler shadow | Cycle 1B/2 seam | Extend `aq-event` projector to one dashboard surface; canon compiler (docs/clients/cards; never runtime authority) | B1 contracts stable | **CANON COMPILER SHIPPED; PROJECTOR EXTENSION READY_FOR_PREPARATION** |
++| **Foundation C** — identity, leases, execution cells | Cycle 2 | Principal envelopes, CapabilityLease, effect brokers, network profiles, cells; absorbs F3 + WS9 core | B1 + ratified security model (Q3) | **C0/C1 SHIPPED; C2 AWAITING ACTIVATION; C3–C6 QUEUED** |
+ | **Product D** — inference/client live convergence | Cycle 3 | Switchboard sole gateway; delegate-to-local/aq-chat as coordinator clients; **global scheduler activation closes F2.5 HIGH**; route/profile registry consolidation | B1 parity fixtures + C boundaries | NOT STARTED |
+ | **Product E** — evaluation & learning factory | Cycles 4–5 | Dataset/scorer/prompt registries, sealed answers, certified scorers, counterfactual replay, promotion ledger, small-model admission; absorbs WS8, aq-eval + inference-bench PRDs, VF-4/5/8 | B2 evidence store + C integrity | NOT STARTED |
+ | **Product F** — one CLI + command center | Cycle 6 (partial) | `aq <noun> <verb>` + shims; OTel traces; SLO burn; typed console (Fleet/Runs/Evals/Approvals/…); absorbs WS4/WS5/WS6 + ws6-command-center-roadmap | authoritative telemetry from C/D | NOT STARTED |
+ | **Product G** — edge, release, retirement | Cycle 6 | Hardware-class probes, install profiles, restore/upgrade drills, semver v1.0, legacy retirement after 2 clean cycles; absorbs WS10 + WS7 drills + edge research + HORIZON-UNKNOWNS | everything prior | NOT STARTED |
+-| **Track V (cross-cutting)** — Verified Factory throughput layer | feeds 4–5; gates acceptance only after authority activation | VF-1 oracle-required dispatch, VF-2 risk tiers, VF-3 report≠record verifier, VF-6 distillation, VF-7 evidence path, VF-9 intake | amended VF contracts + exact authorization; VF-1 waits for L2B-B unless hash-bound non-overlap proves warn-only isolation | REQUEST_REVISION |
++| **Track V (cross-cutting)** — Verified Factory throughput layer | feeds 4–5; gates acceptance only after authority activation | VF-1 oracle-required dispatch, VF-2 risk tiers, VF-3 report≠record verifier, VF-6 distillation, VF-7 evidence path ✅, VF-9 intake | corrected VF/CK contracts + independent PASS + exact per-slice authorization; B1/L2B prerequisite is satisfied | **CORRECTION CANDIDATE; RE-REVIEW REQUIRED** |
+ 
+ Track V is explicitly **interim process armor**: VF-3's verifier gate is retired into Cycle-2
+ attestations and Cycle-4 certified scorers when those land; VF-4/5 artifacts are built
+@@ -129,33 +140,33 @@ only) · **STANDING** (independent of this program).
+ 10. **Monitors** — ragas faithfulness 0.6 (E-track fixes scorer quality); opencode-undici-bun-crash (low, backlog).
+ 11. **Lane eligibility** — Gemini/Antigravity implementation-INELIGIBLE until measured promotion (owner decision Q5); enforced in every track's delegation.
+ 
+-## 6. Consolidated owner decision queue (deduplicated from synthesis §10 + ref-arch §18 + VF §9)
++## 6. Consolidated owner decision ledger (deduplicated from synthesis §10 + ref-arch §18 + VF §9)
+ 
+ | Q | Decision | Unblocks |
+ |---|----------|----------|
+ | Q1 | **RATIFIED 2026-07-18:** synthesis historical SHA-256 `00c7dbc5…` is parent; this plan's historical `2cab0bdd…` subject is its non-authoritative projection | parent trajectory decided |
+-| Q2 | **RATIFIED 2026-07-18:** workflow-run-task legacy-live/Postgres-shadow hypothesis at `c11bf7a1`; migration owner `hyperd`; historical PRD §9 frozen | B2-C1 authorization preparation/review only |
+-| Q3 | Security model: principal attestations + CapabilityLease, no fail-open modes; + eight network profiles (connected zero trust) | Foundation C |
+-| Q4 | Fable behavior contract → model-neutral versioned canon policy | B3 canon migration |
+-| Q5 | Measured, expiring **lane-eligibility registry** (roles stay model-neutral) | all delegation; VF-8 feeds it |
+-| Q6 | Kernel front door: keep `local-orchestrator` declaration or issue named revision toward `aq` gateway | Product F CLI |
+-| Q7 | Eval factory as universal promotion gate (models, prompts, profiles, policies, tools, scorers, datasets) | Product E |
+-| Q8 | Adjudicate the ten Cycle-0 authority rows (Foundation A exit) | B2 vertical selection |
+-| Q9 | Activate VF (Track V) after its VF-0 round — incl. ratifying the VF-9 interrupt rubric + triage cadence (slice itself owner-approved 2026-07-13) | oracle/tier/evidence/intake gates |
+-| Q10 | Rebudget the measured 27 GB envelope for a resident small model and/or speculative decoding, or defer to fleet hardware; no assumed simultaneous fit | Product D/E stacking work |
++| Q2 | **RATIFIED 2026-07-18:** workflow-run-task legacy-live/Postgres-shadow hypothesis at `c11bf7a1`; migration owner `hyperd`; historical PRD §9 frozen | B2 C1/M1 accepted; next expansion remains evidence-led and per-slice |
++| Q3 | **RATIFIED 2026-07-23:** principals + CapabilityLease, no fail-open; exact connected network profiles get a Foundation-C threat pass | Foundation C design unblocked |
++| Q4 | **RATIFIED 2026-07-23:** convert Fable behavior contract to model-neutral versioned canon policy | B3 canon migration |
++| Q5 | **RATIFIED 2026-07-23:** measured, expiring lane-eligibility registry; roles model-neutral, promotion independent | all delegation; VF-8 feeds it |
++| Q6 | **RATIFIED 2026-07-23:** retain `local-orchestrator`; any `aq` gateway change requires a named Product-F kernel revision | Product F planning direction |
++| Q7 | **RATIFIED 2026-07-23:** eval-gated promotion is universal; mechanics land in Product E | Product E |
++| Q8 | **DECIDED 2026-07-18:** all ten target authorities adjudicated; observed physical convergence remains separately evidenced | Foundation A owner gate complete |
++| Q9 | **RATIFIED DIRECTION 2026-07-23:** bounded VF/CK re-review, then exact per-slice activation; no blanket Track-V authority | corrected contract review |
++| Q10 | **RATIFIED MEASURE-FIRST 2026-07-23:** benchmark resident/speculation options on target hardware and degrade gracefully across hardware tiers | Product D/E stacking evidence |
+ 
+ ## 7. Recommended sequence from today
+ 
+ ```
+-DONE       L2B-A accepted and committed fbeffbab
+-DONE       Q1/Q2 ratified; B2-D0 accepted at c11bf7a1
+-NOW        Prepare and independently review an exact B2-C1 authorization; no implementation
+-NEXT B1    Separately authorize L2B-B live payload adoption
+-THEN       Owner may activate the independently reviewed B2-C1 contract-only slice
+-TRACK V    VF-7 may prepare after conflict review; VF-1 waits for L2B-B unless an exact
+-           hash-bound non-overlap authorization confines it to warn-only metadata
++DONE       Q1–Q10 resolved; Foundation A owner gate closed; B1 parity complete
++DONE       B2 C1/M1 accepted with legacy authority retained; B3 canon compiler shipped
++DONE       Foundation C C0/C1 shipped; Track V VF-7 shipped
++NOW        Independently re-review corrected VF/CK/plan bytes; exact per-slice activation only
++PARALLEL   Reconcile B2 evidence and B3 shipping evidence; prepare one non-authoritative
++           projector/dashboard extension without runtime authority
++NEXT C     Reverify and exactly activate frozen C2; C3–C6 remain dependency-queued
+ THEN       Foundation B2 evidence decides expansion/replacement; no retroactive authority
+-THEN       Foundation C (leases/cells) → Product D (convergence + F2.5 close) →
++THEN       Complete Foundation C → Product D (convergence + F2.5 close) →
+            Product E (eval factory, folding VF-4/5/8) → Product F (CLI+console) → Product G (release)
+ CADENCE    one foundation track in-flight at a time; Track V slices may interleave (T0/T1 only);
+            every slice under ref-arch §15 delivery gates + Activation Gate (Rule 15)
+diff --git a/.agents/plans/c4-review/antigravity.md b/.agents/plans/c4-review/antigravity.md
+new file mode 100644
+index 00000000..94a7bc28
+--- /dev/null
++++ b/.agents/plans/c4-review/antigravity.md
+@@ -0,0 +1,39 @@
++VERDICT: PASS
++
++# Foundation C — C4 Independent Design Review
++
++- **Reviewer:** Antigravity (independent flagship reviewer)
++- **Author:** Opus (sub-agent implementer)
++- **Subject:** `.agents/plans/aqos-foundation-c/C4-DESIGN-AND-AUTHORIZATION.md`
++- **Scope:** C4 Stage design review only (no implementation or code changes)
++
++---
++
++## 1. Resolution of Historical Findings & Constraints
++
++- **Ambient Network Restriction (R0 §8):** RESOLVED (§2). The cell maintains `bwrap --unshare-net`, denying all ambient interfaces (including loopback and host net). No network stacks (such as `slirp4netns` or `pasta`) are introduced into the container, and no `CAP_NET_ADMIN` privileges are granted to the runner.
++- **Egress Broker proxying (§2, §5):** RESOLVED. Communication is routed exclusively through a per-cell Unix-domain socket (UDS) mapped into the cell's virtual filesystem. The broker process validates the destination host/port against the signed grant profiles via `SO_PEERCRED` verification and establishes outbound TCP connections on behalf of the cell.
++- **Threat Pass & Closed Allowlist (§3, §4):** RESOLVED. The profile set is strictly closed and compare-only. Anything outside the six defined profiles is denied. Wildcard hosts (e.g., `*`) are schema-invalid and blocked. Telemetry and A2A-inbox have been correctly collapsed to local (net-free) routes. Playwright sandboxing is appropriately deferred to a separate, dedicated isolation boundary.
++- **Credential Security (§3, §5):** RESOLVED. The egress broker acts solely as a TCP forwarding pipe. It does not handle, store, or inject OAuth tokens or API keys, preventing credential exposure.
++
++---
++
++## 2. Six Review Obligations Verification (§9)
++
++| Obligation | Design Status | Verification Details |
++|---|---|---|
++| **1. Zero Ambient Net (§2, §8)** | **CLOSED** | The cell remains completely network-isolated via `bwrap --unshare-net`. The proxy UDS is the only egress pathway. |
++| **2. Threat Pass Soundness (§3)** | **CLOSED** | Closed six-profile allowlist correctly restricts egress. Telemetry/A2A collapsed to net-free; Playwright browser deferred. |
++| **3. Credential Hardening (§5)** | **CLOSED** | No API keys or credentials pass through or are injected by the broker. Remote OAuth uses the switchboard session. |
++| **4. Signed Profile SSOT (§4)** | **CLOSED** | The signed profile in the grant is the single source of truth; local config acts only as a compare-only DENY gate. |
++| **5. Broker Hardening (§6, §7)** | **CLOSED** | Egress-broker runs as a dedicated unprivileged user with empty caps and restricted address families (AF_INET/AF_INET6/AF_UNIX). |
++| **6. Fail-Closed posture (§5, §8)** | **CLOSED** | Policy or key unavailability, port mismatch, or lack of TLS where required instantly fails closed and logs an audit trail. |
++
++---
++
++## 3. Reviewer Positions on Open Questions (§11)
++
++- **Q-C4-1 (UDS Broker vs slirp4netns):** We support the UDS egress broker mechanism. It avoids introducing a privileged network stack or `CAP_NET_ADMIN` inside the cell, reducing the attack surface while enforcing a single, auditable point of egress.
++- **Q-C4-2 (Playwright Deferral):** We agree with deferring the sandboxed browser network access. A browser requires open egress that cannot be represented in a closed zero-trust profile list. It belongs in a separate, dedicated isolation slice.
++- **Q-C4-3 (Switchboard-Remote OAuth):** We confirm the broker must only act as a blind forwarding proxy (TCP/TLS pipe) for the switchboard-remote-OAuth host and must never have access to, nor decrypt, the authentication credentials.
++- **Q-C4-4 (Telemetry/A2A Net-Free Status):** We confirm that telemetry and A2A-inbox are local-only and require no network profiles. Any future transition to remote sinks must require a new design review and distinct profile approval.
+diff --git a/assets/aqos-progress-tracker.html b/assets/aqos-progress-tracker.html
+index 6023eb6d..21a3c396 100644
+--- a/assets/aqos-progress-tracker.html
++++ b/assets/aqos-progress-tracker.html
+@@ -395,8 +395,8 @@
+       <h1>Refactor Progress Tracker</h1>
+     </div>
+     <div class="top-right">
+-      <span class="chip chip-revision">Frozen Evidence Snapshot</span>
+-      <span class="updated">updated 2026-07-18 04:01 UTC</span>
++      <span class="chip chip-revision">Projected Evidence Snapshot</span>
++      <span class="updated">updated 2026-07-27 UTC</span>
+     </div>
+   </header>
+ 
+@@ -407,7 +407,7 @@
+     </div>
+     <div class="stat warn">
+       <span class="stat-num" id="foundation-a-gate-count">&mdash;</span>
+-      <span class="stat-label">blocking gate (Foundation A)</span>
++      <span class="stat-label">blocked program tracks</span>
+     </div>
+     <div class="stat warn">
+       <span class="stat-num" id="pending-decision-count">&mdash;</span>
+@@ -459,7 +459,7 @@
+   <section class="panel" aria-labelledby="authority-heading">
+     <div class="section-head">
+       <h2 id="authority-heading">Foundation A authority targets</h2>
+-      <p class="hint">Owner direction recorded; observed state remains SPLIT_BRAIN until convergence.</p>
++      <p class="hint">Owner-ratified targets; physical convergence continues as Cycle-1 work under B2.</p>
+     </div>
+     <div class="table-wrap">
+       <table>
+@@ -470,11 +470,11 @@
+   </section>
+ 
+   <footer>
+-    Frozen implementation snapshot <time datetime="2026-07-18T04:01:14Z">2026-07-18 04:01 UTC</time> · source records govern
++    Current projected snapshot <time datetime="2026-07-27">2026-07-27 UTC</time> · manifest and projector govern
+     <details class="provenance">
+-      <summary>Evidence provenance — 8-source frozen snapshot</summary>
+-      <p>Governing sources remain current-byte gates. Operational records are historical commitments
+-        captured at this snapshot and may advance without rewriting the frozen evidence.</p>
++      <summary>Evidence provenance — current projected snapshot</summary>
++      <p>The refactor manifest and projector are the status SSOT. Frozen design and activation records
++        qualify implementation state without replacing the projector.</p>
+       <ol class="provenance-list" id="provenance-list"></ol>
+     </details>
+   </footer>
+@@ -484,51 +484,65 @@
+ 
+ <script type="application/json" id="tracker-provenance">
+ {
+-  "manifest_state": "FROZEN_IMPLEMENTATION_SNAPSHOT",
+-  "snapshot_at": "2026-07-18T04:01:14Z",
++  "manifest_state": "PROJECTED_CURRENT_STATE",
++  "snapshot_at": "2026-07-27",
+   "sources": [
+-    {"path": ".agents/plans/UNIFIED-PROGRAM-PLAN.md", "source_class": "governing", "sha256": "285bda20b4bb3b43cafbc3a46b90c905b203996448f2f5cfda62a0d950bea62e"},
++{"path": "config/refactor-milestones.json", "source_class": "manifest_ssot", "sha256": "b61171063683628d999ecf6b50f74e9e7bb37affe492ad4005b43e1861cb7cb4"},
+     {"path": ".agents/plans/unified-program/OWNER-DECISION-SHEET.md", "source_class": "governing", "sha256": "502df009ac486ab514351105a57d2a75ab21efd747a95f2c92bf36ea37c633b1"},
+-    {"path": "config/system-state-authorities.yaml", "source_class": "governing", "sha256": "d45c83720847f6342d5ff13597810b46c7c2ad58c1c1342fdbc3e9236452ac1a"},
+-    {"path": ".agents/plans/aqos-refoundation-cycle0/FOUNDATION-A-OWNER-ADJUDICATION-20260718.md", "source_class": "governing", "sha256": "3c05728f8011db002b8c1504757dd1b43421f151268718a0c275219ccd15bc7a"},
+-    {"path": ".agent/memory/issues-backlog.md", "source_class": "operational_snapshot", "sha256": "50404205a540eeaf20cf47a33dc7a0ca4b0e319f3485de32eeb5320791b81957"},
+-    {"path": ".agent/collaboration/RESUME.json", "source_class": "operational_snapshot", "sha256": "4ad36b7936e56bc2e9ceb3e193daca3fffd7199eca7653cad0f3a089a81f895a"},
+-    {"path": ".agent/collaboration/PULSE.log", "source_class": "operational_snapshot", "sha256": "d67d06e59e6ef464d23ed8d593b2561a2fc829691f9c0c685b1aeaefab55516f"},
+-    {"path": ".agents/delegation/registry.jsonl", "source_class": "operational_snapshot", "sha256": "8c7d13da7141fd62b1446a4acb0ae49d7497c6eca99577196df5facc232783ad"}
++    {"path": ".agents/plans/aqos-foundation-c/C2-FREEZE-AND-ACTIVATION.md", "source_class": "frozen_design_gate", "sha256": "f9cee73b5cb69d3a76554db7388f1ff0a1d62dc98837fa0bfef791930ed24579"},
++    {"path": ".agents/plans/unified-program/ACTIVATION-AND-CLOSEOUT-WORKLIST.md", "source_class": "activation_evidence", "sha256": "143a4909c3f0f1196c4e60e04b5658131ad2cbd9df66f602f6c4ebd2fd35a8f6"}
+   ],
+   "expected_counts": {
+-    "tracks": 10,
+-    "active_tracks": 2,
+-    "foundation_a_blocking_gates": 1,
+-    "pending_q_decisions": 9,
++    "tracks": 19,
++    "active_tracks": 4,
++    "blocked_tracks": 1,
++    "pending_q_decisions": 0,
+     "authority_rows": 10,
+-    "open_high_severity_issues": 2
++    "open_high_severity_issues": 4
+   }
+ }
+ </script>
+ 
+ <script>
+   const tracks = [
+-    { code: 'A',  name: 'Foundation A', sub: 'Cycle-0 truth exit', status: 'blocked', inclusion_status: 'INCLUDED', gate_status: 'BLOCKING', pct: 0,
+-      note: 'Owner adjudication and the exact ten-row authority projection are complete. All ten observed rows remain SPLIT_BRAIN, so convergence still blocks Foundation A exit.' },
+-    { code: 'B1', name: 'Foundation B1', sub: 'contract kernel + parity vectors', status: 'active', inclusion_status: 'INCLUDED', gate_status: 'NONE', pct: 75,
+-      note: 'L1A, L2A, L2B-A landed. L2B-B (live payload adoption) is the next candidate — not yet authorized.' },
+-    { code: 'B2', name: 'Foundation B2', sub: 'one shadow-state vertical', status: 'blocked', inclusion_status: 'INCLUDED', gate_status: 'NONE', pct: 0,
+-      note: 'Blocked on Foundation A exit plus owner ratification of the first shadow-authority hypothesis (Q2).' },
+-    { code: 'B3', name: 'Foundation B3', sub: 'projector + canon-compiler shadow', status: 'active', inclusion_status: 'INCLUDED', gate_status: 'NONE', pct: 35,
+-      note: 'aq-event PULSE/RESUME projector is live. Canon compiler and dashboard-surface extension still pending.' },
+-    { code: 'C',  name: 'Foundation C', sub: 'identity, leases, execution cells', status: 'notstarted', inclusion_status: 'INCLUDED', gate_status: 'NONE', pct: 0,
+-      note: 'Needs B1 stable plus a ratified security model (Q3) before it can begin.' },
++    { code: 'A',  name: 'Foundation A', sub: 'Cycle-0 truth exit', status: 'done', inclusion_status: 'INCLUDED', gate_status: 'NONE', pct: 100,
++      note: 'Q8 resolved all 10 authority rows. The old blocking gate is cleared; physical convergence continues as Cycle-1 work under B2.' },
++    { code: 'B1', name: 'Foundation B1', sub: 'contract kernel + parity vectors', status: 'done', inclusion_status: 'INCLUDED', gate_status: 'NONE', pct: 100,
++      note: 'L1A/L2A/L2B-A/L2B-B and the offline chat/batch parity oracle are implemented, independently accepted, committed, and passing.' },
++    { code: 'B2', name: 'Foundation B2', sub: 'one shadow-state vertical', status: 'notstarted', inclusion_status: 'INCLUDED', gate_status: 'NONE', pct: 0,
++      note: 'QUEUED/READY_FOR_PREPARATION — reconcile accepted C1/M1 evidence and shipping commits, then freeze the next single-authority shadow slice.' },
++    { code: 'B3', name: 'Foundation B3', sub: 'projector + canon-compiler shadow', status: 'notstarted', inclusion_status: 'INCLUDED', gate_status: 'NONE', pct: 0,
++      note: 'QUEUED/READY_FOR_PREPARATION — reconcile canon-compiler shipping evidence, then prepare one no-authority projector/dashboard shadow extension.' },
++    { code: 'C',  name: 'Foundation C', sub: 'identity, leases, execution cells', status: 'active', inclusion_status: 'INCLUDED', gate_status: 'NONE', pct: 35,
++      note: 'C0/C1 shipped. C2 is frozen and awaits exact activation; C3-C6 have not started.' },
++    { code: 'C0', name: 'Foundation C0', sub: 'CapabilityLease primitive', status: 'done', inclusion_status: 'INCLUDED', gate_status: 'NONE', pct: 100,
++      note: 'Report-only CapabilityLease schema, local signer, and aq-lease CLI shipped.' },
++    { code: 'C1', name: 'Foundation C1', sub: 'shadow admission → issuance', status: 'done', inclusion_status: 'INCLUDED', gate_status: 'NONE', pct: 100,
++      note: 'Additive, log-only shadow admission and issuance shipped without coupling to live execution.' },
++    { code: 'C2', name: 'Foundation C2', sub: 'tool-lease enforcement (flag-gated)', status: 'active', inclusion_status: 'INCLUDED', gate_status: 'NONE', pct: 80,
++      note: 'Rev3 plus the built-in-tool lease-source amendment are independently reviewed and frozen. Implementation is not started and awaits exact single-use owner activation.' },
+     { code: 'D',  name: 'Product D', sub: 'inference / client convergence', status: 'notstarted', inclusion_status: 'INCLUDED', gate_status: 'NONE', pct: 0,
+-      note: 'Switchboard becomes sole gateway; closes the dormant F2.5 scheduler-wiring gap when it lands.' },
++      note: 'DEPENDENCY_QUEUED — switchboard convergence, typed parity gaps, and F2.5 scheduler wiring follow accepted C2 boundaries.' },
+     { code: 'E',  name: 'Product E', sub: 'evaluation & learning factory', status: 'notstarted', inclusion_status: 'INCLUDED', gate_status: 'NONE', pct: 0,
+-      note: 'Absorbs aq-eval / inference-bench PRDs and VF-4/5/8 (golden tasks, certified scorers, promotion ledger).' },
++      note: 'DEPENDENCY_QUEUED — eval registries, sealed tasks, certified scorers, replay, promotion ledger, and model admission follow B2/C integrity.' },
+     { code: 'F',  name: 'Product F', sub: 'unified CLI + command center', status: 'notstarted', inclusion_status: 'INCLUDED', gate_status: 'NONE', pct: 0,
+-      note: 'One `aq` gateway plus typed console — built only after D delivers authoritative telemetry.' },
++      note: 'DEPENDENCY_QUEUED — one `aq` gateway, broker catch-up execution, telemetry/SLOs, and typed console follow authoritative C/D evidence.' },
+     { code: 'G',  name: 'Product G', sub: 'edge, release, retirement', status: 'notstarted', inclusion_status: 'INCLUDED', gate_status: 'NONE', pct: 0,
+-      note: 'Hardware-class probes, restore drills, semver v1.0, legacy retirement after two clean cycles.' },
+-    { code: 'V',  name: 'Track V', sub: 'Verified Factory (cross-cutting)', status: 'blocked', inclusion_status: 'INCLUDED', gate_status: 'NONE', pct: 15,
+-      note: 'REQUEST_REVISION — amended oracle/tier/evidence gates await re-review; interleaves with B2 through E.' },
++      note: 'DEPENDENCY_QUEUED — hardware profiles, restore/upgrade drills, release evidence, and two-clean-cycle retirement follow accepted D–F.' },
++    { code: 'V',  name: 'Track V', sub: 'Verified Factory (cross-cutting)', status: 'blocked', inclusion_status: 'INCLUDED', gate_status: 'NONE', pct: 60,
++      note: 'BLOCKED_ON_ACCEPTANCE but queued — bounded amended VF/Check Kernel review precedes any exact activation.' },
++    { code: 'S', name: 'Defensive Security Factory', sub: 'scope-gated vulnerability response', status: 'active', inclusion_status: 'INCLUDED', gate_status: 'NONE', pct: 10,
++      note: 'S0-A ACTIVE_AUTHORIZED under auth 04cb48b4…; S0-B through S5 are dependency-queued. Piyaz is pattern-only; RAPTOR source-audit; Sn1per no-runtime. No hack-back.' },
++    { code: 'AAF', name: 'Agent-Agnostic Factory', sub: 'delegation kernel', status: 'active', inclusion_status: 'INCLUDED', gate_status: 'NONE', pct: 90,
++      note: 'Router, slice claims, dispatch integration, catch-up queue, and the owner-ratified Q5 lane-eligibility registry shipped.' },
++    { code: 'Q5', name: 'Q5 lane-eligibility registry', sub: 'measured / expiring eligibility', status: 'done', inclusion_status: 'INCLUDED', gate_status: 'NONE', pct: 100,
++      note: 'The measured and expiring lane-eligibility registry is implemented and shipped under AAF.' },
++    { code: 'LEC', name: 'Local-Embed-Context', sub: 'embed model as context layer', status: 'notstarted', inclusion_status: 'INCLUDED', gate_status: 'NONE', pct: 0,
++      note: 'PROJECTED NOT_STARTED — the acceptance record reports a resolved candidate, but no committed subject, freeze record, or open LEC slice claim currently establishes active/shipped status. Task_registry drift is separate.' },
++    { code: 'Q10B', name: 'Q10 inference-envelope baseline', sub: 'measure-first pass', status: 'done', inclusion_status: 'INCLUDED', gate_status: 'NONE', pct: 100,
++      note: 'The live 27GB inference envelope and speculative-decoding baseline were measured.' },
++    { code: 'RESUME', name: 'llama-cpp-resume fix', sub: 'fire-and-forget restart', status: 'done', inclusion_status: 'INCLUDED', gate_status: 'NONE', pct: 100,
++      note: 'The resume hook now uses a non-blocking restart and no longer latches systemd failed during slow APU cold-load.' },
+   ];
+ 
+   const statusLabel = { active: 'Active', blocked: 'Blocked', notstarted: 'Not started', done: 'Done' };
+@@ -541,7 +555,7 @@
+     lane.dataset.status = t.status;
+ 
+     const pctDisplay = t.status === 'notstarted' ? '—' : (t.pct + '%');
+-    const fillClass = t.status === 'blocked' ? 'st-blocked' : (t.status === 'active' ? 'st-active' : 'st-notstarted');
++    const fillClass = t.status === 'blocked' ? 'st-blocked' : (t.status === 'active' ? 'st-active' : (t.status === 'notstarted' ? 'st-notstarted' : ''));
+     const fillWidth = t.status === 'blocked' ? 100 : t.pct;
+ 
+     lane.innerHTML = `
+@@ -599,29 +613,36 @@
+       'Cycle-0 core C0.1–C0.3 integrated (c9fe3974)',
+       'L1A / L2A / L2B-A contract + shadow kernel + transport',
+       'R0.1 registry foundation completion (d4780ca5)',
+-      'Foundation A owner adjudication + ten-row projection (bec9bc0d)',
++      'Foundation A exit — Q8 ratified 10/10 authority rows',
++      'Foundation B1 — offline chat/batch parity accepted and committed',
++      'Foundation C0/C1 — report-only leases and shadow issuance shipped',
++      'Q1–Q10 owner decisions ratified',
++      'AAF Q5 measured/expiring lane-eligibility registry shipped',
+       'Generic flake exports + source-complete package baseline (befc4141)',
+       'aq-event PULSE/RESUME projector — files are now projections',
+       'Qwen3-35B promoted primary local agent',
+       'Flake-age guard fix + Nix/Home-Manager refresh (f7ecc381, 08203901)',
+     ]},
+     { key: 'active', title: 'Active', items: [
+-      { live: true, title: 'Program tracker → Command Center', note: 'canonical six-file integration is implementing the frozen, provenance-bound projection' },
+-      { title: 'C0.6 second-family design review', note: 'Codex requested three revisions; Antigravity second-model-family review remains pending' },
+-      { title: 'L2B-B live payload adoption', note: 'next Foundation B1 slice — needs fresh authorization' },
++      { title: 'Foundation C2 tool-lease enforcement', note: 'rev3 design is frozen; current-HEAD verification and exact activation are queued' },
++      { title: 'Agent-Agnostic Factory', note: '90% projected; shipped routing and Q5 eligibility controls remain cross-cutting work' },
++      { live: true, title: 'Track S S0-A intake truth', note: 'REQUEST_REVISION — AM1 preparation is closing duplicate-ID enforcement and dynamic tool/property-name bounds' },
++      { live: true, title: 'C0.6-T telemetry correction', note: 'AM7 REQUEST_REVISION — AM8 preparation covers six remaining lifecycle, cache, registry, frontend, ordering, and port-SSOT defects' },
++      { live: true, title: 'C0.3 provenance reconciliation', note: 'evidence refs and staged record independently PASS; commit waits for tracker test parity and a clean isolated Tier0 gate' },
+     ]},
+     { key: 'blocked', title: 'Blocked', items: [
+-      { title: 'Foundation B2 shadow-state vertical', note: 'needs Foundation A exit + Q2 ratification' },
++      { title: 'Track V / Verified Factory', note: 'REQUEST_REVISION — amended candidate pending independent re-review' },
++      { title: 'C0.6-T telemetry correction', note: 'AM7 authorization passed independent review and now awaits exact owner activation; the old AM6 candidate remains unaccepted' },
+       { title: 'F2.5 scheduler wiring', note: 'built and tested, dormant until Product D' },
+-      { title: 'Track V / Verified Factory', note: 'REQUEST_REVISION — amended candidate pending' },
+-      { title: 'lean-ctx global session pointer', note: 'issue, high severity, third-party' },
+     ]},
+     { key: 'notstarted', title: 'Not started', items: [
+-      'Foundation C — identity, leases, execution cells',
++      'Foundation B2 — shadow-state implementation',
++      'Foundation B3 — canon-compiler track completion',
+       'Product D — inference / client convergence',
+       'Product E — evaluation & learning factory',
+       'Product F — unified CLI + command center',
+       'Product G — edge, release, retirement',
++      { title: 'Local-Embed-Context status reconciliation', note: 'Projector remains notstarted/0 until the reported accepted candidate is bound to authoritative shipping evidence; task_registry drift is separate' },
+     ]},
+   ];
+ 
+@@ -648,16 +669,16 @@
+   });
+ 
+   const gateRows = [
+-    { id: 'Q1', decision: 'Ratify the synthesis as parent architecture', unblocks: 'everything below', status: 'PENDING' },
+-    { id: 'Q2', decision: 'Ratify the first shadow-vertical authority hypothesis', unblocks: 'Foundation B2', status: 'PENDING' },
+-    { id: 'Q3', decision: 'Security model — leases, attestations, zero-trust network profiles', unblocks: 'Foundation C', status: 'PENDING' },
+-    { id: 'Q4', decision: 'Fable behavior contract → model-neutral versioned canon policy', unblocks: 'B3 canon migration', status: 'PENDING' },
+-    { id: 'Q5', decision: 'Measured, expiring lane-eligibility registry', unblocks: 'all delegation + VF-8', status: 'PENDING' },
+-    { id: 'Q6', decision: 'Kernel front door: keep local-orchestrator or revise to `aq` gateway', unblocks: 'Product F CLI', status: 'PENDING' },
+-    { id: 'Q7', decision: 'Eval factory as universal promotion gate', unblocks: 'Product E', status: 'PENDING' },
+-    { id: 'Q8', decision: 'Adjudicate the 10 Cycle-0 authority rows', unblocks: 'B2 vertical selection', status: 'DIRECTION_RECORDED' },
+-    { id: 'Q9', decision: 'Activate Track V (Verified Factory) after its VF-0 round', unblocks: 'oracle / tier / evidence gates', status: 'PENDING' },
+-    { id: 'Q10', decision: 'Rebudget the 27GB envelope for a resident small model / speculative decoding', unblocks: 'Product D/E stacking work', status: 'PENDING' },
++    { id: 'Q1', decision: 'Ratify the synthesis as parent architecture', unblocks: 'everything below', status: 'RATIFIED' },
++    { id: 'Q2', decision: 'Ratify the first shadow-vertical authority hypothesis', unblocks: 'Foundation B2', status: 'RATIFIED' },
++    { id: 'Q3', decision: 'Security model — leases, attestations, zero-trust network profiles', unblocks: 'Foundation C', status: 'RATIFIED' },
++    { id: 'Q4', decision: 'Fable behavior contract → model-neutral versioned canon policy', unblocks: 'B3 canon migration', status: 'RATIFIED' },
++    { id: 'Q5', decision: 'Measured, expiring lane-eligibility registry', unblocks: 'all delegation + VF-8', status: 'RATIFIED' },
++    { id: 'Q6', decision: 'Kernel front door: keep local-orchestrator or revise to `aq` gateway', unblocks: 'Product F CLI', status: 'RATIFIED' },
++    { id: 'Q7', decision: 'Eval factory as universal promotion gate', unblocks: 'Product E', status: 'RATIFIED' },
++    { id: 'Q8', decision: 'Adjudicate the 10 Cycle-0 authority rows', unblocks: 'Foundation A', status: 'RATIFIED' },
++    { id: 'Q9', decision: 'Activate Track V (Verified Factory) after its VF-0 round', unblocks: 'oracle / tier / evidence gates', status: 'RATIFIED' },
++    { id: 'Q10', decision: 'Rebudget the 27GB envelope for a resident small model / speculative decoding', unblocks: 'Product D/E stacking work', status: 'RATIFIED' },
+   ];
+   const gateBody = document.getElementById('gate-body');
+   gateRows.forEach(row => {
+@@ -674,10 +695,16 @@
+   });
+ 
+   const issues = [
+-    { title: 'lean-ctx-global-session-pointer-cross-repo-root-pinning', sev: 'High', status: 'OPEN',
+-      note: 'lean-ctx keeps one machine-global "latest session" pointer, so any invocation in any repo can silently resume this repo\'s session and root tools to the wrong project. Third-party defect (lean-ctx v3.3.7); workaround pending.' },
+-    { title: 'provider-capacity-reset-not-scheduled', sev: 'High', status: 'OPEN',
+-      note: 'Claude capacity exposed a reopen window, but no durable retry_not_before or scheduled monitored probe fired. The owner had to request a retry; the reopened Sonnet lane then passed immediately.' },
++    { title: 'local-single-inference-slot-contention', sev: 'High', status: 'OPEN',
++      note: 'F2 scheduler/backpressure code is built and tested, but F2.5 was never wired into dispatch. Live local execution remains single-slot serialized until Product D.' },
++    { title: 'task_registry-golden-pin-stale', sev: 'Med', status: 'OPEN',
++      note: 'The Local-Embed-Context Slice 2b fixture re-pin did not regenerate stable_digests.source_manifest, leaving two golden-test regressions.' },
++    { title: 'capability-intake-registry-schema-missing', sev: 'High', status: 'OPEN',
++      note: 'Track S0-A must restore the missing closed intake schema before adding or promoting external security capability records.' },
++    { title: 'agent-provider-headless-lifecycle-failure', sev: 'High', status: 'OPEN',
++      note: 'Claude Fable, Sonnet, and Opus reviews exited without evidence; the local hybrid lane returned retrieval-only output. These lanes abstain until broker-owned typed parking/retry and output validation land.' },
++    { title: 'catch-up-queue-not-executable', sev: 'High', status: 'OPEN',
++      note: 'The catch-up ledger has no executable consumer. Claude C4 is durable/manual-dispatch-required until eligibility-triggered broker redispatch and monitoring exist.' },
+   ];
+   const issuesBody = document.getElementById('issues-body');
+   issues.forEach(i => {
+@@ -688,16 +715,16 @@
+   });
+ 
+   const authorityTargets = [
+-    { area: 'planning-round', target: 'RoundState / round.json mutation boundary', status: 'DIRECTION_RECORDED', observed: 'SPLIT_BRAIN' },
+-    { area: 'delegation-lifecycle', target: 'Host/coordinator dispatch broker through TaskRegistry', status: 'DIRECTION_RECORDED', observed: 'SPLIT_BRAIN' },
+-    { area: 'intent-resume', target: 'Separate intent lock; aq-event authority; files are projections', status: 'DIRECTION_RECORDED', observed: 'SPLIT_BRAIN' },
+-    { area: 'workflow-run-task', target: 'Coordinator logical authority; Postgres outbox/CAS shadow only', status: 'DIRECTION_RECORDED', observed: 'SPLIT_BRAIN' },
+-    { area: 'qa-effectiveness', target: 'Immutable invocation evidence plus one versioned reducer', status: 'DIRECTION_RECORDED', observed: 'SPLIT_BRAIN' },
+-    { area: 'routing-model-execution', target: 'Coordinator route decisions; switchboard generation gateway', status: 'DIRECTION_RECORDED', observed: 'SPLIT_BRAIN' },
+-    { area: 'learning-eval', target: 'Coordinator-owned EvaluationRun / PromotionDecision ledger', status: 'DIRECTION_RECORDED', observed: 'SPLIT_BRAIN' },
+-    { area: 'memory-rag', target: 'MemoryBroker mutation gateway; Qdrant is a projection', status: 'DIRECTION_RECORDED', observed: 'SPLIT_BRAIN' },
+-    { area: 'configuration', target: 'Nix → systemd environment → typed Python chain', status: 'DIRECTION_RECORDED', observed: 'SPLIT_BRAIN' },
+-    { area: 'dashboard-operator', target: 'Coordinator-owned typed ApprovalStore', status: 'DIRECTION_RECORDED', observed: 'SPLIT_BRAIN' },
++    { area: 'planning-round', target: 'RoundState / round.json mutation boundary', status: 'RATIFIED', observed: 'CONVERGENCE_PENDING' },
++    { area: 'delegation-lifecycle', target: 'Host/coordinator dispatch broker through TaskRegistry', status: 'RATIFIED', observed: 'CONVERGENCE_PENDING' },
++    { area: 'intent-resume', target: 'Separate intent lock; aq-event authority; files are projections', status: 'RATIFIED', observed: 'CONVERGENCE_PENDING' },
++    { area: 'workflow-run-task', target: 'Coordinator logical authority; Postgres outbox/CAS shadow only', status: 'RATIFIED', observed: 'CONVERGENCE_PENDING' },
++    { area: 'qa-effectiveness', target: 'Immutable invocation evidence plus one versioned reducer', status: 'RATIFIED', observed: 'CONVERGENCE_PENDING' },
++    { area: 'routing-model-execution', target: 'Coordinator route decisions; switchboard generation gateway', status: 'RATIFIED', observed: 'CONVERGENCE_PENDING' },
++    { area: 'learning-eval', target: 'Coordinator-owned EvaluationRun / PromotionDecision ledger', status: 'RATIFIED', observed: 'CONVERGENCE_PENDING' },
++    { area: 'memory-rag', target: 'MemoryBroker mutation gateway; Qdrant is a projection', status: 'RATIFIED', observed: 'CONVERGENCE_PENDING' },
++    { area: 'configuration', target: 'Nix → systemd environment → typed Python chain', status: 'RATIFIED', observed: 'CONVERGENCE_PENDING' },
++    { area: 'dashboard-operator', target: 'Coordinator-owned typed ApprovalStore', status: 'RATIFIED', observed: 'CONVERGENCE_PENDING' },
+   ];
+   const authorityBody = document.getElementById('authority-body');
+   authorityTargets.forEach(authority => {
+@@ -716,9 +743,9 @@
+   const computedCounts = {
+     tracks: tracks.filter(track => track.inclusion_status === 'INCLUDED').length,
+     active_tracks: tracks.filter(track => track.status === 'active').length,
+-    foundation_a_blocking_gates: tracks.filter(track => track.code === 'A' && track.gate_status === 'BLOCKING').length,
++    blocked_tracks: tracks.filter(track => track.status === 'blocked').length,
+     pending_q_decisions: gateRows.filter(row => row.status === 'PENDING').length,
+-    authority_rows: authorityTargets.filter(authority => authority.status === 'DIRECTION_RECORDED').length,
++    authority_rows: authorityTargets.filter(authority => authority.status === 'RATIFIED').length,
+     open_high_severity_issues: issues.filter(issue => issue.status === 'OPEN' && issue.sev === 'High').length,
+   };
+   const mismatches = Object.entries(provenance.expected_counts)
+@@ -729,7 +756,7 @@
+   }
+   document.body.dataset.provenanceStatus = 'reconciled';
+   document.getElementById('track-count').textContent = `${computedCounts.active_tracks} / ${computedCounts.tracks}`;
+-  document.getElementById('foundation-a-gate-count').textContent = computedCounts.foundation_a_blocking_gates;
++  document.getElementById('foundation-a-gate-count').textContent = computedCounts.blocked_tracks;
+   document.getElementById('pending-decision-count').textContent = computedCounts.pending_q_decisions;
+   document.getElementById('high-issue-count').textContent = computedCounts.open_high_severity_issues;
+ 
+diff --git a/config/refactor-milestones.json b/config/refactor-milestones.json
+index db35f6ca..bc000dec 100644
+--- a/config/refactor-milestones.json
++++ b/config/refactor-milestones.json
+@@ -18,10 +18,9 @@
+       "code": "B1",
+       "name": "Foundation B1",
+       "sub": "contract kernel + parity vectors",
+-      "note": "EXECUTING \u2014 L1A/L2A/L2B-A landed; chat/batch parity (shadow) design packet is the next slice.",
++      "note": "B1 COMPLETE \u2014 L1A/L2A/L2B-A/L2B-B landed and the offline chat/batch shadow parity oracle is implemented, accepted, committed, and passing. Its typed max-token and repeat-penalty divergences now scope Product D/L3-L4 live convergence; offline evidence alone does not authorize duplicated-logic retirement.",
+       "order": 20,
+-      "ongoing": true,
+-      "pct": 80,
++      "ongoing": false,
+       "detection": {
+         "commit_match": [
+           "\\bparity\\b",
+@@ -33,7 +32,7 @@
+       "code": "B2",
+       "name": "Foundation B2",
+       "sub": "one shadow-state vertical",
+-      "note": "Q1/Q2 ratified; B2-D0 design/review packet accepted; B2-C1 implementation authorization is in preparation/review only.",
++      "note": "QUEUED/READY_FOR_PREPARATION: review the accepted B2 C1/M1 shadow evidence, reconcile its shipping commits with the projector, then freeze the next single-authority expansion/replacement design. Queueing does not authorize DDL, connections, writes, cutover, or cleanup.",
+       "order": 30,
+       "ongoing": true,
+       "pct": 25,
+@@ -43,13 +42,13 @@
+           "\\(b2\\)"
+         ]
+       },
+-      "editorial_note": "Q1/Q2 ratified; B2-D0 design/review packet accepted; B2-C1 implementation authorization is in preparation/review only. [RECONCILE: no matching shipping commits found by projection \u2014 prior hand-tracker 'active' was unbacked; status shown is ground-truth. Audit which commits delivered this track.]"
++      "editorial_note": "Execution queue Q2.1: reconcile accepted C1/M1 evidence and exact shipping commits before selecting the next shadow vertical. Projected status remains ground truth until commit detection is corrected."
+     },
+     {
+       "code": "B3",
+       "name": "Foundation B3",
+       "sub": "projector + canon-compiler shadow",
+-      "note": "aq-event projector pattern is live (PULSE/RESUME event-sourced); canon-compiler extension pending.",
++      "note": "QUEUED/READY_FOR_PREPARATION: aq-event projection is live and canon-compiler work has historical shipping evidence that must be reconciled with the tracker; next is one dashboard/projector shadow extension with no runtime authority.",
+       "order": 40,
+       "ongoing": true,
+       "pct": 40,
+@@ -59,13 +58,13 @@
+           "canon-compiler"
+         ]
+       },
+-      "editorial_note": "aq-event projector pattern is live (PULSE/RESUME event-sourced); canon-compiler extension pending. [RECONCILE: no matching shipping commits found by projection \u2014 prior hand-tracker 'active' was unbacked; status shown is ground-truth. Audit which commits delivered this track.]"
++      "editorial_note": "Execution queue Q2.2: reconcile shipped canon-compiler evidence with commit detection, then prepare one no-authority projector/dashboard shadow extension."
+     },
+     {
+       "code": "C",
+       "name": "Foundation C",
+       "sub": "identity, leases, execution cells",
+-      "note": "Zero-trust security spine: shadow admission/issuance (C0/C1) shipped; C2 enforcement design independently reviewed and FROZEN, awaiting owner activation (blocked on a built-in-tool lease gap found pre-activation); C3-C6 not started.",
++      "note": "Zero-trust security spine: C0/C1 shipped; C2 rev3 plus the built-in-tool amendment are independently frozen and queued for current-HEAD activation verification; C3-C6 remain dependency-queued.",
+       "order": 50,
+       "ongoing": true,
+       "pct": 35,
+@@ -107,25 +106,23 @@
+       "code": "C2",
+       "name": "Foundation C2",
+       "sub": "tool-lease enforcement (flag-gated)",
+-      "note": "Design independently re-reviewed PASS and FROZEN (C2-FREEZE-AND-ACTIVATION.md), eligible for single-use owner activation. BLOCKED pre-activation: enforcement has no lease source for built-in/first-party tools (run_command, file_edit, ...) -- flag-ON would deny the harness's own tool-calling. Design amendment + re-freeze required before activation.",
++      "note": "C2 rev3 design plus the first-party/built-in tool lease-source amendment were independently reviewed, corrected, and re-frozen. The former built-in-tool blocker is closed at design level; implementation remains flag-default-OFF and awaits an exact, single-use owner activation.",
+       "order": 53,
+       "parent": "C",
+-      "ongoing": false,
++      "ongoing": true,
+       "pct": 80,
+       "detection": {
+         "commit_match": [
+           "C2 enforcement design FROZEN"
+         ],
+-        "activation_subject": "aqos-foundation-c-c2-tool-lease-enforcement",
+-        "freeze_record": ".agents/plans/aqos-foundation-c/C2-FREEZE-AND-ACTIVATION.md",
+-        "blocker_note": "OPEN-BLOCKS-C2-ACTIVATION (issues-backlog, logged 2026-07-25): C2 admits a tool only if an admitted candidate lease lists it; built-in bundle tools (run_command, file_edit, ...) are not registry candidates -- 0/39 candidate-allowlisted tools are built-ins. Flag-ON would drop run_command at :1673, breaking core tool-calling. Severity HIGH; caught pre-activation."
++        "freeze_record": ".agents/plans/aqos-foundation-c/C2-FREEZE-AND-ACTIVATION.md"
+       }
+     },
+     {
+       "code": "D",
+       "name": "Product D",
+       "sub": "inference/client live convergence",
+-      "note": "Switchboard sole gateway; delegate-to-local/aq-chat as coordinator clients; global scheduler activation closes F2.5 HIGH; route/profile registry consolidation. Gate to start: B1 parity fixtures + C boundaries.",
++      "note": "DEPENDENCY_QUEUED: prepare switchboard sole-gateway convergence, delegate-to-local/aq-chat clients, typed parity divergences, F2.5 scheduler/backpressure wiring, route/profile SSOT, and local hardware budgets after the C2 boundary is accepted.",
+       "order": 60,
+       "ongoing": false,
+       "detection": {
+@@ -138,7 +135,7 @@
+       "code": "E",
+       "name": "Product E",
+       "sub": "evaluation & learning factory",
+-      "note": "Dataset/scorer/prompt registries, sealed answers, certified scorers, counterfactual replay, promotion ledger, small-model admission. Gate to start: B2 evidence store + C integrity.",
++      "note": "DEPENDENCY_QUEUED: dataset/scorer/prompt registries, sealed answers, certified scorers, replay, promotion ledger, and small-model admission. Starts after B2 evidence storage and Foundation C integrity.",
+       "order": 70,
+       "ongoing": false,
+       "detection": {
+@@ -151,7 +148,7 @@
+       "code": "F",
+       "name": "Product F",
+       "sub": "one CLI + command center",
+-      "note": "`aq <noun> <verb>` + shims; OTel traces; SLO burn; typed console (Fleet/Runs/Evals/Approvals). Gate to start: authoritative telemetry from C/D.",
++      "note": "DEPENDENCY_QUEUED: one `aq` gateway, compatibility shims, broker lifecycle and catch-up execution, OTel/SLO contracts, and typed command-center views. Starts after authoritative C/D telemetry.",
+       "order": 80,
+       "ongoing": false,
+       "detection": {
+@@ -164,7 +161,7 @@
+       "code": "G",
+       "name": "Product G",
+       "sub": "edge, release, retirement",
+-      "note": "Hardware-class probes, install profiles, restore/upgrade drills, semver v1.0, legacy retirement after 2 clean cycles. Gate to start: everything prior.",
++      "note": "DEPENDENCY_QUEUED: hardware profiles, restore/upgrade drills, release evidence, semver v1.0, and legacy retirement after two clean cycles. Starts only after accepted D-F evidence.",
+       "order": 90,
+       "ongoing": false,
+       "detection": {
+@@ -177,7 +174,7 @@
+       "code": "V",
+       "name": "Track V",
+       "sub": "Verified Factory (cross-cutting)",
+-      "note": "REQUEST_REVISION -- amended acceptance gates (VF contracts) await independent re-review before Track V activates (Q9). Feeds Cycles 4-5; gates acceptance only after authority activation.",
++      "note": "BLOCKED_ON_ACCEPTANCE but queued: run the bounded revision review over amended VF/Check Kernel sections, then prepare a new exact activation only after independent PASS. No self-acceptance or implicit Q9 activation.",
+       "order": 100,
+       "ongoing": true,
+       "pct": 60,
+@@ -185,6 +182,22 @@
+         "blocker_note": "Track V status is REQUEST_REVISION per UNIFIED-PROGRAM-PLAN.md Sec 3 (unified track structure table): amended VF contracts + exact authorization pending; VF-1 waits for L2B-B unless hash-bound non-overlap proves warn-only isolation."
+       }
+     },
++    {
++      "code": "S",
++      "name": "Defensive Security Factory",
++      "sub": "scope-gated vulnerability discovery, remediation, tripwires, and disclosure",
++      "note": "S0-A received REQUEST_REVISION: AM1 preparation is adding production duplicate-ID rejection plus dynamic tool/property-name bounds and adversarial tests. S0-B through S5 remain dependency-queued. Piyaz is pattern-only; RAPTOR requires source audit; Sn1per is no-runtime quarantined. No hack-back or autonomous disclosure.",
++      "order": 105,
++      "ongoing": true,
++      "pct": 10,
++      "detection": {
++        "commit_match": [
++          "\\(defensive-security\\)",
++          "Defensive Security Factory"
++        ],
++        "freeze_record": ".agents/plans/aqos-defensive-security/PROGRAM-PLAN.md"
++      }
++    },
+     {
+       "code": "AAF",
+       "name": "Agent-Agnostic Factory",
+@@ -217,16 +230,15 @@
+       "code": "LEC",
+       "name": "Local-Embed-Context",
+       "sub": "embed model as context layer",
+-      "note": "Slice 1 + Slice 2a committed. Slice 2b (context_cache wired into agent_executor prune path) has an OPEN binding-acceptance verdict: REQUEST_REVISION (SLICE2B-ACCEPTANCE.md) -- fixture re-pin incomplete (stable_digests.source_manifest not regenerated), 2 golden-test regressions. Code change itself verified correct; blocker is the mechanically incomplete re-pin.",
++      "note": "NON-AUTHORITATIVE CANDIDATE DETAIL: Slice 2b's acceptance record says its initial REQUEST_REVISION was resolved and source_manifest is already `df4d94d9…`. The projector has no matching committed subject, freeze record, or open LEC slice claim, so authoritative status remains notstarted/0 until shipping evidence is reconciled. Remaining 02/15/16 failures belong to separate task_registry drift; do not reapply the digest fix.",
+       "order": 120,
+       "ongoing": true,
+-      "pct": 75,
++      "pct": 0,
+       "detection": {
+         "commit_match": [
+           "\\(local-embed-context\\)",
+           "\\(lec\\)"
+-        ],
+-        "blocker_note": "Slice 2b binding acceptance verdict is REQUEST_REVISION per .agents/plans/local-embed-context/SLICE2B-ACCEPTANCE.md: fixture re-pin incomplete (stable_digests.source_manifest not regenerated after agent_executor.py sha256 change), causing 2 new golden-test regressions (test_15, test_16). Not yet committed as of this projection."
++        ]
+       }
+     },
+     {
+@@ -380,9 +392,24 @@
+       "note": "Golden reliability fixture re-pin left internally inconsistent after an agent_executor.py sha256 change: stable_digests.source_manifest wasn't regenerated, producing 2 new golden-test regressions (test_15, test_16) on the hash-frozen reliability contract (see SLICE2B-ACCEPTANCE.md)."
+     },
+     {
+-      "title": "C2 built-in-tool lease gap",
++      "title": "capability-intake-registry-schema-missing",
++      "sev": "High",
++      "note": "S0-A now has an exact closed-schema/registry/test candidate and focused validation evidence, but it remains unaccepted and uncommitted pending independent flagship review. No new external capability is promoted or runnable."
++    },
++    {
++      "title": "program-progress-tests-pin-superseded-snapshot",
++      "sev": "Med",
++      "note": "The refreshed AQ-OS progress tracker passes its embedded-state/provenance contract, but 5 of 13 focused dashboard tests assert the superseded July 18 snapshot/counts. A bounded test re-pin is required before tracker integration."
++    },
++    {
++      "title": "agent-provider-headless-lifecycle-failure",
++      "sev": "High",
++      "note": "Monitored Track S reviews failed without evidence across Claude Fable, Sonnet 4.6, and Opus 4.8; the local hybrid lane returned retrieval-only output. Preserve these as abstentions. Agent Connection Reliability must provide broker-owned typed parking/retry and output-contract validation."
++    },
++    {
++      "title": "catch-up-queue-not-executable",
+       "sev": "High",
+-      "note": "C2 enforcement admits only candidate-lease tools; built-in bundle tools (run_command/file_edit) have no lease -- would be denied under enforcement. Blocks C2 activation until a first-party tool lease source is added."
++      "note": "The model-agnostic catch-up queue is currently a durable human-readable ledger with no daemon or broker consumer. Claude C4 is parked as durable/manual-dispatch-required until eligibility-triggered single-flight redispatch, receipts, and dashboard/aq-qa coverage exist."
+     }
+   ]
+-}
+\ No newline at end of file
++}

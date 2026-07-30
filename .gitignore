@@ -290,3 +290,10 @@ docs/QUICKSTART.generated.md
 # Shell-wrapper mangled-command debris (accidental, empty/garbage)
 /1ncat
 /1necho
+
+# Agentic collab-round transients (dispatch/prompt scratch — not deliverables)
+.agents/plans/*/.round-dispatch.json
+.agents/plans/*/.round-prompt*.txt
+# Agent working scratch dirs
+scratch/
+.codex/
