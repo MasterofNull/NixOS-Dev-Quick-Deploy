@@ -1,0 +1,2 @@
+# Round c4-review — Orchestrator Aggregation (Opus)
+Opus authored C4 -> recused (Rule 18). antigravity/gemini independent PASS: UDS egress broker endorsed (no CAP_NET_ADMIN/privileged in-cell stack), playwright-defer + telemetry/A2A net-free confirmed, OAuth blind-forwarding (broker never sees credentials) confirmed. Q-C4-1..4 endorsed. CAVEAT: light-model clean PASS on an ENFORCEMENT-TIER egress slice — codex confirmatory (Aug-4) REQUIRED before activation. Opus verified the grounding (slirp4netns/pasta absent, nft present, empty caps). Status C4_DESIGN_REVIEWED_PASS.

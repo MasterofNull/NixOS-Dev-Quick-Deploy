@@ -1,0 +1,63 @@
+{
+  "schema_version": "1.0",
+  "round_id": "c4-review",
+  "state": "DISPATCHED",
+  "task": {
+    "prompt": "ROLE: independent binding DESIGN reviewer for Foundation C slice C4 (network profiles / connected\nzero trust). Read-only. DESIGN review. ENFORCEMENT-TIER (build needs owner activation). Highest bar.\nSubstitute for codex (down to Aug-4; confirmatory on return). VERIFY against real code/system.\nREAD: .agents/plans/aqos-foundation-c/C4-DESIGN-AND-AUTHORIZATION.md; the C3b runner it extends\n(ai-stack/switchboard/execution_cell_runner.py — bwrap --unshare-net); DESIGN-PACKET.md §5; ports in\nnix/modules/core/options.nix. GROUND: confirm slirp4netns/pasta absent + nft present + runner has\nempty caps (the §2 constraint the whole design rests on).\nJUDGE (§9): 1. the cell truly has ZERO ambient net (--unshare-net retained); the egress-broker UDS is\nthe SOLE egress; NO fail-open. Is the broker-over-UDS mechanism sound given no slirp4netns, or is\nthere a hole? 2. threat pass soundness — is the closed 6-profile set {local-inference:8080,\nembed:8081, coordinator:8003, AIDB:8002+Qdrant:6333, switchboard-remote-OAuth:443, MCP-github:443}\ncorrect? Are the COLLAPSES right (A2A-inbox=file/no-net, telemetry=local/no-net) and the DEFER right\n(playwright broad egress != closed profile)? Is any wildcard/broad egress representable (must not be)?\n3. NO API key handled/forwarded; NO silent alternate-provider (OpenRouter) reroute; switchboard-remote\nallows ONLY the intended provider host; OAuth/gh use their OWN sessions (broker gates host:port+TLS\nonly, never injects a credential). 4. signed-profile authoritative; config/network-profiles.json\ncompare-only DENY (never grant); subset attenuation. 5. broker hardening (empty caps,\nRestrictAddressFamilies, egress-logging) + runner/switchboard byte-parity + flag default-OFF. 6.\ndeny-closed on policy/key-unavailable; egress audit low-cardinality/secret-free. Weigh Q-C4-1..4.\nAny NEW fail-open, ambient-net leak, key leak, or reroute?\nOUTPUT: `VERDICT: PASS`/`FAIL`/`REQUEST_REVISION` line 1, then findings by severity + §ref + fix, +\nQ-C4-1..4 verdicts. No outcome authorizes build or activation.",
+    "target": ".agents/plans/aqos-foundation-c/",
+    "scope_files": []
+  },
+  "opened_at": "2026-07-30T16:03:22Z",
+  "quorum_policy": {
+    "min_lanes": 2,
+    "required_agents": [],
+    "late_local_admissible": true,
+    "timeout_seconds": null,
+    "deadline": null,
+    "timeout_action": "lock_with_present"
+  },
+  "lanes": [
+    {
+      "agent": "claude",
+      "dispatch_id": null,
+      "idempotency_hash": "af3221287861d1735857519d5dc7726afe70ceb00370918f42e3b31c2f13f99d",
+      "status": "pending",
+      "landed_at": null
+    },
+    {
+      "agent": "codex",
+      "dispatch_id": null,
+      "idempotency_hash": "e3c989460d7c35bf66211d4cb170890604f8205b188cc55a972ad909c5ba24f9",
+      "status": "pending",
+      "landed_at": null
+    },
+    {
+      "agent": "local",
+      "dispatch_id": null,
+      "idempotency_hash": "1e25977da2798f93e6322434cca294032988f88a085005561928394c3f05d67d",
+      "status": "pending",
+      "landed_at": null
+    },
+    {
+      "agent": "antigravity",
+      "dispatch_id": null,
+      "idempotency_hash": "654a0b33725a7b65d7dff47ddf2b7fe6a2eb5cb12c39fc780af5d6ab0f5a2836",
+      "status": "pending",
+      "landed_at": null
+    }
+  ],
+  "contributions": {},
+  "conflicts": [],
+  "consensus_hash": null,
+  "aggregate_path": null,
+  "aggregate_hash": null,
+  "locked_at": null,
+  "history": [
+    {
+      "transition": "CREATED->DISPATCHED",
+      "timestamp": "2026-07-30T16:03:22Z",
+      "actor": "aq-collab-round"
+    }
+  ],
+  "predecessor_round_id": null
+}
