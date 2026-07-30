@@ -1,0 +1,2117 @@
+{
+  "fixture_version": 1,
+  "description": "Foundation C C3b R1 execution-grant golden vectors (pure/offline).",
+  "production_public_key_hex": "673384c567c7a3f6d71b4264b56b83ef71eef0b9b83943438a4ce0382ceee559",
+  "dev_public_key_hex": "fa24a42c9b49c70d65549af0b4579282e31a807861e2f6fb43534bea2474c44b",
+  "vectors": [
+    {
+      "name": "valid-grant",
+      "category": "valid",
+      "grant": {
+        "grant_schema_version": 1,
+        "grant_id": "1111111111111111111111111111111111111111111111111111111111111111",
+        "lease_id": "lease-c3b-r1-0001",
+        "task_id": "task-0001",
+        "request_id": "req-0001",
+        "issued_at": "2026-07-29T00:00:00Z",
+        "expires_at": "2026-07-29T01:00:00Z",
+        "revocation_epoch": 3,
+        "base_revision": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+        "effect_set": [
+          {
+            "effect": "read",
+            "scope": {
+              "paths": [
+                "work/src/main.py"
+              ],
+              "mode": "read"
+            }
+          },
+          {
+            "effect": "write",
+            "scope": {
+              "paths": [
+                "work/out/result.txt"
+              ],
+              "mode": "write"
+            }
+          }
+        ],
+        "exec_class": "sandbox-required",
+        "trusted_repo_id": "trusted-repo-0001",
+        "logical_paths": [
+          "work/src",
+          "work/out"
+        ],
+        "resource_limits": {
+          "timeout_s": 60,
+          "max_output_bytes": 1048576,
+          "cell_class": "small"
+        },
+        "grant_digest": "4e8042b942c0a867903abb0d399b114182161169b990217ffab67bb47a815023",
+        "signature": "7e05d675e51f0ab05e7d6be8eb4f22e74e739b32959043a817011789dfdff106ca5700465c305e4a7a376512f0258f386005e4208931f3dab71abef1b577f70e"
+      },
+      "now": "2026-07-29T00:30:00Z",
+      "current_epoch": 3,
+      "verify_key": "production",
+      "call_twice": false,
+      "expected_outcome": "ok",
+      "note": ""
+    },
+    {
+      "name": "tamper-grant_schema_version",
+      "category": "per-field-tamper",
+      "grant": {
+        "grant_schema_version": "1",
+        "grant_id": "1111111111111111111111111111111111111111111111111111111111111111",
+        "lease_id": "lease-c3b-r1-0001",
+        "task_id": "task-0001",
+        "request_id": "req-0001",
+        "issued_at": "2026-07-29T00:00:00Z",
+        "expires_at": "2026-07-29T01:00:00Z",
+        "revocation_epoch": 3,
+        "base_revision": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+        "effect_set": [
+          {
+            "effect": "read",
+            "scope": {
+              "paths": [
+                "work/src/main.py"
+              ],
+              "mode": "read"
+            }
+          },
+          {
+            "effect": "write",
+            "scope": {
+              "paths": [
+                "work/out/result.txt"
+              ],
+              "mode": "write"
+            }
+          }
+        ],
+        "exec_class": "sandbox-required",
+        "trusted_repo_id": "trusted-repo-0001",
+        "logical_paths": [
+          "work/src",
+          "work/out"
+        ],
+        "resource_limits": {
+          "timeout_s": 60,
+          "max_output_bytes": 1048576,
+          "cell_class": "small"
+        },
+        "grant_digest": "4e8042b942c0a867903abb0d399b114182161169b990217ffab67bb47a815023",
+        "signature": "7e05d675e51f0ab05e7d6be8eb4f22e74e739b32959043a817011789dfdff106ca5700465c305e4a7a376512f0258f386005e4208931f3dab71abef1b577f70e"
+      },
+      "now": "2026-07-29T00:30:00Z",
+      "current_epoch": 3,
+      "verify_key": "production",
+      "call_twice": false,
+      "expected_outcome": "grant-malformed",
+      "note": "single-field post-signature mutation of 'grant_schema_version'"
+    },
+    {
+      "name": "tamper-grant_id",
+      "category": "per-field-tamper",
+      "grant": {
+        "grant_schema_version": 1,
+        "grant_id": "22222222222222222222222222222222222222222222222222222222222222222222",
+        "lease_id": "lease-c3b-r1-0001",
+        "task_id": "task-0001",
+        "request_id": "req-0001",
+        "issued_at": "2026-07-29T00:00:00Z",
+        "expires_at": "2026-07-29T01:00:00Z",
+        "revocation_epoch": 3,
+        "base_revision": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+        "effect_set": [
+          {
+            "effect": "read",
+            "scope": {
+              "paths": [
+                "work/src/main.py"
+              ],
+              "mode": "read"
+            }
+          },
+          {
+            "effect": "write",
+            "scope": {
+              "paths": [
+                "work/out/result.txt"
+              ],
+              "mode": "write"
+            }
+          }
+        ],
+        "exec_class": "sandbox-required",
+        "trusted_repo_id": "trusted-repo-0001",
+        "logical_paths": [
+          "work/src",
+          "work/out"
+        ],
+        "resource_limits": {
+          "timeout_s": 60,
+          "max_output_bytes": 1048576,
+          "cell_class": "small"
+        },
+        "grant_digest": "4e8042b942c0a867903abb0d399b114182161169b990217ffab67bb47a815023",
+        "signature": "7e05d675e51f0ab05e7d6be8eb4f22e74e739b32959043a817011789dfdff106ca5700465c305e4a7a376512f0258f386005e4208931f3dab71abef1b577f70e"
+      },
+      "now": "2026-07-29T00:30:00Z",
+      "current_epoch": 3,
+      "verify_key": "production",
+      "call_twice": false,
+      "expected_outcome": "bad-signature",
+      "note": "single-field post-signature mutation of 'grant_id'"
+    },
+    {
+      "name": "tamper-lease_id",
+      "category": "per-field-tamper",
+      "grant": {
+        "grant_schema_version": 1,
+        "grant_id": "1111111111111111111111111111111111111111111111111111111111111111",
+        "lease_id": "",
+        "task_id": "task-0001",
+        "request_id": "req-0001",
+        "issued_at": "2026-07-29T00:00:00Z",
+        "expires_at": "2026-07-29T01:00:00Z",
+        "revocation_epoch": 3,
+        "base_revision": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+        "effect_set": [
+          {
+            "effect": "read",
+            "scope": {
+              "paths": [
+                "work/src/main.py"
+              ],
+              "mode": "read"
+            }
+          },
+          {
+            "effect": "write",
+            "scope": {
+              "paths": [
+                "work/out/result.txt"
+              ],
+              "mode": "write"
+            }
+          }
+        ],
+        "exec_class": "sandbox-required",
+        "trusted_repo_id": "trusted-repo-0001",
+        "logical_paths": [
+          "work/src",
+          "work/out"
+        ],
+        "resource_limits": {
+          "timeout_s": 60,
+          "max_output_bytes": 1048576,
+          "cell_class": "small"
+        },
+        "grant_digest": "4e8042b942c0a867903abb0d399b114182161169b990217ffab67bb47a815023",
+        "signature": "7e05d675e51f0ab05e7d6be8eb4f22e74e739b32959043a817011789dfdff106ca5700465c305e4a7a376512f0258f386005e4208931f3dab71abef1b577f70e"
+      },
+      "now": "2026-07-29T00:30:00Z",
+      "current_epoch": 3,
+      "verify_key": "production",
+      "call_twice": false,
+      "expected_outcome": "grant-malformed",
+      "note": "single-field post-signature mutation of 'lease_id'"
+    },
+    {
+      "name": "tamper-task_id",
+      "category": "per-field-tamper",
+      "grant": {
+        "grant_schema_version": 1,
+        "grant_id": "1111111111111111111111111111111111111111111111111111111111111111",
+        "lease_id": "lease-c3b-r1-0001",
+        "task_id": "task-9999",
+        "request_id": "req-0001",
+        "issued_at": "2026-07-29T00:00:00Z",
+        "expires_at": "2026-07-29T01:00:00Z",
+        "revocation_epoch": 3,
+        "base_revision": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+        "effect_set": [
+          {
+            "effect": "read",
+            "scope": {
+              "paths": [
+                "work/src/main.py"
+              ],
+              "mode": "read"
+            }
+          },
+          {
+            "effect": "write",
+            "scope": {
+              "paths": [
+                "work/out/result.txt"
+              ],
+              "mode": "write"
+            }
+          }
+        ],
+        "exec_class": "sandbox-required",
+        "trusted_repo_id": "trusted-repo-0001",
+        "logical_paths": [
+          "work/src",
+          "work/out"
+        ],
+        "resource_limits": {
+          "timeout_s": 60,
+          "max_output_bytes": 1048576,
+          "cell_class": "small"
+        },
+        "grant_digest": "4e8042b942c0a867903abb0d399b114182161169b990217ffab67bb47a815023",
+        "signature": "7e05d675e51f0ab05e7d6be8eb4f22e74e739b32959043a817011789dfdff106ca5700465c305e4a7a376512f0258f386005e4208931f3dab71abef1b577f70e"
+      },
+      "now": "2026-07-29T00:30:00Z",
+      "current_epoch": 3,
+      "verify_key": "production",
+      "call_twice": false,
+      "expected_outcome": "bad-signature",
+      "note": "single-field post-signature mutation of 'task_id'"
+    },
+    {
+      "name": "tamper-request_id",
+      "category": "per-field-tamper",
+      "grant": {
+        "grant_schema_version": 1,
+        "grant_id": "1111111111111111111111111111111111111111111111111111111111111111",
+        "lease_id": "lease-c3b-r1-0001",
+        "task_id": "task-0001",
+        "request_id": null,
+        "issued_at": "2026-07-29T00:00:00Z",
+        "expires_at": "2026-07-29T01:00:00Z",
+        "revocation_epoch": 3,
+        "base_revision": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+        "effect_set": [
+          {
+            "effect": "read",
+            "scope": {
+              "paths": [
+                "work/src/main.py"
+              ],
+              "mode": "read"
+            }
+          },
+          {
+            "effect": "write",
+            "scope": {
+              "paths": [
+                "work/out/result.txt"
+              ],
+              "mode": "write"
+            }
+          }
+        ],
+        "exec_class": "sandbox-required",
+        "trusted_repo_id": "trusted-repo-0001",
+        "logical_paths": [
+          "work/src",
+          "work/out"
+        ],
+        "resource_limits": {
+          "timeout_s": 60,
+          "max_output_bytes": 1048576,
+          "cell_class": "small"
+        },
+        "grant_digest": "4e8042b942c0a867903abb0d399b114182161169b990217ffab67bb47a815023",
+        "signature": "7e05d675e51f0ab05e7d6be8eb4f22e74e739b32959043a817011789dfdff106ca5700465c305e4a7a376512f0258f386005e4208931f3dab71abef1b577f70e"
+      },
+      "now": "2026-07-29T00:30:00Z",
+      "current_epoch": 3,
+      "verify_key": "production",
+      "call_twice": false,
+      "expected_outcome": "grant-malformed",
+      "note": "single-field post-signature mutation of 'request_id'"
+    },
+    {
+      "name": "tamper-issued_at",
+      "category": "per-field-tamper",
+      "grant": {
+        "grant_schema_version": 1,
+        "grant_id": "1111111111111111111111111111111111111111111111111111111111111111",
+        "lease_id": "lease-c3b-r1-0001",
+        "task_id": "task-0001",
+        "request_id": "req-0001",
+        "issued_at": "2026-07-29T00:05:00Z",
+        "expires_at": "2026-07-29T01:00:00Z",
+        "revocation_epoch": 3,
+        "base_revision": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+        "effect_set": [
+          {
+            "effect": "read",
+            "scope": {
+              "paths": [
+                "work/src/main.py"
+              ],
+              "mode": "read"
+            }
+          },
+          {
+            "effect": "write",
+            "scope": {
+              "paths": [
+                "work/out/result.txt"
+              ],
+              "mode": "write"
+            }
+          }
+        ],
+        "exec_class": "sandbox-required",
+        "trusted_repo_id": "trusted-repo-0001",
+        "logical_paths": [
+          "work/src",
+          "work/out"
+        ],
+        "resource_limits": {
+          "timeout_s": 60,
+          "max_output_bytes": 1048576,
+          "cell_class": "small"
+        },
+        "grant_digest": "4e8042b942c0a867903abb0d399b114182161169b990217ffab67bb47a815023",
+        "signature": "7e05d675e51f0ab05e7d6be8eb4f22e74e739b32959043a817011789dfdff106ca5700465c305e4a7a376512f0258f386005e4208931f3dab71abef1b577f70e"
+      },
+      "now": "2026-07-29T00:30:00Z",
+      "current_epoch": 3,
+      "verify_key": "production",
+      "call_twice": false,
+      "expected_outcome": "bad-signature",
+      "note": "single-field post-signature mutation of 'issued_at'"
+    },
+    {
+      "name": "tamper-expires_at",
+      "category": "per-field-tamper",
+      "grant": {
+        "grant_schema_version": 1,
+        "grant_id": "1111111111111111111111111111111111111111111111111111111111111111",
+        "lease_id": "lease-c3b-r1-0001",
+        "task_id": "task-0001",
+        "request_id": "req-0001",
+        "issued_at": "2026-07-29T00:00:00Z",
+        "expires_at": "not-a-timestamp",
+        "revocation_epoch": 3,
+        "base_revision": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+        "effect_set": [
+          {
+            "effect": "read",
+            "scope": {
+              "paths": [
+                "work/src/main.py"
+              ],
+              "mode": "read"
+            }
+          },
+          {
+            "effect": "write",
+            "scope": {
+              "paths": [
+                "work/out/result.txt"
+              ],
+              "mode": "write"
+            }
+          }
+        ],
+        "exec_class": "sandbox-required",
+        "trusted_repo_id": "trusted-repo-0001",
+        "logical_paths": [
+          "work/src",
+          "work/out"
+        ],
+        "resource_limits": {
+          "timeout_s": 60,
+          "max_output_bytes": 1048576,
+          "cell_class": "small"
+        },
+        "grant_digest": "4e8042b942c0a867903abb0d399b114182161169b990217ffab67bb47a815023",
+        "signature": "7e05d675e51f0ab05e7d6be8eb4f22e74e739b32959043a817011789dfdff106ca5700465c305e4a7a376512f0258f386005e4208931f3dab71abef1b577f70e"
+      },
+      "now": "2026-07-29T00:30:00Z",
+      "current_epoch": 3,
+      "verify_key": "production",
+      "call_twice": false,
+      "expected_outcome": "grant-malformed",
+      "note": "single-field post-signature mutation of 'expires_at'"
+    },
+    {
+      "name": "tamper-revocation_epoch",
+      "category": "per-field-tamper",
+      "grant": {
+        "grant_schema_version": 1,
+        "grant_id": "1111111111111111111111111111111111111111111111111111111111111111",
+        "lease_id": "lease-c3b-r1-0001",
+        "task_id": "task-0001",
+        "request_id": "req-0001",
+        "issued_at": "2026-07-29T00:00:00Z",
+        "expires_at": "2026-07-29T01:00:00Z",
+        "revocation_epoch": 4,
+        "base_revision": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+        "effect_set": [
+          {
+            "effect": "read",
+            "scope": {
+              "paths": [
+                "work/src/main.py"
+              ],
+              "mode": "read"
+            }
+          },
+          {
+            "effect": "write",
+            "scope": {
+              "paths": [
+                "work/out/result.txt"
+              ],
+              "mode": "write"
+            }
+          }
+        ],
+        "exec_class": "sandbox-required",
+        "trusted_repo_id": "trusted-repo-0001",
+        "logical_paths": [
+          "work/src",
+          "work/out"
+        ],
+        "resource_limits": {
+          "timeout_s": 60,
+          "max_output_bytes": 1048576,
+          "cell_class": "small"
+        },
+        "grant_digest": "4e8042b942c0a867903abb0d399b114182161169b990217ffab67bb47a815023",
+        "signature": "7e05d675e51f0ab05e7d6be8eb4f22e74e739b32959043a817011789dfdff106ca5700465c305e4a7a376512f0258f386005e4208931f3dab71abef1b577f70e"
+      },
+      "now": "2026-07-29T00:30:00Z",
+      "current_epoch": 3,
+      "verify_key": "production",
+      "call_twice": false,
+      "expected_outcome": "bad-signature",
+      "note": "single-field post-signature mutation of 'revocation_epoch'"
+    },
+    {
+      "name": "tamper-base_revision",
+      "category": "per-field-tamper",
+      "grant": {
+        "grant_schema_version": 1,
+        "grant_id": "1111111111111111111111111111111111111111111111111111111111111111",
+        "lease_id": "lease-c3b-r1-0001",
+        "task_id": "task-0001",
+        "request_id": "req-0001",
+        "issued_at": "2026-07-29T00:00:00Z",
+        "expires_at": "2026-07-29T01:00:00Z",
+        "revocation_epoch": 3,
+        "base_revision": "not-hex-oid",
+        "effect_set": [
+          {
+            "effect": "read",
+            "scope": {
+              "paths": [
+                "work/src/main.py"
+              ],
+              "mode": "read"
+            }
+          },
+          {
+            "effect": "write",
+            "scope": {
+              "paths": [
+                "work/out/result.txt"
+              ],
+              "mode": "write"
+            }
+          }
+        ],
+        "exec_class": "sandbox-required",
+        "trusted_repo_id": "trusted-repo-0001",
+        "logical_paths": [
+          "work/src",
+          "work/out"
+        ],
+        "resource_limits": {
+          "timeout_s": 60,
+          "max_output_bytes": 1048576,
+          "cell_class": "small"
+        },
+        "grant_digest": "4e8042b942c0a867903abb0d399b114182161169b990217ffab67bb47a815023",
+        "signature": "7e05d675e51f0ab05e7d6be8eb4f22e74e739b32959043a817011789dfdff106ca5700465c305e4a7a376512f0258f386005e4208931f3dab71abef1b577f70e"
+      },
+      "now": "2026-07-29T00:30:00Z",
+      "current_epoch": 3,
+      "verify_key": "production",
+      "call_twice": false,
+      "expected_outcome": "grant-malformed",
+      "note": "single-field post-signature mutation of 'base_revision'"
+    },
+    {
+      "name": "tamper-effect_set",
+      "category": "per-field-tamper",
+      "grant": {
+        "grant_schema_version": 1,
+        "grant_id": "1111111111111111111111111111111111111111111111111111111111111111",
+        "lease_id": "lease-c3b-r1-0001",
+        "task_id": "task-0001",
+        "request_id": "req-0001",
+        "issued_at": "2026-07-29T00:00:00Z",
+        "expires_at": "2026-07-29T01:00:00Z",
+        "revocation_epoch": 3,
+        "base_revision": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+        "effect_set": [
+          {
+            "effect": "read",
+            "scope": {
+              "paths": [
+                "work/src/main.py"
+              ],
+              "mode": "read"
+            }
+          },
+          {
+            "effect": "write",
+            "scope": {
+              "paths": [
+                "work/out/result.txt"
+              ],
+              "mode": "write"
+            }
+          },
+          {
+            "effect": "read",
+            "scope": {
+              "paths": [
+                "work/src/extra.py"
+              ],
+              "mode": "read"
+            }
+          }
+        ],
+        "exec_class": "sandbox-required",
+        "trusted_repo_id": "trusted-repo-0001",
+        "logical_paths": [
+          "work/src",
+          "work/out"
+        ],
+        "resource_limits": {
+          "timeout_s": 60,
+          "max_output_bytes": 1048576,
+          "cell_class": "small"
+        },
+        "grant_digest": "4e8042b942c0a867903abb0d399b114182161169b990217ffab67bb47a815023",
+        "signature": "7e05d675e51f0ab05e7d6be8eb4f22e74e739b32959043a817011789dfdff106ca5700465c305e4a7a376512f0258f386005e4208931f3dab71abef1b577f70e"
+      },
+      "now": "2026-07-29T00:30:00Z",
+      "current_epoch": 3,
+      "verify_key": "production",
+      "call_twice": false,
+      "expected_outcome": "bad-signature",
+      "note": "single-field post-signature mutation of 'effect_set'"
+    },
+    {
+      "name": "tamper-exec_class",
+      "category": "per-field-tamper",
+      "grant": {
+        "grant_schema_version": 1,
+        "grant_id": "1111111111111111111111111111111111111111111111111111111111111111",
+        "lease_id": "lease-c3b-r1-0001",
+        "task_id": "task-0001",
+        "request_id": "req-0001",
+        "issued_at": "2026-07-29T00:00:00Z",
+        "expires_at": "2026-07-29T01:00:00Z",
+        "revocation_epoch": 3,
+        "base_revision": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+        "effect_set": [
+          {
+            "effect": "read",
+            "scope": {
+              "paths": [
+                "work/src/main.py"
+              ],
+              "mode": "read"
+            }
+          },
+          {
+            "effect": "write",
+            "scope": {
+              "paths": [
+                "work/out/result.txt"
+              ],
+              "mode": "write"
+            }
+          }
+        ],
+        "exec_class": "unsandboxed-authorized",
+        "trusted_repo_id": "trusted-repo-0001",
+        "logical_paths": [
+          "work/src",
+          "work/out"
+        ],
+        "resource_limits": {
+          "timeout_s": 60,
+          "max_output_bytes": 1048576,
+          "cell_class": "small"
+        },
+        "grant_digest": "4e8042b942c0a867903abb0d399b114182161169b990217ffab67bb47a815023",
+        "signature": "7e05d675e51f0ab05e7d6be8eb4f22e74e739b32959043a817011789dfdff106ca5700465c305e4a7a376512f0258f386005e4208931f3dab71abef1b577f70e"
+      },
+      "now": "2026-07-29T00:30:00Z",
+      "current_epoch": 3,
+      "verify_key": "production",
+      "call_twice": false,
+      "expected_outcome": "grant-malformed",
+      "note": "single-field post-signature mutation of 'exec_class'"
+    },
+    {
+      "name": "tamper-trusted_repo_id",
+      "category": "per-field-tamper",
+      "grant": {
+        "grant_schema_version": 1,
+        "grant_id": "1111111111111111111111111111111111111111111111111111111111111111",
+        "lease_id": "lease-c3b-r1-0001",
+        "task_id": "task-0001",
+        "request_id": "req-0001",
+        "issued_at": "2026-07-29T00:00:00Z",
+        "expires_at": "2026-07-29T01:00:00Z",
+        "revocation_epoch": 3,
+        "base_revision": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+        "effect_set": [
+          {
+            "effect": "read",
+            "scope": {
+              "paths": [
+                "work/src/main.py"
+              ],
+              "mode": "read"
+            }
+          },
+          {
+            "effect": "write",
+            "scope": {
+              "paths": [
+                "work/out/result.txt"
+              ],
+              "mode": "write"
+            }
+          }
+        ],
+        "exec_class": "sandbox-required",
+        "trusted_repo_id": "   ",
+        "logical_paths": [
+          "work/src",
+          "work/out"
+        ],
+        "resource_limits": {
+          "timeout_s": 60,
+          "max_output_bytes": 1048576,
+          "cell_class": "small"
+        },
+        "grant_digest": "4e8042b942c0a867903abb0d399b114182161169b990217ffab67bb47a815023",
+        "signature": "7e05d675e51f0ab05e7d6be8eb4f22e74e739b32959043a817011789dfdff106ca5700465c305e4a7a376512f0258f386005e4208931f3dab71abef1b577f70e"
+      },
+      "now": "2026-07-29T00:30:00Z",
+      "current_epoch": 3,
+      "verify_key": "production",
+      "call_twice": false,
+      "expected_outcome": "grant-malformed",
+      "note": "single-field post-signature mutation of 'trusted_repo_id'"
+    },
+    {
+      "name": "tamper-logical_paths",
+      "category": "per-field-tamper",
+      "grant": {
+        "grant_schema_version": 1,
+        "grant_id": "1111111111111111111111111111111111111111111111111111111111111111",
+        "lease_id": "lease-c3b-r1-0001",
+        "task_id": "task-0001",
+        "request_id": "req-0001",
+        "issued_at": "2026-07-29T00:00:00Z",
+        "expires_at": "2026-07-29T01:00:00Z",
+        "revocation_epoch": 3,
+        "base_revision": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+        "effect_set": [
+          {
+            "effect": "read",
+            "scope": {
+              "paths": [
+                "work/src/main.py"
+              ],
+              "mode": "read"
+            }
+          },
+          {
+            "effect": "write",
+            "scope": {
+              "paths": [
+                "work/out/result.txt"
+              ],
+              "mode": "write"
+            }
+          }
+        ],
+        "exec_class": "sandbox-required",
+        "trusted_repo_id": "trusted-repo-0001",
+        "logical_paths": [
+          "work/src",
+          "work/out",
+          "work/extra"
+        ],
+        "resource_limits": {
+          "timeout_s": 60,
+          "max_output_bytes": 1048576,
+          "cell_class": "small"
+        },
+        "grant_digest": "4e8042b942c0a867903abb0d399b114182161169b990217ffab67bb47a815023",
+        "signature": "7e05d675e51f0ab05e7d6be8eb4f22e74e739b32959043a817011789dfdff106ca5700465c305e4a7a376512f0258f386005e4208931f3dab71abef1b577f70e"
+      },
+      "now": "2026-07-29T00:30:00Z",
+      "current_epoch": 3,
+      "verify_key": "production",
+      "call_twice": false,
+      "expected_outcome": "bad-signature",
+      "note": "single-field post-signature mutation of 'logical_paths'"
+    },
+    {
+      "name": "tamper-resource_limits",
+      "category": "per-field-tamper",
+      "grant": {
+        "grant_schema_version": 1,
+        "grant_id": "1111111111111111111111111111111111111111111111111111111111111111",
+        "lease_id": "lease-c3b-r1-0001",
+        "task_id": "task-0001",
+        "request_id": "req-0001",
+        "issued_at": "2026-07-29T00:00:00Z",
+        "expires_at": "2026-07-29T01:00:00Z",
+        "revocation_epoch": 3,
+        "base_revision": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+        "effect_set": [
+          {
+            "effect": "read",
+            "scope": {
+              "paths": [
+                "work/src/main.py"
+              ],
+              "mode": "read"
+            }
+          },
+          {
+            "effect": "write",
+            "scope": {
+              "paths": [
+                "work/out/result.txt"
+              ],
+              "mode": "write"
+            }
+          }
+        ],
+        "exec_class": "sandbox-required",
+        "trusted_repo_id": "trusted-repo-0001",
+        "logical_paths": [
+          "work/src",
+          "work/out"
+        ],
+        "resource_limits": {
+          "timeout_s": 60,
+          "max_output_bytes": 1048576
+        },
+        "grant_digest": "4e8042b942c0a867903abb0d399b114182161169b990217ffab67bb47a815023",
+        "signature": "7e05d675e51f0ab05e7d6be8eb4f22e74e739b32959043a817011789dfdff106ca5700465c305e4a7a376512f0258f386005e4208931f3dab71abef1b577f70e"
+      },
+      "now": "2026-07-29T00:30:00Z",
+      "current_epoch": 3,
+      "verify_key": "production",
+      "call_twice": false,
+      "expected_outcome": "grant-malformed",
+      "note": "single-field post-signature mutation of 'resource_limits'"
+    },
+    {
+      "name": "tamper-grant_digest",
+      "category": "per-field-tamper",
+      "grant": {
+        "grant_schema_version": 1,
+        "grant_id": "1111111111111111111111111111111111111111111111111111111111111111",
+        "lease_id": "lease-c3b-r1-0001",
+        "task_id": "task-0001",
+        "request_id": "req-0001",
+        "issued_at": "2026-07-29T00:00:00Z",
+        "expires_at": "2026-07-29T01:00:00Z",
+        "revocation_epoch": 3,
+        "base_revision": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+        "effect_set": [
+          {
+            "effect": "read",
+            "scope": {
+              "paths": [
+                "work/src/main.py"
+              ],
+              "mode": "read"
+            }
+          },
+          {
+            "effect": "write",
+            "scope": {
+              "paths": [
+                "work/out/result.txt"
+              ],
+              "mode": "write"
+            }
+          }
+        ],
+        "exec_class": "sandbox-required",
+        "trusted_repo_id": "trusted-repo-0001",
+        "logical_paths": [
+          "work/src",
+          "work/out"
+        ],
+        "resource_limits": {
+          "timeout_s": 60,
+          "max_output_bytes": 1048576,
+          "cell_class": "small"
+        },
+        "grant_digest": "0000000000000000000000000000000000000000000000000000000000000000",
+        "signature": "7e05d675e51f0ab05e7d6be8eb4f22e74e739b32959043a817011789dfdff106ca5700465c305e4a7a376512f0258f386005e4208931f3dab71abef1b577f70e"
+      },
+      "now": "2026-07-29T00:30:00Z",
+      "current_epoch": 3,
+      "verify_key": "production",
+      "call_twice": false,
+      "expected_outcome": "bad-signature",
+      "note": "single-field post-signature mutation of 'grant_digest'"
+    },
+    {
+      "name": "tamper-signature",
+      "category": "per-field-tamper",
+      "grant": {
+        "grant_schema_version": 1,
+        "grant_id": "1111111111111111111111111111111111111111111111111111111111111111",
+        "lease_id": "lease-c3b-r1-0001",
+        "task_id": "task-0001",
+        "request_id": "req-0001",
+        "issued_at": "2026-07-29T00:00:00Z",
+        "expires_at": "2026-07-29T01:00:00Z",
+        "revocation_epoch": 3,
+        "base_revision": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+        "effect_set": [
+          {
+            "effect": "read",
+            "scope": {
+              "paths": [
+                "work/src/main.py"
+              ],
+              "mode": "read"
+            }
+          },
+          {
+            "effect": "write",
+            "scope": {
+              "paths": [
+                "work/out/result.txt"
+              ],
+              "mode": "write"
+            }
+          }
+        ],
+        "exec_class": "sandbox-required",
+        "trusted_repo_id": "trusted-repo-0001",
+        "logical_paths": [
+          "work/src",
+          "work/out"
+        ],
+        "resource_limits": {
+          "timeout_s": 60,
+          "max_output_bytes": 1048576,
+          "cell_class": "small"
+        },
+        "grant_digest": "4e8042b942c0a867903abb0d399b114182161169b990217ffab67bb47a815023",
+        "signature": "00000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000"
+      },
+      "now": "2026-07-29T00:30:00Z",
+      "current_epoch": 3,
+      "verify_key": "production",
+      "call_twice": false,
+      "expected_outcome": "bad-signature",
+      "note": "single-field post-signature mutation of 'signature'"
+    },
+    {
+      "name": "expired",
+      "category": "freshness",
+      "grant": {
+        "grant_schema_version": 1,
+        "grant_id": "1111111111111111111111111111111111111111111111111111111111111111",
+        "lease_id": "lease-c3b-r1-0001",
+        "task_id": "task-0001",
+        "request_id": "req-0001",
+        "issued_at": "2026-07-29T00:00:00Z",
+        "expires_at": "2026-07-29T01:00:00Z",
+        "revocation_epoch": 3,
+        "base_revision": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+        "effect_set": [
+          {
+            "effect": "read",
+            "scope": {
+              "paths": [
+                "work/src/main.py"
+              ],
+              "mode": "read"
+            }
+          },
+          {
+            "effect": "write",
+            "scope": {
+              "paths": [
+                "work/out/result.txt"
+              ],
+              "mode": "write"
+            }
+          }
+        ],
+        "exec_class": "sandbox-required",
+        "trusted_repo_id": "trusted-repo-0001",
+        "logical_paths": [
+          "work/src",
+          "work/out"
+        ],
+        "resource_limits": {
+          "timeout_s": 60,
+          "max_output_bytes": 1048576,
+          "cell_class": "small"
+        },
+        "grant_digest": "4e8042b942c0a867903abb0d399b114182161169b990217ffab67bb47a815023",
+        "signature": "7e05d675e51f0ab05e7d6be8eb4f22e74e739b32959043a817011789dfdff106ca5700465c305e4a7a376512f0258f386005e4208931f3dab71abef1b577f70e"
+      },
+      "now": "2026-07-29T02:00:00Z",
+      "current_epoch": 3,
+      "verify_key": "production",
+      "call_twice": false,
+      "expected_outcome": "expired",
+      "note": ""
+    },
+    {
+      "name": "not-yet-valid",
+      "category": "freshness",
+      "grant": {
+        "grant_schema_version": 1,
+        "grant_id": "1111111111111111111111111111111111111111111111111111111111111111",
+        "lease_id": "lease-c3b-r1-0001",
+        "task_id": "task-0001",
+        "request_id": "req-0001",
+        "issued_at": "2026-07-29T00:00:00Z",
+        "expires_at": "2026-07-29T01:00:00Z",
+        "revocation_epoch": 3,
+        "base_revision": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+        "effect_set": [
+          {
+            "effect": "read",
+            "scope": {
+              "paths": [
+                "work/src/main.py"
+              ],
+              "mode": "read"
+            }
+          },
+          {
+            "effect": "write",
+            "scope": {
+              "paths": [
+                "work/out/result.txt"
+              ],
+              "mode": "write"
+            }
+          }
+        ],
+        "exec_class": "sandbox-required",
+        "trusted_repo_id": "trusted-repo-0001",
+        "logical_paths": [
+          "work/src",
+          "work/out"
+        ],
+        "resource_limits": {
+          "timeout_s": 60,
+          "max_output_bytes": 1048576,
+          "cell_class": "small"
+        },
+        "grant_digest": "4e8042b942c0a867903abb0d399b114182161169b990217ffab67bb47a815023",
+        "signature": "7e05d675e51f0ab05e7d6be8eb4f22e74e739b32959043a817011789dfdff106ca5700465c305e4a7a376512f0258f386005e4208931f3dab71abef1b577f70e"
+      },
+      "now": "2026-07-28T23:00:00Z",
+      "current_epoch": 3,
+      "verify_key": "production",
+      "call_twice": false,
+      "expected_outcome": "not-yet-valid",
+      "note": ""
+    },
+    {
+      "name": "unknown-schema-version",
+      "category": "schema-version",
+      "grant": {
+        "grant_schema_version": 2,
+        "grant_id": "1111111111111111111111111111111111111111111111111111111111111111",
+        "lease_id": "lease-c3b-r1-0001",
+        "task_id": "task-0001",
+        "request_id": "req-0001",
+        "issued_at": "2026-07-29T00:00:00Z",
+        "expires_at": "2026-07-29T01:00:00Z",
+        "revocation_epoch": 3,
+        "base_revision": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+        "effect_set": [
+          {
+            "effect": "read",
+            "scope": {
+              "paths": [
+                "work/src/main.py"
+              ],
+              "mode": "read"
+            }
+          },
+          {
+            "effect": "write",
+            "scope": {
+              "paths": [
+                "work/out/result.txt"
+              ],
+              "mode": "write"
+            }
+          }
+        ],
+        "exec_class": "sandbox-required",
+        "trusted_repo_id": "trusted-repo-0001",
+        "logical_paths": [
+          "work/src",
+          "work/out"
+        ],
+        "resource_limits": {
+          "timeout_s": 60,
+          "max_output_bytes": 1048576,
+          "cell_class": "small"
+        },
+        "grant_digest": "342bf6b992fc8bbb164ec5d6dd0256b1d4cc114a7d88ec2f3a42e0113736b954",
+        "signature": "2e55382bb809a42f9b59abe8345ccfce869362db8a47b4d9399dc01ed9a03b61335d256e7cee81347bd4524f621a10223aab77ce1fb1e94815acdf1faa28a702"
+      },
+      "now": "2026-07-29T00:30:00Z",
+      "current_epoch": 3,
+      "verify_key": "production",
+      "call_twice": false,
+      "expected_outcome": "unknown-version",
+      "note": ""
+    },
+    {
+      "name": "stale-epoch",
+      "category": "epoch",
+      "grant": {
+        "grant_schema_version": 1,
+        "grant_id": "1111111111111111111111111111111111111111111111111111111111111111",
+        "lease_id": "lease-c3b-r1-0001",
+        "task_id": "task-0001",
+        "request_id": "req-0001",
+        "issued_at": "2026-07-29T00:00:00Z",
+        "expires_at": "2026-07-29T01:00:00Z",
+        "revocation_epoch": 3,
+        "base_revision": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+        "effect_set": [
+          {
+            "effect": "read",
+            "scope": {
+              "paths": [
+                "work/src/main.py"
+              ],
+              "mode": "read"
+            }
+          },
+          {
+            "effect": "write",
+            "scope": {
+              "paths": [
+                "work/out/result.txt"
+              ],
+              "mode": "write"
+            }
+          }
+        ],
+        "exec_class": "sandbox-required",
+        "trusted_repo_id": "trusted-repo-0001",
+        "logical_paths": [
+          "work/src",
+          "work/out"
+        ],
+        "resource_limits": {
+          "timeout_s": 60,
+          "max_output_bytes": 1048576,
+          "cell_class": "small"
+        },
+        "grant_digest": "4e8042b942c0a867903abb0d399b114182161169b990217ffab67bb47a815023",
+        "signature": "7e05d675e51f0ab05e7d6be8eb4f22e74e739b32959043a817011789dfdff106ca5700465c305e4a7a376512f0258f386005e4208931f3dab71abef1b577f70e"
+      },
+      "now": "2026-07-29T00:30:00Z",
+      "current_epoch": 4,
+      "verify_key": "production",
+      "call_twice": false,
+      "expected_outcome": "stale-epoch",
+      "note": ""
+    },
+    {
+      "name": "absent-epoch",
+      "category": "epoch",
+      "grant": {
+        "grant_schema_version": 1,
+        "grant_id": "1111111111111111111111111111111111111111111111111111111111111111",
+        "lease_id": "lease-c3b-r1-0001",
+        "task_id": "task-0001",
+        "request_id": "req-0001",
+        "issued_at": "2026-07-29T00:00:00Z",
+        "expires_at": "2026-07-29T01:00:00Z",
+        "revocation_epoch": 3,
+        "base_revision": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+        "effect_set": [
+          {
+            "effect": "read",
+            "scope": {
+              "paths": [
+                "work/src/main.py"
+              ],
+              "mode": "read"
+            }
+          },
+          {
+            "effect": "write",
+            "scope": {
+              "paths": [
+                "work/out/result.txt"
+              ],
+              "mode": "write"
+            }
+          }
+        ],
+        "exec_class": "sandbox-required",
+        "trusted_repo_id": "trusted-repo-0001",
+        "logical_paths": [
+          "work/src",
+          "work/out"
+        ],
+        "resource_limits": {
+          "timeout_s": 60,
+          "max_output_bytes": 1048576,
+          "cell_class": "small"
+        },
+        "grant_digest": "4e8042b942c0a867903abb0d399b114182161169b990217ffab67bb47a815023",
+        "signature": "7e05d675e51f0ab05e7d6be8eb4f22e74e739b32959043a817011789dfdff106ca5700465c305e4a7a376512f0258f386005e4208931f3dab71abef1b577f70e"
+      },
+      "now": "2026-07-29T00:30:00Z",
+      "current_epoch": null,
+      "verify_key": "production",
+      "call_twice": false,
+      "expected_outcome": "stale-epoch",
+      "note": ""
+    },
+    {
+      "name": "replayed-grant-id",
+      "category": "replay",
+      "grant": {
+        "grant_schema_version": 1,
+        "grant_id": "1111111111111111111111111111111111111111111111111111111111111111",
+        "lease_id": "lease-c3b-r1-0001",
+        "task_id": "task-0001",
+        "request_id": "req-0001",
+        "issued_at": "2026-07-29T00:00:00Z",
+        "expires_at": "2026-07-29T01:00:00Z",
+        "revocation_epoch": 3,
+        "base_revision": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+        "effect_set": [
+          {
+            "effect": "read",
+            "scope": {
+              "paths": [
+                "work/src/main.py"
+              ],
+              "mode": "read"
+            }
+          },
+          {
+            "effect": "write",
+            "scope": {
+              "paths": [
+                "work/out/result.txt"
+              ],
+              "mode": "write"
+            }
+          }
+        ],
+        "exec_class": "sandbox-required",
+        "trusted_repo_id": "trusted-repo-0001",
+        "logical_paths": [
+          "work/src",
+          "work/out"
+        ],
+        "resource_limits": {
+          "timeout_s": 60,
+          "max_output_bytes": 1048576,
+          "cell_class": "small"
+        },
+        "grant_digest": "4e8042b942c0a867903abb0d399b114182161169b990217ffab67bb47a815023",
+        "signature": "7e05d675e51f0ab05e7d6be8eb4f22e74e739b32959043a817011789dfdff106ca5700465c305e4a7a376512f0258f386005e4208931f3dab71abef1b577f70e"
+      },
+      "now": "2026-07-29T00:30:00Z",
+      "current_epoch": 3,
+      "verify_key": "production",
+      "call_twice": true,
+      "expected_outcome": "replayed",
+      "note": ""
+    },
+    {
+      "name": "deny-class-effect-arbitrary-env",
+      "category": "effect-classification",
+      "grant": {
+        "grant_schema_version": 1,
+        "grant_id": "1111111111111111111111111111111111111111111111111111111111111111",
+        "lease_id": "lease-c3b-r1-0001",
+        "task_id": "task-0001",
+        "request_id": "req-0001",
+        "issued_at": "2026-07-29T00:00:00Z",
+        "expires_at": "2026-07-29T01:00:00Z",
+        "revocation_epoch": 3,
+        "base_revision": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+        "effect_set": [
+          {
+            "effect": "arbitrary-env",
+            "scope": {
+              "paths": [
+                "work/src/x"
+              ]
+            }
+          }
+        ],
+        "exec_class": "sandbox-required",
+        "trusted_repo_id": "trusted-repo-0001",
+        "logical_paths": [
+          "work/src",
+          "work/out"
+        ],
+        "resource_limits": {
+          "timeout_s": 60,
+          "max_output_bytes": 1048576,
+          "cell_class": "small"
+        },
+        "grant_digest": "87ee0bf8d47d61e4cc1de96cc38202f296bd60d4f73f5d38fbcfbe481e309985",
+        "signature": "b1874383463bc417dd8fc0c1cd4219b9a7f0507f84990a068b040cee57245eeaaa0c9362a1d9859669d46a84df350bd0fdb3b4bacdf47b7d6aa3039980366205"
+      },
+      "now": "2026-07-29T00:30:00Z",
+      "current_epoch": 3,
+      "verify_key": "production",
+      "call_twice": false,
+      "expected_outcome": "classification-ambiguous",
+      "note": ""
+    },
+    {
+      "name": "deny-class-effect-delegate",
+      "category": "effect-classification",
+      "grant": {
+        "grant_schema_version": 1,
+        "grant_id": "1111111111111111111111111111111111111111111111111111111111111111",
+        "lease_id": "lease-c3b-r1-0001",
+        "task_id": "task-0001",
+        "request_id": "req-0001",
+        "issued_at": "2026-07-29T00:00:00Z",
+        "expires_at": "2026-07-29T01:00:00Z",
+        "revocation_epoch": 3,
+        "base_revision": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+        "effect_set": [
+          {
+            "effect": "delegate",
+            "scope": {
+              "paths": [
+                "work/src/x"
+              ]
+            }
+          }
+        ],
+        "exec_class": "sandbox-required",
+        "trusted_repo_id": "trusted-repo-0001",
+        "logical_paths": [
+          "work/src",
+          "work/out"
+        ],
+        "resource_limits": {
+          "timeout_s": 60,
+          "max_output_bytes": 1048576,
+          "cell_class": "small"
+        },
+        "grant_digest": "3842da802a562086dcf105f0f7a7db17ef313b8d4830c5c4e250ac452aaaa617",
+        "signature": "fefda73e58eb1029b189a175f7f35cd5701cdf3420c58fbe4e584f7305aa21dd2365a9d2fe2995ac1bb015af27afa23bd8a1f895da065cb5d28565a7d9c17f00"
+      },
+      "now": "2026-07-29T00:30:00Z",
+      "current_epoch": 3,
+      "verify_key": "production",
+      "call_twice": false,
+      "expected_outcome": "classification-ambiguous",
+      "note": ""
+    },
+    {
+      "name": "deny-class-effect-device",
+      "category": "effect-classification",
+      "grant": {
+        "grant_schema_version": 1,
+        "grant_id": "1111111111111111111111111111111111111111111111111111111111111111",
+        "lease_id": "lease-c3b-r1-0001",
+        "task_id": "task-0001",
+        "request_id": "req-0001",
+        "issued_at": "2026-07-29T00:00:00Z",
+        "expires_at": "2026-07-29T01:00:00Z",
+        "revocation_epoch": 3,
+        "base_revision": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+        "effect_set": [
+          {
+            "effect": "device",
+            "scope": {
+              "paths": [
+                "work/src/x"
+              ]
+            }
+          }
+        ],
+        "exec_class": "sandbox-required",
+        "trusted_repo_id": "trusted-repo-0001",
+        "logical_paths": [
+          "work/src",
+          "work/out"
+        ],
+        "resource_limits": {
+          "timeout_s": 60,
+          "max_output_bytes": 1048576,
+          "cell_class": "small"
+        },
+        "grant_digest": "7381b0de7868dfd6d7ba94cf11c0ba20b4b1317dcb75900bc4344483282c4f90",
+        "signature": "e7a6625c3d39f728d52d7367e5a61e2509810ed022c7b22426f2d79e4a21651218643561bf8c552f5c22eaa8f1b1f018be040ae0c8400cb5b915fcf686a29006"
+      },
+      "now": "2026-07-29T00:30:00Z",
+      "current_epoch": 3,
+      "verify_key": "production",
+      "call_twice": false,
+      "expected_outcome": "classification-ambiguous",
+      "note": ""
+    },
+    {
+      "name": "deny-class-effect-host-process",
+      "category": "effect-classification",
+      "grant": {
+        "grant_schema_version": 1,
+        "grant_id": "1111111111111111111111111111111111111111111111111111111111111111",
+        "lease_id": "lease-c3b-r1-0001",
+        "task_id": "task-0001",
+        "request_id": "req-0001",
+        "issued_at": "2026-07-29T00:00:00Z",
+        "expires_at": "2026-07-29T01:00:00Z",
+        "revocation_epoch": 3,
+        "base_revision": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+        "effect_set": [
+          {
+            "effect": "host-process",
+            "scope": {
+              "paths": [
+                "work/src/x"
+              ]
+            }
+          }
+        ],
+        "exec_class": "sandbox-required",
+        "trusted_repo_id": "trusted-repo-0001",
+        "logical_paths": [
+          "work/src",
+          "work/out"
+        ],
+        "resource_limits": {
+          "timeout_s": 60,
+          "max_output_bytes": 1048576,
+          "cell_class": "small"
+        },
+        "grant_digest": "0f985f69163a1c1e0715927312680e3c92e28dc4618a9a21ff76a93e42d60c3f",
+        "signature": "778238bcfc9d4e976bb159d58939199c5b2ba4ba461efda9ec4b1c520c237fdb3b896e66b0e9b6895e72a76e912113cbfda735b3ded595f0801e23ddaadda80a"
+      },
+      "now": "2026-07-29T00:30:00Z",
+      "current_epoch": 3,
+      "verify_key": "production",
+      "call_twice": false,
+      "expected_outcome": "classification-ambiguous",
+      "note": ""
+    },
+    {
+      "name": "deny-class-effect-mount",
+      "category": "effect-classification",
+      "grant": {
+        "grant_schema_version": 1,
+        "grant_id": "1111111111111111111111111111111111111111111111111111111111111111",
+        "lease_id": "lease-c3b-r1-0001",
+        "task_id": "task-0001",
+        "request_id": "req-0001",
+        "issued_at": "2026-07-29T00:00:00Z",
+        "expires_at": "2026-07-29T01:00:00Z",
+        "revocation_epoch": 3,
+        "base_revision": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+        "effect_set": [
+          {
+            "effect": "mount",
+            "scope": {
+              "paths": [
+                "work/src/x"
+              ]
+            }
+          }
+        ],
+        "exec_class": "sandbox-required",
+        "trusted_repo_id": "trusted-repo-0001",
+        "logical_paths": [
+          "work/src",
+          "work/out"
+        ],
+        "resource_limits": {
+          "timeout_s": 60,
+          "max_output_bytes": 1048576,
+          "cell_class": "small"
+        },
+        "grant_digest": "7c20da32033e139179b24c3c0677c4c275c82a36500eb3fe8b3d795604f7e4ad",
+        "signature": "ee7ee5f37f281e6f78c79f181a340ed65f3727bb9826610b2782167d2356c19ea0c4f1ed51a8a4b86af6237b4e2efacf64e7b1cdd97b0b52cd575edccfe47c07"
+      },
+      "now": "2026-07-29T00:30:00Z",
+      "current_epoch": 3,
+      "verify_key": "production",
+      "call_twice": false,
+      "expected_outcome": "classification-ambiguous",
+      "note": ""
+    },
+    {
+      "name": "deny-class-effect-network",
+      "category": "effect-classification",
+      "grant": {
+        "grant_schema_version": 1,
+        "grant_id": "1111111111111111111111111111111111111111111111111111111111111111",
+        "lease_id": "lease-c3b-r1-0001",
+        "task_id": "task-0001",
+        "request_id": "req-0001",
+        "issued_at": "2026-07-29T00:00:00Z",
+        "expires_at": "2026-07-29T01:00:00Z",
+        "revocation_epoch": 3,
+        "base_revision": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+        "effect_set": [
+          {
+            "effect": "network",
+            "scope": {
+              "paths": [
+                "work/src/x"
+              ]
+            }
+          }
+        ],
+        "exec_class": "sandbox-required",
+        "trusted_repo_id": "trusted-repo-0001",
+        "logical_paths": [
+          "work/src",
+          "work/out"
+        ],
+        "resource_limits": {
+          "timeout_s": 60,
+          "max_output_bytes": 1048576,
+          "cell_class": "small"
+        },
+        "grant_digest": "762e5fd44254f699553668815dab42e8aec632ad32f65b2d6f970e4f2e5291c6",
+        "signature": "0356fa314dffae5519204e49cab07f49c9448dec122931d72e9179872ce97653adeb6cb15f7446b5d11c0b280ee8e43ed5183e4b90e7c6e7861d65a28a377f07"
+      },
+      "now": "2026-07-29T00:30:00Z",
+      "current_epoch": 3,
+      "verify_key": "production",
+      "call_twice": false,
+      "expected_outcome": "classification-ambiguous",
+      "note": ""
+    },
+    {
+      "name": "deny-class-effect-privilege",
+      "category": "effect-classification",
+      "grant": {
+        "grant_schema_version": 1,
+        "grant_id": "1111111111111111111111111111111111111111111111111111111111111111",
+        "lease_id": "lease-c3b-r1-0001",
+        "task_id": "task-0001",
+        "request_id": "req-0001",
+        "issued_at": "2026-07-29T00:00:00Z",
+        "expires_at": "2026-07-29T01:00:00Z",
+        "revocation_epoch": 3,
+        "base_revision": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+        "effect_set": [
+          {
+            "effect": "privilege",
+            "scope": {
+              "paths": [
+                "work/src/x"
+              ]
+            }
+          }
+        ],
+        "exec_class": "sandbox-required",
+        "trusted_repo_id": "trusted-repo-0001",
+        "logical_paths": [
+          "work/src",
+          "work/out"
+        ],
+        "resource_limits": {
+          "timeout_s": 60,
+          "max_output_bytes": 1048576,
+          "cell_class": "small"
+        },
+        "grant_digest": "3ccc5137dcbe8ac4ce2815f4ccad7841d30def308cc183e1281cbadb9c8fada6",
+        "signature": "a606233082ac84cbb4f3f6faa380502bbb26cd63d98f29a90e2a5f91d82920774c73ec9d12819a1caeb16f1d7a36f18715907ea37bc521466967d27ff49b5509"
+      },
+      "now": "2026-07-29T00:30:00Z",
+      "current_epoch": 3,
+      "verify_key": "production",
+      "call_twice": false,
+      "expected_outcome": "classification-ambiguous",
+      "note": ""
+    },
+    {
+      "name": "deny-class-effect-secret",
+      "category": "effect-classification",
+      "grant": {
+        "grant_schema_version": 1,
+        "grant_id": "1111111111111111111111111111111111111111111111111111111111111111",
+        "lease_id": "lease-c3b-r1-0001",
+        "task_id": "task-0001",
+        "request_id": "req-0001",
+        "issued_at": "2026-07-29T00:00:00Z",
+        "expires_at": "2026-07-29T01:00:00Z",
+        "revocation_epoch": 3,
+        "base_revision": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+        "effect_set": [
+          {
+            "effect": "secret",
+            "scope": {
+              "paths": [
+                "work/src/x"
+              ]
+            }
+          }
+        ],
+        "exec_class": "sandbox-required",
+        "trusted_repo_id": "trusted-repo-0001",
+        "logical_paths": [
+          "work/src",
+          "work/out"
+        ],
+        "resource_limits": {
+          "timeout_s": 60,
+          "max_output_bytes": 1048576,
+          "cell_class": "small"
+        },
+        "grant_digest": "a425969aaeed0bf2c87668354eaa2f4f2f317d8046336b84c72018a4e19c23bd",
+        "signature": "dcbd7eb59a990e020f189498ce6cbd8708fefe0d702e4843bfd6a597af768fdac526104d910fbe356302bf2d8f00530df191b27e016e0ee879ae17fd1f8ce201"
+      },
+      "now": "2026-07-29T00:30:00Z",
+      "current_epoch": 3,
+      "verify_key": "production",
+      "call_twice": false,
+      "expected_outcome": "classification-ambiguous",
+      "note": ""
+    },
+    {
+      "name": "contradictory-effect-write-on-read-scope",
+      "category": "effect-classification",
+      "grant": {
+        "grant_schema_version": 1,
+        "grant_id": "1111111111111111111111111111111111111111111111111111111111111111",
+        "lease_id": "lease-c3b-r1-0001",
+        "task_id": "task-0001",
+        "request_id": "req-0001",
+        "issued_at": "2026-07-29T00:00:00Z",
+        "expires_at": "2026-07-29T01:00:00Z",
+        "revocation_epoch": 3,
+        "base_revision": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+        "effect_set": [
+          {
+            "effect": "write",
+            "scope": {
+              "paths": [
+                "work/out/result.txt"
+              ],
+              "mode": "read"
+            }
+          }
+        ],
+        "exec_class": "sandbox-required",
+        "trusted_repo_id": "trusted-repo-0001",
+        "logical_paths": [
+          "work/src",
+          "work/out"
+        ],
+        "resource_limits": {
+          "timeout_s": 60,
+          "max_output_bytes": 1048576,
+          "cell_class": "small"
+        },
+        "grant_digest": "b9f59bea6f13f02ff41e0bd6fdf37a1b5d6b08b642a732e065956523ec2d80ff",
+        "signature": "6dc8a835d85d9315d0ca36d280e13ab3302aecf5c438ae6dbf3dbc1c5b942b04d3af4a53ab7aee3123dcea363245dabb91d1d4dcd74735e936076cba5c1bac03"
+      },
+      "now": "2026-07-29T00:30:00Z",
+      "current_epoch": 3,
+      "verify_key": "production",
+      "call_twice": false,
+      "expected_outcome": "classification-ambiguous",
+      "note": ""
+    },
+    {
+      "name": "duplicated-effect",
+      "category": "effect-classification",
+      "grant": {
+        "grant_schema_version": 1,
+        "grant_id": "1111111111111111111111111111111111111111111111111111111111111111",
+        "lease_id": "lease-c3b-r1-0001",
+        "task_id": "task-0001",
+        "request_id": "req-0001",
+        "issued_at": "2026-07-29T00:00:00Z",
+        "expires_at": "2026-07-29T01:00:00Z",
+        "revocation_epoch": 3,
+        "base_revision": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+        "effect_set": [
+          {
+            "effect": "read",
+            "scope": {
+              "paths": [
+                "work/src/a.py"
+              ],
+              "mode": "read"
+            }
+          },
+          {
+            "effect": "read",
+            "scope": {
+              "paths": [
+                "work/src/b.py"
+              ],
+              "mode": "read"
+            }
+          }
+        ],
+        "exec_class": "sandbox-required",
+        "trusted_repo_id": "trusted-repo-0001",
+        "logical_paths": [
+          "work/src",
+          "work/out"
+        ],
+        "resource_limits": {
+          "timeout_s": 60,
+          "max_output_bytes": 1048576,
+          "cell_class": "small"
+        },
+        "grant_digest": "5d5d9b431f46ebda622c846383d9f1ca72e995be671172e09d547add162b0ce3",
+        "signature": "a5039c0528705e9934cf0c6d4d3f9b006b8815bc31d95586a9ce3ac66a31c9cae00bd99ed8e6b107b81e1856343f80fdb2dcdbf878f324b1a8c93255e3002506"
+      },
+      "now": "2026-07-29T00:30:00Z",
+      "current_epoch": 3,
+      "verify_key": "production",
+      "call_twice": false,
+      "expected_outcome": "classification-ambiguous",
+      "note": ""
+    },
+    {
+      "name": "unknown-effect",
+      "category": "effect-classification",
+      "grant": {
+        "grant_schema_version": 1,
+        "grant_id": "1111111111111111111111111111111111111111111111111111111111111111",
+        "lease_id": "lease-c3b-r1-0001",
+        "task_id": "task-0001",
+        "request_id": "req-0001",
+        "issued_at": "2026-07-29T00:00:00Z",
+        "expires_at": "2026-07-29T01:00:00Z",
+        "revocation_epoch": 3,
+        "base_revision": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+        "effect_set": [
+          {
+            "effect": "totally-unknown-effect",
+            "scope": {
+              "paths": [
+                "work/src/a.py"
+              ]
+            }
+          }
+        ],
+        "exec_class": "sandbox-required",
+        "trusted_repo_id": "trusted-repo-0001",
+        "logical_paths": [
+          "work/src",
+          "work/out"
+        ],
+        "resource_limits": {
+          "timeout_s": 60,
+          "max_output_bytes": 1048576,
+          "cell_class": "small"
+        },
+        "grant_digest": "3545637e0466bf72cab71f67c664814217b51c5a13cf51a24acf47608c06cdad",
+        "signature": "c4a002d63815a4ea97f883a6915fc52b525470d3f8a21f155feb85239cf3deb45c5b49216bef53b6fddd4d9aca4411883e49a2efd98ef6229f3a70954f85b40a"
+      },
+      "now": "2026-07-29T00:30:00Z",
+      "current_epoch": 3,
+      "verify_key": "production",
+      "call_twice": false,
+      "expected_outcome": "classification-ambiguous",
+      "note": ""
+    },
+    {
+      "name": "path-escape-absolute",
+      "category": "path-classification",
+      "grant": {
+        "grant_schema_version": 1,
+        "grant_id": "1111111111111111111111111111111111111111111111111111111111111111",
+        "lease_id": "lease-c3b-r1-0001",
+        "task_id": "task-0001",
+        "request_id": "req-0001",
+        "issued_at": "2026-07-29T00:00:00Z",
+        "expires_at": "2026-07-29T01:00:00Z",
+        "revocation_epoch": 3,
+        "base_revision": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+        "effect_set": [
+          {
+            "effect": "read",
+            "scope": {
+              "paths": [
+                "/etc/passwd"
+              ],
+              "mode": "read"
+            }
+          }
+        ],
+        "exec_class": "sandbox-required",
+        "trusted_repo_id": "trusted-repo-0001",
+        "logical_paths": [
+          "work/src"
+        ],
+        "resource_limits": {
+          "timeout_s": 60,
+          "max_output_bytes": 1048576,
+          "cell_class": "small"
+        },
+        "grant_digest": "e1793d8f6d61998580868a10e3814479d93a35865bab7be17178df1095047e36",
+        "signature": "338b84cfebb153fd299d56536f829ac9ae51b3c457fd6179d94d91538b5add10ee5a6c72d18fd4d6a41de7283128ff809dce9e388141219c3d01ebd337dfb604"
+      },
+      "now": "2026-07-29T00:30:00Z",
+      "current_epoch": 3,
+      "verify_key": "production",
+      "call_twice": false,
+      "expected_outcome": "path-invalid",
+      "note": ""
+    },
+    {
+      "name": "path-escape-traversal",
+      "category": "path-classification",
+      "grant": {
+        "grant_schema_version": 1,
+        "grant_id": "1111111111111111111111111111111111111111111111111111111111111111",
+        "lease_id": "lease-c3b-r1-0001",
+        "task_id": "task-0001",
+        "request_id": "req-0001",
+        "issued_at": "2026-07-29T00:00:00Z",
+        "expires_at": "2026-07-29T01:00:00Z",
+        "revocation_epoch": 3,
+        "base_revision": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+        "effect_set": [
+          {
+            "effect": "read",
+            "scope": {
+              "paths": [
+                "work/src/../../etc/passwd"
+              ],
+              "mode": "read"
+            }
+          }
+        ],
+        "exec_class": "sandbox-required",
+        "trusted_repo_id": "trusted-repo-0001",
+        "logical_paths": [
+          "work/src"
+        ],
+        "resource_limits": {
+          "timeout_s": 60,
+          "max_output_bytes": 1048576,
+          "cell_class": "small"
+        },
+        "grant_digest": "6cdbf3c8f08d2bcb9b867b46abf4f364f0e3bb6276ae3fdd142249fcc9a411c4",
+        "signature": "d129ee03a7828045a034bbb0c0c0d1ecf6ce1068fe64b0224bac4b74da7dc3e154097b568b3cac9b304231b7214a3cb87f360ea40003bd4610cbc395eda26f0f"
+      },
+      "now": "2026-07-29T00:30:00Z",
+      "current_epoch": 3,
+      "verify_key": "production",
+      "call_twice": false,
+      "expected_outcome": "path-invalid",
+      "note": ""
+    },
+    {
+      "name": "path-escape-symlink-marker-backslash",
+      "category": "path-classification",
+      "grant": {
+        "grant_schema_version": 1,
+        "grant_id": "1111111111111111111111111111111111111111111111111111111111111111",
+        "lease_id": "lease-c3b-r1-0001",
+        "task_id": "task-0001",
+        "request_id": "req-0001",
+        "issued_at": "2026-07-29T00:00:00Z",
+        "expires_at": "2026-07-29T01:00:00Z",
+        "revocation_epoch": 3,
+        "base_revision": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+        "effect_set": [
+          {
+            "effect": "read",
+            "scope": {
+              "paths": [
+                "work\\src\\evil.py"
+              ],
+              "mode": "read"
+            }
+          }
+        ],
+        "exec_class": "sandbox-required",
+        "trusted_repo_id": "trusted-repo-0001",
+        "logical_paths": [
+          "work/src"
+        ],
+        "resource_limits": {
+          "timeout_s": 60,
+          "max_output_bytes": 1048576,
+          "cell_class": "small"
+        },
+        "grant_digest": "4f55d10650a05f91c91c71231b087e08fb11d184604a6ce6add154e614f45b70",
+        "signature": "ce4043419f9c8db40d348e1e1c41202f9763ba2df3cc7e6135f303ddf6ac4c3bfc4408a9f9102de9d668e6f0413e503d2a21e2482635fa8cdee9a2d20575f301"
+      },
+      "now": "2026-07-29T00:30:00Z",
+      "current_epoch": 3,
+      "verify_key": "production",
+      "call_twice": false,
+      "expected_outcome": "path-invalid",
+      "note": ""
+    },
+    {
+      "name": "path-escape-nul-byte",
+      "category": "path-classification",
+      "grant": {
+        "grant_schema_version": 1,
+        "grant_id": "1111111111111111111111111111111111111111111111111111111111111111",
+        "lease_id": "lease-c3b-r1-0001",
+        "task_id": "task-0001",
+        "request_id": "req-0001",
+        "issued_at": "2026-07-29T00:00:00Z",
+        "expires_at": "2026-07-29T01:00:00Z",
+        "revocation_epoch": 3,
+        "base_revision": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+        "effect_set": [
+          {
+            "effect": "read",
+            "scope": {
+              "paths": [
+                "work/src/\u0000evil.py"
+              ],
+              "mode": "read"
+            }
+          }
+        ],
+        "exec_class": "sandbox-required",
+        "trusted_repo_id": "trusted-repo-0001",
+        "logical_paths": [
+          "work/src"
+        ],
+        "resource_limits": {
+          "timeout_s": 60,
+          "max_output_bytes": 1048576,
+          "cell_class": "small"
+        },
+        "grant_digest": "69684fa6c90b283cb8505408d6b0e8290b76667f85a2e3de1c8d8161a2051380",
+        "signature": "77dd48b05524cdfbaf69fe104fc9d00c16e74539d21ef21490d6bdfdbe548819314f902dd0339eab267c9dece670a2871d8ea5aa04be8b8ff502691c3b348103"
+      },
+      "now": "2026-07-29T00:30:00Z",
+      "current_epoch": 3,
+      "verify_key": "production",
+      "call_twice": false,
+      "expected_outcome": "path-invalid",
+      "note": ""
+    },
+    {
+      "name": "path-escape-non-nfc",
+      "category": "path-classification",
+      "grant": {
+        "grant_schema_version": 1,
+        "grant_id": "1111111111111111111111111111111111111111111111111111111111111111",
+        "lease_id": "lease-c3b-r1-0001",
+        "task_id": "task-0001",
+        "request_id": "req-0001",
+        "issued_at": "2026-07-29T00:00:00Z",
+        "expires_at": "2026-07-29T01:00:00Z",
+        "revocation_epoch": 3,
+        "base_revision": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+        "effect_set": [
+          {
+            "effect": "read",
+            "scope": {
+              "paths": [
+                "work/src/e\u0301vil.py"
+              ],
+              "mode": "read"
+            }
+          }
+        ],
+        "exec_class": "sandbox-required",
+        "trusted_repo_id": "trusted-repo-0001",
+        "logical_paths": [
+          "work/src"
+        ],
+        "resource_limits": {
+          "timeout_s": 60,
+          "max_output_bytes": 1048576,
+          "cell_class": "small"
+        },
+        "grant_digest": "e185b7b001c52ba3f62930e43a8c8889150f02c6599cffa194eb6b1fe8512e21",
+        "signature": "327f964805a7bb0356e9f9651e66cf82597865657b115ad1fcb152aef1c5ed73b1e6d1fbb1945d8de7707c493f6409f77c34aadcdec589e9312d16385e31eb00"
+      },
+      "now": "2026-07-29T00:30:00Z",
+      "current_epoch": 3,
+      "verify_key": "production",
+      "call_twice": false,
+      "expected_outcome": "path-invalid",
+      "note": ""
+    },
+    {
+      "name": "path-escape-casefold-collision",
+      "category": "path-classification",
+      "grant": {
+        "grant_schema_version": 1,
+        "grant_id": "1111111111111111111111111111111111111111111111111111111111111111",
+        "lease_id": "lease-c3b-r1-0001",
+        "task_id": "task-0001",
+        "request_id": "req-0001",
+        "issued_at": "2026-07-29T00:00:00Z",
+        "expires_at": "2026-07-29T01:00:00Z",
+        "revocation_epoch": 3,
+        "base_revision": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+        "effect_set": [
+          {
+            "effect": "read",
+            "scope": {
+              "paths": [
+                "work/src/File.py",
+                "work/src/file.py"
+              ],
+              "mode": "read"
+            }
+          }
+        ],
+        "exec_class": "sandbox-required",
+        "trusted_repo_id": "trusted-repo-0001",
+        "logical_paths": [
+          "work/src"
+        ],
+        "resource_limits": {
+          "timeout_s": 60,
+          "max_output_bytes": 1048576,
+          "cell_class": "small"
+        },
+        "grant_digest": "ad63341d87d5944fa96e215d51ea33900c048c31c9af61d3aee106fd71360ab7",
+        "signature": "d10d96d873b9cca7fe508e80aaa1ff441bc7bc796c29f15e3c70244af6000c2e75a60a09dca00431f18af4cf75b96adc3818bf1b857ce3f9d6e13a38a8bb1f0b"
+      },
+      "now": "2026-07-29T00:30:00Z",
+      "current_epoch": 3,
+      "verify_key": "production",
+      "call_twice": false,
+      "expected_outcome": "path-invalid",
+      "note": ""
+    },
+    {
+      "name": "path-escape-prefix-not-containment",
+      "category": "path-classification",
+      "grant": {
+        "grant_schema_version": 1,
+        "grant_id": "1111111111111111111111111111111111111111111111111111111111111111",
+        "lease_id": "lease-c3b-r1-0001",
+        "task_id": "task-0001",
+        "request_id": "req-0001",
+        "issued_at": "2026-07-29T00:00:00Z",
+        "expires_at": "2026-07-29T01:00:00Z",
+        "revocation_epoch": 3,
+        "base_revision": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+        "effect_set": [
+          {
+            "effect": "read",
+            "scope": {
+              "paths": [
+                "work/bc/thing.py"
+              ],
+              "mode": "read"
+            }
+          }
+        ],
+        "exec_class": "sandbox-required",
+        "trusted_repo_id": "trusted-repo-0001",
+        "logical_paths": [
+          "work/b"
+        ],
+        "resource_limits": {
+          "timeout_s": 60,
+          "max_output_bytes": 1048576,
+          "cell_class": "small"
+        },
+        "grant_digest": "a08252bcdb7675d1f08960f037e096ffe1d383d9bc6ac452cff093a319a06135",
+        "signature": "377dfbaac4ce354e0c8b211597293c9f65d308b9d753f2f30173f404602337c518894dd6260517ea6cf7d0b90b097250a2f5fb0663dfe7a24f3d1dacd85ba101"
+      },
+      "now": "2026-07-29T00:30:00Z",
+      "current_epoch": 3,
+      "verify_key": "production",
+      "call_twice": false,
+      "expected_outcome": "path-invalid",
+      "note": ""
+    },
+    {
+      "name": "dev-key-signed-verified-against-production-key",
+      "category": "key-separation",
+      "grant": {
+        "grant_schema_version": 1,
+        "grant_id": "1111111111111111111111111111111111111111111111111111111111111111",
+        "lease_id": "lease-c3b-r1-0001",
+        "task_id": "task-0001",
+        "request_id": "req-0001",
+        "issued_at": "2026-07-29T00:00:00Z",
+        "expires_at": "2026-07-29T01:00:00Z",
+        "revocation_epoch": 3,
+        "base_revision": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+        "effect_set": [
+          {
+            "effect": "read",
+            "scope": {
+              "paths": [
+                "work/src/main.py"
+              ],
+              "mode": "read"
+            }
+          },
+          {
+            "effect": "write",
+            "scope": {
+              "paths": [
+                "work/out/result.txt"
+              ],
+              "mode": "write"
+            }
+          }
+        ],
+        "exec_class": "sandbox-required",
+        "trusted_repo_id": "trusted-repo-0001",
+        "logical_paths": [
+          "work/src",
+          "work/out"
+        ],
+        "resource_limits": {
+          "timeout_s": 60,
+          "max_output_bytes": 1048576,
+          "cell_class": "small"
+        },
+        "grant_digest": "4e8042b942c0a867903abb0d399b114182161169b990217ffab67bb47a815023",
+        "signature": "77be86c1adde84bcdcfd8030c72cfa849b4c2490ec6dd12671a5cad04bd22f4dff549af2ed19053eb06fb4fc6289175ae0ebaf554f0572d95455b762c251e60c"
+      },
+      "now": "2026-07-29T00:30:00Z",
+      "current_epoch": 3,
+      "verify_key": "production",
+      "call_twice": false,
+      "expected_outcome": "bad-signature",
+      "note": "grant genuinely signed with a DEV/test key; verified against the PRODUCTION public key"
+    }
+  ]
+}

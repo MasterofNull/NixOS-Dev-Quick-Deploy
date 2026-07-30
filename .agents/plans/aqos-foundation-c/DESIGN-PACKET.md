@@ -182,6 +182,17 @@ C2→C3b turn on enforcement behind flags (each revocable the moment it enforces
 complete. Each slice independently reviewable + offline-first + flag-gated default-off;
 local (Qwen) engaged every slice per never-skip-local.
 
+> **RESEQUENCE 2026-07-29 (owner-ratified).** The C3a effect-broker design went through 3 codex
+> binding review rounds (`codex-20260729-171430/-172222/-173023`) which proved that **in-process
+> effect-brokering cannot safely precede the confinement substrate**: nearly every current tool
+> handler performs network (needs C4 profiles) or subprocess (needs C3b bwrap cells) effects, and
+> `config/first-party-tools.json`'s effect classes are materially inaccurate vs the real handlers.
+> New order: **C2 (done) → C3b (execution cells) → C4 (network profiles) → effect brokers
+> (formerly C3a, now the capstone, on top of confinement + profiles) → C5 → C6.** The C3a design
+> work is retained (`C3A-1-…`, `C3A-2-…`, superseded combined `C3A-…`) with all codex findings
+> preserved; brokering resumes once cells + profiles exist and an accurate signed per-handler
+> effect inventory replaces the manifest guesses.
+
 ## 9. Activation & risk (Rule 15)
 
 - **Definition of done per slice:** integrated (live path consults the lease) + ON (flag
