@@ -1,0 +1,73 @@
+{
+  "schema_version": "1.0",
+  "round_id": "b1-parity-design-review",
+  "state": "COLLECTED",
+  "task": {
+    "prompt": "INDEPENDENT DESIGN REVIEW of the Foundation B1 chat/batch parity (shadow) design packet (inlined). Rule on: (1) is this genuinely DISTINCT from L2B-B — i.e. the cross-adapter equivalence PROOF the PRD gates L3/L4 on, not already done? (2) §6.1 — batch uses importable build_llama_payload but aq-chat's builders are class methods on a different coordinator/switchboard path; is 'harness-drive aq-chat with stubbed I/O' feasible at a 2-file ceiling, or is a thin aq-chat builder extraction a required prerequisite slice? (3) which chat-SSE vs batch-buffered streaming differences are contract-legitimate vs true divergences the oracle must fail on? (4) offline oracle vs live-shadow for the B1-exit item? Write your verdict to .agents/plans/b1-parity-design-review/<AGENT>.md. Be decisive; terminal VERDICT: APPROVE-FOR-AUTHORIZATION | REVISE — reason.",
+    "target": ".agents/plans/local-inference-b1-parity/CHAT-BATCH-PARITY-DESIGN-PACKET.md",
+    "scope_files": []
+  },
+  "opened_at": "2026-07-23T23:39:44Z",
+  "quorum_policy": {
+    "min_lanes": 2,
+    "required_agents": [],
+    "late_local_admissible": true,
+    "timeout_seconds": null,
+    "deadline": null,
+    "timeout_action": "lock_with_present"
+  },
+  "lanes": [
+    {
+      "agent": "claude",
+      "dispatch_id": null,
+      "idempotency_hash": "ede9681954487432209a32b2813cb7e6d0d39c210586a1e31481bdf829ab0154",
+      "status": "pending",
+      "landed_at": null
+    },
+    {
+      "agent": "codex",
+      "dispatch_id": null,
+      "idempotency_hash": "1f7a556ce4dd09db31f1952beff6dca09684df8aa29ee8ee95ce0c5bbbcfb748",
+      "status": "submitted",
+      "landed_at": null
+    },
+    {
+      "agent": "local",
+      "dispatch_id": null,
+      "idempotency_hash": "b1691f04ca86f9bb14ac9fe0b8de956ea314d901b75e40ecb12728a4234097db",
+      "status": "submitted",
+      "landed_at": null
+    },
+    {
+      "agent": "antigravity",
+      "dispatch_id": null,
+      "idempotency_hash": "ba4fe96d8eb53f50a03ef7ab1662e0d39cb35a304af6237e4112158ac45517d2",
+      "status": "pending",
+      "landed_at": null
+    }
+  ],
+  "contributions": {},
+  "conflicts": [],
+  "consensus_hash": null,
+  "aggregate_path": null,
+  "aggregate_hash": null,
+  "locked_at": null,
+  "history": [
+    {
+      "transition": "CREATED->DISPATCHED",
+      "timestamp": "2026-07-23T23:39:44Z",
+      "actor": "aq-collab-round"
+    },
+    {
+      "transition": "DISPATCHED->CONTRIBUTING",
+      "timestamp": "2026-07-24T00:04:19Z",
+      "actor": "aq-collab-round"
+    },
+    {
+      "transition": "CONTRIBUTING->COLLECTED",
+      "timestamp": "2026-07-24T00:04:19Z",
+      "actor": "aq-collab-round"
+    }
+  ],
+  "predecessor_round_id": null
+}

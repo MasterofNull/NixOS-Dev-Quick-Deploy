@@ -1,0 +1,49 @@
+# A2A task for antigravity — round 'c4-review'
+
+Dropped: 2026-07-30T16:03:22Z
+Output: .agents/plans/c4-review/antigravity.md
+
+Respond by writing `.agents/plans/c4-review/antigravity.md`.
+
+## SCOPE & STOP (HARD — read before writing)
+- Edit ONLY the files this task names as surfaces. A related-looking file is still out of scope.
+- NEVER implement a data/config change as a filesystem shortcut: no symlink, bind mount, mount,
+  chmod/chown/rm on tracked or runtime paths. 'Single source of truth' = a resolver in code,
+  never one directory replacing/redirecting another.
+- NO DELETE — archive to a timestamped path; never rm/rmdir.
+- If this task references an authorization/round: confirm it still reads AUTHORIZED and (where a
+  package root is named) that `aq-package-freeze verify` exits 0 BEFORE writing. If suspended,
+  STOP — do not recreate or continue suspended files.
+- Undeclared dependency discovered -> STOP and report; do not expand scope to 'make it work'.
+- Budgets/acceptance criteria are hard facts: a measured violation FAILS; a sentence calling it
+  'acceptable' does not change the number. Report the real value.
+- Write ONLY your own named output file. Do NOT edit shared files. Do NOT commit.
+- When unsure whether something is in scope: it is not. Report, do not act.
+
+COLLABORATIVE ROUND 'c4-review'.
+Review artifact: .agents/plans/aqos-foundation-c/ (read it).
+TASK:
+ROLE: independent binding DESIGN reviewer for Foundation C slice C4 (network profiles / connected
+zero trust). Read-only. DESIGN review. ENFORCEMENT-TIER (build needs owner activation). Highest bar.
+Substitute for codex (down to Aug-4; confirmatory on return). VERIFY against real code/system.
+READ: .agents/plans/aqos-foundation-c/C4-DESIGN-AND-AUTHORIZATION.md; the C3b runner it extends
+(ai-stack/switchboard/execution_cell_runner.py — bwrap --unshare-net); DESIGN-PACKET.md §5; ports in
+nix/modules/core/options.nix. GROUND: confirm slirp4netns/pasta absent + nft present + runner has
+empty caps (the §2 constraint the whole design rests on).
+JUDGE (§9): 1. the cell truly has ZERO ambient net (--unshare-net retained); the egress-broker UDS is
+the SOLE egress; NO fail-open. Is the broker-over-UDS mechanism sound given no slirp4netns, or is
+there a hole? 2. threat pass soundness — is the closed 6-profile set {local-inference:8080,
+embed:8081, coordinator:8003, AIDB:8002+Qdrant:6333, switchboard-remote-OAuth:443, MCP-github:443}
+correct? Are the COLLAPSES right (A2A-inbox=file/no-net, telemetry=local/no-net) and the DEFER right
+(playwright broad egress != closed profile)? Is any wildcard/broad egress representable (must not be)?
+3. NO API key handled/forwarded; NO silent alternate-provider (OpenRouter) reroute; switchboard-remote
+allows ONLY the intended provider host; OAuth/gh use their OWN sessions (broker gates host:port+TLS
+only, never injects a credential). 4. signed-profile authoritative; config/network-profiles.json
+compare-only DENY (never grant); subset attenuation. 5. broker hardening (empty caps,
+RestrictAddressFamilies, egress-logging) + runner/switchboard byte-parity + flag default-OFF. 6.
+deny-closed on policy/key-unavailable; egress audit low-cardinality/secret-free. Weigh Q-C4-1..4.
+Any NEW fail-open, ambient-net leak, key leak, or reroute?
+OUTPUT: `VERDICT: PASS`/`FAIL`/`REQUEST_REVISION` line 1, then findings by severity + §ref + fix, +
+Q-C4-1..4 verdicts. No outcome authorizes build or activation.
+
+Write your contribution to YOUR OWN file ONLY: .agents/plans/c4-review/<AGENT>.md (<AGENT> = codex | local | antigravity). Do NOT edit any shared file. Do NOT read the artifact file (it is inlined above). Be decisive and concise.

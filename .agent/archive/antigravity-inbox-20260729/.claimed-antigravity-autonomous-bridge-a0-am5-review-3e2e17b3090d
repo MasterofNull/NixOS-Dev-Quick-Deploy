@@ -1,0 +1,33 @@
+# A2A task for Antigravity — Autonomous Bridge A0-AM5 acceptance
+
+Dropped: 2026-07-29T11:34:30Z
+
+Respond by writing only:
+`.agents/plans/antigravity-autonomous-bridge/antigravity-am5-acceptance.md`
+
+## Role and boundary
+
+Act as an independent flagship architecture, security, SRE, concurrency, and
+governance reviewer. Read only. Do not edit candidate/shared files, route agents,
+stage, commit, deploy, or invoke other providers.
+
+## Exact subject
+
+- `.agents/plans/antigravity-autonomous-bridge/A0-DESIGN-PACKET.md`
+- `scripts/ai/aq-antigravity-inbox`
+  SHA-256 `b836cd26cadec4a9b727add1b87895346c950d1697ebef47151bd14c57fac96b`
+- `scripts/testing/test-antigravity-claim-receipt.py`
+  SHA-256 `8a12361e536d77db04a47d2edb4672745125e47160b7874e4d6e39d036955528`
+- `scripts/testing/test-antigravity-inbox.py`
+  SHA-256 `452b375280be642831fbfe0bef5904b96e36503a4b59be0819902d11e1870296`
+
+Verify hashes first. Review metadata-only claim-first execution, fixed argv,
+generation/output binding, no-follow receipt safety, two-phase wake reservation,
+concurrency and stale reservation budget, parked eligibility, machine JSON,
+generation-unique archives, UTC-midnight and owner-recovery crash reconciliation,
+and forged claim/prepared rejection. Run only focused offline tests if needed.
+
+Return evidence, concrete severity findings, and:
+`VERDICT: PASS | REQUEST_REVISION`.
+
+After writing the response, complete the claimed task using the exact declared output.

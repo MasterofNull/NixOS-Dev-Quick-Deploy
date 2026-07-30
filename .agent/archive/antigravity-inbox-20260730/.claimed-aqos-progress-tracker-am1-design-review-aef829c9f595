@@ -1,0 +1,23 @@
+# Advisory flagship design review — AQ-OS progress tracker AM1
+
+Review only:
+
+- `.agents/plans/aqos-progress-tracker/DESIGN-PACKET-AM1-20260729.md`
+  SHA-256 `15f6acfa8ae2101f428f1e46243cee0805962a0264a3190c2bed71d895a884f8`
+- `.agents/plans/aqos-progress-tracker/IMPLEMENTATION-AUTHORIZATION-AM1-20260729.md`
+  SHA-256 `918038d91f875a87bf6407e2920d9224733c2e456285c7cf39bb1d8c54125886`
+- Base HEAD `50d5630b87a235e72668fabc73205c92353b27c3`
+
+Act as an independent flagship architecture, QA, security, and SRE reviewer.
+Verify that the exact four-file ceiling truthfully refreshes the newly committed
+Track S S0-A state, preserves projector/provenance authority, prevents stale
+snapshot certification, isolates unrelated dirty dashboard/Phase-0 work, and
+satisfies the Service Coverage contract. Confirm that implementation remains
+blocked pending exact activation.
+
+Return an explicit `PASS` or `REQUEST_REVISION`, concrete blocking defects,
+required amendments, and a statement about whether the prepared authorization
+may be hash-bound and activated. Do not implement, build, stage, commit, deploy,
+or edit any file except the declared output.
+
+Output: .agents/plans/aqos-progress-tracker/antigravity-am1-design-review.md

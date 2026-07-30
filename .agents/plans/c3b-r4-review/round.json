@@ -1,0 +1,63 @@
+{
+  "schema_version": "1.0",
+  "round_id": "c3b-r4-review",
+  "state": "DISPATCHED",
+  "task": {
+    "prompt": "ROLE: independent binding DESIGN reviewer for Foundation C slice C3b R4 (revocation-under-load +\nmeasured APU performance gate). Read-only. DESIGN review. Substitute for codex (down to Aug-4;\nconfirmatory on return). VERIFY claims against real code — don't approve prose.\nREAD: .agents/plans/aqos-foundation-c/C3B-R4-DESIGN-AND-AUTHORIZATION.md; the R3 runner it measures\n(ai-stack/switchboard/execution_cell_runner.py, committed ccbc0718); R0 §8 (the perf protocol source,\nin C3B-DESIGN-AND-AUTHORIZATION.md).\nJUDGE (§8): 1. budgets (§3) are HARD gates that block R5/R6, not narratable. 2. protocol (§4)\nfaithful to R0 §8 (N>=40, cache validity via posix_fadvise/mincore, CLOCK_MONOTONIC_RAW, nearest-rank\np95, cgroup-v2 memory, NO discarded samples, NO pool/stash shortcut to hit a limit). 3.\nrevocation-under-load (§5) actually stresses the CONCURRENT path at the cap (not one idle cell) and\nasserts no post-bump GREEN + budget teardown + no unaccounted procs. 4. R4 is NON-ENFORCEMENT —\ntouches no enforcement code, wires nothing live, activates nothing (is that truly the case?). 5.\nevidence immutable+reproducible (host fingerprint/kernel/build); verdict typed. 6. the harness\nself-test proves the harness's OWN correctness offline without the full APU run. Any NEW fail-open?\nAny way a failing budget could be silently passed? Is the \"real acceptance run is an operator step,\nnot CI\" split honest and safe?\nOUTPUT: `VERDICT: PASS`/`FAIL`/`REQUEST_REVISION` on line 1, then findings by severity (BLOCKING/\nSHOULD-FIX/NICE-TO-HAVE) with §ref + concrete fix. No outcome authorizes activation.",
+    "target": ".agents/plans/aqos-foundation-c/",
+    "scope_files": []
+  },
+  "opened_at": "2026-07-30T15:11:14Z",
+  "quorum_policy": {
+    "min_lanes": 2,
+    "required_agents": [],
+    "late_local_admissible": true,
+    "timeout_seconds": null,
+    "deadline": null,
+    "timeout_action": "lock_with_present"
+  },
+  "lanes": [
+    {
+      "agent": "claude",
+      "dispatch_id": null,
+      "idempotency_hash": "0de0b94aee8e9d20154214414bfedecb3426986f593eca0e0ec047f180f0e58b",
+      "status": "pending",
+      "landed_at": null
+    },
+    {
+      "agent": "codex",
+      "dispatch_id": null,
+      "idempotency_hash": "3a335ba0b02564dc5582df77899d30f970a9f353060cc93b85284a313b936686",
+      "status": "pending",
+      "landed_at": null
+    },
+    {
+      "agent": "local",
+      "dispatch_id": null,
+      "idempotency_hash": "2d7fa690461e6a9f1466dbf06fdf756f78c3aad04e5437e06c28970c7f805785",
+      "status": "pending",
+      "landed_at": null
+    },
+    {
+      "agent": "antigravity",
+      "dispatch_id": null,
+      "idempotency_hash": "292021a3c211e1b519e56afa53b2c6391713462999dabc2d9f387194f0eb7f14",
+      "status": "pending",
+      "landed_at": null
+    }
+  ],
+  "contributions": {},
+  "conflicts": [],
+  "consensus_hash": null,
+  "aggregate_path": null,
+  "aggregate_hash": null,
+  "locked_at": null,
+  "history": [
+    {
+      "transition": "CREATED->DISPATCHED",
+      "timestamp": "2026-07-30T15:11:14Z",
+      "actor": "aq-collab-round"
+    }
+  ],
+  "predecessor_round_id": null
+}

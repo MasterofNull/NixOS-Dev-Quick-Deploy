@@ -1,0 +1,12 @@
+{
+  "records": [
+    {
+      "archived_path": ".agent/archive/antigravity-inbox-20260729/agent-model-config-parity-design-input.md",
+      "completed_without_claim": true,
+      "task_id": "agent-model-config-parity-design-input",
+      "ts": "2026-07-29T05:34:43.546944+00:00",
+      "type": "completion"
+    }
+  ],
+  "task_id": "agent-model-config-parity-design-input"
+}

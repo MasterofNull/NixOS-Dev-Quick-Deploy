@@ -1,0 +1,63 @@
+{
+  "schema_version": "1.0",
+  "round_id": "c3b-r2-review",
+  "state": "DISPATCHED",
+  "task": {
+    "prompt": "ROLE: independent binding DESIGN reviewer for Foundation C slice C3b, stage R2 (self-contained\nclone primitive). Read-only — no edits/commits. DESIGN review (no code yet). You substitute for\ncodex (usage-limited to Aug 4; codex confirmatory-audits on return). Be rigorous and specific.\nVERIFY claims against the ACTUAL code — if the doc names a file/API, confirm it exists before\naccepting it (do not approve prose; do not fabricate).\n\nREAD:\n- .agents/plans/aqos-foundation-c/C3B-R2-DESIGN-AND-AUTHORIZATION.md (under review)\n- .agents/plans/aqos-foundation-c/C3B-DESIGN-AND-AUTHORIZATION.md (R0) + C3B-R0-REVIEW-OPUS.md\n  (R0 finding #5 = no live .git bind; #6 = WorkspaceManager non-atomic/delete-and-report-success)\n- .agents/plans/aqos-foundation-c/C3B-R1-DESIGN-AND-AUTHORIZATION.md (R2 consumes its VerifiedGrant/\n  PathPlan/base_revision)\n- Ground against real code: ai-stack/orchestration/workspace_isolation.py (_init_git_worktree ~191,\n  cleanup_workspace) and scripts/testing/test-tier0-staged-isolation.sh:54 (the git clone\n  --no-hardlinks self-contained-clone precedent).\n\nTEST THESE OBLIGATIONS (§8) — for each: CLOSED or a concrete gap with exact §ref + fix:\n1. Cells never bind/read the live .git; the clone is self-contained (no objects/info/alternates, no\n   .git gitfile pointer, no symlink escape). Is the isolation actually guaranteed by the specified\n   commands, or is there a path where alternates/hardlinks/shared objects leak the live repo?\n2. base OID verified present AND is the checked-out HEAD; unreachable → typed failure, no partial cell.\n3. Creation transactional — partial → QUARANTINED, never READY, never a success receipt (fixes R0 #6).\n   Is the atomic-rename / fsync'd-receipt readiness actually crash-safe?\n4. Path rebase (§4) TOCTOU-safe (fd-relative openat2 RESOLVE_BENEATH / fd-only walk, no realpath-\n   precheck) and component-aware; every escape (abs, .., symlink, out-of-cell, prefix-not-containment)\n   denies. Any residual TOCTOU?\n5. teardown/reconcile typed + idempotent; cleanup-failure → Quarantined, never delete-and-report-\n   success; reconcile never escapes the cell state root.\n6. bare-mirror source (§3.1) is read-only, never mutated by a cell; refresh out-of-band + locked. Is\n   the mirror genuinely safer than cloning the live .git at a pinned OID, and is the refresh race-free?\n7. Scope containment — no socket, bwrap, Nix, switchboard, network, or auto-merge surface in R2.\n8. R2 re-checks grant freshness/epoch (R1 pure fns) before any disk effect.\n\nALSO: any NEW fail-open or isolation-escape the design introduces? Is the R1→R2→R3 handoff (§6)\nclean? Are the referenced anchors real (workspace_isolation.py, the clone precedent)? Weigh\nQ-R2-1/2/3 (mirror refresh, --no-local cost, fresh-clone-only).\n\nOUTPUT: `VERDICT: PASS` / `VERDICT: FAIL` / `VERDICT: REQUEST_REVISION` on the FIRST line, then\nfindings by severity (BLOCKING/SHOULD-FIX/NICE-TO-HAVE) with exact §ref + concrete fix. No review\noutcome authorizes build or activation.",
+    "target": ".agents/plans/aqos-foundation-c/",
+    "scope_files": []
+  },
+  "opened_at": "2026-07-30T04:54:23Z",
+  "quorum_policy": {
+    "min_lanes": 2,
+    "required_agents": [],
+    "late_local_admissible": true,
+    "timeout_seconds": null,
+    "deadline": null,
+    "timeout_action": "lock_with_present"
+  },
+  "lanes": [
+    {
+      "agent": "claude",
+      "dispatch_id": null,
+      "idempotency_hash": "66b2643b82eed2b265b85f44985f207b39fefb98061fa995f4d236a2055e93da",
+      "status": "pending",
+      "landed_at": null
+    },
+    {
+      "agent": "codex",
+      "dispatch_id": null,
+      "idempotency_hash": "87d5fe54dcded14e30a1cc461742c25eb2d4eb6f7e9942166bb5b8176ba77c75",
+      "status": "pending",
+      "landed_at": null
+    },
+    {
+      "agent": "local",
+      "dispatch_id": null,
+      "idempotency_hash": "19488e273836cdcfe38857a27033bebc1410647a093a1e2d5f2153c326196e29",
+      "status": "pending",
+      "landed_at": null
+    },
+    {
+      "agent": "antigravity",
+      "dispatch_id": null,
+      "idempotency_hash": "9ece44e914494a022ebdd06507b7720a90c283241466998ad50133465ed4bd91",
+      "status": "pending",
+      "landed_at": null
+    }
+  ],
+  "contributions": {},
+  "conflicts": [],
+  "consensus_hash": null,
+  "aggregate_path": null,
+  "aggregate_hash": null,
+  "locked_at": null,
+  "history": [
+    {
+      "transition": "CREATED->DISPATCHED",
+      "timestamp": "2026-07-30T04:54:23Z",
+      "actor": "aq-collab-round"
+    }
+  ],
+  "predecessor_round_id": null
+}

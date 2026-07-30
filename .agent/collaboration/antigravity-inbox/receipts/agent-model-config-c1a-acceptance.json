@@ -1,0 +1,12 @@
+{
+  "records": [
+    {
+      "archived_path": ".agent/archive/antigravity-inbox-20260729/agent-model-config-c1a-acceptance.md",
+      "completed_without_claim": true,
+      "task_id": "agent-model-config-c1a-acceptance",
+      "ts": "2026-07-29T05:35:00.944187+00:00",
+      "type": "completion"
+    }
+  ],
+  "task_id": "agent-model-config-c1a-acceptance"
+}
