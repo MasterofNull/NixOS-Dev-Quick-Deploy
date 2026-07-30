@@ -1,0 +1,71 @@
+# A2A task for antigravity — round 'c3b-r3-review'
+
+Dropped: 2026-07-30T05:12:27Z
+
+Output: .agents/plans/c3b-r3-review/antigravity.md
+
+## SCOPE & STOP (HARD — read before writing)
+- Edit ONLY the files this task names as surfaces. A related-looking file is still out of scope.
+- NEVER implement a data/config change as a filesystem shortcut: no symlink, bind mount, mount,
+  chmod/chown/rm on tracked or runtime paths. 'Single source of truth' = a resolver in code,
+  never one directory replacing/redirecting another.
+- NO DELETE — archive to a timestamped path; never rm/rmdir.
+- If this task references an authorization/round: confirm it still reads AUTHORIZED and (where a
+  package root is named) that `aq-package-freeze verify` exits 0 BEFORE writing. If suspended,
+  STOP — do not recreate or continue suspended files.
+- Undeclared dependency discovered -> STOP and report; do not expand scope to 'make it work'.
+- Budgets/acceptance criteria are hard facts: a measured violation FAILS; a sentence calling it
+  'acceptable' does not change the number. Report the real value.
+- Write ONLY your own named output file. Do NOT edit shared files. Do NOT commit.
+- When unsure whether something is in scope: it is not. Report, do not act.
+
+COLLABORATIVE ROUND 'c3b-r3-review'.
+Review artifact: .agents/plans/aqos-foundation-c/ (read it).
+TASK:
+ROLE: independent binding DESIGN reviewer for Foundation C slice C3b, stage R3 (default-OFF
+execution cell runner + bwrap). Read-only — no edits/commits. DESIGN review (no code). This is the
+first ENFORCEMENT-TIER C3b stage — hold it to the highest bar; R3 build additionally requires
+single-use owner activation. You substitute for codex (usage-limited to Aug 4; codex confirmatory
+on return). VERIFY claims against real code/system — do not approve prose; do not fabricate.
+
+READ:
+- .agents/plans/aqos-foundation-c/C3B-R3-DESIGN-AND-AUTHORIZATION.md (under review)
+- R0/R1/R2 (C3B-DESIGN, C3B-R1-DESIGN, C3B-R2-DESIGN) — R3 composes R1 verify + R2 clone
+- Ground against real code/system: nix/modules/services/switchboard.nix (RestrictNamespaces=true:534,
+  NoNewPrivileges:526-ish, User:519 — must stay byte-for-byte), nix/modules/services/default.nix
+  (import point), ai-stack/switchboard/capability_lease_gate.py (resolve_current_epoch),
+  scripts/ai/lib/execution_grant.py (R1 verify_grant — public-key-only), scripts/ai/lib/execution_cell_clone.py
+  (R2 create_cell, IF present). Host userns: `unshare --user` works and /proc/sys/user/
+  max_user_namespaces is non-zero (the design claims no global userns change is needed — verify this reasoning).
+
+TEST THESE OBLIGATIONS (§10) — CLOSED or concrete gap w/ §ref + fix:
+1. Runner is the ONLY userns holder; switchboard.nix hardening byte-for-byte unchanged; NO global
+   security.unprivilegedUsernsClone change (is the §2 claim that the host already permits unprivileged
+   userns correct, and is scoping RestrictNamespaces to CLONE_NEWUSER|CLONE_NEWNS on the runner unit
+   sufficient for bwrap while keeping the switchboard untouched)?
+2. UDS transport-only; SO_PEERCRED enforced; no error oracle; conveys no authority.
+3. Grant verified by R1 with PUBLIC key only (compromised runner cannot forge); deny-closed;
+   authority-degrade → safe-read only.
+4. bwrap argv derived ONLY from the verified grant; --unshare-all + --unshare-net deny-all egress;
+   single writable = cell root; no live .git/home/secret/device; --clearenv+allowlist; NO unsandboxed
+   fallback (aider AI_AIDER_SANDBOX_FALLBACK_UNSAFE explicitly forbidden). Any bwrap arg that leaks host?
+5. Supervision (§6): 250ms epoch/liveness poll, runner-generated heartbeat (caller heartbeats never
+   trusted), cgroup whole-tree SIGTERM→cgroup.kill→prove-absence-or-QUARANTINE, FINAL epoch fence
+   before GREEN. Any race where a revoked/epoch-bumped cell publishes GREEN, or a subprocess escapes the cgroup?
+6. Out-of-cell validator (§7): ignores ALL cell-controlled git config/hooks/attributes/textconv;
+   compares bytes/modes/symlinks against trusted base; declared-signed-paths-only; any deviation → RED.
+7. No auto-merge; GREEN only retains a diff for separate review.
+8. Nix (§8): runner-only scoped RestrictNamespaces + NoNewPrivileges + empty caps + ProtectSystem=strict
+   + StateDirectory; flag default OFF + env-contract; switchboard byte-parity asserted.
+9. Scope: no switchboard adoption (R5), no network (C4), no live traffic, no perf-gate numeric claim (R4).
+
+ALSO: any NEW fail-open or confinement-escape? Is the R2→R3 handoff clean? Weigh Q-R3-1 (persistent
+runner vs systemd-run transient), Q-R3-2 (validator confinement), Q-R3-3 (cgroup v2 delegation for an
+unprivileged runner — is Delegate= enough for cgroup.kill without extra privilege?), Q-R3-4 (bounded
+command-descriptor vocabulary = noop/read-validate/single-file-write only for R3?).
+
+OUTPUT: `VERDICT: PASS` / `VERDICT: FAIL` / `VERDICT: REQUEST_REVISION` on the FIRST line, then
+findings by severity (BLOCKING/SHOULD-FIX/NICE-TO-HAVE) with exact §ref + concrete fix, and verdicts
+on Q-R3-1..4. No review outcome authorizes build or activation.
+
+Write your contribution to YOUR OWN file ONLY: .agents/plans/c3b-r3-review/<AGENT>.md (<AGENT> = codex | local | antigravity). Do NOT edit any shared file. Do NOT read the artifact file (it is inlined above). Be decisive and concise.

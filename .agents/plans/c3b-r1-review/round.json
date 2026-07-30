@@ -1,0 +1,73 @@
+{
+  "schema_version": "1.0",
+  "round_id": "c3b-r1-review",
+  "state": "COLLECTED",
+  "task": {
+    "prompt": "ROLE: independent binding DESIGN reviewer for Foundation C slice C3b, stage R1 (pure grant schema\n+ classification). Read-only — no edits, no commits. This is a DESIGN review (no code yet). You are\nsubstituting for codex (usage-limited); codex will run a confirmatory audit on return, so be\nrigorous and specific. IMPORTANT: verify every claim against the ACTUAL code — do not approve prose;\nif the doc names an API or field, confirm it exists before accepting it.\n\nREAD:\n- .agents/plans/aqos-foundation-c/C3B-R1-DESIGN-AND-AUTHORIZATION.md  (under review)\n- .agents/plans/aqos-foundation-c/C3B-DESIGN-AND-AUTHORIZATION.md (R0) + C3B-R0-REVIEW-OPUS.md\n  (the SF-1/SF-3 findings this R1 folds)\n- Ground against real code: scripts/ai/lib/capability_lease.py (canonical_payload, sign, verify,\n  resolve_key), scripts/ai/lib/capability_lease_issuance.py (current signed lease fields),\n  ai-stack/switchboard/capability_lease_gate.py (resolve_current_epoch ~172, DEFAULT_EPOCH_PATH\n  config/capability-lease-epoch ~84), config/first-party-tools.json (the tool set — but note its\n  effect flags are asserted INACCURATE vs real handlers).\n\nTEST THESE OBLIGATIONS (§8 of the doc) — for each, state CLOSED or a concrete gap with the exact\n§ref + fix:\n1. Grant schema (§2) is closed; every missing/unknown/malformed field denies. Any field that could\n   be defaulted or skipped?\n2. SF-1 signing (§3): is Ed25519 asymmetric correctly specified so a compromised/key-less RUNNER\n   cannot forge a grant (gate holds private, runner holds only public)? Is key separation from the\n   lease HMAC real? Is there any unsigned/symmetric fallback? Is the no-grant degrade correct?\n   Verify `cryptography` ed25519 is actually importable in this repo's env.\n3. Replay (§5): is the uniqueness domain grant_id (global), with reserved→committed|failed? Any\n   race or task-scoping regression?\n4. Epoch (§5): is resolve_current_epoch / config/capability-lease-epoch the real source, and does\n   current_epoch is None → deny (never skip)? Confirm the anchor exists.\n5. SF-3 classification (§4): is it conservative and manifest-DISTRUSTING (no tool trusted from\n   write:False/net:False)? Does every network/subprocess/multi-effect/unaudited tool deny? Check the\n   §4.3 table against the real handlers (e.g. is store_memory really network? is run_command\n   multi-effect?). Any tool wrongly allowed?\n6. Path classification (§4.2): pure + component-aware containment (not string-prefix)? Every escape\n   class (abs/.., symlink, NUL, non-NFC, casefold-collision, prefix-not-containment) denied?\n7. Verify functions (§5): pure, deny-closed, never-raise; only all-pass yields VerifiedGrant?\n8. Golden vectors (§6): do they cover every deny path with exact typed outcomes? Any missing case?\n9. Scope containment (§1, §7): does R1 correctly introduce NO socket/clone/bwrap/Nix/FS surface?\n\nALSO: is there any NEW fail-open? Is the R1→R2 handoff (§7) clean? Are there fabricated/nonexistent\nAPI references in the doc (verify capability_lease + gate anchors actually exist)?\n\nOUTPUT: `VERDICT: PASS` / `VERDICT: FAIL` / `VERDICT: REQUEST_REVISION` on the FIRST line, then\nfindings by severity (BLOCKING / SHOULD-FIX / NICE-TO-HAVE) with exact §ref + concrete fix. No\nreview outcome authorizes build or activation.",
+    "target": ".agents/plans/aqos-foundation-c/",
+    "scope_files": []
+  },
+  "opened_at": "2026-07-30T04:37:48Z",
+  "quorum_policy": {
+    "min_lanes": 2,
+    "required_agents": [],
+    "late_local_admissible": true,
+    "timeout_seconds": null,
+    "deadline": null,
+    "timeout_action": "lock_with_present"
+  },
+  "lanes": [
+    {
+      "agent": "claude",
+      "dispatch_id": null,
+      "idempotency_hash": "8a519fa1fd9e5962d8a1c8d947c90e6f082145ea73ef3894c74efaa680b12f8d",
+      "status": "pending",
+      "landed_at": null
+    },
+    {
+      "agent": "codex",
+      "dispatch_id": null,
+      "idempotency_hash": "062edbc9c761650783537f4c4fcbe0c1e4468165030940d06fc3292407bf61b6",
+      "status": "pending",
+      "landed_at": null
+    },
+    {
+      "agent": "local",
+      "dispatch_id": null,
+      "idempotency_hash": "2162c2b6a180bd186f11888ad2c39b5373383cbb0cb5642517095638a948e12b",
+      "status": "submitted",
+      "landed_at": null
+    },
+    {
+      "agent": "antigravity",
+      "dispatch_id": null,
+      "idempotency_hash": "8c2dc9dc80532e3495c956cc230ed932afc85f9b4ad3b547b7e6d443cfa8c097",
+      "status": "submitted",
+      "landed_at": null
+    }
+  ],
+  "contributions": {},
+  "conflicts": [],
+  "consensus_hash": null,
+  "aggregate_path": null,
+  "aggregate_hash": null,
+  "locked_at": null,
+  "history": [
+    {
+      "transition": "CREATED->DISPATCHED",
+      "timestamp": "2026-07-30T04:37:48Z",
+      "actor": "aq-collab-round"
+    },
+    {
+      "transition": "DISPATCHED->CONTRIBUTING",
+      "timestamp": "2026-07-30T04:47:19Z",
+      "actor": "aq-collab-round"
+    },
+    {
+      "transition": "CONTRIBUTING->COLLECTED",
+      "timestamp": "2026-07-30T04:47:19Z",
+      "actor": "aq-collab-round"
+    }
+  ],
+  "predecessor_round_id": null
+}

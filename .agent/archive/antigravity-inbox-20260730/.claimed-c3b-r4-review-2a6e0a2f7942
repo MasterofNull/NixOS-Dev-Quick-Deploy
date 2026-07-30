@@ -1,0 +1,44 @@
+# A2A task for antigravity — round 'c3b-r4-review'
+
+Dropped: 2026-07-30T15:11:14Z
+
+Output: .agents/plans/c3b-r4-review/antigravity.md
+
+## SCOPE & STOP (HARD — read before writing)
+- Edit ONLY the files this task names as surfaces. A related-looking file is still out of scope.
+- NEVER implement a data/config change as a filesystem shortcut: no symlink, bind mount, mount,
+  chmod/chown/rm on tracked or runtime paths. 'Single source of truth' = a resolver in code,
+  never one directory replacing/redirecting another.
+- NO DELETE — archive to a timestamped path; never rm/rmdir.
+- If this task references an authorization/round: confirm it still reads AUTHORIZED and (where a
+  package root is named) that `aq-package-freeze verify` exits 0 BEFORE writing. If suspended,
+  STOP — do not recreate or continue suspended files.
+- Undeclared dependency discovered -> STOP and report; do not expand scope to 'make it work'.
+- Budgets/acceptance criteria are hard facts: a measured violation FAILS; a sentence calling it
+  'acceptable' does not change the number. Report the real value.
+- Write ONLY your own named output file. Do NOT edit shared files. Do NOT commit.
+- When unsure whether something is in scope: it is not. Report, do not act.
+
+COLLABORATIVE ROUND 'c3b-r4-review'.
+Review artifact: .agents/plans/aqos-foundation-c/ (read it).
+TASK:
+ROLE: independent binding DESIGN reviewer for Foundation C slice C3b R4 (revocation-under-load +
+measured APU performance gate). Read-only. DESIGN review. Substitute for codex (down to Aug-4;
+confirmatory on return). VERIFY claims against real code — don't approve prose.
+READ: .agents/plans/aqos-foundation-c/C3B-R4-DESIGN-AND-AUTHORIZATION.md; the R3 runner it measures
+(ai-stack/switchboard/execution_cell_runner.py, committed ccbc0718); R0 §8 (the perf protocol source,
+in C3B-DESIGN-AND-AUTHORIZATION.md).
+JUDGE (§8): 1. budgets (§3) are HARD gates that block R5/R6, not narratable. 2. protocol (§4)
+faithful to R0 §8 (N>=40, cache validity via posix_fadvise/mincore, CLOCK_MONOTONIC_RAW, nearest-rank
+p95, cgroup-v2 memory, NO discarded samples, NO pool/stash shortcut to hit a limit). 3.
+revocation-under-load (§5) actually stresses the CONCURRENT path at the cap (not one idle cell) and
+asserts no post-bump GREEN + budget teardown + no unaccounted procs. 4. R4 is NON-ENFORCEMENT —
+touches no enforcement code, wires nothing live, activates nothing (is that truly the case?). 5.
+evidence immutable+reproducible (host fingerprint/kernel/build); verdict typed. 6. the harness
+self-test proves the harness's OWN correctness offline without the full APU run. Any NEW fail-open?
+Any way a failing budget could be silently passed? Is the "real acceptance run is an operator step,
+not CI" split honest and safe?
+OUTPUT: `VERDICT: PASS`/`FAIL`/`REQUEST_REVISION` on line 1, then findings by severity (BLOCKING/
+SHOULD-FIX/NICE-TO-HAVE) with §ref + concrete fix. No outcome authorizes activation.
+
+Write your contribution to YOUR OWN file ONLY: .agents/plans/c3b-r4-review/<AGENT>.md (<AGENT> = codex | local | antigravity). Do NOT edit any shared file. Do NOT read the artifact file (it is inlined above). Be decisive and concise.

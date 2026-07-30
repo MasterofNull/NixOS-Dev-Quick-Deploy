@@ -1,0 +1,31 @@
+{
+  "records": [
+    {
+      "actor": "script:codex-orchestrator",
+      "argv": null,
+      "exit_code": null,
+      "method": "passive-drop-only",
+      "proc_live_before": true,
+      "task_id": "b1-parity-design-review",
+      "ts": "2026-07-27T06:36:38.381394+00:00",
+      "type": "wake_attempt"
+    },
+    {
+      "hash": "05170a1aa612632b1c1e09b77514b77be617215e4f5399dffe948176b0f15515",
+      "path": ".agents/plans/b1-parity-design-review/antigravity.md",
+      "task_id": "b1-parity-design-review",
+      "ts": "2026-07-27T06:58:45.710989+00:00",
+      "type": "output_hash"
+    },
+    {
+      "archived_path": ".agent/archive/antigravity-inbox-20260727/b1-parity-design-review.md",
+      "completed_without_claim": true,
+      "output_hash": "05170a1aa612632b1c1e09b77514b77be617215e4f5399dffe948176b0f15515",
+      "output_path": ".agents/plans/b1-parity-design-review/antigravity.md",
+      "task_id": "b1-parity-design-review",
+      "ts": "2026-07-27T06:58:45.710517+00:00",
+      "type": "completion"
+    }
+  ],
+  "task_id": "b1-parity-design-review"
+}

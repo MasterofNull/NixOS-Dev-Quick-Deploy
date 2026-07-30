@@ -1,0 +1,22 @@
+{
+  "records": [
+    {
+      "actor": "selftest",
+      "argv": [
+        "antigravity",
+        "chat",
+        "--reuse-window",
+        "--mode",
+        "agent",
+        "You are the Antigravity ADVISORY node (review / PRD / plan / research ONLY). Run `aq-antigravity-inbox next` to get the single pending task and do EXACTLY what it says, nothing more. Write ONLY the one output file the task names (e.g. .agents/plans/<round>/antigravity.md). Do NOT edit, create, or delete any other file. Do NOT implement code, run builds, or stage/commit \u2014 you have no implementation authority. When finished, run `aq-antigravity-inbox complete <task-name>`. If the task is unclear or would require editing anything beyond your output file, write that limitation in your output file and STOP."
+      ],
+      "exit_code": 0,
+      "method": "cli-nudge",
+      "proc_live_before": true,
+      "task_id": "test-round",
+      "ts": "2026-07-24T05:26:07.011366+00:00",
+      "type": "wake_attempt"
+    }
+  ],
+  "task_id": "test-round"
+}

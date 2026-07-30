@@ -1,0 +1,12 @@
+{
+  "records": [
+    {
+      "archived_path": ".agent/archive/antigravity-inbox-20260720/agent-connection-reliability-c06-design-review.md",
+      "completed_without_claim": true,
+      "task_id": "agent-connection-reliability-c06-design-review",
+      "ts": "2026-07-20T20:25:15.155853+00:00",
+      "type": "completion"
+    }
+  ],
+  "task_id": "agent-connection-reliability-c06-design-review"
+}

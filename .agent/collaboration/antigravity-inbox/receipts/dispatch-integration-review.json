@@ -1,0 +1,69 @@
+{
+  "records": [
+    {
+      "actor": "owner-manual",
+      "argv": null,
+      "exit_code": null,
+      "method": "passive-drop-only",
+      "proc_live_before": false,
+      "task_id": "dispatch-integration-review",
+      "ts": "2026-07-23T05:42:28.015987+00:00",
+      "type": "wake_attempt"
+    },
+    {
+      "actor": "fable-5",
+      "argv": [
+        "antigravity",
+        "chat",
+        "--reuse-window",
+        "--mode",
+        "agent"
+      ],
+      "exit_code": 0,
+      "method": "cli-nudge",
+      "proc_live_before": true,
+      "task_id": "dispatch-integration-review",
+      "ts": "2026-07-23T07:30:37.015802+00:00",
+      "type": "wake_attempt"
+    },
+    {
+      "actor": "fable-5",
+      "argv": [
+        "antigravity",
+        "--reuse-window",
+        "/home/hyperd/Documents/NixOS-Dev-Quick-Deploy/.agent/collaboration/antigravity-inbox"
+      ],
+      "exit_code": 0,
+      "method": "cli-nudge",
+      "proc_live_before": true,
+      "task_id": "dispatch-integration-review",
+      "ts": "2026-07-23T07:32:40.956886+00:00",
+      "type": "wake_attempt"
+    },
+    {
+      "actor": "owner-manual",
+      "content_hash": "68263b25e9b85494d4ba87de3697245414ca708651fd02d5132cb919e7bad914",
+      "task_id": "dispatch-integration-review",
+      "ts": "2026-07-23T07:43:03.416703+00:00",
+      "type": "claim"
+    },
+    {
+      "hash": "a52a5bae11260e08c99f43e872b9104559817a4fd616cb800aab8623b4fbd567",
+      "path": ".agents/plans/dispatch-integration-review/antigravity.md",
+      "task_id": "dispatch-integration-review",
+      "ts": "2026-07-23T07:43:04.958188+00:00",
+      "type": "output_hash"
+    },
+    {
+      "archived_path": ".agent/archive/antigravity-inbox-20260723/.claimed-dispatch-integration-review",
+      "claim_actor": "owner-manual",
+      "completed_without_claim": false,
+      "output_hash": "a52a5bae11260e08c99f43e872b9104559817a4fd616cb800aab8623b4fbd567",
+      "output_path": ".agents/plans/dispatch-integration-review/antigravity.md",
+      "task_id": "dispatch-integration-review",
+      "ts": "2026-07-23T07:43:04.957971+00:00",
+      "type": "completion"
+    }
+  ],
+  "task_id": "dispatch-integration-review"
+}

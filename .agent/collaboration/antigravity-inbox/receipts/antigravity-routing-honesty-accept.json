@@ -1,0 +1,21 @@
+{
+  "records": [
+    {
+      "hash": "7595522046f2ab293d17e74c2062b48c75c54848a0ad510b12d2cb9f5a0ca5d4",
+      "path": ".agents/plans/antigravity-routing-honesty-accept/antigravity.md",
+      "task_id": "antigravity-routing-honesty-accept",
+      "ts": "2026-07-21T01:35:05.583837+00:00",
+      "type": "output_hash"
+    },
+    {
+      "archived_path": ".agent/archive/antigravity-inbox-20260721/antigravity-routing-honesty-accept.md",
+      "completed_without_claim": true,
+      "output_hash": "7595522046f2ab293d17e74c2062b48c75c54848a0ad510b12d2cb9f5a0ca5d4",
+      "output_path": ".agents/plans/antigravity-routing-honesty-accept/antigravity.md",
+      "task_id": "antigravity-routing-honesty-accept",
+      "ts": "2026-07-21T01:35:05.583464+00:00",
+      "type": "completion"
+    }
+  ],
+  "task_id": "antigravity-routing-honesty-accept"
+}

@@ -1,0 +1,22 @@
+{
+  "records": [
+    {
+      "actor": "script:codex-orchestrator",
+      "argv": null,
+      "exit_code": null,
+      "method": "passive-drop-only",
+      "proc_live_before": true,
+      "task_id": "track-s-architecture-review",
+      "ts": "2026-07-27T06:26:28.937893+00:00",
+      "type": "wake_attempt"
+    },
+    {
+      "archived_path": ".agent/archive/antigravity-inbox-20260727/track-s-architecture-review.md",
+      "completed_without_claim": true,
+      "task_id": "track-s-architecture-review",
+      "ts": "2026-07-27T06:59:03.266554+00:00",
+      "type": "completion"
+    }
+  ],
+  "task_id": "track-s-architecture-review"
+}

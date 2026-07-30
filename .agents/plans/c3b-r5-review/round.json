@@ -1,0 +1,63 @@
+{
+  "schema_version": "1.0",
+  "round_id": "c3b-r5-review",
+  "state": "DISPATCHED",
+  "task": {
+    "prompt": "ROLE: independent binding DESIGN reviewer for Foundation C slice C3b R5 (default-OFF switchboard\nadapter + grant signing). Read-only. DESIGN review. This is ENFORCEMENT-TIER (build needs owner\nactivation + an R4 PASS). Highest bar. Substitute for codex (down to Aug-4; confirmatory on return).\nVERIFY claims against real code — don't approve prose; don't fabricate.\nREAD: .agents/plans/aqos-foundation-c/C3B-R5-DESIGN-AND-AUTHORIZATION.md; R1 grant\n(scripts/ai/lib/execution_grant.py — Ed25519, sign is TEST-ONLY currently), R3 runner\n(ai-stack/switchboard/execution_cell_runner.py — public-key verify), the C2 gate\n(ai-stack/switchboard/capability_lease_gate.py, _admit_tool_call in switchboard.py), the L2B golden\nmanifest (scripts/testing/fixtures/local-inference-l2b-payload-golden.json pins switchboard.py), the\nSOPS/secrets pattern (grep secrets.nix / /run/secrets usage).\nJUDGE (§8): 1. flag-OFF byte-parity — adapter fully inert, switchboard path unchanged. 2. R5 never\nWIDENS C2 admission (consumes C2's verdict); deny-closed on ANY adapter/runner error. 3. GRANT\nSIGNING: Ed25519 PRIVATE key from SOPS /run/secrets ONLY — NO key in any tracked file (Nix store is\npublic); key-unavailable → deny (NO unsigned/fallback grant); a DEV-signed grant is REJECTED by the\nprod runner's public key. Is the key provisioning genuinely secret-safe and is R1's currently\nTEST-ONLY sign() being promoted to a real signer handled correctly (who signs, with what key, where)?\n4. the switchboard NEVER constructs a cell/bwrap/namespace itself — runner stays sole confiner;\nswitchboard hardening (RestrictNamespaces=true, 4811326e) unchanged except added credential access.\n5. receipt projection low-cardinality + secret-free; AQ-QA Service-Coverage exercises the FULL\ndefault-OFF path (not /health); dual-harness registration (phase0.py results.extend AND _aq-qa-bash).\n6. L2B golden RE-PIN for switchboard.py in the SAME reviewed commit (drift discipline, as C2). 7. no\nlive traffic / no flag/enable flip / no cutover (R6); R4 PASS precondition. Weigh Q-R5-1 (distinct\nadapter flag), Q-R5-2 (key rotation tied to revocation_epoch), Q-R5-3 (minimal cell-required vocab).\nAny NEW fail-open, key leak, or C2-widening?\nOUTPUT: `VERDICT: PASS`/`FAIL`/`REQUEST_REVISION` on line 1, then findings by severity with §ref +\nconcrete fix, + Q-R5-1..3 verdicts. No outcome authorizes build or activation.",
+    "target": ".agents/plans/aqos-foundation-c/",
+    "scope_files": []
+  },
+  "opened_at": "2026-07-30T15:11:15Z",
+  "quorum_policy": {
+    "min_lanes": 2,
+    "required_agents": [],
+    "late_local_admissible": true,
+    "timeout_seconds": null,
+    "deadline": null,
+    "timeout_action": "lock_with_present"
+  },
+  "lanes": [
+    {
+      "agent": "claude",
+      "dispatch_id": null,
+      "idempotency_hash": "e407fee33eded313b9d281500d1574c9d36331862da343f13ee65df4fb43f706",
+      "status": "pending",
+      "landed_at": null
+    },
+    {
+      "agent": "codex",
+      "dispatch_id": null,
+      "idempotency_hash": "b642cb645ddf10d1acc2e321ee2569156756048be30c6a4c81afc7aa2ac13da4",
+      "status": "pending",
+      "landed_at": null
+    },
+    {
+      "agent": "local",
+      "dispatch_id": null,
+      "idempotency_hash": "0eb659ca8649499d0b9e02ccd3a78854822bc21b3c49b559e2727a6fca813993",
+      "status": "pending",
+      "landed_at": null
+    },
+    {
+      "agent": "antigravity",
+      "dispatch_id": null,
+      "idempotency_hash": "9c650d4c565d2500464fa7b53a59a47b7dd01ada912c71461dc28643dc9eff2f",
+      "status": "pending",
+      "landed_at": null
+    }
+  ],
+  "contributions": {},
+  "conflicts": [],
+  "consensus_hash": null,
+  "aggregate_path": null,
+  "aggregate_hash": null,
+  "locked_at": null,
+  "history": [
+    {
+      "transition": "CREATED->DISPATCHED",
+      "timestamp": "2026-07-30T15:11:15Z",
+      "actor": "aq-collab-round"
+    }
+  ],
+  "predecessor_round_id": null
+}

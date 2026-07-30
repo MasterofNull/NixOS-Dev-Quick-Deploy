@@ -1,0 +1,20 @@
+{
+  "records": [
+    {
+      "actor": "ide-watch",
+      "content_hash": "8b718224019777cdfd4b0f8e222c481b3f1d5747593ecbec5c95510cbb375e1a",
+      "task_id": "test-harness-verification",
+      "ts": "2026-07-24T04:46:37.695106+00:00",
+      "type": "claim"
+    },
+    {
+      "archived_path": ".agent/archive/antigravity-inbox-20260724/.claimed-test-harness-verification",
+      "claim_actor": "ide-watch",
+      "completed_without_claim": false,
+      "task_id": "test-harness-verification",
+      "ts": "2026-07-24T04:46:37.849434+00:00",
+      "type": "completion"
+    }
+  ],
+  "task_id": "test-harness-verification"
+}

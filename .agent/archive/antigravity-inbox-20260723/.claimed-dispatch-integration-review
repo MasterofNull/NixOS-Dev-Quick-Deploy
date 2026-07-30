@@ -1,0 +1,26 @@
+# A2A task for antigravity — round 'dispatch-integration-review'
+
+Dropped: 2026-07-23T03:45:39Z
+
+Respond by writing `.agents/plans/dispatch-integration-review/antigravity.md`.
+
+## SCOPE & STOP (HARD — read before writing)
+- Edit ONLY the files this task names as surfaces. A related-looking file is still out of scope.
+- NEVER implement a data/config change as a filesystem shortcut: no symlink, bind mount, mount,
+  chmod/chown/rm on tracked or runtime paths. 'Single source of truth' = a resolver in code,
+  never one directory replacing/redirecting another.
+- NO DELETE — archive to a timestamped path; never rm/rmdir.
+- If this task references an authorization/round: confirm it still reads AUTHORIZED and (where a
+  package root is named) that `aq-package-freeze verify` exits 0 BEFORE writing. If suspended,
+  STOP — do not recreate or continue suspended files.
+- Undeclared dependency discovered -> STOP and report; do not expand scope to 'make it work'.
+- Budgets/acceptance criteria are hard facts: a measured violation FAILS; a sentence calling it
+  'acceptable' does not change the number. Report the real value.
+- Write ONLY your own named output file. Do NOT edit shared files. Do NOT commit.
+- When unsure whether something is in scope: it is not. Report, do not act.
+
+COLLABORATIVE ROUND 'dispatch-integration-review'.
+TASK:
+INDEPENDENT CRITIQUE REVIEW. Read the full brief at .agents/plans/agent-agnostic-factory/DISPATCH-INTEGRATION-REVIEW-BRIEF.md and rule on it. Summary: the router/claim dispatch-integration slice (design: DISPATCH-INTEGRATION-DESIGN.md; staged files scripts/ai/lib/dispatch_consult.py + scripts/ai/lib/dispatch.py edit + scripts/testing/test-dispatch-consult.py) drifts a COMMITTED L2B frozen-source manifest (scripts/testing/fixtures/local-inference-l2b-payload-golden.json pins dispatch.py's hash). Rule A-vs-B: (A) re-pin dispatch.py hash in the manifest; (B) revert the dispatch.py edit and instead wire the consult via a small CLI on dispatch_consult.py called from the delegate-* bash shims (keeps all 9 frozen files untouched, uniform across lanes). Orchestrator recommends B. Also critique dispatch_consult.py's fail-open contract, release-cross-claim safety, and whether the 8 tests (esp fail-open negative control) are load-bearing. Write verdict to .agents/plans/agent-agnostic-factory/DISPATCH-INTEGRATION-ANTIGRAVITY-REVIEW.md with terminal VERDICT: ADOPT-B | ADOPT-A | REVISE.
+
+Write your contribution to YOUR OWN file ONLY: .agents/plans/dispatch-integration-review/<AGENT>.md (<AGENT> = codex | local | antigravity). Do NOT edit any shared file. Do NOT read the artifact file (it is inlined above). Be decisive and concise.
