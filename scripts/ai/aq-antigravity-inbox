@@ -1,395 +1,362 @@
 #!/usr/bin/env python3
-"""Operator-side helper for the Antigravity IDE inbox lane."""
-
+"""Claim-bound, receipt-backed Antigravity advisory inbox supervisor."""
 from __future__ import annotations
 
 import argparse
+import fcntl
 import hashlib
 import json
-import shutil
+import os
+import re
+import secrets
 import subprocess
 import sys
 from datetime import datetime, timezone
 from pathlib import Path
 from typing import Any
 
-
 REPO = Path(__file__).resolve().parents[2]
 INBOX = REPO / ".agent" / "collaboration" / "antigravity-inbox"
 STATE = INBOX / ".lane-state.json"
-
-# Fixed argv for the CLI wake nudge (Rule 7: never string-interpolate TASK content
-# into a shelled-out command — the prompt below is a FIXED harness string that tells
-# the agent to read the task itself; it carries no per-task input).
-#
-# Correction (2026-07-23): `antigravity chat --mode agent <prompt>` IS valid — the
-# Antigravity binary (a VS Code/Electron fork) exposes a `chat` subcommand with
-# `-m/--mode ask|edit|agent` and a positional prompt (confirmed via `antigravity
-# chat --help`). An earlier revision wrongly concluded `chat` was inert; it was inert
-# only because it was invoked with NO prompt (empty agent chat). This wake now
-# AUTO-TRIGGERS the IDE agent with a strict, scope-reinforcing prompt so drops get
-# processed without a manual nudge AND the agent is pushed to stay in its read-only
-# advisory lane (the off-lane implementation failures this guards against).
 WAKE_PROMPT = (
     "You are the Antigravity ADVISORY node (review / PRD / plan / research ONLY). "
-    "Run `aq-antigravity-inbox next` to get the single pending task and do EXACTLY "
-    "what it says, nothing more. Write ONLY the one output file the task names "
-    "(e.g. .agents/plans/<round>/antigravity.md). Do NOT edit, create, or delete any "
-    "other file. Do NOT implement code, run builds, or stage/commit — you have no "
-    "implementation authority. When finished, run `aq-antigravity-inbox complete "
-    "<task-name>`. If the task is unclear or would require editing anything beyond "
-    "your output file, write that limitation in your output file and STOP."
+    "Run `aq-antigravity-inbox next --json`, then atomically run "
+    "`aq-antigravity-inbox claim <basename> --actor ide-watch --json` BEFORE reading task work. "
+    "If claim fails STOP. Perform only the claimed advisory task and write only its declared output. "
+    "Then run `aq-antigravity-inbox complete .claimed-<task-id> --output <declared-output> --json`. "
+    "Do not implement, build, stage, commit, or edit any other file."
 )
 WAKE_ARGV = ["antigravity", "chat", "--reuse-window", "--mode", "agent", WAKE_PROMPT]
+_OUTPUT_LINE = re.compile(r"^(?:Output|output_file):[ \t]*([^\r\n]+?)[ \t]*$", re.MULTILINE)
+_PRODUCTION_OUTPUT = re.compile(r"Respond by writing only:[ \t]*\r?\n`([^`\r\n]+)`")
+_TASK_ID = re.compile(r"^[A-Za-z0-9][A-Za-z0-9._-]{0,127}$")
 
-# Harness tooling whose command lines contain "antigravity" and would falsely
-# match a bare `pgrep -fa antigravity` — excluded so only a genuine Antigravity
-# IDE process counts as live (otherwise wake tries to cli-nudge a lane nobody
-# is serving, and status claims the IDE is running when it is not).
-_ANTIGRAVITY_PROC_EXCLUDE = (
-    "aq-collab-round", "aq-antigravity-inbox", "delegate-to-antigravity",
-    "aq-antigravity-agent", "aq-event", "pgrep", "snapshot-zsh", "/claude",
-)
+class InboxError(RuntimeError): pass
 
+def _now() -> str: return datetime.now(timezone.utc).isoformat()
+def _tid(name: str) -> str:
+    base = Path(name).name
+    value = base[len(".claimed-"):] if base.startswith(".claimed-") else Path(base).stem
+    if not _TASK_ID.fullmatch(value): raise InboxError("invalid task id")
+    return value
+def _rel(path: Path) -> str: return str(path.resolve().relative_to(REPO.resolve()))
+def _receipt_dir() -> Path: return INBOX / "receipts"
+def _receipt_path(tid: str) -> Path: return _receipt_dir() / f"{tid}.json"
+def _task_lock(tid: str) -> Path: return _receipt_dir() / f"{tid}.lock"
+def _supervisor_lock() -> Path: return INBOX / ".supervisor.lock"
 
-def _antigravity_proc_live() -> bool:
-    """True iff a REAL Antigravity IDE process is running — not merely a command
-    line that contains the word 'antigravity' (the harness's own helpers and the
-    shell running this check all do)."""
+def _regular(path: Path) -> bool:
+    try: return path.lstat().st_mode & 0o170000 == 0o100000
+    except FileNotFoundError: return False
+
+def _read_regular(path: Path) -> bytes:
+    if not _regular(path): raise InboxError(f"unsafe or non-regular member: {path.name}")
+    try: fd = os.open(path, os.O_RDONLY | getattr(os, "O_NOFOLLOW", 0))
+    except OSError as exc: raise InboxError(f"unsafe member open failed: {exc.errno}") from exc
     try:
-        out = subprocess.run(
-            ["pgrep", "-fa", "antigravity"], capture_output=True, text=True, timeout=5
-        )
-    except Exception:
-        return False
-    if out.returncode != 0:
-        return False
-    for line in out.stdout.splitlines():
-        parts = line.split(None, 1)
-        cmd = parts[1] if len(parts) > 1 else ""
-        if any(tok in cmd for tok in _ANTIGRAVITY_PROC_EXCLUDE):
-            continue
-        return True
-    return False
+        st = os.fstat(fd)
+        if st.st_mode & 0o170000 != 0o100000: raise InboxError("non-regular opened member")
+        chunks: list[bytes] = []
+        while block := os.read(fd, 65536): chunks.append(block)
+        return b"".join(chunks)
+    finally: os.close(fd)
 
+def _safe_member(name: str, *, claimed: bool = False) -> Path:
+    base = Path(name).name
+    if base != name or not base or (claimed != base.startswith(".claimed-")): raise InboxError("invalid inbox member")
+    path = INBOX / base
+    if not _regular(path) or path.parent.resolve() != INBOX.resolve(): raise InboxError("unsafe inbox member")
+    return path
+
+def _metadata(raw: bytes) -> tuple[str, str]:
+    text = raw.decode("utf-8", "strict")
+    values = _OUTPUT_LINE.findall(text) + _PRODUCTION_OUTPUT.findall(text)
+    if len(values) != 1: raise InboxError("task requires exactly one Output: or output_file: metadata line")
+    value = values[0]
+    p = Path(value)
+    if p.is_absolute() or ".." in p.parts or not value.startswith(".agents/"):
+        raise InboxError("declared output must be repo-relative under .agents/")
+    return value, hashlib.sha256(raw).hexdigest()
+
+def _load(tid: str) -> dict[str, Any]:
+    path = _receipt_path(tid)
+    if not path.exists() and not path.is_symlink(): return {"task_id": tid, "records": []}
+    try:
+        data = json.loads(_read_regular(path).decode("utf-8"))
+    except (UnicodeDecodeError, json.JSONDecodeError) as exc: raise InboxError(f"corrupt receipt: {exc}")
+    if not isinstance(data, dict) or data.get("task_id") != tid or not isinstance(data.get("records"), list) or any(not isinstance(r,dict) or not isinstance(r.get("type"),str) for r in data["records"]):
+        raise InboxError("invalid receipt schema")
+    return data
+
+def _locked(path: Path):
+    if path.parent.exists() and (path.parent.is_symlink() or not path.parent.is_dir()): raise InboxError("unsafe lock parent")
+    path.parent.mkdir(parents=True, exist_ok=True)
+    try: fd=os.open(path,os.O_CREAT|os.O_RDWR|getattr(os,"O_NOFOLLOW",0),0o600)
+    except OSError as exc: raise InboxError(f"unsafe lock open failed: {exc.errno}") from exc
+    st=os.fstat(fd)
+    if st.st_mode & 0o170000 != 0o100000: os.close(fd); raise InboxError("unsafe lock member")
+    return os.fdopen(fd,"a+",encoding="utf-8")
+
+def _append(tid: str, record: dict[str, Any]) -> None:
+    with _locked(_task_lock(tid)) as lock:
+        fcntl.flock(lock.fileno(), fcntl.LOCK_EX)
+        try:
+            data = _load(tid); data["records"].append(record)
+            target = _receipt_path(tid); tmp = target.with_name(f".{tid}.json.tmp")
+            if tmp.exists(): raise InboxError("unexpected receipt tmp member")
+            try: fd = os.open(tmp, os.O_WRONLY | os.O_CREAT | os.O_TRUNC | getattr(os, "O_NOFOLLOW", 0), 0o600)
+            except OSError as exc: raise InboxError(f"unsafe receipt tmp open failed: {exc.errno}") from exc
+            try:
+                os.write(fd, json.dumps(data, sort_keys=True).encode()); os.fsync(fd)
+            finally: os.close(fd)
+            os.replace(tmp, target)
+            dfd = os.open(_receipt_dir(), os.O_RDONLY); os.fsync(dfd); os.close(dfd)
+        finally: fcntl.flock(lock.fileno(), fcntl.LOCK_UN)
+
+def _records(tid: str, typ: str, generation: str | None = None) -> list[dict[str, Any]]:
+    return [r for r in _load(tid)["records"] if r.get("type") == typ and (generation is None or r.get("generation") == generation)]
 
 def _pending() -> list[Path]:
-    if not INBOX.exists():
-        return []
-    return sorted(INBOX.glob("*.md"), key=lambda p: (p.stat().st_mtime, p.name))
+    if not INBOX.exists(): return []
+    out=[]
+    for p in INBOX.glob("*.md"):
+        if _regular(p): out.append(p)
+    return sorted(out, key=lambda p: (p.stat().st_mtime, p.name))
 
+def _claimed() -> list[Path]:
+    return sorted([p for p in INBOX.glob(".claimed-*") if _regular(p)], key=lambda p:(p.stat().st_mtime,p.name)) if INBOX.exists() else []
 
-def _archive_dir() -> Path:
-    return REPO / ".agent" / "archive" / f"antigravity-inbox-{datetime.now(timezone.utc):%Y%m%d}"
+def _is_parked(tid: str, generation: str) -> bool: return bool(_records(tid, "parked", generation))
+def _parse_ts(x: Any) -> datetime | None:
+    try:
+        if not isinstance(x, str): return None
+        result=datetime.fromisoformat(x).astimezone(timezone.utc)
+        if result > datetime.now(timezone.utc): return None
+        return result
+    except ValueError: return None
 
-
-def _rel(path: Path) -> str:
-    return str(path.relative_to(REPO))
-
-
-def _now_iso() -> str:
-    return datetime.now(timezone.utc).isoformat()
-
-
-def _task_id(name: str) -> str:
-    """Derive a slash-free task_id from an inbox file name (drop `.md`), or
-    from an already-claimed `.claimed-<task_id>` marker name. Marker names
-    start with a dot and contain no other `.`, so Path.stem alone would
-    treat the whole name as the stem (dotfile rule) instead of stripping the
-    prefix — handle that case explicitly.
-    """
-    base = Path(name).name
-    if base.startswith(".claimed-"):
-        return base[len(".claimed-"):]
-    return Path(base).stem
-
-
-def _resolve_inbox_member(name: str) -> Path:
-    """Resolve `name` the same way cmd_complete always has: absolute path,
-    repo-relative path, or bare inbox-relative name. Shared by claim/complete
-    so the containment check below is checked once against one resolution,
-    not re-derived per subcommand.
-    """
-    path = Path(name)
-    if not path.is_absolute():
-        candidate = REPO / path
-        path = candidate if candidate.exists() else INBOX / name
-    return path
-
-
-def _inbox_contained(path: Path) -> bool:
-    """The path-containment check `cmd_complete` has always used, reused
-    verbatim by claim/complete to block traversal via a crafted `name`.
-    """
-    return path.exists() and path.parent.resolve() == INBOX.resolve()
-
-
-def _receipts_dir() -> Path:
-    # Resolved off the current INBOX global at call time (not a frozen
-    # constant) so callers/tests that repoint module.INBOX at a sandbox
-    # (e.g. test-antigravity-inbox.py) get receipts written there too,
-    # instead of silently falling back to the real repo's inbox dir.
-    return INBOX / "receipts"
-
-
-def _receipt_path(task_id: str) -> Path:
-    return _receipts_dir() / f"{task_id}.json"
-
-
-def _load_receipt(task_id: str) -> dict[str, Any]:
-    path = _receipt_path(task_id)
-    if path.exists():
+def _state() -> dict[str, Any]:
+    pending=_pending(); parked=[]; eligible=[]; required=[]
+    for p in pending:
         try:
-            data = json.loads(path.read_text(encoding="utf-8"))
-            if isinstance(data, dict) and isinstance(data.get("records"), list):
-                return data
-        except json.JSONDecodeError:
-            pass
-    return {"task_id": task_id, "records": []}
-
-
-def _append_receipt(task_id: str, record: dict[str, Any]) -> Path:
-    """Append one typed record to the per-task receipt ledger.
-
-    Hashes and paths only — never full prompt/output content (DESIGN §4).
-    Whole-file read + tmp-write + atomic replace: good enough for a
-    single-operator CLI where the real exclusivity primitive (the claim
-    rename below) lives elsewhere, not here.
-    """
-    _receipts_dir().mkdir(parents=True, exist_ok=True)
-    data = _load_receipt(task_id)
-    data["records"].append(record)
-    path = _receipt_path(task_id)
-    tmp = path.with_suffix(".json.tmp")
-    tmp.write_text(json.dumps(data, indent=2, sort_keys=True), encoding="utf-8")
-    tmp.replace(path)
-    return path
-
-
-def _state_payload() -> dict[str, Any]:
-    pending = _pending()
-    last_drop = None
-    if STATE.exists():
-        try:
-            last_drop = json.loads(STATE.read_text(encoding="utf-8")).get("last_drop")
-        except json.JSONDecodeError:
-            last_drop = {"error": "invalid-state-json"}
-    last_consumed = None
-    if isinstance(last_drop, dict) and last_drop.get("name"):
-        last_consumed = not (INBOX / str(last_drop["name"])).exists()
-    return {
-        "inbox": _rel(INBOX),
-        "exists": INBOX.exists(),
-        "pending_count": len(pending),
-        "pending": [_rel(path) for path in pending],
-        "next": _rel(pending[0]) if pending else None,
-        "state_file": _rel(STATE),
-        "last_drop": last_drop,
-        "last_drop_consumed": last_consumed,
-        "consume_contract": "Antigravity IDE reads next, writes requested output, then archives the inbox file with aq-antigravity-inbox complete.",
-    }
-
+            _,gen=_metadata(_read_regular(p)); tid=_tid(p.name)
+            if _is_parked(tid,gen): parked.append(p)
+            else: eligible.append(p); required.append(p)
+        except InboxError: required.append(p)
+    return {"inbox":_rel(INBOX),"exists":INBOX.exists(),"pending_count":len(pending),"claimed_count":len(_claimed()),"parked_count":len(parked),"claim_required_count":len(required),"next":_rel(eligible[0]) if eligible else None,"next_eligible":_rel(eligible[0]) if eligible else None,"pending":[_rel(p) for p in pending],"claimed":[_rel(p) for p in _claimed()],"parked":[_rel(p) for p in parked]}
 
 def _emit(payload: dict[str, Any], as_json: bool) -> int:
-    if as_json:
-        print(json.dumps(payload, indent=2, sort_keys=True))
-        return 0
-    for key, value in payload.items():
-        if isinstance(value, (dict, list)):
-            value = json.dumps(value, sort_keys=True)
-        print(f"{key}: {value}")
+    if as_json: print(json.dumps(payload,sort_keys=True)); return 0
+    for k,v in payload.items(): print(f"{k}: {v}")
     return 0
 
-
-def cmd_status(args: argparse.Namespace) -> int:
-    return _emit(_state_payload(), args.json)
-
-
-def cmd_next(args: argparse.Namespace) -> int:
-    pending = _pending()
-    if not pending:
-        payload = {"ok": False, "reason": "empty-inbox", "inbox": _rel(INBOX)}
-        return _emit(payload, args.json) if args.json else 1
-    path = pending[0]
-    if args.json:
-        return _emit({"ok": True, "path": _rel(path), "content": path.read_text(encoding="utf-8")}, True)
-    print(_rel(path))
-    if args.print_content:
-        print(path.read_text(encoding="utf-8"))
-    return 0
-
-
-def cmd_claim(args: argparse.Namespace) -> int:
-    """Atomically claim a pending inbox file: os.rename() to `.claimed-<task_id>`.
-
-    Same-filesystem rename is a real CAS primitive — it can only succeed
-    once, so two racing claimants cannot both win (DESIGN §3.2 item 2).
-    """
-    name = args.name
-    task_id = _task_id(name)
-    path = _resolve_inbox_member(name)
-    if not _inbox_contained(path):
-        print(f"no pending Antigravity inbox file to claim: {name}", file=sys.stderr)
-        return 1
-    content_hash = hashlib.sha256(path.read_bytes()).hexdigest()
-    claimed_marker = INBOX / f".claimed-{task_id}"
+def _invoke_wake(timeout: int) -> tuple[str, int | None]:
+    method="passive"; code=None
     try:
-        path.rename(claimed_marker)
-    except (FileNotFoundError, OSError):
-        print(f"claim lost the race: {name} was already claimed or removed", file=sys.stderr)
-        return 1
-    record = {
-        "type": "claim",
-        "task_id": task_id,
-        "ts": _now_iso(),
-        "actor": args.actor,
-        "content_hash": content_hash,
-    }
-    _append_receipt(task_id, record)
-    return _emit(
-        {"ok": True, "task_id": task_id, "claimed": _rel(claimed_marker), "content_hash": content_hash},
-        args.json,
-    )
+        result=subprocess.run(WAKE_ARGV,capture_output=True,text=True,timeout=timeout)
+        code=result.returncode; method="cli-nudge-ok" if code == 0 else "cli-nudge-nonzero"
+    except FileNotFoundError: method="cli-nudge-binary-missing"
+    except subprocess.TimeoutExpired: method="cli-nudge-timeout"
+    return method,code
 
-
-def cmd_wake(args: argparse.Namespace) -> int:
-    """Log an attributable wake nudge. Never proof of processing by itself —
-    only an appended, attributable input to the receipt timeline (DESIGN
-    §3.2 item 1). argv is a fixed list; task content is never interpolated
-    into the shelled-out command (Rule 7).
-    """
-    name = args.name
-    task_id = _task_id(name)
-    proc_live = _antigravity_proc_live()
-
-    method = "passive-drop-only"
-    argv_used: list[str] | None = None
-    exit_code: int | None = None
-    if proc_live and not args.passive_only:
-        argv_used = list(WAKE_ARGV)
+def cmd_status(args: argparse.Namespace)->int: return _emit(_state(),args.json)
+def cmd_next(args: argparse.Namespace)->int:
+    eligible=[]
+    for p in _pending():
         try:
-            result = subprocess.run(argv_used, capture_output=True, text=True, timeout=args.timeout)
-            exit_code = result.returncode
-            method = "cli-nudge"
-        except FileNotFoundError:
-            method = "cli-nudge-binary-missing"
-        except subprocess.TimeoutExpired:
-            method = "cli-nudge-timeout"
+            out,gen=_metadata(_read_regular(p))
+            if not _is_parked(_tid(p.name),gen): eligible.append((p,out,gen))
+        except InboxError: continue
+    if not eligible:
+        _emit({"ok":False,"reason":"empty-or-no-eligible-inbox"},args.json); return 1
+    p,out,gen=eligible[0]
+    return _emit({"ok":True,"basename":p.name,"declared_output":out,"generation":gen},args.json)
 
-    record = {
-        "type": "wake_attempt",
-        "task_id": task_id,
-        "ts": _now_iso(),
-        "actor": args.actor,
-        "method": method,
-        "argv": argv_used,
-        "exit_code": exit_code,
-        "proc_live_before": proc_live,
-    }
-    _append_receipt(task_id, record)
-    return _emit(
-        {"ok": True, "task_id": task_id, "method": method, "exit_code": exit_code},
-        args.json,
-    )
+def cmd_claim(args: argparse.Namespace)->int:
+    tid=_tid(args.name)
+    try:
+        with _locked(_supervisor_lock()) as lock:
+            fcntl.flock(lock.fileno(),fcntl.LOCK_EX)
+            try:
+                path=_safe_member(args.name); raw=_read_regular(path); output,generation=_metadata(raw); _load(tid); marker=INBOX/f".claimed-{tid}"
+                if _is_parked(tid,generation): raise InboxError("current task generation is parked")
+                if marker.exists() or not _regular(path): raise InboxError("claim lost race")
+                os.rename(path,marker)
+                _append(tid,{"type":"claim","task_id":tid,"generation":generation,"ts":_now(),"actor":args.actor,"content_hash":generation,"declared_output":output})
+            finally: fcntl.flock(lock.fileno(),fcntl.LOCK_UN)
+    except InboxError as exc: print(str(exc),file=sys.stderr); return 1
+    return _emit({"ok":True,"task_id":tid,"claimed":_rel(marker),"generation":generation,"declared_output":output},args.json)
 
+def cmd_wake(args: argparse.Namespace)->int:
+    try:
+        if args.timeout < 1 or args.timeout > 120: raise InboxError("invalid wake timeout")
+        path=_safe_member(args.name); _,generation=_metadata(_read_regular(path)); method,code=("passive",None) if args.passive_only else _invoke_wake(args.timeout); record={"type":"wake_attempt","task_id":_tid(path.name),"generation":generation,"ts":_now(),"actor":args.actor,"method":method,"exit_code":code,"non_passive":not args.passive_only}; _append(_tid(path.name),record)
+    except InboxError as exc: print(str(exc),file=sys.stderr); return 1
+    ok=record["method"]=="cli-nudge-ok" or args.passive_only
+    _emit({"ok":ok,"task_id":record["task_id"],"method":record["method"],"exit_code":record["exit_code"]},args.json)
+    return 0 if ok else 1
 
-def cmd_complete(args: argparse.Namespace) -> int:
-    name = args.name
-    task_id = _task_id(name)
-    path = _resolve_inbox_member(name)
-    if not _inbox_contained(path):
-        claimed = INBOX / f".claimed-{task_id}"
-        if _inbox_contained(claimed):
-            path = claimed
-        else:
-            print(f"no pending Antigravity inbox file: {name}", file=sys.stderr)
-            return 1
+def _output(path_text: str, declared: str) -> tuple[Path,str]:
+    if path_text != declared: raise InboxError("completion output differs from claim-declared output")
+    path=REPO/path_text
+    try: path.resolve(strict=True).relative_to(REPO.resolve())
+    except (FileNotFoundError,ValueError): raise InboxError("declared output missing or outside repo")
+    if path.is_symlink() or not _regular(path): raise InboxError("declared output is not regular")
+    return path,hashlib.sha256(_read_regular(path)).hexdigest()
 
-    receipt = _load_receipt(task_id)
-    claim_record = next(
-        (r for r in reversed(receipt["records"]) if r.get("type") == "claim"), None
-    )
+def _archive_nonclobber(source: Path, dest: Path) -> None:
+    dest.parent.mkdir(parents=True,exist_ok=True)
+    if dest.exists():
+        if _regular(dest) and hashlib.sha256(_read_regular(dest)).hexdigest()==hashlib.sha256(_read_regular(source)).hexdigest(): os.unlink(source); return
+        raise InboxError("archive destination exists")
+    os.link(source,dest); os.unlink(source)
 
-    dest_dir = _archive_dir()
-    dest_dir.mkdir(parents=True, exist_ok=True)
-    dest = dest_dir / path.name
-    shutil.move(str(path), str(dest))
+def _archive_destination(source_name: str, generation: str, day: datetime) -> Path:
+    agent=REPO/".agent"; archive=agent/"archive"; dated=archive/f"antigravity-inbox-{day:%Y%m%d}"
+    for directory in (agent,archive,dated):
+        if directory.exists():
+            if directory.is_symlink() or not directory.is_dir(): raise InboxError("unsafe archive directory")
+        else: directory.mkdir()
+    if dated.resolve().parent != archive.resolve() or archive.resolve().parent != agent.resolve() or not archive.resolve().is_relative_to(REPO.resolve()): raise InboxError("archive parent chain invalid")
+    dest=dated/f"{source_name}-{generation[:12]}"
+    if dest.parent != dated or dest.parent.resolve()!=dated.resolve(): raise InboxError("archive destination parent invalid")
+    return dest
 
-    completion_record: dict[str, Any] = {
-        "type": "completion",
-        "task_id": task_id,
-        "ts": _now_iso(),
-        "archived_path": _rel(dest),
-        "completed_without_claim": claim_record is None,
-    }
-    if claim_record is not None:
-        completion_record["claim_actor"] = claim_record.get("actor")
+def _reconcile_prepared(tid: str, receipt: dict[str, Any], generation: str | None = None) -> dict[str, Any] | None:
+    prepared=[r for r in receipt["records"] if r.get("type")=="completion_prepared"]
+    if generation is not None: prepared=[r for r in prepared if r.get("generation")==generation]
+    if not prepared: return None
+    item=prepared[-1]; gen=item.get("generation"); declared=item.get("declared_output")
+    stamp=_parse_ts(item.get("ts")); archive=item.get("archived_path"); source_name=item.get("source_name",f".claimed-{tid}"); expected=f".agent/archive/antigravity-inbox-{stamp:%Y%m%d}/{source_name}-{gen[:12]}" if stamp and isinstance(gen,str) and isinstance(source_name,str) else None
+    if not isinstance(gen,str) or not isinstance(declared,str) or archive != expected or item.get("task_id") != tid: raise InboxError("forged completion prepared record")
+    if Path(source_name).name != source_name or source_name in {".",".."} or "/" in source_name or "\\" in source_name: raise InboxError("prepared source name unsafe")
+    recovery_unclaimed=item.get("recovery_unclaimed",False)
+    if source_name != (f"{tid}.md" if recovery_unclaimed else f".claimed-{tid}"): raise InboxError("prepared source mode mismatch")
+    archive_root=REPO/".agent"/"archive"/f"antigravity-inbox-{stamp:%Y%m%d}"
+    dest=_archive_destination(source_name,gen,stamp)
+    try:
+        dest.relative_to(archive_root.resolve())
+    except ValueError: raise InboxError("prepared archive escapes exact directory")
+    if dest.parent != archive_root.resolve() or dest.name != f"{source_name}-{gen[:12]}": raise InboxError("prepared archive parent or basename invalid")
+    if not _regular(dest) or hashlib.sha256(_read_regular(dest)).hexdigest()!=gen: raise InboxError("prepared archive does not match generation")
+    if item.get("recovery_missing_output"):
+        if "output_path" in item or "output_hash" in item: raise InboxError("prepared missing-output recovery has output evidence")
+    else:
+        output,ohash=_output(declared,declared)
+        if item.get("output_path") != _rel(output) or item.get("output_hash") != ohash: raise InboxError("prepared output evidence mismatch")
+    claims=[r for r in receipt["records"] if r.get("type")=="claim" and r.get("generation")==gen]
+    if not item.get("recovery"):
+        if not claims or claims[-1].get("content_hash")!=gen or claims[-1].get("declared_output")!=declared or not claims[-1].get("actor"): raise InboxError("prepared lacks matching claim authority")
+    elif item.get("recovery_actor") != "owner-manual" or not isinstance(item.get("recovery_reason"),str) or not item["recovery_reason"].strip() or len(item["recovery_reason"]) > 240:
+        raise InboxError("prepared recovery authority invalid")
+    elif not isinstance(item.get("recovery_unclaimed"),bool) or not isinstance(item.get("recovery_missing_output"),bool):
+        raise InboxError("prepared recovery flags invalid")
+    elif not item.get("recovery_unclaimed") and (not claims or claims[-1].get("content_hash")!=gen or claims[-1].get("declared_output")!=declared):
+        raise InboxError("claimed recovery lacks matching claim authority")
+    marker=INBOX/source_name
+    if marker.exists():
+        if not _regular(marker) or hashlib.sha256(_read_regular(marker)).hexdigest()!=gen: raise InboxError("prepared marker mismatch")
+        dirfd=os.open(INBOX,os.O_RDONLY)
+        try: os.unlink(marker.name,dir_fd=dirfd)
+        finally: os.close(dirfd)
+    if any(r.get("type")=="completion" and r.get("generation")==gen for r in receipt["records"]): return item
+    _append(tid,{**item,"type":"completion","ts":_now(),"recovered_finalize":True})
+    return item
 
-    output_path = Path(args.output) if args.output else (REPO / ".agents" / "plans" / task_id / "antigravity.md")
-    if not output_path.is_absolute():
-        output_path = REPO / output_path
-    if output_path.exists():
-        output_hash = hashlib.sha256(output_path.read_bytes()).hexdigest()
-        completion_record["output_path"] = _rel(output_path)
-        completion_record["output_hash"] = output_hash
-        _append_receipt(
-            task_id,
-            {
-                "type": "output_hash",
-                "task_id": task_id,
-                "ts": _now_iso(),
-                "path": _rel(output_path),
-                "hash": output_hash,
-            },
-        )
+def cmd_complete(args: argparse.Namespace)->int:
+    tid=_tid(args.name)
+    try:
+        existing=_load(tid)
+        missing_marker = INBOX / f".claimed-{tid}"
+        if not missing_marker.exists():
+            prior=_reconcile_prepared(tid,existing)
+            if prior is not None: return _emit({"ok":True,"archived":prior["archived_path"],"recovery":bool(prior.get("recovery")),"recovered_finalize":True},args.json)
+        recovery=bool(args.recovery_allow_unclaimed or args.recovery_allow_missing_output)
+        if recovery and (args.recovery_actor != "owner-manual" or not isinstance(args.recovery_reason,str) or not args.recovery_reason.strip() or len(args.recovery_reason)>240): raise InboxError("recovery requires bounded owner-manual reason")
+        marker=_safe_member(args.name,claimed=not args.recovery_allow_unclaimed); raw=_read_regular(marker); declared,generation=_metadata(raw); receipt=existing
+        prior=_reconcile_prepared(tid,receipt,generation)
+        if prior is not None: return _emit({"ok":True,"archived":prior["archived_path"],"recovery":bool(prior.get("recovery")),"recovered_finalize":True},args.json)
+        claims=[r for r in receipt["records"] if r.get("type")=="claim" and r.get("generation")==generation]
+        claim=claims[-1] if claims else None
+        claim_ok=bool(claim and marker.name == f".claimed-{tid}" and claim.get("content_hash")==hashlib.sha256(raw).hexdigest() and claim.get("declared_output")==declared)
+        if not claim_ok and not args.recovery_allow_unclaimed: raise InboxError("current claimed marker does not match current claim")
+        if any(r.get("generation")==generation and r.get("type") in {"completion_prepared","completion"} for r in receipt["records"]): raise InboxError("duplicate completion generation")
+        try: output,ohash=_output(args.output,declared)
+        except InboxError:
+            if not args.recovery_allow_missing_output: raise
+            output=None; ohash=None
+        dest=_archive_destination(marker.name,generation,datetime.now(timezone.utc))
+        prepared={"type":"completion_prepared","task_id":tid,"generation":generation,"declared_output":declared,"source_name":marker.name,"ts":_now(),"archived_path":_rel(dest),"recovery":recovery,"claim_actor":claim.get("actor") if claim else None}
+        if output is not None: prepared.update({"output_path":_rel(output),"output_hash":ohash})
+        if recovery: prepared.update({"recovery_actor":args.recovery_actor,"recovery_reason":args.recovery_reason,"recovery_unclaimed":not claim_ok,"recovery_missing_output":output is None})
+        _append(tid,prepared); _archive_nonclobber(marker,dest)
+        _append(tid,{**prepared,"type":"completion","ts":_now()})
+    except InboxError as exc: print(str(exc),file=sys.stderr); return 1
+    return _emit({"ok":True,"archived":_rel(dest),"recovery":recovery},args.json)
 
-    _append_receipt(task_id, completion_record)
-    return _emit(
-        {"ok": True, "archived": _rel(dest), "completed_without_claim": claim_record is None},
-        args.json,
-    )
+def cmd_dispatch_once(args: argparse.Namespace)->int:
+    if args.attempt_ceiling < 1 or args.attempt_ceiling > 16 or args.retry_interval < 1 or args.retry_interval > 86400 or args.timeout < 1 or args.timeout > 120:
+        print("invalid bounded dispatch arguments",file=sys.stderr); return 2
+    reservation: tuple[str,str,str] | None=None
+    try:
+        with _locked(_supervisor_lock()) as lock:
+            fcntl.flock(lock.fileno(),fcntl.LOCK_EX)
+            try:
+                candidates=[]
+                for p in _pending():
+                    try:
+                        _,gen=_metadata(_read_regular(p)); tid=_tid(p.name)
+                        if not _is_parked(tid,gen): candidates.append((p,tid,gen))
+                    except InboxError: continue
+                if not candidates:
+                    claimed=_claimed(); payload={"ok":True,"state":"claimed","task_id":_tid(claimed[0].name)} if claimed else {"ok":True,"state":"empty"}
+                else:
+                    p,tid,gen=candidates[0]; attempts=[r for r in _records(tid,"wake_attempt",gen) if r.get("actor")=="dispatch-once" and r.get("non_passive") is True]
+                    reservations=_records(tid,"wake_reservation",gen)
+                    finals={r.get("reservation") for r in attempts}
+                    live=[]
+                    for r in reservations:
+                        stamp=_parse_ts(r.get("ts"))
+                        if r.get("nonce") not in finals and stamp and (datetime.now(timezone.utc)-stamp).total_seconds() < args.timeout + 30: live.append(r)
+                    stale=[r for r in reservations if r.get("nonce") not in finals and r not in live]
+                    for r in stale: _append(tid,{"type":"wake_attempt","task_id":tid,"generation":gen,"ts":_now(),"actor":"dispatch-once","method":"reservation-stale","exit_code":None,"non_passive":True,"reservation":r.get("nonce")})
+                    attempts=[r for r in _records(tid,"wake_attempt",gen) if r.get("actor")=="dispatch-once" and r.get("non_passive") is True]
+                    if live:
+                        payload={"ok":True,"state":"in-flight","task_id":tid}
+                    elif len(attempts)>=args.attempt_ceiling:
+                        _append(tid,{"type":"parked","task_id":tid,"generation":gen,"ts":_now(),"reason":"attempt-ceiling","attempt_count":len(attempts)}); payload={"ok":True,"state":"parked","task_id":tid}
+                    elif attempts and (last:=_parse_ts(attempts[-1].get("ts"))) and (datetime.now(timezone.utc)-last).total_seconds()<args.retry_interval:
+                        payload={"ok":True,"state":"retry-suppressed","task_id":tid}
+                    elif attempts and _parse_ts(attempts[-1].get("ts")) is None:
+                        raise InboxError("invalid wake timestamp")
+                    else:
+                        nonce=secrets.token_hex(16); _append(tid,{"type":"wake_reservation","task_id":tid,"generation":gen,"ts":_now(),"actor":"dispatch-once","nonce":nonce}); reservation=(tid,gen,nonce); payload={"ok":True,"state":"reserved","task_id":tid}
+            finally: fcntl.flock(lock.fileno(),fcntl.LOCK_UN)
+    except InboxError as exc: print(str(exc),file=sys.stderr); return 1
+    if reservation is None: return _emit(payload,args.json)
+    tid,gen,nonce=reservation; method,code=_invoke_wake(args.timeout)
+    try:
+        with _locked(_supervisor_lock()) as lock:
+            fcntl.flock(lock.fileno(),fcntl.LOCK_EX)
+            try:
+                current=INBOX/f"{tid}.md"
+                if _regular(current) and _metadata(_read_regular(current))[1] == gen and any(r.get("nonce")==nonce for r in _records(tid,"wake_reservation",gen)) and not any(r.get("reservation")==nonce for r in _records(tid,"wake_attempt",gen)):
+                    _append(tid,{"type":"wake_attempt","task_id":tid,"generation":gen,"ts":_now(),"actor":"dispatch-once","method":method,"exit_code":code,"non_passive":True,"reservation":nonce}); payload={"ok":method=="cli-nudge-ok","state":"woken" if method=="cli-nudge-ok" else "wake-failed","task_id":tid,"method":method,"exit_code":code}
+                else: payload={"ok":False,"state":"reservation-lost","task_id":tid}
+            finally: fcntl.flock(lock.fileno(),fcntl.LOCK_UN)
+    except InboxError as exc: print(str(exc),file=sys.stderr); return 1
+    _emit(payload,args.json)
+    return 0 if payload.get("ok") else 1
 
-
-def build_parser() -> argparse.ArgumentParser:
-    parser = argparse.ArgumentParser(description=__doc__)
-    sub = parser.add_subparsers(dest="cmd", required=True)
-
-    status = sub.add_parser("status", help="Show inbox liveness and pending tasks")
-    status.add_argument("--json", action="store_true")
-    status.set_defaults(func=cmd_status)
-
-    next_cmd = sub.add_parser("next", help="Show the next Antigravity inbox task")
-    next_cmd.add_argument("--json", action="store_true")
-    next_cmd.add_argument("--print-content", action="store_true")
-    next_cmd.set_defaults(func=cmd_next)
-
-    claim = sub.add_parser("claim", help="Atomically claim a pending inbox task (CAS)")
-    claim.add_argument("name", help="Inbox file name or repo-relative path")
-    claim.add_argument("--actor", required=True, choices=["ide-watch", "owner-manual"])
-    claim.add_argument("--json", action="store_true")
-    claim.set_defaults(func=cmd_claim)
-
-    wake = sub.add_parser("wake", help="Log an attributable wake nudge (never proof of processing)")
-    wake.add_argument("name", help="Inbox file name (task_id source), pending or already claimed")
-    wake.add_argument("--actor", default="owner-manual", help="owner-manual | script:<name>")
-    wake.add_argument("--passive-only", action="store_true", help="Log the attempt without shelling out")
-    wake.add_argument("--timeout", type=int, default=10, help="Wake subprocess timeout (s)")
-    wake.add_argument("--json", action="store_true")
-    wake.set_defaults(func=cmd_wake)
-
-    complete = sub.add_parser("complete", help="Archive a consumed inbox task")
-    complete.add_argument("name", help="Inbox file name or repo-relative path")
-    complete.add_argument("--output", default=None, help="Output artifact path to hash (default: .agents/plans/<task_id>/antigravity.md)")
-    complete.add_argument("--json", action="store_true")
-    complete.set_defaults(func=cmd_complete)
-
-    return parser
-
-
-def main(argv: list[str] | None = None) -> int:
-    args = build_parser().parse_args(argv)
-    return int(args.func(args))
-
-
-if __name__ == "__main__":
-    raise SystemExit(main())
+def build_parser()->argparse.ArgumentParser:
+    p=argparse.ArgumentParser(description=__doc__); sub=p.add_subparsers(dest="cmd",required=True)
+    for name,func in (("status",cmd_status),("next",cmd_next)):
+        q=sub.add_parser(name); q.add_argument("--json",action="store_true"); q.set_defaults(func=func)
+    q=sub.add_parser("claim"); q.add_argument("name"); q.add_argument("--actor",required=True,choices=["ide-watch","owner-manual"]); q.add_argument("--json",action="store_true"); q.set_defaults(func=cmd_claim)
+    q=sub.add_parser("wake"); q.add_argument("name"); q.add_argument("--actor",default="owner-manual",choices=["owner-manual"]); q.add_argument("--passive-only",action="store_true"); q.add_argument("--timeout",type=int,default=10); q.add_argument("--json",action="store_true"); q.set_defaults(func=cmd_wake)
+    q=sub.add_parser("complete"); q.add_argument("name"); q.add_argument("--output",required=True); q.add_argument("--recovery-allow-unclaimed",action="store_true"); q.add_argument("--recovery-allow-missing-output",action="store_true"); q.add_argument("--recovery-actor",choices=["owner-manual"]); q.add_argument("--recovery-reason"); q.add_argument("--json",action="store_true"); q.set_defaults(func=cmd_complete)
+    q=sub.add_parser("dispatch-once"); q.add_argument("--attempt-ceiling",type=int,default=3); q.add_argument("--retry-interval",type=int,default=60); q.add_argument("--timeout",type=int,default=10); q.add_argument("--json",action="store_true"); q.set_defaults(func=cmd_dispatch_once)
+    return p
+def main(argv:list[str]|None=None)->int:
+    args=build_parser().parse_args(argv); return int(args.func(args))
+if __name__=="__main__": raise SystemExit(main())

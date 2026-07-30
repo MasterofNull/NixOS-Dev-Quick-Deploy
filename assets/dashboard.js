@@ -5288,21 +5288,43 @@ async function loadBudgetPolicy() {
 }
 
 // ─── INTELLIGENCE: AGENT OPS STATUS ──────────────────────────────────────────
+function composeAgentOpsStatus(d, local) {
+  const coordinator = d !== null && typeof d === "object" && !Array.isArray(d) ? d : null;
+  const localDirect = local !== null && typeof local === "object" && !Array.isArray(local) ? local : null;
+  const coordinatorAvailable = Boolean(coordinator && coordinator.available !== false);
+  const alertOn = Boolean(coordinatorAvailable && coordinator.alert_active);
+  const drift = coordinatorAvailable && Number.isFinite(coordinator.drift_score)
+    ? coordinator.drift_score
+    : 0;
+  const override = coordinatorAvailable ? coordinator.profile_override : null;
+  const localHealth = typeof localDirect?.health === "string" ? localDirect.health : "unavailable";
+  const localSeverity = { healthy: 0, degraded: 1, unavailable: 1, blocked: 2 }[localHealth] ?? 2;
+  const coordinatorSeverity = !coordinatorAvailable ? 1 : alertOn ? 2 : drift > 0.4 ? 1 : 0;
+  return {
+    coordinator, localDirect, coordinatorAvailable, alertOn, drift, override, localHealth,
+    localSeverity, coordinatorSeverity, severity: Math.max(localSeverity, coordinatorSeverity),
+  };
+}
+
 async function loadAgentOpsStatus() {
-  const d = await apiFetch("/agent-ops/status");
+  const [d, local] = await Promise.all([
+    apiFetch("/agent-ops/status"),
+    apiFetch("/agent-ops/local-direct-health"),
+  ]);
   const el = document.getElementById("agentOpsDetails");
   const badge = document.getElementById("agentOpsBadge");
   if (!el) return;
-  if (!d) {
-    el.innerHTML = fwRow("Status", "Unavailable", "warn");
-    return;
-  }
-  const alertOn = d.alert_active;
-  const drift = d.drift_score ?? 0;
-  const override = d.profile_override;
-  const color = alertOn ? "err" : drift > 0.4 ? "warn" : "ok";
+  const state = composeAgentOpsStatus(d, local);
+  const {
+    coordinator, localDirect, coordinatorAvailable, alertOn, drift, override, localHealth,
+    localSeverity, coordinatorSeverity, severity,
+  } = state;
+  const color = severity === 2 ? "err" : severity === 1 ? "warn" : "ok";
   if (badge) {
-    badge.textContent = alertOn ? "ALERT" : override ? "override" : "nominal";
+    const localBadge = { healthy: "nominal", degraded: "degraded", unavailable: "unavailable", blocked: "BLOCKED" }[localHealth] || "BLOCKED";
+    badge.textContent = coordinatorSeverity >= localSeverity
+      ? (!coordinatorAvailable ? "unavailable" : alertOn ? "ALERT" : override ? "override" : "nominal")
+      : localBadge;
     badge.className = `card-badge ${color === "ok"
         ? "badge-ok"
         : color === "warn"
@@ -5310,12 +5332,36 @@ async function loadAgentOpsStatus() {
           : "badge-err"
       }`;
   }
+  const fixedState = (value) => ({
+    healthy: "Healthy", degraded: "Degraded", blocked: "Blocked", unavailable: "Unavailable",
+  })[value] || "Unavailable";
+  const fixedNumber = (value, suffix = "") => Number.isInteger(value)
+    ? `${value.toLocaleString()}${suffix}`
+    : (localDirect?.assessment === "not_assessed" ? "Not instrumented" : "Unavailable");
+  const phases = localDirect?.phase_counts || {};
+  const timeouts = localDirect?.timeout_counts || {};
+  const coverage = localDirect?.coverage || {};
+  const localColor = localHealth === "blocked" ? "err" : localHealth === "healthy" ? "ok" : "warn";
   el.innerHTML = [
     fwRow("Alert Active", alertOn ? "YES" : "no", alertOn ? "err" : "ok"),
     fwRow("Drift Score", drift.toFixed(3), drift > 0.4 ? "warn" : "ok"),
     fwRow("Profile Override", override || "none", override ? "warn" : "ok"),
-    fwRow("Window Size", d.window_size ?? "--", "info"),
-    d.since ? fwRow("Alert Since", relTime(d.since), "warn") : "",
+    fwRow("Window Size", coordinator?.window_size ?? "Unavailable", "info"),
+    coordinator?.since ? fwRow("Alert Since", relTime(coordinator.since), "warn") : "",
+    fwRow("Local Direct Lifecycle", fixedState(localHealth), localColor),
+    fwRow("Deadline Health", fixedState(localDirect?.deadline_health), localDirect?.deadline_health === "blocked" ? "err" : localDirect?.deadline_health === "healthy" ? "ok" : "warn"),
+    fwRow("Queue / Prefill", `${fixedNumber(phases.queue)} / ${fixedNumber(phases.prefill)}`, "info"),
+    fwRow("Generation / Cleanup", `${fixedNumber(phases.generation)} / ${fixedNumber(phases.cleanup)}`, "info"),
+    fwRow("Recent Terminal", fixedNumber(phases.terminal), "info"),
+    fwRow("Oldest Queue / Prefill", `${fixedNumber(localDirect?.oldest_queue_age_s, "s")} / ${fixedNumber(localDirect?.oldest_prefill_age_s, "s")}`, "info"),
+    fwRow("Oldest Generation", fixedNumber(localDirect?.oldest_generation_age_s, "s"), "info"),
+    fwRow("Generation Silence", fixedNumber(localDirect?.generation_silence_exceeded_count), "info"),
+    fwRow("Minimum Deadline", fixedNumber(localDirect?.minimum_remaining_ms, "ms"), "info"),
+    fwRow("Timeouts Q/P/G/C", `${fixedNumber(timeouts.queue)} / ${fixedNumber(timeouts.prefill)} / ${fixedNumber(timeouts.generation)} / ${fixedNumber(timeouts.cleanup)}`, "info"),
+    fwRow("Stale / Reconciled", `${fixedNumber(localDirect?.stale_owner_count)} / ${fixedNumber(localDirect?.reconciliation_count)}`, "info"),
+    fwRow("Incomplete / Budget", `${fixedNumber(localDirect?.output_incomplete_count)} / ${fixedNumber(localDirect?.budget_mismatch_count)}`, "info"),
+    fwRow("Convergence Gaps", fixedNumber(localDirect?.terminal_convergence_gap_count), "info"),
+    fwRow("Phase-0 / Web Coverage", `${fixedState(coverage.phase0)} / ${fixedState(coverage.web_dashboard)}`, "info"),
   ]
     .filter(Boolean)
     .join("");

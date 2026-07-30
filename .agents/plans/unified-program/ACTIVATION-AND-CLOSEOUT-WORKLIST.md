@@ -4,9 +4,15 @@
 ledger (`.agents/events/*.jsonl`, authoritative), the authorization corpus
 (`.agents/plans/**/*AUTHORIZATION*.md`), and `UNIFIED-PROGRAM-PLAN.md`.
 
-## Headline: the refactor is NOT blocked on a pile of owner activations
+**Current execution projection (2026-07-27):**
+`EXECUTION-READINESS-QUEUE.md` supersedes this document's stale forward-order
+recommendations. This worklist remains historical close-out evidence; it is not
+an activation or current queue authority.
+
+## Headline: activation events are not completion evidence
 The owner-activation ledger records **38 owner `pulse.append` activations** through
-2026-07-22. The **frontier slice of every live track is already activated.** The
+2026-07-22. Most historical frontier slices were activated, but activation alone
+does not prove implementation, acceptance, or commit. The
 authorization-doc *headers* that still read `PREPARED_ONLY / NOT ACTIVATED` are
 **stale** — the activation happened in the ledger but the doc header was never
 updated (confirmed on B2-C1: header says NOT ACTIVATED, ledger shows owner activation
@@ -17,9 +23,9 @@ remaining forward slices** — not chase activations.
 
 ---
 
-## Section 1 — Activated frontier (DONE per the ledger; records may be stale)
-Owner-activated; implementation accepted/committed. Verify each doc header is
-updated to ACTIVATED (many are not — see Section 2).
+## Section 1 — Activated frontier with verified completion
+Owner-activated and separately evidenced as implemented, accepted, and committed.
+An activation-only row must not appear here.
 
 | Slice | Authorization (activated) | Ledger date |
 |---|---|---|
@@ -30,7 +36,6 @@ updated to ACTIVATED (many are not — see Section 2).
 | QPPR A1-AM3 (+ rev2 + acceptances) | `auth-qa-provider-probe-reliability-a1-am3(-rev2)` | 07-19 → 07-20 |
 | QPPR A2-AM1 (+ candidate-rev) | `auth-qa-provider-probe-reliability-a2-am1` | 07-20 |
 | QPPR C1C-AM2, C1C-AM3 (+ acceptances) | `auth-qa-provider-probe-reliability-c1c-am2/-am3` | 07-19 |
-| Agent-conn C0.6-T-AM6 (AM3/AM5 too) | `C0.6-T-AM6` | 07-22 |
 | Track V VF-7 (evidence path) | `auth-verified-factory-vf-7` | 07-22 |
 | delegate-codex-quota-precheck (+ rev) | `auth-delegate-codex-quota-precheck` | 07-20 |
 
@@ -39,6 +44,11 @@ C0.6-T-AM4 (superseded), L2B-B-AM1 (suspended: pre-review subject drift), L2B-B-
 (superseded by AM4). Historical done tracks: Cycle-0 C0.1–C0.3, C0.5A/B, agent-ops
 M1/M2A, R0.1, program-progress-tracker, generic-flake-baseline, Foundation-A
 adjudication+registry-projection (Foundation A EXIT complete, 10/10 adjudicated).
+
+**Correction (2026-07-27):** C0.6-T AM6 was activated but never implemented,
+accepted, or committed. Its nine files still match the rejected AM5/pre-AM6
+candidate hashes, the activation expired, and HEAD drifted. It now requires a
+current-HEAD AM7 refreeze and fresh exact activation; Track A remains dormant.
 
 ## Section 2 — RECONCILE stale records (bounded, safe, orchestrator-doable NOW)
 These authorization docs were owner-activated per the ledger but their headers still

@@ -1,14 +1,15 @@
 # PRD — Verified Factory Throughput Layer (VF)
 
-**Status**: REQUEST_REVISION / PREPARED_ONLY — amended after the `unified-program` aggregate;
-requires bounded re-review and explicit per-slice owner authorization before implementation.
-**Owner lane**: claude-fable-5 (analysis/orchestration; implementation delegated per role matrix +
-lane-eligibility policy). **Date**: 2026-07-13.
+**Status**: REVISION_CANDIDATE / PREPARED_ONLY — corrected after the bounded Track-V review;
+requires independent re-review and explicit per-slice owner authorization before implementation.
+**Historical authoring lane**: claude-fable-5 (analysis/orchestration only; no continuing role
+entitlement). Every execution role is selected through the model-neutral role matrix and measured,
+expiring lane-eligibility registry ratified in Q5. **Date**: 2026-07-13.
 **Companion meta-prompt**: `.agents/prompts/VERIFIED-FACTORY-CYCLE-META-PROMPT.md`
 **Program position**: Track V (cross-cutting) in `.agents/plans/UNIFIED-PROGRAM-PLAN.md`; VF-0
 folds into the consolidated `unified-program` ratification round.
-**Position**: proposed next dev cycle after the in-flight Codex local-inference cycle
-(L1A `0c171504`, L2A `499e5a26`, L2B-A `fbeffbab`; L2B-B unauthorized). VF **feeds** the ratified
+**Position**: correction candidate after Foundation B1 completed (L1A `0c171504`, L2A `499e5a26`,
+L2B-A `fbeffbab`, L2B-B and offline chat/batch parity landed). VF **feeds** the ratified
 reference architecture (`.agent/PROJECT-LOCAL-AI-FACTORY-REFERENCE-ARCHITECTURE-PRD.md`,
 Cycles 1A–6); it forks nothing and supersedes nothing.
 
@@ -72,7 +73,7 @@ Disposition of overlaps (to be confirmed in the VF-0 round):
 | AQ-OS v1 Beat 3.1 (F2.5 wiring) | dispatch throughput | dependency, not VF scope; VF KPIs measure its absence; owner decides Beat 3.1 timing |
 | AQ-OS v1 Beat 6.4/6.5 (eval service, prompt registry) | eval + registry | superseded-or-absorbed decision recorded at VF-0; no duplicate track survives |
 | Cycle 0 registry + checker | state authorities | read-only input to VF; VF adds no writer to any of the ten authorities |
-| L2B local-inference/aq-chat parity (in flight) | payload/contract surfaces | VF-0 waits for L2B close or proves file-level non-overlap before any dispatch |
+| L2B local-inference/aq-chat parity (Foundation B1 complete) | payload/contract surfaces | prerequisite satisfied; each VF slice still proves exact subject and file-level non-overlap before dispatch |
 
 Naming discipline: VF slice IDs use the `VF-n` prefix — no collision with `C0.x`, `L1A/L2A/L2B`,
 or `Beat n`.
@@ -82,8 +83,11 @@ or `Beat n`.
 Each slice ships under the Activation Gate (integrated + ON + real-world-validated + observable +
 intervenable, or a written dated deferral), with a sealed oracle authored by a non-implementer
 lane, a risk tier, and a rollback path. Lane assignments follow current measured eligibility
-(codex: structural code + review; opus: bounded deep implementation; antigravity: research +
-adversarial critique only; local Qwen: bounded single-edit/audit slices — present in every phase).
+Roles are model-neutral: spec author/sealer, bounded implementer, independent acceptance reviewer,
+adversarial reviewer, and local evidence/training participant. Each assignment uses the cheapest
+healthy lane whose measured, unexpired eligibility covers that role and risk tier; no provider or
+model is permanently entitled to a role. Local participation remains asynchronous where its
+measured envelope cannot safely gate the slice.
 
 ### VF-1 — Oracle-required dispatch contract *(foundation; smallest, unblocks all)*
 Extend the task/backlog contract with an `oracle` block whose command is an argv array, never a shell
@@ -91,14 +95,37 @@ string: `{argv[], cwd, env_allowlist[], network_profile, timeout_s, kill_grace_s
 expected_exit, artifacts[], tier, sealed_by, waiver?}`. `cwd` and artifact paths are normalized,
 contained in the leased workspace, and revalidated before use; undeclared environment, shell
 metacharacter interpretation, redirects, and ambient network are forbidden. Timeout terminates the
-bounded process group and records cleanup evidence. `aq-loop`/delegation dispatch gains a gate: warn-mode
-first (log oracle-less dispatches), enforce-mode behind a flag after one clean week.
+bounded process group and records cleanup evidence.
+
+The sealed result contract is complete rather than a single combined-output hash. `stdout` and
+`stderr` are separate closed evidence records with required `sha256`, `original_bytes`,
+`captured_bytes`, and `truncation` (`none|prefix`); a truncated stream hashes the full stream at
+creation time while retaining only the bounded prefix, so a digest never ambiguously describes the
+retained bytes. The result also records a canonical artifact list (normalized relative path,
+media type, bytes, SHA-256; sorted by path), the effective sealed-input digest, and the executable
+identity digest. Raw stream content is an optional content-addressed evidence object, never an
+unbounded inline field.
+
+Sandbox outcomes are typed and non-overlapping: `policy_refused`, `spawn_failed`, `completed`,
+`timed_out`, `output_limit_exceeded`, or `runner_failed`. A launched process additionally carries
+`cleanup` as `not_required|terminated|killed|kill_failed|reap_failed`; `completed` requires a reaped
+process and an exit code, while every other outcome forbids a misleading success exit. Spawn,
+stream-read, timeout, termination, kill, and reap failures retain their own bounded stable reason
+code. The result may claim success only when the outcome is `completed`, cleanup is
+`not_required`, the expected-exit predicate passes, required artifact digests exist, and neither
+evidence stream violated its sealed policy.
+
+`aq-loop`/delegation dispatch gains a gate: warn-mode first (log oracle-less dispatches),
+enforce-mode behind a flag after one clean week.
 Oracle execution is zero-inference by construction.
 **Accept**: schema lands as L1A extension; frozen warn/dry-run fixtures prove deterministic
 classification, zero side effects, waiver behavior, timeout cleanup, output caps, stable refusal
-reasons, and dashboard telemetry; 100% of new backlog items carry an oracle or explicit waiver;
+reasons, separate stdout/stderr full-stream digests and prefix-truncation accounting, artifact
+ordering, every typed sandbox/cleanup outcome (including spawn/read/kill/reap failure), and
+dashboard telemetry; 100% of new backlog items carry an oracle or explicit waiver;
 enforce-mode refusal is demonstrated only after the warn fixtures and live dry-run pass.
-**Lanes**: fable specs + seals template; codex implements; local audits backlog for retrofit list.
+**Roles**: independent spec/sealer authors the template; an eligible bounded implementer lands it;
+a separately eligible local evidence lane audits the backlog retrofit list.
 
 ### VF-2 — Risk-tiered gate rubric *(makes zero trust affordable)*
 Three tiers with a **deterministic classifier** (path/blast-radius based — Nix/service/store/
@@ -109,7 +136,8 @@ confirmed by the classifier; classifier wins.
 **Accept**: rubric doc ratified; classifier is a pure function with its own oracle; one real T0
 slice merges on the fast path; **governance-overhead ratio** (process time ÷ implementation time)
 measured per slice and rendered on the dashboard.
-**Lanes**: fable rubric; codex classifier; antigravity adversarially probes tier-evasion.
+**Roles**: architecture/spec role authors the rubric; eligible bounded implementer lands the
+classifier; independent adversarial reviewer probes tier-evasion.
 
 ### VF-3 — Report ≠ record verifier path *(structural fix for E1)*
 A verifier step inside the existing harness_qa/tier0 path (NOT a new daemon) re-executes the
@@ -134,7 +162,9 @@ this PRD — it is not addressable, replayable, or authoritative.
 **Accept**: incident fixture green in Phase-0; report-only verdicts carry canonical oracle argv,
 exit/timeout/truncation state, output/artifact hashes, subject lineage, and verifier identity. Writer
 promotion additionally requires the authority contract and transition/replay fixtures above.
-**Lanes**: codex implements; opus bounded sub-steps; fable reviews; local writes fixture variants.
+**Roles**: eligible bounded implementer owns the slice and may receive separately bounded
+sub-steps; independent acceptance role reviews; eligible local evidence lane writes fixture
+variants.
 
 ### VF-4 — Golden-task bank *(dogfooding flywheel; feeds ref-arch Cycle 4)*
 Every merged slice banks readable task/oracle/repro material separately from sealed answers and
@@ -144,8 +174,8 @@ changes: run the bank, compare pass-rates against the recorded baseline, block o
 **Accept**: bank grows monotonically with merges (automatic, not manual); one real config change
 demonstrably gated by replay; scorecard visible on dashboard; implementers can read the task and
 oracle needed to converge but cannot read sealed answers/canaries.
-**Lanes**: codex bank + replay; local generates candidate cases from closed backlog items;
-fable curates + seals.
+**Roles**: eligible bounded implementer owns bank + replay; eligible local evidence lane generates
+candidate cases from closed backlog items; independent curator/sealer role accepts cases.
 
 ### VF-5 — Outcome ledger + routing feedback *(report-only; feeds ref-arch Cycle 5)*
 Verifier path appends one record per completed task: task features, lane, oracle outcome,
@@ -157,7 +187,8 @@ routing authority with owner approval, exact before/after diff, evidence referen
 expiry, and an explicit prohibition on model self-promotion.
 **Accept**: ledger written only by the verifier path; first weekly report generated from ≥20 real
 tasks; escalation triggers defined as verifier-failure counts (never model self-assessment).
-**Lanes**: codex ledger; fable report design; local report generation runs.
+**Roles**: eligible bounded implementer owns the ledger; independent spec role owns report design;
+eligible local evidence lane runs report generation.
 
 ### VF-6 — Distillation ratchet *(automate the model out)*
 Recurrence detector over the outcome ledger: when a task class hits 3 completions, auto-file a
@@ -165,7 +196,8 @@ backlog item "extract deterministic tool/script for <class>" with an oracle. KPI
 task share.
 **Accept**: detector runs in the existing report path; ≥1 extraction slice generated, implemented,
 and its task class subsequently served without inference (proof of ratchet).
-**Lanes**: local detector (bounded); codex reviews; extraction slices routed normally.
+**Roles**: cheapest eligible bounded implementation lane owns the detector; an independent
+acceptance role reviews; extraction slices route through the measured eligibility registry.
 
 ### VF-7 — Evidence pipeline integrity *(fix for E4; small, do first with VF-1)*
 `aq-evidence run -- <cmd>`: guaranteed-unwrapped execution path (bypasses rtk/lean-ctx/output
@@ -173,7 +205,8 @@ hooks), content-addresses stdout/artifacts at creation, emits `{cmd, sha256, byt
 Governance protocols and the verifier path adopt it for all hash-bearing evidence.
 **Accept**: wrapped-vs-unwrapped divergence test exists and alarms; pattern promoted to
 `.agent/PROMOTED-BUG-PATTERNS.md`; C0.3-style bindings reproducible via `aq-evidence` alone.
-**Lanes**: codex implements; opus verifies against recorded C0.3 hashes.
+**Roles**: eligible bounded implementer lands the path; an independent evidence-verification role
+checks it against recorded C0.3 hashes.
 
 ### VF-8 — Small-model lane-eligibility bench *(research; portfolio economics)*
 Measure a 1–4B-class local model on factory task classes that currently burn the 35B slot
@@ -182,7 +215,8 @@ expiring rows for the lane-eligibility registry demanded by the owner meta-promp
 model-portfolio slice next cycle. Runs in idle windows (APU contention budgeted).
 **Accept**: per-class pass-rates with sample counts + confidence; registry rows with expiry;
 recommendation with measured cost/latency deltas. No routing change this cycle.
-**Lanes**: local + switchboard bench harness; antigravity research comparison; fable verdict.
+**Roles**: eligible local benchmark lane runs the switchboard harness; independent research role
+performs comparison; independent acceptance role issues the verdict.
 
 ### VF-9 — Intake contract: capture → triage → slate *(owner-approved 2026-07-13; protects trajectory)*
 One door in for all new findings/ideas/requirements/features, with three stages under different
@@ -203,16 +237,16 @@ round; an agent cannot argue its way into an interrupt).
 local first pass; slate-freeze gate live in `aq-loop` (a non-rubric mid-cycle item provably
 deferred to intake, not lost); `INTAKE.md` projector-written only; accepted rows carry track
 binding + oracle sketch; park/expiry aging demonstrated.
-**Lanes**: codex implements event type + projector + slate gate; local runs first-pass triage
-(measured as a VF-8 task class); fable authors rubric + confirmation flow; antigravity
-adversarially probes interrupt-rubric evasion.
+**Roles**: eligible bounded implementer lands event type + projector + slate gate; eligible local
+evidence lane runs first-pass triage (measured as a VF-8 task class); independent spec role authors
+the rubric + confirmation flow; independent adversarial reviewer probes interrupt-rubric evasion.
 
 ## 5. Phasing & dependencies
 
 ```
 VF-0  Ratification & reconciliation round (consensus ≥3/4; owner activation; PREPARED_ONLY→ACTIVE)
-      — waits for L2B close or proven non-overlap
-VF-1 + VF-7   (parallel only after L2B-B or exact hash-bound non-overlap; warn/evidence first)
+      — Foundation B1 prerequisite satisfied; each slice still proves exact hash-bound non-overlap
+VF-1 + VF-7   (parallel only under separate exact authorizations and non-overlap; warn/evidence first)
 VF-3 report-only (immediately after VF-1/VF-7; writer promotion waits for authority contract)
 VF-2 + VF-9   (VF-2 needs VF-1 tier field; VF-9 needs VF-1 oracle schema + rubric ratified at VF-0)
 VF-4 + VF-5   (parallel; need VF-3 verifier path)
@@ -235,7 +269,7 @@ Per the parity motto: a blank `--` on any of these is a bug.
 
 | Risk | Mitigation |
 |---|---|
-| Oracle gaming (implementer optimizes to the check) | oracles sealed by non-implementer lane; antigravity adversarial probes (VF-2/VF-3); anti-gaming HARD rule |
+| Oracle gaming (implementer optimizes to the check) | oracles sealed by non-implementer lane; independent adversarial probes (VF-2/VF-3); anti-gaming HARD rule |
 | VF becomes a third competing roadmap | §3 disposition table is a ratification blocker: every overlap gets an explicit absorbed/deferred/superseded verdict at VF-0 |
 | Governance re-inflation (VF gates add weight instead of removing it) | governance-overhead ratio is a first-class KPI; VF-2 fast path must demonstrably beat the C0.3 baseline |
 | APU contention (bench + eval replay vs. dev inference) | idle-window scheduling; parallel=1 respected; budgets in slice contracts |

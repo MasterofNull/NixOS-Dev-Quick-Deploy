@@ -56,3 +56,19 @@ the prefix — Antigravity's verified KV-cache rule).
 - F1–F4 unit tests pass; F5 integration: a pruned agent run recovers relevant
   evicted content via the scratchpad (measured hit), prefix bytes unchanged before
   the injection point, fail-open when :8081 down. Independent review + never-skip-local.
+
+---
+## REVISION (2026-07-23): agent_executor.py is FROZEN — split 2a/2b
+GUARD CATCH: `ai-stack/local-agents/agent_executor.py` is hash-pinned in
+`scripts/testing/fixtures/local-delegation-reliability-golden.json` (live_sources,
+defect-characterization freeze D1/D4/D5). Editing it drifts that manifest — the
+same collision class as the dispatch.py/L2B freeze. So:
+- **Slice 2a (BUILD NOW, no frozen edit):** F1–F4 live in a NEW module
+  `ai-stack/local-agents/context_cache.py` (+ its test). Pure, importable, fail-open.
+  Touches NO frozen file. This is the whole embed-backed cache library.
+- **Slice 2b (later, freeze-aware):** F5 integration — the one hook that calls
+  context_cache from agent_executor's prune path. Because that edits the frozen
+  file, it must either re-pin the golden manifest as a reviewed change (coordinated
+  with the local-delegation-reliability track that owns the freeze) or expose a
+  registration seam. Handled as its own slice with the freeze reconciliation, never
+  a silent hash bump.

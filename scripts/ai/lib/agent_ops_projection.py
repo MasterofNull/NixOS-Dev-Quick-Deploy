@@ -16,6 +16,8 @@ from typing import Any, Iterable, Mapping, Sequence
 
 
 SCHEMA_VERSION = "aq.agent-ops-projection.v2"
+LOCAL_DIRECT_HEALTH_VERSION = "aq.local-direct-health.v1"
+LOCAL_DIRECT_SOURCE_VERSION = "aq.local-direct-source.v1"
 REVIEW_FACTS_VERSION = "aq.review-feedback-facts.v1"
 REGISTRY_COMPAT_FACTS_VERSION = "aq.registry-compatibility-facts.v1"
 REGISTRY_COMPAT_LOOKUP_HEALTH = {"healthy", "degraded", "blocked", "unavailable"}
@@ -65,6 +67,28 @@ MAX_TEXT = 4096
 SENSITIVE_KEYS = {
     "argv", "cmdline", "command", "credential", "credentials", "description", "environment",
     "headers", "output", "path", "prompt", "prompt_digest", "raw_command", "raw_error", "secret", "token",
+}
+LOCAL_DIRECT_PHASES = ("queue", "prefill", "generation", "cleanup", "terminal")
+LOCAL_DIRECT_ACTIVE_PHASES = LOCAL_DIRECT_PHASES[:-1]
+LOCAL_DIRECT_COVERAGE_VALUES = {"healthy", "blocked", "unavailable"}
+LOCAL_DIRECT_REASONS = {
+    "source_not_instrumented", "source_stale", "source_invalid", "phase_invalid",
+    "deadline_missing", "deadline_expired_active", "queue_age_exceeded",
+    "prefill_age_exceeded", "generation_silence_exceeded", "timeout_observed",
+    "stale_owner_observed", "output_incomplete_observed", "budget_mismatch_observed",
+    "terminal_convergence_gap", "coverage_incomplete", "healthy",
+}
+LOCAL_DIRECT_NUMERIC_FIELDS = (
+    "oldest_queue_age_s", "oldest_prefill_age_s", "oldest_generation_age_s",
+    "active_deadline_count", "expired_active_count", "minimum_remaining_ms",
+    "generation_silence_exceeded_count", "stale_owner_count", "reconciliation_count",
+    "output_incomplete_count", "budget_mismatch_count", "terminal_convergence_gap_count",
+)
+LOCAL_DIRECT_RECORD_KEYS = {
+    "task_identity", "run_identity", "phase", "phase_entered_at_ms", "accepted_deadline_ms",
+    "phase_age_cap_ms", "last_progress_at_ms", "generation_silence_cap_ms", "terminal_at_ms",
+    "timeout_phase", "stale_owner", "reconciled", "output_incomplete", "budget_mismatch",
+    "terminal_convergence_gap", "trusted", "producer",
 }
 REVIEW_FACT_KEYS = {
     "contract_version", "receipt_schema_version", "candidate_schema_version", "subject_hash",
@@ -511,11 +535,127 @@ def project_registry_compatibility(facts: Mapping[str, Any] | None) -> dict[str,
     }
 
 
+def _local_direct_coverage(value: Mapping[str, Any] | None) -> dict[str, str]:
+    default = {"projection": "healthy", "phase0": "unavailable", "web_dashboard": "unavailable"}
+    if value is None:
+        return default
+    _exact_keys(value, set(default), "local_direct_coverage_shape_invalid")
+    if any(item not in LOCAL_DIRECT_COVERAGE_VALUES for item in value.values()):
+        raise ProjectionError("local_direct_coverage_value_invalid")
+    return {key: value[key] for key in default}
+
+
+def _local_direct_empty(*, health: str, reason: str,
+                        coverage: Mapping[str, str]) -> dict[str, Any]:
+    reasons = [reason]
+    if any(value != "healthy" for value in coverage.values()):
+        reasons.append("coverage_incomplete")
+    return {
+        "schema_version": LOCAL_DIRECT_HEALTH_VERSION,
+        "assessment": "not_assessed",
+        "health": health,
+        "source_freshness": "unavailable",
+        "deadline_health": "unavailable",
+        "phase_counts": {phase: None for phase in LOCAL_DIRECT_PHASES},
+        **{field: None for field in LOCAL_DIRECT_NUMERIC_FIELDS},
+        "timeout_counts": {phase: None for phase in LOCAL_DIRECT_ACTIVE_PHASES},
+        "coverage": dict(coverage),
+        "reason_codes": sorted(set(reasons)),
+    }
+
+
+def _local_direct_rejected(reason: str, coverage: Mapping[str, str]) -> dict[str, Any]:
+    return _local_direct_empty(health="blocked", reason=reason, coverage=coverage)
+
+
+def _normal_local_phase(value: Any) -> str:
+    mapping = {
+        "queue": "queue", "queued": "queue",
+        "prefill": "prefill", "starting": "prefill", "loading": "prefill",
+        "generation": "generation", "generating": "generation", "running": "generation",
+        "cleanup": "cleanup", "cancelling": "cleanup",
+        "terminal": "terminal", "done": "terminal", "completed": "terminal",
+        "failed": "terminal", "cancelled": "terminal", "error": "terminal",
+    }
+    if not isinstance(value, str) or value not in mapping:
+        raise ProjectionError("phase_invalid")
+    return mapping[value]
+
+
+def _local_direct_ms(value: Any, reason: str, *, maximum: int = 9_007_199_254_740_991) -> int:
+    if isinstance(value, bool) or not isinstance(value, int) or not 0 <= value <= maximum:
+        raise ProjectionError(reason)
+    return value
+
+
+def _local_direct_count(value: int, reason: str) -> int:
+    if value > 1_000_000:
+        raise ProjectionError(reason)
+    return value
+
+
+def _validate_local_direct_terminal_order(record: Mapping[str, Any]) -> None:
+    """Reject impossible terminal chronology before provenance adjudication."""
+    if not isinstance(record, Mapping):
+        raise ProjectionError("source_invalid")
+    phase_entered = _local_direct_ms(record.get("phase_entered_at_ms"), "source_invalid")
+    terminal_at = record.get("terminal_at_ms")
+    if terminal_at is not None:
+        terminal_at = _local_direct_ms(terminal_at, "source_invalid")
+        if terminal_at < phase_entered:
+            raise ProjectionError("terminal_order_invalid")
+
+
+def project_local_direct_health(*, now_ms: int, snapshot: Mapping[str, Any] | None,
+                                coverage: Mapping[str, Any] | None = None) -> dict[str, Any]:
+    """Pure C0.6-T aggregate over the current authority boundary.
+
+    TaskRegistry v1 has no authority-bound local-direct producer envelope.  Consequently an
+    uninstrumented source is typed unavailable and *every* attempted local-direct snapshot is
+    rejected source-wide.  Positive aggregation remains deliberately unreachable until a later
+    writer/schema version provides authenticated producer provenance.
+    """
+    try:
+        cov = _local_direct_coverage(coverage)
+    except ProjectionError:
+        cov = {"projection": "healthy", "phase0": "blocked", "web_dashboard": "blocked"}
+        return _local_direct_rejected("source_invalid", cov)
+    try:
+        now_ms = _local_direct_ms(now_ms, "source_invalid")
+        if snapshot is None:
+            return _local_direct_empty(
+                health="unavailable", reason="source_not_instrumented", coverage=cov,
+            )
+        expected = {"schema_version", "instrumented", "observed_at_ms", "records"}
+        _exact_keys(snapshot, expected, "source_invalid")
+        if snapshot["schema_version"] != LOCAL_DIRECT_SOURCE_VERSION:
+            raise ProjectionError("source_invalid")
+        if snapshot["instrumented"] is not True:
+            if snapshot["instrumented"] is False and snapshot["records"] == []:
+                return _local_direct_empty(
+                    health="unavailable", reason="source_not_instrumented", coverage=cov,
+                )
+            raise ProjectionError("source_invalid")
+        records = snapshot["records"]
+        if not isinstance(records, list) or len(records) > MAX_REGISTRY:
+            raise ProjectionError("source_invalid")
+        for record in records:
+            _validate_local_direct_terminal_order(record)
+        # Current v1 registry rows cannot authenticate telemetry. Chronology validation is reachable
+        # and fail-closed, but it does not promote untrusted records into assessed evidence.
+        raise ProjectionError("source_invalid")
+    except ProjectionError as exc:
+        reason = str(exc) if str(exc) in {"phase_invalid", "deadline_missing"} else "source_invalid"
+        return _local_direct_rejected(reason, cov)
+
+
 def project_agent_ops(*, now: int, registry: Sequence[Mapping[str, Any]],
                       processes: Sequence[Mapping[str, Any]], inbox: Sequence[Mapping[str, Any]],
                       dispatch_contract: Mapping[str, Any] | None = None,
                       review_feedback_facts: Mapping[str, Any] | None = None,
-                      registry_compatibility_facts: Mapping[str, Any] | None = None) -> dict[str, Any]:
+                      registry_compatibility_facts: Mapping[str, Any] | None = None,
+                      local_direct_snapshot: Mapping[str, Any] | None = None,
+                      local_direct_coverage: Mapping[str, Any] | None = None) -> dict[str, Any]:
     if len(registry) > MAX_REGISTRY:
         raise ProjectionError("registry_snapshot_too_large")
     if len(inbox) > MAX_INBOX:
@@ -649,6 +789,9 @@ def project_agent_ops(*, now: int, registry: Sequence[Mapping[str, Any]],
         dispatch = json.loads(json.dumps(dispatch_contract))
     review_feedback = project_review_feedback(review_feedback_facts)
     registry_compat = project_registry_compatibility(registry_compatibility_facts)
+    local_direct = project_local_direct_health(
+        now_ms=now * 1000, snapshot=local_direct_snapshot, coverage=local_direct_coverage,
+    )
     metrics = {
         "inbox_pending_count": sum(1 for entry in inbox if entry.get("pending") is True),
         "inbox_processing_duration_seconds": max(pending_durations) if pending_durations else None,
@@ -662,6 +805,7 @@ def project_agent_ops(*, now: int, registry: Sequence[Mapping[str, Any]],
         "dispatch_contract": dispatch,
         "review_feedback": review_feedback,
         "registry_compatibility": registry_compat,
+        "local_direct_health": local_direct,
         "work": work,
     }
 
@@ -688,6 +832,7 @@ def contract_health(projection: Mapping[str, Any]) -> dict[str, Any]:
     dispatch = projection.get("dispatch_contract", {})
     review = projection.get("review_feedback", {})
     registry = projection.get("registry_compatibility", {})
+    local_direct = projection.get("local_direct_health", {})
     coverage = dispatch.get("coverage_health", {}) if isinstance(dispatch, Mapping) else {}
     web_health = coverage.get("web_dashboard", "unavailable") if isinstance(coverage, Mapping) else "unavailable"
     registry_healthy = (
@@ -705,6 +850,7 @@ def contract_health(projection: Mapping[str, Any]) -> dict[str, Any]:
         "review_feedback_health": review.get("health", "unavailable"),
         "registry_lookup_health": registry.get("lookup_health", "unavailable"),
         "registry_strict_mutation_health": registry.get("strict_mutation_health", "unavailable"),
+        "local_direct_health": local_direct.get("health", "unavailable"),
         "web_dashboard_health": web_health,
         "review_terminal_decision": review.get("terminal_decision", "not_assessed"),
         "feedback_promotion_state": review.get("promotion_state", "not_assessed"),

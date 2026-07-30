@@ -1583,5 +1583,150 @@ class RegistryCompatibilityR01(unittest.TestCase):
             self.assertIn("registry mutation", rendered)
 
 
+class LocalDirectHealthProjectionTests(unittest.TestCase):
+    NOW = 1_800_000_000_000
+
+    def record(self, phase="queue", **changes):
+        base = {
+            "task_identity": "private-task", "run_identity": "private-run", "phase": phase,
+            "phase_entered_at_ms": self.NOW - 5_000,
+            "accepted_deadline_ms": self.NOW + 20_000 if phase != "terminal" else None,
+            "phase_age_cap_ms": 10_000 if phase != "terminal" else None,
+            "last_progress_at_ms": self.NOW - 2_000 if phase == "generation" else None,
+            "generation_silence_cap_ms": 5_000 if phase == "generation" else None,
+            "terminal_at_ms": self.NOW if phase == "terminal" else None,
+            "timeout_phase": None, "stale_owner": False, "reconciled": False,
+            "output_incomplete": False, "budget_mismatch": False,
+            "terminal_convergence_gap": False, "trusted": True, "producer": "dispatcher",
+        }
+        base.update(changes)
+        return base
+
+    def snapshot(self, records, age_ms=0):
+        return {"schema_version": "aq.local-direct-source.v1", "instrumented": True,
+                "observed_at_ms": self.NOW - age_ms, "records": records}
+
+    def test_c06t_01_typed_no_data_and_schema(self):
+        value = ops.project_local_direct_health(now_ms=self.NOW, snapshot=None)
+        self.assertEqual((value["assessment"], value["health"]), ("not_assessed", "unavailable"))
+        self.assertTrue(all(item is None for item in value["phase_counts"].values()))
+        schema = json.loads((REPO / "config/schemas/agent-ops-local-direct-health.schema.json").read_text())
+        Draft202012Validator.check_schema(schema)
+        Draft202012Validator(schema).validate(value)
+
+    def test_c06t_02_all_current_v1_telemetry_is_rejected_source_wide(self):
+        cases = [
+            [self.record("queue")],
+            [self.record("generation", producer="switchboard")],
+            [self.record("terminal", producer="trusted_observer")],
+            [self.record("queue", trusted=False)],
+        ]
+        for records in cases:
+            with self.subTest(records=records):
+                value = ops.project_local_direct_health(
+                    now_ms=self.NOW, snapshot=self.snapshot(records),
+                    coverage={"projection": "healthy", "phase0": "healthy", "web_dashboard": "healthy"},
+                )
+                self.assertEqual((value["assessment"], value["health"]), ("not_assessed", "blocked"))
+                self.assertEqual(value["reason_codes"], ["source_invalid"])
+                self.assertNotIn("private", json.dumps(value))
+
+    def test_c06t_03_explicit_uninstrumented_envelope_is_typed_no_data(self):
+        snapshot = {"schema_version": "aq.local-direct-source.v1", "instrumented": False,
+                    "observed_at_ms": self.NOW, "records": []}
+        value = ops.project_local_direct_health(now_ms=self.NOW, snapshot=snapshot)
+        self.assertEqual((value["assessment"], value["source_freshness"]),
+                         ("not_assessed", "unavailable"))
+        self.assertEqual(value["reason_codes"], ["coverage_incomplete", "source_not_instrumented"])
+
+    def test_c06t_04_malformed_untrusted_duplicate_future_and_unknown_fail_closed(self):
+        cases = [
+            [self.record("mystery")], [self.record("queue", trusted=False)],
+            [self.record("queue"), self.record("queue")],
+            [self.record("queue", phase_entered_at_ms=self.NOW + 5_001)],
+            [self.record("queue", accepted_deadline_ms=None)],
+        ]
+        for records in cases:
+            with self.subTest(records=records):
+                value = ops.project_local_direct_health(now_ms=self.NOW, snapshot=self.snapshot(records))
+                self.assertEqual((value["assessment"], value["health"]), ("not_assessed", "blocked"))
+                self.assertTrue(all(item is None for item in value["phase_counts"].values()))
+
+    def test_c06t_04b_terminal_order_validator_is_reachable_and_rejects_negative_time(self):
+        bad = self.record("terminal", terminal_at_ms=self.NOW - 5_001)
+        with self.assertRaisesRegex(ops.ProjectionError, "^terminal_order_invalid$"):
+            ops._validate_local_direct_terminal_order(bad)
+        value = ops.project_local_direct_health(
+            now_ms=self.NOW, snapshot=self.snapshot([bad]),
+        )
+        self.assertEqual((value["assessment"], value["health"]), ("not_assessed", "blocked"))
+        self.assertIn("source_invalid", value["reason_codes"])
+
+    def test_c06t_05_registry_adapter_requires_exact_v1_new_record(self):
+        valid = {
+            "record_version": 1, "task_id": "v1-row", "lane": "local", "role": "implementer",
+            "access": "writer", "task_class": "testing", "artifact_expectation": "none",
+            "created_epoch": self.NOW // 1000, "record_revision": 1,
+            "admission_producer": "dispatcher", "status": "queued",
+        }
+        self.assertIsNone(tui.local_direct_snapshot_from_registry([valid], observed_at_ms=self.NOW))
+        attempts = [
+            {"record_version": 1, "lane": "local", "admission_producer": "dispatcher"},
+            {**valid, "local_direct": self.record()},
+            {**valid, "producer": "dispatcher"}, {**valid, "trusted": True},
+            {**valid, "provenance": {}}, {**valid, "local_direct_attempted": False},
+            {**valid, "nested": {"local_direct": self.record()}},
+            {"op": "transition", "task_id": "v1-row", "record_revision": 2, "to_status": "done"},
+        ]
+        for field in valid:
+            bad = dict(valid)
+            bad[field] = True if field not in {"record_version", "record_revision"} else 2
+            attempts.append(bad)
+        attempts.extend([
+            {**valid, "record_version": True},
+            {**valid, "record_revision": True},
+            {**valid, "lane": []},
+            {**valid, "role": {}},
+            {**valid, "access": []},
+            {**valid, "task_class": {}},
+            {**valid, "artifact_expectation": []},
+            {**valid, "admission_producer": {}},
+            {**valid, "status": []},
+        ])
+        for attempt in attempts:
+            with self.subTest(attempt=attempt):
+                snapshot = tui.local_direct_snapshot_from_registry([attempt], observed_at_ms=self.NOW)
+                rejected = ops.project_local_direct_health(now_ms=self.NOW, snapshot=snapshot)
+                self.assertEqual((rejected["assessment"], rejected["health"]), ("not_assessed", "blocked"))
+        mixed = tui.local_direct_snapshot_from_registry([valid, attempts[0]], observed_at_ms=self.NOW)
+        self.assertEqual(ops.project_local_direct_health(now_ms=self.NOW, snapshot=mixed)["health"], "blocked")
+
+    def test_c06t_06_schema_parity_rejects_mixed_null_and_false_healthy(self):
+        standalone = json.loads((REPO / "config/schemas/agent-ops-local-direct-health.schema.json").read_text())
+        embedded = json.loads(SCHEMA.read_text())
+        base = ops.project_local_direct_health(now_ms=self.NOW, snapshot=None)
+        vectors = []
+        mixed = json.loads(json.dumps(base)); mixed.update(assessment="assessed", health="degraded",
+                                                        source_freshness="fresh", deadline_health="healthy")
+        vectors.append(mixed)
+        false_healthy = json.loads(json.dumps(base)); false_healthy.update(health="healthy",
+                                                                          reason_codes=["healthy"])
+        vectors.append(false_healthy)
+        for vector in vectors:
+            with self.subTest(vector=vector):
+                self.assertTrue(list(Draft202012Validator(standalone).iter_errors(vector)))
+                projection = ops.project_agent_ops(now=self.NOW // 1000, registry=[], processes=[], inbox=[])
+                projection["local_direct_health"] = vector
+                self.assertTrue(list(Draft202012Validator(embedded).iter_errors(projection)))
+
+    def test_c06t_07_full_projection_requires_closed_member(self):
+        projection = ops.project_agent_ops(now=self.NOW // 1000, registry=[], processes=[], inbox=[])
+        self.assertIn("local_direct_health", projection)
+        schema = json.loads(SCHEMA.read_text())
+        Draft202012Validator(schema).validate(projection)
+        bad = json.loads(json.dumps(projection)); bad["local_direct_health"]["private_path"] = "/tmp/x"
+        self.assertTrue(list(Draft202012Validator(schema).iter_errors(bad)))
+
+
 if __name__ == "__main__":
     unittest.main(verbosity=2)

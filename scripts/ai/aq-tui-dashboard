@@ -57,6 +57,7 @@ from agent_ops_projection import (  # noqa: E402
     contract_health,
     project_agent_ops,
 )
+from qa_evidence_store import EvidenceStoreError, production_store  # noqa: E402
 from task_registry import TaskRegistry  # noqa: E402
 
 console = Console()
@@ -100,6 +101,97 @@ SERVICES = [
 ]
 # short-TTL caches so per-tick file reads stay snappy and probes don't block the render
 _cache: dict = {"health": (0.0, []), "projection": (0.0, {})}
+
+
+def read_local_direct_coverage(evidence_reader=None) -> dict[str, str]:
+    """Project only closed QA verdicts from the previously published immutable artifact."""
+    coverage = {"projection": "healthy", "phase0": "unavailable", "web_dashboard": "unavailable"}
+    reader = evidence_reader or (lambda: production_store().read_latest(max_age_seconds=300))
+    try:
+        verified = reader()
+    except EvidenceStoreError as exc:
+        if exc.reason_code not in {"POINTER_MISSING", "ARTIFACT_STALE"}:
+            coverage.update(phase0="blocked", web_dashboard="blocked")
+        return coverage
+    except Exception:
+        coverage.update(phase0="blocked", web_dashboard="blocked")
+        return coverage
+    try:
+        if not (0 <= float(verified.age_seconds) <= 300):
+            return coverage
+        results = verified.payload["results"]
+        if not isinstance(results, dict) or set(results) < {"tests"} or not isinstance(results["tests"], list):
+            raise ValueError("qa_evidence_shape")
+        wanted = {
+            "0.10.42": ("phase0", "local-direct lifecycle route contract"),
+            "0.10.43": ("web_dashboard", "local-direct Agent Ops card visibility"),
+        }
+        by_id = {key: [] for key in wanted}
+        for result in results["tests"]:
+            if isinstance(result, dict) and result.get("id") in by_id:
+                by_id[result["id"]].append(result)
+        mapping = {"PASS": "healthy", "FAIL": "blocked", "SKIP": "unavailable"}
+        for check_id, (field, description) in wanted.items():
+            matches = by_id[check_id]
+            if (len(matches) != 1
+                    or set(matches[0]) != {"layer", "id", "status", "description"}
+                    or isinstance(matches[0]["layer"], bool)
+                    or matches[0]["layer"] != 5
+                    or matches[0]["id"] != check_id
+                    or matches[0]["description"] != description):
+                coverage[field] = "blocked"
+                continue
+            status = matches[0].get("status")
+            coverage[field] = mapping.get(status, "blocked")
+    except (KeyError, TypeError, ValueError):
+        coverage.update(phase0="blocked", web_dashboard="blocked")
+    return coverage
+
+
+_NEW_RECORD_KEYS = {
+    "record_version", "task_id", "lane", "role", "access", "task_class",
+    "artifact_expectation", "created_epoch", "record_revision", "admission_producer", "status",
+}
+
+
+def _is_closed_new_record(row: object) -> bool:
+    """Validate the dormant v1 *new_record* branch before interpreting it."""
+    if not isinstance(row, dict) or set(row) != _NEW_RECORD_KEYS:
+        return False
+    task_id = row["task_id"]
+    return (
+        isinstance(row["record_version"], int) and not isinstance(row["record_version"], bool)
+        and row["record_version"] == 1
+        and isinstance(task_id, str) and bool(SAFE_TASK_ID.fullmatch(task_id))
+        and isinstance(row["lane"], str)
+        and row["lane"] in {"local", "claude", "codex", "antigravity"}
+        and isinstance(row["role"], str)
+        and row["role"] in {"implementer", "reviewer", "researcher", "orchestrator", "validator"}
+        and isinstance(row["access"], str) and row["access"] in {"read_only", "writer"}
+        and isinstance(row["task_class"], str)
+        and row["task_class"] in {"code_generation", "code_review", "research", "planning", "validation",
+                                  "analysis", "documentation", "testing", "refactoring", "debugging"}
+        and isinstance(row["artifact_expectation"], str)
+        and row["artifact_expectation"] in {"file_output", "json_output", "markdown_output", "none"}
+        and isinstance(row["created_epoch"], int) and not isinstance(row["created_epoch"], bool)
+        and row["created_epoch"] >= 0
+        and isinstance(row["record_revision"], int) and not isinstance(row["record_revision"], bool)
+        and row["record_revision"] == 1
+        and isinstance(row["admission_producer"], str)
+        and row["admission_producer"] == "dispatcher"
+        and isinstance(row["status"], str) and row["status"] == "queued"
+    )
+
+
+def local_direct_snapshot_from_registry(registry: list[dict], *, observed_at_ms: int) -> dict | None:
+    """Accept only exact v1 new records; all other source rows fail closed as a whole."""
+    if (not isinstance(registry, list) or any(not _is_closed_new_record(row) for row in registry)
+            or isinstance(observed_at_ms, bool) or not isinstance(observed_at_ms, int)
+            or observed_at_ms < 0):
+        return {"schema_version": "aq.local-direct-source.v1", "instrumented": True,
+                "observed_at_ms": 0, "records": []}
+    # A valid v1 new_record contains no telemetry envelope and remains explicitly uninstrumented.
+    return None
 
 
 class SourceReadError(ValueError):
@@ -286,8 +378,14 @@ def read_registry_facts(registry_path: Path = REGISTRY,
         }.get(status, status)
         rec = {key: source.get(key) for key in (
             "id", "agent", "role", "profile", "status", "pid", "pid_start_time",
-            "artifact_present",
+            "artifact_present", "local_direct",
         )}
+        rec["local_direct_attempted"] = bool(
+            set(source) & {
+                "local_direct", "local_direct_provenance", "producer", "provenance",
+                "telemetry", "trusted",
+            }
+        )
         rec["agent"] = lane
         rec["status"] = status
         task_id_valid = bool(SAFE_TASK_ID.fullmatch(task_id))
@@ -414,13 +512,19 @@ def read_agent_ops_projection(*, proc_root: Path = PROC_ROOT, registry_path: Pat
     registry_compatibility = read_registry_compatibility_facts(registry_path)
     inbox, inbox_errors = read_inbox_facts(inbox_dir, archive_root)
     try:
-        projection = project_agent_ops(now=int(_now()), registry=registry,
+        observed_at = int(_now())
+        projection = project_agent_ops(now=observed_at, registry=registry,
                                        processes=processes, inbox=inbox,
-                                       registry_compatibility_facts=registry_compatibility)
+                                       registry_compatibility_facts=registry_compatibility,
+                                       local_direct_snapshot=local_direct_snapshot_from_registry(
+                                           registry, observed_at_ms=observed_at * 1000,
+                                       ),
+                                       local_direct_coverage=read_local_direct_coverage())
     except ProjectionError as exc:
         projection = project_agent_ops(
             now=int(_now()), registry=[], processes=[], inbox=[],
             registry_compatibility_facts=registry_compatibility,
+            local_direct_coverage=read_local_direct_coverage(),
         )
         proc_errors.append(str(exc))
     source_errors = sorted(set(proc_errors + registry_errors + inbox_errors))
@@ -950,7 +1054,13 @@ def main() -> int:
     ap.add_argument("--matrix", action="store_true",
                     help="grid of ALL running agents — each pane shows its live input + output")
     ap.add_argument("--json", action="store_true", help="print machine-readable state and exit")
+    ap.add_argument("--local-direct-health-json", action="store_true",
+                    help="print sanitized local-direct aggregate and exit")
     args = ap.parse_args()
+
+    if args.local_direct_health_json:
+        print(json.dumps(read_agent_ops_projection()["local_direct_health"], sort_keys=True))
+        return 0
 
     if args.json:
         print(json.dumps(snapshot(), indent=2))
