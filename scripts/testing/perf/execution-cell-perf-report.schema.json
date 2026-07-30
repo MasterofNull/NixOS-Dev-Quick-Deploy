@@ -1,0 +1,261 @@
+{
+  "$schema": "http://json-schema.org/draft-07/schema#",
+  "$id": "https://nixos-dev-quick-deploy.local/schemas/execution-cell-perf-report.schema.json",
+  "title": "C3b R4 Execution-Cell Performance Report",
+  "description": "Evidence + typed acceptance verdict emitted by scripts/testing/perf/execution-cell-perf-harness.py, per .agents/plans/aqos-foundation-c/C3B-R4-DESIGN-AND-AUTHORIZATION.md §4/§6/§7. NON-ENFORCEMENT measurement evidence only -- this schema describes a report/receipt, never a live control-plane message.",
+  "type": "object",
+  "additionalProperties": true,
+  "required": [
+    "schema_version",
+    "run_id",
+    "generated_at",
+    "host_fingerprint",
+    "build_revision",
+    "cgroup_available",
+    "evidence",
+    "cohorts",
+    "verdict"
+  ],
+  "properties": {
+    "schema_version": {
+      "type": "integer",
+      "const": 1,
+      "description": "Frozen report schema version (design §4)."
+    },
+    "run_id": {
+      "type": "string",
+      "minLength": 1,
+      "description": "Opaque correlation id for this harness invocation, shared by every JSONL row it produced."
+    },
+    "generated_at": {
+      "type": "string",
+      "format": "date-time",
+      "description": "RFC3339 UTC timestamp the report was assembled."
+    },
+    "host_fingerprint": {
+      "$ref": "#/definitions/host_fingerprint"
+    },
+    "build_revision": {
+      "type": "string",
+      "minLength": 1,
+      "description": "git rev-parse HEAD of the repository under measurement (design §4 host bounds)."
+    },
+    "cgroup_available": {
+      "type": "boolean",
+      "description": "Whether a delegated cgroup v2 subtree was available on this host. False means cgroup-derived metrics (peak_incremental_rss_bytes) are UNAVAILABLE, never faked (design §4)."
+    },
+    "idle_baseline_bytes": {
+      "type": ["integer", "null"],
+      "minimum": 0,
+      "description": "The measured idle-runner cgroup memory.current baseline subtracted from each sample's cgroup_peak_bytes. Null iff cgroup_available is false."
+    },
+    "evidence": {
+      "$ref": "#/definitions/evidence"
+    },
+    "cohorts": {
+      "type": "array",
+      "items": { "$ref": "#/definitions/cohort_summary" }
+    },
+    "revocation_under_load": {
+      "oneOf": [
+        { "type": "null" },
+        { "$ref": "#/definitions/revocation_under_load_result" }
+      ],
+      "description": "Result of the §5 revocation-under-load mode, or null if that mode was not run in this invocation (in which case verdict.metrics_unavailable MUST include teardown_latency_p95_s -- it is never silently treated as passing)."
+    },
+    "verdict": {
+      "$ref": "#/definitions/verdict"
+    }
+  },
+  "definitions": {
+    "host_fingerprint": {
+      "type": "object",
+      "additionalProperties": true,
+      "required": ["hostname", "machine", "kernel"],
+      "properties": {
+        "hostname": { "type": "string" },
+        "machine": { "type": "string" },
+        "kernel": { "type": "string" },
+        "cpu_governor": { "type": ["string", "null"] },
+        "mem_total_bytes": { "type": ["integer", "null"], "minimum": 0 }
+      }
+    },
+    "evidence": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["jsonl_path", "jsonl_sha256", "row_count"],
+      "properties": {
+        "jsonl_path": { "type": "string", "minLength": 1 },
+        "jsonl_sha256": {
+          "type": "string",
+          "pattern": "^[0-9a-f]{64}$",
+          "description": "SHA-256 over the raw bytes of the JSONL evidence file -- the immutability/tamper-evidence digest named by design §4 ('a content digest')."
+        },
+        "row_count": { "type": "integer", "minimum": 0 }
+      }
+    },
+    "cohort_summary": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "command_class",
+        "cache_cohort",
+        "valid",
+        "invalid_reason",
+        "successful_samples",
+        "attempted_samples"
+      ],
+      "properties": {
+        "command_class": {
+          "type": "string",
+          "enum": ["noop", "read-validate", "single-file-write"]
+        },
+        "cache_cohort": {
+          "type": "string",
+          "enum": ["cold", "warm"]
+        },
+        "valid": {
+          "type": "boolean",
+          "description": "False iff this cohort could not prove its cache-residency bound (design §4) -- an invalid cohort always forces the overall verdict to INVALID, never PASS/FAIL."
+        },
+        "invalid_reason": {
+          "type": ["string", "null"]
+        },
+        "successful_samples": {
+          "type": "integer",
+          "minimum": 0,
+          "description": "Count of GREEN samples actually collected (target: N, default 40)."
+        },
+        "attempted_samples": {
+          "type": "integer",
+          "minimum": 0,
+          "description": "Every attempt in this cohort, success or failure -- design §4: 'No failed/denied sample is discarded'."
+        }
+      }
+    },
+    "sample_row": {
+      "type": "object",
+      "description": "One line of the JSONL evidence file (design §4's frozen row schema). additionalProperties is deliberately permissive to allow future advisory-only fields (e.g. an /proc-RSS fallback) without breaking older consumers -- the REQUIRED fields below are the frozen contract.",
+      "additionalProperties": true,
+      "required": [
+        "schema_version",
+        "run_id",
+        "host_fingerprint",
+        "kernel",
+        "build_revision",
+        "command_class",
+        "cache_cohort",
+        "cache_residency_pct",
+        "sample_index",
+        "monotonic_start_ns",
+        "clone_done_ns",
+        "bwrap_started_ns",
+        "process_terminal_ns",
+        "tree_absent_ns",
+        "validation_done_ns",
+        "receipt_published_ns",
+        "cgroup_peak_bytes",
+        "idle_baseline_bytes",
+        "mem_available_bytes",
+        "swap_delta_bytes",
+        "outcome",
+        "denial_code"
+      ],
+      "properties": {
+        "schema_version": { "type": "integer", "const": 1 },
+        "run_id": { "type": "string", "minLength": 1 },
+        "host_fingerprint": { "$ref": "#/definitions/host_fingerprint" },
+        "kernel": { "type": "string" },
+        "build_revision": { "type": "string" },
+        "command_class": {
+          "type": "string",
+          "enum": ["noop", "read-validate", "single-file-write"]
+        },
+        "cache_cohort": {
+          "type": "string",
+          "enum": ["cold", "warm"]
+        },
+        "cache_residency_pct": { "type": ["number", "null"], "minimum": 0, "maximum": 100 },
+        "sample_index": { "type": "integer", "minimum": 0 },
+        "monotonic_start_ns": { "type": "number" },
+        "clone_done_ns": { "type": ["number", "null"] },
+        "bwrap_started_ns": { "type": ["number", "null"] },
+        "process_terminal_ns": { "type": ["number", "null"] },
+        "tree_absent_ns": { "type": ["number", "null"] },
+        "validation_done_ns": { "type": ["number", "null"] },
+        "receipt_published_ns": { "type": ["number", "null"] },
+        "cgroup_peak_bytes": { "type": ["integer", "null"], "minimum": 0 },
+        "idle_baseline_bytes": { "type": ["integer", "null"], "minimum": 0 },
+        "mem_available_bytes": { "type": ["integer", "null"], "minimum": 0 },
+        "swap_delta_bytes": { "type": ["integer", "null"] },
+        "outcome": {
+          "type": "string",
+          "enum": ["green", "red", "quarantined", "denied", "harness-transport-error"],
+          "description": "'harness-transport-error' is the harness's own typed bucket for a client<->UDS transport failure (timeout/malformed response) -- still accounted-for, never an untyped escape."
+        },
+        "denial_code": {
+          "type": ["string", "null"],
+          "description": "Null iff outcome is 'green'. Otherwise one of R1/R2/R3's own closed typed reason/failure codes (or a 'runner-internal-error:<ExceptionName>' / 'validator:<reason>' / 'harness-transport:<detail>' composite), never an invented code."
+        }
+      }
+    },
+    "revocation_under_load_result": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["concurrency_cap", "teardown_latency_p95_s", "all_assertions_passed", "failures", "skipped"],
+      "properties": {
+        "concurrency_cap": { "type": "integer", "minimum": 1, "maximum": 2 },
+        "teardown_latency_p95_s": { "type": ["number", "null"] },
+        "all_assertions_passed": { "type": "boolean" },
+        "failures": { "type": "array", "items": { "type": "string" } },
+        "skipped": {
+          "type": "array",
+          "items": { "type": "string" },
+          "description": "Non-empty iff this host cannot exercise the real check (e.g. no delegated cgroup v2 subtree) -- R6-canary-deferred, never faked."
+        }
+      }
+    },
+    "verdict": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["status", "invalid_cohorts", "failures", "metrics_unavailable"],
+      "properties": {
+        "status": {
+          "type": "string",
+          "enum": ["PASS", "FAIL", "INVALID"],
+          "description": "The typed acceptance verdict (design §4/§7). PASS iff every cohort is valid, the zero-untyped-outcome gate holds, every AVAILABLE §3 budget metric is within limit, and (when run) every §5 revocation-under-load assertion holds. An over-limit metric or an invalid cohort may never be reported as PASS."
+        },
+        "invalid_cohorts": {
+          "type": "array",
+          "items": {
+            "type": "object",
+            "required": ["command_class", "cache_cohort", "reason"],
+            "properties": {
+              "command_class": { "type": "string" },
+              "cache_cohort": { "type": "string" },
+              "reason": { "type": ["string", "null"] }
+            }
+          }
+        },
+        "failures": {
+          "type": "array",
+          "items": {
+            "type": "object",
+            "required": ["metric", "measured", "limit"],
+            "properties": {
+              "metric": { "type": "string" },
+              "measured": {},
+              "limit": {},
+              "detail": {}
+            }
+          }
+        },
+        "metrics_unavailable": {
+          "type": "array",
+          "items": { "type": "string" },
+          "description": "Metrics that could not be evaluated this run (e.g. no delegated cgroup for peak_incremental_rss_bytes, or revocation-under-load not invoked for teardown_latency_p95_s). Listed here, never silently folded into PASS."
+        }
+      }
+    }
+  }
+}
