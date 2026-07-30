@@ -1,0 +1,83 @@
+{
+  "build_revision": "8b033ba65a65a3130c39e2adedcbd85906d768b3",
+  "cgroup_available": true,
+  "cohorts": [
+    {
+      "attempted_samples": 20,
+      "cache_cohort": "cold",
+      "command_class": "noop",
+      "invalid_reason": null,
+      "successful_samples": 20,
+      "valid": true
+    },
+    {
+      "attempted_samples": 20,
+      "cache_cohort": "warm",
+      "command_class": "noop",
+      "invalid_reason": null,
+      "successful_samples": 20,
+      "valid": true
+    },
+    {
+      "attempted_samples": 20,
+      "cache_cohort": "cold",
+      "command_class": "read-validate",
+      "invalid_reason": null,
+      "successful_samples": 20,
+      "valid": true
+    },
+    {
+      "attempted_samples": 20,
+      "cache_cohort": "warm",
+      "command_class": "read-validate",
+      "invalid_reason": null,
+      "successful_samples": 20,
+      "valid": true
+    },
+    {
+      "attempted_samples": 20,
+      "cache_cohort": "cold",
+      "command_class": "single-file-write",
+      "invalid_reason": null,
+      "successful_samples": 20,
+      "valid": true
+    },
+    {
+      "attempted_samples": 20,
+      "cache_cohort": "warm",
+      "command_class": "single-file-write",
+      "invalid_reason": null,
+      "successful_samples": 20,
+      "valid": true
+    }
+  ],
+  "evidence": {
+    "jsonl_path": ".agents/plans/aqos-foundation-c/r4-acceptance-revocation-20260730-cap1.jsonl",
+    "jsonl_sha256": "d2ac591b6a9965a7e0eb4657dbc5ab086f2ef746241957804cdfaa7a1acc2fbf",
+    "row_count": 120
+  },
+  "generated_at": "2026-07-30T15:51:07.504239+00:00",
+  "host_fingerprint": {
+    "cpu_governor": "schedutil",
+    "hostname": "hyperd",
+    "kernel": "7.1.3",
+    "machine": "x86_64",
+    "mem_total_bytes": 29237157888
+  },
+  "idle_baseline_bytes": 0,
+  "revocation_under_load": {
+    "all_assertions_passed": true,
+    "concurrency_cap": 1,
+    "failures": [],
+    "skipped": [],
+    "teardown_latency_p95_s": 0.001681917
+  },
+  "run_id": "697dcf9f96904a48a7aa164cd6b330c2",
+  "schema_version": 1,
+  "verdict": {
+    "failures": [],
+    "invalid_cohorts": [],
+    "metrics_unavailable": [],
+    "status": "PASS"
+  }
+}
