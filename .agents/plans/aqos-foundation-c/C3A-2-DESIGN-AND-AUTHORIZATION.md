@@ -1,7 +1,7 @@
 ---
 title: "Foundation C C3a-2: Delegate Broker + Signed-A2A Verify-before-write — Design Packet"
 slice: "C3a-2"
-status: "PREPARED_FOR_INDEPENDENT_REVIEW"
+status: "C3A2_DESIGN_REVIEWED_PASS — build needs single-use owner activation (enforcement-tier); codex confirmatory REQUIRED (light-model review)"
 revision: 1
 kind: "design-only"
 implementation_authorization: "NONE — enforcement-tier: requires single-use owner activation before build"
