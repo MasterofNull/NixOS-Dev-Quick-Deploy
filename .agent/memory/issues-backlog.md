@@ -2693,3 +2693,12 @@ code) → "LLM no-progress timeout: server silent for >420s" after 842s, tool_ca
 Above local's measured envelope (bounded single-command/single-edit). Improvement target: decompose
 local grounding into per-file single-question tasks; never hand local a 4-part multi-file review.
 Advisory task (codex is the real confirmatory backstop) — non-blocking.
+
+## [OPEN] R5-shadow runner deployment defects (5 found; #5 = blocker) — 2026-07-31
+- **status**: OPEN — shadow rolled back to safe C2+C5; runner code dormant.
+- **scope**: Foundation C / C3b R3 runner deployment (first-ever deploy-exercise).
+- **root cause (blocker, #5)**: `ai-stack/switchboard/execution_cell_runner.py:988-998` self-binds its UDS, unlinking the systemd socket unit's `SocketGroup=aq-execution-cell-clients` socket and re-binding a runner-group socket → clients can never connect (`PermissionError` → deny-closed `runner-unreachable`). Architecture mismatch: self-bind vs `sd_listen_fds` socket-activation.
+- **also fixed this cycle**: key raw-vs-hex (R5 build), runner dep-closure crash-loop (b41c81e3), socket-dir 0750 traversal (d950f0fe), `RestrictNamespaces` malformed+bwrap-incompatible (d950f0fe).
+- **file:line**: execution_cell_runner.py:988-998; nix/modules/services/execution-cell-runner.nix (socket unit).
+- **severity**: MEDIUM (feature dormant; no regression — C2+C5 live; system safe).
+- **action**: dedicated slice `.agents/plans/aqos-foundation-c/RUNNER-DEPLOYMENT-HARDENING.md` — make runner socket-activation-aware (adopt fd 3, self-bind fallback), real deploy-exercise gate; watch for cgroup/bwrap/validator issues behind #5. Enforcement-tier: needs fresh owner activation. Codex confirmatory Aug-4.

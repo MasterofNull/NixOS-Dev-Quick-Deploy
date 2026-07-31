@@ -20,16 +20,17 @@ in {
     mySystem.monitoring.commandCenter.enable = lib.mkDefault true;
     mySystem.localhostIsolation.enable = lib.mkDefault true;
     mySystem.aiStack.switchboard.enable = lib.mkDefault true;
-    # Foundation C — R5 SHADOW activation (owner-authorized 2026-07-31). Starts
-    # the C3b bwrap execution-cell runner (dedicated unprivileged user, socket-
-    # activated) AND flags it on. Paired with CAPABILITY_CELL_ADAPTER=1 in the
-    # switchboard (shadow attach): real tool-calling is UNCHANGED; the adapter
-    # additionally submits admitted cell-effects to the runner for confined
-    # execution in parallel (dogfood/validation), deny-closed on any failure.
-    # This is NOT authoritative cutover (cells replacing in-process execution) —
-    # that is a separate later slice. REVERT: set both to false + rebuild.
-    mySystem.aiStack.executionCellRunner.enable = true;
-    mySystem.aiStack.executionCellRunner.flagOn = true;
+    # Foundation C — R5 SHADOW runner: ROLLED BACK to false 2026-07-31. The
+    # shadow dogfood surfaced a 5th deployment bug — the R3 runner self-binds its
+    # UDS instead of consuming the systemd socket-activation fd, destroying the
+    # unit's SocketGroup=aq-execution-cell-clients so the switchboard can never
+    # connect (deny-closed "runner-unreachable"). That is an architecture mismatch
+    # (self-bind vs sd_listen_fds), deferred to the runner-deployment-hardening
+    # slice (.agents/plans/aqos-foundation-c/RUNNER-DEPLOYMENT-HARDENING.md). The
+    # runner module + adapter stay built + reviewed but DORMANT; C2 + C5 remain
+    # LIVE. Re-activation is a fresh owner act after that slice lands.
+    mySystem.aiStack.executionCellRunner.enable = false;
+    mySystem.aiStack.executionCellRunner.flagOn = false;
     mySystem.profileData.flatpakApps = lib.mkDefault flatpakProfiles.ai_workstation;
     mySystem.profileData.systemPackageNames = lib.mkDefault profilePackages.ai-dev;
 
