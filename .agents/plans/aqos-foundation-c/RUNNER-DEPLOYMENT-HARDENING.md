@@ -61,6 +61,63 @@ ignores it and self-binds. Reconcile them — preferred: make the runner **socke
   `cgroup.kill` as the unprivileged runner, bwrap `--unshare-all` under `NoNewPrivileges`, and the
   out-of-cell validator reading the cell tree. These are the next things a real connection exercises.
 
+## Fix implementation sketch (bug #5 — grounds the ceiling)
+
+`serve_forever` (`execution_cell_runner.py:983-1017`) *always* unlinks + self-binds, despite its
+own docstring claiming "systemd owns socket creation/mode/ownership in production." Replace the
+unconditional self-bind with an activation-first acquisition:
+
+```python
+SD_LISTEN_FDS_START = 3  # systemd passes activated fds starting here
+
+def _acquire_listen_socket(config):
+    # Socket-activation: adopt the fd systemd already bound + listen()ed with the
+    # unit's SocketGroup=aq-execution-cell-clients + SocketMode=0660. NEVER unlink
+    # or re-bind it — that is exactly what destroyed the group (bug #5).
+    if os.environ.get("LISTEN_PID") == str(os.getpid()) \
+       and int(os.environ.get("LISTEN_FDS", "0")) >= 1:
+        s = socket.socket(fileno=SD_LISTEN_FDS_START)  # family/type inherited from the fd
+        return s, False  # owns_path=False -> do NOT unlink on exit (systemd owns it)
+    # Offline / dev / test fallback: self-bind (unchanged behaviour, tests rely on it).
+    if os.path.exists(config.socket_path):
+        try: os.unlink(config.socket_path)
+        except OSError: pass
+    s = socket.socket(socket.AF_UNIX, socket.SOCK_STREAM)
+    s.bind(config.socket_path); os.chmod(config.socket_path, 0o660); s.listen(16)
+    return s, True
+```
+
+`serve_forever` calls it, keeps `settimeout(0.5)` + the accept loop unchanged, and only unlinks the
+path in `finally` when `owns_path` is True. The adopted fd is already listening, so re-`listen()` is
+skipped (or is a harmless no-op). Net diff: ~15 lines, one seam, zero change to `_handle_connection`,
+grant verify, SO_PEERCRED, cell construction, the validator, or the cgroup reap.
+
+## Review obligations (freeze §)
+1. Activation path adopts fd 3 ONLY when `LISTEN_PID==getpid()` and `LISTEN_FDS>=1`; never unlinks
+   or chmods the activated socket (that regression is the whole bug).
+2. Fallback self-bind path is byte-unchanged so `test-execution-cell-runner.py` standalone still runs.
+3. No widening: SO_PEERCRED still authenticates every peer; the socket group is authorization
+   transport only; grant Ed25519 verify unchanged; deny-closed posture intact.
+4. The deploy-exercise gate is REAL (post-rebuild live round-trip), not a unit-only assertion —
+   R0 §8 "a /health probe does not count" applies.
+5. Watch-list (#6+ candidates) explicitly probed once the socket connects: cgroup.kill write as the
+   unprivileged runner, bwrap `--unshare-all` under `NoNewPrivileges=true`, out-of-cell validator read.
+
+## Acceptance bar
+- After owner activation + rebuild: `ls -l` on the socket shows `SocketGroup=aq-execution-cell-clients`
+  **after the runner has started** (proves adoption, not clobber); a clients-group member connects
+  first-try and repeatedly (not just the activation-triggering first connect).
+- A real `write_file` cell-effect round-trips mint→sign→UDS→bwrap-cell→validator→typed GREEN receipt.
+- Fallback: running the runner standalone (no `LISTEN_FDS`) still self-binds + serves (tests pass).
+- Flag-OFF byte-parity preserved for the switchboard; C2 admission + C5 spans unchanged; no regression.
+
+## Open questions for review
+- Q-H-1: adopt strictly fd 3, or scan `LISTEN_FDS` range / honour `LISTEN_FDNAMES`? Recommend strict
+  fd 3 — the unit declares exactly one `ListenStream`, so a single activated fd is invariant.
+- Q-H-2: keep the self-bind fallback in the production module, or split it to a test-only shim?
+  Recommend keep (guarded by the env check) — it is inert in production (systemd always sets
+  `LISTEN_FDS`) and keeps the offline tests self-contained, lowering total surface vs a second file.
+
 ## Ceremony
 design → independent review → freeze (subject = this doc + the runner diff hash) → **single-use
 owner activation** → build → independent review → commit → fresh owner R5-shadow re-activation
