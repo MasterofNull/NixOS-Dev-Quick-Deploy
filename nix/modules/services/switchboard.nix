@@ -433,6 +433,13 @@ in {
           "${repoPath}/ai-stack/switchboard/switchboard.py"
         ];
         Environment = [
+          # Foundation C — C2 ACTIVATION (owner-authorized 2026-07-30). Turns tool-lease
+          # enforcement ON in the running switchboard. C2 is codex-depth-reviewed
+          # (codex-20260729-043758 REVISE -> -163121 PASS); first-party tool leases admit the
+          # harness's own built-ins (run_command/file_edit/... via config/first-party-tools.json),
+          # proven by the 83/83 flag-ON suite. REVERT: set to "0" (or remove) + nixos-rebuild switch.
+          # Codex may audit + adjust this activation on its Aug-4 return (catch-up queue).
+          "CAPABILITY_LEASE_ENFORCEMENT=1"
           "PORT=${toString swb.port}"
           "HOST=127.0.0.1"
           "LLAMA_CPP_URL=${llamaUrl}"
