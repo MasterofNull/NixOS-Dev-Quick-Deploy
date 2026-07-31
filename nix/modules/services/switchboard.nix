@@ -446,6 +446,14 @@ in {
           # decision reads a span (proven flag-OFF==flag-ON outcome-identical). Closes C2's Rule-15
           # "observable" DoD leg. REVERT: set to "0" + rebuild.
           "CAPABILITY_SPAN_TRUTH=1"
+          # Foundation C — R5 SHADOW activation (owner-authorized 2026-07-31).
+          # Enables the switchboard's SHADOW execution-cell adapter attach point:
+          # after a tool call has ALREADY run normally in-process, the adapter
+          # additionally mints+signs an Ed25519 grant and submits the effect to
+          # the C3b bwrap runner for confined parallel execution (dogfood). It
+          # NEVER alters/gates/delays the real result. Paired with
+          # executionCellRunner.enable+flagOn (ai-dev.nix). REVERT: "0" + rebuild.
+          "CAPABILITY_CELL_ADAPTER=1"
           "PORT=${toString swb.port}"
           "HOST=127.0.0.1"
           "LLAMA_CPP_URL=${llamaUrl}"
