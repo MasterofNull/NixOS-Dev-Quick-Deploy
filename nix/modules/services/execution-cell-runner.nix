@@ -30,6 +30,29 @@ with lib; let
 
   runnerPython = pkgs.python3.withPackages (ps: with ps; [cryptography]);
 
+  # R5-shadow deployment fix: the runner imports its local deps by module name
+  # (execution_grant, execution_cell_clone, capability_lease, capability_lease_gate,
+  # execution_cell_validator, span_taxonomy, trace, event_log) which live across
+  # scripts/ai/lib and ai-stack/switchboard. Running the bare Nix-store copy left
+  # them off sys.path (ModuleNotFoundError -> crash-loop). This self-contained
+  # bundle co-locates the exact transitive closure so `python3 <bundle>/runner.py`
+  # resolves every import as a sibling — preserving the runner's ProtectHome
+  # isolation (no /home/repo dependency). Config data (first-party manifest) is
+  # lazy-loaded and unused on the runner path; epoch resolves to 0 (absent file),
+  # consistent with the switchboard.
+  runnerBundle = pkgs.runCommand "aq-execution-cell-runner-bundle" {} ''
+    mkdir -p $out
+    cp ${../../../ai-stack/switchboard/execution_cell_runner.py} $out/execution_cell_runner.py
+    cp ${../../../ai-stack/switchboard/execution_cell_validator.py} $out/execution_cell_validator.py
+    cp ${../../../ai-stack/switchboard/capability_lease_gate.py} $out/capability_lease_gate.py
+    cp ${../../../scripts/ai/lib/execution_grant.py} $out/execution_grant.py
+    cp ${../../../scripts/ai/lib/execution_cell_clone.py} $out/execution_cell_clone.py
+    cp ${../../../scripts/ai/lib/capability_lease.py} $out/capability_lease.py
+    cp ${../../../scripts/ai/lib/span_taxonomy.py} $out/span_taxonomy.py
+    cp ${../../../scripts/ai/lib/trace.py} $out/trace.py
+    cp ${../../../scripts/ai/lib/event_log.py} $out/event_log.py
+  '';
+
   runnerEnvironment = [
     "CAPABILITY_EXECUTION_CELLS=${
       if cfg.enable && cfg.flagOn
@@ -156,7 +179,7 @@ in {
       };
       serviceConfig = {
         Type = "simple";
-        ExecStart = "${runnerPython}/bin/python3 ${../../../ai-stack/switchboard/execution_cell_runner.py}";
+        ExecStart = "${runnerPython}/bin/python3 ${runnerBundle}/execution_cell_runner.py";
         Environment = runnerEnvironment;
         User = "aq-execution-cell-runner";
         Group = "aq-execution-cell-runner";
