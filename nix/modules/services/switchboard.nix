@@ -446,14 +446,17 @@ in {
           # decision reads a span (proven flag-OFF==flag-ON outcome-identical). Closes C2's Rule-15
           # "observable" DoD leg. REVERT: set to "0" + rebuild.
           "CAPABILITY_SPAN_TRUTH=1"
-          # Foundation C — R5 SHADOW activation (owner-authorized 2026-07-31).
-          # Enables the switchboard's SHADOW execution-cell adapter attach point:
-          # after a tool call has ALREADY run normally in-process, the adapter
-          # additionally mints+signs an Ed25519 grant and submits the effect to
-          # the C3b bwrap runner for confined parallel execution (dogfood). It
-          # NEVER alters/gates/delays the real result. Paired with
-          # executionCellRunner.enable+flagOn (ai-dev.nix). REVERT: "0" + rebuild.
-          "CAPABILITY_CELL_ADAPTER=1"
+          # Foundation C — R5 SHADOW adapter: ROLLED BACK to "0" 2026-07-31.
+          # The shadow dogfood surfaced a 5th deployment bug — the R3 runner
+          # self-binds its UDS (execution_cell_runner.py:988-998), unlinking the
+          # systemd socket unit's SocketGroup=aq-execution-cell-clients socket and
+          # replacing it with a runner-group socket, so clients can never connect.
+          # That is an architecture mismatch (self-bind vs sd_listen_fds), not a
+          # unit tweak — deferred to the runner-deployment-hardening slice
+          # (.agents/plans/aqos-foundation-c/RUNNER-DEPLOYMENT-HARDENING.md).
+          # The adapter + runner code stay built + reviewed but DORMANT; C2 + C5
+          # remain LIVE. Re-activation is a fresh owner act after that slice lands.
+          "CAPABILITY_CELL_ADAPTER=0"
           "PORT=${toString swb.port}"
           "HOST=127.0.0.1"
           "LLAMA_CPP_URL=${llamaUrl}"

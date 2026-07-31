@@ -133,3 +133,14 @@ Codex remains the deepest F3/C3b contributor; its return audit is expected, not 
 - **C2 enforcement VALIDATED LIVE 2026-07-30.** Flag ON + aq-lease-signing-key provisioned (SOPS /run/secrets); resolve_key is_dev=False; first-party leases admit run_command/write_file/read_file/store_memory/delegate_to_remote; deny-closed on unknown. C2 is the FIRST fully-activated enforcement slice (integrated+ON+real-world-validated). Codex: audit the live activation on return.
 
 - **C3b R5 BUILT (owner-activated ffd469a6, 2026-07-31) → codex verifies on return.** Switchboard adapter + Ed25519 grant signing, flag CAPABILITY_CELL_ADAPTER default-OFF (6d17f9e6). Ed25519 keypair provisioned (private SOPS /run/secrets/aq-grant-signing-key, public tracked config/grant-signing-public-key; matched pair self-verified). Opus caught+fixed a raw-vs-hex key-format defect the tests missed. 49/49; C2/runner suites unchanged. Codex: audit the production Ed25519 signer + key path + adapter deny-closed behavior. NOT live — R6 flip (CAPABILITY_CELL_ADAPTER=1 + runner enable + rebuild) is a further owner act.
+
+### 2026-07-31 — R5-shadow rollback + runner-deployment-hardening (for codex Aug-4)
+Shadow activation of the C3b runner surfaced 5 deployment bugs (runner never deploy-exercised).
+4 fixed (commits b41c81e3, d950f0fe + R5 build key-hex). 5th is a blocker: runner self-binds its
+UDS instead of consuming socket-activation, destroying SocketGroup=clients. Shadow ROLLED BACK to
+safe C2(enforcing)+C5(observing); adapter+runner code intact but DORMANT.
+- VERIFY: the 4 unit fixes are correct + minimal; the rollback is byte-clean (only flags flipped).
+- VERIFY the deferral doc `.agents/plans/aqos-foundation-c/RUNNER-DEPLOYMENT-HARDENING.md` scopes
+  the real fix correctly (socket-activation adoption, not a group hack).
+- LATE-FINDING WELCOME: any 6th deploy issue behind #5 (cgroup delegation / bwrap-under-NNP /
+  validator) — advisory unless a real defect, then a bounded follow-up.
