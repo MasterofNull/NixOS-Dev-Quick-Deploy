@@ -1,0 +1,33 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://nixos-dev-quick-deploy.local/schemas/execution-cell-adapter-receipt.schema.json",
+  "title": "Execution Cell Adapter — Typed Receipt / Projection Record",
+  "description": "One terminal outcome emitted by ai-stack/switchboard/execution_cell_adapter.py::submit_to_cell() for a single guarded, default-OFF shadow submission (Foundation C, C3b R5, flag CAPABILITY_CELL_ADAPTER). Observability contract only — matches the precedent set by capability-lease-gate-decision.schema.json and execution-cell-runner-decision.schema.json (a bounded set of enum decision/reason codes and the two correlation identifiers receipt_id/grant_digest). NEVER carries a grant's raw fields, logical paths, file content, prompts, or argv — additionalProperties:false is intentional; a producer/consumer mismatch is a bug to fix in the producer, never a reason to widen this schema.",
+  "type": "object",
+  "additionalProperties": false,
+  "required": ["ts", "receipt_id", "grant_digest", "decision", "reason"],
+  "properties": {
+    "ts": {
+      "type": "string",
+      "format": "date-time",
+      "description": "UTC ISO-8601 timestamp (YYYY-MM-DDTHH:MM:SSZ) of the decision."
+    },
+    "receipt_id": {
+      "type": ["string", "null"],
+      "description": "The R3 runner's own receipt_id correlation identifier for this request (uuid4 hex), or null when the request never reached the runner (adapter-disabled, not-cell-required, signing-key-unavailable, epoch-unresolvable, base-revision-unresolvable)."
+    },
+    "grant_digest": {
+      "type": ["string", "null"],
+      "description": "The signed grant's own grant_digest (R1), or null when no grant was ever minted (adapter-disabled, not-cell-required, signing-key-unavailable, epoch-unresolvable, base-revision-unresolvable)."
+    },
+    "decision": {
+      "type": "string",
+      "enum": ["green", "red", "quarantined", "denied"],
+      "description": "Terminal verdict. 'green'/'red'/'quarantined' are the R3 runner's own typed result, passed through unchanged. 'denied' covers both adapter-local stops (flag off, not cell-required, signing-key unavailable, epoch/base-revision unresolvable, runner unreachable, malformed runner response, adapter-internal-error) AND a runner-side denial (e.g. bad-signature, confinement-unavailable) — see `reason` for which."
+    },
+    "reason": {
+      "type": "string",
+      "description": "Short, machine-stable reason code — one of this module's REASON_* constants ('adapter-disabled', 'not-cell-required', 'signing-key-unavailable', 'epoch-unresolvable', 'base-revision-unresolvable', 'runner-unreachable', 'runner-response-malformed', 'adapter-internal-error:<ExceptionClassName>'), or the R3 runner's own passed-through reason code (e.g. one of execution_grant.py's DENY_* codes, 'confinement-unavailable', 'ok', a supervision trigger) when the request reached the runner."
+    }
+  }
+}

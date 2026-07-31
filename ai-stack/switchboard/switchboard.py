@@ -654,6 +654,15 @@ TOOL_WORKING_SET_ENABLED = os.environ.get("SWB_TOOL_WORKING_SET_ENABLED", "1").s
 # .agents/plans/aqos-foundation-c/C2-DESIGN-AND-AUTHORIZATION.md +
 # C2-AMENDMENT-BUILTIN-TOOLS.md (the frozen spec this flag implements).
 CAPABILITY_LEASE_ENFORCEMENT = os.environ.get("CAPABILITY_LEASE_ENFORCEMENT", "0").strip().lower() not in ("0", "false", "no", "")
+# Foundation C3b R5 (owner-activated, event ffd469a6): guarded, default-OFF
+# execution-cell-adapter shadow attach point. DEFAULT OFF — when off, the
+# adapter module is never imported and this call site is a no-op, so the
+# tool-execution path is byte-for-byte identical to pre-R5. See
+# .agents/plans/aqos-foundation-c/C3B-R5-DESIGN-AND-AUTHORIZATION.md +
+# C3B-R5-FREEZE-AND-ACTIVATION.md (the frozen spec this flag implements).
+# DISTINCT from CAPABILITY_LEASE_ENFORCEMENT (C2, admission) and from the R3
+# runner's own CAPABILITY_EXECUTION_CELLS flag (defense in depth, Q-R5-1).
+CAPABILITY_CELL_ADAPTER = os.environ.get("CAPABILITY_CELL_ADAPTER", "0").strip().lower() not in ("0", "false", "no", "")
 REMOTE_TOOL_WORKING_SET_ENABLED = os.environ.get("SWB_REMOTE_TOOL_WORKING_SET_ENABLED", "1").strip() not in ("0", "false", "no")
 CONTEXT_OUTPUT_GC_ENABLED = os.environ.get("SWB_CONTEXT_OUTPUT_GC_ENABLED", "1").strip() not in ("0", "false", "no")
 CONTEXT_OUTPUT_GC_MIN_CHARS = max(256, int(os.environ.get("SWB_CONTEXT_OUTPUT_GC_MIN_CHARS", "5000")))
@@ -1258,6 +1267,41 @@ def _admit_tool_call(tool_name: str, allowed_names: set[str]) -> tuple[bool, Opt
         _emit_lease_decision_audit(decision)
         _emit_tool_span_shadow(tool_name, False, decision)
         return False, decision
+
+
+async def _shadow_submit_cell_adapter(tool_name: str, arguments: dict) -> None:
+    """Foundation C3b R5 (owner-activated, event ffd469a6) — guarded,
+    default-OFF SHADOW attach point. Called only AFTER a tool call has
+    already been admitted by `_admit_tool_call` (C2) AND has already
+    produced its own real result via the normal in-process
+    `registry.execute_tool_call` path (unchanged). This function's ONLY
+    job is to additionally exercise the guarded mint -> sign -> UDS-submit
+    -> typed-result -> receipt-projection execution-cell-adapter pipeline
+    (`execution_cell_adapter.py`) for a cell-required effect, for
+    validation/observability. It NEVER alters, gates, delays, retries, or
+    reports back into `tool_result_text` / the message the model already
+    sees — that stays exactly as it always was. Making the adapter/runner's
+    typed result authoritative for real effects (routing real traffic
+    through the R3 confinement cell) is a SEPARATE, later, owner-activated
+    R6 canary — never this slice; see
+    C3B-R5-DESIGN-AND-AUTHORIZATION.md §1/§2.
+
+    Flag OFF (default, `CAPABILITY_CELL_ADAPTER`): returns immediately,
+    before importing `execution_cell_adapter` or touching `asyncio.to_thread`
+    — byte-for-byte identical to pre-R5 (the module is never imported).
+    NEVER raises into the tool-calling loop (best-effort, exception-
+    shielded), matching every other flag-gated shadow call site in this
+    file (`_emit_tool_span_shadow`, `_emit_lease_decision_audit`)."""
+    if not CAPABILITY_CELL_ADAPTER:
+        return
+    try:
+        _gate_dir = os.path.dirname(os.path.abspath(__file__))
+        if _gate_dir not in sys.path:
+            sys.path.insert(0, _gate_dir)
+        import execution_cell_adapter as _eca  # guarded lazy import
+        await asyncio.to_thread(_eca.submit_to_cell_default, tool_name, arguments)
+    except Exception:  # noqa: BLE001 — shadow path must never break the tool-calling loop
+        pass
 
 
 def _resolve_tool_lease(arguments: dict, available_names: set[str], current_allowed: set[str]) -> tuple[set[str], dict]:
@@ -1866,6 +1910,11 @@ async def _execute_local_tool_calling(payload: dict, run_id: str = "unknown-run"
                             )
                             tool_result = await registry.execute_tool_call(tool_call_obj)
                             tool_result_text = registry.format_tool_result(tool_result)
+                            # Foundation C3b R5 shadow attach point (flag CAPABILITY_CELL_ADAPTER,
+                            # default OFF): observes a cell-required effect AFTER its real result
+                            # above is already final — never gates/alters it. See
+                            # _shadow_submit_cell_adapter's docstring for the R5/R6 scope boundary.
+                            await _shadow_submit_cell_adapter(tool_name, arguments)
                         tool_result_text = _compact_tool_result_if_needed(tool_name, tool_call_id, tool_result_text, context_gc)
                         if TOOL_RESULT_DEDUPE_ENABLED:
                             tool_result_cache[cache_key] = {
