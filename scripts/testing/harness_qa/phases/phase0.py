@@ -1828,6 +1828,7 @@ def run(ctx: RunContext) -> list[CheckResult]:
     results.extend(_check_local_direct_health_card(ctx))
     results.extend(_check_dashboard_program_progress(ctx))
     results.extend(_check_workflow_shadow_contract(ctx))
+    results.extend(_check_execution_cell_adapter_service_coverage(ctx))
     results.extend(_check_golden_eval_parity(ctx))
     results.extend(_check_agentic_parity(ctx))
     results.extend(_check_delegation_feedback_contract(ctx))
@@ -2317,6 +2318,39 @@ def _check_local_direct_health_card(ctx: RunContext) -> list[CheckResult]:
     if not section or any(item not in section for item in required) or '"--"' in section:
         return [failed(5, "0.10.43", description)]
     return [passed(5, "0.10.43", description)]
+
+
+def _check_execution_cell_adapter_service_coverage(ctx: RunContext) -> list[CheckResult]:
+    """0.10.44: Foundation C C3b R5 default-OFF execution-cell-adapter
+    Service-Coverage — exercises the FULL mint->sign->UDS-admission->
+    runner-typed-result->receipt-projection path via a typed denial fixture
+    AND a typed success fixture (not a /health probe), per
+    C3B-R5-DESIGN-AND-AUTHORIZATION.md §5."""
+    checker = ctx.repo_root / "scripts" / "testing" / "test-execution-cell-adapter.py"
+    if not checker.exists():
+        return [failed(5, "0.10.44", "execution-cell-adapter Service-Coverage", "focused test missing")]
+    try:
+        run = subprocess.run(
+            ["python3", str(checker)], cwd=ctx.repo_root,
+            capture_output=True, text=True, timeout=120,
+        )
+    except Exception as exc:
+        return [failed(5, "0.10.44", "execution-cell-adapter Service-Coverage", str(exc)[:200])]
+    if run.returncode != 0:
+        detail = (run.stderr or run.stdout or f"exit {run.returncode}").strip()[-500:]
+        return [failed(5, "0.10.44", "execution-cell-adapter Service-Coverage", detail)]
+    prefix = "AQ_QA_ADAPTER_FIXTURE="
+    line = next((item for item in run.stdout.splitlines() if item.startswith(prefix)), "")
+    try:
+        fixture = json.loads(line[len(prefix):])
+    except (json.JSONDecodeError, TypeError):
+        return [failed(5, "0.10.44", "execution-cell-adapter Service-Coverage", "fixture marker missing or invalid")]
+    denial_ok = isinstance(fixture.get("denial"), str) and bool(fixture.get("denial"))
+    success_ok = fixture.get("success") in ("green", "red", "quarantined")
+    if not (denial_ok and success_ok):
+        return [failed(5, "0.10.44", "execution-cell-adapter Service-Coverage", f"fixture contract drift: {fixture}")]
+    detail = json.dumps(fixture, sort_keys=True, separators=(",", ":"))
+    return [passed(5, "0.10.44", f"default-OFF adapter mint->sign->UDS->receipt fixture {detail}")]
 
 
 def _check_workflow_shadow_contract(ctx: RunContext) -> list[CheckResult]:

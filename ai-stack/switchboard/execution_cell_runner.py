@@ -1025,6 +1025,33 @@ def serve_forever(config: RunnerConfig, stop_event: Optional["threading.Event"] 
 # ---------------------------------------------------------------------------
 
 
+def _load_tracked_public_key(path: str) -> bytes:
+    """Foundation C3b R5 (additive only — verification logic in
+    `execution_grant.verify_signature`/`verify_grant` is completely
+    untouched): fall back to a tracked, non-secret Ed25519 public key file
+    (`config/grant-signing-public-key`, see
+    C3B-R5-DESIGN-AND-AUTHORIZATION.md §3 — "the public key MAY be a
+    tracked config value"). Expects a HEX-encoded key (64 hex chars, one
+    trailing newline tolerated and stripped) — the SAME encoding as the
+    pre-existing `AQ_EXECUTION_CELL_RUNNER_PUBLIC_KEY_HEX` env var, so both
+    public-key sources are consistently hex. Returns `b""` (never raises,
+    never guesses/pads) on any failure — an empty `public_key_bytes` makes
+    every subsequent `verify_signature` call fail closed with
+    `bad-signature`, exactly like the pre-existing empty-hex-env default."""
+    try:
+        with open(path, "r", encoding="utf-8") as fh:
+            text = fh.read()
+    except OSError:
+        return b""
+    except UnicodeDecodeError:
+        return b""
+    try:
+        raw = bytes.fromhex(text.strip())
+    except ValueError:
+        return b""
+    return raw if len(raw) == 32 else b""
+
+
 def build_config_from_env(env: Optional[Mapping[str, str]] = None) -> RunnerConfig:
     source = env if env is not None else os.environ
     public_key_hex = source.get("AQ_EXECUTION_CELL_RUNNER_PUBLIC_KEY_HEX", "")
@@ -1032,6 +1059,14 @@ def build_config_from_env(env: Optional[Mapping[str, str]] = None) -> RunnerConf
         public_key_bytes = bytes.fromhex(public_key_hex) if public_key_hex else b""
     except ValueError:
         public_key_bytes = b""
+    if not public_key_bytes:
+        # R5 additive fallback ONLY when the env-hex path supplied nothing —
+        # the pre-existing env var stays the primary source and this never
+        # overrides a genuinely-configured hex key.
+        tracked_key_path = source.get(
+            "AQ_EXECUTION_CELL_RUNNER_PUBLIC_KEY_FILE", str(_REPO_ROOT / "config" / "grant-signing-public-key")
+        )
+        public_key_bytes = _load_tracked_public_key(tracked_key_path)
 
     mirrors: dict = {}
     mirrors_raw = source.get("AQ_EXECUTION_CELL_RUNNER_TRUSTED_REPO_MIRRORS", "")

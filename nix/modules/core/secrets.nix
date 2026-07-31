@@ -73,6 +73,21 @@ in {
             owner = aiSvcOwner;
             group = aiSvcGroup;
           };
+          # Foundation C — C3b R5 execution-grant Ed25519 PRIVATE signing key
+          # (default-OFF CAPABILITY_CELL_ADAPTER shadow attach point).
+          # Decrypts to /run/secrets/aq-grant-signing-key, read by
+          # ai-stack/switchboard/execution_cell_adapter.py::load_signing_key().
+          # WITHOUT it, load_signing_key() returns None and the adapter mints
+          # NO grant (authority-degrade deny — never an unsigned/fallback
+          # grant). The corresponding PUBLIC key is a non-secret tracked
+          # value at config/grant-signing-public-key, loaded by the R3
+          # runner. root:ai-stack 0440 → readable by the switchboard service
+          # user (in the ai-stack group), mirrors aq-lease-signing-key.
+          "aq-grant-signing-key" = {
+            mode = aiSvcMode;
+            owner = aiSvcOwner;
+            group = aiSvcGroup;
+          };
           "${sec.names.aidbApiKey}" = {
             mode = aiSvcMode;
             owner = aiSvcOwner;
