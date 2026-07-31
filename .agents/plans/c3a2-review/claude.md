@@ -1,0 +1,2 @@
+# Round c3a2-review — Orchestrator Aggregation (Opus)
+Opus authored C3a-2 -> recused (Rule 18). antigravity/gemini PASS. Verify-before-write (remote->quarantine->verify->commit-via-C3b-cell, never remote-writes-authoritative), local-broker-attests-recomputed-digest (no remote key), atomic composite-key replay reservation, deterministic signed heartbeat all confirmed. ENFORCEMENT-TIER -> build needs owner activation. Light-model caveat; codex confirmatory REQUIRED (delegation is high-stakes: remote work into the tree). Status C3A2_DESIGN_REVIEWED_PASS.
