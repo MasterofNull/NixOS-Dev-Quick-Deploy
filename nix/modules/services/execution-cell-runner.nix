@@ -42,6 +42,12 @@ with lib; let
     "AQ_EXECUTION_CELL_RUNNER_REQUEST_TIMEOUT_SECONDS=${toString cfg.requestTimeoutSeconds}"
     "AQ_EXECUTION_CELL_RUNNER_CGROUP_PARENT=/sys/fs/cgroup/system.slice/aq-execution-cell-runner.service"
     "AQ_EXECUTION_CELL_RUNNER_PYTHON_BIN=${runnerPython}/bin/python3"
+    # R5: the runner's Ed25519 PUBLIC verify key (non-secret), read at eval from
+    # the tracked config/grant-signing-public-key so it stays matched with the
+    # SOPS private key the switchboard adapter signs with. The runner executes
+    # from the Nix store, so the module's relative-file fallback cannot resolve —
+    # this env is the authoritative public-key source.
+    "AQ_EXECUTION_CELL_RUNNER_PUBLIC_KEY_HEX=${removeSuffix "\n" (builtins.readFile ../../../config/grant-signing-public-key)}"
     "BWRAP_PATH=${pkgs.bubblewrap}/bin/bwrap"
   ];
 in {

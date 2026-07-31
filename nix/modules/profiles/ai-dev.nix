@@ -20,6 +20,16 @@ in {
     mySystem.monitoring.commandCenter.enable = lib.mkDefault true;
     mySystem.localhostIsolation.enable = lib.mkDefault true;
     mySystem.aiStack.switchboard.enable = lib.mkDefault true;
+    # Foundation C — R5 SHADOW activation (owner-authorized 2026-07-31). Starts
+    # the C3b bwrap execution-cell runner (dedicated unprivileged user, socket-
+    # activated) AND flags it on. Paired with CAPABILITY_CELL_ADAPTER=1 in the
+    # switchboard (shadow attach): real tool-calling is UNCHANGED; the adapter
+    # additionally submits admitted cell-effects to the runner for confined
+    # execution in parallel (dogfood/validation), deny-closed on any failure.
+    # This is NOT authoritative cutover (cells replacing in-process execution) —
+    # that is a separate later slice. REVERT: set both to false + rebuild.
+    mySystem.aiStack.executionCellRunner.enable = true;
+    mySystem.aiStack.executionCellRunner.flagOn = true;
     mySystem.profileData.flatpakApps = lib.mkDefault flatpakProfiles.ai_workstation;
     mySystem.profileData.systemPackageNames = lib.mkDefault profilePackages.ai-dev;
 
