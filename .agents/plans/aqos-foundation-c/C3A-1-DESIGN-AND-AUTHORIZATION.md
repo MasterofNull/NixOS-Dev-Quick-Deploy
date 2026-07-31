@@ -1,3 +1,11 @@
+> **SUPERSEDED-BY-ARCHITECTURE 2026-07-30.** The C3a-1 *in-process* write/secret brokers are
+> subsumed by the shipped C3b substrate: R1 `execution_grant` already classifies effects
+> (`effect_set`/`exec_class`, deny-class network/delegate/secret) and R2 `execution_cell_clone`
+> does the TOCTOU-proof `openat2` path mediation INSIDE the bwrap cell. Effect-brokering is now
+> realized by routing effect-bearing tools INTO C3b cells (via R5 switchboard adapter) + C4
+> network + C3a-2 delegate + C6 scheduler — NOT a standalone in-process broker. This doc is
+> retained for its findings/history; do not build it as-is. Active successor: C3A-2 (delegate).
+
 > **DEFERRED 2026-07-29 (owner-ratified resequence).** Effect-brokering now follows C3b
 > (execution cells) + C4 (network profiles) — in-process brokering cannot safely precede
 > confinement (codex 3-round review). This design is retained with all findings; it resumes
