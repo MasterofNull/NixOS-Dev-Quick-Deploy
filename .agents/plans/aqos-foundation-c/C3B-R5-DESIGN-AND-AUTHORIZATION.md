@@ -1,7 +1,7 @@
 ---
 title: "Foundation C C3b R5: Default-OFF Switchboard Adapter + Grant Signing — Design Packet"
 slice: "C3b / R5"
-status: "R5_DESIGN_REVIEWED_PASS — build blocked on single-use owner activation + R4 PASS (enforcement-tier)"
+status: "R5_BUILT (flag CAPABILITY_CELL_ADAPTER default-OFF, committed 6d17f9e6; Ed25519 keypair provisioned) — was R5_DESIGN_REVIEWED_PASS — build blocked on single-use owner activation + R4 PASS (enforcement-tier)"
 review: "antigravity/gemini (independent, codex-substitution) PASS — 7/7 obligations CLOSED, Q-R5-1..3 endorsed (distinct CAPABILITY_CELL_ADAPTER flag; key rotation tied to revocation_epoch; minimal noop/single-file-write/read-validate vocab). NOTE: light-model PASS on a HIGH-STAKES grant-signing/key-provisioning slice — codex confirmatory (Aug-4) is a required depth gate before activation."
 revision: 1
 kind: "design-only"
