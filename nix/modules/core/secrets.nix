@@ -62,6 +62,17 @@ in {
           else "0400";
       in
         {
+          # Foundation C — capability-lease HMAC signing key (C2 tool-lease
+          # enforcement). Decrypts to /run/secrets/aq-lease-signing-key, which
+          # capability_lease.resolve_key() reads. WITHOUT it, resolve_key falls
+          # back to the DEV key and the gate degrades to safe-read (denying
+          # privileged first-party tools like run_command/write_file). root:ai-stack
+          # 0440 → readable by the switchboard service user (in the ai-stack group).
+          "aq-lease-signing-key" = {
+            mode = aiSvcMode;
+            owner = aiSvcOwner;
+            group = aiSvcGroup;
+          };
           "${sec.names.aidbApiKey}" = {
             mode = aiSvcMode;
             owner = aiSvcOwner;
