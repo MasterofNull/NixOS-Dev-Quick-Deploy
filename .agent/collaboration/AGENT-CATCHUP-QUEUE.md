@@ -144,3 +144,14 @@ safe C2(enforcing)+C5(observing); adapter+runner code intact but DORMANT.
   the real fix correctly (socket-activation adoption, not a group hack).
 - LATE-FINDING WELCOME: any 6th deploy issue behind #5 (cgroup delegation / bwrap-under-NNP /
   validator) — advisory unless a real defect, then a bounded follow-up.
+
+### 2026-07-31 — runner-deployment-hardening FREEZE: codex depth-review is a REQUIRED build gate
+Design frozen (subject sha256 68e3b120…, .agents/plans/aqos-foundation-c/RUNNER-DEPLOYMENT-HARDENING.md
++ FREEZE record). Local gave PASS but truncated before the security-regression + open-question depth.
+On return, codex MUST depth-review before any owner activation/build:
+- Confirm fd-3 adoption cannot bypass SO_PEERCRED or the Ed25519 grant verify (orchestrator closed
+  this by design-invariant; codex is the binding confirm).
+- Confirm the ceiling is minimal (serve_forever seam only) and the deploy-exercise gate is real.
+- Rule on Q-H-1 (strict fd 3) and Q-H-2 (keep guarded fallback vs test-only shim).
+This is a HARD gate (enforcement-tier security slice), not advisory. Only after codex PASS does the
+owner's single-use activation apply.
