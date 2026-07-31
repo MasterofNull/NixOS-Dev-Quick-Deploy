@@ -1,7 +1,7 @@
 ---
 title: "Foundation C C5: OTel Spans as Source of Truth (audit/PULSE/matrix as projections) — Design Packet"
 slice: "C5"
-status: "PREPARED_FOR_INDEPENDENT_REVIEW"
+status: "C5_DESIGN_REVIEWED_PASS (non-enforcement; standing-auth to build) — light-model review, codex confirmatory queued"
 revision: 1
 kind: "design-only"
 implementation_authorization: "NONE (non-enforcement observability — standing-auth class)"

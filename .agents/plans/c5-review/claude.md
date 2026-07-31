@@ -1,0 +1,2 @@
+# Round c5-review — Orchestrator Aggregation (Opus)
+Opus authored C5 -> recused (Rule 18). antigravity/gemini PASS, no findings; Q-C5-1..3 endorsed (extend aq-event in-place; span-derived ACTIVATION-AUDIT with one-cycle shadow cross-check; OTLP optional/offline-safe = zero egress). Opus verified anchors (trace.py span(), trace_collector optional-OTLP, aq-event projector). C5 NON-ENFORCEMENT (spans observe, never gate) -> standing-auth to build. Light-model caveat; codex confirmatory queued Aug-4. Status C5_DESIGN_REVIEWED_PASS.

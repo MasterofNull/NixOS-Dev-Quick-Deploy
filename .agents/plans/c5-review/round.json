@@ -1,0 +1,63 @@
+{
+  "schema_version": "1.0",
+  "round_id": "c5-review",
+  "state": "DISPATCHED",
+  "task": {
+    "prompt": "ROLE: independent binding DESIGN reviewer for Foundation C C5 (OTel spans as source of truth). Read\n.agents/plans/aqos-foundation-c/C5-DESIGN-AND-AUTHORIZATION.md. Read-only. Substitute for codex (down\nto Aug-4). VERIFY anchors exist (scripts/ai/lib/trace.py span(), trace_collector.py optional-OTLP,\nscripts/ai/aq-event/resume_projector) — no fabrication. Judge §8 obligations CLOSED/gap+fix: (1)\nspans are EMIT-ONLY — nothing enforces on a span; C2/C3b/C4 behavior unchanged. (2) attrs low-card +\nsecret-free (no payloads/keys/prompts/raw-paths); malformed span dropped. (3) projections pure/\nidempotent/reproducible; hand-edit drift caught. (4) flag-OFF byte-parity + shadow-first. (5) NO new\nnetwork egress (telemetry stays local); OTLP optional/offline-safe. (6) reuses real infra. C5 is\nNON-ENFORCEMENT. Weigh Q-C5-1..3. OUTPUT: VERDICT PASS/FAIL/REQUEST_REVISION line 1, then findings by\nseverity + ref + fix, + Q verdicts.",
+    "target": ".agents/plans/aqos-foundation-c/",
+    "scope_files": []
+  },
+  "opened_at": "2026-07-31T00:38:29Z",
+  "quorum_policy": {
+    "min_lanes": 2,
+    "required_agents": [],
+    "late_local_admissible": true,
+    "timeout_seconds": null,
+    "deadline": null,
+    "timeout_action": "lock_with_present"
+  },
+  "lanes": [
+    {
+      "agent": "claude",
+      "dispatch_id": null,
+      "idempotency_hash": "37e7a15cae432b05268ed5dcf79f78dad1a62b5a325e1e950aaf73b86b02c59d",
+      "status": "pending",
+      "landed_at": null
+    },
+    {
+      "agent": "codex",
+      "dispatch_id": null,
+      "idempotency_hash": "b3bf5a172bbce7173602fb7eccdaae71500d3c35d604bc629206ec62c105b34f",
+      "status": "pending",
+      "landed_at": null
+    },
+    {
+      "agent": "local",
+      "dispatch_id": null,
+      "idempotency_hash": "e3c2aaf737ed1e32ad2c8a490ca8877dff89fbf44904f973634c49391f9d9004",
+      "status": "pending",
+      "landed_at": null
+    },
+    {
+      "agent": "antigravity",
+      "dispatch_id": null,
+      "idempotency_hash": "4b312d10631b3b4fb1b4c88dcf6ac38bd1bde7f33a1c35658763bb05664b929b",
+      "status": "pending",
+      "landed_at": null
+    }
+  ],
+  "contributions": {},
+  "conflicts": [],
+  "consensus_hash": null,
+  "aggregate_path": null,
+  "aggregate_hash": null,
+  "locked_at": null,
+  "history": [
+    {
+      "transition": "CREATED->DISPATCHED",
+      "timestamp": "2026-07-31T00:38:29Z",
+      "actor": "aq-collab-round"
+    }
+  ],
+  "predecessor_round_id": null
+}

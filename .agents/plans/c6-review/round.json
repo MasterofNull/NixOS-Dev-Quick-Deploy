@@ -1,0 +1,63 @@
+{
+  "schema_version": "1.0",
+  "round_id": "c6-review",
+  "state": "DISPATCHED",
+  "task": {
+    "prompt": "ROLE: independent binding DESIGN reviewer for Foundation C C6 (epoch-revocation control + F2.5\nscheduler seam). Read .agents/plans/aqos-foundation-c/C6-DESIGN-AND-AUTHORIZATION.md. Read-only.\nSubstitute for codex (down to Aug-4). ENFORCEMENT-TIER (scheduler seam). VERIFY anchors: F2.5\nslot_scheduler/wait_for_slot LIVE in scripts/ai/lib/dispatch.py (135/502); resolve_current_epoch\n+ config/capability-lease-epoch in capability_lease_gate.py; epoch_stale in capability_lease.py — no\nfabrication. Judge §7 obligations CLOSED/gap+fix: (1) epoch bump atomic+monotonic+audited+fail-closed;\nunreadable epoch => deny everywhere. (2) scheduler seam deny-closed (refuse-on-doubt), flag-OFF\nbyte-parity, NO non-lease-request regression. (3) non-self-healing preserved (no auto-reissue,\nmonotonic, forward-only). (4) seam COMPOSES with the shipped executor checks (defense in depth), not\nreplaces/weakens. (5) F2.5 anchors real. (6) bump authority = owner/operator kill switch, governed+\naudited. Weigh Q-C6-1..4 (esp. Q-C6-4: does executor-check + scheduler-seam + control-surface satisfy\nF3 obligation-3 end-to-end, closing Cycle 6). OUTPUT: VERDICT PASS/FAIL/REQUEST_REVISION line 1, then\nfindings by severity + ref + fix, + Q verdicts.",
+    "target": ".agents/plans/aqos-foundation-c/",
+    "scope_files": []
+  },
+  "opened_at": "2026-07-31T00:38:30Z",
+  "quorum_policy": {
+    "min_lanes": 2,
+    "required_agents": [],
+    "late_local_admissible": true,
+    "timeout_seconds": null,
+    "deadline": null,
+    "timeout_action": "lock_with_present"
+  },
+  "lanes": [
+    {
+      "agent": "claude",
+      "dispatch_id": null,
+      "idempotency_hash": "6c05b1a157e9745e84376d45ff21b4f6cfa720d0cc1db89bcf78d5b58ee2ede3",
+      "status": "pending",
+      "landed_at": null
+    },
+    {
+      "agent": "codex",
+      "dispatch_id": null,
+      "idempotency_hash": "d4f166e35e90d8b0357cc5c5ae5a2da309003a13eb8a1970f7864025e0e8728e",
+      "status": "pending",
+      "landed_at": null
+    },
+    {
+      "agent": "local",
+      "dispatch_id": null,
+      "idempotency_hash": "d4be3b6fb8a4e7cd37cce7631ec9c5bf6245d95c14b193c600ee07d3dd29c4df",
+      "status": "pending",
+      "landed_at": null
+    },
+    {
+      "agent": "antigravity",
+      "dispatch_id": null,
+      "idempotency_hash": "5a40daab0ab2fe21b921c040602ce24b815d60858d3700f2f2cb303d133127f4",
+      "status": "pending",
+      "landed_at": null
+    }
+  ],
+  "contributions": {},
+  "conflicts": [],
+  "consensus_hash": null,
+  "aggregate_path": null,
+  "aggregate_hash": null,
+  "locked_at": null,
+  "history": [
+    {
+      "transition": "CREATED->DISPATCHED",
+      "timestamp": "2026-07-31T00:38:30Z",
+      "actor": "aq-collab-round"
+    }
+  ],
+  "predecessor_round_id": null
+}
