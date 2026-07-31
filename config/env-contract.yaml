@@ -1280,3 +1280,10 @@ variables:
     layer: all
     consumers: [execution-cell-runner (ai-stack/switchboard/execution_cell_runner.py)]
     description: "Foundation C C3b R3 default-OFF execution-cell-runner flag. '0' (default): the runner refuses to construct any cell — every request is denied before R1 grant verification, R2 cell creation, or bwrap confinement is ever touched. '1' authorizes cell construction; standing enablement of this flag is NOT itself live-traffic activation (see mySystem.ai.executionCellRunner.enable / .flagOn, R6 canary act)."
+
+  - canonical: CAPABILITY_SPAN_TRUTH
+    aliases: []
+    default: "0"
+    layer: all
+    consumers: [capability_lease_gate (ai-stack/switchboard/capability_lease_gate.py), switchboard (ai-stack/switchboard/switchboard.py), execution-cell-runner (ai-stack/switchboard/execution_cell_runner.py), execution-cell-validator (ai-stack/switchboard/execution_cell_validator.py)]
+    description: "Foundation C C5 default-OFF observability flag (non-enforcement — spans OBSERVE C2/C3b/C4 decisions, they never gate). '0' (default): every C5 span shadow-emit call site returns before any import/emit — byte-for-byte identical to pre-C5 behavior, nothing written to the event log. '1' additively emits closed-taxonomy `lease`/`tool`/`workspace`/`validation` spans (`scripts/ai/lib/span_taxonomy.py`) alongside the unchanged admission/confinement/validation decisions; `scripts/ai/lib/span_projector.py` folds those spans into shadow PULSE/a2a-audit/ACTIVATION-AUDIT/parity-matrix projections that do NOT replace the hand-owned surfaces while this flag is off or unreviewed."

@@ -1192,6 +1192,37 @@ def _emit_lease_decision_audit(decision: Optional[dict]) -> None:
         pass
 
 
+def _emit_tool_span_shadow(tool_name: str, admitted: bool, decision: Optional[dict]) -> None:
+    """C5 (non-enforcement observability, additive): flag-gated `tool` span
+    shadow-emit mirroring this call's already-finalized admission outcome.
+    Flag default OFF (`CAPABILITY_SPAN_TRUTH`) => returns before any
+    import/emit — byte-for-byte parity with pre-C5 behavior. NEVER raises,
+    NEVER affects the `(bool, Optional[dict])` already returned by
+    `_admit_tool_call` (called only after that decision is final)."""
+    if os.environ.get("CAPABILITY_SPAN_TRUTH", "0") != "1":
+        return
+    try:
+        _gate_dir = os.path.dirname(os.path.abspath(__file__))
+        if _gate_dir not in sys.path:
+            sys.path.insert(0, _gate_dir)
+        _lib_dir = os.path.abspath(os.path.join(_gate_dir, "..", "..", "scripts", "ai", "lib"))
+        if _lib_dir not in sys.path:
+            sys.path.insert(0, _lib_dir)
+        import span_taxonomy as _st
+        _st.emit_taxonomy_span(
+            "tool",
+            agent="switchboard",
+            attrs={
+                "tool": tool_name,
+                "decision": "admit" if admitted else "deny",
+                "reason": (decision or {}).get("reason") or ("static-membership" if admitted else "not-in-allowed-names"),
+                "lease_id": (decision or {}).get("lease_id"),
+            },
+        )
+    except Exception:  # noqa: BLE001 — telemetry must never affect admission
+        pass
+
+
 def _admit_tool_call(tool_name: str, allowed_names: set[str]) -> tuple[bool, Optional[dict]]:
     """Per-call tool admission at the executor chokepoint (C2 design §"The
     gate"). Flag OFF: byte-for-byte identical to pre-C2 — membership in
@@ -1201,8 +1232,10 @@ def _admit_tool_call(tool_name: str, allowed_names: set[str]) -> tuple[bool, Opt
     (import error, exception, denial) drops the tool — deny-closed, never
     fail-open — and every flag-ON decision is emitted for audit (finding 3)."""
     if tool_name not in allowed_names:
+        _emit_tool_span_shadow(tool_name, False, None)
         return False, None
     if not CAPABILITY_LEASE_ENFORCEMENT:
+        _emit_tool_span_shadow(tool_name, True, None)
         return True, None
     try:
         _gate_dir = os.path.dirname(os.path.abspath(__file__))
@@ -1217,10 +1250,13 @@ def _admit_tool_call(tool_name: str, allowed_names: set[str]) -> tuple[bool, Opt
         )
         decision = next((d for d in decisions if d.get("tool") == tool_name), None)
         _emit_lease_decision_audit(decision)
-        return tool_name in admitted, decision
+        result = tool_name in admitted
+        _emit_tool_span_shadow(tool_name, result, decision)
+        return result, decision
     except Exception as exc:
         decision = _lease_gate_exception_decision(tool_name, exc)
         _emit_lease_decision_audit(decision)
+        _emit_tool_span_shadow(tool_name, False, decision)
         return False, decision
 
 
