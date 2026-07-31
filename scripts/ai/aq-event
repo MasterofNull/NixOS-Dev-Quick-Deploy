@@ -13,6 +13,10 @@ Usage:
   aq-event project [resume|pulse|all]     # rebuild projections now
   aq-event tail -n 20
   aq-event verify
+  aq-event spans [pulse|a2a-audit|activation-audit|parity-matrix|all] [--check]
+                                           # C5: span-derived SHADOW projections (never
+                                           # replaces PULSE.log/a2a-audit.log/
+                                           # ACTIVATION-AUDIT.md/AGENT-PARITY-MATRIX.md)
 """
 
 from __future__ import annotations
@@ -27,6 +31,7 @@ sys.path.insert(0, str(_LIB))
 
 import event_log  # noqa: E402
 import resume_projector as rp  # noqa: E402
+import span_projector as sprj  # noqa: E402
 import trace as tracing  # noqa: E402
 
 
@@ -86,6 +91,29 @@ def _cmd_trace(a) -> int:
     return 0
 
 
+def _cmd_spans(a) -> int:
+    """C5 (non-enforcement observability): project/check the closed-taxonomy
+    span-derived SHADOW artifacts (span-pulse-shadow.log, span-a2a-audit.jsonl,
+    span-activation-audit-shadow.json, span-parity-matrix.json). These NEVER
+    replace the hand-owned PULSE.log/a2a-audit.log/ACTIVATION-AUDIT.md/
+    AGENT-PARITY-MATRIX.md surfaces — see span_projector.py module docstring."""
+    targets = [a.what] if a.what != "all" else list(sprj._WRITERS.keys())
+    events = event_log.read_all()
+    drift = False
+    for t in targets:
+        if a.check:
+            msg = sprj._CHECKERS[t](events)
+            if msg:
+                print(f"DRIFT {t}: {msg}")
+                drift = True
+            else:
+                print(f"OK {t}: no drift")
+        else:
+            path, changed = sprj._WRITERS[t](events)
+            print(f"{t} <- {path} ({'updated' if changed else 'unchanged'})")
+    return 1 if (a.check and drift) else 0
+
+
 def _cmd_verify(a) -> int:
     evs = event_log.read_all(verify=False)
     bad = [e.event_id for e in evs if not e.verify()]
@@ -118,6 +146,12 @@ def main() -> int:
 
     tr = sub.add_parser("trace", help="Render the span waterfall for a trace_id")
     tr.add_argument("trace_id"); tr.set_defaults(fn=_cmd_trace)
+
+    sp = sub.add_parser("spans", help="C5: project/check span-derived shadow artifacts (pulse/a2a-audit/activation-audit/parity-matrix)")
+    sp.add_argument("what", nargs="?", default="all",
+                     choices=["pulse", "a2a-audit", "activation-audit", "parity-matrix", "all"])
+    sp.add_argument("--check", action="store_true", help="drift check only; no write; exit 1 on drift")
+    sp.set_defaults(fn=_cmd_spans)
 
     args = ap.parse_args()
     return args.fn(args)

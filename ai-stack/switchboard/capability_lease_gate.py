@@ -74,6 +74,36 @@ if _LIB not in sys.path:
 
 import capability_lease as cl  # noqa: E402
 
+# --------------------------------------------------------------------------
+# C5 (non-enforcement observability) — additive, flag-gated `lease` span
+# shadow-emit. See `.agents/plans/aqos-foundation-c/C5-DESIGN-AND-AUTHORIZATION.md`.
+# Guarded by `CAPABILITY_SPAN_TRUTH` (default OFF): while OFF, `_emit_lease_spans_shadow`
+# returns before any import/emit — byte-for-byte identical to pre-C5 behavior. This
+# module's admission decisions (`enforce()`'s return value) are NEVER read by, or
+# dependent on, anything in this block — spans observe, they never gate.
+# --------------------------------------------------------------------------
+
+
+def _emit_lease_spans_shadow(decisions: list, op: str, epoch) -> None:
+    if os.environ.get("CAPABILITY_SPAN_TRUTH", "0") != "1":
+        return
+    try:
+        import span_taxonomy as _st
+        for d in decisions:
+            _st.emit_taxonomy_span(
+                "lease",
+                agent="capability_lease_gate",
+                attrs={
+                    "lease_id": d.get("lease_id"),
+                    "parent_lease_id": None,
+                    "revocation_epoch": epoch,
+                    "op": op,
+                    "decision": d.get("decision"),
+                },
+            )
+    except Exception:  # noqa: BLE001 — telemetry must never affect admission
+        pass
+
 
 # --------------------------------------------------------------------------
 # Constants
@@ -367,6 +397,14 @@ def issue_first_party_leases(
         lease_dict["signature"] = cl.sign(lease_dict, key)
         leases[tool] = lease_dict
     _FIRST_PARTY_LEASE_CACHE = leases
+    _emit_lease_spans_shadow(
+        [
+            {"lease_id": lease["lease_id"], "decision": DECISION_ADMIT}
+            for lease in leases.values()
+        ],
+        op="issue",
+        epoch=current_epoch,
+    )
     return _FIRST_PARTY_LEASE_CACHE
 
 
@@ -472,6 +510,7 @@ def _degrade(tool_names: set[str], reason: str) -> tuple[set[str], list[dict]]:
         )
         for tool in sorted(tool_names)
     ]
+    _emit_lease_spans_shadow(decisions, op="degrade", epoch=None)
     return admitted, decisions
 
 
@@ -638,13 +677,16 @@ def enforce(
             reason = "no-admitting-lease" if manifest_ok else "first-party-manifest-bundle-mismatch"
             decisions.append(_decision(tool, DECISION_DENY, source=None, reason=reason))
 
+        _emit_lease_spans_shadow(decisions, op="enforce", epoch=current_epoch)
         return admitted, decisions
     except Exception as exc:  # noqa: BLE001 — S-c: total fail-closed, never raise
         try:
             names_for_report = {str(t) for t in (tool_names or set())}
         except Exception:
             names_for_report = set()
-        return set(), [
+        exception_decisions = [
             _decision(tool, DECISION_DENY, reason=f"gate-exception:{type(exc).__name__}")
             for tool in sorted(names_for_report)
         ]
+        _emit_lease_spans_shadow(exception_decisions, op="deny", epoch=None)
+        return set(), exception_decisions

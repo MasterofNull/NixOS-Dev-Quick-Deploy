@@ -45,9 +45,16 @@ import os
 import shutil
 import stat
 import subprocess
+import sys
 import tempfile
 from dataclasses import dataclass
+from pathlib import Path
 from typing import Optional, Sequence
+
+_THIS_DIR = Path(__file__).resolve().parent
+_LIB_DIR = str(_THIS_DIR.parents[1] / "scripts" / "ai" / "lib")
+if _LIB_DIR not in sys.path:
+    sys.path.insert(0, _LIB_DIR)
 
 VERDICT_GREEN = "green"
 VERDICT_RED = "red"
@@ -273,6 +280,48 @@ def _run_confined_compare(
                 pass
 
 
+def _declared_paths_look_valid(declared_output_paths: Sequence[str]) -> bool:
+    """Pure re-check of the same syntactic gate `_validate_impl` applies to
+    `declared_output_paths` — used ONLY to populate the C5 `validation`
+    span's `declared_paths_ok` attribute (observability), never to alter
+    the actual verdict (that remains exactly `_validate_impl`'s decision)."""
+    try:
+        for path in declared_output_paths:
+            if not isinstance(path, str) or not path:
+                return False
+            if path.startswith("/") or "\\" in path:
+                return False
+            components = [c for c in path.split("/") if c != ""]
+            if not components or ".." in components:
+                return False
+        return True
+    except Exception:
+        return False
+
+
+def _emit_validation_span_shadow(result: ValidationResult, grant_digest: str, declared_output_paths: Sequence[str]) -> None:
+    """C5 (non-enforcement observability, additive): flag-gated `validation`
+    span shadow-emit mirroring `validate()`'s already-decided verdict. Flag
+    default OFF => returns before any import/emit — byte-for-byte parity
+    with pre-C5 behavior. NEVER raises, NEVER affects the returned
+    `ValidationResult` (called only after it is fully computed)."""
+    if os.environ.get("CAPABILITY_SPAN_TRUTH", "0") != "1":
+        return
+    try:
+        import span_taxonomy as _st
+        _st.emit_taxonomy_span(
+            "validation",
+            agent="execution_cell_validator",
+            attrs={
+                "verdict": result.verdict.upper(),
+                "declared_paths_ok": _declared_paths_look_valid(declared_output_paths),
+                "grant_digest": grant_digest,
+            },
+        )
+    except Exception:  # noqa: BLE001 — telemetry must never break the validator
+        pass
+
+
 def validate(
     *,
     grant_digest: str,
@@ -283,10 +332,27 @@ def validate(
 ) -> ValidationResult:
     """The sole entry point (design §7). Per-call surface is EXACTLY
     `{grant_digest, base_oid, cell_root, declared_output_paths}` —
-    `grant_digest` is carried through only for correlation in the caller's
-    receipt, never used by the comparison itself. Never raises: any
-    unexpected exception anywhere is caught and reported as a typed RED
-    (fail-closed) rather than propagating."""
+    `grant_digest` is carried through only for correlation (the caller's
+    receipt, and — additively, C5 — an observability span), never used by
+    the comparison itself. Never raises: any unexpected exception anywhere
+    is caught and reported as a typed RED (fail-closed) rather than
+    propagating."""
+    result = _validate_impl(
+        grant_digest=grant_digest, base_oid=base_oid, cell_root=cell_root,
+        declared_output_paths=declared_output_paths, config=config,
+    )
+    _emit_validation_span_shadow(result, grant_digest, declared_output_paths)
+    return result
+
+
+def _validate_impl(
+    *,
+    grant_digest: str,
+    base_oid: str,
+    cell_root: str,
+    declared_output_paths: Sequence[str],
+    config: ValidatorConfig,
+) -> ValidationResult:
     del grant_digest  # correlation-only; not used by the comparison itself
     try:
         for path in declared_output_paths:

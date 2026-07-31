@@ -156,6 +156,13 @@ class Decision:
     cgroup_kill_used: bool = False
     tree_proven_absent: Optional[bool] = None
     diff: tuple = ()
+    # C5 (non-enforcement observability, additive): set ONLY on a Decision
+    # produced after a cell actually existed (i.e. from inside
+    # `_confine_run_validate`) — the correlation id `_emit_workspace_span_shadow`
+    # uses to know whether a `workspace` span applies at all. Deliberately
+    # EXCLUDED from `receipt_of()`'s schema-conformant dict (never widens
+    # `execution-cell-runner-decision.schema.json`).
+    base_oid: Optional[str] = None
 
 
 def receipt_of(decision: Decision) -> dict:
@@ -655,6 +662,7 @@ def _confine_run_validate(
             return Decision(
                 DECISION_RED, "path-escape-at-run", STAGE_CONFINE_RUN, receipt_id,
                 grant_digest=grant_digest, command_kind=command.kind, duration_ms=_elapsed_ms(),
+                base_oid=cell.base_oid,
             )
         os.close(rebased)
 
@@ -678,6 +686,7 @@ def _confine_run_validate(
             return Decision(
                 DECISION_DENIED, REASON_CONFINEMENT_UNAVAILABLE, STAGE_CONFINE_RUN, receipt_id,
                 grant_digest=grant_digest, command_kind=command.kind, duration_ms=_elapsed_ms(),
+                base_oid=cell.base_oid,
             )
 
         argv = build_bwrap_argv(bwrap_path, config.python_bin, cell.cell_root, descriptor_path)
@@ -687,6 +696,7 @@ def _confine_run_validate(
             return Decision(
                 DECISION_QUARANTINED, "cgroup-unavailable", STAGE_CONFINE_RUN, receipt_id,
                 grant_digest=grant_digest, command_kind=command.kind, duration_ms=_elapsed_ms(),
+                base_oid=cell.base_oid,
             )
 
         try:
@@ -695,6 +705,7 @@ def _confine_run_validate(
             return Decision(
                 DECISION_DENIED, REASON_CONFINEMENT_UNAVAILABLE, STAGE_CONFINE_RUN, receipt_id,
                 grant_digest=grant_digest, command_kind=command.kind, duration_ms=_elapsed_ms(),
+                base_oid=cell.base_oid,
             )
         add_pid_to_cgroup(cgroup_path, popen.pid)
 
@@ -713,14 +724,14 @@ def _confine_run_validate(
             return Decision(
                 DECISION_QUARANTINED, REASON_TREE_NOT_PROVEN_ABSENT, STAGE_SUPERVISE, receipt_id,
                 grant_digest=grant_digest, command_kind=command.kind, cgroup_kill_used=cgroup_kill_used,
-                tree_proven_absent=False, duration_ms=_elapsed_ms(),
+                tree_proven_absent=False, duration_ms=_elapsed_ms(), base_oid=cell.base_oid,
             )
 
         if outcome == "terminated":
             return Decision(
                 DECISION_RED, trigger or "supervision-terminal-trigger", STAGE_SUPERVISE, receipt_id,
                 grant_digest=grant_digest, command_kind=command.kind, cgroup_kill_used=cgroup_kill_used,
-                tree_proven_absent=True, duration_ms=_elapsed_ms(),
+                tree_proven_absent=True, duration_ms=_elapsed_ms(), base_oid=cell.base_oid,
             )
 
         self_report = _parse_worker_result(stdout)
@@ -728,13 +739,13 @@ def _confine_run_validate(
             return Decision(
                 DECISION_RED, REASON_MALFORMED_RESULT, STAGE_SUPERVISE, receipt_id,
                 grant_digest=grant_digest, command_kind=command.kind, cgroup_kill_used=cgroup_kill_used,
-                tree_proven_absent=True, duration_ms=_elapsed_ms(),
+                tree_proven_absent=True, duration_ms=_elapsed_ms(), base_oid=cell.base_oid,
             )
         if popen.returncode != 0 or not self_report.get("ok"):
             return Decision(
                 DECISION_RED, REASON_COMMAND_FAILED, STAGE_SUPERVISE, receipt_id,
                 grant_digest=grant_digest, command_kind=command.kind, cgroup_kill_used=cgroup_kill_used,
-                tree_proven_absent=True, duration_ms=_elapsed_ms(),
+                tree_proven_absent=True, duration_ms=_elapsed_ms(), base_oid=cell.base_oid,
             )
     finally:
         _cleanup_cgroup_dir(cgroup_path)
@@ -763,7 +774,7 @@ def _confine_run_validate(
         return Decision(
             DECISION_RED, f"validator:{validation.reason}", STAGE_VALIDATE, receipt_id,
             grant_digest=grant_digest, command_kind=command.kind,
-            tree_proven_absent=True, duration_ms=_elapsed_ms(),
+            tree_proven_absent=True, duration_ms=_elapsed_ms(), base_oid=cell.base_oid,
         )
 
     # ---- FINAL EPOCH FENCE (design §6) — re-read the authoritative epoch
@@ -777,13 +788,14 @@ def _confine_run_validate(
         return Decision(
             DECISION_RED, REASON_FINAL_FENCE_FAILED, STAGE_FINAL_FENCE, receipt_id,
             grant_digest=grant_digest, command_kind=command.kind,
-            tree_proven_absent=True, duration_ms=_elapsed_ms(),
+            tree_proven_absent=True, duration_ms=_elapsed_ms(), base_oid=cell.base_oid,
         )
 
     return Decision(
         DECISION_GREEN, REASON_OK, STAGE_FINAL_FENCE, receipt_id,
         grant_digest=grant_digest, command_kind=command.kind,
         tree_proven_absent=True, duration_ms=_elapsed_ms(), diff=validation.changed_paths,
+        base_oid=cell.base_oid,
     )
 
 
@@ -884,6 +896,48 @@ def _emit_receipt(decision: Decision, config: RunnerConfig) -> None:
         pass
 
 
+def _workspace_event_for(decision: Decision) -> Optional[str]:
+    """C5 (non-enforcement observability): map a terminal `Decision` to the
+    `workspace` span's `event` enum (§3: snapshot/rollback/quarantine).
+    `decision.base_oid is None` means no cell ever existed for this receipt
+    (every DENIED short-circuit before cell-create) — no workspace span
+    applies. Pure, never raises."""
+    if decision.base_oid is None:
+        return None
+    if decision.decision == DECISION_GREEN:
+        return "snapshot"
+    if decision.decision == DECISION_QUARANTINED:
+        return "quarantine"
+    return "rollback"  # red, or a rare post-cell-create denied edge case
+
+
+def _emit_workspace_span_shadow(decision: Decision) -> None:
+    """C5 (non-enforcement observability, additive): flag-gated `workspace`
+    span shadow-emit mirroring this receipt's cell lifecycle outcome. Flag
+    default OFF => returns before any import/emit — byte-for-byte parity
+    with pre-C5 behavior. NEVER raises, NEVER affects the receipt already
+    sent to the caller (called only after `_send_json`/`_emit_receipt`)."""
+    if os.environ.get("CAPABILITY_SPAN_TRUTH", "0") != "1":
+        return
+    event = _workspace_event_for(decision)
+    if event is None:
+        return
+    try:
+        import span_taxonomy as _st
+        _st.emit_taxonomy_span(
+            "workspace",
+            agent="execution_cell_runner",
+            attrs={
+                "event": event,
+                "cell_id": decision.receipt_id,
+                "base_oid": decision.base_oid,
+                "grant_digest": decision.grant_digest,
+            },
+        )
+    except Exception:  # noqa: BLE001 — telemetry must never break the runner
+        pass
+
+
 def _handle_connection(conn: "socket.socket", config: RunnerConfig, semaphore: "threading.BoundedSemaphore") -> None:
     acquired = False
     try:
@@ -911,6 +965,7 @@ def _handle_connection(conn: "socket.socket", config: RunnerConfig, semaphore: "
         decision = process_grant(payload, config)
         _send_json(conn, receipt_of(decision))
         _emit_receipt(decision, config)
+        _emit_workspace_span_shadow(decision)
     except Exception:  # noqa: BLE001 — NEVER raise to the socket caller
         try:
             _send_json(conn, {"decision": DECISION_DENIED, "reason": REASON_RUNNER_INTERNAL_ERROR})

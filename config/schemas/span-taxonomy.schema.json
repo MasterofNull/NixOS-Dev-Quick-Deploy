@@ -1,0 +1,130 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://nixos-dev-quick-deploy.local/schemas/span-taxonomy.schema.json",
+  "title": "Foundation C C5 — Closed Span Taxonomy Record",
+  "description": "One taxonomy span record folded by scripts/ai/lib/span_projector.py from a trace.py `trace.span.end` event whose attrs carry the `_span_taxonomy: c5.v1` marker (scripts/ai/lib/span_taxonomy.py::emit_taxonomy_span). Observability contract only (Foundation C, C5 — non-enforcement): spans OBSERVE already-decided C2/C3b/C4 admission/confinement/validation/egress outcomes, they never gate anything. A record failing this schema (or scripts/ai/lib/span_taxonomy.py::validate_span, its executable twin) is dropped from every projection and flagged — never silently trusted (design §3/§8-2). `additionalProperties:false` on each kind's `attrs` shape is intentional (low-cardinality, secret-free, closed vocabulary); a producer/consumer mismatch is a bug to fix in the producer, never a reason to widen this schema.",
+  "type": "object",
+  "required": ["kind", "attrs"],
+  "properties": {
+    "kind": {
+      "type": "string",
+      "enum": ["turn", "tool", "lease", "validation", "workspace", "broker"],
+      "description": "The closed span-kind vocabulary (§3 table). Also the taxonomy span's `name` in trace.py by convention — the kind IS the span name."
+    },
+    "agent": {
+      "type": "string",
+      "description": "The emitting module/agent identity (e.g. 'switchboard', 'capability_lease_gate', 'execution_cell_runner', 'execution_cell_validator')."
+    },
+    "ts": {
+      "type": "number",
+      "description": "Epoch seconds (float) — the underlying event log's `ts`, sortable/timezone-free."
+    },
+    "trace_id": {"type": ["string", "null"], "description": "W3C trace id (32 hex chars) this span belongs to, or null if untraced."},
+    "span_id": {"type": ["string", "null"], "description": "This span's own id (16 hex chars)."},
+    "parent_span_id": {"type": ["string", "null"], "description": "The parent span's id, or null at a trace root."},
+    "status": {"type": ["string", "null"], "description": "trace.py span status ('ok'/'error'/'unset'), independent of the taxonomy `decision`/`verdict` attr."},
+    "attrs": {
+      "type": "object",
+      "description": "Kind-specific attributes, selected by `kind` via this schema's `allOf`/`if`/`then` below. Every attribute is low-cardinality and secret-free: no payloads, prompts, keys, or raw filesystem paths — path-shaped values MUST be a declared-scope id (lease_id/grant_digest/base_oid/cell_id/turn_id), never bytes-on-disk. `duration_s` (float, added by trace.py's span() primitive) and `_span_taxonomy` (the 'c5.v1' marker) are universally allowed on every kind."
+    }
+  },
+  "allOf": [
+    {
+      "if": {"properties": {"kind": {"const": "turn"}}}, "then": {
+        "properties": {"attrs": {
+          "type": "object", "additionalProperties": false,
+          "required": ["turn_id", "agent", "traceparent"],
+          "properties": {
+            "turn_id": {"type": "string", "maxLength": 128},
+            "agent": {"type": "string", "maxLength": 128},
+            "traceparent": {"type": "string", "pattern": "^[0-9a-f]{2}-[0-9a-f]{32}-[0-9a-f]{16}-[0-9a-f]{2}$"},
+            "duration_s": {"type": "number"},
+            "_span_taxonomy": {"const": "c5.v1"}
+          }
+        }}
+      }
+    },
+    {
+      "if": {"properties": {"kind": {"const": "tool"}}}, "then": {
+        "properties": {"attrs": {
+          "type": "object", "additionalProperties": false,
+          "required": ["tool", "decision", "reason", "lease_id"],
+          "properties": {
+            "tool": {"type": "string", "maxLength": 128},
+            "decision": {"type": "string", "enum": ["admit", "deny", "strip"]},
+            "reason": {"type": ["string", "null"], "maxLength": 128},
+            "lease_id": {"type": ["string", "null"], "maxLength": 128},
+            "duration_s": {"type": "number"},
+            "_span_taxonomy": {"const": "c5.v1"}
+          }
+        }}
+      }
+    },
+    {
+      "if": {"properties": {"kind": {"const": "lease"}}}, "then": {
+        "properties": {"attrs": {
+          "type": "object", "additionalProperties": false,
+          "required": ["lease_id", "parent_lease_id", "revocation_epoch", "op", "decision"],
+          "properties": {
+            "lease_id": {"type": ["string", "null"], "maxLength": 128},
+            "parent_lease_id": {"type": ["string", "null"], "maxLength": 128},
+            "revocation_epoch": {"type": ["integer", "null"]},
+            "op": {"type": "string", "enum": ["issue", "attenuate", "deny", "revoke", "enforce", "degrade"]},
+            "decision": {"type": ["string", "null"], "enum": ["admit", "deny", null]},
+            "duration_s": {"type": "number"},
+            "_span_taxonomy": {"const": "c5.v1"}
+          }
+        }}
+      }
+    },
+    {
+      "if": {"properties": {"kind": {"const": "validation"}}}, "then": {
+        "properties": {"attrs": {
+          "type": "object", "additionalProperties": false,
+          "required": ["verdict", "declared_paths_ok", "grant_digest"],
+          "properties": {
+            "verdict": {"type": "string", "enum": ["GREEN", "RED"]},
+            "declared_paths_ok": {"type": "boolean"},
+            "grant_digest": {"type": ["string", "null"], "maxLength": 128},
+            "duration_s": {"type": "number"},
+            "_span_taxonomy": {"const": "c5.v1"}
+          }
+        }}
+      }
+    },
+    {
+      "if": {"properties": {"kind": {"const": "workspace"}}}, "then": {
+        "properties": {"attrs": {
+          "type": "object", "additionalProperties": false,
+          "required": ["event", "cell_id", "base_oid", "grant_digest"],
+          "properties": {
+            "event": {"type": "string", "enum": ["snapshot", "rollback", "quarantine"]},
+            "cell_id": {"type": ["string", "null"], "maxLength": 128},
+            "base_oid": {"type": ["string", "null"], "maxLength": 128},
+            "grant_digest": {"type": ["string", "null"], "maxLength": 128},
+            "duration_s": {"type": "number"},
+            "_span_taxonomy": {"const": "c5.v1"}
+          }
+        }}
+      }
+    },
+    {
+      "if": {"properties": {"kind": {"const": "broker"}}}, "then": {
+        "properties": {"attrs": {
+          "type": "object", "additionalProperties": false,
+          "required": ["broker", "effect", "decision", "reason", "lease_id"],
+          "properties": {
+            "broker": {"type": "string", "maxLength": 128},
+            "effect": {"type": "string", "maxLength": 128},
+            "decision": {"type": "string", "enum": ["allow", "deny", "degrade"]},
+            "reason": {"type": ["string", "null"], "maxLength": 128},
+            "profile_id": {"type": ["string", "null"], "maxLength": 128},
+            "lease_id": {"type": ["string", "null"], "maxLength": 128},
+            "duration_s": {"type": "number"},
+            "_span_taxonomy": {"const": "c5.v1"}
+          }
+        }}
+      }
+    }
+  ]
+}
