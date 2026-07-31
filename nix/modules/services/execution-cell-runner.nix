@@ -14,8 +14,13 @@
 # `/proc/sys/user/max_user_namespaces = 111259`), so this module needs NO
 # global `security.unprivilegedUsernsClone` change. The ONLY namespace
 # relaxation anywhere in this build is THIS service's own
-# `RestrictNamespaces = "CLONE_NEWUSER CLONE_NEWNS"` — scoped to this one
-# unprivileged unit, never global. `nix/modules/services/switchboard.nix`
+# `RestrictNamespaces = false` — scoped to this one unprivileged unit,
+# never global. (R5-shadow deploy fix: the design's original
+# `"CLONE_NEWUSER CLONE_NEWNS"` was malformed — systemd wants type names,
+# not CLONE_* kernel flags, so it was silently ignored — AND semantically
+# incompatible with bwrap `--unshare-all`, which must create all 7
+# namespace types; `false` is the honest value for a service whose sole
+# job is to build bwrap sandboxes.) `nix/modules/services/switchboard.nix`
 # is a byte-parity anchor (frozen hash `4811326e891cab2e…`) and is NOT
 # touched by this file.
 {
@@ -186,7 +191,7 @@ in {
         StateDirectory = "aq-execution-cell-runner";
         StateDirectoryMode = "0700";
         RuntimeDirectory = "aq-execution-cell-runner";
-        RuntimeDirectoryMode = "0750";
+        RuntimeDirectoryMode = "0755"; # client group must traverse to reach the 0660 socket (state is in the separate StateDirectory, not here)
         Restart = "on-failure";
         RestartSec = "5s";
         TimeoutStopSec = "15s";
@@ -205,7 +210,7 @@ in {
         # bwrap needs to build its OWN inner namespaces. Every namespace
         # bwrap unshares (pid/net/ipc/uts/cgroup) happens INSIDE the user
         # namespace it creates — no host privilege is granted by this line.
-        RestrictNamespaces = "CLONE_NEWUSER CLONE_NEWNS";
+        RestrictNamespaces = false; # R5-shadow deploy fix: the prior "CLONE_NEWUSER CLONE_NEWNS" was malformed (systemd wants type names) AND incompatible with bwrap --unshare-all (needs all 7 namespace types). The runner's confinement IS bwrap; namespace creation is its core function. (Hardening note for codex: scope via a valid full type list only if it ever proves necessary.)
 
         # cgroup v2 delegation (design §8, antigravity SHOULD-FIX, Q-R3-3):
         # required for the unprivileged runner to write `cgroup.kill` /
