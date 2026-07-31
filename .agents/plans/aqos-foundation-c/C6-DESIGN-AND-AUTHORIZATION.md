@@ -1,7 +1,7 @@
 ---
 title: "Foundation C C6: Epoch-Revocation Control Surface + F2.5 Scheduler Seam — Design Packet"
 slice: "C6"
-status: "PREPARED_FOR_INDEPENDENT_REVIEW"
+status: "C6_DESIGN_REVIEWED_PASS — scheduler-seam build needs single-use owner activation (enforcement-tier); codex confirmatory REQUIRED (light-model review)"
 revision: 1
 kind: "design-only"
 implementation_authorization: "NONE — the scheduler-seam is enforcement-tier: requires single-use owner activation before build"
