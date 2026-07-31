@@ -38,3 +38,14 @@ mutable overrides.env + restart the service — wiped by next rebuild, so also f
 The permanent Nix declaration + this activation are in the AGENT-CATCHUP-QUEUE for codex's
 confirmatory audit; codex may propose adjustments (advisory unless a real defect → bounded fix).
 Other enforcement slices (R3 runner enable, R5/C4/C6/C3a-2 builds) remain OFF/unbuilt pending codex.
+
+## VALIDATED LIVE 2026-07-30 (post-rebuild, key provisioned)
+- /run/secrets/aq-lease-signing-key present (root:ai-stack 0440); resolve_key() is_dev=False (production key).
+- LIVE enforce(): run_command / write_file / read_file / store_memory / delegate_to_remote → ADMIT
+  (first-party-lease-verified); a_nonexistent_tool + the `file_edit` bundle-name → DENY (deny-closed,
+  no-admitting-lease). switchboard active + healthy; CAPABILITY_LEASE_ENFORCEMENT=1.
+- The DEV-key degrade (which had denied privileged tools) is resolved by the provisioned key
+  (commits: flag 4adcf55b + key b076528c).
+- **Activation Gate (Rule 15): C2 now satisfies integrated + turned-ON + functionally-validated-real-world.**
+  Remaining DoD legs: observable (C5 spans, built/uncommitted) + finer intervenability (C6 epoch bump, designed).
+- Owner-authorized; codex to confirmatory-audit the live activation on Aug-4 return (catch-up queue).
