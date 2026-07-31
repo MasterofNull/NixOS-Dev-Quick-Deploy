@@ -1,5 +1,8 @@
 # Foundation C — C3b R5 Freeze & Owner Activation
 
+> **ACTIVATED + CONSUMED 2026-07-30** — owner activation.grant event `ffd469a6` (agent=owner, owner-directed orchestrator-executed). Drift check CLEAN (subject 10494dca + all 7 predecessors + R4 gate PASS). Single-use key `…:v1:20260730` CONSUMED — R5 build in progress (Claude-fast). Orchestrator provisions the Ed25519 grant keypair (private→SOPS, public→tracked) + L2B re-pin at commit.
+
+
 **Enforcement-tier + HIGH-STAKES.** R5 is the switchboard adapter that first MINTS a signed
 execution grant and calls the runner — and where the **Ed25519 grant-signing private key** is
 provisioned. Design is independently reviewed PASS (`c3b-r5-review/antigravity.md`,
