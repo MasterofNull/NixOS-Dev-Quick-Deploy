@@ -2686,3 +2686,10 @@ plain `validated` dict), and R2 correctly adapts via `dict(verified_grant.raw)` 
 frozen R1 file. LOW-pri hardening: a future R1 patch should accept any `collections.abc.Mapping` for
 robustness. Not urgent (R2 adapter is correct; R1 frozen/committed f3a39f52). Flag for codex Aug-4
 confirmatory audit.
+
+## [OPEN-LOW] Local Qwen wedged on multi-part confirmatory grounding (2026-07-30)
+delegate-to-local agent-mode task (4-part multi-file security-invariant grounding on committed C3b
+code) → "LLM no-progress timeout: server silent for >420s" after 842s, tool_calls=[], result=null.
+Above local's measured envelope (bounded single-command/single-edit). Improvement target: decompose
+local grounding into per-file single-question tasks; never hand local a 4-part multi-file review.
+Advisory task (codex is the real confirmatory backstop) — non-blocking.
