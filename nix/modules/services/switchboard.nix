@@ -440,6 +440,12 @@ in {
           # proven by the 83/83 flag-ON suite. REVERT: set to "0" (or remove) + nixos-rebuild switch.
           # Codex may audit + adjust this activation on its Aug-4 return (catch-up queue).
           "CAPABILITY_LEASE_ENFORCEMENT=1"
+          # Foundation C — C5 ACTIVATION (owner-authorized 2026-07-30). Turns span-as-truth
+          # observability ON (shadow: spans emit + project to span-*-shadow artifacts; the
+          # hand-owned PULSE/audit surfaces stay authoritative). NON-ENFORCEMENT — no admission
+          # decision reads a span (proven flag-OFF==flag-ON outcome-identical). Closes C2's Rule-15
+          # "observable" DoD leg. REVERT: set to "0" + rebuild.
+          "CAPABILITY_SPAN_TRUTH=1"
           "PORT=${toString swb.port}"
           "HOST=127.0.0.1"
           "LLAMA_CPP_URL=${llamaUrl}"
