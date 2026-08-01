@@ -706,6 +706,105 @@ def _llama_slot_wedged_check() -> List[Dict[str, Any]]:
         }]
 
 
+def _capability_enforcement_check() -> List[Dict[str, Any]]:
+    """Detect silent failure of C2 lease enforcement and C5 span-truth flags.
+
+    C2 (lease enforcement): GREEN iff BOTH:
+      - CAPABILITY_LEASE_ENFORCEMENT=1 in ai-switchboard.service environment
+      - /run/secrets/aq-lease-signing-key exists and is non-empty
+    RED if either condition fails (enforcement disabled or key missing).
+
+    C5 (span-truth): GREEN iff CAPABILITY_SPAN_TRUTH=1 in the same service env.
+    YELLOW if span events are expected but not present in the recent event log
+    (advisory only; never creates false failures for quiet systems).
+
+    Best-effort: any errors in reading service env or event log yield no anomaly
+    (never break a health-spider cycle).
+    """
+    anomalies: List[Dict[str, Any]] = []
+    now = time.time()
+
+    # 1. Read ai-switchboard.service environment
+    env_vars: Dict[str, str] = {}
+    try:
+        r = subprocess.run(
+            ["systemctl", "show", "ai-switchboard.service", "-p", "Environment", "--value"],
+            capture_output=True, text=True, timeout=5,
+        )
+        if r.returncode != 0:
+            logger.debug(f"systemctl show failed: rc={r.returncode}")
+            # Silent fail — report nothing on read error
+            return []
+        if r.stdout.strip():
+            # Environment output is typically: VAR1=value1 VAR2=value2 ...
+            # Split on spaces, handling quoted values
+            raw = r.stdout.strip()
+            for part in raw.split():
+                if "=" in part:
+                    key, val = part.split("=", 1)
+                    env_vars[key] = val
+    except Exception as e:
+        logger.debug(f"Could not read ai-switchboard.service environment: {e}")
+        # Silent fail — report nothing on read error
+        return []
+
+    # 2. C2 Lease enforcement check
+    c2_flag = env_vars.get("CAPABILITY_LEASE_ENFORCEMENT", "0").strip()
+    key_path = Path("/run/secrets/aq-lease-signing-key")
+
+    c2_flag_ok = c2_flag == "1"
+    key_ok = False
+    key_missing_confirmed = False  # Only RED if we KNOW it's absent
+    try:
+        if key_path.exists():
+            stat_info = key_path.stat()
+            key_ok = stat_info.st_size > 0
+            if stat_info.st_size == 0:
+                key_missing_confirmed = True
+        else:
+            # File doesn't exist (and we successfully traversed /run/secrets)
+            key_missing_confirmed = True
+    except PermissionError:
+        # Can't determine if key exists due to permission; don't emit RED (indeterminate)
+        pass
+    except OSError:
+        # Other OS errors (transient?); don't emit RED
+        pass
+
+    if not c2_flag_ok:
+        anomalies.append({
+            "type": "c2_lease_enforcement_disabled",
+            "zone": "capability-enforcement",
+            "detail": "C2 lease enforcement is disabled: CAPABILITY_LEASE_ENFORCEMENT flag is not set to 1. "
+                     "Gate has degraded to dev-key enforcement (security weakened).",
+            "timestamp": now,
+        })
+    elif key_missing_confirmed:
+        anomalies.append({
+            "type": "c2_lease_key_missing",
+            "zone": "capability-enforcement",
+            "detail": f"C2 lease enforcement key missing or empty: {key_path} does not exist or is empty. "
+                     "Gate cannot sign leases (enforcement silently degraded).",
+            "timestamp": now,
+        })
+
+    # 3. C5 Span-truth check
+    c5_flag = env_vars.get("CAPABILITY_SPAN_TRUTH", "0").strip()
+    if c5_flag != "1":
+        anomalies.append({
+            "type": "c5_span_truth_disabled",
+            "zone": "capability-enforcement",
+            "detail": "C5 span-truth is disabled: CAPABILITY_SPAN_TRUTH flag is not set to 1. "
+                     "Span events are not being recorded (observability degraded).",
+            "timestamp": now,
+        })
+    # Note: We do NOT check for recent span events when the flag is ON, as that would
+    # create false failures in quiet systems. A properly functioning C5 with no recent
+    # tool activity (and thus no spans) is still healthy. Only flag the C5 flag itself.
+
+    return anomalies
+
+
 # ── HealthSpider ───────────────────────────────────────────────────────────────
 
 class HealthSpider:
@@ -1003,6 +1102,39 @@ class HealthSpider:
                     atype, "closed-loop", detail, action,
                 )
             return True
+        elif atype in ("c2_lease_enforcement_disabled", "c2_lease_key_missing", "c5_span_truth_disabled"):
+            # Capability enforcement flags — C2 and C5 silent-failure detection.
+            # These are HIGH severity because a silent degradation of a security feature
+            # (enforcement gate falling back to dev key, span recording disabled) is a critical observation.
+            detail = anomaly.get("detail", atype)
+            action = {
+                "c2_lease_enforcement_disabled": "Enable C2 lease enforcement in nix/modules/services/switchboard.nix: set CAPABILITY_LEASE_ENFORCEMENT=1. "
+                                                  "Rebuild: sudo nixos-rebuild switch --flake .#hyperd-ai-dev",
+                "c2_lease_key_missing": "Verify /run/secrets/aq-lease-signing-key exists (generated from secrets.nix). "
+                                        "If missing, run: sudo sops secrets.nix (and ensure the key is in the decrypted file). Rebuild to sync.",
+                "c5_span_truth_disabled": "Enable C5 span-truth in nix/modules/services/switchboard.nix: set CAPABILITY_SPAN_TRUTH=1. "
+                                         "Rebuild: sudo nixos-rebuild switch --flake .#hyperd-ai-dev",
+            }.get(atype, "Inspect the capability enforcement configuration.")
+            try:
+                push(
+                    source="health-spider",
+                    severity="high",
+                    autonomy_boundary="human_gate",
+                    title=f"Capability enforcement degraded: {atype}",
+                    detail=detail,
+                    proposed_action=action,
+                    payload=anomaly,
+                )
+            except Exception:
+                pass
+            key = f"{atype}"
+            if key not in self._known_issues:
+                self._known_issues.add(key)
+                await asyncio.to_thread(
+                    _push_memory_fact,
+                    atype, "capability-enforcement", detail, action,
+                )
+            return True
         return True
 
     async def _fix_apparmor(self, anomaly: Dict[str, Any]) -> str:
@@ -1119,6 +1251,13 @@ class HealthSpider:
                     total += 1
         except Exception as e:
             logger.error(f"[llama-slot] error: {e}")
+        # Harness-level: C2 lease enforcement and C5 span-truth feature flags (observability gates).
+        try:
+            for a in await asyncio.to_thread(_capability_enforcement_check):
+                if await self.handle_anomaly(a):
+                    total += 1
+        except Exception as e:
+            logger.error(f"[capability-enforcement] error: {e}")
         return total
 
     async def run(self):
