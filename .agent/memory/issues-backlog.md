@@ -2822,3 +2822,12 @@ Advisory task (codex is the real confirmatory backstop) — non-blocking.
 - **severity**: MEDIUM evidence-portability defect; implementation behavior is accepted, but two R6 deployment canaries are still outstanding.
 - **action**: add execution-environment identity/capability fields to validation receipts and classify privilege-dependent tests separately from hermetic unit tests.
 - **file**: `scripts/testing/test-execution-cell-runner.py`; `.agents/plans/aqos-foundation-c/RUNNER-HARDENING-IMPLEMENTATION-ACCEPTANCE-20260801.md`
+
+## [OPEN] Local agent-mode: no COMPLETED signal + poor progress visibility -> premature cancel — 2026-08-01
+- **status**: OPEN — DIAGNOSED (root cause found; fix routes to L3-P0 local-inference slice, not edited here to avoid collision with codex's active build).
+- **hypothesis corrected**: NOT too-strict timeouts. Timeouts are APU-calibrated + generous (first-token floor 420s, cap 1800s, chunk 14400s, no-progress 4h).
+- **measured root cause**: ~3.3 min avg per agent LLM step on the single-slot Renoir APU (first cold call 394s; measured from local-20260801-085911 steps.jsonl), so an 8-step task = ~26 min. Slow-but-working tasks look stalled and get cancelled early.
+- **real gaps**: (1) agent does the work (F2.5 edits landed at step 7-8) but never emits COMPLETED -> shows "running" indefinitely; (2) heartbeat/status ("agent-loop-waiting") does not surface step progress (tools run, edits made), so the orchestrator can't tell working from stuck.
+- **file**: scripts/ai/aq-agent-loop; ai-stack/local-agents/agent_executor.py; the heartbeat/status writer in scripts/ai/lib/dispatch.py (L3-P0 territory).
+- **severity**: medium (no lost correctness — tasks complete; wasted slot time + premature cancels + operator confusion).
+- **action**: route to the L3-P0 "Local Inference" slice: emit COMPLETED promptly on work-done; surface steps.jsonl summary in heartbeat/status. Interim behavior fix: read steps.jsonl before cancelling; budget agent tasks 30-40 min; use lighter path for trivial edits. → memory reference-local-agent-mode-slow-not-stalled.
