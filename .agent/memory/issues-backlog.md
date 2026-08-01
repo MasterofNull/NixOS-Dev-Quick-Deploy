@@ -2722,3 +2722,12 @@ Advisory task (codex is the real confirmatory backstop) — non-blocking.
 - **file:line**: scripts/ai/aq-health-spider:603 (pattern), dashboard/backend/api/routes/aistack.py (card).
 - **severity**: MEDIUM (enforcement IS live + validated; the gap is silent-failure detection, not a live hole).
 - **implementer**: cheapest-eligible per Rule 17. May be multi-site (check fn + registration + dashboard card) → likely fast-tier not local-single-edit; codex can fold on Aug-4 or a fast-tier lane now.
+
+## [OPEN] tier0 check-sops-sync false-positive: signing keys flagged "stale/unused" — 2026-07-31
+- **status**: OPEN — false-positive WARN; keys are LIVE + correctly declared. No functional risk.
+- **finding**: `tier0.d/check-sops-sync` warns "SOPS file has keys not declared in secrets.nix (stale/unused): aq-grant-signing-key aq-lease-signing-key (9 required, 2 stale)". But BOTH are declared in `nix/modules/core/secrets.nix` (lines 71, 86), committed b076528c + 6d17f9e6, provisioned to `/run/secrets/` and in active use (C2 lease enforcement + R5 grant signing depend on them).
+- **root cause (probable)**: the check's secrets.nix declaration parser doesn't recognize the form these two keys are declared in (nested `"key-name" = Ellipsis` block vs whatever flat/names list the check scans), so it mis-classifies live keys as stale.
+- **risk**: a false "stale/unused" WARN on SECURITY-CRITICAL keys could invite a wrong "cleanup" (deleting a live key would DEV-degrade C2). Ironically the exact silent-degrade the new `_capability_enforcement_check` now catches.
+- **file**: scripts/governance/tier0.d/check-sops-sync (parser); nix/modules/core/secrets.nix:71,86 (the unrecognized decls).
+- **severity**: LOW (WARN only, gate still PASS; keys functional).
+- **action**: fix the check parser to recognize the nested-attr declaration form. Bounded implementer slice (cheapest-eligible).
