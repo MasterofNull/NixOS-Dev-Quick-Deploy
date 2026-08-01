@@ -1,7 +1,7 @@
 ---
 title: "Foundation C C3a-2: Delegate Broker + Signed-A2A Verify-before-write — Design Packet"
 slice: "C3a-2"
-status: "C3A2_DESIGN_REVIEWED_PASS — build needs single-use owner activation (enforcement-tier); codex confirmatory REQUIRED (light-model review)"
+status: "PREPARED_ONLY (REVISION 2026-08-01) — codex binding REQUEST_REVISION folded (R-1..R-6 at doc end); re-review + re-freeze + fresh single-use owner activation required. Prior C3A2_DESIGN_REVIEWED_PASS superseded."
 revision: 1
 kind: "design-only"
 implementation_authorization: "NONE — enforcement-tier: requires single-use owner activation before build"
@@ -138,3 +138,76 @@ act. Standing authorization does NOT activate C3a-2.
 
 **Requested reviewer result:** `PASS` / `FAIL` / `REQUEST_REVISION` against C3a-2 scope + §9. Build
 additionally requires single-use owner activation.
+
+---
+
+# REVISION (2026-08-01) — folds codex binding REQUEST_REVISION (C3A-2-CODEX-DEPTH-REVIEW-20260801.md)
+
+status: `PREPARED_ONLY — re-review + re-freeze + fresh single-use owner activation required`. Authored
+by Opus (orchestrator, analysis-tier) per `CODEX-DEPTH-REVISION-BRIEF-20260801.md` (design-only; the
+two dispatched Fable-5 flagships died on usage credits before reaching this slice). Supersedes the
+`C3A2_DESIGN_REVIEWED_PASS` header. Nothing frozen/built/activated.
+
+## R-1 — Real child-delegation grant + pure complete attenuation
+The prior "attenuate a `VerifiedGrant` via `execution_grant`/`capability_lease.attenuate`" is invalid:
+`scripts/ai/lib/execution_grant.py` has no attenuation op, `capability_lease.attenuate` yields a
+symmetric-HMAC `CapabilityLease` (not an Ed25519 `ExecutionGrant`), and the execution-grant schema
+DENIES `delegate` and lacks remote-principal/quarantine/expected-output fields. Define instead a NEW,
+**domain-separated** `ChildDelegationGrant` (its own signing-domain tag, distinct from ExecutionGrant/
+CapabilityLease — no cast) Ed25519-signed by the broker with: `parent_grant_digest`, hash-pinned
+`remote_principal_id` (an eligible lane per the pinned Q5 revision), `effect=delegate` ONLY,
+resource/output/deadline bounds, `heartbeat_policy`, and `replay_nonce`. A **pure**
+`attenuate_child(parent, request) -> ChildDelegationGrant | Deny` proves EVERY authority-bearing field
+is a subset of its parent (fail-closed on any superset, missing bound, or ineligible principal);
+signer/key-id, issuer chronology, and lane eligibility are pinned.
+
+## R-2 — Heartbeat as locally-supervised, nonce-bound transport observation
+The remote lane holds no trusted local key, so a post-receipt broker signature proves only "the broker
+saw these bytes" — not remote liveness/origin. Classify heartbeats explicitly as **local transport
+observations** derived ONLY from a broker-supervised, nonce-bound dispatch session (NOT remote
+signatures). Every heartbeat binds `child_grant_digest`, `dispatch_receipt_id`, a broker-issued
+challenge/nonce, `remote_principal_id`, a monotonic `sequence`, and the trusted **local** receipt clock;
+unknown/unavailable identity → deny; fabricated/replayed sequences outside the authenticated session are
+rejected. (Alternative, deferred: authenticated remote response signatures with provider/lane key
+identity + rotation — out of scope for this cut.)
+
+## R-3 — Broker-owned content-addressed quarantine intake (TOCTOU-safe)
+The remote lane NEVER receives a host path or authoritative FS access. The broker owns a bounded inbound
+transport under a private quarantine root and acquires each blob with `openat2(RESOLVE_BENEATH |
+RESOLVE_NO_SYMLINKS)` (reusing the R2/R3 pattern). It requires a **regular, immutable, completed** file
+within frozen byte/record/count/type bounds (no symlink/hardlink; partial/late writes quarantined),
+then **hashes (content-addresses) and imports the SAME descriptor/bytes** — never a path re-open — so
+verification and import observe identical immutable bytes (closes the TOCTOU). Malformed/oversized/late
+inputs are quarantined, never imported.
+
+## R-4 — Two-step authority: delegate ≠ cell-write
+Delegation and import authority are separated and neither may widen the parent. The `ChildDelegationGrant`
+authorizes remote computation + a **bounded return only** (never a write). After verify-before-write, the
+broker mints a SEPARATE, locally-issued **import grant** authorizing exactly the verified output bytes to
+an already-authorized cell-relative path within the parent's declared output/path/effect envelope. A
+proof obligation shows the import cannot exceed the parent envelope and nothing auto-merges (it lands in a
+C3b cell, subject to the existing validator). A delegate-only parent never gains write authority; a
+write-bearing parent never widens a delegate request.
+
+## R-5 — Versioned single-writer reservation store (not the inbox helper)
+`aq-antigravity-inbox`'s private `_locked` helper is an advisory transport, not a broker API. Define a
+NEW closed, versioned reservation schema + single-writer store reusing the proven stable-lock + fsync +
+atomic-replace transaction (as C6 rev / R2): collision-resistant canonical **composite-key** derivation
+(the delegation key), monotonic revisions with CAS, durability, and idempotent `reserved → committed |
+failed` terminal transitions with defined recovery ordering. Advisory inbox receipts remain projections,
+never delegation authority.
+
+## R-6 — Prerequisites, exact inventory, Service Coverage
+C3a-2 is GATED behind, and may not freeze/activate before: (a) independently-accepted runner-deployment-
+hardening, (b) a successful live cell exercise, (c) C4 network-profile enforcement, and (d) the R5 attach
+path — these are prerequisites, not context. The revised freeze packet must bind exact file hashes/
+asserted-absences, the immutable Q5 lane-eligibility revision, and the hash-pinned eligible remote
+principal; and add same-release API + dashboard projection + integration `aq-qa` Service Coverage that
+honestly represents unavailable/error states (no hard-coded healthy / flag-only card). Q-C3a2 open
+questions are closed here or the freeze is blocked.
+
+## Retained ceiling invariants
+Default-OFF `CAPABILITY_DELEGATE_BROKER`; flag-OFF byte-parity; NO API key ever handled; build =
+single-use owner act; enable = separate later owner act; no change to R1/R2/R5 frozen semantics, the
+runner enforcement code, or C2 admission. Re-review (codex, binding) → re-freeze at this revision's
+hash → owner activation.
