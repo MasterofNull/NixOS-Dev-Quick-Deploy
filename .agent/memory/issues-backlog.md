@@ -2702,3 +2702,12 @@ Advisory task (codex is the real confirmatory backstop) — non-blocking.
 - **file:line**: execution_cell_runner.py:988-998; nix/modules/services/execution-cell-runner.nix (socket unit).
 - **severity**: MEDIUM (feature dormant; no regression — C2+C5 live; system safe).
 - **action**: dedicated slice `.agents/plans/aqos-foundation-c/RUNNER-DEPLOYMENT-HARDENING.md` — make runner socket-activation-aware (adopt fd 3, self-bind fallback), real deploy-exercise gate; watch for cgroup/bwrap/validator issues behind #5. Enforcement-tier: needs fresh owner activation. Codex confirmatory Aug-4.
+
+## [OPEN] F2.5 scheduler tests: false-green as scripts + not harness-registered — 2026-07-31
+- **status**: OPEN (minor test-hygiene; F2.5 itself is DONE + LIVE, verified).
+- **scope**: local-dispatch banded slot queue (F2.5) test coverage.
+- **finding 1**: `scripts/testing/test-scheduler.py` + `test-backpressure.py` are pytest-only (7 test fns each, no `__main__`). Run as `python3 file.py` they exit 0 with ZERO tests executed — a false green. Real result via `pytest`: 14 passed.
+- **finding 2**: neither test is referenced by `scripts/testing/harness_qa/` or `tier0-validation-gate.sh` (grep-empty) → they don't run in CI; regressions in scheduler/backpressure would go uncaught.
+- **file**: scripts/testing/test-scheduler.py, scripts/testing/test-backpressure.py.
+- **severity**: LOW (feature validated + live; gap is regression-detection, not correctness).
+- **action**: add a `if __name__=='__main__': raise SystemExit(pytest.main([__file__]))` guard to both (kills the false-green), and register them in the phase0/tier0 harness. Bounded implementer slice (cheapest-eligible per Rule 17).
