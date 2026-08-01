@@ -339,3 +339,15 @@ The productization exit test: clean machine -> first local delegation, documente
 | First-delegation EXIT TEST | — | — | ✅ **PASSED LIVE**: ran the quickstart's exact delegate-to-local command; got a correct substantive one-sentence answer |
 
 The exit test the prompt defines is proven end-to-end on this machine: doctor green -> first delegation returns a real answer. The quickstart is GENERATED per hardware class (not static), reflecting the model+quant+small-resident decision from model_budget (P6), routed through the unified aq CLI (P8), over the event/trace substrate (P3/P4). Clean-machine <1h timing is asserted per-class in the generated doc; a true clean-machine run is the operator's productization validation (no clean machine available here).
+
+## C2 lease enforcement + C5 span-truth — activation status (2026-07-31)
+
+| Feature | Integrated | ON | Validated | Observable | Intervenable |
+|---------|-----------|----|-----------|-----------|--------------|
+| C2 lease enforcement | ✅ `_admit_tool_call` gates every tool call | ✅ `CAPABILITY_LEASE_ENFORCEMENT=1` live; `/run/secrets/aq-lease-signing-key` present (NOT DEV-degraded) | ✅ test-capability-lease-gate.py 83/83 | ⚠️ **PARTIAL** — dashboard tool-deny-stats surface exists; **no health-spider check** for flag-live / DEV-degrade / denial-rate anomaly | ✅ `CAPABILITY_LEASE_ENFORCEMENT=0` kill switch (C6 epoch-bump = finer lever, not yet built) |
+| C5 span-truth | ✅ `_emit_tool_span_shadow` on tool calls | ✅ `CAPABILITY_SPAN_TRUTH=1` live | ✅ test-span-truth.py 96/96 | ⚠️ **PARTIAL** — dashboard span-tree endpoint (aistack.py:2622); **no health-spider check** that spans are still emitting | ✅ `CAPABILITY_SPAN_TRUTH=0` kill switch |
+
+**Honest DoD status:** both are integrated + ON + validated + intervenable, but the **observable** leg
+is INCOMPLETE — there is no health-spider check + alert for either. Per Rule 15 they are therefore
+*paused pending activation* (observable leg), not DONE. Silent failure modes (flag flips off, gate
+degrades to DEV-key, spans cease) would go undetected. Closing slice scoped in issues-backlog.

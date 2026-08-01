@@ -2711,3 +2711,14 @@ Advisory task (codex is the real confirmatory backstop) — non-blocking.
 - **file**: scripts/testing/test-scheduler.py, scripts/testing/test-backpressure.py.
 - **severity**: LOW (feature validated + live; gap is regression-detection, not correctness).
 - **action**: add a `if __name__=='__main__': raise SystemExit(pytest.main([__file__]))` guard to both (kills the false-green), and register them in the phase0/tier0 harness. Bounded implementer slice (cheapest-eligible per Rule 17).
+
+## [OPEN] C2/C5 observable DoD leg incomplete — no health-spider check — 2026-07-31
+- **status**: OPEN — C2 + C5 are LIVE but missing the Rule 15 "observable" leg (health-spider check + alert). Recorded in ACTIVATION-AUDIT.md as paused-pending-activation (observable).
+- **scope**: `scripts/ai/aq-health-spider` — add a `_capability_enforcement_check()` following the `_closed_loop_check()` pattern (aq-health-spider:603).
+- **what it must probe** (GREEN/YELLOW/RED):
+  1. C2 live: `CAPABILITY_LEASE_ENFORCEMENT=1` in the running ai-switchboard env (systemctl show) AND `/run/secrets/aq-lease-signing-key` present+non-empty (RED if flag off or key absent = DEV-degrade — enforcement silently weakened).
+  2. C5 live: `CAPABILITY_SPAN_TRUTH=1` AND at least one `tool.span`/`trace.span` event in the event log within a recent window when tool calls occurred (YELLOW if flag on but no recent spans).
+- **alert**: RED surfaces via the health-spider's existing notify path; also add to the dashboard capability card.
+- **file:line**: scripts/ai/aq-health-spider:603 (pattern), dashboard/backend/api/routes/aistack.py (card).
+- **severity**: MEDIUM (enforcement IS live + validated; the gap is silent-failure detection, not a live hole).
+- **implementer**: cheapest-eligible per Rule 17. May be multi-site (check fn + registration + dashboard card) → likely fast-tier not local-single-edit; codex can fold on Aug-4 or a fast-tier lane now.
