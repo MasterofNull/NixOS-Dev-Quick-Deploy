@@ -70,13 +70,21 @@ wrong:** SO_PEERCRED returns the peer's *effective* GID, but the switchboard onl
 - EDIT `ai-stack/switchboard/execution_cell_runner.py` — (a) socket-activation adoption (fd 3) with
   self-bind fallback (bug #5); no change to grant verify / SO_PEERCRED semantics / cell construction /
   validator / cgroup reap.
-- EDIT `nix/modules/services/execution-cell-runner.nix` — set `AQ_EXECUTION_CELL_RUNNER_CLIENT_UID`
-  in `runnerEnvironment` to the switchboard's **effective UID**, declaratively and non-hardcoded:
-  `toString config.users.users.${primaryUser}.uid` (the switchboard runs as `User=${primaryUser}`, so
-  its SO_PEERCRED effective uid IS the primaryUser uid). Do NOT set `CLIENT_GID` to the supplementary
-  clients group (ineffective — effective-gid mismatch); UID-match is the authenticator. (bug #6)
-- EDIT `config/env-contract.yaml` — declare `AQ_EXECUTION_CELL_RUNNER_CLIENT_UID` (and CLIENT_GID as
-  optional/unused) so the new env is contract-tracked.
+- EDIT `nix/modules/services/execution-cell-runner.nix` — set
+  `AQ_EXECUTION_CELL_RUNNER_CLIENT_USER=${primaryUser}` in `runnerEnvironment` (the **username**, which
+  IS statically known at eval). Do **NOT** derive the uid at eval via
+  `config.users.users.${primaryUser}.uid` — a dynamically-allocated `isNormalUser` (hyperd has no
+  explicit `uid=` declared; runtime uid 1000 is NixOS auto-allocation) can be **null at eval**, which
+  would re-introduce bug #6. Do NOT set `CLIENT_GID` to the supplementary clients group (ineffective —
+  SO_PEERCRED returns the *effective* gid, and the switchboard joins that group only supplementarily).
+  UID-match is the authenticator. (bug #6)
+- EDIT `ai-stack/switchboard/execution_cell_runner.py` `build_config_from_env()` (`:1084-1085`) — when
+  `AQ_EXECUTION_CELL_RUNNER_CLIENT_UID` is absent but `...CLIENT_USER` is set, resolve
+  `client_uid = pwd.getpwnam(user).pw_uid` at startup (authoritative at runtime, portable across hosts
+  where `primaryUser` differs e.g. `pi`). A direct `CLIENT_UID` int still wins if given (tests). Deny-
+  closed: if neither resolves, `client_uid=None` (current behaviour — rejects all, never opens up).
+- EDIT `config/env-contract.yaml` — declare `AQ_EXECUTION_CELL_RUNNER_CLIENT_USER` (primary) +
+  `AQ_EXECUTION_CELL_RUNNER_CLIENT_UID` (optional override) so the new env is contract-tracked.
 - EDIT `scripts/testing/test-execution-cell-runner.py` (or adjacent) — the test list below.
 - A REAL deploy-exercise gate (not unit-only): after owner activation + rebuild, verify the socket
   keeps `SocketGroup=aq-execution-cell-clients` after the runner starts, the switchboard connects AND
