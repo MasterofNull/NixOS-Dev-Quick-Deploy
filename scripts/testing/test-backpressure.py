@@ -153,3 +153,8 @@ def test_f1_quorum_does_not_lock_while_required_local_lane_is_pending() -> None:
     assert updated.state != round_state.RoundState.CONSENSUS_LOCKED
     assert updated.state == round_state.RoundState.CONFLICTS_IDENTIFIED
     assert updated.locked_at is None
+
+if __name__ == "__main__":
+    import sys
+    import pytest
+    sys.exit(pytest.main([__file__, "-q"]))
