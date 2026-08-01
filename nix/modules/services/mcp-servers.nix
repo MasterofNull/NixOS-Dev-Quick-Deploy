@@ -2824,6 +2824,8 @@ in {
             /proc/@{pids}/stat r,  # /proc/<pid> → @{pids}
             # auto-added by apparmor-fix-agent 2026-06-12
             /proc/@{pids}/statm r,  # /proc/<pid> → @{pids}
+            # auto-added by apparmor-fix-agent 2026-08-01
+            /proc/@{pids}/mountinfo r,  # /proc/<pid> → @{pids}
             deny /home/** wx,
             deny /root/** rwx,
           }
