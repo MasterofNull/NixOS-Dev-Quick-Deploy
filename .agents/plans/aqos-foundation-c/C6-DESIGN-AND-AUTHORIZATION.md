@@ -1,126 +1,285 @@
 ---
-title: "Foundation C C6: Epoch-Revocation Control Surface + F2.5 Scheduler Seam — Design Packet"
+title: "Foundation C C6: Authenticated Epoch Authority + F2.5 Scheduler Revocation Gate"
 slice: "C6"
-status: "C6_DESIGN_REVIEWED_PASS — scheduler-seam build needs single-use owner activation (enforcement-tier); codex confirmatory REQUIRED (light-model review)"
-revision: 1
+status: "PREPARED_ONLY — REVISION 2; independent re-review and single-use owner activation required"
+revision: 2
 kind: "design-only"
-implementation_authorization: "NONE — the scheduler-seam is enforcement-tier: requires single-use owner activation before build"
+implementation_authorization: "NONE"
 activation_authorization: "NONE"
-author: "Opus (codex-substitution — codex usage-limited to 2026-08-04; catch-up audit queued)"
+base_head: "e7bf91deb4693a6667cd3c3ed10b0988b4143ef6"
 predecessors:
-  - "C2 gate + executor revocation_epoch CHECK (shipped, 97131faa); C3b R3 runner epoch fence (ccbc0718)"
-  - "F2.5 slot_scheduler (LIVE — dispatch.py wait_for_slot)"
+  - "C2 lease verification and executor epoch fence"
+  - "F2.5 live slot_queue acquire/release through dispatch.py"
 successors:
-  - "closes the Foundation C ref-arch (Cycle 6)"
+  - "C4 network confinement"
+  - "C3a-2 delegated-effect broker"
 ---
 
-# Foundation C — C6: Epoch-Revocation Control Surface + Scheduler Seam
+# Foundation C — C6: Authenticated Epoch Authority + Scheduler Revocation Gate
 
-## 0. Provenance & authority
-Authored by Opus (codex-substitution). Independent review → antigravity/gemini + codex-on-return.
-**DESIGN-ONLY.** C6 has two parts with different authority classes: (a) the **epoch-bump control
-surface** — the operator's revocation lever (an owner action, like activation) — and (b) the
-**F2.5 scheduler seam** — wiring the live slot scheduler to refuse slots for revoked/stale-epoch
-leases, which is a NEW enforcement point ⇒ **enforcement-tier: its build requires single-use owner
-activation**, ships flag-default-OFF. The executor epoch *check* already shipped (C2/R3); C6 adds
-the *control* + the *scheduler* enforcement point.
+## 0. Revision, authority, and decision
 
-## 1. Scope (DESIGN-PACKET §8)
-Deliver: (a) an **epoch-bump control surface** — a governed operator command/event that increments
-`config/capability-lease-epoch`, atomically revoking every in-flight lease whose `revocation_epoch`
-is now stale (fleet-wide kill switch); (b) the **F2.5 scheduler seam** — the slot scheduler
-consults lease validity/epoch before granting a slot and drops queued/held slots for revoked
-leases, so a revoked capability cannot even be *scheduled* (not just cannot execute). **Out of
-scope:** re-implementing the executor epoch check (shipped C2/R3); C5 spans; any new capability kind.
+This revision responds to every blocking item in
+`C6-CODEX-DEPTH-REVIEW-20260801.md`; that review remains binding history. The
+prior rev1 hash (`89b2b65d…`) is superseded and **must not be frozen, built,
+or activated**. This packet is design only and remains PREPARED_ONLY.
 
-## 2. Build on what exists (grounded 2026-07-30)
-- **Epoch source (shipped):** `ai-stack/switchboard/capability_lease_gate.py::resolve_current_epoch`
-  (172) reading `config/capability-lease-epoch` (84; absent ⇒ 0); `capability_lease.epoch_stale()`
-  (230). Executors (C2 `_admit_tool_call`, C3b R3 runner final fence) already deny stale-epoch leases.
-- **F2.5 scheduler (LIVE — corrects a stale "dormant" note):** `dispatch.py:135` imports
-  `slot_scheduler` (`wait_for_slot`, `SlotWaitTimeout`); ":137 F2.5 wiring: banded cross-process
-  slot queue (scheduler + backpressure)"; ":502 Slot pre-poll via slot_scheduler.wait_for_slot()".
-  So there is a real, integrated scheduler to add a lease gate to.
-- **Owner-action pattern:** `scripts/ai/aq-event emit --agent owner` (the activation lever) is the
-  precedent for the epoch-bump control surface (a governed, audited owner event).
+C6 is the intervention lever between C2/C3b executor fences and the live F2.5
+queue: an authenticated owner request advances one durable epoch, and a
+verified, audience-bound dispatch context is checked before `slot_queue.acquire`
+can reserve work and while a reservation is held. It does not replace existing
+executor checks, grant a lease, reissue a lease, create a provider request, or
+enable any flag.
 
-## 3. Epoch-bump control surface (the revocation lever)
-- A governed command `aq-epoch-bump` (or `aq-event emit --agent owner --type revocation.epoch-bump`)
-  that **atomically** increments `config/capability-lease-epoch` (read-modify-write under a lock;
-  the new value fsync'd) and emits an audited `revocation.epoch-bump` event with `{old, new, reason,
-  scope}`. Effect: every lease with `revocation_epoch < new` is now stale ⇒ denied by the already-
-  shipped executor checks AND (C6) refused a slot by the scheduler.
-- **Authority:** bumping the epoch is an **owner/operator action** (it is a kill switch) — governed,
-  audited, reversible-forward-only (epoch is monotonic; you cannot un-revoke by lowering it, you
-  re-issue leases at the new epoch). Deny-closed: an unreadable/locked epoch file ⇒ executors treat
-  `current_epoch=None` as stale (already shipped) ⇒ everything denies (fail-closed, never fail-open).
-- **Non-self-healing (the codex-1 invariant, preserved):** a bump revokes; leases are NOT auto-
-  reissued — re-issue is a deliberate later step. So the bump genuinely kills fleet-wide.
+The design makes these binding choices:
 
-## 4. F2.5 scheduler seam (the enforcement point — flag-gated)
-- The slot scheduler (`slot_scheduler.wait_for_slot`) gains a **lease pre-check**: before granting a
-  slot to a lease-bearing request, verify the lease is valid + `revocation_epoch >= current_epoch`;
-  a stale/revoked lease is **refused a slot** (typed denial, not a silent hang) and any *held* slot
-  for a now-revoked lease is dropped on the next scheduler tick. This makes revocation bite at
-  *scheduling* time, not only at execution time — an over-scoped/compromised lease can't monopolize
-  or even acquire a slot after a bump.
-- **Flag `CAPABILITY_SCHEDULER_LEASE_GATE` (default "0")**: OFF ⇒ the scheduler behaves byte-
-  identically to today (F2.5 unchanged; parity-tested). ON ⇒ the lease pre-check is active. Non-
-  lease-bearing requests (legacy paths) are unaffected (the gate only applies where a lease is
-  present) — no regression to existing scheduling.
-- Deny-closed: epoch unresolvable / lease unverifiable at schedule time ⇒ slot refused (never
-  granted on doubt). The scheduler NEVER fails open.
+1. **One epoch authority:** a dedicated local `aq-revocation-epoch-authority`
+   service owns the epoch state and is the sole writer. `AQ_LEASE_POLICY_EPOCH`
+   is removed from all enforcement resolution; no environment override exists.
+2. **One authenticated bump protocol:** `aq-epoch-bump` is only a UDS client.
+   It submits a closed, Ed25519 owner-signed bump request to the authority
+   service. `aq-event` is an audit projection only and never authorizes a bump.
+3. **The real scheduler seam:** `dispatch.py` verifies a scheduler-audience
+   context at trusted ingress and passes the resulting immutable context to
+   `slot_queue.acquire/release`; `slot_scheduler.wait_for_slot` remains a
+   stateless `/slots` helper and is not represented as a queue or revocation
+   authority.
 
-## 5. Ceiling (frozen at C6 freeze)
-- NEW `scripts/ai/aq-epoch-bump` (the control surface) + its audited event type + a lock/fsync
-  atomic bump of `config/capability-lease-epoch`.
-- EDIT `slot_scheduler.py` — the lease pre-check + held-slot-drop-on-revoke (flag-gated; flag-OFF
-  byte-parity). (Predecessor: `dispatch.py` wiring is the live seam; the check is additive.)
-- EDIT `config/env-contract.yaml` — `CAPABILITY_SCHEDULER_LEASE_GATE` (default "0").
-- NEW decision/audit schema + NEW `scripts/testing/test-scheduler-lease-gate.py` +
-  `test-epoch-bump.py` (offline: atomic bump under contention; monotonic-only; bump ⇒ stale leases
-  refused a slot; held slot dropped on bump; non-lease request unaffected; flag-OFF byte-parity;
-  deny-closed on unresolvable epoch; non-self-healing (no auto-reissue after bump)).
-- **MUST NOT:** lower the epoch / un-revoke; auto-reissue leases on a bump; fail open on unresolvable
-  epoch; change non-lease-bearing scheduling; weaken the shipped executor checks.
+Any missing authority service, unreadable/malformed epoch, failed context
+verification, unavailable public key, replay, stale lease, or ambiguous state is
+a typed deny. There is no bootstrap-to-zero, environment fallback, direct epoch
+file write, advisory success, or auto-reissue path.
 
-## 6. Acceptance bar
-- an epoch bump is atomic (lock+fsync), monotonic (increment-only), audited, and immediately makes
-  lower-epoch leases stale (executor + scheduler both deny).
-- the scheduler refuses a slot to a stale/revoked lease and drops a held slot on the next tick;
-  non-lease-bearing requests are unaffected; flag-OFF byte-parity with live F2.5.
-- deny-closed on unresolvable epoch / unverifiable lease at schedule time; never fail-open.
-- non-self-healing: a bump is not undone and leases are not auto-reissued.
-- revocation-under-load (compose with C3b R4): a bump during active scheduling kills queued+held
-  lease slots within budget and the scheduler stays responsive to new deny-closed requests.
+## 1. Current anchored baseline
 
-## 7. Review obligations
-1. epoch bump is atomic + monotonic + audited + fail-closed; unreadable epoch ⇒ deny everywhere.
-2. the scheduler seam is deny-closed (refuse-on-doubt), flag-OFF byte-parity, no non-lease regression.
-3. non-self-healing preserved (no auto-reissue; monotonic epoch; forward-only revocation).
-4. the seam composes with the shipped executor checks (defense in depth), doesn't replace/weaken them.
-5. F2.5 anchors are real (slot_scheduler/wait_for_slot live in dispatch.py) — verify, no fabrication.
-6. bump control surface authority = owner/operator (kill switch), governed + audited like activation.
+| Existing path | SHA-256 | C6 role |
+|---|---|---|
+| `scripts/ai/lib/capability_lease.py` | `a6f923924071618b9e0628e3c93c640bdbeae348e4fee792b0cc5da151997f8f` | Existing signature/freshness primitive; not a scheduler context issuer. |
+| `ai-stack/switchboard/capability_lease_gate.py` | `3e92d2fe97a1ea8b18fef82848f11f502de5171bab6b297f810ffd021997e424` | Existing enforcement reader to be re-anchored to C6's authoritative reader. |
+| `scripts/ai/lib/slot_scheduler.py` | `ea3b5b9a20137f27f1ec92868aeeb37c0ee16eb744728cb457453d32f7102945` | Read-only `/slots` poll helper; excluded from queue-gate enforcement. |
+| `scripts/ai/lib/slot_queue.py` | `e4e7e9b158bec0aa316efb1760de6b83c54d2044b5bbd2b9c394286295a5aa96` | Actual acquire/release reservation seam. |
+| `scripts/ai/lib/dispatch.py` | `1b083b1025877385cb4e295234edd23a61a85aae554393fb87792c732e01dd92` | Trusted ingress-to-queue propagation seam. |
+| `scripts/ai/delegate-to-local` | `b5d2c5cb6e1018dba42351cc986b951dca25261f66694c995f068fa09254e1c4` | Existing untrusted caller CLI; excluded from accepting a raw lease/context. |
+| `scripts/ai/aq-event` | `5deba81b5b044e6ff6cdff9da9359a043052c96decb40e2b57530e5a5f3334d4` | Audit projection only; excluded from bump authorization. |
+| `config/env-contract.yaml` | `62450e1f6e84f9c473b2bf838e1121d6db3e40227480c1845d5b24c54686be4f` | Documents default-OFF gate and fixed authority socket/path. |
+| `dashboard/backend/api/routes/aistack.py` | `5e736402eb51bf7522902fd4803cd9dac099ce197ec15df4bfec6ec5a1e6d2fd` | C6 state projection source. |
+| `assets/dashboard.js` | `ea88c43e2509fd9d5a1c1dbf408c87a48538cd96a33fee2c42ad79f1c347c0be` | C6 dashboard consumer. |
+| `scripts/testing/harness_qa/phases/phase0.py` | `5e6f22088cf93315a27b7a0809e51145ccdee7cac70a888f35b7db154ea6b6d1` | C6 integration AQ-QA registration. |
+| `nix/modules/services/default.nix` | `a36d0b21013ff3352c91443c4a6ca39c4e81a3c992d6b8e1dd871aba2c38d32b` | Imports the new authority module. |
 
-## 8. Ceremony (mixed authority)
-Control surface (aq-epoch-bump) = a governed operator tool (standing-auth to BUILD the tool; USING
-it to bump is an operator act). Scheduler seam = **enforcement-tier**: design → independent review →
-freeze → **single-use owner activation** → build flag-default-OFF → review → commit; flipping
-`CAPABILITY_SCHEDULER_LEASE_GATE` ON is a further separate act. Predecessor hashes: capability_lease.py,
-gate, slot_scheduler.py, dispatch.py seam.
+The following paths are confirmed **absent** at the base HEAD and are reserved
+only for this C6 candidate: `scripts/ai/aq-epoch-bump`,
+`scripts/ai/lib/revocation_epoch.py`,
+`scripts/ai/lib/scheduler_lease_context.py`,
+`config/schemas/revocation-epoch-bump.schema.json`,
+`config/schemas/scheduler-lease-context.schema.json`,
+`config/schemas/scheduler-lease-gate-decision.schema.json`,
+`scripts/testing/fixtures/revocation-epoch-golden.json`,
+`scripts/testing/test-revocation-epoch.py`,
+`scripts/testing/test-scheduler-lease-gate.py`,
+`scripts/testing/test-c6-service-coverage.py`, and
+`nix/modules/services/revocation-epoch-authority.nix`.
 
-## 9. Open questions for review
-- Q-C6-1: should the epoch-bump be `aq-event emit --agent owner --type revocation.epoch-bump`
-  (reusing the activation event lane + audit) or a dedicated `aq-epoch-bump` command? Recommend the
-  aq-event lane (one governed owner-action surface, already audited).
-- Q-C6-2: held-slot-drop granularity — drop on the next scheduler tick vs immediate signal.
-  Recommend next-tick (bounded, simple) with the executor final-fence as the immediate backstop
-  (already shipped) — the two compose.
-- Q-C6-3: scope of the scheduler gate to lease-bearing requests only (confirm no regression to the
-  many existing non-lease dispatch paths). Recommend yes — the gate is a no-op without a lease.
-- Q-C6-4: this closes Foundation C (Cycle 6). Confirm the executor-check (C2/R3) + scheduler-seam
-  (C6) + control-surface together satisfy the ratified F3 obligation-3 (stale-lease-can't-revive-
-  after-epoch) end to end.
+The final freeze must reproduce every listed hash/absence, bind the revised
+packet hash, reject all other changed paths, and stop on HEAD drift.
 
-**Requested reviewer result:** `PASS` / `FAIL` / `REQUEST_REVISION` against C6 scope + §7. The
-scheduler-seam build additionally requires single-use owner activation; no review outcome authorizes it.
+## 2. Durable authenticated epoch authority
+
+### 2.1 Authority boundary and request schema
+
+`aq-revocation-epoch-authority` is a socket-activated, dedicated unprivileged
+local service. Its StateDirectory contains `epoch`, a stable lock inode, a
+durable replay ledger, and append-only bounded audit receipts. Its control UDS
+is mode `0660`, group-restricted, and additionally validates `SO_PEERCRED`;
+transport membership is never sufficient authority.
+
+The authority accepts only `aq.revocation-epoch-bump/1` documents validated by
+the new closed schema. Required fields are `schema_version`, `request_id`,
+`idempotency_key`, `issued_at`, `expires_at`, `actor_key_id`,
+`expected_epoch`, `reason_code`, `scope`, and `signature`. `scope` is exactly
+`fleet`; reason codes are a bounded enum; no free-form reason, secret, prompt,
+path, or arbitrary payload is accepted. The Ed25519 signature covers a
+domain-separated canonical payload and is checked against the tracked,
+key-id-selected owner public-key allowlist. The service rejects unknown/revoked
+keys, malformed signatures, wrong audience, expired/future-invalid windows,
+duplicate request IDs, duplicate idempotency keys with different digests, and
+an `expected_epoch` unequal to durable state.
+
+The command cannot synthesize owner authority. `aq-epoch-bump` reads a signed
+request from an explicit file descriptor or stdin, sends it once, and returns
+only a redacted typed receipt. It has neither epoch write permission nor a
+private owner key. `aq-event` receives the post-commit receipt through a
+restricted internal projector; a CLI `--agent owner` event is explicitly not
+an epoch operation and cannot affect enforcement state.
+
+### 2.2 Single durable transaction and reader contract
+
+The service opens a fixed state root without following symlinks and uses a
+stable `epoch.lock`. Under exclusive lock it opens `epoch` with no-follow
+semantics, requires a regular file, owner/mode policy, UTF-8, and one strict
+non-negative decimal integer. It compares `expected_epoch`, creates a
+same-directory temporary regular file with fixed ownership/mode, writes
+`new_epoch = old_epoch + 1`, fsyncs it, atomically replaces `epoch`, and fsyncs
+the directory. It atomically records the idempotency/replay receipt before
+releasing the lock. Only after that durable commit may it publish the bounded
+audit event with `{receipt_id, request_digest, old_epoch, new_epoch,
+actor_key_id, committed_at}`. If projection fails, the receipt is
+`committed_audit_pending`, never a claim that no bump occurred; its idempotent
+reconciler can publish only the already-durable receipt.
+
+All enforcement readers use `revocation_epoch.resolve_current_epoch()` with the
+fixed authority state path supplied by Nix, no environment precedence and no
+absent-file default. Reads use the same no-follow regular-file validation and
+return a typed unavailable result, never `0`, on replacement race, malformed
+content, symlink, permission, or I/O error. C2, the scheduler gate, and future
+C3b readers deny on unavailable. A process holding a stale value must reread
+before every admission/reservation and on each held-reservation revocation tick;
+it may not cache an epoch across those fences.
+
+## 3. Verified ingress and the live queue seam
+
+### 3.1 Scheduler lease context
+
+A raw lease, environment value, CLI flag, JSON field, or a caller-created
+`--lease` argument is never accepted by `delegate-to-local` or `dispatch.py`.
+The new closed `aq.scheduler-lease-context/1` is a domain-separated signed
+handoff produced only by the authenticated C2 admission issuer. Its required
+signed bindings are: `context_id`, `lease_id`, `grant_digest`, `task_id`,
+`audience="aq-f2.5-slot-queue"`, authenticated caller principal, dispatch
+mode, allowed action class, issued/expiry times, revocation epoch, policy
+revision, and signature/key id. It is single-use: `slot_queue` durably records
+its context digest before a reservation and refuses replay or digest conflict.
+
+`dispatch.py` obtains this context only through a new authenticated local
+ingress adapter (not the shell caller), verifies signature, audience,
+principal/task/mode binding, freshness, and the authoritative epoch, then
+passes an immutable verified object to `slot_queue.acquire`. The adapter itself
+is within the exact C6 inventory below; if C2 cannot produce this signed
+audience-bound handoff at the frozen base, C6 stops for a separately reviewed
+C2 handoff slice. No unsigned compatibility path is permitted merely to make
+the gate usable.
+
+### 3.2 Reservation and revocation behavior
+
+When `CAPABILITY_SCHEDULER_LEASE_GATE=0`, C6 imports/calls no verifier and
+`slot_queue`/`dispatch` preserve byte-parity for every legacy request. When ON,
+only a request arriving through the verified ingress may become lease-bearing.
+Before `slot_queue.acquire` mutates persistent queue state, it verifies the
+context and current epoch. A stale, unavailable, replayed, mismatched, or
+invalid context returns a stable typed denial and creates no slot/held state.
+
+`slot_queue` stores only context digest, lease ID digest, epoch, reservation
+state, and bounded receipt ID—not a grant, prompt, path, or signature. On every
+queue wake/tick and immediately before dispatch execution, it rereads the epoch
+and validates the reservation context. If revoked/unavailable, it atomically
+removes queued work; held work is released, marked `revoked-before-execution`,
+and never handed to a provider. Work already executing is not falsely claimed
+killed: it receives the existing executor fence and a typed C6 observation.
+
+`slot_scheduler.wait_for_slot` is unchanged and never makes authorization
+decisions. Its `/slots` result may inform availability only after the `slot_queue`
+admission fence; it cannot grant a reservation.
+
+## 4. Exact implementation inventory and exclusions
+
+The only future implementation candidate paths are:
+
+| Operation | Path | Purpose |
+|---|---|---|
+| NEW | `nix/modules/services/revocation-epoch-authority.nix` | Dedicated state, UDS, fixed reader membership, public-key-only verifier, hardening. |
+| EDIT | `nix/modules/services/default.nix` | Import only the new authority module. |
+| NEW | `scripts/ai/lib/revocation_epoch.py` | Strict reader, durable bump transaction, typed receipts/reconciliation. |
+| NEW | `scripts/ai/aq-epoch-bump` | Unprivileged signed-request client; no epoch writer. |
+| EDIT | `ai-stack/switchboard/capability_lease_gate.py` | Replace environment/file fallback resolution with the fixed C6 reader. |
+| NEW | `scripts/ai/lib/scheduler_lease_context.py` | Signed context verify, audience/principal binding, replay-safe projection. |
+| EDIT | `scripts/ai/lib/slot_queue.py` | Verified context fence, durable reservation digest, queued/held revocation drop. |
+| EDIT | `scripts/ai/lib/dispatch.py` | Authenticated ingress adapter and immutable context propagation; no raw CLI lease. |
+| EDIT | `config/env-contract.yaml` | `CAPABILITY_SCHEDULER_LEASE_GATE` default `0`; fixed non-overridable authority references. |
+| NEW | `config/schemas/revocation-epoch-bump.schema.json` | Closed signed bump request/receipt schema. |
+| NEW | `config/schemas/scheduler-lease-context.schema.json` | Closed audience-bound context schema. |
+| NEW | `config/schemas/scheduler-lease-gate-decision.schema.json` | Low-cardinality typed admission/drop/audit record. |
+| NEW | `scripts/testing/fixtures/revocation-epoch-golden.json` | Valid and negative signed epoch/context/replay/CAS vectors. |
+| NEW | `scripts/testing/test-revocation-epoch.py` | Offline authority protocol, CAS, fsync-order seam, replay and recovery tests. |
+| NEW | `scripts/testing/test-scheduler-lease-gate.py` | Offline `dispatch`→`slot_queue` admission, queue/held-drop, flag parity tests. |
+| EDIT | `dashboard/backend/api/routes/aistack.py` | Live-backed, redacted C6 state projection only. |
+| EDIT | `assets/dashboard.js` | C6 epoch/gate/denial/latency display with unavailable state. |
+| EDIT | `scripts/testing/harness_qa/phases/phase0.py` | Registered integration AQ-QA check for the actual authority-to-queue path. |
+| NEW | `scripts/testing/test-c6-service-coverage.py` | Integration fixture path validating API projection and AQ-QA registration. |
+
+Excluded: `slot_scheduler.py`, `scripts/ai/delegate-to-local`, `scripts/ai/aq-event`,
+executor/C3b files, provider invocation, task-registry writer semantics, database
+or DDL, C4 networking, C3a-2 delegation, secrets/private keys, unrelated dashboard
+cards, deployment, and activation. Any need to touch an excluded path—including a
+C2 inability to mint the signed scheduler context—is a stop condition requiring a
+new reviewed design rather than expansion.
+
+## 5. Tests, rollback, and Service Coverage
+
+Offline vectors must cover: valid owner bump; forged/unknown/revoked key; expired
+or future request; wrong audience/scope; idempotent replay and conflicting replay;
+two concurrent bumpers; interrupted temp write; malformed, symlinked, wrong-mode,
+or unreadable state; event projection failure/reconcile; stale reader; no
+environment override; flag-OFF no-import parity; unsigned/raw caller lease refusal;
+wrong principal/task/mode/audience; expired/stale context; context replay;
+refusal before `slot_queue.acquire`; queued and held revocation drops; and executor
+handoff observation without claiming a running process was killed.
+
+The integration AQ-QA path uses a hermetic authority and queue fixture, not a
+provider. It proves signed bump → durable epoch/receipt → authenticated dispatch
+context → `dispatch.py` → `slot_queue` denial/drop → redacted API projection. It
+is registered in `phase0.py`, exercises more than health, and validates honest
+unavailable/error states.
+
+The dashboard shows only: authority health (`healthy|degraded|unavailable`), current
+epoch or unavailable, scheduler gate configured/effective state, last redacted bump
+receipt reference, typed refusal/drop counters, and bounded revocation latency
+buckets. It shows no request ID, lease ID, prompt, command, absolute path, signature,
+or raw reason. It derives from durable authority/queue receipts, never flags or
+hard-coded health. Service code, AQ-QA check, and dashboard projection ship together.
+
+Rollback is forward-safe: disable the scheduler gate only through a separate owner
+act; retain durable epoch and receipts; stop new verified scheduler contexts; release
+only reservations proved not executing; and preserve any ambiguity as typed
+`quarantined`/`unavailable` evidence. Rollback never lowers epoch, deletes audit,
+auto-reissues, restores a raw lease path, or claims a running process was stopped
+without executor proof.
+
+## 6. Freeze, activation, and explicit blockers
+
+Before freeze, an independent reviewer must verify all base hashes/NEW absences,
+the exact C2 issuer identity and public-key revision for scheduler contexts, the
+authority service's Nix hardening and state ownership, and all test vectors. The
+freeze must bind exact candidate hashes, no-edit anchors, source schema versions,
+validation commands, the implementer/reviewer identities, and explicit exclusions.
+
+**Blocking question Q-C6-1 (must close before freeze):** identify the existing C2
+component that can issue the `aq.scheduler-lease-context/1` signature for the
+authenticated ingress, including its exact key-id/public-key revision and how the
+context reaches `dispatch.py` without a caller-controlled channel. The current C2
+gate returns admission decisions but does not itself expose that handoff; until a
+reviewed issuer/transport is named, C6 may not be frozen or built.
+
+**Blocking question Q-C6-2 (must close before freeze):** name the owner public-key
+allowlist source and its immutable revision, and verify the dedicated authority
+service can enforce state-file ownership/mode without a switchboard hardening
+change. No owner key, Nix service hardening, or credential path may be assumed.
+
+After both blockers are closed: design → independent binding review → hash-bound
+freeze → single-use owner activation to build default-OFF → independent code review
+→ commit. Enabling the scheduler gate is a later, separate owner act. No review,
+freeze, or default-OFF build authorizes an epoch bump, provider traffic, deployment,
+or live scheduling cutover.
+
+## 7. Finding closure matrix
+
+| Binding finding | Closure |
+|---|---|
+| R1 stale environment/non-coherent epoch | §2.2 removes environment override and absent-zero fallback; all readers use fixed durable authority. |
+| R2 forgeable `aq-event` bump | §2.1 selects dedicated UDS authority, closed owner-signed protocol, replay/idempotency; event is projection only. |
+| R3 wrong `slot_scheduler` seam/no provenance | §3 grounds enforcement in verified ingress → `dispatch.py` → `slot_queue.acquire/release`; raw leases refuse. |
+| R4 vague CAS/durability | §2.2 specifies lock, no-follow validation, CAS, temp/fsync/replace/directory fsync, ordered audit, recovery, and reader failure. |
+| R5 non-exact inventory/tests | §§1 and 4 bind current hashes/NEW absences, operations, exclusions, schemas, fixtures, and test paths. |
+| R6 absent observability/Service Coverage | §5 requires durable live-backed API/UI state and registered integration AQ-QA with honest unavailable states. |
+
+**RECORD: PREPARED_ONLY revision 2. No implementation, activation, staging, commit,
+deployment, restart, provider, or network authority is granted.**
