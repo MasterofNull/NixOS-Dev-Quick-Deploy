@@ -3,6 +3,11 @@
 status: PREPARED 2026-07-31 — nothing here is activated; this is the ready sequence
 prepared_by: Opus (orchestrator). build_head anchor at prep time: `d80f985f`
 
+**UPDATE 2026-08-01 — codex is back EARLY (before Aug-4).** Binding depth-reviews underway:
+runner-hardening → **REQUEST_REVISION** (bug #6, now design rev2, re-review pending); C4/C6/C3a-2
+depth-reviews queued next (codex is one session — sequential). The "Aug-4" references below are
+superseded; codex is the binding reviewer and is available now.
+
 ## What this is
 The entire remaining Foundation C ladder is **design-complete + light-model-reviewed** and blocked
 on the *same two gates*. This packet collapses four scattered blocked slices into one clean sequence
@@ -28,7 +33,7 @@ is still an explicit owner act.
 
 | Slice | Subject sha256 | What it turns on (all ship flag-default-OFF) |
 |-------|----------------|----------------------------------------------|
-| **runner-deployment-hardening** | `68e3b120…` (FROZEN) | Fixes the C3b runner's socket-activation bug so the confinement cells can actually deploy. Prereq for anything that uses cells live. |
+| **runner-deployment-hardening** | `147324b087d2d37a…` (REV2 — codex REQUEST_REVISION, re-review pending) | Fixes the C3b runner socket-activation bug (#5) AND client-identity auth (#6, codex-found). NOT activation-ready until codex re-review PASS + re-freeze. Prereq for live cells. |
 | **C6 epoch kill-switch + scheduler seam** | `89b2b65d…` | Fleet-wide revocation lever: bump `capability-lease-epoch` → every stale-epoch lease dies; scheduler refuses to even *schedule* a revoked capability. |
 | **C4 network-profiles** | `fc7534de…` | Turns the cell `--unshare-net` deny-all into profile-scoped egress (closed, signed host/port/direction set); deny-closed default. Needs working cells. |
 | **C3a-2 delegate broker** | `3ff34439…` | Attenuated child grants to remote lanes + signed verify-before-write of returned work into a C3b cell. No API key ever handled. Needs working cells. |

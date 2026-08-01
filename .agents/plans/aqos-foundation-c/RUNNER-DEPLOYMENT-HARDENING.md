@@ -47,19 +47,50 @@ ignores it and self-binds. Reconcile them — preferred: make the runner **socke
   socket to clients (the runner is unprivileged and not a clients member; conflating the two
   groups defeats the design's client/runner separation). Fix the producer.
 
-## Ceiling (freeze at slice freeze)
-- EDIT `ai-stack/switchboard/execution_cell_runner.py` — socket-activation adoption (fd 3) with
-  self-bind fallback; the ONLY behavioral change. No change to grant verify, SO_PEERCRED, cell
-  construction, validator, or cgroup reap.
-- EDIT `scripts/testing/test-execution-cell-runner.py` (or adjacent) — cover both the activated-fd
-  path (simulate `LISTEN_FDS=1`/`LISTEN_PID`, pre-bound socket) and the fallback self-bind path.
-- A REAL deploy-exercise gate (not just unit tests): after owner activation + rebuild, verify the
-  socket stays `SocketGroup=aq-execution-cell-clients` after the runner starts, a clients-group
-  member connects, and a full mint→sign→UDS→bwrap-cell→validator→typed-receipt round-trips GREEN.
-- MUST NOT alter C2 admission, R1/R2/R5 frozen semantics, or the switchboard byte-parity anchor.
-- Watch for a **6th** issue behind #5 once the socket connects: cgroup v2 delegation writing
-  `cgroup.kill` as the unprivileged runner, bwrap `--unshare-all` under `NoNewPrivileges`, and the
-  out-of-cell validator reading the cell tree. These are the next things a real connection exercises.
+## REV2 (2026-08-01, codex binding depth-review REQUEST_REVISION)
+Codex (`codex-20260801-090026`) confirmed the fd-3 fix is correct and cannot bypass SO_PEERCRED /
+Ed25519 (Q1/Q2), all 3 committed fixes are sound (Q3), and endorsed Q-H-1 strict-fd-3 + Q-H-2
+keep-fallback. But it found **deployment bug #6**, a hard pre-activation blocker that bug #5 masked,
+and it forces the ceiling to grow beyond the original two files — hence this revision (freeze lifted;
+re-review + re-freeze required before owner activation).
+
+**Bug #6 — the runner authorizes NO client identity.** `peer_authorized()`
+(`execution_cell_runner.py:513`) authenticates a peer by SO_PEERCRED, matching the peer's *effective*
+uid==`client_uid` OR gid==`client_gid`. But the Nix unit never sets
+`AQ_EXECUTION_CELL_RUNNER_CLIENT_UID`/`CLIENT_GID`, so `build_config_from_env()` (`:1084-1085`)
+yields both `None` → `peer_authorized()` returns False for every peer → `_handle_connection()`
+(`:945`) drops every connection before reading a request. Once bug #5 (socket group) is fixed and the
+switchboard can finally *reach* the socket, this rejects it at authentication. **The naive fix is
+wrong:** SO_PEERCRED returns the peer's *effective* GID, but the switchboard only joins
+`aq-execution-cell-clients` *supplementarily* (`execution-cell-runner.nix:155/160`), so
+`CLIENT_GID=that-group` never matches. The correct mechanism is an explicit expected switchboard
+**effective UID**. Both env names are also absent from `config/env-contract.yaml`.
+
+## Ceiling (REV2 — expanded; re-freeze at this scope)
+- EDIT `ai-stack/switchboard/execution_cell_runner.py` — (a) socket-activation adoption (fd 3) with
+  self-bind fallback (bug #5); no change to grant verify / SO_PEERCRED semantics / cell construction /
+  validator / cgroup reap.
+- EDIT `nix/modules/services/execution-cell-runner.nix` — set `AQ_EXECUTION_CELL_RUNNER_CLIENT_UID`
+  in `runnerEnvironment` to the switchboard's **effective UID**, declaratively and non-hardcoded:
+  `toString config.users.users.${primaryUser}.uid` (the switchboard runs as `User=${primaryUser}`, so
+  its SO_PEERCRED effective uid IS the primaryUser uid). Do NOT set `CLIENT_GID` to the supplementary
+  clients group (ineffective — effective-gid mismatch); UID-match is the authenticator. (bug #6)
+- EDIT `config/env-contract.yaml` — declare `AQ_EXECUTION_CELL_RUNNER_CLIENT_UID` (and CLIENT_GID as
+  optional/unused) so the new env is contract-tracked.
+- EDIT `scripts/testing/test-execution-cell-runner.py` (or adjacent) — the test list below.
+- A REAL deploy-exercise gate (not unit-only): after owner activation + rebuild, verify the socket
+  keeps `SocketGroup=aq-execution-cell-clients` after the runner starts, the switchboard connects AND
+  passes SO_PEERCRED (effective-uid match), and a full mint→sign→UDS→bwrap-cell→validator→typed-receipt
+  round-trips GREEN.
+- MUST NOT alter C2 admission, R1/R2/R5 frozen semantics, the switchboard byte-parity anchor, or the
+  `peer_authorized`/Ed25519 *logic* (only provision the identity the logic already expects).
+- b41c81e3 caveat (codex): the runner bundle is not the full telemetry closure —
+  `span_taxonomy→trace→event_log→contracts.events` is unbundled; harmless today (telemetry-path
+  exceptions swallowed) but must be exercised if runner-side C5 spans are ever enabled.
+- Deployment-only surfaces to probe in the live gate (#7+, none disproven statically): unprivileged
+  cgroup create/write/remove + `cgroup.kill` (`execution_cell_runner.py:383-464`), bwrap
+  `--unshare-all` preflight under `NoNewPrivileges=true` (`:320-347`), out-of-cell validator access
+  (`:757-772`).
 
 ## Fix implementation sketch (bug #5 — grounds the ceiling)
 
@@ -118,10 +149,21 @@ grant verify, SO_PEERCRED, cell construction, the validator, or the cgroup reap.
   Recommend keep (guarded by the env check) — it is inert in production (systemd always sets
   `LISTEN_FDS`) and keeps the offline tests self-contained, lowering total surface vs a second file.
 
-## Ceremony
-design → independent review → freeze (subject = this doc + the runner diff hash) → **single-use
-owner activation** → build → independent review → commit → fresh owner R5-shadow re-activation
-(enable+flagOn+CAPABILITY_CELL_ADAPTER, one rebuild) → the full deploy-exercise gate above.
+## Required tests (codex REV2 list)
+- matching `LISTEN_PID` + one fd → adopts fd 3; activated socket inode + mode unchanged (no clobber).
+- mismatched `LISTEN_PID` → does NOT adopt fd 3 (falls back).
+- absent/zero `LISTEN_FDS` → self-binds and cleans up its path on exit.
+- malformed `LISTEN_FDS` → handled deterministically, no leaked `ValueError`.
+- **peer-auth (bug #6):** with `CLIENT_UID` set to the switchboard uid, a peer whose effective uid
+  matches is authorized; a non-matching uid (and supplementary-only group membership) is REJECTED
+  (proves the effective-gid pitfall is closed).
+
+## Ceremony (REV2 — freeze was lifted by the codex REQUEST_REVISION)
+design **rev2** (this doc, bug #6 folded) → **codex re-review** of the revised design (binding; it
+raised the finding, it confirms the resolution) → **re-freeze** at the expanded 4-file subject →
+**single-use owner activation** (hash-bound to the rev2 subject) → build → independent review → commit
+→ fresh owner R5-shadow re-activation (enable+flagOn+CAPABILITY_CELL_ADAPTER, one rebuild) → the full
+deploy-exercise gate above (which now also asserts SO_PEERCRED passes for the switchboard).
 
 ## Current safe state (post-rollback)
 - C2 lease enforcement: LIVE (enforcing — admits first-party tools, denies unknown).
