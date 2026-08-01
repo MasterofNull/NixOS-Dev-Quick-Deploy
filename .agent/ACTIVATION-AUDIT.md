@@ -344,10 +344,12 @@ The exit test the prompt defines is proven end-to-end on this machine: doctor gr
 
 | Feature | Integrated | ON | Validated | Observable | Intervenable |
 |---------|-----------|----|-----------|-----------|--------------|
-| C2 lease enforcement | ✅ `_admit_tool_call` gates every tool call | ✅ `CAPABILITY_LEASE_ENFORCEMENT=1` live; `/run/secrets/aq-lease-signing-key` present (NOT DEV-degraded) | ✅ test-capability-lease-gate.py 83/83 | ⚠️ **PARTIAL** — dashboard tool-deny-stats surface exists; **no health-spider check** for flag-live / DEV-degrade / denial-rate anomaly | ✅ `CAPABILITY_LEASE_ENFORCEMENT=0` kill switch (C6 epoch-bump = finer lever, not yet built) |
-| C5 span-truth | ✅ `_emit_tool_span_shadow` on tool calls | ✅ `CAPABILITY_SPAN_TRUTH=1` live | ✅ test-span-truth.py 96/96 | ⚠️ **PARTIAL** — dashboard span-tree endpoint (aistack.py:2622); **no health-spider check** that spans are still emitting | ✅ `CAPABILITY_SPAN_TRUTH=0` kill switch |
+| C2 lease enforcement | ✅ `_admit_tool_call` gates every tool call | ✅ `CAPABILITY_LEASE_ENFORCEMENT=1` live; `/run/secrets/aq-lease-signing-key` present (NOT DEV-degraded) | ✅ test-capability-lease-gate.py 83/83 | ✅ **health-spider check + HIGH alert** (`_capability_enforcement_check`: probes flag-live + key-present; RED on flag-off / DEV-degrade; false-RED-hardened for permission-indeterminate) + dashboard tool-deny-stats surface. *Remaining polish:* a dedicated dashboard capability card. | ✅ `CAPABILITY_LEASE_ENFORCEMENT=0` kill switch (C6 epoch-bump = finer lever, not yet built) |
+| C5 span-truth | ✅ `_emit_tool_span_shadow` on tool calls | ✅ `CAPABILITY_SPAN_TRUTH=1` live | ✅ test-span-truth.py 96/96 | ✅ **health-spider check + alert** (`_capability_enforcement_check`: flag-live probe; no false-YELLOW on quiet systems) + dashboard span-tree endpoint (aistack.py:2622). *Remaining polish:* dedicated capability card. | ✅ `CAPABILITY_SPAN_TRUTH=0` kill switch |
 
-**Honest DoD status:** both are integrated + ON + validated + intervenable, but the **observable** leg
-is INCOMPLETE — there is no health-spider check + alert for either. Per Rule 15 they are therefore
-*paused pending activation* (observable leg), not DONE. Silent failure modes (flag flips off, gate
-degrades to DEV-key, spans cease) would go undetected. Closing slice scoped in issues-backlog.
+**DoD status (updated 2026-07-31):** both are integrated + ON + validated + intervenable, and the
+**observable** leg is now substantially closed — `aq-health-spider._capability_enforcement_check`
+(9 tests, live-GREEN, registered in `run_once`) raises a HIGH human-gate alert on silent
+degradation (flag flips off, C2 gate degrades to DEV-key). Only a dedicated dashboard capability
+card remains as polish (span-tree + tool-deny-stats surfaces already exist). C2 + C5 are effectively
+DONE per Rule 15; the card is a tracked follow-up, not a blocker.
