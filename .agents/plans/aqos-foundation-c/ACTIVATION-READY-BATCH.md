@@ -56,6 +56,16 @@ health-spider observability + operator intervention confirmed (Rule 15 DoD) befo
 - C3b runner + R5 adapter: BUILT, reviewed, DORMANT (`CAPABILITY_CELL_ADAPTER=0`, runner enable=false).
 - switchboard healthy; real tool-calling unaffected.
 
+## Advisory reviews received (2026-08-01, NOT gate-clearing)
+The owner manually triggered antigravity (IDE-OAuth lane) to review three slices; receipts landed in
+`.agent/collaboration/antigravity-inbox/receipts/` with outputs at `.agents/plans/{c5,c6,c3a2}-review/antigravity.md`:
+- **C5 → PASS**, **C6 → PASS**, **C3a-2 → PASS** (antigravity, advisory).
+
+Antigravity is **untrusted-advisory** (it can fabricate; claims require verification). These PASS
+verdicts are advisory corroboration ONLY — they do NOT substitute for either shared gate: the binding
+**codex depth-review (Aug-4)** and the **single-use owner activation** are both still required per slice.
+Recorded here so the corroboration is not lost; codex remains the binding depth reviewer.
+
 ## Non-goals / honesty
 This packet does not freeze C4/C6/C3a-2 (they remain DESIGN_REVIEWED_PASS, not FROZEN) — freezing is
 deferred to *after* codex depth-review, so a codex REQUEST_REVISION doesn't force a re-freeze. Only
