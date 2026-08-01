@@ -1963,7 +1963,7 @@ Action: CLOSE THE LOOP — DONE: (a) extract_contribution structured/prose/log f
 - **Action**: Authorization suspended in `42eb76f8`; owner approved recovery. Captured inert link metadata, removed the live link, restored the tracked real directory/file byte-for-byte, amended and refroze the inventory/plan, and prepared a non-authorizing fresh record pending exact-root reviews and ownership disposition.
 - **File**: `.agents/telemetry`; `.agents/telemetry/training-loop-progress.json`; `.agents/plans/aqos-refoundation-cycle0/IMPLEMENTATION-AUTHORIZATION-C0.2.md`
 
-## [OPEN] Pre-archive scanner dereferences symlinks and cannot inspect an in-repo link object
+## [DONE 2026-08-01] Pre-archive scanner symlink dereference — FIXED (no-follow leaf: resolve parent only, os.path.islink/readlink report, os.path.lexists existence check; in-repo symlink to external target now scannable, exit != 2; verified on a transient real symlink + 3 regression cases)
 - **Scope**: archive SOP and incident-evidence preservation
 - **Description**: `pre-archive-scan.sh .agents/telemetry` resolved the unauthorized link target to `/var/lib/ai-stack/hybrid/telemetry` and exited 2 as outside-repository. It therefore could not scan inbound references to the repository link path itself. Recovery proceeded only after explicit owner approval, capturing `lstat`/`readlink` metadata and removing the live link.
 - **Severity**: medium

@@ -30,6 +30,7 @@ target_arg="$1"
 python3 - "$ROOT_DIR" "$target_arg" <<'PY'
 from __future__ import annotations
 
+import os
 import re
 import subprocess
 import sys
@@ -38,17 +39,28 @@ from urllib.parse import unquote, urlparse
 
 root = Path(sys.argv[1]).resolve()
 target_arg = sys.argv[2]
-target = (root / target_arg).resolve() if not Path(target_arg).is_absolute() else Path(target_arg).resolve()
+
+# Resolve only the parent; keep the leaf un-followed for symlink detection.
+abs_target = Path(target_arg) if Path(target_arg).is_absolute() else (root / target_arg)
+lexical = abs_target.parent.resolve() / abs_target.name
 
 try:
-    target_rel = target.relative_to(root).as_posix()
+    target_rel = lexical.relative_to(root).as_posix()
 except ValueError:
-    print(f"[pre-archive-scan] ERROR: target is outside repo: {target}", file=sys.stderr)
+    print(f"[pre-archive-scan] ERROR: target is outside repo: {lexical}", file=sys.stderr)
     sys.exit(2)
 
-if not target.exists():
+# Use lexical-existence check (symlink counts as existing even if target is broken).
+if not os.path.lexists(lexical):
     print(f"[pre-archive-scan] ERROR: target does not exist: {target_rel}", file=sys.stderr)
     sys.exit(2)
+
+# Detect and report symlinks.
+is_link = os.path.islink(lexical)
+link_target = os.readlink(lexical) if is_link else None
+
+if is_link:
+    print(f"[pre-archive-scan] NOTE: {target_rel} is a symlink -> {link_target} (scanning inbound refs to the lexical link path, not following it)", file=sys.stderr)
 
 tracked = subprocess.run(
     ["git", "-C", str(root), "ls-files"],
