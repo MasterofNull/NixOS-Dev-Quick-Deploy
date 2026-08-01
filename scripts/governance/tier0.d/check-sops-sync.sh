@@ -104,6 +104,15 @@ if [[ ${#unresolved[@]} -gt 0 ]]; then
   echo "$TAG WARN: could not resolve sec.names.${unresolved[*]} — skipping those entries"
 fi
 
+# Also count LITERAL-string sops.secrets declarations (e.g. "aq-lease-signing-key" = { ... }).
+# Not every secret uses the ${sec.names.X} indirection; a literal-key declaration IS the key
+# name directly. Without this, literally-declared secrets (present + provisioned) are falsely
+# reported as stale/unused. The pattern matches an indented quoted key followed by ` = {` and
+# excludes the ${sec.names.X} form (those start with '$', not a letter).
+while IFS= read -r litkey; do
+  [[ -n "$litkey" ]] && nix_keys+=("$litkey")
+done < <(grep -oP '^\s+"\K[A-Za-z][A-Za-z0-9_-]*(?=" = \{$)' "$SECRETS_NIX" | sort -u)
+
 # Check every required Nix key exists in the SOPS file.
 failures=()
 for key in "${nix_keys[@]}"; do
