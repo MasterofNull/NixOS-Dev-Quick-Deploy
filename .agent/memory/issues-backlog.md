@@ -2679,6 +2679,18 @@ ownership. `PENDING.json` also still presents L2B-B AM4 as running.
   trusted-fact-producer/adoption-seam amendment before any L3-A implementation authorization.
   File: .agents/plans/local-inference-l3/L3-G0-ADOPTION-BOUNDARY-DESIGN.md
 
+[OPEN] Foundation C activation-ready batch failed binding Codex depth review — All four
+enforcement-tier subjects require revision before activation: runner hardening can unlink a
+systemd-owned socket and lacks exact fd/test bindings; C6's file epoch bump is overridden by
+environment state and targets the wrong scheduler seam; C4 lacks application authorization,
+network/TLS/DNS confinement, grant versioning, broker egress bounds, and Service Coverage; C3a-2
+lacks a real child-grant attenuation, authenticated heartbeat, race-safe inbound blob/import
+authority split, durable reservation API, and current runner/C4 prerequisites.
+  Severity: critical
+  Action: revise and independently re-review each exact subject; keep runner/C4/C6/C3a-2
+  implementation and activation blocked. Preserve live C2+C5 with cell adapter OFF.
+  File: .agents/plans/aqos-foundation-c/ACTIVATION-READY-BATCH.md
+
 ## [OPEN-LOW] R1 execution_grant.verify_epoch brittle isinstance(dict) (found 2026-07-29, R2 impl)
 `scripts/ai/lib/execution_grant.py::verify_epoch` gates on `isinstance(grant, dict)`, which is False
 for `types.MappingProxyType` (what `VerifiedGrant.raw` is). R1's own flow is unaffected (it passes the
@@ -2712,7 +2724,7 @@ Advisory task (codex is the real confirmatory backstop) — non-blocking.
 - **severity**: LOW (feature validated + live; gap is regression-detection, not correctness).
 - **action**: add a `if __name__=='__main__': raise SystemExit(pytest.main([__file__]))` guard to both (kills the false-green), and register them in the phase0/tier0 harness. Bounded implementer slice (cheapest-eligible per Rule 17).
 
-## [OPEN] C2/C5 observable DoD leg incomplete — no health-spider check — 2026-07-31
+## [DONE 2026-08-01] C2/C5 observable DoD leg — CLOSED (health-spider check 5c7ae380 + dashboard card 81aa65c1; ACTIVATION-AUDIT: C2+C5 DONE per Rule 15)
 - **status**: OPEN — C2 + C5 are LIVE but missing the Rule 15 "observable" leg (health-spider check + alert). Recorded in ACTIVATION-AUDIT.md as paused-pending-activation (observable).
 - **scope**: `scripts/ai/aq-health-spider` — add a `_capability_enforcement_check()` following the `_closed_loop_check()` pattern (aq-health-spider:603).
 - **what it must probe** (GREEN/YELLOW/RED):
@@ -2731,3 +2743,10 @@ Advisory task (codex is the real confirmatory backstop) — non-blocking.
 - **file**: scripts/governance/tier0.d/check-sops-sync (parser); nix/modules/core/secrets.nix:71,86 (the unrecognized decls).
 - **severity**: LOW (WARN only, gate still PASS; keys functional).
 - **action**: fix the check parser to recognize the nested-attr declaration form. Bounded implementer slice (cheapest-eligible).
+
+## [OPEN] Runner deploy bug #6: no client-identity → peer_authorized rejects all — 2026-08-01
+- **status**: OPEN — folded into runner-deployment-hardening design rev2 (subject 147324b087d2d37a); codex-found.
+- **root cause**: `nix/modules/services/execution-cell-runner.nix` sets no AQ_EXECUTION_CELL_RUNNER_CLIENT_UID/GID → `execution_cell_runner.py:1084-1085` client_uid/gid=None → `peer_authorized()` (:513) false for every peer → `_handle_connection()` (:945) drops all. Masked behind bug #5 (socket group) during R5-shadow.
+- **pitfall**: SO_PEERCRED returns EFFECTIVE gid; switchboard joins aq-execution-cell-clients only supplementarily → CLIENT_GID=that-group is INEFFECTIVE. Fix = explicit switchboard effective UID (`toString config.users.users.\${primaryUser}.uid`).
+- **severity**: HIGH within the (dormant) runner slice — it would block every real connection; but feature is OFF so no live impact.
+- **action**: design rev2 ceiling expanded (runner.py + nix unit + env-contract + tests); codex re-review → re-freeze → owner activation.

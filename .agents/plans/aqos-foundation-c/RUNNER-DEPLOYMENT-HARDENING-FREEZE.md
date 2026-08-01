@@ -1,7 +1,22 @@
 # Runner-Deployment-Hardening — FREEZE record
 
-status: FROZEN (design bytes locked) 2026-07-31 — build NOT authorized
-tier: enforcement (touches R3 runner socket-setup code + real deploy-exercise gate)
+status: **LIFTED 2026-08-01** — codex binding depth-review returned REQUEST_REVISION (bug #6:
+runner authorizes no client identity). The rev1 subject `68e3b120` is SUPERSEDED; the design was
+revised to rev2 (expanded 4-file ceiling). Re-review (codex) + re-freeze at the rev2 subject are
+required before owner activation. Was: FROZEN 2026-07-31.
+tier: enforcement (touches R3 runner socket-setup code + Nix client-identity wiring + env-contract +
+real deploy-exercise gate)
+
+## Codex binding verdict (codex-20260801-090026) — REQUEST_REVISION
+- Q1 socket correctness: PASS — fd-3 adoption correct for the Accept=false single AF_UNIX socket;
+  preserves SocketGroup/SocketMode; no bind race / double-listen.
+- Q2 security: PASS — adoption cannot bypass SO_PEERCRED (`:944-948`) or Ed25519 `verify_grant` (`:577`).
+- Q3 committed fixes: all sound (b41c81e3 with the telemetry-closure caveat; d950f0fe incl.
+  RestrictNamespaces=false acceptable; ddb860da clean).
+- Q-H-1 strict fd 3; Q-H-2 keep guarded fallback — endorsed.
+- **BLOCKER (bug #6):** no `CLIENT_UID`/`CLIENT_GID` set in the Nix unit → `peer_authorized` rejects
+  every peer; must set an explicit switchboard effective-UID (not the supplementary clients GID);
+  fix exceeds the frozen 2-file ceiling → freeze amendment required. Folded into design rev2.
 
 ## Frozen subject (byte-locked)
 - Design packet: `.agents/plans/aqos-foundation-c/RUNNER-DEPLOYMENT-HARDENING.md`

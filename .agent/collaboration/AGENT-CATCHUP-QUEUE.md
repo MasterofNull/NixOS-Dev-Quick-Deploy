@@ -155,3 +155,11 @@ On return, codex MUST depth-review before any owner activation/build:
 - Rule on Q-H-1 (strict fd 3) and Q-H-2 (keep guarded fallback vs test-only shim).
 This is a HARD gate (enforcement-tier security slice), not advisory. Only after codex PASS does the
 owner's single-use activation apply.
+
+### 2026-08-01 — codex returned early; runner-hardening REQUEST_REVISION (bug #6)
+Codex depth-reviewed the frozen runner-hardening slice: fd-3 fix correct + secure, 3 committed fixes
+sound, BUT found bug #6 — the Nix unit sets no AQ_EXECUTION_CELL_RUNNER_CLIENT_UID/GID so
+peer_authorized() rejects every peer (masked behind bug #5). Design revised to rev2 (subject
+147324b087d2d37a), ceiling expanded to 4 files (runner.py + execution-cell-runner.nix client-UID +
+env-contract.yaml + test). NEXT: codex re-review of rev2 → re-freeze → owner activation.
+Still queued for codex (binding): C4 fc7534de, C6 89b2b65d, C3a-2 3ff34439 (antigravity advisory-PASSed all 3).
