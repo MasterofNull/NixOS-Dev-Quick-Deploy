@@ -68,8 +68,10 @@ wrong:** SO_PEERCRED returns the peer's *effective* GID, but the switchboard onl
 
 ## Ceiling (REV2 — expanded; re-freeze at this scope)
 - EDIT `ai-stack/switchboard/execution_cell_runner.py` — (a) socket-activation adoption (fd 3) with
-  self-bind fallback (bug #5); no change to grant verify / SO_PEERCRED semantics / cell construction /
-  validator / cgroup reap.
+  self-bind fallback (bug #5), meeting ALL the "Socket-activation robustness" requirements below
+  (fail-closed malformed parsing, single-validated-fd-3, close inherited fds, clear activation env,
+  safe self-bind only when path provably unowned); no change to grant verify / SO_PEERCRED semantics /
+  cell construction / validator / cgroup reap.
 - EDIT `nix/modules/services/execution-cell-runner.nix` — set
   `AQ_EXECUTION_CELL_RUNNER_CLIENT_USER=${primaryUser}` in `runnerEnvironment` (the **username**, which
   IS statically known at eval). Do **NOT** derive the uid at eval via
@@ -83,8 +85,10 @@ wrong:** SO_PEERCRED returns the peer's *effective* GID, but the switchboard onl
   `client_uid = pwd.getpwnam(user).pw_uid` at startup (authoritative at runtime, portable across hosts
   where `primaryUser` differs e.g. `pi`). A direct `CLIENT_UID` int still wins if given (tests). Deny-
   closed: if neither resolves, `client_uid=None` (current behaviour — rejects all, never opens up).
-- EDIT `config/env-contract.yaml` — declare `AQ_EXECUTION_CELL_RUNNER_CLIENT_USER` (primary) +
-  `AQ_EXECUTION_CELL_RUNNER_CLIENT_UID` (optional override) so the new env is contract-tracked.
+- EDIT `config/env-contract.yaml` — declare `AQ_EXECUTION_CELL_RUNNER_CLIENT_USER` (primary),
+  `AQ_EXECUTION_CELL_RUNNER_CLIENT_UID` (optional override), AND `AQ_EXECUTION_CELL_RUNNER_CLIENT_GID`
+  (the runner still *reads* it at `execution_cell_runner.py:1085`, so it must be contract-declared even
+  though it is deliberately NOT provisioned in Nix — declare ≠ provision). (rev2 re-review item b)
 - EDIT `scripts/testing/test-execution-cell-runner.py` (or adjacent) — the test list below.
 - A REAL deploy-exercise gate (not unit-only): after owner activation + rebuild, verify the socket
   keeps `SocketGroup=aq-execution-cell-clients` after the runner starts, the switchboard connects AND
@@ -157,14 +161,41 @@ grant verify, SO_PEERCRED, cell construction, the validator, or the cgroup reap.
   Recommend keep (guarded by the env check) — it is inert in production (systemd always sets
   `LISTEN_FDS`) and keeps the offline tests self-contained, lowering total surface vs a second file.
 
-## Required tests (codex REV2 list)
-- matching `LISTEN_PID` + one fd → adopts fd 3; activated socket inode + mode unchanged (no clobber).
+## REV3 (2026-08-01) — folds BOTH codex reviews of runner-hardening
+Two complementary codex reviews, both REQUEST_REVISION, now folded:
+- **Autonomous batch review** (`RUNNER-DEPLOYMENT-HARDENING-CODEX-DEPTH-REVIEW-20260801.md` + the
+  consolidated `CODEX-DEPTH-REVISION-BRIEF-20260801.md`): socket-activation *robustness*.
+- **rev2 re-review** (`codex-20260801-092906`): bug-#6 fix mechanism. Confirmed **NSS/getpwnam PASS**
+  — `ProtectHome`/`ProtectSystem=strict`/`NoNewPrivileges` do NOT block `/etc/passwd` resolution;
+  codex verified `hyperd`→uid 1000 resolves via `passwd: files systemd` in the unit. REQUEST_REVISION
+  only on: (a) tests must exercise the resolution mechanism; (b) `CLIENT_GID` must also be declared in
+  env-contract (the runner still reads it at `execution_cell_runner.py:1085`; declare ≠ provision).
+
+### Socket-activation robustness (codex brief — added to the Ceiling)
+- Safely parse `LISTEN_PID`/`LISTEN_FDS` and **fail closed** on malformed values (no leaked
+  `ValueError`; a bad value falls back or refuses, never adopts a wrong fd).
+- Require **exactly one** validated `AF_UNIX` listening socket at fd 3 bound to the configured path;
+  **close unexpected inherited descriptors** and **clear the activation environment** after adoption.
+- **Never** unlink/chmod a systemd-owned socket on fallback, manual start, restart, activation
+  mismatch, or error. Self-bind ONLY when the path is provably unowned + exclusively created by this
+  process.
+- **Pin** both runner + test baselines and the runner/switchboard Nix no-edit anchors.
+
+## Required tests (REV3 — union of both codex reviews)
+Socket-activation (brief):
+- matching `LISTEN_PID` + one fd → adopts fd 3; activated socket inode + path/group/mode unchanged.
 - mismatched `LISTEN_PID` → does NOT adopt fd 3 (falls back).
-- absent/zero `LISTEN_FDS` → self-binds and cleans up its path on exit.
-- malformed `LISTEN_FDS` → handled deterministically, no leaked `ValueError`.
-- **peer-auth (bug #6):** with `CLIENT_UID` set to the switchboard uid, a peer whose effective uid
-  matches is authorized; a non-matching uid (and supplementary-only group membership) is REJECTED
-  (proves the effective-gid pitfall is closed).
+- zero/absent `LISTEN_FDS` → self-binds and cleans up its path on exit.
+- **malformed** `LISTEN_FDS` → deterministic fail-closed, no leaked `ValueError`.
+- **multiple** descriptors / **wrong fd type or path** → refused (not silently adopted).
+- **manual restart** / systemd-owned socket → never unlink/chmod'd.
+Peer-auth / bug #6 (rev2 re-review):
+- valid `CLIENT_USER` → resolves via `pwd.getpwnam(...).pw_uid`, matching effective-uid peer authorized.
+- direct `CLIENT_UID` int **wins over** `CLIENT_USER`.
+- unknown/unresolvable `CLIENT_USER` → `client_uid=None` → REJECT (deny-closed).
+- neither variable set → REJECT.
+- supplementary client-group membership with a **different effective GID** → NOT authorized
+  (proves the SO_PEERCRED effective-gid pitfall is closed).
 
 ## Ceremony (REV2 — freeze was lifted by the codex REQUEST_REVISION)
 design **rev2** (this doc, bug #6 folded) → **codex re-review** of the revised design (binding; it

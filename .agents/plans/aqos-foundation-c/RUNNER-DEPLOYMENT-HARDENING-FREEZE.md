@@ -18,6 +18,25 @@ real deploy-exercise gate)
   every peer; must set an explicit switchboard effective-UID (not the supplementary clients GID);
   fix exceeds the frozen 2-file ceiling → freeze amendment required. Folded into design rev2.
 
+## Codex rev2 re-review (codex-20260801-092906) — REQUEST_REVISION (narrowing)
+Reviewed the bug-#6 rev2 fix. **NSS/getpwnam PASS** — `ProtectHome`/`ProtectSystem=strict`/
+`NoNewPrivileges` do not block `/etc/passwd`; codex verified `hyperd`→uid 1000 resolves via
+`passwd: files systemd` in the unit (no `RootDirectory`/`PrivateUsers`). Mechanism sound. Two asks:
+(a) tests must exercise the resolution mechanism (CLIENT_USER resolves / CLIENT_UID wins /
+unresolvable→reject / neither→reject / supplementary-GID-mismatch→reject); (b) declare `CLIENT_GID`
+in `env-contract.yaml` (runner reads it at `:1085`; declare ≠ provision). Both folded.
+
+## Codex autonomous batch review (`RUNNER-...-CODEX-DEPTH-REVIEW-20260801.md` + brief) — REQUEST_REVISION
+Socket-activation *robustness*: fail-closed malformed parsing, exactly-one-validated-fd-3, close
+inherited fds, clear activation env, safe self-bind only when path provably unowned, negative tests,
+pin baselines + Nix no-edit anchors. All folded into the rev3 ceiling + test list.
+
+## Status: DESIGN **rev3** (2026-08-01) — both codex reviews folded
+Awaiting: codex re-review of rev3 → re-freeze at the rev3 subject → single-use owner activation.
+NOTE: codex intended a flagship to author this (dispatched `claude-092425`) but that task FAILED on
+Fable-5 usage credits; rev3 was authored by Opus (orchestrator, analysis-tier) per codex's brief,
+design-only, within the brief's stated 5-file ceiling.
+
 ## Frozen subject (byte-locked)
 - Design packet: `.agents/plans/aqos-foundation-c/RUNNER-DEPLOYMENT-HARDENING.md`
   sha256 `68e3b120db2e215fae12fecbf916de18571c9cc8f10ba0828f53709cd579e5b2`
