@@ -1917,6 +1917,95 @@ async def get_delegate_stats() -> Dict[str, Any]:
     return result
 
 
+@router.get("/stats/capability-enforcement")
+def get_capability_enforcement() -> Dict[str, Any]:
+    """Get capability enforcement status: C2 lease enforcement and C5 span-truth.
+
+    Returns:
+        {
+            "c2": {
+                "enforcement": "on" | "off" | "unknown",
+                "key_present": true | false | null,
+                "status": "ok" | "degraded" | "unknown"
+            },
+            "c5": {
+                "span_truth": "on" | "off" | "unknown",
+                "status": "ok" | "degraded" | "unknown"
+            },
+            "available": true | false
+        }
+
+    Defensive: probes that fail (permission, systemctl unavailable) return
+    "unknown" and available: false, never raise 500.
+    """
+    result = {
+        "c2": {"enforcement": "unknown", "key_present": None, "status": "unknown"},
+        "c5": {"span_truth": "unknown", "status": "unknown"},
+        "available": True,
+    }
+
+    # 1. Read ai-switchboard.service environment variables
+    env_vars: Dict[str, str] = {}
+    try:
+        r = subprocess.run(
+            ["systemctl", "show", "ai-switchboard.service", "-p", "Environment", "--value"],
+            capture_output=True, text=True, timeout=5,
+        )
+        if r.returncode != 0:
+            # systemctl command failed
+            result["available"] = False
+            return result
+        if r.stdout.strip():
+            # Parse space-separated VAR=value tokens
+            for part in r.stdout.strip().split():
+                if "=" in part:
+                    key, val = part.split("=", 1)
+                    env_vars[key] = val
+    except Exception:
+        result["available"] = False
+        return result
+
+    # 2. C2 Lease enforcement check
+    c2_flag = env_vars.get("CAPABILITY_LEASE_ENFORCEMENT", "0").strip()
+    key_path = Path("/run/secrets/aq-lease-signing-key")
+
+    c2_flag_ok = c2_flag == "1"
+    result["c2"]["enforcement"] = "on" if c2_flag_ok else "off"
+
+    # Check key presence
+    key_ok = False
+    key_present_value = False  # Default: assume missing
+    try:
+        if key_path.exists():
+            stat_info = key_path.stat()
+            key_ok = stat_info.st_size > 0
+            key_present_value = key_ok
+            result["c2"]["key_present"] = key_present_value
+        else:
+            result["c2"]["key_present"] = False
+    except PermissionError:
+        # Can't determine if key exists due to permission; mark indeterminate
+        result["c2"]["key_present"] = None
+    except Exception:
+        result["c2"]["key_present"] = None
+
+    # C2 status: ok if both flag on AND key present, degraded if either fails
+    if c2_flag_ok and key_ok:
+        result["c2"]["status"] = "ok"
+    elif not c2_flag_ok or (result["c2"]["key_present"] is False):
+        result["c2"]["status"] = "degraded"
+    else:
+        result["c2"]["status"] = "unknown"
+
+    # 3. C5 Span-truth check
+    c5_flag = env_vars.get("CAPABILITY_SPAN_TRUTH", "0").strip()
+    c5_flag_ok = c5_flag == "1"
+    result["c5"]["span_truth"] = "on" if c5_flag_ok else "off"
+    result["c5"]["status"] = "ok" if c5_flag_ok else "degraded"
+
+    return result
+
+
 @router.get("/agent-tasks/active")
 async def get_active_agent_tasks() -> Dict[str, Any]:
     """Return in-progress agent tasks from *.progress.json files (Phase 171-C)."""

@@ -3490,6 +3490,71 @@ async function loadCircuitBreakers() {
     : fwRow("Status", "No breakers registered", "info");
 }
 
+async function loadCapabilityEnforcement() {
+  const d = await apiFetch("/stats/capability-enforcement");
+  const el = document.getElementById("capEnforcementDetails");
+  const badge = document.getElementById("capEnforcementBadge");
+  if (!el) return;
+  if (!d || !d.available) {
+    el.innerHTML = fwRow("Status", "Unavailable", "warn");
+    if (badge) badge.className = "card-badge badge-warn";
+    return;
+  }
+
+  const c2 = d.c2 || {};
+  const c5 = d.c5 || {};
+
+  // Determine overall status badge
+  let overallBadge = "badge-ok";
+  if (
+    c2.status === "degraded" ||
+    c5.status === "degraded" ||
+    c2.status === "unknown" ||
+    c5.status === "unknown"
+  ) {
+    overallBadge = c2.status === "unknown" || c5.status === "unknown" ? "badge-warn" : "badge-err";
+  }
+  if (badge) badge.className = `card-badge ${overallBadge}`;
+
+  // Format key status for C2
+  let keyStatus = "--";
+  if (c2.key_present === true) {
+    keyStatus = "present";
+  } else if (c2.key_present === false) {
+    keyStatus = "missing";
+  } else if (c2.key_present === null) {
+    keyStatus = "indeterminate";
+  }
+
+  el.innerHTML = [
+    fwRow(
+      "C2 Enforcement",
+      c2.enforcement || "--",
+      c2.enforcement === "on" ? "ok" : "err"
+    ),
+    fwRow(
+      "C2 Key",
+      keyStatus,
+      c2.key_present === true ? "ok" : (c2.key_present === null ? "warn" : "err")
+    ),
+    fwRow(
+      "C2 Status",
+      c2.status || "--",
+      statusColor(c2.status)
+    ),
+    fwRow(
+      "C5 Span-Truth",
+      c5.span_truth || "--",
+      c5.span_truth === "on" ? "ok" : "err"
+    ),
+    fwRow(
+      "C5 Status",
+      c5.status || "--",
+      statusColor(c5.status)
+    ),
+  ].join("");
+}
+
 async function loadHardening() {
   const d = await apiFetch("/harness/overview");
   const el = document.getElementById("hardeningDetails");
@@ -3817,6 +3882,7 @@ async function loadSecurity() {
     loadFirewall(),
     loadSecMon(),
     loadCircuitBreakers(),
+    loadCapabilityEnforcement(),
     loadHardening(),
     loadSecDrift(),
     loadAgentPool(),
