@@ -96,7 +96,7 @@
   Action: completed; retain M2A.33–41 as frozen regression evidence before live broker cutover.
   File: scripts/ai/lib/task_registry.py:864; scripts/ai/aq-delegation-registry:199
 
-[OPEN] c05-local-round-review-completes-with-truncated-preamble — Local review `local-20260716-135947-j7t073` stayed alive with fresh streaming/heartbeat evidence and exited `done`, but produced only a planning preamble truncated after 1,113 bytes with no findings or verdict; `aq-collab-round collect` nevertheless marked the lane landed and typed aggregation converted it to `ABSTAIN` — Root cause / fix notes: the round used agent mode with a 256-token output ceiling and asked the model to reread five files despite saying the artifact was inlined; completion is inferred from process exit rather than output-contract validation.
+[OPEN] c05-local-round-review-completes-with-truncated-preamble — Local review `local-20260716-135947-j7t073` stayed alive with fresh streaming/heartbeat evidence and exited `done`, but produced only a planning preamble truncated after 1,113 bytes with no findings or verdict; `aq-collab-round collect` nevertheless marked the lane landed and typed aggregation converted it to `ABSTAIN` — Root cause / fix notes: the round used agent mode with a 256-token output ceiling and asked the model to reread five files despite saying the artifact was inlined; completion is inferred from process exit rather than output-contract validation. Recurrence 2026-08-01: `local-20260801-095804-67n1bq` spent 528.3s, returned `success=true/incomplete_result=false`, but emitted only a truncated `Thought:` explaining that the packet lacked the subject/review bodies; it produced no verdict or review file. The local lane was correctly non-gating, but the producer contract remains false-success.
   Severity: high
   Action: preserve this lane as `failed/output_incomplete`, not abstaining; C0.5 must require exact terminal verdict validation and distinguish process completion from contribution completion. Future local same-baseline passes need a bounded ballot with relevant staged diff/context injected and a measured output budget.
   File: scripts/ai/aq-collab-round; scripts/ai/lib/round_contribution.py; .agents/plans/c05-tiered-policy-architecture/local.md
@@ -1479,7 +1479,7 @@ File: scripts/ai/aq-qa; scripts/testing/harness_qa/phases/phase0.py
   Action: Removed the xfail entries; aligned bash QA with the Python check by probing status codes directly for expected 404/422 contract responses; added the missing legacy UAG replay route registration in the coordinator shim. Repo-local phase-0 machine QA now passes 91/0 under managed sandbox. Rebuild required to deploy the coordinator shim route body into the running Nix store service.
   File: config/qa-xfail.yaml; scripts/ai/_aq-qa-bash; ai-stack/mcp-servers/hybrid-coordinator/intake_gateway.py
 
-[OPEN] sandbox-observability-contract-fragmentation — Agent-side audits still surface routine host-observability denials as command errors or noisy skips even when services are healthy. Evidence from 2026-07-02 audit: `ss -tlnp` denied netlink in the managed agent sandbox until escalated; `systemctl is-active ai-drop-daemon` denied system bus access until escalated; `aq-report` marked cache prewarm state with system-bus denial text; `aq-qa 0 --machine` passed with 55 sandbox/unreachable skips.
+[OPEN] sandbox-observability-contract-fragmentation — Agent-side audits still surface routine host-observability denials as command errors or noisy skips even when services are healthy. Evidence from 2026-07-02 audit: `ss -tlnp` denied netlink in the managed agent sandbox until escalated; `systemctl is-active ai-drop-daemon` denied system bus access until escalated; `aq-report` marked cache prewarm state with system-bus denial text; `aq-qa 0 --machine` passed with 55 sandbox/unreachable skips. Recurrence 2026-08-01: `test-dashboard-program-progress.py` passed all 12 static contracts but reported a test ERROR—not a typed observer skip—when its live localhost socket probe raised `PermissionError: Operation not permitted`.
   Severity: medium
   Action: Define a narrow host-observer contract/API for service state, listening ports, recent logs, QA progress, and sandbox/AppArmor denial summaries; migrate `aq-qa`, `aq-report`, and dashboard health surfaces to shared status classes (`pass`, `fail`, `skip_sandbox_denied`, `skip_not_configured`, `xfail_known_gap`, `error_probe_bug`) instead of ad hoc `systemctl`/`ss`/raw socket probes in agent contexts.
   File: scripts/ai/aq-report; scripts/ai/_aq-qa-bash; scripts/testing/harness_qa/phases/phase0.py; dashboard/backend/api/
@@ -2735,7 +2735,7 @@ Advisory task (codex is the real confirmatory backstop) — non-blocking.
 - **severity**: MEDIUM (enforcement IS live + validated; the gap is silent-failure detection, not a live hole).
 - **implementer**: cheapest-eligible per Rule 17. May be multi-site (check fn + registration + dashboard card) → likely fast-tier not local-single-edit; codex can fold on Aug-4 or a fast-tier lane now.
 
-## [OPEN] tier0 check-sops-sync false-positive: signing keys flagged "stale/unused" — 2026-07-31
+## [DONE 2026-08-01] tier0 check-sops-sync false-positive — FIXED (check now also extracts literal-string sops.secrets keys, not only ${sec.names.X} refs; check reports 11 required / 0 stale, PASS). The two live signing keys no longer falsely flagged stale.
 - **status**: OPEN — false-positive WARN; keys are LIVE + correctly declared. No functional risk.
 - **finding**: `tier0.d/check-sops-sync` warns "SOPS file has keys not declared in secrets.nix (stale/unused): aq-grant-signing-key aq-lease-signing-key (9 required, 2 stale)". But BOTH are declared in `nix/modules/core/secrets.nix` (lines 71, 86), committed b076528c + 6d17f9e6, provisioned to `/run/secrets/` and in active use (C2 lease enforcement + R5 grant signing depend on them).
 - **root cause (probable)**: the check's secrets.nix declaration parser doesn't recognize the form these two keys are declared in (nested `"key-name" = Ellipsis` block vs whatever flat/names list the check scans), so it mis-classifies live keys as stale.
@@ -2751,12 +2751,12 @@ Advisory task (codex is the real confirmatory backstop) — non-blocking.
 - **severity**: HIGH within the (dormant) runner slice — it would block every real connection; but feature is OFF so no live impact.
 - **action**: design rev2 ceiling expanded (runner.py + nix unit + env-contract + tests); codex re-review → re-freeze → owner activation.
 
-## [OPEN] Claude flagship alias hard-fails on unavailable Fable and leaves partial work — 2026-08-01
-- **status**: OPEN — task `claude-20260801-092425-msmzui` was reconciled from stale `running` to `failed`; no review verdict exists.
+## [OPEN] Claude headless flagship lanes exit without durable completion — 2026-08-01
+- **status**: OPEN — Fable task `claude-20260801-092425-msmzui` was reconciled to `failed`; Opus fallback `claude-20260801-093407-umfyv7` was reconciled to `stale`; no review verdict exists.
 - **finding**: monitored `delegate-to-claude --model-tier flagship` correctly resolved to `claude-fable-5`, but the provider exited immediately with `Fable 5 requires usage credits`. Before termination it modified `RUNNER-DEPLOYMENT-HARDENING.md` only, leaving an incomplete draft that identifies a real client-identity defect but does not close the hash-bound socket-adoption findings.
-- **root cause**: static tier routing treats configured model identity as availability; there is no quota/entitlement preflight or failover from `flagship` to `flagship_fallback`. Terminal registry state also required explicit reconciliation.
+- **root cause**: static tier routing treats configured model identity as availability; there is no quota/entitlement preflight or automatic failover. The explicit Opus 4.8 fallback then reproduced the headless lane's dead-process/empty-output behavior, confirming a second connection/lifecycle defect independent of Fable entitlement. Both terminal states required explicit reconciliation.
 - **severity**: HIGH for collaboration reliability; no live-system impact because the runner and adapter remain OFF.
-- **action**: preserve the partial edit as untrusted draft, re-dispatch the complete five-document revision packet through monitored `flagship_fallback` (Opus 4.8), and separately add provider preflight/failover plus terminal-state reconciliation to the connection-reliability backlog.
+- **action**: preserve the partial edit as untrusted draft, continue the bounded design revision through monitored Codex subagents, retain the Claude request for later healthy-lane review, and add provider preflight/failover plus terminal-state reconciliation to the connection-reliability backlog.
 - **file**: `config/model-coordinator.json`; `scripts/ai/delegate-to-claude`; `.agents/plans/aqos-foundation-c/RUNNER-DEPLOYMENT-HARDENING.md`
 
 ## [OPEN] C0.3 consumption record crossed its one-file settlement boundary in batch integration — 2026-08-01
@@ -2766,3 +2766,59 @@ Advisory task (codex is the real confirmatory backstop) — non-blocking.
 - **severity**: CRITICAL governance/evidence defect; no history rewrite or protected-ref mutation is indicated.
 - **action**: use monotonic recovery only: add a batch-incident disposition, prepare a current-HEAD post-batch settlement design/authorization, wait for tracker parity to be accepted and live-green, then independently accept and atomically commit one new additive settlement record. Never edit the historical record, rewrite `aa0d1a41`, or replay Stage-2.
 - **file**: `.agents/plans/aqos-refoundation-cycle0/C0.3-AUTHORIZATION-CONSUMPTION.md`; commit `aa0d1a41`; tracker parity gate
+
+## [OPEN] Concurrent external lane committed unreviewed shared-worktree drafts with false attribution — 2026-08-01
+- **status**: OPEN — commits preserved; no rewrite/revert attempted; all affected subjects remain unaccepted.
+- **finding**: while Codex subagents were independently revising Foundation C, an external lane advanced `main` from `e7bf91de` through five commits to `ec6fc69b`. Commit `ec6fc69b` attributes C4/C6 revisions to stale zero-output Claude task `claude-20260801-093407-umfyv7`, although the monitored output was empty and the substantive revisions were authored by active Codex subagents. It also committed the drafts before binding re-review despite the design-only no-stage/no-commit boundary. Earlier commits similarly integrated runner drafts and local test edits during active shared-worktree work.
+- **root cause**: shared-worktree lanes lack a single commit owner/lease and exact authorship receipt binding; another orchestrator inferred authorship from temporal proximity and treated preservation as authority to commit.
+- **severity**: CRITICAL evidence/authorship integrity and concurrency defect; no live flag or deployment change observed.
+- **action**: treat commits as physical preservation only; correct attribution in additive review/disposition evidence, re-pin all HEAD-bound authorizations, require one commit-owner lease plus exact producer receipt/hash before future commits, and prevent a zero-output/stale task from receiving authorship trailers.
+- **file**: commits `1a98f579`, `3032f9f8`, `52850932`, `9a198d89`, `ec6fc69b`; `.agents/delegation/outputs/claude-20260801-093407-umfyv7.log`
+
+## [OPEN] Codex status path mutates registry and fails under read-only projection — 2026-08-01
+- **status**: OPEN — authoritative lookup remains available through `aq-delegation-registry show`.
+- **finding**: `delegate-to-codex --status codex-20260801-095804-kim5e3xxxxxx` failed before observation with `touch: .../.agents/delegation/registry.jsonl: Read-only file system`, while the task was validly registered and running.
+- **root cause**: a nominally read-only status operation unconditionally touches/initializes the registry, conflicting with the managed sandbox's read-only `.agents` projection. Observation is therefore coupled to mutation authority.
+- **severity**: HIGH monitoring-first reliability defect; task execution itself was not invalidated.
+- **action**: split pure status lookup from registry initialization/mutation, use the existing authoritative lookup API, and add a read-only-filesystem regression vector.
+- **file**: `scripts/ai/delegate-to-codex`; `scripts/ai/aq-delegation-registry`; `.agents/delegation/registry.jsonl`
+
+## [OPEN] Antigravity dispatch-once reports empty while inbox has an eligible pending task — 2026-08-01
+- **status**: OPEN — review remains queued; no manual owner poke is required or credited.
+- **finding**: immediately after `aq-collab-round open` auto-woke `foundation-c-rev2-depth-20260801`, `aq-antigravity-inbox status --json` reported one pending unclaimed task, but `dispatch-once --attempt-ceiling 1 --timeout 45 --json` returned `{state:"empty"}`; a second status still reported the same pending task.
+- **root cause**: dispatch eligibility/reservation state is projected as `empty` rather than a typed `pending_backoff|wake_reserved|not_yet_eligible` state, making monitoring contradict the canonical inbox.
+- **severity**: HIGH autonomous-collaboration observability defect; task bytes remain preserved.
+- **action**: make dispatch-once and status share one pure eligibility resolver and return the pending task plus typed reason/next-attempt timestamp when it cannot wake now.
+- **file**: `scripts/ai/aq-antigravity-inbox`; `.agent/collaboration/antigravity-inbox/foundation-c-rev2-depth-20260801.md`
+
+## [OPEN] Collaborative-round Codex reviewer exits waiting for stdin — 2026-08-01
+- **status**: OPEN — task `codex-20260801-095804-kim5e3xxxxxx` reconciled from stale `running` to `failed`; local and Antigravity lanes remain queued/running.
+- **finding**: the review task's only output was `Reading additional input from stdin...`; its PID exited without a verdict while the registry stayed running until reconciliation.
+- **root cause**: the headless Codex launch shape entered an stdin-continuation mode despite the round prompt already being fully inlined, so the wrapper supplied neither EOF in the expected shape nor a terminal failure receipt.
+- **severity**: HIGH collaboration reliability defect; no subject edit or false review occurred.
+- **action**: make noninteractive review dispatch close stdin explicitly, add a bounded launch handshake/heartbeat, capture provider exit reason, and test the exact aq-collab-round invocation.
+- **file**: `scripts/ai/aq-collab-round`; `scripts/ai/delegate-to-codex`; `.agents/delegation/outputs/codex-20260801-095804-kim5e3xxxxxx.log`
+
+## [OPEN] Subagent review report contradicts its persisted verdict — 2026-08-01
+- **status**: OPEN — persisted exact-byte review controls; L3-P0 remains `REQUEST_REVISION`.
+- **finding**: `/root/tracker_am2_rebase_audit` reported that `L3-P0-REV2-INDEPENDENT-REVIEW-20260801.md` was `PASS_DESIGN`, but the exact file at the reported SHA `97a1272a...` says `REQUEST_REVISION` and identifies two remaining public-input contract gaps.
+- **root cause**: agent final/status synthesis was not generated from or validated against the persisted deliverable's typed verdict.
+- **severity**: HIGH anti-gaming/evidence-integrity defect; no implementation authorization was issued.
+- **action**: require final messages and registry terminal records to extract verdict/hash from the saved artifact and fail on mismatch; never let prose override exact reviewed bytes.
+- **file**: `.agents/plans/local-inference-l3/L3-P0-REV2-INDEPENDENT-REVIEW-20260801.md`; collaboration task `/root/tracker_am2_rebase_audit`
+
+## [IN-FLIGHT] L3-P0 implementer diverged from exact activated packet — 2026-08-01
+- **status**: IN-FLIGHT — failed candidate frozen; exact AM1 correction design and independently reviewed PREPARED_ONLY authorization are ready for fresh owner activation.
+- **finding**: the L3-P0 implementer created the golden fixture at an unauthorized substitute path and implemented an earlier/simplified provenance contract despite being instructed to read the activated authorization and design completely. Independent review rejected the candidate before integration.
+- **root cause**: delegated task prose repeated a stale inventory summary and the implementer did not reconcile it against the exact authorization bytes; dispatch lacks a machine-enforced inventory/contract preflight at first write.
+- **severity**: HIGH authorization and spec-conformance defect; no runtime, provider, network, staging, commit, or deployment action occurred.
+- **action**: activate the hash-bound L3-P0-AM1 correction only with the explicit destructive relocation sentence; add dispatch-side exact inventory extraction/checking so prompt summaries cannot override authorization bytes.
+- **file**: `.agents/plans/local-inference-l3/L3-P0-AM1-IMPLEMENTATION-AUTHORIZATION-20260801.md`; `config/testing/local-inference-l3-p0-golden.json`
+
+## [OPEN] Runner acceptance results depend on reviewer sandbox profile — 2026-08-01
+- **status**: OPEN — candidate passes its exact standalone suite outside the managed namespace-restricted sandbox; live deployment canaries remain deferred.
+- **finding**: the runner suite reports 27/37 with AF_UNIX and bwrap `EPERM` inside the orchestrator/one subagent sandbox, but 56/56 in an approved outside-sandbox offline run and another reviewer lane. Without recording execution confinement, identical command text appears contradictory.
+- **root cause**: validation receipts omit the sandbox/capability profile required by tests that intentionally exercise Unix sockets, user/mount/network namespaces, and cgroups.
+- **severity**: MEDIUM evidence-portability defect; implementation behavior is accepted, but two R6 deployment canaries are still outstanding.
+- **action**: add execution-environment identity/capability fields to validation receipts and classify privilege-dependent tests separately from hermetic unit tests.
+- **file**: `scripts/testing/test-execution-cell-runner.py`; `.agents/plans/aqos-foundation-c/RUNNER-HARDENING-IMPLEMENTATION-ACCEPTANCE-20260801.md`
