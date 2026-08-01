@@ -2715,7 +2715,7 @@ Advisory task (codex is the real confirmatory backstop) — non-blocking.
 - **severity**: MEDIUM (feature dormant; no regression — C2+C5 live; system safe).
 - **action**: dedicated slice `.agents/plans/aqos-foundation-c/RUNNER-DEPLOYMENT-HARDENING.md` — make runner socket-activation-aware (adopt fd 3, self-bind fallback), real deploy-exercise gate; watch for cgroup/bwrap/validator issues behind #5. Enforcement-tier: needs fresh owner activation. Codex confirmatory Aug-4.
 
-## [OPEN] F2.5 scheduler tests: false-green as scripts + not harness-registered — 2026-07-31
+## [DONE 2026-08-01] F2.5 scheduler tests false-green — FIXED (added __main__ pytest guards to test-scheduler.py + test-backpressure.py; run as scripts now execute 7 tests each, not silent exit 0). Harness-registration dropped (siblings lease-gate/span-truth arent registered either; a pytest sweep runs them).
 - **status**: OPEN (minor test-hygiene; F2.5 itself is DONE + LIVE, verified).
 - **scope**: local-dispatch banded slot queue (F2.5) test coverage.
 - **finding 1**: `scripts/testing/test-scheduler.py` + `test-backpressure.py` are pytest-only (7 test fns each, no `__main__`). Run as `python3 file.py` they exit 0 with ZERO tests executed — a false green. Real result via `pytest`: 14 passed.
@@ -2750,3 +2750,19 @@ Advisory task (codex is the real confirmatory backstop) — non-blocking.
 - **pitfall**: SO_PEERCRED returns EFFECTIVE gid; switchboard joins aq-execution-cell-clients only supplementarily → CLIENT_GID=that-group is INEFFECTIVE. Fix = explicit switchboard effective UID (`toString config.users.users.\${primaryUser}.uid`).
 - **severity**: HIGH within the (dormant) runner slice — it would block every real connection; but feature is OFF so no live impact.
 - **action**: design rev2 ceiling expanded (runner.py + nix unit + env-contract + tests); codex re-review → re-freeze → owner activation.
+
+## [OPEN] Claude flagship alias hard-fails on unavailable Fable and leaves partial work — 2026-08-01
+- **status**: OPEN — task `claude-20260801-092425-msmzui` was reconciled from stale `running` to `failed`; no review verdict exists.
+- **finding**: monitored `delegate-to-claude --model-tier flagship` correctly resolved to `claude-fable-5`, but the provider exited immediately with `Fable 5 requires usage credits`. Before termination it modified `RUNNER-DEPLOYMENT-HARDENING.md` only, leaving an incomplete draft that identifies a real client-identity defect but does not close the hash-bound socket-adoption findings.
+- **root cause**: static tier routing treats configured model identity as availability; there is no quota/entitlement preflight or failover from `flagship` to `flagship_fallback`. Terminal registry state also required explicit reconciliation.
+- **severity**: HIGH for collaboration reliability; no live-system impact because the runner and adapter remain OFF.
+- **action**: preserve the partial edit as untrusted draft, re-dispatch the complete five-document revision packet through monitored `flagship_fallback` (Opus 4.8), and separately add provider preflight/failover plus terminal-state reconciliation to the connection-reliability backlog.
+- **file**: `config/model-coordinator.json`; `scripts/ai/delegate-to-claude`; `.agents/plans/aqos-foundation-c/RUNNER-DEPLOYMENT-HARDENING.md`
+
+## [OPEN] C0.3 consumption record crossed its one-file settlement boundary in batch integration — 2026-08-01
+- **status**: OPEN — implementation evidence remains accepted, but consumption settlement is disputed and Cycle-0 exit is not ratified.
+- **finding**: commit `aa0d1a41afa9fc57fb88acc4817bb81734b39a0e` physically integrated the pending C0.3 consumption record inside a 140-file batch before the required owner activation, independent exact-byte acceptance, tracker live-green prerequisite, and one-file settlement commit.
+- **root cause**: batch release inventory included a lifecycle record whose own content still prohibited commit before final PASS; the release gate validated bytes but did not enforce the record's pending lifecycle state or dedicated-commit boundary.
+- **severity**: CRITICAL governance/evidence defect; no history rewrite or protected-ref mutation is indicated.
+- **action**: use monotonic recovery only: add a batch-incident disposition, prepare a current-HEAD post-batch settlement design/authorization, wait for tracker parity to be accepted and live-green, then independently accept and atomically commit one new additive settlement record. Never edit the historical record, rewrite `aa0d1a41`, or replay Stage-2.
+- **file**: `.agents/plans/aqos-refoundation-cycle0/C0.3-AUTHORIZATION-CONSUMPTION.md`; commit `aa0d1a41`; tracker parity gate

@@ -136,3 +136,8 @@ def test_same_inputs_produce_same_schedule() -> None:
         return state
 
     assert drain_ids(build_state(), now=2.0) == drain_ids(build_state(), now=2.0)
+
+if __name__ == "__main__":
+    import sys
+    import pytest
+    sys.exit(pytest.main([__file__, "-q"]))
