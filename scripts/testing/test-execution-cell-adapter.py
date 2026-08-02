@@ -205,6 +205,7 @@ def _start_runner(public_key_bytes: bytes, trusted_repo_id: str, mirror: str) ->
         cell_reservation_set=eg.ReplayReservationSet(),
         epoch_source=0,
         env={"CAPABILITY_EXECUTION_CELLS": "1"},
+        allow_self_bind=True,
     )
     stop_event = threading.Event()
     thread = threading.Thread(target=runner.serve_forever, args=(config, stop_event), daemon=True)
