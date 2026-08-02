@@ -353,5 +353,7 @@ intervenable + observable. The observable leg is now fully closed on two surface
 raises a HIGH human-gate alert on silent degradation (flag flips off, C2 gate degrades to DEV-key);
 (2) a dashboard **Capability Enforcement (C2/C5)** card — backend `/api/stats/capability-enforcement`
 (defensive, secret-free, 9 tests) + a security-section card in dashboard.html/dashboard.js.
-NOTE: the new dashboard route goes live on the next **dashboard service restart** (backend picks up
-routes on restart) — code committed, activation batched to the next restart/rebuild.
+CONFIRMED LIVE 2026-08-02: dashboard restarted; `/api/stats/capability-enforcement` returns 200 with
+c2={enforcement:on,key_present:true,status:ok} + c5={span_truth:on,status:ok}. Both observable surfaces
+(health-spider alarm + dashboard card) validated against the live post-rebuild system. C2 + C5 are DONE
+across all five Rule-15 legs (integrated · ON · validated · observable · intervenable).
