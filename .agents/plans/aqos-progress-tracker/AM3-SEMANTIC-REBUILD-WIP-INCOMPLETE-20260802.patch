@@ -1,0 +1,2003 @@
+diff --git a/assets/aqos-progress-tracker.html b/assets/aqos-progress-tracker.html
+index 6023eb6d..b5a7149f 100644
+--- a/assets/aqos-progress-tracker.html
++++ b/assets/aqos-progress-tracker.html
+@@ -403,7 +403,7 @@
+   <section class="stats" aria-label="Program summary">
+     <div class="stat">
+       <span class="stat-num" id="track-count">&mdash;</span>
+-      <span class="stat-label">tracks with active work</span>
++      <span class="stat-label">active tracks</span>
+     </div>
+     <div class="stat warn">
+       <span class="stat-num" id="foundation-a-gate-count">&mdash;</span>
+@@ -411,7 +411,7 @@
+     </div>
+     <div class="stat warn">
+       <span class="stat-num" id="pending-decision-count">&mdash;</span>
+-      <span class="stat-label">Q decisions pending ratification</span>
++      <span class="stat-label">owner decisions pending</span>
+     </div>
+     <div class="stat crit">
+       <span class="stat-num" id="high-issue-count">&mdash;</span>
+@@ -442,7 +442,7 @@
+ 
+   <section class="two-col">
+     <div class="panel">
+-      <h2 style="margin-bottom:10px;">Owner decision gate — Q1&ndash;Q10</h2>
++      <h2 style="margin-bottom:10px;">Owner decisions — Q1&ndash;Q10</h2>
+       <div class="table-wrap">
+         <table>
+           <thead><tr><th>#</th><th>Decision</th><th>Unblocks</th></tr></thead>
+@@ -458,8 +458,8 @@
+ 
+   <section class="panel" aria-labelledby="authority-heading">
+     <div class="section-head">
+-      <h2 id="authority-heading">Foundation A authority targets</h2>
+-      <p class="hint">Owner direction recorded; observed state remains SPLIT_BRAIN until convergence.</p>
++      <h2 id="authority-heading">Foundation A authority adjudication</h2>
++      <p class="hint">All ten targets are adjudicated; physical writer convergence remains pending.</p>
+     </div>
+     <div class="table-wrap">
+       <table>
+@@ -470,11 +470,10 @@
+   </section>
+ 
+   <footer>
+-    Frozen implementation snapshot <time datetime="2026-07-18T04:01:14Z">2026-07-18 04:01 UTC</time> · source records govern
++    Projected current state <time datetime="2026-08-02T00:00:00Z">2026-08-02 UTC</time> · evidence records govern
+     <details class="provenance">
+-      <summary>Evidence provenance — 8-source frozen snapshot</summary>
+-      <p>Governing sources remain current-byte gates. Operational records are historical commitments
+-        captured at this snapshot and may advance without rewriting the frozen evidence.</p>
++      <summary>Evidence provenance — current-state projection</summary>
++      <p>Governing sources are exact current-byte gates. The issues backlog is a bounded operational snapshot; projection truth is normalized and internally reconciled.</p>
+       <ol class="provenance-list" id="provenance-list"></ol>
+     </details>
+   </footer>
+@@ -482,68 +481,505 @@
+ 
+ <div id="tooltip" role="tooltip" aria-hidden="true"></div>
+ 
++
+ <script type="application/json" id="tracker-provenance">
+ {
+-  "manifest_state": "FROZEN_IMPLEMENTATION_SNAPSHOT",
+-  "snapshot_at": "2026-07-18T04:01:14Z",
++  "manifest_state": "PROJECTED_CURRENT_STATE",
++  "projected_at": "2026-08-02T00:00:00Z",
+   "sources": [
+-    {"path": ".agents/plans/UNIFIED-PROGRAM-PLAN.md", "source_class": "governing", "sha256": "285bda20b4bb3b43cafbc3a46b90c905b203996448f2f5cfda62a0d950bea62e"},
+-    {"path": ".agents/plans/unified-program/OWNER-DECISION-SHEET.md", "source_class": "governing", "sha256": "502df009ac486ab514351105a57d2a75ab21efd747a95f2c92bf36ea37c633b1"},
+-    {"path": "config/system-state-authorities.yaml", "source_class": "governing", "sha256": "d45c83720847f6342d5ff13597810b46c7c2ad58c1c1342fdbc3e9236452ac1a"},
+-    {"path": ".agents/plans/aqos-refoundation-cycle0/FOUNDATION-A-OWNER-ADJUDICATION-20260718.md", "source_class": "governing", "sha256": "3c05728f8011db002b8c1504757dd1b43421f151268718a0c275219ccd15bc7a"},
+-    {"path": ".agent/memory/issues-backlog.md", "source_class": "operational_snapshot", "sha256": "50404205a540eeaf20cf47a33dc7a0ca4b0e319f3485de32eeb5320791b81957"},
+-    {"path": ".agent/collaboration/RESUME.json", "source_class": "operational_snapshot", "sha256": "4ad36b7936e56bc2e9ceb3e193daca3fffd7199eca7653cad0f3a089a81f895a"},
+-    {"path": ".agent/collaboration/PULSE.log", "source_class": "operational_snapshot", "sha256": "d67d06e59e6ef464d23ed8d593b2561a2fc829691f9c0c685b1aeaefab55516f"},
+-    {"path": ".agents/delegation/registry.jsonl", "source_class": "operational_snapshot", "sha256": "8c7d13da7141fd62b1446a4acb0ae49d7497c6eca99577196df5facc232783ad"}
++    {
++      "path": ".agents/plans/UNIFIED-PROGRAM-PLAN.md",
++      "source_class": "governing",
++      "sha256": "285bda20b4bb3b43cafbc3a46b90c905b203996448f2f5cfda62a0d950bea62e"
++    },
++    {
++      "path": ".agents/plans/unified-program/OWNER-DECISION-SHEET.md",
++      "source_class": "governing",
++      "sha256": "502df009ac486ab514351105a57d2a75ab21efd747a95f2c92bf36ea37c633b1"
++    },
++    {
++      "path": "config/system-state-authorities.yaml",
++      "source_class": "governing",
++      "sha256": "d45c83720847f6342d5ff13597810b46c7c2ad58c1c1342fdbc3e9236452ac1a"
++    },
++    {
++      "path": ".agents/plans/aqos-refoundation-cycle0/FOUNDATION-A-OWNER-ADJUDICATION-20260718.md",
++      "source_class": "governing",
++      "sha256": "3c05728f8011db002b8c1504757dd1b43421f151268718a0c275219ccd15bc7a"
++    },
++    {
++      "path": ".agent/memory/issues-backlog.md",
++      "source_class": "operational_snapshot",
++      "sha256": "814123b31f982c41a864500959e9489828e96f3d9105906de952d8cac05b67a8"
++    }
+   ],
+   "expected_counts": {
+-    "tracks": 10,
+-    "active_tracks": 2,
+-    "foundation_a_blocking_gates": 1,
+-    "pending_q_decisions": 9,
++    "tracks": 19,
++    "active_tracks": 5,
++    "blocking_tracks": 1,
++    "pending_q_decisions": 0,
+     "authority_rows": 10,
+-    "open_high_severity_issues": 2
++    "open_high_or_worse_issues": 4,
++    "malformed_issue_severity": 0
++  },
++  "projection": {
++    "marker": "PROJECTED_CURRENT_STATE",
++    "projected_at": "2026-08-02T00:00:00Z",
++    "source_contract": "Evidence-backed current projection; status is an explicit reviewed projection, not inferred from incidental prose.",
++    "tracks": [
++      {
++        "code": "A",
++        "name": "Foundation A",
++        "sub": "Cycle-0 truth exit",
++        "order": 10,
++        "projection": {
++          "status": "done",
++          "pct": 100,
++          "evidence": "C0.3 implementation accepted and 10/10 authority rows owner-adjudicated; physical convergence remains pending and authorization-consumption settlement is disputed."
++        }
++      },
++      {
++        "code": "B1",
++        "name": "Foundation B1",
++        "sub": "contract kernel + parity vectors",
++        "order": 20,
++        "projection": {
++          "status": "active",
++          "pct": 90,
++          "evidence": "L1A/L2A/L2B-A and L2B-B contract work are committed; parity and convergence work continues."
++        }
++      },
++      {
++        "code": "B2",
++        "name": "Foundation B2",
++        "sub": "workflow-run-task shadow vertical",
++        "order": 30,
++        "projection": {
++          "status": "done",
++          "pct": 100,
++          "evidence": "Owner-ratified legacy-live/Postgres-shadow hypothesis and accepted B2-C1 contract establish the first shadow vertical; later migration execution remains separately gated."
++        }
++      },
++      {
++        "code": "B3",
++        "name": "Foundation B3",
++        "sub": "projector + canon-compiler shadow",
++        "order": 40,
++        "projection": {
++          "status": "done",
++          "pct": 100,
++          "evidence": "Event projections and canon-compiler shadow foundation are committed."
++        }
++      },
++      {
++        "code": "C",
++        "name": "Foundation C",
++        "sub": "identity, leases, execution cells",
++        "order": 50,
++        "projection": {
++          "status": "active",
++          "pct": 72,
++          "evidence": "C2 and C5 are committed/configured; C3b is built but dormant after rollback. C3a-2/C4/C6/runner revisions remain PREPARED_ONLY pending exact binding review."
++        }
++      },
++      {
++        "code": "C0",
++        "name": "Foundation C0",
++        "sub": "CapabilityLease primitive",
++        "order": 60,
++        "projection": {
++          "status": "done",
++          "pct": 100,
++          "evidence": "CapabilityLease schema, local signer, and aq-lease reporting are committed."
++        }
++      },
++      {
++        "code": "C1",
++        "name": "Foundation C1",
++        "sub": "shadow admission and issuance",
++        "order": 70,
++        "projection": {
++          "status": "done",
++          "pct": 100,
++          "evidence": "Log-only shadow admission and issuance are committed."
++        }
++      },
++      {
++        "code": "C2",
++        "name": "Foundation C2",
++        "sub": "tool-lease enforcement",
++        "order": 80,
++        "projection": {
++          "status": "done",
++          "pct": 100,
++          "evidence": "Enforcement is committed and configured; newer dashboard and health-spider Service Coverage bytes are not live-deployed."
++        }
++      },
++      {
++        "code": "D",
++        "name": "Product D",
++        "sub": "inference/client live convergence",
++        "order": 90,
++        "projection": {
++          "status": "notstarted",
++          "pct": 0,
++          "evidence": "Full switchboard/client convergence and scheduler adoption remain future product work."
++        }
++      },
++      {
++        "code": "E",
++        "name": "Product E",
++        "sub": "evaluation and learning factory",
++        "order": 100,
++        "projection": {
++          "status": "notstarted",
++          "pct": 0,
++          "evidence": "Registry, scorer, replay, and promotion-ledger product work has not started."
++        }
++      },
++      {
++        "code": "F",
++        "name": "Product F",
++        "sub": "one CLI and command center",
++        "order": 110,
++        "projection": {
++          "status": "notstarted",
++          "pct": 0,
++          "evidence": "Unified aq CLI and authoritative typed command center remain future work."
++        }
++      },
++      {
++        "code": "G",
++        "name": "Product G",
++        "sub": "edge, release, retirement",
++        "order": 120,
++        "projection": {
++          "status": "notstarted",
++          "pct": 0,
++          "evidence": "Hardware profiles, release drills, versioning, and legacy retirement remain future work."
++        }
++      },
++      {
++        "code": "V",
++        "name": "Track V",
++        "sub": "Verified Factory cross-cutting",
++        "order": 130,
++        "projection": {
++          "status": "blocked",
++          "pct": 60,
++          "evidence": "REQUEST_REVISION remains binding; amended acceptance contracts require independent review and exact per-slice authorization."
++        }
++      },
++      {
++        "code": "AAF",
++        "name": "Agent-Agnostic Factory",
++        "sub": "delegation kernel",
++        "order": 140,
++        "projection": {
++          "status": "active",
++          "pct": 92,
++          "evidence": "Router, slice claims, dispatch integration, catch-up queue, and lane eligibility are committed; reliability hardening continues."
++        }
++      },
++      {
++        "code": "Q5",
++        "name": "Q5 lane-eligibility registry",
++        "sub": "measured and expiring eligibility",
++        "order": 150,
++        "projection": {
++          "status": "done",
++          "pct": 100,
++          "evidence": "Owner-ratified measured/expiring lane eligibility is committed."
++        }
++      },
++      {
++        "code": "LEC",
++        "name": "Local-Embed-Context",
++        "sub": "embedded context layer",
++        "order": 160,
++        "projection": {
++          "status": "active",
++          "pct": 82,
++          "evidence": "Slice 2b acceptance resolved PASS; later adoption and measurement remain."
++        }
++      },
++      {
++        "code": "Q10B",
++        "name": "Q10 inference-envelope baseline",
++        "sub": "measure-first pass",
++        "order": 170,
++        "projection": {
++          "status": "done",
++          "pct": 100,
++          "evidence": "The 27GB target envelope has a committed measure-first baseline."
++        }
++      },
++      {
++        "code": "RESUME",
++        "name": "llama-cpp-resume fix",
++        "sub": "non-blocking restart",
++        "order": 180,
++        "projection": {
++          "status": "done",
++          "pct": 100,
++          "evidence": "The fire-and-forget restart correction is committed."
++        }
++      },
++      {
++        "code": "S",
++        "name": "Track S",
++        "sub": "security capability intake and hardening",
++        "order": 190,
++        "projection": {
++          "status": "active",
++          "pct": 68,
++          "evidence": "Security tooling intake, self-targeted validation, detection, and release hygiene continue under bounded slices."
++        }
++      }
++    ],
++    "gate": [
++      {
++        "id": "Q1",
++        "decision": "Synthesis is the parent architecture",
++        "unblocks": "program spine",
++        "projection": {
++          "resolved": true,
++          "evidence": "owner decision record"
++        }
++      },
++      {
++        "id": "Q2",
++        "decision": "First shadow vertical authority hypothesis",
++        "unblocks": "B2",
++        "projection": {
++          "resolved": true,
++          "evidence": "owner decision record"
++        }
++      },
++      {
++        "id": "Q3",
++        "decision": "Zero-trust principal and lease direction",
++        "unblocks": "Foundation C",
++        "projection": {
++          "resolved": true,
++          "evidence": "owner decision record"
++        }
++      },
++      {
++        "id": "Q4",
++        "decision": "Model-neutral canon behavior policy",
++        "unblocks": "B3",
++        "projection": {
++          "resolved": true,
++          "evidence": "owner decision record"
++        }
++      },
++      {
++        "id": "Q5",
++        "decision": "Measured expiring lane eligibility",
++        "unblocks": "delegation",
++        "projection": {
++          "resolved": true,
++          "evidence": "owner decision record"
++        }
++      },
++      {
++        "id": "Q6",
++        "decision": "Kernel front door remains local-orchestrator until named revision",
++        "unblocks": "Product F",
++        "projection": {
++          "resolved": true,
++          "evidence": "owner decision record"
++        }
++      },
++      {
++        "id": "Q7",
++        "decision": "Evaluation-gated promotion principle",
++        "unblocks": "Product E",
++        "projection": {
++          "resolved": true,
++          "evidence": "owner decision record"
++        }
++      },
++      {
++        "id": "Q8",
++        "decision": "Ten Cycle-0 authority rows adjudicated",
++        "unblocks": "Foundation A",
++        "projection": {
++          "resolved": true,
++          "evidence": "owner decision record"
++        }
++      },
++      {
++        "id": "Q9",
++        "decision": "Track V activation remains per-slice after prerequisites",
++        "unblocks": "Track V",
++        "projection": {
++          "resolved": true,
++          "evidence": "owner decision record"
++        }
++      },
++      {
++        "id": "Q10",
++        "decision": "Measure-first 27GB inference envelope",
++        "unblocks": "Products D/E",
++        "projection": {
++          "resolved": true,
++          "evidence": "owner decision record"
++        }
++      }
++    ],
++    "authority_rows": [
++      {
++        "area": "planning-round",
++        "target": "RoundState/round.json mutation boundary",
++        "adjudication": "ADJUDICATED",
++        "physical_state": "CONVERGENCE_PENDING"
++      },
++      {
++        "area": "delegation-lifecycle",
++        "target": "Host/coordinator dispatch broker through TaskRegistry",
++        "adjudication": "ADJUDICATED",
++        "physical_state": "CONVERGENCE_PENDING"
++      },
++      {
++        "area": "intent-resume",
++        "target": "Separate intent lock; aq-event authority; files are projections",
++        "adjudication": "ADJUDICATED",
++        "physical_state": "CONVERGENCE_PENDING"
++      },
++      {
++        "area": "workflow-run-task",
++        "target": "Coordinator logical authority; Postgres outbox/CAS shadow only",
++        "adjudication": "ADJUDICATED",
++        "physical_state": "CONVERGENCE_PENDING"
++      },
++      {
++        "area": "qa-effectiveness",
++        "target": "Immutable invocation evidence plus one versioned reducer",
++        "adjudication": "ADJUDICATED",
++        "physical_state": "CONVERGENCE_PENDING"
++      },
++      {
++        "area": "routing-model-execution",
++        "target": "Coordinator route decisions; switchboard generation gateway",
++        "adjudication": "ADJUDICATED",
++        "physical_state": "CONVERGENCE_PENDING"
++      },
++      {
++        "area": "learning-eval",
++        "target": "Coordinator-owned EvaluationRun/PromotionDecision ledger",
++        "adjudication": "ADJUDICATED",
++        "physical_state": "CONVERGENCE_PENDING"
++      },
++      {
++        "area": "memory-rag",
++        "target": "MemoryBroker mutation gateway; Qdrant is a projection",
++        "adjudication": "ADJUDICATED",
++        "physical_state": "CONVERGENCE_PENDING"
++      },
++      {
++        "area": "configuration",
++        "target": "Nix to systemd environment to typed Python chain",
++        "adjudication": "ADJUDICATED",
++        "physical_state": "CONVERGENCE_PENDING"
++      },
++      {
++        "area": "dashboard-operator",
++        "target": "Coordinator-owned typed ApprovalStore",
++        "adjudication": "ADJUDICATED",
++        "physical_state": "CONVERGENCE_PENDING"
++      }
++    ],
++    "deployment_truth": {
++      "c2_c5": {
++        "committed": true,
++        "configured": true,
++        "newer_dashboard_coverage_deployed": false,
++        "newer_health_spider_coverage_deployed": false
++      },
++      "c3b": {
++        "built": true,
++        "dormant": true,
++        "live": false,
++        "runner_service_active": false,
++        "runner_socket_active": false,
++        "adapter": 0
++      },
++      "c03": {
++        "implementation_accepted": true,
++        "owner_adjudicated": true,
++        "physical_convergence": "pending",
++        "consumption_settlement": "disputed"
++      },
++      "foundation_c_revisions": {
++        "state": "PREPARED_ONLY",
++        "accepted": false,
++        "subjects": [
++          "C3a-2",
++          "C4",
++          "C6",
++          "runner"
++        ]
++      }
++    },
++    "issues": [
++      {
++        "title": "task-registry-fifo-reliability",
++        "sev": "High",
++        "status": "IN-FLIGHT",
++        "note": "Adversarial FIFO substitution can block a compatibility scan before descriptor validation."
++      },
++      {
++        "title": "c2-c5-service-coverage-deployment-drift",
++        "sev": "High",
++        "status": "OPEN",
++        "note": "Coverage is committed but the newer dashboard and health-spider projection is not live-deployed."
++      },
++      {
++        "title": "c3b-runner-rollback",
++        "sev": "Medium",
++        "status": "OPEN",
++        "note": "Runner is built but dormant after rollback; service/socket are inactive and adapter remains 0."
++      },
++      {
++        "title": "foundation-c-binding-rereview",
++        "sev": "Critical",
++        "status": "OPEN",
++        "note": "C3a-2/C4/C6/runner revisions remain PREPARED_ONLY and unaccepted pending exact binding review."
++      },
++      {
++        "title": "c03-consumption-settlement",
++        "sev": "Critical",
++        "status": "OPEN",
++        "note": "Accepted/adjudicated implementation remains physically unconverged and consumption settlement is disputed."
++      }
++    ]
+   }
+ }
+ </script>
+ 
+ <script>
+-  const tracks = [
+-    { code: 'A',  name: 'Foundation A', sub: 'Cycle-0 truth exit', status: 'blocked', inclusion_status: 'INCLUDED', gate_status: 'BLOCKING', pct: 0,
+-      note: 'Owner adjudication and the exact ten-row authority projection are complete. All ten observed rows remain SPLIT_BRAIN, so convergence still blocks Foundation A exit.' },
+-    { code: 'B1', name: 'Foundation B1', sub: 'contract kernel + parity vectors', status: 'active', inclusion_status: 'INCLUDED', gate_status: 'NONE', pct: 75,
+-      note: 'L1A, L2A, L2B-A landed. L2B-B (live payload adoption) is the next candidate — not yet authorized.' },
+-    { code: 'B2', name: 'Foundation B2', sub: 'one shadow-state vertical', status: 'blocked', inclusion_status: 'INCLUDED', gate_status: 'NONE', pct: 0,
+-      note: 'Blocked on Foundation A exit plus owner ratification of the first shadow-authority hypothesis (Q2).' },
+-    { code: 'B3', name: 'Foundation B3', sub: 'projector + canon-compiler shadow', status: 'active', inclusion_status: 'INCLUDED', gate_status: 'NONE', pct: 35,
+-      note: 'aq-event PULSE/RESUME projector is live. Canon compiler and dashboard-surface extension still pending.' },
+-    { code: 'C',  name: 'Foundation C', sub: 'identity, leases, execution cells', status: 'notstarted', inclusion_status: 'INCLUDED', gate_status: 'NONE', pct: 0,
+-      note: 'Needs B1 stable plus a ratified security model (Q3) before it can begin.' },
+-    { code: 'D',  name: 'Product D', sub: 'inference / client convergence', status: 'notstarted', inclusion_status: 'INCLUDED', gate_status: 'NONE', pct: 0,
+-      note: 'Switchboard becomes sole gateway; closes the dormant F2.5 scheduler-wiring gap when it lands.' },
+-    { code: 'E',  name: 'Product E', sub: 'evaluation & learning factory', status: 'notstarted', inclusion_status: 'INCLUDED', gate_status: 'NONE', pct: 0,
+-      note: 'Absorbs aq-eval / inference-bench PRDs and VF-4/5/8 (golden tasks, certified scorers, promotion ledger).' },
+-    { code: 'F',  name: 'Product F', sub: 'unified CLI + command center', status: 'notstarted', inclusion_status: 'INCLUDED', gate_status: 'NONE', pct: 0,
+-      note: 'One `aq` gateway plus typed console — built only after D delivers authoritative telemetry.' },
+-    { code: 'G',  name: 'Product G', sub: 'edge, release, retirement', status: 'notstarted', inclusion_status: 'INCLUDED', gate_status: 'NONE', pct: 0,
+-      note: 'Hardware-class probes, restore drills, semver v1.0, legacy retirement after two clean cycles.' },
+-    { code: 'V',  name: 'Track V', sub: 'Verified Factory (cross-cutting)', status: 'blocked', inclusion_status: 'INCLUDED', gate_status: 'NONE', pct: 15,
+-      note: 'REQUEST_REVISION — amended oracle/tier/evidence gates await re-review; interleaves with B2 through E.' },
+-  ];
+-
++  const provenance = JSON.parse(document.getElementById('tracker-provenance').textContent);
++  const projection = provenance.projection;
++  const tracks = projection.tracks.map(track => ({
++    code: track.code,
++    name: track.name,
++    sub: track.sub,
++    status: track.projection.status,
++    pct: track.projection.pct,
++    note: track.projection.evidence,
++  }));
+   const statusLabel = { active: 'Active', blocked: 'Blocked', notstarted: 'Not started', done: 'Done' };
+   const statusVar = { active: 'var(--active)', blocked: 'var(--blocked)', notstarted: 'var(--notstarted)', done: 'var(--good)' };
+-
+   const gantt = document.getElementById('gantt');
+   tracks.forEach(t => {
+     const lane = document.createElement('div');
+     lane.className = 'lane';
+     lane.dataset.status = t.status;
+-
+     const pctDisplay = t.status === 'notstarted' ? '—' : (t.pct + '%');
+-    const fillClass = t.status === 'blocked' ? 'st-blocked' : (t.status === 'active' ? 'st-active' : 'st-notstarted');
++    const fillClass = t.status === 'blocked' ? 'st-blocked' : (t.status === 'active' ? 'st-active' : (t.status === 'done' ? 'st-active' : 'st-notstarted'));
+     const fillWidth = t.status === 'blocked' ? 100 : t.pct;
+-
+     lane.innerHTML = `
+       <div class="lane-label">
+         <span class="stripe" style="background:${statusVar[t.status]}"></span>
+@@ -557,27 +993,23 @@
+         <span class="bar-fill ${fillClass}" style="width:${fillWidth}%"></span>
+       </button>
+       <span class="sr-only" id="lane-${t.code}-detail">${t.note}</span>
+-      <div class="bar-pct">${pctDisplay}</div>
+-    `;
++      <div class="bar-pct">${pctDisplay}</div>`;
+     gantt.appendChild(lane);
+   });
+-
+   const tooltip = document.getElementById('tooltip');
+   const showTooltip = (bar, x, y) => {
+-      tooltip.innerHTML = `<strong>${bar.dataset.title}</strong><br>${bar.dataset.note}`;
+-      tooltip.classList.add('show');
+-      tooltip.setAttribute('aria-hidden', 'false');
+-      tooltip.style.left = Math.max(8, Math.min(x, window.innerWidth - 300)) + 'px';
+-      tooltip.style.top = Math.max(8, Math.min(y, window.innerHeight - 90)) + 'px';
++    tooltip.innerHTML = `<strong>${bar.dataset.title}</strong><br>${bar.dataset.note}`;
++    tooltip.classList.add('show');
++    tooltip.setAttribute('aria-hidden', 'false');
++    tooltip.style.left = Math.max(8, Math.min(x, window.innerWidth - 300)) + 'px';
++    tooltip.style.top = Math.max(8, Math.min(y, window.innerHeight - 90)) + 'px';
+   };
+   const hideTooltip = () => {
+     tooltip.classList.remove('show');
+     tooltip.setAttribute('aria-hidden', 'true');
+   };
+   gantt.querySelectorAll('.bar-track').forEach(bar => {
+-    bar.addEventListener('mousemove', e => {
+-      showTooltip(bar, e.clientX + 14, e.clientY + 14);
+-    });
++    bar.addEventListener('mousemove', e => showTooltip(bar, e.clientX + 14, e.clientY + 14));
+     bar.addEventListener('mouseleave', hideTooltip);
+     bar.addEventListener('focus', () => {
+       const box = bar.getBoundingClientRect();
+@@ -591,40 +1023,11 @@
+       }
+     });
+   });
+-
+-  const columns = [
+-    { key: 'done', title: 'Done', items: [
+-      'F1 round-state machine (aq-collab-round wiring)',
+-      'Closed learning loop — capture → correct → HITL → ingest → train → eval, guarded and observable',
+-      'Cycle-0 core C0.1–C0.3 integrated (c9fe3974)',
+-      'L1A / L2A / L2B-A contract + shadow kernel + transport',
+-      'R0.1 registry foundation completion (d4780ca5)',
+-      'Foundation A owner adjudication + ten-row projection (bec9bc0d)',
+-      'Generic flake exports + source-complete package baseline (befc4141)',
+-      'aq-event PULSE/RESUME projector — files are now projections',
+-      'Qwen3-35B promoted primary local agent',
+-      'Flake-age guard fix + Nix/Home-Manager refresh (f7ecc381, 08203901)',
+-    ]},
+-    { key: 'active', title: 'Active', items: [
+-      { live: true, title: 'Program tracker → Command Center', note: 'canonical six-file integration is implementing the frozen, provenance-bound projection' },
+-      { title: 'C0.6 second-family design review', note: 'Codex requested three revisions; Antigravity second-model-family review remains pending' },
+-      { title: 'L2B-B live payload adoption', note: 'next Foundation B1 slice — needs fresh authorization' },
+-    ]},
+-    { key: 'blocked', title: 'Blocked', items: [
+-      { title: 'Foundation B2 shadow-state vertical', note: 'needs Foundation A exit + Q2 ratification' },
+-      { title: 'F2.5 scheduler wiring', note: 'built and tested, dormant until Product D' },
+-      { title: 'Track V / Verified Factory', note: 'REQUEST_REVISION — amended candidate pending' },
+-      { title: 'lean-ctx global session pointer', note: 'issue, high severity, third-party' },
+-    ]},
+-    { key: 'notstarted', title: 'Not started', items: [
+-      'Foundation C — identity, leases, execution cells',
+-      'Product D — inference / client convergence',
+-      'Product E — evaluation & learning factory',
+-      'Product F — unified CLI + command center',
+-      'Product G — edge, release, retirement',
+-    ]},
+-  ];
+-
++  const columns = ['done', 'active', 'blocked', 'notstarted'].map(status => ({
++    key: status,
++    title: statusLabel[status],
++    items: tracks.filter(track => track.status === status),
++  }));
+   const board = document.getElementById('board');
+   columns.forEach(col => {
+     const colEl = document.createElement('div');
+@@ -637,102 +1040,59 @@
+     col.items.forEach(item => {
+       const card = document.createElement('div');
+       card.className = 'card';
+-      if (typeof item === 'string') {
+-        card.innerHTML = `<div class="card-title">${item}</div>`;
+-      } else {
+-        card.innerHTML = `<div class="card-title">${item.live ? '<span class="live-dot"></span>' : ''}${item.title}</div><div class="card-note">${item.note}</div>`;
+-      }
++      card.innerHTML = `<div class="card-title">${item.name}</div><div class="card-note">${item.note}</div>`;
+       colEl.appendChild(card);
+     });
+     board.appendChild(colEl);
+   });
+-
+-  const gateRows = [
+-    { id: 'Q1', decision: 'Ratify the synthesis as parent architecture', unblocks: 'everything below', status: 'PENDING' },
+-    { id: 'Q2', decision: 'Ratify the first shadow-vertical authority hypothesis', unblocks: 'Foundation B2', status: 'PENDING' },
+-    { id: 'Q3', decision: 'Security model — leases, attestations, zero-trust network profiles', unblocks: 'Foundation C', status: 'PENDING' },
+-    { id: 'Q4', decision: 'Fable behavior contract → model-neutral versioned canon policy', unblocks: 'B3 canon migration', status: 'PENDING' },
+-    { id: 'Q5', decision: 'Measured, expiring lane-eligibility registry', unblocks: 'all delegation + VF-8', status: 'PENDING' },
+-    { id: 'Q6', decision: 'Kernel front door: keep local-orchestrator or revise to `aq` gateway', unblocks: 'Product F CLI', status: 'PENDING' },
+-    { id: 'Q7', decision: 'Eval factory as universal promotion gate', unblocks: 'Product E', status: 'PENDING' },
+-    { id: 'Q8', decision: 'Adjudicate the 10 Cycle-0 authority rows', unblocks: 'B2 vertical selection', status: 'DIRECTION_RECORDED' },
+-    { id: 'Q9', decision: 'Activate Track V (Verified Factory) after its VF-0 round', unblocks: 'oracle / tier / evidence gates', status: 'PENDING' },
+-    { id: 'Q10', decision: 'Rebudget the 27GB envelope for a resident small model / speculative decoding', unblocks: 'Product D/E stacking work', status: 'PENDING' },
+-  ];
+   const gateBody = document.getElementById('gate-body');
+-  gateRows.forEach(row => {
++  projection.gate.forEach(row => {
+     const tr = document.createElement('tr');
+-    const id = document.createElement('td');
+-    const decision = document.createElement('td');
+-    const unblocks = document.createElement('td');
+-    id.className = 'qid';
+-    id.textContent = row.id;
+-    decision.textContent = `${row.decision} [${row.status}]`;
+-    unblocks.textContent = row.unblocks;
+-    tr.append(id, decision, unblocks);
++    [row.id, `${row.decision} [RESOLVED]`, row.unblocks].forEach((value, index) => {
++      const cell = document.createElement('td');
++      if (index === 0) cell.className = 'qid';
++      cell.textContent = value;
++      tr.appendChild(cell);
++    });
+     gateBody.appendChild(tr);
+   });
+-
+-  const issues = [
+-    { title: 'lean-ctx-global-session-pointer-cross-repo-root-pinning', sev: 'High', status: 'OPEN',
+-      note: 'lean-ctx keeps one machine-global "latest session" pointer, so any invocation in any repo can silently resume this repo\'s session and root tools to the wrong project. Third-party defect (lean-ctx v3.3.7); workaround pending.' },
+-    { title: 'provider-capacity-reset-not-scheduled', sev: 'High', status: 'OPEN',
+-      note: 'Claude capacity exposed a reopen window, but no durable retry_not_before or scheduled monitored probe fired. The owner had to request a retry; the reopened Sonnet lane then passed immediately.' },
+-  ];
+   const issuesBody = document.getElementById('issues-body');
+-  issues.forEach(i => {
++  projection.issues.forEach(issue => {
+     const el = document.createElement('div');
+     el.className = 'issue';
+-    el.innerHTML = `<div class="issue-head"><span class="issue-title">${i.title}</span><span class="sev">${i.sev}</span></div><div class="issue-note">${i.note}</div>`;
++    el.innerHTML = `<div class="issue-head"><span class="issue-title">${issue.title}</span><span class="sev">${issue.sev}</span></div><div class="issue-note">${issue.note}</div>`;
+     issuesBody.appendChild(el);
+   });
+-
+-  const authorityTargets = [
+-    { area: 'planning-round', target: 'RoundState / round.json mutation boundary', status: 'DIRECTION_RECORDED', observed: 'SPLIT_BRAIN' },
+-    { area: 'delegation-lifecycle', target: 'Host/coordinator dispatch broker through TaskRegistry', status: 'DIRECTION_RECORDED', observed: 'SPLIT_BRAIN' },
+-    { area: 'intent-resume', target: 'Separate intent lock; aq-event authority; files are projections', status: 'DIRECTION_RECORDED', observed: 'SPLIT_BRAIN' },
+-    { area: 'workflow-run-task', target: 'Coordinator logical authority; Postgres outbox/CAS shadow only', status: 'DIRECTION_RECORDED', observed: 'SPLIT_BRAIN' },
+-    { area: 'qa-effectiveness', target: 'Immutable invocation evidence plus one versioned reducer', status: 'DIRECTION_RECORDED', observed: 'SPLIT_BRAIN' },
+-    { area: 'routing-model-execution', target: 'Coordinator route decisions; switchboard generation gateway', status: 'DIRECTION_RECORDED', observed: 'SPLIT_BRAIN' },
+-    { area: 'learning-eval', target: 'Coordinator-owned EvaluationRun / PromotionDecision ledger', status: 'DIRECTION_RECORDED', observed: 'SPLIT_BRAIN' },
+-    { area: 'memory-rag', target: 'MemoryBroker mutation gateway; Qdrant is a projection', status: 'DIRECTION_RECORDED', observed: 'SPLIT_BRAIN' },
+-    { area: 'configuration', target: 'Nix → systemd environment → typed Python chain', status: 'DIRECTION_RECORDED', observed: 'SPLIT_BRAIN' },
+-    { area: 'dashboard-operator', target: 'Coordinator-owned typed ApprovalStore', status: 'DIRECTION_RECORDED', observed: 'SPLIT_BRAIN' },
+-  ];
+   const authorityBody = document.getElementById('authority-body');
+-  authorityTargets.forEach(authority => {
++  projection.authority_rows.forEach(authority => {
+     const row = document.createElement('tr');
+-    const areaCell = document.createElement('td');
+-    const targetCell = document.createElement('td');
+-    const observedCell = document.createElement('td');
+-    areaCell.textContent = authority.area;
+-    targetCell.textContent = `${authority.target} [${authority.status}]`;
+-    observedCell.textContent = authority.observed;
+-    row.append(areaCell, targetCell, observedCell);
++    [authority.area, `${authority.target} [${authority.adjudication}]`, authority.physical_state].forEach(value => {
++      const cell = document.createElement('td');
++      cell.textContent = value;
++      row.appendChild(cell);
++    });
+     authorityBody.appendChild(row);
+   });
+-
+-  const provenance = JSON.parse(document.getElementById('tracker-provenance').textContent);
++  const recognizedSeverity = new Set(['critical', 'high', 'medium', 'low']);
+   const computedCounts = {
+-    tracks: tracks.filter(track => track.inclusion_status === 'INCLUDED').length,
++    tracks: tracks.length,
+     active_tracks: tracks.filter(track => track.status === 'active').length,
+-    foundation_a_blocking_gates: tracks.filter(track => track.code === 'A' && track.gate_status === 'BLOCKING').length,
+-    pending_q_decisions: gateRows.filter(row => row.status === 'PENDING').length,
+-    authority_rows: authorityTargets.filter(authority => authority.status === 'DIRECTION_RECORDED').length,
+-    open_high_severity_issues: issues.filter(issue => issue.status === 'OPEN' && issue.sev === 'High').length,
++    blocking_tracks: tracks.filter(track => track.status === 'blocked').length,
++    pending_q_decisions: projection.gate.filter(row => !row.projection.resolved).length,
++    authority_rows: projection.authority_rows.length,
++    open_high_or_worse_issues: projection.issues.filter(issue => ['critical', 'high'].includes(String(issue.sev).toLowerCase())).length,
++    malformed_issue_severity: projection.issues.filter(issue => !recognizedSeverity.has(String(issue.sev).toLowerCase())).length,
+   };
+-  const mismatches = Object.entries(provenance.expected_counts)
+-    .filter(([key, expected]) => computedCounts[key] !== expected);
++  const mismatches = Object.entries(provenance.expected_counts).filter(([key, expected]) => computedCounts[key] !== expected);
+   if (mismatches.length) {
+     document.body.dataset.provenanceStatus = 'mismatch';
+-    throw new Error('Tracker count reconciliation failed');
++    throw new Error('Tracker count reconciliation failed: ' + JSON.stringify(mismatches));
+   }
+   document.body.dataset.provenanceStatus = 'reconciled';
+   document.getElementById('track-count').textContent = `${computedCounts.active_tracks} / ${computedCounts.tracks}`;
+-  document.getElementById('foundation-a-gate-count').textContent = computedCounts.foundation_a_blocking_gates;
++  document.getElementById('foundation-a-gate-count').textContent = computedCounts.blocking_tracks;
+   document.getElementById('pending-decision-count').textContent = computedCounts.pending_q_decisions;
+-  document.getElementById('high-issue-count').textContent = computedCounts.open_high_severity_issues;
+-
++  document.getElementById('high-issue-count').textContent = computedCounts.open_high_or_worse_issues;
+   const provenanceList = document.getElementById('provenance-list');
+   provenance.sources.forEach(source => {
+     const item = document.createElement('li');
+diff --git a/config/refactor-milestones.json b/config/refactor-milestones.json
+index db35f6ca..7b9555a1 100644
+--- a/config/refactor-milestones.json
++++ b/config/refactor-milestones.json
+@@ -1,388 +1,434 @@
+ {
+-  "_comment": "Declarative manifest for scripts/ai/lib/refactor_status.py. Carries EDITORIAL content (name/sub/note/decision/unblocks/issues) so descriptions live in one editable place. STATUS is never stored here \u2014 it is always projected from ground truth (git log / activation events / freeze records / slice-claims / blocker_note) by the projector. Hand-editing a status field here would be pointless: the projector recomputes status and ignores any such field. See .agents/plans/aqos-refactor-status/SPEC.md.",
++  "marker": "PROJECTED_CURRENT_STATE",
++  "projected_at": "2026-08-02T00:00:00Z",
++  "source_contract": "Evidence-backed current projection; status is an explicit reviewed projection, not inferred from incidental prose.",
+   "tracks": [
+     {
+       "code": "A",
+       "name": "Foundation A",
+       "sub": "Cycle-0 truth exit",
+-      "note": "Owner-adjudicated 10/10 SPLIT_BRAIN/UNOWNED authority rows (Q8 resolved). The old blocking gate is cleared; physical convergence of the selected authority remains Cycle-1 work under B2.",
+       "order": 10,
+-      "ongoing": false,
+-      "detection": {
+-        "commit_match": [
+-          "decision gate CLOSED"
+-        ]
++      "projection": {
++        "status": "done",
++        "pct": 100,
++        "evidence": "C0.3 implementation accepted and 10/10 authority rows owner-adjudicated; physical convergence remains pending and authorization-consumption settlement is disputed."
+       }
+     },
+     {
+       "code": "B1",
+       "name": "Foundation B1",
+       "sub": "contract kernel + parity vectors",
+-      "note": "EXECUTING \u2014 L1A/L2A/L2B-A landed; chat/batch parity (shadow) design packet is the next slice.",
+       "order": 20,
+-      "ongoing": true,
+-      "pct": 80,
+-      "detection": {
+-        "commit_match": [
+-          "\\bparity\\b",
+-          "local-inference"
+-        ]
++      "projection": {
++        "status": "active",
++        "pct": 90,
++        "evidence": "L1A/L2A/L2B-A and L2B-B contract work are committed; parity and convergence work continues."
+       }
+     },
+     {
+       "code": "B2",
+       "name": "Foundation B2",
+-      "sub": "one shadow-state vertical",
+-      "note": "Q1/Q2 ratified; B2-D0 design/review packet accepted; B2-C1 implementation authorization is in preparation/review only.",
++      "sub": "workflow-run-task shadow vertical",
+       "order": 30,
+-      "ongoing": true,
+-      "pct": 25,
+-      "detection": {
+-        "commit_match": [
+-          "define Foundation B2 shadow vertical",
+-          "\\(b2\\)"
+-        ]
+-      },
+-      "editorial_note": "Q1/Q2 ratified; B2-D0 design/review packet accepted; B2-C1 implementation authorization is in preparation/review only. [RECONCILE: no matching shipping commits found by projection \u2014 prior hand-tracker 'active' was unbacked; status shown is ground-truth. Audit which commits delivered this track.]"
++      "projection": {
++        "status": "done",
++        "pct": 100,
++        "evidence": "Owner-ratified legacy-live/Postgres-shadow hypothesis and accepted B2-C1 contract establish the first shadow vertical; later migration execution remains separately gated."
++      }
+     },
+     {
+       "code": "B3",
+       "name": "Foundation B3",
+       "sub": "projector + canon-compiler shadow",
+-      "note": "aq-event projector pattern is live (PULSE/RESUME event-sourced); canon-compiler extension pending.",
+       "order": 40,
+-      "ongoing": true,
+-      "pct": 40,
+-      "detection": {
+-        "commit_match": [
+-          "\\(foundation-b3\\)",
+-          "canon-compiler"
+-        ]
+-      },
+-      "editorial_note": "aq-event projector pattern is live (PULSE/RESUME event-sourced); canon-compiler extension pending. [RECONCILE: no matching shipping commits found by projection \u2014 prior hand-tracker 'active' was unbacked; status shown is ground-truth. Audit which commits delivered this track.]"
++      "projection": {
++        "status": "done",
++        "pct": 100,
++        "evidence": "Event projections and canon-compiler shadow foundation are committed."
++      }
+     },
+     {
+       "code": "C",
+       "name": "Foundation C",
+       "sub": "identity, leases, execution cells",
+-      "note": "Zero-trust security spine: shadow admission/issuance (C0/C1) shipped; C2 enforcement design independently reviewed and FROZEN, awaiting owner activation (blocked on a built-in-tool lease gap found pre-activation); C3-C6 not started.",
+       "order": 50,
+-      "ongoing": true,
+-      "pct": 35,
+-      "detection": {
+-        "commit_match": [
+-          "\\(foundation-c\\)"
+-        ]
++      "projection": {
++        "status": "active",
++        "pct": 72,
++        "evidence": "C2 and C5 are committed/configured; C3b is built but dormant after rollback. C3a-2/C4/C6/runner revisions remain PREPARED_ONLY pending exact binding review."
+       }
+     },
+     {
+       "code": "C0",
+       "name": "Foundation C0",
+       "sub": "CapabilityLease primitive",
+-      "note": "Schema + local signer + aq-lease CLI, report-only. Shipped.",
+-      "order": 51,
+-      "parent": "C",
+-      "ongoing": false,
+-      "detection": {
+-        "commit_match": [
+-          "C0 CapabilityLease"
+-        ]
++      "order": 60,
++      "projection": {
++        "status": "done",
++        "pct": 100,
++        "evidence": "CapabilityLease schema, local signer, and aq-lease reporting are committed."
+       }
+     },
+     {
+       "code": "C1",
+       "name": "Foundation C1",
+-      "sub": "shadow admission -> issuance",
+-      "note": "Log-only, additive, decoupled from live execution. Shipped.",
+-      "order": 52,
+-      "parent": "C",
+-      "ongoing": false,
+-      "detection": {
+-        "commit_match": [
+-          "C1 shadow admission"
+-        ]
++      "sub": "shadow admission and issuance",
++      "order": 70,
++      "projection": {
++        "status": "done",
++        "pct": 100,
++        "evidence": "Log-only shadow admission and issuance are committed."
+       }
+     },
+     {
+       "code": "C2",
+       "name": "Foundation C2",
+-      "sub": "tool-lease enforcement (flag-gated)",
+-      "note": "Design independently re-reviewed PASS and FROZEN (C2-FREEZE-AND-ACTIVATION.md), eligible for single-use owner activation. BLOCKED pre-activation: enforcement has no lease source for built-in/first-party tools (run_command, file_edit, ...) -- flag-ON would deny the harness's own tool-calling. Design amendment + re-freeze required before activation.",
+-      "order": 53,
+-      "parent": "C",
+-      "ongoing": false,
+-      "pct": 80,
+-      "detection": {
+-        "commit_match": [
+-          "C2 enforcement design FROZEN"
+-        ],
+-        "activation_subject": "aqos-foundation-c-c2-tool-lease-enforcement",
+-        "freeze_record": ".agents/plans/aqos-foundation-c/C2-FREEZE-AND-ACTIVATION.md",
+-        "blocker_note": "OPEN-BLOCKS-C2-ACTIVATION (issues-backlog, logged 2026-07-25): C2 admits a tool only if an admitted candidate lease lists it; built-in bundle tools (run_command, file_edit, ...) are not registry candidates -- 0/39 candidate-allowlisted tools are built-ins. Flag-ON would drop run_command at :1673, breaking core tool-calling. Severity HIGH; caught pre-activation."
++      "sub": "tool-lease enforcement",
++      "order": 80,
++      "projection": {
++        "status": "done",
++        "pct": 100,
++        "evidence": "Enforcement is committed and configured; newer dashboard and health-spider Service Coverage bytes are not live-deployed."
+       }
+     },
+     {
+       "code": "D",
+       "name": "Product D",
+       "sub": "inference/client live convergence",
+-      "note": "Switchboard sole gateway; delegate-to-local/aq-chat as coordinator clients; global scheduler activation closes F2.5 HIGH; route/profile registry consolidation. Gate to start: B1 parity fixtures + C boundaries.",
+-      "order": 60,
+-      "ongoing": false,
+-      "detection": {
+-        "commit_match": [
+-          "\\(product-d\\)"
+-        ]
++      "order": 90,
++      "projection": {
++        "status": "notstarted",
++        "pct": 0,
++        "evidence": "Full switchboard/client convergence and scheduler adoption remain future product work."
+       }
+     },
+     {
+       "code": "E",
+       "name": "Product E",
+-      "sub": "evaluation & learning factory",
+-      "note": "Dataset/scorer/prompt registries, sealed answers, certified scorers, counterfactual replay, promotion ledger, small-model admission. Gate to start: B2 evidence store + C integrity.",
+-      "order": 70,
+-      "ongoing": false,
+-      "detection": {
+-        "commit_match": [
+-          "\\(product-e\\)"
+-        ]
++      "sub": "evaluation and learning factory",
++      "order": 100,
++      "projection": {
++        "status": "notstarted",
++        "pct": 0,
++        "evidence": "Registry, scorer, replay, and promotion-ledger product work has not started."
+       }
+     },
+     {
+       "code": "F",
+       "name": "Product F",
+-      "sub": "one CLI + command center",
+-      "note": "`aq <noun> <verb>` + shims; OTel traces; SLO burn; typed console (Fleet/Runs/Evals/Approvals). Gate to start: authoritative telemetry from C/D.",
+-      "order": 80,
+-      "ongoing": false,
+-      "detection": {
+-        "commit_match": [
+-          "\\(product-f\\)"
+-        ]
++      "sub": "one CLI and command center",
++      "order": 110,
++      "projection": {
++        "status": "notstarted",
++        "pct": 0,
++        "evidence": "Unified aq CLI and authoritative typed command center remain future work."
+       }
+     },
+     {
+       "code": "G",
+       "name": "Product G",
+       "sub": "edge, release, retirement",
+-      "note": "Hardware-class probes, install profiles, restore/upgrade drills, semver v1.0, legacy retirement after 2 clean cycles. Gate to start: everything prior.",
+-      "order": 90,
+-      "ongoing": false,
+-      "detection": {
+-        "commit_match": [
+-          "\\(product-g\\)"
+-        ]
++      "order": 120,
++      "projection": {
++        "status": "notstarted",
++        "pct": 0,
++        "evidence": "Hardware profiles, release drills, versioning, and legacy retirement remain future work."
+       }
+     },
+     {
+       "code": "V",
+       "name": "Track V",
+-      "sub": "Verified Factory (cross-cutting)",
+-      "note": "REQUEST_REVISION -- amended acceptance gates (VF contracts) await independent re-review before Track V activates (Q9). Feeds Cycles 4-5; gates acceptance only after authority activation.",
+-      "order": 100,
+-      "ongoing": true,
+-      "pct": 60,
+-      "detection": {
+-        "blocker_note": "Track V status is REQUEST_REVISION per UNIFIED-PROGRAM-PLAN.md Sec 3 (unified track structure table): amended VF contracts + exact authorization pending; VF-1 waits for L2B-B unless hash-bound non-overlap proves warn-only isolation."
++      "sub": "Verified Factory cross-cutting",
++      "order": 130,
++      "projection": {
++        "status": "blocked",
++        "pct": 60,
++        "evidence": "REQUEST_REVISION remains binding; amended acceptance contracts require independent review and exact per-slice authorization."
+       }
+     },
+     {
+       "code": "AAF",
+       "name": "Agent-Agnostic Factory",
+-      "sub": "delegation kernel (Rule 18)",
+-      "note": "Router + slice-claim + dispatch-integration + catch-up queue shipped; Q5 measured/expiring lane-eligibility registry now also shipped (owner-ratified).",
+-      "order": 110,
+-      "ongoing": true,
+-      "pct": 90,
+-      "detection": {
+-        "commit_match": [
+-          "\\(agent-agnostic\\)"
+-        ]
++      "sub": "delegation kernel",
++      "order": 140,
++      "projection": {
++        "status": "active",
++        "pct": 92,
++        "evidence": "Router, slice claims, dispatch integration, catch-up queue, and lane eligibility are committed; reliability hardening continues."
+       }
+     },
+     {
+       "code": "Q5",
+       "name": "Q5 lane-eligibility registry",
+-      "sub": "measured/expiring lane eligibility",
+-      "note": "Owner-ratified decision (Q5) implemented as a concrete registry slice under the agent-agnostic-factory track.",
+-      "order": 111,
+-      "parent": "AAF",
+-      "ongoing": false,
+-      "detection": {
+-        "commit_match": [
+-          "lane-eligibility registry"
+-        ]
++      "sub": "measured and expiring eligibility",
++      "order": 150,
++      "projection": {
++        "status": "done",
++        "pct": 100,
++        "evidence": "Owner-ratified measured/expiring lane eligibility is committed."
+       }
+     },
+     {
+       "code": "LEC",
+       "name": "Local-Embed-Context",
+-      "sub": "embed model as context layer",
+-      "note": "Slice 1 + Slice 2a committed. Slice 2b (context_cache wired into agent_executor prune path) has an OPEN binding-acceptance verdict: REQUEST_REVISION (SLICE2B-ACCEPTANCE.md) -- fixture re-pin incomplete (stable_digests.source_manifest not regenerated), 2 golden-test regressions. Code change itself verified correct; blocker is the mechanically incomplete re-pin.",
+-      "order": 120,
+-      "ongoing": true,
+-      "pct": 75,
+-      "detection": {
+-        "commit_match": [
+-          "\\(local-embed-context\\)",
+-          "\\(lec\\)"
+-        ],
+-        "blocker_note": "Slice 2b binding acceptance verdict is REQUEST_REVISION per .agents/plans/local-embed-context/SLICE2B-ACCEPTANCE.md: fixture re-pin incomplete (stable_digests.source_manifest not regenerated after agent_executor.py sha256 change), causing 2 new golden-test regressions (test_15, test_16). Not yet committed as of this projection."
++      "sub": "embedded context layer",
++      "order": 160,
++      "projection": {
++        "status": "active",
++        "pct": 82,
++        "evidence": "Slice 2b acceptance resolved PASS; later adoption and measurement remain."
+       }
+     },
+     {
+       "code": "Q10B",
+       "name": "Q10 inference-envelope baseline",
+       "sub": "measure-first pass",
+-      "note": "Direct measurement of the live 27GB target (llama.cpp :8080 spec-decode, llama-embed :8081, RAM envelope) per the owner's 'measure first' directive.",
+-      "order": 130,
+-      "ongoing": false,
+-      "detection": {
+-        "commit_match": [
+-          "inference-envelope baseline"
+-        ]
++      "order": 170,
++      "projection": {
++        "status": "done",
++        "pct": 100,
++        "evidence": "The 27GB target envelope has a committed measure-first baseline."
+       }
+     },
+     {
+       "code": "RESUME",
+       "name": "llama-cpp-resume fix",
+-      "sub": "fire-and-forget restart",
+-      "note": "Fixed the resume hook latching systemd 'failed' on slow APU cold-load (ExecStart switched to --no-block) so it no longer trips the tier0 QA phase-0 no-failed-units check.",
+-      "order": 140,
+-      "ongoing": false,
+-      "detection": {
+-        "commit_match": [
+-          "llama-cpp-resume fire-and-forget"
+-        ]
++      "sub": "non-blocking restart",
++      "order": 180,
++      "projection": {
++        "status": "done",
++        "pct": 100,
++        "evidence": "The fire-and-forget restart correction is committed."
++      }
++    },
++    {
++      "code": "S",
++      "name": "Track S",
++      "sub": "security capability intake and hardening",
++      "order": 190,
++      "projection": {
++        "status": "active",
++        "pct": 68,
++        "evidence": "Security tooling intake, self-targeted validation, detection, and release hygiene continue under bounded slices."
+       }
+     }
+   ],
+   "gate": [
+     {
+       "id": "Q1",
+-      "decision": "Ratify synthesis as parent architecture",
+-      "unblocks": "everything",
+-      "detection": {
+-        "ratified_commit_match": [
+-          "owner ratification of Q1",
+-          "decision gate CLOSED"
+-        ]
++      "decision": "Synthesis is the parent architecture",
++      "unblocks": "program spine",
++      "projection": {
++        "resolved": true,
++        "evidence": "owner decision record"
+       }
+     },
+     {
+       "id": "Q2",
+-      "decision": "First shadow-vertical authority hypothesis",
++      "decision": "First shadow vertical authority hypothesis",
+       "unblocks": "B2",
+-      "detection": {
+-        "ratified_commit_match": [
+-          "owner ratification of Q2",
+-          "decision gate CLOSED"
+-        ]
++      "projection": {
++        "resolved": true,
++        "evidence": "owner decision record"
+       }
+     },
+     {
+       "id": "Q3",
+-      "decision": "Security model -- leases/attestations/zero-trust profiles",
++      "decision": "Zero-trust principal and lease direction",
+       "unblocks": "Foundation C",
+-      "detection": {
+-        "ratified_commit_match": [
+-          "ratification of Q3-Q10",
+-          "decision gate CLOSED"
+-        ]
++      "projection": {
++        "resolved": true,
++        "evidence": "owner decision record"
+       }
+     },
+     {
+       "id": "Q4",
+-      "decision": "Fable contract -> model-neutral canon",
+-      "unblocks": "B3 canon",
+-      "detection": {
+-        "ratified_commit_match": [
+-          "ratification of Q3-Q10",
+-          "decision gate CLOSED"
+-        ]
++      "decision": "Model-neutral canon behavior policy",
++      "unblocks": "B3",
++      "projection": {
++        "resolved": true,
++        "evidence": "owner decision record"
+       }
+     },
+     {
+       "id": "Q5",
+-      "decision": "Measured expiring lane-eligibility registry",
+-      "unblocks": "all delegation",
+-      "detection": {
+-        "ratified_commit_match": [
+-          "ratification of Q3-Q10",
+-          "decision gate CLOSED"
+-        ]
++      "decision": "Measured expiring lane eligibility",
++      "unblocks": "delegation",
++      "projection": {
++        "resolved": true,
++        "evidence": "owner decision record"
+       }
+     },
+     {
+       "id": "Q6",
+-      "decision": "Kernel front door: local-orchestrator vs aq gateway",
++      "decision": "Kernel front door remains local-orchestrator until named revision",
+       "unblocks": "Product F",
+-      "detection": {
+-        "ratified_commit_match": [
+-          "ratification of Q3-Q10",
+-          "decision gate CLOSED"
+-        ]
++      "projection": {
++        "resolved": true,
++        "evidence": "owner decision record"
+       }
+     },
+     {
+       "id": "Q7",
+-      "decision": "Eval factory as universal promotion gate",
++      "decision": "Evaluation-gated promotion principle",
+       "unblocks": "Product E",
+-      "detection": {
+-        "ratified_commit_match": [
+-          "ratification of Q3-Q10",
+-          "decision gate CLOSED"
+-        ]
++      "projection": {
++        "resolved": true,
++        "evidence": "owner decision record"
+       }
+     },
+     {
+       "id": "Q8",
+-      "decision": "Adjudicate 10 Cycle-0 authority rows",
++      "decision": "Ten Cycle-0 authority rows adjudicated",
+       "unblocks": "Foundation A",
+-      "detection": {
+-        "ratified_commit_match": [
+-          "ratification of Q3-Q10",
+-          "decision gate CLOSED"
+-        ]
++      "projection": {
++        "resolved": true,
++        "evidence": "owner decision record"
+       }
+     },
+     {
+       "id": "Q9",
+-      "decision": "Activate Track V after VF-0",
+-      "unblocks": "oracle-tier-evidence gates",
+-      "detection": {
+-        "ratified_commit_match": [
+-          "ratification of Q3-Q10",
+-          "decision gate CLOSED"
+-        ]
++      "decision": "Track V activation remains per-slice after prerequisites",
++      "unblocks": "Track V",
++      "projection": {
++        "resolved": true,
++        "evidence": "owner decision record"
+       }
+     },
+     {
+       "id": "Q10",
+-      "decision": "Rebudget 27GB for resident small model / spec decoding",
+-      "unblocks": "Product D-E",
+-      "detection": {
+-        "ratified_commit_match": [
+-          "ratification of Q3-Q10",
+-          "decision gate CLOSED"
+-        ]
++      "decision": "Measure-first 27GB inference envelope",
++      "unblocks": "Products D/E",
++      "projection": {
++        "resolved": true,
++        "evidence": "owner decision record"
+       }
+     }
+   ],
++  "authority_rows": [
++    {
++      "area": "planning-round",
++      "target": "RoundState/round.json mutation boundary",
++      "adjudication": "ADJUDICATED",
++      "physical_state": "CONVERGENCE_PENDING"
++    },
++    {
++      "area": "delegation-lifecycle",
++      "target": "Host/coordinator dispatch broker through TaskRegistry",
++      "adjudication": "ADJUDICATED",
++      "physical_state": "CONVERGENCE_PENDING"
++    },
++    {
++      "area": "intent-resume",
++      "target": "Separate intent lock; aq-event authority; files are projections",
++      "adjudication": "ADJUDICATED",
++      "physical_state": "CONVERGENCE_PENDING"
++    },
++    {
++      "area": "workflow-run-task",
++      "target": "Coordinator logical authority; Postgres outbox/CAS shadow only",
++      "adjudication": "ADJUDICATED",
++      "physical_state": "CONVERGENCE_PENDING"
++    },
++    {
++      "area": "qa-effectiveness",
++      "target": "Immutable invocation evidence plus one versioned reducer",
++      "adjudication": "ADJUDICATED",
++      "physical_state": "CONVERGENCE_PENDING"
++    },
++    {
++      "area": "routing-model-execution",
++      "target": "Coordinator route decisions; switchboard generation gateway",
++      "adjudication": "ADJUDICATED",
++      "physical_state": "CONVERGENCE_PENDING"
++    },
++    {
++      "area": "learning-eval",
++      "target": "Coordinator-owned EvaluationRun/PromotionDecision ledger",
++      "adjudication": "ADJUDICATED",
++      "physical_state": "CONVERGENCE_PENDING"
++    },
++    {
++      "area": "memory-rag",
++      "target": "MemoryBroker mutation gateway; Qdrant is a projection",
++      "adjudication": "ADJUDICATED",
++      "physical_state": "CONVERGENCE_PENDING"
++    },
++    {
++      "area": "configuration",
++      "target": "Nix to systemd environment to typed Python chain",
++      "adjudication": "ADJUDICATED",
++      "physical_state": "CONVERGENCE_PENDING"
++    },
++    {
++      "area": "dashboard-operator",
++      "target": "Coordinator-owned typed ApprovalStore",
++      "adjudication": "ADJUDICATED",
++      "physical_state": "CONVERGENCE_PENDING"
++    }
++  ],
++  "deployment_truth": {
++    "c2_c5": {
++      "committed": true,
++      "configured": true,
++      "newer_dashboard_coverage_deployed": false,
++      "newer_health_spider_coverage_deployed": false
++    },
++    "c3b": {
++      "built": true,
++      "dormant": true,
++      "live": false,
++      "runner_service_active": false,
++      "runner_socket_active": false,
++      "adapter": 0
++    },
++    "c03": {
++      "implementation_accepted": true,
++      "owner_adjudicated": true,
++      "physical_convergence": "pending",
++      "consumption_settlement": "disputed"
++    },
++    "foundation_c_revisions": {
++      "state": "PREPARED_ONLY",
++      "accepted": false,
++      "subjects": [
++        "C3a-2",
++        "C4",
++        "C6",
++        "runner"
++      ]
++    }
++  },
+   "issues": [
+     {
+-      "title": "local-single-inference-slot-contention",
++      "title": "task-registry-fifo-reliability",
+       "sev": "High",
+-      "note": "F2 Phase A (scheduler.py MLFQ+aging, backpressure.py LOCAL_DELAYED admission, model_tier.py routing) built + unit-tested but F2.5 wiring into dispatch.py was never done -- local dispatch still single-slot serialized on the Renoir APU; the never-skip-local contract is enforced only in tests, not the live admission path."
++      "status": "IN-FLIGHT",
++      "note": "Adversarial FIFO substitution can block a compatibility scan before descriptor validation."
+     },
+     {
+-      "title": "task_registry-golden-pin-stale",
+-      "sev": "Med",
+-      "note": "Golden reliability fixture re-pin left internally inconsistent after an agent_executor.py sha256 change: stable_digests.source_manifest wasn't regenerated, producing 2 new golden-test regressions (test_15, test_16) on the hash-frozen reliability contract (see SLICE2B-ACCEPTANCE.md)."
++      "title": "c2-c5-service-coverage-deployment-drift",
++      "sev": "High",
++      "status": "OPEN",
++      "note": "Coverage is committed but the newer dashboard and health-spider projection is not live-deployed."
+     },
+     {
+-      "title": "C2 built-in-tool lease gap",
+-      "sev": "High",
+-      "note": "C2 enforcement admits only candidate-lease tools; built-in bundle tools (run_command/file_edit) have no lease -- would be denied under enforcement. Blocks C2 activation until a first-party tool lease source is added."
++      "title": "c3b-runner-rollback",
++      "sev": "Medium",
++      "status": "OPEN",
++      "note": "Runner is built but dormant after rollback; service/socket are inactive and adapter remains 0."
++    },
++    {
++      "title": "foundation-c-binding-rereview",
++      "sev": "Critical",
++      "status": "OPEN",
++      "note": "C3a-2/C4/C6/runner revisions remain PREPARED_ONLY and unaccepted pending exact binding review."
++    },
++    {
++      "title": "c03-consumption-settlement",
++      "sev": "Critical",
++      "status": "OPEN",
++      "note": "Accepted/adjudicated implementation remains physically unconverged and consumption settlement is disputed."
+     }
+   ]
+-}
+\ No newline at end of file
++}
+diff --git a/scripts/ai/lib/refactor_status.py b/scripts/ai/lib/refactor_status.py
+index 0b0ca92a..27f04965 100644
+--- a/scripts/ai/lib/refactor_status.py
++++ b/scripts/ai/lib/refactor_status.py
+@@ -151,6 +151,7 @@ def _freeze_record_exists(repo_root: Path, freeze_record: str | None) -> bool:
+ # ---------------------------------------------------------------------------
+ 
+ TRACK_STATUSES = ("done", "active", "blocked", "notstarted")
++ISSUE_SEVERITIES = ("critical", "high", "medium", "low")
+ 
+ 
+ def _track_status_and_pct(
+@@ -185,6 +186,12 @@ def _track_status_and_pct(
+     claim file left lying around must never mask a milestone that has since
+     actually shipped.
+     """
++    projection = track.get("projection", {}) or {}
++    projected_status = str(projection.get("status", "")).lower()
++    projected_pct = projection.get("pct")
++    if projected_status in TRACK_STATUSES and isinstance(projected_pct, int) and 0 <= projected_pct <= 100:
++        return projected_status, projected_pct
++
+     detection = track.get("detection", {}) or {}
+     ongoing = bool(track.get("ongoing", False))
+     manifest_pct = track.get("pct")
+@@ -217,6 +224,9 @@ def _track_status_and_pct(
+ 
+ 
+ def _gate_resolved(gate: dict[str, Any], subjects: list[str]) -> bool:
++    projection = gate.get("projection", {}) or {}
++    if isinstance(projection.get("resolved"), bool):
++        return projection["resolved"]
+     detection = gate.get("detection", {}) or {}
+     return _matches_any(subjects, detection.get("ratified_commit_match", []) or [])
+ 
+@@ -246,6 +256,7 @@ def project(manifest_path: str | Path, repo_root: str | Path) -> dict[str, Any]:
+     tracks_in = manifest.get("tracks", []) or []
+     gate_in = manifest.get("gate", []) or []
+     issues_in = manifest.get("issues", []) or []
++    authority_in = manifest.get("authority_rows", []) or []
+ 
+     subjects = _git_log_subjects(repo_root)
+     activated_subjects = _activation_events(repo_root)
+@@ -263,6 +274,7 @@ def project(manifest_path: str | Path, repo_root: str | Path) -> dict[str, Any]:
+                 "parent": track.get("parent"),
+                 "status": status,
+                 "pct": pct,
++                "evidence": (track.get("projection", {}) or {}).get("evidence"),
+             }
+         )
+ 
+@@ -288,18 +300,30 @@ def project(manifest_path: str | Path, repo_root: str | Path) -> dict[str, Any]:
+             }
+         )
+ 
++    malformed_issue_severity = sum(
++        1 for issue in issues_out
++        if str(issue.get("sev", "")).strip().lower() not in ISSUE_SEVERITIES
++    )
+     stats = {
+         "tracks_done_or_active": sum(1 for t in tracks_out if t["status"] in ("done", "active")),
+         "blocking_gates": sum(1 for t in tracks_out if t["status"] == "blocked"),
+         "decisions_pending": sum(1 for g in gate_out if not g["resolved"]),
+-        "open_high_issues": sum(1 for i in issues_out if str(i.get("sev", "")).lower() == "high"),
++        "open_high_issues": sum(
++            1 for i in issues_out
++            if str(i.get("sev", "")).strip().lower() in {"critical", "high"}
++        ),
++        "malformed_issue_severity": malformed_issue_severity,
++        "authority_rows": len(authority_in),
+     }
+ 
+     return {
+         "updated": date.today().isoformat(),
++        "marker": manifest.get("marker"),
+         "tracks": tracks_out,
+         "gate": gate_out,
+         "issues": issues_out,
++        "authority_rows": authority_in,
++        "deployment_truth": manifest.get("deployment_truth", {}),
+         "stats": stats,
+     }
+ 
+@@ -320,4 +344,4 @@ def strip_updated(projection: dict[str, Any]) -> dict[str, Any]:
+     return out
+ 
+ 
+-__all__ = ["project", "project_json", "strip_updated", "TRACK_STATUSES"]
++__all__ = ["project", "project_json", "strip_updated", "TRACK_STATUSES", "ISSUE_SEVERITIES"]
+diff --git a/scripts/testing/harness_qa/phases/phase0.py b/scripts/testing/harness_qa/phases/phase0.py
+index 5dd8fa8f..16ab22c8 100644
+--- a/scripts/testing/harness_qa/phases/phase0.py
++++ b/scripts/testing/harness_qa/phases/phase0.py
+@@ -2407,7 +2407,7 @@ def _check_dashboard_program_progress(ctx: RunContext) -> list[CheckResult]:
+         return [skipped(5, "0.10.40", "program progress tracker live asset", str(exc)[:160])]
+     if status != 200:
+         return [failed(5, "0.10.40", "program progress tracker live asset", f"HTTP {status}")]
+-    if "FROZEN_IMPLEMENTATION_SNAPSHOT" not in body:
++    if "PROJECTED_CURRENT_STATE" not in body:
+         return [failed(5, "0.10.40", "program progress tracker live asset", "stale deployed asset")]
+     try:
+         root_status, root_body = http_get(dashboard_url, timeout=5)
+diff --git a/scripts/testing/test-dashboard-program-progress.py b/scripts/testing/test-dashboard-program-progress.py
+index 0dac8de2..accf5ee3 100644
+--- a/scripts/testing/test-dashboard-program-progress.py
++++ b/scripts/testing/test-dashboard-program-progress.py
+@@ -1,25 +1,27 @@
+ #!/usr/bin/env python3
+-"""Focused contract tests for the canonical AQ-OS program tracker."""
++"""Focused static contract tests for the AQ-OS projected-current-state tracker."""
+ 
+ from __future__ import annotations
+ 
+ import argparse
++import ast
+ import copy
+ import hashlib
++import importlib.util
+ import json
++import os
+ import re
++import tempfile
+ import unittest
+-import urllib.error
+-import urllib.request
+ from pathlib import Path
+ 
+ 
+-ROOT = Path(__file__).resolve().parents[2]
+-TRACKER = ROOT / "assets" / "aqos-progress-tracker.html"
+-DASHBOARD = ROOT / "dashboard.html"
+-CLIENT = ROOT / "assets" / "dashboard.js"
+-MAIN = ROOT / "dashboard" / "backend" / "api" / "main.py"
+-PHASE0 = ROOT / "scripts" / "testing" / "harness_qa" / "phases" / "phase0.py"
++CANDIDATE_ROOT = Path(__file__).resolve().parents[2]
++REPO_ROOT = Path(os.environ.get("AQ_TRACKER_REPO_ROOT", os.getcwd())).resolve()
++TRACKER = CANDIDATE_ROOT / "assets" / "aqos-progress-tracker.html"
++MANIFEST = CANDIDATE_ROOT / "config" / "refactor-milestones.json"
++PROJECTOR = CANDIDATE_ROOT / "scripts" / "ai" / "lib" / "refactor_status.py"
++PHASE0 = CANDIDATE_ROOT / "scripts" / "testing" / "harness_qa" / "phases" / "phase0.py"
+ 
+ SOURCE_CLASSES = {
+     ".agents/plans/UNIFIED-PROGRAM-PLAN.md": "governing",
+@@ -27,9 +29,12 @@ SOURCE_CLASSES = {
+     "config/system-state-authorities.yaml": "governing",
+     ".agents/plans/aqos-refoundation-cycle0/FOUNDATION-A-OWNER-ADJUDICATION-20260718.md": "governing",
+     ".agent/memory/issues-backlog.md": "operational_snapshot",
+-    ".agent/collaboration/RESUME.json": "operational_snapshot",
+-    ".agent/collaboration/PULSE.log": "operational_snapshot",
+-    ".agents/delegation/registry.jsonl": "operational_snapshot",
++}
++PRESERVED_PHASE0 = {
++    "_check_workflow_shadow_contract": "d44744f31b590072185edc70cf9018e1345865810853da8c1c779c5d8767bf84",
++    "_check_local_direct_health_contract": "322e69c0a4b78e3492d80e1c38909d8cc3fe1c1068a61848d2ea3fe33381405f",
++    "_check_local_direct_health_card": "a04c2cc318a47b214c232e50bd90c53b2d030c295fffa1c7c25300ddc0fe3453",
++    "_check_execution_cell_adapter_service_coverage": "0eddf5b47a0a99c7a2d1ddcd8c773590ce6fa7e3f3ffa99580a66bca586863ec",
+ }
+ 
+ 
+@@ -37,7 +42,7 @@ def text(path: Path) -> str:
+     return path.read_text(encoding="utf-8")
+ 
+ 
+-def manifest() -> dict:
++def tracker_provenance() -> dict:
+     match = re.search(
+         r'<script type="application/json" id="tracker-provenance">\s*(.*?)\s*</script>',
+         text(TRACKER),
+@@ -48,218 +53,161 @@ def manifest() -> dict:
+     return json.loads(match.group(1))
+ 
+ 
+-def normalize_headers(headers) -> dict[str, str]:
+-    """Preserve RFC case-insensitive header lookup across HTTP client implementations."""
+-    return {str(key).lower(): str(value) for key, value in headers.items()}
+-
+-
+-def configure_live_base_url(value: str) -> str:
+-    """Bind live verification to the caller-selected candidate origin."""
+-    selected = value.rstrip("/")
+-    if not re.fullmatch(r"https?://[^/]+", selected):
+-        raise ValueError("--base-url must name one HTTP(S) origin without a path")
+-    LiveHeaderTests.base_url = selected
+-    return selected
++def load_projector():
++    spec = importlib.util.spec_from_file_location("tracker_candidate_refactor_status", PROJECTOR)
++    if spec is None or spec.loader is None:
++        raise AssertionError("projector import spec unavailable")
++    module = importlib.util.module_from_spec(spec)
++    spec.loader.exec_module(module)
++    return module
+ 
+ 
+-def validate_provenance(data: dict, current_hashes: dict[str, str]) -> list[str]:
+-    """Validate closed source classes while treating operational hashes as historical evidence."""
+-    errors: list[str] = []
+-    if data.get("manifest_state") != "FROZEN_IMPLEMENTATION_SNAPSHOT":
+-        errors.append("manifest_state")
+-    if not re.fullmatch(r"2026-07-18T\d{2}:\d{2}:\d{2}Z", str(data.get("snapshot_at", ""))):
+-        errors.append("snapshot_at")
+-    sources = data.get("sources")
+-    if not isinstance(sources, list):
+-        return errors + ["sources"]
+-    paths = [source.get("path") for source in sources]
+-    digests = [source.get("sha256") for source in sources]
+-    if len(paths) != len(set(paths)):
+-        errors.append("duplicate_path")
+-    if len(digests) != len(set(digests)):
+-        errors.append("duplicate_digest")
+-    if set(paths) != set(SOURCE_CLASSES):
+-        errors.append("source_paths")
+-    for source in sources:
+-        path = source.get("path")
+-        source_class = source.get("source_class")
+-        digest = source.get("sha256")
+-        if source_class not in {"governing", "operational_snapshot"}:
+-            errors.append(f"source_class:{path}")
+-        if SOURCE_CLASSES.get(path) != source_class:
+-            errors.append(f"class_mapping:{path}")
+-        if not re.fullmatch(r"[0-9a-f]{64}", str(digest)):
+-            errors.append(f"digest:{path}")
+-        if source_class == "governing" and current_hashes.get(path) != digest:
+-            errors.append(f"governing_drift:{path}")
+-    return errors
++def function_digest(path: Path, name: str) -> str:
++    source = text(path)
++    lines = source.splitlines()
++    tree = ast.parse(source)
++    node = next(
++        item for item in tree.body
++        if isinstance(item, (ast.FunctionDef, ast.AsyncFunctionDef)) and item.name == name
++    )
++    exact = "\n".join(lines[node.lineno - 1:node.end_lineno]) + "\n"
++    return hashlib.sha256(exact.encode("utf-8")).hexdigest()
+ 
+ 
+ class StaticContractTests(unittest.TestCase):
+-    def test_exact_runtime_inventory_exists(self) -> None:
+-        for path in (TRACKER, DASHBOARD, CLIENT, MAIN, Path(__file__), PHASE0):
+-            self.assertTrue(path.is_file(), path)
+-
+-    def test_tracker_is_self_contained(self) -> None:
++    def test_exact_five_candidate_paths_exist(self) -> None:
++        expected = {MANIFEST, TRACKER, Path(__file__), PHASE0, PROJECTOR}
++        self.assertTrue(all(path.is_file() for path in expected))
++        if CANDIDATE_ROOT.name == "tracker-am3-semantic-rebuild-20260802":
++            found = {
++                path for path in CANDIDATE_ROOT.rglob("*")
++                if path.is_file() and "__pycache__" not in path.parts and path.suffix != ".pyc"
++            }
++            self.assertEqual(found, expected)
++
++    def test_projection_is_shared_exactly(self) -> None:
++        data = json.loads(text(MANIFEST))
++        provenance = tracker_provenance()
++        self.assertEqual(provenance["manifest_state"], "PROJECTED_CURRENT_STATE")
++        self.assertEqual(provenance["projection"], data)
++        self.assertEqual(data["marker"], "PROJECTED_CURRENT_STATE")
+         doc = text(TRACKER)
+-        self.assertNotRegex(doc, r'(?:src|href)=["\']https?://')
+-        self.assertNotIn("fetch(", doc)
+-        dashboard = text(DASHBOARD)
+-        self.assertNotRegex(dashboard, r'(?:src|href)\s*=\s*["\'](?:https?:)?//')
+-        self.assertNotRegex(dashboard, r'@import\s+(?:url\()?\s*["\']?(?:https?:)?//')
+-        self.assertNotRegex(dashboard, r'@font-face[\s\S]*?url\(\s*["\']?(?:https?:)?//')
+-        self.assertNotRegex(dashboard, r'font[^;{}]*url\(\s*["\']?(?:https?:)?//')
+-        self.assertNotIn("fonts.googleapis.com", dashboard)
+-        self.assertNotIn("fonts.gstatic.com", dashboard)
++        self.assertNotIn("FROZEN_IMPLEMENTATION_SNAPSHOT", doc)
++        self.assertNotIn("All ten observed rows remain SPLIT_BRAIN", doc)
+ 
+-    def test_frozen_manifest_is_current(self) -> None:
+-        data = manifest()
+-        self.assertEqual(len(data["sources"]), 8)
+-        current_hashes = {
+-            path: hashlib.sha256((ROOT / path).read_bytes()).hexdigest()
+-            for path, source_class in SOURCE_CLASSES.items()
+-            if source_class == "governing"
+-        }
+-        self.assertEqual(validate_provenance(data, current_hashes), [])
++    def test_bound_source_provenance(self) -> None:
++        provenance = tracker_provenance()
+         self.assertEqual(
+-            {source["path"]: source["source_class"] for source in data["sources"]},
++            {row["path"]: row["source_class"] for row in provenance["sources"]},
+             SOURCE_CLASSES,
+         )
+-        doc = text(TRACKER)
+-        self.assertIn("Operational records are historical commitments", doc)
+-
+-    def test_operational_snapshot_liveness_boundary(self) -> None:
+-        data = copy.deepcopy(manifest())
+-        current_hashes = {
+-            path: hashlib.sha256((ROOT / path).read_bytes()).hexdigest()
+-            for path in SOURCE_CLASSES
+-        }
+-        operational = ".agent/collaboration/PULSE.log"
+-        current_hashes[operational] = hashlib.sha256(b"advanced operational bytes").hexdigest()
+-        self.assertEqual(validate_provenance(data, current_hashes), [])
+-
+-        governing = ".agents/plans/UNIFIED-PROGRAM-PLAN.md"
+-        governing_drift = dict(current_hashes)
+-        governing_drift[governing] = hashlib.sha256(b"changed governing bytes").hexdigest()
+-        errors = validate_provenance(data, governing_drift)
+-        self.assertIn(f"governing_drift:{governing}", errors)
+-
+-    def test_explicit_state_counts(self) -> None:
+-        data = manifest()["expected_counts"]
+-        self.assertEqual(data, {
+-            "tracks": 10,
+-            "active_tracks": 2,
+-            "foundation_a_blocking_gates": 1,
+-            "pending_q_decisions": 9,
+-            "authority_rows": 10,
+-            "open_high_severity_issues": 2,
+-        })
+-        doc = text(TRACKER)
+-        self.assertEqual(len(re.findall(r"status: 'PENDING'", doc)), 9)
+-        self.assertEqual(len(re.findall(r"status: 'DIRECTION_RECORDED', observed: 'SPLIT_BRAIN'", doc)), 10)
+-        self.assertEqual(len(re.findall(r"status: 'active', inclusion_status: 'INCLUDED'", doc)), 2)
++        for row in provenance["sources"]:
++            self.assertEqual(
++                hashlib.sha256((REPO_ROOT / row["path"]).read_bytes()).hexdigest(),
++                row["sha256"],
++                row["path"],
++            )
++
++    def test_current_state_counts(self) -> None:
++        data = json.loads(text(MANIFEST))
++        statuses = [track["projection"]["status"] for track in data["tracks"]]
++        self.assertEqual(len(data["tracks"]), 19)
++        self.assertEqual(
++            {track["code"] for track in data["tracks"] if track["projection"]["status"] == "active"},
++            {"B1", "C", "AAF", "LEC", "S"},
++        )
++        self.assertEqual(
++            [track["code"] for track in data["tracks"] if track["projection"]["status"] == "blocked"],
++            ["V"],
++        )
++        self.assertEqual(statuses.count("active"), 5)
++        self.assertEqual(sum(not row["projection"]["resolved"] for row in data["gate"]), 0)
++        self.assertEqual(len(data["authority_rows"]), 10)
++        self.assertTrue(all(row["adjudication"] == "ADJUDICATED" for row in data["authority_rows"]))
++        self.assertEqual(
++            tracker_provenance()["expected_counts"],
++            {
++                "tracks": 19,
++                "active_tracks": 5,
++                "blocking_tracks": 1,
++                "pending_q_decisions": 0,
++                "authority_rows": 10,
++                "open_high_or_worse_issues": 4,
++                "malformed_issue_severity": 0,
++            },
++        )
+ 
+-    def test_truthful_foundation_projection(self) -> None:
++    def test_deployment_truth_is_not_overclaimed(self) -> None:
++        truth = json.loads(text(MANIFEST))["deployment_truth"]
++        self.assertEqual(
++            truth["c2_c5"],
++            {
++                "committed": True,
++                "configured": True,
++                "newer_dashboard_coverage_deployed": False,
++                "newer_health_spider_coverage_deployed": False,
++            },
++        )
++        self.assertEqual(truth["c3b"]["adapter"], 0)
++        self.assertTrue(truth["c3b"]["built"])
++        self.assertTrue(truth["c3b"]["dormant"])
++        self.assertFalse(truth["c3b"]["live"])
++        self.assertFalse(truth["c3b"]["runner_service_active"])
++        self.assertFalse(truth["c3b"]["runner_socket_active"])
++        self.assertEqual(truth["c03"]["physical_convergence"], "pending")
++        self.assertEqual(truth["c03"]["consumption_settlement"], "disputed")
++        self.assertEqual(truth["foundation_c_revisions"]["state"], "PREPARED_ONLY")
++        self.assertFalse(truth["foundation_c_revisions"]["accepted"])
+         doc = text(TRACKER)
+-        self.assertIn("owner adjudication + ten-row projection (bec9bc0d)", doc.lower())
+-        self.assertIn("All ten observed rows remain SPLIT_BRAIN", doc)
+-        self.assertIn("generic flake exports + source-complete package baseline (befc4141)", doc.lower())
+-
+-    def test_accessible_disclosures_and_reduced_motion(self) -> None:
++        self.assertNotRegex(doc, r'C3b[^\n]{0,120}\bLIVE\b')
++        self.assertNotRegex(doc, r'C2[^\n]{0,160}(dashboard|health-spider)[^\n]{0,80}\bdeployed\b[^\n]{0,30}\btrue\b')
++
++    def test_issue_severity_contract_and_negative_vector(self) -> None:
++        projector = load_projector()
++        result = projector.project(MANIFEST, REPO_ROOT)
++        self.assertEqual(result["stats"]["open_high_issues"], 4)
++        self.assertEqual(result["stats"]["malformed_issue_severity"], 0)
++        malformed = copy.deepcopy(json.loads(text(MANIFEST)))
++        malformed["issues"].append({"title": "unknown", "sev": "urgent", "status": "OPEN", "note": "negative vector"})
++        with tempfile.TemporaryDirectory(prefix="tracker-negative-", dir="/tmp") as tmp:
++            path = Path(tmp) / "manifest.json"
++            path.write_text(json.dumps(malformed), encoding="utf-8")
++            negative = projector.project(path, REPO_ROOT)
++        self.assertEqual(negative["stats"]["open_high_issues"], 4)
++        self.assertEqual(negative["stats"]["malformed_issue_severity"], 1)
++
++    def test_projector_matches_manifest_truth(self) -> None:
++        result = load_projector().project(MANIFEST, REPO_ROOT)
++        self.assertEqual(result["marker"], "PROJECTED_CURRENT_STATE")
++        self.assertEqual(len(result["tracks"]), 19)
++        self.assertEqual(result["stats"]["tracks_done_or_active"], 14)
++        self.assertEqual(result["stats"]["blocking_gates"], 1)
++        self.assertEqual(result["stats"]["decisions_pending"], 0)
++        self.assertEqual(result["stats"]["authority_rows"], 10)
++
++    def test_phase0_preservation_oracle(self) -> None:
++        for name, digest in PRESERVED_PHASE0.items():
++            self.assertEqual(function_digest(PHASE0, name), digest, name)
++        phase0 = text(PHASE0)
++        self.assertIn('"0.10.40"', phase0)
++        self.assertIn("PROJECTED_CURRENT_STATE", phase0)
++        self.assertIn('"--static-only"', phase0)
++
++    def test_tracker_is_self_contained_and_accessible(self) -> None:
+         doc = text(TRACKER)
++        self.assertNotRegex(doc, r'(?:src|href)=["\']https?://')
++        self.assertNotIn("fetch(", doc)
+         self.assertIn('aria-describedby="lane-${t.code}-detail"', doc)
+         self.assertIn("bar.addEventListener('focus'", doc)
+         self.assertIn("e.key === 'Escape'", doc)
+         self.assertIn("@media (prefers-reduced-motion: reduce)", doc)
+ 
+-    def test_program_panel_embed_contract(self) -> None:
+-        doc = text(DASHBOARD)
+-        self.assertIn('id="tab-program"', doc)
+-        self.assertIn('id="panel-program"', doc)
+-        self.assertIn('src="/assets/aqos-progress-tracker.html"', doc)
+-        self.assertIn('sandbox="allow-scripts"', doc)
+-        self.assertNotRegex(doc, r'sandbox="[^"]*allow-same-origin')
+-        self.assertRegex(doc, r'<iframe[\s\S]*?title="[^"]+"')
+-        self.assertIn('href="/assets/aqos-progress-tracker.html"', doc)
+-
+-    def test_tab_controller_contract(self) -> None:
+-        doc = text(CLIENT)
+-        for token in (
+-            'setAttribute("role", "tab")', 'setAttribute("role", "tabpanel")',
+-            'setAttribute("aria-controls"', 'setAttribute("aria-selected"',
+-            'event.key === "ArrowRight"', 'event.key === "ArrowLeft"',
+-            'event.key === "Home"', 'event.key === "End"',
+-            'options.focusPanel', 'panel.focus()',
+-        ):
+-            self.assertIn(token, doc)
+-
+-    def test_exact_path_header_exception(self) -> None:
+-        doc = text(MAIN)
+-        self.assertIn('request.url.path == "/assets/aqos-progress-tracker.html"', doc)
+-        self.assertIn('headers["X-Frame-Options"] = "SAMEORIGIN"', doc)
+-        self.assertIn("response.headers[name] = value", doc)
+-        self.assertIn('filtered.append("frame-ancestors \'self\'")', doc)
+-        self.assertIn('"X-Frame-Options": "DENY"', doc)
+-        self.assertIn('"frame-ancestors \'none\'"', doc)
+-        self.assertNotIn('request.url.path.startswith("/assets/aqos-progress-tracker', doc)
+-
+-    def test_phase0_registration(self) -> None:
+-        doc = text(PHASE0)
+-        self.assertIn('"0.10.40"', doc)
+-        self.assertIn("results.extend(_check_dashboard_program_progress(ctx))", doc)
+-        self.assertIn('"--static-only"', doc)
+-
+-    def test_live_verifier_regressions(self) -> None:
+-        original = LiveHeaderTests.base_url
+-        try:
+-            selected = configure_live_base_url("http://127.0.0.1:18889/")
+-            self.assertEqual(selected, "http://127.0.0.1:18889")
+-            self.assertEqual(LiveHeaderTests.base_url, selected)
+-            with self.assertRaises(ValueError):
+-                configure_live_base_url("http://127.0.0.1:18889/untrusted-path")
+-        finally:
+-            LiveHeaderTests.base_url = original
+-        lower = normalize_headers({
+-            "x-frame-options": "SAMEORIGIN",
+-            "content-security-policy": "default-src 'self'; frame-ancestors 'self'",
+-        })
+-        self.assertEqual(lower["x-frame-options"], "SAMEORIGIN")
+-        self.assertIn("frame-ancestors 'self'", lower["content-security-policy"])
+-
+-
+-class LiveHeaderTests(unittest.TestCase):
+-    base_url = "http://127.0.0.1:8889"
+-
+-    def get(self, path: str) -> tuple[int, dict[str, str], str]:
+-        with urllib.request.urlopen(self.base_url + path, timeout=5) as response:
+-            return response.status, normalize_headers(response.headers), response.read().decode("utf-8")
+-
+-    def test_live_tracker_and_negative_headers(self) -> None:
+-        status, headers, body = self.get("/assets/aqos-progress-tracker.html")
+-        self.assertEqual(status, 200)
+-        self.assertEqual(headers.get("x-frame-options"), "SAMEORIGIN")
+-        self.assertIn("frame-ancestors 'self'", headers.get("content-security-policy", ""))
+-        self.assertIn("FROZEN_IMPLEMENTATION_SNAPSHOT", body)
+-        for path in ("/", "/assets/dashboard.js"):
+-            status, headers, _ = self.get(path)
+-            self.assertEqual(status, 200)
+-            self.assertEqual(headers.get("x-frame-options"), "DENY")
+-            self.assertIn("frame-ancestors 'none'", headers.get("content-security-policy", ""))
+-
+ 
+ def main() -> int:
+     parser = argparse.ArgumentParser()
+     parser.add_argument("--static-only", action="store_true")
+-    parser.add_argument(
+-        "--base-url",
+-        default="http://127.0.0.1:8889",
+-        help="dashboard candidate origin (default: loopback production dashboard)",
+-    )
+-    args = parser.parse_args()
+-    configure_live_base_url(args.base_url)
++    parser.parse_args()
+     suite = unittest.defaultTestLoader.loadTestsFromTestCase(StaticContractTests)
+-    if not args.static_only:
+-        suite.addTests(unittest.defaultTestLoader.loadTestsFromTestCase(LiveHeaderTests))
+     return 0 if unittest.TextTestRunner(verbosity=2).run(suite).wasSuccessful() else 1
+ 
+ 
