@@ -1,0 +1,31 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "aq.local-inference-resolved-shadow-plan/1.0",
+  "type": "object",
+  "additionalProperties": false,
+  "required": ["schema_id", "request_projection_digest", "producer_revision_set_digest", "provenance_vector_digest", "compatibility_adapter", "decision", "divergence_findings", "provenance_refs", "shadow", "non_authoritative", "no_live_cutover"],
+  "properties": {
+    "schema_id": {"const": "aq.local-inference-resolved-shadow-plan/1.0"},
+    "request_projection_digest": {"type": "string", "pattern": "^[0-9a-f]{64}$"},
+    "producer_revision_set_digest": {"type": "string", "pattern": "^[0-9a-f]{64}$"},
+    "provenance_vector_digest": {"type": "string", "pattern": "^[0-9a-f]{64}$"},
+    "compatibility_adapter": {"const": "none"},
+    "decision": {"const": "shadow_only"},
+    "divergence_findings": {"type": "array", "maxItems": 32, "items": {"type": "string", "minLength": 1, "maxLength": 128}},
+    "provenance_refs": {"type": "array", "minItems": 8, "maxItems": 8, "items": {"$ref": "#/$defs/provenance_ref"}},
+    "shadow": {"const": true}, "non_authoritative": {"const": true}, "no_live_cutover": {"const": true}
+  },
+  "$defs": {
+    "provenance_ref": {
+      "type": "object", "additionalProperties": false,
+      "required": ["fact_type", "producer", "producer_revision", "evidence_ref", "value_digest"],
+      "properties": {
+        "fact_type": {"enum": ["authenticated_principal", "role", "approval_or_lease", "profile", "eligibility", "budget", "path", "clock"]},
+        "producer": {"type": "string", "minLength": 1, "maxLength": 128},
+        "producer_revision": {"type": "string", "minLength": 1, "maxLength": 128},
+        "evidence_ref": {"type": "string", "minLength": 1, "maxLength": 256},
+        "value_digest": {"type": "string", "pattern": "^[0-9a-f]{64}$"}
+      }
+    }
+  }
+}

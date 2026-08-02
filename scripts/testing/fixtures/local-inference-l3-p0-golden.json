@@ -1,0 +1,22 @@
+{
+  "schema_id": "aq.local-inference-l3-p0-golden/1.0",
+  "facts": [
+    {"schema_id":"aq.local-inference-trusted-fact-envelope/1.0","fact_type":"authenticated_principal","category":"identity","value_digest":"1111111111111111111111111111111111111111111111111111111111111111","producer":"producer-00","producer_revision":"rev-1","evidence_ref":"evidence:authenticated_principal","status":"available"},
+    {"schema_id":"aq.local-inference-trusted-fact-envelope/1.0","fact_type":"role","category":"authorization","value_digest":"2222222222222222222222222222222222222222222222222222222222222222","producer":"producer-01","producer_revision":"rev-1","evidence_ref":"evidence:role","status":"available"},
+    {"schema_id":"aq.local-inference-trusted-fact-envelope/1.0","fact_type":"approval_or_lease","category":"authorization","value_digest":"3333333333333333333333333333333333333333333333333333333333333333","producer":"producer-02","producer_revision":"rev-1","evidence_ref":"evidence:approval","status":"available"},
+    {"schema_id":"aq.local-inference-trusted-fact-envelope/1.0","fact_type":"profile","category":"routing","value_digest":"4444444444444444444444444444444444444444444444444444444444444444","producer":"producer-03","producer_revision":"rev-1","evidence_ref":"evidence:profile","status":"available"},
+    {"schema_id":"aq.local-inference-trusted-fact-envelope/1.0","fact_type":"eligibility","category":"routing","value_digest":"5555555555555555555555555555555555555555555555555555555555555555","producer":"producer-04","producer_revision":"rev-1","evidence_ref":"evidence:eligibility","status":"available"},
+    {"schema_id":"aq.local-inference-trusted-fact-envelope/1.0","fact_type":"budget","category":"resource","value_digest":"6666666666666666666666666666666666666666666666666666666666666666","producer":"producer-05","producer_revision":"rev-1","evidence_ref":"evidence:budget","status":"available"},
+    {"schema_id":"aq.local-inference-trusted-fact-envelope/1.0","fact_type":"path","category":"routing","value_digest":"7777777777777777777777777777777777777777777777777777777777777777","producer":"producer-06","producer_revision":"rev-1","evidence_ref":"evidence:path","status":"available"},
+    {"schema_id":"aq.local-inference-trusted-fact-envelope/1.0","fact_type":"clock","category":"time","value_digest":"8888888888888888888888888888888888888888888888888888888888888888","producer":"producer-07","producer_revision":"rev-1","evidence_ref":"evidence:clock","status":"available"}
+  ],
+  "producer_revision_set": {
+    "schema_id": "aq.local-inference-producer-revision-set/1.0",
+    "producers": [
+      {"producer":"producer-00","revision":"rev-1"},{"producer":"producer-01","revision":"rev-1"},{"producer":"producer-02","revision":"rev-1"},{"producer":"producer-03","revision":"rev-1"},{"producer":"producer-04","revision":"rev-1"},{"producer":"producer-05","revision":"rev-1"},{"producer":"producer-06","revision":"rev-1"},{"producer":"producer-07","revision":"rev-1"}
+    ]
+  },
+  "request_projection": {"schema_id":"aq.local-inference-shadow-request-projection/1.0","request_ref":"request:opaque","trace_ref":"trace:opaque","legacy_plan_digest":"aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa"},
+  "observation_metadata": {"schema_id":"aq.local-inference-shadow-observation-metadata/1.0","observation_id":"observation:opaque","request_ref":"request:opaque","trace_ref":"trace:opaque","shadow_sequence":7,"observed_at":"2026-08-01T00:00:00Z"},
+  "legacy_observation_digest": "bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb"
+}

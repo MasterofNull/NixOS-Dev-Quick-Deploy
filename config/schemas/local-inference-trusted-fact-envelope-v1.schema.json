@@ -1,0 +1,17 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "aq.local-inference-trusted-fact-envelope/1.0",
+  "type": "object",
+  "additionalProperties": false,
+  "required": ["schema_id", "fact_type", "category", "value_digest", "producer", "producer_revision", "evidence_ref", "status"],
+  "properties": {
+    "schema_id": {"const": "aq.local-inference-trusted-fact-envelope/1.0"},
+    "fact_type": {"enum": ["authenticated_principal", "role", "approval_or_lease", "profile", "eligibility", "budget", "path", "clock"]},
+    "category": {"type": "string", "minLength": 1, "maxLength": 64},
+    "value_digest": {"type": "string", "pattern": "^[0-9a-f]{64}$"},
+    "producer": {"type": "string", "minLength": 1, "maxLength": 128},
+    "producer_revision": {"type": "string", "minLength": 1, "maxLength": 128},
+    "evidence_ref": {"type": "string", "minLength": 1, "maxLength": 256},
+    "status": {"enum": ["available", "unavailable"]}
+  }
+}
