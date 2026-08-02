@@ -1,3 +1,7 @@
+#!/usr/bin/env python3
+"""Static + subtest contract suite for the L3-P0 local-inference provenance/shadow kernel
+(scripts/ai/lib/local_inference_provenance.py): exact fact vocabulary, digest-only trust
+envelope, shadow-observation schema conformance, and golden-fixture parity."""
 import ast
 import copy
 import importlib.util
