@@ -1,0 +1,73 @@
+{
+  "schema_version": "1.0",
+  "round_id": "foundation-c-rev2-depth-20260801",
+  "state": "COLLECTED",
+  "task": {
+    "prompt": "Perform independent read-only architecture, security, SRE, concurrency, evidence-integrity, and Service Coverage review of the exact Foundation C revision subjects in the target packet. Return per-subject PASS_DESIGN, REQUEST_REVISION, or FAIL plus FREEZE_ELIGIBLE yes/no. Do not edit subjects, stage, commit, activate, deploy, or run live/provider/network traffic.",
+    "target": ".agents/plans/aqos-foundation-c/REV2-COLLABORATIVE-REVIEW-PACKET-20260801.md",
+    "scope_files": []
+  },
+  "opened_at": "2026-08-01T16:58:04Z",
+  "quorum_policy": {
+    "min_lanes": 2,
+    "required_agents": [],
+    "late_local_admissible": true,
+    "timeout_seconds": null,
+    "deadline": null,
+    "timeout_action": "lock_with_present"
+  },
+  "lanes": [
+    {
+      "agent": "claude",
+      "dispatch_id": null,
+      "idempotency_hash": "cb3820a73af717287fa1de7a367d74d6096aafa6dd21a02967fb0aaa39b0c56e",
+      "status": "pending",
+      "landed_at": null
+    },
+    {
+      "agent": "codex",
+      "dispatch_id": null,
+      "idempotency_hash": "5fefab6df267a33c3913b0999e0fc58555d8f114c5d104e4d279a23e355b246a",
+      "status": "submitted",
+      "landed_at": null
+    },
+    {
+      "agent": "local",
+      "dispatch_id": null,
+      "idempotency_hash": "1d34b8be759f99f81ae01b41411ed28bfb5731d64cc5e022615905e6af852879",
+      "status": "submitted",
+      "landed_at": null
+    },
+    {
+      "agent": "antigravity",
+      "dispatch_id": null,
+      "idempotency_hash": "cc984a11c3492d865c512de666cea000cf3fcf572c9ed24f74953ed57d8b7670",
+      "status": "pending",
+      "landed_at": null
+    }
+  ],
+  "contributions": {},
+  "conflicts": [],
+  "consensus_hash": null,
+  "aggregate_path": null,
+  "aggregate_hash": null,
+  "locked_at": null,
+  "history": [
+    {
+      "transition": "CREATED->DISPATCHED",
+      "timestamp": "2026-08-01T16:58:04Z",
+      "actor": "aq-collab-round"
+    },
+    {
+      "transition": "DISPATCHED->CONTRIBUTING",
+      "timestamp": "2026-08-01T17:08:08Z",
+      "actor": "aq-collab-round"
+    },
+    {
+      "transition": "CONTRIBUTING->COLLECTED",
+      "timestamp": "2026-08-01T17:08:08Z",
+      "actor": "aq-collab-round"
+    }
+  ],
+  "predecessor_round_id": null
+}
