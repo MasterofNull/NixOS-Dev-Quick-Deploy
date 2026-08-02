@@ -1,0 +1,40 @@
+# A2A task for antigravity — round 'c6-review'
+
+Dropped: 2026-07-31T00:38:30Z
+Output: .agents/plans/c6-review/antigravity.md
+
+Respond by writing `.agents/plans/c6-review/antigravity.md`.
+
+## SCOPE & STOP (HARD — read before writing)
+- Edit ONLY the files this task names as surfaces. A related-looking file is still out of scope.
+- NEVER implement a data/config change as a filesystem shortcut: no symlink, bind mount, mount,
+  chmod/chown/rm on tracked or runtime paths. 'Single source of truth' = a resolver in code,
+  never one directory replacing/redirecting another.
+- NO DELETE — archive to a timestamped path; never rm/rmdir.
+- If this task references an authorization/round: confirm it still reads AUTHORIZED and (where a
+  package root is named) that `aq-package-freeze verify` exits 0 BEFORE writing. If suspended,
+  STOP — do not recreate or continue suspended files.
+- Undeclared dependency discovered -> STOP and report; do not expand scope to 'make it work'.
+- Budgets/acceptance criteria are hard facts: a measured violation FAILS; a sentence calling it
+  'acceptable' does not change the number. Report the real value.
+- Write ONLY your own named output file. Do NOT edit shared files. Do NOT commit.
+- When unsure whether something is in scope: it is not. Report, do not act.
+
+COLLABORATIVE ROUND 'c6-review'.
+Review artifact: .agents/plans/aqos-foundation-c/ (read it).
+TASK:
+ROLE: independent binding DESIGN reviewer for Foundation C C6 (epoch-revocation control + F2.5
+scheduler seam). Read .agents/plans/aqos-foundation-c/C6-DESIGN-AND-AUTHORIZATION.md. Read-only.
+Substitute for codex (down to Aug-4). ENFORCEMENT-TIER (scheduler seam). VERIFY anchors: F2.5
+slot_scheduler/wait_for_slot LIVE in scripts/ai/lib/dispatch.py (135/502); resolve_current_epoch
++ config/capability-lease-epoch in capability_lease_gate.py; epoch_stale in capability_lease.py — no
+fabrication. Judge §7 obligations CLOSED/gap+fix: (1) epoch bump atomic+monotonic+audited+fail-closed;
+unreadable epoch => deny everywhere. (2) scheduler seam deny-closed (refuse-on-doubt), flag-OFF
+byte-parity, NO non-lease-request regression. (3) non-self-healing preserved (no auto-reissue,
+monotonic, forward-only). (4) seam COMPOSES with the shipped executor checks (defense in depth), not
+replaces/weakens. (5) F2.5 anchors real. (6) bump authority = owner/operator kill switch, governed+
+audited. Weigh Q-C6-1..4 (esp. Q-C6-4: does executor-check + scheduler-seam + control-surface satisfy
+F3 obligation-3 end-to-end, closing Cycle 6). OUTPUT: VERDICT PASS/FAIL/REQUEST_REVISION line 1, then
+findings by severity + ref + fix, + Q verdicts.
+
+Write your contribution to YOUR OWN file ONLY: .agents/plans/c6-review/<AGENT>.md (<AGENT> = codex | local | antigravity). Do NOT edit any shared file. Do NOT read the artifact file (it is inlined above). Be decisive and concise.
