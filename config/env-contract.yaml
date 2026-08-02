@@ -25,6 +25,20 @@ _meta:
 
 variables:
 
+  - canonical: AQ_EXECUTION_CELL_RUNNER_ALLOW_SELF_BIND
+    aliases: []
+    default: "0"
+    layer: systemd
+    consumers: [execution-cell-runner]
+    description: "Production runner self-bind guard; 0 requires one valid systemd socket-activation FD. Only offline tests may set 1 for a fresh absent pathname."
+
+  - canonical: AQ_EXECUTION_CELL_RUNNER_CLIENT_USER
+    aliases: []
+    default: ""
+    layer: systemd
+    consumers: [execution-cell-runner]
+    description: "Primary switchboard user resolved at runner startup to the sole allowed SO_PEERCRED effective UID."
+
   # ── llama.cpp inference server ─────────────────────────────────────────
   - canonical: LLAMA_CPP_BASE_URL
     aliases: [LLAMA_URL, LLAMA_CPP_URL]

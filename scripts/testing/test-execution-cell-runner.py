@@ -252,6 +252,7 @@ def _base_config(mirror: str, trusted_repo_id: str, public_key_bytes: bytes, **o
         cell_reservation_set=eg.ReplayReservationSet(),
         epoch_source=0,
         env={"CAPABILITY_EXECUTION_CELLS": "1"},
+        allow_self_bind=True,
     )
     defaults.update(overrides)
     return runner.RunnerConfig(**defaults)
@@ -809,6 +810,26 @@ def test_flag_off_refuses_cell():
     check("flag_default_is_off", runner.execution_cells_enabled({}) is False)
 
 
+def test_socket_acquisition_and_client_identity_hardening():
+    socket_path = os.path.join(_mkdtemp("socket-hardening"), "control.sock")
+    config = runner.RunnerConfig(socket_path=socket_path, client_uid=os.getuid(), client_gid=999999,
+                                 public_key_bytes=b"", trusted_repo_mirrors={}, cell_state_root=_mkdtemp("state"),
+                                 cgroup_parent="", python_bin=sys.executable, allow_self_bind=True)
+    server, owns = runner._acquire_listen_socket(config, {})
+    check("self_bind_fresh_path_is_explicit_and_owned", owns is True)
+    server.close()
+    os.unlink(socket_path)
+    Path(socket_path).write_text("do-not-delete", encoding="utf-8")
+    try:
+        runner._acquire_listen_socket(config, {})
+        check("self_bind_existing_path_denied", False)
+    except runner.SocketStartupError:
+        check("self_bind_existing_path_denied", Path(socket_path).read_text(encoding="utf-8") == "do-not-delete")
+    check("supplementary_gid_never_authorizes", runner.peer_authorized((1, 424242, 999999), None, 999999) is False)
+    resolved = runner.build_config_from_env({"AQ_EXECUTION_CELL_RUNNER_CLIENT_USER": "definitely-no-such-user"})
+    check("unknown_client_user_fails_closed", resolved.client_uid is None)
+
+
 # --------------------------------------------------------------------------
 # R6-canary-deferred: genuinely systemd-only surfaces this offline harness
 # cannot exercise (real socket activation, `Delegate=`-granted cgroup
@@ -836,6 +857,7 @@ def main() -> None:
         test_peer_authentication_real_uds,
         test_replayed_grant_denied,
         test_flag_off_refuses_cell,
+        test_socket_acquisition_and_client_identity_hardening,
     ]
     for test in tests:
         try:

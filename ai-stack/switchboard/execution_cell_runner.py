@@ -49,9 +49,11 @@ from __future__ import annotations
 import errno
 import json
 import os
+import pwd
 import shutil
 import signal
 import socket
+import stat
 import struct
 import subprocess
 import sys
@@ -513,12 +515,10 @@ def get_peer_credentials(conn: "socket.socket") -> Optional[tuple]:
 def peer_authorized(creds: Optional[tuple], client_uid: Optional[int], client_gid: Optional[int]) -> bool:
     if creds is None:
         return False
-    _pid, uid, gid = creds
-    if client_uid is not None and uid == client_uid:
-        return True
-    if client_gid is not None and gid == client_gid:
-        return True
-    return False
+    _pid, uid, _gid = creds
+    # The client group controls socket-path access only. SO_PEERCRED reports
+    # effective GID, so supplementary membership is never an identity proof.
+    return client_uid is not None and uid == client_uid
 
 
 # ---------------------------------------------------------------------------
@@ -550,6 +550,7 @@ class RunnerConfig:
     now_fn: Callable[[], datetime] = field(default_factory=lambda: (lambda: datetime.now(timezone.utc)))
     env: Optional[Mapping[str, str]] = None
     receipt_sink: Optional[Callable[[dict], None]] = None
+    allow_self_bind: bool = False
 
     def resolved_bwrap_path(self) -> Optional[str]:
         return resolve_bwrap_path(self.bwrap_path)
@@ -980,23 +981,77 @@ def _handle_connection(conn: "socket.socket", config: RunnerConfig, semaphore: "
             pass
 
 
-def serve_forever(config: RunnerConfig, stop_event: Optional["threading.Event"] = None) -> None:
-    """The socket-activated runner's accept loop. Design §8: systemd owns
-    socket creation/mode/ownership in production (`systemd.sockets.
-    aq-execution-cell-runner`); this function also binds its own socket
-    directly for offline testing without systemd socket activation."""
-    if os.path.exists(config.socket_path):
+class SocketStartupError(RuntimeError):
+    pass
+
+
+def _clear_activation_env(env: Mapping[str, str]) -> None:
+    for key in ("LISTEN_PID", "LISTEN_FDS", "LISTEN_FDNAMES"):
         try:
-            os.unlink(config.socket_path)
-        except OSError:
+            del env[key]  # type: ignore[index]
+        except (KeyError, TypeError, AttributeError):
             pass
 
-    server = socket.socket(socket.AF_UNIX, socket.SOCK_STREAM)
+
+def _acquire_listen_socket(config: RunnerConfig, env: Mapping[str, str]) -> tuple["socket.socket", bool]:
+    claim = any(key in env for key in ("LISTEN_PID", "LISTEN_FDS", "LISTEN_FDNAMES"))
+    if claim:
+        try:
+            pid, fds = int(env.get("LISTEN_PID", "")), int(env.get("LISTEN_FDS", ""))
+        except (TypeError, ValueError):
+            _clear_activation_env(env)
+            raise SocketStartupError("activation-malformed")
+        if pid != os.getpid() or fds != 1:
+            for fd in range(3, 3 + max(fds, 0)):
+                try: os.close(fd)
+                except OSError: pass
+            _clear_activation_env(env)
+            raise SocketStartupError("activation-invalid")
+        server = None
+        try:
+            server = socket.socket(fileno=3)
+            actual = os.fsdecode(server.getsockname())
+            if (server.family != socket.AF_UNIX or server.type != socket.SOCK_STREAM
+                    or not server.getsockopt(socket.SOL_SOCKET, socket.SO_ACCEPTCONN)
+                    or os.path.abspath(actual) != os.path.abspath(config.socket_path)):
+                raise SocketStartupError("activation-wrong-listener")
+            server.settimeout(0.5)
+        except Exception as exc:
+            if server is not None:
+                server.close()
+            else:
+                try: os.close(3)
+                except OSError: pass
+            _clear_activation_env(env)
+            if isinstance(exc, SocketStartupError): raise
+            raise SocketStartupError("activation-invalid-listener") from exc
+        _clear_activation_env(env)
+        return server, False
+    if not config.allow_self_bind:
+        raise SocketStartupError("self-bind-disabled")
     try:
-        server.bind(config.socket_path)
-        os.chmod(config.socket_path, 0o660)
-        server.listen(16)
-        server.settimeout(0.5)
+        os.lstat(config.socket_path)
+    except FileNotFoundError:
+        pass
+    except OSError as exc:
+        raise SocketStartupError("self-bind-path-unusable") from exc
+    else:
+        raise SocketStartupError("self-bind-path-exists")
+    server = socket.socket(socket.AF_UNIX, socket.SOCK_STREAM)
+    server.bind(config.socket_path)
+    server.listen(16)
+    server.settimeout(0.5)
+    return server, True
+
+
+def serve_forever(config: RunnerConfig, stop_event: Optional["threading.Event"] = None) -> None:
+    """Adopt systemd's UDS; direct bind is explicit test-only behavior."""
+    server, owns_path = _acquire_listen_socket(config, config.env or os.environ)
+    own_inode = None
+    if owns_path:
+        st = os.stat(config.socket_path)
+        own_inode = (st.st_dev, st.st_ino)
+    try:
         semaphore = threading.BoundedSemaphore(max(1, config.max_concurrent_cells))
         while stop_event is None or not stop_event.is_set():
             try:
@@ -1011,10 +1066,13 @@ def serve_forever(config: RunnerConfig, stop_event: Optional["threading.Event"] 
             server.close()
         except OSError:
             pass
-        try:
-            os.unlink(config.socket_path)
-        except OSError:
-            pass
+        if owns_path and own_inode is not None:
+            try:
+                st = os.lstat(config.socket_path)
+                if stat.S_ISSOCK(st.st_mode) and (st.st_dev, st.st_ino) == own_inode:
+                    os.unlink(config.socket_path)
+            except OSError:
+                pass
 
 
 # ---------------------------------------------------------------------------
@@ -1078,11 +1136,23 @@ def build_config_from_env(env: Optional[Mapping[str, str]] = None) -> RunnerConf
         except (ValueError, TypeError):
             mirrors = {}
 
+    def _optional_int(name: str) -> Optional[int]:
+        try:
+            return int(source[name]) if source.get(name) else None
+        except (TypeError, ValueError):
+            return None
+
+    client_uid = _optional_int("AQ_EXECUTION_CELL_RUNNER_CLIENT_UID")
+    if client_uid is None and source.get("AQ_EXECUTION_CELL_RUNNER_CLIENT_USER"):
+        try:
+            client_uid = pwd.getpwnam(source["AQ_EXECUTION_CELL_RUNNER_CLIENT_USER"]).pw_uid
+        except KeyError:
+            client_uid = None
     state_root = source.get("AQ_EXECUTION_CELL_RUNNER_STATE_ROOT", "/var/lib/aq-execution-cell-runner")
     return RunnerConfig(
         socket_path=source.get("AQ_EXECUTION_CELL_RUNNER_SOCKET_PATH", "/run/aq-execution-cell-runner/control.sock"),
-        client_uid=int(source["AQ_EXECUTION_CELL_RUNNER_CLIENT_UID"]) if source.get("AQ_EXECUTION_CELL_RUNNER_CLIENT_UID") else None,
-        client_gid=int(source["AQ_EXECUTION_CELL_RUNNER_CLIENT_GID"]) if source.get("AQ_EXECUTION_CELL_RUNNER_CLIENT_GID") else None,
+        client_uid=client_uid,
+        client_gid=_optional_int("AQ_EXECUTION_CELL_RUNNER_CLIENT_GID"),
         public_key_bytes=public_key_bytes,
         trusted_repo_mirrors=mirrors,
         cell_state_root=os.path.join(state_root, "cells"),
@@ -1092,6 +1162,7 @@ def build_config_from_env(env: Optional[Mapping[str, str]] = None) -> RunnerConf
         max_concurrent_cells=int(source.get("AQ_EXECUTION_CELL_RUNNER_MAX_CONCURRENT_CELLS", "1")),
         request_timeout_s=float(source.get("AQ_EXECUTION_CELL_RUNNER_REQUEST_TIMEOUT_SECONDS", "30")),
         env=source,
+        allow_self_bind=source.get("AQ_EXECUTION_CELL_RUNNER_ALLOW_SELF_BIND", "0") == "1",
     )
 
 
