@@ -1,0 +1,14 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "aq.local-inference-trusted-fact-unavailable/1.0",
+  "type": "object", "additionalProperties": false,
+  "required": ["schema_id", "typed_error", "failing_fact_type", "category", "evidence_ref", "shadow", "non_authoritative", "no_live_cutover"],
+  "properties": {
+    "schema_id": {"const": "aq.local-inference-trusted-fact-unavailable/1.0"},
+    "typed_error": {"const": "trusted_fact_unavailable"},
+    "failing_fact_type": {"enum": ["authenticated_principal", "role", "approval_or_lease", "profile", "eligibility", "budget", "path", "clock"]},
+    "category": {"enum": ["missing", "producer_unavailable"]},
+    "evidence_ref": {"type": "string", "minLength": 1, "maxLength": 256},
+    "shadow": {"const": true}, "non_authoritative": {"const": true}, "no_live_cutover": {"const": true}
+  }
+}

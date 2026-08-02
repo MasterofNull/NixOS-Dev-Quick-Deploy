@@ -1,0 +1,13 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "aq.local-inference-shadow-request-projection/1.0",
+  "type": "object",
+  "additionalProperties": false,
+  "required": ["schema_id", "request_ref", "trace_ref", "legacy_plan_digest"],
+  "properties": {
+    "schema_id": {"const": "aq.local-inference-shadow-request-projection/1.0"},
+    "request_ref": {"type": "string", "minLength": 1, "maxLength": 256},
+    "trace_ref": {"type": "string", "minLength": 1, "maxLength": 256},
+    "legacy_plan_digest": {"type": "string", "pattern": "^[0-9a-f]{64}$"}
+  }
+}

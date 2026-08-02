@@ -1,0 +1,14 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "aq.local-inference-shadow-observation-metadata/1.0",
+  "type": "object", "additionalProperties": false,
+  "required": ["schema_id", "observation_id", "request_ref", "trace_ref", "shadow_sequence", "observed_at"],
+  "properties": {
+    "schema_id": {"const": "aq.local-inference-shadow-observation-metadata/1.0"},
+    "observation_id": {"type": "string", "minLength": 1, "maxLength": 256},
+    "request_ref": {"type": "string", "minLength": 1, "maxLength": 256},
+    "trace_ref": {"type": "string", "minLength": 1, "maxLength": 256},
+    "shadow_sequence": {"type": "integer", "minimum": 0},
+    "observed_at": {"type": "string", "minLength": 1, "maxLength": 64}
+  }
+}

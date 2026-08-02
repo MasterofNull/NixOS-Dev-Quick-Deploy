@@ -1,0 +1,21 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "aq.local-inference-producer-revision-set/1.0",
+  "type": "object",
+  "additionalProperties": false,
+  "required": ["schema_id", "producers"],
+  "properties": {
+    "schema_id": {"const": "aq.local-inference-producer-revision-set/1.0"},
+    "producers": {
+      "type": "array", "minItems": 1, "maxItems": 8, "uniqueItems": true,
+      "items": {
+        "type": "object", "additionalProperties": false,
+        "required": ["producer", "revision"],
+        "properties": {
+          "producer": {"type": "string", "minLength": 1, "maxLength": 128},
+          "revision": {"type": "string", "minLength": 1, "maxLength": 128}
+        }
+      }
+    }
+  }
+}
