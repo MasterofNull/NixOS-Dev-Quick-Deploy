@@ -65,6 +65,8 @@ with lib; let
       else "0"
     }"
     "AQ_EXECUTION_CELL_RUNNER_SOCKET_PATH=${cfg.socketPath}"
+    "AQ_EXECUTION_CELL_RUNNER_ALLOW_SELF_BIND=0"
+    "AQ_EXECUTION_CELL_RUNNER_CLIENT_USER=${primaryUser}"
     "AQ_EXECUTION_CELL_RUNNER_STATE_ROOT=${cfg.stateDirectory}"
     "AQ_EXECUTION_CELL_RUNNER_MAX_CONCURRENT_CELLS=${toString cfg.maxConcurrentCells}"
     "AQ_EXECUTION_CELL_RUNNER_REQUEST_TIMEOUT_SECONDS=${toString cfg.requestTimeoutSeconds}"
