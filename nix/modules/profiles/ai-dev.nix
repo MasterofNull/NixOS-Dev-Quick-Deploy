@@ -20,17 +20,19 @@ in {
     mySystem.monitoring.commandCenter.enable = lib.mkDefault true;
     mySystem.localhostIsolation.enable = lib.mkDefault true;
     mySystem.aiStack.switchboard.enable = lib.mkDefault true;
-    # Foundation C — R5 SHADOW runner: ROLLED BACK to false 2026-07-31. The
-    # shadow dogfood surfaced a 5th deployment bug — the R3 runner self-binds its
-    # UDS instead of consuming the systemd socket-activation fd, destroying the
-    # unit's SocketGroup=aq-execution-cell-clients so the switchboard can never
-    # connect (deny-closed "runner-unreachable"). That is an architecture mismatch
-    # (self-bind vs sd_listen_fds), deferred to the runner-deployment-hardening
-    # slice (.agents/plans/aqos-foundation-c/RUNNER-DEPLOYMENT-HARDENING.md). The
-    # runner module + adapter stay built + reviewed but DORMANT; C2 + C5 remain
-    # LIVE. Re-activation is a fresh owner act after that slice lands.
-    mySystem.aiStack.executionCellRunner.enable = false;
-    mySystem.aiStack.executionCellRunner.flagOn = false;
+    # Foundation C — R6 activation STEP 1 (2026-08-02, owner-authorized). The
+    # runner-deployment-hardening slice (rev4, accepted + integrated 0cf1192e) fixed
+    # the 5 R5-shadow deploy bugs: it now adopts the systemd socket-activation fd
+    # (preserving SocketGroup=aq-execution-cell-clients) and authenticates the
+    # switchboard's effective UID via AQ_EXECUTION_CELL_RUNNER_CLIENT_USER. This turns
+    # the runner ON (socket-activated, bwrap-confined) WITHOUT the switchboard shadow
+    # adapter — CAPABILITY_CELL_ADAPTER stays 0 (switchboard.nix). Nothing submits to
+    # the runner yet; this step is the DEPLOY-EXERCISE: prove the runner starts clean,
+    # the socket keeps its client group after start, and a client passes SO_PEERCRED.
+    # Step 2 (a separate owner act) flips CAPABILITY_CELL_ADAPTER=1 for the full
+    # mint->sign->UDS->bwrap-cell->validator shadow round-trip. REVERT: both to false.
+    mySystem.aiStack.executionCellRunner.enable = true;
+    mySystem.aiStack.executionCellRunner.flagOn = true;
     mySystem.profileData.flatpakApps = lib.mkDefault flatpakProfiles.ai_workstation;
     mySystem.profileData.systemPackageNames = lib.mkDefault profilePackages.ai-dev;
 
