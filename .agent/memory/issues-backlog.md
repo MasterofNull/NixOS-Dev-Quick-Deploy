@@ -2874,3 +2874,10 @@ Advisory task (codex is the real confirmatory backstop) — non-blocking.
 - **impact**: LOW for R7 (shadow deny-closed — a replayed grant re-runs a cell in the sandbox, no real effect). HIGH once cells are authoritative (replay bypass could re-execute a real effect).
 - **required before R8/authoritative**: on a corrupt EXISTING ledger, treat the store as UNRELIABLE and fail-CLOSED (reserve_replay -> 'replayed'/deny), per execution_grant.reserve_replay's 'unreliable store must fail reported as replayed' contract. Distinguish missing-ledger (fresh, empty OK) from corrupt-ledger (deny).
 - **file**: scripts/ai/lib/durable_reservation.py:89-106.
+
+## [FIXED 2026-08-03] R7 runner crash-loop: durable_reservation.py missing from runnerBundle
+- **status**: FIXED (pending rebuild) — found by the R7 GREEN deploy-exercise; runner ModuleNotFoundError -> deny-closed runner-unreachable (no live impact).
+- **root cause**: the R7 build added `import durable_reservation as dr` to the runner but did NOT add durable_reservation.py to the Nix runnerBundle copy list (execution-cell-runner.nix). The runner runs from the bundle (bare Nix-store copy), so the new module was off sys.path. Same class as deploy-bug #2.
+- **verification gap (mine)**: I verified nix-parse + tests + anchor + concurrency, but NOT that the bundle includes every new runner import. Tests pass because they import from the real sys.path, not the bundle. ADD to the verification checklist: any new  in the runner must have  in runnerBundle.
+- **fix**: added the cp line to runnerBundle.
+- **file**: nix/modules/services/execution-cell-runner.nix (runnerBundle); ai-stack/switchboard/execution_cell_runner.py:81.
