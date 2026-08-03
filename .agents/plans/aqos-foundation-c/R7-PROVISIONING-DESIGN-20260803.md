@@ -107,9 +107,25 @@ C4 egress; C6 scheduler seam; the C2 scheduler-context transport (C6's *other* r
   `flock` gives cross-process but NOT intra-process safety (threads share the open-file description). The
   store MUST hold a `threading.Lock` around the read-modify-write (or open+flock per call). Acceptance
   includes a concurrent-`try_reserve` test (two threads, one reservation, exactly one winner).
+- **Crash recovery (local-review point):** each transition is a single `_fsync_write_json` atomic-replace
+  (all-or-nothing) — a crash mid-write leaves the LAST durably-committed state (the temp file is never
+  seen), read back on restart; there is no partial/torn state to roll back. A grant crashed after
+  `reserved` but before `committed` stays `reserved` (non-replayable, conservative) — acceptable and
+  fail-closed.
 - Wire both in `build_config_from_env` in place of `eg.ReplayReservationSet()`; keep the in-memory double
   as the test/reference implementation only. Persist under the runner StateDirectory (`0700`) so replay
   protection survives runner restarts.
+
+## Review record (2026-08-03)
+- **Fresh Claude flagship (binding-substitute):** `REQUEST_REVISION`, 7 grounded findings — all folded (rev2 above). AUTHORITATIVE.
+- **Local Qwen (never-skip, advisory):** `FAIL` — but its #1/#2 "silent wrong result" objection is a
+  FALSE-NEGATIVE: it reasoned abstractly and did not ground in the R2 clone code; content is OID-bound
+  (`execution_cell_clone.py:639-674`), so a stale mirror can only deny, never serve wrong bytes. Its #3
+  (recovery clarity) folded above; #4 (ceiling PASS) concurs.
+- **Antigravity (advisory):** did NOT complete — the headless `delegate-to-antigravity` path 503'd on the
+  known `remote_key_endpoint_mismatch` dead-end; the real Antigravity review requires the IDE-OAuth inbox
+  lane (`aq-collab-round`) with the IDE open. No verdict.
+- **Next gate:** codex binding re-review of rev2 (queued), then freeze.
 
 ## 5. Ceiling (freeze at R7 freeze)
 - EDIT `nix/modules/services/execution-cell-runner.nix` — `mirrorPath` option, the mirror-provisioning
