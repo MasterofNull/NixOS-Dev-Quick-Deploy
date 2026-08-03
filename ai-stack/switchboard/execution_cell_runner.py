@@ -1163,6 +1163,16 @@ def build_config_from_env(env: Optional[Mapping[str, str]] = None) -> RunnerConf
         request_timeout_s=float(source.get("AQ_EXECUTION_CELL_RUNNER_REQUEST_TIMEOUT_SECONDS", "30")),
         env=source,
         allow_self_bind=source.get("AQ_EXECUTION_CELL_RUNNER_ALLOW_SELF_BIND", "0") == "1",
+        # deploy-bug #8 (found by the R6 shadow round-trip): without a reservation
+        # store, reserve_replay() fail-closes every grant to "replayed" before any
+        # cell is constructed. SHADOW-ONLY STOPGAP: wire the in-memory reference
+        # store so the R6 dogfood can exercise cell->bwrap->validator->GREEN. This is
+        # NOT durable and NOT safe across runner restarts/processes — a durable
+        # single-writer store (stable-lock + fsync + atomic-replace, the deferred "R3"
+        # promise) is REQUIRED before the shadow ever becomes authoritative (R7).
+        # Two distinct instances: grant-id replay vs cell-level reservation domains.
+        reservation_set=eg.ReplayReservationSet(),
+        cell_reservation_set=eg.ReplayReservationSet(),
     )
 
 

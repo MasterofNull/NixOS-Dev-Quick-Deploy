@@ -2847,3 +2847,11 @@ Advisory task (codex is the real confirmatory backstop) — non-blocking.
 - **fix**: nix/modules/services/execution-cell-runner.nix — remove RuntimeDirectory/RuntimeDirectoryMode; create the socket parent dir root-owned via systemd.tmpfiles ("d /run/aq-execution-cell-runner 0755 root root -"). systemd never re-owns a root dir socket on service start; socket keeps 0660 aq-execution-cell-runner:aq-execution-cell-clients. Contained to the runner module (no socket-path/adapter/switchboard-anchor change).
 - **bugs #2/#6 CONFIRMED FIXED** by the same exercise: runner starts clean; SO_PEERCRED accepts the switchboard effective-uid.
 - **re-validate on rebuild**: socket keeps group=clients AFTER the runner starts; a client connects repeatedly (not just the activation-triggering first connect).
+
+## [OPEN] Runner replay: durable reservation store required (shadow-only in-memory stopgap wired) — 2026-08-03
+- **status**: OPEN follow-up — shadow unblocked via in-memory stopgap; durable store still needed before authoritative use.
+- **context**: deploy-bug #8 (R6 shadow) — build_config_from_env left reservation_set=None -> reserve_replay fail-closed every grant to "replayed". Wired eg.ReplayReservationSet() as a SHADOW-ONLY stopgap (execution_cell_runner.py build_config_from_env).
+- **gap**: ReplayReservationSet is an in-memory reference double — NOT durable, NOT safe across runner restarts/processes (its own docstring). Replay protection resets on every runner restart.
+- **required before R7/authoritative**: implement the durable single-writer reservation store the design promised as "R3" (stable-lock + fsync + atomic-replace, idempotent reserved->committed|failed), behind the same try_reserve/commit/fail contract; swap it in build_config_from_env. Overlaps the C3a-2 delegate_reservation store design (reuse the pattern).
+- **severity**: MEDIUM — shadow non-authoritative + deny-closed (no live impact); durability matters only when cells become authoritative.
+- **file**: ai-stack/switchboard/execution_cell_runner.py (build_config_from_env); scripts/ai/lib/execution_grant.py (ReplayReservationSet:469).
