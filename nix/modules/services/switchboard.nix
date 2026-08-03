@@ -446,20 +446,16 @@ in {
           # decision reads a span (proven flag-OFF==flag-ON outcome-identical). Closes C2's Rule-15
           # "observable" DoD leg. REVERT: set to "0" + rebuild.
           "CAPABILITY_SPAN_TRUTH=1"
-          # Foundation C — R6 SHADOW adapter: OFF pending R7 (2026-08-03).
-          # R6 turned this ON briefly and the shadow dogfood PROVED the confinement
-          # plumbing + security stack end-to-end on real deployment: adapter mint +
-          # Ed25519 sign -> UDS -> runner accepts (SO_PEERCRED effective-UID) ->
-          # verifies signature -> reserves grant (replay). It also found+fixed 4
-          # deploy bugs (#5/#7 socket group, #6 client-auth, #8 reservation store).
-          # A full GREEN round-trip additionally needs the DELIBERATELY-DEFERRED R3
-          # provisioning: a bare git mirror of the repo (cell clone source) +
-          # trusted_repo_mirrors env wiring + adapter/runner trusted_repo_id
-          # coordination, plus a durable reservation store (the #8 in-memory stopgap).
-          # Until that R7 slice lands, the shadow can only deny-close at the
-          # unknown-trusted-repo gate — inert + a small per-call cost — so it stays
-          # OFF. The runner itself stays ON (validated). RE-ENABLE at R7.
-          "CAPABILITY_CELL_ADAPTER=0"
+          # Foundation C — SHADOW adapter: RE-ENABLED for the R7 GREEN deploy-exercise
+          # (2026-08-03). R7 landed (owner-activated aqos-foundation-c-r7-provisioning):
+          # the bare git mirror + JSON trusted_repo_mirrors wiring + the durable dual
+          # reservation store are built + committed. With those, the shadow round-trip
+          # that R6 proved up to the unknown-trusted-repo gate should now clear repo
+          # trust → bwrap cell → out-of-cell validator → typed GREEN receipt. The
+          # adapter still runs AFTER the tool's real in-process execution, deny-closed,
+          # NEVER altering/gating/delaying the real result. This rebuild is the R7
+          # acceptance activation. REVERT: set to "0" + rebuild.
+          "CAPABILITY_CELL_ADAPTER=1"
           "PORT=${toString swb.port}"
           "HOST=127.0.0.1"
           "LLAMA_CPP_URL=${llamaUrl}"
