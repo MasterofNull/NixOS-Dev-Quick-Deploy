@@ -163,3 +163,15 @@ peer_authorized() rejects every peer (masked behind bug #5). Design revised to r
 147324b087d2d37a), ceiling expanded to 4 files (runner.py + execution-cell-runner.nix client-UID +
 env-contract.yaml + test). NEXT: codex re-review of rev2 → re-freeze → owner activation.
 Still queued for codex (binding): C4 fc7534de, C6 89b2b65d, C3a-2 3ff34439 (antigravity advisory-PASSed all 3).
+
+### 2026-08-03 — R7 provisioning design queued for codex binding review
+R7-PROVISIONING-DESIGN-20260803.md (base HEAD a439527f) is DESIGN/PREPARED_ONLY and needs codex binding
+depth-review before freeze -> owner activation -> build. R7 provisions the deferred R3 pieces (bare repo
+mirror + trusted_repo_mirrors wiring + durable reservation store) so the confinement runner reaches a
+typed GREEN cell round-trip; it satisfies C6's retained runner-live-cell gate.
+Context codex should confirm on return:
+- R6 milestone: runner-hardening deployed+validated live; deploy bugs #2/#5/#6/#7/#8 fixed (all committed,
+  small-batched: 0cf1192e..a439527f). The shadow proved plumbing+security end-to-end; adapter now OFF pending R7.
+- Also awaiting codex: C4/C6/C3a-2 build-activations (PASS_DESIGN/PREPARED_ONLY; C6 gated behind R7).
+- Verify: R7 ceiling is minimal (runner nix + build_config_from_env + a durable store), switchboard anchor
+  untouched, mirror-freshness contract sound (stale -> typed clone-failed deny, never a wrong result).
