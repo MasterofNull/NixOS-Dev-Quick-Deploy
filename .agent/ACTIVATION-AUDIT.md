@@ -357,3 +357,17 @@ CONFIRMED LIVE 2026-08-02: dashboard restarted; `/api/stats/capability-enforceme
 c2={enforcement:on,key_present:true,status:ok} + c5={span_truth:on,status:ok}. Both observable surfaces
 (health-spider alarm + dashboard card) validated against the live post-rebuild system. C2 + C5 are DONE
 across all five Rule-15 legs (integrated · ON · validated · observable · intervenable).
+
+## Foundation C runner-hardening / R6 — milestone (2026-08-03)
+
+| Feature | Integrated | ON | Validated (real deployment) | Observable | Intervenable |
+|---------|-----------|----|----|-----------|--------------|
+| Confinement runner (C3b) | ✅ committed (0cf1192e) + deploy-hardened | ✅ enable+flagOn (R6 Step 1) | ✅ **deploy-exercise PASS**: starts clean (bug #2); socket keeps SocketGroup=aq-execution-cell-clients after start (bug #5/#7); SO_PEERCRED accepts switchboard effective-UID (bug #6); repeat connects succeed | ⚠️ runner logs + typed receipts; no dashboard card yet | ✅ enable/flagOn flags + socket-activated (inert when idle) |
+| Shadow adapter round-trip | ✅ built | ❌ **OFF pending R7** (84fcddf0) | ✅ **plumbing+security PROVEN**: mint+sign→UDS→accept→verify Ed25519→reserve replay all fire on real deployment | — | ✅ CAPABILITY_CELL_ADAPTER flag |
+
+**R6 outcome:** the runner-hardening thread is DONE — the confinement runner deploys correctly and
+all security checks (signature, replay, SO_PEERCRED) fire end-to-end on real systemd, validated by the
+incremental deploy-exercise which found + fixed 4 deploy bugs (#5/#6/#7/#8) offline acceptance couldn't
+catch. A full GREEN cell round-trip needs the deliberately-deferred R3 provisioning (bare repo mirror +
+trusted_repo wiring + durable reservation store) — a dedicated **R7** slice (issues-backlog). Shadow
+non-authoritative + deny-closed throughout; C2 (enforcing) + C5 (observing) unaffected.
