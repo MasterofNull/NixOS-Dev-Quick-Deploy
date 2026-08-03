@@ -1,7 +1,7 @@
 ---
 title: "Foundation C — R7: Trusted-Repo Mirror + Durable Reservation Provisioning (GREEN cell round-trip)"
 slice: "C3b / R7"
-status: "DESIGN REVISION 2 — PREPARED_ONLY; independent re-review + single-use owner activation required before build"
+status: "FROZEN (rev2) 2026-08-03 — binding-substitute PASS; single-use owner activation required before build. Codex confirmatory queued (advisory, non-blocking, Rule 18)."
 tier: "enforcement"
 kind: "design-only"
 author: "Opus (orchestrator, analysis-tier)"
@@ -10,6 +10,9 @@ review_history:
   - reviewer: "fresh Claude flagship (binding-substitute, codex offline)"
     verdict: "REQUEST_REVISION"
     findings: "7 (env JSON format, stale-mirror typed code, C6->C4 misattribution, both reservation stores durable, intra-process thread lock, _fsync_write_json reuse, parity test)"
+  - reviewer: "fresh Claude flagship (binding-substitute) — rev2 re-review"
+    verdict: "PASS"
+    findings: "all 7 resolved (verified line-by-line + code-grounded); no new issues; ceiling/anchors/security intact"
 predecessors:
   - "runner-hardening rev4 accepted+integrated (0cf1192e); R6 deploy-exercise PASS (bugs #2/#5/#6/#7/#8 fixed, validated live)"
   - "R2 clone primitive (execution_cell_clone.py, R2_REVIEWED_PASS); R1 grant; R5 adapter"
