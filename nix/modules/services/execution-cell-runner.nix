@@ -161,6 +161,13 @@ in {
     # switchboard.nix itself is never edited.
     users.users.${primaryUser}.extraGroups = mkAfter ["aq-execution-cell-clients"];
 
+    # Create the socket's parent dir root-owned (NOT via the service's
+    # RuntimeDirectory — see deploy-bug #7 note in serviceConfig). root:root 0755
+    # is world-traversable so a client-group member can reach the 0660 socket the
+    # socket-unit creates inside it, and systemd never re-groups a root-owned dir's
+    # socket to the service user on start.
+    systemd.tmpfiles.rules = ["d ${builtins.dirOf cfg.socketPath} 0755 root root -"];
+
     systemd.sockets.aq-execution-cell-runner = {
       description = "C3b R3 execution-cell-runner control socket (transport only; SO_PEERCRED-gated)";
       wantedBy = ["sockets.target"];
@@ -192,8 +199,15 @@ in {
         Group = "aq-execution-cell-runner";
         StateDirectory = "aq-execution-cell-runner";
         StateDirectoryMode = "0700";
-        RuntimeDirectory = "aq-execution-cell-runner";
-        RuntimeDirectoryMode = "0755"; # client group must traverse to reach the 0660 socket (state is in the separate StateDirectory, not here)
+        # NO RuntimeDirectory (deploy-bug #7, found by the R6 deploy-exercise):
+        # a RuntimeDirectory named for this service is owned by the service User
+        # (aq-execution-cell-runner), and systemd re-applies that ownership to the
+        # directory AND the socket the socket-unit created inside it on service
+        # start — clobbering SocketGroup=aq-execution-cell-clients to the service
+        # group, so clients can no longer connect after the first activation. The
+        # socket's parent dir is instead created root-owned via systemd.tmpfiles
+        # (below), which systemd never re-owns on start; the socket keeps 0660
+        # aq-execution-cell-runner:aq-execution-cell-clients.
         Restart = "on-failure";
         RestartSec = "5s";
         TimeoutStopSec = "15s";
