@@ -69,6 +69,7 @@ with lib; let
     cp ${../../../ai-stack/switchboard/capability_lease_gate.py} $out/capability_lease_gate.py
     cp ${../../../scripts/ai/lib/execution_grant.py} $out/execution_grant.py
     cp ${../../../scripts/ai/lib/execution_cell_clone.py} $out/execution_cell_clone.py
+    cp ${../../../scripts/ai/lib/durable_reservation.py} $out/durable_reservation.py
     cp ${../../../scripts/ai/lib/capability_lease.py} $out/capability_lease.py
     cp ${../../../scripts/ai/lib/span_taxonomy.py} $out/span_taxonomy.py
     cp ${../../../scripts/ai/lib/trace.py} $out/trace.py
