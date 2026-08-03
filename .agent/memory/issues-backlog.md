@@ -2867,3 +2867,10 @@ Advisory task (codex is the real confirmatory backstop) — non-blocking.
 - **PROVEN by R6 (no rework needed)**: signature verify, replay reservation, SO_PEERCRED effective-UID auth, socket-activation adoption, socket group stability — all fire correctly on real deployment.
 - **severity**: MEDIUM — confinement deployed + validated up to repo-trust; GREEN round-trip is the remaining functional gap; shadow non-authoritative + deny-closed (no live impact).
 - **file**: ai-stack/switchboard/execution_cell_runner.py (build_config_from_env, :1080, :588, :762); ai-stack/switchboard/execution_cell_adapter.py (trusted_repo_id mint); scripts/ai/lib/execution_grant.py (ReplayReservationSet:469).
+
+## [OPEN] Durable reservation store: corrupt ledger fail-OPENS (harden before authoritative) — 2026-08-03
+- **status**: OPEN follow-up (R8/authoritative) — acceptable for the R7 deny-closed SHADOW; must fail-closed before cells are authoritative.
+- **finding**: DurableReservationSet.__init__ (scripts/ai/lib/durable_reservation.py:100-106) catches (OSError,ValueError) on a corrupt/unreadable ledger and starts EMPTY — fail-OPEN for replay (a previously-reserved grant becomes re-reservable → spurious admission). Chosen for availability (never crash runner construction).
+- **impact**: LOW for R7 (shadow deny-closed — a replayed grant re-runs a cell in the sandbox, no real effect). HIGH once cells are authoritative (replay bypass could re-execute a real effect).
+- **required before R8/authoritative**: on a corrupt EXISTING ledger, treat the store as UNRELIABLE and fail-CLOSED (reserve_replay -> 'replayed'/deny), per execution_grant.reserve_replay's 'unreliable store must fail reported as replayed' contract. Distinguish missing-ledger (fresh, empty OK) from corrupt-ledger (deny).
+- **file**: scripts/ai/lib/durable_reservation.py:89-106.

@@ -32,6 +32,23 @@
 with lib; let
   cfg = config.mySystem.aiStack.executionCellRunner;
   primaryUser = config.mySystem.primaryUser;
+  # R7 (`R7-PROVISIONING-DESIGN-20260803.md` §2/§3): the SAME repo-path SSOT
+  # `switchboard.nix` uses (`repoPath = cfg.mcpServers.repoPath;`) — the bare
+  # mirror's clone/fetch source is the live working-tree checkout, never a
+  # second path invented by this module.
+  mirrorSourceRepo = config.mySystem.mcpServers.repoPath;
+  mirrorSyncScript = pkgs.writeShellScript "aq-execution-cell-runner-mirror-sync" ''
+    set -euo pipefail
+    GIT="${pkgs.git}/bin/git"
+    MIRROR="${cfg.mirrorPath}"
+    SOURCE="${mirrorSourceRepo}"
+    if [ ! -d "$MIRROR" ]; then
+      "$GIT" clone --bare "$SOURCE" "$MIRROR"
+    else
+      "$GIT" --git-dir="$MIRROR" fetch "$SOURCE" '+refs/heads/*:refs/heads/*'
+    fi
+    chown -R aq-execution-cell-runner:aq-execution-cell-runner "$MIRROR"
+  '';
 
   runnerPython = pkgs.python3.withPackages (ps: with ps; [cryptography]);
 
@@ -79,6 +96,11 @@ with lib; let
     # this env is the authoritative public-key source.
     "AQ_EXECUTION_CELL_RUNNER_PUBLIC_KEY_HEX=${removeSuffix "\n" (builtins.readFile ../../../config/grant-signing-public-key)}"
     "BWRAP_PATH=${pkgs.bubblewrap}/bin/bwrap"
+    # R7 §3: MUST be JSON — `build_config_from_env` parses this via
+    # `json.loads` (execution_cell_runner.py:~1130); a `key=value` string
+    # throws ValueError -> mirrors={} -> every grant denies
+    # `unknown-trusted-repo` (the exact failure R7 exists to fix).
+    "AQ_EXECUTION_CELL_RUNNER_TRUSTED_REPO_MIRRORS=${builtins.toJSON {primary = cfg.mirrorPath;}}"
   ];
 in {
   options.mySystem.aiStack.executionCellRunner = {
@@ -119,6 +141,19 @@ in {
       type = types.str;
       default = "/var/lib/aq-execution-cell-runner";
       description = "Private state root for cell working trees + quarantine (StateDirectory=aq-execution-cell-runner, owned by the runner's own unprivileged system user).";
+    };
+
+    mirrorPath = mkOption {
+      type = types.str;
+      default = "${cfg.stateDirectory}/mirror.git";
+      description = ''
+        R7 (`R7-PROVISIONING-DESIGN-20260803.md` §2): path to the runner-readable
+        bare git mirror the R2 clone primitive clones from. Provisioned
+        declaratively by `aq-execution-cell-runner-mirror.service` (a `git clone
+        --bare`/`git fetch` oneshot, never by the unprivileged cell) and kept
+        fresh by a companion timer floor. Defaults under the runner's own
+        StateDirectory so it inherits the same private, runner-owned root.
+      '';
     };
 
     maxConcurrentCells = mkOption {
@@ -166,7 +201,15 @@ in {
     # is world-traversable so a client-group member can reach the 0660 socket the
     # socket-unit creates inside it, and systemd never re-groups a root-owned dir's
     # socket to the service user on start.
-    systemd.tmpfiles.rules = ["d ${builtins.dirOf cfg.socketPath} 0755 root root -"];
+    systemd.tmpfiles.rules = [
+      "d ${builtins.dirOf cfg.socketPath} 0755 root root -"
+      # R7 §2: the mirror oneshot (below) is a SEPARATE unit from the main
+      # runner service, so it cannot rely on that service's own
+      # `StateDirectory=` (systemd only creates a unit's StateDirectory
+      # before THAT unit's own ExecStart). Declare the same root here so it
+      # exists, correctly-owned, independent of service start ordering.
+      "d ${cfg.stateDirectory} 0700 aq-execution-cell-runner aq-execution-cell-runner -"
+    ];
 
     systemd.sockets.aq-execution-cell-runner = {
       description = "C3b R3 execution-cell-runner control socket (transport only; SO_PEERCRED-gated)";
@@ -233,6 +276,37 @@ in {
         # control its own per-cell cgroup subtree for the §6 whole-tree
         # reap. Delegating only pids+memory (not the full controller set).
         Delegate = "pids memory";
+      };
+    };
+
+    # R7 §2: bare-mirror provisioning — a dedicated oneshot that clones (first
+    # run) or fetches (subsequent runs) the working repo into the runner-
+    # readable bare mirror at `cfg.mirrorPath`, NEVER performed by the
+    # unprivileged cell itself. Runs as root so it can read the working
+    # repo regardless of its ownership/mode and then hand the mirror to the
+    # runner's own user — the runner user holds no other privileged group
+    # membership (design §3) and is never the one touching the source repo.
+    systemd.services.aq-execution-cell-runner-mirror = {
+      description = "R7 bare-mirror provisioning/freshness sync for aq-execution-cell-runner (keeps base_revision resolvable)";
+      wantedBy = ["aq-execution-cell-runner.service"];
+      before = ["aq-execution-cell-runner.service"];
+      serviceConfig = {
+        Type = "oneshot";
+        User = "root";
+        ExecStart = "${mirrorSyncScript}";
+      };
+    };
+
+    # Freshness floor (design §2 "path/timer sync"): best-effort periodic
+    # re-fetch so the mirror does not go stale between runner activations —
+    # a stale mirror only ever produces a typed `base-oid-unreachable` deny
+    # (content is OID-bound), never a wrong result.
+    systemd.timers.aq-execution-cell-runner-mirror = {
+      description = "R7 periodic freshness floor for the aq-execution-cell-runner bare mirror";
+      wantedBy = ["timers.target"];
+      timerConfig = {
+        OnBootSec = "5min";
+        OnUnitActiveSec = "15min";
       };
     };
   };

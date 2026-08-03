@@ -78,6 +78,7 @@ import execution_grant as eg  # noqa: E402
 import execution_cell_clone as ecc  # noqa: E402
 import execution_cell_validator as validator  # noqa: E402
 import capability_lease_gate as clg  # noqa: E402
+import durable_reservation as dr  # noqa: E402
 
 # ---------------------------------------------------------------------------
 # The default-OFF flag (design §8; `config/env-contract.yaml`).
@@ -1149,6 +1150,16 @@ def build_config_from_env(env: Optional[Mapping[str, str]] = None) -> RunnerConf
         except KeyError:
             client_uid = None
     state_root = source.get("AQ_EXECUTION_CELL_RUNNER_STATE_ROOT", "/var/lib/aq-execution-cell-runner")
+    # R7 §4: both reservation domains (grant-id replay vs cell-level
+    # single-use) go durable, each on its OWN backing file under
+    # state_root — a shared file would cross-collide the two uniqueness
+    # domains. No eager mkdir here: `DurableReservationSet.__init__` only
+    # reads (missing file/dir is a normal empty-store startup); the
+    # `reservations/` dir is created lazily, on first persist, by
+    # `DurableReservationSet._persist()`.
+    reservations_dir = os.path.join(state_root, "reservations")
+    reservation_set = dr.DurableReservationSet(os.path.join(reservations_dir, "grant.json"))
+    cell_reservation_set = dr.DurableReservationSet(os.path.join(reservations_dir, "cell.json"))
     return RunnerConfig(
         socket_path=source.get("AQ_EXECUTION_CELL_RUNNER_SOCKET_PATH", "/run/aq-execution-cell-runner/control.sock"),
         client_uid=client_uid,
@@ -1163,16 +1174,15 @@ def build_config_from_env(env: Optional[Mapping[str, str]] = None) -> RunnerConf
         request_timeout_s=float(source.get("AQ_EXECUTION_CELL_RUNNER_REQUEST_TIMEOUT_SECONDS", "30")),
         env=source,
         allow_self_bind=source.get("AQ_EXECUTION_CELL_RUNNER_ALLOW_SELF_BIND", "0") == "1",
-        # deploy-bug #8 (found by the R6 shadow round-trip): without a reservation
-        # store, reserve_replay() fail-closes every grant to "replayed" before any
-        # cell is constructed. SHADOW-ONLY STOPGAP: wire the in-memory reference
-        # store so the R6 dogfood can exercise cell->bwrap->validator->GREEN. This is
-        # NOT durable and NOT safe across runner restarts/processes — a durable
-        # single-writer store (stable-lock + fsync + atomic-replace, the deferred "R3"
-        # promise) is REQUIRED before the shadow ever becomes authoritative (R7).
-        # Two distinct instances: grant-id replay vs cell-level reservation domains.
-        reservation_set=eg.ReplayReservationSet(),
-        cell_reservation_set=eg.ReplayReservationSet(),
+        # R7 (`R7-PROVISIONING-DESIGN-20260803.md` §4): deploy-bug #8's
+        # in-memory `eg.ReplayReservationSet()` shadow stopgap is replaced by
+        # the durable, thread-safe `DurableReservationSet` — persisted under
+        # state_root/reservations/{grant,cell}.json (separate files, separate
+        # uniqueness domains) so replay protection survives runner restarts.
+        # `eg.ReplayReservationSet` stays importable/used by tests as the
+        # pure in-memory reference double.
+        reservation_set=reservation_set,
+        cell_reservation_set=cell_reservation_set,
     )
 
 
