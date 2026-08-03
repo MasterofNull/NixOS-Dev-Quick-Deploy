@@ -446,17 +446,18 @@ in {
           # decision reads a span (proven flag-OFF==flag-ON outcome-identical). Closes C2's Rule-15
           # "observable" DoD leg. REVERT: set to "0" + rebuild.
           "CAPABILITY_SPAN_TRUTH=1"
-          # Foundation C — R5 SHADOW adapter: ROLLED BACK to "0" 2026-07-31.
-          # The shadow dogfood surfaced a 5th deployment bug — the R3 runner
-          # self-binds its UDS (execution_cell_runner.py:988-998), unlinking the
-          # systemd socket unit's SocketGroup=aq-execution-cell-clients socket and
-          # replacing it with a runner-group socket, so clients can never connect.
-          # That is an architecture mismatch (self-bind vs sd_listen_fds), not a
-          # unit tweak — deferred to the runner-deployment-hardening slice
-          # (.agents/plans/aqos-foundation-c/RUNNER-DEPLOYMENT-HARDENING.md).
-          # The adapter + runner code stay built + reviewed but DORMANT; C2 + C5
-          # remain LIVE. Re-activation is a fresh owner act after that slice lands.
-          "CAPABILITY_CELL_ADAPTER=0"
+          # Foundation C — R6 activation STEP 2 (2026-08-03, owner-authorized).
+          # Turns on the SHADOW execution-cell adapter now that runner-hardening
+          # rev4 + deploy-bug #7 are fixed and the R6 Step-1 deploy-exercise proved
+          # the runner deploys correctly (starts clean; socket keeps
+          # SocketGroup=aq-execution-cell-clients after start; SO_PEERCRED accepts
+          # the switchboard effective-UID; repeat connects succeed). After a tool
+          # call has ALREADY run normally in-process, the adapter additionally
+          # mints+signs an Ed25519 grant and submits the effect to the C3b bwrap
+          # runner for confined parallel execution (dogfood) — it NEVER
+          # alters/gates/delays the real result, deny-closed on any failure.
+          # REVERT: set to "0" + rebuild (runner then idles, adapter inert).
+          "CAPABILITY_CELL_ADAPTER=1"
           "PORT=${toString swb.port}"
           "HOST=127.0.0.1"
           "LLAMA_CPP_URL=${llamaUrl}"
