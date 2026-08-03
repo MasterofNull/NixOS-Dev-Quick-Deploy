@@ -2855,3 +2855,15 @@ Advisory task (codex is the real confirmatory backstop) — non-blocking.
 - **required before R7/authoritative**: implement the durable single-writer reservation store the design promised as "R3" (stable-lock + fsync + atomic-replace, idempotent reserved->committed|failed), behind the same try_reserve/commit/fail contract; swap it in build_config_from_env. Overlaps the C3a-2 delegate_reservation store design (reuse the pattern).
 - **severity**: MEDIUM — shadow non-authoritative + deny-closed (no live impact); durability matters only when cells become authoritative.
 - **file**: ai-stack/switchboard/execution_cell_runner.py (build_config_from_env); scripts/ai/lib/execution_grant.py (ReplayReservationSet:469).
+
+## [OPEN] R7 provisioning slice — trusted-repo mirror + durable reservation store (unblocks GREEN cell round-trip) — 2026-08-03
+- **status**: OPEN — the R6 shadow proved the confinement plumbing+security end-to-end; a full GREEN round-trip needs this deferred provisioning. Adapter turned OFF until it lands; runner stays ON.
+- **deploy-bug #9 (deferred, not oversight)**: runner denies every grant "unknown-trusted-repo" — trusted_repo_mirrors is empty. execution_cell_runner.py:1080 states R3 ships NO trusted_repo_mirrors provisioning ON PURPOSE.
+- **required (R7)**:
+  1. Provision a BARE git mirror of the repo (the R2 clone source for cells) — a maintained bare clone at a known path; set AQ_EXECUTION_CELL_RUNNER_TRUSTED_REPO_MIRRORS="<trusted_repo_id>=<bare-mirror-path>".
+  2. Adapter/runner trusted_repo_id coordination: the adapter must mint a trusted_repo_id that matches a mirrors key; define how it is derived (repo identity/OID).
+  3. Durable single-writer reservation store (replaces the #8 in-memory stopgap): stable-lock + fsync + atomic-replace, idempotent reserved->committed|failed, behind the existing try_reserve/commit/fail contract. Overlaps the C3a-2 delegate_reservation design.
+- **acceptance**: fresh unique write_file effect -> mint+sign -> UDS -> accept -> verify -> reserve -> repo-trust PASS -> bwrap cell -> validator -> typed GREEN receipt; real tool-calling unchanged; C2/C5 unaffected.
+- **PROVEN by R6 (no rework needed)**: signature verify, replay reservation, SO_PEERCRED effective-UID auth, socket-activation adoption, socket group stability — all fire correctly on real deployment.
+- **severity**: MEDIUM — confinement deployed + validated up to repo-trust; GREEN round-trip is the remaining functional gap; shadow non-authoritative + deny-closed (no live impact).
+- **file**: ai-stack/switchboard/execution_cell_runner.py (build_config_from_env, :1080, :588, :762); ai-stack/switchboard/execution_cell_adapter.py (trusted_repo_id mint); scripts/ai/lib/execution_grant.py (ReplayReservationSet:469).

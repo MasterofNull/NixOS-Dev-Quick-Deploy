@@ -446,18 +446,20 @@ in {
           # decision reads a span (proven flag-OFF==flag-ON outcome-identical). Closes C2's Rule-15
           # "observable" DoD leg. REVERT: set to "0" + rebuild.
           "CAPABILITY_SPAN_TRUTH=1"
-          # Foundation C — R6 activation STEP 2 (2026-08-03, owner-authorized).
-          # Turns on the SHADOW execution-cell adapter now that runner-hardening
-          # rev4 + deploy-bug #7 are fixed and the R6 Step-1 deploy-exercise proved
-          # the runner deploys correctly (starts clean; socket keeps
-          # SocketGroup=aq-execution-cell-clients after start; SO_PEERCRED accepts
-          # the switchboard effective-UID; repeat connects succeed). After a tool
-          # call has ALREADY run normally in-process, the adapter additionally
-          # mints+signs an Ed25519 grant and submits the effect to the C3b bwrap
-          # runner for confined parallel execution (dogfood) — it NEVER
-          # alters/gates/delays the real result, deny-closed on any failure.
-          # REVERT: set to "0" + rebuild (runner then idles, adapter inert).
-          "CAPABILITY_CELL_ADAPTER=1"
+          # Foundation C — R6 SHADOW adapter: OFF pending R7 (2026-08-03).
+          # R6 turned this ON briefly and the shadow dogfood PROVED the confinement
+          # plumbing + security stack end-to-end on real deployment: adapter mint +
+          # Ed25519 sign -> UDS -> runner accepts (SO_PEERCRED effective-UID) ->
+          # verifies signature -> reserves grant (replay). It also found+fixed 4
+          # deploy bugs (#5/#7 socket group, #6 client-auth, #8 reservation store).
+          # A full GREEN round-trip additionally needs the DELIBERATELY-DEFERRED R3
+          # provisioning: a bare git mirror of the repo (cell clone source) +
+          # trusted_repo_mirrors env wiring + adapter/runner trusted_repo_id
+          # coordination, plus a durable reservation store (the #8 in-memory stopgap).
+          # Until that R7 slice lands, the shadow can only deny-close at the
+          # unknown-trusted-repo gate — inert + a small per-call cost — so it stays
+          # OFF. The runner itself stays ON (validated). RE-ENABLE at R7.
+          "CAPABILITY_CELL_ADAPTER=0"
           "PORT=${toString swb.port}"
           "HOST=127.0.0.1"
           "LLAMA_CPP_URL=${llamaUrl}"
