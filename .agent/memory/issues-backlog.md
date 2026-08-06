@@ -2881,3 +2881,10 @@ Advisory task (codex is the real confirmatory backstop) — non-blocking.
 - **verification gap (mine)**: I verified nix-parse + tests + anchor + concurrency, but NOT that the bundle includes every new runner import. Tests pass because they import from the real sys.path, not the bundle. ADD to the verification checklist: any new  in the runner must have  in runnerBundle.
 - **fix**: added the cp line to runnerBundle.
 - **file**: nix/modules/services/execution-cell-runner.nix (runnerBundle); ai-stack/switchboard/execution_cell_runner.py:81.
+
+## [FIXED 2026-08-05] R7 deploy-bug #11: systemd Environment= strips JSON double-quotes -> unknown-trusted-repo
+- **status**: FIXED (pending rebuild) — found by the R7 GREEN deploy-exercise (3rd link). Runner starts clean (bundle fix), reserves past replay (durable store works), then denies unknown-trusted-repo.
+- **root cause**: systemd Environment= applies shell-style quote-removal. The bare JSON value {"primary":"..."} in the unit reached the RUNTIME env as {primary:/var/lib/...} (double-quotes stripped) -> build_config_from_env json.loads ValueError -> mirrors={} -> every grant denies unknown-trusted-repo. Confirmed: systemctl cat showed correct JSON in the unit; systemctl show -p Environment showed it stripped.
+- **fix**: single-quote-wrap the JSON in the Nix env value ('...') so systemd strips only the outer single-quotes and keeps the inner double-quotes literal. Adapter trusted_repo_id='primary' was correct; delivery was the fault.
+- **verify post-rebuild**: systemctl show aq-execution-cell-runner.service -p Environment | grep TRUSTED -> must show intact JSON with double-quotes.
+- **file**: nix/modules/services/execution-cell-runner.nix:~104.
