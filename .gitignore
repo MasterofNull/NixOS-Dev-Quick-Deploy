@@ -297,3 +297,23 @@ docs/QUICKSTART.generated.md
 # Agent working scratch dirs
 scratch/
 .codex/
+
+# R7 confinement: runtime data symlinks (absolute -> ~/.local/share dashboard);
+# untracked so a bwrap cell clone of this repo is self-contained (no escaping symlinks).
+data/ai_metrics.json
+data/config.json
+data/database.json
+data/feedback.json
+data/hybrid-coordinator.json
+data/keyword-signals.json
+data/learning-metrics.json
+data/links.json
+data/llm.json
+data/network.json
+data/persistence.json
+data/proof.json
+data/rag-collections.json
+data/security.json
+data/system.json
+data/telemetry.json
+data/token-savings.json
