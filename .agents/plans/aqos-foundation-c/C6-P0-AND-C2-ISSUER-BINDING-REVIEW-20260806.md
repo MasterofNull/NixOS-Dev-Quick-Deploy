@@ -124,3 +124,9 @@ HIGH crux policies were left open and had to be MANDATED:
 
 rev2 (committed) makes all five MANDATES. Needs a fresh binding PASS. Local Qwen advisory on the two
 crux risks folded when it lands. Codex confirmatory queued.
+
+## Local Qwen advisory on ALA (folded 2026-08-06)
+Corroborated the signing-oracle finding: "the authority acts as an oracle for the owner-uid
+process… it cannot independently validate policy compliance at signing time… the authority should
+NOT sign raw payloads." Matches the flagship Finding 2 + rev2 mandate 2 (independent reconstruction
++ byte-compare). Two lanes converged; no new defect. Codex confirmatory queued (393b623e).
