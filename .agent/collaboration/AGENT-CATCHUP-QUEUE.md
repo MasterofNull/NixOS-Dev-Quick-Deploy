@@ -189,3 +189,13 @@ Confirm: does P0 rev3 honestly close the rev2 REQUEST_REVISION by narrowing (not
 Does the issuer slice fully close finding 1 (signer provisioning/rotation/fail-closed) + finding 2
 (transport peer identity)? Any missed trust-boundary defect (context forgery, admission spoof, key
 leak, replay/epoch coherence)?
+
+### Update 2026-08-06: binding review DONE (fresh flagship) — C2 issuer now rev2
+Flagship binding verdict: C6-P0 rev3 PASS (freeze-only); C2 issuer rev1 REQUEST_REVISION — CONFIRMED
+HIGH defect (switchboard runs as human uid -> SO_PEERCRED not caller authority; issuer trusted a
+caller-asserted ALLOW). Rev2 (committed d8702e4c) moves authority to the signed C2 lease
+(issuer verifies the presented Ed25519 lease + re-derives admission; peer-uid = defense-in-depth).
+Codex on return: confirm rev2 closes it (subject = C2-SCHEDULER-CONTEXT-ISSUER-DESIGN rev2), and
+independently check the lease-verification seam (can a caller replay a valid lease across tasks?
+does the issuer bind the context to the lease's single-use/epoch?). Record in
+C6-P0-AND-C2-ISSUER-BINDING-REVIEW-20260806.md.
