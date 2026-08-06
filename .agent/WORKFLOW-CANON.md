@@ -557,6 +557,21 @@ Definition-of-Done attestation — <feature>
 
 ---
 
+## Root-Cause Discipline (Canonical — Behavioral Rule 19, all agents)
+
+Owner-ratified 2026-08-06. No silent workarounds. When any agent hits a workaround point —
+before committing the band-aid — it MUST do exactly one of: (a) fix the producer that emitted the
+bad state/signal, or (b) register the workaround in `.agent/WORKAROUND-REGISTER.md` with {symptom,
+root cause, producer, fix-path, class, severity}. An ad-hoc change to a designed system carries a
+one-line root-cause note in its commit body. Gaming a gate (faking the signal it checks — a
+hand-edited freshness timestamp, a mock pass) stays forbidden (anti-gaming); Rule 19 extends that
+from "don't fake the signal" to "don't route around the cause." **Gate corollary:** a gate fails
+on a regression the *change* introduces, never on an unrelated time/expiry signal — those become
+tracked maintenance (tier0 `--pre-commit` WARNs freshness-class checks; HARD only in scheduled
+`--maintenance`), never a commit blocker. SSOT `.agent/PROJECT-ROOT-CAUSE-DISCIPLINE-PRD.md`.
+
+---
+
 <!-- canon:begin fable-parity -->
 ## Fable-Parity Behavior (Canonical — all agents)
 
