@@ -2903,3 +2903,12 @@ Advisory task (codex is the real confirmatory backstop) — non-blocking.
 - **diagnosis note**: the "quarantined" code is create_cell's UNEXPECTED-EXCEPTION catch-all, distinct from typed clone-failed/base-oid-unreachable/isolation-violation. TypedFailure.detail (the real why) is discarded by the runner Decision — a future observability gap (log cell_result.detail low-cardinality-class on cell-create failure).
 - **fix**: systemd.services.aq-execution-cell-runner.path = [pkgs.git] (declarative; R2/validator code untouched).
 - **file**: nix/modules/services/execution-cell-runner.nix (service .path); execution_cell_clone.py:628; execution_cell_validator.py:194.
+
+## [FINDING 2026-08-06] R7 GREEN blocked by 17 committed escaping symlinks (confinement working correctly)
+- **status**: FINDING (not a bug in the confinement) — the R7 confinement chain is PROVEN end-to-end; the isolation invariant correctly refuses this repo's tree.
+- **chain proven**: mint->sign->UDS->SO_PEERCRED->verify->reserve(durable)->repo-trust->cell-create clone+OID+checkout ALL work (bugs #10/#11/#13 fixed live). Next stage = check_clone_isolation -> isolation-violation.
+- **cause**: 17 committed ABSOLUTE symlinks data/*.json -> /home/hyperd/.local/share/nixos-system-dashboard/*.json escape the tree. R2 check_clone_isolation (execution_cell_clone.py:233) walks the checked-out cell tree and flags any symlink whose realpath leaves the clone -> isolation-violation. Whole-tree check: ANY escaping symlink fails the whole cell.
+- **dual finding (repo hygiene, independent of R7)**: those committed absolute symlinks dangle on any machine except hyperd's (non-portable; leak a home path into git). Likely runtime data pointers that should not be tracked.
+- **paths to GREEN**: (A) untrack the data/*.json escaping symlinks (hygiene + unblocks cells) — verify the dashboard doesn't depend on repo/data/*.json resolving; (B) refine check_clone_isolation to permit symlinks that dangle-safely inside the bwrap sandbox (security-boundary change -> design+review); (C) prove GREEN only on a synthetic clean base. Owner decision.
+- **observability follow-up**: the runner discards TypedFailure.detail (create_cell) — log its low-cardinality reason class on cell-create failure so isolation-violation vs base-oid-unreachable detail is visible without repo spelunking.
+- **file**: execution_cell_clone.py:233 (check_clone_isolation); data/*.json symlinks.
