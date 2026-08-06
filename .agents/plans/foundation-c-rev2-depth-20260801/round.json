@@ -42,7 +42,7 @@
       "agent": "antigravity",
       "dispatch_id": null,
       "idempotency_hash": "cc984a11c3492d865c512de666cea000cf3fcf572c9ed24f74953ed57d8b7670",
-      "status": "pending",
+      "status": "submitted",
       "landed_at": null
     }
   ],
