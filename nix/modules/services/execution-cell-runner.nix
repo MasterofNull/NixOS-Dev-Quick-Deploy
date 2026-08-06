@@ -234,6 +234,15 @@ in {
       description = "C3b R3 execution-cell-runner (default-OFF, bwrap-confined execution cells)";
       requires = ["aq-execution-cell-runner.socket"];
       after = ["aq-execution-cell-runner.socket"];
+      # Deploy-bug #13 (found by the R7 GREEN deploy-exercise, first live cell
+      # run): R2 create_cell + the out-of-cell validator invoke git via bare
+      # `subprocess.run(["git", ...])` (R2's reviewed contract: the runner
+      # provides git on PATH). The service PATH had no git, so every clone raised
+      # FileNotFoundError -> caught by create_cell's outer handler -> the
+      # catch-all FAILURE_QUARANTINED at STAGE_CELL_CREATE (looks like a cell
+      # quarantine, is actually "git not found"). The mirror-sync oneshot worked
+      # only because it uses absolute ${pkgs.git}/bin/git. Provide git here.
+      path = [pkgs.git];
       # NOT wantedBy multi-user.target — purely socket-activated; no
       # independent boot-time start (design: no live traffic, no adoption).
       unitConfig = {
