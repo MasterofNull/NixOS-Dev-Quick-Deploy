@@ -15,6 +15,7 @@ Profile is cached to AI_MODEL_PROFILE_PATH and re-used unless stale (model chang
 
 from __future__ import annotations
 
+import datetime
 import json
 import logging
 import os
@@ -236,7 +237,7 @@ async def probe(llama_cpp_url: str, profile_path: Optional[Path] = None) -> Mode
             supports_tools=supports_tools,
             supports_system_prompt=supports_system,
             eos_token=eos_token,
-            probed_at=datetime.datetime.now(datetime.timezone.utc).isoformat() + "Z",
+            probed_at=datetime.datetime.now(datetime.timezone.utc).isoformat().replace("+00:00", "Z"),
             probe_model_id=model_id,
             **budgets,
         )
@@ -277,7 +278,31 @@ def _load_cached(path: Path) -> Optional[ModelProfile]:
 def _save(profile: ModelProfile, path: Path) -> None:
     try:
         path.parent.mkdir(parents=True, exist_ok=True)
-        path.write_text(json.dumps(profile.to_dict(), indent=2))
+        out = profile.to_dict()
+        # Producer owns its governance metadata (fixes WR-5 / T5): the freshness
+        # gate (test-model-catalog-freshness.py, tier0 0.10.5) checks `_meta.reviewed_at`,
+        # `freshness_max_age_days`, and `freshness_review_required` — fields the
+        # ModelProfile dataclass does not carry. Writing only `to_dict()` clobbered
+        # them, so a real re-probe broke governance and hand-editing the timestamp
+        # became the "easy" (gaming) path. A probe IS a fresh review+measurement, so
+        # stamp `reviewed_at=now`; preserve the policy/window an operator set.
+        now = datetime.datetime.now(datetime.timezone.utc)
+        existing: Dict[str, Any] = {}
+        try:
+            if path.exists():
+                existing = json.loads(path.read_text())
+        except Exception:
+            existing = {}
+        meta = dict(existing.get("_meta", {}))
+        meta["reviewed_at"] = now.isoformat().replace("+00:00", "Z")
+        meta["last_updated"] = now.date().isoformat()
+        meta.setdefault("version", "1.0")
+        meta.setdefault("freshness_policy", "phase154-profile-and-active-model-review")
+        meta["owner"] = "model_probe"
+        out["_meta"] = meta
+        out["freshness_max_age_days"] = existing.get("freshness_max_age_days", 45)
+        out["freshness_review_required"] = existing.get("freshness_review_required", False)
+        path.write_text(json.dumps(out, indent=2) + "\n")
     except Exception as exc:
         logger.warning("model_probe save_failed path=%s: %s", path, exc)
 
