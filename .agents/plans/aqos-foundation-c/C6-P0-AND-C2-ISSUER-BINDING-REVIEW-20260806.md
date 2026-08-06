@@ -90,3 +90,16 @@ private key confined to a principal the owner uid cannot read + public verifier)
 presented lease with the public half, OR (b) redesign the admission authority off the
 symmetric-HMAC-in-owner-uid dependency — then return for a fresh binding review. This is an
 owner/architect decision (a foundational capability-lease crypto upgrade), not a self-revision.
+
+## Local Qwen advisory on rev2 (folded 2026-08-06)
+Corroborated Finding 2 (one-lease-many-contexts): "without explicit binding, one valid lease can
+mint many contexts… enforce at the ISSUER side via a consumed-lease ledger; slot_queue is
+defense-in-depth only." Two independent lanes converged. The fix is carried into the C2 issuer rev3
+requirements (see ASYMMETRIC-LEASE-AUTHORITY-DESIGN §5). No new defect beyond the flagship FAIL.
+
+## Owner decision (2026-08-06)
+"Asymmetric lease authority first." New foundational prerequisite drafted:
+`ASYMMETRIC-LEASE-AUTHORITY-DESIGN-20260806.md` (Ed25519 confined signer per the execution-grant
+precedent) precedes the C2 issuer rev3. Revised chain:
+ALA → C2 issuer rev3 → C6 main → C6 activation → C4 freeze. C6-P0 rev3 remains independently
+freeze-ready (PASS).
