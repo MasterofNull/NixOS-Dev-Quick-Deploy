@@ -432,3 +432,28 @@ transport + intervention lever.
 - **intervenable**: `--pre-deploy` enforces freshness; `FRESHNESS_CLASS_IDS` is the operator lever for what's freshness-class; the register is the sweep surface.
 
 **Also this cycle:** WR-4 cell-create diagnostics (`_log_cell_create_failure`) — activates on next rebuild (runner runs from the Nix bundle). Open register items: WR-3 (deploy preflight), WR-8 (xfail regex parity with the table-aware parse).
+
+---
+
+## Foundation C frontier — session state (2026-08-06)
+
+**C6-P0 trust anchors — BUILT + shipped (commit 8bcfd393).** Owner-activated (event c38ee4d8),
+drift-CLEAN, haiku-built (Rule 17), orchestrator-verified byte-for-byte, tier0 25/0. Declarative
+trust anchors only (owner public-key allowlist + 2 closed schemas + offline test) — ships NO runtime
+capability, so the 5-dimension Activation Gate does not apply; it is a prerequisite artifact consumed
+verify-only by the epoch authority + the C2 issuer in later slices. Ceremony complete end-to-end.
+
+**Asymmetric Lease Authority rev4 — FROZEN + binding PASS (24c748b9), awaiting owner activation.**
+Four review rounds (2 HIGH → 1 HIGH → oracle-confirmed → PASS) caught scheme-downgrade,
+signing-oracle, and byte-equality-vs-wall-clock defects IN DESIGN. Build is owner-gated; its freeze
+gate mandates a capable implementer (crypto core: capability_lease.py asymmetric path + the codex-1
+revocation guard) + mandatory independent code review; default-OFF.
+
+**Revised dependency chain (post-review):**
+`ALA rev4 (frozen, PASS) → build → C2 issuer rev3 (verify asymmetric lease + consumed-lease ledger)
+→ C6 main → C6 activation → C4 freeze`. C6-P0 shipped independently. The entire remaining frontier
+is gated on the ALA owner activation, then its capable-implementer build.
+
+**Advisory lanes:** local Qwen folded (corroborated signing-oracle + one-lease-many-contexts);
+Antigravity ran async (untrusted-advisory, no gating verdict); codex confirmatory queued for ALA rev4
++ C6-P0 + the C2-issuer/C6-P0 designs (Rule 18, non-blocking).
