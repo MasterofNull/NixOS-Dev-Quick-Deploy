@@ -18,6 +18,16 @@ does not provision that SOPS secret (a later infra slice) — when the path
 is absent, `resolve_key()` deterministically falls back to a documented DEV
 key and reports `is_dev=True` so a dev signature is never mistaken for a
 trust-rooted one. Callers (notably the CLI) MUST surface that fact loudly.
+
+Foundation C rev4 (`ASYMMETRIC-LEASE-AUTHORITY-DESIGN-20260806.md`) adds an
+ADDITIVE asymmetric path alongside the above, unchanged, HMAC surface:
+`sign_ed25519()`/`verify_authoritative()` are Ed25519-only (mirrors
+`execution_grant.py`), scheme-pinned via a REQUIRED signed `sig_scheme`
+field, and verify against the public-only `config/aqos/lease-signer-keys.json`
+allowlist. `verify_authoritative` is the SOLE entrypoint trust-rooted
+consumers (C2 issuer, C2 enforcement) may call; it never falls back to HMAC.
+Legacy leases (no `sig_scheme`) keep byte-identical `canonical_payload()`
+output and remain the non-authoritative C1-shadow `verify()` surface.
 """
 
 from __future__ import annotations
@@ -29,7 +39,12 @@ import os
 from dataclasses import asdict, dataclass
 from datetime import datetime, timezone
 from pathlib import Path
-from typing import Any, Optional
+from typing import Any, Mapping, Optional
+
+from cryptography.hazmat.primitives.asymmetric.ed25519 import (
+    Ed25519PrivateKey,
+    Ed25519PublicKey,
+)
 
 # --------------------------------------------------------------------------
 # Constants
@@ -291,6 +306,137 @@ def verify(
         return VERIFY_EPOCH_STALE
 
     return VERIFY_OK
+
+
+# --------------------------------------------------------------------------
+# Asymmetric (Ed25519) signing + authoritative verify — Foundation C rev4
+# mandate 1 (`ASYMMETRIC-LEASE-AUTHORITY-DESIGN-20260806.md` §1/§2). Mirrors
+# `execution_grant.py`'s Ed25519 verify-only pattern. This is an ADDITIVE
+# path: the HMAC `sign()`/`verify()`/`canonical_payload()` above are
+# UNCHANGED and remain the non-authoritative C1-shadow surface. Every
+# trust-rooted consumer (C2 issuer, C2 enforcement) MUST call
+# `verify_authoritative` exclusively — it is scheme-pinned to `ed25519` and
+# has NO reachable HMAC/dev-key fallback.
+# --------------------------------------------------------------------------
+
+SIG_SCHEME_ED25519: str = "ed25519"
+
+AUTH_VERIFY_OK = "ok"
+AUTH_DENY_SCHEME = "scheme-not-ed25519"
+AUTH_DENY_MALFORMED_LEASE = "lease-malformed"
+AUTH_DENY_MALFORMED_KEYS = "keys-malformed"
+AUTH_DENY_MISSING_KEY_ID = "missing-key-id"
+AUTH_DENY_UNKNOWN_KEY = "unknown-key-id"
+AUTH_DENY_KEY_NOT_ACTIVE = "key-not-active"
+AUTH_DENY_BAD_SIGNATURE = "bad-signature"
+
+
+@dataclass(frozen=True)
+class AuthoritativeVerdict:
+    """Typed, report-only outcome of `verify_authoritative` — never raises,
+    never acts. `ok=True` iff `reason == AUTH_VERIFY_OK`; every other
+    `reason` is one of the `AUTH_DENY_*` constants above and is safe to log
+    (never security-bearing detail beyond the deny category)."""
+
+    ok: bool
+    reason: str
+
+
+def sign_ed25519(lease: LeaseLike, private_key_bytes: bytes) -> str:
+    """Ed25519-sign `canonical_payload(lease)` (the existing canonicalizer
+    above, which already excludes `signature`) and return the hex
+    signature. Mirrors `execution_grant.py`'s `sign()`. `private_key_bytes`
+    is the raw 32-byte Ed25519 seed (SOPS-provisioned in production, a
+    freshly generated test keypair in tests) — never a key this module
+    resolves or stores itself; there is no `resolve_key()`-equivalent for
+    the asymmetric path here. Callers are responsible for including
+    `sig_scheme: "ed25519"` in `lease` themselves (this function does not
+    inject it) so it participates in the signed canonical payload like any
+    other field."""
+    private_key = Ed25519PrivateKey.from_private_bytes(private_key_bytes)
+    payload = canonical_payload(lease)
+    return private_key.sign(payload).hex()
+
+
+def verify_authoritative(lease: Mapping[str, Any], keys_json: Any) -> AuthoritativeVerdict:
+    """SCHEME-PINNED authoritative Ed25519 verify (rev4 mandate 1).
+
+    Trust-rooted consumers (C2 issuer, C2 enforcement) call THIS and ONLY
+    this — never the legacy HMAC `verify()` above. Requires
+    `lease.get("sig_scheme") == "ed25519"` as a REQUIRED SIGNED field:
+    absent, unknown, or `"hmac-sha256"` all deny with `AUTH_DENY_SCHEME`
+    immediately — there is NO HMAC fallback and NO dev-key path reachable
+    from this function; the check happens before any key lookup or
+    signature math runs. Looks up the lease's `issuer_key_id` (falling
+    back to `key_id`) in `keys_json` (the
+    `config/aqos/lease-signer-keys.json` structure:
+    `{revision, keys:[{key_id, ed25519_public_key(hex), status}]}`),
+    denies if the key-id is unknown or its `status != "active"`
+    (re-checked on EVERY call — no caching of a prior active result), then
+    Ed25519-verifies the signature over `canonical_payload(lease)` using
+    only that key's public bytes. A malformed or missing `keys_json`
+    (not a dict, no non-empty `keys` list) denies-ALL rather than
+    accept-all. Never raises."""
+    try:
+        try:
+            data = _as_dict(lease)
+        except TypeError:
+            return AuthoritativeVerdict(False, AUTH_DENY_MALFORMED_LEASE)
+        if not isinstance(data, dict):
+            return AuthoritativeVerdict(False, AUTH_DENY_MALFORMED_LEASE)
+
+        # Scheme pin FIRST: absent/unknown/hmac-sha256 never reach the key
+        # lookup or Ed25519 math below — no fallback surface to abuse.
+        if data.get("sig_scheme") != SIG_SCHEME_ED25519:
+            return AuthoritativeVerdict(False, AUTH_DENY_SCHEME)
+
+        if not isinstance(keys_json, dict):
+            return AuthoritativeVerdict(False, AUTH_DENY_MALFORMED_KEYS)
+        keys = keys_json.get("keys")
+        if not isinstance(keys, list) or not keys:
+            return AuthoritativeVerdict(False, AUTH_DENY_MALFORMED_KEYS)
+
+        key_id = data.get("issuer_key_id") or data.get("key_id")
+        if not isinstance(key_id, str) or not key_id:
+            return AuthoritativeVerdict(False, AUTH_DENY_MISSING_KEY_ID)
+
+        matched: Optional[dict] = None
+        for entry in keys:
+            if isinstance(entry, dict) and entry.get("key_id") == key_id:
+                matched = entry
+                break
+        if matched is None:
+            return AuthoritativeVerdict(False, AUTH_DENY_UNKNOWN_KEY)
+
+        # Revocation status re-checked on every call — no cached-active
+        # past a status flip (rev2 mandate 5).
+        if matched.get("status") != "active":
+            return AuthoritativeVerdict(False, AUTH_DENY_KEY_NOT_ACTIVE)
+
+        pubkey_hex = matched.get("ed25519_public_key")
+        if not isinstance(pubkey_hex, str):
+            return AuthoritativeVerdict(False, AUTH_DENY_MALFORMED_KEYS)
+        try:
+            public_key = Ed25519PublicKey.from_public_bytes(bytes.fromhex(pubkey_hex))
+        except (ValueError, TypeError):
+            return AuthoritativeVerdict(False, AUTH_DENY_MALFORMED_KEYS)
+
+        sig_hex = data.get("signature")
+        if not isinstance(sig_hex, str) or not sig_hex:
+            return AuthoritativeVerdict(False, AUTH_DENY_BAD_SIGNATURE)
+        try:
+            signature_bytes = bytes.fromhex(sig_hex)
+        except ValueError:
+            return AuthoritativeVerdict(False, AUTH_DENY_BAD_SIGNATURE)
+
+        try:
+            public_key.verify(signature_bytes, canonical_payload(data))
+        except Exception:
+            return AuthoritativeVerdict(False, AUTH_DENY_BAD_SIGNATURE)
+
+        return AuthoritativeVerdict(True, AUTH_VERIFY_OK)
+    except Exception:
+        return AuthoritativeVerdict(False, AUTH_DENY_MALFORMED_LEASE)
 
 
 # --------------------------------------------------------------------------
