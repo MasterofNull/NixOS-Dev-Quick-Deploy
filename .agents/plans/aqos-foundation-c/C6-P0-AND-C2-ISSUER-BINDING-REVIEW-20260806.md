@@ -44,3 +44,18 @@ authority; two-flag independence.
 The C6→C4 chain cannot freeze on the rev1 bytes. C6-P0 rev3 is freeze-ready once the parent-C6
 amendment lands (done). The C2 issuer slice required the trust-model revision (done in rev2). rev2
 now needs a fresh independent PASS before freeze.
+
+## Advisory lanes (folded 2026-08-06)
+
+- **Local Qwen (never-skip, advisory):** independently CORROBORATED the flagship's HIGH finding —
+  flagged "SO_PEERCRED (UID/GID) to authenticate the switchboard is fragile" as a trust-boundary
+  violation. Also raised replay-via-missing-nonce. Verification: replay/single-use is ALREADY
+  covered — parent C6 §3.1 makes the context single-use (`slot_queue` durably records the context
+  digest before a reservation and refuses replay/digest conflict) + `context_id` + bounded expiry.
+  No new unaddressed defect; the concern is a re-review verification item (already queued for codex).
+- **Antigravity:** dispatched via the sanctioned `--loop` lane; ran async into its agent loop
+  (no inline verdict returned this cycle). Untrusted-advisory regardless; not gate-clearing.
+- **Codex:** confirmatory queued (rev2 subject) — verify the lease-verification seam + single-use.
+
+Consensus: the binding (flagship) verdict stands; local corroborates; rev2's signed-lease trust
+model + parent-C6 single-use enforcement address both HIGH findings. rev2 needs a fresh binding PASS.
