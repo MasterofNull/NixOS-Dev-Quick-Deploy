@@ -244,6 +244,12 @@ in {
         Type = "simple";
         ExecStart = "${runnerPython}/bin/python3 ${runnerBundle}/execution_cell_runner.py";
         Environment = runnerEnvironment;
+        # StandardOutput=journal by default, but StandardError defaulted to
+        # `inherit` (-> systemd's own stderr, effectively discarded), so the
+        # runner's stderr — Python tracebacks AND the bug #12 `[cell-fence]`
+        # quarantine diagnostic — never reached journald. Route it to journal:
+        # low-cardinality operator log, root/adm-only, no cross-service leak.
+        StandardError = "journal";
         User = "aq-execution-cell-runner";
         Group = "aq-execution-cell-runner";
         StateDirectory = "aq-execution-cell-runner";
