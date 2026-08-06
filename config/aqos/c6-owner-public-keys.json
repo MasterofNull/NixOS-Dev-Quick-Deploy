@@ -1,0 +1,13 @@
+{
+  "schema_version": "1",
+  "revision": 1,
+  "keys": [
+    {
+      "key_id": "owner-2026-08",
+      "ed25519_public_key": "0000000000000000000000000000000000000000000000000000000000000000",
+      "status": "active",
+      "not_before": null,
+      "not_after": null
+    }
+  ]
+}

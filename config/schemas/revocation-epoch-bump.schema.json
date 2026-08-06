@@ -1,0 +1,71 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "type": "object",
+  "title": "aq.revocation-epoch-bump/1",
+  "description": "Authenticated owner-signed revocation epoch bump request",
+  "required": [
+    "schema_version",
+    "request_id",
+    "idempotency_key",
+    "issued_at",
+    "expires_at",
+    "actor_key_id",
+    "expected_epoch",
+    "reason_code",
+    "scope",
+    "signature"
+  ],
+  "properties": {
+    "schema_version": {
+      "type": "string",
+      "const": "1"
+    },
+    "request_id": {
+      "type": "string",
+      "description": "Unique request identifier"
+    },
+    "idempotency_key": {
+      "type": "string",
+      "description": "Idempotency key for replay detection"
+    },
+    "issued_at": {
+      "type": "string",
+      "format": "date-time",
+      "description": "Timestamp when the request was issued"
+    },
+    "expires_at": {
+      "type": "string",
+      "format": "date-time",
+      "description": "Timestamp when the request expires"
+    },
+    "actor_key_id": {
+      "type": "string",
+      "description": "Key ID of the signing actor (owner)"
+    },
+    "expected_epoch": {
+      "type": "integer",
+      "minimum": 0,
+      "description": "Expected current epoch before bump"
+    },
+    "reason_code": {
+      "type": "string",
+      "enum": [
+        "operator-revoke",
+        "policy-rollback",
+        "incident",
+        "scheduled-rotation"
+      ],
+      "description": "Bounded reason for the epoch bump"
+    },
+    "scope": {
+      "type": "string",
+      "const": "fleet",
+      "description": "Scope of the revocation (always fleet)"
+    },
+    "signature": {
+      "type": "string",
+      "description": "Ed25519 signature over the canonical payload"
+    }
+  },
+  "additionalProperties": false
+}
