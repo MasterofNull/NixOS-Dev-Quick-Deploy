@@ -25,7 +25,7 @@ ACCEPTED (documented deliberate tradeoff, no band-aid) · MAINT-DUE (time/env ex
 - fix: use `git commit -F <file>`; author multi-line docs via Write + `cat >>`, never inline heredocs with `${}`.
 - status: FIXED 2026-08-06 (habit + documented in the PRD).
 
-## WR-3 — runner deploy bugs only discoverable live, one per rebuild — OPEN
+## WR-3 — runner deploy bugs only discoverable live, one per rebuild — FIXED
 - symptom: #10 (durable_reservation.py missing from runnerBundle), #11 (systemd strips JSON quotes), #13 (git not on PATH) each passed offline acceptance, failed live, needed a rebuild to find the next.
 - root cause (T2): no deploy-context preflight (bundle-import resolution, env round-trip through systemd, bare-binary PATH deps).
 - producer to fix: execution-cell-runner activation path.
@@ -33,7 +33,7 @@ ACCEPTED (documented deliberate tradeoff, no band-aid) · MAINT-DUE (time/env ex
 - class T2 · severity MED · status FIXED 2026-08-06 · opened 2026-08-06.
 - FIXED: `scripts/testing/test-execution-cell-runner-deploy-context.py` — static preflight asserting runnerBundle import closure (cf #10), git-on-PATH (cf #13), and single-quote-wrapped toJSON env (cf #11). Validated both ways (PASS clean; correctly CAUGHT a simulated missing bundle module with the exact diagnostic). Wired into focused-ci (`config/validation-check-registry.json`, id `execution-cell-runner-deploy-context`) triggering on any runner deploy-surface file change — so this class is caught at commit time, never live.
 
-## WR-4 — cell-create failures hide their cause — OPEN
+## WR-4 — cell-create failures hide their cause — FIXED
 - symptom: every cell-create failure surfaced only a catch-all code (`quarantined`); the real "why" (git-not-found, isolation-violation, path-escape) required reverse-engineering source+repo.
 - root cause (T3): runner Decision keeps only `cell_result.code`, discards `TypedFailure.detail`.
 - producer to fix: `execution_cell_runner.py` cell-create failure branch (line ~641).
@@ -41,7 +41,7 @@ ACCEPTED (documented deliberate tradeoff, no band-aid) · MAINT-DUE (time/env ex
 - class T3 · severity MED · status FIXED 2026-08-06 (validated live: `[cell-create] DENIED code=path-escape detail=…` in journald) · opened 2026-08-06.
 - FIXED: added `_log_cell_create_failure()` — on a cell-create denial the runner now logs `code` + truncated `detail` to journald (receipt schema unchanged). Turns the R7-style blind spelunk into a one-line read. Runner suite 13/13.
 
-## WR-5 — tier0 0.10.5 model-profile freshness hard-blocks all commits — MAINT-DUE
+## WR-5 — tier0 0.10.5 model-profile freshness hard-blocks all commits — FIXED
 - symptom: `reviewed_at`/`probed_at` (2026-06-21) aged ~1 day past the 45-day window → tier0 `--pre-commit` fails → ALL commits blocked. Tempts hand-bumping the timestamp (gaming) or bypassing tier0.
 - root cause (T4 + T5): a time-based freshness check wired as a HARD pre-commit blocker (T4); AND the producer `model_probe.py` writes measurement fields but NOT the `_meta`/freshness governance fields it's checked against, so a real re-probe clobbers governance and hand-editing becomes the "easy" path (T5).
 - profile verified accurate: active.gguf/Qwen3-35B, TPS 3.0, ctx 262144 all match reality — content is NOT drifted; only the timestamps lapsed.
@@ -61,7 +61,7 @@ ACCEPTED (documented deliberate tradeoff, no band-aid) · MAINT-DUE (time/env ex
 - resolution: ACCEPTED — in Bash tool `git` invocations, use ABSOLUTE literal paths for `-F <msgfile>` (and generally avoid shell variables inside hook-wrapped git commands). No producer fix (the hook is a deliberate token-optimization wrapper).
 - class T1 · severity LOW · status ACCEPTED · opened 2026-08-06.
 
-## WR-8 — tier0 xfail matcher regex can't parse table-format failures — OPEN
+## WR-8 — tier0 xfail matcher regex can't parse table-format failures — FIXED
 - symptom: gate_qa_phase0's xfail excuse-path uses `grep -oP '✗\s+\K[0-9.]+'` (id AFTER ✗), but aq-qa renders failures as a table row with the id BEFORE the ✗ column — so failing_ids is always empty and the documented-xfail path (config/qa-xfail.yaml) never actually excuses anything (effectively dead).
 - root cause (T3-adjacent): parser assumes a `✗ <id>` inline format that aq-qa does not emit.
 - producer to fix: scripts/governance/tier0-validation-gate.sh gate_qa_phase0 xfail block.
