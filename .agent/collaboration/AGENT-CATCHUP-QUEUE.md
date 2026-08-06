@@ -199,3 +199,10 @@ Codex on return: confirm rev2 closes it (subject = C2-SCHEDULER-CONTEXT-ISSUER-D
 independently check the lease-verification seam (can a caller replay a valid lease across tasks?
 does the issuer bind the context to the lease's single-use/epoch?). Record in
 C6-P0-AND-C2-ISSUER-BINDING-REVIEW-20260806.md.
+
+### [2026-08-06] Codex confirmatory: Asymmetric Lease Authority design (ALA)
+New foundational prerequisite (owner-chosen) fixing the rev2 FAIL — Ed25519 confined lease signer.
+Subject: ASYMMETRIC-LEASE-AUTHORITY-DESIGN-20260806.md. Fresh flagship binding review running; local
+advisory in parallel. Codex on return: press the SIGNING-ORACLE risk (does the confined authority
+sign whatever the owner-uid gate presents?) and the SCHEME-DOWNGRADE attack (attacker sets
+sig_scheme=hmac-sha256 + forges with the dev key -> bypasses Ed25519). Confirm flag-OFF byte-parity.
