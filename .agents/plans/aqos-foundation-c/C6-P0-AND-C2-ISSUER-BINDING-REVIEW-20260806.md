@@ -59,3 +59,34 @@ now needs a fresh independent PASS before freeze.
 
 Consensus: the binding (flagship) verdict stands; local corroborates; rev2's signed-lease trust
 model + parent-C6 single-use enforcement address both HIGH findings. rev2 needs a fresh binding PASS.
+
+## Binding RE-REVIEW of rev2 (2026-08-06) — VERDICT: FAIL
+
+Fresh flagship (independent of author + rev1 reviewer), re-verified by orchestrator against code.
+
+**C2 issuer rev2 → FAIL.** The rev2 trust model ("issuer verifies an Ed25519-signed C2 lease against
+a lease-issuer public key") depends on a primitive that DOES NOT EXIST:
+- `capability_lease.py:178` `sign()` = HMAC-SHA256 (symmetric); `:284` `verify()` = `hmac.compare_digest`;
+  no Ed25519/keypair/public-verifier anywhere in the C2 lease path (grep confirmed zero).
+- HMAC is symmetric: whoever can verify can forge. The key is `/run/secrets/aq-lease-signing-key`,
+  currently UNPROVISIONED so it falls back to in-repo `DEV_SIGNING_KEY` (`:40,201`,
+  "DO-NOT-TRUST-IN-PRODUCTION"); leases are minted in-process by the switchboard as `cfg.primaryUser`.
+  So the signing secret lives in the SAME owner-uid domain as the shell the fix excludes. rev2
+  RELOCATED the defect (peer-uid -> symmetric-secret-in-same-uid), did not close it.
+- `capability_lease_issuance.py` is C1 SHADOW/LOG-ONLY — there is no production asymmetric C2 lease issuer.
+
+Additional findings: (2 HIGH) no issuer-side one-to-one lease->context binding — one valid lease can
+mint many contexts (fresh context_id each; slot_queue single-use is on the CONTEXT digest, not the
+lease); (3 MED) context expiry not bound to lease expiry + epoch re-check is inert while the authority
+is disabled (must be stated as a limitation, not a live guarantee); (4 LOW) §2 still names the bare
+public-key file that finding-3 dropped (internal inconsistency).
+
+**C6-P0 rev3 → PASS re-affirmed** (freeze-only), independent of the C2 issuer; parent-C6
+schema-ownership amendment correct.
+
+**Chain:** cannot freeze on the C2 issuer rev2 bytes. Q-C6-1 remains OPEN and is DEEPER than designed:
+the C2 issuer must EITHER (a) build a real asymmetric, confined lease-signing authority (Ed25519
+private key confined to a principal the owner uid cannot read + public verifier) and verify the
+presented lease with the public half, OR (b) redesign the admission authority off the
+symmetric-HMAC-in-owner-uid dependency — then return for a fresh binding review. This is an
+owner/architect decision (a foundational capability-lease crypto upgrade), not a self-revision.
