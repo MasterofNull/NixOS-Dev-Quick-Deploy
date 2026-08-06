@@ -167,3 +167,12 @@ reset-only reissue; authority is a stateless minter) — the one that matters; (
 gate→authority is hardening not "exact"; (4) `issued_to` pinned constant, principal/task audit-only;
 (5) schemas are empty `{}` not manifest-derived. Mandates 1/3/4/5 (scheme-pinning, byte-parity,
 confinement, rotation) spot-checked UNCHANGED. rev4 needs a fresh binding PASS (text-only delta).
+
+## Binding review — ALA rev4 (2026-08-06) — VERDICT: PASS ✅
+Fresh flagship, independent. All four rev4 clauses verified faithful to code (codex-1 guard
+:45-51/:326/:329-337 preserved under the relocated mint — no residual self-heal path; issued_to
+pinned :372, admission never keys on it; epoch-resolution relocation = honest hardening; schemas
+empty {} :388-389). No findings. Oracle-closure + all five mandates complete in the frozen-candidate
+bytes. PASS authorizes FREEZE ONLY (not build/service/signing/flag-on/activation — each independently
+owner-gated). ALA rev4 can proceed to freeze. FROZEN: ASYMMETRIC-LEASE-AUTHORITY-FREEZE-20260806.md
+(subject 24c748b9), awaiting single-use owner activation.
