@@ -2888,3 +2888,11 @@ Advisory task (codex is the real confirmatory backstop) — non-blocking.
 - **fix**: single-quote-wrap the JSON in the Nix env value ('...') so systemd strips only the outer single-quotes and keeps the inner double-quotes literal. Adapter trusted_repo_id='primary' was correct; delivery was the fault.
 - **verify post-rebuild**: systemctl show aq-execution-cell-runner.service -p Environment | grep TRUSTED -> must show intact JSON with double-quotes.
 - **file**: nix/modules/services/execution-cell-runner.nix:~104.
+
+## [DIAGNOSING 2026-08-05] R7/C3b bug #12: false-QUARANTINE at final fence on first live cell run
+- **status**: DIAGNOSING (instrumentation added; needs rebuild+capture) — NOT a safety hole; the fence correctly refuses GREEN it cannot prove.
+- **milestone**: R7 provisioning COMPLETE — the confinement chain now flows end-to-end for the FIRST time: mint->sign->UDS->SO_PEERCRED->verify->reserve(durable)->repo-trust PASS->bwrap cell->RUNS->final fence. Quarantine is the LAST link.
+- **evidence**: receipt=denied/quarantined, STAGE_SUPERVISE, tree_proven_absent=False, deterministic (3/3). NO leftover aq-cell-* cgroup dirs -> _cleanup_cgroup_dir (finally, after popen.communicate reaps @717) found the cgroup EMPTY and rmdir'd it. So the cgroup is NON-empty at terminate_cgroup_tree (@859, inside the 4.5s kill_proof_budget) but EMPTY moments later at cleanup => a process lingers slightly PAST the 4.5s proof budget, then exits.
+- **hypothesis**: a cell child in D-state (uninterruptible disk I/O on the loaded slow APU) survives the SIGKILL+proof budget, OR an orphan escaping bwrap --unshare-pid teardown. Fix DIFFERS by cause (budget tune vs real reap fix — the orphan case is security-relevant), so instrument-before-fix.
+- **action**: added _log_unproven_tree() — on quarantine, logs lingering pids+/proc state+comm to journald (low-cardinality; receipt schema unchanged; also a permanent Rule-15 observability win). Rebuild -> reproduce -> read journalctl -> confirm D-state vs orphan -> minimal fix as a scoped fence slice (design+review, safety-critical path).
+- **file**: ai-stack/switchboard/execution_cell_runner.py (terminate_cgroup_tree ~455, _supervise ~859, confine-run quarantine ~725).
