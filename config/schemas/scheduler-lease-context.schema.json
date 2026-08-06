@@ -1,0 +1,90 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "type": "object",
+  "title": "aq.scheduler-lease-context/1",
+  "description": "Authenticated scheduler lease context for verified ingress to slot queue",
+  "required": [
+    "schema_version",
+    "context_id",
+    "lease_id",
+    "grant_digest",
+    "task_id",
+    "audience",
+    "principal",
+    "dispatch_mode",
+    "action_class",
+    "issued_at",
+    "expires_at",
+    "revocation_epoch",
+    "policy_revision",
+    "issuer_key_id",
+    "signature"
+  ],
+  "properties": {
+    "schema_version": {
+      "type": "string",
+      "const": "1"
+    },
+    "context_id": {
+      "type": "string",
+      "description": "Unique context identifier"
+    },
+    "lease_id": {
+      "type": "string",
+      "description": "Associated lease identifier"
+    },
+    "grant_digest": {
+      "type": "string",
+      "description": "Digest of the associated grant"
+    },
+    "task_id": {
+      "type": "string",
+      "description": "Identifier of the task this context authorizes"
+    },
+    "audience": {
+      "type": "string",
+      "const": "aq-f2.5-slot-queue",
+      "description": "Intended audience for this context"
+    },
+    "principal": {
+      "type": "string",
+      "description": "Authenticated principal issuing the context"
+    },
+    "dispatch_mode": {
+      "type": "string",
+      "description": "Dispatch mode for execution"
+    },
+    "action_class": {
+      "type": "string",
+      "description": "Allowed action class"
+    },
+    "issued_at": {
+      "type": "string",
+      "format": "date-time",
+      "description": "Timestamp when the context was issued"
+    },
+    "expires_at": {
+      "type": "string",
+      "format": "date-time",
+      "description": "Timestamp when the context expires"
+    },
+    "revocation_epoch": {
+      "type": "integer",
+      "minimum": 0,
+      "description": "Current revocation epoch at issuance"
+    },
+    "policy_revision": {
+      "type": "string",
+      "description": "Policy revision identifier"
+    },
+    "issuer_key_id": {
+      "type": "string",
+      "description": "Key ID of the issuing authority"
+    },
+    "signature": {
+      "type": "string",
+      "description": "Signature over the canonical context payload"
+    }
+  },
+  "additionalProperties": false
+}
