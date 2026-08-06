@@ -437,6 +437,23 @@ def _log_unproven_tree(cgroup_path: str) -> None:
         pass
 
 
+def _log_cell_create_failure(cell_result: "ecc.TypedFailure") -> None:
+    """Diagnostic on a cell-create denial (WR-4 / T3): the runner Decision keeps only the
+    low-cardinality `code` — the human-readable `detail` that distinguishes git-not-found
+    (the catch-all `quarantined`), `isolation-violation`, `base-oid-unreachable`, and
+    `path-escape` is otherwise discarded, forcing source+repo reverse-engineering on every
+    deploy failure. Emit `code` + a truncated `detail` to stderr->journald so a cell-create
+    failure self-diagnoses. Best-effort; never raises. (Receipt schema unchanged — this is an
+    operator log, not the typed receipt.)"""
+    try:
+        code = str(getattr(cell_result, "code", "?"))
+        detail = str(getattr(cell_result, "detail", ""))[:200]
+        sys.stderr.write(f"[cell-create] DENIED code={code} detail={detail}\n")
+        sys.stderr.flush()
+    except Exception:  # noqa: BLE001 — diagnostics never break the fail-closed path
+        pass
+
+
 def terminate_cgroup_tree(cgroup_path: str, sigterm_grace_s: float, kill_proof_budget_s: float) -> tuple:
     """Design §6 exact sequence: cgroup-scoped SIGTERM (enumerate
     `cgroup.procs`, signal each), wait <= `sigterm_grace_s`, then
@@ -639,6 +656,7 @@ def process_grant(raw_grant: Any, config: RunnerConfig) -> Decision:
             reservation_set=cell_reservation,
         )
         if isinstance(cell_result, ecc.TypedFailure):
+            _log_cell_create_failure(cell_result)
             return Decision(
                 DECISION_DENIED, cell_result.code, STAGE_CELL_CREATE, receipt_id,
                 grant_digest=grant_digest, command_kind=command.kind,

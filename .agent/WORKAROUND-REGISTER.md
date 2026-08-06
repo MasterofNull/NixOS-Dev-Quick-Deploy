@@ -37,7 +37,8 @@ ACCEPTED (documented deliberate tradeoff, no band-aid) · MAINT-DUE (time/env ex
 - root cause (T3): runner Decision keeps only `cell_result.code`, discards `TypedFailure.detail`.
 - producer to fix: `execution_cell_runner.py` cell-create failure branch (line ~641).
 - fix-path: log `cell_result.detail` low-cardinality class to journald alongside `_log_unproven_tree`. Normal slice.
-- class T3 · severity MED · status OPEN · opened 2026-08-06.
+- class T3 · severity MED · status FIXED 2026-08-06 (pending rebuild — runner runs from the Nix bundle) · opened 2026-08-06.
+- FIXED: added `_log_cell_create_failure()` — on a cell-create denial the runner now logs `code` + truncated `detail` to journald (receipt schema unchanged). Turns the R7-style blind spelunk into a one-line read. Runner suite 13/13.
 
 ## WR-5 — tier0 0.10.5 model-profile freshness hard-blocks all commits — MAINT-DUE
 - symptom: `reviewed_at`/`probed_at` (2026-06-21) aged ~1 day past the 45-day window → tier0 `--pre-commit` fails → ALL commits blocked. Tempts hand-bumping the timestamp (gaming) or bypassing tier0.
