@@ -130,3 +130,23 @@ Corroborated the signing-oracle finding: "the authority acts as an oracle for th
 process… it cannot independently validate policy compliance at signing time… the authority should
 NOT sign raw payloads." Matches the flagship Finding 2 + rev2 mandate 2 (independent reconstruction
 + byte-compare). Two lanes converged; no new defect. Codex confirmatory queued (393b623e).
+
+## Binding RE-REVIEW — Asymmetric Lease Authority rev2 (2026-08-06) — VERDICT: REQUEST_REVISION → rev3
+
+Fresh flagship (independent of author + prior reviewers), verified against code.
+- **Confirm-item 1 (scheme-pinning) — PASS:** verified against `capability_lease.py:160-173` — the
+  canonicalizer makes `sig_scheme` a signed field automatically; the two verify functions accept
+  DISJOINT sets (authoritative requires ed25519 present, no HMAC fallback; legacy HMAC gets
+  bad-signature on an ed25519 lease); no shared absent-default. Byte-parity confirmed (legacy leases
+  omit sig_scheme → byte-identical). Mandates 1+3 sound.
+- **Confirm-item 2 (independent reconstruction) — HIGH, REQUEST_REVISION:** the mandated
+  "byte-equal to the presented payload" is unworkable — `issued_at`/`expires_at`/`lease_id` are
+  wall-clock (`capability_lease_gate.py:361-368`, verified), so the authority's clock never matches
+  the gate's; a whole-payload compare either always fails or must adopt caller timestamps (oracle
+  reopened). Fix: gate presents SELECTORS ONLY; authority mints the temporal fields itself.
+- Mandates 4 (confinement threat-model) + 5 (rotation) adequate for freeze.
+
+**rev3 (committed) closes it via mandate 2′:** the gate presents `{tool, caller-principal, task}`
+only; the authority is the sole minter (manifest + epoch + own-clock temporals) and signs its own
+lease — no caller payload, no byte-compare. rev3 needs a fresh binding PASS (narrow fix; does not
+disturb the confirmed scheme-pinning/byte-parity/confinement/rotation mandates).
