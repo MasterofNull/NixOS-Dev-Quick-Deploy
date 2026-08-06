@@ -1338,6 +1338,26 @@
       "enabled": true
     },
     {
+      "id": "execution-cell-runner-deploy-context",
+      "description": "WR-3 — execution-cell runner deploy-context preflight (runnerBundle import closure, git-on-PATH, systemd-safe JSON env) — static, catches the R7 deploy-bug cascade (#10/#11/#13) before a rebuild",
+      "trigger_paths": [
+        "nix/modules/services/execution-cell-runner.nix",
+        "ai-stack/switchboard/execution_cell_runner.py",
+        "ai-stack/switchboard/execution_cell_validator.py",
+        "scripts/ai/lib/durable_reservation.py",
+        "scripts/ai/lib/execution_cell_clone.py",
+        "scripts/ai/lib/execution_grant.py",
+        "scripts/testing/test-execution-cell-runner-deploy-context.py"
+      ],
+      "command": [
+        "python3",
+        "scripts/testing/test-execution-cell-runner-deploy-context.py"
+      ],
+      "tier": "behavioral",
+      "timeout_seconds": 30,
+      "enabled": true
+    },
+    {
       "id": "flat-prd-gate",
       "description": "Phase 155 \u2014 flat model-team PRD gate requires proposal/review/consensus artifacts",
       "trigger_paths": [

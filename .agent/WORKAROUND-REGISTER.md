@@ -30,14 +30,15 @@ ACCEPTED (documented deliberate tradeoff, no band-aid) · MAINT-DUE (time/env ex
 - root cause (T2): no deploy-context preflight (bundle-import resolution, env round-trip through systemd, bare-binary PATH deps).
 - producer to fix: execution-cell-runner activation path.
 - fix-path: a preflight (simulate_nix_change-adjacent) asserting bundle imports resolve, `TRUSTED_REPO_MIRRORS` JSON survives systemd, and every bare-`git` dep is on the service PATH. Normal PRD→build→review slice.
-- class T2 · severity MED · status OPEN · opened 2026-08-06.
+- class T2 · severity MED · status FIXED 2026-08-06 · opened 2026-08-06.
+- FIXED: `scripts/testing/test-execution-cell-runner-deploy-context.py` — static preflight asserting runnerBundle import closure (cf #10), git-on-PATH (cf #13), and single-quote-wrapped toJSON env (cf #11). Validated both ways (PASS clean; correctly CAUGHT a simulated missing bundle module with the exact diagnostic). Wired into focused-ci (`config/validation-check-registry.json`, id `execution-cell-runner-deploy-context`) triggering on any runner deploy-surface file change — so this class is caught at commit time, never live.
 
 ## WR-4 — cell-create failures hide their cause — OPEN
 - symptom: every cell-create failure surfaced only a catch-all code (`quarantined`); the real "why" (git-not-found, isolation-violation, path-escape) required reverse-engineering source+repo.
 - root cause (T3): runner Decision keeps only `cell_result.code`, discards `TypedFailure.detail`.
 - producer to fix: `execution_cell_runner.py` cell-create failure branch (line ~641).
 - fix-path: log `cell_result.detail` low-cardinality class to journald alongside `_log_unproven_tree`. Normal slice.
-- class T3 · severity MED · status FIXED 2026-08-06 (pending rebuild — runner runs from the Nix bundle) · opened 2026-08-06.
+- class T3 · severity MED · status FIXED 2026-08-06 (validated live: `[cell-create] DENIED code=path-escape detail=…` in journald) · opened 2026-08-06.
 - FIXED: added `_log_cell_create_failure()` — on a cell-create denial the runner now logs `code` + truncated `detail` to journald (receipt schema unchanged). Turns the R7-style blind spelunk into a one-line read. Runner suite 13/13.
 
 ## WR-5 — tier0 0.10.5 model-profile freshness hard-blocks all commits — MAINT-DUE
