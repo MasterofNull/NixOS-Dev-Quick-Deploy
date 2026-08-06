@@ -101,7 +101,12 @@ with lib; let
     # `json.loads` (execution_cell_runner.py:~1130); a `key=value` string
     # throws ValueError -> mirrors={} -> every grant denies
     # `unknown-trusted-repo` (the exact failure R7 exists to fix).
-    "AQ_EXECUTION_CELL_RUNNER_TRUSTED_REPO_MIRRORS=${builtins.toJSON {primary = cfg.mirrorPath;}}"
+    # DEPLOY-BUG #11: systemd `Environment=` applies shell-style quote-removal, so a
+    # BARE `{"primary":"…"}` reaches the runtime env as `{primary:…}` (double-quotes
+    # stripped) -> json.loads ValueError -> mirrors={} -> unknown-trusted-repo. The
+    # JSON is SINGLE-QUOTE-wrapped so systemd strips only the outer '' and keeps the
+    # inner "" literal (verify with `systemctl show … -p Environment`).
+    "AQ_EXECUTION_CELL_RUNNER_TRUSTED_REPO_MIRRORS='${builtins.toJSON {primary = cfg.mirrorPath;}}'"
   ];
 in {
   options.mySystem.aiStack.executionCellRunner = {
