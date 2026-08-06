@@ -175,3 +175,17 @@ Context codex should confirm on return:
 - Also awaiting codex: C4/C6/C3a-2 build-activations (PASS_DESIGN/PREPARED_ONLY; C6 gated behind R7).
 - Verify: R7 ceiling is minimal (runner nix + build_config_from_env + a durable store), switchboard anchor
   untouched, mirror-freshness contract sound (stale -> typed clone-failed deny, never a wrong result).
+
+## [2026-08-06] Codex confirmatory: C6-P0 rev3 + C2 scheduler-context issuer designs
+Two PREPARED_ONLY Foundation-C prerequisite designs authored by Claude Opus (unblock C6 -> C4).
+A fresh Claude flagship is doing the binding review now; local Qwen advisory in parallel. Codex on
+return: independent confirmatory audit (advisory unless it surfaces a real defect -> bounded follow-up).
+Subjects (sha256 prefix):
+- C6-P0-TRUST-ANCHORS-REV3-20260806.md  54d6443907c39a430add  (NARROWED per rev2 reviewer's option 1:
+  pure declarative anchors — owner allowlist + 2 schemas + offline test; removes issuer/transport).
+- C2-SCHEDULER-CONTEXT-ISSUER-DESIGN-20260806.md  5785da300596b344653d  (opens Q-C6-1: dedicated
+  default-OFF issuer service, SOPS signer key, Nix-resolved peer, switchboard.nix untouched).
+Confirm: does P0 rev3 honestly close the rev2 REQUEST_REVISION by narrowing (not hiding the prereq)?
+Does the issuer slice fully close finding 1 (signer provisioning/rotation/fail-closed) + finding 2
+(transport peer identity)? Any missed trust-boundary defect (context forgery, admission spoof, key
+leak, replay/epoch coherence)?
