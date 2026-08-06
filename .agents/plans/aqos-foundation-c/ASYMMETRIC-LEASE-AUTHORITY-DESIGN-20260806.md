@@ -1,7 +1,7 @@
 ---
 title: "Foundation C — Asymmetric Confined Capability-Lease Signing Authority"
 slice: "ALA (foundational prerequisite for Q-C6-1)"
-revision: 2
+revision: 3
 kind: "design-only (PREPARED_ONLY; DEFAULT-OFF; authorizes nothing)"
 date: "2026-08-06"
 author: "Claude Opus 4.8 (analysis)"
@@ -9,10 +9,39 @@ motivation: "rev2 binding re-review FAIL — the C2 scheduler-context issuer's t
 precedent: "scripts/ai/lib/execution_grant.py (R1_REVIEWED_PASS) — Ed25519, confined private key, tracked public verifier"
 unblocks: "C2 scheduler-context issuer (rev3) → C6 → C4"
 owner_directive: "2026-08-06 — 'asymmetric lease authority first'"
-closes_review: "fresh-flagship binding review 2026-08-06 (REQUEST_REVISION; 2 HIGH mandates + 3 precision) — rev1 superseded"
+closes_review: "two binding reviews 2026-08-06: rev1 REQUEST_REVISION (2 HIGH) → rev2; rev2 REQUEST_REVISION (1 HIGH — byte-equality vs wall-clock fields) → rev3. rev1/rev2 superseded."
 ---
 
 # Asymmetric Confined Capability-Lease Signing Authority
+
+## Revision 3 — the authority MINTS (selectors-only request), closing the rev2 oracle finding
+
+The rev2 binding re-review confirmed scheme-pinning (mandate 1) and byte-parity/confinement/rotation
+(mandates 3-5) are sound, but flagged ONE HIGH: mandate 2's "authority reconstructs the lease and
+signs only if **byte-equal to the presented payload**" is unworkable, because three lease fields are
+wall-clock and presenter-derived, NOT manifest-derivable — `issued_at = now`,
+`expires_at = issued_at + TTL`, `lease_id = "first-party::{tool}::{issued_at}"`
+(`capability_lease_gate.py:361-368`, verified). The authority's own clock never byte-matches the
+gate's, so a whole-payload compare either always fails (spurious `payload-mismatch`) or must adopt
+the gate's timestamps — re-opening the oracle (a compromised gate backdates/extends `expires_at`).
+
+**Rev3 mandate 2′ (supersedes rev2 mandate 2):** the gate presents **SELECTORS ONLY** —
+`{tool, caller-principal, task}` — NOT a signable payload. The authority is the SOLE minter: it reads
+the manifest, resolves the epoch, and MINTS every field itself — the manifest-derived
+`permissions/risk/trust_tier/zero_trust_behavior/schemas`, the authority-resolved `revocation_epoch`,
+AND the temporal fields on its OWN clock (`issued_at = authority-now`,
+`expires_at = issued_at + the one canonical FIRST_PARTY_LEASE_TTL`, `lease_id` derived from its own
+`issued_at`). It then Ed25519-signs its own reconstruction and returns the complete signed lease.
+There is NO caller-supplied payload to trust and NO byte-compare. A compromised owner-uid gate can
+choose only *which* `{tool, principal, task}` to request — it cannot set an expiry, a permission, a
+trust tier, or any field: it receives exactly the manifest-authorized lease with authority-minted
+timestamps, or a typed deny (unknown tool / policy-refused). This makes "cannot forge past policy"
+true by construction — the authority IS the policy and the minter.
+
+(Rev2 mandates 1, 3, 4, 5 stand as reviewer-confirmed. Build-time note from the rev2 review: code
+review MUST assert zero trust-rooted references to the legacy HMAC `verify()`; optionally have
+`verify()` hard-reject `sig_scheme=="ed25519"` to remove the confusion surface — non-blocking,
+fails closed either way.)
 
 ## Revision 2 — MANDATES closing the binding-review findings (rev1 must not be frozen)
 
@@ -74,8 +103,8 @@ the runner holds only the public key). It authorizes nothing; default-OFF.
 | Operation | Path | Role |
 |---|---|---|
 | EDIT | `scripts/ai/lib/capability_lease.py` | Add an ASYMMETRIC path via TWO physically separate verify functions (rev2 mandate 1): `verify_authoritative(lease, keys_json)` requires `sig_scheme == "ed25519"` (a required signed field), rejects absent/unknown/`hmac-sha256`, verifies Ed25519 against `lease-signer-keys.json`, NO dev-key/HMAC fallback reachable; the existing HMAC `verify()` stays for non-authoritative C1-shadow ONLY. `sign_ed25519(payload, private_key)` mirrors `execution_grant.py`. `sig_scheme` is in the signed payload ONLY for ed25519 leases (legacy leases omit it → byte-parity, mandate 3). No verifier holds a private key. |
-| EDIT | `ai-stack/switchboard/capability_lease_gate.py` | First-party lease issuance (`:397`) signs via the confined authority (below) when `CAPABILITY_ASYMMETRIC_LEASE=1`, NOT in-process; the gate never holds the Ed25519 private key. Flag OFF (default) = current HMAC behavior, byte-parity. |
-| NEW | `scripts/ai/lib/lease_signing_authority.py` | The signer: authenticates the caller, canonicalizes the lease payload it is asked to sign, and returns ONLY an Ed25519 signature. Holds the private key via the confined service principal. No lease-content authorship — it signs exactly the caller's canonical payload after policy checks; it is a signing oracle bounded to the lease schema. |
+| EDIT | `ai-stack/switchboard/capability_lease_gate.py` | First-party lease issuance (`:397`), when `CAPABILITY_ASYMMETRIC_LEASE=1`, sends SELECTORS ONLY (`{tool, caller-principal, task}`) to the authority and receives a complete authority-minted, Ed25519-signed lease — it no longer constructs or signs the lease itself and never holds the Ed25519 private key. Flag OFF (default) = current in-process HMAC construction, exact byte-parity. |
+| NEW | `scripts/ai/lib/lease_signing_authority.py` | The sole minter (rev3): receives SELECTORS ONLY (`{tool, caller-principal, task}`), authenticates the caller, reads the manifest + resolves the epoch, MINTS the complete canonical first-party lease itself (manifest-derived fields + authority-resolved epoch + authority-clock `issued_at`/`expires_at`/`lease_id`), Ed25519-signs its own reconstruction, and returns the complete signed lease. It never signs a caller-supplied payload; there is no byte-compare. Unknown tool / policy-refused ⇒ typed deny. Holds the private key via the confined service principal. |
 | NEW | `nix/modules/services/lease-signing-authority.nix` | Dedicated default-OFF service `aq-lease-signing-authority`: own unprivileged user, SOPS Ed25519 private key read-only (`0400`, owned by this principal), UDS group-restricted + `SO_PEERCRED`, `NoNewPrivileges`, empty `CapabilityBoundingSet`, `ProtectSystem=strict`, `ProtectHome`, `PrivateTmp`, no network. `enable=false`. switchboard.nix untouched (the gate is an outbound client). |
 | NEW | `config/aqos/lease-signer-keys.json` | key-id → Ed25519 public verifier + `status∈{active,revoked}` + monotonic revision. **Sole** verifier source (public-only, no private material). Consumers (C2 issuer, C2 enforcement) verify against this. |
 | EDIT | `config/env-contract.yaml` | `CAPABILITY_ASYMMETRIC_LEASE` default `0`; fixed non-overridable authority socket/key references. |
@@ -93,14 +122,15 @@ MUST be followed by `sops` re-encryption; never place private material in a trac
 - **Confined signer:** the Ed25519 private key is readable ONLY by `aq-lease-signing-authority`
   (`0400`). The switchboard/gate (owner uid), a shell, `delegate-to-local`, and any owner-uid tool
   CANNOT read it. Signing happens only inside the authority.
-- **Owner-uid gate is PURE TRANSPORT (rev2 mandate 2):** `capability_lease_gate.py` sends a request
-  to the authority, but the authority does NOT sign the presented payload blindly. The authority
-  independently reads the tool manifest + resolves the epoch, reconstructs the exact canonical
-  first-party lease it would authorize for the requested `{tool, caller-principal, task}`, and signs
-  ONLY if that reconstruction is byte-equal to the presented payload (else typed `payload-mismatch`
-  deny). So a compromised owner-uid gate cannot obtain an over-broad lease — it gets signed only
-  exactly what the authority itself authorizes from the manifest. The gate never holds the private
-  key; it cannot mint offline; it cannot forge past the authority because the authority is the policy.
+- **Owner-uid gate presents SELECTORS ONLY; the authority is the SOLE MINTER (rev3 mandate 2′):**
+  `capability_lease_gate.py` sends only `{tool, caller-principal, task}`. The authority reads the
+  manifest, resolves the epoch, and MINTS the complete lease itself — manifest-derived fields,
+  authority-resolved epoch, and authority-clock `issued_at`/`expires_at`/`lease_id` — then signs its
+  own reconstruction. There is no caller payload and no byte-compare (which rev2 showed cannot hold
+  against wall-clock fields). A compromised owner-uid gate can choose only *which* `{tool, principal,
+  task}` to request; it cannot set an expiry, permission, or any field — it gets exactly the
+  manifest-authorized lease or a typed deny. The gate never holds the private key, cannot mint
+  offline, and cannot forge past the authority because the authority is both the policy and the minter.
 - **Confinement threat-model (rev2 mandate 4):** the `0400`-cross-uid key confinement holds against a
   compromised owner-uid PROCESS, NOT against the human owner's `sudo`/root (setuid on this box). Same
   envelope as the accepted `execution_grant` precedent — stated, not a stronger claim.
@@ -143,10 +173,12 @@ Once this authority exists and is activated, the **C2 scheduler-context issuer r
 
 ## 6. Open blockers for the independent reviewer
 
-1. **Signing-oracle — RESOLVED in rev2 (mandate 2, option a):** the authority independently
-   reconstructs the lease from the manifest+epoch and byte-compares before signing; the gate is pure
-   transport. Reviewer to confirm the reconstruction is deterministic + byte-canonical against the
-   gate's own `_load_manifest()` path (no divergence that could cause spurious `payload-mismatch`).
+1. **Signing-oracle — RESOLVED in rev3 (mandate 2′, selectors-only):** the gate presents only
+   `{tool, caller-principal, task}`; the authority MINTS the entire lease (including the wall-clock
+   temporal fields) and signs its own reconstruction — no caller payload, no byte-compare, so the
+   rev2 temporal-field collision is gone. Reviewer to confirm the selector set carries no field that
+   could widen authority (e.g., a caller-chosen TTL or permission), and that the authority's manifest
+   + epoch resolution matches the gate's former `issue_first_party_leases` semantics exactly.
 2. **Scheme-downgrade / blast radius — RESOLVED in rev2 (mandates 1+3):** authoritative verify is
    scheme-pinned to `ed25519` with no HMAC fallback; legacy leases omit `sig_scheme` (byte-parity).
    Reviewer to confirm no code path lets an authoritative consumer reach the HMAC `verify()`, and
