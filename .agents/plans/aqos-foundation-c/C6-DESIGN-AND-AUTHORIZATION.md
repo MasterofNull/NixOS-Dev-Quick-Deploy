@@ -17,6 +17,15 @@ successors:
 
 # Foundation C — C6: Authenticated Epoch Authority + Scheduler Revocation Gate
 
+> **Amendment (2026-08-06, from the C6-P0 rev3 binding review):** the two schemas
+> `config/schemas/revocation-epoch-bump.schema.json` and
+> `config/schemas/scheduler-lease-context.schema.json` — listed as absent/NEW in §1 and §4
+> below — are now **created by C6-P0 rev3** (`C6-P0-TRUST-ANCHORS-REV3-20260806.md`). At C6-main
+> freeze these become **verify-only / no-create anchors** here (do not re-create; reproduce their
+> C6-P0-provided hashes), and C6-P0 must land before the C6-main re-freeze. This closes the
+> schema-ownership collision the binding review flagged; §§1/4 rows below are read subject to this
+> amendment.
+
 ## 0. Revision, authority, and decision
 
 This revision responds to every blocking item in

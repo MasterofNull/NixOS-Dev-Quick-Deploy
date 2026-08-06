@@ -1,16 +1,47 @@
 ---
 title: "Foundation C — C2 Scheduler-Lease-Context Issuer + Authenticated Ingress (Q-C6-1)"
 slice: "C2-SCI (C6 prerequisite)"
-revision: 1
+revision: 2
 kind: "design-only (PREPARED_ONLY; DEFAULT-OFF; authorizes nothing)"
 date: "2026-08-06"
 author: "Claude Opus 4.8 (analysis)"
 opens: "the missing C2 issuer that C6 §3.1 names as a stop condition"
 depends_on: "C6-P0-TRUST-ANCHORS-REV3 (declarative schemas + owner allowlist)"
 unblocks: "C6 main freeze → C6 activation → C4 freeze"
+closes_review: "fresh-flagship binding review 2026-08-06 (REQUEST_REVISION, 2 HIGH + 1 LOW-MED) — rev1 superseded"
 ---
 
 # C2 Scheduler-Lease-Context Issuer + Authenticated Ingress
+
+## Revision 2 — closes the binding-review findings (rev1 must not be frozen)
+
+A fresh-flagship binding review (2026-08-06) returned REQUEST_REVISION on rev1 with a
+CONFIRMED HIGH defect: the switchboard that hosts the C2 gate runs as `cfg.primaryUser`
+(`nix/modules/services/switchboard.nix:542`) — the **human owner uid**. So `SO_PEERCRED` +
+group membership on the issuer socket **cannot distinguish the legitimate switchboard caller
+from any other owner-uid process** (a shell, `delegate-to-local`, a compromised tool), and a
+caller could present a fabricated `{ALLOW, principal, task}` that the issuer would sign. Rev1's
+"authenticate the caller by peer-uid" was not authority. Rev2 fixes the **trust model**:
+
+1. **Authority is the SIGNED C2 LEASE, not the caller or the peer-uid** (closes HIGH findings 1+2).
+   The issuer NEVER trusts a caller-asserted ALLOW. The caller must present the existing
+   Ed25519-signed C2 capability lease (already minted + signed by the C2 lease issuer,
+   `capability_lease.py`/`capability_lease_issuance.py`). The issuer independently VERIFIES that
+   lease signature against the tracked lease-issuer public key, re-checks freshness + the
+   authoritative epoch, **re-derives** the admission tuple from the lease's own signed fields, and
+   mints the scheduler-context bound to those. A shell caller cannot forge a signed lease, so it
+   cannot obtain a context. `SO_PEERCRED` + group are retained only as **defense-in-depth**,
+   explicitly NOT the authority — so the switchboard-runs-as-human-uid fact no longer matters.
+2. **The JSON allowlist is the SOLE signer-verifier source** (closes LOW-MED finding 3):
+   `config/aqos/c6-scheduler-signer-keys.json` (key-id → public + `status`) is authoritative;
+   the bare `config/scheduler-context-signing-public-key` is DROPPED (a revoked key must not
+   verify via a status-less bare file).
+3. **Parent-C6 schema-ownership** (Doc-1 MEDIUM, handled in a parent amendment): the two schemas
+   are created by C6-P0 rev3; parent C6 §1/§4 must mark them verify-only/no-create. Tracked as a
+   C6-main freeze amendment, not a defect in these bytes.
+
+The sections below are rev2 as amended; where rev1 said "authenticate the caller / trust the
+admission ALLOW," read the rev2 trust model above.
 
 ## 0. Why this slice exists
 
@@ -36,8 +67,8 @@ fail-closed path; and (2) the **transport peer** canonical identity and its Nix 
 | NEW | `scripts/ai/lib/scheduler_context_issuer.py` | absent | Sole issuer: after a verified C2 admission ALLOW, mints + Ed25519-signs one closed context bound to that exact decision. Private key read from `/run/secrets/` via the service principal; never held by switchboard or dispatch. |
 | NEW | `scripts/ai/lib/scheduler_context_transport.py` | absent | Local authenticated UDS: switchboard-caller ⇄ issuer (issuer authenticates the caller via `SO_PEERCRED` against the declared principal); one immutable signed frame; typed deny on ambiguity. |
 | NEW | `nix/modules/services/c2-scheduler-context-issuer.nix` | absent | Dedicated default-OFF service `aq-c2-scheduler-context-issuer`: own unprivileged user/group, SOPS private-key read-only mount, UDS group-restricted socket, StateDirectory, `NoNewPrivileges`, empty `CapabilityBoundingSet`, `ProtectSystem=strict`, `ProtectHome`, `PrivateTmp`, no network. `enable=false`. |
-| NEW | `config/scheduler-context-signing-public-key` | absent | Tracked Ed25519 PUBLIC verifier key (non-secret), key-id-selected, mirroring the `config/grant-signing-public-key` precedent. Consumed by `dispatch.py` to verify — dispatch never holds the private key. |
-| NEW | `config/aqos/c6-scheduler-signer-keys.json` | absent | key-id → public-verifier + `status∈{active,revoked}` + monotonic revision, for signer rotation/revocation (distinct key family from C6-P0's owner allowlist). |
+| NEW | `config/aqos/c6-scheduler-signer-keys.json` | absent | **SOLE** scheduler-context signer-verifier source (rev2, finding 3): key-id → Ed25519 public + `status∈{active,revoked}` + monotonic revision. `dispatch.py` verifies the context signature ONLY through this status-bearing allowlist — a revoked key never verifies. The bare `config/scheduler-context-signing-public-key` of rev1 is DROPPED (a status-less bare file could accept a revoked key). Distinct key family from C6-P0's owner allowlist. |
+| ANCHOR (existing) | lease-issuer public verifier (via `capability_lease.py`) | verify at freeze | The issuer verifies the PRESENTED C2 lease signature against the existing lease-issuer public key (rev2 §4). No new key here; names the exact existing verifier at freeze. |
 | NEW | `config/schemas/scheduler-lease-gate-decision.schema.json` | absent | Low-cardinality typed issue/deny/audit record. |
 | NEW | `scripts/testing/test-scheduler-context-issuer.py` | absent | Offline: admission-bound issuance, key-unavailable fail-closed, SO_PEERCRED peer bind, replay/context-id, flag-OFF byte-parity, negative vectors. |
 | NEW | `scripts/testing/test-c2-sci-service-coverage.py` | absent | Integration fixture: issuer health + AQ-QA registration + dashboard projection. |
@@ -70,11 +101,13 @@ whole stack cascades; never place private material in a tracked Nix file.
 
 ## 3. Transport peer authority (closes rev2 finding 2)
 
-- **Canonical identity via Nix, not a manifest value:** the receiving peer principal is the
-  `users.users.aq-c2-scheduler-context-issuer` UID/GID **resolved by NixOS**, not a hard-coded
-  numeric UID and not a caller-writable JSON. The UDS is group-restricted (`0660`, a dedicated
-  client group the switchboard user joins) and additionally validated with `SO_PEERCRED`;
-  membership alone is never authority.
+- **Authority is the signed lease, not the peer (rev2):** because the switchboard client runs as
+  `cfg.primaryUser` (the human owner uid, indistinguishable from shell callers), `SO_PEERCRED` +
+  group membership are treated as **defense-in-depth only, never authority**. The gate on minting is
+  the independently-verified Ed25519-signed C2 lease (§4). The server (issuer) identity is still
+  canonical via `users.users.aq-c2-scheduler-context-issuer` resolved by NixOS; the UDS is
+  group-restricted (`0660`) — but a caller that passes peer/group checks still cannot mint without a
+  valid signed lease it cannot forge.
 - **Hosting while the epoch authority is disabled:** the issuer is its **own** default-OFF service
   (not hosted in switchboard, preserving the switchboard.nix anchor; not dependent on the
   still-disabled epoch-authority service). It can therefore ship and be reviewed independently of
@@ -87,9 +120,14 @@ whole stack cascades; never place private material in a tracked Nix file.
 
 ## 4. Admission binding and default-OFF boundary
 
-The issuer signs **only** after `capability_lease_gate.py` returns an ALLOW, and **only** for the
-exact `{principal, task_id, dispatch_mode, action_class, lease_id, grant_digest, revocation_epoch,
-policy_revision}` of that decision — it cannot mint for an unaccepted or caller-selected tuple.
+The issuer mints **only** against a presented, independently-VERIFIED Ed25519-signed C2 capability
+lease (rev2 trust model). It verifies the lease signature against the tracked lease-issuer public
+key, re-checks freshness + the authoritative epoch, and **re-derives** the bound tuple
+`{principal, task_id, dispatch_mode, action_class, lease_id, grant_digest, revocation_epoch,
+policy_revision}` FROM the lease's own signed fields — never from a caller-asserted ALLOW or a
+caller-selected tuple. It cannot mint for an unverifiable lease, an expired/stale-epoch lease, or a
+tuple not present in the signed lease. `SO_PEERCRED` peer identity is checked as defense-in-depth
+only and is never the authority.
 Flag `CAPABILITY_SCHEDULER_CONTEXT_ISSUER=0` (default): switchboard makes no issuer call, the issuer
 service is not enabled, `dispatch.py`/`slot_queue` preserve byte-parity for every legacy request. ON
 is a later, separate owner act; it does not itself enable C6's scheduler gate
@@ -110,10 +148,12 @@ No hard-coded healthy state, flag-only status, or `--` placeholder.
 
 ## 6. Open blockers for the independent reviewer
 
-1. **Admission→issuer interface exactness:** confirm `capability_lease_gate.py` can hand the
-   ALLOW decision to the issuer over the outbound UDS without any caller-controlled field crossing
-   the boundary, and that this needs no switchboard.nix change (only a client-group membership the
-   issuer module grants).
+1. **Lease-presentation interface (rev2):** confirm the caller presents the full Ed25519-signed C2
+   lease over the UDS and the issuer re-derives + re-verifies admission from it (never a
+   caller-asserted ALLOW) — the caller-indistinguishability gap (switchboard = human uid) is
+   resolved by making the signed lease the authority, not the peer. Verify the lease-issuer public
+   key the issuer must hold, and that no switchboard.nix edit is needed (outbound client call +
+   issuer-granted client group only).
 2. **Issuer→dispatch transport exactness:** name precisely how the signed context reaches
    `dispatch.py` (direct issuer↔dispatch UDS vs. carried on the verified task record) such that
    `dispatch.py` never accepts a caller-supplied context; both ends default-OFF with no fallback.
