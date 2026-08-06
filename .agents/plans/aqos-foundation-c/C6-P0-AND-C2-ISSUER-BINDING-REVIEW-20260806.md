@@ -150,3 +150,20 @@ Fresh flagship (independent of author + prior reviewers), verified against code.
 only; the authority is the sole minter (manifest + epoch + own-clock temporals) and signs its own
 lease — no caller payload, no byte-compare. rev3 needs a fresh binding PASS (narrow fix; does not
 disturb the confirmed scheme-pinning/byte-parity/confinement/rotation mandates).
+
+## Binding RE-REVIEW — ALA rev3 (2026-08-06) — VERDICT: REQUEST_REVISION (narrow) — ORACLE CONFIRMED CLOSED
+
+Fresh flagship, independent. **Headline: the signing-oracle is CLOSED BY CONSTRUCTION** — mandate 2′
+(selectors-only) succeeds. The reviewer enumerated every first-party lease field
+(`capability_lease_gate.py:340-408`): the minter's only inputs are `(key, current_epoch, manifest,
+now)`, ZERO caller-influenced; every authority-bearing field is manifest-derived / epoch-resolved /
+authority-clock. A compromised owner-uid gate can choose only which `{tool,principal,task}` to
+request, not any field of the signed lease. rev2 wall-clock/byte-compare collision gone (no caller
+payload).
+
+REQUEST_REVISION is narrow TEXT asks (rev4, committed): (2) preserve the HARD codex-1
+no-auto-reissue-on-epoch-bump guard under the relocated mint (gate keeps mint-once cache +
+reset-only reissue; authority is a stateless minter) — the one that matters; (3) epoch resolution
+gate→authority is hardening not "exact"; (4) `issued_to` pinned constant, principal/task audit-only;
+(5) schemas are empty `{}` not manifest-derived. Mandates 1/3/4/5 (scheme-pinning, byte-parity,
+confinement, rotation) spot-checked UNCHANGED. rev4 needs a fresh binding PASS (text-only delta).
