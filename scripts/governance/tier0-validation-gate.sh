@@ -700,6 +700,35 @@ gate_qa_phase0() {
     fi
   fi
 
+  # Gate hygiene (Rule 19 / WR-5): freshness-class checks fail purely on elapsed time, not on a
+  # code regression in THIS change — WARN (never block) in --pre-commit, stay HARD in --pre-deploy
+  # (the enforced/scheduled path). A freshness lapse must never force the gaming-vs-bypass choice.
+  # Adding a freshness-class check = append its ID to FRESHNESS_CLASS_IDS below.
+  if [[ "${MODE}" == "--pre-commit" ]]; then
+    local FRESHNESS_CLASS_IDS="0.10.5"
+    local fresh_failing fresh_nonfresh ffid
+    # aq-qa renders failures as a table row (`│ <id> │ <desc> │ ✗ │`) — the id column
+    # precedes the ✗ column, so match ✗ ROWS then extract the id token (NOT id-after-✗).
+    fresh_failing=$(echo "${output}" | sed 's/\x1b\[[0-9;]*m//g' | grep '✗' | \
+      grep -oP '[0-9]+\.[0-9]+(?:\.[0-9]+)?(?::[a-z_-]+)?' | sort -u)
+    fresh_nonfresh=""
+    while IFS= read -r ffid; do
+      [[ -z "${ffid}" ]] && continue
+      if echo "${xfail_ids:-}" | grep -qxF "${ffid}"; then continue; fi
+      if ! echo "${FRESHNESS_CLASS_IDS}" | tr ' ' '\n' | grep -qxF "${ffid}"; then
+        fresh_nonfresh="${fresh_nonfresh} ${ffid}"
+      fi
+    done <<< "${fresh_failing}"
+    fresh_nonfresh=$(echo "${fresh_nonfresh}" | tr -d '[:space:]')
+    if [[ -z "${fresh_nonfresh}" && -n "${fresh_failing}" ]]; then
+      local fresh_list
+      fresh_list=$(echo "${fresh_failing}" | tr '\n' ',' | sed 's/,$//')
+      pass "QA phase 0 (${passes:-unknown} checks; freshness-class WARN: ${fresh_list})"
+      log "  WARN: ${fresh_list} freshness-class (time-expiry) — maintenance-due, NOT a regression; enforced in --pre-deploy. See .agent/WORKAROUND-REGISTER.md (Rule 19 gate hygiene)."
+      return 0
+    fi
+  fi
+
   log_failed_qa_rows "$output" 30
   fail "QA phase 0 failed"
   return 1

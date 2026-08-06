@@ -44,7 +44,8 @@ ACCEPTED (documented deliberate tradeoff, no band-aid) · MAINT-DUE (time/env ex
 - root cause (T4 + T5): a time-based freshness check wired as a HARD pre-commit blocker (T4); AND the producer `model_probe.py` writes measurement fields but NOT the `_meta`/freshness governance fields it's checked against, so a real re-probe clobbers governance and hand-editing becomes the "easy" path (T5).
 - profile verified accurate: active.gguf/Qwen3-35B, TPS 3.0, ctx 262144 all match reality — content is NOT drifted; only the timestamps lapsed.
 - fix-path: (a) gate hygiene — freshness-class checks WARN in `--pre-commit`, HARD only in scheduled `--maintenance` that opens a register item (needs owner ratification, changes tier0 behavior); (b) producer patch — `model_probe.py` maintains `_meta.reviewed_at`/`freshness_max_age_days` so a re-probe is a complete, honest refresh.
-- class T4+T5 · severity HIGH (currently blocking) · status MAINT-DUE · opened 2026-08-06 · owner decision required.
+- class T4+T5 · severity HIGH · status FIXED 2026-08-06 · opened 2026-08-06.
+- FIXED: (T5) `model_probe.py` `_save` now maintains `_meta`/freshness on every write + fixed a malformed `probed_at` (commit aa0a38a4); a real re-probe refreshed the profile honestly. (T4) tier0 gate hygiene landed — freshness-class checks (0.10.5) WARN in `--pre-commit`, HARD in `--pre-deploy`; validated end-to-end (induced-stale → WARN+pass in pre-commit). Owner-ratified 2026-08-06.
 
 ## WR-6 — sudo unavailable in agent shell → repeated fallback attempts — ACCEPTED
 - symptom: `sudo -n` needs a password here; I attempted it (cgroup/watcher reads) before falling back to /proc or asking for a `!`-run.
@@ -57,3 +58,10 @@ ACCEPTED (documented deliberate tradeoff, no band-aid) · MAINT-DUE (time/env ex
 - root cause (T1): the git wrapper hook re-parses the command; a shell variable in the path is lost/empty by the time git runs.
 - resolution: ACCEPTED — in Bash tool `git` invocations, use ABSOLUTE literal paths for `-F <msgfile>` (and generally avoid shell variables inside hook-wrapped git commands). No producer fix (the hook is a deliberate token-optimization wrapper).
 - class T1 · severity LOW · status ACCEPTED · opened 2026-08-06.
+
+## WR-8 — tier0 xfail matcher regex can't parse table-format failures — OPEN
+- symptom: gate_qa_phase0's xfail excuse-path uses `grep -oP '✗\s+\K[0-9.]+'` (id AFTER ✗), but aq-qa renders failures as a table row with the id BEFORE the ✗ column — so failing_ids is always empty and the documented-xfail path (config/qa-xfail.yaml) never actually excuses anything (effectively dead).
+- root cause (T3-adjacent): parser assumes a `✗ <id>` inline format that aq-qa does not emit.
+- producer to fix: scripts/governance/tier0-validation-gate.sh gate_qa_phase0 xfail block.
+- fix-path: same table-aware parse now used by the freshness-class block (`grep '✗' | grep -oP '<id>'`); before enabling, re-verify config/qa-xfail.yaml entries are still legitimately runtime-blocked (making xfail actually work will start excusing them). Normal slice.
+- class T3 · severity MED · status OPEN · opened 2026-08-06.
