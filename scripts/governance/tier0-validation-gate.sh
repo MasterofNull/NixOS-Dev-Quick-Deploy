@@ -679,8 +679,11 @@ gate_qa_phase0() {
   if [[ -f "${xfail_config}" ]]; then
     # Parse failing check IDs from the existing output (strip ANSI, find ✗ lines)
     local failing_ids xfail_ids non_xfail fid
-    failing_ids=$(echo "${output}" | sed 's/\x1b\[[0-9;]*m//g' | \
-      grep -oP '✗\s+\K[0-9]+\.[0-9]+(?:\.[0-9]+)?(?::[a-z_-]+)?' | sort -u)
+    # aq-qa renders failures as a table row (id column precedes the ✗ column) — match ✗ ROWS
+    # then extract the id (WR-8: the prior `✗\s+\K<id>` never matched, so xfails were never
+    # excused; qa-xfail.yaml was empty so it went unnoticed).
+    failing_ids=$(echo "${output}" | sed 's/\x1b\[[0-9;]*m//g' | grep '✗' | \
+      grep -oP '[0-9]+\.[0-9]+(?:\.[0-9]+)?(?::[a-z_-]+)?' | sort -u)
     xfail_ids=$(grep -oP '\bid:\s+"\K[^"]+' "${xfail_config}" | sort -u)
     non_xfail=""
     while IFS= read -r fid; do

@@ -66,4 +66,5 @@ ACCEPTED (documented deliberate tradeoff, no band-aid) · MAINT-DUE (time/env ex
 - root cause (T3-adjacent): parser assumes a `✗ <id>` inline format that aq-qa does not emit.
 - producer to fix: scripts/governance/tier0-validation-gate.sh gate_qa_phase0 xfail block.
 - fix-path: same table-aware parse now used by the freshness-class block (`grep '✗' | grep -oP '<id>'`); before enabling, re-verify config/qa-xfail.yaml entries are still legitimately runtime-blocked (making xfail actually work will start excusing them). Normal slice.
-- class T3 · severity MED · status OPEN · opened 2026-08-06.
+- class T3 · severity MED · status FIXED 2026-08-06 · opened 2026-08-06.
+- FIXED: applied the table-aware parse to the xfail block. Safe: config/qa-xfail.yaml is currently empty (`xfail: []`), so nothing is newly excused; the mechanism is now correct for when entries are added. tier0 25/0, no regression.
