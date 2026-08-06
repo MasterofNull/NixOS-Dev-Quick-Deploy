@@ -409,6 +409,34 @@ def add_pid_to_cgroup(cgroup_path: str, pid: int) -> bool:
         return False
 
 
+def _log_unproven_tree(cgroup_path: str) -> None:
+    """Diagnostic on a QUARANTINE (tree not proven absent within the kill-proof
+    budget): emit the lingering pids + their /proc state/comm to stderr->journald
+    so an operator can tell a D-state I/O linger (budget too short for the
+    hardware) from an orphan escaping bwrap teardown (a real reap gap). Emits ONLY
+    low-cardinality data (pid/state/comm — no grants/paths/prompts); the typed
+    receipt schema is unchanged. Best-effort; never raises into the fence."""
+    try:
+        pids = read_cgroup_pids(cgroup_path)
+        details = []
+        for pid in pids[:16]:
+            try:
+                with open(f"/proc/{pid}/stat", "r", encoding="utf-8") as fh:
+                    parts = fh.read().split()
+                comm = parts[1] if len(parts) > 1 else "?"
+                state = parts[2] if len(parts) > 2 else "?"
+            except OSError:
+                comm, state = "(?)", "gone"
+            details.append(f"{pid}:{state}:{comm}")
+        sys.stderr.write(
+            f"[cell-fence] QUARANTINE tree-not-proven cgroup={os.path.basename(cgroup_path)} "
+            f"n={len(pids)} lingering=[{','.join(details)}]\n"
+        )
+        sys.stderr.flush()
+    except Exception:  # noqa: BLE001 — diagnostics never break the fail-closed fence
+        pass
+
+
 def terminate_cgroup_tree(cgroup_path: str, sigterm_grace_s: float, kill_proof_budget_s: float) -> tuple:
     """Design §6 exact sequence: cgroup-scoped SIGTERM (enumerate
     `cgroup.procs`, signal each), wait <= `sigterm_grace_s`, then
@@ -451,6 +479,9 @@ def terminate_cgroup_tree(cgroup_path: str, sigterm_grace_s: float, kill_proof_b
                 proven = True
                 break
             time.sleep(0.1)
+
+        if not proven:
+            _log_unproven_tree(cgroup_path)
 
         if proven:
             try:
