@@ -51,3 +51,9 @@ ACCEPTED (documented deliberate tradeoff, no band-aid) · MAINT-DUE (time/env ex
 - root cause: no setuid in the agent shell (environment constraint, known).
 - resolution: ACCEPTED tradeoff — do NOT attempt sudo; go straight to non-sudo paths (/proc, world-readable files) or a user `!`-run. No producer fix (environment is intentional).
 - class — · severity LOW · status ACCEPTED · opened 2026-08-06.
+
+## WR-7 — git-command hook mangles shell variables in commit paths — ACCEPTED
+- symptom: `D=/path; git commit -F "$D/msg.txt"` failed with `could not read log file '/msg.txt'` — `$D` did not survive the git-command rewrite hook (RTK/lean-ctx). Cost two failed commit rounds this session.
+- root cause (T1): the git wrapper hook re-parses the command; a shell variable in the path is lost/empty by the time git runs.
+- resolution: ACCEPTED — in Bash tool `git` invocations, use ABSOLUTE literal paths for `-F <msgfile>` (and generally avoid shell variables inside hook-wrapped git commands). No producer fix (the hook is a deliberate token-optimization wrapper).
+- class T1 · severity LOW · status ACCEPTED · opened 2026-08-06.
