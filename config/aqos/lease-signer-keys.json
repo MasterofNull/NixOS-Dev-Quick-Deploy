@@ -1,0 +1,12 @@
+{
+  "_comment": "SOLE signer-verifier allowlist for asymmetric (Ed25519) capability leases — Foundation C rev4 (ASYMMETRIC-LEASE-AUTHORITY-DESIGN-20260806.md). Public-only; NO private material. Consumers (C2 issuer, C2 enforcement) verify signed leases against this file via capability_lease.verify_authoritative(). key_id is a REQUIRED signed field on every ed25519 lease; a key entry not present here, or present with status != \"active\", denies at verify time (re-checked every call). This placeholder public key is NOT paired with any provisioned private key — the confined lease-signing-authority service (a later, not-yet-built slice) is the only intended holder of the matching private key, provisioned via SOPS. Default-OFF: CAPABILITY_ASYMMETRIC_LEASE=0 means no ed25519 lease is minted or expected yet.",
+  "schema_version": "1",
+  "revision": 1,
+  "keys": [
+    {
+      "key_id": "lease-signer-2026-08",
+      "ed25519_public_key": "524279cd40cc3f6d8a42cfc2958e9bbda614f5e41ffd3dac24aba76068fceb5f",
+      "status": "active"
+    }
+  ]
+}
