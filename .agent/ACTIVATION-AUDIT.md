@@ -419,3 +419,16 @@ observability (dormant-but-ready if the real fence ever trips).
 **Downstream**: R7 GREEN clears C4's runner-live-cell gate (FOUNDATION-C-REV3 §C4). Next:
 C4 (network profiles), then C3a-2 build-activations. C6 still needs C2 scheduler-context
 transport + intervention lever.
+
+---
+
+## Rule 19 (Root-Cause Discipline) + Gate Hygiene — ACTIVATED (2026-08-06, owner-ratified)
+
+**Rule-15 attestation:**
+- **integrated**: Rule 19 in all five canonical agent files (CLAUDE/CODEX/LOCAL as Rule 19, GEMINI as Rule 21, WORKFLOW-CANON as a shared-contract section); gate-hygiene wired into `tier0-validation-gate.sh` `gate_qa_phase0`.
+- **turned ON**: live in the tier0 pre-commit path now (every commit this cycle passed through it).
+- **real-world validated**: induced a stale model-profile → tier0 `--pre-commit` PASSED with `freshness-class WARN: 0.10.5` (25/0), then restored; `--pre-deploy` stays HARD via the MODE guard. The producer fix (model_probe maintains `_meta`) + honest re-probe cleared 0.10.5 legitimately (WR-5 FIXED).
+- **observable**: `.agent/WORKAROUND-REGISTER.md` (SSOT, WR-1..WR-8) + the tier0 WARN line; future dashboard "Maintenance Due" card is the next enrichment.
+- **intervenable**: `--pre-deploy` enforces freshness; `FRESHNESS_CLASS_IDS` is the operator lever for what's freshness-class; the register is the sweep surface.
+
+**Also this cycle:** WR-4 cell-create diagnostics (`_log_cell_create_failure`) — activates on next rebuild (runner runs from the Nix bundle). Open register items: WR-3 (deploy preflight), WR-8 (xfail regex parity with the table-aware parse).
