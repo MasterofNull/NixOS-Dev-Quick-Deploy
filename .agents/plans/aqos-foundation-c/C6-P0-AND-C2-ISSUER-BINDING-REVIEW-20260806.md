@@ -103,3 +103,24 @@ requirements (see ASYMMETRIC-LEASE-AUTHORITY-DESIGN §5). No new defect beyond t
 precedent) precedes the C2 issuer rev3. Revised chain:
 ALA → C2 issuer rev3 → C6 main → C6 activation → C4 freeze. C6-P0 rev3 remains independently
 freeze-ready (PASS).
+
+## Binding review — Asymmetric Lease Authority rev1 (2026-08-06) — VERDICT: REQUEST_REVISION → rev2
+
+Fresh flagship, independent. Direction CONFIRMED correct (closes offline-forgery + key-theft; the
+execution_grant Ed25519 precedent + capability_lease HMAC current-state all verified accurate). Two
+HIGH crux policies were left open and had to be MANDATED:
+- **Scheme-downgrade (HIGH, confirmed exploit):** `sig_scheme` inside the lease + a dispatching
+  verifier + live HMAC dev key ⇒ attacker sets `sig_scheme=hmac-sha256`, forges with the dev key,
+  bypasses Ed25519. rev1's defense lived downstream (wrong layer). **rev2 mandate 1:** scheme-pinned
+  authoritative verify (`verify_authoritative`, ed25519-only, required signed field, no HMAC
+  fallback); HMAC `verify()` is a separate C1-shadow-only call.
+- **Signing-oracle (HIGH):** "cannot forge past policy checks" was unsubstantiated — the authority
+  signed whatever the owner-uid gate presented. **rev2 mandate 2 (option a):** the authority
+  independently reconstructs the lease from the manifest+epoch and byte-compares before signing; the
+  gate is pure transport. Makes the claim true.
+- Plus: byte-parity absent-field semantics (mandate 3), confinement threat-model note — holds vs a
+  compromised owner-uid process, NOT vs owner sudo/root (mandate 4), rotation precision — key_id
+  required-signed, malformed keys file ⇒ deny-all, re-check at every verify (mandate 5).
+
+rev2 (committed) makes all five MANDATES. Needs a fresh binding PASS. Local Qwen advisory on the two
+crux risks folded when it lands. Codex confirmatory queued.
