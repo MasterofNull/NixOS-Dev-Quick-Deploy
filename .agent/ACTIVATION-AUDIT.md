@@ -371,3 +371,51 @@ incremental deploy-exercise which found + fixed 4 deploy bugs (#5/#6/#7/#8) offl
 catch. A full GREEN cell round-trip needs the deliberately-deferred R3 provisioning (bare repo mirror +
 trusted_repo wiring + durable reservation store) — a dedicated **R7** slice (issues-backlog). Shadow
 non-authoritative + deny-closed throughout; C2 (enforcing) + C5 (observing) unaffected.
+
+---
+
+## R7 GREEN — Confinement spine dogfoods a real effect (2026-08-06)
+
+**Milestone**: the Foundation C confinement runner + shadow adapter completed the full
+chain END-TO-END to a typed GREEN receipt on a real effect. First live cell execution ever.
+
+```
+mint -> Ed25519 sign -> UDS -> SO_PEERCRED -> verify -> reserve (DURABLE store) ->
+  repo-trust PASS -> cell-create (clone + OID-bind + checkout + isolation + path-resolve) ->
+  bwrap cell RUNS -> supervise + final fence (tree_proven=True) -> out-of-cell validator -> GREEN
+```
+Receipt: `590b698a48c84ef0a8a27e7e85eb5af7` (decision=green, reason=ok, stage=final-fence).
+
+**Rule-15 attestation (all 5 dimensions):**
+- **integrated**: switchboard shadow adapter (CAPABILITY_CELL_ADAPTER=1) mints+signs and
+  submits to the socket-activated runner over the UDS; runner is the live enforcement service.
+- **turned ON**: runner enable+flagOn (nix/modules/profiles/ai-dev.nix); adapter=1
+  (nix/modules/services/switchboard.nix). Both were owner-activated (R6 + R7 grants).
+- **real-world validated**: GREEN receipt on a real write effect in an isolated cell;
+  isolation PROVEN — the real repo README.md is untouched (empty git diff) after the cell
+  modified its throwaway clone. Adapter runs AFTER the real in-process execution, deny-closed,
+  never gating/altering the real result.
+- **observable**: health-spider `_capability_enforcement_check` (C2/C5); dashboard
+  `/stats/capability-enforcement` card; runner journal + new `[cell-fence]` quarantine
+  diagnostic + `StandardError=journal` routing.
+- **intervenable**: `CAPABILITY_CELL_ADAPTER=0` kill switch (+rebuild); epoch kill-switch
+  (C6 lever); runner `enable=false`. Cell is torn down every request (no auto-merge, ever).
+
+**Deploy-exercise value (bugs offline acceptance could NOT catch — found + fixed live):**
+- #10 durable_reservation.py missing from runnerBundle -> runner crash-loop.
+- #11 systemd Environment= strips JSON double-quotes -> unknown-trusted-repo.
+- #13 git absent from runner PATH -> FAILURE_QUARANTINED at cell-create (the "quarantine"
+  catch-all for an unexpected exception, NOT the supervise fence).
+- isolation-violation: 17 committed absolute data/*.json symlinks escaped the tree ->
+  untracked (owner path A); also shed real portability debt.
+- path-escape: BY DESIGN — R2 does not materialize not-yet-existing write targets; the GREEN
+  demo writes an EXISTING tracked file (isolated cell, never merged).
+
+**Fence correction**: my first quarantine diagnosis (supervise fence / tree-not-proven) was
+WRONG — every quarantine was stage=cell-create. The supervise fence works (tree_proven=True on
+the GREEN run). The `_log_unproven_tree` diagnostic + stderr routing are retained permanent
+observability (dormant-but-ready if the real fence ever trips).
+
+**Downstream**: R7 GREEN clears C4's runner-live-cell gate (FOUNDATION-C-REV3 §C4). Next:
+C4 (network profiles), then C3a-2 build-activations. C6 still needs C2 scheduler-context
+transport + intervention lever.
