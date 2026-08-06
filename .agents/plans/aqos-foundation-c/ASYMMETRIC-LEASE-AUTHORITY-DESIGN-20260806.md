@@ -1,7 +1,7 @@
 ---
 title: "Foundation C — Asymmetric Confined Capability-Lease Signing Authority"
 slice: "ALA (foundational prerequisite for Q-C6-1)"
-revision: 3
+revision: 4
 kind: "design-only (PREPARED_ONLY; DEFAULT-OFF; authorizes nothing)"
 date: "2026-08-06"
 author: "Claude Opus 4.8 (analysis)"
@@ -9,10 +9,41 @@ motivation: "rev2 binding re-review FAIL — the C2 scheduler-context issuer's t
 precedent: "scripts/ai/lib/execution_grant.py (R1_REVIEWED_PASS) — Ed25519, confined private key, tracked public verifier"
 unblocks: "C2 scheduler-context issuer (rev3) → C6 → C4"
 owner_directive: "2026-08-06 — 'asymmetric lease authority first'"
-closes_review: "two binding reviews 2026-08-06: rev1 REQUEST_REVISION (2 HIGH) → rev2; rev2 REQUEST_REVISION (1 HIGH — byte-equality vs wall-clock fields) → rev3. rev1/rev2 superseded."
+closes_review: "three binding reviews 2026-08-06: rev1 (2 HIGH)→rev2; rev2 (1 HIGH byte-equality)→rev3; rev3 REQUEST_REVISION — ORACLE CONFIRMED CLOSED, narrow text asks (codex-1 guard + 3 LOW)→rev4. rev1-3 superseded."
 ---
 
 # Asymmetric Confined Capability-Lease Signing Authority
+
+## Revision 4 — preserve the codex-1 revocation guard under the mint relocation (+ 3 precision corrections)
+
+The rev3 binding re-review **CONFIRMED the signing-oracle is closed by construction** (mandate 2′
+succeeds; the reviewer enumerated every first-party lease field — `capability_lease_gate.py:340-408`
+— and found ZERO caller-influenced fields reach the signed lease). rev3's REQUEST_REVISION was narrow
+text asks, added here; none reopens the oracle:
+
+1. **[MED — HARD invariant, must be in frozen bytes] The gate RETAINS the codex-1 no-self-heal
+   revocation guard.** `capability_lease.py`/`capability_lease_gate.py` forbid auto-reissue on an
+   epoch bump ("Auto-reissue-on-bump would defeat revocation (C2-AMENDMENT codex-1) and is
+   forbidden", gate docstring ~:46), enforced by the gate-side mint-once `_FIRST_PARTY_LEASE_CACHE`
+   (`:326,354`) reissued ONLY via `reset_first_party_lease_cache()` (`:329-337`). Under rev3's mint
+   relocation this MUST be preserved: the gate requests an authority-minted lease **once per
+   cache-fill**, caches it, and does **NOT** re-request from the authority on an epoch bump — a
+   cached lease goes stale at verify and is reminted only on a deliberate operator
+   `reset_first_party_lease_cache()`. The authority is a STATELESS minter; revocation-durability
+   stays a gate concern. Re-requesting per-call or on-bump = fail-open revocation = FORBIDDEN.
+2. **[LOW] Epoch resolution moving gate→authority is intentional HARDENING, not "exact" identity.**
+   Today the gate resolves the epoch (`:562`) and passes it to the minter (`:582`); rev3 has the
+   authority resolve it itself (removing gate influence over the stamped `revocation_epoch`). Stated
+   as a deliberate improvement, not identical behavior.
+3. **[LOW] `issued_to` is PINNED to the constant `"switchboard-local-tool-executor"` (`:372`); the
+   selector `caller-principal`/`task` are AUDIT-CORRELATION ONLY** and feed NO authority-bearing
+   field. A future author must never wire `issued_to = caller-principal` (admission never keys on
+   `issued_to`; it reads tool/risk/trust_tier from the verified lease).
+4. **[LOW] Schema fields corrected:** the authority mints `input_schema: {}` / `output_schema: {}`
+   (EMPTY constants, `:388-389`) — not "manifest-derived schemas." Wording fixed.
+
+(rev3 mandate 2′ and rev2 mandates 1/3/4/5 stand as reviewer-confirmed. The oracle-closure crux is
+settled; rev4 adds only the above clarifying text.)
 
 ## Revision 3 — the authority MINTS (selectors-only request), closing the rev2 oracle finding
 
