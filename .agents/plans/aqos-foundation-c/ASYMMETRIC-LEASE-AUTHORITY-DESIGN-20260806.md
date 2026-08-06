@@ -1,7 +1,7 @@
 ---
 title: "Foundation C — Asymmetric Confined Capability-Lease Signing Authority"
 slice: "ALA (foundational prerequisite for Q-C6-1)"
-revision: 1
+revision: 2
 kind: "design-only (PREPARED_ONLY; DEFAULT-OFF; authorizes nothing)"
 date: "2026-08-06"
 author: "Claude Opus 4.8 (analysis)"
@@ -9,9 +9,49 @@ motivation: "rev2 binding re-review FAIL — the C2 scheduler-context issuer's t
 precedent: "scripts/ai/lib/execution_grant.py (R1_REVIEWED_PASS) — Ed25519, confined private key, tracked public verifier"
 unblocks: "C2 scheduler-context issuer (rev3) → C6 → C4"
 owner_directive: "2026-08-06 — 'asymmetric lease authority first'"
+closes_review: "fresh-flagship binding review 2026-08-06 (REQUEST_REVISION; 2 HIGH mandates + 3 precision) — rev1 superseded"
 ---
 
 # Asymmetric Confined Capability-Lease Signing Authority
+
+## Revision 2 — MANDATES closing the binding-review findings (rev1 must not be frozen)
+
+The rev1 binding review returned REQUEST_REVISION: direction correct (closes offline-forgery +
+key-theft), but two crux policies were left open and one (scheme-downgrade) was a confirmed exploit.
+Rev2 makes them **MANDATES**, not options:
+
+1. **[HIGH — scheme-downgrade, MANDATED closed] The authoritative verify entrypoint is scheme-PINNED
+   to `ed25519` and NEVER verifies HMAC.** `capability_lease.py` gains TWO physically separate verify
+   functions: `verify_authoritative(lease, keys_json)` — requires `sig_scheme == "ed25519"` as a
+   REQUIRED SIGNED field, rejects absent/unknown/`hmac-sha256` with a typed deny, verifies Ed25519
+   against `lease-signer-keys.json`, and has NO reachable dev-key/HMAC fallback; and the existing
+   `verify()` (HMAC) — used ONLY by non-authoritative C1-shadow consumers. Every trust-rooted
+   consumer (C2 issuer, C2 enforcement) calls `verify_authoritative` exclusively. A lease presented
+   with `sig_scheme=hmac-sha256` (dev-key-forgeable) can NEVER pass an authoritative verify. This
+   pinning lives in the PRIMITIVE, not downstream.
+2. **[HIGH — signing-oracle, MANDATED closed via option (a)] The authority independently reconstructs
+   the lease and byte-compares; the gate is pure transport.** `lease_signing_authority.py` does NOT
+   sign an opaque presented payload. It reads the tool manifest (`_load_manifest()`) + resolves the
+   epoch ITSELF, reconstructs the exact canonical first-party lease it would authorize for the
+   requested `{tool, caller-principal, task}`, and signs ONLY if that reconstruction is byte-equal to
+   the presented payload — otherwise typed `payload-mismatch` deny. A compromised owner-uid gate thus
+   cannot obtain an over-broad lease: it can only get signed exactly what the authority itself would
+   authorize from the manifest. This makes §2's "cannot forge past policy checks" TRUE.
+3. **[MED — byte-parity, PINNED] Absent-field semantics.** `sig_scheme` is added to the signed
+   canonical payload ONLY for `ed25519` leases. Flag-OFF (legacy) leases carry NO `sig_scheme` field
+   → canonical bytes unchanged → exact byte-parity for every existing C0/C1/C2 lease + golden vector.
+   Absent `sig_scheme` is treated as legacy-hmac by the C1-shadow `verify()` ONLY; the authoritative
+   `verify_authoritative` REQUIRES `sig_scheme=ed25519` present (absent ⇒ deny). The two never share
+   a default.
+4. **[confinement threat-model, DOCUMENTED] The `0400`-cross-uid confinement holds against a
+   compromised owner-uid PROCESS, not against the human owner's `sudo`/root** (the owner has setuid
+   on this box and can read any `0400` file). This is the SAME envelope the accepted `execution_grant`
+   precedent relies on; stated so it is not mistaken for a stronger guarantee.
+5. **[rotation/revocation, PINNED] `key_id` is a REQUIRED SIGNED field; a missing/malformed
+   `lease-signer-keys.json` ⇒ deny-ALL (never accept-all); revocation status is re-checked at EVERY
+   verify (no cached-active past a status flip).**
+
+The sections below are rev2 as amended by these mandates.
 
 ## 0. Why this slice exists
 
@@ -33,7 +73,7 @@ the runner holds only the public key). It authorizes nothing; default-OFF.
 
 | Operation | Path | Role |
 |---|---|---|
-| EDIT | `scripts/ai/lib/capability_lease.py` | Add an ASYMMETRIC path alongside the existing HMAC: a `sig_scheme` tag in the signed payload (`hmac-sha256` legacy | `ed25519`); `sign_ed25519(payload, private_key)` and `verify_ed25519(payload, sig, public_key)` mirroring `execution_grant.py`. The HMAC path is untouched for legacy/C1-shadow leases; verifiers dispatch on `sig_scheme`. No verifier ever needs a private key. |
+| EDIT | `scripts/ai/lib/capability_lease.py` | Add an ASYMMETRIC path via TWO physically separate verify functions (rev2 mandate 1): `verify_authoritative(lease, keys_json)` requires `sig_scheme == "ed25519"` (a required signed field), rejects absent/unknown/`hmac-sha256`, verifies Ed25519 against `lease-signer-keys.json`, NO dev-key/HMAC fallback reachable; the existing HMAC `verify()` stays for non-authoritative C1-shadow ONLY. `sign_ed25519(payload, private_key)` mirrors `execution_grant.py`. `sig_scheme` is in the signed payload ONLY for ed25519 leases (legacy leases omit it → byte-parity, mandate 3). No verifier holds a private key. |
 | EDIT | `ai-stack/switchboard/capability_lease_gate.py` | First-party lease issuance (`:397`) signs via the confined authority (below) when `CAPABILITY_ASYMMETRIC_LEASE=1`, NOT in-process; the gate never holds the Ed25519 private key. Flag OFF (default) = current HMAC behavior, byte-parity. |
 | NEW | `scripts/ai/lib/lease_signing_authority.py` | The signer: authenticates the caller, canonicalizes the lease payload it is asked to sign, and returns ONLY an Ed25519 signature. Holds the private key via the confined service principal. No lease-content authorship — it signs exactly the caller's canonical payload after policy checks; it is a signing oracle bounded to the lease schema. |
 | NEW | `nix/modules/services/lease-signing-authority.nix` | Dedicated default-OFF service `aq-lease-signing-authority`: own unprivileged user, SOPS Ed25519 private key read-only (`0400`, owned by this principal), UDS group-restricted + `SO_PEERCRED`, `NoNewPrivileges`, empty `CapabilityBoundingSet`, `ProtectSystem=strict`, `ProtectHome`, `PrivateTmp`, no network. `enable=false`. switchboard.nix untouched (the gate is an outbound client). |
@@ -53,13 +93,17 @@ MUST be followed by `sops` re-encryption; never place private material in a trac
 - **Confined signer:** the Ed25519 private key is readable ONLY by `aq-lease-signing-authority`
   (`0400`). The switchboard/gate (owner uid), a shell, `delegate-to-local`, and any owner-uid tool
   CANNOT read it. Signing happens only inside the authority.
-- **Owner-uid gate is a mere requester:** `capability_lease_gate.py` sends a canonical lease payload
-  to the authority over an authenticated UDS and receives a signature; it never holds the private
-  key. An owner-uid attacker who compromises the switchboard can request signatures for leases the
-  *policy* would allow, but cannot mint arbitrary leases offline nor forge past the authority's
-  policy checks — and crucially cannot produce a signature for a verifier without going through the
-  confined authority. (A follow-on hardening — the authority independently re-validating admission
-  rather than signing whatever the gate presents — is noted in §5, out of scope for the primitive.)
+- **Owner-uid gate is PURE TRANSPORT (rev2 mandate 2):** `capability_lease_gate.py` sends a request
+  to the authority, but the authority does NOT sign the presented payload blindly. The authority
+  independently reads the tool manifest + resolves the epoch, reconstructs the exact canonical
+  first-party lease it would authorize for the requested `{tool, caller-principal, task}`, and signs
+  ONLY if that reconstruction is byte-equal to the presented payload (else typed `payload-mismatch`
+  deny). So a compromised owner-uid gate cannot obtain an over-broad lease — it gets signed only
+  exactly what the authority itself authorizes from the manifest. The gate never holds the private
+  key; it cannot mint offline; it cannot forge past the authority because the authority is the policy.
+- **Confinement threat-model (rev2 mandate 4):** the `0400`-cross-uid key confinement holds against a
+  compromised owner-uid PROCESS, NOT against the human owner's `sudo`/root (setuid on this box). Same
+  envelope as the accepted `execution_grant` precedent — stated, not a stronger claim.
 - **Verifiers hold only the public key:** the C2 scheduler-context issuer, C2 enforcement, and any
   future reader verify with `config/aqos/lease-signer-keys.json`. `verify != forge`. This is the
   property the rev2 FAIL required and the property `execution_grant.py` already relies on.
@@ -99,12 +143,14 @@ Once this authority exists and is activated, the **C2 scheduler-context issuer r
 
 ## 6. Open blockers for the independent reviewer
 
-1. **Signing-oracle risk:** the authority signs the gate's presented canonical payload after policy
-   checks. Confirm the exact policy the authority enforces before signing (so a compromised gate
-   cannot get an over-broad lease signed), or scope this primitive to "signature only" and require
-   the issuer to re-derive admission (the safer split). Name which.
-2. **Blast radius:** confirm the `sig_scheme` tag + dispatch does not weaken existing HMAC
-   verification, and that flag-OFF is exact byte-parity for every existing C0/C1/C2 lease path.
+1. **Signing-oracle — RESOLVED in rev2 (mandate 2, option a):** the authority independently
+   reconstructs the lease from the manifest+epoch and byte-compares before signing; the gate is pure
+   transport. Reviewer to confirm the reconstruction is deterministic + byte-canonical against the
+   gate's own `_load_manifest()` path (no divergence that could cause spurious `payload-mismatch`).
+2. **Scheme-downgrade / blast radius — RESOLVED in rev2 (mandates 1+3):** authoritative verify is
+   scheme-pinned to `ed25519` with no HMAC fallback; legacy leases omit `sig_scheme` (byte-parity).
+   Reviewer to confirm no code path lets an authoritative consumer reach the HMAC `verify()`, and
+   that the two verify functions cannot be confused at a call site.
 3. **SOPS/secret ceiling:** exact `secrets.nix` entry, `/run/secrets` owner/mode, proof no owner-uid
    process can read the private key.
 4. **Key rotation/revocation** via `lease-signer-keys.json` status + monotonic revision; fail-closed
