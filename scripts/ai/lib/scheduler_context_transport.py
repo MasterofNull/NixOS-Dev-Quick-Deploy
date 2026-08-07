@@ -10,10 +10,11 @@ defense-in-depth ONLY, never as authority. The actual gate on minting is the
 independently-verified Ed25519-signed lease inside `mint_scheduler_context` itself; a
 peer that passes every check below still mints nothing without a lease it cannot forge.
 
-Not exercised live in this subslice — nothing imports or enables this today (B2 wires
-the confined `aq-c2-scheduler-context-issuer` service + Nix unit around `serve()`).
-`__main__` requires the same env-driven socket path convention as
-`lease_signing_authority.py` so the two services compose the same way once B2 lands.
+B2 wires the confined `aq-c2-scheduler-context-issuer` service + Nix unit around `serve()`:
+`build_env_handler()` below constructs the request handler entirely from the
+`AQ_SCHEDULER_CONTEXT_*` env vars the Nix unit sets (mirrors `lease_signing_authority.py`'s
+env-driven `handle_request`), and `__main__` binds it to `serve()`. Still default-OFF and
+unexercised until the `aq-c2-scheduler-context-issuer.nix` unit (B2) is enabled.
 """
 from __future__ import annotations
 
@@ -194,10 +195,113 @@ def send_request(socket_path: str, request: dict[str, Any], timeout: float = REC
             pass
 
 
-if __name__ == "__main__":  # pragma: no cover — no default handler; B2 supplies one
-    print(
-        "scheduler_context_transport: library module, no standalone entrypoint in B1 "
-        "(B2 wires a handler bound to the issuer's ledger/key/allowlist)",
-        file=sys.stderr,
-    )
-    sys.exit(1)
+# --------------------------------------------------------------------------
+# B2 service wiring — env-driven handler binding scheduler_context_issuer's pure
+# mint_scheduler_context() to this transport's serve(). Only imported when run as __main__
+# (the confined aq-c2-scheduler-context-issuer unit); everything above stays import-light for
+# any caller that only needs read_frame/send_request/get_peer_credentials (tests, a future
+# switchboard client) and never pays for the cryptography import.
+# --------------------------------------------------------------------------
+
+
+def _read_private_key(path: str) -> Optional[bytes]:
+    """Mirrors `lease_signing_authority._read_private_key` exactly (hex or raw 32 bytes).
+    Returns None on any read/format failure -> fail-closed `DENY_SIGNER_UNAVAILABLE` inside
+    `mint_scheduler_context`; never raises."""
+    if not path:
+        return None
+    try:
+        with open(path, "rb") as fh:
+            data = fh.read().strip()
+        if not data:
+            return None
+        try:
+            return bytes.fromhex(data.decode("ascii").strip())
+        except (ValueError, UnicodeDecodeError):
+            return data if len(data) == 32 else None
+    except OSError:
+        return None
+
+
+def _load_json_file(path: str) -> Any:
+    """Best-effort JSON load; None on any failure. The caller treats None as
+    verifier-allowlist-unavailable (fail-closed), never a bespoke fallback."""
+    if not path:
+        return None
+    try:
+        with open(path, "r", encoding="utf-8") as fh:
+            return json.load(fh)
+    except (OSError, ValueError):
+        return None
+
+
+def _resolve_epoch(path: str) -> int:
+    """Same convention as `lease_signing_authority._resolve_epoch`: the
+    `AQ_SCHEDULER_CONTEXT_EPOCH_PATH` file, else 0 (floor). Read fresh per request so an epoch
+    bump takes effect without a service restart — never a caller-supplied epoch."""
+    try:
+        with open(path, "r", encoding="utf-8") as fh:
+            return max(0, int(fh.read().strip()))
+    except (OSError, ValueError):
+        return 0
+
+
+def build_env_handler() -> Callable[[dict[str, Any], Optional[tuple[int, int, int]]], dict[str, Any]]:
+    """Construct the request handler `serve()` needs, entirely from the
+    `AQ_SCHEDULER_CONTEXT_*` env vars the B2 Nix unit sets. Imports `scheduler_context_issuer`
+    lazily (only when run as `__main__`) so this module's non-service uses never pay for the
+    cryptography import. A single process-lifetime `InMemorySingleUseLedger` is shared across
+    requests — B1's documented durability seam (a restart resets it); closing that seam with a
+    durable store is a later, separately-reviewed slice, not this one. The request must present
+    exactly `{"lease": {...}, "correlation": {...}}`; the handler never trusts any other field
+    (mirrors `mint_scheduler_context`'s own re-derivation discipline)."""
+    import scheduler_context_issuer as sci  # noqa: E402  (lazy; sibling in scripts/ai/lib)
+
+    key_path = os.environ.get("AQ_SCHEDULER_CONTEXT_KEY_PATH", "").strip()
+    key_id = os.environ.get("AQ_SCHEDULER_CONTEXT_KEY_ID", "").strip()
+    lease_keys_path = os.environ.get("AQ_SCHEDULER_CONTEXT_LEASE_KEYS_PATH", "").strip()
+    epoch_path = os.environ.get("AQ_SCHEDULER_CONTEXT_EPOCH_PATH", "").strip()
+    try:
+        ttl_cap = int(os.environ.get("AQ_SCHEDULER_CONTEXT_TTL_CAP_SECONDS", "900"))
+    except ValueError:
+        ttl_cap = 900
+    ledger = sci.InMemorySingleUseLedger()
+
+    def handler(request: dict[str, Any], _peer_creds: Optional[tuple[int, int, int]]) -> dict[str, Any]:
+        lease = request.get("lease")
+        correlation = request.get("correlation")
+        if not isinstance(lease, dict):
+            return {"ok": False, "reason": "request-malformed-lease", "detail": "", "context": None}
+        lease_keys_json = _load_json_file(lease_keys_path)
+        if lease_keys_json is None:
+            return {
+                "ok": False,
+                "reason": "verifier-allowlist-unavailable",
+                "detail": "",
+                "context": None,
+            }
+        private_key_bytes = _read_private_key(key_path)
+        current_epoch = _resolve_epoch(epoch_path)
+        return sci.mint_scheduler_context(
+            lease,
+            lease_keys_json,
+            current_epoch,
+            correlation,
+            private_key_bytes,
+            key_id,
+            ttl_cap,
+            ledger,
+        )
+
+    return handler
+
+
+if __name__ == "__main__":  # pragma: no cover — exercised live only once B2 enables the unit
+    _sp = os.environ.get("AQ_SCHEDULER_CONTEXT_SOCKET_PATH", "").strip()
+    if not _sp:
+        print(
+            "scheduler_context_transport: AQ_SCHEDULER_CONTEXT_SOCKET_PATH not set",
+            file=sys.stderr,
+        )
+        sys.exit(1)
+    serve(_sp, build_env_handler())

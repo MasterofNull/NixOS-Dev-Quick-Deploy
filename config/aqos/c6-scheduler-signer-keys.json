@@ -1,0 +1,12 @@
+{
+  "_comment": "SOLE signer-verifier allowlist for the C2 scheduler-lease-context issuer's OWN Ed25519 signing key (Foundation C, C2-SCI design rev4, C2-SCHEDULER-CONTEXT-ISSUER-DESIGN-20260806.md §2). Public-only; NO private material. A DISTINCT key family from config/aqos/lease-signer-keys.json (the C2 admission-lease signer) — this file verifies the aq.scheduler-lease-context/1 documents minted by the confined aq-c2-scheduler-context-issuer service, never the presented lease itself. dispatch.py's B3 ingress adapter verifies a context's signature ONLY through this status-bearing allowlist via capability_lease.verify_authoritative(); a key_id absent here, or present with status != \"active\", denies at verify time (re-checked every call) — a revoked key never verifies. B2 (this file): PLACEHOLDER public key only, no paired private key exists yet. Activation (a later, separately-reviewed owner act) provisions the real SOPS private key at /run/secrets/c6-scheduler-context-signing-key and replaces this placeholder public key with its true pair.",
+  "schema_version": "1",
+  "revision": 1,
+  "keys": [
+    {
+      "key_id": "c2-scheduler-context-signer-2026-08",
+      "ed25519_public_key": "dbae8529eb4ac59de24111374d111967408ef581ff592cb53ac94b19009d6fcd",
+      "status": "active"
+    }
+  ]
+}
