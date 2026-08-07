@@ -123,27 +123,18 @@ Key properties for the reviewer to confirm:
   untouched; the codex-3 tamper/drift tripwire that re-reads the signed lease's own fields
   (`:699+`) still runs AFTER a VERIFY_OK, now on an authentically-signed lease.
 
-## 3. Open questions for the independent reviewer
+## 3. Resolved (was open questions) — see the rev2 normative requirements above
 
-- Q-E1 (candidate-lease scheme): first-party leases are the only ones ALA mints as Ed25519. Candidate
-  (caller-presented, third-party) leases at `:641` remain HMAC today. Confirm the scheme-dispatch helper
-  applied to the candidate branch is correct (an Ed25519 candidate lease, if ever presented, verifies via
-  the SAME authoritative allowlist — NOT forgeable — which is strictly safe), OR whether candidate leases
-  must stay HMAC-only pending a separate third-party-lease design. Recommendation: apply the helper to
-  both (uniform, and the allowlist makes it deny-closed), but flag for the reviewer.
-- Q-E2 (epoch source): the layered epoch check uses `resolve_current_epoch()` — the epoch file today
-  (`config/capability-lease-epoch` = 0), the C6 epoch authority once activated. Confirm a mismatch denies
-  and that this is the SAME source the mint side stamps (`revocation_epoch`), so freshly-minted leases are
-  never self-stale.
-- Q-E3 (keys_json load site + failure): where `enforce()` loads `config/aqos/lease-signer-keys.json`
-  (once per enforce call vs cached) and that a missing/malformed allowlist denies ALL ed25519 leases
-  (fail-closed) without affecting the HMAC path. `verify_authoritative` already deny-alls on a non-dict
-  keys_json; confirm the load passes a parsed dict (the live-probe bug — a raw string denies-all).
-- Q-E4 (flag interaction): with the scheme-dispatch driven by the lease's own `sig_scheme`, is the
-  `CAPABILITY_ASYMMETRIC_LEASE` flag still needed at the verify site, or is it purely a mint-side switch
-  (verify auto-adapts per-lease)? Recommendation: verify is flag-agnostic (per-lease scheme dispatch);
-  the flag stays mint-side only. Confirm this can't create a window where mint=HMAC but a stale cached
-  ed25519 lease is verified (cache reset on flag change is an owner act at rebuild).
+- Q-E1 (candidate-lease scheme) → RESOLVED: single shared `_admission_verify` for both branches (rev2
+  candidate-branch decision). No admit path opened; guarantees uniform N4 layering.
+- Q-E2 (epoch source) → **N4** (MUST: identical epoch source authority↔enforce; activation gate).
+- Q-E3 (keys_json load site + failure) → **N1** (MUST: parsed dict, local try/except, deny-all sentinel,
+  no exception escape to the S-c wrapper).
+- Q-E4 (flag interaction) → RESOLVED: verify is flag-agnostic (per-lease `sig_scheme` dispatch); the flag
+  stays mint-side only. The reviewer confirmed no hot cross-scheme cache window — the flag lives in
+  `switchboard.nix`, so flipping it rebuilds+restarts, re-initializing `_FIRST_PARTY_LEASE_CACHE=None`
+  (`:326`); there is no in-process hot-flip path.
+- New wiring MUST from the review → **N2** (helper inside the existing try/except in BOTH branches).
 
 ## 4. Test vectors (offline, hermetic)
 
@@ -153,16 +144,27 @@ Key properties for the reviewer to confirm:
 4. Ed25519 lease, signature byte-flipped → DENY `first-party-lease-auth-bad-signature`.
 5. Ed25519 lease, `key_id` not in allowlist / `status:revoked` → DENY `auth-unknown-key-id` / `auth-key-not-active`.
 6. Legacy HMAC first-party lease (no `sig_scheme`) → ADMIT via the byte-identical HMAC path (parity).
-7. Malformed/missing `lease-signer-keys.json` → ALL ed25519 leases DENY; HMAC leases UNAFFECTED.
+7. Malformed/missing `lease-signer-keys.json` → ALL ed25519 leases DENY; HMAC leases UNAFFECTED (N1).
 8. Flag-OFF / sig_scheme-absent corpus → enforce() decisions byte-identical to pre-change (regression).
+9. **(N2) Ed25519 lease with a signed-but-malformed `expires_at`** → DENY `first-party-lease-<malformed>`
+   for THAT tool only; assert the exception does NOT escape the branch (other tools/HMAC leases still
+   evaluate — no total-deny).
+10. **(N1) keys-file read/parse raises** (simulated) → the load returns the deny-all sentinel; ed25519
+    leases DENY, HMAC leases ADMIT; assert no exception reaches the S-c wrapper.
+11. **(N4) epoch-source parity**: an authority-minted lease stamped at the enforce-resolved epoch → ADMIT;
+    a lease stamped at authority-epoch < enforce-epoch → DENY epoch-stale (proves the mismatch-denies leg).
 
 ## 5. Path
 
-Independent binding review of these exact semantics → hash-bound freeze → single-use owner build
-activation → default-OFF build (scheme-dispatch is inert until an Ed25519 lease appears, i.e. until the
-mint flag flips) → independent code review → commit. THEN ALA Phase 2: flip
-`CAPABILITY_ASYMMETRIC_LEASE=1` + `AQ_LEASE_SIGNING_SOCKET_PATH` in switchboard.nix + rebuild + a LIVE
-enforced-admission validation (a real first-party tool admits on an Ed25519 lease; forged/expired deny).
+Independent binding review (rev1 = REQUEST_REVISION, folded here) → **rev2 re-review** confirming N1–N5
+are pinned normatively → hash-bound freeze → single-use owner build activation → default-OFF build
+(scheme-dispatch inert until an Ed25519 lease appears) → independent code review → commit. THEN, as the
+**N3 activation gate BEFORE the flip**: a pre-flip dry-run of the ENTIRE `enforce()` path (not just
+`verify_authoritative`) against a real authority-minted lease — lease↔lookup-key match, the codex-3
+projection-equality tripwire, AND layered expiry/epoch all GREEN — plus N4 epoch-source parity confirmed
+and N5's HMAC secret kept provisioned. Only then flip `CAPABILITY_ASYMMETRIC_LEASE=1` +
+`AQ_LEASE_SIGNING_SOCKET_PATH` in switchboard.nix + rebuild + the LIVE enforced-admission validation (a
+real first-party tool admits on an Ed25519 lease; forged/expired/stale deny).
 
 `RECORD: PREPARED_ONLY enforce-asymmetric-verify design. No implementation, key material, flag flip, or
 activation authority.`
