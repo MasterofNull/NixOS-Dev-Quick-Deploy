@@ -456,6 +456,16 @@ in {
           # NEVER altering/gating/delaying the real result. This rebuild is the R7
           # acceptance activation. REVERT: set to "0" + rebuild.
           "CAPABILITY_CELL_ADAPTER=1"
+          # Foundation C — ALA Phase 2 FLIP (2026-08-07). Routes first-party lease ISSUANCE through the
+          # confined aq-lease-signing-authority (Ed25519) instead of in-process HMAC, and enforce() now
+          # verifies those Ed25519 leases via verify_authoritative + layered expiry/epoch. Pre-flip gates
+          # all GREEN: enforce-verify built + independently code-reviewed (a4c496ec), N3 full-enforce()-path
+          # dry-run 25/25 admit (codex-3 projection equality holds → no outage), N4 epoch parity confirmed.
+          # The private key stays 0400 in the confined authority; the switchboard (owner uid) never holds
+          # it (verify != forge). N5: the HMAC secret aq-lease-signing-key MUST stay provisioned (the is_dev
+          # degrade would read-only-outage all tools). REVERT: remove both lines + rebuild → byte-parity HMAC.
+          "CAPABILITY_ASYMMETRIC_LEASE=1"
+          "AQ_LEASE_SIGNING_SOCKET_PATH=${cfg.aiStack.leaseSigningAuthority.socketPath}"
           "PORT=${toString swb.port}"
           "HOST=127.0.0.1"
           "LLAMA_CPP_URL=${llamaUrl}"
