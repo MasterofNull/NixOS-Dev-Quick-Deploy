@@ -1122,6 +1122,113 @@ def _validate_code_blocks(result_text: str) -> str:
     return "\n\n---\n[code-validation]\n" + "\n".join(reports) + "\n[/code-validation]"
 
 
+# ── C2-SCI B3: authenticated scheduler-context ingress adapter ─────────────────
+# Foundation C, C2-SCI subslice B3 (design §1 row 2, §4). Flag-gated
+# `CAPABILITY_SCHEDULER_CONTEXT_ISSUER` (default "0"/unset). Self-contained,
+# INERT: not called from `dispatch_task()`/`main()` in this subslice — dispatch.py
+# today performs NO context deserialization on any code path, and that stays true
+# regardless of this flag's value (byte-parity requirement) until a future,
+# separately-flagged (`CAPABILITY_SCHEDULER_LEASE_GATE`, C6) wiring slice makes
+# `slot_queue` actually consume this. See
+# `.agents/plans/aqos-foundation-c/C2-SCHEDULER-CONTEXT-ISSUER-DESIGN-20260806.md`
+# rev4 §1/§4 + the FREEZE doc's B3 scope.
+#
+# Trust model (unchanged from the issuer's own docstring — this is the ingress
+# mirror of it): a scheduler-context is authoritative ONLY once it (1) verifies
+# as a genuine Ed25519 signature by an ACTIVE key in
+# `config/aqos/c6-scheduler-signer-keys.json` (a key family distinct from the C2
+# admission-lease signer), (2) targets exactly this audience
+# (`aq-f2.5-slot-queue`), (3) is not expired, and (4) is not epoch-stale against
+# the authoritative epoch. `verify_ingress_scheduler_context()` below NEVER
+# deserializes/trusts its `candidate` argument as a context absent that full
+# chain — a dict that merely LOOKS like a context (forged signature, wrong
+# audience, expired, stale epoch, or not even a mapping) is REJECTED, never
+# silently accepted. No signing key is read or held here (public-verify only).
+
+DEFAULT_SCHEDULER_SIGNER_KEYS_PATH = _REPO_ROOT / "config" / "aqos" / "c6-scheduler-signer-keys.json"
+SCHEDULER_CONTEXT_AUDIENCE = "aq-f2.5-slot-queue"
+SCHEDULER_CONTEXT_SCHEMA = "aq.scheduler-lease-context/1"
+
+DENY_INGRESS_NOT_A_MAPPING = "context-not-a-mapping"
+DENY_INGRESS_WRONG_SCHEMA = "context-wrong-schema"
+DENY_INGRESS_UNVERIFIED = "context-unverified"
+DENY_INGRESS_WRONG_AUDIENCE = "context-wrong-audience"
+DENY_INGRESS_EXPIRED = "context-expired"
+DENY_INGRESS_EPOCH_STALE = "context-epoch-stale"
+DENY_INGRESS_KEYS_UNAVAILABLE = "signer-allowlist-unavailable"
+
+
+def _scheduler_context_issuer_enabled() -> bool:
+    return os.environ.get("CAPABILITY_SCHEDULER_CONTEXT_ISSUER", "0") == "1"
+
+
+def _load_scheduler_signer_keys_json(path: Optional[Path] = None) -> dict:
+    """Parsed dict only (never raw file text — a string would deny-ALL inside
+    `verify_authoritative` for the wrong reason). ANY read/parse failure
+    (missing file, bad JSON, non-dict top level) yields the deny-all sentinel
+    `{}` and MUST NOT propagate — mirrors
+    `capability_lease_gate.py::_load_lease_signer_keys_json`'s local
+    fail-closed discipline exactly."""
+    target = path if path is not None else DEFAULT_SCHEDULER_SIGNER_KEYS_PATH
+    try:
+        loaded = json.loads(Path(target).read_text(encoding="utf-8"))
+        return loaded if isinstance(loaded, dict) else {}
+    except Exception:
+        return {}
+
+
+def verify_ingress_scheduler_context(
+    candidate,
+    signer_keys_json=None,
+    current_epoch: int = 0,
+    now=None,
+) -> dict:
+    """Authenticated ingress adapter. `candidate` is whatever a caller
+    presents as a scheduler-context — NEVER assumed to be one. Returns
+    `{"ok": True, "context": {...}}` only after the full verify chain
+    (schema tag -> signature/active-key -> audience -> freshness -> epoch)
+    passes, else `{"ok": False, "reason": DENY_INGRESS_*}`. Never raises.
+
+    `signer_keys_json`: parsed dict (e.g. from `_load_scheduler_signer_keys_json`);
+    `None` triggers a local load of the default path. A caller-supplied
+    non-mapping `candidate` is rejected at the first check — this function
+    never calls `dict(candidate)` or otherwise coerces untrusted input before
+    validating it.
+    """
+    try:
+        if not isinstance(candidate, dict):
+            return {"ok": False, "reason": DENY_INGRESS_NOT_A_MAPPING, "context": None}
+        if candidate.get("schema") != SCHEDULER_CONTEXT_SCHEMA:
+            return {"ok": False, "reason": DENY_INGRESS_WRONG_SCHEMA, "context": None}
+
+        keys_json = signer_keys_json if signer_keys_json is not None else _load_scheduler_signer_keys_json()
+        try:
+            import scheduler_context_issuer as _sci  # noqa: E402 — lazy: sibling in scripts/ai/lib
+        except Exception:
+            return {"ok": False, "reason": DENY_INGRESS_KEYS_UNAVAILABLE, "context": None}
+
+        verdict = _sci.verify_scheduler_context(candidate, keys_json)
+        if not verdict.ok:
+            return {"ok": False, "reason": DENY_INGRESS_UNVERIFIED, "context": None}
+
+        if candidate.get("audience") != SCHEDULER_CONTEXT_AUDIENCE:
+            return {"ok": False, "reason": DENY_INGRESS_WRONG_AUDIENCE, "context": None}
+
+        try:
+            if _sci.cl.is_expired(candidate, now=now):
+                return {"ok": False, "reason": DENY_INGRESS_EXPIRED, "context": None}
+            if _sci.cl.epoch_stale(candidate, current_epoch):
+                return {"ok": False, "reason": DENY_INGRESS_EPOCH_STALE, "context": None}
+        except Exception:
+            # A malformed expires_at/revocation_epoch on an otherwise-signed
+            # context is still a deny, never a pass-through — total function.
+            return {"ok": False, "reason": DENY_INGRESS_UNVERIFIED, "context": None}
+
+        return {"ok": True, "reason": "ok", "context": dict(candidate)}
+    except Exception:  # noqa: BLE001 — total function, never raises into a caller
+        return {"ok": False, "reason": DENY_INGRESS_UNVERIFIED, "context": None}
+
+
 # ── dispatch core ─────────────────────────────────────────────────────────────
 
 def dispatch_task(
