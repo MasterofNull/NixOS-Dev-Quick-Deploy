@@ -599,6 +599,59 @@ def _load_lease_signer_keys_json(path: Any = None) -> dict:
         return {}
 
 
+# --------------------------------------------------------------------------
+# C2-SCI B3 (design §1 row 1, §3 direction) — outbound client on an admission
+# ALLOW. Flag-gated `CAPABILITY_SCHEDULER_CONTEXT_ISSUER` (default "0"/unset).
+# When OFF: `_request_scheduler_context` returns None before importing
+# `scheduler_context_transport` (no import at call time on the hot path) and
+# `enforce()` below never calls it at all — byte-identical decisions.
+# When ON: present the VERIFIED admitting lease (never a caller-asserted
+# ALLOW, never re-derived here) to the confined `aq-c2-scheduler-context-issuer`
+# over an outbound authenticated UDS call so IT can independently re-verify +
+# mint the signed `aq.scheduler-lease-context/1` document. NO signing key in
+# this gate — it only relays.
+#
+# FAIL-CLOSED + NON-BLOCKING-TO-TOOL-ADMISSION: this function's result is
+# NEVER read by anything that affects `admitted`/the tool's own ADMIT/DENY
+# decision — that decision was already made by `_admission_verify` above it.
+# Any failure (flag off, socket unset, unreachable issuer, malformed reply,
+# a typed issuer deny) yields None, i.e. "no scheduler-context for this
+# admit". C6's downstream scheduler gate (a SEPARATE, still-off
+# `CAPABILITY_SCHEDULER_LEASE_GATE`) is what denies on an absent context —
+# never this gate, never this function. Never raises.
+# --------------------------------------------------------------------------
+
+
+def _scheduler_context_issuer_enabled() -> bool:
+    return os.environ.get("CAPABILITY_SCHEDULER_CONTEXT_ISSUER", "0") == "1"
+
+
+def _request_scheduler_context(lease: dict, correlation: dict) -> Optional[dict]:
+    """Outbound UDS client call to the C2 issuer, presenting `lease` (the
+    exact verified lease that admitted this tool) + `correlation` (caller-
+    supplied `{task_id, principal, dispatch_mode}` dispatch metadata only —
+    the issuer never reads authority from it, per design §4/Q-R3-1). Returns
+    the minted context dict on a typed `ok` reply, else None. Never raises;
+    a raising transport/issuer is indistinguishable here from "no context"."""
+    if not _scheduler_context_issuer_enabled():
+        return None
+    sock_path = os.environ.get("AQ_SCHEDULER_CONTEXT_SOCKET_PATH", "").strip()
+    if not sock_path:
+        return None
+    try:
+        import scheduler_context_transport as _sct  # noqa: E402 — lazy: only when flag ON
+    except Exception:
+        return None
+    try:
+        response = _sct.send_request(sock_path, {"lease": lease, "correlation": correlation})
+    except Exception:  # noqa: BLE001 — a faulting transport yields no context, never an exception
+        return None
+    if not isinstance(response, dict) or not response.get("ok"):
+        return None
+    context = response.get("context")
+    return context if isinstance(context, dict) else None
+
+
 def _admission_verify(lease: dict, hmac_key: bytes, current_epoch: int, keys_json_dict: dict) -> str:
     """Scheme-dispatched admission verify (design §2). An Ed25519-signed
     lease (`sig_scheme == cl.SIG_SCHEME_ED25519`, a signed field — a forged
@@ -681,6 +734,12 @@ def enforce(
         inherited_strip = _normalize_zero_trust(ctx.get("zero_trust_behavior")) == "strip"
         candidate_leases = ctx.get("candidate_leases") or []
         bundle_tools = ctx.get("bundle_tools")
+        # C2-SCI B3: optional dispatch-correlation-only metadata (design
+        # §4/Q-R3-1) relayed verbatim to the issuer on an ALLOW when the flag
+        # is ON; never read as an authority input by this gate itself.
+        _scheduler_correlation = ctx.get("scheduler_correlation")
+        if not isinstance(_scheduler_correlation, dict):
+            _scheduler_correlation = {}
         # N1: loaded ONCE per enforce() call, fail-closed to {} sentinel
         # locally (see _load_lease_signer_keys_json) — the legacy HMAC path
         # below never reads this.
@@ -729,10 +788,15 @@ def enforce(
                     ))
                     continue
                 admitted.add(tool)
-                decisions.append(_decision(
+                decision = _decision(
                     tool, DECISION_ADMIT, source="candidate",
                     reason="candidate-lease-verified", lease_id=lease.get("lease_id"),
-                ))
+                )
+                if _scheduler_context_issuer_enabled():
+                    minted = _request_scheduler_context(lease, _scheduler_correlation)
+                    if minted is not None:
+                        decision["scheduler_context"] = minted
+                decisions.append(decision)
                 continue
 
             if manifest_ok and tool in fp_leases:
@@ -782,10 +846,15 @@ def enforce(
                     ))
                     continue
                 admitted.add(tool)
-                decisions.append(_decision(
+                decision = _decision(
                     tool, DECISION_ADMIT, source="first-party",
                     reason="first-party-lease-verified", lease_id=lease.get("lease_id"),
-                ))
+                )
+                if _scheduler_context_issuer_enabled():
+                    minted = _request_scheduler_context(lease, _scheduler_correlation)
+                    if minted is not None:
+                        decision["scheduler_context"] = minted
+                decisions.append(decision)
                 continue
 
             reason = "no-admitting-lease" if manifest_ok else "first-party-manifest-bundle-mismatch"
