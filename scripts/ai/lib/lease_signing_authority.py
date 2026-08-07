@@ -219,6 +219,28 @@ def serve(socket_path: str) -> None:  # pragma: no cover — exercised live only
     srv = socket.socket(socket.AF_UNIX, socket.SOCK_STREAM)
     srv.bind(socket_path)
     os.chmod(socket_path, 0o660)
+    # Client access: the switchboard runs as the human primaryUser (NOT this dedicated authority
+    # user), so a socket left in the authority's own group is unreachable by it. Hand the socket to
+    # a shared client group (both the authority and the switchboard user are members) at 0660 — the
+    # SAME model the execution-cell-runner uses. This widens ONLY connect access, never key access
+    # (the Ed25519 private key stays 0400 user-only); and per handle_request the authority never
+    # trusts caller input, so an unexpected group peer still obtains only the manifest lease set.
+    # chgrp requires this process to be a member of the target group (wired in the nix unit); on
+    # failure we stay deny-closed (socket keeps the authority-only group -> clients can't connect)
+    # and log loudly rather than crash-loop or widen.
+    _client_group = os.environ.get("AQ_LEASE_SIGNING_CLIENT_GROUP", "").strip()
+    if _client_group:
+        import grp
+        try:
+            os.chown(socket_path, -1, grp.getgrnam(_client_group).gr_gid)
+            os.chmod(socket_path, 0o660)
+        except (KeyError, PermissionError, OSError) as exc:
+            print(
+                f"[ala] WARN: could not chgrp socket to client group {_client_group!r} "
+                f"({exc}); socket stays authority-only (clients will fail-closed)",
+                file=sys.stderr,
+                flush=True,
+            )
     srv.listen(16)
     while True:
         conn, _ = srv.accept()
