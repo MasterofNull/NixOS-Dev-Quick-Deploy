@@ -1,0 +1,47 @@
+# A2A task for antigravity — round 'enforce-asymmetric-verify-review'
+
+Dropped: 2026-08-07T00:20:00Z
+output_file: .agents/plans/enforce-asymmetric-verify-review/antigravity.md
+
+Respond by writing `.agents/plans/enforce-asymmetric-verify-review/antigravity.md`.
+
+SCOPE-STOP: This is an ADVISORY design review only. You authorize nothing, flip no flag, write no
+code, and touch no secret. If any factual claim here does not match the actual repo files, say so —
+do not fabricate. Verify against the real code at /home/hyperd/Documents/NixOS-Dev-Quick-Deploy.
+
+ROLE: Independent advisory reviewer (third perspective — the binding verdict is Codex's). Verify claims
+against the ACTUAL code; cite file:line; rank a fail-OPEN (admits a forged/expired/stale lease) or a
+downgrade/oracle as HIGH, a fail-CLOSED outage (denies legitimate traffic) as HIGH.
+
+=== DESIGN 1 (PRIORITY) ===
+.agents/plans/aqos-foundation-c/ENFORCE-ASYMMETRIC-VERIFY-DESIGN-20260807.md
+
+Context: ALA rev4 minter is ACTIVATED (confined aq-lease-signing-authority live; canary 25/25 Ed25519
+first-party leases mint + verify_authoritative-accept). CAPABILITY_LEASE_ENFORCEMENT=1 is LIVE. The
+design adds an enforce-side asymmetric verifier so CAPABILITY_ASYMMETRIC_LEASE=1 can flip without an
+outage or admitting forged leases.
+
+Verify against: ai-stack/switchboard/capability_lease_gate.py (enforce() first-party branch ~:678-698,
+cl.verify at :690; candidate branch ~:641; codex-3 tripwire ~:699+); scripts/ai/lib/capability_lease.py
+(verify_authoritative ~:361-410, scheme-pin ~:390; is_expired/epoch_stale); config/aqos/lease-signer-keys.json.
+
+Answer:
+1. Does the proposed _admission_verify make it impossible for an Ed25519 lease to fall through to the
+   HMAC path or vice-versa (scheme-pin, no downgrade)?
+2. Is OBLIG-1 correctly layered (verify_authoritative checks signature+active-key ONLY; expiry+epoch
+   must be re-checked after, with the SAME current_epoch/helpers as the HMAC path)? A miss = fail-open.
+3. Q-E1: should the candidate (caller-presented) branch also scheme-dispatch, or stay HMAC-only?
+4. Q-E3: confirm the keys_json load passes a parsed dict (a raw string denies-ALL) and fail-closes on a
+   missing/malformed allowlist without affecting the HMAC path.
+5. Is the flag-OFF / legacy-HMAC path provably byte-identical?
+
+=== DESIGN 2 (C6 track) ===
+.agents/plans/aqos-foundation-c/C2-SCHEDULER-CONTEXT-ISSUER-DESIGN-20260806.md (revision 3)
+
+Separate Q-C6-1 scheduler-context issuer. Answer its open Qs Q-R3-1 (dispatch-correlation fields
+caller-supplied as correlation-only without widening authority; single-use ledger keyed {lease_id,
+grant_digest} not per-task) and Q-R3-2 (authoritative epoch source), verifying §1 anchor claims against
+the real files.
+
+Write your contribution to YOUR OWN file ONLY: .agents/plans/enforce-asymmetric-verify-review/antigravity.md
+Be decisive and concise. Do NOT edit any shared file.
