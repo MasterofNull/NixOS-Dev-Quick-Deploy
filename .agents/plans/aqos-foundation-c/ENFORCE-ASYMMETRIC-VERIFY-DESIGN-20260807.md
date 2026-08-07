@@ -1,10 +1,11 @@
 ---
 title: "Foundation C — enforce() asymmetric first-party verify (the CAPABILITY_ASYMMETRIC_LEASE flag-flip blocker)"
 slice: "ALA-ENFORCE (ALA activation Phase 2 prerequisite)"
-revision: 1
+revision: 2
 kind: "design-only (PREPARED_ONLY; DEFAULT-OFF; authorizes nothing)"
 date: "2026-08-07"
 author: "Claude Opus 4.8 (analysis)"
+review: "rev1 binding review (fresh Claude flagship, Codex-substitute per Rule 18) = REQUEST_REVISION — crypto core SAFE (no fail-open/downgrade/oracle), but the fail-CLOSED/outage spec was incomplete. rev2 converts Q-E1..Q-E4 into normative requirements N1..N5 and widens activation validation. Advisory concurrence: Antigravity PASS, local Qwen logic-sound."
 opens: "the enforce-side verifier that must exist before CAPABILITY_ASYMMETRIC_LEASE=1 can flip without a switchboard outage"
 depends_on: "ALA rev4 BUILT + MINTER ACTIVATED (verify_authoritative + config/aqos/lease-signer-keys.json; confined authority live, canary-green 25/25)"
 distinct_from: "C2-SCHEDULER-CONTEXT-ISSUER-DESIGN-20260806 (that issues C6 scheduler-context tokens; THIS makes enforce() admit Ed25519 first-party leases)"
@@ -12,6 +13,59 @@ unblocks: "ALA Phase 2 — flip CAPABILITY_ASYMMETRIC_LEASE=1 + live enforced-ad
 ---
 
 # enforce() asymmetric first-party verify
+
+## Revision 2 — normative outage-prevention requirements (binding review folded)
+
+The rev1 binding review confirmed the verifier's cryptographic semantics are safe (scheme-pin, OBLIG-1
+layering, allowlist-rooted trust, byte-identical HMAC regression — all verified against the code) and
+found NO fail-open, downgrade, or oracle. It returned REQUEST_REVISION solely because the parts that
+PREVENT the outage (the slice's whole purpose) were phrased as open questions. rev2 pins them as MUST
+requirements. The verifier semantics in §2 are unchanged; §2.1 adds the wiring contract, and §5 widens
+the pre-flip validation.
+
+- **N1 (MUST — keys_json load-site, was Q-E3/F1):** `enforce()` loads `config/aqos/lease-signer-keys.json`
+  with `json.loads` into a **dict** (never the raw file text — a string denies-ALL) inside a LOCAL
+  try/except whose failure yields a deny-all sentinel (`{}`), NOT a raised exception. A keys-file
+  read/parse error must fail-closed to "Ed25519 denied" ONLY; it must never propagate to the S-c wrapper
+  (`capability_lease_gate.py:736`), which would total-deny every tool including HMAC leases (a full
+  outage, not the intended Ed25519-only fail-closed). If cached, a failed load caches the sentinel, never
+  a raise-on-reuse. The HMAC path never reads keys_json, so its behavior is unaffected in all cases.
+- **N2 (MUST — helper placement, was implied/F2):** `_admission_verify` MUST be called from INSIDE the
+  existing `try/except` in BOTH branches (`:644-647` candidate, `:689-692` first-party). Rationale:
+  `is_expired` calls `_parse_iso(data["expires_at"])`, which `verify_authoritative` does not pre-validate;
+  a signed-but-malformed `expires_at` raises. Inside the try/except that raise maps to `VERIFY_MALFORMED`
+  → DENY (fail-closed, one tool). Outside it, the raise escapes to the S-c wrapper and total-denies ALL
+  tools. Placement is normative, not incidental.
+- **N3 (MUST — full-enforce()-path pre-flip validation, was §5/F3, the most important):** the 25/25 mint
+  canary proved only `verify_authoritative`. `enforce()`'s first-party branch applies THREE further gates
+  that `verify_authoritative` never exercises, any of which DENIES an authentic Ed25519 lease → the very
+  outage this slice prevents: (a) lease↔lookup-key match `tool in bound_actions` (`:681-688`); (b) the
+  codex-3 tamper tripwire `_lease_bound_security_projection(lease) == _manifest_bound_security_projection(
+  manifest_entry)` (`:704-713`) — the confined authority's minted projection (actions/resources/
+  constraints/risk-block/trust_tier/zero_trust_behavior) MUST byte-equal the switchboard's live-manifest
+  projection, so the authority and switchboard MUST load the SAME `config/first-party-tools.json` and the
+  authority MUST stamp the risk block identically; (c) the layered expiry/epoch of N4. §5 MUST mandate a
+  pre-flip dry-run of the ENTIRE `enforce()` path against a real authority-minted lease (all gates green),
+  not just `verify_authoritative`.
+- **N4 (MUST — epoch-source parity, was Q-E2/F4):** the confined authority stamps `revocation_epoch` and
+  `enforce()` re-checks `epoch_stale(lease, resolve_current_epoch())`. Both MUST resolve the IDENTICAL
+  epoch source (env `AQ_LEASE_POLICY_EPOCH` → `config/capability-lease-epoch` → 0). A mismatch either
+  self-stales a fresh lease (authority-epoch < enforce-epoch → DENY outage) or over-lives a revocation
+  (authority-epoch > enforce-epoch → survives a bump — a bounded fail-open requiring the two to disagree).
+  Pin identical-source as an activation gate; the canary did not test it (`verify_authoritative` ignores
+  epoch).
+- **N5 (activation NOTE — HMAC secret stays provisioned, was F5):** `enforce()` resolves the HMAC key and,
+  if `is_dev` (no production HMAC secret), degrades to `SAFE_READ_ALLOWLIST` for ALL tools BEFORE any lease
+  logic (`:609-614`) — even under asymmetric mode. Do NOT de-provision the HMAC SOPS secret at flip time;
+  keep it provisioned post-flip (a future slice may re-scope the `is_dev` gate when asymmetric is active).
+  Not blocking; documented so the operator does not induce a read-only degrade outage.
+
+Candidate-branch decision (Q-E1): use the SINGLE shared `_admission_verify` for BOTH branches. The
+reviewer confirmed it opens no admit path (a caller can at most replay a genuine authority-signed lease,
+gaining only what that lease already grants, still gated by expiry/epoch + zero-trust-strip), and the
+shared helper GUARANTEES the N4 expiry/epoch layering is uniform (a candidate-only HMAC path that later
+grew an ad-hoc ed25519 branch could forget it). The candidate branch correctly does NOT run the codex-3
+manifest tripwire (first-party only) — a signed candidate lease's risk block is itself authenticated.
 
 ## 0. Why this slice exists (the blocker, precisely)
 
