@@ -176,3 +176,14 @@ empty {} :388-389). No findings. Oracle-closure + all five mandates complete in 
 bytes. PASS authorizes FREEZE ONLY (not build/service/signing/flag-on/activation — each independently
 owner-gated). ALA rev4 can proceed to freeze. FROZEN: ASYMMETRIC-LEASE-AUTHORITY-FREEZE-20260806.md
 (subject 24c748b9), awaiting single-use owner activation.
+
+## C2 scheduler-context issuer rev3 drafted (2026-08-06) — ALA built resolves the rev2 FAIL
+rev2 FAILed because it verified a "signed C2 lease" that was actually symmetric HMAC (verify==forge).
+ALA rev4 is now BUILT (verify_authoritative + config/aqos/lease-signer-keys.json), so rev3 realizes
+the rev2 trust model on the built primitive: verify the presented lease via ALA verify_authoritative;
+LAYER expiry + epoch (ALA OBLIG-1 — verify_authoritative is signature+key-status only); single-use
+consumed-lease ledger keyed on {lease_id, grant_digest} (closes one-lease-many-contexts); bind
+context.expires_at = min(lease.expires_at, cap). Two open questions flagged (Q-R3-1 dispatch-correlation
+vs authority + ledger key granularity; Q-R3-2 the exact epoch source). rev3 needs a fresh binding
+review before freeze; it is a C6-main prerequisite (Q-C6-1). ALA should be ACTIVATED (live asymmetric
+leases) before the issuer is built/exercised, else there is no ed25519 lease to verify.

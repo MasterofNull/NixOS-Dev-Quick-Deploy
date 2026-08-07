@@ -1,17 +1,60 @@
 ---
 title: "Foundation C — C2 Scheduler-Lease-Context Issuer + Authenticated Ingress (Q-C6-1)"
 slice: "C2-SCI (C6 prerequisite)"
-revision: 2
+revision: 3
 kind: "design-only (PREPARED_ONLY; DEFAULT-OFF; authorizes nothing)"
 date: "2026-08-06"
 author: "Claude Opus 4.8 (analysis)"
 opens: "the missing C2 issuer that C6 §3.1 names as a stop condition"
-depends_on: "C6-P0-TRUST-ANCHORS-REV3 (declarative schemas + owner allowlist)"
+depends_on: "C6-P0-TRUST-ANCHORS-REV3 (declarative schemas) + ALA rev4 BUILT (asymmetric lease + verify_authoritative + config/aqos/lease-signer-keys.json)"
 unblocks: "C6 main freeze → C6 activation → C4 freeze"
-closes_review: "fresh-flagship binding review 2026-08-06 (REQUEST_REVISION, 2 HIGH + 1 LOW-MED) — rev1 superseded"
+closes_review: "rev1 REQUEST_REVISION → rev2; rev2 FAIL (assumed asymmetric lease that did not exist) → rev3 (ALA now provides it). rev1/rev2 superseded."
 ---
 
 # C2 Scheduler-Lease-Context Issuer + Authenticated Ingress
+
+## Revision 3 — the assumed asymmetric lease now EXISTS (ALA built); layer OBLIG-1 + single-use
+
+rev2's trust model ("authority is the SIGNED C2 lease; the issuer verifies it against the lease-issuer
+public key") was correct in shape but FAILed re-review because, at the time, the C2 lease was symmetric
+HMAC with a dev key — no asymmetric lease-issuer public key existed (verify == forge). **That primitive
+is now BUILT:** the Asymmetric Lease Authority (ALA rev4, commits `65d6f507`/`28c836c0`/`51795389`,
+default-OFF) provides `capability_lease.verify_authoritative(lease, keys_json)` (Ed25519, scheme-pinned,
+no HMAC/dev-key fallback) + the sole-source public verifier `config/aqos/lease-signer-keys.json`. rev3
+realizes the rev2 trust model on that built foundation, with the integration obligations the ALA code
+review surfaced:
+
+1. **Verify the presented lease via ALA (not a bespoke verifier):** the issuer calls
+   `capability_lease.verify_authoritative(presented_lease, config/aqos/lease-signer-keys.json)`. A
+   shell caller cannot forge an Ed25519 lease minted only by the confined `aq-lease-signing-authority`
+   → the switchboard-runs-as-human-uid fact is fully neutralized (rev2's central claim, now real).
+2. **Layer expiry + epoch on top (ALA OBLIG-1 — MANDATORY):** `verify_authoritative` returns "authentically
+   signed by an active key," NOT "currently valid." The issuer MUST independently reject the presented
+   lease if `expires_at` is past OR its `revocation_epoch` != the current authoritative epoch, and
+   re-derive the admission tuple (tool, action_class from `permissions.actions`, trust_tier) from the
+   lease's OWN signed fields — never from caller input. Absent this, a stale/expired lease could mint a
+   context (fail-open).
+3. **Single-use consumed-lease ledger (closes the one-lease-many-contexts finding — flagship + local
+   Qwen):** the issuer durably records `{lease_id, grant_digest}` and refuses a second scheduler-context
+   mint for the same lease. `slot_queue`'s single-use is on the CONTEXT digest (many context_ids from
+   one lease would each pass it); the 1:1 must be enforced HERE, at the issuer, before minting.
+4. **Bind context validity to the lease:** `context.expires_at = min(lease.expires_at, issued_at +
+   context_TTL_cap)` (never extend beyond the lease), and `context.revocation_epoch` = the same
+   authority-resolved epoch checked in (2).
+
+(rev2 mandates stand: the context SIGNER is the issuer's own confined Ed25519 key (SOPS, dedicated
+`aq-c2-scheduler-context-issuer` principal), verified downstream via the sole-source
+`config/aqos/c6-scheduler-signer-keys.json`; the bare public-key file is dropped. §1 lease-verify
+anchor now points at the BUILT ALA `lease-signer-keys.json`, not a "verify at freeze" placeholder.)
+
+**Open questions for the independent reviewer (rev3):**
+- Q-R3-1: the scheduler-context needs `{task_id, principal, dispatch_mode}` which the first-party lease
+  (issued_to = a constant, per-tool) does NOT carry. These are DISPATCH-correlation, not authority —
+  confirm they can be caller-supplied as correlation-only (authority = the lease) WITHOUT widening what
+  the context authorizes, and that the single-use ledger keys on `{lease_id, grant_digest}` (one context
+  per lease) NOT per-task (else one lease → many contexts returns).
+- Q-R3-2: name the exact "current authoritative epoch" source for (2)/(4) pre-C6 (the epoch file today;
+  the C6 epoch authority once activated) and that a mismatch denies.
 
 ## Revision 2 — closes the binding-review findings (rev1 must not be frozen)
 
@@ -68,7 +111,7 @@ fail-closed path; and (2) the **transport peer** canonical identity and its Nix 
 | NEW | `scripts/ai/lib/scheduler_context_transport.py` | absent | Local authenticated UDS: switchboard-caller ⇄ issuer (issuer authenticates the caller via `SO_PEERCRED` against the declared principal); one immutable signed frame; typed deny on ambiguity. |
 | NEW | `nix/modules/services/c2-scheduler-context-issuer.nix` | absent | Dedicated default-OFF service `aq-c2-scheduler-context-issuer`: own unprivileged user/group, SOPS private-key read-only mount, UDS group-restricted socket, StateDirectory, `NoNewPrivileges`, empty `CapabilityBoundingSet`, `ProtectSystem=strict`, `ProtectHome`, `PrivateTmp`, no network. `enable=false`. |
 | NEW | `config/aqos/c6-scheduler-signer-keys.json` | absent | **SOLE** scheduler-context signer-verifier source (rev2, finding 3): key-id → Ed25519 public + `status∈{active,revoked}` + monotonic revision. `dispatch.py` verifies the context signature ONLY through this status-bearing allowlist — a revoked key never verifies. The bare `config/scheduler-context-signing-public-key` of rev1 is DROPPED (a status-less bare file could accept a revoked key). Distinct key family from C6-P0's owner allowlist. |
-| ANCHOR (existing) | lease-issuer public verifier (via `capability_lease.py`) | verify at freeze | The issuer verifies the PRESENTED C2 lease signature against the existing lease-issuer public key (rev2 §4). No new key here; names the exact existing verifier at freeze. |
+| ANCHOR (BUILT — ALA rev4) | `scripts/ai/lib/capability_lease.py` `verify_authoritative` + `config/aqos/lease-signer-keys.json` | present (ALA build) | rev3: the issuer verifies the PRESENTED lease via the BUILT ALA `verify_authoritative` (Ed25519, scheme-pinned, no HMAC fallback) against the sole-source `lease-signer-keys.json`, THEN layers expiry + epoch (OBLIG-1). No bespoke verifier. |
 | NEW | `config/schemas/scheduler-lease-gate-decision.schema.json` | absent | Low-cardinality typed issue/deny/audit record. |
 | NEW | `scripts/testing/test-scheduler-context-issuer.py` | absent | Offline: admission-bound issuance, key-unavailable fail-closed, SO_PEERCRED peer bind, replay/context-id, flag-OFF byte-parity, negative vectors. |
 | NEW | `scripts/testing/test-c2-sci-service-coverage.py` | absent | Integration fixture: issuer health + AQ-QA registration + dashboard projection. |
