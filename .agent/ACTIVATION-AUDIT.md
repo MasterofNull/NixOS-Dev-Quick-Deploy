@@ -457,3 +457,6 @@ is gated on the ALA owner activation, then its capable-implementer build.
 **Advisory lanes:** local Qwen folded (corroborated signing-oracle + one-lease-many-contexts);
 Antigravity ran async (untrusted-advisory, no gating verdict); codex confirmatory queued for ALA rev4
 + C6-P0 + the C2-issuer/C6-P0 designs (Rule 18, non-blocking).
+
+## ALA Phase 2 flip (enforce-asymmetric-verify) — 2026-08-07T11:28:11-07:00
+CAPABILITY_ASYMMETRIC_LEASE=1 LIVE (86ec204e, owner-rebuilt). 5/5 Rule-15 dims GREEN: integrated (switchboard issue + enforce verify), ON (env confirmed, proc in gid 972), real-world (switchboard issued 25/25 ed25519 + verify-accepted, N3 25/25 admit), observable (dashboard asymmetric_lease=on/ok), intervenable (revert=2 env lines). Private key 0400 in confined authority. ALA activation COMPLETE.
