@@ -1,17 +1,30 @@
 ---
 title: "Foundation C — C2 Scheduler-Lease-Context Issuer + Authenticated Ingress (Q-C6-1)"
 slice: "C2-SCI (C6 prerequisite)"
-revision: 3
+revision: 4
 kind: "design-only (PREPARED_ONLY; DEFAULT-OFF; authorizes nothing)"
-date: "2026-08-06"
+date: "2026-08-06 (rev4 re-anchor 2026-08-07)"
 author: "Claude Opus 4.8 (analysis)"
 opens: "the missing C2 issuer that C6 §3.1 names as a stop condition"
-depends_on: "C6-P0-TRUST-ANCHORS-REV3 (declarative schemas) + ALA rev4 BUILT (asymmetric lease + verify_authoritative + config/aqos/lease-signer-keys.json)"
+depends_on: "C6-P0-TRUST-ANCHORS-REV3 (declarative schemas) + ALA rev4 now ACTIVATED (asymmetric lease + verify_authoritative + config/aqos/lease-signer-keys.json; CAPABILITY_ASYMMETRIC_LEASE=1 live)"
 unblocks: "C6 main freeze → C6 activation → C4 freeze"
-closes_review: "rev1 REQUEST_REVISION → rev2; rev2 FAIL (assumed asymmetric lease that did not exist) → rev3 (ALA now provides it). rev1/rev2 superseded."
+closes_review: "rev1 REQUEST_REVISION → rev2; rev2 FAIL (assumed asymmetric lease that did not exist) → rev3 (ALA built) → rev4 (ALA now ACTIVATED + baseline re-anchored). rev1/rev2 superseded."
 ---
 
 # C2 Scheduler-Lease-Context Issuer + Authenticated Ingress
+
+## Revision 4 — baseline re-anchor after ALA activation (2026-08-07)
+
+Between rev3 and now, the ALA asymmetric lease spine went from BUILT to fully ACTIVATED:
+`CAPABILITY_ASYMMETRIC_LEASE=1` is live (86ec204e), `enforce()` now verifies Ed25519 first-party leases
+via `verify_authoritative` (`a4c496ec`, independently code-reviewed, N3 dry-run 25/25 admit), and
+`switchboard.nix` carries the flip env. rev4 changes ONLY the §1 anchored baseline hashes to the current
+truth (`capability_lease_gate.py` now holds the enforce-verify code — the C2 outbound-client edit layers
+on top; `default.nix` gained the ALA + auto-wake imports; `switchboard.nix` is now the post-flip state and
+STILL not edited by this slice). The rev3 trust model, signer authority, transport, and single-use ledger
+(§2–§6) are UNCHANGED and stand. `dispatch.py` did not drift. Route this rev4 for binding review; the
+rev3 open questions Q-R3-1/Q-R3-2 already answered by the advisory round carry forward for the binding
+reviewer to confirm.
 
 ## Revision 3 — the assumed asymmetric lease now EXISTS (ALA built); layer OBLIG-1 + single-use
 
@@ -103,10 +116,10 @@ fail-closed path; and (2) the **transport peer** canonical identity and its Nix 
 
 | Operation | Path | SHA-256 (2026-08-06) | Role |
 |---|---|---|---|
-| EDIT | `ai-stack/switchboard/capability_lease_gate.py` | `3e92d2fe97a1ea8b18fef82848f11f502de5171bab6b297f810ffd021997e424` | On an admission ALLOW, hand the decision to the issuer over an outbound authenticated UDS client call. No signing key here. |
+| EDIT | `ai-stack/switchboard/capability_lease_gate.py` | `0686c6faa5a33306e0037f7f32a1b317ec76e2a2fcd33a6ada03d5ee85ed8cc8` (rev4 re-anchor: now contains the LIVE enforce-asymmetric-verify code — `_admission_verify` etc. — from a4c496ec; the C2 issuer's outbound-client edit layers on top) | On an admission ALLOW, hand the decision to the issuer over an outbound authenticated UDS client call. No signing key here. |
 | EDIT | `scripts/ai/lib/dispatch.py` | `1b083b1025877385cb4e295234edd23a61a85aae554393fb87792c732e01dd92` | Authenticated ingress adapter: accept only a verified immutable context, verify with the tracked PUBLIC key, never deserialize a caller argument as a context. |
-| EDIT | `nix/modules/services/default.nix` | `a36d0b21013ff3352c91443c4a6ca39c4e81a3c992d6b8e1dd871aba2c38d32b` | Import the new issuer service module. |
-| NO EDIT | `nix/modules/services/switchboard.nix` | `f25dc43fd5f8f346ef6199156fa8ae9b0510c34486f363e55ee744b03149c31f` | Byte-parity hardening anchor. The issuer is a SEPARATE service; the switchboard only makes an outbound UDS client call (code-level, in `capability_lease_gate.py`), so switchboard.nix is untouched. |
+| EDIT | `nix/modules/services/default.nix` | `c3b6d18e26f303b4f58aabc3869ed30bb95a20c274d9badb1b4813bccdec7ce4` (rev4 re-anchor: ALA + antigravity-auto-wake imports since landed) | Import the new issuer service module. |
+| NO EDIT | `nix/modules/services/switchboard.nix` | `9b090af1c662cc9aa1e52b5d9a270e197461140b8c7c8e0ff9cec5627c93dfba` (rev4 re-anchor: now the POST-ALA-flip state — CAPABILITY_ASYMMETRIC_LEASE=1 landed in 86ec204e; the C2 issuer STILL does not edit switchboard.nix, it only makes an outbound UDS client call from capability_lease_gate.py) | Byte-parity hardening anchor. The issuer is a SEPARATE service; switchboard.nix stays untouched by this slice. |
 | NEW | `scripts/ai/lib/scheduler_context_issuer.py` | absent | Sole issuer: after a verified C2 admission ALLOW, mints + Ed25519-signs one closed context bound to that exact decision. Private key read from `/run/secrets/` via the service principal; never held by switchboard or dispatch. |
 | NEW | `scripts/ai/lib/scheduler_context_transport.py` | absent | Local authenticated UDS: switchboard-caller ⇄ issuer (issuer authenticates the caller via `SO_PEERCRED` against the declared principal); one immutable signed frame; typed deny on ambiguity. |
 | NEW | `nix/modules/services/c2-scheduler-context-issuer.nix` | absent | Dedicated default-OFF service `aq-c2-scheduler-context-issuer`: own unprivileged user/group, SOPS private-key read-only mount, UDS group-restricted socket, StateDirectory, `NoNewPrivileges`, empty `CapabilityBoundingSet`, `ProtectSystem=strict`, `ProtectHome`, `PrivateTmp`, no network. `enable=false`. |
