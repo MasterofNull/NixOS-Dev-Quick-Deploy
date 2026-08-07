@@ -17,6 +17,10 @@
   repoLocalSopsPath = builtins.match ".*/nix/hosts/[^/]+/secrets\\.sops\\.ya?ml$" sec.sopsFile != null;
   needsRemoteLlmSecret = swb.enable && swb.remoteUrl != null && swb.remoteApiKeyFile == null;
   needsCrowdsecSecret = cfg.security.crowdsec.enable && cfg.security.crowdsec.enableFirewallBouncer;
+  # ALA rev4 — the asymmetric-lease private key is owned by the dedicated aq-lease-signing-authority
+  # user, which only exists when the service is enabled. Gate the secret on the same flag so hosts
+  # with the ai-stack secrets block but ALA off never chown to a missing user (activation failure).
+  needsAlaSecret = cfg.aiStack.leaseSigningAuthority.enable;
 in {
   config = lib.mkIf sec.enable {
     assertions = [
@@ -136,6 +140,21 @@ in {
             mode = "0400";
             owner = "root";
             group = "root";
+          };
+        }
+        // lib.optionalAttrs needsAlaSecret {
+          # Foundation C — ALA rev4 asymmetric-lease Ed25519 PRIVATE signing key. Decrypts to
+          # /run/secrets/lease-signing-ed25519-private-key, read ONLY by the confined
+          # aq-lease-signing-authority service (lease_signing_authority.py). WITHOUT it the service
+          # fail-closes (signer-unavailable) and, with CAPABILITY_ASYMMETRIC_LEASE=1, the gate denies
+          # ALL first-party leases (fail-closed, never HMAC fallback). 0400, owned by the dedicated
+          # aq-lease-signing-authority user (NOT the ai-stack group) — the switchboard/owner uid must
+          # never hold this private key (verify != forge). The matching PUBLIC key is the non-secret
+          # tracked value in config/aqos/lease-signer-keys.json.
+          "lease-signing-ed25519-private-key" = {
+            mode = "0400";
+            owner = "aq-lease-signing-authority";
+            group = "aq-lease-signing-authority";
           };
         };
     };

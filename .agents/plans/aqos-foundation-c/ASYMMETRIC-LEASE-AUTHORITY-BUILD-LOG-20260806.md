@@ -95,6 +95,34 @@ activation. OBLIG-1 (expiry/epoch layering) is the downstream C2-issuer's job, n
 **Verification:** coverage test PASS; registry JSON valid; aistack.py parses; dashboard.js edited
 (card badge + rows). All ALA tests still green (crypto 24/24, authority, regression 54/54). tier0 25/0.
 
+## ACTIVATION — Phase 0 + Phase 1 (2026-08-06)
+
+**Phase 0 — key provisioned (owner + orchestrator):** owner generated an Ed25519 keypair; the PRIVATE
+key was sops-encrypted into the host secrets file (`…/secrets/hyperd/secrets.sops.yaml`) as
+`lease-signing-ed25519-private-key` (verified decryptable) and the plaintext shredded — the private key
+never entered the transcript (encrypted via `$(cat)` substitution; only the derived PUBLIC key was
+printed). PUBLIC key `c2f0549ebc1c133f497774ed3f77b907700e71d4a0550c7b820905f55eca1cef` placed in
+`config/aqos/lease-signer-keys.json` (replacing the `524279cd…` placeholder), key_id `lease-signer-2026-08`.
+
+**Phase 1 — service enabled, flag still 0 (no-behavior-change canary):**
+- `nix/modules/core/secrets.nix` — NEW gated secret `lease-signing-ed25519-private-key` (0400, owned by
+  the dedicated `aq-lease-signing-authority` user), guarded by `needsAlaSecret = leaseSigningAuthority.enable`
+  so hosts with the ai-stack secrets block but ALA off never chown to a missing user.
+- `nix/modules/profiles/ai-dev.nix` — `mySystem.aiStack.leaseSigningAuthority.enable = true`;
+  `CAPABILITY_ASYMMETRIC_LEASE` untouched (stays 0 → gate keeps in-process HMAC).
+- **WR-3 deploy-context preflight (found + fixed a real bug):** `cryptography` confirmed in the service's
+  `authPython`; import closure = {lease_signing_authority, capability_lease} both copied into the bundle;
+  `config/first-party-tools.json` exists + world-readable (DAC ok). **BUG:** `config/capability-lease-epoch`
+  was missing but bound via `ReadOnlyPaths` → the unit would have started FAILED. FIXED by creating the
+  epoch SSOT file (`= 0`, genesis); parity-verified both readers resolve 0 before + after (issues-backlog
+  `ala-epoch-file-missing-readonlypaths-unit-fail`).
+- Validation: crypto 24/24, authority PASS, service-coverage PASS, HMAC regression 54/54 (byte-parity);
+  all changed .nix parse; lease-signer-keys.json valid + active.
+
+**Remaining owner acts:** rebuild (brings up the confined authority with the provisioned key, gate still
+HMAC → no outage), then verify `systemctl status aq-lease-signing-authority` active + `--check` = ready.
+THEN Phase 2: flip `CAPABILITY_ASYMMETRIC_LEASE=1` (switchboard) + rebuild + validate the live mint.
+
 ## Status: ALA rev4 BUILD COMPLETE (default-OFF), 3 slices, each verified
 
 Owner activation to turn it live (all separate acts, in order): (1) generate an Ed25519 keypair, put
