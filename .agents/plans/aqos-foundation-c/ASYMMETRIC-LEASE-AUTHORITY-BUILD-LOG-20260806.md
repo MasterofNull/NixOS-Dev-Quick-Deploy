@@ -41,15 +41,41 @@ at the scheme gate. Slice 1 crypto is fully validated.
   private key — safe while default-OFF, but SOPS private-key provisioning MUST land before the
   `CAPABILITY_ASYMMETRIC_LEASE=1` flip, else no lease can mint (fail-closed hard outage).
 
-## Slice 2 — confined service + gate wiring (ATTEMPTED, BLOCKED on usage limit 2026-08-06)
-The sonnet implementer dispatch terminated early on an account session/usage limit (resets ~1:30pm
-PT); it wrote NO files (working tree clean, HEAD 65d6f507). Slice 2 is UNSTARTED and re-runs when the
-limit clears. Scope (unchanged): `lease_signing_authority.py` (selectors-only mint) +
-`lease-signing-authority.nix` (default-OFF `aq-lease-signing-authority`, SOPS Ed25519 key, UDS,
-hardening) + `capability_lease_gate.py` (selectors-only request, **RETAIN codex-1 mint-once cache +
-reset-only reissue, swap only the sign step, flag-OFF byte-parity**) + `default.nix` import +
-`env-contract.yaml` flag + offline test. switchboard.nix untouched. SOPS private-key encryption = owner
-activation step. Slice 2's minter must satisfy OBLIG-1 (its downstream issuer layers expiry/epoch).
+## Slice 2 — confined service + gate wiring (DONE)
+
+First dispatch died on the usage limit (wrote nothing); a re-dispatch stalled without delivering, so
+the orchestrator built it directly (stated Rule-17 deviation: delegation blocked/non-delivering across
+two dispatches + owner asked for completion). Every piece orchestrator-verified.
+
+- NEW `scripts/ai/lib/lease_signing_authority.py` — the SOLE minter. `mint_first_party_leases(manifest,
+  epoch, private_key_bytes, key_id)` mints the full first-party set from the MANIFEST (never a caller
+  payload), authority-clock temporals, `sig_scheme="ed25519"` + `issuer_key_id`, Ed25519-signed. Reads
+  the manifest + epoch DIRECTLY (self-contained — no `capability_lease_gate` import, so the confined
+  bundle is just this + `capability_lease.py`, both self-contained). `handle_request` (server) + a
+  fail-closed `serve()`.
+- EDIT `ai-stack/switchboard/capability_lease_gate.py` — flag-gated branch: `CAPABILITY_ASYMMETRIC_LEASE=1`
+  → `_request_asymmetric_first_party_leases()` (UDS client, **fail-CLOSED to {} deny-all, never HMAC**);
+  flag=0 → the in-process path UNCHANGED. **codex-1 guard intact** (the mint-once `_FIRST_PARTY_LEASE_CACHE`
+  early-return + reset-only reissue are untouched; the new branch just populates the cache once and never
+  re-requests on an epoch bump).
+- NEW `nix/modules/services/lease-signing-authority.nix` — default-OFF `aq-lease-signing-authority`
+  (dedicated user, SOPS key `0400`, UDS 0660 group-restricted, `NoNewPrivileges`, empty
+  `CapabilityBoundingSet`, `ProtectSystem=strict`, `RestrictAddressFamilies=AF_UNIX`, no network, 2-file
+  bundle). `enable=false`. **switchboard.nix untouched.**
+- EDIT `nix/modules/services/default.nix` (import) + `config/env-contract.yaml` (`CAPABILITY_ASYMMETRIC_LEASE` default 0).
+- NEW `scripts/testing/test-lease-signing-authority.py`.
+
+**Verification:** flag-OFF byte-parity — regression `test-capability-lease.py` 54/54 UNCHANGED; the new
+test proves **field-parity** (authority-minted fields byte-match the gate's `issue_first_party_leases`),
+mint+`verify_authoritative` accept, mint-from-manifest (no caller-payload param), server round-trip, and
+both fail-closed paths; slice-1 crypto test still green; nix parses; env-contract YAML valid; bundle
+closure complete (only `capability_lease`). switchboard.nix untouched.
+
+**Owner activation steps deferred (default-OFF ships without them):** (1) generate the Ed25519 keypair,
+put the public key in `config/aqos/lease-signer-keys.json` (currently placeholder), SOPS-encrypt the
+private key to `/run/secrets/lease-signing-ed25519-private-key`; (2) enable the service; (3) flip
+`CAPABILITY_ASYMMETRIC_LEASE=1`. A WR-3-style deploy preflight + the live GREEN round-trip validate at
+activation. OBLIG-1 (expiry/epoch layering) is the downstream C2-issuer's job, not the minter's.
 
 ## Slice 3 — Service Coverage (not started)
 `phase0.py` AQ-QA + dashboard card + health-spider.

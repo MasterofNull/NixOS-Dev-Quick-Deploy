@@ -337,6 +337,40 @@ def reset_first_party_lease_cache() -> None:
     _FIRST_PARTY_LEASE_CACHE = None
 
 
+def _asymmetric_lease_enabled() -> bool:
+    """ALA rev4 default-OFF flag: when 1, first-party leases are minted by the confined
+    aq-lease-signing-authority (Ed25519), not constructed+HMAC-signed in-process."""
+    return os.environ.get("CAPABILITY_ASYMMETRIC_LEASE", "0") == "1"
+
+
+def _request_asymmetric_first_party_leases() -> dict[str, dict]:
+    """Client to the confined aq-lease-signing-authority UDS. The request carries NO
+    authority-bearing data — the authority reads the manifest + resolves the epoch ITSELF and
+    mints every field, so a compromised owner-uid caller cannot influence any signed lease.
+    FAIL-CLOSED: no socket path / unreachable / malformed reply -> {} (deny-all), NEVER an HMAC
+    fallback (that would defeat the asymmetric enforcement this flag turns on)."""
+    sock_path = os.environ.get("AQ_LEASE_SIGNING_SOCKET_PATH", "").strip()
+    if not sock_path:
+        return {}
+    try:
+        import socket as _socket
+        with _socket.socket(_socket.AF_UNIX, _socket.SOCK_STREAM) as s:
+            s.settimeout(5.0)
+            s.connect(sock_path)
+            s.sendall(b'{"op":"mint-first-party"}\n')
+            buf = b""
+            while b"\n" not in buf and len(buf) < 4_000_000:
+                chunk = s.recv(65536)
+                if not chunk:
+                    break
+                buf += chunk
+        reply = json.loads(buf.decode("utf-8"))
+        leases = reply.get("leases")
+        return leases if isinstance(leases, dict) else {}
+    except Exception:  # noqa: BLE001 — fail-closed to deny-all, never HMAC
+        return {}
+
+
 def issue_first_party_leases(
     key: bytes,
     current_epoch: int = 0,
@@ -356,6 +390,26 @@ def issue_first_party_leases(
     manifest = manifest if manifest is not None else _load_manifest()
     if not manifest:
         _FIRST_PARTY_LEASE_CACHE = {}
+        return _FIRST_PARTY_LEASE_CACHE
+
+    # ALA rev4 (default-OFF): when CAPABILITY_ASYMMETRIC_LEASE=1 the first-party leases are
+    # minted + Ed25519-signed by the confined aq-lease-signing-authority (which reads the manifest
+    # + resolves the epoch ITSELF), NOT constructed + HMAC-signed in-process here. The codex-1
+    # invariant is UNCHANGED: this still populates `_FIRST_PARTY_LEASE_CACHE` exactly once (the
+    # early-return above) and never re-requests on an epoch bump — reissue is only via
+    # reset_first_party_lease_cache(). Fail-CLOSED: an unreachable authority yields {} (deny-all),
+    # NEVER an HMAC fallback. When the flag is absent/0 the byte-identical in-process path below runs.
+    if _asymmetric_lease_enabled():
+        leases = _request_asymmetric_first_party_leases()
+        _FIRST_PARTY_LEASE_CACHE = leases
+        _emit_lease_spans_shadow(
+            [
+                {"lease_id": lease["lease_id"], "decision": DECISION_ADMIT}
+                for lease in leases.values()
+            ],
+            op="issue",
+            epoch=current_epoch,
+        )
         return _FIRST_PARTY_LEASE_CACHE
 
     moment = now or datetime.now(timezone.utc)
