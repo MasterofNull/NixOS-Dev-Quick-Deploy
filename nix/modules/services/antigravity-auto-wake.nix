@@ -30,6 +30,10 @@ with lib; let
   # re-triggers the path unit.
   wakeScript = pkgs.writeShellScript "aq-antigravity-auto-wake" ''
     set -u
+    # aq-antigravity-inbox's wake invokes the `antigravity` IDE binary by bare name (PATH lookup); the
+    # systemd USER service PATH omits the system profile, so without this the wake fails
+    # `cli-nudge-binary-missing`. Prepend the runtime system + wrapper bins so `antigravity` resolves.
+    export PATH="/run/current-system/sw/bin:/run/wrappers/bin:$PATH"
     next="$(${pkgs.python3}/bin/python3 "${aqInbox}" status --json 2>/dev/null \
       | ${pkgs.python3}/bin/python3 -c 'import sys,json;
 d=json.load(sys.stdin) if not sys.stdin.isatty() else {};
