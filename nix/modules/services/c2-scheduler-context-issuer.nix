@@ -88,6 +88,19 @@ in {
       default = 900;
       description = "Upper bound on a minted context's lifetime; the actual expiry is min(lease.expires_at, issued_at + this) per design mandate 4 — a context can never outlive its lease.";
     };
+    ledgerDir = mkOption {
+      type = types.str;
+      default = "/var/lib/aq-c2-scheduler-context-issuer/ledger";
+      description = ''
+        B2.5 durable single-use ledger directory (`scheduler_context_issuer
+        .DurableSingleUseLedger`): one `O_CREAT|O_EXCL`-created marker file per consumed
+        `{lease_id, grant_digest}`, under `StateDirectory` so it survives a service restart —
+        closes the fail-open-across-restarts gap the B1/B2 in-memory ledger left open (a restart
+        must never forget which leases were already consumed). 0700, owned by
+        aq-c2-scheduler-context-issuer. Operator reset path: delete one marker file to clear
+        exactly that lease's single-use slot (see the class docstring).
+      '';
+    };
   };
 
   config = mkIf cfg.enable {
@@ -111,6 +124,12 @@ in {
       # socket inside; the socket itself (0660, client-group) is the access control. Matches the
       # effective RuntimeDirectory mode so the two never disagree across rebuilds.
       "d ${builtins.dirOf cfg.socketPath} 0755 aq-c2-scheduler-context-issuer aq-c2-scheduler-context-issuer -"
+      # B2.5: declare the durable single-use ledger dir (+ its StateDirectory parent, explicitly
+      # so nested creation never depends on tmpfiles' leading-component behavior) ahead of first
+      # service start (Rule 13 — declarative-only). 0700: issuer-only, no client-group access —
+      # the ledger is never read/written by anything but this service itself.
+      "d ${builtins.dirOf cfg.ledgerDir} 0700 aq-c2-scheduler-context-issuer aq-c2-scheduler-context-issuer -"
+      "d ${cfg.ledgerDir} 0700 aq-c2-scheduler-context-issuer aq-c2-scheduler-context-issuer -"
     ];
 
     systemd.services.aq-c2-scheduler-context-issuer = {
@@ -123,6 +142,7 @@ in {
         Group = "aq-c2-scheduler-context-issuer";
         RuntimeDirectory = "aq-c2-scheduler-context-issuer";
         StateDirectory = "aq-c2-scheduler-context-issuer";
+        StateDirectoryMode = "0700";
         Environment = [
           "AQ_SCHEDULER_CONTEXT_SOCKET_PATH=${cfg.socketPath}"
           "AQ_SCHEDULER_CONTEXT_CLIENT_GROUP=aq-c2-scheduler-context-clients"
@@ -131,6 +151,10 @@ in {
           "AQ_SCHEDULER_CONTEXT_LEASE_KEYS_PATH=${cfg.leaseKeysPath}"
           "AQ_SCHEDULER_CONTEXT_EPOCH_PATH=${cfg.epochPath}"
           "AQ_SCHEDULER_CONTEXT_TTL_CAP_SECONDS=${toString cfg.contextTtlCapSeconds}"
+          # B2.5: durable single-use ledger — closes the fail-open-across-restarts gap the B1/B2
+          # in-memory ledger left open. build_env_handler() switches to DurableSingleUseLedger
+          # whenever this is set (always, for this unit).
+          "AQ_SCHEDULER_CONTEXT_LEDGER_DIR=${cfg.ledgerDir}"
         ];
         Restart = "on-failure";
         RestartSec = "5s";
