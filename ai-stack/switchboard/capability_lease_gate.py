@@ -112,6 +112,7 @@ def _emit_lease_spans_shadow(decisions: list, op: str, epoch) -> None:
 _REPO_ROOT = Path(_HERE).resolve().parents[1]
 DEFAULT_MANIFEST_PATH = _REPO_ROOT / "config" / "first-party-tools.json"
 DEFAULT_EPOCH_PATH = _REPO_ROOT / "config" / "capability-lease-epoch"
+DEFAULT_LEASE_SIGNER_KEYS_PATH = _REPO_ROOT / "config" / "aqos" / "lease-signer-keys.json"
 ENV_EPOCH = "AQ_LEASE_POLICY_EPOCH"
 
 FIRST_PARTY_SOURCE = "first-party-manifest"
@@ -569,6 +570,61 @@ def _degrade(tool_names: set[str], reason: str) -> tuple[set[str], list[dict]]:
 
 
 # --------------------------------------------------------------------------
+# ALA-ENFORCE (Foundation C rev4 Phase 2, design rev2 SHA-256
+# 6a2e5f84423ac67d3987fdc3b6c0ddbfb58010734859a222a4a556be80fb9cd5) —
+# scheme-dispatched admission verify. Default-OFF in effect: inert until an
+# Ed25519 lease (`sig_scheme == cl.SIG_SCHEME_ED25519`) appears, which only
+# happens once the separate mint-side flag `CAPABILITY_ASYMMETRIC_LEASE=1`
+# is set (see `_asymmetric_lease_enabled()` above). The legacy HMAC
+# `cl.verify()` path below is byte-identical to pre-slice behavior.
+# --------------------------------------------------------------------------
+
+
+def _load_lease_signer_keys_json(path: Any = None) -> dict:
+    """N1: load `config/aqos/lease-signer-keys.json` as a parsed DICT (never
+    the raw file text — a string would deny-ALL inside `verify_authoritative`
+    for the wrong reason) for use as `keys_json` in `cl.verify_authoritative`.
+    LOCAL try/except: ANY read/parse failure (missing file, bad JSON,
+    non-dict top level) yields the deny-all sentinel `{}` and MUST NOT
+    propagate — `verify_authoritative` already denies-ALL Ed25519 leases on
+    a non-dict `keys_json`, so `{}` is a safe sentinel, and a raise here
+    would otherwise escape to the S-c wrapper and total-deny every tool,
+    including HMAC leases (a full outage, not the intended Ed25519-only
+    fail-closed). The legacy HMAC path never calls this."""
+    target = Path(path) if path is not None else DEFAULT_LEASE_SIGNER_KEYS_PATH
+    try:
+        loaded = json.loads(target.read_text(encoding="utf-8"))
+        return loaded if isinstance(loaded, dict) else {}
+    except Exception:
+        return {}
+
+
+def _admission_verify(lease: dict, hmac_key: bytes, current_epoch: int, keys_json_dict: dict) -> str:
+    """Scheme-dispatched admission verify (design §2). An Ed25519-signed
+    lease (`sig_scheme == cl.SIG_SCHEME_ED25519`, a signed field — a forged
+    value cannot cross a lease from one verifier to the other) verifies via
+    `cl.verify_authoritative` (signature + active-key ONLY; OBLIG-1: it does
+    NOT check validity) and then layers expiry/epoch here using the SAME
+    `current_epoch` and the SAME `is_expired`/`epoch_stale` helpers the
+    legacy HMAC path uses below, so an ed25519 lease and an HMAC lease with
+    identical temporals get identical validity verdicts — absent this
+    layering a stale/expired Ed25519 lease would admit (fail-open). Any
+    `verify_authoritative` failure maps to a typed `auth-<reason>` deny. A
+    legacy (no `sig_scheme`) lease keeps the byte-identical `cl.verify()`
+    HMAC path, untouched by this dispatch."""
+    if lease.get("sig_scheme") == cl.SIG_SCHEME_ED25519:
+        v = cl.verify_authoritative(lease, keys_json_dict)
+        if not v.ok:
+            return f"auth-{v.reason}"
+        if cl.is_expired(lease):
+            return cl.VERIFY_EXPIRED
+        if cl.epoch_stale(lease, current_epoch):
+            return cl.VERIFY_EPOCH_STALE
+        return cl.VERIFY_OK
+    return cl.verify(lease, hmac_key, current_epoch=current_epoch)
+
+
+# --------------------------------------------------------------------------
 # The gate
 # --------------------------------------------------------------------------
 
@@ -625,6 +681,10 @@ def enforce(
         inherited_strip = _normalize_zero_trust(ctx.get("zero_trust_behavior")) == "strip"
         candidate_leases = ctx.get("candidate_leases") or []
         bundle_tools = ctx.get("bundle_tools")
+        # N1: loaded ONCE per enforce() call, fail-closed to {} sentinel
+        # locally (see _load_lease_signer_keys_json) — the legacy HMAC path
+        # below never reads this.
+        keys_json_dict = _load_lease_signer_keys_json()
 
         manifest = _load_manifest()
         manifest_ok = manifest is not None
@@ -642,7 +702,7 @@ def enforce(
             if not isinstance(lease, dict):
                 continue
             try:
-                verdict = cl.verify(lease, key, current_epoch=current_epoch)
+                verdict = _admission_verify(lease, key, current_epoch, keys_json_dict)
             except Exception:
                 continue
             if verdict != cl.VERIFY_OK:
@@ -687,7 +747,7 @@ def enforce(
                     ))
                     continue
                 try:
-                    verdict = cl.verify(lease, key, current_epoch=current_epoch)
+                    verdict = _admission_verify(lease, key, current_epoch, keys_json_dict)
                 except Exception:
                     verdict = cl.VERIFY_MALFORMED
                 if verdict != cl.VERIFY_OK:
