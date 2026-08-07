@@ -26,6 +26,8 @@ STILL not edited by this slice). The rev3 trust model, signer authority, transpo
 rev3 open questions Q-R3-1/Q-R3-2 already answered by the advisory round carry forward for the binding
 reviewer to confirm.
 
+**rev4 binding review = PASS** (fresh Claude flagship, Codex-substitute; `.agents/plans/c2-scheduler-context-issuer-rev4-review/fresh-flagship.md`). All 4 re-anchored hashes match byte-for-byte, all NEW files absent by design, all 7 assessment points SOUND (trust model correctly rooted in the un-forgeable Ed25519 signed lease neutralizing the human-uid peer gap; OBLIG-1 mirrors the live `_admission_verify`; issuer-side single-use ledger the correct layer; epoch source confirmed; signer authority + two-flag independence + no switchboard.nix edit hold; no fail-open/oracle/fail-closed-breakage). Two LOW notes folded: the peer-uid line ref corrected to `switchboard.nix:552`; and §Rev3.3's "slot_queue single-use is on the context digest" is forward-looking (slot_queue.py has no such surface today) — which makes the ISSUER-side `{lease_id, grant_digest}` 1:1 ledger the authoritative single-use point, MORE necessary not less (no design change). Advisory lanes (local Qwen, Antigravity) fold on return, non-gating.
+
 ## Revision 3 — the assumed asymmetric lease now EXISTS (ALA built); layer OBLIG-1 + single-use
 
 rev2's trust model ("authority is the SIGNED C2 lease; the issuer verifies it against the lease-issuer
@@ -73,7 +75,7 @@ anchor now points at the BUILT ALA `lease-signer-keys.json`, not a "verify at fr
 
 A fresh-flagship binding review (2026-08-06) returned REQUEST_REVISION on rev1 with a
 CONFIRMED HIGH defect: the switchboard that hosts the C2 gate runs as `cfg.primaryUser`
-(`nix/modules/services/switchboard.nix:542`) — the **human owner uid**. So `SO_PEERCRED` +
+(`nix/modules/services/switchboard.nix:552`) — the **human owner uid**. So `SO_PEERCRED` +
 group membership on the issuer socket **cannot distinguish the legitimate switchboard caller
 from any other owner-uid process** (a shell, `delegate-to-local`, a compromised tool), and a
 caller could present a fabricated `{ALLOW, principal, task}` that the issuer would sign. Rev1's
