@@ -250,22 +250,28 @@ def build_env_handler() -> Callable[[dict[str, Any], Optional[tuple[int, int, in
     """Construct the request handler `serve()` needs, entirely from the
     `AQ_SCHEDULER_CONTEXT_*` env vars the B2 Nix unit sets. Imports `scheduler_context_issuer`
     lazily (only when run as `__main__`) so this module's non-service uses never pay for the
-    cryptography import. A single process-lifetime `InMemorySingleUseLedger` is shared across
-    requests — B1's documented durability seam (a restart resets it); closing that seam with a
-    durable store is a later, separately-reviewed slice, not this one. The request must present
-    exactly `{"lease": {...}, "correlation": {...}}`; the handler never trusts any other field
-    (mirrors `mint_scheduler_context`'s own re-derivation discipline)."""
+    cryptography import. Ledger seam (B2.5): when `AQ_SCHEDULER_CONTEXT_LEDGER_DIR` is set (the
+    confined service's Nix unit always sets it, pointed under `StateDirectory`), the request
+    handler uses `DurableSingleUseLedger` — durable, atomic (`O_CREAT|O_EXCL`) across process
+    restarts, closing the fail-open-across-restarts gap an in-memory ledger has. When unset (tests,
+    ad-hoc local runs), it falls back to the per-process `InMemorySingleUseLedger` — deliberately
+    non-durable, never wired into the systemd unit. The request must present exactly
+    `{"lease": {...}, "correlation": {...}}`; the handler never trusts any other field (mirrors
+    `mint_scheduler_context`'s own re-derivation discipline)."""
     import scheduler_context_issuer as sci  # noqa: E402  (lazy; sibling in scripts/ai/lib)
 
     key_path = os.environ.get("AQ_SCHEDULER_CONTEXT_KEY_PATH", "").strip()
     key_id = os.environ.get("AQ_SCHEDULER_CONTEXT_KEY_ID", "").strip()
     lease_keys_path = os.environ.get("AQ_SCHEDULER_CONTEXT_LEASE_KEYS_PATH", "").strip()
     epoch_path = os.environ.get("AQ_SCHEDULER_CONTEXT_EPOCH_PATH", "").strip()
+    ledger_dir = os.environ.get("AQ_SCHEDULER_CONTEXT_LEDGER_DIR", "").strip()
     try:
         ttl_cap = int(os.environ.get("AQ_SCHEDULER_CONTEXT_TTL_CAP_SECONDS", "900"))
     except ValueError:
         ttl_cap = 900
-    ledger = sci.InMemorySingleUseLedger()
+    ledger: sci.SingleUseLedger = (
+        sci.DurableSingleUseLedger(ledger_dir) if ledger_dir else sci.InMemorySingleUseLedger()
+    )
 
     def handler(request: dict[str, Any], _peer_creds: Optional[tuple[int, int, int]]) -> dict[str, Any]:
         lease = request.get("lease")

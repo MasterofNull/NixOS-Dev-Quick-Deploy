@@ -52,6 +52,8 @@ an untrusted request field.
 """
 from __future__ import annotations
 
+import hashlib
+import json
 import os
 import sys
 from dataclasses import dataclass
@@ -114,22 +116,26 @@ def _parse_iso(value: str) -> datetime:
 
 class SingleUseLedger(Protocol):
     """Duck-typed contract every ledger implementation (in-memory here, a
-    durable store wired in B2/activation) must satisfy: `check_and_record`
-    is an ATOMIC check-and-record — it returns True iff `key` had never
-    been recorded before (and records it in the same call), else False.
-    Never raises on a well-formed `(lease_id, grant_digest)` string tuple;
-    a raised exception is treated by the caller as ledger-unavailable
-    (fail-closed, never fail-open)."""
+    durable file-backed store closing the B2.5 seam) must satisfy:
+    `check_and_record` is an ATOMIC check-and-record — it returns True iff
+    `key` had never been recorded before (and records it in the same
+    call), else False. On a well-formed `(lease_id, grant_digest)` string
+    tuple the ONLY thing that raises is a genuine storage fault (disk
+    full, permission denied, ledger dir gone) — that is deliberately
+    ALLOWED to propagate: the caller (`mint_scheduler_context`) treats any
+    raised exception as ledger-unavailable and denies (fail-closed, never
+    fail-open). `DurableSingleUseLedger` below documents exactly which
+    conditions raise vs. return False."""
 
     def check_and_record(self, key: tuple[str, str]) -> bool: ...
 
 
 class InMemorySingleUseLedger:
     """B1 reference ledger: a per-process `set`. NOT durable across process
-    restarts or multiple issuer workers — that is the documented seam a
-    later B2/activation slice must close with a durable (file/db-backed)
-    implementation satisfying the same `check_and_record` contract. Never
-    raises."""
+    restarts or multiple issuer workers — closed for the confined service
+    by `DurableSingleUseLedger` below (B2.5); this in-memory form remains
+    the default for tests / any caller that does not pass a ledger dir.
+    Never raises."""
 
     def __init__(self) -> None:
         self._used: set[tuple[str, str]] = set()
@@ -139,6 +145,113 @@ class InMemorySingleUseLedger:
             return False
         self._used.add(key)
         return True
+
+
+class DurableSingleUseLedger:
+    """B2.5 durable ledger — Foundation C, C2-SCI subslice B2.5. Closes the
+    fail-open-across-restarts gap `InMemorySingleUseLedger` documents: a
+    service restart must NOT forget which `{lease_id, grant_digest}` pairs
+    were already consumed, or a previously-used lease could mint a SECOND
+    context.
+
+    On-disk shape: one empty(-ish) marker file per consumed key, named
+    `sha256("{lease_id}\\x00{grant_digest}").hexdigest()` under
+    `ledger_dir` — a filesystem-safe digest of the tuple (lease_id/
+    grant_digest are opaque strings, not path-safe by construction).
+
+    ATOMICITY (the whole point of this class): the check-and-record is
+    `os.open(path, O_CREAT | O_EXCL, ...)` — a single kernel syscall that
+    is the atomic test-and-set primitive itself. `O_EXCL` guarantees the
+    kernel fails the call with `EEXIST` if the path already exists,
+    checked and created in one indivisible operation; there is no
+    "check, then separately create" window a second racing caller could
+    land in. This holds across THREADS in one process, across MULTIPLE
+    PROCESSES on the same host, and (unlike an in-process lock) survives
+    a restart, because the state the race is decided against is the
+    filesystem itself, not process memory. Exactly one of two simultaneous
+    `check_and_record` calls for the identical key can ever observe
+    "I created it" (-> True); the other deterministically observes
+    `FileExistsError` (-> False). No external lock/DB dependency needed.
+
+    DURABILITY: the marker file's bytes and its directory entry are both
+    `fsync`'d before `check_and_record` returns True, so a consumed key
+    survives a crash immediately after the mint that consumed it (mirrors
+    `execution_cell_clone._fsync_write_json` / `qa_evidence_store
+    ._atomic_write`'s file+directory fsync discipline elsewhere in this
+    codebase). A NEW `DurableSingleUseLedger` instance pointed at the SAME
+    `ledger_dir` (i.e. after a process restart) sees every previously
+    recorded key as already-used — that is the restart simulation this
+    class exists to pass.
+
+    FAIL-CLOSED: `EEXIST` (key already used) is the only condition that
+    returns `False` from a well-formed call. Any OTHER `OSError` while
+    creating/writing/fsyncing the marker (permission denied, disk full,
+    `ledger_dir` missing/unwritable) is NOT swallowed — it propagates out
+    of `check_and_record`, and `mint_scheduler_context`'s
+    `except Exception: DENY_LEDGER_UNAVAILABLE` turns that into a deny.
+    A ledger that cannot prove a key was never used must never say "go
+    ahead" — raising, not guessing `True`, is the safe direction. NOTE: if
+    the marker file itself is created (`O_CREAT|O_EXCL` succeeds) but a
+    LATER step (write/fsync) then raises, the key is still durably marked
+    used (the create already happened) even though this call denies the
+    mint — a strict, deliberate over-denial on a genuine I/O fault, not a
+    security gap; see the operator reset path below.
+
+    OBSERVABILITY / INTERVENABILITY (O2 seam): `stats()` returns
+    best-effort in-process counters (`recorded`, `replays`) for dashboard
+    wiring. Operator reset path (the intervenability control for a
+    transient-signer-burn recovery, e.g. a legitimate re-issuance after an
+    operator manually revoked+re-signed a lease under the SAME
+    `{lease_id, grant_digest}`): delete the one marker file for that key —
+    `rm <ledger_dir>/<sha256("{lease_id}\\x00{grant_digest}")>` — which
+    clears exactly that lease's single-use slot and nothing else. No code
+    change or restart required."""
+
+    def __init__(self, ledger_dir: str) -> None:
+        self._dir = ledger_dir
+        os.makedirs(self._dir, mode=0o700, exist_ok=True)
+        self._recorded = 0
+        self._replays = 0
+
+    def _key_path(self, key: tuple[str, str]) -> str:
+        lease_id, grant_digest = key
+        digest = hashlib.sha256(f"{lease_id}\x00{grant_digest}".encode("utf-8")).hexdigest()
+        return os.path.join(self._dir, digest)
+
+    def check_and_record(self, key: tuple[str, str]) -> bool:
+        path = self._key_path(key)
+        flags = os.O_WRONLY | os.O_CREAT | os.O_EXCL | getattr(os, "O_NOFOLLOW", 0)
+        try:
+            fd = os.open(path, flags, 0o600)
+        except FileExistsError:
+            self._replays += 1
+            return False
+        # Any other OSError here (permission denied, ENOSPC, ledger_dir
+        # gone, ...) is a genuine storage fault -> deliberately NOT caught;
+        # propagates to the caller as fail-closed (see class docstring).
+        try:
+            payload = json.dumps(
+                {"lease_id": key[0], "grant_digest": key[1], "recorded_at": _iso(datetime.now(timezone.utc))},
+                sort_keys=True,
+            ).encode("utf-8")
+            os.write(fd, payload)
+            os.fsync(fd)
+        finally:
+            os.close(fd)
+        dir_fd = os.open(self._dir, os.O_DIRECTORY | os.O_CLOEXEC)
+        try:
+            os.fsync(dir_fd)
+        finally:
+            os.close(dir_fd)
+        self._recorded += 1
+        return True
+
+    def stats(self) -> dict[str, int]:
+        """Best-effort in-process counters for dashboard/O2 wiring — NOT
+        a durable audit trail (that is the marker files themselves); a
+        restart resets these to zero even though the ledger's actual
+        deny/allow decisions remain fully durable and correct."""
+        return {"recorded": self._recorded, "replays": self._replays}
 
 
 # --------------------------------------------------------------------------
