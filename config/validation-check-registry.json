@@ -1358,6 +1358,28 @@
       "enabled": true
     },
     {
+      "id": "ala-service-coverage",
+      "description": "Foundation C ALA rev4 — asymmetric lease signing authority is default-OFF, governed, and dashboard-visible (Service Coverage)",
+      "trigger_paths": [
+        "scripts/ai/lib/lease_signing_authority.py",
+        "scripts/ai/lib/capability_lease.py",
+        "ai-stack/switchboard/capability_lease_gate.py",
+        "nix/modules/services/lease-signing-authority.nix",
+        "config/aqos/lease-signer-keys.json",
+        "config/env-contract.yaml",
+        "dashboard/backend/api/routes/aistack.py",
+        "assets/dashboard.js",
+        "scripts/testing/test-ala-service-coverage.py"
+      ],
+      "command": [
+        "python3",
+        "scripts/testing/test-ala-service-coverage.py"
+      ],
+      "tier": "behavioral",
+      "timeout_seconds": 30,
+      "enabled": true
+    },
+    {
       "id": "flat-prd-gate",
       "description": "Phase 155 \u2014 flat model-team PRD gate requires proposal/review/consensus artifacts",
       "trigger_paths": [

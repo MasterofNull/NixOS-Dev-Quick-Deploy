@@ -77,5 +77,31 @@ private key to `/run/secrets/lease-signing-ed25519-private-key`; (2) enable the 
 `CAPABILITY_ASYMMETRIC_LEASE=1`. A WR-3-style deploy preflight + the live GREEN round-trip validate at
 activation. OBLIG-1 (expiry/epoch layering) is the downstream C2-issuer's job, not the minter's.
 
-## Slice 3 — Service Coverage (not started)
-`phase0.py` AQ-QA + dashboard card + health-spider.
+## Slice 3 — Service Coverage (DONE) → ALA BUILD COMPLETE
+
+- **AQ-QA coverage:** NEW `scripts/testing/test-ala-service-coverage.py` (offline cross-surface
+  contract: flag defaults 0 in env-contract; the nix service defaults enable=false + is confined
+  (dedicated user, AF_UNIX only); the signer allowlist is public-only + has an active key; the
+  dashboard API + JS render ALA state; the crypto/authority tests exist). Registered in focused-ci
+  (`config/validation-check-registry.json` id `ala-service-coverage`), triggering on any ALA file.
+- **Dashboard visibility:** `dashboard/backend/api/routes/aistack.py` `/stats/capability-enforcement`
+  now returns an `ala` section (asymmetric_lease on/off, signer-allowlist active-key count + revision,
+  status — default-OFF is the healthy resting state; ON without an active key is degraded);
+  `assets/dashboard.js` renders the ALA rows + folds `ala.status` into the card badge.
+- **health-spider:** deferred to activation — a default-OFF service exposes no live signer to probe;
+  the signer-unavailable/authority-failure health check lands with the service-enable act (the
+  dashboard already surfaces the governance state). Noted, not silently skipped.
+
+**Verification:** coverage test PASS; registry JSON valid; aistack.py parses; dashboard.js edited
+(card badge + rows). All ALA tests still green (crypto 24/24, authority, regression 54/54). tier0 25/0.
+
+## Status: ALA rev4 BUILD COMPLETE (default-OFF), 3 slices, each verified
+
+Owner activation to turn it live (all separate acts, in order): (1) generate an Ed25519 keypair, put
+the public key in `config/aqos/lease-signer-keys.json` (replacing the placeholder), SOPS-encrypt the
+private key to `/run/secrets/lease-signing-ed25519-private-key`; (2) `enable` the
+`aq-lease-signing-authority` service (rebuild) — run a WR-3-style deploy-context preflight for its
+bundle; (3) flip `CAPABILITY_ASYMMETRIC_LEASE=1` (switchboard) + validate a live first-party lease
+mints via the authority and `verify_authoritative` accepts it. THEN the C2 scheduler-context issuer
+rev3 (verifies asymmetric leases via `verify_authoritative` + a consumed-lease ledger + expiry/epoch
+per OBLIG-1) → C6 main → C6 activation → C4.
