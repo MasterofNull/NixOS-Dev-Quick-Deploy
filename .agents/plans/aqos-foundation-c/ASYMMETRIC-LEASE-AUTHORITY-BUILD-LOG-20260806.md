@@ -133,11 +133,28 @@ outage-phase2`). Fixed by mirroring the execution-cell-runner client-group patte
 Connect-only grant — key stays 0400 user-only; authority mints manifest-set only (not an oracle).
 Validated: nix parses, python syntax ok, ALA suite still green. Needs a rebuild to apply.
 
-**Remaining acts:** (1) rebuild for Phase 1b → verify the socket group is `aq-lease-signing-clients` and
-a client probe as primaryUser mints ed25519 leases that `verify_authoritative` accepts (the real canary,
-flag still 0). THEN Phase 2: add `CAPABILITY_ASYMMETRIC_LEASE=1` + `AQ_LEASE_SIGNING_SOCKET_PATH` to
-`switchboard.nix` Environment (the R6 `CAPABILITY_CELL_ADAPTER=1` precedent at `switchboard.nix:458`) +
-rebuild + validate the live switchboard mint.
+**Phase 1b rebuild — CANARY GREEN (2026-08-07):** socket regrouped to `aq-lease-signing-clients` (0660),
+dir 0755, group members `aq-lease-signing-authority,hyperd`, service active, no chgrp warning. Live probe
+AS a client-group member: 25/25 first-party leases minted by the confined authority, all `sig_scheme=ed25519`,
+ALL accepted by `verify_authoritative` against the provisioned public key, 0 rejected — the switchboard
+uid never held the private key. **ALA the MINTER is fully activated + end-to-end validated.**
+
+**Phase 2 (flag flip) — BLOCKED, NOT an outage-inducing flip. DO NOT flip yet.** Pre-flip read of the
+enforce path found the VERIFY side was never made asymmetric: `enforce()` verifies every first-party +
+candidate lease with `cl.verify()` (HMAC) at `capability_lease_gate.py:645,690`; `verify_authoritative`
+has no switchboard caller. `CAPABILITY_LEASE_ENFORCEMENT=1` is already live, so flipping
+`CAPABILITY_ASYMMETRIC_LEASE=1` would mint Ed25519 leases the HMAC verify rejects → every first-party tool
+denied → switchboard outage. The build-log Phase-2 line ("flip + validate the mint") validated only the
+mint and missed this. Corrected plan: the flag stays 0 until `enforce()` gains a `sig_scheme`-branched
+asymmetric admission (verify Ed25519 via `verify_authoritative` + layer expiry/epoch per OBLIG-1). That is
+the **C2 scheduler-context issuer rev3 / C2-enforcement** scope (rev3 DESIGN drafted; open Qs Q-R3-1/Q-R3-2;
+not yet binding-reviewed or built). Security-critical admission code → must go through design→review→build,
+not an inline flip. Tracked: issues-backlog `ala-flag-flip-blocked-on-enforce-side-asymmetric-verify`.
+
+**Next step (the real path to the flag):** route the C2 issuer rev3 DESIGN for binding review → build the
+`sig_scheme`-branched enforce-verify → THEN flip `CAPABILITY_ASYMMETRIC_LEASE=1` +
+`AQ_LEASE_SIGNING_SOCKET_PATH` in `switchboard.nix` (R6 `CAPABILITY_CELL_ADAPTER=1` precedent at line 458)
++ rebuild + validate a live enforced first-party admission on Ed25519 leases.
 
 ## Status: ALA rev4 BUILD COMPLETE (default-OFF), 3 slices, each verified
 
