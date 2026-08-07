@@ -1,0 +1,65 @@
+{
+  "$schema": "http://json-schema.org/draft-07/schema#",
+  "$id": "https://nixos-dev-quick-deploy.local/schemas/scheduler-lease-gate-decision.schema.json",
+  "title": "C2 Scheduler-Context Issuer — Typed Issue/Deny/Audit Decision Record",
+  "description": "One outcome emitted by the confined aq-c2-scheduler-context-issuer service (scripts/ai/lib/scheduler_context_issuer.py::mint_scheduler_context() and its transport wrapper) for a single presented-lease mint attempt, or a periodic health/observability audit record (Foundation C, C2-SCI design rev4, §5 Service Coverage). Observability contract only — the issuer itself never blocks on this schema; a producer/consumer mismatch is a bug to fix in the producer, never a reason to widen this schema. NEVER carries a signature, private/public key material, the presented lease's or minted context's full body, a prompt, or a filesystem path — additionalProperties:false and the enum-bounded reason/latency_bucket fields are intentional; context_id/lease_id are opaque correlation identifiers only (matches the precedent set by execution-cell-adapter-receipt.schema.json's receipt_id/grant_digest pair), never security-bearing detail.",
+  "type": "object",
+  "additionalProperties": false,
+  "required": ["ts", "decision", "reason", "context_id", "lease_id", "issued_at", "latency_bucket"],
+  "properties": {
+    "ts": {
+      "type": "string",
+      "format": "date-time",
+      "description": "UTC ISO-8601 timestamp (YYYY-MM-DDTHH:MM:SSZ) this decision was emitted."
+    },
+    "decision": {
+      "type": "string",
+      "enum": ["issue", "deny", "audit"],
+      "description": "'issue' = a scheduler-lease-context was minted and signed. 'deny' = mint_scheduler_context() (or the transport frame layer in front of it) refused to mint — see `reason`. 'audit' = a periodic health/observability record carrying no mint attempt (e.g. signer-key-availability self-check)."
+    },
+    "reason": {
+      "type": "string",
+      "enum": [
+        "ok",
+        "lease-unverified",
+        "lease-expired",
+        "lease-epoch-stale",
+        "lease-fields-malformed",
+        "correlation-malformed",
+        "replay-lease-already-consumed",
+        "ledger-unavailable",
+        "signer-unavailable",
+        "issuer-key-id-missing",
+        "verifier-allowlist-unavailable",
+        "request-malformed-lease",
+        "request-oversize",
+        "request-timeout",
+        "request-empty",
+        "request-malformed-json",
+        "response-malformed",
+        "connect-failed",
+        "handler-error",
+        "audit-heartbeat"
+      ],
+      "description": "Machine-stable reason code. The first ten mirror scheduler_context_issuer.py's MINT_OK/DENY_* constants exactly; the transport-layer codes (request-oversize .. handler-error) mirror scheduler_context_transport.py's DENY_* constants; 'audit-heartbeat' is the only code paired with decision='audit'."
+    },
+    "context_id": {
+      "type": ["string", "null"],
+      "description": "The minted context's own `context_id` (`sched-ctx::<lease_id>::<grant_digest>`) when decision='issue', else null. An opaque correlation identifier, not a secret."
+    },
+    "lease_id": {
+      "type": ["string", "null"],
+      "description": "The presented lease's own `lease_id` when it was readable far enough to extract one (issue, or a deny reason after lease parsing succeeded), else null (e.g. request-malformed-lease, transport-layer denies before any lease reached the issuer, or audit)."
+    },
+    "issued_at": {
+      "type": ["string", "null"],
+      "format": "date-time",
+      "description": "The minted context's own `issued_at` when decision='issue' (equals `ts`), else null."
+    },
+    "latency_bucket": {
+      "type": "string",
+      "enum": ["lt_10ms", "10_50ms", "50_200ms", "200_1000ms", "gt_1000ms", "unknown"],
+      "description": "Bounded, low-cardinality processing-time bucket for this decision (request receipt to response send). Never a raw millisecond value (unbounded cardinality); 'unknown' covers audit records and any path where latency was not measured."
+    }
+  }
+}

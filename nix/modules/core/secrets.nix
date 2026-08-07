@@ -21,6 +21,13 @@
   # user, which only exists when the service is enabled. Gate the secret on the same flag so hosts
   # with the ai-stack secrets block but ALA off never chown to a missing user (activation failure).
   needsAlaSecret = cfg.aiStack.leaseSigningAuthority.enable;
+  # C2-SCI B2 — the scheduler-lease-context issuer's OWN Ed25519 private signing key is owned by
+  # the dedicated aq-c2-scheduler-context-issuer user, which only exists when the service is
+  # enabled. Gate the secret on the same flag so hosts with the ai-stack secrets block but this
+  # service off never chown to a missing user (activation failure). Distinct key family + distinct
+  # user from needsAlaSecret above (that key authenticates the presented admission lease; this key
+  # signs the minted scheduler-context).
+  needsC2SciSecret = cfg.aiStack.c2SchedulerContextIssuer.enable;
 in {
   config = lib.mkIf sec.enable {
     assertions = [
@@ -155,6 +162,24 @@ in {
             mode = "0400";
             owner = "aq-lease-signing-authority";
             group = "aq-lease-signing-authority";
+          };
+        }
+        // lib.optionalAttrs needsC2SciSecret {
+          # Foundation C — C2-SCI B2 scheduler-lease-context issuer's OWN Ed25519 PRIVATE signing
+          # key. Decrypts to /run/secrets/c6-scheduler-context-signing-key, read ONLY by the
+          # confined aq-c2-scheduler-context-issuer service (scheduler_context_transport.py's
+          # env-driven __main__). WITHOUT it the service fail-closes (signer-unavailable) and mints
+          # no scheduler-context regardless of how many valid admission leases are presented. 0400,
+          # owned by the dedicated aq-c2-scheduler-context-issuer user (NOT the ai-stack group, NOT
+          # aq-lease-signing-authority) — the switchboard/owner uid and the ALA lease-signer must
+          # never hold this private key. The matching PUBLIC key is the non-secret tracked value in
+          # config/aqos/c6-scheduler-signer-keys.json (a DISTINCT key family from
+          # config/aqos/lease-signer-keys.json, which this service reads read-only to verify the
+          # PRESENTED admission lease — never to sign anything).
+          "c6-scheduler-context-signing-key" = {
+            mode = "0400";
+            owner = "aq-c2-scheduler-context-issuer";
+            group = "aq-c2-scheduler-context-issuer";
           };
         };
     };

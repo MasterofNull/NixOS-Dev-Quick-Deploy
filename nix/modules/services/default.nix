@@ -22,5 +22,6 @@
     ./execution-cell-runner.nix
     ./lease-signing-authority.nix
     ./antigravity-auto-wake.nix
+    ./c2-scheduler-context-issuer.nix
   ];
 }
