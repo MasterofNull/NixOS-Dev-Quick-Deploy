@@ -119,9 +119,25 @@ printed). PUBLIC key `c2f0549ebc1c133f497774ed3f77b907700e71d4a0550c7b820905f55e
 - Validation: crypto 24/24, authority PASS, service-coverage PASS, HMAC regression 54/54 (byte-parity);
   all changed .nix parse; lease-signer-keys.json valid + active.
 
-**Remaining owner acts:** rebuild (brings up the confined authority with the provisioned key, gate still
-HMAC → no outage), then verify `systemctl status aq-lease-signing-authority` active + `--check` = ready.
-THEN Phase 2: flip `CAPABILITY_ASYMMETRIC_LEASE=1` (switchboard) + rebuild + validate the live mint.
+**Phase 1 rebuild — VERIFIED HEALTHY:** service `active`/`success` (ExecMainStatus=0), socket up, secret
+decrypted to `/run/secrets/lease-signing-ed25519-private-key` (0400, 64 bytes, authority-owned), gate
+still HMAC (no outage). Journal clean.
+
+**Phase 1b — client-access gap found + fixed (would have made Phase 2 an outage):** the socket came up
+`0660 aq-lease-signing-authority:aq-lease-signing-authority`, but the switchboard runs as the human
+primaryUser (confirmed `switchboard.nix:542 User=cfg.primaryUser`), which is NOT in that group — so the
+Phase-2 flag flip would have fail-closed every mint (issues-backlog `ala-socket-no-client-access-would-
+outage-phase2`). Fixed by mirroring the execution-cell-runner client-group pattern: NEW group
+`aq-lease-signing-clients` (primaryUser + authority members); `serve()` chgrps the socket to
+`AQ_LEASE_SIGNING_CLIENT_GROUP` after bind (fail-closed + loud, never widens); tmpfiles dir 0750→0755.
+Connect-only grant — key stays 0400 user-only; authority mints manifest-set only (not an oracle).
+Validated: nix parses, python syntax ok, ALA suite still green. Needs a rebuild to apply.
+
+**Remaining acts:** (1) rebuild for Phase 1b → verify the socket group is `aq-lease-signing-clients` and
+a client probe as primaryUser mints ed25519 leases that `verify_authoritative` accepts (the real canary,
+flag still 0). THEN Phase 2: add `CAPABILITY_ASYMMETRIC_LEASE=1` + `AQ_LEASE_SIGNING_SOCKET_PATH` to
+`switchboard.nix` Environment (the R6 `CAPABILITY_CELL_ADAPTER=1` precedent at `switchboard.nix:458`) +
+rebuild + validate the live switchboard mint.
 
 ## Status: ALA rev4 BUILD COMPLETE (default-OFF), 3 slices, each verified
 

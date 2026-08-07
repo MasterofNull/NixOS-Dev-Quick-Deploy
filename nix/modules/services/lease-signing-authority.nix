@@ -19,6 +19,9 @@
 with lib; let
   cfg = config.mySystem.aiStack.leaseSigningAuthority;
   repoPath = config.mySystem.mcpServers.repoPath;
+  # The switchboard (the sole intended client) runs as the human primaryUser, NOT this dedicated
+  # authority user, so socket access is granted via a shared client group both are members of.
+  primaryUser = config.mySystem.primaryUser;
 
   authPython = pkgs.python3.withPackages (ps: with ps; [cryptography]);
 
@@ -63,12 +66,23 @@ in {
     users.users.aq-lease-signing-authority = {
       isSystemUser = true;
       group = "aq-lease-signing-authority";
+      # Member of the client group so serve() can chgrp the socket to it (chown to a group requires
+      # membership). This grants NO key access — the Ed25519 private key is 0400 user-only.
+      extraGroups = ["aq-lease-signing-clients"];
       description = "Foundation C ALA confined lease signing authority";
     };
     users.groups.aq-lease-signing-authority = {};
+    # Shared client group: members may connect to the 0660 socket (mint requests only — the authority
+    # never trusts caller input, so a peer obtains only the manifest lease set). Mirrors the
+    # execution-cell-runner's aq-execution-cell-clients pattern.
+    users.groups.aq-lease-signing-clients = {};
+    users.users.${primaryUser}.extraGroups = mkAfter ["aq-lease-signing-clients"];
 
     systemd.tmpfiles.rules = [
-      "d ${builtins.dirOf cfg.socketPath} 0750 aq-lease-signing-authority aq-lease-signing-authority -"
+      # 0755 = world-traversable so a client-group member (the switchboard user) can reach the socket
+      # inside; the socket itself (0660, client-group) is the access control. Matches the effective
+      # RuntimeDirectory mode so the two never disagree across rebuilds.
+      "d ${builtins.dirOf cfg.socketPath} 0755 aq-lease-signing-authority aq-lease-signing-authority -"
     ];
 
     systemd.services.aq-lease-signing-authority = {
@@ -85,6 +99,7 @@ in {
         StateDirectory = "aq-lease-signing-authority";
         Environment = [
           "AQ_LEASE_SIGNING_SOCKET_PATH=${cfg.socketPath}"
+          "AQ_LEASE_SIGNING_CLIENT_GROUP=aq-lease-signing-clients"
           "AQ_LEASE_SIGNING_KEY_PATH=${cfg.keyPath}"
           "AQ_LEASE_SIGNING_KEY_ID=${cfg.keyId}"
           "AQ_LEASE_SIGNING_MANIFEST_PATH=${repoPath}/config/first-party-tools.json"
