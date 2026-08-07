@@ -39,6 +39,10 @@ in {
     # is a no-behavior-change canary (prove the signer is healthy before any first-party lease flows
     # through it). REVERT: enable=false. Runbook: ASYMMETRIC-LEASE-AUTHORITY-ACTIVATION-RUNBOOK-20260806.md.
     mySystem.aiStack.leaseSigningAuthority.enable = true;
+    # Auto-nudge the Antigravity IDE when an advisory task is dropped into its inbox, so multi-agent
+    # rounds don't need a manual IDE prompt. Per-user systemd path unit in the owner's own session,
+    # firing the owner-gated wake. No-op when the IDE isn't open. REVERT: enable=false.
+    mySystem.aiStack.antigravityAutoWake.enable = true;
     mySystem.profileData.flatpakApps = lib.mkDefault flatpakProfiles.ai_workstation;
     mySystem.profileData.systemPackageNames = lib.mkDefault profilePackages.ai-dev;
 
