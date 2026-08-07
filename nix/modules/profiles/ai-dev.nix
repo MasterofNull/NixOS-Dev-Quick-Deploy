@@ -33,6 +33,12 @@ in {
     # mint->sign->UDS->bwrap-cell->validator shadow round-trip. REVERT: both to false.
     mySystem.aiStack.executionCellRunner.enable = true;
     mySystem.aiStack.executionCellRunner.flagOn = true;
+    # ALA activation Phase 1 (2026-08-06): enable the confined lease-signing authority so its
+    # dedicated user + UDS + SOPS-provisioned Ed25519 private key come up, but leave the switchboard
+    # flag CAPABILITY_ASYMMETRIC_LEASE=0 (Phase 2) — the gate keeps in-process HMAC, so this rebuild
+    # is a no-behavior-change canary (prove the signer is healthy before any first-party lease flows
+    # through it). REVERT: enable=false. Runbook: ASYMMETRIC-LEASE-AUTHORITY-ACTIVATION-RUNBOOK-20260806.md.
+    mySystem.aiStack.leaseSigningAuthority.enable = true;
     mySystem.profileData.flatpakApps = lib.mkDefault flatpakProfiles.ai_workstation;
     mySystem.profileData.systemPackageNames = lib.mkDefault profilePackages.ai-dev;
 
