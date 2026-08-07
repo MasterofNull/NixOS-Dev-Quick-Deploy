@@ -20,5 +20,6 @@
     ./data-retention.nix
     ./agent-reap.nix
     ./execution-cell-runner.nix
+    ./lease-signing-authority.nix
   ];
 }
