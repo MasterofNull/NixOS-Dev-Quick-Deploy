@@ -2003,6 +2003,28 @@ def get_capability_enforcement() -> Dict[str, Any]:
     result["c5"]["span_truth"] = "on" if c5_flag_ok else "off"
     result["c5"]["status"] = "ok" if c5_flag_ok else "degraded"
 
+    # 4. ALA — asymmetric lease signing authority (Foundation C rev4, default-OFF)
+    ala_flag = env_vars.get("CAPABILITY_ASYMMETRIC_LEASE", "0").strip()
+    ala_on = ala_flag == "1"
+    signer_active = None
+    signer_revision = None
+    try:
+        skf = _repo_root() / "config" / "aqos" / "lease-signer-keys.json"
+        if skf.is_file():
+            sk = json.loads(skf.read_text())
+            keys = sk.get("keys", []) if isinstance(sk, dict) else []
+            signer_active = sum(1 for k in keys if isinstance(k, dict) and k.get("status") == "active")
+            signer_revision = sk.get("revision") if isinstance(sk, dict) else None
+    except Exception:
+        signer_active = None
+    result["ala"] = {
+        "asymmetric_lease": "on" if ala_on else "off",
+        "signer_allowlist_active_keys": signer_active,
+        "signer_allowlist_revision": signer_revision,
+        # default-OFF is the healthy resting state; ON without an active signer key is degraded
+        "status": "ok" if (not ala_on or signer_active) else "degraded",
+    }
+
     return result
 
 

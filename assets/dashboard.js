@@ -3503,12 +3503,14 @@ async function loadCapabilityEnforcement() {
 
   const c2 = d.c2 || {};
   const c5 = d.c5 || {};
+  const ala = d.ala || {};
 
   // Determine overall status badge
   let overallBadge = "badge-ok";
   if (
     c2.status === "degraded" ||
     c5.status === "degraded" ||
+    ala.status === "degraded" ||
     c2.status === "unknown" ||
     c5.status === "unknown"
   ) {
@@ -3551,6 +3553,21 @@ async function loadCapabilityEnforcement() {
       "C5 Status",
       c5.status || "--",
       statusColor(c5.status)
+    ),
+    fwRow(
+      "ALA Asym-Lease",
+      ala.asymmetric_lease || "--",
+      ala.asymmetric_lease === "on" ? "ok" : "warn"
+    ),
+    fwRow(
+      "ALA Signer Keys",
+      ala.signer_allowlist_active_keys != null ? String(ala.signer_allowlist_active_keys) : "--",
+      ala.signer_allowlist_active_keys ? "ok" : "warn"
+    ),
+    fwRow(
+      "ALA Status",
+      ala.status || "--",
+      statusColor(ala.status)
     ),
   ].join("");
 }
