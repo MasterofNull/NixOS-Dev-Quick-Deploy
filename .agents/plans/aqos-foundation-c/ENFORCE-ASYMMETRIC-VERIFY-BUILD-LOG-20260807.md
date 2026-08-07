@@ -29,7 +29,27 @@ authority's minted security projection byte-equals the switchboard's manifest pr
 `CAPABILITY_ASYMMETRIC_LEASE=1` will NOT deny first-party tools. N4 parity confirmed (authority + enforce
 both resolve epoch 0). `scratchpad/n3-dryrun.py`.
 
-## Remaining — the flip (final, separate OWNER act)
+## FLIP — DONE + VALIDATED LIVE (2026-08-07, commit 86ec204e, owner-rebuilt)
+`switchboard.nix` Environment: `CAPABILITY_ASYMMETRIC_LEASE=1` + `AQ_LEASE_SIGNING_SOCKET_PATH`
+(option-SSOT). Owner rebuilt; switchboard restarted clean (Uvicorn :8085, no fail-closed/signer-unavailable
+errors). Rule-15 activation attestation — all 5 dimensions GREEN:
+- **integrated**: switchboard `issue_first_party_leases` (flag-on) routes to the authority; `enforce()`
+  verifies via `_admission_verify`. Both on the live path.
+- **ON**: `systemctl show ai-switchboard` env confirms `CAPABILITY_ASYMMETRIC_LEASE=1`; switchboard proc in
+  supplementary group `aq-lease-signing-clients` (gid 972) → reaches the 0660 socket.
+- **real-world validated**: switchboard-side `issue_first_party_leases` → **25 leases, all sig_scheme=ed25519,
+  25/25 verify_authoritative-accepted**; N3 full-`enforce()`-path dry-run **25/25 ADMIT, 0 deny** on those live
+  leases; negatives (forged/expired/stale deny) proven by the 40/40 suite. Private key stays 0400 in the
+  confined authority — switchboard (owner uid) never holds it (verify != forge).
+- **observable**: dashboard `/stats/capability-enforcement` → `asymmetric_lease: on`, 1 active signer key,
+  revision 1, `status: ok`.
+- **intervenable**: REVERT = remove the 2 env lines + rebuild → byte-parity HMAC, no lease state lost.
+
+**ALA activation COMPLETE** (Phase 0 key → 1 enable → 1b client-access → 2 flip). The asymmetric lease
+spine is fully live: first-party leases are Ed25519-minted by a confined authority and enforce-verified
+against a public allowlist; the owner-uid switchboard never holds signing material.
+
+## (Superseded) pre-flip notes — the flip (final, separate OWNER act)
 Default-OFF today (scheme-dispatch inert; zero behavior change for existing HMAC leases). To activate
 asymmetric first-party enforcement:
 1. Edit `nix/modules/services/switchboard.nix` Environment: add `CAPABILITY_ASYMMETRIC_LEASE=1` and
