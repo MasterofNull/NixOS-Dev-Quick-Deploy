@@ -1,3 +1,7 @@
+[OPEN] c2-issuer-b1-review-observations — B1 code review PASS (e01d48a7) surfaced 3 NON-blocking observations to fold downstream: (O1) design §3 prose says revocation_epoch "!=" current-epoch but the code/shared-lib uses epoch_stale = "<" (monotonic, signed → not exploitable) — reconcile the C2 design prose at the next natural re-freeze (do NOT re-freeze c934db23 just for this). (O2) B2's DURABLE single-use ledger inherits record-before-sign, so a transient signer outage burns a valid lease's slot — correct fail-closed, but MUST be observable + intervenable per the Activation Gate (dashboard counter + operator reset path). (O3) InMemorySingleUseLedger is the documented B2 durability seam → B2 wires the durable store. Source: .agents/plans/c2-scheduler-context-issuer-rev4-review/b1-code-review.md.
+  Severity: low (all non-security; O2 is an activation-gate obligation for B2)
+  Action: fold O2/O3 into B2 (durable ledger + observability); O1 into the C2 design at next re-freeze.
+
 ## OPEN ISSUES
 
 [FIXED] commit-48d92962-swept-5693-files-concurrent-staging-race — Commit 48d92962 ("ALA Phase 1b", intended 4 files) had a 5693-file diff — the concurrent-staging race (a broad `git add`; note `Bash(git add *)` allow-rule in ~/.claude/settings.json:341) folded a large pre-existing tree into the commit's diff, same hazard as `concurrent-orchestrator-commit-authority-race-b3`. NOT pushed (local-only).
