@@ -1,8 +1,8 @@
 ---
 title: "Foundation C C6: Authenticated Epoch Authority + F2.5 Scheduler Revocation Gate"
 slice: "C6"
-status: "PREPARED_ONLY — REVISION 2; independent re-review and single-use owner activation required"
-revision: 2
+status: "PREPARED_ONLY — REVISION 3 (re-anchored after C2-SCI + C6-P0 landed; both blockers resolved); independent binding re-review and single-use owner activation required"
+revision: 3
 kind: "design-only"
 implementation_authorization: "NONE"
 activation_authorization: "NONE"
@@ -25,6 +25,56 @@ successors:
 > C6-P0-provided hashes), and C6-P0 must land before the C6-main re-freeze. This closes the
 > schema-ownership collision the binding review flagged; §§1/4 rows below are read subject to this
 > amendment.
+
+## Revision 3 — re-anchor after C2-SCI + C6-P0 landed (both blockers RESOLVED, 2026-08-07)
+
+Between rev2 and now, C6's two freeze blockers were CLOSED by landed, independently-reviewed work
+(`C6-RECONCILIATION-POST-C2SCI-20260807.md`). rev3 changes ONLY the §1 baseline anchors + the absent/NEW
+reservation list to the current truth; the §2 epoch-authority + §3 scheduler-gate semantics and the R1–R6
+answers are UNCHANGED and stand.
+
+**Q-C6-1 (the C2 scheduler-lease-context issuer + signed ingress) — RESOLVED.** Built as C2-SCI (design
+rev4 `c934db23`, binding + confirmatory review PASS, freeze `C2-SCHEDULER-CONTEXT-ISSUER-FREEZE-20260807.md`,
+owner-activated, built B1–B4 default-OFF, all 5 subslices reviewed PASS). NAMING RECONCILE: rev2 §1 reserved
+`scripts/ai/lib/scheduler_lease_context.py`; the issuer was actually built as the SEPARATE confined service
+`scripts/ai/lib/scheduler_context_issuer.py` (+ `scheduler_context_transport.py`, `nix/modules/services/
+c2-scheduler-context-issuer.nix`) and the signed ingress as `dispatch.py::verify_ingress_scheduler_context`
+(INERT today, flag-gated `CAPABILITY_SCHEDULER_CONTEXT_ISSUER`). C6 main CONSUMES these — it does NOT
+re-create the issuer.
+
+**Q-C6-2 (owner key allowlist + P0 hardening) — RESOLVED.** C6-P0 rev3 BUILT (`config/aqos/
+c6-owner-public-keys.json`, `config/schemas/revocation-epoch-bump.schema.json`, `config/schemas/
+scheduler-lease-context.schema.json` — verify-only anchors per the amendment above).
+
+**§1 re-anchor (rev3 — verify these at C6-main freeze):**
+| path | rev2 hash | rev3 (current) | note |
+|---|---|---|---|
+| `scripts/ai/lib/capability_lease.py` | `a6f92392…` | `611f1af8…` | ALA rev4 added `verify_authoritative`/`sign_ed25519` |
+| `ai-stack/switchboard/capability_lease_gate.py` | `3e92d2fe…` | `970d10f7…` | enforce-verify + C2-SCI B3 flag-gated blocks |
+| `scripts/ai/lib/slot_scheduler.py` | `ea3b5b9a…` | `ea3b5b9a…` | UNCHANGED |
+| `scripts/ai/lib/slot_queue.py` | `e4e7e9b1…` | `e4e7e9b1…` | UNCHANGED — C6 main edits it (the fence) |
+| `scripts/ai/lib/dispatch.py` | `1b083b10…` | `77ba0c25…` | C2-SCI B3 added `verify_ingress_scheduler_context` (the Q-C6-1 ingress) |
+| `scripts/ai/delegate-to-local` | `b5d2c5cb…` | `b5d2c5cb…` | UNCHANGED |
+| `scripts/ai/aq-event` | `5deba81b…` | `5deba81b…` | UNCHANGED |
+| `config/env-contract.yaml` | `62450e1f…` | `74c10eb2…` | added CAPABILITY_ASYMMETRIC_LEASE + CAPABILITY_SCHEDULER_CONTEXT_ISSUER |
+| `dashboard/backend/api/routes/aistack.py` | `5e736402…` | `aa855d61…` | added ala + c2_scheduler_context_issuer sections |
+| `assets/dashboard.js` | `ea88c43e…` | `9c892841…` | added ALA + C2-SCI rows |
+| `scripts/testing/harness_qa/phases/phase0.py` | `5e6f2208…` | `5e6f2208…` | UNCHANGED |
+| `nix/modules/services/default.nix` | `a36d0b21…` | `f772a1eb…` | ALA + auto-wake + c2-sci imports |
+
+**Absent/NEW reconciliation:** `revocation-epoch-bump.schema.json`, `scheduler-lease-context.schema.json`
+(C6-P0), and `scheduler-lease-gate-decision.schema.json` (C2-SCI B2) are now BUILT → verify-only anchors,
+NOT re-created by C6 main. `scheduler_lease_context.py` is SUPERSEDED by the built C2-SCI issuer (above).
+C6 main's genuinely-still-absent NEW files (confirmed absent at current HEAD): `scripts/ai/aq-epoch-bump`,
+`scripts/ai/lib/revocation_epoch.py`, `nix/modules/services/revocation-epoch-authority.nix`,
+`scripts/testing/{test-revocation-epoch.py,test-scheduler-lease-gate.py,test-c6-service-coverage.py}`,
+`scripts/testing/fixtures/revocation-epoch-golden.json` + the `slot_queue.py` EDIT (verified-context fence
++ durable reservation digest + epoch-bump revocation drop, flag `CAPABILITY_SCHEDULER_LEASE_GATE`, wiring
+the built `verify_ingress_scheduler_context` into the live dispatch→slot_queue path).
+
+**Path:** this rev3 → fresh independent BINDING re-review (rev1 had the codex depth-review; rev2/rev3 have
+no PASS) → hash-bound freeze (reproduce the rev3 anchors) → single-use owner build-activation → default-OFF
+build → independent code review → commit → owner flag/enable → C4.
 
 ## 0. Revision, authority, and decision
 
