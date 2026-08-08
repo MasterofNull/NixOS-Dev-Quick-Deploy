@@ -38,6 +38,8 @@ def main() -> int:
     sci = next((e for e in entries if isinstance(e, dict) and e.get("canonical") == "CAPABILITY_SCHEDULER_CONTEXT_ISSUER"), None)
     need(sci is not None, "env-contract must document CAPABILITY_SCHEDULER_CONTEXT_ISSUER")
     need(sci is None or str(sci.get("default")) == "0", "CAPABILITY_SCHEDULER_CONTEXT_ISSUER must default to '0'")
+    epoch = next((e for e in entries if isinstance(e, dict) and e.get("canonical") == "AQ_REVOCATION_EPOCH_SOCKET_PATH"), None)
+    need(epoch is not None, "env-contract must declare AQ_REVOCATION_EPOCH_SOCKET_PATH")
 
     # 2. nix service ships enable=false by default + is confined
     nix = open(os.path.join(ROOT, "nix", "modules", "services", "c2-scheduler-context-issuer.nix")).read()
@@ -46,6 +48,9 @@ def main() -> int:
     need("AF_UNIX" in nix, "service must be AF_UNIX-only (no network)")
     need("NoNewPrivileges" in nix and 'ProtectSystem = "strict"' in nix, "service must be hardened")
     need("aq-c2-scheduler-context-clients" in nix, "service must wire the shared client-access group (the ALA lesson)")
+    need("aq-revocation-epoch-clients" in nix, "issuer must have connect-only epoch-authority client membership")
+    need("AQ_REVOCATION_EPOCH_SOCKET_PATH" in nix, "issuer must receive the epoch authority socket")
+    need("AQ_SCHEDULER_CONTEXT_EPOCH_PATH" not in nix, "issuer must not retain a live epoch-file fallback")
 
     # 3. signer allowlist: present, has an active key, PUBLIC-ONLY (no private-key field on any entry),
     #    and a DISTINCT key family from the lease-signer allowlist

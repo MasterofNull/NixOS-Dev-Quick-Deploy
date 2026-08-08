@@ -44,6 +44,8 @@ with lib; let
     cp ${../../../scripts/ai/lib/scheduler_context_transport.py} $out/scheduler_context_transport.py
     cp ${../../../scripts/ai/lib/scheduler_context_issuer.py} $out/scheduler_context_issuer.py
     cp ${../../../scripts/ai/lib/capability_lease.py} $out/capability_lease.py
+    cp ${../../../scripts/ai/lib/revocation_epoch.py} $out/revocation_epoch.py
+    cp ${../../../scripts/ai/lib/revocation_epoch_transport.py} $out/revocation_epoch_transport.py
   '';
 in {
   options.mySystem.aiStack.c2SchedulerContextIssuer = {
@@ -78,10 +80,10 @@ in {
       default = "${repoPath}/config/aqos/lease-signer-keys.json";
       description = "The SOLE verifier allowlist for the PRESENTED C2 admission lease (a DISTINCT key family from keyId's own signer-verifier file). Read fresh per request so a revocation takes effect without a service restart.";
     };
-    epochPath = mkOption {
+    epochAuthoritySocketPath = mkOption {
       type = types.str;
-      default = "${repoPath}/config/capability-lease-epoch";
-      description = "The same authoritative revocation-epoch source lease_signing_authority._resolve_epoch() uses (design OBLIG-1 / mandate 4) — never a caller-supplied epoch.";
+      default = "/run/aq-revocation-epoch-authority/control.sock";
+      description = "Read-only UDS of the sole revocation-epoch authority; unavailable responses deny context minting.";
     };
     contextTtlCapSeconds = mkOption {
       type = types.int;
@@ -109,7 +111,7 @@ in {
       group = "aq-c2-scheduler-context-issuer";
       # Member of the client group so serve() can chgrp the socket to it (chown to a group requires
       # membership). This grants NO key access — the Ed25519 private key is 0400 user-only.
-      extraGroups = ["aq-c2-scheduler-context-clients"];
+      extraGroups = ["aq-c2-scheduler-context-clients" "aq-revocation-epoch-clients"];
       description = "Foundation C C2-SCI confined scheduler-lease-context issuer";
     };
     users.groups.aq-c2-scheduler-context-issuer = {};
@@ -117,6 +119,7 @@ in {
     # never key access — and per the trust model, a peer that connects still mints nothing without
     # a presented lease it cannot forge (mirrors aq-lease-signing-clients / aq-execution-cell-clients).
     users.groups.aq-c2-scheduler-context-clients = {};
+    users.groups.aq-revocation-epoch-clients = {};
     users.users.${primaryUser}.extraGroups = mkAfter ["aq-c2-scheduler-context-clients"];
 
     systemd.tmpfiles.rules = [
@@ -149,7 +152,7 @@ in {
           "AQ_SCHEDULER_CONTEXT_KEY_PATH=${cfg.keyPath}"
           "AQ_SCHEDULER_CONTEXT_KEY_ID=${cfg.keyId}"
           "AQ_SCHEDULER_CONTEXT_LEASE_KEYS_PATH=${cfg.leaseKeysPath}"
-          "AQ_SCHEDULER_CONTEXT_EPOCH_PATH=${cfg.epochPath}"
+          "AQ_REVOCATION_EPOCH_SOCKET_PATH=${cfg.epochAuthoritySocketPath}"
           "AQ_SCHEDULER_CONTEXT_TTL_CAP_SECONDS=${toString cfg.contextTtlCapSeconds}"
           # B2.5: durable single-use ledger — closes the fail-open-across-restarts gap the B1/B2
           # in-memory ledger left open. build_env_handler() switches to DurableSingleUseLedger
@@ -168,7 +171,7 @@ in {
         RestrictSUIDSGID = true;
         LockPersonality = true;
         RestrictAddressFamilies = ["AF_UNIX"];
-        ReadOnlyPaths = [cfg.leaseKeysPath cfg.epochPath];
+        ReadOnlyPaths = [cfg.leaseKeysPath];
       };
     };
   };
