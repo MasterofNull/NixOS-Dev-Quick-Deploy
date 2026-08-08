@@ -23,5 +23,6 @@
     ./lease-signing-authority.nix
     ./antigravity-auto-wake.nix
     ./c2-scheduler-context-issuer.nix
+    ./revocation-epoch-authority.nix
   ];
 }
