@@ -208,6 +208,11 @@ class ToolSecurityAuditor:
         blocked_tools = {str(t).strip().lower() for t in policy.get("blocked_tools", [])}
         if name in blocked_tools:
             reasons.append("blocked_tool_name")
+        elif any(
+            len(blocked) >= 6 and self._edit_distance_at_most_one(name, blocked)
+            for blocked in blocked_tools
+        ):
+            reasons.append("blocked_tool_name_fuzzy")
 
         endpoint_exempt_tools = {
             str(t).strip().lower()
@@ -238,6 +243,33 @@ class ToolSecurityAuditor:
                     break
 
         return (len(reasons) == 0), reasons
+
+    @staticmethod
+    def _edit_distance_at_most_one(left: str, right: str) -> bool:
+        """Bounded typo defense for denylisted tool names.
+
+        This intentionally answers only distance <= 1 and avoids a general
+        fuzzy matcher. The minimum six-character caller guard prevents short
+        benign tool names from being captured by a broad similarity policy.
+        """
+        if left == right:
+            return True
+        if abs(len(left) - len(right)) > 1:
+            return False
+        if len(left) == len(right):
+            return sum(a != b for a, b in zip(left, right)) <= 1
+        shorter, longer = (left, right) if len(left) < len(right) else (right, left)
+        index_short = index_long = differences = 0
+        while index_short < len(shorter) and index_long < len(longer):
+            if shorter[index_short] == longer[index_long]:
+                index_short += 1
+                index_long += 1
+                continue
+            differences += 1
+            if differences > 1:
+                return False
+            index_long += 1
+        return True
 
     @staticmethod
     def _keyword_match(keyword: str, text: str) -> bool:
