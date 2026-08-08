@@ -741,3 +741,7 @@ These targets are applied inside the relevant existing steps:
 3. **Diff Scoping**: Shard diffs to provide agents only the context strictly necessary for their specific domain.
 4. **Resilience Out-Loops**: Ensure failovers (e.g., local queue saturated -> fallback to `remote-reasoning`).
 5. **Zero Touch Engineering**: Agents must autonomously commit via the PRSI queue to fix their own findings.
+
+## Progress-Projected + Minimal-Code (Canonical — Behavioral Rule 20, all agents)
+
+**(a) Progress projected, never hand-typed.** Every plan under active work carries an editorial `<plan-dir>/tracker.json`; PM status (gantt/kanban/rollup) is PROJECTED by `aq-pm-tracker` from git commits + freeze records + activation grants + blockers, and gated every commit by `scripts/governance/tier0.d/check-pm-tracker.sh` (a broken/gamed manifest blocks; missing-tracker-for-an-active-plan is a freshness-class WARN). Hand-maintained status rots — forbidden (anti-gaming). **(b) Minimal-code before writing.** Before any new implementation/file/dependency, walk the `minimal-code` skill ladder (YAGNI → already-in-codebase → stdlib → native → installed-dep → one-line → MVP; lazy about the solution, never about reading); smallest correct change, no over-build; pairs with `/simplify`. Never at the cost of correctness, fail-closed, security, or a HARD rule. SSOT `.agents/plans/pm-tracker-standard/DESIGN.md` + skill `minimal-code`.
