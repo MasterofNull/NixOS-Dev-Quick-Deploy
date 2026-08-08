@@ -1,0 +1,48 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://aq-os.local/schemas/workflow-deviation.v1.json",
+  "title": "AQ-OS Workflow Deviation",
+  "type": "object",
+  "additionalProperties": false,
+  "required": ["schema_version", "deviation_id", "occurred_at", "source", "reason_code", "summary", "severity", "mutation_risk", "retryable", "requires_owner", "automatic_eligible", "root_issue_key", "evidence", "disposition"],
+  "properties": {
+    "schema_version": {"const": "aq.workflow-deviation.v1"},
+    "deviation_id": {"type": "string", "pattern": "^wd_[0-9a-f]{64}$"},
+    "occurred_at": {"type": "string", "format": "date-time"},
+    "source": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["lane", "component", "phase"],
+      "properties": {
+        "lane": {"type": "string", "minLength": 1, "maxLength": 64},
+        "component": {"type": "string", "minLength": 1, "maxLength": 128},
+        "phase": {"type": "string", "minLength": 1, "maxLength": 64},
+        "workflow_id": {"type": "string", "minLength": 1, "maxLength": 128},
+        "subject_digest": {"type": "string", "pattern": "^[0-9a-f]{64}$"}
+      }
+    },
+    "reason_code": {"type": "string", "pattern": "^[a-z][a-z0-9._-]{2,95}$"},
+    "summary": {"type": "string", "minLength": 1, "maxLength": 300},
+    "severity": {"enum": ["low", "medium", "high", "critical"]},
+    "mutation_risk": {"enum": ["none", "low", "medium", "high"]},
+    "retryable": {"type": "boolean"},
+    "requires_owner": {"type": "boolean"},
+    "automatic_eligible": {"type": "boolean"},
+    "root_issue_key": {"type": "string", "pattern": "^[a-z][a-z0-9._-]{2,127}$"},
+    "evidence": {
+      "type": "array",
+      "maxItems": 16,
+      "items": {
+        "type": "object",
+        "additionalProperties": false,
+        "required": ["kind", "ref", "digest"],
+        "properties": {
+          "kind": {"enum": ["artifact", "log", "receipt", "test", "review", "state"]},
+          "ref": {"type": "string", "minLength": 1, "maxLength": 256},
+          "digest": {"type": "string", "pattern": "^[0-9a-f]{64}$"}
+        }
+      }
+    },
+    "disposition": {"enum": ["detected", "deduplicated", "issue_opened", "shadow_queued", "parked", "approval_required", "resolved", "rejected"]}
+  }
+}

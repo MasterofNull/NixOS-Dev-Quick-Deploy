@@ -1,0 +1,26 @@
+{
+  "occurred_at": "2026-08-08T21:00:00Z",
+  "source": {
+    "lane": "codex",
+    "component": "ai-autonomous-improvement",
+    "phase": "OBSERVE",
+    "workflow_id": "cycle-example",
+    "subject_digest": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa"
+  },
+  "reason_code": "observation.failed",
+  "summary": "Routing metric collection failed before trigger evaluation.",
+  "root_issue_key": "autonomous-improvement-metric-sync-false-green",
+  "evidence": [{
+    "kind": "log",
+    "ref": "journal:ai-autonomous-improvement.service",
+    "digest": "bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb"
+  }],
+  "expected_policy": {
+    "severity": "high",
+    "mutation_risk": "low",
+    "retryable": true,
+    "requires_owner": false,
+    "automatic_eligible": true
+  }
+}
+
