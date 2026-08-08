@@ -1,0 +1,44 @@
+#!/usr/bin/env python3
+"""Thin verified client for the workflow-deviation receipt broker."""
+from __future__ import annotations
+
+import argparse
+import json
+import os
+import sys
+from pathlib import Path
+
+sys.path.insert(0, str(Path(__file__).resolve().parent / "lib"))
+from workflow_deviation_transport import TransportUnavailable, health, submit  # noqa: E402
+
+
+def _settings() -> tuple[str, int]:
+    path = os.environ.get("AQ_WORKFLOW_DEVIATION_BROKER_SOCKET", "/run/aq-workflow-deviation-broker/control.sock")
+    uid = os.environ.get("AQ_WORKFLOW_DEVIATION_BROKER_UID", "")
+    if not uid.isdigit():
+        raise TransportUnavailable("broker-uid-unavailable")
+    return path, int(uid)
+
+
+def main() -> int:
+    parser = argparse.ArgumentParser(description=__doc__)
+    commands = parser.add_subparsers(dest="command", required=True)
+    submit_parser = commands.add_parser("submit", help="submit one already-closed deviation record")
+    submit_parser.add_argument("--record-file", required=True, type=Path)
+    commands.add_parser("health", help="read closed broker health")
+    args = parser.parse_args()
+    try:
+        socket_path, uid = _settings()
+        if args.command == "health":
+            result = health(socket_path, uid)
+        else:
+            result = submit(socket_path, uid, json.loads(args.record_file.read_text(encoding="utf-8")))
+    except (OSError, ValueError, TransportUnavailable) as exc:
+        print(json.dumps({"ok": False, "reason": "unavailable"}, sort_keys=True))
+        return 1
+    print(json.dumps(result, sort_keys=True, separators=(",", ":")))
+    return 0 if result.get("ok", result.get("state") == "ready") else 1
+
+
+if __name__ == "__main__":
+    raise SystemExit(main())

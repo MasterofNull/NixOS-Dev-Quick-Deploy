@@ -39,6 +39,20 @@ variables:
     consumers: [autonomous-improvement, prsi-orchestrator]
     description: "Append-only validated aq.workflow-deviation.v1 receipt stream; raw prompts, secrets, and provider text are forbidden."
 
+  - canonical: AQ_WORKFLOW_DEVIATION_BROKER_SOCKET
+    aliases: []
+    default: "/run/aq-workflow-deviation-broker/control.sock"
+    layer: systemd
+    consumers: [workflow-deviation-broker, aq-workflow-deviation]
+    description: "Systemd-owned AF_UNIX endpoint for closed workflow-deviation receipt submission; clients never fall back to direct files."
+
+  - canonical: AQ_WORKFLOW_DEVIATION_BROKER_UID
+    aliases: []
+    default: ""
+    layer: systemd
+    consumers: [workflow-deviation-broker, aq-workflow-deviation]
+    description: "Numeric primary-user UID expected for the verified broker socket and SO_PEERCRED peer; transport admission only, never lane identity."
+
   - canonical: AQ_EXECUTION_CELL_RUNNER_ALLOW_SELF_BIND
     aliases: []
     default: "0"
