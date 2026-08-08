@@ -48,13 +48,53 @@ def _today() -> str:
     return datetime.date.today().isoformat()
 
 
-def _git_last_date(rel: str) -> str:
+_MASS_FILE_THRESHOLD = 200  # commits touching more than this are mass sweeps (e.g. the 48d92962/cb60ef07
+                            # concurrent-staging pollution that swept every .agents/plans/ dir) — they are
+                            # NOT real activity for a specific plan, so they must not set its last-activity.
+_MASS_COMMITS: set | None = None
+
+
+def _mass_commits() -> set:
+    """Recent commit hashes whose changeset exceeds the mass threshold — computed ONCE (one git pass),
+    then reused. Bounded to recent history (the pollution + all active-plan commits live there)."""
     try:
         out = subprocess.run(
-            ["git", "-C", str(REPO), "log", "-1", "--format=%cs", "--", rel],
+            ["git", "-C", str(REPO), "log", "-n", "500", "--format=__C__%H", "--name-only"],
+            capture_output=True, text=True, timeout=60,
+        ).stdout
+        mass, cur, cnt = set(), None, 0
+        for line in out.splitlines():
+            if line.startswith("__C__"):
+                if cur and cnt > _MASS_FILE_THRESHOLD:
+                    mass.add(cur)
+                cur, cnt = line[5:], 0
+            elif line.strip():
+                cnt += 1
+        if cur and cnt > _MASS_FILE_THRESHOLD:
+            mass.add(cur)
+        return mass
+    except Exception:
+        return set()
+
+
+def _git_last_date(rel: str) -> str:
+    """Last SUBSTANTIVE commit date touching `rel` — skipping mass/pollution sweeps so a plan's activity
+    reflects real work on it, not a 5693-file staging-race commit."""
+    global _MASS_COMMITS
+    if _MASS_COMMITS is None:
+        _MASS_COMMITS = _mass_commits()
+    try:
+        lines = subprocess.run(
+            ["git", "-C", str(REPO), "log", "-n", "25", "--format=%H:%cs", "--", rel],
             capture_output=True, text=True, timeout=20,
-        ).stdout.strip()
-        return out
+        ).stdout.strip().splitlines()
+        for line in lines:
+            h, _, ds = line.partition(":")
+            if h and h not in _MASS_COMMITS:
+                return ds
+        # every recent commit touching this plan was a mass sweep (only pollution touched it) -> its real
+        # activity is unknown/old: report unknown so it classifies as dormant, not falsely "active".
+        return ""
     except Exception:
         return ""
 
