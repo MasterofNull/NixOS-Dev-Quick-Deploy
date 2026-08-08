@@ -5,16 +5,23 @@ Feeds time-series data and trend analysis to the autonomous improvement system
 Uses local LLM for pattern recognition and anomaly detection
 """
 
+from __future__ import annotations
+
 import asyncio
 import json
+import os
 import sqlite3
 from dataclasses import dataclass
 from datetime import datetime, timedelta
 from pathlib import Path
 from typing import Any, Dict, List, Optional, Tuple
 
-import psycopg2
-from psycopg2.extras import execute_values
+try:
+    import psycopg2
+    from psycopg2.extras import execute_values
+except ModuleNotFoundError:  # Offline metric-source tests do not need PostgreSQL.
+    psycopg2 = None  # type: ignore[assignment]
+    execute_values = None  # type: ignore[assignment]
 
 
 @dataclass
@@ -55,6 +62,7 @@ class TrendDatabase:
         pg_user: str = "aidb",
         pg_database: str = "aidb",
         pg_password: Optional[str] = None,
+        routing_metrics_db: Optional[Path] = None,
     ):
         self.pg_host = pg_host
         self.pg_port = pg_port
@@ -65,11 +73,15 @@ class TrendDatabase:
 
         # Data source paths
         self.repo_root = Path(__file__).parent.parent.parent
-        self.routing_metrics_db = self.repo_root / "routing_metrics.db"
+        self.routing_metrics_db = Path(routing_metrics_db) if routing_metrics_db is not None else Path(
+            os.environ.get("AQ_ROUTING_METRICS_DB_PATH", self.repo_root / "routing_metrics.db")
+        )
         self.experiments_db = self.repo_root / "ai-stack/autoresearch/experiments.sqlite"
 
     def connect(self) -> psycopg2.extensions.connection:
         """Get or create PostgreSQL connection"""
+        if psycopg2 is None:
+            raise RuntimeError("postgres-driver-unavailable")
         if self._conn is None or self._conn.closed:
             self._conn = psycopg2.connect(
                 host=self.pg_host,
@@ -100,8 +112,58 @@ class TrendDatabase:
         snapshots = []
         since = datetime.now() - timedelta(hours=since_hours)
 
-        with sqlite3.connect(str(self.routing_metrics_db)) as conn:
+        with sqlite3.connect(f"file:{self.routing_metrics_db}?mode=ro", uri=True) as conn:
             cursor = conn.cursor()
+            tables = {
+                row[0]
+                for row in cursor.execute(
+                    "SELECT name FROM sqlite_master WHERE type='table'"
+                ).fetchall()
+            }
+
+            if "routing_decisions" in tables:
+                cursor.execute(
+                    """
+                    SELECT timestamp, tier, success, response_time_ms
+                    FROM routing_decisions
+                    WHERE timestamp >= ?
+                    ORDER BY timestamp
+                    """,
+                    (since.isoformat(),),
+                )
+                for timestamp, tier, success, latency_ms in cursor.fetchall():
+                    ts = datetime.fromisoformat(timestamp)
+                    snapshots.extend([
+                        MetricSnapshot(
+                            time=ts,
+                            metric_name="local_routing_pct",
+                            metric_value=1.0 if str(tier).lower() == "local" else 0.0,
+                            metric_unit="pct",
+                            service="hybrid-coordinator",
+                            component="routing",
+                        ),
+                        MetricSnapshot(
+                            time=ts,
+                            metric_name="routing_success_rate",
+                            metric_value=1.0 if bool(success) else 0.0,
+                            metric_unit="pct",
+                            service="hybrid-coordinator",
+                            component="routing",
+                        ),
+                    ])
+                    if latency_ms is not None:
+                        snapshots.append(MetricSnapshot(
+                            time=ts,
+                            metric_name="routing_latency_ms",
+                            metric_value=float(latency_ms),
+                            metric_unit="ms",
+                            service="hybrid-coordinator",
+                            component="routing",
+                        ))
+                return snapshots
+
+            if "routing_log" not in tables:
+                raise RuntimeError("routing-metrics-schema-unsupported")
 
             # Cache metrics
             cursor.execute("""

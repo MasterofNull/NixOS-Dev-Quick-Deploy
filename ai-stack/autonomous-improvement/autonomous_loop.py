@@ -9,19 +9,33 @@ This is the "brain" that makes the system continuously self-improving
 without human intervention.
 """
 
+from __future__ import annotations
+
 import asyncio
+import hashlib
 import json
 import os
 import sys
 import uuid
 from dataclasses import dataclass, asdict
-from datetime import datetime
+from datetime import datetime, timezone
 from pathlib import Path
 from typing import Any, Dict, List, Optional
 
-import psycopg2
-from psycopg2.extras import RealDictCursor
+try:
+    import psycopg2
+    from psycopg2.extras import RealDictCursor
+except ModuleNotFoundError:  # Offline contract tests do not open PostgreSQL.
+    psycopg2 = None  # type: ignore[assignment]
+    RealDictCursor = None  # type: ignore[assignment]
 
+_REPO_ROOT = Path(__file__).resolve().parents[2]
+_AI_LIB = _REPO_ROOT / "scripts" / "ai" / "lib"
+if str(_AI_LIB) not in sys.path:
+    sys.path.insert(0, str(_AI_LIB))
+
+from workflow_deviation import build as build_deviation
+from workflow_deviation_io import append_receipt
 from trend_database import TrendDatabase
 from trigger_engine import TriggerEngine, TriggerEvent
 from research_phase import ResearchPhase, OptimizationHypothesis
@@ -108,6 +122,8 @@ class AutonomousLoop:
 
     def get_connection(self) -> psycopg2.extensions.connection:
         """Get PostgreSQL connection"""
+        if psycopg2 is None:
+            raise RuntimeError("postgres-driver-unavailable")
         return psycopg2.connect(
             host=self.pg_host,
             port=self.pg_port,
@@ -225,7 +241,35 @@ class AutonomousLoop:
             print()
         except Exception as e:
             print(f"   ❌ Metric sync failed: {e}")
-            return None
+            evidence_digest = hashlib.sha256(str(e).encode("utf-8", errors="replace")).hexdigest()
+            record = build_deviation(
+                occurred_at=datetime.now(timezone.utc).isoformat().replace("+00:00", "Z"),
+                source={
+                    "lane": "local",
+                    "component": "ai-autonomous-improvement",
+                    "phase": "OBSERVE",
+                    "workflow_id": cycle_type,
+                },
+                reason_code="observation.failed",
+                summary="Autonomous improvement observation failed before trigger evaluation.",
+                root_issue_key="autonomous-improvement-metric-sync-false-green",
+                evidence=[{
+                    "kind": "log",
+                    "ref": "systemd:ai-autonomous-improvement.service",
+                    "digest": evidence_digest,
+                }],
+            )
+            receipt_path = Path(os.environ.get(
+                "AQ_WORKFLOW_DEVIATION_LOG_PATH",
+                "/var/lib/ai-stack/hybrid/telemetry/workflow-deviations.jsonl",
+            ))
+            try:
+                append_receipt(receipt_path, record)
+            except Exception as receipt_error:
+                raise RuntimeError(
+                    "metric-sync-failed-and-deviation-receipt-unavailable"
+                ) from receipt_error
+            raise RuntimeError("metric-sync-failed") from e
 
         # Phase 2: Check Triggers
         print("🎯 Phase 2: Checking trigger conditions...")

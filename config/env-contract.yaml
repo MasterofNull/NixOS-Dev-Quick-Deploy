@@ -25,6 +25,20 @@ _meta:
 
 variables:
 
+  - canonical: AQ_ROUTING_METRICS_DB_PATH
+    aliases: []
+    default: "routing_metrics.db"
+    layer: systemd
+    consumers: [autonomous-improvement]
+    description: "Canonical read-only SQLite routing metrics source consumed by the autonomous improvement observer."
+
+  - canonical: AQ_WORKFLOW_DEVIATION_LOG_PATH
+    aliases: []
+    default: "/var/lib/ai-stack/hybrid/telemetry/workflow-deviations.jsonl"
+    layer: systemd
+    consumers: [autonomous-improvement, prsi-orchestrator]
+    description: "Append-only validated aq.workflow-deviation.v1 receipt stream; raw prompts, secrets, and provider text are forbidden."
+
   - canonical: AQ_EXECUTION_CELL_RUNNER_ALLOW_SELF_BIND
     aliases: []
     default: "0"
