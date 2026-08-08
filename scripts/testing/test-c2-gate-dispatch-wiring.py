@@ -47,6 +47,8 @@ _LIB_DIR = str(_REPO_ROOT / "scripts" / "ai" / "lib")
 for _p in (_SWITCHBOARD_DIR, _LIB_DIR):
     if _p not in sys.path:
         sys.path.insert(0, _p)
+if os.environ.get("AQ_CANDIDATE_LIB_DIR"):
+    sys.path.insert(0, os.environ["AQ_CANDIDATE_LIB_DIR"])
 
 from cryptography.hazmat.primitives.asymmetric.ed25519 import Ed25519PrivateKey
 from cryptography.hazmat.primitives.serialization import Encoding, NoEncryption, PrivateFormat, PublicFormat
@@ -170,7 +172,7 @@ def _build_lease(*, lease_priv: bytes, lease_key_id: str, issued_at: datetime, e
         "cost_class": "first-party",
         "parent_lease_id": None,
         "revocation_epoch": 0,
-        "grant_digest": "digest-1",
+        "grant_digest": "a" * 64,
         "policy_revision": 1,
         "sig_scheme": cl.SIG_SCHEME_ED25519,
         "issuer_key_id": lease_key_id,
@@ -193,9 +195,9 @@ def _build_context(
     context = {
         "schema": schema,
         "schema_version": sci.CONTEXT_SCHEMA_VERSION,
-        "context_id": "sched-ctx::lease-1::digest-1",
+        "context_id": "sched-ctx::lease-1::" + ("a" * 64),
         "lease_id": "lease-1",
-        "grant_digest": "digest-1",
+        "grant_digest": "a" * 64,
         "task_id": "task-1",
         "audience": audience,
         "principal": "agent-1",

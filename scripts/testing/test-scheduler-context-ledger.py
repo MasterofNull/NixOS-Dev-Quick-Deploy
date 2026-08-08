@@ -36,6 +36,8 @@ from datetime import datetime, timedelta, timezone
 REPO_ROOT = os.path.dirname(os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 LIB_DIR = os.path.join(REPO_ROOT, "scripts", "ai", "lib")
 sys.path.insert(0, LIB_DIR)
+if os.environ.get("AQ_CANDIDATE_LIB_DIR"):
+    sys.path.insert(0, os.environ["AQ_CANDIDATE_LIB_DIR"])
 
 from cryptography.hazmat.primitives.asymmetric.ed25519 import Ed25519PrivateKey  # noqa: E402
 from cryptography.hazmat.primitives.serialization import (  # noqa: E402
@@ -271,7 +273,7 @@ def _build_lease(*, lease_priv: bytes, lease_key_id: str, issued_at: datetime, e
         "cost_class": "first-party",
         "parent_lease_id": None,
         "revocation_epoch": 0,
-        "grant_digest": "digest-e2e",
+        "grant_digest": "b" * 64,
         "policy_revision": 1,
         "sig_scheme": cl.SIG_SCHEME_ED25519,
         "issuer_key_id": lease_key_id,

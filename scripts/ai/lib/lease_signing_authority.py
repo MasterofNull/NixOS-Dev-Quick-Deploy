@@ -20,17 +20,20 @@ Default-OFF: nothing calls this unless `CAPABILITY_ASYMMETRIC_LEASE=1` AND the
 """
 from __future__ import annotations
 
+import hashlib
 import json
 import os
 import sys
+import unicodedata
 from datetime import datetime, timedelta, timezone
-from typing import Optional
+from typing import Any, Mapping, Optional
 
 _THIS_DIR = os.path.dirname(os.path.abspath(__file__))
 if _THIS_DIR not in sys.path:
     sys.path.insert(0, _THIS_DIR)
 
 import capability_lease as cl  # noqa: E402  (sibling in scripts/ai/lib; self-contained, no local deps)
+import revocation_epoch as re_lib  # noqa: E402
 
 # Must match capability_lease_gate.py's first-party constants EXACTLY (parity is
 # asserted in test-lease-signing-authority.py against the gate's own output).
@@ -44,29 +47,74 @@ _REPO_ROOT = os.path.dirname(os.path.dirname(os.path.dirname(_THIS_DIR)))  # scr
 DEFAULT_MANIFEST_PATH = os.environ.get("AQ_LEASE_SIGNING_MANIFEST_PATH", "").strip() or os.path.join(
     _REPO_ROOT, "config", "first-party-tools.json"
 )
-DEFAULT_EPOCH_PATH = os.environ.get("AQ_LEASE_SIGNING_EPOCH_PATH", "").strip() or os.path.join(
-    _REPO_ROOT, "config", "capability-lease-epoch"
-)
 
 SIGNER_KEY_PATH_ENV = "AQ_LEASE_SIGNING_KEY_PATH"
 SIGNER_KEY_ID_ENV = "AQ_LEASE_SIGNING_KEY_ID"
 
 DENY_UNKNOWN_TOOL = "unknown-tool"
 DENY_SIGNER_UNAVAILABLE = "signer-unavailable"
+DENY_MANIFEST_UNUSABLE = "manifest-unusable"
+DENY_EPOCH_AUTHORITY_UNAVAILABLE = "epoch-authority-unavailable"
+POLICY_DIGEST_DOMAIN = b"aq.first-party-policy-binding/1"
 
 
 def _iso(dt: datetime) -> str:
     return dt.strftime("%Y-%m-%dT%H:%M:%SZ")
 
 
+def _nfc(value: Any) -> Any:
+    if isinstance(value, str):
+        return unicodedata.normalize("NFC", value)
+    if isinstance(value, list):
+        return [_nfc(item) for item in value]
+    if isinstance(value, tuple):
+        return [_nfc(item) for item in value]
+    if isinstance(value, dict):
+        return {unicodedata.normalize("NFC", str(key)): _nfc(item) for key, item in value.items()}
+    return value
+
+
+def _canonical_policy_bytes(projection: Mapping[str, Any]) -> bytes:
+    """Exact policy-binding JSON: NFC, sorted, compact UTF-8 and no NaN."""
+    return json.dumps(
+        _nfc(dict(projection)), sort_keys=True, separators=(",", ":"), ensure_ascii=False, allow_nan=False
+    ).encode("utf-8")
+
+
+def _policy_projection(tool: str, lease: Mapping[str, Any], policy_revision: int) -> dict[str, Any]:
+    return {
+        "tool": tool,
+        "policy_revision": policy_revision,
+        "source": lease["source"],
+        "owner": lease["owner"],
+        "issued_to": lease["issued_to"],
+        "cost_class": lease["cost_class"],
+        "parent_lease_id": lease["parent_lease_id"],
+        "permissions": lease["permissions"],
+        "input_schema": lease["input_schema"],
+        "output_schema": lease["output_schema"],
+        "trust_tier": lease["trust_tier"],
+        "zero_trust_behavior": lease["zero_trust_behavior"],
+    }
+
+
+def policy_grant_digest(tool: str, lease: Mapping[str, Any], policy_revision: int) -> str:
+    """Domain-separated SHA-256 policy identity, excluding time/key/lease identity."""
+    if isinstance(policy_revision, bool) or not isinstance(policy_revision, int) or policy_revision < 1:
+        raise ValueError("policy_revision_invalid")
+    return hashlib.sha256(POLICY_DIGEST_DOMAIN + b"\x00" + _canonical_policy_bytes(
+        _policy_projection(tool, lease, policy_revision)
+    )).hexdigest()
+
+
 def _build_first_party_lease_unsigned(
-    tool: str, entry: dict, issued_at: str, expires_at: str, current_epoch: int, key_id: str
+    tool: str, entry: dict, issued_at: str, expires_at: str, current_epoch: int, key_id: str, policy_revision: int
 ) -> dict:
     """The exact first-party lease dict from
     `capability_lease_gate.issue_first_party_leases()` PLUS the two required signed
     ed25519 fields (`sig_scheme`, `issuer_key_id`). `signature` is empty; the caller signs."""
     actions = list(entry.get("actions") or [tool])
-    return {
+    lease = {
         "lease_id": f"first-party::{tool}::{issued_at}",
         "version": 1,
         "source": FIRST_PARTY_SOURCE,
@@ -98,6 +146,9 @@ def _build_first_party_lease_unsigned(
         "issuer_key_id": key_id,
         "signature": "",
     }
+    lease["policy_revision"] = policy_revision
+    lease["grant_digest"] = policy_grant_digest(tool, lease, policy_revision)
+    return lease
 
 
 def mint_first_party_leases(
@@ -105,19 +156,20 @@ def mint_first_party_leases(
     epoch: int,
     private_key_bytes: bytes,
     key_id: str,
+    policy_revision: int,
     now: Optional[datetime] = None,
 ) -> dict:
     """Mint the full first-party lease set from the MANIFEST (never a caller payload),
     Ed25519-signed. Authority-clock temporals. Returns `{tool: signed_lease}`. Pure core —
     the service wrapper supplies `private_key_bytes`/`key_id`/`epoch`; the gate supplies nothing."""
-    if not manifest:
+    if not manifest or isinstance(policy_revision, bool) or not isinstance(policy_revision, int) or policy_revision < 1:
         return {}
     moment = now or datetime.now(timezone.utc)
     issued_at = _iso(moment)
     expires_at = _iso(moment + FIRST_PARTY_LEASE_TTL)
     leases: dict[str, dict] = {}
     for tool, entry in manifest.items():
-        lease = _build_first_party_lease_unsigned(tool, entry, issued_at, expires_at, epoch, key_id)
+        lease = _build_first_party_lease_unsigned(tool, entry, issued_at, expires_at, epoch, key_id, policy_revision)
         lease["signature"] = cl.sign_ed25519(lease, private_key_bytes)
         leases[tool] = lease
     return leases
@@ -149,22 +201,11 @@ def _read_private_key() -> Optional[bytes]:
 # authority reads the manifest + epoch itself), mints, and returns the signed lease set. It is
 # not exercised while default-OFF; the tested contract is mint_first_party_leases() above.
 def _resolve_epoch() -> int:
-    """Authority-resolved revocation epoch: `AQ_LEASE_POLICY_EPOCH` env, else the epoch file,
-    else 0 (floor). Read directly (same source as the gate's resolve_current_epoch) — never widens."""
-    val = os.environ.get("AQ_LEASE_POLICY_EPOCH", "").strip()
-    if val:
-        try:
-            return max(0, int(val))
-        except ValueError:
-            return 0
-    try:
-        with open(DEFAULT_EPOCH_PATH, "r", encoding="utf-8") as fh:
-            return max(0, int(fh.read().strip()))
-    except (OSError, ValueError):
-        return 0
+    """Resolve only through the confined epoch authority; callers must deny on failure."""
+    return re_lib.resolve_current_epoch()
 
 
-def _load_manifest() -> dict:
+def _load_manifest() -> tuple[Optional[dict], Optional[int]]:
     """Read the first-party tool manifest directly, mirroring the gate's `_load_manifest`
     transform: the file is `{..., "tools": [ {"tool": ..., ...}, ... ]}` and this returns
     `{tool: entry}`. Fail-CLOSED to {} on missing/bad JSON, a non-list `tools`, a non-dict or
@@ -173,19 +214,22 @@ def _load_manifest() -> dict:
         with open(DEFAULT_MANIFEST_PATH, "r", encoding="utf-8") as fh:
             raw = json.load(fh)
     except (OSError, ValueError):
-        return {}
+        return None, None
+    revision = raw.get("version") if isinstance(raw, dict) else None
+    if isinstance(revision, bool) or not isinstance(revision, int) or revision < 1:
+        return None, None
     entries = raw.get("tools") if isinstance(raw, dict) else None
     if not isinstance(entries, list):
-        return {}
+        return None, None
     out: dict[str, dict] = {}
     for entry in entries:
         if not isinstance(entry, dict):
-            return {}
+            return None, None
         tool = entry.get("tool")
         if not isinstance(tool, str) or not tool or tool in out:
-            return {}
+            return None, None
         out[tool] = entry
-    return out
+    return out, revision
 
 
 def serve_once_stub() -> str:
@@ -202,7 +246,14 @@ def handle_request(request_bytes: bytes) -> dict:
     if key is None:
         return {"error": DENY_SIGNER_UNAVAILABLE}
     key_id = os.environ.get(SIGNER_KEY_ID_ENV, "lease-signer").strip() or "lease-signer"
-    leases = mint_first_party_leases(_load_manifest(), _resolve_epoch(), key, key_id)
+    manifest, revision = _load_manifest()
+    if manifest is None or revision is None:
+        return {"error": DENY_MANIFEST_UNUSABLE}
+    try:
+        epoch = _resolve_epoch()
+    except re_lib.EpochAuthorityError:
+        return {"error": DENY_EPOCH_AUTHORITY_UNAVAILABLE}
+    leases = mint_first_party_leases(manifest, epoch, key, key_id, revision)
     return {"leases": leases}
 
 

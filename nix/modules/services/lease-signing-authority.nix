@@ -25,13 +25,13 @@ with lib; let
 
   authPython = pkgs.python3.withPackages (ps: with ps; [cryptography]);
 
-  # Minimal self-contained bundle: lease_signing_authority imports ONLY capability_lease (which
-  # has no local deps — stdlib + cryptography), so the confined service needs no /home access for
-  # code. (Manifest + epoch are read from config paths via ReadOnlyPaths below.)
+  # The authority resolves live epoch only through the confined read-only UDS client.
   authBundle = pkgs.runCommand "aq-lease-signing-authority-bundle" {} ''
     mkdir -p $out
     cp ${../../../scripts/ai/lib/lease_signing_authority.py} $out/lease_signing_authority.py
     cp ${../../../scripts/ai/lib/capability_lease.py} $out/capability_lease.py
+    cp ${../../../scripts/ai/lib/revocation_epoch.py} $out/revocation_epoch.py
+    cp ${../../../scripts/ai/lib/revocation_epoch_transport.py} $out/revocation_epoch_transport.py
   '';
 in {
   options.mySystem.aiStack.leaseSigningAuthority = {
@@ -60,6 +60,11 @@ in {
       default = "lease-signer-2026-08";
       description = "key_id stamped into minted leases; MUST match an active entry in config/aqos/lease-signer-keys.json.";
     };
+    epochAuthoritySocketPath = mkOption {
+      type = types.str;
+      default = "/run/aq-revocation-epoch-authority/control.sock";
+      description = "Read-only UDS of the sole revocation epoch authority; unavailable denies minting.";
+    };
   };
 
   config = mkIf cfg.enable {
@@ -68,7 +73,7 @@ in {
       group = "aq-lease-signing-authority";
       # Member of the client group so serve() can chgrp the socket to it (chown to a group requires
       # membership). This grants NO key access — the Ed25519 private key is 0400 user-only.
-      extraGroups = ["aq-lease-signing-clients"];
+      extraGroups = ["aq-lease-signing-clients" "aq-revocation-epoch-clients"];
       description = "Foundation C ALA confined lease signing authority";
     };
     users.groups.aq-lease-signing-authority = {};
@@ -76,6 +81,7 @@ in {
     # never trusts caller input, so a peer obtains only the manifest lease set). Mirrors the
     # execution-cell-runner's aq-execution-cell-clients pattern.
     users.groups.aq-lease-signing-clients = {};
+    users.groups.aq-revocation-epoch-clients = {};
     users.users.${primaryUser}.extraGroups = mkAfter ["aq-lease-signing-clients"];
 
     systemd.tmpfiles.rules = [
@@ -103,7 +109,7 @@ in {
           "AQ_LEASE_SIGNING_KEY_PATH=${cfg.keyPath}"
           "AQ_LEASE_SIGNING_KEY_ID=${cfg.keyId}"
           "AQ_LEASE_SIGNING_MANIFEST_PATH=${repoPath}/config/first-party-tools.json"
-          "AQ_LEASE_SIGNING_EPOCH_PATH=${repoPath}/config/capability-lease-epoch"
+          "AQ_REVOCATION_EPOCH_SOCKET_PATH=${cfg.epochAuthoritySocketPath}"
         ];
         Restart = "on-failure";
         RestartSec = "5s";
@@ -119,7 +125,7 @@ in {
         RestrictAddressFamilies = ["AF_UNIX"];
         # read-only exposure of just the two config inputs (ProtectHome=read-only already permits;
         # named explicitly so intent is auditable) and the SOPS key dir.
-        ReadOnlyPaths = ["${repoPath}/config/first-party-tools.json" "${repoPath}/config/capability-lease-epoch"];
+        ReadOnlyPaths = ["${repoPath}/config/first-party-tools.json"];
       };
     };
   };

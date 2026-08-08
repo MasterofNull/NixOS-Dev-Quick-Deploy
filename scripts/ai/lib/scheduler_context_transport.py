@@ -235,15 +235,10 @@ def _load_json_file(path: str) -> Any:
         return None
 
 
-def _resolve_epoch(path: str) -> int:
-    """Same convention as `lease_signing_authority._resolve_epoch`: the
-    `AQ_SCHEDULER_CONTEXT_EPOCH_PATH` file, else 0 (floor). Read fresh per request so an epoch
-    bump takes effect without a service restart — never a caller-supplied epoch."""
-    try:
-        with open(path, "r", encoding="utf-8") as fh:
-            return max(0, int(fh.read().strip()))
-    except (OSError, ValueError):
-        return 0
+def _resolve_epoch(socket_path: str) -> int:
+    """Resolve only through the read-only epoch authority; no file/zero fallback exists."""
+    import revocation_epoch as re_lib
+    return re_lib.resolve_current_epoch(socket_path)
 
 
 def build_env_handler() -> Callable[[dict[str, Any], Optional[tuple[int, int, int]]], dict[str, Any]]:
@@ -263,7 +258,7 @@ def build_env_handler() -> Callable[[dict[str, Any], Optional[tuple[int, int, in
     key_path = os.environ.get("AQ_SCHEDULER_CONTEXT_KEY_PATH", "").strip()
     key_id = os.environ.get("AQ_SCHEDULER_CONTEXT_KEY_ID", "").strip()
     lease_keys_path = os.environ.get("AQ_SCHEDULER_CONTEXT_LEASE_KEYS_PATH", "").strip()
-    epoch_path = os.environ.get("AQ_SCHEDULER_CONTEXT_EPOCH_PATH", "").strip()
+    epoch_socket_path = os.environ.get("AQ_REVOCATION_EPOCH_SOCKET_PATH", "").strip()
     ledger_dir = os.environ.get("AQ_SCHEDULER_CONTEXT_LEDGER_DIR", "").strip()
     try:
         ttl_cap = int(os.environ.get("AQ_SCHEDULER_CONTEXT_TTL_CAP_SECONDS", "900"))
@@ -287,7 +282,15 @@ def build_env_handler() -> Callable[[dict[str, Any], Optional[tuple[int, int, in
                 "context": None,
             }
         private_key_bytes = _read_private_key(key_path)
-        current_epoch = _resolve_epoch(epoch_path)
+        try:
+            current_epoch = _resolve_epoch(epoch_socket_path)
+        except Exception as exc:  # typed authority failures never become epoch 0
+            return {
+                "ok": False,
+                "reason": "epoch-authority-unavailable",
+                "detail": exc.__class__.__name__,
+                "context": None,
+            }
         return sci.mint_scheduler_context(
             lease,
             lease_keys_json,

@@ -55,6 +55,7 @@ from __future__ import annotations
 import hashlib
 import json
 import os
+import re
 import sys
 from dataclasses import dataclass
 from datetime import datetime, timedelta, timezone
@@ -88,7 +89,7 @@ MINT_OK = "ok"
 
 DENY_LEASE_UNVERIFIED = "lease-unverified"
 DENY_LEASE_EXPIRED = "lease-expired"
-DENY_LEASE_EPOCH_STALE = "lease-epoch-stale"
+DENY_LEASE_EPOCH_MISMATCH = "lease-epoch-mismatch"
 DENY_LEASE_FIELDS_MALFORMED = "lease-fields-malformed"
 DENY_CORRELATION_MALFORMED = "correlation-malformed"
 DENY_REPLAY = "replay-lease-already-consumed"
@@ -301,7 +302,7 @@ def _extract_admission_fields(lease_data: Mapping[str, Any]) -> Optional[dict[st
         return None
 
     grant_digest = lease_data.get("grant_digest")
-    if not isinstance(grant_digest, str) or not grant_digest:
+    if not isinstance(grant_digest, str) or not re.fullmatch(r"[0-9a-f]{64}", grant_digest):
         return None
 
     trust_tier = lease_data.get("trust_tier")
@@ -309,7 +310,7 @@ def _extract_admission_fields(lease_data: Mapping[str, Any]) -> Optional[dict[st
         return None
 
     policy_revision = lease_data.get("policy_revision")
-    if not isinstance(policy_revision, int) or isinstance(policy_revision, bool):
+    if not isinstance(policy_revision, int) or isinstance(policy_revision, bool) or policy_revision < 1:
         return None
 
     action_class = _derive_action_class(lease_data)
@@ -373,11 +374,16 @@ def mint_scheduler_context(
             return _deny(DENY_LEASE_FIELDS_MALFORMED, "presented_lease not a mapping")
 
         # 2) OBLIG-1 — authentically signed != currently valid. Independently
-        #    reject expired or epoch-stale leases (design §3 mandate 2).
+        #    reject expired or any epoch mismatch (past OR future).
         if cl.is_expired(lease_data, now=now):
             return _deny(DENY_LEASE_EXPIRED)
-        if cl.epoch_stale(lease_data, current_epoch):
-            return _deny(DENY_LEASE_EPOCH_STALE)
+        lease_epoch = lease_data.get("revocation_epoch")
+        if isinstance(current_epoch, bool) or not isinstance(current_epoch, int) or current_epoch < 0:
+            return _deny(DENY_LEASE_FIELDS_MALFORMED, "current_epoch invalid")
+        if isinstance(lease_epoch, bool) or not isinstance(lease_epoch, int) or lease_epoch < 0:
+            return _deny(DENY_LEASE_FIELDS_MALFORMED, "lease epoch invalid")
+        if lease_epoch != current_epoch:
+            return _deny(DENY_LEASE_EPOCH_MISMATCH)
 
         # 3) Re-derive the admission tuple from the lease's OWN signed
         #    fields only — never from caller input.
