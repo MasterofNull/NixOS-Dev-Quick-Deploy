@@ -209,3 +209,12 @@ sig_scheme=hmac-sha256 + forges with the dev key -> bypasses Ed25519). Confirm f
 
 ## [2026-08-07T21:46:30-07:00] C2-SCI confirmatory reviews (lane session-limited to 7:50pm PT / Codex Aug 8)
 - Independent code review QUEUED for: `0bd67174` (B2.5 durable ledger), `ad5d95dd` (B3 gate/dispatch), `2c36e7d3` (B4 coverage). All orchestrator-verified + default-OFF; advisory unless a real defect surfaces (then bounded follow-up, never rewrite history). B1/B2 already independent-review PASS.
+
+## [2026-08-08] Codex lane RETURNED — batched confirmatory audit DISPATCHED
+Task: codex-20260808-112547-06dnqgxxxxxx (edit-mode, read-only; writes only the verdict doc).
+Covers the full queued set: ALA (signing-oracle + scheme-downgrade + OBLIG-1), C2-SCI B2.5/B3/B4
+(0bd67174/ad5d95dd/2c36e7d3 — lease-replay, durable-ledger race, flag-OFF parity), C6-P0 rev3 +
+issuer rev2 (d8702e4c — honest narrowing + peer-uid HIGH fix), C6 rev3/B1/B2 (read_epoch never-0 +
+apply_bump race). Advisory unless a real defect surfaces -> bounded follow-up. Verdict ->
+.agents/plans/aqos-foundation-c/CATCHUP-CODEX-CONFIRMATORY-AUDIT-20260808.md. Runs concurrent with the
+C6-B3 amended build (codex-20260808-111113).
