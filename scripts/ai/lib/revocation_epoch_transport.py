@@ -2,7 +2,8 @@
 C6-B2 (self-contained, INERT; mirrors `scheduler_context_transport.py` / `lease_signing_authority.py`).
 
 Carries the owner-CLI (`aq-epoch-bump`, C6-B1) <-> authority request/response for
-`revocation_epoch.apply_bump()`. This module is transport-only: it authenticates nothing on its
+`revocation_epoch.apply_bump()` and the read-only current-epoch request used by the C6-B3
+scheduler fence. This module is transport-only: it authenticates nothing on its
 own authority. Per the design (`C6-DESIGN-AND-AUTHORIZATION.md` §2.1), the control UDS is mode
 0660, group-restricted, and additionally validates `SO_PEERCRED` — but transport membership
 (socket group membership, the connecting peer's uid/gid) is READ AND LOGGED as defense-in-depth
@@ -49,6 +50,7 @@ DENY_CONNECT_FAILED = "connect-failed"
 DENY_MALFORMED_BUMP = "request-malformed-bump"
 DENY_OWNER_KEYS_UNAVAILABLE = "owner-keys-unavailable"
 DENY_LEDGER_INIT_FAILED = "ledger-init-failed"
+DENY_MALFORMED_READ = "request-malformed-read"
 
 _UCRED_FMT = "3i"  # struct ucred { pid_t pid; uid_t uid; gid_t gid; }
 
@@ -260,9 +262,11 @@ def build_env_handler() -> Callable[[dict[str, Any], Optional[tuple[int, int, in
     downgrading to an in-process ledger that forgets consumed requests on
     restart (that would be a fail-open replay surface on a fleet kill-switch).
 
-    The request must present exactly `{"bump": {...}}`; the handler never
-    trusts any other top-level field (mirrors `mint_scheduler_context`'s own
-    re-derivation discipline in the C2-SCI transport)."""
+    A read request must be exactly `{"op": "read-epoch"}` and returns only
+    the current non-secret integer. It performs no signature or ledger operation.
+    The existing bump request remains exactly `{"bump": {...}}`; the handler
+    never trusts any other top-level field (mirrors `mint_scheduler_context`'s
+    own re-derivation discipline in the C2-SCI transport)."""
     import revocation_epoch as re_lib  # noqa: E402  (lazy; sibling in scripts/ai/lib)
 
     owner_keys_path = os.environ.get("AQ_REVOCATION_EPOCH_OWNER_KEYS_PATH", "").strip()
@@ -276,6 +280,13 @@ def build_env_handler() -> Callable[[dict[str, Any], Optional[tuple[int, int, in
     ledger = re_lib.DurableReplayLedger(ledger_dir)
 
     def handler(request: dict[str, Any], _peer_creds: Optional[tuple[int, int, int]]) -> dict[str, Any]:
+        if request.get("op") == "read-epoch":
+            if request != {"op": "read-epoch"}:
+                return _deny(DENY_MALFORMED_READ)
+            try:
+                return {"ok": True, "epoch": re_lib.read_epoch(epoch_path)}
+            except re_lib.EpochStoreError as exc:
+                return _deny(exc.reason, exc.detail)
         bump_doc = request.get("bump")
         if not isinstance(bump_doc, dict):
             return _deny(DENY_MALFORMED_BUMP)

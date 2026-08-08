@@ -65,10 +65,28 @@ _POLL_INTERVAL_S = 3.0
 # of the poll interval before reap so a live process mid-request isn't reaped
 # during its own inference (pid check is authoritative; this is belt+braces).
 _STATE_FILENAME = "scheduler-state.json"
+_LEASE_RESERVATION_DIRNAME = "scheduler-lease-reservations"
+
+DENY_SCHEDULER_CONTEXT = "scheduler-context-denied"
+DENY_EPOCH_AUTHORITY = "epoch-authority-unavailable"
+DENY_RESERVATION_REPLAY = "scheduler-context-replay"
+DENY_RESERVATION_LEDGER = "scheduler-reservation-ledger-unavailable"
+DENY_RESERVATION_REVOKED = "revoked-before-execution"
+
+_ACTIVE_RESERVATIONS: dict[str, tuple[Path, dict]] = {}
 
 
 class SlotQueueTimeout(SlotWaitTimeout):
     """Deadline expired while queued for the banded local slot."""
+
+
+class SlotQueueLeaseDenied(Exception):
+    """Stable typed denial from the flag-gated C6 scheduler lease fence."""
+
+    def __init__(self, reason: str, detail: str = "") -> None:
+        super().__init__(f"{reason}: {detail}" if detail else reason)
+        self.reason = reason
+        self.detail = detail
 
 
 @dataclass
@@ -86,6 +104,10 @@ def band_from_env(default: str = "consensus") -> Band:
 
 def enabled() -> bool:
     return os.environ.get("SLOT_QUEUE", "1") != "0"
+
+
+def _lease_gate_enabled() -> bool:
+    return os.environ.get("CAPABILITY_SCHEDULER_LEASE_GATE", "0") == "1"
 
 
 def _state_path(repo_root: Path) -> Path:
@@ -161,12 +183,29 @@ def acquire(
     task_class: str | None = None,
     expected_infer_s: float = 0.0,
     on_wait=None,
+    scheduler_context=None,
+    signer_keys_json=None,
+    now=None,
 ) -> AcquireResult:
     """Queue with banded priority, then claim the free llama.cpp slot.
 
     on_wait: optional callback(signal, waited_s, queue_depth) invoked each
     poll so callers can surface typed queue state in progress sidecars.
     """
+    if _lease_gate_enabled():
+        return _acquire_with_lease_gate(
+            repo_root,
+            run_id,
+            llama_url,
+            timeout_secs,
+            band=band,
+            task_class=task_class,
+            expected_infer_s=expected_infer_s,
+            on_wait=on_wait,
+            scheduler_context=scheduler_context,
+            signer_keys_json=signer_keys_json,
+            now=now,
+        )
     _band = band or band_from_env()
     # Tier route is telemetry today (single local model); recorded on the job
     # via task_class so the state file shows what class holds/waits the slot.
@@ -219,6 +258,217 @@ def release(repo_root: Path, run_id: str) -> None:
     with _LockedState(repo_root) as state:
         if state.running is not None and state.running.id == mine:
             _save_under_current_lock(repo_root, state.model_copy(update={"running": None}))
+    if _lease_gate_enabled():
+        active = _ACTIVE_RESERVATIONS.pop(mine, None)
+        if active is not None:
+            _set_reservation_state(active[0], active[1], "released")
+
+
+def _verify_scheduler_reservation(candidate, signer_keys_json, now=None) -> tuple[dict, int]:
+    """Resolve the authority epoch first, then invoke the existing ingress verifier."""
+    try:
+        import revocation_epoch
+
+        current_epoch = revocation_epoch.resolve_current_epoch()
+    except Exception as exc:  # noqa: BLE001 — every authority failure is a typed deny
+        reason = getattr(exc, "reason", DENY_EPOCH_AUTHORITY)
+        raise SlotQueueLeaseDenied(DENY_EPOCH_AUTHORITY, str(reason)) from exc
+
+    try:
+        import dispatch
+
+        verdict = dispatch.verify_ingress_scheduler_context(
+            candidate,
+            signer_keys_json=signer_keys_json,
+            current_epoch=current_epoch,
+            now=now,
+        )
+    except Exception as exc:  # noqa: BLE001 — verifier/import failure denies
+        raise SlotQueueLeaseDenied(DENY_SCHEDULER_CONTEXT, exc.__class__.__name__) from exc
+    if not isinstance(verdict, dict) or verdict.get("ok") is not True:
+        reason = verdict.get("reason") if isinstance(verdict, dict) else "malformed-verdict"
+        raise SlotQueueLeaseDenied(DENY_SCHEDULER_CONTEXT, str(reason))
+
+    verified = verdict.get("context")
+    if not isinstance(verified, dict):
+        raise SlotQueueLeaseDenied(DENY_SCHEDULER_CONTEXT, "missing-verified-context")
+    stamped_epoch = verified.get("revocation_epoch")
+    if isinstance(stamped_epoch, bool) or not isinstance(stamped_epoch, int):
+        raise SlotQueueLeaseDenied(DENY_SCHEDULER_CONTEXT, "malformed-revocation-epoch")
+    if stamped_epoch != current_epoch:
+        raise SlotQueueLeaseDenied(DENY_SCHEDULER_CONTEXT, "context-epoch-mismatch")
+    return dict(verified), current_epoch
+
+
+def _reservation_digest(context: dict) -> str:
+    import hashlib
+
+    payload = json.dumps(context, sort_keys=True, separators=(",", ":"), ensure_ascii=False).encode("utf-8")
+    return hashlib.sha256(payload).hexdigest()
+
+
+def _reservation_dir(repo_root: Path) -> Path:
+    path = repo_root / ".agents" / "delegation" / _LEASE_RESERVATION_DIRNAME
+    path.mkdir(mode=0o700, parents=True, exist_ok=True)
+    return path
+
+
+def _record_reservation(repo_root: Path, context: dict) -> tuple[Path, dict]:
+    import hashlib
+
+    context_digest = _reservation_digest(context)
+    lease_id = context.get("lease_id")
+    if not isinstance(lease_id, str) or not lease_id:
+        raise SlotQueueLeaseDenied(DENY_SCHEDULER_CONTEXT, "missing-lease-id")
+    record = {
+        "context_digest": context_digest,
+        "lease_id_digest": hashlib.sha256(lease_id.encode("utf-8")).hexdigest(),
+        "revocation_epoch": context["revocation_epoch"],
+        "reservation_state": "queued",
+        "receipt_id": context_digest[:32],
+    }
+    directory = _reservation_dir(repo_root)
+    path = directory / f"{context_digest}.json"
+    flags = os.O_WRONLY | os.O_CREAT | os.O_EXCL | getattr(os, "O_NOFOLLOW", 0)
+    try:
+        fd = os.open(path, flags, 0o600)
+    except FileExistsError as exc:
+        raise SlotQueueLeaseDenied(DENY_RESERVATION_REPLAY) from exc
+    except OSError as exc:
+        raise SlotQueueLeaseDenied(DENY_RESERVATION_LEDGER, exc.__class__.__name__) from exc
+    try:
+        os.write(fd, (json.dumps(record, sort_keys=True, separators=(",", ":")) + "\n").encode("utf-8"))
+        os.fsync(fd)
+    except OSError as exc:
+        raise SlotQueueLeaseDenied(DENY_RESERVATION_LEDGER, exc.__class__.__name__) from exc
+    finally:
+        os.close(fd)
+    dir_fd = os.open(directory, os.O_DIRECTORY | os.O_CLOEXEC)
+    try:
+        os.fsync(dir_fd)
+    finally:
+        os.close(dir_fd)
+    return path, record
+
+
+def _set_reservation_state(path: Path, record: dict, state: str) -> None:
+    import tempfile
+
+    updated = dict(record)
+    updated["reservation_state"] = state
+    fd, tmp_path = tempfile.mkstemp(dir=str(path.parent), prefix=f".{path.name}.", suffix=".tmp")
+    try:
+        os.fchmod(fd, 0o600)
+        os.write(fd, (json.dumps(updated, sort_keys=True, separators=(",", ":")) + "\n").encode("utf-8"))
+        os.fsync(fd)
+    finally:
+        os.close(fd)
+    os.replace(tmp_path, path)
+    dir_fd = os.open(path.parent, os.O_DIRECTORY | os.O_CLOEXEC)
+    try:
+        os.fsync(dir_fd)
+    finally:
+        os.close(dir_fd)
+    record.clear()
+    record.update(updated)
+
+
+def _drop_reservation(repo_root: Path, job_id: str, path: Path, record: dict, state: str) -> None:
+    with _LockedState(repo_root) as scheduler_state:
+        queue = [queued for queued in scheduler_state.queue if queued.id != job_id]
+        running = scheduler_state.running
+        if running is not None and running.id == job_id:
+            running = None
+        if len(queue) != len(scheduler_state.queue) or running is not scheduler_state.running:
+            _save_under_current_lock(
+                repo_root,
+                scheduler_state.model_copy(update={"queue": queue, "running": running}),
+            )
+    _set_reservation_state(path, record, state)
+    _ACTIVE_RESERVATIONS.pop(job_id, None)
+
+
+def _acquire_with_lease_gate(
+    repo_root: Path,
+    run_id: str,
+    llama_url: str,
+    timeout_secs: int,
+    *,
+    band: Band | None,
+    task_class: str | None,
+    expected_infer_s: float,
+    on_wait,
+    scheduler_context,
+    signer_keys_json,
+    now,
+) -> AcquireResult:
+    verified_context, _ = _verify_scheduler_reservation(scheduler_context, signer_keys_json, now=now)
+    _band = band or band_from_env()
+    if task_class is not None:
+        route(task_class)
+    job = Job(id=f"{os.getpid()}:{run_id}", band=_band, enqueued_at=time.time(), task_class=task_class)
+    reservation_path, reservation = _record_reservation(repo_root, verified_context)
+    _ACTIVE_RESERVATIONS[job.id] = (reservation_path, reservation)
+
+    with _LockedState(repo_root) as state:
+        _save_under_current_lock(repo_root, state.model_copy(update={"queue": [*state.queue, job]}))
+
+    deadline = time.monotonic() + timeout_secs
+    started = time.monotonic()
+    while True:
+        try:
+            _verify_scheduler_reservation(verified_context, signer_keys_json, now=now)
+        except SlotQueueLeaseDenied as exc:
+            drop_state = (
+                DENY_RESERVATION_REVOKED
+                if "epoch" in exc.detail
+                else "denied-before-execution"
+            )
+            _drop_reservation(repo_root, job.id, reservation_path, reservation, drop_state)
+            raise
+
+        remaining = deadline - time.monotonic()
+        waited = time.monotonic() - started
+        signal = assess(waited, expected_infer_s, remaining)
+        if signal is Signal.REJECT or remaining <= 0:
+            _drop_reservation(repo_root, job.id, reservation_path, reservation, "timed-out")
+            raise SlotQueueTimeout(
+                f"banded slot queue deadline after {int(waited)}s (band={_band}, signal={signal})"
+            )
+
+        claimed = False
+        with _LockedState(repo_root) as state:
+            depth = len(state.queue)
+            current_time = time.time()
+            selected, popped = next_job(state, current_time)
+            head_of_line = selected is not None and selected.id == job.id and state.running is None
+            if head_of_line and _slot_free(llama_url):
+                _save_under_current_lock(repo_root, popped)
+                _set_reservation_state(reservation_path, reservation, "held")
+                claimed = True
+            else:
+                _save_under_current_lock(repo_root, age(state, current_time))
+
+        if claimed:
+            try:
+                _verify_scheduler_reservation(verified_context, signer_keys_json, now=now)
+            except SlotQueueLeaseDenied:
+                _drop_reservation(
+                    repo_root,
+                    job.id,
+                    reservation_path,
+                    reservation,
+                    DENY_RESERVATION_REVOKED,
+                )
+                raise
+            return AcquireResult(signal=signal, queue_wait_s=waited, band=_band, queue_depth=depth)
+
+        if on_wait is not None:
+            try:
+                on_wait(signal, waited, depth)
+            except Exception:
+                pass
+        time.sleep(_POLL_INTERVAL_S)
 
 
 def _remove(repo_root: Path, job_id: str) -> None:

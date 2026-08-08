@@ -130,6 +130,9 @@ EPOCH_ERR_MALFORMED = "epoch-store-malformed"
 EPOCH_ERR_SYMLINK = "epoch-store-symlink"
 EPOCH_ERR_NOT_REGULAR = "epoch-store-not-regular"
 EPOCH_ERR_IO = "epoch-store-io-error"
+EPOCH_AUTHORITY_ERR_SOCKET_UNSET = "epoch-authority-socket-unset"
+EPOCH_AUTHORITY_ERR_MALFORMED_RESPONSE = "epoch-authority-malformed-response"
+EPOCH_AUTHORITY_ERR_DENIED = "epoch-authority-denied"
 
 _STRICT_NONNEG_INT_RE = re.compile(r"^(0|[1-9][0-9]*)$")
 _MAX_EPOCH_FILE_BYTES = 65536
@@ -145,6 +148,59 @@ class EpochStoreError(Exception):
         super().__init__(f"{reason}: {detail}" if detail else reason)
         self.reason = reason
         self.detail = detail
+
+
+class EpochAuthorityError(Exception):
+    """Typed, fail-closed UDS epoch-resolution failure.
+
+    Unlike the legacy policy-epoch resolver, this error has no sentinel return,
+    environment epoch, or file fallback. Callers must convert it to a denial.
+    """
+
+    def __init__(self, reason: str, detail: str = "") -> None:
+        super().__init__(f"{reason}: {detail}" if detail else reason)
+        self.reason = reason
+        self.detail = detail
+
+
+def resolve_current_epoch(socket_path: Any = None, timeout: float = 5.0) -> int:
+    """Read the authoritative current epoch over the confined local UDS.
+
+    `AQ_REVOCATION_EPOCH_SOCKET_PATH` supplies the socket path when an explicit
+    path is not injected by a hermetic test. An absent/unreachable authority or
+    any non-exact response raises `EpochAuthorityError`; this function never
+    substitutes an environment epoch, reads the authority file, or returns a
+    failure sentinel such as zero.
+    """
+    candidate = socket_path
+    if candidate is None:
+        candidate = os.environ.get("AQ_REVOCATION_EPOCH_SOCKET_PATH", "")
+    try:
+        resolved_path = os.fspath(candidate).strip()
+    except (TypeError, ValueError, AttributeError) as exc:
+        raise EpochAuthorityError(EPOCH_AUTHORITY_ERR_SOCKET_UNSET, exc.__class__.__name__) from exc
+    if not resolved_path:
+        raise EpochAuthorityError(EPOCH_AUTHORITY_ERR_SOCKET_UNSET)
+
+    try:
+        import revocation_epoch_transport as transport
+    except Exception as exc:  # noqa: BLE001 — import failure is authority unavailable, never a fallback
+        raise EpochAuthorityError(EPOCH_AUTHORITY_ERR_DENIED, exc.__class__.__name__) from exc
+
+    response = transport.send_request(resolved_path, {"op": "read-epoch"}, timeout=timeout)
+    if not isinstance(response, dict):
+        raise EpochAuthorityError(EPOCH_AUTHORITY_ERR_MALFORMED_RESPONSE)
+    if response.get("ok") is not True:
+        reason = response.get("reason")
+        detail = response.get("detail")
+        raise EpochAuthorityError(
+            reason if isinstance(reason, str) and reason else EPOCH_AUTHORITY_ERR_DENIED,
+            detail if isinstance(detail, str) else "",
+        )
+    epoch = response.get("epoch")
+    if set(response) != {"ok", "epoch"} or isinstance(epoch, bool) or not isinstance(epoch, int) or epoch < 0:
+        raise EpochAuthorityError(EPOCH_AUTHORITY_ERR_MALFORMED_RESPONSE)
+    return epoch
 
 
 def read_epoch(epoch_path: Any) -> int:

@@ -460,3 +460,51 @@ Antigravity ran async (untrusted-advisory, no gating verdict); codex confirmator
 
 ## ALA Phase 2 flip (enforce-asymmetric-verify) — 2026-08-07T11:28:11-07:00
 CAPABILITY_ASYMMETRIC_LEASE=1 LIVE (86ec204e, owner-rebuilt). 5/5 Rule-15 dims GREEN: integrated (switchboard issue + enforce verify), ON (env confirmed, proc in gid 972), real-world (switchboard issued 25/25 ed25519 + verify-accepted, N3 25/25 admit), observable (dashboard asymmetric_lease=on/ok), intervenable (revert=2 env lines). Private key 0400 in confined authority. ALA activation COMPLETE.
+
+## C2 scheduler-context issuer — B2 confined service (2026-08-07) — WRITTEN DEFERRAL (Rule 15)
+
+**Scope**: `.agents/plans/aqos-foundation-c/C2-SCHEDULER-CONTEXT-ISSUER-FREEZE-20260807.md` B2 subslice
+— wires B1's issuer/transport library (e01d48a7) into a confined default-OFF NixOS service, its
+verifier allowlist, and its observability schema. B1 shipped `scheduler_context_issuer.py`
+(pure mint logic) + `scheduler_context_transport.py` (generic UDS transport whose `serve()` took a
+caller-supplied handler, with `__main__` explicitly stubbed "B2 supplies one").
+
+**Files landed**: `nix/modules/services/c2-scheduler-context-issuer.nix` (new — dedicated user +
+`aq-c2-scheduler-context-clients` shared group the primaryUser joins, mirrors
+`lease-signing-authority.nix`'s client-access fix so the switchboard's owner-uid caller can reach
+the 0660 socket — the exact gap that bit ALA is closed here from the start); `nix/modules/services/
+default.nix` (import); `nix/modules/core/secrets.nix` (gated `c6-scheduler-context-signing-key`
+entry, `needsC2SciSecret` on `enable`, mirrors `needsAlaSecret`); `config/aqos/
+c6-scheduler-signer-keys.json` (new SOLE context-signer verifier allowlist, placeholder public
+key, distinct key family from `lease-signer-keys.json`); `config/schemas/
+scheduler-lease-gate-decision.schema.json` (new, draft-07, low-cardinality issue/deny/audit
+record); `scripts/ai/lib/scheduler_context_transport.py` (edit — filled the `__main__` stub B1
+left open: `build_env_handler()` reads the `AQ_SCHEDULER_CONTEXT_*` env vars the Nix unit sets and
+binds `mint_scheduler_context()` to `serve()`, mirroring `lease_signing_authority.py`'s env-driven
+`handle_request`). SOPS: added the `c6-scheduler-context-signing-key` placeholder entry (random,
+unpaired with the placeholder public key) to the local `secrets.sops.yaml` to satisfy
+`tier0.d/check-sops-sync` — not real production key material; the real pair is provisioned at a
+later, separate owner activation.
+
+**Rule-15 attestation (5 dims):**
+- **integrated**: NO. The service is a standalone confined unit; nothing calls it. B3 (not built
+  in this subslice) wires `capability_lease_gate.py`'s outbound client + `dispatch.py`'s ingress.
+- **turned ON**: NO. `mySystem.aiStack.c2SchedulerContextIssuer.enable = false` (default); the
+  systemd unit does not run unless a future owner act flips it.
+- **real-world validated**: partial, offline only — B1's 53-assertion suite still green
+  (`test-scheduler-context-issuer.py`) plus a live smoke test run during this build (real UDS
+  socket, `build_env_handler()` bound to `serve()`: valid-lease mint + re-verify OK, replay of the
+  same lease correctly denied over the live socket). No systemd-confined, SOPS-backed, or
+  switchboard-driven exercise — that is B4's Service Coverage integration test
+  (`test-c2-sci-service-coverage.py`, not built here) plus the eventual owner activation.
+- **observable**: NO dashboard card yet (B4 scope: `dashboard/backend/api/routes/aistack.py` +
+  `assets/dashboard.js`, per design §5). The schema this subslice ships
+  (`scheduler-lease-gate-decision.schema.json`) is the observability CONTRACT the future producer
+  will emit against — declared, not yet wired to a live emitter.
+- **intervenable**: YES at the config level (`enable=false` is the off-switch; SOPS key absence is
+  an independent fail-closed floor) but NOT yet at the operational level (no health-spider alert,
+  no dashboard toggle) — that lands with B4.
+
+**Deferral**: written and dated here per Rule 15 — this cycle is *paused pending activation*, not
+done. Unblocks B3 (outbound client + ingress) and B4 (Service Coverage + dashboard), both scoped in
+the same freeze doc, both still requiring independent review before any owner enable/flag-flip.

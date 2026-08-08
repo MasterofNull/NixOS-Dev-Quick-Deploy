@@ -203,11 +203,24 @@ def _decision(
 def resolve_current_epoch(epoch_source: Any = None) -> Optional[int]:
     """Resolve the current policy epoch. Returns None iff unresolvable.
 
+    With `CAPABILITY_SCHEDULER_LEASE_GATE=1`, the scheduler/revocation
+    authority is the sole source: read it over its confined UDS and return
+    None on any typed/untyped failure so the caller denies/degrades. In that
+    mode `epoch_source`, `AQ_LEASE_POLICY_EPOCH`, the legacy file, and the
+    absent-store zero are deliberately unreachable.
+
     `epoch_source` may be: None (resolve from `AQ_LEASE_POLICY_EPOCH` env,
     else the default epoch file, else 0), an int (used directly), a
     zero-arg callable returning an int, or a path (str/Path) to a
     single-int file. Never raises.
     """
+    if os.environ.get("CAPABILITY_SCHEDULER_LEASE_GATE", "0") == "1":
+        try:
+            import revocation_epoch as _revocation_epoch
+
+            return _revocation_epoch.resolve_current_epoch()
+        except Exception:  # noqa: BLE001 — authority failure denies/degrades, never falls back
+            return None
     try:
         if epoch_source is None:
             env_val = os.environ.get(ENV_EPOCH)
