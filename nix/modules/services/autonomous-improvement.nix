@@ -128,6 +128,8 @@ in {
           AUTONOMOUS_MAX_EXPERIMENTS = toString autonomous.maxExperimentsPerCycle;
           AUTONOMOUS_AUTO_APPLY_BLAST_RADIUS_MAX = autonomous.autoApplyBlastRadiusMax;
           PRSI_ARTIFACT_DIR = "${dataDir}/prsi-artifacts/runs";
+          AQ_ROUTING_METRICS_DB_PATH = "${mcp.dataDir}/routing_metrics.db";
+          AQ_WORKFLOW_DEVIATION_LOG_PATH = "${mcp.dataDir}/hybrid/telemetry/workflow-deviations.jsonl";
         };
 
         script = ''

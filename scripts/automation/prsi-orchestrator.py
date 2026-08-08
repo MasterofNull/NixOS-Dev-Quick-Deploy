@@ -30,12 +30,25 @@ from typing import Any, Dict, List, Tuple
 SCRIPT_DIR = Path(__file__).resolve().parent
 AI_SCRIPT_DIR = SCRIPT_DIR.parent / "ai"
 REPO_ROOT = SCRIPT_DIR.parent.parent
+AI_LIB_DIR = AI_SCRIPT_DIR / "lib"
+if str(AI_LIB_DIR) not in sys.path:
+    sys.path.insert(0, str(AI_LIB_DIR))
+
+from workflow_deviation import (  # noqa: E402
+    DeviationContractError,
+    learning_candidate,
+    validate as validate_deviation,
+)
 QUEUE_PATH = Path(os.getenv("PRSI_ACTION_QUEUE_PATH", "/var/lib/nixos-ai-stack/prsi/action-queue.json"))
 ACTIONS_LOG_PATH = Path(os.getenv("PRSI_ACTIONS_LOG_PATH", "/var/log/nixos-ai-stack/prsi-actions.jsonl"))
 AUTO_APPROVE_LOW_RISK = os.getenv("PRSI_AUTO_APPROVE_LOW_RISK", "true").lower() == "true"
 PRSI_POLICY_FILE = Path(os.getenv("PRSI_POLICY_FILE", str(REPO_ROOT / "config/runtime-prsi-policy.json")))
 PRSI_STATE_PATH = Path(os.getenv("PRSI_STATE_PATH", "/var/lib/nixos-ai-stack/prsi/runtime-state.json"))
 _DELEGATION_FEEDBACK = Path(os.getenv("TELEMETRY_DIR", "/var/lib/ai-stack/hybrid/telemetry")) / "delegation-feedback.jsonl"
+_WORKFLOW_DEVIATIONS = Path(os.getenv(
+    "AQ_WORKFLOW_DEVIATION_LOG_PATH",
+    "/var/lib/ai-stack/hybrid/telemetry/workflow-deviations.jsonl",
+))
 
 
 DEFAULT_POLICY: Dict[str, Any] = {
@@ -285,6 +298,7 @@ def _action_fingerprint(action: Dict[str, Any]) -> str:
         "env_overrides": action.get("env_overrides"),
         "script": action.get("script"),
         "script_args": action.get("script_args"),
+        "root_issue_key": action.get("root_issue_key"),
     }
     return hashlib.sha256(json.dumps(stable, sort_keys=True).encode("utf-8")).hexdigest()[:16]
 
@@ -384,10 +398,43 @@ def _fetch_delegation_feedback_actions(since: str) -> List[Dict[str, Any]]:
     return actions
 
 
+def _fetch_workflow_deviation_actions() -> List[Dict[str, Any]]:
+    """Validate deviation receipts and project non-executable shadow candidates."""
+    if not _WORKFLOW_DEVIATIONS.exists():
+        return []
+    by_root: Dict[str, Dict[str, Any]] = {}
+    try:
+        with open(_WORKFLOW_DEVIATIONS, encoding="utf-8", errors="strict") as fh:
+            for raw in fh:
+                try:
+                    record = json.loads(raw)
+                    validate_deviation(record)
+                    candidate = learning_candidate(record)
+                except (json.JSONDecodeError, DeviationContractError, UnicodeError):
+                    continue
+                root_key = str(record["root_issue_key"])
+                by_root[root_key] = {
+                    "type": "maintenance",
+                    "action": "prepare bounded shadow repair from validated workflow deviation",
+                    "reason": str(record["reason_code"]),
+                    "safe": bool(candidate.get("eligible", False)),
+                    "topic": "workflow-deviation-recovery",
+                    "source": "workflow-deviations.jsonl",
+                    "root_issue_key": root_key,
+                    "deviation_id": str(record["deviation_id"]),
+                    "shadow_only": True,
+                    "requires_owner": bool(record["requires_owner"]),
+                }
+    except OSError:
+        return []
+    return list(by_root.values())
+
+
 def _fetch_structured_actions(since: str) -> Tuple[List[Dict[str, Any]], Dict[str, Any]]:
     report = _fetch_report(since)
     actions = [a for a in report.get("structured_actions", []) if isinstance(a, dict)]
     actions += _fetch_delegation_feedback_actions(since)
+    actions += _fetch_workflow_deviation_actions()
     return actions, report
 
 
@@ -447,7 +494,10 @@ def cmd_sync(args: argparse.Namespace) -> int:
     for action in discovered:
         aid = _action_fingerprint(action)
         risk = _risk_tier(action)
-        status = "approved" if (risk == "low" and AUTO_APPROVE_LOW_RISK) else "pending_approval"
+        if action.get("shadow_only"):
+            status = "shadow_queued" if not action.get("requires_owner") else "pending_approval"
+        else:
+            status = "approved" if (risk == "low" and AUTO_APPROVE_LOW_RISK) else "pending_approval"
         est_cost = _estimate_action_token_cost(action, policy)
         if aid in existing:
             row = existing[aid]
@@ -504,6 +554,9 @@ def _set_approval(action_id: str, decision: str, by: str, note: str) -> Dict[str
     queue = _load_queue()
     for row in queue["actions"]:
         if row.get("id") == action_id:
+            raw_action = row.get("raw_action") if isinstance(row.get("raw_action"), dict) else {}
+            if decision == "approve" and raw_action.get("shadow_only") is True:
+                raise PermissionError("shadow-only-action-cannot-be-approved")
             row["status"] = "approved" if decision == "approve" else "rejected"
             row["approval"] = {"by": by or "unknown", "at": _now(), "note": note or None}
             _save_queue(queue)
@@ -652,14 +705,29 @@ def cmd_execute(args: argparse.Namespace) -> int:
         return 0
 
     queue = _load_queue()
+    shadow_blocked = [
+        a for a in queue["actions"]
+        if isinstance(a, dict)
+        and a.get("status") == "approved"
+        and isinstance(a.get("raw_action"), dict)
+        and a["raw_action"].get("shadow_only") is True
+    ]
+    for row in shadow_blocked:
+        row["status"] = "shadow_queued"
+        row.setdefault("execution", {})["result"] = "blocked_shadow_only"
     approved = [
         a for a in queue["actions"]
-        if isinstance(a, dict) and a.get("status") == "approved" and isinstance(a.get("raw_action"), dict)
+        if isinstance(a, dict)
+        and a.get("status") == "approved"
+        and isinstance(a.get("raw_action"), dict)
+        and a["raw_action"].get("shadow_only") is not True
     ]
     limit = int(args.limit or int(policy.get("max_execute_per_cycle", 5) or 5))
     if limit > 0:
         approved = approved[: limit]
     if not approved:
+        if shadow_blocked:
+            _save_queue(queue)
         print(json.dumps({"ok": True, "executed": 0, "message": "no approved actions"}, sort_keys=True))
         return 0
 
