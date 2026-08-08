@@ -9,18 +9,29 @@ implementer (Rule 17), each orchestrator-verified.
 |---|--------|------|--------------------|
 | B1 | `e01d48a7` | issuer + transport + tests (verify_authoritative-first, OBLIG-1, re-derive-from-signed, single-use `{lease_id,grant_digest}` ledger, Ed25519 sign; SO_PEERCRED defense-in-depth) | **PASS** (fresh flagship) |
 | B2 | `03a3eb6c` | confined `aq-c2-scheduler-context-issuer` service + `c6-scheduler-signer-keys.json` + decision schema + secrets/default.nix; client-access ALA-pattern | **PASS** (fresh flagship) |
-| B2.5 | `0bd67174` | durable atomic single-use ledger — `O_EXCL`-per-key kernel test-and-set (race-safe across threads/processes/restarts) + fsync; closes fail-open-across-restarts | orchestrator-verified; **independent review QUEUED** (lane session-limited) |
-| B3 | `ad5d95dd` | gate outbound-client + dispatch ingress, flag-gated; **flag-OFF byte-parity 83/83** on the live gate; fail-closed + non-blocking-to-tool-admission; dispatch ingress inert | orchestrator-verified; **independent review QUEUED** |
-| B4 | `2c36e7d3` | Service Coverage test + registry + dashboard API/JS + env-contract flag | orchestrator-verified; **independent review QUEUED** |
+| B2.5 | `0bd67174` | durable atomic single-use ledger — `O_EXCL`-per-key kernel test-and-set (race-safe across threads/processes/restarts) + fsync; closes fail-open-across-restarts | **PASS** (fresh flagship confirmatory review, lane-returned) |
+| B3 | `ad5d95dd` | gate outbound-client + dispatch ingress, flag-gated; **flag-OFF byte-parity 83/83** on the live gate; fail-closed + non-blocking-to-tool-admission; dispatch ingress inert | **PASS** (fresh flagship confirmatory review) |
+| B4 | `2c36e7d3` | Service Coverage test + registry + dashboard API/JS + env-contract flag | **PASS** (fresh flagship confirmatory review) |
 
 Validation at build-complete: coverage PASS; issuer 53/53, ledger 32/32, gate-dispatch 42/42, live gate
 83/83 (byte-parity), capability_lease 54/54; tier0 green (both C2-SCI + ALA coverage checks PASS).
 
-## Queued independent reviews (Rule 18 catch-up — lanes session-limited to 7:50pm PT / Codex to Aug 8)
-B2.5 + B3 + B4 carry orchestrator-verification (thorough: O_EXCL atomicity + 16-process concurrency proof;
-83/83 live-gate byte-parity + inert-dispatch confirmation; coverage structural asserts). A fresh-flagship
-confirmatory code review of `0bd67174` + `ad5d95dd` + `2c36e7d3` is QUEUED for lane-return — advisory unless
-it surfaces a real defect (then a bounded follow-up, never rewrite history).
+## Independent reviews — ALL FIVE SUBSLICES PASS
+B1 + B2 PASS (during build). B2.5 + B3 + B4 confirmatory review = **PASS** (fresh flagship, lane-returned;
+`c2-scheduler-context-issuer-rev4-review/b25-b3-b4-code-review.md`): 83/83 live-gate byte-parity CONFIRMED,
+durable `O_EXCL|O_NOFOLLOW` ledger atomicity + file+dir fsync CONFIRMED, fail-closed non-blocking outbound +
+inert dispatch CONFIRMED, low-cardinality dashboard CONFIRMED. No fail-open, no byte-parity break, no
+downgrade, no oracle. The C2-SCI build is fully independently reviewed.
+
+### Pre-activation polish (bounded, NON-blocking; do before enable, tracked in issues-backlog)
+- **Ledger-burn ordering (LOW, from the confirmatory review):** `mint_scheduler_context` records the
+  single-use slot (step 4) BEFORE the signer-availability check (step 5), so a transient signer outage
+  permanently burns a legitimate lease's slot until operator reset. STRICTLY fail-closed (over-denial,
+  never fail-open). Bounded reorder: move the read-only signer-availability check ahead of the ledger
+  record (single-use still holds — the sign remains after the record).
+- **O2 durable-ledger observability (from B2.5 review):** expose burn/replay counts + document the operator
+  reset path (removing a `{lease_id,grant_digest}` marker) as the Activation-Gate intervenability leg.
+Both are default-OFF polish; neither blocks the build's PASS, both should land before the flag/enable.
 
 ## Owner activation (all separate acts; NOT done — build is default-OFF)
 1. Generate an Ed25519 keypair for the CONTEXT signer; public → `config/aqos/c6-scheduler-signer-keys.json`

@@ -2,6 +2,10 @@
   Severity: low (all non-security; O2 is an activation-gate obligation for B2)
   Action: fold O2/O3 into B2 (durable ledger + observability); O1 into the C2 design at next re-freeze.
 
+[OPEN] c2-sci-ledger-burn-before-signer-check + O2-observability (pre-activation polish, NON-blocking) — All 5 C2-SCI subslices independently reviewed PASS (default-OFF). Two bounded pre-enable polish items: (1) mint_scheduler_context records the single-use ledger slot (step 4) BEFORE the signer-availability check (step 5), so a transient signer outage burns a legitimate lease's slot until operator reset — strictly fail-closed (over-deny, never fail-open); reorder the read-only signer check ahead of the ledger record (single-use still holds, sign stays after record). (2) O2: expose durable-ledger burn/replay counts + document the operator reset path (rm the {lease_id,grant_digest} marker) as the Activation-Gate intervenability leg. Both default-OFF; land before enable/flag. File: scripts/ai/lib/scheduler_context_issuer.py (mint step 4/5; DurableSingleUseLedger.stats).
+  Severity: low (fail-closed robustness + activation-gate observability; not a defect in the reviewed bytes)
+  Action: bounded reorder + observability follow-up before C2-SCI enable; route through review.
+
 ## OPEN ISSUES
 
 [FIXED] commit-48d92962-swept-5693-files-concurrent-staging-race — Commit 48d92962 ("ALA Phase 1b", intended 4 files) had a 5693-file diff — the concurrent-staging race (a broad `git add`; note `Bash(git add *)` allow-rule in ~/.claude/settings.json:341) folded a large pre-existing tree into the commit's diff, same hazard as `concurrent-orchestrator-commit-authority-race-b3`. NOT pushed (local-only).
