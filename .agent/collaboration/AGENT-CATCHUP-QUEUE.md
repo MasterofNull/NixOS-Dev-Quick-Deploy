@@ -206,3 +206,6 @@ Subject: ASYMMETRIC-LEASE-AUTHORITY-DESIGN-20260806.md. Fresh flagship binding r
 advisory in parallel. Codex on return: press the SIGNING-ORACLE risk (does the confined authority
 sign whatever the owner-uid gate presents?) and the SCHEME-DOWNGRADE attack (attacker sets
 sig_scheme=hmac-sha256 + forges with the dev key -> bypasses Ed25519). Confirm flag-OFF byte-parity.
+
+## [2026-08-07T21:46:30-07:00] C2-SCI confirmatory reviews (lane session-limited to 7:50pm PT / Codex Aug 8)
+- Independent code review QUEUED for: `0bd67174` (B2.5 durable ledger), `ad5d95dd` (B3 gate/dispatch), `2c36e7d3` (B4 coverage). All orchestrator-verified + default-OFF; advisory unless a real defect surfaces (then bounded follow-up, never rewrite history). B1/B2 already independent-review PASS.
