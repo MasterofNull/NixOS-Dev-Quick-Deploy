@@ -518,6 +518,40 @@
       "value": "Potential metadata-only reference for multi-altitude vulnerability-hunt workflow and review patterns without importing prompts, executable loops, tools, targets, or runtime authority.",
       "risks": ["autonomous-loop", "prompt-injection", "scope-escape", "tool-execution", "resource-exhaustion"],
       "activation_notes": "No prompt or executable workflow is imported. This record cannot scan, execute tools, issue scope receipts, or communicate externally."
+    },
+    {
+      "id": "herdr-agent-multiplexer",
+      "name": "Herdr agent-aware terminal multiplexer",
+      "category": "operations",
+      "source_url": "https://github.com/ogulcancelik/herdr",
+      "maturity": "official",
+      "priority": "very-high",
+      "state": "proposed",
+      "pinned_version": "v0.7.5",
+      "review_status": "incomplete",
+      "blocked_reason": "The local socket can launch processes, send terminal input, close panes, manage plugins, and stop the server; pinned Nix source, SBOM, socket-authority isolation, disabled update/manifest egress, Service Coverage, and rollback evidence are not yet complete.",
+      "unblock_condition": "Complete H0 source/license/SBOM review, pin the upstream Nix flake digest, prove agents cannot directly mutate the Herdr control socket, and land default-OFF Nix packaging plus QA/dashboard visibility before any activation.",
+      "install": {
+        "type": "disabled-external-repo",
+        "command": "disabled-until-intake",
+        "args": []
+      },
+      "tool_allowlist": [],
+      "permissions": {
+        "network": false,
+        "filesystem": "none",
+        "writes": false,
+        "secrets": false
+      },
+      "value": "Persistent agent-aware PTY workspaces, remote attach, real terminal panes, and semantic working/blocked/done visibility for AQ-OS orchestrators, expert teams, implementers, reviewers, researchers, local inference, and operations monitors.",
+      "risks": [
+        "tool-execution",
+        "authority-duplication",
+        "hosted-plugin-surface",
+        "log-sensitive-data",
+        "external-integration"
+      ],
+      "activation_notes": "Metadata-only H0 intake record. Herdr is proposed as a presentation and PTY substrate, not lifecycle authority. No download, install, socket access, plugin, session restore, process launch, remote attach, or agent skill is enabled by this record."
     }
   ]
 }

@@ -42,6 +42,7 @@ def main() -> int:
     assert "mcp-admission-controller" in ids
     assert "t3mp3st" in ids
     assert {"piyaz-patterns", "sn1per-reference", "raptor-loop-hunt-reference"} <= ids
+    assert "herdr-agent-multiplexer" in ids
 
     all_report = run_json("audit", "--all", "--json")
     reports = {item["id"]: item for item in all_report["reports"]}
@@ -64,6 +65,10 @@ def main() -> int:
         candidate = reports[candidate_id]
         assert candidate["state"] in {"proposed", "quarantined"}
         assert candidate["admission"] not in {"low-risk", "accepted-with-mitigations"}
+    herdr = reports["herdr-agent-multiplexer"]
+    assert herdr["state"] == "proposed"
+    assert herdr["admission"] == "review-recommended"
+    assert herdr["unsafe_tool_count"] == 0
 
     one_report = run_json("audit", "semgrep-mcp", "--json")
     assert len(one_report["reports"]) == 1
@@ -88,13 +93,30 @@ def test_registry_schema() -> None:
 
     assert not errors(registry), "baseline-plus-S0-A registry must validate"
     candidates = registry["candidates"]
-    assert len(candidates) == 14
     ids = [candidate["id"] for candidate in candidates]
     assert len(ids) == len(set(ids)), "candidate IDs must be unique"
+    assert set(ids) == {
+        "playwright-mcp", "semgrep-mcp", "github-mcp-readonly", "osv-scanner",
+        "trivy", "syft-grype", "mcp-admission-controller", "observability-query-skill",
+        "nixos-specialist-tool-pack", "code-intelligence-graph-layer", "t3mp3st",
+        "piyaz-patterns", "sn1per-reference", "raptor-loop-hunt-reference",
+        "herdr-agent-multiplexer",
+    }
     assert len(candidates[:11]) == 11
     assert candidates[10]["id"] == "t3mp3st"
 
     by_id = {candidate["id"]: candidate for candidate in candidates}
+    herdr = by_id["herdr-agent-multiplexer"]
+    assert herdr["pinned_version"] == "v0.7.5"
+    assert herdr["state"] == "proposed"
+    assert herdr["review_status"] == "incomplete"
+    assert herdr["install"] == {
+        "type": "disabled-external-repo", "command": "disabled-until-intake", "args": []
+    }
+    assert herdr["tool_allowlist"] == []
+    assert herdr["permissions"] == {
+        "network": False, "filesystem": "none", "writes": False, "secrets": False
+    }
     for candidate_id, expected_state in {
         "piyaz-patterns": "proposed",
         "sn1per-reference": "quarantined",
@@ -193,23 +215,25 @@ def test_auditor_fuzzy() -> None:
     sys.path.insert(0, str(REPO_ROOT / "ai-stack" / "mcp-servers"))
     from shared.tool_security_auditor import ToolSecurityAuditor
 
-    # Instantiate auditor
-    auditor = ToolSecurityAuditor(
-        service_name="test-auditor-fuzzy",
-        policy_path=REPO_ROOT / "config" / "runtime-tool-security-policy.json",
-        cache_path=REPO_ROOT / ".cache" / "test-auditor-fuzzy-cache.json",
-        enabled=True,
-        enforce=False,
-    )
+    # A fresh hermetic cache is mandatory: a prior policy/test run must not
+    # convert this security assertion into a stale cached verdict.
+    with tempfile.TemporaryDirectory() as tmp:
+        auditor = ToolSecurityAuditor(
+            service_name="test-auditor-fuzzy",
+            policy_path=REPO_ROOT / "config" / "runtime-tool-security-policy.json",
+            cache_path=Path(tmp) / "auditor-cache.json",
+            enabled=True,
+            enforce=False,
+        )
 
-    # shell_exec is blocked; shell_exe is distance 1
-    res = auditor.audit_tool("shell_exe", {"endpoint": "test"})
-    assert res["safe"] is False
-    assert "blocked_tool_name_fuzzy" in res["reasons"]
+        # shell_exec is blocked; shell_exe is distance 1
+        res = auditor.audit_tool("shell_exe", {"endpoint": "test"})
+        assert res["safe"] is False
+        assert "blocked_tool_name_fuzzy" in res["reasons"]
 
-    # random_tool is NOT blocked
-    res2 = auditor.audit_tool("random_tool", {"endpoint": "test"})
-    assert res2["safe"] is True
+        # random_tool is NOT blocked
+        res2 = auditor.audit_tool("random_tool", {"endpoint": "test"})
+        assert res2["safe"] is True
     print("SUBPASS: auditor fuzzy matching")
 
 
