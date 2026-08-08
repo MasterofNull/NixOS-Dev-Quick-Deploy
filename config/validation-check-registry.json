@@ -1339,7 +1339,7 @@
     },
     {
       "id": "execution-cell-runner-deploy-context",
-      "description": "WR-3 — execution-cell runner deploy-context preflight (runnerBundle import closure, git-on-PATH, systemd-safe JSON env) — static, catches the R7 deploy-bug cascade (#10/#11/#13) before a rebuild",
+      "description": "WR-3 \u2014 execution-cell runner deploy-context preflight (runnerBundle import closure, git-on-PATH, systemd-safe JSON env) \u2014 static, catches the R7 deploy-bug cascade (#10/#11/#13) before a rebuild",
       "trigger_paths": [
         "nix/modules/services/execution-cell-runner.nix",
         "ai-stack/switchboard/execution_cell_runner.py",
@@ -1359,7 +1359,7 @@
     },
     {
       "id": "ala-service-coverage",
-      "description": "Foundation C ALA rev4 — asymmetric lease signing authority is default-OFF, governed, and dashboard-visible (Service Coverage)",
+      "description": "Foundation C ALA rev4 \u2014 asymmetric lease signing authority is default-OFF, governed, and dashboard-visible (Service Coverage)",
       "trigger_paths": [
         "scripts/ai/lib/lease_signing_authority.py",
         "scripts/ai/lib/capability_lease.py",
@@ -1374,6 +1374,30 @@
       "command": [
         "python3",
         "scripts/testing/test-ala-service-coverage.py"
+      ],
+      "tier": "behavioral",
+      "timeout_seconds": 30,
+      "enabled": true
+    },
+    {
+      "id": "c2-sci-service-coverage",
+      "description": "Foundation C Q-C6-1 \u2014 C2 scheduler-context issuer is default-OFF, governed, and dashboard-visible (Service Coverage)",
+      "trigger_paths": [
+        "scripts/ai/lib/scheduler_context_issuer.py",
+        "scripts/ai/lib/scheduler_context_transport.py",
+        "ai-stack/switchboard/capability_lease_gate.py",
+        "scripts/ai/lib/dispatch.py",
+        "nix/modules/services/c2-scheduler-context-issuer.nix",
+        "config/aqos/c6-scheduler-signer-keys.json",
+        "config/schemas/scheduler-lease-gate-decision.schema.json",
+        "config/env-contract.yaml",
+        "dashboard/backend/api/routes/aistack.py",
+        "assets/dashboard.js",
+        "scripts/testing/test-c2-sci-service-coverage.py"
+      ],
+      "command": [
+        "python3",
+        "scripts/testing/test-c2-sci-service-coverage.py"
       ],
       "tier": "behavioral",
       "timeout_seconds": 30,
@@ -1781,7 +1805,10 @@
         "scripts/ai/_aq-qa-bash",
         "config/validation-check-registry.json"
       ],
-      "command": ["python3", "scripts/testing/test-workflow-shadow-contract.py"],
+      "command": [
+        "python3",
+        "scripts/testing/test-workflow-shadow-contract.py"
+      ],
       "tier": "behavioral",
       "timeout_seconds": 60,
       "enabled": true
@@ -1799,7 +1826,10 @@
         "config/validation-check-registry.json",
         "ai-stack/migrations/test-migrations.sh"
       ],
-      "command": ["python3", "scripts/testing/test-workflow-shadow-migration.py"],
+      "command": [
+        "python3",
+        "scripts/testing/test-workflow-shadow-migration.py"
+      ],
       "tier": "behavioral",
       "timeout_seconds": 30,
       "enabled": true
