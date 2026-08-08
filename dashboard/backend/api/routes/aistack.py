@@ -2025,6 +2025,36 @@ def get_capability_enforcement() -> Dict[str, Any]:
         "status": "ok" if (not ala_on or signer_active) else "degraded",
     }
 
+    # 5. C2-SCI — scheduler-context issuer (Foundation C Q-C6-1, default-OFF)
+    sci_flag = env_vars.get("CAPABILITY_SCHEDULER_CONTEXT_ISSUER", "0").strip()
+    sci_on = sci_flag == "1"
+    sci_signer_active = None
+    sci_signer_revision = None
+    try:
+        sckf = _repo_root() / "config" / "aqos" / "c6-scheduler-signer-keys.json"
+        if sckf.is_file():
+            sck = json.loads(sckf.read_text())
+            sckeys = sck.get("keys", []) if isinstance(sck, dict) else []
+            sci_signer_active = sum(1 for k in sckeys if isinstance(k, dict) and k.get("status") == "active")
+            sci_signer_revision = sck.get("revision") if isinstance(sck, dict) else None
+    except Exception:
+        sci_signer_active = None
+    # durable single-use ledger available? (the atomic O_EXCL ledger class exists in the issuer lib)
+    sci_ledger_durable = False
+    try:
+        sci_issuer = _repo_root() / "scripts" / "ai" / "lib" / "scheduler_context_issuer.py"
+        sci_ledger_durable = sci_issuer.is_file() and "DurableSingleUseLedger" in sci_issuer.read_text()
+    except Exception:
+        sci_ledger_durable = False
+    result["c2_scheduler_context_issuer"] = {
+        "context_issuer": "on" if sci_on else "off",
+        "signer_allowlist_active_keys": sci_signer_active,
+        "signer_allowlist_revision": sci_signer_revision,
+        "ledger_durable": sci_ledger_durable,
+        # default-OFF is the healthy resting state; ON needs BOTH an active signer key AND a durable ledger
+        "status": "ok" if (not sci_on or (sci_signer_active and sci_ledger_durable)) else "degraded",
+    }
+
     return result
 
 

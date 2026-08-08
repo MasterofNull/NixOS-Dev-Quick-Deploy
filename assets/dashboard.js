@@ -3504,6 +3504,7 @@ async function loadCapabilityEnforcement() {
   const c2 = d.c2 || {};
   const c5 = d.c5 || {};
   const ala = d.ala || {};
+  const sci = d.c2_scheduler_context_issuer || {};
 
   // Determine overall status badge
   let overallBadge = "badge-ok";
@@ -3511,6 +3512,7 @@ async function loadCapabilityEnforcement() {
     c2.status === "degraded" ||
     c5.status === "degraded" ||
     ala.status === "degraded" ||
+    sci.status === "degraded" ||
     c2.status === "unknown" ||
     c5.status === "unknown"
   ) {
@@ -3568,6 +3570,26 @@ async function loadCapabilityEnforcement() {
       "ALA Status",
       ala.status || "--",
       statusColor(ala.status)
+    ),
+    fwRow(
+      "C2-SCI Issuer",
+      sci.context_issuer || "--",
+      sci.context_issuer === "on" ? "ok" : "warn"
+    ),
+    fwRow(
+      "C2-SCI Signer Keys",
+      sci.signer_allowlist_active_keys != null ? String(sci.signer_allowlist_active_keys) : "--",
+      sci.signer_allowlist_active_keys ? "ok" : "warn"
+    ),
+    fwRow(
+      "C2-SCI Ledger",
+      sci.ledger_durable === true ? "durable" : (sci.ledger_durable === false ? "in-memory" : "--"),
+      sci.ledger_durable ? "ok" : "warn"
+    ),
+    fwRow(
+      "C2-SCI Status",
+      sci.status || "--",
+      statusColor(sci.status)
     ),
   ].join("");
 }
