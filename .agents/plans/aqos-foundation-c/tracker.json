@@ -1,0 +1,69 @@
+{
+  "plan": {
+    "id": "aqos-foundation-c",
+    "title": "Foundation C — confinement + capability-lease security spine",
+    "prd_ref": ".agents/plans/aqos-foundation-c/",
+    "owner": "hyperd",
+    "goal": "A capability-lease + confinement spine where verify != forge, revocation is a real kill-switch, and every privileged effect is authenticated, single-use, and observable.",
+    "success_criteria": [
+      "First-party leases Ed25519-minted by a confined authority, enforce-verified against a public allowlist (owner-uid never holds signing material)",
+      "A scheduler-context issuer + authenticated ingress (Q-C6-1)",
+      "A durable authenticated revocation-epoch kill-switch gating the F2.5 scheduler",
+      "Network confinement (C4)"
+    ]
+  },
+  "phases": [
+    {"id": "ala", "name": "ALA — asymmetric lease authority", "goal": "verify != forge for first-party leases", "order": 1},
+    {"id": "enforce", "name": "enforce-asymmetric-verify", "goal": "enforce() admits Ed25519 leases", "order": 2},
+    {"id": "c2sci", "name": "C2-SCI — scheduler-context issuer", "goal": "signed audience-bound scheduler-lease-context + ingress", "order": 3},
+    {"id": "c6", "name": "C6 — epoch authority + scheduler revocation gate", "goal": "durable revocation kill-switch", "order": 4},
+    {"id": "c4", "name": "C4 — network confinement", "goal": "the last Foundation-C cycle", "order": 5}
+  ],
+  "items": [
+    {"id": "ala-build", "name": "ALA minter (Ed25519 confined authority)", "phase": "ala", "kind": "slice",
+     "goal": "confined authority mints Ed25519 first-party leases; switchboard never holds the key",
+     "validation_goal": "canary 25/25 mint+verify_authoritative; crypto 24/24; regression 54/54",
+     "deps": [], "editorial_note": "3 slices + activation; the symmetric-HMAC verify==forge fix",
+     "detection": {"activation_subject": "aqos-foundation-c-asymmetric-lease-authority-rev4", "commit_match": ["ALA activation COMPLETE", "ALA minter activated"], "freeze_record": ".agents/plans/aqos-foundation-c/ASYMMETRIC-LEASE-AUTHORITY-FREEZE-20260806.md"}, "pct_hint": 100},
+    {"id": "enforce-verify", "name": "enforce() asymmetric verify + flag flip", "phase": "enforce", "kind": "slice",
+     "goal": "enforce() verifies Ed25519 leases via verify_authoritative; CAPABILITY_ASYMMETRIC_LEASE=1 live",
+     "validation_goal": "40/40 vectors; 83/83 gate byte-parity; N3 dry-run 25/25 admit; live-validated",
+     "deps": ["ala-build"], "editorial_note": "the flag-flip blocker; built + code-reviewed + activated",
+     "detection": {"activation_subject": "enforce-asymmetric-verify-build", "commit_match": ["enforce-asymmetric-verify", "ALA activation COMPLETE"], "freeze_record": ".agents/plans/aqos-foundation-c/ENFORCE-ASYMMETRIC-VERIFY-FREEZE-20260807.md"}, "pct_hint": 100},
+    {"id": "c2sci-build", "name": "C2-SCI issuer + service + gate/dispatch + coverage (B1-B4)", "phase": "c2sci", "kind": "slice",
+     "goal": "confined scheduler-context issuer, durable single-use ledger, flag-gated gate/dispatch, default-OFF",
+     "validation_goal": "all 5 subslices independently reviewed PASS; issuer 53/53, ledger 32/32, gate-dispatch 42/42, coverage PASS",
+     "deps": ["enforce-verify"], "editorial_note": "Q-C6-1; built default-OFF, awaiting owner activation (+2 polish items)",
+     "detection": {"activation_subject": "c2-scheduler-context-issuer-build", "commit_match": ["C2 scheduler-context issuer B", "C2-SCI"], "freeze_record": ".agents/plans/aqos-foundation-c/C2-SCHEDULER-CONTEXT-ISSUER-FREEZE-20260807.md"}, "pct_hint": 100},
+    {"id": "c2sci-activate", "name": "C2-SCI activation (SOPS key + enable + flag + 2 polish)", "phase": "c2sci", "kind": "task",
+     "goal": "provision the context-signer key, enable the service, flip the flag, land the ledger-reorder + O2 observability",
+     "validation_goal": "live mint round-trip; enabled + observable + intervenable",
+     "deps": ["c2sci-build"], "editorial_note": "owner-gated; NOT done (default-OFF)",
+     "detection": {"activation_subject": "c2-scheduler-context-issuer-ACTIVATE", "blocker_note": "owner acts: SOPS keypair + enable=true + CAPABILITY_SCHEDULER_CONTEXT_ISSUER=1 + polish items"}, "pct_hint": 0},
+    {"id": "c6-p0", "name": "C6-P0 trust anchors (owner keys + schemas)", "phase": "c6", "kind": "slice",
+     "goal": "owner public-key allowlist + revocation-epoch-bump + scheduler-lease-context schemas",
+     "validation_goal": "rev3 built + activated (Q-C6-2 resolved)",
+     "deps": [], "editorial_note": "the Q-C6-2 anchors",
+     "detection": {"freeze_record": ".agents/plans/aqos-foundation-c/C6-P0-FREEZE-AND-ACTIVATION-20260806.md", "commit_match": ["C6-P0"]}, "pct_hint": 100},
+    {"id": "c6-main", "name": "C6 main — epoch authority + slot_queue revocation fence (B1-B4)", "phase": "c6", "kind": "slice",
+     "goal": "durable owner-signed revocation epoch + slot_queue verified-context fence, default-OFF",
+     "validation_goal": "B1 55/55 reviewed PASS; B2 20/20; B3 slot_queue byte-parity + A2 epoch source; B4 coverage",
+     "deps": ["c2sci-build", "c6-p0"], "editorial_note": "frozen + owner-activated; B1/B2 done, B3 on Codex, B4 pending",
+     "detection": {"activation_subject": "c6-epoch-authority-scheduler-gate-build", "commit_match": ["C6-B1", "C6-B2", "C6-B3", "C6-B4"], "freeze_record": ".agents/plans/aqos-foundation-c/C6-FREEZE-20260807.md"}, "pct_hint": 55},
+    {"id": "c6-activate", "name": "C6 activation (A1 owner key + enable + flag)", "phase": "c6", "kind": "task",
+     "goal": "provision the real owner key, enable the authority, flip CAPABILITY_SCHEDULER_LEASE_GATE",
+     "validation_goal": "live epoch bump revokes a held reservation; enabled + observable",
+     "deps": ["c6-main"], "editorial_note": "owner-gated; NOT done",
+     "detection": {"activation_subject": "c6-ACTIVATE", "blocker_note": "owner acts: A1 real owner key + enable + flag"}, "pct_hint": 0},
+    {"id": "c4", "name": "C4 — network confinement (last cycle)", "phase": "c4", "kind": "slice",
+     "goal": "network-egress confinement for the execution plane",
+     "validation_goal": "design -> review -> freeze -> build -> activate",
+     "deps": ["c6-main"], "editorial_note": "not started; C6 is its intervention-lever predecessor",
+     "detection": {"blocker_note": "gated on C6 activation"}, "pct_hint": 0}
+  ],
+  "issues": [
+    {"title": "c2-sci ledger-burn-before-signer-check + O2 observability", "sev": "low", "note": "bounded pre-activation polish (fail-closed, non-blocking)"},
+    {"title": "C6 A2 epoch-source wiring", "sev": "high-watch", "note": "C6-B3 code review MUST confirm resolve_current_epoch() feeds the verifier, never current_epoch=0"},
+    {"title": "48d92962 concurrent-staging pollution", "sev": "medium", "note": "structural commit-lock fix deferred (router phase-2)"}
+  ]
+}

@@ -1,0 +1,165 @@
+#!/usr/bin/env python3
+"""aq-pm-tracker — project a plan's PM status from GROUND TRUTH (SSOT: .agents/plans/pm-tracker-standard/DESIGN.md).
+
+Reads `<plan-dir>/tracker.json` (the editorial manifest: goals, deps, validation goals, detection signals).
+STATUS is always PROJECTED from git commits + freeze records + activation grants + blocker notes — NEVER
+hand-typed (hand-maintained status rots; this is the anti-gaming design). Generalizes aq-refactor-status.
+
+Modes:
+  aq-pm-tracker <plan-dir>            human summary (default)
+  aq-pm-tracker <plan-dir> --json     projected data (JSON)
+  aq-pm-tracker <plan-dir> --check    validate manifest + project; exit 0 ok / 1 on manifest error
+Status precedence: ACTIVATED > SHIPPED > BLOCKED > FROZEN > IN-PROGRESS > DESIGNED > NOT-STARTED.
+"""
+from __future__ import annotations
+import json
+import os
+import subprocess
+import sys
+from pathlib import Path
+
+REPO = Path(__file__).resolve().parents[2]
+_STATUS_PCT_FLOOR = {"ACTIVATED": 100, "SHIPPED": 100, "BLOCKED": 0, "FROZEN": 20,
+                     "IN-PROGRESS": 50, "DESIGNED": 10, "NOT-STARTED": 0}
+
+
+def _git_log() -> str:
+    try:
+        return subprocess.run(["git", "-C", str(REPO), "log", "--oneline", "-n", "5000"],
+                              capture_output=True, text=True, timeout=30).stdout
+    except Exception:
+        return ""
+
+
+def _aq_grants() -> str:
+    try:
+        return subprocess.run([str(REPO / "scripts" / "ai" / "aq-event"), "tail"],
+                              capture_output=True, text=True, timeout=20).stdout or ""
+    except Exception:
+        return ""
+
+
+def project_item(item: dict, gitlog: str, grants: str) -> tuple[str, int]:
+    det = item.get("detection", {}) or {}
+    hits = sum(gitlog.count(s) for s in (det.get("commit_match") or []))
+    freeze = det.get("freeze_record")
+    freeze_exists = bool(freeze) and (REPO / freeze).is_file()
+    subj = det.get("activation_subject")
+    granted = bool(subj) and (f"activation.grant {subj}" in grants)
+    blocker = det.get("blocker_note")
+    pct = item.get("pct_hint")
+    kind = item.get("kind", "slice")
+    is_activation = kind == "task" and bool(blocker) and (
+        "owner acts" in (blocker or "") or "owner-gated" in (item.get("editorial_note", "")))
+
+    if is_activation:
+        return ("ACTIVATED", 100) if granted else ("NOT-STARTED", 0)
+    if hits > 0 or granted:
+        if pct is not None and pct < 100:
+            return ("IN-PROGRESS", int(pct))
+        if freeze_exists or granted:
+            return ("SHIPPED", 100)
+        return ("IN-PROGRESS", int(pct) if pct is not None else 60)
+    if freeze_exists:
+        return ("FROZEN", 20)
+    if blocker:
+        return ("NOT-STARTED", 0)
+    return ("DESIGNED", 10)
+
+
+def project(plan_dir: Path) -> dict:
+    manifest = json.loads((plan_dir / "tracker.json").read_text())
+    gitlog, grants = _git_log(), _aq_grants()
+    items = []
+    for it in manifest.get("items", []):
+        status, pct = project_item(it, gitlog, grants)
+        items.append({"id": it["id"], "name": it.get("name"), "phase": it.get("phase"),
+                      "kind": it.get("kind"), "goal": it.get("goal"),
+                      "validation_goal": it.get("validation_goal"), "deps": it.get("deps", []),
+                      "status": status, "pct": pct})
+    n = len(items) or 1
+    rollup = round(sum(i["pct"] for i in items) / n)
+    shipped = sum(1 for i in items if i["status"] in ("SHIPPED", "ACTIVATED"))
+    return {"plan": manifest.get("plan", {}), "phases": manifest.get("phases", []),
+            "items": items, "issues": manifest.get("issues", []),
+            "rollup_pct": rollup, "shipped": shipped, "total": len(items)}
+
+
+def validate_manifest(plan_dir: Path) -> list[str]:
+    errs = []
+    p = plan_dir / "tracker.json"
+    if not p.is_file():
+        return [f"no tracker.json in {plan_dir}"]
+    try:
+        m = json.loads(p.read_text())
+    except Exception as e:
+        return [f"tracker.json invalid JSON: {e}"]
+    if not isinstance(m.get("items"), list) or not m["items"]:
+        errs.append("manifest must have a non-empty items[]")
+    ids = set()
+    for it in m.get("items", []):
+        if not it.get("id"):
+            errs.append("item missing id")
+        elif it["id"] in ids:
+            errs.append(f"duplicate item id {it['id']}")
+        ids.add(it.get("id"))
+        if not it.get("goal") or not it.get("validation_goal"):
+            errs.append(f"item {it.get('id')} missing goal/validation_goal (editorial required)")
+    for it in m.get("items", []):
+        for d in it.get("deps", []):
+            if d not in ids:
+                errs.append(f"item {it.get('id')} dep '{d}' not an item id")
+    return errs
+
+
+def main() -> int:
+    args = [a for a in sys.argv[1:]]
+    mode = "summary"
+    for m in ("--json", "--check", "--summary"):
+        if m in args:
+            mode = m.lstrip("-")
+            args.remove(m)
+    if not args:
+        print("usage: aq-pm-tracker <plan-dir> [--json|--check]", file=sys.stderr)
+        return 2
+    plan_dir = Path(args[0])
+    if not plan_dir.is_absolute():
+        plan_dir = REPO / plan_dir
+    # convenience: accept a bare plan name resolving under .agents/plans/
+    if not (plan_dir / "tracker.json").is_file():
+        alt = REPO / ".agents" / "plans" / args[0]
+        if (alt / "tracker.json").is_file():
+            plan_dir = alt
+    if mode == "check":
+        errs = validate_manifest(plan_dir)
+        if errs:
+            for e in errs:
+                print(f"FAIL: {e}")
+            return 1
+        project(plan_dir)  # ensure it projects without error
+        print(f"PASS: {plan_dir.name}/tracker.json valid + projects")
+        return 0
+    data = project(plan_dir)
+    if mode == "json":
+        print(json.dumps(data, indent=2))
+        return 0
+    pl = data["plan"]
+    print(f"# {pl.get('title', plan_dir.name)}  —  {data['rollup_pct']}%  ({data['shipped']}/{data['total']} shipped)")
+    print(f"  goal: {pl.get('goal', '')}")
+    by_phase = {}
+    for it in data["items"]:
+        by_phase.setdefault(it["phase"], []).append(it)
+    for ph in data["phases"]:
+        rows = by_phase.get(ph["id"], [])
+        print(f"\n## {ph['name']}")
+        for it in rows:
+            print(f"  [{it['status']:<11}] {it['pct']:>3}%  {it['name']}")
+    if data["issues"]:
+        print("\n## issues")
+        for i in data["issues"]:
+            print(f"  ({i.get('sev')}) {i.get('title')}")
+    return 0
+
+
+if __name__ == "__main__":
+    sys.exit(main())
