@@ -1,0 +1,185 @@
+#!/usr/bin/env python3
+"""aq-epoch-bump — owner-facing CLI for the C6 revocation-epoch authority
+(Foundation C, C6-B1; default-OFF/INERT — nothing invokes this script
+automatically).
+
+SECURITY-CRITICAL, two-step OFFLINE-signing workflow:
+
+  1. `aq-epoch-bump build ...` — constructs an UNSIGNED
+     `aq.revocation-epoch-bump/1` request and prints the canonical
+     domain-separated bytes the owner must sign OFFLINE with their Ed25519
+     PRIVATE key. This command never reads, holds, or embeds any private
+     key — it has none. The owner signs `bytes_to_sign_hex` with their own
+     external tooling and sets the resulting hex signature as the
+     request's `signature` field to produce a SIGNED document.
+  2. `aq-epoch-bump submit --signed <file> ...` — submits a pre-signed
+     document to `revocation_epoch.apply_bump`. Fails closed on any
+     malformed/unverifiable/stale/replayed request. NEVER writes the
+     epoch file directly — `apply_bump` is the only sanctioned mutation
+     path, and this CLI has no other write mechanism.
+
+Until the confined `aq-revocation-epoch-authority` service (C6-B2) exists,
+`submit` calls `apply_bump` in-process against explicit local paths
+(`--epoch-path`, `--ledger-dir`, `--owner-keys`) supplied by the operator —
+there is no live socket/service to submit to yet, and this CLI does not
+invent one. No path is resolved from an environment variable, and
+`--ledger-dir` has NO default at all (no state directory has been
+provisioned for it by C6-B2 yet): the operator must name it explicitly.
+"""
+from __future__ import annotations
+
+import argparse
+import json
+import sys
+import uuid
+from datetime import datetime, timedelta, timezone
+from pathlib import Path
+from typing import Any
+
+_HERE = Path(__file__).resolve().parent
+sys.path.insert(0, str(_HERE / "lib"))
+
+import revocation_epoch as re_lib  # noqa: E402
+
+_REPO_ROOT = _HERE.parent.parent
+DEFAULT_EPOCH_PATH = _REPO_ROOT / "config" / "capability-lease-epoch"
+DEFAULT_OWNER_KEYS_PATH = _REPO_ROOT / "config" / "aqos" / "c6-owner-public-keys.json"
+
+
+def _iso(dt: datetime) -> str:
+    return dt.strftime("%Y-%m-%dT%H:%M:%SZ")
+
+
+def cmd_build(args: argparse.Namespace) -> int:
+    epoch_path = Path(args.epoch_path)
+    if args.expected_epoch is not None:
+        expected_epoch = args.expected_epoch
+    else:
+        try:
+            expected_epoch = re_lib.read_epoch(epoch_path)
+        except re_lib.EpochStoreError as exc:
+            print(
+                f"aq-epoch-bump: build: cannot resolve current epoch from "
+                f"{epoch_path}: {exc.reason} ({exc.detail}) — pass "
+                f"--expected-epoch explicitly if that is intentional",
+                file=sys.stderr,
+            )
+            return 1
+
+    now = datetime.now(timezone.utc)
+    expires_at = now + timedelta(seconds=args.ttl_seconds)
+    request: dict[str, Any] = {
+        "schema_version": re_lib.BUMP_SCHEMA_VERSION,
+        "request_id": args.request_id or f"epoch-bump::{uuid.uuid4()}",
+        "idempotency_key": args.idempotency_key or f"epoch-bump::{uuid.uuid4()}",
+        "issued_at": _iso(now),
+        "expires_at": _iso(expires_at),
+        "actor_key_id": args.actor_key_id,
+        "expected_epoch": expected_epoch,
+        "reason_code": args.reason_code,
+        "scope": re_lib.SCOPE_FLEET,
+        "signature": "",
+    }
+    bytes_to_sign = re_lib.canonical_bump_payload(request)
+    out = {
+        "request": request,
+        "bytes_to_sign_hex": bytes_to_sign.hex(),
+        "instructions": (
+            "Sign bytes_to_sign_hex OFFLINE with the owner Ed25519 private "
+            "key matching actor_key_id in "
+            "config/aqos/c6-owner-public-keys.json. Set the resulting hex "
+            "signature as request.signature, save the result as a JSON "
+            "file, then run: aq-epoch-bump submit --signed <file> "
+            "--ledger-dir <dir>"
+        ),
+    }
+    text = json.dumps(out, indent=2, sort_keys=True)
+    if args.out:
+        Path(args.out).write_text(text + "\n", encoding="utf-8")
+        print(f"aq-epoch-bump: wrote {args.out}", file=sys.stderr)
+    else:
+        print(text)
+    return 0
+
+
+def cmd_submit(args: argparse.Namespace) -> int:
+    try:
+        signed_doc = json.loads(Path(args.signed).read_text(encoding="utf-8"))
+    except (OSError, json.JSONDecodeError) as exc:
+        print(
+            f"aq-epoch-bump: submit: cannot read --signed {args.signed}: {exc}",
+            file=sys.stderr,
+        )
+        return 1
+
+    # Accept either the raw bump doc, or the {"request": {...}} wrapper
+    # that `build` emits (with signature filled in by the owner).
+    bump_doc = (
+        signed_doc.get("request")
+        if isinstance(signed_doc, dict) and "request" in signed_doc
+        else signed_doc
+    )
+
+    try:
+        owner_keys = json.loads(Path(args.owner_keys).read_text(encoding="utf-8"))
+    except (OSError, json.JSONDecodeError) as exc:
+        print(
+            f"aq-epoch-bump: submit: cannot read --owner-keys {args.owner_keys}: {exc}",
+            file=sys.stderr,
+        )
+        return 1
+
+    ledger = re_lib.DurableReplayLedger(args.ledger_dir)
+    result = re_lib.apply_bump(bump_doc, args.epoch_path, ledger, owner_keys)
+    print(json.dumps(result, indent=2, sort_keys=True))
+    return 0 if result.get("ok") else 2
+
+
+def build_parser() -> argparse.ArgumentParser:
+    p = argparse.ArgumentParser(
+        prog="aq-epoch-bump",
+        description=(
+            "C6 revocation-epoch authority CLI (offline-signed, "
+            "default-OFF/INERT — not called by anything else yet)."
+        ),
+    )
+    sub = p.add_subparsers(dest="command", required=True)
+
+    p_build = sub.add_parser(
+        "build", help="construct an unsigned bump request + print bytes to sign"
+    )
+    p_build.add_argument("--actor-key-id", required=True)
+    p_build.add_argument("--reason-code", required=True, choices=re_lib.REASON_CODES)
+    p_build.add_argument("--expected-epoch", type=int, default=None)
+    p_build.add_argument("--epoch-path", default=str(DEFAULT_EPOCH_PATH))
+    p_build.add_argument("--ttl-seconds", type=int, default=3600)
+    p_build.add_argument("--request-id", default=None)
+    p_build.add_argument("--idempotency-key", default=None)
+    p_build.add_argument("--out", default=None, help="write result here instead of stdout")
+    p_build.set_defaults(func=cmd_build)
+
+    p_submit = sub.add_parser("submit", help="submit a pre-signed bump document")
+    p_submit.add_argument("--signed", required=True, help="path to the signed request JSON")
+    p_submit.add_argument("--epoch-path", default=str(DEFAULT_EPOCH_PATH))
+    p_submit.add_argument(
+        "--ledger-dir",
+        required=True,
+        help=(
+            "durable replay-ledger directory — REQUIRED, no default "
+            "(no state directory is provisioned until C6-B2)"
+        ),
+    )
+    p_submit.add_argument("--owner-keys", default=str(DEFAULT_OWNER_KEYS_PATH))
+    p_submit.set_defaults(func=cmd_submit)
+
+    return p
+
+
+def main(argv: list[str] | None = None) -> int:
+    parser = build_parser()
+    args = parser.parse_args(argv)
+    return args.func(args)
+
+
+if __name__ == "__main__":
+    raise SystemExit(main())
