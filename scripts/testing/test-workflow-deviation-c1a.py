@@ -123,6 +123,21 @@ with tempfile.TemporaryDirectory() as tmp:
     assert "routing-metrics-schema-unsupported" not in receipt_path.read_text()
     print("PASS: observation failure emits validated receipt and raises")
 
+    # C1B amendment: the host producer uses the same replay-aware primitive
+    # as the broker, so a repeated receipt remains one durable record.
+    replay = append_receipt(receipt_path, records[0])
+    assert replay.outcome == "replayed"
+    changed = dict(records[0])
+    changed["summary"] = "changed bytes retaining old id"
+    try:
+        append_receipt(receipt_path, changed)
+    except DeviationWriteError as exc:
+        assert str(exc) == "derived-field-mismatch"
+    else:
+        raise AssertionError("C1A must reject changed bytes with the old deterministic ID")
+    assert len(receipt_path.read_text().splitlines()) == 1
+    print("PASS: C1A direct receipts share idempotent replay semantics")
+
     unsafe_receipt_path = tmp_path / "unsafe-receipt.jsonl"
     unsafe_receipt_path.symlink_to(tmp_path / "unsafe-target.jsonl")
     os.environ["AQ_WORKFLOW_DEVIATION_LOG_PATH"] = str(unsafe_receipt_path)

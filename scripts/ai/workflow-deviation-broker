@@ -1,0 +1,7 @@
+#!/usr/bin/env python3
+"""Socket-activated entrypoint for the confined deviation receipt broker."""
+
+from pathlib import Path
+import runpy
+
+runpy.run_path(str(Path(__file__).resolve().parent / "lib" / "workflow_deviation_transport.py"), run_name="__main__")
