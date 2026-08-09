@@ -93,3 +93,76 @@ doc_types:
     examples:
       doc_type: reference
       title: System Overview
+
+  integration-contract:
+    required:
+      - doc_type
+      - id
+      - title
+      - status
+    optional:
+      - parent_prd
+      - date
+      - parties
+      - implementation_authority
+      - runtime_authority
+    examples:
+      doc_type: integration-contract
+      id: herdr-h2-canonical-aq--operator-context
+      title: "Integration Contract: Canonical AQ <-> operator-context"
+      status: draft
+
+  design-packet:
+    required:
+      - doc_type
+      - id
+      - title
+      - status
+    optional:
+      - parent_prd
+      - slice
+      - revision
+      - depends_on
+      - authorization
+    examples:
+      doc_type: design-packet
+      id: teg-c1-design-packet-20260808
+      title: TEG C1 Contract and Nix-Boundary Design Packet
+      status: draft
+
+  design-review:
+    required:
+      - doc_type
+      - id
+      - title
+      - status
+    optional:
+      - parent_prd
+      - reviewer
+      - review_role
+      - verdict
+      - subject
+      - subject_sha256
+      - date
+      - head
+      - slice
+    examples:
+      doc_type: design-review
+      id: teg-c1-design-review-20260808
+      title: TEG C1 Independent Architecture Review
+      status: draft
+
+  collaboration-brief:
+    required:
+      - doc_type
+      - id
+      - status
+    optional:
+      - owner
+      - date
+      - parent_prd
+      - title
+    examples:
+      doc_type: collaboration-brief
+      id: herdr-h2-claude-codex
+      status: draft
