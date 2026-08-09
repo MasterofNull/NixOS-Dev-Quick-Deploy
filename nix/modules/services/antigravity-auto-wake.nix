@@ -43,6 +43,25 @@ print(d.get("next_eligible") or "")' 2>/dev/null)"
         --actor owner-manual --timeout ${toString cfg.wakeTimeout}
     fi
   '';
+  # Honest drain-verification: a `cli-nudge-ok` wake is NOT proof the IDE agent processed the task
+  # (root cause of the premature "FIXED" — the nudge fired but 3 advisories sat pending with empty
+  # receipts). This periodic check runs `aq-antigravity-inbox verify`, persists a health snapshot the
+  # dashboard/health-spider can read, and FAILS (journal alert + failed service state) when any task was
+  # nudged but not drained past the grace window. It is decoupled from the wake so it catches a stuck
+  # task regardless of how it got there. The snapshot is written OUTSIDE the watched inbox so it never
+  # re-triggers the wake path unit.
+  verifyScript = pkgs.writeShellScript "aq-antigravity-drain-verify" ''
+    set -u
+    export PATH="/run/current-system/sw/bin:/run/wrappers/bin:$PATH"
+    out="$(${pkgs.python3}/bin/python3 "${aqInbox}" verify --json 2>/dev/null)"; rc=$?
+    tmp="${cfg.drainHealthFile}.tmp.$$"
+    printf '%s\n' "$out" > "$tmp" 2>/dev/null && ${pkgs.coreutils}/bin/mv -f "$tmp" "${cfg.drainHealthFile}" 2>/dev/null || true
+    if [ "$rc" -ne 0 ]; then
+      echo "ANTIGRAVITY-DRAIN-ALERT: inbox has nudged-but-undrained task(s) — cli-nudge-ok is not completion; the IDE agent is not processing. $out" >&2
+      exit 1
+    fi
+    echo "antigravity drain OK: $out"
+  '';
 in {
   options.mySystem.aiStack.antigravityAutoWake = {
     enable = mkOption {
@@ -66,6 +85,23 @@ in {
       default = "${repoPath}/.agent/collaboration/antigravity-inbox";
       description = "Directory watched for new advisory-task drops.";
     };
+    verifyIntervalSec = mkOption {
+      type = types.ints.between 60 3600;
+      default = 300;
+      description = ''
+        How often (seconds) to run the honest drain-verification. A `cli-nudge-ok` wake is not proof of
+        completion; this check alerts when a task was nudged but the IDE agent never drained it. Should be
+        >= the supervisor's 300s undrained grace window.
+      '';
+    };
+    drainHealthFile = mkOption {
+      type = types.str;
+      default = "${repoPath}/.agent/collaboration/antigravity-drain-health.json";
+      description = ''
+        Where the drain-verification snapshot is written (OUTSIDE the watched inbox so it never
+        re-triggers the wake). The dashboard / health-spider read this to surface undrained advisories.
+      '';
+    };
   };
 
   config = mkIf cfg.enable {
@@ -88,6 +124,25 @@ in {
       pathConfig = {
         PathModified = cfg.inboxDir;
         Unit = "aq-antigravity-auto-wake.service";
+      };
+    };
+    # Honest drain audit: the wake's cli-nudge-ok is NOT completion. This periodic verify persists a
+    # health snapshot and fails loudly (journal + failed state) when a nudged task never drained — the
+    # observable+intervenable leg that stops the false-success from hiding.
+    systemd.user.services.aq-antigravity-drain-verify = {
+      description = "Verify the Antigravity advisory inbox actually drains (nudge != completion)";
+      serviceConfig = {
+        Type = "oneshot";
+        ExecStart = "${verifyScript}";
+      };
+    };
+    systemd.user.timers.aq-antigravity-drain-verify = {
+      description = "Periodically verify the Antigravity advisory inbox drains";
+      wantedBy = ["timers.target"];
+      timerConfig = {
+        OnBootSec = "${toString cfg.verifyIntervalSec}s";
+        OnUnitActiveSec = "${toString cfg.verifyIntervalSec}s";
+        Unit = "aq-antigravity-drain-verify.service";
       };
     };
   };
