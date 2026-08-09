@@ -1,0 +1,88 @@
+{
+  "plan": {
+    "id": "herdr-agent-operations",
+    "title": "Herdr Agent Operations — persistent AQ-OS terminal presentation",
+    "prd_ref": ".agent/PROJECT-HERDR-AGENT-OPERATIONS-PRD.md",
+    "owner": "hyperd",
+    "goal": "A persistent, role-aware terminal workspace that makes AQ-OS work visible without becoming a second task, dispatch, review, or release authority.",
+    "success_criteria": [
+      "Pinned and reproducible Herdr package with all update, manifest, plugin, restore and remote behaviors default-OFF",
+      "One deterministic aq-os workspace presents every managed role and exposes dark, orphaned, unmanaged and drifted state",
+      "Agent workers cannot reach the mutation-capable Herdr socket or binary",
+      "Phase-0, terminal Agent Ops and the web command center share one closed Herdr health projection",
+      "Detach, reattach, restart reconstruction and rollback preserve canonical AQ state and evidence"
+    ]
+  },
+  "phases": [
+    {"id": "h0", "name": "H0 — capability intake", "goal": "deny-by-default threat model and authority boundary", "order": 1},
+    {"id": "h1", "name": "H1 — inert packaging", "goal": "reproducible package and read-only operator facade with no runtime", "order": 2},
+    {"id": "h2", "name": "H2 — monitored presentation", "goal": "deterministic layout projection and Service Coverage", "order": 3},
+    {"id": "h3", "name": "H3 — brokered panes", "goal": "admitted tasks execute in socket-blind confined Herdr PTYs", "order": 4},
+    {"id": "h4", "name": "H4 — dogfood and cutover", "goal": "soak, remote attach, reconstruction and cmux terminology retirement", "order": 5}
+  ],
+  "items": [
+    {
+      "id": "h0-intake",
+      "name": "Deny-by-default capability intake",
+      "phase": "h0",
+      "kind": "slice",
+      "goal": "establish source, threat, authority and non-activation contracts",
+      "validation_goal": "focused intake tests + independent PASS + atomic commit",
+      "deps": [],
+      "editorial_note": "original intake commit ffaa5b94 has superseded Apache provenance; corrected bytes require a new accepted commit",
+      "detection": {"commit_match": ["correct Herdr license provenance"], "freeze_record": ".agents/plans/herdr-agent-operations/H0-INTAKE-REPORT.md"},
+      "pct_hint": 90
+    },
+    {
+      "id": "h1-package",
+      "name": "Pinned package and inert operator surface",
+      "phase": "h1",
+      "kind": "slice",
+      "goal": "installable package, immutable safe config and read-only aq-herdr without starting runtime",
+      "validation_goal": "source/Cargo hashes + SBOM/license + Nix build/eval + closed facade + independent PASS",
+      "deps": ["h0-intake"],
+      "editorial_note": "prepared design requires independent flagship review and license adjudication before implementation",
+      "detection": {"freeze_record": ".agents/plans/herdr-agent-operations/H1-DESIGN-PACKET.md"},
+      "pct_hint": 15
+    },
+    {
+      "id": "h2-presentation",
+      "name": "Deterministic workspace and monitoring projection",
+      "phase": "h2",
+      "kind": "slice",
+      "goal": "render canonical AQ records into the seven-tab aq-os workspace without lifecycle mutation",
+      "validation_goal": "projection vectors + drift/orphan tests + aq-qa + terminal and web dashboard Service Coverage",
+      "deps": ["h1-package"],
+      "detection": {"blocker_note": "requires accepted H1 package; runtime activation separately reviewed"},
+      "pct_hint": 0
+    },
+    {
+      "id": "h3-execution",
+      "name": "Brokered and confined agent panes",
+      "phase": "h3",
+      "kind": "slice",
+      "goal": "dispatch-admitted tasks run in persistent PTYs while workers cannot access Herdr control",
+      "validation_goal": "role-by-role socket/binary denial + cancellation/fence/review end-to-end",
+      "deps": ["h2-presentation"],
+      "detection": {"blocker_note": "requires active dispatch broker/TEG and execution-cell boundary"},
+      "pct_hint": 0
+    },
+    {
+      "id": "h4-cutover",
+      "name": "Dogfood, reconstruction and cutover",
+      "phase": "h4",
+      "kind": "slice",
+      "goal": "prove live role mix, detach/reattach, restart reconstruction, SSH attach and rollback",
+      "validation_goal": "bounded soak + live Service Coverage + reference scan + archive-safe terminology retirement",
+      "deps": ["h3-execution"],
+      "detection": {"blocker_note": "no cutover before H3 acceptance and rebuild checkpoint"},
+      "pct_hint": 0
+    }
+  ],
+  "issues": [
+    {"title": "same-user Herdr socket is mutation-capable", "sev": "high", "note": "mediate through AQ adapter and hide binary/socket from worker cells"},
+    {"title": "terminal scrollback can contain sensitive evidence", "sev": "high", "note": "explicit drill-in only; exclude from default labels, telemetry, RAG and remote transport"},
+    {"title": "presentation heuristics can disagree with lifecycle truth", "sev": "medium", "note": "display drift and use registry/receipts as sole authority"},
+    {"title": "upstream package dependency closure not frozen", "sev": "medium", "note": "H1 supply-chain report must bind source and Cargo hashes before build acceptance"}
+  ]
+}

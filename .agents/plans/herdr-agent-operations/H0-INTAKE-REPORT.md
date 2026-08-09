@@ -11,7 +11,7 @@ date: 2026-08-08
 
 ## Verdict
 
-**PREPARED_ONLY — needs a separately reviewed, default-off mitigation slice; do not install or enable Herdr.** The intake target is upstream release `v0.7.5`, pinned by immutable source revision and Nix lock/NAR evidence in a future package slice. Upstream is Apache-2.0 and exposes a Nix flake package, default app, checks, and overlay, so reproducible source packaging is feasible without curl-install or an upstream binary updater.
+**PREPARED_ONLY — needs a separately reviewed, default-off mitigation slice; do not install or enable Herdr.** The intake target is upstream release `v0.7.5`, pinned by immutable source revision and exact source/Cargo dependency hashes in a future local Nix package. The pinned release is dual-licensed under AGPL-3.0-or-later or a separately obtained commercial license; its `LICENSE`, `Cargo.toml`, README, and Nix package agree on AGPL-3.0-or-later. It exposes a Nix flake package, default app, checks, and overlay, which are feasibility evidence only; AQ-OS H1 uses a local source-pinned package and does not add the upstream flake to `flake.lock`. H1 remains blocked until the owner accepts the AGPL obligations for local internal use or supplies a commercial-license record.
 
 H0 changes no runtime capability. The candidate registry remains `proposed` with disabled external-repository install metadata, no tool permissions, and no network, shell, write, or secret permissions. It grants no download, no install, process start, no socket use, agent skill, plugin, integration, remote attach, update, manifest fetch, restore, service activation, provider change, or routing change.
 
@@ -33,7 +33,7 @@ These capabilities are incompatible with direct AQ-OS agent access. No plugin, i
 
 ## Required mitigation before any activation
 
-1. Package only the source-pinned `v0.7.5` flake through Nix; lock the commit and NAR; produce an SBOM/license/dependency review. No curl, release binary, `herdr update`, or upstream manifest fetch.
+1. Package only source-pinned `v0.7.5` through a local Nix expression; bind the commit, source hash, Cargo lock and dependency closure; produce an SBOM/license/dependency review. Do not add an upstream flake input or `flake.lock` entry. No curl, release binary, `herdr update`, or upstream manifest fetch.
 2. Generate immutable default-off config: `[update] version_check=false`, `manifest_check=false`; `[session] resume_agents_on_restore=false`; `[remote] manage_ssh_config=false`; `[experimental] allow_nested=false`.
 3. Keep Herdr as a user presentation process, not an AQ authority service. Confined agents must not receive `HERDR_SOCKET_PATH`, Herdr config/state directories, or the Herdr CLI.
 4. If AQ-OS later reports into Herdr, use a host-owned mediation wrapper with bounded, redacted requests. Direct socket access is prohibited because upstream provides no per-method ACL. The only future candidate methods are `ping`, redacted metadata projection, `pane.report_agent`, `pane.report_agent_session`, `pane.release_agent`, bounded `notification.show`, and narrowly scoped server-owned waiting. Every process/input/read/layout/worktree/server/plugin/integration method remains denied.
@@ -47,7 +47,8 @@ Rollback disables the Nix feature and removes proxy/socket bindings from confine
 
 ## Sources reviewed
 
-- `https://github.com/herdrdev/herdr` / upstream `v0.7.5` release and Apache-2.0 license.
+- `https://github.com/herdrdev/herdr` / upstream `v0.7.5` release; AGPL-3.0-or-later or commercial dual-license declaration.
+- Pinned-source `LICENSE` SHA-256 `a7fa24f74382fb3e4d320a608533a7c2999dbc0f780f1f734c8b891b31f0d9bd` and `Cargo.lock` SHA-256 `4d590b4abf9d6088704ae7ab9811c8bb766286ec75ca63364c7e23cb14be6ecf`.
 - Upstream flake outputs: package/default app/checks/overlay.
 - Upstream Socket API, Plugins, Integrations, and Persistence/Remote documentation.
 - `config/agent-capability-intake-candidates.json` and `.agent/PROJECT-HERDR-AGENT-OPERATIONS-PRD.md`.

@@ -46,7 +46,11 @@ for corpus_name, corpus in (("PRD", prd), ("program", program), ("report", repor
     need("Herdr" in corpus, f"{corpus_name} must identify Herdr")
 need("presentation" in prd.lower() and "not the task registry" in prd.lower(), "PRD must keep Herdr presentation-only")
 need("PREPARED_ONLY" in report, "H0 report must be prepared-only")
-need("v0.7.5" in report and "Apache-2.0" in report and "Nix" in report, "report must bind release, license, and Nix feasibility")
+need(
+    "v0.7.5" in report and "AGPL-3.0-or-later" in report and "Nix" in report,
+    "report must bind release, actual license, and Nix feasibility",
+)
+need("Apache-2.0" not in report, "report must not misstate the pinned Herdr license")
 
 prohibitions = ("direct socket", "plugin", "integration", "agent skill", "session restore", "remote attach", "herdr update", "manifest")
 lower_report = report.lower()
