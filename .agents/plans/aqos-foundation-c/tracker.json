@@ -39,7 +39,7 @@
      "goal": "provision the context-signer key, enable the service, flip the flag, land the ledger-reorder + O2 observability",
      "validation_goal": "live mint round-trip; enabled + observable + intervenable",
      "deps": ["c2sci-build"], "editorial_note": "owner-gated; NOT done (default-OFF)",
-     "detection": {"activation_subject": "c2-scheduler-context-issuer-ACTIVATE", "blocker_note": "BLOCKED: Codex catch-up audit HIGH (ALA/C2 lease-schema mismatch, real leases rejected) + MEDIUM (issuer epoch not deny-closed) must land first; then owner acts: SOPS keypair + enable=true + CAPABILITY_SCHEDULER_CONTEXT_ISSUER=1 + polish items"}, "pct_hint": 0},
+     "detection": {"activation_subject": "c2-scheduler-context-issuer-ACTIVATE", "blocker_note": "Codex-audit HIGH+MEDIUM RESOLVED by 3d45e03c (ALA-C2 contract repair, verified). Remaining = owner activation only: SOPS keypair + enable=true + CAPABILITY_SCHEDULER_CONTEXT_ISSUER=1 + ledger-reorder/O2 polish"}, "pct_hint": 0},
     {"id": "c6-p0", "name": "C6-P0 trust anchors (owner keys + schemas)", "phase": "c6", "kind": "slice",
      "goal": "owner public-key allowlist + revocation-epoch-bump + scheduler-lease-context schemas",
      "validation_goal": "rev3 built + activated (Q-C6-2 resolved)",
@@ -63,8 +63,8 @@
   ],
   "issues": [
     {"title": "c2-sci ledger-burn-before-signer-check + O2 observability", "sev": "low", "note": "bounded pre-activation polish (fail-closed, non-blocking)"},
-    {"title": "c2-sci ALA/C2 lease-schema mismatch (Codex catch-up audit)", "sev": "high", "note": "real mint_first_party_leases() output lacks grant_digest+policy_revision → issuer rejects lease-fields-malformed; activation blocker; needs one canonical lease contract + integration test; owner build grant required"},
-    {"title": "c2-sci issuer epoch not deny-closed (Codex catch-up audit)", "sev": "medium", "note": "future-epoch lease admitted (< not !=); absent/malformed epoch → 0 fail-open on issuer transport; fold with the HIGH fix"},
+    {"title": "c2-sci ALA/C2 lease-schema mismatch (Codex catch-up audit)", "sev": "resolved", "note": "CLOSED by 3d45e03c — real leases now carry signed grant_digest+policy_revision; issuer suite mints real lease end-to-end 68/68"},
+    {"title": "c2-sci issuer epoch not deny-closed (Codex catch-up audit)", "sev": "resolved", "note": "CLOSED by 3d45e03c — exact != epoch deny + issuer epoch resolves only via fail-closed UDS reader (no absent→0)"},
     {"title": "C6 A2 epoch-source wiring", "sev": "resolved", "note": "CLOSED by C6-B3 amended (36a5e2c4): fail-closed UDS resolve_current_epoch reader, gate uses authority as sole source under flag, never 0; CP-3 switchboard env injection deferred to C6-B4"},
     {"title": "48d92962 concurrent-staging pollution", "sev": "medium", "note": "structural commit-lock fix deferred (router phase-2)"}
   ]
