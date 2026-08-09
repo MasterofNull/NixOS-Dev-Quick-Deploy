@@ -99,6 +99,9 @@ in {
       systemd.tmpfiles.rules = [
         "d '${dataDir}' 0755 ${svcUser} ${svcGroup} - -"
         "d '${dataDir}/logs' 0755 ${svcUser} ${svcGroup} - -"
+        # Service-private deviation log dir: owner-only writable (0750) so workflow_deviation_io's
+        # _open_locked safety check (rejects group/other-writable or non-owner dirs) accepts it.
+        "d '${dataDir}/deviations' 0750 ${svcUser} ${svcGroup} - -"
       ];
 
       # Autonomous improvement service (one-shot cycle)
@@ -129,7 +132,12 @@ in {
           AUTONOMOUS_AUTO_APPLY_BLAST_RADIUS_MAX = autonomous.autoApplyBlastRadiusMax;
           PRSI_ARTIFACT_DIR = "${dataDir}/prsi-artifacts/runs";
           AQ_ROUTING_METRICS_DB_PATH = "${mcp.dataDir}/routing_metrics.db";
-          AQ_WORKFLOW_DEVIATION_LOG_PATH = "${mcp.dataDir}/hybrid/telemetry/workflow-deviations.jsonl";
+          # Service-private deviation log. The shared telemetry dir (/var/lib/ai-stack/hybrid/telemetry)
+          # is ai-hybrid-owned + group-writable (0770), which workflow_deviation_io._open_locked correctly
+          # rejects as unsafe (deviation-target-unsafe) for this hyperd-run service. Write to the service's
+          # own tmpfiles-owned dir (hyperd:users 0750, non-group-writable) so the fail-loud deviation path
+          # actually records instead of crashing on the receipt write.
+          AQ_WORKFLOW_DEVIATION_LOG_PATH = "${dataDir}/deviations/workflow-deviations.jsonl";
         };
 
         script = ''
