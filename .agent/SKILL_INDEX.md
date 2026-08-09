@@ -24,6 +24,7 @@ Agents and recursive self-improvement loops should call this before planning whe
 |-------|----------------|-------------|
 | `self-improvement` | self-improvement, issues-backlog, PRD, aq-report, roadmap, slice, priority | When asked to "run a self-improvement slice" or "improve the harness" — discover priority from issues-backlog/PRDs/reports, propose 3 options, then execute |
 | `minimal-code` | minimal-code, over-engineering, YAGNI, reuse, ponytail, decision-ladder, dependency | BEFORE writing any implementation/new file/dependency — walk the ladder (YAGNI→codebase→stdlib→native→dep→one-line→MVP); pairs with /simplify |
+| `finding-freshness` | freshness, multi-agent, concurrent, audit, backlog, stale-finding, verify-before-act | BEFORE logging or acting on any audit/review finding in a multi-lane session — re-verify it against current HEAD + concurrent commits; never request a grant or dispatch a fix for an unverified finding (a concurrent lane may have already fixed+released it) |
 | `capability-intake` | plugins, skills, tools, mcp, admission | Security-gated review before adding external agent capabilities |
 | `t3mp3st-intake` | t3mp3st, redteam, dual-use, admission, scope-gate | Evaluating T3MP3ST as a blocked capability candidate; use metadata-only `aq-tempest` commands, never active execution |
 | `system-dev` | pre-commit, doc-sync, rule11, RAG-seed, tier0 | Pre-commit sequence; doc sync check; issue logging; any commit workflow |

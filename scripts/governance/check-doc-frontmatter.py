@@ -112,6 +112,11 @@ def validate_frontmatter(file_path: str, schema: Dict[str, Any], fix_missing: bo
 
     if doc_type not in schema['doc_types']:
         print(f"Error: Unknown doc_type '{doc_type}' in {file_path}")
+        # Rule 19 (don't route around the cause): the fix is to REGISTER the type, never to flip the
+        # doc_type to a wrong-but-registered value to slip past this gate. Silent type-flipping erodes
+        # the gate's meaning and is why legit types (integration-contract/design-packet/...) were missing.
+        print(f"  FIX THE PRODUCER: add '{doc_type}' under doc_types in {SCHEMA_PATH} with its required "
+              f"fields. Do NOT change doc_type to pass. Registered types: {sorted(schema['doc_types'].keys())}")
         return False
 
     type_schema = schema['doc_types'][doc_type]

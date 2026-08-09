@@ -1,3 +1,25 @@
+## FLAT-ORG COLLABORATION FRICTION (dogfooding retrospective 2026-08-08; sort self-improvement by frequency×cost, not severity alone)
+
+[OPEN] concurrent-lane-commit-collision — FREQUENCY: ~4×/session (TOP). Multiple lanes (herdr, TEG, ALA-C2, H2A) edit the same plan dirs + shared files (issues-backlog, trackers, flake.nix, package-count-baseline, doc-frontmatter schema) with no slice-claim/commit-lock. Symptoms this session: `git commit` folded another lane's staged files (97427609 took a concurrent baseline+activation-audit); a VALID doc could not commit because another lane's invalid-frontmatter doc failed the SHARED gate; repeated "modified since read" mid-edit; owner `nixos-rebuild` ran on a tree Codex was mid-editing.
+  Severity: medium-high (history hygiene + commit friction; not data loss — caught each time). Frequency: HIGH.
+  Action: build `aq-slice-claim` + a commit-lock so a lane cannot `git add` into another's commit; pathspec-scoped commits enforced; links [concurrent-orchestrator-commit-authority-race-b3]. This is the deferred structural fix — frequency now justifies jumping the queue.
+
+[OPEN] stale-finding-acted-before-freshness-check — FREQUENCY: 1×/session (near-miss, high-cost-if-missed). The audit→backlog→act pipeline has no "is this still true?" check against concurrent commits. C2-SCI HIGH+MEDIUM were logged OPEN and nearly got a redundant fix + a redundant owner grant, but a concurrent lane had already fixed+RELEASED them (3d45e03c). Caught only by verifying first.
+  Severity: medium (wasted grant/build risk; confused-deputy-adjacent if a stale grant were emitted). Frequency: recurring in multi-lane.
+  Action: a `finding-freshness` skill/gate — before logging or acting on any audit finding, re-verify it against HEAD + concurrent commits touching the same producer files; mark stale findings RESOLVED with the closing commit. Skill authored 2026-08-08.
+
+[OPEN] gate-allowlist-lags-practice → silent-workaround — FREQUENCY: 1×/session (root-caused). The doc-frontmatter validator lacked doc_types in active use (integration-contract/design-packet/design-review/collaboration-brief), so lanes/linters FLIPPED doc_types to slip past it — a silent Rule-19 "route around the cause". Fixed the schema (615b4086) but nothing PREVENTS recurrence when a new type appears.
+  Severity: medium (silent workaround erodes gate meaning). Frequency: recurs whenever vocabulary out-runs the allowlist.
+  Action: DONE schema fix (615b4086) + add a gate that FAILS when a doc_type is used-but-unregistered (co-evolve the allowlist instead of routing around it). Gate added 2026-08-08.
+
+[OPEN] single-implementer-lane-bottleneck — FREQUENCY: 1 cooldown/session. audit→B3 build→B3 fix→TEG revision→H2A prep→H2A revision all funneled through Codex; hit one quota cooldown. Local Qwen stayed idle because these design tasks exceed its measured envelope (multi-file architecture) — a capability gap, so "never-skip-local" is aspirational for this class.
+  Severity: low-medium (throughput; serialization risk when the lane closes mid-flight). Frequency: per heavy design session.
+  Action: (a) grow local's share by decomposing design tasks into local-sized single-file slices; (b) engage a second remote design lane (fresh Claude flagship / Gemini) for parallel independent design when Codex is saturated; (c) queue-on-lane-close (see catch-up).
+
+[OPEN] no-unified-in-flight-view-across-lanes — FREQUENCY: persistent. ~6 background waiters + hand-tracked task IDs / doc SHAs / grant hashes / lane states per session, no single "what is in flight across all lanes" surface. High working-memory load; the exact blindness the operator-context projection + Cadence surface are designed to remove.
+  Severity: medium (cognitive load; missed/duplicated work risk). Frequency: continuous.
+  Action: this is what HERDR H2 operator-context + Cadence SOLVE — reframes H2 from UX polish to a fix for our own coordination blindness. Prioritize the operator-context projection's "active work / lanes / attention" fields.
+
 [OPEN] independent-temp-review-mutates-sealed-candidate — During ALA-C2-R1 temp acceptance, the independent reviewer ran `py_compile` inside the sealed candidate and created three unmanifested `__pycache__` files, forcing a correct `REQUEST_REVISION`, evidence-preserving quarantine, and exact reseal before review could continue. Root cause: reviewer instructions prohibited edits but did not mechanically redirect bytecode or make the candidate root read-only.
   Severity: medium (review integrity and lease-time consumption; no repository impact)
   Action: make sealed temp candidates read-only or mount/copy them read-only for reviewers; set `PYTHONDONTWRITEBYTECODE=1` and `PYTHONPYCACHEPREFIX` outside the subject by default; add an inventory pre/post assertion around every reviewer command.
@@ -3059,3 +3081,7 @@ Advisory task (codex is the real confirmatory backstop) — non-blocking.
   Severity: medium
   Action: design a default-safe Wi-Fi DNS compatibility slice with trusted-profile scoping, portal/limited bypass plus bounded rollback, pure dispatcher decision/Nix tests, and Phase-0/dashboard fields for sanitized connectivity class, DNS-policy mode, and last outcome. Require live validation across two permitted networks without storing SSID/IP.
   File: nix/modules/core/network.nix; docs/operations/local-agent-operations-guide.md
+[OPEN] RELEASE-INDEX-OWNERSHIP — Concurrent Claude commit `97427609` consumed the independently accepted package-count baseline while Codex held it staged for a standalone atomic commit — shared Git index lacked an enforceable exclusive commit-owner lease; do not rewrite history, but require pre-stage HEAD/index ownership, writer identity, and post-commit exact-inventory verification for every concurrent release
+  Severity: high
+  Action: implement a stable exclusive commit/index lease or isolated alternate-index release broker; fail closed when another orchestrator stages or commits during an active release
+  File: .git/index and scripts/ai release orchestration
