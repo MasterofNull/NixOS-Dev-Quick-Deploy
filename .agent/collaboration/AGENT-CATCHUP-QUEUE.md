@@ -218,3 +218,31 @@ issuer rev2 (d8702e4c — honest narrowing + peer-uid HIGH fix), C6 rev3/B1/B2 (
 apply_bump race). Advisory unless a real defect surfaces -> bounded follow-up. Verdict ->
 .agents/plans/aqos-foundation-c/CATCHUP-CODEX-CONFIRMATORY-AUDIT-20260808.md. Runs concurrent with the
 C6-B3 amended build (codex-20260808-111113).
+
+## [2026-08-08T18:48Z] QUEUED for Codex-return (cooldown until 19:29:41Z)
+- C6-B3 independent code review (target 36a5e2c4; CP-1..CP-4 + A2 + flag-OFF byte-parity). B3 committed,
+  orchestrator-gated, amendment PASS-reviewed, default-OFF → safe while dormant; review is the
+  confirmatory acceptance gate. Brief: scratchpad/c6b3-review-brief.md. Auto-redispatch waiter armed.
+- C2-SCI HIGH+MEDIUM fix slice (from the catch-up audit): needs OWNER build grant (touches frozen ALA +
+  C2-SCI) + implementer=Codex. One canonical ALA/C2 lease contract + fail-closed issuer epoch + real
+  integration test (no fixtures). Blocks c2sci-activate.
+
+## [2026-08-08T20:10Z] Codex DOWN until Aug 15 (usage limit, probe-verified) — queued for return
+Codex hit a hard usage limit (probe `codex-...195843` → "try again Aug 15th 1:32PM"). Treat all Codex
+outputs as non-gating until then; route gating reviews to Claude/local/Antigravity meanwhile (Rule 18).
+Queued for Codex confirmatory audit on return (advisory unless a real defect surfaces):
+- TEG-C1 R2 design (packet `94e6ab22`, PRD `2286e564`) — Claude re-review PASS(freeze-eligible); Codex
+  confirmatory optional-but-wanted before the CORE build grant.
+- H2A revised inventory (`1d7052f`, H2A-P0/H2A-P0B split) — Claude orchestrator re-review pending; Codex
+  confirmatory on return.
+- Flat-org friction consensus — Claude's 5 frictions logged; also routed to Antigravity NOW for the second
+  independent view; fold Codex's view in on return.
+
+## [2026-08-08T20:10Z] Antigravity lane has an UNDRAINED backlog (wake mechanism down)
+Inbox has 3 pending advisories NOT processed: `c2-scheduler-context-issuer-rev4-review`,
+`ala-c2-c6-b3r-advisory-20260808`, `flat-org-friction-consensus-20260808` (just dropped). Root cause: the
+auto-wake watcher is enabled in the ai-dev profile but NOT running (the earlier failed nixos-rebuild did not
+activate it), and `aq-antigravity-inbox wake` is owner-manual-gated; the direct switchboard path is dead by
+design (503 remote_key_endpoint_mismatch — no API keys for Antigravity). OWNER ACTION to drain: either
+restore the auto-wake service (rebuild/restart the user path unit) or run `aq-antigravity-inbox wake
+<task> --actor owner-manual`. Until then Antigravity contributes nothing new despite 3 queued tasks.
