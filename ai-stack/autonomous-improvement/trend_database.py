@@ -222,12 +222,20 @@ class TrendDatabase:
         with sqlite3.connect(str(self.experiments_db)) as conn:
             cursor = conn.cursor()
 
+            # Schema-drift guard: the experiments table records creation time as `created_at`,
+            # not `timestamp`. Skip this source gracefully if the expected column is absent so a
+            # schema drift degrades observation rather than crashing the whole improvement cycle
+            # (mirrors the routing_log guard above). Fixes "no such column: timestamp".
+            exp_cols = {row[1] for row in cursor.execute("PRAGMA table_info(experiments)").fetchall()}
+            if "created_at" not in exp_cols or "accepted" not in exp_cols:
+                return snapshots
+
             # Experiment success rate
             cursor.execute("""
-                SELECT timestamp, accepted
+                SELECT created_at, accepted
                 FROM experiments
-                WHERE timestamp >= ?
-                ORDER BY timestamp
+                WHERE created_at >= ?
+                ORDER BY created_at
             """, (since.isoformat(),))
 
             for row in cursor.fetchall():
