@@ -12,6 +12,14 @@ parent_prd: herdr-agent-operations
 
 ## Current evidence
 
+- The original H0 intake was independently accepted and committed at
+  `ffaa5b94`, but its Apache license statement was wrong. The corrected
+  AGPL/commercial provenance amendment is independently reviewed but is not the
+  accepted H0 baseline until its new exact bytes are committed. Neither corpus
+  grants download, installation, runtime, socket, plugin, integration, restore,
+  remote, or process-launch authority.
+- H1 operator/package design is prepared in `H1-DESIGN-PACKET.md` and is not an
+  implementation or activation grant.
 - The repository contains cmux-style comments and matrix/focus rendering in
   `scripts/ai/aq-tui-dashboard`, but no cmux runtime integration or cutover.
 - Herdr upstream provides a Rust binary, persistent PTY server, agent state,
@@ -26,18 +34,21 @@ parent_prd: herdr-agent-operations
 
 ### H0 — deny-by-default intake
 
-Pin one stable Herdr release and upstream commit/NAR hash. Review Apache-2.0
-license, Cargo lock/SBOM, Nix flake, socket protocol, plugin/integration hooks,
+Pin one stable Herdr release and upstream commit/source/Cargo hashes. Review the declared
+AGPL-3.0-or-later/commercial dual-license terms, Cargo lock/SBOM, Nix flake,
+socket protocol, plugin/integration hooks,
 update and remote-manifest behavior, persistence, logs, and restore semantics.
 Land closed layout/role projection contracts and adversarial fixtures. Candidate
 remains `proposed` until independent flagship acceptance.
 
 ### H1 — package and inert user session
 
-Add the pinned flake/package and a default-OFF Home Manager or user-systemd
-configuration for named session `aq-os`. Generate config with update checks,
-manifest checks, plugins, remote bootstrap, and agent restore disabled. Add a
-read-only `aq-herdr status` facade and exact rollback. No pane/process launch.
+Add a locally packaged, source-pinned release and a default-OFF Home Manager
+configuration for named session `aq-os`. Availability and runtime activation
+are separate options; H1 has no auto-start target. Generate config with update
+and manifest checks, plugins, remote bootstrap, and agent restore disabled. Add
+a read-only `aq-herdr status|doctor|version` facade and exact rollback. No
+socket connection, pane/process launch, or runtime activation.
 
 ### H2 — presentation projection and Service Coverage
 
