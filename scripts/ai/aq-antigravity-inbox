@@ -143,7 +143,8 @@ def _state() -> dict[str, Any]:
             if _is_parked(tid,gen): parked.append(p)
             else: eligible.append(p); required.append(p)
         except InboxError: required.append(p)
-    return {"inbox":_rel(INBOX),"exists":INBOX.exists(),"pending_count":len(pending),"claimed_count":len(_claimed()),"parked_count":len(parked),"claim_required_count":len(required),"next":_rel(eligible[0]) if eligible else None,"next_eligible":_rel(eligible[0]) if eligible else None,"pending":[_rel(p) for p in pending],"claimed":[_rel(p) for p in _claimed()],"parked":[_rel(p) for p in parked]}
+    undrained=_undrained()
+    return {"inbox":_rel(INBOX),"exists":INBOX.exists(),"pending_count":len(pending),"claimed_count":len(_claimed()),"parked_count":len(parked),"claim_required_count":len(required),"undrained_count":len(undrained),"undrained":undrained,"next":_rel(eligible[0]) if eligible else None,"next_eligible":_rel(eligible[0]) if eligible else None,"pending":[_rel(p) for p in pending],"claimed":[_rel(p) for p in _claimed()],"parked":[_rel(p) for p in parked]}
 
 def _emit(payload: dict[str, Any], as_json: bool) -> int:
     if as_json: print(json.dumps(payload,sort_keys=True)); return 0
@@ -158,6 +159,40 @@ def _invoke_wake(timeout: int) -> tuple[str, int | None]:
     except FileNotFoundError: method="cli-nudge-binary-missing"
     except subprocess.TimeoutExpired: method="cli-nudge-timeout"
     return method,code
+
+_UNDRAINED_GRACE_S = 300  # after a successful nudge, allow the IDE agent this long to claim+complete before "undrained"
+
+def _drain_status(tid: str) -> tuple[str, float | None]:
+    """Honest drain state for one task. A `cli-nudge-ok` wake is NOT completion — only a `complete`
+    receipt record is. Returns (status, seconds_since_last_successful_nudge)."""
+    recs = _load(tid)["records"]
+    if any(r.get("type") == "complete" for r in recs): return ("drained", None)
+    nudges = [t for r in recs if r.get("type") == "wake_attempt" and r.get("method") == "cli-nudge-ok"
+              for t in (_parse_ts(r.get("ts")),) if t]
+    if not nudges: return ("unnudged", None)
+    age = (datetime.now(timezone.utc) - max(nudges)).total_seconds()
+    return (("undrained-stale" if age >= _UNDRAINED_GRACE_S else "nudged-recent"), age)
+
+def _undrained() -> list[dict[str, Any]]:
+    """Tasks nudged (cli-nudge-ok) but never reaching a `complete` receipt within grace — i.e. the
+    auto-wake fired but the Antigravity IDE agent did not process the task. This is the truth that a
+    bare `cli-nudge-ok` success signal hides (Activation-Gate: observable != functionally-validated)."""
+    out=[]
+    for p in _pending() + _claimed():
+        try: tid=_tid(p.name)
+        except InboxError: continue
+        status, age = _drain_status(tid)
+        if status == "undrained-stale":
+            out.append({"task":_rel(p),"task_id":tid,"phase":"claimed" if p.name.startswith(".claimed-") else "pending","last_nudge_age_s":round(age) if age is not None else None})
+    return out
+
+def cmd_verify(args: argparse.Namespace)->int:
+    """Fail-closed drain audit: exit 1 (with detail) if any task was nudged but not drained. The
+    auto-wake service / health-spider must gate on THIS, not on the wake's cli-nudge-ok exit code."""
+    undrained=_undrained()
+    _emit({"ok":not undrained,"undrained_count":len(undrained),"undrained":undrained,
+           "note":("nudged (cli-nudge-ok) but NOT drained — the IDE agent is not processing the inbox; cli-nudge-ok is not proof of completion" if undrained else "all nudged tasks drained or within grace")}, args.json)
+    return 1 if undrained else 0
 
 def cmd_status(args: argparse.Namespace)->int: return _emit(_state(),args.json)
 def cmd_next(args: argparse.Namespace)->int:
@@ -350,7 +385,7 @@ def cmd_dispatch_once(args: argparse.Namespace)->int:
 
 def build_parser()->argparse.ArgumentParser:
     p=argparse.ArgumentParser(description=__doc__); sub=p.add_subparsers(dest="cmd",required=True)
-    for name,func in (("status",cmd_status),("next",cmd_next)):
+    for name,func in (("status",cmd_status),("next",cmd_next),("verify",cmd_verify)):
         q=sub.add_parser(name); q.add_argument("--json",action="store_true"); q.set_defaults(func=func)
     q=sub.add_parser("claim"); q.add_argument("name"); q.add_argument("--actor",required=True,choices=["ide-watch","owner-manual"]); q.add_argument("--json",action="store_true"); q.set_defaults(func=cmd_claim)
     q=sub.add_parser("wake"); q.add_argument("name"); q.add_argument("--actor",default="owner-manual",choices=["owner-manual"]); q.add_argument("--passive-only",action="store_true"); q.add_argument("--timeout",type=int,default=10); q.add_argument("--json",action="store_true"); q.set_defaults(func=cmd_wake)
