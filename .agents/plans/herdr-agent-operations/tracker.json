@@ -31,7 +31,7 @@
       "deps": [],
       "editorial_note": "original intake commit ffaa5b94 has superseded Apache provenance; corrected bytes require a new accepted commit",
       "detection": {"commit_match": ["correct Herdr license provenance"], "freeze_record": ".agents/plans/herdr-agent-operations/H0-INTAKE-REPORT.md"},
-      "pct_hint": 90
+      "pct_hint": 100
     },
     {
       "id": "h1-package",
