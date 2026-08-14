@@ -52,5 +52,18 @@ def main():
   for timeout in (0,121): assert m.main(["wake",".claimed-escape","--timeout",str(timeout),"--json"])==1
   try: m.main(["wake","x.md","--actor","dispatch-once","--json"]); raise AssertionError("dispatch actor spoof accepted")
   except SystemExit as exc: assert exc.code == 2
+  # Regression (Codex catch-up DEFECT[MEDIUM]): drain-verify is generation-aware and keys on the
+  # canonical `completion` record type — a reused task-ID's prior-generation evidence must not mask a
+  # fresh generation, and a mislabeled `complete` record must not count as drained.
+  drn=tmp/"drain"; m.REPO=drn; m.INBOX=drn/".agent/collaboration/antigravity-inbox"; m.STATE=m.INBOX/".lane-state.json"; m.INBOX.mkdir(parents=True)
+  (m.INBOX/"dt.md").write_text("# task\nOutput: .agents/plans/dt/antigravity.md\n")
+  genA=m._metadata(m._read_regular(m.INBOX/"dt.md"))[1]; old="2000-01-01T00:00:00+00:00"
+  m._append("dt",{"type":"wake_attempt","task_id":"dt","generation":genA,"method":"cli-nudge-ok","ts":old})
+  assert m._drain_status("dt",genA)[0]=="undrained-stale", "nudged + no completion past grace = undrained"
+  m._append("dt",{"type":"complete","task_id":"dt","generation":genA,"ts":old})
+  assert m._drain_status("dt",genA)[0]=="undrained-stale", "mislabeled `complete` must NOT count as drained"
+  m._append("dt",{"type":"completion","task_id":"dt","generation":genA,"ts":old})
+  assert m._drain_status("dt",genA)[0]=="drained", "canonical `completion` for this generation = drained"
+  assert m._drain_status("dt","f"*64)[0]=="unnudged", "a different generation is NOT masked by genA evidence"
  print("PASS: strict inbox regression")
 if __name__=="__main__": main()
