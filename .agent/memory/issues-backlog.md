@@ -4,6 +4,11 @@
 
 ## FLAT-ORG COLLABORATION FRICTION (dogfooding retrospective 2026-08-08; sort self-improvement by frequency×cost, not severity alone)
 
+[OPEN] catchup-queue-unstructured-no-backpressure (Codex three-way consensus 2026-08-14, sharpens #2+#4+#5) — Codex's return audit surfaced friction Claude's 5 understated: a multi-day lane outage is not just a "bottleneck" (#4), it is COMPOUNDING REVIEW-DEBT whose cost grows while HEAD/status/prior-substitute-reviews keep moving. Three missed frictions: (1) availability/return are NOT first-class measured states — the queue records prose ("Codex DOWN until Aug 15") but admission/substitution/recovery aren't driven by a shared capacity signal, so named-lane debt accrues with no budget or alert; (2) catch-up debt has no backpressure/reconciliation primitive — every substitute-reviewed commit can spawn another return-audit; on return, freshness-checking each item is serial and already-superseded work consumes the same attention as an activation blocker; (3) confirmatory-review latency weakens review value — a late advisory can only find a defect AFTER integration/deploy, categorically weaker than a pre-integration gate. Root: `.agent/collaboration/AGENT-CATCHUP-QUEUE.md` is unstructured prose (mixed tables + chronology, multiple outages/agents) with NO machine-enforced per-entry state (live/superseded/blocking/closed), risk score, dependency order, bounded batch size, or catch-up SLO.
+  Severity: medium (review-assurance integrity + returning-lane toil). Frequency: every lane outage.
+  Action: make the catch-up queue a STRUCTURED machine-enforced artifact — per-entry durable state transitions + risk score + dependency order + SLO + a shared lane-capacity/availability signal that gates admission and alerts on debt. Dashboard must distinguish substitute-acceptance vs confirmatory-debt vs reconciled-assurance. Folds #2 (finding-freshness auto-applied per entry) + #5 (in-flight view) + #4. Antigravity ALA-C2-C6-B3R advisory this round = PASS (confirmatory, citations verified). Codex catch-up caught 2 real MEDIUM defects in Claude's downtime commits (drain generation/type + frontmatter looseness) — proves confirmatory-debt has real value but arrives late.
+
+
 [OPEN] concurrent-lane-commit-collision — FREQUENCY: ~4×/session (TOP). Multiple lanes (herdr, TEG, ALA-C2, H2A) edit the same plan dirs + shared files (issues-backlog, trackers, flake.nix, package-count-baseline, doc-frontmatter schema) with no slice-claim/commit-lock. Symptoms this session: `git commit` folded another lane's staged files (97427609 took a concurrent baseline+activation-audit); a VALID doc could not commit because another lane's invalid-frontmatter doc failed the SHARED gate; repeated "modified since read" mid-edit; owner `nixos-rebuild` ran on a tree Codex was mid-editing.
   Severity: medium-high (history hygiene + commit friction; not data loss — caught each time). Frequency: HIGH.
   Action: build `aq-slice-claim` + a commit-lock so a lane cannot `git add` into another's commit; pathspec-scoped commits enforced; links [concurrent-orchestrator-commit-authority-race-b3]. This is the deferred structural fix — frequency now justifies jumping the queue.
@@ -2096,6 +2101,7 @@ Action: CLOSE THE LOOP — DONE: (a) extract_contribution structured/prose/log f
   File: .agent/skills/task-eligibility/SKILL.md; docs/architecture/role-matrix.md; docs/architecture/local-agent-task-eligibility.md
 
 [OPEN] local-skill-validator-metadata-drift — `aq-skill-auto` selected relevant skills but its validation reported metadata/unsafe-pattern failures for multi-agent-collab, understand-anything, task-eligibility, flake-review, and prsi-review even though the skills contain usable descriptions; the task-eligibility unsafe-pattern result also appears to be a policy-text false positive, while the 2026-07-22 recovery session reported missing-description/when-to-use errors for skills whose YAML frontmatter contains descriptions — Root cause: validator expectations and the live skill metadata/schema have drifted.
+  Recurrence 2026-08-09: HERDR orchestration intake again marked `multi-agent-collab` invalid for a missing description despite its frontmatter description, and marked `reviewer-gate` invalid for a broad `|.*sh` match against governance prose rather than an executable instruction.
   Severity: medium
   Action: capture the exact validator findings, reconcile the metadata schema and scanner patterns, and add fixtures proving valid governance language is not rejected while genuinely unsafe autonomous instructions still fail.
   File: scripts/ai/aq-skill-auto; .agent/skills/multi-agent-collab/SKILL.md; .agent/skills/understand-anything/SKILL.md; .agent/skills/task-eligibility/SKILL.md; .agent/skills/flake-review/SKILL.md; .agent/skills/prsi-review/SKILL.md
@@ -3046,6 +3052,7 @@ Advisory task (codex is the real confirmatory backstop) — non-blocking.
   File: .agents/plans/workflow-deviation-recovery ~tracker.json
 
 [OPEN] apply-patch-control-plane-latency — A two-document `apply_patch` call completed successfully but the orchestration tool reported roughly 750 seconds of wall time with no intermediate output, exceeding the workflow's 60-second observability target.
+  Recurrence 2026-08-14: one-file H2A review-record creations reported about 83, 498, and 485 seconds of wall time, yielding only deferred cell identifiers without progress evidence; all patches themselves completed correctly.
   Severity: medium
   Action: Preserve the tool timing as a workflow deviation; instrument patch-call start/progress/terminal receipts and distinguish broker/tool latency from repository write latency before automating retries.
   File: .agent/PROJECT-WORKFLOW-DEVIATION-RECOVERY-PRD.md
@@ -3089,3 +3096,18 @@ Advisory task (codex is the real confirmatory backstop) — non-blocking.
   Severity: high
   Action: implement a stable exclusive commit/index lease or isolated alternate-index release broker; fail closed when another orchestrator stages or commits during an active release
   File: .git/index and scripts/ai release orchestration
+
+[OPEN] herdr-h2a-handoff-evidence-drift — The inherited H2A handoff and pulse described five PREPARED_ONLY documents as staged, but exact `git status` showed all five were untracked; the contract-zero digest also changed without the first candidate binding its normative basis hash.
+  Severity: high
+  Action: generate handoff file-state from Git rather than prose, bind every normative input and subject in an immutable manifest, and fail review dispatch when declared stage state or basis hashes differ from observed state.
+  File: .agent/collaboration/RESUME.json; .agent/collaboration/PULSE.log; .agents/plans/herdr-agent-operations/H2A-REV1-INDEPENDENT-REVIEW-20260809.md
+
+[OPEN] collaboration-subagent-progress-observability-gap — The independent H2A reviewer remained reported only as `running` through repeated multi-minute waits and did not answer two checkpoint messages before its terminal verdict arrived, so the orchestrator could not distinguish deep review from a stuck lane.
+  Severity: medium
+  Action: project per-task phase, last evidence read, last tool completion, heartbeat age, expected next checkpoint, and typed no-progress reason; alert on heartbeat SLA breach without treating elapsed wall time as failure.
+  File: collaboration subagent status projection; HERDR operator-context attention and work-ownership views
+
+[OPEN] attention-approval-pre-effect-fence-and-actor-auth-gap — `scripts/ai/aq-approve` invokes AppArmor and drop-dispatch side effects before `attention_queue.resolve()` acquires its pending-state lock, authenticates no actor, and emits no typed durable outcome receipt; concurrent approvals can therefore duplicate effects before only one queue-state resolution wins. Reject/defer also lack authenticated actor provenance and complete receipts.
+  Severity: critical
+  Action: keep all HERDR/dashboard mutation controls unavailable; design a server-side allowlist whose handlers authenticate principal/role, acquire an expected-revision fence before effects, use idempotency/outbox semantics, and commit a typed durable receipt. Add concurrency and unauthorized-actor tests before exposing any control.
+  File: scripts/ai/aq-approve ~lines 141-185; scripts/ai/lib/attention_queue.py ~lines 358-415; .agent/collaboration/integration-contracts/herdr-h2-human-controls--audited-aq-actions.md
