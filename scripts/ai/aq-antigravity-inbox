@@ -162,11 +162,14 @@ def _invoke_wake(timeout: int) -> tuple[str, int | None]:
 
 _UNDRAINED_GRACE_S = 300  # after a successful nudge, allow the IDE agent this long to claim+complete before "undrained"
 
-def _drain_status(tid: str) -> tuple[str, float | None]:
-    """Honest drain state for one task. A `cli-nudge-ok` wake is NOT completion — only a `complete`
-    receipt record is. Returns (status, seconds_since_last_successful_nudge)."""
-    recs = _load(tid)["records"]
-    if any(r.get("type") == "complete" for r in recs): return ("drained", None)
+def _drain_status(tid: str, generation: str) -> tuple[str, float | None]:
+    """Honest drain state for one task GENERATION. A `cli-nudge-ok` wake is NOT completion — only the
+    canonical `completion` receipt record is (the writer emits `completion`, not `complete`). Both the
+    completion evidence and the nudge age are filtered to `generation`, so a reused task-ID's stale
+    prior-generation records can never mask a fresh pending generation (Codex catch-up DEFECT[MEDIUM]:
+    was generation-blind + checked the wrong record type). Returns (status, secs_since_last_nudge)."""
+    recs = [r for r in _load(tid)["records"] if r.get("generation") == generation]
+    if any(r.get("type") == "completion" for r in recs): return ("drained", None)
     nudges = [t for r in recs if r.get("type") == "wake_attempt" and r.get("method") == "cli-nudge-ok"
               for t in (_parse_ts(r.get("ts")),) if t]
     if not nudges: return ("unnudged", None)
@@ -179,9 +182,11 @@ def _undrained() -> list[dict[str, Any]]:
     bare `cli-nudge-ok` success signal hides (Activation-Gate: observable != functionally-validated)."""
     out=[]
     for p in _pending() + _claimed():
-        try: tid=_tid(p.name)
+        try:
+            tid=_tid(p.name)
+            generation=_metadata(_read_regular(p))[1]
         except InboxError: continue
-        status, age = _drain_status(tid)
+        status, age = _drain_status(tid, generation)
         if status == "undrained-stale":
             out.append({"task":_rel(p),"task_id":tid,"phase":"claimed" if p.name.startswith(".claimed-") else "pending","last_nudge_age_s":round(age) if age is not None else None})
     return out

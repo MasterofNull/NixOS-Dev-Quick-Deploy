@@ -100,12 +100,14 @@ doc_types:
       - id
       - title
       - status
+      # Semantic identity of a contract: it MUST declare whether it grants build/runtime authority.
+      # Optional here let a semantically-empty doc claim an active contract (Codex catch-up DEFECT[MEDIUM]).
+      - implementation_authority
+      - runtime_authority
     optional:
       - parent_prd
       - date
       - parties
-      - implementation_authority
-      - runtime_authority
     examples:
       doc_type: integration-contract
       id: herdr-h2-canonical-aq--operator-context
@@ -136,11 +138,12 @@ doc_types:
       - id
       - title
       - status
+      # A review with no verdict/reviewer is not a review (Codex catch-up DEFECT[MEDIUM]).
+      - reviewer
+      - verdict
     optional:
       - parent_prd
-      - reviewer
       - review_role
-      - verdict
       - subject
       - subject_sha256
       - date
