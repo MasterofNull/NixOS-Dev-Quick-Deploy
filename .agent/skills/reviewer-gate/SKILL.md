@@ -46,6 +46,14 @@ VERDICT: REQUEST_REVISION — (1) missing try/except around json.loads at aistac
 
 The orchestrator reads ONLY the last line. Everything before it is the review body.
 
+## Bounded automated repair
+
+Automated review must return a structured `APPROVED` or `REJECTED` result with exact 64-hex
+`subject_hash`, `baseline_hash`, `criteria_hash`, `roster_hash`, and `policy_hash`, plus every
+blocking `{invariant_id, finding_hash}` in one batch. `CONCERNS`, unknown, and malformed results
+are non-accepting. One replay per invariant and scope is allowed; recurrence or scope drift is
+`ESCALATED`, not another replay. Separate follow-ups from blockers.
+
 ---
 
 ## 3. Review Checklist (for Code/Implementation Slices)

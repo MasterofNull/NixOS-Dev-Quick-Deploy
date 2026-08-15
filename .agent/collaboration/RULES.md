@@ -2,6 +2,13 @@
 
 These rules ensure state continuity across multiple agents (Gemini, Codex, Qwen) and resilience against API rate limits or context resets.
 
+## Bounded review repair
+
+Persist the immutable review scope tuple, blocker batch, finding hashes, and replay counters.
+Dispatch all blockers together; permit exactly one automatic replay per invariant. Malformed,
+unknown, or `CONCERNS` reviews, scope drift, and recurrence are non-accepting `ESCALATED` states
+with one deduplicated issue signal; require an orchestrator contract decision.
+
 ## 0. The Atomic Resume (AR) — NEW
 **Mandatory at the start of every session and every phase transition.**
 - **Action:** Write/Update `.agent/collaboration/RESUME.json`.

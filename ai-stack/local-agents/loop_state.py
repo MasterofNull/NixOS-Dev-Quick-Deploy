@@ -18,6 +18,8 @@ Schema:
 from __future__ import annotations
 
 import json
+import hashlib
+import re
 import shutil
 import time
 from dataclasses import dataclass, field, asdict
@@ -52,6 +54,7 @@ class LoopState:
     max_iterations: int
     phase: str
     history: list[dict] = field(default_factory=list)
+    review_repair: dict = field(default_factory=dict)
     started_at: str = field(default_factory=lambda: _now())
     last_updated: str = field(default_factory=lambda: _now())
 
@@ -160,3 +163,45 @@ def is_completed(result: dict) -> bool:
     ):
         return True
     return False
+
+
+_REVIEW_SCOPE = ("subject_hash", "baseline_hash", "criteria_hash", "roster_hash", "policy_hash")
+
+
+def consume_review_result(state: LoopState, review: object) -> tuple[str, dict]:
+    """Fail-closed review gate; returns approved, repair, or escalated.
+
+    A scope is immutable for automatic repair. Each invariant gets one replay;
+    all blockers in a completed result form one batch.
+    """
+    if not isinstance(review, dict) or set(review) != {"verdict", "scope", "blockers"}:
+        return "escalated", {"reason": "malformed_review"}
+    scope, blockers, verdict = review["scope"], review["blockers"], review["verdict"]
+    hex64 = lambda value: isinstance(value, str) and re.fullmatch(r"[0-9a-f]{64}", value)
+    if verdict not in {"APPROVED", "REJECTED"} or not isinstance(scope, dict) or set(scope) != set(_REVIEW_SCOPE) or any(not hex64(scope[k]) for k in _REVIEW_SCOPE) or not isinstance(blockers, list):
+        return "escalated", {"reason": "unknown_or_concerns_review"}
+    normalized = []
+    for finding in blockers:
+        if not isinstance(finding, dict) or set(finding) != {"invariant_id", "finding_hash"} or not isinstance(finding["invariant_id"], str) or not finding["invariant_id"] or not hex64(finding["finding_hash"]):
+            return "escalated", {"reason": "malformed_finding"}
+        normalized.append(finding)
+    if verdict == "APPROVED":
+        return ("approved", {}) if not normalized else ("escalated", {"reason": "approved_with_blockers"})
+    if not normalized:
+        return "escalated", {"reason": "rejected_without_blockers"}
+    stored_scope = state.review_repair.get("scope")
+    if stored_scope is not None and stored_scope != scope:
+        return "escalated", {"reason": "scope_drift"}
+    state.review_repair.setdefault("scope", scope)
+    counters = state.review_repair.setdefault("replays", {})
+    ids = sorted({item["invariant_id"] for item in normalized})
+    repeated = [item for item in ids if counters.get(item, 0) >= 1]
+    batch_hash = hashlib.sha256(json.dumps(normalized, sort_keys=True, separators=(",", ":")).encode()).hexdigest()
+    if repeated:
+        signals = state.review_repair.setdefault("issue_signals", [])
+        signal = hashlib.sha256(("|".join(repeated) + batch_hash).encode()).hexdigest()
+        if signal not in signals: signals.append(signal)
+        return "escalated", {"reason": "invariant_recurrence", "invariants": repeated, "signal": signal}
+    for invariant in ids: counters[invariant] = 1
+    state.review_repair.setdefault("batches", []).append({"batch_hash": batch_hash, "findings": normalized})
+    return "repair", {"batch_hash": batch_hash, "findings": normalized}
