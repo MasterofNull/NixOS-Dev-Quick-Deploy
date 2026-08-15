@@ -41,9 +41,9 @@
       "goal": "build-verified package identity, immutable safe config and read-only aq-herdr without exposing raw Herdr or starting runtime",
       "validation_goal": "source/Cargo hashes + SBOM/license + Nix build/eval + closed facade + independent PASS",
       "deps": ["h0-intake"],
-      "editorial_note": "implementation candidate prepared; exact substitute-enabled no-link package build passed; corrected independent acceptance is pending",
-      "detection": {"commit_match": ["add inert Herdr package surface"], "freeze_record": ".agents/plans/herdr-agent-operations/H1-DESIGN-PACKET.md"},
-      "pct_hint": 100
+      "editorial_note": "physical implementation commit ea96bcbfc05fca32d164137fd2cef261f5c68acc is preserved; HM/Nix evaluation, no-link build, and deterministic SPDX SBOM evidence are complete; acceptance awaits an exact-hash independent PASS and the atomic correction commit",
+      "detection": {"physical_commit": "ea96bcbfc05fca32d164137fd2cef261f5c68acc", "acceptance_status": "prepared-review-pending", "correction_design": ".agents/plans/herdr-agent-operations/H1-CORRECTION-DESIGN-20260815.md"},
+      "pct_hint": 95
     },
     {
       "id": "h2-presentation",

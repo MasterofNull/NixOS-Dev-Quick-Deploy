@@ -4,8 +4,10 @@ from __future__ import annotations
 
 import json
 import os
+import re
 import shutil
 import subprocess
+import sys
 import tempfile
 from pathlib import Path
 
@@ -18,6 +20,8 @@ CLI_TEXT = CLI.read_text()
 REPORT = (ROOT / ".agents/plans/herdr-agent-operations/H1-SUPPLY-CHAIN-REPORT.md").read_text()
 BASH = shutil.which("bash")
 assert BASH, "focused test requires an already-installed bash interpreter"
+NIX_EVAL = sys.argv[1:] == ["--nix-eval"]
+assert NIX_EVAL or len(sys.argv) == 1, "usage: test-herdr-h1-contract.py [--nix-eval]"
 
 REVISION = "ef4c23f5775bb8cfec05f05d0844226ff959a07a"
 SOURCE_HASH = "sha256-3BA8eredGku+vsL2Af7sUf43QiArR5XTHNrI+X11vFM="
@@ -154,4 +158,82 @@ version = subprocess.run([BASH, str(CLI), "version"], text=True, capture_output=
 version_payload = json.loads(version.stdout)
 assert set(version_payload) == {"schema_version", "command", "version", "revision", "license"}
 assert version_payload["version"] == "0.7.5" and version_payload["license"] == "AGPL-3.0-or-later"
+
+
+def nix_home_expression(*, enable: bool | None, runtime_enable: bool | None, result: str) -> str:
+    """Create an evaluation-only isolated HM configuration; never activate or build it."""
+    module_path = json.dumps(str(ROOT / "nix/home/herdr.nix"))
+    root_path = json.dumps(str(ROOT))
+    settings = []
+    if enable is not None:
+        settings.append(f"programs.aqHerdr.enable = {'true' if enable else 'false'};")
+    if runtime_enable is not None:
+        settings.append(f"programs.aqHerdr.runtimeEnable = {'true' if runtime_enable else 'false'};")
+    settings_text = " ".join(settings)
+    if result == "defaults":
+        output = "builtins.toJSON { enable = hm.config.programs.aqHerdr.enable; runtimeEnable = hm.config.programs.aqHerdr.runtimeEnable; }"
+    elif result == "enabled":
+        output = '''builtins.toJSON {
+          enable = hm.config.programs.aqHerdr.enable;
+          runtimeEnable = hm.config.programs.aqHerdr.runtimeEnable;
+          packages = map (package: package.name) hm.config.home.packages;
+          config = hm.config.xdg.configFile."herdr/config.toml".text;
+        }'''
+    elif result == "runtime-rejection":
+        # Evaluating the activation derivation forces Home Manager assertions without building or activating.
+        output = "hm.activationPackage.drvPath"
+    else:
+        raise AssertionError(f"unexpected Nix proof result selector: {result}")
+    return f'''let
+      flake = builtins.getFlake {root_path};
+      pkgs = import flake.inputs.nixpkgs {{ system = "x86_64-linux"; }};
+      hm = flake.inputs.home-manager.lib.homeManagerConfiguration {{
+        inherit pkgs;
+        modules = [
+          {module_path}
+          ({{ ... }}: {{
+            home.username = "herdr-h1-eval";
+            home.homeDirectory = "/tmp/herdr-h1-eval";
+            home.stateVersion = "26.05";
+            {settings_text}
+          }})
+        ];
+      }};
+    in {output}'''
+
+
+def nix_eval(expression: str) -> subprocess.CompletedProcess[str]:
+    nix = shutil.which("nix")
+    assert nix, "--nix-eval requires an installed nix executable"
+    return subprocess.run(
+        [nix, "eval", "--impure", "--raw", "--expr", expression],
+        text=True,
+        capture_output=True,
+    )
+
+
+if NIX_EVAL:
+    defaults = nix_eval(nix_home_expression(enable=None, runtime_enable=None, result="defaults"))
+    assert defaults.returncode == 0, defaults.stderr
+    assert json.loads(defaults.stdout) == {"enable": False, "runtimeEnable": False}
+
+    runtime_rejection = nix_eval(
+        nix_home_expression(enable=False, runtime_enable=True, result="runtime-rejection")
+    )
+    assert runtime_rejection.returncode != 0, "runtimeEnable=true must fail Home Manager assertion evaluation"
+    assert "programs.aqHerdr.runtimeEnable must remain false" in runtime_rejection.stderr
+
+    enabled = nix_eval(nix_home_expression(enable=True, runtime_enable=False, result="enabled"))
+    assert enabled.returncode == 0, enabled.stderr
+    enabled_payload = json.loads(enabled.stdout)
+    assert enabled_payload["enable"] is True and enabled_payload["runtimeEnable"] is False
+    package_names = enabled_payload["packages"]
+    assert package_names.count("aq-herdr") == 1, package_names
+    raw_herdr_packages = [
+        name for name in package_names
+        if re.split(r"[-_.]", name.lower(), maxsplit=1)[0] == "herdr"
+    ]
+    assert not raw_herdr_packages, raw_herdr_packages
+    assert enabled_payload["config"] == EXPECTED_CONFIG
+
 print("herdr-h1-contract: PASS")
