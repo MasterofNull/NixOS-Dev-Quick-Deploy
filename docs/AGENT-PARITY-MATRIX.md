@@ -506,6 +506,9 @@ These were selected as closest matches to your target profile (runtime + coding-
 | Terminal-native coding-agent ergonomics | `codebuff`, `pi-mono`, `oh-my-pi`, `learn-claude-code` emphasize fast CLI loops and composable commands | **Near parity** — Phase 47: `aqd` v0.4.0 adds `run` subcommand group: `run plan`, `run execute`, `run replay`, `run review`, `run status`, `run budget`, `run rollout-drill`, `run harness`; full lifecycle ergonomics without raw curl | `Near parity` (Phase 47) |
 | Secure execution of untrusted tool/code actions | `agent-sandbox`, `sandboxed.sh`, `openlegion` make isolation/safety core | **Near parity** — Phase 39: `runtime-safety-policy.json` v1.1 enforces `plan-readonly`/`execute-mutating`/`strict` modes with `tool_blocklist`; Phase 41: per-run workspace isolation boundary with path-traversal guard | `Near parity` (Phase 39+41) |
 | Built-in cost controls and policy guardrails | `openlegion`, enterprise-focused runtimes expose cost + policy primitives | **Near parity** — Phase 45: `config/runtime-budget-policy.json` v1.0; `GET /control/budget/policy` returns active policy; `POST /control/budget/policy` updates limits at runtime; `_budget_exceeded()` now falls back to policy-file limits per safety_mode; aq-qa `0.9.10` validates | `Near parity` (Phase 45) |
+| Dynamic VM-level Sandboxing | `exe.dev` throwaway sandboxes | **Planned — Phase 115** | `P0` |
+| Best-of-N Parallel Runner | Multi-sandbox parallel SDLC run | **Planned — Phase 115** | `P0` |
+| Credential & Cost Scoping | Scoped sub-keys with dollar budgets | **Planned — Phase 115** | `P1` |
 
 ### Highest-Value Implementations From Focused Set
 
