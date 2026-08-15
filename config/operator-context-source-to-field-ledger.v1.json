@@ -1,0 +1,361 @@
+{
+  "schema_version": "aq.operator-context-ledger.v2",
+  "projection_schema": "aq.operator-context.v1",
+  "leaves": [
+    {
+      "path": "schema_version",
+      "source": "pure.v2",
+      "rule": "constant"
+    },
+    {
+      "path": "projection_revision",
+      "source": "projection_meta_facts",
+      "rule": "direct"
+    },
+    {
+      "path": "generated_at",
+      "source": "projection_meta_facts",
+      "rule": "direct"
+    },
+    {
+      "path": "freshness.age_bucket",
+      "source": "projection_meta_facts",
+      "rule": "direct"
+    },
+    {
+      "path": "freshness.state",
+      "source": "pure.v2",
+      "rule": "state-reduction"
+    },
+    {
+      "path": "source_health.reason",
+      "source": "pure.v2",
+      "rule": "coherent-sample"
+    },
+    {
+      "path": "source_health.state",
+      "source": "pure.v2",
+      "rule": "state-reduction"
+    },
+    {
+      "path": "source_digests[].adapter_revision",
+      "source": "pure.v2",
+      "rule": "all-envelope-bind"
+    },
+    {
+      "path": "source_digests[].digest",
+      "source": "pure.v2",
+      "rule": "all-envelope-bind"
+    },
+    {
+      "path": "source_digests[].source",
+      "source": "pure.v2",
+      "rule": "all-envelope-bind"
+    },
+    {
+      "path": "mission.objective",
+      "source": "program_workflow_facts",
+      "rule": "direct"
+    },
+    {
+      "path": "mission.workflow_phase",
+      "source": "program_workflow_facts",
+      "rule": "direct"
+    },
+    {
+      "path": "mission.blocker",
+      "source": "program_workflow_facts",
+      "rule": "direct"
+    },
+    {
+      "path": "mission.next_gate",
+      "source": "program_workflow_facts",
+      "rule": "direct"
+    },
+    {
+      "path": "mission.reference",
+      "source": "program_workflow_facts",
+      "rule": "direct"
+    },
+    {
+      "path": "mission.definition_of_done.total.state",
+      "source": "program_workflow_facts",
+      "rule": "count-preserve"
+    },
+    {
+      "path": "mission.definition_of_done.total.value",
+      "source": "program_workflow_facts",
+      "rule": "count-preserve"
+    },
+    {
+      "path": "mission.definition_of_done.satisfied.state",
+      "source": "program_workflow_facts",
+      "rule": "count-preserve"
+    },
+    {
+      "path": "mission.definition_of_done.satisfied.value",
+      "source": "program_workflow_facts",
+      "rule": "count-preserve"
+    },
+    {
+      "path": "mission.definition_of_done.unknown.state",
+      "source": "program_workflow_facts",
+      "rule": "count-preserve"
+    },
+    {
+      "path": "mission.definition_of_done.unknown.value",
+      "source": "program_workflow_facts",
+      "rule": "count-preserve"
+    },
+    {
+      "path": "work[].work_ref",
+      "source": "program_workflow_facts",
+      "rule": "direct"
+    },
+    {
+      "path": "work[].parent_ref",
+      "source": "program_workflow_facts",
+      "rule": "direct"
+    },
+    {
+      "path": "work[].child_count.state",
+      "source": "program_workflow_facts",
+      "rule": "known-count"
+    },
+    {
+      "path": "work[].child_count.value",
+      "source": "program_workflow_facts",
+      "rule": "known-count"
+    },
+    {
+      "path": "work[].role",
+      "source": "program_workflow_facts",
+      "rule": "direct"
+    },
+    {
+      "path": "work[].lane",
+      "source": "program_workflow_facts",
+      "rule": "direct"
+    },
+    {
+      "path": "work[].slice",
+      "source": "program_workflow_facts",
+      "rule": "direct"
+    },
+    {
+      "path": "work[].canonical_state",
+      "source": "pure.v2",
+      "rule": "review-gate"
+    },
+    {
+      "path": "work[].record_revision",
+      "source": "program_workflow_facts",
+      "rule": "direct"
+    },
+    {
+      "path": "work[].interaction_mode",
+      "source": "program_workflow_facts",
+      "rule": "direct"
+    },
+    {
+      "path": "work[].interaction_reason",
+      "source": "program_workflow_facts",
+      "rule": "direct"
+    },
+    {
+      "path": "work[].progress_age",
+      "source": "agent_progress_facts",
+      "rule": "direct"
+    },
+    {
+      "path": "work[].blocker",
+      "source": "program_workflow_facts",
+      "rule": "direct"
+    },
+    {
+      "path": "work[].next_gate",
+      "source": "program_workflow_facts",
+      "rule": "direct"
+    },
+    {
+      "path": "work[].allowed_controls",
+      "source": "pure.v2",
+      "rule": "empty"
+    },
+    {
+      "path": "work[].presentation_observation",
+      "source": "pure.v2",
+      "rule": "comparison-not-materialized"
+    },
+    {
+      "path": "work[].drift",
+      "source": "pure.v2",
+      "rule": "comparison-not-materialized"
+    },
+    {
+      "path": "attention[].work_ref",
+      "source": "canonical_attention_facts",
+      "rule": "direct"
+    },
+    {
+      "path": "attention[].evidence_ref",
+      "source": "canonical_attention_facts",
+      "rule": "direct"
+    },
+    {
+      "path": "attention[].severity",
+      "source": "canonical_attention_facts",
+      "rule": "direct"
+    },
+    {
+      "path": "attention[].category",
+      "source": "canonical_attention_facts",
+      "rule": "direct"
+    },
+    {
+      "path": "attention[].reason",
+      "source": "canonical_attention_facts",
+      "rule": "direct"
+    },
+    {
+      "path": "attention[].recommended_action",
+      "source": "canonical_attention_facts",
+      "rule": "direct"
+    },
+    {
+      "path": "attention[].required_authority",
+      "source": "canonical_attention_facts",
+      "rule": "direct"
+    },
+    {
+      "path": "attention[].availability",
+      "source": "canonical_attention_facts",
+      "rule": "direct"
+    },
+    {
+      "path": "attention[].rank",
+      "source": "canonical_attention_facts",
+      "rule": "direct"
+    },
+    {
+      "path": "evidence[].reference",
+      "source": "independent_review_facts",
+      "rule": "unavailable-omit"
+    },
+    {
+      "path": "evidence[].type",
+      "source": "independent_review_facts",
+      "rule": "unavailable-omit"
+    },
+    {
+      "path": "evidence[].source",
+      "source": "independent_review_facts",
+      "rule": "unavailable-omit"
+    },
+    {
+      "path": "evidence[].digest",
+      "source": "independent_review_facts",
+      "rule": "unavailable-omit"
+    },
+    {
+      "path": "evidence[].freshness",
+      "source": "independent_review_facts",
+      "rule": "unavailable-omit"
+    },
+    {
+      "path": "evidence[].availability",
+      "source": "independent_review_facts",
+      "rule": "unavailable-omit"
+    },
+    {
+      "path": "learning.state",
+      "source": "learning_facts",
+      "rule": "direct"
+    },
+    {
+      "path": "learning.accepted_count.state",
+      "source": "learning_facts",
+      "rule": "count-preserve"
+    },
+    {
+      "path": "learning.accepted_count.value",
+      "source": "learning_facts",
+      "rule": "count-preserve"
+    },
+    {
+      "path": "learning.regression_count.state",
+      "source": "learning_facts",
+      "rule": "count-preserve"
+    },
+    {
+      "path": "learning.regression_count.value",
+      "source": "learning_facts",
+      "rule": "count-preserve"
+    },
+    {
+      "path": "coverage.known_sources.state",
+      "source": "pure.v2",
+      "rule": "known-count"
+    },
+    {
+      "path": "coverage.known_sources.value",
+      "source": "pure.v2",
+      "rule": "known-count"
+    },
+    {
+      "path": "coverage.unknown_sources.state",
+      "source": "pure.v2",
+      "rule": "known-count"
+    },
+    {
+      "path": "coverage.unknown_sources.value",
+      "source": "pure.v2",
+      "rule": "known-count"
+    },
+    {
+      "path": "coverage.visible_budget",
+      "source": "pure.v2",
+      "rule": "constant"
+    },
+    {
+      "path": "coverage.overflow_count.state",
+      "source": "pure.v2",
+      "rule": "constant"
+    },
+    {
+      "path": "coverage.overflow_count.value",
+      "source": "pure.v2",
+      "rule": "constant"
+    },
+    {
+      "path": "policy.policy_revision",
+      "source": "projection_meta_facts",
+      "rule": "direct"
+    },
+    {
+      "path": "policy.schema_revision",
+      "source": "projection_meta_facts",
+      "rule": "direct"
+    },
+    {
+      "path": "policy.serializer_revision",
+      "source": "pure.v2",
+      "rule": "constant"
+    },
+    {
+      "path": "policy.digest_algorithm",
+      "source": "pure.v2",
+      "rule": "constant"
+    },
+    {
+      "path": "policy.reference_grammar",
+      "source": "pure.v2",
+      "rule": "constant"
+    },
+    {
+      "path": "policy.input_digest",
+      "source": "pure.v2",
+      "rule": "complete-input-digest"
+    }
+  ]
+}

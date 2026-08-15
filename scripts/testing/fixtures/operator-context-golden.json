@@ -1,0 +1,2477 @@
+{
+  "schema_version": "aq.operator-context-golden.v2",
+  "golden_digest_contract": "facts are literal normalized inputs; UTF-8 canonical bytes are sha256-bound below",
+  "vectors": [
+    {
+      "id": "all-fresh-r1-r7",
+      "input_bytes": "{\"agent_progress_facts\":{\"adapter_revision\":\"adapter-progress\",\"digest\":\"4444444444444444444444444444444444444444444444444444444444444444\",\"expires_at_bucket\":\"b9999\",\"expiry_evidence\":\"aqref:v1:evidence:dddddddddddddddddddddddddddddddd\",\"issuer\":\"canonical\",\"issuer_revision\":\"adapter-progress\",\"progress\":[{\"progress_age\":\"recent\",\"work_ref\":\"aqref:v1:task:bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb\"}],\"reference_status\":\"active\",\"replacement_ref\":null,\"replacement_subject_digest\":null,\"sample_id\":\"sample-1\",\"sampled_at_bucket\":\"b10\",\"state\":\"fresh\",\"subject_digest\":\"4444444444444444444444444444444444444444444444444444444444444444\",\"supersession_chain\":[]},\"canonical_attention_facts\":{\"adapter_revision\":\"adapter-attention\",\"attention\":[{\"availability\":\"available\",\"category\":\"review\",\"evidence_ref\":null,\"rank\":1,\"reason\":\"review required\",\"recommended_action\":\"request_review\",\"required_authority\":\"reviewer\",\"severity\":\"high\",\"work_ref\":\"aqref:v1:task:bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb\"}],\"digest\":\"5555555555555555555555555555555555555555555555555555555555555555\",\"expires_at_bucket\":\"b9999\",\"expiry_evidence\":\"aqref:v1:evidence:dddddddddddddddddddddddddddddddd\",\"issuer\":\"canonical\",\"issuer_revision\":\"adapter-attention\",\"reference_status\":\"active\",\"replacement_ref\":null,\"replacement_subject_digest\":null,\"sample_id\":\"sample-1\",\"sampled_at_bucket\":\"b10\",\"state\":\"fresh\",\"subject_digest\":\"5555555555555555555555555555555555555555555555555555555555555555\",\"supersession_chain\":[]},\"exclusive_lease_facts\":{\"adapter_revision\":\"adapter-lease\",\"digest\":\"2222222222222222222222222222222222222222222222222222222222222222\",\"expires_at_bucket\":\"b9999\",\"expiry_evidence\":\"aqref:v1:evidence:dddddddddddddddddddddddddddddddd\",\"issuer\":\"canonical\",\"issuer_revision\":\"adapter-lease\",\"reference_status\":\"active\",\"replacement_ref\":null,\"replacement_subject_digest\":null,\"sample_id\":\"sample-1\",\"sampled_at_bucket\":\"b10\",\"state\":\"fresh\",\"subject_digest\":\"2222222222222222222222222222222222222222222222222222222222222222\",\"supersession_chain\":[]},\"independent_review_facts\":{\"adapter_revision\":\"adapter-review\",\"digest\":\"3333333333333333333333333333333333333333333333333333333333333333\",\"expires_at_bucket\":\"b9999\",\"expiry_evidence\":\"aqref:v1:evidence:dddddddddddddddddddddddddddddddd\",\"issuer\":\"canonical\",\"issuer_revision\":\"adapter-review\",\"reference_status\":\"active\",\"replacement_ref\":null,\"replacement_subject_digest\":null,\"sample_id\":\"sample-1\",\"sampled_at_bucket\":\"b10\",\"state\":\"fresh\",\"subject_digest\":\"3333333333333333333333333333333333333333333333333333333333333333\",\"supersession_chain\":[],\"verdict\":\"unknown\"},\"learning_facts\":{\"accepted_count\":{\"state\":\"unknown\",\"value\":null},\"adapter_revision\":\"adapter-learning\",\"digest\":\"6666666666666666666666666666666666666666666666666666666666666666\",\"expires_at_bucket\":\"b9999\",\"expiry_evidence\":\"aqref:v1:evidence:dddddddddddddddddddddddddddddddd\",\"issuer\":\"canonical\",\"issuer_revision\":\"adapter-learning\",\"reference_status\":\"active\",\"regression_count\":{\"state\":\"unavailable\",\"value\":null},\"replacement_ref\":null,\"replacement_subject_digest\":null,\"sample_id\":\"sample-1\",\"sampled_at_bucket\":\"b10\",\"state\":\"fresh\",\"subject_digest\":\"6666666666666666666666666666666666666666666666666666666666666666\",\"supersession_chain\":[]},\"program_workflow_facts\":{\"adapter_revision\":\"adapter-program\",\"digest\":\"1111111111111111111111111111111111111111111111111111111111111111\",\"expires_at_bucket\":\"b9999\",\"expiry_evidence\":\"aqref:v1:evidence:dddddddddddddddddddddddddddddddd\",\"issuer\":\"canonical\",\"issuer_revision\":\"adapter-program\",\"mission\":{\"blocker\":\"unknown\",\"next_gate\":\"review\",\"objective\":\"Ship safe projection\",\"reference\":\"aqref:v1:mission:aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa\",\"satisfied\":{\"state\":\"known\",\"value\":1},\"total\":{\"state\":\"known\",\"value\":3},\"unknown\":{\"state\":\"unknown\",\"value\":null},\"workflow_phase\":\"execute\"},\"reference_status\":\"active\",\"replacement_ref\":null,\"replacement_subject_digest\":null,\"sample_id\":\"sample-1\",\"sampled_at_bucket\":\"b10\",\"state\":\"fresh\",\"subject_digest\":\"1111111111111111111111111111111111111111111111111111111111111111\",\"supersession_chain\":[],\"work\":[{\"blocker\":\"unknown\",\"canonical_state\":\"done\",\"child_count\":0,\"interaction_mode\":\"through_parent\",\"interaction_reason\":\"parent controlled\",\"lane\":\"remote\",\"next_gate\":\"review\",\"parent_ref\":\"aqref:v1:task:cccccccccccccccccccccccccccccccc\",\"record_revision\":\"r1\",\"role\":\"implementer\",\"slice\":\"h2a\",\"work_ref\":\"aqref:v1:task:bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb\"}]},\"projection_meta_facts\":{\"generated_at\":\"proof time\",\"policy_revision\":\"p1\",\"projection_revision\":\"r1\",\"sample_id\":\"sample-1\",\"sampled_at_bucket\":\"b10\",\"schema_revision\":\"s1\"}}",
+      "facts": {
+        "projection_meta_facts": {
+          "projection_revision": "r1",
+          "generated_at": "proof time",
+          "policy_revision": "p1",
+          "schema_revision": "s1",
+          "sample_id": "sample-1",
+          "sampled_at_bucket": "b10"
+        },
+        "program_workflow_facts": {
+          "sample_id": "sample-1",
+          "sampled_at_bucket": "b10",
+          "adapter_revision": "adapter-program",
+          "digest": "1111111111111111111111111111111111111111111111111111111111111111",
+          "state": "fresh",
+          "issuer": "canonical",
+          "reference_status": "active",
+          "mission": {
+            "objective": "Ship safe projection",
+            "workflow_phase": "execute",
+            "total": {
+              "state": "known",
+              "value": 3
+            },
+            "satisfied": {
+              "state": "known",
+              "value": 1
+            },
+            "unknown": {
+              "state": "unknown",
+              "value": null
+            },
+            "next_gate": "review",
+            "blocker": "unknown",
+            "reference": "aqref:v1:mission:aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa"
+          },
+          "work": [
+            {
+              "work_ref": "aqref:v1:task:bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb",
+              "parent_ref": "aqref:v1:task:cccccccccccccccccccccccccccccccc",
+              "child_count": 0,
+              "role": "implementer",
+              "lane": "remote",
+              "slice": "h2a",
+              "canonical_state": "done",
+              "record_revision": "r1",
+              "interaction_mode": "through_parent",
+              "interaction_reason": "parent controlled",
+              "blocker": "unknown",
+              "next_gate": "review"
+            }
+          ],
+          "issuer_revision": "adapter-program",
+          "subject_digest": "1111111111111111111111111111111111111111111111111111111111111111",
+          "expires_at_bucket": "b9999",
+          "expiry_evidence": "aqref:v1:evidence:dddddddddddddddddddddddddddddddd",
+          "replacement_ref": null,
+          "replacement_subject_digest": null,
+          "supersession_chain": []
+        },
+        "exclusive_lease_facts": {
+          "sample_id": "sample-1",
+          "sampled_at_bucket": "b10",
+          "adapter_revision": "adapter-lease",
+          "digest": "2222222222222222222222222222222222222222222222222222222222222222",
+          "state": "fresh",
+          "issuer": "canonical",
+          "reference_status": "active",
+          "issuer_revision": "adapter-lease",
+          "subject_digest": "2222222222222222222222222222222222222222222222222222222222222222",
+          "expires_at_bucket": "b9999",
+          "expiry_evidence": "aqref:v1:evidence:dddddddddddddddddddddddddddddddd",
+          "replacement_ref": null,
+          "replacement_subject_digest": null,
+          "supersession_chain": []
+        },
+        "independent_review_facts": {
+          "sample_id": "sample-1",
+          "sampled_at_bucket": "b10",
+          "adapter_revision": "adapter-review",
+          "digest": "3333333333333333333333333333333333333333333333333333333333333333",
+          "state": "fresh",
+          "issuer": "canonical",
+          "reference_status": "active",
+          "verdict": "unknown",
+          "issuer_revision": "adapter-review",
+          "subject_digest": "3333333333333333333333333333333333333333333333333333333333333333",
+          "expires_at_bucket": "b9999",
+          "expiry_evidence": "aqref:v1:evidence:dddddddddddddddddddddddddddddddd",
+          "replacement_ref": null,
+          "replacement_subject_digest": null,
+          "supersession_chain": []
+        },
+        "agent_progress_facts": {
+          "sample_id": "sample-1",
+          "sampled_at_bucket": "b10",
+          "adapter_revision": "adapter-progress",
+          "digest": "4444444444444444444444444444444444444444444444444444444444444444",
+          "state": "fresh",
+          "issuer": "canonical",
+          "reference_status": "active",
+          "issuer_revision": "adapter-progress",
+          "subject_digest": "4444444444444444444444444444444444444444444444444444444444444444",
+          "expires_at_bucket": "b9999",
+          "expiry_evidence": "aqref:v1:evidence:dddddddddddddddddddddddddddddddd",
+          "replacement_ref": null,
+          "replacement_subject_digest": null,
+          "supersession_chain": [],
+          "progress": [
+            {
+              "work_ref": "aqref:v1:task:bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb",
+              "progress_age": "recent"
+            }
+          ]
+        },
+        "canonical_attention_facts": {
+          "sample_id": "sample-1",
+          "sampled_at_bucket": "b10",
+          "adapter_revision": "adapter-attention",
+          "digest": "5555555555555555555555555555555555555555555555555555555555555555",
+          "state": "fresh",
+          "issuer": "canonical",
+          "reference_status": "active",
+          "attention": [
+            {
+              "work_ref": "aqref:v1:task:bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb",
+              "evidence_ref": null,
+              "severity": "high",
+              "category": "review",
+              "reason": "review required",
+              "recommended_action": "request_review",
+              "required_authority": "reviewer",
+              "availability": "available",
+              "rank": 1
+            }
+          ],
+          "issuer_revision": "adapter-attention",
+          "subject_digest": "5555555555555555555555555555555555555555555555555555555555555555",
+          "expires_at_bucket": "b9999",
+          "expiry_evidence": "aqref:v1:evidence:dddddddddddddddddddddddddddddddd",
+          "replacement_ref": null,
+          "replacement_subject_digest": null,
+          "supersession_chain": []
+        },
+        "learning_facts": {
+          "sample_id": "sample-1",
+          "sampled_at_bucket": "b10",
+          "adapter_revision": "adapter-learning",
+          "digest": "6666666666666666666666666666666666666666666666666666666666666666",
+          "state": "fresh",
+          "issuer": "canonical",
+          "reference_status": "active",
+          "accepted_count": {
+            "state": "unknown",
+            "value": null
+          },
+          "regression_count": {
+            "state": "unavailable",
+            "value": null
+          },
+          "issuer_revision": "adapter-learning",
+          "subject_digest": "6666666666666666666666666666666666666666666666666666666666666666",
+          "expires_at_bucket": "b9999",
+          "expiry_evidence": "aqref:v1:evidence:dddddddddddddddddddddddddddddddd",
+          "replacement_ref": null,
+          "replacement_subject_digest": null,
+          "supersession_chain": []
+        }
+      },
+      "expected": {
+        "output_sha256": "7caac9af7d0bf8252f95693e194d63ebb16c300beb9d8003ef162adb8dd8da86",
+        "freshness": "fresh",
+        "work_state": "needs_review",
+        "interaction": "through_parent",
+        "progress": "recent",
+        "output_bytes": "{\"attention\":[{\"availability\":\"available\",\"category\":\"review\",\"evidence_ref\":null,\"rank\":1,\"reason\":\"review required\",\"recommended_action\":\"request_review\",\"required_authority\":\"reviewer\",\"severity\":\"high\",\"work_ref\":\"aqref:v1:task:bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb\"}],\"coverage\":{\"known_sources\":{\"state\":\"known\",\"value\":6},\"overflow_count\":{\"state\":\"known\",\"value\":0},\"unknown_sources\":{\"state\":\"known\",\"value\":0},\"visible_budget\":64},\"evidence\":[],\"freshness\":{\"age_bucket\":\"b10\",\"state\":\"fresh\"},\"generated_at\":\"proof time\",\"learning\":{\"accepted_count\":{\"state\":\"unknown\",\"value\":null},\"regression_count\":{\"state\":\"unavailable\",\"value\":null},\"state\":\"fresh\"},\"mission\":{\"blocker\":\"unknown\",\"definition_of_done\":{\"satisfied\":{\"state\":\"known\",\"value\":1},\"total\":{\"state\":\"known\",\"value\":3},\"unknown\":{\"state\":\"unknown\",\"value\":null}},\"next_gate\":\"review\",\"objective\":\"Ship safe projection\",\"reference\":\"aqref:v1:mission:aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa\",\"workflow_phase\":\"execute\"},\"policy\":{\"digest_algorithm\":\"sha256\",\"input_digest\":\"c49c63713db85d150ea69294076680358e1240e597d780c9b0ffd3a60a7e9ae1\",\"policy_revision\":\"p1\",\"reference_grammar\":\"aqref:v1\",\"schema_revision\":\"s1\",\"serializer_revision\":\"operator-context-canonical-json.v2\"},\"projection_revision\":\"r1\",\"schema_version\":\"aq.operator-context.v1\",\"source_digests\":[{\"adapter_revision\":\"adapter-program\",\"digest\":\"1111111111111111111111111111111111111111111111111111111111111111\",\"source\":\"program_workflow_facts\"},{\"adapter_revision\":\"adapter-lease\",\"digest\":\"2222222222222222222222222222222222222222222222222222222222222222\",\"source\":\"exclusive_lease_facts\"},{\"adapter_revision\":\"adapter-review\",\"digest\":\"3333333333333333333333333333333333333333333333333333333333333333\",\"source\":\"independent_review_facts\"},{\"adapter_revision\":\"adapter-progress\",\"digest\":\"4444444444444444444444444444444444444444444444444444444444444444\",\"source\":\"agent_progress_facts\"},{\"adapter_revision\":\"adapter-attention\",\"digest\":\"5555555555555555555555555555555555555555555555555555555555555555\",\"source\":\"canonical_attention_facts\"},{\"adapter_revision\":\"adapter-learning\",\"digest\":\"6666666666666666666666666666666666666666666666666666666666666666\",\"source\":\"learning_facts\"}],\"source_health\":{\"reason\":\"coherent_sample\",\"state\":\"fresh\"},\"work\":[{\"allowed_controls\":[],\"blocker\":\"unknown\",\"canonical_state\":\"needs_review\",\"child_count\":{\"state\":\"known\",\"value\":0},\"drift\":\"unknown\",\"interaction_mode\":\"through_parent\",\"interaction_reason\":\"parent controlled\",\"lane\":\"remote\",\"next_gate\":\"review\",\"parent_ref\":\"aqref:v1:task:cccccccccccccccccccccccccccccccc\",\"presentation_observation\":\"unknown\",\"progress_age\":\"recent\",\"record_revision\":\"r1\",\"role\":\"implementer\",\"slice\":\"h2a\",\"work_ref\":\"aqref:v1:task:bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb\"}]}"
+      },
+      "input_sha256": "c49c63713db85d150ea69294076680358e1240e597d780c9b0ffd3a60a7e9ae1"
+    },
+    {
+      "id": "unavailable-explicit-counts",
+      "input_bytes": "{\"agent_progress_facts\":{\"adapter_revision\":\"progress-two\",\"digest\":\"dddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddd\",\"expires_at_bucket\":\"b9999\",\"expiry_evidence\":\"aqref:v1:evidence:dddddddddddddddddddddddddddddddd\",\"issuer\":\"canonical\",\"issuer_revision\":\"progress-two\",\"progress\":[],\"reference_status\":\"active\",\"replacement_ref\":null,\"replacement_subject_digest\":null,\"sample_id\":\"sample-2\",\"sampled_at_bucket\":\"b20\",\"state\":\"unavailable\",\"subject_digest\":\"dddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddd\",\"supersession_chain\":[]},\"canonical_attention_facts\":{\"adapter_revision\":\"attention-two\",\"attention\":[],\"digest\":\"eeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeee\",\"expires_at_bucket\":\"b9999\",\"expiry_evidence\":\"aqref:v1:evidence:dddddddddddddddddddddddddddddddd\",\"issuer\":\"canonical\",\"issuer_revision\":\"attention-two\",\"reference_status\":\"active\",\"replacement_ref\":null,\"replacement_subject_digest\":null,\"sample_id\":\"sample-2\",\"sampled_at_bucket\":\"b20\",\"state\":\"unavailable\",\"subject_digest\":\"eeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeee\",\"supersession_chain\":[]},\"exclusive_lease_facts\":{\"adapter_revision\":\"lease-two\",\"digest\":\"bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb\",\"expires_at_bucket\":\"b9999\",\"expiry_evidence\":\"aqref:v1:evidence:dddddddddddddddddddddddddddddddd\",\"issuer\":\"canonical\",\"issuer_revision\":\"lease-two\",\"reference_status\":\"active\",\"replacement_ref\":null,\"replacement_subject_digest\":null,\"sample_id\":\"sample-2\",\"sampled_at_bucket\":\"b20\",\"state\":\"unavailable\",\"subject_digest\":\"bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb\",\"supersession_chain\":[]},\"independent_review_facts\":{\"adapter_revision\":\"review-two\",\"digest\":\"cccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccc\",\"expires_at_bucket\":\"b9999\",\"expiry_evidence\":\"aqref:v1:evidence:dddddddddddddddddddddddddddddddd\",\"issuer\":\"canonical\",\"issuer_revision\":\"review-two\",\"reference_status\":\"active\",\"replacement_ref\":null,\"replacement_subject_digest\":null,\"sample_id\":\"sample-2\",\"sampled_at_bucket\":\"b20\",\"state\":\"unavailable\",\"subject_digest\":\"cccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccc\",\"supersession_chain\":[],\"verdict\":\"unknown\"},\"learning_facts\":{\"accepted_count\":{\"state\":\"unavailable\",\"value\":null},\"adapter_revision\":\"learning-two\",\"digest\":\"ffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffff\",\"expires_at_bucket\":\"b9999\",\"expiry_evidence\":\"aqref:v1:evidence:dddddddddddddddddddddddddddddddd\",\"issuer\":\"canonical\",\"issuer_revision\":\"learning-two\",\"reference_status\":\"active\",\"regression_count\":{\"state\":\"unknown\",\"value\":null},\"replacement_ref\":null,\"replacement_subject_digest\":null,\"sample_id\":\"sample-2\",\"sampled_at_bucket\":\"b20\",\"state\":\"unavailable\",\"subject_digest\":\"ffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffff\",\"supersession_chain\":[]},\"program_workflow_facts\":{\"adapter_revision\":\"program-two\",\"digest\":\"aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa\",\"expires_at_bucket\":\"b9999\",\"expiry_evidence\":\"aqref:v1:evidence:dddddddddddddddddddddddddddddddd\",\"issuer\":\"canonical\",\"issuer_revision\":\"program-two\",\"mission\":{},\"reference_status\":\"active\",\"replacement_ref\":null,\"replacement_subject_digest\":null,\"sample_id\":\"sample-2\",\"sampled_at_bucket\":\"b20\",\"state\":\"unavailable\",\"subject_digest\":\"aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa\",\"supersession_chain\":[],\"work\":[]},\"projection_meta_facts\":{\"generated_at\":\"proof time\",\"policy_revision\":\"p1\",\"projection_revision\":\"r1\",\"sample_id\":\"sample-2\",\"sampled_at_bucket\":\"b20\",\"schema_revision\":\"s1\"}}",
+      "facts": {
+        "projection_meta_facts": {
+          "projection_revision": "r1",
+          "generated_at": "proof time",
+          "policy_revision": "p1",
+          "schema_revision": "s1",
+          "sample_id": "sample-2",
+          "sampled_at_bucket": "b20"
+        },
+        "program_workflow_facts": {
+          "sample_id": "sample-2",
+          "sampled_at_bucket": "b20",
+          "adapter_revision": "program-two",
+          "digest": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+          "state": "unavailable",
+          "issuer": "canonical",
+          "reference_status": "active",
+          "mission": {},
+          "work": [],
+          "issuer_revision": "program-two",
+          "subject_digest": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+          "expires_at_bucket": "b9999",
+          "expiry_evidence": "aqref:v1:evidence:dddddddddddddddddddddddddddddddd",
+          "replacement_ref": null,
+          "replacement_subject_digest": null,
+          "supersession_chain": []
+        },
+        "exclusive_lease_facts": {
+          "sample_id": "sample-2",
+          "sampled_at_bucket": "b20",
+          "adapter_revision": "lease-two",
+          "digest": "bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb",
+          "state": "unavailable",
+          "issuer": "canonical",
+          "reference_status": "active",
+          "issuer_revision": "lease-two",
+          "subject_digest": "bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb",
+          "expires_at_bucket": "b9999",
+          "expiry_evidence": "aqref:v1:evidence:dddddddddddddddddddddddddddddddd",
+          "replacement_ref": null,
+          "replacement_subject_digest": null,
+          "supersession_chain": []
+        },
+        "independent_review_facts": {
+          "sample_id": "sample-2",
+          "sampled_at_bucket": "b20",
+          "adapter_revision": "review-two",
+          "digest": "cccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccc",
+          "state": "unavailable",
+          "issuer": "canonical",
+          "reference_status": "active",
+          "verdict": "unknown",
+          "issuer_revision": "review-two",
+          "subject_digest": "cccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccc",
+          "expires_at_bucket": "b9999",
+          "expiry_evidence": "aqref:v1:evidence:dddddddddddddddddddddddddddddddd",
+          "replacement_ref": null,
+          "replacement_subject_digest": null,
+          "supersession_chain": []
+        },
+        "agent_progress_facts": {
+          "sample_id": "sample-2",
+          "sampled_at_bucket": "b20",
+          "adapter_revision": "progress-two",
+          "digest": "dddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddd",
+          "state": "unavailable",
+          "issuer": "canonical",
+          "reference_status": "active",
+          "issuer_revision": "progress-two",
+          "subject_digest": "dddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddd",
+          "expires_at_bucket": "b9999",
+          "expiry_evidence": "aqref:v1:evidence:dddddddddddddddddddddddddddddddd",
+          "replacement_ref": null,
+          "replacement_subject_digest": null,
+          "supersession_chain": [],
+          "progress": []
+        },
+        "canonical_attention_facts": {
+          "sample_id": "sample-2",
+          "sampled_at_bucket": "b20",
+          "adapter_revision": "attention-two",
+          "digest": "eeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeee",
+          "state": "unavailable",
+          "issuer": "canonical",
+          "reference_status": "active",
+          "attention": [],
+          "issuer_revision": "attention-two",
+          "subject_digest": "eeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeee",
+          "expires_at_bucket": "b9999",
+          "expiry_evidence": "aqref:v1:evidence:dddddddddddddddddddddddddddddddd",
+          "replacement_ref": null,
+          "replacement_subject_digest": null,
+          "supersession_chain": []
+        },
+        "learning_facts": {
+          "sample_id": "sample-2",
+          "sampled_at_bucket": "b20",
+          "adapter_revision": "learning-two",
+          "digest": "ffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffff",
+          "state": "unavailable",
+          "issuer": "canonical",
+          "reference_status": "active",
+          "accepted_count": {
+            "state": "unavailable",
+            "value": null
+          },
+          "regression_count": {
+            "state": "unknown",
+            "value": null
+          },
+          "issuer_revision": "learning-two",
+          "subject_digest": "ffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffff",
+          "expires_at_bucket": "b9999",
+          "expiry_evidence": "aqref:v1:evidence:dddddddddddddddddddddddddddddddd",
+          "replacement_ref": null,
+          "replacement_subject_digest": null,
+          "supersession_chain": []
+        }
+      },
+      "expected": {
+        "output_sha256": "c70b4c3cca76f30a60aef6135d6937efd8f4f1f8fe511ec74f7162ea9dbd44d8",
+        "freshness": "unavailable",
+        "output_bytes": "{\"attention\":[],\"coverage\":{\"known_sources\":{\"state\":\"known\",\"value\":0},\"overflow_count\":{\"state\":\"known\",\"value\":0},\"unknown_sources\":{\"state\":\"known\",\"value\":6},\"visible_budget\":64},\"evidence\":[],\"freshness\":{\"age_bucket\":\"b20\",\"state\":\"unavailable\"},\"generated_at\":\"proof time\",\"learning\":{\"accepted_count\":{\"state\":\"unavailable\",\"value\":null},\"regression_count\":{\"state\":\"unavailable\",\"value\":null},\"state\":\"unavailable\"},\"mission\":{\"blocker\":\"unknown\",\"definition_of_done\":{\"satisfied\":{\"state\":\"unknown\",\"value\":null},\"total\":{\"state\":\"unknown\",\"value\":null},\"unknown\":{\"state\":\"unknown\",\"value\":null}},\"next_gate\":\"unknown\",\"objective\":\"unknown\",\"reference\":null,\"workflow_phase\":\"unknown\"},\"policy\":{\"digest_algorithm\":\"sha256\",\"input_digest\":\"9c397bc9b731b9747ee4382da6dbf3ac922194606084cdd6400d85d3740a386c\",\"policy_revision\":\"p1\",\"reference_grammar\":\"aqref:v1\",\"schema_revision\":\"s1\",\"serializer_revision\":\"operator-context-canonical-json.v2\"},\"projection_revision\":\"r1\",\"schema_version\":\"aq.operator-context.v1\",\"source_digests\":[{\"adapter_revision\":\"program-two\",\"digest\":\"aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa\",\"source\":\"program_workflow_facts\"},{\"adapter_revision\":\"lease-two\",\"digest\":\"bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb\",\"source\":\"exclusive_lease_facts\"},{\"adapter_revision\":\"review-two\",\"digest\":\"cccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccc\",\"source\":\"independent_review_facts\"},{\"adapter_revision\":\"progress-two\",\"digest\":\"dddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddd\",\"source\":\"agent_progress_facts\"},{\"adapter_revision\":\"attention-two\",\"digest\":\"eeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeee\",\"source\":\"canonical_attention_facts\"},{\"adapter_revision\":\"learning-two\",\"digest\":\"ffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffff\",\"source\":\"learning_facts\"}],\"source_health\":{\"reason\":\"coherent_sample\",\"state\":\"unavailable\"},\"work\":[]}"
+      },
+      "input_sha256": "9c397bc9b731b9747ee4382da6dbf3ac922194606084cdd6400d85d3740a386c"
+    }
+  ],
+  "rejections": [
+    {
+      "id": "raw_prompt",
+      "path": "__extra__",
+      "value": {
+        "key": "raw_prompt",
+        "value": "x"
+      }
+    },
+    {
+      "id": "raw_output",
+      "path": "__extra__",
+      "value": {
+        "key": "raw_output",
+        "value": "x"
+      }
+    },
+    {
+      "id": "raw_identity",
+      "path": "__extra__",
+      "value": {
+        "key": "identity",
+        "value": "x"
+      }
+    },
+    {
+      "id": "raw_reasoning",
+      "path": "__extra__",
+      "value": {
+        "key": "reasoning",
+        "value": "x"
+      }
+    },
+    {
+      "id": "raw_terminal",
+      "path": "__extra__",
+      "value": {
+        "key": "terminal",
+        "value": "x"
+      }
+    },
+    {
+      "id": "raw_argv",
+      "path": "__extra__",
+      "value": {
+        "key": "argv",
+        "value": "x"
+      }
+    },
+    {
+      "id": "raw_environment",
+      "path": "__extra__",
+      "value": {
+        "key": "environment",
+        "value": "x"
+      }
+    },
+    {
+      "id": "raw_provider",
+      "path": "__extra__",
+      "value": {
+        "key": "provider",
+        "value": "x"
+      }
+    },
+    {
+      "id": "raw_session",
+      "path": "__extra__",
+      "value": {
+        "key": "session",
+        "value": "x"
+      }
+    },
+    {
+      "id": "delimiter_key",
+      "path": "__extra__",
+      "value": {
+        "key": "a;rm",
+        "value": "x"
+      }
+    },
+    {
+      "id": "shell_fragment",
+      "path": "program_workflow_facts.mission.objective",
+      "value": "$(x)"
+    },
+    {
+      "id": "shell_semicolon",
+      "path": "program_workflow_facts.mission.objective",
+      "value": "x;curl"
+    },
+    {"id":"command_filesystem","path":"program_workflow_facts.mission.objective","value":"rm -rf tmp"},
+    {"id":"command_interpreter","path":"program_workflow_facts.mission.objective","value":"python -c payload"},
+    {"id":"command_privilege","path":"program_workflow_facts.mission.objective","value":"sudo reboot"},
+    {"id":"command_service","path":"program_workflow_facts.mission.objective","value":"systemctl restart service"},
+    {"id":"command_build","path":"program_workflow_facts.mission.objective","value":"make install"},
+    {"id":"command_cargo","path":"program_workflow_facts.mission.objective","value":"cargo test"},
+    {"id":"command_terraform","path":"program_workflow_facts.mission.objective","value":"terraform apply"},
+    {"id":"command_signal","path":"program_workflow_facts.mission.objective","value":"kill -9 process"},
+    {
+      "id": "credentials",
+      "path": "__extra__",
+      "value": {
+        "key": "token",
+        "value": "secret"
+      }
+    },
+    {
+      "id": "high_cardinality",
+      "path": "program_workflow_facts.mission.objective",
+      "value": "xxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxx"
+    },
+    {
+      "id": "malformed_meta",
+      "path": "projection_meta_facts.sampled_at_bucket",
+      "value": "now"
+    },
+    {
+      "id": "malformed_ref",
+      "path": "program_workflow_facts.mission.reference",
+      "value": "bad"
+    },
+    {
+      "id": "unknown_issuer",
+      "path": "program_workflow_facts.issuer",
+      "value": "unknown"
+    },
+    {
+      "id": "revoked",
+      "path": "program_workflow_facts.reference_status",
+      "value": "revoked"
+    },
+    {
+      "id": "expired",
+      "path": "program_workflow_facts.reference_status",
+      "value": "expired"
+    },
+    {
+      "id": "superseded",
+      "path": "program_workflow_facts.reference_status",
+      "value": "superseded"
+    },
+    {
+      "id": "supersession_cycle",
+      "path": "program_workflow_facts.supersedes",
+      "value": "aqref:v1:task:bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb"
+    },
+    {
+      "id": "traversal_in_text",
+      "path": "program_workflow_facts.mission.objective",
+      "value": "../../run/secrets"
+    },
+    {
+      "id": "unicode_control",
+      "path": "program_workflow_facts.mission.objective",
+      "value": "safe\u202etext"
+    },
+    {
+      "id": "aws_credential",
+      "path": "program_workflow_facts.mission.objective",
+      "value": "AKIAIOSFODNN7EXAMPLE"
+    },
+    {
+      "id": "bearer_credential",
+      "path": "program_workflow_facts.mission.objective",
+      "value": "Bearer secret-token"
+    },
+    {
+      "id": "private_key",
+      "path": "program_workflow_facts.mission.objective",
+      "value": "-----BEGIN PRIVATE KEY-----"
+    },
+    {
+      "id": "literal_work_overflow",
+      "path": "program_workflow_facts.work",
+      "value": [
+        {
+          "work_ref": "aqref:v1:task:bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb",
+          "parent_ref": "aqref:v1:task:cccccccccccccccccccccccccccccccc",
+          "child_count": 0,
+          "role": "implementer",
+          "lane": "remote",
+          "slice": "h2a",
+          "canonical_state": "done",
+          "record_revision": "r1",
+          "interaction_mode": "through_parent",
+          "interaction_reason": "parent controlled",
+          "blocker": "unknown",
+          "next_gate": "review"
+        },
+        {
+          "work_ref": "aqref:v1:task:bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb",
+          "parent_ref": "aqref:v1:task:cccccccccccccccccccccccccccccccc",
+          "child_count": 0,
+          "role": "implementer",
+          "lane": "remote",
+          "slice": "h2a",
+          "canonical_state": "done",
+          "record_revision": "r1",
+          "interaction_mode": "through_parent",
+          "interaction_reason": "parent controlled",
+          "blocker": "unknown",
+          "next_gate": "review"
+        },
+        {
+          "work_ref": "aqref:v1:task:bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb",
+          "parent_ref": "aqref:v1:task:cccccccccccccccccccccccccccccccc",
+          "child_count": 0,
+          "role": "implementer",
+          "lane": "remote",
+          "slice": "h2a",
+          "canonical_state": "done",
+          "record_revision": "r1",
+          "interaction_mode": "through_parent",
+          "interaction_reason": "parent controlled",
+          "blocker": "unknown",
+          "next_gate": "review"
+        },
+        {
+          "work_ref": "aqref:v1:task:bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb",
+          "parent_ref": "aqref:v1:task:cccccccccccccccccccccccccccccccc",
+          "child_count": 0,
+          "role": "implementer",
+          "lane": "remote",
+          "slice": "h2a",
+          "canonical_state": "done",
+          "record_revision": "r1",
+          "interaction_mode": "through_parent",
+          "interaction_reason": "parent controlled",
+          "blocker": "unknown",
+          "next_gate": "review"
+        },
+        {
+          "work_ref": "aqref:v1:task:bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb",
+          "parent_ref": "aqref:v1:task:cccccccccccccccccccccccccccccccc",
+          "child_count": 0,
+          "role": "implementer",
+          "lane": "remote",
+          "slice": "h2a",
+          "canonical_state": "done",
+          "record_revision": "r1",
+          "interaction_mode": "through_parent",
+          "interaction_reason": "parent controlled",
+          "blocker": "unknown",
+          "next_gate": "review"
+        },
+        {
+          "work_ref": "aqref:v1:task:bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb",
+          "parent_ref": "aqref:v1:task:cccccccccccccccccccccccccccccccc",
+          "child_count": 0,
+          "role": "implementer",
+          "lane": "remote",
+          "slice": "h2a",
+          "canonical_state": "done",
+          "record_revision": "r1",
+          "interaction_mode": "through_parent",
+          "interaction_reason": "parent controlled",
+          "blocker": "unknown",
+          "next_gate": "review"
+        },
+        {
+          "work_ref": "aqref:v1:task:bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb",
+          "parent_ref": "aqref:v1:task:cccccccccccccccccccccccccccccccc",
+          "child_count": 0,
+          "role": "implementer",
+          "lane": "remote",
+          "slice": "h2a",
+          "canonical_state": "done",
+          "record_revision": "r1",
+          "interaction_mode": "through_parent",
+          "interaction_reason": "parent controlled",
+          "blocker": "unknown",
+          "next_gate": "review"
+        },
+        {
+          "work_ref": "aqref:v1:task:bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb",
+          "parent_ref": "aqref:v1:task:cccccccccccccccccccccccccccccccc",
+          "child_count": 0,
+          "role": "implementer",
+          "lane": "remote",
+          "slice": "h2a",
+          "canonical_state": "done",
+          "record_revision": "r1",
+          "interaction_mode": "through_parent",
+          "interaction_reason": "parent controlled",
+          "blocker": "unknown",
+          "next_gate": "review"
+        },
+        {
+          "work_ref": "aqref:v1:task:bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb",
+          "parent_ref": "aqref:v1:task:cccccccccccccccccccccccccccccccc",
+          "child_count": 0,
+          "role": "implementer",
+          "lane": "remote",
+          "slice": "h2a",
+          "canonical_state": "done",
+          "record_revision": "r1",
+          "interaction_mode": "through_parent",
+          "interaction_reason": "parent controlled",
+          "blocker": "unknown",
+          "next_gate": "review"
+        },
+        {
+          "work_ref": "aqref:v1:task:bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb",
+          "parent_ref": "aqref:v1:task:cccccccccccccccccccccccccccccccc",
+          "child_count": 0,
+          "role": "implementer",
+          "lane": "remote",
+          "slice": "h2a",
+          "canonical_state": "done",
+          "record_revision": "r1",
+          "interaction_mode": "through_parent",
+          "interaction_reason": "parent controlled",
+          "blocker": "unknown",
+          "next_gate": "review"
+        },
+        {
+          "work_ref": "aqref:v1:task:bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb",
+          "parent_ref": "aqref:v1:task:cccccccccccccccccccccccccccccccc",
+          "child_count": 0,
+          "role": "implementer",
+          "lane": "remote",
+          "slice": "h2a",
+          "canonical_state": "done",
+          "record_revision": "r1",
+          "interaction_mode": "through_parent",
+          "interaction_reason": "parent controlled",
+          "blocker": "unknown",
+          "next_gate": "review"
+        },
+        {
+          "work_ref": "aqref:v1:task:bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb",
+          "parent_ref": "aqref:v1:task:cccccccccccccccccccccccccccccccc",
+          "child_count": 0,
+          "role": "implementer",
+          "lane": "remote",
+          "slice": "h2a",
+          "canonical_state": "done",
+          "record_revision": "r1",
+          "interaction_mode": "through_parent",
+          "interaction_reason": "parent controlled",
+          "blocker": "unknown",
+          "next_gate": "review"
+        },
+        {
+          "work_ref": "aqref:v1:task:bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb",
+          "parent_ref": "aqref:v1:task:cccccccccccccccccccccccccccccccc",
+          "child_count": 0,
+          "role": "implementer",
+          "lane": "remote",
+          "slice": "h2a",
+          "canonical_state": "done",
+          "record_revision": "r1",
+          "interaction_mode": "through_parent",
+          "interaction_reason": "parent controlled",
+          "blocker": "unknown",
+          "next_gate": "review"
+        },
+        {
+          "work_ref": "aqref:v1:task:bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb",
+          "parent_ref": "aqref:v1:task:cccccccccccccccccccccccccccccccc",
+          "child_count": 0,
+          "role": "implementer",
+          "lane": "remote",
+          "slice": "h2a",
+          "canonical_state": "done",
+          "record_revision": "r1",
+          "interaction_mode": "through_parent",
+          "interaction_reason": "parent controlled",
+          "blocker": "unknown",
+          "next_gate": "review"
+        },
+        {
+          "work_ref": "aqref:v1:task:bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb",
+          "parent_ref": "aqref:v1:task:cccccccccccccccccccccccccccccccc",
+          "child_count": 0,
+          "role": "implementer",
+          "lane": "remote",
+          "slice": "h2a",
+          "canonical_state": "done",
+          "record_revision": "r1",
+          "interaction_mode": "through_parent",
+          "interaction_reason": "parent controlled",
+          "blocker": "unknown",
+          "next_gate": "review"
+        },
+        {
+          "work_ref": "aqref:v1:task:bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb",
+          "parent_ref": "aqref:v1:task:cccccccccccccccccccccccccccccccc",
+          "child_count": 0,
+          "role": "implementer",
+          "lane": "remote",
+          "slice": "h2a",
+          "canonical_state": "done",
+          "record_revision": "r1",
+          "interaction_mode": "through_parent",
+          "interaction_reason": "parent controlled",
+          "blocker": "unknown",
+          "next_gate": "review"
+        },
+        {
+          "work_ref": "aqref:v1:task:bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb",
+          "parent_ref": "aqref:v1:task:cccccccccccccccccccccccccccccccc",
+          "child_count": 0,
+          "role": "implementer",
+          "lane": "remote",
+          "slice": "h2a",
+          "canonical_state": "done",
+          "record_revision": "r1",
+          "interaction_mode": "through_parent",
+          "interaction_reason": "parent controlled",
+          "blocker": "unknown",
+          "next_gate": "review"
+        },
+        {
+          "work_ref": "aqref:v1:task:bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb",
+          "parent_ref": "aqref:v1:task:cccccccccccccccccccccccccccccccc",
+          "child_count": 0,
+          "role": "implementer",
+          "lane": "remote",
+          "slice": "h2a",
+          "canonical_state": "done",
+          "record_revision": "r1",
+          "interaction_mode": "through_parent",
+          "interaction_reason": "parent controlled",
+          "blocker": "unknown",
+          "next_gate": "review"
+        },
+        {
+          "work_ref": "aqref:v1:task:bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb",
+          "parent_ref": "aqref:v1:task:cccccccccccccccccccccccccccccccc",
+          "child_count": 0,
+          "role": "implementer",
+          "lane": "remote",
+          "slice": "h2a",
+          "canonical_state": "done",
+          "record_revision": "r1",
+          "interaction_mode": "through_parent",
+          "interaction_reason": "parent controlled",
+          "blocker": "unknown",
+          "next_gate": "review"
+        },
+        {
+          "work_ref": "aqref:v1:task:bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb",
+          "parent_ref": "aqref:v1:task:cccccccccccccccccccccccccccccccc",
+          "child_count": 0,
+          "role": "implementer",
+          "lane": "remote",
+          "slice": "h2a",
+          "canonical_state": "done",
+          "record_revision": "r1",
+          "interaction_mode": "through_parent",
+          "interaction_reason": "parent controlled",
+          "blocker": "unknown",
+          "next_gate": "review"
+        },
+        {
+          "work_ref": "aqref:v1:task:bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb",
+          "parent_ref": "aqref:v1:task:cccccccccccccccccccccccccccccccc",
+          "child_count": 0,
+          "role": "implementer",
+          "lane": "remote",
+          "slice": "h2a",
+          "canonical_state": "done",
+          "record_revision": "r1",
+          "interaction_mode": "through_parent",
+          "interaction_reason": "parent controlled",
+          "blocker": "unknown",
+          "next_gate": "review"
+        },
+        {
+          "work_ref": "aqref:v1:task:bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb",
+          "parent_ref": "aqref:v1:task:cccccccccccccccccccccccccccccccc",
+          "child_count": 0,
+          "role": "implementer",
+          "lane": "remote",
+          "slice": "h2a",
+          "canonical_state": "done",
+          "record_revision": "r1",
+          "interaction_mode": "through_parent",
+          "interaction_reason": "parent controlled",
+          "blocker": "unknown",
+          "next_gate": "review"
+        },
+        {
+          "work_ref": "aqref:v1:task:bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb",
+          "parent_ref": "aqref:v1:task:cccccccccccccccccccccccccccccccc",
+          "child_count": 0,
+          "role": "implementer",
+          "lane": "remote",
+          "slice": "h2a",
+          "canonical_state": "done",
+          "record_revision": "r1",
+          "interaction_mode": "through_parent",
+          "interaction_reason": "parent controlled",
+          "blocker": "unknown",
+          "next_gate": "review"
+        },
+        {
+          "work_ref": "aqref:v1:task:bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb",
+          "parent_ref": "aqref:v1:task:cccccccccccccccccccccccccccccccc",
+          "child_count": 0,
+          "role": "implementer",
+          "lane": "remote",
+          "slice": "h2a",
+          "canonical_state": "done",
+          "record_revision": "r1",
+          "interaction_mode": "through_parent",
+          "interaction_reason": "parent controlled",
+          "blocker": "unknown",
+          "next_gate": "review"
+        },
+        {
+          "work_ref": "aqref:v1:task:bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb",
+          "parent_ref": "aqref:v1:task:cccccccccccccccccccccccccccccccc",
+          "child_count": 0,
+          "role": "implementer",
+          "lane": "remote",
+          "slice": "h2a",
+          "canonical_state": "done",
+          "record_revision": "r1",
+          "interaction_mode": "through_parent",
+          "interaction_reason": "parent controlled",
+          "blocker": "unknown",
+          "next_gate": "review"
+        },
+        {
+          "work_ref": "aqref:v1:task:bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb",
+          "parent_ref": "aqref:v1:task:cccccccccccccccccccccccccccccccc",
+          "child_count": 0,
+          "role": "implementer",
+          "lane": "remote",
+          "slice": "h2a",
+          "canonical_state": "done",
+          "record_revision": "r1",
+          "interaction_mode": "through_parent",
+          "interaction_reason": "parent controlled",
+          "blocker": "unknown",
+          "next_gate": "review"
+        },
+        {
+          "work_ref": "aqref:v1:task:bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb",
+          "parent_ref": "aqref:v1:task:cccccccccccccccccccccccccccccccc",
+          "child_count": 0,
+          "role": "implementer",
+          "lane": "remote",
+          "slice": "h2a",
+          "canonical_state": "done",
+          "record_revision": "r1",
+          "interaction_mode": "through_parent",
+          "interaction_reason": "parent controlled",
+          "blocker": "unknown",
+          "next_gate": "review"
+        },
+        {
+          "work_ref": "aqref:v1:task:bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb",
+          "parent_ref": "aqref:v1:task:cccccccccccccccccccccccccccccccc",
+          "child_count": 0,
+          "role": "implementer",
+          "lane": "remote",
+          "slice": "h2a",
+          "canonical_state": "done",
+          "record_revision": "r1",
+          "interaction_mode": "through_parent",
+          "interaction_reason": "parent controlled",
+          "blocker": "unknown",
+          "next_gate": "review"
+        },
+        {
+          "work_ref": "aqref:v1:task:bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb",
+          "parent_ref": "aqref:v1:task:cccccccccccccccccccccccccccccccc",
+          "child_count": 0,
+          "role": "implementer",
+          "lane": "remote",
+          "slice": "h2a",
+          "canonical_state": "done",
+          "record_revision": "r1",
+          "interaction_mode": "through_parent",
+          "interaction_reason": "parent controlled",
+          "blocker": "unknown",
+          "next_gate": "review"
+        },
+        {
+          "work_ref": "aqref:v1:task:bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb",
+          "parent_ref": "aqref:v1:task:cccccccccccccccccccccccccccccccc",
+          "child_count": 0,
+          "role": "implementer",
+          "lane": "remote",
+          "slice": "h2a",
+          "canonical_state": "done",
+          "record_revision": "r1",
+          "interaction_mode": "through_parent",
+          "interaction_reason": "parent controlled",
+          "blocker": "unknown",
+          "next_gate": "review"
+        },
+        {
+          "work_ref": "aqref:v1:task:bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb",
+          "parent_ref": "aqref:v1:task:cccccccccccccccccccccccccccccccc",
+          "child_count": 0,
+          "role": "implementer",
+          "lane": "remote",
+          "slice": "h2a",
+          "canonical_state": "done",
+          "record_revision": "r1",
+          "interaction_mode": "through_parent",
+          "interaction_reason": "parent controlled",
+          "blocker": "unknown",
+          "next_gate": "review"
+        },
+        {
+          "work_ref": "aqref:v1:task:bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb",
+          "parent_ref": "aqref:v1:task:cccccccccccccccccccccccccccccccc",
+          "child_count": 0,
+          "role": "implementer",
+          "lane": "remote",
+          "slice": "h2a",
+          "canonical_state": "done",
+          "record_revision": "r1",
+          "interaction_mode": "through_parent",
+          "interaction_reason": "parent controlled",
+          "blocker": "unknown",
+          "next_gate": "review"
+        },
+        {
+          "work_ref": "aqref:v1:task:bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb",
+          "parent_ref": "aqref:v1:task:cccccccccccccccccccccccccccccccc",
+          "child_count": 0,
+          "role": "implementer",
+          "lane": "remote",
+          "slice": "h2a",
+          "canonical_state": "done",
+          "record_revision": "r1",
+          "interaction_mode": "through_parent",
+          "interaction_reason": "parent controlled",
+          "blocker": "unknown",
+          "next_gate": "review"
+        },
+        {
+          "work_ref": "aqref:v1:task:bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb",
+          "parent_ref": "aqref:v1:task:cccccccccccccccccccccccccccccccc",
+          "child_count": 0,
+          "role": "implementer",
+          "lane": "remote",
+          "slice": "h2a",
+          "canonical_state": "done",
+          "record_revision": "r1",
+          "interaction_mode": "through_parent",
+          "interaction_reason": "parent controlled",
+          "blocker": "unknown",
+          "next_gate": "review"
+        },
+        {
+          "work_ref": "aqref:v1:task:bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb",
+          "parent_ref": "aqref:v1:task:cccccccccccccccccccccccccccccccc",
+          "child_count": 0,
+          "role": "implementer",
+          "lane": "remote",
+          "slice": "h2a",
+          "canonical_state": "done",
+          "record_revision": "r1",
+          "interaction_mode": "through_parent",
+          "interaction_reason": "parent controlled",
+          "blocker": "unknown",
+          "next_gate": "review"
+        },
+        {
+          "work_ref": "aqref:v1:task:bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb",
+          "parent_ref": "aqref:v1:task:cccccccccccccccccccccccccccccccc",
+          "child_count": 0,
+          "role": "implementer",
+          "lane": "remote",
+          "slice": "h2a",
+          "canonical_state": "done",
+          "record_revision": "r1",
+          "interaction_mode": "through_parent",
+          "interaction_reason": "parent controlled",
+          "blocker": "unknown",
+          "next_gate": "review"
+        },
+        {
+          "work_ref": "aqref:v1:task:bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb",
+          "parent_ref": "aqref:v1:task:cccccccccccccccccccccccccccccccc",
+          "child_count": 0,
+          "role": "implementer",
+          "lane": "remote",
+          "slice": "h2a",
+          "canonical_state": "done",
+          "record_revision": "r1",
+          "interaction_mode": "through_parent",
+          "interaction_reason": "parent controlled",
+          "blocker": "unknown",
+          "next_gate": "review"
+        },
+        {
+          "work_ref": "aqref:v1:task:bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb",
+          "parent_ref": "aqref:v1:task:cccccccccccccccccccccccccccccccc",
+          "child_count": 0,
+          "role": "implementer",
+          "lane": "remote",
+          "slice": "h2a",
+          "canonical_state": "done",
+          "record_revision": "r1",
+          "interaction_mode": "through_parent",
+          "interaction_reason": "parent controlled",
+          "blocker": "unknown",
+          "next_gate": "review"
+        },
+        {
+          "work_ref": "aqref:v1:task:bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb",
+          "parent_ref": "aqref:v1:task:cccccccccccccccccccccccccccccccc",
+          "child_count": 0,
+          "role": "implementer",
+          "lane": "remote",
+          "slice": "h2a",
+          "canonical_state": "done",
+          "record_revision": "r1",
+          "interaction_mode": "through_parent",
+          "interaction_reason": "parent controlled",
+          "blocker": "unknown",
+          "next_gate": "review"
+        },
+        {
+          "work_ref": "aqref:v1:task:bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb",
+          "parent_ref": "aqref:v1:task:cccccccccccccccccccccccccccccccc",
+          "child_count": 0,
+          "role": "implementer",
+          "lane": "remote",
+          "slice": "h2a",
+          "canonical_state": "done",
+          "record_revision": "r1",
+          "interaction_mode": "through_parent",
+          "interaction_reason": "parent controlled",
+          "blocker": "unknown",
+          "next_gate": "review"
+        },
+        {
+          "work_ref": "aqref:v1:task:bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb",
+          "parent_ref": "aqref:v1:task:cccccccccccccccccccccccccccccccc",
+          "child_count": 0,
+          "role": "implementer",
+          "lane": "remote",
+          "slice": "h2a",
+          "canonical_state": "done",
+          "record_revision": "r1",
+          "interaction_mode": "through_parent",
+          "interaction_reason": "parent controlled",
+          "blocker": "unknown",
+          "next_gate": "review"
+        },
+        {
+          "work_ref": "aqref:v1:task:bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb",
+          "parent_ref": "aqref:v1:task:cccccccccccccccccccccccccccccccc",
+          "child_count": 0,
+          "role": "implementer",
+          "lane": "remote",
+          "slice": "h2a",
+          "canonical_state": "done",
+          "record_revision": "r1",
+          "interaction_mode": "through_parent",
+          "interaction_reason": "parent controlled",
+          "blocker": "unknown",
+          "next_gate": "review"
+        },
+        {
+          "work_ref": "aqref:v1:task:bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb",
+          "parent_ref": "aqref:v1:task:cccccccccccccccccccccccccccccccc",
+          "child_count": 0,
+          "role": "implementer",
+          "lane": "remote",
+          "slice": "h2a",
+          "canonical_state": "done",
+          "record_revision": "r1",
+          "interaction_mode": "through_parent",
+          "interaction_reason": "parent controlled",
+          "blocker": "unknown",
+          "next_gate": "review"
+        },
+        {
+          "work_ref": "aqref:v1:task:bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb",
+          "parent_ref": "aqref:v1:task:cccccccccccccccccccccccccccccccc",
+          "child_count": 0,
+          "role": "implementer",
+          "lane": "remote",
+          "slice": "h2a",
+          "canonical_state": "done",
+          "record_revision": "r1",
+          "interaction_mode": "through_parent",
+          "interaction_reason": "parent controlled",
+          "blocker": "unknown",
+          "next_gate": "review"
+        },
+        {
+          "work_ref": "aqref:v1:task:bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb",
+          "parent_ref": "aqref:v1:task:cccccccccccccccccccccccccccccccc",
+          "child_count": 0,
+          "role": "implementer",
+          "lane": "remote",
+          "slice": "h2a",
+          "canonical_state": "done",
+          "record_revision": "r1",
+          "interaction_mode": "through_parent",
+          "interaction_reason": "parent controlled",
+          "blocker": "unknown",
+          "next_gate": "review"
+        },
+        {
+          "work_ref": "aqref:v1:task:bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb",
+          "parent_ref": "aqref:v1:task:cccccccccccccccccccccccccccccccc",
+          "child_count": 0,
+          "role": "implementer",
+          "lane": "remote",
+          "slice": "h2a",
+          "canonical_state": "done",
+          "record_revision": "r1",
+          "interaction_mode": "through_parent",
+          "interaction_reason": "parent controlled",
+          "blocker": "unknown",
+          "next_gate": "review"
+        },
+        {
+          "work_ref": "aqref:v1:task:bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb",
+          "parent_ref": "aqref:v1:task:cccccccccccccccccccccccccccccccc",
+          "child_count": 0,
+          "role": "implementer",
+          "lane": "remote",
+          "slice": "h2a",
+          "canonical_state": "done",
+          "record_revision": "r1",
+          "interaction_mode": "through_parent",
+          "interaction_reason": "parent controlled",
+          "blocker": "unknown",
+          "next_gate": "review"
+        },
+        {
+          "work_ref": "aqref:v1:task:bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb",
+          "parent_ref": "aqref:v1:task:cccccccccccccccccccccccccccccccc",
+          "child_count": 0,
+          "role": "implementer",
+          "lane": "remote",
+          "slice": "h2a",
+          "canonical_state": "done",
+          "record_revision": "r1",
+          "interaction_mode": "through_parent",
+          "interaction_reason": "parent controlled",
+          "blocker": "unknown",
+          "next_gate": "review"
+        },
+        {
+          "work_ref": "aqref:v1:task:bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb",
+          "parent_ref": "aqref:v1:task:cccccccccccccccccccccccccccccccc",
+          "child_count": 0,
+          "role": "implementer",
+          "lane": "remote",
+          "slice": "h2a",
+          "canonical_state": "done",
+          "record_revision": "r1",
+          "interaction_mode": "through_parent",
+          "interaction_reason": "parent controlled",
+          "blocker": "unknown",
+          "next_gate": "review"
+        },
+        {
+          "work_ref": "aqref:v1:task:bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb",
+          "parent_ref": "aqref:v1:task:cccccccccccccccccccccccccccccccc",
+          "child_count": 0,
+          "role": "implementer",
+          "lane": "remote",
+          "slice": "h2a",
+          "canonical_state": "done",
+          "record_revision": "r1",
+          "interaction_mode": "through_parent",
+          "interaction_reason": "parent controlled",
+          "blocker": "unknown",
+          "next_gate": "review"
+        },
+        {
+          "work_ref": "aqref:v1:task:bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb",
+          "parent_ref": "aqref:v1:task:cccccccccccccccccccccccccccccccc",
+          "child_count": 0,
+          "role": "implementer",
+          "lane": "remote",
+          "slice": "h2a",
+          "canonical_state": "done",
+          "record_revision": "r1",
+          "interaction_mode": "through_parent",
+          "interaction_reason": "parent controlled",
+          "blocker": "unknown",
+          "next_gate": "review"
+        },
+        {
+          "work_ref": "aqref:v1:task:bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb",
+          "parent_ref": "aqref:v1:task:cccccccccccccccccccccccccccccccc",
+          "child_count": 0,
+          "role": "implementer",
+          "lane": "remote",
+          "slice": "h2a",
+          "canonical_state": "done",
+          "record_revision": "r1",
+          "interaction_mode": "through_parent",
+          "interaction_reason": "parent controlled",
+          "blocker": "unknown",
+          "next_gate": "review"
+        },
+        {
+          "work_ref": "aqref:v1:task:bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb",
+          "parent_ref": "aqref:v1:task:cccccccccccccccccccccccccccccccc",
+          "child_count": 0,
+          "role": "implementer",
+          "lane": "remote",
+          "slice": "h2a",
+          "canonical_state": "done",
+          "record_revision": "r1",
+          "interaction_mode": "through_parent",
+          "interaction_reason": "parent controlled",
+          "blocker": "unknown",
+          "next_gate": "review"
+        },
+        {
+          "work_ref": "aqref:v1:task:bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb",
+          "parent_ref": "aqref:v1:task:cccccccccccccccccccccccccccccccc",
+          "child_count": 0,
+          "role": "implementer",
+          "lane": "remote",
+          "slice": "h2a",
+          "canonical_state": "done",
+          "record_revision": "r1",
+          "interaction_mode": "through_parent",
+          "interaction_reason": "parent controlled",
+          "blocker": "unknown",
+          "next_gate": "review"
+        },
+        {
+          "work_ref": "aqref:v1:task:bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb",
+          "parent_ref": "aqref:v1:task:cccccccccccccccccccccccccccccccc",
+          "child_count": 0,
+          "role": "implementer",
+          "lane": "remote",
+          "slice": "h2a",
+          "canonical_state": "done",
+          "record_revision": "r1",
+          "interaction_mode": "through_parent",
+          "interaction_reason": "parent controlled",
+          "blocker": "unknown",
+          "next_gate": "review"
+        },
+        {
+          "work_ref": "aqref:v1:task:bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb",
+          "parent_ref": "aqref:v1:task:cccccccccccccccccccccccccccccccc",
+          "child_count": 0,
+          "role": "implementer",
+          "lane": "remote",
+          "slice": "h2a",
+          "canonical_state": "done",
+          "record_revision": "r1",
+          "interaction_mode": "through_parent",
+          "interaction_reason": "parent controlled",
+          "blocker": "unknown",
+          "next_gate": "review"
+        },
+        {
+          "work_ref": "aqref:v1:task:bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb",
+          "parent_ref": "aqref:v1:task:cccccccccccccccccccccccccccccccc",
+          "child_count": 0,
+          "role": "implementer",
+          "lane": "remote",
+          "slice": "h2a",
+          "canonical_state": "done",
+          "record_revision": "r1",
+          "interaction_mode": "through_parent",
+          "interaction_reason": "parent controlled",
+          "blocker": "unknown",
+          "next_gate": "review"
+        },
+        {
+          "work_ref": "aqref:v1:task:bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb",
+          "parent_ref": "aqref:v1:task:cccccccccccccccccccccccccccccccc",
+          "child_count": 0,
+          "role": "implementer",
+          "lane": "remote",
+          "slice": "h2a",
+          "canonical_state": "done",
+          "record_revision": "r1",
+          "interaction_mode": "through_parent",
+          "interaction_reason": "parent controlled",
+          "blocker": "unknown",
+          "next_gate": "review"
+        },
+        {
+          "work_ref": "aqref:v1:task:bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb",
+          "parent_ref": "aqref:v1:task:cccccccccccccccccccccccccccccccc",
+          "child_count": 0,
+          "role": "implementer",
+          "lane": "remote",
+          "slice": "h2a",
+          "canonical_state": "done",
+          "record_revision": "r1",
+          "interaction_mode": "through_parent",
+          "interaction_reason": "parent controlled",
+          "blocker": "unknown",
+          "next_gate": "review"
+        },
+        {
+          "work_ref": "aqref:v1:task:bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb",
+          "parent_ref": "aqref:v1:task:cccccccccccccccccccccccccccccccc",
+          "child_count": 0,
+          "role": "implementer",
+          "lane": "remote",
+          "slice": "h2a",
+          "canonical_state": "done",
+          "record_revision": "r1",
+          "interaction_mode": "through_parent",
+          "interaction_reason": "parent controlled",
+          "blocker": "unknown",
+          "next_gate": "review"
+        },
+        {
+          "work_ref": "aqref:v1:task:bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb",
+          "parent_ref": "aqref:v1:task:cccccccccccccccccccccccccccccccc",
+          "child_count": 0,
+          "role": "implementer",
+          "lane": "remote",
+          "slice": "h2a",
+          "canonical_state": "done",
+          "record_revision": "r1",
+          "interaction_mode": "through_parent",
+          "interaction_reason": "parent controlled",
+          "blocker": "unknown",
+          "next_gate": "review"
+        },
+        {
+          "work_ref": "aqref:v1:task:bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb",
+          "parent_ref": "aqref:v1:task:cccccccccccccccccccccccccccccccc",
+          "child_count": 0,
+          "role": "implementer",
+          "lane": "remote",
+          "slice": "h2a",
+          "canonical_state": "done",
+          "record_revision": "r1",
+          "interaction_mode": "through_parent",
+          "interaction_reason": "parent controlled",
+          "blocker": "unknown",
+          "next_gate": "review"
+        },
+        {
+          "work_ref": "aqref:v1:task:bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb",
+          "parent_ref": "aqref:v1:task:cccccccccccccccccccccccccccccccc",
+          "child_count": 0,
+          "role": "implementer",
+          "lane": "remote",
+          "slice": "h2a",
+          "canonical_state": "done",
+          "record_revision": "r1",
+          "interaction_mode": "through_parent",
+          "interaction_reason": "parent controlled",
+          "blocker": "unknown",
+          "next_gate": "review"
+        },
+        {
+          "work_ref": "aqref:v1:task:bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb",
+          "parent_ref": "aqref:v1:task:cccccccccccccccccccccccccccccccc",
+          "child_count": 0,
+          "role": "implementer",
+          "lane": "remote",
+          "slice": "h2a",
+          "canonical_state": "done",
+          "record_revision": "r1",
+          "interaction_mode": "through_parent",
+          "interaction_reason": "parent controlled",
+          "blocker": "unknown",
+          "next_gate": "review"
+        },
+        {
+          "work_ref": "aqref:v1:task:bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb",
+          "parent_ref": "aqref:v1:task:cccccccccccccccccccccccccccccccc",
+          "child_count": 0,
+          "role": "implementer",
+          "lane": "remote",
+          "slice": "h2a",
+          "canonical_state": "done",
+          "record_revision": "r1",
+          "interaction_mode": "through_parent",
+          "interaction_reason": "parent controlled",
+          "blocker": "unknown",
+          "next_gate": "review"
+        }
+      ]
+    },
+    {
+      "id": "literal_attention_overflow",
+      "path": "canonical_attention_facts.attention",
+      "value": [
+        {
+          "work_ref": "aqref:v1:task:bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb",
+          "evidence_ref": null,
+          "severity": "high",
+          "category": "review",
+          "reason": "review required",
+          "recommended_action": "request_review",
+          "required_authority": "reviewer",
+          "availability": "available",
+          "rank": 1
+        },
+        {
+          "work_ref": "aqref:v1:task:bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb",
+          "evidence_ref": null,
+          "severity": "high",
+          "category": "review",
+          "reason": "review required",
+          "recommended_action": "request_review",
+          "required_authority": "reviewer",
+          "availability": "available",
+          "rank": 1
+        },
+        {
+          "work_ref": "aqref:v1:task:bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb",
+          "evidence_ref": null,
+          "severity": "high",
+          "category": "review",
+          "reason": "review required",
+          "recommended_action": "request_review",
+          "required_authority": "reviewer",
+          "availability": "available",
+          "rank": 1
+        },
+        {
+          "work_ref": "aqref:v1:task:bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb",
+          "evidence_ref": null,
+          "severity": "high",
+          "category": "review",
+          "reason": "review required",
+          "recommended_action": "request_review",
+          "required_authority": "reviewer",
+          "availability": "available",
+          "rank": 1
+        },
+        {
+          "work_ref": "aqref:v1:task:bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb",
+          "evidence_ref": null,
+          "severity": "high",
+          "category": "review",
+          "reason": "review required",
+          "recommended_action": "request_review",
+          "required_authority": "reviewer",
+          "availability": "available",
+          "rank": 1
+        },
+        {
+          "work_ref": "aqref:v1:task:bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb",
+          "evidence_ref": null,
+          "severity": "high",
+          "category": "review",
+          "reason": "review required",
+          "recommended_action": "request_review",
+          "required_authority": "reviewer",
+          "availability": "available",
+          "rank": 1
+        },
+        {
+          "work_ref": "aqref:v1:task:bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb",
+          "evidence_ref": null,
+          "severity": "high",
+          "category": "review",
+          "reason": "review required",
+          "recommended_action": "request_review",
+          "required_authority": "reviewer",
+          "availability": "available",
+          "rank": 1
+        },
+        {
+          "work_ref": "aqref:v1:task:bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb",
+          "evidence_ref": null,
+          "severity": "high",
+          "category": "review",
+          "reason": "review required",
+          "recommended_action": "request_review",
+          "required_authority": "reviewer",
+          "availability": "available",
+          "rank": 1
+        },
+        {
+          "work_ref": "aqref:v1:task:bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb",
+          "evidence_ref": null,
+          "severity": "high",
+          "category": "review",
+          "reason": "review required",
+          "recommended_action": "request_review",
+          "required_authority": "reviewer",
+          "availability": "available",
+          "rank": 1
+        },
+        {
+          "work_ref": "aqref:v1:task:bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb",
+          "evidence_ref": null,
+          "severity": "high",
+          "category": "review",
+          "reason": "review required",
+          "recommended_action": "request_review",
+          "required_authority": "reviewer",
+          "availability": "available",
+          "rank": 1
+        },
+        {
+          "work_ref": "aqref:v1:task:bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb",
+          "evidence_ref": null,
+          "severity": "high",
+          "category": "review",
+          "reason": "review required",
+          "recommended_action": "request_review",
+          "required_authority": "reviewer",
+          "availability": "available",
+          "rank": 1
+        },
+        {
+          "work_ref": "aqref:v1:task:bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb",
+          "evidence_ref": null,
+          "severity": "high",
+          "category": "review",
+          "reason": "review required",
+          "recommended_action": "request_review",
+          "required_authority": "reviewer",
+          "availability": "available",
+          "rank": 1
+        },
+        {
+          "work_ref": "aqref:v1:task:bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb",
+          "evidence_ref": null,
+          "severity": "high",
+          "category": "review",
+          "reason": "review required",
+          "recommended_action": "request_review",
+          "required_authority": "reviewer",
+          "availability": "available",
+          "rank": 1
+        },
+        {
+          "work_ref": "aqref:v1:task:bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb",
+          "evidence_ref": null,
+          "severity": "high",
+          "category": "review",
+          "reason": "review required",
+          "recommended_action": "request_review",
+          "required_authority": "reviewer",
+          "availability": "available",
+          "rank": 1
+        },
+        {
+          "work_ref": "aqref:v1:task:bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb",
+          "evidence_ref": null,
+          "severity": "high",
+          "category": "review",
+          "reason": "review required",
+          "recommended_action": "request_review",
+          "required_authority": "reviewer",
+          "availability": "available",
+          "rank": 1
+        },
+        {
+          "work_ref": "aqref:v1:task:bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb",
+          "evidence_ref": null,
+          "severity": "high",
+          "category": "review",
+          "reason": "review required",
+          "recommended_action": "request_review",
+          "required_authority": "reviewer",
+          "availability": "available",
+          "rank": 1
+        },
+        {
+          "work_ref": "aqref:v1:task:bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb",
+          "evidence_ref": null,
+          "severity": "high",
+          "category": "review",
+          "reason": "review required",
+          "recommended_action": "request_review",
+          "required_authority": "reviewer",
+          "availability": "available",
+          "rank": 1
+        },
+        {
+          "work_ref": "aqref:v1:task:bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb",
+          "evidence_ref": null,
+          "severity": "high",
+          "category": "review",
+          "reason": "review required",
+          "recommended_action": "request_review",
+          "required_authority": "reviewer",
+          "availability": "available",
+          "rank": 1
+        },
+        {
+          "work_ref": "aqref:v1:task:bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb",
+          "evidence_ref": null,
+          "severity": "high",
+          "category": "review",
+          "reason": "review required",
+          "recommended_action": "request_review",
+          "required_authority": "reviewer",
+          "availability": "available",
+          "rank": 1
+        },
+        {
+          "work_ref": "aqref:v1:task:bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb",
+          "evidence_ref": null,
+          "severity": "high",
+          "category": "review",
+          "reason": "review required",
+          "recommended_action": "request_review",
+          "required_authority": "reviewer",
+          "availability": "available",
+          "rank": 1
+        },
+        {
+          "work_ref": "aqref:v1:task:bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb",
+          "evidence_ref": null,
+          "severity": "high",
+          "category": "review",
+          "reason": "review required",
+          "recommended_action": "request_review",
+          "required_authority": "reviewer",
+          "availability": "available",
+          "rank": 1
+        },
+        {
+          "work_ref": "aqref:v1:task:bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb",
+          "evidence_ref": null,
+          "severity": "high",
+          "category": "review",
+          "reason": "review required",
+          "recommended_action": "request_review",
+          "required_authority": "reviewer",
+          "availability": "available",
+          "rank": 1
+        },
+        {
+          "work_ref": "aqref:v1:task:bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb",
+          "evidence_ref": null,
+          "severity": "high",
+          "category": "review",
+          "reason": "review required",
+          "recommended_action": "request_review",
+          "required_authority": "reviewer",
+          "availability": "available",
+          "rank": 1
+        },
+        {
+          "work_ref": "aqref:v1:task:bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb",
+          "evidence_ref": null,
+          "severity": "high",
+          "category": "review",
+          "reason": "review required",
+          "recommended_action": "request_review",
+          "required_authority": "reviewer",
+          "availability": "available",
+          "rank": 1
+        },
+        {
+          "work_ref": "aqref:v1:task:bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb",
+          "evidence_ref": null,
+          "severity": "high",
+          "category": "review",
+          "reason": "review required",
+          "recommended_action": "request_review",
+          "required_authority": "reviewer",
+          "availability": "available",
+          "rank": 1
+        },
+        {
+          "work_ref": "aqref:v1:task:bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb",
+          "evidence_ref": null,
+          "severity": "high",
+          "category": "review",
+          "reason": "review required",
+          "recommended_action": "request_review",
+          "required_authority": "reviewer",
+          "availability": "available",
+          "rank": 1
+        },
+        {
+          "work_ref": "aqref:v1:task:bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb",
+          "evidence_ref": null,
+          "severity": "high",
+          "category": "review",
+          "reason": "review required",
+          "recommended_action": "request_review",
+          "required_authority": "reviewer",
+          "availability": "available",
+          "rank": 1
+        },
+        {
+          "work_ref": "aqref:v1:task:bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb",
+          "evidence_ref": null,
+          "severity": "high",
+          "category": "review",
+          "reason": "review required",
+          "recommended_action": "request_review",
+          "required_authority": "reviewer",
+          "availability": "available",
+          "rank": 1
+        },
+        {
+          "work_ref": "aqref:v1:task:bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb",
+          "evidence_ref": null,
+          "severity": "high",
+          "category": "review",
+          "reason": "review required",
+          "recommended_action": "request_review",
+          "required_authority": "reviewer",
+          "availability": "available",
+          "rank": 1
+        },
+        {
+          "work_ref": "aqref:v1:task:bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb",
+          "evidence_ref": null,
+          "severity": "high",
+          "category": "review",
+          "reason": "review required",
+          "recommended_action": "request_review",
+          "required_authority": "reviewer",
+          "availability": "available",
+          "rank": 1
+        },
+        {
+          "work_ref": "aqref:v1:task:bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb",
+          "evidence_ref": null,
+          "severity": "high",
+          "category": "review",
+          "reason": "review required",
+          "recommended_action": "request_review",
+          "required_authority": "reviewer",
+          "availability": "available",
+          "rank": 1
+        },
+        {
+          "work_ref": "aqref:v1:task:bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb",
+          "evidence_ref": null,
+          "severity": "high",
+          "category": "review",
+          "reason": "review required",
+          "recommended_action": "request_review",
+          "required_authority": "reviewer",
+          "availability": "available",
+          "rank": 1
+        },
+        {
+          "work_ref": "aqref:v1:task:bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb",
+          "evidence_ref": null,
+          "severity": "high",
+          "category": "review",
+          "reason": "review required",
+          "recommended_action": "request_review",
+          "required_authority": "reviewer",
+          "availability": "available",
+          "rank": 1
+        },
+        {
+          "work_ref": "aqref:v1:task:bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb",
+          "evidence_ref": null,
+          "severity": "high",
+          "category": "review",
+          "reason": "review required",
+          "recommended_action": "request_review",
+          "required_authority": "reviewer",
+          "availability": "available",
+          "rank": 1
+        },
+        {
+          "work_ref": "aqref:v1:task:bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb",
+          "evidence_ref": null,
+          "severity": "high",
+          "category": "review",
+          "reason": "review required",
+          "recommended_action": "request_review",
+          "required_authority": "reviewer",
+          "availability": "available",
+          "rank": 1
+        },
+        {
+          "work_ref": "aqref:v1:task:bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb",
+          "evidence_ref": null,
+          "severity": "high",
+          "category": "review",
+          "reason": "review required",
+          "recommended_action": "request_review",
+          "required_authority": "reviewer",
+          "availability": "available",
+          "rank": 1
+        },
+        {
+          "work_ref": "aqref:v1:task:bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb",
+          "evidence_ref": null,
+          "severity": "high",
+          "category": "review",
+          "reason": "review required",
+          "recommended_action": "request_review",
+          "required_authority": "reviewer",
+          "availability": "available",
+          "rank": 1
+        },
+        {
+          "work_ref": "aqref:v1:task:bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb",
+          "evidence_ref": null,
+          "severity": "high",
+          "category": "review",
+          "reason": "review required",
+          "recommended_action": "request_review",
+          "required_authority": "reviewer",
+          "availability": "available",
+          "rank": 1
+        },
+        {
+          "work_ref": "aqref:v1:task:bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb",
+          "evidence_ref": null,
+          "severity": "high",
+          "category": "review",
+          "reason": "review required",
+          "recommended_action": "request_review",
+          "required_authority": "reviewer",
+          "availability": "available",
+          "rank": 1
+        },
+        {
+          "work_ref": "aqref:v1:task:bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb",
+          "evidence_ref": null,
+          "severity": "high",
+          "category": "review",
+          "reason": "review required",
+          "recommended_action": "request_review",
+          "required_authority": "reviewer",
+          "availability": "available",
+          "rank": 1
+        },
+        {
+          "work_ref": "aqref:v1:task:bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb",
+          "evidence_ref": null,
+          "severity": "high",
+          "category": "review",
+          "reason": "review required",
+          "recommended_action": "request_review",
+          "required_authority": "reviewer",
+          "availability": "available",
+          "rank": 1
+        },
+        {
+          "work_ref": "aqref:v1:task:bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb",
+          "evidence_ref": null,
+          "severity": "high",
+          "category": "review",
+          "reason": "review required",
+          "recommended_action": "request_review",
+          "required_authority": "reviewer",
+          "availability": "available",
+          "rank": 1
+        },
+        {
+          "work_ref": "aqref:v1:task:bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb",
+          "evidence_ref": null,
+          "severity": "high",
+          "category": "review",
+          "reason": "review required",
+          "recommended_action": "request_review",
+          "required_authority": "reviewer",
+          "availability": "available",
+          "rank": 1
+        },
+        {
+          "work_ref": "aqref:v1:task:bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb",
+          "evidence_ref": null,
+          "severity": "high",
+          "category": "review",
+          "reason": "review required",
+          "recommended_action": "request_review",
+          "required_authority": "reviewer",
+          "availability": "available",
+          "rank": 1
+        },
+        {
+          "work_ref": "aqref:v1:task:bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb",
+          "evidence_ref": null,
+          "severity": "high",
+          "category": "review",
+          "reason": "review required",
+          "recommended_action": "request_review",
+          "required_authority": "reviewer",
+          "availability": "available",
+          "rank": 1
+        },
+        {
+          "work_ref": "aqref:v1:task:bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb",
+          "evidence_ref": null,
+          "severity": "high",
+          "category": "review",
+          "reason": "review required",
+          "recommended_action": "request_review",
+          "required_authority": "reviewer",
+          "availability": "available",
+          "rank": 1
+        },
+        {
+          "work_ref": "aqref:v1:task:bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb",
+          "evidence_ref": null,
+          "severity": "high",
+          "category": "review",
+          "reason": "review required",
+          "recommended_action": "request_review",
+          "required_authority": "reviewer",
+          "availability": "available",
+          "rank": 1
+        },
+        {
+          "work_ref": "aqref:v1:task:bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb",
+          "evidence_ref": null,
+          "severity": "high",
+          "category": "review",
+          "reason": "review required",
+          "recommended_action": "request_review",
+          "required_authority": "reviewer",
+          "availability": "available",
+          "rank": 1
+        },
+        {
+          "work_ref": "aqref:v1:task:bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb",
+          "evidence_ref": null,
+          "severity": "high",
+          "category": "review",
+          "reason": "review required",
+          "recommended_action": "request_review",
+          "required_authority": "reviewer",
+          "availability": "available",
+          "rank": 1
+        },
+        {
+          "work_ref": "aqref:v1:task:bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb",
+          "evidence_ref": null,
+          "severity": "high",
+          "category": "review",
+          "reason": "review required",
+          "recommended_action": "request_review",
+          "required_authority": "reviewer",
+          "availability": "available",
+          "rank": 1
+        },
+        {
+          "work_ref": "aqref:v1:task:bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb",
+          "evidence_ref": null,
+          "severity": "high",
+          "category": "review",
+          "reason": "review required",
+          "recommended_action": "request_review",
+          "required_authority": "reviewer",
+          "availability": "available",
+          "rank": 1
+        },
+        {
+          "work_ref": "aqref:v1:task:bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb",
+          "evidence_ref": null,
+          "severity": "high",
+          "category": "review",
+          "reason": "review required",
+          "recommended_action": "request_review",
+          "required_authority": "reviewer",
+          "availability": "available",
+          "rank": 1
+        },
+        {
+          "work_ref": "aqref:v1:task:bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb",
+          "evidence_ref": null,
+          "severity": "high",
+          "category": "review",
+          "reason": "review required",
+          "recommended_action": "request_review",
+          "required_authority": "reviewer",
+          "availability": "available",
+          "rank": 1
+        },
+        {
+          "work_ref": "aqref:v1:task:bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb",
+          "evidence_ref": null,
+          "severity": "high",
+          "category": "review",
+          "reason": "review required",
+          "recommended_action": "request_review",
+          "required_authority": "reviewer",
+          "availability": "available",
+          "rank": 1
+        },
+        {
+          "work_ref": "aqref:v1:task:bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb",
+          "evidence_ref": null,
+          "severity": "high",
+          "category": "review",
+          "reason": "review required",
+          "recommended_action": "request_review",
+          "required_authority": "reviewer",
+          "availability": "available",
+          "rank": 1
+        },
+        {
+          "work_ref": "aqref:v1:task:bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb",
+          "evidence_ref": null,
+          "severity": "high",
+          "category": "review",
+          "reason": "review required",
+          "recommended_action": "request_review",
+          "required_authority": "reviewer",
+          "availability": "available",
+          "rank": 1
+        },
+        {
+          "work_ref": "aqref:v1:task:bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb",
+          "evidence_ref": null,
+          "severity": "high",
+          "category": "review",
+          "reason": "review required",
+          "recommended_action": "request_review",
+          "required_authority": "reviewer",
+          "availability": "available",
+          "rank": 1
+        },
+        {
+          "work_ref": "aqref:v1:task:bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb",
+          "evidence_ref": null,
+          "severity": "high",
+          "category": "review",
+          "reason": "review required",
+          "recommended_action": "request_review",
+          "required_authority": "reviewer",
+          "availability": "available",
+          "rank": 1
+        },
+        {
+          "work_ref": "aqref:v1:task:bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb",
+          "evidence_ref": null,
+          "severity": "high",
+          "category": "review",
+          "reason": "review required",
+          "recommended_action": "request_review",
+          "required_authority": "reviewer",
+          "availability": "available",
+          "rank": 1
+        },
+        {
+          "work_ref": "aqref:v1:task:bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb",
+          "evidence_ref": null,
+          "severity": "high",
+          "category": "review",
+          "reason": "review required",
+          "recommended_action": "request_review",
+          "required_authority": "reviewer",
+          "availability": "available",
+          "rank": 1
+        },
+        {
+          "work_ref": "aqref:v1:task:bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb",
+          "evidence_ref": null,
+          "severity": "high",
+          "category": "review",
+          "reason": "review required",
+          "recommended_action": "request_review",
+          "required_authority": "reviewer",
+          "availability": "available",
+          "rank": 1
+        },
+        {
+          "work_ref": "aqref:v1:task:bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb",
+          "evidence_ref": null,
+          "severity": "high",
+          "category": "review",
+          "reason": "review required",
+          "recommended_action": "request_review",
+          "required_authority": "reviewer",
+          "availability": "available",
+          "rank": 1
+        },
+        {
+          "work_ref": "aqref:v1:task:bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb",
+          "evidence_ref": null,
+          "severity": "high",
+          "category": "review",
+          "reason": "review required",
+          "recommended_action": "request_review",
+          "required_authority": "reviewer",
+          "availability": "available",
+          "rank": 1
+        },
+        {
+          "work_ref": "aqref:v1:task:bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb",
+          "evidence_ref": null,
+          "severity": "high",
+          "category": "review",
+          "reason": "review required",
+          "recommended_action": "request_review",
+          "required_authority": "reviewer",
+          "availability": "available",
+          "rank": 1
+        },
+        {
+          "work_ref": "aqref:v1:task:bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb",
+          "evidence_ref": null,
+          "severity": "high",
+          "category": "review",
+          "reason": "review required",
+          "recommended_action": "request_review",
+          "required_authority": "reviewer",
+          "availability": "available",
+          "rank": 1
+        }
+      ]
+    },
+    {
+      "id": "literal_progress_overflow",
+      "path": "agent_progress_facts.progress",
+      "value": [
+        {
+          "work_ref": "aqref:v1:task:bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb",
+          "progress_age": "recent"
+        },
+        {
+          "work_ref": "aqref:v1:task:bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb",
+          "progress_age": "recent"
+        },
+        {
+          "work_ref": "aqref:v1:task:bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb",
+          "progress_age": "recent"
+        },
+        {
+          "work_ref": "aqref:v1:task:bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb",
+          "progress_age": "recent"
+        },
+        {
+          "work_ref": "aqref:v1:task:bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb",
+          "progress_age": "recent"
+        },
+        {
+          "work_ref": "aqref:v1:task:bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb",
+          "progress_age": "recent"
+        },
+        {
+          "work_ref": "aqref:v1:task:bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb",
+          "progress_age": "recent"
+        },
+        {
+          "work_ref": "aqref:v1:task:bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb",
+          "progress_age": "recent"
+        },
+        {
+          "work_ref": "aqref:v1:task:bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb",
+          "progress_age": "recent"
+        },
+        {
+          "work_ref": "aqref:v1:task:bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb",
+          "progress_age": "recent"
+        },
+        {
+          "work_ref": "aqref:v1:task:bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb",
+          "progress_age": "recent"
+        },
+        {
+          "work_ref": "aqref:v1:task:bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb",
+          "progress_age": "recent"
+        },
+        {
+          "work_ref": "aqref:v1:task:bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb",
+          "progress_age": "recent"
+        },
+        {
+          "work_ref": "aqref:v1:task:bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb",
+          "progress_age": "recent"
+        },
+        {
+          "work_ref": "aqref:v1:task:bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb",
+          "progress_age": "recent"
+        },
+        {
+          "work_ref": "aqref:v1:task:bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb",
+          "progress_age": "recent"
+        },
+        {
+          "work_ref": "aqref:v1:task:bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb",
+          "progress_age": "recent"
+        },
+        {
+          "work_ref": "aqref:v1:task:bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb",
+          "progress_age": "recent"
+        },
+        {
+          "work_ref": "aqref:v1:task:bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb",
+          "progress_age": "recent"
+        },
+        {
+          "work_ref": "aqref:v1:task:bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb",
+          "progress_age": "recent"
+        },
+        {
+          "work_ref": "aqref:v1:task:bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb",
+          "progress_age": "recent"
+        },
+        {
+          "work_ref": "aqref:v1:task:bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb",
+          "progress_age": "recent"
+        },
+        {
+          "work_ref": "aqref:v1:task:bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb",
+          "progress_age": "recent"
+        },
+        {
+          "work_ref": "aqref:v1:task:bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb",
+          "progress_age": "recent"
+        },
+        {
+          "work_ref": "aqref:v1:task:bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb",
+          "progress_age": "recent"
+        },
+        {
+          "work_ref": "aqref:v1:task:bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb",
+          "progress_age": "recent"
+        },
+        {
+          "work_ref": "aqref:v1:task:bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb",
+          "progress_age": "recent"
+        },
+        {
+          "work_ref": "aqref:v1:task:bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb",
+          "progress_age": "recent"
+        },
+        {
+          "work_ref": "aqref:v1:task:bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb",
+          "progress_age": "recent"
+        },
+        {
+          "work_ref": "aqref:v1:task:bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb",
+          "progress_age": "recent"
+        },
+        {
+          "work_ref": "aqref:v1:task:bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb",
+          "progress_age": "recent"
+        },
+        {
+          "work_ref": "aqref:v1:task:bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb",
+          "progress_age": "recent"
+        },
+        {
+          "work_ref": "aqref:v1:task:bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb",
+          "progress_age": "recent"
+        },
+        {
+          "work_ref": "aqref:v1:task:bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb",
+          "progress_age": "recent"
+        },
+        {
+          "work_ref": "aqref:v1:task:bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb",
+          "progress_age": "recent"
+        },
+        {
+          "work_ref": "aqref:v1:task:bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb",
+          "progress_age": "recent"
+        },
+        {
+          "work_ref": "aqref:v1:task:bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb",
+          "progress_age": "recent"
+        },
+        {
+          "work_ref": "aqref:v1:task:bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb",
+          "progress_age": "recent"
+        },
+        {
+          "work_ref": "aqref:v1:task:bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb",
+          "progress_age": "recent"
+        },
+        {
+          "work_ref": "aqref:v1:task:bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb",
+          "progress_age": "recent"
+        },
+        {
+          "work_ref": "aqref:v1:task:bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb",
+          "progress_age": "recent"
+        },
+        {
+          "work_ref": "aqref:v1:task:bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb",
+          "progress_age": "recent"
+        },
+        {
+          "work_ref": "aqref:v1:task:bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb",
+          "progress_age": "recent"
+        },
+        {
+          "work_ref": "aqref:v1:task:bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb",
+          "progress_age": "recent"
+        },
+        {
+          "work_ref": "aqref:v1:task:bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb",
+          "progress_age": "recent"
+        },
+        {
+          "work_ref": "aqref:v1:task:bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb",
+          "progress_age": "recent"
+        },
+        {
+          "work_ref": "aqref:v1:task:bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb",
+          "progress_age": "recent"
+        },
+        {
+          "work_ref": "aqref:v1:task:bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb",
+          "progress_age": "recent"
+        },
+        {
+          "work_ref": "aqref:v1:task:bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb",
+          "progress_age": "recent"
+        },
+        {
+          "work_ref": "aqref:v1:task:bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb",
+          "progress_age": "recent"
+        },
+        {
+          "work_ref": "aqref:v1:task:bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb",
+          "progress_age": "recent"
+        },
+        {
+          "work_ref": "aqref:v1:task:bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb",
+          "progress_age": "recent"
+        },
+        {
+          "work_ref": "aqref:v1:task:bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb",
+          "progress_age": "recent"
+        },
+        {
+          "work_ref": "aqref:v1:task:bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb",
+          "progress_age": "recent"
+        },
+        {
+          "work_ref": "aqref:v1:task:bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb",
+          "progress_age": "recent"
+        },
+        {
+          "work_ref": "aqref:v1:task:bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb",
+          "progress_age": "recent"
+        },
+        {
+          "work_ref": "aqref:v1:task:bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb",
+          "progress_age": "recent"
+        },
+        {
+          "work_ref": "aqref:v1:task:bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb",
+          "progress_age": "recent"
+        },
+        {
+          "work_ref": "aqref:v1:task:bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb",
+          "progress_age": "recent"
+        },
+        {
+          "work_ref": "aqref:v1:task:bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb",
+          "progress_age": "recent"
+        },
+        {
+          "work_ref": "aqref:v1:task:bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb",
+          "progress_age": "recent"
+        },
+        {
+          "work_ref": "aqref:v1:task:bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb",
+          "progress_age": "recent"
+        },
+        {
+          "work_ref": "aqref:v1:task:bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb",
+          "progress_age": "recent"
+        },
+        {
+          "work_ref": "aqref:v1:task:bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb",
+          "progress_age": "recent"
+        },
+        {
+          "work_ref": "aqref:v1:task:bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb",
+          "progress_age": "recent"
+        }
+      ]
+    },
+    {
+      "id": "actual_lifecycle_cycle",
+      "path": "program_workflow_facts.replacement_subject_digest",
+      "value": "1111111111111111111111111111111111111111111111111111111111111111"
+    },
+    {
+      "id": "fabricated_chain",
+      "path": "program_workflow_facts.supersession_chain",
+      "value": [
+        "ffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffff"
+      ]
+    },
+    {
+      "id": "literal_chain_overflow",
+      "path": "program_workflow_facts.supersession_chain",
+      "value": [
+        "ffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffff",
+        "ffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffff",
+        "ffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffff",
+        "ffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffff",
+        "ffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffff",
+        "ffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffff",
+        "ffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffff",
+        "ffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffff",
+        "ffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffff",
+        "ffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffff",
+        "ffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffff",
+        "ffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffff",
+        "ffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffff",
+        "ffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffff",
+        "ffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffff",
+        "ffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffff",
+        "ffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffff",
+        "ffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffff",
+        "ffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffff",
+        "ffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffff",
+        "ffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffff",
+        "ffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffff",
+        "ffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffff",
+        "ffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffff",
+        "ffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffff",
+        "ffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffff",
+        "ffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffff",
+        "ffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffff",
+        "ffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffff",
+        "ffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffff",
+        "ffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffff",
+        "ffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffff",
+        "ffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffff",
+        "ffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffff",
+        "ffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffff",
+        "ffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffff",
+        "ffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffff",
+        "ffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffff",
+        "ffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffff",
+        "ffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffff",
+        "ffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffff",
+        "ffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffff",
+        "ffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffff",
+        "ffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffff",
+        "ffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffff",
+        "ffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffff",
+        "ffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffff",
+        "ffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffff",
+        "ffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffff",
+        "ffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffff",
+        "ffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffff",
+        "ffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffff",
+        "ffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffff",
+        "ffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffff",
+        "ffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffff",
+        "ffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffff",
+        "ffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffff",
+        "ffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffff",
+        "ffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffff",
+        "ffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffff",
+        "ffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffff",
+        "ffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffff",
+        "ffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffff",
+        "ffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffff",
+        "ffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffff"
+      ]
+    }
+  ],
+  "positive_objectives": ["Review git workflow", "Document Python API", "Improve service health"]
+}

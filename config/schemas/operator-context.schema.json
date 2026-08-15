@@ -1,0 +1,605 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "aq.operator-context.v1",
+  "type": "object",
+  "additionalProperties": false,
+  "required": [
+    "schema_version",
+    "projection_revision",
+    "generated_at",
+    "freshness",
+    "source_health",
+    "source_digests",
+    "mission",
+    "work",
+    "attention",
+    "evidence",
+    "learning",
+    "coverage",
+    "policy"
+  ],
+  "properties": {
+    "schema_version": {
+      "const": "aq.operator-context.v1"
+    },
+    "projection_revision": {
+      "$ref": "#/$defs/text"
+    },
+    "generated_at": {
+      "$ref": "#/$defs/text"
+    },
+    "freshness": {
+      "$ref": "#/$defs/stateAge"
+    },
+    "source_health": {
+      "$ref": "#/$defs/stateReason"
+    },
+    "source_digests": {
+      "type": "array",
+      "maxItems": 64,
+      "items": {
+        "$ref": "#/$defs/sourceDigest"
+      }
+    },
+    "mission": {
+      "$ref": "#/$defs/mission"
+    },
+    "work": {
+      "type": "array",
+      "maxItems": 64,
+      "items": {
+        "$ref": "#/$defs/work"
+      }
+    },
+    "attention": {
+      "type": "array",
+      "maxItems": 64,
+      "items": {
+        "$ref": "#/$defs/attention"
+      }
+    },
+    "evidence": {
+      "type": "array",
+      "maxItems": 64,
+      "items": {
+        "$ref": "#/$defs/evidence"
+      }
+    },
+    "learning": {
+      "$ref": "#/$defs/learning"
+    },
+    "coverage": {
+      "$ref": "#/$defs/coverage"
+    },
+    "policy": {
+      "$ref": "#/$defs/policy"
+    }
+  },
+  "$defs": {
+    "text": {
+      "type": "string",
+      "minLength": 1,
+      "maxLength": 160,
+      "pattern": "^[A-Za-z0-9 _.,:;()\\-]+$"
+    },
+    "objectiveText": {
+      "anyOf": [
+        {"const": "unknown"},
+        {"type": "string", "minLength": 1, "maxLength": 160, "pattern": "^[A-Z][A-Za-z0-9 _.,:()\\-]{0,159}$"}
+      ]
+    },
+    "ref": {
+      "type": "string",
+      "pattern": "^aqref:v1:[a-z][a-z0-9_-]{0,31}:[a-f0-9]{32,128}$"
+    },
+    "count": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "state",
+        "value"
+      ],
+      "properties": {
+        "state": {
+          "enum": [
+            "known",
+            "unknown",
+            "unavailable"
+          ]
+        },
+        "value": {
+          "anyOf": [
+            {
+              "type": "integer",
+              "minimum": 0,
+              "maximum": 65535
+            },
+            {
+              "type": "null"
+            }
+          ]
+        }
+      },
+      "allOf": [
+        {
+          "if": {
+            "properties": {
+              "state": {
+                "const": "known"
+              }
+            }
+          },
+          "then": {
+            "properties": {
+              "value": {
+                "type": "integer",
+                "minimum": 0,
+                "maximum": 65535
+              }
+            }
+          }
+        },
+        {
+          "if": {
+            "properties": {
+              "state": {
+                "enum": ["unknown", "unavailable"]
+              }
+            }
+          },
+          "then": {
+            "properties": {
+              "value": {
+                "type": "null"
+              }
+            }
+          }
+        }
+      ]
+    },
+    "state": {
+      "enum": [
+        "fresh",
+        "stale",
+        "unknown",
+        "unavailable",
+        "degraded",
+        "conflict"
+      ]
+    },
+    "stateAge": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "state",
+        "age_bucket"
+      ],
+      "properties": {
+        "state": {
+          "$ref": "#/$defs/state"
+        },
+        "age_bucket": {
+          "type": "string",
+          "pattern": "^b[0-9]{1,4}$"
+        }
+      }
+    },
+    "stateReason": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "state",
+        "reason"
+      ],
+      "properties": {
+        "state": {
+          "$ref": "#/$defs/state"
+        },
+        "reason": {
+          "enum": [
+            "coherent_sample"
+          ]
+        }
+      }
+    },
+    "sourceDigest": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "source",
+        "adapter_revision",
+        "digest"
+      ],
+      "properties": {
+        "source": {
+          "enum": [
+            "program_workflow_facts",
+            "exclusive_lease_facts",
+            "independent_review_facts",
+            "agent_progress_facts",
+            "canonical_attention_facts",
+            "learning_facts"
+          ]
+        },
+        "adapter_revision": {
+          "type": "string",
+          "pattern": "^[a-z][a-z0-9-]{1,63}$"
+        },
+        "digest": {
+          "type": "string",
+          "pattern": "^[a-f0-9]{64}$"
+        }
+      }
+    },
+    "mission": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "objective",
+        "workflow_phase",
+        "definition_of_done",
+        "next_gate",
+        "blocker",
+        "reference"
+      ],
+      "properties": {
+        "objective": {
+          "$ref": "#/$defs/objectiveText"
+        },
+        "workflow_phase": {
+          "enum": [
+            "unknown",
+            "plan",
+            "execute",
+            "validate",
+            "review",
+            "complete",
+            "blocked"
+          ]
+        },
+        "definition_of_done": {
+          "type": "object",
+          "additionalProperties": false,
+          "required": [
+            "total",
+            "satisfied",
+            "unknown"
+          ],
+          "properties": {
+            "total": {
+              "$ref": "#/$defs/count"
+            },
+            "satisfied": {
+              "$ref": "#/$defs/count"
+            },
+            "unknown": {
+              "$ref": "#/$defs/count"
+            }
+          }
+        },
+        "next_gate": {
+          "$ref": "#/$defs/text"
+        },
+        "blocker": {
+          "$ref": "#/$defs/text"
+        },
+        "reference": {
+          "anyOf": [
+            {
+              "$ref": "#/$defs/ref"
+            },
+            {
+              "type": "null"
+            }
+          ]
+        }
+      }
+    },
+    "work": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "work_ref",
+        "parent_ref",
+        "child_count",
+        "role",
+        "lane",
+        "slice",
+        "canonical_state",
+        "record_revision",
+        "interaction_mode",
+        "interaction_reason",
+        "progress_age",
+        "blocker",
+        "next_gate",
+        "allowed_controls",
+        "presentation_observation",
+        "drift"
+      ],
+      "properties": {
+        "work_ref": {
+          "$ref": "#/$defs/ref"
+        },
+        "parent_ref": {
+          "anyOf": [
+            {
+              "$ref": "#/$defs/ref"
+            },
+            {
+              "type": "null"
+            }
+          ]
+        },
+        "child_count": {
+          "$ref": "#/$defs/count"
+        },
+        "role": {
+          "enum": [
+            "unknown",
+            "implementer",
+            "reviewer",
+            "orchestrator"
+          ]
+        },
+        "lane": {
+          "enum": [
+            "unknown",
+            "local",
+            "remote"
+          ]
+        },
+        "slice": {
+          "$ref": "#/$defs/text"
+        },
+        "canonical_state": {
+          "enum": [
+            "unknown",
+            "queued",
+            "running",
+            "blocked",
+            "needs_review",
+            "accepted",
+            "done"
+          ]
+        },
+        "record_revision": {
+          "$ref": "#/$defs/text"
+        },
+        "interaction_mode": {
+          "enum": [
+            "direct",
+            "through_parent",
+            "read_only",
+            "unavailable",
+            "unknown"
+          ]
+        },
+        "interaction_reason": {
+          "$ref": "#/$defs/text"
+        },
+        "progress_age": {
+          "enum": [
+            "recent",
+            "stale",
+            "unknown"
+          ]
+        },
+        "blocker": {
+          "$ref": "#/$defs/text"
+        },
+        "next_gate": {
+          "$ref": "#/$defs/text"
+        },
+        "allowed_controls": {
+          "type": "array",
+          "maxItems": 0
+        },
+        "presentation_observation": {
+          "const": "unknown"
+        },
+        "drift": {
+          "const": "unknown"
+        }
+      }
+    },
+    "attention": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "work_ref",
+        "evidence_ref",
+        "severity",
+        "category",
+        "reason",
+        "recommended_action",
+        "required_authority",
+        "availability",
+        "rank"
+      ],
+      "properties": {
+        "work_ref": {
+          "anyOf": [
+            {
+              "$ref": "#/$defs/ref"
+            },
+            {
+              "type": "null"
+            }
+          ]
+        },
+        "evidence_ref": {
+          "anyOf": [
+            {
+              "$ref": "#/$defs/ref"
+            },
+            {
+              "type": "null"
+            }
+          ]
+        },
+        "severity": {
+          "enum": [
+            "unknown",
+            "low",
+            "medium",
+            "high",
+            "critical"
+          ]
+        },
+        "category": {
+          "enum": [
+            "unknown",
+            "safety",
+            "review",
+            "blocker",
+            "advisory"
+          ]
+        },
+        "reason": {
+          "$ref": "#/$defs/text"
+        },
+        "recommended_action": {
+          "enum": [
+            "unknown",
+            "request_review",
+            "inspect_blocker",
+            "defer"
+          ]
+        },
+        "required_authority": {
+          "enum": [
+            "unknown",
+            "reviewer",
+            "owner",
+            "operator"
+          ]
+        },
+        "availability": {
+          "enum": [
+            "available",
+            "through_parent",
+            "read_only",
+            "blocked",
+            "unavailable",
+            "unknown"
+          ]
+        },
+        "rank": {
+          "type": "integer",
+          "minimum": 0,
+          "maximum": 65535
+        }
+      }
+    },
+    "evidence": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "reference",
+        "type",
+        "source",
+        "digest",
+        "freshness",
+        "availability"
+      ],
+      "properties": {
+        "reference": {
+          "$ref": "#/$defs/ref"
+        },
+        "type": {
+          "$ref": "#/$defs/text"
+        },
+        "source": {
+          "$ref": "#/$defs/text"
+        },
+        "digest": {
+          "type": "string",
+          "pattern": "^[a-f0-9]{64}$"
+        },
+        "freshness": {
+          "$ref": "#/$defs/text"
+        },
+        "availability": {
+          "$ref": "#/$defs/text"
+        }
+      }
+    },
+    "learning": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "state",
+        "accepted_count",
+        "regression_count"
+      ],
+      "properties": {
+        "state": {
+          "$ref": "#/$defs/state"
+        },
+        "accepted_count": {
+          "$ref": "#/$defs/count"
+        },
+        "regression_count": {
+          "$ref": "#/$defs/count"
+        }
+      }
+    },
+    "coverage": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "known_sources",
+        "unknown_sources",
+        "visible_budget",
+        "overflow_count"
+      ],
+      "properties": {
+        "known_sources": {
+          "$ref": "#/$defs/count"
+        },
+        "unknown_sources": {
+          "$ref": "#/$defs/count"
+        },
+        "visible_budget": {
+          "const": 64
+        },
+        "overflow_count": {
+          "$ref": "#/$defs/count"
+        }
+      }
+    },
+    "policy": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "policy_revision",
+        "schema_revision",
+        "serializer_revision",
+        "digest_algorithm",
+        "reference_grammar",
+        "input_digest"
+      ],
+      "properties": {
+        "policy_revision": {
+          "$ref": "#/$defs/text"
+        },
+        "schema_revision": {
+          "$ref": "#/$defs/text"
+        },
+        "serializer_revision": {
+          "const": "operator-context-canonical-json.v2"
+        },
+        "digest_algorithm": {
+          "const": "sha256"
+        },
+        "reference_grammar": {
+          "const": "aqref:v1"
+        },
+        "input_digest": {
+          "type": "string",
+          "pattern": "^[a-f0-9]{64}$"
+        }
+      }
+    }
+  }
+}
