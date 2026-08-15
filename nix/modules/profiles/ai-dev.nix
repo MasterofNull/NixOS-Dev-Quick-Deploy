@@ -47,6 +47,12 @@ in {
     # real owner-provisioned SOPS signer key + verifier-allowlist public key. Pairs with the switchboard
     # CAPABILITY_SCHEDULER_CONTEXT_ISSUER=1 flag. REVERT: enable=false → default-OFF byte-parity.
     mySystem.aiStack.c2SchedulerContextIssuer.enable = true;
+    # Revocation-epoch authority (C6-B2): the SSOT epoch source. `3d45e03c` rewired ALA + C2-SCI epoch
+    # resolution to resolve ONLY through this authority's UDS (fail-closed, no config/env fallback), so
+    # the whole lease chain is epoch-blocked (epoch-authority-unavailable) until this SERVES the epoch.
+    # It holds NO private key (SOPS-free; serves the genesis epoch 0 read-only; bumps are owner-signed
+    # offline). Required for C2-SCI's live mint. REVERT: enable=false.
+    mySystem.aiStack.revocationEpochAuthority.enable = true;
     mySystem.profileData.flatpakApps = lib.mkDefault flatpakProfiles.ai_workstation;
     mySystem.profileData.systemPackageNames = lib.mkDefault profilePackages.ai-dev;
 
