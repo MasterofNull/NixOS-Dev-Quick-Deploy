@@ -1,11 +1,11 @@
 {
-  "_comment": "SOLE signer-verifier allowlist for the C2 scheduler-lease-context issuer's OWN Ed25519 signing key (Foundation C, C2-SCI design rev4, C2-SCHEDULER-CONTEXT-ISSUER-DESIGN-20260806.md §2). Public-only; NO private material. A DISTINCT key family from config/aqos/lease-signer-keys.json (the C2 admission-lease signer) — this file verifies the aq.scheduler-lease-context/1 documents minted by the confined aq-c2-scheduler-context-issuer service, never the presented lease itself. dispatch.py's B3 ingress adapter verifies a context's signature ONLY through this status-bearing allowlist via capability_lease.verify_authoritative(); a key_id absent here, or present with status != \"active\", denies at verify time (re-checked every call) — a revoked key never verifies. ACTIVATED 2026-08-15: the real owner-provisioned public key (paired with the SOPS private key at /run/secrets/c6-scheduler-context-signing-key) replaced the earlier placeholder. To rotate: append a new active key_id + set the old to status!=active.",
+  "_comment": "SOLE signer-verifier allowlist for the C2 scheduler-lease-context issuer's OWN Ed25519 signing key (Foundation C, C2-SCI design rev4, C2-SCHEDULER-CONTEXT-ISSUER-DESIGN-20260806.md \u00a72). Public-only; NO private material. A DISTINCT key family from config/aqos/lease-signer-keys.json (the C2 admission-lease signer) \u2014 this file verifies the aq.scheduler-lease-context/1 documents minted by the confined aq-c2-scheduler-context-issuer service, never the presented lease itself. dispatch.py's B3 ingress adapter verifies a context's signature ONLY through this status-bearing allowlist via capability_lease.verify_authoritative(); a key_id absent here, or present with status != \"active\", denies at verify time (re-checked every call) \u2014 a revoked key never verifies. ACTIVATED 2026-08-15: the real owner-provisioned public key (paired with the SOPS private key at /run/secrets/c6-scheduler-context-signing-key) replaced the earlier placeholder. To rotate: append a new active key_id + set the old to status!=active.",
   "schema_version": "1",
-  "revision": 2,
+  "revision": 3,
   "keys": [
     {
       "key_id": "c2-scheduler-context-signer-2026-08",
-      "ed25519_public_key": "f5162de45d21cc0ee1c9237a3eda0dc42ec56d1b597cff7e9ae9d891144ce514",
+      "ed25519_public_key": "b876b7ea06325552668e0f585713bc0e8f3b2b5c15ee92994fc8174524bfdef8",
       "status": "active"
     }
   ]
