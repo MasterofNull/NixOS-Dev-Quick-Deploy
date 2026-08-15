@@ -39,7 +39,7 @@
      "goal": "provision the context-signer key, enable the service, flip the flag, land the ledger-reorder + O2 observability",
      "validation_goal": "live mint round-trip; enabled + observable + intervenable",
      "deps": ["c2sci-build"], "editorial_note": "owner-gated; NOT done (default-OFF)",
-     "detection": {"activation_subject": "c2-scheduler-context-issuer-ACTIVATE", "blocker_note": "Codex-audit HIGH+MEDIUM RESOLVED by 3d45e03c (ALA-C2 contract repair, verified). Remaining = owner activation only: SOPS keypair + enable=true + CAPABILITY_SCHEDULER_CONTEXT_ISSUER=1 + ledger-reorder/O2 polish"}, "pct_hint": 0},
+     "detection": {"activation_subject": "c2-scheduler-context-issuer-ACTIVATE", "commit_match": ["C2-SCI activation", "c2-scheduler-context-issuer-ACTIVATE"], "blocker_note": "ACTIVATION GRANTED 2026-08-15 (event 0aab588e): SOPS signer key provisioned + real public key in verifier allowlist + enable=true + CAPABILITY_SCHEDULER_CONTEXT_ISSUER=1. PENDING: owner rebuild + Claude live mint round-trip validation (Activation-Gate validated leg). Record: C2-SCI-ACTIVATION-20260815.md"}, "pct_hint": 80},
     {"id": "c6-p0", "name": "C6-P0 trust anchors (owner keys + schemas)", "phase": "c6", "kind": "slice",
      "goal": "owner public-key allowlist + revocation-epoch-bump + scheduler-lease-context schemas",
      "validation_goal": "rev3 built + activated (Q-C6-2 resolved)",
