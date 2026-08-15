@@ -2,7 +2,7 @@
 doc_type: plan
 id: c2-sci-activation-20260815
 title: C2-SCI — activation (owner-granted)
-status: in-progress
+status: complete
 parent_prd: trusted-execution-gateway
 slice: c2sci-activate
 ---
@@ -27,8 +27,15 @@ build_head `3f68911f87115973febed0dbccf2881da8c6fb51`). Defects were resolved by
 ## Activation Gate attestation
 - **Integrated:** switchboard gate mints a signed scheduler-lease-context via the issuer UDS (B3 wiring, ad5d95dd).
 - **Turned ON:** enable=true + flag=1 (this commit); active on the owner's next rebuild.
-- **Validated real-world:** PENDING the rebuild — live mint round-trip (real ALA lease → signed
-  `aq.scheduler-lease-context/1` → gate verifies vs the public key). This record is finalized after validation.
+- **Validated real-world: DONE 2026-08-15 — ROUND-TRIP PASS.** Live mint round-trip against the running
+  services: real ALA lease minted → C2 issuer minted a signed `aq.scheduler-lease-context/1` (`ok=True`) →
+  `verify_scheduler_context` accepted it against the allowlist public key `b876b7ea…` (`ok=True`); a
+  wrong-key context DENIED (`ok=False`). All four services active (issuer, revocation-epoch authority, ALA,
+  switchboard). Two runtime blockers were surfaced+fixed by this validation (validate-don't-assume): the
+  3d45e03c epoch-starvation regression (fixed by activating the epoch authority) and a signer-key
+  provisioning mismatch (the active SOPS file is out-of-tree per deploy-options mkForce, and its c6 key
+  didn't pair with the allowlist) — resolved by re-provisioning via the new `aq-provision-signer-key`
+  (allowlist rev 3, public `b876b7ea…`, rotating past the exposed key).
 - **Observable:** dashboard `c2_scheduler_context_issuer` (`context_issuer`, `ledger_durable`, `signer_active`,
   `status`). Follow-up (non-blocking): surface the durable-ledger `recorded`/`replays` counts on the panel.
 - **Intervenable:** durable single-use ledger — operator reset = delete the offending
