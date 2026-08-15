@@ -3188,3 +3188,8 @@ Advisory task (codex is the real confirmatory backstop) — non-blocking.
   Severity: medium
   Action: make managed-session Git index write authority stable for approved exact-path staging, or expose a brokered narrow stage operation with an auditable manifest.
   File: .git/index; managed Codex filesystem permission projection
+
+[OPEN] ANTIGRAVITY-RECEIPT-LOCK-TRACKING-DEBT — Runtime inbox mutexes are zero-byte mode-0600 coordination files created dynamically, but 13 older lock paths are already tracked while new ones repeatedly appear as orphaned work. Compiler output `a.out` also appeared in an archive directory as a stripped ELF relocatable.
+  Severity: medium
+  Action: new receipt locks and archived `a.out` debris are narrowly ignored as of the orphan-adoption cleanup; audit and deliberately migrate the 13 already-tracked locks in a separate no-delete cleanup with exact consumer coverage.
+  File: .gitignore; .agent/collaboration/antigravity-inbox/receipts/*.lock; .agent/archive/**/a.out
