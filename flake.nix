@@ -265,7 +265,7 @@
         # Home layering mirrors the system side:
         # 1. nix/home/*.nix: shared Home Manager defaults
         # 2. nix/hosts/<host>/home.nix: host-specific HM behavior
-        [./nix/home/base.nix ./nix/home/deploy-common.nix]
+        [./nix/home/base.nix ./nix/home/deploy-common.nix ./nix/home/herdr.nix]
         ++ lib.optionals (builtins.pathExists (hostHomePath hostName)) [(hostHomePath hostName)]
         ++ lib.optionals (builtins.pathExists (hostHomeDeployOptionsPath hostName)) [(hostHomeDeployOptionsPath hostName)]
         ++ [

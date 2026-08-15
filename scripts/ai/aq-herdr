@@ -1,0 +1,107 @@
+#!/usr/bin/env bash
+# AQ-owned H1 operator facade. Never invokes Herdr or contacts its socket.
+set -euo pipefail
+
+schema="aq.herdr.h1.v1"
+version="0.7.5"
+revision="ef4c23f5775bb8cfec05f05d0844226ff959a07a"
+expected_config_sha="d888f58e24c59153491076d0f278717901eabd3954f9d015e6a281c83940f6c0"
+config_file="${HOME}/.config/herdr/config.toml"
+
+config_state="disabled"
+config_reason="config-absent"
+
+inspect_config() {
+  local strict_store="$1" target="" owner="" mode="" digest="" numeric_mode=0
+
+  if [[ ! -e "$config_file" && ! -L "$config_file" ]]; then
+    return
+  fi
+  if [[ ! -f "$config_file" ]]; then
+    config_state="degraded"
+    config_reason="config-type-invalid"
+    return
+  fi
+
+  target="$(readlink -f -- "$config_file" 2>/dev/null || true)"
+  if [[ -z "$target" ]]; then
+    config_state="degraded"
+    config_reason="config-target-unreadable"
+    return
+  fi
+  if [[ -L "$config_file" && "$target" != /nix/store/* ]]; then
+    config_state="degraded"
+    config_reason="config-target-untrusted"
+    return
+  fi
+  if [[ "$strict_store" == "true" && ! -L "$config_file" ]]; then
+    config_state="degraded"
+    config_reason="config-not-store-backed"
+    return
+  fi
+
+  owner="$(stat -Lc '%u' -- "$config_file" 2>/dev/null || true)"
+  mode="$(stat -Lc '%a' -- "$config_file" 2>/dev/null || true)"
+  if [[ ! "$owner" =~ ^[0-9]+$ || ! "$mode" =~ ^[0-7]{3,4}$ ]]; then
+    config_state="degraded"
+    config_reason="config-metadata-unreadable"
+    return
+  fi
+  if [[ "$owner" != "0" && "$owner" != "$(id -u)" ]]; then
+    config_state="degraded"
+    config_reason="config-owner-invalid"
+    return
+  fi
+  numeric_mode=$((8#$mode))
+  if (( numeric_mode & 8#022 )); then
+    config_state="degraded"
+    config_reason="config-mode-unsafe"
+    return
+  fi
+
+  read -r digest _ < <(sha256sum -- "$config_file" 2>/dev/null)
+  if [[ "$digest" != "$expected_config_sha" ]]; then
+    config_state="degraded"
+    config_reason="config-policy-drift"
+    return
+  fi
+
+  config_state="configured"
+  config_reason="config-valid"
+}
+
+emit_status() {
+  local command_name="$1" strict_store="$2" package="sealed-not-exposed" effective="disabled"
+  inspect_config "$strict_store"
+  case "$config_state" in
+    configured) effective="configured-not-running" ;;
+    degraded) effective="degraded" ;;
+  esac
+  printf '{"schema_version":"%s","command":"%s","configured":"%s","effective":"%s","runtime":"not-activated","package":"%s","reason":"%s"}\n' \
+    "$schema" "$command_name" "$config_state" "$effective" "$package" "$config_reason"
+}
+
+case "${1:-}" in
+  status)
+    [[ "${2:-}" == "" || "${2:-}" == "--json" ]] || { echo "aq-herdr: unsupported status option" >&2; exit 2; }
+    emit_status status false
+    ;;
+  doctor)
+    [[ "${2:-}" == "" || "${2:-}" == "--json" ]] || { echo "aq-herdr: unsupported doctor option" >&2; exit 2; }
+    emit_status doctor true
+    [[ "$config_state" != "degraded" ]] || exit 4
+    ;;
+  version)
+    [[ "${2:-}" == "" ]] || { echo "aq-herdr: unsupported version option" >&2; exit 2; }
+    printf '{"schema_version":"%s","command":"version","version":"%s","revision":"%s","license":"AGPL-3.0-or-later"}\n' "$schema" "$version" "$revision"
+    ;;
+  attach)
+    [[ "${2:-}" == "" ]] || { echo "aq-herdr: unsupported attach option" >&2; exit 2; }
+    emit_status attach false
+    exit 3
+    ;;
+  *)
+    echo "usage: aq-herdr {status [--json]|doctor [--json]|version|attach}" >&2
+    exit 2
+    ;;
+esac

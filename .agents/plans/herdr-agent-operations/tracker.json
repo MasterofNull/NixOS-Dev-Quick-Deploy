@@ -38,12 +38,12 @@
       "name": "Pinned package and inert operator surface",
       "phase": "h1",
       "kind": "slice",
-      "goal": "installable package, immutable safe config and read-only aq-herdr without starting runtime",
+      "goal": "build-verified package identity, immutable safe config and read-only aq-herdr without exposing raw Herdr or starting runtime",
       "validation_goal": "source/Cargo hashes + SBOM/license + Nix build/eval + closed facade + independent PASS",
       "deps": ["h0-intake"],
-      "editorial_note": "prepared design requires independent flagship review and license adjudication before implementation",
-      "detection": {"freeze_record": ".agents/plans/herdr-agent-operations/H1-DESIGN-PACKET.md"},
-      "pct_hint": 15
+      "editorial_note": "implementation candidate prepared; exact substitute-enabled no-link package build passed; corrected independent acceptance is pending",
+      "detection": {"commit_match": ["add inert Herdr package surface"], "freeze_record": ".agents/plans/herdr-agent-operations/H1-DESIGN-PACKET.md"},
+      "pct_hint": 100
     },
     {
       "id": "h2-presentation",
@@ -83,6 +83,6 @@
     {"title": "same-user Herdr socket is mutation-capable", "sev": "high", "note": "mediate through AQ adapter and hide binary/socket from worker cells"},
     {"title": "terminal scrollback can contain sensitive evidence", "sev": "high", "note": "explicit drill-in only; exclude from default labels, telemetry, RAG and remote transport"},
     {"title": "presentation heuristics can disagree with lifecycle truth", "sev": "medium", "note": "display drift and use registry/receipts as sole authority"},
-    {"title": "upstream package dependency closure not frozen", "sev": "medium", "note": "H1 supply-chain report must bind source and Cargo hashes before build acceptance"}
+    {"title": "upstream package closure drift", "sev": "medium", "note": "H1 binds source, license and Cargo hashes; later upgrades require a fresh intake and build"}
   ]
 }
