@@ -1,3 +1,9 @@
+---
+doc_type: reference
+title: Antigravity friction reflection (advisory, untrusted — synthesized into the 3-way consensus)
+tags: [friction, advisory, antigravity, consensus, self-improvement]
+---
+
 # Antigravity Reflection: Flat-Org Collaboration Friction & Self-Improvement Cycles
 
 **Author:** Antigravity (Advisory Lane)
