@@ -2,6 +2,10 @@
   Severity: HIGH (a whole advisory lane silently no-ops while reporting success; blocks fully leveraging Antigravity — acute now that Codex is down until Aug 15).
   Action: (1) DONE re-open + root-cause. (2) FIX the false signal: wake/dispatch success = DRAIN CONFIRMED (receipt.completed + declared output file exists) within a timeout, else honest state `nudged-not-drained` + surface/alert (observable+intervenable) — never report cli-nudge-ok as done. (3) Diagnose the IDE-agent-autonomy leg (does `antigravity chat --mode agent` actually auto-execute shell steps, or does it need IDE config / human approval?) — may be owner-IDE-environment-dependent; document the exact requirement. (4) VALIDATE end-to-end: a dropped task must reach receipt.completed + its output file, or the system must honestly report it did NOT. File: scripts/ai/aq-antigravity-inbox (WAKE_ARGV/wake success at :29,:156-159,:195), nix/modules/services/antigravity-auto-wake.nix.
 
+[OPEN] 3d45e03c-epoch-authority-dependency-regression-blocks-lease-chain — VALIDATED 2026-08-15 during C2-SCI activation live-mint: the ALA authority returns `epoch-authority-unavailable` and cannot mint leases → the whole Foundation-C lease chain (ALA→C2→gate) is epoch-blocked at runtime. Root cause: `3d45e03c` rewired `lease_signing_authority._resolve_epoch` (and the C2/gate resolvers) to resolve ONLY through `revocation_epoch.resolve_current_epoch()` — the fail-closed C6 authority UDS at `AQ_REVOCATION_EPOCH_SOCKET_PATH`, with NO config/env/file fallback (the secure C6-B3 design). But `aq-revocation-epoch-authority.service` is INACTIVE (`revocationEpochAuthority.enable` defaults false; C6 never activated). So a correct security hardening created a hard runtime dependency that was never satisfied — not caught because no live ALA/C2 mint was run after 3d45e03c (fixture tests inject epoch). Surfaced only by the C2-SCI activation live-mint validation (validate-don't-assume).
+  Severity: HIGH (runtime — the entire lease/context chain cannot mint until the epoch authority serves; blocks C2-SCI functional activation AND silently broke ALA minting since 3d45e03c).
+  Action: enable `mySystem.aiStack.revocationEpochAuthority.enable = true` — the authority is SOPS-free/no-key, serves the genesis epoch 0 read-only (bumps owner-signed offline); ALA + C2 users are already in `aq-revocation-epoch-clients`. Staged in ai-dev.nix 2026-08-15; owner grant + rebuild completes it. Then re-run the C2-SCI live-mint round-trip. Also: add a live ALA→C2 mint smoke to the activation gate so this class of runtime-dependency regression can't recur silently.
+
 ## FLAT-ORG COLLABORATION FRICTION (dogfooding retrospective 2026-08-08; sort self-improvement by frequency×cost, not severity alone)
 
 [OPEN] catchup-queue-unstructured-no-backpressure (Codex three-way consensus 2026-08-14, sharpens #2+#4+#5) — Codex's return audit surfaced friction Claude's 5 understated: a multi-day lane outage is not just a "bottleneck" (#4), it is COMPOUNDING REVIEW-DEBT whose cost grows while HEAD/status/prior-substitute-reviews keep moving. Three missed frictions: (1) availability/return are NOT first-class measured states — the queue records prose ("Codex DOWN until Aug 15") but admission/substitution/recovery aren't driven by a shared capacity signal, so named-lane debt accrues with no budget or alert; (2) catch-up debt has no backpressure/reconciliation primitive — every substitute-reviewed commit can spawn another return-audit; on return, freshness-checking each item is serial and already-superseded work consumes the same attention as an activation blocker; (3) confirmatory-review latency weakens review value — a late advisory can only find a defect AFTER integration/deploy, categorically weaker than a pre-integration gate. Root: `.agent/collaboration/AGENT-CATCHUP-QUEUE.md` is unstructured prose (mixed tables + chronology, multiple outages/agents) with NO machine-enforced per-entry state (live/superseded/blocking/closed), risk score, dependency order, bounded batch size, or catch-up SLO.
@@ -3111,3 +3115,43 @@ Advisory task (codex is the real confirmatory backstop) — non-blocking.
   Severity: critical
   Action: keep all HERDR/dashboard mutation controls unavailable; design a server-side allowlist whose handlers authenticate principal/role, acquire an expected-revision fence before effects, use idempotency/outbox semantics, and commit a typed durable receipt. Add concurrency and unauthorized-actor tests before exposing any control.
   File: scripts/ai/aq-approve ~lines 141-185; scripts/ai/lib/attention_queue.py ~lines 358-415; .agent/collaboration/integration-contracts/herdr-h2-human-controls--audited-aq-actions.md
+
+[OPEN] HERDR-H1-PREMATURE-ACCEPTANCE-COMMIT — A concurrent Claude lane committed H1 as "accepted" while its independent binding review was still running; the later verdict was `REQUEST_REVISION`. The implementation bytes were safe, but the acceptance claim outran the evidence gate.
+  Severity: high
+  Action: preserve commit `ea96bcbfc05fca32d164137fd2cef261f5c68acc` as physical-only evidence; finish the additive correction with exact-hash independent PASS. Extend the release/index lease so commit authority is mechanically blocked while a required reviewer is pending.
+  File: .agent/PROJECT-HERDR-H1-CORRECTION-PRD.md; .agents/plans/herdr-agent-operations/H1-CORRECTION-DESIGN-20260815.md
+
+[OPEN] STAGED-ISOLATED-ALTERNATE-INDEX-INCOMPATIBILITY — Running Tier-0 `--staged-isolated` with an alternate `GIT_INDEX_FILE` left that disposable index referencing a tree removed with the temporary validation worktree. An editor observing the stale alternate index could misleadingly render the repository as mass-deleted even though the shared index had zero staged paths.
+  Severity: high
+  Action: prohibit alternate-index use with the current staged-isolated implementation; use an exclusive shared-index lease or teach the gate to preserve/copy referenced trees and restore editor index selection. Add a regression proving post-gate index readability and zero phantom deletions.
+  File: scripts/governance/tier0-validation-gate.sh; .agent/collaboration/slice-claims/herdr-h1-correction-20260815.claim
+
+[DONE 2026-08-15] H1-SBOM-VERIFY-SHELL-BACKTICK — A read-only `rg` verification pattern contained Markdown backticks around the Syft version, so the interactive shell attempted a harmless command substitution and printed `command not found: 1.44.0`; no repository or runtime state changed.
+  Severity: low
+  Action: fixed operationally by using single-quoted literal search patterns; never embed Markdown backticks in shell command arguments.
+  File: .agents/plans/herdr-agent-operations/H1-SUPPLY-CHAIN-REPORT.md
+
+[OPEN] LEAN-CTX-COMMIT-HOOK-BROKEN-PIPE — The successful HERDR H1 correction commit emitted `printf: Broken pipe` from `.githooks/pre-commit` line 79 while the commit command ran through lean-ctx output compression. The hook continued, the separately completed staged-isolated Tier-0 was 26/26 PASS, and commit `3f68911f` succeeded; nevertheless hook output consumers must not cause producer-side write errors or ambiguous validation receipts.
+  Severity: medium
+  Action: reproduce commit-hook output through lean-ctx, make the wrapper drain the producer stream fully or make the hook tolerate a closed informational-output pipe without masking real gate exits, and add an exit/receipt regression.
+  File: .githooks/pre-commit ~line 79; /run/current-system/sw/bin/lean-ctx
+
+[DONE 2026-08-15] AQ-EVENT-RESUME-REQUIRES-AGENT — The first H1 correction resume projection omitted mandatory `--agent` and failed with argparse exit 2; the immediately corrected invocation included `--agent codex-orchestrator` and projected all five fields.
+  Severity: low
+  Action: use the documented required agent identity in every resume projection; no code change required.
+  File: scripts/ai/aq-event
+
+[IN-FLIGHT] HERDR-H2A-P0B-INCOMPLETE-GREEN-ORACLE — The first pure presentation projection passed its five hermetic tests while still rejecting most authorized Contract #5 dimensions, using aggregate/wildcard ledger rows instead of leaf-exact completeness, accepting invalid count/null and nullable required-reference schema combinations, self-comparing output instead of frozen canonical bytes, and omitting sampling coherence/input binding.
+  Severity: high
+  Action: preserve the REV1 `REQUEST_REVISION`; repair only the exact five-file ceiling; require schema-minus-ledger and ledger-minus-schema emptiness, Draft 2020-12 negative examples, fixed canonical bytes/digests, complete authorized-dimension/privacy/reference vectors, and coherent sample metadata before fresh review.
+  File: .agents/plans/herdr-agent-operations/H2A-P0B-REV1-INDEPENDENT-REVIEW-20260815.md; scripts/testing/test-herdr-presentation-projection.py
+
+[IN-FLIGHT] HERDR-H2A-P0-INCOMPLETE-GREEN-ORACLE — The first operator-context projection passed its hermetic test while accepting undeclared input without changing its digest, omitting required sample/revision/digest coherence and reference lifecycle vectors, collapsing unavailable mission/learning counts to zero, reducing all-fresh sources to unknown, and leaving required categories/ledger source identities semantically open.
+  Severity: high
+  Action: preserve the REV1 `REQUEST_REVISION`; repair only the exact five-file ceiling; bind complete closed input plus schema/policy/serializer revisions, preserve explicit unknown counts, close enums/source identities, enforce all schema constraints, and freeze literal input/output replay with the complete sampling/reference/privacy matrix.
+  File: .agents/plans/herdr-agent-operations/H2A-P0-REV1-INDEPENDENT-REVIEW-20260815.md; scripts/testing/test-operator-context-projection.py
+
+[DONE 2026-08-15] POST-REBUILD-SYSTEMD-SANDBOX-VISIBILITY — The first read-only `systemctl is-active aq-c2-scheduler-context-issuer` probe could not reach the system bus from the workspace sandbox. It was immediately rerun through the approved read-only escalation and returned `active`; secret metadata was mode 0400 with the dedicated issuer owner/group.
+  Severity: low
+  Action: use read-only escalation for system-scope systemd verification in sandboxed Codex sessions; no system change required.
+  File: .agents/plans/aqos-foundation-c/C2-SCI-ACTIVATION-20260815.md
