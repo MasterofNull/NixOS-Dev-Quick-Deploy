@@ -1,0 +1,21 @@
+# A2A advisory task for Antigravity — ALA→C2 repair + C6-B3R reconciliation
+
+Dropped: 2026-08-08T19:00:00Z
+output_file: .agents/plans/aqos-foundation-c/ANTIGRAVITY-ALA-C2-C6-B3R-ADVISORY-20260808.md
+
+Respond by writing only `.agents/plans/aqos-foundation-c/ANTIGRAVITY-ALA-C2-C6-B3R-ADVISORY-20260808.md`.
+
+SCOPE-STOP: independent advisory architecture/security/SRE review only. Authorize nothing, change no code,
+touch no service/key/secret/runtime, and do not stage or commit. Verify claims against the repository.
+
+Exact subjects:
+- `.agents/plans/aqos-foundation-c/ALA-C2-CONTRACT-REPAIR-DESIGN-20260808.md` SHA
+  `3c7c0e7f672b8a55e65ed37a7cea0dd87ae189af6e352fc7fb09ea88032dc497`
+- `.agents/plans/aqos-foundation-c/C6-B3-LIVE-SEAM-RECONCILIATION-20260808.md` SHA
+  `0523b4c275d5abf13178eaae6d72603f12325e88a73f2d95a03d37e3b7116ea4`
+
+Assess signed policy digest/revision, epoch-authority fail-closed paths, schema parity, dedicated-principal
+same-UID separation, private authority groups, TEG CAS/transition ordering, sealed one-use launch token and
+linearization semantics, Service Coverage truthfulness, default-OFF safety, and missing adversarial tests.
+Return decisive PASS/REQUEST_REVISION per subject with concrete citations. This lane is advisory and does
+not gate ongoing implementation preparation.
