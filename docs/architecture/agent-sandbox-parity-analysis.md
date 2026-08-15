@@ -62,17 +62,17 @@ The core premise is that **human developers are the bottleneck**. Traditional ag
 
 | Feature | IndyDevDan "Factory-in-a-Box" | AQ-OS Current Implementation | Gaps & Trajectory |
 |---|---|---|---|
-| **Sandbox Isolation** | Virtual Machine-level (`exe.dev`) | Directory/Git-worktree level ([workspace_isolation.py](file:///home/hyperd/Documents/NixOS-Dev-Quick-Deploy/ai-stack/orchestration/workspace_isolation.py)) | **Gap:** Lacks VM-level orchestration. Sandboxes run locally via `nsjail`/systemd namespaces. |
+| **Sandbox Isolation** | Virtual Machine-level (`exe.dev`) | Directory/Git-worktree level ([workspace_isolation.py](../../ai-stack/orchestration/workspace_isolation.py)) | **Gap:** Lacks VM-level orchestration. Sandboxes run locally via `nsjail`/systemd namespaces. |
 | **Orchestration Flow** | Outbox -> Inbox -> Factory | Hybrid-coordinator (`http_server.py`) -> UAG | **Partial Parity:** We have graph execution but lacks a distinct Outbox/Inbox process boundary. |
 | **Best-of-N Execution** | Parallel VM generation + manual review | Forkable sessions (`/workflow/session/fork`) | **Gap:** We have the branching APIs but no automated concurrent evaluation runner. |
-| **Multiplexer TUI** | Grid-based SSH using `Herder` | Blueprint for `aq-herdr` layout design | **Partial Parity:** Infrastructure is planned ([herdr.nix](file:///home/hyperd/Documents/NixOS-Dev-Quick-Deploy/nix/home/herdr.nix)), CLI needs execution. |
+| **Multiplexer TUI** | Grid-based SSH using `Herder` | Blueprint for `aq-herdr` layout design | **Partial Parity:** Infrastructure is planned ([herdr.nix](../../nix/home/herdr.nix)), CLI needs execution. |
 | **Cost & Key Control** | Ephemeral, budget-capped OpenRouter keys | Policy-based token budgeting (`config/runtime-budget-policy.json`) | **Gap:** We do not dynamically provision or revoke API sub-keys per sandbox run. |
 
 ---
 
 ## 3. Gap Analysis & Updated Parity Matrix
 
-We are updating the [AGENT-PARITY-MATRIX.md](file:///home/hyperd/Documents/NixOS-Dev-Quick-Deploy/docs/AGENT-PARITY-MATRIX.md) to integrate the findings from the sandbox parity analysis:
+We are updating the [AGENT-PARITY-MATRIX.md](../AGENT-PARITY-MATRIX.md) to integrate the findings from the sandbox parity analysis:
 
 > [!IMPORTANT]
 > The introduction of dynamic VM sandboxes and a concurrent Best-of-N runner represents the next phase of our AGI scaffold evolution.
@@ -101,7 +101,7 @@ graph TD
 
 ### Phase 1: VM Sandbox Provider Integration
 Extend the workspace isolation layer to support remote VM execution.
-*   **Target File:** [workspace_isolation.py](file:///home/hyperd/Documents/NixOS-Dev-Quick-Deploy/ai-stack/orchestration/workspace_isolation.py)
+*   **Target File:** [workspace_isolation.py](../../ai-stack/orchestration/workspace_isolation.py)
 *   **Design:** Add `IsolationMode.CLOUD_VM`. Build a provider interface (`SandboxProvider`) with concrete adapters for providers like `exe.dev` or generic SSH/Docker backends.
 *   **Behavior:**
     ```python
@@ -130,7 +130,7 @@ Architect a native runner that leverages our existing topological graph executor
 
 ### Phase 3: Terminal-Native Multiplexer Ergonomics (`aq-herdr`)
 Realize the planned `aq-herdr` layout engine to provide real-time terminal panes for developers to inspect running agent fleets.
-*   **Target Files:** [aq-herdr](file:///home/hyperd/Documents/NixOS-Dev-Quick-Deploy/scripts/ai/aq-herdr) and [herdr.nix](file:///home/hyperd/Documents/NixOS-Dev-Quick-Deploy/nix/home/herdr.nix)
+*   **Target Files:** [aq-herdr](../../scripts/ai/aq-herdr) and [herdr.nix](../../nix/home/herdr.nix)
 *   **Design:** When a Best-of-N run starts, `aq-herdr` will automatically generate a tmux/herdr layout file, split the screen into `N` panels, and establish SSH connections into the active sandboxes.
 *   **Behavior:**
     *   Developer runs: `aq-herdr attach <fleet-id>`
