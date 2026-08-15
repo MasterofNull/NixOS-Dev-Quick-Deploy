@@ -1,0 +1,868 @@
+{
+  "schema_version": "aq.herdr.presentation.golden.v1",
+  "expected_sha256": [
+    "50a702dad7fafc15de4819d45bd6977af6cae741a33b39fba7b126230cde0058",
+    "27b3a479187fdcb0d77b1152b59072572920fe43928c2c4547872e201ebc0de7",
+    "41650cad1625c7a2dfbe3f48fda6794d85de34c245aeea85855d36b0e1d17bbf",
+    "3512de05627fe61f7e9bbbd553a290424d71de297e2af6a57548c57e9288cfa0",
+    "1079dc37c15492443c8995c699e97f21585ee8c588b3bc5382f7d3cdc1dbfd9f"
+  ],
+  "vectors": [
+    {
+      "name": "no_adapter_is_explicitly_unavailable",
+      "input": {
+        "observation_revision": "r1",
+        "generated_at": "bucket0",
+        "static_expected": {
+          "version": "0.7.5",
+          "protocol": "v1"
+        }
+      },
+      "expect": {
+        "source_authorization": "unauthorized",
+        "runtime_state": "unknown",
+        "known_count_state": "unknown",
+        "observed_version": null
+      }
+    },
+    {
+      "name": "authorized_normalized_observation",
+      "input": {
+        "sample_id": "sample1",
+        "sampled_at_bucket": "bucket0",
+        "observation_revision": "r1",
+        "generated_at": "bucket0",
+        "policy_revision": "p1",
+        "observer": {
+          "id": "observer1",
+          "authorization": "authorized",
+          "state": "known",
+          "reason": "ok",
+          "revision": "r1",
+          "digest": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa"
+        },
+        "observation": {
+          "freshness": {
+            "state": "fresh",
+            "observation_age": "lt1m",
+            "reconciliation_age": "lt1m"
+          },
+          "configured": {
+            "state": "enabled",
+            "reason": "ok"
+          },
+          "runtime": {
+            "state": "healthy",
+            "reason": "ok",
+            "evidence_ref": null
+          },
+          "socket": {
+            "state": "known",
+            "presence": "present",
+            "type": "expected",
+            "permission": "ok",
+            "peer": "reachable",
+            "evidence_ref": null
+          },
+          "session": {
+            "observed_count": {
+              "state": "known",
+              "value": 1
+            },
+            "refs": []
+          },
+          "version": {
+            "observed": "0.7.5",
+            "compatibility": "compatible"
+          },
+          "protocol": {
+            "observed": "v1",
+            "compatibility": "compatible"
+          },
+          "panes": [],
+          "layout": {
+            "observed_revision": "l1",
+            "observed_digest": "dddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddd",
+            "observation_delta": "match",
+            "reason": "ok",
+            "evidence_ref": null
+          },
+          "counts": {
+            "managed": {
+              "state": "known",
+              "value": 1
+            },
+            "unmanaged": {
+              "state": "known",
+              "value": 0
+            },
+            "orphaned": {
+              "state": "known",
+              "value": 0
+            },
+            "dark": {
+              "state": "known",
+              "value": 0
+            },
+            "stale": {
+              "state": "known",
+              "value": 0
+            },
+            "drifted": {
+              "state": "known",
+              "value": 0
+            },
+            "unknown": {
+              "state": "known",
+              "value": 0
+            }
+          },
+          "reconciliation": {
+            "state": "succeeded",
+            "last_revision": "l1",
+            "last_digest": null,
+            "age": "lt1m",
+            "evidence_ref": null
+          }
+        },
+        "static_expected": {
+          "version": "0.7.5",
+          "protocol": "v1",
+          "layout_revision": "l1",
+          "layout_digest": "dddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddd",
+          "session_count": {
+            "state": "known",
+            "value": 1
+          }
+        }
+      },
+      "expect": {
+        "source_authorization": "authorized",
+        "runtime_state": "healthy",
+        "known_count_state": "known",
+        "observed_version": "0.7.5"
+      }
+    },
+    {
+      "name": "unauthorized_never_uses_observation",
+      "input": {
+        "observation_revision": "r1",
+        "generated_at": "bucket0",
+        "observer": {
+          "id": "observer1",
+          "authorization": "unauthorized",
+          "state": "known",
+          "reason": "denied",
+          "revision": "r1",
+          "digest": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa"
+        },
+        "observation": {
+          "runtime": {
+            "state": "healthy",
+            "reason": "ok",
+            "evidence_ref": null
+          }
+        }
+      },
+      "expect": {
+        "source_authorization": "unauthorized",
+        "runtime_state": "unknown",
+        "known_count_state": "unknown",
+        "observed_version": null
+      }
+    },
+    {
+      "name": "stale_observer_is_visible_not_healthy",
+      "input": {
+        "observation_revision": "r2",
+        "generated_at": "bucket1",
+        "observer": {
+          "id": "observer1",
+          "authorization": "authorized",
+          "state": "stale",
+          "reason": "sample_stale",
+          "revision": "r2",
+          "digest": "bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb"
+        }
+      },
+      "expect": {
+        "source_authorization": "authorized",
+        "runtime_state": "unknown",
+        "known_count_state": "unknown",
+        "observed_version": null
+      }
+    },
+    {
+      "name": "conflicting_observer_is_visible_not_healthy",
+      "input": {
+        "observation_revision": "r3",
+        "generated_at": "bucket1",
+        "observer": {
+          "id": "observer1",
+          "authorization": "authorized",
+          "state": "conflict",
+          "reason": "sample_conflict",
+          "revision": "r3",
+          "digest": "cccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccc"
+        }
+      },
+      "expect": {
+        "source_authorization": "authorized",
+        "runtime_state": "unknown",
+        "known_count_state": "unknown",
+        "observed_version": null
+      }
+    }
+  ],
+  "canonical_json": [
+    "{\"configured\":{\"reason\":\"no_authorized_observer\",\"state\":\"unknown\"},\"counts\":{\"dark\":{\"state\":\"unknown\",\"value\":null},\"drifted\":{\"state\":\"unknown\",\"value\":null},\"managed\":{\"state\":\"unknown\",\"value\":null},\"orphaned\":{\"state\":\"unknown\",\"value\":null},\"stale\":{\"state\":\"unknown\",\"value\":null},\"unknown\":{\"state\":\"unknown\",\"value\":null},\"unmanaged\":{\"state\":\"unknown\",\"value\":null}},\"coverage\":{\"known\":0,\"overflow\":0,\"unavailable\":1,\"unknown\":21},\"freshness\":{\"observation_age\":\"unknown\",\"reconciliation_age\":\"unknown\",\"state\":\"unknown\"},\"generated_at\":\"bucket0\",\"layout\":{\"evidence_ref\":null,\"expected_digest\":null,\"expected_revision\":null,\"observation_delta\":\"unknown\",\"observed_digest\":null,\"observed_revision\":null,\"reason\":\"no_authorized_observer\"},\"observation_revision\":\"r1:4adb3fc801b85f912d4bf058c2cc2a37e7e3fdf3125c22cec9c59a1dbeedfaf1\",\"panes\":[],\"policy\":{\"age_policy_revision\":\"v1\",\"bounds_revision\":\"v1\",\"digest_algorithm\":\"sha256\",\"observer_policy_revision\":\"v1\",\"redaction_revision\":\"v1\",\"schema_revision\":\"v1\",\"serializer_revision\":\"v1\"},\"protocol\":{\"compatibility\":\"unknown\",\"expected\":\"v1\",\"observed\":null},\"reconciliation\":{\"age\":\"unknown\",\"evidence_ref\":null,\"last_digest\":null,\"last_revision\":null,\"state\":\"unknown\"},\"runtime\":{\"evidence_ref\":null,\"reason\":\"no_authorized_observer\",\"state\":\"unknown\"},\"schema_version\":\"aq.herdr.presentation.v1\",\"session\":{\"expected_count\":{\"state\":\"unknown\",\"value\":null},\"observed_count\":{\"state\":\"unknown\",\"value\":null},\"refs\":[]},\"socket\":{\"evidence_ref\":null,\"peer\":\"unknown\",\"permission\":\"unknown\",\"presence\":\"unknown\",\"state\":\"unknown\",\"type\":\"unknown\"},\"source_digests\":[],\"source_health\":[{\"authorization\":\"unauthorized\",\"observer\":\"herdr-observer\",\"reason\":\"no_authorized_observer\",\"state\":\"unavailable\"}],\"version\":{\"compatibility\":\"unknown\",\"expected\":\"0.7.5\",\"observed\":null}}",
+    "{\"configured\":{\"reason\":\"ok\",\"state\":\"enabled\"},\"counts\":{\"dark\":{\"state\":\"known\",\"value\":0},\"drifted\":{\"state\":\"known\",\"value\":0},\"managed\":{\"state\":\"known\",\"value\":1},\"orphaned\":{\"state\":\"known\",\"value\":0},\"stale\":{\"state\":\"known\",\"value\":0},\"unknown\":{\"state\":\"known\",\"value\":0},\"unmanaged\":{\"state\":\"known\",\"value\":0}},\"coverage\":{\"known\":22,\"overflow\":0,\"unavailable\":0,\"unknown\":0},\"freshness\":{\"observation_age\":\"lt1m\",\"reconciliation_age\":\"lt1m\",\"state\":\"fresh\"},\"generated_at\":\"bucket0\",\"layout\":{\"evidence_ref\":null,\"expected_digest\":\"dddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddd\",\"expected_revision\":\"l1\",\"observation_delta\":\"match\",\"observed_digest\":\"dddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddd\",\"observed_revision\":\"l1\",\"reason\":\"ok\"},\"observation_revision\":\"r1:sample1:91fe8307aa850858a39ee23e06a4618996f8b250da1c6b4c62278e5ceb62fbd6\",\"panes\":[],\"policy\":{\"age_policy_revision\":\"v1\",\"bounds_revision\":\"v1\",\"digest_algorithm\":\"sha256\",\"observer_policy_revision\":\"p1\",\"redaction_revision\":\"v1\",\"schema_revision\":\"v1\",\"serializer_revision\":\"v1\"},\"protocol\":{\"compatibility\":\"compatible\",\"expected\":\"v1\",\"observed\":\"v1\"},\"reconciliation\":{\"age\":\"lt1m\",\"evidence_ref\":null,\"last_digest\":null,\"last_revision\":\"l1\",\"state\":\"succeeded\"},\"runtime\":{\"evidence_ref\":null,\"reason\":\"ok\",\"state\":\"healthy\"},\"schema_version\":\"aq.herdr.presentation.v1\",\"session\":{\"expected_count\":{\"state\":\"known\",\"value\":1},\"observed_count\":{\"state\":\"known\",\"value\":1},\"refs\":[]},\"socket\":{\"evidence_ref\":null,\"peer\":\"reachable\",\"permission\":\"ok\",\"presence\":\"present\",\"state\":\"known\",\"type\":\"expected\"},\"source_digests\":[{\"digest\":\"aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa\",\"observer\":\"observer1\",\"revision\":\"r1\"}],\"source_health\":[{\"authorization\":\"authorized\",\"observer\":\"observer1\",\"reason\":\"ok\",\"state\":\"known\"}],\"version\":{\"compatibility\":\"compatible\",\"expected\":\"0.7.5\",\"observed\":\"0.7.5\"}}",
+    "{\"configured\":{\"reason\":\"no_authorized_observer\",\"state\":\"unknown\"},\"counts\":{\"dark\":{\"state\":\"unknown\",\"value\":null},\"drifted\":{\"state\":\"unknown\",\"value\":null},\"managed\":{\"state\":\"unknown\",\"value\":null},\"orphaned\":{\"state\":\"unknown\",\"value\":null},\"stale\":{\"state\":\"unknown\",\"value\":null},\"unknown\":{\"state\":\"unknown\",\"value\":null},\"unmanaged\":{\"state\":\"unknown\",\"value\":null}},\"coverage\":{\"known\":1,\"overflow\":0,\"unavailable\":0,\"unknown\":21},\"freshness\":{\"observation_age\":\"unknown\",\"reconciliation_age\":\"unknown\",\"state\":\"unknown\"},\"generated_at\":\"bucket0\",\"layout\":{\"evidence_ref\":null,\"expected_digest\":null,\"expected_revision\":null,\"observation_delta\":\"unknown\",\"observed_digest\":null,\"observed_revision\":null,\"reason\":\"no_authorized_observer\"},\"observation_revision\":\"r1:cd15f53caa9c592ca1330fb3d138a6236f201138360cd18eadd84cbc14263ad7\",\"panes\":[],\"policy\":{\"age_policy_revision\":\"v1\",\"bounds_revision\":\"v1\",\"digest_algorithm\":\"sha256\",\"observer_policy_revision\":\"v1\",\"redaction_revision\":\"v1\",\"schema_revision\":\"v1\",\"serializer_revision\":\"v1\"},\"protocol\":{\"compatibility\":\"unknown\",\"expected\":null,\"observed\":null},\"reconciliation\":{\"age\":\"unknown\",\"evidence_ref\":null,\"last_digest\":null,\"last_revision\":null,\"state\":\"unknown\"},\"runtime\":{\"evidence_ref\":null,\"reason\":\"no_authorized_observer\",\"state\":\"unknown\"},\"schema_version\":\"aq.herdr.presentation.v1\",\"session\":{\"expected_count\":{\"state\":\"unknown\",\"value\":null},\"observed_count\":{\"state\":\"unknown\",\"value\":null},\"refs\":[]},\"socket\":{\"evidence_ref\":null,\"peer\":\"unknown\",\"permission\":\"unknown\",\"presence\":\"unknown\",\"state\":\"unknown\",\"type\":\"unknown\"},\"source_digests\":[],\"source_health\":[{\"authorization\":\"unauthorized\",\"observer\":\"observer1\",\"reason\":\"denied\",\"state\":\"known\"}],\"version\":{\"compatibility\":\"unknown\",\"expected\":null,\"observed\":null}}",
+    "{\"configured\":{\"reason\":\"no_authorized_observer\",\"state\":\"unknown\"},\"counts\":{\"dark\":{\"state\":\"unknown\",\"value\":null},\"drifted\":{\"state\":\"unknown\",\"value\":null},\"managed\":{\"state\":\"unknown\",\"value\":null},\"orphaned\":{\"state\":\"unknown\",\"value\":null},\"stale\":{\"state\":\"unknown\",\"value\":null},\"unknown\":{\"state\":\"unknown\",\"value\":null},\"unmanaged\":{\"state\":\"unknown\",\"value\":null}},\"coverage\":{\"known\":1,\"overflow\":0,\"unavailable\":0,\"unknown\":21},\"freshness\":{\"observation_age\":\"unknown\",\"reconciliation_age\":\"unknown\",\"state\":\"unknown\"},\"generated_at\":\"bucket1\",\"layout\":{\"evidence_ref\":null,\"expected_digest\":null,\"expected_revision\":null,\"observation_delta\":\"unknown\",\"observed_digest\":null,\"observed_revision\":null,\"reason\":\"no_authorized_observer\"},\"observation_revision\":\"r2:6a7de011265f1d55301470c00be859592ec442726770b269526b7cc262175a2b\",\"panes\":[],\"policy\":{\"age_policy_revision\":\"v1\",\"bounds_revision\":\"v1\",\"digest_algorithm\":\"sha256\",\"observer_policy_revision\":\"v1\",\"redaction_revision\":\"v1\",\"schema_revision\":\"v1\",\"serializer_revision\":\"v1\"},\"protocol\":{\"compatibility\":\"unknown\",\"expected\":null,\"observed\":null},\"reconciliation\":{\"age\":\"unknown\",\"evidence_ref\":null,\"last_digest\":null,\"last_revision\":null,\"state\":\"unknown\"},\"runtime\":{\"evidence_ref\":null,\"reason\":\"no_authorized_observer\",\"state\":\"unknown\"},\"schema_version\":\"aq.herdr.presentation.v1\",\"session\":{\"expected_count\":{\"state\":\"unknown\",\"value\":null},\"observed_count\":{\"state\":\"unknown\",\"value\":null},\"refs\":[]},\"socket\":{\"evidence_ref\":null,\"peer\":\"unknown\",\"permission\":\"unknown\",\"presence\":\"unknown\",\"state\":\"unknown\",\"type\":\"unknown\"},\"source_digests\":[],\"source_health\":[{\"authorization\":\"authorized\",\"observer\":\"observer1\",\"reason\":\"sample_stale\",\"state\":\"stale\"}],\"version\":{\"compatibility\":\"unknown\",\"expected\":null,\"observed\":null}}",
+    "{\"configured\":{\"reason\":\"no_authorized_observer\",\"state\":\"unknown\"},\"counts\":{\"dark\":{\"state\":\"unknown\",\"value\":null},\"drifted\":{\"state\":\"unknown\",\"value\":null},\"managed\":{\"state\":\"unknown\",\"value\":null},\"orphaned\":{\"state\":\"unknown\",\"value\":null},\"stale\":{\"state\":\"unknown\",\"value\":null},\"unknown\":{\"state\":\"unknown\",\"value\":null},\"unmanaged\":{\"state\":\"unknown\",\"value\":null}},\"coverage\":{\"known\":1,\"overflow\":0,\"unavailable\":0,\"unknown\":21},\"freshness\":{\"observation_age\":\"unknown\",\"reconciliation_age\":\"unknown\",\"state\":\"unknown\"},\"generated_at\":\"bucket1\",\"layout\":{\"evidence_ref\":null,\"expected_digest\":null,\"expected_revision\":null,\"observation_delta\":\"unknown\",\"observed_digest\":null,\"observed_revision\":null,\"reason\":\"no_authorized_observer\"},\"observation_revision\":\"r3:27496bb7093ea4958e7af7762bc29f9327084ba45f697d8cdfe8aa291c331dc7\",\"panes\":[],\"policy\":{\"age_policy_revision\":\"v1\",\"bounds_revision\":\"v1\",\"digest_algorithm\":\"sha256\",\"observer_policy_revision\":\"v1\",\"redaction_revision\":\"v1\",\"schema_revision\":\"v1\",\"serializer_revision\":\"v1\"},\"protocol\":{\"compatibility\":\"unknown\",\"expected\":null,\"observed\":null},\"reconciliation\":{\"age\":\"unknown\",\"evidence_ref\":null,\"last_digest\":null,\"last_revision\":null,\"state\":\"unknown\"},\"runtime\":{\"evidence_ref\":null,\"reason\":\"no_authorized_observer\",\"state\":\"unknown\"},\"schema_version\":\"aq.herdr.presentation.v1\",\"session\":{\"expected_count\":{\"state\":\"unknown\",\"value\":null},\"observed_count\":{\"state\":\"unknown\",\"value\":null},\"refs\":[]},\"socket\":{\"evidence_ref\":null,\"peer\":\"unknown\",\"permission\":\"unknown\",\"presence\":\"unknown\",\"state\":\"unknown\",\"type\":\"unknown\"},\"source_digests\":[],\"source_health\":[{\"authorization\":\"authorized\",\"observer\":\"observer1\",\"reason\":\"sample_conflict\",\"state\":\"conflict\"}],\"version\":{\"compatibility\":\"unknown\",\"expected\":null,\"observed\":null}}"
+  ],
+  "negative_vectors": [
+    {
+      "name": "emitted_expired_ref",
+      "input": {
+        "sample_id": "sample1",
+        "sampled_at_bucket": "bucket0",
+        "observation_revision": "r1",
+        "generated_at": "bucket0",
+        "policy_revision": "p1",
+        "observer": {
+          "id": "observer1",
+          "authorization": "authorized",
+          "state": "known",
+          "reason": "ok",
+          "revision": "r1",
+          "digest": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa"
+        },
+        "observation": {
+          "freshness": {
+            "state": "fresh",
+            "observation_age": "lt1m",
+            "reconciliation_age": "lt1m"
+          },
+          "configured": {
+            "state": "enabled",
+            "reason": "ok"
+          },
+          "runtime": {
+            "state": "healthy",
+            "reason": "ok",
+            "evidence_ref": "aqref:v1:pane:abcdefghijklmnopqrstuv"
+          },
+          "socket": {
+            "state": "known",
+            "presence": "present",
+            "type": "expected",
+            "permission": "ok",
+            "peer": "reachable",
+            "evidence_ref": null
+          },
+          "session": {
+            "observed_count": {
+              "state": "known",
+              "value": 1
+            },
+            "refs": []
+          },
+          "version": {
+            "observed": "0.7.5",
+            "compatibility": "compatible"
+          },
+          "protocol": {
+            "observed": "v1",
+            "compatibility": "compatible"
+          },
+          "panes": [],
+          "layout": {
+            "observed_revision": "l1",
+            "observed_digest": "dddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddd",
+            "observation_delta": "match",
+            "reason": "ok",
+            "evidence_ref": null
+          },
+          "counts": {
+            "managed": {
+              "state": "known",
+              "value": 1
+            },
+            "unmanaged": {
+              "state": "known",
+              "value": 0
+            },
+            "orphaned": {
+              "state": "known",
+              "value": 0
+            },
+            "dark": {
+              "state": "known",
+              "value": 0
+            },
+            "stale": {
+              "state": "known",
+              "value": 0
+            },
+            "drifted": {
+              "state": "known",
+              "value": 0
+            },
+            "unknown": {
+              "state": "known",
+              "value": 0
+            }
+          },
+          "reconciliation": {
+            "state": "succeeded",
+            "last_revision": "l1",
+            "last_digest": null,
+            "age": "lt1m",
+            "evidence_ref": null
+          }
+        },
+        "static_expected": {
+          "version": "0.7.5",
+          "protocol": "v1",
+          "layout_revision": "l1",
+          "layout_digest": "dddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddd",
+          "session_count": {
+            "state": "known",
+            "value": 1
+          }
+        },
+        "reference_bindings": [
+          {
+            "ref": "aqref:v1:pane:abcdefghijklmnopqrstuv",
+            "issuer_revision": "i1",
+            "subject_digest": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+            "state": "active",
+            "expiry_bucket": "past",
+            "replacement_ref": null,
+            "replacement_subject_digest": null
+          }
+        ]
+      }
+    },
+    {
+      "name": "missing_replacement_target",
+      "input": {
+        "sample_id": "sample1",
+        "sampled_at_bucket": "bucket0",
+        "observation_revision": "r1",
+        "generated_at": "bucket0",
+        "policy_revision": "p1",
+        "observer": {
+          "id": "observer1",
+          "authorization": "authorized",
+          "state": "known",
+          "reason": "ok",
+          "revision": "r1",
+          "digest": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa"
+        },
+        "observation": {
+          "freshness": {
+            "state": "fresh",
+            "observation_age": "lt1m",
+            "reconciliation_age": "lt1m"
+          },
+          "configured": {
+            "state": "enabled",
+            "reason": "ok"
+          },
+          "runtime": {
+            "state": "healthy",
+            "reason": "ok",
+            "evidence_ref": null
+          },
+          "socket": {
+            "state": "known",
+            "presence": "present",
+            "type": "expected",
+            "permission": "ok",
+            "peer": "reachable",
+            "evidence_ref": null
+          },
+          "session": {
+            "observed_count": {
+              "state": "known",
+              "value": 1
+            },
+            "refs": []
+          },
+          "version": {
+            "observed": "0.7.5",
+            "compatibility": "compatible"
+          },
+          "protocol": {
+            "observed": "v1",
+            "compatibility": "compatible"
+          },
+          "panes": [],
+          "layout": {
+            "observed_revision": "l1",
+            "observed_digest": "dddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddd",
+            "observation_delta": "match",
+            "reason": "ok",
+            "evidence_ref": null
+          },
+          "counts": {
+            "managed": {
+              "state": "known",
+              "value": 1
+            },
+            "unmanaged": {
+              "state": "known",
+              "value": 0
+            },
+            "orphaned": {
+              "state": "known",
+              "value": 0
+            },
+            "dark": {
+              "state": "known",
+              "value": 0
+            },
+            "stale": {
+              "state": "known",
+              "value": 0
+            },
+            "drifted": {
+              "state": "known",
+              "value": 0
+            },
+            "unknown": {
+              "state": "known",
+              "value": 0
+            }
+          },
+          "reconciliation": {
+            "state": "succeeded",
+            "last_revision": "l1",
+            "last_digest": null,
+            "age": "lt1m",
+            "evidence_ref": null
+          }
+        },
+        "static_expected": {
+          "version": "0.7.5",
+          "protocol": "v1",
+          "layout_revision": "l1",
+          "layout_digest": "dddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddd",
+          "session_count": {
+            "state": "known",
+            "value": 1
+          }
+        },
+        "reference_bindings": [
+          {
+            "ref": "aqref:v1:pane:zyxwvutsrqponmlkjihgfedc",
+            "issuer_revision": "i1",
+            "subject_digest": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+            "state": "superseded",
+            "expiry_bucket": "future",
+            "replacement_ref": "aqref:v1:pane:abcdefghijklmnopqrstuv",
+            "replacement_subject_digest": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa"
+          }
+        ]
+      }
+    },
+    {
+      "name": "replacement_subject_mismatch",
+      "input": {
+        "sample_id": "sample1",
+        "sampled_at_bucket": "bucket0",
+        "observation_revision": "r1",
+        "generated_at": "bucket0",
+        "policy_revision": "p1",
+        "observer": {
+          "id": "observer1",
+          "authorization": "authorized",
+          "state": "known",
+          "reason": "ok",
+          "revision": "r1",
+          "digest": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa"
+        },
+        "observation": {
+          "freshness": {
+            "state": "fresh",
+            "observation_age": "lt1m",
+            "reconciliation_age": "lt1m"
+          },
+          "configured": {
+            "state": "enabled",
+            "reason": "ok"
+          },
+          "runtime": {
+            "state": "healthy",
+            "reason": "ok",
+            "evidence_ref": null
+          },
+          "socket": {
+            "state": "known",
+            "presence": "present",
+            "type": "expected",
+            "permission": "ok",
+            "peer": "reachable",
+            "evidence_ref": null
+          },
+          "session": {
+            "observed_count": {
+              "state": "known",
+              "value": 1
+            },
+            "refs": []
+          },
+          "version": {
+            "observed": "0.7.5",
+            "compatibility": "compatible"
+          },
+          "protocol": {
+            "observed": "v1",
+            "compatibility": "compatible"
+          },
+          "panes": [],
+          "layout": {
+            "observed_revision": "l1",
+            "observed_digest": "dddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddd",
+            "observation_delta": "match",
+            "reason": "ok",
+            "evidence_ref": null
+          },
+          "counts": {
+            "managed": {
+              "state": "known",
+              "value": 1
+            },
+            "unmanaged": {
+              "state": "known",
+              "value": 0
+            },
+            "orphaned": {
+              "state": "known",
+              "value": 0
+            },
+            "dark": {
+              "state": "known",
+              "value": 0
+            },
+            "stale": {
+              "state": "known",
+              "value": 0
+            },
+            "drifted": {
+              "state": "known",
+              "value": 0
+            },
+            "unknown": {
+              "state": "known",
+              "value": 0
+            }
+          },
+          "reconciliation": {
+            "state": "succeeded",
+            "last_revision": "l1",
+            "last_digest": null,
+            "age": "lt1m",
+            "evidence_ref": null
+          }
+        },
+        "static_expected": {
+          "version": "0.7.5",
+          "protocol": "v1",
+          "layout_revision": "l1",
+          "layout_digest": "dddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddd",
+          "session_count": {
+            "state": "known",
+            "value": 1
+          }
+        },
+        "reference_bindings": [
+          {
+            "ref": "aqref:v1:pane:abcdefghijklmnopqrstuv",
+            "issuer_revision": "i1",
+            "subject_digest": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+            "state": "active",
+            "expiry_bucket": "future",
+            "replacement_ref": null,
+            "replacement_subject_digest": null
+          },
+          {
+            "ref": "aqref:v1:pane:zyxwvutsrqponmlkjihgfedc",
+            "issuer_revision": "i1",
+            "subject_digest": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+            "state": "superseded",
+            "expiry_bucket": "future",
+            "replacement_ref": "aqref:v1:pane:abcdefghijklmnopqrstuv",
+            "replacement_subject_digest": "bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb"
+          }
+        ]
+      }
+    },
+    {
+      "name": "exact_duplicate",
+      "input": {
+        "sample_id": "sample1",
+        "sampled_at_bucket": "bucket0",
+        "observation_revision": "r1",
+        "generated_at": "bucket0",
+        "policy_revision": "p1",
+        "observer": {
+          "id": "observer1",
+          "authorization": "authorized",
+          "state": "known",
+          "reason": "ok",
+          "revision": "r1",
+          "digest": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa"
+        },
+        "observation": {
+          "freshness": {
+            "state": "fresh",
+            "observation_age": "lt1m",
+            "reconciliation_age": "lt1m"
+          },
+          "configured": {
+            "state": "enabled",
+            "reason": "ok"
+          },
+          "runtime": {
+            "state": "healthy",
+            "reason": "ok",
+            "evidence_ref": null
+          },
+          "socket": {
+            "state": "known",
+            "presence": "present",
+            "type": "expected",
+            "permission": "ok",
+            "peer": "reachable",
+            "evidence_ref": null
+          },
+          "session": {
+            "observed_count": {
+              "state": "known",
+              "value": 1
+            },
+            "refs": []
+          },
+          "version": {
+            "observed": "0.7.5",
+            "compatibility": "compatible"
+          },
+          "protocol": {
+            "observed": "v1",
+            "compatibility": "compatible"
+          },
+          "panes": [],
+          "layout": {
+            "observed_revision": "l1",
+            "observed_digest": "dddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddd",
+            "observation_delta": "match",
+            "reason": "ok",
+            "evidence_ref": null
+          },
+          "counts": {
+            "managed": {
+              "state": "known",
+              "value": 1
+            },
+            "unmanaged": {
+              "state": "known",
+              "value": 0
+            },
+            "orphaned": {
+              "state": "known",
+              "value": 0
+            },
+            "dark": {
+              "state": "known",
+              "value": 0
+            },
+            "stale": {
+              "state": "known",
+              "value": 0
+            },
+            "drifted": {
+              "state": "known",
+              "value": 0
+            },
+            "unknown": {
+              "state": "known",
+              "value": 0
+            }
+          },
+          "reconciliation": {
+            "state": "succeeded",
+            "last_revision": "l1",
+            "last_digest": null,
+            "age": "lt1m",
+            "evidence_ref": null
+          }
+        },
+        "static_expected": {
+          "version": "0.7.5",
+          "protocol": "v1",
+          "layout_revision": "l1",
+          "layout_digest": "dddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddd",
+          "session_count": {
+            "state": "known",
+            "value": 1
+          }
+        },
+        "reference_bindings": [
+          {
+            "ref": "aqref:v1:pane:abcdefghijklmnopqrstuv",
+            "issuer_revision": "i1",
+            "subject_digest": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+            "state": "active",
+            "expiry_bucket": "future",
+            "replacement_ref": null,
+            "replacement_subject_digest": null
+          },
+          {
+            "ref": "aqref:v1:pane:abcdefghijklmnopqrstuv",
+            "issuer_revision": "i1",
+            "subject_digest": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+            "state": "active",
+            "expiry_bucket": "future",
+            "replacement_ref": null,
+            "replacement_subject_digest": null
+          }
+        ]
+      }
+    },
+    {
+      "name": "two_node_cycle",
+      "input": {
+        "sample_id": "sample1",
+        "sampled_at_bucket": "bucket0",
+        "observation_revision": "r1",
+        "generated_at": "bucket0",
+        "policy_revision": "p1",
+        "observer": {
+          "id": "observer1",
+          "authorization": "authorized",
+          "state": "known",
+          "reason": "ok",
+          "revision": "r1",
+          "digest": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa"
+        },
+        "observation": {
+          "freshness": {
+            "state": "fresh",
+            "observation_age": "lt1m",
+            "reconciliation_age": "lt1m"
+          },
+          "configured": {
+            "state": "enabled",
+            "reason": "ok"
+          },
+          "runtime": {
+            "state": "healthy",
+            "reason": "ok",
+            "evidence_ref": null
+          },
+          "socket": {
+            "state": "known",
+            "presence": "present",
+            "type": "expected",
+            "permission": "ok",
+            "peer": "reachable",
+            "evidence_ref": null
+          },
+          "session": {
+            "observed_count": {
+              "state": "known",
+              "value": 1
+            },
+            "refs": []
+          },
+          "version": {
+            "observed": "0.7.5",
+            "compatibility": "compatible"
+          },
+          "protocol": {
+            "observed": "v1",
+            "compatibility": "compatible"
+          },
+          "panes": [],
+          "layout": {
+            "observed_revision": "l1",
+            "observed_digest": "dddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddd",
+            "observation_delta": "match",
+            "reason": "ok",
+            "evidence_ref": null
+          },
+          "counts": {
+            "managed": {
+              "state": "known",
+              "value": 1
+            },
+            "unmanaged": {
+              "state": "known",
+              "value": 0
+            },
+            "orphaned": {
+              "state": "known",
+              "value": 0
+            },
+            "dark": {
+              "state": "known",
+              "value": 0
+            },
+            "stale": {
+              "state": "known",
+              "value": 0
+            },
+            "drifted": {
+              "state": "known",
+              "value": 0
+            },
+            "unknown": {
+              "state": "known",
+              "value": 0
+            }
+          },
+          "reconciliation": {
+            "state": "succeeded",
+            "last_revision": "l1",
+            "last_digest": null,
+            "age": "lt1m",
+            "evidence_ref": null
+          }
+        },
+        "static_expected": {
+          "version": "0.7.5",
+          "protocol": "v1",
+          "layout_revision": "l1",
+          "layout_digest": "dddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddd",
+          "session_count": {
+            "state": "known",
+            "value": 1
+          }
+        },
+        "reference_bindings": [
+          {
+            "ref": "aqref:v1:pane:abcdefghijklmnopqrstuv",
+            "issuer_revision": "i1",
+            "subject_digest": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+            "state": "superseded",
+            "expiry_bucket": "future",
+            "replacement_ref": "aqref:v1:pane:zyxwvutsrqponmlkjihgfedc",
+            "replacement_subject_digest": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa"
+          },
+          {
+            "ref": "aqref:v1:pane:zyxwvutsrqponmlkjihgfedc",
+            "issuer_revision": "i1",
+            "subject_digest": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+            "state": "superseded",
+            "expiry_bucket": "future",
+            "replacement_ref": "aqref:v1:pane:abcdefghijklmnopqrstuv",
+            "replacement_subject_digest": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa"
+          }
+        ]
+      }
+    }
+  ]
+}
