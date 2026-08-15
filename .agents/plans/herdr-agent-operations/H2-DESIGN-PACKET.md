@@ -2,7 +2,7 @@
 doc_type: plan
 id: herdr-agent-operations-h2
 title: Herdr H2 Monitored Presentation
-status: draft
+status: deprecated
 owner: codex-orchestrator
 date: 2026-08-08
 parent_prd: herdr-agent-operations
@@ -10,6 +10,11 @@ depends_on: H1-independent-PASS
 ---
 
 # H2 design packet — monitored presentation only
+
+> **Historical, non-authoritative design.** This merged `aq.herdr.projection.v1` proposal was
+> superseded by the independently split operator-context and HERDR-presentation contracts and
+> their dormant P0/P0B implementations. It grants no current implementation, integration, or
+> activation authority and must not be used as active projection provenance.
 
 ## Decision and boundary
 
