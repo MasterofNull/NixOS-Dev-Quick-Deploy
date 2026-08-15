@@ -466,6 +466,12 @@ in {
           # degrade would read-only-outage all tools). REVERT: remove both lines + rebuild → byte-parity HMAC.
           "CAPABILITY_ASYMMETRIC_LEASE=1"
           "AQ_LEASE_SIGNING_SOCKET_PATH=${cfg.aiStack.leaseSigningAuthority.socketPath}"
+          # C2-SCI activation (2026-08-15): the switchboard gate mints a signed scheduler-lease-context
+          # via the confined issuer's UDS. primaryUser reaches the 0660 socket through the
+          # aq-c2-scheduler-context-clients group (wired by the issuer module on enable). REVERT: remove
+          # both lines + set c2SchedulerContextIssuer.enable=false → default-OFF byte-parity.
+          "CAPABILITY_SCHEDULER_CONTEXT_ISSUER=1"
+          "AQ_SCHEDULER_CONTEXT_SOCKET_PATH=${cfg.aiStack.c2SchedulerContextIssuer.socketPath}"
           "PORT=${toString swb.port}"
           "HOST=127.0.0.1"
           "LLAMA_CPP_URL=${llamaUrl}"

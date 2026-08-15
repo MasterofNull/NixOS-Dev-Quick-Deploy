@@ -43,6 +43,10 @@ in {
     # rounds don't need a manual IDE prompt. Per-user systemd path unit in the owner's own session,
     # firing the owner-gated wake. No-op when the IDE isn't open. REVERT: enable=false.
     mySystem.aiStack.antigravityAutoWake.enable = true;
+    # C2-SCI (Foundation C Q-C6-1): confined scheduler-lease-context issuer. Activated 2026-08-15 with the
+    # real owner-provisioned SOPS signer key + verifier-allowlist public key. Pairs with the switchboard
+    # CAPABILITY_SCHEDULER_CONTEXT_ISSUER=1 flag. REVERT: enable=false → default-OFF byte-parity.
+    mySystem.aiStack.c2SchedulerContextIssuer.enable = true;
     mySystem.profileData.flatpakApps = lib.mkDefault flatpakProfiles.ai_workstation;
     mySystem.profileData.systemPackageNames = lib.mkDefault profilePackages.ai-dev;
 
