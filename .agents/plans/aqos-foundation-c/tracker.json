@@ -39,7 +39,7 @@
      "goal": "provision the context-signer key, enable the service, flip the flag, land the ledger-reorder + O2 observability",
      "validation_goal": "live mint round-trip; enabled + observable + intervenable",
      "deps": ["c2sci-build"], "editorial_note": "owner-gated; NOT done (default-OFF)",
-     "detection": {"activation_subject": "c2-scheduler-context-issuer-ACTIVATE", "commit_match": ["C2-SCI activation", "c2-scheduler-context-issuer-ACTIVATE"], "blocker_note": "ACTIVATION GRANTED 2026-08-15 (event 0aab588e): SOPS signer key provisioned + real public key in verifier allowlist + enable=true + CAPABILITY_SCHEDULER_CONTEXT_ISSUER=1. PENDING: owner rebuild + Claude live mint round-trip validation (Activation-Gate validated leg). Record: C2-SCI-ACTIVATION-20260815.md"}, "pct_hint": 80},
+     "detection": {"activation_subject": "c2-scheduler-context-issuer-ACTIVATE", "commit_match": ["C2-SCI activation", "c2-scheduler-context-issuer-ACTIVATE"], "blocker_note": "ACTIVATED + VALIDATED 2026-08-15 (grant 0aab588e). Live mint ROUND-TRIP PASS: real ALA lease -> signed context -> verifies vs allowlist b876b7ea, wrong-key denies. Surfaced+fixed 2 runtime blockers (epoch-starvation 3d45e03c; out-of-tree-SOPS key mismatch, re-provisioned via aq-provision-signer-key). Record: C2-SCI-ACTIVATION-20260815.md. Non-blocking follow-up: burn/replay counts on dashboard."}, "pct_hint": 100},
     {"id": "c6-p0", "name": "C6-P0 trust anchors (owner keys + schemas)", "phase": "c6", "kind": "slice",
      "goal": "owner public-key allowlist + revocation-epoch-bump + scheduler-lease-context schemas",
      "validation_goal": "rev3 built + activated (Q-C6-2 resolved)",
