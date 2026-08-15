@@ -51,7 +51,7 @@ if str(_LOCAL_AGENTS) not in sys.path:
 
 from loop_state import (  # noqa: E402
     LoopState, write_state, read_state, archive_state,
-    append_pulse, update_resume, extract_evidence, is_completed,
+    append_pulse, update_resume, extract_evidence, is_completed, consume_review_result,
 )
 
 
@@ -226,12 +226,7 @@ def fanout_verify(
         f"ACCEPTANCE REVIEW for loop {loop_id} iter {iteration}:\n"
         f"Task: {intent}\n\n"
         f"Completed output summary:\n{result_summary[:1500]}\n\n"
-        f"Review this output for correctness, completeness, NixOS policy compliance, "
-        f"and security. Output exactly one of:\n"
-        f"  APPROVED: <one-line reason>\n"
-        f"  CONCERNS: <specific issues to address>\n"
-        f"  REJECTED: <specific failures>\n"
-        f"Then a brief explanation (max 200 words)."
+        "Return JSON only: {\"verdict\":\"APPROVED|REJECTED\",\"scope\":{\"subject_hash\":64hex,\"baseline_hash\":64hex,\"criteria_hash\":64hex,\"roster_hash\":64hex,\"policy_hash\":64hex},\"blockers\":[{\"invariant_id\":\"stable-class\",\"finding_hash\":\"hash\"}]}. Batch every blocker; CONCERNS/unknown is invalid."
     )
     try:
         r = subprocess.run(
@@ -241,12 +236,9 @@ def fanout_verify(
             capture_output=True, text=True, timeout=180, cwd=str(_REPO_ROOT),
         )
         output = r.stdout
-        verdict = "unknown"
-        for kw in ("APPROVED", "CONCERNS", "REJECTED"):
-            if kw in output:
-                verdict = kw
-                break
-        return {"verdict": verdict, "output": output[:1000]}
+        try: structured = json.loads(output.strip())
+        except Exception: structured = None
+        return {"structured": structured, "output": output[:1000]}
     except Exception as exc:
         print(f"[aq-loop] VERIFY: antigravity review skipped ({exc})")
         return None
@@ -590,16 +582,27 @@ def run_loop(
                 result_summary = evidence.get("result_preview", intent[:300])
                 review_verdict = fanout_verify(intent, result_summary, loop_id, iteration)
                 if review_verdict:
-                    verdict = review_verdict["verdict"]
-                    print(f"[aq-loop] VERIFY review: {verdict}")
-                    append_pulse(loop_id, iteration, "VERIFY-REVIEW", verdict,
+                    action, review_detail = consume_review_result(state, review_verdict.get("structured"))
+                    print(f"[aq-loop] VERIFY review: {action}")
+                    append_pulse(loop_id, iteration, "VERIFY-REVIEW", action,
                                  review_verdict["output"][:200])
-                    if verdict == "REJECTED" and iteration < max_iter:
+                    if action == "repair" and iteration < max_iter:
                         # Inject review findings for next iteration and continue
                         evidence["review_findings"] = review_verdict["output"][:500]
                         state.history[-1] = evidence
                         print(f"[aq-loop] Reviewer rejected — retrying with findings (iter {iteration+1})")
                         continue
+                    if action in {"escalated", "repair"}:
+                        # A repair cannot become completion at the replay budget.
+                        reason = review_detail.get("reason", "review_replay_budget" if action == "repair" else "review")
+                        state.phase = "ESCALATED"; write_state(state)
+                        state.review_repair.setdefault("issue_signals", [])
+                        if not state.review_repair.get("escalation_written"):
+                            write_escalation(state)
+                            state.review_repair["escalation_written"] = True
+                            write_state(state)
+                        append_pulse(loop_id, iteration, "ESCALATED", reason)
+                        return 1
 
             state.phase = "COMPLETE"
             write_state(state)

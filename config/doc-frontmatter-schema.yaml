@@ -2,7 +2,7 @@
 # Schema for mandatory YAML frontmatter in agentic documentation.
 
 globals:
-  allowed_status: [active, draft, deprecated, research, in-progress, complete]
+  allowed_status: [active, draft, deprecated, research, in-progress, complete, escalated]
   allowed_severity: [low, medium, high, critical]
 
 doc_types:
@@ -154,6 +154,30 @@ doc_types:
       id: teg-c1-design-review-20260808
       title: TEG C1 Independent Architecture Review
       status: draft
+
+  implementation-review:
+    required:
+      - doc_type
+      - id
+      - title
+      - status
+      - reviewer
+      - verdict
+    optional:
+      - parent_prd
+      - review_role
+      - subject
+      - subject_sha256
+      - date
+      - head
+      - slice
+    examples:
+      doc_type: implementation-review
+      id: review-convergence-rev1-independent-review-20260815
+      title: Bounded Review Convergence Independent Review
+      status: complete
+      reviewer: independent-reviewer
+      verdict: REQUEST_REVISION
 
   collaboration-brief:
     required:
