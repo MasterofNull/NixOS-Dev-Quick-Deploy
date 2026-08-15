@@ -355,7 +355,10 @@ aq-loop-queue --max 5                 # sequential queue runner (anytime — not
   architecture probe → `delegate-to-antigravity --mode architect` (Gemini).
   Results collected within 120s and injected into the grounded prompt.
 - VERIFY: completed result dispatched to `delegate-to-antigravity --mode reviewer`.
-  REJECTED verdict re-queues iteration with review findings.
+  Review input terminates the completed slice as `ACCEPTED`, `IMPLEMENTED_FOLLOWUP_REQUIRED`,
+  `ACTIVATION_BLOCKED`, or `REJECTED`; findings become a next scoped slice, not a re-queue.
+  Planning freezes after one parallel review and synthesis as `PLAN_READY`,
+  `PLAN_READY_WITH_FOLLOWUPS`, `PLAN_BLOCKED`, or `PLAN_REJECTED`.
 
 **Codex role in fan-out:** When invoked as reviewer, check:
 completed output against task intent, NixOS policy compliance (declarative-only, port policy,
@@ -413,3 +416,7 @@ no hardcoded secrets), and correctness. Emit `APPROVED:`, `CONCERNS:`, or `REJEC
 
 ## Sub-agent Constraint
 Execute only the assigned slice. Do not re-scope goals, route other agents, or self-promote to reviewer.
+
+## Terminal disposition SSOT
+
+Planning: `PLAN_READY`, `PLAN_READY_WITH_FOLLOWUPS`, `PLAN_BLOCKED`, `PLAN_REJECTED`. Implementation: `ACCEPTED`, `IMPLEMENTED_FOLLOWUP_REQUIRED`, `ACTIVATION_BLOCKED`, `REJECTED`. Frozen criteria are stable except critical defects. Safe inert-at-rest bytes may commit with `ACTIVATION_BLOCKED` but cannot activate; unsafe-at-rest bytes are `REJECTED`. `CONCERNS` is review input requiring a terminal disposition and next-slice descriptor, never same-slice replay.

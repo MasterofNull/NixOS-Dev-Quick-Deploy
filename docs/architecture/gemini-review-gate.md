@@ -53,7 +53,7 @@ Gemini produces candidate artifact
           ↓
   PASS → integrate (commit / apply)
   FAIL → discard or document as rejected
-  REQUEST_REVISION → Gemini revises and re-presents at gate
+  REQUEST_REVISION → map to a terminal disposition and issue a separately scoped next slice
 ```
 
 Gemini must **not** proceed past the gate on its own. If no reviewer is available, the artifact stays at candidate status and must not be committed.
@@ -81,7 +81,11 @@ The reviewer must produce one of three verdicts in the handoff artifact (`.agent
 |---|---|---|
 | **PASS** | Artifact meets all acceptance criteria; no material risks identified | Orchestrator integrates (commits) |
 | **FAIL** | Artifact does not meet criteria or introduces unacceptable risk | Gemini discards or documents as rejected; slice re-scoped if needed |
-| **REQUEST_REVISION** | Specific finding(s) must be addressed before acceptance | Gemini addresses each finding explicitly, then re-presents at gate |
+| **REQUEST_REVISION** | Reviewer input, not an auto-replay instruction | Map to terminal disposition; eligible findings become a new scoped slice |
+
+Completed implementation terminates as `ACCEPTED`, `IMPLEMENTED_FOLLOWUP_REQUIRED`,
+`ACTIVATION_BLOCKED`, or `REJECTED`. Safe dormant work may commit under
+`ACTIVATION_BLOCKED` but cannot deploy or expose controls; unsafe-at-rest work is `REJECTED`.
 
 A reviewer may not issue a verdict of PASS for work they themselves produced.
 
@@ -111,3 +115,7 @@ Gemini **may not** produce a PASS verdict for its own implementation work in the
 - **58A.5 (Qwen eligibility):** Qwen implementer work that touches gate-trigger categories must also pass a review gate. The reviewer for Qwen work may be Gemini or Claude (not Qwen).
 - **58A.6 (capability lifecycle):** The `candidate → promoted` transition in the lifecycle schema requires a review gate of this form. The lifecycle schema should reference this document as the gate definition.
 - **58A.7 (domain activation):** New domain activation artifacts are architecture documents; they are gate-trigger category items and require review before integration.
+
+## Terminal disposition SSOT
+
+Planning: `PLAN_READY`, `PLAN_READY_WITH_FOLLOWUPS`, `PLAN_BLOCKED`, `PLAN_REJECTED`. Implementation: `ACCEPTED`, `IMPLEMENTED_FOLLOWUP_REQUIRED`, `ACTIVATION_BLOCKED`, `REJECTED`. Frozen criteria are stable except critical defects. Only safe inert-at-rest bytes may commit under `ACTIVATION_BLOCKED`; activation is blocked. Unsafe-at-rest bytes are `REJECTED`.

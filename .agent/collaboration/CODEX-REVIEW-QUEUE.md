@@ -17,7 +17,9 @@ directive 2026-07-19 (PULSE `[owner] [operating-model-directive]`).
   acceptance and never substitutes for the codex gate.
 - **Commit only after codex PASS.** On return, codex executes each queued acceptance authorization;
   the orchestrator runs Tier-0, stages, and commits each candidate that earns codex PASS. A codex
-  REQUEST_REVISION returns that slice to a bounded revision cycle.
+  REQUEST_REVISION maps to a terminal disposition and an explicitly scoped next slice; it never
+  returns the completed subject to automatic re-review. `ACTIVATION_BLOCKED` may commit only safe,
+  inert-at-rest bytes and blocks deployment/controls; unsafe-at-rest work is `REJECTED`.
 
 ## Queue
 
@@ -37,3 +39,7 @@ documented above for any future slice where the owner chooses to queue for codex
 - Already committed this session (NOT in this queue — landed via Claude-flagship acceptance before
   this operating model took effect): B2-M1A-AM2 `4747344b`, C1C-AM3 `1cca8c57`, A1-AM3 `3396f9df`.
   These are available for post-hoc codex audit if desired but are not blocking.
+
+## Terminal disposition SSOT
+
+Planning: `PLAN_READY`, `PLAN_READY_WITH_FOLLOWUPS`, `PLAN_BLOCKED`, `PLAN_REJECTED`. Implementation: `ACCEPTED`, `IMPLEMENTED_FOLLOWUP_REQUIRED`, `ACTIVATION_BLOCKED`, `REJECTED`. Frozen criteria are stable except critical defects. Safe inert-at-rest bytes may commit with `ACTIVATION_BLOCKED` but cannot activate; unsafe-at-rest bytes are `REJECTED`.

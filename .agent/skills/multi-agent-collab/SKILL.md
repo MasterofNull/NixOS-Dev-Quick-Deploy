@@ -33,11 +33,15 @@ Orchestrator (Claude)
   ├─ 1. Write PRD + assign slice to implementer
   ├─ 2. delegate-to-gemini --role implementer --prompt-file /tmp/slice.txt
   ├─ 3. delegate-to-gemini --role reviewer --prompt "Review commit X per criteria Y"
-  └─ 4. Accept or REQUEST_REVISION; commit final integration
+  └─ 4. Record terminal disposition; issue a next scoped slice if needed
 
 Single-agent multi-role (when team not needed):
   └─ Single agent handles all roles sequentially, marks each role switch explicitly
 ```
+
+Planning uses one parallel batch review, one synthesis, then freeze as `PLAN_READY`,
+`PLAN_READY_WITH_FOLLOWUPS`, `PLAN_BLOCKED`, or `PLAN_REJECTED`. Completed implementation uses
+`ACCEPTED`, `IMPLEMENTED_FOLLOWUP_REQUIRED`, `ACTIVATION_BLOCKED`, or `REJECTED`; no same-slice replay.
 
 Pass implementer exactly the slice context. Do NOT pass full HANDOFF.md — pass only:
 - The slice objectives
@@ -185,3 +189,7 @@ When parallel implementers produce conflicting output:
 2. Winning implementation is selected (not merged — one wins)
 3. Losing agent's patterns/insights are captured in HANDOFF.md
 4. Conflict fact is logged to memory/facts: `fact_type: "conflict_resolution"`
+
+## Terminal disposition SSOT
+
+Planning: `PLAN_READY`, `PLAN_READY_WITH_FOLLOWUPS`, `PLAN_BLOCKED`, `PLAN_REJECTED`. Implementation: `ACCEPTED`, `IMPLEMENTED_FOLLOWUP_REQUIRED`, `ACTIVATION_BLOCKED`, `REJECTED`. Frozen criteria are stable except critical defects. Safe inert-at-rest bytes may commit with `ACTIVATION_BLOCKED` but cannot activate; unsafe-at-rest bytes are `REJECTED`.

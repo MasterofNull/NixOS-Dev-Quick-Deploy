@@ -9,7 +9,8 @@ Loop-engineering pattern (Schedule→Triage→Ground→Execute→Verify→Escala
                 (Qwen3-35B) and antigravity (Gemini) for grounded context
   3. EXECUTE  — run aq-agent-loop (inner ReAct loop with full tool set)
   4. VERIFY   — check COMPLETED: marker; fan-out acceptance review to antigravity reviewer;
-                re-queue with review findings if reviewer REJECTED
+                current compatibility path may retry once within the bounded loop; the target
+                terminal-receipt policy moves findings to a separately scoped next slice
   5. LOOP     — if incomplete and iterations remain, rebuild prompt with evidence
   6. ESCALATE — after max iterations, write escalation to issues-backlog.md
 
@@ -726,3 +727,9 @@ def main() -> int:
 
 if __name__ == "__main__":
     sys.exit(main())
+
+# Documentation compatibility note: runtime retains its bounded retry behavior while typed terminal
+# receipt migration is deferred. Target policy tokens: PLAN_READY PLAN_READY_WITH_FOLLOWUPS
+# PLAN_BLOCKED PLAN_REJECTED ACCEPTED IMPLEMENTED_FOLLOWUP_REQUIRED ACTIVATION_BLOCKED REJECTED.
+# Frozen criteria are stable except critical defects; safe inert-at-rest bytes may commit with
+# ACTIVATION_BLOCKED but cannot activate, while unsafe-at-rest bytes are REJECTED.

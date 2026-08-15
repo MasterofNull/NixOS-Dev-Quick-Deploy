@@ -262,7 +262,9 @@ same standardized process every time, every agent, every task type.
 #### Phase 4 — PRD Consensus Sign-off
 - All agents issue explicit verdict: `APPROVED` or `REQUEST_REVISION: <reason>`.
 - PRD locked **only when ALL agents have signed off APPROVED**.
-- Any `REQUEST_REVISION` triggers a targeted revision cycle, not a full re-draft.
+- During pre-freeze planning only, batched findings receive one synthesis before freeze. The freeze
+  terminates `PLAN_READY`, `PLAN_READY_WITH_FOLLOWUPS`, `PLAN_BLOCKED`, or `PLAN_REJECTED`.
+  Completed implementation review never reopens the same slice.
 
 #### Phase 5 — Independent Plan Drafting (all agents parallel)
 - Same fan-out pattern. Each team drafts their implementation plan for their assigned slice(s).
@@ -745,3 +747,5 @@ These targets are applied inside the relevant existing steps:
 ## Progress-Projected + Minimal-Code (Canonical — Behavioral Rule 20, all agents)
 
 **(a) Progress projected, never hand-typed.** Every plan under active work carries an editorial `<plan-dir>/tracker.json`; PM status (gantt/kanban/rollup) is PROJECTED by `aq-pm-tracker` from git commits + freeze records + activation grants + blockers, and gated every commit by `scripts/governance/tier0.d/check-pm-tracker.sh` (a broken/gamed manifest blocks; missing-tracker-for-an-active-plan is a freshness-class WARN). Hand-maintained status rots — forbidden (anti-gaming). **(b) Minimal-code before writing.** Before any new implementation/file/dependency, walk the `minimal-code` skill ladder (YAGNI → already-in-codebase → stdlib → native → installed-dep → one-line → MVP; lazy about the solution, never about reading); smallest correct change, no over-build; pairs with `/simplify`. Never at the cost of correctness, fail-closed, security, or a HARD rule. SSOT `.agents/plans/pm-tracker-standard/DESIGN.md` + skill `minimal-code`.
+
+**Terminal disposition SSOT:** planning freezes as `PLAN_READY`, `PLAN_READY_WITH_FOLLOWUPS`, `PLAN_BLOCKED`, or `PLAN_REJECTED`; implementation terminates as `ACCEPTED`, `IMPLEMENTED_FOLLOWUP_REQUIRED`, `ACTIVATION_BLOCKED`, or `REJECTED`. Frozen criteria stay stable except critical defects. Safe inert-at-rest bytes may commit with `ACTIVATION_BLOCKED` but cannot activate; unsafe-at-rest bytes are `REJECTED`.

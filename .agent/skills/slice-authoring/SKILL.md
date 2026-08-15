@@ -153,4 +153,9 @@ VERDICT: PASS|FAIL|REQUEST_REVISION — <one-line reason>
 If REQUEST_REVISION: list specific changes needed with file:line references.
 ```
 
-The orchestrator reads the last line to determine whether to accept or re-delegate.
+The orchestrator maps review input to `ACCEPTED`, `IMPLEMENTED_FOLLOWUP_REQUIRED`,
+`ACTIVATION_BLOCKED`, or `REJECTED`; findings create a distinct next-slice descriptor, never an
+automatic same-slice re-delegation. Planning freezes as `PLAN_READY`,
+`PLAN_READY_WITH_FOLLOWUPS`, `PLAN_BLOCKED`, or `PLAN_REJECTED`.
+
+Terminal disposition SSOT: planning `PLAN_READY`, `PLAN_READY_WITH_FOLLOWUPS`, `PLAN_BLOCKED`, `PLAN_REJECTED`; implementation `ACCEPTED`, `IMPLEMENTED_FOLLOWUP_REQUIRED`, `ACTIVATION_BLOCKED`, `REJECTED`. Frozen criteria are stable except critical defects. Safe inert-at-rest bytes may commit with `ACTIVATION_BLOCKED` but cannot activate; unsafe-at-rest bytes are `REJECTED`.
