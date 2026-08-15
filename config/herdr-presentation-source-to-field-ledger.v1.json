@@ -1,0 +1,432 @@
+{
+  "schema_version": "aq.herdr.presentation.source-to-field-ledger.v1",
+  "projection_schema_version": "aq.herdr.presentation.v1",
+  "authority": "read_only_presentation",
+  "normative_leaf_count": 82,
+  "count_evidence": "Contract-5 root/nesting enumeration: 18 root scalars/groups expanded through closed object properties and array item properties; 82 terminal schema leaves. The earlier 86 claim was unsupported and is superseded.",
+  "rules": [
+    {
+      "path": "schema_version",
+      "source": "pure_rule",
+      "unknown": "explicit"
+    },
+    {
+      "path": "observation_revision",
+      "source": "authorized_observation",
+      "unknown": "explicit"
+    },
+    {
+      "path": "generated_at",
+      "source": "authorized_observation",
+      "unknown": "explicit"
+    },
+    {
+      "path": "freshness.state",
+      "source": "authorized_observation",
+      "unknown": "explicit"
+    },
+    {
+      "path": "freshness.observation_age",
+      "source": "authorized_observation",
+      "unknown": "explicit"
+    },
+    {
+      "path": "freshness.reconciliation_age",
+      "source": "authorized_observation",
+      "unknown": "explicit"
+    },
+    {
+      "path": "source_health.[].observer",
+      "source": "authorized_observation",
+      "unknown": "explicit"
+    },
+    {
+      "path": "source_health.[].authorization",
+      "source": "authorized_observation",
+      "unknown": "explicit"
+    },
+    {
+      "path": "source_health.[].state",
+      "source": "authorized_observation",
+      "unknown": "explicit"
+    },
+    {
+      "path": "source_health.[].reason",
+      "source": "authorized_observation",
+      "unknown": "explicit"
+    },
+    {
+      "path": "source_digests.[].observer",
+      "source": "authorized_observation",
+      "unknown": "explicit"
+    },
+    {
+      "path": "source_digests.[].revision",
+      "source": "authorized_observation",
+      "unknown": "explicit"
+    },
+    {
+      "path": "source_digests.[].digest",
+      "source": "authorized_observation",
+      "unknown": "explicit"
+    },
+    {
+      "path": "configured.state",
+      "source": "authorized_observation",
+      "unknown": "explicit"
+    },
+    {
+      "path": "configured.reason",
+      "source": "authorized_observation",
+      "unknown": "explicit"
+    },
+    {
+      "path": "runtime.state",
+      "source": "authorized_observation",
+      "unknown": "explicit"
+    },
+    {
+      "path": "runtime.reason",
+      "source": "authorized_observation",
+      "unknown": "explicit"
+    },
+    {
+      "path": "runtime.evidence_ref",
+      "source": "authorized_observation",
+      "unknown": "explicit"
+    },
+    {
+      "path": "socket.state",
+      "source": "authorized_observation",
+      "unknown": "explicit"
+    },
+    {
+      "path": "socket.presence",
+      "source": "authorized_observation",
+      "unknown": "explicit"
+    },
+    {
+      "path": "socket.type",
+      "source": "authorized_observation",
+      "unknown": "explicit"
+    },
+    {
+      "path": "socket.permission",
+      "source": "authorized_observation",
+      "unknown": "explicit"
+    },
+    {
+      "path": "socket.peer",
+      "source": "authorized_observation",
+      "unknown": "explicit"
+    },
+    {
+      "path": "socket.evidence_ref",
+      "source": "authorized_observation",
+      "unknown": "explicit"
+    },
+    {
+      "path": "session.expected_count.state",
+      "source": "static_expected",
+      "unknown": "explicit"
+    },
+    {
+      "path": "session.expected_count.value",
+      "source": "static_expected",
+      "unknown": "explicit"
+    },
+    {
+      "path": "session.observed_count.state",
+      "source": "authorized_observation",
+      "unknown": "explicit"
+    },
+    {
+      "path": "session.observed_count.value",
+      "source": "authorized_observation",
+      "unknown": "explicit"
+    },
+    {
+      "path": "session.refs.[].session_ref",
+      "source": "authorized_observation",
+      "unknown": "explicit"
+    },
+    {
+      "path": "session.refs.[].health",
+      "source": "authorized_observation",
+      "unknown": "explicit"
+    },
+    {
+      "path": "session.refs.[].detach_state",
+      "source": "authorized_observation",
+      "unknown": "explicit"
+    },
+    {
+      "path": "version.expected",
+      "source": "static_expected",
+      "unknown": "explicit"
+    },
+    {
+      "path": "version.observed",
+      "source": "authorized_observation",
+      "unknown": "explicit"
+    },
+    {
+      "path": "version.compatibility",
+      "source": "authorized_observation",
+      "unknown": "explicit"
+    },
+    {
+      "path": "protocol.expected",
+      "source": "static_expected",
+      "unknown": "explicit"
+    },
+    {
+      "path": "protocol.observed",
+      "source": "authorized_observation",
+      "unknown": "explicit"
+    },
+    {
+      "path": "protocol.compatibility",
+      "source": "authorized_observation",
+      "unknown": "explicit"
+    },
+    {
+      "path": "panes.[].pane_ref",
+      "source": "authorized_observation",
+      "unknown": "explicit"
+    },
+    {
+      "path": "panes.[].role",
+      "source": "authorized_observation",
+      "unknown": "explicit"
+    },
+    {
+      "path": "panes.[].work_ref",
+      "source": "authorized_observation",
+      "unknown": "explicit"
+    },
+    {
+      "path": "panes.[].health",
+      "source": "authorized_observation",
+      "unknown": "explicit"
+    },
+    {
+      "path": "panes.[].freshness",
+      "source": "authorized_observation",
+      "unknown": "explicit"
+    },
+    {
+      "path": "panes.[].expected_state",
+      "source": "pure_rule",
+      "unknown": "unavailable"
+    },
+    {
+      "path": "panes.[].observed_state",
+      "source": "authorized_observation",
+      "unknown": "explicit"
+    },
+    {
+      "path": "panes.[].observation_delta",
+      "source": "authorized_observation",
+      "unknown": "explicit"
+    },
+    {
+      "path": "layout.expected_revision",
+      "source": "static_expected",
+      "unknown": "explicit"
+    },
+    {
+      "path": "layout.expected_digest",
+      "source": "static_expected",
+      "unknown": "explicit"
+    },
+    {
+      "path": "layout.observed_revision",
+      "source": "authorized_observation",
+      "unknown": "explicit"
+    },
+    {
+      "path": "layout.observed_digest",
+      "source": "authorized_observation",
+      "unknown": "explicit"
+    },
+    {
+      "path": "layout.observation_delta",
+      "source": "authorized_observation",
+      "unknown": "explicit"
+    },
+    {
+      "path": "layout.reason",
+      "source": "authorized_observation",
+      "unknown": "explicit"
+    },
+    {
+      "path": "layout.evidence_ref",
+      "source": "authorized_observation",
+      "unknown": "explicit"
+    },
+    {
+      "path": "counts.managed.state",
+      "source": "authorized_observation",
+      "unknown": "explicit"
+    },
+    {
+      "path": "counts.managed.value",
+      "source": "authorized_observation",
+      "unknown": "explicit"
+    },
+    {
+      "path": "counts.unmanaged.state",
+      "source": "authorized_observation",
+      "unknown": "explicit"
+    },
+    {
+      "path": "counts.unmanaged.value",
+      "source": "authorized_observation",
+      "unknown": "explicit"
+    },
+    {
+      "path": "counts.orphaned.state",
+      "source": "authorized_observation",
+      "unknown": "explicit"
+    },
+    {
+      "path": "counts.orphaned.value",
+      "source": "authorized_observation",
+      "unknown": "explicit"
+    },
+    {
+      "path": "counts.dark.state",
+      "source": "authorized_observation",
+      "unknown": "explicit"
+    },
+    {
+      "path": "counts.dark.value",
+      "source": "authorized_observation",
+      "unknown": "explicit"
+    },
+    {
+      "path": "counts.stale.state",
+      "source": "authorized_observation",
+      "unknown": "explicit"
+    },
+    {
+      "path": "counts.stale.value",
+      "source": "authorized_observation",
+      "unknown": "explicit"
+    },
+    {
+      "path": "counts.drifted.state",
+      "source": "authorized_observation",
+      "unknown": "explicit"
+    },
+    {
+      "path": "counts.drifted.value",
+      "source": "authorized_observation",
+      "unknown": "explicit"
+    },
+    {
+      "path": "counts.unknown.state",
+      "source": "authorized_observation",
+      "unknown": "explicit"
+    },
+    {
+      "path": "counts.unknown.value",
+      "source": "authorized_observation",
+      "unknown": "explicit"
+    },
+    {
+      "path": "reconciliation.state",
+      "source": "authorized_observation",
+      "unknown": "explicit"
+    },
+    {
+      "path": "reconciliation.last_revision",
+      "source": "authorized_observation",
+      "unknown": "explicit"
+    },
+    {
+      "path": "reconciliation.last_digest",
+      "source": "authorized_observation",
+      "unknown": "explicit"
+    },
+    {
+      "path": "reconciliation.age",
+      "source": "authorized_observation",
+      "unknown": "explicit"
+    },
+    {
+      "path": "reconciliation.evidence_ref",
+      "source": "authorized_observation",
+      "unknown": "explicit"
+    },
+    {
+      "path": "coverage.known",
+      "source": "pure_rule",
+      "unknown": "explicit"
+    },
+    {
+      "path": "coverage.unknown",
+      "source": "pure_rule",
+      "unknown": "explicit"
+    },
+    {
+      "path": "coverage.unavailable",
+      "source": "pure_rule",
+      "unknown": "explicit"
+    },
+    {
+      "path": "coverage.overflow",
+      "source": "pure_rule",
+      "unknown": "explicit"
+    },
+    {
+      "path": "policy.schema_revision",
+      "source": "pure_rule",
+      "unknown": "explicit"
+    },
+    {
+      "path": "policy.observer_policy_revision",
+      "source": "pure_rule",
+      "unknown": "explicit"
+    },
+    {
+      "path": "policy.redaction_revision",
+      "source": "pure_rule",
+      "unknown": "explicit"
+    },
+    {
+      "path": "policy.bounds_revision",
+      "source": "pure_rule",
+      "unknown": "explicit"
+    },
+    {
+      "path": "policy.age_policy_revision",
+      "source": "pure_rule",
+      "unknown": "explicit"
+    },
+    {
+      "path": "policy.serializer_revision",
+      "source": "pure_rule",
+      "unknown": "explicit"
+    },
+    {
+      "path": "policy.digest_algorithm",
+      "source": "pure_rule",
+      "unknown": "explicit"
+    }
+  ],
+  "prohibitions": [
+    "raw_terminal",
+    "prompt",
+    "output",
+    "reasoning",
+    "argv",
+    "environment",
+    "path",
+    "pid",
+    "provider_identity",
+    "canonical_work_state",
+    "control_payload"
+  ]
+}
