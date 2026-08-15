@@ -3057,6 +3057,12 @@ Advisory task (codex is the real confirmatory backstop) — non-blocking.
 
 [OPEN] apply-patch-control-plane-latency — A two-document `apply_patch` call completed successfully but the orchestration tool reported roughly 750 seconds of wall time with no intermediate output, exceeding the workflow's 60-second observability target.
   Recurrence 2026-08-14: one-file H2A review-record creations reported about 83, 498, and 485 seconds of wall time, yielding only deferred cell identifiers without progress evidence; all patches themselves completed correctly.
+  Recurrence 2026-08-15: the one-file P0 REV3 review receipt took about 274 seconds before yielding its deferred cell identifier; the patch completed correctly but again exceeded the progress-update SLA.
+  Recurrence 2026-08-15: the subsequent one-file P0B REV4 receipt took about 125 seconds before yielding; it also completed correctly.
+  Recurrence 2026-08-15: the one-file P0 REV4 receipt took about 115 seconds before yielding and completed correctly.
+  Recurrence 2026-08-15: the one-file P0 REV5 receipt took about 136 seconds before yielding and completed correctly.
+  Recurrence 2026-08-15: the one-file P0B REV6 receipt took about 151 seconds before yielding and completed correctly.
+  Recurrence 2026-08-15: the one-file P0B REV7 receipt took about 204 seconds before yielding its deferred cell identifier and completed correctly.
   Severity: medium
   Action: Preserve the tool timing as a workflow deviation; instrument patch-call start/progress/terminal receipts and distinguish broker/tool latency from repository write latency before automating retries.
   File: .agent/PROJECT-WORKFLOW-DEVIATION-RECOVERY-PRD.md
@@ -3143,15 +3149,42 @@ Advisory task (codex is the real confirmatory backstop) — non-blocking.
 
 [IN-FLIGHT] HERDR-H2A-P0B-INCOMPLETE-GREEN-ORACLE — The first pure presentation projection passed its five hermetic tests while still rejecting most authorized Contract #5 dimensions, using aggregate/wildcard ledger rows instead of leaf-exact completeness, accepting invalid count/null and nullable required-reference schema combinations, self-comparing output instead of frozen canonical bytes, and omitting sampling coherence/input binding.
   Severity: high
-  Action: preserve the REV1 `REQUEST_REVISION`; repair only the exact five-file ceiling; require schema-minus-ledger and ledger-minus-schema emptiness, Draft 2020-12 negative examples, fixed canonical bytes/digests, complete authorized-dimension/privacy/reference vectors, and coherent sample metadata before fresh review.
-  File: .agents/plans/herdr-agent-operations/H2A-P0B-REV1-INDEPENDENT-REVIEW-20260815.md; scripts/testing/test-herdr-presentation-projection.py
+  Action: commit `4aa4e7ec` preserves the safe inert implementation under `ACTIVATION_BLOCKED`. Re-scope the complete `unauthorized_input_validation` ingress equivalence classes as the next P0B remediation slice before any adapter, consumer, dashboard, or activation.
+  File: .agents/plans/herdr-agent-operations/H2A-P0B-REV9-INDEPENDENT-REVIEW-20260815.md; scripts/testing/test-herdr-presentation-projection.py
 
 [IN-FLIGHT] HERDR-H2A-P0-INCOMPLETE-GREEN-ORACLE — The first operator-context projection passed its hermetic test while accepting undeclared input without changing its digest, omitting required sample/revision/digest coherence and reference lifecycle vectors, collapsing unavailable mission/learning counts to zero, reducing all-fresh sources to unknown, and leaving required categories/ledger source identities semantically open.
   Severity: high
-  Action: preserve the REV1 `REQUEST_REVISION`; repair only the exact five-file ceiling; bind complete closed input plus schema/policy/serializer revisions, preserve explicit unknown counts, close enums/source identities, enforce all schema constraints, and freeze literal input/output replay with the complete sampling/reference/privacy matrix.
-  File: .agents/plans/herdr-agent-operations/H2A-P0-REV1-INDEPENDENT-REVIEW-20260815.md; scripts/testing/test-operator-context-projection.py
+  Action: commit `c3dcb4bb` preserves the safe inert implementation as `IMPLEMENTED_FOLLOWUP_REQUIRED`. Re-scope the complete `category_text_grammar` equivalence matrix (mission/work blocker and gate, attention reason, generated metadata, and comparable emitted fields) before any adapter or consumer adoption.
+  File: .agents/plans/herdr-agent-operations/H2A-P0-REV9-INDEPENDENT-REVIEW-20260815.md; scripts/testing/test-operator-context-projection.py
 
 [DONE 2026-08-15] POST-REBUILD-SYSTEMD-SANDBOX-VISIBILITY — The first read-only `systemctl is-active aq-c2-scheduler-context-issuer` probe could not reach the system bus from the workspace sandbox. It was immediately rerun through the approved read-only escalation and returned `active`; secret metadata was mode 0400 with the dedicated issuer owner/group.
   Severity: low
   Action: use read-only escalation for system-scope systemd verification in sandboxed Codex sessions; no system change required.
   File: .agents/plans/aqos-foundation-c/C2-SCI-ACTIVATION-20260815.md
+
+[DONE 2026-08-15] PARALLEL-VALIDATION-JS-PARENTHESIS — A local orchestration wrapper for two read-only validation calls had an unmatched JavaScript parenthesis and failed before invoking either command. The corrected wrapper immediately ran both P0 validations successfully; no repository or runtime state changed.
+  Severity: low
+  Action: keep parallel tool-call arrays formatted one call per block and rely on the wrapper parser's fail-before-effect behavior.
+  File: scripts/testing/test-operator-context-projection.py
+
+[IN-FLIGHT] REVIEW-REVISION-CONVERGENCE-SOFT-FAILURE — HERDR H2A produced repeated green implementer suites followed by serial same-invariant counterexamples because review consumption had no invariant identity, blocker-batch requirement, replay budget, or convergence escalation. The bounded guard and forward-only guidance are now committed, while `aq-loop` still retains its explicitly documented compatibility retry until typed terminal receipts replace it.
+  Severity: high
+  Action: commits `4e1e84bd` and `54d389a0` close the bounded guard and guidance slices. Implement strict typed terminal-receipt ingestion plus separately scoped follow-up creation as the next executable slice; do not reopen either committed subject.
+  File: scripts/ai/aq-loop ~review consumption; ai-stack/local-agents/loop_state.py; .agent/skills/reviewer-gate/SKILL.md ~section 6
+
+[OPEN] REVIEW-AGENT-SUBSTRING-ACCEPTANCE-BYPASS — The coordinator review handoff parser falls back from failed JSON parsing to raw substring matching and treats any output containing `accept` or `approved` as an acceptance. Prose such as "cannot accept" can therefore become an executable accept decision without typed scope, evidence, or convergence state.
+  Severity: high
+  Action: follow the current aq-loop convergence slice with a bounded coordinator review-ingestion slice: strict closed JSON, typed verdicts/scope hashes, no substring fallback, tests for negation/malformed/CONCERNS, and integration with the same repair ledger before any auto-merge decision.
+  File: ai-stack/mcp-servers/hybrid-coordinator/workflow/agents_task_handlers.py ~418-459
+
+[OPEN] AQ-EVENT-INTENT-LOCK-SANDBOX-RECURRENCE — Canonical `aq-event emit` failed with EROFS when appending `.agents/events/a2a-events.jsonl` inside the managed workspace sandbox; the exact approved command succeeded only through read-only-boundary escalation and returned event `3d3de264c92048c698a24c766c58f1ca`.
+  Recurrence 2026-08-15: multiple mandatory commit/adoption pulses again required the same approved escalated append-only route.
+  Severity: medium
+  Action: provide a brokered append-only event path available inside managed sessions, or project the required permission so canonical intent/resume/pulse writes do not require interactive escalation.
+  File: scripts/ai/aq-event; scripts/ai/lib/event_log.py; .agents/events/a2a-events.jsonl
+
+[OPEN] CODEX-GIT-INDEX-PERMISSION-DRIFT — After an earlier exact-path stage succeeded, a later exact `git add` failed because `.git/index.lock` became read-only inside the managed sandbox. The identical narrow stage succeeded through approved escalation; no broad or destructive Git operation was used.
+  Recurrence 2026-08-15: orphan-adoption staging again changed from writable to EROFS mid-session; every retry used an exact manifest through the approved escalated `git add` route.
+  Severity: medium
+  Action: make managed-session Git index write authority stable for approved exact-path staging, or expose a brokered narrow stage operation with an auditable manifest.
+  File: .git/index; managed Codex filesystem permission projection
