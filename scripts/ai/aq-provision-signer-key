@@ -1,0 +1,261 @@
+#!/usr/bin/env python3
+"""aq-provision-signer-key — owner-run Ed25519 signer-key provisioner for confined services.
+
+Closes the manual-key-provisioning gap (ALA / C2-SCI / TEG / C6 owner key have each been provisioned
+by hand: hand-run keygen that prints the private on screen, hand-edit SOPS in a TTY editor, hand-edit
+the allowlist JSON — the exact chain that caused the TTY failures, wrong-value saves, and key-on-screen
+exposure). This tool does all of it in one owner command:
+
+  1. Generates an Ed25519 keypair IN THIS PROCESS (run by the owner). The PRIVATE key is NEVER printed,
+     never placed in argv/shell-history, and never written to a tracked file — it goes straight into
+     SOPS via sops's own EDITOR hook (a 0600 temp on tmpfs, shredded after).
+  2. Writes the PUBLIC key + key_id into the target verifier allowlist JSON and bumps its revision.
+  3. Prints ONLY the public key + key_id + a "now rebuild" reminder.
+
+The agent that authored this script never runs it with real key material — the private key only ever
+exists in the owner's own process and in SOPS/`/run/secrets`. This preserves the confined-authority
+model (verify != forge; the owner-uid provisions secrets, no agent holds signing material).
+
+Usage:
+  aq-provision-signer-key --service c2-scheduler-context-issuer          # provision (replace placeholder)
+  aq-provision-signer-key --service lease-signing-authority --rotate     # rotate (new active key, deprecate old)
+  aq-provision-signer-key --secret-name X --allowlist Y.json --key-id Z  # explicit (no preset)
+  aq-provision-signer-key --self-test                                    # logic check, no sops/real key
+
+After it runs: `sudo nixos-rebuild switch --flake .#hyperd-ai-dev` (re-decrypts /run/secrets — a service
+restart does NOT), then the orchestrator re-validates the live mint round-trip.
+"""
+from __future__ import annotations
+import argparse, json, os, re, subprocess, sys, tempfile
+from datetime import datetime, timezone
+
+REPO = subprocess.run(["git", "rev-parse", "--show-toplevel"], capture_output=True, text=True).stdout.strip() or os.getcwd()
+
+# Known confined-service signers: {preset: (sops secret name, allowlist path, key_id prefix)}.
+PRESETS = {
+    "lease-signing-authority":      ("aq-lease-signing-key",             "config/aqos/lease-signer-keys.json",         "lease-signer"),
+    "c2-scheduler-context-issuer":  ("c6-scheduler-context-signing-key", "config/aqos/c6-scheduler-signer-keys.json",  "c2-scheduler-context-signer"),
+}
+REPO_FALLBACK_SOPS = "nix/hosts/hyperd/secrets.sops.yaml"
+
+
+def resolve_sops_file(explicit: str | None) -> str:
+    """Find the ACTIVE sops file — the one the rebuild decrypts (`mySystem.secrets.sopsFile`), which
+    `deploy-options.local.nix` typically mkForce-redirects OUT of the repo (e.g. ~/.local/share/...).
+    Targeting the repo path is a classic footgun: edits there never reach the rebuild. Resolution order:
+    explicit flag -> deploy-options.local.nix mkForce -> nix eval of the config -> repo fallback."""
+    if explicit:
+        return explicit
+    dol = os.path.join(REPO, "nix/hosts/hyperd/deploy-options.local.nix")
+    if os.path.exists(dol):
+        m = re.search(r'sopsFile\s*=\s*(?:lib\.)?mkForce\s*"([^"]+)"', open(dol).read())
+        if m:
+            return m.group(1)
+    try:
+        r = subprocess.run(
+            ["nix", "eval", "--raw",
+             ".#nixosConfigurations.hyperd-ai-dev.config.mySystem.secrets.sopsFile"],
+            capture_output=True, text=True, timeout=180, cwd=REPO)
+        if r.returncode == 0 and r.stdout.strip():
+            return r.stdout.strip()
+    except Exception:
+        pass
+    return os.path.join(REPO, REPO_FALLBACK_SOPS)
+
+
+def _die(msg: str, code: int = 1):
+    print(f"aq-provision-signer-key: {msg}", file=sys.stderr)
+    sys.exit(code)
+
+
+def _secure_tmpdir() -> str:
+    for d in (os.environ.get("XDG_RUNTIME_DIR"), "/dev/shm"):
+        if d and os.path.isdir(d) and os.access(d, os.W_OK):
+            return d
+    return tempfile.gettempdir()
+
+
+def _shred(path: str):
+    try:
+        n = os.path.getsize(path)
+        with open(path, "r+b", buffering=0) as fh:
+            fh.write(os.urandom(max(n, 64))); fh.flush(); os.fsync(fh.fileno())
+    except OSError:
+        pass
+    finally:
+        try: os.unlink(path)
+        except OSError: pass
+
+
+def gen_keypair() -> tuple[str, str]:
+    """Return (private_hex, public_hex). private_hex is a raw 32-byte Ed25519 seed, hex-encoded —
+    the exact format `_read_private_key`/the allowlist expect."""
+    from cryptography.hazmat.primitives.asymmetric.ed25519 import Ed25519PrivateKey
+    from cryptography.hazmat.primitives import serialization as s
+    k = Ed25519PrivateKey.generate()
+    priv = k.private_bytes(s.Encoding.Raw, s.PrivateFormat.Raw, s.NoEncryption()).hex()
+    pub = k.public_key().public_bytes(s.Encoding.Raw, s.PublicFormat.Raw).hex()
+    return priv, pub
+
+
+def sops_set_private(sops_file: str, secret_name: str, priv_hex: str) -> bool:
+    """Set `secret_name: <priv_hex>` in the SOPS file WITHOUT the value ever touching argv or shell
+    history. Uses sops's EDITOR hook: `sops <file>` decrypts to a temp, runs our editor (which sets the
+    value read from a 0600 tmpfs file), then re-encrypts with the file's OWN recipients. Verifies the
+    editor actually set it before sops saves."""
+    rundir = _secure_tmpdir()
+    valfd, valpath = tempfile.mkstemp(dir=rundir, prefix=".aqval-")
+    edfd, edpath = tempfile.mkstemp(dir=rundir, prefix=".aqed-", suffix=".py")
+    try:
+        os.fchmod(valfd, 0o600); os.write(valfd, priv_hex.encode()); os.close(valfd)
+        editor_src = (
+            "import os, sys\n"
+            "try:\n"
+            "    import yaml\n"
+            "except Exception:\n"
+            "    yaml = None\n"
+            "val = open(os.environ['AQ_SIGNER_VALUE_FILE']).read().strip()\n"
+            "name = os.environ['AQ_SIGNER_SECRET_NAME']\n"
+            "path = sys.argv[1]\n"
+            "raw = open(path).read()\n"
+            "if yaml is not None:\n"
+            "    data = yaml.safe_load(raw) or {}\n"
+            "    data[name] = val\n"
+            "    with open(path, 'w') as fh: yaml.safe_dump(data, fh, default_flow_style=False, sort_keys=False)\n"
+            "else:\n"
+            "    import re\n"
+            "    line = name + ': ' + val\n"
+            "    pat = re.compile('^' + re.escape(name) + ':.*$', re.M)\n"
+            "    raw = pat.sub(line, raw) if pat.search(raw) else (raw.rstrip() + '\\n' + line + '\\n')\n"
+            "    open(path, 'w').write(raw)\n"
+            "# fail closed if the value did not land\n"
+            "assert val in open(path).read(), 'editor failed to set secret'\n"
+        )
+        os.write(edfd, editor_src.encode()); os.close(edfd)
+        env = {**os.environ,
+               "AQ_SIGNER_VALUE_FILE": valpath,
+               "AQ_SIGNER_SECRET_NAME": secret_name,
+               "EDITOR": f"{sys.executable} {edpath}"}
+        r = subprocess.run(["sops", sops_file], env=env)
+        return r.returncode == 0
+    finally:
+        _shred(valpath); _shred(edpath)
+
+
+def sops_verify_present(sops_file: str, secret_name: str) -> int:
+    """Return the decrypted length of secret_name (0 if absent). Never prints the value."""
+    r = subprocess.run(["sops", "-d", "--extract", f'["{secret_name}"]', sops_file],
+                       capture_output=True, text=True)
+    return len(r.stdout.strip()) if r.returncode == 0 else 0
+
+
+def update_allowlist(path: str, key_id: str, pub_hex: str, rotate: bool):
+    with open(path) as fh:
+        d = json.load(fh)
+    keys = d.get("keys", [])
+    if rotate:
+        for k in keys:
+            if k.get("status") == "active":
+                k["status"] = "retired"
+        keys = [k for k in keys if k.get("key_id") != key_id]
+        keys.append({"key_id": key_id, "ed25519_public_key": pub_hex, "status": "active"})
+    else:
+        matched = False
+        for k in keys:
+            if k.get("key_id") == key_id:
+                k["ed25519_public_key"] = pub_hex; k["status"] = "active"; matched = True
+        if not matched:
+            keys.append({"key_id": key_id, "ed25519_public_key": pub_hex, "status": "active"})
+    d["keys"] = keys
+    d["revision"] = int(d.get("revision", 0)) + 1
+    with open(path, "w") as fh:
+        json.dump(d, fh, indent=2); fh.write("\n")
+
+
+def _self_test() -> int:
+    priv, pub = gen_keypair()
+    assert len(priv) == 64 and len(pub) == 64 and priv != pub
+    # allowlist replace + rotate logic on a temp file
+    import tempfile as _t
+    p = _t.mktemp(suffix=".json")
+    json.dump({"schema_version": "1", "revision": 1,
+               "keys": [{"key_id": "kid-old", "ed25519_public_key": "00"*32, "status": "active"}]}, open(p, "w"))
+    update_allowlist(p, "kid-old", pub, rotate=False)
+    d = json.load(open(p)); assert d["revision"] == 2 and d["keys"][0]["ed25519_public_key"] == pub
+    update_allowlist(p, "kid-new", "aa"*32, rotate=True)
+    d = json.load(open(p))
+    assert d["revision"] == 3
+    assert [k for k in d["keys"] if k["status"] == "active"] == [{"key_id": "kid-new", "ed25519_public_key": "aa"*32, "status": "active"}]
+    assert any(k["key_id"] == "kid-old" and k["status"] == "retired" for k in d["keys"])
+    os.unlink(p)
+    print("aq-provision-signer-key: self-test PASS (keygen + allowlist replace/rotate)")
+    return 0
+
+
+def main(argv=None) -> int:
+    ap = argparse.ArgumentParser(prog="aq-provision-signer-key", description=__doc__,
+                                 formatter_class=argparse.RawDescriptionHelpFormatter)
+    ap.add_argument("--service", choices=sorted(PRESETS), help="known confined-service preset")
+    ap.add_argument("--sops-file", default=None, help="override the active sops file (default: resolved from mySystem.secrets.sopsFile / deploy-options.local.nix)")
+    ap.add_argument("--secret-name", help="SOPS key name (overrides preset)")
+    ap.add_argument("--allowlist", help="verifier allowlist JSON path (overrides preset)")
+    ap.add_argument("--key-id", help="key_id (default: <prefix>-<YYYY-MM>, or a fresh one for --rotate)")
+    ap.add_argument("--rotate", action="store_true", help="append a new active key + deprecate the prior one")
+    ap.add_argument("--dry-run", action="store_true", help="show what would happen; generate/write nothing")
+    ap.add_argument("--self-test", action="store_true", help="logic check only (no sops, no real key)")
+    a = ap.parse_args(argv)
+
+    if a.self_test:
+        return _self_test()
+
+    os.chdir(REPO)
+    sops_file = resolve_sops_file(a.sops_file)
+    secret = a.secret_name; allowlist = a.allowlist; prefix = None
+    if a.service:
+        p_secret, p_allow, prefix = PRESETS[a.service]
+        secret = secret or p_secret; allowlist = allowlist or p_allow
+    if not secret or not allowlist:
+        _die("need --service, or both --secret-name and --allowlist")
+    if not os.path.exists(allowlist):
+        _die(f"allowlist not found: {allowlist}")
+    if not os.path.exists(sops_file):
+        _die(f"resolved sops file does not exist: {sops_file} (override with --sops-file)")
+
+    ym = datetime.now(timezone.utc).strftime("%Y-%m")
+    key_id = a.key_id or (f"{prefix}-{ym}" if prefix else None)
+    if not key_id:
+        _die("need --key-id (no preset prefix available)")
+    if a.rotate and not a.key_id and prefix:
+        # rotation needs a DISTINCT key_id from the current active one
+        key_id = f"{prefix}-{datetime.now(timezone.utc).strftime('%Y-%m-%d-%H%M')}"
+
+    if a.dry_run:
+        print(f"[dry-run] active sops file: {sops_file}")
+        print(f"[dry-run] would generate an Ed25519 keypair, set SOPS['{secret}'] in it,")
+        print(f"[dry-run] {'rotate: deprecate active keys + append' if a.rotate else 'set'} key_id "
+              f"'{key_id}' in {allowlist} (public only), and print the public key.")
+        return 0
+
+    priv, pub = gen_keypair()
+    ok = sops_set_private(sops_file, secret, priv)
+    del priv  # drop from this process asap
+    if not ok:
+        _die("sops set failed — SOPS unchanged. Ensure your age/gpg key is available and sops runs.")
+    got = sops_verify_present(sops_file, secret)
+    if got != 64:
+        _die(f"post-write verify: SOPS['{secret}'] length={got}, expected 64 — aborting before allowlist. "
+             f"Re-run; do not rebuild.")
+    update_allowlist(allowlist, key_id, pub, a.rotate)
+
+    print("aq-provision-signer-key: provisioned.")
+    print(f"  secret (SOPS, private, never shown): {secret}  [verified present, 64 hex]")
+    print(f"  allowlist (public):                  {allowlist}")
+    print(f"  key_id:                              {key_id}")
+    print(f"  public_key:                          {pub}")
+    print("NEXT: sudo nixos-rebuild switch --flake .#hyperd-ai-dev   (re-decrypts /run/secrets; a "
+          "service restart does NOT), then the orchestrator re-validates the live mint round-trip.")
+    return 0
+
+
+if __name__ == "__main__":
+    raise SystemExit(main())
