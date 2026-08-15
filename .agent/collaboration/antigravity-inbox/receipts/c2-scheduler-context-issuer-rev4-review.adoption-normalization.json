@@ -1,0 +1,9 @@
+{
+  "actor": "codex-orchestrator",
+  "normalized_output_hash": "37ce2501f604416281c354ef374956b6cccbf9a6f791b01b25b0e8ca26b0ab4d",
+  "normalization": "removed three trailing ASCII spaces for repository whitespace compliance; semantic content unchanged",
+  "prior_output_hash": "d3d26726d97617f822902b1cf5ec65dfc40d9980161ce482f941851998369d26",
+  "task_id": "c2-scheduler-context-issuer-rev4-review",
+  "ts": "2026-08-15T20:31:00Z",
+  "type": "adoption_normalization"
+}
