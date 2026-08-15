@@ -136,16 +136,21 @@ if last_line.startswith("VERDICT: PASS"):
     run_tier0_gate()
     git_commit()
 elif last_line.startswith("VERDICT: FAIL"):
-    # Reject — do NOT commit; surface to user or re-delegate
+    # Reject — do NOT commit; surface terminal disposition and next-slice descriptor
     log_to_handoff(last_line)
 elif last_line.startswith("VERDICT: REQUEST_REVISION"):
-    # Re-delegate to implementer with specific revision items
-    revision_items = last_line.split("—")[1].strip()
-    re_delegate(implementer, revision_items)
+    # Terminate this subject: map it to a disposition and issue a next-slice descriptor.
+    record_disposition_and_next_slice(last_line)
 elif last_line.startswith("ESCALATION:"):
     # Hold — bring to orchestrator/architect attention
     surface_to_user(last_line)
 ```
+
+Implementation review is terminal: `ACCEPTED`, `IMPLEMENTED_FOLLOWUP_REQUIRED`,
+`ACTIVATION_BLOCKED`, or `REJECTED`. Do not auto-redelegate the same slice. Stable frozen
+criteria admit only critical correctness/security/authority/data-loss/unsafe-activation overrides.
+Planning is bounded draft → parallel batch review → one synthesis → freeze:
+`PLAN_READY`, `PLAN_READY_WITH_FOLLOWUPS`, `PLAN_BLOCKED`, or `PLAN_REJECTED`.
 
 ---
 
@@ -163,3 +168,7 @@ When proxy reviewing (solo operation):
 Acknowledged in HANDOFF.md. Recommend independent reviewer if this change is destructive.]
 VERDICT: PASS — criteria met (proxy review)
 ```
+
+## Terminal disposition SSOT
+
+Planning: `PLAN_READY`, `PLAN_READY_WITH_FOLLOWUPS`, `PLAN_BLOCKED`, `PLAN_REJECTED`. Implementation: `ACCEPTED`, `IMPLEMENTED_FOLLOWUP_REQUIRED`, `ACTIVATION_BLOCKED`, `REJECTED`. Frozen criteria are stable except critical defects. Safe inert-at-rest bytes may commit with `ACTIVATION_BLOCKED` but cannot activate; unsafe-at-rest bytes are `REJECTED`.
