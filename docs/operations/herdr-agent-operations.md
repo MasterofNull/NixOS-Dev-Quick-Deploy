@@ -1,6 +1,6 @@
 # AQ-OS Herdr operator workspace
 
-Status: H1 design prepared; Herdr is not installed or activated yet.
+Status: H1 implementation candidate; the raw Herdr CLI is not exposed or activated.
 Owner: AI Stack Maintainers
 Last Updated: 2026-08-08
 
@@ -77,7 +77,11 @@ alone is not a cancellation signal.
 
 ## Safe inspection commands
 
-H1 provides only read-only inspection:
+After `programs.aqHerdr.enable = true` is separately applied through Home
+Manager, H1 exposes only the read-only `aq-herdr` facade. The raw `herdr`
+binary is deliberately absent from the shared user PATH. These commands do not
+invoke Herdr or connect to its control socket; they report the sealed H1
+build/config boundary:
 
 ```bash
 aq-herdr status
@@ -85,6 +89,9 @@ aq-herdr status --json
 aq-herdr doctor
 aq-herdr version
 ```
+
+`aq-herdr attach` is present only to return the typed `not-activated` result
+with exit status 3. It does not attach, start, restore, or mutate a session.
 
 H2 implementation may add projection and layout inspection. Attach and
 non-dry-run mutation remain unavailable until the separate runtime activation:
