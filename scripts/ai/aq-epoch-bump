@@ -135,6 +135,83 @@ def cmd_submit(args: argparse.Namespace) -> int:
     return 0 if result.get("ok") else 2
 
 
+def _load_owner_key(key_file: str) -> bytes:
+    """Load the owner Ed25519 private seed. If the file is age-encrypted, `age -d` prompts for the
+    passphrase on the controlling TTY — that human passphrase is the factor an AUTONOMOUS AGENT cannot
+    forge, so automating the workflow does NOT let an agent fire the kill-switch. A plaintext key is
+    accepted only with a loud warning (it is agent-readable — not safe for the kill-switch key)."""
+    import subprocess
+    from pathlib import Path as _P
+    raw = _P(key_file).read_bytes()
+    if raw[:21] == b"age-encryption.org/v1" or b"BEGIN AGE ENCRYPTED FILE" in raw[:80]:
+        if not sys.stdin.isatty() and not os.environ.get("AGE_PASSPHRASE"):
+            raise RuntimeError(
+                "age-encrypted owner key needs an interactive passphrase (no TTY) — this is the "
+                "human-in-the-loop control: an autonomous agent cannot fire the C6 kill-switch")
+        r = subprocess.run(["age", "-d", key_file], capture_output=True)
+        if r.returncode != 0:
+            raise RuntimeError("age decrypt failed (wrong passphrase or no TTY for the prompt)")
+        data = r.stdout.strip()
+    else:
+        print("aq-epoch-bump: WARNING — plaintext owner key file. A fleet kill-switch key SHOULD be "
+              "passphrase-encrypted so an autonomous agent cannot use it: `age -p -o owner.key.age owner.key`.",
+              file=sys.stderr)
+        data = raw.strip()
+    try:
+        seed = bytes.fromhex(data.decode("ascii").strip())
+    except (ValueError, UnicodeDecodeError):
+        seed = data if len(data) == 32 else b""
+    if len(seed) != 32:
+        raise RuntimeError("owner key must be a 64-hex or raw-32-byte Ed25519 seed")
+    return seed
+
+
+def cmd_bump(args: argparse.Namespace) -> int:
+    """One-shot owner workflow: build -> sign (with the owner's passphrase-protected key) -> submit to the
+    running authority over its UDS. Removes the copy-bytes/offline-sign/paste-back friction WITHOUT
+    removing the human-in-the-loop control (the passphrase). The private key is read into memory, used,
+    and never printed, logged, or written anywhere."""
+    from cryptography.hazmat.primitives.asymmetric.ed25519 import Ed25519PrivateKey
+    epoch_note = args.expected_epoch
+    now = datetime.now(timezone.utc)
+    request: dict[str, Any] = {
+        "schema_version": re_lib.BUMP_SCHEMA_VERSION,
+        "request_id": args.request_id or f"epoch-bump::{uuid.uuid4()}",
+        "idempotency_key": args.idempotency_key or f"epoch-bump::{uuid.uuid4()}",
+        "issued_at": _iso(now),
+        "expires_at": _iso(now + timedelta(seconds=args.ttl_seconds)),
+        "actor_key_id": args.actor_key_id,
+        "expected_epoch": args.expected_epoch,
+        "reason_code": args.reason_code,
+        "scope": re_lib.SCOPE_FLEET,
+        "signature": "",
+    }
+    try:
+        seed = _load_owner_key(args.key_file)
+    except (RuntimeError, OSError) as exc:
+        print(f"aq-epoch-bump: bump: {exc}", file=sys.stderr)
+        return 1
+    try:
+        signature = Ed25519PrivateKey.from_private_bytes(seed).sign(re_lib.canonical_bump_payload(request))
+    finally:
+        del seed
+    request["signature"] = signature.hex()
+    # submit to the RUNNING authority over its UDS (the CLI's in-process submit targets the 0700
+    # StateDirectory the owner cannot write; the authority applies the verified bump itself).
+    sys.path.insert(0, os.path.join(os.path.dirname(os.path.dirname(os.path.abspath(__file__))), "scripts/ai/lib"))
+    import revocation_epoch_transport as _t
+    try:
+        resp = _t.send_request(args.socket, {"bump": request})
+    except Exception as exc:  # noqa: BLE001
+        print(f"aq-epoch-bump: bump: submit to {args.socket} failed: {exc} (in aq-revocation-epoch-clients?)",
+              file=sys.stderr)
+        return 2
+    if isinstance(resp, dict) and "frame" in resp:
+        resp = resp["frame"]
+    print(json.dumps(resp, indent=2, sort_keys=True))
+    return 0 if isinstance(resp, dict) and resp.get("ok") else 2
+
+
 def build_parser() -> argparse.ArgumentParser:
     p = argparse.ArgumentParser(
         prog="aq-epoch-bump",
@@ -171,6 +248,21 @@ def build_parser() -> argparse.ArgumentParser:
     )
     p_submit.add_argument("--owner-keys", default=str(DEFAULT_OWNER_KEYS_PATH))
     p_submit.set_defaults(func=cmd_submit)
+
+    # One-shot owner workflow: build -> sign (passphrase-protected key) -> submit over the authority UDS.
+    p_bump = sub.add_parser("bump", help="one-shot: build+sign+submit a bump to the running authority (owner-run)")
+    p_bump.add_argument("--actor-key-id", required=True)
+    p_bump.add_argument("--reason-code", required=True, choices=re_lib.REASON_CODES)
+    p_bump.add_argument("--expected-epoch", type=int, required=True, help="the current epoch this bump advances from")
+    p_bump.add_argument("--key-file", required=True,
+                        help="owner Ed25519 private key — an age-passphrase-encrypted file (recommended; the "
+                             "passphrase is the human-in-the-loop the agent cannot forge) or plaintext hex (warned)")
+    p_bump.add_argument("--socket", default="/run/aq-revocation-epoch-authority/control.sock",
+                        help="authority control UDS (must be a member of aq-revocation-epoch-clients)")
+    p_bump.add_argument("--ttl-seconds", type=int, default=3600)
+    p_bump.add_argument("--request-id", default=None)
+    p_bump.add_argument("--idempotency-key", default=None)
+    p_bump.set_defaults(func=cmd_bump)
 
     return p
 
