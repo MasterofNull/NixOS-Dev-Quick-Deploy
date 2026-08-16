@@ -49,6 +49,16 @@ build_head `3f68911f87115973febed0dbccf2881da8c6fb51`). Defects were resolved by
    against the public key; a tampered/foreign-key context DENIES.
 3. Dashboard shows `context_issuer: on`, `status: ok`; flag-OFF byte-parity revert verified in principle.
 
+## Post-activation polish (2026-08-15)
+- **Ledger-reorder DONE:** `mint_scheduler_context` now checks signer availability BEFORE the single-use
+  ledger burn (was burn-then-check), so a transient signer outage no longer consumes a valid lease's
+  one-shot slot. Signing still happens after the ledger record — single-use (record-before-sign) is
+  preserved. Validated: issuer 68/68, ledger 32/32, gate-dispatch 42/42, live mint smoke PASS after
+  restart. Closes the c2-sci-ledger-burn-before-signer-check backlog item.
+- **Open non-blocking:** surface the durable-ledger `recorded`/`replays` counts on the dashboard panel —
+  needs the issuer to expose a stats surface first (the ledger dir is 0700 issuer-owned; the counters are
+  in-process), so not a quick dashboard edit. Tracked follow-up.
+
 ## Revert
 switchboard: remove the two C2-SCI env lines; profile: `enable = false`; rebuild → default-OFF byte-parity.
 The signer key can remain provisioned (unused when disabled).
