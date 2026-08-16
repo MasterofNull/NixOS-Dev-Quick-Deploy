@@ -398,7 +398,15 @@ def mint_scheduler_context(
         if not isinstance(key_id, str) or not key_id:
             return _deny(DENY_KEY_ID_MISSING)
 
-        # 4) Single-use ledger — one scheduler-context per lease, keyed on
+        # 4) Signer availability (fail-closed; no env fallback, no unsigned path). Checked BEFORE the
+        #    single-use ledger burn below so a transient signer outage never CONSUMES a valid lease's
+        #    one-shot slot (the prior order burned the slot, then denied on an unavailable signer ->
+        #    the lease could never mint again). Signing still happens AFTER the ledger record, so
+        #    single-use (record-before-sign; a crash between record and sign cannot double-issue) holds.
+        if not private_key_bytes or not isinstance(private_key_bytes, (bytes, bytearray)):
+            return _deny(DENY_SIGNER_UNAVAILABLE)
+
+        # 5) Single-use ledger — one scheduler-context per lease, keyed on
         #    {lease_id, grant_digest}, NOT per task (design §3 mandate 3).
         ledger_key = (admission["lease_id"], admission["grant_digest"])
         try:
@@ -407,11 +415,6 @@ def mint_scheduler_context(
             return _deny(DENY_LEDGER_UNAVAILABLE)
         if not first_use:
             return _deny(DENY_REPLAY)
-
-        # 5) Signer availability (fail-closed; no env fallback, no
-        #    unsigned path).
-        if not private_key_bytes or not isinstance(private_key_bytes, (bytes, bytearray)):
-            return _deny(DENY_SIGNER_UNAVAILABLE)
 
         moment = now or datetime.now(timezone.utc)
         issued_at = _iso(moment)
