@@ -472,6 +472,13 @@ in {
           # both lines + set c2SchedulerContextIssuer.enable=false → default-OFF byte-parity.
           "CAPABILITY_SCHEDULER_CONTEXT_ISSUER=1"
           "AQ_SCHEDULER_CONTEXT_SOCKET_PATH=${cfg.aiStack.c2SchedulerContextIssuer.socketPath}"
+          # C6 activation (2026-08-15): the slot_queue revocation fence + the gate's epoch resolver read
+          # the authoritative epoch from the revocation-epoch authority UDS (closes C6-B3 review CP-3, the
+          # deferred switchboard socket injection). primaryUser reaches it via aq-revocation-epoch-clients.
+          # With the flag ON, a signed owner epoch-bump revokes held scheduler reservations (the fleet
+          # kill-switch). REVERT: remove both lines + set CAPABILITY_SCHEDULER_LEASE_GATE default → OFF byte-parity.
+          "CAPABILITY_SCHEDULER_LEASE_GATE=1"
+          "AQ_REVOCATION_EPOCH_SOCKET_PATH=${cfg.aiStack.revocationEpochAuthority.socketPath}"
           "PORT=${toString swb.port}"
           "HOST=127.0.0.1"
           "LLAMA_CPP_URL=${llamaUrl}"
