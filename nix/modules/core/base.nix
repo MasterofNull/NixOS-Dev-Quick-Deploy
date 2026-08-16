@@ -57,13 +57,37 @@
   # (#!/usr/bin/env python3 -> /run/current-system/sw/bin/python3), NOT the
   # home-manager withPackages python (which is not exposed as python3 on PATH).
   # The local-agent tool infrastructure imports httpx (required) + redis (lazy in
-  # collective_memory); governance gates parse yaml. Bare `pkgs.python3` lacks
-  # these, so the agentic loop fast-fails "No module named 'httpx'". Provision a
-  # withPackages python and replace the bare one below.
+  # collective_memory); governance gates parse yaml; the tier0 canon-compiler +
+  # evidence-collector gates import pydantic (without it tier0 --pre-commit FAILs
+  # "No module named 'pydantic'" and BLOCKS all commits — see issues-backlog
+  # tier0-gates-blocked-missing-pydantic). Bare `pkgs.python3` lacks these, so the
+  # agentic loop / gates fast-fail. Provision a withPackages python and replace the
+  # bare one below.
   cliPython = pkgs.python3.withPackages (ps: with ps; [
     httpx
     pyyaml
     redis
+    # Governance/QA gate + Foundation-C crypto dep set. Without these, tier0
+    # --pre-commit FAILs and BLOCKS all commits (recurring "missing dep across
+    # rebuilds" churn — see issues-backlog tier0-gates-blocked-missing-pydantic):
+    #   pydantic     — canon-compiler + evidence-collector gates
+    #   jsonschema   — 28 governance/QA validators (canon, evidence, phase0 L1A/L2A, ledger, projections)
+    #   pytest       — pytest-driven phase0 checks (round-decision authz, scheduler/backpressure suites)
+    #   cryptography — Ed25519 sign/verify in the crypto CLIs (aq-epoch-bump, aq-provision-signer-key) + lease/epoch libs
+    pydantic
+    jsonschema
+    pytest
+    cryptography
+    # Service modules the phase0 QA suite imports to test flag-off/wiring behavior
+    # (switchboard, dashboard api, aq-tui-dashboard, local-inference contracts)
+    # pull these; without them phase0 checks 0.10.29/30/37-39/42/44 error on import:
+    #   fastapi + uvicorn — switchboard + command-center dashboard api
+    #   aiohttp           — local-inference contract clients
+    #   rich              — aq-tui-dashboard (agent-ops projection test)
+    fastapi
+    uvicorn
+    aiohttp
+    rich
   ]);
   cliPythonNames = [ "python3" "python3Full" "python312" "python313" ];
   mergedPackageNames = lib.unique (basePackageNames ++ cfg.profileData.systemPackageNames);

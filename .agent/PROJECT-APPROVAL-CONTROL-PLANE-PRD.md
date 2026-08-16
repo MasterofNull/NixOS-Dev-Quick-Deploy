@@ -2,7 +2,7 @@
 doc_type: prd
 id: approval-control-plane
 title: Approval Control Plane PRD — beginner-friendly human-in-the-loop
-revision: R1
+revision: R2
 status: draft
 owner: hyperd
 date: 2026-08-15
@@ -89,4 +89,35 @@ Builds on the ratified operator-context contract-zero + integration contract #4 
 validation exposed the exact friction this closes; the C6 production owner-key custody is delivered here
 (ACP-P1/P3). Immediate blocked-on: independent design review + owner ratification of this PRD before ACP-P0.
 
-RECORD: PREPARED_ONLY; independent review + owner ratification required before build.
+## 8. Revision R2 — folds the ACP PRD advisory review (Antigravity, verified)
+The R1 review confirmed "RIGHT shape to build" and surfaced real security holes + missing pieces, folded here.
+
+- **WYSIWYS / payload-substitution (HIGH) — R4 tightened.** The signing service must NOT accept
+  agent-supplied bytes/hash to sign. It fetches the canonical `aq.approval-request.v1` record ITSELF by
+  request-id from a root-owned, agent-inaccessible state directory, parses the plain-language content, and
+  derives the WebAuthn challenge FROM that record — so a compromised agent cannot show "approve X" while
+  submitting "sign Y". What the human approves in the surface is provably what gets signed.
+- **Assertion replay / challenge reuse (MED) — R4.** Every request gets a fresh, single-use, request-bound
+  challenge; an assertion is valid for exactly one request-id and is burned on use (durable single-use
+  ledger, same pattern as the C2-SCI/epoch replay guards). No assertion can be replayed for another action.
+- **NO agent-forceable downgrade/override (HIGH) — invariant added.** There is NO manual offline-signing /
+  SOPS-CLI fallback that an agent can force by disrupting the WebAuthn service. The engine atoms
+  (aq-provision-signer-key, aq-epoch-bump, aq-event emit) are internal-only, never an operator "emergency
+  override" the agent can push the human into. If WebAuthn is unavailable, the system FAILS CLOSED (no
+  authorization), never falls back to a crypto-by-hand path.
+- **Setup friction (beginner-friendly at step ONE) — ACP-P1.** WebAuthn/FIDO2 device access must be shipped
+  DECLARATIVELY in the baseline ai-stack module (udev/pam/`hardware`-level FIDO2 defaults) so the owner never
+  configures certs, udev rules, or CLI enrollment. Enrollment is itself a plain-language flow, not a lesson.
+- **NEW slice — ACP-P1b lost-authenticator recovery.** Enrollment registers a PRIMARY + at least one BACKUP
+  hardware authenticator; a declarative Nix-level recovery bootstrap covers total loss. No single point of
+  human-authenticator failure locks the owner out of their own factory.
+- **NEW slice — ACP-P4 headless / rescue authorization.** WebAuthn needs a browser; a headless VT / NixOS
+  recovery shell cannot show a prompt. Ship a CLI WebAuthn assertion client (`fido2-assert`-based) so the
+  owner can authorize a revoke/recover from a rescue console — same request-bound single-use challenge, no
+  crypto-by-hand.
+
+Revised slice order: ACP-P0 -> P1 (+P1b recovery) -> P2 surface -> P3 runbooks -> P4 headless rescue.
+
+RECORD: PREPARED_ONLY; independent review + owner ratification required before build. R2 folds the
+Antigravity advisory (verified); local review failed transiently (llama.cpp connection drop, model now
+healthy) and Codex's binding design review is queued for its return (Aug 21).
