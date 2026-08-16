@@ -49,6 +49,30 @@ does NOT), then re-validate the live mint round-trip.
 - Rotation is first-class: `--rotate` appends a new active key and marks prior actives `retired` (the gate
   re-reads the allowlist per call, so a retired key stops verifying without a restart).
 
+## Epoch bump / revoke — the one-shot (`aq-epoch-bump bump`)
+The fleet kill-switch (advance the revocation epoch → revoke held leases) used to be a manual
+build→copy-bytes→sign-offline→paste→submit dance. `aq-epoch-bump bump` collapses it to one owner command:
+build → sign → submit over the running authority's UDS.
+```bash
+# one-time: passphrase-protect the offline owner key so an autonomous agent can never fire it
+age -p -o ~/.config/aq/c6-owner.key.age <owner-private-hex-file>
+# then, per revoke/rotation (owner-run; prompts for the passphrase):
+aq-epoch-bump bump --actor-key-id owner-2026-08 --reason-code operator-revoke --expected-epoch <N> \
+  --key-file ~/.config/aq/c6-owner.key.age
+```
+**Human-in-the-loop preserved:** the age passphrase is the factor an autonomous agent cannot forge — it is
+prompted interactively, so a non-interactive agent (no TTY, no passphrase) cannot decrypt the key and cannot
+fire the kill-switch. A plaintext `--key-file` is accepted only with a warning (it is agent-readable — do not
+use it for the kill-switch key). The private key is read into memory, used, and never printed/logged/written.
+
+## Where this is heading (repeatable operator workflows, not a drawer of one-shots)
+`aq-provision-signer-key` and `aq-epoch-bump bump` are the ATOMS of a common shape: owner-authorized,
+human-factor-gated, multi-step (build → authorize → apply → validate). The next layer is a NAMED, repeatable,
+idempotent operator-workflow/runbook layer (activate-signer-service, rotate-key, epoch-revoke, emit-grant,
+activate-foundation-c-slice) with ONE unified human-factor auth gating owner steps — the ACTION side of the
+HERDR / operator-context work (integration contract #4: human-controls → audited AQ action paths). Tracked
+self-improvement direction; the one-shots feed it.
+
 ## Presets
 `config/aqos/*-signer-keys.json` + the SOPS secret name per service, in the `PRESETS` map. Add a service by
 extending that map (secret name, allowlist path, key_id prefix).
