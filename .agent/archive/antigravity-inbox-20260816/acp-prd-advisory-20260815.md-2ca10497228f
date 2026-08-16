@@ -1,0 +1,26 @@
+# A2A advisory task for Antigravity — Approval Control Plane PRD (R1) design review
+
+Dropped: 2026-08-15T23:32:00Z
+output_file: .agents/plans/herdr-agent-operations/ANTIGRAVITY-ACP-PRD-ADVISORY-20260815.md
+
+Respond by writing only `.agents/plans/herdr-agent-operations/ANTIGRAVITY-ACP-PRD-ADVISORY-20260815.md`.
+
+SCOPE-STOP: independent ADVISORY design/security review only. Authorize nothing, change no code, touch no
+service/key/secret/runtime, do not stage or commit. NON-GATING — verified before use.
+
+The owner set a HARD requirement: human-in-the-loop must be BEGINNER-FRIENDLY via secure automated control
+surfaces (plain-language approve; system does ALL crypto) — NOT the current expert model (SOPS/age/Ed25519/
+hashes/offline-signing). This PRD is the design for that.
+
+Subject: `.agent/PROJECT-APPROVAL-CONTROL-PLANE-PRD.md` (sha256 e61b3387c1ea609847a968c78e87487b8004d5bc6b673ad9e19865f5755347d2).
+Context: memory feedback-beginner-friendly-human-control-surface; operator-context contract-zero + integration
+contract #4 (human-controls -> audited AQ actions).
+
+Assess (short, concrete): (1) does it truly deliver beginner-friendly/no-crypto/no-coaching, or does a
+beginner still hit keys/hashes/CLIs? (2) is the security invariant sound — human authorizes + agent-cannot-
+forge — via WebAuthn/FIDO2 + a WebAuthn-gated signing service (agent can invoke but cannot get a signature/
+key)? name any hole (assertion replay, agent-gets-signature/key, downgrade). (3) is it correctly the ACTION
+side of operator-context (not a second authority; canonical AQ stays authoritative; audited paths)? (4) are
+the 4 slices (P0 approval record; P1 WebAuthn signing service; P2 surface; P3 runbooks) the right
+decomposition + order — anything missing (lost-authenticator recovery, multi-owner, degraded/offline mode,
+per-approval attestation)? Bulleted findings + one-line: is this the RIGHT shape to build?
