@@ -1,0 +1,1 @@
+{"records": [{"actor": "owner-manual", "exit_code": 0, "generation": "664284bc2e1c349bd5c3dd1c00329eada0a5e32bf923248240379b233761b04f", "method": "cli-nudge-ok", "non_passive": true, "task_id": "herdr-escalation-adjudication-20260816", "ts": "2026-08-16T18:26:30.139007+00:00", "type": "wake_attempt"}], "task_id": "herdr-escalation-adjudication-20260816"}
