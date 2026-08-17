@@ -23,7 +23,39 @@ _STATUS_PCT_FLOOR = {"ACTIVATED": 100, "SHIPPED": 100, "BLOCKED": 0, "FROZEN": 2
                      "IN-PROGRESS": 50, "DESIGNED": 10, "NOT-STARTED": 0}
 
 
+def _ensure_deep() -> None:
+    """A shallow local clone silently starves the git-log ground truth and makes
+    every projection UNDER-report (a SHIPPED slice reads NOT-STARTED). Something on
+    this host periodically re-shallows the repo, so auto-deepen defensively before
+    projecting. Best-effort + bounded; warns to stderr if it can't deepen."""
+    try:
+        shallow = subprocess.run(["git", "-C", str(REPO), "rev-parse", "--is-shallow-repository"],
+                                 capture_output=True, text=True, timeout=10).stdout.strip()
+    except Exception:
+        return
+    if shallow != "true":
+        return
+    print("aq-pm-tracker: shallow clone detected — auto-deepening to restore ground truth...",
+          file=sys.stderr)
+    for cmd in (["git", "-C", str(REPO), "fetch", "--unshallow", "origin"],
+                ["git", "-C", str(REPO), "fetch", "--depth=1000", "origin"]):
+        try:
+            subprocess.run(cmd, capture_output=True, text=True, timeout=180)
+        except Exception:
+            continue
+        try:
+            if subprocess.run(["git", "-C", str(REPO), "rev-parse", "--is-shallow-repository"],
+                              capture_output=True, text=True, timeout=10).stdout.strip() != "true":
+                return
+        except Exception:
+            return
+    print("aq-pm-tracker: WARNING — clone still shallow; projection may under-report. "
+          "Run `git fetch --unshallow origin` (see issues-backlog: local-clone-shallow).",
+          file=sys.stderr)
+
+
 def _git_log() -> str:
+    _ensure_deep()
     try:
         return subprocess.run(["git", "-C", str(REPO), "log", "--oneline", "-n", "5000"],
                               capture_output=True, text=True, timeout=30).stdout
