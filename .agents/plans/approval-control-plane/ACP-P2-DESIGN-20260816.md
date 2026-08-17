@@ -72,6 +72,21 @@ service signs and the executor runs (P0 finding #7 + P1 invariant 6), so the car
 - **state-honesty** — pending/approved/running/done/denied/expired/failed each render a truthful,
   plain-language state; no false "done".
 
+## Review fold — local Qwen (`n147vs`, verdict: Layer-1/Details + approve flow sound; hardenings)
+- **Plain-language lint on Layer-1 (beyond the crypto privacy scan).** P0 forbids hex/key/path in
+  `summary`, but plain *jargon* ("issuer", "context", "epoch") isn't crypto yet still confuses a
+  beginner. Runbook summary templates (P0) must be written in true plain language; add a review check
+  that Layer-1 text avoids unexplained system terms. The surface renders faithfully; the plainness is
+  enforced at the template.
+- **Real-time signer status — no "pending forever".** The card reflects the live P1 signer/executor
+  state (awaiting-tap / verifying / running step k/n / done / failed), driven by the operator-context
+  projection, so a stalled approval is visibly stalled with a next action, never a silent spinner.
+- **a11y specifics (added to the acceptance bar).** Approve/Deny carry descriptive screen-reader labels
+  ("Approve: activate the scheduler-context service"); focus moves predictably after approval (to the
+  result/toast) and returns sanely on cancel; WebAuthn timeout/cancel is an explicit, actionable error
+  state ("No response from your security key — try again"); AA contrast verified for every impact card
+  variant (low/medium/high) in both themes.
+
 ## Scope fence (NOT in P2)
 No P1 service internals (consumes its contract), no runbook engine (P3), no recovery (P1b), no headless
 CLI (P4). P2 is the surface: read projection -> render cards -> approve/deny -> call signer -> reflect
