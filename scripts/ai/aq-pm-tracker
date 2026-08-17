@@ -120,6 +120,17 @@ def _project_systemd(unit: str, accepted: bool) -> tuple[str, int]:
     return ("DESIGNED", 15)
 
 
+def _project_command(cmd: str, accepted: bool) -> tuple[str, int]:
+    """Honest tier for a tool by presence on PATH (or an absolute file). PRESENT =
+    integrated-but-unvalidated (a binary existing proves installed, not that it
+    works or is wired); MISSING = not integrated. Never complete w/o sign-off."""
+    import shutil
+    present = bool(shutil.which(cmd)) or (REPO / cmd).is_file() or Path(cmd).is_file()
+    if not present:
+        return ("NOT-STARTED", 0)
+    return ("SHIPPED", 100) if accepted else ("IN-PROGRESS", 55)
+
+
 def project_item(item: dict, gitlog: str, grants: str) -> tuple[str, int]:
     det = item.get("detection", {}) or {}
     accepted = (item.get("acceptance") or {}).get("status") == "accepted"
@@ -128,6 +139,10 @@ def project_item(item: dict, gitlog: str, grants: str) -> tuple[str, int]:
     unit = det.get("systemd_unit")
     if unit:
         return _project_systemd(unit, accepted)
+    # Ground-truth tool-presence projection (tools domain).
+    cmd = det.get("command")
+    if cmd:
+        return _project_command(cmd, accepted)
 
     hits = sum(gitlog.count(s) for s in (det.get("commit_match") or []))
     freeze = det.get("freeze_record")
