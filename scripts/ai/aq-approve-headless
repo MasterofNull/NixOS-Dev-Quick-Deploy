@@ -1,0 +1,563 @@
+#!/usr/bin/env python3
+"""aq-approve-headless — Approval Control Plane P4 headless/rescue authorization CLI.
+
+Implements `.agents/plans/approval-control-plane/ACP-P4-DESIGN-20260816.md`: lets the owner
+authorize a critical `aq.approval-request.v1` action from a console with NO browser (SSH
+session, headless VT, NixOS recovery shell) using the SAME security guarantees as the P2 web
+path. Predecessor: `scripts/ai/lib/approval_signer.py` (P1) — this CLI drives the IDENTICAL
+`ApprovalSigner.begin_challenge` / `ApprovalSigner.sign_request` methods P1 already built and
+P2's dashboard route (`dashboard/backend/api/routes/approvals.py`) already wraps for the
+browser path. P4 changes only WHERE the human-factor ceremony runs (a local hidraw FIDO2
+client instead of `navigator.credentials.get()` in a browser) — never the authorization
+semantics: WYSIWYS, request_id-bound single-use, fail-closed, no-downgrade all hold unchanged.
+
+NAMING NOTE: `scripts/ai/aq-approve` already exists and is WIRED (nix/modules/roles/ai-stack.nix
+`writeShellScriptBin`, referenced by `aq-alerts`/`aq-chat`, gated by
+`scripts/testing/harness_qa/phases/phase0.py` check 86.5) for a DIFFERENT, unrelated purpose —
+Phase 86 `human_gate` alert approval (`<alert-id>`, attention_queue-backed). That is a live
+production tool; this build does not touch it. This ACP-P4 CLI ships as `aq-approve-headless`
+instead. See `.agents/plans/approval-control-plane/ACP-P4-BUILD-20260817.md` for the full note;
+renaming the design doc's chosen name to avoid the collision (or reconciling the two tools) is a
+decision for the orchestrator/owner, not made unilaterally here. Nothing here is wired into
+`ai-stack.nix`/QA yet either way (Activation Gate: build-only, default-OFF).
+
+Human-factor ceremony (design "Design" step 1-3):
+  1. `list` — enumerate pending requests in PLAIN LANGUAGE ONLY (Layer-1: the prep doc's
+     `list_header` + `request_line_format` verbatim, i.e. exactly "{n}. {title}" per line — NEVER
+     technical_trail/hex/paths in the default view). `--details` additionally shows the Layer-3
+     drill-in (summary why/impact/reversible + technical_trail + binding.canonical_hash) — an
+     explicit opt-in, never the default.
+  2. `approve <request_id>` — begins the challenge via the SAME `ApprovalSigner` class P1 built,
+     prints the prep doc's `approve_prompt` copy, runs a REAL FIDO2 GetAssertion locally against a
+     real hidraw USB security key (`HidrawFido2Client`, python-fido2's `Ctap2`/`Fido2Client` over
+     `CtapHidDevice`), and hands that assertion to `ApprovalSigner.sign_request` — the identical
+     verification path (allowlist lookup, challenge match, user_verification=required, anti-clone,
+     single-use + executed-id ledgers) a browser-driven P2 approval goes through. On success prints
+     the prep doc's `success_message`; on ANY failure (no device, wrong/expired challenge, unknown
+     or revoked credential, no user verification) prints a plain-language denial and signs NOTHING.
+  3. `deny <request_id>` — pending -> denied. No assertion, no signer call.
+
+No-passphrase-fallback (design invariant, PRD R2): there is NO passphrase, key-file, or offline
+signing path anywhere in this file as a SUBSTITUTE for the human factor. The only thing this CLI
+ever does to obtain proof-of-presence is drive a real hardware FIDO2 ceremony via
+`HidrawFido2Client` — an agent invoking this CLI without the physical authenticator present (and,
+for `user_verification=required`, without passing its on-device UV check) cannot produce a
+signature, full stop; `ApprovalSigner.sign_request` verifies that independently regardless of
+anything this CLI does. `--owner-key-path` (below) is NOT a human-factor bypass: it supplies the
+service's own Ed25519 SIGNING key (the same `owner_key: bytes` parameter
+`approval_signer.ApprovalSigner.sign_request` has always required — see that module's docstring:
+"the owner Ed25519 private key is handed in as `owner_key: bytes` by that future service wrapper").
+`sign_request` never signs with it until AFTER a verified, fresh, request-bound, user-verified
+hardware assertion clears every check; loading it earlier changes nothing about that gate. A
+FIDO2 CTAP2 PIN (via `_CliUserInteraction.request_pin`, prompted locally, never stored) is part of
+the WebAuthn standard's OWN on-device user-verification mechanism, not a substitute for it: no PIN,
+however correct, produces a valid assertion without the physical authenticator present.
+
+SCOPE FENCE (ACP-P4-DESIGN "Scope fence" + task bounds): no systemd/Nix unit, no declarative udev
+rule (documented below in `HidrawFido2Client`'s docstring instead — a live deployment must add one
+declaratively per Rule 13, NixOS declarative-only), no live request store (`FixtureApprovalStore`
+below is an offline placeholder, exactly mirroring the pattern
+`dashboard/backend/api/routes/approvals.py`'s P2 build already established with its own
+`FixtureApprovalStore`/`configure_store()` seam — a future deployment supplies a real
+`ApprovalStore`), no browser UI (P2, already built), no recovery/registration (P1b). Default-OFF:
+nothing here is invoked from any live path, service unit, or QA gate.
+"""
+
+from __future__ import annotations
+
+import argparse
+import getpass
+import os
+import sys
+from dataclasses import dataclass
+from pathlib import Path
+from typing import Any, Callable, Dict, List, Mapping, Optional, Protocol, Sequence
+
+_HERE = Path(__file__).resolve().parent
+_REPO_ROOT = _HERE.parent.parent
+_LIB_DIR = _HERE / "lib"
+if str(_LIB_DIR) not in sys.path:
+    sys.path.insert(0, str(_LIB_DIR))
+
+import approval_request as AR  # noqa: E402
+import approval_signer as AS  # noqa: E402
+import fido2.webauthn as w  # noqa: E402
+from fido2.client import DefaultClientDataCollector, Fido2Client, UserInteraction  # noqa: E402
+from fido2.hid import CtapHidDevice  # noqa: E402
+
+# --------------------------------------------------------------------------
+# P4 headless CLI copy — VERBATIM from ACP-PREP-COPY-20260816.md "P4 headless
+# CLI copy (aq-approve)". Do not paraphrase; any wording change must land in
+# the prep doc + here together.
+# --------------------------------------------------------------------------
+
+PREP_COPY: Dict[str, str] = {
+    "list_header": "Pending Approvals",
+    "request_line_format": "{n}. {title}",
+    "approve_prompt": "Please touch the metal button on your security key when it lights up.",
+    "success_message": "Approved successfully.",
+    "denied_message": "Request denied.",
+    "no_key_message": "No security key detected. Please plug one in and try again.",
+}
+
+_ALREADY_DONE_MESSAGE = "This request was already approved and carried out."
+
+# `ApprovalSigner`/`sign_request` denial reasons that mean "there was no
+# usable hardware credential to complete this with" -> the prep no_key
+# message reads truer than the generic denied message for these.
+_NO_KEY_REASONS = frozenset(
+    {
+        AS.DENY_ASSERTION_MISSING,
+        AS.DENY_UNKNOWN_CREDENTIAL,
+        AS.DENY_CREDENTIAL_NOT_ACTIVE,
+        AS.DENY_ALLOWLIST_UNAVAILABLE,
+    }
+)
+_ALREADY_DONE_REASONS = frozenset({AS.DENY_EXECUTED_REPLAY, AS.DENY_CHALLENGE_REPLAY})
+
+
+def _plain_deny_message(reason: str) -> str:
+    """Map a typed `approval_signer` denial reason to plain language. Every
+    `DENY_*`/`CHALLENGE_*` reason is a safe, hand-picked lowercase-hyphen
+    token (see `approval_signer.py`'s vocabulary) — never a hash, path, or
+    key id — so surfacing it as a parenthetical fallback for the reasons not
+    explicitly mapped below is still within the "no hex/path in the default
+    view" privacy boundary; it is not the primary message."""
+    if reason in _NO_KEY_REASONS:
+        return PREP_COPY["no_key_message"]
+    if reason in _ALREADY_DONE_REASONS:
+        return _ALREADY_DONE_MESSAGE
+    return f"{PREP_COPY['denied_message']} ({reason})"
+
+
+# --------------------------------------------------------------------------
+# ApprovalStore — injected record source (design "no live request store").
+# Same Protocol shape `dashboard/backend/api/routes/approvals.py`'s P2 build
+# already established (mirrored here, not imported — this file must not
+# depend on `dashboard/`, which another lane may be actively changing). A
+# real deployment supplies a real `ApprovalStore` implementation; this CLI
+# ships `FixtureApprovalStore` as its offline default, exactly as P2 does.
+# --------------------------------------------------------------------------
+
+
+class ApprovalStoreError(Exception):
+    def __init__(self, reason: str) -> None:
+        super().__init__(reason)
+        self.reason = reason
+
+
+class ApprovalStore(Protocol):
+    def list_pending(self) -> List[dict]: ...
+
+    def get(self, request_id: str) -> Optional[dict]: ...
+
+    def transition(self, request_id: str, new_status: str, *, actor: str) -> dict: ...
+
+
+def _default_fixture_records() -> List[dict]:
+    return [
+        AR.create_request(
+            request_id="01J8K9M2N3P4Q5R6S7T8U9V0A1",
+            created_by="fixture-seed",
+            runbook="restart-service",
+            params={"service": "hybrid-coordinator"},
+        ),
+        AR.create_request(
+            request_id="01J8K9M2N3P4Q5R6S7T8U9V0B2",
+            created_by="fixture-seed",
+            runbook="activate-signer-service",
+            params={"service": "aidb"},
+        ),
+    ]
+
+
+class FixtureApprovalStore:
+    """In-memory `ApprovalStore` — FIXTURE/DEMO ONLY, no disk state beyond
+    the golden fixtures. A live deployment replaces this with a real
+    projection over the operator-context store (same seam P2 documents)."""
+
+    def __init__(self, records: Optional[List[dict]] = None) -> None:
+        seed = records if records is not None else _default_fixture_records()
+        self._records: Dict[str, dict] = {r["request_id"]: r for r in seed}
+
+    def list_pending(self) -> List[dict]:
+        return [r for r in self._records.values() if r["status"] == AR.STATUS_PENDING]
+
+    def get(self, request_id: str) -> Optional[dict]:
+        return self._records.get(request_id)
+
+    def transition(self, request_id: str, new_status: str, *, actor: str) -> dict:
+        record = self._records.get(request_id)
+        if record is None:
+            raise ApprovalStoreError("not-found")
+        new_record, _event = AR.transition(record, new_status, actor=actor)
+        self._records[request_id] = new_record
+        return new_record
+
+
+# --------------------------------------------------------------------------
+# HidrawFido2Client — the ONLY authenticator this CLI ever constructs. No
+# software/virtual authenticator anywhere in this file or importable from
+# it; that stand-in for testing lives exclusively in
+# scripts/testing/test-aq-approve-headless.py, injected into `cmd_approve`
+# via its `get_assertion` parameter, never via this class.
+# --------------------------------------------------------------------------
+
+
+class _CliUserInteraction(UserInteraction):
+    """Local console human-factor prompts for the real python-fido2 ceremony.
+
+    `request_pin` prompts for a CTAP2 clientPIN when the connected
+    authenticator requires PIN-based user verification instead of (or in
+    addition to) an on-device biometric/touch check. This is the WebAuthn/
+    CTAP2 standard's OWN user-verification mechanism, scoped to unlocking
+    THIS physical device's own signing operation — it is not a substitute
+    for the hardware ceremony PRD R2 forbids downgrading to: without the
+    authenticator physically present, no PIN (correct or not) produces a
+    valid assertion, so this is not an "agent-forceable" path either — an
+    agent with no console/TTY gets `getpass` failing closed (`None`,
+    handled as ceremony-cancelled) rather than a fabricated PIN.
+    """
+
+    def prompt_up(self) -> None:  # pragma: no cover - device-driven callback
+        return None
+
+    def request_pin(self, permissions, rp_id):  # noqa: ANN001 - fido2 lib types
+        try:
+            return getpass.getpass("FIDO2 PIN: ")
+        except (EOFError, KeyboardInterrupt, OSError):
+            return None
+
+    def request_uv(self, permissions, rp_id) -> bool:  # noqa: ANN001 - fido2 lib types
+        return True
+
+
+class HidrawFido2Client:
+    """Production FIDO2 hidraw authenticator client — enumerates real USB
+    HID FIDO2 devices (`fido2.hid.CtapHidDevice.list_devices()`) and drives
+    python-fido2's REAL GetAssertion ceremony (`fido2.client.Fido2Client`).
+    No browser/RP-origin round trip exists here (design "P4 FIDO2 headless
+    reference" gotcha): this CLI IS the WebAuthn client, so `get_assertion`
+    is called with the SAME request-bound challenge
+    `ApprovalSigner.begin_challenge` derived, and the resulting
+    `AuthenticationResponse` is handed straight to
+    `ApprovalSigner.sign_request` unmodified.
+
+    DECLARATIVE FOLLOW-UP (documented per design "Rescue-console note" +
+    scope fence "no declarative udev" — NOT shipped by this build): reading
+    a USB hidraw FIDO2 device node requires the invoking user to have
+    kernel-level access to it. A live deployment must add a NixOS
+    `services.udev.extraRules` entry declaratively (Rule 13 — NixOS
+    declarative-only; no runtime `chmod`/`udevadm trigger` workaround),
+    granting a dedicated group access to the FIDO2 HID usage page, e.g.:
+        SUBSYSTEM=="hidraw", KERNEL=="hidraw*", \\
+          ATTRS{idVendor}=="<vid>", ATTRS{idProduct}=="<pid>", \\
+          TAG+="uaccess", GROUP="approval-operators", MODE="0660"
+    (or the vendor-neutral FIDO_ALLOWED-usage-page udev snippet upstream
+    python-fido2/libfido2 ship). Until that rule exists, `list_devices()`
+    below legitimately returns nothing for a non-privileged user — this
+    fails closed into `no_key_message`, never a crash.
+    """
+
+    def __init__(self) -> None:
+        self._interaction = _CliUserInteraction()
+
+    def get_assertion(
+        self,
+        *,
+        challenge: bytes,
+        rp_id: str,
+        credential_ids: Sequence[bytes],
+        user_verification: str = "required",
+    ) -> Optional[w.AuthenticationResponse]:
+        try:
+            devices = list(CtapHidDevice.list_devices())
+        except Exception:  # noqa: BLE001 - any enumeration fault -> no key found
+            return None
+        if not devices:
+            return None
+
+        origin = f"https://{rp_id}"
+        collector = DefaultClientDataCollector(origin=origin)
+        descriptors = [
+            w.PublicKeyCredentialDescriptor(type=w.PublicKeyCredentialType.PUBLIC_KEY, id=cid)
+            for cid in credential_ids
+        ]
+        options = w.PublicKeyCredentialRequestOptions(
+            challenge=challenge,
+            rp_id=rp_id,
+            allow_credentials=descriptors or None,
+            user_verification=w.UserVerificationRequirement(user_verification),
+        )
+        for device in devices:
+            try:
+                client = Fido2Client(device, collector, user_interaction=self._interaction)
+                selection = client.get_assertion(options)
+            except Exception:  # noqa: BLE001 - this device could not complete it, try the next
+                continue
+            assertions = selection.get_assertions()
+            if assertions:
+                return selection.get_response(0)
+        return None
+
+
+# --------------------------------------------------------------------------
+# Core command logic — pure w.r.t. its injected `store`/`signer`/
+# `get_assertion`, so it is exercisable with a test-only software
+# authenticator (or a `FixtureApprovalStore`/`ApprovalSigner` pair backed by
+# temp dirs) without ever touching real hardware or `main()`'s wiring.
+# --------------------------------------------------------------------------
+
+
+def _print_details(record: Mapping[str, Any], *, out) -> None:
+    summary = record["summary"]
+    trail = record["technical_trail"]
+    print(f"     request_id:  {record['request_id']}", file=out)
+    print(f"     status:      {record['status']}", file=out)
+    print(f"     created_at:  {record['created_at']}", file=out)
+    print(f"     what:        {summary['what']}", file=out)
+    print(f"     why:         {summary['why']}", file=out)
+    print(f"     impact:      {summary['impact']}", file=out)
+    print(f"     reversible:  {summary['reversible']}", file=out)
+    print(f"     runbook:     {record['action_manifest']['runbook']}", file=out)
+    print(f"     target_files:{trail['target_files']}", file=out)
+    print(f"     design_hash: {trail['design_sha256']}", file=out)
+    print(f"     canonical_hash: {record['binding']['canonical_hash']}", file=out)
+
+
+def cmd_list(store: ApprovalStore, *, details: bool = False, out=sys.stdout) -> int:
+    pending = store.list_pending()
+    print(PREP_COPY["list_header"], file=out)
+    if not pending:
+        print("  (none)", file=out)
+        return 0
+    for n, record in enumerate(pending, start=1):
+        title = record["summary"]["title"]
+        print("  " + PREP_COPY["request_line_format"].format(n=n, title=title), file=out)
+        if details:
+            _print_details(record, out=out)
+    return 0
+
+
+def cmd_deny(store: ApprovalStore, request_id: str, *, actor: str = "owner", out=sys.stdout) -> int:
+    record = store.get(request_id)
+    if record is None:
+        print(f"Request not found: {request_id}", file=out)
+        return 1
+    if record["status"] != AR.STATUS_PENDING:
+        print(_ALREADY_DONE_MESSAGE, file=out)
+        return 1
+    try:
+        store.transition(request_id, AR.STATUS_DENIED, actor=actor)
+    except (AR.ApprovalStateError, ApprovalStoreError):
+        print(_ALREADY_DONE_MESSAGE, file=out)
+        return 1
+    print(PREP_COPY["denied_message"], file=out)
+    return 0
+
+
+def cmd_approve(
+    store: ApprovalStore,
+    signer: AS.ApprovalSigner,
+    owner_key: bytes,
+    request_id: str,
+    *,
+    get_assertion: Callable[..., Optional[w.AuthenticationResponse]],
+    rp_id: str,
+    credential_ids: Sequence[bytes],
+    out=sys.stdout,
+) -> int:
+    """The whole headless approve ceremony. `get_assertion` is the ONLY
+    injection seam for the human-factor step (production: `main()` wires
+    `HidrawFido2Client().get_assertion`; tests: a software authenticator's
+    `get_assertion`, TEST-ONLY, imported nowhere near this module). Every
+    other step calls the SAME `ApprovalSigner` instance a browser-driven P2
+    approval would call — reusing the identical signer path is the whole
+    point of P4 (design "same guarantees")."""
+    record = store.get(request_id)
+    if record is None:
+        print(f"Request not found: {request_id}", file=out)
+        return 1
+    if record["status"] != AR.STATUS_PENDING:
+        print(_ALREADY_DONE_MESSAGE, file=out)
+        return 1
+    if not credential_ids:
+        # No point starting a signing session (and burning a rate-limit
+        # slot) when there is nothing registered to approve with.
+        print(PREP_COPY["no_key_message"], file=out)
+        return 1
+
+    cv = signer.begin_challenge(request_id, load_record=store.get)
+    if not cv.ok:
+        print(_plain_deny_message(cv.reason), file=out)
+        return 1
+
+    print(PREP_COPY["approve_prompt"], file=out)
+    try:
+        assertion = get_assertion(
+            challenge=cv.challenge,
+            rp_id=rp_id,
+            credential_ids=list(credential_ids),
+            user_verification="required",
+        )
+    except Exception:  # noqa: BLE001 - any ceremony fault -> no signature, fail closed
+        assertion = None
+    if assertion is None:
+        print(PREP_COPY["no_key_message"], file=out)
+        return 1
+
+    sv = signer.sign_request(request_id, assertion, load_record=store.get, owner_key=owner_key)
+    if not sv.ok:
+        print(_plain_deny_message(sv.reason), file=out)
+        return 1
+
+    try:
+        store.transition(request_id, AR.STATUS_APPROVED, actor="owner-webauthn")
+    except (AR.ApprovalStateError, ApprovalStoreError):
+        # The signature is genuine (sv.ok) but the store's own state moved
+        # out from under us between sign and transition -- surface plainly
+        # rather than claiming success for a state change that didn't land.
+        print(
+            "Approved by signature, but the request could not be marked approved "
+            "-- it may have changed state. Contact your admin.",
+            file=out,
+        )
+        return 1
+
+    print(PREP_COPY["success_message"], file=out)
+    return 0
+
+
+# --------------------------------------------------------------------------
+# main() — production wiring. Everything storage/key/hardware-related is a
+# thin adapter around the injectable core functions above.
+# --------------------------------------------------------------------------
+
+_DEFAULT_ALLOWLIST_PATH = _REPO_ROOT / "config" / "aqos" / "approval-signer-credentials.json"
+_DEFAULT_STATE_DIR = _REPO_ROOT / ".agents" / "state" / "approval-control-plane"
+_DEFAULT_RP_ID = "aq-approve.local"
+
+
+def _build_signer(*, allowlist_path: str, state_dir: str, rp_id: str) -> AS.ApprovalSigner:
+    base = Path(state_dir)
+    return AS.ApprovalSigner(
+        credential_allowlist_path=allowlist_path,
+        challenge_store_dir=base / "pending",
+        challenge_ledger_dir=base / "challenge-ledger",
+        executed_ledger_dir=base / "executed-ledger",
+        rp_id=rp_id,
+    )
+
+
+def _load_owner_key(path: Optional[str]) -> Optional[bytes]:
+    """Reads the service's raw 32-byte Ed25519 signing key. NOT the
+    human-factor authorization -- see module docstring. There is no live
+    provisioning for this key yet (P1b/deployment scope); until a confined
+    service exists to hold it, this CLI's caller must point
+    `--owner-key-path` at wherever it lives. Fails closed (`None`) on
+    anything but exactly 32 bytes -- `main()` refuses to proceed without it,
+    rather than passing a malformed key into `sign_request`."""
+    if not path:
+        return None
+    try:
+        raw = Path(path).read_bytes()
+    except OSError:
+        return None
+    return raw if len(raw) == 32 else None
+
+
+def _active_credential_ids(allowlist_path: str) -> List[bytes]:
+    allowlist = AS.load_credential_allowlist(allowlist_path)
+    if not allowlist:
+        return []
+    return [
+        bytes.fromhex(cred_id)
+        for cred_id, entry in allowlist.items()
+        if entry.get("status") == AS.CREDENTIAL_STATUS_ACTIVE
+    ]
+
+
+def build_arg_parser() -> argparse.ArgumentParser:
+    parser = argparse.ArgumentParser(
+        prog="aq-approve-headless",
+        description="Approval Control Plane P4 -- headless/rescue FIDO2 authorization, no browser required.",
+    )
+    parser.add_argument(
+        "--allowlist-path",
+        default=os.environ.get("AQ_APPROVAL_CREDENTIAL_ALLOWLIST", str(_DEFAULT_ALLOWLIST_PATH)),
+        help="Path to the FIDO2 credential allowlist (same file approval_signer.py reads).",
+    )
+    parser.add_argument(
+        "--state-dir",
+        default=os.environ.get("AQ_APPROVAL_STATE_DIR", str(_DEFAULT_STATE_DIR)),
+        help="Directory for the signer's pending-challenge + single-use ledgers.",
+    )
+    parser.add_argument(
+        "--owner-key-path",
+        default=os.environ.get("AQ_APPROVAL_OWNER_KEY_PATH"),
+        help="Path to the service's raw 32-byte Ed25519 signing key (deployment-layer secret; "
+        "not the human-factor authorization -- see module docstring). Required for `approve`.",
+    )
+    parser.add_argument(
+        "--rp-id",
+        default=os.environ.get("AQ_APPROVAL_RP_ID", _DEFAULT_RP_ID),
+        help="WebAuthn relying-party id bound into the challenge (must match registration).",
+    )
+    sub = parser.add_subparsers(dest="command", required=True)
+
+    p_list = sub.add_parser("list", help="List pending approval requests (plain language).")
+    p_list.add_argument("--details", action="store_true", help="Also show the Layer-3 drill-in.")
+
+    p_approve = sub.add_parser("approve", help="Approve a pending request via a local FIDO2 tap.")
+    p_approve.add_argument("request_id")
+
+    p_deny = sub.add_parser("deny", help="Deny a pending request. No hardware ceremony.")
+    p_deny.add_argument("request_id")
+    p_deny.add_argument("--actor", default="owner")
+
+    return parser
+
+
+def main(argv: Optional[Sequence[str]] = None) -> int:
+    args = build_arg_parser().parse_args(argv)
+
+    # No live request store yet (scope fence) -- FixtureApprovalStore is the
+    # documented offline placeholder a real deployment replaces.
+    store: ApprovalStore = FixtureApprovalStore()
+
+    if args.command == "list":
+        return cmd_list(store, details=args.details)
+
+    if args.command == "deny":
+        return cmd_deny(store, args.request_id, actor=args.actor)
+
+    if args.command == "approve":
+        owner_key = _load_owner_key(args.owner_key_path)
+        if owner_key is None:
+            print(
+                "No owner signing key configured (--owner-key-path / AQ_APPROVAL_OWNER_KEY_PATH "
+                "must point at a 32-byte Ed25519 key). This build ships no live key provisioning "
+                "-- see .agents/plans/approval-control-plane/ACP-P4-BUILD-20260817.md.",
+                file=sys.stderr,
+            )
+            return 1
+        signer = _build_signer(
+            allowlist_path=args.allowlist_path, state_dir=args.state_dir, rp_id=args.rp_id
+        )
+        credential_ids = _active_credential_ids(args.allowlist_path)
+        client = HidrawFido2Client()
+        return cmd_approve(
+            store,
+            signer,
+            owner_key,
+            args.request_id,
+            get_assertion=client.get_assertion,
+            rp_id=args.rp_id,
+            credential_ids=credential_ids,
+        )
+
+    return 1  # pragma: no cover - argparse `required=True` makes this unreachable
+
+
+if __name__ == "__main__":
+    sys.exit(main())
