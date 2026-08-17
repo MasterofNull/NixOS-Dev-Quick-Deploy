@@ -94,13 +94,27 @@ from datetime import datetime, timedelta, timezone
 from pathlib import Path
 from typing import Any, Callable, Mapping, Optional
 
-import fido2.cose as cose
-import fido2.server as srv
-import fido2.webauthn as w
-from cryptography.hazmat.primitives.asymmetric.ed25519 import (
-    Ed25519PrivateKey,
-    Ed25519PublicKey,
-)
+# Crypto backends are imported crypto-deferred-tolerant: this module exposes its
+# typed constants (DENY_*/SIGN_OK/CHALLENGE_OK), record + ledger logic to any
+# importer WITHOUT requiring the crypto stack — e.g. the dashboard approval route
+# in crypto-deferred dev-mode runs under a bare python that has neither fido2 nor
+# cryptography. The real signing/verification methods below use these names and
+# require the deps to be importable when actually INVOKED (i.e. once crypto is
+# activated); `_CRYPTO_AVAILABLE` gates any runtime path that needs them. No
+# `fido2.mock` is ever imported (test_production_module_excludes_software_authenticator).
+try:
+    import fido2.cose as cose
+    import fido2.server as srv
+    import fido2.webauthn as w
+    from cryptography.hazmat.primitives.asymmetric.ed25519 import (
+        Ed25519PrivateKey,
+        Ed25519PublicKey,
+    )
+    _CRYPTO_AVAILABLE = True
+except ImportError:  # crypto-deferred dev-mode host (bare python, no fido2/cryptography)
+    cose = srv = w = None  # type: ignore
+    Ed25519PrivateKey = Ed25519PublicKey = None  # type: ignore
+    _CRYPTO_AVAILABLE = False
 
 _LIB = os.path.dirname(os.path.abspath(__file__))
 if _LIB not in sys.path:
