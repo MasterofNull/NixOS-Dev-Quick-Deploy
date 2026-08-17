@@ -18,6 +18,11 @@ dashboard app (`dashboard/backend/api/main.py`). Uses the route module's `Fixtur
 `FixtureSignerClient` defaults — real WebAuthn signing + a live store are deferred. Real runbook effects
 stay STUBBED, so the dev-mode surface performs nothing unsafe.
 
+**Crypto-deferred-tolerant import (2026-08-17):** the dashboard runs a bare python (no fido2/cryptography).
+`approval_signer` now guards its crypto imports (`_CRYPTO_AVAILABLE`) so it's importable for its
+constants under that host; real crypto loads only when signing runs (i.e. once crypto is activated). P1
+tests stay 20/20. This is why the surface can be hosted dev-mode without the crypto stack.
+
 **Activation checklist (the 5 lines — no separate plan):**
 1. Turn on: the `main.py` router-registration is prepared in the working tree; it lands + goes live at
    the next `nixos-rebuild switch` (which also provisions the newly-added `psutil` dep the dashboard-compat
