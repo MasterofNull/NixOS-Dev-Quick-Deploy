@@ -1,0 +1,32 @@
+{
+  "plan": {
+    "id": "aqos-capabilities-inventory",
+    "title": "AQ-OS Capabilities — skills, workflows, roles, commands (honest)",
+    "prd_ref": ".agent/SKILL_INDEX.md",
+    "owner": "hyperd",
+    "goal": "The agent/system capability surface — skills, workflows, roles, slash-commands, enhancements — on the honest tier scale. DEFINED (file/index exists) is NOT validated: a skill existing doesn't prove it loads or helps; a workflow existing doesn't prove it runs. Most are DEFINED + UNVALIDATED.",
+    "success_criteria": [
+      "Every capability category accounted for with honest counts (65 skills, 26 workflows, 5 roles, 11 commands)",
+      "Validated = actually loads/runs/routes correctly, not just 'a file exists'",
+      "Owner sign-off before any category counts as done"
+    ],
+    "tier_model": "DEFINED=file/index entry exists; INTEGRATED=wired (in index/dispatch/registry); VALIDATED=loads/runs/routes correctly in practice; ACCEPTED=owner signed off. Per-item validation of 65 skills is UNMEASURED — represented honestly at category level with counts, flagged for owner review.",
+    "honest_note": "FIRST CUT. Counts are real (ls); validation status is largely UNMEASURED. Nothing here is proven working end-to-end just by existing. Percentages reflect DEFINED/partially-wired, capped well below complete."
+  },
+  "phases": [
+    {"id": "skills", "name": "Skills library (65)", "goal": "lazy-loaded knowledge modules", "order": 1},
+    {"id": "workflows", "name": "Workflows (26)", "goal": "the workflow engine + defined workflows", "order": 2},
+    {"id": "roles", "name": "Roles (agent-agnostic)", "goal": "orchestrator/architect/implementer/reviewer/binding-acceptance", "order": 3},
+    {"id": "commands", "name": "Slash-commands (11)", "goal": "operator slash-commands", "order": 4}
+  ],
+  "items": [
+    {"id": "cap-skills-library", "name": "Skills library — 65 skill modules + index + aq-skill-suggest", "phase": "skills", "kind": "slice", "goal": "65 skills loadable + suggested per task", "validation_goal": "aq-skill-suggest routes; a sample of skills actually load + help", "deps": [], "editorial_note": "65 SKILL.md files + SKILL_INDEX.md exist (DEFINED). aq-skill-suggest present. Per-skill validation UNMEASURED — no proof each of 65 loads/helps", "detection": {"freeze_record": ".agent/SKILL_INDEX.md", "command": "scripts/ai/aq-skill-suggest"}, "pct_hint": 45, "acceptance": {"status": "pending", "by": null, "date": null, "note": "counts real; validate a sample of skills actually improve output"}},
+    {"id": "cap-skill-routing", "name": "Skill routing (aq-skill-suggest + agent filter)", "phase": "skills", "kind": "slice", "goal": "suggest relevant skills before a task, per agent", "validation_goal": "suggests correct skills for a query", "deps": [], "editorial_note": "tool present; routing quality UNVALIDATED this session", "detection": {"command": "scripts/ai/aq-skill-suggest"}, "pct_hint": 40, "acceptance": {"status": "pending", "by": null, "date": null, "note": ""}},
+    {"id": "cap-workflows-engine", "name": "Workflow engine + 26 defined workflows", "phase": "workflows", "kind": "slice", "goal": "workflows run end-to-end", "validation_goal": "a workflow executes to completion", "deps": [], "editorial_note": "26 workflow files exist (DEFINED); execution/validation UNMEASURED", "detection": {"freeze_record": ".agent/WORKFLOW-CANON.md"}, "pct_hint": 35, "acceptance": {"status": "pending", "by": null, "date": null, "note": "verify workflows actually run, not just defined"}},
+    {"id": "cap-workflow-canon", "name": "WORKFLOW-CANON (shared 8-step contract)", "phase": "workflows", "kind": "slice", "goal": "the canonical workflow all agents follow", "validation_goal": "agents demonstrably follow the 8 steps", "deps": [], "editorial_note": "canon WRITTEN + referenced; adherence partly enforced (PULSE/RESUME gates)", "detection": {"freeze_record": ".agent/WORKFLOW-CANON.md", "commit_match": ["WORKFLOW-CANON"]}, "pct_hint": 50, "acceptance": {"status": "pending", "by": null, "date": null, "note": ""}},
+    {"id": "cap-role-orchestrator", "name": "Role: orchestrator (agent-agnostic)", "phase": "roles", "kind": "slice", "goal": "workflow/delegation/review authority, routed per-dispatch", "validation_goal": "role routes to eligible+cheapest+independent lane", "deps": [], "editorial_note": "role defined (role-matrix) + practiced this session (routing to sonnet/local); enforcement is convention, no hard-stop", "detection": {"freeze_record": "docs/architecture/role-matrix.md", "commit_match": ["orchestrator", "Rule 17", "Rule 18"]}, "pct_hint": 50, "acceptance": {"status": "pending", "by": null, "date": null, "note": ""}},
+    {"id": "cap-role-implementer", "name": "Role: implementer (cheapest-eligible)", "phase": "roles", "kind": "slice", "goal": "bounded execution by cheapest eligible lane (Rule 17)", "validation_goal": "implementer dispatches carry explicit cheap-model override", "deps": [], "editorial_note": "practiced (sonnet builds); Rule 17 written-only, no technical hard-stop", "detection": {"freeze_record": "docs/architecture/role-matrix.md", "commit_match": ["cheapest-eligible", "Rule 17"]}, "pct_hint": 45, "acceptance": {"status": "pending", "by": null, "date": null, "note": "no enforcement gate yet — convention only"}},
+    {"id": "cap-role-reviewer", "name": "Role: reviewer + binding-acceptance (independent)", "phase": "roles", "kind": "slice", "goal": "independent acceptance gate; never self-review", "validation_goal": "reviews are independent + gate builds", "deps": [], "editorial_note": "practiced (Antigravity caught the critical bug); agent-agnostic routing works", "detection": {"freeze_record": "docs/architecture/role-matrix.md", "commit_match": ["reviewer", "binding acceptance", "Rule 18"]}, "pct_hint": 50, "acceptance": {"status": "pending", "by": null, "date": null, "note": ""}},
+    {"id": "cap-commands", "name": "Slash-commands (11: /prime, /commit, /plan-feature, /execute, etc.)", "phase": "commands", "kind": "slice", "goal": "operator slash-commands work", "validation_goal": "each command runs its behavior", "deps": [], "editorial_note": "11 command files in .claude/commands/ (DEFINED); per-command validation UNMEASURED", "detection": {"freeze_record": ".claude/commands"}, "pct_hint": 40, "acceptance": {"status": "pending", "by": null, "date": null, "note": "verify each command actually works"}}
+  ]
+}
