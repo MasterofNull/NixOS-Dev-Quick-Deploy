@@ -72,6 +72,35 @@ becomes: read a card, tap once, done — no SOPS, no age passphrase, no canonica
 - **declaration-coupled** — an activate-* runbook that changes runtime also stages the Nix declaration
   (Rule 13 coupling asserted).
 
+## Review fold — Antigravity (REQUEST REVISION) + local (`vnhp5g`)
+Build authorized after these revisions land (orchestrator-verified):
+- **[Atom-level idempotency — pre-check gates execution].** Resuming a failed step whose atom did a
+  stateful mutate (append a key / a config line) could double-apply. REVISION: every atom implements a
+  `verify` PRE-CHECK run BEFORE the action; if it reports the effect already present, the step is SKIPPED
+  — independent of the local step log (so a stale/lost log never causes a double-apply). Idempotency is a
+  property of the atom's pre-check, not just the engine's checkpoint. (Local `vnhp5g` concurred.)
+- **[Parameter injection].** A too-broad param schema could pass a path-traversal or shell-metacharacter
+  value through the hash to an atom. REVISION: strict param allowlists (regex + char bounds) in
+  `validate_params` (P0 already patterns service names; extend per runbook); atoms NEVER spawn a shell
+  (`shell=True` forbidden) and pass array args (`subprocess.run(["cmd", arg])`). No approved value reaches
+  a shell string.
+- **[Replay to a second run — ALREADY RESOLVED].** Antigravity flagged that a signature over
+  canonical_hash unbound to `request_id` is replayable across identical-param requests. This is FIXED
+  upstream (commit 117aeb66): `request_id` is now in `CANONICAL_FIELDS`, and P1 keeps a write-once
+  executed-request-id ledger. One approval authorizes exactly one runbook run; a copied signature on a
+  new request_id neither matches the hash nor passes the executed-id ledger. (Local `vnhp5g`: approval is
+  consumed on completion/failure — reinforced.)
+- **[Stale-authorization on retry].** A runbook retried hours later must NOT resume on a stale signature.
+  REVISION: the retry path re-runs full authorization verification (`verify_execution_authorization`) and
+  rejects an expired authorization (ties to P1's challenge/authorization TTL + clock). Resume applies to
+  idempotent step progress, never to the authorization itself.
+- **[Partial-state semantics] (local `vnhp5g` #4).** Fail-closed halts; because steps are
+  idempotent-pre-checked (above), recovery is forward-retry (re-run skips completed steps), not blind
+  rollback. Where a step is genuinely non-idempotent, it declares a compensating action; the engine never
+  leaves a silent partial success — the operator sees exactly which step k/n halted and why.
+- **[Declarative coupling reinforced].** `activate-*` steps update the declarative Nix files + stage +
+  `nixos-rebuild switch` — never a transient `systemctl start` that drifts on reboot (Rule 13).
+
 ## Scope fence (NOT in P3)
 No new UI (P2 renders state), no P1 service internals (calls its contract), no recovery/headless
 (P1b/P4). P3 is the runbook registry extension + the idempotent audited executor that runs a runbook's

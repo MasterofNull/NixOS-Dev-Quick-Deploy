@@ -87,6 +87,31 @@ service signs and the executor runs (P0 finding #7 + P1 invariant 6), so the car
   state ("No response from your security key — try again"); AA contrast verified for every impact card
   variant (low/medium/high) in both themes.
 
+## Review fold — Antigravity (CONDITIONAL PASS) + local (`n147vs`)
+Build authorized subject to folding these (orchestrator-verified):
+- **[KEY — DOM-tampering / clickjacking] The surface must run in an agent-uncontrollable browser session.**
+  A compromised agent in the user session could inject scripts and show "Enable timezone sync" while
+  calling the signer for "Revoke production key"; the native WebAuthn prompt shows only RP-ID + a raw
+  hash, so the human cannot detect the swap. Mitigation (now a build requirement): the dashboard approval
+  view runs in an ISOLATED kiosk browser session (dedicated systemd-run/kiosk Chromium) under a strict
+  CSP (no inline scripts, no eval, no extensions, no third-party origins); the approval surface is served
+  same-origin and cannot be reframed. This is what makes the browser leg trustworthy — without it, P2's
+  WYSIWYS is only as good as the (compromised) DOM.
+- **[Render-vs-Sign] Reinforce the P0 #7 binding at the signer.** The signer (P1) verifies `summary`
+  byte-equals `render_summary(runbook, params)` (already enforced in P0 `validate`); the surface renders
+  that same bound summary. Any action-affecting field not represented in what the human sees aborts. Note:
+  `technical_trail` is hashed but non-executed; the Details view still shows it so nothing signed is unseen.
+- **[Live-sync / no double-tap] (sharpens local + Antigravity 3).** A prominent Live-Sync connection
+  indicator; on a dropped backend connection the UI overlays a warning and DISABLES Approve/Deny, so a
+  silent stale "Awaiting tap" cannot lead to repeated taps / unintended double-execution. (The signer's
+  single-use request_id ledger is the hard backstop; this is the UX guard.)
+- **[Plain-language error mapping] (sharpens local).** Every WebAuthn/crypto/execution exception
+  (`InvalidSignatureError`, UV-not-satisfied, timeout) maps to a plain-language error card with a physical
+  recovery step ("Please re-insert your security key and touch the blinking light") — never a raw error.
+- **[Micro-copy] (Antigravity 5).** Inline text under Approve explains the physical action ("Tapping
+  Approve will ask you to scan your fingerprint or touch your security key"), so a beginner is not
+  surprised by the OS/browser prompt.
+
 ## Scope fence (NOT in P2)
 No P1 service internals (consumes its contract), no runbook engine (P3), no recovery (P1b), no headless
 CLI (P4). P2 is the surface: read projection -> render cards -> approve/deny -> call signer -> reflect
