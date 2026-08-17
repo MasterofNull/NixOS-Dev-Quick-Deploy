@@ -191,6 +191,16 @@ class ValidationVerdict:
 
 SERVICE_NAME_PATTERN = r"^[a-z0-9][a-z0-9-]{1,62}[a-z0-9]$"
 
+# Tighter identifier allowlist for the ACP-P3 runbooks below (`rotate-key`,
+# `epoch-revoke`, `emit-grant`, `activate-foundation-c-slice`): same
+# lowercase-alnum-hyphen char class as `SERVICE_NAME_PATTERN`, but bounded to
+# 3-32 chars (not 3-64). Deliberately shorter: those runbooks' title
+# templates carry more fixed prose than `activate-signer-service`'s, so a
+# 64-char param at `render_summary()` time could push `summary.title` past
+# `MAX_TITLE_LEN` (80) and make an otherwise-legitimate request fail
+# `validate()`. 32 chars leaves headroom for every template below.
+IDENTIFIER_PATTERN = r"^[a-z0-9][a-z0-9-]{1,30}[a-z0-9]$"
+
 
 @dataclass(frozen=True)
 class RunbookSpec:
@@ -220,6 +230,35 @@ def _effect_restart_service(*, service: str) -> dict[str, Any]:
     return {"runbook": "restart-service", "service": service, "result": "restarted"}
 
 
+def _effect_rotate_key(*, subject: str) -> dict[str, Any]:
+    """P0-style single-shot stub effect for `rotate-key` — NOT a real key
+    rotation (no key material, no SOPS, no allowlist write). See
+    `_effect_activate_signer_service` docstring for why this exists
+    alongside the P3 multi-step engine's own stub atoms: this is only the
+    single-call path `approval_executor.py` still uses; the real per-step
+    idempotent execution for this runbook is
+    `approval_runbook_engine.STEP_REGISTRY["rotate-key"]`."""
+    return {"runbook": "rotate-key", "subject": subject, "result": "rotated"}
+
+
+def _effect_epoch_revoke(*, epoch_scope: str) -> dict[str, Any]:
+    """P0-style single-shot stub effect for `epoch-revoke` — see
+    `_effect_rotate_key` docstring."""
+    return {"runbook": "epoch-revoke", "epoch_scope": epoch_scope, "result": "revoked"}
+
+
+def _effect_emit_grant(*, grant_subject: str) -> dict[str, Any]:
+    """P0-style single-shot stub effect for `emit-grant` — see
+    `_effect_rotate_key` docstring."""
+    return {"runbook": "emit-grant", "grant_subject": grant_subject, "result": "granted"}
+
+
+def _effect_activate_foundation_c_slice(*, slice: str) -> dict[str, Any]:  # noqa: A002 - matches param_schema key
+    """P0-style single-shot stub effect for `activate-foundation-c-slice` —
+    see `_effect_rotate_key` docstring."""
+    return {"runbook": "activate-foundation-c-slice", "slice": slice, "result": "activated"}
+
+
 RUNBOOK_REGISTRY: dict[str, RunbookSpec] = {
     "activate-signer-service": RunbookSpec(
         name="activate-signer-service",
@@ -244,6 +283,63 @@ RUNBOOK_REGISTRY: dict[str, RunbookSpec] = {
         what_template="Restarts {service} to pick up an already-reviewed change.",
         why_template="Applies a pending change to {service} without a full rebuild.",
         effect=_effect_restart_service,
+    ),
+    # ---- ACP-P3 additions below. Plain-language copy verbatim (title/what/
+    # why paraphrased into `{param}`-templated form; impact/reversible taken
+    # directly) from the orchestrator-verified local look-ahead lane —
+    # `.agents/plans/approval-control-plane/ACP-PREP-COPY-20260816.md`
+    # §"Runbook plain-language copy". `activate-signer-service` above is
+    # UNCHANGED (its existing risk_class="medium" stays as P0 registered it,
+    # even though the prep doc's copy says "high" for its free-text version —
+    # changing it here would drift `GOLDEN_CANONICAL_HASH` in
+    # `test-approval-request.py`, which this build must not touch).
+    "rotate-key": RunbookSpec(
+        name="rotate-key",
+        required_authority="owner-webauthn",
+        risk_class="high",
+        reversible=False,
+        declared_effects=("generate-key", "update-config", "revoke-old-key", "confirm-sessions"),
+        param_schema={"subject": {"type": "str", "pattern": IDENTIFIER_PATTERN}},
+        title_template="Rotate the {subject} access key",
+        what_template="Generates a new secret key for {subject} and replaces the old one.",
+        why_template="Old keys may be compromised or expired; rotating {subject}'s key keeps the system secure.",
+        effect=_effect_rotate_key,
+    ),
+    "epoch-revoke": RunbookSpec(
+        name="epoch-revoke",
+        required_authority="owner-webauthn",
+        risk_class="high",
+        reversible=False,
+        declared_effects=("identify-epoch", "revoke-epoch", "propagate-revoke", "verify-revoke"),
+        param_schema={"epoch_scope": {"type": "str", "pattern": IDENTIFIER_PATTERN}},
+        title_template="Revoke all current permits for {epoch_scope}",
+        what_template="Instantly invalidates every permission currently held under {epoch_scope}.",
+        why_template="Emergency stop to block further action under {epoch_scope} if a security issue is found.",
+        effect=_effect_epoch_revoke,
+    ),
+    "emit-grant": RunbookSpec(
+        name="emit-grant",
+        required_authority="owner-webauthn",
+        risk_class="medium",
+        reversible=True,
+        declared_effects=("define-scope", "generate-grant-id", "record-grant", "confirm-grant"),
+        param_schema={"grant_subject": {"type": "str", "pattern": IDENTIFIER_PATTERN}},
+        title_template="Issue a one-time permit for {grant_subject}",
+        what_template="Creates a unique, single-use permission for {grant_subject}.",
+        why_template="Allows temporary access for {grant_subject} without granting long-term rights.",
+        effect=_effect_emit_grant,
+    ),
+    "activate-foundation-c-slice": RunbookSpec(
+        name="activate-foundation-c-slice",
+        required_authority="owner-webauthn",
+        risk_class="medium",
+        reversible=True,
+        declared_effects=("check-deps", "load-config", "activate-slice", "verify-health"),
+        param_schema={"slice": {"type": "str", "pattern": IDENTIFIER_PATTERN}},
+        title_template="Activate the {slice} foundation slice",
+        what_template="Turns on the {slice} building block required for base operations.",
+        why_template="{slice} must be active before higher-level features can function correctly.",
+        effect=_effect_activate_foundation_c_slice,
     ),
 }
 
