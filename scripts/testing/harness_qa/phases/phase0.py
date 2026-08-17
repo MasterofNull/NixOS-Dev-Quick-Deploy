@@ -2407,7 +2407,7 @@ def _check_dashboard_program_progress(ctx: RunContext) -> list[CheckResult]:
         return [skipped(5, "0.10.40", "program progress tracker live asset", str(exc)[:160])]
     if status != 200:
         return [failed(5, "0.10.40", "program progress tracker live asset", f"HTTP {status}")]
-    if "FROZEN_IMPLEMENTATION_SNAPSHOT" not in body:
+    if "/api/pm/progress" not in body:
         return [failed(5, "0.10.40", "program progress tracker live asset", "stale deployed asset")]
     try:
         root_status, root_body = http_get(dashboard_url, timeout=5)

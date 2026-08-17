@@ -9,6 +9,8 @@ Modes:
   aq-pm-tracker <plan-dir>            human summary (default)
   aq-pm-tracker <plan-dir> --json     projected data (JSON)
   aq-pm-tracker <plan-dir> --check    validate manifest + project; exit 0 ok / 1 on manifest error
+  aq-pm-tracker --all                 aggregate human summary across every .agents/plans/*/tracker.json
+  aq-pm-tracker --all-json            aggregate projection (JSON): {generated_at, plans[], program_rollup_pct}
 Status precedence: ACTIVATED > SHIPPED > BLOCKED > FROZEN > IN-PROGRESS > DESIGNED > NOT-STARTED.
 """
 from __future__ import annotations
@@ -71,8 +73,62 @@ def _aq_grants() -> str:
         return ""
 
 
+_SYSTEMD_CACHE: dict = {}
+
+
+def _systemd_state(unit: str) -> dict:
+    """Read a unit's ground-truth state (cached, bounded). Empty on any error so a
+    missing `systemctl` (e.g. in CI) never breaks projection — it just falls back."""
+    if unit in _SYSTEMD_CACHE:
+        return _SYSTEMD_CACHE[unit]
+    d: dict = {}
+    try:
+        out = subprocess.run(
+            ["systemctl", "show", unit, "-p", "ActiveState", "-p", "Result",
+             "-p", "ActiveEnterTimestamp", "-p", "UnitFileState"],
+            capture_output=True, text=True, timeout=8).stdout
+        for line in out.splitlines():
+            if "=" in line:
+                k, v = line.split("=", 1)
+                d[k] = v.strip()
+    except Exception:
+        pass
+    _SYSTEMD_CACHE[unit] = d
+    return d
+
+
+def _project_systemd(unit: str, accepted: bool) -> tuple[str, int]:
+    """Honest tier for a systemd-backed feature. VALIDATED-run/active still caps at
+    IN-PROGRESS until the owner ACCEPTS — 'running' proves integrated, not
+    complete-to-standard. Never SHIPPED without acceptance."""
+    st = _systemd_state(unit)
+    if not st:
+        return ("DESIGNED", 10)
+    active = st.get("ActiveState", "")
+    ufs = st.get("UnitFileState", "")
+    ran = bool(st.get("ActiveEnterTimestamp", "").strip())
+    result = st.get("Result", "")
+    enabled = ufs in ("enabled", "enabled-runtime", "linked", "linked-runtime", "static")
+    if active == "active":                       # running now: integrated + up
+        return ("SHIPPED", 100) if accepted else ("IN-PROGRESS", 65)
+    if ran and result == "success":              # oneshot ran + succeeded
+        return ("SHIPPED", 100) if accepted else ("IN-PROGRESS", 70)
+    if result not in ("", "success"):            # failed
+        return ("BLOCKED", 0)
+    if enabled:                                   # enabled but never observed running its job
+        return ("IN-PROGRESS", 40)
+    return ("DESIGNED", 15)
+
+
 def project_item(item: dict, gitlog: str, grants: str) -> tuple[str, int]:
     det = item.get("detection", {}) or {}
+    accepted = (item.get("acceptance") or {}).get("status") == "accepted"
+
+    # Ground-truth systemd projection (services domain) — never complete w/o sign-off.
+    unit = det.get("systemd_unit")
+    if unit:
+        return _project_systemd(unit, accepted)
+
     hits = sum(gitlog.count(s) for s in (det.get("commit_match") or []))
     freeze = det.get("freeze_record")
     freeze_exists = bool(freeze) and (REPO / freeze).is_file()
@@ -84,13 +140,21 @@ def project_item(item: dict, gitlog: str, grants: str) -> tuple[str, int]:
     is_activation = kind == "task" and bool(blocker) and (
         "owner acts" in (blocker or "") or "owner-gated" in (item.get("editorial_note", "")))
 
+    def _gate(status: str, p: int) -> tuple[str, int]:
+        # Owner sign-off gate: an item carrying an `acceptance` block cannot read
+        # complete (SHIPPED/ACTIVATED) until acceptance == 'accepted'. Validated-but-
+        # unaccepted caps at IN-PROGRESS 85 ('done pending your sign-off').
+        if "acceptance" in item and not accepted and status in ("SHIPPED", "ACTIVATED"):
+            return ("IN-PROGRESS", 85)
+        return (status, p)
+
     if is_activation:
-        return ("ACTIVATED", 100) if granted else ("NOT-STARTED", 0)
+        return _gate("ACTIVATED", 100) if granted else ("NOT-STARTED", 0)
     if hits > 0 or granted:
         if pct is not None and pct < 100:
             return ("IN-PROGRESS", int(pct))
         if freeze_exists or granted:
-            return ("SHIPPED", 100)
+            return _gate("SHIPPED", 100)
         return ("IN-PROGRESS", int(pct) if pct is not None else 60)
     if freeze_exists:
         return ("FROZEN", 20)
@@ -115,6 +179,65 @@ def project(plan_dir: Path) -> dict:
     return {"plan": manifest.get("plan", {}), "phases": manifest.get("phases", []),
             "items": items, "issues": manifest.get("issues", []),
             "rollup_pct": rollup, "shipped": shipped, "total": len(items)}
+
+
+def discover_tracked_plans() -> list[Path]:
+    """Every `.agents/plans/*/tracker.json` — the aggregate mode's plan universe.
+    Sorted for stable output; directories without a tracker.json are simply
+    untracked (PM-tracker-standard DESIGN.md 'not yet built' state) and are
+    silently excluded, not an error."""
+    plans_root = REPO / ".agents" / "plans"
+    if not plans_root.is_dir():
+        return []
+    return sorted(
+        (p.parent for p in plans_root.glob("*/tracker.json") if p.is_file()),
+        key=lambda p: p.name,
+    )
+
+
+def project_all() -> dict:
+    """Aggregate projection across every tracked plan — reuses project() per
+    plan (same ground truth: one git-log/aq-event read, shared across plans
+    so an N-plan aggregate costs one _ensure_deep(), not N)."""
+    from datetime import datetime, timezone
+
+    gitlog, grants = _git_log(), _aq_grants()
+    plans_out = []
+    total_items = 0
+    weighted_pct_sum = 0
+    for plan_dir in discover_tracked_plans():
+        try:
+            manifest = json.loads((plan_dir / "tracker.json").read_text())
+        except Exception as e:
+            print(f"aq-pm-tracker --all: skipping {plan_dir.name} (bad manifest: {e})",
+                  file=sys.stderr)
+            continue
+        items = []
+        for it in manifest.get("items", []):
+            status, pct = project_item(it, gitlog, grants)
+            items.append({"id": it["id"], "name": it.get("name"), "phase": it.get("phase"),
+                          "status": status, "pct": pct})
+        n = len(items) or 1
+        rollup = round(sum(i["pct"] for i in items) / n)
+        shipped = sum(1 for i in items if i["status"] in ("SHIPPED", "ACTIVATED"))
+        plan_meta = manifest.get("plan", {})
+        plans_out.append({
+            "id": plan_meta.get("id", plan_dir.name),
+            "title": plan_meta.get("title", plan_dir.name),
+            "rollup_pct": rollup,
+            "shipped": shipped,
+            "total": len(items),
+            "phases": manifest.get("phases", []),
+            "items": items,
+        })
+        total_items += len(items)
+        weighted_pct_sum += sum(i["pct"] for i in items)
+    program_rollup_pct = round(weighted_pct_sum / total_items) if total_items else 0
+    return {
+        "generated_at": datetime.now(timezone.utc).strftime("%Y-%m-%dT%H:%M:%SZ"),
+        "plans": plans_out,
+        "program_rollup_pct": program_rollup_pct,
+    }
 
 
 def validate_manifest(plan_dir: Path) -> list[str]:
@@ -146,13 +269,39 @@ def validate_manifest(plan_dir: Path) -> list[str]:
 
 def main() -> int:
     args = [a for a in sys.argv[1:]]
+
+    # Aggregate mode — discovers every .agents/plans/*/tracker.json and
+    # projects the program-wide rollup. Independent of the single-plan
+    # modes below; does not touch plan_dir resolution.
+    if "--all-json" in args:
+        print(json.dumps(project_all(), indent=2))
+        return 0
+    if "--all" in args:
+        data = project_all()
+        print(f"# Program rollup — {data['program_rollup_pct']}%  "
+              f"({len(data['plans'])} tracked plans)  generated {data['generated_at']}")
+        for p in data["plans"]:
+            print(f"\n## {p['title']}  —  {p['rollup_pct']}%  ({p['shipped']}/{p['total']} shipped)")
+            by_phase = {}
+            for it in p["items"]:
+                by_phase.setdefault(it["phase"], []).append(it)
+            for ph in p["phases"]:
+                rows = by_phase.get(ph["id"], [])
+                if not rows:
+                    continue
+                print(f"  {ph['name']}:")
+                for it in rows:
+                    print(f"    [{it['status']:<11}] {it['pct']:>3}%  {it['name']}")
+        return 0
+
     mode = "summary"
     for m in ("--json", "--check", "--summary"):
         if m in args:
             mode = m.lstrip("-")
             args.remove(m)
     if not args:
-        print("usage: aq-pm-tracker <plan-dir> [--json|--check]", file=sys.stderr)
+        print("usage: aq-pm-tracker <plan-dir> [--json|--check] | aq-pm-tracker --all[-json]",
+              file=sys.stderr)
         return 2
     plan_dir = Path(args[0])
     if not plan_dir.is_absolute():
