@@ -330,18 +330,28 @@ def _scan_privacy_leak(text: str) -> Optional[str]:
 # Canonicalization + hash (design invariant 4, refined by review finding #8)
 # --------------------------------------------------------------------------
 
-# Review finding #8 (folded into the authoritative packet): `canonical_hash`
-# covers every CONTENT field — summary + required_authority + action_manifest
-# + technical_trail — EXCEPT `binding`. Deliberately excludes the envelope
-# fields `schema`/`request_id`/`created_at`/`created_by`/`status` too: those
-# four content fields are write-once/immutable after creation, but `status`
-# moves through the state machine (`transition()`) *after* creation, and the
-# whole point of this hash is that the executor can recompute-and-compare it
-# at every stage (pending -> approved -> executed) without it drifting just
-# because `status` changed. If `status` were covered, the very first legal
-# transition would make the executor's tamper check fail on a perfectly
-# legitimate record.
-CANONICAL_FIELDS = ("summary", "required_authority", "action_manifest", "technical_trail")
+# `canonical_hash` covers every CONTENT field — summary + required_authority +
+# action_manifest + technical_trail — PLUS the immutable instance id
+# `request_id`, and EXCLUDES `binding` + the mutable/derivable envelope fields
+# `schema`/`created_at`/`created_by`/`status`.
+#
+# `status` MUST stay excluded: it moves through the state machine
+# (`transition()`) *after* creation, and the whole point of this hash is that
+# the executor can recompute-and-compare it at every stage (pending -> approved
+# -> executed) without it drifting just because `status` changed.
+#
+# `request_id` MUST be INCLUDED (ACP-P1 Antigravity review finding 2, CRITICAL,
+# verified). It is write-once/immutable after creation, so it never causes the
+# recompute-drift that `status` would. Binding it into the signed content makes
+# the owner signature unique to THIS request instance: without it, two distinct
+# requests with identical content share a `canonical_hash`, so one human
+# approval's Ed25519 signature would be replayable against a content-identical
+# sibling request (different `request_id`, never itself approved). Including
+# `request_id` here — combined with the request_id-keyed single-use ledger and
+# the append-only executed-request ledger (P1) — closes cross-request signature
+# reuse. `created_at`/`created_by` stay out: not needed for instance-binding and
+# `created_at` complicates deterministic golden fixtures.
+CANONICAL_FIELDS = ("request_id", "summary", "required_authority", "action_manifest", "technical_trail")
 
 # Domain-separates this hash from any other canonical-payload family in the
 # codebase (mirrors `revocation_epoch.DOMAIN_TAG`) even if a field set

@@ -117,6 +117,34 @@ server code. Validation goals:
   self-attestation is used. The test suite asserts protocol correctness; hardware-attestation strength
   is a registration-time control, called out so it is a conscious choice, not an unexamined gap.
 
+## Review fold — Antigravity (verdict REQUEST-REVISION; 1 CRITICAL fixed + 4 hardenings)
+Independent security review, orchestrator-verified. Findings folded:
+- **[CRITICAL — FIXED in P0 code] Cross-request signature reuse.** The signature was over
+  `canonical_hash`, which excluded `request_id`, while the single-use ledger keyed on `request_id` — so
+  a signature from one approval was replayable against a content-identical sibling request (different
+  id, never itself approved). FIX (applied to `scripts/ai/lib/approval_request.py`): `request_id` added
+  to `CANONICAL_FIELDS` (it is immutable → no recompute-drift; only `status` stays excluded). Signature
+  is now bound to the request instance; golden hash re-pinned; regression test `test_request_id_binding`
+  added. Invariant 2 updated: the signed material is now inherently per-`request_id`.
+- **[HARDENING] Executor-side append-only executed-request ledger.** Beyond the assertion single-use
+  ledger, the executor keeps a root-owned append-only ledger of executed `request_id`s; re-submitting an
+  already-executed id (or a record rewritten back to `approved`) ABORTS before signature verification.
+  Defends against execution-history rewrite → signature reuse.
+- **[HARDENING] Prompt-fatigue DoS.** An agent with UDS access could flood `sign(request_id)` and spam
+  the operator with authenticator prompts. Enforce strict rate-limiting + max ONE concurrent active
+  signing session on the signer UDS.
+- **[HARDENING] No software-authenticator in production (sharpens local #3 + invariant 3).** The
+  python-fido2 software/virtual authenticator used by the test suite MUST be excluded from the
+  production build entirely (build-time/module guard) — NEVER reachable via a runtime env/config flag,
+  or a compromised agent could force acceptance of a simulated key. Downgrade stays impossible.
+- **[HARDENING] Post-deploy hardware-boundary diagnostic.** The in-memory suite proves protocol/crypto;
+  add a post-deploy diagnostic asserting the systemd unit has the correct udev tags + hidraw device
+  group permissions (pairs with the declarative FIDO2 setup).
+- **[NOTE] WYSIWYS completeness.** Layer-1 `summary` is already a deterministic projection of
+  `action_manifest` params (P0 #7), so the executed action cannot diverge from the shown text;
+  `technical_trail` is hashed but non-executed metadata. The surface (P2) still renders/attests the full
+  set of hashed fields on the confirmation path so nothing hashed is unseen.
+
 ## Scope fence (NOT in P1)
 No web UI (P2), no lost-authenticator recovery / backup keys (P1b), no headless `fido2-assert` CLI
 (P4), no runbook automation engine (P3). P1 is the signing service + registration + WebAuthn verify +
