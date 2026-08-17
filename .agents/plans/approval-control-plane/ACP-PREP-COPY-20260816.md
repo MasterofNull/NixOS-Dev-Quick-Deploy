@@ -62,6 +62,46 @@ systemd-run --scope --uid=approval-user --gid=approval-users \
 ]
 ```
 
+## Batch 2 — local LEAPFROG (sequential, 5/5 landed, orchestrator-verified)
+Sequential leapfrog (one-at-a-time) — no backpressure rejection, ~3-4 min each. Feeds P1b/P4/P2 + the operator guide.
+
+### Golden test fixtures (for P2/P3 test suites) — `rl8ai3`, valid JSON
+```json
+[{"request_id":"01J8K9M2N3P4Q5R6S7T8U9V0W1","title":"Enable automated backup signing for daily snapshots","impact":"low","reversible":true,"runbook":"activate-signer-service"},{"request_id":"01J8K9M2N3P4Q5R6S7T8U9V0X2","title":"Revoke legacy keys and reset access tokens","impact":"high","reversible":false,"runbook":"epoch-revoke"},{"request_id":"01J8K9M2N3P4Q5R6S7T8U9V0Y3","title":"Update payment gateway endpoint configuration","impact":"medium","reversible":true,"runbook":"emit-grant"}]
+```
+Note: local invented an enterprise domain (fine for fixtures — structure + impact/reversible spread is what matters: low/reversible, high/irreversible, medium/reversible). Builds should re-title to AQ-OS context.
+
+### P1b enrollment copy (first-run) — `09uflz`, clean
+```json
+{"title":"Setup Your Security Key","intro":"Add your physical security key to verify your identity when approving important actions.","steps":["Go to the Settings page and select 'Security Keys'.","Click 'Add New Key' and follow the on-screen prompts.","Touch the light on your key when asked to confirm it is present.","Give your key a name (like 'Home Key') so you can recognize it later."],"backup_reminder":"Please add a second key immediately in case you lose or misplace this one."}
+```
+
+### P1b recovery copy — `f81t3h` (local truncated; orchestrator-completed)
+```json
+{"add_backup_key":{"title":"Add a Backup Key","body":"Register a second key now so you never get locked out if you lose the first one.","steps":["Go to your account security settings.","Select 'Add another security key'.","Plug in or tap your new key to finish."]},"recover_lost_key":{"title":"Recover Lost Keys","body":"If you have no keys left, you must sit at this computer to reset access.","steps":["Sit down physically at this computer (recovery only works at the machine itself).","Open the recovery option shown on the local screen.","Register a new security key when prompted.","Add a second backup key right away so this can't happen again."]}}
+```
+
+### P4 headless CLI copy (aq-approve) — `kxkmny`, clean
+```json
+{"list_header":"Pending Approvals","request_line_format":"{n}. {title}","approve_prompt":"Please touch the metal button on your security key when it lights up.","success_message":"Approved successfully.","denied_message":"Request denied.","no_key_message":"No security key detected. Please plug one in and try again."}
+```
+
+### P4 FIDO2 headless reference — `3uy1e9` (local truncated; orchestrator-completed)
+- `fido2.client` (Ctap2/WebAuthnClient hidraw path) produces the GetAssertion + parses `AuthenticatorAssertionResponse`.
+- Human physically touches the USB key's sensor (or enters PIN) when it prompts.
+- Input: base64 `challenge` (our request-bound bytes), `rp_id`, allowed `credential_ids`; output: signed assertion (signature, user handle, sign count).
+- User verification via `user_verification='required'` in the get-assertion options.
+- Requires a udev rule granting the invoking user hidraw access to the FIDO2 device (ship declaratively).
+- Gotcha: no browser/RP-origin ceremony — the CLI IS the client, so it must derive the SAME challenge the signer expects (request_id-bound) or the assertion won't verify.
+
+### Dashboard "Approvals" card copy (for P2) — `kj831t`, clean
+```json
+{"card_title":"Approvals Needed","empty_state":"All caught up! No items are waiting for your review.","pending_badge":"{n} pending","cta":"View all"}
+```
+
+### Operator guide outline (beginner, for the consolidated guide) — `v16063`, clean
+7 sections: Getting Started · Watching the Dashboard · Reading the Terminal Monitor · Using the Approval Screen · Handling Common Alerts · Restarting the System · When to Call for Help. (Full text in the delegation log; use as the guide's skeleton.)
+
 ## Measured note (local look-ahead lane)
 Batch of 3 landed ~18 min after dispatch (parallel=1, ~5-7 min each), CONCURRENT with the P1 build — no
 gating. 2/3 drop-in usable; 1/3 (error map) needed regen. Confirms: local prep = look-ahead lane, always
