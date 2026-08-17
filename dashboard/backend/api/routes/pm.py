@@ -19,7 +19,19 @@ from __future__ import annotations
 import asyncio
 import json
 import logging
+import os
+import sys
 from pathlib import Path
+
+# The dashboard runs sandboxed (ProtectSystem) under a bare python whose PATH has
+# systemctl but NOT git, and where the CLI's `#!/usr/bin/env python3` shebang
+# cannot resolve (/usr/bin/env hidden). So invoke aq-pm-tracker with an EXPLICIT
+# interpreter (sys.executable — the CLI is stdlib-only) and an augmented PATH so
+# the git/systemctl/aq-event subprocesses it spawns resolve.
+_TRACKER_ENV = {
+    **os.environ,
+    "PATH": "/run/current-system/sw/bin:/run/wrappers/bin:" + os.environ.get("PATH", ""),
+}
 
 from fastapi import APIRouter, HTTPException
 
@@ -47,9 +59,11 @@ async def get_pm_progress() -> dict:
 
     try:
         proc = await asyncio.create_subprocess_exec(
+            sys.executable,
             str(_TRACKER_CLI),
             "--all-json",
             cwd=str(_REPO_ROOT),
+            env=_TRACKER_ENV,
             stdout=asyncio.subprocess.PIPE,
             stderr=asyncio.subprocess.PIPE,
         )

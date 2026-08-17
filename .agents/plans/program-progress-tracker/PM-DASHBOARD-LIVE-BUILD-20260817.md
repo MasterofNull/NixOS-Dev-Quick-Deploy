@@ -101,3 +101,6 @@ but only per single plan-dir, and nothing consumed it in the dashboard.
   loosening CORS to allow `null` or moving to a postMessage bridge —
   either is a scope decision beyond "wire fetch to the API"); logged to
   `.agent/memory/issues-backlog.md` for a follow-up decision.
+
+## Launch fix (2026-08-17)
+The sandboxed dashboard service has no `git` on PATH and hides `/usr/bin/env` (ProtectSystem), so the CLI shebang failed → `/api/pm/progress` 500 "failed to launch". Fixed: pm.py invokes aq-pm-tracker with an explicit `sys.executable` + augmented PATH (`/run/current-system/sw/bin:/run/wrappers/bin`) so git/systemctl resolve. Verified: bare-python launch emits valid JSON (program 56%). Needs one dashboard restart to load.
