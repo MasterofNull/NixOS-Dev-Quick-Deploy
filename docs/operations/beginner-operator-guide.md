@@ -63,6 +63,47 @@ will confirm it's really you. If anything looks wrong, unexpected, or you simply
 
 ---
 
+## Setting up your security key
+
+Think of your security key as a house key for your AI system — either a small physical device you keep
+safe, or your fingerprint. It's what proves an approval is really coming from *you*, so no software (not
+even the AI itself) can approve things on your behalf. You never type a password.
+
+Getting started is simple:
+1. Open the setup screen and choose "Add security key."
+2. Follow the prompt to plug in your device or scan your fingerprint.
+3. Give it a name (like "Home key") so you recognize it.
+
+**Do this next — register a second, backup key right away.** Keys get lost and devices break. A spare
+means you never get locked out of your own system. It takes two minutes now and saves a lot of stress
+later.
+
+## Approving without a browser
+
+Sometimes you can't use the web screen — during system recovery, or if the interface is down. Then you
+use a plain command-line tool called `aq-approve`. It lists the same pending requests in the same plain
+language, and you decide the same way.
+
+It looks different, but it is **exactly as safe** as the normal screen: you still physically touch your
+security key to confirm, which proves you're present and authorizing it yourself — no remote software can
+do it for you. As always, check that what's shown matches what you expected before you touch your key; if
+anything looks off, don't approve it.
+
+## If you lose your security key
+
+Take a breath — your system is safe, and this is manageable.
+
+**If you registered a backup key:** just use that one. Nothing is lost — the system accepts either key.
+This is exactly why the backup matters.
+
+**If you lost *all* your keys:** you'll re-set-up access by **physically sitting at the computer itself**.
+That can feel inconvenient, but it's deliberate — it means only someone with hands-on possession of your
+machine can restore access, which keeps everyone else out. Recovery only re-registers a key; it never
+approves anything by itself.
+
+**Going forward:** keep a backup key somewhere safe and easy to find at home. That one habit prevents the
+lock-out entirely.
+
 ## Handling common alerts
 
 When you see a notification, don't panic. The screen uses color to tell you what's happening.
