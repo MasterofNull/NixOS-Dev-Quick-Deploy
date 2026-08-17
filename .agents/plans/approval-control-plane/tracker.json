@@ -1,0 +1,240 @@
+{
+  "plan": {
+    "id": "approval-control-plane",
+    "title": "Approval Control Plane \u2014 beginner-friendly human-in-the-loop",
+    "prd_ref": ".agent/PROJECT-APPROVAL-CONTROL-PLANE-PRD.md",
+    "owner": "hyperd",
+    "goal": "The human authorizes plain-language decisions with one tap; the system's automations do ALL the cryptography, invisibly. Replaces expert SOPS/age/Ed25519/offline-signing friction with a beginner-safe control surface.",
+    "success_criteria": [
+      "A closed approval-request record whose plain-language layer can never leak crypto, bound by a canonical hash to the action that runs (WYSIWYS)",
+      "A WebAuthn-gated signer: the human taps a key, the system signs; an autonomous agent cannot forge authorization",
+      "A beginner surface (approve/deny in plain language) + a runbook engine that runs the whole multi-step activation the human never sees",
+      "Lost-key recovery + headless/rescue authorization with the same guarantees",
+      "UI/UX deployed and functioning (dev-mode); crypto hardening + owner enrollment locked down when the system matures"
+    ]
+  },
+  "phases": [
+    {
+      "id": "design",
+      "name": "Design + review",
+      "goal": "PRD + per-slice design packets, independently reviewed",
+      "order": 1
+    },
+    {
+      "id": "build",
+      "name": "Build (P0-P4)",
+      "goal": "the full approve-to-action codebase, default-OFF, tested",
+      "order": 2
+    },
+    {
+      "id": "deploy",
+      "name": "Deploy (UI/UX functioning)",
+      "goal": "the surface live in the dashboard, dev-mode, crypto deferred",
+      "order": 3
+    },
+    {
+      "id": "harden",
+      "name": "Harden + activate (deferred)",
+      "goal": "confined services, real WebAuthn/owner keys, real effects \u2014 owner-gated",
+      "order": 4
+    }
+  ],
+  "items": [
+    {
+      "id": "prd",
+      "name": "PRD R2 (folds WYSIWYS/replay/downgrade + recovery/headless)",
+      "phase": "design",
+      "kind": "task",
+      "goal": "ratified beginner-friendly control-plane PRD",
+      "validation_goal": "owner-ratified; Antigravity + local review folded",
+      "deps": [],
+      "editorial_note": "owner ratified R2 2026-08-16",
+      "detection": {
+        "commit_match": [
+          "ratify Approval Control Plane PRD",
+          "Approval Control Plane PRD R2"
+        ],
+        "freeze_record": ".agent/PROJECT-APPROVAL-CONTROL-PLANE-PRD.md"
+      },
+      "pct_hint": 100
+    },
+    {
+      "id": "designs",
+      "name": "Per-slice design packets P0-P4 (+P1b) + folded reviews",
+      "phase": "design",
+      "kind": "slice",
+      "goal": "each slice designed, independently reviewed (local + Antigravity), findings folded",
+      "validation_goal": "Antigravity CRITICAL request_id-replay caught + fixed pre-build",
+      "deps": [
+        "prd"
+      ],
+      "editorial_note": "review caught a real critical bug local+orchestrator missed",
+      "detection": {
+        "commit_match": [
+          "ACP-P1 design",
+          "ACP-P2 design",
+          "ACP-P3 design",
+          "P1b + P4 refinement designs"
+        ],
+        "freeze_record": ".agents/plans/approval-control-plane/ACP-P1-DESIGN-20260816.md"
+      },
+      "pct_hint": 100
+    },
+    {
+      "id": "p0",
+      "name": "P0 \u2014 approval-request record + audited executor",
+      "phase": "build",
+      "kind": "slice",
+      "goal": "closed 3-layer record, canonical hash binds request_id, privacy boundary, bounded action, state machine",
+      "validation_goal": "8/8 + golden hash pinned",
+      "deps": [
+        "designs"
+      ],
+      "editorial_note": "the substrate everything binds to",
+      "detection": {
+        "commit_match": [
+          "ACP-P0"
+        ],
+        "freeze_record": ".agents/plans/approval-control-plane/ACP-P0-DESIGN-20260816.md"
+      },
+      "pct_hint": 100
+    },
+    {
+      "id": "p1",
+      "name": "P1 \u2014 WebAuthn signing service core",
+      "phase": "build",
+      "kind": "slice",
+      "goal": "fetch-by-id + recompute (WYSIWYS), single-use + executed-id ledgers, verify_execution_authorization, no software-auth in prod",
+      "validation_goal": "20/20",
+      "deps": [
+        "p0"
+      ],
+      "editorial_note": "the crypto core; software authenticator test-only",
+      "detection": {
+        "commit_match": [
+          "ACP-P1 build"
+        ],
+        "freeze_record": ".agents/plans/approval-control-plane/ACP-P1-BUILD-20260816.md"
+      },
+      "pct_hint": 100
+    },
+    {
+      "id": "p2",
+      "name": "P2 \u2014 approval surface (route + accessible view)",
+      "phase": "build",
+      "kind": "slice",
+      "goal": "Layer-1-only cards, approve->signer (no bytes/keys), CSP/kiosk, live-sync-disable, a11y",
+      "validation_goal": "22/22",
+      "deps": [
+        "p1"
+      ],
+      "editorial_note": "the beginner-facing surface",
+      "detection": {
+        "commit_match": [
+          "ACP-P2 build"
+        ],
+        "freeze_record": ".agents/plans/approval-control-plane/ACP-P2-BUILD-20260817.md"
+      },
+      "pct_hint": 100
+    },
+    {
+      "id": "p3",
+      "name": "P3 \u2014 runbook automation engine",
+      "phase": "build",
+      "kind": "slice",
+      "goal": "idempotent/resumable audited executor, atom pre-check, scope-bound, authorized-once, no-shell, declarative coupling + 5 runbooks",
+      "validation_goal": "16/16",
+      "deps": [
+        "p1"
+      ],
+      "editorial_note": "runs the multi-step activation the human never sees",
+      "detection": {
+        "commit_match": [
+          "ACP-P3 build"
+        ],
+        "freeze_record": ".agents/plans/approval-control-plane/ACP-P3-BUILD-20260817.md"
+      },
+      "pct_hint": 100
+    },
+    {
+      "id": "p1b",
+      "name": "P1b \u2014 lost-authenticator recovery",
+      "phase": "build",
+      "kind": "slice",
+      "goal": "multi-authenticator allowlist (primary+backup), no-empty-allowlist, console-gated recovery, no stored secret",
+      "validation_goal": "9/9",
+      "deps": [
+        "p1"
+      ],
+      "editorial_note": "no single point of human-factor failure",
+      "detection": {
+        "commit_match": [
+          "ACP-P1b recovery",
+          "P1b recovery"
+        ],
+        "freeze_record": ".agents/plans/approval-control-plane/ACP-P1b-BUILD-20260817.md"
+      },
+      "pct_hint": 100
+    },
+    {
+      "id": "p4",
+      "name": "P4 \u2014 headless/rescue aq-approve CLI",
+      "phase": "build",
+      "kind": "slice",
+      "goal": "FIDO2 hidraw CLI reusing the identical signer path, no passphrase/key-file downgrade, software-auth test-only",
+      "validation_goal": "21/21",
+      "deps": [
+        "p1"
+      ],
+      "editorial_note": "authorize a revoke from a rescue console",
+      "detection": {
+        "commit_match": [
+          "P4 headless CLI",
+          "aq-approve-headless"
+        ],
+        "freeze_record": ".agents/plans/approval-control-plane/ACP-P4-BUILD-20260817.md"
+      },
+      "pct_hint": 100
+    },
+    {
+      "id": "deploy-ui",
+      "name": "Deploy \u2014 wire the surface into the live dashboard (dev-mode)",
+      "phase": "deploy",
+      "kind": "task",
+      "goal": "approvals router + /approve view registered in the dashboard app; fixture store/signer (crypto deferred); real effects stubbed",
+      "validation_goal": "module imports; 3 fixtures render; dashboard restart makes /approve live",
+      "deps": [
+        "p2"
+      ],
+      "editorial_note": "owner-directed 2026-08-17: deploy UI/UX functioning now, defer crypto",
+      "detection": {
+        "commit_match": [
+          "ACP deployment",
+          "wire the surface",
+          "deploy the approval surface"
+        ],
+        "blocker_note": "needs a dashboard service restart to serve /approve live"
+      },
+      "pct_hint": 60
+    },
+    {
+      "id": "harden",
+      "name": "Harden + activate \u2014 confined services, real WebAuthn/owner keys, real effects",
+      "phase": "harden",
+      "kind": "task",
+      "goal": "confined signer/store services, declarative FIDO2 udev, real key + credential enrollment, real runbook atoms",
+      "validation_goal": "full approve->sign->execute loop end-to-end, observable + intervenable (Activation Gate)",
+      "deps": [
+        "deploy-ui",
+        "p3",
+        "p1b",
+        "p4"
+      ],
+      "editorial_note": "DEFERRED per owner 2026-08-17 until the system is more mature; the crypto/human-in-the-loop lock-down",
+      "detection": {
+        "blocker_note": "DEFERRED (owner 2026-08-17): postpone user/system crypto signing until the system is better developed; priority is UI/UX + parity functioning first. Owner-gated: real key/WebAuthn steps require the owner's hands."
+      },
+      "pct_hint": 0
+    }
+  ]
+}
