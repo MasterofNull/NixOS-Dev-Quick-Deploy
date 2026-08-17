@@ -88,6 +88,11 @@
     uvicorn
     aiohttp
     rich
+    # ACP-P1 WebAuthn signing service: server-side FIDO2/WebAuthn assertion
+    # verification + the software-authenticator test suite run under system
+    # python. Without it the ACP-P1 build + test-approval-signer.py fail on
+    # `import fido2` (nixpkgs has the derivation but it wasn't realized/linked).
+    fido2
   ]);
   cliPythonNames = [ "python3" "python3Full" "python312" "python313" ];
   mergedPackageNames = lib.unique (basePackageNames ++ cfg.profileData.systemPackageNames);
