@@ -100,6 +100,23 @@ server code. Validation goals:
 - **confinement** — the agent user cannot read the key file or the request store's authority view
   (DAC + namespace), only the UDS.
 
+## Review fold — local Qwen (`6so7v7`, verdict: WYSIWYS/replay/downgrade sound; 3 hardenings)
+- **`request_id` must be high-entropy + unpredictable (finding 4a).** The single-use replay ledger keys
+  on `request_id`, so it MUST be a cryptographically strong, non-guessable id (ULIDv... or UUIDv4, ≥122
+  bits), server/authority-assigned at request creation, never caller-chosen. A predictable id would let
+  an agent pre-burn or collide ledger slots. The owner Ed25519 key stays inside the confined service and
+  is never extractable; a signature is only ever produced under a fresh human assertion.
+- **Challenge validity window + clock-skew (finding 4b).** Each WebAuthn challenge carries a short TTL
+  (e.g. 120s) with a bounded clock-skew tolerance; an assertion presented after the window is rejected
+  (fail closed) and the challenge is burned. Time is monotonic-server-authoritative, not client-supplied.
+- **Attestation posture is an explicit registration control (finding 3).** The python-fido2 software
+  authenticator proves the PROTOCOL logic (challenge binding, single-use, signature) hermetically, but
+  NOT hardware isolation / device-identity binding. Registration (P1) records the decision: for the
+  local single-user factory, verify attestation where the authenticator provides it and bind the
+  credential id + public key in the root-owned allowlist; document accepted residual risk where
+  self-attestation is used. The test suite asserts protocol correctness; hardware-attestation strength
+  is a registration-time control, called out so it is a conscious choice, not an unexamined gap.
+
 ## Scope fence (NOT in P1)
 No web UI (P2), no lost-authenticator recovery / backup keys (P1b), no headless `fido2-assert` CLI
 (P4), no runbook automation engine (P3). P1 is the signing service + registration + WebAuthn verify +
