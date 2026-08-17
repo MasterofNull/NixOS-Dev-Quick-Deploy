@@ -1,0 +1,636 @@
+<!DOCTYPE html>
+<!--
+  Approval Control Plane P2 — the approval surface.
+  Served by dashboard/backend/api/routes/approvals.py (`view_router`,
+  GET /approve) with the verified kiosk CSP header from
+  .agents/plans/approval-control-plane/ACP-PREP-COPY-20260816.md
+  ("Kiosk CSP + launch"). This file is loaded via that route in production —
+  opening it directly from disk (file://) will not carry the CSP header and
+  is for local eyeballing only, not a substitute for the kiosk session.
+
+  KIOSK LAUNCH REQUIREMENT (deployment layer — NOT built by this file):
+  per the ACP-P2 design's DOM-isolation/clickjacking fold, this view MUST be
+  opened in a dedicated, agent-uncontrollable kiosk browser session (isolated
+  systemd-run scope, dedicated uid, extensions disabled, ephemeral profile),
+  never in the operator's regular browser session where a compromised agent
+  could inject scripts. See the prep doc's verified launch command:
+    systemd-run --scope --uid=approval-user --gid=approval-users \
+      chromium --kiosk http://127.0.0.1:<APPROVE_PORT>/approve \
+      --no-first-run --disable-extensions --disable-default-apps \
+      --disable-background-networking --disable-sync --disable-translate \
+      --no-pings --user-data-dir=$(mktemp -d) --disk-cache-dir=/dev/null
+  Wiring the real port from options.nix and the systemd/Nix kiosk unit is a
+  separate, default-OFF deployment slice.
+-->
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Approvals</title>
+<style>
+  :root {
+    color-scheme: light dark;
+    --bg: #ffffff;
+    --fg: #1a1a2e;
+    --muted: #4b4b5a;
+    --card-bg: #f7f7fb;
+    --card-border: #d0d0da;
+    --accent: #1d4ed8;
+    --accent-fg: #ffffff;
+    --danger: #a3170f;
+    --danger-bg: #fbe9e7;
+    --ok: #146c2e;
+    --ok-bg: #e6f4ea;
+    --impact-low-bg: #e6f4ea;
+    --impact-low-fg: #146c2e;
+    --impact-medium-bg: #fff4e0;
+    --impact-medium-fg: #8a5300;
+    --impact-high-bg: #fde7e7;
+    --impact-high-fg: #a3170f;
+    --focus-ring: #1d4ed8;
+  }
+  @media (prefers-color-scheme: dark) {
+    :root {
+      --bg: #121218;
+      --fg: #f2f2f7;
+      --muted: #c2c2cc;
+      --card-bg: #1c1c24;
+      --card-border: #35353f;
+      --accent: #7c9dff;
+      --accent-fg: #0b0f2b;
+      --danger: #ff8a80;
+      --danger-bg: #3a1414;
+      --ok: #86e0a6;
+      --ok-bg: #12321c;
+      --impact-low-bg: #12321c;
+      --impact-low-fg: #86e0a6;
+      --impact-medium-bg: #3a2c05;
+      --impact-medium-fg: #ffcf7d;
+      --impact-high-bg: #3a1414;
+      --impact-high-fg: #ff8a80;
+      --focus-ring: #7c9dff;
+    }
+  }
+  * { box-sizing: border-box; }
+  html, body { margin: 0; padding: 0; }
+  body {
+    background: var(--bg);
+    color: var(--fg);
+    font-family: -apple-system, "Segoe UI", Roboto, Helvetica, Arial, sans-serif;
+    line-height: 1.45;
+    padding: 1.25rem;
+    max-width: 720px;
+    margin: 0 auto;
+  }
+  a, button { font-family: inherit; }
+  button {
+    cursor: pointer;
+    border-radius: 8px;
+    border: 1px solid var(--card-border);
+    background: var(--card-bg);
+    color: var(--fg);
+    padding: 0.6rem 1rem;
+    font-size: 1rem;
+  }
+  button:disabled { opacity: 0.55; cursor: not-allowed; }
+  /* Visible focus everywhere — never remove without replacing (WCAG 2.4.7). */
+  a:focus-visible, button:focus-visible, [tabindex]:focus-visible {
+    outline: 3px solid var(--focus-ring);
+    outline-offset: 2px;
+  }
+  @media (prefers-reduced-motion: reduce) {
+    * { animation: none !important; transition: none !important; scroll-behavior: auto !important; }
+  }
+
+  header.page-header {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    gap: 0.75rem;
+    flex-wrap: wrap;
+    margin-bottom: 1rem;
+  }
+  header.page-header h1 { font-size: 1.4rem; margin: 0; }
+  .pending-badge {
+    background: var(--accent);
+    color: var(--accent-fg);
+    border-radius: 999px;
+    padding: 0.2rem 0.7rem;
+    font-size: 0.9rem;
+    font-weight: 600;
+  }
+  .cta-link {
+    background: none;
+    border: none;
+    color: var(--accent);
+    text-decoration: underline;
+    padding: 0.2rem 0;
+  }
+
+  #live-sync-indicator {
+    display: flex;
+    align-items: center;
+    gap: 0.5rem;
+    font-size: 0.9rem;
+    color: var(--muted);
+    margin-bottom: 1rem;
+  }
+  #live-sync-indicator .dot {
+    width: 0.6rem;
+    height: 0.6rem;
+    border-radius: 999px;
+    background: var(--ok);
+    display: inline-block;
+  }
+  #live-sync-indicator.disconnected .dot { background: var(--danger); }
+  #live-sync-indicator.disconnected { color: var(--danger); font-weight: 600; }
+
+  #empty-state {
+    background: var(--card-bg);
+    border: 1px solid var(--card-border);
+    border-radius: 10px;
+    padding: 1.25rem;
+    color: var(--muted);
+  }
+
+  .approval-card {
+    background: var(--card-bg);
+    border: 1px solid var(--card-border);
+    border-radius: 12px;
+    padding: 1rem 1.1rem;
+    margin-bottom: 1rem;
+  }
+  .approval-card h2 { font-size: 1.1rem; margin: 0 0 0.35rem 0; }
+  .approval-card .what { margin: 0 0 0.25rem 0; }
+  .approval-card .why { margin: 0 0 0.6rem 0; color: var(--muted); }
+  .chip-row { display: flex; gap: 0.5rem; flex-wrap: wrap; margin-bottom: 0.75rem; }
+  .chip {
+    display: inline-flex;
+    align-items: center;
+    gap: 0.3rem;
+    border-radius: 999px;
+    padding: 0.2rem 0.65rem;
+    font-size: 0.85rem;
+    font-weight: 600;
+  }
+  .chip.impact-low { background: var(--impact-low-bg); color: var(--impact-low-fg); }
+  .chip.impact-medium { background: var(--impact-medium-bg); color: var(--impact-medium-fg); }
+  .chip.impact-high { background: var(--impact-high-bg); color: var(--impact-high-fg); }
+  .chip.reversible { background: var(--ok-bg); color: var(--ok); }
+  .chip.not-reversible { background: var(--danger-bg); color: var(--danger); }
+  .chip.status-chip { background: var(--card-border); color: var(--fg); }
+
+  .action-row { display: flex; gap: 0.6rem; flex-wrap: wrap; align-items: center; }
+  .approve-btn { background: var(--accent); color: var(--accent-fg); border-color: var(--accent); font-weight: 600; }
+  .deny-btn { background: var(--danger-bg); color: var(--danger); border-color: var(--danger); }
+  .details-btn { background: transparent; }
+  .approve-microcopy {
+    font-size: 0.85rem;
+    color: var(--muted);
+    margin: 0.4rem 0 0.75rem 0;
+  }
+
+  .details-panel {
+    margin-top: 0.75rem;
+    padding: 0.75rem;
+    border-top: 1px dashed var(--card-border);
+    font-size: 0.9rem;
+  }
+  .details-panel dt { font-weight: 600; margin-top: 0.4rem; }
+  .details-panel dd { margin: 0 0 0.2rem 0; word-break: break-all; color: var(--muted); }
+  .details-panel[hidden] { display: none; }
+
+  .error-card {
+    border: 1px solid var(--danger);
+    background: var(--danger-bg);
+    color: var(--danger);
+    border-radius: 10px;
+    padding: 0.75rem 1rem;
+    margin-top: 0.6rem;
+  }
+  .error-card h3 { margin: 0 0 0.2rem 0; font-size: 1rem; }
+  .error-card p { margin: 0.15rem 0; }
+
+  #toast {
+    position: fixed;
+    left: 50%;
+    bottom: 1.25rem;
+    transform: translateX(-50%);
+    background: var(--fg);
+    color: var(--bg);
+    padding: 0.65rem 1.1rem;
+    border-radius: 999px;
+    font-size: 0.95rem;
+  }
+  #toast[hidden] { display: none; }
+</style>
+</head>
+<body>
+  <header class="page-header">
+    <h1 id="card-title">Approvals Needed</h1>
+    <span class="pending-badge" id="pending-badge" aria-hidden="true">0 pending</span>
+  </header>
+
+  <div id="live-sync-indicator" role="status" aria-live="polite">
+    <span class="dot" aria-hidden="true"></span>
+    <span id="live-sync-label">Live</span>
+  </div>
+
+  <button type="button" class="cta-link" id="view-all-cta">View all</button>
+
+  <main>
+    <p id="empty-state" hidden>All caught up! No items are waiting for your review.</p>
+    <div id="approval-list" aria-live="polite"></div>
+  </main>
+
+  <div id="toast" role="alert" aria-live="assertive" hidden></div>
+
+<script>
+(function () {
+  "use strict";
+
+  // ------------------------------------------------------------------
+  // Verbatim from ACP-PREP-COPY-20260816.md "Plain-language WebAuthn/
+  // signer error map (for P2)" + one P2-authored addition
+  // (request_not_found — not in the prep verbatim set; the prep map covers
+  // WebAuthn/signer faults only). Keep in sync with
+  // dashboard/backend/api/routes/approvals.py::ERROR_MAP.
+  // ------------------------------------------------------------------
+  var ERROR_MAP = {
+    "no_authenticator": {"plain_title":"No security key found","plain_body":"We couldn't find a security key or fingerprint reader.","physical_action":"Plug in your security key, then try again."},
+    "user_verification_failed": {"plain_title":"Couldn't verify it's you","plain_body":"Your fingerprint or PIN didn't match.","physical_action":"Try your fingerprint or PIN again."},
+    "ceremony_timeout": {"plain_title":"Timed out waiting","plain_body":"We stopped waiting for you to tap your key.","physical_action":"Tap Approve again and touch your key when it lights up."},
+    "unregistered_key": {"plain_title":"Key not recognized","plain_body":"This security key isn't set up for this system.","physical_action":"Use the key you registered, or add this one in Settings."},
+    "challenge_expired": {"plain_title":"Request expired","plain_body":"This approval sat too long and is no longer valid.","physical_action":"Start the approval again from the list."},
+    "signature_invalid": {"plain_title":"Approval didn't go through","plain_body":"The system couldn't confirm your approval.","physical_action":"Try approving again; if it repeats, contact your admin."},
+    "already_completed": {"plain_title":"Already done","plain_body":"This request was already approved and carried out.","physical_action":"No action needed — you can close this."},
+    "connection_lost": {"plain_title":"Connection lost","plain_body":"We lost the connection to the system.","physical_action":"Wait a moment for it to reconnect before approving."},
+    "request_expired": {"plain_title":"Request expired","plain_body":"This request timed out before anyone approved it.","physical_action":"Ask for a new request if you still need it."},
+    "internal_error": {"plain_title":"Something went wrong","plain_body":"An unexpected problem stopped this approval.","physical_action":"Try again; if it keeps happening, contact your admin."},
+    "request_not_found": {"plain_title":"Request not found","plain_body":"We couldn't find this approval request.","physical_action":"Refresh the list and try again."}
+  };
+
+  // Every state this surface can honestly render (state-honesty validation
+  // goal) — pending/approved/running/done are the P0 state machine plus the
+  // client-side transient "running" between a signed approve and the
+  // executor's terminal "executed" (rendered here as "Done"); denied/
+  // expired/failed are P0 terminal states rendered as-is, never hidden.
+  var STATUS_LABELS = {
+    "pending": "Awaiting your review",
+    "approved": "Approved",
+    "running": "Running",
+    "executed": "Done",
+    "denied": "Denied",
+    "expired": "Expired",
+    "failed": "Failed"
+  };
+
+  var API_BASE = "/api/approvals";
+  var POLL_INTERVAL_MS = 5000;
+
+  var listEl = document.getElementById("approval-list");
+  var emptyStateEl = document.getElementById("empty-state");
+  var pendingBadgeEl = document.getElementById("pending-badge");
+  var liveSyncEl = document.getElementById("live-sync-indicator");
+  var liveSyncLabelEl = document.getElementById("live-sync-label");
+  var toastEl = document.getElementById("toast");
+  var viewAllCta = document.getElementById("view-all-cta");
+
+  viewAllCta.addEventListener("click", function () {
+    listEl.setAttribute("tabindex", "-1");
+    listEl.focus();
+    listEl.scrollIntoView({ behavior: "smooth", block: "start" });
+  });
+
+  function showToast(message) {
+    toastEl.textContent = message;
+    toastEl.hidden = false;
+    window.clearTimeout(showToast._t);
+    showToast._t = window.setTimeout(function () { toastEl.hidden = true; }, 4000);
+  }
+
+  function setLiveSync(connected) {
+    liveSyncEl.classList.toggle("disconnected", !connected);
+    liveSyncLabelEl.textContent = connected ? "Live" : "Connection lost";
+    var buttons = listEl.querySelectorAll(".approve-btn, .deny-btn");
+    for (var i = 0; i < buttons.length; i++) {
+      buttons[i].disabled = !connected;
+    }
+  }
+
+  function base64UrlToBuffer(value) {
+    var padded = value.replace(/-/g, "+").replace(/_/g, "/");
+    while (padded.length % 4) { padded += "="; }
+    var raw = window.atob(padded);
+    var buf = new Uint8Array(raw.length);
+    for (var i = 0; i < raw.length; i++) { buf[i] = raw.charCodeAt(i); }
+    return buf.buffer;
+  }
+
+  function bufferToBase64Url(buffer) {
+    var bytes = new Uint8Array(buffer);
+    var binary = "";
+    for (var i = 0; i < bytes.length; i++) { binary += String.fromCharCode(bytes[i]); }
+    return window.btoa(binary).replace(/\+/g, "-").replace(/\//g, "_").replace(/=+$/, "");
+  }
+
+  function renderErrorCard(container, code) {
+    var card = ERROR_MAP[code] || ERROR_MAP.internal_error;
+    var el = document.createElement("div");
+    el.className = "error-card";
+    el.setAttribute("role", "alert");
+    var h3 = document.createElement("h3");
+    h3.textContent = card.plain_title;
+    var body = document.createElement("p");
+    body.textContent = card.plain_body;
+    var action = document.createElement("p");
+    action.textContent = card.physical_action;
+    el.appendChild(h3);
+    el.appendChild(body);
+    el.appendChild(action);
+    container.innerHTML = "";
+    container.appendChild(el);
+    return el;
+  }
+
+  function impactChipClass(impact) {
+    if (impact === "high") { return "impact-high"; }
+    if (impact === "medium") { return "impact-medium"; }
+    return "impact-low";
+  }
+
+  function buildCard(record) {
+    var card = document.createElement("article");
+    card.className = "approval-card";
+    card.dataset.requestId = record.request_id;
+
+    var h2 = document.createElement("h2");
+    h2.textContent = record.title;
+    card.appendChild(h2);
+
+    var what = document.createElement("p");
+    what.className = "what";
+    what.textContent = record.what;
+    card.appendChild(what);
+
+    var why = document.createElement("p");
+    why.className = "why";
+    why.textContent = record.why;
+    card.appendChild(why);
+
+    var chipRow = document.createElement("div");
+    chipRow.className = "chip-row";
+
+    var impactChip = document.createElement("span");
+    impactChip.className = "chip " + impactChipClass(record.impact);
+    impactChip.textContent = record.impact.charAt(0).toUpperCase() + record.impact.slice(1) + " impact";
+    impactChip.setAttribute("aria-label", "Impact: " + record.impact);
+    chipRow.appendChild(impactChip);
+
+    var reversibleChip = document.createElement("span");
+    reversibleChip.className = "chip " + (record.reversible ? "reversible" : "not-reversible");
+    reversibleChip.textContent = record.reversible ? "Reversible" : "Not reversible";
+    chipRow.appendChild(reversibleChip);
+
+    var statusChip = document.createElement("span");
+    statusChip.className = "chip status-chip";
+    statusChip.textContent = STATUS_LABELS[record.status] || record.status;
+    statusChip.setAttribute("data-role", "status-chip");
+    chipRow.appendChild(statusChip);
+
+    card.appendChild(chipRow);
+
+    var actionRow = document.createElement("div");
+    actionRow.className = "action-row";
+
+    var approveBtn = document.createElement("button");
+    approveBtn.type = "button";
+    approveBtn.className = "approve-btn";
+    approveBtn.textContent = "Approve";
+    approveBtn.setAttribute("aria-label", "Approve: " + record.title);
+
+    var denyBtn = document.createElement("button");
+    denyBtn.type = "button";
+    denyBtn.className = "deny-btn";
+    denyBtn.textContent = "Deny";
+    denyBtn.setAttribute("aria-label", "Deny: " + record.title);
+
+    var detailsBtn = document.createElement("button");
+    detailsBtn.type = "button";
+    detailsBtn.className = "details-btn";
+    detailsBtn.textContent = "Details";
+    var detailsPanelId = "details-" + record.request_id;
+    detailsBtn.setAttribute("aria-expanded", "false");
+    detailsBtn.setAttribute("aria-controls", detailsPanelId);
+
+    var isPending = record.status === "pending";
+    approveBtn.disabled = !isPending;
+    denyBtn.disabled = !isPending;
+
+    actionRow.appendChild(approveBtn);
+    actionRow.appendChild(denyBtn);
+    actionRow.appendChild(detailsBtn);
+    card.appendChild(actionRow);
+
+    var microcopy = document.createElement("p");
+    microcopy.className = "approve-microcopy";
+    microcopy.textContent = "Tapping Approve will ask you to scan your fingerprint or touch your security key.";
+    card.appendChild(microcopy);
+
+    var errorSlot = document.createElement("div");
+    errorSlot.className = "card-error-slot";
+    card.appendChild(errorSlot);
+
+    var detailsPanel = document.createElement("dl");
+    detailsPanel.className = "details-panel";
+    detailsPanel.id = detailsPanelId;
+    detailsPanel.hidden = true;
+    card.appendChild(detailsPanel);
+
+    detailsBtn.addEventListener("click", function () {
+      var expanded = detailsBtn.getAttribute("aria-expanded") === "true";
+      if (expanded) {
+        detailsPanel.hidden = true;
+        detailsBtn.setAttribute("aria-expanded", "false");
+        return;
+      }
+      detailsBtn.setAttribute("aria-expanded", "true");
+      loadDetails(record.request_id, detailsPanel);
+    });
+
+    approveBtn.addEventListener("click", function () {
+      runApproveFlow(record, approveBtn, denyBtn, errorSlot, statusChip);
+    });
+
+    denyBtn.addEventListener("click", function () {
+      runDenyFlow(record, approveBtn, denyBtn, errorSlot, statusChip);
+    });
+
+    return card;
+  }
+
+  function loadDetails(requestId, panel) {
+    panel.hidden = false;
+    panel.innerHTML = "<dt>Loading…</dt>";
+    fetch(API_BASE + "/" + encodeURIComponent(requestId))
+      .then(function (resp) {
+        if (!resp.ok) { throw new Error("details_fetch_failed"); }
+        return resp.json();
+      })
+      .then(function (details) {
+        panel.innerHTML = "";
+        var fields = [
+          ["Runbook", details.action_manifest && details.action_manifest.runbook],
+          ["Design hash", details.technical_trail && details.technical_trail.design_sha256],
+          ["Target files", details.technical_trail && (details.technical_trail.target_files || []).join(", ")],
+          ["Grant subject", details.technical_trail && details.technical_trail.grant_subject],
+          ["Canonical hash", details.binding && details.binding.canonical_hash]
+        ];
+        for (var i = 0; i < fields.length; i++) {
+          var dt = document.createElement("dt");
+          dt.textContent = fields[i][0];
+          var dd = document.createElement("dd");
+          dd.textContent = fields[i][1] || "—";
+          panel.appendChild(dt);
+          panel.appendChild(dd);
+        }
+      })
+      .catch(function () {
+        panel.innerHTML = "";
+        renderErrorCard(panel, "internal_error");
+      });
+  }
+
+  function runDenyFlow(record, approveBtn, denyBtn, errorSlot, statusChip) {
+    approveBtn.disabled = true;
+    denyBtn.disabled = true;
+    errorSlot.innerHTML = "";
+    fetch(API_BASE + "/" + encodeURIComponent(record.request_id) + "/deny", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ actor: "owner" })
+    })
+      .then(function (resp) { return resp.json().then(function (body) { return { ok: resp.ok, body: body }; }); })
+      .then(function (result) {
+        if (!result.ok) {
+          var code = (result.body && result.body.detail && result.body.detail.code) || "internal_error";
+          renderErrorCard(errorSlot, code);
+          approveBtn.disabled = false;
+          denyBtn.disabled = false;
+          return;
+        }
+        statusChip.textContent = STATUS_LABELS[result.body.status] || result.body.status;
+        showToast("Denied");
+      })
+      .catch(function () {
+        renderErrorCard(errorSlot, "connection_lost");
+        approveBtn.disabled = false;
+        denyBtn.disabled = false;
+      });
+  }
+
+  function runApproveFlow(record, approveBtn, denyBtn, errorSlot, statusChip) {
+    approveBtn.disabled = true;
+    denyBtn.disabled = true;
+    errorSlot.innerHTML = "";
+
+    if (!navigator.credentials || typeof navigator.credentials.get !== "function") {
+      renderErrorCard(errorSlot, "no_authenticator");
+      approveBtn.disabled = false;
+      denyBtn.disabled = false;
+      return;
+    }
+
+    fetch(API_BASE + "/" + encodeURIComponent(record.request_id) + "/challenge", { method: "POST" })
+      .then(function (resp) { return resp.json().then(function (body) { return { ok: resp.ok, body: body }; }); })
+      .then(function (result) {
+        if (!result.ok) {
+          var code = (result.body && result.body.detail && result.body.detail.code) || "internal_error";
+          throw { handled: true, code: code };
+        }
+        var challenge = result.body;
+        var publicKey = {
+          challenge: base64UrlToBuffer(challenge.challenge),
+          rpId: challenge.rp_id,
+          timeout: challenge.timeout_ms,
+          userVerification: "required",
+          allowCredentials: (challenge.allow_credentials || []).map(function (id) {
+            return { id: base64UrlToBuffer(id), type: "public-key" };
+          })
+        };
+        return navigator.credentials.get({ publicKey: publicKey });
+      })
+      .then(function (credential) {
+        var assertion = {
+          id: credential.id,
+          rawId: bufferToBase64Url(credential.rawId),
+          type: credential.type,
+          response: {
+            clientDataJSON: bufferToBase64Url(credential.response.clientDataJSON),
+            authenticatorData: bufferToBase64Url(credential.response.authenticatorData),
+            signature: bufferToBase64Url(credential.response.signature),
+            userHandle: credential.response.userHandle ? bufferToBase64Url(credential.response.userHandle) : null
+          }
+        };
+        return fetch(API_BASE + "/" + encodeURIComponent(record.request_id) + "/approve", {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({ assertion: assertion })
+        });
+      })
+      .then(function (resp) { return resp.json().then(function (body) { return { ok: resp.ok, body: body }; }); })
+      .then(function (result) {
+        if (!result.ok) {
+          var code = (result.body && result.body.detail && result.body.detail.code) || "internal_error";
+          throw { handled: true, code: code };
+        }
+        statusChip.textContent = STATUS_LABELS.running;
+        showToast("Approved");
+        toastEl.focus && toastEl.setAttribute("tabindex", "-1");
+        toastEl.focus && toastEl.focus();
+      })
+      .catch(function (err) {
+        var code = "ceremony_timeout";
+        if (err && err.handled) {
+          code = err.code;
+        } else if (err && err.name === "NotSupportedError") {
+          code = "no_authenticator";
+        } else if (err && err.name === "InvalidStateError") {
+          code = "unregistered_key";
+        }
+        renderErrorCard(errorSlot, code);
+        approveBtn.disabled = false;
+        denyBtn.disabled = false;
+      });
+  }
+
+  function render(records) {
+    listEl.innerHTML = "";
+    pendingBadgeEl.textContent = records.length + " pending";
+    emptyStateEl.hidden = records.length !== 0;
+    for (var i = 0; i < records.length; i++) {
+      listEl.appendChild(buildCard(records[i]));
+    }
+  }
+
+  function poll() {
+    fetch(API_BASE, { cache: "no-store" })
+      .then(function (resp) {
+        if (!resp.ok) { throw new Error("list_fetch_failed"); }
+        return resp.json();
+      })
+      .then(function (records) {
+        setLiveSync(true);
+        render(records);
+      })
+      .catch(function () {
+        setLiveSync(false);
+      });
+  }
+
+  poll();
+  window.setInterval(poll, POLL_INTERVAL_MS);
+})();
+</script>
+</body>
+</html>
