@@ -243,6 +243,13 @@ from .routes import approvals as approvals_mod  # noqa: E402
 app.include_router(approvals_mod.router, prefix="/api", tags=["approvals"])
 app.include_router(approvals_mod.view_router, tags=["approvals-view"])
 
+# PM progress dashboard: live git-projected rollup for the Program tab
+# (assets/aqos-progress-tracker.html) — GET /api/pm/progress. See
+# dashboard/backend/api/routes/pm.py module docstring for why it shells out
+# to `scripts/ai/aq-pm-tracker --all-json` instead of importing it.
+from .routes import pm as pm_mod  # noqa: E402
+app.include_router(pm_mod.router, prefix="/api", tags=["pm"])
+
 
 # ── Direct routes — must be registered BEFORE the StaticFiles mount ──────────
 # app.mount("/", StaticFiles(...)) is a catch-all that shadows any route

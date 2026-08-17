@@ -1,15 +1,19 @@
 #!/usr/bin/env python3
-"""Focused contract tests for the canonical AQ-OS program tracker."""
+"""Focused contract tests for the canonical AQ-OS program tracker.
+
+The tracker (assets/aqos-progress-tracker.html) was a frozen, hand-typed
+evidence snapshot through 2026-08. It is now a LIVE page that fetches
+GET /api/pm/progress (dashboard/backend/api/routes/pm.py, which shells out
+to `scripts/ai/aq-pm-tracker --all-json`) and renders the git-projected
+program rollup — no hardcoded track/gate/issue arrays remain. These tests
+assert the live-fetch contract, not any frozen content shape.
+"""
 
 from __future__ import annotations
 
 import argparse
-import copy
-import hashlib
-import json
 import re
 import unittest
-import urllib.error
 import urllib.request
 from pathlib import Path
 
@@ -19,33 +23,13 @@ TRACKER = ROOT / "assets" / "aqos-progress-tracker.html"
 DASHBOARD = ROOT / "dashboard.html"
 CLIENT = ROOT / "assets" / "dashboard.js"
 MAIN = ROOT / "dashboard" / "backend" / "api" / "main.py"
+PM_ROUTE = ROOT / "dashboard" / "backend" / "api" / "routes" / "pm.py"
+PM_TRACKER_CLI = ROOT / "scripts" / "ai" / "aq-pm-tracker"
 PHASE0 = ROOT / "scripts" / "testing" / "harness_qa" / "phases" / "phase0.py"
-
-SOURCE_CLASSES = {
-    ".agents/plans/UNIFIED-PROGRAM-PLAN.md": "governing",
-    ".agents/plans/unified-program/OWNER-DECISION-SHEET.md": "governing",
-    "config/system-state-authorities.yaml": "governing",
-    ".agents/plans/aqos-refoundation-cycle0/FOUNDATION-A-OWNER-ADJUDICATION-20260718.md": "governing",
-    ".agent/memory/issues-backlog.md": "operational_snapshot",
-    ".agent/collaboration/RESUME.json": "operational_snapshot",
-    ".agent/collaboration/PULSE.log": "operational_snapshot",
-    ".agents/delegation/registry.jsonl": "operational_snapshot",
-}
 
 
 def text(path: Path) -> str:
     return path.read_text(encoding="utf-8")
-
-
-def manifest() -> dict:
-    match = re.search(
-        r'<script type="application/json" id="tracker-provenance">\s*(.*?)\s*</script>',
-        text(TRACKER),
-        re.DOTALL,
-    )
-    if not match:
-        raise AssertionError("tracker provenance manifest missing")
-    return json.loads(match.group(1))
 
 
 def normalize_headers(headers) -> dict[str, str]:
@@ -62,48 +46,19 @@ def configure_live_base_url(value: str) -> str:
     return selected
 
 
-def validate_provenance(data: dict, current_hashes: dict[str, str]) -> list[str]:
-    """Validate closed source classes while treating operational hashes as historical evidence."""
-    errors: list[str] = []
-    if data.get("manifest_state") != "FROZEN_IMPLEMENTATION_SNAPSHOT":
-        errors.append("manifest_state")
-    if not re.fullmatch(r"2026-07-18T\d{2}:\d{2}:\d{2}Z", str(data.get("snapshot_at", ""))):
-        errors.append("snapshot_at")
-    sources = data.get("sources")
-    if not isinstance(sources, list):
-        return errors + ["sources"]
-    paths = [source.get("path") for source in sources]
-    digests = [source.get("sha256") for source in sources]
-    if len(paths) != len(set(paths)):
-        errors.append("duplicate_path")
-    if len(digests) != len(set(digests)):
-        errors.append("duplicate_digest")
-    if set(paths) != set(SOURCE_CLASSES):
-        errors.append("source_paths")
-    for source in sources:
-        path = source.get("path")
-        source_class = source.get("source_class")
-        digest = source.get("sha256")
-        if source_class not in {"governing", "operational_snapshot"}:
-            errors.append(f"source_class:{path}")
-        if SOURCE_CLASSES.get(path) != source_class:
-            errors.append(f"class_mapping:{path}")
-        if not re.fullmatch(r"[0-9a-f]{64}", str(digest)):
-            errors.append(f"digest:{path}")
-        if source_class == "governing" and current_hashes.get(path) != digest:
-            errors.append(f"governing_drift:{path}")
-    return errors
-
-
 class StaticContractTests(unittest.TestCase):
     def test_exact_runtime_inventory_exists(self) -> None:
-        for path in (TRACKER, DASHBOARD, CLIENT, MAIN, Path(__file__), PHASE0):
+        for path in (TRACKER, DASHBOARD, CLIENT, MAIN, PM_ROUTE, PM_TRACKER_CLI, Path(__file__), PHASE0):
             self.assertTrue(path.is_file(), path)
 
-    def test_tracker_is_self_contained(self) -> None:
+    def test_tracker_is_self_contained_except_same_origin_api(self) -> None:
+        """No external asset/script sources — but the live /api/pm/progress
+        fetch (a same-origin relative path) is the whole point now."""
         doc = text(TRACKER)
         self.assertNotRegex(doc, r'(?:src|href)=["\']https?://')
-        self.assertNotIn("fetch(", doc)
+        # exactly one fetch call, and it targets the same-origin aggregate route
+        self.assertEqual(len(re.findall(r"fetch\(", doc)), 1)
+        self.assertIn("const ENDPOINT = '/api/pm/progress';", doc)
         dashboard = text(DASHBOARD)
         self.assertNotRegex(dashboard, r'(?:src|href)\s*=\s*["\'](?:https?:)?//')
         self.assertNotRegex(dashboard, r'@import\s+(?:url\()?\s*["\']?(?:https?:)?//')
@@ -112,64 +67,65 @@ class StaticContractTests(unittest.TestCase):
         self.assertNotIn("fonts.googleapis.com", dashboard)
         self.assertNotIn("fonts.gstatic.com", dashboard)
 
-    def test_frozen_manifest_is_current(self) -> None:
-        data = manifest()
-        self.assertEqual(len(data["sources"]), 8)
-        current_hashes = {
-            path: hashlib.sha256((ROOT / path).read_bytes()).hexdigest()
-            for path, source_class in SOURCE_CLASSES.items()
-            if source_class == "governing"
-        }
-        self.assertEqual(validate_provenance(data, current_hashes), [])
-        self.assertEqual(
-            {source["path"]: source["source_class"] for source in data["sources"]},
-            SOURCE_CLASSES,
-        )
+    def test_no_hardcoded_progress_data(self) -> None:
+        """The old mockup baked plan/gate/issue/authority arrays straight into
+        the page. None of that may return — all content is server-projected."""
         doc = text(TRACKER)
-        self.assertIn("Operational records are historical commitments", doc)
+        for banned in (
+            "const tracks = [",
+            "const gateRows = [",
+            "const issues = [",
+            "const authorityTargets = [",
+            "FROZEN_IMPLEMENTATION_SNAPSHOT",
+            "tracker-provenance",
+        ):
+            self.assertNotIn(banned, doc, banned)
 
-    def test_operational_snapshot_liveness_boundary(self) -> None:
-        data = copy.deepcopy(manifest())
-        current_hashes = {
-            path: hashlib.sha256((ROOT / path).read_bytes()).hexdigest()
-            for path in SOURCE_CLASSES
-        }
-        operational = ".agent/collaboration/PULSE.log"
-        current_hashes[operational] = hashlib.sha256(b"advanced operational bytes").hexdigest()
-        self.assertEqual(validate_provenance(data, current_hashes), [])
-
-        governing = ".agents/plans/UNIFIED-PROGRAM-PLAN.md"
-        governing_drift = dict(current_hashes)
-        governing_drift[governing] = hashlib.sha256(b"changed governing bytes").hexdigest()
-        errors = validate_provenance(data, governing_drift)
-        self.assertIn(f"governing_drift:{governing}", errors)
-
-    def test_explicit_state_counts(self) -> None:
-        data = manifest()["expected_counts"]
-        self.assertEqual(data, {
-            "tracks": 10,
-            "active_tracks": 2,
-            "foundation_a_blocking_gates": 1,
-            "pending_q_decisions": 9,
-            "authority_rows": 10,
-            "open_high_severity_issues": 2,
-        })
+    def test_live_fetch_and_refresh_contract(self) -> None:
         doc = text(TRACKER)
-        self.assertEqual(len(re.findall(r"status: 'PENDING'", doc)), 9)
-        self.assertEqual(len(re.findall(r"status: 'DIRECTION_RECORDED', observed: 'SPLIT_BRAIN'", doc)), 10)
-        self.assertEqual(len(re.findall(r"status: 'active', inclusion_status: 'INCLUDED'", doc)), 2)
+        self.assertIn("async function load()", doc)
+        self.assertIn("REFRESH_INTERVAL_MS = 30000", doc)
+        self.assertIn("setInterval(load, REFRESH_INTERVAL_MS)", doc)
+        self.assertIn("cache: 'no-store'", doc)
 
-    def test_truthful_foundation_projection(self) -> None:
+    def test_loading_and_error_states_present(self) -> None:
         doc = text(TRACKER)
-        self.assertIn("owner adjudication + ten-row projection (bec9bc0d)", doc.lower())
-        self.assertIn("All ten observed rows remain SPLIT_BRAIN", doc)
-        self.assertIn("generic flake exports + source-complete package baseline (befc4141)", doc.lower())
+        self.assertIn('id="loading-panel"', doc)
+        self.assertIn("function renderError(", doc)
+        self.assertIn("Retry now", doc)
+        self.assertIn("chip-error", doc)
+        self.assertIn("chip-live", doc)
 
-    def test_accessible_disclosures_and_reduced_motion(self) -> None:
+    def test_status_legend_present(self) -> None:
         doc = text(TRACKER)
-        self.assertIn('aria-describedby="lane-${t.code}-detail"', doc)
-        self.assertIn("bar.addEventListener('focus'", doc)
-        self.assertIn("e.key === 'Escape'", doc)
+        for label in ("Shipped / Activated", "In progress", "Blocked", "Frozen", "Designed", "Not started"):
+            self.assertIn(label, doc)
+
+    def test_program_rollup_route_wired_into_main(self) -> None:
+        doc = text(MAIN)
+        self.assertIn("from .routes import pm as pm_mod", doc)
+        self.assertIn('app.include_router(pm_mod.router, prefix="/api", tags=["pm"])', doc)
+
+    def test_pm_route_shells_out_not_imports_projection(self) -> None:
+        """Same BARE-python posture as approvals.py: never import aq-pm-tracker's
+        project() at module load — shell out so the dashboard backend's
+        narrower deps never couple to the CLI's runtime."""
+        doc = text(PM_ROUTE)
+        self.assertIn('"--all-json"', doc)
+        self.assertIn("create_subprocess_exec", doc)
+        self.assertIn('@router.get("/pm/progress")', doc)
+        self.assertNotIn("from aq", doc)  # never import the CLI as a module
+
+    def test_aq_pm_tracker_aggregate_mode_exists(self) -> None:
+        doc = text(PM_TRACKER_CLI)
+        self.assertIn("--all-json", doc)
+        self.assertIn("def project_all(", doc)
+        self.assertIn("def discover_tracked_plans(", doc)
+        self.assertIn('"program_rollup_pct"', doc)
+
+    def test_accessible_and_reduced_motion(self) -> None:
+        doc = text(TRACKER)
+        self.assertIn('aria-live="polite"', doc)
         self.assertIn("@media (prefers-reduced-motion: reduce)", doc)
 
     def test_program_panel_embed_contract(self) -> None:
@@ -239,12 +195,21 @@ class LiveHeaderTests(unittest.TestCase):
         self.assertEqual(status, 200)
         self.assertEqual(headers.get("x-frame-options"), "SAMEORIGIN")
         self.assertIn("frame-ancestors 'self'", headers.get("content-security-policy", ""))
-        self.assertIn("FROZEN_IMPLEMENTATION_SNAPSHOT", body)
+        self.assertIn("/api/pm/progress", body)
         for path in ("/", "/assets/dashboard.js"):
             status, headers, _ = self.get(path)
             self.assertEqual(status, 200)
             self.assertEqual(headers.get("x-frame-options"), "DENY")
             self.assertIn("frame-ancestors 'none'", headers.get("content-security-policy", ""))
+
+    def test_live_pm_progress_endpoint(self) -> None:
+        status, _headers, body = self.get("/api/pm/progress")
+        self.assertEqual(status, 200)
+        import json
+        data = json.loads(body)
+        self.assertIn("plans", data)
+        self.assertIn("program_rollup_pct", data)
+        self.assertIsInstance(data["plans"], list)
 
 
 def main() -> int:
