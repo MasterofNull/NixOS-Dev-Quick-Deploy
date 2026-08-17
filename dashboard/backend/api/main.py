@@ -234,6 +234,14 @@ app.include_router(models_mod.router, prefix="/api", tags=["models"])
 # MAEAH AM-C1: canonical admin namespace aliases for model lifecycle.
 # Dashboard-internal `/api/models/*` remains as a compatibility alias.
 app.include_router(models_mod.router, prefix="/admin/v1", tags=["admin-models"])
+# ACP deployment (dev-mode, crypto-deferred): the approval surface uses the
+# route module's Fixture store/signer defaults — real WebAuthn signing + a live
+# request store are the deferred hardening step (owner-directed 2026-08-17:
+# deploy UI/UX functioning now, lock down crypto/human-in-the-loop later). Real
+# runbook effects stay STUBBED, so the dev-mode surface performs nothing unsafe.
+from .routes import approvals as approvals_mod  # noqa: E402
+app.include_router(approvals_mod.router, prefix="/api", tags=["approvals"])
+app.include_router(approvals_mod.view_router, tags=["approvals-view"])
 
 
 # ── Direct routes — must be registered BEFORE the StaticFiles mount ──────────
