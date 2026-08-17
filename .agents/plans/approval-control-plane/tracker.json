@@ -206,16 +206,18 @@
       "deps": [
         "p2"
       ],
-      "editorial_note": "owner-directed 2026-08-17: deploy UI/UX functioning now, defer crypto",
+      "editorial_note": "LIVE dev-mode 2026-08-17: /approve serves 3 plain-language cards, privacy-clean; command-center-dashboard-api healthy",
       "detection": {
         "commit_match": [
           "ACP deployment",
           "wire the surface",
-          "deploy the approval surface"
+          "deploy the approval surface",
+          "register the approval surface router"
         ],
-        "blocker_note": "needs a dashboard service restart to serve /approve live"
+        "blocker_note": "needs a dashboard service restart to serve /approve live",
+        "freeze_record": ".agents/plans/approval-control-plane/ACP-DEPLOY-20260817.md"
       },
-      "pct_hint": 60
+      "pct_hint": 100
     },
     {
       "id": "harden",
