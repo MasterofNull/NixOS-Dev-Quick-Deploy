@@ -49,7 +49,7 @@ GOLDEN_DESIGN_SHA256 = "a" * 64
 # canonicalization scheme, the runbook registry entry, or the fixture
 # values below MUST update this constant deliberately (it is the whole
 # point of the golden-canonical test to catch an accidental drift here).
-GOLDEN_CANONICAL_HASH = "ff83ff79befee8af9878d3c14479e72eaaa3f79d83dd247ad547a8b516cb6aa8"
+GOLDEN_CANONICAL_HASH = "b52bea91b5462469b884ca3fd0260d68ecbf18003fd4cdffee44e861aed37819"
 
 
 def _fixture_record() -> dict:
@@ -123,6 +123,28 @@ def test_golden_canonical() -> None:
 # --------------------------------------------------------------------------
 # 2. privacy-leak
 # --------------------------------------------------------------------------
+
+
+def test_request_id_binding() -> None:
+    """ACP-P1 review finding 2 (CRITICAL, verified): the canonical hash binds the
+    immutable `request_id`, so two content-identical requests with different ids
+    do NOT share a hash — an owner signature over one cannot be replayed against a
+    content-identical sibling. Also asserts the preserved invariant: a legal
+    `status` transition does NOT change the hash (`status` stays excluded)."""
+    a = AR.create_request(
+        request_id="01J0000000000000000000000A", created_by="x",
+        runbook="restart-service", params={"service": "switchboard"})
+    b = AR.create_request(
+        request_id="01J0000000000000000000000B", created_by="x",
+        runbook="restart-service", params={"service": "switchboard"})
+    check(a["summary"] == b["summary"] and a["action_manifest"] == b["action_manifest"],
+          "fixture content is not actually identical")
+    check(AR.compute_hash(a) != AR.compute_hash(b),
+          "content-identical requests with different request_id share a canonical_hash (cross-request signature reuse)")
+    check(AR.validate(a).ok and AR.validate(b).ok, "instance-bound records failed validate()")
+    approved, _ = AR.transition(a, AR.STATUS_APPROVED, actor="owner")
+    check(AR.compute_hash(approved) == AR.compute_hash(a),
+          "a legal status transition changed the canonical_hash (status must stay excluded)")
 
 
 def test_privacy_leak() -> None:
