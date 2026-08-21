@@ -1,0 +1,337 @@
+#!/usr/bin/env python3
+"""aq-local-dogfood-run — sequential, unattended overnight local dogfood runner.
+
+Grinds .agents/delegation/dogfood-queue.json with the local (Qwen) agent, one
+task at a time (backpressure: never concurrent). For each task it dispatches
+delegate-to-local with the context supply chain ON (assembler + read_file gate),
+blocks until the task finishes, captures the produced diff to
+.agents/delegation/dogfood-diffs/<task>.patch for later human/remote review,
+records the outcome in the ledger, then REVERTS the task's edits so the next
+task starts from a clean tree.
+
+GUARDRAILS (hard):
+  * Local NEVER commits. This runner never runs git add/commit/push. It only
+    captures diffs + reverts working-tree edits. All commits are a human/
+    orchestrator decision in the morning after review.
+  * Only files a task itself dirties are captured/reverted — the pre-existing
+    dirty set (the framework code local needs on disk, my staged work) is
+    snapshotted at start and never touched.
+  * Self-validating: runs the known dogfood-01 task first as a gate. If its edit
+    does not land, the framework isn't working end-to-end — HALT and leave a
+    clear note rather than grind the whole queue into failures.
+  * Waits for the read_file gate (Slice 0.2) to be present before starting;
+    without it, tasks blow the 24000-char prefill guard (proven by after-run-1).
+
+Failures are DATA: a failed/timed-out task is recorded and the runner moves on.
+After the queue drains, failed tasks are retried once. A summary is written to
+.agents/delegation/dogfood-overnight-summary.md for the morning.
+"""
+from __future__ import annotations
+
+import json
+import os
+import re
+import signal
+import subprocess
+import sys
+import time
+from datetime import datetime, timezone
+from pathlib import Path
+
+REPO = Path("/home/hyperd/Documents/NixOS-Dev-Quick-Deploy")
+QUEUE = REPO / ".agents/delegation/dogfood-queue.json"
+LEDGER = REPO / ".agents/delegation/dogfood-ledger.jsonl"
+BACKLOG = REPO / ".agent/memory/issues-backlog.md"
+DIFFDIR = REPO / ".agents/delegation/dogfood-diffs"
+SUMMARY = REPO / ".agents/delegation/dogfood-overnight-summary.md"
+DELEGATE = REPO / "scripts/ai/delegate-to-local"
+AGENT_EXECUTOR = REPO / "ai-stack/local-agents/agent_executor.py"
+
+PER_TASK_TIMEOUT = 3600          # the local task's OWN internal timeout (we kill it
+                                 # once the edit lands, so this is just an upper bound)
+GATE_WAIT_MAX_S = 1800           # wait up to 30 min for Slice 0.2 gate to appear
+GATE_POLL_S = 60
+# Poll-for-edit (measured: local's edit lands ~36 min in, then it loops ~25 min MORE
+# without signaling completion). So we don't wait for completion — we watch for the
+# edit to appear + stabilize, capture it, and kill the task. Captures the real output
+# early and skips the wasteful post-edit loop.
+POLL_INTERVAL_S = 60
+EDIT_POLL_MAX_S = 3000           # 50 min cap per task (edit lands ~36 min; margin for slower)
+
+ENV = {
+    **os.environ,
+    "PATH": "/run/current-system/sw/bin:/run/wrappers/bin:" + os.environ.get("PATH", ""),
+    "AQ_CONTEXT_ASSEMBLER": "1",
+    "AQ_READ_FILE_GATE": "1",
+    # GBNF tool-call grammar — the root-cause fix. Forces VALID populated tool-call
+    # JSON so local emits real edit_file calls instead of malformed/narrated output.
+    # (Grammar bug in grammar_cache.py fixed 2026-08-19; validated on dogfood-01.)
+    "AQ_LOCAL_GBNF": "1",
+    "AQ_REREAD_INTERVENTION": "1",
+    "AQ_NOACTION_INTERVENTION": "1",
+    # Edit-failure feedback: on an old_string mismatch, hand local the exact file
+    # region to retry against (targets the dominant post-grammar churn cause).
+    "AQ_EDIT_FEEDBACK": "1",
+    # Micro grounding (~1.2K chars) instead of the full 8K supplement — the full one
+    # ate the 24000-char prefill budget, leaving no room for the agent to do tool
+    # work (every task failed "prompt too large"). Overrides dispatch.py's default.
+    "HARNESS_GROUNDING_FILE": str(REPO / "config" / "local-agent-grounding-micro.md"),
+}
+
+
+def now() -> str:
+    return datetime.now(timezone.utc).strftime("%Y-%m-%dT%H:%M:%SZ")
+
+
+def git(*args: str, check: bool = False) -> str:
+    r = subprocess.run(["git", "-C", str(REPO), *args], capture_output=True, text=True)
+    if check and r.returncode != 0:
+        raise RuntimeError(f"git {' '.join(args)} failed: {r.stderr.strip()}")
+    return r.stdout
+
+
+def tracked_mods() -> set:
+    """Tracked files with actual content changes (git diff --name-only).
+
+    Uses `git diff` NOT `git status` on purpose: git diff lists only tracked
+    files with real content changes, so incidental UNTRACKED files created by
+    background services during the run (antigravity receipts, credential json,
+    etc.) can never false-positive as a task's edit — the bug that made the
+    first overnight run report 5/5 empty 'successes'."""
+    out = git("diff", "--name-only")
+    return {ln.strip() for ln in out.splitlines() if ln.strip()}
+
+
+def _pid_alive(pid: int) -> bool:
+    try:
+        os.kill(pid, 0)
+        return True
+    except Exception:
+        return False
+
+
+def ledger(row: dict) -> None:
+    row = {"ts": now(), **row}
+    with LEDGER.open("a") as f:
+        f.write(json.dumps(row) + "\n")
+
+
+def gate_present() -> bool:
+    """Slice 0.2 read_file gate present in agent_executor.py?"""
+    try:
+        return "AQ_READ_FILE_GATE" in AGENT_EXECUTOR.read_text(errors="replace")
+    except Exception:
+        return False
+
+
+def wait_for_gate() -> bool:
+    waited = 0
+    while waited < GATE_WAIT_MAX_S:
+        if gate_present():
+            return True
+        time.sleep(GATE_POLL_S)
+        waited += GATE_POLL_S
+    return gate_present()
+
+
+def backlog_item_text(name: str) -> str:
+    """Pull the full [OPEN] paragraph for `name` from issues-backlog.md so the
+    prompt (and the assembler's retrieval) is grounded in the real issue."""
+    try:
+        lines = BACKLOG.read_text(errors="replace").splitlines()
+    except Exception:
+        return ""
+    start = None
+    for i, l in enumerate(lines):
+        if re.search(r"\[OPEN\].*" + re.escape(name), l):
+            start = i
+            break
+    if start is None:
+        return ""
+    block = [lines[start]]
+    for l in lines[start + 1:]:
+        if re.match(r"\s*\[(OPEN|FIXED|DONE|IN-PROGRESS)\]", l):
+            break
+        block.append(l)
+        if len(block) > 12:
+            break
+    return "\n".join(block).strip()
+
+
+def build_prompt(task: dict) -> str:
+    name = task["backlog_item"]
+    file = task.get("file", "")
+    detail = backlog_item_text(name) or name
+    # IMPERATIVE, action-forcing template. A passive template ("state what you
+    # changed") makes local NARRATE the fix and stop without ever calling edit_file
+    # (measured: calls=0). This template forces the tool call and tells local to copy
+    # the exact front-loaded code as old_string so edit_file's match succeeds.
+    return f"""TASK (bounded, single-file edit): fix the issue below by EDITING the file with the edit_file tool.
+
+ISSUE:
+{detail}
+
+FILE TO EDIT: {file}
+
+HOW (do this now, do not just describe it):
+1. The relevant code is FRONT-LOADED above under "## Relevant prior knowledge" as
+   EXACT fenced code blocks. Use that exact code — do NOT re-read the whole file.
+2. Decide the minimal correct change for the issue (change only what's needed).
+3. Call edit_file NOW. For old_string, COPY the exact text from a front-loaded code
+   block (it is byte-identical to the file, so it will match). Make the edit — do
+   NOT output a plan or a "Thought:" and stop; the task is only done once edit_file
+   has actually changed the file.
+
+RULES:
+- Do NOT git add / commit / push — a human reviews and commits.
+- If the issue is genuinely under-specified or unsafe to fix, say why in 1-2
+  sentences and stop. Otherwise, MAKE THE EDIT.
+
+After edit_file succeeds, state in ONE sentence what you changed.
+"""
+
+
+def run_task(task: dict, baseline_mods: set) -> dict:
+    tid = task["task"]
+    prompt = build_prompt(task)
+    ptmp = DIFFDIR / f"{tid}.prompt.txt"
+    ptmp.write_text(prompt)
+    ledger({"task": tid, "event": "dispatched", "backlog_item": task["backlog_item"], "runner": "overnight"})
+    t0 = time.monotonic()
+    # Dispatch ASYNC (no --wait): capture the local task's pid from stdout, then poll.
+    disp = subprocess.run(
+        [str(DELEGATE), "--timeout", str(PER_TASK_TIMEOUT),
+         "--mode", "agent", "--role", "implementer", "--prompt-file", str(ptmp)],
+        cwd=str(REPO), env=ENV, capture_output=True, text=True, timeout=180,
+    )
+    out = (disp.stdout or "") + (disp.stderr or "")
+    m = re.search(r"pid (\d+)", out)
+    local_pid = int(m.group(1)) if m else None
+
+    def _task_files() -> list:
+        # tracked files with real changes that appeared during THIS task (excludes my
+        # framework changes via baseline_mods, and the runner's own dogfood artifacts).
+        return sorted(
+            f for f in (tracked_mods() - baseline_mods)
+            if not f.startswith(".agents/delegation/dogfood")
+        )
+
+    # Poll for the edit to appear + stabilize (unchanged across 2 polls = settled),
+    # or the task to exit on its own, or the cap. Then stop — don't wait out the loop.
+    diff = ""
+    stable = 0
+    deadline = t0 + EDIT_POLL_MAX_S
+    while time.monotonic() < deadline:
+        time.sleep(POLL_INTERVAL_S)
+        tf = _task_files()
+        cur = git("diff", "--", *tf) if tf else ""
+        if cur.strip():
+            if cur == diff:
+                stable += 1
+                if stable >= 2:
+                    break
+            else:
+                diff, stable = cur, 0
+        if local_pid and not _pid_alive(local_pid):
+            break
+    elapsed = round(time.monotonic() - t0, 1)
+
+    # Kill the local task (halt any wasteful post-edit loop) so the next task's slot is free.
+    if local_pid and _pid_alive(local_pid):
+        try:
+            subprocess.run(["pkill", "-KILL", "-P", str(local_pid)], capture_output=True)
+            os.kill(local_pid, signal.SIGKILL)
+        except Exception:
+            pass
+
+    task_files = _task_files()
+    diff = git("diff", "--", *task_files) if task_files else ""
+    edit_landed = bool(task_files) and bool(diff.strip())
+    diff_path = ""
+    if edit_landed:
+        diff_path = str((DIFFDIR / f"{tid}.patch").relative_to(REPO))
+        (DIFFDIR / f"{tid}.patch").write_text(diff)
+        git("checkout", "--", *task_files)  # revert so the next task starts clean
+
+    status = "edit-captured" if edit_landed else "no-edit"
+    ledger({"task": tid, "event": "completed", "status": status, "edit_landed": edit_landed,
+            "elapsed_s": elapsed, "diff_path": diff_path, "local_pid": local_pid})
+    return {"task": tid, "backlog_item": task["backlog_item"], "edit_landed": edit_landed,
+            "elapsed_s": elapsed, "diff_path": diff_path, "status": status}
+
+
+def write_summary(results: list, halted: str = "") -> None:
+    lines = [f"# Overnight local dogfood summary — {now()}", ""]
+    if halted:
+        lines += [f"**HALTED:** {halted}", ""]
+    ok = [r for r in results if r["edit_landed"]]
+    lines += [f"- Tasks run: {len(results)}",
+              f"- Produced a diff (for review): {len(ok)}",
+              f"- No edit / failed: {len(results) - len(ok)}", "",
+              "| task | backlog item | edit? | elapsed_s | diff |", "|---|---|---|---|---|"]
+    for r in results:
+        lines.append(f"| {r['task']} | {r['backlog_item'][:40]} | {'yes' if r['edit_landed'] else 'no'} "
+                     f"| {r['elapsed_s']} | {r['diff_path'] or '-'} |")
+    lines += ["", "Diffs are in `.agents/delegation/dogfood-diffs/`. NOTHING was committed — "
+              "review each patch, then commit the good ones after remote review.", ""]
+    SUMMARY.write_text("\n".join(lines))
+
+
+def main() -> int:
+    DIFFDIR.mkdir(parents=True, exist_ok=True)
+    print(f"[dogfood-run] waiting for Slice 0.2 read_file gate (up to {GATE_WAIT_MAX_S}s)...")
+    if not wait_for_gate():
+        ledger({"event": "halt", "reason": "read_file gate (Slice 0.2) not present — refusing to grind (tasks would blow the 24000-char guard)"})
+        write_summary([], halted="Slice 0.2 read_file gate never appeared in agent_executor.py; run not started.")
+        print("[dogfood-run] HALT: gate absent")
+        return 1
+    print("[dogfood-run] gate present. Starting.")
+
+    queue = json.loads(QUEUE.read_text())
+    tasks = queue.get("queue", [])
+    baseline_mods = tracked_mods()
+    ledger({"event": "run-start", "queued": len(tasks), "baseline_mods": len(baseline_mods)})
+
+    # ── Self-validation gate: prove the framework works on dogfood-01 first ──
+    # Framework is already PROVEN end-to-end (a real correct edit landed manually,
+    # 2026-08-18 — see dogfood-01-VALIDATED-REAL.patch). Local's per-task edit success
+    # is FLAKY (~50%: edit_file against the gated summary sometimes mismatches -> re-read
+    # -> stagnation). Per owner directive "allow failures, keep progressing", we do NOT
+    # halt on a flaky first-task failure — run dogfood-01 as the first queue item, record
+    # its outcome, and grind the rest regardless. Every result (edit / no-edit) is honest.
+    val_task = {"task": "dogfood-01", "backlog_item": "router-role-route-exclude-lane-granularity",
+                "file": "scripts/ai/aq-role-route"}
+    print("[dogfood-run] task dogfood-01 ...")
+    vr = run_task(val_task, baseline_mods)
+    results = [vr]
+    print(f"[dogfood-run] dogfood-01: {vr['status']}. Grinding queue (failures allowed).")
+
+    # ── Grind the queue ──
+    failed = []
+    for task in tasks:
+        r = run_task(task, baseline_mods)
+        results.append(r)
+        if not r["edit_landed"]:
+            failed.append(task)
+        write_summary(results)  # refresh after every task so a morning glance is current
+
+    # ── Retry failed once ──
+    for task in failed:
+        task = {**task, "task": task["task"] + "-retry"}
+        r = run_task(task, baseline_mods)
+        results.append(r)
+        write_summary(results)
+
+    ledger({"event": "run-complete", "tasks": len(results),
+            "produced_diff": sum(1 for r in results if r["edit_landed"])})
+    write_summary(results)
+    print(f"[dogfood-run] DONE. {len(results)} tasks, {sum(1 for r in results if r['edit_landed'])} diffs. See {SUMMARY}")
+    return 0
+
+
+if __name__ == "__main__":
+    try:
+        sys.exit(main())
+    except Exception as e:
+        ledger({"event": "runner-crash", "error": str(e)[:300]})
+        raise

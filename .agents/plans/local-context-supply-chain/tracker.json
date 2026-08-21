@@ -1,0 +1,19 @@
+{
+  "plan": {
+    "id": "local-context-supply-chain",
+    "title": "Local Context Supply Chain — front-loaded retrieval-gated context",
+    "prd_ref": ".agents/plans/local-context-supply-chain/DESIGN.md",
+    "owner": "hyperd",
+    "goal": "Assemble a local task's context ONCE at dispatch (embed-directed: code span + prior fixes + skill + best-practice + docs + memory, token-budgeted) so Qwen reasons over a small complete prompt. In-loop retrieval = bounded fallback. Optimizes for fewest prefills/steps on the re-prefill-every-call APU.",
+    "tier_model": "DEFINED=spec exists; INTEGRATED=assembler wired on live dispatch behind default-on flag; VALIDATED=real slice runs with front-loaded context, prefill/steps measured vs dogfood-01 baseline; ACCEPTED=owner sign-off."
+  },
+  "phases": [
+    {"id": "assembler", "name": "Slice 0.1 assembler", "goal": "context_assembler + wiring + test", "order": 1},
+    {"id": "enforce", "name": "Slice 0.2 enforcement", "goal": "read_file gate + git-tool removal (structural no-commit)", "order": 2}
+  ],
+  "items": [
+    {"id": "csc-assembler", "name": "context_assembler.py + dispatch wiring + test", "phase": "assembler", "kind": "slice", "goal": "front-load code+knowledge+memory at dispatch, fail-open", "validation_goal": "code task pulls >=2 collections; respects token_budget; fail-open; fires on live dispatch", "deps": [], "detection": {"command": "ai-stack/local-agents/context_assembler.py"}, "pct_hint": 20, "acceptance": {"status": "pending", "by": null, "date": null, "note": "building via sonnet; orchestrator reviews+commits"}},
+    {"id": "csc-readfile-gate", "name": "read_file backstop gate in agent_executor", "phase": "enforce", "kind": "slice", "goal": "large files return outline+chunks not raw bytes", "validation_goal": "whole-file read >1500tok is gated", "deps": ["csc-assembler"], "detection": {"blocker_note": "slice 0.2 — not started"}, "pct_hint": 0, "acceptance": {"status": "pending", "by": null, "date": null, "note": ""}},
+    {"id": "csc-nocommit-structural", "name": "Remove git_add/git_commit from local tool set", "phase": "enforce", "kind": "slice", "goal": "no-commit guardrail structural not prompt-hoped", "validation_goal": "local tool set has no git write tools", "deps": ["csc-assembler"], "detection": {"blocker_note": "slice 0.2 — not started"}, "pct_hint": 0, "acceptance": {"status": "pending", "by": null, "date": null, "note": "closes the enforcement hole (git tools currently in _AEXEC_ALWAYS_TOOLS)"}}
+  ]
+}

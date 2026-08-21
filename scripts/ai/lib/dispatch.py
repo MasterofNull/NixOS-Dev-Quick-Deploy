@@ -1023,6 +1023,76 @@ def _embedded_assist_prefetch(prompt: str, switchboard_url: str, timeout: float 
         return ""
 
 
+# ── local context supply chain (Slice 0.1) ───────────────────────────────────
+# Front-loads prior knowledge (codebase history, error-solutions, best-practices,
+# skills-patterns, wiki-sections, agent semantic memory) into the prompt ONCE at
+# dispatch time instead of leaving Qwen to rediscover it via slow in-loop
+# query_aidb/get_hint calls. SSOT: .agents/plans/local-context-supply-chain/DESIGN.md
+# (Slice 0.1). Kill switch: AQ_CONTEXT_ASSEMBLER=0. Fail-open — any failure here
+# (import, embed, Qdrant) must never block or alter a dispatch's outcome.
+
+_context_assembler = None  # type: ignore[assignment]
+_CONTEXT_ASSEMBLER_IMPORT_TRIED = False
+
+
+def _load_context_assembler():
+    """Lazy, best-effort import of ai-stack/local-agents/context_assembler.py.
+    Returns the module, or None if unavailable — caller treats None as skip."""
+    global _context_assembler, _CONTEXT_ASSEMBLER_IMPORT_TRIED
+    if _CONTEXT_ASSEMBLER_IMPORT_TRIED:
+        return _context_assembler
+    _CONTEXT_ASSEMBLER_IMPORT_TRIED = True
+    try:
+        _local_agents_dir = _REPO_ROOT / "ai-stack" / "local-agents"
+        if str(_local_agents_dir) not in sys.path:
+            sys.path.insert(0, str(_local_agents_dir))
+        import context_assembler  # type: ignore  # noqa: E402
+        _context_assembler = context_assembler
+    except Exception:
+        _context_assembler = None
+    return _context_assembler
+
+
+def _log_context_assembly(output_file: Path, assembled) -> None:
+    """Persist assembler tokens/source-count as a standalone sidecar so a run
+    can be PROVEN to have fired the front-loaded context path (Slice 0.1
+    Definition-of-Done: observable). Deliberately a separate file from
+    progress.json, which the runner overwrites on every tick — this one is
+    written once, at dispatch time, and stays readable for the task's life.
+    Never raises."""
+    try:
+        sidecar = Path(str(output_file) + ".context.json")
+        sidecar.write_text(json.dumps({
+            "tokens": assembled.tokens,
+            "source_count": len(assembled.sources),
+            "collections_hit": assembled.stats.get("collections_hit"),
+            "collections_queried": assembled.stats.get("collections_queried"),
+            "sources": assembled.sources,
+        }))
+    except Exception:
+        pass
+
+
+def _apply_context_assembler(prompt: str, task_id: str, output_file: Path) -> str:
+    """Prepend front-loaded prior-knowledge context to `prompt` for local
+    inference modes (direct/agent). Returns `prompt` unchanged on any error,
+    when disabled (AQ_CONTEXT_ASSEMBLER=0), or when nothing relevant was
+    found — never raises, never blocks dispatch."""
+    if os.environ.get("AQ_CONTEXT_ASSEMBLER", "1") == "0":
+        return prompt
+    mod = _load_context_assembler()
+    if mod is None:
+        return prompt
+    try:
+        assembled = mod.assemble_context(prompt, task_id=task_id)
+        _log_context_assembly(output_file, assembled)
+        if assembled.text:
+            return assembled.text + "\n\n" + prompt
+    except Exception:
+        pass
+    return prompt
+
+
 # ── code validation ───────────────────────────────────────────────────────────
 
 def _validate_code_blocks(result_text: str) -> str:
@@ -1283,6 +1353,15 @@ def dispatch_task(
         registry.update_status(task_id, "failed")
         registry.record_completion(task_id, "failed")
         return False
+
+    # Local Context Supply Chain (Slice 0.1): front-load prior knowledge
+    # (codebase-context/error-solutions/best-practices/skills-patterns/
+    # wiki-sections/agent-memory-semantic) ONCE before the agent prompt is
+    # assembled, on the local-inference dispatch path (direct/agent modes —
+    # hybrid/ralph proxy to their own services and assemble their own
+    # context). Kill switch: AQ_CONTEXT_ASSEMBLER=0.
+    if config.mode in ("direct", "agent"):
+        prompt = _apply_context_assembler(prompt, task_id, output_file)
 
     # Embedded-assist pre-context for direct/coding tasks.
     # Makes a short embedded-assist call to inject relevant skill/pattern context

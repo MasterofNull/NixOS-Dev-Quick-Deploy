@@ -93,6 +93,14 @@ def default_json_schema_to_gbnf(schema_json: Any, zero_trust_state: Any) -> str:
             'boolean ::= "true" | "false"',
             'null ::= "null"',
             "ws ::= [ \\t\\n\\r]*",
+            # Generic JSON object/array/value rules, used by _object_rule for schemas
+            # that declare `"type": "object"` with NO `properties` (free-form objects,
+            # e.g. a tool-call's `arguments` payload). These allow zero-or-more members
+            # of arbitrary JSON value type instead of forcing an empty "{}" body.
+            'member ::= string ws ":" ws value',
+            "value ::= string | number | boolean | null | object | array",
+            'object ::= "{" ws (member (ws "," ws member)*)? ws "}"',
+            'array ::= "[" ws (value (ws "," ws value)*)? ws "]"',
         ]
     )
 
@@ -120,6 +128,16 @@ def _parse_json_value(value: Any) -> Any:
 
 
 def _rule_for_schema(schema: Mapping[str, Any]) -> str:
+    enum_values = schema.get("enum")
+    if isinstance(enum_values, list) and enum_values:
+        # Constrain to the exact enumerated literals (e.g. the leased tool-name set)
+        # instead of falling through to an unconstrained `string`/`number` rule.
+        # Parenthesized: GBNF `|` has lower precedence than sequencing, so an
+        # unparenthesized alternation embedded inline (e.g. inside _object_rule's
+        # "key" ws ":" ws <this> sequence) would leak across the whole enclosing
+        # rule instead of binding to just this property's value.
+        alternatives = " | ".join(_gbnf_literal(json.dumps(v, separators=(",", ":"))) for v in enum_values)
+        return f"({alternatives})"
     schema_type = schema.get("type")
     if schema_type == "object":
         return _object_rule(schema)
@@ -140,14 +158,32 @@ def _rule_for_schema(schema: Mapping[str, Any]) -> str:
 def _object_rule(schema: Mapping[str, Any]) -> str:
     properties = schema.get("properties", {})
     if not isinstance(properties, Mapping) or not properties:
-        return '"{" ws "}"'
+        # Free-form object (schema is `{"type": "object"}` with no declared
+        # `properties`, e.g. a tool-call's `arguments` payload): allow zero-or-more
+        # arbitrary JSON members instead of forcing an empty "{}" body, which made
+        # every tool call emit useless empty arguments.
+        return "object"
 
     parts: list[str] = []
     for name in sorted(properties):
         prop_schema = _schema_mapping(properties[name])
-        encoded_name = json.dumps(name, separators=(",", ":"))
-        parts.append(f'"{encoded_name[1:-1]}" ws ":" ws {_rule_for_schema(prop_schema)}')
+        key_literal = _gbnf_literal(json.dumps(name, separators=(",", ":")))
+        parts.append(f'{key_literal} ws ":" ws {_rule_for_schema(prop_schema)}')
     return '"{" ws ' + ' ws "," ws '.join(parts) + ' ws "}"'
+
+
+def _gbnf_literal(text: str) -> str:
+    """Return a GBNF double-quoted literal that generates `text` verbatim.
+
+    `text` is the exact raw output text desired (e.g. a JSON-encoded key/value
+    like `"function"`, quote characters included). Backslashes and double quotes
+    in `text` are backslash-escaped so they survive as literal characters inside
+    the GBNF string rather than terminating it early — the fix for the bug where
+    `json.dumps(name)[1:-1]` stripped the JSON quotes and produced an unquoted
+    GBNF literal (matching bare `arguments` instead of `"arguments"`).
+    """
+    escaped = text.replace("\\", "\\\\").replace('"', '\\"')
+    return f'"{escaped}"'
 
 
 def _schema_mapping(value: Any) -> Mapping[str, Any]:

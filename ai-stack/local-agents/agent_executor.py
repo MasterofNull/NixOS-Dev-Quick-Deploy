@@ -13,6 +13,7 @@ Part of Phase 11 Batch 11.3: Workflow Integration
 """
 
 import asyncio
+import difflib
 import json
 import logging
 import os
@@ -93,6 +94,20 @@ try:
 except Exception:  # noqa: BLE001 — never let an optional import break the executor
     context_cache = None  # type: ignore
 
+# Slice 0.2 (local-context-supply-chain): the read_file gate reuses context_assembler's
+# Tier-0 file-chunking helpers (line-aware chunk + '[path:start-end]' citation framing)
+# rather than reimplementing them — same embed/Qdrant round-trip pattern, no new code
+# path. Best-effort import; the gate fails closed (bounded head, never raw oversized
+# file) when this is unavailable — see _gate_large_file_content.
+try:
+    from context_assembler import (  # noqa: E402  (same dir: ai-stack/local-agents/)
+        _chunk_file as _rf_chunk_file,
+        _parse_chunk_citation as _rf_parse_chunk_citation,
+    )
+except Exception:  # noqa: BLE001
+    _rf_chunk_file = None  # type: ignore
+    _rf_parse_chunk_citation = None  # type: ignore
+
 # Phase 164B — MIC-G context sanitizer: scrub prompt-injection patterns from tool results
 # before they are injected into the LLM context window.  Import is best-effort; if the
 # security module is unavailable (e.g. minimal install) the agent continues without it.
@@ -153,7 +168,16 @@ _AEXEC_MESH_KW = frozenset(["mesh", "agents", "team", "capabilities", "federated
 _AEXEC_OBJECTIVE_KW = frozenset(["objective", "what to work", "no task", "need direction", "what should", "propose", "suggest work"])
 
 # Tool names that are always present (never hot-swapped in/out).
-_AEXEC_ALWAYS_TOOLS: frozenset[str] = frozenset(["read_file", "write_file", "edit_file", "run_command", "git_add", "git_commit"])
+# Slice 0.2 (local-context-supply-chain): git_add/git_commit removed — local NEVER
+# commits (structural, not prompt-hoped). See _AEXEC_COMMIT_TOOLS + AQ_LOCAL_ALLOW_COMMIT.
+_AEXEC_ALWAYS_TOOLS: frozenset[str] = frozenset(["read_file", "write_file", "edit_file", "run_command"])
+
+# Commit tools — excluded from the model-visible tool schema AND blocked at the point
+# of execution (belt-and-suspenders: the SI-slice system prompt names them by name, so
+# a schema-only filter would not stop a call the model emits anyway). Gated behind
+# AQ_LOCAL_ALLOW_COMMIT (default off) rather than deleted — the handlers/registration
+# in builtin_tools/git_tools.py are untouched.
+_AEXEC_COMMIT_TOOLS: frozenset[str] = frozenset(["git_add", "git_commit"])
 # Tools eligible for hot-swap injection keyed by the keyword set that triggers them.
 _AEXEC_HOTSWAP_MAP: list[tuple[frozenset[str], list[str]]] = [
     (_AEXEC_MEMORY_KW,    ["store_memory"]),
@@ -226,6 +250,287 @@ def _env_float(name: str, default: float) -> float:
     except ValueError:
         logger.warning("Invalid %s=%r, using default %.2f", name, value, default)
         return default
+
+
+# ── Slice 0.2 (local-context-supply-chain) — enforcement flags ──────────────────
+# read_file gate: kill switch AQ_READ_FILE_GATE=0 restores pre-0.2 whole-file behavior.
+_READ_FILE_GATE_ENABLED: bool = _env_flag("AQ_READ_FILE_GATE", True)
+# ~1500 tok at ~4 chars/tok — matches the DESIGN.md AFTER-run-1 finding: front-loaded
+# spans (~1200 tok) + a whole 17KB (~4.3K tok) file blew LLAMA_MAX_PROMPT_CHARS=24000.
+_READ_FILE_GATE_CHAR_BUDGET: int = int(os.getenv("AQ_READ_FILE_GATE_CHARS", "6000"))
+# Structural no-commit: local NEVER commits by default. Escape hatch, not deletion.
+_LOCAL_ALLOW_COMMIT: bool = _env_flag("AQ_LOCAL_ALLOW_COMMIT", False)
+# Repeated-read stagnation: on the FIRST threshold breach for a file, inject a one-shot
+# edit-forcing intervention (delivered as the read_file tool result, role:"tool") instead
+# of aborting immediately. The relevant code is already front-loaded verbatim in context
+# under "## Relevant prior knowledge" — the abort was throwing away tasks local could
+# complete. A SECOND breach (re-read after the intervention) still aborts as before.
+# Kill switch AQ_REREAD_INTERVENTION=0 restores the plain-abort behavior.
+_REREAD_INTERVENTION_ENABLED: bool = _env_flag("AQ_REREAD_INTERVENTION", True)
+
+# No-action stagnation: on implementer/edit tasks, the model sometimes returns a
+# prose PLAN with no parseable tool call at all ("Thought: I would change X so
+# that...") and the loop — finding no tool call — treats that as the final
+# answer and completes with zero edits. The task's whole point was to EDIT a
+# file, so accepting narration as completion is a silent failure. On the FIRST
+# such prose-only response (implementer task, zero successful edits so far,
+# not a refusal), inject a one-shot corrective nudge instead of completing. A
+# SECOND prose-only response still completes as before (never loop forever).
+# Kill switch AQ_NOACTION_INTERVENTION=0 restores the plain-completion behavior.
+_NOACTION_INTERVENTION_ENABLED: bool = _env_flag("AQ_NOACTION_INTERVENTION", True)
+
+# Edit-failure feedback: now that the tool-call grammar is fixed, the dominant
+# local-agent failure mode is edit_file failing on an old_string byte-mismatch
+# (the model paraphrases, or reconstructs old_string from a partial view) and
+# then blindly retrying the same mismatch until the task hits its time cap
+# (measured: a 12-task dogfood run with grammar ON — ~80% of tasks failed this
+# way; example: 1 edit_file attempt, 3 mismatch failures, no edit landed). On
+# the FIRST such mismatch failure for a given target file, inject the file's
+# EXACT current text for the region the model was trying to edit as the tool
+# result (instead of the bare failure) so the model can copy a byte-matching
+# old_string on retry. Bounded to _EDIT_FEEDBACK_MAX_PER_FILE fires per file so
+# a persistently-failing edit still eventually ends rather than looping
+# forever. Kill switch AQ_EDIT_FEEDBACK=0 restores the plain-failure behavior.
+_EDIT_FEEDBACK_ENABLED: bool = _env_flag("AQ_EDIT_FEEDBACK", True)
+_EDIT_FEEDBACK_MAX_PER_FILE: int = int(os.getenv("AQ_EDIT_FEEDBACK_MAX_PER_FILE", "2"))
+_EDIT_FEEDBACK_CHAR_BUDGET: int = int(
+    os.getenv("AQ_EDIT_FEEDBACK_CHARS", str(_READ_FILE_GATE_CHAR_BUDGET))
+)
+
+# Substrings the edit_file/write_file handlers use to signal an old_string
+# byte-mismatch specifically (vs. a different failure class — file-not-found,
+# permission, path-validation, OSError — none of which are fixable by showing
+# the model more of the file, so those fall through to the plain failure).
+_EDIT_MISMATCH_SIGNAL_PHRASES: tuple[str, ...] = (
+    "old_string not found", "not found in", "no replacement made",
+    "does not match", "did not match",
+)
+
+# Heuristic substrings indicating the model is explicitly declining/stopping
+# rather than narrating a plan it forgot to execute. Kept conservative and
+# lowercase-matched — false negatives (treated as a plan) just cost one nudge
+# turn; false positives (treated as a refusal) would let a real stall through,
+# so favor recognizing genuine refusal language.
+_REFUSAL_SIGNAL_PHRASES: tuple[str, ...] = (
+    "cannot safely", "can't safely", "unable to safely", "not safe to",
+    "unsafe to make", "under-specified", "underspecified", "under specified",
+    "insufficient information", "not enough information", "requires clarification",
+    "need clarification", "too ambiguous", "out of scope", "cannot determine",
+    "cannot proceed safely", "i cannot complete this", "i'm unable to complete",
+    "will not make this change", "refuse to make", "decline to make",
+    "no changes were made because", "cannot make this change",
+)
+
+
+def _looks_like_refusal(text: str) -> bool:
+    """True if prose reads as an explicit stop/refusal rather than a forgotten-action plan."""
+    lowered = text.lower()
+    return any(phrase in lowered for phrase in _REFUSAL_SIGNAL_PHRASES)
+
+
+def _looks_like_edit_mismatch(error_text: str) -> bool:
+    """True if an edit_file failure message signals an old_string byte-mismatch."""
+    lowered = (error_text or "").lower()
+    return any(phrase in lowered for phrase in _EDIT_MISMATCH_SIGNAL_PHRASES)
+
+
+def _build_edit_mismatch_feedback(
+    file_path: str,
+    attempted_old_string: str,
+    char_budget: int = _READ_FILE_GATE_CHAR_BUDGET,
+    context_lines: int = 12,
+) -> Optional[str]:
+    """One-shot edit-mismatch feedback body: the file's EXACT current text for
+    the region the model was trying to edit, bounded to char_budget.
+
+    Anchors on the first non-blank line of the model's attempted old_string
+    (exact substring match first, difflib fuzzy match as fallback) and slices
+    +/- context_lines around it. Falls back to a bounded head-of-file slice if
+    no anchor can be found. Fail-safe: returns None (never raises) on any
+    error — the caller falls through to the plain failure result.
+    """
+    try:
+        path = Path(file_path) if Path(file_path).is_absolute() else Path.cwd() / file_path
+        if not path.exists() or not path.is_file():
+            return None
+        content = path.read_text(encoding="utf-8")
+        lines = content.splitlines()
+
+        anchor_line_no: Optional[int] = None
+        attempted_lines = [ln.strip() for ln in (attempted_old_string or "").splitlines() if ln.strip()]
+        if attempted_lines:
+            anchor = attempted_lines[0]
+            for i, line in enumerate(lines):
+                if anchor in line:
+                    anchor_line_no = i
+                    break
+            if anchor_line_no is None:
+                best_ratio = 0.0
+                best_i: Optional[int] = None
+                for i, line in enumerate(lines):
+                    ratio = difflib.SequenceMatcher(None, anchor, line.strip()).ratio()
+                    if ratio > best_ratio:
+                        best_ratio = ratio
+                        best_i = i
+                if best_ratio >= 0.4:
+                    anchor_line_no = best_i
+
+        if anchor_line_no is not None:
+            start = max(0, anchor_line_no - context_lines)
+            end = min(len(lines), anchor_line_no + context_lines + 1)
+            region = "\n".join(lines[start:end])
+            header = f"{file_path} lines {start + 1}-{end} (exact current content):"
+        else:
+            region = content
+            header = f"{file_path} (exact current content, head):"
+
+        if len(region) > char_budget:
+            region = region[:char_budget] + "\n... [truncated]"
+
+        return f"{header}\n```\n{region}\n```"
+    except Exception:  # noqa: BLE001 — feedback is best-effort, never fatal
+        return None
+
+
+_READ_FILE_GATE_NOTE = (
+    "\n\n[GATE] This large file is summarized above (outline + the most "
+    "task-relevant sections, with line numbers). Reading the whole file again "
+    "returns THIS SAME summary and will stall you — do NOT do it. To make "
+    "progress, do exactly one of: (a) if the code you need to change is shown "
+    "above, call edit_file NOW with your change; or (b) call "
+    "read_file(file_path, start_line=N, end_line=M) for one SPECIFIC region you "
+    "have not seen yet. Prefer (a)."
+)
+
+# Regex/AST-lite top-level structure scan — (pattern, kind). Order matters: first
+# match wins per line. Covers Python/JS/TS defs+classes, shell functions, and
+# Markdown/section headers — the common shapes in this repo's read_file traffic.
+_OUTLINE_LINE_PATTERNS: List[Tuple[re.Pattern, str]] = [
+    (re.compile(r"^\s*(?:async\s+def|def)\s+([A-Za-z_]\w*)\s*\("), "def"),
+    (re.compile(r"^\s*class\s+([A-Za-z_]\w*)"), "class"),
+    (re.compile(r"^\s*function\s+([A-Za-z_]\w*)\s*\("), "function"),
+    (re.compile(r"^\s*([A-Za-z_]\w*)\s*\(\)\s*\{"), "function"),  # bash foo() {
+    (re.compile(r"^\s*(?:export\s+)?(?:const|let)\s+([A-Za-z_$][\w$]*)\s*=\s*(?:async\s*)?\("), "function"),
+    (re.compile(r"^(#{1,6})\s+(.+)$"), "section"),  # Markdown headers
+]
+
+
+def _build_file_outline(content: str, file_path: str, max_entries: int = 40) -> str:
+    """Compact top-level outline (def/class/section headers + line ranges).
+
+    Simple regex scan, not a real AST — good enough to orient an agent on where to
+    request an exact span. Never raises: any scan error degrades to a minimal
+    one-line fallback so the caller's fail-closed budget path still has something
+    to work with.
+    """
+    try:
+        lines = content.splitlines()
+        entries: List[Tuple[int, str]] = []  # (line_no, label)
+        for i, line in enumerate(lines, start=1):
+            for pattern, kind in _OUTLINE_LINE_PATTERNS:
+                m = pattern.match(line)
+                if not m:
+                    continue
+                label = f"{m.group(1)} {m.group(2).strip()}" if kind == "section" else f"{kind} {m.group(1)}"
+                entries.append((i, label))
+                break
+            if len(entries) >= max_entries:
+                break
+        if not entries:
+            return f"## Outline: {file_path} ({len(lines)} lines) — no top-level def/class/section markers found"
+        out = [f"## Outline: {file_path} ({len(lines)} lines)"]
+        for idx, (line_no, label) in enumerate(entries):
+            end = (entries[idx + 1][0] - 1) if idx + 1 < len(entries) else len(lines)
+            out.append(f"  {label}  L{line_no}-{end}")
+        return "\n".join(out)
+    except Exception:  # noqa: BLE001 — outline is a nice-to-have, never fatal
+        return f"## Outline: {file_path} (outline scan failed)"
+
+
+def _gate_large_file_content(
+    content: str,
+    file_path: str,
+    task_objective: str,
+    task_id: str,
+    budget_chars: Optional[int] = None,
+) -> Tuple[str, bool]:
+    """Slice 0.2 read_file gate (the load-bearing fix — see DESIGN.md AFTER-run-1).
+
+    Files at/under budget pass through unchanged: (content, False).
+
+    Oversized files return (outline + top task-relevant chunks + note, True). Chunks
+    are retrieved by ephemeral-indexing the file via context_cache.cache_evicted +
+    retrieve_ctx (same Tier-0 pattern as context_assembler.py's file-targeted
+    retrieval) against `task_objective`, k=4, each carrying a real
+    '[path:start-end]' citation baked in by context_assembler._chunk_file.
+
+    FAIL-CLOSED on size (the actual invariant this gate exists to enforce): if the
+    outline/retrieval path fails for ANY reason (missing deps, dead embed/Qdrant,
+    empty retrieval, or a result that still doesn't fit), this falls back to a
+    bounded head of the raw content plus the same note. It NEVER returns content
+    larger than `budget_chars` and it NEVER raises.
+    """
+    budget = budget_chars if budget_chars is not None else _READ_FILE_GATE_CHAR_BUDGET
+    if len(content) <= budget:
+        return content, False
+
+    gated: Optional[str] = None
+    try:
+        outline = _build_file_outline(content, file_path)
+        chunk_blocks: List[str] = []
+        if context_cache is not None and _rf_chunk_file is not None:
+            chunks = _rf_chunk_file(content, file_path)
+            if chunks:
+                ephemeral_id = f"{task_id}-rfgate-{abs(hash(file_path)) % 1_000_000}"
+                collection = context_cache.cache_evicted(ephemeral_id, chunks, timeout=8.0)
+                if collection:
+                    try:
+                        retrieved = context_cache.retrieve_ctx(
+                            collection, task_objective or file_path, k=4, timeout=8.0,
+                        )
+                    finally:
+                        context_cache.delete_collection(collection, timeout=8.0)
+                    for raw in retrieved:
+                        parsed = _rf_parse_chunk_citation(raw) if _rf_parse_chunk_citation else None
+                        if not parsed:
+                            continue
+                        citation, body = parsed
+                        # NOTE: strip('\n') only, never strip() — a bare .strip()
+                        # eats leading whitespace CHARACTERS from the chunk's
+                        # first line, which is indentation whenever a chunk
+                        # boundary lands mid-indented-block (the norm: _chunk_file
+                        # slices at a flat FILE_CHUNK_LINES stride, blind to code
+                        # structure). That silently mangles the one property this
+                        # gate exists to preserve: a byte-exact edit_file
+                        # old_string built from the chunk. strip('\n') only trims
+                        # incidental leading/trailing blank lines.
+                        chunk_blocks.append(f"[{citation}]\n" + body.strip("\n"))
+        # Full success requires BOTH the outline AND at least one retrieved chunk —
+        # per spec this gate returns outline+chunks together, not one or the other.
+        # Any partial failure (embed/Qdrant down, cache_evicted None, zero relevant
+        # chunks) falls all the way through to the bounded-head fail-closed path
+        # below rather than emitting a half-useful outline-only result.
+        gated = (
+            outline + "\n\n## Top task-relevant chunks\n" + "\n\n".join(chunk_blocks)
+            if chunk_blocks else None
+        )
+    except Exception:  # noqa: BLE001 — fail CLOSED below, never raise, never return raw content
+        gated = None
+
+    if not gated:
+        gated = content[: max(budget - len(_READ_FILE_GATE_NOTE), 0)]
+    gated = gated + _READ_FILE_GATE_NOTE
+    if len(gated) > budget:
+        # Belt-and-suspenders: outline+chunks (or even the head slice above) can still
+        # overshoot budget (e.g. a huge outline). Unconditional final clamp is what
+        # actually guarantees the size invariant, independent of which path produced `gated`.
+        gated = gated[: max(budget - len(_READ_FILE_GATE_NOTE), 0)] + _READ_FILE_GATE_NOTE
+    # ABSOLUTE final clamp: when budget < len(note) the note-aware clamp above still
+    # returns the whole note (> budget). A hard slice guarantees len(gated) <= budget
+    # in every case (fail-closed on size is not negotiable, even for a tiny budget).
+    if len(gated) > budget:
+        gated = gated[:budget]
+    return gated, True
 
 
 async def _store_prune_checkpoint(coordinator_url: str, task_id: str, summary: str) -> None:
@@ -815,6 +1120,12 @@ class LocalAgentExecutor:
         # The system prompt is rebuilt whenever _active_tools changes so the model always
         # sees the current tool surface without a full context reload.
         _all_tools = self.tool_registry.get_tools_for_model()
+        # Slice 0.2 — structural no-commit: exclude git_add/git_commit from the
+        # model-visible schema by default. Filtering here (the hot-swap source) also
+        # keeps them out of _refresh_active_tools' candidate pool, so no later
+        # keyword-triggered hot-swap can reintroduce them either.
+        if not _LOCAL_ALLOW_COMMIT:
+            _all_tools = [t for t in _all_tools if t.get("name") not in _AEXEC_COMMIT_TOOLS]
         _active_tools = list(_all_tools)
 
         # Build initial prompt
@@ -952,6 +1263,20 @@ class LocalAgentExecutor:
             if _is_analysis_only_task else _IMPLEMENTATION_READS_HARD_LIMIT
         )
         _exploration_nudge_sent = False
+        # Repeated-read stagnation: fires the edit-forcing intervention exactly once per
+        # task. Set True the moment the intervention message is queued (not only on full
+        # success) so a second breach — with or without a mid-construction error — falls
+        # straight through to the plain abort rather than looping interventions forever.
+        _reread_intervention_sent = False
+        # No-action guard: counts successful edit_file/write_file calls this run, and
+        # whether the one-shot no-action intervention has already fired. See the
+        # _NOACTION_INTERVENTION_ENABLED block above for the full rationale.
+        _edits_made = 0
+        _no_action_intervention_sent = False
+        # Edit-failure feedback: fires per target file (a task may edit several
+        # files), bounded to _EDIT_FEEDBACK_MAX_PER_FILE per path. See the
+        # _EDIT_FEEDBACK_ENABLED block above for the full rationale.
+        _edit_feedback_counts: dict = {}  # file_path → feedback-fire count
         _validation_passes_without_commit = 0
         _VALIDATION_STALL_NUDGE = 3
 
@@ -1324,6 +1649,58 @@ class LocalAgentExecutor:
                         _cancel_watchdog()
                         return prose.strip() if prose.strip() else response, total_tokens
                 if not tool_call:
+                    # No-action guard: an implementer/edit task with zero successful
+                    # edits so far that returns non-empty prose with no tool call is a
+                    # narrated PLAN ("Thought: I would change X..."), not completion —
+                    # accepting it silently ends the task having changed nothing. Refuse
+                    # it ONCE and force an edit_file call instead. A genuine refusal
+                    # ("cannot safely...", "under-specified...") still completes normally,
+                    # and a second prose-only response completes too (no infinite loop).
+                    # Fail-safe: any error here falls through to the existing completion
+                    # path below rather than crashing the turn.
+                    if (
+                        _NOACTION_INTERVENTION_ENABLED
+                        and not _is_analysis_only_task
+                        and _edits_made == 0
+                        and not _no_action_intervention_sent
+                        and response.strip()
+                    ):
+                        try:
+                            if not _looks_like_refusal(response):
+                                _no_action_intervention_sent = True
+                                intervention_msg = (
+                                    "You described the change but did NOT make it — no "
+                                    "file has been edited yet. Do NOT answer in prose. "
+                                    "Call edit_file NOW: use the exact code from the "
+                                    "'## Relevant prior knowledge' block above as "
+                                    "old_string and your changed version as new_string. "
+                                    "The task is only complete once edit_file has "
+                                    "changed the file."
+                                )
+                                messages.append({"role": "assistant", "content": response})
+                                messages.append({
+                                    "role": "user",
+                                    "content": intervention_msg,
+                                })
+                                logger.warning(
+                                    "no-action intervention: prose-only response with 0 "
+                                    "edits made at call %d — injecting one-shot "
+                                    "edit-forcing nudge instead of completing",
+                                    tool_call_count,
+                                )
+                                await self._emit_agent_event(
+                                    task.id, "noaction_intervention",
+                                    {"tool_call_count": tool_call_count},
+                                    _watchdog_last_activity,
+                                )
+                                continue
+                        except Exception as _noaction_err:
+                            logger.warning(
+                                "no-action-intervention construction failed (%s) — "
+                                "falling through to normal completion", _noaction_err,
+                            )
+                            # Fall through to the plain completion below (fail-safe:
+                            # never let a broken intervention crash or hang the loop).
                     # Phase E — agent_synthesis_start: no tool call in response after ≥1 tool calls.
                     if tool_call_count > 0:
                         await self._emit_agent_event(
@@ -1352,9 +1729,54 @@ class LocalAgentExecutor:
             tool_call.model_id = f"local-{agent_type.value}"
             tool_call.session_id = task.id
 
-            result = await self.tool_registry.execute_tool_call(tool_call)
+            # Slice 0.2 — structural no-commit: block execution at the point of the call
+            # itself, not just the advertised schema. The SI-slice system prompt still
+            # names git_add/git_commit by name (STEP 6), so a schema-only filter would
+            # not stop a call the model emits anyway — this is what makes "local CANNOT
+            # commit" structural rather than prompt-hoped. AQ_LOCAL_ALLOW_COMMIT=1 is the
+            # explicit escape hatch; the handlers in builtin_tools/git_tools.py are
+            # untouched, only this call site refuses to reach them.
+            if tool_call.tool_name in _AEXEC_COMMIT_TOOLS and not _LOCAL_ALLOW_COMMIT:
+                tool_call.status = "blocked"
+                tool_call.error = (
+                    f"{tool_call.tool_name} is disabled for local agents (structural "
+                    "no-commit gate). Local NEVER commits — finish validation and STOP; "
+                    "the orchestrator commits after remote review. Override: "
+                    "AQ_LOCAL_ALLOW_COMMIT=1 (not recommended)."
+                )
+                tool_call.result = {"success": False, "error": tool_call.error, "blocked": True}
+                result = tool_call
+            else:
+                result = await self.tool_registry.execute_tool_call(tool_call)
             task.tool_calls_made.append(result)
             tool_call_count += 1
+
+            # Slice 0.2 — read_file gate (the load-bearing fix): an oversized whole-file
+            # read on top of front-loaded context blows the prompt-char budget (DESIGN.md
+            # AFTER-run-1: 25920 > 24000 LLAMA_MAX_PROMPT_CHARS). Skip when an explicit
+            # line range was requested — that's already a bounded, caller-chosen span.
+            if (
+                _READ_FILE_GATE_ENABLED
+                and result.tool_name == "read_file"
+                and result.status == "completed"
+                and isinstance(result.result, dict)
+                and result.result.get("success")
+                and isinstance(result.result.get("content"), str)
+                and tool_call.arguments.get("start_line") is None
+                and tool_call.arguments.get("end_line") is None
+            ):
+                _rf_path = str(
+                    tool_call.arguments.get("file_path")
+                    or (result.result.get("metadata") or {}).get("path")
+                    or ""
+                )
+                _gated_content, _rf_gated = _gate_large_file_content(
+                    result.result["content"], _rf_path, task.objective, task.id,
+                )
+                if _rf_gated:
+                    result.result["content"] = _gated_content
+                    _rf_meta = result.result.setdefault("metadata", {})
+                    _rf_meta["read_file_gate"] = True
 
             # P1.4: a valid tool call that executed cleanly is a POSITIVE sample — capture it directly
             # here (the reliable source) rather than mining hybrid-events (only ~0.03% of which are
@@ -1515,6 +1937,61 @@ class LocalAgentExecutor:
                 if read_path:
                     _read_path_counts[read_path] = _read_path_counts.get(read_path, 0) + 1
                     if _read_path_counts[read_path] >= _REPEATED_READ_PATH_LIMIT:
+                        # First breach: inject a one-shot edit-forcing intervention instead
+                        # of aborting. The relevant code is already front-loaded verbatim
+                        # under "## Relevant prior knowledge" — the plain abort discarded
+                        # tasks local could complete once nudged off the read->edit stall.
+                        # Delivered as the read_file tool result (role:"tool") so the model
+                        # actually sees it as the outcome of ITS OWN last tool call next turn.
+                        if _REREAD_INTERVENTION_ENABLED and not _reread_intervention_sent:
+                            try:
+                                _reread_intervention_sent = True
+                                _iv_brace = response.rfind('{"function"')
+                                if _iv_brace == -1:
+                                    _iv_brace = response.rfind("{")
+                                _iv_clean_call = (
+                                    response[_iv_brace:].strip() if _iv_brace != -1 else response.strip()
+                                )
+                                intervention_msg = (
+                                    f"You have read {read_path!r} "
+                                    f"{_read_path_counts[read_path]} times and it keeps returning "
+                                    "the same content — reading it again will not help. STOP "
+                                    "reading. The relevant code for this task is ALREADY in your "
+                                    "context above under '## Relevant prior knowledge' as exact "
+                                    "fenced code blocks (byte-identical to the file). Call "
+                                    "edit_file NOW: use the exact text from one of those code "
+                                    "blocks as old_string (it will match), and provide your "
+                                    "changed version as new_string. Do not call read_file on "
+                                    "this file again."
+                                )
+                                messages.append({"role": "assistant", "content": _iv_clean_call})
+                                messages.append({
+                                    "role": "tool",
+                                    "name": result.tool_name,
+                                    "content": intervention_msg,
+                                })
+                                logger.warning(
+                                    "repeated-read intervention: path=%r reads=%d call=%d — "
+                                    "injecting one-shot edit-forcing nudge instead of aborting",
+                                    read_path, _read_path_counts[read_path], tool_call_count,
+                                )
+                                await self._emit_agent_event(
+                                    task.id, "reread_intervention",
+                                    {
+                                        "file_path": read_path,
+                                        "reads": _read_path_counts[read_path],
+                                        "tool_call_count": tool_call_count,
+                                    },
+                                    _watchdog_last_activity,
+                                )
+                                continue
+                            except Exception as _interv_err:
+                                logger.warning(
+                                    "reread-intervention construction failed (%s) — "
+                                    "falling back to plain abort", _interv_err,
+                                )
+                                # Fall through to the plain abort below (fail-safe: never
+                                # let a broken intervention crash or hang the loop).
                         stagnation_msg = (
                             f"Repeated-read stagnation: {read_path!r} was read "
                             f"{_read_path_counts[read_path]} times without progress. "
@@ -1529,6 +2006,77 @@ class LocalAgentExecutor:
             elif result.tool_name in ("edit_file", "write_file"):
                 _reads_without_edit = 0
                 _read_path_counts.clear()
+                if not _is_tool_failure:
+                    _edits_made += 1
+                elif result.tool_name == "edit_file":
+                    # Edit-failure feedback: old_string byte-mismatch is now the
+                    # dominant local-agent failure mode (see _EDIT_FEEDBACK_ENABLED
+                    # above). On the FIRST such mismatch failure for this file
+                    # (bounded to _EDIT_FEEDBACK_MAX_PER_FILE), inject the file's
+                    # EXACT current text for the attempted region as the tool
+                    # result instead of the bare failure, then let the loop
+                    # continue — never crash or hang on a broken feedback build.
+                    _ef_err = str((result.result or {}).get("error", "")) if result.result else ""
+                    _ef_path = str(
+                        (result.arguments or {}).get("file_path")
+                        or (result.arguments or {}).get("path")
+                        or ""
+                    )
+                    _ef_fires = _edit_feedback_counts.get(_ef_path, 0)
+                    if (
+                        _EDIT_FEEDBACK_ENABLED
+                        and _ef_path
+                        and _looks_like_edit_mismatch(_ef_err)
+                        and _ef_fires < _EDIT_FEEDBACK_MAX_PER_FILE
+                    ):
+                        try:
+                            _ef_region = _build_edit_mismatch_feedback(
+                                _ef_path,
+                                str((result.arguments or {}).get("old_string") or ""),
+                                char_budget=_EDIT_FEEDBACK_CHAR_BUDGET,
+                            )
+                            if _ef_region:
+                                _edit_feedback_counts[_ef_path] = _ef_fires + 1
+                                _iv_brace = response.rfind('{"function"')
+                                if _iv_brace == -1:
+                                    _iv_brace = response.rfind("{")
+                                _iv_clean_call = (
+                                    response[_iv_brace:].strip() if _iv_brace != -1 else response.strip()
+                                )
+                                feedback_msg = (
+                                    "edit_file FAILED: your old_string did not match the "
+                                    "file. The file's EXACT current text for that region is "
+                                    "below — copy an exact substring of THIS as your "
+                                    "old_string (character-for-character, including "
+                                    "indentation) and retry edit_file.\n\n" + _ef_region
+                                )
+                                messages.append({"role": "assistant", "content": _iv_clean_call})
+                                messages.append({
+                                    "role": "tool",
+                                    "name": result.tool_name,
+                                    "content": feedback_msg,
+                                })
+                                logger.warning(
+                                    "edit-mismatch feedback: path=%r attempt=%d call=%d — "
+                                    "injecting exact-region feedback instead of plain failure",
+                                    _ef_path, _edit_feedback_counts[_ef_path], tool_call_count,
+                                )
+                                await self._emit_agent_event(
+                                    task.id, "edit_feedback_intervention",
+                                    {
+                                        "file_path": _ef_path,
+                                        "attempt": _edit_feedback_counts[_ef_path],
+                                        "tool_call_count": tool_call_count,
+                                    },
+                                    _watchdog_last_activity,
+                                )
+                                continue
+                        except Exception as _ef_err_exc:
+                            logger.warning(
+                                "edit-feedback construction failed (%s) — "
+                                "falling through to plain failure", _ef_err_exc,
+                            )
+                            # Fall through to the normal failure-result append below.
             elif _is_analysis_only_task and result.tool_name == "store_memory":
                 _reads_without_edit = 0
                 _read_path_counts.clear()
@@ -2186,18 +2734,29 @@ class LocalAgentExecutor:
 
         # Compact workflow contract — always injected for AGENT type.
         # Full operating contract: .agent/LOCAL-AGENT.md
+        _commit_policy_line = (
+            "- validate_before_commit MUST pass before git_add. Call it once, then act on result.\n"
+            if _LOCAL_ALLOW_COMMIT else
+            "- LOCAL AGENTS DO NOT COMMIT: git_add/git_commit are disabled by default (structural\n"
+            "  gate, AQ_LOCAL_ALLOW_COMMIT=0). After validate_before_commit passes, STOP — do not\n"
+            "  call git_add or git_commit. The orchestrator commits after remote review.\n"
+        )
         _behavioral_contract = (
             "\n\nBEHAVIORAL CONTRACT:\n"
             "- Read before writing. One change at a time. Stay in the assigned slice.\n"
-            "- validate_before_commit MUST pass before git_add. Call it once, then act on result.\n"
+            + _commit_policy_line +
             "- ALWAYS use RELATIVE paths (e.g. .agent/memory/issues-backlog.md not /home/user/...).\n"
             "- ALWAYS prefer edit_file over write_file for targeted changes.\n"
             "  edit_file(path, old_string, new_string) replaces old_string in place — no full-file regeneration.\n"
             "  Only use write_file if you must create a new file from scratch.\n"
             "- READ LIMIT: At most 4 read_file calls per slice. After 4 reads, STOP reading — you have enough\n"
             "  context. Call edit_file immediately. If edit_file fails with 'old_string not found', THEN read more.\n"
-            "- SURGICAL FINALITY: validation gate passes → commit IMMEDIATELY. No cleanup. No refactor.\n"
-            "  Adjacent improvements are separate tasks. One fix per slice.\n"
+            "- PREFER RANGED READS: call read_file(path, start_line=, end_line=) for a targeted span instead of\n"
+            "  a whole-file read — large files are auto-summarized (outline + top chunks) past ~1500 tokens anyway.\n"
+            "- If context is already provided under '## Relevant prior knowledge' (front-loaded), do NOT re-fetch\n"
+            "  it via read_file/query_aidb/get_hint — only fetch more if that block is insufficient.\n"
+            "- SURGICAL FINALITY: validation gate passes → finalize IMMEDIATELY (commit if allowed,\n"
+            "  else STOP). No cleanup. No refactor. Adjacent improvements are separate tasks.\n"
         )
 
         # Self-improvement slice instructions (~722 tokens). Only injected when the task
@@ -2226,9 +2785,15 @@ class LocalAgentExecutor:
             "        If gate fails, fix the problem and re-run. Gate passes → go to STEP 5b immediately.\n"
             "STEP 5b: edit_file('.agent/memory/issues-backlog.md', '[OPEN] <issue-title>', '[DONE] <issue-title>')\n"
             "         Marks the fixed issue as done. Use the exact issue title from STEP 2.\n"
-            "STEP 6: git_add([<changed-files>, '.agent/memory/issues-backlog.md'])\n"
-            "        git_commit('<type>(<scope>): <description>')\n"
-            "        git_commit adds Co-Authored-By automatically — do NOT add it in the message.\n"
+            + (
+                "STEP 6: git_add([<changed-files>, '.agent/memory/issues-backlog.md'])\n"
+                "        git_commit('<type>(<scope>): <description>')\n"
+                "        git_commit adds Co-Authored-By automatically — do NOT add it in the message.\n"
+                if _LOCAL_ALLOW_COMMIT else
+                "STEP 6: Do NOT call git_add or git_commit — local agents never commit (structural\n"
+                "        gate). Leave changes unstaged; the orchestrator commits after remote review.\n"
+                "        Proceed directly to STEP 7.\n"
+            ) +
             "STEP 7: store_memory('<fix-pattern-in-one-sentence>', context_type='error-solutions', importance=0.8)\n"
             "        Seeds fix into AIDB so all agents learn from it.\n"
             "        Example: 'Fix: unconditional break exits loop before JSON fallback — indent break inside if-block.'\n"
