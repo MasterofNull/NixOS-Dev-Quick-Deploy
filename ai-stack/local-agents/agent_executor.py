@@ -80,6 +80,15 @@ _LOCAL_GBNF_MODE = os.environ.get("AQ_LOCAL_GBNF", "").strip().lower()
 _LOCAL_GBNF_ALWAYS_ENABLED = _LOCAL_GBNF_MODE in ("1", "true", "yes", "on")
 _LOCAL_GBNF_REPAIR_ENABLED = _LOCAL_GBNF_ALWAYS_ENABLED or _LOCAL_GBNF_MODE in ("repair", "retry")
 
+# Record/replay harness (velocity multiplier — deterministic offline replay of local
+# inference; see .agents/plans/record-replay-harness/DESIGN.md). Default-OFF
+# (AQ_LLM_CASSETTE_MODE unset -> "off") is a strict no-op in _call_llama; wrapped in
+# try/except so a broken/missing module never disrupts live inference.
+try:
+    import llm_cassette  # noqa: E402  (same dir: ai-stack/local-agents/)
+except Exception:  # noqa: BLE001 — never let an optional import break the executor
+    llm_cassette = None  # type: ignore
+
 # P1 (closed-local-improvement-loop): capture local failures as labeled training samples.
 try:
     import training_capture  # noqa: E402
@@ -2325,6 +2334,36 @@ class LocalAgentExecutor:
         except Exception:  # noqa: BLE001 — grammar is an optimization; never break the call on it
             return None
 
+    def _cassette_replay(
+        self, payload: Dict[str, Any], task_type: Optional[str]
+    ) -> Optional[Tuple[str, int]]:
+        """Record/replay harness hook — consult the cassette before the HTTP call.
+
+        Returns (content, tokens) on a replay hit (caller must return it immediately,
+        skipping the network entirely); None means "proceed live" (default-off mode,
+        record mode, replay-record miss, or on-miss=passthrough). Raises
+        llm_cassette.ReplayMiss only when the operator explicitly asked for strict
+        replay (AQ_LLM_CASSETTE_ON_MISS=error, the default in replay mode) — that is a
+        deliberate test-failure signal, not swallowed here.
+        """
+        if llm_cassette is None:
+            return None
+        return llm_cassette.replay_lookup(payload, task_type)
+
+    def _cassette_record(
+        self,
+        payload: Dict[str, Any],
+        task_type: Optional[str],
+        content: str,
+        tokens: int,
+        meta: Optional[Dict[str, Any]] = None,
+    ) -> None:
+        """Record/replay harness hook — tee a live result into the cassette. No-op
+        unless AQ_LLM_CASSETTE_MODE is record/replay-record; never raises."""
+        if llm_cassette is None:
+            return
+        llm_cassette.maybe_record(payload, task_type, content, tokens, meta)
+
     async def _call_llama(
         self,
         messages: List[Dict],
@@ -2392,6 +2431,13 @@ class LocalAgentExecutor:
             if _gbnf:
                 _payload_kwargs["grammar"] = _gbnf
             payload = build_llama_payload(messages, **_payload_kwargs)
+
+            # Record/replay harness — replay hit skips the HTTP call entirely (no-op
+            # when AQ_LLM_CASSETTE_MODE=off, the default).
+            _cassette_hit = self._cassette_replay(payload, task_type)
+            if _cassette_hit is not None:
+                return _cassette_hit
+
             async with httpx.AsyncClient() as client:
                 response = await client.post(
                     f"{self.llama_endpoint}/v1/chat/completions",
@@ -2403,7 +2449,9 @@ class LocalAgentExecutor:
                     raise Exception(f"llama.cpp error: {response.status_code} {response.text}")
                 data = response.json()
                 tokens = data.get("usage", {}).get("total_tokens", 0)
-                return data["choices"][0]["message"]["content"], tokens
+                content = data["choices"][0]["message"]["content"]
+                self._cassette_record(payload, task_type, content, tokens, {"path": "legacy"})
+                return content, tokens
 
         # Streaming path: collect SSE delta chunks.
         # Pass stream=True so build_llama_payload includes stream_options.include_usage=True,
@@ -2418,6 +2466,13 @@ class LocalAgentExecutor:
         if _gbnf:
             _stream_kwargs["grammar"] = _gbnf
         payload = build_llama_payload(messages, **_stream_kwargs)
+
+        # Record/replay harness — replay hit skips SSE streaming entirely (no-op when
+        # AQ_LLM_CASSETTE_MODE=off, the default).
+        _cassette_hit = self._cassette_replay(payload, task_type)
+        if _cassette_hit is not None:
+            return _cassette_hit
+
         read_timeout = min(chunk_timeout, first_token_timeout)
         timeout = httpx.Timeout(connect=10.0, read=read_timeout, write=10.0, pool=5.0)
 
@@ -2534,7 +2589,9 @@ class LocalAgentExecutor:
             raise RuntimeError(f"LLM network error: {_ne}") from _ne
 
         _write_stream_tail(final=True)
-        return "".join(collected), tokens_used
+        content = "".join(collected)
+        self._cassette_record(payload, task_type, content, tokens_used, {"path": "streaming"})
+        return content, tokens_used
 
     async def _fallback_to_remote(self, task: Task) -> Task:
         """

@@ -1,0 +1,332 @@
+#!/usr/bin/env python3
+"""
+aq-replay-bench — deterministic, offline config A/B against a recorded LLM cassette.
+
+Unlocks item 2 of the record/replay harness (see .agents/plans/record-replay-harness/
+DESIGN.md): given a cassette recorded from a real (or stubbed) local-agent run, replay
+it through the actual _execute_with_tools loop under a MATRIX of harness-side config
+flags and report a metrics table — deterministic, in seconds, no live APU run.
+
+Two DIFFERENT kinds of config axis behave differently against a fixed cassette:
+
+  LOOP-SIDE flags (read_file_gate, reread_intervention, noaction_intervention,
+  edit_feedback, allow_commit, ...) do NOT change the LLM request, only how the loop
+  interprets a fixed model output. Varying these against the SAME cassette is exactly
+  the harness-fix-validation use case: "replay the same recorded model output against
+  the harness fix and prove the loop now handles it correctly."
+
+  MODEL-REQUEST-SHAPE flags (gbnf/grammar, task_type, ...) change build_llama_payload's
+  output and therefore the cassette lookup key. Toggling these against a cassette that
+  was only recorded under ONE of their values will legitimately MISS for the other
+  value (AQ_LLM_CASSETTE_ON_MISS=error, the default) — that miss is reported as a row
+  in the table, not a crash. To A/B a model-request-shape flag for real, record a
+  separate cassette per value and point --cassette at each in turn.
+
+Usage:
+    aq-replay-bench --cassette path/to/run.jsonl \\
+        --configs read_file_gate=0,1 noaction_intervention=0,1 \\
+        --objective "..." --task-type research --max-tool-calls 5
+
+    # Re-run the exact scenario recorded by scripts/testing/test-llm-cassette.py's
+    # golden end-to-end test:
+    aq-replay-bench --cassette /tmp/golden.jsonl \\
+        --objective "Run the probe command with run_command and report the result." \\
+        --task-type research --configs read_file_gate=0,1
+
+Extending to a real multi-task set: replace `_load_tasks()` with a loader that reads a
+JSON list of {objective, task_type, target} rows (one recorded cassette per task, keyed
+by task id in the row's `meta`), and loop the config matrix over each task instead of
+the single --objective. The per-config-per-task inner loop (`_run_one`) does not change.
+"""
+
+from __future__ import annotations
+
+import argparse
+import asyncio
+import itertools
+import json
+import os
+import subprocess
+import sys
+import tempfile
+from collections import Counter
+from pathlib import Path
+from typing import Any, Dict, List, Optional, Tuple
+
+ROOT = Path(__file__).resolve().parents[2]
+sys.path.insert(0, str(ROOT / "ai-stack" / "local-agents"))
+sys.path.insert(0, str(ROOT / "ai-stack" / "mcp-servers"))
+sys.path.insert(0, str(ROOT / "scripts" / "ai" / "lib"))
+
+import agent_executor  # noqa: E402
+import llm_cassette  # noqa: E402
+from agent_executor import AgentType, LocalAgentExecutor, Task  # noqa: E402
+from tool_registry import ToolRegistry  # noqa: E402
+from builtin_tools.shell_tools import register_shell_tools  # noqa: E402
+
+# IMPORTANT: the registered tool SET is baked into the system prompt (tool
+# descriptions), which is part of the messages the request key hashes — replaying
+# against a cassette recorded with a DIFFERENT tool set will legitimately MISS on
+# turn 1, even with identical objective/task_type. Only shell tools are registered by
+# default (matching the golden scenario this bench ships with:
+# scripts/testing/test-llm-cassette.py's golden end-to-end). Pass --extra-tools to
+# register more, but only if the cassette was recorded with the SAME extra set.
+_EXTRA_TOOL_REGISTRARS = {
+    "file": "builtin_tools.file_operations:register_file_tools",
+    "git": "builtin_tools.git_tools:register_git_tools",
+    "github": "builtin_tools.github_tools:register_github_tools",
+    "testing": "builtin_tools.testing_tools:register_testing_tools",
+}
+
+
+def _resolve_registrar(dotted: str):
+    import importlib
+    mod_name, func_name = dotted.split(":", 1)
+    mod = importlib.import_module(mod_name)
+    return getattr(mod, func_name)
+
+
+# ---------------------------------------------------------------------------
+# LOOP-SIDE flag registry: config key -> (env var, agent_executor module attr, caster).
+# The module attr is a frozen-at-import bool computed by agent_executor's own
+# `_env_flag()` at load time, so setting the env var alone has no effect on an
+# already-imported module — this bench must poke the live module attribute directly
+# (the same value the running loop actually branches on).
+# ---------------------------------------------------------------------------
+_LOOP_FLAG_REGISTRY: Dict[str, Tuple[str, str]] = {
+    "read_file_gate": ("AQ_READ_FILE_GATE", "_READ_FILE_GATE_ENABLED"),
+    "reread_intervention": ("AQ_REREAD_INTERVENTION", "_REREAD_INTERVENTION_ENABLED"),
+    "noaction_intervention": ("AQ_NOACTION_INTERVENTION", "_NOACTION_INTERVENTION_ENABLED"),
+    "edit_feedback": ("AQ_EDIT_FEEDBACK", "_EDIT_FEEDBACK_ENABLED"),
+    "allow_commit": ("AQ_LOCAL_ALLOW_COMMIT", "_LOCAL_ALLOW_COMMIT"),
+}
+
+_TRUTHY = {"1", "true", "yes", "on"}
+
+
+def _apply_flag(key: str, value: str) -> None:
+    """Set both the env var (for subprocess/observability parity) and the frozen
+    module attribute (what the running loop actually reads) for one config key."""
+    if key in _LOOP_FLAG_REGISTRY:
+        env_name, attr_name = _LOOP_FLAG_REGISTRY[key]
+        os.environ[env_name] = value
+        setattr(agent_executor, attr_name, value.strip().lower() in _TRUTHY)
+        return
+    if key == "gbnf":
+        # Model-request-shape flag — changes the request key (see module docstring).
+        os.environ["AQ_LOCAL_GBNF"] = value
+        mode = value.strip().lower()
+        agent_executor._LOCAL_GBNF_ALWAYS_ENABLED = mode in _TRUTHY
+        agent_executor._LOCAL_GBNF_REPAIR_ENABLED = (
+            agent_executor._LOCAL_GBNF_ALWAYS_ENABLED or mode in ("repair", "retry")
+        )
+        return
+    # Unknown key: still exported as a plain env var so future flags work without a
+    # code change here, as long as they're read fresh (not cached at import time).
+    os.environ[key.upper()] = value
+
+
+def _parse_configs(items: List[str]) -> Dict[str, List[str]]:
+    matrix: Dict[str, List[str]] = {}
+    for item in items:
+        if "=" not in item:
+            raise SystemExit(f"--configs entry {item!r} must be KEY=v1,v2,...")
+        key, raw_values = item.split("=", 1)
+        matrix[key.strip()] = [v.strip() for v in raw_values.split(",") if v.strip() != ""]
+    return matrix
+
+
+# ---------------------------------------------------------------------------
+# Metrics
+# ---------------------------------------------------------------------------
+
+_EDIT_TOOLS = {"edit_file", "write_file", "write_region"}
+
+
+def _check_correctness(target: Optional[str]) -> Optional[bool]:
+    """Best-effort correctness check on the target file: catches the 'lucky pass'
+    where an edit landed but produced broken code. Returns None if no --target was
+    given (correctness is then simply not measured for that config)."""
+    if not target:
+        return None
+    path = Path(target)
+    if not path.exists():
+        return False
+    if path.suffix == ".py":
+        r = subprocess.run(
+            [sys.executable, "-m", "py_compile", str(path)],
+            capture_output=True, timeout=30,
+        )
+        return r.returncode == 0
+    if path.suffix in (".sh", ".bash"):
+        r = subprocess.run(["bash", "-n", str(path)], capture_output=True, timeout=30)
+        return r.returncode == 0
+    return None  # unknown target type — not measured
+
+
+async def _run_one(
+    cassette_path: str,
+    objective: str,
+    task_type: Optional[str],
+    max_tool_calls: int,
+    target: Optional[str],
+    extra_tools: List[str],
+) -> Dict[str, Any]:
+    """Replay ONE recorded conversation through the real _execute_with_tools loop
+    under the currently-applied config, and tabulate metrics."""
+    llm_cassette.reset_cache()  # fresh cursor: replay this cassette from row 0 again
+    os.environ["AQ_LLM_CASSETTE_MODE"] = "replay"
+    os.environ["AQ_LLM_CASSETTE"] = cassette_path
+    os.environ.setdefault("AQ_LLM_CASSETTE_ON_MISS", "error")
+    os.environ.setdefault("LLAMA_USE_STREAMING", "false")
+
+    with tempfile.TemporaryDirectory() as td:
+        registry = ToolRegistry(db_path=Path(td) / "audit.db")
+        register_shell_tools(registry)
+        for name in extra_tools:
+            dotted = _EXTRA_TOOL_REGISTRARS.get(name)
+            if not dotted:
+                raise SystemExit(f"--extra-tools: unknown tool set {name!r} (known: {', '.join(_EXTRA_TOOL_REGISTRARS)})")
+            _resolve_registrar(dotted)(registry)
+
+        executor = LocalAgentExecutor(tool_registry=registry, fallback_endpoint="")
+        task = Task(id="replay-bench", objective=objective, task_type=task_type)
+
+        failure_modes: Counter = Counter()
+        try:
+            response, tokens = await executor._execute_with_tools(
+                task, AgentType.AGENT, max_tool_calls,
+            )
+            miss = None
+        except llm_cassette.ReplayMiss as e:
+            response, tokens = "", 0
+            miss = str(e)
+
+        calls = task.tool_calls_made
+        n_calls = len(calls)
+        n_completed = sum(1 for c in calls if c.status == "completed")
+        n_edits = sum(
+            1 for c in calls
+            if c.tool_name in _EDIT_TOOLS and c.status == "completed"
+            and isinstance(c.result, dict) and c.result.get("success")
+        )
+        n_run_command_rejections = sum(
+            1 for c in calls
+            if c.tool_name == "run_command"
+            and isinstance(c.result, dict)
+            and str(c.result.get("error", "")).lower().startswith("command rejected")
+        )
+        for c in calls:
+            if c.status != "completed" or (isinstance(c.result, dict) and c.result.get("success") is False):
+                err = c.error or (isinstance(c.result, dict) and c.result.get("error")) or "unknown"
+                failure_modes[f"{c.tool_name}:{str(err)[:60]}"] += 1
+
+        edit_landed = n_edits > 0
+        correct = _check_correctness(target) if edit_landed else None
+
+        return {
+            "miss": miss,
+            "response": response,
+            "tokens": tokens,
+            "calls": n_calls,
+            "valid_call_pct": (100.0 * n_completed / n_calls) if n_calls else 100.0,
+            "edit_landed": edit_landed,
+            "correct": correct,
+            "run_command_rejections": n_run_command_rejections,
+            "failure_modes": failure_modes,
+        }
+
+
+def _fmt_pct(v: Optional[float]) -> str:
+    if v is None:
+        return "n/a"
+    return f"{v:.0f}%"
+
+
+def _fmt_bool_pct(v: Optional[bool]) -> str:
+    if v is None:
+        return "n/a"
+    return "100%" if v else "0%"
+
+
+def main() -> int:
+    ap = argparse.ArgumentParser(description=__doc__, formatter_class=argparse.RawDescriptionHelpFormatter)
+    ap.add_argument("--cassette", required=True, help="Path to a recorded cassette JSONL file.")
+    ap.add_argument(
+        "--configs", nargs="*", default=[],
+        help="KEY=v1,v2 ... one axis per arg (e.g. read_file_gate=0,1 gbnf=0,1). "
+             f"Known loop-side keys: {', '.join(sorted(_LOOP_FLAG_REGISTRY))}, gbnf.",
+    )
+    ap.add_argument(
+        "--objective", default="Run the probe command with run_command and report the result.",
+        help="Task objective — MUST match the objective the cassette was recorded under "
+             "(it's baked into the system/user messages that derive the request key).",
+    )
+    ap.add_argument("--task-type", default="research", help="Task.task_type (default: research, analysis-only).")
+    ap.add_argument("--max-tool-calls", type=int, default=5)
+    ap.add_argument("--target", default=None, help="Optional file to py_compile/bash-n after an edit lands.")
+    ap.add_argument(
+        "--extra-tools", nargs="*", default=[],
+        help=f"Additional tool sets to register beyond shell (must match what the cassette was "
+             f"recorded with, or turn 1 will MISS). Known: {', '.join(sorted(_EXTRA_TOOL_REGISTRARS))}.",
+    )
+    args = ap.parse_args()
+
+    if not Path(args.cassette).exists():
+        raise SystemExit(f"cassette not found: {args.cassette}")
+
+    matrix = _parse_configs(args.configs)
+    axis_names = list(matrix.keys())
+    combos: List[Tuple[str, ...]] = list(itertools.product(*matrix.values())) if matrix else [()]
+
+    rows: List[Dict[str, Any]] = []
+    for combo in combos:
+        config_desc = dict(zip(axis_names, combo))
+        for key, value in config_desc.items():
+            _apply_flag(key, value)
+
+        result = asyncio.run(_run_one(
+            args.cassette, args.objective, args.task_type, args.max_tool_calls, args.target,
+            args.extra_tools,
+        ))
+        rows.append({"config": config_desc, **result})
+
+    # --- table ---
+    header_cfg = ", ".join(axis_names) if axis_names else "(no axes — single run)"
+    print(f"aq-replay-bench — cassette={args.cassette}")
+    print(f"config axes: {header_cfg}")
+    print("-" * 100)
+    print(f"{'config':<32} {'calls':>5} {'valid%':>7} {'edit%':>6} {'correct':>8} {'rejects':>8} {'result'}")
+    print("-" * 100)
+    for row in rows:
+        cfg_str = ",".join(f"{k}={v}" for k, v in row["config"].items()) or "-"
+        if row["miss"]:
+            print(f"{cfg_str:<32} {'MISS':>5} {'-':>7} {'-':>6} {'-':>8} {'-':>8} {row['miss'][:80]}")
+            continue
+        print(
+            f"{cfg_str:<32} "
+            f"{row['calls']:>5} "
+            f"{_fmt_pct(row['valid_call_pct']):>7} "
+            f"{_fmt_bool_pct(row['edit_landed']):>6} "
+            f"{_fmt_bool_pct(row['correct']):>8} "
+            f"{row['run_command_rejections']:>8} "
+            f"{row['response'][:60]!r}"
+        )
+    print("-" * 100)
+
+    print("\nfailure-mode histogram (per config):")
+    any_failures = False
+    for row in rows:
+        if row.get("failure_modes"):
+            any_failures = True
+            cfg_str = ",".join(f"{k}={v}" for k, v in row["config"].items()) or "-"
+            for mode, count in row["failure_modes"].most_common():
+                print(f"  [{cfg_str}] {mode} x{count}")
+    if not any_failures:
+        print("  (none)")
+
+    return 0
+
+
+if __name__ == "__main__":
+    raise SystemExit(main())
