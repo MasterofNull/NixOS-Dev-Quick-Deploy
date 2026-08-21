@@ -136,6 +136,16 @@ async def run_command_handler(
             "error": str (if failed)
         }
     """
+    # Strip trailing tool-call JSON artifacts before ANY check. The local model's
+    # GBNF/streaming tool-call parser can leak the envelope's closing punctuation
+    # into the command argument (e.g. "grep ... file\n},\n"), which the shell-control
+    # guard below then rejects as a newline/metachar — the model retries verbatim and
+    # stagnates. This trims ONLY trailing whitespace + a dangling "}"/"]"/"," /quote
+    # tail; it never removes anything from the middle of a command, so a genuine
+    # injection ("; rm -rf" / "cmd\ncmd2") is still caught by the guard. Producer-side
+    # cleanup, not a security relaxation. Root cause: local-agent-tool-call-json-artifact-leak.
+    command = re.sub(r"[\s}\]\",]+$", "", command)
+
     # Parse first word as command
     cmd_parts = command.split()
     if not cmd_parts:
