@@ -1291,7 +1291,7 @@ class LocalAgentExecutor:
         })
         _OBSERVATION_ACTION_TOOLS = frozenset({
             "store_memory", "run_command", "run_harness_cli", "delegate_to_remote",
-            "edit_file", "write_file", "git_add", "git_commit",
+            "edit_file", "write_file", "write_region", "git_add", "git_commit",
         })
         _observations_without_action = 0
         _MAX_OBSERVATIONS_WITHOUT_ACTION = 6
@@ -2003,7 +2003,7 @@ class LocalAgentExecutor:
                         )
                         _cancel_watchdog()
                         return stagnation_msg, total_tokens
-            elif result.tool_name in ("edit_file", "write_file"):
+            elif result.tool_name in ("edit_file", "write_file", "write_region"):
                 _reads_without_edit = 0
                 _read_path_counts.clear()
                 if not _is_tool_failure:
@@ -2086,7 +2086,7 @@ class LocalAgentExecutor:
             # won't pull the trigger. Nudge it to git_add → git_commit immediately.
             if result.tool_name in ("validate_before_commit", "run_command") and result.status == "completed":
                 _validation_passes_without_commit += 1
-            elif result.tool_name in ("write_file", "edit_file", "git_add", "git_commit"):
+            elif result.tool_name in ("write_file", "edit_file", "write_region", "git_add", "git_commit"):
                 _validation_passes_without_commit = 0
 
             # Observation stagnation: track harness query calls vs action calls.
@@ -2746,7 +2746,9 @@ class LocalAgentExecutor:
             "- Read before writing. One change at a time. Stay in the assigned slice.\n"
             + _commit_policy_line +
             "- ALWAYS use RELATIVE paths (e.g. .agent/memory/issues-backlog.md not /home/user/...).\n"
-            "- ALWAYS prefer edit_file over write_file for targeted changes.\n"
+            "- To change code, prefer write_region(file_path, start_line, end_line, new_text) using the line\n"
+            "  numbers shown in the '## Relevant prior knowledge' citations (e.g. '[file:271-290]') — it does\n"
+            "  NOT require matching existing text. Use edit_file only for tiny single-line tweaks.\n"
             "  edit_file(path, old_string, new_string) replaces old_string in place — no full-file regeneration.\n"
             "  Only use write_file if you must create a new file from scratch.\n"
             "- READ LIMIT: At most 4 read_file calls per slice. After 4 reads, STOP reading — you have enough\n"
