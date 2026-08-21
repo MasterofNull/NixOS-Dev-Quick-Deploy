@@ -20,6 +20,14 @@ def main() -> int:
         "hybrid coordinator should set a lower local confidence threshold declaratively",
     )
     assert_true(
+        '"AI_REMOTE_BURST_QUALITY_THRESHOLD=${toString ai.switchboard.remoteBurst.qualityThreshold}"' in text,
+        "hybrid coordinator should inject declarative remote burst quality threshold",
+    )
+    assert_true(
+        '"AI_REMOTE_BURST_QUEUE_DEPTH_TRIGGER=${toString ai.switchboard.remoteBurst.queueDepthTrigger}"' in text,
+        "hybrid coordinator should inject declarative remote burst queue trigger",
+    )
+    assert_true(
         '"SWITCHBOARD_URL=http://127.0.0.1:${toString ports.switchboard}"' in text,
         "hybrid coordinator should continue to use declarative switchboard wiring",
     )

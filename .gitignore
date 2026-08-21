@@ -326,3 +326,11 @@ data/token-savings.json
 
 # Compiler/linker debris may be retained locally during archive investigation, never as source.
 .agent/archive/**/a.out
+# Runtime/device WebAuthn allowlist (ACP) — never commit credential state (Rule 10)
+config/aqos/approval-signer-credentials.json
+# Transient dogfood-run artifacts (diffs are candidates for review, regenerated each run)
+.agents/delegation/dogfood-diffs/
+.agents/delegation/dogfood-ledger.jsonl
+.agents/delegation/dogfood-queue.json
+.agents/delegation/dogfood-runner.log
+.agents/delegation/dogfood-overnight-summary.md
