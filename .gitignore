@@ -334,3 +334,6 @@ config/aqos/approval-signer-credentials.json
 .agents/delegation/dogfood-queue.json
 .agents/delegation/dogfood-runner.log
 .agents/delegation/dogfood-overnight-summary.md
+
+# LLM record/replay cassettes (run artifacts; curate goldens explicitly)
+.agents/delegation/cassettes/
