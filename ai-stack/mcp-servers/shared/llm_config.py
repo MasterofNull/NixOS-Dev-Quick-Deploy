@@ -134,7 +134,10 @@ LOCAL_QUEUE_OVERHEAD_SECONDS: int = 60
 #   → delegateTimeoutSeconds must be ≥ 530s for 2-tool sync tasks (500s + 30s slack)
 #   → 3+ tool tasks must route to async_mode=True
 # Override at call site or via LLAMA_MAX_TOKENS env var.
-AGENT_TOOL_CALL_MAX_TOKENS = 256   # Tool call JSON (50-100 tokens) + short summaries
+AGENT_TOOL_CALL_MAX_TOKENS = 512   # Tool call JSON + room for a short reasoning preamble
+                                   # before it. 256 truncated Qwen mid-"Thought:" BEFORE the
+                                   # tool call emitted -> prose-only response, calls=0. The
+                                   # loop's own comment already assumed 512 here.
 AGENT_TASK_MAX_TOKENS = 800        # Multi-turn agent task responses
 PROBE_MAX_TOKENS = 20              # Speed / health probes
 

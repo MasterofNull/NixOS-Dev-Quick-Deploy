@@ -21,7 +21,7 @@
 #   --prompt TEXT      Task prompt
 #   --prompt-file FILE Read prompt from file
 #   --mode MODE        Routing: agent|hybrid|direct|ralph  [default: hybrid]
-#   --timeout SECS     Request timeout in seconds  [default: 300]
+#   --timeout SECS     Request timeout in seconds  [default: 1800]  (APU-paced; ~3.3min/step)
 #   --role ROLE        Role: orchestrator|architect|implementer|reviewer  [default: implement]
 #   --wait             Block until task completes (default: background)
 #   --check ID         Print output of a completed task
@@ -85,7 +85,12 @@ ensure_dirs() { mkdir -p "$DELEGATION_DIR/outputs"; }
 PROMPT=""
 PROMPT_FILE=""
 MODE="auto"   # Phase 74E: auto runs classify_mode() heuristic in dispatch.py
-TIMEOUT=300
+# APU pace is ~3.3 min/LLM step (measured 2026-08-01); a multi-step bounded
+# agent task needs headroom above a single step. The old 300s default was
+# remote-paced and self-rejected local's long-running/bulk work at the slot-queue
+# deadline ("banded slot queue deadline after 301s"). 1800s matches the
+# FIRST_TOKEN_TIMEOUT cap and the leapfrog-sequential local lane.
+TIMEOUT=1800
 # "auto": dispatch.py auto_assign infers the role from the task itself
 # (the old "implement" default was not a canonical role name and silently
 # skipped role injection entirely).
@@ -156,7 +161,15 @@ case "${SUBCMD:-}" in
         ;;
     status)
         [[ -n "$SUBCMD_ARG" ]] || die "--status requires a task ID  (e.g. --status local-20260701-...)"
-        python3 "$DISPATCH" status "$SUBCMD_ARG" --delegation-dir "$DELEGATION_DIR"
+        # Collect all remaining flags to pass through (e.g., --json, --delegation-dir)
+        _STATUS_EXTRA=()
+        while [[ $# -gt 0 ]]; do
+            case "$1" in
+                --json|--no-color|--verbose) _STATUS_EXTRA+=("$1"); shift ;;
+                *) break ;;
+            esac
+        done
+        python3 "$DISPATCH" status "$SUBCMD_ARG" "${_STATUS_EXTRA[@]}" --delegation-dir "$DELEGATION_DIR"
         ;;
     check)
         [[ -n "$SUBCMD_ARG" ]] || die "--check requires a task ID"

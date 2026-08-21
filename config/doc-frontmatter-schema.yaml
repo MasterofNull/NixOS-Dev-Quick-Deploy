@@ -23,6 +23,40 @@ doc_types:
       status: active
       tags: [json, prompt-contract, validation]
 
+  research:
+    required:
+      - doc_type
+      - title
+      - status
+      - owner
+      - date
+    optional:
+      - sources
+      - companion
+    examples:
+      doc_type: research
+      title: Harness parity comparison
+      status: draft
+      owner: hyperd
+      date: 2026-08-20
+
+  design:
+    required:
+      - doc_type
+      - title
+      - status
+      - owner
+      - date
+    optional:
+      - companion
+      - prd_ref
+    examples:
+      doc_type: design
+      title: Local context supply chain
+      status: building
+      owner: hyperd
+      date: 2026-08-17
+
   prd:
     required:
       - doc_type
