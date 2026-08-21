@@ -251,3 +251,25 @@ activate it), and `aq-antigravity-inbox wake` is owner-manual-gated; the direct 
 design (503 remote_key_endpoint_mismatch — no API keys for Antigravity). OWNER ACTION to drain: either
 restore the auto-wake service (rebuild/restart the user path unit) or run `aq-antigravity-inbox wake
 <task> --actor owner-manual`. Until then Antigravity contributes nothing new despite 3 queued tasks.
+
+## [2026-08-21] Codex RETURNED — large local-agent-reliability + harness batch queued for confirmatory audit
+PROCESS NOTE (owner-flagged 2026-08-21): the commits below were built via a fast Claude-orchestrator →
+Sonnet-implementer → local-dogfood → Claude-review-and-commit loop that SKIPPED PRD/plan ceremony (only
+DESIGN.md docs written for 2 slices) and was NOT registered here as it landed — a discipline + communication
+lapse, not a config issue. Registering retroactively now. These are advisory-review targets for Codex on
+return (Rule 18): work committed while Codex was down; Codex's confirmatory audit is advisory unless it
+surfaces a real defect (then a bounded follow-up, never rewrite history).
+
+Commit range (all pushed to origin/main): cc63ac57 → 4650b1e6.
+- cc63ac57 feat(local-agent): tool-call reliability — GBNF grammar fix (grammar_cache.py _object_rule:
+  unquoted-keys + forced-empty-args), 256→512 budget, context supply chain (assembler+read_file gate),
+  3 loop interventions (reread/noaction/edit-feedback). SECURITY-ADJACENT: grammar constrains model output.
+- 47e03ea9 feat(local-agent): write_region line-range edit tool (Aider whole-format) + maturity gap analysis.
+- ae9029ef fix(local-agent): shell_tools run_command artifact-strip (trailing JSON-envelope tail). SECURITY:
+  touches the shell-injection guard — Codex, verify the trim never weakens injection rejection.
+- 950f56e4 feat(local-agent): LLM record/replay cassette harness (llm_cassette.py + _call_llama wiring).
+  Verify default-OFF is a strict no-op + request_key can't collide distinct requests + replay can't mask
+  regressions.
+- Ad-hoc Codex review ALREADY dispatched 2026-08-21 (codex-20260821-162310) covering these — fold its
+  findings when it completes; this entry is the formal record.
+Also NEW open finding (cassette-diagnosed): local-over-explores-run_command-instead-of-editing (issues-backlog).
