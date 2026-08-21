@@ -429,6 +429,95 @@ async def edit_file_handler(file_path: str, old_string: str, new_string: str) ->
         return {"success": False, "error": str(exc)}
 
 
+# AQ_WRITE_REGION: kill switch for the write_region tool (default ON). Set to "0"/"false"
+# to hide the tool from the registry entirely — falls back to edit_file/write_file only.
+def _write_region_enabled() -> bool:
+    return os.environ.get("AQ_WRITE_REGION", "1").strip().lower() not in ("0", "false", "no", "off")
+
+
+async def write_region_handler(
+    file_path: str,
+    start_line: int,
+    end_line: int,
+    new_text: str,
+) -> Dict:
+    """
+    Replace lines [start_line, end_line] (1-indexed, inclusive) of file_path with new_text.
+    No old_string matching — deterministic line-range rewrite.
+
+    Research motivation (Aider per-model edit-format data): search/replace (edit_file's
+    old_string) is the HARDEST edit format for weak/quantized models — they cannot
+    reliably reproduce a byte-exact anchor, so they churn on 'old_string not found'.
+    Aider defaults local/weak models to whole-unit rewrite instead. We front-load code
+    to local WITH line-number citations (e.g. '[file:271-290]'), so a line-range rewrite
+    needs no matching at all — just the line numbers already shown.
+
+    Args:
+        file_path:   Relative or absolute path to the file to edit.
+        start_line:  1-indexed first line to replace (inclusive).
+        end_line:    1-indexed last line to replace (inclusive). May equal
+                     len(lines)+1 (with start_line == end_line) to insert at EOF
+                     without replacing anything.
+        new_text:    Replacement text for the region (may be multi-line).
+
+    Returns:
+        {"success": True, "start_line": int, "end_line": int, "lines_written": int}
+        {"success": False, "error": "<reason>", "current_line_count": int, "region": "<current text at/near the target>"}
+    """
+    try:
+        path = Path(file_path) if Path(file_path).is_absolute() else Path.cwd() / file_path
+        if not path.exists():
+            return {"success": False, "error": f"File not found: {file_path}"}
+        if not path.is_file():
+            return {"success": False, "error": f"Path is not a file: {file_path}"}
+
+        content = path.read_text(encoding="utf-8")
+        lines = content.splitlines(keepends=True)
+        line_count = len(lines)
+        max_bound = line_count + 1  # +1 slot allows a pure EOF insert
+
+        try:
+            start_line = int(start_line)
+            end_line = int(end_line)
+        except (TypeError, ValueError):
+            return {
+                "success": False,
+                "error": f"start_line/end_line must be integers (got {start_line!r}, {end_line!r})",
+                "current_line_count": line_count,
+            }
+
+        if not (1 <= start_line <= end_line <= max_bound):
+            clamp_start = max(1, min(start_line, max(line_count, 1)))
+            clamp_end = max(1, min(end_line, max(line_count, 1)))
+            region_text = "".join(lines[clamp_start - 1:clamp_end]) if line_count else ""
+            return {
+                "success": False,
+                "error": (
+                    f"Out-of-range region [start_line={start_line}, end_line={end_line}] for "
+                    f"{file_path} — file currently has {line_count} lines. Valid range is "
+                    f"1 <= start_line <= end_line <= {max_bound} ({max_bound} = insert-at-EOF)."
+                ),
+                "current_line_count": line_count,
+                "region": region_text,
+            }
+
+        if new_text and not new_text.endswith("\n"):
+            new_text = new_text + "\n"
+        new_lines = new_text.splitlines(keepends=True) if new_text else []
+
+        spliced = lines[:start_line - 1] + new_lines + lines[end_line:]
+        path.write_text("".join(spliced), encoding="utf-8")
+
+        return {
+            "success": True,
+            "start_line": start_line,
+            "end_line": start_line + len(new_lines) - 1 if new_lines else start_line - 1,
+            "lines_written": len(new_lines),
+        }
+    except OSError as exc:
+        return {"success": False, "error": str(exc)}
+
+
 def register_file_tools(registry: ToolRegistry):
     """Register all file operation tools in the registry"""
 
@@ -611,7 +700,52 @@ def register_file_tools(registry: ToolRegistry):
         handler=edit_file_handler,
     ))
 
-    logger.info("Registered 6 file operation tools")
+    # write_region — gated by AQ_WRITE_REGION (default ON). Not registered at all when
+    # disabled, so it is absent from both the model-visible tool schema AND the GBNF
+    # grammar's function enum (which derives from the registry's enabled tools).
+    _registered = 6
+    if _write_region_enabled():
+        registry.register(ToolDefinition(
+            name="write_region",
+            description=(
+                "Replace lines [start_line, end_line] (1-indexed, inclusive) of file_path "
+                "with new_text. No old_string matching required — use the line numbers "
+                "already shown in code citations (e.g. '[file:271-290]'). Preferred over "
+                "edit_file for any change beyond a tiny single-line tweak: deterministic, "
+                "no byte-exact anchor needed."
+            ),
+            parameters={
+                "type": "object",
+                "properties": {
+                    "file_path": {
+                        "type": "string",
+                        "description": "Path to the file to edit",
+                    },
+                    "start_line": {
+                        "type": "integer",
+                        "description": "1-indexed first line to replace (inclusive)",
+                    },
+                    "end_line": {
+                        "type": "integer",
+                        "description": (
+                            "1-indexed last line to replace (inclusive). May equal "
+                            "line_count+1 with start_line==end_line to insert at EOF."
+                        ),
+                    },
+                    "new_text": {
+                        "type": "string",
+                        "description": "Replacement text for the line range (may be multi-line)",
+                    },
+                },
+                "required": ["file_path", "start_line", "end_line", "new_text"],
+            },
+            category=ToolCategory.FILE_OPS,
+            safety_policy=SafetyPolicy.WRITE_SAFE,
+            handler=write_region_handler,
+        ))
+        _registered += 1
+
+    logger.info("Registered %d file operation tools", _registered)
 
 
 if __name__ == "__main__":
