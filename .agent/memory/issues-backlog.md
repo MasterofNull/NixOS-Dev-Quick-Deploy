@@ -3268,3 +3268,11 @@ Advisory task (codex is the real confirmatory backstop) — non-blocking.
   Severity: high (silently blocks a class of local tasks — reject->retry->abort loop)
   Root cause: tool-call arg extraction doesn't trim the JSON envelope tail from the final argument.
   Fix (DONE): shell_tools.run_command_handler strips a trailing whitespace/}/]/,/quote tail BEFORE the guard — surgical (trailing-only; mid-command injection like "; rm" / "a\nb" / "&&" still rejected, verified). Better long-term: fix the parser in agent_executor.py to trim all args. File: ai-stack/local-agents/builtin_tools/shell_tools.py
+
+[OPEN] local-over-explores-run_command-instead-of-editing — DIAGNOSED OFFLINE VIA CASSETTE REPLAY (record/replay harness working — 2-sec cassette inspection replaced a 30-min live re-run). In a recorded dogfood-01 run local made 10 calls: read_file x3 (got the exact _matches_exclude region, front-loaded anyway), then run_command/grep x5+ exploring for _matches_exclude/LANES/_normalize_role — several rejected by the shell guard (escaped-alternation '\|' patterns + pipe-to-head idioms trip _SHELL_CONTROL_PATTERN), hitting the 5x tool-failure-stagnation abort at call 10. NEVER edited, despite having the target code front-loaded AND read.
+  Two coupled root causes:
+  (a) BEHAVIORAL: local greps for context it already has (front-loaded + read) instead of editing. The no-action/steering guard doesn't curtail run_command exploration or push toward write_region/edit_file.
+  (b) TOOL: run_command rejects common model grep idioms (grep 'a\|b', grep ... | head) — the guard blocks pipes/escaped-alternations, so exploration fails and stagnates rather than degrading to 'edit now'.
+  Severity: high (a dominant remaining no-edit path post-grammar/write_region)
+  Fix options: (1) convert repeated run_command-rejects (or N reads w/o edit) into an EDIT-FORCING nudge ('you have the code front-loaded — call write_region NOW') before the hard stagnation abort; (2) let run_command tolerate single-pipe-to-head + escaped grep alternations (they're read-only, low-risk) OR strip '| head' tails; (3) strengthen steering to prefer write_region over shell exploration when context is front-loaded. Coordinate with Codex review findings.
+  File: ai-stack/local-agents/agent_executor.py (stagnation/steering); ai-stack/local-agents/builtin_tools/shell_tools.py (guard)
