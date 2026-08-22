@@ -1,0 +1,80 @@
+{
+  "version": "local-agent-capability-manifest.v2",
+  "profiles": {
+    "full": [
+    "check_service",
+    "check_test_coverage",
+    "collective_memory_search",
+    "delegate_to_aider",
+    "delegate_to_remote",
+    "discover_objectives",
+    "edit_file",
+    "execute_workflow",
+    "file_exists",
+    "get_hint",
+    "get_prsi_pending",
+    "get_system_info",
+    "get_unified_stack_health",
+    "get_workflow_status",
+    "get_working_memory",
+    "git_diff",
+    "git_status",
+    "github_create_pr",
+    "github_get_file",
+    "github_list_issues",
+    "github_pr_status",
+    "github_search_code",
+    "harness_health",
+    "list_files",
+    "mesh_discovery",
+    "opencode",
+    "osint_recon_status",
+    "osint_research_ingest",
+    "osint_research_query",
+    "post_review_finding",
+    "prsi_orchestrate",
+    "query_aidb",
+    "query_context",
+    "read_file",
+    "read_review_board",
+    "recommend_agent_for_task",
+    "run_command",
+    "run_harness_cli",
+    "run_opencode",
+    "run_shell_command",
+    "run_tests",
+    "search_files",
+    "store_memory",
+    "validate_before_commit",
+    "web_research_fetch",
+    "write_file",
+      "write_region"
+    ],
+    "self-improvement": [
+      "edit_file",
+      "get_hint",
+      "query_aidb",
+      "read_file",
+      "run_command",
+      "store_memory",
+      "validate_before_commit",
+      "write_file"
+    ]
+  },
+  "conditional_hidden_capabilities": {
+    "git_add": {
+      "reason_code": "local_commit_disabled_by_default",
+      "enabled_by_default": false
+    },
+    "git_commit": {
+      "reason_code": "local_commit_disabled_by_default",
+      "enabled_by_default": false
+    }
+  },
+  "quarantined_capabilities": {
+    "code_execution": {
+      "reason_code": "local_agent_import_unavailable",
+      "enabled": false
+    }
+  }
+}

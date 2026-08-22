@@ -297,10 +297,10 @@
       "name": "Playwright MCP",
       "category": "browser-automation",
       "kind": "external-mcp",
-      "state": "enabled",
+      "state": "quarantined",
       "maturity": "official",
       "owner": "qa-automation",
-      "summary": "Headless browser automation for dashboard and website validation.",
+      "summary": "Quarantined headless browser automation; unavailable until enforce-mode AppArmor confinement is deployed and independently accepted.",
       "agent_access": [
         "codex",
         "claude",
@@ -311,7 +311,7 @@
         ".agent/skills/webapp-testing/SKILL.md"
       ],
       "security": {
-        "admission": "accepted-with-mitigations",
+        "admission": "incomplete",
         "intake_candidate_id": "playwright-mcp",
         "risk": "high",
         "required_gate": "python3 scripts/testing/test-enabled-external-mcp-candidates.py"

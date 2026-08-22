@@ -1,9 +1,0 @@
-{
-  "promoted_at": "20260708T221432Z",
-  "run_id": "run-20260708T221432Z",
-  "model": "qwen3.6-35b-mtp-q5",
-  "overall_pct": 0.917,
-  "dims": {
-    "tool_use": 0.917
-  }
-}

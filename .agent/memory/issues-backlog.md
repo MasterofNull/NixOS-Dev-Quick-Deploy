@@ -3294,3 +3294,63 @@ Advisory task (codex is the real confirmatory backstop) — non-blocking.
   Note: strongest defect of the whole review came from the 'weakest'/untrusted lane — validates inclusive multi-agent review (owner: collaborative not competitive).
 
   CORRECTION 2026-08-21 (orchestrator naming error): my earlier claim that the auto-wake service was 'never activated by a rebuild / unit could not be found' was WRONG — I searched the wrong unit name. The real unit `aq-antigravity-auto-wake.path` has been ACTIVE (waiting) since Aug 7 (~2 weeks); the nudge fires fine. The ACTUAL root cause (confirmed by the harness's own `aq-antigravity-drain-verify.service`, which is correctly in failed/alert state): the IDE receives the nudge (cli-nudge-ok) but does NOT autonomously process/complete the inbox — it's IDE-interactive, needs a human present. So the lane classification (owner-manual/IDE-present-only) stands, but the mechanism is 'nudge works, IDE doesn't auto-process', NOT 'service inactive'. Good news: the drain-verify health check already exists + correctly detects this exact condition.
+
+[PENDING-REBUILD] local-lane-health-masks-recent-503 — Immediately after the 2026-08-21 rebuild, switchboard health reported `local_lane_status=available`, four available slots, and closed breakers while its own `last_completion` recorded HTTP 503 and the llama breaker recorded two failures with zero successes. A4 now derives a fail-closed verdict from fresh completion and breaker evidence while retaining raw capacity separately; focused and L2B tests pass, and live activation awaits rebuild.
+  Severity: high
+  Action: require one bounded completion probe and expose last terminal result/breaker evidence in the local-inference dashboard and aq-qa contract before unattended dispatch.
+  File: dashboard/backend/api/routes/aistack.py; scripts/testing/harness_qa/phases/
+
+[OPEN] orchestration-state-reconciliation-drift — The accepted Claude handoff found `RESUME.json` still declaring Clusters 3-4 BUILDING after Clusters 3-6 had committed, while `PENDING.json` and the slice-claim registry retain many processless or expired entries as running. The async catch-up queue was the only current truthful boundary.
+  Severity: medium
+  Action: add a machine-mode reconciliation view that joins process, commit, queue, lease, and registry evidence and classifies stale records without treating them as active ownership.
+  File: scripts/ai/lib/pending-update; scripts/ai/aq-slice-claim; .agent/collaboration/RESUME.json
+
+[DONE 2026-08-21] workflow-meta-prompts-missing-typed-ids — The full 2026-08-21 Tier-0 gate failed focused CI because the Claude, Codex, and combined workflow-redesign meta-prompts are classified as `collaboration-brief` but omit its required `id` frontmatter field.
+  Severity: medium
+  Action: add stable unique IDs to the three documents, rerun the frontmatter validator, and retain this as a separate gate-repair slice.
+  File: .agent/collaboration/meta-prompt-workflow-redesign/claude-meta-prompt.md; .agent/collaboration/meta-prompt-workflow-redesign/codex-meta-prompt.md; .agent/collaboration/meta-prompt-workflow-redesign/COMBINED-collaborative-meta-prompt.md
+
+[DONE 2026-08-21] l2b-live-source-hash-drift-blocks-local-activation — Focused `test-local-inference-l2b.py` failed because current `scripts/ai/lib/dispatch.py` and `ai-stack/mcp-servers/shared/llm_config.py` no longer matched the L2B frozen source inventory; transport health, executable parity, and dashboard projection consequently failed closed. Commit `79297100` reconciled the original drift; the A4 health follow-up subsequently rebound the switchboard hash with all 16 semantic checks passing.
+  Severity: high
+  Action: reconcile the current source shapes against the L2B contract with fresh exact hashes and focused parity evidence; do not merely bless hashes without verifying payload semantics.
+  File: scripts/testing/test-local-inference-l2b.py; scripts/testing/fixtures/local-inference-l2b-payload-golden.json; scripts/ai/lib/local_inference_transport.py
+
+[DONE 2026-08-22] replay-bench-turn2-mock-output-drift — `aq-replay-bench` safely replaces every registered tool handler with a generic no-op, but the cassette stored only LLM responses/tokens. A7 now records and replays exact bounded, digest-bound tool results using task-local evidence queues; malformed, secret-shaped, missing, reordered, or exhausted evidence fails closed without handler side effects.
+  Severity: high
+  Action: introduce a typed transcript cassette that records and replays exact bounded tool outputs keyed to call order/schema, while retaining mock-tools as the default and rejecting live tool execution unless explicitly authorized.
+  File: scripts/testing/aq-replay-bench; ai-stack/local-agents/llm_cassette.py
+
+[DONE 2026-08-21] playwright-mcp-admission-overstates-egress-confinement — The capability catalog and intake candidate said Playwright MCP was `enabled` / `accepted-with-mitigations`, but `nix/modules/services/mcp-servers.nix` explicitly removed the root `systemd-run` allow rule. A3 now marks it quarantined/incomplete with no network authority, and the launcher fails closed unless enforce-mode AppArmor confinement is verifiable.
+  Severity: high
+  Action: fail activation closed until a first-class confined systemd unit (and complementary AppArmor profile where supported) proves loopback-only egress, restricted address families, filesystem isolation, pinned package integrity, and a live negative external-egress test; otherwise mark the capability activation-blocked/disabled across catalog and clients.
+  File: config/agent-capability-intake-candidates.json; config/system-capability-catalog.json; scripts/ai/mcp-playwright-sandboxed; nix/modules/services/mcp-servers.nix
+
+[DONE 2026-08-22] provisional-unsafe-commits-land-on-main-before-independent-review — The new commit-forward workflow kept momentum, but provisional Clusters 5 and 6 landed directly on `main` before review; the independent reviewer later classified both `REJECTED`. A6 adds a protected-branch commit-message guard that blocks provisional/REJECTED/ACTIVATION_BLOCKED subjects and requires evidence-bound terminal dispositions.
+  Severity: high
+  Action: commit provisional work to an isolated slice branch/worktree or quarantine ref, run async review there, and merge only `ACCEPTED` or safe-at-rest `IMPLEMENTED_FOLLOWUP_REQUIRED` subjects. Unsafe-at-rest `REJECTED` bytes must never enter the integration branch.
+  File: .agent/WORKFLOW-CANON.md; .agent/skills/reviewer-gate/SKILL.md; .agent/skills/multi-agent-collab/SKILL.md
+
+[DONE 2026-08-21] local-bench-partial-dimension-can-falsely-promote — `_check_promotion()` evaluated only dimensions present in a run. A synthetic score containing only `tool_use=91.7%` returned `promote=True`. A2 now requires all four dimensions, closed model-bound eligibility evidence, and two consecutive qualifying runs; the false sentinel is replaced by a typed invalidation receipt.
+  Severity: high
+  Action: require the exact complete dimension set, evidence-bound eligibility gates, minimum sample counts, and two matching consecutive full runs before writing PROMOTED; classify partial runs as diagnostic-only.
+  File: scripts/testing/bench-local-agent.py; config/bench-promotion-criteria.json; .agents/bench/llama/PROMOTED
+
+[DONE 2026-08-21] security-audit-entrypoint-not-executable — The security-audit skill requires `scripts/security/security-audit.sh`, but direct invocation failed with permission denied. The tracked entrypoint mode is now executable and will be rechecked by the integration gate.
+  Severity: low
+  Action: declare executable mode through the repository/Nix packaging path and add an entrypoint smoke check.
+  File: scripts/security/security-audit.sh
+
+[PENDING-REBUILD] llama-cpp-binary-renamed-to-evade-apparmor-attachment — The rebuilt `llama-cpp.service` runs `/nix/store/...-llama-server-unconfined/bin/llama-server-unconfined`; `nix/modules/roles/ai-stack.nix` explicitly copied/renamed the binary so it did not match the enforced AppArmor attachment. A5 removes the bypass, binds the exact package executable and explicit systemd profile, and adds a runtime enforcement QA probe; Nix evaluation passes, but live proof awaits rebuild.
+  Severity: critical
+  Action: remove the evasion wrapper; explicitly attach a tested profile to the actual executable (or safely update the attachment rule), grant only the GPU/backend reads/maps required for startup, minimize capabilities/address families, rebuild, and prove both inference success and denied shell/home/external-network behavior.
+  File: nix/modules/roles/ai-stack.nix
+
+[OPEN] local-code-execution-capability-quarantined — The delegated local-agent registry can discover the `code_execution` module only through a relative import that fails from the extensionless `aq-agent-loop` entrypoint. A8 now reports this honestly and excludes the capability from both model-visible profiles; enabling it would also require an explicit authority and sandbox contract.
+  Severity: medium
+  Action: implement a separately reviewed import/package boundary plus deny-by-default filesystem, network, process, resource, and commit authority before moving `code_execution` from quarantine into any profile.
+  File: scripts/ai/aq-agent-loop; ai-stack/local-agents/builtin_tools/code_execution.py; config/local-agent-capability-manifest.json
+
+[OPEN] managed-sandbox-loopback-security-audit-blindness — The direct security audit completed with dependency/lock/secrets status OK but classified dashboard operator checks degraded because the managed agent sandbox could not connect to 127.0.0.1:8889. Concurrent host evidence showed `command-center-dashboard-api.service` active and serving HTTP 200 requests, so this is probe-context blindness rather than evidence that the service is down.
+  Severity: low
+  Action: route live dashboard security probes through the existing host-observer contract and preserve a typed `sandbox_unavailable` result instead of collapsing transport denial into service unavailability.
+  File: scripts/security/security-audit.sh; scripts/security/dashboard-security-scan.sh

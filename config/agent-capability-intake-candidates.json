@@ -21,13 +21,13 @@
       "source_url": "https://github.com/microsoft/playwright-mcp",
       "maturity": "official",
       "priority": "very-high",
-      "state": "enabled",
+      "state": "quarantined",
       "pinned_version": "0.0.76",
-      "review_status": "accepted-with-mitigations",
+      "review_status": "incomplete",
       "mitigations": [
         "pinned npm package version",
         "dynamic npm registry version + dist.integrity check on every launch (fail closed)",
-        "private sandbox execution (systemd-run) confining browser network egress to loopback",
+        "launcher refuses execution unless an enforce-mode AppArmor profile is verifiably loaded",
         "headless browser mode",
         "isolated browser profile",
         "localhost host binding",
@@ -36,7 +36,7 @@
         "image responses omitted",
         "no unrestricted file access flag",
         "no secrets configured",
-        "regression test covers enabled config"
+        "regression test covers quarantined config and fail-closed launcher"
       ],
       "install": {
         "type": "mcp",
@@ -69,14 +69,16 @@
         "browser_take_screenshot"
       ],
       "permissions": {
-        "network": "restricted-localhost-preferred",
+        "network": false,
         "filesystem": "workspace-read",
         "writes": false,
         "secrets": false
       },
       "value": "Live dashboard verification, visual regression, accessibility snapshots, and UI workflow checks for agents.",
       "risks": ["browser-network-egress", "npm-package-execution"],
-      "activation_notes": "Enabled with pinned npm package, headless isolated context, localhost origin preference, service workers blocked, image responses omitted, and no unrestricted file access flag. All client entries (.claude/settings.json, .gemini/settings.json, ai-stack/continue/config.json) launch via scripts/ai/mcp-playwright-sandboxed, which (1) re-checks the pinned version and npm dist.integrity hash against the registry before every launch, failing closed on drift, and (2) wraps the process in a systemd-run scope with the harness's standard IPAddressAllow=loopback/IPAddressDeny=any confinement. Loopback-only enforcement requires the root-context sudo path (NOPASSWD systemd-run rule in nix/modules/services/mcp-servers.nix) deployed via nixos-rebuild switch; until that rebuild lands, the wrapper falls back to an unprivileged systemd-run scope that does NOT enforce egress confinement on hosts with kernel.unprivileged_bpf_disabled=2 (verified 2026-07-23) and prints an explicit warning rather than silently claiming confinement."
+      "blocked_reason": "The required mcp-playwright AppArmor profile and aa-exec launcher are not currently verifiable as enforce-mode confinement; the prior unprivileged systemd scope did not prove egress enforcement.",
+      "unblock_condition": "Deploy and load a least-privilege mcp-playwright AppArmor profile in enforce mode, provide aa-exec, prove the launcher attaches to that profile and denies forbidden egress, then complete a separate acceptance review before promotion.",
+      "activation_notes": "QUARANTINED. Client entries retain the pinned wrapper as a future activation path, but scripts/ai/mcp-playwright-sandboxed refuses before package lookup or browser execution unless it can verify a loaded enforce-mode mcp-playwright AppArmor profile and invoke aa-exec. No current browser or network authority is granted."
     },
     {
       "id": "semgrep-mcp",

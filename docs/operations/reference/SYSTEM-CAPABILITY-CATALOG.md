@@ -27,7 +27,7 @@ External ingestion gate: `capability-intake`
 | local-agent-delegation | agent-runtime | repo-cli | enabled | local-governance / medium | codex, claude, gemini, local-agent | `python3 scripts/testing/test-delegate-local-agent.py` |
 | auto-skill-selection | agent-skills | repo-cli | enabled | local-governance / low | codex, claude, gemini, local-agent | `python3 scripts/testing/test-skill-auto.py` |
 | tooling-manifest | agent-tools | python-module | enabled | local-governance / medium | codex, claude, gemini, local-agent | `python3 scripts/testing/test-tooling-manifest.py` |
-| playwright-mcp | browser-automation | external-mcp | enabled | accepted-with-mitigations / high | codex, claude, local-agent | `python3 scripts/testing/test-enabled-external-mcp-candidates.py` |
+| playwright-mcp | browser-automation | external-mcp | quarantined | incomplete / high | codex, claude, local-agent | `python3 scripts/testing/test-enabled-external-mcp-candidates.py` |
 | understand-anything | code-intelligence | repo-skill | enabled | accepted-with-mitigations / medium | codex, claude, gemini, local-agent | `scripts/ai/aq-understand-anything status`<br>`scripts/ai/aq-understand-anything validate-batches` |
 | aidb-rag-stores | data-store | service-dataset | enabled | local-governance / medium | codex, claude, gemini, local-agent | `AQ_QA_SKIP_REPORT_BACKED_CHECKS=1 scripts/ai/aq-qa 0 --machine` |
 | aq-eval-harness | evaluation-redteam | repo-cli | enabled | local-governance / medium | codex, claude, gemini, local-agent | `python3 scripts/testing/test-aq-eval.py` |
@@ -111,12 +111,12 @@ Compact code-execution-friendly tool catalog used to auto-select workflow tools 
 
 ### playwright-mcp
 
-Headless browser automation for dashboard and website validation.
+Quarantined headless browser automation; unavailable until enforce-mode AppArmor confinement is deployed and independently accepted.
 
 - Name: Playwright MCP
 - Owner: qa-automation
 - Maturity: official
-- State: enabled
+- State: quarantined
 - Primary refs: `config/agent-capability-intake-candidates.json`, `.agent/skills/webapp-testing/SKILL.md`
 - Data stores: none
 - Parity targets: browser-use agents, Playwright MCP releases, visual regression agents

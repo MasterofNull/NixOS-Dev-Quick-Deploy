@@ -46,9 +46,28 @@ def main() -> int:
 
     all_report = run_json("audit", "--all", "--json")
     reports = {item["id"]: item for item in all_report["reports"]}
-    assert reports["playwright-mcp"]["admission"] == "accepted-with-mitigations"
+    registry = json.loads(REGISTRY_PATH.read_text(encoding="utf-8"))
+    candidates = {item["id"]: item for item in registry["candidates"]}
+    playwright = candidates["playwright-mcp"]
+    assert reports["playwright-mcp"]["admission"] == "review-recommended"
+    assert reports["playwright-mcp"]["state"] == "quarantined"
+    assert playwright["state"] == "quarantined"
+    assert playwright["review_status"] == "incomplete"
+    assert playwright["permissions"]["network"] is False
+    assert playwright.get("blocked_reason") and playwright.get("unblock_condition")
     assert "unpinned-version" not in reports["playwright-mcp"]["risk_flags"]
-    assert "network-capable" in reports["playwright-mcp"]["risk_flags"]
+    assert "network-capable" not in reports["playwright-mcp"]["risk_flags"]
+    confinement = subprocess.run(
+        [str(REPO_ROOT / "scripts" / "ai" / "mcp-playwright-sandboxed"), "--check-confinement"],
+        cwd=REPO_ROOT,
+        text=True,
+        stdout=subprocess.PIPE,
+        stderr=subprocess.PIPE,
+        check=False,
+        timeout=5,
+    )
+    assert confinement.returncode != 0
+    assert "UNAVAILABLE" in confinement.stderr
     assert reports["semgrep-mcp"]["admission"] == "accepted-with-mitigations"
     assert "unpinned-version" not in reports["semgrep-mcp"]["risk_flags"]
     assert reports["mcp-admission-controller"]["admission"] == "accepted-with-mitigations"

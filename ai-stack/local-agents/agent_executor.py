@@ -1179,7 +1179,10 @@ class LocalAgentExecutor:
         messages = [
             {
                 "role": "system",
-                "content": self._get_system_prompt(agent_type, _active_tools, task.objective),
+                "content": self._get_system_prompt(
+                    agent_type, _active_tools, task.objective,
+                    task.context.get("_local_skill_projection", ""),
+                ),
             },
             {
                 "role": "user",
@@ -1653,6 +1656,7 @@ class LocalAgentExecutor:
                 # Retrying here would mask it behind a mis-parameterized (task_type
                 # dropped) second call, silently replaying the wrong thing instead of
                 # surfacing the regression.
+                _cancel_watchdog()
                 raise
             except Exception as _llm_err:
                 # Retry once with reduced budget on transient failures (timeout, connection drop).
@@ -1982,6 +1986,12 @@ class LocalAgentExecutor:
                     formatted_result = compacted_result
             except Exception as _compact_err:
                 logger.debug("context compaction error (non-fatal): %s", _compact_err)
+
+            # Persist the final post-format prompt value (after all local
+            # sanitization/compaction), so offline replay reproduces the next-turn
+            # request identity without re-executing the original tool side effect.
+            if llm_cassette is not None:
+                llm_cassette.record_formatted_tool_result(result.tool_name, formatted_result)
 
             # Stagnation detection: same (tool_name, result_prefix) repeated beyond
             # threshold → model is looping without state change. Abort early via a
@@ -2898,6 +2908,7 @@ class LocalAgentExecutor:
         agent_type: AgentType,
         tools: List[Dict],
         objective_hint: str = "",
+        skill_projection: str = "",
     ) -> str:
         """Get system prompt for agent type with tool descriptions.
 
@@ -3054,13 +3065,18 @@ class LocalAgentExecutor:
             except Exception:
                 pass
 
+        # Only aq-agent-loop's bounded projection may reach the system prompt.
+        # Treat any malformed/excessive context as absent rather than widening it.
+        if not isinstance(skill_projection, str) or len(skill_projection) > 2_000:
+            skill_projection = ""
+
         # AGENT type gets behavioral contract always; SI slice only for self-improvement tasks.
         # Non-SI tasks save ~722 tokens (self-improvement step-by-step is irrelevant noise
         # for factory, research, delegation, and monitoring tasks).
         if agent_type == AgentType.AGENT:
             _workflow_contract = _behavioral_contract + (_si_slice if _is_si_task else "")
-            return base_prompt[agent_type] + _workflow_contract + _loop_ctx + _tool_call_format + tools_desc + extensions
-        return base_prompt[agent_type] + _loop_ctx + _tool_call_format + tools_desc + extensions
+            return base_prompt[agent_type] + _workflow_contract + _loop_ctx + _tool_call_format + tools_desc + skill_projection + extensions
+        return base_prompt[agent_type] + _loop_ctx + _tool_call_format + tools_desc + skill_projection + extensions
 
     def _load_prompt_extensions(self) -> str:
         """Load learned gap rules from harness-prompt-extensions.yaml.

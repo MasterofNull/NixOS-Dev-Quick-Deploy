@@ -15,6 +15,7 @@ Promotion/demotion checked against config/bench-promotion-criteria.json.
 from __future__ import annotations
 
 import argparse
+import hashlib
 import json
 import os
 import re
@@ -38,6 +39,7 @@ _CRIT_PATH  = _REPO_ROOT / "config" / "bench-promotion-criteria.json"
 _TIMEOUT    = int(os.environ.get("BENCH_TIMEOUT", "180"))
 _MODEL      = os.environ.get("BENCH_MODEL", "qwen3.6-35b-mtp-q5")
 _SOURCE     = "bench-local-agent"
+_REQUIRED_PROMOTION_DIMENSIONS = ("reasoning", "tool_use", "code_gen", "coherence")
 
 # ── llama.cpp helpers ──────────────────────────────────────────────────────────
 
@@ -545,9 +547,10 @@ def _compute_scores(results: list[dict]) -> dict:
     for r in results:
         d = r["dim"]
         if d not in dims:
-            dims[d] = {"score": 0, "max": 0}
+            dims[d] = {"score": 0, "max": 0, "sample_ids": []}
         dims[d]["score"] += r["score"]
         dims[d]["max"] += r["max_score"]
+        dims[d]["sample_ids"].append(r["id"])
     for d, v in dims.items():
         v["pct"] = round(v["score"] / v["max"], 3) if v["max"] else 0.0
     total_score = sum(v["score"] for v in dims.values())
@@ -560,7 +563,93 @@ def _compute_scores(results: list[dict]) -> dict:
     }
 
 
-def _check_promotion(scores: dict, criteria: dict) -> dict:
+def _eligibility_gates_pass(required: Any, observed: Any) -> bool:
+    """Require complete, closed per-model evidence for every configured gate."""
+    if isinstance(required, dict):
+        required_keys = {key for key in required if not key.startswith("_")}
+        if not isinstance(observed, dict) or set(observed) != required_keys:
+            return False
+        return all(_eligibility_gates_pass(required[key], observed[key]) for key in required_keys)
+    if isinstance(required, bool):
+        return observed is required
+    if isinstance(required, list):
+        return isinstance(observed, str) and observed in required
+    return False
+
+
+def _sha256_file(path: Path) -> str | None:
+    try:
+        digest = hashlib.sha256()
+        with path.open("rb") as handle:
+            for chunk in iter(lambda: handle.read(1024 * 1024), b""):
+                digest.update(chunk)
+        return digest.hexdigest()
+    except OSError:
+        return None
+
+
+def _load_eligibility_evidence(path: Path | None, model: str, model_artifact: Path | None) -> dict | None:
+    if path is None or model_artifact is None:
+        return None
+    try:
+        raw = path.read_bytes()
+        evidence = json.loads(raw)
+    except (OSError, json.JSONDecodeError):
+        return None
+    artifact_sha256 = _sha256_file(model_artifact)
+    if not isinstance(evidence, dict) or set(evidence) != {
+        "model", "subject_sha256", "model_artifact_sha256", "gates", "ragas_faithfulness"
+    }:
+        return None
+    if evidence.get("model") != model:
+        return None
+    subject_sha256 = evidence.get("subject_sha256")
+    if (
+        not isinstance(subject_sha256, str)
+        or not re.fullmatch(r"[0-9a-f]{64}", subject_sha256)
+        or evidence.get("model_artifact_sha256") != artifact_sha256
+        or subject_sha256 != artifact_sha256
+        or not isinstance(evidence.get("ragas_faithfulness"), (int, float))
+        or isinstance(evidence.get("ragas_faithfulness"), bool)
+        or not 0.0 <= float(evidence["ragas_faithfulness"]) <= 1.0
+    ):
+        return None
+    return {
+        **evidence,
+        "artifact_verified": True,
+        "evidence_sha256": hashlib.sha256(raw).hexdigest(),
+    }
+
+
+def _configured_dimensions(criteria: dict) -> dict[str, dict] | None:
+    configured = criteria.get("dimensions")
+    if not isinstance(configured, dict) or not configured:
+        return None
+    result: dict[str, dict] = {}
+    for dimension, value in configured.items():
+        if (
+            not isinstance(dimension, str)
+            or not isinstance(value, dict)
+            or set(value) != {"tests", "max_score"}
+            or not isinstance(value["tests"], list)
+            or not value["tests"]
+            or len(value["tests"]) != len(set(value["tests"]))
+            or any(not isinstance(sample, str) or not sample for sample in value["tests"])
+            or not isinstance(value["max_score"], int)
+            or isinstance(value["max_score"], bool)
+            or value["max_score"] <= 0
+        ):
+            return None
+        result[dimension] = value
+    return result
+
+
+def _check_promotion(
+    scores: dict,
+    criteria: dict,
+    eligibility_evidence: dict | None = None,
+    latency_p95_s: float | None = None,
+) -> dict:
     prom = criteria["promotion"]
     dem  = criteria["demotion"]
     dims = scores["dims"]
@@ -568,9 +657,49 @@ def _check_promotion(scores: dict, criteria: dict) -> dict:
 
     reasons_pass, reasons_fail = [], []
 
+    configured_dimensions = _configured_dimensions(criteria)
+    required_dimensions = tuple(configured_dimensions or ())
+    missing_dimensions = [dim for dim in required_dimensions if dim not in dims]
+    unexpected_dimensions = sorted(set(dims) - set(required_dimensions))
+    if missing_dimensions:
+        reasons_fail.append("incomplete dimensions: " + ", ".join(missing_dimensions))
+    if unexpected_dimensions:
+        reasons_fail.append("unexpected dimensions: " + ", ".join(unexpected_dimensions))
+    incomplete_samples = [
+        dim for dim in required_dimensions
+        if dim in dims and (
+            dims[dim].get("max") != configured_dimensions[dim]["max_score"]
+            or set(dims[dim].get("sample_ids", [])) != set(configured_dimensions[dim]["tests"])
+            or len(dims[dim].get("sample_ids", [])) != len(configured_dimensions[dim]["tests"])
+        )
+    ]
+    if incomplete_samples:
+        reasons_fail.append("incomplete dimension samples: " + ", ".join(incomplete_samples))
+
+    eligibility_pass = bool(eligibility_evidence) and eligibility_evidence.get("artifact_verified") is True and _eligibility_gates_pass(
+        criteria.get("eligibility_gates", {}), eligibility_evidence.get("gates")
+    )
+    if not eligibility_pass:
+        reasons_fail.append("eligibility gates not all satisfied")
+    ragas_faithfulness = eligibility_evidence.get("ragas_faithfulness") if eligibility_evidence else None
+    ragas_pass = (
+        isinstance(ragas_faithfulness, (int, float))
+        and not isinstance(ragas_faithfulness, bool)
+        and float(ragas_faithfulness) >= float(prom.get("ragas_faithfulness_min", 1.1))
+    )
+    if not ragas_pass:
+        reasons_fail.append("RAGAS faithfulness evidence is absent or below promotion threshold")
+    latency_pass = (
+        isinstance(latency_p95_s, (int, float))
+        and not isinstance(latency_p95_s, bool)
+        and float(latency_p95_s) <= float(prom.get("latency_p95_s_max", -1))
+    )
+    if not latency_pass:
+        reasons_fail.append("latency p95 evidence is absent or above promotion threshold")
+
     def _chk(dim, key_prom, key_dem):
         if dim not in dims:
-            return  # dimension not tested in this run — skip
+            return
         pct = dims[dim].get("pct", 0.0)
         prom_thr = prom.get(key_prom, 0.0)
         dem_thr  = dem.get(key_dem, 0.0)
@@ -598,6 +727,17 @@ def _check_promotion(scores: dict, criteria: dict) -> dict:
 
     return {
         "promote": promote,
+        "qualifying_run": promote and not missing_dimensions and not unexpected_dimensions and not incomplete_samples and eligibility_pass and ragas_pass and latency_pass,
+        "complete_dimensions": bool(configured_dimensions) and not missing_dimensions and not unexpected_dimensions and not incomplete_samples,
+        "eligibility_gates_pass": eligibility_pass,
+        "eligibility_evidence_sha256": (
+            eligibility_evidence.get("evidence_sha256") if eligibility_pass else None
+        ),
+        "subject_sha256": eligibility_evidence.get("subject_sha256") if eligibility_pass else None,
+        "model_artifact_sha256": eligibility_evidence.get("model_artifact_sha256") if eligibility_pass else None,
+        "latency_p95_pass": latency_pass,
+        "ragas_faithfulness_pass": ragas_pass,
+        "ragas_faithfulness": float(ragas_faithfulness) if ragas_pass else None,
         "demote": demote,
         "reasons_pass": reasons_pass,
         "reasons_fail": reasons_fail,
@@ -615,15 +755,23 @@ def _load_last_run(bench_dir: Path) -> dict | None:
         return None
 
 
-def _count_consecutive_passing(bench_dir: Path, required: int = 2) -> int:
-    """Count how many of the last N runs passed promotion criteria (verdict.promote=True)."""
+def _count_consecutive_passing(bench_dir: Path, required: int, model: str, subject_sha256: str) -> int:
+    """Count only consecutive complete, eligibility-cleared qualifying runs."""
     runs = sorted(bench_dir.glob("run-*.json"), reverse=True)
     count = 0
     for path in runs[:required + 2]:
         try:
             data = json.loads(path.read_text())
-            if data.get("verdict", {}).get("promote"):
+            verdict = data.get("verdict", {})
+            if (
+                verdict.get("qualifying_run")
+                and data.get("model") == model
+                and data.get("subject_sha256") == subject_sha256
+                and data.get("model_artifact_sha256") == subject_sha256
+            ):
                 count += 1
+                if count >= required:
+                    return count
             else:
                 break  # must be consecutive
         except (json.JSONDecodeError, OSError):
@@ -634,12 +782,21 @@ def _count_consecutive_passing(bench_dir: Path, required: int = 2) -> int:
 def _write_promoted_file(bench_dir: Path, run_record: dict) -> None:
     """Write PROMOTED sentinel file with model/score/date when consecutive runs pass."""
     scores = run_record.get("scores", {})
+    verdict = run_record.get("verdict", {})
+    if not verdict.get("qualifying_run") or not verdict.get("eligibility_evidence_sha256") or not verdict.get("subject_sha256"):
+        raise ValueError("promotion sentinel requires qualifying eligibility evidence")
     info = {
         "promoted_at": run_record.get("started_at", ""),
         "run_id": run_record.get("run_id", ""),
         "model": run_record.get("model", ""),
         "overall_pct": scores.get("overall_pct", 0),
         "dims": {d: v.get("pct", 0) for d, v in scores.get("dims", {}).items()},
+        "eligibility_evidence_sha256": verdict["eligibility_evidence_sha256"],
+        "subject_sha256": verdict["subject_sha256"],
+        "model_artifact_sha256": verdict["model_artifact_sha256"],
+        "latency_p95_s": run_record.get("latency_p95_s"),
+        "ragas_faithfulness": verdict.get("ragas_faithfulness"),
+        "qualifying_run": True,
     }
     (bench_dir / "PROMOTED").write_text(json.dumps(info, indent=2) + "\n")
     print(f"  ✓ PROMOTED file written: {bench_dir / 'PROMOTED'}")
@@ -697,6 +854,16 @@ def main() -> int:
     p.add_argument("--json",         action="store_true", help="Machine-readable output to stdout")
     p.add_argument("--no-attention", action="store_true", help="Skip attention queue push")
     p.add_argument("--model",        default=_MODEL, help="Model name for completions")
+    p.add_argument(
+        "--eligibility-evidence",
+        type=Path,
+        help="Closed per-model eligibility evidence JSON; omitted runs are diagnostic only",
+    )
+    p.add_argument(
+        "--model-artifact",
+        type=Path,
+        help="Required model artifact used to verify eligibility evidence SHA256",
+    )
     args = p.parse_args()
 
     model = args.model
@@ -754,13 +921,19 @@ def main() -> int:
         except json.JSONDecodeError:
             pass
 
-    verdict    = _check_promotion(scores, criteria) if criteria else {}
+    eligibility_evidence = _load_eligibility_evidence(args.eligibility_evidence, model, args.model_artifact)
+    verdict = (
+        _check_promotion(scores, criteria, eligibility_evidence, p95)
+        if criteria else {}
+    )
     prev_run   = _load_last_run(_BENCH_DIR)
     regressions = _check_regression(scores, prev_run, threshold=criteria.get("regression_alert", {}).get("score_drop_pct", 0.10))
 
     run_record = {
         "run_id":     run_id,
         "model":      model,
+        "subject_sha256": verdict.get("subject_sha256"),
+        "model_artifact_sha256": verdict.get("model_artifact_sha256"),
         "started_at": run_ts,
         "wall_s":     round(wall_s, 1),
         "latency_p95_s": round(p95, 1),
@@ -774,9 +947,11 @@ def main() -> int:
 
     # Check consecutive passing runs and write PROMOTED file if threshold met
     required_consecutive = criteria.get("promotion", {}).get("required_consecutive_runs", 2) if criteria else 2
-    consecutive_passing = _count_consecutive_passing(_BENCH_DIR, required_consecutive)
+    consecutive_passing = _count_consecutive_passing(
+        _BENCH_DIR, required_consecutive, model, str(verdict.get("subject_sha256") or "")
+    ) if verdict.get("qualifying_run") else 0
     promoted_file = _BENCH_DIR / "PROMOTED"
-    if verdict.get("promote") and consecutive_passing >= required_consecutive:
+    if verdict.get("qualifying_run") and consecutive_passing >= required_consecutive:
         _write_promoted_file(_BENCH_DIR, run_record)
     elif promoted_file.exists() and verdict.get("demote"):
         promoted_file.unlink()

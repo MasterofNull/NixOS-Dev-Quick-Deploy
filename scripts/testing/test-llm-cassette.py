@@ -40,6 +40,7 @@ from __future__ import annotations
 
 import asyncio
 import contextlib
+import hashlib
 import json
 import os
 import sys
@@ -63,6 +64,12 @@ from builtin_tools.shell_tools import register_shell_tools  # noqa: E402
 def assert_true(condition: bool, message: str) -> None:
     if not condition:
         raise AssertionError(message)
+
+
+def disable_agent_events(executor: LocalAgentExecutor) -> None:
+    async def _no_event(*_args, **_kwargs):
+        return None
+    executor._emit_agent_event = _no_event  # type: ignore[method-assign]
 
 
 # ---------------------------------------------------------------------------
@@ -597,7 +604,9 @@ async def _run_retry_does_not_swallow_replay_miss() -> None:
             lookups.append(task_type)
             return real_replay_lookup(payload, task_type)
 
-        with cassette_env(mode="replay", path=cpath, on_miss="error"), env_var("LLAMA_USE_STREAMING", "false"):
+        with cassette_env(mode="replay", path=cpath, on_miss="error"), \
+                env_var("LLAMA_USE_STREAMING", "false"), \
+                env_var("AQ_AGENT_RUN_EVENTS_PATH", str(Path(td) / "events.jsonl")):
             saved_client = httpx.AsyncClient
             httpx.AsyncClient = _ExplodingAsyncClient  # type: ignore[assignment]
             saved_lookup = llm_cassette.replay_lookup
@@ -606,6 +615,7 @@ async def _run_retry_does_not_swallow_replay_miss() -> None:
                 registry = ToolRegistry(db_path=Path(td) / "audit.db")
                 register_shell_tools(registry)
                 executor = LocalAgentExecutor(tool_registry=registry, fallback_endpoint="")
+                disable_agent_events(executor)
                 task = Task(id="retry-miss-probe", objective="probe the retry path", task_type="research")
                 try:
                     await executor._execute_with_tools(task, AgentType.AGENT, max_tool_calls=3)
@@ -667,7 +677,13 @@ async def _run_mock_tools_no_side_effect() -> None:
     with tempfile.TemporaryDirectory() as td:
         registry = ToolRegistry(db_path=Path(td) / "audit.db")
         register_shell_tools(registry)
-        bench._apply_mock_tools(registry)
+        recorded_call = ToolCall(
+            id="recorded-safe-result", tool_name="run_command", arguments={},
+            status="completed",
+            result={"success": True, "stdout": "recorded-safe-result", "stderr": "", "returncode": 0},
+        )
+        recorded = registry.format_tool_result(recorded_call)
+        bench._apply_mock_tools(registry, [{"tool_name": "run_command", "result_content": recorded}])
 
         marker = Path(td) / "mock-tools-must-not-create-this.txt"
         tool_call = ToolCall(
@@ -682,8 +698,8 @@ async def _run_mock_tools_no_side_effect() -> None:
             f"a mocked tool call must still report status=completed, got {result.status}/{result.error}",
         )
         assert_true(
-            isinstance(result.result, dict) and result.result.get("mocked") is True,
-            f"mocked tool result must carry mocked=True, got {result.result}",
+            isinstance(result.result, dict) and result.result.get("stdout") == "recorded-safe-result",
+            f"mocked tool result must be the exact recorded evidence, got {result.result}",
         )
         assert_true(
             not marker.exists(),
@@ -694,7 +710,145 @@ async def _run_mock_tools_no_side_effect() -> None:
 
 def test_mock_tools_default_no_side_effect() -> None:
     asyncio.run(_run_mock_tools_no_side_effect())
-    print("PASS (f3): aq-replay-bench --mock-tools (default) stubs tool execution — zero disk/shell side effects")
+    print("PASS (f3): aq-replay-bench --mock-tools replays exact output — zero disk/shell side effects")
+
+
+async def _run_mock_tool_evidence_fail_closed() -> None:
+    bench = _load_aq_replay_bench()
+    with tempfile.TemporaryDirectory() as td:
+        registry = ToolRegistry(db_path=Path(td) / "audit.db")
+        register_shell_tools(registry)
+        bench._apply_mock_tools(registry, [])  # legacy/missing evidence
+        missing = await registry.execute_tool_call(
+            ToolCall(id="missing-evidence", tool_name="run_command", arguments={"command": "touch never"})
+        )
+        assert_true(missing.status == "failed" and "missing recorded" in (missing.error or ""),
+                    f"missing legacy evidence must fail closed, got {missing.status}/{missing.error}")
+
+        registry = ToolRegistry(db_path=Path(td) / "audit-name.db")
+        register_shell_tools(registry)
+        bench._apply_mock_tools(registry, [{"tool_name": "read_file", "result_content": "{}"}])
+        mismatch = await registry.execute_tool_call(
+            ToolCall(id="mismatch-evidence", tool_name="run_command", arguments={"command": "touch never"})
+        )
+        assert_true(mismatch.status == "failed" and "name mismatch" in (mismatch.error or ""),
+                    f"mismatched evidence must fail closed, got {mismatch.status}/{mismatch.error}")
+
+
+def test_mock_tool_evidence_fails_closed() -> None:
+    asyncio.run(_run_mock_tool_evidence_fail_closed())
+    bench = _load_aq_replay_bench()
+    with tempfile.TemporaryDirectory() as td:
+        content = '{"tool":"run_command","status":"success","result":"Bearer secretvalue123"}'
+        row = {
+            "meta": {
+                "cassette_format_version": 2,
+                "tool_output_evidence": [{
+                    "tool_name": "run_command",
+                    "result_content": content,
+                    "result_digest": hashlib.sha256(content.encode()).hexdigest(),
+                }],
+            }
+        }
+        path = Path(td) / "malicious.jsonl"
+        path.write_text(json.dumps(row) + "\n", encoding="utf-8")
+        try:
+            bench._load_recorded_tool_outputs(str(path))
+            raise AssertionError("secret-shaped cassette evidence must be rejected")
+        except ValueError as exc:
+            assert_true("ReplayToolEvidenceError" in str(exc), "secret rejection must be typed")
+    print("PASS (f3b): missing or mismatched tool-output evidence fails closed")
+
+
+def test_tool_evidence_is_async_task_local() -> None:
+    async def exercise(path: str) -> None:
+        async def worker(label: str) -> None:
+            formatted = json.dumps({
+                "tool": "run_command", "status": "success", "result": label,
+            })
+            llm_cassette.record_formatted_tool_result("run_command", formatted)
+            await asyncio.sleep(0)
+            llm_cassette.maybe_record(
+                {"messages": [{"role": "user", "content": label}]},
+                "research", f"response-{label}", 1,
+            )
+
+        await asyncio.gather(worker("alpha"), worker("beta"))
+
+    with tempfile.TemporaryDirectory() as td:
+        path = str(Path(td) / "task-local.jsonl")
+        with cassette_env(mode="record", path=path):
+            asyncio.run(exercise(path))
+        rows = [json.loads(line) for line in Path(path).read_text().splitlines()]
+        by_response = {row["content"]: row["meta"]["tool_output_evidence"] for row in rows}
+        assert_true(len(by_response["response-alpha"]) == 1, "alpha evidence crossed task boundary")
+        assert_true("alpha" in by_response["response-alpha"][0]["result_content"], "alpha evidence missing")
+        assert_true(len(by_response["response-beta"]) == 1, "beta evidence crossed task boundary")
+        assert_true("beta" in by_response["response-beta"][0]["result_content"], "beta evidence missing")
+    print("PASS (f3c): concurrent recordings keep tool evidence task-local")
+
+
+async def _run_bench_multiturn_exact_tool_replay() -> Dict[str, Any]:
+    """Record a distinctive tool result, then replay it through bench defaults.
+
+    The marker command is deliberately never executed: record uses an in-memory
+    handler and replay replaces the complete execution seam with cassette evidence.
+    A generic success stub would produce a different second-turn request digest.
+    """
+    bench = _load_aq_replay_bench()
+    turn1 = '{"function": "run_command", "arguments": {"command": "touch must-not-run"}}'
+    turn2 = "Exact recorded tool output was observed. Task complete."
+    objective = "Run the probe command with run_command and report the result."
+    with tempfile.TemporaryDirectory() as td:
+        cpath = str(Path(td) / "bench-multiturn.jsonl")
+        marker = Path(td) / "must-not-run"
+        saved_client = httpx.AsyncClient
+        try:
+            with cassette_env(mode="record", path=cpath), \
+                    env_var("LLAMA_USE_STREAMING", "false"), \
+                    env_var("AQ_AGENT_RUN_EVENTS_PATH", str(Path(td) / "events.jsonl")):
+                httpx.AsyncClient = _make_scripted_client([turn1, turn2])  # type: ignore[assignment]
+                registry = ToolRegistry(db_path=Path(td) / "record-audit.db")
+                register_shell_tools(registry)
+
+                async def _record_only_handler(**kwargs):
+                    assert_true(kwargs.get("command") == "touch must-not-run", "record turn must reach the fake tool")
+                    return {"success": True, "stdout": "UNIQUE-RECORDED-TOOL-RESULT", "stderr": "", "returncode": 0}
+
+                registry.tools["run_command"].handler = _record_only_handler
+                executor = LocalAgentExecutor(tool_registry=registry, fallback_endpoint="")
+                disable_agent_events(executor)
+                await executor._execute_with_tools(
+                    Task(id="bench-record", objective=objective, task_type="research"),
+                    AgentType.AGENT, max_tool_calls=5,
+                )
+
+            rows = [json.loads(line) for line in Path(cpath).read_text(encoding="utf-8").splitlines() if line]
+            evidence = rows[1]["meta"]["tool_output_evidence"]
+            assert_true(rows[1]["meta"]["cassette_format_version"] == 2, "tool evidence must use cassette v2")
+            assert_true(len(evidence) == 1 and "UNIQUE-RECORDED-TOOL-RESULT" in evidence[0]["result_content"],
+                        "second turn must carry the exact post-format first-turn result")
+            assert_true(len(evidence[0]["result_digest"]) == 64, "tool evidence must bind a full SHA-256 digest")
+
+            # _run_one's mock_tools=True is the CLI default. Network is forbidden;
+            # success therefore proves the recorded result, not a live tool, shaped
+            # turn two's cassette identity.
+            httpx.AsyncClient = _ExplodingAsyncClient  # type: ignore[assignment]
+            replay = await bench._run_one(cpath, objective, "research", 5, None, [], True)
+        finally:
+            httpx.AsyncClient = saved_client
+
+        assert_true(not marker.exists(), "default bench replay must never execute the recorded command")
+        return replay
+
+
+def test_bench_default_replays_exact_multiturn_tool_output() -> None:
+    outcome = asyncio.run(_run_bench_multiturn_exact_tool_replay())
+    assert_true(outcome["miss"] is None, f"exact evidence must avoid the turn-2 replay miss: {outcome}")
+    assert_true(outcome["response"] == "Exact recorded tool output was observed. Task complete.",
+                f"default bench replay must reach the recorded second turn: {outcome}")
+    assert_true(outcome["calls"] == 1, f"exact replay must retain one tool call: {outcome}")
+    print("PASS (f4): default bench replays exact multi-turn tool evidence without executing tools")
 
 
 # ---------------------------------------------------------------------------
@@ -723,11 +877,14 @@ async def _run_golden_e2e() -> Dict[str, Any]:
         try:
             # --- Pass 1: record. Network is STUBBED with canned turns (not a live APU
             # call) — this is the harness's own record path, exercised end-to-end. ---
-            with cassette_env(mode="record", path=cpath), env_var("LLAMA_USE_STREAMING", "false"):
+            with cassette_env(mode="record", path=cpath), \
+                    env_var("LLAMA_USE_STREAMING", "false"), \
+                    env_var("AQ_AGENT_RUN_EVENTS_PATH", str(Path(td) / "events.jsonl")):
                 httpx.AsyncClient = _make_scripted_client([turn1, turn2])  # type: ignore[assignment]
                 registry1 = ToolRegistry(db_path=Path(td) / "audit_record.db")
                 register_shell_tools(registry1)
                 executor1 = LocalAgentExecutor(tool_registry=registry1, fallback_endpoint="")
+                disable_agent_events(executor1)
                 task1 = _golden_task()
                 record_response, _record_tokens = await executor1._execute_with_tools(
                     task1, AgentType.AGENT, max_tool_calls=5,
@@ -741,11 +898,14 @@ async def _run_golden_e2e() -> Dict[str, Any]:
             )
 
             # --- Pass 2: replay. Network EXPLODES if touched — proves it's offline. ---
-            with cassette_env(mode="replay", path=cpath), env_var("LLAMA_USE_STREAMING", "false"):
+            with cassette_env(mode="replay", path=cpath), \
+                    env_var("LLAMA_USE_STREAMING", "false"), \
+                    env_var("AQ_AGENT_RUN_EVENTS_PATH", str(Path(td) / "events.jsonl")):
                 httpx.AsyncClient = _ExplodingAsyncClient  # type: ignore[assignment]
                 registry2 = ToolRegistry(db_path=Path(td) / "audit_replay.db")
                 register_shell_tools(registry2)
                 executor2 = LocalAgentExecutor(tool_registry=registry2, fallback_endpoint="")
+                disable_agent_events(executor2)
                 task2 = _golden_task()
                 task2.id = "golden-e2e-replay"
                 replay_response, _replay_tokens = await executor2._execute_with_tools(
@@ -883,6 +1043,9 @@ def main() -> int:
     test_mode_off_is_noop()
     test_retry_block_does_not_swallow_replay_miss()
     test_mock_tools_default_no_side_effect()
+    test_mock_tool_evidence_fails_closed()
+    test_tool_evidence_is_async_task_local()
+    test_bench_default_replays_exact_multiturn_tool_output()
     test_golden_e2e_record_then_replay_through_execute_with_tools()
     test_artifact_strip_fix_resolves_via_offline_replay()
     print("PASS: llm-cassette record/replay harness — all checks passed")

@@ -37,9 +37,11 @@ policy — both are opt-in, never a silent default.
 from __future__ import annotations
 
 import hashlib
+import contextvars
 import json
 import logging
 import os
+import re
 import time
 from pathlib import Path
 from typing import Any, Dict, List, Optional, Tuple
@@ -354,6 +356,51 @@ _VALID_MODES = ("off", "record", "replay", "replay-record")
 _VALID_ON_MISS = ("error", "passthrough", "empty")
 
 _cassette_cache: Dict[str, Cassette] = {}
+CASSETTE_FORMAT_VERSION = 2
+_TOOL_OUTPUT_MAX_CHARS = 3000
+_TOOL_EVIDENCE_PENDING: contextvars.ContextVar[Tuple[Dict[str, str], ...]] = (
+    contextvars.ContextVar("llm_cassette_tool_evidence_pending", default=())
+)
+_SECRET_PATTERN = re.compile(r"(?i)(?:bearer\s+|aws_access_key_id|api[_-]?key|secret[_-]?key)[A-Za-z0-9_./+=:-]{8,}")
+
+
+def normalize_tool_output_evidence(evidence: Any) -> Optional[Dict[str, str]]:
+    """Validate closed, bounded, digest-bound, non-secret tool evidence."""
+    if not isinstance(evidence, dict) or set(evidence) != {
+        "tool_name", "result_content", "result_digest"
+    }:
+        return None
+    tool_name = evidence.get("tool_name")
+    content = evidence.get("result_content")
+    digest = evidence.get("result_digest")
+    if (not isinstance(tool_name, str) or not re.fullmatch(r"[A-Za-z0-9_.-]{1,128}", tool_name)
+            or not isinstance(content, str) or not content
+            or len(content) > _TOOL_OUTPUT_MAX_CHARS
+            or _SECRET_PATTERN.search(content)
+            or not isinstance(digest, str)
+            or hashlib.sha256(content.encode("utf-8")).hexdigest() != digest):
+        return None
+    return {"tool_name": tool_name, "result_content": content, "result_digest": digest}
+
+
+def record_formatted_tool_result(tool_name: str, formatted_result: str) -> None:
+    """Queue the exact post-format tool result for the next recorded LLM turn.
+
+    Unsafe, over-bound, or malformed output is deliberately omitted; mock replay then
+    fails closed rather than storing or replaying a possibly sensitive side effect.
+    """
+    if mode() not in ("record", "replay-record"):
+        return
+    evidence = normalize_tool_output_evidence({
+        "tool_name": tool_name,
+        "result_content": formatted_result,
+        "result_digest": hashlib.sha256(formatted_result.encode("utf-8")).hexdigest()
+        if isinstance(formatted_result, str) else "",
+    })
+    if evidence is None:
+        logger.warning("llm_cassette: refusing unsafe/bounded tool-output evidence for %r", tool_name)
+        return
+    _TOOL_EVIDENCE_PENDING.set((*_TOOL_EVIDENCE_PENDING.get(), evidence))
 
 
 def mode() -> str:
@@ -402,6 +449,7 @@ def get_cassette(cassette_path: Optional[str] = None) -> Optional[Cassette]:
 def reset_cache() -> None:
     """Test/bench helper: drop all cached Cassette instances (and their cursors)."""
     _cassette_cache.clear()
+    _TOOL_EVIDENCE_PENDING.set(())
 
 
 # ---------------------------------------------------------------------------
@@ -490,6 +538,12 @@ def maybe_record(
             )
             return
         key = request_key(payload, task_type)
-        cass.record(key, payload, content, tokens, meta)
+        evidence = list(_TOOL_EVIDENCE_PENDING.get())
+        _TOOL_EVIDENCE_PENDING.set(())
+        merged_meta = dict(meta or {})
+        merged_meta["cassette_format_version"] = CASSETTE_FORMAT_VERSION
+        if evidence:
+            merged_meta["tool_output_evidence"] = evidence
+        cass.record(key, payload, content, tokens, merged_meta)
     except Exception:
         logger.exception("llm_cassette: maybe_record internal error — continuing without recording")

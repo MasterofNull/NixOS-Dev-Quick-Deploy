@@ -918,7 +918,8 @@ gate_evidence_collector() {
 # Gate: local-agent harness regression suites (context-assembler, read-file
 # gate, re-read/no-action/edit-feedback interventions, write_region,
 # tool-call GBNF grammar, llm-cassette record/replay, agent-loop hard
-# bounds, and local shell sandbox). These live under scripts/testing/ as standalone
+# bounds, local shell sandbox, local-inference L2B, Tier0 gate contract, and
+# external-MCP candidate policy). These live under scripts/testing/ as standalone
 # `python3 <file>.py` runners (unittest.main() / custom async main() with
 # sys.exit(0|1) / pytest.main() self-invocation) — pytest.ini only discovers
 # ai-stack/, so none of these were ever exercised by the normal gate before
@@ -947,6 +948,14 @@ gate_agent_harness_regression_suites() {
     "test-llm-cassette.py"
     "test-agent-loop-bounds.py"
     "test-local-shell-sandbox.py"
+    "test-local-inference-l2b.py"
+    "test-local-model-promotion-contract.py"
+    "test-local-agent-capability-reachability.py"
+    "test-local-skill-projection.py"
+    "test-llama-apparmor-contract.py"
+    "test-commit-review-disposition-hook.py"
+    "test-tier0-agent-harness-regression-gate.py"
+    "test-enabled-external-mcp-candidates.py"
   )
   local any_failed=0
   local suite test_script output_file status

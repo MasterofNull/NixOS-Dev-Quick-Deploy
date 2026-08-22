@@ -4,6 +4,7 @@
 from __future__ import annotations
 
 import os
+import re
 import subprocess
 import tempfile
 from pathlib import Path
@@ -22,6 +23,14 @@ REQUIRED_SUITES = (
     "test-llm-cassette.py",
     "test-agent-loop-bounds.py",
     "test-local-shell-sandbox.py",
+    "test-local-inference-l2b.py",
+    "test-local-model-promotion-contract.py",
+    "test-local-agent-capability-reachability.py",
+    "test-local-skill-projection.py",
+    "test-llama-apparmor-contract.py",
+    "test-commit-review-disposition-hook.py",
+    "test-tier0-agent-harness-regression-gate.py",
+    "test-enabled-external-mcp-candidates.py",
 )
 
 
@@ -40,6 +49,13 @@ def extract_gate_function() -> str:
             if depth == 0:
                 return "\n".join(extracted)
     raise AssertionError("could not extract gate_agent_harness_regression_suites")
+
+
+def manifest_suites() -> tuple[str, ...]:
+    function = extract_gate_function()
+    match = re.search(r'local suites=\(\n(?P<body>.*?)\n  \)', function, re.DOTALL)
+    assert match, "could not find the required suite manifest"
+    return tuple(re.findall(r'"([^"]+)"', match.group("body")))
 
 
 def run_gate(suite_names: tuple[str, ...], *, fake_timeout: bool = False) -> subprocess.CompletedProcess[str]:
@@ -81,8 +97,7 @@ def run_gate(suite_names: tuple[str, ...], *, fake_timeout: bool = False) -> sub
 
 def main() -> int:
     source = GATE.read_text(encoding="utf-8")
-    for suite in REQUIRED_SUITES:
-        assert suite in source, f"required suite omitted from manifest: {suite}"
+    assert manifest_suites() == REQUIRED_SUITES, "gate manifest must exactly match the required contracts"
     assert "Harness regression suite missing (required)" in source
     assert 'timeout "${suite_timeout_seconds}s" python3' in source
     assert "Harness regression diagnostics" in source
@@ -92,7 +107,7 @@ def main() -> int:
 
     missing = run_gate(REQUIRED_SUITES[:-1])
     assert missing.returncode != 0
-    assert "missing (required): test-local-shell-sandbox.py" in missing.stdout
+    assert "missing (required): test-enabled-external-mcp-candidates.py" in missing.stdout
 
     timed_out = run_gate(REQUIRED_SUITES, fake_timeout=True)
     assert timed_out.returncode != 0

@@ -1,0 +1,23 @@
+{
+  "schema_version": "promotion-invalidation.v1",
+  "invalidated_at": "2026-08-22T05:24:40Z",
+  "invalidated_artifact": ".agents/bench/llama/PROMOTED",
+  "reason_code": "partial_dimension_promotion",
+  "prior_run_id": "run-20260708T221432Z",
+  "prior_model": "qwen3.6-35b-mtp-q5",
+  "predecessor_git_blob": {
+    "algorithm": "sha1",
+    "oid": "db5a554dfebb119120d0e4e9b8ebac98a3790c0f"
+  },
+  "observed_dimensions": [
+    "tool_use"
+  ],
+  "required_dimensions": [
+    "reasoning",
+    "tool_use",
+    "code_gen",
+    "coherence"
+  ],
+  "promotion_status": "not_promoted",
+  "next_gate": "two_consecutive_complete_eligible_runs"
+}

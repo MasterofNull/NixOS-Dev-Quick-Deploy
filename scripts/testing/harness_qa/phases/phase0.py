@@ -279,6 +279,32 @@ def _check_apparmor(ctx: RunContext) -> list[CheckResult]:
         results.append(passed(1, "0.3.2", "AppArmor service active"))
     else:
         results.append(failed(1, "0.3.2", "AppArmor service active"))
+    unit_profile = cmd_output(
+        "systemctl", "show", "llama-cpp.service",
+        "--property=AppArmorProfile", "--value", timeout=5,
+    ).strip()
+    pid_text = cmd_output(
+        "systemctl", "show", "llama-cpp.service",
+        "--property=MainPID", "--value", timeout=5,
+    ).strip()
+    runtime_profile = ""
+    if pid_text.isdigit() and int(pid_text) > 0:
+        try:
+            runtime_profile = Path(f"/proc/{pid_text}/attr/current").read_text(
+                encoding="utf-8", errors="replace"
+            ).strip()
+        except OSError:
+            runtime_profile = "unreadable"
+    expected_runtime = "ai-llama-cpp (enforce)"
+    if unit_profile == "ai-llama-cpp" and runtime_profile == expected_runtime:
+        results.append(passed(1, "0.3.3", "llama-cpp AppArmor enforced at runtime"))
+    else:
+        results.append(failed(
+            1,
+            "0.3.3",
+            "llama-cpp AppArmor enforced at runtime",
+            f"unit_profile={unit_profile or 'unset'} runtime_profile={runtime_profile or 'unset'}",
+        ))
     return results
 
 
