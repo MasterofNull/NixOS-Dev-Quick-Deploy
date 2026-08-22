@@ -926,6 +926,7 @@ class LocalAgentExecutor:
         task: Task,
         agent_type: AgentType = AgentType.AGENT,
         max_tool_calls: int = 0,
+        wall_budget_s: float = 0.0,
     ) -> Task:
         """
         Execute a task using local agent with tool use.
@@ -933,9 +934,20 @@ class LocalAgentExecutor:
         Args:
             task: Task to execute
             agent_type: Type of agent to use
-            max_tool_calls: Deprecated compatibility parameter. Tool loops are
-                governed by stagnation/progress guards, context pruning, and the
-                stall watchdog, not by a fixed tool-call ceiling.
+            max_tool_calls: Hard ceiling on tool calls for this run. 0 (default)
+                means "use the AQ_AGENT_MAX_TOOL_CALLS env override, or the
+                built-in default of 40 if that's unset too" — NOT unlimited.
+                Stagnation/progress guards still fire first (smarter, earlier
+                exits); this is the outer backstop that guarantees the loop
+                terminates even when tool outputs keep changing and evade
+                every stagnation counter. Pass an explicit value > 0 to raise
+                (or lower) the ceiling for a deliberately long-running task.
+            wall_budget_s: Hard wall-clock budget in seconds for this run. 0
+                (default) means "use the AQ_AGENT_WALL_BUDGET_S env override,
+                or the built-in default of 3600s (1h) if that's unset too" —
+                NOT unlimited. Same backstop role as max_tool_calls, for the
+                case where a slow single call would otherwise outlast the
+                tool-call ceiling.
 
         Returns:
             Updated task with result or error
@@ -1030,6 +1042,7 @@ class LocalAgentExecutor:
                 agent_type,
                 max_tool_calls,
                 role=task.role,
+                wall_budget_s=wall_budget_s,
             )
 
             task.result = result
@@ -1132,6 +1145,7 @@ class LocalAgentExecutor:
         agent_type: AgentType,
         max_tool_calls: int,
         role: Optional[str] = None,
+        wall_budget_s: float = 0.0,
     ) -> Tuple[Any, int]:
         """
         Execute task with tool use loop.
@@ -1141,7 +1155,11 @@ class LocalAgentExecutor:
         2. Parse response for tool calls
         3. Execute tool calls
         4. Append results to context
-        5. Repeat until no more tool calls or max reached
+        5. Repeat until no more tool calls, a stagnation/progress guard fires,
+           or a hard termination bound (tool-call ceiling / wall-clock budget)
+           trips. The loop body is NEVER unbounded: see the "Hard termination
+           bounds" block below for the always-enforced backstop (HIGH — Codex
+           review finding 5, .agent/collaboration/codex-review-local-agent-batch-20260821.md).
         """
         # Get tools for model.
         # A.6 — _all_tools is the full registry snapshot (hot-swap source, never depleted).
@@ -1237,6 +1255,35 @@ class LocalAgentExecutor:
             _watchdog_handle = _loop.call_later(STALL_TIMEOUT, _fire_stall)
 
         _watchdog_handle = _loop.call_later(STALL_TIMEOUT, _fire_stall)
+
+        # Hard termination bounds (HIGH — Codex review finding 5, 20260821: the loop used
+        # `while True` and accepted max_tool_calls but IGNORED it — see the old docstring
+        # this replaced, "governed by stagnation/progress guards ... not by a fixed
+        # tool-call ceiling"). The stagnation guards below only catch IDENTICAL repeated
+        # results; an agent that alternates tool calls with results that keep CHANGING
+        # (but make no real progress) resets every stagnation counter and can loop
+        # indefinitely, burning the APU with no exit. These two bounds are the outer
+        # backstop — checked first, at the top of every iteration — that guarantees
+        # termination regardless of what the stagnation guards see. They never preempt
+        # the stagnation guards: those fire mid-iteration (smarter, earlier exits) before
+        # the loop ever reaches the top of the next iteration where these are checked.
+        # Overridable per call (max_tool_calls / wall_budget_s params, e.g. for a
+        # deliberately long-running task) or via env (AQ_AGENT_MAX_TOOL_CALLS /
+        # AQ_AGENT_WALL_BUDGET_S) — but the default is ALWAYS bounded, never unlimited.
+        if max_tool_calls and max_tool_calls > 0:
+            _HARD_TOOL_CALL_CEILING = max_tool_calls
+        else:
+            try:
+                _HARD_TOOL_CALL_CEILING = int(os.environ.get("AQ_AGENT_MAX_TOOL_CALLS", "40"))
+            except ValueError:
+                _HARD_TOOL_CALL_CEILING = 40
+        if wall_budget_s and wall_budget_s > 0:
+            _HARD_WALL_BUDGET_S = float(wall_budget_s)
+        else:
+            try:
+                _HARD_WALL_BUDGET_S = float(os.environ.get("AQ_AGENT_WALL_BUDGET_S", "3600"))
+            except ValueError:
+                _HARD_WALL_BUDGET_S = 3600.0
 
         # Stagnation guard: track (tool_name, result_prefix) for recent calls.
         # Thresholds: 3 for read_file (pure observation, no state change expected after 3
@@ -1429,6 +1476,60 @@ class LocalAgentExecutor:
 
         _ctrl_cursor = 0  # operator control-channel read cursor (messages consumed)
         while True:
+            # Hard termination bounds — checked FIRST, every iteration, before any LLM
+            # call is made. This is the outer backstop (see setup block above): every
+            # stagnation/progress guard for the PRIOR iteration's tool result has already
+            # had its chance to return early, so reaching here means none of them fired.
+            if tool_call_count >= _HARD_TOOL_CALL_CEILING:
+                hard_bound_msg = (
+                    f"Hard tool-call ceiling {_HARD_TOOL_CALL_CEILING} reached at call "
+                    f"{tool_call_count} — loop terminated to guarantee bounded execution "
+                    "(stagnation guards did not catch this run because tool outputs kept "
+                    "changing). Override with the max_tool_calls param or "
+                    "AQ_AGENT_MAX_TOOL_CALLS for a deliberately long-running task."
+                )
+                logger.warning(
+                    "hard tool-call ceiling reached: count=%d limit=%d — terminating loop",
+                    tool_call_count, _HARD_TOOL_CALL_CEILING,
+                )
+                _cancel_watchdog()
+                await self._emit_agent_event(
+                    task.id, "agent_hard_bound",
+                    {
+                        "bound": "max_tool_calls",
+                        "tool_call_count": tool_call_count,
+                        "limit": _HARD_TOOL_CALL_CEILING,
+                    },
+                    _watchdog_last_activity,
+                )
+                return hard_bound_msg, total_tokens
+
+            _hard_bound_elapsed = time.time() - _loop_start
+            if _hard_bound_elapsed >= _HARD_WALL_BUDGET_S:
+                hard_bound_msg = (
+                    f"Hard wall-clock budget {_HARD_WALL_BUDGET_S:.0f}s reached "
+                    f"({_hard_bound_elapsed:.1f}s elapsed) at tool call {tool_call_count} — "
+                    "loop terminated to guarantee bounded execution. Override with the "
+                    "wall_budget_s param or AQ_AGENT_WALL_BUDGET_S for a deliberately "
+                    "long-running task."
+                )
+                logger.warning(
+                    "hard wall-clock budget reached: elapsed=%.1fs limit=%.1fs call=%d — terminating loop",
+                    _hard_bound_elapsed, _HARD_WALL_BUDGET_S, tool_call_count,
+                )
+                _cancel_watchdog()
+                await self._emit_agent_event(
+                    task.id, "agent_hard_bound",
+                    {
+                        "bound": "wall_budget_s",
+                        "elapsed_s": round(_hard_bound_elapsed, 1),
+                        "limit_s": _HARD_WALL_BUDGET_S,
+                        "tool_call_count": tool_call_count,
+                    },
+                    _watchdog_last_activity,
+                )
+                return hard_bound_msg, total_tokens
+
             # Phase E — agent_step_start: emitted at the top of every iteration before the LLM call.
             await self._emit_agent_event(
                 task.id, "agent_step_start",
@@ -1884,9 +1985,12 @@ class LocalAgentExecutor:
 
             # Stagnation detection: same (tool_name, result_prefix) repeated beyond
             # threshold → model is looping without state change. Abort early via a
-            # progress guard. There is intentionally no hard max-tool-call ceiling:
-            # context pruning + working-memory checkpoints keep prior findings
-            # reachable across long implementation loops.
+            # progress guard — this is the SMART early exit; context pruning +
+            # working-memory checkpoints keep prior findings reachable across long
+            # implementation loops so it's safe to let this run well below the hard
+            # tool-call ceiling / wall-clock budget (checked at the top of the loop,
+            # see "Hard termination bounds" in the setup block above) which is the
+            # dumb-but-guaranteed outer backstop.
             # Thresholds are tool-specific:
             #   read_file  → 3: pure observation; identical result 3× = definitely stuck.
             #   run_command → 5: polling loops (e.g. tail, systemctl) legitimately repeat.
