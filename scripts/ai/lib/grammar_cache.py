@@ -88,15 +88,23 @@ def default_json_schema_to_gbnf(schema_json: Any, zero_trust_state: Any) -> str:
     return "\n".join(
         [
             f"root ::= {root}",
-            'string ::= "\\"" ([^"\\\\] | "\\\\" (["\\\\/bfnrt] | "u" [0-9a-fA-F]{4}))* "\\""',
+            # Control chars (U+0000-U+001F) are excluded from the raw/unescaped
+            # branch — real JSON only permits them as `\n` `\t` `\r` `\b` `\f`
+            # `\"` `\\` `\/` or `\uXXXX`. Without this exclusion the grammar admits
+            # a bare newline/tab inside a string body, which `json.loads` rejects
+            # (Codex #6 defect 1).
+            'string ::= "\\"" ([^"\\\\\\x00-\\x1f] | "\\\\" (["\\\\/bfnrt] | "u" [0-9a-fA-F]{4}))* "\\""',
             'number ::= "-"? ([0-9] | [1-9][0-9]*) ("." [0-9]+)? ([eE] [-+]? [0-9]+)?',
             'boolean ::= "true" | "false"',
             'null ::= "null"',
             "ws ::= [ \\t\\n\\r]*",
-            # Generic JSON object/array/value rules, used by _object_rule for schemas
+            # Generic JSON object/array/value rules. Used by _object_rule for schemas
             # that declare `"type": "object"` with NO `properties` (free-form objects,
-            # e.g. a tool-call's `arguments` payload). These allow zero-or-more members
+            # e.g. a tool-call's `arguments` payload) — allows zero-or-more members
             # of arbitrary JSON value type instead of forcing an empty "{}" body.
+            # Also used by _rule_for_schema as the fallback for an untyped property
+            # (referenced by name, i.e. a single atom — see the comment there for
+            # why that matters for GBNF `|` precedence).
             'member ::= string ws ":" ws value',
             "value ::= string | number | boolean | null | object | array",
             'object ::= "{" ws (member (ws "," ws member)*)? ws "}"',
@@ -139,6 +147,15 @@ def _rule_for_schema(schema: Mapping[str, Any]) -> str:
         alternatives = " | ".join(_gbnf_literal(json.dumps(v, separators=(",", ":"))) for v in enum_values)
         return f"({alternatives})"
     schema_type = schema.get("type")
+    if isinstance(schema_type, list) and schema_type:
+        # JSON Schema type-union, e.g. {"type": ["string", "null"]}. Same
+        # parenthesization requirement as `enum` above: this text is spliced
+        # inline into the caller's sequence (a property value, an array item
+        # rule, ...), so a bare top-level `|` would leak precedence into that
+        # surrounding sequence instead of binding to just this alternation
+        # (Codex #6 defect 2).
+        alternatives = " | ".join(_rule_for_schema({**schema, "type": t}) for t in schema_type)
+        return f"({alternatives})"
     if schema_type == "object":
         return _object_rule(schema)
     if schema_type == "array":
@@ -152,7 +169,16 @@ def _rule_for_schema(schema: Mapping[str, Any]) -> str:
         return "boolean"
     if schema_type == "null":
         return "null"
-    return "string | number | boolean | null"
+    # No declared type (or one we don't special-case): JSON Schema treats an
+    # untyped property as "any JSON value". Reference the already-defined
+    # `value` rule — a single atom (a rule name) — instead of re-splicing a
+    # hand-written "string | number | boolean | null" alternation here. A bare
+    # rule reference can never leak `|` precedence into the caller's
+    # surrounding sequence, which is exactly how the old unparenthesized
+    # fallback broke nested objects and heterogeneous arrays (Codex #6 defect
+    # 2). `value` also correctly includes object/array, which the old
+    # hand-written list silently omitted.
+    return "value"
 
 
 def _object_rule(schema: Mapping[str, Any]) -> str:
@@ -163,6 +189,30 @@ def _object_rule(schema: Mapping[str, Any]) -> str:
         # arbitrary JSON members instead of forcing an empty "{}" body, which made
         # every tool call emit useless empty arguments.
         return "object"
+
+    required = schema.get("required", [])
+    required_names = set(required) if isinstance(required, list) else set()
+    declared_names = set(properties)
+    if required_names != declared_names:
+        # This builder only knows how to emit a fixed, sorted-order body where
+        # EVERY declared property is mandatory (the tool-call envelope —
+        # `function` + `arguments`, both required — is exactly that shape and
+        # still works below). A schema with optional properties (required is a
+        # strict subset of properties, or required is unset/empty while
+        # properties exist) needs real optional-member support: allowed-but-
+        # not-forced, order-independent presence — which plain sequential GBNF
+        # concatenation can't express without either permutation-exploding the
+        # grammar or accepting members out of declared order. Rather than
+        # silently force optional properties as mandatory (Codex #6 defect 3 —
+        # mis-modeling the schema), reject at build time so the caller finds
+        # out instead of shipping a grammar that contradicts its own schema.
+        raise ValueError(
+            "grammar_cache._object_rule: schema declares optional properties "
+            f"(properties={sorted(declared_names)!r}, required={sorted(required_names)!r}); "
+            "partial/absent 'required' is not supported by this GBNF builder — "
+            "declare every property required, or extend _object_rule with real "
+            "optional-member support before using this schema."
+        )
 
     parts: list[str] = []
     for name in sorted(properties):
