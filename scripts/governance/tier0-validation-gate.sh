@@ -915,6 +915,56 @@ gate_evidence_collector() {
   fi
 }
 
+# Gate: local-agent harness regression suites (context-assembler, read-file
+# gate, re-read/no-action/edit-feedback interventions, write_region,
+# tool-call GBNF grammar, llm-cassette record/replay, agent-loop hard
+# bounds). These live under scripts/testing/ as standalone
+# `python3 <file>.py` runners (unittest.main() / custom async main() with
+# sys.exit(0|1) / pytest.main() self-invocation) — pytest.ini only discovers
+# ai-stack/, so none of these were ever exercised by the normal gate before
+# this check existed (Codex review finding #10,
+# .agent/collaboration/codex-review-local-agent-batch-20260821.md). Run each
+# standalone (its own asyncio.run(), no pytest-asyncio plugin dependency) so
+# a regression in any one of them fails tier0 the same way gate_evidence_collector
+# and gate_canon_compiler_determinism already do. Additive-only: does not
+# touch any other gate's behavior.
+gate_agent_harness_regression_suites() {
+  log "Checking local-agent harness regression suites..."
+  local suite_dir="${REPO_ROOT}/scripts/testing"
+  local suites=(
+    "test-context-assembler.py"
+    "test-read-file-gate.py"
+    "test-reread-intervention.py"
+    "test-noaction-intervention.py"
+    "test-edit-feedback.py"
+    "test-write-region.py"
+    "test-tool-call-grammar.py"
+    "test-llm-cassette.py"
+    "test-agent-loop-bounds.py"
+  )
+  local any_ran=0
+  local any_failed=0
+  local suite test_script
+  for suite in "${suites[@]}"; do
+    test_script="${suite_dir}/${suite}"
+    if [[ ! -f "${test_script}" ]]; then
+      continue
+    fi
+    any_ran=1
+    if python3 "${test_script}" >/dev/null 2>&1; then
+      pass "Harness regression suite: ${suite}"
+    else
+      fail "Harness regression suite failed: ${suite}"
+      any_failed=1
+    fi
+  done
+  if [[ ${any_ran} -eq 0 ]]; then
+    pass "Harness regression suites (skipped — none of the tracked suites are present)"
+    return 0
+  fi
+  [[ ${any_failed} -eq 0 ]]
+}
+
 log "=== Tier 0 Validation Gate ==="
 log "Mode: ${MODE}"
 log ""
@@ -942,6 +992,7 @@ gate_cross_surface_contract || true
 gate_llama_payload_ssot || true
 gate_canon_compiler_determinism || true
 gate_evidence_collector || true
+gate_agent_harness_regression_suites || true
 
 # Pre-deploy gates
 if [[ "$MODE" == "--pre-deploy" ]]; then
