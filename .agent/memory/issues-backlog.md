@@ -3374,3 +3374,8 @@ Advisory task (codex is the real confirmatory backstop) — non-blocking.
   Severity: medium
   Action: capture child exit status/stderr atomically, transition zero-output dead processes to failed, and surface the provider/model-specific reason instead of leaving stale-running state.
   File: scripts/ai/delegate-to-claude; scripts/ai/lib/delegation_registry.py
+
+[OPEN] security-audit-scans-ignored-nixpkgs-fork-dependencies — A host-context security audit reported five npm high findings under ignored `.forks/nixpkgs/ci/github-script` dependencies (`brace-expansion`, `fast-xml-parser`, `lodash`, `minimatch`, `undici`) even though the root AQ-OS package audit had zero high/critical findings and the fork paths are neither tracked nor referenced by deployed Nix/scripts/config/docs surfaces. This is real vulnerable third-party fixture content but currently overstates the AQ-OS runtime exposure.
+  Severity: medium
+  Action: define scanner scope policy for ignored upstream forks; either exclude them with an explicit non-runtime receipt or maintain their lockfiles in a separate advisory lane, while preserving a distinct zero-tolerance gate for tracked/deployed dependencies.
+  File: scripts/security/security-audit.sh; .forks/nixpkgs/ci/github-script/package-lock.json
