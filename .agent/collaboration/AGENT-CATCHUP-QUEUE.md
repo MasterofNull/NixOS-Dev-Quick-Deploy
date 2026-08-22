@@ -302,3 +302,11 @@ REVIEW TARGETS (for Codex — the reliable auto-reviewer — and any returning l
 - [Cluster 4] agent-loop hard-termination-bound (committed provisional): ceiling 40 + wall 3600s + overrides.
   VERIFY: is 40 too low for any legitimate multi-turn task (would truncate real work)? does the wall-clock
   check use monotonic time (not wall clock that jumps)? does a bound-trip leave the worktree/state clean?
+- [Cluster 5] artifact-strip moved to parser boundary (e8599514): tool_registry._strip_envelope_tail_artifacts
+  + narrowed shell_tools net `\n}[}\s,]*\Z`. VERIFY: is the parser-boundary strip applied to ALL arg values
+  or only the last? could a legit value legitimately contain a trailing `\n}` (rare but possible)? does the
+  narrowed shell net still catch every real envelope-leak shape?
+- [Cluster 6] gate the harness regression suites in tier0 (72c069ad): gate_agent_harness_regression_suites.
+  VERIFY: does a deliberately-broken test ACTUALLY fail tier0 --pre-commit end-to-end (do the real break-it/
+  fix-it proof)? are all 9 suites in the list (any missing, e.g. test-run-command-artifact)? does running 9
+  suites add meaningful pre-commit latency?
