@@ -18,11 +18,14 @@ git config core.hooksPath .githooks
 
 ### commit-msg
 
-On protected integration branches (`main`/`master`), non-trivial commits require a
-terminal `Review-Disposition`. `ACCEPTED` requires hash-bound independent PASS
-evidence. `IMPLEMENTED_FOLLOWUP_REQUIRED` is allowed only when the subject is
-explicitly safe at rest, has no activation authority, and names its bounded next
-slice. `ACTIVATION_BLOCKED`, `REJECTED`, and provisional work stay isolated.
+On protected integration branches (`main`/`master`), every staged change requires a
+terminal `Review-Disposition`; deletion-only and one-line changes are not exempt.
+`ACCEPTED` and `IMPLEMENTED_FOLLOWUP_REQUIRED` require independent PASS evidence
+whose `Reviewed-subject-sha256` exactly equals the SHA-256 of the deterministic
+binary staged diff (`git diff --cached --binary --full-index --no-ext-diff`). A
+follow-up integration additionally must be explicitly safe at rest, have no
+activation authority, and name its bounded next slice. `ACTIVATION_BLOCKED`,
+`REJECTED`, and provisional work stay isolated.
 
 ### pre-commit
 

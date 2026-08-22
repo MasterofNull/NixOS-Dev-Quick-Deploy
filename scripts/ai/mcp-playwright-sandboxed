@@ -1,14 +1,13 @@
 #!/usr/bin/env bash
 # Sandbox launcher for the playwright-mcp capability-intake candidate.
 #
-# Implements the two REQUEST_REVISION mitigations from
+# Enforces the remaining REQUEST_REVISION boundaries from
 # tasks_inbox/capability-intake-playwright-mcp.md ("Follow-up Patch Scope"):
-#   1. Private sandbox execution — systemd-run --user confines network
-#      egress to loopback only, mirroring the IPAddressAllow/IPAddressDeny
-#      pattern already used for MCP daemons (nix/modules/roles/ai-stack.nix,
-#      nix/modules/services/mcp-servers.nix, nix/modules/services/llama-router.nix)
-#      applied here to this ephemeral, client-spawned stdio process.
-#   2. Dynamic version check — re-resolves the pinned version + npm dist
+#   1. Admission — both capability SSOTs must say enabled/accepted. A profile
+#      name alone cannot promote a quarantined capability.
+#   2. Enforcing AppArmor attachment — aa-exec attaches the verified profile;
+#      there is no unconfined or advisory user-scope fallback.
+#   3. Dynamic version check — re-resolves the pinned version + npm dist
 #      integrity hash against the registry on every launch and refuses to
 #      run on drift, mismatch, or lookup failure (fail closed). This is the
 #      concrete defense against the finding's "npx dynamic installer which
@@ -27,6 +26,11 @@
 # version.
 set -euo pipefail
 
+SCRIPT_DIR="$(cd -- "$(dirname -- "${BASH_SOURCE[0]}")" && pwd)"
+REPO_ROOT="$(cd -- "${SCRIPT_DIR}/../.." && pwd)"
+CANDIDATE_REGISTRY="${REPO_ROOT}/config/agent-capability-intake-candidates.json"
+CAPABILITY_CATALOG="${REPO_ROOT}/config/system-capability-catalog.json"
+
 PINNED_PACKAGE="@playwright/mcp"
 PINNED_VERSION="0.0.76"
 PINNED_SPEC="${PINNED_PACKAGE}@${PINNED_VERSION}"
@@ -34,6 +38,34 @@ APPARMOR_PROFILE="mcp-playwright"
 APPARMOR_PROFILES_PATH="/sys/kernel/security/apparmor/profiles"
 # Captured 2026-07-23 via: npm view @playwright/mcp@0.0.76 dist.integrity
 PINNED_INTEGRITY="sha512-ICcW6wAV+HoNEco19eni+JTVylCIIedruWkrRl2Rsv/qcGhBZLT/c0I1VounjIjSVSupw3pHmcr3CNCikTHTBQ=="
+
+verify_admission() {
+  if ! python3 - "${CANDIDATE_REGISTRY}" "${CAPABILITY_CATALOG}" <<'PY'
+import json
+import sys
+from pathlib import Path
+
+candidate_doc = json.loads(Path(sys.argv[1]).read_text(encoding="utf-8"))
+catalog_doc = json.loads(Path(sys.argv[2]).read_text(encoding="utf-8"))
+candidate = next((item for item in candidate_doc.get("candidates", []) if item.get("id") == "playwright-mcp"), None)
+catalog = next((item for item in catalog_doc.get("capabilities", []) if item.get("id") == "playwright-mcp"), None)
+accepted = {"accepted", "accepted-with-mitigations"}
+if not (
+    isinstance(candidate, dict)
+    and candidate.get("state") == "enabled"
+    and candidate.get("review_status") in accepted
+    and not candidate.get("blocked_reason")
+    and isinstance(catalog, dict)
+    and catalog.get("state") == "enabled"
+    and (catalog.get("security") or {}).get("admission") in accepted
+):
+    raise SystemExit(1)
+PY
+  then
+    echo "mcp-playwright-sandboxed: ADMISSION UNAVAILABLE — capability SSOTs are not enabled and independently accepted" >&2
+    return 1
+  fi
+}
 
 verify_apparmor_confinement() {
   if ! command -v aa-exec >/dev/null 2>&1; then
@@ -58,8 +90,17 @@ if [[ "${1:-}" == "--check-confinement" ]]; then
   exit 1
 fi
 
-# Reject before package registry access: missing or unenforced confinement must
-# never permit a browser launch, network lookup, or user-scope fallback.
+if [[ "${1:-}" == "--check-admission" ]]; then
+  if verify_admission; then
+    echo "mcp-playwright-sandboxed: admission AVAILABLE — both capability SSOTs are accepted" >&2
+    exit 0
+  fi
+  exit 1
+fi
+
+# Reject before package registry access: a loaded profile name is not sufficient
+# authority while either capability SSOT remains quarantined or unaccepted.
+verify_admission || exit 1
 verify_apparmor_confinement || exit 1
 
 # --- Mitigation 2a: config/wrapper pin agreement ---

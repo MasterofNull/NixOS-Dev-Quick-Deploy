@@ -142,7 +142,7 @@ def _load_recorded_tool_outputs(cassette_path: str) -> List[Dict[str, str]]:
     return outputs
 
 
-def _apply_mock_tools(registry: "ToolRegistry", outputs: List[Dict[str, str]]) -> None:
+def _apply_mock_tools(registry: "ToolRegistry", outputs: List[Dict[str, str]]):
     """Replay exact formatted results through a side-effect-free registry seam.
 
     The recorded value is the exact model-facing ``format_tool_result`` envelope,
@@ -187,6 +187,12 @@ def _apply_mock_tools(registry: "ToolRegistry", outputs: List[Dict[str, str]]) -
     # The executor exclusively uses execute_tool_call. Replace it rather than each
     # handler so replay can preserve both completed and failed ToolCall formatting.
     registry.execute_tool_call = _replay_execute
+
+    def _assert_consumed() -> None:
+        if outputs:
+            raise ValueError("ReplayToolEvidenceError: unused trailing tool-output evidence")
+
+    return _assert_consumed
 
 
 # ---------------------------------------------------------------------------
@@ -292,11 +298,14 @@ async def _run_one(
             if not dotted:
                 raise SystemExit(f"--extra-tools: unknown tool set {name!r} (known: {', '.join(_EXTRA_TOOL_REGISTRARS)})")
             _resolve_registrar(dotted)(registry)
+        assert_evidence_consumed = None
         if mock_tools:
             # Default safety gate — see module docstring + _apply_mock_tools(). Must
             # run AFTER all register_*_tools() calls above so the registered
             # schema (system-prompt / request-key surface) is unaffected.
-            _apply_mock_tools(registry, _load_recorded_tool_outputs(cassette_path))
+            assert_evidence_consumed = _apply_mock_tools(
+                registry, _load_recorded_tool_outputs(cassette_path),
+            )
 
         executor = LocalAgentExecutor(tool_registry=registry, fallback_endpoint="")
         if mock_tools:
@@ -308,14 +317,21 @@ async def _run_one(
         task = Task(id="replay-bench", objective=objective, task_type=task_type)
 
         failure_modes: Counter = Counter()
+        miss = None
         try:
             response, tokens = await executor._execute_with_tools(
                 task, AgentType.AGENT, max_tool_calls,
             )
-            miss = None
         except llm_cassette.ReplayMiss as e:
             response, tokens = "", 0
             miss = str(e)
+        finally:
+            if assert_evidence_consumed is not None:
+                try:
+                    assert_evidence_consumed()
+                except ValueError as e:
+                    response, tokens = "", 0
+                    miss = str(e) if miss is None else f"{miss}; {e}"
 
         calls = task.tool_calls_made
         n_calls = len(calls)

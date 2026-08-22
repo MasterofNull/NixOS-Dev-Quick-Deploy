@@ -8,13 +8,15 @@ case "${branch}" in
   *) exit 0 ;;
 esac
 
-mapfile -t staged_paths < <(git diff --cached --name-only --diff-filter=ACMRT)
+mapfile -t staged_paths < <(git diff --cached --name-only)
 [[ ${#staged_paths[@]} -eq 0 ]] && exit 0
 
-staged_lines="$({ git diff --cached --numstat || true; } | awk '{ added += $1; removed += $2 } END { print added + removed + 0 }')"
-if [[ ${#staged_paths[@]} -eq 1 && "${staged_lines}" -le 1 ]]; then
-  exit 0
-fi
+staged_subject_sha256() {
+  # Bind review evidence to the exact staged binary patch, including paths,
+  # modes, additions, modifications, renames, and deletions.  This deliberately
+  # does not use the working tree or commit message.
+  git diff --cached --binary --full-index --no-ext-diff -- | sha256sum | awk '{print $1}'
+}
 
 field() {
   local key="$1"
@@ -22,22 +24,31 @@ field() {
 }
 
 disposition="$(field Review-Disposition)"
+expected_subject_sha256="$(staged_subject_sha256)"
+require_independent_bound_review() {
+  [[ "$(field Independent-Review)" == "PASS" ]] || {
+    echo "commit-msg: ${disposition} requires Independent-Review: PASS" >&2
+    exit 1
+  }
+  [[ "$(field Reviewed-subject-sha256)" =~ ^[0-9a-f]{64}$ ]] || {
+    echo "commit-msg: ${disposition} requires a lowercase Reviewed-subject-sha256" >&2
+    exit 1
+  }
+  [[ "$(field Reviewed-subject-sha256)" == "${expected_subject_sha256}" ]] || {
+    echo "commit-msg: ${disposition} Reviewed-subject-sha256 does not bind the exact staged subject" >&2
+    exit 1
+  }
+  [[ -n "$(field Reviewed-by)" ]] || {
+    echo "commit-msg: ${disposition} requires a truthful independent Reviewed-by identity" >&2
+    exit 1
+  }
+}
 case "${disposition}" in
   ACCEPTED)
-    [[ "$(field Independent-Review)" == "PASS" ]] || {
-      echo "commit-msg: ACCEPTED requires Independent-Review: PASS" >&2
-      exit 1
-    }
-    [[ "$(field Reviewed-subject-sha256)" =~ ^[0-9a-f]{64}$ ]] || {
-      echo "commit-msg: ACCEPTED requires a lowercase Reviewed-subject-sha256" >&2
-      exit 1
-    }
-    [[ -n "$(field Reviewed-by)" ]] || {
-      echo "commit-msg: ACCEPTED requires a truthful Reviewed-by identity" >&2
-      exit 1
-    }
+    require_independent_bound_review
     ;;
   IMPLEMENTED_FOLLOWUP_REQUIRED)
+    require_independent_bound_review
     [[ "$(field Safe-At-Rest)" == "true" ]] || {
       echo "commit-msg: forward integration requires Safe-At-Rest: true" >&2
       exit 1

@@ -111,6 +111,8 @@ _SLIM_TOOLS = frozenset({
     "get_hint", "query_aidb",
 })
 _COMMIT_TOOLS = frozenset({"git_add", "git_commit"})
+_EXTERNAL_MUTATION_TOOLS = frozenset({"github_create_pr"})
+_CONDITIONALLY_HIDDEN_TOOLS = _COMMIT_TOOLS | _EXTERNAL_MUTATION_TOOLS
 
 
 def _local_commit_enabled() -> bool:
@@ -132,7 +134,7 @@ def _load_enabled_capabilities(tool_manifest: str) -> frozenset[str]:
         or set(raw["profiles"]) != {"full", "self-improvement"}
         or not isinstance(raw["profiles"].get(tool_manifest), list)
         or not isinstance(raw.get("conditional_hidden_capabilities"), dict)
-        or set(raw["conditional_hidden_capabilities"]) != _COMMIT_TOOLS
+        or set(raw["conditional_hidden_capabilities"]) != _CONDITIONALLY_HIDDEN_TOOLS
         or any(
             not isinstance(value, dict)
             or set(value) != {"reason_code", "enabled_by_default"}
@@ -216,6 +218,12 @@ def build_registry(tool_manifest: str = "full") -> ToolRegistry:
     if not _local_commit_enabled():
         for _tool_name in _COMMIT_TOOLS:
             registry.unregister(_tool_name)
+    # Opening a GitHub PR mutates an external account.  The non-interactive
+    # local loop cannot collect an operator confirmation, so it must not be
+    # model-visible.  Direct registry consumers still require the mechanical
+    # confirmation gate enforced by ToolDefinition/ToolRegistry.
+    for _tool_name in _EXTERNAL_MUTATION_TOOLS:
+        registry.unregister(_tool_name)
     _ensure_registry_reachability(registry, _load_enabled_capabilities(tool_manifest))
     return registry
 

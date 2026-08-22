@@ -19,7 +19,6 @@
     "get_working_memory",
     "git_diff",
     "git_status",
-    "github_create_pr",
     "github_get_file",
     "github_list_issues",
     "github_pr_status",
@@ -68,6 +67,10 @@
     },
     "git_commit": {
       "reason_code": "local_commit_disabled_by_default",
+      "enabled_by_default": false
+    },
+    "github_create_pr": {
+      "reason_code": "external_account_mutation_requires_operator_confirmation",
       "enabled_by_default": false
     }
   },

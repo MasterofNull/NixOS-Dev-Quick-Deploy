@@ -5,7 +5,6 @@ from __future__ import annotations
 
 import json
 import subprocess
-import subprocess
 from pathlib import Path
 
 
@@ -42,6 +41,20 @@ def assert_playwright_quarantined(candidate: dict) -> None:
     assert 'grep -Fqx "${APPARMOR_PROFILE} (enforce)" "${APPARMOR_PROFILES_PATH}" 2>/dev/null' in launcher
     assert 'exec aa-exec -p "${APPARMOR_PROFILE}" -- npx' in launcher
     assert "exec systemd-run --user" not in launcher, "unverified user-scope fallback must not execute Playwright"
+    assert "verify_admission" in launcher
+    assert 'candidate.get("state") == "enabled"' in launcher
+    assert 'catalog.get("state") == "enabled"' in launcher
+
+    admitted = subprocess.run(
+        [str(PLAYWRIGHT_LAUNCHER), "--check-admission"],
+        cwd=ROOT,
+        text=True,
+        capture_output=True,
+        check=False,
+        timeout=5,
+    )
+    assert admitted.returncode != 0, "quarantined Playwright must not pass the admission gate"
+    assert "ADMISSION UNAVAILABLE" in admitted.stderr, admitted.stderr
 
     checked = subprocess.run(
         [str(PLAYWRIGHT_LAUNCHER), "--check-confinement"],

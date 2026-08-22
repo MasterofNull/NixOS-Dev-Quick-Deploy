@@ -39,10 +39,23 @@ if str(_COORDINATOR_DIR) not in sys.path:
 try:
     from workflow.safety_control_layer import SafetyControlLayer
 except ImportError:
-    # Fallback/stub if not available
-    class SafetyControlLayer: # type: ignore
-        def __init__(self, mode="open"): pass
-        def intercept_action(self, *args, **kwargs): return None
+    class SafetyControlLayer:  # type: ignore[no-redef]
+        """Fail closed when the coordinator safety layer is unavailable.
+
+        ``intercept_action`` is invoked only for tools that require a
+        proposal (SYSTEM_MODIFY or DESTRUCTIVE).  Returning an interception
+        receipt prevents a missing coordinator import from becoming an
+        authority bypass.
+        """
+
+        def __init__(self, mode: str = "review") -> None:
+            self.mode = mode
+
+        def intercept_action(self, *args: Any, **kwargs: Any) -> Dict[str, str]:
+            return {
+                "status": "blocked",
+                "reason": "safety_control_layer_unavailable",
+            }
 
 logger = logging.getLogger(__name__)
 
@@ -184,6 +197,9 @@ class ToolDefinition:
         # Auto-set requires_proposal for risky policies
         if self.safety_policy in (SafetyPolicy.SYSTEM_MODIFY, SafetyPolicy.DESTRUCTIVE):
             self.requires_proposal = True
+            # These actions include service control and external-account
+            # mutations.  A proposal alone is not authority to execute.
+            self.requires_confirmation = True
         self._apply_security_defaults()
 
     def _apply_security_defaults(self) -> None:
