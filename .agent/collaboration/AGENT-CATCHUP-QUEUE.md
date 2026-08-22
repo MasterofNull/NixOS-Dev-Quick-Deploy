@@ -273,3 +273,20 @@ Commit range (all pushed to origin/main): cc63ac57 → 4650b1e6.
 - Ad-hoc Codex review ALREADY dispatched 2026-08-21 (codex-20260821-162310) covering these — fold its
   findings when it completes; this entry is the formal record.
 Also NEW open finding (cassette-diagnosed): local-over-explores-run_command-instead-of-editing (issues-backlog).
+
+## [2026-08-21] Verified-defect fix pass — PROVISIONAL commits, independent reviews QUEUED (async, non-blocking)
+Owner directive 2026-08-21: dev velocity must not depend on lane presence. These Tier-0 fixes are committed
+FORWARD (orchestrator-verified + tests) as `provisional-pending-review`; independent review is QUEUED here,
+not blocking. Each flips committed→ACCEPTED only when its queued review lands clean. Absent-lane findings
+fold in as bounded follow-ups (advisory unless a real defect; never rewrite history).
+
+REVIEW TARGETS (for Codex — the reliable auto-reviewer — and any returning lane):
+- `5c3e7a1d` fix(write_region+edit_file Tier-0 safety): path-traversal/symlink reject (reuses
+  validate_file_path), stale-line-drift guard, EOF newline-merge, atomic write, truthful errors.
+  test-write-region 57/57. VERIFY: is validate_file_path the RIGHT boundary (not bypassable via the new
+  optional-guard path)? does the atomic os.replace preserve perms/ownership? is expected_region_sha
+  computed over the exact bytes the agent will see (front-loaded citations)?
+- PENDING (Cluster 1, building): replay/cassette CRITICALs — mock-tools default, flock, fail-closed replay,
+  request_key collision+digest, retry-no-ReplayMiss. Will be committed provisional + queued here on landing.
+- Codex's own 12-finding review + Antigravity's 2 verified CRITICALs are the source list; this pass fixes
+  them — Codex should confirm each fix actually closes its finding (not just adds a test).
