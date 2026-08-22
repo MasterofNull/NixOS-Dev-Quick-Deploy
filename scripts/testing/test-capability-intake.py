@@ -68,6 +68,17 @@ def main() -> int:
     )
     assert confinement.returncode != 0
     assert "UNAVAILABLE" in confinement.stderr
+    admission = subprocess.run(
+        [str(REPO_ROOT / "scripts" / "ai" / "mcp-playwright-sandboxed"), "--check-admission"],
+        cwd=REPO_ROOT,
+        text=True,
+        stdout=subprocess.PIPE,
+        stderr=subprocess.PIPE,
+        check=False,
+        timeout=5,
+    )
+    assert admission.returncode != 0
+    assert "ADMISSION UNAVAILABLE" in admission.stderr
     assert reports["semgrep-mcp"]["admission"] == "accepted-with-mitigations"
     assert "unpinned-version" not in reports["semgrep-mcp"]["risk_flags"]
     assert reports["mcp-admission-controller"]["admission"] == "accepted-with-mitigations"

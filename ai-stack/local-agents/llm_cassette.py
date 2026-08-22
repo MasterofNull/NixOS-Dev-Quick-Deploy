@@ -361,7 +361,46 @@ _TOOL_OUTPUT_MAX_CHARS = 3000
 _TOOL_EVIDENCE_PENDING: contextvars.ContextVar[Tuple[Dict[str, str], ...]] = (
     contextvars.ContextVar("llm_cassette_tool_evidence_pending", default=())
 )
-_SECRET_PATTERN = re.compile(r"(?i)(?:bearer\s+|aws_access_key_id|api[_-]?key|secret[_-]?key)[A-Za-z0-9_./+=:-]{8,}")
+# Evidence is persisted to disk. Detect credential *shapes*, never report a match or
+# its value. Key/value matching covers JSON and shell/config-style output alike.
+_SECRET_PATTERNS = (
+    re.compile(r"-----BEGIN(?: [A-Z0-9]+)? PRIVATE KEY-----", re.IGNORECASE),
+    re.compile(r"\b(?:AKIA|ASIA)[A-Z0-9]{16}\b"),
+    re.compile(r"\b(?:sk|rk|ghp|github_pat)_[A-Za-z0-9_-]{12,}\b", re.IGNORECASE),
+    re.compile(r"\beyJ[A-Za-z0-9_-]{8,}\.[A-Za-z0-9_-]{8,}\.[A-Za-z0-9_-]{8,}\b"),
+    re.compile(r"\bbearer\s+[A-Za-z0-9._~+/-]{8,}\b", re.IGNORECASE),
+    re.compile(
+        r'''(?ix)
+        ["']?(?:password|passwd|pwd|token|access[_-]?token|refresh[_-]?token|
+        api[_-]?key|apikey|secret(?:[_-]?key)?|aws_(?:access_key_id|secret_access_key)|
+        authorization)["']?\s*[:=]\s*["']?[A-Za-z0-9._~+/-]{8,}
+        ''',
+    ),
+)
+
+
+def _contains_secret_shape(content: str) -> bool:
+    """Return only a boolean so rejected evidence is never echoed or logged."""
+    candidates = [content]
+    try:
+        decoded = json.loads(content)
+    except (TypeError, ValueError):
+        decoded = None
+
+    def _collect(value: Any) -> None:
+        if isinstance(value, str):
+            candidates.append(value)
+        elif isinstance(value, dict):
+            for key, item in value.items():
+                candidates.append(str(key))
+                _collect(item)
+        elif isinstance(value, list):
+            for item in value:
+                _collect(item)
+
+    _collect(decoded)
+    return any(pattern.search(candidate) is not None
+               for candidate in candidates for pattern in _SECRET_PATTERNS)
 
 
 def normalize_tool_output_evidence(evidence: Any) -> Optional[Dict[str, str]]:
@@ -376,7 +415,7 @@ def normalize_tool_output_evidence(evidence: Any) -> Optional[Dict[str, str]]:
     if (not isinstance(tool_name, str) or not re.fullmatch(r"[A-Za-z0-9_.-]{1,128}", tool_name)
             or not isinstance(content, str) or not content
             or len(content) > _TOOL_OUTPUT_MAX_CHARS
-            or _SECRET_PATTERN.search(content)
+            or _contains_secret_shape(content)
             or not isinstance(digest, str)
             or hashlib.sha256(content.encode("utf-8")).hexdigest() != digest):
         return None

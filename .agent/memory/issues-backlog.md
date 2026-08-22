@@ -3354,3 +3354,23 @@ Advisory task (codex is the real confirmatory backstop) — non-blocking.
   Severity: low
   Action: route live dashboard security probes through the existing host-observer contract and preserve a typed `sandbox_unavailable` result instead of collapsing transport denial into service unavailability.
   File: scripts/security/security-audit.sh; scripts/security/dashboard-security-scan.sh
+
+[DONE 2026-08-22] review-receipt-not-bound-to-staged-subject — The first protected-branch hook checked only that a review hash looked like 64 lowercase hex characters, allowed unreviewed follow-up receipts, and exempted deletion-only or one-line changes. The forward A6 correction now hashes the deterministic exact staged binary diff and requires an independent reviewer, matching hash, and identity for both accepted dispositions with no material-change bypass.
+  Severity: high
+  Action: retain hermetic negative tests for arbitrary hashes, unreviewed follow-ups, deletions, and one-line changes.
+  File: .githooks/commit-msg; scripts/testing/test-commit-review-disposition-hook.py
+
+[DONE 2026-08-22] replay-cassette-credential-and-totality-gap — The first exact-output cassette filter missed JSON/config password, authorization, and token assignments and replay did not reject unused trailing evidence. The forward A7 correction screens decoded JSON leaves and common credential shapes without echoing them and requires all replay evidence to be consumed.
+  Severity: high
+  Action: retain credential-shape and trailing-evidence regressions in the mandatory cassette suite.
+  File: ai-stack/local-agents/llm_cassette.py; scripts/testing/aq-replay-bench; scripts/testing/test-llm-cassette.py
+
+[DONE 2026-08-22] playwright-profile-name-could-bypass-admission-state — The launcher originally treated a loaded `mcp-playwright (enforce)` profile name as sufficient to launch even while both capability SSOTs remained quarantined/incomplete. The forward A3 correction now separately requires candidate and catalog state `enabled` with accepted admission before checking confinement or contacting the package registry.
+  Severity: high
+  Action: future activation must update both reviewed SSOTs and still pass the confinement and negative-egress gates.
+  File: scripts/ai/mcp-playwright-sandboxed; config/agent-capability-intake-candidates.json; config/system-capability-catalog.json
+
+[OPEN] claude-delegation-empty-output-stale-running-state — Two `delegate-to-claude` final-review jobs (Fable and Opus fallback) exited immediately with zero-byte output while their registry status remained `running`. Direct `claude -p` with the same prompt succeeded, so provider availability was not the cause.
+  Severity: medium
+  Action: capture child exit status/stderr atomically, transition zero-output dead processes to failed, and surface the provider/model-specific reason instead of leaving stale-running state.
+  File: scripts/ai/delegate-to-claude; scripts/ai/lib/delegation_registry.py

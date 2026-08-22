@@ -51,3 +51,7 @@ A9 is read-only. A10 remains activation-blocked until A1-A9 evidence permits it.
   routed forward rather than replayed into the completed slices.
 - A10 begins with one bounded, remotely reviewed task after rebuild evidence. Expansion to an
   unattended queue requires measured correctness, not merely a landed edit or healthy capacity.
+- Commit `86fc4f8e` preserves the first safe-at-rest reviewed checkpoint. A second independent
+  reviewer then found receipt binding, replay confidentiality/totality, and external-account
+  authority gaps. These are being completed as A6/A7/A8 forward slices (plus A3 admission
+  binding), without reopening or erasing the completed checkpoint.

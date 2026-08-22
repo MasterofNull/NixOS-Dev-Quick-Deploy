@@ -739,25 +739,66 @@ def test_mock_tool_evidence_fails_closed() -> None:
     asyncio.run(_run_mock_tool_evidence_fail_closed())
     bench = _load_aq_replay_bench()
     with tempfile.TemporaryDirectory() as td:
-        content = '{"tool":"run_command","status":"success","result":"Bearer secretvalue123"}'
-        row = {
-            "meta": {
-                "cassette_format_version": 2,
-                "tool_output_evidence": [{
-                    "tool_name": "run_command",
-                    "result_content": content,
-                    "result_digest": hashlib.sha256(content.encode()).hexdigest(),
-                }],
-            }
+        # Shapes span JSON/config assignments and standalone bearer/AWS/JWT/private
+        # key forms. Assertions intentionally never echo the candidate payload.
+        secret_shapes = {
+            "json-password": '{"password":"not-for-storage"}',
+            "config-token": "token=not-for-storage",
+            "api-key": "api_key=not-for-storage",
+            "aws-id": "AKIA0123456789ABCDEF",
+            "bearer": "Bearer not-for-storage",
+            "jwt": "eyJhbGciOiJIUzI1NiJ9.eyJzdWIiOiJ0ZXN0In0.signaturevalue",
+            "private-key": "-----BEGIN PRIVATE KEY-----",
         }
-        path = Path(td) / "malicious.jsonl"
-        path.write_text(json.dumps(row) + "\n", encoding="utf-8")
+        for label, shape in secret_shapes.items():
+            content = json.dumps({"tool": "run_command", "status": "success", "result": shape})
+            row = {
+                "meta": {
+                    "cassette_format_version": 2,
+                    "tool_output_evidence": [{
+                        "tool_name": "run_command",
+                        "result_content": content,
+                        "result_digest": hashlib.sha256(content.encode()).hexdigest(),
+                    }],
+                }
+            }
+            path = Path(td) / f"secret-{label}.jsonl"
+            path.write_text(json.dumps(row) + "\n", encoding="utf-8")
+            try:
+                bench._load_recorded_tool_outputs(str(path))
+                raise AssertionError(f"secret-shaped evidence was accepted: {label}")
+            except ValueError as exc:
+                assert_true("ReplayToolEvidenceError" in str(exc), "secret rejection must be typed")
+    print("PASS (f3b): credential-shaped evidence fails closed without echo")
+
+
+async def _run_unused_trailing_evidence_fails_closed() -> None:
+    bench = _load_aq_replay_bench()
+    with tempfile.TemporaryDirectory() as td:
+        registry = ToolRegistry(db_path=Path(td) / "audit-trailing.db")
+        register_shell_tools(registry)
+        recorded = registry.format_tool_result(ToolCall(
+            id="trailing", tool_name="run_command", arguments={}, status="completed",
+            result={"success": True, "stdout": "recorded", "stderr": "", "returncode": 0},
+        ))
+        assert_consumed = bench._apply_mock_tools(registry, [
+            {"tool_name": "run_command", "result_content": recorded},
+        ])
         try:
-            bench._load_recorded_tool_outputs(str(path))
-            raise AssertionError("secret-shaped cassette evidence must be rejected")
+            assert_consumed()
+            raise AssertionError("unused trailing evidence must fail closed")
         except ValueError as exc:
-            assert_true("ReplayToolEvidenceError" in str(exc), "secret rejection must be typed")
-    print("PASS (f3b): missing or mismatched tool-output evidence fails closed")
+            assert_true("unused trailing" in str(exc), "trailing evidence error must be typed")
+        replayed = await registry.execute_tool_call(
+            ToolCall(id="consume", tool_name="run_command", arguments={})
+        )
+        assert_true(replayed.status == "completed", "recorded evidence must be consumable in order")
+        assert_consumed()
+
+
+def test_unused_trailing_tool_evidence_fails_closed() -> None:
+    asyncio.run(_run_unused_trailing_evidence_fails_closed())
+    print("PASS (f3d): trailing cassette tool evidence fails closed after replay")
 
 
 def test_tool_evidence_is_async_task_local() -> None:
@@ -835,6 +876,16 @@ async def _run_bench_multiturn_exact_tool_replay() -> Dict[str, Any]:
             # turn two's cassette identity.
             httpx.AsyncClient = _ExplodingAsyncClient  # type: ignore[assignment]
             replay = await bench._run_one(cpath, objective, "research", 5, None, [], True)
+            # A valid-but-unconsumed extra result must invalidate the whole replay,
+            # not be silently ignored after the model returns its final answer.
+            rows[1]["meta"]["tool_output_evidence"].append(dict(evidence[0]))
+            Path(cpath).write_text(
+                "\n".join(json.dumps(row, sort_keys=True) for row in rows) + "\n",
+                encoding="utf-8",
+            )
+            trailing = await bench._run_one(cpath, objective, "research", 5, None, [], True)
+            assert_true("unused trailing" in (trailing["miss"] or ""),
+                        "a replay run must reject otherwise-valid unused trailing evidence")
         finally:
             httpx.AsyncClient = saved_client
 
@@ -1044,6 +1095,7 @@ def main() -> int:
     test_retry_block_does_not_swallow_replay_miss()
     test_mock_tools_default_no_side_effect()
     test_mock_tool_evidence_fails_closed()
+    test_unused_trailing_tool_evidence_fails_closed()
     test_tool_evidence_is_async_task_local()
     test_bench_default_replays_exact_multiturn_tool_output()
     test_golden_e2e_record_then_replay_through_execute_with_tools()
