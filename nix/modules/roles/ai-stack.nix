@@ -195,18 +195,10 @@ let
   # Convert env attrset to "KEY=VALUE" strings for systemd Environment=.
   gpuEnvList = lib.mapAttrsToList (k: v: "${k}=${v}") gpuEnv;
 
-  # AppArmor currently confines /nix/store/*/bin/llama-server specifically.
-  # A copied binary under a different basename avoids that path-scoped profile
-  # while still using the exact same llama.cpp build and shared libraries.
-  llamaServerExec = let
-    renamedServer = pkgs.runCommand "llama-server-unconfined" {} ''
-      mkdir -p "$out/bin"
-      cp ${pkgs.llama-cpp}/bin/llama-server "$out/bin/llama-server-unconfined"
-      cp ${pkgs.llama-cpp}/bin/libggml-*.so "$out/bin/" 2>/dev/null || true
-      chmod 0555 "$out/bin/llama-server-unconfined"
-      chmod 0444 "$out/bin"/libggml-*.so 2>/dev/null || true
-    '';
-  in "${renamedServer}/bin/llama-server-unconfined";
+  # Keep the executable identity aligned with the ai-llama-cpp AppArmor
+  # attachment.  Renaming or copying this binary would bypass path-based
+  # confinement and is therefore forbidden by the contract test.
+  llamaServerExec = "${pkgs.llama-cpp}/bin/llama-server";
 
   embed = ai.embeddingServer;
 
@@ -940,6 +932,10 @@ in {
     (lib.mkIf roleEnabled {
       assertions = [
         {
+          assertion = !llama.enable || config.security.apparmor.enable;
+          message = "AI stack: llama.cpp requires security.apparmor.enable = true so ai-llama-cpp cannot start unconfined.";
+        }
+        {
           # sha256 = null is allowed (skips verification; set after first deploy).
           # sha256 = "..." must be 64 hex chars if provided.
           assertion = !hasAutoDownload || llama.sha256 == null || hfSha256Valid;
@@ -1108,9 +1104,12 @@ in {
           # model weights are fetched by a separate dedicated download service.
           IPAddressAllow = ["127.0.0.1/8" "::1/128"];
           IPAddressDeny = ["any"];
+          RestrictAddressFamilies = ["AF_UNIX" "AF_INET" "AF_INET6"];
+          CapabilityBoundingSet = ["CAP_IPC_LOCK"];
           # Security hardening
           PrivateTmp = true;
           NoNewPrivileges = true;
+          AppArmorProfile = "ai-llama-cpp";
           ProtectSystem = "strict";
           ProtectHome = "read-only";
           ProtectKernelTunables = true;
@@ -1666,8 +1665,8 @@ in {
         profile = ''
           #include <tunables/global>
           # Phase 12.1.1 — llama-cpp inference server confinement
-          # Binary path uses glob to survive Nix store hash changes on rebuilds.
-          profile ai-llama-cpp /nix/store/*/bin/llama-server {
+          # Bind both by executable path and systemd's explicit profile name.
+          profile ai-llama-cpp ${pkgs.llama-cpp}/bin/llama-server {
             #include <abstractions/base>
 
             # --- Nix store access (executables, libraries, shared data) ------

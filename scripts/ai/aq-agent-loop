@@ -40,10 +40,13 @@ _SCRIPT_DIR = Path(__file__).resolve().parent
 _REPO_ROOT = _SCRIPT_DIR.parent.parent
 _LOCAL_AGENTS = _REPO_ROOT / "ai-stack" / "local-agents"
 _BUILTIN_TOOLS = _LOCAL_AGENTS / "builtin_tools"
+_CAPABILITY_MANIFEST = _REPO_ROOT / "config" / "local-agent-capability-manifest.json"
 
-for _p in [str(_LOCAL_AGENTS), str(_BUILTIN_TOOLS)]:
+for _p in [str(_SCRIPT_DIR / "lib"), str(_LOCAL_AGENTS), str(_BUILTIN_TOOLS)]:
     if _p not in sys.path:
         sys.path.insert(0, _p)
+
+from local_skill_projection import select_local_skills
 
 # ── imports from Phase 11 infrastructure ─────────────────────────────────────
 
@@ -107,18 +110,81 @@ _SLIM_TOOLS = frozenset({
     # ORIENT/RESEARCH phases — required for grounding before implementation
     "get_hint", "query_aidb",
 })
+_COMMIT_TOOLS = frozenset({"git_add", "git_commit"})
+
+
+def _local_commit_enabled() -> bool:
+    return os.environ.get("AQ_LOCAL_ALLOW_COMMIT", "").strip().lower() in {"1", "true", "yes", "on"}
+
+
+def _load_enabled_capabilities(tool_manifest: str) -> frozenset[str]:
+    """Read the closed model-visible declaration for one local-agent profile."""
+    try:
+        raw = json.loads(_CAPABILITY_MANIFEST.read_text(encoding="utf-8"))
+    except Exception as exc:
+        raise RuntimeError("local_agent_capability_manifest_unavailable") from exc
+    quarantined = raw.get("quarantined_capabilities") if isinstance(raw, dict) else None
+    if (
+        not isinstance(raw, dict)
+        or set(raw) != {"version", "profiles", "conditional_hidden_capabilities", "quarantined_capabilities"}
+        or raw.get("version") != "local-agent-capability-manifest.v2"
+        or not isinstance(raw.get("profiles"), dict)
+        or set(raw["profiles"]) != {"full", "self-improvement"}
+        or not isinstance(raw["profiles"].get(tool_manifest), list)
+        or not isinstance(raw.get("conditional_hidden_capabilities"), dict)
+        or set(raw["conditional_hidden_capabilities"]) != _COMMIT_TOOLS
+        or any(
+            not isinstance(value, dict)
+            or set(value) != {"reason_code", "enabled_by_default"}
+            or value.get("enabled_by_default") is not False
+            or not isinstance(value.get("reason_code"), str)
+            or not value["reason_code"]
+            for value in raw["conditional_hidden_capabilities"].values()
+        )
+        or not isinstance(quarantined, dict)
+        or any(
+            not isinstance(name, str)
+            or not isinstance(value, dict)
+            or set(value) != {"reason_code", "enabled"}
+            or value.get("enabled") is not False
+            or not isinstance(value.get("reason_code"), str)
+            or not value["reason_code"]
+            for name, value in quarantined.items()
+        )
+    ):
+        raise RuntimeError("local_agent_capability_manifest_invalid")
+    enabled = raw["profiles"][tool_manifest]
+    if (
+        not enabled
+        or any(not isinstance(name, str) or not name for name in enabled)
+        or len(enabled) != len(set(enabled))
+        or list(enabled) != sorted(enabled)
+        or set(enabled) & _COMMIT_TOOLS
+    ):
+        raise RuntimeError("local_agent_capability_manifest_invalid")
+    return frozenset(enabled) | (_COMMIT_TOOLS if _local_commit_enabled() else frozenset())
+
+
+def _ensure_registry_reachability(registry: ToolRegistry, declared: frozenset[str]) -> None:
+    """Fail closed if this entrypoint's declared and registered tools diverge."""
+    registered = set(registry.tools)
+    missing = declared - registered
+    unexpected = registered - declared
+    if missing or unexpected:
+        raise RuntimeError("local_agent_capability_reachability_mismatch")
 
 
 def build_registry(tool_manifest: str = "full") -> ToolRegistry:
     """Create a fresh ToolRegistry populated with coding tools.
 
     tool_manifest:
-      "full"             — all 29 tools (default; research/multi-step tasks)
-      "self-improvement" — 10 tools for self-improvement slices:
-                           read_file, edit_file, write_file, run_command, git_add, git_commit,
+      "full"             — all default model-visible tools (research/multi-step tasks)
+      "self-improvement" — 8 tools for self-improvement slices:
+                           read_file, edit_file, write_file, run_command,
                            store_memory, validate_before_commit, get_hint, query_aidb.
                            Reduces schema from ~2507 tokens to ~750 tokens — saves ~1.8 min/call
-                           on Renoir APU (10 tok/s prefill). get_hint/query_aidb enable ORIENT/RESEARCH phases.
+                           on Renoir APU (10 tok/s prefill). git_add/git_commit are hidden by
+                           default; get_hint/query_aidb enable ORIENT/RESEARCH phases.
     """
     registry = ToolRegistry()
     register_file_tools(registry)
@@ -145,6 +211,12 @@ def build_registry(tool_manifest: str = "full") -> ToolRegistry:
         for _tool_name in list(registry.tools):
             if _tool_name not in _SLIM_TOOLS:
                 registry.unregister(_tool_name)
+    elif tool_manifest != "full":
+        raise RuntimeError("local_agent_capability_profile_unknown")
+    if not _local_commit_enabled():
+        for _tool_name in _COMMIT_TOOLS:
+            registry.unregister(_tool_name)
+    _ensure_registry_reachability(registry, _load_enabled_capabilities(tool_manifest))
     return registry
 
 
@@ -290,6 +362,7 @@ async def run_task(
     )
 
     task_id = f"aq-{int(time.time())}"
+    skill_projection = select_local_skills(task_text, repo_root=_REPO_ROOT)
     task = Task(
         id=task_id,
         objective=task_text,
@@ -297,12 +370,20 @@ async def run_task(
         quality_critical=False,
         role=role,       # None = auto-assign from AGENT_TYPE_DEFAULT_ROLE mapping
         task_type=task_type,  # None = default agent profile; "research"/"deep_reasoning" enable thinking
+        context={
+            "local_skill_projection_status": skill_projection.status,
+            "local_skill_names": list(skill_projection.skill_names),
+            "local_skill_projection_reason": skill_projection.reason,
+            "_local_skill_projection": skill_projection.prompt,
+        },
     )
 
     print(f"[aq-agent-loop] Task: {task_id}")
     print(f"[aq-agent-loop] Objective: {task_text[:120]}{'...' if len(task_text) > 120 else ''}")
     print("[aq-agent-loop] Tool calls: progress-guarded (no fixed ceiling)")
     print(f"[aq-agent-loop] Fallback: {'enabled' if allow_fallback else 'disabled (local only)'}")
+    if skill_projection.status != "selected":
+        print(f"[aq-agent-loop] Skill projection: degraded ({skill_projection.reason})")
     print(f"[aq-agent-loop] Running...\n")
 
     start = time.time()

@@ -1,0 +1,69 @@
+#!/usr/bin/env bash
+set -euo pipefail
+
+message_file="${1:?commit message path required}"
+branch="$(git symbolic-ref --quiet --short HEAD 2>/dev/null || true)"
+case "${branch}" in
+  main|master) ;;
+  *) exit 0 ;;
+esac
+
+mapfile -t staged_paths < <(git diff --cached --name-only --diff-filter=ACMRT)
+[[ ${#staged_paths[@]} -eq 0 ]] && exit 0
+
+staged_lines="$({ git diff --cached --numstat || true; } | awk '{ added += $1; removed += $2 } END { print added + removed + 0 }')"
+if [[ ${#staged_paths[@]} -eq 1 && "${staged_lines}" -le 1 ]]; then
+  exit 0
+fi
+
+field() {
+  local key="$1"
+  sed -n "s/^${key}:[[:space:]]*//p" "${message_file}" | tail -n 1
+}
+
+disposition="$(field Review-Disposition)"
+case "${disposition}" in
+  ACCEPTED)
+    [[ "$(field Independent-Review)" == "PASS" ]] || {
+      echo "commit-msg: ACCEPTED requires Independent-Review: PASS" >&2
+      exit 1
+    }
+    [[ "$(field Reviewed-subject-sha256)" =~ ^[0-9a-f]{64}$ ]] || {
+      echo "commit-msg: ACCEPTED requires a lowercase Reviewed-subject-sha256" >&2
+      exit 1
+    }
+    [[ -n "$(field Reviewed-by)" ]] || {
+      echo "commit-msg: ACCEPTED requires a truthful Reviewed-by identity" >&2
+      exit 1
+    }
+    ;;
+  IMPLEMENTED_FOLLOWUP_REQUIRED)
+    [[ "$(field Safe-At-Rest)" == "true" ]] || {
+      echo "commit-msg: forward integration requires Safe-At-Rest: true" >&2
+      exit 1
+    }
+    [[ "$(field Activation-Authority)" == "false" ]] || {
+      echo "commit-msg: forward integration requires Activation-Authority: false" >&2
+      exit 1
+    }
+    [[ -n "$(field Next-Slice)" ]] || {
+      echo "commit-msg: forward integration requires a bounded Next-Slice" >&2
+      exit 1
+    }
+    ;;
+  ACTIVATION_BLOCKED|REJECTED)
+    echo "commit-msg: ${disposition} work must remain isolated from ${branch}" >&2
+    exit 1
+    ;;
+  *)
+    echo "commit-msg: non-trivial ${branch} commits require a terminal Review-Disposition" >&2
+    exit 1
+    ;;
+esac
+
+subject="$(sed -n '1p' "${message_file}")"
+if grep -Eiq '(^|[^[:alpha:]])provisional([^[:alpha:]]|$)' <<<"${subject}" \
+    || [[ "$(field Integration-State)" == "provisional" ]]; then
+  echo "commit-msg: provisional work must remain on an isolated branch/worktree" >&2
+  exit 1
+fi

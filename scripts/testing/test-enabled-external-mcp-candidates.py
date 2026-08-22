@@ -5,10 +5,12 @@ from __future__ import annotations
 
 import json
 import subprocess
+import subprocess
 from pathlib import Path
 
 
 ROOT = Path(__file__).resolve().parents[2]
+PLAYWRIGHT_LAUNCHER = ROOT / "scripts/ai/mcp-playwright-sandboxed"
 
 
 def load_json(path: str):
@@ -26,6 +28,31 @@ def assert_playwright_config(entry: dict) -> None:
     assert "--headless" in args, "Playwright MCP must run headless by default"
     assert "--block-service-workers" in args, "service workers must be blocked"
     assert "--allowed-origins" in args, "allowed origins must be explicit"
+
+
+def assert_playwright_quarantined(candidate: dict) -> None:
+    assert candidate["state"] == "quarantined", "Playwright must remain quarantined without enforce-mode confinement"
+    assert candidate["review_status"] == "incomplete", "Playwright must not claim acceptance while confinement is unavailable"
+    assert candidate["permissions"]["network"] is False, "quarantined Playwright must grant no network authority"
+    assert candidate.get("blocked_reason"), "quarantined Playwright must explain its confinement block"
+    assert candidate.get("unblock_condition"), "quarantined Playwright must define a future activation gate"
+
+    launcher = PLAYWRIGHT_LAUNCHER.read_text(encoding="utf-8")
+    assert "verify_apparmor_confinement" in launcher
+    assert 'grep -Fqx "${APPARMOR_PROFILE} (enforce)" "${APPARMOR_PROFILES_PATH}" 2>/dev/null' in launcher
+    assert 'exec aa-exec -p "${APPARMOR_PROFILE}" -- npx' in launcher
+    assert "exec systemd-run --user" not in launcher, "unverified user-scope fallback must not execute Playwright"
+
+    checked = subprocess.run(
+        [str(PLAYWRIGHT_LAUNCHER), "--check-confinement"],
+        cwd=ROOT,
+        text=True,
+        capture_output=True,
+        check=False,
+        timeout=5,
+    )
+    assert checked.returncode != 0, "current quarantined Playwright launcher must refuse unavailable confinement"
+    assert "UNAVAILABLE" in checked.stderr, checked.stderr
 
 
 def assert_semgrep_config(entry: dict) -> None:
@@ -80,7 +107,7 @@ def main() -> int:
     assert_semgrep_config(cont_semgrep)
 
     candidates = {item["id"]: item for item in registry["candidates"]}
-    assert_enabled_candidate(candidates["playwright-mcp"], "0.0.76")
+    assert_playwright_quarantined(candidates["playwright-mcp"])
     assert "@playwright/mcp@0.0.76" in candidates["playwright-mcp"]["install"]["args"]
     assert_enabled_candidate(candidates["github-mcp-readonly"], "0.20.2")
     assert candidates["github-mcp-readonly"]["install"]["args"][0] == "--read-only"

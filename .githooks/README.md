@@ -16,6 +16,14 @@ git config core.hooksPath .githooks
 
 ## Available Hooks
 
+### commit-msg
+
+On protected integration branches (`main`/`master`), non-trivial commits require a
+terminal `Review-Disposition`. `ACCEPTED` requires hash-bound independent PASS
+evidence. `IMPLEMENTED_FOLLOWUP_REQUIRED` is allowed only when the subject is
+explicitly safe at rest, has no activation authority, and names its bounded next
+slice. `ACTIVATION_BLOCKED`, `REJECTED`, and provisional work stay isolated.
+
 ### pre-commit
 
 Runs fast commit-time governance and safety checks:

@@ -25,26 +25,21 @@ Two DIFFERENT kinds of config axis behave differently against a fixed cassette:
 SAFETY (Tier-0): replaying a cassette runs its recorded tool calls through the SAME
 `_execute_with_tools` loop a live run uses — including run_command/write_file/
 write_region. By DEFAULT this bench stubs the tool registry (--mock-tools, the
-default): every registered tool's HANDLER is replaced with a no-op that returns a
-canned success result WITHOUT touching disk or shell. Tool name/description/
+default): every registered tool's HANDLER returns cassette-v2's exact, bounded
+post-format recorded result WITHOUT touching disk or shell. Tool name/description/
 parameters are left untouched (they're baked into the system prompt and are part of
 the cassette request key), so TURN 1 of a replay lookup behaves identically to a
 --live-tools run either way. Pass --live-tools to opt IN to executing a cassette's
 recorded tool calls for real; this is what you want only when you deliberately
 intend to re-run those side effects against this host.
 
-KNOWN TRADEOFF (mock-tools + multi-turn cassettes): a cassette's turn-N+1 request key
-is a hash that includes turn-N's tool RESULT (it's appended to the message history
-the model sees). If the cassette was recorded with tools executing for real (the old,
-unsafe default), turn-2+'s recorded key reflects that REAL result content. Under
---mock-tools (the safe default), the stubbed result differs from the real one, so the
-request key for turn 2+ legitimately MISSES even though turn 1 hits cleanly — this is
-expected, not a bug: it's the direct cost of never re-running a cassette's recorded
-side effects. Turn-1-only cassettes (most loop-side config A/B scenarios — grammar,
-read_file_gate, interventions) are unaffected. For a cassette whose tool calls are
-read-only and DETERMINISTIC (e.g. `echo`, `git status`), --live-tools reproduces the
-exact recorded environment and all turns hit; only pass it when you've confirmed the
-cassette's tool calls are safe to re-run.
+MULTI-TURN REPLAY: cassette format v2 records each bounded, secret-screened,
+post-format tool result with its SHA-256 at the next model turn. --mock-tools consumes
+that evidence in call order, so turn-N+1 hashes the same message history without
+executing the original side effect. A legacy cassette or missing, malformed, mismatched,
+or exhausted evidence fails closed with ReplayToolEvidenceError; it is never replaced
+with a generic success stub. --live-tools remains an explicit opt-in for deliberate
+live re-runs.
 
 Usage:
     aq-replay-bench --cassette path/to/run.jsonl \\
@@ -125,26 +120,73 @@ def _resolve_registrar(dotted: str):
 # untouched, only the side-effecting execution is skipped.
 # ---------------------------------------------------------------------------
 
-def _make_mock_tool_handler(tool_name: str):
-    async def _mock_handler(**_kwargs) -> Dict[str, Any]:
-        return {
-            "success": True,
-            "mocked": True,
-            "tool": tool_name,
-            "note": (
-                "aq-replay-bench: tool execution stubbed by --mock-tools (the default) — "
-                "no disk/shell side effects. Pass --live-tools to execute for real."
-            ),
-        }
-    return _mock_handler
+def _load_recorded_tool_outputs(cassette_path: str) -> List[Dict[str, str]]:
+    """Read versioned, bounded evidence in cassette order; legacy rows supply none."""
+    outputs: List[Dict[str, str]] = []
+    for line in Path(cassette_path).read_text(encoding="utf-8").splitlines():
+        row = json.loads(line)
+        meta = row.get("meta", {})
+        evidence_rows = meta.get("tool_output_evidence", [])
+        if evidence_rows and meta.get("cassette_format_version") != llm_cassette.CASSETTE_FORMAT_VERSION:
+            raise ValueError("ReplayToolEvidenceError: unsupported cassette evidence version")
+        if not isinstance(evidence_rows, list):
+            raise ValueError("ReplayToolEvidenceError: tool-output evidence must be a list")
+        for evidence in evidence_rows:
+            normalized = llm_cassette.normalize_tool_output_evidence(evidence)
+            if normalized is None:
+                raise ValueError("ReplayToolEvidenceError: malformed or mismatched tool-output evidence")
+            outputs.append({
+                "tool_name": normalized["tool_name"],
+                "result_content": normalized["result_content"],
+            })
+    return outputs
 
 
-def _apply_mock_tools(registry: "ToolRegistry") -> None:
-    """Replace every already-registered tool's handler with the no-op stub above.
-    Must run AFTER register_*_tools() so the schema (name/description/parameters)
-    registered into the system prompt is identical to a --live-tools run."""
-    for name, tool in registry.tools.items():
-        tool.handler = _make_mock_tool_handler(name)
+def _apply_mock_tools(registry: "ToolRegistry", outputs: List[Dict[str, str]]) -> None:
+    """Replay exact formatted results through a side-effect-free registry seam.
+
+    The recorded value is the exact model-facing ``format_tool_result`` envelope,
+    not just a raw handler value. Reconstructing ToolCall state here lets the normal
+    formatter reproduce that envelope on the next turn; a generic handler result
+    would nest it and change the cassette key. The replacement is installed only
+    after tool registration, preserving the system-prompt schema surface.
+    """
+    async def _replay_execute(tool_call):
+        def _fail(message: str):
+            tool_call.status = "failed"
+            tool_call.error = f"ReplayToolEvidenceError: {message}"
+            tool_call.result = None
+            tool_call.execution_time_ms = 0.0
+            return tool_call
+
+        if not outputs:
+            return _fail("missing recorded tool-output evidence")
+        evidence = outputs.pop(0)
+        if evidence["tool_name"] != tool_call.tool_name:
+            return _fail("tool-output evidence name mismatch")
+        try:
+            envelope = json.loads(evidence["result_content"])
+        except json.JSONDecodeError:
+            return _fail("evidence is not a JSON formatted tool result")
+        if not isinstance(envelope, dict) or envelope.get("tool") != tool_call.tool_name:
+            return _fail("formatted tool result does not bind the invoked tool")
+        if envelope.get("status") == "success" and isinstance(envelope.get("result"), str):
+            raw_result = envelope["result"]
+            try:
+                tool_call.result = json.loads(raw_result)
+            except json.JSONDecodeError:
+                tool_call.result = raw_result
+            tool_call.status = "completed"
+            tool_call.error = None
+            tool_call.execution_time_ms = 0.0
+            return tool_call
+        if envelope.get("status") == "error" and isinstance(envelope.get("error"), str):
+            return _fail(envelope["error"])
+        return _fail("invalid formatted tool-result envelope")
+
+    # The executor exclusively uses execute_tool_call. Replace it rather than each
+    # handler so replay can preserve both completed and failed ToolCall formatting.
+    registry.execute_tool_call = _replay_execute
 
 
 # ---------------------------------------------------------------------------
@@ -254,9 +296,15 @@ async def _run_one(
             # Default safety gate — see module docstring + _apply_mock_tools(). Must
             # run AFTER all register_*_tools() calls above so the registered
             # schema (system-prompt / request-key surface) is unaffected.
-            _apply_mock_tools(registry)
+            _apply_mock_tools(registry, _load_recorded_tool_outputs(cassette_path))
 
         executor = LocalAgentExecutor(tool_registry=registry, fallback_endpoint="")
+        if mock_tools:
+            async def _no_replay_event(*_args, **_kwargs):
+                return None
+            # Replay is a hermetic comparison, not a live run. Avoid emitting host
+            # telemetry while preserving the complete agent/tool loop behavior.
+            executor._emit_agent_event = _no_replay_event
         task = Task(id="replay-bench", objective=objective, task_type=task_type)
 
         failure_modes: Counter = Counter()

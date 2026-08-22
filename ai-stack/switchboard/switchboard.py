@@ -2052,6 +2052,53 @@ def _local_lane_status(local_runtime: dict | None) -> str:
         return "degraded"
     return "unknown"
 
+
+def _local_lane_health(local_runtime: dict | None) -> tuple[str, str, dict]:
+    """Fail closed from fresh completion evidence and the local llama breaker."""
+    if not isinstance(local_runtime, dict):
+        return "unknown", "local_runtime_unknown", {}
+    breaker = LOCAL_CIRCUIT_BREAKERS.get_all_states().get("llama", {})
+    evidence = {"breaker": breaker}
+    if breaker.get("state") == CircuitState.OPEN.value:
+        return "unavailable", "local_breaker_open", evidence
+    try:
+        failure_count = int(breaker.get("failure_count") or 0)
+        success_count = int(breaker.get("success_count") or 0)
+    except (TypeError, ValueError):
+        return "degraded", "invalid_local_breaker_evidence", evidence
+    if failure_count < 0 or success_count < 0:
+        return "degraded", "invalid_local_breaker_evidence", evidence
+    last = local_runtime.get("last_completion")
+    if last is None:
+        if failure_count > 0 and success_count == 0:
+            return "degraded", "local_breaker_failures_without_success", evidence
+        return "unknown", "local_completion_unproven", evidence
+    if not isinstance(last, dict):
+        return "degraded", "invalid_local_completion_evidence", evidence
+    evidence["last_completion"] = {
+        key: last.get(key) for key in ("status_code", "age_s", "path", "profile")
+    }
+    try:
+        completion_age_s = float(last.get("age_s"))
+        completion_status = int(last.get("status_code"))
+    except (TypeError, ValueError):
+        return "degraded", "invalid_local_completion_evidence", evidence
+    if (not math.isfinite(completion_age_s) or completion_age_s < 0
+            or completion_status < 100 or completion_status > 599):
+        return "degraded", "invalid_local_completion_evidence", evidence
+    if completion_age_s > LOCAL_BUSY_WARN_S:
+        return "unknown", "local_completion_stale", evidence
+    if not 200 <= completion_status < 300:
+        return "degraded", "fresh_local_completion_failed", evidence
+    if failure_count > 0 and success_count == 0:
+        return "degraded", "local_breaker_failures_without_success", evidence
+    lane = _local_lane_status(local_runtime)
+    if lane == "available":
+        return "available", "local_slot_available", evidence
+    if lane in {"busy", "busy-long-running"}:
+        return "degraded", f"local_{lane.replace('-', '_')}", evidence
+    return "unknown", "local_availability_unknown", evidence
+
 def _truncate_text_to_token_budget(text: str, max_tokens: int) -> str:
     raw = str(text or "")
     if max_tokens <= 0 or _estimate_tokens(raw) <= max_tokens:
@@ -3015,7 +3062,12 @@ def _routing_stats_snapshot() -> dict:
 @app.get("/health")
 async def health():
     local_runtime = await _local_runtime_health_snapshot()
-    local_lane_status = _local_lane_status(local_runtime)
+    local_lane_runtime_status = _local_lane_status(local_runtime)
+    local_lane_health, local_lane_reason, local_lane_evidence = _local_lane_health(local_runtime)
+    # ``local_lane_status`` is the compatibility field consumed by callers.  It
+    # must therefore carry the fail-closed health verdict rather than merely
+    # the semaphore capacity observation.
+    local_lane_status = local_lane_health
     return {
         "status": "ok",
         "routing_mode": ROUTING_MODE,
@@ -3039,6 +3091,10 @@ async def health():
         },
         "local_runtime": local_runtime,
         "local_lane_status": local_lane_status,
+        "local_lane_runtime_status": local_lane_runtime_status,
+        "local_lane_health": local_lane_health,
+        "local_lane_reason": local_lane_reason,
+        "local_lane_evidence": local_lane_evidence,
         "circuit_breakers": {
             "local": LOCAL_CIRCUIT_BREAKERS.get_all_states(),
             "remote": REMOTE_CIRCUIT_BREAKERS.get_all_states()
