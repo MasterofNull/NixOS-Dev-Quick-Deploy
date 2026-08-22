@@ -83,11 +83,31 @@ _LOCAL_GBNF_REPAIR_ENABLED = _LOCAL_GBNF_ALWAYS_ENABLED or _LOCAL_GBNF_MODE in (
 # Record/replay harness (velocity multiplier — deterministic offline replay of local
 # inference; see .agents/plans/record-replay-harness/DESIGN.md). Default-OFF
 # (AQ_LLM_CASSETTE_MODE unset -> "off") is a strict no-op in _call_llama; wrapped in
-# try/except so a broken/missing module never disrupts live inference.
+# try/except so a broken/missing module never disrupts live inference in that default
+# case. BUT: if the operator explicitly requested replay/replay-record (the env var
+# is already set at import time), an import failure here must NOT silently degrade to
+# live inference — that would defeat replay's "no network" guarantee and mask a real
+# regression as a false pass. Fail closed by re-raising in that one case.
 try:
     import llm_cassette  # noqa: E402  (same dir: ai-stack/local-agents/)
-except Exception:  # noqa: BLE001 — never let an optional import break the executor
+except Exception as _cassette_import_err:  # noqa: BLE001
     llm_cassette = None  # type: ignore
+    _requested_cassette_mode = os.environ.get("AQ_LLM_CASSETTE_MODE", "").strip().lower()
+    if _requested_cassette_mode in ("replay", "replay-record"):
+        raise RuntimeError(
+            f"llm_cassette import failed but AQ_LLM_CASSETTE_MODE={_requested_cassette_mode!r} "
+            "was requested — refusing to silently fall back to live inference."
+        ) from _cassette_import_err
+
+# Hard-error exceptions from the record/replay harness that must NEVER be masked by a
+# generic transient-retry catch (see the LLM-call retry block in _execute_with_tools):
+# a strict-replay miss, a replay misconfiguration, or a payload digest mismatch are
+# deliberate fail-closed signals, not transport flakiness.
+_CASSETTE_HARD_EXCEPTIONS: Tuple[type, ...] = (
+    (llm_cassette.ReplayMiss, llm_cassette.ReplayConfigError, llm_cassette.ReplayDigestMismatch)
+    if llm_cassette is not None
+    else ()
+)
 
 # P1 (closed-local-improvement-loop): capture local failures as labeled training samples.
 try:
@@ -1525,6 +1545,14 @@ class LocalAgentExecutor:
                     task_id=task.id,
                     call_number=tool_call_count + 1,
                 )
+            except _CASSETTE_HARD_EXCEPTIONS:
+                # A strict-replay miss / replay misconfiguration / payload digest
+                # mismatch is a deliberate fail-closed signal from the record/replay
+                # harness, not a transient transport failure — propagate untouched.
+                # Retrying here would mask it behind a mis-parameterized (task_type
+                # dropped) second call, silently replaying the wrong thing instead of
+                # surfacing the regression.
+                raise
             except Exception as _llm_err:
                 # Retry once with reduced budget on transient failures (timeout, connection drop).
                 logger.warning(
@@ -1535,6 +1563,7 @@ class LocalAgentExecutor:
                     messages,
                     role=role,
                     max_tokens=512,
+                    task_type=task.task_type,
                     task_id=task.id,
                     call_number=tool_call_count + 1,
                 )

@@ -22,6 +22,30 @@ Two DIFFERENT kinds of config axis behave differently against a fixed cassette:
   in the table, not a crash. To A/B a model-request-shape flag for real, record a
   separate cassette per value and point --cassette at each in turn.
 
+SAFETY (Tier-0): replaying a cassette runs its recorded tool calls through the SAME
+`_execute_with_tools` loop a live run uses — including run_command/write_file/
+write_region. By DEFAULT this bench stubs the tool registry (--mock-tools, the
+default): every registered tool's HANDLER is replaced with a no-op that returns a
+canned success result WITHOUT touching disk or shell. Tool name/description/
+parameters are left untouched (they're baked into the system prompt and are part of
+the cassette request key), so TURN 1 of a replay lookup behaves identically to a
+--live-tools run either way. Pass --live-tools to opt IN to executing a cassette's
+recorded tool calls for real; this is what you want only when you deliberately
+intend to re-run those side effects against this host.
+
+KNOWN TRADEOFF (mock-tools + multi-turn cassettes): a cassette's turn-N+1 request key
+is a hash that includes turn-N's tool RESULT (it's appended to the message history
+the model sees). If the cassette was recorded with tools executing for real (the old,
+unsafe default), turn-2+'s recorded key reflects that REAL result content. Under
+--mock-tools (the safe default), the stubbed result differs from the real one, so the
+request key for turn 2+ legitimately MISSES even though turn 1 hits cleanly — this is
+expected, not a bug: it's the direct cost of never re-running a cassette's recorded
+side effects. Turn-1-only cassettes (most loop-side config A/B scenarios — grammar,
+read_file_gate, interventions) are unaffected. For a cassette whose tool calls are
+read-only and DETERMINISTIC (e.g. `echo`, `git status`), --live-tools reproduces the
+exact recorded environment and all turns hit; only pass it when you've confirmed the
+cassette's tool calls are safe to re-run.
+
 Usage:
     aq-replay-bench --cassette path/to/run.jsonl \\
         --configs read_file_gate=0,1 noaction_intervention=0,1 \\
@@ -32,6 +56,11 @@ Usage:
     aq-replay-bench --cassette /tmp/golden.jsonl \\
         --objective "Run the probe command with run_command and report the result." \\
         --task-type research --configs read_file_gate=0,1
+
+    # Opt IN to executing the cassette's recorded tool calls for real (dangerous —
+    # only for a deliberate live re-run, never for routine offline A/B):
+    aq-replay-bench --cassette /tmp/golden.jsonl --live-tools \\
+        --objective "..." --task-type research
 
 Extending to a real multi-task set: replace `_load_tasks()` with a loader that reads a
 JSON list of {objective, task_type, target} rows (one recorded cassette per task, keyed
@@ -84,6 +113,38 @@ def _resolve_registrar(dotted: str):
     mod_name, func_name = dotted.split(":", 1)
     mod = importlib.import_module(mod_name)
     return getattr(mod, func_name)
+
+
+# ---------------------------------------------------------------------------
+# Tool-execution safety gate (CRITICAL fix, verified 2026-08-21 review): replay
+# drives tool calls through the real _execute_with_tools loop, so an unstubbed
+# registry EXECUTES a cassette's recorded run_command/write_file/write_region calls
+# LIVE on this host. mock-tools (the default) prevents that by swapping each
+# registered tool's .handler for a no-op stub AFTER registration — name/description/
+# parameters (what's baked into the system prompt / cassette request key) are left
+# untouched, only the side-effecting execution is skipped.
+# ---------------------------------------------------------------------------
+
+def _make_mock_tool_handler(tool_name: str):
+    async def _mock_handler(**_kwargs) -> Dict[str, Any]:
+        return {
+            "success": True,
+            "mocked": True,
+            "tool": tool_name,
+            "note": (
+                "aq-replay-bench: tool execution stubbed by --mock-tools (the default) — "
+                "no disk/shell side effects. Pass --live-tools to execute for real."
+            ),
+        }
+    return _mock_handler
+
+
+def _apply_mock_tools(registry: "ToolRegistry") -> None:
+    """Replace every already-registered tool's handler with the no-op stub above.
+    Must run AFTER register_*_tools() so the schema (name/description/parameters)
+    registered into the system prompt is identical to a --live-tools run."""
+    for name, tool in registry.tools.items():
+        tool.handler = _make_mock_tool_handler(name)
 
 
 # ---------------------------------------------------------------------------
@@ -171,6 +232,7 @@ async def _run_one(
     max_tool_calls: int,
     target: Optional[str],
     extra_tools: List[str],
+    mock_tools: bool,
 ) -> Dict[str, Any]:
     """Replay ONE recorded conversation through the real _execute_with_tools loop
     under the currently-applied config, and tabulate metrics."""
@@ -188,6 +250,11 @@ async def _run_one(
             if not dotted:
                 raise SystemExit(f"--extra-tools: unknown tool set {name!r} (known: {', '.join(_EXTRA_TOOL_REGISTRARS)})")
             _resolve_registrar(dotted)(registry)
+        if mock_tools:
+            # Default safety gate — see module docstring + _apply_mock_tools(). Must
+            # run AFTER all register_*_tools() calls above so the registered
+            # schema (system-prompt / request-key surface) is unaffected.
+            _apply_mock_tools(registry)
 
         executor = LocalAgentExecutor(tool_registry=registry, fallback_endpoint="")
         task = Task(id="replay-bench", objective=objective, task_type=task_type)
@@ -270,7 +337,24 @@ def main() -> int:
         help=f"Additional tool sets to register beyond shell (must match what the cassette was "
              f"recorded with, or turn 1 will MISS). Known: {', '.join(sorted(_EXTRA_TOOL_REGISTRARS))}.",
     )
+    ap.add_argument(
+        "--mock-tools", action="store_true",
+        help="Explicit restatement of the DEFAULT: tool execution is stubbed (no disk/shell "
+             "side effects). Mutually exclusive with --live-tools; provided for clarity/scripting.",
+    )
+    ap.add_argument(
+        "--live-tools", action="store_true",
+        help="DANGEROUS opt-in: execute the cassette's recorded tool calls "
+             "(run_command/write_file/write_region/...) LIVE against this host's disk/shell, "
+             "instead of the default mock-tools stub. Replay's whole point is deterministic "
+             "OFFLINE A/B — only pass this if you deliberately want to re-run a cassette's "
+             "recorded side effects for real.",
+    )
     args = ap.parse_args()
+
+    if args.mock_tools and args.live_tools:
+        raise SystemExit("--mock-tools and --live-tools are mutually exclusive")
+    mock_tools = not args.live_tools  # mock-tools is the DEFAULT; --live-tools opts out
 
     if not Path(args.cassette).exists():
         raise SystemExit(f"cassette not found: {args.cassette}")
@@ -287,13 +371,17 @@ def main() -> int:
 
         result = asyncio.run(_run_one(
             args.cassette, args.objective, args.task_type, args.max_tool_calls, args.target,
-            args.extra_tools,
+            args.extra_tools, mock_tools,
         ))
         rows.append({"config": config_desc, **result})
 
     # --- table ---
     header_cfg = ", ".join(axis_names) if axis_names else "(no axes — single run)"
     print(f"aq-replay-bench — cassette={args.cassette}")
+    if mock_tools:
+        print("tool execution: MOCK (default) — no disk/shell side effects; --live-tools to opt in")
+    else:
+        print("tool execution: LIVE — recorded tool calls WILL execute for real (run_command/write_file/write_region/...)")
     print(f"config axes: {header_cfg}")
     print("-" * 100)
     print(f"{'config':<32} {'calls':>5} {'valid%':>7} {'edit%':>6} {'correct':>8} {'rejects':>8} {'result'}")

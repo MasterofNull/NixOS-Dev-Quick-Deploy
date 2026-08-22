@@ -20,12 +20,18 @@ Modes (env AQ_LLM_CASSETTE_MODE, default "off"):
     replay-record  — replay on hit; live + record on miss (grows a cassette
                      incrementally).
 
-Everything in this module is stdlib-only (hashlib/json/os) and fails SAFE: any
-internal error (corrupt cassette line, unwritable path, etc) is logged and swallowed,
-never propagated into the caller's live inference path. The one deliberate exception
-is `ReplayMiss`, raised only when the operator has explicitly asked for
-AQ_LLM_CASSETTE_ON_MISS=error (the default in `replay` mode) — that is a signal, not a
-bug.
+Everything in this module is stdlib-only (hashlib/json/os) and fails SAFE for
+RECORDING (a write-side error never breaks the caller's live inference path). REPLAY
+is the opposite: it fails CLOSED. Replay's entire value proposition is "no network" —
+so a broken replay configuration (bad mode string, missing cassette path, a corrupt
+lookup, a key hit whose full payload digest doesn't match) must never silently
+degrade to a live call, because that would mask a real regression as a false pass.
+The deliberate hard-error exceptions are `ReplayMiss` (no recorded row for a strict
+lookup), `ReplayConfigError` (misconfiguration / internal replay failure), and
+`ReplayDigestMismatch` (a key matched but the full payload differs) — none of these
+are ever swallowed on the replay path. Live fallback on a clean miss is permitted
+ONLY under the explicitly-named `replay-record` mode or an `on_miss=passthrough`
+policy — both are opt-in, never a silent default.
 """
 
 from __future__ import annotations
@@ -38,13 +44,23 @@ import time
 from pathlib import Path
 from typing import Any, Dict, List, Optional, Tuple
 
+try:
+    import fcntl
+except ImportError:  # pragma: no cover — non-POSIX platform; record() fails safe below.
+    fcntl = None  # type: ignore
+
 logger = logging.getLogger(__name__)
 
-# Fields considered part of the SEMANTIC request identity. Everything else in a
-# build_llama_payload() dict (chat_template_kwargs, repeat_penalty, repeat_last_n,
-# cache_prompt, stream_options, ...) is volatile/derived and deliberately excluded so
-# the key is stable across runs that only differ in those knobs.
+# Fields considered part of the SEMANTIC/behavioral request identity — everything
+# that can change what the model actually generates. Hashed into request_key().
+# Anything NOT in this list (cache_prompt, repeat_last_n, stream_options, ...) is a
+# perf/transport knob that never changes model output and is deliberately excluded
+# so the key stays stable across runs that only differ in those. NOTE: the full raw
+# payload (including those excluded knobs) is separately hashed into payload_digest
+# and verified on every lookup (see Cassette.lookup) as a belt-and-suspenders check
+# against any field this list fails to anticipate.
 _SEMANTIC_FIELDS: Tuple[str, ...] = (
+    "model",
     "messages",
     "max_tokens",
     "temperature",
@@ -52,6 +68,11 @@ _SEMANTIC_FIELDS: Tuple[str, ...] = (
     "task_type",
     "tools",
     "stream",
+    "enable_thinking",
+    "thinking_budget",
+    "frequency_penalty",
+    "repeat_penalty",
+    "stop",
 )
 
 
@@ -66,6 +87,34 @@ class ReplayMiss(Exception):
         super().__init__(
             f"llm_cassette: REPLAY MISS for key={key} — no recorded row. "
             f"payload={self.payload_summary}"
+        )
+
+
+class ReplayConfigError(Exception):
+    """Raised when the cassette is being used in an active replay/replay-record
+    context but is unusable: an explicitly-set but unrecognized AQ_LLM_CASSETTE_MODE
+    string, a missing AQ_LLM_CASSETTE path, or an internal lookup error. Fail-closed
+    by design — a broken replay configuration must error loudly, never silently fall
+    back to a live call (that would defeat replay's "no network" guarantee and mask
+    a real regression as a false pass)."""
+
+
+class ReplayDigestMismatch(Exception):
+    """Raised when a cassette row's request_key() matches the live request but its
+    stored full-payload digest does NOT — some field outside the curated semantic
+    set differs between record-time and replay-time. Silently replaying here risks
+    returning a response recorded for a subtly different request; this is a hard
+    error, never swallowed on the replay path."""
+
+    def __init__(self, key: str, stored_digest: str, live_digest: str):
+        self.key = key
+        self.stored_digest = stored_digest
+        self.live_digest = live_digest
+        super().__init__(
+            f"llm_cassette: PAYLOAD DIGEST MISMATCH for key={key} — cassette row "
+            f"digest {stored_digest[:12]}... != live request digest {live_digest[:12]}... "
+            "(request_key()'s canonical fields matched but the full payload differs — "
+            "refusing to replay a possibly-wrong response)."
         )
 
 
@@ -84,22 +133,35 @@ def _summarize_payload(payload: Dict[str, Any]) -> str:
 
 
 def _normalize_messages(messages: Any) -> List[Dict[str, Any]]:
+    """Full behavioral message identity: role+content+name+tool_call_id. name/
+    tool_call_id are included (as None when absent) because a tool-result message's
+    identity depends on which tool/call it answers — two otherwise-identical
+    conversations that differ only in which tool a result came from are DIFFERENT
+    requests and must not collide on the same cassette key."""
     if not isinstance(messages, list):
         return []
     out = []
     for m in messages:
         if isinstance(m, dict):
-            out.append({"role": m.get("role"), "content": m.get("content")})
+            out.append({
+                "role": m.get("role"),
+                "content": m.get("content"),
+                "name": m.get("name"),
+                "tool_call_id": m.get("tool_call_id"),
+            })
     return out
 
 
 def request_key(payload: Dict[str, Any], task_type: Optional[str] = None) -> str:
-    """Stable sha256 over the SEMANTIC request only.
+    """Stable sha256 over the COMPLETE canonical behavioral request.
 
-    Includes: messages (role+content), max_tokens, temperature, grammar, task_type,
-    tools, stream. Excludes volatile fields (timestamps, request ids, cache flags,
-    chat_template_kwargs, repeat_penalty/repeat_last_n, frequency_penalty, ...) so the
-    same logical request hashes identically across runs and machines.
+    Includes: model (if present), messages (role+content+name+tool_call_id),
+    max_tokens, temperature, grammar, task_type, tools, stream,
+    chat_template_kwargs.enable_thinking/thinking_budget, frequency_penalty,
+    repeat_penalty, stop. Excludes only genuinely non-semantic fields (cache_prompt,
+    repeat_last_n, stream_options, request ids, timestamps) that never change what
+    the model generates. See Cassette.lookup()'s payload_digest verification for a
+    belt-and-suspenders check against anything this list fails to anticipate.
 
     `task_type` is accepted as a separate optional arg because build_llama_payload()
     consumes it as a keyword-only builder argument and does NOT carry it into the
@@ -108,7 +170,9 @@ def request_key(payload: Dict[str, Any], task_type: Optional[str] = None) -> str
     cassette row payload_digest reconstruction), that value wins.
     """
     try:
+        ctk = payload.get("chat_template_kwargs") or {}
         semantic: Dict[str, Any] = {
+            "model": payload.get("model"),
             "messages": _normalize_messages(payload.get("messages")),
             "max_tokens": payload.get("max_tokens"),
             "temperature": payload.get("temperature"),
@@ -116,12 +180,31 @@ def request_key(payload: Dict[str, Any], task_type: Optional[str] = None) -> str
             "task_type": payload.get("task_type", task_type),
             "tools": payload.get("tools"),
             "stream": bool(payload.get("stream", False)),
+            "enable_thinking": ctk.get("enable_thinking"),
+            "thinking_budget": ctk.get("thinking_budget"),
+            "frequency_penalty": payload.get("frequency_penalty"),
+            "repeat_penalty": payload.get("repeat_penalty"),
+            "stop": payload.get("stop"),
         }
         blob = json.dumps(semantic, sort_keys=True, default=str, ensure_ascii=False)
         return hashlib.sha256(blob.encode("utf-8")).hexdigest()
     except Exception:
         logger.exception("llm_cassette: request_key failed — this is a bug, not a miss")
         raise
+
+
+def _payload_digest(payload: Dict[str, Any]) -> str:
+    """sha256 over the FULL raw payload dict (every field, as literally passed) —
+    the belt-and-suspenders check verified in Cassette.lookup() alongside the
+    curated request_key(). Never raises; callers treat an empty string as
+    "digest unavailable" (skip verification rather than false-positive fail)."""
+    try:
+        return hashlib.sha256(
+            json.dumps(payload, sort_keys=True, default=str, ensure_ascii=False).encode("utf-8")
+        ).hexdigest()
+    except Exception:
+        logger.exception("llm_cassette: _payload_digest failed — skipping digest verification")
+        return ""
 
 
 class Cassette:
@@ -173,13 +256,15 @@ class Cassette:
         tokens: int,
         meta: Optional[Dict[str, Any]] = None,
     ) -> None:
-        """Append one row. Never raises — logs and no-ops on any IO/serialization error."""
-        try:
-            payload_digest = hashlib.sha256(
-                json.dumps(payload, sort_keys=True, default=str, ensure_ascii=False).encode("utf-8")
-            ).hexdigest()
-        except Exception:
-            payload_digest = ""
+        """Append one row. Never raises — logs and no-ops on any IO/serialization error.
+
+        The append itself is guarded with an exclusive fcntl.flock() so concurrent
+        writers (e.g. parallel record runs) never interleave partial JSON lines into
+        the same file. POSIX-only; fails safe (writes unlocked, logged) if fcntl is
+        unavailable or flock() itself errors — a missing lock degrades to the old
+        best-effort behavior rather than losing the recording entirely.
+        """
+        payload_digest = _payload_digest(payload)
         row = {
             "key": key,
             "payload_digest": payload_digest,
@@ -191,7 +276,23 @@ class Cassette:
         try:
             self.path.parent.mkdir(parents=True, exist_ok=True)
             with self.path.open("a", encoding="utf-8") as fh:
-                fh.write(json.dumps(row, ensure_ascii=False) + "\n")
+                _locked = False
+                if fcntl is not None:
+                    try:
+                        fcntl.flock(fh.fileno(), fcntl.LOCK_EX)
+                        _locked = True
+                    except OSError as e:
+                        logger.warning(
+                            "llm_cassette: flock unavailable for %s (%s) — writing unlocked", self.path, e
+                        )
+                try:
+                    fh.write(json.dumps(row, ensure_ascii=False) + "\n")
+                finally:
+                    if _locked:
+                        try:
+                            fcntl.flock(fh.fileno(), fcntl.LOCK_UN)
+                        except OSError:
+                            pass
         except OSError as e:
             logger.warning("llm_cassette: failed to write %s: %s", self.path, e)
             return
@@ -201,9 +302,20 @@ class Cassette:
         if self._rows is not None:
             self._rows.setdefault(key, []).append(row)
 
-    def lookup(self, key: str) -> Optional[Tuple[str, int]]:
+    def lookup(
+        self, key: str, payload: Optional[Dict[str, Any]] = None
+    ) -> Optional[Tuple[str, int]]:
         """Return (content, tokens) for the next unconsumed row at this key, in
-        call order, or None if no (further) row exists. Never raises."""
+        call order, or None if no (further) row exists.
+
+        When `payload` is given, the row's stored payload_digest is verified
+        against a fresh digest of the live payload — a mismatch means
+        request_key()'s curated field list matched but the full request differs in
+        some other way, and raises ReplayDigestMismatch (a deliberate hard error,
+        NOT swallowed by the generic except below). Everything else about this
+        method stays fail-safe: an unrelated internal error is logged and treated
+        as a miss, same as before.
+        """
         try:
             self._load()
             assert self._rows is not None
@@ -214,8 +326,15 @@ class Cassette:
             if idx >= len(rows):
                 return None
             row = rows[idx]
+            if payload is not None:
+                stored_digest = row.get("payload_digest") or ""
+                live_digest = _payload_digest(payload)
+                if stored_digest and live_digest and stored_digest != live_digest:
+                    raise ReplayDigestMismatch(key, stored_digest, live_digest)
             self._cursor[key] = idx + 1
             return row.get("content", ""), int(row.get("tokens", 0) or 0)
+        except ReplayDigestMismatch:
+            raise
         except Exception:
             logger.exception("llm_cassette: lookup failed for key=%s — treating as miss", key)
             return None
@@ -238,8 +357,22 @@ _cassette_cache: Dict[str, Cassette] = {}
 
 
 def mode() -> str:
-    m = os.environ.get("AQ_LLM_CASSETTE_MODE", "off").strip().lower()
-    return m if m in _VALID_MODES else "off"
+    """Current cassette mode. Unset/empty AQ_LLM_CASSETTE_MODE -> "off" (the
+    sacrosanct, silent default — zero behavior change when the operator hasn't
+    touched this env var at all). An EXPLICITLY-set but unrecognized mode string is
+    a misconfiguration, not "off": raises ReplayConfigError rather than silently
+    degrading to a live no-op, which would mask the operator's mistake as a false
+    pass."""
+    raw = os.environ.get("AQ_LLM_CASSETTE_MODE")
+    if raw is None or raw.strip() == "":
+        return "off"
+    m = raw.strip().lower()
+    if m not in _VALID_MODES:
+        raise ReplayConfigError(
+            f"llm_cassette: AQ_LLM_CASSETTE_MODE={raw!r} is not a valid mode "
+            f"(expected one of {_VALID_MODES}) — refusing to silently fall back to 'off'."
+        )
+    return m
 
 
 def path() -> Optional[str]:
@@ -273,8 +406,9 @@ def reset_cache() -> None:
 
 # ---------------------------------------------------------------------------
 # Orchestration helpers — the thin surface agent_executor._call_llama wires into.
-# Both are pure no-ops in mode "off" and fail safe (fall through to live) on any
-# internal error, per the design's guardrail.
+# Both are pure no-ops in mode "off". maybe_record() (recording, a live call) stays
+# fail-safe on internal errors, per the module's write-side guardrail. replay_lookup()
+# (replay, no network) is fail-CLOSED instead — see its docstring.
 # ---------------------------------------------------------------------------
 
 def replay_lookup(
@@ -285,37 +419,51 @@ def replay_lookup(
     Returns:
         (content, tokens) on a cassette hit, or on-miss "empty" policy.
         None — proceed with the live call — in mode "off"/"record", on a
-              replay-record miss, or on-miss "passthrough".
+              replay-record miss, or on-miss "passthrough". These are the ONLY
+              paths that fall through to a live call; every other failure mode
+              below is fail-closed (raises).
     Raises:
-        ReplayMiss — mode "replay", on-miss "error" (the default), and no row exists.
+        ReplayConfigError — AQ_LLM_CASSETTE_MODE is an explicitly-set invalid
+              string (from mode()), AQ_LLM_CASSETTE is unset while mode is
+              replay/replay-record, or an internal lookup error occurred.
+        ReplayDigestMismatch — the request_key() matched a cassette row but the
+              full payload digest did not (see Cassette.lookup).
+        ReplayMiss — mode "replay", on-miss "error" (the default), and no row
+              exists.
     """
-    m = mode()
+    m = mode()  # may raise ReplayConfigError for an explicit-but-invalid mode string
     if m not in ("replay", "replay-record"):
         return None
+    cass = get_cassette()
+    if cass is None:
+        # Replay's whole point is "no network" — a missing cassette path here is a
+        # misconfiguration, not a reason to silently run live. Fail closed in BOTH
+        # replay and replay-record (replay-record's live-on-miss exemption only
+        # covers a clean per-request miss once a cassette path IS configured).
+        raise ReplayConfigError(
+            f"llm_cassette: mode={m} requires AQ_LLM_CASSETTE to point at a cassette "
+            "path — none is set. Refusing to silently proceed live."
+        )
     try:
-        cass = get_cassette()
-        if cass is None:
-            logger.warning(
-                "llm_cassette: mode=%s but AQ_LLM_CASSETTE is unset — proceeding live", m
-            )
-            return None
         key = request_key(payload, task_type)
-        hit = cass.lookup(key)
-    except ReplayMiss:
+        hit = cass.lookup(key, payload)
+    except (ReplayMiss, ReplayConfigError, ReplayDigestMismatch):
         raise
-    except Exception:
-        logger.exception("llm_cassette: replay_lookup internal error — falling back to live")
-        return None
+    except Exception as e:
+        raise ReplayConfigError(
+            f"llm_cassette: internal replay error in mode={m}: {e!r} — failing closed "
+            "rather than silently falling back to a live call."
+        ) from e
 
     if hit is not None:
         return hit
 
     if m == "replay-record":
-        return None  # fall through to live; caller records after
+        return None  # fall through to live; caller records after — explicit exemption
 
     policy = on_miss()
     if policy == "passthrough":
-        return None
+        return None  # explicit operator opt-in to live fallback on miss
     if policy == "empty":
         return "", 0
     # policy == "error" (default): a miss in strict replay mode is a test failure.
