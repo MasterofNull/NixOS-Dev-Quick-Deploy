@@ -1,5 +1,6 @@
 ---
 doc_type: collaboration-brief
+id: workflow-redesign-combined-meta-prompt-20260821
 title: Combined collaborative meta-prompt — workflow/loop/role/harness redesign (living debate)
 status: draft
 owner: hyperd

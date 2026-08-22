@@ -1,5 +1,6 @@
 ---
 doc_type: collaboration-brief
+id: workflow-redesign-codex-meta-prompt-20260821
 title: Codex meta-prompt — proof-obligation workflow redesign
 status: draft
 owner: hyperd
