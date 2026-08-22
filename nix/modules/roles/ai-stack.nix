@@ -1672,6 +1672,11 @@ in {
             # --- Nix store access (executables, libraries, shared data) ------
             /nix/store/** r,
             /nix/store/**/*.so* mr,
+            # ExecStartPost inherits AppArmorProfile=ai-llama-cpp. Allow only
+            # the readiness probe's concrete helpers to execute in-profile;
+            # do not grant generic /nix/store/** execution authority.
+            ${pkgs.coreutils}/bin/coreutils ix,
+            ${pkgs.curl}/bin/curl ix,
 
             # --- Model files (read-only) ------------------------------------
             ${"/var/lib/llama-cpp/models/**"} r,
