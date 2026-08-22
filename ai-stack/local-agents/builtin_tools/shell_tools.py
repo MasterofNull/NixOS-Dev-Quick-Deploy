@@ -136,15 +136,27 @@ async def run_command_handler(
             "error": str (if failed)
         }
     """
-    # Strip trailing tool-call JSON artifacts before ANY check. The local model's
-    # GBNF/streaming tool-call parser can leak the envelope's closing punctuation
-    # into the command argument (e.g. "grep ... file\n},\n"), which the shell-control
-    # guard below then rejects as a newline/metachar — the model retries verbatim and
-    # stagnates. This trims ONLY trailing whitespace + a dangling "}"/"]"/"," /quote
-    # tail; it never removes anything from the middle of a command, so a genuine
-    # injection ("; rm -rf" / "cmd\ncmd2") is still caught by the guard. Producer-side
-    # cleanup, not a security relaxation. Root cause: local-agent-tool-call-json-artifact-leak.
-    command = re.sub(r"[\s}\]\",]+$", "", command)
+    # Defense-in-depth safety net, narrowed 2026-08-21 (Codex #7 + Antigravity
+    # review): the PRIMARY fix now lives at the JSON-parsing boundary
+    # (tool_registry.parse_tool_call_from_llama -> _strip_envelope_tail_artifacts),
+    # which strips a leaked tool-call-envelope tail (e.g. a "command" value
+    # ending in a real "\n},\n") from parsed argument values before this
+    # handler ever sees them. This net only catches the same artifact for
+    # callers that reach run_command_handler without going through that
+    # parser (e.g. direct/legacy invocation).
+    #
+    # The ORIGINAL version of this line, `re.sub(r"[\s}\]\",]+$", "", command)`,
+    # stripped ANY trailing whitespace/brace/bracket/quote/comma — which also
+    # corrupted legitimate commands ending in those characters, e.g.
+    # `printf "%s" "]"` became `printf "%s` (unterminated). This narrowed
+    # pattern requires the exact envelope shape: a real embedded newline
+    # immediately followed by a closing brace and nothing after it but more
+    # braces/commas/whitespace to the end of the string. A legitimate command
+    # ending in "]"/"}"/'"'/"," with no preceding embedded newline is left
+    # byte-for-byte unchanged; a genuine injection newline is still caught by
+    # the shell-control guard below regardless. Root cause:
+    # local-agent-tool-call-json-artifact-leak.
+    command = re.sub(r"\n\}[\}\s,]*\Z", "", command)
 
     # Parse first word as command
     cmd_parts = command.split()

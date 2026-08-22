@@ -26,8 +26,12 @@ carrying a run_command tool call whose "command" argument ends in the literal
 `\\n},\\n` artifact this session hit live (the local model's streaming/GBNF tool-call
 parser leaking the JSON envelope's closing punctuation into the argument value) is
 recorded, then replayed fully offline through the real parse + execute path, proving
-the already-committed strip fix in builtin_tools/shell_tools.py:147 resolves it
-deterministically — no 30-40 min live APU run required.
+the parser-boundary fix in tool_registry.parse_tool_call_from_llama
+(_strip_envelope_tail_artifacts) resolves it deterministically — no 30-40 min live
+APU run required. (2026-08-21: the fix moved from a post-hoc regex in
+builtin_tools/shell_tools.py:147, which was too broad and corrupted legitimate
+commands ending in "]"/"}"/'"'/",", to this narrow strip at the JSON-parsing
+boundary — see Codex #7 + Antigravity review finding 7.)
 
 Run: python3 scripts/testing/test-llm-cassette.py
 """
@@ -829,15 +833,18 @@ async def _run_artifact_strip_replay_demo() -> Dict[str, Any]:
         assert_true(tokens == 37, "replay must return the recorded token count")
 
         # Run the REPLAYED content through the real loop-side handling: parse the tool
-        # call, then execute it via the already-committed artifact-strip fix.
+        # call via the real parser, which now strips the leaked envelope tail at the
+        # JSON-parsing boundary (tool_registry._strip_envelope_tail_artifacts), then
+        # execute the already-clean command.
         tool_call = registry.parse_tool_call_from_llama(content)
         assert_true(tool_call is not None, "parse_tool_call_from_llama must parse the artifact-tailed JSON")
         assert_true(tool_call.tool_name == "run_command", f"expected run_command, got {tool_call.tool_name}")
         raw_command = tool_call.arguments.get("command", "")
         assert_true(
-            raw_command.endswith("\n},\n"),
-            f"parsed command must still carry the raw artifact tail (the fix strips it downstream, "
-            f"in run_command_handler, not in parsing) — got {raw_command!r}",
+            raw_command == "echo artifact-strip-fix-works",
+            f"parser must strip the leaked envelope tail at the JSON boundary so the "
+            f"command argument is already clean by the time it reaches the handler — "
+            f"got {raw_command!r}",
         )
 
         result = await registry.execute_tool_call(tool_call)
@@ -851,8 +858,8 @@ def test_artifact_strip_fix_resolves_via_offline_replay() -> None:
         and isinstance(outcome["result"], dict)
         and outcome["result"].get("success") is True
         and "artifact-strip-fix-works" in (outcome["result"].get("stdout") or ""),
-        f"the committed artifact-strip fix (shell_tools.py:147) must make the "
-        f"\\n}},\\n-tailed run_command call succeed on replay, got {outcome}",
+        f"the parser-boundary artifact-strip fix (tool_registry._strip_envelope_tail_artifacts) "
+        f"must make the \\n}},\\n-tailed run_command call succeed on replay, got {outcome}",
     )
     print(
         "PASS (DoD demo): run_command call with the live '\\n},\\n' artifact tail, "

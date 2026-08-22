@@ -18,6 +18,7 @@ import hashlib
 import json
 import logging
 import os
+import re
 import sqlite3
 import subprocess
 import sys
@@ -44,6 +45,48 @@ except ImportError:
         def intercept_action(self, *args, **kwargs): return None
 
 logger = logging.getLogger(__name__)
+
+
+# The local model's streaming/GBNF tool-call decoder can occasionally leak the
+# JSON envelope's OWN closing punctuation into the last string argument's value
+# instead of terminating the string cleanly — e.g. the raw model output
+# `{"function": "run_command", "arguments": {"command": "echo hi\n},\n"}}`
+# (a literal embedded newline, immediately followed by the "arguments"/outer
+# object's closing brace(s) and trailing comma, all still inside the quotes).
+# json.loads (after _sanitize_json escapes the bare newline) parses this fine,
+# but the resulting "command" value ends with an artifact tail that is not
+# part of the real argument.
+#
+# This pattern matches ONLY that exact envelope-tail shape: a real newline
+# immediately followed by a closing brace, and nothing after it but more
+# braces/commas/whitespace through the end of the string. It intentionally
+# requires the leading embedded newline so it can never match a legitimate
+# value that simply happens to end in "}"/"]"/'"'/"," (e.g. `printf "%s" "]"`
+# or `echo "}"`)  — those have no newline immediately before the trailing
+# punctuation and pass through untouched. A real shell-injection newline
+# (e.g. "cmd\nrm -rf /") is unaffected: it isn't at the end of the string, or
+# isn't followed solely by brace/comma/whitespace, so this never strips it —
+# and the shell-control guard in shell_tools.py rejects embedded newlines
+# regardless. Root cause: local-agent-tool-call-json-artifact-leak.
+_ENVELOPE_TAIL_RE = re.compile(r"\n\}[\}\s,]*\Z")
+
+
+def _strip_envelope_tail_artifacts(arguments: Any) -> Any:
+    """Strip a leaked tool-call-envelope tail from top-level string argument values.
+
+    Only touches values matching `_ENVELOPE_TAIL_RE` (see comment above); any
+    other trailing content, including legitimate `]`/`}`/`"`/`,` endings, is
+    left byte-for-byte unchanged.
+    """
+    if not isinstance(arguments, dict):
+        return arguments
+    cleaned = {}
+    for key, value in arguments.items():
+        if isinstance(value, str):
+            cleaned[key] = _ENVELOPE_TAIL_RE.sub("", value)
+        else:
+            cleaned[key] = value
+    return cleaned
 
 
 def _default_tool_audit_db_path() -> Path:
@@ -653,7 +696,7 @@ class ToolRegistry:
             tool_call = ToolCall(
                 id=hashlib.md5(f"{data['function']}{time.time()}".encode()).hexdigest()[:16],
                 tool_name=data["function"],
-                arguments=data.get("arguments") or {},
+                arguments=_strip_envelope_tail_artifacts(data.get("arguments") or {}),
             )
 
             return tool_call
