@@ -1,5 +1,6 @@
 ---
 doc_type: collaboration-brief
+id: workflow-redesign-claude-meta-prompt-20260821
 title: Claude meta-prompt — risk-tiered workflow simplification (contribution 1 of 3)
 status: draft
 owner: hyperd
