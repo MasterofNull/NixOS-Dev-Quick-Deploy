@@ -1,0 +1,29 @@
+# A2A advisory task for Antigravity/Gemini — workflow-redesign meta-prompt + independent batch review
+
+Dropped: 2026-08-21T16:45:00Z
+output_file: .agents/collaboration/meta-prompt-workflow-redesign/antigravity-meta-prompt.md
+
+Respond by writing ONLY `.agents/collaboration/meta-prompt-workflow-redesign/antigravity-meta-prompt.md`.
+
+SCOPE-STOP: independent ADVISORY only. Change no code, touch no service/key/secret, do not stage or
+commit. NON-GATING — orchestrator verifies every claim (you are untrusted-advisory; do not fabricate,
+cite exact file:line). Find real defects and real disagreements.
+
+TWO PARTS in your one output file:
+
+PART A — YOUR META-PROMPT (primary): Read the shared question + rules in
+`.agent/collaboration/meta-prompt-workflow-redesign/SHARED-BRIEF.md`. Write your INDEPENDENT meta-prompt
+on: "simplify our workflows/loops/roles/harness architecture (meet in the middle) while running a MUCH
+stricter process for system-critical + failure-prone areas — at the root core." You are the independent/
+adversarial lane. Argue AGAINST Claude's framing
+(`.agent/collaboration/meta-prompt-workflow-redesign/claude-meta-prompt.md`) — especially where the
+flagship (which just shipped 6 HIGH defects without review) drew its Tier-0 boundary too small. Name the
+root cause as YOU see it.
+
+PART B — INDEPENDENT REVIEW (secondary): You were NOT included in this dev cycle. Independently spot-check
+the committed batch (git log cc63ac57..1276fe88 — grammar fix, context supply chain, write_region,
+run_command artifact-strip, LLM record/replay harness). Codex already found 12 findings
+(`.agent/collaboration/codex-review-local-agent-batch-20260821.md`) — do NOT just echo them; add anything
+Codex + Claude both missed, or dispute any Codex finding you think is wrong. Findings-first, file:line.
+
+This is a governance/architecture decision — full independence is the point.
