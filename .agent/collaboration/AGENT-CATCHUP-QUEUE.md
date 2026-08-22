@@ -290,3 +290,8 @@ REVIEW TARGETS (for Codex — the reliable auto-reviewer — and any returning l
   request_key collision+digest, retry-no-ReplayMiss. Will be committed provisional + queued here on landing.
 - Codex's own 12-finding review + Antigravity's 2 verified CRITICALs are the source list; this pass fixes
   them — Codex should confirm each fix actually closes its finding (not just adds a test).
+- `[Cluster 1]` replay/cassette CRITICALs (committed provisional): mock-tools-default, flock, fail-closed
+  replay, request_key+digest, retry-no-ReplayMiss. VERIFY: does mock-tools stub leave the cassette KEY
+  identical (it must — only side-effect skipped)? is the request_key now over-inclusive (keying on a field
+  that legitimately varies could cause spurious misses)? does ReplayConfigError propagation ever strand a
+  half-written cassette row?
