@@ -52,7 +52,7 @@ import httpx  # noqa: E402
 import llm_cassette  # noqa: E402
 from agent_executor import AgentType, LocalAgentExecutor, Task  # noqa: E402
 from shared.llm_config import build_llama_payload  # noqa: E402
-from tool_registry import ToolRegistry  # noqa: E402
+from tool_registry import ToolCall, ToolRegistry  # noqa: E402
 from builtin_tools.shell_tools import register_shell_tools  # noqa: E402
 
 
@@ -181,6 +181,13 @@ def _make_scripted_client(turns: List[str]):
 # ---------------------------------------------------------------------------
 
 def test_request_key_stable_and_excludes_volatile() -> None:
+    """Codex/Antigravity finding (2026-08-21, HIGH #4): the OLD request_key excluded
+    model identity, chat_template_kwargs.enable_thinking, frequency_penalty/
+    repeat_penalty, stop sequences, and message tool metadata (name/tool_call_id) —
+    so distinct requests that only differed in those fields COLLIDED on the same key
+    and could replay the wrong recorded content. This test now asserts the opposite
+    of what it used to: those fields MUST change the key. Only genuinely non-semantic
+    perf/transport knobs (cache_prompt, repeat_last_n) stay excluded."""
     base = {
         "messages": [
             {"role": "system", "content": "sys prompt"},
@@ -198,16 +205,74 @@ def test_request_key_stable_and_excludes_volatile() -> None:
     k1_again = llm_cassette.request_key(json.loads(json.dumps(base)))
     assert_true(k1 == k1_again, "request_key must be deterministic across repeated calls")
 
-    volatile_changed = dict(base)
-    volatile_changed["cache_prompt"] = False
-    volatile_changed["repeat_penalty"] = 1.5
-    volatile_changed["repeat_last_n"] = 32
-    volatile_changed["chat_template_kwargs"] = {"enable_thinking": True}
-    k2 = llm_cassette.request_key(volatile_changed)
+    # Genuinely non-semantic perf/transport knobs: excluded, key stays identical.
+    still_volatile = dict(base)
+    still_volatile["cache_prompt"] = False
+    still_volatile["repeat_last_n"] = 32
+    k_volatile = llm_cassette.request_key(still_volatile)
     assert_true(
-        k1 == k2,
-        "request_key must exclude volatile fields (cache_prompt/repeat_penalty/"
-        "repeat_last_n/chat_template_kwargs)",
+        k1 == k_volatile,
+        "request_key must still exclude genuinely non-semantic fields (cache_prompt/repeat_last_n)",
+    )
+
+    # Previously-collided fields (the bug): each MUST now change the key on its own.
+    thinking_changed = dict(base)
+    thinking_changed["chat_template_kwargs"] = {"enable_thinking": True}
+    assert_true(
+        llm_cassette.request_key(thinking_changed) != k1,
+        "request_key must change when chat_template_kwargs.enable_thinking changes "
+        "(distinct requests must get distinct keys — this WAS the collision bug)",
+    )
+
+    thinking_budget_changed = dict(base)
+    thinking_budget_changed["chat_template_kwargs"] = {"enable_thinking": False, "thinking_budget": 512}
+    assert_true(
+        llm_cassette.request_key(thinking_budget_changed) != k1,
+        "request_key must change when chat_template_kwargs.thinking_budget changes",
+    )
+
+    freq_changed = dict(base)
+    freq_changed["frequency_penalty"] = 0.9
+    assert_true(
+        llm_cassette.request_key(freq_changed) != k1,
+        "request_key must change when frequency_penalty changes (was previously collided)",
+    )
+
+    repeat_penalty_changed = dict(base)
+    repeat_penalty_changed["repeat_penalty"] = 1.5
+    assert_true(
+        llm_cassette.request_key(repeat_penalty_changed) != k1,
+        "request_key must change when repeat_penalty changes (was previously collided)",
+    )
+
+    stop_changed = dict(base)
+    stop_changed["stop"] = ["</tool_call>"]
+    assert_true(
+        llm_cassette.request_key(stop_changed) != k1,
+        "request_key must change when stop sequences change (was previously ignored)",
+    )
+
+    model_changed = dict(base)
+    model_changed["model"] = "qwen3-35b-instruct"
+    assert_true(
+        llm_cassette.request_key(model_changed) != k1,
+        "request_key must change when model identity changes (was previously ignored)",
+    )
+
+    tool_meta_base = dict(base)
+    tool_meta_base["messages"] = [
+        {"role": "system", "content": "sys prompt"},
+        {"role": "tool", "content": "result A", "name": "run_command", "tool_call_id": "call_1"},
+    ]
+    tool_meta_changed = dict(base)
+    tool_meta_changed["messages"] = [
+        {"role": "system", "content": "sys prompt"},
+        {"role": "tool", "content": "result A", "name": "write_file", "tool_call_id": "call_1"},
+    ]
+    assert_true(
+        llm_cassette.request_key(tool_meta_base) != llm_cassette.request_key(tool_meta_changed),
+        "request_key must change when a tool-result message's name/tool_call_id changes "
+        "(same content, different originating tool — was previously ignored)",
     )
 
     semantic_changed = dict(base)
@@ -227,7 +292,45 @@ def test_request_key_stable_and_excludes_volatile() -> None:
     kt2 = llm_cassette.request_key(base, task_type="research")
     assert_true(kt1 != kt2, "request_key must vary with task_type")
     assert_true(kt1 != k1, "request_key with an explicit task_type must differ from without")
-    print("PASS (a): request_key stability + volatile-field exclusion")
+    print("PASS (a): request_key stability + distinct requests now get distinct keys (collision fixed)")
+
+
+# ---------------------------------------------------------------------------
+# (a2) payload_digest verification on lookup — belt-and-suspenders hard error
+# ---------------------------------------------------------------------------
+
+def test_payload_digest_verify_on_lookup() -> None:
+    """Antigravity/Codex finding #4 fix: a key hit whose full payload differs from
+    what was recorded (in a field outside the curated semantic set) must hard-fail,
+    not silently replay a possibly-wrong response."""
+    with tempfile.TemporaryDirectory() as td:
+        cpath = str(Path(td) / "digest_cassette.jsonl")
+        cass = llm_cassette.Cassette(cpath)
+        payload = {
+            "messages": [{"role": "user", "content": "hi"}],
+            "max_tokens": 10,
+            "cache_prompt": True,
+        }
+        key = llm_cassette.request_key(payload)
+        cass.record(key, payload, "recorded content", 5)
+
+        # Same key (identical canonical/semantic fields) but the full payload differs
+        # in a field NOT covered by request_key()'s curated set (cache_prompt flipped).
+        mismatched_payload = dict(payload)
+        mismatched_payload["cache_prompt"] = False
+        try:
+            cass.lookup(key, mismatched_payload)
+            raise AssertionError("expected ReplayDigestMismatch for a full-payload digest mismatch")
+        except llm_cassette.ReplayDigestMismatch as e:
+            assert_true(e.key == key, "ReplayDigestMismatch must carry the matched key")
+
+        # A failed digest check must not consume the row's cursor slot.
+        hit = cass.lookup(key, dict(payload))
+        assert_true(
+            hit == ("recorded content", 5),
+            f"an identical payload must NOT trigger a digest mismatch (no false positive), got {hit}",
+        )
+    print("PASS (a2): payload_digest verification hard-fails a full-payload mismatch on a key hit, no false positive")
 
 
 # ---------------------------------------------------------------------------
@@ -353,6 +456,91 @@ def test_on_miss_policies() -> None:
 
 
 # ---------------------------------------------------------------------------
+# (e2) fail-CLOSED configuration failures — Codex/Antigravity finding #3 fix:
+# strict replay used to silently degrade to live inference on an invalid mode
+# string, a missing cassette path, or an internal lookup error. All three must now
+# raise ReplayConfigError instead.
+# ---------------------------------------------------------------------------
+
+def test_invalid_mode_string_fails_closed() -> None:
+    with cassette_env(mode="bogus-mode"):
+        try:
+            llm_cassette.mode()
+            raise AssertionError("expected ReplayConfigError for an explicitly-set invalid mode string")
+        except llm_cassette.ReplayConfigError:
+            pass
+
+        payload = {"messages": [{"role": "user", "content": "probe"}]}
+        try:
+            llm_cassette.replay_lookup(payload)
+            raise AssertionError("replay_lookup must propagate ReplayConfigError for an invalid mode string")
+        except llm_cassette.ReplayConfigError:
+            pass
+
+    # Unset (the sacrosanct default) must remain a silent "off" — never raises.
+    with cassette_env(mode=None):
+        assert_true(llm_cassette.mode() == "off", "unset AQ_LLM_CASSETTE_MODE must resolve to 'off'")
+    print("PASS (e2a): an explicitly-set invalid AQ_LLM_CASSETTE_MODE fails closed; unset stays 'off'")
+
+
+def test_replay_missing_path_fails_closed() -> None:
+    with cassette_env(mode="replay", path=None):
+        payload = {"messages": [{"role": "user", "content": "no cassette path configured"}]}
+        try:
+            llm_cassette.replay_lookup(payload)
+            raise AssertionError(
+                "expected ReplayConfigError when AQ_LLM_CASSETTE is unset in replay mode "
+                "(the old bug silently returned None -> live call)"
+            )
+        except llm_cassette.ReplayConfigError:
+            pass
+
+    with cassette_env(mode="replay-record", path=None):
+        payload = {"messages": [{"role": "user", "content": "no cassette path in replay-record either"}]}
+        try:
+            llm_cassette.replay_lookup(payload)
+            raise AssertionError("expected ReplayConfigError when AQ_LLM_CASSETTE is unset in replay-record mode")
+        except llm_cassette.ReplayConfigError:
+            pass
+    print("PASS (e2b): mode=replay/replay-record with no AQ_LLM_CASSETTE path fails closed, never a silent live fallback")
+
+
+def test_record_uses_flock() -> None:
+    """Codex/Antigravity finding #2 fix: Cassette.record()'s append must be guarded
+    by an exclusive fcntl.flock so concurrent writers never interleave partial JSON
+    lines into the same cassette file."""
+    import fcntl
+    from unittest import mock
+
+    with tempfile.TemporaryDirectory() as td:
+        cpath = str(Path(td) / "flock_cassette.jsonl")
+        cass = llm_cassette.Cassette(cpath)
+        payload = {"messages": [{"role": "user", "content": "lock me"}]}
+        key = llm_cassette.request_key(payload)
+
+        ops: List[int] = []
+        real_flock = fcntl.flock
+
+        def _spy_flock(fd, op):
+            ops.append(op)
+            return real_flock(fd, op)
+
+        with mock.patch.object(fcntl, "flock", side_effect=_spy_flock):
+            cass.record(key, payload, "locked content", 3)
+
+        assert_true(fcntl.LOCK_EX in ops, f"record() must flock(LOCK_EX) before writing, got ops={ops}")
+        assert_true(fcntl.LOCK_UN in ops, f"record() must flock(LOCK_UN) after writing, got ops={ops}")
+        assert_true(
+            ops.index(fcntl.LOCK_EX) < ops.index(fcntl.LOCK_UN),
+            f"LOCK_EX must precede LOCK_UN, got ops={ops}",
+        )
+
+        hit = cass.lookup(key)
+        assert_true(hit == ("locked content", 3), f"record must still succeed under the flock guard, got {hit}")
+    print("PASS (e2c): Cassette.record() guards its append with fcntl.flock(LOCK_EX/LOCK_UN)")
+
+
+# ---------------------------------------------------------------------------
 # (f) mode=off is a strict no-op
 # ---------------------------------------------------------------------------
 
@@ -386,6 +574,123 @@ async def _run_mode_off_is_noop() -> None:
 def test_mode_off_is_noop() -> None:
     asyncio.run(_run_mode_off_is_noop())
     print("PASS (f): mode=off is a strict no-op — live path taken, zero cassette I/O")
+
+
+# ---------------------------------------------------------------------------
+# (f2) the LLM-call transient-retry block in agent_executor._execute_with_tools
+# must NOT catch/mask llm_cassette.ReplayMiss — Codex/Antigravity finding #5.
+# ---------------------------------------------------------------------------
+
+async def _run_retry_does_not_swallow_replay_miss() -> None:
+    with tempfile.TemporaryDirectory() as td:
+        cpath = str(Path(td) / "no_such_row_cassette.jsonl")
+        Path(cpath).write_text("")  # exists but has no rows -> guaranteed miss on call 1
+
+        lookups: List[Optional[str]] = []
+        real_replay_lookup = llm_cassette.replay_lookup
+
+        def _spy_replay_lookup(payload, task_type=None):
+            lookups.append(task_type)
+            return real_replay_lookup(payload, task_type)
+
+        with cassette_env(mode="replay", path=cpath, on_miss="error"), env_var("LLAMA_USE_STREAMING", "false"):
+            saved_client = httpx.AsyncClient
+            httpx.AsyncClient = _ExplodingAsyncClient  # type: ignore[assignment]
+            saved_lookup = llm_cassette.replay_lookup
+            llm_cassette.replay_lookup = _spy_replay_lookup  # type: ignore[assignment]
+            try:
+                registry = ToolRegistry(db_path=Path(td) / "audit.db")
+                register_shell_tools(registry)
+                executor = LocalAgentExecutor(tool_registry=registry, fallback_endpoint="")
+                task = Task(id="retry-miss-probe", objective="probe the retry path", task_type="research")
+                try:
+                    await executor._execute_with_tools(task, AgentType.AGENT, max_tool_calls=3)
+                    raise AssertionError(
+                        "expected llm_cassette.ReplayMiss to propagate out of _execute_with_tools "
+                        "(the old bug caught it in the transient-retry except-Exception block)"
+                    )
+                except llm_cassette.ReplayMiss:
+                    pass
+            finally:
+                llm_cassette.replay_lookup = saved_lookup  # type: ignore[assignment]
+                httpx.AsyncClient = saved_client
+
+        assert_true(
+            len(lookups) == 1,
+            f"the retry block must NOT re-attempt a 2nd, mis-keyed cassette lookup after a "
+            f"ReplayMiss — expected exactly 1 lookup, got {len(lookups)}: {lookups}",
+        )
+        assert_true(
+            lookups[0] == "research",
+            f"the single lookup must carry task.task_type unchanged (the old bug dropped it "
+            f"on the retry call, changing the request's cassette key), got {lookups}",
+        )
+
+
+def test_retry_block_does_not_swallow_replay_miss() -> None:
+    asyncio.run(_run_retry_does_not_swallow_replay_miss())
+    print(
+        "PASS (f2): the transient-retry block does not catch ReplayMiss and does not "
+        "re-attempt a task_type-dropped 2nd lookup"
+    )
+
+
+# ---------------------------------------------------------------------------
+# (f3) aq-replay-bench --mock-tools (the default) — Codex/Antigravity CRITICAL
+# finding #1: replaying a cassette drives its recorded tool calls through the real
+# _execute_with_tools loop, so an unstubbed registry executes them LIVE. Prove the
+# mock-tools stub short-circuits execution with zero disk/shell side effects.
+# ---------------------------------------------------------------------------
+
+def _load_aq_replay_bench():
+    import importlib.util
+    from importlib.machinery import SourceFileLoader
+
+    bench_path = ROOT / "scripts" / "testing" / "aq-replay-bench"
+    # aq-replay-bench has no .py suffix (it's a CLI entrypoint), so importlib's
+    # default suffix-sniffing loader lookup can't resolve it — hand it an explicit
+    # SourceFileLoader instead of relying on spec_from_file_location's guess.
+    loader = SourceFileLoader("aq_replay_bench_under_test", str(bench_path))
+    spec = importlib.util.spec_from_loader(loader.name, loader)
+    assert spec is not None
+    module = importlib.util.module_from_spec(spec)
+    loader.exec_module(module)
+    return module
+
+
+async def _run_mock_tools_no_side_effect() -> None:
+    bench = _load_aq_replay_bench()
+    with tempfile.TemporaryDirectory() as td:
+        registry = ToolRegistry(db_path=Path(td) / "audit.db")
+        register_shell_tools(registry)
+        bench._apply_mock_tools(registry)
+
+        marker = Path(td) / "mock-tools-must-not-create-this.txt"
+        tool_call = ToolCall(
+            id="mock-tools-probe",
+            tool_name="run_command",
+            arguments={"command": f"touch {marker}"},
+        )
+        result = await registry.execute_tool_call(tool_call)
+
+        assert_true(
+            result.status == "completed",
+            f"a mocked tool call must still report status=completed, got {result.status}/{result.error}",
+        )
+        assert_true(
+            isinstance(result.result, dict) and result.result.get("mocked") is True,
+            f"mocked tool result must carry mocked=True, got {result.result}",
+        )
+        assert_true(
+            not marker.exists(),
+            "--mock-tools (default) must NOT touch disk/shell — the run_command's target "
+            "file must never be created (this is the CRITICAL replay-executes-tools-live fix)",
+        )
+
+
+def test_mock_tools_default_no_side_effect() -> None:
+    asyncio.run(_run_mock_tools_no_side_effect())
+    print("PASS (f3): aq-replay-bench --mock-tools (default) stubs tool execution — zero disk/shell side effects")
 
 
 # ---------------------------------------------------------------------------
@@ -560,11 +865,17 @@ def test_artifact_strip_fix_resolves_via_offline_replay() -> None:
 
 def main() -> int:
     test_request_key_stable_and_excludes_volatile()
+    test_payload_digest_verify_on_lookup()
     test_record_lookup_roundtrip()
     test_multi_row_per_key_call_order()
     test_replay_returns_recorded_content_without_network()
     test_on_miss_policies()
+    test_invalid_mode_string_fails_closed()
+    test_replay_missing_path_fails_closed()
+    test_record_uses_flock()
     test_mode_off_is_noop()
+    test_retry_block_does_not_swallow_replay_miss()
+    test_mock_tools_default_no_side_effect()
     test_golden_e2e_record_then_replay_through_execute_with_tools()
     test_artifact_strip_fix_resolves_via_offline_replay()
     print("PASS: llm-cassette record/replay harness — all checks passed")
