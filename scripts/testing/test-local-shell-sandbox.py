@@ -12,6 +12,7 @@ sys.path.insert(0, str(ROOT / "ai-stack" / "local-agents"))
 sys.path.insert(0, str(ROOT / "ai-stack" / "local-agents" / "builtin_tools"))
 
 import shell_tools  # noqa: E402
+from tool_registry import ToolRegistry  # noqa: E402
 
 
 class FailingSandbox:
@@ -92,6 +93,20 @@ async def test_genuine_envelope_tail_is_stripped() -> None:
     print("PASS: genuine leaked envelope tail is stripped and the command executes")
 
 
+async def test_parser_boundary_preserves_legitimate_newline_brace_content() -> None:
+    """Only the raw `\n},\n\"}}` envelope leak is repaired, never parsed data."""
+    registry = ToolRegistry.__new__(ToolRegistry)
+    for key in ("command", "content", "new_string"):
+        raw = '{{"function":"write_file","arguments":{{"{}":"alpha\\n}}"}}}}'.format(key)
+        call = registry.parse_tool_call_from_llama(raw)
+        assert call is not None, raw
+        assert call.arguments[key] == "alpha\n}", call.arguments
+    leaked = '{"function":"run_command","arguments":{"command":"echo clean\n},\n"}}'
+    call = registry.parse_tool_call_from_llama(leaked)
+    assert call is not None and call.arguments["command"] == "echo clean", call
+    print("PASS: parser repair preserves legitimate newline-brace arguments")
+
+
 async def test_real_injection_still_rejected() -> None:
     """Real shell-injection sequences, including embedded newlines that are NOT
     an envelope tail, are still rejected by the guard."""
@@ -114,6 +129,7 @@ async def main_async() -> int:
     await test_injection_and_sandbox_failure()
     await test_legitimate_trailing_punctuation_unchanged()
     await test_genuine_envelope_tail_is_stripped()
+    await test_parser_boundary_preserves_legitimate_newline_brace_content()
     await test_real_injection_still_rejected()
     return 0
 

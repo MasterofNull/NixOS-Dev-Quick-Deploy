@@ -68,25 +68,7 @@ logger = logging.getLogger(__name__)
 # isn't followed solely by brace/comma/whitespace, so this never strips it —
 # and the shell-control guard in shell_tools.py rejects embedded newlines
 # regardless. Root cause: local-agent-tool-call-json-artifact-leak.
-_ENVELOPE_TAIL_RE = re.compile(r"\n\}[\}\s,]*\Z")
-
-
-def _strip_envelope_tail_artifacts(arguments: Any) -> Any:
-    """Strip a leaked tool-call-envelope tail from top-level string argument values.
-
-    Only touches values matching `_ENVELOPE_TAIL_RE` (see comment above); any
-    other trailing content, including legitimate `]`/`}`/`"`/`,` endings, is
-    left byte-for-byte unchanged.
-    """
-    if not isinstance(arguments, dict):
-        return arguments
-    cleaned = {}
-    for key, value in arguments.items():
-        if isinstance(value, str):
-            cleaned[key] = _ENVELOPE_TAIL_RE.sub("", value)
-        else:
-            cleaned[key] = value
-    return cleaned
+_RAW_ENVELOPE_TAIL_RE = re.compile(r"\n\},\s*\n(?=\"\}\}\s*\Z)")
 
 
 def _default_tool_audit_db_path() -> Path:
@@ -625,6 +607,11 @@ class ToolRegistry:
 
             output = output.strip()
 
+            # Repair only the proven raw decoder-envelope corruption before
+            # JSON sanitation. Parsed argument strings are never heuristically
+            # altered: file/edit content such as "alpha\n}" is valid data.
+            output = _RAW_ENVELOPE_TAIL_RE.sub("", output)
+
             def _sanitize_json(raw: str) -> str:
                 """Escape bare control chars inside JSON string values.
 
@@ -696,7 +683,7 @@ class ToolRegistry:
             tool_call = ToolCall(
                 id=hashlib.md5(f"{data['function']}{time.time()}".encode()).hexdigest()[:16],
                 tool_name=data["function"],
-                arguments=_strip_envelope_tail_artifacts(data.get("arguments") or {}),
+                arguments=data.get("arguments") or {},
             )
 
             return tool_call
