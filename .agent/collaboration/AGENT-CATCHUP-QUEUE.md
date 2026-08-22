@@ -299,3 +299,6 @@ REVIEW TARGETS (for Codex — the reliable auto-reviewer — and any returning l
   parenthesized alternations, required/optional ValueError. VERIFY: does [^"\\\x00-\x1f] correctly still
   allow all valid non-control UTF-8? does the ValueError-on-partial-required break any real caller that
   passes optional-prop schemas (search callers)? is the `value` rule truly complete for nested cases?
+- [Cluster 4] agent-loop hard-termination-bound (committed provisional): ceiling 40 + wall 3600s + overrides.
+  VERIFY: is 40 too low for any legitimate multi-turn task (would truncate real work)? does the wall-clock
+  check use monotonic time (not wall clock that jumps)? does a bound-trip leave the worktree/state clean?
