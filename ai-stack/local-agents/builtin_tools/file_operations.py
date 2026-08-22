@@ -16,11 +16,13 @@ Part of Phase 11 Batch 11.1: Tool Calling Infrastructure
 
 import asyncio
 import glob
+import hashlib
 import json
 import logging
 import os
 import re
 import subprocess
+import tempfile
 from pathlib import Path
 from typing import Dict, List, Optional
 
@@ -210,7 +212,6 @@ async def write_file_handler(
             return {"success": False, "error": f"Failed to create directories: {e}"}
 
     # Write file
-    import hashlib as _hashlib
     try:
         encoded = content.encode("utf-8")
         if mode == "w":
@@ -219,7 +220,7 @@ async def write_file_handler(
             with path.open("ab") as f:
                 f.write(encoded)
 
-        sha256 = _hashlib.sha256(encoded).hexdigest()[:16]
+        sha256 = hashlib.sha256(encoded).hexdigest()[:16]
 
         return {
             "success": True,
@@ -411,6 +412,15 @@ async def edit_file_handler(file_path: str, old_string: str, new_string: str) ->
         {"success": False, "error": "<reason>"}        on failure
     """
     try:
+        # Finding 2 (CRITICAL, codex-review-local-agent-batch-20260821 #2): unlike
+        # write_file, edit_file never validated the target path — any existing
+        # writable file (including forbidden paths, or targets reached via a
+        # symlink out of the workspace) could be modified. Reuse write_file's exact
+        # boundary (validate_file_path) rather than inventing a weaker one.
+        is_valid, reason = validate_file_path(file_path, allow_write=True)
+        if not is_valid:
+            return {"success": False, "error": f"Path validation failed: {reason}"}
+
         path = Path(file_path) if Path(file_path).is_absolute() else Path.cwd() / file_path
         if not path.exists():
             return {"success": False, "error": f"File not found: {file_path}"}
@@ -440,6 +450,8 @@ async def write_region_handler(
     start_line: int,
     end_line: int,
     new_text: str,
+    expected_text: Optional[str] = None,
+    expected_region_sha: Optional[str] = None,
 ) -> Dict:
     """
     Replace lines [start_line, end_line] (1-indexed, inclusive) of file_path with new_text.
@@ -452,6 +464,18 @@ async def write_region_handler(
     to local WITH line-number citations (e.g. '[file:271-290]'), so a line-range rewrite
     needs no matching at all — just the line numbers already shown.
 
+    Safety (2026-08-21 Codex + Antigravity independent review, findings 2 & 9):
+      - file_path is validated with the exact same workspace boundary write_file uses
+        (validate_file_path, allow_write=True) — resolves `..`/symlinks via realpath
+        and fails closed on any target outside the allowlist or under a forbidden path.
+      - expected_text / expected_region_sha are an OPTIONAL stale-line-drift guard: if
+        the caller's line-number citation is stale (an intervening edit shifted lines),
+        the current region content won't match what the caller expects and the write is
+        rejected instead of silently clobbering the wrong block. Omit both for the prior
+        (unguarded) behavior — fully backward compatible.
+      - The write is atomic (temp file in the same directory + os.replace()) so a crash
+        mid-write cannot truncate the file.
+
     Args:
         file_path:   Relative or absolute path to the file to edit.
         start_line:  1-indexed first line to replace (inclusive).
@@ -459,12 +483,28 @@ async def write_region_handler(
                      len(lines)+1 (with start_line == end_line) to insert at EOF
                      without replacing anything.
         new_text:    Replacement text for the region (may be multi-line).
+        expected_text: Optional. Current [start_line, end_line] text must match this
+                     exactly, or the write is rejected (stale-line-drift guard).
+        expected_region_sha: Optional. sha256 hex digest of the current
+                     [start_line, end_line] text — alternative to expected_text when
+                     the caller only carries a hash (e.g. from a front-loaded
+                     citation). Checked the same way; if both are given, both must pass.
 
     Returns:
         {"success": True, "start_line": int, "end_line": int, "lines_written": int}
-        {"success": False, "error": "<reason>", "current_line_count": int, "region": "<current text at/near the target>"}
+        {"success": False, "error": "<reason>", "current_line_count": int, ...}
     """
     try:
+        # Finding 2 (CRITICAL, codex-review-local-agent-batch-20260821 #2): unlike
+        # write_file, write_region never validated the target path — any existing
+        # writable file (including forbidden paths, or targets reached via a symlink
+        # out of the workspace) could be modified. Reuse write_file's exact boundary
+        # (validate_file_path resolves realpath, so a symlink chain that escapes the
+        # allowlist is rejected) rather than inventing a weaker one.
+        is_valid, reason = validate_file_path(file_path, allow_write=True)
+        if not is_valid:
+            return {"success": False, "error": f"Path validation failed: {reason}"}
+
         path = Path(file_path) if Path(file_path).is_absolute() else Path.cwd() / file_path
         if not path.exists():
             return {"success": False, "error": f"File not found: {file_path}"}
@@ -487,9 +527,11 @@ async def write_region_handler(
             }
 
         if not (1 <= start_line <= end_line <= max_bound):
-            clamp_start = max(1, min(start_line, max(line_count, 1)))
-            clamp_end = max(1, min(end_line, max(line_count, 1)))
-            region_text = "".join(lines[clamp_start - 1:clamp_end]) if line_count else ""
+            # Finding 5 (MEDIUM): truthful error — do NOT present a silently-clamped
+            # guess at the target region as if it were real. Report the actual current
+            # line count and, for orientation only, an explicitly-labeled tail preview
+            # of the real file (not a clamp of the caller's bogus range).
+            tail_preview = "".join(lines[-5:]) if lines else ""
             return {
                 "success": False,
                 "error": (
@@ -498,15 +540,73 @@ async def write_region_handler(
                     f"1 <= start_line <= end_line <= {max_bound} ({max_bound} = insert-at-EOF)."
                 ),
                 "current_line_count": line_count,
-                "region": region_text,
+                "file_tail_preview": tail_preview,
             }
 
-        if new_text and not new_text.endswith("\n"):
-            new_text = new_text + "\n"
-        new_lines = new_text.splitlines(keepends=True) if new_text else []
+        # Finding 9 (HIGH): stale-line-drift guard — optional, backward compatible.
+        # Compare the ACTUAL current region content against what the caller expected
+        # (from an earlier read/citation) before writing.
+        current_region_text = "".join(lines[start_line - 1:end_line])
+        if expected_text is not None and expected_text != current_region_text:
+            return {
+                "success": False,
+                "error": (
+                    f"expected_text does not match the current content of "
+                    f"[{start_line},{end_line}] in {file_path} — the file changed since "
+                    f"your last read (stale-line-drift guard). Re-read and retry."
+                ),
+                "current_line_count": line_count,
+                "current_region_text": current_region_text,
+            }
+        if expected_region_sha is not None:
+            actual_sha = hashlib.sha256(current_region_text.encode("utf-8")).hexdigest()
+            if actual_sha != expected_region_sha:
+                return {
+                    "success": False,
+                    "error": (
+                        f"expected_region_sha mismatch for [{start_line},{end_line}] in "
+                        f"{file_path} — the file changed since your last read "
+                        f"(stale-line-drift guard). actual_sha256={actual_sha}. Re-read and "
+                        f"retry."
+                    ),
+                    "current_line_count": line_count,
+                    "current_region_text": current_region_text,
+                }
 
-        spliced = lines[:start_line - 1] + new_lines + lines[end_line:]
-        path.write_text("".join(spliced), encoding="utf-8")
+        new_lines = new_text.splitlines(keepends=True) if new_text else []
+        prefix = lines[:start_line - 1]
+        suffix = lines[end_line:]
+
+        # Finding 3 (HIGH): EOF/mid-file merge guard. Only insert a separator where a
+        # merge would actually occur — do NOT forcibly newline-terminate new_text
+        # itself (that mutates the caller's payload even when no merge risk exists,
+        # e.g. a true trailing-content EOF insert with no suffix). "Join safely",
+        # don't "mutate the payload."
+        if prefix and new_lines and not prefix[-1].endswith("\n"):
+            prefix[-1] = prefix[-1] + "\n"
+        if new_lines and suffix and not new_lines[-1].endswith("\n"):
+            new_lines = new_lines[:-1] + [new_lines[-1] + "\n"]
+
+        spliced = prefix + new_lines + suffix
+        new_content = "".join(spliced)
+
+        # Finding 4 (MEDIUM): atomic write — temp file in the same directory +
+        # os.replace(), so a crash mid-write cannot truncate/corrupt the target file.
+        orig_mode = path.stat().st_mode
+        tmp_fd, tmp_name = tempfile.mkstemp(
+            dir=str(path.parent), prefix=f".{path.name}.", suffix=".tmp",
+        )
+        try:
+            with os.fdopen(tmp_fd, "w", encoding="utf-8") as f:
+                f.write(new_content)
+            os.chmod(tmp_name, orig_mode)
+            os.replace(tmp_name, str(path))
+        except Exception:
+            try:
+                os.unlink(tmp_name)
+            except OSError:
+                pass
+            raise
 
         return {
             "success": True,
@@ -735,6 +835,22 @@ def register_file_tools(registry: ToolRegistry):
                     "new_text": {
                         "type": "string",
                         "description": "Replacement text for the line range (may be multi-line)",
+                    },
+                    "expected_text": {
+                        "type": "string",
+                        "description": (
+                            "Optional stale-line-drift guard: the current text of "
+                            "[start_line, end_line] must match this exactly or the write "
+                            "is rejected. Omit for prior (unguarded) behavior."
+                        ),
+                    },
+                    "expected_region_sha": {
+                        "type": "string",
+                        "description": (
+                            "Optional stale-line-drift guard: sha256 hex digest of the "
+                            "current [start_line, end_line] text. Alternative to "
+                            "expected_text when only a hash is available."
+                        ),
                     },
                 },
                 "required": ["file_path", "start_line", "end_line", "new_text"],

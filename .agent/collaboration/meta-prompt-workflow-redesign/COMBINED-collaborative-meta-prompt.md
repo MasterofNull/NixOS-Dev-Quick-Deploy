@@ -63,8 +63,15 @@ closed.
 - **Claude:** the tier declaration ("what/why/who-reviews/what-I'm-skipping") + tests.
 - **Codex:** a declaration + passing tests is exactly what rubber-stamped this batch; any executable behavior
   change needs *independent semantic acceptance* before "done."
-- **Open:** is independent review affordable as a universal minimum given our lane reality (see below)? If
-  not, what's the cheapest real proof that isn't self-attestation?
+- **OWNER RESOLUTION (2026-08-21):** independent review is REQUIRED but **ASYNCHRONOUS, not blocking**. Dev
+  velocity must NOT depend on any lane being present. So: commit FORWARD with the best review available at
+  commit time (orchestrator verify + tests + tier0 + any present lane), and QUEUE the absent lanes' reviews
+  in the catch-up queue. **Committed ≠ Accepted** — a commit whose independent review is still queued is
+  `provisional-pending-review`, not `accepted/done`; it flips to accepted only when the queued review lands
+  clean. Absent-lane findings fold in when the lane returns: advisory unless a real defect surfaces, then a
+  bounded follow-up fix (never rewrite history). This resolves the single-reliable-reviewer constraint —
+  you never block on Codex; you queue it. (Mechanism exists: `AGENT-CATCHUP-QUEUE.md` + the honest
+  DEFINED→INTEGRATED→VALIDATED→ACCEPTED tiers — "accepted" requires the review, "committed" does not.)
 
 ### Debate 4 — Where is the Tier-0 / "hazard" boundary?
 - **Claude's strawman Tier 0:** security, secrets, AppArmor, network confinement, capability leases,

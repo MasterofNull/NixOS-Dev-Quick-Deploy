@@ -34,13 +34,30 @@ Coverage:
   (e) AQ_WRITE_REGION=0 hides the tool from the registry (and therefore
       from the model-visible schema + GBNF enum, which both derive from
       registry.tools)
+
+Safety regression coverage (2026-08-21 Codex + Antigravity independent review,
+codex-review-local-agent-batch-20260821.md finding 9 + related path-traversal
+finding on write_region/edit_file):
+  (f) path traversal (../) and symlink-out-of-workspace targets are rejected
+      fail-closed, reusing validate_file_path (the same boundary write_file uses)
+  (g) optional expected_text / expected_region_sha stale-line-drift guard —
+      match passes, mismatch fails closed and reports the ACTUAL current region
+  (h) EOF insertion into a file with no trailing newline never merges lines
+      (e.g. 'import osimport sys'), and new_text's own bytes are preserved
+      verbatim when there's no actual merge risk
+  (i) writes are atomic (temp file + os.replace) — no stray temp file left
+      behind, file permissions preserved
+  (j) out-of-range errors report the truthful current line count and an
+      explicitly-labeled tail preview, never a silently-clamped guess
 """
 from __future__ import annotations
 
 import asyncio
+import hashlib
 import importlib
 import importlib.util
 import os
+import shutil
 import sys
 import tempfile
 from pathlib import Path
@@ -185,6 +202,193 @@ async def test_insert_at_eof():
         check("EOF insert appends without disturbing existing lines", p.read_text(encoding="utf-8") == expected)
 
 
+def _outside_workspace_dir() -> Path:
+    """/var/tmp is NOT in file_operations.ALLOWED_BASE_PATHS (unlike /tmp,
+    ~/Documents, ~/.local/share/nixos-ai-stack) — use it as a target outside the
+    workspace boundary for traversal/symlink-escape tests."""
+    return Path(tempfile.mkdtemp(prefix="wr-outside-", dir="/var/tmp"))
+
+
+async def test_path_traversal_rejected():
+    """(f) FINDING 2: ../ traversal and symlink-out-of-workspace targets are
+    rejected fail-closed via validate_file_path — no write occurs, no data leaks."""
+    outside_dir = _outside_workspace_dir()
+    try:
+        with tempfile.TemporaryDirectory() as td:
+            tmp_dir = Path(td)
+
+            # (i) literal ../ traversal escaping the workspace into /var/tmp
+            outside_target = outside_dir / "traversal-target.txt"
+            outside_target.write_text("ORIGINAL OUTSIDE CONTENT\n", encoding="utf-8")
+            rel_escape = os.path.relpath(str(outside_target), start=str(tmp_dir))
+            traversal_path = str(tmp_dir / rel_escape)  # contains ../ segments
+
+            result = await file_operations.write_region_handler(
+                file_path=traversal_path, start_line=1, end_line=1, new_text="PWNED\n",
+            )
+            check("../ path traversal rejected", result.get("success") is False)
+            check(
+                "../ traversal error mentions path validation",
+                "path validation" in result.get("error", "").lower(),
+            )
+            check(
+                "../ traversal: outside file untouched",
+                outside_target.read_text(encoding="utf-8") == "ORIGINAL OUTSIDE CONTENT\n",
+            )
+
+            # (ii) symlink inside the workspace pointing outside it
+            symlink_target = outside_dir / "symlink-target.txt"
+            symlink_target.write_text("ORIGINAL SYMLINK-TARGET CONTENT\n", encoding="utf-8")
+            symlink_path = tmp_dir / "evil_link.txt"
+            symlink_path.symlink_to(symlink_target)
+
+            result2 = await file_operations.write_region_handler(
+                file_path=str(symlink_path), start_line=1, end_line=1, new_text="PWNED\n",
+            )
+            check("symlink-out-of-workspace rejected", result2.get("success") is False)
+            check(
+                "symlink-out error mentions path validation",
+                "path validation" in result2.get("error", "").lower(),
+            )
+            check(
+                "symlink target untouched",
+                symlink_target.read_text(encoding="utf-8") == "ORIGINAL SYMLINK-TARGET CONTENT\n",
+            )
+    finally:
+        shutil.rmtree(outside_dir, ignore_errors=True)
+
+
+async def test_expected_content_guard():
+    """(g) FINDING 9: optional expected_text / expected_region_sha stale-line-drift
+    guard — matching value passes and writes, mismatch fails closed with the
+    ACTUAL current region content (no write)."""
+    with tempfile.TemporaryDirectory() as td:
+        p = make_target_file(Path(td))
+
+        # matching expected_text: write proceeds
+        result = await file_operations.write_region_handler(
+            file_path=str(p), start_line=2, end_line=2,
+            new_text="line two REPLACED\n", expected_text="line two\n",
+        )
+        check("expected_text match: write succeeds", result.get("success") is True)
+        check(
+            "expected_text match: content landed",
+            "line two REPLACED" in p.read_text(encoding="utf-8"),
+        )
+
+        # mismatched expected_text: fails closed, file unchanged, actual region reported
+        before = p.read_text(encoding="utf-8")
+        result2 = await file_operations.write_region_handler(
+            file_path=str(p), start_line=3, end_line=3,
+            new_text="SHOULD NOT LAND\n", expected_text="this is not the real line three\n",
+        )
+        check("expected_text mismatch: write rejected", result2.get("success") is False)
+        check(
+            "expected_text mismatch: error names stale-drift",
+            "stale" in result2.get("error", "").lower(),
+        )
+        check(
+            "expected_text mismatch: reports actual current region",
+            result2.get("current_region_text") == "line three\n",
+        )
+        check("expected_text mismatch: file unchanged", p.read_text(encoding="utf-8") == before)
+
+        # matching expected_region_sha: write proceeds
+        sha = hashlib.sha256("line three\n".encode("utf-8")).hexdigest()
+        result3 = await file_operations.write_region_handler(
+            file_path=str(p), start_line=3, end_line=3,
+            new_text="line three REPLACED\n", expected_region_sha=sha,
+        )
+        check("expected_region_sha match: write succeeds", result3.get("success") is True)
+
+        # mismatched expected_region_sha: fails closed, file unchanged
+        before2 = p.read_text(encoding="utf-8")
+        result4 = await file_operations.write_region_handler(
+            file_path=str(p), start_line=4, end_line=4,
+            new_text="SHOULD NOT LAND\n", expected_region_sha="0" * 64,
+        )
+        check("expected_region_sha mismatch: write rejected", result4.get("success") is False)
+        check(
+            "expected_region_sha mismatch: error names stale-drift",
+            "stale" in result4.get("error", "").lower(),
+        )
+        check(
+            "expected_region_sha mismatch: file unchanged",
+            p.read_text(encoding="utf-8") == before2,
+        )
+
+
+async def test_eof_no_trailing_newline_no_merge():
+    """(h) FINDING 3: a file lacking a trailing newline + EOF insert must not merge
+    lines (e.g. 'import osimport sys'); new_text's own bytes stay verbatim when
+    there is no actual merge risk (i.e. nothing follows it)."""
+    with tempfile.TemporaryDirectory() as td:
+        p = Path(td) / "no_trailing_nl.py"
+        p.write_text("import os", encoding="utf-8")  # no trailing \n
+
+        result = await file_operations.write_region_handler(
+            file_path=str(p), start_line=2, end_line=2, new_text="import sys\n",
+        )
+        check("EOF insert on no-trailing-newline file succeeds", result.get("success") is True)
+        actual = p.read_text(encoding="utf-8")
+        check("no line-merge: 'osimport' does not appear", "osimport" not in actual)
+        check("EOF insert content exact", actual == "import os\nimport sys\n")
+
+    with tempfile.TemporaryDirectory() as td:
+        p = Path(td) / "no_trailing_nl2.py"
+        p.write_text("import os", encoding="utf-8")
+        result = await file_operations.write_region_handler(
+            file_path=str(p), start_line=2, end_line=2, new_text="import sys",  # no \n either
+        )
+        check("EOF insert (new_text also lacks trailing \\n) succeeds", result.get("success") is True)
+        actual = p.read_text(encoding="utf-8")
+        check("no merge even when new_text has no trailing newline", "osimport" not in actual)
+        check(
+            "new_text's exact bytes preserved (no forced trailing newline appended)",
+            actual == "import os\nimport sys",
+        )
+
+
+async def test_atomic_write_no_stray_temp_files():
+    """(i) FINDING 4: write_region writes via temp-file + os.replace() — no stray
+    temp file left behind on success, and file permissions are preserved."""
+    with tempfile.TemporaryDirectory() as td:
+        p = make_target_file(Path(td))
+        os.chmod(p, 0o640)
+        before_mode = p.stat().st_mode
+
+        result = await file_operations.write_region_handler(
+            file_path=str(p), start_line=1, end_line=1, new_text="ATOMIC WRITE TEST\n",
+        )
+        check("atomic write succeeds", result.get("success") is True)
+
+        leftovers = [f for f in os.listdir(td) if f.endswith(".tmp")]
+        check("no stray temp file left behind after atomic write", leftovers == [])
+        check("file permissions preserved across atomic replace", p.stat().st_mode == before_mode)
+        check(
+            "atomic write content landed",
+            "ATOMIC WRITE TEST" in p.read_text(encoding="utf-8"),
+        )
+
+
+async def test_out_of_range_truthful_preview():
+    """(j) FINDING 5: out-of-range errors report the ACTUAL current line count and
+    an explicitly-labeled tail preview — never a silently-clamped guess presented
+    as if it were the requested target region."""
+    with tempfile.TemporaryDirectory() as td:
+        p = make_target_file(Path(td))
+        result = await file_operations.write_region_handler(
+            file_path=str(p), start_line=2, end_line=999, new_text="X\n",
+        )
+        check("out-of-range: no misleading 'region' field present", "region" not in result)
+        check("out-of-range: truthful 'file_tail_preview' field present", "file_tail_preview" in result)
+        check(
+            "out-of-range: tail preview matches the REAL file tail",
+            result.get("file_tail_preview") == ORIGINAL_CONTENT,
+        )
+        check("out-of-range: current_line_count is truthful", result.get("current_line_count") == 5)
+
+
 def make_executor() -> AgentExecutor:
     ex = AgentExecutor.__new__(AgentExecutor)
     ex.llama_endpoint = "http://localhost:8080"
@@ -322,6 +526,11 @@ async def main():
     await test_insert_at_eof()
     await test_counts_as_edit_for_noaction_guard()
     test_env_flag_hides_tool()
+    await test_path_traversal_rejected()
+    await test_expected_content_guard()
+    await test_eof_no_trailing_newline_no_merge()
+    await test_atomic_write_no_stray_temp_files()
+    await test_out_of_range_truthful_preview()
 
     print(f"\n{PASS}/{PASS + FAIL} tests passed")
     sys.exit(0 if FAIL == 0 else 1)
