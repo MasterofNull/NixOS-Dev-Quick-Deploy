@@ -295,3 +295,7 @@ REVIEW TARGETS (for Codex — the reliable auto-reviewer — and any returning l
   identical (it must — only side-effect skipped)? is the request_key now over-inclusive (keying on a field
   that legitimately varies could cause spurious misses)? does ReplayConfigError propagation ever strand a
   half-written cassette row?
+- `[Cluster 3]` grammar_cache.py GBNF malformed-JSON (committed provisional): control-char exclusion,
+  parenthesized alternations, required/optional ValueError. VERIFY: does [^"\\\x00-\x1f] correctly still
+  allow all valid non-control UTF-8? does the ValueError-on-partial-required break any real caller that
+  passes optional-prop schemas (search callers)? is the `value` rule truly complete for nested cases?
