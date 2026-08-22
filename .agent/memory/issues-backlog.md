@@ -3226,15 +3226,15 @@ Advisory task (codex is the real confirmatory backstop) — non-blocking.
   Action (consumer, done): the context assembler does file-targeted ephemeral indexing of any path the task names, routing around this. Action (producer, deferred): extend the codebase-context indexer to include shebang executables under scripts/ (detect `#!` first line) so semantic breadth search also covers them.
   File: (indexer — locate the codebase-context ingest glob); ai-stack/local-agents/context_assembler.py (consumer workaround)
 
-[OPEN] overnight-dogfood-runner-false-positive-edit-detection — aq-local-dogfood-run detected task edits via `git status --porcelain` (dirty - baseline), which includes UNTRACKED files. Background services (antigravity-inbox receipts, config/aqos/approval-signer-credentials.json) created untracked files DURING the run, so every task false-reported "edit-captured" with a 0-byte patch — 5/5 fake successes while local actually landed 0 edits.
+[DONE 2026-08-22] overnight-dogfood-runner-false-positive-edit-detection — aq-local-dogfood-run detected task edits via `git status --porcelain` (dirty - baseline), which includes UNTRACKED files. Background services (antigravity-inbox receipts, config/aqos/approval-signer-credentials.json) created untracked files DURING the run, so every task false-reported "edit-captured" with a 0-byte patch — 5/5 fake successes while local actually landed 0 edits.
   Severity: high
   Root cause: git status includes untracked; incidental service files mis-attributed to the task.
   Action (FIXED): detect via `git diff --name-only` (tracked mods only) + require non-empty diff for edit_landed. File: scripts/ai/aq-local-dogfood-run
 
-[OPEN] local-grounding-supplement-exhausts-prefill-budget — config/local-agent-grounding.md (7955 chars) is injected into EVERY local dispatch. With the assembler block (~4850 chars) + system prompt + task, base context is ~15K chars against the 24000-char LLAMA_MAX_PROMPT_CHARS guard — one gated read or accumulated turn blows it. Every overnight dogfood task failed "prompt too large", edits:0.
+[DONE 2026-08-22] local-grounding-supplement-exhausts-prefill-budget — config/local-agent-grounding.md (7955 chars) was injected into every normal local dispatch. With the assembler block + system prompt + task, the first dogfood attempt reached 25,454 chars against the 24,000-char guard before inference.
   Severity: high
   Root cause: full 8K grounding (apparmor/ports/nixos/monitor/workflow-phases) mostly irrelevant to a bounded edit yet always injected; competes with front-loaded assembler context for the tiny APU prefill budget.
-  Action (FIXED for dogfood): config/local-agent-grounding-micro.md (~1.2K, local-inference essentials only), runner sets HARNESS_GROUNDING_FILE to it. Follow-up: make micro-grounding the default for bounded local tasks generally, not just dogfood.
+  Action (FIXED generally): delegate-to-local now defaults to config/local-agent-grounding-micro.md while preserving explicit overrides, runtime skill selection skips repo-wide validation, and local context assembly reserves turn headroom with a 1,500-token cap. The safety ceiling remains unchanged.
   File: config/local-agent-grounding.md; scripts/ai/lib/dispatch.py (_load_grounding)
 
 [OPEN] read-file-gate-char-guard-env-var-misnamed — agent_executor.py reads the prefill char guard as `int(os.getenv("n", "24000"))` — the env var is literally named "n". Harmless (defaults to 24000) but wrong: it can't be tuned via a sensible name and risks accidental override by a stray "n" env var.
@@ -3340,7 +3340,7 @@ Advisory task (codex is the real confirmatory backstop) — non-blocking.
   Action: declare executable mode through the repository/Nix packaging path and add an entrypoint smoke check.
   File: scripts/security/security-audit.sh
 
-[PENDING-REBUILD] llama-cpp-binary-renamed-to-evade-apparmor-attachment — The rebuilt `llama-cpp.service` runs `/nix/store/...-llama-server-unconfined/bin/llama-server-unconfined`; `nix/modules/roles/ai-stack.nix` explicitly copied/renamed the binary so it did not match the enforced AppArmor attachment. A5 removes the bypass, binds the exact package executable and explicit systemd profile, and adds a runtime enforcement QA probe; Nix evaluation passes, but live proof awaits rebuild.
+[DONE 2026-08-22] llama-cpp-binary-renamed-to-evade-apparmor-attachment — The rebuilt service now runs the exact llama package binary under `ai-llama-cpp (enforce)` with `AppArmorProfile=ai-llama-cpp`, only `cap_ipc_lock`, bounded address families, zero restarts, and successful loopback health/inference prefill.
   Severity: critical
   Action: remove the evasion wrapper; explicitly attach a tested profile to the actual executable (or safely update the attachment rule), grant only the GPU/backend reads/maps required for startup, minimize capabilities/address families, rebuild, and prove both inference success and denied shell/home/external-network behavior.
   File: nix/modules/roles/ai-stack.nix
@@ -3380,7 +3380,17 @@ Advisory task (codex is the real confirmatory backstop) — non-blocking.
   Action: define scanner scope policy for ignored upstream forks; either exclude them with an explicit non-runtime receipt or maintain their lockfiles in a separate advisory lane, while preserving a distinct zero-tolerance gate for tracked/deployed dependencies.
   File: scripts/security/security-audit.sh; .forks/nixpkgs/ci/github-script/package-lock.json
 
-[PENDING-REBUILD] llama-apparmor-blocks-readiness-probe-helper — The 2026-08-22 activation loaded and attached `ai-llama-cpp`, but `llama-cpp.service` entered a restart loop because `ExecStartPost` inherits the service profile and its `${pkgs.coreutils}/bin/seq` symlink executes the coreutils multicall binary, which lacked `ix`. The post-start failure caused systemd to terminate an otherwise-starting server. Kernel evidence showed only coreutils exec and harmless `/dev/tty` denials before the probe exited.
+[DONE 2026-08-22] llama-apparmor-blocks-readiness-probe-helper — The rebuilt readiness probe completed with exit 0; the service remained active with zero restarts and `/health` returned `{"status":"ok"}`. Exact coreutils/curl inherited-execution grants removed the fatal denial without introducing a generic Nix-store execution grant.
   Severity: critical
   Action: allow only the exact coreutils and curl readiness helpers with inherited execution, retain generic Nix-store execution denial, rebuild, then verify service health, enforced profile, and any newly exposed denials.
   File: nix/modules/roles/ai-stack.nix; scripts/testing/test-llama-apparmor-contract.py
+
+[IN-FLIGHT] local-dogfood-help-launched-queue-and-reverted-foreign-edits — `aq-local-dogfood-run --help` previously ignored argv and launched the overnight queue. Because the runner treated every tracked change appearing after its clean baseline as task-owned, it captured and ran `git checkout --` on four concurrent orchestrator repair files outside the declared task. The edits were recoverable from this session and no commits were lost.
+  Severity: critical
+  Action: implemented inert `--help`/unknown-option handling plus exact declared-file ownership; any other new change now produces `scope-collision` and is never captured or reverted. Retain the focused guard and require independent review before unattended dogfood resumes.
+  File: scripts/ai/aq-local-dogfood-run; scripts/testing/test-aq-local-dogfood-run-guard.py
+
+[OPEN] confined-readiness-curl-nss-denials — The successful confined readiness probe still generated non-fatal AppArmor denials for `/dev/tty`, disconnected `run/nscd/socket`, and `/etc/passwd` while curl resolved loopback. Readiness succeeded, so activation is not blocked, but each retry paid avoidable NSS lookup/denial overhead.
+  Severity: low
+  Action: make the readiness probe avoid NSS/user lookups or add only the narrow read/socket rules proven necessary; retain loopback-only network and generic execution denial.
+  File: nix/modules/roles/ai-stack.nix

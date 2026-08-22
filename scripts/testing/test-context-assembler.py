@@ -425,10 +425,13 @@ class TestDispatchWiring(unittest.TestCase):
         if mod is None:
             self.skipTest("context_assembler module unavailable via dispatch's lazy import")
         with patch.dict(os.environ, {"AQ_CONTEXT_ASSEMBLER": "1"}):
-            with patch.object(mod, "assemble_context", return_value=fake_assembled):
+            with patch.object(mod, "assemble_context", return_value=fake_assembled) as assemble:
                 result = self.dispatch._apply_context_assembler(
                     "original prompt", "wiring-test-on", self.tmp_output,
                 )
+        assemble.assert_called_once_with(
+            "original prompt", task_id="wiring-test-on", token_budget=1_500,
+        )
         self.assertIn("original prompt", result)
         self.assertIn("front-loaded", result)
         sidecar = Path(str(self.tmp_output) + ".context.json")

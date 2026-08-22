@@ -62,6 +62,10 @@ RALPH_PORT="${RALPH_PORT:-8004}"
 # DIRECT_MAX_TOKENS is read by task_config._resolve_tokens() from the environment;
 # export here so nohup subprocesses inherit it.
 export DIRECT_MAX_TOKENS="${DIRECT_MAX_TOKENS:-4096}"
+# The local single-slot prefill has a hard character ceiling. Keep local
+# dispatches on the compact grounding projection; remote lanes retain the full
+# supplement. An explicit caller override remains authoritative.
+export HARNESS_GROUNDING_FILE="${HARNESS_GROUNDING_FILE:-$REPO_ROOT/config/local-agent-grounding-micro.md}"
 # P2.3 TURNED ON: GBNF repair-retry for the dispatched aq-agent-loop lane (the coordinator lane is
 # turned on via its systemd Environment). 'repair' only constrains a malformed tool-call retry —
 # bench-validated non-harmful. Override with AQ_LOCAL_GBNF= to disable, or =1/on to always-constrain.

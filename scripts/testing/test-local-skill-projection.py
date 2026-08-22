@@ -43,7 +43,8 @@ def test_selection_and_prompt_reachability() -> None:
 
     def runner(command, **kwargs):
         require(command[0] == str(root / "scripts" / "ai" / "aq-skill-auto"), "must use existing selector")
-        require(command[-2:] == ["--json", "--test"], "selector must validate selected skills")
+        require(command[-1:] == ["--json"] and "--test" not in command,
+                "runtime selection must not rerun repository-wide skill validation")
         require(kwargs["timeout"] <= 8 and kwargs["capture_output"] is True,
                 "selector execution must be bounded/read-only")
         return subprocess.CompletedProcess(command, 0, '{"status":"ok","reference_skills":["testing-patterns","aq-workflow"]}', "")
