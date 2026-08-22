@@ -918,7 +918,7 @@ gate_evidence_collector() {
 # Gate: local-agent harness regression suites (context-assembler, read-file
 # gate, re-read/no-action/edit-feedback interventions, write_region,
 # tool-call GBNF grammar, llm-cassette record/replay, agent-loop hard
-# bounds). These live under scripts/testing/ as standalone
+# bounds, and local shell sandbox). These live under scripts/testing/ as standalone
 # `python3 <file>.py` runners (unittest.main() / custom async main() with
 # sys.exit(0|1) / pytest.main() self-invocation) — pytest.ini only discovers
 # ai-stack/, so none of these were ever exercised by the normal gate before
@@ -931,6 +931,11 @@ gate_evidence_collector() {
 gate_agent_harness_regression_suites() {
   log "Checking local-agent harness regression suites..."
   local suite_dir="${REPO_ROOT}/scripts/testing"
+  # A missing suite is a coverage regression, not an optional capability. Keep this
+  # manifest explicit so adding a local-agent safeguard requires adding it here too.
+  # Each suite has an independent cap: one hung regression must not turn tier0 into
+  # an unbounded wait or hide which suite stalled.
+  local suite_timeout_seconds=60
   local suites=(
     "test-context-assembler.py"
     "test-read-file-gate.py"
@@ -941,27 +946,37 @@ gate_agent_harness_regression_suites() {
     "test-tool-call-grammar.py"
     "test-llm-cassette.py"
     "test-agent-loop-bounds.py"
+    "test-local-shell-sandbox.py"
   )
-  local any_ran=0
   local any_failed=0
-  local suite test_script
+  local suite test_script output_file status
+  if [[ ${#suites[@]} -eq 0 ]]; then
+    fail "Harness regression suite manifest is empty"
+    return 1
+  fi
   for suite in "${suites[@]}"; do
     test_script="${suite_dir}/${suite}"
     if [[ ! -f "${test_script}" ]]; then
+      fail "Harness regression suite missing (required): ${suite}"
+      any_failed=1
       continue
     fi
-    any_ran=1
-    if python3 "${test_script}" >/dev/null 2>&1; then
+    output_file="$(mktemp)"
+    if timeout "${suite_timeout_seconds}s" python3 "${test_script}" >"${output_file}" 2>&1; then
       pass "Harness regression suite: ${suite}"
     else
-      fail "Harness regression suite failed: ${suite}"
+      status=$?
+      if [[ ${status} -eq 124 ]]; then
+        fail "Harness regression suite timed out after ${suite_timeout_seconds}s: ${suite}"
+      else
+        fail "Harness regression suite failed (exit ${status}): ${suite}"
+      fi
+      log "Harness regression diagnostics for ${suite} (last 40 lines):"
+      tail -40 "${output_file}" >&2 || true
       any_failed=1
     fi
+    unlink "${output_file}" || true
   done
-  if [[ ${any_ran} -eq 0 ]]; then
-    pass "Harness regression suites (skipped — none of the tracked suites are present)"
-    return 0
-  fi
   [[ ${any_failed} -eq 0 ]]
 }
 
