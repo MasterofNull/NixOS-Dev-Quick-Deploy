@@ -44,6 +44,12 @@ def main() -> int:
         "profile attachment is not bound to the selected package executable",
     )
     check(
+        "${pkgs.coreutils}/bin/coreutils ix," in role
+        and "${pkgs.curl}/bin/curl ix," in role
+        and "/nix/store/** ix," not in role,
+        "readiness probe helpers are not narrowly executable inside the llama profile",
+    )
+    check(
         '"0.3.3"' in phase0
         and 'expected_runtime = "ai-llama-cpp (enforce)"' in phase0
         and '"--property=AppArmorProfile"' in phase0

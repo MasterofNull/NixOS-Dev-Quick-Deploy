@@ -3379,3 +3379,8 @@ Advisory task (codex is the real confirmatory backstop) — non-blocking.
   Severity: medium
   Action: define scanner scope policy for ignored upstream forks; either exclude them with an explicit non-runtime receipt or maintain their lockfiles in a separate advisory lane, while preserving a distinct zero-tolerance gate for tracked/deployed dependencies.
   File: scripts/security/security-audit.sh; .forks/nixpkgs/ci/github-script/package-lock.json
+
+[PENDING-REBUILD] llama-apparmor-blocks-readiness-probe-helper — The 2026-08-22 activation loaded and attached `ai-llama-cpp`, but `llama-cpp.service` entered a restart loop because `ExecStartPost` inherits the service profile and its `${pkgs.coreutils}/bin/seq` symlink executes the coreutils multicall binary, which lacked `ix`. The post-start failure caused systemd to terminate an otherwise-starting server. Kernel evidence showed only coreutils exec and harmless `/dev/tty` denials before the probe exited.
+  Severity: critical
+  Action: allow only the exact coreutils and curl readiness helpers with inherited execution, retain generic Nix-store execution denial, rebuild, then verify service health, enforced profile, and any newly exposed denials.
+  File: nix/modules/roles/ai-stack.nix; scripts/testing/test-llama-apparmor-contract.py
