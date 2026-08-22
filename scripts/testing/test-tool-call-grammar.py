@@ -26,10 +26,13 @@ import sys
 from dataclasses import dataclass
 from pathlib import Path
 
+import pytest
+
 REPO = Path(__file__).resolve().parents[2]
 sys.path.insert(0, str(REPO / "ai-stack" / "local-agents"))
 sys.path.insert(0, str(REPO / "scripts" / "ai" / "lib"))
 
+import grammar_cache  # noqa: E402
 import tool_grammar  # noqa: E402
 
 
@@ -73,6 +76,21 @@ class Rep:
 
 
 _ESCAPES = {"n": "\n", "t": "\t", "r": "\r", '"': '"', "\\": "\\", "/": "/", "b": "\b", "f": "\f"}
+_HEX_ESCAPE_SIZES = {"x": 2, "u": 4, "U": 8}
+
+
+def _decode_escape(text: str, i: int) -> tuple[str, int]:
+    """Decode one GBNF escape at text[i] == '\\', mirroring llama.cpp's real
+    grammar parser (llama-grammar.cpp `parse_char`): \\x XX / \\u XXXX / \\U
+    XXXXXXXX hex escapes (used by the Codex #6 control-char fix, e.g. `\\x1f`),
+    plus the existing \\n \\t \\r and self-escaped literals. Returns (char, next_i).
+    """
+    esc = text[i + 1]
+    size = _HEX_ESCAPE_SIZES.get(esc)
+    if size is not None:
+        start = i + 2
+        return chr(int(text[start : start + size], 16)), start + size
+    return _ESCAPES.get(esc, esc), i + 2
 
 
 class _GbnfParser:
@@ -193,10 +211,8 @@ class _GbnfParser:
         while self.i < self.n and self.text[self.i] != '"':
             c = self.text[self.i]
             if c == "\\":
-                self.i += 1
-                esc = self.text[self.i]
-                out.append(_ESCAPES.get(esc, esc))
-                self.i += 1
+                ch, self.i = _decode_escape(self.text, self.i)
+                out.append(ch)
             else:
                 out.append(c)
                 self.i += 1
@@ -228,10 +244,8 @@ class _GbnfParser:
     def _read_class_char(self) -> str:
         c = self.text[self.i]
         if c == "\\":
-            self.i += 1
-            esc = self.text[self.i]
-            self.i += 1
-            return _ESCAPES.get(esc, esc)
+            ch, self.i = _decode_escape(self.text, self.i)
+            return ch
         self.i += 1
         return c
 
@@ -383,6 +397,131 @@ def test_grammar_rejects_unknown_function_name():
     gbnf = _grammar()
     envelope = '{"arguments":{},"function":"delete_everything"}'
     assert not gbnf_matches(gbnf, envelope)
+
+
+# --------------------------------------------------------------------------
+# Codex #6 regression tests — the grammar accepted strings json.loads rejects.
+# See .agent/collaboration/codex-review-local-agent-batch-20260821.md finding 6.
+# --------------------------------------------------------------------------
+
+
+def test_string_rule_excludes_raw_control_chars_in_grammar_source():
+    gbnf = _grammar()
+    # Defect 1: the string body's unescaped char class must explicitly exclude
+    # U+0000-U+001F, not just `"` and `\`.
+    assert "\\x00-\\x1f" in gbnf, gbnf
+
+
+def test_string_rule_rejects_raw_control_char_but_accepts_escaped_form():
+    gbnf = _grammar()
+    # A bare/raw newline inside a JSON string is exactly what `json.loads`
+    # rejects (json.decoder.JSONDecodeError: Invalid control character).
+    raw_control_char = '{"arguments":{"note":"line1' + "\n" + 'line2"},"function":"read_file"}'
+    escaped = '{"arguments":{"note":"line1\\nline2"},"function":"read_file"}'
+
+    assert json.loads(escaped) == {"arguments": {"note": "line1\nline2"}, "function": "read_file"}
+    with pytest.raises(json.JSONDecodeError):
+        json.loads(raw_control_char)
+
+    assert not gbnf_matches(gbnf, raw_control_char), "grammar must reject a bare control char in a string"
+    assert gbnf_matches(gbnf, escaped), "grammar must still accept the properly \\n-escaped form"
+
+
+def test_object_rule_parenthesizes_untyped_property_alternation():
+    # Defect 2 reproduction: before the fix, an untyped property ("a": {}) built
+    # the rule text "string | number | boolean | null" and spliced it UNPARENTHESIZED
+    # into the object sequence. That top-level `|` leaked precedence across the
+    # whole enclosing rule, so `root` degraded into an alternation where one
+    # branch was the bare `number` rule alone — meaning a lone `5` (or `true`)
+    # satisfied `root` even though the schema demands a 2-key object.
+    schema = {
+        "type": "object",
+        "properties": {
+            "a": {},  # no "type" -> untyped/any-value fallback
+            "b": {"type": "string"},
+        },
+        "required": ["a", "b"],
+    }
+    gbnf, _hit = grammar_cache.GrammarCache().get_or_build(schema, "zt")
+
+    assert not gbnf_matches(gbnf, "5"), "bare number must not satisfy the whole object grammar"
+    assert not gbnf_matches(gbnf, "true"), "bare boolean must not satisfy the whole object grammar"
+
+    valid_string_a = '{"a":"anything","b":"x"}'
+    valid_number_a = '{"a":5,"b":"x"}'
+    assert json.loads(valid_string_a) and json.loads(valid_number_a)
+    assert gbnf_matches(gbnf, valid_string_a)
+    assert gbnf_matches(gbnf, valid_number_a), "untyped property must still accept a number value"
+
+
+def test_nested_object_and_heterogeneous_array_schema_round_trips():
+    # Defect 2, functional form: nested object + an array whose items are a
+    # JSON-Schema type-union ("heterogeneous array"). Both nested-object
+    # property splicing and type-union alternation splicing must be
+    # parenthesized correctly for this to compile into a working grammar.
+    schema = {
+        "type": "object",
+        "properties": {
+            "id": {"type": "string"},
+            "meta": {
+                "type": "object",
+                "properties": {"count": {"type": "number"}},
+                "required": ["count"],
+            },
+            "tags": {"type": "array", "items": {"type": ["string", "number"]}},
+        },
+        "required": ["id", "meta", "tags"],
+    }
+    gbnf, _hit = grammar_cache.GrammarCache().get_or_build(schema, "zt")
+
+    sample = '{"id":"x1","meta":{"count":3},"tags":["a",2,"b"]}'
+    assert json.loads(sample) == {"id": "x1", "meta": {"count": 3}, "tags": ["a", 2, "b"]}
+    assert gbnf_matches(gbnf, sample)
+
+    # Syntactically valid JSON that violates the declared item type-union
+    # (bool is not in ["string", "number"]) must still be rejected — proves the
+    # union is a real constraint, not a degenerate "any value" grammar.
+    bad_item_type = '{"id":"x1","meta":{"count":3},"tags":[true]}'
+    assert json.loads(bad_item_type)
+    assert not gbnf_matches(gbnf, bad_item_type)
+
+
+def test_object_rule_rejects_schema_with_partial_required_properties():
+    # Defect 3: a schema where "b" is optional (declared in properties but not
+    # in required) must be explicitly rejected rather than silently forcing it
+    # as mandatory (which would mis-model the schema).
+    schema = {
+        "type": "object",
+        "properties": {"a": {"type": "string"}, "b": {"type": "string"}},
+        "required": ["a"],
+    }
+    with pytest.raises(ValueError):
+        grammar_cache.default_json_schema_to_gbnf(schema, "zt")
+
+
+def test_object_rule_rejects_schema_with_no_required_key_at_all():
+    # Absent "required" means "everything optional" per JSON Schema — same
+    # unsupported shape as a partial list, must reject the same way.
+    schema = {
+        "type": "object",
+        "properties": {"a": {"type": "string"}},
+    }
+    with pytest.raises(ValueError):
+        grammar_cache.default_json_schema_to_gbnf(schema, "zt")
+
+
+def test_object_rule_still_forces_all_properties_when_all_required_no_regression():
+    # The tool-call envelope shape (function+arguments, both required) must keep
+    # working exactly as before: every declared property mandatory.
+    schema = {
+        "type": "object",
+        "properties": {"a": {"type": "string"}, "b": {"type": "string"}},
+        "required": ["a", "b"],
+    }
+    gbnf = grammar_cache.default_json_schema_to_gbnf(schema, "zt")
+
+    assert gbnf_matches(gbnf, '{"a":"x","b":"y"}')
+    assert not gbnf_matches(gbnf, '{"a":"x"}'), "b omitted -> still rejected, both are required"
 
 
 if __name__ == "__main__":
