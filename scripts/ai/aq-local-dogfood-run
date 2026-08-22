@@ -102,6 +102,22 @@ def tracked_mods() -> set:
     return {ln.strip() for ln in out.splitlines() if ln.strip()}
 
 
+def classify_task_changes(current_mods: set, baseline_mods: set, declared_file: str) -> tuple[list, list]:
+    """Return (owned, foreign) changes created after the run baseline.
+
+    Capture/revert authority is limited to the task's single declared file.
+    Any other new worktree change is a collaboration collision and is left
+    untouched.
+    """
+    appeared = {
+        path for path in (current_mods - baseline_mods)
+        if not path.startswith(".agents/delegation/dogfood")
+    }
+    owned = sorted(path for path in appeared if path == declared_file)
+    foreign = sorted(path for path in appeared if path != declared_file)
+    return owned, foreign
+
+
 def _pid_alive(pid: int) -> bool:
     try:
         os.kill(pid, 0)
@@ -208,13 +224,19 @@ def run_task(task: dict, baseline_mods: set) -> dict:
     m = re.search(r"pid (\d+)", out)
     local_pid = int(m.group(1)) if m else None
 
+    declared_file = task.get("file", "")
+    if not declared_file or declared_file in baseline_mods:
+        ledger({"task": tid, "event": "blocked", "status": "declared-file-preexisting-or-missing"})
+        return {"task": tid, "backlog_item": task["backlog_item"], "edit_landed": False,
+                "elapsed_s": 0.0, "diff_path": "", "status": "blocked-preexisting"}
+
     def _task_files() -> list:
-        # tracked files with real changes that appeared during THIS task (excludes my
-        # framework changes via baseline_mods, and the runner's own dogfood artifacts).
-        return sorted(
-            f for f in (tracked_mods() - baseline_mods)
-            if not f.startswith(".agents/delegation/dogfood")
-        )
+        owned, _foreign = classify_task_changes(tracked_mods(), baseline_mods, declared_file)
+        return owned
+
+    def _foreign_files() -> list:
+        _owned, foreign = classify_task_changes(tracked_mods(), baseline_mods, declared_file)
+        return foreign
 
     # Poll for the edit to appear + stabilize (unchanged across 2 polls = settled),
     # or the task to exit on its own, or the cap. Then stop — don't wait out the loop.
@@ -223,6 +245,10 @@ def run_task(task: dict, baseline_mods: set) -> dict:
     deadline = t0 + EDIT_POLL_MAX_S
     while time.monotonic() < deadline:
         time.sleep(POLL_INTERVAL_S)
+        foreign = _foreign_files()
+        if foreign:
+            ledger({"task": tid, "event": "collision", "foreign_files": foreign})
+            break
         tf = _task_files()
         cur = git("diff", "--", *tf) if tf else ""
         if cur.strip():
@@ -244,7 +270,8 @@ def run_task(task: dict, baseline_mods: set) -> dict:
         except Exception:
             pass
 
-    task_files = _task_files()
+    foreign_files = _foreign_files()
+    task_files = _task_files() if not foreign_files else []
     diff = git("diff", "--", *task_files) if task_files else ""
     edit_landed = bool(task_files) and bool(diff.strip())
     diff_path = ""
@@ -253,9 +280,10 @@ def run_task(task: dict, baseline_mods: set) -> dict:
         (DIFFDIR / f"{tid}.patch").write_text(diff)
         git("checkout", "--", *task_files)  # revert so the next task starts clean
 
-    status = "edit-captured" if edit_landed else "no-edit"
+    status = "scope-collision" if foreign_files else ("edit-captured" if edit_landed else "no-edit")
     ledger({"task": tid, "event": "completed", "status": status, "edit_landed": edit_landed,
-            "elapsed_s": elapsed, "diff_path": diff_path, "local_pid": local_pid})
+            "elapsed_s": elapsed, "diff_path": diff_path, "local_pid": local_pid,
+            "foreign_files": foreign_files})
     return {"task": tid, "backlog_item": task["backlog_item"], "edit_landed": edit_landed,
             "elapsed_s": elapsed, "diff_path": diff_path, "status": status}
 
@@ -330,6 +358,12 @@ def main() -> int:
 
 
 if __name__ == "__main__":
+    if sys.argv[1:] in (["-h"], ["--help"]):
+        print("Usage: aq-local-dogfood-run\n\nRuns the configured bounded dogfood queue. No options are accepted.")
+        raise SystemExit(0)
+    if sys.argv[1:]:
+        print(f"aq-local-dogfood-run: unknown arguments: {' '.join(sys.argv[1:])}", file=sys.stderr)
+        raise SystemExit(2)
     try:
         sys.exit(main())
     except Exception as e:

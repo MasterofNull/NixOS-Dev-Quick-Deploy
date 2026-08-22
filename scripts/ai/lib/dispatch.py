@@ -1084,7 +1084,9 @@ def _apply_context_assembler(prompt: str, task_id: str, output_file: Path) -> st
     if mod is None:
         return prompt
     try:
-        assembled = mod.assemble_context(prompt, task_id=task_id)
+        # Reserve turn-to-turn headroom beneath LLAMA_MAX_PROMPT_CHARS for the
+        # system/tool contract, bounded skill projection, and tool results.
+        assembled = mod.assemble_context(prompt, task_id=task_id, token_budget=1_500)
         _log_context_assembly(output_file, assembled)
         if assembled.text:
             return assembled.text + "\n\n" + prompt

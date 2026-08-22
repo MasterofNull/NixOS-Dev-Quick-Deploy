@@ -61,7 +61,7 @@ def select_local_skills(
         return _degraded("invalid-task-or-selector-unavailable")
     try:
         result = runner(
-            [str(selector), task[:4_000], "--agent", "local", "--json", "--test"],
+            [str(selector), task[:4_000], "--agent", "local", "--json"],
             cwd=str(root), text=True, capture_output=True, timeout=_SELECTOR_TIMEOUT_S,
             check=False,
         )
