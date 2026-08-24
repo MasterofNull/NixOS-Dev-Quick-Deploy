@@ -904,8 +904,8 @@ gate_evidence_collector() {
   log "Checking VF-7 evidence-collector suite..."
   local test_script="${REPO_ROOT}/scripts/testing/test-aq-evidence-collector.py"
   if [[ ! -f "${test_script}" ]]; then
-    pass "Evidence-collector suite (skipped — test suite absent)"
-    return 0
+    fail "Evidence-collector suite missing (required)"
+    return 1
   fi
   if python3 "${test_script}" >/dev/null 2>&1; then
     pass "Evidence-collector suite (offline suite passed)"
