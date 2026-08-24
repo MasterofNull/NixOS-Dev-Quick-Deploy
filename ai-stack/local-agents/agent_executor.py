@@ -246,6 +246,21 @@ def _enforce_dogfood_payload_budget(
         )
     return receipt
 
+
+def _shed_oldest_assistant_tool_pair(messages: List[Dict]) -> Tuple[List[Dict], bool]:
+    """Drop one superseded turn without breaking assistant/tool adjacency.
+
+    Initial agent context may contain more than the usual system+user pair, so
+    the first assistant/tool turn is not reliably at indexes 2/3.
+    """
+    for index in range(2, max(2, len(messages) - 2)):
+        if (
+            messages[index].get("role") == "assistant"
+            and messages[index + 1].get("role") == "tool"
+        ):
+            return messages[:index] + messages[index + 2 :], True
+    return messages, False
+
 _TELEMETRY_DIR = Path(os.getenv("TELEMETRY_DIR", "/var/lib/ai-stack/hybrid/telemetry"))
 # Agent events are written to the user-spool path (.agents/telemetry/hybrid-events.jsonl)
 # rather than the service-owned /var/lib/ai-stack/hybrid/telemetry/hybrid-events.jsonl.
@@ -1727,18 +1742,15 @@ class LocalAgentExecutor:
                     len(pinned), len(sliding), len(messages), _ctx_chars, bool(_scratch),
                 )
             elif _ctx_chars > _CTX_CHAR_BUDGET and len(messages) > 6:
-                # Fallback for 6 < len ≤ 8: can't do full pinned+sliding, just shed oldest pair.
-                # Verify messages[2:4] form a valid (assistant, tool) pair before dropping —
-                # a dangling role:tool without its role:assistant corrupts the conversation graph.
-                _m2_role = messages[2].get("role") if len(messages) > 2 else None
-                _m3_role = messages[3].get("role") if len(messages) > 3 else None
-                if _m2_role == "assistant" and _m3_role == "tool":
-                    messages = messages[:2] + messages[4:]
+                # Fallback for 6 < len ≤ 8: shed the oldest complete pair.  A
+                # context-system message may precede it, so locate roles instead
+                # of assuming the pair is fixed at indexes 2/3.
+                messages, _shed_pair = _shed_oldest_assistant_tool_pair(messages)
+                if _shed_pair:
                     logger.debug("context_prune(shed-oldest-pair): messages now %d", len(messages))
                 else:
                     logger.debug(
-                        "context_prune(shed-oldest-pair): SKIP — messages[2:4] roles=%s/%s not assistant/tool pair",
-                        _m2_role, _m3_role,
+                        "context_prune(shed-oldest-pair): SKIP — no complete superseded assistant/tool pair",
                     )
 
             # Call model — use larger budget once tools have been used so that
