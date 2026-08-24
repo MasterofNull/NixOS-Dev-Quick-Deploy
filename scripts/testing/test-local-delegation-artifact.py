@@ -229,6 +229,11 @@ def test_agent_runner_creates_initial_output_artifacts():
 
         assert_true(ok, "AgentRunner should return success from fake subprocess")
         assert_true(calls, "AgentRunner did not invoke subprocess.Popen")
+        child_cmd = calls[0][0]
+        assert_true(
+            child_cmd[child_cmd.index("--task-type") + 1] == "agent",
+            f"AgentRunner did not preserve the resolved task type: {child_cmd}",
+        )
         assert_true(
             "Agent task started" in output_file.read_text(encoding="utf-8"),
             "initial output file should contain a running marker",
