@@ -25,9 +25,15 @@ dated, recorded deferral. This is a hard gate, not a checklist to skip when busy
 | 3 | **Functionally validated (real-world)** | Was it exercised end-to-end in the running system — not only unit tests? | A real invocation + observed correct behavior (command + output). Unit tests are necessary, never sufficient |
 | 4 | **Observable** | Can you see its health/output, and would you know if it broke? | Dashboard surface + health-spider probe + a threshold/alert where degradation is possible |
 | 5 | **Intervenable** | Where it can produce bad state, can the operator stop/approve/trigger it? | An operator control (pause/approve/reject/trigger CLI or dashboard action) |
+| 6 | **PM-tracked (live)** | Does the plan's `tracker.json` editorial reflect this work, so the projected gantt/kanban stays current? | The plan's `tracker.json` items/goals/deps/detection-signals updated as part of the commit — the dashboard then PROJECTS status live from git+systemd. **Status is NEVER hand-typed** (anti-gaming, Rule 20): you update the *editorial* (what the work is, its deps/detection), the projector computes the % from ground truth. A plan under active work with a stale/missing tracker = NOT done. |
 
 Dimensions 4 and 5 apply **when meaningful**: a pure refactor with no runtime surface needs 1–3; a
 feature that generates state, trains, or acts autonomously needs all 5. If you skip 4 or 5, say why.
+Dimension 6 applies to **any work under a tracked plan** — owner-directed 2026-08-23: PM/management tools
+must stay live and current. Update the tracker's editorial in the commit cycle so the projection is
+accurate; do NOT hand-edit status/% or the rendered charts (that fakes the very signal they exist to keep
+honest). Enforced by `tier0.d/check-pm-tracker`. CANONICAL — Rule 16 parity: this addition must land in
+CLAUDE.md / .agent/CODEX.md / .agent/LOCAL-AGENT.md / .agent/GEMINI.md / .agent/WORKFLOW-CANON.md same cycle.
 
 ## Per-slice attestation (paste into the commit body AND the ACTIVATION-AUDIT row)
 
@@ -38,6 +44,7 @@ Definition-of-Done attestation — <feature name>
   3 Validated:    <real-world command + observed result>
   4 Observable:   <dashboard/probe/alert, or "deferred: <reason, date>">
   5 Intervenable: <control, or "N/A: no bad-state surface" / "deferred: <reason, date>">
+  6 PM-tracked:   <tracker.json editorial updated (file); status projected — never hand-typed>
 ```
 
 A **deferral** is legitimate — but it must be *written down* (here + issues-backlog with a date), never

@@ -231,6 +231,7 @@ def project_all() -> dict:
         for it in manifest.get("items", []):
             status, pct = project_item(it, gitlog, grants)
             items.append({"id": it["id"], "name": it.get("name"), "phase": it.get("phase"),
+                          "deps": it.get("deps", []), "priority_lane": it.get("priority_lane"),
                           "status": status, "pct": pct})
         n = len(items) or 1
         rollup = round(sum(i["pct"] for i in items) / n)

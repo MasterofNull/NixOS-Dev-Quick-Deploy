@@ -1,39 +1,425 @@
 {
   "plan": {
     "id": "aqos-requirements-inventory",
-    "title": "AQ-OS Requirements — honest program-level completion (owner review required)",
+    "title": "AQ-OS Requirements \u2014 honest program-level completion (owner review required)",
     "prd_ref": ".agents/plans/UNIFIED-PROGRAM-PLAN.md",
     "owner": "hyperd",
-    "goal": "The program-level requirement map: every Foundation/Product/Track/cross-cutting requirement the owner wants, on the honest tier scale. FIRST CUT assembled from the unified plan + 43 PRDs — OWNER MUST REVIEW/CORRECT; the orchestrator does not decide what is 'done'.",
+    "goal": "The program-level requirement map: every Foundation/Product/Track/cross-cutting requirement the owner wants, on the honest tier scale. FIRST CUT assembled from the unified plan + 43 PRDs \u2014 OWNER MUST REVIEW/CORRECT; the orchestrator does not decide what is 'done'.",
     "success_criteria": [
       "Every major requirement area accounted for, honestly marked (most are unmeasured/not-started)",
       "Nothing reads complete without VALIDATED + owner acceptance",
       "The gap between '43 PRDs' and '5 tracked' is made visible, not hidden"
     ],
-    "tier_model": "DEFINED=PRD/plan exists (designed); INTEGRATED=implemented + wired; VALIDATED=works end-to-end; ACCEPTED=owner signed off. detection.freeze_record = the PRD (existence proves DESIGNED, not done). MANY items are NOT-STARTED/unmeasured — that is the honest state.",
-    "honest_note": "43 PRD docs exist; only 5 program areas have projected trackers. This board is a FIRST CUT for owner correction — add missing requirements, fix any status the owner disputes. Percentages here count INTEGRATION toward the tier, never owner-accepted completion (all acceptance=pending)."
+    "tier_model": "DEFINED=PRD/plan exists (designed); INTEGRATED=implemented + wired; VALIDATED=works end-to-end; ACCEPTED=owner signed off. detection.freeze_record = the PRD (existence proves DESIGNED, not done). MANY items are NOT-STARTED/unmeasured \u2014 that is the honest state.",
+    "honest_note": "43 PRD docs exist; only 5 program areas have projected trackers. This board is a FIRST CUT for owner correction \u2014 add missing requirements, fix any status the owner disputes. Percentages here count INTEGRATION toward the tier, never owner-accepted completion (all acceptance=pending).",
+    "rundown_ref": ".agents/plans/aqos-refactor-completion-rundown-20260823.md",
+    "editorial_note_20260823": "Deps set to the rundown's critical path (B1->C->D->E->F->G); priority_lane = start-now|gated-Q<n>|queued from rundown \u00a75-7. STATUS/% remains PROJECTED from git+systemd (never hand-typed, anti-gaming). Owner gates: Q3->C, Q6->F, Q7->E, Q9->VF."
   },
   "phases": [
-    {"id": "foundations", "name": "Foundations (A-C, T)", "goal": "the security/kernel spine", "order": 1},
-    {"id": "products", "name": "Products (D-G)", "goal": "the operator-facing products incl. the one CLI + command center", "order": 2},
-    {"id": "tracks", "name": "Tracks (V, S, F)", "goal": "verified-factory, defensive-security, flat-factory", "order": 3},
-    {"id": "crosscut", "name": "Cross-cutting requirements", "goal": "the HARD rules + parity + human-control", "order": 4}
+    {
+      "id": "foundations",
+      "name": "Foundations (A-C, T)",
+      "goal": "the security/kernel spine",
+      "order": 1
+    },
+    {
+      "id": "products",
+      "name": "Products (D-G)",
+      "goal": "the operator-facing products incl. the one CLI + command center",
+      "order": 2
+    },
+    {
+      "id": "tracks",
+      "name": "Tracks (V, S, F)",
+      "goal": "verified-factory, defensive-security, flat-factory",
+      "order": 3
+    },
+    {
+      "id": "crosscut",
+      "name": "Cross-cutting requirements",
+      "goal": "the HARD rules + parity + human-control",
+      "order": 4
+    }
   ],
   "items": [
-    {"id": "req-foundation-a", "name": "Foundation A", "phase": "foundations", "kind": "slice", "goal": "per unified plan Foundation A", "validation_goal": "end-to-end validated", "deps": [], "editorial_note": "status per UNIFIED-PROGRAM-PLAN — OWNER CONFIRM", "detection": {"freeze_record": ".agents/plans/UNIFIED-PROGRAM-PLAN.md", "commit_match": ["Foundation A"]}, "pct_hint": 40, "acceptance": {"status": "pending", "by": null, "date": null, "note": "owner: confirm real status"}},
-    {"id": "req-foundation-b", "name": "Foundation B (contract kernel + parity vectors, L-series)", "phase": "foundations", "kind": "slice", "goal": "B1 contract kernel; L1A/L2A/L2B parity in shadow", "validation_goal": "chat/batch parity validated", "deps": [], "editorial_note": "EXECUTING per unified plan (L1A/L2A/L2B-A done, L2B-B + parity ongoing)", "detection": {"freeze_record": ".agent/PROJECT-LOCAL-INFERENCE-CONTRACT-PRD.md", "commit_match": ["local-inference L1A", "local-inference L2A", "Foundation B"]}, "pct_hint": 50, "acceptance": {"status": "pending", "by": null, "date": null, "note": ""}},
-    {"id": "req-foundation-c", "name": "Foundation C (capability-lease + confinement spine)", "phase": "foundations", "kind": "slice", "goal": "ALA->C2-SCI->C6->C4", "validation_goal": "the aqos-foundation-c tracker", "deps": [], "editorial_note": "tracked separately at 56% — see aqos-foundation-c", "detection": {"freeze_record": ".agents/plans/aqos-foundation-c/tracker.json", "commit_match": ["C2-SCI", "C6-B", "ALA activation"]}, "pct_hint": 56, "acceptance": {"status": "pending", "by": null, "date": null, "note": "C4 network confinement not started; C6 throwaway-key not production"}},
-    {"id": "req-approval-control-plane", "name": "Beginner-friendly human control (ACP)", "phase": "crosscut", "kind": "slice", "goal": "plain-language approvals; crypto hidden", "validation_goal": "the approval-control-plane tracker", "deps": [], "editorial_note": "tracked at 90% BUILD but default-OFF/crypto-deferred — NOT activated", "detection": {"freeze_record": ".agent/PROJECT-APPROVAL-CONTROL-PLANE-PRD.md", "commit_match": ["ACP-P0", "ACP-P1 build", "ACP-P2 build"]}, "pct_hint": 60, "acceptance": {"status": "pending", "by": null, "date": null, "note": "built not activated; harden deferred by owner"}},
-    {"id": "req-product-d", "name": "Product D", "phase": "products", "kind": "slice", "goal": "per unified plan Product D", "validation_goal": "validated", "deps": [], "editorial_note": "OWNER CONFIRM status", "detection": {"freeze_record": ".agents/plans/UNIFIED-PROGRAM-PLAN.md", "commit_match": ["Product D"]}, "pct_hint": 20, "acceptance": {"status": "pending", "by": null, "date": null, "note": ""}},
-    {"id": "req-product-e", "name": "Product E", "phase": "products", "kind": "slice", "goal": "per unified plan Product E", "validation_goal": "validated", "deps": [], "editorial_note": "OWNER CONFIRM status", "detection": {"freeze_record": ".agents/plans/UNIFIED-PROGRAM-PLAN.md", "commit_match": ["Product E"]}, "pct_hint": 15, "acceptance": {"status": "pending", "by": null, "date": null, "note": ""}},
-    {"id": "req-product-f", "name": "Product F — one CLI (aq <noun> <verb>) + command center", "phase": "products", "kind": "slice", "goal": "unified CLI + typed console (Fleet/Runs/Evals/Approvals)", "validation_goal": "the one-CLI + console shipped + validated", "deps": [], "editorial_note": "NOT STARTED per unified plan (Cycle 6 partial)", "detection": {"blocker_note": "NOT STARTED — unified plan Product F"}, "pct_hint": 0, "acceptance": {"status": "pending", "by": null, "date": null, "note": "the operator command center the owner wants — not started"}},
-    {"id": "req-product-g", "name": "Product G", "phase": "products", "kind": "slice", "goal": "per unified plan Product G", "validation_goal": "validated", "deps": [], "editorial_note": "OWNER CONFIRM status", "detection": {"blocker_note": "unconfirmed — likely not started"}, "pct_hint": 0, "acceptance": {"status": "pending", "by": null, "date": null, "note": ""}},
-    {"id": "req-track-v", "name": "Track V — Verified Factory (sealed oracles, risk-tiered gates)", "phase": "tracks", "kind": "slice", "goal": "report!=record verifier, golden-task bank", "validation_goal": "verified-factory validated", "deps": [], "editorial_note": "PRD exists; implementation partial", "detection": {"freeze_record": ".agent/PROJECT-VERIFIED-FACTORY-PRD.md", "commit_match": ["VF-", "verified-factory"]}, "pct_hint": 25, "acceptance": {"status": "pending", "by": null, "date": null, "note": ""}},
-    {"id": "req-track-s", "name": "Track S — Defensive Security architecture", "phase": "tracks", "kind": "slice", "goal": "S0-A intake truth + defensive security", "validation_goal": "validated", "deps": [], "editorial_note": "PRD + S0-A design exist; build pending (catch-up C4)", "detection": {"blocker_note": "design only; build pending an eligible lane"}, "pct_hint": 15, "acceptance": {"status": "pending", "by": null, "date": null, "note": ""}},
-    {"id": "req-flat-factory", "name": "Track F — Flat collaborative factory (F1/F2/F3)", "phase": "tracks", "kind": "slice", "goal": "intake->fan-out->consensus->A2A->validation", "validation_goal": "F1/F2/F3 all live", "deps": [], "editorial_note": "F1 done; F2 partial (F2.5 dormant-but-wired); F3 = Foundation C (executing)", "detection": {"freeze_record": ".agents/plans/UNIFIED-PROGRAM-PLAN.md", "commit_match": ["F2.5", "flat collaborative"]}, "pct_hint": 45, "acceptance": {"status": "pending", "by": null, "date": null, "note": ""}},
-    {"id": "req-herdr", "name": "HERDR — operator observation surface (H1/H2)", "phase": "products", "kind": "slice", "goal": "monitored presentation TUI", "validation_goal": "the herdr-agent-operations tracker", "deps": [], "editorial_note": "tracked at 22%; H2A escalation adjudicated, not activated", "detection": {"freeze_record": ".agents/plans/herdr-agent-operations/tracker.json", "commit_match": ["herdr", "H2A"]}, "pct_hint": 22, "acceptance": {"status": "pending", "by": null, "date": null, "note": ""}},
-    {"id": "req-hard-rules", "name": "The 20 HARD behavioral rules (governance)", "phase": "crosscut", "kind": "slice", "goal": "all 20 rules enforced across agents", "validation_goal": "each rule has a gate or enforcement", "deps": [], "editorial_note": "rules WRITTEN + many gated (tier0); some written-only (Rule 17 no hard-stop)", "detection": {"freeze_record": "CLAUDE.md", "commit_match": ["Rule 1", "tier0"]}, "pct_hint": 55, "acceptance": {"status": "pending", "by": null, "date": null, "note": "written+partly-enforced; full enforcement audit pending"}},
-    {"id": "req-agent-parity", "name": "Agent parity (canonical changes across all agent files)", "phase": "crosscut", "kind": "slice", "goal": "CLAUDE/CODEX/LOCAL/GEMINI + WORKFLOW-CANON in sync", "validation_goal": "parity matrix all-green", "deps": [], "editorial_note": "matrix exists; drift possible (Antigravity flagged agent-file bloat)", "detection": {"freeze_record": "docs/AGENT-PARITY-MATRIX.md", "commit_match": ["agent parity", "AGENT-PARITY"]}, "pct_hint": 45, "acceptance": {"status": "pending", "by": null, "date": null, "note": "verify no drift; trim 44KB/27KB bloat"}},
-    {"id": "req-observability-parity", "name": "Dashboard/observability parity (every blank -- is a bug)", "phase": "crosscut", "kind": "slice", "goal": "full dashboard parity, live PM board", "validation_goal": "no blank cards; PM board live", "deps": [], "editorial_note": "PM board just live-wired (this cycle); broader parity incomplete", "detection": {"commit_match": ["live PM dashboard", "dashboard parity", "aqos-progress-tracker"]}, "pct_hint": 35, "acceptance": {"status": "pending", "by": null, "date": null, "note": ""}}
+    {
+      "id": "req-foundation-a",
+      "name": "Foundation A",
+      "phase": "foundations",
+      "kind": "slice",
+      "goal": "per unified plan Foundation A",
+      "validation_goal": "end-to-end validated",
+      "deps": [],
+      "editorial_note": "status per UNIFIED-PROGRAM-PLAN \u2014 OWNER CONFIRM",
+      "detection": {
+        "freeze_record": ".agents/plans/UNIFIED-PROGRAM-PLAN.md",
+        "commit_match": [
+          "Foundation A"
+        ]
+      },
+      "pct_hint": 40,
+      "acceptance": {
+        "status": "pending",
+        "by": null,
+        "date": null,
+        "note": "owner: confirm real status"
+      },
+      "priority_lane": "start-now"
+    },
+    {
+      "id": "req-foundation-b",
+      "name": "Foundation B (contract kernel + parity vectors, L-series)",
+      "phase": "foundations",
+      "kind": "slice",
+      "goal": "B1 contract kernel; L1A/L2A/L2B parity in shadow",
+      "validation_goal": "chat/batch parity validated",
+      "deps": [],
+      "editorial_note": "EXECUTING per unified plan (L1A/L2A/L2B-A done, L2B-B + parity ongoing)",
+      "detection": {
+        "freeze_record": ".agent/PROJECT-LOCAL-INFERENCE-CONTRACT-PRD.md",
+        "commit_match": [
+          "local-inference L1A",
+          "local-inference L2A",
+          "Foundation B"
+        ]
+      },
+      "pct_hint": 50,
+      "acceptance": {
+        "status": "pending",
+        "by": null,
+        "date": null,
+        "note": ""
+      },
+      "priority_lane": "start-now"
+    },
+    {
+      "id": "req-foundation-c",
+      "name": "Foundation C (capability-lease + confinement spine)",
+      "phase": "foundations",
+      "kind": "slice",
+      "goal": "ALA->C2-SCI->C6->C4",
+      "validation_goal": "the aqos-foundation-c tracker",
+      "deps": [
+        "req-foundation-b"
+      ],
+      "editorial_note": "tracked separately at 56% \u2014 see aqos-foundation-c",
+      "detection": {
+        "freeze_record": ".agents/plans/aqos-foundation-c/tracker.json",
+        "commit_match": [
+          "C2-SCI",
+          "C6-B",
+          "ALA activation"
+        ]
+      },
+      "pct_hint": 56,
+      "acceptance": {
+        "status": "pending",
+        "by": null,
+        "date": null,
+        "note": "C4 network confinement not started; C6 throwaway-key not production"
+      },
+      "priority_lane": "gated-Q3"
+    },
+    {
+      "id": "req-approval-control-plane",
+      "name": "Beginner-friendly human control (ACP)",
+      "phase": "crosscut",
+      "kind": "slice",
+      "goal": "plain-language approvals; crypto hidden",
+      "validation_goal": "the approval-control-plane tracker",
+      "deps": [],
+      "editorial_note": "tracked at 90% BUILD but default-OFF/crypto-deferred \u2014 NOT activated",
+      "detection": {
+        "freeze_record": ".agent/PROJECT-APPROVAL-CONTROL-PLANE-PRD.md",
+        "commit_match": [
+          "ACP-P0",
+          "ACP-P1 build",
+          "ACP-P2 build"
+        ]
+      },
+      "pct_hint": 60,
+      "acceptance": {
+        "status": "pending",
+        "by": null,
+        "date": null,
+        "note": "built not activated; harden deferred by owner"
+      },
+      "priority_lane": "queued"
+    },
+    {
+      "id": "req-product-d",
+      "name": "Product D",
+      "phase": "products",
+      "kind": "slice",
+      "goal": "per unified plan Product D",
+      "validation_goal": "validated",
+      "deps": [
+        "req-foundation-b",
+        "req-foundation-c"
+      ],
+      "editorial_note": "OWNER CONFIRM status",
+      "detection": {
+        "freeze_record": ".agents/plans/UNIFIED-PROGRAM-PLAN.md",
+        "commit_match": [
+          "Product D"
+        ]
+      },
+      "pct_hint": 20,
+      "acceptance": {
+        "status": "pending",
+        "by": null,
+        "date": null,
+        "note": ""
+      },
+      "priority_lane": "queued"
+    },
+    {
+      "id": "req-product-e",
+      "name": "Product E",
+      "phase": "products",
+      "kind": "slice",
+      "goal": "per unified plan Product E",
+      "validation_goal": "validated",
+      "deps": [
+        "req-product-d"
+      ],
+      "editorial_note": "OWNER CONFIRM status",
+      "detection": {
+        "freeze_record": ".agents/plans/UNIFIED-PROGRAM-PLAN.md",
+        "commit_match": [
+          "Product E"
+        ]
+      },
+      "pct_hint": 15,
+      "acceptance": {
+        "status": "pending",
+        "by": null,
+        "date": null,
+        "note": ""
+      },
+      "priority_lane": "gated-Q7"
+    },
+    {
+      "id": "req-product-f",
+      "name": "Product F \u2014 one CLI (aq <noun> <verb>) + command center",
+      "phase": "products",
+      "kind": "slice",
+      "goal": "unified CLI + typed console (Fleet/Runs/Evals/Approvals)",
+      "validation_goal": "the one-CLI + console shipped + validated",
+      "deps": [
+        "req-foundation-c",
+        "req-product-d"
+      ],
+      "editorial_note": "NOT STARTED per unified plan (Cycle 6 partial)",
+      "detection": {
+        "blocker_note": "NOT STARTED \u2014 unified plan Product F"
+      },
+      "pct_hint": 0,
+      "acceptance": {
+        "status": "pending",
+        "by": null,
+        "date": null,
+        "note": "the operator command center the owner wants \u2014 not started"
+      },
+      "priority_lane": "gated-Q6"
+    },
+    {
+      "id": "req-product-g",
+      "name": "Product G",
+      "phase": "products",
+      "kind": "slice",
+      "goal": "per unified plan Product G",
+      "validation_goal": "validated",
+      "deps": [
+        "req-product-f",
+        "req-product-e"
+      ],
+      "editorial_note": "OWNER CONFIRM status",
+      "detection": {
+        "blocker_note": "unconfirmed \u2014 likely not started"
+      },
+      "pct_hint": 0,
+      "acceptance": {
+        "status": "pending",
+        "by": null,
+        "date": null,
+        "note": ""
+      },
+      "priority_lane": "queued"
+    },
+    {
+      "id": "req-track-v",
+      "name": "Track V \u2014 Verified Factory (sealed oracles, risk-tiered gates)",
+      "phase": "tracks",
+      "kind": "slice",
+      "goal": "report!=record verifier, golden-task bank",
+      "validation_goal": "verified-factory validated",
+      "deps": [
+        "req-foundation-b"
+      ],
+      "editorial_note": "PRD exists; implementation partial",
+      "detection": {
+        "freeze_record": ".agent/PROJECT-VERIFIED-FACTORY-PRD.md",
+        "commit_match": [
+          "VF-",
+          "verified-factory"
+        ]
+      },
+      "pct_hint": 25,
+      "acceptance": {
+        "status": "pending",
+        "by": null,
+        "date": null,
+        "note": ""
+      },
+      "priority_lane": "gated-Q9"
+    },
+    {
+      "id": "req-track-s",
+      "name": "Track S \u2014 Defensive Security architecture",
+      "phase": "tracks",
+      "kind": "slice",
+      "goal": "S0-A intake truth + defensive security",
+      "validation_goal": "validated",
+      "deps": [],
+      "editorial_note": "PRD + S0-A design exist; build pending (catch-up C4)",
+      "detection": {
+        "blocker_note": "design only; build pending an eligible lane"
+      },
+      "pct_hint": 15,
+      "acceptance": {
+        "status": "pending",
+        "by": null,
+        "date": null,
+        "note": ""
+      },
+      "priority_lane": "queued"
+    },
+    {
+      "id": "req-flat-factory",
+      "name": "Track F \u2014 Flat collaborative factory (F1/F2/F3)",
+      "phase": "tracks",
+      "kind": "slice",
+      "goal": "intake->fan-out->consensus->A2A->validation",
+      "validation_goal": "F1/F2/F3 all live",
+      "deps": [
+        "req-foundation-c"
+      ],
+      "editorial_note": "F1 done; F2 partial (F2.5 dormant-but-wired); F3 = Foundation C (executing)",
+      "detection": {
+        "freeze_record": ".agents/plans/UNIFIED-PROGRAM-PLAN.md",
+        "commit_match": [
+          "F2.5",
+          "flat collaborative"
+        ]
+      },
+      "pct_hint": 45,
+      "acceptance": {
+        "status": "pending",
+        "by": null,
+        "date": null,
+        "note": ""
+      }
+    },
+    {
+      "id": "req-herdr",
+      "name": "HERDR \u2014 operator observation surface (H1/H2)",
+      "phase": "products",
+      "kind": "slice",
+      "goal": "monitored presentation TUI",
+      "validation_goal": "the herdr-agent-operations tracker",
+      "deps": [],
+      "editorial_note": "tracked at 22%; H2A escalation adjudicated, not activated",
+      "detection": {
+        "freeze_record": ".agents/plans/herdr-agent-operations/tracker.json",
+        "commit_match": [
+          "herdr",
+          "H2A"
+        ]
+      },
+      "pct_hint": 22,
+      "acceptance": {
+        "status": "pending",
+        "by": null,
+        "date": null,
+        "note": ""
+      },
+      "priority_lane": "start-now"
+    },
+    {
+      "id": "req-hard-rules",
+      "name": "The 20 HARD behavioral rules (governance)",
+      "phase": "crosscut",
+      "kind": "slice",
+      "goal": "all 20 rules enforced across agents",
+      "validation_goal": "each rule has a gate or enforcement",
+      "deps": [],
+      "editorial_note": "rules WRITTEN + many gated (tier0); some written-only (Rule 17 no hard-stop)",
+      "detection": {
+        "freeze_record": "CLAUDE.md",
+        "commit_match": [
+          "Rule 1",
+          "tier0"
+        ]
+      },
+      "pct_hint": 55,
+      "acceptance": {
+        "status": "pending",
+        "by": null,
+        "date": null,
+        "note": "written+partly-enforced; full enforcement audit pending"
+      },
+      "priority_lane": "start-now"
+    },
+    {
+      "id": "req-agent-parity",
+      "name": "Agent parity (canonical changes across all agent files)",
+      "phase": "crosscut",
+      "kind": "slice",
+      "goal": "CLAUDE/CODEX/LOCAL/GEMINI + WORKFLOW-CANON in sync",
+      "validation_goal": "parity matrix all-green",
+      "deps": [],
+      "editorial_note": "matrix exists; drift possible (Antigravity flagged agent-file bloat)",
+      "detection": {
+        "freeze_record": "docs/AGENT-PARITY-MATRIX.md",
+        "commit_match": [
+          "agent parity",
+          "AGENT-PARITY"
+        ]
+      },
+      "pct_hint": 45,
+      "acceptance": {
+        "status": "pending",
+        "by": null,
+        "date": null,
+        "note": "verify no drift; trim 44KB/27KB bloat"
+      },
+      "priority_lane": "start-now"
+    },
+    {
+      "id": "req-observability-parity",
+      "name": "Dashboard/observability parity (every blank -- is a bug)",
+      "phase": "crosscut",
+      "kind": "slice",
+      "goal": "full dashboard parity, live PM board",
+      "validation_goal": "no blank cards; PM board live",
+      "deps": [],
+      "editorial_note": "PM board just live-wired (this cycle); broader parity incomplete",
+      "detection": {
+        "commit_match": [
+          "live PM dashboard",
+          "dashboard parity",
+          "aqos-progress-tracker"
+        ]
+      },
+      "pct_hint": 35,
+      "acceptance": {
+        "status": "pending",
+        "by": null,
+        "date": null,
+        "note": ""
+      },
+      "priority_lane": "start-now"
+    }
   ]
 }
