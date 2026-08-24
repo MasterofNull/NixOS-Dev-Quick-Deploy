@@ -447,6 +447,24 @@ def test_self_improvement_prompt_classifier_is_semantic():
           "SELF-IMPROVEMENT SLICE" in explicit)
 
 
+def test_short_context_prune_finds_pair_after_extra_system_context():
+    messages = [
+        {"role": "system", "content": "contract"},
+        {"role": "user", "content": "task"},
+        {"role": "system", "content": "projected context"},
+        {"role": "assistant", "content": "old read"},
+        {"role": "tool", "content": "old result"},
+        {"role": "assistant", "content": "latest read"},
+        {"role": "tool", "content": "latest result"},
+    ]
+    pruned, changed = ae._shed_oldest_assistant_tool_pair(messages)
+    check("short-context pruning locates the first complete pair", changed)
+    check("short-context pruning preserves projected system context",
+          pruned[:3] == messages[:3])
+    check("short-context pruning preserves the latest assistant/tool pair",
+          pruned[-2:] == messages[-2:] and len(pruned) == 5)
+
+
 async def main():
     test_retry_excerpt_contract()
     await test_prose_plan_then_edit_completes()
@@ -460,6 +478,7 @@ async def main():
     await test_dogfood_payload_receipt_rejects_before_http_without_raw_content()
     test_dogfood_receipt_counts_grammar_without_content()
     test_self_improvement_prompt_classifier_is_semantic()
+    test_short_context_prune_finds_pair_after_extra_system_context()
 
     print(f"\n{PASS}/{PASS + FAIL} tests passed")
     sys.exit(0 if FAIL == 0 else 1)
