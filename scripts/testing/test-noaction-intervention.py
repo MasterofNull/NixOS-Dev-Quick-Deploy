@@ -126,7 +126,10 @@ def make_executor() -> AgentExecutor:
         if not stripped.startswith('{"function"'):
             return None
         _call_seq["n"] += 1
-        payload = json.loads(stripped)
+        try:
+            payload = json.loads(stripped)
+        except json.JSONDecodeError:
+            return None
         return ToolCall(
             id=f"call-{_call_seq['n']}",
             tool_name=payload["function"],
@@ -251,6 +254,49 @@ async def test_retry_response_is_bounded():
           "retry response truncated" in retry_assistant)
 
 
+async def test_malformed_tool_retry_paths_and_training_capture():
+    """GBNF repair and fallback synthesis share the bound without truncating evidence."""
+    ex = make_executor()
+    task = Task(id="t-malformed-budget", objective="fix the retry backoff", status=TaskStatus.RUNNING)
+    snapshots: list = []
+    malformed = '{"function":"edit_file","arguments":{"old_string":"' + ("x" * 4_000)
+    responses = [malformed, "repair still malformed", "COMPLETED: malformed call rejected."]
+    ex._call_llama = make_call_llama_mock(responses, snapshots)
+    capture = MagicMock()
+
+    with patch.object(ae, "_LOCAL_GBNF_REPAIR_ENABLED", True), patch.object(ae, "training_capture", capture):
+        final_msg, _tokens = await ex._execute_with_tools(task, AgentType.AGENT, max_tool_calls=0)
+
+    repair_excerpt = [
+        message["content"] for message in snapshots[1]
+        if message.get("role") == "assistant"
+    ][-1]
+    synthesis_excerpt = [
+        message["content"] for message in snapshots[2]
+        if message.get("role") == "assistant"
+    ][-1]
+    expected = ae._bounded_retry_response(malformed)
+    check("GBNF repair receives the exact bounded excerpt", repair_excerpt == expected)
+    check("failed-repair synthesis receives the exact bounded excerpt", synthesis_excerpt == expected)
+    check("malformed synthesis completes through its bounded fallback", final_msg.startswith("COMPLETED:"))
+    captured = capture.capture_failure.call_args.kwargs
+    check("training capture retains the full untruncated failed response",
+          captured["bad_output"] == malformed and len(captured["bad_output"]) > len(expected))
+
+
+def test_retry_excerpt_contract():
+    short = "short malformed response"
+    check("short retry responses remain byte-identical",
+          ae._bounded_retry_response(short) == short)
+    long = "H" * 900 + "T" * 200
+    excerpt = ae._bounded_retry_response(long)
+    marker = "\n...[retry response truncated]...\n"
+    head_chars = ae._RETRY_RESPONSE_CHAR_BUDGET - len(marker) - 128
+    expected = long[:head_chars] + marker + long[-128:]
+    check("long retry excerpts preserve the deterministic head/tail contract",
+          excerpt == expected and len(excerpt) == ae._RETRY_RESPONSE_CHAR_BUDGET)
+
+
 async def test_kill_switch_restores_immediate_completion():
     """(e): AQ_NOACTION_INTERVENTION=0 (patched module attribute, same
     pattern test-reread-intervention.py uses for its own kill switch)
@@ -293,9 +339,11 @@ async def test_refusal_is_never_intervened_on():
 
 
 async def main():
+    test_retry_excerpt_contract()
     await test_prose_plan_then_edit_completes()
     await test_prose_twice_still_completes()
     await test_retry_response_is_bounded()
+    await test_malformed_tool_retry_paths_and_training_capture()
     await test_kill_switch_restores_immediate_completion()
     await test_refusal_is_never_intervened_on()
 
