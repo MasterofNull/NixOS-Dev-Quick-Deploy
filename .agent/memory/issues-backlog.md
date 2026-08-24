@@ -3404,3 +3404,18 @@ Advisory task (codex is the real confirmatory backstop) — non-blocking.
   Severity: high
   Action: bound failed-response excerpts to 512 characters on no-action, GBNF repair, and malformed-tool synthesis turns; retain the full response only in non-prompt training evidence. Direct oracles cover all three branches, short/long deterministic serialization, and untruncated training capture. Another expensive live retry belongs to a later measured dogfood window, not this test-only closure slice.
   File: ai-stack/local-agents/agent_executor.py; scripts/testing/test-noaction-intervention.py
+
+[OPEN] local-agent-rendered-prompt-latency-and-budget-drift — Post-fix dogfood task `local-20260823-201540-1qjt48` rendered about 5.5K input tokens despite the profile budget, measured prompt throughput near 8.67 tok/s and decode near 2.31 tok/s, and required about 15 minutes before a prose-only first response. The no-action retry stayed within the current, unchanged 24K-character guard, but the task could not meet the 180-second promotion p95 contract.
+  Severity: high
+  Action: measure and enforce the fully rendered prompt budget including system card, tool schemas, task, assembler, and chat-template overhead; add per-component telemetry; cap dogfood/tool-first input at 3–3.5K and first-turn output at 128–192 tokens, then compare three frozen runs before model/runtime tuning.
+  File: ai-stack/local-agents/agent_executor.py; scripts/ai/aq-agent-loop; ai-stack/switchboard/switchboard.py
+
+[OPEN] local-dogfood-late-invalid-edit-after-time-budget — The same measured task crossed its 1,800-second budget, required explicit registry cancellation, and left a late one-file edit without a completion/test receipt. The edit asserted ordering on a `set`, failed the focused test immediately, and was removed without adoption. This confirms the retry can now reach an edit but not reliable semantics or bounded completion.
+  Severity: high
+  Action: make the wall timeout cancel in-flight inference promptly, record a typed terminal receipt with turn/tool/edit timing, and keep independent test/review mandatory; do not resume the uncurated overnight queue until a one-file task completes correctly inside budget.
+  File: scripts/ai/delegate-to-local; scripts/ai/aq-agent-loop; scripts/testing/test-local-agent-capability-reachability.py
+
+[OPEN] aqos-resolved-owner-gates-reported-as-pending — The 2026-08-23 AQ-OS rundown relabeled Q3 and Q6–Q10 as owner decisions even though commit `ccc55ae9` ratified them and `aq-refactor-status --json` reports all Q1–Q10 resolved with `decisions_pending: 0`. This stale classification made already-authorized work appear silently blocked on the owner.
+  Severity: high
+  Action: correct the rundown, add structured owner-gate states and evidence to the milestone SSOT, validate plans against resolved Q-IDs in tier0, distinguish `owner_decision`, `exact_activation`, and `dependency_blocked`, and emit deduplicated attention only for genuine owner action.
+  File: .agents/plans/aqos-refactor-completion-rundown-20260823.md; config/refactor-milestones.json; scripts/ai/aq-refactor-status

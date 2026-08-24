@@ -152,6 +152,100 @@ except ImportError:
 
 logger = logging.getLogger(__name__)
 
+# Dogfood payload budget: deliberately opt-in and isolated from ordinary local
+# delegation.  The receipt is count-only so the progress sidecar remains safe
+# to expose in operator tooling (no prompt, tool schema, or grammar contents).
+_DOGFOOD_PAYLOAD_JSON_LIMIT = 14_000
+_DOGFOOD_FIRST_CALL_MAX_TOKENS = 192
+
+
+def _dogfood_payload_budget_enabled() -> bool:
+    """Return true only for the exact explicitly-enabled dogfood mode."""
+    return os.environ.get("AQ_LOCAL_DOGFOOD_BUDGET", "") == "1"
+
+
+_DOGFOOD_TASK_TYPE_CLASSES = frozenset({
+    "structured", "lookup", "code", "reasoning", "agent", "research", "deep_reasoning",
+})
+
+
+def _unicode_chars(value: Any) -> int:
+    """Count Unicode characters in canonical JSON/text, never returning content."""
+    if not value:
+        return 0
+    if not isinstance(value, str):
+        value = json.dumps(value, ensure_ascii=False, separators=(",", ":"), sort_keys=True)
+    return len(value)
+
+
+def _dogfood_task_type_class(task_type: Optional[str]) -> str:
+    """Keep sidecar receipts count-only: no raw caller-controlled task type."""
+    return task_type if task_type in _DOGFOOD_TASK_TYPE_CLASSES else "unknown"
+
+
+def _dogfood_payload_budget_receipt(
+    payload: Dict[str, Any], *, task_type: Optional[str], call_number: int
+) -> Dict[str, Any]:
+    """Create a deterministic, count-only receipt for one llama request."""
+    messages = payload.get("messages") or []
+    system_chars = sum(
+        _unicode_chars(message.get("content") or "")
+        for message in messages
+        if message.get("role") == "system"
+    )
+    non_system_chars = sum(
+        _unicode_chars(message.get("content") or "")
+        for message in messages
+        if message.get("role") != "system"
+    )
+    payload_json_chars = _unicode_chars(payload)
+    return {
+        "budget_mode": "AQ_LOCAL_DOGFOOD_BUDGET",
+        "call_number": call_number,
+        "task_type_class": _dogfood_task_type_class(task_type),
+        "system_unicode_chars": system_chars,
+        "non_system_unicode_chars": non_system_chars,
+        "tools_unicode_chars": _unicode_chars(payload.get("tools")),
+        "grammar_unicode_chars": _unicode_chars(payload.get("grammar")),
+        "payload_json_unicode_chars": payload_json_chars,
+        "estimated_tokens": (payload_json_chars + 3) // 4,
+        "max_tokens": payload.get("max_tokens"),
+    }
+
+
+def _enforce_dogfood_payload_budget(
+    payload: Dict[str, Any], *, task_type: Optional[str], call_number: int
+) -> Optional[Dict[str, Any]]:
+    """Persist a receipt and fail closed before HTTP when dogfood is oversized."""
+    if not _dogfood_payload_budget_enabled():
+        return None
+    receipt = _dogfood_payload_budget_receipt(
+        payload, task_type=task_type, call_number=call_number
+    )
+    rejected = receipt["payload_json_unicode_chars"] > _DOGFOOD_PAYLOAD_JSON_LIMIT
+    progress_file = os.getenv("AGENT_PROGRESS_FILE")
+    if progress_file:
+        try:
+            progress_path = Path(progress_file)
+            try:
+                prior = json.loads(progress_path.read_text(encoding="utf-8"))
+            except (OSError, ValueError, TypeError):
+                prior = {}
+            if not isinstance(prior, dict):
+                prior = {}
+            prior["payload_budget"] = receipt
+            if rejected:
+                prior["status"] = "payload_budget_rejected"
+            progress_path.write_text(json.dumps(prior, indent=2), encoding="utf-8")
+        except OSError:
+            pass
+    if rejected:
+        raise RuntimeError(
+            "dogfood payload budget exceeded before HTTP: "
+            f"{receipt['payload_json_unicode_chars']} Unicode JSON chars > {_DOGFOOD_PAYLOAD_JSON_LIMIT}"
+        )
+    return receipt
+
 _TELEMETRY_DIR = Path(os.getenv("TELEMETRY_DIR", "/var/lib/ai-stack/hybrid/telemetry"))
 # Agent events are written to the user-spool path (.agents/telemetry/hybrid-events.jsonl)
 # rather than the service-owned /var/lib/ai-stack/hybrid/telemetry/hybrid-events.jsonl.
@@ -1393,6 +1487,7 @@ class LocalAgentExecutor:
         # read current state without waiting for the final JSON output.
         _progress_file = os.getenv("AGENT_PROGRESS_FILE")
         _steps_file = os.getenv("AGENT_STEPS_FILE")
+        _dogfood_initial_llm_call_pending = True
 
         def _emit_step_telemetry(tc_result, call_number: int, prose_before: str) -> None:
             """Write per-tool-call telemetry to all three observability surfaces."""
@@ -1650,7 +1745,12 @@ class LocalAgentExecutor:
             # the final synthesis turn (no tool_call in response) isn't capped at
             # the tool-call budget (512).  First call keeps 512 since the model
             # almost always emits a tool call there (short JSON, EOS quick).
-            call_max_tokens = AGENT_TASK_MAX_TOKENS if tool_call_count > 0 else AGENT_TOOL_CALL_MAX_TOKENS
+            call_max_tokens = (
+                _DOGFOOD_FIRST_CALL_MAX_TOKENS
+                if _dogfood_payload_budget_enabled() and _dogfood_initial_llm_call_pending
+                else (AGENT_TASK_MAX_TOKENS if tool_call_count > 0 else AGENT_TOOL_CALL_MAX_TOKENS)
+            )
+            _dogfood_initial_llm_call_pending = False
             try:
                 response, tok = await self._call_llama(
                     messages,
@@ -2591,6 +2691,9 @@ class LocalAgentExecutor:
             if _gbnf:
                 _payload_kwargs["grammar"] = _gbnf
             payload = build_llama_payload(messages, **_payload_kwargs)
+            _enforce_dogfood_payload_budget(
+                payload, task_type=task_type, call_number=call_number
+            )
 
             # Record/replay harness — replay hit skips the HTTP call entirely (no-op
             # when AQ_LLM_CASSETTE_MODE=off, the default).
@@ -2626,6 +2729,9 @@ class LocalAgentExecutor:
         if _gbnf:
             _stream_kwargs["grammar"] = _gbnf
         payload = build_llama_payload(messages, **_stream_kwargs)
+        budget_receipt = _enforce_dogfood_payload_budget(
+            payload, task_type=task_type, call_number=call_number
+        )
 
         # Record/replay harness — replay hit skips SSE streaming entirely (no-op when
         # AQ_LLM_CASSETTE_MODE=off, the default).
@@ -2649,7 +2755,7 @@ class LocalAgentExecutor:
             if not force and len(collected) % 10 != 0 and now - last_progress_write < 30:
                 return
             try:
-                Path(progress_file).write_text(json.dumps({
+                progress = {
                     "task_id": task_id,
                     "status": status,
                     "tool_call_count": call_number,
@@ -2657,7 +2763,10 @@ class LocalAgentExecutor:
                     "llm_stream_chars": sum(len(part) for part in collected),
                     "max_tokens": max_tokens,
                     "timestamp": datetime.now(timezone.utc).strftime("%Y-%m-%dT%H:%M:%S.%f") + "Z",
-                }, indent=2))
+                }
+                if budget_receipt is not None:
+                    progress["payload_budget"] = budget_receipt
+                Path(progress_file).write_text(json.dumps(progress, indent=2))
                 last_progress_write = now
             except Exception:
                 pass
