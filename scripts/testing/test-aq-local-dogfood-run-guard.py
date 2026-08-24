@@ -7,6 +7,8 @@ import importlib.util
 import subprocess
 from importlib.machinery import SourceFileLoader
 from pathlib import Path
+from tempfile import TemporaryDirectory
+from unittest.mock import patch
 
 
 ROOT = Path(__file__).resolve().parents[2]
@@ -32,6 +34,16 @@ def main() -> int:
     )
     check(owned == ["owned.py"], f"declared change classification drifted: {owned}")
     check(foreign == ["orchestrator.py"], f"foreign change was not isolated: {foreign}")
+
+    with TemporaryDirectory(prefix="aq-dogfood-guard-") as tmp:
+        module.LEDGER = Path(tmp) / "ledger.jsonl"
+        with patch.object(module.subprocess, "run", side_effect=AssertionError("dispatch must not run")):
+            blocked = module.run_task(
+                {"task": "blocked", "backlog_item": "test", "file": "owned.py"},
+                {"owned.py"},
+            )
+        check(blocked["status"] == "blocked-preexisting",
+              "pre-dirty declared file must stop before dispatch")
 
     help_run = subprocess.run(
         [str(RUNNER), "--help"], cwd=ROOT, text=True, capture_output=True, timeout=5,

@@ -3394,3 +3394,8 @@ Advisory task (codex is the real confirmatory backstop) — non-blocking.
   Severity: low
   Action: make the readiness probe avoid NSS/user lookups or add only the narrow read/socket rules proven necessary; retain loopback-only network and generic execution denial.
   File: nix/modules/roles/ai-stack.nix
+
+[DONE 2026-08-22] dogfood-preexisting-declared-file-dispatched-before-block — Independent review of commit `0859a196` found the pre-dirty/missing declared-file guard ran after asynchronous dispatch, so the function could report zero elapsed work while leaving a child to run until timeout.
+  Severity: low
+  Action: moved the declared-file gate before prompt materialization and subprocess dispatch; focused regression monkeypatches subprocess execution to prove it is unreachable on the blocked path.
+  File: scripts/ai/aq-local-dogfood-run; scripts/testing/test-aq-local-dogfood-run-guard.py
