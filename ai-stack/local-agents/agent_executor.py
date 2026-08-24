@@ -406,6 +406,42 @@ _LOCAL_ALLOW_COMMIT: bool = _env_flag("AQ_LOCAL_ALLOW_COMMIT", False)
 # Kill switch AQ_REREAD_INTERVENTION=0 restores the plain-abort behavior.
 _REREAD_INTERVENTION_ENABLED: bool = _env_flag("AQ_REREAD_INTERVENTION", True)
 
+
+def _normalized_exact_read_range(arguments: Dict[str, Any]) -> Optional[Tuple[str, int, int]]:
+    """Return a canonical (path, inclusive-start, inclusive-end) exact read range.
+
+    This deliberately accepts only requests that supplied *both* bounds.  A partial
+    range (``start_line`` only or ``end_line`` only) has an open-ended meaning in the
+    file tool, so claiming it is covered without executing the tool would be unsafe.
+    Path normalization is lexical only: resolving symlinks would perform filesystem
+    work on the guard path and could change the tool's existing path semantics.
+    """
+    if not isinstance(arguments, dict):
+        return None
+    raw_path = arguments.get("file_path") or arguments.get("path")
+    start = arguments.get("start_line")
+    end = arguments.get("end_line")
+    if not raw_path or start is None or end is None:
+        return None
+    try:
+        normalized_start = int(start)
+        normalized_end = int(end)
+    except (TypeError, ValueError):
+        return None
+    if normalized_start < 1 or normalized_end < normalized_start:
+        return None
+    return os.path.normpath(str(raw_path)), normalized_start, normalized_end
+
+
+def _range_is_covered(
+    coverage: Dict[str, List[Tuple[int, int]]],
+    requested: Tuple[str, int, int],
+) -> bool:
+    """Whether one successful prior exact read wholly covers ``requested``."""
+    path, start, end = requested
+    return any(previous_start <= start and end <= previous_end
+               for previous_start, previous_end in coverage.get(path, []))
+
 # No-action stagnation: on implementer/edit tasks, the model sometimes returns a
 # prose PLAN with no parseable tool call at all ("Thought: I would change X so
 # that...") and the loop — finding no tool call — treats that as the final
@@ -1467,6 +1503,13 @@ class LocalAgentExecutor:
         # success) so a second breach — with or without a mid-construction error — falls
         # straight through to the plain abort rather than looping interventions forever.
         _reread_intervention_sent = False
+        # Exact ranged-read coverage: once a successful explicit [start, end]
+        # result has reached the model, a later range wholly inside it is redundant.
+        # Keep this separate from the broad repeated-path guard: legitimate
+        # non-overlapping reads must continue to reach the real file tool.
+        _successful_exact_read_coverage: Dict[str, List[Tuple[int, int]]] = {}
+        _redundant_range_intervention_sent = False
+        _redundant_range_abort_message: Optional[str] = None
         # No-action guard: counts successful edit_file/write_file calls this run, and
         # whether the one-shot no-action intervention has already fired. See the
         # _NOACTION_INTERVENTION_ENABLED block above for the full rationale.
@@ -2000,6 +2043,10 @@ class LocalAgentExecutor:
             # Execute tool call
             tool_call.model_id = f"local-{agent_type.value}"
             tool_call.session_id = task.id
+            _exact_read_request = (
+                _normalized_exact_read_range(tool_call.arguments)
+                if tool_call.tool_name == "read_file" else None
+            )
 
             # Slice 0.2 — structural no-commit: block execution at the point of the call
             # itself, not just the advertised schema. The SI-slice system prompt still
@@ -2008,7 +2055,48 @@ class LocalAgentExecutor:
             # commit" structural rather than prompt-hoped. AQ_LOCAL_ALLOW_COMMIT=1 is the
             # explicit escape hatch; the handlers in builtin_tools/git_tools.py are
             # untouched, only this call site refuses to reach them.
-            if tool_call.tool_name in _AEXEC_COMMIT_TOOLS and not _LOCAL_ALLOW_COMMIT:
+            if _exact_read_request and _range_is_covered(
+                _successful_exact_read_coverage, _exact_read_request,
+            ):
+                _covered_path, _covered_start, _covered_end = _exact_read_request
+                if not _redundant_range_intervention_sent:
+                    # Do not call the filesystem-backed tool.  This synthetic successful
+                    # result is intentionally delivered through the ordinary role:tool
+                    # path below, so the model receives the correction on its next turn.
+                    _redundant_range_intervention_sent = True
+                    tool_call.status = "completed"
+                    tool_call.result = {
+                        "success": True,
+                        "content": (
+                            f"[REREAD GUARD] {_covered_path!r} lines "
+                            f"{_covered_start}-{_covered_end} are already fully covered by "
+                            "a successful exact read in this task. Do not re-read this span. "
+                            "Use the exact known text to call edit_file, request a genuinely "
+                            "non-overlapping line range, or conclude the task."
+                        ),
+                        "metadata": {
+                            "redundant_range_intercepted": True,
+                            "start_line": _covered_start,
+                            "end_line": _covered_end,
+                        },
+                    }
+                    result = tool_call
+                    logger.warning(
+                        "redundant ranged read intercepted: path=%r range=%d-%d call=%d",
+                        _covered_path, _covered_start, _covered_end, tool_call_count + 1,
+                    )
+                else:
+                    tool_call.status = "failed"
+                    tool_call.error = (
+                        f"Redundant ranged-read guard: {_covered_path!r} lines "
+                        f"{_covered_start}-{_covered_end} were already supplied. "
+                        "A prior corrective result required an edit, a non-overlapping range, "
+                        "or completion; repeated defiance is aborted fail-closed."
+                    )
+                    tool_call.result = {"success": False, "error": tool_call.error, "blocked": True}
+                    _redundant_range_abort_message = tool_call.error
+                    result = tool_call
+            elif tool_call.tool_name in _AEXEC_COMMIT_TOOLS and not _LOCAL_ALLOW_COMMIT:
                 tool_call.status = "blocked"
                 tool_call.error = (
                     f"{tool_call.tool_name} is disabled for local agents (structural "
@@ -2050,11 +2138,45 @@ class LocalAgentExecutor:
                     _rf_meta = result.result.setdefault("metadata", {})
                     _rf_meta["read_file_gate"] = True
 
+            # Record only actual successful explicit ranges.  Synthetic guard results
+            # do not extend coverage, and whole/partial reads remain out of scope.
+            if (
+                _exact_read_request
+                and result.status == "completed"
+                and isinstance(result.result, dict)
+                and result.result.get("success")
+                and not (result.result.get("metadata") or {}).get("redundant_range_intercepted")
+            ):
+                _coverage_path, _coverage_start, _coverage_end = _exact_read_request
+                _returned_lines = (result.result.get("metadata") or {}).get("lines")
+                try:
+                    _returned_lines = int(_returned_lines)
+                except (TypeError, ValueError):
+                    _returned_lines = 0
+                # The file handler can be asked for an end past EOF.  Coverage must
+                # describe only the lines it actually returned, never the requested
+                # endpoint.  Missing/empty metadata is conservatively uncacheable.
+                if _returned_lines > 0:
+                    _successful_exact_read_coverage.setdefault(_coverage_path, []).append(
+                        (_coverage_start, min(_coverage_end, _coverage_start + _returned_lines - 1))
+                    )
+
             # P1.4: a valid tool call that executed cleanly is a POSITIVE sample — capture it directly
             # here (the reliable source) rather than mining hybrid-events (only ~0.03% of which are
             # inference completions — the root cause of the ingest's samples_added:0). Best-effort;
             # ingest dedupes by content hash. Guarded so it never affects the turn.
-            if training_capture is not None and not getattr(result, "error", None):
+            # Synthetic guard results teach the model nothing about a successful tool
+            # execution.  Never label an intercepted redundant read as a positive
+            # sample: it was deliberately not dispatched to the filesystem tool.
+            _is_synthetic_redundant_read = bool(
+                isinstance(result.result, dict)
+                and (result.result.get("metadata") or {}).get("redundant_range_intercepted")
+            )
+            if (
+                training_capture is not None
+                and not getattr(result, "error", None)
+                and not _is_synthetic_redundant_read
+            ):
                 _last_user = next((m.get("content", "") for m in reversed(messages)
                                    if m.get("role") == "user"), "")
                 if _last_user and response:
@@ -2121,6 +2243,11 @@ class LocalAgentExecutor:
             # request identity without re-executing the original tool side effect.
             if llm_cassette is not None:
                 llm_cassette.record_formatted_tool_result(result.tool_name, formatted_result)
+
+            if _redundant_range_abort_message:
+                logger.warning("redundant ranged-read guard: aborting at call %d", tool_call_count)
+                _cancel_watchdog()
+                return _redundant_range_abort_message, total_tokens
 
             # Stagnation detection: same (tool_name, result_prefix) repeated beyond
             # threshold → model is looping without state change. Abort early via a

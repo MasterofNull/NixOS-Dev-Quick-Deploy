@@ -3407,6 +3407,7 @@ Advisory task (codex is the real confirmatory backstop) — non-blocking.
 
 [OPEN] local-agent-rendered-prompt-latency-and-budget-drift — Post-fix dogfood task `local-20260823-201540-1qjt48` rendered about 5.5K input tokens despite the profile budget, measured prompt throughput near 8.67 tok/s and decode near 2.31 tok/s, and required about 15 minutes before a prose-only first response. The no-action retry stayed within the current, unchanged 24K-character guard, but the task could not meet the 180-second promotion p95 contract.
   Latest run: `local-20260823-224327-bvv0su` reduced call 1 to 11,155 characters / ~2,789 tokens with the correct `code` profile and made two valid reads, but call 3 failed closed at 15,770 characters after 633.5s. The short-context pruner assumed the oldest assistant/tool pair was at indexes 2/3; the projected context system message shifted it to 3/4, so pruning silently skipped.
+  2026-08-24 evidence: `local-20260823-232722-52u13h` kept all five calls below the 14,000-character dogfood guard (final receipt 11,923 characters / ~2,981 tokens), so the prior payload overflow did not recur. The receipt does not identify which pruning branch fired, so causal attribution remains unproven. The run still took 1,511.4s, made five overlapping `read_file` calls, and produced no edit; prompt size was controlled but latency remains above the 180s promotion gate.
   Root cause evidence: `AgentRunner` recorded an explicit `--task-type code` in the dispatch profile but omitted `--task-type` when spawning `aq-agent-loop`, silently selecting the generic `agent` inference profile; the context-on budget receipt was 19,931 Unicode JSON characters (10,901 system + 8,143 non-system), while the controlled context-off run was 13,618 characters.
   Follow-up evidence: the context-off run reached a valid `read_file` call in 388.2s, then its second turn failed closed at 15,811 characters. The generic `_SI_KEYWORDS` member `slice` had injected the full backlog workflow into this ordinary bounded test slice, inflating the system prompt; narrow the classifier to explicit self-improvement intent before the next measured run.
   Severity: high
@@ -3415,7 +3416,8 @@ Advisory task (codex is the real confirmatory backstop) — non-blocking.
 
 [OPEN] local-dogfood-late-invalid-edit-after-time-budget — The same measured task crossed its 1,800-second budget, required explicit registry cancellation, and left a late one-file edit without a completion/test receipt. The edit asserted ordering on a `set`, failed the focused test immediately, and was removed without adoption. This confirms the retry can now reach an edit but not reliable semantics or bounded completion.
   Severity: high
-  Action: make the wall timeout cancel in-flight inference promptly, record a typed terminal receipt with turn/tool/edit timing, and keep independent test/review mandatory; do not resume the uncurated overnight queue until a one-file task completes correctly inside budget.
+  2026-08-24 evidence: `local-20260823-232722-52u13h` failed safely after five successful overlapping reads and no write. Its `--timeout 900` was not a wall cap: agent mode deliberately uses that value for request/liveness policy while the default agent wall cap is disabled. The run ended on repeated-read stagnation after 1,511.4s; controlled dogfood must set the existing `AGENT_WALL_CLOCK_SECS=900` override explicitly.
+  Action: intercept fully covered redundant ranged reads with one bounded action-oriented tool result, fail closed on repeated defiance, use the explicit wall override in the next measured run, and keep independent test/review mandatory; do not resume the uncurated overnight queue until a one-file task completes correctly inside budget.
   File: scripts/ai/delegate-to-local; scripts/ai/aq-agent-loop; scripts/testing/test-local-agent-capability-reachability.py
 
 [OPEN] aqos-resolved-owner-gates-reported-as-pending — The 2026-08-23 AQ-OS rundown relabeled Q3 and Q6–Q10 as owner decisions even though commit `ccc55ae9` ratified them and `aq-refactor-status --json` reports all Q1–Q10 resolved with `decisions_pending: 0`. This stale classification made already-authorized work appear silently blocked on the owner.
@@ -3427,6 +3429,7 @@ Advisory task (codex is the real confirmatory backstop) — non-blocking.
   Severity: high
   Action: merge only the closed payload-budget receipt into the terminal progress object, never copy arbitrary prior fields, and test rejected/completed/malformed prior-state cases before the next measured run.
   File: scripts/ai/aq-agent-loop; ai-stack/local-agents/agent_executor.py
+
 
 [OPEN] managed-sandbox-local-delegation-registry-readonly — The first post-refinement dogfood dispatch failed before inference because the managed session mounted `.agents/delegation/registry.jsonl` read-only; the identical host-context dispatch registered and ran normally. Without an explicit host-observer/mutation contract, an agent can misclassify sandbox EROFS as a local-model failure.
   Severity: medium
