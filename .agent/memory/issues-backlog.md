@@ -3419,3 +3419,13 @@ Advisory task (codex is the real confirmatory backstop) — non-blocking.
   Severity: high
   Action: correct the rundown, add structured owner-gate states and evidence to the milestone SSOT, validate plans against resolved Q-IDs in tier0, distinguish `owner_decision`, `exact_activation`, and `dependency_blocked`, and emit deduplicated attention only for genuine owner action.
   File: .agents/plans/aqos-refactor-completion-rundown-20260823.md; config/refactor-milestones.json; scripts/ai/aq-refactor-status
+
+[IN-FLIGHT] dogfood-payload-receipt-overwritten-at-terminal-state — Fast-fail task `local-20260823-212901-nbbr8w` correctly rejected a 19,931-character payload before HTTP, but `aq-agent-loop` replaced the progress sidecar at termination and erased the count-only `payload_budget` component receipt needed to decide what to compact.
+  Severity: high
+  Action: merge only the closed payload-budget receipt into the terminal progress object, never copy arbitrary prior fields, and test rejected/completed/malformed prior-state cases before the next measured run.
+  File: scripts/ai/aq-agent-loop; ai-stack/local-agents/agent_executor.py
+
+[OPEN] managed-sandbox-local-delegation-registry-readonly — The first post-refinement dogfood dispatch failed before inference because the managed session mounted `.agents/delegation/registry.jsonl` read-only; the identical host-context dispatch registered and ran normally. Without an explicit host-observer/mutation contract, an agent can misclassify sandbox EROFS as a local-model failure.
+  Severity: medium
+  Action: make delegation entrypoints surface a typed `sandbox_registry_readonly` preflight and route authorized local registry writes through the existing host-context boundary; preserve read-only status checks inside managed sandboxes.
+  File: scripts/ai/delegate-to-local; scripts/ai/lib/task_registry.py

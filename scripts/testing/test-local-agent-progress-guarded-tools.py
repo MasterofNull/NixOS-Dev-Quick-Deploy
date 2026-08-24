@@ -1,6 +1,11 @@
 #!/usr/bin/env python3
 """Guard local-agent tool loops against fixed max-call regressions."""
 
+import importlib.machinery
+import importlib.util
+import json
+import sys
+import tempfile
 from pathlib import Path
 
 
@@ -17,6 +22,72 @@ AGENT_SPAWNER = ROOT / "ai-stack" / "local-agents" / "agent_spawner.py"
 def require(condition: bool, message: str) -> None:
     if not condition:
         raise AssertionError(message)
+
+
+def _load_agent_loop():
+    loader = importlib.machinery.SourceFileLoader("aq_agent_loop_progress_test", str(AQ_AGENT_LOOP))
+    spec = importlib.util.spec_from_loader("aq_agent_loop_progress_test", loader)
+    module = importlib.util.module_from_spec(spec)
+    sys.modules[spec.name] = module
+    loader.exec_module(module)
+    return module
+
+
+def _count_only_receipt() -> dict:
+    return {
+        "budget_mode": "AQ_LOCAL_DOGFOOD_BUDGET",
+        "call_number": 1,
+        "task_type_class": "code",
+        "system_unicode_chars": 10,
+        "non_system_unicode_chars": 20,
+        "tools_unicode_chars": 30,
+        "grammar_unicode_chars": 40,
+        "payload_json_unicode_chars": 100,
+        "estimated_tokens": 25,
+        "max_tokens": 192,
+    }
+
+
+def test_final_progress_preserves_only_valid_budget_receipt() -> None:
+    loop = _load_agent_loop()
+    rejected = {
+        "task_id": "reject-task", "status": "failed", "success": False,
+        "tool_calls": [], "elapsed_seconds": 1.5, "result": None, "error": "budget rejected",
+    }
+    completed = {
+        "task_id": "done-task", "status": "completed", "success": True,
+        "tool_calls": [object()], "elapsed_seconds": 2.5, "result": "COMPLETED: ok", "error": None,
+    }
+    with tempfile.TemporaryDirectory() as tmp:
+        progress = Path(tmp) / "progress.json"
+        receipt = _count_only_receipt()
+        progress.write_text(json.dumps({"payload_budget": receipt, "raw_task": "do not copy"}), encoding="utf-8")
+        loop._write_final_progress(progress, rejected)
+        rejected_final = json.loads(progress.read_text(encoding="utf-8"))
+        require(rejected_final["status"] == "failed" and rejected_final["success"] is False,
+                "rejected terminal fields were not authoritative")
+        require(rejected_final.get("payload_budget") == receipt, "rejected final write lost budget receipt")
+        require("raw_task" not in rejected_final, "raw prior progress field was copied")
+
+        progress.write_text(json.dumps({"payload_budget": receipt, "stale_raw": "never copy"}), encoding="utf-8")
+        loop._write_final_progress(progress, completed)
+        completed_final = json.loads(progress.read_text(encoding="utf-8"))
+        require(completed_final["status"] == "completed" and completed_final["success"] is True,
+                "completed terminal fields were not authoritative")
+        require(completed_final.get("payload_budget") == receipt, "completed final write lost budget receipt")
+        require("stale_raw" not in completed_final, "completed write copied stale raw field")
+
+        progress.write_text("[not-a-dict]", encoding="utf-8")
+        loop._write_final_progress(progress, completed)
+        malformed_final = json.loads(progress.read_text(encoding="utf-8"))
+        require("payload_budget" not in malformed_final, "malformed prior state should be ignored")
+
+        progress.write_text(json.dumps({"payload_budget": {**receipt, "raw_task_type": "secret"}}), encoding="utf-8")
+        loop._write_final_progress(progress, completed)
+        raw_final = json.loads(progress.read_text(encoding="utf-8"))
+        require("payload_budget" not in raw_final, "non-closed receipt must not be copied")
+
+    print("PASS: terminal progress preserves only closed count-only payload budget receipts")
 
 
 def main() -> int:
@@ -60,6 +131,7 @@ def main() -> int:
     require("repeated-read stagnation:" in aq_agent_loop, "aq-agent-loop must fail repeated-read stagnation results")
     require("analysis checkpoint stagnation:" in aq_agent_loop, "aq-agent-loop must fail analysis checkpoint stagnation results")
     require('status_label = "failed" if incomplete_result else result_task.status.value' in aq_agent_loop, "aq-agent-loop must write failed status for incomplete results")
+    test_final_progress_preserves_only_valid_budget_receipt()
 
     print("PASS: local-agent tool loops are progress-guarded, not max-call capped")
     return 0

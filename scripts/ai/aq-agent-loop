@@ -71,6 +71,62 @@ logging.basicConfig(
 logger = logging.getLogger(__name__)
 
 
+# The executor's dogfood budget receipt is intentionally count-only.  Terminal
+# progress writes may retain this one closed object, but must never copy an
+# arbitrary previous sidecar (which can contain raw task/prompt information).
+_PAYLOAD_BUDGET_CLASSES = frozenset({
+    "structured", "lookup", "code", "reasoning", "agent", "research", "deep_reasoning", "unknown",
+})
+_PAYLOAD_BUDGET_COUNT_KEYS = frozenset({
+    "call_number", "system_unicode_chars", "non_system_unicode_chars",
+    "tools_unicode_chars", "grammar_unicode_chars", "payload_json_unicode_chars",
+    "estimated_tokens", "max_tokens",
+})
+_PAYLOAD_BUDGET_KEYS = _PAYLOAD_BUDGET_COUNT_KEYS | frozenset({"budget_mode", "task_type_class"})
+
+
+def _valid_payload_budget_receipt(candidate: object) -> dict | None:
+    """Return a closed count-only receipt copy, or None for any invalid prior state."""
+    if not isinstance(candidate, dict) or set(candidate) != _PAYLOAD_BUDGET_KEYS:
+        return None
+    if candidate.get("budget_mode") != "AQ_LOCAL_DOGFOOD_BUDGET":
+        return None
+    if candidate.get("task_type_class") not in _PAYLOAD_BUDGET_CLASSES:
+        return None
+    if any(not isinstance(candidate.get(key), int) or isinstance(candidate.get(key), bool)
+           or candidate[key] < 0 for key in _PAYLOAD_BUDGET_COUNT_KEYS):
+        return None
+    return dict(candidate)
+
+
+def _final_progress_payload(summary: dict, prior_progress: object) -> dict:
+    """Build truthful terminal progress while retaining only a validated budget receipt."""
+    final_progress = {
+        "task_id": summary["task_id"],
+        "status": summary["status"],
+        "success": summary["success"],
+        "tool_call_count": len(summary["tool_calls"]),
+        "elapsed_s": summary["elapsed_seconds"],
+        "result_preview": (summary["result"] or "")[:200],
+        "error": summary["error"],
+        "timestamp": datetime.now(timezone.utc).isoformat().replace("+00:00", "Z"),
+    }
+    prior_receipt = prior_progress.get("payload_budget") if isinstance(prior_progress, dict) else None
+    receipt = _valid_payload_budget_receipt(prior_receipt)
+    if receipt is not None:
+        final_progress["payload_budget"] = receipt
+    return final_progress
+
+
+def _write_final_progress(progress_path: Path, summary: dict) -> None:
+    """Persist final state, retaining no unvalidated fields from the live sidecar."""
+    try:
+        prior_progress = json.loads(progress_path.read_text(encoding="utf-8"))
+    except (OSError, ValueError, TypeError):
+        prior_progress = None
+    progress_path.write_text(json.dumps(_final_progress_payload(summary, prior_progress), indent=2), encoding="utf-8")
+
+
 # ── helpers ───────────────────────────────────────────────────────────────────
 
 _agent_loop_event_seq: dict[str, int] = {}
@@ -503,16 +559,7 @@ async def run_task(
     _progress_path = os.environ.get("AGENT_PROGRESS_FILE")
     if _progress_path:
         try:
-            Path(_progress_path).write_text(json.dumps({
-                "task_id": summary["task_id"],
-                "status": summary["status"],
-                "success": summary["success"],
-                "tool_call_count": len(summary["tool_calls"]),
-                "elapsed_s": summary["elapsed_seconds"],
-                "result_preview": (summary["result"] or "")[:200],
-                "error": summary["error"],
-                "timestamp": datetime.now(timezone.utc).isoformat().replace("+00:00", "Z"),
-            }, indent=2))
+            _write_final_progress(Path(_progress_path), summary)
         except Exception:
             pass
 
