@@ -814,6 +814,8 @@ class AgentRunner:
             "--max-calls", str(max_calls),
             "--role", config.role,
         ]
+        if config.task_type:
+            cmd += ["--task-type", config.task_type]
         if getattr(config, "tool_manifest", "full") != "full":
             cmd += ["--tool-manifest", config.tool_manifest]
         try:
