@@ -46,6 +46,42 @@ def configure_live_base_url(value: str) -> str:
     return selected
 
 
+STATUS_ORDER = (
+    "ACTIVATED", "SHIPPED", "IN-PROGRESS", "FROZEN", "DESIGNED", "BLOCKED", "NOT-STARTED",
+)
+
+
+def dashboard_render_oracle(plans: list[dict]) -> tuple[list[tuple[str, str, str]], list[tuple[str, str]]]:
+    """Small data-only oracle for the tracker projections.
+
+    It mirrors the browser's compatibility posture: missing deps and priority
+    labels are harmless, invalid status falls back to NOT-STARTED, and only
+    edges whose dependency is present in the same plan can be drawn.
+    """
+    memberships: list[tuple[str, str, str]] = []
+    edges: list[tuple[str, str]] = []
+    for plan in plans:
+        plan_id = str(plan.get("id") or "")
+        items = plan.get("items") or []
+        by_id = {str(item.get("id") or ""): item for item in items if str(item.get("id") or "")}
+        for item in items:
+            item_id = str(item.get("id") or "")
+            status = str(item.get("status") or "NOT-STARTED")
+            memberships.append((f"{plan_id}:{item_id}", status if status in STATUS_ORDER else "NOT-STARTED", str(item.get("priority_lane") or "")))
+            for dependency in item.get("deps") or []:
+                dependency_id = str(dependency)
+                if dependency_id in by_id:
+                    edges.append((f"{plan_id}:{dependency_id}", f"{plan_id}:{item_id}"))
+    return memberships, edges
+
+
+def dependency_marker_id(plan_id: object) -> str:
+    """Mirror the browser's stable, document-safe plan-scoped marker ID."""
+    text_id = str(plan_id or "")
+    code_points = [format(ord(char), "x") for char in text_id]
+    return "dependency-arrow-" + ("-".join(code_points) if code_points else "empty")
+
+
 class StaticContractTests(unittest.TestCase):
     def test_exact_runtime_inventory_exists(self) -> None:
         for path in (TRACKER, DASHBOARD, CLIENT, MAIN, PM_ROUTE, PM_TRACKER_CLI, Path(__file__), PHASE0):
@@ -127,6 +163,61 @@ class StaticContractTests(unittest.TestCase):
         doc = text(TRACKER)
         self.assertIn('aria-live="polite"', doc)
         self.assertIn("@media (prefers-reduced-motion: reduce)", doc)
+
+    def test_dependency_map_and_status_board_contract(self) -> None:
+        """The operational projections remain live-data driven and safe for old manifests."""
+        doc = text(TRACKER)
+        for token in (
+            'data-item-id="${escapeHtml(item.itemId)}"',
+            "function renderDependencyArrows(data)",
+            "function planMarkerId(planId)",
+            "dependency-arrow-${codePoints.length ? codePoints.join('-') : 'empty'}",
+            'marker-end="url(#${markerId})"',
+            'marker id="${markerId}"',
+            "item.deps.map(dep => [dep, item.id])",
+            "if (!dependency) return '';",
+            "if (!source || !target) return '';",
+            "window.addEventListener('resize'",
+            "function renderKanban(data)",
+            "STATUS_ORDER.map(status => [status, []])",
+            "STATUS_ORDER.map(status => {",
+            "item.priorityLane ?",
+            "priority-lane",
+            "Array.isArray(item && item.deps)",
+        ):
+            self.assertIn(token, doc, token)
+
+    def test_dependency_and_kanban_oracle(self) -> None:
+        plans = [{
+            "id": "plan-a",
+            "items": [
+                {"id": "seed", "status": "IN-PROGRESS"},
+                {"id": "build", "status": "BLOCKED", "deps": ["seed"], "priority_lane": "gated-Q3"},
+                {"id": "orphan", "deps": ["missing"], "priority_lane": None},
+                {"id": "legacy", "status": "UNKNOWN"},
+            ],
+        }]
+        memberships, edges = dashboard_render_oracle(plans)
+        self.assertEqual(len(memberships), 4)
+        self.assertEqual([entry[0] for entry in memberships], ["plan-a:seed", "plan-a:build", "plan-a:orphan", "plan-a:legacy"])
+        self.assertEqual([entry[1] for entry in memberships], ["IN-PROGRESS", "BLOCKED", "NOT-STARTED", "NOT-STARTED"])
+        self.assertEqual(edges, [("plan-a:seed", "plan-a:build")])
+        self.assertEqual(memberships[1][2], "gated-Q3")
+        self.assertEqual(memberships[0][2], "")
+        self.assertTrue(all("undefined" not in value and "null" not in value for entry in memberships for value in entry))
+
+    def test_plan_scoped_marker_oracle(self) -> None:
+        """Distinct plan graphs never reuse an SVG document ID or fragment ref."""
+        plan_ids = ["alpha", "alpha/beta", "alpha-2f-beta", ""]
+        marker_ids = [dependency_marker_id(plan_id) for plan_id in plan_ids]
+        self.assertEqual(len(marker_ids), len(set(marker_ids)))
+        self.assertEqual(marker_ids[0], "dependency-arrow-61-6c-70-68-61")
+        self.assertEqual(marker_ids[1], "dependency-arrow-61-6c-70-68-61-2f-62-65-74-61")
+        self.assertEqual(marker_ids[2], "dependency-arrow-61-6c-70-68-61-2d-32-66-2d-62-65-74-61")
+        self.assertEqual(marker_ids[3], "dependency-arrow-empty")
+        fragment_refs = [f"url(#{marker_id})" for marker_id in marker_ids]
+        self.assertEqual(len(fragment_refs), len(set(fragment_refs)))
+        self.assertTrue(all(ref.startswith("url(#dependency-arrow-") for ref in fragment_refs))
 
     def test_program_panel_embed_contract(self) -> None:
         doc = text(DASHBOARD)
@@ -210,6 +301,17 @@ class LiveHeaderTests(unittest.TestCase):
         self.assertIn("plans", data)
         self.assertIn("program_rollup_pct", data)
         self.assertIsInstance(data["plans"], list)
+        for plan in data["plans"]:
+            self.assertIsInstance(plan.get("id"), str)
+            self.assertIsInstance(plan.get("items"), list)
+            for item in plan["items"]:
+                for field in ("id", "name", "status", "pct"):
+                    self.assertIn(field, item)
+                self.assertIsInstance(item["id"], str)
+                self.assertIsInstance(item["name"], str)
+                self.assertIsInstance(item["status"], str)
+                self.assertIsInstance(item["deps"], list)
+                self.assertTrue(item.get("priority_lane") is None or isinstance(item.get("priority_lane"), str))
 
 
 def main() -> int:
