@@ -1,9 +1,11 @@
 """PM Progress Dashboard — the live backend for `assets/aqos-progress-tracker.html`.
 
 Implements `GET /api/pm/progress`: the program-wide PM rollup, projected from
-git ground truth (commits + freeze records + activation grants — never
+read-only git evidence (commits + freeze records + activation grants — never
 hand-typed) by `scripts/ai/aq-pm-tracker --all-json`, per the standard in
-`.agents/plans/pm-tracker-standard/DESIGN.md`.
+`.agents/plans/pm-tracker-standard/DESIGN.md`. Shallow or unavailable history
+is returned as explicit degraded provenance; a dashboard request never repairs
+or changes repository state.
 
 Deliberately SHELLS OUT rather than importing `aq-pm-tracker`'s project()
 functions directly. Same posture as `approvals.py`'s module docstring
@@ -27,7 +29,7 @@ from pathlib import Path
 # systemctl but NOT git, and where the CLI's `#!/usr/bin/env python3` shebang
 # cannot resolve (/usr/bin/env hidden). So invoke aq-pm-tracker with an EXPLICIT
 # interpreter (sys.executable — the CLI is stdlib-only) and an augmented PATH so
-# the git/systemctl/aq-event subprocesses it spawns resolve.
+# its bounded read-only git/systemctl/aq-event evidence sources resolve.
 _TRACKER_ENV = {
     **os.environ,
     "PATH": "/run/current-system/sw/bin:/run/wrappers/bin:" + os.environ.get("PATH", ""),

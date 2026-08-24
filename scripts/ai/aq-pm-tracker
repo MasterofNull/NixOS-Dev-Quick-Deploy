@@ -12,6 +12,8 @@ Modes:
   aq-pm-tracker --all                 aggregate human summary across every .agents/plans/*/tracker.json
   aq-pm-tracker --all-json            aggregate projection (JSON): {generated_at, plans[], program_rollup_pct}
 Status precedence: ACTIVATED > SHIPPED > BLOCKED > FROZEN > IN-PROGRESS > DESIGNED > NOT-STARTED.
+`source_health` is a closed provenance signal: complete, shallow_incomplete,
+or unavailable. A read path never deepens, fetches, or otherwise mutates git.
 """
 from __future__ import annotations
 import json
@@ -23,46 +25,37 @@ from pathlib import Path
 REPO = Path(__file__).resolve().parents[2]
 _STATUS_PCT_FLOOR = {"ACTIVATED": 100, "SHIPPED": 100, "BLOCKED": 0, "FROZEN": 20,
                      "IN-PROGRESS": 50, "DESIGNED": 10, "NOT-STARTED": 0}
+_SOURCE_HEALTH = frozenset(("complete", "shallow_incomplete", "unavailable"))
 
 
-def _ensure_deep() -> None:
-    """A shallow local clone silently starves the git-log ground truth and makes
-    every projection UNDER-report (a SHIPPED slice reads NOT-STARTED). Something on
-    this host periodically re-shallows the repo, so auto-deepen defensively before
-    projecting. Best-effort + bounded; warns to stderr if it can't deepen."""
+def _git_log() -> tuple[str, str]:
+    """Return bounded read-only commit evidence and its provenance state.
+
+    Dashboard reads must never repair a clone. `--no-optional-locks` and the
+    environment setting keep git from creating optional lock files; shallow or
+    unavailable history is represented in the projection instead of hidden.
+    """
+    git_env = {**os.environ, "GIT_OPTIONAL_LOCKS": "0"}
     try:
-        shallow = subprocess.run(["git", "-C", str(REPO), "rev-parse", "--is-shallow-repository"],
-                                 capture_output=True, text=True, timeout=10).stdout.strip()
+        shallow_result = subprocess.run(
+            ["git", "--no-optional-locks", "-C", str(REPO), "rev-parse", "--is-shallow-repository"],
+            capture_output=True, text=True, timeout=10, env=git_env,
+        )
+        if shallow_result.returncode != 0:
+            return "", "unavailable"
+        shallow_value = shallow_result.stdout.strip()
+        if shallow_value not in ("true", "false"):
+            return "", "unavailable"
+        log_result = subprocess.run(
+            ["git", "--no-optional-locks", "-C", str(REPO), "log", "--oneline", "-n", "5000"],
+            capture_output=True, text=True, timeout=30, env=git_env,
+        )
+        if log_result.returncode != 0:
+            return "", "unavailable"
     except Exception:
-        return
-    if shallow != "true":
-        return
-    print("aq-pm-tracker: shallow clone detected — auto-deepening to restore ground truth...",
-          file=sys.stderr)
-    for cmd in (["git", "-C", str(REPO), "fetch", "--unshallow", "origin"],
-                ["git", "-C", str(REPO), "fetch", "--depth=1000", "origin"]):
-        try:
-            subprocess.run(cmd, capture_output=True, text=True, timeout=180)
-        except Exception:
-            continue
-        try:
-            if subprocess.run(["git", "-C", str(REPO), "rev-parse", "--is-shallow-repository"],
-                              capture_output=True, text=True, timeout=10).stdout.strip() != "true":
-                return
-        except Exception:
-            return
-    print("aq-pm-tracker: WARNING — clone still shallow; projection may under-report. "
-          "Run `git fetch --unshallow origin` (see issues-backlog: local-clone-shallow).",
-          file=sys.stderr)
-
-
-def _git_log() -> str:
-    _ensure_deep()
-    try:
-        return subprocess.run(["git", "-C", str(REPO), "log", "--oneline", "-n", "5000"],
-                              capture_output=True, text=True, timeout=30).stdout
-    except Exception:
-        return ""
+        return "", "unavailable"
+    health = "shallow_incomplete" if shallow_value == "true" else "complete"
+    return log_result.stdout, health
 
 
 def _aq_grants() -> str:
@@ -131,7 +124,7 @@ def _project_command(cmd: str, accepted: bool) -> tuple[str, int]:
     return ("SHIPPED", 100) if accepted else ("IN-PROGRESS", 55)
 
 
-def project_item(item: dict, gitlog: str, grants: str) -> tuple[str, int]:
+def project_item(item: dict, gitlog: str, grants: str, source_health: str = "complete") -> tuple[str, int | None]:
     det = item.get("detection", {}) or {}
     accepted = (item.get("acceptance") or {}).get("status") == "accepted"
 
@@ -163,37 +156,59 @@ def project_item(item: dict, gitlog: str, grants: str) -> tuple[str, int]:
             return ("IN-PROGRESS", 85)
         return (status, p)
 
+    # Positive evidence remains useful even when commit history is partial.
+    # Only the *absence* of commit evidence becomes UNKNOWN in that case.
     if is_activation:
         return _gate("ACTIVATED", 100) if granted else ("NOT-STARTED", 0)
-    if hits > 0 or granted:
+    if granted:
+        return _gate("SHIPPED", 100)
+    if freeze_exists:
+        return ("FROZEN", 20)
+    if source_health != "complete" and det.get("commit_match"):
+        if accepted:
+            return ("SHIPPED", 100)
+        return ("UNKNOWN", None)
+    if hits > 0:
         if pct is not None and pct < 100:
             return ("IN-PROGRESS", int(pct))
         if freeze_exists or granted:
             return _gate("SHIPPED", 100)
         return ("IN-PROGRESS", int(pct) if pct is not None else 60)
-    if freeze_exists:
-        return ("FROZEN", 20)
     if blocker:
         return ("NOT-STARTED", 0)
     return ("DESIGNED", 10)
 
 
+def _rollup(items: list[dict]) -> tuple[int | None, int, int]:
+    """Return average of known evidence plus known/unknown item counts."""
+    known = [item["pct"] for item in items if item.get("pct") is not None]
+    return (round(sum(known) / len(known)) if known else None, len(known), len(items) - len(known))
+
+
+def _format_pct(pct: int | None) -> str:
+    """Human output must not turn unknown provenance into a numeric claim."""
+    return "  ?" if pct is None else f"{pct:>3}"
+
+
 def project(plan_dir: Path) -> dict:
     manifest = json.loads((plan_dir / "tracker.json").read_text())
-    gitlog, grants = _git_log(), _aq_grants()
+    gitlog, source_health = _git_log()
+    grants = _aq_grants()
     items = []
     for it in manifest.get("items", []):
-        status, pct = project_item(it, gitlog, grants)
+        status, pct = project_item(it, gitlog, grants, source_health)
         items.append({"id": it["id"], "name": it.get("name"), "phase": it.get("phase"),
                       "kind": it.get("kind"), "goal": it.get("goal"),
                       "validation_goal": it.get("validation_goal"), "deps": it.get("deps", []),
                       "status": status, "pct": pct})
-    n = len(items) or 1
-    rollup = round(sum(i["pct"] for i in items) / n)
+    rollup, known_items, unknown_items = _rollup(items)
     shipped = sum(1 for i in items if i["status"] in ("SHIPPED", "ACTIVATED"))
     return {"plan": manifest.get("plan", {}), "phases": manifest.get("phases", []),
             "items": items, "issues": manifest.get("issues", []),
-            "rollup_pct": rollup, "shipped": shipped, "total": len(items)}
+            "rollup_pct": rollup, "shipped": shipped, "total": len(items),
+            "known_items": known_items, "unknown_items": unknown_items,
+            "source_health": source_health,
+            "rollup_authoritative": source_health == "complete"}
 
 
 def discover_tracked_plans() -> list[Path]:
@@ -212,11 +227,12 @@ def discover_tracked_plans() -> list[Path]:
 
 def project_all() -> dict:
     """Aggregate projection across every tracked plan — reuses project() per
-    plan (same ground truth: one git-log/aq-event read, shared across plans
-    so an N-plan aggregate costs one _ensure_deep(), not N)."""
+    plan from one read-only git/aq-event evidence snapshot, shared across plans
+    so an N-plan aggregate does not multiply subprocess reads."""
     from datetime import datetime, timezone
 
-    gitlog, grants = _git_log(), _aq_grants()
+    gitlog, source_health = _git_log()
+    grants = _aq_grants()
     plans_out = []
     total_items = 0
     weighted_pct_sum = 0
@@ -229,12 +245,11 @@ def project_all() -> dict:
             continue
         items = []
         for it in manifest.get("items", []):
-            status, pct = project_item(it, gitlog, grants)
+            status, pct = project_item(it, gitlog, grants, source_health)
             items.append({"id": it["id"], "name": it.get("name"), "phase": it.get("phase"),
                           "deps": it.get("deps", []), "priority_lane": it.get("priority_lane"),
                           "status": status, "pct": pct})
-        n = len(items) or 1
-        rollup = round(sum(i["pct"] for i in items) / n)
+        rollup, known_items, unknown_items = _rollup(items)
         shipped = sum(1 for i in items if i["status"] in ("SHIPPED", "ACTIVATED"))
         plan_meta = manifest.get("plan", {})
         plans_out.append({
@@ -243,16 +258,25 @@ def project_all() -> dict:
             "rollup_pct": rollup,
             "shipped": shipped,
             "total": len(items),
+            "known_items": known_items,
+            "unknown_items": unknown_items,
+            "rollup_authoritative": source_health == "complete",
             "phases": manifest.get("phases", []),
             "items": items,
         })
         total_items += len(items)
-        weighted_pct_sum += sum(i["pct"] for i in items)
-    program_rollup_pct = round(weighted_pct_sum / total_items) if total_items else 0
+        weighted_pct_sum += sum(i["pct"] for i in items if i["pct"] is not None)
+    known_items = sum(plan["known_items"] for plan in plans_out)
+    unknown_items = sum(plan["unknown_items"] for plan in plans_out)
+    program_rollup_pct = round(weighted_pct_sum / known_items) if known_items else None
     return {
         "generated_at": datetime.now(timezone.utc).strftime("%Y-%m-%dT%H:%M:%SZ"),
         "plans": plans_out,
         "program_rollup_pct": program_rollup_pct,
+        "known_items": known_items,
+        "unknown_items": unknown_items,
+        "source_health": source_health,
+        "rollup_authoritative": source_health == "complete",
     }
 
 
@@ -307,7 +331,7 @@ def main() -> int:
                     continue
                 print(f"  {ph['name']}:")
                 for it in rows:
-                    print(f"    [{it['status']:<11}] {it['pct']:>3}%  {it['name']}")
+                    print(f"    [{it['status']:<11}] {_format_pct(it['pct'])}%  {it['name']}")
         return 0
 
     mode = "summary"
@@ -350,7 +374,7 @@ def main() -> int:
         rows = by_phase.get(ph["id"], [])
         print(f"\n## {ph['name']}")
         for it in rows:
-            print(f"  [{it['status']:<11}] {it['pct']:>3}%  {it['name']}")
+            print(f"  [{it['status']:<11}] {_format_pct(it['pct'])}%  {it['name']}")
     if data["issues"]:
         print("\n## issues")
         for i in data["issues"]:

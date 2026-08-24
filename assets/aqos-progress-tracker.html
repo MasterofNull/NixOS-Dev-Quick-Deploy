@@ -274,6 +274,21 @@
   }
   .bar-fill { height: 100%; border-radius: 3px; background: var(--good); transition: width 0.4s ease; }
 
+  .provenance-banner {
+    display: none;
+    margin: 0 0 18px;
+    padding: 12px 14px;
+    border: 1px solid var(--blocked);
+    border-left: 4px solid var(--blocked);
+    border-radius: var(--radius);
+    background: color-mix(in srgb, var(--blocked) 12%, var(--surface));
+    color: var(--ink);
+    font-size: 0.8rem;
+    line-height: 1.45;
+  }
+  .provenance-banner strong { color: var(--blocked); }
+  .provenance-banner[data-visible="true"] { display: block; }
+
   .phase-row { margin-bottom: 10px; }
   .phase-row:last-child { margin-bottom: 0; }
   .phase-name {
@@ -303,6 +318,7 @@
   .item-chip[data-status="FROZEN"] { border-left-color: var(--frozen); }
   .item-chip[data-status="DESIGNED"] { border-left-color: var(--designed); }
   .item-chip[data-status="NOT-STARTED"] { border-left-color: var(--notstarted); color: var(--ink-faint); }
+  .item-chip[data-status="UNKNOWN"] { border-left-color: var(--blocked); border-left-style: dashed; color: var(--ink-muted); }
   .item-name { color: var(--ink); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; max-width: 320px; }
   .item-pct { font-family: var(--font-mono); color: var(--ink-faint); font-size: 0.68rem; flex: none; }
 
@@ -348,6 +364,7 @@
   .kanban-column[data-status="FROZEN"] { border-top-color: var(--frozen); }
   .kanban-column[data-status="DESIGNED"] { border-top-color: var(--designed); }
   .kanban-column[data-status="NOT-STARTED"] { border-top-color: var(--notstarted); }
+  .kanban-column[data-status="UNKNOWN"] { border-top-color: var(--blocked); border-top-style: dashed; }
   .kanban-column-head { display: flex; justify-content: space-between; gap: 8px; align-items: baseline; margin-bottom: 10px; }
   .kanban-status, .kanban-count { font-family: var(--font-mono); font-size: 0.65rem; letter-spacing: 0.04em; }
   .kanban-status { color: var(--ink-muted); font-weight: 600; }
@@ -440,6 +457,8 @@
     </div>
   </section>
 
+  <section id="provenance-banner" class="provenance-banner" role="status" aria-live="polite" aria-atomic="true" data-visible="false"></section>
+
   <section class="plans" aria-live="polite">
     <div class="section-head">
       <h2>Tracked plans</h2>
@@ -472,11 +491,12 @@
       <span class="legend-item"><span class="legend-swatch" style="background:var(--frozen)"></span>Frozen</span>
       <span class="legend-item"><span class="legend-swatch" style="background:var(--designed)"></span>Designed</span>
       <span class="legend-item"><span class="legend-swatch" style="background:var(--notstarted)"></span>Not started</span>
+      <span class="legend-item"><span class="legend-swatch" style="background:var(--blocked)"></span>Unknown evidence</span>
     </div>
   </section>
 
   <footer>
-    Live projection · source: <code>GET /api/pm/progress</code> (shells out to <code>scripts/ai/aq-pm-tracker --all-json</code>) ·
+    Live read-only projection · source: <code>GET /api/pm/progress</code> (shells out to <code>scripts/ai/aq-pm-tracker --all-json</code>) ·
     refreshes every 30s · <span id="footer-fetch-count">0</span> fetches this session
   </footer>
 </div>
@@ -490,11 +510,12 @@
   const plansRoot = document.getElementById('plans-root');
   const kanbanRoot = document.getElementById('kanban-root');
   const footerFetchCount = document.getElementById('footer-fetch-count');
+  const provenanceBanner = document.getElementById('provenance-banner');
 
   let fetchCount = 0;
   let inFlight = false;
 
-  const STATUS_ORDER = ['ACTIVATED', 'SHIPPED', 'IN-PROGRESS', 'FROZEN', 'DESIGNED', 'BLOCKED', 'NOT-STARTED'];
+  const STATUS_ORDER = ['ACTIVATED', 'SHIPPED', 'IN-PROGRESS', 'FROZEN', 'DESIGNED', 'BLOCKED', 'NOT-STARTED', 'UNKNOWN'];
 
   function escapeHtml(s) {
     return String(s == null ? '' : s).replace(/[&<>"']/g, c => ({
@@ -515,11 +536,31 @@
       total += p.total || 0;
       (p.items || []).forEach(it => { if (it.status === 'BLOCKED') blocked += 1; });
     });
-    document.getElementById('stat-rollup').textContent = (data.program_rollup_pct ?? 0) + '%';
+    const rollup = data.program_rollup_pct;
+    document.getElementById('stat-rollup').textContent = rollup == null ? '—' : rollup + '%';
     document.getElementById('stat-plans').textContent = plans.length;
-    document.getElementById('stat-shipped').textContent = `${shipped} / ${total}`;
+    const known = Number.isFinite(Number(data.known_items)) ? Number(data.known_items) : total;
+    document.getElementById('stat-shipped').textContent = `${shipped} / ${known} known`;
     document.getElementById('stat-blocked').textContent = blocked;
     document.getElementById('stat-blocked-tile').classList.toggle('crit', blocked > 0);
+  }
+
+  function renderProvenance(data) {
+    const health = String(data && data.source_health || 'unavailable');
+    const authoritative = data && data.rollup_authoritative === true && health === 'complete';
+    const unknown = Number.isFinite(Number(data && data.unknown_items)) ? Number(data.unknown_items) : 0;
+    if (authoritative) {
+      provenanceBanner.dataset.visible = 'false';
+      provenanceBanner.textContent = '';
+      return;
+    }
+    const labels = {
+      shallow_incomplete: 'the repository history is shallow',
+      unavailable: 'commit history is unavailable',
+      error: 'provenance collection reported an error',
+    };
+    provenanceBanner.dataset.visible = 'true';
+    provenanceBanner.innerHTML = `<strong>Degraded provenance:</strong> ${escapeHtml(labels[health] || 'provenance is incomplete')}. ${unknown} item${unknown === 1 ? '' : 's'} ${unknown === 1 ? 'is' : 'are'} marked UNKNOWN. Rollups use known evidence only and are not authoritative.`;
   }
 
   function normalizedItem(item, planId) {
@@ -529,7 +570,7 @@
       itemId: `${String(planId || '')}:${String(item && item.id || '')}`,
       name: String(item && item.name || item && item.id || 'untitled item'),
       status: STATUS_ORDER.includes(rawStatus) ? rawStatus : 'NOT-STARTED',
-      pct: Number.isFinite(Number(item && item.pct)) ? Number(item.pct) : 0,
+      pct: Number.isFinite(Number(item && item.pct)) ? Number(item.pct) : null,
       phase: item && item.phase || '__unphased__',
       deps: Array.isArray(item && item.deps) ? item.deps.map(String) : [],
       priorityLane: item && item.priority_lane ? String(item.priority_lane) : '',
@@ -538,9 +579,9 @@
 
   function renderItemChip(item) {
     return `
-      <span class="item-chip" data-item-id="${escapeHtml(item.itemId)}" data-status="${escapeHtml(item.status)}" title="${escapeHtml(item.name)} — ${escapeHtml(item.status)} (${item.pct}%)">
+      <span class="item-chip" data-item-id="${escapeHtml(item.itemId)}" data-status="${escapeHtml(item.status)}" title="${escapeHtml(item.name)} — ${escapeHtml(item.status)} (${item.pct == null ? 'unknown' : item.pct + '%'})">
         <span class="item-name">${escapeHtml(item.name)}</span>
-        <span class="item-pct">${item.pct}%</span>
+        <span class="item-pct">${item.pct == null ? 'unknown' : item.pct + '%'}</span>
       </span>
     `;
   }
@@ -577,7 +618,7 @@
       phaseRows += `<div class="phase-row"><p class="phase-name">Other</p><div class="item-list">${chips}</div></div>`;
     }
 
-    const pct = plan.rollup_pct ?? 0;
+    const pct = Number.isFinite(Number(plan.rollup_pct)) ? Number(plan.rollup_pct) : null;
     const barColor = pct >= 90 ? 'var(--good)' : (pct > 0 ? 'var(--active)' : 'var(--notstarted)');
     const markerId = planMarkerId(plan.id);
 
@@ -589,11 +630,11 @@
             <span class="plan-title">${escapeHtml(plan.title || plan.id || 'untitled plan')}</span>
           </div>
           <div class="plan-meta">
-            <span class="plan-pct">${pct}%</span>
-            <span>${plan.shipped ?? 0} / ${plan.total ?? 0} shipped</span>
+            <span class="plan-pct">${pct == null ? '—' : pct + '%'}</span>
+            <span>${plan.shipped ?? 0} / ${plan.known_items ?? plan.total ?? 0} known shipped</span>
           </div>
         </div>
-        <div class="bar-track"><div class="bar-fill" style="width:${pct}%;background:${barColor}"></div></div>
+        <div class="bar-track"><div class="bar-fill" style="width:${pct ?? 0}%;background:${barColor}"></div></div>
         <div class="plan-graph" data-plan-id="${escapeHtml(plan.id || '')}">
           <svg class="dependency-overlay" aria-hidden="true"><defs><marker id="${markerId}" viewBox="0 0 8 8" refX="7" refY="4" markerWidth="5" markerHeight="5" orient="auto"><path d="M 0 0 L 8 4 L 0 8 z" fill="currentColor"></path></marker></defs></svg>
           ${phaseRows}
@@ -646,7 +687,7 @@
         <article class="kanban-card" data-item-id="${escapeHtml(item.itemId)}">
           <span class="kanban-plan" title="${escapeHtml(item.planTitle)}">${escapeHtml(item.planId)}</span>
           <span class="kanban-name">${escapeHtml(item.name)}</span>
-          <span class="kanban-meta">${item.priorityLane ? `<span class="priority-lane">${escapeHtml(item.priorityLane)}</span>` : ''}<span class="kanban-pct">${item.pct}%</span></span>
+          <span class="kanban-meta">${item.priorityLane ? `<span class="priority-lane">${escapeHtml(item.priorityLane)}</span>` : ''}<span class="kanban-pct">${item.pct == null ? 'unknown' : item.pct + '%'}</span></span>
         </article>
       `).join('');
       return `<section class="kanban-column" data-status="${status}" aria-label="${escapeHtml(status)} items"><div class="kanban-column-head"><span class="kanban-status">${escapeHtml(status)}</span><span class="kanban-count">${items.length}</span></div><div class="kanban-items">${cards}</div></section>`;
@@ -693,6 +734,7 @@
         throw new Error(detail);
       }
       const data = await resp.json();
+      renderProvenance(data);
       window.latestProgramData = data;
       fetchCount += 1;
       footerFetchCount.textContent = fetchCount;
