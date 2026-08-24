@@ -13,6 +13,8 @@ from __future__ import annotations
 
 import argparse
 import re
+import subprocess
+import types
 import unittest
 import urllib.request
 from pathlib import Path
@@ -80,6 +82,97 @@ def dependency_marker_id(plan_id: object) -> str:
     text_id = str(plan_id or "")
     code_points = [format(ord(char), "x") for char in text_id]
     return "dependency-arrow-" + ("-".join(code_points) if code_points else "empty")
+
+
+def load_pm_tracker_module() -> types.ModuleType:
+    """Load the stdlib-only tracker under test without invoking its CLI main()."""
+    module = types.ModuleType("aq_pm_tracker_under_test")
+    module.__file__ = str(PM_TRACKER_CLI)
+    exec(compile(text(PM_TRACKER_CLI), str(PM_TRACKER_CLI), "exec"), module.__dict__)
+    return module
+
+
+class ProjectionProvenanceTests(unittest.TestCase):
+    def test_git_read_path_never_fetches_or_updates_refs(self) -> None:
+        tracker = load_pm_tracker_module()
+        calls: list[list[str]] = []
+
+        def fake_run(args, **_kwargs):
+            calls.append(list(args))
+            if "rev-parse" in args:
+                return subprocess.CompletedProcess(args, 0, "false\n", "")
+            if "log" in args:
+                return subprocess.CompletedProcess(args, 0, "abc ship slice\n", "")
+            raise AssertionError(f"unexpected process: {args}")
+
+        tracker.subprocess.run = fake_run
+        gitlog, health = tracker._git_log()
+        self.assertEqual((gitlog, health), ("abc ship slice\n", "complete"))
+        self.assertTrue(all("--no-optional-locks" in call for call in calls))
+        forbidden = {"fetch", "pull", "push", "update-ref", "commit", "checkout", "reset"}
+        self.assertTrue(all(forbidden.isdisjoint(call) for call in calls), calls)
+
+    def test_shallow_history_marks_missing_commit_evidence_unknown(self) -> None:
+        tracker = load_pm_tracker_module()
+        item = {"detection": {"commit_match": ["ship PM provenance"]}}
+        self.assertEqual(
+            tracker.project_item(item, "", "", "shallow_incomplete"), ("UNKNOWN", None)
+        )
+        # Explicit positive evidence is still truthful when history is partial.
+        self.assertEqual(
+            tracker.project_item({"acceptance": {"status": "accepted"}, **item}, "", "", "shallow_incomplete"),
+            ("SHIPPED", 100),
+        )
+        self.assertEqual(
+            tracker.project_item({"kind": "task", "detection": {"activation_subject": "vf", "blocker_note": "owner acts"}},
+                                 "", "activation.grant vf", "shallow_incomplete"),
+            ("ACTIVATED", 100),
+        )
+
+    def test_git_error_is_unavailable_not_not_started(self) -> None:
+        tracker = load_pm_tracker_module()
+
+        def failing_run(args, **_kwargs):
+            if "rev-parse" in args:
+                raise OSError("git unavailable")
+            raise AssertionError(f"unexpected process: {args}")
+
+        tracker.subprocess.run = failing_run
+        self.assertEqual(tracker._git_log(), ("", "unavailable"))
+        self.assertEqual(
+            tracker.project_item({"detection": {"commit_match": ["slice"]}}, "", "", "unavailable"),
+            ("UNKNOWN", None),
+        )
+
+    def test_malformed_shallow_probe_fails_closed(self) -> None:
+        tracker = load_pm_tracker_module()
+
+        def malformed_run(args, **_kwargs):
+            if "rev-parse" in args:
+                return subprocess.CompletedProcess(args, 0, "perhaps\n", "")
+            raise AssertionError(f"git log must not run after malformed probe: {args}")
+
+        tracker.subprocess.run = malformed_run
+        self.assertEqual(tracker._git_log(), ("", "unavailable"))
+
+    def test_rollup_excludes_unknown_evidence(self) -> None:
+        tracker = load_pm_tracker_module()
+        rollup, known, unknown = tracker._rollup([
+            {"pct": 100}, {"pct": None}, {"pct": 20},
+        ])
+        self.assertEqual((rollup, known, unknown), (60, 2, 1))
+
+    def test_malformed_and_escaped_provenance_are_defensive(self) -> None:
+        doc = text(TRACKER)
+        # The browser does not trust a malformed source_health field, and all
+        # displayed dynamic provenance text runs through the same HTML escaper.
+        self.assertIn("labels[health] || 'provenance is incomplete'", doc)
+        self.assertIn("escapeHtml(labels[health] || 'provenance is incomplete')", doc)
+        self.assertIn("status: STATUS_ORDER.includes(rawStatus)", doc)
+        self.assertIn("item.pct == null ? 'unknown' : item.pct + '%'", doc)
+        self.assertNotIn("(${item.pct}%)", doc)
+        route = text(PM_ROUTE)
+        self.assertIn("except json.JSONDecodeError", route)
 
 
 class StaticContractTests(unittest.TestCase):
@@ -325,6 +418,7 @@ def main() -> int:
     args = parser.parse_args()
     configure_live_base_url(args.base_url)
     suite = unittest.defaultTestLoader.loadTestsFromTestCase(StaticContractTests)
+    suite.addTests(unittest.defaultTestLoader.loadTestsFromTestCase(ProjectionProvenanceTests))
     if not args.static_only:
         suite.addTests(unittest.defaultTestLoader.loadTestsFromTestCase(LiveHeaderTests))
     return 0 if unittest.TextTestRunner(verbosity=2).run(suite).wasSuccessful() else 1
