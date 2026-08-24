@@ -67,6 +67,12 @@ Foundation A physical convergence           ─┼─► Foundation C (identity/
 ```
 Cross-cutting (run alongside, gate acceptance everywhere): Track V exact-subject independent review, Observability pillar, HARD-rule enforcement, agent parity. Any future activation remains an explicit owner decision per slice.
 
+Owner-gate status is mechanically projected by `aq-refactor-status --machine`; the closed states are
+`resolved`, `owner_decision`, `exact_activation`, and `dependency_blocked`. Tier0 rejects a rundown that
+reintroduces a ratified direction as an unresolved owner gate. Both `owner_decision` and
+`exact_activation` enter owner attention; dependency remediation remains visible without silently
+blocking on the owner.
+
 ## 4. Where THIS session's work fits (so we don't lose sight — it WAS on-program)
 The local-agent deep-dive was not a detour — it advanced the program:
 - **Grammar fix / context supply chain / interventions / write_region / record-replay / defect fixes** →

@@ -151,6 +151,8 @@ def _freeze_record_exists(repo_root: Path, freeze_record: str | None) -> bool:
 # ---------------------------------------------------------------------------
 
 TRACK_STATUSES = ("done", "active", "blocked", "notstarted")
+GATE_STATES = ("resolved", "owner_decision", "exact_activation", "dependency_blocked")
+OWNER_ATTENTION_STATES = ("owner_decision", "exact_activation")
 
 
 def _track_status_and_pct(
@@ -216,9 +218,73 @@ def _track_status_and_pct(
     return "notstarted", 0
 
 
-def _gate_resolved(gate: dict[str, Any], subjects: list[str]) -> bool:
+def _gate_state(
+    gate: dict[str, Any],
+    subjects: list[str],
+    activated_subjects: set[str],
+) -> str:
+    """Classify a gate without collapsing owner and dependency work.
+
+    A ratified direction is ``resolved``.  A named owner activation is only
+    actionable after its dependency note clears; an unresolved direction with
+    no named activation is an ``owner_decision``.  This keeps the operator
+    queue honest: dependency remediation is not presented as a request for a
+    human decision.
+    """
     detection = gate.get("detection", {}) or {}
-    return _matches_any(subjects, detection.get("ratified_commit_match", []) or [])
+    if _matches_any(subjects, detection.get("ratified_commit_match", []) or []):
+        return "resolved"
+    if detection.get("dependency_blocker_note"):
+        return "dependency_blocked"
+    activation_subject = detection.get("activation_subject")
+    if activation_subject:
+        if activation_subject in activated_subjects:
+            return "resolved"
+        return "exact_activation"
+    return "owner_decision"
+
+
+def _rundown_owner_gate_contradictions(
+    manifest: dict[str, Any], gate_out: list[dict[str, Any]], repo_root: Path
+) -> list[dict[str, str]]:
+    """Report stale owner-gate claims in the declared current rundown.
+
+    The contract is intentionally opt-in through ``owner_gate_rundown`` so
+    historical plans remain evidence, not a source of false tier0 failures.
+    Only the designated current rundown is held to the live projection.
+    """
+    contract = manifest.get("owner_gate_rundown", {}) or {}
+    path_value = contract.get("path")
+    if not isinstance(path_value, str) or not path_value:
+        return []
+    try:
+        text = (repo_root / path_value).read_text(encoding="utf-8", errors="replace")
+    except Exception:
+        return [{"kind": "rundown_unreadable", "path": path_value, "detail": "declared current rundown is unavailable"}]
+
+    resolved_ids = {str(g.get("id")) for g in gate_out if g.get("state") == "resolved"}
+    contradictions: list[dict[str, str]] = []
+    resolved_assertion = contract.get("resolved_assertion")
+    if resolved_ids and isinstance(resolved_assertion, str) and resolved_assertion and resolved_assertion not in text:
+        contradictions.append({
+            "kind": "missing_resolved_assertion",
+            "path": path_value,
+            "detail": f"live projection resolves owner gates but rundown lacks: {resolved_assertion}",
+        })
+    for gate_id, pattern in (contract.get("stale_owner_gate_patterns", {}) or {}).items():
+        if str(gate_id) not in resolved_ids or not isinstance(pattern, str):
+            continue
+        try:
+            stale_claim = re.search(pattern, text, re.IGNORECASE)
+        except re.error:
+            continue
+        if stale_claim:
+            contradictions.append({
+                "kind": "stale_owner_gate_claim",
+                "path": path_value,
+                "detail": f"{gate_id} is resolved by the live projector but rundown claims: {stale_claim.group(0)}",
+            })
+    return contradictions
 
 
 # ---------------------------------------------------------------------------
@@ -268,13 +334,15 @@ def project(manifest_path: str | Path, repo_root: str | Path) -> dict[str, Any]:
 
     gate_out: list[dict[str, Any]] = []
     for gate in gate_in:
-        resolved = _gate_resolved(gate, subjects)
+        state = _gate_state(gate, subjects, activated_subjects)
         gate_out.append(
             {
                 "id": gate.get("id"),
                 "decision": gate.get("decision"),
                 "unblocks": gate.get("unblocks"),
-                "resolved": resolved,
+                "state": state,
+                "resolved": state == "resolved",
+                "owner_attention": state in OWNER_ATTENTION_STATES,
             }
         )
 
@@ -288,10 +356,13 @@ def project(manifest_path: str | Path, repo_root: str | Path) -> dict[str, Any]:
             }
         )
 
+    contradictions = _rundown_owner_gate_contradictions(manifest, gate_out, repo_root)
+    owner_attention = [g for g in gate_out if g["owner_attention"]]
     stats = {
         "tracks_done_or_active": sum(1 for t in tracks_out if t["status"] in ("done", "active")),
         "blocking_gates": sum(1 for t in tracks_out if t["status"] == "blocked"),
         "decisions_pending": sum(1 for g in gate_out if not g["resolved"]),
+        "owner_attention_required": len(owner_attention),
         "open_high_issues": sum(1 for i in issues_out if str(i.get("sev", "")).lower() == "high"),
     }
 
@@ -300,6 +371,8 @@ def project(manifest_path: str | Path, repo_root: str | Path) -> dict[str, Any]:
         "tracks": tracks_out,
         "gate": gate_out,
         "issues": issues_out,
+        "owner_attention": owner_attention,
+        "owner_gate_contradictions": contradictions,
         "stats": stats,
     }
 
@@ -320,4 +393,6 @@ def strip_updated(projection: dict[str, Any]) -> dict[str, Any]:
     return out
 
 
-__all__ = ["project", "project_json", "strip_updated", "TRACK_STATUSES"]
+__all__ = [
+    "project", "project_json", "strip_updated", "TRACK_STATUSES", "GATE_STATES", "OWNER_ATTENTION_STATES",
+]

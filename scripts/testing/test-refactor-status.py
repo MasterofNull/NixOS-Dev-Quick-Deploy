@@ -70,8 +70,16 @@ def _write_claim(repo_root: Path, name: str) -> None:
     path.write_text("claimed\n", encoding="utf-8")
 
 
-def _write_manifest(tmp: Path, tracks: list[dict], gate: list[dict] | None = None, issues: list[dict] | None = None) -> Path:
+def _write_manifest(
+    tmp: Path,
+    tracks: list[dict],
+    gate: list[dict] | None = None,
+    issues: list[dict] | None = None,
+    owner_gate_rundown: dict | None = None,
+) -> Path:
     manifest = {"tracks": tracks, "gate": gate or [], "issues": issues or []}
+    if owner_gate_rundown is not None:
+        manifest["owner_gate_rundown"] = owner_gate_rundown
     path = tmp / "manifest.json"
     path.write_text(json.dumps(manifest), encoding="utf-8")
     return path
@@ -91,8 +99,8 @@ class ProjectorStatusBranches(unittest.TestCase):
         self._git_patch.stop()
         self._tmpdir.cleanup()
 
-    def _project(self, tracks, gate=None, issues=None):
-        manifest_path = _write_manifest(self.tmp, tracks, gate, issues)
+    def _project(self, tracks, gate=None, issues=None, owner_gate_rundown=None):
+        manifest_path = _write_manifest(self.tmp, tracks, gate, issues, owner_gate_rundown)
         return refactor_status.project(manifest_path, self.repo_root)
 
     # -- individual branches ------------------------------------------------
@@ -301,11 +309,49 @@ class ProjectorStatusBranches(unittest.TestCase):
         gate = [{"id": "QX", "decision": "d", "unblocks": "u", "detection": {"ratified_commit_match": ["never-matches", "design frozen and committed"]}}]
         result = self._project([], gate=gate)
         self.assertTrue(result["gate"][0]["resolved"])
+        self.assertEqual(result["gate"][0]["state"], "resolved")
+        self.assertFalse(result["gate"][0]["owner_attention"])
 
     def test_gate_resolved_false_when_no_match(self) -> None:
         gate = [{"id": "QY", "decision": "d", "unblocks": "u", "detection": {"ratified_commit_match": ["absolutely-nothing-matches-this-string"]}}]
         result = self._project([], gate=gate)
         self.assertFalse(result["gate"][0]["resolved"])
+        self.assertEqual(result["gate"][0]["state"], "owner_decision")
+        self.assertTrue(result["gate"][0]["owner_attention"])
+
+    def test_gate_state_exact_activation_and_dependency_blocked(self) -> None:
+        gate = [
+            {"id": "QA", "decision": "activate", "unblocks": "a", "detection": {"activation_subject": "subject-a"}},
+            {
+                "id": "QB", "decision": "repair dependency", "unblocks": "b",
+                "detection": {"activation_subject": "subject-b", "dependency_blocker_note": "fixture missing"},
+            },
+        ]
+        result = self._project([], gate=gate)
+        self.assertEqual([entry["state"] for entry in result["gate"]], ["exact_activation", "dependency_blocked"])
+        self.assertEqual([entry["id"] for entry in result["owner_attention"]], ["QA"])
+        self.assertEqual(result["stats"]["owner_attention_required"], 1)
+
+    def test_owner_gate_rundown_contradiction_detection(self) -> None:
+        rundown = self.repo_root / "current-rundown.md"
+        rundown.write_text("QX still pending owner decision\n", encoding="utf-8")
+        gate = [{"id": "QX", "decision": "d", "unblocks": "u", "detection": {"ratified_commit_match": ["design frozen and committed"]}}]
+        contract = {
+            "path": "current-rundown.md",
+            "resolved_assertion": "All directions resolved",
+            "stale_owner_gate_patterns": {"QX": "QX[^\\n]*(?:still pending|owner decision[^\\n]*open)"},
+        }
+        result = self._project([], gate=gate, owner_gate_rundown=contract)
+        self.assertEqual(result["gate"][0]["state"], "resolved")
+        self.assertEqual({entry["kind"] for entry in result["owner_gate_contradictions"]}, {"missing_resolved_assertion", "stale_owner_gate_claim"})
+
+    def test_owner_gate_rundown_resolved_assertion_is_clean(self) -> None:
+        rundown = self.repo_root / "current-rundown.md"
+        rundown.write_text("All directions resolved\nQX dependency work remains\n", encoding="utf-8")
+        gate = [{"id": "QX", "decision": "d", "unblocks": "u", "detection": {"ratified_commit_match": ["design frozen and committed"]}}]
+        contract = {"path": "current-rundown.md", "resolved_assertion": "All directions resolved", "stale_owner_gate_patterns": {"QX": "QX still pending"}}
+        result = self._project([], gate=gate, owner_gate_rundown=contract)
+        self.assertEqual(result["owner_gate_contradictions"], [])
 
     # -- issues + stats -----------------------------------------------------
 
@@ -448,8 +494,32 @@ class CliJsonAndRender(unittest.TestCase):
             code = cli.main(["--manifest", str(self.manifest_path), "--json"])
         self.assertEqual(code, 0)
         parsed = json.loads(out.getvalue())
-        for key in ("updated", "tracks", "gate", "issues", "stats"):
+        for key in ("updated", "tracks", "gate", "issues", "owner_attention", "owner_gate_contradictions", "stats"):
             self.assertIn(key, parsed)
+
+    def test_machine_output_is_compact_json(self) -> None:
+        out = io.StringIO()
+        with redirect_stdout(out), mock.patch.object(cli, "_REPO_ROOT", self.repo_root):
+            code = cli.main(["--manifest", str(self.manifest_path), "--machine"])
+        self.assertEqual(code, 0)
+        payload = out.getvalue().strip()
+        self.assertEqual(json.loads(payload)["tracks"][0]["code"], "X")
+        self.assertNotIn("\n", payload)
+
+    def test_check_owner_gates_exits_nonzero_on_contradiction(self) -> None:
+        rundown = self.repo_root / "current-rundown.md"
+        rundown.write_text("QX still pending\n", encoding="utf-8")
+        manifest = _write_manifest(
+            self.tmp,
+            [],
+            [{"id": "QX", "decision": "d", "unblocks": "u", "detection": {"ratified_commit_match": ["ship the done thing"]}}],
+            owner_gate_rundown={"path": "current-rundown.md", "stale_owner_gate_patterns": {"QX": "QX still pending"}},
+        )
+        out, err = io.StringIO(), io.StringIO()
+        with redirect_stdout(out), redirect_stderr(err), mock.patch.object(cli, "_REPO_ROOT", self.repo_root):
+            code = cli.main(["--manifest", str(manifest), "--check-owner-gates"])
+        self.assertEqual(code, 1)
+        self.assertIn("CONTRADICTION", err.getvalue())
 
     def test_render_output_is_nonempty_text(self) -> None:
         out = io.StringIO()

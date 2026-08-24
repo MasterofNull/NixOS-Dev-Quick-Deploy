@@ -1,5 +1,17 @@
 {
   "_comment": "Declarative manifest for scripts/ai/lib/refactor_status.py. Carries EDITORIAL content (name/sub/note/decision/unblocks/issues) so descriptions live in one editable place. STATUS is never stored here \u2014 it is always projected from ground truth (git log / activation events / freeze records / slice-claims / blocker_note) by the projector. Hand-editing a status field here would be pointless: the projector recomputes status and ignores any such field. See .agents/plans/aqos-refactor-status/SPEC.md.",
+  "owner_gate_rundown": {
+    "path": ".agents/plans/aqos-refactor-completion-rundown-20260823.md",
+    "resolved_assertion": "All Q1–Q10 program directions are resolved",
+    "stale_owner_gate_patterns": {
+      "Q3": "Q3[^\\n]{0,100}(?:still pending|owner decision[^\\n]{0,50}open)",
+      "Q6": "Q6[^\\n]{0,100}(?:still pending|owner decision[^\\n]{0,50}open)",
+      "Q7": "Q7[^\\n]{0,100}(?:still pending|owner decision[^\\n]{0,50}open)",
+      "Q8": "Q8[^\\n]{0,100}(?:still pending|owner decision[^\\n]{0,50}open)",
+      "Q9": "Q9[^\\n]{0,100}(?:still pending|owner decision[^\\n]{0,50}open)",
+      "Q10": "Q10[^\\n]{0,100}(?:still pending|owner decision[^\\n]{0,50}open)"
+    }
+  },
   "tracks": [
     {
       "code": "A",
