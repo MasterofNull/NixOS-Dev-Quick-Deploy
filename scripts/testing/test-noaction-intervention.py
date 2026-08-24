@@ -230,6 +230,27 @@ async def test_prose_twice_still_completes():
           final_msg.strip() == responses[1].strip())
 
 
+async def test_retry_response_is_bounded():
+    """A verbose failed turn must not consume the next turn's prompt budget."""
+    ex = make_executor()
+    task = Task(id="t-noaction-budget", objective="fix the retry backoff", status=TaskStatus.RUNNING)
+    snapshots: list = []
+    oversized_plan = PROSE_PLAN * 100
+    responses = [oversized_plan, "Thought: still no tool call."]
+    ex._call_llama = make_call_llama_mock(responses, snapshots)
+
+    await ex._execute_with_tools(task, AgentType.AGENT, max_tool_calls=0)
+
+    retry_assistant = [
+        message["content"] for message in snapshots[1]
+        if message.get("role") == "assistant"
+    ][-1]
+    check("retry response is capped at the executable budget",
+          len(retry_assistant) <= ae._RETRY_RESPONSE_CHAR_BUDGET)
+    check("retry response truncation is explicit",
+          "retry response truncated" in retry_assistant)
+
+
 async def test_kill_switch_restores_immediate_completion():
     """(e): AQ_NOACTION_INTERVENTION=0 (patched module attribute, same
     pattern test-reread-intervention.py uses for its own kill switch)
@@ -274,6 +295,7 @@ async def test_refusal_is_never_intervened_on():
 async def main():
     await test_prose_plan_then_edit_completes()
     await test_prose_twice_still_completes()
+    await test_retry_response_is_bounded()
     await test_kill_switch_restores_immediate_completion()
     await test_refusal_is_never_intervened_on()
 

@@ -307,6 +307,17 @@ _REREAD_INTERVENTION_ENABLED: bool = _env_flag("AQ_REREAD_INTERVENTION", True)
 # SECOND prose-only response still completes as before (never loop forever).
 # Kill switch AQ_NOACTION_INTERVENTION=0 restores the plain-completion behavior.
 _NOACTION_INTERVENTION_ENABLED: bool = _env_flag("AQ_NOACTION_INTERVENTION", True)
+_RETRY_RESPONSE_CHAR_BUDGET = 512
+
+
+def _bounded_retry_response(response: str) -> str:
+    """Keep retry context useful without replaying an entire failed response."""
+    if len(response) <= _RETRY_RESPONSE_CHAR_BUDGET:
+        return response
+    marker = "\n...[retry response truncated]...\n"
+    tail_chars = 128
+    head_chars = _RETRY_RESPONSE_CHAR_BUDGET - len(marker) - tail_chars
+    return response[:head_chars] + marker + response[-tail_chars:]
 
 # Edit-failure feedback: now that the tool-call grammar is fixed, the dominant
 # local-agent failure mode is edit_file failing on an old_string byte-mismatch
@@ -1716,7 +1727,7 @@ class LocalAgentExecutor:
                 if response.lstrip().startswith('{"function"'):
                     if _LOCAL_GBNF_REPAIR_ENABLED:
                         repair_messages = messages + [
-                            {"role": "assistant", "content": response},
+                            {"role": "assistant", "content": _bounded_retry_response(response)},
                             {
                                 "role": "user",
                                 "content": (
@@ -1772,7 +1783,10 @@ class LocalAgentExecutor:
                                 source="agent_executor.parse_failed",
                                 model_provenance={"lane": "local", "call_number": tool_call_count},
                             )
-                        messages.append({"role": "assistant", "content": response})
+                        messages.append({
+                            "role": "assistant",
+                            "content": _bounded_retry_response(response),
+                        })
                         messages.append({
                             "role": "user",
                             "content": (
@@ -1820,7 +1834,10 @@ class LocalAgentExecutor:
                                     "The task is only complete once edit_file has "
                                     "changed the file."
                                 )
-                                messages.append({"role": "assistant", "content": response})
+                                messages.append({
+                                    "role": "assistant",
+                                    "content": _bounded_retry_response(response),
+                                })
                                 messages.append({
                                     "role": "user",
                                     "content": intervention_msg,
