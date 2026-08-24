@@ -183,9 +183,13 @@ Full operating sequence before any commit:
 1. **Live test** changes in the running system — catch runtime errors and friction
 2. **Fix** any issues found
 3. **Update docs**: HANDOFF.md + any changed agent .md files + AGENTS.md if workflow changed
-4. **Seed RAG** with new bug/fix patterns (`error-solutions`, `best-practices`, `skills-patterns`)
-5. **Gate**: `scripts/governance/tier0-validation-gate.sh --pre-commit`
-6. **Commit**
+4. **Update the PM tracker** (owner-directed 2026-08-23; DoD dimension 6): for work under a tracked plan,
+   update that plan's `tracker.json` editorial (items/goals/deps/detection-signals) so the projected
+   gantt/kanban dashboard stays live. **Never hand-type status/% or the rendered charts** — the projector
+   computes status from git+systemd (anti-gaming, Rule 20). A stale/missing tracker for active work = not done.
+5. **Seed RAG** with new bug/fix patterns (`error-solutions`, `best-practices`, `skills-patterns`)
+6. **Gate**: `scripts/governance/tier0-validation-gate.sh --pre-commit`
+7. **Commit**
 
 ```bash
 git add <files>
