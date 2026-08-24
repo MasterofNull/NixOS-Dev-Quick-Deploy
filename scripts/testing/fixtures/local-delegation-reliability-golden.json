@@ -3,7 +3,7 @@
   "live_sources": [
     {
       "path": "scripts/ai/aq-agent-loop",
-      "sha256": "e4fe98972fbddd21c7b5353fcba21d6bebf49fbdbde031302d94500e1e4c76db",
+      "sha256": "56319bddc217d189053916d7c09565cc591be83da113dea4f6f1c8a69d6942f5",
       "defects": [
         "D1",
         "D4",
@@ -27,7 +27,7 @@
     },
     {
       "path": "scripts/ai/lib/dispatch.py",
-      "sha256": "1b083b1025877385cb4e295234edd23a61a85aae554393fb87792c732e01dd92",
+      "sha256": "a860f4ff52396b5c768e5a5585898729fb8beadd90fb7ad64d54750b9efa2935",
       "defects": [
         "D2",
         "D9",
@@ -56,7 +56,7 @@
     },
     {
       "path": "scripts/ai/lib/task_registry.py",
-      "sha256": "70cee61f1873d3e4a1960ce69f8bc4ee5c0e59cde31813962dfaf1ac7d485dba",
+      "sha256": "9285658eef68eb07a29e39db9f7fd9b43c51c2c827522d168d3ec5a86aa7b284",
       "defects": [
         "D8",
         "D11"
@@ -88,7 +88,7 @@
     },
     {
       "path": "ai-stack/local-agents/agent_executor.py",
-      "sha256": "ad40178818172078c485d53fd10ef3a10afc7384ecf98b2dc6af7d2e25e44a98",
+      "sha256": "f595477df2f5ec420885069dca4117c9473766fb559d838e774ad85dd52d81a8",
       "defects": [
         "D3",
         "D4",
@@ -120,7 +120,7 @@
     },
     {
       "path": "ai-stack/mcp-servers/shared/llm_config.py",
-      "sha256": "be5a098687c92c4345c80307175144887c262174afbf6da9fc2ca8012d961905",
+      "sha256": "68f551999445efe59824d83190686057f54899faecf63e1b8c66cc4416a1fc74",
       "defects": [
         "D3",
         "D10"
@@ -128,7 +128,7 @@
       "characterizations": [
         {
           "kind": "regex_count",
-          "pattern": "AGENT_TOOL_CALL_MAX_TOKENS\\s*=\\s*256",
+          "pattern": "AGENT_TOOL_CALL_MAX_TOKENS\\s*=\\s*512",
           "count": 1
         },
         {
@@ -140,7 +140,7 @@
     },
     {
       "path": "ai-stack/switchboard/switchboard.py",
-      "sha256": "8744a455e6e3e196490d083ebb03bcb6caabc5d91157a17367cc11d6621ea230",
+      "sha256": "165aff6018be78f5f76f09023b52e4768b01395fa0f8729de9cae16f0e5e5b6d",
       "defects": [
         "D9"
       ],
@@ -317,7 +317,7 @@
   ],
   "stable_digests": {
     "vectors": "2512115fca4745d728887e8c0ca4aa6c9e9fdef93164896ae13277ad3f06e822",
-    "source_manifest": "df4d94d97dd61ff3e3e6bf0acd4296fa11e9d7d553ffe3085351f8388ec6fff9",
+    "source_manifest": "cdcb8343580f2c3f187ff09e8b8a552b68930ce9b1a9a4c83b66239023c0ceec",
     "fixed_contract": "d439cf7568df80d0d1081972f45f1361ee28124728b2a0d42588ba99b7377240"
   },
   "sanitized_terminal_reasons": [

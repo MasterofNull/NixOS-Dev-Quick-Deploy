@@ -95,7 +95,12 @@ class ReliabilityR0(unittest.TestCase):
         self.assertContractError("budget_undersized", lr.resolve_budget, self.policy, "code", 800)
         executor = (REPO / "ai-stack/local-agents/agent_executor.py").read_text(encoding="utf-8")
         shared = (REPO / "ai-stack/mcp-servers/shared/llm_config.py").read_text(encoding="utf-8")
-        self.assertIn("AGENT_TOOL_CALL_MAX_TOKENS = 256", shared)
+        # The live tool-call allowance was raised after observed 256-token
+        # truncation before a tool invocation.  Keep this characterization
+        # tied to the shared payload SSOT, while the policy vectors below
+        # continue to enforce per-turn provenance (D3/D10).
+        self.assertIn("AGENT_TOOL_CALL_MAX_TOKENS = 512", shared)
+        self.assertNotRegex(shared, r"AGENT_TOOL_CALL_MAX_TOKENS\s*=\s*256")
         self.assertIn("AGENT_TASK_MAX_TOKENS = 800", shared)
         self.assertIn("max_tokens=512", executor)
         self.assertIn("max_tokens=256", executor)
