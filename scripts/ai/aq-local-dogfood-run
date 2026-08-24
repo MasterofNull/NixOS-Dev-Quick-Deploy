@@ -209,6 +209,12 @@ After edit_file succeeds, state in ONE sentence what you changed.
 
 def run_task(task: dict, baseline_mods: set) -> dict:
     tid = task["task"]
+    declared_file = task.get("file", "")
+    if not declared_file or declared_file in baseline_mods:
+        ledger({"task": tid, "event": "blocked", "status": "declared-file-preexisting-or-missing"})
+        return {"task": tid, "backlog_item": task["backlog_item"], "edit_landed": False,
+                "elapsed_s": 0.0, "diff_path": "", "status": "blocked-preexisting"}
+
     prompt = build_prompt(task)
     ptmp = DIFFDIR / f"{tid}.prompt.txt"
     ptmp.write_text(prompt)
@@ -223,12 +229,6 @@ def run_task(task: dict, baseline_mods: set) -> dict:
     out = (disp.stdout or "") + (disp.stderr or "")
     m = re.search(r"pid (\d+)", out)
     local_pid = int(m.group(1)) if m else None
-
-    declared_file = task.get("file", "")
-    if not declared_file or declared_file in baseline_mods:
-        ledger({"task": tid, "event": "blocked", "status": "declared-file-preexisting-or-missing"})
-        return {"task": tid, "backlog_item": task["backlog_item"], "edit_landed": False,
-                "elapsed_s": 0.0, "diff_path": "", "status": "blocked-preexisting"}
 
     def _task_files() -> list:
         owned, _foreign = classify_task_changes(tracked_mods(), baseline_mods, declared_file)
