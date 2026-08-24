@@ -306,6 +306,60 @@
   .item-name { color: var(--ink); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; max-width: 320px; }
   .item-pct { font-family: var(--font-mono); color: var(--ink-faint); font-size: 0.68rem; flex: none; }
 
+  /* ---------- dependency map ---------- */
+  .plan-graph { position: relative; }
+  .dependency-overlay {
+    position: absolute;
+    inset: 0;
+    width: 100%;
+    height: 100%;
+    overflow: visible;
+    pointer-events: none;
+    z-index: 1;
+  }
+  .dependency-link {
+    fill: none;
+    stroke: var(--accent);
+    stroke-width: 1.35;
+    opacity: 0.52;
+  }
+  .item-chip { position: relative; z-index: 2; }
+
+  /* ---------- status board ---------- */
+  .kanban-board {
+    display: grid;
+    grid-template-columns: repeat(7, minmax(172px, 1fr));
+    gap: 10px;
+    overflow-x: auto;
+    padding-bottom: 4px;
+  }
+  .kanban-column {
+    min-width: 172px;
+    background: var(--surface);
+    border: 1px solid var(--border);
+    border-top: 3px solid var(--notstarted);
+    border-radius: var(--radius);
+    box-shadow: var(--shadow);
+    padding: 10px;
+  }
+  .kanban-column[data-status="SHIPPED"], .kanban-column[data-status="ACTIVATED"] { border-top-color: var(--good); }
+  .kanban-column[data-status="IN-PROGRESS"] { border-top-color: var(--active); }
+  .kanban-column[data-status="BLOCKED"] { border-top-color: var(--blocked); }
+  .kanban-column[data-status="FROZEN"] { border-top-color: var(--frozen); }
+  .kanban-column[data-status="DESIGNED"] { border-top-color: var(--designed); }
+  .kanban-column[data-status="NOT-STARTED"] { border-top-color: var(--notstarted); }
+  .kanban-column-head { display: flex; justify-content: space-between; gap: 8px; align-items: baseline; margin-bottom: 10px; }
+  .kanban-status, .kanban-count { font-family: var(--font-mono); font-size: 0.65rem; letter-spacing: 0.04em; }
+  .kanban-status { color: var(--ink-muted); font-weight: 600; }
+  .kanban-count { color: var(--ink-faint); }
+  .kanban-items { display: grid; gap: 7px; }
+  .kanban-card { background: var(--surface-2); border: 1px solid var(--border); border-radius: 5px; padding: 8px; }
+  .kanban-plan { display: block; font-family: var(--font-mono); font-size: 0.62rem; color: var(--ink-faint); margin-bottom: 3px; }
+  .kanban-name { display: block; font-size: 0.74rem; color: var(--ink); line-height: 1.35; }
+  .kanban-meta { display: flex; justify-content: space-between; align-items: center; gap: 6px; margin-top: 7px; }
+  .priority-lane { display: inline-flex; max-width: 100%; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; font-family: var(--font-mono); font-size: 0.59rem; letter-spacing: 0.03em; color: var(--accent); background: var(--accent-soft); border: 1px solid color-mix(in srgb, var(--accent) 35%, transparent); border-radius: 100px; padding: 2px 5px; }
+  .kanban-pct { font-family: var(--font-mono); font-size: 0.64rem; color: var(--ink-faint); white-space: nowrap; }
+
   .no-plans {
     background: var(--surface);
     border: 1px dashed var(--border);
@@ -399,6 +453,16 @@
     </div>
   </section>
 
+  <section aria-live="polite" aria-label="Status board">
+    <div class="section-head">
+      <h2>Status board</h2>
+      <p class="hint">A status projection of every tracked item; priority labels are editorial routing hints, not progress.</p>
+    </div>
+    <div id="kanban-root">
+      <div class="state-panel">Waiting for the live projection&hellip;</div>
+    </div>
+  </section>
+
   <section aria-label="Status legend">
     <div class="section-head"><h2>Status legend</h2></div>
     <div class="legend">
@@ -424,6 +488,7 @@
   const statusChip = document.getElementById('status-chip');
   const updatedLabel = document.getElementById('updated-label');
   const plansRoot = document.getElementById('plans-root');
+  const kanbanRoot = document.getElementById('kanban-root');
   const footerFetchCount = document.getElementById('footer-fetch-count');
 
   let fetchCount = 0;
@@ -457,8 +522,36 @@
     document.getElementById('stat-blocked-tile').classList.toggle('crit', blocked > 0);
   }
 
+  function normalizedItem(item, planId) {
+    const rawStatus = String(item && item.status || 'NOT-STARTED');
+    return {
+      id: String(item && item.id || ''),
+      itemId: `${String(planId || '')}:${String(item && item.id || '')}`,
+      name: String(item && item.name || item && item.id || 'untitled item'),
+      status: STATUS_ORDER.includes(rawStatus) ? rawStatus : 'NOT-STARTED',
+      pct: Number.isFinite(Number(item && item.pct)) ? Number(item.pct) : 0,
+      phase: item && item.phase || '__unphased__',
+      deps: Array.isArray(item && item.deps) ? item.deps.map(String) : [],
+      priorityLane: item && item.priority_lane ? String(item.priority_lane) : '',
+    };
+  }
+
+  function renderItemChip(item) {
+    return `
+      <span class="item-chip" data-item-id="${escapeHtml(item.itemId)}" data-status="${escapeHtml(item.status)}" title="${escapeHtml(item.name)} — ${escapeHtml(item.status)} (${item.pct}%)">
+        <span class="item-name">${escapeHtml(item.name)}</span>
+        <span class="item-pct">${item.pct}%</span>
+      </span>
+    `;
+  }
+
+  function planMarkerId(planId) {
+    const codePoints = Array.from(String(planId || '')).map(char => char.codePointAt(0).toString(16));
+    return `dependency-arrow-${codePoints.length ? codePoints.join('-') : 'empty'}`;
+  }
+
   function renderPlan(plan) {
-    const items = plan.items || [];
+    const items = (plan.items || []).map(item => normalizedItem(item, plan.id));
     const phases = plan.phases && plan.phases.length ? plan.phases : [{ id: null, name: 'Items' }];
     const byPhase = {};
     items.forEach(it => {
@@ -470,12 +563,7 @@
     phases.forEach(ph => {
       const rows = byPhase[ph.id] || [];
       if (!rows.length) return;
-      const chips = rows.map(it => `
-        <span class="item-chip" data-status="${escapeHtml(it.status)}" title="${escapeHtml(it.name)} — ${escapeHtml(it.status)} (${it.pct}%)">
-          <span class="item-name">${escapeHtml(it.name)}</span>
-          <span class="item-pct">${it.pct}%</span>
-        </span>
-      `).join('');
+      const chips = rows.map(renderItemChip).join('');
       phaseRows += `
         <div class="phase-row">
           <p class="phase-name">${escapeHtml(ph.name || ph.id || 'phase')}</p>
@@ -485,20 +573,16 @@
     });
     // unphased items (defensive — a phase id on an item with no matching phases[] entry)
     if (byPhase['__unphased__']) {
-      const chips = byPhase['__unphased__'].map(it => `
-        <span class="item-chip" data-status="${escapeHtml(it.status)}" title="${escapeHtml(it.name)} — ${escapeHtml(it.status)} (${it.pct}%)">
-          <span class="item-name">${escapeHtml(it.name)}</span>
-          <span class="item-pct">${it.pct}%</span>
-        </span>
-      `).join('');
+      const chips = byPhase['__unphased__'].map(renderItemChip).join('');
       phaseRows += `<div class="phase-row"><p class="phase-name">Other</p><div class="item-list">${chips}</div></div>`;
     }
 
     const pct = plan.rollup_pct ?? 0;
     const barColor = pct >= 90 ? 'var(--good)' : (pct > 0 ? 'var(--active)' : 'var(--notstarted)');
+    const markerId = planMarkerId(plan.id);
 
     return `
-      <div class="plan-card">
+      <div class="plan-card" data-plan-id="${escapeHtml(plan.id || '')}">
         <div class="plan-head">
           <div>
             <span class="plan-id">${escapeHtml(plan.id || '')}</span>
@@ -510,18 +594,75 @@
           </div>
         </div>
         <div class="bar-track"><div class="bar-fill" style="width:${pct}%;background:${barColor}"></div></div>
-        ${phaseRows}
+        <div class="plan-graph" data-plan-id="${escapeHtml(plan.id || '')}">
+          <svg class="dependency-overlay" aria-hidden="true"><defs><marker id="${markerId}" viewBox="0 0 8 8" refX="7" refY="4" markerWidth="5" markerHeight="5" orient="auto"><path d="M 0 0 L 8 4 L 0 8 z" fill="currentColor"></path></marker></defs></svg>
+          ${phaseRows}
+        </div>
       </div>
     `;
+  }
+
+  function renderDependencyArrows(data) {
+    (data.plans || []).forEach(plan => {
+      const graph = plansRoot.querySelector(`.plan-graph[data-plan-id="${CSS.escape(String(plan.id || ''))}"]`);
+      if (!graph) return;
+      const svg = graph.querySelector('.dependency-overlay');
+      if (!svg) return;
+      const graphBox = graph.getBoundingClientRect();
+      const markerId = planMarkerId(plan.id);
+      const items = (plan.items || []).map(item => normalizedItem(item, plan.id));
+      const itemById = new Map(items.map(item => [item.id, item]));
+      const edges = items.flatMap(item => item.deps.map(dep => [dep, item.id]));
+      const paths = edges.map(([dependencyId, itemId]) => {
+        const dependency = itemById.get(dependencyId);
+        if (!dependency) return '';
+        const source = graph.querySelector(`[data-item-id="${CSS.escape(dependency.itemId)}"]`);
+        const target = graph.querySelector(`[data-item-id="${CSS.escape(`${String(plan.id || '')}:${itemId}`)}"]`);
+        if (!source || !target) return '';
+        const sourceBox = source.getBoundingClientRect();
+        const targetBox = target.getBoundingClientRect();
+        const x1 = sourceBox.right - graphBox.left;
+        const y1 = sourceBox.top + sourceBox.height / 2 - graphBox.top;
+        const x2 = targetBox.left - graphBox.left;
+        const y2 = targetBox.top + targetBox.height / 2 - graphBox.top;
+        const bend = Math.max(18, Math.abs(x2 - x1) * 0.35);
+        return `<path class="dependency-link" marker-end="url(#${markerId})" d="M ${x1} ${y1} C ${x1 + bend} ${y1}, ${x2 - bend} ${y2}, ${x2} ${y2}"></path>`;
+      }).filter(Boolean).join('');
+      svg.setAttribute('viewBox', `0 0 ${graphBox.width} ${graphBox.height}`);
+      svg.innerHTML = `<defs><marker id="${markerId}" viewBox="0 0 8 8" refX="7" refY="4" markerWidth="5" markerHeight="5" orient="auto"><path d="M 0 0 L 8 4 L 0 8 z" fill="currentColor"></path></marker></defs>${paths}`;
+    });
+  }
+
+  function renderKanban(data) {
+    const columns = new Map(STATUS_ORDER.map(status => [status, []]));
+    (data.plans || []).forEach(plan => {
+      (plan.items || []).map(item => normalizedItem(item, plan.id)).forEach(item => {
+        columns.get(item.status).push({ ...item, planId: String(plan.id || ''), planTitle: String(plan.title || plan.id || 'untitled plan') });
+      });
+    });
+    kanbanRoot.innerHTML = `<div class="kanban-board">${STATUS_ORDER.map(status => {
+      const items = columns.get(status);
+      const cards = items.map(item => `
+        <article class="kanban-card" data-item-id="${escapeHtml(item.itemId)}">
+          <span class="kanban-plan" title="${escapeHtml(item.planTitle)}">${escapeHtml(item.planId)}</span>
+          <span class="kanban-name">${escapeHtml(item.name)}</span>
+          <span class="kanban-meta">${item.priorityLane ? `<span class="priority-lane">${escapeHtml(item.priorityLane)}</span>` : ''}<span class="kanban-pct">${item.pct}%</span></span>
+        </article>
+      `).join('');
+      return `<section class="kanban-column" data-status="${status}" aria-label="${escapeHtml(status)} items"><div class="kanban-column-head"><span class="kanban-status">${escapeHtml(status)}</span><span class="kanban-count">${items.length}</span></div><div class="kanban-items">${cards}</div></section>`;
+    }).join('')}</div>`;
   }
 
   function renderPlans(data) {
     const plans = data.plans || [];
     if (!plans.length) {
       plansRoot.innerHTML = '<div class="no-plans">No plans carry a <code>tracker.json</code> yet — nothing to project. See <code>.agents/plans/pm-tracker-standard/DESIGN.md</code>.</div>';
+      renderKanban({ plans: [] });
       return;
     }
     plansRoot.innerHTML = plans.map(renderPlan).join('');
+    renderDependencyArrows(data);
+    renderKanban(data);
   }
 
   function renderError(message) {
@@ -535,6 +676,7 @@
     const btn = document.getElementById('retry-btn');
     if (btn) btn.addEventListener('click', () => load());
     setChip('error', 'Error');
+    kanbanRoot.innerHTML = `<div class="state-panel error">Couldn't load the status board: ${escapeHtml(message)}</div>`;
   }
 
   async function load() {
@@ -551,6 +693,7 @@
         throw new Error(detail);
       }
       const data = await resp.json();
+      window.latestProgramData = data;
       fetchCount += 1;
       footerFetchCount.textContent = fetchCount;
       renderStats(data);
@@ -567,6 +710,11 @@
 
   load();
   setInterval(load, REFRESH_INTERVAL_MS);
+  let resizeTimer;
+  window.addEventListener('resize', () => {
+    clearTimeout(resizeTimer);
+    resizeTimer = setTimeout(() => renderDependencyArrows(window.latestProgramData || { plans: [] }), 120);
+  });
 </script>
 </body>
 </html>
