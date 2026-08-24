@@ -310,3 +310,8 @@ REVIEW TARGETS (for Codex — the reliable auto-reviewer — and any returning l
   VERIFY: does a deliberately-broken test ACTUALLY fail tier0 --pre-commit end-to-end (do the real break-it/
   fix-it proof)? are all 9 suites in the list (any missing, e.g. test-run-command-artifact)? does running 9
   suites add meaningful pre-commit latency?
+- [PM-live + DoD-6] (committed provisional): propagate DoD dimension 6 "PM-tracked (live)" to
+  .agent/CODEX.md, .agent/LOCAL-AGENT.md, .agent/GEMINI.md, .agent/WORKFLOW-CANON.md (Rule 16 parity —
+  REQUIRED same cycle; currently only DEFINITION-OF-DONE + CLAUDE.md carry it → INCOMPLETE until propagated).
+  Also: dashboard assets/aqos-progress-tracker.html should RENDER the now-available deps (gantt arrows) +
+  priority_lane (kanban columns). VERIFY: does check-pm-tracker gate stay green with the new tracker editorial?
