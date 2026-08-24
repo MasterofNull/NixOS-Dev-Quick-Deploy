@@ -35,8 +35,12 @@ REQUIRED_SUITES = (
 
 
 def extract_gate_function() -> str:
+    return extract_named_gate_function("gate_agent_harness_regression_suites")
+
+
+def extract_named_gate_function(name: str) -> str:
     lines = GATE.read_text(encoding="utf-8").splitlines()
-    start = next(i for i, line in enumerate(lines) if line.startswith("gate_agent_harness_regression_suites()"))
+    start = next(i for i, line in enumerate(lines) if line.startswith(f"{name}()"))
     depth = 0
     extracted: list[str] = []
     for line in lines[start:]:
@@ -48,7 +52,7 @@ def extract_gate_function() -> str:
             depth -= 1
             if depth == 0:
                 return "\n".join(extracted)
-    raise AssertionError("could not extract gate_agent_harness_regression_suites")
+    raise AssertionError(f"could not extract {name}")
 
 
 def manifest_suites() -> tuple[str, ...]:
@@ -95,10 +99,39 @@ def run_gate(suite_names: tuple[str, ...], *, fake_timeout: bool = False) -> sub
         )
 
 
+def run_evidence_collector_gate(*, suite_present: bool) -> subprocess.CompletedProcess[str]:
+    with tempfile.TemporaryDirectory() as temporary:
+        root = Path(temporary)
+        suite_dir = root / "scripts/testing"
+        suite_dir.mkdir(parents=True)
+        if suite_present:
+            (suite_dir / "test-aq-evidence-collector.py").write_text("print('evidence suite ok')\n", encoding="utf-8")
+        harness = root / "run-evidence-gate.sh"
+        harness.write_text(
+            "set -u\n"
+            "pass() { printf 'PASS:%s\\n' \"$*\"; }\n"
+            "fail() { printf 'FAIL:%s\\n' \"$*\"; }\n"
+            "log() { printf 'LOG:%s\\n' \"$*\"; }\n"
+            f"REPO_ROOT={root!s}\n"
+            f"{extract_named_gate_function('gate_evidence_collector')}\n"
+            "gate_evidence_collector\n",
+            encoding="utf-8",
+        )
+        return subprocess.run(
+            ["bash", str(harness)],
+            cwd=ROOT,
+            text=True,
+            capture_output=True,
+            check=False,
+        )
+
+
 def main() -> int:
     source = GATE.read_text(encoding="utf-8")
     assert manifest_suites() == REQUIRED_SUITES, "gate manifest must exactly match the required contracts"
     assert "Harness regression suite missing (required)" in source
+    assert "Evidence-collector suite missing (required)" in source
+    assert "Evidence-collector suite (skipped — test suite absent)" not in source
     assert 'timeout "${suite_timeout_seconds}s" python3' in source
     assert "Harness regression diagnostics" in source
 
@@ -114,7 +147,15 @@ def main() -> int:
     assert "timed out after 60s" in timed_out.stdout
     assert "simulated timeout" in timed_out.stderr
 
-    print("PASS: Tier0 local-agent harness gate requires every suite and fails closed on timeout")
+    evidence_passing = run_evidence_collector_gate(suite_present=True)
+    assert evidence_passing.returncode == 0, evidence_passing.stderr or evidence_passing.stdout
+    assert "Evidence-collector suite (offline suite passed)" in evidence_passing.stdout
+
+    evidence_missing = run_evidence_collector_gate(suite_present=False)
+    assert evidence_missing.returncode != 0
+    assert "Evidence-collector suite missing (required)" in evidence_missing.stdout
+
+    print("PASS: Tier0 harness and VF-7 evidence suites fail closed when required coverage is absent")
     return 0
 
 
