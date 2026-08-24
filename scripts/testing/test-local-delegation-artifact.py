@@ -45,6 +45,16 @@ def _load_task_registry():
     return mod
 
 
+def _load_dogfood_runner():
+    loader = importlib.machinery.SourceFileLoader(
+        "aq_local_dogfood_run", str(ROOT / "scripts" / "ai" / "aq-local-dogfood-run")
+    )
+    spec = importlib.util.spec_from_loader("aq_local_dogfood_run", loader)
+    mod = importlib.util.module_from_spec(spec)
+    loader.exec_module(mod)
+    return mod
+
+
 def test_pre_register_before_dispatch_task():
     """Phase 159: registry.append() is called in main() before dispatch_task()."""
     dispatch_src = (LIB / "dispatch.py").read_text()
@@ -305,6 +315,68 @@ def test_agent_runner_defaults_allow_long_horizon_work():
     print("PASS  agent runner defaults avoid wall-clock hard caps")
 
 
+def test_dogfood_cancellation_preserves_terminal_registry_truth():
+    """Terminal statuses never get overwritten; active/deadline tasks cancel by ID."""
+    runner = _load_dogfood_runner()
+    original_run = runner.subprocess.run
+    original_diffdir = runner.DIFFDIR
+    original_ledger = runner.ledger
+    original_status = runner.registered_task_status
+    original_tracked_mods = runner.tracked_mods
+    original_sleep = runner.time.sleep
+    original_monotonic = runner.time.monotonic
+    calls, ledger_rows = [], []
+    try:
+        with tempfile.TemporaryDirectory() as tmp:
+            runner.DIFFDIR = Path(tmp)
+            runner.ledger = lambda row: ledger_rows.append(row)
+
+            def fake_run(args, **kwargs):
+                calls.append(list(args))
+                if "--cancel" in args:
+                    return subprocess.CompletedProcess(args, 0, stdout="cancelled\n", stderr="")
+                return subprocess.CompletedProcess(
+                    args, 0, stdout="Task local-registered-topology started\nlocal-registered-topology\n", stderr=""
+                )
+
+            runner.subprocess.run = fake_run
+            runner.tracked_mods = lambda: set()
+            runner.time.sleep = lambda seconds: None
+
+            def run_with_status(status: str, task_name: str, clock_values: list[float]):
+                clock = iter(clock_values)
+                runner.registered_task_status = lambda task_id: {"status": status, "pid": 7}
+                runner.time.monotonic = lambda: next(clock, clock_values[-1])
+                return runner.run_task(
+                    {"task": task_name, "backlog_item": "probe", "file": "owned.py"}, set()
+                )
+
+            done_result = run_with_status("done", "dogfood-terminal-done", [0.0, 0.0, 1.0])
+            failed_result = run_with_status("failed", "dogfood-terminal-failed", [0.0, 0.0, 1.0])
+            active_result = run_with_status("running", "dogfood-active-deadline", [0.0, 0.0, 3001.0, 3002.0])
+    finally:
+        runner.subprocess.run = original_run
+        runner.DIFFDIR = original_diffdir
+        runner.ledger = original_ledger
+        runner.registered_task_status = original_status
+        runner.tracked_mods = original_tracked_mods
+        runner.time.sleep = original_sleep
+        runner.time.monotonic = original_monotonic
+    cancel_calls = [call for call in calls if "--cancel" in call]
+    assert_true(done_result["status"] == "no-edit" and failed_result["status"] == "no-edit"
+                and active_result["status"] == "no-edit", "unexpected fake topology result")
+    assert_true(cancel_calls == [[str(runner.DELEGATE), "--cancel", "local-registered-topology"]],
+                f"only active deadline task should cancel by registered task ID, got {cancel_calls}")
+    assert_true(any(row.get("local_task_id") == "local-registered-topology" for row in ledger_rows),
+                "runner did not record the registered task ID")
+    skipped = [row for row in ledger_rows if row.get("event") == "cancel-skipped"]
+    assert_true({row.get("last_registry_status") for row in skipped} >= {"done", "failed"},
+                "terminal done/failed states should be recorded as cancellation skips")
+    assert_true("killpg" not in (ROOT / "scripts" / "ai" / "aq-local-dogfood-run").read_text(),
+                "runner must not kill a detached shim PID directly")
+    print("PASS  dogfood cancellation preserves terminal registry truth")
+
+
 def test_registry_status_reconciles_dead_agent_failure():
     """Status reads infer failures without mutating; repair-status writes explicitly."""
     with tempfile.TemporaryDirectory() as tmp:
@@ -472,6 +544,7 @@ if __name__ == "__main__":
         test_agent_runner_creates_initial_output_artifacts,
         test_agent_runner_reaps_no_progress_child,
         test_agent_runner_defaults_allow_long_horizon_work,
+        test_dogfood_cancellation_preserves_terminal_registry_truth,
         test_registry_status_reconciles_dead_agent_failure,
         test_registry_monitor_is_read_only_json,
         test_registry_repair_stale_dry_run_and_apply,

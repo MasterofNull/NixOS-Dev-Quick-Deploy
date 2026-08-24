@@ -52,6 +52,7 @@ import importlib.util
 import json
 import os
 import sys
+import tempfile
 from pathlib import Path
 from unittest.mock import AsyncMock, MagicMock, patch
 
@@ -163,11 +164,13 @@ def edit_call_json() -> str:
     })
 
 
-def make_call_llama_mock(responses: list, snapshots: list):
+def make_call_llama_mock(responses: list, snapshots: list, call_kwargs: list | None = None):
     """Returns responses in sequence (last one repeats if exhausted); records
     a shallow copy of `messages` on every call."""
     async def _fake_call_llama(messages, **kwargs):
         snapshots.append(list(messages))
+        if call_kwargs is not None:
+            call_kwargs.append(dict(kwargs))
         idx = min(len(snapshots) - 1, len(responses) - 1)
         return responses[idx], 10
     return AsyncMock(side_effect=_fake_call_llama)
@@ -338,6 +341,93 @@ async def test_refusal_is_never_intervened_on():
           ex.tool_registry.execute_tool_call.await_count == 0)
 
 
+async def test_dogfood_budget_only_constrains_initial_call():
+    """The 192-token cap is exact opt-in and does not alter later turns."""
+    ex = make_executor()
+    task = Task(id="t-dogfood-budget", objective="fix retry", status=TaskStatus.RUNNING)
+    snapshots, call_kwargs = [], []
+    ex._call_llama = make_call_llama_mock(
+        [edit_call_json(), "COMPLETED: edit applied."], snapshots, call_kwargs
+    )
+    with patch.dict(os.environ, {"AQ_LOCAL_DOGFOOD_BUDGET": "1"}):
+        await ex._execute_with_tools(task, AgentType.AGENT, max_tool_calls=0)
+    check("dogfood first call uses the 192-token cap",
+          call_kwargs[0]["max_tokens"] == ae._DOGFOOD_FIRST_CALL_MAX_TOKENS)
+    check("dogfood post-tool turn keeps the normal task budget",
+          call_kwargs[1]["max_tokens"] == ae.AGENT_TASK_MAX_TOKENS)
+
+    ex = make_executor()
+    snapshots, call_kwargs = [], []
+    ex._call_llama = make_call_llama_mock([PROSE_PLAN], snapshots, call_kwargs)
+    await ex._execute_with_tools(task, AgentType.AGENT, max_tool_calls=0)
+    check("non-dogfood first call keeps the normal tool-call budget",
+          call_kwargs[0]["max_tokens"] == ae.AGENT_TOOL_CALL_MAX_TOKENS)
+
+
+async def test_dogfood_gbnf_repair_budget_is_unchanged():
+    """Dogfood's first-call cap must not shrink grammar repair or synthesis."""
+    ex = make_executor()
+    task = Task(id="t-dogfood-gbnf", objective="fix retry", status=TaskStatus.RUNNING)
+    snapshots, call_kwargs = [], []
+    malformed = '{"function":"edit_file","arguments":{"old_string":"' + ("x" * 100)
+    ex._call_llama = make_call_llama_mock(
+        [malformed, "still malformed", "COMPLETED: rejected malformed call."], snapshots, call_kwargs
+    )
+    with patch.dict(os.environ, {"AQ_LOCAL_DOGFOOD_BUDGET": "1"}), patch.object(
+        ae, "_LOCAL_GBNF_REPAIR_ENABLED", True
+    ):
+        await ex._execute_with_tools(task, AgentType.AGENT, max_tool_calls=0)
+    check("dogfood GBNF repair keeps the normal repair budget",
+          call_kwargs[1]["max_tokens"] == ae.AGENT_TOOL_CALL_MAX_TOKENS)
+    check("dogfood malformed synthesis keeps its 256-token budget",
+          call_kwargs[2]["max_tokens"] == 256)
+
+
+async def test_dogfood_payload_receipt_rejects_before_http_without_raw_content():
+    """Oversized opt-in payloads emit counts only and never enter HTTP transport."""
+    ex = make_executor()
+    messages = [{"role": "system", "content": "secret-prompt-" + ("x" * 15_000)}]
+    with tempfile.TemporaryDirectory() as tmp:
+        progress = Path(tmp) / "progress.json"
+        with patch.dict(os.environ, {
+            "AQ_LOCAL_DOGFOOD_BUDGET": "1",
+            "AGENT_PROGRESS_FILE": str(progress),
+            "LLAMA_USE_STREAMING": "1",
+        }):
+            try:
+                await ex._call_llama(messages, max_tokens=77, task_type="caller-private-type", call_number=9)
+                rejected = False
+            except RuntimeError as exc:
+                rejected = "before HTTP" in str(exc)
+        receipt_doc = progress.read_text(encoding="utf-8")
+        receipt = json.loads(receipt_doc)["payload_budget"]
+    required = {"budget_mode", "call_number", "task_type_class", "system_unicode_chars",
+                "non_system_unicode_chars", "tools_unicode_chars", "grammar_unicode_chars",
+                "payload_json_unicode_chars", "estimated_tokens", "max_tokens"}
+    check("dogfood oversized payload fails before HTTP", rejected)
+    check("dogfood receipt has deterministic count-only fields",
+          set(receipt) == required and receipt["call_number"] == 9 and receipt["max_tokens"] == 77
+          and receipt["task_type_class"] == "unknown"
+          and receipt["payload_json_unicode_chars"] > ae._DOGFOOD_PAYLOAD_JSON_LIMIT)
+    check("dogfood receipt does not leak raw task or prompt content",
+          "secret-prompt-" not in receipt_doc and "caller-private-type" not in receipt_doc)
+
+
+def test_dogfood_receipt_counts_grammar_without_content():
+    payload = {"messages": [{"role": "user", "content": "hello"}], "tools": [{"name": "read"}],
+               "grammar": "root ::= \"tool\"", "max_tokens": 192}
+    receipt = ae._dogfood_payload_budget_receipt(payload, task_type="agent", call_number=1)
+    check("dogfood receipt counts tools and grammar", receipt["tools_unicode_chars"] > 0 and receipt["grammar_unicode_chars"] > 0)
+    check("dogfood receipt carries no raw grammar", "root ::= " not in json.dumps(receipt))
+    unicode_payload = {"messages": [{"role": "user", "content": "é"}], "max_tokens": 1}
+    unicode_receipt = ae._dogfood_payload_budget_receipt(unicode_payload, task_type="code", call_number=2)
+    check("dogfood payload budget counts Unicode characters, not UTF-8 bytes",
+          unicode_receipt["non_system_unicode_chars"] == 1
+          and unicode_receipt["payload_json_unicode_chars"] == len(json.dumps(
+              unicode_payload, ensure_ascii=False, separators=(",", ":"), sort_keys=True
+          )))
+
+
 async def main():
     test_retry_excerpt_contract()
     await test_prose_plan_then_edit_completes()
@@ -346,6 +436,10 @@ async def main():
     await test_malformed_tool_retry_paths_and_training_capture()
     await test_kill_switch_restores_immediate_completion()
     await test_refusal_is_never_intervened_on()
+    await test_dogfood_budget_only_constrains_initial_call()
+    await test_dogfood_gbnf_repair_budget_is_unchanged()
+    await test_dogfood_payload_receipt_rejects_before_http_without_raw_content()
+    test_dogfood_receipt_counts_grammar_without_content()
 
     print(f"\n{PASS}/{PASS + FAIL} tests passed")
     sys.exit(0 if FAIL == 0 else 1)
