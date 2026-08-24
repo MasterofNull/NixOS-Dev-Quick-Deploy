@@ -39,7 +39,7 @@ import importlib.util
 import os
 import sys
 from pathlib import Path
-from unittest.mock import AsyncMock, MagicMock
+from unittest.mock import AsyncMock, MagicMock, patch
 
 ROOT = Path(__file__).resolve().parents[2]
 LOCAL_AGENTS = ROOT / "ai-stack" / "local-agents"
@@ -211,9 +211,139 @@ async def test_kill_switch_restores_plain_abort():
     check("kill switch: no intervention message ever injected", no_intervention)
 
 
+def make_range_sequence_executor(calls: list[tuple[str, dict]]) -> AgentExecutor:
+    """Hermetic executor whose registry records only real disk-tool executions."""
+    ex = AgentExecutor.__new__(AgentExecutor)
+    ex.llama_endpoint = "http://localhost:8080"
+    ex.enable_fallback = False
+    ex.allow_degraded_local_execution = True
+    ex.fallback_endpoint = None
+    ex.remote_probe_timeout_seconds = 5
+    ex._prompt_extensions_cache = None
+
+    reg = MagicMock()
+    reg.get_tools_for_model.return_value = [
+        {"name": "read_file", "description": "read a file"},
+        {"name": "edit_file", "description": "edit a file"},
+    ]
+    reg.tools = {}
+    parse_index = {"n": 0}
+
+    def _parse(response: str):
+        if response == "COMPLETED: bounded edit applied":
+            return None
+        tool_name, arguments = calls[parse_index["n"]]
+        parse_index["n"] += 1
+        return ToolCall(id=f"range-{parse_index['n']}", tool_name=tool_name, arguments=arguments)
+
+    async def _execute(tool_call):
+        tool_call.status = "completed"
+        if tool_call.tool_name == "read_file":
+            tool_call.result = {
+                "success": True,
+                "content": f"EXACT {tool_call.arguments['start_line']}-{tool_call.arguments['end_line']}",
+                "metadata": {
+                    "lines": tool_call.arguments["end_line"] - tool_call.arguments["start_line"] + 1,
+                },
+            }
+        else:
+            tool_call.result = {"success": True, "changed": True}
+        return tool_call
+
+    reg.parse_tool_call_from_llama.side_effect = _parse
+    reg.execute_tool_call = AsyncMock(side_effect=_execute)
+    reg.format_tool_result.side_effect = lambda tc: str(tc.result or tc.error)
+    ex.tool_registry = reg
+    ex.performance = {at: MagicMock() for at in AgentType}
+    return ex
+
+
+def make_sequence_llama(snapshots: list, responses: list[str]):
+    async def _call(messages, **kwargs):
+        snapshots.append(list(messages))
+        return responses.pop(0), 10
+    return AsyncMock(side_effect=_call)
+
+
+async def test_range_coverage_intercepts_redundancy_then_allows_edit():
+    """A fully-covered re-read never hits the registry, but its correction reaches
+    the next turn and the model may still select an ordinary edit_file action."""
+    # Keep the legacy path-count intervention out of this focused range test:
+    # it is independently covered above and would otherwise preempt call three.
+    os.environ["AI_AGENT_REPEATED_READ_PATH_LIMIT"] = "4"
+    calls = [
+        ("read_file", {"file_path": FAKE_PATH, "start_line": 100, "end_line": 150}),
+        # Non-overlap must still execute normally.
+        ("read_file", {"file_path": FAKE_PATH, "start_line": 160, "end_line": 170}),
+        # Fully covered by 100-150: intercepted before disk/tool execution.
+        ("read_file", {"file_path": FAKE_PATH, "start_line": 110, "end_line": 120}),
+        ("edit_file", {"file_path": FAKE_PATH, "old_string": "old", "new_string": "new"}),
+    ]
+    ex = make_range_sequence_executor(calls)
+    snapshots: list = []
+    ex._call_llama = make_sequence_llama(
+        snapshots,
+        [
+            '{"function":"read_file","arguments":{}}',
+            '{"function":"read_file","arguments":{}}',
+            '{"function":"read_file","arguments":{}}',
+            '{"function":"edit_file","arguments":{}}',
+            "COMPLETED: bounded edit applied",
+        ],
+    )
+    task = Task(id="t-range-intercept", objective="edit one known region", status=TaskStatus.RUNNING)
+    capture = MagicMock()
+    with patch.object(ae, "training_capture", capture):
+        final_msg, _ = await ex._execute_with_tools(task, AgentType.AGENT, max_tool_calls=0)
+
+    executed_names = [call.args[0].tool_name for call in ex.tool_registry.execute_tool_call.await_args_list]
+    check("first exact ranged read executes", executed_names.count("read_file") == 2)
+    check("non-overlapping exact ranged read executes", len(executed_names) == 3)
+    check("fully-covered range does not execute the disk-backed read", len(task.tool_calls_made) == 4)
+    check("model-selected edit executes after correction", "edit_file" in executed_names)
+    captured_tools = [
+        call.kwargs["model_provenance"]["tool"]
+        for call in capture.capture_success.call_args_list
+    ]
+    check("synthetic redundant read is not captured as a positive training success",
+          captured_tools.count("read_file") == 2)
+    check("genuine ranged reads and the subsequent edit retain positive capture",
+          sorted(captured_tools) == ["edit_file", "read_file", "read_file"])
+    correction_seen_next_turn = any(
+        message.get("role") == "tool" and "REREAD GUARD" in (message.get("content") or "")
+        for message in snapshots[3]
+    )
+    check("corrective role-tool result reaches the next model turn", correction_seen_next_turn)
+    check("successful edit can complete normally", final_msg == "COMPLETED: bounded edit applied")
+
+
+async def test_second_redundant_range_fails_closed():
+    """After one correction, another covered range aborts without another disk read."""
+    os.environ["AI_AGENT_REPEATED_READ_PATH_LIMIT"] = "4"
+    calls = [
+        ("read_file", {"file_path": FAKE_PATH, "start_line": 100, "end_line": 150}),
+        ("read_file", {"file_path": FAKE_PATH, "start_line": 110, "end_line": 120}),
+        ("read_file", {"file_path": FAKE_PATH, "start_line": 105, "end_line": 110}),
+    ]
+    ex = make_range_sequence_executor(calls)
+    snapshots: list = []
+    ex._call_llama = make_sequence_llama(
+        snapshots,
+        ['{"function":"read_file","arguments":{}}'] * 3,
+    )
+    task = Task(id="t-range-defiance", objective="edit one known region", status=TaskStatus.RUNNING)
+    final_msg, _ = await ex._execute_with_tools(task, AgentType.AGENT, max_tool_calls=0)
+
+    check("second redundant range aborts fail-closed", "repeated defiance is aborted fail-closed" in final_msg)
+    check("only the original ranged read reached disk execution",
+          ex.tool_registry.execute_tool_call.await_count == 1)
+
+
 async def main():
     await test_first_breach_injects_intervention_not_abort()
     await test_kill_switch_restores_plain_abort()
+    await test_range_coverage_intercepts_redundancy_then_allows_edit()
+    await test_second_redundant_range_fails_closed()
 
     os.environ.pop("AI_AGENT_REPEATED_READ_PATH_LIMIT", None)
 
