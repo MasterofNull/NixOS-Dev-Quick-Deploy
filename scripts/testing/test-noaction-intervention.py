@@ -428,6 +428,25 @@ def test_dogfood_receipt_counts_grammar_without_content():
           )))
 
 
+def test_self_improvement_prompt_classifier_is_semantic():
+    ex = make_executor()
+    tools = [{"name": "read_file", "parameters": {"type": "object", "properties": {}}}]
+    bounded = ex._get_system_prompt(
+        AgentType.AGENT,
+        tools,
+        objective_hint="bounded one-file test improvement slice",
+    )
+    explicit = ex._get_system_prompt(
+        AgentType.AGENT,
+        tools,
+        objective_hint="run a self-improvement slice for an open issue",
+    )
+    check("ordinary bounded slices omit the backlog workflow",
+          "SELF-IMPROVEMENT SLICE" not in bounded)
+    check("explicit self-improvement work retains the backlog workflow",
+          "SELF-IMPROVEMENT SLICE" in explicit)
+
+
 async def main():
     test_retry_excerpt_contract()
     await test_prose_plan_then_edit_completes()
@@ -440,6 +459,7 @@ async def main():
     await test_dogfood_gbnf_repair_budget_is_unchanged()
     await test_dogfood_payload_receipt_rejects_before_http_without_raw_content()
     test_dogfood_receipt_counts_grammar_without_content()
+    test_self_improvement_prompt_classifier_is_semantic()
 
     print(f"\n{PASS}/{PASS + FAIL} tests passed")
     sys.exit(0 if FAIL == 0 else 1)

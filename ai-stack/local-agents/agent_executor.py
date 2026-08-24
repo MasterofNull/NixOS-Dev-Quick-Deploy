@@ -3091,7 +3091,13 @@ class LocalAgentExecutor:
         # Self-improvement slice instructions (~722 tokens). Only injected when the task
         # explicitly involves issue-fixing / improvement cycles — saves context and avoids
         # confusing the model when it's doing factory, research, or delegation tasks.
-        _SI_KEYWORDS = frozenset({"self-improvement", "slice", "issues-backlog", "open issue", "improvement cycle", "fix issue", "aq-qa"})
+        # Keep this classifier semantic.  Generic words such as "slice" appear in
+        # ordinary bounded coding tasks and used to inject the full backlog workflow,
+        # adding thousands of prompt characters to unrelated dogfood turns.
+        _SI_KEYWORDS = frozenset({
+            "self-improvement", "issues-backlog", "open issue",
+            "improvement cycle", "fix issue",
+        })
         _is_si_task = bool(objective_hint and any(kw in objective_hint.lower() for kw in _SI_KEYWORDS))
         _si_slice = (
             "\n\nSELF-IMPROVEMENT SLICE — when asked to run/execute a self-improvement slice:\n"
