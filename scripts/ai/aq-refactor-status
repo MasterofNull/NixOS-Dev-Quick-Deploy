@@ -12,6 +12,10 @@ Usage:
   aq-refactor-status render        # same as above, explicit
   aq-refactor-status --json        # the structured projection the HTML
                                     # progress tracker consumes
+  aq-refactor-status --machine     # compact machine-readable projection
+  aq-refactor-status --check-owner-gates
+                                    # fail if the declared current rundown
+                                    # contradicts live owner-gate resolution
   aq-refactor-status --check --baseline FILE
                                     # exit 1 if FILE (a prior --json capture)
                                     # differs from a fresh projection, ignoring
@@ -59,8 +63,20 @@ def _render_text(projection: dict) -> str:
     lines.append("")
     lines.append("DECISION GATE (Q1-Q10)")
     for g in projection.get("gate", []):
-        mark = "RESOLVED" if g["resolved"] else "PENDING "
+        mark = {
+            "resolved": "RESOLVED",
+            "owner_decision": "OWNER DECISION",
+            "exact_activation": "EXACT ACTIVATION",
+            "dependency_blocked": "DEPENDENCY BLOCKED",
+        }.get(g.get("state"), "PENDING")
         lines.append(f"  [{mark}] {g['id']}: {g['decision']} -> unblocks {g['unblocks']}")
+
+    attention = projection.get("owner_attention", [])
+    if attention:
+        lines.append("")
+        lines.append("OWNER ATTENTION")
+        for gate in attention:
+            lines.append(f"  [{gate['state'].upper()}] {gate['id']}: {gate['decision']}")
 
     lines.append("")
     lines.append("ISSUES")
@@ -71,7 +87,8 @@ def _render_text(projection: dict) -> str:
     lines.append("")
     lines.append(
         "STATS: tracks_done_or_active={tracks_done_or_active} blocking_gates={blocking_gates} "
-        "decisions_pending={decisions_pending} open_high_issues={open_high_issues}".format(**stats)
+        "decisions_pending={decisions_pending} owner_attention_required={owner_attention_required} "
+        "open_high_issues={open_high_issues}".format(**stats)
     )
     return "\n".join(lines) + "\n"
 
@@ -85,6 +102,23 @@ def _cmd_render(args: argparse.Namespace) -> int:
 def _cmd_json(args: argparse.Namespace) -> int:
     print(json.dumps(refactor_status.project(args.manifest, _REPO_ROOT), indent=2))
     return 0
+
+
+def _cmd_machine(args: argparse.Namespace) -> int:
+    print(json.dumps(refactor_status.project(args.manifest, _REPO_ROOT), separators=(",", ":"), sort_keys=True))
+    return 0
+
+
+def _cmd_check_owner_gates(args: argparse.Namespace) -> int:
+    projection = refactor_status.project(args.manifest, _REPO_ROOT)
+    contradictions = projection.get("owner_gate_contradictions", [])
+    if not contradictions:
+        print("aq-refactor-status --check-owner-gates: no contradictions")
+        return 0
+    sys.stderr.write("aq-refactor-status --check-owner-gates: CONTRADICTION detected\n")
+    for contradiction in contradictions:
+        sys.stderr.write(f"  {contradiction.get('path')}: {contradiction.get('detail')}\n")
+    return 1
 
 
 def _cmd_check(args: argparse.Namespace) -> int:
@@ -122,7 +156,9 @@ def main(argv: list[str] | None = None) -> int:
         help="path to the refactor-milestones manifest (default: config/refactor-milestones.json)",
     )
     parser.add_argument("--json", action="store_true", help="emit the structured JSON projection")
+    parser.add_argument("--machine", action="store_true", help="emit compact, stable machine JSON")
     parser.add_argument("--check", action="store_true", help="drift-check a --baseline JSON capture")
+    parser.add_argument("--check-owner-gates", action="store_true", help="fail on current-rundown owner-gate contradictions")
     parser.add_argument("--baseline", default=None, help="path to a prior --json capture, for --check")
     parser.add_argument(
         "command",
@@ -136,6 +172,10 @@ def main(argv: list[str] | None = None) -> int:
 
     if args.check:
         return _cmd_check(args)
+    if args.check_owner_gates:
+        return _cmd_check_owner_gates(args)
+    if args.machine:
+        return _cmd_machine(args)
     if args.json:
         return _cmd_json(args)
     return _cmd_render(args)

@@ -13,6 +13,7 @@ REPO_ROOT="$(git rev-parse --show-toplevel)"
 cd "${REPO_ROOT}"
 
 TRACKER="scripts/ai/aq-pm-tracker"
+REFACTOR_STATUS="scripts/ai/aq-refactor-status"
 if [[ ! -x "${TRACKER}" ]] && ! python3 -c "import sys" 2>/dev/null; then
   echo "[tier0.d/check-pm-tracker] SKIP: projector unavailable"
   exit 0
@@ -36,6 +37,22 @@ for m in "${manifests[@]}"; do
     fail=1
   fi
 done
+
+# The current refactor rundown is an operator-facing projection, not a second
+# owner-gate source of truth.  Fail if it says an owner decision is pending
+# after the ratification/projector has resolved that gate.  Historical plans
+# are deliberately outside this check; the manifest names the one current
+# rundown that must stay synchronized.
+if [[ -x "${REFACTOR_STATUS}" ]]; then
+  if ! refactor_out="$(python3 "${REFACTOR_STATUS}" --check-owner-gates 2>&1)"; then
+    echo "[tier0.d/check-pm-tracker] FAIL: refactor owner-gate reconciliation:"
+    echo "${refactor_out}" | sed 's/^/    /'
+    fail=1
+  fi
+else
+  echo "[tier0.d/check-pm-tracker] FAIL: refactor owner-gate projector unavailable"
+  fail=1
+fi
 
 # Freshness-class WARN (never a hard block): a plan dir with staged changes this commit but no tracker.json.
 if [[ "${MODE}" == "--pre-commit" ]]; then
