@@ -728,20 +728,21 @@ class RalphRunner:
 
 # _AGENT_WALL_CLOCK_SECS: opt-in hard-cap override. Default 0 means no wall-clock
 # cap; local agent sessions are governed by liveness/progress guards.
-_AGENT_WALL_CLOCK_OVERRIDE = int(os.environ.get("AGENT_WALL_CLOCK_SECS", "0"))
-
 _AGENT_NO_PROGRESS_OVERRIDE = int(os.environ.get("AGENT_NO_PROGRESS_SECS", "0"))
 
 
 def _compute_agent_wall_clock(timeout_secs: int, max_calls: int) -> int:
-    """Return optional wall-clock cap for agent tasks.
-
-    max_calls is deprecated compatibility data. The local agent loop ignores it,
-    and this wrapper must not turn it back into a hard cap. Operators can still
-    set AGENT_WALL_CLOCK_SECS for a one-off bounded diagnostic run.
-    """
+    """Return the shortest positive explicit wall budget, never a liveness timeout."""
     del timeout_secs, max_calls
-    return _AGENT_WALL_CLOCK_OVERRIDE if _AGENT_WALL_CLOCK_OVERRIDE > 0 else 0
+    declared = []
+    for name in ("AGENT_WALL_CLOCK_SECS", "AQ_AGENT_WALL_BUDGET_S", "AGENT_SELF_WATCHDOG_SECS"):
+        try:
+            candidate = float(os.environ.get(name, "0") or 0)
+        except (TypeError, ValueError):
+            continue
+        if math.isfinite(candidate) and candidate > 0:
+            declared.append(candidate)
+    return min(declared) if declared else 0.0
 
 
 def _compute_agent_no_progress_timeout(timeout_secs: int) -> int:
@@ -762,35 +763,65 @@ def _artifact_mtime(paths: list[Path]) -> float:
     return newest
 
 
-def _terminate_agent_process(proc: subprocess.Popen, grace_seconds: float = 10.0) -> None:
-    """Terminate the agent-loop process group, falling back to kill on timeout."""
+def _agent_group_alive(pgid: int) -> bool:
+    """Return true while a non-zombie member remains in the agent process group."""
+    try:
+        for proc in Path("/proc").iterdir():
+            if not proc.name.isdigit():
+                continue
+            try:
+                fields = (proc / "stat").read_text(encoding="utf-8").rsplit(")", 1)[1].split()
+                if int(fields[2]) == pgid and fields[0] != "Z":
+                    return True
+            except (OSError, IndexError, ValueError):
+                continue
+        return False
+    except OSError:
+        try:
+            os.killpg(pgid, 0)
+            return True
+        except ProcessLookupError:
+            return False
+        except PermissionError:
+            return True
+
+
+def _terminate_agent_process(proc: subprocess.Popen, grace_seconds: float = 10.0) -> bool:
+    """Reap every group member, even when the leader exits before descendants."""
     try:
         os.killpg(proc.pid, signal.SIGTERM)
     except ProcessLookupError:
-        return
+        return not _agent_group_alive(proc.pid)
     except Exception:
         try:
             proc.terminate()
         except Exception:
-            return
+            return not _agent_group_alive(proc.pid)
     try:
         proc.wait(timeout=grace_seconds)
-        return
     except subprocess.TimeoutExpired:
         pass
+    if not _agent_group_alive(proc.pid):
+        return True
     try:
         os.killpg(proc.pid, signal.SIGKILL)
     except ProcessLookupError:
-        return
+        return not _agent_group_alive(proc.pid)
     except Exception:
         try:
             proc.kill()
         except Exception:
-            return
+            return not _agent_group_alive(proc.pid)
     try:
         proc.wait(timeout=grace_seconds)
     except Exception:
         pass
+    deadline = time.monotonic() + grace_seconds
+    while _agent_group_alive(proc.pid):
+        if time.monotonic() >= deadline:
+            return False
+        time.sleep(0.05)
+    return True
 
 
 class AgentRunner:
@@ -800,7 +831,8 @@ class AgentRunner:
         self.agent_loop = script_dir / "aq-agent-loop"
 
     def run(self, config: TaskConfig, prompt: str, output_file: Path,
-            max_calls: int = 0) -> bool:
+            max_calls: int = 0, registry: Optional[TaskRegistry] = None,
+            task_id: Optional[str] = None) -> bool:
         if not self.agent_loop.exists():
             output_file.write_text(f"Error: aq-agent-loop not found at {self.agent_loop}")
             return False
@@ -847,10 +879,46 @@ class AgentRunner:
             last_heartbeat_at = start
             last_seen_mtime = _artifact_mtime(artifact_paths)
             no_progress_timeout = _compute_agent_no_progress_timeout(config.timeout_secs)
-            proc = subprocess.Popen(cmd, start_new_session=True)
+            child_env = os.environ.copy()
+            if wall_clock > 0:
+                # The child watchdog is an orphan backstop, not a competing
+                # terminal authority.  Leave a bounded grace for the parent to
+                # publish its wall-clock receipt first.
+                child_env["AGENT_SELF_WATCHDOG_SECS"] = str(wall_clock + max(1.0, wall_clock * 0.1))
+            proc = subprocess.Popen(cmd, start_new_session=True, env=child_env)
+            if registry is not None and task_id:
+                try:
+                    worker_start = registry._proc_start_time(proc.pid)
+                    supervisor = registry.get(task_id) or {}
+                    supervisor_pid = supervisor.get("supervisor_pid", os.getpid())
+                    supervisor_start = supervisor.get("supervisor_start_time")
+                    if worker_start is None or not isinstance(supervisor_start, int):
+                        raise RuntimeError("process_topology_identity_unavailable")
+                    registry.record_process_topology(
+                        task_id,
+                        supervisor_pid=supervisor_pid,
+                        supervisor_start_time=supervisor_start,
+                        supervisor_pgid=supervisor.get("supervisor_pgid", os.getpgid(supervisor_pid)),
+                        supervisor_session=supervisor.get("supervisor_session", os.getsid(supervisor_pid)),
+                        worker_pid=proc.pid,
+                        worker_start_time=worker_start,
+                        worker_pgid=os.getpgid(proc.pid),
+                        worker_session=os.getsid(proc.pid),
+                    )
+                except Exception:
+                    _terminate_agent_process(proc)
+                    raise
             timeout_reason = ""
             while True:
                 if proc.poll() is not None:
+                    if wall_clock > 0 and time.monotonic() - start >= wall_clock and proc.returncode != 0:
+                        # A child watchdog may have exited its leader at the
+                        # exact supervisor boundary while descendants remain.
+                        # The supervisor still owns terminal authority only
+                        # after whole-group death is confirmed.
+                        child_dead = _terminate_agent_process(proc)
+                        if child_dead and registry is not None and task_id:
+                            registry._publish_terminal_once(task_id, "failed", "wall_clock_exceeded")
                     return proc.returncode == 0
                 now = time.monotonic()
                 newest_mtime = _artifact_mtime(artifact_paths)
@@ -892,7 +960,7 @@ class AgentRunner:
                     break
                 time.sleep(2.0)
 
-            _terminate_agent_process(proc)
+            child_dead = _terminate_agent_process(proc)
             progress_snippet = ""
             try:
                 progress_snippet = f"\nLast progress: {progress_path.read_text()[:400]}"
@@ -907,7 +975,10 @@ class AgentRunner:
                 eta_s=None,
                 status="failed",
             )
-            output_file.write_text(f"{timeout_reason}{progress_snippet}")
+            timeout_terminal = "wall_clock_exceeded" if wall_clock > 0 and "wall-clock" in timeout_reason else "agent_no_progress_exceeded"
+            output_file.write_text(f"{timeout_terminal}: {timeout_reason}{progress_snippet}")
+            if child_dead and registry is not None and task_id and timeout_terminal == "wall_clock_exceeded":
+                registry._publish_terminal_once(task_id, "failed", "wall_clock_exceeded")
             return False
         except Exception as exc:
             progress_path = Path(str(output_file) + ".progress.json")
@@ -1384,7 +1455,10 @@ def dispatch_task(
         "agent":  AgentRunner(script_dir),
     }
     runner = runners[config.mode]
-    _run_kwargs = {"max_calls": max_calls} if config.mode == "agent" else {}
+    _run_kwargs = (
+        {"max_calls": max_calls, "registry": registry, "task_id": task_id}
+        if config.mode == "agent" else {}
+    )
     success = runner.run(config, prompt, output_file, **_run_kwargs)
 
     # Code validation: append syntax check report to output for direct-mode tasks.
@@ -1411,6 +1485,11 @@ def dispatch_task(
         except Exception:
             pass
 
+    # An external cancel owns terminal publication.  Never overwrite a verified
+    # cancellation with a late runner return.
+    current = registry.get(task_id) or {}
+    if current.get("terminal_receipt"):
+        return current.get("status") == "done"
     status = "done" if success else "failed"
     registry.update_status(task_id, status)
     registry.record_completion(task_id, status)
@@ -1482,7 +1561,7 @@ def _cmd_watch(args: argparse.Namespace) -> int:
     """Phase 163: tail a running dispatch task with live progress metrics.
 
     Polls the output file for new content and the .progress.json sidecar for
-    metrics. Exits when the task reaches done/failed status. Ctrl-C detaches
+    metrics. Exits when the task reaches a terminal status. Ctrl-C detaches
     cleanly without killing the background task.
     """
     delegation_dir = Path(args.delegation_dir)
@@ -1548,7 +1627,7 @@ def _cmd_watch(args: argparse.Namespace) -> int:
                 if entry:
                     status = entry.get("status", "unknown")
 
-            if status in ("done", "failed"):
+            if status in ("done", "failed", "cancelled"):
                 print(f"\n[watch] complete: {status}", flush=True)
                 return 0 if status == "done" else 1
 
@@ -1673,6 +1752,7 @@ def main() -> int:
         role=config.role,
         pid=os.getpid(),
     )
+    registry.record_supervisor_identity(args.task_id, os.getpid())
     registry.record_dispatch(
         task_id=args.task_id,
         agent=f"local-{resolved_mode}",

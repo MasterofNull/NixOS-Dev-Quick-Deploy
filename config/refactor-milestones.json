@@ -229,16 +229,16 @@
       "code": "LEC",
       "name": "Local-Embed-Context",
       "sub": "embed model as context layer",
-      "note": "Slice 1 + Slice 2a committed. Slice 2b (context_cache wired into agent_executor prune path) has an OPEN binding-acceptance verdict: REQUEST_REVISION (SLICE2B-ACCEPTANCE.md) -- fixture re-pin incomplete (stable_digests.source_manifest not regenerated), 2 golden-test regressions. Code change itself verified correct; blocker is the mechanically incomplete re-pin.",
+      "note": "Slice 1 + Slice 2a committed. Slice 2b context-cache integration and its reliability fixture re-pin are committed; SLICE2B-ACCEPTANCE.md records resolved PASS, and the current reliability contract passes 16/16 with a matching stable source-manifest digest. Remaining Local-Embed-Context work continues as the next bounded slice.",
       "order": 120,
       "ongoing": true,
       "pct": 75,
       "detection": {
         "commit_match": [
           "\\(local-embed-context\\)",
-          "\\(lec\\)"
-        ],
-        "blocker_note": "Slice 2b binding acceptance verdict is REQUEST_REVISION per .agents/plans/local-embed-context/SLICE2B-ACCEPTANCE.md: fixture re-pin incomplete (stable_digests.source_manifest not regenerated after agent_executor.py sha256 change), causing 2 new golden-test regressions (test_15, test_16). Not yet committed as of this projection."
+          "\\(lec\\)",
+          "refresh reliability characterization"
+        ]
       }
     },
     {
@@ -385,11 +385,6 @@
       "title": "local-single-inference-slot-contention",
       "sev": "High",
       "note": "F2 Phase A (scheduler.py MLFQ+aging, backpressure.py LOCAL_DELAYED admission, model_tier.py routing) built + unit-tested but F2.5 wiring into dispatch.py was never done -- local dispatch still single-slot serialized on the Renoir APU; the never-skip-local contract is enforced only in tests, not the live admission path."
-    },
-    {
-      "title": "task_registry-golden-pin-stale",
-      "sev": "Med",
-      "note": "Golden reliability fixture re-pin left internally inconsistent after an agent_executor.py sha256 change: stable_digests.source_manifest wasn't regenerated, producing 2 new golden-test regressions (test_15, test_16) on the hash-frozen reliability contract (see SLICE2B-ACCEPTANCE.md)."
     },
     {
       "title": "C2 built-in-tool lease gap",
