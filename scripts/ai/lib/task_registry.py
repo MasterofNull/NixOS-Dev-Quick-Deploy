@@ -20,7 +20,6 @@ import json
 import os
 import re as _re
 import select
-import signal
 import stat as _stat
 import sys
 import time
@@ -256,17 +255,9 @@ class TaskRegistry:
         return entries
 
     def _update_registry(self, task_id: str, updates: dict) -> None:
-        """Apply updates under the stable registry writer lock."""
-        lock_fd = self._m2a_acquire_lock()
-        try:
-            self._update_registry_locked(task_id, updates)
-        finally:
-            fcntl.flock(lock_fd, fcntl.LOCK_UN)
-            os.close(lock_fd)
-
-    def _update_registry_locked(self, task_id: str, updates: dict) -> None:
-        """Apply updates while the caller owns the stable registry writer lock."""
+        """Apply updates dict to the entry matching task_id."""
         self.registry_file.parent.mkdir(parents=True, exist_ok=True)
+        # Read under shared lock, then rewrite under exclusive lock
         entries = self._read_registry()
         lines = []
         for e in entries:
@@ -285,101 +276,26 @@ class TaskRegistry:
         pid: Optional[int] = None,
     ) -> None:
         """Append a new running task entry to registry.jsonl."""
-        lock_fd = self._m2a_acquire_lock()
-        try:
-            self.registry_file.parent.mkdir(parents=True, exist_ok=True)
-            entry = {
-                "id": task_id,
-                "agent": f"local-{mode}",
-                "role": role,
-                "description": description[:500],
-                "output_file": output_file,
-                "pid": pid,
-                "status": "running",
-                "tokens_in": None,
-                "tokens_out": None,
-                "created": _now(),
-            }
-            self._locked_append(self.registry_file, json.dumps(entry))
-        finally:
-            fcntl.flock(lock_fd, fcntl.LOCK_UN)
-            os.close(lock_fd)
+        self.registry_file.parent.mkdir(parents=True, exist_ok=True)
+        entry = {
+            "id": task_id,
+            "agent": f"local-{mode}",
+            "role": role,
+            "description": description[:500],
+            "output_file": output_file,
+            "pid": pid,
+            "status": "running",
+            "tokens_in": None,
+            "tokens_out": None,
+            "created": _now(),
+        }
+        self._locked_append(self.registry_file, json.dumps(entry))
 
     def update_status(self, task_id: str, status: str) -> None:
         self._update_registry(task_id, {"status": status})
 
     def update_pid(self, task_id: str, pid: int) -> None:
         self._update_registry(task_id, {"pid": pid})
-
-    @staticmethod
-    def _proc_start_time(pid: int) -> Optional[int]:
-        """Return Linux /proc start-time ticks, or None when identity is unavailable."""
-        if not isinstance(pid, int) or pid < 1:
-            return None
-        try:
-            payload = Path(f"/proc/{pid}/stat").read_text(encoding="utf-8")
-            # comm is parenthesized; fields after the final ')' begin with state.
-            after_comm = payload.rsplit(")", 1)[1].split()
-            if after_comm[0] == "Z":
-                return None
-            return int(after_comm[19])  # field 22, offset 19 after field 2
-        except (OSError, IndexError, ValueError):
-            return None
-
-    @classmethod
-    def _identity_matches(cls, pid: object, start_time: object,
-                          pgid: object = None, session: object = None) -> str:
-        """Return matched/dead/mismatch/missing without trusting a bare PID."""
-        if not isinstance(pid, int) or not isinstance(start_time, int):
-            return "missing"
-        observed_start = cls._proc_start_time(pid)
-        if observed_start is None:
-            return "dead"
-        if observed_start != start_time:
-            return "mismatch"
-        try:
-            if isinstance(pgid, int) and os.getpgid(pid) != pgid:
-                return "mismatch"
-            if isinstance(session, int) and os.getsid(pid) != session:
-                return "mismatch"
-        except ProcessLookupError:
-            return "dead"
-        except OSError:
-            return "mismatch"
-        return "matched"
-
-    def record_process_topology(
-        self, task_id: str, *, supervisor_pid: int, supervisor_start_time: int,
-        supervisor_pgid: int, supervisor_session: int, worker_pid: int,
-        worker_start_time: int, worker_pgid: int, worker_session: int,
-    ) -> None:
-        """Persist both process identities immediately after the worker forks."""
-        self._update_registry(task_id, {
-            "pid": supervisor_pid,  # legacy monitor compatibility
-            "supervisor_pid": supervisor_pid,
-            "supervisor_start_time": supervisor_start_time,
-            "supervisor_pgid": supervisor_pgid,
-            "supervisor_session": supervisor_session,
-            "worker_pid": worker_pid,
-            "worker_start_time": worker_start_time,
-            "worker_pgid": worker_pgid,
-            "worker_session": worker_session,
-            "process_topology_registered": _now(),
-        })
-
-    def record_supervisor_identity(self, task_id: str, pid: int) -> None:
-        """Register the dispatcher identity before any child may be created."""
-        start_time = self._proc_start_time(pid)
-        if start_time is None:
-            raise RegistryError("registry_supervisor_identity_unavailable")
-        self._update_registry(task_id, {
-            "pid": pid,
-            "supervisor_pid": pid,
-            "supervisor_start_time": start_time,
-            "supervisor_pgid": os.getpgid(pid),
-            "supervisor_session": os.getsid(pid),
-            "supervisor_identity_registered": _now(),
-        })
 
     def update_tokens(self, task_id: str, tokens_in: Optional[int], tokens_out: Optional[int]) -> None:
         updates: dict = {}
@@ -878,183 +794,27 @@ class TaskRegistry:
         print(json.dumps(self.repair_stale(apply=apply), indent=2))
         return 0
 
-    @staticmethod
-    def _group_alive(pgid: int) -> bool:
-        """True only while a non-zombie member remains in the process group."""
-        try:
-            for proc in Path("/proc").iterdir():
-                if not proc.name.isdigit():
-                    continue
+    def cmd_cancel(self, task_id: str) -> int:
+        pid = self.get_pid(task_id)
+        if pid:
+            try:
+                os.kill(-(pid), 0)  # check group exists
+            except ProcessLookupError:
+                pass
+            try:
+                import signal
+                os.kill(pid, signal.SIGTERM)
                 try:
-                    after_comm = (proc / "stat").read_text(encoding="utf-8").rsplit(")", 1)[1].split()
-                    # after_comm: state, ppid, pgrp, session, ...
-                    if int(after_comm[2]) == pgid and after_comm[0] != "Z":
-                        return True
-                except (OSError, IndexError, ValueError):
-                    continue
-            return False
-        except OSError:
-            # If procfs is unavailable, retain conservative group probing.
-            pass
-        try:
-            os.killpg(pgid, 0)
-            return True
-        except ProcessLookupError:
-            return False
-        except PermissionError:
-            return True
-
-    @classmethod
-    def _terminate_verified_group(cls, pid: int, start_time: int, pgid: int,
-                                  session: int, grace_seconds: float) -> str:
-        """Reap an identity-verified worker group, TERM then KILL if necessary."""
-        identity = cls._identity_matches(pid, start_time, pgid, session)
-        if identity == "dead" and not cls._group_alive(pgid):
-            # A dead leader with an empty group is already reaped.  It is safe
-            # to continue to the separately identity-verified supervisor.
-            return "gone"
-        if identity != "matched":
-            return identity
-        try:
-            os.killpg(pgid, signal.SIGTERM)
-        except ProcessLookupError:
-            return "gone"
-        deadline = time.monotonic() + grace_seconds
-        while time.monotonic() < deadline:
-            if not cls._group_alive(pgid):
-                return "gone"
-            time.sleep(0.05)
-        try:
-            os.killpg(pgid, signal.SIGKILL)
-        except ProcessLookupError:
-            return "gone"
-        deadline = time.monotonic() + grace_seconds
-        while time.monotonic() < deadline:
-            if not cls._group_alive(pgid):
-                return "gone"
-            time.sleep(0.05)
-        return "survivor"
-
-    @classmethod
-    def _terminate_verified_pid(cls, pid: int, start_time: int, pgid: int,
-                                session: int, grace_seconds: float) -> str:
-        """Reap the supervisor only after its child group is confirmed gone."""
-        identity = cls._identity_matches(pid, start_time, pgid, session)
-        if identity == "dead":
-            return "gone"
-        if identity != "matched":
-            return identity
-        try:
-            os.kill(pid, signal.SIGTERM)
-        except ProcessLookupError:
-            return "gone"
-        deadline = time.monotonic() + grace_seconds
-        while time.monotonic() < deadline:
-            if cls._identity_matches(pid, start_time, pgid, session) == "dead":
-                return "gone"
-            time.sleep(0.05)
-        try:
-            os.kill(pid, signal.SIGKILL)
-        except ProcessLookupError:
-            return "gone"
-        deadline = time.monotonic() + grace_seconds
-        while time.monotonic() < deadline:
-            if cls._identity_matches(pid, start_time, pgid, session) == "dead":
-                return "gone"
-            time.sleep(0.05)
-        return "survivor"
-
-    def _publish_terminal_once(self, task_id: str, status: str, reason: str) -> bool:
-        """Publish terminal artifacts before a locked, one-time completion receipt."""
-        fd = self._m2a_acquire_lock()
-        try:
-            entry = self.get(task_id)
-            if not entry or entry.get("terminal_receipt"):
-                return False
-            output_name = entry.get("output_file")
-            try:
-                if output_name:
-                    output = Path(output_name)
-                    artifacts = (
-                        (output, f"{reason}\n"),
-                        (Path(str(output) + ".progress.json"), json.dumps({"status": status, "reason": reason})),
-                    )
-                    staged: list[tuple[Path, Path]] = []
-                    for path, payload in artifacts:
-                        path.parent.mkdir(parents=True, exist_ok=True)
-                        tmp = path.with_name(path.name + ".terminal.tmp")
-                        tmp.write_text(payload, encoding="utf-8")
-                        staged.append((path, tmp))
-                    for path, tmp in staged:
-                        os.replace(tmp, path)
-            except OSError:
-                # No success receipt can claim artifacts were published.  The
-                # failed terminal transition itself remains serialised so a
-                # competing cancel cannot publish a contradictory receipt.
-                self._update_registry_locked(task_id, {
-                    "status": "failed",
-                    "terminal_reason": "cancel_failed:unpublished",
-                    "terminal_receipt": True,
-                    "terminal_publication_failed": True,
-                    "terminal_published": False,
-                    "terminal_published_at": _now(),
-                })
-                self.record_completion(task_id, "failed")
-                return False
-            self._update_registry_locked(task_id, {
-                "status": status,
-                "terminal_reason": reason,
-                "terminal_receipt": True,
-                "terminal_published": True,
-                "terminal_published_at": _now(),
-            })
-            self.record_completion(task_id, status)
-            return True
-        finally:
-            try:
-                fcntl.flock(fd, fcntl.LOCK_UN)
-            finally:
-                os.close(fd)
-
-    def cmd_cancel(self, task_id: str, grace_seconds: float = 2.0) -> int:
-        """Cancel only verified worker/supervisor identities, in that order."""
-        entry = self.get(task_id)
-        if not entry:
-            print(f"[task_registry] Task {task_id!r} not found", file=sys.stderr)
-            return 1
-        if entry.get("status") in _M2A_TERMINAL_STATES or entry.get("terminal_receipt"):
-            print(f"[task_registry] Task {task_id} is already terminal")
-            return 0
-        worker_fields = ("worker_pid", "worker_start_time", "worker_pgid", "worker_session")
-        supervisor_fields = ("supervisor_pid", "supervisor_start_time", "supervisor_pgid", "supervisor_session")
-        if any(not isinstance(entry.get(key), int) for key in supervisor_fields):
-            self._publish_terminal_once(task_id, "failed", "cancel_failed:legacy_or_incomplete_process_identity")
-            print(f"[task_registry] Refused cancellation for {task_id}: incomplete process identity", file=sys.stderr)
-            return 1
-        self.update_status(task_id, "cancelling")
-        if entry.get("agent") == "local-agent":
-            if any(not isinstance(entry.get(key), int) for key in worker_fields):
-                self._publish_terminal_once(task_id, "failed", "cancel_failed:legacy_or_incomplete_process_identity")
-                print(f"[task_registry] Refused cancellation for {task_id}: incomplete worker identity", file=sys.stderr)
-                return 1
-            worker = self._terminate_verified_group(
-                entry["worker_pid"], entry["worker_start_time"], entry["worker_pgid"],
-                entry["worker_session"], grace_seconds,
-            )
-            if worker != "gone":
-                self._publish_terminal_once(task_id, "failed", f"cancel_failed:worker_{worker}")
-                print(f"[task_registry] Cancellation failed for {task_id}: worker {worker}", file=sys.stderr)
-                return 1
-        supervisor = self._terminate_verified_pid(
-            entry["supervisor_pid"], entry["supervisor_start_time"], entry["supervisor_pgid"],
-            entry["supervisor_session"], grace_seconds,
-        )
-        if supervisor != "gone":
-            self._publish_terminal_once(task_id, "failed", f"cancel_failed:supervisor_{supervisor}")
-            print(f"[task_registry] Cancellation failed for {task_id}: supervisor {supervisor}", file=sys.stderr)
-            return 1
-        self._publish_terminal_once(task_id, "cancelled", "operator_cancelled")
-        print(f"[task_registry] Cancelled {task_id} after verified worker/supervisor death")
+                    os.killpg(os.getpgid(pid), signal.SIGTERM)
+                except Exception:
+                    pass
+            except Exception:
+                pass
+            print(f"[task_registry] Sent SIGTERM to pid {pid} for task {task_id}")
+        else:
+            print(f"[task_registry] No PID found for {task_id}")
+        self.update_status(task_id, "cancelled")
+        self.record_completion(task_id, "cancelled")
         return 0
 
     def cmd_kill_all(self) -> int:
