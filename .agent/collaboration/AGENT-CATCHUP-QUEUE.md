@@ -315,3 +315,10 @@ REVIEW TARGETS (for Codex — the reliable auto-reviewer — and any returning l
   REQUIRED same cycle; currently only DEFINITION-OF-DONE + CLAUDE.md carry it → INCOMPLETE until propagated).
   Also: dashboard assets/aqos-progress-tracker.html should RENDER the now-available deps (gantt arrows) +
   priority_lane (kanban columns). VERIFY: does check-pm-tracker gate stay green with the new tracker editorial?
+- [SUSPECT — cancellation-lifecycle 93f1eff4] The first local agent run AFTER this 378-line
+  dispatch.py/task_registry.py rewrite produced a model_call that ran 1501s with tokens_out=0 /
+  tok_per_sec=0.0 (silent first-token stall) on a ~2500-token prompt — while a direct curl to the SAME
+  model/endpoint returns a small prompt in 8s. Candidates: (a) APU contention (load 7), (b) the slice's
+  child wall-clock/watchdog/stream wiring regressed the agent-loop inference read. Codex/reviewer: verify
+  _compute_agent_wall_clock + the child watchdog + streaming-read path don't starve/block the first token.
+  Isolation test running to distinguish.
