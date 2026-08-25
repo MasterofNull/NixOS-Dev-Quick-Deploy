@@ -322,3 +322,9 @@ REVIEW TARGETS (for Codex — the reliable auto-reviewer — and any returning l
   child wall-clock/watchdog/stream wiring regressed the agent-loop inference read. Codex/reviewer: verify
   _compute_agent_wall_clock + the child watchdog + streaming-read path don't starve/block the first token.
   Isolation test running to distinguish.
+- [RE-DO — cancellation lifecycle] 93f1eff4 was REVERTED (1c317f2e) — A/B-proven it broke agent-loop
+  inference (0 tokens for full budget; revert restored tool_calls in <1min). The clean-termination goal
+  is real + was validated. RE-DO carefully: the child sessionization (new PGID/session) or the watchdog/
+  wall-clock rewire blocks the child's HTTP stream to llama.cpp. Its acceptance MUST include an
+  inference-smoke check (a tiny agent task produces tokens) so an inference regression can't ship again.
+  Prior [SUSPECT] flag above is now CONFIRMED + reverted.
