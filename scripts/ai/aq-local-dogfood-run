@@ -71,6 +71,14 @@ ENV = {
     # Edit-failure feedback: on an old_string mismatch, hand local the exact file
     # region to retry against (targets the dominant post-grammar churn cause).
     "AQ_EDIT_FEEDBACK": "1",
+    # write_region line-range rewrite tool (Aider whole-format tactic) — landed the
+    # first clean correct edit in the 2026-08-25 measured run.
+    "AQ_WRITE_REGION": "1",
+    # Wall budget aligned to the measured throughput (~8-11 min/step contended,
+    # faster clean; edit lands ~step 4). 2700s < the 3000s EDIT_POLL_MAX_S cap so the
+    # child self-terminates before the runner's poll cap. A 30min budget is too short.
+    "AQ_AGENT_WALL_BUDGET_S": "2700",
+    "AGENT_WALL_CLOCK_SECS": "2700",
     # Strict opt-in count-only payload receipt + pre-submit cap.  This is
     # dogfood-only; ordinary delegate-to-local work is unchanged.
     "AQ_LOCAL_DOGFOOD_BUDGET": "1",
