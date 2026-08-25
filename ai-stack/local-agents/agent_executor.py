@@ -155,7 +155,13 @@ logger = logging.getLogger(__name__)
 # Dogfood payload budget: deliberately opt-in and isolated from ordinary local
 # delegation.  The receipt is count-only so the progress sidecar remains safe
 # to expose in operator tooling (no prompt, tool schema, or grammar contents).
-_DOGFOOD_PAYLOAD_JSON_LIMIT = 14_000
+# 2026-08-25: raised 14_000 -> 32_000. The old value was BELOW both the real payload
+# (~21_896 chars with the full context supply chain) and the model's own
+# LLAMA_MAX_PROMPT_CHARS=24_000 prompt guard, so AQ_LOCAL_DOGFOOD_BUDGET rejected every
+# dogfood task in 0.4s before HTTP. The payload JSON is legitimately larger than the
+# prompt guard (it adds tool schemas + grammar + envelope), so the cap must sit ABOVE
+# 24_000; 32_000 gives that headroom while still catching a truly runaway payload.
+_DOGFOOD_PAYLOAD_JSON_LIMIT = 32_000
 _DOGFOOD_FIRST_CALL_MAX_TOKENS = 192
 
 
