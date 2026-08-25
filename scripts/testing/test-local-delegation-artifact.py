@@ -14,9 +14,12 @@ import importlib.util
 import contextlib
 import io
 import json
+import os
+import signal
 import sys
 import tempfile
 import subprocess
+import threading
 from pathlib import Path
 
 ROOT = Path(__file__).resolve().parents[2]
@@ -211,8 +214,8 @@ def test_agent_runner_creates_initial_output_artifacts():
             def poll(self):
                 return self.returncode
 
-        def fake_popen(cmd, start_new_session=False):
-            calls.append((cmd, start_new_session))
+        def fake_popen(cmd, start_new_session=False, env=None):
+            calls.append((cmd, start_new_session, env))
             assert_true(output_file.exists(), "agent output file should exist before subprocess.run")
             assert_true(
                 Path(str(output_file) + ".progress.json").exists(),
@@ -237,6 +240,10 @@ def test_agent_runner_creates_initial_output_artifacts():
         assert_true(
             "Agent task started" in output_file.read_text(encoding="utf-8"),
             "initial output file should contain a running marker",
+        )
+        assert_true(
+            "AGENT_SELF_WATCHDOG_SECS" not in calls[0][2],
+            "ordinary request timeout must not become a hard wall watchdog",
         )
         print("PASS  agent runner creates initial output/progress artifacts")
 
@@ -280,7 +287,7 @@ def test_agent_runner_reaps_no_progress_child():
         terminated = []
         clock = iter([0.0, 2.0, 3.0])
 
-        def fake_popen(cmd, start_new_session=False):
+        def fake_popen(cmd, start_new_session=False, env=None):
             return fake_proc
 
         def fake_terminate(proc):
@@ -310,14 +317,487 @@ def test_agent_runner_reaps_no_progress_child():
         print("PASS  agent runner reaps no-progress child")
 
 
-def test_agent_runner_defaults_allow_long_horizon_work():
-    """Default agent watchdog policy should avoid wall-clock hard caps."""
+def test_agent_runner_uses_explicit_shortest_wall_deadline():
+    """The child and supervisor share the shortest positive declared deadline."""
     dispatch_mod = _load_dispatch()
-    wall_clock = dispatch_mod._compute_agent_wall_clock(timeout_secs=300, max_calls=50)
-    no_progress = dispatch_mod._compute_agent_no_progress_timeout(timeout_secs=300)
-    assert_true(wall_clock == 0, f"agent wall clock should be disabled by default, got {wall_clock}s")
-    assert_true(no_progress >= 14400, f"no-progress watchdog should allow slow generations, got {no_progress}s")
-    print("PASS  agent runner defaults avoid wall-clock hard caps")
+    original = {key: os.environ.get(key) for key in ("AGENT_WALL_CLOCK_SECS", "AQ_AGENT_WALL_BUDGET_S", "AGENT_SELF_WATCHDOG_SECS")}
+    try:
+        for key in original:
+            os.environ.pop(key, None)
+        assert_true(dispatch_mod._compute_agent_wall_clock(300, 50) == 0, "request timeout became hard wall")
+        os.environ.update({"AGENT_WALL_CLOCK_SECS": "90", "AQ_AGENT_WALL_BUDGET_S": "60", "AGENT_SELF_WATCHDOG_SECS": "120"})
+        assert_true(dispatch_mod._compute_agent_wall_clock(300, 50) == 60, "explicit shortest wall budget not selected")
+        for invalid in ("bad", "nan", "inf", "-1"):
+            os.environ["AGENT_WALL_CLOCK_SECS"] = invalid
+            os.environ.pop("AQ_AGENT_WALL_BUDGET_S", None)
+            os.environ.pop("AGENT_SELF_WATCHDOG_SECS", None)
+            assert_true(dispatch_mod._compute_agent_wall_clock(300, 50) == 0,
+                        f"invalid wall budget did not fail closed: {invalid}")
+        os.environ["AGENT_WALL_CLOCK_SECS"] = "0.15"
+        assert_true(dispatch_mod._compute_agent_wall_clock(300, 50) == 0.15, "fractional wall budget lost")
+    finally:
+        for key, value in original.items():
+            if value is None:
+                os.environ.pop(key, None)
+            else:
+                os.environ[key] = value
+    print("PASS  agent runner uses explicit shortest wall deadline")
+
+
+def test_terminal_publication_is_serialized_and_fails_truthfully():
+    """Concurrent receipts collapse to one; failed artifact writes never claim publication."""
+    with tempfile.TemporaryDirectory() as tmp:
+        tmp_path = Path(tmp)
+        tr_mod = _load_task_registry()
+        registry = tr_mod.TaskRegistry(tmp_path / "delegation", repo_root=tmp_path)
+        output = tmp_path / "outputs" / "terminal.log"
+        registry.append("concurrent-terminal", "probe", str(output), "direct", "implementer", None)
+        registry.record_dispatch("concurrent-terminal", "local-direct", str(output), "probe")
+        results = []
+        threads = [threading.Thread(target=lambda: results.append(
+            registry._publish_terminal_once("concurrent-terminal", "failed", "wall_clock_exceeded")
+        )) for _ in range(2)]
+        for thread in threads:
+            thread.start()
+        for thread in threads:
+            thread.join(timeout=2)
+        entry = registry.get("concurrent-terminal") or {}
+        assert_true(results.count(True) == 1 and entry.get("terminal_receipt"), f"non-linear terminal receipt: {results} {entry}")
+        pending = json.loads((tmp_path / ".agent" / "collaboration" / "PENDING.json").read_text())
+        completed = [item for item in pending.get("in_flight", []) if item.get("id") == "concurrent-terminal"]
+        assert_true(len(completed) == 1 and completed[0].get("completed_at"),
+                    f"expected exactly one completion receipt, got {completed}")
+
+        blocked_parent = tmp_path / "blocked"
+        blocked_parent.write_text("not a directory", encoding="utf-8")
+        blocked_output = blocked_parent / "terminal.log"
+        registry.append("unpublished-terminal", "probe", str(blocked_output), "direct", "implementer", None)
+        assert_true(not registry._publish_terminal_once("unpublished-terminal", "failed", "wall_clock_exceeded"),
+                    "artifact failure must not report a successful publication")
+        failed = registry.get("unpublished-terminal") or {}
+        assert_true(failed.get("terminal_reason") == "cancel_failed:unpublished"
+                    and not failed.get("terminal_published") and failed.get("terminal_receipt"),
+                    f"false terminal publication: {failed}")
+    print("PASS  terminal publication is serialized and truthful")
+
+
+def test_terminal_receipt_survives_ordinary_registry_writer_race():
+    """Stable writer locking prevents a later topology/status update erasing a receipt."""
+    with tempfile.TemporaryDirectory() as tmp:
+        tmp_path = Path(tmp)
+        tr_mod = _load_task_registry()
+        registry = tr_mod.TaskRegistry(tmp_path / "delegation", repo_root=tmp_path)
+        output = tmp_path / "race.log"
+        registry.append("terminal-race", "probe", str(output), "agent", "implementer", 1)
+        registry.record_dispatch("terminal-race", "local-agent", str(output), "probe")
+        published = threading.Thread(target=lambda: registry._publish_terminal_once(
+            "terminal-race", "failed", "wall_clock_exceeded"
+        ))
+        ordinary = threading.Thread(target=lambda: registry.record_process_topology(
+            "terminal-race", supervisor_pid=1, supervisor_start_time=1, supervisor_pgid=1,
+            supervisor_session=1, worker_pid=2, worker_start_time=2, worker_pgid=2, worker_session=2,
+        ))
+        published.start(); ordinary.start()
+        published.join(timeout=2); ordinary.join(timeout=2)
+        entry = registry.get("terminal-race") or {}
+        assert_true(entry.get("terminal_receipt") and entry.get("terminal_reason") == "wall_clock_exceeded",
+                    f"ordinary writer erased terminal receipt: {entry}")
+    print("PASS  terminal receipt survives ordinary writer race")
+
+
+def test_terminate_agent_process_reaps_descendant_after_leader_exit():
+    """Leader exit on TERM cannot leave a SIGTERM-ignoring descendant running."""
+    dispatch_mod = _load_dispatch()
+    code = (
+        "import signal,subprocess,sys,time; "
+        "subprocess.Popen([sys.executable, '-c', "
+        "'import signal,time; signal.signal(signal.SIGTERM, signal.SIG_IGN); time.sleep(60)']); "
+        "signal.signal(signal.SIGTERM, lambda *_: sys.exit(0)); time.sleep(60)"
+    )
+    proc = subprocess.Popen([sys.executable, "-c", code], start_new_session=True)
+    try:
+        assert_true(dispatch_mod._terminate_agent_process(proc, grace_seconds=0.1),
+                    "whole process group was not confirmed dead")
+        assert_true(not dispatch_mod._agent_group_alive(proc.pid), "descendant survived leader exit")
+    finally:
+        if proc.poll() is None:
+            proc.kill()
+        try:
+            proc.wait(timeout=2)
+        except subprocess.TimeoutExpired:
+            pass
+    print("PASS  termination reaps descendant after leader exit")
+
+
+def test_wall_watchdog_boundary_reconciles_terminal_receipt():
+    """A child already exited at the supervisor deadline still receives wall receipt."""
+    dispatch_mod = _load_dispatch()
+    with tempfile.TemporaryDirectory() as tmp:
+        script_dir = Path(tmp)
+        (script_dir / "aq-agent-loop").write_text("#!/usr/bin/env python3\n", encoding="utf-8")
+        class FakeProcess:
+            pid = os.getpid()
+            returncode = 1
+            def poll(self):
+                return self.returncode
+        class FakeRegistry:
+            def __init__(self):
+                self.reasons = []
+            def _proc_start_time(self, pid):
+                return 1
+            def get(self, task_id):
+                return {"supervisor_pid": 1, "supervisor_start_time": 1, "supervisor_pgid": 1, "supervisor_session": 1}
+            def record_process_topology(self, *args, **kwargs):
+                pass
+            def _publish_terminal_once(self, task_id, status, reason):
+                self.reasons.append((task_id, status, reason))
+                return True
+        registry = FakeRegistry()
+        config = dispatch_mod.TaskConfig(
+            mode="agent", role="implementer", timeout_secs=300, max_tokens=20,
+            llama_url="http://127.0.0.1:1", hybrid_url="http://127.0.0.1:1",
+            ralph_url="http://127.0.0.1:1", task_type="agent",
+        )
+        original_popen, original_monotonic, original_terminate, original_budget = (
+            dispatch_mod.subprocess.Popen, dispatch_mod.time.monotonic,
+            dispatch_mod._terminate_agent_process, os.environ.get("AQ_AGENT_WALL_BUDGET_S"),
+        )
+        try:
+            dispatch_mod.subprocess.Popen = lambda *args, **kwargs: FakeProcess()
+            dispatch_mod._terminate_agent_process = lambda proc: True
+            boundary_clock = iter([0.0, 0.15])
+            dispatch_mod.time.monotonic = lambda: next(boundary_clock, 0.15)
+            os.environ["AQ_AGENT_WALL_BUDGET_S"] = "0.15"
+            ok = dispatch_mod.AgentRunner(script_dir).run(config, "probe", Path(tmp) / "out", registry=registry, task_id="boundary")
+        finally:
+            dispatch_mod.subprocess.Popen = original_popen
+            dispatch_mod.time.monotonic = original_monotonic
+            dispatch_mod._terminate_agent_process = original_terminate
+            if original_budget is None:
+                os.environ.pop("AQ_AGENT_WALL_BUDGET_S", None)
+            else:
+                os.environ["AQ_AGENT_WALL_BUDGET_S"] = original_budget
+        assert_true(not ok and registry.reasons == [("boundary", "failed", "wall_clock_exceeded")],
+                    f"boundary receipt missing or duplicate: {registry.reasons}")
+    print("PASS  wall watchdog boundary reconciles receipt")
+
+
+def test_wall_boundary_reaps_synchronized_stubborn_descendant_before_receipt():
+    """Boundary reconciliation orders whole-group cleanup before its receipt."""
+    dispatch_mod = _load_dispatch()
+    original_budget = os.environ.get("AQ_AGENT_WALL_BUDGET_S")
+    original_popen = dispatch_mod.subprocess.Popen
+    original_terminate = dispatch_mod._terminate_agent_process
+    try:
+        with tempfile.TemporaryDirectory() as tmp:
+            tmp_path = Path(tmp)
+            script_dir = tmp_path / "scripts"
+            script_dir.mkdir()
+            (script_dir / "aq-agent-loop").write_text("#!/usr/bin/env python3\n", encoding="utf-8")
+            class BoundaryLeader:
+                pid = os.getpid()
+                returncode = 1
+                def poll(self):
+                    return self.returncode
+            state = {"stubborn_descendant_alive": True, "events": []}
+            class ReceiptRegistry:
+                def __init__(self):
+                    self.receipts = []
+                def _proc_start_time(self, pid):
+                    return 1
+                def get(self, task_id):
+                    return {"supervisor_pid": os.getpid(), "supervisor_start_time": 1,
+                            "supervisor_pgid": os.getpgid(os.getpid()), "supervisor_session": os.getsid(os.getpid())}
+                def record_process_topology(self, *args, **kwargs):
+                    pass
+                def _publish_terminal_once(self, task_id, status, reason):
+                    assert_true(not state["stubborn_descendant_alive"], "receipt published before descendant cleanup")
+                    self.receipts.append((task_id, status, reason))
+                    return True
+            registry = ReceiptRegistry()
+            def cleanup(proc):
+                state["events"].append("group_cleanup")
+                state["stubborn_descendant_alive"] = False
+                return True
+            dispatch_mod.subprocess.Popen = lambda *args, **kwargs: BoundaryLeader()
+            dispatch_mod._terminate_agent_process = cleanup
+            os.environ["AQ_AGENT_WALL_BUDGET_S"] = "0.000001"
+            config = dispatch_mod.TaskConfig(
+                mode="agent", role="implementer", timeout_secs=300, max_tokens=20,
+                llama_url="http://127.0.0.1:1", hybrid_url="http://127.0.0.1:1",
+                ralph_url="http://127.0.0.1:1", task_type="agent",
+            )
+            ok = dispatch_mod.AgentRunner(script_dir).run(
+                config, "probe", tmp_path / "out", registry=registry, task_id="synchronized-boundary"
+            )
+            assert_true(not ok and registry.receipts == [(
+                "synchronized-boundary", "failed", "wall_clock_exceeded"
+            )], f"boundary receipt was premature/missing: {registry.receipts}")
+            assert_true(state["events"] == ["group_cleanup"], f"boundary cleanup missing: {state}")
+    finally:
+        dispatch_mod.subprocess.Popen = original_popen
+        dispatch_mod._terminate_agent_process = original_terminate
+        if original_budget is None:
+            os.environ.pop("AQ_AGENT_WALL_BUDGET_S", None)
+        else:
+            os.environ["AQ_AGENT_WALL_BUDGET_S"] = original_budget
+    print("PASS  wall boundary reaps stubborn descendant before receipt")
+
+
+def test_post_kill_group_disappearance_is_bounded_and_fail_closed():
+    """A surviving post-KILL group returns failure after bounded monotonic wait."""
+    dispatch_mod = _load_dispatch()
+    class FakeProcess:
+        pid = 424242
+        def wait(self, timeout=None):
+            return 0
+        def poll(self):
+            return 0
+    original_killpg = dispatch_mod.os.killpg
+    original_alive = dispatch_mod._agent_group_alive
+    original_monotonic = dispatch_mod.time.monotonic
+    original_sleep = dispatch_mod.time.sleep
+    signals = []
+    try:
+        dispatch_mod.os.killpg = lambda pgid, sig: signals.append(sig)
+        dispatch_mod._agent_group_alive = lambda pgid: True
+        clock = iter([0.0, 0.11])
+        dispatch_mod.time.monotonic = lambda: next(clock, 0.11)
+        dispatch_mod.time.sleep = lambda seconds: None
+        assert_true(not dispatch_mod._terminate_agent_process(FakeProcess(), grace_seconds=0.1),
+                    "persistent group must fail closed after bounded post-KILL wait")
+    finally:
+        dispatch_mod.os.killpg = original_killpg
+        dispatch_mod._agent_group_alive = original_alive
+        dispatch_mod.time.monotonic = original_monotonic
+        dispatch_mod.time.sleep = original_sleep
+    assert_true(signals == [signal.SIGTERM, signal.SIGKILL], f"unexpected signals: {signals}")
+    print("PASS  post-KILL disappearance is bounded and fail closed")
+
+
+def test_append_update_terminal_race_preserves_both_tasks_and_receipt():
+    """Append shares stable transaction locking with updates and terminal publication."""
+    with tempfile.TemporaryDirectory() as tmp:
+        tmp_path = Path(tmp)
+        tr_mod = _load_task_registry()
+        registry = tr_mod.TaskRegistry(tmp_path / "delegation", repo_root=tmp_path)
+        registry.append("race-terminal", "probe", str(tmp_path / "terminal.log"), "direct", "implementer", None)
+        registry.record_dispatch("race-terminal", "local-direct", str(tmp_path / "terminal.log"), "probe")
+        barrier = threading.Barrier(3)
+        def append_new():
+            barrier.wait()
+            registry.append("race-appended", "probe", str(tmp_path / "appended.log"), "direct", "implementer", None)
+        def ordinary_update():
+            barrier.wait()
+            registry.update_tokens("race-terminal", 1, 2)
+        def publish_terminal():
+            barrier.wait()
+            registry._publish_terminal_once("race-terminal", "failed", "wall_clock_exceeded")
+        threads = [threading.Thread(target=fn) for fn in (append_new, ordinary_update, publish_terminal)]
+        for thread in threads:
+            thread.start()
+        for thread in threads:
+            thread.join(timeout=2)
+        terminal = registry.get("race-terminal") or {}
+        appended = registry.get("race-appended")
+        assert_true(appended is not None, "concurrent append was lost")
+        assert_true(terminal.get("terminal_receipt") and terminal.get("terminal_reason") == "wall_clock_exceeded",
+                    f"terminal receipt was lost: {terminal}")
+    print("PASS  append/update/terminal race preserves registry state")
+
+
+def test_registry_cancel_allows_dead_worker_and_direct_supervisor_only():
+    """A dead empty agent group advances to its supervisor; direct records need no worker."""
+    sleeper = "import time; time.sleep(60)"
+    worker = agent_supervisor = direct_supervisor = unrelated = None
+    try:
+        with tempfile.TemporaryDirectory() as tmp:
+            tmp_path = Path(tmp)
+            tr_mod = _load_task_registry()
+            registry = tr_mod.TaskRegistry(tmp_path / "delegation", repo_root=tmp_path)
+            worker = subprocess.Popen([sys.executable, "-c", sleeper], start_new_session=True)
+            agent_supervisor = subprocess.Popen([sys.executable, "-c", sleeper], start_new_session=True)
+            worker_start = registry._proc_start_time(worker.pid)
+            supervisor_start = registry._proc_start_time(agent_supervisor.pid)
+            registry.append("dead-worker", "probe", str(tmp_path / "agent.log"), "agent", "implementer", agent_supervisor.pid)
+            registry.record_process_topology(
+                "dead-worker",
+                supervisor_pid=agent_supervisor.pid, supervisor_start_time=supervisor_start,
+                supervisor_pgid=os.getpgid(agent_supervisor.pid), supervisor_session=os.getsid(agent_supervisor.pid),
+                worker_pid=worker.pid, worker_start_time=worker_start,
+                worker_pgid=os.getpgid(worker.pid), worker_session=os.getsid(worker.pid),
+            )
+            worker.kill(); worker.wait(timeout=2)
+            assert_true(registry.cmd_cancel("dead-worker", grace_seconds=0.05) == 0,
+                        "dead empty worker group should still cancel supervisor")
+
+            direct_supervisor = subprocess.Popen([sys.executable, "-c", sleeper], start_new_session=True)
+            unrelated = subprocess.Popen([sys.executable, "-c", sleeper], start_new_session=True)
+            registry.append("direct-cancel", "probe", str(tmp_path / "direct.log"), "direct", "implementer", direct_supervisor.pid)
+            registry.record_supervisor_identity("direct-cancel", direct_supervisor.pid)
+            assert_true(registry.cmd_cancel("direct-cancel", grace_seconds=0.05) == 0,
+                        "verified direct supervisor should be cancellable without worker fields")
+            assert_true(unrelated.poll() is None, "direct cancellation signalled unrelated process")
+    finally:
+        for proc in (worker, agent_supervisor, direct_supervisor, unrelated):
+            if proc is not None and proc.poll() is None:
+                proc.kill()
+            if proc is not None:
+                try:
+                    proc.wait(timeout=2)
+                except subprocess.TimeoutExpired:
+                    pass
+    print("PASS  dead-worker and direct supervisor cancellation paths")
+
+
+def test_wall_timeout_publishes_single_registry_receipt_after_child_reap():
+    """A real reaped worker yields one wall_clock_exceeded terminal receipt."""
+    original_budget = os.environ.get("AQ_AGENT_WALL_BUDGET_S")
+    original_monotonic = None
+    original_terminate = None
+    child = None
+    try:
+        with tempfile.TemporaryDirectory() as tmp:
+            tmp_path = Path(tmp)
+            script_dir = tmp_path / "scripts"
+            script_dir.mkdir()
+            agent_loop = script_dir / "aq-agent-loop"
+            agent_loop.write_text("#!/usr/bin/env python3\nimport time\ntime.sleep(60)\n", encoding="utf-8")
+            agent_loop.chmod(0o755)
+            output = tmp_path / "delegation" / "outputs" / "wall.log"
+            dispatch_mod = _load_dispatch()
+            tr_mod = _load_task_registry()
+            registry = tr_mod.TaskRegistry(tmp_path / "delegation", repo_root=tmp_path)
+            task_id = "wall-receipt"
+            registry.append(task_id, "wall probe", str(output), "agent", "implementer", os.getpid())
+            registry.record_supervisor_identity(task_id, os.getpid())
+            config = dispatch_mod.TaskConfig(
+                mode="agent", role="implementer", timeout_secs=300, max_tokens=20,
+                llama_url="http://127.0.0.1:19999", hybrid_url="http://127.0.0.1:19999",
+                ralph_url="http://127.0.0.1:19999", task_type="agent",
+            )
+            os.environ["AQ_AGENT_WALL_BUDGET_S"] = "1"
+            original_monotonic = dispatch_mod.time.monotonic
+            original_terminate = dispatch_mod._terminate_agent_process
+            clock = iter([0.0, 2.0, 3.0])
+            dispatch_mod.time.monotonic = lambda: next(clock, 3.0)
+            def reap(proc):
+                proc.kill()
+                proc.wait(timeout=2)
+                return True
+            dispatch_mod._terminate_agent_process = reap
+            ok = dispatch_mod.AgentRunner(script_dir).run(config, "probe", output, registry=registry, task_id=task_id)
+            entry = registry.get(task_id) or {}
+            assert_true(not ok and entry.get("terminal_reason") == "wall_clock_exceeded"
+                        and entry.get("terminal_receipt") and entry.get("terminal_published"),
+                        f"wall timeout receipt missing: {entry}")
+    finally:
+        if original_monotonic is not None:
+            dispatch_mod.time.monotonic = original_monotonic
+        if original_terminate is not None:
+            dispatch_mod._terminate_agent_process = original_terminate
+        if original_budget is None:
+            os.environ.pop("AQ_AGENT_WALL_BUDGET_S", None)
+        else:
+            os.environ["AQ_AGENT_WALL_BUDGET_S"] = original_budget
+    print("PASS  wall timeout publishes one post-reap registry receipt")
+
+
+def test_registry_cancel_reaps_verified_worker_group_before_supervisor():
+    """Cancellation kills a stubborn worker/grandchild group, not unrelated work."""
+    worker_code = (
+        "import signal,subprocess,sys,time; "
+        "signal.signal(signal.SIGTERM, signal.SIG_IGN); "
+        "subprocess.Popen([sys.executable, '-c', "
+        "'import signal,time; signal.signal(signal.SIGTERM, signal.SIG_IGN); time.sleep(60)']); "
+        "time.sleep(60)"
+    )
+    sleeper = "import time; time.sleep(60)"
+    worker = supervisor = unrelated = None
+    try:
+        with tempfile.TemporaryDirectory() as tmp:
+            tmp_path = Path(tmp)
+            delegation_dir = tmp_path / "delegation"
+            output = delegation_dir / "outputs" / "cancel.log"
+            output.parent.mkdir(parents=True)
+            worker = subprocess.Popen([sys.executable, "-c", worker_code], start_new_session=True)
+            supervisor = subprocess.Popen([sys.executable, "-c", sleeper], start_new_session=True)
+            unrelated = subprocess.Popen([sys.executable, "-c", sleeper], start_new_session=True)
+            tr_mod = _load_task_registry()
+            registry = tr_mod.TaskRegistry(delegation_dir, repo_root=tmp_path)
+            task_id = "verified-cancel"
+            registry.append(task_id, "cancel probe", str(output), "agent", "implementer", supervisor.pid)
+            supervisor_start = registry._proc_start_time(supervisor.pid)
+            worker_start = registry._proc_start_time(worker.pid)
+            assert_true(supervisor_start is not None and worker_start is not None, "missing process identities")
+            registry.record_process_topology(
+                task_id,
+                supervisor_pid=supervisor.pid, supervisor_start_time=supervisor_start,
+                supervisor_pgid=os.getpgid(supervisor.pid), supervisor_session=os.getsid(supervisor.pid),
+                worker_pid=worker.pid, worker_start_time=worker_start,
+                worker_pgid=os.getpgid(worker.pid), worker_session=os.getsid(worker.pid),
+            )
+            rc = registry.cmd_cancel(task_id, grace_seconds=0.15)
+            entry = registry.get(task_id) or {}
+            assert_true(rc == 0 and entry.get("status") == "cancelled", f"unexpected terminal state: {entry}")
+            assert_true(entry.get("terminal_reason") == "operator_cancelled", "operator terminal reason missing")
+            assert_true(unrelated.poll() is None, "unrelated process was signalled")
+            assert_true(output.read_text(encoding="utf-8") == "operator_cancelled\n", "terminal output was not published once")
+            print("PASS  verified cancellation reaps worker group before supervisor")
+    finally:
+        for proc in (worker, supervisor, unrelated):
+            if proc is not None and proc.poll() is None:
+                proc.kill()
+            if proc is not None:
+                try:
+                    proc.wait(timeout=2)
+                except subprocess.TimeoutExpired:
+                    pass
+
+
+def test_registry_cancel_fails_closed_on_identity_mismatch_and_legacy_records():
+    """A stale or incomplete identity cannot authorize a signal."""
+    sleeper = "import time; time.sleep(60)"
+    worker = supervisor = None
+    try:
+        with tempfile.TemporaryDirectory() as tmp:
+            tmp_path = Path(tmp)
+            delegation_dir = tmp_path / "delegation"
+            output = delegation_dir / "outputs" / "cancel-mismatch.log"
+            output.parent.mkdir(parents=True)
+            worker = subprocess.Popen([sys.executable, "-c", sleeper], start_new_session=True)
+            supervisor = subprocess.Popen([sys.executable, "-c", sleeper], start_new_session=True)
+            tr_mod = _load_task_registry()
+            registry = tr_mod.TaskRegistry(delegation_dir, repo_root=tmp_path)
+            task_id = "mismatched-cancel"
+            registry.append(task_id, "cancel probe", str(output), "agent", "implementer", supervisor.pid)
+            registry.record_process_topology(
+                task_id,
+                supervisor_pid=supervisor.pid, supervisor_start_time=registry._proc_start_time(supervisor.pid),
+                supervisor_pgid=os.getpgid(supervisor.pid), supervisor_session=os.getsid(supervisor.pid),
+                worker_pid=worker.pid, worker_start_time=registry._proc_start_time(worker.pid) + 1,
+                worker_pgid=os.getpgid(worker.pid), worker_session=os.getsid(worker.pid),
+            )
+            assert_true(registry.cmd_cancel(task_id, grace_seconds=0.05) == 1, "identity mismatch must fail closed")
+            entry = registry.get(task_id) or {}
+            assert_true(entry.get("terminal_reason") == "cancel_failed:worker_mismatch", f"wrong mismatch reason: {entry}")
+            assert_true(worker.poll() is None and supervisor.poll() is None, "mismatched PID was signalled")
+
+            legacy_id = "legacy-cancel"
+            registry.append(legacy_id, "legacy", str(output), "agent", "implementer", worker.pid)
+            assert_true(registry.cmd_cancel(legacy_id, grace_seconds=0.05) == 1, "legacy record must fail closed")
+            legacy = registry.get(legacy_id) or {}
+            assert_true("legacy_or_incomplete" in legacy.get("terminal_reason", ""), "legacy failure not typed")
+            print("PASS  cancellation fails closed on identity mismatch and legacy records")
+    finally:
+        for proc in (worker, supervisor):
+            if proc is not None and proc.poll() is None:
+                proc.kill()
+            if proc is not None:
+                try:
+                    proc.wait(timeout=2)
+                except subprocess.TimeoutExpired:
+                    pass
 
 
 def test_dogfood_cancellation_preserves_terminal_registry_truth():
@@ -548,7 +1028,18 @@ if __name__ == "__main__":
         test_delegate_to_local_exposes_repair_status,
         test_agent_runner_creates_initial_output_artifacts,
         test_agent_runner_reaps_no_progress_child,
-        test_agent_runner_defaults_allow_long_horizon_work,
+        test_agent_runner_uses_explicit_shortest_wall_deadline,
+        test_terminal_publication_is_serialized_and_fails_truthfully,
+        test_terminal_receipt_survives_ordinary_registry_writer_race,
+        test_terminate_agent_process_reaps_descendant_after_leader_exit,
+        test_wall_watchdog_boundary_reconciles_terminal_receipt,
+        test_wall_boundary_reaps_synchronized_stubborn_descendant_before_receipt,
+        test_post_kill_group_disappearance_is_bounded_and_fail_closed,
+        test_append_update_terminal_race_preserves_both_tasks_and_receipt,
+        test_registry_cancel_allows_dead_worker_and_direct_supervisor_only,
+        test_wall_timeout_publishes_single_registry_receipt_after_child_reap,
+        test_registry_cancel_reaps_verified_worker_group_before_supervisor,
+        test_registry_cancel_fails_closed_on_identity_mismatch_and_legacy_records,
         test_dogfood_cancellation_preserves_terminal_registry_truth,
         test_registry_status_reconciles_dead_agent_failure,
         test_registry_monitor_is_read_only_json,
