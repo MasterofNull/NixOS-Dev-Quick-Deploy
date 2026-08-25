@@ -79,9 +79,13 @@ ENV = {
     # child self-terminates before the runner's poll cap. A 30min budget is too short.
     "AQ_AGENT_WALL_BUDGET_S": "2700",
     "AGENT_WALL_CLOCK_SECS": "2700",
-    # Strict opt-in count-only payload receipt + pre-submit cap.  This is
-    # dogfood-only; ordinary delegate-to-local work is unchanged.
-    "AQ_LOCAL_DOGFOOD_BUDGET": "1",
+    # NOTE (2026-08-25): AQ_LOCAL_DOGFOOD_BUDGET removed — its 14000-char pre-submit cap
+    # (_DOGFOOD_PAYLOAD_JSON_LIMIT) is miscalibrated BELOW both the real payload (~21896
+    # chars with the full context stack) AND the model's own LLAMA_MAX_PROMPT_CHARS=24000
+    # guard, so it rejected every task in 0.4s ("payload budget exceeded before HTTP").
+    # The validated measured run (2026-08-25, first clean correct edit) used NO dogfood
+    # budget; the model's 24000 guard is the real protection. Re-add later ONLY with a
+    # threshold aligned to LLAMA_MAX_PROMPT_CHARS (queued). Was: "AQ_LOCAL_DOGFOOD_BUDGET": "1".
     # Micro grounding (~1.2K chars) instead of the full 8K supplement — the full one
     # ate the 24000-char prefill budget, leaving no room for the agent to do tool
     # work (every task failed "prompt too large"). Overrides dispatch.py's default.
