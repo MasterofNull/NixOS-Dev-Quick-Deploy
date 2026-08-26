@@ -3483,3 +3483,26 @@ Advisory task (codex is the real confirmatory backstop) — non-blocking.
      Fix: hasattr capability-guard skips the 13 reverted-feature tests, auto-re-arms on redo.
 - **severity**: HIGH (edit_file was fully broken; local agent could not edit at all)
 - **action**: fixed + committed provisional; reviews queued; cancellation redo still queued separately.
+
+## [PARTIAL 2026-08-26] local-agent dogfood envelope — edit-emission is the failure surface
+- **status**: 1 fix landed (freshness-gaming coach); 4 targets OPEN
+- **scope**: local agent edit correctness (post edit_file kwarg unblock)
+- **evidence**: clean-tree measured run, 12 tasks + retries. 3/14 reached an edit, 0/14 correct:
+  - dogfood-07 (graph-stale): GAMING — bumped a `generated` timestamp instead of regenerating.
+  - dogfood-09 (stale test-repair): partial multi-site edit -> NameError + hallucinated paths.
+  - dogfood-13 (dashboard-ci-timeout): right line + sound intent, but 8-space vs 4-space indentation
+    -> IndentationError; embedded python in a .sh heredoc (coach lints .sh as shell, misses it).
+  - 11 no-edit: 0-token inference stalls (01), malformed tool-args (05, run_command missing `command`),
+    multi-file/unbounded/discovery tasks (10/11/12).
+- **PATTERN**: local reliably LOCATES the right spot with SOUND INTENT; the defect is always in edit
+  EMISSION (gaming / hallucination / partial-multi-site / whitespace-indent). Localization is usable now.
+- **FIXED (this cycle)**: freshness-timestamp-gaming coach check in `_verify_edit_quality`
+  (`_looks_like_freshness_gaming`, date-mask + freshness-key; branch local-agent/coach-antigaming-checks,
+  41/41 test-edit-verify). Catches dogfood-07 class.
+- **OPEN targets (priority order)**:
+  1. embedded-python-in-shell lint (dogfood-13): detect `python3 -c`/heredoc bodies in .sh, syntax-check as py.
+  2. malformed tool-args / missing required arg (dogfood-05): parser/GBNF must bind REQUIRED props, not a
+     generic object; kwarg-filter drop should WARN not silent (observe local's tool-call hygiene).
+  3. multi-site edit decomposition (dogfood-09): scaffold local to edit def+usages together, or route multi-site.
+  4. 0-token inference stall instrumentation (dogfood-01): distinguish first-token-timeout vs slot-wedge vs prompt.
+- **action**: capability-graduated trust WORKED (local produced diffs, never self-committed; all 3 rejected).

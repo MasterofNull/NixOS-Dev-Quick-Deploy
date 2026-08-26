@@ -379,3 +379,10 @@ REVIEW TARGETS (for Codex — the reliable auto-reviewer — and any returning l
   independent lane is up (Codex / fresh Claude flagship / Antigravity / local once trustworthy — NOT
   the author), review the exact staged patch, then merge to main with Review-Disposition: ACCEPTED +
   Reviewed-subject-sha256 (git diff --cached --binary --full-index | sha256sum) + Reviewed-by.
+- [ROUTE — review coach freshness-gaming check] branch local-agent/coach-antigaming-checks (off
+  edit-file-kwarg-unblock). Adds _looks_like_freshness_gaming to _verify_edit_quality — rejects
+  timestamp-only bumps on freshness fields (dogfood-07 gaming class). 41/41 test-edit-verify.
+  VERIFY (reviewer): (a) false-positive surface — any legit edit that ONLY changes a date on a
+  freshness-named line (e.g. intentionally correcting a wrong date)? (b) does the 4-line cap miss a
+  multi-stamp gaming edit? (c) should it also gate on the task mentioning stale/refresh, or is the
+  structural signal enough? Merge ACCEPTED with bound review after edit-file-kwarg-unblock lands.
