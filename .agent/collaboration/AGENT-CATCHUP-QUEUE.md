@@ -330,3 +330,6 @@ REVIEW TARGETS (for Codex — the reliable auto-reviewer — and any returning l
   Prior [SUSPECT] flag above is now CONFIRMED + reverted.
 - [Rule 21 parity] COLLABORATIVE STEWARDSHIP added to CLAUDE.md — Rule-16 parity REQUIRED: propagate to
   .agent/CODEX.md, .agent/LOCAL-AGENT.md, .agent/GEMINI.md, .agent/WORKFLOW-CANON.md same cycle.
+- [edit-verify coach gate] (provisional): AQ_EDIT_VERIFY post-edit no-op/dead-code/task-relevance coach.
+  VERIFY: do the coach's static checks false-positive on any legit edit shape (multi-line strings, decorators,
+  re-exported defs, dynamically-referenced names)? is the bounded retry truly bounded under all paths?
