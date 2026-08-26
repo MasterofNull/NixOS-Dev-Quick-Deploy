@@ -333,3 +333,7 @@ REVIEW TARGETS (for Codex — the reliable auto-reviewer — and any returning l
 - [edit-verify coach gate] (provisional): AQ_EDIT_VERIFY post-edit no-op/dead-code/task-relevance coach.
   VERIFY: do the coach's static checks false-positive on any legit edit shape (multi-line strings, decorators,
   re-exported defs, dynamically-referenced names)? is the bounded retry truly bounded under all paths?
+- [coach lint check + pyflakes] (provisional): the Python undefined-name coach needs pyflakes (added to
+  base.nix) + a REBUILD to be live; shell path works now. After rebuild, re-run dogfood-01 to confirm.
+  VERIFY: _reconstruct_pre_edit_content (edit_file reverse-substitution) — does it mis-handle multi-occurrence
+  new_string? does new-breakage diffing hold when line numbers shift a lot?
