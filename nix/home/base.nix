@@ -248,14 +248,25 @@ let
     "[yaml]"."editor.defaultFormatter" = "redhat.vscode-yaml";
     "yaml.validate" = true;
     "continue.telemetryEnabled" = false;
-    "continue.enableTabAutocomplete" = true;
+    # Tab-autocomplete fires the LOCAL LLM on every keystroke, competing with the
+    # agentic dev loop for the single APU inference slot. OFF so VSCodium can stay
+    # open during dogfooding without stealing GPU from the local agent. (Also forced
+    # off in the enforceCodexVscodeSettings jq below, or it gets re-enabled.)
+    "continue.enableTabAutocomplete" = false;
     "continue.showInlineTip" = true;
     "cSpell.import" = [];
     "extensions.autoUpdate" = false;
     "extensions.autoCheckUpdates" = false;
-    "git.enableSmartCommit" = true;
+    # Git auto-behaviors OFF: with autofetch + smart-commit + unconfirmed sync,
+    # VSCodium's Source Control auto-stashes the working tree (the "WIP on main"
+    # stashes) to complete a pull/sync — silently yanking the agent's in-progress
+    # edits mid-slice. The agent owns the working tree during dogfooding; VSCodium
+    # must never mutate/stash it autonomously. Manual git in a terminal still works.
+    "git.enableSmartCommit" = false;
     "git.confirmSync" = false;
-    "git.autofetch" = true;
+    "git.autofetch" = false;
+    "git.autoStash" = false;
+    "git.postCommitCommand" = "none";
     # Prevent VSCodium from injecting its own credential helper into
     # .git/config — the global gh auth credential helper is authoritative.
     "git.useIntegratedAskPass" = false;
@@ -1344,7 +1355,7 @@ if changed:
                 .["workbench.colorTheme"] = "Activate SCARLET protocol (beta)" |
                 .["workbench.preferredDarkColorTheme"] = "Activate SCARLET protocol (beta)" |
                 .["window.autoDetectColorScheme"] = false |
-                .["continue.enableTabAutocomplete"] = true |
+                .["continue.enableTabAutocomplete"] = false |
                 .["continue.telemetryEnabled"] = false
               ' "$settings_file" > "$tmp"; then
                 mv "$tmp" "$settings_file"
