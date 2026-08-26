@@ -764,6 +764,49 @@ def _looks_like_noop_edit(removed: List[str], added: List[str], file_path: str) 
     )
 
 
+# Freshness-gaming detection (dogfood-07): a "stale artifact / regenerate" task
+# where the ONLY change is bumping a timestamp/date value in a freshness-named field
+# is gaming the freshness signal (CLAUDE.md Rule 19 names hand-editing a freshness
+# timestamp as gaming), NOT a real fix — the artifact's content is unchanged.
+_FRESHNESS_KEY_RE = re.compile(
+    r'\b(generated|last[_-]?(evaluated|updated|modified|run|refreshed?|checked)'
+    r'|lastmodified|last_modified|updated|refreshed|regenerated|as[_-]?of'
+    r'|timestamp|mtime|date)\b',
+    re.I,
+)
+# ISO-8601 date/datetime, or a 10-digit unix epoch (2001..2033 range starts with 1).
+_DATE_LIKE_RE = re.compile(
+    r'\d{4}-\d{2}-\d{2}(?:[T ]\d{2}:\d{2}:\d{2}(?:\.\d+)?(?:Z|[+-]\d{2}:?\d{2})?)?'
+    r'|\b1[0-9]{9}\b',
+)
+
+
+def _looks_like_freshness_gaming(removed: List[str], added: List[str]) -> bool:
+    """True only when the edit changes NOTHING but a date/timestamp value on a
+    freshness-named field — the hallmark of faking freshness instead of doing the
+    work (regenerating the artifact). Requires a KNOWN removed side; a large edit
+    (a genuine regeneration touches far more than a stamp) never triggers this.
+    """
+    rem = [l for l in removed if l.strip()]
+    add = [l for l in added if l.strip()]
+    if not rem or not add:
+        return False
+    if len(rem) > 4 or len(add) > 4:
+        return False  # a real regenerate rewrites content, not just a stamp
+    # Mask date-like tokens on both sides; if what's left is identical, the ONLY
+    # thing that changed was date/timestamp values.
+    def _mask(lines: List[str]) -> List[str]:
+        return sorted(_DATE_LIKE_RE.sub("#DATE#", l) for l in lines)
+    if _mask(rem) != _mask(add):
+        return False  # something other than a date changed -> real edit
+    # And at least one changed line must actually be a freshness-named field
+    # (otherwise a legit date value elsewhere isn't gaming).
+    if not any(_FRESHNESS_KEY_RE.search(l) for l in rem + add):
+        return False
+    # Guard against the degenerate "no date actually changed" case.
+    return any(_DATE_LIKE_RE.search(l) for l in rem)
+
+
 def _extract_added_definitions(added: List[str]) -> List[str]:
     """Names of new top-level def/class/function statements in `added` lines,
     reusing the same structural scan the read_file outline uses (Python
@@ -1064,6 +1107,20 @@ def _verify_edit_quality(
                 "Make the actual code/logic change the task requires (a new "
                 "condition, a different value, a call to the right function, "
                 "etc.), then retry the edit."
+            ),
+        )
+
+    if _looks_like_freshness_gaming(removed, added):
+        return _EditVerdict(
+            passed=False,
+            reason="freshness_timestamp_gaming",
+            coaching_message=(
+                "Your edit only bumped a date/timestamp field — that fakes the "
+                "freshness signal without regenerating the artifact, so the "
+                "stale content is still stale. If the task is to refresh/rebuild "
+                "an artifact, run the generator/command that regenerates it (its "
+                "content AND its timestamp), don't hand-edit the timestamp. If "
+                "you can't regenerate it here, say so instead of editing the date."
             ),
         )
 
