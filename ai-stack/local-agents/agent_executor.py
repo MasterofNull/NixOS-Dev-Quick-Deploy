@@ -12,14 +12,18 @@ Enables local llama.cpp agents to execute tasks with tool use:
 Part of Phase 11 Batch 11.3: Workflow Integration
 """
 
+import ast
 import asyncio
 import difflib
 import json
 import logging
 import os
 import re
+import shutil
+import subprocess
 import sys
 import time
+from collections import Counter
 from dataclasses import dataclass, field
 from datetime import datetime, timezone
 from enum import Enum
@@ -787,6 +791,201 @@ def _find_dead_added_definition(
     return None
 
 
+# LINT / name-resolution check — the THIRD failure mode (issues-backlog:
+# local-edit-third-failure-mode-undefined-name), distinct from no-op and dead
+# code: an edit that PARSES fine and isn't dead code but still crashes at
+# runtime — e.g. `re.match(...)` added to a file with no `import re`. Python
+# is checked with pyflakes when importable (precise undefined-name detection);
+# shell is checked with `bash -n` (+ shellcheck errors when installed). Both
+# paths degrade to syntax-only when the precise tool is unavailable — never
+# raise, never block the loop on a missing optional dependency.
+_PY_LINT_EXTENSIONS = frozenset({".py", ".pyi"})
+_SHELL_LINT_EXTENSIONS = frozenset({".sh", ".bash"})
+_PYFLAKES_LOC_RE = re.compile(r"^\S*?:\d+(?::\d+)?:\s*")
+_UNDEFINED_NAME_RE = re.compile(r"undefined name '([\w.]+)'")
+
+
+def _detect_lint_language(file_path: str, content: str) -> Optional[str]:
+    """'python' | 'shell' | None. Extension first, shebang second — a repo
+    script can be extensionless with a shebang (e.g. `aq-role-route` is a
+    `#!/usr/bin/env python3` script with no `.py` suffix)."""
+    suffix = Path(file_path).suffix.lower()
+    if suffix in _PY_LINT_EXTENSIONS:
+        return "python"
+    if suffix in _SHELL_LINT_EXTENSIONS:
+        return "shell"
+    first_line = content.splitlines()[0] if content else ""
+    if first_line.startswith("#!"):
+        shebang = first_line.lower()
+        if "python" in shebang:
+            return "python"
+        if "bash" in shebang or "/sh" in shebang or shebang.rstrip().endswith(" sh"):
+            return "shell"
+    return None
+
+
+def _pyflakes_messages(content: str, label: str) -> Optional[List[str]]:
+    """Bare pyflakes message text (location prefix stripped, so pre/post diffs
+    aren't thrown off by line numbers shifting). Returns None — a sentinel,
+    NOT "clean" — when pyflakes isn't importable, so callers can fall back to
+    compile-only checking instead of silently treating "no findings" as
+    "found nothing to report"."""
+    try:
+        from pyflakes.api import check as _pyflakes_check_fn
+        from pyflakes.reporter import Reporter
+    except ImportError:
+        return None
+    import io
+    out, err = io.StringIO(), io.StringIO()
+    try:
+        _pyflakes_check_fn(content, label, Reporter(out, err))
+    except Exception:
+        return []  # pyflakes itself choked — treat as "no findings", not "unavailable"
+    raw = out.getvalue().splitlines() + err.getvalue().splitlines()
+    return [_PYFLAKES_LOC_RE.sub("", ln, count=1).strip() for ln in raw if ln.strip()]
+
+
+def _python_compile_error(content: str, label: str) -> Optional[str]:
+    """Syntax-only fallback for when pyflakes is unavailable. Never raises."""
+    try:
+        compile(content, label, "exec", ast.PyCF_ONLY_AST)
+        return None
+    except SyntaxError as e:
+        return f"SyntaxError: {e.msg} (line {e.lineno})"
+    except Exception as e:  # noqa: BLE001 — any other compile-time failure counts too
+        return f"{type(e).__name__}: {e}"
+
+
+def _lint_diff_python(post_content: str, pre_content: Optional[str]) -> Optional[str]:
+    """New Python lint finding introduced by this edit, or None. Diffs
+    pre/post pyflakes output as multisets so a pre-existing warning is never
+    re-flagged just because the edit shifted its line number."""
+    post_msgs = _pyflakes_messages(post_content, "post_edit.py")
+    if post_msgs is not None:
+        if pre_content is not None:
+            pre_msgs = _pyflakes_messages(pre_content, "pre_edit.py") or []
+            new_msgs = list((Counter(post_msgs) - Counter(pre_msgs)).elements())
+        else:
+            # No pre-image: conservative — only the undefined-name class this
+            # check exists to catch, not the full pyflakes noise floor (unused
+            # imports etc.) that may well predate this edit.
+            new_msgs = [m for m in post_msgs if "undefined name" in m]
+        return "; ".join(sorted(set(new_msgs))[:5]) if new_msgs else None
+
+    # Fallback: pyflakes not importable in this env — compile-only syntax check.
+    post_err = _python_compile_error(post_content, "post_edit.py")
+    if post_err is None:
+        return None
+    if pre_content is not None and _python_compile_error(pre_content, "pre_edit.py") is not None:
+        return None  # pre-existing syntax error — not introduced by this edit
+    return post_err
+
+
+def _shell_syntax_error(content: str) -> Optional[str]:
+    """`bash -n` (parse-only, no execution) syntax check. Never raises."""
+    try:
+        proc = subprocess.run(
+            ["bash", "-n"], input=content, capture_output=True, text=True, timeout=5,
+        )
+        if proc.returncode != 0:
+            return (proc.stderr or "").strip()[:400] or "bash -n: syntax error"
+        return None
+    except Exception:
+        return None
+
+
+def _shellcheck_error_messages(content: str) -> Optional[List[str]]:
+    """shellcheck error-level (not style/info) findings, or None if shellcheck
+    isn't installed — a sentinel distinct from "clean", same contract as
+    _pyflakes_messages."""
+    if shutil.which("shellcheck") is None:
+        return None
+    try:
+        proc = subprocess.run(
+            ["shellcheck", "-f", "json", "-s", "bash", "-"],
+            input=content, capture_output=True, text=True, timeout=8,
+        )
+        findings = json.loads(proc.stdout or "[]")
+    except Exception:
+        return []  # shellcheck itself choked — treat as "no findings"
+    return [
+        f"{item.get('level')}: {item.get('message')}"
+        for item in findings if item.get("level") == "error"
+    ]
+
+
+def _lint_diff_shell(post_content: str, pre_content: Optional[str]) -> Optional[str]:
+    """New shell lint finding introduced by this edit, or None."""
+    post_syntax_err = _shell_syntax_error(post_content)
+    if post_syntax_err is not None:
+        pre_had_same_error = (
+            pre_content is not None and _shell_syntax_error(pre_content) is not None
+        )
+        if not pre_had_same_error:
+            return f"bash -n: {post_syntax_err}"
+
+    post_sc = _shellcheck_error_messages(post_content)
+    if post_sc:
+        if pre_content is not None:
+            pre_sc = _shellcheck_error_messages(pre_content) or []
+            new_sc = list((Counter(post_sc) - Counter(pre_sc)).elements())
+        else:
+            new_sc = []  # no pre-image: trust only the bash -n hard-error path above
+        if new_sc:
+            return "; ".join(sorted(set(new_sc))[:5])
+    return None
+
+
+def _lint_check_edited_file(
+    file_path: str, post_edit_content: str, pre_edit_content: Optional[str],
+) -> Optional[str]:
+    """Cheap post-edit LINT / name-resolution check on the FULL edited file —
+    catches would-crash edits that pass the no-op and dead-code checks (valid
+    syntax, genuinely new code, wired in) but reference something undefined,
+    e.g. `re.match(...)` with no `import re`. Lints post-edit content and,
+    when pre-edit content is available (see _reconstruct_pre_edit_content),
+    diffs against pre-edit findings so ONLY newly-introduced issues are
+    reported — pre-existing lint debt this edit didn't touch is never
+    flagged. Returns a short finding string, or None (clean / not a
+    lintable language / lint itself failed). Fail-safe: never raises.
+    """
+    lang = _detect_lint_language(file_path, post_edit_content)
+    if lang == "python":
+        return _lint_diff_python(post_edit_content, pre_edit_content)
+    if lang == "shell":
+        return _lint_diff_shell(post_edit_content, pre_edit_content)
+    return None
+
+
+def _reconstruct_pre_edit_content(
+    tool_name: str,
+    arguments: Dict[str, Any],
+    post_edit_content: str,
+    pre_content: Optional[str],
+) -> Optional[str]:
+    """Full pre-edit FILE content for the lint-diff check (as opposed to
+    _edit_diff_lines' removed/added LINES). write_region/write_file already
+    have a real pre-edit snapshot captured before dispatch — reuse it as-is.
+    edit_file has no such snapshot (the line-diff check never needed one:
+    old_string/new_string ARE the diff), but since edit_file is an exact
+    substring replacement, the pre-edit file can be reconstructed by
+    reversing it on the post-edit content. Conservative: only reconstructs
+    when new_string appears EXACTLY ONCE in the post-edit content — an
+    ambiguous multi-match reversal could silently rebuild the wrong file —
+    and returns None (unknown pre-image) otherwise, which callers already
+    treat safely as "be conservative, don't over-flag."
+    """
+    if tool_name in ("write_region", "write_file"):
+        return pre_content
+    if tool_name == "edit_file":
+        new_string = str(arguments.get("new_string") or "")
+        old_string = str(arguments.get("old_string") or "")
+        if not new_string or post_edit_content.count(new_string) != 1:
+            return None
+        return post_edit_content.replace(new_string, old_string, 1)
+    return None
+
+
 # Task-relevance heuristic input: ONLY backtick-quoted symbols/snippets or bare
 # file paths with an extension — freeform prose parsing is too false-positive-
 # prone for a coaching gate. An objective with none of these shapes yields no
@@ -868,6 +1067,43 @@ def _verify_edit_quality(
                     f"place the task needs the new behavior, or, if a separate "
                     f"function isn't needed, fold the change in inline instead."
                 ),
+            )
+
+        # THIRD failure mode (issues-backlog: local-edit-third-failure-mode-
+        # undefined-name): the edit parses, isn't a no-op, isn't dead code —
+        # but still references something undefined and would crash at
+        # runtime (e.g. `re.match(...)` with no `import re`). Lint-diffed
+        # against the pre-edit file so only NEW breakage is coached, never
+        # pre-existing lint debt. Wrapped separately so a lint-tooling bug
+        # (missing pyflakes/shellcheck, subprocess failure, etc.) degrades to
+        # "skip this check" without affecting the checks above/below it.
+        lint_issue: Optional[str] = None
+        try:
+            pre_edit_full = _reconstruct_pre_edit_content(
+                tool_name, arguments, post_edit_content, pre_content,
+            )
+            lint_issue = _lint_check_edited_file(file_path, post_edit_content, pre_edit_full)
+        except Exception:  # noqa: BLE001 — fail-safe: skip the lint check, never crash the loop
+            lint_issue = None
+        if lint_issue:
+            name_match = _UNDEFINED_NAME_RE.search(lint_issue)
+            if name_match:
+                bad_name = name_match.group(1)
+                coaching_message = (
+                    f"Your edit uses `{bad_name}` but it's not imported/defined "
+                    f"in this file — add `import {bad_name}` at the top (or the "
+                    f"correct import for it), or use a different approach that "
+                    f"doesn't need it."
+                )
+            else:
+                coaching_message = (
+                    f"Your edit introduces a problem that will break the file: "
+                    f"{lint_issue}. Fix that before moving on."
+                )
+            return _EditVerdict(
+                passed=False,
+                reason=f"lint_new_error:{lint_issue[:80]}",
+                coaching_message=coaching_message,
             )
 
     targets = _extract_task_named_targets(task_objective or "")

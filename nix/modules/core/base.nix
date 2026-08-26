@@ -97,6 +97,13 @@
     # psutil (via the dashboard backend); without it the focused-ci
     # dashboard-compat check FAILs whenever a dashboard file is staged.
     psutil
+    # pyflakes — the local-agent post-edit verify/coach gate (AQ_EDIT_VERIFY,
+    # agent_executor._lint_check_edited_file) uses it for precise undefined-name
+    # detection so a would-crash edit (e.g. `re.match` without `import re`) is caught
+    # and coached. Without it the Python path degrades to compile-only (syntax) and
+    # misses undefined names. Added 2026-08-26 (motivated by the re-without-import
+    # edit the coach let through). Requires a rebuild to take effect.
+    pyflakes
   ]);
   cliPythonNames = [ "python3" "python3Full" "python312" "python313" ];
   mergedPackageNames = lib.unique (basePackageNames ++ cfg.profileData.systemPackageNames);
