@@ -328,3 +328,5 @@ REVIEW TARGETS (for Codex — the reliable auto-reviewer — and any returning l
   wall-clock rewire blocks the child's HTTP stream to llama.cpp. Its acceptance MUST include an
   inference-smoke check (a tiny agent task produces tokens) so an inference regression can't ship again.
   Prior [SUSPECT] flag above is now CONFIRMED + reverted.
+- [Rule 21 parity] COLLABORATIVE STEWARDSHIP added to CLAUDE.md — Rule-16 parity REQUIRED: propagate to
+  .agent/CODEX.md, .agent/LOCAL-AGENT.md, .agent/GEMINI.md, .agent/WORKFLOW-CANON.md same cycle.
