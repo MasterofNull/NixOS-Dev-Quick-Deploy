@@ -1019,6 +1019,18 @@ in {
       tmp="$(mktemp)"
       if jq '
         .["chatgpt.cliExecutable"] = (env.HOME + "/.npm-global/bin/codex") |
+        # Converge the agentic-dev automation-quieting keys onto the EXISTING
+        # (mutable) settings.json. createVSCodiumSettings only writes the file on
+        # first creation, so the declarative vscodiumSettings values for these keys
+        # never reach an already-present settings.json — they must be force-patched
+        # here every switch. Rationale in the vscodiumSettings block: no keystroke
+        # LLM autocomplete stealing the APU slot, and no VSCodium Git auto-stash/
+        # auto-fetch mutating the working tree during agent runs.
+        .["continue.enableTabAutocomplete"] = false |
+        .["git.autofetch"] = false |
+        .["git.enableSmartCommit"] = false |
+        .["git.autoStash"] = false |
+        .["git.postCommitCommand"] = "none" |
         del(
           .["gpt-codex.executablePath"], .["gpt-codex.environmentVariables"], .["gpt-codex.autoStart"],
           .["gptCodex.executablePath"], .["gptCodex.environmentVariables"], .["gptCodex.autoStart"],
