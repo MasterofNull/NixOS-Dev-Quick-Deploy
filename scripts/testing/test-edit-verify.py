@@ -49,6 +49,32 @@ Coverage:
       forever; it eventually falls through and ends normally.
   (f) AQ_EDIT_VERIFY=0 (kill switch) restores the plain accept-on-success
       behavior — no coaching is ever injected, even for a comment-only edit.
+
+THIRD failure mode — LINT / name-resolution (issues-backlog:
+local-edit-third-failure-mode-undefined-name): an edit that PARSES fine and
+isn't dead code but still crashes at runtime (e.g. `re.match(...)` used with
+no `import re`). Added to `_verify_edit_quality` via `_lint_check_edited_file`
++ `_lint_diff_python` / `_lint_diff_shell` (pyflakes/`bash -n`+shellcheck,
+diffed against the pre-edit file so only NEW breakage is coached, never
+pre-existing lint debt).
+  (g) An edit adding `re.match(...)` to a file with no `import re` triggers
+      the lint coach, naming `re` and suggesting the import fix. pyflakes's
+      actual undefined-name detection is MOCKED (`ae._pyflakes_messages`) so
+      this test is deterministic regardless of whether pyflakes happens to be
+      installed on the box running it (it is not, in this repo's Nix
+      environment — see (k) for the real, unmocked fallback path).
+  (h) The same shape of edit in a file that already has `import re` passes
+      clean — zero coaching.
+  (i) A pre-existing lint issue elsewhere in the file, untouched by the edit,
+      is never flagged — only issues the edit itself introduces are coached.
+  (j) A bash (.sh) file where the edit introduces a real syntax error (an
+      `if` with no matching `fi`) is flagged via the REAL `bash -n` subprocess
+      (no mocking — bash is always present) naming the break.
+  (k) Fail-safe: with pyflakes AND shellcheck both simulated absent
+      (`_pyflakes_messages`/`_shellcheck_error_messages` return None, the real
+      "unavailable" sentinel), the lint check degrades to compile-only syntax
+      checking — a genuine SyntaxError is still coached, and the loop never
+      crashes either way.
 """
 from __future__ import annotations
 
@@ -106,12 +132,20 @@ def coach_msgs_in_final_state(snapshots: list) -> list:
         m for m in snapshots[-1]
         if m.get("role") == "tool"
         and ("does not change the program's behavior" in (m.get("content") or "")
-             or "dead code" in (m.get("content") or ""))
+             or "dead code" in (m.get("content") or "")
+             or "not imported/defined" in (m.get("content") or "")
+             or "will break the file" in (m.get("content") or ""))
     ]
 
 
 def make_target_file(tmp_dir: Path, content: str) -> str:
     p = tmp_dir / "target.py"
+    p.write_text(content, encoding="utf-8")
+    return str(p)
+
+
+def make_target_file_named(tmp_dir: Path, name: str, content: str) -> str:
+    p = tmp_dir / name
     p.write_text(content, encoding="utf-8")
     return str(p)
 
@@ -399,6 +433,283 @@ async def test_coaching_bounded_per_file():
         check("the loop terminates (bounded max_tool_calls, never hangs)", isinstance(final_msg, str))
 
 
+async def test_lint_undefined_name_triggers_coach():
+    """(g): an edit that adds `re.match(...)` to a file with no `import re`
+    triggers the lint coach, naming `re`. pyflakes is mocked via
+    `ae._pyflakes_messages` (see module docstring) so this is deterministic
+    regardless of whether pyflakes happens to be installed."""
+    initial = "def handle(value):\n    return value\n"
+    with tempfile.TemporaryDirectory() as td:
+        target_path = make_target_file(Path(td), initial)
+        ex = make_executor()
+        task = Task(id="t-lint-undef", objective="reject blank values in handle()", status=TaskStatus.RUNNING)
+        snapshots: list = []
+        calls = {"n": 0}
+
+        def _fake_parse(_response: str):
+            calls["n"] += 1
+            n = calls["n"]
+            if n == 1:
+                # Uses re.match with no import anywhere in the file — undefined name.
+                return make_edit_call(
+                    "call-1", target_path,
+                    "def handle(value):\n    return value\n",
+                    "def handle(value):\n    if re.match(r'^\\s*$', value):\n        return None\n    return value\n",
+                )
+            if n == 2:
+                # Fix: add the missing import.
+                return make_edit_call(
+                    "call-2", target_path,
+                    "def handle(value):\n    if re.match",
+                    "import re\n\n\ndef handle(value):\n    if re.match",
+                )
+            return None
+
+        async def _fake_call_llama(messages, **kwargs):
+            snapshots.append(list(messages))
+            n = calls["n"] + 1
+            if n <= 2:
+                return f'{{"function": "edit_file", "arguments": {{"file_path": "{target_path}"}}}}', 10
+            return "COMPLETED: rejected blank values with re.match and imported re.", 10
+
+        def _fake_pyflakes(content, _label):
+            # Mirrors real pyflakes: undefined-name finding iff `re` is used
+            # without an `import re` anywhere in the content being checked.
+            return ["undefined name 're'"] if "re.match" in content and "import re" not in content else []
+
+        ex.tool_registry.parse_tool_call_from_llama.side_effect = _fake_parse
+        ex.tool_registry.execute_tool_call = AsyncMock(side_effect=make_edit_exec(target_path))
+        ex._call_llama = AsyncMock(side_effect=_fake_call_llama)
+
+        with patch.object(ae, "_pyflakes_messages", side_effect=_fake_pyflakes):
+            final_msg, _tokens = await ex._execute_with_tools(task, AgentType.AGENT, max_tool_calls=0)
+
+        coach_msgs = coach_msgs_in_final_state(snapshots)
+        check("lint coach delivered as role:'tool' message", len(coach_msgs) >= 1)
+        check("lint coach names the undefined `re`", any("`re`" in m["content"] for m in coach_msgs))
+        check("lint coach suggests the fix (add import)",
+              any("import re" in m["content"] for m in coach_msgs))
+        check("task completes after the import is added",
+              "Aborting" not in final_msg and "stagnation" not in final_msg.lower())
+        check("the import fix actually landed on disk",
+              "import re" in Path(target_path).read_text(encoding="utf-8"))
+
+
+async def test_lint_clean_when_import_present():
+    """(h): the same shape of edit in a file that already has `import re`
+    passes clean — zero coaching."""
+    initial = "import re\n\n\ndef handle(value):\n    return value\n"
+    with tempfile.TemporaryDirectory() as td:
+        target_path = make_target_file(Path(td), initial)
+        ex = make_executor()
+        task = Task(id="t-lint-clean", objective="reject blank values in handle()", status=TaskStatus.RUNNING)
+        snapshots: list = []
+        calls = {"n": 0}
+
+        def _fake_parse(_response: str):
+            calls["n"] += 1
+            if calls["n"] == 1:
+                return make_edit_call(
+                    "call-1", target_path,
+                    "def handle(value):\n    return value\n",
+                    "def handle(value):\n    if re.match(r'^\\s*$', value):\n        return None\n    return value\n",
+                )
+            return None
+
+        async def _fake_call_llama(messages, **kwargs):
+            snapshots.append(list(messages))
+            if calls["n"] < 1:
+                return f'{{"function": "edit_file", "arguments": {{"file_path": "{target_path}"}}}}', 10
+            return "COMPLETED: rejected blank values with re.match.", 10
+
+        def _fake_pyflakes(_content, _label):
+            return []  # import re already present — nothing undefined
+
+        ex.tool_registry.parse_tool_call_from_llama.side_effect = _fake_parse
+        ex.tool_registry.execute_tool_call = AsyncMock(side_effect=make_edit_exec(target_path))
+        ex._call_llama = AsyncMock(side_effect=_fake_call_llama)
+
+        with patch.object(ae, "_pyflakes_messages", side_effect=_fake_pyflakes):
+            final_msg, _tokens = await ex._execute_with_tools(task, AgentType.AGENT, max_tool_calls=0)
+
+        coach_msgs = coach_msgs_in_final_state(snapshots)
+        check("no lint coaching when re is already imported", len(coach_msgs) == 0)
+        check("task completes normally", "COMPLETED" in final_msg or "re.match" in final_msg)
+        check("the edit landed on disk", "re.match" in Path(target_path).read_text(encoding="utf-8"))
+
+
+async def test_lint_ignores_preexisting_issue():
+    """(i): a pre-existing lint issue elsewhere in the file, untouched by the
+    edit, is never flagged — only NEW issues the edit itself introduces."""
+    initial = (
+        "def helper():\n"
+        "    return unknown_var\n\n\n"
+        "def handle(value):\n"
+        "    return value\n"
+    )
+    with tempfile.TemporaryDirectory() as td:
+        target_path = make_target_file(Path(td), initial)
+        ex = make_executor()
+        task = Task(id="t-lint-preexisting", objective="make handle() return a default for empty input", status=TaskStatus.RUNNING)
+        snapshots: list = []
+        calls = {"n": 0}
+
+        def _fake_parse(_response: str):
+            calls["n"] += 1
+            if calls["n"] == 1:
+                # Real behavioral edit, unrelated to helper()'s pre-existing bug.
+                return make_edit_call(
+                    "call-1", target_path,
+                    "def handle(value):\n    return value\n",
+                    "def handle(value):\n    return value if value else 'default'\n",
+                )
+            return None
+
+        async def _fake_call_llama(messages, **kwargs):
+            snapshots.append(list(messages))
+            if calls["n"] < 1:
+                return f'{{"function": "edit_file", "arguments": {{"file_path": "{target_path}"}}}}', 10
+            return "COMPLETED: added default fallback in handle().", 10
+
+        def _fake_pyflakes(content, _label):
+            # The pre-existing bug is present in BOTH pre- and post-edit content
+            # (the edit never touches helper()) — same finding count both sides.
+            return ["undefined name 'unknown_var'"] if "unknown_var" in content else []
+
+        ex.tool_registry.parse_tool_call_from_llama.side_effect = _fake_parse
+        ex.tool_registry.execute_tool_call = AsyncMock(side_effect=make_edit_exec(target_path))
+        ex._call_llama = AsyncMock(side_effect=_fake_call_llama)
+
+        with patch.object(ae, "_pyflakes_messages", side_effect=_fake_pyflakes):
+            final_msg, _tokens = await ex._execute_with_tools(task, AgentType.AGENT, max_tool_calls=0)
+
+        coach_msgs = coach_msgs_in_final_state(snapshots)
+        check("pre-existing (untouched) lint issue is never flagged", len(coach_msgs) == 0)
+        check("task completes normally", "COMPLETED" in final_msg or "default" in final_msg)
+
+
+async def test_lint_shell_syntax_error_introduced():
+    """(j): a bash file where the edit introduces a real syntax error (an
+    `if` with no matching `fi`) is flagged via the REAL `bash -n` subprocess
+    — no mocking, bash is always present."""
+    initial = (
+        "#!/usr/bin/env bash\n"
+        "set -euo pipefail\n\n"
+        "greet() {\n"
+        "  echo \"hello\"\n"
+        "}\n\n"
+        "greet\n"
+    )
+    with tempfile.TemporaryDirectory() as td:
+        target_path = make_target_file_named(Path(td), "target.sh", initial)
+        ex = make_executor()
+        task = Task(id="t-lint-shell", objective="make greet() accept an optional name argument", status=TaskStatus.RUNNING)
+        snapshots: list = []
+        calls = {"n": 0}
+
+        def _fake_parse(_response: str):
+            calls["n"] += 1
+            n = calls["n"]
+            if n == 1:
+                # Introduces an `if` with no matching `fi` — real bash -n syntax error.
+                return make_edit_call(
+                    "call-1", target_path,
+                    "greet() {\n  echo \"hello\"\n}\n",
+                    "greet() {\n  if [ -n \"$1\" ]; then\n    echo \"hello, $1\"\n  echo \"hello\"\n}\n",
+                )
+            if n == 2:
+                # Fix: close the if block.
+                return make_edit_call(
+                    "call-2", target_path,
+                    "    echo \"hello, $1\"\n  echo \"hello\"\n}\n",
+                    "    echo \"hello, $1\"\n  else\n    echo \"hello\"\n  fi\n}\n",
+                )
+            return None
+
+        async def _fake_call_llama(messages, **kwargs):
+            snapshots.append(list(messages))
+            n = calls["n"] + 1
+            if n <= 2:
+                return f'{{"function": "edit_file", "arguments": {{"file_path": "{target_path}"}}}}', 10
+            return "COMPLETED: greet() now accepts an optional name argument.", 10
+
+        ex.tool_registry.parse_tool_call_from_llama.side_effect = _fake_parse
+        ex.tool_registry.execute_tool_call = AsyncMock(side_effect=make_edit_exec(target_path))
+        ex._call_llama = AsyncMock(side_effect=_fake_call_llama)
+
+        final_msg, _tokens = await ex._execute_with_tools(task, AgentType.AGENT, max_tool_calls=0)
+
+        coach_msgs = coach_msgs_in_final_state(snapshots)
+        check("shell lint coach delivered as role:'tool' message", len(coach_msgs) >= 1)
+        check("shell lint coach names the bash -n break",
+              any("bash -n" in m["content"] for m in coach_msgs))
+        check("task completes after the fi is added",
+              "Aborting" not in final_msg and "stagnation" not in final_msg.lower())
+        final_content = Path(target_path).read_text(encoding="utf-8")
+        check("the fix actually landed on disk",
+              any(ln.strip() == "fi" for ln in final_content.splitlines()))
+
+
+async def test_lint_failsafe_without_pyflakes_or_shellcheck():
+    """(k): with pyflakes AND shellcheck both simulated absent
+    (`_pyflakes_messages`/`_shellcheck_error_messages` return None — the real
+    "unavailable" sentinel), the lint check degrades to compile-only syntax
+    checking. A genuine SyntaxError is still coached; the loop never crashes
+    either way (the fail-safe contract, which is what's actually load-bearing
+    here)."""
+    initial = "def handle(value):\n    return value\n"
+    with tempfile.TemporaryDirectory() as td:
+        target_path = make_target_file(Path(td), initial)
+        ex = make_executor()
+        task = Task(id="t-lint-failsafe", objective="add validation to handle()", status=TaskStatus.RUNNING)
+        snapshots: list = []
+        calls = {"n": 0}
+
+        def _fake_parse(_response: str):
+            calls["n"] += 1
+            n = calls["n"]
+            if n == 1:
+                # Genuine syntax error (unbalanced parens) — must still be
+                # caught via the compile-only fallback.
+                return make_edit_call(
+                    "call-1", target_path,
+                    "def handle(value):\n    return value\n",
+                    "def handle(value:\n    return value\n",
+                )
+            if n == 2:
+                # Fix the syntax error.
+                return make_edit_call(
+                    "call-2", target_path,
+                    "def handle(value:\n    return value\n",
+                    "def handle(value):\n    return value if value else None\n",
+                )
+            return None
+
+        async def _fake_call_llama(messages, **kwargs):
+            snapshots.append(list(messages))
+            n = calls["n"] + 1
+            if n <= 2:
+                return f'{{"function": "edit_file", "arguments": {{"file_path": "{target_path}"}}}}', 10
+            return "COMPLETED: fixed the syntax error and added validation.", 10
+
+        ex.tool_registry.parse_tool_call_from_llama.side_effect = _fake_parse
+        ex.tool_registry.execute_tool_call = AsyncMock(side_effect=make_edit_exec(target_path))
+        ex._call_llama = AsyncMock(side_effect=_fake_call_llama)
+
+        with patch.object(ae, "_pyflakes_messages", return_value=None), \
+             patch.object(ae, "_shellcheck_error_messages", return_value=None):
+            final_msg, _tokens = await ex._execute_with_tools(task, AgentType.AGENT, max_tool_calls=0)
+
+        coach_msgs = coach_msgs_in_final_state(snapshots)
+        check("compile-only fallback still catches a real SyntaxError", len(coach_msgs) >= 1)
+        check("coach message flags the break without crashing the loop",
+              any("break the file" in m["content"] or "SyntaxError" in m["content"] for m in coach_msgs))
+        check("task completes after the syntax fix (no crash, no hang)",
+              "Aborting" not in final_msg and "stagnation" not in final_msg.lower())
+        check("the fix actually landed on disk",
+              "value if value else None" in Path(target_path).read_text(encoding="utf-8"))
+
+
 async def test_kill_switch_restores_plain_accept():
     """(f): AQ_EDIT_VERIFY=0 restores plain accept-on-success — no coaching
     is ever injected, even for a comment-only edit."""
@@ -449,6 +760,11 @@ async def main():
     await test_dead_code_added_def_triggers_coach()
     await test_referenced_def_passes_clean()
     await test_coaching_bounded_per_file()
+    await test_lint_undefined_name_triggers_coach()
+    await test_lint_clean_when_import_present()
+    await test_lint_ignores_preexisting_issue()
+    await test_lint_shell_syntax_error_introduced()
+    await test_lint_failsafe_without_pyflakes_or_shellcheck()
     await test_kill_switch_restores_plain_accept()
 
     print(f"\n{PASS}/{PASS + FAIL} tests passed")
