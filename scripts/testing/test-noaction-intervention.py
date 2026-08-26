@@ -391,6 +391,10 @@ async def test_dogfood_payload_receipt_rejects_before_http_without_raw_content()
         progress = Path(tmp) / "progress.json"
         with patch.dict(os.environ, {
             "AQ_LOCAL_DOGFOOD_BUDGET": "1",
+            # Pin the fail-closed ceiling explicitly instead of relying on the module default,
+            # so this probe stays valid when the default limit is retuned (it was raised
+            # 14_000 -> 32_000, which had silently disabled this test's rejection path).
+            "AQ_DOGFOOD_PAYLOAD_JSON_LIMIT": "8000",
             "AGENT_PROGRESS_FILE": str(progress),
             "LLAMA_USE_STREAMING": "1",
         }):
@@ -408,7 +412,9 @@ async def test_dogfood_payload_receipt_rejects_before_http_without_raw_content()
     check("dogfood receipt has deterministic count-only fields",
           set(receipt) == required and receipt["call_number"] == 9 and receipt["max_tokens"] == 77
           and receipt["task_type_class"] == "unknown"
-          and receipt["payload_json_unicode_chars"] > ae._DOGFOOD_PAYLOAD_JSON_LIMIT)
+          # exceeded the pinned AQ_DOGFOOD_PAYLOAD_JSON_LIMIT (8000) set above, so the
+          # before-HTTP rejection was legitimate rather than spurious
+          and receipt["payload_json_unicode_chars"] > 8000)
     check("dogfood receipt does not leak raw task or prompt content",
           "secret-prompt-" not in receipt_doc and "caller-private-type" not in receipt_doc)
 
