@@ -165,8 +165,28 @@ logger = logging.getLogger(__name__)
 # dogfood task in 0.4s before HTTP. The payload JSON is legitimately larger than the
 # prompt guard (it adds tool schemas + grammar + envelope), so the cap must sit ABOVE
 # 24_000; 32_000 gives that headroom while still catching a truly runaway payload.
-_DOGFOOD_PAYLOAD_JSON_LIMIT = 32_000
+_DOGFOOD_PAYLOAD_JSON_LIMIT = 32_000  # default; override via AQ_DOGFOOD_PAYLOAD_JSON_LIMIT
 _DOGFOOD_FIRST_CALL_MAX_TOKENS = 192
+
+
+def _dogfood_payload_json_limit() -> int:
+    """Max payload JSON chars before dogfood fails closed, read at call time.
+
+    Env-tunable (AQ_DOGFOOD_PAYLOAD_JSON_LIMIT) so operators can adjust the runaway-payload
+    ceiling without a code change, and so tests can assert the fail-closed path deterministically
+    instead of pinning the module default (which broke test-noaction when the default was raised
+    14_000 -> 32_000 and a fixed-size probe stopped exceeding it). Invalid/<=0 values fall back to
+    the default.
+    """
+    raw = os.environ.get("AQ_DOGFOOD_PAYLOAD_JSON_LIMIT", "").strip()
+    if raw:
+        try:
+            value = int(raw)
+            if value > 0:
+                return value
+        except ValueError:
+            pass
+    return _DOGFOOD_PAYLOAD_JSON_LIMIT
 
 
 def _dogfood_payload_budget_enabled() -> bool:
@@ -232,7 +252,8 @@ def _enforce_dogfood_payload_budget(
     receipt = _dogfood_payload_budget_receipt(
         payload, task_type=task_type, call_number=call_number
     )
-    rejected = receipt["payload_json_unicode_chars"] > _DOGFOOD_PAYLOAD_JSON_LIMIT
+    limit = _dogfood_payload_json_limit()
+    rejected = receipt["payload_json_unicode_chars"] > limit
     progress_file = os.getenv("AGENT_PROGRESS_FILE")
     if progress_file:
         try:
@@ -252,7 +273,7 @@ def _enforce_dogfood_payload_budget(
     if rejected:
         raise RuntimeError(
             "dogfood payload budget exceeded before HTTP: "
-            f"{receipt['payload_json_unicode_chars']} Unicode JSON chars > {_DOGFOOD_PAYLOAD_JSON_LIMIT}"
+            f"{receipt['payload_json_unicode_chars']} Unicode JSON chars > {limit}"
         )
     return receipt
 

@@ -531,8 +531,32 @@ class ToolRegistry:
         start_time = time.time()
 
         try:
+            # Filter arguments to the handler's actual parameters before calling.
+            # The local model's tool-call JSON can leak stray keys into `arguments`
+            # (notably the envelope's own "function" name), which `**arguments` then
+            # passes to the handler -> "edit_file_handler() got an unexpected keyword
+            # argument 'function'" -> EVERY edit_file/write_region call fails silently
+            # (ok=False), which starved the whole local edit path + the verify/coach
+            # gate (it only runs on a SUCCESSFUL edit). Drop unknown keys defensively;
+            # a handler that declares **kwargs still receives everything.
+            _call_args = tool_call.arguments
+            try:
+                import inspect as _inspect
+                _sig = _inspect.signature(tool.handler)
+                _accepts_var_kw = any(
+                    p.kind == _inspect.Parameter.VAR_KEYWORD
+                    for p in _sig.parameters.values()
+                )
+                if not _accepts_var_kw:
+                    _known = set(_sig.parameters)
+                    _dropped = [k for k in tool_call.arguments if k not in _known]
+                    if _dropped:
+                        _call_args = {k: v for k, v in tool_call.arguments.items() if k in _known}
+                        logger.debug("tool %s: dropped stray arg(s) %s", tool_call.tool_name, _dropped)
+            except Exception:
+                _call_args = tool_call.arguments  # fail-safe: call as-is
             # Call tool handler
-            result = await tool.handler(**tool_call.arguments)
+            result = await tool.handler(**_call_args)
 
             tool_call.result = result
             tool_call.status = "completed"
