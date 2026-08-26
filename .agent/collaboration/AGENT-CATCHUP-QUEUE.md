@@ -369,3 +369,13 @@ REVIEW TARGETS (for Codex — the reliable auto-reviewer — and any returning l
   still assert. VERIFY (reviewer): (a) is the skip-set exactly the reverted-feature tests (no base
   coverage silently skipped)? (b) confirm the redo's acceptance re-runs all 13 (guard flips green).
   NOTE this is the FIX for the incomplete-revert gap flagged in the cancellation-lifecycle RE-DO entry.
+- [FOLLOW-UP — codify trunk-protection, Rule-16 parity] Owner ratified 2026-08-26 "keep the hook,
+  work on branches." Memory captured (feedback-trunk-protection-bound-review). REMAINING: propagate
+  the trunk-protection model (main = bound-independent-review Review-Disposition; un-reviewed work on
+  branches; SUPERSEDES commit-forward-provisional-to-main) into CLAUDE.md Commit Discipline + .agent/
+  CODEX.md + .agent/LOCAL-AGENT.md + .agent/GEMINI.md + .agent/WORKFLOW-CANON.md (Rule 16 — all same
+  cycle or INCOMPLETE). Land on its own branch through the bound-review flow. Update AGENT-PARITY-MATRIX.
+- [ROUTE — independent review of c5d35db2] branch local-agent/edit-file-kwarg-unblock. When any
+  independent lane is up (Codex / fresh Claude flagship / Antigravity / local once trustworthy — NOT
+  the author), review the exact staged patch, then merge to main with Review-Disposition: ACCEPTED +
+  Reviewed-subject-sha256 (git diff --cached --binary --full-index | sha256sum) + Reviewed-by.
