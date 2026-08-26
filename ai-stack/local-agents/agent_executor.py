@@ -497,6 +497,30 @@ _EDIT_MISMATCH_SIGNAL_PHRASES: tuple[str, ...] = (
     "does not match", "did not match",
 )
 
+# Post-edit VERIFY-AND-COACH gate (issues-backlog: local-correctness-baseline-
+# and-verify-gate). STEWARDSHIP scaffolding (CLAUDE.md Rule 21), not a
+# punitive gate: local now RELIABLY LANDS edits (the grammar + edit-feedback
+# fixes above worked) but measured dogfood runs show ~0 of those landed edits
+# are actually CORRECT. Two dominant failure modes:
+#   1. DEAD CODE — a new function/branch is added (e.g. `_gemini_cooldown_status()`)
+#      but never wired in / called anywhere — the edit LOOKS like a fix but
+#      changes nothing on the live path.
+#   2. NO-OP — only a comment or whitespace changed (e.g. a code comment's
+#      example flags edited), no behavioral change, doesn't fix the issue.
+# After a successful edit_file/write_file/write_region, run cheap STATIC
+# checks (no LLM, no test run) on THAT edit's diff before accepting it as
+# progress. A failing check injects SPECIFIC, actionable coaching as the tool
+# result (role:"tool", mirrors the _EDIT_FEEDBACK_ENABLED pattern above) and
+# `continue`s the loop so local gets an immediate retry — bounded to
+# _EDIT_VERIFY_MAX_PER_FILE fires per file so a persistently-trivial edit
+# still eventually passes through (never blocks forever; the runner/reviewer
+# catches it downstream, per Rule 15 activation gate). Fail-safe: any error
+# in the verify logic falls through to accepting the edit as-is (never crash
+# or hang the loop on a static-analysis bug). Kill switch AQ_EDIT_VERIFY=0
+# restores plain accept-on-success behavior.
+_EDIT_VERIFY_ENABLED: bool = _env_flag("AQ_EDIT_VERIFY", True)
+_EDIT_VERIFY_MAX_PER_FILE: int = int(os.getenv("AQ_EDIT_VERIFY_MAX_PER_FILE", "2"))
+
 # Heuristic substrings indicating the model is explicitly declining/stopping
 # rather than narrating a plan it forgot to execute. Kept conservative and
 # lowercase-matched — false negatives (treated as a plan) just cost one nudge
@@ -636,6 +660,229 @@ def _build_file_outline(content: str, file_path: str, max_entries: int = 40) -> 
         return "\n".join(out)
     except Exception:  # noqa: BLE001 — outline is a nice-to-have, never fatal
         return f"## Outline: {file_path} (outline scan failed)"
+
+
+@dataclass
+class _EditVerdict:
+    """Outcome of one post-edit verify-and-coach static check."""
+    passed: bool
+    reason: str = ""
+    coaching_message: str = ""
+
+
+# Whole-line-comment prefix by extension for the NO-OP check. Best-effort only
+# (no tokenizer, doesn't track multi-line string literals) — good enough to
+# tell "this edit touched only comments/whitespace" from a real code change.
+# Default '#' covers this repo's dominant Python/shell/Nix/YAML mix.
+_COMMENT_PREFIX_BY_EXT: Dict[str, str] = {
+    ".js": "//", ".ts": "//", ".jsx": "//", ".tsx": "//",
+    ".go": "//", ".rs": "//", ".c": "//", ".cpp": "//", ".java": "//",
+}
+
+
+def _non_comment_code_lines(lines: List[str], file_path: str) -> List[str]:
+    """Stripped, non-blank lines that are NOT whole-line comments."""
+    prefix = _COMMENT_PREFIX_BY_EXT.get(Path(file_path).suffix.lower(), "#")
+    return [s for s in (ln.strip() for ln in lines) if s and not s.startswith(prefix)]
+
+
+def _edit_diff_lines(
+    tool_name: str,
+    arguments: Dict[str, Any],
+    pre_content: Optional[str],
+) -> Tuple[List[str], List[str]]:
+    """Best-effort (removed_lines, added_lines) for one edit_file/write_file/
+    write_region call.
+
+    edit_file's old_string/new_string ARE the diff — no file read needed.
+    write_region/write_file need the caller's pre-edit snapshot (captured
+    before dispatch, since the file already reflects the post-edit state by
+    the time the result reaches the verify gate); if no snapshot was
+    captured, `removed` is [] — an UNKNOWN removed side, not a claim the
+    removed side was empty. Callers must not treat [] as "definitely a
+    no-op" for write_region/write_file.
+    """
+    if tool_name == "edit_file":
+        removed = str(arguments.get("old_string") or "").splitlines()
+        added = str(arguments.get("new_string") or "").splitlines()
+        return removed, added
+    if tool_name == "write_region":
+        added = str(arguments.get("new_text") or "").splitlines()
+        removed: List[str] = []
+        if pre_content is not None:
+            try:
+                start = int(arguments.get("start_line"))
+                end = int(arguments.get("end_line"))
+                removed = pre_content.splitlines()[start - 1:end]
+            except (TypeError, ValueError, IndexError):
+                removed = []
+        return removed, added
+    if tool_name == "write_file":
+        added = str(arguments.get("content") or "").splitlines()
+        removed = pre_content.splitlines() if pre_content is not None else []
+        return removed, added
+    return [], []
+
+
+def _looks_like_noop_edit(removed: List[str], added: List[str], file_path: str) -> bool:
+    """True only when the removed side is KNOWN (non-empty) and both sides
+    reduce to the same non-comment/non-blank content — i.e. the edit changed
+    only comments/whitespace. An unknown removed side (write_region/write_file
+    with no captured pre-image) never triggers this: a false "no-op" coach
+    would block a real fix, which is worse than missing one here.
+    """
+    if not removed:
+        return False
+    return (
+        _non_comment_code_lines(removed, file_path)
+        == _non_comment_code_lines(added, file_path)
+    )
+
+
+def _extract_added_definitions(added: List[str]) -> List[str]:
+    """Names of new top-level def/class/function statements in `added` lines,
+    reusing the same structural scan the read_file outline uses (Python
+    def/class, JS/TS function/const-arrow, shell `NAME() {`)."""
+    names: List[str] = []
+    for line in added:
+        for pattern, kind in _OUTLINE_LINE_PATTERNS:
+            if kind == "section":  # Markdown headers aren't code definitions
+                continue
+            m = pattern.match(line)
+            if m:
+                names.append(m.group(1))
+                break
+    return names
+
+
+def _find_dead_added_definition(
+    added: List[str], removed: List[str], post_edit_content: str,
+) -> Optional[str]:
+    """First GENUINELY NEW def/class/function name with zero references
+    anywhere else in the file after the edit (only the definition itself
+    matches) — i.e. dead code.
+
+    "Genuinely new" excludes any name whose def line was ALSO present on the
+    removed side — e.g. an edit that only changes an existing function's
+    signature (`def add(a, b):` -> `def add(a, b=0):`) re-includes that def
+    line in both old_string and new_string; that is a MODIFICATION of an
+    existing function, not a new addition, and must never be flagged as dead
+    just because the file has no other caller of a function that already
+    existed before this edit.
+
+    Best-effort word-boundary count for the reference check itself: a
+    docstring or comment mention would also count as "referenced" (avoids
+    the more expensive false-positive of flagging live code as dead).
+    """
+    pre_existing = set(_extract_added_definitions(removed))
+    for name in _extract_added_definitions(added):
+        if name in pre_existing:
+            continue
+        try:
+            pattern = re.compile(r"\b" + re.escape(name) + r"\b")
+            if len(pattern.findall(post_edit_content)) <= 1:
+                return name
+        except re.error:
+            continue
+    return None
+
+
+# Task-relevance heuristic input: ONLY backtick-quoted symbols/snippets or bare
+# file paths with an extension — freeform prose parsing is too false-positive-
+# prone for a coaching gate. An objective with none of these shapes yields no
+# targets, and the check is skipped entirely (never flags on no signal).
+_TASK_TARGET_TOKEN_RE = re.compile(
+    r"`([^`\s][^`]{1,78}[^`\s]|[^`\s])`"       # `backtick_quoted_symbol_or_snippet`
+    r"|(\b[\w./-]*/[\w./-]+\.[A-Za-z]{1,5}\b)"  # bare/relative file path w/ extension
+)
+
+
+def _extract_task_named_targets(objective: str) -> List[str]:
+    """Conservative extraction of specific symbols/files the task objective
+    names — see _TASK_TARGET_TOKEN_RE. Best-effort + optional by design."""
+    if not objective:
+        return []
+    targets: List[str] = []
+    for m in _TASK_TARGET_TOKEN_RE.finditer(objective):
+        token = (m.group(1) or m.group(2) or "").strip()
+        if token:
+            targets.append(token)
+    return targets
+
+
+def _edit_touches_named_targets(
+    targets: List[str], file_path: str, removed: List[str], added: List[str],
+) -> bool:
+    haystack = file_path + "\n" + "\n".join(removed) + "\n" + "\n".join(added)
+    return any(t in haystack or t.rstrip("()") in haystack for t in targets)
+
+
+def _verify_edit_quality(
+    tool_name: str,
+    arguments: Dict[str, Any],
+    file_path: str,
+    pre_content: Optional[str],
+    task_objective: str,
+) -> _EditVerdict:
+    """Cheap static checks on ONE edit's diff — no LLM, no test run.
+
+    STEWARDSHIP framing (CLAUDE.md Rule 21): the coaching messages are
+    specific and actionable, never a bare rejection — the goal is to help
+    local land its NEXT attempt, not to punish this one. Never raises on its
+    own — callers additionally wrap this in try/except (fail-safe: a bug in
+    this function must never block or crash the loop, only skip coaching).
+    """
+    removed, added = _edit_diff_lines(tool_name, arguments, pre_content)
+
+    if _looks_like_noop_edit(removed, added, file_path):
+        return _EditVerdict(
+            passed=False,
+            reason="noop_comment_or_whitespace_only",
+            coaching_message=(
+                "Your edit only changed a comment or whitespace — it does not "
+                "change the program's behavior, so it does not fix the task. "
+                "Make the actual code/logic change the task requires (a new "
+                "condition, a different value, a call to the right function, "
+                "etc.), then retry the edit."
+            ),
+        )
+
+    post_edit_content: Optional[str] = None
+    try:
+        p = Path(file_path) if Path(file_path).is_absolute() else Path.cwd() / file_path
+        if p.exists() and p.is_file():
+            post_edit_content = p.read_text(encoding="utf-8")
+    except OSError:
+        post_edit_content = None
+
+    if post_edit_content is not None:
+        dead_name = _find_dead_added_definition(added, removed, post_edit_content)
+        if dead_name:
+            return _EditVerdict(
+                passed=False,
+                reason=f"dead_code:{dead_name}",
+                coaching_message=(
+                    f"You added `{dead_name}` but nothing calls it anywhere else "
+                    f"in the file — it's dead code that changes no behavior on "
+                    f"the live path. Wire it in: call `{dead_name}` from the "
+                    f"place the task needs the new behavior, or, if a separate "
+                    f"function isn't needed, fold the change in inline instead."
+                ),
+            )
+
+    targets = _extract_task_named_targets(task_objective or "")
+    if targets and not _edit_touches_named_targets(targets, file_path, removed, added):
+        named = ", ".join(f"`{t}`" for t in targets)
+        return _EditVerdict(
+            passed=False,
+            reason="task_relevance_miss",
+            coaching_message=(
+                f"Your edit doesn't touch {named} — the task specifically names "
+                f"that target. Re-read the task and edit the right place."
+            ),
+        )
+
+    return _EditVerdict(passed=True)
 
 
 def _gate_large_file_content(
@@ -1525,6 +1772,14 @@ class LocalAgentExecutor:
         # files), bounded to _EDIT_FEEDBACK_MAX_PER_FILE per path. See the
         # _EDIT_FEEDBACK_ENABLED block above for the full rationale.
         _edit_feedback_counts: dict = {}  # file_path → feedback-fire count
+        # Post-edit verify-and-coach gate (see _EDIT_VERIFY_ENABLED above):
+        # per-file coaching-fire count (bounded to _EDIT_VERIFY_MAX_PER_FILE),
+        # and the pre-edit content snapshot captured right before each
+        # edit_file/write_file/write_region dispatch (write_region/write_file
+        # need the "before" side to compute a diff — the file already
+        # reflects the "after" side by the time the tool result reaches us).
+        _edit_verify_counts: dict = {}  # file_path → coach-fire count
+        _verify_pre_edit_content: dict = {}  # file_path → content before the in-flight call
         _validation_passes_without_commit = 0
         _VALIDATION_STALL_NUDGE = 3
 
@@ -2049,6 +2304,36 @@ class LocalAgentExecutor:
             # Execute tool call
             tool_call.model_id = f"local-{agent_type.value}"
             tool_call.session_id = task.id
+
+            # Post-edit verify-and-coach gate: snapshot the file's content
+            # BEFORE dispatch for write_region/write_file (edit_file carries
+            # its own before/after in old_string/new_string, no read needed).
+            # Must happen here, before execute_tool_call runs, or the "before"
+            # side is already gone by the time the result comes back. Fail-
+            # safe: any read error just leaves no snapshot — the verify gate
+            # treats that as "unknown before-content" and skips checks that
+            # need it, it never blocks the edit itself.
+            if (
+                _EDIT_VERIFY_ENABLED
+                and tool_call.tool_name in ("write_region", "write_file")
+            ):
+                try:
+                    _ev_snap_path = str(
+                        tool_call.arguments.get("file_path")
+                        or tool_call.arguments.get("path") or ""
+                    )
+                    if _ev_snap_path:
+                        _ev_snap_p = (
+                            Path(_ev_snap_path) if Path(_ev_snap_path).is_absolute()
+                            else Path.cwd() / _ev_snap_path
+                        )
+                        if _ev_snap_p.exists() and _ev_snap_p.is_file():
+                            _verify_pre_edit_content[_ev_snap_path] = _ev_snap_p.read_text(
+                                encoding="utf-8",
+                            )
+                except Exception:
+                    pass  # fail-safe: verify gate degrades to "no pre-image" mode
+
             _exact_read_request = (
                 _normalized_exact_read_range(tool_call.arguments)
                 if tool_call.tool_name == "read_file" else None
@@ -2421,6 +2706,88 @@ class LocalAgentExecutor:
                 _reads_without_edit = 0
                 _read_path_counts.clear()
                 if not _is_tool_failure:
+                    # Post-edit verify-and-coach gate (STEWARDSHIP, CLAUDE.md
+                    # Rule 21 — help local reach its best self, not a punitive
+                    # block). The edit LANDED (write succeeded); before
+                    # counting it as real progress, run the cheap static
+                    # checks in _verify_edit_quality. A failing edit gets
+                    # SPECIFIC coaching as the next tool result and a `continue`
+                    # so local retries immediately, bounded to
+                    # _EDIT_VERIFY_MAX_PER_FILE fires per file — a
+                    # persistently-trivial edit still falls through and counts
+                    # (never blocks forever; downstream runner/reviewer catches
+                    # it). Fail-safe: any error here just skips coaching and
+                    # counts the edit normally, exactly like the plain
+                    # accept-on-success path this gate sits in front of.
+                    _ev_path = str(
+                        (result.arguments or {}).get("file_path")
+                        or (result.arguments or {}).get("path") or ""
+                    )
+                    _ev_verdict: Optional[_EditVerdict] = None
+                    if _EDIT_VERIFY_ENABLED:
+                        try:
+                            _ev_verdict = _verify_edit_quality(
+                                tool_name=result.tool_name,
+                                arguments=result.arguments or {},
+                                file_path=_ev_path,
+                                pre_content=_verify_pre_edit_content.get(_ev_path),
+                                task_objective=task.objective,
+                            )
+                        except Exception as _ev_exc:
+                            logger.warning(
+                                "edit-verify check failed (%s) — falling through "
+                                "to plain accept (fail-safe)", _ev_exc,
+                            )
+                            _ev_verdict = None
+
+                    _ev_fires = _edit_verify_counts.get(_ev_path, 0)
+                    _ev_coached = False
+                    if (
+                        _EDIT_VERIFY_ENABLED
+                        and _ev_verdict is not None
+                        and not _ev_verdict.passed
+                        and _ev_fires < _EDIT_VERIFY_MAX_PER_FILE
+                    ):
+                        try:
+                            _edit_verify_counts[_ev_path] = _ev_fires + 1
+                            _iv_brace = response.rfind('{"function"')
+                            if _iv_brace == -1:
+                                _iv_brace = response.rfind("{")
+                            _iv_clean_call = (
+                                response[_iv_brace:].strip() if _iv_brace != -1 else response.strip()
+                            )
+                            messages.append({"role": "assistant", "content": _iv_clean_call})
+                            messages.append({
+                                "role": "tool",
+                                "name": result.tool_name,
+                                "content": _ev_verdict.coaching_message,
+                            })
+                            logger.warning(
+                                "edit-verify coach: path=%r reason=%s attempt=%d call=%d — "
+                                "injecting coaching feedback instead of counting as progress",
+                                _ev_path, _ev_verdict.reason,
+                                _edit_verify_counts[_ev_path], tool_call_count,
+                            )
+                            await self._emit_agent_event(
+                                task.id, "edit_verify_coach",
+                                {
+                                    "file_path": _ev_path,
+                                    "reason": _ev_verdict.reason,
+                                    "attempt": _edit_verify_counts[_ev_path],
+                                    "tool_call_count": tool_call_count,
+                                },
+                                _watchdog_last_activity,
+                            )
+                            _ev_coached = True
+                        except Exception as _ev_inject_exc:
+                            logger.warning(
+                                "edit-verify coach injection failed (%s) — "
+                                "falling through to plain accept", _ev_inject_exc,
+                            )
+                            # Fall through: count the edit normally below (fail-safe).
+
+                    if _ev_coached:
+                        continue
                     _edits_made += 1
                 elif result.tool_name == "edit_file":
                     # Edit-failure feedback: old_string byte-mismatch is now the
