@@ -116,19 +116,42 @@ def tracked_mods() -> set:
     return {ln.strip() for ln in out.splitlines() if ln.strip()}
 
 
+def _parse_declared_files(declared_file: str) -> set:
+    """Split a task's declared-file spec into concrete repo paths.
+
+    A task may name SEVERAL files ("a.py + b.py", "a.py, b.py") — each is a
+    revert-owned target. Previously the whole spec was compared with `==`, so a
+    multi-file task's own edit to one of its files matched NOTHING, was labelled
+    "foreign", and then leaked unreverted (the dogfood-10 heartbeat-prefill leak
+    that cascade-collided 11/12/13). Parenthetical prose ("(locate the indexer)")
+    is not a path and is dropped.
+    """
+    if not declared_file:
+        return set()
+    out = set()
+    for part in re.split(r"[+,]", declared_file):
+        part = part.strip()
+        if part and ("/" in part or part.endswith(
+                (".py", ".sh", ".nix", ".json", ".md", ".yaml", ".yml", ".toml"))):
+            out.add(part)
+    return out
+
+
 def classify_task_changes(current_mods: set, baseline_mods: set, declared_file: str) -> tuple[list, list]:
     """Return (owned, foreign) changes created after the run baseline.
 
-    Capture/revert authority is limited to the task's single declared file.
-    Any other new worktree change is a collaboration collision and is left
-    untouched.
+    Capture/revert authority covers ALL of the task's declared file(s). Any other
+    new worktree change is out-of-scope; in a dedicated dogfood run it is the
+    task's own stray edit (there is no concurrent writer), so run_task reverts it
+    too rather than leaving it to cascade-collide the next task.
     """
+    declared = _parse_declared_files(declared_file)
     appeared = {
         path for path in (current_mods - baseline_mods)
         if not path.startswith(".agents/delegation/dogfood")
     }
-    owned = sorted(path for path in appeared if path == declared_file)
-    foreign = sorted(path for path in appeared if path != declared_file)
+    owned = sorted(path for path in appeared if path in declared)
+    foreign = sorted(path for path in appeared if path not in declared)
     return owned, foreign
 
 
@@ -243,6 +266,17 @@ After edit_file succeeds, state in ONE sentence what you changed.
 def run_task(task: dict, baseline_mods: set) -> dict:
     tid = task["task"]
     declared_file = task.get("file", "")
+    # Pre-dispatch tree-clean guard: revert any task-introduced edit left over from
+    # a PRIOR task whose revert didn't complete (crash/interrupt/unexpected exit),
+    # so a leftover can't cascade-collide this task. Belt-and-suspenders with the
+    # always-revert at the end of run_task; dogfood sidecar files are excluded.
+    _leftover = sorted(
+        p for p in (tracked_mods() - baseline_mods)
+        if not p.startswith(".agents/delegation/dogfood")
+    )
+    if _leftover:
+        git("checkout", "--", *_leftover)
+        ledger({"task": tid, "event": "pre-dispatch-cleanup", "reverted": _leftover})
     if not declared_file or declared_file in baseline_mods:
         ledger({"task": tid, "event": "blocked", "status": "declared-file-preexisting-or-missing"})
         return {"task": tid, "backlog_item": task["backlog_item"], "edit_landed": False,
@@ -253,11 +287,19 @@ def run_task(task: dict, baseline_mods: set) -> dict:
     ptmp.write_text(prompt)
     ledger({"task": tid, "event": "dispatched", "backlog_item": task["backlog_item"], "runner": "overnight"})
     t0 = time.monotonic()
+    # Behavioral verify wiring: if the task declares a check ("verify_cmd"/"test"),
+    # pass it as AQ_EDIT_VERIFY_CMD so the agent runs the REAL check after each edit
+    # and coaches on failure — the gate that catches a semantic wrong-fix the static
+    # checks accept. Tasks without a declared check fall back to static-only.
+    _task_env = dict(ENV)
+    _verify_cmd = (task.get("verify_cmd") or task.get("test") or "").strip()
+    if _verify_cmd:
+        _task_env["AQ_EDIT_VERIFY_CMD"] = _verify_cmd
     # Dispatch ASYNC (no --wait): capture the local task's pid from stdout, then poll.
     disp = subprocess.run(
         [str(DELEGATE), "--timeout", str(PER_TASK_TIMEOUT),
          "--mode", "agent", "--role", "implementer", "--prompt-file", str(ptmp)],
-        cwd=str(REPO), env=ENV, capture_output=True, text=True, timeout=180,
+        cwd=str(REPO), env=_task_env, capture_output=True, text=True, timeout=180,
     )
     out = (disp.stdout or "") + (disp.stderr or "")
     task_ids = re.findall(r"(?m)^(local-[A-Za-z0-9-]+)$", out)
@@ -323,14 +365,24 @@ def run_task(task: dict, baseline_mods: set) -> dict:
                 "last_registry_status": last_registry_status, "stop_reason": stop_reason})
 
     foreign_files = _foreign_files()
-    task_files = _task_files() if not foreign_files else []
+    task_files = _task_files()
     diff = git("diff", "--", *task_files) if task_files else ""
     edit_landed = bool(task_files) and bool(diff.strip())
     diff_path = ""
     if edit_landed:
         diff_path = str((DIFFDIR / f"{tid}.patch").relative_to(REPO))
         (DIFFDIR / f"{tid}.patch").write_text(diff)
-        git("checkout", "--", *task_files)  # revert so the next task starts clean
+
+    # ALWAYS return the tree to baseline before the next task — revert every file
+    # this task touched, declared (owned) OR stray (foreign). The old code gated
+    # the revert on edit_landed AND zeroed task_files whenever a foreign file was
+    # present, so a task that edited a non-declared (or compound-declared) file
+    # left it in the tree, which cascade-collided every following task
+    # (dogfood-10 -> 11/12/13). In a dedicated dogfood run the agent is the sole
+    # writer, so a stray file is this run's own edit and is safe to revert.
+    to_revert = sorted(set(task_files) | set(foreign_files))
+    if to_revert:
+        git("checkout", "--", *to_revert)
 
     status = "scope-collision" if foreign_files else ("edit-captured" if edit_landed else "no-edit")
     ledger({"task": tid, "event": "completed", "status": status, "edit_landed": edit_landed,

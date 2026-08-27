@@ -392,3 +392,14 @@ REVIEW TARGETS (for Codex — the reliable auto-reviewer — and any returning l
   24.5GB actually fit + load in 300s on 27GB, or does it OOM/swap-thrash (fallback: Q4_K_XL 22.5GB)? (b) is
   OOMScoreAdjust=-900 right vs -1000 (never-kill)? (c) confirm the fetch adopts the manually-placed file
   without a 24GB re-download. Measured follow-up: ctx raise + observability trim + governor A/B.
+- [ROUTE — review behavioral-verify gate + runner-leak fix] branch
+  local-agent/behavioral-verify-and-runner-leak (off main). TWO fixes:
+  (1) BEHAVIORAL VERIFY (agent_executor _behavioral_verify + _verify_edit_quality tail): runs the task's
+  real check (AQ_EDIT_VERIFY_CMD, {file} substituted, bounded, fail-safe) after static checks pass; coaches
+  on non-zero exit. Catches semantic wrong-fixes static checks accept (dogfood-03). Wired in the dogfood
+  runner via per-task verify_cmd/test field. ACTIVATION: queue tasks need a verify_cmd added to exercise it.
+  (2) RUNNER-LEAK (aq-local-dogfood-run): compound declared-file now parsed (dogfood-10's "a + b" leak);
+  ALWAYS revert every touched file (owned+stray) on exit, not gated on edit_landed/collision; pre-dispatch
+  tree-clean guard. test-edit-verify 48/48; classifier unit-tested. VERIFY (reviewer): (a) is reverting a
+  "foreign" file safe in ALL runner contexts (dedicated run = yes; any shared-tree use = check)? (b) behavioral
+  verify subprocess: injection/isolation surface of AQ_EDIT_VERIFY_CMD (operator-set, not model-set — ok)?

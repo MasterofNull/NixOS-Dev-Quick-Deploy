@@ -3523,3 +3523,27 @@ Advisory task (codex is the real confirmatory backstop) — non-blocking.
 - **DEFERRED to measured follow-up (after the 35B load is observed)**: raise ctx (needs freed RAM);
   trim always-on observability grafana/prometheus/tempo/otel (frees ~2-4GB); governor=performance A/B.
   Rationale: don't pile RAM-risky tuning onto an unvalidated 24.5GB load — measure fit first.
+
+## [FINDING 2026-08-27] Qwen3.6-35B dogfood: model size does NOT solve local correctness
+- Full 35B run (13 base tasks): 3 edits landed, 0 CORRECT — dogfood-01 comment-only no-op,
+  dogfood-03 semantic wrong-fix (hardcoded --json always, broke default + dropped --no-color/--verbose),
+  dogfood-10 dead-code (unused _prefill_visible var). 7 genuine no-edits. 11/12/13 + retries INVALID
+  (collided on dogfood-10's leftover).
+- CONCLUSION (twice-confirmed, 4.5B gemma AND 35B Qwen both 0-correct): local's ceiling is the
+  VERIFY/SCAFFOLD loop, not model size. The 35B engages more (real edits vs stalls) but produces
+  confidently-wrong fixes. dogfood-03 is the clincher: a plausible wrong fix NO static coach check
+  catches — only a BEHAVIORAL verify (run the task's actual test/check post-edit) would.
+- NEXT LEVER (was followup #2, now clearly #1 priority): behavioral post-edit verify gate — run the
+  task's declared test/check after the edit, reject + coach on failure. Static heuristics (noop/dead-
+  code/lint/freshness) are necessary but not sufficient for semantic correctness.
+
+## [BUG 2026-08-27 HIGH] dogfood runner leaks a task edit on interrupted revert -> cascade collisions
+- dogfood-10 (heartbeat-prefill, targets agent_executor.py) edited the file, then a scope-collision
+  interrupted aq-local-dogfood-run BEFORE it reverted the edit -> agent_executor.py left MODIFIED in the
+  working tree -> dogfood-11/12/13 + all retries saw it as a foreign file -> scope-collision no-ops.
+  Could also have corrupted a concurrent commit. Orchestrator manually captured the leak
+  (scratchpad/dogfood-10-leaked-edit.patch) + git restore'd the tree.
+- ROOT CAUSE: revert-after-task is not guaranteed on the collision/cancel/interrupt path.
+- FIX (bounded): wrap the per-task edit in a trap/finally that ALWAYS reverts the declared file(s) on
+  ANY exit path (success, collision, cancel, timeout, signal); verify tree-clean before dispatching the
+  next task; if not clean, restore + log rather than cascade-collide.
