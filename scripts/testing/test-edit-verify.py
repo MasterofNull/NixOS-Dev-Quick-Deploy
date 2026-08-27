@@ -754,8 +754,40 @@ async def test_kill_switch_restores_plain_accept():
               "COMPLETED" in final_msg or "comment" in final_msg.lower())
 
 
+async def test_freshness_gaming_edit_triggers_coach():
+    """A timestamp-only bump on a freshness field (dogfood-07: faking freshness
+    instead of regenerating the artifact) is rejected with the gaming coach; a
+    real content change on the same file passes clean."""
+    with tempfile.TemporaryDirectory() as td:
+        p = Path(td) / "graph.json"
+        pre = '{"generated": "2026-07-01T16:10:40Z", "total_nodes": 10}\n'
+        # (1) gaming: only the "generated" date changed
+        p.write_text('{"generated": "2026-07-02T16:10:40Z", "total_nodes": 10}\n', encoding="utf-8")
+        v = ae._verify_edit_quality(
+            "edit_file",
+            {"file_path": str(p),
+             "old_string": '"generated": "2026-07-01T16:10:40Z"',
+             "new_string": '"generated": "2026-07-02T16:10:40Z"'},
+            str(p), pre, "refresh the stale architecture graph",
+        )
+        check("freshness-gaming timestamp bump is rejected", not v.passed)
+        check("freshness-gaming verdict reason", v.reason == "freshness_timestamp_gaming")
+        check("freshness coach steers to regenerate, not hand-edit the date",
+              "regenerat" in v.coaching_message.lower())
+        # (2) real content change on a freshness-bearing file passes
+        p.write_text('{"generated": "2026-07-01T16:10:40Z", "total_nodes": 42}\n', encoding="utf-8")
+        v2 = ae._verify_edit_quality(
+            "edit_file",
+            {"file_path": str(p),
+             "old_string": '"total_nodes": 10', "new_string": '"total_nodes": 42'},
+            str(p), pre, "increase the recorded node total",
+        )
+        check("real content change on a timestamped file passes the freshness check", v2.passed)
+
+
 async def main():
     await test_noop_edit_triggers_coach_then_real_fix_completes()
+    await test_freshness_gaming_edit_triggers_coach()
     await test_real_edit_passes_clean()
     await test_dead_code_added_def_triggers_coach()
     await test_referenced_def_passes_clean()
