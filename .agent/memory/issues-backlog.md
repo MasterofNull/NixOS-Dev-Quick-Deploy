@@ -3464,3 +3464,22 @@ Advisory task (codex is the real confirmatory backstop) — non-blocking.
 [OPEN] local-edit-third-failure-mode-undefined-name — Coach-gate measured run (2026-08-26, clean APU): coach correctly did NOT fire (the edit wasn't a no-op/dead-code), local landed FAST (10min, ~5min/step clean), BUT the edit is still INCORRECT — it used `re.match(...)` while `re` is NOT imported in aq-role-route → NameError at runtime. The MEASURED-CORRECT edit earlier avoided this by using pure string ops (`any(marker in token)`); local is non-deterministic (sometimes string-ops=correct, sometimes re-without-import=crash) for the SAME task. THIRD failure mode: would-crash edits (undefined name / missing import) — the AQ_EDIT_VERIFY coach checks no-op + dead-code + task-relevance but NOT name-resolution/lint, so it slips through.
   Severity: high (a would-crash edit passes the coach as "meaningful" — landed != correct still)
   Fix (dispatched): extend the coach with a post-edit LINT / name-resolution check — after an edit, the edited file must still pass its language checker (python: pyflakes/undefined-name + py_compile; shell: bash -n + shellcheck if present). On failure -> coach "your edit uses `re` but it's not imported; add the import or avoid it". Complements the no-op/dead-code checks. Throughput note: clean-APU ~5min/step (edit at 10min) — much better than contended ~8-11min/step. File: ai-stack/local-agents/agent_executor.py (extend _verify_edit_quality)
+
+## [RESOLVED 2026-08-26] edit_file 100%-broken + 3 self-inflicted gate failures (local-agent unblock)
+- **status**: RESOLVED (provisional, reviews queued in AGENT-CATCHUP-QUEUE)
+- **scope**: local-agent edit path + tier0 QA phase 0 / harness regression / cross-surface
+- **root causes** (all this session's own changes):
+  1. tool_registry.execute_tool_call did `handler(**arguments)` verbatim; local's GBNF tool-call
+     JSON leaks the envelope's "function" key into arguments -> `edit_file_handler() got an
+     unexpected keyword argument 'function'` -> EVERY edit_file failed ok=False (file:
+     ai-stack/local-agents/tool_registry.py:535). This starved the local edit path AND the
+     verify/coach gate (runs only on a successful edit) -> the observed coach_fired=0.
+     Fix: filter kwargs to the handler inspect.signature (keep all if **kwargs); drop unknown w/ debug log.
+  2. 0b8b1bef raised _DOGFOOD_PAYLOAD_JSON_LIMIT 14000->32000; test-noaction's 15000-char before-HTTP
+     rejection probe stopped tripping -> fell through to mocked httpx -> AttributeError
+     (agent_executor.py:~3597). Fix: env-tunable AQ_DOGFOOD_PAYLOAD_JSON_LIMIT; test pins 8000.
+  3. revert 1c317f2e (of inference-breaking cancellation slice 93f1eff4) left the slice's 1060-line
+     test asserting reverted API -> 13/24 AttributeError -> QA phase 0 (0.10.9/0.10.25) red.
+     Fix: hasattr capability-guard skips the 13 reverted-feature tests, auto-re-arms on redo.
+- **severity**: HIGH (edit_file was fully broken; local agent could not edit at all)
+- **action**: fixed + committed provisional; reviews queued; cancellation redo still queued separately.
