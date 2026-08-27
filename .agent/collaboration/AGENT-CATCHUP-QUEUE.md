@@ -337,3 +337,45 @@ REVIEW TARGETS (for Codex — the reliable auto-reviewer — and any returning l
   base.nix) + a REBUILD to be live; shell path works now. After rebuild, re-run dogfood-01 to confirm.
   VERIFY: _reconstruct_pre_edit_content (edit_file reverse-substitution) — does it mis-handle multi-occurrence
   new_string? does new-breakage diffing hold when line numbers shift a lot?
+- [edit_file kwarg-filter — CRITICAL un-block] (provisional): tool_registry.execute_tool_call did
+  `handler(**tool_call.arguments)` verbatim. Local's GBNF tool-call JSON leaked the envelope's own
+  "function" key INTO arguments → `edit_file_handler() got an unexpected keyword argument 'function'` →
+  EVERY edit_file (and any handler without **kwargs) failed ok=False. This silently starved the entire
+  local edit path AND the verify/coach gate (only runs on a SUCCESSFUL edit) — the root cause behind
+  "coach_fired=0 despite the re-without-import bug landing." Fix: filter arguments to the handler's
+  inspect.signature params (keep everything if it declares **kwargs); drop unknown keys with a debug log.
+  Verified: edit_file with a stray {"function":...} now completes + mutates the file; write-region 57/57,
+  edit-verify 37/37 unchanged. Applied directly by orchestrator (Opus) as a tiny/critical/fully-diagnosed
+  hotfix — Rule-17 deviation reason: critical un-block, ~25-line defensive filter, no design surface.
+  VERIFY (reviewer): (a) is silently dropping unknown kwargs the right call vs. erroring loudly — could it
+  MASK a real schema drift where the model means a param the handler renamed? (b) does any registered
+  handler rely on receiving an arg NOT in its signature (partial/functools-wrapped)? (c) should the drop be
+  WARN not DEBUG so we still SEE the model emitting junk keys (observability of local's tool-call hygiene)?
+- [env-tunable dogfood payload limit] (provisional): agent_executor _DOGFOOD_PAYLOAD_JSON_LIMIT
+  (raised 14000->32000 in 0b8b1bef) is now read at call time via AQ_DOGFOOD_PAYLOAD_JSON_LIMIT
+  (default 32000, invalid/<=0 -> default). Root cause it fixes: raising the default silently
+  disabled test-noaction-intervention's before-HTTP rejection probe (15000-char prompt stopped
+  exceeding the higher default -> the call fell through to the mocked HTTP path -> AttributeError
+  on `except httpx.ReadTimeout`). Test now pins the ceiling (8000) instead of the module default.
+  VERIFY (reviewer): (a) is call-time env read the right seam, or should the limit be frozen once
+  per process for determinism? (b) does any operator doc need the new env var surfaced?
+- [complete revert 1c317f2e test surface] (provisional): the cancellation-lifecycle revert
+  (1c317f2e) reverted dispatch.py + task_registry.py + 2 fixtures but LEFT the 1060-line test
+  test-local-delegation-artifact.py (created by the reverted slice 93f1eff4) asserting the
+  reverted API (_publish_terminal_once / record_process_topology / _proc_start_time) -> 13/24
+  AttributeError -> QA phase 0 (0.10.9 + 0.10.25) red since the revert. Fix: a live hasattr
+  capability-guard skips exactly those 13 tests as SKIP-pending-redo when the API is absent, and
+  AUTO-RE-ARMS when the queued cancellation redo restores _publish_terminal_once. 11/11 base tests
+  still assert. VERIFY (reviewer): (a) is the skip-set exactly the reverted-feature tests (no base
+  coverage silently skipped)? (b) confirm the redo's acceptance re-runs all 13 (guard flips green).
+  NOTE this is the FIX for the incomplete-revert gap flagged in the cancellation-lifecycle RE-DO entry.
+- [FOLLOW-UP — codify trunk-protection, Rule-16 parity] Owner ratified 2026-08-26 "keep the hook,
+  work on branches." Memory captured (feedback-trunk-protection-bound-review). REMAINING: propagate
+  the trunk-protection model (main = bound-independent-review Review-Disposition; un-reviewed work on
+  branches; SUPERSEDES commit-forward-provisional-to-main) into CLAUDE.md Commit Discipline + .agent/
+  CODEX.md + .agent/LOCAL-AGENT.md + .agent/GEMINI.md + .agent/WORKFLOW-CANON.md (Rule 16 — all same
+  cycle or INCOMPLETE). Land on its own branch through the bound-review flow. Update AGENT-PARITY-MATRIX.
+- [ROUTE — independent review of c5d35db2] branch local-agent/edit-file-kwarg-unblock. When any
+  independent lane is up (Codex / fresh Claude flagship / Antigravity / local once trustworthy — NOT
+  the author), review the exact staged patch, then merge to main with Review-Disposition: ACCEPTED +
+  Reviewed-subject-sha256 (git diff --cached --binary --full-index | sha256sum) + Reviewed-by.
