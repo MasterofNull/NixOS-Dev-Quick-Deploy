@@ -1074,9 +1074,17 @@ in {
           Group = "llama";
           Restart = "on-failure";
           RestartSec = "5s";
-          # Phase 172-B: extend startup timeout to cover full model-load time
-          # (22GB GGUF on Renoir APU takes up to 90s; 180s gives 2x headroom).
-          TimeoutStartSec = "180";
+          # P1 (resource audit 2026-08-26): the 24.5GB Q5_K_S model on 27GB RAM runs
+          # the system near memory pressure — llama-server was observed with oom_score
+          # 733 and part of its RSS swapped. Bias the OOM killer strongly AWAY from the
+          # inference server so a desktop/QA memory spike sheds a browser tab or a
+          # dashboard worker instead of killing the model mid-load. NOT mlock: locking
+          # 24.5GB on 27GB would guarantee a desktop OOM; OOM-protection is the safe lever.
+          OOMScoreAdjust = -900;
+          # Phase 172-B + P1: startup timeout covers full model-load time. Raised
+          # 180->300 for the 24.5GB Q5_K_S — a larger GGUF, and first load may page in
+          # from disk under memory pressure, exceeding the old 90s/180s (22GB) budget.
+          TimeoutStartSec = "300";
           # Phase 172-B: poll /health until model is loaded and serving.
           # systemd marks the service active only after this probe succeeds,
           # so ai-hybrid-coordinator (after=llama-cpp.service) starts only when
