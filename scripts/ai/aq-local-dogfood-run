@@ -313,10 +313,16 @@ def run_task(task: dict, baseline_mods: set) -> dict:
         _owned, foreign = classify_task_changes(tracked_mods(), baseline_mods, declared_file)
         return foreign
 
-    # Poll for the edit to appear + stabilize (unchanged across 2 polls = settled),
-    # or the task to exit on its own, or the cap. Then stop — don't wait out the loop.
-    diff = ""
-    stable = 0
+    # Wait for the agent to TERMINATE on its own (or collide, or hit the cap) —
+    # do NOT grab the first stable edit. The post-edit verify/coach gate runs
+    # INSIDE the agent loop right after edit_file: on a bad edit it injects
+    # coaching and local retries. During that retry's LLM call (minutes at APU
+    # speed) the file sits unchanged, so the old "stable across 2 polls" capture
+    # grabbed the PRE-coach edit and cancelled the agent before the corrected
+    # retry could land — every dogfood edit was local's un-coached first draft
+    # (dogfood-02 undefined-name, -05 dead-code, -08 no-op all evaded their coach
+    # checks this way). Letting the agent finish captures the FINAL, coached edit.
+    # A stuck agent that never terminates is still bounded by the deadline below.
     deadline = t0 + EDIT_POLL_MAX_S
     last_registry_status = ""
     stop_reason = "deadline"
@@ -332,16 +338,6 @@ def run_task(task: dict, baseline_mods: set) -> dict:
             ledger({"task": tid, "event": "collision", "foreign_files": foreign})
             stop_reason = "collision"
             break
-        tf = _task_files()
-        cur = git("diff", "--", *tf) if tf else ""
-        if cur.strip():
-            if cur == diff:
-                stable += 1
-                if stable >= 2:
-                    stop_reason = "edit-captured"
-                    break
-            else:
-                diff, stable = cur, 0
     elapsed = round(time.monotonic() - t0, 1)
 
     # Preserve truthful terminal state. Only request supported cancellation for a
