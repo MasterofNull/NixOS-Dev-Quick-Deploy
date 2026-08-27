@@ -432,7 +432,8 @@ def main() -> int:
     # halt on a flaky first-task failure — run dogfood-01 as the first queue item, record
     # its outcome, and grind the rest regardless. Every result (edit / no-edit) is honest.
     val_task = {"task": "dogfood-01", "backlog_item": "router-role-route-exclude-lane-granularity",
-                "file": "scripts/ai/aq-role-route"}
+                "file": "scripts/ai/aq-role-route",
+                "verify_cmd": "{file} --help >/dev/null 2>&1"}
     print("[dogfood-run] task dogfood-01 ...")
     vr = run_task(val_task, baseline_mods)
     results = [vr]
