@@ -15,6 +15,13 @@ in {
     mySystem.roles.mobile.enable = lib.mkDefault true;
     mySystem.roles.virtualization.enable = lib.mkDefault true;
 
+    # 2026-08-27: trim the always-on observability stack (grafana/prometheus/
+    # tempo/otel, ~343MB RSS + background scrape/span-processing CPU) on this
+    # RAM-starved 24.5GB-model workstation. Frees RAM + CPU cycles for local
+    # inference. Overrides the ai-dev profile default (mkDefault true). Re-enable
+    # for a monitoring session by flipping this back or removing the line.
+    mySystem.monitoring.enable = false;
+
     mySystem.mcpServers.repoPath =
       lib.mkDefault "/home/${cfg.primaryUser}/Documents/NixOS-Dev-Quick-Deploy";
 
