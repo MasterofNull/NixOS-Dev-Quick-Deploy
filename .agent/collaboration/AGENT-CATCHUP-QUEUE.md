@@ -386,3 +386,9 @@ REVIEW TARGETS (for Codex — the reliable auto-reviewer — and any returning l
   freshness-named line (e.g. intentionally correcting a wrong date)? (b) does the 4-line cap miss a
   multi-stamp gaming edit? (c) should it also gate on the task mentioning stale/refresh, or is the
   structural signal enough? Merge ACCEPTED with bound review after edit-file-kwarg-unblock lands.
+- [ROUTE — review Qwen3.6-35B-A3B-MTP-Q5 switch + P1 resource tuning] branch
+  local-inference/qwen35b-q5-resource-tuning. activeModel=qwen3.6-35b-mtp-q5, ctx 8192, OOMScoreAdjust=-900,
+  TimeoutStartSec 300, carries the flake update (llama 9222 for MTP). VERIFY (reviewer): (a) does Q5_K_S
+  24.5GB actually fit + load in 300s on 27GB, or does it OOM/swap-thrash (fallback: Q4_K_XL 22.5GB)? (b) is
+  OOMScoreAdjust=-900 right vs -1000 (never-kill)? (c) confirm the fetch adopts the manually-placed file
+  without a 24GB re-download. Measured follow-up: ctx raise + observability trim + governor A/B.

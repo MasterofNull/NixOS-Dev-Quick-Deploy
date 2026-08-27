@@ -37,11 +37,18 @@ in {
         };
       };
       llamaCpp = {
-        activeModel = lib.mkDefault "gemma4-e4b";
+        # Qwen3.6-35B-A3B-MTP Q5_K_S (~24.5GB): 35B total / 3B active MoE with MTP
+        # draft heads (matches --spec-type draft-mtp for speculative decoding). Chosen
+        # over the smaller gemma4-e4b for capability; the A3B MoE keeps it fast despite
+        # 35B total. Roadmap: move to Qwen3.8-35B once its GGUF lands.
+        activeModel = lib.mkDefault "qwen3.6-35b-mtp-q5";
         inferenceTimeoutSeconds = lib.mkDefault 3600;
-        # Mobile 27GB RAM target: leave memory reclaimable so the editor and
-        # desktop are not OOM-killed when the dashboard or QA tooling runs.
-        ctxSize = lib.mkDefault 16384;
+        # Q5_K_S (~24.5GB) on 27GB RAM is tight: model + KV + OS/services must fit.
+        # 8192 is the proven ctx for the 35B (KV ~1GB at q8_0+flash-attn); the prior
+        # 16384 was sized for the ~3GB gemma. Raising ctx requires first freeing RAM
+        # (trim always-on observability) — deferred to a MEASURED follow-up, not
+        # bundled onto an unvalidated 24.5GB load.
+        ctxSize = lib.mkDefault 8192;
         extraArgs = lib.mkDefault [
           "--timeout"
           "3600"

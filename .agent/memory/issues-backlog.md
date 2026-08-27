@@ -3506,3 +3506,20 @@ Advisory task (codex is the real confirmatory backstop) — non-blocking.
   3. multi-site edit decomposition (dogfood-09): scaffold local to edit def+usages together, or route multi-site.
   4. 0-token inference stall instrumentation (dogfood-01): distinguish first-token-timeout vs slot-wedge vs prompt.
 - **action**: capability-graduated trust WORKED (local produced diffs, never self-committed; all 3 rejected).
+
+## [IN-PROGRESS 2026-08-26] local inference resource audit + model switch to Qwen3.6-35B-A3B-MTP-Q5
+- **model**: was silently running gemma4-e4b (4.5B) — CLAUDE.md/memory said Qwen3-35B (STALE). Owner
+  directed switch to qwen3.6-35b-mtp-q5 (unsloth/Qwen3.6-35B-A3B-MTP-GGUF, Q5_K_S ~23.78GB, 35B/3B-active
+  MoE + MTP heads). File already downloaded to ~/Downloads — move into /var/lib/llama-cpp/models/ (fetch
+  adopts it, sha unpinned, NO re-download). Needs llama.cpp b9180+ — have 9222 (from flake update). MTP
+  heads pair with the existing --spec-type draft-mtp speculative decoding.
+- **live resource findings (measured)**: VRAM 3.95/4.0GB (maxed, 12 layers, correct ceiling); RAM 782MB
+  free + 8.6GB swap in use; llama-server oom_score=733 with ~278MB swapped (OOM-vulnerable + swap-thrash);
+  governor=schedutil; ctx=8192 (proven for 35B). Q5_K_S 24.5GB on 27GB is TIGHT.
+- **applied this branch (local-inference/qwen35b-q5-resource-tuning)**: activeModel=qwen3.6-35b-mtp-q5;
+  ctxSize 16384->8192 (proven; 16384 was gemma-sized); OOMScoreAdjust=-900 on llama-cpp (P1 OOM-protect);
+  TimeoutStartSec 180->300 (larger GGUF, may page in under pressure); mlock stays OFF (24.5GB lock on 27GB
+  = desktop OOM).
+- **DEFERRED to measured follow-up (after the 35B load is observed)**: raise ctx (needs freed RAM);
+  trim always-on observability grafana/prometheus/tempo/otel (frees ~2-4GB); governor=performance A/B.
+  Rationale: don't pile RAM-risky tuning onto an unvalidated 24.5GB load — measure fit first.
