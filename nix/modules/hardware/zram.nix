@@ -15,14 +15,16 @@ in {
   # ratio. zstd is better if storage I/O is the bottleneck; lz4 wins when RAM
   # bandwidth is the bottleneck (typical during large model loading).
   zramSwap = lib.mkIf (cfg.hardware.systemRamGb > 4) {
-    # 2026-08-27: raised 30 -> 50 for the 24.5GB Qwen3.6-35B on 27GB. At 30% the
-    # 8.2GB zram filled and ~10GB of the model's cold pages spilled to the NVMe
-    # SSD swap (~50-100us/access — the 3.2 tok/s throughput wall). A 50% zram
-    # (~13.5GB) keeps far more of that swap in compressed RAM (~us decompress, no
-    # SSD latency). Tradeoff: zram's compressed data occupies RAM and model
-    # weights compress poorly, so this is measured, not assumed — if tok/s doesn't
-    # improve it confirms the model simply exceeds 27GB and Q4_K_XL is the fix.
-    memoryPercent = 50;
+    # 2026-08-27 (MEASURED, corrected): for the 24.5GB Qwen3.6-35B on 27GB, LESS
+    # zram is better, not more. The 30% (8.2GB) zram was itself consuming ~3.5GB
+    # RAM holding compressed swap — RAM the model needed to stay resident; the
+    # model ran 8GB-swapped-to-SSD at 3.2 tok/s. After freeing observability +
+    # dropping zram, the model became RESIDENT (VmSwap 8GB->71MB) and throughput
+    # rose to 5.7 tok/s (1.8x). Since the model wants to be resident, zram competes
+    # with it — so keep only a SMALL 10% (~2.7GB) compressed buffer for transient
+    # spikes rather than a large pool that steals the model's RAM. (My earlier 50%
+    # bump was the wrong direction and failed to allocate at boot anyway.)
+    memoryPercent = 10;
     algorithm = "lz4";
   };
 }
