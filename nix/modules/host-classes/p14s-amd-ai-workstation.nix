@@ -15,12 +15,13 @@ in {
     mySystem.roles.mobile.enable = lib.mkDefault true;
     mySystem.roles.virtualization.enable = lib.mkDefault true;
 
-    # 2026-08-27: trim the always-on observability stack (grafana/prometheus/
-    # tempo/otel, ~343MB RSS + background scrape/span-processing CPU) on this
-    # RAM-starved 24.5GB-model workstation. Frees RAM + CPU cycles for local
-    # inference. Overrides the ai-dev profile default (mkDefault true). Re-enable
-    # for a monitoring session by flipping this back or removing the line.
-    mySystem.monitoring.enable = false;
+    # NOTE (2026-08-27): monitoring stays ENABLED. It was briefly disabled to free
+    # RAM but that was a mistake — the observability stack (grafana/prometheus/
+    # tempo/otel + the command-center dashboard, which is gated on
+    # monitoring.enable) is core to "you cannot manage what you cannot measure",
+    # and it was only ~343MB. The real throughput win (3.2->5.7 tok/s, model
+    # resident) came entirely from the zram fix (zram.nix 30/50->10), NOT from
+    # trimming observability. Keep monitoring on; the profile default (true) applies.
 
     mySystem.mcpServers.repoPath =
       lib.mkDefault "/home/${cfg.primaryUser}/Documents/NixOS-Dev-Quick-Deploy";
