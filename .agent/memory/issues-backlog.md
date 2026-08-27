@@ -3547,3 +3547,19 @@ Advisory task (codex is the real confirmatory backstop) — non-blocking.
 - FIX (bounded): wrap the per-task edit in a trap/finally that ALWAYS reverts the declared file(s) on
   ANY exit path (success, collision, cancel, timeout, signal); verify tree-clean before dispatching the
   next task; if not clean, restore + log rather than cascade-collide.
+
+## [FIX 2026-08-27] runner capture-then-cancel preempted the coach — the loop measured wrong first drafts
+- After the RAM fix (3.2->4.9 tok/s), local finally LANDS edits (3/12 vs 0/13 before). All 3 were incorrect
+  BUT each is coach-catchable: dogfood-02 undefined-name (lint check), -05 dead-code (dead-code check),
+  -08 comment-only (no-op check). Verified the coach returns passed=False + actionable coaching on -02's
+  exact edit. Yet the coach never fired in the run.
+- ROOT CAUSE: aq-local-dogfood-run polled for the first edit "stable across 2 polls" then captured + cancelled
+  the agent. But the verify/coach gate runs INSIDE the agent loop after edit_file; during a coach retry's LLM
+  call (minutes at APU speed) the file sits unchanged, so the runner grabbed the PRE-coach draft and killed the
+  agent before the corrected retry landed.
+- FIX (aq-local-dogfood-run): removed the edit-stabilization early-break; the poll loop now waits for the
+  agent to TERMINATE (or collide, or hit the deadline) so the coach fires + local retries + the FINAL coached
+  edit is captured. Tradeoff: edit tasks may run longer if local doesn't cleanly signal completion post-edit
+  (separate followup: local-completion-signal-after-edit).
+- STATUS: the full chain is now built (throughput + behavioral gate + static coach + runner lets it fire).
+  Needs a live dogfood run to confirm the coach now coaches local toward correct edits.
