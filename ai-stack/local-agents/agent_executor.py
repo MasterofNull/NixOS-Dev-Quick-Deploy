@@ -545,6 +545,14 @@ _EDIT_MISMATCH_SIGNAL_PHRASES: tuple[str, ...] = (
 # restores plain accept-on-success behavior.
 _EDIT_VERIFY_ENABLED: bool = _env_flag("AQ_EDIT_VERIFY", True)
 _EDIT_VERIFY_MAX_PER_FILE: int = int(os.getenv("AQ_EDIT_VERIFY_MAX_PER_FILE", "2"))
+# Behavioral verify: the task's ACTUAL check (a test/command) run after the edit.
+# The static checks (no-op/dead-code/lint/freshness) are necessary but not
+# sufficient — they pass a plausible SEMANTIC wrong-fix (e.g. dogfood-03 hardcoding
+# --json: valid bash, right file, still wrong). Only running the task's real check
+# catches that. Opt-in via AQ_EDIT_VERIFY_CMD (empty = disabled); "{file}" in the
+# command is substituted with the edited path. Bounded + fail-safe.
+_BEHAVIORAL_VERIFY_CMD: str = os.getenv("AQ_EDIT_VERIFY_CMD", "").strip()
+_BEHAVIORAL_VERIFY_TIMEOUT_S: int = int(os.getenv("AQ_EDIT_VERIFY_TIMEOUT_S", "120"))
 
 # Heuristic substrings indicating the model is explicitly declining/stopping
 # rather than narrating a plan it forgot to execute. Kept conservative and
@@ -1080,6 +1088,35 @@ def _edit_touches_named_targets(
     return any(t in haystack or t.rstrip("()") in haystack for t in targets)
 
 
+def _behavioral_verify(file_path: str) -> Optional[str]:
+    """Run the task's declared behavioral check (AQ_EDIT_VERIFY_CMD) after an edit.
+
+    Returns None on PASS (exit 0) or a truncated failure output on non-zero exit.
+    This is the gate that catches SEMANTIC wrong-fixes the static checks cannot:
+    an edit that parses, lints, isn't a no-op, touches the right file, yet breaks
+    the behavior (dogfood-03 hardcoding --json). Only a real run surfaces it.
+
+    Fail-safe: a failure to RUN the command (missing tool, timeout, exception) is
+    NOT a test failure — it degrades to None (skip) so a broken harness never
+    blocks a legitimate edit. Only a genuine non-zero exit of the check coaches.
+    """
+    if not _BEHAVIORAL_VERIFY_CMD:
+        return None
+    cmd = _BEHAVIORAL_VERIFY_CMD.replace("{file}", file_path)
+    try:
+        proc = subprocess.run(
+            ["bash", "-c", cmd],  # -c not -lc: no login-shell title escapes in the output
+            capture_output=True, text=True,
+            timeout=_BEHAVIORAL_VERIFY_TIMEOUT_S, cwd=os.getcwd(),
+        )
+    except Exception:  # noqa: BLE001 — couldn't run the check; skip, never block
+        return None
+    if proc.returncode == 0:
+        return None
+    tail = ((proc.stdout or "") + "\n" + (proc.stderr or "")).strip()
+    return tail[-800:] if tail else f"check exited with status {proc.returncode}"
+
+
 def _verify_edit_quality(
     tool_name: str,
     arguments: Dict[str, Any],
@@ -1193,6 +1230,22 @@ def _verify_edit_quality(
             coaching_message=(
                 f"Your edit doesn't touch {named} — the task specifically names "
                 f"that target. Re-read the task and edit the right place."
+            ),
+        )
+
+    # BEHAVIORAL verify (last, and only once the static checks pass): run the
+    # task's actual check. This is what turns "confidently wrong" into "iterate to
+    # correct" — the static gates above cannot see a semantic wrong-fix.
+    behavioral_fail = _behavioral_verify(file_path)
+    if behavioral_fail:
+        return _EditVerdict(
+            passed=False,
+            reason="behavioral_verify_failed",
+            coaching_message=(
+                "Your edit is syntactically fine but FAILS the task's own check "
+                "when actually run:\n\n" + behavioral_fail + "\n\nThat's a behavior "
+                "bug, not a syntax one. Read the failure above, change what the code "
+                "DOES (not just how it reads), and retry the edit."
             ),
         )
 
