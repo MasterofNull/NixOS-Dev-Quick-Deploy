@@ -3563,3 +3563,17 @@ Advisory task (codex is the real confirmatory backstop) — non-blocking.
   (separate followup: local-completion-signal-after-edit).
 - STATUS: the full chain is now built (throughput + behavioral gate + static coach + runner lets it fire).
   Needs a live dogfood run to confirm the coach now coaches local toward correct edits.
+[DONE] local-agent-nonzero-child-exit-evidence-lost — Dogfood task `local-20260827-202157-06ngvs` reached a valid `edit_file` envelope, but `aq-agent-loop` exited nonzero after about 580 seconds and the detached dispatcher retained neither its exit code nor stderr. The output remained the initial waiting stub, so the executor failure could not be reconstructed. F2 now records a numeric exit, byte-bounded sanitized stderr sidecar/tail, and watchdog evidence; exact subject `3ba58871d9ad01ec1633db70114fbeafe354a45b270b3f094798bb27560c960d` received independent PASS.
+  Severity: high
+  Action: persist a bounded task-local stderr sidecar plus numeric child exit and sanitized tail in terminal output/progress, then rerun one bounded task before changing executor semantics.
+  File: scripts/ai/lib/dispatch.py; scripts/testing/test-local-delegation-artifact.py
+
+[DONE] phase0-local-delegation-artifact-wrapper-timeout — `aq-qa 0 --json` raised an uncaught `subprocess.TimeoutExpired` because the service-down regression exercised the new 180-second resume wait inside Phase 0's 30-second wrapper. The test now mocks the wait hermetically, completes in 4.26 seconds, and Phase 0 converts any future timeout to a bounded typed failure without increasing its 30-second budget.
+  Severity: high
+  Action: measure the focused suite, make the Phase-0 wrapper return a typed timeout failure, and set a justified bounded budget in a separate slice without weakening the artifact assertions.
+  File: scripts/testing/harness_qa/phases/phase0.py; scripts/testing/test-local-delegation-artifact.py
+
+[OPEN] claude-readonly-handoff-checkin-timeout — A direct read-only Claude Sonnet handoff query timed out without a response after the repository handoff branch had already been pushed. The committed handoff remained available and was independently recovered, so orchestration continued without losing state.
+  Severity: medium
+  Action: keep committed handoff artifacts authoritative; add provider timeout/terminal reason to collaborator availability projection instead of silently waiting or retrying indefinitely.
+  File: scripts/ai/delegate-to-claude; collaborative roster health projection
