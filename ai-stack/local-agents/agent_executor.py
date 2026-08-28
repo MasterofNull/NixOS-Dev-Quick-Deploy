@@ -19,6 +19,7 @@ import json
 import logging
 import os
 import re
+import shlex
 import shutil
 import subprocess
 import sys
@@ -1102,7 +1103,7 @@ def _behavioral_verify(file_path: str) -> Optional[str]:
     """
     if not _BEHAVIORAL_VERIFY_CMD:
         return None
-    cmd = _BEHAVIORAL_VERIFY_CMD.replace("{file}", file_path)
+    cmd = _BEHAVIORAL_VERIFY_CMD.replace("{file}", shlex.quote(file_path))
     try:
         proc = subprocess.run(
             ["bash", "-c", cmd],  # -c not -lc: no login-shell title escapes in the output

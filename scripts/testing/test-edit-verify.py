@@ -80,6 +80,7 @@ from __future__ import annotations
 
 import asyncio
 import importlib.util
+import shlex
 import sys
 import tempfile
 from pathlib import Path
@@ -824,10 +825,35 @@ async def test_behavioral_verify_catches_semantic_wrong_fix():
         ae._BEHAVIORAL_VERIFY_CMD = orig
 
 
+async def test_behavioral_verify_quotes_hostile_file_path():
+    """The {file} template value is one literal bash argument, never syntax."""
+    orig = ae._BEHAVIORAL_VERIFY_CMD
+    with tempfile.TemporaryDirectory() as td:
+        sentinel = Path(td) / "injected-sentinel"
+        hostile_path = f"{td}/name with spaces; touch {sentinel}; $(echo injected)"
+        expected_command = f"test -f {shlex.quote(hostile_path)}"
+        fake_result = MagicMock(returncode=0, stdout="", stderr="")
+        try:
+            ae._BEHAVIORAL_VERIFY_CMD = "test -f {file}"
+            with patch.object(ae.subprocess, "run", return_value=fake_result) as run:
+                result = ae._behavioral_verify(hostile_path)
+            check("hostile behavioral path still accepts a passing mocked check", result is None)
+            check("behavioral verify invokes bash -c exactly once", run.call_count == 1)
+            argv = run.call_args.args[0]
+            check("behavioral verify preserves the expected bash -c shape", argv == ["bash", "-c", expected_command])
+            parsed = shlex.split(argv[2])
+            check("hostile path is delivered as one literal argument",
+                  parsed == ["test", "-f", hostile_path])
+            check("hostile path did not create an injected sentinel", not sentinel.exists())
+        finally:
+            ae._BEHAVIORAL_VERIFY_CMD = orig
+
+
 async def main():
     await test_noop_edit_triggers_coach_then_real_fix_completes()
     await test_freshness_gaming_edit_triggers_coach()
     await test_behavioral_verify_catches_semantic_wrong_fix()
+    await test_behavioral_verify_quotes_hostile_file_path()
     await test_real_edit_passes_clean()
     await test_dead_code_added_def_triggers_coach()
     await test_referenced_def_passes_clean()
