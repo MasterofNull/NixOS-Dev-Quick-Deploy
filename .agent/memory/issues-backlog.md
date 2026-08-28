@@ -3591,3 +3591,13 @@ Advisory task (codex is the real confirmatory backstop) — non-blocking.
   Severity: medium
   Action: retain strict source hash binding and re-pin it atomically whenever an intentionally reviewed bound source changes.
   File: scripts/testing/fixtures/local-delegation-reliability-golden.json
+
+[OPEN] local-skill-schema-quality-drift — `aq-skill-auto --json --test` selected the canonical multi-agent, task-eligibility, and role-contract skills but marked all three invalid for missing required `description` sections; task-eligibility also triggered a likely false-positive shell-pattern detector on a Markdown table row. Selection still succeeded, so agents can silently consume locally valid-looking skills that fail their own quality contract.
+  Severity: medium
+  Action: repair the three skill metadata/section contracts and make the security-pattern validator distinguish documentation tables/examples from executable content without weakening real executable-pattern detection.
+  File: .agent/skills/multi-agent-collab/SKILL.md; .agent/skills/task-eligibility/SKILL.md; .agent/skills/role-contracts/SKILL.md; skill validation implementation
+
+[OPEN] session-start-machine-mode-contract-drift — Lights-Out guidance requires machine-mode CLI interactions, but `aq-session-start --task ... --machine` rejects `--machine` as an unknown argument. Operators must currently use human-formatted output for this mandatory session entrypoint.
+  Severity: medium
+  Action: add a closed `--machine` response contract to `aq-session-start` or explicitly exempt this entrypoint in the Machine-Mode First guidance; add a focused CLI regression.
+  File: scripts/ai/aq-session-start; AGENTS.md
