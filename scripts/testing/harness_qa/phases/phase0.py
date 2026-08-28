@@ -1269,14 +1269,23 @@ def _check_local_delegation_artifact(ctx: RunContext) -> list[CheckResult]:
     check = ctx.repo_root / "scripts" / "testing" / "test-local-delegation-artifact.py"
     if not check.exists():
         return [failed(1, "0.10.9", "local delegation artifact persistence", "test-local-delegation-artifact.py missing")]
-    proc = subprocess.run(
-        ["python3", str(check)],
-        cwd=ctx.repo_root,
-        text=True,
-        capture_output=True,
-        timeout=30,
-        check=False,
-    )
+    try:
+        proc = subprocess.run(
+            ["python3", str(check)],
+            cwd=ctx.repo_root,
+            text=True,
+            capture_output=True,
+            timeout=30,
+            check=False,
+        )
+    except subprocess.TimeoutExpired as exc:
+        output = (exc.stdout or "") + (exc.stderr or "")
+        if isinstance(output, bytes):
+            output = output.decode("utf-8", errors="replace")
+        detail = output.strip()[:240]
+        suffix = f": {detail}" if detail else ""
+        return [failed(1, "0.10.9", "local delegation artifact persistence",
+                       f"test timed out after 30s{suffix}")]
     if proc.returncode == 0:
         return [passed(1, "0.10.9", "local delegation pre-registers artifact before blocking ops")]
     detail = (proc.stdout + proc.stderr).strip() or f"exit {proc.returncode}"
