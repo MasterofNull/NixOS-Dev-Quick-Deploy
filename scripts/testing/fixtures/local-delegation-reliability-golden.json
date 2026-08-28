@@ -88,7 +88,7 @@
     },
     {
       "path": "ai-stack/local-agents/agent_executor.py",
-      "sha256": "27fae0168b4deb62569c585c52b20cef2f7a5e18cb839f219517ab1dcd246de2",
+      "sha256": "1f96547a2da6c56d67a4f0edc6c2a54ac7fd514b1a16161fcf388712720a8653",
       "defects": [
         "D3",
         "D4",
@@ -317,7 +317,7 @@
   ],
   "stable_digests": {
     "vectors": "2512115fca4745d728887e8c0ca4aa6c9e9fdef93164896ae13277ad3f06e822",
-    "source_manifest": "e2c30a9df09135757c7470ffde040f5e0ded55004b1d2e15edec16dbe7b633a3",
+    "source_manifest": "a79f879e29ae6557c2955c245178e186714f9451728a0ad3f9d48605c6360a33",
     "fixed_contract": "d439cf7568df80d0d1081972f45f1361ee28124728b2a0d42588ba99b7377240"
   },
   "sanitized_terminal_reasons": [

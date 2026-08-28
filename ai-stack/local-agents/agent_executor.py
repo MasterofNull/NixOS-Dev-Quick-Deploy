@@ -3628,27 +3628,39 @@ class LocalAgentExecutor:
                 _validation_passes_without_commit = 0
 
     def _tool_call_grammar(self, *, force_repair: bool = False) -> Optional[str]:
-        """P2: GBNF constraining output to the tool-call envelope over the ENABLED tools. Returns None
-        unless AQ_LOCAL_GBNF is set (default OFF) or a repair-only retry explicitly requests it.
-        Cached on the instance keyed by the enabled-tool set (the lease can hot-swap mid-run)."""
-        if tool_grammar is None:
-            return None
+        """Return GBNF tied to enabled names *and* parameter schemas.
+
+        An operator explicitly requesting grammar (always-on or repair) gets a
+        typed failure when it cannot be constructed.  Continuing unconstrained
+        after a schema/build error would hide the guard's absence and re-admit
+        malformed calls.
+        """
         if force_repair:
             if not _LOCAL_GBNF_REPAIR_ENABLED:
                 return None
         elif not _LOCAL_GBNF_ALWAYS_ENABLED:
             return None
+        if tool_grammar is None:
+            raise RuntimeError("tool-call grammar was requested but tool_grammar is unavailable")
         try:
-            names = sorted(t.name for t in self.tool_registry.tools.values() if getattr(t, "enabled", True))
-            cache_key = tuple(names)
+            schemas = {
+                t.name: t.parameters
+                for t in self.tool_registry.tools.values()
+                if getattr(t, "enabled", True)
+                and (_LOCAL_ALLOW_COMMIT or t.name not in _AEXEC_COMMIT_TOOLS)
+            }
+            cache_key = tool_grammar.tool_schema_cache_key(schemas)
             cached = getattr(self, "_gbnf_cache", None)
             if cached and cached[0] == cache_key:
                 return cached[1]
-            grammar, _hit = tool_grammar.tool_call_grammar(names)
+            grammar, _hit = tool_grammar.tool_call_grammar(schemas)
             self._gbnf_cache = (cache_key, grammar)
             return grammar
-        except Exception:  # noqa: BLE001 — grammar is an optimization; never break the call on it
-            return None
+        except Exception as exc:  # noqa: BLE001 — provide a bounded, fail-closed receipt
+            raise RuntimeError(
+                "tool-call grammar requested but could not be built from enabled schemas: "
+                f"{type(exc).__name__}"
+            ) from exc
 
     def _cassette_replay(
         self, payload: Dict[str, Any], task_type: Optional[str]

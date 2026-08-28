@@ -3601,3 +3601,13 @@ Advisory task (codex is the real confirmatory backstop) — non-blocking.
   Severity: medium
   Action: add a closed `--machine` response contract to `aq-session-start` or explicitly exempt this entrypoint in the Machine-Mode First guidance; add a focused CLI regression.
   File: scripts/ai/aq-session-start; AGENTS.md
+
+[IN-FLIGHT] local-tool-grammar-required-arguments-unbound — Live task `local-20260828-094134-6kogc5` ran with GBNF enabled but emitted `read_file` without `file_path` after 964.5 seconds. The grammar couples only an enabled function-name enum to a generic arguments object; tool parameter schemas and their required fields never enter grammar construction. The handler rejected the call safely, the 1,200-second wall reaped the task, and no repository file changed.
+  Severity: high
+  Action: generate a bounded function-coupled grammar from enabled tool schemas, retain optional arguments, reject missing/cross-tool shapes, schema-bind the cache, independently review, then rerun one bounded dogfood task.
+  File: ai-stack/local-agents/tool_grammar.py; scripts/ai/lib/grammar_cache.py; ai-stack/local-agents/agent_executor.py; scripts/testing/test-tool-grammar.py; scripts/testing/test-tool-call-grammar.py
+
+[OPEN] local-tool-grammar-active-lease-drift — Grammar construction uses every enabled tool in the registry, while the executor can later narrow the model-visible tool set through active selection/hot-swap. Required arguments are now schema-bound, but the grammar may still admit a tool outside the current per-turn lease.
+  Severity: high
+  Action: pass the exact active model-visible tool-schema projection into grammar construction and bind it to the same per-turn lease digest; warn-only instrumentation first, then fail closed after measured parity.
+  File: ai-stack/local-agents/agent_executor.py; ai-stack/local-agents/tool_grammar.py
