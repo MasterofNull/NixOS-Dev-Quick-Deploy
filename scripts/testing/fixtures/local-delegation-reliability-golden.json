@@ -27,7 +27,7 @@
     },
     {
       "path": "scripts/ai/lib/dispatch.py",
-      "sha256": "a860f4ff52396b5c768e5a5585898729fb8beadd90fb7ad64d54750b9efa2935",
+      "sha256": "41bd3fcb09fbe8a84e5e965c6fd5bf84bab6d839ae4bd9c8dd8e3b715962d65b",
       "defects": [
         "D2",
         "D9",
@@ -88,7 +88,7 @@
     },
     {
       "path": "ai-stack/local-agents/agent_executor.py",
-      "sha256": "f595477df2f5ec420885069dca4117c9473766fb559d838e774ad85dd52d81a8",
+      "sha256": "360bfdb8cdc6894f10332f8b8ee7b5fbd0e2ec8c668f47973dc847f36a01cd88",
       "defects": [
         "D3",
         "D4",
@@ -317,7 +317,7 @@
   ],
   "stable_digests": {
     "vectors": "2512115fca4745d728887e8c0ca4aa6c9e9fdef93164896ae13277ad3f06e822",
-    "source_manifest": "cdcb8343580f2c3f187ff09e8b8a552b68930ce9b1a9a4c83b66239023c0ceec",
+    "source_manifest": "9b3054a12347a7461af2a9338751960f0354d7a7a4b56b8511f87b0fb32c566e",
     "fixed_contract": "d439cf7568df80d0d1081972f45f1361ee28124728b2a0d42588ba99b7377240"
   },
   "sanitized_terminal_reasons": [

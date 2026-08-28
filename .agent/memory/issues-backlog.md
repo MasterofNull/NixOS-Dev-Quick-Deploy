@@ -3577,3 +3577,17 @@ Advisory task (codex is the real confirmatory backstop) — non-blocking.
   Severity: medium
   Action: keep committed handoff artifacts authoritative; add provider timeout/terminal reason to collaborator availability projection instead of silently waiting or retrying indefinitely.
   File: scripts/ai/delegate-to-claude; collaborative roster health projection
+[DONE] behavioral-verify-file-substitution-shell-injection — `_behavioral_verify` substituted a model-influenced file path directly into the operator-declared shell command. Controlled dogfood task `local-20260828-064534-n1khvu` added `shlex.quote(file_path)` by 790.3 seconds and stayed within its one-file scope; hostile-path regression and independent exact-subject review passed.
+  Severity: high
+  Action: completed in the behavioral-verification shell-quoting slice; retain the regression and exact reviewed-subject evidence.
+  File: ai-stack/local-agents/agent_executor.py; scripts/testing/test-edit-verify.py
+
+[OPEN] local-agent-completion-signal-after-correct-edit — Task `local-20260828-064534-n1khvu` completed both requested edits by 790.3 seconds but continued through a third successful edit call and an additional inference turn until the 900-second supervisor cap sent SIGTERM. The new diagnostic receipt proves the code result was correct while the task terminal status was `failed` solely because no bounded completion signal followed the accepted edit.
+  Severity: high
+  Action: after a verified successful edit satisfying the declared task scope, emit a typed completion candidate and give the model one short bounded synthesis turn; terminate successfully without waiting for another full 800-token tool turn.
+  File: ai-stack/local-agents/agent_executor.py; scripts/ai/aq-agent-loop; scripts/ai/aq-local-dogfood-run
+
+[DONE] local-delegation-reliability-source-manifest-stale — The reliability golden fixture still pinned the pre-observability `dispatch.py` hash and became additionally stale when the local agent fixed behavioral-verification quoting, causing three fail-closed reliability checks. The two exact live source hashes and deterministic source-manifest digest were mechanically re-pinned without changing assertions or characterized behavior.
+  Severity: medium
+  Action: retain strict source hash binding and re-pin it atomically whenever an intentionally reviewed bound source changes.
+  File: scripts/testing/fixtures/local-delegation-reliability-golden.json
