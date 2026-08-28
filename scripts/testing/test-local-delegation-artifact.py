@@ -48,6 +48,16 @@ def _load_task_registry():
     return mod
 
 
+def _load_delegation_registry():
+    loader = importlib.machinery.SourceFileLoader(
+        "aq_delegation_registry", str(ROOT / "scripts" / "ai" / "aq-delegation-registry")
+    )
+    spec = importlib.util.spec_from_loader("aq_delegation_registry", loader)
+    mod = importlib.util.module_from_spec(spec)
+    loader.exec_module(mod)
+    return mod
+
+
 def _load_dogfood_runner():
     loader = importlib.machinery.SourceFileLoader(
         "aq_local_dogfood_run", str(ROOT / "scripts" / "ai" / "aq-local-dogfood-run")
@@ -1136,6 +1146,122 @@ def test_registry_repair_stale_dry_run_and_apply():
         print("PASS  registry repair-stale supports dry-run and explicit apply")
 
 
+def test_registry_reconcile_pending_derives_overlay_and_fails_closed():
+    """Legacy PENDING rows need registry evidence; unknown is stale, never done."""
+    with tempfile.TemporaryDirectory() as tmp:
+        tmp_path = Path(tmp)
+        delegation_dir = tmp_path / "delegation"
+        output_file = delegation_dir / "outputs" / "pending-overlay.log"
+        output_file.parent.mkdir(parents=True)
+        output_file.write_text('{"status": "done"}\n', encoding="utf-8")
+
+        tr_mod = _load_task_registry()
+        registry = tr_mod.TaskRegistry(delegation_dir, repo_root=tmp_path)
+        registry.append("pending-overlay", "overlay probe", str(output_file), "agent", "architect", 99999999)
+        registry.record_dispatch("pending-overlay", "local-agent", str(output_file), "overlay probe")
+        heartbeat_output = delegation_dir / "outputs" / "pending-heartbeat.log"
+        heartbeat_output.write_text("Agent task started; waiting for aq-agent-loop output.\n", encoding="utf-8")
+        (Path(str(heartbeat_output) + ".heartbeat.json")).write_text(
+            json.dumps({"heartbeat_at": tr_mod._now()}), encoding="utf-8"
+        )
+        registry.append("pending-heartbeat", "heartbeat probe", str(heartbeat_output), "agent", "architect", 99999999)
+        registry.record_dispatch("pending-heartbeat", "local-agent", str(heartbeat_output), "heartbeat probe")
+        pending = registry._load_pending()
+        pending["in_flight"].append({"id": "pending-unknown", "status": "running"})
+        registry._save_pending(pending)
+
+        preview = registry.reconcile_pending(apply=False)
+        candidates = {item["id"]: item for item in preview["candidates"]}
+        assert_true(preview["mode"] == "dry_run", f"missing dry-run mode: {preview}")
+        assert_true(candidates["pending-overlay"]["to_status"] == "done", f"artifact overlay ignored: {candidates}")
+        assert_true(candidates["pending-unknown"]["to_status"] == "stale", f"unknown row was completed: {candidates}")
+        assert_true("pending-heartbeat" not in candidates, f"fresh heartbeat was not retained: {candidates}")
+        assert_true("TaskRegistry record" in candidates["pending-unknown"]["reason"], f"missing audit reason: {candidates}")
+        overlay = candidates["pending-overlay"]["overlay"]
+        assert_true(overlay["pid"] == 99999999 and overlay["heartbeat"] is False and "artifact" in overlay,
+                    f"candidate did not return PID/heartbeat/artifact overlay: {overlay}")
+        assert_true(registry._load_pending()["in_flight"][-1]["status"] == "running", "dry-run mutated PENDING")
+
+        applied = registry.reconcile_pending(apply=True)
+        assert_true(applied["reconciled_count"] == 2, f"apply did not reconcile both rows: {applied}")
+        reconciled = {item["id"]: item for item in registry._load_pending()["in_flight"]}
+        assert_true(reconciled["pending-overlay"]["status"] == "done", f"artifact status lost: {reconciled}")
+        assert_true(reconciled["pending-heartbeat"]["status"] == "running", f"fresh heartbeat was not retained: {reconciled}")
+        assert_true(reconciled["pending-unknown"]["status"] == "stale", f"unknown not stale: {reconciled}")
+        assert_true(reconciled["pending-unknown"].get("reconciliation_receipt"), f"missing receipt: {reconciled}")
+        again = registry.reconcile_pending(apply=True)
+        assert_true(again["candidate_count"] == 0 and again["reconciled_count"] == 0,
+                    f"reconciliation was not idempotent: {again}")
+    print("PASS  PENDING reconciliation is dry-run, evidence-based, and idempotent")
+
+
+def test_registry_reconcile_pending_requires_typed_terminal_reason():
+    """A terminal registry row without a typed reason is stale, never a guessed completion."""
+    with tempfile.TemporaryDirectory() as tmp:
+        tmp_path = Path(tmp)
+        tr_mod = _load_task_registry()
+        registry = tr_mod.TaskRegistry(tmp_path / "delegation", repo_root=tmp_path)
+        output = tmp_path / "delegation" / "outputs" / "terminal.log"
+        registry.append("terminal-untyped", "terminal probe", str(output), "agent", "architect", None)
+        registry.record_dispatch("terminal-untyped", "local-agent", str(output), "terminal probe")
+        registry.update_status("terminal-untyped", "done")
+
+        preview = registry.reconcile_pending()
+        candidate = preview["candidates"][0]
+        assert_true(candidate["to_status"] == "stale", f"untyped terminal became complete: {candidate}")
+        assert_true("lacks terminal_reason" in candidate["reason"], f"missing typed reason rejection: {candidate}")
+
+        registry._update_registry("terminal-untyped", {"terminal_reason": "provider_exit_success"})
+        preview = registry.reconcile_pending()
+        candidate = preview["candidates"][0]
+        assert_true(candidate["to_status"] == "done", f"typed terminal was not retained: {candidate}")
+        assert_true(candidate["reason"] == "registry terminal done: provider_exit_success",
+                    f"terminal reason not preserved: {candidate}")
+    print("PASS  terminal PENDING completion requires an explicit registry reason")
+
+
+def test_reconcile_pending_cli_is_hermetic_dry_run_by_default_and_confirms_apply():
+    """CLI defaults to preview and refuses apply before touching an isolated PENDING fixture."""
+    with tempfile.TemporaryDirectory() as tmp:
+        tmp_path = Path(tmp)
+        delegation_dir = tmp_path / "delegation"
+        tr_mod = _load_task_registry()
+        registry = tr_mod.TaskRegistry(delegation_dir, repo_root=tmp_path)
+        registry.record_dispatch("cli-unknown", "local-agent", str(tmp_path / "missing.log"), "cli probe")
+        pending_before = registry.pending_file.read_text(encoding="utf-8")
+
+        cli = _load_delegation_registry()
+        original_argv, original_root, original_default = sys.argv, cli.ROOT, cli.DEFAULT_REGISTRY
+        try:
+            cli.ROOT = tmp_path
+            cli.DEFAULT_REGISTRY = delegation_dir / "registry.jsonl"
+            with contextlib.redirect_stdout(io.StringIO()) as out:
+                sys.argv = ["aq-delegation-registry", "reconcile-pending"]
+                rc = cli.main()
+            preview = json.loads(out.getvalue())
+            assert_true(rc == 0 and preview["mode"] == "dry_run", f"default CLI was not dry-run: {preview}")
+            assert_true(registry.pending_file.read_text(encoding="utf-8") == pending_before,
+                        "default CLI mutated PENDING")
+
+            with contextlib.redirect_stderr(io.StringIO()) as err:
+                sys.argv = ["aq-delegation-registry", "reconcile-pending", "--apply"]
+                rc = cli.main()
+            assert_true(rc == 2 and "requires_confirm_workspace" in err.getvalue(),
+                        f"unconfirmed apply was not rejected: {err.getvalue()}")
+            assert_true(registry.pending_file.read_text(encoding="utf-8") == pending_before,
+                        "unconfirmed apply mutated PENDING")
+
+            with contextlib.redirect_stdout(io.StringIO()) as out:
+                sys.argv = ["aq-delegation-registry", "reconcile-pending", "--apply", "--confirm-workspace"]
+                rc = cli.main()
+            applied = json.loads(out.getvalue())
+            assert_true(rc == 0 and applied["mode"] == "apply" and applied["reconciled_count"] == 1,
+                        f"confirmed apply did not run: {applied}")
+        finally:
+            sys.argv, cli.ROOT, cli.DEFAULT_REGISTRY = original_argv, original_root, original_default
+    print("PASS  reconcile-pending CLI defaults dry-run and gates apply by workspace confirmation")
+
+
 def test_aq_report_exposes_local_agent_monitor():
     """Machine report must include the local-agent monitor visibility surface."""
     report_src = (ROOT / "scripts" / "ai" / "aq-report").read_text()
@@ -1211,6 +1337,9 @@ if __name__ == "__main__":
         test_registry_status_reconciles_dead_agent_failure,
         test_registry_monitor_is_read_only_json,
         test_registry_repair_stale_dry_run_and_apply,
+        test_registry_reconcile_pending_derives_overlay_and_fails_closed,
+        test_registry_reconcile_pending_requires_typed_terminal_reason,
+        test_reconcile_pending_cli_is_hermetic_dry_run_by_default_and_confirms_apply,
         test_aq_report_exposes_local_agent_monitor,
     ]
     for t in tests:
