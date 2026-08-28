@@ -485,6 +485,13 @@ def _range_is_covered(
 # Kill switch AQ_NOACTION_INTERVENTION=0 restores the plain-completion behavior.
 _NOACTION_INTERVENTION_ENABLED: bool = _env_flag("AQ_NOACTION_INTERVENTION", True)
 _RETRY_RESPONSE_CHAR_BUDGET = 512
+_LOCAL_MODEL_LOADING_RETRY_TIMEOUT_SECONDS = 120.0
+
+
+def _is_local_model_loading_error(error: Exception) -> bool:
+    """Return true only for the explicit local llama.cpp loading response."""
+    message = str(error)
+    return "llama.cpp error: 503" in message and "Loading model" in message
 
 
 def _bounded_retry_response(response: str) -> str:
@@ -2549,14 +2556,31 @@ class LocalAgentExecutor:
                     "LLM call %d failed (%r), retrying with 512 tokens",
                     tool_call_count + 1, str(_llm_err)[:120],
                 )
-                response, tok = await self._call_llama(
-                    messages,
-                    role=role,
-                    max_tokens=512,
-                    task_type=task.task_type,
-                    task_id=task.id,
-                    call_number=tool_call_count + 1,
-                )
+                _retry_kwargs = {
+                    "role": role,
+                    "max_tokens": 512,
+                    "task_type": task.task_type,
+                    "task_id": task.id,
+                    "call_number": tool_call_count + 1,
+                }
+                try:
+                    response, tok = await self._call_llama(messages, **_retry_kwargs)
+                except Exception as _retry_err:
+                    if not _is_local_model_loading_error(_retry_err):
+                        raise
+                    logger.warning(
+                        "local model is loading after LLM call %d; waiting up to %.0fs before one replay",
+                        tool_call_count + 1,
+                        _LOCAL_MODEL_LOADING_RETRY_TIMEOUT_SECONDS,
+                    )
+                    _remaining_wall_budget_s = max(
+                        0.0,
+                        _HARD_WALL_BUDGET_S - (time.time() - _loop_start),
+                    )
+                    if not await self._wait_for_local_model_ready(_remaining_wall_budget_s):
+                        raise _retry_err
+                    # Replay exactly the request that received the explicit loading response.
+                    response, tok = await self._call_llama(messages, **_retry_kwargs)
             total_tokens += tok
             if not response.strip():
                 # Retry once with a nudge before failing the task. Empty responses happen
@@ -3691,6 +3715,47 @@ class LocalAgentExecutor:
         if llm_cassette is None:
             return
         llm_cassette.maybe_record(payload, task_type, content, tokens, meta)
+
+    def _local_model_health_endpoint(self) -> Optional[str]:
+        """Return the direct llama health surface; never use switchboard as proof."""
+        endpoint = self.llama_endpoint.rstrip("/")
+        switchboard = os.environ.get("SWITCHBOARD_URL", "http://127.0.0.1:8085").rstrip("/")
+        if endpoint != switchboard:
+            return endpoint
+        direct_llama = os.environ.get("LLAMA_URL", "").rstrip("/")
+        return direct_llama or None
+
+    async def _local_model_is_ready(self, timeout_seconds: float) -> bool:
+        """Probe the truthful direct llama endpoint without changing state."""
+        health_endpoint = self._local_model_health_endpoint()
+        if health_endpoint is None or timeout_seconds <= 0:
+            return False
+        try:
+            async with httpx.AsyncClient(timeout=min(3.0, timeout_seconds)) as client:
+                response = await client.get(f"{health_endpoint}/health")
+            return response.status_code == 200
+        except httpx.HTTPError:
+            return False
+
+    async def _wait_for_local_model_ready(self, remaining_wall_budget_s: float) -> bool:
+        """Wait only within both the fixed reload and enclosing task budgets."""
+        wait_budget_s = min(
+            _LOCAL_MODEL_LOADING_RETRY_TIMEOUT_SECONDS,
+            max(0.0, remaining_wall_budget_s),
+        )
+        deadline = time.monotonic() + wait_budget_s
+        while True:
+            remaining = deadline - time.monotonic()
+            if remaining <= 0:
+                return False
+            if await self._local_model_is_ready(min(3.0, remaining)):
+                return True
+            # A slow probe may have consumed the final budget; never sleep using
+            # the pre-probe remainder and thereby overrun the enclosing deadline.
+            remaining = deadline - time.monotonic()
+            if remaining <= 0:
+                return False
+            await asyncio.sleep(min(1.0, remaining))
 
     async def _call_llama(
         self,

@@ -471,6 +471,100 @@ def test_short_context_prune_finds_pair_after_extra_system_context():
           pruned[-2:] == messages[-2:] and len(pruned) == 5)
 
 
+async def test_midtask_loading_recovery_replays_only_after_ready():
+    """A 502 followed by the explicit loading 503 waits and replays once."""
+    ex = make_executor()
+    task = Task(
+        id="t-midtask-reload", objective="summarize the bounded evidence",
+        task_type="analysis", status=TaskStatus.RUNNING,
+    )
+    calls: list[dict] = []
+
+    async def _fake_call(_messages, **kwargs):
+        calls.append(dict(kwargs))
+        if len(calls) == 1:
+            raise Exception('llama.cpp error: 502 {"error":{"message":"upstream disconnected"}}')
+        if len(calls) == 2:
+            raise Exception('llama.cpp error: 503 {"error":{"message":"Loading model"}}')
+        return "COMPLETED: model recovered.", 9
+
+    ex._call_llama = AsyncMock(side_effect=_fake_call)
+    ex._local_model_is_ready = AsyncMock(side_effect=[False, True])
+    with patch.object(ae.asyncio, "sleep", new=AsyncMock()):
+        result, _tokens = await ex._execute_with_tools(task, AgentType.AGENT, max_tool_calls=0)
+
+    check("mid-task reload makes exactly one replay after the existing retry",
+          ex._call_llama.await_count == 3 and result == "COMPLETED: model recovered.")
+    check("mid-task reload polls through not-ready then ready",
+          ex._local_model_is_ready.await_count == 2)
+    check("mid-task replay preserves the reduced retry request unchanged",
+          calls[1] == calls[2])
+    check("mid-task reload wait is fixed and bounded at 120 seconds",
+          ae._LOCAL_MODEL_LOADING_RETRY_TIMEOUT_SECONDS <= 120.0)
+
+
+async def test_midtask_nonloading_503_remains_terminal():
+    """Only the exact local loading response is recoverable."""
+    ex = make_executor()
+    task = Task(id="t-midtask-nonloading", objective="make the bounded edit", status=TaskStatus.RUNNING)
+    ex._call_llama = AsyncMock(side_effect=[
+        Exception('llama.cpp error: 502 {"error":{"message":"upstream disconnected"}}'),
+        Exception('llama.cpp error: 503 {"error":{"message":"capacity exhausted"}}'),
+    ])
+    ex._local_model_is_ready = AsyncMock()
+
+    try:
+        await ex._execute_with_tools(task, AgentType.AGENT, max_tool_calls=0)
+        terminal = False
+    except Exception as exc:
+        terminal = "503" in str(exc) and "capacity exhausted" in str(exc)
+    check("non-loading 503 remains terminal", terminal)
+    check("non-loading 503 does not poll local readiness",
+          ex._local_model_is_ready.await_count == 0)
+
+
+async def test_midtask_reload_wait_respects_smaller_wall_remainder():
+    """The fixed 120s recovery window cannot outlive the enclosing task budget."""
+    ex = make_executor()
+    probe_timeouts: list[float] = []
+
+    async def _not_ready(timeout_seconds):
+        probe_timeouts.append(timeout_seconds)
+        return False
+
+    ex._local_model_is_ready = AsyncMock(side_effect=_not_ready)
+    sleep = AsyncMock()
+    with patch.object(ae.time, "monotonic", side_effect=[0.0, 0.0, 0.3]), patch.object(
+        ae.asyncio, "sleep", new=sleep
+    ):
+        ready = await ex._wait_for_local_model_ready(0.25)
+
+    check("smaller task-wall remainder bounds total reload wait", not ready)
+    check("each readiness probe is capped by the remaining wait budget",
+          probe_timeouts == [0.25])
+    check("a slow final probe cannot sleep past its consumed deadline",
+          sleep.await_count == 0)
+
+
+async def test_midtask_switchboard_readiness_requires_direct_llama_url():
+    """A switchboard 200 is not evidence that the local model is loaded."""
+    ex = make_executor()
+    ex.llama_endpoint = "http://switchboard.example"
+    with patch.dict(os.environ, {
+        "SWITCHBOARD_URL": "http://switchboard.example",
+        "LLAMA_URL": "http://llama.example",
+    }):
+        direct_endpoint = ex._local_model_health_endpoint()
+    with patch.dict(os.environ, {"SWITCHBOARD_URL": "http://switchboard.example"}, clear=True):
+        no_direct_endpoint = ex._local_model_health_endpoint()
+        false_ready = await ex._local_model_is_ready(1.0)
+
+    check("switchboard-routed reload probes canonical direct LLAMA_URL",
+          direct_endpoint == "http://llama.example")
+    check("switchboard aggregate health cannot create false model readiness",
+          no_direct_endpoint is None and not false_ready)
+
+
 async def main():
     test_retry_excerpt_contract()
     await test_prose_plan_then_edit_completes()
@@ -485,6 +579,10 @@ async def main():
     test_dogfood_receipt_counts_grammar_without_content()
     test_self_improvement_prompt_classifier_is_semantic()
     test_short_context_prune_finds_pair_after_extra_system_context()
+    await test_midtask_loading_recovery_replays_only_after_ready()
+    await test_midtask_nonloading_503_remains_terminal()
+    await test_midtask_reload_wait_respects_smaller_wall_remainder()
+    await test_midtask_switchboard_readiness_requires_direct_llama_url()
 
     print(f"\n{PASS}/{PASS + FAIL} tests passed")
     sys.exit(0 if FAIL == 0 else 1)
