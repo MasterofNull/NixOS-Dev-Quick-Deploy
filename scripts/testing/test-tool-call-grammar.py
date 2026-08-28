@@ -323,7 +323,39 @@ def gbnf_matches(gbnf_text: str, candidate: str, root: str = "root") -> bool:
 
 
 def _grammar() -> str:
-    gbnf, _hit = tool_grammar.tool_call_grammar(["read_file", "edit_file", "write_file"])
+    gbnf, _hit = tool_grammar.tool_call_grammar(
+        {
+            "read_file": {
+                "type": "object",
+                "properties": {"file_path": {"type": "string"}, "start_line": {"type": "integer"}},
+                "required": ["file_path"],
+                "additionalProperties": False,
+            },
+            "edit_file": {
+                "type": "object",
+                "properties": {
+                    "file_path": {"type": "string"},
+                    "old_string": {"type": "string"},
+                    "new_string": {"type": "string"},
+                },
+                "required": ["file_path", "old_string", "new_string"],
+                "additionalProperties": False,
+            },
+            "write_file": {
+                "type": "object",
+                "properties": {
+                    "file_path": {"type": "string"},
+                    "content": {"type": "string"},
+                    "mode": {"type": "string", "enum": ["w", "a"]},
+                },
+                "required": ["file_path", "content"],
+                "additionalProperties": False,
+            },
+            "ping": {
+                "type": "object", "properties": {}, "required": [], "additionalProperties": False,
+            },
+        }
+    )
     return gbnf
 
 
@@ -346,17 +378,17 @@ def test_property_keys_are_quoted_in_grammar_source():
     assert '"function" ws' not in gbnf
 
 
-def test_arguments_uses_generic_nonempty_capable_object_not_empty_only():
+def test_arguments_are_function_coupled_not_generic_objects():
     gbnf = _grammar()
     # Bug #2: the old code forced arguments to `'"{" ws "}"'` (empty only). The fixed
     # grammar must route arguments through the free-form `object` rule instead.
-    assert '"\\"arguments\\"" ws ":" ws object' in gbnf, gbnf
-    assert '"{" ws "}"' not in gbnf, gbnf
+    assert '"\\"arguments\\"" ws ":" ws object' not in gbnf, gbnf
+    assert '"{" ws "}"' in gbnf, "no-argument tools must generate only {}"
 
 
 def test_function_is_constrained_to_the_enum_of_tool_names():
     gbnf = _grammar()
-    for name in ("read_file", "edit_file", "write_file"):
+    for name in ("read_file", "edit_file", "write_file", "ping"):
         assert json.dumps(name) in gbnf.replace("\\", "")
 
 
@@ -367,10 +399,31 @@ def test_grammar_accepts_a_real_valid_envelope_with_nonempty_arguments():
     assert gbnf_matches(gbnf, envelope), "grammar must accept a valid multi-arg tool-call envelope"
 
 
+def test_grammar_rejects_missing_required_cross_tool_and_unknown_arguments():
+    gbnf = _grammar()
+    assert not gbnf_matches(gbnf, '{"arguments":{},"function":"read_file"}')
+    assert not gbnf_matches(gbnf, '{"arguments":{"old_string":"x","new_string":"y"},"function":"read_file"}')
+    assert not gbnf_matches(gbnf, '{"arguments":{"file_path":"a.py","old_string":"x","new_string":"y"},"function":"read_file"}')
+    assert not gbnf_matches(gbnf, '{"arguments":{"file_path":"a.py","unexpected":1},"function":"read_file"}')
+    assert not gbnf_matches(gbnf, '{"arguments":{"content":"x"},"function":"write_file"}')
+    assert not gbnf_matches(gbnf, '{"arguments":{"file_path":"a.py"},"function":"write_file"}')
+
+
+def test_grammar_accepts_optional_subset_write_contract_and_exact_no_argument_tool():
+    gbnf = _grammar()
+    assert gbnf_matches(gbnf, '{"arguments":{"file_path":"a.py"},"function":"read_file"}')
+    assert gbnf_matches(gbnf, '{"arguments":{"file_path":"a.py","start_line":4},"function":"read_file"}')
+    assert gbnf_matches(gbnf, '{"arguments":{"content":"x","file_path":"a.py"},"function":"write_file"}')
+    assert gbnf_matches(gbnf, '{"arguments":{"content":"x","file_path":"a.py","mode":"a"},"function":"write_file"}')
+    assert not gbnf_matches(gbnf, '{"arguments":{"file_path":"a.py"},"function":"write_file"}')
+    assert not gbnf_matches(gbnf, '{"arguments":{"content":"x"},"function":"write_file"}')
+    assert not gbnf_matches(gbnf, '{"arguments":{"file_path":"a.py"},"function":"ping"}')
+
+
 def test_grammar_accepts_multi_key_nested_arguments():
     gbnf = _grammar()
     envelope = (
-        '{"arguments":{"file_path":"a.py","old_string":"x","new_string":"y"},'
+        '{"arguments":{"file_path":"a.py","new_string":"y","old_string":"x"},'
         '"function":"edit_file"}'
     )
     assert json.loads(envelope)  # sanity: real JSON
@@ -379,9 +432,9 @@ def test_grammar_accepts_multi_key_nested_arguments():
 
 def test_grammar_accepts_empty_arguments_too():
     gbnf = _grammar()
-    envelope = '{"arguments":{},"function":"write_file"}'
+    envelope = '{"arguments":{},"function":"ping"}'
     assert json.loads(envelope)
-    assert gbnf_matches(gbnf, envelope), "free-form object must still permit {}"
+    assert gbnf_matches(gbnf, envelope), "no-argument tools must admit exactly {}"
 
 
 def test_grammar_rejects_unquoted_keys_the_old_bug_shape():
@@ -416,10 +469,10 @@ def test_string_rule_rejects_raw_control_char_but_accepts_escaped_form():
     gbnf = _grammar()
     # A bare/raw newline inside a JSON string is exactly what `json.loads`
     # rejects (json.decoder.JSONDecodeError: Invalid control character).
-    raw_control_char = '{"arguments":{"note":"line1' + "\n" + 'line2"},"function":"read_file"}'
-    escaped = '{"arguments":{"note":"line1\\nline2"},"function":"read_file"}'
+    raw_control_char = '{"arguments":{"file_path":"line1' + "\n" + 'line2"},"function":"read_file"}'
+    escaped = '{"arguments":{"file_path":"line1\\nline2"},"function":"read_file"}'
 
-    assert json.loads(escaped) == {"arguments": {"note": "line1\nline2"}, "function": "read_file"}
+    assert json.loads(escaped) == {"arguments": {"file_path": "line1\nline2"}, "function": "read_file"}
     with pytest.raises(json.JSONDecodeError):
         json.loads(raw_control_char)
 

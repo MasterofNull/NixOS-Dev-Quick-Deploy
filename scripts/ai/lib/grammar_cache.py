@@ -136,6 +136,18 @@ def _parse_json_value(value: Any) -> Any:
 
 
 def _rule_for_schema(schema: Mapping[str, Any]) -> str:
+    one_of = schema.get("oneOf")
+    if one_of is not None:
+        if not isinstance(one_of, list) or not one_of:
+            raise ValueError("oneOf must be a non-empty list of schemas")
+        alternatives: list[str] = []
+        for alternative in one_of:
+            if not isinstance(alternative, Mapping):
+                raise ValueError("oneOf alternatives must be schemas")
+            alternatives.append(_rule_for_schema(alternative))
+        # `oneOf` is deliberately strict: all alternatives are structural grammar
+        # alternatives, never a best-effort fallback to generic JSON.
+        return "(" + " | ".join(alternatives) + ")"
     enum_values = schema.get("enum")
     if isinstance(enum_values, list) and enum_values:
         # Constrain to the exact enumerated literals (e.g. the leased tool-name set)
@@ -182,8 +194,17 @@ def _rule_for_schema(schema: Mapping[str, Any]) -> str:
 
 
 def _object_rule(schema: Mapping[str, Any]) -> str:
+    has_properties = "properties" in schema
     properties = schema.get("properties", {})
-    if not isinstance(properties, Mapping) or not properties:
+    if not isinstance(properties, Mapping):
+        raise ValueError("object properties must be a mapping")
+    if not properties:
+        # A schema that explicitly declares a closed, empty properties object
+        # means exactly `{}`.  It must not collapse into the generic `object`
+        # rule, or no-argument tools can emit arbitrary arguments.
+        if has_properties and schema.get("additionalProperties") is False:
+            return '"{" ws "}"'
+        # No declared properties retains the legacy generic JSON-object meaning.
         # Free-form object (schema is `{"type": "object"}` with no declared
         # `properties`, e.g. a tool-call's `arguments` payload): allow zero-or-more
         # arbitrary JSON members instead of forcing an empty "{}" body, which made
