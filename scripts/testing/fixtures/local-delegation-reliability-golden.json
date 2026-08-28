@@ -3,7 +3,7 @@
   "live_sources": [
     {
       "path": "scripts/ai/aq-agent-loop",
-      "sha256": "56319bddc217d189053916d7c09565cc591be83da113dea4f6f1c8a69d6942f5",
+      "sha256": "585c844c3a201a35b686941445ed0715590a9c836b4188bc9b3baffa6b36b7bb",
       "defects": [
         "D1",
         "D4",
@@ -88,7 +88,7 @@
     },
     {
       "path": "ai-stack/local-agents/agent_executor.py",
-      "sha256": "360bfdb8cdc6894f10332f8b8ee7b5fbd0e2ec8c668f47973dc847f36a01cd88",
+      "sha256": "27fae0168b4deb62569c585c52b20cef2f7a5e18cb839f219517ab1dcd246de2",
       "defects": [
         "D3",
         "D4",
@@ -317,7 +317,7 @@
   ],
   "stable_digests": {
     "vectors": "2512115fca4745d728887e8c0ca4aa6c9e9fdef93164896ae13277ad3f06e822",
-    "source_manifest": "9b3054a12347a7461af2a9338751960f0354d7a7a4b56b8511f87b0fb32c566e",
+    "source_manifest": "e2c30a9df09135757c7470ffde040f5e0ded55004b1d2e15edec16dbe7b633a3",
     "fixed_contract": "d439cf7568df80d0d1081972f45f1361ee28124728b2a0d42588ba99b7377240"
   },
   "sanitized_terminal_reasons": [
