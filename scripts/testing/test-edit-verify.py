@@ -785,9 +785,49 @@ async def test_freshness_gaming_edit_triggers_coach():
         check("real content change on a timestamped file passes the freshness check", v2.passed)
 
 
+async def test_behavioral_verify_catches_semantic_wrong_fix():
+    """The behavioral gate runs the task's actual check post-edit: a clean edit
+    that FAILS the check is coached (catches semantic wrong-fixes the static checks
+    pass, e.g. dogfood-03); a clean edit that PASSES the check is accepted; and with
+    no check configured the gate is a no-op. A check that can't run is fail-safe."""
+    orig = ae._BEHAVIORAL_VERIFY_CMD
+    try:
+        # disabled -> None (static-only)
+        ae._BEHAVIORAL_VERIFY_CMD = ""
+        check("behavioral gate disabled when no command set", ae._behavioral_verify("x.py") is None)
+        # passing check -> None
+        ae._BEHAVIORAL_VERIFY_CMD = "true"
+        check("passing check accepts (None)", ae._behavioral_verify("x.py") is None)
+        # failing check -> failure output surfaced
+        ae._BEHAVIORAL_VERIFY_CMD = "echo 'AssertionError: wrong behavior'; exit 1"
+        out = ae._behavioral_verify("x.py")
+        check("failing check surfaces its output", out is not None and "AssertionError" in out)
+        # end-to-end: a clean edit that fails the check is coached
+        with tempfile.TemporaryDirectory() as td:
+            p = Path(td) / "m.py"
+            p.write_text("x = 2\n", encoding="utf-8")
+            ae._BEHAVIORAL_VERIFY_CMD = "exit 3"
+            v = ae._verify_edit_quality(
+                "edit_file", {"file_path": str(p), "old_string": "x = 1", "new_string": "x = 2"},
+                str(p), "x = 1", "fix x")
+            check("clean edit failing the behavioral check is rejected", not v.passed)
+            check("behavioral verdict reason", v.reason == "behavioral_verify_failed")
+            check("behavioral coach names it a behavior bug, not syntax",
+                  "behavior" in v.coaching_message.lower())
+            # same edit, check now passes -> accepted
+            ae._BEHAVIORAL_VERIFY_CMD = "true"
+            v2 = ae._verify_edit_quality(
+                "edit_file", {"file_path": str(p), "old_string": "x = 1", "new_string": "x = 2"},
+                str(p), "x = 1", "fix x")
+            check("clean edit passing the behavioral check is accepted", v2.passed)
+    finally:
+        ae._BEHAVIORAL_VERIFY_CMD = orig
+
+
 async def main():
     await test_noop_edit_triggers_coach_then_real_fix_completes()
     await test_freshness_gaming_edit_triggers_coach()
+    await test_behavioral_verify_catches_semantic_wrong_fix()
     await test_real_edit_passes_clean()
     await test_dead_code_added_def_triggers_coach()
     await test_referenced_def_passes_clean()

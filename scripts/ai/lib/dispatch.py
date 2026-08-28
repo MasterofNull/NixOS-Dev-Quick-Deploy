@@ -935,6 +935,35 @@ def _service_ok(url: str, name: str) -> bool:
         return False
 
 
+def _wait_for_service(url: str, name: str, max_wait_s: Optional[float] = None) -> bool:
+    """Wait (bounded) for <url>/health to return 200, tolerating a restart.
+
+    llama.cpp is deliberately restarted on system resume (llama-cpp-resume — the
+    APU GPU state is invalid after suspend) and then cold-reloads the multi-GB
+    model for ~30-120s; it also restarts on any transient failure. A single
+    pre-flight _service_ok() would fail the whole dispatch with "not reachable"
+    during that window — which is exactly what broke every task dispatched across
+    a lid-close suspend/resume. Poll until the service is ready (or the bound is
+    hit) so a dispatch survives a resume instead of erroring. Env override:
+    AQ_SERVICE_WAIT_S (default 180s, comfortably over the model cold-load).
+    """
+    if max_wait_s is None:
+        try:
+            max_wait_s = float(os.getenv("AQ_SERVICE_WAIT_S", "180"))
+        except ValueError:
+            max_wait_s = 180.0
+    if _service_ok(url, name):
+        return True
+    deadline = time.monotonic() + max_wait_s
+    delay = 2.0
+    while time.monotonic() < deadline:
+        time.sleep(min(delay, max(0.5, deadline - time.monotonic())))
+        if _service_ok(url, name):
+            return True
+        delay = min(delay * 1.5, 10.0)
+    return False
+
+
 # ── embedded-assist pre-context ──────────────────────────────────────────────
 
 def _detect_code_lang(prompt: str) -> str:
@@ -1351,8 +1380,8 @@ def dispatch_task(
         "agent":  (config.llama_url,  "llama.cpp"),
     }
     url, svc_name = _service_urls[config.mode]
-    if not _service_ok(url, svc_name):
-        msg = f"Error: {svc_name} is not reachable at {url}/health"
+    if not _wait_for_service(url, svc_name):
+        msg = f"Error: {svc_name} is not reachable at {url}/health (waited for it to come back)"
         output_file.write_text(msg)
         registry.update_status(task_id, "failed")
         registry.record_completion(task_id, "failed")
