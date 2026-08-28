@@ -245,6 +245,8 @@ ISSUE:
 
 FILE TO EDIT: {file}
 
+DECLARED SINGLE-FILE SCOPE: {file}
+
 HOW (do this now, do not just describe it):
 1. The relevant code is FRONT-LOADED above under "## Relevant prior knowledge" as
    EXACT fenced code blocks. Use that exact code — do NOT re-read the whole file.
