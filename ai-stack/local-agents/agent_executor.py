@@ -13,6 +13,7 @@ Part of Phase 11 Batch 11.3: Workflow Integration
 """
 
 import ast
+import symtable
 import asyncio
 import difflib
 import json
@@ -952,17 +953,20 @@ def _find_destructive_deletion(
     PYTHON ONLY: gated on file extension (_PY_LINT_EXTENSIONS), so a parseable
     non-Python file (e.g. Markdown that happens to ast.parse) is never checked.
 
-    PRECISION (independent review, Codex 2026-08-29 — DEFECT fix): to avoid
-    blocking LEGITIMATE edits, a name counts as a live dangling reference only
-    when it is (a) referenced as a bare ``ast.Name`` LOAD — NOT an
-    ``ast.Attribute`` (``client.route()`` does not depend on a module-level
-    ``route``) — AND (b) NOT re-bound anywhere in the post-edit file. A deleted
-    def replaced by a new ``import``/``from-import``, an assignment, or a fresh
-    def/class of the same name is a valid replacement, not a dangling call.
+    PRECISION (independent review, Codex 2026-08-29 — two DEFECT rounds fixed):
+    scope-sensitive via stdlib ``symtable`` (NOT a flat ast.walk, which conflated
+    scopes). A deleted top-level name is dangling only when:
+      - it is NOT re-bound at MODULE scope (a new import/from-import/assignment/
+        def/class of that name is a valid replacement — round-1 false positive);
+      - AND it is referenced as a bare name that RESOLVES TO MODULE SCOPE — either
+        used at module level, or used inside a function as a global/free name
+        (round-1: an ``obj.route`` attribute is not a module reference; round-2:
+        an unrelated FUNCTION-LOCAL ``route = ...`` must NOT mask a genuinely
+        dangling global ``route()`` call elsewhere, and a purely local use must
+        NOT be flagged).
 
     Returns None when it cannot decide (no pre-content, non-Python path, or
-    either side unparseable — a broken post-edit is caught by the compile/lint
-    check instead, never here).
+    unparseable — a broken post-edit is caught by the compile/lint check).
     """
     if file_path is not None and Path(file_path).suffix not in _PY_LINT_EXTENSIONS:
         return None
@@ -970,7 +974,7 @@ def _find_destructive_deletion(
         return None
     try:
         pre_tree = ast.parse(pre_content)
-        post_tree = ast.parse(post_edit_content)
+        ast.parse(post_edit_content)  # post must be parseable; broken post is the lint check's job
     except (SyntaxError, ValueError):
         return None
 
@@ -981,31 +985,43 @@ def _find_destructive_deletion(
             if isinstance(node, (ast.FunctionDef, ast.AsyncFunctionDef, ast.ClassDef))
         }
 
+    post_tree = ast.parse(post_edit_content)
     deleted = _top_level_defs(pre_tree) - _top_level_defs(post_tree)
     if not deleted:
         return None
 
-    # Names BOUND in the post-edit file — a deleted def replaced by an import,
-    # an assignment, or a new definition of the same name is NOT dangling.
-    bound: set = _top_level_defs(post_tree)
-    # Bare-Name LOADs only; ast.Attribute (obj.name) is intentionally excluded.
-    referenced: set = set()
-    for node in ast.walk(post_tree):
-        if isinstance(node, ast.Name):
-            if isinstance(node.ctx, ast.Load):
-                referenced.add(node.id)
-            else:  # Store / Del — a binding of the name, not a dangling use
-                bound.add(node.id)
-        elif isinstance(node, ast.Import):
-            for alias in node.names:
-                bound.add((alias.asname or alias.name).split(".")[0])
-        elif isinstance(node, ast.ImportFrom):
-            for alias in node.names:
-                bound.add(alias.asname or alias.name)
-        elif isinstance(node, (ast.FunctionDef, ast.AsyncFunctionDef, ast.ClassDef)):
-            bound.add(node.name)
+    try:
+        post_st = symtable.symtable(post_edit_content, "<post-edit>", "exec")
+    except (SyntaxError, ValueError):
+        return None
+
+    def _module_rebound(name: str) -> bool:
+        try:
+            top = post_st.lookup(name)
+        except KeyError:
+            return False
+        return top.is_assigned() or top.is_imported() or top.is_namespace()
+
+    def _resolves_to_deleted_module_name(table, name: str, is_module: bool) -> bool:
+        for sym in table.get_symbols():
+            if sym.get_name() != name or not sym.is_referenced():
+                continue
+            if is_module:
+                # module scope: referenced and (checked) not re-bound -> dangling
+                if not (sym.is_assigned() or sym.is_imported() or sym.is_namespace()):
+                    return True
+            elif sym.is_global() or sym.is_free():
+                # function/class scope: a global/free ref resolves to module scope
+                return True
+        return any(
+            _resolves_to_deleted_module_name(child, name, False)
+            for child in table.get_children()
+        )
+
     for name in sorted(deleted):
-        if name in referenced and name not in bound:
+        if _module_rebound(name):
+            continue
+        if _resolves_to_deleted_module_name(post_st, name, True):
             return name
     return None
 

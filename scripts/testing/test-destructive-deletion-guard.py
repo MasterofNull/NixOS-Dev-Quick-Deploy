@@ -218,6 +218,48 @@ def cmd_route(args):
     check("(m2) .py path still flags the real destructive deletion",
           _find_destructive_deletion(PRE, POST_DESTRUCTIVE, file_path="x.py") == "route")
 
+    # ---- SCOPE SENSITIVITY (independent review round 2, Codex 2026-08-29) ----
+    # (n) FALSE-NEGATIVE guard: a genuinely dangling GLOBAL route() call must
+    #     stay flagged even when an UNRELATED function has a local `route = ...`.
+    #     A flat ast.walk would merge that local into `bound` and mask it.
+    post_global_call_plus_unrelated_local = '''\
+def _matches_exclude(lane_id, token):
+    return token.split("-")[0] == lane_id
+
+
+def _emit(payload, as_json):
+    return 0
+
+
+def cmd_route(args):
+    return route(args)
+
+
+def unrelated(x):
+    route = x + 1
+    return route
+'''
+    check("(n) dangling global call + unrelated function-local shadow -> 'route'",
+          _find_destructive_deletion(PRE, post_global_call_plus_unrelated_local) == "route")
+
+    # (o) TRUE-NEGATIVE: a purely function-LOCAL use of the deleted name (its own
+    #     local binding, no global call) is safe -> not flagged.
+    post_local_only = '''\
+def _matches_exclude(lane_id, token):
+    return token.split("-")[0] == lane_id
+
+
+def _emit(payload, as_json):
+    return 0
+
+
+def helper(x):
+    route = compute(x)
+    return route
+'''
+    check("(o) deleted name only used as a function-local -> None",
+          _find_destructive_deletion(PRE, post_local_only) is None)
+
 
 def _verify(tmp: Path, post: str, *, tool: str, args: dict, pre: str | None,
             name: str = "target.py") -> "ae._EditVerdict":
