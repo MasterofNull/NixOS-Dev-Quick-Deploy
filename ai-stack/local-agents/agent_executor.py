@@ -990,6 +990,23 @@ def _find_destructive_deletion(
     if not deleted:
         return None
 
+    # A module-level star-import can provide arbitrary names, so we cannot know
+    # whether it re-provides a deleted top-level name. Conservatively skip the
+    # whole file rather than false-flag a deletion the star import may cover
+    # (Codex review round 4). Star imports are rare and discouraged; a no-op
+    # here is the safe direction for a coaching gate.
+    for node in post_tree.body:
+        if isinstance(node, ast.ImportFrom) and any(a.name == "*" for a in node.names):
+            return None
+
+    # KNOWN LIMITATION (Codex review round 4, accepted as proportionate): a class
+    # body uses order-sensitive LOAD_NAME, so `class C: v = route(); route = ...`
+    # would NameError at runtime yet reads as class-locally-bound to symtable and
+    # is not flagged. Modeling per-statement execution order inside class bodies
+    # is disproportionate for a coaching heuristic, and the miss is benign — the
+    # edit never auto-commits and the compile/behavioral checks are the backstop.
+    # See issues-backlog: destructive-deletion-guard-classbody-order-limitation.
+
     try:
         post_st = symtable.symtable(post_edit_content, "<post-edit>", "exec")
     except (SyntaxError, ValueError):

@@ -298,6 +298,47 @@ def outer(route):
     check("(p2) closure over enclosing-function param -> None",
           _find_destructive_deletion(PRE, post_closure_param) is None)
 
+    # (q) STAR-IMPORT (Codex review round 4): a module-level `from x import *`
+    #     may provide the deleted name, so the guard conservatively does not flag
+    #     ANY deletion in that file (avoids false positives).
+    post_star_import = '''\
+from routing import *
+
+
+def _matches_exclude(lane_id, token):
+    return token.split("-")[0] == lane_id
+
+
+def _emit(payload, as_json):
+    return 0
+
+
+def cmd_route(args):
+    return route(args)
+'''
+    check("(q) module-level star-import present -> None (conservative)",
+          _find_destructive_deletion(PRE, post_star_import) is None)
+
+    # (r) ACCEPTED LIMITATION (Codex review round 4): order-sensitive class-body
+    #     LOAD_NAME is intentionally NOT modeled — this pathological shape is a
+    #     documented, backstopped false-negative, asserted here so the behavior
+    #     is pinned and the limitation is explicit rather than silent.
+    post_classbody_order = '''\
+def _matches_exclude(lane_id, token):
+    return token.split("-")[0] == lane_id
+
+
+def _emit(payload, as_json):
+    return 0
+
+
+class C:
+    value = route()
+    route = staticmethod(lambda: 1)
+'''
+    check("(r) class-body order shadow -> None (documented accepted limitation)",
+          _find_destructive_deletion(PRE, post_classbody_order) is None)
+
 
 def _verify(tmp: Path, post: str, *, tool: str, args: dict, pre: str | None,
             name: str = "target.py") -> "ae._EditVerdict":
