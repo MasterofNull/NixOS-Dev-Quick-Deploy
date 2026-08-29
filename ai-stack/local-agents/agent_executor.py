@@ -931,11 +931,14 @@ def _find_dead_added_definition(
 
 
 def _find_destructive_deletion(
-    pre_content: Optional[str], post_edit_content: str,
+    pre_content: Optional[str],
+    post_edit_content: str,
+    file_path: Optional[str] = None,
 ) -> Optional[str]:
     """Name of a top-level def/class this edit DELETED that is STILL referenced
-    elsewhere in the post-edit file — an over-broad edit that will crash at
-    runtime (NameError on the now-undefined call).
+    (as a bare Name load) in the post-edit file AND is not re-provided there — an
+    over-broad edit that will crash at runtime (NameError on the now-undefined
+    call).
 
     stdlib ``ast`` ONLY, deliberately: the pyflakes-based undefined-name lint is
     not importable in every environment (the Nix env here has no pyflakes), and
@@ -944,10 +947,25 @@ def _find_destructive_deletion(
     the `{file} --help` behavioral check (argparse short-circuits before the
     deleted code runs) — issues-backlog: shallow-dogfood-verify-cmd-false-
     passes-deletions + local-edit-destructive-span-correct-logic-wrong-blast-
-    radius. Python only; returns None when it cannot decide (no pre-content, or
-    either side is non-Python / unparseable — a broken post-edit is caught by
-    the compile/lint check instead, never here).
+    radius.
+
+    PYTHON ONLY: gated on file extension (_PY_LINT_EXTENSIONS), so a parseable
+    non-Python file (e.g. Markdown that happens to ast.parse) is never checked.
+
+    PRECISION (independent review, Codex 2026-08-29 — DEFECT fix): to avoid
+    blocking LEGITIMATE edits, a name counts as a live dangling reference only
+    when it is (a) referenced as a bare ``ast.Name`` LOAD — NOT an
+    ``ast.Attribute`` (``client.route()`` does not depend on a module-level
+    ``route``) — AND (b) NOT re-bound anywhere in the post-edit file. A deleted
+    def replaced by a new ``import``/``from-import``, an assignment, or a fresh
+    def/class of the same name is a valid replacement, not a dangling call.
+
+    Returns None when it cannot decide (no pre-content, non-Python path, or
+    either side unparseable — a broken post-edit is caught by the compile/lint
+    check instead, never here).
     """
+    if file_path is not None and Path(file_path).suffix not in _PY_LINT_EXTENSIONS:
+        return None
     if not pre_content:
         return None
     try:
@@ -966,16 +984,28 @@ def _find_destructive_deletion(
     deleted = _top_level_defs(pre_tree) - _top_level_defs(post_tree)
     if not deleted:
         return None
-    # A deleted definition still named anywhere in the post-edit AST (a call, an
-    # attribute access, a decorator, a default) is a live dangling reference.
+
+    # Names BOUND in the post-edit file — a deleted def replaced by an import,
+    # an assignment, or a new definition of the same name is NOT dangling.
+    bound: set = _top_level_defs(post_tree)
+    # Bare-Name LOADs only; ast.Attribute (obj.name) is intentionally excluded.
     referenced: set = set()
     for node in ast.walk(post_tree):
         if isinstance(node, ast.Name):
-            referenced.add(node.id)
-        elif isinstance(node, ast.Attribute):
-            referenced.add(node.attr)
+            if isinstance(node.ctx, ast.Load):
+                referenced.add(node.id)
+            else:  # Store / Del — a binding of the name, not a dangling use
+                bound.add(node.id)
+        elif isinstance(node, ast.Import):
+            for alias in node.names:
+                bound.add((alias.asname or alias.name).split(".")[0])
+        elif isinstance(node, ast.ImportFrom):
+            for alias in node.names:
+                bound.add(alias.asname or alias.name)
+        elif isinstance(node, (ast.FunctionDef, ast.AsyncFunctionDef, ast.ClassDef)):
+            bound.add(node.name)
     for name in sorted(deleted):
-        if name in referenced:
+        if name in referenced and name not in bound:
             return name
     return None
 
@@ -1317,7 +1347,7 @@ def _verify_edit_quality(
         # top-level def/class still called elsewhere in the file. Placed first
         # because it is the most severe outcome (a broken file), and it fires
         # where the pyflakes lint and a `--help` smoke check cannot.
-        deleted_name = _find_destructive_deletion(pre_edit_full, post_edit_content)
+        deleted_name = _find_destructive_deletion(pre_edit_full, post_edit_content, file_path)
         if deleted_name:
             return _EditVerdict(
                 passed=False,

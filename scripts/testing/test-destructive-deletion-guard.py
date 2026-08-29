@@ -158,6 +158,66 @@ def test_unit() -> None:
     check("(e2) unparseable post -> None",
           _find_destructive_deletion(PRE, "def broken( {") is None)
 
+    # ---- FALSE-POSITIVE cases (independent review, Codex 2026-08-29 DEFECT) ----
+    # (j) route() def deleted, but the only post reference is an ATTRIBUTE access
+    #     `client.route()` on an unrelated object — must NOT flag route.
+    post_attr_only = '''\
+def _matches_exclude(lane_id, token):
+    return token.split("-")[0] == lane_id
+
+
+def cmd_route(args):
+    client = get_client()
+    return client.route(args)
+'''
+    check("(j) deleted name only used as obj.attr -> None (no false positive)",
+          _find_destructive_deletion(PRE, post_attr_only) is None)
+
+    # (k) route() def deleted but RE-PROVIDED by an import -> valid replacement.
+    post_import_repl = '''\
+from routing import route
+
+
+def _matches_exclude(lane_id, token):
+    return token.split("-")[0] == lane_id
+
+
+def _emit(payload, as_json):
+    return 0
+
+
+def cmd_route(args):
+    return route(args)
+'''
+    check("(k) deleted def replaced by import of same name -> None",
+          _find_destructive_deletion(PRE, post_import_repl) is None)
+
+    # (l) route() def deleted but RE-PROVIDED by a top-level assignment.
+    post_assign_repl = '''\
+def _matches_exclude(lane_id, token):
+    return token.split("-")[0] == lane_id
+
+
+def _emit(payload, as_json):
+    return 0
+
+
+route = make_router()
+
+
+def cmd_route(args):
+    return route(args)
+'''
+    check("(l) deleted def replaced by assignment of same name -> None",
+          _find_destructive_deletion(PRE, post_assign_repl) is None)
+
+    # (m) file-type gate: a non-Python path is never checked, even if the content
+    #     happens to be ast-parseable and would otherwise flag.
+    check("(m) .md path with parseable destructive content -> None (gated)",
+          _find_destructive_deletion(PRE, POST_DESTRUCTIVE, file_path="notes.md") is None)
+    check("(m2) .py path still flags the real destructive deletion",
+          _find_destructive_deletion(PRE, POST_DESTRUCTIVE, file_path="x.py") == "route")
+
 
 def _verify(tmp: Path, post: str, *, tool: str, args: dict, pre: str | None,
             name: str = "target.py") -> "ae._EditVerdict":
