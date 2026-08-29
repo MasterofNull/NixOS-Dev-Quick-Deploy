@@ -80,6 +80,7 @@ from __future__ import annotations
 
 import asyncio
 import importlib.util
+import shlex
 import sys
 import tempfile
 from pathlib import Path
@@ -824,10 +825,196 @@ async def test_behavioral_verify_catches_semantic_wrong_fix():
         ae._BEHAVIORAL_VERIFY_CMD = orig
 
 
+async def test_behavioral_verify_quotes_hostile_file_path():
+    """The {file} template value is one literal bash argument, never syntax."""
+    orig = ae._BEHAVIORAL_VERIFY_CMD
+    with tempfile.TemporaryDirectory() as td:
+        sentinel = Path(td) / "injected-sentinel"
+        hostile_path = f"{td}/name with spaces; touch {sentinel}; $(echo injected)"
+        expected_command = f"test -f {shlex.quote(hostile_path)}"
+        fake_result = MagicMock(returncode=0, stdout="", stderr="")
+        try:
+            ae._BEHAVIORAL_VERIFY_CMD = "test -f {file}"
+            with patch.object(ae.subprocess, "run", return_value=fake_result) as run:
+                result = ae._behavioral_verify(hostile_path)
+            check("hostile behavioral path still accepts a passing mocked check", result is None)
+            check("behavioral verify invokes bash -c exactly once", run.call_count == 1)
+            argv = run.call_args.args[0]
+            check("behavioral verify preserves the expected bash -c shape", argv == ["bash", "-c", expected_command])
+            parsed = shlex.split(argv[2])
+            check("hostile path is delivered as one literal argument",
+                  parsed == ["test", "-f", hostile_path])
+            check("hostile path did not create an injected sentinel", not sentinel.exists())
+        finally:
+            ae._BEHAVIORAL_VERIFY_CMD = orig
+
+
+async def test_declared_verified_edit_completes_with_one_no_tool_synthesis():
+    """A marked, verified single-file edit terminates before another tool turn."""
+    orig_cmd, orig_root = ae._BEHAVIORAL_VERIFY_CMD, ae._REPO_ROOT_PATH
+    with tempfile.TemporaryDirectory() as td:
+        root = Path(td)
+        target = root / "target.py"
+        target.write_text("x = 1\n", encoding="utf-8")
+        try:
+            ae._REPO_ROOT_PATH = root
+            ae._BEHAVIORAL_VERIFY_CMD = "true"
+            ex = make_executor()
+            calls = []
+
+            async def _fake_llama(messages, **kwargs):
+                calls.append((messages, kwargs))
+                if len(calls) == 1:
+                    return (
+                        '{"function":"edit_file","arguments":{"file_path":"%s"}}' % target,
+                        8,
+                    )
+                return "COMPLETED: updated x.", 4
+
+            ex.tool_registry.parse_tool_call_from_llama.side_effect = [
+                make_edit_call("candidate-edit", str(target), "x = 1", "x = 2"),
+            ]
+            ex.tool_registry.execute_tool_call = AsyncMock(side_effect=make_edit_exec(str(target)))
+            ex._call_llama = AsyncMock(side_effect=_fake_llama)
+            ex._emit_agent_event = AsyncMock()
+            task = Task(
+                id="verified-candidate",
+                objective="Fix x.\nDECLARED SINGLE-FILE SCOPE: target.py",
+            )
+            result, _tokens = await ex._execute_with_tools(task, AgentType.AGENT, max_tool_calls=4)
+
+            check("marked verified edit returns synthesis", result == "COMPLETED: updated x.")
+            check("marked verified edit has typed completion evidence",
+                  task.completion_evidence is not None
+                  and task.completion_evidence.get("kind") == "verified_edit_completion"
+                  and task.completion_evidence.get("behavioral_check") == "ran_exit_0")
+            check("candidate uses exactly one synthesis call", len(calls) == 2)
+            check("candidate synthesis has <=96 output tokens", calls[1][1].get("max_tokens") == 96)
+            check("candidate synthesis disables tool grammar",
+                  calls[1][1].get("allow_tool_grammar") is False)
+            check("candidate synthesis prompt is explicitly no-tools",
+                  "No tools" in calls[1][0][0]["content"])
+            check("candidate did not execute a second tool", ex.tool_registry.execute_tool_call.await_count == 1)
+        finally:
+            ae._BEHAVIORAL_VERIFY_CMD, ae._REPO_ROOT_PATH = orig_cmd, orig_root
+
+
+async def test_declared_completion_fails_closed_without_passing_behavioral_check():
+    """Malformed/disabled scope gates retain normal flow instead of shortcutting."""
+    orig_cmd, orig_root = ae._BEHAVIORAL_VERIFY_CMD, ae._REPO_ROOT_PATH
+    with tempfile.TemporaryDirectory() as td:
+        root = Path(td)
+        target = root / "target.py"
+        target.write_text("x = 1\n", encoding="utf-8")
+        try:
+            ae._REPO_ROOT_PATH = root
+            ae._BEHAVIORAL_VERIFY_CMD = ""  # static pass is insufficient for candidate
+            ex = make_executor()
+            calls = []
+
+            async def _fake_llama(messages, **kwargs):
+                calls.append((messages, kwargs))
+                return ('{"function":"edit_file","arguments":{}}', 8) if len(calls) == 1 else ("ordinary completion", 4)
+
+            ex.tool_registry.parse_tool_call_from_llama.side_effect = [
+                make_edit_call("static-only", str(target), "x = 1", "x = 2"), None,
+            ]
+            ex.tool_registry.execute_tool_call = AsyncMock(side_effect=make_edit_exec(str(target)))
+            ex._call_llama = AsyncMock(side_effect=_fake_llama)
+            ex._emit_agent_event = AsyncMock()
+            task = Task(
+                id="static-only",
+                objective="Fix x.\nDECLARED SINGLE-FILE SCOPE: target.py",
+            )
+            result, _tokens = await ex._execute_with_tools(task, AgentType.AGENT, max_tool_calls=4)
+
+            check("disabled behavioral check does not create candidate", task.completion_evidence is None)
+            check("disabled behavioral check retains normal completion", result == "ordinary completion")
+            check("normal completion makes ordinary second call", calls[1][1].get("max_tokens") != 96)
+            check("malformed and duplicate scope markers are rejected",
+                  ae._declared_single_file_scope("DECLARED SINGLE-FILE SCOPE: ../escape.py") is None
+                  and ae._declared_single_file_scope(
+                      "DECLARED SINGLE-FILE SCOPE: target.py\nDECLARED SINGLE-FILE SCOPE: other.py"
+                  ) is None)
+        finally:
+            ae._BEHAVIORAL_VERIFY_CMD, ae._REPO_ROOT_PATH = orig_cmd, orig_root
+
+
+async def test_verified_edit_outside_declared_scope_does_not_complete_early():
+    """A behaviorally passing write to another path keeps the ordinary loop."""
+    orig_cmd, orig_root = ae._BEHAVIORAL_VERIFY_CMD, ae._REPO_ROOT_PATH
+    with tempfile.TemporaryDirectory() as td:
+        root = Path(td)
+        target, declared = root / "target.py", root / "declared.py"
+        target.write_text("x = 1\n", encoding="utf-8")
+        declared.write_text("x = 1\n", encoding="utf-8")
+        try:
+            ae._REPO_ROOT_PATH, ae._BEHAVIORAL_VERIFY_CMD = root, "true"
+            ex = make_executor()
+            ex.tool_registry.parse_tool_call_from_llama.side_effect = [
+                make_edit_call("outside", str(target), "x = 1", "x = 2"), None,
+            ]
+            ex.tool_registry.execute_tool_call = AsyncMock(side_effect=make_edit_exec(str(target)))
+            ex._call_llama = AsyncMock(side_effect=[
+                ('{"function":"edit_file","arguments":{}}', 8), ("ordinary completion", 4),
+            ])
+            ex._emit_agent_event = AsyncMock()
+            task = Task(
+                id="out-of-scope",
+                objective="Fix x.\nDECLARED SINGLE-FILE SCOPE: declared.py",
+            )
+            result, _tokens = await ex._execute_with_tools(task, AgentType.AGENT, max_tool_calls=4)
+
+            check("out-of-scope verified write does not create candidate", task.completion_evidence is None)
+            check("out-of-scope verified write retains normal completion", result == "ordinary completion")
+        finally:
+            ae._BEHAVIORAL_VERIFY_CMD, ae._REPO_ROOT_PATH = orig_cmd, orig_root
+
+
+async def test_verified_candidate_rejects_tool_shaped_synthesis():
+    """Tool-shaped candidate prose is never dispatched and uses a receipt fallback."""
+    orig_cmd, orig_root = ae._BEHAVIORAL_VERIFY_CMD, ae._REPO_ROOT_PATH
+    with tempfile.TemporaryDirectory() as td:
+        root = Path(td)
+        target = root / "target.py"
+        target.write_text("x = 1\n", encoding="utf-8")
+        try:
+            ae._REPO_ROOT_PATH = root
+            ae._BEHAVIORAL_VERIFY_CMD = "true"
+            ex = make_executor()
+            ex.tool_registry.parse_tool_call_from_llama.side_effect = [
+                make_edit_call("tool-shaped", str(target), "x = 1", "x = 2"),
+            ]
+            ex.tool_registry.execute_tool_call = AsyncMock(side_effect=make_edit_exec(str(target)))
+            ex._call_llama = AsyncMock(side_effect=[
+                ('{"function":"edit_file","arguments":{}}', 8),
+                ('{"function":"run_command","arguments":{"command":"false"}}', 4),
+            ])
+            ex._emit_agent_event = AsyncMock()
+            task = Task(
+                id="tool-shaped-candidate",
+                objective="Fix x.\nDECLARED SINGLE-FILE SCOPE: target.py",
+            )
+            result, _tokens = await ex._execute_with_tools(task, AgentType.AGENT, max_tool_calls=4)
+
+            check("tool-shaped synthesis falls back deterministically",
+                  result == "COMPLETED: verified edit completed for target.py.")
+            check("tool-shaped synthesis is never executed", ex.tool_registry.execute_tool_call.await_count == 1)
+            check("fallback is recorded in completion evidence",
+                  task.completion_evidence is not None and task.completion_evidence.get("synthesis_fallback") is True)
+        finally:
+            ae._BEHAVIORAL_VERIFY_CMD, ae._REPO_ROOT_PATH = orig_cmd, orig_root
+
+
 async def main():
     await test_noop_edit_triggers_coach_then_real_fix_completes()
     await test_freshness_gaming_edit_triggers_coach()
     await test_behavioral_verify_catches_semantic_wrong_fix()
+    await test_behavioral_verify_quotes_hostile_file_path()
+    await test_declared_verified_edit_completes_with_one_no_tool_synthesis()
+    await test_declared_completion_fails_closed_without_passing_behavioral_check()
+    await test_verified_edit_outside_declared_scope_does_not_complete_early()
+    await test_verified_candidate_rejects_tool_shaped_synthesis()
     await test_real_edit_passes_clean()
     await test_dead_code_added_def_triggers_coach()
     await test_referenced_def_passes_clean()
