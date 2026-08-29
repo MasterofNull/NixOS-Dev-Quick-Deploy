@@ -111,6 +111,8 @@ def _final_progress_payload(summary: dict, prior_progress: object) -> dict:
         "error": summary["error"],
         "timestamp": datetime.now(timezone.utc).isoformat().replace("+00:00", "Z"),
     }
+    if isinstance(summary.get("completion_evidence"), dict):
+        final_progress["completion_evidence"] = summary["completion_evidence"]
     prior_receipt = prior_progress.get("payload_budget") if isinstance(prior_progress, dict) else None
     receipt = _valid_payload_budget_receipt(prior_receipt)
     if receipt is not None:
@@ -491,6 +493,7 @@ async def run_task(
             {
                 "result_preview": str(result_task.result)[:200] if result_task.result is not None else "",
                 "run_attempt": len(result_task.tool_calls_made),
+                "completion_evidence": result_task.completion_evidence,
             },
         )
         # Bridge into training_ingest pipeline: emit local_inference event so
@@ -549,6 +552,7 @@ async def run_task(
         "result": result_task.result,
         "error": error_text,
         "degraded_reason": result_task.degraded_reason,
+        "completion_evidence": result_task.completion_evidence,
     }
 
     if output_file:

@@ -3563,3 +3563,66 @@ Advisory task (codex is the real confirmatory backstop) — non-blocking.
   (separate followup: local-completion-signal-after-edit).
 - STATUS: the full chain is now built (throughput + behavioral gate + static coach + runner lets it fire).
   Needs a live dogfood run to confirm the coach now coaches local toward correct edits.
+[DONE] local-agent-nonzero-child-exit-evidence-lost — Dogfood task `local-20260827-202157-06ngvs` reached a valid `edit_file` envelope, but `aq-agent-loop` exited nonzero after about 580 seconds and the detached dispatcher retained neither its exit code nor stderr. The output remained the initial waiting stub, so the executor failure could not be reconstructed. F2 now records a numeric exit, byte-bounded sanitized stderr sidecar/tail, and watchdog evidence; exact subject `3ba58871d9ad01ec1633db70114fbeafe354a45b270b3f094798bb27560c960d` received independent PASS.
+  Severity: high
+  Action: persist a bounded task-local stderr sidecar plus numeric child exit and sanitized tail in terminal output/progress, then rerun one bounded task before changing executor semantics.
+  File: scripts/ai/lib/dispatch.py; scripts/testing/test-local-delegation-artifact.py
+
+[DONE] phase0-local-delegation-artifact-wrapper-timeout — `aq-qa 0 --json` raised an uncaught `subprocess.TimeoutExpired` because the service-down regression exercised the new 180-second resume wait inside Phase 0's 30-second wrapper. The test now mocks the wait hermetically, completes in 4.26 seconds, and Phase 0 converts any future timeout to a bounded typed failure without increasing its 30-second budget.
+  Severity: high
+  Action: measure the focused suite, make the Phase-0 wrapper return a typed timeout failure, and set a justified bounded budget in a separate slice without weakening the artifact assertions.
+  File: scripts/testing/harness_qa/phases/phase0.py; scripts/testing/test-local-delegation-artifact.py
+
+[OPEN] claude-readonly-handoff-checkin-timeout — A direct read-only Claude Sonnet handoff query timed out without a response after the repository handoff branch had already been pushed. The committed handoff remained available and was independently recovered, so orchestration continued without losing state.
+  Severity: medium
+  Action: keep committed handoff artifacts authoritative; add provider timeout/terminal reason to collaborator availability projection instead of silently waiting or retrying indefinitely.
+  File: scripts/ai/delegate-to-claude; collaborative roster health projection
+[DONE] behavioral-verify-file-substitution-shell-injection — `_behavioral_verify` substituted a model-influenced file path directly into the operator-declared shell command. Controlled dogfood task `local-20260828-064534-n1khvu` added `shlex.quote(file_path)` by 790.3 seconds and stayed within its one-file scope; hostile-path regression and independent exact-subject review passed.
+  Severity: high
+  Action: completed in the behavioral-verification shell-quoting slice; retain the regression and exact reviewed-subject evidence.
+  File: ai-stack/local-agents/agent_executor.py; scripts/testing/test-edit-verify.py
+
+[OPEN] local-agent-completion-signal-after-correct-edit — Task `local-20260828-064534-n1khvu` completed both requested edits by 790.3 seconds but continued through a third successful edit call and an additional inference turn until the 900-second supervisor cap sent SIGTERM. The new diagnostic receipt proves the code result was correct while the task terminal status was `failed` solely because no bounded completion signal followed the accepted edit.
+  Severity: high
+  Action: after a verified successful edit satisfying the declared task scope, emit a typed completion candidate and give the model one short bounded synthesis turn; terminate successfully without waiting for another full 800-token tool turn.
+  File: ai-stack/local-agents/agent_executor.py; scripts/ai/aq-agent-loop; scripts/ai/aq-local-dogfood-run
+
+[DONE] local-delegation-reliability-source-manifest-stale — The reliability golden fixture still pinned the pre-observability `dispatch.py` hash and became additionally stale when the local agent fixed behavioral-verification quoting, causing three fail-closed reliability checks. The two exact live source hashes and deterministic source-manifest digest were mechanically re-pinned without changing assertions or characterized behavior.
+  Severity: medium
+  Action: retain strict source hash binding and re-pin it atomically whenever an intentionally reviewed bound source changes.
+  File: scripts/testing/fixtures/local-delegation-reliability-golden.json
+
+[OPEN] local-skill-schema-quality-drift — `aq-skill-auto --json --test` selected the canonical multi-agent, task-eligibility, and role-contract skills but marked all three invalid for missing required `description` sections; task-eligibility also triggered a likely false-positive shell-pattern detector on a Markdown table row. Selection still succeeded, so agents can silently consume locally valid-looking skills that fail their own quality contract.
+  Severity: medium
+  Action: repair the three skill metadata/section contracts and make the security-pattern validator distinguish documentation tables/examples from executable content without weakening real executable-pattern detection.
+  File: .agent/skills/multi-agent-collab/SKILL.md; .agent/skills/task-eligibility/SKILL.md; .agent/skills/role-contracts/SKILL.md; skill validation implementation
+
+[OPEN] session-start-machine-mode-contract-drift — Lights-Out guidance requires machine-mode CLI interactions, but `aq-session-start --task ... --machine` rejects `--machine` as an unknown argument. Operators must currently use human-formatted output for this mandatory session entrypoint.
+  Severity: medium
+  Action: add a closed `--machine` response contract to `aq-session-start` or explicitly exempt this entrypoint in the Machine-Mode First guidance; add a focused CLI regression.
+  File: scripts/ai/aq-session-start; AGENTS.md
+
+[IN-FLIGHT] local-tool-grammar-required-arguments-unbound — Live task `local-20260828-094134-6kogc5` ran with GBNF enabled but emitted `read_file` without `file_path` after 964.5 seconds. The grammar couples only an enabled function-name enum to a generic arguments object; tool parameter schemas and their required fields never enter grammar construction. The handler rejected the call safely, the 1,200-second wall reaped the task, and no repository file changed.
+  Severity: high
+  Action: generate a bounded function-coupled grammar from enabled tool schemas, retain optional arguments, reject missing/cross-tool shapes, schema-bind the cache, independently review, then rerun one bounded dogfood task.
+  File: ai-stack/local-agents/tool_grammar.py; scripts/ai/lib/grammar_cache.py; ai-stack/local-agents/agent_executor.py; scripts/testing/test-tool-grammar.py; scripts/testing/test-tool-call-grammar.py
+
+[OPEN] local-tool-grammar-active-lease-drift — Grammar construction uses every enabled tool in the registry, while the executor can later narrow the model-visible tool set through active selection/hot-swap. Required arguments are now schema-bound, but the grammar may still admit a tool outside the current per-turn lease.
+  Severity: high
+  Action: pass the exact active model-visible tool-schema projection into grammar construction and bind it to the same per-turn lease digest; warn-only instrumentation first, then fail closed after measured parity.
+  File: ai-stack/local-agents/agent_executor.py; ai-stack/local-agents/tool_grammar.py
+
+[IN-FLIGHT] local-agent-midtask-model-reload-terminalizes-recoverable-work — Post-grammar dogfood task `local-20260828-102647-4e39k2` completed three schema-valid `read_file` calls, then its fourth inference request was disconnected while systemd stopped llama. The executor's immediate generic retry hit `503 Loading model` during the replacement process's 62-second load window and terminalized the task. The retained journal shows a stop/reload with the old process killed after `stop-sigterm` timeout, not an OOM or model/tool-schema failure; the initiating actor is not recoverable from current logs.
+  Severity: high
+  Action: classify only an explicit local `503 Loading model` response as transient, wait on the existing readiness surface for at most 120 seconds, and retry the unchanged request once; unrelated 503 responses must remain terminal. Add hermetic recovery and fail-closed regressions before another bounded dogfood run.
+  File: ai-stack/local-agents/agent_executor.py; local executor HTTP regressions; llama-cpp.service journal
+
+[OPEN] reviewer-invoked-live-pending-reconciliation — An independent reviewer accidentally ran `aq-delegation-registry reconcile-pending --apply` against the canonical workspace while validating a new CLI. It changed 39 legacy `running` PENDING rows to auditable `stale` rows and appended 39 HANDOFF receipts before terminal code review. A subsequent dry-run reports zero candidates, and the registry had no current running task, so the applied state matches the intended reconciliation outcome; the process violation remains recorded separately from technical correctness.
+  Severity: high
+  Action: retain the evidence-backed reconciled state, require CLI tests to use isolated fixture paths, and add a guard or explicit workspace-confirmation boundary so read-only reviewers cannot accidentally exercise live `--apply` behavior.
+  File: scripts/ai/aq-delegation-registry; scripts/ai/lib/task_registry.py; .agent/collaboration/PENDING.json; .agent/collaboration/HANDOFF.md
+
+[CLOSED] active-lease-grammar-prose-turn-crashes-under-gbnf-always — Independent acceptance review of the active-lease grammar slice (this commit) caught a latent live crash: `_tool_call_grammar` was refactored to build GBNF from the exact per-turn `active_tools` lease and to fail CLOSED (re-raise) when the lease is absent/empty/malformed. The prose-only completion-fallback `_call_llama` at agent_executor.py:~2700 ("Write ONE prose sentence starting with 'COMPLETED:'. No JSON. No tool calls.") did not pass `active_tools` and did not set `allow_tool_grammar=False`, so with the LIVE `AQ_LOCAL_GBNF=1` config it would call `_lease_tool_schemas(None)` → RuntimeError on the exact parse-failure→prose-fallback branch the APU hits often. Tests passed because none exercise that branch with grammar-always on (fixture-conceals-integration-break pattern). Sibling synthesis site :3333 already sets `allow_tool_grammar=False`; :2700 was inconsistent.
+  Severity: high (latent live crash under production env, not default env)
+  Action: FIXED in the same commit — added `allow_tool_grammar=False` to the :2700 prose fallback (correct behavior: a "no JSON, no tool calls" turn must not carry tool grammar), matching :3333. Follow-up: add a regression covering the parse-failure→prose-fallback branch with `AQ_LOCAL_GBNF=1` so the exemption is guarded, not incidental.
+  File: ai-stack/local-agents/agent_executor.py:2700

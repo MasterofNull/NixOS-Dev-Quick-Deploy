@@ -19,6 +19,7 @@ import json
 import logging
 import os
 import re
+import shlex
 import shutil
 import subprocess
 import sys
@@ -484,6 +485,13 @@ def _range_is_covered(
 # Kill switch AQ_NOACTION_INTERVENTION=0 restores the plain-completion behavior.
 _NOACTION_INTERVENTION_ENABLED: bool = _env_flag("AQ_NOACTION_INTERVENTION", True)
 _RETRY_RESPONSE_CHAR_BUDGET = 512
+_LOCAL_MODEL_LOADING_RETRY_TIMEOUT_SECONDS = 120.0
+
+
+def _is_local_model_loading_error(error: Exception) -> bool:
+    """Return true only for the explicit local llama.cpp loading response."""
+    message = str(error)
+    return "llama.cpp error: 503" in message and "Loading model" in message
 
 
 def _bounded_retry_response(response: str) -> str:
@@ -553,6 +561,10 @@ _EDIT_VERIFY_MAX_PER_FILE: int = int(os.getenv("AQ_EDIT_VERIFY_MAX_PER_FILE", "2
 # command is substituted with the edited path. Bounded + fail-safe.
 _BEHAVIORAL_VERIFY_CMD: str = os.getenv("AQ_EDIT_VERIFY_CMD", "").strip()
 _BEHAVIORAL_VERIFY_TIMEOUT_S: int = int(os.getenv("AQ_EDIT_VERIFY_TIMEOUT_S", "120"))
+_DECLARED_SINGLE_FILE_SCOPE_RE = re.compile(
+    r"(?m)^DECLARED SINGLE-FILE SCOPE: ([^\r\n]+)$"
+)
+_VERIFIED_EDIT_SYNTHESIS_MAX_TOKENS = 96
 
 # Heuristic substrings indicating the model is explicitly declining/stopping
 # rather than narrating a plan it forgot to execute. Kept conservative and
@@ -574,6 +586,48 @@ def _looks_like_refusal(text: str) -> bool:
     """True if prose reads as an explicit stop/refusal rather than a forgotten-action plan."""
     lowered = text.lower()
     return any(phrase in lowered for phrase in _REFUSAL_SIGNAL_PHRASES)
+
+
+def _declared_single_file_scope(objective: str) -> Optional[str]:
+    """Return one safe repo-relative declared scope, otherwise None.
+
+    This marker is an opt-in contract for bounded dogfood tasks.  It is exact
+    and deliberately rejects duplicates, absolute paths, traversal, and any
+    value which escapes the repository root.
+    """
+    matches = _DECLARED_SINGLE_FILE_SCOPE_RE.findall(objective or "")
+    if len(matches) != 1:
+        return None
+    raw = matches[0].strip()
+    candidate = Path(raw)
+    if not raw or candidate.is_absolute() or ".." in candidate.parts:
+        return None
+    try:
+        root = _REPO_ROOT_PATH.resolve()
+        resolved = (root / candidate).resolve()
+        relative = resolved.relative_to(root)
+    except (OSError, ValueError):
+        return None
+    return relative.as_posix()
+
+
+def _repo_relative_path(file_path: str) -> Optional[str]:
+    """Normalize a tool path to a repo-relative path without granting access."""
+    if not file_path:
+        return None
+    try:
+        root = _REPO_ROOT_PATH.resolve()
+        candidate = Path(file_path)
+        resolved = candidate.resolve() if candidate.is_absolute() else (Path.cwd() / candidate).resolve()
+        return resolved.relative_to(root).as_posix()
+    except (OSError, ValueError):
+        return None
+
+
+def _tool_shaped_synthesis(text: str) -> bool:
+    """Recognize output that must never be interpreted as a follow-up tool call."""
+    stripped = (text or "").lstrip()
+    return bool(re.match(r'\{\s*"(?:function|tool|name)"\s*:', stripped))
 
 
 def _looks_like_edit_mismatch(error_text: str) -> bool:
@@ -701,6 +755,19 @@ class _EditVerdict:
     passed: bool
     reason: str = ""
     coaching_message: str = ""
+    # Completion candidates require a REAL, explicitly-run behavioral check.
+    # Static-only edits remain valid normal progress, but must not short-circuit a
+    # declared dogfood run.
+    behavioral_check_ran: bool = False
+    behavioral_check_passed: bool = False
+
+
+@dataclass(frozen=True)
+class _BehavioralVerifyResult:
+    """Closed outcome for one declared behavioral verification invocation."""
+    failure_output: Optional[str]
+    ran: bool
+    passed: bool
 
 
 # Whole-line-comment prefix by extension for the NO-OP check. Best-effort only
@@ -1088,6 +1155,36 @@ def _edit_touches_named_targets(
     return any(t in haystack or t.rstrip("()") in haystack for t in targets)
 
 
+def _behavioral_verify_result(file_path: str) -> _BehavioralVerifyResult:
+    """Run the declared check and retain whether it actually executed.
+
+    The legacy verification gate is deliberately fail-open when a check is
+    unavailable.  Completion candidates are stricter: they need evidence that
+    the declared command ran and returned zero, rather than merely observing no
+    failure text.  Keeping that distinction here avoids changing normal task
+    behavior.
+    """
+    if not _BEHAVIORAL_VERIFY_CMD:
+        return _BehavioralVerifyResult(None, ran=False, passed=False)
+    cmd = _BEHAVIORAL_VERIFY_CMD.replace("{file}", shlex.quote(file_path))
+    try:
+        proc = subprocess.run(
+            ["bash", "-c", cmd],
+            capture_output=True, text=True,
+            timeout=_BEHAVIORAL_VERIFY_TIMEOUT_S, cwd=os.getcwd(),
+        )
+    except Exception:  # noqa: BLE001 — existing verify gate remains fail-open
+        return _BehavioralVerifyResult(None, ran=False, passed=False)
+    if proc.returncode == 0:
+        return _BehavioralVerifyResult(None, ran=True, passed=True)
+    tail = ((proc.stdout or "") + "\n" + (proc.stderr or "")).strip()
+    return _BehavioralVerifyResult(
+        tail[-800:] if tail else f"check exited with status {proc.returncode}",
+        ran=True,
+        passed=False,
+    )
+
+
 def _behavioral_verify(file_path: str) -> Optional[str]:
     """Run the task's declared behavioral check (AQ_EDIT_VERIFY_CMD) after an edit.
 
@@ -1100,21 +1197,7 @@ def _behavioral_verify(file_path: str) -> Optional[str]:
     NOT a test failure — it degrades to None (skip) so a broken harness never
     blocks a legitimate edit. Only a genuine non-zero exit of the check coaches.
     """
-    if not _BEHAVIORAL_VERIFY_CMD:
-        return None
-    cmd = _BEHAVIORAL_VERIFY_CMD.replace("{file}", file_path)
-    try:
-        proc = subprocess.run(
-            ["bash", "-c", cmd],  # -c not -lc: no login-shell title escapes in the output
-            capture_output=True, text=True,
-            timeout=_BEHAVIORAL_VERIFY_TIMEOUT_S, cwd=os.getcwd(),
-        )
-    except Exception:  # noqa: BLE001 — couldn't run the check; skip, never block
-        return None
-    if proc.returncode == 0:
-        return None
-    tail = ((proc.stdout or "") + "\n" + (proc.stderr or "")).strip()
-    return tail[-800:] if tail else f"check exited with status {proc.returncode}"
+    return _behavioral_verify_result(file_path).failure_output
 
 
 def _verify_edit_quality(
@@ -1236,20 +1319,24 @@ def _verify_edit_quality(
     # BEHAVIORAL verify (last, and only once the static checks pass): run the
     # task's actual check. This is what turns "confidently wrong" into "iterate to
     # correct" — the static gates above cannot see a semantic wrong-fix.
-    behavioral_fail = _behavioral_verify(file_path)
-    if behavioral_fail:
+    behavioral_result = _behavioral_verify_result(file_path)
+    if behavioral_result.failure_output:
         return _EditVerdict(
             passed=False,
             reason="behavioral_verify_failed",
             coaching_message=(
                 "Your edit is syntactically fine but FAILS the task's own check "
-                "when actually run:\n\n" + behavioral_fail + "\n\nThat's a behavior "
+                "when actually run:\n\n" + behavioral_result.failure_output + "\n\nThat's a behavior "
                 "bug, not a syntax one. Read the failure above, change what the code "
                 "DOES (not just how it reads), and retry the edit."
             ),
         )
 
-    return _EditVerdict(passed=True)
+    return _EditVerdict(
+        passed=True,
+        behavioral_check_ran=behavioral_result.ran,
+        behavioral_check_passed=behavioral_result.passed,
+    )
 
 
 def _gate_large_file_content(
@@ -1444,6 +1531,10 @@ class Task:
     remote_profile: Optional[str] = None
     remote_model: Optional[str] = None
 
+    # Populated only by the declared verified-edit completion path.  It is a
+    # closed, typed receipt suitable for progress/event surfaces.
+    completion_evidence: Optional[Dict[str, Any]] = None
+
     def to_dict(self) -> Dict[str, Any]:
         """Convert to dictionary"""
         return {
@@ -1466,6 +1557,7 @@ class Task:
             "force_remote": self.force_remote,
             "remote_profile": self.remote_profile,
             "remote_model": self.remote_model,
+            "completion_evidence": self.completion_evidence,
         }
 
 
@@ -1885,6 +1977,7 @@ class LocalAgentExecutor:
                 {
                     "result_preview": str(task.result)[:200] if task.result is not None else "",
                     "run_attempt": len(task.tool_calls_made),
+                    "completion_evidence": task.completion_evidence,
                 },
             )
 
@@ -2147,6 +2240,11 @@ class LocalAgentExecutor:
         # reflects the "after" side by the time the tool result reaches us).
         _edit_verify_counts: dict = {}  # file_path → coach-fire count
         _verify_pre_edit_content: dict = {}  # file_path → content before the in-flight call
+        # A completion candidate is intentionally opt-in: normal tasks keep the
+        # ordinary tool loop.  For the marked case, retain every accepted write
+        # so an out-of-scope earlier edit can never be hidden by a later good one.
+        _declared_completion_scope = _declared_single_file_scope(task.objective)
+        _accepted_write_paths: list[str] = []
         _validation_passes_without_commit = 0
         _VALIDATION_STALL_NUDGE = 3
 
@@ -2442,6 +2540,7 @@ class LocalAgentExecutor:
                     task_type=task.task_type,
                     task_id=task.id,
                     call_number=tool_call_count + 1,
+                    active_tools=_active_tools,
                 )
             except _CASSETTE_HARD_EXCEPTIONS:
                 # A strict-replay miss / replay misconfiguration / payload digest
@@ -2458,14 +2557,32 @@ class LocalAgentExecutor:
                     "LLM call %d failed (%r), retrying with 512 tokens",
                     tool_call_count + 1, str(_llm_err)[:120],
                 )
-                response, tok = await self._call_llama(
-                    messages,
-                    role=role,
-                    max_tokens=512,
-                    task_type=task.task_type,
-                    task_id=task.id,
-                    call_number=tool_call_count + 1,
-                )
+                _retry_kwargs = {
+                    "role": role,
+                    "max_tokens": 512,
+                    "task_type": task.task_type,
+                    "task_id": task.id,
+                    "call_number": tool_call_count + 1,
+                    "active_tools": _active_tools,
+                }
+                try:
+                    response, tok = await self._call_llama(messages, **_retry_kwargs)
+                except Exception as _retry_err:
+                    if not _is_local_model_loading_error(_retry_err):
+                        raise
+                    logger.warning(
+                        "local model is loading after LLM call %d; waiting up to %.0fs before one replay",
+                        tool_call_count + 1,
+                        _LOCAL_MODEL_LOADING_RETRY_TIMEOUT_SECONDS,
+                    )
+                    _remaining_wall_budget_s = max(
+                        0.0,
+                        _HARD_WALL_BUDGET_S - (time.time() - _loop_start),
+                    )
+                    if not await self._wait_for_local_model_ready(_remaining_wall_budget_s):
+                        raise _retry_err
+                    # Replay exactly the request that received the explicit loading response.
+                    response, tok = await self._call_llama(messages, **_retry_kwargs)
             total_tokens += tok
             if not response.strip():
                 # Retry once with a nudge before failing the task. Empty responses happen
@@ -2486,6 +2603,7 @@ class LocalAgentExecutor:
                     max_tokens=AGENT_TASK_MAX_TOKENS,
                     task_id=task.id,
                     call_number=tool_call_count + 1,
+                    active_tools=_active_tools,
                 )
                 total_tokens += _retry_tok
                 if response.strip():
@@ -2529,6 +2647,7 @@ class LocalAgentExecutor:
                                 task_id=task.id,
                                 call_number=tool_call_count + 1,
                                 force_tool_grammar=True,
+                                active_tools=_active_tools,
                             )
                             total_tokens += repair_tokens
                             repaired_tool_call = self.tool_registry.parse_tool_call_from_llama(repaired_response)
@@ -2584,6 +2703,7 @@ class LocalAgentExecutor:
                             max_tokens=256,
                             task_id=task.id,
                             call_number=tool_call_count + 1,
+                            allow_tool_grammar=False,
                         )
                         total_tokens += syn_tokens
                         _cancel_watchdog()
@@ -3156,6 +3276,92 @@ class LocalAgentExecutor:
                     if _ev_coached:
                         continue
                     _edits_made += 1
+                    _accepted_path = _repo_relative_path(_ev_path)
+                    # Retain an explicit non-matching sentinel rather than
+                    # dropping an unnormalizable path: it must disqualify the
+                    # candidate, not disappear from the all-writes evidence.
+                    _accepted_write_paths.append(_accepted_path or "<outside-repository>")
+
+                    # Verified-edit completion: after the successful write has
+                    # passed all static checks AND an explicitly configured
+                    # behavioral command actually ran and returned zero, one
+                    # bounded prose-only synthesis replaces another full tool
+                    # turn.  No parser/dispatcher touches the synthesis output.
+                    # This is deliberately unavailable to unmarked, static-only,
+                    # malformed, multi-file, or out-of-scope tasks.
+                    if (
+                        _declared_completion_scope is not None
+                        and _EDIT_VERIFY_ENABLED
+                        and _ev_verdict is not None
+                        and _ev_verdict.passed
+                        and _ev_verdict.behavioral_check_ran
+                        and _ev_verdict.behavioral_check_passed
+                        and _accepted_path == _declared_completion_scope
+                        and _accepted_write_paths
+                        and all(path == _declared_completion_scope for path in _accepted_write_paths)
+                    ):
+                        completion_evidence = {
+                            "kind": "verified_edit_completion",
+                            "scope": _declared_completion_scope,
+                            "accepted_write_count": len(_accepted_write_paths),
+                            "behavioral_check": "ran_exit_0",
+                            "synthesis": "one_no_tools_call_max_96",
+                        }
+                        task.completion_evidence = completion_evidence
+                        await self._emit_agent_event(
+                            task.id,
+                            "verified_edit_completion_candidate",
+                            completion_evidence,
+                            _watchdog_last_activity,
+                        )
+                        synthesis_messages = [
+                            {
+                                "role": "system",
+                                "content": (
+                                    "Return one concise plain-text completion sentence. "
+                                    "No JSON. No tools. No commands."
+                                ),
+                            },
+                            {
+                                "role": "user",
+                                "content": (
+                                    "The declared single-file edit was statically and behaviorally "
+                                    f"verified for {_declared_completion_scope}. State completion."
+                                ),
+                            },
+                        ]
+                        try:
+                            synthesis, synthesis_tokens = await self._call_llama(
+                                synthesis_messages,
+                                role=role,
+                                max_tokens=_VERIFIED_EDIT_SYNTHESIS_MAX_TOKENS,
+                                task_id=task.id,
+                                call_number=tool_call_count + 1,
+                                allow_tool_grammar=False,
+                            )
+                            total_tokens += synthesis_tokens
+                        except Exception as _synthesis_error:  # bounded deterministic fallback
+                            logger.warning(
+                                "verified-edit completion synthesis failed (%s); using receipt", _synthesis_error,
+                            )
+                            synthesis = ""
+                        final_synthesis = (synthesis or "").strip()
+                        if not final_synthesis or _tool_shaped_synthesis(final_synthesis):
+                            final_synthesis = (
+                                f"COMPLETED: verified edit completed for {_declared_completion_scope}."
+                            )
+                        task.completion_evidence = {
+                            **completion_evidence,
+                            "synthesis_fallback": final_synthesis.startswith("COMPLETED: verified edit"),
+                        }
+                        await self._emit_agent_event(
+                            task.id,
+                            "verified_edit_completion",
+                            task.completion_evidence,
+                            _watchdog_last_activity,
+                        )
+                        _cancel_watchdog()
+                        return final_synthesis, total_tokens
                 elif result.tool_name == "edit_file":
                     # Edit-failure feedback: old_string byte-mismatch is now the
                     # dominant local-agent failure mode (see _EDIT_FEEDBACK_ENABLED
@@ -3342,6 +3548,7 @@ class LocalAgentExecutor:
                     max_tokens=AGENT_TASK_MAX_TOKENS,
                     task_id=task.id,
                     call_number=tool_call_count + 1,
+                    active_tools=_active_tools,
                 )
                 total_tokens += syn_tok
                 logger.info("terminal_tool_gate: %s → synthesis returned", result.tool_name)
@@ -3374,6 +3581,7 @@ class LocalAgentExecutor:
                     task_type=task.task_type,
                     task_id=task.id,
                     call_number=tool_call_count + 1,
+                    active_tools=_active_tools,
                 )
                 total_tokens += syn_tok
                 return synthesis.strip(), total_tokens
@@ -3450,28 +3658,60 @@ class LocalAgentExecutor:
                 )
                 _validation_passes_without_commit = 0
 
-    def _tool_call_grammar(self, *, force_repair: bool = False) -> Optional[str]:
-        """P2: GBNF constraining output to the tool-call envelope over the ENABLED tools. Returns None
-        unless AQ_LOCAL_GBNF is set (default OFF) or a repair-only retry explicitly requests it.
-        Cached on the instance keyed by the enabled-tool set (the lease can hot-swap mid-run)."""
-        if tool_grammar is None:
-            return None
+    @staticmethod
+    def _lease_tool_schemas(active_tools: Any) -> Dict[str, Any]:
+        """Project the exact model-visible lease into ``name -> parameters``.
+
+        The system prompt and grammar must describe the same capability lease.
+        Do not look through the registry here: it can contain enabled tools that
+        were deliberately withheld from this turn.
+        """
+        if not isinstance(active_tools, list) or not active_tools:
+            raise ValueError("active tool lease must be a non-empty model-tool list")
+        schemas: Dict[str, Any] = {}
+        for tool in active_tools:
+            if not isinstance(tool, dict):
+                raise ValueError("active tool lease contains a malformed tool")
+            name = tool.get("name")
+            parameters = tool.get("parameters")
+            if not isinstance(name, str) or not name or not isinstance(parameters, dict):
+                raise ValueError("active tool lease requires name and parameters schemas")
+            if name in schemas:
+                raise ValueError("active tool lease contains duplicate tool names")
+            schemas[name] = parameters
+        return schemas
+
+    def _tool_call_grammar(
+        self, active_tools: Any, *, force_repair: bool = False
+    ) -> Optional[str]:
+        """Return GBNF tied to the active prompt lease and parameter schemas.
+
+        An operator explicitly requesting grammar (always-on or repair) gets a
+        typed failure when it cannot be constructed.  Continuing unconstrained
+        after a schema/build error would hide the guard's absence and re-admit
+        malformed calls.
+        """
         if force_repair:
             if not _LOCAL_GBNF_REPAIR_ENABLED:
                 return None
         elif not _LOCAL_GBNF_ALWAYS_ENABLED:
             return None
+        if tool_grammar is None:
+            raise RuntimeError("tool-call grammar was requested but tool_grammar is unavailable")
         try:
-            names = sorted(t.name for t in self.tool_registry.tools.values() if getattr(t, "enabled", True))
-            cache_key = tuple(names)
+            schemas = self._lease_tool_schemas(active_tools)
+            cache_key = tool_grammar.tool_schema_cache_key(schemas)
             cached = getattr(self, "_gbnf_cache", None)
             if cached and cached[0] == cache_key:
                 return cached[1]
-            grammar, _hit = tool_grammar.tool_call_grammar(names)
+            grammar, _hit = tool_grammar.tool_call_grammar(schemas)
             self._gbnf_cache = (cache_key, grammar)
             return grammar
-        except Exception:  # noqa: BLE001 — grammar is an optimization; never break the call on it
-            return None
+        except Exception as exc:  # noqa: BLE001 — provide a bounded, fail-closed receipt
+            raise RuntimeError(
+                "tool-call grammar requested but could not be built from enabled schemas: "
+                f"{type(exc).__name__}"
+            ) from exc
 
     def _cassette_replay(
         self, payload: Dict[str, Any], task_type: Optional[str]
@@ -3503,6 +3743,47 @@ class LocalAgentExecutor:
             return
         llm_cassette.maybe_record(payload, task_type, content, tokens, meta)
 
+    def _local_model_health_endpoint(self) -> Optional[str]:
+        """Return the direct llama health surface; never use switchboard as proof."""
+        endpoint = self.llama_endpoint.rstrip("/")
+        switchboard = os.environ.get("SWITCHBOARD_URL", "http://127.0.0.1:8085").rstrip("/")
+        if endpoint != switchboard:
+            return endpoint
+        direct_llama = os.environ.get("LLAMA_URL", "").rstrip("/")
+        return direct_llama or None
+
+    async def _local_model_is_ready(self, timeout_seconds: float) -> bool:
+        """Probe the truthful direct llama endpoint without changing state."""
+        health_endpoint = self._local_model_health_endpoint()
+        if health_endpoint is None or timeout_seconds <= 0:
+            return False
+        try:
+            async with httpx.AsyncClient(timeout=min(3.0, timeout_seconds)) as client:
+                response = await client.get(f"{health_endpoint}/health")
+            return response.status_code == 200
+        except httpx.HTTPError:
+            return False
+
+    async def _wait_for_local_model_ready(self, remaining_wall_budget_s: float) -> bool:
+        """Wait only within both the fixed reload and enclosing task budgets."""
+        wait_budget_s = min(
+            _LOCAL_MODEL_LOADING_RETRY_TIMEOUT_SECONDS,
+            max(0.0, remaining_wall_budget_s),
+        )
+        deadline = time.monotonic() + wait_budget_s
+        while True:
+            remaining = deadline - time.monotonic()
+            if remaining <= 0:
+                return False
+            if await self._local_model_is_ready(min(3.0, remaining)):
+                return True
+            # A slow probe may have consumed the final budget; never sleep using
+            # the pre-probe remainder and thereby overrun the enclosing deadline.
+            remaining = deadline - time.monotonic()
+            if remaining <= 0:
+                return False
+            await asyncio.sleep(min(1.0, remaining))
+
     async def _call_llama(
         self,
         messages: List[Dict],
@@ -3512,6 +3793,8 @@ class LocalAgentExecutor:
         task_id: Optional[str] = None,
         call_number: int = 0,
         force_tool_grammar: bool = False,
+        allow_tool_grammar: bool = True,
+        active_tools: Optional[List[Dict]] = None,
     ) -> Tuple[str, int]:
         """
         Call local llama.cpp server using SSE streaming.
@@ -3526,6 +3809,10 @@ class LocalAgentExecutor:
             task_type: Optional llm_config profile name. When set, profile drives
                 temperature, frequency_penalty, thinking_budget, and enable_thinking.
                 When None, hardcoded temperature=0.2, frequency_penalty=0.05 (legacy).
+            allow_tool_grammar: False omits the GBNF tool-call grammar even when
+                AQ_LOCAL_GBNF is enabled.  Use only for bounded prose-only turns.
+            active_tools: Exact model-visible lease for a grammar-enabled turn.
+                It is intentionally not reconstructed from the registry.
 
         Returns:
             (response_text, tokens_used) — tokens_used is total_tokens from the usage chunk.
@@ -3566,7 +3853,10 @@ class LocalAgentExecutor:
                 _payload_kwargs["temperature"] = _temperature
             if task_type:
                 _payload_kwargs["task_type"] = task_type
-            _gbnf = self._tool_call_grammar(force_repair=force_tool_grammar)
+            _gbnf = (
+                self._tool_call_grammar(active_tools, force_repair=force_tool_grammar)
+                if allow_tool_grammar else None
+            )
             if _gbnf:
                 _payload_kwargs["grammar"] = _gbnf
             payload = build_llama_payload(messages, **_payload_kwargs)
@@ -3604,7 +3894,10 @@ class LocalAgentExecutor:
             _stream_kwargs["temperature"] = _temperature
         if task_type:
             _stream_kwargs["task_type"] = task_type
-        _gbnf = self._tool_call_grammar(force_repair=force_tool_grammar)
+        _gbnf = (
+            self._tool_call_grammar(active_tools, force_repair=force_tool_grammar)
+            if allow_tool_grammar else None
+        )
         if _gbnf:
             _stream_kwargs["grammar"] = _gbnf
         payload = build_llama_payload(messages, **_stream_kwargs)

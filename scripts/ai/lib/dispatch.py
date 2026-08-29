@@ -30,10 +30,12 @@ import contextlib
 import json
 import math
 import os
+import re
 import signal
 import socket
 import subprocess
 import sys
+import threading
 import time
 import urllib.error
 import urllib.request
@@ -200,6 +202,8 @@ def _write_progress(
     source: str = "delegate-to-local",
     role: Optional[str] = None,
     model: Optional[str] = None,
+    exit_code: Optional[int] = None,
+    stderr_tail: Optional[str] = None,
 ) -> None:
     """Atomically update progress projection and canonical agent-run event stream.
 
@@ -216,6 +220,10 @@ def _write_progress(
     }
     if eta_s is not None:
         data["eta_s"] = round(eta_s, 0)
+    if exit_code is not None:
+        data["exit_code"] = exit_code
+    if stderr_tail:
+        data["stderr_tail"] = stderr_tail
     try:
         tmp = progress_file.with_suffix(".progress.tmp")
         tmp.write_text(json.dumps(data))
@@ -762,6 +770,50 @@ def _artifact_mtime(paths: list[Path]) -> float:
     return newest
 
 
+_AGENT_STDERR_TAIL_BYTES = 2048
+_AGENT_STDERR_CAPTURE_BYTES = 64 * 1024
+_AGENT_REQUEST_LINE = re.compile(
+    r"(?i)\b(?:prompt|task|tool(?:[_ -]?arguments?)?|arguments?|args?|environment|env)\b"
+    r"(?:\s*[:=]|\s+[\[{]).*"
+)
+_AGENT_ENV_LINE = re.compile(r"^\s*[A-Z][A-Z0-9_]{2,}\s*=.*$")
+_AGENT_CLI_VALUE = re.compile(
+    r"(?i)(--(?:task|output|tool-manifest|role|timeout|max-calls))\s+\S+"
+)
+
+
+def _capture_stderr_tail(stream, buffer: bytearray) -> None:
+    """Drain child stderr without retaining more than the diagnostic tail."""
+    try:
+        while chunk := stream.read(4096):
+            buffer.extend(chunk)
+            if len(buffer) > _AGENT_STDERR_CAPTURE_BYTES:
+                del buffer[:-_AGENT_STDERR_CAPTURE_BYTES]
+    except Exception:
+        pass
+
+
+def _sanitize_agent_stderr_tail(raw: bytes, prompt: str, grounded_prompt: str) -> str:
+    """Return a bounded stderr diagnostic without request or environment payloads."""
+    # Redact the complete bounded capture before applying the publication tail;
+    # truncating first could retain an unlabeled suffix of a long sensitive value.
+    text = raw.decode("utf-8", errors="replace")
+    for sensitive in (prompt, grounded_prompt):
+        if sensitive:
+            text = text.replace(sensitive, "[REDACTED-REQUEST]")
+    safe_lines = []
+    for line in text.splitlines():
+        # Preserve a terse failure line, but never its request/tool/env value.
+        if _AGENT_REQUEST_LINE.search(line):
+            safe_lines.append("[REDACTED-REQUEST-DATA]")
+        elif _AGENT_ENV_LINE.match(line):
+            safe_lines.append("[REDACTED-ENV]")
+        else:
+            safe_lines.append(_AGENT_CLI_VALUE.sub(r"\1 [REDACTED]", line))
+    encoded = "\n".join(safe_lines).strip().encode("utf-8", errors="replace")
+    return encoded[-_AGENT_STDERR_TAIL_BYTES:].decode("utf-8", errors="ignore")
+
+
 def _terminate_agent_process(proc: subprocess.Popen, grace_seconds: float = 10.0) -> None:
     """Terminate the agent-loop process group, falling back to kill on timeout."""
     try:
@@ -836,6 +888,7 @@ class AgentRunner:
             )
             progress_path = Path(str(output_file) + ".progress.json")
             steps_path = Path(str(output_file) + ".steps.jsonl")
+            stderr_path = Path(str(output_file) + ".stderr.log")
             # heartbeat_path is NOT in artifact_paths — watcher writes it every
             # 60s so external monitors can detect a stuck (LLM-queued) agent.
             # Keeping it out of artifact_paths prevents heartbeat writes from
@@ -847,11 +900,43 @@ class AgentRunner:
             last_heartbeat_at = start
             last_seen_mtime = _artifact_mtime(artifact_paths)
             no_progress_timeout = _compute_agent_no_progress_timeout(config.timeout_secs)
-            proc = subprocess.Popen(cmd, start_new_session=True)
+            proc = subprocess.Popen(cmd, start_new_session=True, stderr=subprocess.PIPE)
+            stderr_buffer = bytearray()
+            stderr_reader = threading.Thread(
+                target=_capture_stderr_tail,
+                args=(proc.stderr, stderr_buffer),
+                daemon=True,
+            )
+            stderr_reader.start()
             timeout_reason = ""
             while True:
                 if proc.poll() is not None:
-                    return proc.returncode == 0
+                    stderr_reader.join(timeout=1)
+                    if proc.returncode == 0:
+                        return True
+                    stderr_tail = _sanitize_agent_stderr_tail(
+                        bytes(stderr_buffer), prompt, grounded_prompt
+                    )
+                    try:
+                        stderr_path.write_text(stderr_tail + ("\n" if stderr_tail else ""), encoding="utf-8")
+                    except Exception:
+                        pass
+                    diagnostic = f"Agent loop exited with code {proc.returncode}."
+                    if stderr_tail:
+                        diagnostic += f"\nSanitized stderr tail:\n{stderr_tail}"
+                    _write_progress(
+                        progress_path,
+                        tokens_out=0,
+                        max_tokens=config.max_tokens,
+                        elapsed_s=time.monotonic() - start,
+                        tok_per_sec=0.0,
+                        eta_s=None,
+                        status="failed",
+                        exit_code=proc.returncode,
+                        stderr_tail=stderr_tail or None,
+                    )
+                    output_file.write_text(diagnostic + "\n", encoding="utf-8")
+                    return False
                 now = time.monotonic()
                 newest_mtime = _artifact_mtime(artifact_paths)
                 if newest_mtime > last_seen_mtime:
@@ -893,6 +978,21 @@ class AgentRunner:
                 time.sleep(2.0)
 
             _terminate_agent_process(proc)
+            # Do not join the reader here: a descendant may retain stderr after the
+            # watchdog has reaped the leader.  Closing our read end unblocks it while
+            # keeping the watchdog's terminal disposition prompt.
+            try:
+                proc.stderr.close()
+            except Exception:
+                pass
+            stderr_tail = _sanitize_agent_stderr_tail(
+                bytes(stderr_buffer), prompt, grounded_prompt
+            )
+            if proc.returncode not in (None, 0):
+                try:
+                    stderr_path.write_text(stderr_tail + ("\n" if stderr_tail else ""), encoding="utf-8")
+                except Exception:
+                    pass
             progress_snippet = ""
             try:
                 progress_snippet = f"\nLast progress: {progress_path.read_text()[:400]}"
@@ -906,8 +1006,15 @@ class AgentRunner:
                 tok_per_sec=0.0,
                 eta_s=None,
                 status="failed",
+                exit_code=proc.returncode if proc.returncode not in (None, 0) else None,
+                stderr_tail=stderr_tail or None,
             )
-            output_file.write_text(f"{timeout_reason}{progress_snippet}")
+            terminal_detail = f"{timeout_reason}{progress_snippet}"
+            if proc.returncode not in (None, 0):
+                terminal_detail += f"\nAgent loop exited with code {proc.returncode}."
+            if stderr_tail:
+                terminal_detail += f"\nSanitized stderr tail:\n{stderr_tail}"
+            output_file.write_text(terminal_detail)
             return False
         except Exception as exc:
             progress_path = Path(str(output_file) + ".progress.json")

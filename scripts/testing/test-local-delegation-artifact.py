@@ -48,6 +48,16 @@ def _load_task_registry():
     return mod
 
 
+def _load_delegation_registry():
+    loader = importlib.machinery.SourceFileLoader(
+        "aq_delegation_registry", str(ROOT / "scripts" / "ai" / "aq-delegation-registry")
+    )
+    spec = importlib.util.spec_from_loader("aq_delegation_registry", loader)
+    mod = importlib.util.module_from_spec(spec)
+    loader.exec_module(mod)
+    return mod
+
+
 def _load_dogfood_runner():
     loader = importlib.machinery.SourceFileLoader(
         "aq_local_dogfood_run", str(ROOT / "scripts" / "ai" / "aq-local-dogfood-run")
@@ -124,16 +134,22 @@ def test_service_down_still_creates_registry_entry():
             pid=None,
         )
 
-        # Simulate dispatch_task() with pre_registered=True
-        dispatch_mod.dispatch_task(
-            config=config,
-            prompt="probe",
-            task_id=task_id,
-            output_file=output_file,
-            registry=registry,
-            script_dir=LIB.parent,
-            pre_registered=True,
-        )
+        # Keep this artifact test hermetic: service availability is not under
+        # test, and dispatch preflight now waits up to 180s in production.
+        original_wait_for_service = dispatch_mod._wait_for_service
+        try:
+            dispatch_mod._wait_for_service = lambda *args, **kwargs: False
+            dispatch_mod.dispatch_task(
+                config=config,
+                prompt="probe",
+                task_id=task_id,
+                output_file=output_file,
+                registry=registry,
+                script_dir=LIB.parent,
+                pre_registered=True,
+            )
+        finally:
+            dispatch_mod._wait_for_service = original_wait_for_service
 
         entry = registry.get(task_id)
         assert_true(entry is not None, "Registry entry missing after service-down dispatch")
@@ -142,6 +158,34 @@ def test_service_down_still_creates_registry_entry():
             f"Expected status failed/done, got {entry.get('status')}",
         )
         print(f"PASS  service-down dispatch: registry entry status={entry['status']}")
+
+
+def test_phase0_reports_local_artifact_timeout_as_typed_failure():
+    """Phase 0 must return a bounded failure instead of raising on test timeout."""
+    qa_root = str(ROOT / "scripts" / "testing")
+    sys.path.insert(0, qa_root)
+    try:
+        from harness_qa.core.context import RunContext
+        from harness_qa.phases import phase0
+        original_run = phase0.subprocess.run
+
+        def fake_run(*args, **kwargs):
+            raise subprocess.TimeoutExpired(args[0], kwargs.get("timeout", 30),
+                                            output="partial stdout", stderr="x" * 400)
+
+        try:
+            phase0.subprocess.run = fake_run
+            result = phase0._check_local_delegation_artifact(
+                RunContext(repo_root=ROOT, dashboard_safe=False)
+            )[0]
+        finally:
+            phase0.subprocess.run = original_run
+        assert_true(result.status.value == "FAIL", f"timeout result was not failed: {result}")
+        assert_true("timed out after 30s" in result.reason, f"timeout reason not typed: {result.reason}")
+        assert_true(len(result.reason) <= 300, f"timeout diagnostic was not bounded: {len(result.reason)}")
+    finally:
+        sys.path.remove(qa_root)
+    print("PASS  Phase 0 reports local artifact timeout as typed failure")
 
 
 def test_registry_entry_exists_before_service_check():
@@ -214,7 +258,7 @@ def test_agent_runner_creates_initial_output_artifacts():
             def poll(self):
                 return self.returncode
 
-        def fake_popen(cmd, start_new_session=False, env=None):
+        def fake_popen(cmd, start_new_session=False, env=None, stderr=None):
             calls.append((cmd, start_new_session, env))
             assert_true(output_file.exists(), "agent output file should exist before subprocess.run")
             assert_true(
@@ -248,6 +292,92 @@ def test_agent_runner_creates_initial_output_artifacts():
         print("PASS  agent runner creates initial output/progress artifacts")
 
 
+def test_agent_runner_records_sanitized_nonzero_child_stderr():
+    """A real fake child yields bounded, redacted failure diagnostics."""
+    with tempfile.TemporaryDirectory() as tmp:
+        tmp_path = Path(tmp)
+        script_dir = tmp_path / "scripts"
+        script_dir.mkdir()
+        agent_loop = script_dir / "aq-agent-loop"
+        agent_loop.write_text(
+            "import sys\n"
+            "sys.stderr.write('RuntimeError: stable diagnostic\\n')\n"
+            "sys.stderr.write('prompt=TOP_SECRET_PROMPT\\n')\n"
+            "sys.stderr.write('tool arguments={\\\"path\\\": \\\"TOP_SECRET_TOOL\\\"}\\n')\n"
+            "sys.stderr.write('LOCAL_ENV_SECRET=TOP_SECRET_ENV\\n')\n"
+            "sys.exit(23)\n",
+            encoding="utf-8",
+        )
+        output_file = tmp_path / "delegation" / "outputs" / "agent.log"
+        dispatch_mod = _load_dispatch()
+        config = dispatch_mod.TaskConfig(
+            mode="agent", role="architect", timeout_secs=5, max_tokens=20,
+            llama_url="http://127.0.0.1:19999", hybrid_url="http://127.0.0.1:19999",
+            ralph_url="http://127.0.0.1:19999", task_type="agent",
+        )
+
+        ok = dispatch_mod.AgentRunner(script_dir).run(
+            config, "TOP_SECRET_PROMPT", output_file, max_calls=1
+        )
+        assert_true(not ok, "nonzero child exit must fail AgentRunner")
+        stderr_path = Path(str(output_file) + ".stderr.log")
+        progress_path = Path(str(output_file) + ".progress.json")
+        assert_true(stderr_path.exists(), "nonzero child must publish a stderr sidecar")
+        stderr_tail = stderr_path.read_text(encoding="utf-8")
+        terminal = output_file.read_text(encoding="utf-8")
+        progress = json.loads(progress_path.read_text(encoding="utf-8"))
+        for forbidden in ("TOP_SECRET_PROMPT", "TOP_SECRET_TOOL", "TOP_SECRET_ENV"):
+            assert_true(forbidden not in stderr_tail, f"stderr sidecar leaked {forbidden}")
+            assert_true(forbidden not in terminal, f"terminal output leaked {forbidden}")
+            assert_true(forbidden not in json.dumps(progress), f"progress sidecar leaked {forbidden}")
+        assert_true("RuntimeError: stable diagnostic" in stderr_tail, "safe stderr detail was lost")
+        assert_true("code 23" in terminal, "terminal output omitted numeric child exit code")
+        assert_true(progress.get("exit_code") == 23, f"progress exit code wrong: {progress}")
+        assert_true(progress.get("stderr_tail") == stderr_tail.strip(), "progress omitted sanitized stderr tail")
+        assert_true(len(stderr_tail.encode("utf-8")) <= dispatch_mod._AGENT_STDERR_TAIL_BYTES + 1,
+                    "stderr sidecar exceeded bounded tail contract")
+    print("PASS  agent runner records sanitized nonzero child stderr")
+
+
+def test_agent_runner_redacts_long_multibyte_stderr_before_tail_bound():
+    """Redaction precedes byte-tail truncation, including multibyte stderr."""
+    with tempfile.TemporaryDirectory() as tmp:
+        tmp_path = Path(tmp)
+        script_dir = tmp_path / "scripts"
+        script_dir.mkdir()
+        long_prompt = "PROMPT_SECRET_" + ("🚨" * 1500)
+        long_tool_value = "TOOL_SECRET_" + ("Ω" * 2000)
+        agent_loop = script_dir / "aq-agent-loop"
+        agent_loop.write_text(
+            "import sys\n"
+            f"sys.stderr.write({('RuntimeError: ' + long_prompt + chr(10))!r})\n"
+            f"sys.stderr.write({('tool arguments={\\\"payload\\\": \\\"' + long_tool_value + '\\\"}\\n')!r})\n"
+            f"sys.stderr.write({('safe multibyte tail ' + ('é' * 2000) + chr(10))!r})\n"
+            "sys.exit(24)\n",
+            encoding="utf-8",
+        )
+        output_file = tmp_path / "delegation" / "outputs" / "agent.log"
+        dispatch_mod = _load_dispatch()
+        config = dispatch_mod.TaskConfig(
+            mode="agent", role="architect", timeout_secs=5, max_tokens=20,
+            llama_url="http://127.0.0.1:19999", hybrid_url="http://127.0.0.1:19999",
+            ralph_url="http://127.0.0.1:19999", task_type="agent",
+        )
+        assert_true(not dispatch_mod.AgentRunner(script_dir).run(config, long_prompt, output_file),
+                    "long-value child exit must fail AgentRunner")
+        stderr_tail = Path(str(output_file) + ".stderr.log").read_text(encoding="utf-8")
+        terminal = output_file.read_text(encoding="utf-8")
+        progress = json.loads(Path(str(output_file) + ".progress.json").read_text(encoding="utf-8"))
+        for forbidden in ("PROMPT_SECRET_", "TOOL_SECRET_", "🚨", "Ω"):
+            assert_true(forbidden not in stderr_tail, f"long stderr sidecar leaked {forbidden}")
+            assert_true(forbidden not in terminal, f"long terminal output leaked {forbidden}")
+            assert_true(forbidden not in json.dumps(progress), f"long progress sidecar leaked {forbidden}")
+        for surface in (stderr_tail, progress.get("stderr_tail", "")):
+            assert_true(len(surface.encode("utf-8")) <= dispatch_mod._AGENT_STDERR_TAIL_BYTES,
+                        "published stderr tail exceeded its UTF-8 byte cap")
+    print("PASS  agent runner redacts long multibyte stderr before tail bound")
+
+
 def test_agent_runner_reaps_no_progress_child():
     """Agent-mode dispatch must terminate a child that makes no artifact progress."""
     with tempfile.TemporaryDirectory() as tmp:
@@ -275,6 +405,9 @@ def test_agent_runner_reaps_no_progress_child():
             pid = 999998
             returncode = None
 
+            def __init__(self):
+                self.stderr = io.BytesIO()
+
             def poll(self):
                 return self.returncode
 
@@ -284,10 +417,11 @@ def test_agent_runner_reaps_no_progress_child():
         original_no_progress = dispatch_mod._compute_agent_no_progress_timeout
         original_monotonic = dispatch_mod.time.monotonic
         original_sleep = dispatch_mod.time.sleep
+        original_perf_counter = dispatch_mod.time.perf_counter
         terminated = []
         clock = iter([0.0, 2.0, 3.0])
 
-        def fake_popen(cmd, start_new_session=False, env=None):
+        def fake_popen(cmd, start_new_session=False, env=None, stderr=None):
             return fake_proc
 
         def fake_terminate(proc):
@@ -295,12 +429,14 @@ def test_agent_runner_reaps_no_progress_child():
             proc.returncode = -15
 
         try:
+            started = original_perf_counter()
             dispatch_mod.subprocess.Popen = fake_popen
             dispatch_mod._terminate_agent_process = fake_terminate
             dispatch_mod._compute_agent_no_progress_timeout = lambda timeout_secs: 1
             dispatch_mod.time.monotonic = lambda: next(clock, 3.0)
             dispatch_mod.time.sleep = lambda seconds: None
             ok = dispatch_mod.AgentRunner(script_dir).run(config, "probe", output_file, max_calls=1)
+            elapsed = original_perf_counter() - started
         finally:
             dispatch_mod.subprocess.Popen = original_popen
             dispatch_mod._terminate_agent_process = original_terminate
@@ -309,6 +445,7 @@ def test_agent_runner_reaps_no_progress_child():
             dispatch_mod.time.sleep = original_sleep
 
         assert_true(not ok, "AgentRunner should fail a no-progress child")
+        assert_true(elapsed < 1.0, f"no-progress watchdog waited on stderr pipe: {elapsed:.2f}s")
         assert_true(terminated == [fake_proc.pid], "AgentRunner should terminate the stalled child")
         assert_true(
             "Agent no-progress timeout" in output_file.read_text(encoding="utf-8"),
@@ -1009,6 +1146,122 @@ def test_registry_repair_stale_dry_run_and_apply():
         print("PASS  registry repair-stale supports dry-run and explicit apply")
 
 
+def test_registry_reconcile_pending_derives_overlay_and_fails_closed():
+    """Legacy PENDING rows need registry evidence; unknown is stale, never done."""
+    with tempfile.TemporaryDirectory() as tmp:
+        tmp_path = Path(tmp)
+        delegation_dir = tmp_path / "delegation"
+        output_file = delegation_dir / "outputs" / "pending-overlay.log"
+        output_file.parent.mkdir(parents=True)
+        output_file.write_text('{"status": "done"}\n', encoding="utf-8")
+
+        tr_mod = _load_task_registry()
+        registry = tr_mod.TaskRegistry(delegation_dir, repo_root=tmp_path)
+        registry.append("pending-overlay", "overlay probe", str(output_file), "agent", "architect", 99999999)
+        registry.record_dispatch("pending-overlay", "local-agent", str(output_file), "overlay probe")
+        heartbeat_output = delegation_dir / "outputs" / "pending-heartbeat.log"
+        heartbeat_output.write_text("Agent task started; waiting for aq-agent-loop output.\n", encoding="utf-8")
+        (Path(str(heartbeat_output) + ".heartbeat.json")).write_text(
+            json.dumps({"heartbeat_at": tr_mod._now()}), encoding="utf-8"
+        )
+        registry.append("pending-heartbeat", "heartbeat probe", str(heartbeat_output), "agent", "architect", 99999999)
+        registry.record_dispatch("pending-heartbeat", "local-agent", str(heartbeat_output), "heartbeat probe")
+        pending = registry._load_pending()
+        pending["in_flight"].append({"id": "pending-unknown", "status": "running"})
+        registry._save_pending(pending)
+
+        preview = registry.reconcile_pending(apply=False)
+        candidates = {item["id"]: item for item in preview["candidates"]}
+        assert_true(preview["mode"] == "dry_run", f"missing dry-run mode: {preview}")
+        assert_true(candidates["pending-overlay"]["to_status"] == "done", f"artifact overlay ignored: {candidates}")
+        assert_true(candidates["pending-unknown"]["to_status"] == "stale", f"unknown row was completed: {candidates}")
+        assert_true("pending-heartbeat" not in candidates, f"fresh heartbeat was not retained: {candidates}")
+        assert_true("TaskRegistry record" in candidates["pending-unknown"]["reason"], f"missing audit reason: {candidates}")
+        overlay = candidates["pending-overlay"]["overlay"]
+        assert_true(overlay["pid"] == 99999999 and overlay["heartbeat"] is False and "artifact" in overlay,
+                    f"candidate did not return PID/heartbeat/artifact overlay: {overlay}")
+        assert_true(registry._load_pending()["in_flight"][-1]["status"] == "running", "dry-run mutated PENDING")
+
+        applied = registry.reconcile_pending(apply=True)
+        assert_true(applied["reconciled_count"] == 2, f"apply did not reconcile both rows: {applied}")
+        reconciled = {item["id"]: item for item in registry._load_pending()["in_flight"]}
+        assert_true(reconciled["pending-overlay"]["status"] == "done", f"artifact status lost: {reconciled}")
+        assert_true(reconciled["pending-heartbeat"]["status"] == "running", f"fresh heartbeat was not retained: {reconciled}")
+        assert_true(reconciled["pending-unknown"]["status"] == "stale", f"unknown not stale: {reconciled}")
+        assert_true(reconciled["pending-unknown"].get("reconciliation_receipt"), f"missing receipt: {reconciled}")
+        again = registry.reconcile_pending(apply=True)
+        assert_true(again["candidate_count"] == 0 and again["reconciled_count"] == 0,
+                    f"reconciliation was not idempotent: {again}")
+    print("PASS  PENDING reconciliation is dry-run, evidence-based, and idempotent")
+
+
+def test_registry_reconcile_pending_requires_typed_terminal_reason():
+    """A terminal registry row without a typed reason is stale, never a guessed completion."""
+    with tempfile.TemporaryDirectory() as tmp:
+        tmp_path = Path(tmp)
+        tr_mod = _load_task_registry()
+        registry = tr_mod.TaskRegistry(tmp_path / "delegation", repo_root=tmp_path)
+        output = tmp_path / "delegation" / "outputs" / "terminal.log"
+        registry.append("terminal-untyped", "terminal probe", str(output), "agent", "architect", None)
+        registry.record_dispatch("terminal-untyped", "local-agent", str(output), "terminal probe")
+        registry.update_status("terminal-untyped", "done")
+
+        preview = registry.reconcile_pending()
+        candidate = preview["candidates"][0]
+        assert_true(candidate["to_status"] == "stale", f"untyped terminal became complete: {candidate}")
+        assert_true("lacks terminal_reason" in candidate["reason"], f"missing typed reason rejection: {candidate}")
+
+        registry._update_registry("terminal-untyped", {"terminal_reason": "provider_exit_success"})
+        preview = registry.reconcile_pending()
+        candidate = preview["candidates"][0]
+        assert_true(candidate["to_status"] == "done", f"typed terminal was not retained: {candidate}")
+        assert_true(candidate["reason"] == "registry terminal done: provider_exit_success",
+                    f"terminal reason not preserved: {candidate}")
+    print("PASS  terminal PENDING completion requires an explicit registry reason")
+
+
+def test_reconcile_pending_cli_is_hermetic_dry_run_by_default_and_confirms_apply():
+    """CLI defaults to preview and refuses apply before touching an isolated PENDING fixture."""
+    with tempfile.TemporaryDirectory() as tmp:
+        tmp_path = Path(tmp)
+        delegation_dir = tmp_path / "delegation"
+        tr_mod = _load_task_registry()
+        registry = tr_mod.TaskRegistry(delegation_dir, repo_root=tmp_path)
+        registry.record_dispatch("cli-unknown", "local-agent", str(tmp_path / "missing.log"), "cli probe")
+        pending_before = registry.pending_file.read_text(encoding="utf-8")
+
+        cli = _load_delegation_registry()
+        original_argv, original_root, original_default = sys.argv, cli.ROOT, cli.DEFAULT_REGISTRY
+        try:
+            cli.ROOT = tmp_path
+            cli.DEFAULT_REGISTRY = delegation_dir / "registry.jsonl"
+            with contextlib.redirect_stdout(io.StringIO()) as out:
+                sys.argv = ["aq-delegation-registry", "reconcile-pending"]
+                rc = cli.main()
+            preview = json.loads(out.getvalue())
+            assert_true(rc == 0 and preview["mode"] == "dry_run", f"default CLI was not dry-run: {preview}")
+            assert_true(registry.pending_file.read_text(encoding="utf-8") == pending_before,
+                        "default CLI mutated PENDING")
+
+            with contextlib.redirect_stderr(io.StringIO()) as err:
+                sys.argv = ["aq-delegation-registry", "reconcile-pending", "--apply"]
+                rc = cli.main()
+            assert_true(rc == 2 and "requires_confirm_workspace" in err.getvalue(),
+                        f"unconfirmed apply was not rejected: {err.getvalue()}")
+            assert_true(registry.pending_file.read_text(encoding="utf-8") == pending_before,
+                        "unconfirmed apply mutated PENDING")
+
+            with contextlib.redirect_stdout(io.StringIO()) as out:
+                sys.argv = ["aq-delegation-registry", "reconcile-pending", "--apply", "--confirm-workspace"]
+                rc = cli.main()
+            applied = json.loads(out.getvalue())
+            assert_true(rc == 0 and applied["mode"] == "apply" and applied["reconciled_count"] == 1,
+                        f"confirmed apply did not run: {applied}")
+        finally:
+            sys.argv, cli.ROOT, cli.DEFAULT_REGISTRY = original_argv, original_root, original_default
+    print("PASS  reconcile-pending CLI defaults dry-run and gates apply by workspace confirmation")
+
+
 def test_aq_report_exposes_local_agent_monitor():
     """Machine report must include the local-agent monitor visibility surface."""
     report_src = (ROOT / "scripts" / "ai" / "aq-report").read_text()
@@ -1061,9 +1314,12 @@ if __name__ == "__main__":
         test_pre_register_before_dispatch_task,
         test_dispatch_task_accepts_pre_registered,
         test_service_down_still_creates_registry_entry,
+        test_phase0_reports_local_artifact_timeout_as_typed_failure,
         test_registry_entry_exists_before_service_check,
         test_delegate_to_local_exposes_repair_status,
         test_agent_runner_creates_initial_output_artifacts,
+        test_agent_runner_records_sanitized_nonzero_child_stderr,
+        test_agent_runner_redacts_long_multibyte_stderr_before_tail_bound,
         test_agent_runner_reaps_no_progress_child,
         test_agent_runner_uses_explicit_shortest_wall_deadline,
         test_terminal_publication_is_serialized_and_fails_truthfully,
@@ -1081,6 +1337,9 @@ if __name__ == "__main__":
         test_registry_status_reconciles_dead_agent_failure,
         test_registry_monitor_is_read_only_json,
         test_registry_repair_stale_dry_run_and_apply,
+        test_registry_reconcile_pending_derives_overlay_and_fails_closed,
+        test_registry_reconcile_pending_requires_typed_terminal_reason,
+        test_reconcile_pending_cli_is_hermetic_dry_run_by_default_and_confirms_apply,
         test_aq_report_exposes_local_agent_monitor,
     ]
     for t in tests:

@@ -785,6 +785,127 @@ class TaskRegistry:
             "candidates": candidates,
         }
 
+    def reconcile_pending(self, apply: bool = False) -> dict:
+        """Reconcile legacy running PENDING rows from the TaskRegistry overlay.
+
+        PENDING is a legacy projection, not an authority for liveness or completion.
+        A missing or inconclusive registry observation therefore becomes ``stale``;
+        it is never promoted to ``done`` merely because the PENDING row exists.
+        """
+        pending = self._load_pending()
+        registry_by_id = {
+            str(entry.get("id")): entry
+            for entry in self._read_registry()
+            if entry.get("id") is not None
+        }
+        candidates: list[dict] = []
+
+        for index, task in enumerate(pending.get("in_flight", [])):
+            if task.get("status") != "running":
+                continue
+            task_id = task.get("id")
+            entry = registry_by_id.get(str(task_id)) if task_id is not None else None
+            if entry is None:
+                candidates.append({
+                    "index": index,
+                    "id": task_id,
+                    "from_status": "running",
+                    "to_status": "stale",
+                    "reason": "pending running row has no TaskRegistry record",
+                    "overlay": "registry_missing",
+                })
+                continue
+
+            registry_status = str(entry.get("status") or "")
+            if registry_status in {"done", "completed"}:
+                terminal_reason = entry.get("terminal_reason")
+                if isinstance(terminal_reason, str) and terminal_reason.strip():
+                    candidates.append({
+                        "index": index,
+                        "id": task_id,
+                        "from_status": "running",
+                        "to_status": registry_status,
+                        "reason": f"registry terminal {registry_status}: {terminal_reason.strip()}",
+                        "overlay": {
+                            "pid": entry.get("pid"),
+                            "pid_alive": None,
+                            "heartbeat": False,
+                            "artifact": self._artifact_snapshot(entry),
+                        },
+                    })
+                else:
+                    candidates.append({
+                        "index": index,
+                        "id": task_id,
+                        "from_status": "running",
+                        "to_status": "stale",
+                        "reason": f"registry terminal {registry_status} lacks terminal_reason",
+                        "overlay": {
+                            "pid": entry.get("pid"),
+                            "pid_alive": None,
+                            "heartbeat": False,
+                            "artifact": self._artifact_snapshot(entry),
+                        },
+                    })
+                continue
+
+            observed = self._with_inferred_status(entry)
+            if observed.get("status") == "running":
+                continue
+
+            to_status = str(observed.get("status") or "stale")
+            reason = str(observed.get("inferred_reason") or "registry observation is inconclusive")
+            if to_status not in {"done", "failed", "cancelled", "stale"}:
+                to_status = "stale"
+                reason = "registry observation is inconclusive"
+            candidates.append({
+                "index": index,
+                "id": task_id,
+                "from_status": "running",
+                "to_status": to_status,
+                "reason": reason,
+                "overlay": {
+                    "pid": observed.get("pid"),
+                    "registry_status": observed.get("registry_status", observed.get("status")),
+                    "pid_alive": observed.get("pid_alive"),
+                    "heartbeat": bool(observed.get("heartbeat_liveness")),
+                    "artifact": self._artifact_snapshot(entry),
+                },
+            })
+
+        reconciled = 0
+        if apply and candidates:
+            timestamp = _now()
+            for candidate in candidates:
+                task = pending["in_flight"][candidate["index"]]
+                if task.get("status") != "running":
+                    continue
+                task["status"] = candidate["to_status"]
+                task["completed_at"] = timestamp
+                task["reconciliation_receipt"] = {
+                    "source": "task_registry_overlay",
+                    "reconciled_at": timestamp,
+                    "reason": candidate["reason"],
+                    "to_status": candidate["to_status"],
+                }
+                reconciled += 1
+            if reconciled:
+                self._save_pending(pending)
+                for candidate in candidates:
+                    self._handoff_append(
+                        f"[{timestamp}] [reconcile-pending] id={candidate['id']} "
+                        f"status={candidate['to_status']} reason={candidate['reason']}"
+                    )
+
+        return {
+            "ok": True,
+            "mode": "apply" if apply else "dry_run",
+            "candidate_count": len(candidates),
+            "reconciled_count": reconciled,
+            "candidates": [{key: value for key, value in candidate.items() if key != "index"}
+                           for candidate in candidates],
+        }
+
     def cmd_repair_status(self, task_id: str) -> int:
         changed = self.reconcile_running(task_id)
         print(json.dumps({"task_id": task_id, "repaired": changed}, indent=2))
@@ -792,6 +913,10 @@ class TaskRegistry:
 
     def cmd_repair_stale(self, apply: bool = False) -> int:
         print(json.dumps(self.repair_stale(apply=apply), indent=2))
+        return 0
+
+    def cmd_reconcile_pending(self, apply: bool = False) -> int:
+        print(json.dumps(self.reconcile_pending(apply=apply), indent=2))
         return 0
 
     def cmd_cancel(self, task_id: str) -> int:

@@ -112,6 +112,18 @@ def main() -> int:
 
     r = sub.add_parser("reconcile", help="mark dead running entries as stale")
     r.add_argument("--dry-run", action="store_true")
+    rp = sub.add_parser(
+        "reconcile-pending",
+        help="reconcile legacy PENDING running rows from TaskRegistry evidence",
+    )
+    rp_mode = rp.add_mutually_exclusive_group()
+    rp_mode.add_argument("--dry-run", action="store_true")
+    rp_mode.add_argument("--apply", action="store_true")
+    rp.add_argument(
+        "--confirm-workspace",
+        action="store_true",
+        help="required with --apply; acknowledges mutation of this workspace's PENDING projection",
+    )
     l = sub.add_parser("list", help="list registry entries")
     l.add_argument("--status")
 
@@ -159,6 +171,15 @@ def main() -> int:
 
     from task_registry import RegistryError  # noqa: E402
     reg = _m2a_registry(args.registry)
+
+    if args.cmd == "reconcile-pending":
+        if args.apply and not args.confirm_workspace:
+            print(json.dumps({
+                "ok": False,
+                "error": "reconcile_pending_apply_requires_confirm_workspace",
+            }), file=sys.stderr)
+            return 2
+        return reg.cmd_reconcile_pending(apply=args.apply)
 
     if args.cmd == "begin":
         try:
