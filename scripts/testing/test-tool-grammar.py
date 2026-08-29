@@ -1,6 +1,7 @@
 #!/usr/bin/env python3
 """Tests for fail-closed function-coupled local tool-call grammars."""
 
+import json
 import sys
 from pathlib import Path
 
@@ -77,21 +78,57 @@ def test_executor_cache_is_schema_bound_and_requested_build_failure_is_closed(mo
     executor = agent_executor.LocalAgentExecutor(tool_registry=registry, enable_fallback=False)
     monkeypatch.setattr(agent_executor, "_LOCAL_GBNF_ALWAYS_ENABLED", True)
     monkeypatch.setattr(agent_executor, "_LOCAL_GBNF_REPAIR_ENABLED", True)
-    first = executor._tool_call_grammar()
-    registry.tools["read_file"].parameters = {**READ, "properties": {"file_path": {"type": "string"}, "mode": {"type": "string"}}}
-    second = executor._tool_call_grammar()
+    lease = _lease("read_file", READ)
+    first = executor._tool_call_grammar(lease)
+    changed = {**READ, "properties": {"file_path": {"type": "string"}, "mode": {"type": "string"}}}
+    second = executor._tool_call_grammar(_lease("read_file", changed))
     assert first != second
-    registry.tools["read_file"].parameters = {**READ, "additionalProperties": True}
     with pytest.raises(RuntimeError, match="could not be built"):
-        executor._tool_call_grammar()
+        executor._tool_call_grammar(_lease("read_file", {**READ, "additionalProperties": True}))
+
+
+def test_executor_uses_only_the_model_visible_lease_and_refreshes_on_hotswap(monkeypatch):
+    registry = _FakeRegistry(READ)
+    # A malformed enabled registry entry must not poison a lease that did not
+    # expose it to the model.
+    registry.tools["rogue"] = _FakeTool("rogue", {"type": "object", "additionalProperties": True})
+    executor = agent_executor.LocalAgentExecutor(tool_registry=registry, enable_fallback=False)
+    monkeypatch.setattr(agent_executor, "_LOCAL_GBNF_ALWAYS_ENABLED", True)
+    base_lease = _lease("read_file", READ)
+    base = executor._tool_call_grammar(base_lease)
+    assert "rogue" not in base.replace("\\", "")
+
+    expanded_lease = base_lease + _lease("ping", PING)
+    expanded = executor._tool_call_grammar(expanded_lease)
+    assert expanded != base
+    assert json.dumps("ping") in expanded.replace("\\", "")
+
+
+def test_requested_grammar_rejects_absent_empty_or_malformed_leases(monkeypatch):
+    executor = agent_executor.LocalAgentExecutor(tool_registry=_FakeRegistry(READ), enable_fallback=False)
+    monkeypatch.setattr(agent_executor, "_LOCAL_GBNF_ALWAYS_ENABLED", True)
+    for lease in (None, [], [{"name": "read_file"}], [{"parameters": READ}]):
+        with pytest.raises(RuntimeError, match="could not be built"):
+            executor._tool_call_grammar(lease)
 
 
 def test_executor_does_not_require_grammar_when_feature_is_disabled(monkeypatch):
     executor = agent_executor.LocalAgentExecutor(tool_registry=_FakeRegistry(READ), enable_fallback=False)
     monkeypatch.setattr(agent_executor, "_LOCAL_GBNF_ALWAYS_ENABLED", False)
     monkeypatch.setattr(agent_executor, "_LOCAL_GBNF_REPAIR_ENABLED", False)
-    assert executor._tool_call_grammar() is None
-    assert executor._tool_call_grammar(force_repair=True) is None
+    assert executor._tool_call_grammar(None) is None
+    assert executor._tool_call_grammar(None, force_repair=True) is None
+
+
+def test_executor_threads_active_lease_to_all_grammar_enabled_retry_paths():
+    source = Path(agent_executor.__file__).read_text(encoding="utf-8")
+    # Normal, transient retry, empty-response retry, and constrained repair
+    # all carry the exact active lease.  Verified completion stays explicitly
+    # prose-only through allow_tool_grammar=False.
+    assert source.count("active_tools=_active_tools") >= 5
+    assert '"active_tools": _active_tools' in source
+    assert "force_tool_grammar=True,\n                                active_tools=_active_tools" in source
+    assert "allow_tool_grammar=False" in source
 
 
 class _FakeTool:
@@ -104,6 +141,10 @@ class _FakeTool:
 class _FakeRegistry:
     def __init__(self, parameters):
         self.tools = {"read_file": _FakeTool("read_file", parameters)}
+
+
+def _lease(name, parameters):
+    return [{"name": name, "parameters": parameters}]
 
 
 if __name__ == "__main__":
