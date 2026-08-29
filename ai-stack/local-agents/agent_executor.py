@@ -13,6 +13,7 @@ Part of Phase 11 Batch 11.3: Workflow Integration
 """
 
 import ast
+import symtable
 import asyncio
 import difflib
 import json
@@ -930,6 +931,121 @@ def _find_dead_added_definition(
     return None
 
 
+def _find_destructive_deletion(
+    pre_content: Optional[str],
+    post_edit_content: str,
+    file_path: Optional[str] = None,
+) -> Optional[str]:
+    """Name of a top-level def/class this edit DELETED that is STILL referenced
+    (as a bare Name load) in the post-edit file AND is not re-provided there — an
+    over-broad edit that will crash at runtime (NameError on the now-undefined
+    call).
+
+    stdlib ``ast`` ONLY, deliberately: the pyflakes-based undefined-name lint is
+    not importable in every environment (the Nix env here has no pyflakes), and
+    a call to a now-undefined name still COMPILES, so compile-only lint cannot
+    see it. This is exactly the gap that let a `route()`/`_emit()` deletion pass
+    the `{file} --help` behavioral check (argparse short-circuits before the
+    deleted code runs) — issues-backlog: shallow-dogfood-verify-cmd-false-
+    passes-deletions + local-edit-destructive-span-correct-logic-wrong-blast-
+    radius.
+
+    PYTHON ONLY: gated on file extension (_PY_LINT_EXTENSIONS), so a parseable
+    non-Python file (e.g. Markdown that happens to ast.parse) is never checked.
+
+    PRECISION (independent review, Codex 2026-08-29 — two DEFECT rounds fixed):
+    scope-sensitive via stdlib ``symtable`` (NOT a flat ast.walk, which conflated
+    scopes). A deleted top-level name is dangling only when:
+      - it is NOT re-bound at MODULE scope (a new import/from-import/assignment/
+        def/class of that name is a valid replacement — round-1 false positive);
+      - AND it is referenced as a bare name that RESOLVES TO MODULE SCOPE — either
+        used at module level, or used inside a function as a global/free name
+        (round-1: an ``obj.route`` attribute is not a module reference; round-2:
+        an unrelated FUNCTION-LOCAL ``route = ...`` must NOT mask a genuinely
+        dangling global ``route()`` call elsewhere, and a purely local use must
+        NOT be flagged).
+
+    Returns None when it cannot decide (no pre-content, non-Python path, or
+    unparseable — a broken post-edit is caught by the compile/lint check).
+    """
+    if file_path is not None and Path(file_path).suffix not in _PY_LINT_EXTENSIONS:
+        return None
+    if not pre_content:
+        return None
+    try:
+        pre_tree = ast.parse(pre_content)
+        ast.parse(post_edit_content)  # post must be parseable; broken post is the lint check's job
+    except (SyntaxError, ValueError):
+        return None
+
+    def _top_level_defs(tree: ast.Module) -> set:
+        return {
+            node.name
+            for node in tree.body
+            if isinstance(node, (ast.FunctionDef, ast.AsyncFunctionDef, ast.ClassDef))
+        }
+
+    post_tree = ast.parse(post_edit_content)
+    deleted = _top_level_defs(pre_tree) - _top_level_defs(post_tree)
+    if not deleted:
+        return None
+
+    # A module-level star-import can provide arbitrary names, so we cannot know
+    # whether it re-provides a deleted top-level name. Conservatively skip the
+    # whole file rather than false-flag a deletion the star import may cover
+    # (Codex review round 4). Star imports are rare and discouraged; a no-op
+    # here is the safe direction for a coaching gate.
+    for node in post_tree.body:
+        if isinstance(node, ast.ImportFrom) and any(a.name == "*" for a in node.names):
+            return None
+
+    # KNOWN LIMITATION (Codex review round 4, accepted as proportionate): a class
+    # body uses order-sensitive LOAD_NAME, so `class C: v = route(); route = ...`
+    # would NameError at runtime yet reads as class-locally-bound to symtable and
+    # is not flagged. Modeling per-statement execution order inside class bodies
+    # is disproportionate for a coaching heuristic, and the miss is benign — the
+    # edit never auto-commits and the compile/behavioral checks are the backstop.
+    # See issues-backlog: destructive-deletion-guard-classbody-order-limitation.
+
+    try:
+        post_st = symtable.symtable(post_edit_content, "<post-edit>", "exec")
+    except (SyntaxError, ValueError):
+        return None
+
+    def _module_rebound(name: str) -> bool:
+        try:
+            top = post_st.lookup(name)
+        except KeyError:
+            return False
+        return top.is_assigned() or top.is_imported() or top.is_namespace()
+
+    def _resolves_to_deleted_module_name(table, name: str, is_module: bool) -> bool:
+        for sym in table.get_symbols():
+            if sym.get_name() != name or not sym.is_referenced():
+                continue
+            if is_module:
+                # module scope: referenced and (checked) not re-bound -> dangling
+                if not (sym.is_assigned() or sym.is_imported() or sym.is_namespace()):
+                    return True
+            elif sym.is_global():
+                # function/class scope: only an is_global() ref resolves to MODULE
+                # scope. is_free() is a CLOSURE over an enclosing FUNCTION local
+                # (Codex review round 3) — it does NOT resolve to the deleted
+                # module name, so it must not be treated as dangling.
+                return True
+        return any(
+            _resolves_to_deleted_module_name(child, name, False)
+            for child in table.get_children()
+        )
+
+    for name in sorted(deleted):
+        if _module_rebound(name):
+            continue
+        if _resolves_to_deleted_module_name(post_st, name, True):
+            return name
+    return None
+
+
 # LINT / name-resolution check — the THIRD failure mode (issues-backlog:
 # local-edit-third-failure-mode-undefined-name), distinct from no-op and dead
 # code: an edit that PARSES fine and isn't dead code but still crashes at
@@ -1253,6 +1369,37 @@ def _verify_edit_quality(
         post_edit_content = None
 
     if post_edit_content is not None:
+        # Reconstruct the full pre-edit file ONCE — shared by the destructive-
+        # deletion guard and the lint check below (fail-safe: None on any error,
+        # so a reconstruction bug only skips those checks, never crashes).
+        try:
+            pre_edit_full = _reconstruct_pre_edit_content(
+                tool_name, arguments, post_edit_content, pre_content,
+            )
+        except Exception:  # noqa: BLE001 — fail-safe: skip pre-edit-dependent checks
+            pre_edit_full = None
+
+        # DESTRUCTIVE-DELETION guard: an over-broad old_string that deletes a
+        # top-level def/class still called elsewhere in the file. Placed first
+        # because it is the most severe outcome (a broken file), and it fires
+        # where the pyflakes lint and a `--help` smoke check cannot.
+        deleted_name = _find_destructive_deletion(pre_edit_full, post_edit_content, file_path)
+        if deleted_name:
+            return _EditVerdict(
+                passed=False,
+                reason=f"destructive_deletion:{deleted_name}",
+                coaching_message=(
+                    f"Your edit DELETED `{deleted_name}`, which is still called "
+                    f"elsewhere in this file — the file would crash with a "
+                    f"NameError. Your old_string was too broad and swallowed code "
+                    f"you did not mean to remove. Redo the edit with the SMALLEST "
+                    f"old_string that uniquely surrounds ONLY the lines you intend "
+                    f"to change; do not include neighbouring functions or "
+                    f"definitions in old_string unless you are deliberately "
+                    f"removing them."
+                ),
+            )
+
         dead_name = _find_dead_added_definition(added, removed, post_edit_content)
         if dead_name:
             return _EditVerdict(
@@ -1277,9 +1424,6 @@ def _verify_edit_quality(
         # "skip this check" without affecting the checks above/below it.
         lint_issue: Optional[str] = None
         try:
-            pre_edit_full = _reconstruct_pre_edit_content(
-                tool_name, arguments, post_edit_content, pre_content,
-            )
             lint_issue = _lint_check_edited_file(file_path, post_edit_content, pre_edit_full)
         except Exception:  # noqa: BLE001 — fail-safe: skip the lint check, never crash the loop
             lint_issue = None
