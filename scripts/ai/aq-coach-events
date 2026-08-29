@@ -46,7 +46,10 @@ def load_coach_events(path: str) -> list[dict]:
                 d = json.loads(line)
             except json.JSONDecodeError:
                 continue
-            if d.get("event_type") == "edit_verify_coach":
+            # A line may be valid JSON yet not an object (a bare string/list that
+            # merely contains the substring 'edit_verify_coach'); .get() on those
+            # would raise. Only dict events are real coach records.
+            if isinstance(d, dict) and d.get("event_type") == "edit_verify_coach":
                 events.append(d)
     return events
 
