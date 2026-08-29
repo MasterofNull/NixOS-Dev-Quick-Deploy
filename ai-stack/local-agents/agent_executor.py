@@ -930,6 +930,56 @@ def _find_dead_added_definition(
     return None
 
 
+def _find_destructive_deletion(
+    pre_content: Optional[str], post_edit_content: str,
+) -> Optional[str]:
+    """Name of a top-level def/class this edit DELETED that is STILL referenced
+    elsewhere in the post-edit file — an over-broad edit that will crash at
+    runtime (NameError on the now-undefined call).
+
+    stdlib ``ast`` ONLY, deliberately: the pyflakes-based undefined-name lint is
+    not importable in every environment (the Nix env here has no pyflakes), and
+    a call to a now-undefined name still COMPILES, so compile-only lint cannot
+    see it. This is exactly the gap that let a `route()`/`_emit()` deletion pass
+    the `{file} --help` behavioral check (argparse short-circuits before the
+    deleted code runs) — issues-backlog: shallow-dogfood-verify-cmd-false-
+    passes-deletions + local-edit-destructive-span-correct-logic-wrong-blast-
+    radius. Python only; returns None when it cannot decide (no pre-content, or
+    either side is non-Python / unparseable — a broken post-edit is caught by
+    the compile/lint check instead, never here).
+    """
+    if not pre_content:
+        return None
+    try:
+        pre_tree = ast.parse(pre_content)
+        post_tree = ast.parse(post_edit_content)
+    except (SyntaxError, ValueError):
+        return None
+
+    def _top_level_defs(tree: ast.Module) -> set:
+        return {
+            node.name
+            for node in tree.body
+            if isinstance(node, (ast.FunctionDef, ast.AsyncFunctionDef, ast.ClassDef))
+        }
+
+    deleted = _top_level_defs(pre_tree) - _top_level_defs(post_tree)
+    if not deleted:
+        return None
+    # A deleted definition still named anywhere in the post-edit AST (a call, an
+    # attribute access, a decorator, a default) is a live dangling reference.
+    referenced: set = set()
+    for node in ast.walk(post_tree):
+        if isinstance(node, ast.Name):
+            referenced.add(node.id)
+        elif isinstance(node, ast.Attribute):
+            referenced.add(node.attr)
+    for name in sorted(deleted):
+        if name in referenced:
+            return name
+    return None
+
+
 # LINT / name-resolution check — the THIRD failure mode (issues-backlog:
 # local-edit-third-failure-mode-undefined-name), distinct from no-op and dead
 # code: an edit that PARSES fine and isn't dead code but still crashes at
@@ -1253,6 +1303,37 @@ def _verify_edit_quality(
         post_edit_content = None
 
     if post_edit_content is not None:
+        # Reconstruct the full pre-edit file ONCE — shared by the destructive-
+        # deletion guard and the lint check below (fail-safe: None on any error,
+        # so a reconstruction bug only skips those checks, never crashes).
+        try:
+            pre_edit_full = _reconstruct_pre_edit_content(
+                tool_name, arguments, post_edit_content, pre_content,
+            )
+        except Exception:  # noqa: BLE001 — fail-safe: skip pre-edit-dependent checks
+            pre_edit_full = None
+
+        # DESTRUCTIVE-DELETION guard: an over-broad old_string that deletes a
+        # top-level def/class still called elsewhere in the file. Placed first
+        # because it is the most severe outcome (a broken file), and it fires
+        # where the pyflakes lint and a `--help` smoke check cannot.
+        deleted_name = _find_destructive_deletion(pre_edit_full, post_edit_content)
+        if deleted_name:
+            return _EditVerdict(
+                passed=False,
+                reason=f"destructive_deletion:{deleted_name}",
+                coaching_message=(
+                    f"Your edit DELETED `{deleted_name}`, which is still called "
+                    f"elsewhere in this file — the file would crash with a "
+                    f"NameError. Your old_string was too broad and swallowed code "
+                    f"you did not mean to remove. Redo the edit with the SMALLEST "
+                    f"old_string that uniquely surrounds ONLY the lines you intend "
+                    f"to change; do not include neighbouring functions or "
+                    f"definitions in old_string unless you are deliberately "
+                    f"removing them."
+                ),
+            )
+
         dead_name = _find_dead_added_definition(added, removed, post_edit_content)
         if dead_name:
             return _EditVerdict(
@@ -1277,9 +1358,6 @@ def _verify_edit_quality(
         # "skip this check" without affecting the checks above/below it.
         lint_issue: Optional[str] = None
         try:
-            pre_edit_full = _reconstruct_pre_edit_content(
-                tool_name, arguments, post_edit_content, pre_content,
-            )
             lint_issue = _lint_check_edited_file(file_path, post_edit_content, pre_edit_full)
         except Exception:  # noqa: BLE001 — fail-safe: skip the lint check, never crash the loop
             lint_issue = None
