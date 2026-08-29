@@ -66,6 +66,11 @@ def main() -> int:
             json.dumps({"event_type": "agent_step_start", "ts": "t4"}),
             json.dumps({"event_type": "tool_result", "reason": "edit_verify_coach lookalike", "ts": "t5"}),
             "not json at all {",  # malformed line -> skipped, no crash
+            # valid JSON but NOT an object, containing the substring (Codex review):
+            # must be skipped, not crash on .get() (aq-coach-events DEFECT fix)
+            '"edit_verify_coach"',
+            '["edit_verify_coach", 1]',
+            '12345',
         ]
         path = _write(tmp, rows)
         events = mod.load_coach_events(path)
