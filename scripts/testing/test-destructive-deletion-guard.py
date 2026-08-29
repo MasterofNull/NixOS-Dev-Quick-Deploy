@@ -260,6 +260,44 @@ def helper(x):
     check("(o) deleted name only used as a function-local -> None",
           _find_destructive_deletion(PRE, post_local_only) is None)
 
+    # (p) CLOSURE (independent review round 3): a nested inner() capturing an
+    #     enclosing function's local/param `route` is a closure (is_free), NOT a
+    #     module reference — must NOT be flagged when top-level route is deleted.
+    post_closure_local = '''\
+def _matches_exclude(lane_id, token):
+    return token.split("-")[0] == lane_id
+
+
+def _emit(payload, as_json):
+    return 0
+
+
+def outer():
+    route = build()
+    def inner():
+        return route()
+    return inner
+'''
+    check("(p) closure over enclosing-function local -> None (not module)",
+          _find_destructive_deletion(PRE, post_closure_local) is None)
+
+    post_closure_param = '''\
+def _matches_exclude(lane_id, token):
+    return token.split("-")[0] == lane_id
+
+
+def _emit(payload, as_json):
+    return 0
+
+
+def outer(route):
+    def inner():
+        return route()
+    return inner
+'''
+    check("(p2) closure over enclosing-function param -> None",
+          _find_destructive_deletion(PRE, post_closure_param) is None)
+
 
 def _verify(tmp: Path, post: str, *, tool: str, args: dict, pre: str | None,
             name: str = "target.py") -> "ae._EditVerdict":
