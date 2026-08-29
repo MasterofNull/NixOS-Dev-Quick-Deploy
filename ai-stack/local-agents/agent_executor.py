@@ -1010,8 +1010,11 @@ def _find_destructive_deletion(
                 # module scope: referenced and (checked) not re-bound -> dangling
                 if not (sym.is_assigned() or sym.is_imported() or sym.is_namespace()):
                     return True
-            elif sym.is_global() or sym.is_free():
-                # function/class scope: a global/free ref resolves to module scope
+            elif sym.is_global():
+                # function/class scope: only an is_global() ref resolves to MODULE
+                # scope. is_free() is a CLOSURE over an enclosing FUNCTION local
+                # (Codex review round 3) — it does NOT resolve to the deleted
+                # module name, so it must not be treated as dangling.
                 return True
         return any(
             _resolves_to_deleted_module_name(child, name, False)
