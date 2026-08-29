@@ -56,6 +56,9 @@ GATE_POLL_S = 60
 # early and skips the wasteful post-edit loop.
 POLL_INTERVAL_S = 60
 EDIT_POLL_MAX_S = 3000           # 50 min cap per task (edit lands ~36 min; margin for slower)
+MAX_TARGET_SYMBOL_CHARS = 128
+MAX_TARGET_READ_SPAN = 500
+_TARGET_SYMBOL_RE = re.compile(r"[A-Za-z_][A-Za-z0-9_.:/-]*\Z")
 
 ENV = {
     **os.environ,
@@ -230,14 +233,54 @@ def backlog_item_text(name: str) -> str:
     return "\n".join(block).strip()
 
 
+def target_read_hint(task: dict) -> tuple[str, tuple[int, int] | None]:
+    """Validate optional bounded read metadata and return its display hint.
+
+    A range is actionable only with a safe symbol, so partial metadata is
+    rejected rather than silently producing an ambiguous prompt.
+    """
+    symbol = task.get("target_symbol")
+    read_range = task.get("target_read_range")
+    if symbol is None and read_range is None:
+        return "", None
+    if not isinstance(symbol, str) or not symbol or len(symbol) > MAX_TARGET_SYMBOL_CHARS:
+        raise ValueError("target_symbol must be a bounded non-empty safe token")
+    if not _TARGET_SYMBOL_RE.fullmatch(symbol):
+        raise ValueError("target_symbol contains unsafe display characters")
+    if (not isinstance(read_range, (list, tuple)) or len(read_range) != 2
+            or any(isinstance(line, bool) or not isinstance(line, int) for line in read_range)):
+        raise ValueError("target_read_range must be two positive integer line numbers")
+    start, end = read_range
+    if start < 1 or end < start or end - start + 1 > MAX_TARGET_READ_SPAN:
+        raise ValueError("target_read_range is invalid or exceeds the bounded span")
+    return symbol, (start, end)
+
+
 def build_prompt(task: dict) -> str:
     name = task["backlog_item"]
     file = task.get("file", "")
     detail = backlog_item_text(name) or name
+    target_symbol, target_range = target_read_hint(task)
+    if target_range:
+        start, end = target_range
+        context_instruction = f"""1. Before editing, make exactly one bounded read_file call for
+   `{file}`, lines {start}-{end}, to inspect `{target_symbol}`. Do not read
+   outside that range before the edit.
+2. Decide the minimal correct change for the issue (change only what's needed).
+3. Call edit_file NOW. For old_string, copy the exact relevant text from that
+   bounded read so it matches. Make the edit — do NOT output a plan or a
+   \"Thought:\" and stop; the task is only done once edit_file has actually
+   changed the file."""
+    else:
+        context_instruction = """1. Inspect only the minimum relevant context needed to make the edit.
+   No exact front-loaded code or exact line-range read is promised for this task.
+2. Decide the minimal correct change for the issue (change only what's needed).
+3. Call edit_file NOW. Use the exact relevant file text as old_string so it
+   matches. Make the edit — do NOT output a plan or a \"Thought:\" and stop;
+   the task is only done once edit_file has actually changed the file."""
     # IMPERATIVE, action-forcing template. A passive template ("state what you
     # changed") makes local NARRATE the fix and stop without ever calling edit_file
-    # (measured: calls=0). This template forces the tool call and tells local to copy
-    # the exact front-loaded code as old_string so edit_file's match succeeds.
+    # (measured: calls=0).
     return f"""TASK (bounded, single-file edit): fix the issue below by EDITING the file with the edit_file tool.
 
 ISSUE:
@@ -248,13 +291,7 @@ FILE TO EDIT: {file}
 DECLARED SINGLE-FILE SCOPE: {file}
 
 HOW (do this now, do not just describe it):
-1. The relevant code is FRONT-LOADED above under "## Relevant prior knowledge" as
-   EXACT fenced code blocks. Use that exact code — do NOT re-read the whole file.
-2. Decide the minimal correct change for the issue (change only what's needed).
-3. Call edit_file NOW. For old_string, COPY the exact text from a front-loaded code
-   block (it is byte-identical to the file, so it will match). Make the edit — do
-   NOT output a plan or a "Thought:" and stop; the task is only done once edit_file
-   has actually changed the file.
+{context_instruction}
 
 RULES:
 - Do NOT git add / commit / push — a human reviews and commits.
@@ -284,7 +321,13 @@ def run_task(task: dict, baseline_mods: set) -> dict:
         return {"task": tid, "backlog_item": task["backlog_item"], "edit_landed": False,
                 "elapsed_s": 0.0, "diff_path": "", "status": "blocked-preexisting"}
 
-    prompt = build_prompt(task)
+    try:
+        prompt = build_prompt(task)
+    except ValueError as exc:
+        ledger({"task": tid, "event": "blocked", "status": "invalid-target-metadata",
+                "error": str(exc)})
+        return {"task": tid, "backlog_item": task["backlog_item"], "edit_landed": False,
+                "elapsed_s": 0.0, "diff_path": "", "status": "blocked-invalid-target-metadata"}
     ptmp = DIFFDIR / f"{tid}.prompt.txt"
     ptmp.write_text(prompt)
     ledger({"task": tid, "event": "dispatched", "backlog_item": task["backlog_item"], "runner": "overnight"})
@@ -431,7 +474,8 @@ def main() -> int:
     # its outcome, and grind the rest regardless. Every result (edit / no-edit) is honest.
     val_task = {"task": "dogfood-01", "backlog_item": "router-role-route-exclude-lane-granularity",
                 "file": "scripts/ai/aq-role-route",
-                "verify_cmd": "{file} --help >/dev/null 2>&1"}
+                "verify_cmd": "{file} --help >/dev/null 2>&1",
+                "target_symbol": "_matches_exclude", "target_read_range": [270, 279]}
     print("[dogfood-run] task dogfood-01 ...")
     vr = run_task(val_task, baseline_mods)
     results = [vr]
