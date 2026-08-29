@@ -2540,6 +2540,7 @@ class LocalAgentExecutor:
                     task_type=task.task_type,
                     task_id=task.id,
                     call_number=tool_call_count + 1,
+                    active_tools=_active_tools,
                 )
             except _CASSETTE_HARD_EXCEPTIONS:
                 # A strict-replay miss / replay misconfiguration / payload digest
@@ -2562,6 +2563,7 @@ class LocalAgentExecutor:
                     "task_type": task.task_type,
                     "task_id": task.id,
                     "call_number": tool_call_count + 1,
+                    "active_tools": _active_tools,
                 }
                 try:
                     response, tok = await self._call_llama(messages, **_retry_kwargs)
@@ -2601,6 +2603,7 @@ class LocalAgentExecutor:
                     max_tokens=AGENT_TASK_MAX_TOKENS,
                     task_id=task.id,
                     call_number=tool_call_count + 1,
+                    active_tools=_active_tools,
                 )
                 total_tokens += _retry_tok
                 if response.strip():
@@ -2644,6 +2647,7 @@ class LocalAgentExecutor:
                                 task_id=task.id,
                                 call_number=tool_call_count + 1,
                                 force_tool_grammar=True,
+                                active_tools=_active_tools,
                             )
                             total_tokens += repair_tokens
                             repaired_tool_call = self.tool_registry.parse_tool_call_from_llama(repaired_response)
@@ -2699,6 +2703,7 @@ class LocalAgentExecutor:
                             max_tokens=256,
                             task_id=task.id,
                             call_number=tool_call_count + 1,
+                            allow_tool_grammar=False,
                         )
                         total_tokens += syn_tokens
                         _cancel_watchdog()
@@ -3543,6 +3548,7 @@ class LocalAgentExecutor:
                     max_tokens=AGENT_TASK_MAX_TOKENS,
                     task_id=task.id,
                     call_number=tool_call_count + 1,
+                    active_tools=_active_tools,
                 )
                 total_tokens += syn_tok
                 logger.info("terminal_tool_gate: %s → synthesis returned", result.tool_name)
@@ -3575,6 +3581,7 @@ class LocalAgentExecutor:
                     task_type=task.task_type,
                     task_id=task.id,
                     call_number=tool_call_count + 1,
+                    active_tools=_active_tools,
                 )
                 total_tokens += syn_tok
                 return synthesis.strip(), total_tokens
@@ -3651,8 +3658,33 @@ class LocalAgentExecutor:
                 )
                 _validation_passes_without_commit = 0
 
-    def _tool_call_grammar(self, *, force_repair: bool = False) -> Optional[str]:
-        """Return GBNF tied to enabled names *and* parameter schemas.
+    @staticmethod
+    def _lease_tool_schemas(active_tools: Any) -> Dict[str, Any]:
+        """Project the exact model-visible lease into ``name -> parameters``.
+
+        The system prompt and grammar must describe the same capability lease.
+        Do not look through the registry here: it can contain enabled tools that
+        were deliberately withheld from this turn.
+        """
+        if not isinstance(active_tools, list) or not active_tools:
+            raise ValueError("active tool lease must be a non-empty model-tool list")
+        schemas: Dict[str, Any] = {}
+        for tool in active_tools:
+            if not isinstance(tool, dict):
+                raise ValueError("active tool lease contains a malformed tool")
+            name = tool.get("name")
+            parameters = tool.get("parameters")
+            if not isinstance(name, str) or not name or not isinstance(parameters, dict):
+                raise ValueError("active tool lease requires name and parameters schemas")
+            if name in schemas:
+                raise ValueError("active tool lease contains duplicate tool names")
+            schemas[name] = parameters
+        return schemas
+
+    def _tool_call_grammar(
+        self, active_tools: Any, *, force_repair: bool = False
+    ) -> Optional[str]:
+        """Return GBNF tied to the active prompt lease and parameter schemas.
 
         An operator explicitly requesting grammar (always-on or repair) gets a
         typed failure when it cannot be constructed.  Continuing unconstrained
@@ -3667,12 +3699,7 @@ class LocalAgentExecutor:
         if tool_grammar is None:
             raise RuntimeError("tool-call grammar was requested but tool_grammar is unavailable")
         try:
-            schemas = {
-                t.name: t.parameters
-                for t in self.tool_registry.tools.values()
-                if getattr(t, "enabled", True)
-                and (_LOCAL_ALLOW_COMMIT or t.name not in _AEXEC_COMMIT_TOOLS)
-            }
+            schemas = self._lease_tool_schemas(active_tools)
             cache_key = tool_grammar.tool_schema_cache_key(schemas)
             cached = getattr(self, "_gbnf_cache", None)
             if cached and cached[0] == cache_key:
@@ -3767,6 +3794,7 @@ class LocalAgentExecutor:
         call_number: int = 0,
         force_tool_grammar: bool = False,
         allow_tool_grammar: bool = True,
+        active_tools: Optional[List[Dict]] = None,
     ) -> Tuple[str, int]:
         """
         Call local llama.cpp server using SSE streaming.
@@ -3783,6 +3811,8 @@ class LocalAgentExecutor:
                 When None, hardcoded temperature=0.2, frequency_penalty=0.05 (legacy).
             allow_tool_grammar: False omits the GBNF tool-call grammar even when
                 AQ_LOCAL_GBNF is enabled.  Use only for bounded prose-only turns.
+            active_tools: Exact model-visible lease for a grammar-enabled turn.
+                It is intentionally not reconstructed from the registry.
 
         Returns:
             (response_text, tokens_used) — tokens_used is total_tokens from the usage chunk.
@@ -3824,7 +3854,7 @@ class LocalAgentExecutor:
             if task_type:
                 _payload_kwargs["task_type"] = task_type
             _gbnf = (
-                self._tool_call_grammar(force_repair=force_tool_grammar)
+                self._tool_call_grammar(active_tools, force_repair=force_tool_grammar)
                 if allow_tool_grammar else None
             )
             if _gbnf:
@@ -3865,7 +3895,7 @@ class LocalAgentExecutor:
         if task_type:
             _stream_kwargs["task_type"] = task_type
         _gbnf = (
-            self._tool_call_grammar(force_repair=force_tool_grammar)
+            self._tool_call_grammar(active_tools, force_repair=force_tool_grammar)
             if allow_tool_grammar else None
         )
         if _gbnf:
