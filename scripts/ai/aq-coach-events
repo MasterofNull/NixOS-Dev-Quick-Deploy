@@ -1,0 +1,117 @@
+#!/usr/bin/env python3
+"""aq-coach-events — surface edit-verify COACHING telemetry (local-agent stewardship).
+
+The local agent's post-edit verify gate (_verify_edit_quality in
+ai-stack/local-agents/agent_executor.py) already emits an `edit_verify_coach`
+event to agent-run-events.jsonl every time it coaches local off a bad edit
+(noop, freshness-gaming, dead_code, lint_new_error, task_relevance_miss,
+destructive_deletion). Those events persisted but were not surfaced anywhere
+queryable — you had to grep raw JSONL (issues-backlog: observability gap noted
+after the 2026-08-29 guard-active dogfood run). This read-only CLI surfaces
+them: how often local is coached, by which failure mode, and the most recent
+events — so local's edit-quality trajectory is measurable, and a
+destructive_deletion coach (when the guard first fires) is immediately visible.
+
+Read-only. stdlib only. Never writes.
+"""
+from __future__ import annotations
+
+import argparse
+import json
+import os
+from collections import Counter
+from pathlib import Path
+
+DEFAULT_EVENTS_PATH = os.environ.get(
+    "AQ_AGENT_RUN_EVENTS_PATH",
+    "/var/lib/ai-stack/hybrid/telemetry/agent-run-events.jsonl",
+)
+
+
+def load_coach_events(path: str) -> list[dict]:
+    """Return every edit_verify_coach event, in file (chronological) order.
+
+    Fail-soft: a missing file or malformed lines yield an empty/partial list
+    rather than an error — this is a telemetry viewer, never a gate.
+    """
+    events: list[dict] = []
+    p = Path(path)
+    if not p.is_file():
+        return events
+    with p.open(encoding="utf-8", errors="replace") as fh:
+        for line in fh:
+            if "edit_verify_coach" not in line:
+                continue
+            try:
+                d = json.loads(line)
+            except json.JSONDecodeError:
+                continue
+            if d.get("event_type") == "edit_verify_coach":
+                events.append(d)
+    return events
+
+
+def reason_class(reason: str | None) -> str:
+    """Group by the failure-mode prefix before the first ':' (e.g.
+    'destructive_deletion:route' -> 'destructive_deletion',
+    'lint_new_error:undefined name ...' -> 'lint_new_error')."""
+    return (reason or "unknown").split(":", 1)[0]
+
+
+def build_report(events: list[dict], last: int) -> dict:
+    by_class = Counter(reason_class(e.get("reason")) for e in events)
+    by_file = Counter(e.get("file_path", "?") for e in events)
+    recent = events[-last:] if last > 0 else []
+    return {
+        "total": len(events),
+        "by_failure_mode": dict(by_class.most_common()),
+        "by_file": dict(by_file.most_common(10)),
+        "recent": [
+            {
+                "ts": e.get("ts"),
+                "failure_mode": reason_class(e.get("reason")),
+                "reason": e.get("reason"),
+                "file_path": e.get("file_path"),
+                "attempt": e.get("attempt"),
+                "task_id": e.get("task_id"),
+            }
+            for e in recent
+        ],
+    }
+
+
+def main(argv: list[str] | None = None) -> int:
+    ap = argparse.ArgumentParser(description=__doc__)
+    ap.add_argument("--path", default=DEFAULT_EVENTS_PATH,
+                    help="agent-run-events.jsonl path (default from AQ_AGENT_RUN_EVENTS_PATH)")
+    ap.add_argument("--last", type=int, default=10,
+                    help="show the N most recent coaching events (default 10; 0 to omit)")
+    ap.add_argument("--json", action="store_true",
+                    help="emit the report as machine-readable JSON")
+    args = ap.parse_args(argv)
+
+    events = load_coach_events(args.path)
+    report = build_report(events, args.last)
+
+    if args.json:
+        print(json.dumps(report, indent=2, sort_keys=True))
+        return 0
+
+    print(f"edit-verify coaching events: {report['total']} total")
+    print(f"source: {args.path}")
+    if not events:
+        print("\n(no coaching events yet — local has not been coached, or the "
+              "telemetry path is empty)")
+        return 0
+    print("\nby failure mode:")
+    for mode, n in report["by_failure_mode"].items():
+        print(f"  {n:5d}  {mode}")
+    if report["recent"]:
+        print(f"\nlast {len(report['recent'])}:")
+        for e in report["recent"]:
+            print(f"  {e['ts'] or '?':32s}  {e['failure_mode']:22s}  {e['file_path'] or '?'}")
+    return 0
+
+
+if __name__ == "__main__":
+    raise SystemExit(main())
