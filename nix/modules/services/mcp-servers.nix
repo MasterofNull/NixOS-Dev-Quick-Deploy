@@ -1941,7 +1941,13 @@ in {
               "2400"
               "--verbose"
             ];
-            TimeoutStartSec = "infinity";
+            # A legitimate run is genuinely long on this slow hardware: the
+            # eval pack is 12 tasks x up to 2400s (40min) = ~8h, and unattended
+            # long runs are expected. So this is a GENEROUS finite safety net —
+            # enough for a full run + retries, but bounded so a truly-stuck run
+            # is eventually reaped (was "infinity", which let a hung/broken run
+            # sit for 13h). NOT a short timeout — that would kill legit runs.
+            TimeoutStartSec = "64800";
             Environment = [
               "PYTHONUNBUFFERED=1"
               "AQ_LOOP_DIRECT_TIMEOUT=86400"
