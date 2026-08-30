@@ -11,8 +11,10 @@ Runs a continuous loop that:
   6. COMMIT  — writes approved improvements and PULSE.log entry
 
 Key design:
-  • Uses asyncio polling instead of blocking waits — no timeouts on long-reasoning runs.
-  • Per-task POLL_INTERVAL_S polls the delegation registry; max TASK_TIMEOUT_S (default 1200s).
+  • Dispatches each case SYNCHRONOUSLY via `delegate-to-local --wait` (foreground),
+    run off the event loop with asyncio.to_thread so concurrent eval cases don't
+    block. The prior background(setsid)+registry-poll path silently failed under
+    the systemd service (setsid is absent from the service's restricted path).
   • Telemetry context (failure patterns, gap proposals) feeds directly into the IMPROVE step.
   • Writes all findings to TELEMETRY_DIR/training-loop-results.jsonl for dashboard pickup.
 
@@ -498,56 +500,6 @@ def _wait_for_model_ready(timeout_s: int = MODEL_READY_TIMEOUT_S) -> bool:
     return False
 
 
-def _submit_task(query: str, mode: str = "hybrid", http_timeout_secs: int = 0) -> Optional[str]:
-    """
-    Submit a task to delegate-to-local in background mode.
-    Returns the task ID or None on error.
-
-    http_timeout_secs: passed to delegate-to-local --timeout (0 = use default 300).
-    For direct mode, callers should pass a higher value (e.g. 600) to tolerate
-    one extra queued request in the llama.cpp HTTP queue without timing out.
-    """
-    # delegate-to-local accepts: agent|hybrid|direct|ralph
-    # eval packs may specify "auto" (coordinator decides) — map to hybrid
-    if mode not in ("agent", "hybrid", "direct", "ralph"):
-        mode = "hybrid"
-    delegate_bin = _SCRIPT_DIR / "delegate-to-local"
-    if not delegate_bin.exists():
-        print(f"[eval] ERROR: delegate-to-local not found at {delegate_bin}", file=sys.stderr)
-        return None
-    cmd = [str(delegate_bin), "--mode", mode, "--prompt", query]
-    if http_timeout_secs > 0:
-        cmd += ["--timeout", str(http_timeout_secs)]
-    # For eval loop tasks, cap max_tokens to EVAL_MAX_TOKENS so bounded test cases
-    # complete quickly.  Production / improvement tasks use DIRECT_MAX_TOKENS default.
-    env = {**os.environ, "PYTHONUNBUFFERED": "1"}
-    if mode == "direct":
-        env.setdefault("DIRECT_MAX_TOKENS", str(EVAL_MAX_TOKENS))
-    try:
-        result = subprocess.run(
-            cmd,
-            capture_output=True, text=True, timeout=SUBMIT_TIMEOUT_S,
-            env=env,
-        )
-        # Parse task ID from output lines like "[delegate-to-local] task_id=local-20260527-..."
-        for line in result.stdout.splitlines():
-            if "task_id=" in line:
-                return line.split("task_id=", 1)[1].strip()
-            if line.strip().startswith("local-"):
-                return line.strip()
-        # Fallback: last line of stderr might have it
-        for line in result.stderr.splitlines():
-            if "task_id=" in line:
-                return line.split("task_id=", 1)[1].strip()
-        return None
-    except subprocess.TimeoutExpired:
-        print(
-            f"[eval] ERROR: delegate-to-local submission timed out after {SUBMIT_TIMEOUT_S}s",
-            file=sys.stderr,
-        )
-        return None
-
-
 _DELEGATED_TASK_ID_RE = re.compile(r"\blocal-\d{8}-\d{6}[0-9A-Za-z-]*")
 
 
@@ -649,134 +601,6 @@ def _run_task_sync(
             if not line.startswith("[delegate-to-local]")
         ).strip() or None
     return response, task_id
-
-
-def _cancel_task(task_id: str) -> None:
-    """Cancel a delegated background task by calling delegate-to-local --cancel."""
-    delegate_bin = _SCRIPT_DIR / "delegate-to-local"
-    if not delegate_bin.exists():
-        # Fallback: kill via registry PID directly
-        for entry in _read_registry():
-            if entry.get("id") == task_id and entry.get("status") == "running":
-                pid = entry.get("pid")
-                if pid:
-                    try:
-                        os.kill(int(pid), signal.SIGTERM)
-                    except (ProcessLookupError, PermissionError):
-                        pass
-                _mark_registry_status(task_id, "cancelled")
-        return
-    try:
-        subprocess.run(
-            [str(delegate_bin), "--cancel", task_id],
-            capture_output=True, timeout=10,
-        )
-        print(f"[eval] cancelled task {task_id}", file=sys.stderr)
-    except Exception as exc:
-        print(f"[eval] WARN: cancel failed for {task_id}: {exc}", file=sys.stderr)
-
-
-async def _wait_for_task(task_id: str, timeout_s: int = DEFAULT_TASK_TIMEOUT_S) -> Optional[str]:
-    """
-    Wait for a delegated task to finish.
-
-    Hook-style: watches the output file for existence/non-zero size (written by
-    delegate-to-local when the background process completes) before touching the
-    registry.  This reacts within POLL_INTERVAL_S of completion rather than on a
-    fixed registry-parse cadence, and avoids hammering the registry JSONL.
-
-    Falls back to a registry-only check if the output_file path is unavailable.
-    """
-    start = time.monotonic()
-    last_log = start
-    last_activity = start
-    last_seen_mtime = 0.0
-    output_file: Optional[Path] = None
-
-    while True:
-        now = time.monotonic()
-        # Resolve output file path from registry (once)
-        if output_file is None:
-            for entry in _read_registry():
-                if entry.get("id") == task_id:
-                    of = entry.get("output_file", "")
-                    if of:
-                        output_file = (
-                            Path(of) if os.path.isabs(of) else _REPO_ROOT / of
-                        )
-                    break
-
-        newest_mtime = _artifact_newest_mtime(output_file)
-        if newest_mtime > last_seen_mtime:
-            last_seen_mtime = newest_mtime
-            last_activity = now
-
-        # Fast path: output file appeared — check registry for terminal status
-        if output_file and output_file.exists() and output_file.stat().st_size > 0:
-            for entry in _read_registry():
-                if entry.get("id") == task_id:
-                    status = entry.get("status", "running")
-                    # delegate-to-local writes "done"; accept both for compat
-                    if status in ("completed", "done"):
-                        return _read_output(str(output_file))
-                    if status == "failed":
-                        return None
-                    # File written but registry not yet updated — one more cycle
-                    break
-
-        # Layer 1: PID liveness — if the background process is dead but registry
-        # still shows "running", mark it "stale" and bail immediately rather than
-        # burning the full timeout_s waiting for a task that will never complete.
-        entry_seen = False
-        pid_seen = False
-        for entry in _read_registry():
-            if entry.get("id") != task_id:
-                continue
-            entry_seen = True
-            status = entry.get("status", "running")
-            # Accept stale/orphaned as terminal (set by reconciler or prior reap)
-            if status in ("stale", "orphaned", "cancelled"):
-                print(f"[eval] task {task_id} already {status}, skipping wait", file=sys.stderr)
-                return None
-            if status == "running":
-                pid = entry.get("pid")
-                if pid:
-                    pid_seen = True
-                    try:
-                        os.kill(int(pid), 0)  # 0 = liveness probe, no signal sent
-                    except ProcessLookupError:
-                        print(f"[eval] orphan: {task_id} pid={pid} dead → stale",
-                              file=sys.stderr)
-                        _mark_registry_status(task_id, "stale")
-                        return None
-                    except PermissionError:
-                        pass  # process exists but belongs to another user; keep waiting
-            break
-
-        elapsed = now - start
-        idle_s = now - last_activity
-        if idle_s >= timeout_s and (not entry_seen or not pid_seen):
-            reason = "missing registry entry" if not entry_seen else "missing pid"
-            print(f"[eval] STALE: task {task_id} {reason} after idle={idle_s:.0f}s", file=sys.stderr)
-            if entry_seen:
-                _mark_registry_status(task_id, "stale")
-            return None
-        if RUNAWAY_HARD_CAP_S > 0 and elapsed >= RUNAWAY_HARD_CAP_S:
-            print(
-                f"[eval] HARD_CAP: task {task_id} exceeded {RUNAWAY_HARD_CAP_S}s, cancelling",
-                file=sys.stderr,
-            )
-            _cancel_task(task_id)
-            return None
-        if idle_s >= timeout_s and now - last_log >= WAIT_LOG_INTERVAL_S:
-            last_log = now
-            print(
-                f"[eval] WAIT: task {task_id} alive; idle={idle_s:.0f}s "
-                f"elapsed={elapsed:.0f}s timeout_window={timeout_s}s",
-                file=sys.stderr,
-            )
-
-        await asyncio.sleep(POLL_INTERVAL_S)
 
 
 # ── improvement proposal ───────────────────────────────────────────────────────
