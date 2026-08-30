@@ -56,19 +56,23 @@ async def main() -> int:
                 "expected_keywords": ["ok"],
             },
         ]
-        def fake_submit(query, mode="hybrid", http_timeout_secs=0):
+        # The loop now dispatches SYNCHRONOUSLY via _run_task_sync (foreground
+        # `delegate-to-local --wait`), replacing the old _submit_task +
+        # _wait_for_task background+poll path (issues-backlog:
+        # nightly-training-loop-tasks-never-register-in-service-context). Mock
+        # that single function; it returns (response, task_id). Mirror the two
+        # failure shapes the classifier distinguishes: a dispatch that never
+        # started yields (None, None) -> "submit_failed"; a dispatch that started
+        # but produced no response (timeout/failure) yields (None, task_id) ->
+        # "timeout_or_failed".
+        def fake_run_sync(query, mode="hybrid", http_timeout_secs=0, wall_timeout_s=0):
             if query == "submit failure please":
-                return None
+                return None, None
             task_id = "local-test-timeout" if query == "timeout please" else "local-test-improve"
             submitted.append(task_id)
-            return task_id
+            return None, task_id
 
-        mod._submit_task = fake_submit
-
-        async def fake_wait(_task_id: str, timeout_s: int):
-            return None
-
-        mod._wait_for_task = fake_wait
+        mod._run_task_sync = fake_run_sync
         mod._generate_improvement_prompt = lambda _failing, _ingest: "improve"
         mod._certify_scorer = lambda: (False, "test uncertified scorer")
         loop = mod.TrainingLoop(eval_pack=Path("unused.json"), task_timeout=1, dry_run=True, verbose=False)

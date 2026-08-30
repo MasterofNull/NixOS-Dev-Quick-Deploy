@@ -36,12 +36,13 @@ import asyncio
 import json
 import os
 import signal
+import re
 import subprocess
 import sys
 import time
 from datetime import datetime, timezone
 from pathlib import Path
-from typing import Any, Dict, List, Optional
+from typing import Any, Dict, List, Optional, Tuple
 
 # ── paths ──────────────────────────────────────────────────────────────────────
 
@@ -547,6 +548,109 @@ def _submit_task(query: str, mode: str = "hybrid", http_timeout_secs: int = 0) -
         return None
 
 
+_DELEGATED_TASK_ID_RE = re.compile(r"\blocal-\d{8}-\d{6}[0-9A-Za-z-]*")
+
+
+def _extract_delegated_task_id(text: str) -> Optional[str]:
+    """First delegate-to-local task id (``local-<8-digit date>-<6-digit time>…``)
+    anywhere in ``text``.
+
+    Matches BOTH the early ``"Delegating task: local-…"`` line (present in
+    partial/timeout output) and the terminal ``"Task local-… completed."`` line
+    — the earlier "Task local-"-only parse missed the pre-completion format, so a
+    timed-out task lost its id (independent review, Codex 2026-08-30).
+    """
+    m = _DELEGATED_TASK_ID_RE.search(text or "")
+    return m.group(0) if m else None
+
+
+def _run_task_sync(
+    query: str,
+    mode: str = "hybrid",
+    http_timeout_secs: int = 0,
+    wall_timeout_s: int = DEFAULT_TASK_TIMEOUT_S,
+) -> Tuple[Optional[str], Optional[str]]:
+    """Run ONE task SYNCHRONOUSLY via ``delegate-to-local --wait``, returning
+    ``(response_text, task_id)`` (either may be None).
+
+    Replaces the eval loop's background(setsid)+registry-poll path, which is
+    silently broken under the ``ai-local-training-loop`` systemd service: in
+    background mode ``delegate-to-local`` ``setsid``-detaches ``dispatch.py``
+    into its own session and redirects its output to /dev/null, and in the
+    service's execution context that detached child never registers in
+    ``registry.jsonl`` (nor writes any log) — so every task was reaped as
+    ``STALE: missing registry entry`` after the 40-min idle budget, i.e. zero
+    useful output per run (issues-backlog:
+    nightly-training-loop-tasks-never-register-in-service-context). ``--wait``
+    runs ``dispatch.py`` in the FOREGROUND, in the same working context the
+    training loop itself runs in, and returns the result directly — no detached
+    child, no registry-poll dependency. The same foreground path is what the
+    manual/attended runs already use successfully. Runs may legitimately take
+    many minutes on this hardware; that is expected for an unattended loop.
+    """
+    if mode not in ("agent", "hybrid", "direct", "ralph"):
+        mode = "hybrid"
+    delegate_bin = _SCRIPT_DIR / "delegate-to-local"
+    if not delegate_bin.exists():
+        print(f"[eval] ERROR: delegate-to-local not found at {delegate_bin}", file=sys.stderr)
+        return None, None
+    cmd = [str(delegate_bin), "--wait", "--mode", mode, "--prompt", query]
+    if http_timeout_secs > 0:
+        cmd += ["--timeout", str(http_timeout_secs)]
+    env = {**os.environ, "PYTHONUNBUFFERED": "1"}
+    if mode == "direct":
+        env.setdefault("DIRECT_MAX_TOKENS", str(EVAL_MAX_TOKENS))
+    try:
+        result = subprocess.run(
+            cmd,
+            capture_output=True,
+            text=True,
+            timeout=max(wall_timeout_s, http_timeout_secs) + 120,
+            env=env,
+        )
+    except subprocess.TimeoutExpired as exc:
+        # Recover the task id from any partial stdout so a timed-out foreground
+        # task is still trackable (independent review, Codex 2026-08-30).
+        partial = exc.stdout or ""
+        if isinstance(partial, bytes):
+            partial = partial.decode("utf-8", "replace")
+        timed_out_tid = _extract_delegated_task_id(partial)
+        print(f"[eval] task exceeded {wall_timeout_s}s wall budget (sync --wait)",
+              file=sys.stderr)
+        return None, timed_out_tid
+    # `delegate-to-local --wait` prints "[delegate-to-local] …" info lines
+    # (including "Task <id> completed."/"failed.") and writes the model output to
+    # the canonical per-task file DELEGATION_DIR/outputs/<id>.log. Read that file
+    # as the AUTHORITATIVE response (robust to any foreground dispatch.py stdout);
+    # fall back to stdout-minus-info-lines only if the file is unavailable.
+    task_id = _extract_delegated_task_id(result.stdout)
+    # A non-zero exit means the dispatch FAILED. dispatch.py writes its error
+    # text (e.g. "HTTP 500: ...") into the SAME output file, so a non-empty file
+    # is NOT a valid model response on failure — returning it would score an
+    # infra error as a genuine model answer and bypass the caller's
+    # timeout_or_failed classification (independent review, Codex 2026-08-30).
+    # Fail closed: return None on any non-zero exit.
+    if result.returncode != 0:
+        err = (result.stderr or result.stdout or "").strip()
+        print(f"[eval] task failed rc={result.returncode} (sync --wait): {err[:200]}",
+              file=sys.stderr)
+        return None, task_id
+    response: Optional[str] = None
+    if task_id:
+        out_file = DELEGATION_DIR / "outputs" / f"{task_id}.log"
+        try:
+            if out_file.exists() and out_file.stat().st_size > 0:
+                response = out_file.read_text(encoding="utf-8", errors="replace").strip() or None
+        except OSError:
+            response = None
+    if not response:
+        response = "\n".join(
+            line for line in result.stdout.splitlines()
+            if not line.startswith("[delegate-to-local]")
+        ).strip() or None
+    return response, task_id
+
+
 def _cancel_task(task_id: str) -> None:
     """Cancel a delegated background task by calling delegate-to-local --cancel."""
     delegate_bin = _SCRIPT_DIR / "delegate-to-local"
@@ -907,13 +1011,19 @@ class TrainingLoop:
                 # this hardware, especially behind one queued request.
                 _write_progress(run_id, "eval_submit", case_id=case.get("id"), mode=mode)
                 http_to = EVAL_DIRECT_TIMEOUT_S if mode == "direct" else 0
-                tid = _submit_task(case["query"], mode=mode, http_timeout_secs=http_to)
-                if not tid:
-                    return None
-                if self.verbose:
-                    print(f"[training-loop]   submitted {case['id']} → {tid}")
-                _write_progress(run_id, "eval_wait", case_id=case.get("id"), mode=mode, task_id=tid)
-                return await _wait_for_task(tid, timeout_s=self.task_timeout)
+                # SYNCHRONOUS foreground dispatch. The prior background(setsid)+
+                # registry-poll path silently failed under the systemd service
+                # (detached child never registered → every task went STALE); the
+                # foreground --wait path runs in the service's own working context
+                # and returns the result directly (issues-backlog:
+                # nightly-training-loop-tasks-never-register-in-service-context).
+                _write_progress(run_id, "eval_wait", case_id=case.get("id"), mode=mode)
+                response_text, tid = await asyncio.to_thread(
+                    _run_task_sync, case["query"], mode, http_to, self.task_timeout,
+                )
+                if self.verbose and tid:
+                    print(f"[training-loop]   ran {case['id']} → {tid}")
+                return response_text
 
             if mode == "direct":
                 # Serialized: only one direct request in-flight at a time
@@ -1017,9 +1127,12 @@ class TrainingLoop:
         if failing:
             print(f"[training-loop] Phase 4: generating improvements for {len(failing)} failures")
             improve_prompt = _generate_improvement_prompt(failing, ingest_report)
-            improve_tid = _submit_task(improve_prompt, mode="hybrid")
-            if improve_tid:
-                improve_response = await _wait_for_task(improve_tid, timeout_s=self.task_timeout)
+            # SYNCHRONOUS foreground dispatch (same service-context fix as the
+            # eval loop above — background dispatch never registered).
+            improve_response, improve_tid = await asyncio.to_thread(
+                _run_task_sync, improve_prompt, "hybrid", 0, self.task_timeout,
+            )
+            if improve_tid or improve_response:
                 if improve_response:
                     # Parse JSON array from response (may be wrapped in markdown).
                     try:
