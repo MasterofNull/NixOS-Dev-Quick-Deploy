@@ -3652,7 +3652,7 @@ def _check_phase87_training_ingest(ctx: RunContext) -> list[CheckResult]:
             "AQ_LOOP_SUBMIT_TIMEOUT=90",
             "AQ_LOOP_RUNAWAY_HARD_CAP=0",
             "TRAINING_LOOP_PROGRESS_FILE=",
-            "TimeoutStartSec = \"infinity\"",
+            "TimeoutStartSec = \"64800\"",  # 18h finite safety net (was "infinity"; fixed 2026-08-30 a2465867)
             "\"2400\"",
         ]
         missing_loop = [needle for needle in loop_needles if needle not in nix_text]
