@@ -10,6 +10,7 @@
 #   aq-session-start --task "..." --format brief   # 5-line stdout summary
 #   aq-session-start --task "..." --summarize      # optional Qwen brief
 #   aq-session-start --task "..." --no-write       # stdout only, no file
+#   aq-session-start --task "..." --machine        # single JSON object
 
 set -euo pipefail
 
@@ -22,6 +23,7 @@ task=""
 format="brief"
 summarize=0
 no_write=0
+machine=0
 
 while [[ $# -gt 0 ]]; do
     case "$1" in
@@ -29,8 +31,9 @@ while [[ $# -gt 0 ]]; do
         --format)      format="$2"; shift 2 ;;
         --summarize)   summarize=1; shift ;;
         --no-write)    no_write=1; shift ;;
+        --machine)     machine=1; shift ;;
         --help|-h)
-            printf 'usage: aq-session-start --task "description" [--format brief|full] [--summarize] [--no-write]\n'
+            printf 'usage: aq-session-start --task "description" [--format brief|full] [--summarize] [--no-write] [--machine]\n'
             exit 0 ;;
         *) printf 'unknown arg: %s\n' "$1" >&2; exit 2 ;;
     esac
@@ -43,8 +46,13 @@ OUTPUT_FILE="${SCRATCHPAD}/session-context-${TODAY}.md"
 mkdir -p "$SCRATCHPAD"
 
 _curl_json() { curl -sf --max-time 8 "$@" 2>/dev/null || true; }
+_human_printf() {
+    if [[ "$machine" -eq 0 ]]; then
+        printf "$@"
+    fi
+}
 
-printf '=== aq-session-start: %s ===\n' "$task"
+_human_printf '=== aq-session-start: %s ===\n' "$task"
 
 # ── 0. Workflow session registration ─────────────────────────────────────────
 # Creates a record in workflow-sessions.json so aq-report operator_trust
@@ -55,26 +63,26 @@ _curl_json -X POST "${COORD_URL}/workflow/run/start" \
     > /dev/null || true
 
 # ── 1. Context bootstrap ──────────────────────────────────────────────────────
-printf '\n[1/3] Context bootstrap...\n'
+_human_printf '\n[1/3] Context bootstrap...\n'
 bootstrap_out="$(_curl_json -X POST "${COORD_URL}/api/context/bootstrap" \
     -H 'Content-Type: application/json' \
     -d "{\"task\":$(python3 -c "import json,sys; print(json.dumps(sys.argv[1]))" "$task")}")" || true
 
 # ── 2. Ranked hints ───────────────────────────────────────────────────────────
-printf '[2/3] Ranked hints...\n'
+_human_printf '[2/3] Ranked hints...\n'
 hints_out="$(_curl_json "${COORD_URL}/hints?q=$(python3 -c "import urllib.parse,sys; print(urllib.parse.quote(sys.argv[1]))" "$task")&format=json&limit=5")" || true
 
 # ── 3. Hierarchical context (AGENTS.md cascade) ───────────────────────────────
-printf '[3/4] Hierarchical context...\n'
+_human_printf '[3/4] Hierarchical context...\n'
 hier_context="$(python3 "${SCRIPT_DIR}/lib/context-merger.py" "${REPO_ROOT}" 2>/dev/null)" || true
 
 # ── 4. Promoted lessons + constraints ────────────────────────────────────────
-printf '[4/5] Lesson registry...\n'
+_human_printf '[4/5] Lesson registry...\n'
 # lessons endpoint returns both agent_lessons registry and constraints array (Phase 65.3)
 lessons_out="$(_curl_json "${COORD_URL}/control/ai-coordinator/lessons")" || true
 
 # ── 5. System intelligence artifact (Phase 115.5) ────────────────────────────
-printf '[5/5] System state snapshot...\n'
+_human_printf '[5/5] System state snapshot...\n'
 _ARTIFACT_PATH="${SYSTEM_STATE_ARTIFACT_PATH:-/var/lib/ai-stack/hybrid/telemetry/latest-system-state.json}"
 system_state_out=""
 if [[ -r "$_ARTIFACT_PATH" ]]; then
@@ -133,7 +141,7 @@ fi
 # Grounding must include the current + recent status of OTHER running agents so we
 # don't collide on the shared index, redo their work, or mis-attribute failures.
 # json-only (no PyYAML dep), best-effort, never blocks hydration.
-printf '[6/6] Collaborator awareness...\n'
+_human_printf '[6/6] Collaborator awareness...\n'
 _PULSE="${REPO_ROOT}/.agent/collaboration/PULSE.log"
 _PENDING="${REPO_ROOT}/.agent/collaboration/PENDING.json"
 running_agents="$(pgrep -af 'codex|gemini|opencode' 2>/dev/null \
@@ -297,7 +305,7 @@ PYEOF
 # ── Write / print ─────────────────────────────────────────────────────────────
 if [[ "$no_write" -eq 0 ]]; then
     cp /tmp/aq-session-context-$$.md "$OUTPUT_FILE" 2>/dev/null || true
-    printf '\nContext written to: %s\n' "$OUTPUT_FILE"
+    _human_printf '\nContext written to: %s\n' "$OUTPUT_FILE"
 fi
 rm -f /tmp/aq-session-context-$$.md
 
@@ -311,11 +319,13 @@ if [[ -f "$_RESUME_SRC" ]]; then
 fi
 
 # Brief summary to stdout
-printf '\n--- Session Brief ---\n'
-printf 'Task : %s\n' "$task"
-printf 'Date : %s\n' "$(date -u '+%Y-%m-%dT%H:%M:%SZ')"
-printf 'Collab: running=[%s] uncommitted=%s\n' "$running_agents" "${uncommitted_n:-?}"
-python3 - "$lessons_out" <<'PYEOF'
+session_date="$(date -u '+%Y-%m-%dT%H:%M:%SZ')"
+if [[ "$machine" -eq 0 ]]; then
+    printf '\n--- Session Brief ---\n'
+    printf 'Task : %s\n' "$task"
+    printf 'Date : %s\n' "$session_date"
+    printf 'Collab: running=[%s] uncommitted=%s\n' "$running_agents" "${uncommitted_n:-?}"
+    python3 - "$lessons_out" <<'PYEOF'
 import json, sys
 try:
     d = json.loads(sys.argv[1] or '{}')
@@ -327,15 +337,80 @@ try:
 except Exception:
     print("Lessons: (unavailable)")
 PYEOF
-printf '%s\n' '--------------------'
+    printf '%s\n' '--------------------'
+fi
 
 # Optional Qwen brief
+qwen_out=""
 if [[ "$summarize" -eq 1 ]]; then
     _brief_prompt="In 3 bullet points summarise what context and lessons are relevant for: ${task:0:300}"
-    printf '\n[Qwen brief requested — delegating async]\n'
-    "${SCRIPT_DIR}/delegate-to-local" --mode direct \
-        --prompt "$_brief_prompt" --wait \
-        --timeout 150 2>/dev/null | head -20 || true
+    if [[ "$machine" -eq 1 ]]; then
+        qwen_out="$("${SCRIPT_DIR}/delegate-to-local" --mode direct \
+            --prompt "$_brief_prompt" --wait \
+            --timeout 150 2>/dev/null | head -20)" || true
+    else
+        printf '\n[Qwen brief requested — delegating async]\n'
+        "${SCRIPT_DIR}/delegate-to-local" --mode direct \
+            --prompt "$_brief_prompt" --wait \
+            --timeout 150 2>/dev/null | head -20 || true
+    fi
+fi
+
+if [[ "$machine" -eq 1 ]]; then
+    python3 -c '
+import json
+import sys
+
+def parsed(raw, fallback):
+    if not raw:
+        return fallback
+    try:
+        return json.loads(raw)
+    except (TypeError, json.JSONDecodeError):
+        return fallback
+
+task, output_format, generated_at, bootstrap_raw, hints_raw, lessons_raw, hierarchy, system_state, collaborators, running, uncommitted, resume_path, context_file, qwen = sys.argv[1:15]
+bootstrap = parsed(bootstrap_raw, None)
+hints = parsed(hints_raw, [])
+lessons = parsed(lessons_raw, None)
+resume = None
+try:
+    with open(resume_path, encoding="utf-8") as handle:
+        resume = json.load(handle)
+except (OSError, json.JSONDecodeError):
+    pass
+
+skills = []
+if isinstance(bootstrap, dict):
+    for key in ("skills", "detected_skills", "recommended_skills"):
+        if isinstance(bootstrap.get(key), list):
+            skills = bootstrap[key]
+            break
+
+payload = {
+    "status": "closed",
+    "task": task,
+    "format": output_format,
+    "generated_at": generated_at,
+    "skills": skills,
+    "bootstrap": bootstrap,
+    "hints": hints,
+    "lessons": lessons,
+    "hierarchical_context": hierarchy or None,
+    "system_state": system_state or None,
+    "collaborators": {
+        "running": running,
+        "uncommitted_files": int(uncommitted) if uncommitted.isdigit() else None,
+        "details": collaborators or None,
+    },
+    "resume": resume,
+    "context_file": context_file or None,
+    "summary": qwen or None,
+}
+print(json.dumps(payload, ensure_ascii=False))
+' "$task" "$format" "$session_date" "$bootstrap_out" "$hints_out" "$lessons_out" \
+        "$hier_context" "$system_state_out" "$collab_out" "$running_agents" \
+        "${uncommitted_n:-}" "$_RESUME_SRC" "$([[ "$no_write" -eq 0 ]] && printf '%s' "$OUTPUT_FILE")" "$qwen_out"
 fi
 
 exit 0
