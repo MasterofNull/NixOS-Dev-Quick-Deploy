@@ -143,10 +143,9 @@ def _parse_declared_files(declared_file: str) -> set:
 def classify_task_changes(current_mods: set, baseline_mods: set, declared_file: str) -> tuple[list, list]:
     """Return (owned, foreign) changes created after the run baseline.
 
-    Capture/revert authority covers ALL of the task's declared file(s). Any other
-    new worktree change is out-of-scope; in a dedicated dogfood run it is the
-    task's own stray edit (there is no concurrent writer), so run_task reverts it
-    too rather than leaving it to cascade-collide the next task.
+    Capture/revert authority covers only the task's declared file(s). Any other
+    new worktree change is foreign: a concurrent writer may have produced it, and
+    the runner must preserve it and halt rather than infer ownership.
     """
     declared = _parse_declared_files(declared_file)
     appeared = {
@@ -305,17 +304,20 @@ After edit_file succeeds, state in ONE sentence what you changed.
 def run_task(task: dict, baseline_mods: set) -> dict:
     tid = task["task"]
     declared_file = task.get("file", "")
-    # Pre-dispatch tree-clean guard: revert any task-introduced edit left over from
-    # a PRIOR task whose revert didn't complete (crash/interrupt/unexpected exit),
-    # so a leftover can't cascade-collide this task. Belt-and-suspenders with the
-    # always-revert at the end of run_task; dogfood sidecar files are excluded.
-    _leftover = sorted(
+    # A change after the run baseline before dispatch has ambiguous ownership: it
+    # can be a prior interrupted task, but it can equally be concurrent human or
+    # agent work. Never clean it up. Preserve it byte-for-byte and halt the run so
+    # no later task can compound the collision.
+    _pre_dispatch_foreign = sorted(
         p for p in (tracked_mods() - baseline_mods)
         if not p.startswith(".agents/delegation/dogfood")
     )
-    if _leftover:
-        git("checkout", "--", *_leftover)
-        ledger({"task": tid, "event": "pre-dispatch-cleanup", "reverted": _leftover})
+    if _pre_dispatch_foreign:
+        ledger({"task": tid, "event": "collision", "phase": "pre-dispatch",
+                "foreign_files": _pre_dispatch_foreign})
+        return {"task": tid, "backlog_item": task["backlog_item"], "edit_landed": False,
+                "elapsed_s": 0.0, "diff_path": "", "status": "scope-collision-pre-dispatch",
+                "halt_run": True}
     if not declared_file or declared_file in baseline_mods:
         ledger({"task": tid, "event": "blocked", "status": "declared-file-preexisting-or-missing"})
         return {"task": tid, "backlog_item": task["backlog_item"], "edit_landed": False,
@@ -414,14 +416,11 @@ def run_task(task: dict, baseline_mods: set) -> dict:
         diff_path = str((DIFFDIR / f"{tid}.patch").relative_to(REPO))
         (DIFFDIR / f"{tid}.patch").write_text(diff)
 
-    # ALWAYS return the tree to baseline before the next task — revert every file
-    # this task touched, declared (owned) OR stray (foreign). The old code gated
-    # the revert on edit_landed AND zeroed task_files whenever a foreign file was
-    # present, so a task that edited a non-declared (or compound-declared) file
-    # left it in the tree, which cascade-collided every following task
-    # (dogfood-10 -> 11/12/13). In a dedicated dogfood run the agent is the sole
-    # writer, so a stray file is this run's own edit and is safe to revert.
-    to_revert = sorted(set(task_files) | set(foreign_files))
+    # On a collision, even a declared target is ambiguous: a concurrent writer
+    # could have touched it after dispatch, and git cannot attribute hunks. Keep
+    # every collision-era diff intact and halt. Without a collision, declared
+    # targets are the only paths in cleanup authority.
+    to_revert = [] if foreign_files else task_files
     if to_revert:
         git("checkout", "--", *to_revert)
 
@@ -430,7 +429,8 @@ def run_task(task: dict, baseline_mods: set) -> dict:
             "elapsed_s": elapsed, "diff_path": diff_path, "local_task_id": local_task_id,
             "foreign_files": foreign_files})
     return {"task": tid, "backlog_item": task["backlog_item"], "edit_landed": edit_landed,
-            "elapsed_s": elapsed, "diff_path": diff_path, "status": status}
+            "elapsed_s": elapsed, "diff_path": diff_path, "status": status,
+            "halt_run": bool(foreign_files)}
 
 
 def write_summary(results: list, halted: str = "") -> None:
@@ -479,6 +479,12 @@ def main() -> int:
     print("[dogfood-run] task dogfood-01 ...")
     vr = run_task(val_task, baseline_mods)
     results = [vr]
+    if vr.get("halt_run"):
+        halted = "scope collision before or during dogfood-01; foreign work was preserved."
+        ledger({"event": "halt", "reason": halted, "task": vr["task"]})
+        write_summary(results, halted=halted)
+        print("[dogfood-run] HALT: scope collision; foreign work preserved")
+        return 1
     print(f"[dogfood-run] dogfood-01: {vr['status']}. Grinding queue (failures allowed).")
 
     # ── Grind the queue ──
@@ -486,6 +492,12 @@ def main() -> int:
     for task in tasks:
         r = run_task(task, baseline_mods)
         results.append(r)
+        if r.get("halt_run"):
+            halted = f"scope collision on {r['task']}; foreign work was preserved."
+            ledger({"event": "halt", "reason": halted, "task": r["task"]})
+            write_summary(results, halted=halted)
+            print("[dogfood-run] HALT: scope collision; foreign work preserved")
+            return 1
         if not r["edit_landed"]:
             failed.append(task)
         write_summary(results)  # refresh after every task so a morning glance is current
@@ -495,6 +507,12 @@ def main() -> int:
         task = {**task, "task": task["task"] + "-retry"}
         r = run_task(task, baseline_mods)
         results.append(r)
+        if r.get("halt_run"):
+            halted = f"scope collision on {r['task']}; foreign work was preserved."
+            ledger({"event": "halt", "reason": halted, "task": r["task"]})
+            write_summary(results, halted=halted)
+            print("[dogfood-run] HALT: scope collision; foreign work preserved")
+            return 1
         write_summary(results)
 
     ledger({"event": "run-complete", "tasks": len(results),

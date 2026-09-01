@@ -3607,6 +3607,21 @@ Advisory task (codex is the real confirmatory backstop) — non-blocking.
   Action: generate a bounded function-coupled grammar from enabled tool schemas, retain optional arguments, reject missing/cross-tool shapes, schema-bind the cache, independently review, then rerun one bounded dogfood task.
   File: ai-stack/local-agents/tool_grammar.py; scripts/ai/lib/grammar_cache.py; ai-stack/local-agents/agent_executor.py; scripts/testing/test-tool-grammar.py; scripts/testing/test-tool-call-grammar.py
 
+[IN-FLIGHT] dogfood-collision-cleanup-erases-concurrent-work — The live `aq-local-dogfood-run` captured any tracked change absent from its startup baseline as `foreign_files`, then included those paths in `git checkout --` cleanup. During the 2026-09-01 coordinator handoff it erased concurrent Codex edits to the installer PRD, tracker, issues backlog, and hot memory index across seven ledger-proven collisions. The runner's claim that no concurrent writer exists was false in the shared canonical worktree.
+  Severity: critical
+  Action: IMPLEMENTED UNSTAGED — foreign or ambiguous paths never enter cleanup authority; cancel and terminate the run on collision without checkout, preserve concurrent bytes, and stop before another dispatch. Hermetic preservation/no-next-dispatch regressions pass. Obtain independent review and Tier0 before restarting dogfood; longer term evaluate an isolated worktree execution boundary.
+  File: scripts/ai/aq-local-dogfood-run:143,304,416-432; scripts/testing/test-local-dogfood-collision.py; .agents/delegation/dogfood-ledger.jsonl
+
+[OPEN] delegate-cancel-registry-rewrite-readonly-after-sigterm — `delegate-to-local --cancel local-20260901-091511-zyqlpy` successfully sent SIGTERM, but then failed updating `.agents/delegation/registry.jsonl` with `OSError: Read-only file system`; status remained stale `running` even though `/proc/85481` was gone. Mutation ordering leaves an operationally false record when the status write fails after process termination.
+  Severity: medium
+  Action: make cancellation status reconciliation robust to restricted caller contexts (broker the canonical registry mutation or fail before signaling when state cannot be recorded), and verify live PID state rather than reporting cached `pid_alive` after failed mutation.
+  File: scripts/ai/lib/task_registry.py:941,295,219; scripts/ai/delegate-to-local
+
+[OPEN] lean-ctx-corrupts-exact-reviewed-diff-hash — The command hook rewrote `git diff --cached --binary | sha256sum` to pipe the diff through `lean-ctx`; the compressor changed the byte stream and produced hash `03e1f7d3...` instead of the raw staged-diff hash `9cfda959...`. Independent review correctly rejected the mismatched subject. This makes the prescribed compact-command rewrite incompatible with exact commit-evidence hashing.
+  Severity: medium
+  Action: exempt raw staged-diff hashing from lean-ctx rewriting, or provide a canonical helper that hashes raw Git bytes while emitting only the digest; add a regression asserting helper output equals raw `git diff --cached --binary | sha256sum`.
+  File: command PreToolUse lean-ctx routing; commit evidence workflow
+
 [OPEN] local-tool-grammar-active-lease-drift — Grammar construction uses every enabled tool in the registry, while the executor can later narrow the model-visible tool set through active selection/hot-swap. Required arguments are now schema-bound, but the grammar may still admit a tool outside the current per-turn lease.
   Severity: high
   Action: pass the exact active model-visible tool-schema projection into grammar construction and bind it to the same per-turn lease digest; warn-only instrumentation first, then fail closed after measured parity.
