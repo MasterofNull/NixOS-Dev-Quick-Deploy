@@ -403,3 +403,52 @@ REVIEW TARGETS (for Codex — the reliable auto-reviewer — and any returning l
   tree-clean guard. test-edit-verify 48/48; classifier unit-tested. VERIFY (reviewer): (a) is reverting a
   "foreign" file safe in ALL runner contexts (dedicated run = yes; any shared-tree use = check)? (b) behavioral
   verify subprocess: injection/isolation surface of AQ_EDIT_VERIFY_CMD (operator-set, not model-set — ok)?
+
+## [2026-08-29T04:22:47Z] REVIEW-NEEDED: local-agent/deleted-def-guard (daeb06b9)
+- Author: claude-opus-4.8 (Rule 17 deviation: cheap lanes down/ineligible — see commit body)
+- Subject: _find_destructive_deletion + _verify_edit_quality wiring; 13/13 guard tests, 69/69 edit-verify no-regression, tier0 44/0
+- Reviewer needed: NON-author (Codex on return, or fresh flagship / antigravity). Confirmatory audit of the ast-based deleted-def-still-referenced logic + the shared pre_edit_full refactor. ACCEPTED -> merge to main; defect -> bounded follow-up.
+
+## [2026-08-29T15:43:56Z] RESOLVED: local-agent/deleted-def-guard -> main 8fb7f693
+- Codex independently reviewed 5 rounds, caught 4 real scope-correctness defects (all fixed), ACCEPTED c4e403b5. Merged with Reviewed-by: codex-cli. No catch-up action needed.
+
+## [2026-08-29T15:49:23Z] REVIEW-NEEDED: local-agent/coach-events-observability (b5ab4437 amended)
+- Author: claude-opus-4.8 (Rule 17 deviation: local ineligible for from-scratch CLI, Codex quota-strained). Read-only telemetry viewer scripts/ai/aq-coach-events + test (11/11).
+- Reviewer: non-author. Low-risk (read-only, stdlib, fail-soft). ACCEPTED -> merge to main.
+
+## [2026-08-30T21:18:29Z] RESOLVED: local-agent/coach-events-observability -> main 6705a454
+- Codex reviewed 2 rounds (caught non-object-JSON crash, fixed), ACCEPTED, merged. No catch-up needed.
+
+## [2026-09-04] REVIEW-NEEDED: feat/aqos-installer-p0-hardware-detector (P0 slice p0-hardware-detector)
+- Author: claude-opus-4.8. **Rule 17 deviation reason:** Codex (the intended coordinator/implementer for
+  this P0 slice, per its own progress note) is away; local Qwen is ill-suited to a multi-site rework of a
+  detection module; owner directed "keep our dev cycle moving by resuming and noting your progress for the
+  other agents' information, upon its return." Committed to a BRANCH (not main) per the agent-down fallback
+  of the review-before-commit workflow — independent review is QUEUED here, never bypassed.
+- Subject: `scripts/ai/lib/hw_probe.py` + `scripts/testing/test-hw-probe.py`. Implements PRD v2 §96
+  (driver-INDEPENDENT detection). Changes:
+  - `_enumerate_pci_devices()` — reads `/sys/bus/pci/devices/*/{class,vendor,device}` → deterministic
+    BDF-sorted inventory `{bdf, pci_class, vendor_id, device_id}`; returns None (recorded in `undetected`)
+    when PCI sysfs is absent.
+  - `_is_display_class()` — PCI class base 0x03 (display controller).
+  - `_drm_index_by_bdf()` — DRM VRAM/card evidence keyed by PCI BDF (driver-dependent ENRICHMENT only).
+  - `_detect_gpu()` reworked: PCI class 0x03 is the PRIMARY presence authority; DRM (matched by BDF) +
+    lspci are enrichment/fallback; explicit `outcome` (detected / none / insufficient_evidence); each
+    device carries an `evidence` field (pci / pci+drm / drm / lspci). Reuses the existing AMD-APU / shared /
+    dedicated memory-type classification. Degrades to DRM/lspci with outcome=insufficient_evidence when the
+    PCI inventory is None.
+  - `probe_hardware()` adds a top-level `pci_devices` field; `schema_version` bumped 1 → 2.
+- Tests: 7/7 in test-hw-probe.py pass, incl. 3 NEW hermetic fixtures — GPU-present-via-PCI-with-no-driver
+  (the live-ISO case: evidence=pci, card=None), no-PCI-inventory → outcome=insufficient_evidence, and
+  multi-GPU deterministic BDF ordering (non-display device filtered out). Live probe on this APU: 35 PCI
+  devices, GPU found by class 0x030000 (AMD 0x1002:0x1638), matched to DRM → evidence=pci+drm, mem=shared.
+- Tier0 --pre-commit: passing after this doc-surface stage (the cross-surface contract required a connected
+  handoff surface for the runtime change — this entry is it).
+- Reviewer needed (NON-author): Codex on return (owns this P0 thread), or a fresh flagship / Antigravity.
+  Confirm the PCI-primary authority, the BDF↔DRM matching (readlink correctness), the insufficient_evidence
+  conservatism, deterministic ordering, and that schema_version=2 consumers are accounted for.
+  ACCEPTED → merge to main with the bound Review-Disposition envelope; a defect → bounded follow-up.
+- Coordinator note for Codex: this is only the DETECTOR slice (tracker item `p0-hardware-detector`). Still
+  open on P0: `p0-ai-fit-policy` (separate digest-pinned model catalog — do NOT embed a model table in the
+  detector), `p0-resolver`, `p0-module-catalog`. PRD v2 §92/§96/§98 respected: detector produces reusable
+  hardware evidence, it is NOT the AI-fit contract.
