@@ -2099,10 +2099,20 @@ Action: CLOSE THE LOOP — DONE: (a) extract_contribution structured/prose/log f
   Severity: high
   Action: implement `.agent/PROJECT-LOCAL-INFERENCE-CONTRACT-PRD.md` incrementally; extract a shared Python control plane, make delegation the canonical driver, migrate `aq-chat` to a thin client, and require live parity/telemetry gates before retiring compatibility paths.
   File: scripts/ai/aq-chat ~lines 538-687; scripts/ai/lib/dispatch.py ~lines 59-1465
-[OPEN] local-review-first-token-timeout — Two independent `delegate-to-local --mode agent --role reviewer` tasks produced zero tokens and failed after the 420-second first-token timeout, including a narrowly scoped two-document amendment review — Root cause not yet isolated; inference slot, context assembly, or local runtime may be wedged before generation.
+[OPEN] local-review-first-token-timeout — Three independent `delegate-to-local --mode agent --role reviewer` tasks produced zero tokens and failed after the first-token timeout. The newest (`local-20260901-094520-8d6z6q`) was a read-only AQ-OS module inventory: it timed out after 1,806 seconds with zero output, while host `/health` remained OK and switchboard continued reporting an orphan-like `local-agent` active request (`estimated_input_tokens=5105`, `max_tokens=512`) after the registry had zero running tasks. The host log repeatedly cancelled llama wait tasks, so service liveness did not imply usable slot progress. A switchboard-only restart released the retained slot without restarting llama or evicting the resident model; compact direct retry `local-20260901-112905-8h5np7` then completed in 925 seconds at 1.54 tok/s.
   Severity: high
-  Action: service inspection now proves llama is active and `/health` is OK outside the sandbox; inspect request/slot/context telemetry for the two failed windows, then add a cheap pre-dispatch slot/context readiness gate and fail-fast reason before retrying reviews.
-  File: .agents/delegation/outputs/local-20260712-100123-dtegkf.log; .agents/delegation/outputs/local-20260712-104516-0gwk7s.log
+  Action: correlate registry task termination with switchboard active-request cancellation/release; add a fail-fast request-size/slot readiness gate and a terminal invariant that no task can be failed while its request retains the slot. Preserve compact direct mode as a measured fallback, not proof that agent-mode lifecycle is healthy.
+  File: .agents/delegation/outputs/local-20260712-100123-dtegkf.log; .agents/delegation/outputs/local-20260712-104516-0gwk7s.log; .agents/delegation/outputs/local-20260901-094520-8d6z6q.log.progress.json; ai-stack/mcp-servers/switchboard
+
+[OPEN] local-direct-planning-output-invents-source-identifiers — Compact direct inventory task `local-20260901-112905-8h5np7` completed and usefully proposed explicit catalog metadata plus a high-level-installer/expert-Nix boundary, but also invented `profiles/desktop.nix` and `config.ai.*`, proposed an unsupported fixed Q5/4-GB rule, and treated a valid NVIDIA-plus-Intel hybrid as a conflict. Source checking prevented those claims from entering the PRD.
+  Severity: medium
+  Action: keep local planning/review output advisory until every path, option, threshold, and compatibility claim is matched to a digest-pinned repository/catalog excerpt; add a bounded source-verification stage before local findings can be promoted.
+  File: .agents/delegation/outputs/local-20260901-112905-8h5np7.log; .agent/AQOS-INSTALLER-EXPERIENCE-PRD-CONSOLIDATED.md section 9.1
+
+[OPEN] claude-review-dispatch-orphaned-with-empty-output — Independent PRD-v2 review task `claude-20260901-114730-d0pa03` remained registered until the stale-task reaper marked it orphaned on 2026-09-04, but its output file stayed zero bytes and no review verdict was produced. Bounded retry `claude-20260904-085851-bw32ct` reproduced the signature immediately: registry `running`, host process absent, zero-byte output.
+  Severity: medium
+  Action: reconcile both orphan receipts and make delegation terminal evidence distinguish provider/model launch failure, lost process, and empty successful output so orchestration can fall back promptly; do not repeat the same dispatch until the adapter/model route is diagnosed.
+  File: .agents/delegation/outputs/claude-20260901-114730-d0pa03.log; .agents/delegation/registry.jsonl; scripts/ai/delegate-to-claude
 
 [OPEN] runtime-diagnose-sandbox-observer-false-inactive — `aq-runtime-diagnose --preset llama-cpp --json` reported `healthy=false`, `service_active=inactive`, and recommended starting the unit inside the Codex sandbox, while host-observer checks proved `llama-cpp.service` had been active for 23 hours and `http://127.0.0.1:8080/health` returned OK outside the sandbox — Root cause: the diagnostic treats sandbox-denied systemd/loopback observation as authoritative inactive/fail instead of unknown/degraded-observer evidence.
   Severity: high
@@ -3606,6 +3616,21 @@ Advisory task (codex is the real confirmatory backstop) — non-blocking.
   Severity: high
   Action: generate a bounded function-coupled grammar from enabled tool schemas, retain optional arguments, reject missing/cross-tool shapes, schema-bind the cache, independently review, then rerun one bounded dogfood task.
   File: ai-stack/local-agents/tool_grammar.py; scripts/ai/lib/grammar_cache.py; ai-stack/local-agents/agent_executor.py; scripts/testing/test-tool-grammar.py; scripts/testing/test-tool-call-grammar.py
+
+[DONE] dogfood-collision-cleanup-erases-concurrent-work — The live `aq-local-dogfood-run` captured any tracked change absent from its startup baseline as `foreign_files`, then included those paths in `git checkout --` cleanup. During the 2026-09-01 coordinator handoff it erased concurrent Codex edits to the installer PRD, tracker, issues backlog, and hot memory index across seven ledger-proven collisions. The runner's claim that no concurrent writer exists was false in the shared canonical worktree.
+  Severity: critical
+  Action: FIXED in `b02b60eb` — foreign or ambiguous paths never enter cleanup authority; cancel and terminate the run on collision without checkout, preserve concurrent bytes, and stop before another dispatch. Independent review, hermetic preservation/no-next-dispatch regressions, and Tier0 passed. Longer term evaluate an isolated worktree execution boundary.
+  File: scripts/ai/aq-local-dogfood-run:143,304,416-432; scripts/testing/test-local-dogfood-collision.py; .agents/delegation/dogfood-ledger.jsonl
+
+[OPEN] delegate-cancel-registry-rewrite-readonly-after-sigterm — `delegate-to-local --cancel local-20260901-091511-zyqlpy` successfully sent SIGTERM, but then failed updating `.agents/delegation/registry.jsonl` with `OSError: Read-only file system`; status remained stale `running` even though `/proc/85481` was gone. Mutation ordering leaves an operationally false record when the status write fails after process termination.
+  Severity: medium
+  Action: make cancellation status reconciliation robust to restricted caller contexts (broker the canonical registry mutation or fail before signaling when state cannot be recorded), and verify live PID state rather than reporting cached `pid_alive` after failed mutation.
+  File: scripts/ai/lib/task_registry.py:941,295,219; scripts/ai/delegate-to-local
+
+[OPEN] lean-ctx-corrupts-exact-reviewed-diff-hash — The command hook rewrote `git diff --cached --binary | sha256sum` to pipe the diff through `lean-ctx`; the compressor changed the byte stream and produced hash `03e1f7d3...` instead of the raw staged-diff hash `9cfda959...`. Independent review correctly rejected the mismatched subject. This makes the prescribed compact-command rewrite incompatible with exact commit-evidence hashing.
+  Severity: medium
+  Action: exempt raw staged-diff hashing from lean-ctx rewriting, or provide a canonical helper that hashes raw Git bytes while emitting only the digest; add a regression asserting helper output equals raw `git diff --cached --binary | sha256sum`.
+  File: command PreToolUse lean-ctx routing; commit evidence workflow
 
 [OPEN] local-tool-grammar-active-lease-drift — Grammar construction uses every enabled tool in the registry, while the executor can later narrow the model-visible tool set through active selection/hot-swap. Required arguments are now schema-bound, but the grammar may still admit a tool outside the current per-turn lease.
   Severity: high
