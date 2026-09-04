@@ -440,6 +440,34 @@ gate_aqos_ai_fit_policy() {
   fi
 }
 
+# Gate 4c: AQ-OS installer module catalog contract
+gate_aqos_module_catalog() {
+  local changed=0 f
+  while IFS= read -r f; do
+    case "$f" in
+      config/schemas/aqos-module-catalog-v1.schema.json|config/aqos-module-catalog-v1.json|scripts/ai/lib/module_catalog.py|scripts/testing/test-module-catalog.py|scripts/governance/tier0-validation-gate.sh)
+        changed=1
+        ;;
+      nix/modules/hardware/default.nix|nix/modules/roles/default.nix|nix/modules/profiles/*.nix)
+        changed=1
+        ;;
+    esac
+  done < <(collect_changed_files)
+
+  if [[ $changed -eq 0 ]]; then
+    pass "AQ-OS module catalog (not changed)"
+    return 0
+  fi
+
+  log "Checking AQ-OS module catalog contract..."
+  if python3 scripts/testing/test-module-catalog.py; then
+    pass "AQ-OS module catalog contract valid"
+  else
+    fail "AQ-OS module catalog contract failed"
+    return 1
+  fi
+}
+
 # Gate 5: YAML syntax validation
 gate_yaml_syntax() {
   log "Checking YAML syntax..."
@@ -1052,6 +1080,7 @@ gate_nix_syntax || true
 gate_json_syntax || true
 gate_aqos_install_plan_schema || true
 gate_aqos_ai_fit_policy || true
+gate_aqos_module_catalog || true
 gate_yaml_syntax || true
 gate_toml_syntax || true
 gate_js_syntax || true
