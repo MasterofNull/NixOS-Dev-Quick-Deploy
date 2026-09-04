@@ -1,0 +1,155 @@
+{
+  "catalog_version": "aqos-ai-fit-policy/v1",
+  "policy_version": "1.0.0",
+  "owner": "hyperd",
+  "description": "Measured, digest-pinned AI-fit inputs for the AQ-OS installer golden path. Data only; the recommended/limited/not_advised verdict is computed deterministically by scripts/ai/lib/ai_fit.py from this catalog + a versioned hardware-evidence summary. No model table or threshold is embedded in the install-plan schema or the hardware detector (PRD v2 section 92).",
+  "reference_measurement": {
+    "machine": "AMD Renoir APU (Ryzen 4x00), 4GB shared VRAM, 27GB usable RAM",
+    "notes": "n_gpu_layers ceiling 12 (4GB shared VRAM); current resident model qwen3.6-35b-a3b Q5_K_S ~24GB is tight and swaps under load. Reserves below are the measured UMBM split from CLAUDE.md Architecture Constraints."
+  },
+  "reserves": {
+    "os_reserve_bytes": 3221225472,
+    "kv_cache_floor_bytes": 1073741824,
+    "recommended_headroom_bytes": 2147483648,
+    "source": "aq-os Renoir reference box UMBM: 3.0GB OS reserve + 1.0GB KV floor measured (CLAUDE.md); 2.0GB recommended_headroom is a conservative policy margin (unmeasured, deliberately generous)."
+  },
+  "backends": {
+    "cpu": {
+      "offload": "none",
+      "requires_discrete_vram": false,
+      "stable": true,
+      "auto_select": true,
+      "source": "config/hardware-capability-matrix.json: universal GGML fallback, no GPU dependency."
+    },
+    "vulkan": {
+      "offload": "partial",
+      "requires_discrete_vram": false,
+      "stable": true,
+      "auto_select": true,
+      "apu_gpu_layer_cap": 12,
+      "vendor_ids": [
+        "0x1002",
+        "0x8086"
+      ],
+      "source": "config/hardware-capability-matrix.json (Mesa RADV/ANV) + aq-os measured Renoir 4GB-shared n_gpu_layers ceiling=12. Partial offload for APUs; full for discrete."
+    },
+    "cuda": {
+      "offload": "full",
+      "requires_discrete_vram": true,
+      "stable": true,
+      "auto_select": true,
+      "vendor_ids": [
+        "0x10de"
+      ],
+      "source": "config/hardware-capability-matrix.json: NVIDIA CUDA full offload, requires known discrete VRAM."
+    },
+    "rocm": {
+      "offload": "full",
+      "requires_discrete_vram": true,
+      "stable": false,
+      "auto_select": false,
+      "vendor_ids": [
+        "0x1002"
+      ],
+      "source": "config/hardware-capability-matrix.json: AMD ROCm promotion_gated/unstable -> not auto-selected in P0; discrete AMD falls back to vulkan."
+    }
+  },
+  "models": [
+    {
+      "id": "qwen3-0.6b",
+      "params_b": 0.6,
+      "quantization": "Q4_K_M",
+      "ram_required_bytes": 644245094,
+      "vram_required_bytes": 0,
+      "context_max": 32768,
+      "cpu_only_supported": true,
+      "moe": false,
+      "source": "ai-stack/models/registry.json@2.1.0",
+      "notes": "nano; cpu 200-400 tok/s; routing/classification floor."
+    },
+    {
+      "id": "qwen3-4b",
+      "params_b": 4,
+      "quantization": "Q4_K_M",
+      "ram_required_bytes": 3435973837,
+      "vram_required_bytes": 3221225472,
+      "context_max": 32768,
+      "cpu_only_supported": true,
+      "moe": false,
+      "source": "ai-stack/models/registry.json@2.1.0",
+      "notes": "small; cpu 30-60 tok/s."
+    },
+    {
+      "id": "qwen3-8b",
+      "params_b": 8,
+      "quantization": "Q4_K_M",
+      "ram_required_bytes": 5905580032,
+      "vram_required_bytes": 5368709120,
+      "context_max": 128000,
+      "cpu_only_supported": true,
+      "moe": false,
+      "source": "ai-stack/models/registry.json@2.1.0",
+      "notes": "small; 128K ctx; cpu 12-22 tok/s."
+    },
+    {
+      "id": "qwen3-14b",
+      "params_b": 14,
+      "quantization": "Q4_K_M",
+      "ram_required_bytes": 9663676416,
+      "vram_required_bytes": 9663676416,
+      "context_max": 128000,
+      "cpu_only_supported": true,
+      "moe": false,
+      "source": "ai-stack/models/registry.json@2.1.0",
+      "notes": "medium; cpu 5-10 tok/s."
+    },
+    {
+      "id": "gemma3-27b",
+      "params_b": 27,
+      "quantization": "Q4_K_M",
+      "ram_required_bytes": 19327352832,
+      "vram_required_bytes": 0,
+      "context_max": 128000,
+      "cpu_only_supported": true,
+      "moe": false,
+      "source": "ai-stack/models/registry.json@2.1.0",
+      "notes": "medium; fits 27GB RAM cpu-first; cpu 3-7 tok/s."
+    },
+    {
+      "id": "qwen3-30b-a3b",
+      "params_b": 30,
+      "quantization": "Q4_K_M",
+      "ram_required_bytes": 21474836480,
+      "vram_required_bytes": 0,
+      "context_max": 128000,
+      "cpu_only_supported": true,
+      "moe": true,
+      "source": "ai-stack/models/registry.json@2.1.0",
+      "notes": "medium MoE (A3B active); cpu 15-30 tok/s; strong RAM-only value."
+    },
+    {
+      "id": "qwen3-32b",
+      "params_b": 32,
+      "quantization": "Q4_K_M",
+      "ram_required_bytes": 22548578304,
+      "vram_required_bytes": 22548578304,
+      "context_max": 128000,
+      "cpu_only_supported": true,
+      "moe": false,
+      "source": "ai-stack/models/registry.json@2.1.0",
+      "notes": "large; cpu 2-4 tok/s."
+    },
+    {
+      "id": "qwen3.6-35b",
+      "params_b": 35,
+      "quantization": "Q4_K_M",
+      "ram_required_bytes": 23622320128,
+      "vram_required_bytes": 23622320128,
+      "context_max": 262144,
+      "cpu_only_supported": true,
+      "moe": true,
+      "source": "ai-stack/models/registry.json@2.1.0",
+      "notes": "large; aq-os reference-box model family; cpu 2-4 tok/s; 24GB Q5 resident is tight."
+    }
+  ]
+}
