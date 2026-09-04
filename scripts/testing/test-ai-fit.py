@@ -124,8 +124,41 @@ def test_dedicated_vram_unknown_never_full() -> None:
     hw = make_hw(32 * GIB, present=True, outcome="detected", memory_type="dedicated",
                  vendor_id="0x10de", vram_bytes=None)
     ev = mod.evaluate_fit(hw, catalog, digest)
-    assert ev["backend"]["offload"] == "partial", ev  # unknown VRAM -> conservative
+    assert ev["backend"]["offload"] == "none", ev  # unknown VRAM -> conservative CPU fallback
     assert all(m["offload"] != "full" for m in ev["eligible_models"]), ev
+
+
+def test_unlisted_vendor_cannot_bypass_catalog_eligibility() -> None:
+    mod = load_ai_fit()
+    catalog, digest = mod.load_catalog(CATALOG_PATH)
+    hw = make_hw(64 * GIB, present=True, outcome="detected", memory_type="dedicated",
+                 vendor_id="0x1234", vram_bytes=24 * GIB)
+    ev = mod.evaluate_fit(hw, catalog, digest)
+    assert ev["backend"]["id"] == "cpu", ev
+    assert ev["backend"]["offload"] == "none", ev
+
+
+def test_disabled_cuda_does_not_fall_through_to_ineligible_vulkan() -> None:
+    mod = load_ai_fit()
+    catalog, digest = mod.load_catalog(CATALOG_PATH)
+    catalog["backends"]["cuda"]["auto_select"] = False
+    hw = make_hw(64 * GIB, present=True, outcome="detected", memory_type="dedicated",
+                 vendor_id="0x10de", vram_bytes=24 * GIB)
+    ev = mod.evaluate_fit(hw, catalog, digest)
+    assert ev["backend"]["id"] == "cpu", ev
+    assert ev["backend"]["offload"] == "none", ev
+
+
+def test_unknown_model_vram_never_full_offloads() -> None:
+    mod = load_ai_fit()
+    catalog, digest = mod.load_catalog(CATALOG_PATH)
+    hw = make_hw(64 * GIB, present=True, outcome="detected", memory_type="dedicated",
+                 vendor_id="0x10de", vram_bytes=24 * GIB)
+    ev = mod.evaluate_fit(hw, catalog, digest)
+    unknown = [m for m in ev["eligible_models"] if m["model_id"] == "gemma3-27b"][0]
+    assert unknown["offload"] == "none", unknown
+    assert unknown["gpu_layer_cap"] == 0, unknown
+    assert "unknown" in unknown["downgrade_reason"], unknown
 
 
 def test_insufficient_gpu_evidence_conservative() -> None:
@@ -185,12 +218,15 @@ def main() -> int:
     test_apu_shared_partial_offload_capped()
     test_cpu_only_is_limited_not_recommended()
     test_dedicated_vram_unknown_never_full()
+    test_unlisted_vendor_cannot_bypass_catalog_eligibility()
+    test_disabled_cuda_does_not_fall_through_to_ineligible_vulkan()
+    test_unknown_model_vram_never_full_offloads()
     test_insufficient_gpu_evidence_conservative()
     test_ram_unknown_is_not_advised()
     test_ram_too_small_is_not_advised()
     test_eligible_models_deterministic_order()
     test_cli_digest_matches()
-    print(f"test-ai-fit: ok catalog_sha256={digest[:12]}… 10/10")
+    print(f"test-ai-fit: ok catalog_sha256={digest[:12]}… 13/13")
     return 0
 
 

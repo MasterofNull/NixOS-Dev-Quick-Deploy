@@ -67,53 +67,59 @@ def _evidence_status(ev: dict[str, Any]) -> str:
 
 
 def _select_backend(ev: dict[str, Any], catalog: dict[str, Any]) -> dict[str, Any]:
-    """Pick the acceleration backend. Never authorizes full offload without known VRAM."""
+    """Pick only a stable, auto-selectable, vendor-eligible catalog backend."""
     backends = catalog.get("backends", {})
-    vulkan_cap = (backends.get("vulkan") or {}).get("apu_gpu_layer_cap")
+
+    def eligible(backend_id: str) -> bool:
+        backend = backends.get(backend_id) or {}
+        vendor_ids = backend.get("vendor_ids") or []
+        if not backend.get("stable") or not backend.get("auto_select"):
+            return False
+        if vendor_ids and ev["vendor_id"] not in vendor_ids:
+            return False
+        if backend.get("requires_discrete_vram"):
+            return ev["memory_type"] == "dedicated" and bool(ev["vram_total_bytes"])
+        return True
+
+    def selected(backend_id: str) -> dict[str, Any]:
+        backend = backends[backend_id]
+        return {
+            "id": backend_id,
+            "offload": backend["offload"],
+            "gpu_layer_cap": backend.get("apu_gpu_layer_cap"),
+            "reason": f"{backend_id} is the highest-priority eligible catalog backend",
+        }
+
+    cpu = {"id": "cpu", "offload": "none", "gpu_layer_cap": 0,
+           "reason": "no stable auto-selectable catalog backend is eligible -> CPU-only"}
 
     # No usable GPU evidence -> CPU-only.
     if not ev["gpu_present"] or ev["gpu_outcome"] != "detected":
-        return {"id": "cpu", "offload": "none", "gpu_layer_cap": 0,
-                "reason": "no GPU detected (or GPU evidence insufficient) -> CPU-only"}
+        cpu["reason"] = "no GPU detected (or GPU evidence insufficient) -> CPU-only"
+        return cpu
 
-    mem = ev["memory_type"]
-    vendor = ev["vendor_id"]
-    vram = ev["vram_total_bytes"]
-
-    # Shared-memory GPU (APU): partial offload only, capped; never full.
-    if mem == "shared":
-        return {"id": "vulkan", "offload": "partial", "gpu_layer_cap": vulkan_cap,
-                "reason": "shared-memory GPU (APU) -> capped partial offload via vulkan"}
-
-    # Dedicated GPU with known VRAM: vendor-specific full offload is eligible.
-    if mem == "dedicated" and vram:
-        if vendor == VENDOR_NVIDIA and (backends.get("cuda") or {}).get("auto_select"):
-            return {"id": "cuda", "offload": "full", "gpu_layer_cap": None,
-                    "reason": "dedicated NVIDIA GPU with known VRAM -> CUDA full offload eligible"}
-        # AMD ROCm is promotion-gated/unstable -> fall back to vulkan full for discrete.
-        return {"id": "vulkan", "offload": "full", "gpu_layer_cap": None,
-                "reason": "dedicated GPU with known VRAM -> vulkan full offload (ROCm not auto-selected)"}
-
-    # Dedicated but VRAM unknown -> conservative partial, NEVER full.
-    if mem == "dedicated":
-        return {"id": "vulkan", "offload": "partial", "gpu_layer_cap": vulkan_cap,
-                "reason": "dedicated GPU but VRAM unknown -> conservative partial offload, no full offload"}
-
-    # Present but unclassified memory type -> treat as unknown, CPU-only.
-    return {"id": "cpu", "offload": "none", "gpu_layer_cap": 0,
-            "reason": "GPU present but memory type unclassified -> conservative CPU-only"}
+    # Full-offload backends are preferred, then bounded partial offload. The
+    # explicit order is policy-engine behavior; every eligibility fact remains
+    # catalog-owned and is checked above.
+    for backend_id in ("cuda", "rocm", "vulkan"):
+        if eligible(backend_id):
+            return selected(backend_id)
+    return cpu
 
 
 def _model_offload(model: dict[str, Any], backend: dict[str, Any], ev: dict[str, Any]) -> dict[str, Any]:
-    """Per-model offload decision; downgrades to partial when VRAM cannot cover the model."""
+    """Per-model offload decision; unknown capacity always fails closed."""
     if backend["offload"] == "none":
         return {"offload": "none", "gpu_layer_cap": 0, "downgrade_reason": "cpu-only (no GPU offload)"}
     vram = ev["vram_total_bytes"]
     need = model.get("vram_required_bytes") or 0
     if backend["offload"] == "full":
-        if vram and need and vram < need:
-            return {"offload": "partial", "gpu_layer_cap": None,
-                    "downgrade_reason": f"VRAM {vram} < model requirement {need} -> partial offload"}
+        if not need:
+            return {"offload": "none", "gpu_layer_cap": 0,
+                    "downgrade_reason": "model VRAM requirement unknown -> CPU-only, no full offload"}
+        if not vram or vram < need:
+            return {"offload": "none", "gpu_layer_cap": 0,
+                    "downgrade_reason": f"VRAM {vram} cannot prove model requirement {need} -> CPU-only"}
         return {"offload": "full", "gpu_layer_cap": None, "downgrade_reason": None}
     # partial
     return {"offload": "partial", "gpu_layer_cap": backend.get("gpu_layer_cap"),

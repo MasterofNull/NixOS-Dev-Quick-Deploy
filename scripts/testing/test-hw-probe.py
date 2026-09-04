@@ -5,6 +5,7 @@ from __future__ import annotations
 
 import importlib.util
 import json
+import os
 import subprocess
 import sys
 import tempfile
@@ -175,6 +176,62 @@ def test_pci_multi_gpu_deterministic_order() -> None:
     assert gpu["devices"][1]["bdf"] == "0000:01:00.0", gpu
 
 
+def test_lspci_only_fallback_is_explicitly_insufficient() -> None:
+    hw_probe = load_hw_probe()
+    with tempfile.TemporaryDirectory() as tmp:
+        sys_root = Path(tmp) / "sys"
+        undetected: list[str] = []
+        gpu = hw_probe._detect_gpu(
+            sys_root,
+            "01:00.0 VGA compatible controller [0300]: NVIDIA Device [10de:2482]",
+            undetected,
+            None,
+        )
+    assert gpu["present"] is True, gpu
+    assert gpu["outcome"] == "insufficient_evidence", gpu
+    assert gpu["primary"]["evidence"] == "lspci", gpu
+
+
+def test_drm_only_fallback_is_explicitly_insufficient() -> None:
+    hw_probe = load_hw_probe()
+    with tempfile.TemporaryDirectory() as tmp:
+        sys_root = Path(tmp) / "sys"
+        pci_device = sys_root / "devices" / "pci0000:00" / "0000:00:02.0"
+        _write(pci_device / "vendor", "0x8086\n")
+        _write(pci_device / "device", "0x9a49\n")
+        card = sys_root / "class" / "drm" / "card0"
+        card.mkdir(parents=True)
+        os.symlink(pci_device, card / "device")
+        undetected: list[str] = []
+        gpu = hw_probe._detect_gpu(sys_root, None, undetected, None)
+    assert gpu["present"] is True, gpu
+    assert gpu["outcome"] == "insufficient_evidence", gpu
+    assert gpu["primary"]["evidence"] == "drm", gpu
+
+
+def test_authoritative_pci_inventory_can_prove_no_gpu() -> None:
+    hw_probe = load_hw_probe()
+    with tempfile.TemporaryDirectory() as tmp:
+        sys_root = Path(tmp) / "sys"
+        _make_pci_device(sys_root, "0000:00:1f.0", "0x060100", "0x8086", "0x43a0")
+        undetected: list[str] = []
+        pci = hw_probe._enumerate_pci_devices(sys_root, undetected)
+        gpu = hw_probe._detect_gpu(sys_root, None, undetected, pci)
+    assert gpu["present"] is False, gpu
+    assert gpu["outcome"] == "none", gpu
+
+
+def test_pci_only_vram_is_unknown_not_zero() -> None:
+    hw_probe = load_hw_probe()
+    with tempfile.TemporaryDirectory() as tmp:
+        sys_root = Path(tmp) / "sys"
+        _make_pci_device(sys_root, "0000:01:00.0", "0x030000", "0x10de", "0x2482")
+        undetected: list[str] = []
+        pci = hw_probe._enumerate_pci_devices(sys_root, undetected)
+        gpu = hw_probe._detect_gpu(sys_root, None, undetected, pci)
+    assert gpu["primary"]["vram_total_bytes"] is None, gpu
+
+
 def main() -> int:
     host_profile = test_cli_runs_cleanly()
     test_bogus_roots_degrade()
@@ -183,6 +240,10 @@ def main() -> int:
     test_pci_gpu_detected_without_driver()
     test_no_pci_inventory_is_insufficient_evidence()
     test_pci_multi_gpu_deterministic_order()
+    test_lspci_only_fallback_is_explicitly_insufficient()
+    test_drm_only_fallback_is_explicitly_insufficient()
+    test_authoritative_pci_inventory_can_prove_no_gpu()
+    test_pci_only_vram_is_unknown_not_zero()
     ram_gib = (host_profile["ram"]["total_bytes"] or 0) / (1024**3)
     print(
         "test-hw-probe: ok "
