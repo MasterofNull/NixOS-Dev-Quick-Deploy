@@ -403,3 +403,123 @@ REVIEW TARGETS (for Codex — the reliable auto-reviewer — and any returning l
   tree-clean guard. test-edit-verify 48/48; classifier unit-tested. VERIFY (reviewer): (a) is reverting a
   "foreign" file safe in ALL runner contexts (dedicated run = yes; any shared-tree use = check)? (b) behavioral
   verify subprocess: injection/isolation surface of AQ_EDIT_VERIFY_CMD (operator-set, not model-set — ok)?
+
+## [2026-08-29T04:22:47Z] REVIEW-NEEDED: local-agent/deleted-def-guard (daeb06b9)
+- Author: claude-opus-4.8 (Rule 17 deviation: cheap lanes down/ineligible — see commit body)
+- Subject: _find_destructive_deletion + _verify_edit_quality wiring; 13/13 guard tests, 69/69 edit-verify no-regression, tier0 44/0
+- Reviewer needed: NON-author (Codex on return, or fresh flagship / antigravity). Confirmatory audit of the ast-based deleted-def-still-referenced logic + the shared pre_edit_full refactor. ACCEPTED -> merge to main; defect -> bounded follow-up.
+
+## [2026-08-29T15:43:56Z] RESOLVED: local-agent/deleted-def-guard -> main 8fb7f693
+- Codex independently reviewed 5 rounds, caught 4 real scope-correctness defects (all fixed), ACCEPTED c4e403b5. Merged with Reviewed-by: codex-cli. No catch-up action needed.
+
+## [2026-08-29T15:49:23Z] REVIEW-NEEDED: local-agent/coach-events-observability (b5ab4437 amended)
+- Author: claude-opus-4.8 (Rule 17 deviation: local ineligible for from-scratch CLI, Codex quota-strained). Read-only telemetry viewer scripts/ai/aq-coach-events + test (11/11).
+- Reviewer: non-author. Low-risk (read-only, stdlib, fail-soft). ACCEPTED -> merge to main.
+
+## [2026-08-30T21:18:29Z] RESOLVED: local-agent/coach-events-observability -> main 6705a454
+- Codex reviewed 2 rounds (caught non-object-JSON crash, fixed), ACCEPTED, merged. No catch-up needed.
+
+## [2026-09-04] REVIEW-NEEDED: feat/aqos-installer-p0-hardware-detector (P0 slice p0-hardware-detector)
+- Author: claude-opus-4.8. **Rule 17 deviation reason:** Codex (the intended coordinator/implementer for
+  this P0 slice, per its own progress note) is away; local Qwen is ill-suited to a multi-site rework of a
+  detection module; owner directed "keep our dev cycle moving by resuming and noting your progress for the
+  other agents' information, upon its return." Committed to a BRANCH (not main) per the agent-down fallback
+  of the review-before-commit workflow — independent review is QUEUED here, never bypassed.
+- Subject: `scripts/ai/lib/hw_probe.py` + `scripts/testing/test-hw-probe.py`. Implements PRD v2 §96
+  (driver-INDEPENDENT detection). Changes:
+  - `_enumerate_pci_devices()` — reads `/sys/bus/pci/devices/*/{class,vendor,device}` → deterministic
+    BDF-sorted inventory `{bdf, pci_class, vendor_id, device_id}`; returns None (recorded in `undetected`)
+    when PCI sysfs is absent.
+  - `_is_display_class()` — PCI class base 0x03 (display controller).
+  - `_drm_index_by_bdf()` — DRM VRAM/card evidence keyed by PCI BDF (driver-dependent ENRICHMENT only).
+  - `_detect_gpu()` reworked: PCI class 0x03 is the PRIMARY presence authority; DRM (matched by BDF) +
+    lspci are enrichment/fallback; explicit `outcome` (detected / none / insufficient_evidence); each
+    device carries an `evidence` field (pci / pci+drm / drm / lspci). Reuses the existing AMD-APU / shared /
+    dedicated memory-type classification. Degrades to DRM/lspci with outcome=insufficient_evidence when the
+    PCI inventory is None.
+  - `probe_hardware()` adds a top-level `pci_devices` field; `schema_version` bumped 1 → 2.
+- Tests: 7/7 in test-hw-probe.py pass, incl. 3 NEW hermetic fixtures — GPU-present-via-PCI-with-no-driver
+  (the live-ISO case: evidence=pci, card=None), no-PCI-inventory → outcome=insufficient_evidence, and
+  multi-GPU deterministic BDF ordering (non-display device filtered out). Live probe on this APU: 35 PCI
+  devices, GPU found by class 0x030000 (AMD 0x1002:0x1638), matched to DRM → evidence=pci+drm, mem=shared.
+- Tier0 --pre-commit: passing after this doc-surface stage (the cross-surface contract required a connected
+  handoff surface for the runtime change — this entry is it).
+- Reviewer needed (NON-author): Codex on return (owns this P0 thread), or a fresh flagship / Antigravity.
+  Confirm the PCI-primary authority, the BDF↔DRM matching (readlink correctness), the insufficient_evidence
+  conservatism, deterministic ordering, and that schema_version=2 consumers are accounted for.
+  ACCEPTED → merge to main with the bound Review-Disposition envelope; a defect → bounded follow-up.
+- Coordinator note for Codex: this is only the DETECTOR slice (tracker item `p0-hardware-detector`). Still
+  open on P0: `p0-ai-fit-policy` (separate digest-pinned model catalog — do NOT embed a model table in the
+  detector), `p0-resolver`, `p0-module-catalog`. PRD v2 §92/§96/§98 respected: detector produces reusable
+  hardware evidence, it is NOT the AI-fit contract.
+
+## [2026-09-04] REVIEW-NEEDED: feat/aqos-installer-p0-ai-fit-policy (P0 slice p0-ai-fit-policy)
+- Author: claude-opus-4.8. **Rule 17 deviation reason:** same as the detector slice — Codex (intended P0
+  coordinator/implementer) away, local Qwen ill-suited to a from-scratch schema+evaluator, owner directed
+  "continue with p0-ai-fit-policy and all next steps." Committed to a BRANCH off
+  feat/aqos-installer-p0-hardware-detector (this slice depends on the detector's schema_version=2 evidence);
+  independent review QUEUED here, never bypassed.
+- Subject: implements PRD v2 §92 — a SEPARATE, digest-pinned AI-fit policy/model catalog + a deterministic
+  evaluator. No model table or threshold lives in the install-plan schema or the detector (§92 satisfied).
+  Files:
+  - `config/schemas/aqos-ai-fit-policy-v1.schema.json` — Draft 2020-12, additionalProperties:false
+    everywhere; versioned; closed/secret-free.
+  - `config/aqos-ai-fit-policy-catalog-v1.json` — measured DATA only (reserves, backends, 8 models spanning
+    nano→large). Numbers sourced with provenance from `ai-stack/models/registry.json@2.1.0` +
+    `config/hardware-capability-matrix.json` + aq-os measured UMBM (3GB OS / 1GB KV reserve, Renoir
+    n_gpu_layers ceiling 12). **sha256 c1bb1455ca8b4c75c47eeb912f4a51f50b2d4b8859ea96257fc45d70c3a4fe25** —
+    this digest is what the resolved lock binds as `catalog_digests.ai_fit_policy_catalog_sha256`.
+  - `scripts/ai/lib/ai_fit.py` — deterministic evaluator: hardware evidence (hw_probe v2) + catalog →
+    recommended/limited/not_advised, eligible models, selected backend, explicit reserves/offload cap/
+    context cap/downgrade reasons. HARD invariants: never full offload without known VRAM; CPU-only is
+    `limited` never `recommended`; RAM-unknown / insufficient-evidence resolve conservatively.
+  - `scripts/testing/test-ai-fit.py` — 10-case fixture matrix (desktop dGPU recommended, APU shared partial
+    capped, cpu-only limited, dedicated-VRAM-unknown never-full, insufficient-gpu-evidence, ram-unknown
+    not_advised, ram-too-small, deterministic order, catalog↔schema+digest stability, CLI digest).
+- Validation: 10/10 tests pass. Live end-to-end on this APU box: verdict=recommended, backend=vulkan/partial/
+  cap-12, usable RAM 23.2GB, recommends qwen3-32b, flags qwen3.6-35b as **limited** (RAM-tight) — which
+  honestly matches the measured reality that the resident 35B swaps under load. tier0 --pre-commit green.
+- Reviewer needed (NON-author): Codex on return, or fresh flagship / Antigravity. Confirm: (a) the
+  never-full-offload-without-VRAM invariant holds on every path; (b) reserve math + headroom margin are
+  honest (2GB recommended_headroom is an explicitly-unmeasured conservative margin — challenge it); (c)
+  catalog provenance is faithful to the cited sources; (d) determinism (sorted models, stable digest). A
+  known follow-up (registered here, not silently deferred): hw_probe's legacy `derived` sizing block
+  (model_size_class / suggested_n_gpu_layers) now DUPLICATES this policy — it should become a thin
+  projection of ai_fit (or be deprecated) so there is one sizing SSOT; left in place this cycle to avoid
+  breaking existing consumers (aq-report/dashboard).
+
+## [2026-09-04] REVIEW-NEEDED: feat/aqos-installer-p0-module-catalog (P0 slice p0-module-catalog)
+- Author: claude-opus-4.8. **Rule 17 deviation reason:** same as the other two P0 slices — Codex away,
+  local Qwen ill-suited to a from-scratch schema+validator, owner directed continuing all P0 next steps.
+  Committed to a BRANCH off feat/aqos-installer-p0-ai-fit-policy (stacked: this slice is the resolver's last
+  data dependency). Independent review QUEUED here, never bypassed.
+- Subject: digest-pinned inventory of installer-selectable NixOS modules + a completeness validator.
+  Files:
+  - `config/schemas/aqos-module-catalog-v1.schema.json` — Draft 2020-12, additionalProperties:false.
+  - `config/aqos-module-catalog-v1.json` — 29 modules (3 profiles + 7 roles + 6 CPU + 7 GPU + 6 platform),
+    each with support predicate, structured resource cost, deps/conflicts, projected mySystem.* fields, and
+    source path. sha256 455b5b1b0343486bdddeddbe1af0669c2f98a653e361ed65335f8e5de6938e4f — binds into the
+    resolved lock as catalog_digests.module_catalog_sha256.
+  - `scripts/ai/lib/module_catalog.py` — validator: completeness vs ACTUAL import wiring
+    (nix/modules/hardware/default.nix + roles/default.nix + profiles/), deterministic (category,id) order,
+    dep/conflict closure, multi-GPU non-exclusivity, and projection resolution (every projected field is
+    consumed in the Nix tree; a mislabeled generic parent like cfg.hardware cannot rubber-stamp a leaf).
+  - `scripts/testing/test-module-catalog.py` — 11 cases incl. drift-fails-closed (missing/phantom entry),
+    projection-drift, the hardware-vs-deployment mislabel guard, dep closure, multi-GPU, order, digest.
+  - tier0: new gate_aqos_module_catalog runs the suite when catalog/validator files OR the import wiring
+    (hardware/roles default.nix, profiles/*.nix) change — so adding a module without cataloging it fails.
+- Validation: 11/11 tests; validator PASS on the real tree; tier0 --pre-commit green. The validator caught
+  two real bugs in my first catalog draft: (1) rootFsckMode is under mySystem.deployment, not hardware
+  (recovery.nix reads cfg.deployment.rootFsckMode); (2) accelerationClass/rocmGpuTarget are auto-detected by
+  discovery, not installer-projected — removed from projected fields. Both fixed; fail-closed completeness
+  working as designed.
+- Reviewer needed (NON-author): Codex on return, or fresh flagship / Antigravity. Confirm: (a) the
+  parent-fallback resolution rule (>=3-segment field may resolve via its >=2-segment parent) cannot mask a
+  real drift; (b) resource_cost classes are honest qualitative estimates (labeled as such, not measured);
+  (c) the 7 roles match roles/default.nix (antigravity.nix intentionally excluded — not in the default
+  import). ACCEPTED -> merge to main; defect -> bounded follow-up.
+- Coordinator note: with detector + ai-fit + module-catalog done, all FOUR p0-resolver data deps (p0-schema,
+  p0-hardware-detector, p0-ai-fit-policy, p0-module-catalog) now exist on branches. Recommended sequencing:
+  review+merge these four to main FIRST so their digests are stable, THEN build p0-resolver (its golden
+  cross-adapter fixtures bind those digests; building on unreviewed branches would churn the goldens).
+  p0-mysystem-fieldset depends on p0-resolver.
