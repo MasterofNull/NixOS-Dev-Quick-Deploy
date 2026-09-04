@@ -487,3 +487,39 @@ REVIEW TARGETS (for Codex — the reliable auto-reviewer — and any returning l
   (model_size_class / suggested_n_gpu_layers) now DUPLICATES this policy — it should become a thin
   projection of ai_fit (or be deprecated) so there is one sizing SSOT; left in place this cycle to avoid
   breaking existing consumers (aq-report/dashboard).
+
+## [2026-09-04] REVIEW-NEEDED: feat/aqos-installer-p0-module-catalog (P0 slice p0-module-catalog)
+- Author: claude-opus-4.8. **Rule 17 deviation reason:** same as the other two P0 slices — Codex away,
+  local Qwen ill-suited to a from-scratch schema+validator, owner directed continuing all P0 next steps.
+  Committed to a BRANCH off feat/aqos-installer-p0-ai-fit-policy (stacked: this slice is the resolver's last
+  data dependency). Independent review QUEUED here, never bypassed.
+- Subject: digest-pinned inventory of installer-selectable NixOS modules + a completeness validator.
+  Files:
+  - `config/schemas/aqos-module-catalog-v1.schema.json` — Draft 2020-12, additionalProperties:false.
+  - `config/aqos-module-catalog-v1.json` — 29 modules (3 profiles + 7 roles + 6 CPU + 7 GPU + 6 platform),
+    each with support predicate, structured resource cost, deps/conflicts, projected mySystem.* fields, and
+    source path. sha256 455b5b1b0343486bdddeddbe1af0669c2f98a653e361ed65335f8e5de6938e4f — binds into the
+    resolved lock as catalog_digests.module_catalog_sha256.
+  - `scripts/ai/lib/module_catalog.py` — validator: completeness vs ACTUAL import wiring
+    (nix/modules/hardware/default.nix + roles/default.nix + profiles/), deterministic (category,id) order,
+    dep/conflict closure, multi-GPU non-exclusivity, and projection resolution (every projected field is
+    consumed in the Nix tree; a mislabeled generic parent like cfg.hardware cannot rubber-stamp a leaf).
+  - `scripts/testing/test-module-catalog.py` — 11 cases incl. drift-fails-closed (missing/phantom entry),
+    projection-drift, the hardware-vs-deployment mislabel guard, dep closure, multi-GPU, order, digest.
+  - tier0: new gate_aqos_module_catalog runs the suite when catalog/validator files OR the import wiring
+    (hardware/roles default.nix, profiles/*.nix) change — so adding a module without cataloging it fails.
+- Validation: 11/11 tests; validator PASS on the real tree; tier0 --pre-commit green. The validator caught
+  two real bugs in my first catalog draft: (1) rootFsckMode is under mySystem.deployment, not hardware
+  (recovery.nix reads cfg.deployment.rootFsckMode); (2) accelerationClass/rocmGpuTarget are auto-detected by
+  discovery, not installer-projected — removed from projected fields. Both fixed; fail-closed completeness
+  working as designed.
+- Reviewer needed (NON-author): Codex on return, or fresh flagship / Antigravity. Confirm: (a) the
+  parent-fallback resolution rule (>=3-segment field may resolve via its >=2-segment parent) cannot mask a
+  real drift; (b) resource_cost classes are honest qualitative estimates (labeled as such, not measured);
+  (c) the 7 roles match roles/default.nix (antigravity.nix intentionally excluded — not in the default
+  import). ACCEPTED -> merge to main; defect -> bounded follow-up.
+- Coordinator note: with detector + ai-fit + module-catalog done, all FOUR p0-resolver data deps (p0-schema,
+  p0-hardware-detector, p0-ai-fit-policy, p0-module-catalog) now exist on branches. Recommended sequencing:
+  review+merge these four to main FIRST so their digests are stable, THEN build p0-resolver (its golden
+  cross-adapter fixtures bind those digests; building on unreviewed branches would churn the goldens).
+  p0-mysystem-fieldset depends on p0-resolver.

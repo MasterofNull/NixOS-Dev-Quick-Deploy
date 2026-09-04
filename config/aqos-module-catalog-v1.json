@@ -1,0 +1,689 @@
+{
+  "catalog_version": "aqos-module-catalog/v1",
+  "policy_version": "1.0.0",
+  "owner": "hyperd",
+  "description": "Digest-pinned inventory of installer-selectable NixOS modules (profiles, roles, hardware, platform) with support predicates, structured resource cost, deps/conflicts, and the mySystem.* fields the installer projects to activate each. Completeness is enforced against the ACTUAL import wiring (nix/modules/hardware/default.nix + roles/default.nix + profiles/) by scripts/ai/lib/module_catalog.py; drift fails closed. Source of truth for option paths: nix/modules/core/options.nix + per-role option declarations.",
+  "modules": [
+    {
+      "id": "hw.cpu.amd",
+      "category": "hardware-cpu",
+      "label": "CPU: amd",
+      "description": "CPU/SoC tuning for cpuVendor=amd.",
+      "module_path": "nix/modules/hardware/cpu/amd.nix",
+      "support_predicate": {
+        "kind": "enum-match",
+        "option": "hardware.cpuVendor",
+        "values": [
+          "amd"
+        ]
+      },
+      "resource_cost": {
+        "ram_class": "none",
+        "disk_class": "none"
+      },
+      "deps": [],
+      "conflicts": [],
+      "projected_mysystem_fields": [
+        "hardware.cpuVendor"
+      ],
+      "source": "nix/modules/hardware/cpu/amd.nix"
+    },
+    {
+      "id": "hw.cpu.apple-silicon",
+      "category": "hardware-cpu",
+      "label": "CPU: apple",
+      "description": "CPU/SoC tuning for cpuVendor=apple.",
+      "module_path": "nix/modules/hardware/cpu/apple-silicon.nix",
+      "support_predicate": {
+        "kind": "enum-match",
+        "option": "hardware.cpuVendor",
+        "values": [
+          "apple"
+        ]
+      },
+      "resource_cost": {
+        "ram_class": "none",
+        "disk_class": "none"
+      },
+      "deps": [],
+      "conflicts": [],
+      "projected_mysystem_fields": [
+        "hardware.cpuVendor"
+      ],
+      "source": "nix/modules/hardware/cpu/apple-silicon.nix"
+    },
+    {
+      "id": "hw.cpu.arm",
+      "category": "hardware-cpu",
+      "label": "CPU: arm",
+      "description": "CPU/SoC tuning for cpuVendor=arm.",
+      "module_path": "nix/modules/hardware/cpu/arm.nix",
+      "support_predicate": {
+        "kind": "enum-match",
+        "option": "hardware.cpuVendor",
+        "values": [
+          "arm"
+        ]
+      },
+      "resource_cost": {
+        "ram_class": "none",
+        "disk_class": "none"
+      },
+      "deps": [],
+      "conflicts": [],
+      "projected_mysystem_fields": [
+        "hardware.cpuVendor"
+      ],
+      "source": "nix/modules/hardware/cpu/arm.nix"
+    },
+    {
+      "id": "hw.cpu.intel",
+      "category": "hardware-cpu",
+      "label": "CPU: intel",
+      "description": "CPU/SoC tuning for cpuVendor=intel.",
+      "module_path": "nix/modules/hardware/cpu/intel.nix",
+      "support_predicate": {
+        "kind": "enum-match",
+        "option": "hardware.cpuVendor",
+        "values": [
+          "intel"
+        ]
+      },
+      "resource_cost": {
+        "ram_class": "none",
+        "disk_class": "none"
+      },
+      "deps": [],
+      "conflicts": [],
+      "projected_mysystem_fields": [
+        "hardware.cpuVendor"
+      ],
+      "source": "nix/modules/hardware/cpu/intel.nix"
+    },
+    {
+      "id": "hw.cpu.qualcomm",
+      "category": "hardware-cpu",
+      "label": "CPU: qualcomm",
+      "description": "CPU/SoC tuning for cpuVendor=qualcomm.",
+      "module_path": "nix/modules/hardware/cpu/qualcomm.nix",
+      "support_predicate": {
+        "kind": "enum-match",
+        "option": "hardware.cpuVendor",
+        "values": [
+          "qualcomm"
+        ]
+      },
+      "resource_cost": {
+        "ram_class": "none",
+        "disk_class": "none"
+      },
+      "deps": [],
+      "conflicts": [],
+      "projected_mysystem_fields": [
+        "hardware.cpuVendor"
+      ],
+      "source": "nix/modules/hardware/cpu/qualcomm.nix"
+    },
+    {
+      "id": "hw.cpu.riscv64",
+      "category": "hardware-cpu",
+      "label": "CPU: riscv",
+      "description": "CPU/SoC tuning for cpuVendor=riscv.",
+      "module_path": "nix/modules/hardware/cpu/riscv64.nix",
+      "support_predicate": {
+        "kind": "enum-match",
+        "option": "hardware.cpuVendor",
+        "values": [
+          "riscv"
+        ]
+      },
+      "resource_cost": {
+        "ram_class": "none",
+        "disk_class": "none"
+      },
+      "deps": [],
+      "conflicts": [],
+      "projected_mysystem_fields": [
+        "hardware.cpuVendor"
+      ],
+      "source": "nix/modules/hardware/cpu/riscv64.nix"
+    },
+    {
+      "id": "hw.gpu.adreno",
+      "category": "hardware-gpu",
+      "label": "GPU: adreno",
+      "description": "GPU driver/accel for gpuVendor=adreno.",
+      "module_path": "nix/modules/hardware/gpu/adreno.nix",
+      "support_predicate": {
+        "kind": "enum-match",
+        "option": "hardware.gpuVendor",
+        "values": [
+          "adreno"
+        ]
+      },
+      "resource_cost": {
+        "ram_class": "none",
+        "disk_class": "light"
+      },
+      "deps": [],
+      "conflicts": [],
+      "projected_mysystem_fields": [
+        "hardware.gpuVendor"
+      ],
+      "source": "nix/modules/hardware/gpu/adreno.nix"
+    },
+    {
+      "id": "hw.gpu.amd",
+      "category": "hardware-gpu",
+      "label": "GPU: amd",
+      "description": "GPU driver/accel for gpuVendor=amd (also as iGPU).",
+      "module_path": "nix/modules/hardware/gpu/amd.nix",
+      "support_predicate": {
+        "kind": "enum-match",
+        "option": "hardware.gpuVendor",
+        "values": [
+          "amd"
+        ],
+        "alt_options": [
+          "hardware.igpuVendor"
+        ]
+      },
+      "resource_cost": {
+        "ram_class": "none",
+        "disk_class": "light"
+      },
+      "deps": [],
+      "conflicts": [],
+      "projected_mysystem_fields": [
+        "hardware.gpuVendor",
+        "hardware.igpuVendor"
+      ],
+      "source": "nix/modules/hardware/gpu/amd.nix"
+    },
+    {
+      "id": "hw.gpu.apple",
+      "category": "hardware-gpu",
+      "label": "GPU: apple",
+      "description": "GPU driver/accel for gpuVendor=apple (also as iGPU).",
+      "module_path": "nix/modules/hardware/gpu/apple.nix",
+      "support_predicate": {
+        "kind": "enum-match",
+        "option": "hardware.gpuVendor",
+        "values": [
+          "apple"
+        ],
+        "alt_options": [
+          "hardware.igpuVendor"
+        ]
+      },
+      "resource_cost": {
+        "ram_class": "none",
+        "disk_class": "light"
+      },
+      "deps": [],
+      "conflicts": [],
+      "projected_mysystem_fields": [
+        "hardware.gpuVendor",
+        "hardware.igpuVendor"
+      ],
+      "source": "nix/modules/hardware/gpu/apple.nix"
+    },
+    {
+      "id": "hw.gpu.intel",
+      "category": "hardware-gpu",
+      "label": "GPU: intel",
+      "description": "GPU driver/accel for gpuVendor=intel (also as iGPU).",
+      "module_path": "nix/modules/hardware/gpu/intel.nix",
+      "support_predicate": {
+        "kind": "enum-match",
+        "option": "hardware.gpuVendor",
+        "values": [
+          "intel"
+        ],
+        "alt_options": [
+          "hardware.igpuVendor"
+        ]
+      },
+      "resource_cost": {
+        "ram_class": "none",
+        "disk_class": "light"
+      },
+      "deps": [],
+      "conflicts": [],
+      "projected_mysystem_fields": [
+        "hardware.gpuVendor",
+        "hardware.igpuVendor"
+      ],
+      "source": "nix/modules/hardware/gpu/intel.nix"
+    },
+    {
+      "id": "hw.gpu.intel-arc",
+      "category": "hardware-gpu",
+      "label": "GPU: intel-arc",
+      "description": "GPU driver/accel for gpuVendor=intel-arc.",
+      "module_path": "nix/modules/hardware/gpu/intel-arc.nix",
+      "support_predicate": {
+        "kind": "enum-match",
+        "option": "hardware.gpuVendor",
+        "values": [
+          "intel-arc"
+        ]
+      },
+      "resource_cost": {
+        "ram_class": "none",
+        "disk_class": "light"
+      },
+      "deps": [],
+      "conflicts": [],
+      "projected_mysystem_fields": [
+        "hardware.gpuVendor"
+      ],
+      "source": "nix/modules/hardware/gpu/intel-arc.nix"
+    },
+    {
+      "id": "hw.gpu.mali",
+      "category": "hardware-gpu",
+      "label": "GPU: mali",
+      "description": "GPU driver/accel for gpuVendor=mali.",
+      "module_path": "nix/modules/hardware/gpu/mali.nix",
+      "support_predicate": {
+        "kind": "enum-match",
+        "option": "hardware.gpuVendor",
+        "values": [
+          "mali"
+        ]
+      },
+      "resource_cost": {
+        "ram_class": "none",
+        "disk_class": "light"
+      },
+      "deps": [],
+      "conflicts": [],
+      "projected_mysystem_fields": [
+        "hardware.gpuVendor"
+      ],
+      "source": "nix/modules/hardware/gpu/mali.nix"
+    },
+    {
+      "id": "hw.gpu.nvidia",
+      "category": "hardware-gpu",
+      "label": "GPU: nvidia",
+      "description": "GPU driver/accel for gpuVendor=nvidia.",
+      "module_path": "nix/modules/hardware/gpu/nvidia.nix",
+      "support_predicate": {
+        "kind": "enum-match",
+        "option": "hardware.gpuVendor",
+        "values": [
+          "nvidia"
+        ]
+      },
+      "resource_cost": {
+        "ram_class": "none",
+        "disk_class": "light"
+      },
+      "deps": [],
+      "conflicts": [],
+      "projected_mysystem_fields": [
+        "hardware.gpuVendor"
+      ],
+      "source": "nix/modules/hardware/gpu/nvidia.nix"
+    },
+    {
+      "id": "hw.platform.mobile",
+      "category": "platform",
+      "label": "Mobile/power",
+      "description": "Power profiles + lid/key handling for laptops.",
+      "module_path": "nix/modules/hardware/mobile.nix",
+      "support_predicate": {
+        "kind": "enable-flag",
+        "option": "hardware.isMobile",
+        "alt_options": [
+          "roles.mobile.enable"
+        ]
+      },
+      "resource_cost": {
+        "ram_class": "none",
+        "disk_class": "none"
+      },
+      "deps": [],
+      "conflicts": [],
+      "projected_mysystem_fields": [
+        "hardware.isMobile",
+        "roles.mobile.enable"
+      ],
+      "source": "nix/modules/hardware/mobile.nix"
+    },
+    {
+      "id": "hw.platform.network",
+      "category": "platform",
+      "label": "Network base",
+      "description": "Base networking configuration (always applied).",
+      "module_path": "nix/modules/hardware/network.nix",
+      "support_predicate": {
+        "kind": "always",
+        "configured_by": []
+      },
+      "resource_cost": {
+        "ram_class": "none",
+        "disk_class": "none"
+      },
+      "deps": [],
+      "conflicts": [],
+      "projected_mysystem_fields": [],
+      "source": "nix/modules/hardware/network.nix"
+    },
+    {
+      "id": "hw.platform.ram-tuning",
+      "category": "platform",
+      "label": "RAM tuning",
+      "description": "Adaptive zswap + Nix build limits by systemRamGb.",
+      "module_path": "nix/modules/hardware/ram-tuning.nix",
+      "support_predicate": {
+        "kind": "always",
+        "configured_by": [
+          "hardware.systemRamGb"
+        ]
+      },
+      "resource_cost": {
+        "ram_class": "none",
+        "disk_class": "none"
+      },
+      "deps": [],
+      "conflicts": [],
+      "projected_mysystem_fields": [
+        "hardware.systemRamGb"
+      ],
+      "source": "nix/modules/hardware/ram-tuning.nix"
+    },
+    {
+      "id": "hw.platform.recovery",
+      "category": "platform",
+      "label": "Recovery/fsck",
+      "description": "Emergency shell + root fsck policy.",
+      "module_path": "nix/modules/hardware/recovery.nix",
+      "support_predicate": {
+        "kind": "always",
+        "configured_by": [
+          "deployment.rootFsckMode"
+        ]
+      },
+      "resource_cost": {
+        "ram_class": "none",
+        "disk_class": "none"
+      },
+      "deps": [],
+      "conflicts": [],
+      "projected_mysystem_fields": [
+        "deployment.rootFsckMode"
+      ],
+      "source": "nix/modules/hardware/recovery.nix"
+    },
+    {
+      "id": "hw.platform.storage",
+      "category": "platform",
+      "label": "Storage tuning",
+      "description": "I/O scheduler, fstrim, NVMe tuning by storageType.",
+      "module_path": "nix/modules/hardware/storage.nix",
+      "support_predicate": {
+        "kind": "always",
+        "configured_by": [
+          "hardware.storageType"
+        ]
+      },
+      "resource_cost": {
+        "ram_class": "none",
+        "disk_class": "none"
+      },
+      "deps": [],
+      "conflicts": [],
+      "projected_mysystem_fields": [
+        "hardware.storageType"
+      ],
+      "source": "nix/modules/hardware/storage.nix"
+    },
+    {
+      "id": "hw.platform.zram",
+      "category": "platform",
+      "label": "zram swap",
+      "description": "zram swap when systemRamGb > 4.",
+      "module_path": "nix/modules/hardware/zram.nix",
+      "support_predicate": {
+        "kind": "always",
+        "configured_by": [
+          "hardware.systemRamGb"
+        ]
+      },
+      "resource_cost": {
+        "ram_class": "none",
+        "disk_class": "none"
+      },
+      "deps": [],
+      "conflicts": [],
+      "projected_mysystem_fields": [
+        "hardware.systemRamGb"
+      ],
+      "source": "nix/modules/hardware/zram.nix"
+    },
+    {
+      "id": "profile.ai-dev",
+      "category": "profile",
+      "label": "AI development profile",
+      "description": "Full local-AI dev workstation stack (heaviest profile).",
+      "module_path": "nix/modules/profiles/ai-dev.nix",
+      "support_predicate": {
+        "kind": "enum-match",
+        "option": "profile",
+        "values": [
+          "ai-dev"
+        ]
+      },
+      "resource_cost": {
+        "ram_class": "heavy",
+        "disk_class": "heavy"
+      },
+      "deps": [],
+      "conflicts": [],
+      "projected_mysystem_fields": [
+        "profile"
+      ],
+      "source": "nix/modules/profiles/ai-dev.nix"
+    },
+    {
+      "id": "profile.gaming",
+      "category": "profile",
+      "label": "Gaming profile",
+      "description": "Gaming-tuned desktop profile.",
+      "module_path": "nix/modules/profiles/gaming.nix",
+      "support_predicate": {
+        "kind": "enum-match",
+        "option": "profile",
+        "values": [
+          "gaming"
+        ]
+      },
+      "resource_cost": {
+        "ram_class": "moderate",
+        "disk_class": "moderate"
+      },
+      "deps": [],
+      "conflicts": [],
+      "projected_mysystem_fields": [
+        "profile"
+      ],
+      "source": "nix/modules/profiles/gaming.nix"
+    },
+    {
+      "id": "profile.minimal",
+      "category": "profile",
+      "label": "Minimal profile",
+      "description": "Lean base system (default).",
+      "module_path": "nix/modules/profiles/minimal.nix",
+      "support_predicate": {
+        "kind": "enum-match",
+        "option": "profile",
+        "values": [
+          "minimal"
+        ]
+      },
+      "resource_cost": {
+        "ram_class": "light",
+        "disk_class": "light"
+      },
+      "deps": [],
+      "conflicts": [],
+      "projected_mysystem_fields": [
+        "profile"
+      ],
+      "source": "nix/modules/profiles/minimal.nix"
+    },
+    {
+      "id": "role.ai-stack",
+      "category": "role",
+      "label": "AI stack role",
+      "description": "Local LLM + AIDB + coordinator + switchboard services.",
+      "module_path": "nix/modules/roles/ai-stack.nix",
+      "support_predicate": {
+        "kind": "enable-flag",
+        "option": "roles.aiStack.enable"
+      },
+      "resource_cost": {
+        "ram_class": "heavy",
+        "disk_class": "heavy"
+      },
+      "deps": [],
+      "conflicts": [],
+      "projected_mysystem_fields": [
+        "roles.aiStack.enable"
+      ],
+      "source": "nix/modules/roles/ai-stack.nix"
+    },
+    {
+      "id": "role.cpp-dev",
+      "category": "role",
+      "label": "C/C++ dev role",
+      "description": "C/C++ toolchain + optional Java.",
+      "module_path": "nix/modules/roles/cpp-dev.nix",
+      "support_predicate": {
+        "kind": "enable-flag",
+        "option": "roles.cppDev.enable"
+      },
+      "resource_cost": {
+        "ram_class": "moderate",
+        "disk_class": "moderate"
+      },
+      "deps": [],
+      "conflicts": [],
+      "projected_mysystem_fields": [
+        "roles.cppDev.enable"
+      ],
+      "source": "nix/modules/roles/cpp-dev.nix"
+    },
+    {
+      "id": "role.desktop",
+      "category": "role",
+      "label": "Desktop role",
+      "description": "Desktop environment + graphics stack.",
+      "module_path": "nix/modules/roles/desktop.nix",
+      "support_predicate": {
+        "kind": "enable-flag",
+        "option": "roles.desktop.enable"
+      },
+      "resource_cost": {
+        "ram_class": "moderate",
+        "disk_class": "moderate"
+      },
+      "deps": [],
+      "conflicts": [],
+      "projected_mysystem_fields": [
+        "roles.desktop.enable"
+      ],
+      "source": "nix/modules/roles/desktop.nix"
+    },
+    {
+      "id": "role.gaming",
+      "category": "role",
+      "label": "Gaming role",
+      "description": "Steam/Proton/gamemode; needs a desktop.",
+      "module_path": "nix/modules/roles/gaming.nix",
+      "support_predicate": {
+        "kind": "enable-flag",
+        "option": "roles.gaming.enable"
+      },
+      "resource_cost": {
+        "ram_class": "moderate",
+        "disk_class": "moderate"
+      },
+      "deps": [
+        "role.desktop"
+      ],
+      "conflicts": [],
+      "projected_mysystem_fields": [
+        "roles.gaming.enable"
+      ],
+      "source": "nix/modules/roles/gaming.nix"
+    },
+    {
+      "id": "role.kernel-dev",
+      "category": "role",
+      "label": "Kernel dev role",
+      "description": "Kernel build toolchain + optional Rust.",
+      "module_path": "nix/modules/roles/kernel-dev.nix",
+      "support_predicate": {
+        "kind": "enable-flag",
+        "option": "roles.kernelDev.enable"
+      },
+      "resource_cost": {
+        "ram_class": "heavy",
+        "disk_class": "heavy"
+      },
+      "deps": [],
+      "conflicts": [],
+      "projected_mysystem_fields": [
+        "roles.kernelDev.enable"
+      ],
+      "source": "nix/modules/roles/kernel-dev.nix"
+    },
+    {
+      "id": "role.server",
+      "category": "role",
+      "label": "Server role",
+      "description": "SSH hardening, fail2ban, tight firewall.",
+      "module_path": "nix/modules/roles/server.nix",
+      "support_predicate": {
+        "kind": "enable-flag",
+        "option": "roles.server.enable"
+      },
+      "resource_cost": {
+        "ram_class": "light",
+        "disk_class": "light"
+      },
+      "deps": [],
+      "conflicts": [],
+      "projected_mysystem_fields": [
+        "roles.server.enable"
+      ],
+      "source": "nix/modules/roles/server.nix"
+    },
+    {
+      "id": "role.virtualization",
+      "category": "role",
+      "label": "Virtualization role",
+      "description": "libvirt/KVM + containers.",
+      "module_path": "nix/modules/roles/virtualization.nix",
+      "support_predicate": {
+        "kind": "enable-flag",
+        "option": "roles.virtualization.enable"
+      },
+      "resource_cost": {
+        "ram_class": "moderate",
+        "disk_class": "moderate"
+      },
+      "deps": [],
+      "conflicts": [],
+      "projected_mysystem_fields": [
+        "roles.virtualization.enable"
+      ],
+      "source": "nix/modules/roles/virtualization.nix"
+    }
+  ]
+}

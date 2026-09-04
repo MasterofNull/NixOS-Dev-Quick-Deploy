@@ -1,0 +1,87 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://aq-os.local/schemas/aqos-module-catalog-v1.schema.json",
+  "title": "AQ-OS module catalog v1",
+  "description": "Closed, digest-pinned inventory of installer-selectable NixOS modules (profiles, roles, hardware, platform). Data only; completeness against the actual import wiring and projection resolution are enforced by scripts/ai/lib/module_catalog.py. The exact file bytes are hashed (sha256) and that digest is bound into the resolved install-plan lock as catalog_digests.module_catalog_sha256.",
+  "type": "object",
+  "additionalProperties": false,
+  "required": ["catalog_version", "policy_version", "owner", "modules"],
+  "properties": {
+    "catalog_version": { "const": "aqos-module-catalog/v1" },
+    "policy_version": { "type": "string", "pattern": "^[0-9]+\\.[0-9]+\\.[0-9]+$" },
+    "owner": { "type": "string", "minLength": 1, "maxLength": 64 },
+    "description": { "type": "string", "maxLength": 2048 },
+    "modules": {
+      "type": "array",
+      "minItems": 1,
+      "maxItems": 512,
+      "items": {
+        "type": "object",
+        "additionalProperties": false,
+        "required": ["id", "category", "label", "description", "module_path", "support_predicate", "resource_cost", "deps", "conflicts", "projected_mysystem_fields", "source"],
+        "properties": {
+          "id": { "type": "string", "pattern": "^[a-z][a-z0-9]*(?:[.][a-z0-9-]+)+$", "maxLength": 96 },
+          "category": { "enum": ["profile", "role", "hardware-cpu", "hardware-gpu", "platform"] },
+          "label": { "type": "string", "minLength": 1, "maxLength": 128 },
+          "description": { "type": "string", "minLength": 1, "maxLength": 512 },
+          "module_path": { "type": "string", "pattern": "^nix/modules/[A-Za-z0-9._/-]+\\.nix$" },
+          "support_predicate": {
+            "type": "object",
+            "additionalProperties": false,
+            "required": ["kind"],
+            "properties": {
+              "kind": { "enum": ["enum-match", "enable-flag", "always"] },
+              "option": { "type": "string", "pattern": "^[a-zA-Z][a-zA-Z0-9.]*$", "maxLength": 96 },
+              "values": {
+                "type": "array",
+                "items": { "type": ["string", "boolean"] },
+                "minItems": 1,
+                "maxItems": 16
+              },
+              "alt_options": {
+                "type": "array",
+                "items": { "type": "string", "pattern": "^[a-zA-Z][a-zA-Z0-9.]*$" },
+                "uniqueItems": true,
+                "maxItems": 8
+              },
+              "configured_by": {
+                "type": "array",
+                "items": { "type": "string", "pattern": "^[a-zA-Z][a-zA-Z0-9.]*$" },
+                "uniqueItems": true,
+                "maxItems": 8
+              }
+            }
+          },
+          "resource_cost": {
+            "type": "object",
+            "additionalProperties": false,
+            "required": ["ram_class", "disk_class"],
+            "properties": {
+              "ram_class": { "enum": ["none", "light", "moderate", "heavy"] },
+              "disk_class": { "enum": ["none", "light", "moderate", "heavy"] }
+            }
+          },
+          "deps": {
+            "type": "array",
+            "items": { "type": "string", "pattern": "^[a-z][a-z0-9]*(?:[.][a-z0-9-]+)+$" },
+            "uniqueItems": true,
+            "maxItems": 32
+          },
+          "conflicts": {
+            "type": "array",
+            "items": { "type": "string", "pattern": "^[a-z][a-z0-9]*(?:[.][a-z0-9-]+)+$" },
+            "uniqueItems": true,
+            "maxItems": 32
+          },
+          "projected_mysystem_fields": {
+            "type": "array",
+            "items": { "type": "string", "pattern": "^[a-zA-Z][a-zA-Z0-9.]*$" },
+            "uniqueItems": true,
+            "maxItems": 16
+          },
+          "source": { "type": "string", "minLength": 1, "maxLength": 256 }
+        }
+      }
+    }
+  }
+}
