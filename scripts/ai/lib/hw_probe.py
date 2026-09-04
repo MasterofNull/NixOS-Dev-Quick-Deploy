@@ -50,6 +50,54 @@ def _run_lspci(undetected: list[str]) -> str | None:
         return None
 
 
+def _enumerate_pci_devices(sys_root: Path, undetected: list[str]) -> list[dict[str, Any]] | None:
+    """Driver-INDEPENDENT PCI inventory from /sys/bus/pci/devices/*.
+
+    Presence and identity of every device come from sysfs PCI attributes
+    (class, vendor, device), NOT from loaded drivers, DRM state, nvidia-smi, or
+    lspci. A device exists on the bus regardless of whether its driver
+    initialized — critical on a live installer where a discrete GPU may only
+    have `nouveau`/`vesa` (or nothing) bound (antigravity review, PRD v2 §96).
+    Returns a deterministic (BDF-sorted) list; None when the PCI sysfs tree is
+    absent (recorded in `undetected`), so the caller emits insufficient_evidence
+    rather than guessing.
+    """
+    pci_root = sys_root / "bus" / "pci" / "devices"
+    if not pci_root.is_dir():
+        undetected.append(str(pci_root))
+        return None
+    try:
+        entries = sorted(pci_root.iterdir(), key=lambda p: p.name)
+    except OSError:
+        undetected.append(str(pci_root))
+        return None
+    devices: list[dict[str, Any]] = []
+    for entry in entries:
+        cls = _read_text(entry / "class", [], None)
+        vendor = _read_text(entry / "vendor", [], None)
+        device = _read_text(entry / "device", [], None)
+        devices.append(
+            {
+                "bdf": entry.name,  # domain:bus:device.function, e.g. 0000:03:00.0
+                "pci_class": cls.strip().lower() if cls else None,
+                "vendor_id": vendor.strip().lower() if vendor else None,
+                "device_id": device.strip().lower() if device else None,
+            }
+        )
+    return devices
+
+
+def _is_display_class(pci_class: str | None) -> bool:
+    """PCI base class 0x03 = display controller (0300 VGA, 0302 3D, 0380 other).
+    Class is the driver-independent authority for 'this is a GPU'."""
+    if not pci_class:
+        return False
+    c = pci_class.lower()
+    if c.startswith("0x"):
+        c = c[2:]
+    return c[:2] == "03"
+
+
 def _parse_cpuinfo(text: str | None, undetected: list[str]) -> dict[str, Any]:
     if not text:
         return {
@@ -125,55 +173,115 @@ def _gpu_lines_from_lspci(lspci_text: str | None) -> list[str]:
     return [line for line in lspci_text.splitlines() if any(needle in line.lower() for needle in needles)]
 
 
-def _detect_gpu(sys_root: Path, lspci_text: str | None, undetected: list[str]) -> dict[str, Any]:
+def _drm_index_by_bdf(sys_root: Path, undetected: list[str]) -> dict[str, dict[str, Any]]:
+    """DRM VRAM/card evidence keyed by PCI BDF (driver-DEPENDENT enrichment).
+
+    A GPU whose driver never bound simply has no DRM entry here — that means
+    'no VRAM evidence', NOT 'no GPU' (presence is decided by PCI class, below).
+    """
     drm_root = sys_root / "class" / "drm"
-    gpus: list[dict[str, Any]] = []
+    index: dict[str, dict[str, Any]] = {}
     if not drm_root.is_dir():
         undetected.append(str(drm_root))
-        cards = []
-    else:
-        try:
-            cards = sorted(drm_root.glob("card[0-9]"))
-        except Exception:
-            cards = []
-            undetected.append(str(drm_root))
-
+        return index
+    try:
+        cards = sorted(drm_root.glob("card[0-9]"))
+    except Exception:
+        undetected.append(str(drm_root))
+        return index
     for card in cards:
         device = card / "device"
-        vendor = _read_text(device / "vendor", [], None)
-        device_id = _read_text(device / "device", [], None)
-        dedicated = _read_int(device / "mem_info_vram_total")
-        visible = _read_int(device / "mem_info_vis_vram_total")
-        gpus.append(
-            {
-                "card": card.name,
-                "vendor_id": vendor.strip() if vendor else None,
-                "device_id": device_id.strip() if device_id else None,
-                "vram_total_bytes": dedicated,
-                "visible_vram_bytes": visible,
-            }
-        )
+        bdf = None
+        try:
+            if device.is_symlink():
+                bdf = os.path.basename(os.readlink(device))
+        except OSError:
+            bdf = None
+        rec = {
+            "card": card.name,
+            "bdf": bdf,
+            "vendor_id": (_read_text(device / "vendor", [], None) or "").strip().lower() or None,
+            "device_id": (_read_text(device / "device", [], None) or "").strip().lower() or None,
+            "vram_total_bytes": _read_int(device / "mem_info_vram_total"),
+            "visible_vram_bytes": _read_int(device / "mem_info_vis_vram_total"),
+        }
+        index[bdf or card.name] = rec
+    return index
 
+
+def _detect_gpu(
+    sys_root: Path,
+    lspci_text: str | None,
+    undetected: list[str],
+    pci_devices: list[dict[str, Any]] | None = None,
+) -> dict[str, Any]:
+    """GPU presence + identity, driver-INDEPENDENT (PRD v2 §96).
+
+    PRIMARY evidence is the PCI class from the sysfs inventory (a display-class
+    device exists on the bus whether or not a driver bound). DRM sysfs and
+    `lspci -nn` are enrichment only (VRAM, human description) and never decide
+    presence. When the PCI inventory is unavailable the outcome degrades to an
+    explicit `insufficient_evidence` rather than guessing.
+    """
+    drm_by_bdf = _drm_index_by_bdf(sys_root, undetected)
     lspci_gpus = _gpu_lines_from_lspci(lspci_text)
-    if not gpus and lspci_gpus:
-        for index, line in enumerate(lspci_gpus):
+    gpus: list[dict[str, Any]] = []
+    outcome = "detected"
+
+    if pci_devices is not None:
+        for dev in pci_devices:
+            if not _is_display_class(dev.get("pci_class")):
+                continue
+            bdf = dev.get("bdf")
+            drm = drm_by_bdf.get(bdf, {})
+            gpus.append(
+                {
+                    "card": drm.get("card"),
+                    "bdf": bdf,
+                    "vendor_id": dev.get("vendor_id") or drm.get("vendor_id"),
+                    "device_id": dev.get("device_id") or drm.get("device_id"),
+                    "pci_class": dev.get("pci_class"),
+                    "vram_total_bytes": drm.get("vram_total_bytes"),
+                    "visible_vram_bytes": drm.get("visible_vram_bytes"),
+                    "evidence": "pci" + ("+drm" if drm else ""),
+                }
+            )
+    else:
+        # No driver-independent PCI inventory — degrade to DRM, then lspci.
+        outcome = "insufficient_evidence"
+        for rec in drm_by_bdf.values():
+            entry = dict(rec)
+            entry["pci_class"] = None
+            entry["evidence"] = "drm"
+            gpus.append(entry)
+
+    if gpus and lspci_gpus:
+        for gpu, line in zip(gpus, lspci_gpus):
+            gpu.setdefault("description", line)
+    elif not gpus and lspci_gpus:
+        for line in lspci_gpus:
             gpus.append(
                 {
                     "card": None,
+                    "bdf": None,
                     "vendor_id": None,
                     "device_id": None,
+                    "pci_class": None,
                     "vram_total_bytes": None,
                     "visible_vram_bytes": None,
                     "description": line,
+                    "evidence": "lspci",
                 }
             )
-    elif lspci_gpus:
-        for gpu, line in zip(gpus, lspci_gpus):
-            gpu["description"] = line
 
     if not gpus:
         undetected.append("gpu")
-        return {"present": False, "devices": [], "primary": None}
+        return {
+            "present": False,
+            "outcome": "none" if pci_devices is not None else "insufficient_evidence",
+            "devices": [],
+            "primary": None,
+        }
 
     primary = dict(gpus[0])
     desc = " ".join(str(gpu.get("description") or "") for gpu in gpus).lower()
@@ -199,7 +307,7 @@ def _detect_gpu(sys_root: Path, lspci_text: str | None, undetected: list[str]) -
         primary["memory_type"] = None
         undetected.append("gpu_vram")
 
-    return {"present": True, "devices": gpus, "primary": primary}
+    return {"present": True, "outcome": outcome, "devices": gpus, "primary": primary}
 
 
 def _detect_npu(lspci_text: str | None) -> dict[str, Any]:
@@ -285,9 +393,10 @@ def probe_hardware(
     cpuinfo = _read_text(proc_root / "cpuinfo", undetected, "/proc/cpuinfo")
     meminfo = _read_text(proc_root / "meminfo", undetected, "/proc/meminfo")
     lspci_text = _run_lspci(undetected)
+    pci_devices = _enumerate_pci_devices(sys_root, undetected)
 
     ram = _parse_meminfo(meminfo)
-    gpu = _detect_gpu(sys_root, lspci_text, undetected)
+    gpu = _detect_gpu(sys_root, lspci_text, undetected, pci_devices)
     thermal_zones = _present_paths(sys_root / "class" / "thermal", "thermal_zone*")
     batteries = _present_paths(sys_root / "class" / "power_supply", "BAT*")
     if thermal_zones is None:
@@ -303,9 +412,10 @@ def probe_hardware(
         disk_free = None
 
     result = {
-        "schema_version": 1,
+        "schema_version": 2,
         "cpu": _parse_cpuinfo(cpuinfo, undetected),
         "ram": ram,
+        "pci_devices": pci_devices,
         "gpu": gpu,
         "npu": _detect_npu(lspci_text),
         "thermal": {"zones_present": thermal_zones},
