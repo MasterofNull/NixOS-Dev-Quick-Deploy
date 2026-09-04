@@ -3629,8 +3629,18 @@ Advisory task (codex is the real confirmatory backstop) — non-blocking.
 
 [OPEN] lean-ctx-corrupts-exact-reviewed-diff-hash — The command hook rewrote `git diff --cached --binary | sha256sum` to pipe the diff through `lean-ctx`; the compressor changed the byte stream and produced hash `03e1f7d3...` instead of the raw staged-diff hash `9cfda959...`. Independent review correctly rejected the mismatched subject. This makes the prescribed compact-command rewrite incompatible with exact commit-evidence hashing.
   Severity: medium
-  Action: exempt raw staged-diff hashing from lean-ctx rewriting, or provide a canonical helper that hashes raw Git bytes while emitting only the digest; add a regression asserting helper output equals raw `git diff --cached --binary | sha256sum`.
+  Action: exempt raw staged-diff hashing from lean-ctx rewriting, or provide a canonical helper that hashes raw Git bytes while emitting only the digest; the helper must exactly match the protected-branch hook command `git diff --cached --binary --full-index --no-ext-diff -- | sha256sum`, including all flags. Add a regression against the hook function. A 2026-09-04 main merge was correctly rejected when the reviewer/orchestrator used the shorter raw command, whose hash differed despite unchanged staged content.
   File: command PreToolUse lean-ctx routing; commit evidence workflow
+
+[OPEN] prompt-evaluator-dirties-tracked-registry-during-concurrent-validation — While the AQ-OS planning slice was passing Tier0 and the local training service was active, nine `ai-stack/prompts/registry.yaml` entries had only `last_evaluated` changed from 2026-08-26 to 2026-09-04. The tracked mutation appeared during the validation window and had to be excluded and mechanically restored before integration. `scripts/ai/aq-prompt-eval` is the known in-place writer, but the initiating actor was not attributable from the file diff alone.
+  Severity: medium
+  Action: identify the concurrent invocation from service/audit evidence; make automated evaluation write a generated runtime result/receipt and require an explicit reviewed promotion step for tracked registry scores/dates, or run it in an isolated worktree. Add writer identity to the receipt so orchestration can distinguish intentional candidate work from test churn.
+  File: scripts/ai/aq-prompt-eval:490-513; ai-stack/prompts/registry.yaml
+
+[DONE] aqos-p0-schema-gate-self-trigger-and-git-oid-coverage — Initial independent review found that the new AQ-OS schema gate did not select itself when its registration file changed and that tests exercised only SHA-256 Git identities even though the schema supports the current SHA-1 repository format.
+  Severity: medium
+  Action: FIXED in the P0 schema candidate — the gate now triggers on schema, test, or gate-script changes; regression pins all three paths; fixtures validate SHA-1 and reject cross-length or unknown OID algorithms.
+  File: scripts/governance/tier0-validation-gate.sh; scripts/testing/test-aqos-install-plan-schema.py
 
 [OPEN] local-tool-grammar-active-lease-drift — Grammar construction uses every enabled tool in the registry, while the executor can later narrow the model-visible tool set through active selection/hot-swap. Required arguments are now schema-bound, but the grammar may still admit a tool outside the current per-turn lease.
   Severity: high

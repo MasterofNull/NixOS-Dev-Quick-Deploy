@@ -390,6 +390,31 @@ gate_json_syntax() {
   return $failed
 }
 
+# Gate 4a: AQ-OS install-plan schema contract
+gate_aqos_install_plan_schema() {
+  local changed=0 f
+  while IFS= read -r f; do
+    case "$f" in
+      config/schemas/aqos-install-plan-v1.schema.json|scripts/testing/test-aqos-install-plan-schema.py|scripts/governance/tier0-validation-gate.sh)
+        changed=1
+        ;;
+    esac
+  done < <(collect_changed_files)
+
+  if [[ $changed -eq 0 ]]; then
+    pass "AQ-OS install-plan schema (not changed)"
+    return 0
+  fi
+
+  log "Checking AQ-OS install-plan schema contract..."
+  if python3 scripts/testing/test-aqos-install-plan-schema.py; then
+    pass "AQ-OS install-plan schema contract valid"
+  else
+    fail "AQ-OS install-plan schema contract failed"
+    return 1
+  fi
+}
+
 # Gate 5: YAML syntax validation
 gate_yaml_syntax() {
   log "Checking YAML syntax..."
@@ -1000,6 +1025,7 @@ gate_python_syntax || true
 gate_bash_syntax || true
 gate_nix_syntax || true
 gate_json_syntax || true
+gate_aqos_install_plan_schema || true
 gate_yaml_syntax || true
 gate_toml_syntax || true
 gate_js_syntax || true

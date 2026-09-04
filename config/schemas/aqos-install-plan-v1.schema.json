@@ -1,0 +1,181 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://aq-os.local/schemas/aqos-install-plan-v1.schema.json",
+  "title": "AQ-OS install-plan v1 artifacts",
+  "description": "Closed, secret-free contract for a defaultable request, immutable resolved lock, or short-lived execution authorization receipt.",
+  "oneOf": [
+    { "$ref": "#/$defs/requestPlan" },
+    { "$ref": "#/$defs/resolvedPlanLock" },
+    { "$ref": "#/$defs/executionAuthorizationReceipt" }
+  ],
+  "$defs": {
+    "schemaVersion": {
+      "type": "string",
+      "const": "aqos-install-plan/v1"
+    },
+    "sha256": {
+      "type": "string",
+      "pattern": "^[a-f0-9]{64}$"
+    },
+    "stableId": {
+      "type": "string",
+      "minLength": 1,
+      "maxLength": 96,
+      "pattern": "^[a-z][a-z0-9-]*(?:[.][a-z0-9-]+)*$"
+    },
+    "nixSystem": {
+      "type": "string",
+      "minLength": 5,
+      "maxLength": 64,
+      "pattern": "^[a-z0-9_+-]+-[a-z0-9_+-]+$"
+    },
+    "flakeInstallable": {
+      "type": "string",
+      "minLength": 3,
+      "maxLength": 256,
+      "pattern": "^[A-Za-z0-9._/@:+-]+#[A-Za-z0-9._@:+-]+$"
+    },
+    "hostTarget": {
+      "type": "string",
+      "minLength": 1,
+      "maxLength": 128,
+      "pattern": "^[A-Za-z0-9][A-Za-z0-9._-]*$"
+    },
+    "timestamp": {
+      "type": "string",
+      "minLength": 20,
+      "maxLength": 32,
+      "pattern": "^[0-9]{4}-[0-9]{2}-[0-9]{2}T[0-9]{2}:[0-9]{2}:[0-9]{2}Z$",
+      "format": "date-time"
+    },
+    "selection": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["golden_profile", "roles", "include_local_ai"],
+      "properties": {
+        "golden_profile": { "$ref": "#/$defs/stableId" },
+        "roles": {
+          "type": "array",
+          "items": { "$ref": "#/$defs/stableId" },
+          "uniqueItems": true,
+          "maxItems": 32
+        },
+        "include_local_ai": { "type": "boolean" }
+      }
+    },
+    "requestSelection": {
+      "type": "object",
+      "additionalProperties": false,
+      "properties": {
+        "golden_profile": { "$ref": "#/$defs/stableId", "default": "aqos-workstation" },
+        "roles": {
+          "type": "array",
+          "items": { "$ref": "#/$defs/stableId" },
+          "uniqueItems": true,
+          "maxItems": 32,
+          "default": []
+        },
+        "include_local_ai": { "type": "boolean", "default": false }
+      }
+    },
+    "requestPlan": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["artifact_type", "schema_version"],
+      "properties": {
+        "artifact_type": { "const": "request_plan" },
+        "schema_version": { "$ref": "#/$defs/schemaVersion" },
+        "selection": { "$ref": "#/$defs/requestSelection" },
+        "host_target": { "$ref": "#/$defs/hostTarget" }
+      }
+    },
+    "hardwareSummary": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["summary_version", "hardware_identity_sha256", "evidence_status", "gpu_count"],
+      "properties": {
+        "summary_version": {
+          "type": "string",
+          "minLength": 1,
+          "maxLength": 64,
+          "pattern": "^[a-z][a-z0-9._/-]*$"
+        },
+        "hardware_identity_sha256": { "$ref": "#/$defs/sha256" },
+        "evidence_status": { "enum": ["sufficient", "insufficient_evidence", "unknown"] },
+        "gpu_count": { "type": "integer", "minimum": 0, "maximum": 32 }
+      }
+    },
+    "catalogDigests": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["module_catalog_sha256", "ai_fit_policy_catalog_sha256"],
+      "properties": {
+        "module_catalog_sha256": { "$ref": "#/$defs/sha256" },
+        "ai_fit_policy_catalog_sha256": { "$ref": "#/$defs/sha256" }
+      }
+    },
+    "sourceIdentitySha1": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["oid_algorithm", "git_commit", "git_tree", "clean_worktree", "flake_lock_sha256", "nix_system", "flake_installable", "host_target"],
+      "properties": {
+        "oid_algorithm": { "const": "sha1" },
+        "git_commit": { "type": "string", "pattern": "^[a-f0-9]{40}$" },
+        "git_tree": { "type": "string", "pattern": "^[a-f0-9]{40}$" },
+        "clean_worktree": { "const": true },
+        "flake_lock_sha256": { "$ref": "#/$defs/sha256" },
+        "nix_system": { "$ref": "#/$defs/nixSystem" },
+        "flake_installable": { "$ref": "#/$defs/flakeInstallable" },
+        "host_target": { "$ref": "#/$defs/hostTarget" }
+      }
+    },
+    "sourceIdentitySha256": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["oid_algorithm", "git_commit", "git_tree", "clean_worktree", "flake_lock_sha256", "nix_system", "flake_installable", "host_target"],
+      "properties": {
+        "oid_algorithm": { "const": "sha256" },
+        "git_commit": { "type": "string", "pattern": "^[a-f0-9]{64}$" },
+        "git_tree": { "type": "string", "pattern": "^[a-f0-9]{64}$" },
+        "clean_worktree": { "const": true },
+        "flake_lock_sha256": { "$ref": "#/$defs/sha256" },
+        "nix_system": { "$ref": "#/$defs/nixSystem" },
+        "flake_installable": { "$ref": "#/$defs/flakeInstallable" },
+        "host_target": { "$ref": "#/$defs/hostTarget" }
+      }
+    },
+    "sourceIdentity": {
+      "oneOf": [
+        { "$ref": "#/$defs/sourceIdentitySha1" },
+        { "$ref": "#/$defs/sourceIdentitySha256" }
+      ]
+    },
+    "resolvedPlanLock": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["artifact_type", "schema_version", "selection", "hardware_summary", "catalog_digests", "source_identity"],
+      "properties": {
+        "artifact_type": { "const": "resolved_plan_lock" },
+        "schema_version": { "$ref": "#/$defs/schemaVersion" },
+        "selection": { "$ref": "#/$defs/selection" },
+        "hardware_summary": { "$ref": "#/$defs/hardwareSummary" },
+        "catalog_digests": { "$ref": "#/$defs/catalogDigests" },
+        "source_identity": { "$ref": "#/$defs/sourceIdentity" }
+      }
+    },
+    "executionAuthorizationReceipt": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["artifact_type", "schema_version", "resolved_plan_sha256", "hardware_identity_sha256", "issued_at", "expires_at", "nonce"],
+      "properties": {
+        "artifact_type": { "const": "execution_authorization_receipt" },
+        "schema_version": { "$ref": "#/$defs/schemaVersion" },
+        "resolved_plan_sha256": { "$ref": "#/$defs/sha256" },
+        "hardware_identity_sha256": { "$ref": "#/$defs/sha256" },
+        "issued_at": { "$ref": "#/$defs/timestamp" },
+        "expires_at": { "$ref": "#/$defs/timestamp" },
+        "nonce": { "type": "string", "pattern": "^[a-f0-9]{32,128}$" }
+      }
+    }
+  }
+}
