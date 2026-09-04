@@ -452,3 +452,38 @@ REVIEW TARGETS (for Codex — the reliable auto-reviewer — and any returning l
   open on P0: `p0-ai-fit-policy` (separate digest-pinned model catalog — do NOT embed a model table in the
   detector), `p0-resolver`, `p0-module-catalog`. PRD v2 §92/§96/§98 respected: detector produces reusable
   hardware evidence, it is NOT the AI-fit contract.
+
+## [2026-09-04] REVIEW-NEEDED: feat/aqos-installer-p0-ai-fit-policy (P0 slice p0-ai-fit-policy)
+- Author: claude-opus-4.8. **Rule 17 deviation reason:** same as the detector slice — Codex (intended P0
+  coordinator/implementer) away, local Qwen ill-suited to a from-scratch schema+evaluator, owner directed
+  "continue with p0-ai-fit-policy and all next steps." Committed to a BRANCH off
+  feat/aqos-installer-p0-hardware-detector (this slice depends on the detector's schema_version=2 evidence);
+  independent review QUEUED here, never bypassed.
+- Subject: implements PRD v2 §92 — a SEPARATE, digest-pinned AI-fit policy/model catalog + a deterministic
+  evaluator. No model table or threshold lives in the install-plan schema or the detector (§92 satisfied).
+  Files:
+  - `config/schemas/aqos-ai-fit-policy-v1.schema.json` — Draft 2020-12, additionalProperties:false
+    everywhere; versioned; closed/secret-free.
+  - `config/aqos-ai-fit-policy-catalog-v1.json` — measured DATA only (reserves, backends, 8 models spanning
+    nano→large). Numbers sourced with provenance from `ai-stack/models/registry.json@2.1.0` +
+    `config/hardware-capability-matrix.json` + aq-os measured UMBM (3GB OS / 1GB KV reserve, Renoir
+    n_gpu_layers ceiling 12). **sha256 c1bb1455ca8b4c75c47eeb912f4a51f50b2d4b8859ea96257fc45d70c3a4fe25** —
+    this digest is what the resolved lock binds as `catalog_digests.ai_fit_policy_catalog_sha256`.
+  - `scripts/ai/lib/ai_fit.py` — deterministic evaluator: hardware evidence (hw_probe v2) + catalog →
+    recommended/limited/not_advised, eligible models, selected backend, explicit reserves/offload cap/
+    context cap/downgrade reasons. HARD invariants: never full offload without known VRAM; CPU-only is
+    `limited` never `recommended`; RAM-unknown / insufficient-evidence resolve conservatively.
+  - `scripts/testing/test-ai-fit.py` — 10-case fixture matrix (desktop dGPU recommended, APU shared partial
+    capped, cpu-only limited, dedicated-VRAM-unknown never-full, insufficient-gpu-evidence, ram-unknown
+    not_advised, ram-too-small, deterministic order, catalog↔schema+digest stability, CLI digest).
+- Validation: 10/10 tests pass. Live end-to-end on this APU box: verdict=recommended, backend=vulkan/partial/
+  cap-12, usable RAM 23.2GB, recommends qwen3-32b, flags qwen3.6-35b as **limited** (RAM-tight) — which
+  honestly matches the measured reality that the resident 35B swaps under load. tier0 --pre-commit green.
+- Reviewer needed (NON-author): Codex on return, or fresh flagship / Antigravity. Confirm: (a) the
+  never-full-offload-without-VRAM invariant holds on every path; (b) reserve math + headroom margin are
+  honest (2GB recommended_headroom is an explicitly-unmeasured conservative margin — challenge it); (c)
+  catalog provenance is faithful to the cited sources; (d) determinism (sorted models, stable digest). A
+  known follow-up (registered here, not silently deferred): hw_probe's legacy `derived` sizing block
+  (model_size_class / suggested_n_gpu_layers) now DUPLICATES this policy — it should become a thin
+  projection of ai_fit (or be deprecated) so there is one sizing SSOT; left in place this cycle to avoid
+  breaking existing consumers (aq-report/dashboard).
