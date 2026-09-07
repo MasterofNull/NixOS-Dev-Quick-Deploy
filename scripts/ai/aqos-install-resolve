@@ -1,0 +1,72 @@
+#!/usr/bin/env python3
+"""Resolve an AQ-OS installer request into a canonical lock and safe projection."""
+
+from __future__ import annotations
+
+import argparse
+import json
+import socket
+import sys
+from pathlib import Path
+
+LIB_DIR = Path(__file__).resolve().parent / "lib"
+sys.path.insert(0, str(LIB_DIR))
+
+import aqos_install_resolver as resolver  # noqa: E402
+import hw_probe  # noqa: E402
+
+
+def load_json(path: Path) -> dict:
+    value = resolver.parse_json_strict(path.read_bytes())
+    if not isinstance(value, dict):
+        raise resolver.ResolverError("object_required", f"expected a JSON object: {path}")
+    return value
+
+
+def main(argv: list[str] | None = None) -> int:
+    parser = argparse.ArgumentParser(description=__doc__)
+    parser.add_argument("--request", type=Path, required=True, help="request-plan or adapter JSON")
+    parser.add_argument("--adapter", choices=("manual", "guided", "ai", "legacy"), default="manual")
+    parser.add_argument("--hardware", type=Path, help="hw_probe JSON; defaults to a live read-only probe")
+    parser.add_argument("--repo", type=Path, default=Path.cwd())
+    parser.add_argument("--flake-installable", required=True,
+                        help="exact local path: flake nixosConfigurations installable")
+    parser.add_argument("--output", choices=("lock", "projection", "bundle"), default="lock")
+    args = parser.parse_args(argv)
+
+    repo = args.repo.resolve()
+    try:
+        raw_request = load_json(args.request)
+        request = resolver.normalize_adapter(args.adapter, raw_request)
+        hardware = load_json(args.hardware) if args.hardware else hw_probe.probe_hardware(repo_root=repo)
+        schema = load_json(repo / "config/schemas/aqos-install-plan-v1.schema.json")
+        module_path = repo / "config/aqos-module-catalog-v1.json"
+        ai_path = repo / "config/aqos-ai-fit-policy-catalog-v1.json"
+        module_bytes = module_path.read_bytes()
+        ai_bytes = ai_path.read_bytes()
+        module_catalog = resolver.parse_json_strict(module_bytes)
+        ai_catalog = resolver.parse_json_strict(ai_bytes)
+        host = request.get("host_target") or socket.gethostname().split(".", 1)[0]
+        request["host_target"] = host
+        nix_system = resolver._nix_system(repo)
+        identity = resolver.collect_source_identity(
+            repo, host, nix_system, args.flake_installable, system_probe=lambda: nix_system)
+        lock = resolver.resolve_plan(
+            request, hardware, module_catalog, module_bytes, ai_bytes, schema, identity)
+        projection = resolver.compile_projection(lock, module_catalog)
+        if args.output == "lock":
+            output = lock
+        elif args.output == "projection":
+            output = projection
+        else:
+            output = {"lock": lock, "projection": projection}
+        sys.stdout.buffer.write(resolver.jcs_bytes(output) + b"\n")
+        return 0
+    except (OSError, resolver.ResolverError) as exc:
+        reason = getattr(exc, "reason", "io_error")
+        print(json.dumps({"ok": False, "reason": reason, "message": str(exc)}, sort_keys=True), file=sys.stderr)
+        return 2
+
+
+if __name__ == "__main__":
+    raise SystemExit(main())
