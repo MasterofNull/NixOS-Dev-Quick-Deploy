@@ -212,6 +212,15 @@ def test_cli_digest_matches() -> None:
     assert out.stdout.strip() == hashlib.sha256(CATALOG_PATH.read_bytes()).hexdigest()
 
 
+def test_hardware_evidence_digest_changes_with_consumed_evidence() -> None:
+    mod = load_ai_fit()
+    first = make_hw(32 * GIB, present=False, outcome="none")
+    second = make_hw(64 * GIB, present=False, outcome="none")
+    assert mod.hardware_evidence_sha256(first) != mod.hardware_evidence_sha256(second)
+    catalog, digest = mod.load_catalog(CATALOG_PATH)
+    assert mod.evaluate_fit(first, catalog, digest)["hardware_evidence_sha256"] == mod.hardware_evidence_sha256(first)
+
+
 def main() -> int:
     digest = test_catalog_matches_schema_and_digest_is_stable()
     test_recommended_desktop_dgpu()
@@ -226,7 +235,8 @@ def main() -> int:
     test_ram_too_small_is_not_advised()
     test_eligible_models_deterministic_order()
     test_cli_digest_matches()
-    print(f"test-ai-fit: ok catalog_sha256={digest[:12]}… 13/13")
+    test_hardware_evidence_digest_changes_with_consumed_evidence()
+    print(f"test-ai-fit: ok catalog_sha256={digest[:12]}… 14/14")
     return 0
 
 

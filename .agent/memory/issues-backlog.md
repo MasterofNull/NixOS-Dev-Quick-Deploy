@@ -3687,3 +3687,23 @@ Advisory task (codex is the real confirmatory backstop) — non-blocking.
   Severity: high
   Action: Enforced every catalog eligibility field, required positive known per-model VRAM capacity before full offload, failed closed to CPU when capacity is unproven, and pinned the escape paths with fixtures. Independent correction review PASS; focused AI-fit 13/13 and hardware-probe fixture suite pass.
   File: scripts/ai/lib/ai_fit.py; scripts/testing/test-ai-fit.py
+
+[OPEN] aqos-golden-profile-not-yet-active — The install-plan schema intentionally defaults to `aqos-workstation`, but that P1 golden profile is not yet present in the active quick-deploy profile set (`ai-dev|gaming|minimal`). Silently aliasing it would freeze unapproved product contents and violate resolved-plan truthfulness.
+  Severity: medium
+  Action: keep P0 locks reproducible but their execution projection fail-closed with `profile-not-active-until-p1`; implement and independently validate the real AQ-OS Workstation profile in tracker slice p1-golden-profile before enabling execution.
+  File: config/schemas/aqos-install-plan-v1.schema.json; scripts/ai/lib/aqos_install_resolver.py; nixos-quick-deploy.sh
+
+[DONE] aqos-resolver-tier0-false-green — The first resolver gate draft called nonexistent `changed_files`; Bash continued through the failed pipeline and reported the resolver as “not changed,” producing a false-green skip.
+  Severity: high
+  Action: Replaced the pipeline with the gate's established `collect_changed_files` case loop, made test failure return nonzero, and included the gate file itself in the trigger set. Detected before commit by the staged full Tier0 run.
+  File: scripts/governance/tier0-validation-gate.sh
+
+[DONE] aqos-resolver-catalog-float-parse-confusion — The first live resolver CLI smoke rejected the pinned AI catalog at its legitimate `params_b: 0.6` field because the input parser incorrectly applied the resolved lock's integer-only JCS domain to all JSON inputs.
+  Severity: high
+  Action: Allow finite JSON numbers during strict duplicate-key parsing and keep float rejection at `jcs_bytes`, where the integer-only resolved artifact contract belongs; added a regression and reran the live CLI path.
+  File: scripts/ai/lib/aqos_install_resolver.py; scripts/testing/test-aqos-install-resolver.py
+
+[DONE] aqos-resolver-first-independent-review-blockers — Independent review found that P0 falsely marked projections executable although role fields were metadata-only, accepted forged/stale AI-fit results, and raised raw UnicodeEncodeError for a lone-surrogate JCS object key.
+  Severity: high
+  Action: Marked every P0 projection non-executable until the field-set and independent execution verifier exist; moved AI-fit evaluation inside the trusted resolver with closed verdict, catalog digest, and exact consumed-hardware evidence binding; validate keys before UTF-16 sorting and added adversarial fixtures.
+  File: scripts/ai/lib/aqos_install_resolver.py; scripts/ai/lib/ai_fit.py; scripts/testing/test-aqos-install-resolver.py; scripts/testing/test-ai-fit.py
