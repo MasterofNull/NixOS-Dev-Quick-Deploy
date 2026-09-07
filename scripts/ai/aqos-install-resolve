@@ -42,18 +42,21 @@ def main(argv: list[str] | None = None) -> int:
         schema = load_json(repo / "config/schemas/aqos-install-plan-v1.schema.json")
         module_path = repo / "config/aqos-module-catalog-v1.json"
         ai_path = repo / "config/aqos-ai-fit-policy-catalog-v1.json"
+        fieldset_path = repo / "config/aqos-mysystem-fieldset-v1.json"
         module_bytes = module_path.read_bytes()
         ai_bytes = ai_path.read_bytes()
+        fieldset_bytes = fieldset_path.read_bytes()
         module_catalog = resolver.parse_json_strict(module_bytes)
-        ai_catalog = resolver.parse_json_strict(ai_bytes)
+        resolver.parse_json_strict(ai_bytes)
+        resolver.parse_json_strict(fieldset_bytes)
         host = request.get("host_target") or socket.gethostname().split(".", 1)[0]
         request["host_target"] = host
         nix_system = resolver._nix_system(repo)
         identity = resolver.collect_source_identity(
             repo, host, nix_system, args.flake_installable, system_probe=lambda: nix_system)
         lock = resolver.resolve_plan(
-            request, hardware, module_catalog, module_bytes, ai_bytes, schema, identity)
-        projection = resolver.compile_projection(lock, module_catalog)
+            request, hardware, module_catalog, module_bytes, ai_bytes, fieldset_bytes, schema, identity)
+        projection = resolver.compile_projection(lock, module_catalog, fieldset_bytes)
         if args.output == "lock":
             output = lock
         elif args.output == "projection":

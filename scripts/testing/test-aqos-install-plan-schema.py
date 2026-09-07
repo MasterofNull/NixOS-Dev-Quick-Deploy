@@ -26,7 +26,8 @@ RESOLVED = {
         "summary_version": "hardware-summary/v1", "hardware_identity_sha256": HASH,
         "evidence_status": "sufficient", "gpu_count": 1,
     },
-    "catalog_digests": {"module_catalog_sha256": HASH, "ai_fit_policy_catalog_sha256": "b" * 64},
+    "catalog_digests": {"module_catalog_sha256": HASH, "ai_fit_policy_catalog_sha256": "b" * 64,
+                        "mysystem_fieldset_sha256": "f" * 64},
     "source_identity": {
         "oid_algorithm": "sha256", "git_commit": "c" * 64, "git_tree": "d" * 64,
         "clean_worktree": True, "flake_lock_sha256": "e" * 64,
@@ -36,8 +37,12 @@ RESOLVED = {
 }
 RECEIPT = {
     "artifact_type": "execution_authorization_receipt", "schema_version": "aqos-install-plan/v1",
-    "resolved_plan_sha256": HASH, "hardware_identity_sha256": "b" * 64,
-    "issued_at": "2026-09-04T12:00:00Z", "expires_at": "2026-09-04T12:15:00Z", "nonce": "c" * 32,
+    "resolved_plan_sha256": HASH, "source_identity_sha256": "b" * 64,
+    "projection_sha256": "c" * 64, "hardware_identity_sha256": "d" * 64,
+    "authorized_action": "build-only", "issued_at": "2026-09-04T12:00:00Z",
+    "expires_at": "2026-09-04T12:15:00Z", "nonce": "e" * 32,
+    "signing_key_id": "local.operator.v1", "mac_algorithm": "hmac-sha256",
+    "mac_hmac_sha256": "f" * 64,
 }
 
 
@@ -105,6 +110,7 @@ class InstallPlanSchemaTest(unittest.TestCase):
             ("hardware_summary",), ("catalog_digests",), ("source_identity",),
             ("catalog_digests", "module_catalog_sha256"),
             ("catalog_digests", "ai_fit_policy_catalog_sha256"),
+            ("catalog_digests", "mysystem_fieldset_sha256"),
             ("source_identity", "git_commit"), ("source_identity", "git_tree"),
             ("source_identity", "flake_lock_sha256"), ("source_identity", "nix_system"),
             ("source_identity", "flake_installable"), ("source_identity", "host_target"),
@@ -159,6 +165,22 @@ class InstallPlanSchemaTest(unittest.TestCase):
         masquerade = copy.deepcopy(RECEIPT)
         masquerade["artifact_type"] = "resolved_plan_lock"
         assert_invalid(masquerade)
+
+    def test_receipt_requires_every_authority_and_binding_field(self) -> None:
+        for field in (
+            "resolved_plan_sha256", "source_identity_sha256", "projection_sha256",
+            "hardware_identity_sha256", "authorized_action", "issued_at", "expires_at",
+            "nonce", "signing_key_id", "mac_algorithm", "mac_hmac_sha256",
+        ):
+            with self.subTest(field=field):
+                artifact = copy.deepcopy(RECEIPT)
+                del artifact[field]
+                assert_invalid(artifact)
+        for field, value in (("authorized_action", "switch"), ("mac_algorithm", "none")):
+            with self.subTest(field=field):
+                artifact = copy.deepcopy(RECEIPT)
+                artifact[field] = value
+                assert_invalid(artifact)
 
 
 if __name__ == "__main__":
