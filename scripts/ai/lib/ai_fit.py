@@ -58,6 +58,13 @@ def _extract_evidence(hw: dict[str, Any] | None) -> dict[str, Any]:
     }
 
 
+def hardware_evidence_sha256(hw: dict[str, Any] | None) -> str:
+    """Digest the exact redacted evidence fields consumed by this evaluator."""
+    body = json.dumps(_extract_evidence(hw), sort_keys=True, separators=(",", ":"),
+                      ensure_ascii=False, allow_nan=False).encode("utf-8")
+    return hashlib.sha256(body).hexdigest()
+
+
 def _evidence_status(ev: dict[str, Any]) -> str:
     if ev["ram_total_bytes"] is None:
         return "unknown"
@@ -167,6 +174,7 @@ def evaluate_fit(hw: dict[str, Any] | None, catalog: dict[str, Any],
         "policy_version": catalog.get("policy_version"),
         "ai_fit_policy_catalog_sha256": catalog_sha256,
         "input_schema_version": ev["input_schema_version"],
+        "hardware_evidence_sha256": hardware_evidence_sha256(hw),
         "evidence_status": status,
         "gpu_count": ev["gpu_count"],
         "os_reserve_bytes": os_reserve,
