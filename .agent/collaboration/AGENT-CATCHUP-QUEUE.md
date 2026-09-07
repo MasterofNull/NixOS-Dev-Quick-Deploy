@@ -558,3 +558,33 @@ AQ-OS Workstation golden profile. p1-guided-tui + p1-parity-suite follow it.
 Note: my original 3 slice branch-commits (6bb2e2ba/fd867e97/112c943e) are NOT in HEAD history — you
 folded their CONTENT into 22295832 rather than merging the branches. Content is on main (what matters);
 the branches can be pruned.
+
+## [2026-09-07] P1 STARTED: aqos-workstation golden profile (p1-golden-profile)
+Author: claude-opus-4.8 (holding coordinator seat during Codex's break; owner asked to start p1-golden-profile).
+Owner will trigger the rebuild/switch to validate the build.
+
+**Slice:** the AQ-OS Workstation golden profile — one super-tuned, hardware-adaptive path for professional
+dev + gaming with OPTIONAL local AI.
+- `nix/modules/profiles/aqos-workstation.nix`: base (always) = desktop + cppDev + gaming + virtualization
+  roles, hardened kernel/crowdsec/secureboot posture, gamemode, firmware, dev fonts, touchpad defaults.
+  Local AI is OFF by default (mySystem.roles.aiStack.enable = mkDefault false) and EVERY AI dependency
+  lives inside a single `lib.mkIf aiOn` guard, so the AI-off path pulls in zero AI stack. AI-on enables the
+  stable core only (aiStack role + switchboard + mcpServers + commandCenter) — NOT the experimental
+  Foundation-C capability-lease/execution-cell activations (those stay ai-dev/dev-box specific).
+- `nix/modules/core/options.nix`: "aqos-workstation" added to the mySystem.profile enum.
+- `nix/data/profile-system-packages.nix`: aqos-workstation package list (pro-dev + modern CLI + the local
+  transcription tools; no AI-data-service tooling).
+- `flake.nix`: imports the profile module.
+- `scripts/testing/test-aqos-golden-profile.py` (5/5) + tier0 gate gate_aqos_golden_profile: lock the
+  invariant that no AI option leaks onto the AI-off base.
+
+**Functional validation done (Nix eval, extendModules with mkOverride 10 on the host):**
+- AI-off: aiStack=false, gaming=true, cppDev=true, desktop=true, mcp=false, switchboard=false, 32 pkgs.
+- AI-on:  aiStack=true, mcp=true, switchboard=true.
+- Flake evaluates cleanly with the new module imported (inert for other profiles).
+Remaining: the operator rebuild/switch is the "builds green" proof (owner will trigger).
+
+**Deps satisfied:** p0-mysystem-fieldset + p0-hardware-detector (both on main). **Next P1:** p1-guided-tui
+(thin TUI emitting a resolved plan into the ACTIVE nixos-quick-deploy.sh) then p1-parity-suite.
+Reviewer (non-author) on return: confirm the aiOn guard is the ONLY AI-dep site and the hardened defaults
+are appropriate for a beginner-facing blessed default.

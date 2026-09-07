@@ -536,6 +536,28 @@ gate_aqos_install_execution_verifier() {
   fi
 }
 
+gate_aqos_golden_profile() {
+  local changed=0 f
+  while IFS= read -r f; do
+    case "$f" in
+      nix/modules/profiles/aqos-workstation.nix|nix/data/profile-system-packages.nix|nix/modules/core/options.nix|flake.nix|scripts/testing/test-aqos-golden-profile.py|scripts/governance/tier0-validation-gate.sh)
+        changed=1
+        ;;
+    esac
+  done < <(collect_changed_files)
+  if [[ $changed -eq 0 ]]; then
+    pass "AQ-OS golden profile (not changed)"
+    return 0
+  fi
+  log "Checking AQ-OS Workstation golden profile contract..."
+  if python3 scripts/testing/test-aqos-golden-profile.py; then
+    pass "AQ-OS golden profile contract valid"
+  else
+    fail "AQ-OS golden profile contract failed"
+    return 1
+  fi
+}
+
 # Gate 5: YAML syntax validation
 gate_yaml_syntax() {
   log "Checking YAML syntax..."
@@ -1152,6 +1174,7 @@ gate_aqos_module_catalog || true
 gate_aqos_install_resolver || true
 gate_aqos_mysystem_fieldset || true
 gate_aqos_install_execution_verifier || true
+gate_aqos_golden_profile || true
 gate_yaml_syntax || true
 gate_toml_syntax || true
 gate_js_syntax || true

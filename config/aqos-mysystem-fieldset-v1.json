@@ -3,21 +3,166 @@
   "activation": "p0-inert",
   "default_rule": "Every mySystem field not listed here is expert-only and cannot be projected by an installer adapter.",
   "fields": [
-    {"path":"deployment.rootFsckMode","authority":"expert-only","value_kind":"enum","source_catalog_ids":["hw.platform.recovery"],"reason":"Recovery/fsck bypass changes boot safety and is outside P0."},
-    {"path":"hardware.cpuVendor","authority":"detector","value_kind":"enum","source_catalog_ids":["hw.cpu.amd","hw.cpu.apple-silicon","hw.cpu.arm","hw.cpu.intel","hw.cpu.qualcomm","hw.cpu.riscv64"],"reason":"Driver-independent hardware evidence; never user-selectable."},
-    {"path":"hardware.gpuVendor","authority":"detector","value_kind":"enum","source_catalog_ids":["hw.gpu.adreno","hw.gpu.amd","hw.gpu.apple","hw.gpu.intel","hw.gpu.intel-arc","hw.gpu.mali","hw.gpu.nvidia"],"reason":"Primary GPU assignment requires deterministic detector evidence."},
-    {"path":"hardware.igpuVendor","authority":"detector","value_kind":"enum","source_catalog_ids":["hw.gpu.amd","hw.gpu.apple","hw.gpu.intel"],"reason":"Integrated GPU assignment is derived separately from primary GPU evidence."},
-    {"path":"hardware.isMobile","authority":"detector","value_kind":"bool","source_catalog_ids":["hw.platform.mobile"],"reason":"Derived only when mobile evidence is sufficient."},
-    {"path":"hardware.storageType","authority":"detector","value_kind":"enum","source_catalog_ids":["hw.platform.storage"],"reason":"Derived only when storage evidence is sufficient."},
-    {"path":"hardware.systemRamGb","authority":"detector","value_kind":"int","source_catalog_ids":["hw.platform.ram-tuning","hw.platform.zram"],"reason":"One detector fact shared by RAM tuning and zram; never duplicated."},
-    {"path":"profile","authority":"user-intent","value_kind":"enum","source_catalog_ids":["profile.ai-dev","profile.gaming","profile.minimal"],"reason":"Closed to active profiles until the P1 golden profile lands."},
-    {"path":"roles.aiStack.enable","authority":"user-intent","value_kind":"bool","source_catalog_ids":["role.ai-stack"],"reason":"Derived from the optional-local-AI choice after AI-fit policy."},
-    {"path":"roles.cppDev.enable","authority":"user-intent","value_kind":"bool","source_catalog_ids":["role.cpp-dev"],"reason":"Schema-supported role selection."},
-    {"path":"roles.desktop.enable","authority":"user-intent","value_kind":"bool","source_catalog_ids":["role.desktop"],"reason":"Schema-supported role selection."},
-    {"path":"roles.gaming.enable","authority":"user-intent","value_kind":"bool","source_catalog_ids":["role.gaming"],"reason":"Schema-supported role selection with desktop dependency closure."},
-    {"path":"roles.kernelDev.enable","authority":"user-intent","value_kind":"bool","source_catalog_ids":["role.kernel-dev"],"reason":"Schema-supported role selection."},
-    {"path":"roles.mobile.enable","authority":"expert-only","value_kind":"bool","source_catalog_ids":["hw.platform.mobile"],"reason":"Expert override alias; normal installer path is detector-owned hardware.isMobile."},
-    {"path":"roles.server.enable","authority":"user-intent","value_kind":"bool","source_catalog_ids":["role.server"],"reason":"Schema-supported role selection."},
-    {"path":"roles.virtualization.enable","authority":"user-intent","value_kind":"bool","source_catalog_ids":["role.virtualization"],"reason":"Schema-supported role selection."}
+    {
+      "path": "deployment.rootFsckMode",
+      "authority": "expert-only",
+      "value_kind": "enum",
+      "source_catalog_ids": [
+        "hw.platform.recovery"
+      ],
+      "reason": "Recovery/fsck bypass changes boot safety and is outside P0."
+    },
+    {
+      "path": "hardware.cpuVendor",
+      "authority": "detector",
+      "value_kind": "enum",
+      "source_catalog_ids": [
+        "hw.cpu.amd",
+        "hw.cpu.apple-silicon",
+        "hw.cpu.arm",
+        "hw.cpu.intel",
+        "hw.cpu.qualcomm",
+        "hw.cpu.riscv64"
+      ],
+      "reason": "Driver-independent hardware evidence; never user-selectable."
+    },
+    {
+      "path": "hardware.gpuVendor",
+      "authority": "detector",
+      "value_kind": "enum",
+      "source_catalog_ids": [
+        "hw.gpu.adreno",
+        "hw.gpu.amd",
+        "hw.gpu.apple",
+        "hw.gpu.intel",
+        "hw.gpu.intel-arc",
+        "hw.gpu.mali",
+        "hw.gpu.nvidia"
+      ],
+      "reason": "Primary GPU assignment requires deterministic detector evidence."
+    },
+    {
+      "path": "hardware.igpuVendor",
+      "authority": "detector",
+      "value_kind": "enum",
+      "source_catalog_ids": [
+        "hw.gpu.amd",
+        "hw.gpu.apple",
+        "hw.gpu.intel"
+      ],
+      "reason": "Integrated GPU assignment is derived separately from primary GPU evidence."
+    },
+    {
+      "path": "hardware.isMobile",
+      "authority": "detector",
+      "value_kind": "bool",
+      "source_catalog_ids": [
+        "hw.platform.mobile"
+      ],
+      "reason": "Derived only when mobile evidence is sufficient."
+    },
+    {
+      "path": "hardware.storageType",
+      "authority": "detector",
+      "value_kind": "enum",
+      "source_catalog_ids": [
+        "hw.platform.storage"
+      ],
+      "reason": "Derived only when storage evidence is sufficient."
+    },
+    {
+      "path": "hardware.systemRamGb",
+      "authority": "detector",
+      "value_kind": "int",
+      "source_catalog_ids": [
+        "hw.platform.ram-tuning",
+        "hw.platform.zram"
+      ],
+      "reason": "One detector fact shared by RAM tuning and zram; never duplicated."
+    },
+    {
+      "path": "profile",
+      "authority": "user-intent",
+      "value_kind": "enum",
+      "source_catalog_ids": [
+        "profile.ai-dev",
+        "profile.aqos-workstation",
+        "profile.gaming",
+        "profile.minimal"
+      ],
+      "reason": "Closed to active profiles until the P1 golden profile lands."
+    },
+    {
+      "path": "roles.aiStack.enable",
+      "authority": "user-intent",
+      "value_kind": "bool",
+      "source_catalog_ids": [
+        "role.ai-stack"
+      ],
+      "reason": "Derived from the optional-local-AI choice after AI-fit policy."
+    },
+    {
+      "path": "roles.cppDev.enable",
+      "authority": "user-intent",
+      "value_kind": "bool",
+      "source_catalog_ids": [
+        "role.cpp-dev"
+      ],
+      "reason": "Schema-supported role selection."
+    },
+    {
+      "path": "roles.desktop.enable",
+      "authority": "user-intent",
+      "value_kind": "bool",
+      "source_catalog_ids": [
+        "role.desktop"
+      ],
+      "reason": "Schema-supported role selection."
+    },
+    {
+      "path": "roles.gaming.enable",
+      "authority": "user-intent",
+      "value_kind": "bool",
+      "source_catalog_ids": [
+        "role.gaming"
+      ],
+      "reason": "Schema-supported role selection with desktop dependency closure."
+    },
+    {
+      "path": "roles.kernelDev.enable",
+      "authority": "user-intent",
+      "value_kind": "bool",
+      "source_catalog_ids": [
+        "role.kernel-dev"
+      ],
+      "reason": "Schema-supported role selection."
+    },
+    {
+      "path": "roles.mobile.enable",
+      "authority": "expert-only",
+      "value_kind": "bool",
+      "source_catalog_ids": [
+        "hw.platform.mobile"
+      ],
+      "reason": "Expert override alias; normal installer path is detector-owned hardware.isMobile."
+    },
+    {
+      "path": "roles.server.enable",
+      "authority": "user-intent",
+      "value_kind": "bool",
+      "source_catalog_ids": [
+        "role.server"
+      ],
+      "reason": "Schema-supported role selection."
+    },
+    {
+      "path": "roles.virtualization.enable",
+      "authority": "user-intent",
+      "value_kind": "bool",
+      "source_catalog_ids": [
+        "role.virtualization"
+      ],
+      "reason": "Schema-supported role selection."
+    }
   ]
 }

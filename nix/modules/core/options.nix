@@ -30,7 +30,7 @@
     };
 
     profile = lib.mkOption {
-      type = lib.types.enum ["ai-dev" "gaming" "minimal"];
+      type = lib.types.enum ["ai-dev" "aqos-workstation" "gaming" "minimal"];
       default = "minimal";
       description = "Declarative system profile selector.";
     };

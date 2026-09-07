@@ -489,6 +489,30 @@
       "source": "nix/modules/profiles/ai-dev.nix"
     },
     {
+      "id": "profile.aqos-workstation",
+      "category": "profile",
+      "label": "AQ-OS Workstation golden profile",
+      "description": "Blessed golden path: professional dev + gaming with OPTIONAL local AI (off by default).",
+      "module_path": "nix/modules/profiles/aqos-workstation.nix",
+      "support_predicate": {
+        "kind": "enum-match",
+        "option": "profile",
+        "values": [
+          "aqos-workstation"
+        ]
+      },
+      "resource_cost": {
+        "ram_class": "moderate",
+        "disk_class": "heavy"
+      },
+      "deps": [],
+      "conflicts": [],
+      "projected_mysystem_fields": [
+        "profile"
+      ],
+      "source": "nix/modules/profiles/aqos-workstation.nix"
+    },
+    {
       "id": "profile.gaming",
       "category": "profile",
       "label": "Gaming profile",
