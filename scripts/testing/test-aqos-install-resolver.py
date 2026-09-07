@@ -17,6 +17,7 @@ SCHEMA = json.loads((ROOT / "config/schemas/aqos-install-plan-v1.schema.json").r
 MODULE_BYTES = (ROOT / "config/aqos-module-catalog-v1.json").read_bytes()
 MODULES = json.loads(MODULE_BYTES)
 AI_BYTES = (ROOT / "config/aqos-ai-fit-policy-catalog-v1.json").read_bytes()
+FIELDSET_BYTES = (ROOT / "config/aqos-mysystem-fieldset-v1.json").read_bytes()
 
 
 def load():
@@ -82,11 +83,11 @@ def test_cross_adapter_byte_parity_and_projection() -> None:
         r.normalize_adapter("legacy", {"profile": "ai-dev", "roles": ["role.gaming"],
                                         "include_local_ai": True, "host": "host"}),
     ]
-    locks = [r.resolve_plan(item, hw(), MODULES, MODULE_BYTES, AI_BYTES, SCHEMA, source()) for item in sources]
+    locks = [r.resolve_plan(item, hw(), MODULES, MODULE_BYTES, AI_BYTES, FIELDSET_BYTES, SCHEMA, source()) for item in sources]
     wires = [r.jcs_bytes(item) for item in locks]
     assert len(set(wires)) == 1
     assert locks[0]["selection"]["roles"] == ["role.ai-stack", "role.desktop", "role.gaming"]
-    projection = r.compile_projection(locks[0], MODULES)
+    projection = r.compile_projection(locks[0], MODULES, FIELDSET_BYTES)
     assert projection["executor"]["executable"] is False
     assert projection["executor"]["blocked_reason"] == "fieldset-and-execution-verifier-not-active"
     assert projection["executor"]["argv"][:5] == ["/repo/nixos-quick-deploy.sh", "--host", "host", "--profile", "ai-dev"]
@@ -103,7 +104,7 @@ def test_provenance_does_not_change_semantic_lock() -> None:
     with_extra = dict(base)
     with_extra["provenance"] = {"ui": "guided"}
     try:
-        r.resolve_plan(with_extra, hw(), MODULES, MODULE_BYTES, AI_BYTES, SCHEMA, source())
+        r.resolve_plan(with_extra, hw(), MODULES, MODULE_BYTES, AI_BYTES, FIELDSET_BYTES, SCHEMA, source())
         raise AssertionError("semantic provenance accepted")
     except r.ResolverError as exc:
         assert exc.reason == "schema_invalid"
@@ -112,9 +113,9 @@ def test_provenance_does_not_change_semantic_lock() -> None:
 def test_default_golden_profile_is_locked_but_not_executable_before_p1() -> None:
     r = load()
     req = {"artifact_type": "request_plan", "schema_version": "aqos-install-plan/v1", "host_target": "host"}
-    lock = r.resolve_plan(req, hw(), MODULES, MODULE_BYTES, AI_BYTES, SCHEMA, source())
+    lock = r.resolve_plan(req, hw(), MODULES, MODULE_BYTES, AI_BYTES, FIELDSET_BYTES, SCHEMA, source())
     assert lock["selection"]["golden_profile"] == "aqos-workstation"
-    projection = r.compile_projection(lock, MODULES)
+    projection = r.compile_projection(lock, MODULES, FIELDSET_BYTES)
     assert projection["executor"]["entrypoint"] == "/repo/nixos-quick-deploy.sh"
     assert projection["executor"]["executable"] is False
     assert projection["executor"]["blocked_reason"] == "profile-not-active-until-p1"
@@ -132,7 +133,7 @@ def test_unknown_role_and_not_advised_ai_fail_closed() -> None:
         (request(), no_ram, "local_ai_not_advised"),
     ):
         try:
-            r.resolve_plan(req, evidence, MODULES, MODULE_BYTES, AI_BYTES, SCHEMA, source())
+            r.resolve_plan(req, evidence, MODULES, MODULE_BYTES, AI_BYTES, FIELDSET_BYTES, SCHEMA, source())
             raise AssertionError("unsafe request accepted")
         except r.ResolverError as exc:
             assert exc.reason == reason

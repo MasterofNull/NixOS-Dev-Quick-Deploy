@@ -134,6 +134,7 @@ def main() -> int:
     assert "Evidence-collector suite (skipped — test suite absent)" not in source
     assert 'timeout "${suite_timeout_seconds}s" python3' in source
     assert "Harness regression diagnostics" in source
+    assert '".claude/settings.json"' in source
 
     passing = run_gate(REQUIRED_SUITES)
     assert passing.returncode == 0, passing.stderr or passing.stdout
