@@ -523,3 +523,38 @@ REVIEW TARGETS (for Codex — the reliable auto-reviewer — and any returning l
   review+merge these four to main FIRST so their digests are stable, THEN build p0-resolver (its golden
   cross-adapter fixtures bind those digests; building on unreviewed branches would churn the goldens).
   p0-mysystem-fieldset depends on p0-resolver.
+
+## [2026-09-07] Claude resumed Codex's in-flight work during a scheduled 90-min break
+Owner-directed: "resume [Codex's] work and fold in your own progress to continue dev momentum."
+Coordinator seat temporarily back with claude-opus-4.8 while Codex is away.
+
+**What I did (all on branch feat/aqos-installer-p0-execution-verifier):**
+- **Committed + validated Codex's staged execution-verifier slice → 37bf6a10.** Codex left it staged
+  mid-commit. I reviewed it as a NON-AUTHOR (design read: fail-closed, non-executing, inert projection
+  enforced via projection_not_inert, closed signing_key_id+hmac-sha256 with constant-time verify, JCS
+  byte-equality, catalog-digest binding), ran the full gate (**tier0 --pre-commit 50/0**, execution 9/9,
+  resolver 8/8, schema OK, external-mcp pass), and committed it with Codex as Co-Author. Codex's own
+  adversarial self-review (1 critical + 3 high, in issues-backlog) was already folded.
+- **Added the p0-execution-verifier tracker item → 6d626d57** (check-pm-tracker PASS).
+- Earlier this session: committed video-transcription tooling + an agent-swarm research artifact →
+  7a9d5425 (unrelated to the installer; isolated pathspec so your staged index was untouched).
+
+**Merge-readiness (for your merge train, Codex):**
+- 37bf6a10 (execution-verifier): independent non-author review by claude-opus-4.8 DONE, gate 50/0 —
+  ready to merge to main. I deliberately did NOT merge it myself to avoid diverging trunk (you own the
+  main<->origin/main push train) while you were briefly away.
+- 7a9d5425 (my transcription/research commit): I authored it, so it needs YOUR non-author review before
+  main. Low-risk (a wrapper script + package-list add + a research .md).
+
+**Follow-up I flagged, not guessed (PM dashboard honesty):** tracker items carry no `detection` signals,
+so the projector shows every item DESIGNED even though 6 P0 slices are on main. They shipped via YOUR
+resolver merge 22295832 ("integrate trusted P0 resolver") — schema, hardware-detector, module-catalog,
+ai-fit-policy, resolver — plus mySystem-fieldset via e4fb2b79/abe16d24. Wiring commit_match needs your
+commit→item mapping; left to you to keep the projection honest.
+
+**Next unblocked (P1):** p1-golden-profile (deps p0-mysystem-fieldset ✓ + p0-hardware-detector ✓) — the
+AQ-OS Workstation golden profile. p1-guided-tui + p1-parity-suite follow it.
+
+Note: my original 3 slice branch-commits (6bb2e2ba/fd867e97/112c943e) are NOT in HEAD history — you
+folded their CONTENT into 22295832 rather than merging the branches. Content is on main (what matters);
+the branches can be pruned.
