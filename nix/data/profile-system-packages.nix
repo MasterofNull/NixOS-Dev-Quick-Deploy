@@ -114,4 +114,50 @@
     "neovim"
     "python3"
   ];
+
+  # Golden AQ-OS Workstation: professional dev + gaming CLI toolset. NO AI-service
+  # tooling here — the optional local AI stack is gated separately in the profile,
+  # so this list stays clean on the AI-off golden path. Gaming apps (Steam/Proton/
+  # mangohud) arrive via the gaming role, not this list.
+  aqos-workstation = [
+    # Languages / runtimes
+    "nodejs"
+    "bun"
+    "typescript"
+    "go"
+    "cargo"
+    "ruby"
+    "python3"
+    "python312"
+    # Editors / db
+    "neovim"
+    "sqlite"
+    # Dev + build
+    "cmake"
+    "clang"
+    "httpie"
+    # Modern CLI quality-of-life
+    "hyperfine"
+    "bottom"
+    "tealdeer"
+    "procs"
+    "dust"
+    "sd"
+    "xh"
+    "watchexec"
+    # Secrets / filesystem / hardware
+    "sops"
+    "age"
+    "btrfs-progs"
+    "pciutils"
+    # Networking diagnostics
+    "nmap"
+    "mtr"
+    "traceroute"
+    # Local media transcription (offline research ingestion; see scripts/ai/aq-transcribe)
+    "yt-dlp"
+    "ffmpeg"
+    "openai-whisper"
+    "whisper-cpp"
+  ];
 }
