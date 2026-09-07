@@ -73,6 +73,19 @@
     "xh"
     # watchexec: run commands on file change; useful during development.
     "watchexec"
+
+    # ── Local media transcription (offline research ingestion) ───────────────
+    # Fully local, no cloud API. Pipeline: yt-dlp fetches the audio (or the
+    # creator's caption track), ffmpeg extracts/normalizes audio, whisper does
+    # offline ASR. Used to turn talks/videos into text agents can leverage.
+    # yt-dlp: download video/audio + subtitle/caption tracks from YouTube etc.
+    "yt-dlp"
+    # ffmpeg: audio extraction/normalization; whisper depends on it at runtime.
+    "ffmpeg"
+    # openai-whisper: reference ASR; CLI `whisper` (CPU on this APU, no CUDA).
+    "openai-whisper"
+    # whisper-cpp: faster CPU whisper (GGML); CLI `whisper-cli`, needs a GGML model.
+    "whisper-cpp"
   ];
 
   gaming = [

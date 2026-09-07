@@ -1,0 +1,162 @@
+#!/usr/bin/env bash
+# aq-transcribe — fully-local video/audio -> text for agent research ingestion.
+#
+# Purpose: turn a talk/video (YouTube URL or a local audio/video file) into text
+# our local and remote agents can leverage, with NO cloud transcription API. The
+# whole pipeline runs offline on this machine:
+#   yt-dlp   downloads the audio and any creator/auto caption track
+#   ffmpeg   extracts + normalizes the audio (16 kHz mono wav) for the recognizer
+#   whisper  offline speech-to-text (CPU on this APU; no CUDA needed)
+#
+# It prefers a creator-authored subtitle track when one exists (most accurate)
+# and otherwise runs Whisper ASR, and it always records WHICH source produced the
+# text so downstream agents know how much to trust it. Visual-only content
+# (slides, on-screen code) is NOT captured — this is audio -> text only.
+#
+# Usage:
+#   aq-transcribe <youtube-url | local-file> [options]
+#     --model <tiny|base|small|medium|large>  Whisper model (default: small)
+#     --out <dir>       output directory (default: ./transcripts/<id>)
+#     --lang <code>     force language (e.g. en); default: auto-detect
+#     --force-whisper   ignore caption tracks, always run Whisper ASR
+#     --keep-audio      do not delete the downloaded/extracted audio
+#
+# Outputs (in the out dir): metadata.json, transcript.txt, transcript.json
+# (segments+timestamps when Whisper is used), plus .srt/.vtt when available, and
+# SOURCE.txt naming the transcript source (creator-subtitles | whisper-asr).
+
+set -euo pipefail
+
+MODEL="small"
+OUT=""
+LANG=""
+FORCE_WHISPER=0
+KEEP_AUDIO=0
+INPUT=""
+
+die() { printf 'aq-transcribe: %s\n' "$*" >&2; exit 1; }
+
+while [[ $# -gt 0 ]]; do
+  case "$1" in
+    --model) MODEL="${2:?}"; shift 2 ;;
+    --out) OUT="${2:?}"; shift 2 ;;
+    --lang) LANG="${2:?}"; shift 2 ;;
+    --force-whisper) FORCE_WHISPER=1; shift ;;
+    --keep-audio) KEEP_AUDIO=1; shift ;;
+    -h|--help) sed -n '2,30p' "$0"; exit 0 ;;
+    -*) die "unknown option: $1" ;;
+    *) [[ -z "$INPUT" ]] && INPUT="$1" || die "unexpected extra argument: $1"; shift ;;
+  esac
+done
+
+[[ -n "$INPUT" ]] || die "need a YouTube URL or a local audio/video file (see --help)"
+
+# Preflight: the tools are declared in nix/data/profile-system-packages.nix
+# (ai-dev profile). If this host has not rebuilt yet, hand the caller a working
+# offline command instead of failing opaquely.
+need_whisper_bin=""
+if command -v whisper >/dev/null 2>&1; then need_whisper_bin="whisper"
+elif command -v whisper-cli >/dev/null 2>&1; then need_whisper_bin="whisper-cli"; fi
+
+missing=()
+command -v yt-dlp  >/dev/null 2>&1 || missing+=("yt-dlp")
+command -v ffmpeg  >/dev/null 2>&1 || missing+=("ffmpeg")
+[[ -n "$need_whisper_bin" ]]      || missing+=("openai-whisper (whisper)")
+if [[ ${#missing[@]} -gt 0 ]]; then
+  cat >&2 <<EOF
+aq-transcribe: missing local tools: ${missing[*]}
+
+These are declared for the ai-dev profile; run a rebuild to install them
+permanently:  sudo nixos-rebuild switch --flake .#hyperd-ai-dev
+
+To transcribe RIGHT NOW without a rebuild, drop into an ad-hoc shell that has
+them and re-run this script inside it:
+
+  nix shell nixpkgs#yt-dlp nixpkgs#ffmpeg nixpkgs#openai-whisper \\
+    -c scripts/ai/aq-transcribe "$INPUT" --model $MODEL
+EOF
+  exit 3
+fi
+
+is_url=0
+[[ "$INPUT" =~ ^https?:// ]] && is_url=1
+
+# Resolve an id + output dir.
+if [[ $is_url -eq 1 ]]; then
+  vid="$(yt-dlp --no-warnings --get-id "$INPUT" 2>/dev/null || true)"
+  [[ -n "$vid" ]] || vid="video"
+else
+  [[ -f "$INPUT" ]] || die "local file not found: $INPUT"
+  vid="$(basename "${INPUT%.*}")"
+fi
+OUT="${OUT:-transcripts/${vid}}"
+mkdir -p "$OUT"
+work="$(mktemp -d)"
+cleanup() { [[ $KEEP_AUDIO -eq 0 ]] && rm -rf "$work" 2>/dev/null || true; }
+trap cleanup EXIT
+
+audio=""
+source_kind=""
+
+if [[ $is_url -eq 1 ]]; then
+  echo "[aq-transcribe] fetching metadata + captions: $INPUT"
+  yt-dlp --no-warnings --dump-json "$INPUT" > "$OUT/metadata.json" 2>/dev/null \
+    || echo '{}' > "$OUT/metadata.json"
+
+  # Prefer a creator/auto caption track unless --force-whisper.
+  if [[ $FORCE_WHISPER -eq 0 ]]; then
+    yt-dlp --no-warnings --skip-download \
+      --write-subs --write-auto-subs --sub-langs "${LANG:-en}.*,en" \
+      --sub-format vtt --convert-subs vtt \
+      -o "$work/%(id)s.%(ext)s" "$INPUT" >/dev/null 2>&1 || true
+    sub="$(find "$work" -name '*.vtt' 2>/dev/null | sort | head -n1 || true)"
+    if [[ -n "$sub" ]]; then
+      # Strip WEBVTT header, cue timings, and de-duplicate rolling caption lines.
+      awk '
+        /-->/ {next} /^WEBVTT/ {next} /^NOTE/ {next} /^[0-9]+$/ {next}
+        { gsub(/<[^>]*>/,""); sub(/\r$/,""); if ($0 != "" && $0 != prev) { print; prev=$0 } }
+      ' "$sub" > "$OUT/transcript.txt"
+      cp "$sub" "$OUT/transcript.vtt" 2>/dev/null || true
+      source_kind="creator-or-auto-subtitles"
+    fi
+  fi
+
+  if [[ -z "$source_kind" ]]; then
+    echo "[aq-transcribe] no caption track used; downloading audio for Whisper ASR"
+    yt-dlp --no-warnings -f bestaudio -x --audio-format wav \
+      -o "$work/audio.%(ext)s" "$INPUT" >/dev/null 2>&1 \
+      || die "yt-dlp failed to download audio (network? geo-block?)"
+    audio="$(find "$work" -name 'audio.*' | head -n1)"
+  fi
+else
+  printf '{"local_file":"%s"}\n' "$INPUT" > "$OUT/metadata.json"
+  echo "[aq-transcribe] extracting audio from local file"
+  ffmpeg -y -i "$INPUT" -ar 16000 -ac 1 "$work/audio.wav" >/dev/null 2>&1 \
+    || die "ffmpeg failed to extract audio from $INPUT"
+  audio="$work/audio.wav"
+fi
+
+if [[ -n "$audio" ]]; then
+  echo "[aq-transcribe] running Whisper ($MODEL) — first run downloads the model weights"
+  lang_args=(); [[ -n "$LANG" ]] && lang_args=(--language "$LANG")
+  if [[ "$need_whisper_bin" == "whisper" ]]; then
+    whisper "$audio" --model "$MODEL" --output_dir "$OUT" \
+      --output_format all "${lang_args[@]}" >/dev/null 2>&1 \
+      || die "whisper transcription failed"
+    base="$OUT/$(basename "${audio%.*}")"
+    [[ -f "$base.txt" ]]  && cp "$base.txt"  "$OUT/transcript.txt"
+    [[ -f "$base.json" ]] && cp "$base.json" "$OUT/transcript.json"
+  else
+    "$need_whisper_bin" -f "$audio" -otxt -oj -of "$OUT/transcript" >/dev/null 2>&1 \
+      || die "whisper-cli transcription failed"
+  fi
+  source_kind="whisper-asr(model=$MODEL)"
+fi
+
+printf '%s\n' "$source_kind" > "$OUT/SOURCE.txt"
+chars=$(wc -m < "$OUT/transcript.txt" 2>/dev/null || echo 0)
+echo "[aq-transcribe] done."
+echo "  source:  $source_kind"
+echo "  output:  $OUT/ (transcript.txt, metadata.json$( [[ -f "$OUT/transcript.json" ]] && echo ', transcript.json'))"
+echo "  length:  ${chars} characters"
+echo "  preview: $(head -c 300 "$OUT/transcript.txt" 2>/dev/null | tr '\n' ' ')"
