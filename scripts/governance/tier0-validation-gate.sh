@@ -491,6 +491,28 @@ gate_aqos_install_resolver() {
   fi
 }
 
+gate_aqos_mysystem_fieldset() {
+  local changed=0 f
+  while IFS= read -r f; do
+    case "$f" in
+      config/aqos-mysystem-fieldset-v1.json|config/aqos-module-catalog-v1.json|nix/modules/core/options.nix|nix/modules/roles/cpp-dev.nix|nix/modules/roles/kernel-dev.nix|scripts/ai/lib/aqos_install_resolver.py|scripts/testing/test-aqos-mysystem-fieldset.py|docs/architecture/aqos-installer-fieldset.md|scripts/governance/tier0-validation-gate.sh)
+        changed=1
+        ;;
+    esac
+  done < <(collect_changed_files)
+  if [[ $changed -eq 0 ]]; then
+    pass "AQ-OS mySystem field set (not changed)"
+    return 0
+  fi
+  log "Checking AQ-OS mySystem field-set contract..."
+  if python3 scripts/testing/test-aqos-mysystem-fieldset.py; then
+    pass "AQ-OS mySystem field-set contract valid"
+  else
+    fail "AQ-OS mySystem field-set contract failed"
+    return 1
+  fi
+}
+
 # Gate 5: YAML syntax validation
 gate_yaml_syntax() {
   log "Checking YAML syntax..."
@@ -1105,6 +1127,7 @@ gate_aqos_install_plan_schema || true
 gate_aqos_ai_fit_policy || true
 gate_aqos_module_catalog || true
 gate_aqos_install_resolver || true
+gate_aqos_mysystem_fieldset || true
 gate_yaml_syntax || true
 gate_toml_syntax || true
 gate_js_syntax || true
