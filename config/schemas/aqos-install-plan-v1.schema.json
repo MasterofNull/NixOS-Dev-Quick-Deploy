@@ -108,10 +108,11 @@
     "catalogDigests": {
       "type": "object",
       "additionalProperties": false,
-      "required": ["module_catalog_sha256", "ai_fit_policy_catalog_sha256"],
+      "required": ["module_catalog_sha256", "ai_fit_policy_catalog_sha256", "mysystem_fieldset_sha256"],
       "properties": {
         "module_catalog_sha256": { "$ref": "#/$defs/sha256" },
-        "ai_fit_policy_catalog_sha256": { "$ref": "#/$defs/sha256" }
+        "ai_fit_policy_catalog_sha256": { "$ref": "#/$defs/sha256" },
+        "mysystem_fieldset_sha256": { "$ref": "#/$defs/sha256" }
       }
     },
     "sourceIdentitySha1": {
@@ -166,15 +167,21 @@
     "executionAuthorizationReceipt": {
       "type": "object",
       "additionalProperties": false,
-      "required": ["artifact_type", "schema_version", "resolved_plan_sha256", "hardware_identity_sha256", "issued_at", "expires_at", "nonce"],
+      "required": ["artifact_type", "schema_version", "resolved_plan_sha256", "source_identity_sha256", "projection_sha256", "hardware_identity_sha256", "authorized_action", "issued_at", "expires_at", "nonce", "signing_key_id", "mac_algorithm", "mac_hmac_sha256"],
       "properties": {
         "artifact_type": { "const": "execution_authorization_receipt" },
         "schema_version": { "$ref": "#/$defs/schemaVersion" },
         "resolved_plan_sha256": { "$ref": "#/$defs/sha256" },
+        "source_identity_sha256": { "$ref": "#/$defs/sha256" },
+        "projection_sha256": { "$ref": "#/$defs/sha256" },
         "hardware_identity_sha256": { "$ref": "#/$defs/sha256" },
+        "authorized_action": { "const": "build-only" },
         "issued_at": { "$ref": "#/$defs/timestamp" },
         "expires_at": { "$ref": "#/$defs/timestamp" },
-        "nonce": { "type": "string", "pattern": "^[a-f0-9]{32,128}$" }
+        "nonce": { "type": "string", "pattern": "^[a-f0-9]{32,128}$" },
+        "signing_key_id": { "$ref": "#/$defs/stableId" },
+        "mac_algorithm": { "const": "hmac-sha256" },
+        "mac_hmac_sha256": { "$ref": "#/$defs/sha256" }
       }
     }
   }

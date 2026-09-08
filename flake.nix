@@ -151,6 +151,7 @@
           ./nix/modules/services/default.nix
           ./nix/modules/profiles/minimal.nix
           ./nix/modules/profiles/ai-dev.nix
+          ./nix/modules/profiles/aqos-workstation.nix
           ./nix/modules/host-classes/p14s-amd-ai-workstation.nix
           ./nix/modules/profiles/gaming.nix
           ./nix/modules/hardware/default.nix

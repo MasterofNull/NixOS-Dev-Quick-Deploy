@@ -73,6 +73,19 @@
     "xh"
     # watchexec: run commands on file change; useful during development.
     "watchexec"
+
+    # ── Local media transcription (offline research ingestion) ───────────────
+    # Fully local, no cloud API. Pipeline: yt-dlp fetches the audio (or the
+    # creator's caption track), ffmpeg extracts/normalizes audio, whisper does
+    # offline ASR. Used to turn talks/videos into text agents can leverage.
+    # yt-dlp: download video/audio + subtitle/caption tracks from YouTube etc.
+    "yt-dlp"
+    # ffmpeg: audio extraction/normalization; whisper depends on it at runtime.
+    "ffmpeg"
+    # openai-whisper: reference ASR; CLI `whisper` (CPU on this APU, no CUDA).
+    "openai-whisper"
+    # whisper-cpp: faster CPU whisper (GGML); CLI `whisper-cli`, needs a GGML model.
+    "whisper-cpp"
   ];
 
   gaming = [
@@ -100,5 +113,54 @@
     "ruby"
     "neovim"
     "python3"
+  ];
+
+  # Golden AQ-OS Workstation: professional dev + gaming CLI toolset. NO AI-service
+  # tooling here — the optional local AI stack is gated separately in the profile,
+  # so this list stays clean on the AI-off golden path. Gaming apps (Steam/Proton/
+  # mangohud) arrive via the gaming role, not this list.
+  aqos-workstation = [
+    # Languages / runtimes
+    "nodejs"
+    "bun"
+    "typescript"
+    "go"
+    "cargo"
+    "ruby"
+    "python3"
+    "python312"
+    # Editors / db
+    "neovim"
+    "sqlite"
+    # Dev + build
+    "cmake"
+    "clang"
+    "httpie"
+    # Modern CLI quality-of-life
+    "hyperfine"
+    "bottom"
+    "tealdeer"
+    "procs"
+    "dust"
+    "sd"
+    "xh"
+    "watchexec"
+    # Secrets / filesystem / hardware
+    "sops"
+    "age"
+    "btrfs-progs"
+    "pciutils"
+    # Networking diagnostics
+    "nmap"
+    "mtr"
+    "traceroute"
+    # General media tools (NOT AI): yt-dlp + ffmpeg only. The ML transcription
+    # runners (openai-whisper / whisper-cpp) are DELIBERATELY excluded from the
+    # golden base — they are AI dependencies and would violate the golden path's
+    # "AI-off installs no AI deps" invariant. On the AI-on path they arrive with the
+    # aiStack role (and remain in the ai-dev profile). Removing them here fixes the
+    # AI-off package leak the independent review caught.
+    "yt-dlp"
+    "ffmpeg"
   ];
 }
