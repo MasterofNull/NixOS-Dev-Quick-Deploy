@@ -15,6 +15,8 @@ GUIDED = REPO / "scripts" / "ai" / "aqos-guided-install"
 AIFIT = REPO / "scripts" / "ai" / "lib" / "ai_fit.py"
 CATALOG = REPO / "config" / "aqos-ai-fit-policy-catalog-v1.json"
 GIB = 1024**3
+sys.path.insert(0, str(REPO / "scripts" / "ai" / "lib"))
+import aqos_install_resolver as resolver  # noqa: E402
 
 
 def load(path, name):
@@ -44,7 +46,7 @@ def test_ai_off_by_default_when_not_advised():
     hw = _hw(2 * GIB)  # too small -> not_advised
     r = g.run(hw, cat, dig, host_target="h", ai_choice=None)
     assert r["ai"]["verdict"] == "not_advised"
-    assert r["request"]["selection"]["include_local_ai"] is False
+    assert r["request"]["answers"]["include_local_ai"] is False
 
 
 def test_ai_on_by_default_when_recommended():
@@ -53,7 +55,7 @@ def test_ai_on_by_default_when_recommended():
     hw = _hw(64 * GIB, present=True, outcome="detected", mem="dedicated", vendor="0x10de", vram=24 * GIB)
     r = g.run(hw, cat, dig, host_target="h", ai_choice=None)
     assert r["ai"]["verdict"] == "recommended"
-    assert r["request"]["selection"]["include_local_ai"] is True
+    assert r["request"]["answers"]["include_local_ai"] is True
     assert r["ai"]["recommended_model"]
 
 
@@ -62,19 +64,35 @@ def test_explicit_yes_on_weak_hw_warns_but_honors():
     cat, dig = _cat()
     hw = _hw(2 * GIB)  # not_advised
     r = g.run(hw, cat, dig, host_target="h", ai_choice="yes")
-    assert r["request"]["selection"]["include_local_ai"] is True
+    assert r["request"]["answers"]["include_local_ai"] is True
     assert r["ai"]["warning"] and "NOT ADVISED" in r["ai"]["warning"]
 
 
-def test_request_is_resolver_guided_shape():
+def test_request_is_resolver_guided_ADAPTER_INPUT_shape():
+    """The guided front-end emits the guided-ADAPTER INPUT (answers), not a request_plan."""
     g = load(GUIDED, "guided")
     req = g.build_guided_request("myhost", True, roles=["role.gaming"])
-    assert req["artifact_type"] == "request_plan"
-    assert req["schema_version"] == "aqos-install-plan/v1"
-    assert req["selection"]["golden_profile"] == "aqos-workstation"
-    assert req["selection"]["include_local_ai"] is True
-    assert req["selection"]["roles"] == ["role.gaming"]
+    assert set(req) == {"answers", "host_target"}, req  # NOT a pre-built request_plan
+    assert req["answers"]["golden_profile"] == "aqos-workstation"
+    assert req["answers"]["include_local_ai"] is True
+    assert req["answers"]["roles"] == ["role.gaming"]
     assert req["host_target"] == "myhost"
+
+
+def test_guided_output_round_trips_through_the_guided_adapter_no_data_loss():
+    """REGRESSION (silent-data-loss bug): the REAL guided output, fed through the SAME
+    `--adapter guided` the tool prints, must PRESERVE the operator's choices. Before the
+    fix the script emitted a request_plan while telling the operator to use --adapter
+    guided, so normalize_adapter('guided', ...) read a missing `answers` key and produced
+    selection={} — every choice silently dropped. This asserts the real seam, not a fixture."""
+    g = load(GUIDED, "guided")
+    req = g.build_guided_request("myhost", True, roles=["role.gaming"])
+    normalized = resolver.normalize_adapter("guided", req)  # exactly what the CLI tells you to run
+    sel = normalized["selection"]
+    assert sel.get("include_local_ai") is True, normalized   # would be dropped by the bug
+    assert sel.get("roles") == ["role.gaming"], normalized    # would be dropped by the bug
+    assert sel.get("golden_profile") == "aqos-workstation", normalized
+    assert normalized["host_target"] == "myhost"
 
 
 def test_flow_is_non_destructive():
@@ -92,16 +110,17 @@ def test_flow_is_non_destructive():
         rc = g.main(["--hardware", str(hwf), "--out", str(out), "--host-target", "h", "--ai", "no", "--json"])
         assert rc == 0 and out.exists()
         assert set(p.name for p in Path(d).iterdir()) == {"req.json", "hw.json"}
-        assert json.loads(out.read_text())["selection"]["include_local_ai"] is False
+        assert json.loads(out.read_text())["answers"]["include_local_ai"] is False
 
 
 def main() -> int:
     test_ai_off_by_default_when_not_advised()
     test_ai_on_by_default_when_recommended()
     test_explicit_yes_on_weak_hw_warns_but_honors()
-    test_request_is_resolver_guided_shape()
+    test_request_is_resolver_guided_ADAPTER_INPUT_shape()
+    test_guided_output_round_trips_through_the_guided_adapter_no_data_loss()
     test_flow_is_non_destructive()
-    print("test-aqos-guided-install: ok 5/5")
+    print("test-aqos-guided-install: ok 6/6")
     return 0
 
 

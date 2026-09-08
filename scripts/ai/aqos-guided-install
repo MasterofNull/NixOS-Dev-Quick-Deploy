@@ -61,11 +61,14 @@ def ai_decision(hw: dict, ai_catalog: dict, digest: str, choice: str | None) -> 
 
 def build_guided_request(host_target: str, include_local_ai: bool,
                          roles: list[str] | None = None) -> dict:
-    """The guided request artifact — the SAME shape the resolver's guided adapter takes."""
+    """The guided ADAPTER INPUT — the raw answers the resolver's `--adapter guided`
+    consumes. normalize_adapter("guided", ...) reads `answers` and normalizes it into
+    the canonical request_plan; emitting a request_plan here (with `selection`) would
+    make the guided adapter silently drop every choice (answers=None -> selection={}).
+    The guided front-end therefore emits answers, and the guided adapter does the
+    shaping — so guided/AI/manual genuinely converge on ONE resolver."""
     return {
-        "artifact_type": "request_plan",
-        "schema_version": "aqos-install-plan/v1",
-        "selection": {
+        "answers": {
             "golden_profile": GOLDEN_PROFILE,
             "roles": sorted(roles or []),
             "include_local_ai": bool(include_local_ai),
@@ -75,7 +78,7 @@ def build_guided_request(host_target: str, include_local_ai: bool,
 
 
 def preview(request: dict, ai: dict) -> str:
-    sel = request["selection"]
+    sel = request["answers"]
     lines = [
         "AQ-OS Workstation — guided install preview (NOTHING is changed yet)",
         f"  golden profile : {sel['golden_profile']}  (professional dev + gaming, hardware-tuned)",
@@ -114,7 +117,14 @@ def main(argv: list[str] | None = None) -> int:
 
     hw_probe = _load("hw_probe")
     ai_fit = _load("ai_fit")
-    hw = json.loads(args.hardware.read_text()) if args.hardware else hw_probe.probe_hardware()
+    if args.hardware:
+        try:  # fail-safe: a bad --hardware file is a clean operator error, not a traceback
+            hw = json.loads(args.hardware.read_text())
+        except (OSError, ValueError) as exc:
+            print(f"error: could not read hardware probe {args.hardware}: {exc}", file=sys.stderr)
+            return 2
+    else:
+        hw = hw_probe.probe_hardware()
     ai_catalog, digest = ai_fit.load_catalog(REPO / ai_fit.CATALOG_PATH)
 
     result = run(hw, ai_catalog, digest, host_target=args.host_target,
