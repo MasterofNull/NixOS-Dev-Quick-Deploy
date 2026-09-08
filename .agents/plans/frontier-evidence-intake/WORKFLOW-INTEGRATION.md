@@ -59,3 +59,20 @@ Optional backstop (NOT the primary mechanism): a low-frequency parity sweep for
 concepts nobody has queried in a long time — so a totally-untouched subject still
 gets a periodic look. This is the only place a timer remains, and it is a backstop,
 not the access path.
+
+## Acceptance is by multi-expert debate, never auto-approval (owner directive 2026-09-08)
+A finding is a PROPOSAL until the expert team debates it. Lifecycle:
+`new (proposed) -> in_review -> [support/concerns/reject verdicts from independent lanes] -> accepted | rejected`.
+- `aq-frontier review <id>` routes a proposal to the multi-expert team and prints the adversarial-review
+  brief (is the primary source solid + not overclaimed? honest for OUR hardware/constraints? real help or
+  hype? risks? cheaper alternative?).
+- Each independent lane records `aq-frontier verdict <id> --lane <claude|codex|local|antigravity> --stance
+  support|concerns|reject`. Re-recording a lane replaces its verdict (no double-count).
+- `aq-frontier accept <id>` succeeds ONLY on consensus: >= 2 distinct independent supports AND no open
+  reject (a single unaddressed adversarial reject blocks acceptance). `--force` needs a recorded owner
+  override.
+- **Only an `accepted` finding is foldable into a plan (`aq-frontier fold` refuses anything else) and thus
+  implementable.** Nothing is auto-approved; the context seams surface a finding's review status so agents
+  know proposed/in-review (unvetted) vs accepted (team-ratified).
+This reuses the flat collaborative factory + adversarial-review-where-wanted (Rule 21): the critique IS the
+help in this review context, and no single lane — including the one that proposed it — can self-accept.

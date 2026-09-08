@@ -15,7 +15,10 @@ import os
 from pathlib import Path
 from typing import Any
 
-FOLDABLE_STATUSES = ("approved", "scheduled")
+# Only a finding that PASSED multi-expert debate (accepted), or is already being
+# implemented (scheduled), may fold into a plan. A merely-proposed or in-review
+# finding is never auto-folded — the debate gate comes first.
+FOLDABLE_STATUSES = ("accepted", "scheduled")
 
 
 def _marker(candidate_id: str) -> str:
@@ -49,7 +52,8 @@ def fold_candidate(tracker: dict[str, Any], candidate: dict[str, Any], *,
     """Return (tracker, added, message). Idempotent; refuses non-foldable statuses."""
     status = candidate.get("status")
     if status not in FOLDABLE_STATUSES:
-        return tracker, False, f"candidate status '{status}' is not foldable (need approved/scheduled)"
+        return tracker, False, (f"candidate status '{status}' is not foldable — route it through "
+                                "multi-expert debate to 'accepted' first (aq-frontier review/verdict/accept)")
     if already_folded(tracker, candidate.get("id", "")):
         return tracker, False, "already folded (idempotent no-op)"
     phases = tracker.get("phases") or []
