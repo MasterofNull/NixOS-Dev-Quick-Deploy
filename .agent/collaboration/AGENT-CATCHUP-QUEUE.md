@@ -537,3 +537,23 @@ review queue via `aq-frontier context "<review subject>"`:
 - **installer reviews** → installer-deployment is a coverage GAP (no assessed candidate yet); a targeted
   `aq-frontier scan-topic` is recommended before the P4 bare-metal path, not blocking P0/P1.
 Our verdict leads over frontier hype; adoption still passes the benchmark gate + tier0.
+
+## [2026-09-08] Installer P0/P1 review ROUTED to available lane (agent-agnostic model); Codex queued
+Per the available-agent-debate + catch-up model (never block on an absent lane): Codex (usual reviewer)
+is session-limited, so the binding independent review of branch `feat/aqos-installer-p0-execution-verifier`
+(5 commits ahead of main: 7a9d5425 research tooling, 37bf6a10 P0 execution verifier [already
+orchestrator-reviewed as non-author], 6d626d57 tracker, 1caca03f handoff, e547101c P1 golden profile) was
+ROUTED to a fresh independent flagship lane NOW. Focus: the golden profile's AI-off-has-no-AI-deps invariant
++ the cascade re-pins + verifier inertness. On OVERALL: PASS -> merge to main with the bound Review-Disposition
+envelope (Independent-Review: PASS + Reviewed-subject-sha256 of the staged merge diff + Reviewed-by). 
+**Codex on return:** confirmatory audit of the same branch — advisory unless it surfaces a real defect (then
+a bounded follow-up, never rewrite). Dev cycle does not wait.
+
+## [2026-09-08] CORRECTION: frontier findings are PROPOSALS pending multi-expert debate (not adopted)
+The earlier "[2026-09-08] Frontier context folded into pending reviews" note described FE-8 as "adopted" and
+FE-1 as "approved". Per the owner's no-auto-approval directive (commit f20220d6), ALL frontier findings are
+now PROPOSED (status new) and require multi-expert debate -> consensus (>=2 independent supports, no open
+reject) -> accepted before any fold/implementation. FE-1/FE-3/FE-8/FE-10 etc. are candidates awaiting the
+team's adversarial review, NOT accepted. Absent lanes' verdicts are queued here (same model): a finding can
+reach consensus on available lanes now, and a returning lane's later verdict is folded as advisory unless it
+surfaces a real defect (-> re-open). `aq-frontier review <id>` opens the debate; `verdict`/`accept` gate it.
