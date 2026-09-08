@@ -23,6 +23,7 @@ sys.path.insert(0, str(Path(__file__).resolve().parent / "lib"))
 import frontier_backlog as fb  # noqa: E402
 import frontier_sources as fs  # noqa: E402
 import frontier_relevance as fr  # noqa: E402
+import frontier_context as fc  # noqa: E402
 
 REPO = Path(__file__).resolve().parents[2]
 STORE = str(REPO / fb.DEFAULT_STORE)
@@ -88,6 +89,7 @@ def main(argv: list[str] | None = None) -> int:
     cp = sub.add_parser("concepts"); cp.add_argument("--json", action="store_true")
     rv = sub.add_parser("relevance"); rv.add_argument("text"); rv.add_argument("--semantic", action="store_true"); rv.add_argument("--json", action="store_true")
     cv = sub.add_parser("coverage"); cv.add_argument("--json", action="store_true")
+    cx = sub.add_parser("context"); cx.add_argument("topic"); cx.add_argument("--stale-days", type=int, default=30); cx.add_argument("--json", action="store_true")
     args = ap.parse_args(argv)
 
     if args.cmd == "add":
@@ -197,6 +199,14 @@ def main(argv: list[str] | None = None) -> int:
         for r in cov["concepts"]:
             print(f"{r['concept']:26} {str(r['tier']):11} {r['sources_tracking']:>7} {r['candidates_found']:>10} {'GAP' if r['gap'] else ''}")
         print(f"\n{cov['gap_count']} coverage gap(s): {cov['gaps'] or 'none'}")
+        return 0
+
+    if args.cmd == "context":
+        cat = fr.load_concepts(CONCEPTS)
+        ctx = fc.context_for_topic(args.topic, cat, fb.load(STORE), stale_days=args.stale_days)
+        if args.json:
+            print(json.dumps(ctx, indent=2)); return 0
+        print(fc.render(ctx))
         return 0
     return 1
 
