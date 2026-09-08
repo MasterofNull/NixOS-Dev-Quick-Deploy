@@ -557,3 +557,30 @@ reject) -> accepted before any fold/implementation. FE-1/FE-3/FE-8/FE-10 etc. ar
 team's adversarial review, NOT accepted. Absent lanes' verdicts are queued here (same model): a finding can
 reach consensus on available lanes now, and a returning lane's later verdict is folded as advisory unless it
 surfaces a real defect (-> re-open). `aq-frontier review <id>` opens the debate; `verdict`/`accept` gate it.
+
+## [2026-09-08] Multi-lane utilization audit + live routing (all lanes leveraged, absent ones queued)
+Owner directive: fully leverage Antigravity/Gemini + local models within the agent-agnostic system.
+Audit: `aq-antigravity-inbox` present + 3 antigravity daemons running; `delegate-to-local` present + local
+Qwen serving (:8080 ok); `config/model-coordinator.json` lane ladder includes current Gemini IDs
+(gemini-3.1-pro / 3.5-flash) AND local Qwen tiers. Wiring correct.
+
+Live lane state:
+- **local (Qwen) — ENGAGED, contributing.** Gave a substantive adversarial verdict in the frontier debate:
+  FE-8 (Landlock egress) = CONCERNS — "redundant; bwrap cells already enforce network namespaces +
+  loopback egress; Landlock adds kernel complexity without a new attack vector." Recorded via
+  `aq-frontier verdict FE-8 --lane local`; FE-8 now BLOCKED (a real concern on record), correctly NOT
+  auto-adopted. Local is a first-class debate lane.
+- **Antigravity (Gemini) — WIRED + available (reviewer/advisory only, untrusted).** Has one OBSOLETE pending
+  item (`aqos-installer-prd-review.md` = installer PRD v1 review, superseded by v2/done) — should be
+  archived. ROUTE to it (fresh inbox task + owner/dispatch-once wake): FE-3 (MCP/A2A interop — its domain)
+  advisory review + an installer-P1 advisory pass. Its input folds as advisory (never binding).
+- **Claude flagship (installer binding review) — QUEUED.** The fresh-lane reviewer got tier0 49/0 (green)
+  and was confirming the verifier fail-closed paths, then hit the Claude session limit (resets ~01:30 PT).
+  Queue for its confirmatory completion on reset.
+- **Codex — QUEUED** (session-limited) for confirmatory audit of the installer branch.
+
+Installer merge: needs one capable non-author BINDING review. Both capable lanes (Claude flagship, Codex)
+are session-limited -> per the model the dev cycle does NOT block; the binding review is queued for the next
+capable lane to return (Claude ~01:30 PT), while local + Antigravity provide advisory input now. The branch
+stays validated (tier0 green) on feat/aqos-installer-p0-execution-verifier; merge lands on the returning
+binding PASS + envelope; Codex confirms after.
