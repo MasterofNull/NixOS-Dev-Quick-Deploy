@@ -3707,3 +3707,15 @@ Advisory task (codex is the real confirmatory backstop) — non-blocking.
   Severity: high
   Action: Marked every P0 projection non-executable until the field-set and independent execution verifier exist; moved AI-fit evaluation inside the trusted resolver with closed verdict, catalog digest, and exact consumed-hardware evidence binding; validate keys before UTF-16 sorting and added adversarial fixtures.
   File: scripts/ai/lib/aqos_install_resolver.py; scripts/ai/lib/ai_fit.py; scripts/testing/test-aqos-install-resolver.py; scripts/testing/test-ai-fit.py
+[IN-FLIGHT] p14s-gl9750-microsd-dma-corruption — The built-in Genesys Logic GL9750 [17a0:9750] is detected by `sdhci-pci` and enumerates cards, but live kernel evidence shows ADMA tuning timeouts, repeated I/O errors, and `Card is consuming too much power!`; the driver is present, so adding unrelated Realtek modules would not address the fault.
+  Severity: high
+  Action: Apply the P14s host-class-only `sdhci.debug_quirks=0x60` data-integrity workaround to disable DMA/ADMA and force PIO; rebuild, confirm `/sys/module/sdhci/parameters/debug_quirks` reports 96, then perform read-only media validation with a known-good card before any destructive write test.
+  File: nix/modules/host-classes/p14s-amd-ai-workstation.nix; scripts/testing/harness_qa/phases/phase0.py
+[OPEN] boot-stability-aggregate-stale-health-spider-contract — The broad `test-boot-stability-regressions.py` currently fails before the microSD assertion because it still expects the old literal OSI-layered health-spider shape (`"name": "osi-layered"` plus `0/0`), while the health-spider implementation has moved on.
+  Severity: medium
+  Action: Reconcile that aggregate test with the dedicated `test-health-spider-osi-layered-probe.py` contract in a separate slice; do not weaken microSD validation or bundle an unrelated health-spider repair here.
+  File: scripts/testing/test-boot-stability-regressions.py; scripts/ai/aq-health-spider
+[OPEN] aq-integrity-logical-baseline-reference-timeout-flake — The microSD commit hook failed once because the AQ integrity scan emitted `reference_example_timeout_reached`; the exact standalone check immediately passed with 80 known and 0 new logical orphans, indicating a resource/timing-sensitive soft failure rather than a subject regression.
+  Severity: medium
+  Action: Instrument reference-example scan duration and replace the fixed internal timeout with a measured deterministic budget or bounded fixture in a separate harness slice; preserve fail-closed behavior until then.
+  File: scripts/ai/aq-integrity-scan; scripts/testing/check-aq-integrity-logical-baseline.py

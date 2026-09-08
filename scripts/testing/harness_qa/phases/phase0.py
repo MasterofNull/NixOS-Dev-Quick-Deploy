@@ -2811,6 +2811,12 @@ def _check_graphrag(ctx: RunContext) -> list[CheckResult]:
             # /persist not required to exist here — it's a nixos-rebuild gate
             results.append(passed(4, "63.4", "impermanence declared in host-class (enable-flag guarded, /persist optional)"))
 
+        # 63.5 — GL9750 microSD data-integrity workaround stays host-class scoped.
+        if text.count('"sdhci.debug_quirks=0x60"') != 1:
+            results.append(failed(4, "63.5", "P14s GL9750 microSD quirk", "expected one host-scoped sdhci.debug_quirks=0x60"))
+        else:
+            results.append(passed(4, "63.5", "P14s GL9750 microSD reader uses DMA/ADMA-disable PIO workaround"))
+
     return results
 
 
