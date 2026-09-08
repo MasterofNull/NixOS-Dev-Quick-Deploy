@@ -584,3 +584,22 @@ are session-limited -> per the model the dev cycle does NOT block; the binding r
 capable lane to return (Claude ~01:30 PT), while local + Antigravity provide advisory input now. The branch
 stays validated (tier0 green) on feat/aqos-installer-p0-execution-verifier; merge lands on the returning
 binding PASS + envelope; Codex confirms after.
+
+## [2026-09-08] Installer P0/P1 binding review -> FINDING -> FIX (review cycle working)
+Codex (independent, non-author) reviewed feat/aqos-installer-p0-execution-verifier. Verdict:
+- CONFIRMED GOOD: hash-chain + verifier checks consistent, expected MAC reproduced, all tamper cases fail
+  closed, verifier has no execution primitive; package baseline re-pin HONEST (P1 parent + target both eval
+  hyperd-ai-dev = 375, so 369->375 corrects stale evidence, not a hidden delta).
+- BINDING DEFECT: "AI-off package leak" — the aqos-workstation golden base list carried openai-whisper +
+  whisper-cpp (ML/ASR runners) on the ALWAYS-ON path, so AI-off installed AI packages (invariant violation).
+  My golden test missed it (it checked mySystem options, not the package list — and actually REQUIRED
+  openai-whisper).
+FIX (claude-opus-4.8, commit 1f8920b7 on branch fix/aqos-golden-ai-off-leak, cut from installer HEAD
+e547101c so it carries the full corrected branch): removed openai-whisper + whisper-cpp from the golden base
+(kept in ai-dev where AI is always on; arrive via aiStack role on the golden AI-on path); yt-dlp + ffmpeg
+stay (general media, not AI). Strengthened test-aqos-golden-profile.py to FORBID AI/ML runners on the golden
+base. golden test 5/5; nix parse OK; hyperd-ai-dev baseline unchanged.
+MERGE STATE: fix/aqos-golden-ai-off-leak is the mergeable corrected branch. Needs a light NON-AUTHOR
+re-confirm of the single fix (does it close the leak without breaking anything) before merge to main —
+queued for the next capable binding lane (Codex on its worktree release, or Claude flagship on reset). Codex
+confirmatory audit continues. The dev cycle does not block; the branch is validated + corrected.
