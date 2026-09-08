@@ -1,14 +1,15 @@
 #!/usr/bin/env python3
-"""aq-claim — take/check/release slice+path claims so two lanes never edit the same files.
+"""aq-claim — advisory take/check/release slice+path claims for cooperative lanes.
 
 C-1 (SWARM-LESSONS-INTEGRATION-20260907.md). Before a lane edits a set of paths it
-takes a claim; another lane checks first and routes elsewhere on a conflict. Advisory
-now (surface the claimant); the dispatch/session-start seam can enforce it later.
+takes a claim; another lane checks first and routes elsewhere on a conflict. This is
+ADVISORY only: no dispatcher/edit entrypoint enforces it yet, so it does not itself
+prevent collisions.
 
 Usage:
-  aq-claim take <slice-id> --lane <lane> --paths a b c [--ttl 7200]
+  aq-claim take <slice-id> --lane <lane> --paths a b c [--ttl 7200] [--owner-token TOKEN]
   aq-claim check --lane <lane> --paths a b c        # exit 0 clear, exit 3 conflict
-  aq-claim release <slice-id> --lane <lane>
+  aq-claim release <slice-id> --lane <lane> --owner-token TOKEN
   aq-claim list [--json]
 
 Store: .agent/collaboration/slice-claims.json (repo-relative; expired claims auto-drop).
@@ -36,16 +37,19 @@ def main(argv: list[str] | None = None) -> int:
     ap = argparse.ArgumentParser(description="Slice/path claim registry (anti-collision).")
     sub = ap.add_subparsers(dest="cmd", required=True)
     t = sub.add_parser("take"); t.add_argument("slice_id"); t.add_argument("--lane", required=True)
-    t.add_argument("--paths", nargs="+", required=True); t.add_argument("--ttl", type=int, default=sc.DEFAULT_TTL_SECONDS)
+    t.add_argument("--paths", nargs="+", required=True); t.add_argument("--ttl", type=int, default=sc.DEFAULT_TTL_SECONDS); t.add_argument("--owner-token")
     c = sub.add_parser("check"); c.add_argument("--lane", required=True); c.add_argument("--paths", nargs="+", required=True)
-    r = sub.add_parser("release"); r.add_argument("slice_id"); r.add_argument("--lane", required=True)
+    r = sub.add_parser("release"); r.add_argument("slice_id"); r.add_argument("--lane", required=True); r.add_argument("--owner-token", required=True)
     ls = sub.add_parser("list"); ls.add_argument("--json", action="store_true")
     args = ap.parse_args(argv)
 
     if args.cmd == "take":
-        res = sc.take_claim(STORE, args.slice_id, args.lane, args.paths, ttl_seconds=args.ttl)
+        res = sc.take_claim(STORE, args.slice_id, args.lane, args.paths, ttl_seconds=args.ttl,
+                            owner_token=args.owner_token)
         if res.get("ok"):
             print(f"claimed: {_fmt(res['claim'])}")
+            if res.get("owner_token"):
+                print(f"owner-token: {res['owner_token']}")
             return 0
         if res.get("conflicts"):
             print("CONFLICT — these paths are already claimed by another lane:", file=sys.stderr)
@@ -67,9 +71,12 @@ def main(argv: list[str] | None = None) -> int:
         return 3
 
     if args.cmd == "release":
-        res = sc.release_claim(STORE, args.slice_id, args.lane)
-        print(f"released {res['released']} claim(s) for {args.slice_id} [{args.lane}]")
-        return 0
+        res = sc.release_claim(STORE, args.slice_id, args.lane, owner_token=args.owner_token)
+        if res.get("ok"):
+            print(f"released {res['released']} claim(s) for {args.slice_id} [{args.lane}]")
+            return 0
+        print(f"error: {res.get('error')}", file=sys.stderr)
+        return 1
 
     if args.cmd == "list":
         claims = sc.load_claims(STORE)
