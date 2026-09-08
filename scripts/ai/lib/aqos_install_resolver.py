@@ -302,12 +302,16 @@ def normalize_adapter(kind: str, payload: Mapping[str, Any]) -> dict[str, Any]:
 def resolve_plan(
     request: Mapping[str, Any], hw: Mapping[str, Any] | None,
     module_catalog: Mapping[str, Any], module_catalog_bytes: bytes,
-    ai_catalog_bytes: bytes, schema: Mapping[str, Any], source_identity: Mapping[str, Any],
+    ai_catalog_bytes: bytes, fieldset_bytes: bytes, schema: Mapping[str, Any],
+    source_identity: Mapping[str, Any],
 ) -> dict[str, Any]:
     _validate_schema(request, schema)
     parsed_module_catalog = parse_json_strict(module_catalog_bytes)
     if parsed_module_catalog != module_catalog:
         _reject("module_catalog_mismatch", "module catalog object does not match the digest-bound bytes")
+    parsed_fieldset = parse_json_strict(fieldset_bytes)
+    if not isinstance(parsed_fieldset, Mapping) or parsed_fieldset.get("activation") != "p0-inert":
+        _reject("fieldset_invalid", "P0 requires the inert mySystem field-set contract")
     if request.get("host_target") and request["host_target"] != source_identity.get("host_target"):
         _reject("host_target_mismatch", "request host target does not match verified source identity")
     selection = request.get("selection") or {}
@@ -332,6 +336,7 @@ def resolve_plan(
         "catalog_digests": {
             "module_catalog_sha256": sha256_bytes(module_catalog_bytes),
             "ai_fit_policy_catalog_sha256": sha256_bytes(ai_catalog_bytes),
+            "mysystem_fieldset_sha256": sha256_bytes(fieldset_bytes),
         },
         "source_identity": dict(source_identity),
     }
@@ -339,7 +344,16 @@ def resolve_plan(
     return lock
 
 
-def compile_projection(lock: Mapping[str, Any], module_catalog: Mapping[str, Any]) -> dict[str, Any]:
+def compile_projection(
+    lock: Mapping[str, Any], module_catalog: Mapping[str, Any], fieldset_bytes: bytes,
+) -> dict[str, Any]:
+    fieldset = parse_json_strict(fieldset_bytes)
+    if not isinstance(fieldset, Mapping):
+        _reject("fieldset_invalid", "mySystem field-set contract must be an object")
+    if sha256_bytes(fieldset_bytes) != lock["catalog_digests"].get("mysystem_fieldset_sha256"):
+        _reject("fieldset_digest_mismatch", "mySystem field-set bytes do not match the resolved lock")
+    if fieldset.get("activation") != "p0-inert":
+        _reject("fieldset_activation_invalid", "P0 projection requires the inert field-set contract")
     selection = lock["selection"]
     profile_id = selection["golden_profile"]
     active_profile = profile_id.removeprefix("profile.") if profile_id.startswith("profile.") else None
@@ -352,6 +366,10 @@ def compile_projection(lock: Mapping[str, Any], module_catalog: Mapping[str, Any
     for role_id in selection["roles"]:
         for field in index[role_id].get("projected_mysystem_fields", []):
             fields[field] = True
+    authorities = {entry["path"]: entry["authority"] for entry in fieldset.get("fields", [])}
+    for field in fields:
+        if authorities.get(field) != "user-intent":
+            _reject("fieldset_authority_violation", f"projection cannot set installer field: {field}")
     source = lock["source_identity"]
     flake_ref, fragment = source["flake_installable"].split("#", 1)
     prefix = "nixosConfigurations."

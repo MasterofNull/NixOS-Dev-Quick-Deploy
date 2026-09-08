@@ -3719,3 +3719,19 @@ Advisory task (codex is the real confirmatory backstop) — non-blocking.
   Severity: medium
   Action: Instrument reference-example scan duration and replace the fixed internal timeout with a measured deterministic budget or bounded fixture in a separate harness slice; preserve fail-closed behavior until then.
   File: scripts/ai/aq-integrity-scan; scripts/testing/check-aq-integrity-logical-baseline.py
+[DONE] aqos-p0-verifier-must-not-authorize-runnable-legacy-argv — Adversarial design review found that returning a runnable "authorized" envelope in P0 would falsely imply that the legacy deploy argv materializes the resolved mySystem role projection.
+  Severity: critical
+  Action: The verifier now returns only a hash-bound `activation_blocked` proof with `executable:false` and never returns argv/env or invokes the deploy command; actual field materialization, replay consumption, and rebuild authorization remain P1 gates.
+  File: scripts/ai/lib/aqos_install_execution.py; scripts/ai/aqos-install-verify
+[DONE] aqos-p0-receipt-free-signer-string-is-not-authority — The initial receipt design proposed a free signer label with an HMAC but no closed key-selection contract, allowing ambiguous or attacker-selected authority.
+  Severity: high
+  Action: Replaced it with a closed `signing_key_id` plus literal `hmac-sha256`, caller-supplied local secret provider, minimum key strength, constant-time verification, strict key-file ownership/mode checks, and no secret in plan/receipt/log/env. Unknown or revoked IDs fail closed.
+  File: config/schemas/aqos-install-plan-v1.schema.json; scripts/ai/lib/aqos_install_execution.py; scripts/ai/aqos-install-verify
+[DONE] tier0-staged-isolation-omitted-ignored-claude-settings — The staged-isolated Tier 0 gate failed after all slice tests passed because `test-enabled-external-mcp-candidates.py` requires the intentionally ignored local `.claude/settings.json`, but isolation hydrated only four other operational inputs.
+  Severity: high
+  Action: Add the settings file to the existing bounded, hash-stability-checked, symlink-denying, size-limited operational-input hydration list and pin that dependency in the harness regression contract.
+  File: scripts/governance/tier0-validation-gate.sh; scripts/testing/test-tier0-agent-harness-regression-gate.py
+[DONE] external-mcp-gate-depended-on-ignored-understand-intermediates — After the settings hydration repair, staged isolation exposed a second non-hermetic dependency: graph promotion validation invoked `validate-batches`, which requires 296 ignored generation intermediates that cannot exist in a clean checkout even though the canonical graph is tracked.
+  Severity: high
+  Action: Validate the tracked graph artifact directly: require non-empty nodes/edges, exact metadata counts, and a positive completed batch count. Keep ignored generation scratch outside commit/CI truth.
+  File: scripts/testing/test-enabled-external-mcp-candidates.py; .understand-anything/knowledge-graph.json

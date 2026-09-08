@@ -1,0 +1,84 @@
+#!/usr/bin/env python3
+"""Verify AQ-OS installer authorization evidence without executing a deployment."""
+
+from __future__ import annotations
+
+import argparse
+import json
+import os
+import stat
+import sys
+from datetime import datetime, timezone
+from pathlib import Path
+
+LIB_DIR = Path(__file__).resolve().parent / "lib"
+sys.path.insert(0, str(LIB_DIR))
+
+import aqos_install_execution as execution  # noqa: E402
+import aqos_install_resolver as resolver  # noqa: E402
+import hw_probe  # noqa: E402
+
+
+def load_object(path: Path) -> dict:
+    value = resolver.parse_json_strict(path.read_bytes())
+    if not isinstance(value, dict):
+        raise execution.ExecutionVerificationError("object_required", f"expected a JSON object: {path}")
+    return value
+
+
+def load_secret(path: Path) -> bytes:
+    flags = os.O_RDONLY | getattr(os, "O_NOFOLLOW", 0)
+    try:
+        fd = os.open(path, flags)
+        try:
+            info = os.fstat(fd)
+            if not stat.S_ISREG(info.st_mode):
+                raise execution.ExecutionVerificationError("signing_key_invalid", "signing key must be a regular file")
+            if info.st_uid not in {0, os.geteuid()} or info.st_mode & 0o077:
+                raise execution.ExecutionVerificationError("signing_key_permissions", "signing key ownership or mode is unsafe")
+            if info.st_size > 4096:
+                raise execution.ExecutionVerificationError("signing_key_invalid", "signing key file is too large")
+            return os.read(fd, 4097)
+        finally:
+            os.close(fd)
+    except OSError as exc:
+        raise execution.ExecutionVerificationError("signing_key_unavailable", "cannot safely read signing key") from exc
+
+
+def main(argv: list[str] | None = None) -> int:
+    parser = argparse.ArgumentParser(description=__doc__)
+    parser.add_argument("--lock", type=Path, required=True)
+    parser.add_argument("--projection", type=Path, required=True)
+    parser.add_argument("--receipt", type=Path, required=True)
+    parser.add_argument("--repo", type=Path, default=Path.cwd())
+    parser.add_argument("--signing-key-id", required=True)
+    parser.add_argument("--authorization-key", type=Path, required=True,
+                        help="local secret key file; never loaded from env or serialized")
+    args = parser.parse_args(argv)
+
+    repo = args.repo.resolve()
+    try:
+        lock = load_object(args.lock)
+        projection = load_object(args.projection)
+        receipt = load_object(args.receipt)
+        hardware = hw_probe.probe_hardware(repo_root=repo)
+        schema = load_object(repo / "config/schemas/aqos-install-plan-v1.schema.json")
+        module_bytes = (repo / "config/aqos-module-catalog-v1.json").read_bytes()
+        ai_bytes = (repo / "config/aqos-ai-fit-policy-catalog-v1.json").read_bytes()
+        fieldset_bytes = (repo / "config/aqos-mysystem-fieldset-v1.json").read_bytes()
+        key = load_secret(args.authorization_key)
+        result = execution.verify_execution_evidence(
+            lock, projection, receipt, hardware, schema, module_bytes, ai_bytes, fieldset_bytes,
+            str(repo), lambda key_id: key if key_id == args.signing_key_id else None,
+            datetime.now(timezone.utc),
+        )
+        sys.stdout.buffer.write(resolver.jcs_bytes(result) + b"\n")
+        return 0
+    except (OSError, resolver.ResolverError, execution.ExecutionVerificationError) as exc:
+        reason = getattr(exc, "reason", "io_error")
+        print(json.dumps({"ok": False, "reason": reason, "message": str(exc)}, sort_keys=True), file=sys.stderr)
+        return 2
+
+
+if __name__ == "__main__":
+    raise SystemExit(main())

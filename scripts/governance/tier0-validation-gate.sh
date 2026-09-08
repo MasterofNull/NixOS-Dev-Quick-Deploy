@@ -142,6 +142,7 @@ ISOLATION_OPERATIONAL_INPUTS=(
   ".agent/collaboration/RESUME.json"
   ".agents/improvement/candidates.json"
   ".agents/delegation/registry.jsonl"
+  ".claude/settings.json"
 )
 ISOLATION_OPERATIONAL_MAX_BYTES=$((4 * 1024 * 1024))
 ISOLATION_OPERATIONAL_COPY_ATTEMPTS=2
@@ -472,7 +473,7 @@ gate_aqos_install_resolver() {
   local changed=0 f
   while IFS= read -r f; do
     case "$f" in
-      scripts/ai/aqos-install-resolve|scripts/ai/lib/aqos_install_resolver.py|scripts/testing/test-aqos-install-resolver.py|config/schemas/aqos-install-plan-v1.schema.json|config/aqos-module-catalog-v1.json|config/aqos-ai-fit-policy-catalog-v1.json|scripts/governance/tier0-validation-gate.sh)
+      scripts/ai/aqos-install-resolve|scripts/ai/lib/aqos_install_resolver.py|scripts/testing/test-aqos-install-resolver.py|config/schemas/aqos-install-plan-v1.schema.json|config/aqos-module-catalog-v1.json|config/aqos-ai-fit-policy-catalog-v1.json|config/aqos-mysystem-fieldset-v1.json|scripts/governance/tier0-validation-gate.sh)
         changed=1
         ;;
     esac
@@ -509,6 +510,50 @@ gate_aqos_mysystem_fieldset() {
     pass "AQ-OS mySystem field-set contract valid"
   else
     fail "AQ-OS mySystem field-set contract failed"
+    return 1
+  fi
+}
+
+gate_aqos_install_execution_verifier() {
+  local changed=0 f
+  while IFS= read -r f; do
+    case "$f" in
+      scripts/ai/aqos-install-verify|scripts/ai/lib/aqos_install_execution.py|scripts/ai/lib/aqos_install_resolver.py|scripts/testing/test-aqos-install-execution.py|config/schemas/aqos-install-plan-v1.schema.json|config/aqos-module-catalog-v1.json|config/aqos-ai-fit-policy-catalog-v1.json|config/aqos-mysystem-fieldset-v1.json|scripts/governance/tier0-validation-gate.sh)
+        changed=1
+        ;;
+    esac
+  done < <(collect_changed_files)
+  if [[ $changed -eq 0 ]]; then
+    pass "AQ-OS install execution verifier (not changed)"
+    return 0
+  fi
+  log "Checking inert AQ-OS install execution verifier..."
+  if python3 scripts/testing/test-aqos-install-execution.py; then
+    pass "AQ-OS install execution verifier valid"
+  else
+    fail "AQ-OS install execution verifier failed"
+    return 1
+  fi
+}
+
+gate_aqos_golden_profile() {
+  local changed=0 f
+  while IFS= read -r f; do
+    case "$f" in
+      nix/modules/profiles/aqos-workstation.nix|nix/data/profile-system-packages.nix|nix/modules/core/options.nix|flake.nix|scripts/testing/test-aqos-golden-profile.py|scripts/governance/tier0-validation-gate.sh)
+        changed=1
+        ;;
+    esac
+  done < <(collect_changed_files)
+  if [[ $changed -eq 0 ]]; then
+    pass "AQ-OS golden profile (not changed)"
+    return 0
+  fi
+  log "Checking AQ-OS Workstation golden profile contract..."
+  if python3 scripts/testing/test-aqos-golden-profile.py; then
+    pass "AQ-OS golden profile contract valid"
+  else
+    fail "AQ-OS golden profile contract failed"
     return 1
   fi
 }
@@ -1128,6 +1173,8 @@ gate_aqos_ai_fit_policy || true
 gate_aqos_module_catalog || true
 gate_aqos_install_resolver || true
 gate_aqos_mysystem_fieldset || true
+gate_aqos_install_execution_verifier || true
+gate_aqos_golden_profile || true
 gate_yaml_syntax || true
 gate_toml_syntax || true
 gate_js_syntax || true

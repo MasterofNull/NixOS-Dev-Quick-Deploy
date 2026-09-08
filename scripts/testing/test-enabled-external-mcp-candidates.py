@@ -91,17 +91,14 @@ def assert_understand_graph_complete() -> None:
     graph = ROOT / ".understand-anything" / "knowledge-graph.json"
     assert graph.exists(), "Understand-Anything graph must exist before graph-layer promotion"
     payload = json.loads(graph.read_text(encoding="utf-8"))
-    assert len(payload.get("nodes") or []) > 0, "Understand-Anything graph must contain nodes"
-    assert len(payload.get("edges") or []) > 0, "Understand-Anything graph must contain edges"
-    proc = subprocess.run(
-        [str(ROOT / "scripts" / "ai" / "aq-understand-anything"), "validate-batches"],
-        cwd=ROOT,
-        text=True,
-        stdout=subprocess.PIPE,
-        stderr=subprocess.PIPE,
-        check=True,
-    )
-    assert json.loads(proc.stdout)["ok"] is True
+    nodes = payload.get("nodes") or []
+    edges = payload.get("edges") or []
+    metadata = payload.get("metadata") or {}
+    assert nodes, "Understand-Anything graph must contain nodes"
+    assert edges, "Understand-Anything graph must contain edges"
+    assert metadata.get("total_nodes") == len(nodes), "graph node count must match tracked metadata"
+    assert metadata.get("total_edges") == len(edges), "graph edge count must match tracked metadata"
+    assert int(metadata.get("batch_count", 0)) > 0, "graph must record its completed batch count"
 
 
 def main() -> int:

@@ -523,3 +523,68 @@ REVIEW TARGETS (for Codex — the reliable auto-reviewer — and any returning l
   review+merge these four to main FIRST so their digests are stable, THEN build p0-resolver (its golden
   cross-adapter fixtures bind those digests; building on unreviewed branches would churn the goldens).
   p0-mysystem-fieldset depends on p0-resolver.
+
+## [2026-09-07] Claude resumed Codex's in-flight work during a scheduled 90-min break
+Owner-directed: "resume [Codex's] work and fold in your own progress to continue dev momentum."
+Coordinator seat temporarily back with claude-opus-4.8 while Codex is away.
+
+**What I did (all on branch feat/aqos-installer-p0-execution-verifier):**
+- **Committed + validated Codex's staged execution-verifier slice → 37bf6a10.** Codex left it staged
+  mid-commit. I reviewed it as a NON-AUTHOR (design read: fail-closed, non-executing, inert projection
+  enforced via projection_not_inert, closed signing_key_id+hmac-sha256 with constant-time verify, JCS
+  byte-equality, catalog-digest binding), ran the full gate (**tier0 --pre-commit 50/0**, execution 9/9,
+  resolver 8/8, schema OK, external-mcp pass), and committed it with Codex as Co-Author. Codex's own
+  adversarial self-review (1 critical + 3 high, in issues-backlog) was already folded.
+- **Added the p0-execution-verifier tracker item → 6d626d57** (check-pm-tracker PASS).
+- Earlier this session: committed video-transcription tooling + an agent-swarm research artifact →
+  7a9d5425 (unrelated to the installer; isolated pathspec so your staged index was untouched).
+
+**Merge-readiness (for your merge train, Codex):**
+- 37bf6a10 (execution-verifier): independent non-author review by claude-opus-4.8 DONE, gate 50/0 —
+  ready to merge to main. I deliberately did NOT merge it myself to avoid diverging trunk (you own the
+  main<->origin/main push train) while you were briefly away.
+- 7a9d5425 (my transcription/research commit): I authored it, so it needs YOUR non-author review before
+  main. Low-risk (a wrapper script + package-list add + a research .md).
+
+**Follow-up I flagged, not guessed (PM dashboard honesty):** tracker items carry no `detection` signals,
+so the projector shows every item DESIGNED even though 6 P0 slices are on main. They shipped via YOUR
+resolver merge 22295832 ("integrate trusted P0 resolver") — schema, hardware-detector, module-catalog,
+ai-fit-policy, resolver — plus mySystem-fieldset via e4fb2b79/abe16d24. Wiring commit_match needs your
+commit→item mapping; left to you to keep the projection honest.
+
+**Next unblocked (P1):** p1-golden-profile (deps p0-mysystem-fieldset ✓ + p0-hardware-detector ✓) — the
+AQ-OS Workstation golden profile. p1-guided-tui + p1-parity-suite follow it.
+
+Note: my original 3 slice branch-commits (6bb2e2ba/fd867e97/112c943e) are NOT in HEAD history — you
+folded their CONTENT into 22295832 rather than merging the branches. Content is on main (what matters);
+the branches can be pruned.
+
+## [2026-09-07] P1 STARTED: aqos-workstation golden profile (p1-golden-profile)
+Author: claude-opus-4.8 (holding coordinator seat during Codex's break; owner asked to start p1-golden-profile).
+Owner will trigger the rebuild/switch to validate the build.
+
+**Slice:** the AQ-OS Workstation golden profile — one super-tuned, hardware-adaptive path for professional
+dev + gaming with OPTIONAL local AI.
+- `nix/modules/profiles/aqos-workstation.nix`: base (always) = desktop + cppDev + gaming + virtualization
+  roles, hardened kernel/crowdsec/secureboot posture, gamemode, firmware, dev fonts, touchpad defaults.
+  Local AI is OFF by default (mySystem.roles.aiStack.enable = mkDefault false) and EVERY AI dependency
+  lives inside a single `lib.mkIf aiOn` guard, so the AI-off path pulls in zero AI stack. AI-on enables the
+  stable core only (aiStack role + switchboard + mcpServers + commandCenter) — NOT the experimental
+  Foundation-C capability-lease/execution-cell activations (those stay ai-dev/dev-box specific).
+- `nix/modules/core/options.nix`: "aqos-workstation" added to the mySystem.profile enum.
+- `nix/data/profile-system-packages.nix`: aqos-workstation package list (pro-dev + modern CLI + the local
+  transcription tools; no AI-data-service tooling).
+- `flake.nix`: imports the profile module.
+- `scripts/testing/test-aqos-golden-profile.py` (5/5) + tier0 gate gate_aqos_golden_profile: lock the
+  invariant that no AI option leaks onto the AI-off base.
+
+**Functional validation done (Nix eval, extendModules with mkOverride 10 on the host):**
+- AI-off: aiStack=false, gaming=true, cppDev=true, desktop=true, mcp=false, switchboard=false, 32 pkgs.
+- AI-on:  aiStack=true, mcp=true, switchboard=true.
+- Flake evaluates cleanly with the new module imported (inert for other profiles).
+Remaining: the operator rebuild/switch is the "builds green" proof (owner will trigger).
+
+**Deps satisfied:** p0-mysystem-fieldset + p0-hardware-detector (both on main). **Next P1:** p1-guided-tui
+(thin TUI emitting a resolved plan into the ACTIVE nixos-quick-deploy.sh) then p1-parity-suite.
+Reviewer (non-author) on return: confirm the aiOn guard is the ONLY AI-dep site and the hardened defaults
+are appropriate for a beginner-facing blessed default.
