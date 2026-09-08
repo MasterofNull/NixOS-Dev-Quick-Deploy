@@ -149,6 +149,11 @@ in {
       # kernel up front avoids the watchdog warning and switches directly to the
       # fallback clocksource.
       "tsc=unstable"
+      # Genesys Logic GL9750 [17a0:9750]: its DMA/ADMA path produces tuning
+      # timeouts and card I/O errors on this host. Disable SDHCI DMA + ADMA
+      # (0x20 | 0x40) so the reader uses the slower, data-safe PIO path.
+      # Remove only after a replacement upstream fix is verified on this device.
+      "sdhci.debug_quirks=0x60"
     ];
 
     environment.sessionVariables = {
