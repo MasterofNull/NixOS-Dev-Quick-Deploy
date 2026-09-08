@@ -24,6 +24,7 @@ import frontier_backlog as fb  # noqa: E402
 import frontier_sources as fs  # noqa: E402
 import frontier_relevance as fr  # noqa: E402
 import frontier_context as fc  # noqa: E402
+import frontier_fold as ff  # noqa: E402
 
 REPO = Path(__file__).resolve().parents[2]
 STORE = str(REPO / fb.DEFAULT_STORE)
@@ -90,6 +91,9 @@ def main(argv: list[str] | None = None) -> int:
     rv = sub.add_parser("relevance"); rv.add_argument("text"); rv.add_argument("--semantic", action="store_true"); rv.add_argument("--json", action="store_true")
     cv = sub.add_parser("coverage"); cv.add_argument("--json", action="store_true")
     cx = sub.add_parser("context"); cx.add_argument("topic"); cx.add_argument("--stale-days", type=int, default=30); cx.add_argument("--json", action="store_true")
+    fd = sub.add_parser("fold"); fd.add_argument("id"); fd.add_argument("--plan", required=True, help="target plan dir with tracker.json"); fd.add_argument("--phase", default=None)
+    st = sub.add_parser("scan-topic"); st.add_argument("topic")
+    pa = sub.add_parser("parity"); pa.add_argument("--json", action="store_true")
     args = ap.parse_args(argv)
 
     if args.cmd == "add":
@@ -207,6 +211,57 @@ def main(argv: list[str] | None = None) -> int:
         if args.json:
             print(json.dumps(ctx, indent=2)); return 0
         print(fc.render(ctx))
+        return 0
+
+    if args.cmd == "fold":  # FA-3
+        cand = next((b for b in fb.load(STORE) if b.get("id") == args.id), None)
+        if not cand:
+            print(f"no such backlog id: {args.id}", file=sys.stderr); return 1
+        plan_dir = args.plan if Path(args.plan).is_absolute() else str(REPO / args.plan)
+        try:
+            tracker = ff.load_tracker(plan_dir)
+        except OSError:
+            print(f"no tracker.json under {args.plan}", file=sys.stderr); return 1
+        tracker, added, msg = ff.fold_candidate(tracker, cand, phase_id=args.phase)
+        if added:
+            ff.write_tracker(plan_dir, tracker)
+        print(msg)
+        return 0 if (added or "already folded" in msg) else 1
+
+    if args.cmd == "scan-topic":  # FA-4 — targeted, need-driven refresh (not a timer)
+        cat = fr.load_concepts(CONCEPTS)
+        ctx = fc.context_for_topic(args.topic, cat, fb.load(STORE))
+        stale = ctx["stale_concepts"] or ctx["relevant_concepts"] or ["(no matched concept)"]
+        ts = __import__("time").strftime("%Y-%m-%dT%H:%M:%SZ", __import__("time").gmtime())
+        req = {"requested_at": ts, "topic": args.topic, "stale_concepts": ctx["stale_concepts"]}
+        log = REPO / ".agents/plans/frontier-evidence-intake/scan-requests.jsonl"
+        log.parent.mkdir(parents=True, exist_ok=True)
+        with open(log, "a", encoding="utf-8") as f:
+            f.write(json.dumps(req, sort_keys=True) + "\n")
+        print(f"SCAN-TOPIC (need-driven refresh) — topic: {args.topic!r}")
+        print(f"  concepts to refresh: {stale}")
+        print("  Run this bounded intake task on a web-capable lane, then `aq-frontier add ...`:")
+        print(f"    1. Find current (2026) PRIMARY sources on: {args.topic}")
+        print("    2. Verify claims; correct overclaims; map to an AQ-OS measurement/gate")
+        print("    3. aq-frontier relevance \"<title+abstract>\"  (rank value to us)")
+        print("    4. aq-frontier add --technique .. --source .. --claim .. --verdict .. "
+              "--mapping .. --slice .. --acceptance ..")
+        print(f"  (request logged -> {log.relative_to(REPO)})")
+        return 0
+
+    if args.cmd == "parity":  # FA-5 — whole-taxonomy backstop sweep (on-demand, not a timer)
+        cat = fr.load_concepts(CONCEPTS)
+        srcs = (fs.load_catalog(CATALOG).get("sources") or [])
+        cov = fr.concept_coverage(cat, srcs, fb.load(STORE))
+        if args.json:
+            print(json.dumps(cov, indent=2)); return 0
+        print(f"Frontier parity sweep — {cov['gap_count']} gap(s) across the taxonomy:")
+        for r in cov["concepts"]:
+            if r["gap"]:
+                print(f"  GAP [{r['tier']}] {r['concept']}  (sources={r['sources_tracking']} candidates={r['candidates_found']})")
+                print(f"       -> aq-frontier scan-topic {r['concept']!r}")
+        if not cov["gaps"]:
+            print("  no gaps — every core/supporting concept has a source and a candidate")
         return 0
     return 1
 
