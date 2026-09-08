@@ -154,10 +154,13 @@
     "nmap"
     "mtr"
     "traceroute"
-    # Local media transcription (offline research ingestion; see scripts/ai/aq-transcribe)
+    # General media tools (NOT AI): yt-dlp + ffmpeg only. The ML transcription
+    # runners (openai-whisper / whisper-cpp) are DELIBERATELY excluded from the
+    # golden base — they are AI dependencies and would violate the golden path's
+    # "AI-off installs no AI deps" invariant. On the AI-on path they arrive with the
+    # aiStack role (and remain in the ai-dev profile). Removing them here fixes the
+    # AI-off package leak the independent review caught.
     "yt-dlp"
     "ffmpeg"
-    "openai-whisper"
-    "whisper-cpp"
   ];
 }
