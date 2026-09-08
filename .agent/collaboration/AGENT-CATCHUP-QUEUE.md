@@ -523,3 +523,17 @@ REVIEW TARGETS (for Codex — the reliable auto-reviewer — and any returning l
   review+merge these four to main FIRST so their digests are stable, THEN build p0-resolver (its golden
   cross-adapter fixtures bind those digests; building on unreviewed branches would churn the goldens).
   p0-mysystem-fieldset depends on p0-resolver.
+
+## [2026-09-08] Frontier context folded into pending reviews (via aq-frontier context)
+Frontier research is now incorporated into reviews by default (seam wired). Applied to the current
+review queue via `aq-frontier context "<review subject>"`:
+- **Foundation-C / capability-security reviews** → relevance=17 (core). FE-8 (Landlock/eBPF egress pin,
+  ADOPTED) is the directly-relevant frontier slice: pin untrusted MCP servers to loopback-only; attach to
+  the C-series activation evidence. Reviewers of any sandbox/lease change should confirm it doesn't
+  regress the deny-closed posture FE-8 targets. FE-3 (MCP/A2A governance gaps) notes we are AHEAD via
+  capability leases — do not regress to a looser standard.
+- **factory/slice-claim + agent-collaboration reviews** → the C-1..C-4 swarm-lessons folds already landed;
+  FE-3 (A2A v1.0 interop) is the monitor-tier frontier item for our signed-A2A — a gap-check, not a rewrite.
+- **installer reviews** → installer-deployment is a coverage GAP (no assessed candidate yet); a targeted
+  `aq-frontier scan-topic` is recommended before the P4 bare-metal path, not blocking P0/P1.
+Our verdict leads over frontier hype; adoption still passes the benchmark gate + tier0.
