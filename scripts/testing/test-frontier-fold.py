@@ -21,7 +21,7 @@ def load():
 
 def _cand(**over):
     base = {"id": "FE-8", "technique": "Landlock egress", "proposed_slice": "pin MCP to loopback",
-            "acceptance_goal": "deny-closed proof", "verdict": "adopt", "status": "approved",
+            "acceptance_goal": "deny-closed proof", "verdict": "adopt", "status": "accepted",
             "source": "Landlock LSM"}
     base.update(over)
     return base

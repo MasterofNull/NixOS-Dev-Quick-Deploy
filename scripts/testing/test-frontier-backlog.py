@@ -55,10 +55,10 @@ def test_status_transitions():
     with tempfile.TemporaryDirectory() as d:
         store = f"{d}/b.jsonl"
         rid = fb.add(store, _rec())["id"]
-        assert fb.set_status(store, rid, "approved")["ok"] is True
-        assert fb.list_items(store, status="approved")[0]["id"] == rid
+        assert fb.set_status(store, rid, "accepted")["ok"] is True
+        assert fb.list_items(store, status="accepted")[0]["id"] == rid
         assert fb.set_status(store, rid, "banana")["ok"] is False
-        assert fb.set_status(store, "nope", "approved")["ok"] is False
+        assert fb.set_status(store, "nope", "accepted")["ok"] is False
 
 
 def test_default_status_is_new_and_digest():
@@ -66,11 +66,35 @@ def test_default_status_is_new_and_digest():
     with tempfile.TemporaryDirectory() as d:
         store = f"{d}/b.jsonl"
         fb.add(store, _rec())
-        fb.add(store, _rec(claim="C2", status="approved"))
+        fb.add(store, _rec(claim="C2", status="accepted"))
         dg = fb.digest(store)
         assert dg["total"] == 2
         assert dg["by_status"].get("new") == 1
         assert dg["new_count"] == 1 and dg["new_lines"]
+
+
+def test_multi_expert_debate_gate():
+    fb = load()
+    with tempfile.TemporaryDirectory() as d:
+        store = f"{d}/b.jsonl"
+        rid = fb.add(store, _rec())["id"]
+        fb.set_status(store, rid, "in_review")
+        rec = lambda: next(r for r in fb.load(store) if r["id"] == rid)
+        # one support is not enough (need >= 2 distinct lanes)
+        fb.add_verdict(store, rid, "claude", "support")
+        assert fb.consensus(rec())["accept_eligible"] is False
+        # a second independent support -> eligible
+        fb.add_verdict(store, rid, "codex", "support")
+        assert fb.consensus(rec())["accept_eligible"] is True
+        # an adversarial reject blocks acceptance even with supports
+        fb.add_verdict(store, rid, "local", "reject", "hardware won't benefit")
+        con = fb.consensus(rec())
+        assert con["accept_eligible"] is False and "local" in con["rejects"]
+        # re-recording a lane's verdict replaces (no double-count)
+        fb.add_verdict(store, rid, "local", "support")
+        assert fb.consensus(rec())["accept_eligible"] is True
+        # bad stance rejected
+        assert fb.add_verdict(store, rid, "x", "banana")["ok"] is False
 
 
 def test_corrupt_line_is_skipped():
@@ -88,8 +112,9 @@ def main() -> int:
     test_validation_rejects_bad_records()
     test_status_transitions()
     test_default_status_is_new_and_digest()
+    test_multi_expert_debate_gate()
     test_corrupt_line_is_skipped()
-    print("test-frontier-backlog: ok 5/5")
+    print("test-frontier-backlog: ok 6/6")
     return 0
 
 

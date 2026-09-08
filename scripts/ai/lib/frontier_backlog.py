@@ -25,9 +25,51 @@ from typing import Any
 DEFAULT_STORE = ".agents/plans/frontier-evidence-intake/BACKLOG.jsonl"
 
 VERDICTS = ("adopt", "monitor", "drop", "corrected")
-STATUSES = ("new", "approved", "deferred", "dropped", "scheduled")
+# Lifecycle: a finding is PROPOSED (new), routed to the multi-expert team (in_review),
+# debated + adversarially reviewed, then ACCEPTED (consensus) or REJECTED. Only an
+# accepted finding may fold into a plan and be implemented (scheduled). Nothing is
+# auto-approved — acceptance requires recorded independent verdicts + no open reject.
+STATUSES = ("new", "in_review", "accepted", "rejected", "scheduled", "deferred", "dropped")
+STANCES = ("support", "concerns", "reject")
 _REQUIRED = ("technique", "source", "claim", "verdict", "aqos_mapping",
              "proposed_slice", "acceptance_goal")
+
+
+def add_verdict(store: str | os.PathLike, item_id: str, lane: str, stance: str,
+                note: str = "") -> dict[str, Any]:
+    """Record one expert lane's review verdict (support/concerns/reject) on a finding."""
+    if stance not in STANCES:
+        return {"ok": False, "error": f"stance must be one of {STANCES}"}
+    if not lane:
+        return {"ok": False, "error": "lane is required (the reviewing expert)"}
+    records = load(store)
+    found = False
+    for r in records:
+        if r.get("id") == item_id:
+            verdicts = [v for v in (r.get("verdicts") or []) if v.get("lane") != lane]
+            verdicts.append({"lane": lane, "stance": stance, "note": note})
+            r["verdicts"] = verdicts
+            found = True
+    if not found:
+        return {"ok": False, "error": f"no such id: {item_id}"}
+    _rewrite(store, records)
+    return {"ok": True, "id": item_id, "lane": lane, "stance": stance}
+
+
+def consensus(record: dict[str, Any], *, min_supports: int = 2) -> dict[str, Any]:
+    """Acceptance eligibility from recorded verdicts: >= min_supports distinct
+    independent supporting lanes AND no open 'reject'. Adversarial by design —
+    a single unaddressed reject blocks acceptance."""
+    verdicts = record.get("verdicts") or []
+    supports = sorted({v["lane"] for v in verdicts if v.get("stance") == "support"})
+    concerns = sorted({v["lane"] for v in verdicts if v.get("stance") == "concerns"})
+    rejects = sorted({v["lane"] for v in verdicts if v.get("stance") == "reject"})
+    eligible = len(supports) >= min_supports and not rejects
+    reason = ("eligible" if eligible
+              else f"blocked: {len(supports)}/{min_supports} supports"
+              + (f", open rejects from {rejects}" if rejects else ""))
+    return {"accept_eligible": eligible, "supports": supports, "concerns": concerns,
+            "rejects": rejects, "reason": reason}
 
 
 def content_hash(technique: str, claim: str) -> str:

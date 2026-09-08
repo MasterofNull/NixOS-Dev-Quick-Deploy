@@ -3,10 +3,15 @@
 
   aq-frontier add --technique T --source URL --claim C --verdict adopt|monitor|drop|corrected \
                   --mapping M --slice S --acceptance A [--id ID]
-  aq-frontier list [--status new|approved|deferred|dropped|scheduled]
+  aq-frontier list [--status new|in_review|accepted|rejected|scheduled|deferred|dropped]
   aq-frontier digest
-  aq-frontier approve|defer|drop|schedule <id>
-  aq-frontier seed        # load this cycle's verified FE-1..FE-8 candidates if empty
+  # Multi-expert debate gate (nothing is auto-accepted):
+  aq-frontier review <id>                                   # route proposed -> in_review
+  aq-frontier verdict <id> --lane <L> --stance support|concerns|reject --note '..'
+  aq-frontier accept <id>   # only on consensus: >=2 independent supports, no open reject
+  aq-frontier reject <id> | defer <id> | drop <id>
+  aq-frontier fold <id> --plan <dir>                        # accepted -> tracker slice
+  aq-frontier seed        # load this cycle's PROPOSED candidates if empty
 
 Store: .agents/plans/frontier-evidence-intake/BACKLOG.jsonl (append-only, deduped).
 This is the human/agent entrypoint; the scan (FA-4) and digest card (FA-2) build on it.
@@ -38,38 +43,38 @@ SEED = [
      "claim": "Step-wise process rewards + execution verification lift agent reliability; >8x compute-efficiency (AgentPRM).",
      "verdict": "adopt", "aqos_mapping": "aq-qa / edit-verify / behavioral-verify already score local-agent steps",
      "proposed_slice": "use aq-qa/behavioral-verify as a PRM signal so the local loop prefers a verified branch pre-commit",
-     "acceptance_goal": "measured pass-rate lift on the dogfood set, no APU latency blow-up", "status": "approved"},
+     "acceptance_goal": "measured pass-rate lift on the dogfood set, no APU latency blow-up", "status": "new"},
     {"source_ids": ["dspy", "gepa"], "id": "FE-2", "technique": "DSPy / GEPA prompt compilation",
      "source": "dspy.ai GEPA (ICLR 2026); gepa-ai/gepa; Microsoft MAI Qwen3-30B judge",
      "claim": "GEPA: gradient-free reflective prompt optimizer, +20% vs GRPO with 35x fewer rollouts; offline compile step.",
      "verdict": "adopt", "aqos_mapping": "aq-qa execution verifier + local Qwen judge + shared/llm_config.py prompt SSOT",
      "proposed_slice": "FE-2a functional eval metric first (baseline was a ceilinged self-probe), then FE-2b GEPA build-time compile gated by aq-qa",
-     "acceptance_goal": "a compiled local-agent prompt beating the FE-2a functional baseline + tier0", "status": "scheduled"},
+     "acceptance_goal": "a compiled local-agent prompt beating the FE-2a functional baseline + tier0", "status": "new"},
     {"source_ids": ["mcp-spec", "a2a-spec"], "id": "FE-3", "technique": "MCP + A2A interop standards",
      "source": "MCP spec 2025-11-25 (97M SDK dl/mo); A2A v1.0 Apr 2026 (Linux Foundation); arXiv:2606.31498",
      "claim": "MCP=tools layer, A2A=inter-agent layer, both de-facto standards; protocols cannot express key governance.",
      "verdict": "monitor", "aqos_mapping": "we run MCP (coordinator/lean-ctx) + home-grown signed-A2A (F3) + capability leases",
      "proposed_slice": "gap-check signed-A2A vs A2A v1.0 envelope; keep our capability-lease governance (we're ahead)",
-     "acceptance_goal": "interop gap doc + no governance regression", "status": "deferred"},
+     "acceptance_goal": "interop gap doc + no governance regression", "status": "new"},
     {"source_ids": ["llama-cpp", "arxiv-cs-lg"], "id": "FE-4", "technique": "Speculative decoding",
      "source": "ggml-org/llama.cpp #10466 + docs/speculative.md; community bench on Qwen3.6-35B-A3B",
      "claim": "tens-of-% to ~2x at best; NEGATIVE on some configs; NO mode faster than baseline on our Qwen3.6-35B-A3B MoE.",
      "verdict": "drop", "aqos_mapping": "our model IS Qwen3.6-35B-A3B on an APU; tok/s measured",
      "proposed_slice": "do NOT schedule for the current MoE model; re-test only on a dense-model switch",
-     "acceptance_goal": "n/a (dropped; recorded null-candidate)", "status": "dropped"},
+     "acceptance_goal": "n/a (dropped; recorded null-candidate)", "status": "new"},
     {"source_ids": ["bitnet"], "id": "FE-5", "technique": "BitNet / 1.58-bit ternary",
      "source": "microsoft/bitnet-b1.58-2B-4T (HF); arXiv:2504.12285",
      "claim": "Native-trained only (no post-hoc ternary quant); largest open native 1-bit models far below 30B; 4-bit still wins for capability.",
      "verdict": "monitor", "aqos_mapping": "we run Qwen3.6-35B Q5_K_S; ceiling is RAM/VRAM not bit-width",
      "proposed_slice": "monitor native 1-bit scaling; keep Q4/Q5/IQ path (matches owner decision, no lighter model)",
-     "acceptance_goal": "n/a until a native 1-bit model competitive at our size exists", "status": "deferred"},
+     "acceptance_goal": "n/a until a native 1-bit model competitive at our size exists", "status": "new"},
     {"source_ids": ["landlock", "ebpf"], "id": "FE-8", "technique": "Zero-trust sandbox egress (Landlock/eBPF/cgroup v2)",
      "source": "Landlock LSM + eBPF/cilium (mature 2026); arXiv:2606.31498 governance gaps",
      "claim": "Runtime LSM/eBPF egress + cgroup limits pin untrusted tools (e.g. MCP server to loopback-only).",
      "verdict": "adopt", "aqos_mapping": "we run bwrap cells + AppArmor + capability leases + C6 epoch-fence",
      "proposed_slice": "add a Landlock/eBPF egress pin for untrusted MCP servers (loopback-only)",
      "acceptance_goal": "deny-closed egress proof + no tool regression; attach to Foundation-C activation evidence",
-     "status": "approved"},
+     "status": "new"},
 ]
 
 
@@ -82,8 +87,13 @@ def main(argv: list[str] | None = None) -> int:
     a.add_argument("--id", default=None)
     ls = sub.add_parser("list"); ls.add_argument("--status", default=None); ls.add_argument("--json", action="store_true")
     sub.add_parser("digest")
-    for verb in ("approve", "defer", "drop", "schedule"):
+    for verb in ("defer", "drop"):  # owner "not pursuing" decisions (no debate needed)
         s = sub.add_parser(verb); s.add_argument("id")
+    # Multi-expert debate gate: a finding is never auto-accepted.
+    rvw = sub.add_parser("review"); rvw.add_argument("id")
+    vd = sub.add_parser("verdict"); vd.add_argument("id"); vd.add_argument("--lane", required=True); vd.add_argument("--stance", required=True, choices=fb.STANCES); vd.add_argument("--note", default="")
+    ac = sub.add_parser("accept"); ac.add_argument("id"); ac.add_argument("--min-supports", type=int, default=2); ac.add_argument("--force", action="store_true")
+    rj = sub.add_parser("reject"); rj.add_argument("id")
     sub.add_parser("seed")
     sc = sub.add_parser("sources"); sc.add_argument("--json", action="store_true")
     sm = sub.add_parser("source-metrics"); sm.add_argument("--json", action="store_true")
@@ -124,9 +134,45 @@ def main(argv: list[str] | None = None) -> int:
             print("(no NEW items awaiting decision)")
         return 0
 
-    if args.cmd in ("approve", "defer", "drop", "schedule"):
-        status = {"approve": "approved", "defer": "deferred", "drop": "dropped", "schedule": "scheduled"}[args.cmd]
-        res = fb.set_status(STORE, args.id, status)
+    if args.cmd in ("defer", "drop"):
+        res = fb.set_status(STORE, args.id, {"defer": "deferred", "drop": "dropped"}[args.cmd])
+        print(json.dumps(res)); return 0 if res.get("ok") else 1
+
+    if args.cmd == "review":  # route a proposed finding to the multi-expert team
+        res = fb.set_status(STORE, args.id, "in_review")
+        if not res.get("ok"):
+            print(json.dumps(res), file=sys.stderr); return 1
+        cand = next((b for b in fb.load(STORE) if b.get("id") == args.id), None)
+        print(f"REVIEW OPEN — {args.id} routed to the multi-expert team (status: in_review)")
+        print(f"  proposal: {cand.get('technique')} [{cand.get('verdict')}]")
+        print(f"  claim:    {cand.get('claim')}")
+        print(f"  our map:  {cand.get('aqos_mapping')}")
+        print("  Each independent lane records a verdict — adversarial review REQUIRED:")
+        print("    - primary source solid + not overclaimed? claim honest for OUR hardware/constraints?")
+        print("    - does it actually help us, or is it hype? risks / failure modes? cheaper alternative?")
+        print(f"    aq-frontier verdict {args.id} --lane <claude|codex|local|antigravity> --stance support|concerns|reject --note '...'")
+        print(f"  Accept only on consensus: aq-frontier accept {args.id}  (>=2 supports, no open reject)")
+        return 0
+
+    if args.cmd == "verdict":
+        res = fb.add_verdict(STORE, args.id, args.lane, args.stance, args.note)
+        print(json.dumps(res)); return 0 if res.get("ok") else 1
+
+    if args.cmd == "accept":
+        cand = next((b for b in fb.load(STORE) if b.get("id") == args.id), None)
+        if not cand:
+            print(f"no such id: {args.id}", file=sys.stderr); return 1
+        con = fb.consensus(cand, min_supports=args.min_supports)
+        if not con["accept_eligible"] and not args.force:
+            print(f"BLOCKED — {con['reason']}. supports={con['supports']} concerns={con['concerns']} rejects={con['rejects']}", file=sys.stderr)
+            print("  Debate is not settled. Resolve rejects / gather supports, or --force with a recorded owner override.", file=sys.stderr)
+            return 3
+        fb.set_status(STORE, args.id, "accepted")
+        print(f"ACCEPTED {args.id} — consensus {con['supports']} (concerns={con['concerns']}). Now foldable into its target plan.")
+        return 0
+
+    if args.cmd == "reject":
+        res = fb.set_status(STORE, args.id, "rejected")
         print(json.dumps(res)); return 0 if res.get("ok") else 1
 
     if args.cmd == "seed":
