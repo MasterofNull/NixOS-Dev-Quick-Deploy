@@ -29,11 +29,12 @@ flowchart TD
     PAR[PARITY SWEEP<br/>are we behind on X?] -.feeds.-> B
 ```
 
-1. **Scheduled scan (the clock).** A recurring trigger — two options, pick per lane availability:
-   - *Local-first:* a NixOS `systemd.timer` (weekly) that enqueues a `frontier-scan` task for the next
-     eligible web-capable lane (Rule 18 routing) — declarative, offline-scheduled, runs when a lane is up.
-   - *Cloud routine:* a `schedule`/CronCreate routine that wakes a web-capable agent weekly.
-   The scan is a bounded prompt: "run the intake loop over the source set; append verified candidates."
+1. **PULL at the workflow seam (primary — see WORKFLOW-INTEGRATION.md).** Superseding the timer:
+   agents pull frontier context at the moment they create a PRD, draft a plan, review a change, or
+   author a slice (`aq-frontier context "<topic>"`). Fresh at the point of use; the info is available
+   the instant it's needed, and a stale/missing topic triggers a **targeted, single-topic** refresh on
+   demand — never a blanket clock. A low-frequency **parity backstop** timer remains ONLY for subjects
+   nobody has queried in a long time (a safety net, not the access path).
 2. **Discover.** Curated source set (versioned in `sources.yaml`): arxiv categories (cs.AI/cs.CL/cs.LG),
    HuggingFace trending (via the HF MCP already attached), key repo releases (llama.cpp, vLLM, DSPy/GEPA,
    BitNet, MCP/A2A specs), and targeted WebSearch. New sources are added to the file, not re-prompted.
