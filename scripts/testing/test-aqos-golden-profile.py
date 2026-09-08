@@ -87,11 +87,14 @@ def test_package_list_has_no_ai_service_tooling() -> None:
     assert re.search(r"aqos-workstation = \[", src), "aqos-workstation package list missing"
     m = re.search(r"aqos-workstation = \[(.*?)\];", src, re.S)
     body = m.group(1)
-    # Transcription/research tools present; heavy AI-data tooling absent.
-    for want in ('"yt-dlp"', '"ffmpeg"', '"openai-whisper"'):
+    # General media tools present (NOT AI).
+    for want in ('"yt-dlp"', '"ffmpeg"'):
         assert want in body, want
-    for forbid in ('"dvc"',):
-        assert forbid not in body, f"AI-data tool {forbid} should not be on the golden list"
+    # HARD "AI-off has no AI deps" at the PACKAGE level: no AI/ML runner may sit on the
+    # always-on golden base (the leak the independent review caught). ML runners belong
+    # only behind the aiStack role / in the ai-dev profile.
+    for forbid in ('"openai-whisper"', '"whisper-cpp"', '"gpt4all"', '"ollama"', '"dvc"'):
+        assert forbid not in body, f"AI/ML package {forbid} must not be on the AI-off golden base list"
 
 
 def main() -> int:
