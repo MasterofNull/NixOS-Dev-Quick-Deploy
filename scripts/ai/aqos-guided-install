@@ -1,0 +1,143 @@
+#!/usr/bin/env python3
+"""aqos-guided-install — the golden-path guided flow (P1, non-destructive).
+
+A thin front-end over the ACTIVE engine: it detects hardware, confirms the
+hardware-tuned golden defaults, asks the ONE honest optional-AI question (answered
+by the versioned AI-fit policy, not a guess), previews the EXACT mutations, and — only
+on explicit authorization — hands the resolved plan to the existing installer. It is
+non-destructive by construction: it reads hardware, evaluates policy, and emits a
+request/plan; it performs NO disk operations and never runs nixos-rebuild itself
+(it prints the exact command for the operator to run). Guided / AI / manual inputs
+all flow through the SAME resolver (`aqos-install-resolve --adapter guided`), so the
+guided path can never diverge from the manual one.
+"""
+
+from __future__ import annotations
+
+import argparse
+import importlib.util
+import json
+import sys
+from pathlib import Path
+
+SELF = Path(__file__).resolve()
+LIB = SELF.parent / "lib"
+REPO = SELF.parents[2]
+GOLDEN_PROFILE = "aqos-workstation"
+
+
+def _load(name: str):
+    spec = importlib.util.spec_from_file_location(name, LIB / f"{name}.py")
+    m = importlib.util.module_from_spec(spec)
+    sys.modules[name] = m
+    spec.loader.exec_module(m)
+    return m
+
+
+def ai_decision(hw: dict, ai_catalog: dict, digest: str, choice: str | None) -> dict:
+    """The hardware-honest optional-AI answer. choice: 'yes'|'no'|None(auto).
+
+    Auto follows the AI-fit verdict: recommended -> default yes; limited -> default no
+    but honestly offerable; not_advised -> no. An explicit operator choice always wins,
+    but a 'yes' on not_advised hardware is surfaced as a warning, never silently taken."""
+    fit = _load("ai_fit").evaluate_fit(hw, ai_catalog, digest)
+    verdict = fit["verdict"]
+    auto_yes = verdict == "recommended"
+    if choice == "yes":
+        include = True
+    elif choice == "no":
+        include = False
+    else:
+        include = auto_yes
+    warn = None
+    if include and verdict == "not_advised":
+        warn = "AI enabled on hardware the policy rates NOT ADVISED — expect it to be unusable."
+    elif include and verdict == "limited":
+        warn = "AI enabled on LIMITED hardware — CPU-only/tight; slower than recommended."
+    return {"include_local_ai": include, "verdict": verdict,
+            "recommended_model": fit.get("recommended_model"),
+            "reason": fit.get("reason"), "warning": warn}
+
+
+def build_guided_request(host_target: str, include_local_ai: bool,
+                         roles: list[str] | None = None) -> dict:
+    """The guided request artifact — the SAME shape the resolver's guided adapter takes."""
+    return {
+        "artifact_type": "request_plan",
+        "schema_version": "aqos-install-plan/v1",
+        "selection": {
+            "golden_profile": GOLDEN_PROFILE,
+            "roles": sorted(roles or []),
+            "include_local_ai": bool(include_local_ai),
+        },
+        "host_target": host_target,
+    }
+
+
+def preview(request: dict, ai: dict) -> str:
+    sel = request["selection"]
+    lines = [
+        "AQ-OS Workstation — guided install preview (NOTHING is changed yet)",
+        f"  golden profile : {sel['golden_profile']}  (professional dev + gaming, hardware-tuned)",
+        f"  local AI       : {'ON' if sel['include_local_ai'] else 'OFF'}  "
+        f"(policy: {ai['verdict']}"
+        + (f"; model {ai['recommended_model']}" if sel['include_local_ai'] and ai.get('recommended_model') else "")
+        + ")",
+        f"  extra roles    : {', '.join(sel['roles']) or '(none — golden defaults)'}",
+        f"  host target    : {request['host_target']}",
+    ]
+    if ai.get("warning"):
+        lines.append(f"  ! {ai['warning']}")
+    lines.append("  disk           : UNTOUCHED (non-destructive golden path; rollback stays available)")
+    return "\n".join(lines)
+
+
+def run(hw: dict, ai_catalog: dict, digest: str, *, host_target: str, ai_choice: str | None,
+        roles: list[str] | None = None) -> dict:
+    """Pure, non-destructive flow core -> the selection + preview (no disk, no rebuild)."""
+    ai = ai_decision(hw, ai_catalog, digest, ai_choice)
+    request = build_guided_request(host_target, ai["include_local_ai"], roles)
+    return {"request": request, "ai": ai, "preview": preview(request, ai)}
+
+
+def main(argv: list[str] | None = None) -> int:
+    ap = argparse.ArgumentParser(description="AQ-OS Workstation guided install (non-destructive).")
+    ap.add_argument("--host-target", default="aqos-workstation")
+    ap.add_argument("--ai", choices=("yes", "no", "auto"), default="auto",
+                    help="optional local AI; 'auto' follows the hardware-fit policy")
+    ap.add_argument("--role", action="append", default=[], help="extra installer-owned role (repeatable)")
+    ap.add_argument("--hardware", type=Path, default=None, help="hw_probe JSON; omit for a live read-only probe")
+    ap.add_argument("--out", type=Path, default=None, help="write the guided request JSON here (optional)")
+    ap.add_argument("--authorize", action="store_true", help="print the exact resolve+rebuild commands to run")
+    ap.add_argument("--json", action="store_true")
+    args = ap.parse_args(argv)
+
+    hw_probe = _load("hw_probe")
+    ai_fit = _load("ai_fit")
+    hw = json.loads(args.hardware.read_text()) if args.hardware else hw_probe.probe_hardware()
+    ai_catalog, digest = ai_fit.load_catalog(REPO / ai_fit.CATALOG_PATH)
+
+    result = run(hw, ai_catalog, digest, host_target=args.host_target,
+                 ai_choice=(None if args.ai == "auto" else args.ai), roles=args.role)
+
+    if args.out:  # the ONLY write, and only when asked — never a system/disk mutation
+        args.out.write_text(json.dumps(result["request"], indent=2, sort_keys=True) + "\n")
+
+    if args.json:
+        print(json.dumps({k: v for k, v in result.items() if k != "preview"}, indent=2, sort_keys=True))
+        return 0
+
+    print(result["preview"])
+    if args.authorize:
+        req = "/tmp/aqos-guided-request.json" if not args.out else str(args.out)
+        print("\nTo build this (guided == manual == AI, one engine):")
+        print(f"  1. resolve : scripts/ai/aqos-install-resolve --adapter guided --request {req}")
+        print(f"  2. apply   : sudo nixos-rebuild switch --flake .#{args.host_target}")
+        print("  (this tool changed nothing; step 2 is the only mutation and it is yours to run)")
+    else:
+        print("\nRe-run with --authorize to see the exact resolve + rebuild commands (still your call to run).")
+    return 0
+
+
+if __name__ == "__main__":
+    raise SystemExit(main())
