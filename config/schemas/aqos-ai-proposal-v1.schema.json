@@ -1,0 +1,52 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://aq-os.local/schemas/aqos-ai-proposal-v1.schema.json",
+  "title": "AQ-OS AI installer proposal v1",
+  "description": "Closed, secret-free contract for an untrusted AI-generated installer proposal. The proposal may only ever express a selection drawn from the digest-pinned module catalog enums below — no free text, no host_target, no authorization/disk/command field, no string field that is not an enum. It is a strict subset of the resolver's request_plan.selection shape, intended to flow into normalize_adapter(\"ai\", ...) after validation.",
+  "type": "object",
+  "additionalProperties": false,
+  "required": ["artifact_type", "schema_version", "selection"],
+  "properties": {
+    "artifact_type": { "const": "ai_proposal" },
+    "schema_version": { "const": "aqos-install-plan/v1" },
+    "selection": { "$ref": "#/$defs/selection" }
+  },
+  "$defs": {
+    "goldenProfile": {
+      "type": "string",
+      "enum": [
+        "profile.ai-dev",
+        "profile.aqos-workstation",
+        "profile.gaming",
+        "profile.minimal"
+      ]
+    },
+    "role": {
+      "type": "string",
+      "enum": [
+        "role.ai-stack",
+        "role.cpp-dev",
+        "role.desktop",
+        "role.gaming",
+        "role.kernel-dev",
+        "role.server",
+        "role.virtualization"
+      ]
+    },
+    "selection": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["golden_profile", "roles", "include_local_ai"],
+      "properties": {
+        "golden_profile": { "$ref": "#/$defs/goldenProfile" },
+        "roles": {
+          "type": "array",
+          "items": { "$ref": "#/$defs/role" },
+          "uniqueItems": true,
+          "default": []
+        },
+        "include_local_ai": { "type": "boolean" }
+      }
+    }
+  }
+}
