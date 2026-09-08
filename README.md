@@ -1,24 +1,26 @@
-# NixOS Dev Quick Deploy
+# NixOS Dev Quick Deploy (AQ-OS)
 
-![NixOS](https://img.shields.io/badge/NixOS-declarative-5277C3?style=flat-square&logo=nixos&logoColor=white)
+![NixOS](https://img.shields.io/badge/NixOS-25.11-5277C3?style=flat-square&logo=nixos&logoColor=white)
 ![systemd](https://img.shields.io/badge/runtime-systemd-1E293B?style=flat-square)
 ![Local AI](https://img.shields.io/badge/AI-local--first-0F766E?style=flat-square)
+![lean-ctx](https://img.shields.io/badge/context-lean--ctx-0284C7?style=flat-square)
 ![MCP](https://img.shields.io/badge/MCP-enabled-8B5CF6?style=flat-square)
 ![Multi-Agent](https://img.shields.io/badge/agents-multi--agent-F59E0B?style=flat-square)
 ![License](https://img.shields.io/badge/license-MIT-16A34A?style=flat-square)
 
-A production-grade NixOS-first deployment harness that transforms a fresh NixOS host into a fully operational local AI platform with declarative provisioning, host-local inference, multi-agent orchestration, continuous learning, and unified operator visibility.
+A production-grade NixOS-first deployment harness and **AQ-OS AI-Native Operating Environment** that transforms a fresh host into a fully operational, deterministic local AI platform with declarative provisioning, host-local inference, `lean-ctx` context compression, multi-agent orchestration, continuous learning, and unified operator visibility.
 
 ## 🏛️ Executive Summary
 
-NixOS-Dev-Quick-Deploy is more than a deployment script; it is a **Pessimistic Recursive Self-Improvement (PRSI)** environment. It enables a "closed-loop" autonomous system where every change is evidence-gated, every service is instrumented, and the system continuously learns from human-agent interactions.
+NixOS-Dev-Quick-Deploy is an immutable, declarative **Pessimistic Recursive Self-Improvement (PRSI)** environment and **AQ-OS Unified Platform**. It provides a "closed-loop" autonomous system where every change is evidence-gated, every service is instrumented, and agents operate under strict deterministic parity and fail-closed security gates.
 
 ### 🚀 Key Innovations
 
-- **PRSI Loops:** Pessimistic execution with bounded iterations, hard timeouts, and evidence-gated completion.
-- **Measurement-Driven Ops:** "You cannot manage what you cannot measure." Dashboard parity is a hard requirement for all feature completions.
-- **Token Efficiency Strategy:** Progressive disclosure of context, semantic caching (Redis + Qdrant), and contextual bandit hint ranking.
-- **Hybrid Intent Routing:** A coordinator-first ingress that intelligently routes tasks between local Qwen3.6-35B models and remote reasoning engines based on complexity and cost.
+- **AQ-OS Golden Path Installer & Engine:** Deterministic, schema-bound (`aqos-install-plan-v1`) installer engine providing 4-layer parity (TUI, AI proposal, manual config, CLI flags build identical Nix derivations).
+- **`lean-ctx` Context Engineering Layer:** Native AST indexing, tree-sitter compression, 10 specialized read modes, and 90+ shell patterns yielding up to 99% token compression during agentic execution.
+- **PRSI & Agentic Reliability Engineering (ARE):** Pessimistic execution with bounded iterations, hard timeouts, evidence-gated completion, and automated Tier-0 regression gates.
+- **Hardware-Adaptive AI Tiering:** Automatic RAM/VRAM detection offering honest, dynamic model recommendations ("Recommended", "Limited", "Not Advised") without putting AI on the install critical path.
+- **Hybrid Intent Routing & Switchboard:** Coordinator-first ingress (`:8003`) routing queries between local Qwen3.6-35B models (`:8080`) and remote reasoning engines based on complexity, security bounds, and budget.
 
 ![System overview](./assets/readme/system-overview.svg)
 
@@ -26,11 +28,12 @@ NixOS-Dev-Quick-Deploy is more than a deployment script; it is a **Pessimistic R
 
 - [Overview](#overview)
 - [Quick Start](#quick-start)
+- [System Pulse](#-system-pulse)
 - [Architecture](#architecture)
 - [AI Stack Services](#ai-stack-services)
 - [CLI Tools](#cli-tools)
-- [Agent Integrations](#agent-integrations)
-- [MCP Servers](#mcp-servers)
+- [Agent Integrations & Multi-Agent Protocol](#agent-integrations)
+- [MCP Servers & lean-ctx Engine](#mcp-servers)
 - [Skills Library](#skills-library)
 - [Workflows](#workflows)
 - [Configuration](#configuration)
@@ -43,30 +46,31 @@ NixOS-Dev-Quick-Deploy is more than a deployment script; it is a **Pessimistic R
 
 ### What This Is
 
-NixOS-Dev-Quick-Deploy is:
+NixOS-Dev-Quick-Deploy (AQ-OS) is:
 
-- **A Nix-first deployment harness** for provisioning NixOS systems (workstations, servers, SBCs)
-- **A local AI stack framework** providing host-local inference, embeddings, retrieval, and orchestration
-- **An operator control plane** with a command center dashboard and programmatic APIs
-- **An agent-oriented development platform** supporting multi-agent workflows and continuous learning
-- **A single-repository system** that bootstraps from a fresh NixOS host to a fully operational AI platform
+- **An AQ-OS Nix-first OS harness** for provisioning deterministic NixOS hosts (workstations, servers, SBCs) with a single `mySystem.*` declarative schema
+- **A `lean-ctx` empowered agent runtime** providing AST token compression, cached file reads (~13 tok re-reads), and compressed shell execution
+- **A local AI stack framework** providing host-local inference (Qwen3.6-35B), embeddings, vector retrieval (Qdrant), and switchboard routing
+- **A multi-agent collaboration platform** enforcing state persistence (`RESUME.json`, `PENDING.json`, `PULSE.log`, `HANDOFF.md`) across Codex, Gemini, Claude, and local Qwen agents
+- **An operator control plane** featuring the Command Center dashboard (`127.0.0.1:8889`) and diagnostic CLI suites (`aq-qa`, `aq-hints`, `aq-report`)
 
 ### Core Philosophy
 
 | Principle | Description |
 |-----------|-------------|
-| **Declarative-first** | Nix modules define system state; runtime scripts are fallbacks only |
-| **Local-first** | Host-local inference and storage by default; hybrid routing to remote models optional |
-| **Zero bolt-on** | All core features auto-enable on deployment — no manual toggles |
-| **Reproducible** | All decisions tracked, git history preserved, rollback-safe |
-| **Operator-facing** | Health, visibility, and control surfaces built-in |
+| **Declarative-first** | `mySystem.*` Nix modules define full system state; runtime scripts are fallbacks only |
+| **4-Layer Parity** | TUI, AI proposals, manual configs, and CLI flags generate byte-identical JSON and Nix output |
+| **Local-first AI** | Host-local inference and vector storage by default; hybrid routing to remote models optional |
+| **Token Efficiency** | `lean-ctx` AST pruning + dynamic context cards + semantic caching |
+| **Fail-Closed Governance** | All changes evidence-gated by Tier-0 validation gates (`scripts/governance/tier0-validation-gate.sh`) |
+| **Operator Visibility** | "You cannot manage what you cannot measure" — 100% dashboard parity requirement |
 
 ### Who This Is For
 
-- NixOS users who want one repository to provision and operate an AI-capable machine
-- Developers who want local inference, retrieval, and orchestration without manual setup
-- Teams experimenting with agentic development patterns on a reproducible host
-- Operators who want clearer health, deployment, and verification workflows
+- NixOS users seeking a unified, reproducible system engine for workstations and AI servers
+- Developers and researchers running multi-agent workflows with local LLM acceleration
+- Teams building deterministic, evidence-gated agent infrastructure on NixOS
+- Operators requiring full telemetry, health monitoring, and rollback guarantees
 
 ---
 
@@ -103,20 +107,22 @@ aq-hints "how do I configure NixOS services"      # Get workflow hints
 ## 📡 System Pulse
 
 ### Current Status: 🟢 OPERATIONAL
-- **Last Validated:** 2026-05-25 20:30 UTC
-- **Health Gate:** 17/17 Tier 0 Validation Gates passing.
-- **AI Stack:** Qwen3.6-35B local inference stable (CUDA/Vulkan).
-- **Observability:** 100% service coverage in Command Center.
+- **Last Validated:** 2026-09-08
+- **Health Gate:** 17/17 Tier 0 Validation Gates passing (`tier0-validation-gate.sh`).
+- **AQ-OS Refactor Status:** Phase P0 (Contract Foundation, Hardware Detector, Resolver, Schema `aqos-install-plan-v1`) Complete; Phase P1 (Golden Path Profile & Guided TUI) Active.
+- **Inference Engine:** Local Qwen3.6-35B model active on llama.cpp (`:8080`, CUDA/Vulkan).
+- **Context Efficiency:** `lean-ctx` MCP layer active system-wide (46 tools, 10 read modes, 90+ shell patterns).
 
-### 🏆 Recent Achievements (Cycle 61)
-- **Hardened L5/L6 Monitoring:** Added deep-check coverage for MCP server-to-server communication.
-- **Tier 0 Evolution:** Hardened the validation gate with path-aware CI checks and declarative contract enforcement.
-- **Hybrid Retrieval Lane:** Optimized hybrid search performance (30% latency reduction via semantic caching).
+### 🏆 Recent Achievements
+- **Phase P0 Execution Verifier:** Completed contract schema validation, hardware-adaptive RAM/VRAM detection, and module catalog resolution.
+- **`lean-ctx` MCP Integration:** Integrated native context compression server providing AST parsing and 90%+ token reduction for agentic loops.
+- **4-Layer Parity Engine:** Sealed deterministic equivalence across TUI, AI proposals, manual configs, and CLI flag inputs.
+- **Multi-Agent Collaboration Protocols:** Hardened state synchronization (`RESUME.json`, `PENDING.json`, `PULSE.log`) across Codex, Gemini, Claude, and local model lanes.
 
 ### 🗺️ Future Roadmap
-- **Autonomous Parameter Tuning:** Integrating `aq-meta-optimize` for automated model quantization selection.
-- **Federated Pattern Sync:** Enabling secure sharing of learned interaction patterns across multiple deployment nodes.
-- **Edge Model Registry:** Standardizing local model provenance and integrity verification.
+- **P1 Golden Path TUI:** Launching guided terminal UI experience for the curated pro dev + gaming profile.
+- **PRSI Anomaly Remediation:** Deepening autonomous telemetry-driven self-healing (`RemediatorAgent`).
+- **Understand-Anything Knowledge Overlay:** Expanding interactive codebase graph visualizer for real-time impact analysis.
 
 ---
 
@@ -375,8 +381,9 @@ The system supports orchestrator/sub-agent patterns:
 
 ### Core MCP Servers
 
-| Server | Port | Purpose |
-|--------|------|---------|
+| Server | Port / Entry | Purpose |
+|--------|--------------|---------|
+| **lean-ctx** | Stdio / MCP | AST token compression, 10 read modes, 90+ shell patterns, tree-sitter indexing |
 | **hybrid-coordinator** | 8003 | Context augmentation, continuous learning, query routing |
 | **aidb** | 8002 | Knowledge base, tool discovery, document lifecycle |
 | **llama-embed** | 8081 | Sentence transformer API |
