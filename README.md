@@ -1,6 +1,6 @@
 # NixOS Dev Quick Deploy (AQ-OS)
 
-![NixOS](https://img.shields.io/badge/NixOS-25.11-5277C3?style=flat-square&logo=nixos&logoColor=white)
+![NixOS](https://img.shields.io/badge/NixOS-26.05-5277C3?style=flat-square&logo=nixos&logoColor=white)
 ![systemd](https://img.shields.io/badge/runtime-systemd-1E293B?style=flat-square)
 ![Local AI](https://img.shields.io/badge/AI-local--first-0F766E?style=flat-square)
 ![lean-ctx](https://img.shields.io/badge/context-lean--ctx-0284C7?style=flat-square)
@@ -16,7 +16,7 @@ NixOS-Dev-Quick-Deploy is an immutable, declarative **Pessimistic Recursive Self
 
 ### 🚀 Key Innovations
 
-- **AQ-OS Golden Path Installer & Engine:** Deterministic, schema-bound (`aqos-install-plan-v1`) installer engine providing 4-layer parity (TUI, AI proposal, manual config, CLI flags build identical Nix derivations).
+- **AQ-OS Golden Path Installer & Engine:** Deterministic, schema-bound (`aqos-install-plan-v1`) installer engine — one resolver where guided, manual, and legacy-flag inputs resolve to a byte-identical canonical (RFC 8785 JCS) plan. The optional local-AI proposal path and Nix-derivation (drvPath) parity are in active development.
 - **`lean-ctx` Context Engineering Layer:** Native AST indexing, tree-sitter compression, 10 specialized read modes, and 90+ shell patterns yielding up to 99% token compression during agentic execution.
 - **PRSI & Agentic Reliability Engineering (ARE):** Pessimistic execution with bounded iterations, hard timeouts, evidence-gated completion, and automated Tier-0 regression gates.
 - **Hardware-Adaptive AI Tiering:** Automatic RAM/VRAM detection offering honest, dynamic model recommendations ("Recommended", "Limited", "Not Advised") without putting AI on the install critical path.
@@ -59,7 +59,7 @@ NixOS-Dev-Quick-Deploy (AQ-OS) is:
 | Principle | Description |
 |-----------|-------------|
 | **Declarative-first** | `mySystem.*` Nix modules define full system state; runtime scripts are fallbacks only |
-| **4-Layer Parity** | TUI, AI proposals, manual configs, and CLI flags generate byte-identical JSON and Nix output |
+| **One-Engine Parity** | Guided, manual, and legacy inputs resolve to byte-identical plan JSON through one resolver (local-AI proposal + Nix-derivation parity in progress) |
 | **Local-first AI** | Host-local inference and vector storage by default; hybrid routing to remote models optional |
 | **Token Efficiency** | `lean-ctx` AST pruning + dynamic context cards + semantic caching |
 | **Fail-Closed Governance** | All changes evidence-gated by Tier-0 validation gates (`scripts/governance/tier0-validation-gate.sh`) |
@@ -108,15 +108,15 @@ aq-hints "how do I configure NixOS services"      # Get workflow hints
 
 ### Current Status: 🟢 OPERATIONAL
 - **Last Validated:** 2026-09-08
-- **Health Gate:** 17/17 Tier 0 Validation Gates passing (`tier0-validation-gate.sh`).
-- **AQ-OS Refactor Status:** Phase P0 (Contract Foundation, Hardware Detector, Resolver, Schema `aqos-install-plan-v1`) Complete; Phase P1 (Golden Path Profile & Guided TUI) Active.
-- **Inference Engine:** Local Qwen3.6-35B model active on llama.cpp (`:8080`, CUDA/Vulkan).
+- **Health Gate:** all Tier 0 validation gates passing (`tier0-validation-gate.sh`, 51 checks green as of 2026-09-08).
+- **AQ-OS Refactor Status:** Phase P0 (Contract Foundation, Hardware Detector, Resolver, Schema `aqos-install-plan-v1`) and Phase P1 (Golden Path Profile, Guided TUI, adapter parity suite) Complete; Phase P2 (optional local AI-assist) Active.
+- **Inference Engine:** Local Qwen3.6-35B model active on llama.cpp (`:8080`, ROCm/Vulkan on the AMD Renoir APU).
 - **Context Efficiency:** `lean-ctx` MCP layer active system-wide (46 tools, 10 read modes, 90+ shell patterns).
 
 ### 🏆 Recent Achievements
 - **Phase P0 Execution Verifier:** Completed contract schema validation, hardware-adaptive RAM/VRAM detection, and module catalog resolution.
 - **`lean-ctx` MCP Integration:** Integrated native context compression server providing AST parsing and 90%+ token reduction for agentic loops.
-- **4-Layer Parity Engine:** Sealed deterministic equivalence across TUI, AI proposals, manual configs, and CLI flag inputs.
+- **Adapter Parity Suite:** Proved byte-identical resolved-plan + projection across guided, AI-adapter, manual, and legacy inputs through one resolver (the local-AI proposal path and Nix-derivation parity remain in progress).
 - **Multi-Agent Collaboration Protocols:** Hardened state synchronization (`RESUME.json`, `PENDING.json`, `PULSE.log`) across Codex, Gemini, Claude, and local model lanes.
 
 ### 🗺️ Future Roadmap
@@ -152,7 +152,7 @@ If you are reviewing this repository, we recommend evaluating the following key 
 
 ```mermaid
 flowchart TD
-    subgraph UI["User Surface — COSMIC Desktop (NixOS 25.11)"]
+    subgraph UI["User Surface — COSMIC Desktop (NixOS 26.05)"]
         Dash[Command Center Dashboard<br/>:8889]
         IDE[IDE: Continue / Aider / Cursor]
     end
@@ -222,7 +222,7 @@ flowchart TD
 
 | Service | Port | Purpose | Technology |
 |---------|------|---------|------------|
-| **llama-cpp** | 8080 | OpenAI-compatible inference API | llama.cpp (CUDA/Vulkan/CPU) |
+| **llama-cpp** | 8080 | OpenAI-compatible inference API | llama.cpp (Vulkan/ROCm/CPU) |
 | **Embeddings** | 8001 | Sentence transformer embeddings | Qwen3-Embedding-4B |
 | **Switchboard** | 8085 | LLM routing proxy (local/remote hybrid) | FastAPI + profile routing |
 | **Open WebUI** | 3000 | Browser chat interface (optional) | Web-based UI |
