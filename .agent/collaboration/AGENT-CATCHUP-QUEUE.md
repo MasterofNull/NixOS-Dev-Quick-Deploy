@@ -588,3 +588,14 @@ Remaining: the operator rebuild/switch is the "builds green" proof (owner will t
 (thin TUI emitting a resolved plan into the ACTIVE nixos-quick-deploy.sh) then p1-parity-suite.
 Reviewer (non-author) on return: confirm the aiOn guard is the ONLY AI-dep site and the hardened defaults
 are appropriate for a beginner-facing blessed default.
+
+---
+## [2026-09-08T16:48:59Z] Codex confirmatory — P1 guided-tui + parity (Codex lane down)
+**Why queued:** Codex reviewer hit its usage limit (resets ~13:33 local) mid-review of feat/aqos-p1-guided-tui; process exited `failed`, no verdict written. Per Rule 18 the review was RE-ROUTED (never blocked) to a fresh independent Claude reviewer (sonnet, cold context — non-author) + a parallel local (Qwen) adversarial pass.
+**Subjects to confirm (exact):**
+- guided-tui commit: `2e34f519811b101cbabc10db2ddc495518a66540` — scripts/ai/aqos-guided-install + scripts/testing/test-aqos-guided-install.py
+- parity-suite commit: `fb4ec61b72494ef671d465a189dc8ea35f94b831` — scripts/testing/test-aqos-adapter-parity.py
+**Confirm on return:** (1) non-destructive (no rebuild/disk mutation; only --out write); (2) AI answer hardware-honest; (3) guided==manual==ai==legacy byte-identical through the one resolver (parity test non-trivial). Tests green at route time: guided 5/5, parity 3/3.
+**Disposition:** advisory unless a real defect surfaces → bounded follow-up, never rewrite history. Verdict of record from the primary reviewer: .agents/plans/aqos-installer-experience/GUIDED-TUI-REVIEW-20260908.md
+
+**UPDATE [2026-09-08T16:56:43Z]:** primary reviewer caught a real silent-data-loss defect (FAIL) → fixed at commit `5c95ff79` (guided emits {answers,host_target}; --adapter guided now exercised; round-trip regressions added). Codex on return: confirm the FIXED head `5c95ff79`, not the pre-fix commits. Tests: guided 6/6, parity 4/4, golden 5/5.
