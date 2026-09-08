@@ -21,43 +21,45 @@ from pathlib import Path
 
 sys.path.insert(0, str(Path(__file__).resolve().parent / "lib"))
 import frontier_backlog as fb  # noqa: E402
+import frontier_sources as fs  # noqa: E402
 
 REPO = Path(__file__).resolve().parents[2]
 STORE = str(REPO / fb.DEFAULT_STORE)
+CATALOG = str(REPO / fs.DEFAULT_CATALOG)
 
 # This cycle's verified candidates (see DESIGN.md §2). Seed data only.
 SEED = [
-    {"id": "FE-1", "technique": "Test-time compute + Process Reward Models",
+    {"source_ids": ["arxiv-cs-ai", "awesome-prm"], "id": "FE-1", "technique": "Test-time compute + Process Reward Models",
      "source": "arXiv:2510.14232; AgentPRM (ACM WebConf 2026); GenPRM 2504.00891",
      "claim": "Step-wise process rewards + execution verification lift agent reliability; >8x compute-efficiency (AgentPRM).",
      "verdict": "adopt", "aqos_mapping": "aq-qa / edit-verify / behavioral-verify already score local-agent steps",
      "proposed_slice": "use aq-qa/behavioral-verify as a PRM signal so the local loop prefers a verified branch pre-commit",
      "acceptance_goal": "measured pass-rate lift on the dogfood set, no APU latency blow-up", "status": "approved"},
-    {"id": "FE-2", "technique": "DSPy / GEPA prompt compilation",
+    {"source_ids": ["dspy", "gepa"], "id": "FE-2", "technique": "DSPy / GEPA prompt compilation",
      "source": "dspy.ai GEPA (ICLR 2026); gepa-ai/gepa; Microsoft MAI Qwen3-30B judge",
      "claim": "GEPA: gradient-free reflective prompt optimizer, +20% vs GRPO with 35x fewer rollouts; offline compile step.",
      "verdict": "adopt", "aqos_mapping": "aq-qa execution verifier + local Qwen judge + shared/llm_config.py prompt SSOT",
      "proposed_slice": "FE-2a functional eval metric first (baseline was a ceilinged self-probe), then FE-2b GEPA build-time compile gated by aq-qa",
      "acceptance_goal": "a compiled local-agent prompt beating the FE-2a functional baseline + tier0", "status": "scheduled"},
-    {"id": "FE-3", "technique": "MCP + A2A interop standards",
+    {"source_ids": ["mcp-spec", "a2a-spec"], "id": "FE-3", "technique": "MCP + A2A interop standards",
      "source": "MCP spec 2025-11-25 (97M SDK dl/mo); A2A v1.0 Apr 2026 (Linux Foundation); arXiv:2606.31498",
      "claim": "MCP=tools layer, A2A=inter-agent layer, both de-facto standards; protocols cannot express key governance.",
      "verdict": "monitor", "aqos_mapping": "we run MCP (coordinator/lean-ctx) + home-grown signed-A2A (F3) + capability leases",
      "proposed_slice": "gap-check signed-A2A vs A2A v1.0 envelope; keep our capability-lease governance (we're ahead)",
      "acceptance_goal": "interop gap doc + no governance regression", "status": "deferred"},
-    {"id": "FE-4", "technique": "Speculative decoding",
+    {"source_ids": ["llama-cpp", "arxiv-cs-lg"], "id": "FE-4", "technique": "Speculative decoding",
      "source": "ggml-org/llama.cpp #10466 + docs/speculative.md; community bench on Qwen3.6-35B-A3B",
      "claim": "tens-of-% to ~2x at best; NEGATIVE on some configs; NO mode faster than baseline on our Qwen3.6-35B-A3B MoE.",
      "verdict": "drop", "aqos_mapping": "our model IS Qwen3.6-35B-A3B on an APU; tok/s measured",
      "proposed_slice": "do NOT schedule for the current MoE model; re-test only on a dense-model switch",
      "acceptance_goal": "n/a (dropped; recorded null-candidate)", "status": "dropped"},
-    {"id": "FE-5", "technique": "BitNet / 1.58-bit ternary",
+    {"source_ids": ["bitnet"], "id": "FE-5", "technique": "BitNet / 1.58-bit ternary",
      "source": "microsoft/bitnet-b1.58-2B-4T (HF); arXiv:2504.12285",
      "claim": "Native-trained only (no post-hoc ternary quant); largest open native 1-bit models far below 30B; 4-bit still wins for capability.",
      "verdict": "monitor", "aqos_mapping": "we run Qwen3.6-35B Q5_K_S; ceiling is RAM/VRAM not bit-width",
      "proposed_slice": "monitor native 1-bit scaling; keep Q4/Q5/IQ path (matches owner decision, no lighter model)",
      "acceptance_goal": "n/a until a native 1-bit model competitive at our size exists", "status": "deferred"},
-    {"id": "FE-8", "technique": "Zero-trust sandbox egress (Landlock/eBPF/cgroup v2)",
+    {"source_ids": ["landlock", "ebpf"], "id": "FE-8", "technique": "Zero-trust sandbox egress (Landlock/eBPF/cgroup v2)",
      "source": "Landlock LSM + eBPF/cilium (mature 2026); arXiv:2606.31498 governance gaps",
      "claim": "Runtime LSM/eBPF egress + cgroup limits pin untrusted tools (e.g. MCP server to loopback-only).",
      "verdict": "adopt", "aqos_mapping": "we run bwrap cells + AppArmor + capability leases + C6 epoch-fence",
@@ -79,6 +81,8 @@ def main(argv: list[str] | None = None) -> int:
     for verb in ("approve", "defer", "drop", "schedule"):
         s = sub.add_parser(verb); s.add_argument("id")
     sub.add_parser("seed")
+    sc = sub.add_parser("sources"); sc.add_argument("--json", action="store_true")
+    sm = sub.add_parser("source-metrics"); sm.add_argument("--json", action="store_true")
     args = ap.parse_args(argv)
 
     if args.cmd == "add":
@@ -120,6 +124,37 @@ def main(argv: list[str] | None = None) -> int:
             if fb.add(STORE, rec).get("added"):
                 added += 1
         print(f"seeded {added} new candidate(s); {len(SEED) - added} already present")
+        return 0
+
+    if args.cmd == "sources":
+        cat = fs.load_catalog(CATALOG)
+        issues = fs.validate(cat)
+        cov = fs.coverage(cat)
+        if args.json:
+            print(json.dumps({"coverage": cov, "issues": issues}, indent=2))
+            return 0 if not issues else 1
+        print(f"Source catalog: {cov['total']} sources  trust={cov['by_trust']}")
+        for pillar, row in sorted(cov["by_pillar"].items()):
+            print(f"  {pillar:20} {row['total']:2} sources ({row['primary']} primary)")
+        if cov["pillars_without_primary"]:
+            print(f"  COVERAGE RISK — pillars with no primary source: {cov['pillars_without_primary']}")
+        if issues:
+            print("  ISSUES:")
+            for i in issues:
+                print(f"    - {i}")
+            return 1
+        return 0
+
+    if args.cmd == "source-metrics":
+        cat = fs.load_catalog(CATALOG)
+        rows = fs.source_signal(cat, fb.load(STORE))
+        if args.json:
+            print(json.dumps(rows, indent=2))
+            return 0
+        print(f"{'source':16} {'pillar':20} {'surfaced':8} {'adopted':7} {'adopt_rate'}")
+        for r in rows:
+            rate = "-" if r["adopt_rate"] is None else f"{r['adopt_rate']:.2f}"
+            print(f"{r['source_id']:16} {str(r['pillar']):20} {r['surfaced']:>8} {r['adopted']:>7} {rate:>10}")
         return 0
     return 1
 
