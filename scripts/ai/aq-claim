@@ -1,0 +1,88 @@
+#!/usr/bin/env python3
+"""aq-claim — take/check/release slice+path claims so two lanes never edit the same files.
+
+C-1 (SWARM-LESSONS-INTEGRATION-20260907.md). Before a lane edits a set of paths it
+takes a claim; another lane checks first and routes elsewhere on a conflict. Advisory
+now (surface the claimant); the dispatch/session-start seam can enforce it later.
+
+Usage:
+  aq-claim take <slice-id> --lane <lane> --paths a b c [--ttl 7200]
+  aq-claim check --lane <lane> --paths a b c        # exit 0 clear, exit 3 conflict
+  aq-claim release <slice-id> --lane <lane>
+  aq-claim list [--json]
+
+Store: .agent/collaboration/slice-claims.json (repo-relative; expired claims auto-drop).
+"""
+
+from __future__ import annotations
+
+import argparse
+import json
+import sys
+from pathlib import Path
+
+sys.path.insert(0, str(Path(__file__).resolve().parent / "lib"))
+import slice_claim as sc  # noqa: E402
+
+REPO = Path(__file__).resolve().parents[2]
+STORE = str(REPO / sc.DEFAULT_STORE)
+
+
+def _fmt(c: dict) -> str:
+    return f"{c['slice_id']} [{c['lane']}] -> {', '.join(c['paths'])}"
+
+
+def main(argv: list[str] | None = None) -> int:
+    ap = argparse.ArgumentParser(description="Slice/path claim registry (anti-collision).")
+    sub = ap.add_subparsers(dest="cmd", required=True)
+    t = sub.add_parser("take"); t.add_argument("slice_id"); t.add_argument("--lane", required=True)
+    t.add_argument("--paths", nargs="+", required=True); t.add_argument("--ttl", type=int, default=sc.DEFAULT_TTL_SECONDS)
+    c = sub.add_parser("check"); c.add_argument("--lane", required=True); c.add_argument("--paths", nargs="+", required=True)
+    r = sub.add_parser("release"); r.add_argument("slice_id"); r.add_argument("--lane", required=True)
+    ls = sub.add_parser("list"); ls.add_argument("--json", action="store_true")
+    args = ap.parse_args(argv)
+
+    if args.cmd == "take":
+        res = sc.take_claim(STORE, args.slice_id, args.lane, args.paths, ttl_seconds=args.ttl)
+        if res.get("ok"):
+            print(f"claimed: {_fmt(res['claim'])}")
+            return 0
+        if res.get("conflicts"):
+            print("CONFLICT — these paths are already claimed by another lane:", file=sys.stderr)
+            for cf in res["conflicts"]:
+                print(f"  {_fmt(cf)}", file=sys.stderr)
+            print("Route to a different slice/paths or coordinate with the claimant.", file=sys.stderr)
+            return 3
+        print(f"error: {res.get('error')}", file=sys.stderr)
+        return 1
+
+    if args.cmd == "check":
+        res = sc.check_paths(STORE, args.paths, args.lane)
+        if res["clear"]:
+            print("clear: no conflicting claims")
+            return 0
+        print("CONFLICT:", file=sys.stderr)
+        for cf in res["conflicts"]:
+            print(f"  {_fmt(cf)}", file=sys.stderr)
+        return 3
+
+    if args.cmd == "release":
+        res = sc.release_claim(STORE, args.slice_id, args.lane)
+        print(f"released {res['released']} claim(s) for {args.slice_id} [{args.lane}]")
+        return 0
+
+    if args.cmd == "list":
+        claims = sc.load_claims(STORE)
+        if args.json:
+            print(json.dumps([c.to_json() for c in claims], indent=2))
+        elif not claims:
+            print("no active claims")
+        else:
+            for c in claims:
+                print(_fmt(c.to_json()))
+        return 0
+    return 1
+
+
+if __name__ == "__main__":
+    raise SystemExit(main())
