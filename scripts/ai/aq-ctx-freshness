@@ -1,0 +1,189 @@
+#!/usr/bin/env bash
+# Surface and repair stale lean-ctx code graphs without blocking Git or sessions.
+# AQ_UNSHALLOW_DEPTH=N makes --heal-shallow fetch that depth from origin instead
+# of fetching the repository's complete history with --unshallow.
+
+set -euo pipefail
+
+mode="${1:---check}"
+if [[ $# -gt 0 ]]; then
+    shift
+fi
+if [[ $# -gt 0 ]]; then
+    printf 'usage: aq-ctx-freshness [--check|--ensure|--refresh|--heal-shallow]\n' >&2
+    exit 2
+fi
+
+repo_root="$(git rev-parse --show-toplevel 2>/dev/null)" || {
+    if [[ "$mode" == "--heal-shallow" ]]; then
+        printf '%s\n' '[ctx-freshness] shallow heal skipped: unable to resolve the Git repository root' >&2
+        exit 0
+    fi
+    printf '%s\n' '[ctx-freshness] STALE: unable to resolve the Git repository root'
+    exit 1
+}
+
+lean_ctx_bin="$(command -v lean-ctx 2>/dev/null || true)"
+graph_store="${HOME}/.lean-ctx/graphs"
+
+find_graph_dir() {
+    local current_common candidate_common candidate_root index
+    local shared_repo_match=""
+
+    [[ -d "$graph_store" ]] || return 1
+    command -v python3 >/dev/null 2>&1 || return 1
+    current_common="$(git -C "$repo_root" rev-parse --path-format=absolute --git-common-dir 2>/dev/null || true)"
+
+    while IFS= read -r -d '' index; do
+        candidate_root="$(python3 - "$index" <<'PY' 2>/dev/null || true
+import json
+import sys
+
+try:
+    with open(sys.argv[1], encoding="utf-8") as handle:
+        print(json.load(handle).get("project_root", ""))
+except (OSError, ValueError):
+    pass
+PY
+        )"
+        [[ -n "$candidate_root" ]] || continue
+
+        if [[ "$candidate_root" == "$repo_root" ]]; then
+            dirname "$index"
+            return 0
+        fi
+
+        if [[ -z "$shared_repo_match" && -n "$current_common" ]]; then
+            candidate_common="$(git -C "$candidate_root" rev-parse --path-format=absolute --git-common-dir 2>/dev/null || true)"
+            if [[ "$candidate_common" == "$current_common" ]]; then
+                shared_repo_match="$(dirname "$index")"
+            fi
+        fi
+    done < <(find "$graph_store" -mindepth 2 -maxdepth 2 -type f -name index.json -print0 2>/dev/null)
+
+    [[ -n "$shared_repo_match" ]] || return 1
+    printf '%s\n' "$shared_repo_match"
+}
+
+format_age() {
+    local seconds="$1"
+    if (( seconds >= 86400 )); then
+        printf '%dd' "$((seconds / 86400))"
+    elif (( seconds >= 3600 )); then
+        printf '%dh' "$((seconds / 3600))"
+    elif (( seconds >= 60 )); then
+        printf '%dm' "$((seconds / 60))"
+    else
+        printf '%ds' "$seconds"
+    fi
+}
+
+check_graph() {
+    local age graph_dir graph_mtime graph_timestamp head_time
+
+    if [[ -z "$lean_ctx_bin" ]]; then
+        printf '%s\n' '[ctx-freshness] SKIP: lean-ctx is not installed'
+        return 0
+    fi
+
+    graph_dir="$(find_graph_dir || true)"
+    if [[ -z "$graph_dir" ]]; then
+        printf '%s\n' '[ctx-freshness] STALE: no lean-ctx graph found for this repository — run aq-ctx-freshness --ensure'
+        return 1
+    fi
+
+    graph_mtime="$(find "$graph_dir" -type f -exec stat -c '%Y' {} + 2>/dev/null \
+        | awk '$1 > newest { newest = $1 } END { if (newest) print newest }')"
+    head_time="$(git -C "$repo_root" log -1 --format=%ct 2>/dev/null || true)"
+    if [[ -z "$graph_mtime" || -z "$head_time" ]]; then
+        printf '%s\n' '[ctx-freshness] STALE: graph or HEAD timestamp unavailable — run aq-ctx-freshness --ensure'
+        return 1
+    fi
+
+    if (( graph_mtime < head_time )); then
+        age="$(format_age "$((head_time - graph_mtime))")"
+        printf '[ctx-freshness] STALE: graph older than HEAD (%s) — run aq-ctx-freshness --ensure\n' "$age"
+        return 1
+    fi
+
+    graph_timestamp="$(date -u -d "@${graph_mtime}" '+%Y-%m-%dT%H:%M:%SZ' 2>/dev/null || printf '@%s' "$graph_mtime")"
+    printf '[ctx-freshness] FRESH: graph scanned %s\n' "$graph_timestamp"
+}
+
+ensure_graph() {
+    local log_path
+
+    if check_graph; then
+        return 0
+    fi
+    if [[ -z "$lean_ctx_bin" ]]; then
+        return 0
+    fi
+
+    log_path="$(git -C "$repo_root" rev-parse --git-path lean-ctx-graph-build.log)"
+    if command -v setsid >/dev/null 2>&1; then
+        (cd "$repo_root" && nohup setsid "$lean_ctx_bin" graph build >>"$log_path" 2>&1 </dev/null &) || true
+    else
+        (cd "$repo_root" && nohup "$lean_ctx_bin" graph build >>"$log_path" 2>&1 </dev/null &) || true
+    fi
+    printf '[ctx-freshness] REFRESHING: background graph build started (log: %s)\n' "$log_path"
+    return 0
+}
+
+refresh_graph() {
+    if [[ -z "$lean_ctx_bin" ]]; then
+        printf '%s\n' '[ctx-freshness] SKIP: lean-ctx is not installed'
+        return 0
+    fi
+    if (cd "$repo_root" && "$lean_ctx_bin" graph build); then
+        printf '%s\n' '[ctx-freshness] REFRESHED: graph build completed'
+        return 0
+    fi
+    printf '%s\n' '[ctx-freshness] FAILED: graph build did not complete' >&2
+    return 1
+}
+
+heal_shallow() {
+    local depth is_shallow log_path
+    local -a fetch_args
+
+    is_shallow="$(git -C "$repo_root" rev-parse --is-shallow-repository 2>/dev/null || true)"
+    [[ "$is_shallow" == "true" ]] || return 0
+
+    log_path="$(git -C "$repo_root" rev-parse --git-path aq-ctx-shallow-heal.log 2>/dev/null || true)"
+    if [[ -z "$log_path" ]]; then
+        printf '%s\n' '[ctx-freshness] shallow heal skipped: unable to resolve the fetch log path' >&2
+        return 0
+    fi
+
+    depth="${AQ_UNSHALLOW_DEPTH:-}"
+    if [[ -n "$depth" ]]; then
+        if [[ ! "$depth" =~ ^[1-9][0-9]*$ ]]; then
+            printf '[%s] invalid AQ_UNSHALLOW_DEPTH=%q; fetch not started\n' \
+                "$(date -u +%Y-%m-%dT%H:%M:%SZ)" "$depth" >>"$log_path" 2>&1 || true
+            return 0
+        fi
+        fetch_args=(fetch "--depth=$depth" origin)
+    else
+        fetch_args=(fetch --unshallow)
+    fi
+
+    if command -v setsid >/dev/null 2>&1; then
+        (nohup setsid git -C "$repo_root" "${fetch_args[@]}" >>"$log_path" 2>&1 </dev/null &) || true
+    else
+        (nohup git -C "$repo_root" "${fetch_args[@]}" >>"$log_path" 2>&1 </dev/null &) || true
+    fi
+    printf '%s\n' '[ctx-freshness] shallow clone detected -> unshallow started in background'
+    return 0
+}
+
+case "$mode" in
+    --check)        check_graph ;;
+    --ensure)       ensure_graph ;;
+    --refresh)      refresh_graph ;;
+    --heal-shallow) heal_shallow ;;
+    *)
+        printf 'usage: aq-ctx-freshness [--check|--ensure|--refresh|--heal-shallow]\n' >&2
+        exit 2
+        ;;
+esac
