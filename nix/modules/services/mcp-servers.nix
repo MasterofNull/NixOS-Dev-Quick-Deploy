@@ -2703,6 +2703,10 @@ in {
             # rwk: SQLite requires file_lock (k) in addition to rw; without k the
             # context-store candidate fails and startup falls back to repo path.
             /var/lib/nixos-system-dashboard/** rwk,
+            # SC-1: root-published metadata-only credential inventory. This
+            # exact file contains no values, hashes, paths, or key material.
+            /run/aqos-security/ r,
+            /run/aqos-security/credential-status.json r,
             # /tmp SQLite databases: context.db fallback, workflow-store.db, and any
             # other SQLite temp files. w covers file creation; k required for file lock.
             /tmp/ r,

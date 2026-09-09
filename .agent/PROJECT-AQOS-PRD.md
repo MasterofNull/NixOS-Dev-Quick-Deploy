@@ -200,6 +200,11 @@ Old paths retire only after two clean cycles on the new path (data-driven via sh
 
 ## 10. Risks
 
+- **Credential lifecycle usability and breach response**: tracked in
+  `.agent/PROJECT-AQOS-SECURITY-CENTER-PRD.md`. AQ-OS must provide a beginner-friendly
+  inventory and guided rotation experience without granting the dashboard, browser,
+  or agents plaintext-secret or root authority. SC-0/SC-1 are the immediate
+  read-only foundation; privileged mutations require the dedicated broker gates.
 - **Refactor stall risk**: mitigated by strangler beats each shipping standalone value + activation gate.
 - **Single-operator review bottleneck**: HITL queue (WS6) + batch approvals mitigate; delegation matrix spreads implementation across all four agents.
 - **Local-lane slowness blocking rounds**: async fan-out with open aggregation (existing pattern) stays mandatory.

@@ -18,6 +18,14 @@
   dashboardRoot = "${mcp.repoPath}";
   dashboardBackendRoot = "${dashboardRoot}/dashboard/backend";
   dashboardPublicDir = "${dashboardRoot}/dashboard/public";
+  credentialStatusPublisher = pkgs.writeText "aqos-publish-credential-status.py"
+    (builtins.readFile ../../../scripts/security/publish-credential-status.py);
+  credentialCatalog = pkgs.writeText "aqos-security-credential-catalog-v1.json"
+    (builtins.readFile ../../../config/security-credential-catalog-v1.json);
+  credentialStatusDir = "/run/aqos-security";
+  declaredCredentialArgs = lib.concatMap
+    (name: ["--declared-name" name])
+    (builtins.attrNames config.sops.secrets);
 
   dashboardPython = pkgs.python3.withPackages (ps:
     with ps; [
@@ -138,6 +146,9 @@ in {
       "d ${cc.dataDir}/cache 0750 ${svcUser} ${svcGroup} -"
       "d ${cc.dataDir}/telemetry 0750 ${svcUser} ${svcGroup} -"
       "d ${cc.dataDir}/model-downloads 0750 ${svcUser} ${svcGroup} -"
+      # Root publishes a strictly metadata-only credential snapshot below a
+      # root-owned /run parent that the dashboard cannot rename or replace.
+      "d ${credentialStatusDir} 0750 root ${svcGroup} -"
       # Repair existing llama.cpp directory modes so the dashboard can show
       # model inventory through the llama supplementary group without write
       # access to model files.
@@ -148,6 +159,75 @@ in {
       "d /run/sudo 0711 root root -"
       "d /run/sudo/ts 0700 root root -"
     ];
+
+    # SC-1: a root one-shot observes only the existence/type of sops-nix
+    # runtime files. It never reads their contents, and the dashboard only
+    # reads its redacted snapshot. Mutations require the future broker slice.
+    systemd.services.aqos-security-credential-status = {
+      description = "AQ-OS Security Center credential status publisher";
+      wantedBy = ["multi-user.target"];
+      before = ["command-center-dashboard-api.service"];
+      after = ["local-fs.target"];
+      serviceConfig = {
+        Type = "oneshot";
+        User = "root";
+        Group = "root";
+        UMask = "0027";
+        NoNewPrivileges = true;
+        CapabilityBoundingSet = ["CAP_CHOWN"];
+        AmbientCapabilities = [];
+        PrivateTmp = true;
+        PrivateDevices = true;
+        ProtectSystem = "strict";
+        ProtectHome = true;
+        ProtectKernelTunables = true;
+        ProtectKernelModules = true;
+        ProtectControlGroups = true;
+        RestrictSUIDSGID = true;
+        LockPersonality = true;
+        ReadOnlyPaths = ["/run/secrets"];
+        ReadWritePaths = [credentialStatusDir];
+        ExecStart = lib.escapeShellArgs (
+          [
+            "${pkgs.python3}/bin/python3"
+            "-I"
+            "${credentialStatusPublisher}"
+            "--catalog" "${credentialCatalog}"
+            "--runtime-dir" "/run/secrets"
+            "--output" "${credentialStatusDir}/credential-status.json"
+            "--group" svcGroup
+          ]
+          ++ declaredCredentialArgs
+        );
+      } // lib.optionalAttrs config.security.apparmor.enable {
+        AppArmorProfile = "aqos-security-credential-status";
+      };
+    };
+    systemd.timers.aqos-security-credential-status = {
+      wantedBy = ["timers.target"];
+      timerConfig = { OnBootSec = "2min"; OnUnitActiveSec = "5min"; Unit = "aqos-security-credential-status.service"; };
+    };
+
+    security.apparmor.policies."aqos-security-credential-status" = lib.mkIf config.security.apparmor.enable {
+      state = "enforce";
+      profile = ''
+        #include <tunables/global>
+        profile aqos-security-credential-status flags=(attach_disconnected) {
+          #include <abstractions/base>
+          ${pkgs.python3}/bin/python3 ix,
+          ${credentialStatusPublisher} r,
+          ${credentialCatalog} r,
+          /nix/store/** r,
+          /nix/store/**/*.so* mr,
+          /run/secrets/ r,
+          deny /run/secrets/** r,
+          ${credentialStatusDir}/ rw,
+          ${credentialStatusDir}/** rwk,
+          /dev/urandom r,
+          capability chown,
+        }
+      '';
+    };
 
     # ── API + dashboard serving ────────────────────────────────────────────────
     # Production authority for the command center dashboard.

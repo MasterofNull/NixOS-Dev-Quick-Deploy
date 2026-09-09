@@ -8,6 +8,7 @@ from __future__ import annotations
 import json
 import importlib.util
 import os
+import re
 import subprocess
 import time
 from pathlib import Path
@@ -1772,6 +1773,121 @@ def _dashboard_safe_host_only_skips() -> list[CheckResult]:
     ]
 
 
+def _declared_sops_secret_names(repo_root: Path) -> set[str]:
+    """Resolve the static SOPS declaration names without reading secret values."""
+    secrets_text = (repo_root / "nix" / "modules" / "core" / "secrets.nix").read_text(encoding="utf-8")
+    options_text = (repo_root / "nix" / "modules" / "core" / "options.nix").read_text(encoding="utf-8")
+    option_defaults = dict(re.findall(
+        r'(\w+)\s*=\s*lib\.mkOption\s*\{[^}]*?default\s*=\s*"([^"]+)"',
+        options_text,
+        re.DOTALL,
+    ))
+    referenced_attrs = set(re.findall(r'"\$\{sec\.names\.([^}]+)\}', secrets_text))
+    unresolved = referenced_attrs - option_defaults.keys()
+    if unresolved:
+        raise ValueError(f"unresolved secret-name option(s): {len(unresolved)}")
+    declared = {option_defaults[attr] for attr in referenced_attrs}
+    declared.update(re.findall(
+        r'^\s+"([A-Za-z][A-Za-z0-9_-]*)"\s*=\s*\{',
+        secrets_text,
+        re.MULTILINE,
+    ))
+    return declared
+
+
+def _check_security_center(ctx: RunContext) -> list[CheckResult]:
+    """SC-1: credential inventory has API, dashboard, and live metadata coverage."""
+    results: list[CheckResult] = []
+    required = [
+        ctx.repo_root / "config" / "security-credential-catalog-v1.json",
+        ctx.repo_root / "scripts" / "security" / "publish-credential-status.py",
+        ctx.repo_root / "dashboard" / "backend" / "api" / "routes" / "security_settings.py",
+    ]
+    missing = [str(path.relative_to(ctx.repo_root)) for path in required if not path.is_file()]
+    if missing:
+        results.append(failed(1, "0.16.1", "Security Center inventory components", f"missing: {', '.join(missing)}"))
+    else:
+        try:
+            catalog = json.loads(required[0].read_text(encoding="utf-8"))
+            credentials = catalog.get("credentials")
+            if not isinstance(credentials, list) or not credentials:
+                raise ValueError("credential catalog must contain a non-empty credentials list")
+            catalog_names = {
+                row.get("runtime_name") for row in credentials
+                if isinstance(row, dict) and row.get("status_source") == "runtime-secret"
+            }
+            if not catalog_names or not all(isinstance(name, str) and name for name in catalog_names):
+                raise ValueError("runtime-secret catalog entries require non-empty runtime_name values")
+            declared_names = _declared_sops_secret_names(ctx.repo_root)
+            uncataloged_declared = declared_names - catalog_names
+            if uncataloged_declared:
+                raise ValueError(f"{len(uncataloged_declared)} Nix-declared credential(s) are uncataloged")
+        except (OSError, ValueError, json.JSONDecodeError) as error:
+            results.append(failed(1, "0.16.1", "Security Center inventory catalog", str(error)[:160]))
+        else:
+            runtime_dir = Path("/run/secrets")
+            try:
+                active_names = {path.name for path in runtime_dir.iterdir()} if runtime_dir.is_dir() else set()
+            except PermissionError:
+                # Unprivileged/sandboxed QA is intentionally unable to enumerate
+                # /run/secrets. The root publisher performs runtime reconciliation,
+                # and 0.16.2 validates its redacted projection after activation.
+                results.append(passed(
+                    1,
+                    "0.16.1",
+                    f"Security Center inventory components present; {len(declared_names)} Nix declarations cataloged; runtime parity delegated to protected publisher",
+                ))
+            except OSError as error:
+                results.append(failed(1, "0.16.1", "Security Center inventory parity", str(error)[:160]))
+            else:
+                uncataloged = active_names - catalog_names
+                if uncataloged:
+                    results.append(failed(
+                        1,
+                        "0.16.1",
+                        "Security Center inventory parity",
+                        f"{len(uncataloged)} active credential(s) are uncataloged",
+                    ))
+                else:
+                    results.append(passed(
+                        1,
+                        "0.16.1",
+                        f"Security Center inventory components present; {len(active_names)} active credentials cataloged",
+                    ))
+
+    dashboard_url = f"http://127.0.0.1:{getattr(ctx, 'dashboard_port', 8889)}"
+    try:
+        status_code, body = http_get(f"{dashboard_url}/api/security-settings/status", timeout=5)
+        if status_code == 404:
+            activated = _unit_enabled("aqos-security-credential-status.service")
+            if activated:
+                results.append(failed(5, "0.16.2", "Security Center live metadata", "HTTP 404 while publisher unit is activated"))
+            else:
+                results.append(skipped(5, "0.16.2", "Security Center live metadata", "SC-1 is not activated in the current NixOS generation"))
+            return results
+        if status_code != 200:
+            results.append(failed(5, "0.16.2", "Security Center live metadata", f"HTTP {status_code}"))
+            return results
+        payload = json.loads(body)
+        summary = payload.get("summary") if isinstance(payload, dict) else None
+        credentials = payload.get("credentials") if isinstance(payload, dict) else None
+        if payload.get("schema") != "aqos.security-credential-status.v1":
+            raise ValueError("unexpected schema")
+        if not isinstance(summary, dict) or not isinstance(credentials, list):
+            raise ValueError("missing summary or credentials")
+        if summary.get("total") != len(credentials):
+            raise ValueError("summary total does not match credential rows")
+        forbidden = {"value", "secret", "path", "hash", "prefix", "length", "plaintext", "ciphertext"}
+        if any(isinstance(row, dict) and forbidden.intersection(row) for row in credentials):
+            raise ValueError("response contains forbidden credential fields")
+        if summary.get("uncataloged") != 0:
+            raise ValueError(f"{summary.get('uncataloged')} uncataloged credential(s)")
+        results.append(passed(5, "0.16.2", f"Security Center live metadata: {len(credentials)} cataloged credentials"))
+    except Exception as error:  # noqa: BLE001 — a malformed security projection must fail closed
+        results.append(failed(5, "0.16.2", "Security Center live metadata", str(error)[:160]))
+    return results
+
+
 def run(ctx: RunContext) -> list[CheckResult]:
     """Run all phase 0 checks and return a flat list of CheckResult."""
     results: list[CheckResult] = []
@@ -1833,6 +1949,7 @@ def run(ctx: RunContext) -> list[CheckResult]:
         results.extend(_check_phase85_drop_zone(ctx))
         results.extend(_check_phase86_attention_queue(ctx))
     results.extend(_check_phase87_training_ingest(ctx))
+    results.extend(_check_security_center(ctx))
     results.extend(_check_phase146_identity_coverage(ctx))
     if not ctx.dashboard_safe:
         results.extend(_check_local_delegation_artifact(ctx))

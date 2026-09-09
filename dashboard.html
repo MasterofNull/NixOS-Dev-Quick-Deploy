@@ -334,6 +334,90 @@
       border-color: rgba(0, 217, 255, .3)
     }
 
+    /* ── SECURITY CENTER — metadata only; values never reach this surface ── */
+    .secrets-access-card {
+      grid-column: 1 / -1;
+      border-color: rgba(57, 255, 20, .28);
+      background:
+        linear-gradient(105deg, rgba(57, 255, 20, .055), transparent 42%),
+        var(--bg3);
+    }
+
+    .secrets-access-card::before {
+      content: '';
+      position: absolute;
+      inset: 0 auto 0 0;
+      width: 3px;
+      background: var(--grn);
+      box-shadow: 0 0 14px rgba(57, 255, 20, .65);
+    }
+
+    .secrets-access-intro {
+      color: var(--fg2);
+      font-family: var(--hud);
+      font-size: .78rem;
+      line-height: 1.45;
+      max-width: 78ch;
+      margin: 0 0 .8rem;
+    }
+
+    .secrets-access-summary {
+      display: grid;
+      grid-template-columns: repeat(auto-fit, minmax(120px, 1fr));
+      gap: .55rem;
+      margin-bottom: .75rem;
+    }
+
+    .secrets-access-stat {
+      background: rgba(0, 0, 0, .2);
+      border: 1px solid rgba(255, 255, 255, .07);
+      padding: .5rem .6rem;
+    }
+
+    .secrets-access-stat strong {
+      display: block;
+      color: var(--fg);
+      font-family: var(--hud);
+      font-size: 1.1rem;
+      line-height: 1.1;
+    }
+
+    .secrets-access-stat span {
+      color: var(--fg3);
+      font-size: .53rem;
+      letter-spacing: .08em;
+      text-transform: uppercase;
+    }
+
+    .secrets-access-next {
+      border-top: 1px solid rgba(255, 255, 255, .07);
+      color: var(--fg2);
+      font-size: .66rem;
+      line-height: 1.45;
+      padding-top: .55rem;
+    }
+
+    .secrets-access-details {
+      margin-top: .7rem;
+      border-top: 1px solid rgba(255, 255, 255, .07);
+      padding-top: .55rem;
+    }
+
+    .secrets-access-details summary {
+      color: var(--cyan);
+      cursor: pointer;
+      font-size: .59rem;
+      letter-spacing: .06em;
+      text-transform: uppercase;
+    }
+
+    .secrets-access-notice {
+      margin-top: .65rem;
+      color: var(--fg3);
+      font-size: .57rem;
+      line-height: 1.45;
+    }
+
     .card-hd {
       display: flex;
       justify-content: space-between;
@@ -2219,6 +2303,14 @@
   <!-- ── SECURITY ── -->
   <div class="panel" id="panel-security">
     <div class="panel-grid g2">
+      <!-- SC-1: inventory metadata only. The browser never receives secret values or storage paths. -->
+      <section class="card secrets-access-card" aria-labelledby="secretsAccessTitle">
+        <div class="card-hd"><span class="card-title" id="secretsAccessTitle">Secrets &amp; Access</span><span
+            class="card-badge badge-info" id="secretsAccessBadge" aria-live="polite">Loading</span></div>
+        <div id="secretsAccessDetails" aria-live="polite">
+          <p class="secrets-access-intro">Checking whether your protected accounts and service access are ready…</p>
+        </div>
+      </section>
       <div class="card">
         <div class="card-hd"><span class="card-title">Firewall Status</span><span class="card-badge badge-ok"
             id="fwBadge">--</span></div>
