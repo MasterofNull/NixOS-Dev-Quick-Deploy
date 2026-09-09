@@ -1,0 +1,150 @@
+{
+  "plan": {
+    "id": "frontier-evidence-intake",
+    "title": "Frontier-Evidence Intake + Autopilot",
+    "prd_ref": ".agents/plans/frontier-evidence-intake/FRONTIER-AUTOPILOT.md",
+    "owner": "hyperd",
+    "goal": "Fold current + frontier AI research into our system by default: a pull-model context provider wired into every PRD/plan/review/session, backed by a verified, deduped, source-scored backlog and a concept taxonomy that both ranks relevance (focus on the core) and guarantees coverage (all relevant subjects). No polling; fresh at the point of use; every adopt passes a benchmark gate.",
+    "success_criteria": [
+      "Creating a PRD/plan or starting a session automatically surfaces our verified frontier verdicts for the subject \u2014 agents never re-chase what we measured/dropped or corrected",
+      "Every candidate is primary-source-verified, mapped to an AQ-OS measurement, and adopted only after a baseline-before/after benchmark on our hardware",
+      "Coverage gaps (subjects with no source or candidate) are visible and turned into targeted, need-driven research \u2014 not a blanket timer",
+      "Source quality is measured (adopt-rate) so low-signal sources are pruned and high-signal ones prioritized"
+    ]
+  },
+  "phases": [
+    {
+      "id": "fa",
+      "name": "FA \u2014 Autopilot infrastructure (the loop)",
+      "goal": "backlog, catalog, relevance, coverage, on-demand context, seam wiring, auto-fold, refresh, parity backstop",
+      "order": 1
+    },
+    {
+      "id": "fe",
+      "name": "FE \u2014 Verified candidates (adopt via benchmark gate)",
+      "goal": "evidence-backed techniques mapped to AQ-OS slices with acceptance goals",
+      "order": 2
+    }
+  ],
+  "items": [
+    {
+      "id": "fa-1-backlog",
+      "name": "backlog + aq-frontier CLI",
+      "phase": "fa",
+      "kind": "slice",
+      "goal": "durable append-only deduped candidate store + CLI (add/list/digest/status/seed)",
+      "validation_goal": "test-frontier-backlog 5/5; dedup by content hash; fail-safe reads",
+      "deps": [],
+      "editorial_note": "the loop, running (b4410b43)"
+    },
+    {
+      "id": "fa-1b-sources",
+      "name": "source catalog + quality metrics",
+      "phase": "fa",
+      "kind": "slice",
+      "goal": "27-source curated catalog across 5 pillars + adopt-rate/coverage metrics",
+      "validation_goal": "test-frontier-sources 5/5; every pillar has a primary source",
+      "deps": [
+        "fa-1-backlog"
+      ],
+      "editorial_note": "assess/refine which sources earn their place (0867a06e)"
+    },
+    {
+      "id": "fa-1c-relevance",
+      "name": "relevance + concept coverage",
+      "phase": "fa",
+      "kind": "slice",
+      "goal": "hybrid keyword-taxonomy + live vector-DB relevance; coverage gaps",
+      "validation_goal": "test-frontier-relevance 6/6; dogfood found+fixed 2 bugs",
+      "deps": [
+        "fa-1b-sources"
+      ],
+      "editorial_note": "focus-on-core ranking + breadth guarantee, dogfood-validated"
+    },
+    {
+      "id": "fa-2-context-seams",
+      "name": "on-demand context + seam wiring",
+      "phase": "fa",
+      "kind": "slice",
+      "goal": "aq-frontier context provider (pull, not poll) + wired into create-prd/plan-feature/session-start",
+      "validation_goal": "test-frontier-context 5/5; session-start shows frontier block live",
+      "deps": [
+        "fa-1c-relevance"
+      ],
+      "editorial_note": "frontier research incorporated by default into every workflow"
+    },
+    {
+      "id": "fa-3-autofold",
+      "name": "auto-fold approved -> plan trackers",
+      "phase": "fa",
+      "kind": "slice",
+      "goal": "an approved backlog candidate auto-appends as a slice to its target plan tracker; tier0 check binds scheduled candidates to real slices",
+      "validation_goal": "approved FE item appears as a projected slice; fail-closed on orphan",
+      "deps": [
+        "fa-2-context-seams"
+      ],
+      "editorial_note": "next"
+    },
+    {
+      "id": "fa-4-scan-refresh",
+      "name": "on-demand scan-topic refresh",
+      "phase": "fa",
+      "kind": "slice",
+      "goal": "targeted single-topic web-verify routed to a web-capable lane when a queried topic is stale/gap (need-driven, not a timer)",
+      "validation_goal": "a stale topic triggers a bounded scan that appends verified candidates",
+      "deps": [
+        "fa-2-context-seams"
+      ],
+      "editorial_note": "the lazy refresh behind the pull model"
+    },
+    {
+      "id": "fa-5-parity-backstop",
+      "name": "parity sweep backstop",
+      "phase": "fa",
+      "kind": "slice",
+      "goal": "low-frequency reverse check for never-queried concepts -> emits gaps; the ONLY remaining timer, a safety net",
+      "validation_goal": "emits a gap for a deliberately-untracked concept",
+      "deps": [
+        "fa-3-autofold"
+      ],
+      "editorial_note": "safety net, not the access path"
+    },
+    {
+      "id": "fe-1-prm-verify",
+      "name": "PRM-as-verify signal (local agent)",
+      "phase": "fe",
+      "kind": "slice",
+      "goal": "use aq-qa/behavioral-verify as a process-reward signal so the local loop prefers a verified branch pre-commit",
+      "validation_goal": "measured pass-rate lift on the dogfood set, no APU latency blow-up",
+      "deps": [
+        "fa-2-context-seams"
+      ],
+      "editorial_note": "FE-1 approved; target plan: local-agent harness; benchmark-first"
+    },
+    {
+      "id": "fe-2-gepa",
+      "name": "GEPA build-time prompt compile",
+      "phase": "fe",
+      "kind": "slice",
+      "goal": "FE-2a functional eval metric (baseline was a ceilinged self-probe), then FE-2b GEPA offline compile gated by aq-qa",
+      "validation_goal": "compiled local-agent prompt beats the FE-2a functional baseline + tier0",
+      "deps": [
+        "fe-1-prm-verify"
+      ],
+      "editorial_note": "FE-2 scheduled; baseline measured (blocker found)"
+    },
+    {
+      "id": "fe-8-landlock-egress",
+      "name": "Landlock/eBPF egress pin",
+      "phase": "fe",
+      "kind": "slice",
+      "goal": "runtime LSM/eBPF egress + cgroup pin for untrusted MCP servers (loopback-only)",
+      "validation_goal": "deny-closed egress proof + no tool regression; attach to Foundation-C activation evidence",
+      "deps": [
+        "fa-2-context-seams"
+      ],
+      "editorial_note": "FE-8 approved; target plan: aqos-foundation-c (surfaced there via the context seam)"
+    }
+  ],
+  "issues": []
+}
