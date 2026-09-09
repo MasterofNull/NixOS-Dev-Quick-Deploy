@@ -3735,3 +3735,24 @@ Advisory task (codex is the real confirmatory backstop) — non-blocking.
   Severity: high
   Action: Validate the tracked graph artifact directly: require non-empty nodes/edges, exact metadata counts, and a positive completed batch count. Keep ignored generation scratch outside commit/CI truth.
   File: scripts/testing/test-enabled-external-mcp-candidates.py; .understand-anything/knowledge-graph.json
+
+[IN-FLIGHT] credential-lifecycle-inventory-and-breach-response-gap — The live encrypted SOPS bundle contains 13 entries, while `manage-secrets.py` catalogs only 9 (8 present); four stored signing/lease keys are outside the existing lifecycle inventory. PAM, GNOME Keyring, and `pass` are separate backends with no unified safe status or rotation UX. Operators therefore lack a complete dependency-aware way to add, replace, revoke, validate, or emergency-rotate current and future credentials.
+  Severity: high
+  Action: Deliver Security Center SC-0/SC-1 metadata inventory, then a separately confined broker with typed PAM/SOPS operations, fresh authentication, redacted preview/audit, service verification, and rollback before enabling mutations.
+  File: .agent/PROJECT-AQOS-SECURITY-CENTER-PRD.md; scripts/governance/manage-secrets.py; nix/modules/core/secrets.nix; dashboard/backend/api
+
+[OPEN] git-history-secret-scan-candidates-require-triage-and-rotation — A fully redacted Gitleaks 8.30.1 scan of 4,155 reachable commits reported 192 candidate findings across 36 paths and 28 commits. A current-tree scan reports 13 candidates, concentrated in tests/fixtures and public/config examples; historical candidates include retired Kubernetes Secret YAML and a localhost private-key path. Counts are detections, not confirmed live credentials, and no detected value was printed or persisted in the repo.
+  Severity: critical
+  Evidence: An in-memory equality check found zero matches between all 13 current SOPS values and all 192 detected historical candidates; a separate decode-and-compare found zero matches against the 12 retired Kubernetes manifest values. This is strong rotation evidence but does not prove upstream provider revocation or cover PAM/vault contents.
+  Action: Classify each unique candidate as synthetic/public/expired/real without exposing values; confirm external-provider revocation and the retired localhost key's scope; replace unsafe fixtures; add an allowlisted Gitleaks gate; decide separately whether coordinated history rewriting is warranted after all clones/collaborators are prepared.
+  File: redacted reports /tmp/aqos-gitleaks-20260908.json and /tmp/aqos-gitleaks-current-20260908.json; historical ai-stack/kubernetes/kompose/*secret.yaml; historical ai-stack/compose/nginx/certs/localhost.key
+
+[OPEN] local-benchmark-visible-quality-run-times-out-after-thinking-disable — The corrected Qwen benchmark disabled thinking for short visible-quality prompts, but the live scorecard still timed out in the streaming TTFT phase after several minutes at roughly 1.9 predicted tokens/s. The benchmark produced no saved final report, so neither the stale 3.45 tok/s threshold nor the visible-quality result can be truthfully recalibrated from this run.
+  Severity: high
+  Action: Make the benchmark persist partial per-probe evidence, bound each streaming probe independently, classify suspend/reload interruption separately, and rerun from a measured warm/resident state before changing the performance gate.
+  File: scripts/ai/aq-llama-benchmark.py; /tmp/local-benchmark-fix
+
+[OPEN] dashboard-retains-broad-ai-stack-secret-read-surface — The existing dashboard service runs as the primary user with supplementary `ai-stack` membership, receives three service secret paths, and its AppArmor profile broadly allows `/run/secrets/**`. SC-1 does not add secret reads—the new route consumes only a root-published metadata snapshot—but the pre-existing dashboard compromise boundary is wider than the Security Center target architecture permits.
+  Severity: critical
+  Action: Move required internal authentication behind narrowly scoped systemd credentials or an unprivileged local proxy; remove the dashboard from `ai-stack`, narrow AppArmor to exact credentials, eliminate spoofable internal-header authority, and retest all dashboard integrations before activating any mutation UI.
+  File: nix/modules/services/command-center-dashboard.nix; nix/modules/services/mcp-servers.nix (command-center-dashboard-api AppArmor profile); dashboard/backend/api

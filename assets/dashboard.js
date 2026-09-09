@@ -3916,8 +3916,109 @@ async function loadToolDenyStats() {
   }
 }
 
+// ─── SECURITY CENTER (SC-1) ───────────────────────────────────────────────
+// This is deliberately a metadata-only projection.  Do not add values, paths,
+// hashes, previews, or mutation controls here: those belong to the future,
+// separately privileged AQ Settings Broker.
+function securityCenterEscape(value) {
+  return String(value ?? "")
+    .replaceAll("&", "&amp;")
+    .replaceAll("<", "&lt;")
+    .replaceAll(">", "&gt;")
+    .replaceAll('"', "&quot;")
+    .replaceAll("'", "&#39;");
+}
+
+function securityCenterNumber(value) {
+  const number = Number(value);
+  return Number.isFinite(number) && number >= 0 ? Math.floor(number) : 0;
+}
+
+function securityCenterState(payload) {
+  const raw = String(
+    payload?.overall_state ?? payload?.state ?? payload?.status ?? payload?.overall_status ?? ""
+  ).toLowerCase();
+  const counts = payload?.counts ?? payload?.summary ?? payload?.catalog?.counts ?? {};
+  const missing = securityCenterNumber(
+    counts.needs_attention ?? counts.missing ?? counts.incomplete ?? payload?.needs_attention
+  );
+  const uncataloged = securityCenterNumber(counts.uncataloged ?? payload?.uncataloged);
+  const unavailable = securityCenterNumber(counts.unavailable);
+  if (!payload || payload.available === false || raw === "unavailable" || unavailable > 0) {
+    return ["Unavailable", "badge-warn", "The Security Center cannot reach its read-only inventory yet. Check the service after the next system update."];
+  }
+  if (raw.includes("incomplete") || payload.setup_complete === false) {
+    return ["Setup incomplete", "badge-warn", "A few protection settings still need initial setup. Your existing protected items remain private."];
+  }
+  if (raw.includes("attention") || raw.includes("missing") || raw.includes("degraded") || missing > 0 || uncataloged > 0) {
+    return ["Needs attention", "badge-warn", "Some access settings need attention. Review the protected-item list below to see which services are affected."];
+  }
+  return ["Protected", "badge-ok", "Your available protected access settings are configured. You can review their purpose without exposing any secret values."];
+}
+
+function securityCenterItems(payload) {
+  const candidates = payload?.credentials ?? payload?.entries ?? payload?.catalog?.entries ?? payload?.catalog ?? [];
+  return Array.isArray(candidates) ? candidates.slice(0, 24) : [];
+}
+
+function securityCenterItem(item) {
+  const label = securityCenterEscape(item?.label ?? item?.name ?? item?.id ?? "Protected item");
+  const consumerInput = item?.consumers ?? item?.services ?? item?.consumer ?? [];
+  const consumers = Array.isArray(consumerInput) ? consumerInput : [consumerInput];
+  const consumerText = consumers.filter(Boolean).slice(0, 3).map(securityCenterEscape).join(", ") || "No service details available";
+  const state = securityCenterEscape(item?.readiness ?? item?.status ?? item?.state ?? "Configured");
+  return fwRow(label, `${state} · ${consumerText}`, statusColor(state));
+}
+
+async function loadSecretsAccess() {
+  const el = document.getElementById("secretsAccessDetails");
+  const badge = document.getElementById("secretsAccessBadge");
+  if (!el || !badge) return;
+
+  const payload = await apiFetch("/security-settings/status");
+  const [state, badgeClass, nextStep] = securityCenterState(payload);
+  badge.textContent = state;
+  badge.className = `card-badge ${badgeClass}`;
+
+  if (!payload || payload.available === false) {
+    el.innerHTML = `<p class="secrets-access-intro">${securityCenterEscape(nextStep)}</p>` +
+      `<p class="secrets-access-notice">This view is read-only. Secret values, secret locations, and passwords are never shown here.</p>`;
+    return;
+  }
+
+  const counts = payload.counts ?? payload.summary ?? payload.catalog?.counts ?? {};
+  const items = securityCenterItems(payload);
+  const total = securityCenterNumber(counts.total ?? counts.configured ?? payload.total ?? items.length);
+  const ready = securityCenterNumber(counts.ready ?? counts.present ?? counts.configured ?? payload.ready ?? total);
+  const attention = securityCenterNumber(counts.needs_attention ?? counts.missing ?? counts.incomplete ?? payload.needs_attention) +
+    securityCenterNumber(counts.unavailable);
+  const uncataloged = securityCenterNumber(counts.uncataloged ?? payload.uncataloged);
+  const managedSeparately = securityCenterNumber(counts.managed_separately);
+  const notEnabled = securityCenterNumber(counts.not_enabled);
+  const itemRows = items.map(securityCenterItem).join("");
+  const details = itemRows
+    ? `<details class="secrets-access-details"><summary>Show protected item names and affected services (${items.length})</summary><div style="margin-top:.45rem">${itemRows}</div></details>`
+    : "";
+
+  el.innerHTML = [
+    `<p class="secrets-access-intro">${securityCenterEscape(nextStep)}</p>`,
+    `<div class="secrets-access-summary" aria-label="Protected access summary">`,
+    `<div class="secrets-access-stat"><strong>${total}</strong><span>Tracked items</span></div>`,
+    `<div class="secrets-access-stat"><strong>${ready}</strong><span>Ready</span></div>`,
+    `<div class="secrets-access-stat"><strong>${attention}</strong><span>Need attention</span></div>`,
+    `<div class="secrets-access-stat"><strong>${managedSeparately}</strong><span>Managed separately</span></div>`,
+    `<div class="secrets-access-stat"><strong>${notEnabled}</strong><span>Not enabled</span></div>`,
+    `<div class="secrets-access-stat"><strong>${uncataloged}</strong><span>Uncataloged</span></div>`,
+    `</div>`,
+    `<div class="secrets-access-next"><strong>Next:</strong> Changes and emergency rotation will appear here only after the secured Settings Broker is installed and verified.</div>`,
+    details,
+    `<p class="secrets-access-notice">Read-only metadata only: this panel never displays secret values, password material, hashes, or storage paths.</p>`,
+  ].join("");
+}
+
 async function loadSecurity() {
   await Promise.allSettled([
+    loadSecretsAccess(),
     loadFirewall(),
     loadSecMon(),
     loadCircuitBreakers(),

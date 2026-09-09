@@ -15,7 +15,7 @@ import os
 from typing import Dict, List
 from pathlib import Path
 
-from api.routes import metrics, services, containers, config, websockets, actions, aistack, adk, audit, deployments, health, insights, workflows, collaboration, firewall, testing, models as models_mod
+from api.routes import metrics, services, containers, config, websockets, actions, aistack, adk, audit, deployments, health, insights, workflows, collaboration, firewall, testing, models as models_mod, security_settings
 from api.services.metrics_collector import MetricsCollector
 from api.services.ai_insights import get_insights_service
 from api.services.runtime_controls import get_dashboard_rate_limiter, get_operator_audit_log
@@ -228,6 +228,7 @@ app.include_router(collaboration.router, prefix="/api", tags=["collaboration"])
 app.include_router(firewall.router, prefix="/api/firewall", tags=["firewall"])
 app.include_router(adk.router, prefix="/api/adk", tags=["adk"])
 app.include_router(testing.router, prefix="/api/testing", tags=["testing"])
+app.include_router(security_settings.router, prefix="/api", tags=["security-settings"])
 from .routes import topology as topology_mod  # noqa: E402
 app.include_router(topology_mod.router, prefix="/api", tags=["topology"])
 app.include_router(models_mod.router, prefix="/api", tags=["models"])
