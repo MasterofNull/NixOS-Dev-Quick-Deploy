@@ -212,6 +212,86 @@ check(
     False, "json_invalid",
 )
 
+# 19. Allowlist regression: poisoned catalog carrying a plain shell variable
+#     ("$HOME") -- the exact gap the incomplete denylist missed (it only
+#     matched "${" / "$(", not a bare "$"). The allowlist rejects it because
+#     "$" is outside [a-z0-9._-].
+_poisoned_dollar = {
+    "modules": MODULE_CATALOG["modules"] + [
+        {"id": "profile.$HOME", "category": "profile"},
+    ]
+}
+check(
+    "allowlist: plain $ shell variable rejected as unsafe",
+    _bytes(_clean_selection_with(golden_profile="profile.$HOME")),
+    False, "unsafe_token",
+    catalog=_poisoned_dollar,
+)
+
+# 20. Allowlist regression: output redirection ">".
+_poisoned_redirect_out = {
+    "modules": MODULE_CATALOG["modules"] + [
+        {"id": "role.x>out", "category": "role"},
+    ]
+}
+check(
+    "allowlist: output redirection > rejected as unsafe",
+    _bytes(_clean_selection_with(roles=["role.x>out"])),
+    False, "unsafe_token",
+    catalog=_poisoned_redirect_out,
+)
+
+# 21. Allowlist regression: input redirection "<".
+_poisoned_redirect_in = {
+    "modules": MODULE_CATALOG["modules"] + [
+        {"id": "role.x<in", "category": "role"},
+    ]
+}
+check(
+    "allowlist: input redirection < rejected as unsafe",
+    _bytes(_clean_selection_with(roles=["role.x<in"])),
+    False, "unsafe_token",
+    catalog=_poisoned_redirect_in,
+)
+
+# 22. Allowlist regression: secret-shaped value (uppercase AWS-style access
+#     key id) -- rejected because uppercase letters are outside the
+#     lowercase-only allowlist charset.
+_poisoned_secret = {
+    "modules": MODULE_CATALOG["modules"] + [
+        {"id": "profile.AKIAIOSFODNN7EXAMPLE", "category": "profile"},
+    ]
+}
+check(
+    "allowlist: secret-shaped uppercase value rejected as unsafe",
+    _bytes(_clean_selection_with(golden_profile="profile.AKIAIOSFODNN7EXAMPLE")),
+    False, "unsafe_token",
+    catalog=_poisoned_secret,
+)
+
+# 23. Allowlist regression: whitespace inside the value.
+_poisoned_whitespace = {
+    "modules": MODULE_CATALOG["modules"] + [
+        {"id": "profile.a b", "category": "profile"},
+    ]
+}
+check(
+    "allowlist: whitespace value rejected as unsafe",
+    _bytes(_clean_selection_with(golden_profile="profile.a b")),
+    False, "unsafe_token",
+    catalog=_poisoned_whitespace,
+)
+
+# 24. Allowlist does not over-reject a real hyphenated catalog id.
+check(
+    "allowlist: clean hyphenated catalog id accepted",
+    _bytes(_clean_selection_with(
+        golden_profile="profile.aqos-workstation",
+        roles=["role.cpp-dev", "role.ai-stack"],
+    )),
+    True,
+)
+
 if _failures:
     for failure in _failures:
         print(f"FAIL: {failure}")

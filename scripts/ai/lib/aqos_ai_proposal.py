@@ -10,6 +10,7 @@ every failure path returns {"ok": False, "reason": "..."}.
 
 from __future__ import annotations
 
+import re
 import sys
 from pathlib import Path
 from typing import Any, Mapping
@@ -17,20 +18,20 @@ from typing import Any, Mapping
 sys.path.insert(0, str(Path(__file__).resolve().parent))
 import aqos_install_resolver as resolver  # noqa: E402
 
-_UNSAFE_SUBSTRINGS = (
-    " ", "\t", "\n", "\r",
-    ";", "&", "|", "`",
-    "$(", "${",
-    "/", "\\",
-    "import ", "nixpkgs", "pkgs.", "builtins.", "system.",
-)
+# Complete-by-construction allowlist: legit catalog IDs are all lowercase,
+# e.g. "profile.aqos-workstation", "role.ai-stack", "role.cpp-dev" -- charset
+# [a-z0-9._-]. Anything outside this charset (plain "$", redirection ">"/"<",
+# whitespace, ";", "|", backticks, "${", "$(", "/", "\\", uppercase, or any
+# other character) is unsafe by omission -- there is no denylist to keep
+# in sync with new injection heuristics.
+_ALLOWED_STRING = re.compile(r"^[a-z0-9._-]+$")
 _MAX_STRING_LEN = 64
 
 
 def _is_unsafe_string(value: str) -> bool:
     if len(value) > _MAX_STRING_LEN:
         return True
-    return any(token in value for token in _UNSAFE_SUBSTRINGS)
+    return _ALLOWED_STRING.fullmatch(value) is None
 
 
 def _scan_unsafe(value: Any) -> bool:
