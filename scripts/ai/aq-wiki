@@ -28,6 +28,7 @@ Refresh cadence:
 """
 
 import argparse
+import hashlib
 import json
 import os
 import subprocess
@@ -170,6 +171,27 @@ def _load_meta() -> dict:
 def _save_meta(meta: dict):
     _WIKI_DIR.mkdir(parents=True, exist_ok=True)
     _WIKI_META.write_text(json.dumps(meta, indent=2))
+
+
+def _body_sha256(rel_path: str) -> str | None:
+    try:
+        return hashlib.sha256((_REPO / rel_path).read_bytes()).hexdigest()
+    except OSError:
+        return None
+
+
+def _record_body_hashes(meta: dict, nodes: list):
+    body_hashes = meta.get("body_sha256")
+    if not isinstance(body_hashes, dict):
+        body_hashes = {}
+        meta["body_sha256"] = body_hashes
+    paths = {n.get("filePath") for n in nodes if n.get("filePath")}
+    for path in paths:
+        digest = _body_sha256(path)
+        if digest is None:
+            body_hashes.pop(path, None)
+        else:
+            body_hashes[path] = digest
 
 
 def _git_changed_paths_since(since_ts: str) -> set:
@@ -391,6 +413,7 @@ def cmd_init(force: bool = False):
             "node_count": len(sub_nodes),
             "generated": datetime.now(timezone.utc).isoformat().replace("+00:00", "Z"),
         }
+        _record_body_hashes(wiki_meta, sub_nodes)
         print(f"  wrote {name:<25}  ({len(sub_nodes):4d} nodes,  {len(content):6d} chars)")
         generated.append(name)
 
@@ -428,14 +451,22 @@ def cmd_update():
 
     print(f"Git changes since {last_gen}: {len(changed)} paths")
 
+    body_hashes = wiki_meta.get("body_sha256")
+    if not isinstance(body_hashes, dict):
+        body_hashes = {}
+
     updated = []
     for name, info in SUBSYSTEMS.items():
         prefix = info["prefix"]
-        if not any(p.startswith(prefix) for p in changed):
-            # Also refresh if graph itself is newer than section
-            rec = wiki_meta.get(name, {})
-            if rec.get("graph_generated") == graph_meta.get("generated"):
-                continue
+        section_changes = {p for p in changed if p.startswith(prefix)}
+        body_changed = any(
+            p not in body_hashes or _body_sha256(p) != body_hashes[p]
+            for p in section_changes
+        )
+        # Also refresh if graph itself is newer than section.
+        rec = wiki_meta.get(name, {})
+        if not body_changed and rec.get("graph_generated") == graph_meta.get("generated"):
+            continue
 
         sub_nodes = _nodes_for_subsystem(nodes, prefix)
         if not sub_nodes:
@@ -449,6 +480,7 @@ def cmd_update():
             "node_count": len(sub_nodes),
             "generated": datetime.now(timezone.utc).isoformat().replace("+00:00", "Z"),
         }
+        _record_body_hashes(wiki_meta, sub_nodes)
         print(f"  updated {name}")
         updated.append(name)
 
