@@ -1,0 +1,184 @@
+#!/usr/bin/env python3
+"""aqos-approve-install — emit a human-approval request for an AI/guided
+AQ-OS installer proposal (P2-c).
+
+The missing linchpin between p2a (`aqos_ai_proposal.validate_proposal`, the
+untrusted-input gate) and p2b (`aqos_ai_propose.propose_selection`, the
+offline local-model proposal) and the resolver: this CLI validates a
+proposal, renders a PLAIN-LANGUAGE diff against the safe golden default
+(`aqos_install_diff.render_selection_diff`), and EMITS an
+`aq.approval-request.v1` record (`approval_request.create_request`) carrying
+that diff plus a bounded runbook effect
+(`aqos_install_runbook.RUNBOOK_NAME` = "aqos-install-resolve") that -- ONLY
+once a human approves it through the existing Approval Control Plane
+(`aq-approve-headless approve <id>`, or any other surface that drives
+`approval_request.transition()` the same way) -- resolves to the SAME
+lock a manual `aqos-install-resolve --adapter manual` call would produce.
+
+THE ONE INVARIANT this CLI upholds: it NEVER calls `resolve_plan` itself.
+It builds a request and prints how to approve it; resolving happens only in
+`approval_executor.execute_request`, only after `status == "approved"`.
+
+Persistence note (scope fence, matches `aq-approve-headless`'s own
+documented gap): there is no live, shared `ApprovalStore` service in this
+repo yet -- `aq-approve-headless` ships an offline `FixtureApprovalStore`
+placeholder for exactly this reason. This CLI writes the pending record as
+a single JSON file under `.agents/state/approval-control-plane/requests/`
+so it is inspectable and can be picked up by a future real store; it does
+not attempt to wire itself into `aq-approve-headless`'s in-memory fixture.
+"""
+
+from __future__ import annotations
+
+import argparse
+import json
+import sys
+import uuid
+from pathlib import Path
+
+_HERE = Path(__file__).resolve().parent
+_REPO_ROOT = _HERE.parent.parent
+_LIB_DIR = _HERE / "lib"
+if str(_LIB_DIR) not in sys.path:
+    sys.path.insert(0, str(_LIB_DIR))
+
+import approval_request as AR  # noqa: E402
+import aqos_ai_proposal as proposal  # noqa: E402
+import aqos_install_diff as install_diff  # noqa: E402
+import aqos_install_resolver as resolver  # noqa: E402
+import aqos_install_runbook as runbook  # noqa: E402  (side effect: registers the runbook)
+
+_DEFAULT_REQUEST_DIR = _REPO_ROOT / ".agents" / "state" / "approval-control-plane" / "requests"
+_MODULE_CATALOG_PATH = _REPO_ROOT / "config" / "aqos-module-catalog-v1.json"
+
+
+def _load_module_catalog() -> dict:
+    return resolver.parse_json_strict(_MODULE_CATALOG_PATH.read_bytes())
+
+
+def _ai_fit_or_none(hardware_path: Path | None) -> dict | None:
+    """Best-effort AI-fit verdict for the diff's honesty note. Never fatal:
+    any missing probe/catalog just means no honesty note is offered."""
+    try:
+        import ai_fit  # noqa: PLC0415 - optional, local import mirrors aqos-guided-install
+        import hw_probe  # noqa: PLC0415
+
+        hw = (
+            json.loads(hardware_path.read_text(encoding="utf-8"))
+            if hardware_path
+            else hw_probe.probe_hardware(repo_root=_REPO_ROOT)
+        )
+        catalog, digest = ai_fit.load_catalog(_REPO_ROOT / ai_fit.CATALOG_PATH)
+        return ai_fit.evaluate_fit(hw, catalog, digest)
+    except Exception:  # noqa: BLE001 - the honesty note is a nice-to-have, never a blocker
+        return None
+
+
+def build_approval_request(
+    *,
+    proposal_bytes: bytes,
+    host_target: str,
+    created_by: str,
+    hardware_path: Path | None = None,
+    request_id: str | None = None,
+) -> dict:
+    """Validate `proposal_bytes` FIRST, render the plain-language diff, then
+    build (but never execute) a pending `aq.approval-request.v1` record.
+    Raises `ApprovalRejected` if the proposal fails `validate_proposal` --
+    the caller must not fall back to resolving anything itself."""
+    module_catalog = _load_module_catalog()
+    verdict = proposal.validate_proposal(proposal_bytes, module_catalog)
+    if not verdict.get("ok"):
+        raise ApprovalRejected(verdict.get("reason", "invalid_proposal"))
+
+    selection = verdict["selection"]
+    ai_fit = _ai_fit_or_none(hardware_path) if selection.get("include_local_ai") else None
+    diff_text = install_diff.render_selection_diff(
+        selection, install_diff.SAFE_DEFAULT_SELECTION, module_catalog, ai_fit=ai_fit
+    )
+    params = {
+        "diff": diff_text,
+        "selection_json": json.dumps(selection, sort_keys=True, separators=(",", ":")),
+        "host_target": host_target,
+    }
+    return AR.create_request(
+        request_id=request_id or uuid.uuid4().hex,
+        created_by=created_by,
+        runbook=runbook.RUNBOOK_NAME,
+        params=params,
+        target_files=[],
+        grant_subject=host_target,
+    )
+
+
+class ApprovalRejected(Exception):
+    def __init__(self, reason: str) -> None:
+        super().__init__(reason)
+        self.reason = reason
+
+
+def _write_request(record: dict, out_dir: Path) -> Path:
+    out_dir.mkdir(parents=True, exist_ok=True)
+    path = out_dir / f"{record['request_id']}.json"
+    path.write_text(json.dumps(record, indent=2, sort_keys=True) + "\n", encoding="utf-8")
+    return path
+
+
+def main(argv: list[str] | None = None) -> int:
+    ap = argparse.ArgumentParser(description=__doc__)
+    ap.add_argument("--proposal", type=Path, required=True,
+                    help="AI-proposal JSON file (aqos-ai-proposal-v1 shape)")
+    ap.add_argument("--host-target", required=True)
+    ap.add_argument("--created-by", default="aqos-approve-install")
+    ap.add_argument("--hardware", type=Path, default=None,
+                    help="hw_probe JSON for the AI-fit honesty note; omit for a live read-only probe")
+    ap.add_argument("--request-dir", type=Path, default=_DEFAULT_REQUEST_DIR)
+    ap.add_argument("--json", action="store_true", help="print the full record instead of a summary")
+    args = ap.parse_args(argv)
+
+    try:
+        proposal_bytes = args.proposal.read_bytes()
+    except OSError as exc:
+        print(f"error: could not read proposal file {args.proposal}: {exc}", file=sys.stderr)
+        return 2
+
+    try:
+        record = build_approval_request(
+            proposal_bytes=proposal_bytes,
+            host_target=args.host_target,
+            created_by=args.created_by,
+            hardware_path=args.hardware,
+        )
+    except ApprovalRejected as exc:
+        print(f"Proposal rejected ({exc.reason}) — nothing was resolved, nothing was emitted.", file=sys.stderr)
+        return 1
+
+    path = _write_request(record, args.request_dir)
+
+    if args.json:
+        print(json.dumps(record, indent=2, sort_keys=True))
+        return 0
+
+    print(f"Approval request emitted: {record['request_id']}")
+    print(f"  saved to:   {path}")
+    print(f"  title:      {record['summary']['title']}")
+    print(f"  impact:     {record['summary']['impact']}  (reversible: {record['summary']['reversible']})")
+    print()
+    print(record["summary"]["what"])
+    print()
+    print("Nothing has been applied. This request now needs a human approval before anything")
+    print("resolves. The approval surface is the existing Approval Control Plane:")
+    print(f"  aq-approve-headless approve {record['request_id']}   # real FIDO2 tap, or")
+    print(f"  aq-approve-headless deny {record['request_id']}      # reject -- fail-safe, nothing applied")
+    print(
+        "NOTE: aq-approve-headless ships with an offline FixtureApprovalStore (no live shared "
+        "request store exists yet in this repo -- see that CLI's own module docstring); wiring "
+        "this saved request file into a real ApprovalStore so aq-approve-headless can see it is "
+        "a follow-up, not something this build does. (Also NOTE: scripts/ai/aq-approve is a "
+        "DIFFERENT, unrelated tool for Phase 86 alert approvals -- not this one.)"
+    )
+    return 0
+
+
+if __name__ == "__main__":
+    raise SystemExit(main())
