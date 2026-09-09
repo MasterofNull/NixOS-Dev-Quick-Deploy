@@ -1,6 +1,13 @@
 #!/usr/bin/env bash
 set -euo pipefail
 
+# Shallow-merge guard: a merge commit created on a shallow clone can be a garbage
+# disjoint merge. Block it (the --no-commit merge flow reaches pre-commit at commit time).
+if [ -f "$(git rev-parse --git-dir)/MERGE_HEAD" ] && [ "$(git rev-parse --is-shallow-repository)" = "true" ]; then
+    echo "pre-commit: refusing to create a merge commit on a SHALLOW clone — run 'git fetch --unshallow' first" >&2
+    exit 1
+fi
+
 if ! command -v git >/dev/null 2>&1; then
   echo "pre-commit: git not found" >&2
   exit 1
