@@ -64,6 +64,18 @@ if [[ "$machine" -eq 0 ]]; then
     [[ -n "$_frontier_ctx" ]] && printf '\n%s\n' "$_frontier_ctx"
 fi
 
+# Surface a stale lean-ctx code graph to humans without delaying hydration.
+# Fresh and missing-tool results stay quiet here; aq-ctx-freshness remains the
+# detailed status surface. Fail-safe: this signal must never block a session.
+if [[ "$machine" -eq 0 && -x "${SCRIPT_DIR}/aq-ctx-freshness" ]]; then
+    {
+        if ! _ctx_freshness_out="$("${SCRIPT_DIR}/aq-ctx-freshness" --check 2>&1)"; then
+            [[ -n "$_ctx_freshness_out" ]] && printf '%s\n' "$_ctx_freshness_out"
+        fi
+    } || true
+    "${SCRIPT_DIR}/aq-ctx-freshness" --heal-shallow || true
+fi
+
 # ── 0. Workflow session registration ─────────────────────────────────────────
 # Creates a record in workflow-sessions.json so aq-report operator_trust
 # has data (intent_coverage). Silent on failure — never blocks hydration.
