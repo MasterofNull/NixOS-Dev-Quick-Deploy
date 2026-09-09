@@ -282,7 +282,51 @@ check(
     catalog=_poisoned_whitespace,
 )
 
-# 24. Allowlist does not over-reject a real hyphenated catalog id.
+# 24. Allowlist regression: lowercase-hex secret-shaped golden_profile value
+#     with NO "profile." prefix -- matches the charset [a-z0-9._-] but is
+#     rejected because it lacks the required category prefix.
+_poisoned_hex_profile = {
+    "modules": MODULE_CATALOG["modules"] + [
+        {"id": "deadbeefcafe0123feedface", "category": "profile"},
+    ]
+}
+check(
+    "allowlist: lowercase-hex secret-shaped value rejected (no prefix)",
+    _bytes(_clean_selection_with(golden_profile="deadbeefcafe0123feedface")),
+    False, "unsafe_token",
+    catalog=_poisoned_hex_profile,
+)
+
+# 25. Allowlist regression: lowercase secret-shaped role value with no
+#     "role." prefix.
+_poisoned_hex_role = {
+    "modules": MODULE_CATALOG["modules"] + [
+        {"id": "abcdef0123456789abcdef", "category": "role"},
+    ]
+}
+check(
+    "allowlist: lowercase secret-shaped role rejected (no prefix)",
+    _bytes(_clean_selection_with(roles=["abcdef0123456789abcdef"])),
+    False, "unsafe_token",
+    catalog=_poisoned_hex_role,
+)
+
+# 26. Allowlist regression: bare golden_profile missing the "profile." prefix
+#     entirely (e.g. an attacker-poisoned catalog entry that drops the
+#     category namespace).
+_poisoned_bare = {
+    "modules": MODULE_CATALOG["modules"] + [
+        {"id": "gaming", "category": "profile"},
+    ]
+}
+check(
+    "allowlist: bare value missing profile. prefix rejected",
+    _bytes(_clean_selection_with(golden_profile="gaming")),
+    False, "unsafe_token",
+    catalog=_poisoned_bare,
+)
+
+# 27. Allowlist does not over-reject a real hyphenated catalog id.
 check(
     "allowlist: clean hyphenated catalog id accepted",
     _bytes(_clean_selection_with(

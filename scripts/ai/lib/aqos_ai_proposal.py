@@ -18,13 +18,15 @@ from typing import Any, Mapping
 sys.path.insert(0, str(Path(__file__).resolve().parent))
 import aqos_install_resolver as resolver  # noqa: E402
 
-# Complete-by-construction allowlist: legit catalog IDs are all lowercase,
-# e.g. "profile.aqos-workstation", "role.ai-stack", "role.cpp-dev" -- charset
-# [a-z0-9._-]. Anything outside this charset (plain "$", redirection ">"/"<",
-# whitespace, ";", "|", backticks, "${", "$(", "/", "\\", uppercase, or any
-# other character) is unsafe by omission -- there is no denylist to keep
-# in sync with new injection heuristics.
-_ALLOWED_STRING = re.compile(r"^[a-z0-9._-]+$")
+# Complete-by-construction allowlist: legit catalog IDs are always either a
+# golden_profile "profile.*" or a role "role.*", e.g.
+# "profile.aqos-workstation", "role.ai-stack", "role.cpp-dev". Requiring the
+# category prefix (not just the charset) rejects bare secret-shaped tokens
+# with no prefix (e.g. a lowercase-hex string) in addition to anything
+# outside [a-z0-9._-] (plain "$", redirection ">"/"<", whitespace, ";", "|",
+# backticks, "${", "$(", "/", "\\", uppercase, or any other character) --
+# there is no denylist to keep in sync with new injection heuristics.
+_ALLOWED_STRING = re.compile(r"^(profile|role)\.[a-z0-9._-]+$")
 _MAX_STRING_LEN = 64
 
 
@@ -35,11 +37,19 @@ def _is_unsafe_string(value: str) -> bool:
 
 
 def _scan_unsafe(value: Any) -> bool:
-    """Recursively scan every string value for injection heuristics."""
+    """Recursively scan every string VALUE for injection heuristics.
+
+    Mapping keys are intentionally not scanned: at the only call site
+    (validate_proposal Step 5) the mapping is `selection`, whose keyset is
+    already closed-set validated against the fixed schema names
+    {"golden_profile", "roles", "include_local_ai"} in Step 2 -- those key
+    strings are schema structure, not attacker-controlled catalog-ID values,
+    so they must not be held to the catalog-ID "profile."/"role." allowlist.
+    """
     if isinstance(value, str):
         return _is_unsafe_string(value)
     if isinstance(value, Mapping):
-        return any(_scan_unsafe(key) or _scan_unsafe(val) for key, val in value.items())
+        return any(_scan_unsafe(val) for val in value.values())
     if isinstance(value, (list, tuple)):
         return any(_scan_unsafe(item) for item in value)
     return False
