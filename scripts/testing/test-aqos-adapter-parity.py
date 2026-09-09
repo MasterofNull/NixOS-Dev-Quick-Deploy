@@ -119,12 +119,63 @@ def test_REAL_guided_producer_matches_manual_no_data_loss():
     assert sel["golden_profile"] == guided.GOLDEN_PROFILE
 
 
+def test_REAL_ai_producer_matches_manual(monkeypatch_reply=None):
+    """Certify the ACTUAL AI seam (P2d, closes P2), not a fixture: drive p2b's
+    `propose_selection` (with a MOCKED model HTTP reply -- no real network) ->
+    p2a's `validate_proposal` (invoked internally by propose_selection) ->
+    `normalize_adapter("ai", ...)` -> `resolve_plan`, and require a
+    byte-identical lock to the manual adapter for the equivalent selection.
+    The hand-built {"proposal": ...} fixture in _PAYLOADS["ai"] above never
+    exercises propose_selection/validate_proposal at all -- this is the test
+    that closes that gap."""
+    import aqos_ai_propose as ai_propose
+
+    hardware_summary = resolver.summarize_hardware(hardware())
+
+    def _reply_for(selection: dict) -> dict:
+        content = json.dumps({
+            "artifact_type": "ai_proposal",
+            "schema_version": resolver.SCHEMA_VERSION,
+            "selection": selection,
+        })
+        return {"choices": [{"message": {"content": content}}]}
+
+    original_post = ai_propose._post_chat
+
+    def _propose(selection: dict) -> dict:
+        ai_propose._post_chat = lambda url, payload, timeout: _reply_for(selection)
+        try:
+            return ai_propose.propose_selection(hardware_summary, MODULES, endpoint="http://127.0.0.1:19999")
+        finally:
+            ai_propose._post_chat = original_post
+
+    # Drive the REAL producer with a clean, schema-shaped mocked model reply
+    # for the SAME selection the manual/guided/legacy adapters use above.
+    result = _propose(dict(_SELECTION))
+    assert result.get("ok") is True, f"mocked AI proposal was rejected: {result}"
+    ai_payload = {"proposal": result["selection"], "host_target": HOST}
+    ai_lock, ai_proj = _resolve("ai", ai_payload)
+
+    manual_lock, manual_proj = _resolve("manual", _PAYLOADS["manual"])
+    assert ai_lock == manual_lock, "real AI producer path diverges from manual through the resolver"
+    assert ai_proj == manual_proj
+
+    # Non-triviality guard: a different mocked proposal must resolve to a
+    # different lock, so the equality above has real content.
+    other = {"golden_profile": "profile.minimal", "roles": [], "include_local_ai": False}
+    other_result = _propose(other)
+    assert other_result.get("ok") is True, f"mocked AI proposal was rejected: {other_result}"
+    other_lock, _ = _resolve("ai", {"proposal": other_result["selection"], "host_target": HOST})
+    assert other_lock != ai_lock
+
+
 def main() -> int:
     test_all_adapters_produce_identical_lock_and_projection()
     test_parity_is_not_trivial_different_intent_differs()
     test_legacy_profile_maps_into_the_same_engine()
     test_REAL_guided_producer_matches_manual_no_data_loss()
-    print("test-aqos-adapter-parity: ok 4/4 (guided==ai==manual==legacy + REAL producer, byte-identical)")
+    test_REAL_ai_producer_matches_manual()
+    print("test-aqos-adapter-parity: ok 5/5 (guided==ai==manual==legacy + REAL guided + REAL ai producer, byte-identical)")
     return 0
 
 
