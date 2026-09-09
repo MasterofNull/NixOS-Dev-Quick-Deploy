@@ -1,0 +1,60 @@
+# Frontier source catalog — what the Autopilot scans/tracks, and the reference
+# library our models check against for gap + parity research.
+#
+# trust_tier: primary  = arxiv / official repo / official spec / first-party benchmark
+#             secondary = curated aggregator or engineering blog (LEADS only, never
+#                         evidence on their own — must resolve to a primary source)
+# pillar: matches the parity-sweep pillars in FRONTIER-AUTOPILOT.md
+# cadence: how often the scan re-checks it
+# owner adds/edits sources HERE — never re-prompted. aq-frontier source-metrics
+# scores each source by how many backlog candidates it surfaced and their adopt-rate,
+# so low-signal sources can be pruned and high-signal ones prioritized.
+
+version: 1
+pillars: [agent-architecture, context-memory, local-inference, os-security, evaluation, structured-safety]
+
+sources:
+  # ── Agent architecture / multi-agent ─────────────────────────────────────
+  - {id: arxiv-cs-ai,     name: "arXiv cs.AI (recent)",        kind: arxiv-feed,     url: "https://arxiv.org/list/cs.AI/recent",             pillar: agent-architecture, trust_tier: primary,   cadence: weekly, why: "primary preprints: agent architectures, planning, tool use, reasoning"}
+  - {id: arxiv-cs-ma,     name: "arXiv cs.MA (multi-agent)",   kind: arxiv-feed,     url: "https://arxiv.org/list/cs.MA/recent",             pillar: agent-architecture, trust_tier: primary,   cadence: weekly, why: "multi-agent coordination, swarms, communication protocols"}
+  - {id: mcp-spec,        name: "Model Context Protocol spec", kind: spec,           url: "https://modelcontextprotocol.io/specification",   pillar: agent-architecture, trust_tier: primary,   cadence: monthly, why: "tool/context wire format we already speak; track spec revisions"}
+  - {id: a2a-spec,        name: "A2A protocol (Linux Foundation)", kind: spec,       url: "https://github.com/a2aproject/A2A",               pillar: agent-architecture, trust_tier: primary,   cadence: monthly, why: "de-facto inter-agent standard; gap-check vs our signed-A2A"}
+  - {id: dspy,           name: "stanfordnlp/dspy",             kind: repo-releases,  url: "https://github.com/stanfordnlp/dspy",             pillar: agent-architecture, trust_tier: primary,   cadence: monthly, why: "prompt-as-program compilation; MIPRO/GEPA optimizers"}
+  - {id: gepa,           name: "gepa-ai/gepa",                 kind: repo-releases,  url: "https://github.com/gepa-ai/gepa",                 pillar: agent-architecture, trust_tier: primary,   cadence: monthly, why: "reflective prompt optimizer (FE-2); our build-time compile candidate"}
+  - {id: awesome-prm,    name: "Awesome-Process-Reward-Models",kind: aggregator,    url: "https://github.com/RyanLiu112/Awesome-Process-Reward-Models", pillar: agent-architecture, trust_tier: secondary, cadence: monthly, why: "curated PRM lead list (FE-1); resolve items to arxiv primaries"}
+  - {id: anthropic-eng,  name: "Anthropic engineering blog",   kind: blog,           url: "https://www.anthropic.com/engineering",           pillar: agent-architecture, trust_tier: secondary, cadence: monthly, why: "agent/harness patterns from our flagship lane's authors"}
+
+  # ── Context / memory ─────────────────────────────────────────────────────
+  - {id: arxiv-cs-cl,    name: "arXiv cs.CL (recent)",         kind: arxiv-feed,     url: "https://arxiv.org/list/cs.CL/recent",             pillar: context-memory,     trust_tier: primary,   cadence: weekly, why: "long-context, KV-cache compression, retrieval"}
+  - {id: letta,          name: "letta-ai/letta (MemGPT)",      kind: repo-releases,  url: "https://github.com/letta-ai/letta",               pillar: context-memory,     trust_tier: primary,   cadence: monthly, why: "hierarchical long-term memory reference architecture"}
+  - {id: lean-ctx,       name: "lean-ctx (our MCP dep)",       kind: repo-releases,  url: "https://github.com/hyperdrive-eng/lean-ctx",      pillar: context-memory,     trust_tier: primary,   cadence: monthly, why: "IB-pruning/AST context engine we already run; track upstream"}
+
+  # ── Local inference / MLOps ──────────────────────────────────────────────
+  - {id: llama-cpp,      name: "ggml-org/llama.cpp",           kind: repo-releases,  url: "https://github.com/ggml-org/llama.cpp/releases",  pillar: local-inference,    trust_tier: primary,   cadence: weekly, why: "our inference engine; quant/backend/spec-decode changes land here first"}
+  - {id: vllm,           name: "vllm-project/vllm",            kind: repo-releases,  url: "https://github.com/vllm-project/vllm/releases",   pillar: local-inference,    trust_tier: primary,   cadence: monthly, why: "paged-attention/continuous-batching reference; coordinator tuning ideas"}
+  - {id: sglang,         name: "sgl-project/sglang",           kind: repo-releases,  url: "https://github.com/sgl-project/sglang",           pillar: local-inference,    trust_tier: primary,   cadence: monthly, why: "structured-gen + fast serving; alt engine to benchmark"}
+  - {id: hf-trending,    name: "HuggingFace trending models",  kind: hf-mcp,         url: "hf://models/trending",                            pillar: local-inference,    trust_tier: primary,   cadence: weekly, why: "new open weights (Qwen/DeepSeek/GLM/Kimi) for the model roadmap"}
+  - {id: bitnet,         name: "microsoft/BitNet",             kind: repo-releases,  url: "https://github.com/microsoft/BitNet",             pillar: local-inference,    trust_tier: primary,   cadence: monthly, why: "native 1-bit LLMs (FE-5); monitor native-model scaling"}
+  - {id: unsloth,        name: "unslothai/unsloth",            kind: repo-releases,  url: "https://github.com/unslothai/unsloth",            pillar: local-inference,    trust_tier: primary,   cadence: monthly, why: "quantization/GGUF + fine-tune tooling for local hardware"}
+  - {id: arxiv-cs-lg,    name: "arXiv cs.LG (recent)",         kind: arxiv-feed,     url: "https://arxiv.org/list/cs.LG/recent",             pillar: local-inference,    trust_tier: primary,   cadence: weekly, why: "quantization, speculative decoding, efficient inference"}
+
+  # ── OS / security / NixOS ────────────────────────────────────────────────
+  - {id: nixpkgs,        name: "NixOS/nixpkgs releases",       kind: repo-releases,  url: "https://github.com/NixOS/nixpkgs/releases",       pillar: os-security,        trust_tier: primary,   cadence: monthly, why: "our OS substrate; kernel/package/module changes"}
+  - {id: impermanence,   name: "nix-community/impermanence",   kind: repo-releases,  url: "https://github.com/nix-community/impermanence",   pillar: os-security,        trust_tier: primary,   cadence: monthly, why: "ephemeral-root pattern (FE-7) we already wire; track upstream"}
+  - {id: disko,          name: "nix-community/disko",          kind: repo-releases,  url: "https://github.com/nix-community/disko",          pillar: os-security,        trust_tier: primary,   cadence: monthly, why: "declarative partitioning for the P4 bare-metal installer path"}
+  - {id: landlock,       name: "Landlock LSM (kernel docs)",   kind: docs,           url: "https://docs.kernel.org/userspace-api/landlock.html", pillar: os-security,    trust_tier: primary,   cadence: quarterly, why: "unprivileged sandboxing (FE-8) egress pin for untrusted MCP tools"}
+  - {id: ebpf,           name: "cilium/ebpf",                  kind: repo-releases,  url: "https://github.com/cilium/ebpf",                  pillar: os-security,        trust_tier: primary,   cadence: quarterly, why: "programmable network/security filters for zero-trust tool gating"}
+
+  # ── Evaluation / benchmarks (the parity yardsticks) ──────────────────────
+  - {id: swebench,       name: "SWE-bench",                    kind: benchmark,      url: "https://github.com/SWE-bench/SWE-bench",          pillar: evaluation,         trust_tier: primary,   cadence: monthly, why: "agentic-coding parity yardstick; compare our local agent"}
+  - {id: aider-lb,       name: "Aider polyglot leaderboard",   kind: benchmark,      url: "https://aider.chat/docs/leaderboards/",           pillar: evaluation,         trust_tier: primary,   cadence: monthly, why: "code-edit success across models; informs the model roadmap"}
+  - {id: terminal-bench, name: "Terminal-Bench",               kind: benchmark,      url: "https://www.tbench.ai/",                          pillar: evaluation,         trust_tier: primary,   cadence: monthly, why: "terminal/agent task benchmark close to our harness use"}
+  - {id: lmarena,        name: "LMArena",                      kind: benchmark,      url: "https://lmarena.ai/leaderboard",                  pillar: evaluation,         trust_tier: secondary, cadence: monthly, why: "broad head-to-head signal (lead only; verify per-task before adopting)"}
+  - {id: otel-genai,     name: "OpenTelemetry GenAI semantic conventions", kind: spec, url: "https://opentelemetry.io/docs/specs/semconv/gen-ai/", pillar: evaluation,     trust_tier: primary,   cadence: quarterly, why: "agent observability + telemetry standard: hierarchical traces, token/latency/tool-call spans; review new GenAI convention releases quarterly (FE-10)"}
+
+  # ── Structured generation / LLM output safety (the p2b + untrusted-input pillar) ──
+  - {id: llama-grammars, name: "llama.cpp GBNF grammars",        kind: docs,          url: "https://github.com/ggml-org/llama.cpp/blob/master/grammars/README.md", pillar: structured-safety, trust_tier: primary,   cadence: monthly,   why: "the exact primitive p2b uses: json_schema/GBNF-constrained decoding on our local server"}
+  - {id: xgrammar,       name: "mlc-ai/xgrammar",                kind: repo-releases, url: "https://github.com/mlc-ai/xgrammar",               pillar: structured-safety, trust_tier: primary,   cadence: monthly,   why: "fast, near-zero-overhead structured/constrained generation; benchmark vs llama.cpp grammars"}
+  - {id: outlines,       name: "dottxt-ai/outlines",             kind: repo-releases, url: "https://github.com/dottxt-ai/outlines",            pillar: structured-safety, trust_tier: primary,   cadence: monthly,   why: "JSON-schema/regex-constrained generation library; reference for guaranteed-valid output"}
+  - {id: guidance,       name: "guidance-ai/guidance",           kind: repo-releases, url: "https://github.com/guidance-ai/guidance",          pillar: structured-safety, trust_tier: secondary, cadence: monthly,   why: "programmatic constrained generation patterns"}
+  - {id: owasp-llm,      name: "OWASP Top 10 for LLM Applications", kind: spec,       url: "https://genai.owasp.org/llm-top-10/",             pillar: structured-safety, trust_tier: primary,   cadence: quarterly, why: "LLM01 prompt injection + tool-output handling — the threat model p2/p2a/p2b defend against"}

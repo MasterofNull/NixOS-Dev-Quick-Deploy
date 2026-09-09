@@ -54,6 +54,16 @@ _human_printf() {
 
 _human_printf '=== aq-session-start: %s ===\n' "$task"
 
+# ── Frontier context (pull frontier prior-art for this objective) ─────────────
+# Surfaces frontier techniques we've already assessed for this task, WITH OUR
+# verdicts/corrections, and flags any stale/gap concept + a targeted refresh — so
+# every session starts already knowing the relevant frontier state, by default.
+# Fail-safe: never blocks hydration.
+if [[ "$machine" -eq 0 ]]; then
+    _frontier_ctx="$("${SCRIPT_DIR}/aq-frontier" context "$task" 2>/dev/null || true)"
+    [[ -n "$_frontier_ctx" ]] && printf '\n%s\n' "$_frontier_ctx"
+fi
+
 # ── 0. Workflow session registration ─────────────────────────────────────────
 # Creates a record in workflow-sessions.json so aq-report operator_trust
 # has data (intent_coverage). Silent on failure — never blocks hydration.
