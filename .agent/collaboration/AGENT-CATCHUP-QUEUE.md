@@ -599,3 +599,78 @@ are appropriate for a beginner-facing blessed default.
 **Disposition:** advisory unless a real defect surfaces → bounded follow-up, never rewrite history. Verdict of record from the primary reviewer: .agents/plans/aqos-installer-experience/GUIDED-TUI-REVIEW-20260908.md
 
 **UPDATE [2026-09-08T16:56:43Z]:** primary reviewer caught a real silent-data-loss defect (FAIL) → fixed at commit `5c95ff79` (guided emits {answers,host_target}; --adapter guided now exercised; round-trip regressions added). Codex on return: confirm the FIXED head `5c95ff79`, not the pre-fix commits. Tests: guided 6/6, parity 4/4, golden 5/5.
+
+<!-- union-merged from factory/slice-claim (frontier branch) on integration -->
+## [2026-09-08] Frontier context folded into pending reviews (via aq-frontier context)
+Frontier research is now incorporated into reviews by default (seam wired). Applied to the current
+review queue via `aq-frontier context "<review subject>"`:
+- **Foundation-C / capability-security reviews** → relevance=17 (core). FE-8 (Landlock/eBPF egress pin,
+  ADOPTED) is the directly-relevant frontier slice: pin untrusted MCP servers to loopback-only; attach to
+  the C-series activation evidence. Reviewers of any sandbox/lease change should confirm it doesn't
+  regress the deny-closed posture FE-8 targets. FE-3 (MCP/A2A governance gaps) notes we are AHEAD via
+  capability leases — do not regress to a looser standard.
+- **factory/slice-claim + agent-collaboration reviews** → the C-1..C-4 swarm-lessons folds already landed;
+  FE-3 (A2A v1.0 interop) is the monitor-tier frontier item for our signed-A2A — a gap-check, not a rewrite.
+- **installer reviews** → installer-deployment is a coverage GAP (no assessed candidate yet); a targeted
+  `aq-frontier scan-topic` is recommended before the P4 bare-metal path, not blocking P0/P1.
+Our verdict leads over frontier hype; adoption still passes the benchmark gate + tier0.
+## [2026-09-08] Installer P0/P1 review ROUTED to available lane (agent-agnostic model); Codex queued
+Per the available-agent-debate + catch-up model (never block on an absent lane): Codex (usual reviewer)
+is session-limited, so the binding independent review of branch `feat/aqos-installer-p0-execution-verifier`
+(5 commits ahead of main: 7a9d5425 research tooling, 37bf6a10 P0 execution verifier [already
+orchestrator-reviewed as non-author], 6d626d57 tracker, 1caca03f handoff, e547101c P1 golden profile) was
+ROUTED to a fresh independent flagship lane NOW. Focus: the golden profile's AI-off-has-no-AI-deps invariant
++ the cascade re-pins + verifier inertness. On OVERALL: PASS -> merge to main with the bound Review-Disposition
+envelope (Independent-Review: PASS + Reviewed-subject-sha256 of the staged merge diff + Reviewed-by). 
+**Codex on return:** confirmatory audit of the same branch — advisory unless it surfaces a real defect (then
+a bounded follow-up, never rewrite). Dev cycle does not wait.
+## [2026-09-08] CORRECTION: frontier findings are PROPOSALS pending multi-expert debate (not adopted)
+The earlier "[2026-09-08] Frontier context folded into pending reviews" note described FE-8 as "adopted" and
+FE-1 as "approved". Per the owner's no-auto-approval directive (commit f20220d6), ALL frontier findings are
+now PROPOSED (status new) and require multi-expert debate -> consensus (>=2 independent supports, no open
+reject) -> accepted before any fold/implementation. FE-1/FE-3/FE-8/FE-10 etc. are candidates awaiting the
+team's adversarial review, NOT accepted. Absent lanes' verdicts are queued here (same model): a finding can
+reach consensus on available lanes now, and a returning lane's later verdict is folded as advisory unless it
+surfaces a real defect (-> re-open). `aq-frontier review <id>` opens the debate; `verdict`/`accept` gate it.
+## [2026-09-08] Multi-lane utilization audit + live routing (all lanes leveraged, absent ones queued)
+Owner directive: fully leverage Antigravity/Gemini + local models within the agent-agnostic system.
+Audit: `aq-antigravity-inbox` present + 3 antigravity daemons running; `delegate-to-local` present + local
+Qwen serving (:8080 ok); `config/model-coordinator.json` lane ladder includes current Gemini IDs
+(gemini-3.1-pro / 3.5-flash) AND local Qwen tiers. Wiring correct.
+Live lane state:
+- **local (Qwen) — ENGAGED, contributing.** Gave a substantive adversarial verdict in the frontier debate:
+  FE-8 (Landlock egress) = CONCERNS — "redundant; bwrap cells already enforce network namespaces +
+  loopback egress; Landlock adds kernel complexity without a new attack vector." Recorded via
+  `aq-frontier verdict FE-8 --lane local`; FE-8 now BLOCKED (a real concern on record), correctly NOT
+  auto-adopted. Local is a first-class debate lane.
+- **Antigravity (Gemini) — WIRED + available (reviewer/advisory only, untrusted).** Has one OBSOLETE pending
+  item (`aqos-installer-prd-review.md` = installer PRD v1 review, superseded by v2/done) — should be
+  archived. ROUTE to it (fresh inbox task + owner/dispatch-once wake): FE-3 (MCP/A2A interop — its domain)
+  advisory review + an installer-P1 advisory pass. Its input folds as advisory (never binding).
+- **Claude flagship (installer binding review) — QUEUED.** The fresh-lane reviewer got tier0 49/0 (green)
+  and was confirming the verifier fail-closed paths, then hit the Claude session limit (resets ~01:30 PT).
+  Queue for its confirmatory completion on reset.
+- **Codex — QUEUED** (session-limited) for confirmatory audit of the installer branch.
+Installer merge: needs one capable non-author BINDING review. Both capable lanes (Claude flagship, Codex)
+are session-limited -> per the model the dev cycle does NOT block; the binding review is queued for the next
+capable lane to return (Claude ~01:30 PT), while local + Antigravity provide advisory input now. The branch
+stays validated (tier0 green) on feat/aqos-installer-p0-execution-verifier; merge lands on the returning
+binding PASS + envelope; Codex confirms after.
+## [2026-09-08] Installer P0/P1 binding review -> FINDING -> FIX (review cycle working)
+Codex (independent, non-author) reviewed feat/aqos-installer-p0-execution-verifier. Verdict:
+- CONFIRMED GOOD: hash-chain + verifier checks consistent, expected MAC reproduced, all tamper cases fail
+  closed, verifier has no execution primitive; package baseline re-pin HONEST (P1 parent + target both eval
+  hyperd-ai-dev = 375, so 369->375 corrects stale evidence, not a hidden delta).
+- BINDING DEFECT: "AI-off package leak" — the aqos-workstation golden base list carried openai-whisper +
+  whisper-cpp (ML/ASR runners) on the ALWAYS-ON path, so AI-off installed AI packages (invariant violation).
+  My golden test missed it (it checked mySystem options, not the package list — and actually REQUIRED
+  openai-whisper).
+FIX (claude-opus-4.8, commit 1f8920b7 on branch fix/aqos-golden-ai-off-leak, cut from installer HEAD
+e547101c so it carries the full corrected branch): removed openai-whisper + whisper-cpp from the golden base
+(kept in ai-dev where AI is always on; arrive via aiStack role on the golden AI-on path); yt-dlp + ffmpeg
+stay (general media, not AI). Strengthened test-aqos-golden-profile.py to FORBID AI/ML runners on the golden
+base. golden test 5/5; nix parse OK; hyperd-ai-dev baseline unchanged.
+MERGE STATE: fix/aqos-golden-ai-off-leak is the mergeable corrected branch. Needs a light NON-AUTHOR
+re-confirm of the single fix (does it close the leak without breaking anything) before merge to main —
+queued for the next capable binding lane (Codex on its worktree release, or Claude flagship on reset). Codex
+confirmatory audit continues. The dev cycle does not block; the branch is validated + corrected.

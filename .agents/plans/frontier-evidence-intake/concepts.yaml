@@ -1,0 +1,44 @@
+# Concept taxonomy — the relevance anchor + coverage map for frontier research.
+#
+# Two jobs:
+#   1. RELEVANCE: incoming papers/tools are scored against these concepts (keyword +
+#      vector-DB semantic match). Core concepts carry more weight, so the highest-
+#      value-to-US research surfaces first — focus on the core.
+#   2. COVERAGE: this IS the list of "all relevant subjects" for our system's design,
+#      function, and development. A concept with no source and no candidate is a
+#      coverage hole (a subject we're blind to) — breadth is measurable, not vibes.
+#
+# tier:   core (the system's heart) > supporting > peripheral. weight follows tier.
+# keywords: match terms for keyword relevance (lowercased, substring/word match).
+# subsystems: code/doc anchors this concept lives in (used for semantic corpus + gap
+#            attribution). The vector DB embeds these so semantic scoring is grounded
+#            in what we actually build, not generic topic similarity.
+
+version: 1
+weights: {core: 3, supporting: 2, peripheral: 1}
+
+concepts:
+  # ── CORE (the system's heart) ────────────────────────────────────────────
+  - {id: local-inference, tier: core, keywords: [llama.cpp, quantization, gguf, apu, tokens per second, tok/s, offload, inference, kv cache, vram, moe, mixture of experts, ggml], subsystems: [nix/modules/roles/ai-stack.nix, scripts/ai/aq-llama-benchmark.py, config/aqos-ai-fit-policy-catalog-v1.json], why: "our host-local model serving on constrained APU hardware"}
+  - {id: multi-agent-collaboration, tier: core, keywords: [multi-agent, multi agent, swarm, agent-to-agent, a2a, orchestrator, dispatch, handoff, delegation, role assignment, claim, lock, coordination, consensus], subsystems: [.agents/plans/agent-agnostic-factory, scripts/ai/lib/slice_claim.py, .agent/collaboration], why: "the flat collaborative factory: many agents, one repo, no collisions"}
+  - {id: agent-harness, tier: core, keywords: [agent harness, tool use, tool call, system prompt, verifier, edit-verify, coach, retry, bail-out, definition of done, react, agent loop], subsystems: [ai-stack/local-agents/agent_executor.py, shared/llm_config.py], why: "how our agents plan, act, self-verify, and stop"}
+  - {id: context-engineering, tier: core, keywords: [context window, rag, retrieval augmented, memory, kv cache compression, pruning, ast, tree-sitter, embedding, chunking, long context, information bottleneck], subsystems: [scripts/ai/lib, .understand-anything, ai-stack/local-agents/context_cache.py], why: "fitting the right context into a small local model"}
+  - {id: nixos-declarative, tier: core, keywords: [nixos, nix, flake, declarative, systemd, impermanence, disko, module, mysystem, activation, tmpfiles], subsystems: [flake.nix, nix/modules, nix/modules/core/options.nix], why: "the OS substrate; everything is declarative + reproducible"}
+  - {id: evaluation-verification, tier: core, keywords: [benchmark, eval, evaluation, process reward, prm, test-time compute, verifier, pass rate, swe-bench, aider, tier0, gate, self-consistency], subsystems: [scripts/governance/tier0-validation-gate.sh, scripts/ai/aq-eval, scripts/testing], why: "measure-before-adopt; nothing ships unmeasured"}
+  - {id: capability-security, tier: core, keywords: [capability lease, sandbox, bwrap, bubblewrap, landlock, ebpf, apparmor, cgroup, zero-trust, zero trust, egress, seccomp, isolation, epoch], subsystems: [.agents/plans/aqos-foundation-c, nix/modules/services], why: "least-privilege execution for untrusted tools + agents"}
+  - {id: structured-generation, tier: core, keywords: [constrained decoding, grammar, gbnf, json schema, json-schema, structured output, structured outputs, response_format, json mode, guided decoding, function calling, tool call, logit bias, outlines, xgrammar, guidance, jsonformer, schema-constrained], subsystems: [scripts/ai/lib/aqos_ai_proposal.py, scripts/ai/lib], why: "force untrusted model output into a strict schema so injection is structurally impossible (p2b)"}
+  - {id: llm-output-safety, tier: core, keywords: [prompt injection, indirect prompt injection, jailbreak, owasp llm, llm top 10, untrusted output, tool output, guardrails, output validation, allowlist, sanitization, injection defense, data exfiltration, spotlighting, delimiter], subsystems: [scripts/ai/lib/aqos_ai_proposal.py, .agent], why: "treat model output as untrusted input; validate before it reaches any shell/Nix/disk boundary"}
+
+  # ── SUPPORTING (important, not the heart) ────────────────────────────────
+  - {id: prompt-optimization, tier: supporting, keywords: [prompt optimization, dspy, gepa, mipro, apo, automatic prompt, reflective optimization, prompt compile], subsystems: [ai-stack/prompts/registry.yaml, scripts/ai/aq-prompt-eval], why: "compile harness prompts against our verifiers"}
+  - {id: model-architecture, tier: supporting, keywords: [reasoning model, chain of thought, mixture of experts, moe, test-time compute, mcts, tree search, distillation, open weights, deepseek, qwen, glm, kimi], subsystems: [.agent/LOCAL-AGENT.md, config/model-coordinator.json], why: "which open models to run and why"}
+  - {id: observability, tier: supporting, keywords: [observability, telemetry, health, monitoring, dashboard, metrics, tracing, otel, opentelemetry, alert, self-healing, remediation], subsystems: [scripts/ai/aq-report, dashboard], why: "you cannot manage what you cannot measure"}
+  - {id: installer-deployment, tier: supporting, keywords: [installer, quick deploy, golden path, disko, partitioning, bootstrap, onboarding, resolver, provisioning], subsystems: [.agents/plans/aqos-installer-experience, nixos-quick-deploy.sh], why: "beginner-to-expert reproducible install"}
+  - {id: knowledge-graph, tier: supporting, keywords: [knowledge graph, code understanding, ast, symbol graph, dependency graph, understand-anything, wiki, semantic search], subsystems: [.understand-anything, scripts/ai], why: "structured code + doc knowledge for agents"}
+  - {id: agent-protocols, tier: supporting, keywords: [mcp, model context protocol, a2a, agent2agent, json-rpc, acp, tool protocol, wire format, interop], subsystems: [.agent/collaboration, docs/agent-guides], why: "standard tool + inter-agent wire formats"}
+
+  # ── PERIPHERAL (relevant breadth — track, low weight) ────────────────────
+  - {id: speculative-decoding, tier: peripheral, keywords: [speculative decoding, draft model, medusa, eagle, self-speculative, lookahead], subsystems: [], why: "latency technique; regime-dependent for our MoE"}
+  - {id: extreme-quantization, tier: peripheral, keywords: [1-bit, 1.58-bit, ternary, bitnet, binary weights, iq quant, low-bit], subsystems: [], why: "monitor native low-bit model scaling"}
+  - {id: fine-tuning, tier: peripheral, keywords: [fine-tuning, lora, qlora, peft, unsloth, rlhf, dpo, grpo, reward model training], subsystems: [ai-stack/local-agents/training_ingest.py], why: "local model refinement + the training loop"}
+  - {id: serving-infra, tier: peripheral, keywords: [vllm, sglang, paged attention, continuous batching, prefix cache, tensor parallel, throughput], subsystems: [], why: "alt serving engines to benchmark vs llama.cpp"}
