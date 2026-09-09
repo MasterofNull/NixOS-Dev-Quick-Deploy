@@ -1,0 +1,19 @@
+#!/usr/bin/env bash
+# Shallow-merge guard — runs before git creates an auto-merge commit
+# (the fast path for `git merge` when there's no conflict; a `--no-commit`
+# merge instead reaches the pre-commit hook at commit time, which carries
+# its own copy of this same guard).
+set -euo pipefail
+
+REPO_ROOT="$(git rev-parse --show-toplevel)"
+GUARD="${REPO_ROOT}/scripts/governance/check-mergeable.sh"
+
+if [[ ! -x "${GUARD}" ]]; then
+  echo "pre-merge-commit: WARN missing ${GUARD} — skipping shallow-merge guard" >&2
+  exit 0
+fi
+
+if ! "${GUARD}"; then
+  echo "pre-merge-commit: aborting auto-merge — see error above" >&2
+  exit 1
+fi
