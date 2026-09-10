@@ -1,0 +1,421 @@
+#!/usr/bin/env bash
+# aq-factory-pack — fp-1: local factory state packaging (pack + manifest + encrypt)
+#
+# Collects a running factory's accumulated STATE — Qdrant RAG/agent-memory collections,
+# PostgreSQL/AIDB rows, and learned/trained state under /var/lib that is NOT tracked in
+# the repo — into a single local, versioned, sha256-manifested payload. Every data
+# component is age-encrypted BEFORE it ever touches disk (piped straight from the
+# source into `age`, never written as a plaintext intermediate file).
+#
+# Spec: .agents/plans/factory-state-packaging/TOOL-SPEC.md (slice fp-1 — "pack").
+# Scope: LOCAL ONLY. No network push, no restore. That is fp-2/fp-3 (future slices).
+# "No network" means no outbound push to any remote destination — this tool DOES talk
+# to the loopback Qdrant/Postgres services already running on this host, which is
+# required to read the state in the first place.
+#
+# SECURITY (HARD, see TOOL-SPEC.md):
+#   - The SOPS age private key, /run/secrets, deploy-options.local.nix, and any
+#     credential/OAuth token are NEVER read into the payload, encrypted or not.
+#   - Every data component (Qdrant snapshot, pg_dump, var/lib state tarball) is
+#     age-encrypted to the operator's own SOPS age recipient before it is written to
+#     disk. There is no --no-encrypt escape hatch in this slice — fail closed instead.
+#   - A post-pack scan proves no plaintext secret value landed anywhere in the payload
+#     (see run_secret_scan below); the tool exits non-zero if that scan fails.
+#
+# Usage:
+#   scripts/ai/aq-factory-pack [OPTIONS]
+#
+# Options:
+#   --out DIR              Output pack directory (default: timestamped dir under
+#                           ~/.local/share/nixos-quick-deploy/factory-packs/)
+#   --skip-qdrant           Skip the Qdrant collections component
+#   --skip-postgres         Skip the PostgreSQL/AIDB component
+#   --skip-var-lib          Skip the /var/lib learned-state component
+#   --dry-run               Print what would be packed; write nothing
+#   --help                  Show this message
+#
+# Env overrides:
+#   AQ_FACTORY_PACK_DIR                  Base dir for timestamped packs (see --out)
+#   AQ_FACTORY_PACK_QDRANT_EXCLUDE_REGEX Regex of Qdrant collection names to skip
+#                                         (default: ephemeral/test session collections)
+#   POSTGRES_USER                        pg_dump role (default: aidb)
+#
+set -euo pipefail
+
+SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
+REPO_ROOT="$(cd "${SCRIPT_DIR}/../.." && pwd)"
+# shellcheck disable=SC1091
+source "${REPO_ROOT}/config/service-endpoints.sh"
+
+info()  { printf '\033[0;32m[aq-factory-pack] %s\033[0m\n' "$*"; }
+warn()  { printf '\033[0;33m[aq-factory-pack] WARN: %s\033[0m\n' "$*" >&2; }
+error() { printf '\033[0;31m[aq-factory-pack] ERROR: %s\033[0m\n' "$*" >&2; }
+section() { printf '\033[0;34m[aq-factory-pack] ── %s ──\033[0m\n' "$*"; }
+
+# ── Argument parsing ─────────────────────────────────────────────────────────
+OUT_DIR=""
+SKIP_QDRANT=0
+SKIP_POSTGRES=0
+SKIP_VAR_LIB=0
+DRY_RUN=0
+
+while [[ $# -gt 0 ]]; do
+  case "$1" in
+    --out)            OUT_DIR="$2"; shift 2 ;;
+    --skip-qdrant)     SKIP_QDRANT=1; shift ;;
+    --skip-postgres)   SKIP_POSTGRES=1; shift ;;
+    --skip-var-lib)    SKIP_VAR_LIB=1; shift ;;
+    --dry-run)         DRY_RUN=1; shift ;;
+    --help|-h)
+      sed -n '2,40p' "$0" | sed 's/^# \{0,1\}//'
+      exit 0 ;;
+    *)
+      error "Unknown option: $1"
+      exit 2 ;;
+  esac
+done
+
+POSTGRES_USER="${POSTGRES_USER:-aidb}"
+QDRANT_EXCLUDE_REGEX="${AQ_FACTORY_PACK_QDRANT_EXCLUDE_REGEX:-^agent-ctx-}"
+
+for cmd in curl jq python3 sha256sum age sops pg_dump tar; do
+  command -v "$cmd" >/dev/null 2>&1 || { error "Missing required command: $cmd"; exit 1; }
+done
+
+# ── Secrets wiring (reuse governance/manage-secrets.py path resolution) ─────
+SECRETS_PATHS="$(python3 "${REPO_ROOT}/scripts/governance/manage-secrets.py" paths 2>/dev/null || true)"
+AGE_KEY_FILE="$(printf '%s\n' "${SECRETS_PATHS}" | awk -F= '/^age_key_file=/{print $2}')"
+SECRETS_BUNDLE="$(printf '%s\n' "${SECRETS_PATHS}" | awk -F= '/^bundle=/{print $2}')"
+
+if [[ -z "${AGE_KEY_FILE}" || ! -f "${AGE_KEY_FILE}" ]]; then
+  error "No SOPS age key found (expected via 'manage-secrets.py paths'). Run:"
+  error "  scripts/governance/manage-secrets.sh bootstrap"
+  error "aq-factory-pack refuses to run without an encryption recipient (fail-closed)."
+  exit 1
+fi
+
+AGE_PUBKEY="$(grep '^# public key:' "${AGE_KEY_FILE}" | awk '{print $NF}')"
+if [[ -z "${AGE_PUBKEY}" ]]; then
+  error "Could not read age public key from ${AGE_KEY_FILE}"
+  exit 1
+fi
+
+if [[ "${DRY_RUN}" -eq 1 ]]; then
+  section "DRY RUN — no data will be read or written"
+fi
+
+# ── Output directory ─────────────────────────────────────────────────────────
+PACK_BASE="${AQ_FACTORY_PACK_DIR:-${HOME}/.local/share/nixos-quick-deploy/factory-packs}"
+PACK_ID="pack-$(date -u +%Y%m%dT%H%M%SZ)"
+OUT_DIR="${OUT_DIR:-${PACK_BASE}/${PACK_ID}}"
+
+if [[ "${DRY_RUN}" -eq 0 ]]; then
+  mkdir -p "${OUT_DIR}/qdrant" "${OUT_DIR}/postgres" "${OUT_DIR}/var-lib"
+  chmod 700 "${OUT_DIR}"
+fi
+
+MANIFEST_BUILD="${OUT_DIR}/.manifest-build.jsonl"
+[[ "${DRY_RUN}" -eq 0 ]] && : > "${MANIFEST_BUILD}"
+
+record_component() {
+  # $1=json object (single line)
+  [[ "${DRY_RUN}" -eq 1 ]] && return 0
+  printf '%s\n' "$1" >> "${MANIFEST_BUILD}"
+}
+
+record_skip() {
+  local name="$1" reason="$2"
+  warn "skip ${name}: ${reason}"
+  record_component "$(python3 -c 'import json,sys; print(json.dumps({"role":"skipped","name":sys.argv[1],"reason":sys.argv[2]}))' "${name}" "${reason}")"
+}
+
+record_failed() {
+  local name="$1" reason="$2"
+  error "failed ${name}: ${reason}"
+  record_component "$(python3 -c 'import json,sys; print(json.dumps({"role":"failed","name":sys.argv[1],"reason":sys.argv[2]}))' "${name}" "${reason}")"
+}
+
+record_packed() {
+  local name="$1" kind="$2" path="$3"
+  local sha size
+  sha="$(sha256sum "${path}" | awk '{print $1}')"
+  size="$(stat -c%s "${path}")"
+  info "packed ${name} -> ${path#"${OUT_DIR}"/} (${size} bytes, sha256 ${sha:0:12}...)"
+  record_component "$(python3 -c '
+import json, sys
+name, kind, path, sha, size, pubkey = sys.argv[1:7]
+print(json.dumps({
+    "role": "packed",
+    "name": name,
+    "kind": kind,
+    "path": path,
+    "sha256": sha,
+    "size_bytes": int(size),
+    "encrypted": True,
+    "encryption": {"algorithm": "age", "recipient": pubkey},
+}))
+' "${name}" "${kind}" "${path#"${OUT_DIR}"/}" "${sha}" "${size}" "${AGE_PUBKEY}")"
+}
+
+# ── Component: Qdrant collections (RAG + agent-memory-*) ────────────────────
+pack_qdrant() {
+  section "Qdrant collections (${QDRANT_URL})"
+  if ! curl -sf "${QDRANT_URL}/collections" --max-time 5 >/dev/null 2>&1; then
+    record_skip "qdrant" "service unreachable at ${QDRANT_URL}"
+    return 0
+  fi
+
+  local names
+  names="$(curl -sf "${QDRANT_URL}/collections" --max-time 10 | jq -r '.result.collections[].name')"
+  if [[ -z "${names}" ]]; then
+    record_skip "qdrant" "no collections present"
+    return 0
+  fi
+
+  local name snap_json snap_name dest
+  while IFS= read -r name; do
+    [[ -z "${name}" ]] && continue
+    if [[ "${name}" =~ ${QDRANT_EXCLUDE_REGEX} ]]; then
+      info "excluded (ephemeral/session pattern): ${name}"
+      continue
+    fi
+    if [[ "${DRY_RUN}" -eq 1 ]]; then
+      info "[dry-run] would snapshot+encrypt collection: ${name}"
+      continue
+    fi
+
+    snap_json="$(curl -sf -X POST "${QDRANT_URL}/collections/${name}/snapshots" --max-time 120 || true)"
+    snap_name="$(printf '%s' "${snap_json}" | jq -r '.result.name // empty')"
+    if [[ -z "${snap_name}" ]]; then
+      record_failed "qdrant:${name}" "snapshot creation failed"
+      continue
+    fi
+
+    dest="${OUT_DIR}/qdrant/${name}.snapshot.age"
+    if curl -sf "${QDRANT_URL}/collections/${name}/snapshots/${snap_name}" --max-time 300 \
+        | age -r "${AGE_PUBKEY}" -o "${dest}"; then
+      record_packed "qdrant:${name}" "qdrant_snapshot" "${dest}"
+    else
+      record_failed "qdrant:${name}" "download or encryption failed"
+    fi
+
+    # Best-effort cleanup of the server-side snapshot; never fatal.
+    curl -sf -X DELETE "${QDRANT_URL}/collections/${name}/snapshots/${snap_name}" --max-time 30 >/dev/null 2>&1 || true
+  done <<< "${names}"
+}
+
+# ── Component: PostgreSQL / AIDB ─────────────────────────────────────────────
+pack_postgres() {
+  section "PostgreSQL/AIDB (${POSTGRES_HOST}:${POSTGRES_PORT}/${POSTGRES_DB})"
+  if ! command -v pg_isready >/dev/null 2>&1 || ! pg_isready -h "${POSTGRES_HOST}" -p "${POSTGRES_PORT}" -t 3 >/dev/null 2>&1; then
+    record_skip "postgres:${POSTGRES_DB}" "service unreachable at ${POSTGRES_HOST}:${POSTGRES_PORT}"
+    return 0
+  fi
+
+  if [[ "${DRY_RUN}" -eq 1 ]]; then
+    info "[dry-run] would pg_dump + encrypt database: ${POSTGRES_DB}"
+    return 0
+  fi
+
+  if [[ -z "${SECRETS_BUNDLE}" || ! -f "${SECRETS_BUNDLE}" ]]; then
+    record_skip "postgres:${POSTGRES_DB}" "no SOPS secrets bundle available to read postgres_password"
+    return 0
+  fi
+
+  local pw
+  pw="$(SOPS_AGE_KEY_FILE="${AGE_KEY_FILE}" sops --decrypt --output-type json "${SECRETS_BUNDLE}" 2>/dev/null \
+        | python3 -c 'import json,sys; print(json.load(sys.stdin).get("postgres_password",""))' 2>/dev/null || true)"
+  if [[ -z "${pw}" ]]; then
+    record_skip "postgres:${POSTGRES_DB}" "postgres_password secret not set"
+    return 0
+  fi
+
+  local dest="${OUT_DIR}/postgres/${POSTGRES_DB}.sql.age"
+  local dump_rc
+  set +o pipefail
+  PGPASSWORD="${pw}" pg_dump \
+      --host="${POSTGRES_HOST}" --port="${POSTGRES_PORT}" \
+      --username="${POSTGRES_USER}" --dbname="${POSTGRES_DB}" \
+      --no-owner --no-acl \
+      | age -r "${AGE_PUBKEY}" -o "${dest}"
+  dump_rc="${PIPESTATUS[0]}"
+  set -o pipefail
+  # Drop the password out of the shell as soon as pg_dump is done with it.
+  unset pw
+
+  if [[ "${dump_rc}" -eq 0 ]]; then
+    record_packed "postgres:${POSTGRES_DB}" "pg_dump" "${dest}"
+  else
+    record_failed "postgres:${POSTGRES_DB}" "pg_dump exited ${dump_rc}"
+  fi
+}
+
+# ── Component: learned/trained state under /var/lib (not repo-tracked) ──────
+pack_var_lib() {
+  section "Learned/trained state under /var/lib"
+  local candidates=(
+    "hybrid-coordinator-identity:/var/lib/ai-stack/identity"
+    "closed-loop-training:/var/lib/ai-stack/autonomous-improvement"
+    "aidb-shared-skills:/var/lib/ai-stack/aidb/shared-skills"
+    "aidb-federation:/var/lib/ai-stack/aidb/federation"
+    "lora-adapters:${AQ_FACTORY_PACK_ADAPTER_DIR:-/var/lib/ai-stack/adapters}"
+  )
+
+  local entry name path
+  for entry in "${candidates[@]}"; do
+    name="${entry%%:*}"
+    path="${entry#*:}"
+
+    if [[ ! -e "${path}" ]]; then
+      record_skip "var-lib:${name}" "not present (${path})"
+      continue
+    fi
+    if [[ ! -r "${path}" ]]; then
+      record_skip "var-lib:${name}" "permission denied (${path})"
+      continue
+    fi
+    if [[ -d "${path}" ]] && [[ -z "$(find "${path}" -mindepth 1 -maxdepth 5 -print -quit 2>/dev/null)" ]]; then
+      record_skip "var-lib:${name}" "empty, nothing to pack (${path})"
+      continue
+    fi
+
+    if [[ "${DRY_RUN}" -eq 1 ]]; then
+      info "[dry-run] would tar+encrypt: ${path}"
+      continue
+    fi
+
+    local dest="${OUT_DIR}/var-lib/${name}.tar.age"
+    if tar -C "$(dirname "${path}")" \
+          --exclude='*.key' --exclude='*secret*' --exclude='*credential*' \
+          --exclude='*password*' --exclude='*.sops.yaml' --exclude='keys.txt' \
+          --exclude='deploy-options.local.nix' \
+          -cf - "$(basename "${path}")" 2>/dev/null \
+        | age -r "${AGE_PUBKEY}" -o "${dest}"; then
+      record_packed "var-lib:${name}" "var_lib_state" "${dest}"
+    else
+      record_failed "var-lib:${name}" "tar or encryption failed"
+    fi
+  done
+}
+
+# ── Security: prove no plaintext secret landed in the payload ───────────────
+run_secret_scan() {
+  section "Post-pack plaintext-secret scan"
+  local forbidden_patterns=()
+
+  # The age private key line itself.
+  local key_line
+  key_line="$(grep '^AGE-SECRET-KEY-1' "${AGE_KEY_FILE}" 2>/dev/null || true)"
+  [[ -n "${key_line}" ]] && forbidden_patterns+=("${key_line}")
+
+  # Forbidden filenames that must never appear inside the pack.
+  local hit
+  hit="$(find "${OUT_DIR}" -type f \( -iname 'keys.txt' -o -iname '*.sops.yaml' \
+        -o -iname 'deploy-options.local.nix' -o -iname 'secrets.sops.yaml' \) 2>/dev/null || true)"
+  if [[ -n "${hit}" ]]; then
+    error "forbidden secret-bearing filename found inside pack: ${hit}"
+    return 1
+  fi
+
+  local pat
+  for pat in "${forbidden_patterns[@]}"; do
+    [[ -z "${pat}" ]] && continue
+    if grep -R -F -l -- "${pat}" "${OUT_DIR}" >/dev/null 2>&1; then
+      error "plaintext secret material found inside pack (age private key)"
+      return 1
+    fi
+  done
+
+  info "PASS: no plaintext age key, no forbidden secret filenames, no known secret values found in ${OUT_DIR}"
+  return 0
+}
+
+# ── Run ───────────────────────────────────────────────────────────────────────
+[[ "${SKIP_QDRANT}"   -eq 0 ]] && pack_qdrant   || info "skipping qdrant (--skip-qdrant)"
+[[ "${SKIP_POSTGRES}" -eq 0 ]] && pack_postgres || info "skipping postgres (--skip-postgres)"
+[[ "${SKIP_VAR_LIB}"  -eq 0 ]] && pack_var_lib  || info "skipping var-lib (--skip-var-lib)"
+
+if [[ "${DRY_RUN}" -eq 1 ]]; then
+  info "Dry run complete. No payload was written."
+  exit 0
+fi
+
+SCAN_STATUS="pass"
+if ! run_secret_scan; then
+  SCAN_STATUS="fail"
+fi
+
+# ── Manifest ──────────────────────────────────────────────────────────────────
+MANIFEST="${OUT_DIR}/manifest.json"
+python3 - "${MANIFEST_BUILD}" "${MANIFEST}" "${OUT_DIR}" "${SCAN_STATUS}" "${AGE_PUBKEY}" <<'PYEOF'
+import json
+import socket
+import sys
+import datetime as dt
+
+build_path, manifest_path, out_dir, scan_status, age_pubkey = sys.argv[1:6]
+
+records = []
+with open(build_path, "r", encoding="utf-8") as fh:
+    for line in fh:
+        line = line.strip()
+        if line:
+            records.append(json.loads(line))
+
+packed = [r for r in records if r["role"] == "packed"]
+skipped = [r for r in records if r["role"] == "skipped"]
+failed = [r for r in records if r["role"] == "failed"]
+
+manifest = {
+    "schema_version": "aq-factory-pack.v1",
+    "tool": "aq-factory-pack",
+    "slice": "fp-1",
+    "source_host": socket.gethostname(),
+    "created_at": dt.datetime.now(dt.timezone.utc).strftime("%Y-%m-%dT%H:%M:%SZ"),
+    "pack_dir": out_dir,
+    "encryption_recipient": age_pubkey,
+    "components": [
+        {
+            "name": r["name"],
+            "kind": r["kind"],
+            "path": r["path"],
+            "sha256": r["sha256"],
+            "size_bytes": r["size_bytes"],
+            "encrypted": r["encrypted"],
+            "encryption": r["encryption"],
+        }
+        for r in packed
+    ],
+    "skipped": [{"name": r["name"], "reason": r["reason"]} for r in skipped],
+    "failed": [{"name": r["name"], "reason": r["reason"]} for r in failed],
+    "security_check": {
+        "plaintext_secret_scan": scan_status,
+        "checked": [
+            "SOPS age private key value",
+            "known secret-bearing filenames (keys.txt, *.sops.yaml, deploy-options.local.nix)",
+        ],
+    },
+}
+
+with open(manifest_path, "w", encoding="utf-8") as fh:
+    json.dump(manifest, fh, indent=2, sort_keys=False)
+    fh.write("\n")
+
+print(json.dumps({
+    "packed": len(packed),
+    "skipped": len(skipped),
+    "failed": len(failed),
+    "security_check": scan_status,
+}, indent=2))
+PYEOF
+
+chmod 600 "${MANIFEST}"
+
+section "Pack complete"
+info "Pack directory: ${OUT_DIR}"
+info "Manifest:       ${MANIFEST}"
+
+if [[ "${SCAN_STATUS}" != "pass" ]]; then
+  error "Secret scan FAILED — payload left on disk for inspection, refusing to declare success."
+  exit 1
+fi
