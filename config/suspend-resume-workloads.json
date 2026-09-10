@@ -8,7 +8,8 @@
       "bounded readiness or reconciliation",
       "typed resume outcome",
       "telemetry, dashboard, and QA evidence"
-    ]
+    ],
+    "out_of_scope": "Disposable test-only VM hosts (nix/hosts/aqos-vm, nix/hosts/aqos-install-vm) declare fire-once Type=oneshot boot-marker services (e.g. aqos-install-vm-dogfood-marker) that print a boot marker to the console and exit — they have no long-running or suspend/resume semantics and are deliberately NOT registered as managed workloads."
   },
   "workloads": [
     {

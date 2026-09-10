@@ -110,6 +110,12 @@
     mkHost = {
       hostName,
       profile,
+      # s1a (.agents/plans/aqos-installer-experience/END-TO-END-BARE-METAL-PLAN.md):
+      # optional extra modules appended after all per-host overrides, so a
+      # bare nixosConfigurations override (like aqos-vm below) can select a
+      # variant (e.g. LUKS vs plain disk layout) without a second host
+      # directory. Empty by default — no behavior change for any existing caller.
+      extraModules ? [],
     }: let
       system' = resolveHostSystem hostName;
       hostFacts = resolveHostFacts hostName;
@@ -239,7 +245,8 @@
           ({lib, ...}: {
             imports = lib.optionals (builtins.pathExists (hostDeployOptionsLocalPath hostName)) [(hostDeployOptionsLocalPath hostName)];
           })
-        ];
+        ]
+        ++ extraModules;
       };
 
     mkHostConfigs =
@@ -310,8 +317,86 @@
           hostName = "aqos-vm";
           profile = "aqos-workstation";
         };
+      }
+      # s1a (.agents/plans/aqos-installer-experience/END-TO-END-BARE-METAL-PLAN.md):
+      # golden aqos-workstation profile + a REAL disko layout (unlike
+      # aqos-vm's layout="none"), selectable plain-vs-LUKS purely via
+      # extraModules so nix/hosts/aqos-install-vm/ is reused for both. These
+      # are the `extendModules` base for checks.x86_64-linux.
+      # aqos-install-vm-disko-{plain,luks} below (the actual
+      # partition/install/boot proof); evaluating these bare attrs directly
+      # is the cheap Step-A gate in
+      # scripts/testing/aqos-install-vm-dogfood.sh.
+      // {
+        aqos-install-vm-plain = mkHost {
+          hostName = "aqos-install-vm";
+          profile = "aqos-workstation";
+        };
+        aqos-install-vm-luks = mkHost {
+          hostName = "aqos-install-vm";
+          profile = "aqos-workstation";
+          extraModules = [
+            ({lib, ...}: {
+              mySystem.disk.layout = lib.mkForce "gpt-luks-ext4";
+              mySystem.disk.luks.enable = lib.mkForce true;
+            })
+          ];
+        };
       };
     homeConfigurations = mkHomeConfigs;
+    # s1a disk/install MECHANICS proof (rootless, no sudo — see
+    # .agents/plans/aqos-installer-experience/END-TO-END-BARE-METAL-PLAN.md
+    # and scripts/testing/aqos-install-vm-dogfood.sh). Uses disko's OWN
+    # rootless in-VM test framework (inputs.disko.lib.testLib.makeDiskoTest)
+    # to actually PARTITION a virtual disk, install the golden
+    # aqos-workstation profile onto it, and boot the result — for both a
+    # plain and a LUKS-encrypted layout. `extendModules` is deliberately set
+    # to our OWN already-built nixosConfiguration's extendModules (not
+    # disko's default eval-config) so the golden profile evaluates against
+    # OUR pinned nixos-26.05 nixpkgs, not disko's separately-pinned
+    # nixpkgs-unstable; nix/hosts/aqos-install-vm/vm-test-safety.nix
+    # restores the disko-test-only settings that trade-off loses.
+    checks.x86_64-linux = let
+      checkPkgs = mkPkgs nixpkgs "x86_64-linux";
+      diskoTestLib = inputs.disko.lib.testLib;
+      diskoConfigs = {
+        plain = ./nix/hosts/aqos-install-vm/disko-plain.nix;
+        luks = ./nix/hosts/aqos-install-vm/disko-luks.nix;
+      };
+      mkInstallVmDiskoTest = {
+        layout,
+        extraTestScript,
+      }:
+        diskoTestLib.makeDiskoTest {
+          pkgs = checkPkgs;
+          name = "aqos-install-vm-${layout}";
+          disko-config = diskoConfigs.${layout};
+          extendModules = (self.nixosConfigurations."aqos-install-vm-${layout}").extendModules;
+          extraSystemConfig = ./nix/hosts/aqos-install-vm/vm-test-safety.nix;
+          inherit extraTestScript;
+          # `machine` here is the REBOOTED (post-install) VM with a real
+          # Python test-driver connection — unlike aqos-vm-dogfood.sh's
+          # headless `-nographic` qemu, which has to scrape /dev/console.
+          bootCommands = ''
+            machine.wait_for_unit("aqos-install-vm-dogfood-marker.service")
+            machine.succeed("journalctl -u aqos-install-vm-dogfood-marker.service | grep -q 'golden_marker=hyperfine-ok'")
+          '';
+        };
+    in {
+      aqos-install-vm-disko-plain = mkInstallVmDiskoTest {
+        layout = "plain";
+        extraTestScript = ''
+          machine.succeed("mountpoint /");
+        '';
+      };
+      aqos-install-vm-disko-luks = mkInstallVmDiskoTest {
+        layout = "luks";
+        extraTestScript = ''
+          machine.succeed("cryptsetup isLuks /dev/vda2");
+          machine.succeed("mountpoint /");
+        '';
+      };
+    };
     devShells = lib.genAttrs devSystems (system': let
       pkgs' = import nixpkgs {
         system = system';

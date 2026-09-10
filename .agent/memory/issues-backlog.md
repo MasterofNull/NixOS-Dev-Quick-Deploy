@@ -3778,3 +3778,12 @@ Advisory task (codex is the real confirmatory backstop) — non-blocking.
 - **factory-pack-collection-name-path-traversal** (severity: low): Qdrant collection names are interpolated
   into output paths (scripts/ai/aq-factory-pack:194) — a name containing `../` could write outside OUT_DIR.
   Local trusted Qdrant today; sanitize/validate names in fp-2 hardening.
+
+## [OPEN] command-center-dashboard-api fails 216/GROUP in install-VM (2026-09-10, found in s1a plain boot test)
+- Observed in the s1a disko install-VM boot log: `command-center-dashboard-api.service: Failed at step GROUP
+  spawning ...-start: No such process` -> `status=216/GROUP` -> service failed. The declared group for the
+  dashboard-api service does not exist in the freshly-installed golden VM context.
+- Severity: medium. Scope: NOT s1a (disk mechanics passed — root mounted, system booted). This is a
+  full-factory service-startup defect that slice s1c (full-factory VM, all services healthy) MUST catch+fix.
+- Action: in s1c, assert dashboard-api (and every ai-stack service) reaches healthy startup; fix the missing
+  group declaration (users.groups / service User+Group wiring) in the golden profile. File: nix/modules/services/command-center-dashboard.nix.

@@ -516,3 +516,18 @@ the same freeze doc, both still requiring independent review before any owner en
 - **Evidence:** ACTIVATION-AUDIT line `host=aqos-vm step_a=pass step_b=pass sudo=never disposable=true`; DOGFOOD_EXIT=0.
 - **Two real bugs surfaced only by RUNNING it** (fixed): NixOS 26.05 nixos-rebuild dropped `-o` (-> `nix build …build.vm -o`); the marker service checked `command -v` under systemd's minimal PATH (-> `/run/current-system/sw/bin/hyperfine`).
 - **Scope:** proves the P0->P2 golden chain builds + boots a coherent system in a disposable VM. Integrated/observable/intervenable dimensions + bare-metal (P4) remain gated. This is the "committed -> done" evidence for the golden BUILD path.
+
+## AQ-OS end-to-end bare-metal — s1a disk/install mechanics (2026-09-10)
+**Real-world validated (DoD dim 3), rootless, no sudo:** the golden config PARTITIONS a virtual disk,
+INSTALLS onto it, and BOOTS — proven for BOTH layouts via disko's own rootless in-VM test framework
+(`inputs.disko.lib.testLib.makeDiskoTest`, wired as flake `checks.x86_64-linux.aqos-install-vm-disko-{plain,luks}`).
+- **plain** (gpt-efi-ext4): disko test built + ran (result-plain), VM booted, hard assertion `mountpoint /`
+  succeeded (root mounted from the disko-partitioned disk), test script finished ~88s, exit 0.
+- **luks** (gpt-luks-ext4): disko test built + ran (result-luks), encrypted root unlocked via the TEST-ONLY
+  keyfile + mounted, VM booted through, test script finished ~134s, exit 0.
+- Both host configs evaluate (drv firskqj8 / 9rkpvlv7); aqos-vm shows no regression. No real disk, no sudo
+  (disko partitions qcow2 inside the Nix build sandbox). Test-only LUKS keyfile is documented, never a real secret.
+- **Scope:** proves the disk/install PLUMBING only (slice s1a). Full-factory services (s1c), the wizard UX
+  (s1b), model+RAG provisioning (s1d), first-boot key (s2), and real hardware (s4) remain gated.
+- **Deferred finding:** `command-center-dashboard-api` failed 216/GROUP in the booted install-VM — logged
+  for s1c (full-factory service-health), out of scope for s1a.
