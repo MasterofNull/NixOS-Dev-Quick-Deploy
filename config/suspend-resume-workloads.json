@@ -1,0 +1,114 @@
+{
+  "schema_version": "1.0",
+  "policy": {
+    "purpose": "Authoritative suspend/resume resilience inventory for managed AQ-OS workloads. A workload must be registered before it may claim suspend-safe operation.",
+    "scope": "Managed long-running AI workloads and resumable development jobs. This v1 inventory is deliberately bounded; it is not a claim that every repository script is suspend-safe.",
+    "registration_rule": "New managed long-running workloads must add an AQ_SUSPEND_CONTRACT marker and a matching record in the same slice that introduces their service, timer, or resumable job entrypoint.",
+    "required_evidence": [
+      "bounded readiness or reconciliation",
+      "typed resume outcome",
+      "telemetry, dashboard, and QA evidence"
+    ]
+  },
+  "workloads": [
+    {
+      "id": "llama-cpp-inference",
+      "workload_class": "managed-daemon",
+      "implementation_paths": [
+        "nix/modules/roles/ai-stack.nix",
+        "scripts/ai/lib/dispatch.py"
+      ],
+      "suspend_behavior": {
+        "mode": "restart_on_resume",
+        "resume_trigger": "llama-cpp-resume.service",
+        "implementation_status": "implemented"
+      },
+      "state_safety": {
+        "checkpoint_required": false,
+        "idempotency": "A stateless inference daemon may be restarted; in-flight requests must tolerate interruption.",
+        "signal_behavior": "systemd stop/restart lifecycle"
+      },
+      "readiness": {
+        "strategy": "bounded_health_poll",
+        "evidence": "scripts/ai/lib/dispatch.py:_wait_for_service",
+        "max_wait_seconds": 180,
+        "implementation_status": "implemented"
+      },
+      "resume_outcomes": {
+        "required": ["ready", "timeout", "interrupted"],
+        "implementation_status": "planned"
+      },
+      "observability": {
+        "telemetry": "planned",
+        "dashboard": "planned",
+        "qa": "planned"
+      },
+      "compliance": "partial",
+      "next_slice": "SR-3 resume reconciler emits typed outcome telemetry and supplies dashboard plus live QA parity."
+    },
+    {
+      "id": "local-training-loop",
+      "workload_class": "resumable-job",
+      "implementation_paths": ["scripts/ai/aq-local-training-loop"],
+      "suspend_behavior": {
+        "mode": "checkpoint_and_resume",
+        "resume_trigger": "operator_or_future_reconciler",
+        "implementation_status": "partial"
+      },
+      "state_safety": {
+        "checkpoint_required": true,
+        "idempotency": "Each completed training item is recorded before the next item is started.",
+        "signal_behavior": "SIGTERM and SIGHUP preserve progress for a later resume."
+      },
+      "readiness": {
+        "strategy": "checkpoint_reconciliation",
+        "evidence": "scripts/ai/aq-local-training-loop checkpoint/resume handling",
+        "max_wait_seconds": 180,
+        "implementation_status": "partial"
+      },
+      "resume_outcomes": {
+        "required": ["resumed", "checkpoint_missing", "interrupted"],
+        "implementation_status": "planned"
+      },
+      "observability": {
+        "telemetry": "partial",
+        "dashboard": "planned",
+        "qa": "planned"
+      },
+      "compliance": "partial",
+      "next_slice": "SR-3 reconciler should make checkpoint recovery observable and bounded after a system resume."
+    },
+    {
+      "id": "local-dogfood-run",
+      "workload_class": "resumable-job",
+      "implementation_paths": ["scripts/ai/aq-local-dogfood-run"],
+      "suspend_behavior": {
+        "mode": "checkpoint_and_resume",
+        "resume_trigger": "not_implemented",
+        "implementation_status": "not_implemented"
+      },
+      "state_safety": {
+        "checkpoint_required": true,
+        "idempotency": "A future resume must reconcile the existing run ledger before it dispatches another task.",
+        "signal_behavior": "Current bounded cancellation is not a checkpoint/resume guarantee."
+      },
+      "readiness": {
+        "strategy": "resume_reconciliation",
+        "evidence": "not_implemented",
+        "max_wait_seconds": 180,
+        "implementation_status": "not_implemented"
+      },
+      "resume_outcomes": {
+        "required": ["resumed", "no_checkpoint", "interrupted"],
+        "implementation_status": "not_implemented"
+      },
+      "observability": {
+        "telemetry": "partial",
+        "dashboard": "planned",
+        "qa": "planned"
+      },
+      "compliance": "blocked",
+      "next_slice": "SR-4 adds signal-safe checkpointing, --resume, typed outcomes, and live evidence."
+    }
+  ]
+}

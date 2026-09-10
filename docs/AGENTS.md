@@ -96,6 +96,12 @@
 - Test harnesses must evolve with runtime behavior:
   - when code changes from sync to async, blocking to subprocess-based, or adds shutdown/cancellation/timeout logic, update the matching tests in the same task.
   - lifecycle changes are incomplete without cancellation and shutdown coverage.
+- Suspend/resume resilience is a delivery gate for managed workloads:
+  - preserve lid-close suspend and configured hibernation; an inhibitor is not a correctness mechanism.
+  - new or materially changed long-running services, agent/inference loops, timer jobs, and multi-step operations must update `config/suspend-resume-workloads.json` in the same slice.
+  - require restart/checkpoint/idempotency semantics, graceful signals, bounded readiness, typed outcomes, and telemetry + dashboard + live QA evidence.
+  - add `AQ_SUSPEND_CONTRACT: <id>` to new managed workloads and run `scripts/governance/tier0.d/check-suspend-resume-contract.sh --pre-deploy`.
+  - never label planned recovery behavior as implemented.
 - Typed config discipline in tests:
   - if tests patch `Config` or env-derived settings, numeric and timeout values must be explicit `int`/`float` values.
   - never rely on implicit `MagicMock` numerics in code paths that compare, clamp, or add numbers.
