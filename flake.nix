@@ -298,7 +298,19 @@
       {}
       hostDirs;
   in {
-    nixosConfigurations = mkHostConfigs;
+    nixosConfigurations =
+      mkHostConfigs
+      # P3 VM-dogfood activation gate (scripts/testing/aqos-vm-dogfood.sh):
+      # exposes the golden aqos-workstation profile as a single bare
+      # `.#aqos-vm` nixosConfiguration (outside the hostDirs x profiles
+      # matrix above, which only ever produces "<host>-<profile>" names)
+      # so `nixos-rebuild build-vm --flake .#aqos-vm` has a stable target.
+      // {
+        aqos-vm = mkHost {
+          hostName = "aqos-vm";
+          profile = "aqos-workstation";
+        };
+      };
     homeConfigurations = mkHomeConfigs;
     devShells = lib.genAttrs devSystems (system': let
       pkgs' = import nixpkgs {
