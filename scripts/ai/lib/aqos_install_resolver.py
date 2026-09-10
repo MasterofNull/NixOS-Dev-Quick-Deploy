@@ -328,10 +328,28 @@ def resolve_plan(
         if ai_fit_result.get("verdict") == "not_advised":
             _reject("local_ai_not_advised", "local AI was requested but hardware policy reports not_advised")
     roles = _resolve_roles(list(selection.get("roles", [])), module_catalog, include_ai)
+    lock_selection = {"golden_profile": profile, "roles": roles, "include_local_ai": include_ai}
+    # s1b system-setup answers (hostName/primaryUser/disk/password-hash): optional,
+    # schema-validated above; carried through verbatim when the adapter supplied them so
+    # guided/manual/AI stay one engine. Semantic cross-field checks the schema cannot
+    # express (layout vs. luks.enable agreement) are enforced here, fail-closed.
+    disk_selection = selection.get("disk")
+    if disk_selection is not None:
+        layout = disk_selection.get("layout")
+        luks_enable = bool((disk_selection.get("luks") or {}).get("enable", False))
+        if layout == "gpt-luks-ext4" and not luks_enable:
+            _reject("disk_luks_layout_mismatch",
+                    f"disk layout {layout} requires mySystem.disk.luks.enable=true")
+        if layout in {"gpt-efi-ext4", "gpt-efi-btrfs"} and luks_enable:
+            _reject("disk_luks_layout_mismatch",
+                    f"disk layout {layout} must not set mySystem.disk.luks.enable=true")
+    for key in ("hostName", "primaryUser", "disk", "primaryUserPasswordHash"):
+        if key in selection:
+            lock_selection[key] = selection[key]
     lock = {
         "artifact_type": "resolved_plan_lock",
         "schema_version": SCHEMA_VERSION,
-        "selection": {"golden_profile": profile, "roles": roles, "include_local_ai": include_ai},
+        "selection": lock_selection,
         "hardware_summary": summarize_hardware(hw),
         "catalog_digests": {
             "module_catalog_sha256": sha256_bytes(module_catalog_bytes),

@@ -15,8 +15,11 @@ guided path can never diverge from the manual one.
 from __future__ import annotations
 
 import argparse
+import getpass
 import importlib.util
 import json
+import shutil
+import subprocess
 import sys
 from pathlib import Path
 
@@ -24,6 +27,82 @@ SELF = Path(__file__).resolve()
 LIB = SELF.parent / "lib"
 REPO = SELF.parents[2]
 GOLDEN_PROFILE = "aqos-workstation"
+
+# s1b system-setup wizard copy — reused verbatim from the drafted plain-language pass
+# (.agents/delegation/outputs/local-20260909-213422-ovtck2.log, BLOCK 1 / BLOCK 2).
+ENCRYPT_DISK_PROMPT_TEXT = (
+    "Encrypt this disk? (Recommended)\n"
+    "Yes. This locks your data so that only you can access it, even if someone steals your "
+    "computer. It's like putting a strong lock on your digital home."
+)
+ENCRYPT_DISK_DECLINE_WARNING = (
+    "Warning: Leaving disk unencrypted\n"
+    "If you choose not to encrypt, anyone who gets physical access to this device can read your "
+    "private files, including saved passwords and security keys. We strongly recommend keeping "
+    "encryption on."
+)
+DISK_LAYOUT_ENCRYPTED = "gpt-luks-ext4"
+DISK_LAYOUT_PLAIN = "gpt-efi-ext4"
+
+
+def disk_selection_for(encrypt_disk: bool) -> dict:
+    """Encryption choice -> disko layout (s1b: collect only, no disk ops)."""
+    layout = DISK_LAYOUT_ENCRYPTED if encrypt_disk else DISK_LAYOUT_PLAIN
+    return {"layout": layout, "luks": {"enable": bool(encrypt_disk)}}
+
+
+def hash_password(password: str) -> str:
+    """Hash a password immediately; the plaintext is NEVER returned/stored/logged past this
+    call. Prefers yescrypt via `mkpasswd` (whois package, matches the plan's encryption
+    contract); falls back to the stdlib sha512_crypt KDF when mkpasswd is unavailable. Fails
+    closed (raises) rather than ever emitting plaintext."""
+    mkpasswd = shutil.which("mkpasswd")
+    if mkpasswd:
+        result = subprocess.run([mkpasswd, "-m", "yescrypt", "-s"], input=password,
+                                capture_output=True, text=True, check=True)
+        return result.stdout.strip()
+    try:
+        import crypt  # stdlib fallback KDF: SHA-512 crypt (removed upstream in Python 3.13)
+    except ImportError as exc:
+        raise RuntimeError(
+            "no password KDF available: install mkpasswd (whois package) or pass --password-hash"
+        ) from exc
+    return crypt.crypt(password, crypt.mksalt(crypt.METHOD_SHA512))
+
+
+def prompt_password_hash() -> str | None:
+    """Interactive, hidden-entry password collection -> immediate hash. Returns None (skip)
+    when not attached to a TTY rather than hanging a non-interactive run."""
+    if not sys.stdin.isatty():
+        return None
+    while True:
+        first = getpass.getpass("User password: ")
+        second = getpass.getpass("Confirm password: ")
+        if not first:
+            print("Password cannot be empty.", file=sys.stderr)
+            continue
+        if first != second:
+            print("Passwords did not match, try again.", file=sys.stderr)
+            continue
+        try:
+            return hash_password(first)
+        finally:
+            first = second = ""  # best-effort scrub of the local plaintext references
+
+
+def prompt_encrypt_disk(default: bool = True) -> bool:
+    """The yes/no disk-encryption choice, plain-language copy per the encryption contract."""
+    print(ENCRYPT_DISK_PROMPT_TEXT)
+    if not sys.stdin.isatty():
+        return default
+    reply = input("Encrypt disk? [Y/n]: ").strip().lower()
+    if reply in ("", "y", "yes"):
+        return True
+    if reply in ("n", "no"):
+        print(ENCRYPT_DISK_DECLINE_WARNING)
+        confirm = input("Type 'no' again to confirm leaving the disk unencrypted: ").strip().lower()
+        return confirm != "no"  # only a repeated 'no' declines; anything else -> stay safe, ON
+    return default
 
 
 def _load(name: str):
@@ -60,21 +139,36 @@ def ai_decision(hw: dict, ai_catalog: dict, digest: str, choice: str | None) -> 
 
 
 def build_guided_request(host_target: str, include_local_ai: bool,
-                         roles: list[str] | None = None) -> dict:
+                         roles: list[str] | None = None, *,
+                         host_name: str | None = None,
+                         primary_user: str | None = None,
+                         disk: dict | None = None,
+                         primary_user_password_hash: str | None = None) -> dict:
     """The guided ADAPTER INPUT — the raw answers the resolver's `--adapter guided`
     consumes. normalize_adapter("guided", ...) reads `answers` and normalizes it into
     the canonical request_plan; emitting a request_plan here (with `selection`) would
     make the guided adapter silently drop every choice (answers=None -> selection={}).
     The guided front-end therefore emits answers, and the guided adapter does the
-    shaping — so guided/AI/manual genuinely converge on ONE resolver."""
-    return {
-        "answers": {
-            "golden_profile": GOLDEN_PROFILE,
-            "roles": sorted(roles or []),
-            "include_local_ai": bool(include_local_ai),
-        },
-        "host_target": host_target,
+    shaping — so guided/AI/manual genuinely converge on ONE resolver.
+
+    The s1b system-setup answers (host_name/primary_user/disk/password hash) are
+    OPTIONAL and omitted entirely when not supplied, so every existing call site
+    (and the guided==manual==AI parity suite) is unaffected."""
+    answers = {
+        "golden_profile": GOLDEN_PROFILE,
+        "roles": sorted(roles or []),
+        "include_local_ai": bool(include_local_ai),
     }
+    if host_name is not None:
+        answers["hostName"] = host_name
+    if primary_user is not None:
+        answers["primaryUser"] = primary_user
+    if disk is not None:
+        answers["disk"] = disk
+    if primary_user_password_hash is not None:
+        # HARD SECURITY: only ever the HASH, never plaintext — see hash_password().
+        answers["primaryUserPasswordHash"] = primary_user_password_hash
+    return {"answers": answers, "host_target": host_target}
 
 
 def preview(request: dict, ai: dict) -> str:
@@ -91,15 +185,29 @@ def preview(request: dict, ai: dict) -> str:
     ]
     if ai.get("warning"):
         lines.append(f"  ! {ai['warning']}")
+    if "hostName" in sel:
+        lines.append(f"  hostname       : {sel['hostName']}")
+    if "primaryUser" in sel:
+        lines.append(f"  username       : {sel['primaryUser']}")
+    if "disk" in sel:
+        encrypted = (sel["disk"].get("luks") or {}).get("enable", False)
+        lines.append(f"  disk layout    : {sel['disk'].get('layout')}  "
+                     f"(encryption {'ON' if encrypted else 'OFF'})")
+    if "primaryUserPasswordHash" in sel:
+        lines.append("  user password  : set (hashed; plaintext never stored or shown)")
     lines.append("  disk           : UNTOUCHED (non-destructive golden path; rollback stays available)")
     return "\n".join(lines)
 
 
 def run(hw: dict, ai_catalog: dict, digest: str, *, host_target: str, ai_choice: str | None,
-        roles: list[str] | None = None) -> dict:
+        roles: list[str] | None = None,
+        host_name: str | None = None, primary_user: str | None = None,
+        disk: dict | None = None, primary_user_password_hash: str | None = None) -> dict:
     """Pure, non-destructive flow core -> the selection + preview (no disk, no rebuild)."""
     ai = ai_decision(hw, ai_catalog, digest, ai_choice)
-    request = build_guided_request(host_target, ai["include_local_ai"], roles)
+    request = build_guided_request(host_target, ai["include_local_ai"], roles,
+                                   host_name=host_name, primary_user=primary_user, disk=disk,
+                                   primary_user_password_hash=primary_user_password_hash)
     return {"request": request, "ai": ai, "preview": preview(request, ai)}
 
 
@@ -113,6 +221,20 @@ def main(argv: list[str] | None = None) -> int:
     ap.add_argument("--out", type=Path, default=None, help="write the guided request JSON here (optional)")
     ap.add_argument("--authorize", action="store_true", help="print the exact resolve+rebuild commands to run")
     ap.add_argument("--json", action="store_true")
+    # s1b system-setup answers (like a standard OS installer wizard) — collect only,
+    # no disk ops. Prompted interactively (TTY) when omitted; sane defaults otherwise.
+    ap.add_argument("--hostname", default=None, help="mySystem.hostName; prompted on a TTY if omitted")
+    ap.add_argument("--username", default=None, help="mySystem.primaryUser; prompted on a TTY if omitted")
+    ap.add_argument("--password", default=None,
+                    help="user password (automation/test convenience ONLY — hashed immediately "
+                         "in-process, never stored/printed in plaintext; prefer the interactive "
+                         "prompt or --password-hash)")
+    ap.add_argument("--password-hash", dest="password_hash", default=None,
+                    help="pre-hashed user password (crypt(3) format, e.g. output of "
+                         "'mkpasswd -m yescrypt') — the safe non-interactive path")
+    ap.add_argument("--encrypt-disk", choices=("yes", "no", "auto"), default="auto",
+                    help="full-disk LUKS encryption (recommended); 'auto' prompts interactively "
+                         "on a TTY, else defaults to yes")
     args = ap.parse_args(argv)
 
     hw_probe = _load("hw_probe")
@@ -127,8 +249,33 @@ def main(argv: list[str] | None = None) -> int:
         hw = hw_probe.probe_hardware()
     ai_catalog, digest = ai_fit.load_catalog(REPO / ai_fit.CATALOG_PATH)
 
+    host_name = args.hostname
+    if host_name is None and sys.stdin.isatty():
+        host_name = input("Hostname [nixos]: ").strip() or "nixos"
+    primary_user = args.username
+    if primary_user is None and sys.stdin.isatty():
+        primary_user = input("Username [nixos]: ").strip() or "nixos"
+
+    if args.password_hash:
+        password_hash = args.password_hash
+    elif args.password is not None:
+        password_hash = hash_password(args.password)
+        args.password = None  # scrub the plaintext reference immediately after hashing
+    else:
+        password_hash = prompt_password_hash()
+
+    if args.encrypt_disk == "yes":
+        encrypt_disk = True
+    elif args.encrypt_disk == "no":
+        encrypt_disk = False
+    else:
+        encrypt_disk = prompt_encrypt_disk(default=True)
+    disk = disk_selection_for(encrypt_disk)
+
     result = run(hw, ai_catalog, digest, host_target=args.host_target,
-                 ai_choice=(None if args.ai == "auto" else args.ai), roles=args.role)
+                 ai_choice=(None if args.ai == "auto" else args.ai), roles=args.role,
+                 host_name=host_name, primary_user=primary_user, disk=disk,
+                 primary_user_password_hash=password_hash)
 
     if args.out:  # the ONLY write, and only when asked — never a system/disk mutation
         args.out.write_text(json.dumps(result["request"], indent=2, sort_keys=True) + "\n")
