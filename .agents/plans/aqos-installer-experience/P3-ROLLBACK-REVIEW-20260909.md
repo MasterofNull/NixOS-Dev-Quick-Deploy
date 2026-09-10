@@ -1,0 +1,2 @@
+# p3-rollback review
+Reviewer: Opus (non-author; Codex built it). Verified: 7/7 tests; ACP runbook `aqos-rollback` registered, effect argv nixos-rebuild --rollback with executable:False (inert P0, fail-closed); CLI emits approval-request, never runs rebuild inline; no regressions (approval-request 8/8, p2c 5/5); mocked, no real rebuild/sudo. Codex's worktree tier0 blocked only by missing .claude/settings.json (env, refused to fabricate). Verdict PASS.
