@@ -378,6 +378,26 @@ Use `mcp_server_recall_memory` or `aq-memory recall` at the start of the next se
 
 **Purpose**: Catch bugs, security issues, and policy violations before they enter git history.
 
+#### Suspend/resume resilience gate (managed workloads)
+
+Lid-close suspend and configured hibernation are supported operating-system
+events and must not be disabled to keep work alive. A slice that adds or
+materially changes a long-running service, inference/agent loop, timer-triggered
+job, or multi-step development/deployment operation must update
+`config/suspend-resume-workloads.json` in the same slice and provide:
+
+- restart, checkpoint, and idempotency semantics;
+- graceful signal/cancellation handling;
+- bounded readiness or reconciliation (no infinite waits);
+- typed resume outcomes;
+- telemetry, dashboard, and live QA evidence; and
+- truthful compliance—planned evidence cannot be labeled implemented.
+
+New managed workloads carry an `AQ_SUSPEND_CONTRACT: <id>` marker. Run
+`scripts/governance/tier0.d/check-suspend-resume-contract.sh --pre-deploy`
+during development; Tier-0 runs the staged form before commit. See
+`.agent/PROJECT-SUSPEND-RESUME-RESILIENCE-PRD.md`.
+
 #### Mandatory gates (run for every commit):
 ```bash
 scripts/governance/tier0-validation-gate.sh --pre-commit
