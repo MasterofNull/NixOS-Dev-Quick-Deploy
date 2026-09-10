@@ -3765,3 +3765,16 @@ Advisory task (codex is the real confirmatory backstop) — non-blocking.
   Severity: high
   Action: Store active long-running worktrees outside volatile `/tmp`, or automatically checkpoint validated slices to a private recovery ref before yielding; teach the workflow to distinguish disposable test scratch from durable collaboration state.
   File: .agent/WORKFLOW-CANON.md; git worktree lifecycle tooling
+
+## [OPEN] aq-factory-pack fp-1 review findings (2026-09-10, non-author review by Opus)
+- **factory-pack-portability-recipient** (severity: medium, DESIGN for fp-3): aq-factory-pack encrypts every
+  component to the SOURCE host's own age public key. A fresh target machine has a different age key and
+  CANNOT decrypt the pack unless the source age key is also ported. Action: fp-3 (restore) must define the
+  recipient/key-transfer story (bring the age key, OR support a passphrase recipient `age -p`, OR encrypt to
+  a chosen target recipient). File: scripts/ai/aq-factory-pack:196,240,293.
+- **factory-pack-dryrun-reads** (severity: low): `--dry-run` still queries Qdrant for collection names
+  (scripts/ai/aq-factory-pack:169 runs before the dry-run guard at :182), contradicting the header claim
+  "no data will be read." Action: guard the read, or correct the claim. Writes nothing (that part is true).
+- **factory-pack-collection-name-path-traversal** (severity: low): Qdrant collection names are interpolated
+  into output paths (scripts/ai/aq-factory-pack:194) — a name containing `../` could write outside OUT_DIR.
+  Local trusted Qdrant today; sanitize/validate names in fp-2 hardening.
