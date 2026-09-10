@@ -508,3 +508,11 @@ later, separate owner activation.
 **Deferral**: written and dated here per Rule 15 — this cycle is *paused pending activation*, not
 done. Unblocks B3 (outbound client + ingress) and B4 (Service Coverage + dashboard), both scoped in
 the same freeze doc, both still requiring independent review before any owner enable/flag-flip.
+
+## AQ-OS installer golden path — VM dogfood (2026-09-09)
+**Real-world validated (DoD dim 3):** `scripts/testing/aqos-vm-dogfood.sh --full` passed end-to-end.
+- Step A: `.#nixosConfigurations.aqos-vm` evaluates -> nixos-system derivation; golden-profile packages present (hyperfine, watchexec).
+- Step B: `nix build .#nixosConfigurations.aqos-vm.config.system.build.vm` succeeded; the disposable QEMU VM BOOTED headless and confirmed `golden_marker=hyperfine-ok` (the golden package is installed + present at boot). No sudo, no real disk, no OOM (model resident).
+- **Evidence:** ACTIVATION-AUDIT line `host=aqos-vm step_a=pass step_b=pass sudo=never disposable=true`; DOGFOOD_EXIT=0.
+- **Two real bugs surfaced only by RUNNING it** (fixed): NixOS 26.05 nixos-rebuild dropped `-o` (-> `nix build …build.vm -o`); the marker service checked `command -v` under systemd's minimal PATH (-> `/run/current-system/sw/bin/hyperfine`).
+- **Scope:** proves the P0->P2 golden chain builds + boots a coherent system in a disposable VM. Integrated/observable/intervenable dimensions + bare-metal (P4) remain gated. This is the "committed -> done" evidence for the golden BUILD path.

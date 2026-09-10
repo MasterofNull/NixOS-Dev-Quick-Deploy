@@ -129,8 +129,8 @@ step_b() {
     STEP_B_STATUS="skip"
     return 0
   fi
-  if ! command -v nixos-rebuild >/dev/null 2>&1; then
-    skip "step B: 'nixos-rebuild' not found on PATH — cannot build-vm"
+  if ! command -v nix >/dev/null 2>&1; then
+    skip "step B: 'nix' not found on PATH — cannot build the VM"
     STEP_B_STATUS="skip"
     return 0
   fi
@@ -144,10 +144,12 @@ step_b() {
   work_dir="$(mktemp -d "${TMPDIR:-/tmp}/aqos-vm-dogfood.XXXXXX")"
   trap 'rm -rf "${work_dir}"' RETURN
 
-  info "step B: nixos-rebuild build-vm --flake .#${HOST} (timeout ${BUILD_TIMEOUT}s, no sudo)"
+  # NixOS 26.05's nixos-rebuild (Python) dropped the Perl `-o` flag; build the VM
+  # derivation directly with `nix build` (which supports -o) — same result: ./result/bin/run-*-vm.
+  info "step B: nix build .#nixosConfigurations.${HOST}.config.system.build.vm (timeout ${BUILD_TIMEOUT}s, no sudo)"
   local result_link="${work_dir}/result"
-  if ! timeout "${BUILD_TIMEOUT}" nixos-rebuild build-vm \
-        --flake ".#${HOST}" -o "${result_link}" \
+  if ! timeout "${BUILD_TIMEOUT}" nix build \
+        ".#nixosConfigurations.${HOST}.config.system.build.vm" -o "${result_link}" \
         >"${work_dir}/build.log" 2>&1; then
     STEP_B_STATUS="fail"
     tail -n 60 "${work_dir}/build.log" >&2 || true

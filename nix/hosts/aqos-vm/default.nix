@@ -37,8 +37,11 @@
     after = [ "multi-user.target" ];
     serviceConfig.Type = "oneshot";
     script = ''
+      # systemd services get a minimal PATH that excludes /run/current-system/sw/bin
+      # (where systemPackages install), so check the system-profile path directly —
+      # that is exactly where the golden aqos-workstation profile puts hyperfine.
       marker="MISSING"
-      if command -v hyperfine >/dev/null 2>&1; then marker="hyperfine-ok"; fi
+      if [ -x /run/current-system/sw/bin/hyperfine ]; then marker="hyperfine-ok"; fi
       echo "AQOS-VM-DOGFOOD-BOOT-OK golden_marker=$marker" > /dev/console 2>/dev/null || true
     '';
   };
