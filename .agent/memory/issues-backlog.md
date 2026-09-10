@@ -3756,3 +3756,12 @@ Advisory task (codex is the real confirmatory backstop) — non-blocking.
   Severity: critical
   Action: Move required internal authentication behind narrowly scoped systemd credentials or an unprivileged local proxy; remove the dashboard from `ai-stack`, narrow AppArmor to exact credentials, eliminate spoofable internal-header authority, and retest all dashboard integrations before activating any mutation UI.
   File: nix/modules/services/command-center-dashboard.nix; nix/modules/services/mcp-servers.nix (command-center-dashboard-api AppArmor profile); dashboard/backend/api
+[IN-FLIGHT 2026-09-09] suspend-resume-contract-missing-for-managed-workloads — A lid-close suspend interval overlapped a `llama-cpp` stop/restart timeout and aborted deploy-time activation memory relief. Existing components have isolated restart/checkpoint behavior, but no shared contract requires bounded reconciliation, typed outcomes, or dashboard/QA evidence. The timing is correlated evidence, not proof that suspend was the sole cause.
+  Severity: high
+  Action: Land SR-1 executable governance; then implement SR-2 deploy restoration safety, SR-3 post-resume reconciliation/telemetry/dashboard/QA, and SR-4 dogfood checkpoint/resume validation without disabling suspend or hibernation.
+  File: .agent/PROJECT-SUSPEND-RESUME-RESILIENCE-PRD.md; config/suspend-resume-workloads.json; nixos-quick-deploy.sh; nix/modules/roles/ai-stack.nix; scripts/ai/aq-local-dogfood-run
+
+[OPEN 2026-09-09] temporary-worktree-uncommitted-checkpoint-loss — The isolated SR-1 worktree under `/tmp` disappeared after the implementation lane completed but before the orchestrator committed its validated files. Collaboration messages preserved enough content to reconstruct the slice, but the filesystem checkpoint was not durable.
+  Severity: high
+  Action: Store active long-running worktrees outside volatile `/tmp`, or automatically checkpoint validated slices to a private recovery ref before yielding; teach the workflow to distinguish disposable test scratch from durable collaboration state.
+  File: .agent/WORKFLOW-CANON.md; git worktree lifecycle tooling

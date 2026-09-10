@@ -33,3 +33,6 @@ exit 1
 
 - `check-color-echo.sh` — blocks raw ANSI color escape sequences in changed shell scripts.
 - `check-sops-sync.sh` — verifies every `sops.secrets` key declared in `secrets.nix` exists in the SOPS-encrypted file. Prevents the class of boot failure where `/run/secrets/` is never created because `sops-install-secrets` fails manifest validation.
+- `check-suspend-resume-contract.sh` — validates the staged managed-workload
+  resilience registry and rejects new service/timer declarations that omit a
+  same-slice contract update.

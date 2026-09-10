@@ -1814,6 +1814,25 @@
       "enabled": true
     },
     {
+      "id": "suspend-resume-workload-contract",
+      "description": "managed workloads retain bounded and truthful suspend/resume contracts",
+      "trigger_paths": [
+        "config/suspend-resume-workloads.json",
+        "scripts/governance/tier0.d/check-suspend-resume-contract.sh",
+        "scripts/testing/test-suspend-resume-contract.py",
+        "nix/modules",
+        "scripts/ai",
+        "nixos-quick-deploy.sh"
+      ],
+      "command": [
+        "python3",
+        "scripts/testing/test-suspend-resume-contract.py"
+      ],
+      "tier": "behavioral",
+      "timeout_seconds": 20,
+      "enabled": true
+    },
+    {
       "id": "workflow-shadow-migration-b2-m1a",
       "phase": "B2-M1A",
       "description": "Offline dormant workflow-shadow migration, branch isolation, least-privilege, and integration fail-closure contract",
