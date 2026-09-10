@@ -1,0 +1,2 @@
+# VM dogfood scaffold review
+Reviewer: Opus (non-author; Claude sub-agent built it). Verified: 16/16 unit checks; `.#aqos-vm` EVALUATES live to a real nixos-system derivation with golden packages (hyperfine/watchexec); the 4 'sudo' strings are doc comments (no actual sudo); disposable-only (build-vm); Step B guarded behind --full; package-count baseline refreshed for the new host (expected drift). Verdict PASS.
