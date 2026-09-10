@@ -3787,3 +3787,17 @@ Advisory task (codex is the real confirmatory backstop) — non-blocking.
   full-factory service-startup defect that slice s1c (full-factory VM, all services healthy) MUST catch+fix.
 - Action: in s1c, assert dashboard-api (and every ai-stack service) reaches healthy startup; fix the missing
   group declaration (users.groups / service User+Group wiring) in the golden profile. File: nix/modules/services/command-center-dashboard.nix.
+
+## [OPEN] aq-guided-install s1b review findings (2026-09-10, non-author review by Opus)
+- **guided-install-password-argv-exposure** (severity: low): the `--password` convenience flag takes
+  plaintext on argv (visible via ps / shell history) before it is hashed+scrubbed. Plaintext never reaches
+  the emitted request/store/log (only the hash), and safe paths exist (`--password-hash`, interactive
+  getpass). Action: add an insecure-usage warning to `--password`, or restrict it to test harnesses.
+  File: scripts/ai/aqos-guided-install (main() --password).
+- **guided-install-selection-fields-not-yet-actuated** (severity: medium, DESIGN follow-up): s1b carries
+  hostName/primaryUser/disk/primaryUserPasswordHash into the resolved plan's `selection` (schema-validated,
+  luks/layout cross-checked) but does NOT wire them into `compile_projection`'s field-authority mechanism
+  (executable=False, pending a dedicated field-set/gateway slice; no catalog grants exist yet). So the
+  collected setup answers are recorded but NOT yet translated into the nix config that an install applies.
+  Action: a later slice (s4/field-set) must actuate selection.{hostName,primaryUser,disk,password} into the
+  generated host config — otherwise the wizard's answers are orphaned. File: scripts/ai/lib/aqos_install_resolver.py, config/aqos-mysystem-fieldset-v1.json.

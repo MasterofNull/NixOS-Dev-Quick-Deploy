@@ -41,6 +41,45 @@
       "maxLength": 128,
       "pattern": "^[A-Za-z0-9][A-Za-z0-9._-]*$"
     },
+    "hostNameValue": {
+      "type": "string",
+      "minLength": 1,
+      "maxLength": 63,
+      "pattern": "^[A-Za-z0-9]([A-Za-z0-9-]*[A-Za-z0-9])?$"
+    },
+    "userNameValue": {
+      "type": "string",
+      "minLength": 1,
+      "maxLength": 32,
+      "pattern": "^[a-z_][a-z0-9_-]*$"
+    },
+    "diskLayoutValue": {
+      "type": "string",
+      "enum": ["none", "gpt-efi-ext4", "gpt-efi-btrfs", "gpt-luks-ext4"]
+    },
+    "diskSelection": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["layout", "luks"],
+      "properties": {
+        "layout": { "$ref": "#/$defs/diskLayoutValue" },
+        "luks": {
+          "type": "object",
+          "additionalProperties": false,
+          "required": ["enable"],
+          "properties": {
+            "enable": { "type": "boolean" }
+          }
+        }
+      }
+    },
+    "passwordHashValue": {
+      "type": "string",
+      "minLength": 8,
+      "maxLength": 512,
+      "pattern": "^\\$[a-zA-Z0-9./]{1,10}\\$.+$",
+      "description": "A crypt(3)-format hash only (e.g. yescrypt via mkpasswd -m yescrypt, or SHA-512 crypt). NEVER a plaintext password."
+    },
     "timestamp": {
       "type": "string",
       "minLength": 20,
@@ -60,7 +99,11 @@
           "uniqueItems": true,
           "maxItems": 32
         },
-        "include_local_ai": { "type": "boolean" }
+        "include_local_ai": { "type": "boolean" },
+        "hostName": { "$ref": "#/$defs/hostNameValue" },
+        "primaryUser": { "$ref": "#/$defs/userNameValue" },
+        "disk": { "$ref": "#/$defs/diskSelection" },
+        "primaryUserPasswordHash": { "$ref": "#/$defs/passwordHashValue" }
       }
     },
     "requestSelection": {
@@ -75,7 +118,11 @@
           "maxItems": 32,
           "default": []
         },
-        "include_local_ai": { "type": "boolean", "default": false }
+        "include_local_ai": { "type": "boolean", "default": false },
+        "hostName": { "$ref": "#/$defs/hostNameValue" },
+        "primaryUser": { "$ref": "#/$defs/userNameValue" },
+        "disk": { "$ref": "#/$defs/diskSelection" },
+        "primaryUserPasswordHash": { "$ref": "#/$defs/passwordHashValue" }
       }
     },
     "requestPlan": {
