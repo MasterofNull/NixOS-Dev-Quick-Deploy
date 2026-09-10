@@ -229,6 +229,7 @@ def main() -> int:
     parser = argparse.ArgumentParser()
     parser.add_argument("--contract", type=Path, default=DEFAULT_CONTRACT)
     parser.add_argument("--self-test", action="store_true")
+    parser.add_argument("--require-workload-id", action="append", default=[])
     args = parser.parse_args()
     try:
         payload = json.loads(args.contract.read_text(encoding="utf-8"))
@@ -238,6 +239,17 @@ def main() -> int:
     if args.self_test:
         return run_adversarial_tests(payload)
     errors = validate_payload(payload)
+    records = payload.get("workloads", []) if isinstance(payload, dict) else []
+    registered_ids = {
+        record.get("id")
+        for record in records
+        if isinstance(record, dict) and nonempty_string(record.get("id"))
+    }
+    for required_id in args.require_workload_id:
+        if required_id not in registered_ids:
+            errors.append(
+                f"AQ_SUSPEND_CONTRACT marker has no matching workload record: {required_id}"
+            )
     if errors:
         for error in errors:
             print(f"ERROR: {error}", file=sys.stderr)
