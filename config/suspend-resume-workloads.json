@@ -9,7 +9,7 @@
       "typed resume outcome",
       "telemetry, dashboard, and QA evidence"
     ],
-    "out_of_scope": "Disposable test-only VM hosts (nix/hosts/aqos-vm, nix/hosts/aqos-install-vm) declare fire-once Type=oneshot boot-marker services (e.g. aqos-install-vm-dogfood-marker) that print a boot marker to the console and exit — they have no long-running or suspend/resume semantics and are deliberately NOT registered as managed workloads."
+    "out_of_scope": "Two classes of systemd unit are deliberately NOT registered as managed workloads because they have no long-running or suspend/resume semantics: (1) disposable test-only VM hosts (nix/hosts/aqos-vm, nix/hosts/aqos-install-vm) declare fire-once Type=oneshot boot-marker services (e.g. aqos-install-vm-dogfood-marker) that print a boot marker and exit; (2) periodic timer-driven health/monitor oneshots that fire, run one read-only check, write a status file, and exit (e.g. disk-health-monitor, fast-lane-staleness-monitor) - a timer re-runs them, there is no in-flight state to suspend/resume."
   },
   "workloads": [
     {
@@ -36,7 +36,11 @@
         "implementation_status": "implemented"
       },
       "resume_outcomes": {
-        "required": ["ready", "timeout", "interrupted"],
+        "required": [
+          "ready",
+          "timeout",
+          "interrupted"
+        ],
         "implementation_status": "planned"
       },
       "observability": {
@@ -50,7 +54,9 @@
     {
       "id": "local-training-loop",
       "workload_class": "resumable-job",
-      "implementation_paths": ["scripts/ai/aq-local-training-loop"],
+      "implementation_paths": [
+        "scripts/ai/aq-local-training-loop"
+      ],
       "suspend_behavior": {
         "mode": "checkpoint_and_resume",
         "resume_trigger": "operator_or_future_reconciler",
@@ -68,7 +74,11 @@
         "implementation_status": "partial"
       },
       "resume_outcomes": {
-        "required": ["resumed", "checkpoint_missing", "interrupted"],
+        "required": [
+          "resumed",
+          "checkpoint_missing",
+          "interrupted"
+        ],
         "implementation_status": "planned"
       },
       "observability": {
@@ -82,7 +92,9 @@
     {
       "id": "local-dogfood-run",
       "workload_class": "resumable-job",
-      "implementation_paths": ["scripts/ai/aq-local-dogfood-run"],
+      "implementation_paths": [
+        "scripts/ai/aq-local-dogfood-run"
+      ],
       "suspend_behavior": {
         "mode": "checkpoint_and_resume",
         "resume_trigger": "not_implemented",
@@ -100,7 +112,11 @@
         "implementation_status": "not_implemented"
       },
       "resume_outcomes": {
-        "required": ["resumed", "no_checkpoint", "interrupted"],
+        "required": [
+          "resumed",
+          "no_checkpoint",
+          "interrupted"
+        ],
         "implementation_status": "not_implemented"
       },
       "observability": {

@@ -224,6 +224,14 @@
     '')
   ];
 in {
+  # Split-channel packaging sc-2 (.agents/plans/split-channel-packaging/DESIGN.md):
+  # imported here (rather than added to flake.nix's mkHost module list) to keep
+  # flake.nix edits confined to the inputs/overlay/pkgs-construction region for
+  # the concurrently-in-flight s1c slice. base.nix already owns antigravity's
+  # package resolution (basePackageNames below), so this is a natural home for
+  # the checker that watches its fast-lane freshness.
+  imports = [./fast-lane-staleness-monitor.nix];
+
   config = {
     networking.hostName = lib.mkDefault cfg.hostName;
     mySystem.hardwareTier = lib.mkDefault hardwareTier;
