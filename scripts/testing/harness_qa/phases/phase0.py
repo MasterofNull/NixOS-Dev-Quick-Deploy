@@ -521,10 +521,38 @@ def _check_flagship_cli(ctx: RunContext) -> list[CheckResult]:
         "AQ_PRIMARY_HOME": ctx.primary_home,
         "PATH": f"{ctx.primary_home}/.npm-global/bin:{os.environ.get('PATH', '')}",
     }
-    if cmd_ok("bash", str(gemini_script), "--check", env=env2):
+    # exit 0 = healthy -> pass. exit 3 = the oauth-personal delegation branch forwarding
+    # antigravity-health.sh's "degraded for an EXTERNAL/environmental reason" contract
+    # (e.g. Gemini Code Assist quota exhaustion) verbatim — our components are fine, the
+    # live external lane is down. Rule 19 gate corollary: a live external-service outage
+    # is an environmental signal, not a staged-change regression, so it must not hard-block
+    # --pre-commit; skip it (visible, non-blocking) with the health script's own reason
+    # surfaced. Anything else (missing script, script/config actually broken, unexpected
+    # exit) is a genuine regression -> fail.
+    try:
+        gemini_proc = subprocess.run(
+            ["bash", str(gemini_script), "--check"],
+            cwd=ctx.repo_root, text=True, capture_output=True, timeout=20, env=env2, check=False,
+        )
+        gemini_rc = gemini_proc.returncode
+        gemini_out = gemini_proc.stdout + gemini_proc.stderr
+    except (subprocess.TimeoutExpired, OSError) as exc:
+        gemini_rc = None
+        gemini_out = str(exc)
+
+    reason_match = re.search(r"^reason=(.*)$", gemini_out, re.MULTILINE)
+    reason = reason_match.group(1).strip() if reason_match else ""
+
+    if gemini_rc == 0:
         results.append(passed(7, "0.6.2", "gemini CLI live-state health check"))
+    elif gemini_rc == 3:
+        detail = reason or "Antigravity lane degraded for an external/environmental reason (see scripts/health/antigravity-health.sh --check --json)"
+        results.append(skipped(7, "0.6.2", "gemini CLI live-state health check — degraded (external, non-blocking)", detail))
     else:
-        results.append(failed(7, "0.6.2", "gemini CLI live-state health check"))
+        detail = f"exit {gemini_rc}" if gemini_rc is not None else "probe error"
+        if reason:
+            detail = f"{detail}: {reason}"
+        results.append(failed(7, "0.6.2", "gemini CLI live-state health check", detail))
     return results
 
 
