@@ -3767,7 +3767,7 @@ Advisory task (codex is the real confirmatory backstop) — non-blocking.
   File: .agent/WORKFLOW-CANON.md; git worktree lifecycle tooling
 
 ## [OPEN] aq-factory-pack fp-1 review findings (2026-09-10, non-author review by Opus)
-- **factory-pack-portability-recipient** (severity: medium, DESIGN for fp-3): aq-factory-pack encrypts every
+- **factory-pack-portability-recipient** (RESOLVED by fp-2 2026-09-11: aq-factory-push re-encrypts to operator-specified --recipient target age key(s), decrypt|encrypt in one pipe; default own key. severity: medium, was DESIGN for fp-3): aq-factory-pack encrypts every
   component to the SOURCE host's own age public key. A fresh target machine has a different age key and
   CANNOT decrypt the pack unless the source age key is also ported. Action: fp-3 (restore) must define the
   recipient/key-transfer story (bring the age key, OR support a passphrase recipient `age -p`, OR encrypt to
@@ -3801,3 +3801,18 @@ Advisory task (codex is the real confirmatory backstop) — non-blocking.
   collected setup answers are recorded but NOT yet translated into the nix config that an install applies.
   Action: a later slice (s4/field-set) must actuate selection.{hostName,primaryUser,disk,password} into the
   generated host config — otherwise the wizard's answers are orphaned. File: scripts/ai/lib/aqos_install_resolver.py, config/aqos-mysystem-fieldset-v1.json.
+
+## [OPEN] Antigravity persistent failure = Google Code Assist QUOTA (429), hidden by broken health signal (2026-09-10)
+- **Root cause (Google-side):** the OAuth'd Google account's Gemini Code Assist quota is EXHAUSTED —
+  `cloudaicompanion.googleapis.com` returns `429 RESOURCE_EXHAUSTED` even on the owner's DIRECT manual IDE
+  prompt (trace X-Cloudaicompanion-Trace-Id 26620961435c5ec8, 2026-09-10). Persistent over days => a hard/
+  daily quota cap (likely free-tier), not transient, not our automation. NOT caused by auto-wake
+  (antigravity-auto-wake.nix is default-OFF + inactive + event-driven one-per-drop; 53 wakes are cumulative).
+- **On our side (why it looked transient — REAL defects, HIGH):**
+  1. scripts/health/antigravity-health.sh probes the DEAD gemini CLI (~/.gemini/credentials, `gemini -p test`)
+     instead of the real IDE lane (`antigravity chat` + inbox) -> health never reflected the 429.
+  2. aq-antigravity-inbox wake records `cli-nudge-ok` (exit 0) even when the backend 429s -> false-success.
+- **Action (our side):** finish+land fix/antigravity-health-real-lane — probe the real lane, surface
+  429/RESOURCE_EXHAUSTED explicitly, make wake report quota-exhaustion not cli-nudge-ok. Owner action
+  (their side): check the Google account's Code Assist tier/quota (IDE account settings / Cloud console).
+- Severity: high (observability blindness). Antigravity down does NOT block work (Rule 18 routes its roles).

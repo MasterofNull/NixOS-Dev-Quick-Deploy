@@ -21,6 +21,7 @@
     "traceroute"
     "sops"
     "age"
+    "git-lfs"
     "btrfs-progs"
     "pciutils"
     # NOTE: gpt4all is intentionally excluded from systemPackageNames because
