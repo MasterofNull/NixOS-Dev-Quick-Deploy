@@ -9,7 +9,7 @@
       "typed resume outcome",
       "telemetry, dashboard, and QA evidence"
     ],
-    "out_of_scope": "Two classes of systemd unit are deliberately NOT registered as managed workloads because they have no long-running or suspend/resume semantics: (1) disposable test-only VM hosts (nix/hosts/aqos-vm, nix/hosts/aqos-install-vm) declare fire-once Type=oneshot boot-marker services (e.g. aqos-install-vm-dogfood-marker) that print a boot marker and exit; (2) periodic timer-driven health/monitor oneshots that fire, run one read-only check, write a status file, and exit (e.g. disk-health-monitor, fast-lane-staleness-monitor) - a timer re-runs them, there is no in-flight state to suspend/resume."
+    "out_of_scope": "Two classes of systemd unit are deliberately NOT registered as managed workloads because they have no long-running or suspend/resume semantics: (1) disposable test-only VM hosts (nix/hosts/aqos-vm, nix/hosts/aqos-install-vm) declare fire-once Type=oneshot boot-marker services (e.g. aqos-install-vm-dogfood-marker, aqos-install-vm-ai-dev-factory-topology) that print a boot marker and exit; (2) periodic timer-driven health/monitor oneshots that fire, run one read-only check, write a status file, and exit (e.g. disk-health-monitor, fast-lane-staleness-monitor) - a timer re-runs them, there is no in-flight state to suspend/resume."
   },
   "workloads": [
     {

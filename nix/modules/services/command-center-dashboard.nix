@@ -57,6 +57,18 @@
   ];
 in {
   config = lib.mkIf (mon.enable && cc.enable) {
+    # s1c (END-TO-END-BARE-METAL-PLAN.md) deferred finding: on a freshly
+    # disko-installed VM this service failed at systemd step 216/GROUP —
+    # svcGroup above is read back through `config.users.users.${svcUser}.group`
+    # (falling back to "users" only if that attrpath is entirely absent), so
+    # whatever it resolves to is assumed, not guaranteed, to be a group NixOS
+    # actually declares. Fix at the root: declare the resolved group name
+    # ourselves so the service's Group= always names something real,
+    # regardless of what set (or didn't set) users.users.${svcUser}.group.
+    # mkDefault: a no-op wherever this group is already declared (every real
+    # host — "users" is a stock NixOS group) — only fills a genuine gap.
+    users.groups.${svcGroup} = lib.mkIf (svcGroup != "") (lib.mkDefault {});
+
     # ── Sudo rules for firewall management ──────────────────────────────────────
     # The dashboard provides operator controls for captive portal bypass and
     # CrowdSec bouncer management. These require elevated privileges but are
