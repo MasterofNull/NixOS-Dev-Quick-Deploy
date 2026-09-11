@@ -1082,7 +1082,17 @@ in {
                 "MCP_SERVER_MODE=http"
                 "MCP_SERVER_PORT=${toString mcp.hybridPort}"
                 "HOST=127.0.0.1"
-                "AI_LOCAL_MODEL_ID=${llama.activeModel}"
+                # s1c (END-TO-END-BARE-METAL-PLAN.md) finding: llama.activeModel
+                # defaults to null ("use explicit model/huggingFaceRepo values
+                # below") — any host that sets the chat model directly instead
+                # of via modelCatalog previously failed to EVALUATE here
+                # ("cannot coerce null to a string"). Fall back to the model
+                # filename so every valid llamaCpp config produces a real id.
+                "AI_LOCAL_MODEL_ID=${
+                  if llama.activeModel != null
+                  then llama.activeModel
+                  else builtins.baseNameOf llama.model
+                }"
                 "AI_AGENT_NAME=local-${cfg.hardwareTier}-agent"
                 "AI_SEMANTIC_TOOLING_AUTORUN=true"
                 # P2.3 TURNED ON: GBNF repair-retry for local tool-calls. Bench-validated non-harmful
@@ -1419,7 +1429,17 @@ in {
                 "AI_STRICT_ENV=true"
                 "PORT=${toString mcp.ralphPort}"
                 "HOST=127.0.0.1"
-                "AI_LOCAL_MODEL_ID=${llama.activeModel}"
+                # s1c (END-TO-END-BARE-METAL-PLAN.md) finding: llama.activeModel
+                # defaults to null ("use explicit model/huggingFaceRepo values
+                # below") — any host that sets the chat model directly instead
+                # of via modelCatalog previously failed to EVALUATE here
+                # ("cannot coerce null to a string"). Fall back to the model
+                # filename so every valid llamaCpp config produces a real id.
+                "AI_LOCAL_MODEL_ID=${
+                  if llama.activeModel != null
+                  then llama.activeModel
+                  else builtins.baseNameOf llama.model
+                }"
                 "AI_AGENT_NAME=local-${cfg.hardwareTier}-agent"
                 "LLAMA_CPP_BASE_URL=http://127.0.0.1:${toString llama.port}"
                 "HYBRID_COORDINATOR_URL=http://127.0.0.1:${toString mcp.hybridPort}"

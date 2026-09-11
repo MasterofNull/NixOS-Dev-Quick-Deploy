@@ -531,3 +531,24 @@ INSTALLS onto it, and BOOTS — proven for BOTH layouts via disko's own rootless
   (s1b), model+RAG provisioning (s1d), first-boot key (s2), and real hardware (s4) remain gated.
 - **Deferred finding:** `command-center-dashboard-api` failed 216/GROUP in the booted install-VM — logged
   for s1c (full-factory service-health), out of scope for s1a.
+
+## AQ-OS end-to-end bare-metal — s1c full-factory VM reproduction (2026-09-11)
+**Reproduction proof (owner-directed: config reproduces this working system; model NOT required in the test VM):**
+the FULL ai-dev/agentic-factory config (aiStack ON) EVALUATES + BUILDS as the disposable
+`aqos-install-vm-ai-dev` host — `config.system.build.toplevel` realized to a nixos-system store path
+(rootless, no sudo, no model). Composes cleanly with the split-channel overlay (antigravity 2.5.5).
+- **Three latent bugs fixed (shared modules, affect the real host too):** (1) command-center-dashboard-api
+  216/GROUP — the service's Group= named a group that may not exist on a fresh install; now declared with
+  mkDefault (no-op on real hosts). (2) ai-stack.nix null-hfRepo — the model-download preamble crashed eval
+  ("cannot coerce null to a string") for any aiStack host without huggingFaceRepo; guarded. (3)
+  mcp-servers.nix null-activeModel — AI_LOCAL_MODEL_ID crashed eval for hosts setting the model directly;
+  falls back to the model filename.
+- **RAM assertion** (ai-stack.nix:961 systemRamGb>=12) satisfied by declaring the fact (facts.nix 4->12);
+  the assertion is unchanged. Declared fact drives tuning; actual QEMU -m stays small (no big model).
+- **Test-only secrets** generated at BUILD time in the Nix store (no repo secrets, no network) so aiStack
+  services start in a keyless VM (degraded/no-real-auth — honest for a keyless test host).
+- **Service-topology marker** (aqos-install-vm-ai-dev-factory-topology, boot-time oneshot) asserts
+  AIDB/coordinator/switchboard/dashboard-api reach active in the booted VM.
+- **Scope:** proves the CONFIG reproduces (evaluates+builds). The live boot + service-topology assertion is
+  the harness scripts/testing/aqos-install-vm-ai-dev-dogfood.sh, run in a resource window (a full-factory VM
+  vs the resident ~24GB model won't co-fit in 27GB). No model, per owner ("reproduce the system, not the model").

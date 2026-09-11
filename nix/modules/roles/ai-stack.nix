@@ -1192,7 +1192,15 @@ in {
               if [ "$(basename "$model")" != "active.gguf" ]; then
                 model_meta="''${model}.source-meta"
               fi
-              desired_ref="${hfRepo}:${hfFile}:${hfSha256}"
+              # s1c (END-TO-END-BARE-METAL-PLAN.md) finding: this preamble runs
+              # unconditionally (even when hasAutoDownload=false — huggingFaceRepo
+              # unset, a manually-placed model, per that option's own documented
+              # "null = disable automatic download" mode), but hfRepo above is the
+              # raw nullable option value — unlike hfFile/hfSha256 (already
+              # normalized to safe strings just above), interpolating it directly
+              # previously failed eval ("cannot coerce null to a string") for any
+              # aiStack host that doesn't set huggingFaceRepo.
+              desired_ref="${if hfRepo != null then hfRepo else ""}:${hfFile}:${hfSha256}"
 
               # Ensure model directory exists with correct ownership.
               install -d -m 0750 -o llama -g llama "$model_dir"
