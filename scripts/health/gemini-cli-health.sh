@@ -18,6 +18,16 @@
 #   2 repaired successfully
 #   3 usage error
 #   4 repair attempted but failed
+#
+# EXCEPTION — oauth-personal delegation branch (below, ~line 189): when settings.json
+# selects oauth-personal, this script forwards straight to `antigravity-health.sh --check`
+# and `exit $?` with its raw exit code. In that branch the exit code is
+# antigravity-health.sh's OWN three-state contract, not this script's 0-4 scheme above:
+#   0 = healthy, 3 = degraded for an EXTERNAL/environmental reason (e.g. Gemini Code Assist
+#   quota exhaustion — non-blocking for callers like the tier0 gate), 1 = our script/config
+#   is actually broken. See scripts/health/antigravity-health.sh's header for the full
+#   rationale (Rule 19 gate corollary) and scripts/testing/harness_qa/phases/phase0.py check
+#   0.6.2 for the consumer that relies on this distinction.
 
 set -euo pipefail
 
