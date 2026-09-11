@@ -426,6 +426,31 @@
         };
       };
 
+      # Split-channel packaging (.agents/plans/split-channel-packaging/DESIGN.md
+      # sc-2): NOTIFY-ONLY staleness checker for the curated fast-lane package
+      # list (nix/overlays/fast-lane-manifest.nix). Never runs `nix flake
+      # update` or rebuilds — surfaces "N packages behind" + a stale-pin flag
+      # via the attention queue / dashboard so the owner decides when to bump.
+      fastLaneStaleness = {
+        enable = lib.mkOption {
+          type = lib.types.bool;
+          default = true;
+          description = "Enable the periodic fast-lane (nixpkgs-unstable) package staleness checker. Notify-only — never auto-updates or rebuilds.";
+        };
+
+        intervalMinutes = lib.mkOption {
+          type = lib.types.ints.positive;
+          default = 720; # twice a day — cheap eval-only check, no need for tighter polling
+          description = "How often to rerun the fast-lane staleness checker timer.";
+        };
+
+        maxPinAgeDays = lib.mkOption {
+          type = lib.types.ints.positive;
+          default = 30;
+          description = "Flag the nixpkgs-unstable flake.lock pin as stale once it is older than this many days.";
+        };
+      };
+
       bootloaderEspMinFreeMb = lib.mkOption {
         type = lib.types.ints.positive;
         default = 128;

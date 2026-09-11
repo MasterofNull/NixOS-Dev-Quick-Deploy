@@ -73,10 +73,29 @@
     # devShell systems: build the developer shell for common cross-compilation hosts.
     devSystems = ["x86_64-linux" "aarch64-linux"];
     profiles = ["ai-dev" "gaming" "minimal"];
+    # Split-channel packaging (.agents/plans/split-channel-packaging/DESIGN.md
+    # sc-1): every pkgs set built by mkPkgs (mkHost, mkHostHomeConfig, and
+    # checks.x86_64-linux's checkPkgs all funnel through here — ONE wiring
+    # site) layers the fast-lane overlay on top, so the curated packages in
+    # nix/overlays/fast-lane-manifest.nix resolve from nixpkgs-unstable
+    # regardless of which nixpkgs input `nixpkgsInput` itself is. This is
+    # required even for a host whose OWN nixpkgsTrack is "unstable": unstable
+    # renamed antigravity -> antigravity-ide, so without this overlay's
+    # rename shim pkgs.antigravity would resolve to nothing on such a host.
+    # lib.optional guards on hasUnstableInput so a flake without the
+    # nixpkgs-unstable input still evaluates (stable pkgs, unmodified).
     mkPkgs = nixpkgsInput: system':
       import nixpkgsInput {
         system = system';
         config.allowUnfree = true;
+        overlays = lib.optional hasUnstableInput (
+          import ./nix/overlays/fast-lane.nix {
+            unstablePkgs = import inputs."nixpkgs-unstable" {
+              system = system';
+              config.allowUnfree = true;
+            };
+          }
+        );
       };
     hostPath = hostName: ./. + "/nix/hosts/${hostName}";
     factsPath = hostName: hostPath hostName + "/facts.nix";
