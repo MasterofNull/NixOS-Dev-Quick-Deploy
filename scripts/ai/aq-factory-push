@@ -1,0 +1,620 @@
+#!/usr/bin/env bash
+# aq-factory-push — fp-2: secret-scan + push a local factory pack to a remote destination
+#
+# Consumes a pack directory produced by `aq-factory-pack` (fp-1) and pushes it to a
+# destination — git+git-LFS first (HF/S3/local-archive are future "destination" arms of
+# the same dispatch, see push_to_destination below). This is the ONLY outward-facing step
+# in the factory-state-packaging tool; fp-1 (pack) and fp-3 (restore) never touch a
+# network. Get the security here exactly right — nothing plaintext leaves this machine,
+# nothing pushes without the operator explicitly saying so.
+#
+# Spec: .agents/plans/factory-state-packaging/TOOL-SPEC.md (slice fp-2 — "push").
+# Builds on the already-merged fp-1 (`scripts/ai/aq-factory-pack`); reuses its manifest
+# schema, its age-encryption invariant, and its post-pack secret-scan pattern.
+#
+# ── PORTABILITY / RECIPIENT (resolves the fp-1 review finding, .agent/memory/
+#    issues-backlog.md "factory-pack-portability-recipient") ────────────────────────────
+# fp-1 always encrypts every component to the SOURCE host's own age public key, so a pack
+# sitting on disk can only ever be decrypted by the machine that made it. fp-2 fixes this
+# for anything that gets pushed: it DECRYPTS each component with the operator's own local
+# age identity (the same key fp-1 encrypted to) and RE-ENCRYPTS it to the recipient(s)
+# named on the command line via `--recipient <age-public-key>` (repeatable). Default (no
+# --recipient given): re-encrypt to the operator's own public key — a same-owner backup
+# that is still portable in principle (see key-transfer story) but changes nothing about
+# who can read it. The decrypt→encrypt happens in one pipeline that never writes an
+# intermediate plaintext file to disk (same invariant fp-1 uses for pg_dump/tar output).
+#
+# KEY-TRANSFER STORY (how the target site actually gets to decrypt this):
+#   1. On (or before provisioning) the TARGET machine, generate an age identity there:
+#        age-keygen -o ~/.config/sops/age/keys.txt
+#      and read its public key off the "# public key:" comment line, or `age-keygen -y`.
+#   2. Hand that PUBLIC key (only the public key — it is not sensitive) to the operator
+#      running this push, e.g. `aq-factory-push --pack-dir <dir> --dest git:<url> \
+#        --recipient age1targethostkeyhere...`
+#   3. This tool re-encrypts the payload to that recipient before it ever leaves the
+#      source host. The corresponding PRIVATE key never travels — it was generated in
+#      place on the target and never needs to leave it.
+#   4. fp-3 (restore, future slice) runs ON the target using its own local age identity
+#      file to decrypt, exactly mirroring how fp-1 decrypts nothing (it only encrypts) and
+#      fp-2 only ever handles public keys as recipients.
+#   Multiple `--recipient` values are supported (age natively supports multiple
+#   recipients per file) for e.g. "both the new target AND keep a copy the operator can
+#   still read" — pass the operator's own public key alongside the target's.
+#
+# ── SECURITY (HARD) ─────────────────────────────────────────────────────────────────────
+#   - NEVER plaintext secrets to any remote: every component is ciphertext before AND
+#     after re-encryption; the decrypt→re-encrypt pipe never touches disk unencrypted.
+#   - NO embedded credentials/tokens: git push uses the operator's OWN ambient git
+#     credentials (SSH agent / credential helper / gh auth) exactly as a manual
+#     `git push` would. This tool never reads, stores, or transmits a token itself.
+#   - Fail-closed secret-scan runs on the EXACT bytes about to be pushed (the re-encrypted
+#     staging directory) before any network call. Any finding aborts with no push. There is
+#     no --skip-secret-scan escape hatch, mirroring fp-1's no-escape-hatch encryption gate.
+#   - Explicit confirmation is required before the push (outward-facing = confirm; see
+#     Rule 9 / beginner control-surface). Either an interactive typed "PUSH", or a scripted
+#     `--confirm PUSH` (the exact literal — not a generic --yes) for non-interactive runs.
+#   - Large binaries go over git-LFS (every *.age component), never bloating the plain git
+#     history of the destination repo.
+#
+# Usage:
+#   scripts/ai/aq-factory-push --pack-dir DIR --dest git:LOCATION [OPTIONS]
+#
+# Required:
+#   --pack-dir DIR          A pack directory produced by aq-factory-pack (must contain
+#                           manifest.json).
+#   --dest KIND:LOCATION    Destination, "kind:location". Only "git" is implemented today;
+#                           kind is a dispatch key (push_to_destination below) so HF/S3/
+#                           local-archive can be added as new arms without touching the
+#                           scan/encrypt/confirm pipeline (TOOL-SPEC.md "Destinations").
+#                           Example: --dest git:/path/to/bare-or-remote.git
+#
+# Options:
+#   --recipient PUBKEY      Age (or ssh-ed25519/ssh-rsa) recipient public key to
+#                           re-encrypt to. Repeatable. Default: the operator's own SOPS
+#                           age public key (same-owner backup).
+#   --branch NAME           Destination branch (default: main).
+#   --subdir NAME           Path inside the destination repo (default:
+#                           factory-packs/<pack-id>).
+#   --confirm PUSH          Non-interactive confirmation (must be exactly "PUSH").
+#                           Without it, and with a TTY, you will be prompted to type PUSH.
+#   --dry-run               Scan + re-encrypt-plan only; never confirms, never pushes,
+#                           never writes to the destination. Prints what would happen.
+#   --help                  Show this message.
+#
+# Env overrides:
+#   AQ_FACTORY_PACK_DIR     Base dir for staging output (default: same base fp-1 uses,
+#                           ~/.local/share/nixos-quick-deploy/factory-packs/).
+#
+set -euo pipefail
+
+SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
+REPO_ROOT="$(cd "${SCRIPT_DIR}/../.." && pwd)"
+
+info()  { printf '\033[0;32m[aq-factory-push] %s\033[0m\n' "$*"; }
+warn()  { printf '\033[0;33m[aq-factory-push] WARN: %s\033[0m\n' "$*" >&2; }
+error() { printf '\033[0;31m[aq-factory-push] ERROR: %s\033[0m\n' "$*" >&2; }
+section() { printf '\033[0;34m[aq-factory-push] ── %s ──\033[0m\n' "$*"; }
+
+# ── Argument parsing ─────────────────────────────────────────────────────────
+PACK_DIR=""
+DEST=""
+RECIPIENTS=()
+BRANCH="main"
+SUBDIR=""
+CONFIRM=""
+DRY_RUN=0
+
+while [[ $# -gt 0 ]]; do
+  case "$1" in
+    --pack-dir)   PACK_DIR="$2"; shift 2 ;;
+    --dest)       DEST="$2"; shift 2 ;;
+    --recipient)  RECIPIENTS+=("$2"); shift 2 ;;
+    --branch)     BRANCH="$2"; shift 2 ;;
+    --subdir)     SUBDIR="$2"; shift 2 ;;
+    --confirm)    CONFIRM="$2"; shift 2 ;;
+    --dry-run)    DRY_RUN=1; shift ;;
+    --help|-h)
+      sed -n '2,86p' "$0" | sed 's/^# \{0,1\}//'
+      exit 0 ;;
+    *)
+      error "Unknown option: $1"
+      exit 2 ;;
+  esac
+done
+
+[[ -z "${PACK_DIR}" ]] && { error "--pack-dir is required"; exit 2; }
+[[ -z "${DEST}" ]] && { error "--dest KIND:LOCATION is required"; exit 2; }
+[[ ! -d "${PACK_DIR}" ]] && { error "pack dir not found: ${PACK_DIR}"; exit 1; }
+SRC_MANIFEST="${PACK_DIR}/manifest.json"
+[[ ! -f "${SRC_MANIFEST}" ]] && { error "not a pack dir (no manifest.json): ${PACK_DIR}"; exit 1; }
+
+for cmd in git age python3 sha256sum; do
+  command -v "$cmd" >/dev/null 2>&1 || { error "Missing required command: $cmd"; exit 1; }
+done
+
+# ── Recipient guard: a private key pasted where a public key belongs must never
+#    silently become "the recipient" — it would sit in plaintext manifest JSON that
+#    then gets pushed. Fail closed immediately, before any encryption or I/O. ───────────
+for r in "${RECIPIENTS[@]:-}"; do
+  [[ -z "${r}" ]] && continue
+  if [[ "${r}" == AGE-SECRET-KEY-1* ]]; then
+    error "--recipient looks like an AGE PRIVATE key, not a public key. Refusing to run."
+    error "Pass the recipient's PUBLIC key (age1...) instead — see the key-transfer story"
+    error "in this script's header comment."
+    exit 1
+  fi
+  if [[ "${r}" != age1* && "${r}" != ssh-ed25519\ * && "${r}" != ssh-rsa\ * ]]; then
+    error "--recipient '${r}' does not look like an age public key (age1...) or an SSH"
+    error "public key (ssh-ed25519 .../ssh-rsa ...). Refusing to guess — pass the exact"
+    error "recipient public key."
+    exit 1
+  fi
+done
+
+# ── Fail fast on an unimplemented/unknown destination kind, before spending any time on
+#    re-encryption or asking for confirmation (the case dispatch itself lives further
+#    down, next to push_to_git; this is purely an early validation of the same set). ───
+case "${DEST%%:*}" in
+  git) : ;;
+  hf|s3|archive)
+    error "destination kind '${DEST%%:*}' is not implemented yet (TOOL-SPEC.md lists it"
+    error "as a future destination arm — add a push_to_${DEST%%:*} function + case entry)."
+    exit 2 ;;
+  *)
+    error "unknown destination kind: ${DEST%%:*} (expected git:LOCATION)"
+    exit 2 ;;
+esac
+
+# ── Secrets wiring (reuse governance/manage-secrets.py path resolution, same as fp-1) ──
+SECRETS_PATHS="$(python3 "${REPO_ROOT}/scripts/governance/manage-secrets.py" paths 2>/dev/null || true)"
+AGE_KEY_FILE="$(printf '%s\n' "${SECRETS_PATHS}" | awk -F= '/^age_key_file=/{print $2}')"
+
+if [[ -z "${AGE_KEY_FILE}" || ! -f "${AGE_KEY_FILE}" ]]; then
+  error "No SOPS age key found (expected via 'manage-secrets.py paths'). This is needed to"
+  error "DECRYPT the pack's existing (source-host-recipient) ciphertext before re-encrypting"
+  error "it to the push recipient(s). Run: scripts/governance/manage-secrets.sh bootstrap"
+  exit 1
+fi
+
+OWN_AGE_PUBKEY="$(grep '^# public key:' "${AGE_KEY_FILE}" | awk '{print $NF}')"
+if [[ -z "${OWN_AGE_PUBKEY}" ]]; then
+  error "Could not read age public key from ${AGE_KEY_FILE}"
+  exit 1
+fi
+
+if [[ "${#RECIPIENTS[@]}" -eq 0 ]]; then
+  info "No --recipient given; defaulting to the operator's own key (same-owner backup):"
+  info "  ${OWN_AGE_PUBKEY}"
+  RECIPIENTS=("${OWN_AGE_PUBKEY}")
+fi
+
+# ── Manifest-driven invariant: every component in a pushable pack MUST already be
+#    marked encrypted. This is the cheap, authoritative, no-regex-guessing half of the
+#    secret-scan gate — it does not care WHAT the plaintext would have looked like, it
+#    simply refuses to push anything the manifest itself admits is not ciphertext. ──────
+check_all_components_encrypted() {
+  local manifest="$1"
+  python3 - "${manifest}" <<'PYEOF'
+import json, sys
+manifest_path = sys.argv[1]
+with open(manifest_path, "r", encoding="utf-8") as fh:
+    manifest = json.load(fh)
+bad = [c["name"] for c in manifest.get("components", []) if not c.get("encrypted")]
+if bad:
+    print("UNENCRYPTED_COMPONENTS:" + ",".join(bad))
+    sys.exit(1)
+sys.exit(0)
+PYEOF
+}
+
+# ── Forbidden filenames + known private-key literal (same floor fp-1 enforces post-pack;
+#    re-checked here because the exact bytes about to be pushed may differ from what fp-1
+#    wrote, e.g. after re-encryption, or if the pack dir was hand-edited since). ────────
+check_forbidden_filenames() {
+  local dir="$1"
+  find "${dir}" -type f \( -iname 'keys.txt' -o -iname '*.sops.yaml' \
+        -o -iname 'deploy-options.local.nix' -o -iname 'secrets.sops.yaml' \
+        -o -iname '*.pem' -o -iname 'id_rsa*' -o -iname 'id_ed25519*' \) 2>/dev/null
+}
+
+check_age_key_literal() {
+  local dir="$1"
+  local key_line
+  key_line="$(grep '^AGE-SECRET-KEY-1' "${AGE_KEY_FILE}" 2>/dev/null || true)"
+  [[ -z "${key_line}" ]] && return 0
+  grep -R -F -l -- "${key_line}" "${dir}" 2>/dev/null || true
+}
+
+# ── Baseline plaintext-secret pattern scan (gitleaks-style, dependency-free fallback).
+#    Runs over every NON-ciphertext file in the directory (anything not *.age) — the
+#    ciphertext components are covered instead by the manifest "encrypted" invariant
+#    above, which does not require pattern-matching binary blobs. This is the guaranteed
+#    floor: it runs even when the `gitleaks` binary is not installed on this host. ──────
+run_baseline_pattern_scan() {
+  local dir="$1"
+  python3 - "${dir}" <<'PYEOF'
+import re, sys, pathlib
+
+root = pathlib.Path(sys.argv[1])
+
+# Known-safe example/placeholder values (mirrors .gitleaks.toml's allowlist regexes so
+# the two scanners agree on what is a real finding vs. a documented example).
+ALLOWLIST = [
+    re.compile(r"AKIAIOSFODNN7EXAMPLE"),
+    re.compile(r"AKIAXXXXXXXXXXXXXXXX"),
+    re.compile(r"sk-(test|live|proj)-(example|dummy|fake|placeholder|test)[A-Za-z0-9_-]*"),
+    re.compile(r"ghp_(example|dummy|fake|placeholder|sample|test|your_token_here)[A-Za-z0-9_]*"),
+]
+
+PATTERNS = {
+    "aws_access_key_id": re.compile(r"AKIA[0-9A-Z]{16}"),
+    "aws_secret_pair": re.compile(r"(?i)aws(.{0,20})?(secret|access)[_-]?key.{0,3}[:=]\s*['\"][A-Za-z0-9/+=]{40}['\"]"),
+    "private_key_block": re.compile(r"-----BEGIN (RSA |EC |OPENSSH |DSA |PGP )?PRIVATE KEY-----"),
+    "age_secret_key": re.compile(r"AGE-SECRET-KEY-1[A-Z0-9]{58}"),
+    "github_token": re.compile(r"gh[pousr]_[A-Za-z0-9]{36,255}"),
+    "slack_token": re.compile(r"xox[baprs]-[A-Za-z0-9-]{10,48}"),
+    "generic_secret_assignment": re.compile(r"(?i)(api[_-]?key|secret|token|password)\s*[:=]\s*['\"][A-Za-z0-9_\-]{16,}['\"]"),
+    "jwt": re.compile(r"eyJ[A-Za-z0-9_-]{10,}\.[A-Za-z0-9_-]{10,}\.[A-Za-z0-9_-]{10,}"),
+}
+
+findings = []
+for path in root.rglob("*"):
+    if not path.is_file():
+        continue
+    if path.suffix == ".age":
+        continue  # ciphertext floor is the manifest "encrypted" invariant, not regex
+    try:
+        text = path.read_text(encoding="utf-8", errors="ignore")
+    except OSError:
+        continue
+    for name, pat in PATTERNS.items():
+        for m in pat.finditer(text):
+            value = m.group(0)
+            if any(a.search(value) for a in ALLOWLIST):
+                continue
+            findings.append(f"{path}:{name}")
+
+if findings:
+    print("FINDINGS:" + "|".join(findings))
+    sys.exit(1)
+sys.exit(0)
+PYEOF
+}
+
+run_gitleaks_if_available() {
+  local dir="$1"
+  if ! command -v gitleaks >/dev/null 2>&1; then
+    warn "gitleaks binary not on PATH — relying on the built-in baseline pattern scan"
+    warn "as the enforcing gate (see run_baseline_pattern_scan). Install gitleaks for"
+    warn "defense-in-depth using the repo's canonical .gitleaks.toml ruleset."
+    return 0
+  fi
+  info "gitleaks found — running with repo .gitleaks.toml (fail-closed, unlike CI's"
+  info "advisory --exit-code 0 usage in .github/workflows/gitleaks.yml)"
+  gitleaks detect --no-git --redact \
+    --config "${REPO_ROOT}/.gitleaks.toml" \
+    --source "${dir}" \
+    --exit-code 1
+}
+
+# run_full_secret_scan DIR — every layer, fail-closed (any non-zero return aborts the
+# push). Called once pre-flight (fast fail on the source pack) and once authoritatively
+# on the staging dir (the exact bytes about to be pushed).
+run_full_secret_scan() {
+  local dir="$1" manifest="$2"
+  section "Secret-scan gate: ${dir}"
+
+  if ! check_all_components_encrypted "${manifest}"; then
+    error "manifest lists a component that is NOT marked encrypted — refusing to push"
+    error "an unencrypted component. (manifest: ${manifest})"
+    return 1
+  fi
+
+  local hit
+  hit="$(check_forbidden_filenames "${dir}")"
+  if [[ -n "${hit}" ]]; then
+    error "forbidden secret-bearing filename found in push payload:"
+    error "${hit}"
+    return 1
+  fi
+
+  hit="$(check_age_key_literal "${dir}")"
+  if [[ -n "${hit}" ]]; then
+    error "the operator's AGE PRIVATE KEY value was found inside the push payload:"
+    error "${hit}"
+    return 1
+  fi
+
+  if ! run_baseline_pattern_scan "${dir}"; then
+    error "baseline plaintext-secret pattern scan found a match in ${dir} — refusing to push"
+    return 1
+  fi
+
+  if ! run_gitleaks_if_available "${dir}"; then
+    error "gitleaks reported a finding in ${dir} — refusing to push"
+    return 1
+  fi
+
+  info "PASS: no unencrypted component, no forbidden filename, no age key literal, no"
+  info "plaintext secret pattern found in ${dir}"
+  return 0
+}
+
+# ── Pre-flight scan on the SOURCE pack (fast fail before spending time re-encrypting) ──
+# NOTE: deliberately NOT `if ! run_full_secret_scan ...; then` — bash disables errexit
+# for every command nested inside a function/subshell called as the direct operand of
+# `if`/`!`/`&&`/`||`, which would let an internal step fail silently as long as the
+# function's LAST command still exits 0. Calling it plainly and checking $? afterward
+# keeps errexit live inside the function for every nested step (see the same fix on
+# push_to_git below, applied after a real instance of this masking a `git lfs install`
+# failure during validation).
+run_full_secret_scan "${PACK_DIR}" "${SRC_MANIFEST}"; SCAN_RC=$?
+if [[ "${SCAN_RC}" -ne 0 ]]; then
+  error "Pre-flight secret-scan failed on the source pack dir. Aborting — nothing staged,"
+  error "nothing pushed."
+  exit 1
+fi
+
+# ── git-lfs resolution: prefer PATH, fall back to an ephemeral nix store path rather
+#    than silently pushing without LFS (which would bloat the destination's plain git
+#    history with large binaries — the exact thing LFS exists to avoid). ───────────────
+ensure_git_lfs() {
+  if command -v git-lfs >/dev/null 2>&1; then
+    return 0
+  fi
+  if command -v nix >/dev/null 2>&1; then
+    warn "git-lfs not on PATH; resolving an ephemeral copy via nix (not installed"
+    warn "system-wide — see this run's report for the declarative follow-up)"
+    local store_path
+    store_path="$(nix --extra-experimental-features 'nix-command flakes' \
+      build --no-link --print-out-paths 'nixpkgs#git-lfs' 2>/dev/null | tail -1)"
+    if [[ -n "${store_path}" && -x "${store_path}/bin/git-lfs" ]]; then
+      export PATH="${store_path}/bin:${PATH}"
+      info "git-lfs resolved via nix store: ${store_path}/bin/git-lfs"
+      return 0
+    fi
+  fi
+  error "git-lfs is required to push large binaries without bloating the destination's"
+  error "git history, and it could not be found on PATH or resolved via nix."
+  error "Fix (declarative, Rule 13): add 'git-lfs' to the relevant profile in"
+  error "nix/data/profile-system-packages.nix and rebuild."
+  return 1
+}
+
+if [[ "${DRY_RUN}" -eq 1 ]]; then
+  section "DRY RUN — plan only, nothing will be re-encrypted, scanned-post-stage, or pushed"
+  info "Pack: ${PACK_DIR}"
+  info "Destination: ${DEST}"
+  info "Recipients: ${RECIPIENTS[*]}"
+  info "Branch: ${BRANCH}"
+  python3 - "${SRC_MANIFEST}" <<'PYEOF'
+import json, sys
+with open(sys.argv[1], encoding="utf-8") as fh:
+    m = json.load(fh)
+for c in m.get("components", []):
+    print(f"  would re-encrypt + push: {c['name']} ({c['size_bytes']} bytes)")
+PYEOF
+  info "Dry run complete. No payload was written or pushed."
+  exit 0
+fi
+
+# ── Staging: decrypt (operator's own identity) -> re-encrypt (target recipients),
+#    piped in one pass, no intermediate plaintext file. ─────────────────────────────────
+PACK_ID="$(basename "${PACK_DIR}")"
+PACK_BASE="${AQ_FACTORY_PACK_DIR:-${HOME}/.local/share/nixos-quick-deploy/factory-packs}"
+STAGE_DIR="${PACK_BASE}/${PACK_ID}.push-$(date -u +%Y%m%dT%H%M%SZ)"
+mkdir -p "${STAGE_DIR}"
+chmod 700 "${STAGE_DIR}"
+
+RECIPIENT_ARGS=()
+for r in "${RECIPIENTS[@]}"; do
+  RECIPIENT_ARGS+=(-r "${r}")
+done
+
+section "Re-encrypting pack components to push recipient(s)"
+STAGE_MANIFEST_BUILD="${STAGE_DIR}/.manifest-build.jsonl"
+: > "${STAGE_MANIFEST_BUILD}"
+
+python3 - "${SRC_MANIFEST}" <<'PYEOF' > "${STAGE_DIR}/.components.tsv"
+import json, sys
+with open(sys.argv[1], encoding="utf-8") as fh:
+    m = json.load(fh)
+for c in m.get("components", []):
+    print(f"{c['name']}\t{c['kind']}\t{c['path']}")
+PYEOF
+
+while IFS=$'\t' read -r name kind rel_path; do
+  [[ -z "${name}" ]] && continue
+  src="${PACK_DIR}/${rel_path}"
+  dst_rel="${rel_path}"
+  dst="${STAGE_DIR}/${dst_rel}"
+  mkdir -p "$(dirname "${dst}")"
+  if age -d -i "${AGE_KEY_FILE}" "${src}" | age "${RECIPIENT_ARGS[@]}" -o "${dst}"; then
+    sha="$(sha256sum "${dst}" | awk '{print $1}')"
+    size="$(stat -c%s "${dst}")"
+    info "re-encrypted ${name} -> ${dst_rel} (${size} bytes, sha256 ${sha:0:12}...)"
+    python3 -c '
+import json, sys
+name, kind, path, sha, size = sys.argv[1:6]
+recipients = sys.argv[6:]
+print(json.dumps({
+    "name": name, "kind": kind, "path": path, "sha256": sha,
+    "size_bytes": int(size), "encrypted": True,
+    "encryption": {"algorithm": "age", "recipients": recipients},
+}))
+' "${name}" "${kind}" "${dst_rel}" "${sha}" "${size}" "${RECIPIENTS[@]}" >> "${STAGE_MANIFEST_BUILD}"
+  else
+    error "re-encryption failed for component: ${name}"
+    exit 1
+  fi
+done < "${STAGE_DIR}/.components.tsv"
+rm -f "${STAGE_DIR}/.components.tsv"
+
+STAGE_MANIFEST="${STAGE_DIR}/manifest.json"
+python3 - "${SRC_MANIFEST}" "${STAGE_MANIFEST_BUILD}" "${STAGE_MANIFEST}" "${DEST}" "${RECIPIENTS[@]}" <<'PYEOF'
+import json, sys, datetime as dt
+
+src_manifest_path, build_path, out_path, dest = sys.argv[1:5]
+recipients = sys.argv[5:]
+
+with open(src_manifest_path, encoding="utf-8") as fh:
+    src = json.load(fh)
+
+components = []
+with open(build_path, encoding="utf-8") as fh:
+    for line in fh:
+        line = line.strip()
+        if line:
+            components.append(json.loads(line))
+
+manifest = dict(src)
+manifest["schema_version"] = "aq-factory-push.v1"
+manifest["tool"] = "aq-factory-push"
+manifest["slice"] = "fp-2"
+manifest["pushed_at"] = dt.datetime.now(dt.timezone.utc).strftime("%Y-%m-%dT%H:%M:%SZ")
+manifest["push_destination"] = dest
+manifest["encryption_recipients"] = recipients
+manifest.pop("encryption_recipient", None)
+manifest["source_manifest"] = {
+    "source_host": src.get("source_host"),
+    "created_at": src.get("created_at"),
+    "encryption_recipient": src.get("encryption_recipient"),
+}
+manifest["components"] = components
+
+with open(out_path, "w", encoding="utf-8") as fh:
+    json.dump(manifest, fh, indent=2, sort_keys=False)
+    fh.write("\n")
+PYEOF
+rm -f "${STAGE_MANIFEST_BUILD}"
+chmod 600 "${STAGE_MANIFEST}"
+
+# ── Authoritative scan: the staging dir IS the exact bytes about to be pushed. ─────────
+run_full_secret_scan "${STAGE_DIR}" "${STAGE_MANIFEST}"; SCAN_RC=$?
+if [[ "${SCAN_RC}" -ne 0 ]]; then
+  error "Post-re-encryption secret-scan failed on the staging dir. Aborting — the"
+  error "re-encrypted payload is left on disk at ${STAGE_DIR} for inspection; nothing"
+  error "was pushed."
+  exit 1
+fi
+
+# ── Explicit confirmation (outward-facing => never automatic) ──────────────────────────
+COMPONENT_COUNT="$(python3 -c 'import json,sys; print(len(json.load(open(sys.argv[1])).get("components", [])))' "${STAGE_MANIFEST}")"
+TOTAL_BYTES="$(python3 -c 'import json,sys; m=json.load(open(sys.argv[1])); print(sum(c["size_bytes"] for c in m.get("components", [])))' "${STAGE_MANIFEST}")"
+
+section "Confirm push (outward-facing — data leaves this machine)"
+info "About to push ${COMPONENT_COUNT} encrypted component(s), ${TOTAL_BYTES} bytes total,"
+info "to: ${DEST}"
+info "Encrypted to recipient(s): ${RECIPIENTS[*]}"
+info "This is the ONLY step in this tool that sends anything off this machine."
+
+if [[ "${CONFIRM}" != "PUSH" ]]; then
+  if [[ -t 0 ]]; then
+    read -r -p "Type PUSH to confirm: " TYPED < /dev/tty || TYPED=""
+    if [[ "${TYPED}" != "PUSH" ]]; then
+      error "Confirmation not given (typed '${TYPED}', expected 'PUSH'). Aborting — nothing"
+      error "pushed. Re-encrypted payload kept at ${STAGE_DIR} for inspection."
+      exit 1
+    fi
+  else
+    error "No TTY and no --confirm PUSH given. Refusing to push automatically."
+    error "Re-encrypted payload kept at ${STAGE_DIR} for inspection."
+    exit 1
+  fi
+fi
+
+# ── Destination dispatch (pluggable seam — add a new push_to_<kind> arm + case entry to
+#    support HF/S3/local-archive later, per TOOL-SPEC.md "Destinations"). ───────────────
+DEST_KIND="${DEST%%:*}"
+DEST_LOCATION="${DEST#*:}"
+[[ -z "${SUBDIR}" ]] && SUBDIR="factory-packs/${PACK_ID}"
+
+push_to_git() {
+  # NOTE: every side-effecting step below is checked EXPLICITLY (`cmd || { ...; return
+  # 1; }`) rather than relying on the calling shell's `set -e`. A real test run of an
+  # earlier version of this function relied on inherited errexit alone, called this
+  # function as `if ! push_to_git ...; then`, and bash — per its documented behavior —
+  # disables errexit for every command nested inside a function/subshell invoked as the
+  # direct operand of if/!/&&/|| . That let a failing `git lfs install --local --quiet`
+  # (unsupported flag on this git-lfs version) pass silently while later steps (`git
+  # commit`, `git push`) still ran and exited 0, so the tool reported a clean push while
+  # LFS was never actually wired up (verified: the pushed .age blob was full raw
+  # ciphertext, not an LFS pointer — the exact bloat LFS exists to prevent). Explicit
+  # per-step checks make this correct independent of how the function is invoked.
+  local location="$1" subdir="$2"
+  ensure_git_lfs || return 1
+
+  local work
+  work="$(mktemp -d "${TMPDIR:-/tmp}/aq-factory-push.XXXXXX")"
+  section "Pushing via git+LFS to ${location} (branch ${BRANCH})"
+
+  local clone_err="${work}.clone.err"
+  if ! git clone --quiet "${location}" "${work}" 2>"${clone_err}"; then
+    # A brand-new empty bare repo clones fine with git >=2.x ("warning: You appear to
+    # have cloned an empty repository"); a genuinely unreachable/missing destination is
+    # the only case that should land here as a hard failure.
+    error "git clone of destination failed:"
+    error "$(cat "${clone_err}" 2>/dev/null)"
+    rm -rf "${work}" "${clone_err}"
+    return 1
+  fi
+  rm -f "${clone_err}"
+
+  (
+    cd "${work}" || exit 1
+
+    if git rev-parse --verify "${BRANCH}" >/dev/null 2>&1; then
+      git checkout --quiet "${BRANCH}" || exit 1
+    else
+      git checkout --quiet -b "${BRANCH}" || exit 1
+    fi
+
+    git lfs install --local || { error "git lfs install --local failed"; exit 1; }
+    git lfs track "*.age" >/dev/null || { error "git lfs track failed"; exit 1; }
+
+    mkdir -p "${subdir}" || exit 1
+    cp -a "${STAGE_DIR}/." "${subdir}/" || exit 1
+    rm -f "${subdir}/.manifest-build.jsonl"
+
+    git add .gitattributes "${subdir}" || { error "git add failed"; exit 1; }
+    if git diff --cached --quiet; then
+      warn "nothing changed vs. destination HEAD — pushing an identical payload again"
+      warn "(idempotent no-op commit skipped)"
+    else
+      git commit --quiet -m "factory-pack: push ${PACK_ID} (${COMPONENT_COUNT} component(s), encrypted)" \
+        || { error "git commit failed"; exit 1; }
+    fi
+    git push --quiet origin "${BRANCH}" || { error "git push failed"; exit 1; }
+  )
+  local rc=$?
+  rm -rf "${work}"
+  return "${rc}"
+}
+
+case "${DEST_KIND}" in
+  git)
+    # Called plainly (not as `if ! push_to_git; then`) so that inherited `set -e`
+    # actually protects every command inside this call, on top of the explicit per-step
+    # checks push_to_git already does internally — see the NOTE in push_to_git.
+    push_to_git "${DEST_LOCATION}" "${SUBDIR}"
+    PUSH_RC=$?
+    if [[ "${PUSH_RC}" -ne 0 ]]; then
+      error "push to git destination failed. Re-encrypted payload kept at ${STAGE_DIR}."
+      exit 1
+    fi
+    ;;
+  hf|s3|archive)
+    error "destination kind '${DEST_KIND}' is not implemented yet (TOOL-SPEC.md lists it"
+    error "as a future destination arm — add a push_to_${DEST_KIND} function + case entry)."
+    exit 2
+    ;;
+  *)
+    error "unknown destination kind: ${DEST_KIND} (expected git:LOCATION)"
+    exit 2
+    ;;
+esac
+
+section "Push complete"
+info "Pushed ${COMPONENT_COUNT} component(s), ${TOTAL_BYTES} bytes, to ${DEST} (branch ${BRANCH}, path ${SUBDIR})"
+info "Staged manifest kept locally at: ${STAGE_MANIFEST}"
+python3 -c 'import json; print(json.dumps({"pushed": True}, indent=2))'
