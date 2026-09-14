@@ -674,3 +674,79 @@ MERGE STATE: fix/aqos-golden-ai-off-leak is the mergeable corrected branch. Need
 re-confirm of the single fix (does it close the leak without breaking anything) before merge to main —
 queued for the next capable binding lane (Codex on its worktree release, or Claude flagship on reset). Codex
 confirmatory audit continues. The dev cycle does not block; the branch is validated + corrected.
+
+
+---
+## [2026-09-09T20:05:09Z] QUEUED: research/graft-parity -> main review (reviewer lane flaky)
+Subject: research/graft-parity branch (2 commits: trendshift+graft frontier sources + Graft/named-repo/trending candidates + round-table verdicts). Data-only (sources.yaml + BACKLOG.jsonl, ~31-line additive diff).
+Why queued: local-direct reviewer failed twice (connection-closed, then hung) though the model is healthy; Codex busy on the body-hash re-target; not worth a heavy Claude spawn for a low-risk data diff.
+Action on lane-return (Codex or fresh Claude): quick data-accuracy review (sources real, verdicts faithful to the round table, no secrets) -> merge to main with the bound envelope. Non-author reviewer required (Claude/Opus authored the entries).
+
+---
+## [2026-09-09T21:30Z] LANE DOWN: Codex usage-limited until ~2026-09-10 00:56 — reviews queued
+Codex hit usage limit (resets Sep 10 12:56 AM). Never-block (Rule 18): work continues on branches with
+substitute lanes; trunk stays gated. QUEUED for Codex on return (or a fresh independent Claude flagship):
+1. **s1a — disko layouts + VM install harness** (end-to-end bare-metal plan, slice s1a). Being IMPLEMENTED
+   now by a Claude sonnet sub-agent (Codex down; capability reason: disko/LUKS/qemu-install is complex
+   systems integration beyond local's single-edit envelope). Orchestrator (Opus, non-author of the impl)
+   reviews + merges build-verifiable parts; Codex confirmatory audit queued for the exact merged subject
+   hashes. Substitution recorded per Rule 18.
+2. **fix/aqos-golden-ai-off-leak** (1f8920b7) — still needs non-author re-confirm (I authored it; cannot
+   self-review). Independent lane on return.
+3. **research/graft-parity** — data-accuracy review still pending (I authored; local reviewer failed twice
+   earlier — retry local now-resident, or Codex/Claude-flagship on return).
+Local-Qwen (healthy) engaged in parallel on bounded s1b/s2 plain-language installer copy (never-skip-local).
+
+---
+## [2026-09-10T04:45Z] BOTH flagship implementer lanes rate-limited — s1a re-queued
+Codex usage-limited until ~00:56; Claude sonnet sub-agent (s1a impl) hit session limit, resets ~00:50.
+Local healthy (finished installer-copy well; on packaging-tool copy now). Never-block: design + local work
+continues; s1a CODE implementation queued for whichever flagship resets first (~00:50-00:56).
+**s1a breadcrumb (preserve — the sub-agent found this before dying):** disko's ROOTLESS in-VM test path is
+`diskoLib.testLib` in the disko flake's `lib/tests.nix`. Start s1a's harness there (partition a virtual disk
++ boot, no host root). Full s1a brief: END-TO-END-BARE-METAL-PLAN.md slice s1a.
+NEW TRACK queued: **aq-factory-pack** (state packaging/cloning tool) — spec written
+(.agents/plans/factory-state-packaging/TOOL-SPEC.md); implementation queued for flagship reset. Parallel to
+the install track.
+
+---
+## [2026-09-10T14:20Z] Codex OUT until ~2026-09-14 23:42 (multi-day) — re-route, do not wait
+Codex usage limit now resets Sep 14 (not tonight) — it failed the s1a attempt at SessionStart. Re-route all
+Codex-queued reviews to other eligible independent lanes (fresh sonnet / local), never wait days:
+- fp-1 (6f3ffcd4) confirmatory SECURITY audit — route to fresh sonnet or Codex-on-return; findings already
+  logged in issues-backlog (portability recipient, dry-run-reads, name-traversal).
+- fix/aqos-golden-ai-off-leak re-confirm; research/graft-parity data review — still need independent non-author.
+- s1a RE-DISPATCHED to a fresh sonnet sub-agent (Codex out); breadcrumb: disko rootless VM test =
+  `diskoLib.testLib` in disko flake lib/tests.nix.
+
+---
+## [2026-09-10T21:30Z] s1a LANDED (5430d793) — Codex confirmatory audit queued
+s1a (disko partition/install/boot, plain+LUKS) merged after Opus non-author review + both-layout VM proof.
+QUEUE for Codex on return (~Sep 14): confirmatory audit of 5430d793 (esp. the LUKS test-keyfile fixture +
+the two gate remediations: suspend-resume out-of-scope note, package-count baseline refresh).
+Stray cleanup (not s1a): a working-tree deletion of .agent/collaboration/antigravity-inbox/
+aqos-installer-prd-review.md (archived to .agent/archive/antigravity-inbox-20260910/) was RESTORED to unblock
+the package-count guard's tar; if that archival was intended, redo it deliberately as its own commit.
+Also untracked build artifact aqos-vm.qcow2 in repo root (from a VM run) — archive/gitignore when convenient.
+
+---
+## [2026-09-11] fp-2 aq-factory-push MERGED (8b8a665a) — Codex SECURITY audit queued (HIGH priority)
+Security-critical (state -> git push). Opus non-author review PASS (encrypt-to-target pipe no-plaintext-to-disk,
+fail-closed secret-scan on exact staged bytes before push, confirm-gated, OAuth-only, shellcheck 0, errexit
+masking bug found+fixed). Codex on return (~Sep 14): confirmatory SECURITY audit of 8b8a665a — re-encryption
+pipe, scan completeness vs .gitleaks.toml, confirmation/abort paths, LFS pointer integrity. Actual pushes are
+owner-gated. Resolves fp-1 portability-recipient finding.
+
+---
+## [2026-09-14] RECORDED: L2B-B shadow-accepted (VERDICT PASS) + program-plan projection refreshed to ground truth
+Pivot back to Phase-1 (Core Engine). Verified L2B-B is genuinely landed: subject files present at HEAD, focused
+oracle 16/16 PASS, `payload_normalization_status` passthrough present, `VERDICT: PASS` in L2B-B-CODEX-ACCEPTANCE.md.
+Landed 99364942 (base) + 0262be3c (AM4 reconciliation). It is a SHADOW kernel — `normalize_endpoint_payload` has
+NO live callers yet (live cutover deferred→Product D by B1 design). Recorded in ACTIVATION-AUDIT.md with honest
+5-dimension attestation + dated deferral. Retired the stale suspended AM5 drift-recovery draft (SUPERSEDED banner).
+Refreshed UNIFIED-PROGRAM-PLAN projection (was stale, dated 07-13): L2B-B ✅; ALSO corrected Foundation C row
+(was "NOT STARTED" — WRONG): C shadow-build slices already landed default-OFF (ALA rev4 51795389, C2-SCI issuer
+2c36e7d3, cap-enforcement dashboard 81aa665a; flags default 0 / enable=false; activation gated on B1 tail + Q3).
+CATCH-UP for returning independent lane (Codex or fresh Claude flagship, non-author of these doc edits): confirm
+the projection edits faithfully match ground truth (commits are ancestors of HEAD; L2B-B shadow-not-live claim).
+Advisory unless a real defect. NEXT Phase-1 work: B1 tail (chat/batch parity in shadow) → closes Foundation B1.

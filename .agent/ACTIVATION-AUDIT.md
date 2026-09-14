@@ -552,3 +552,24 @@ the FULL ai-dev/agentic-factory config (aiStack ON) EVALUATES + BUILDS as the di
 - **Scope:** proves the CONFIG reproduces (evaluates+builds). The live boot + service-topology assertion is
   the harness scripts/testing/aqos-install-vm-ai-dev-dogfood.sh, run in a resource window (a full-factory VM
   vs the resident ~24GB model won't co-fit in 27GB). No model, per owner ("reproduce the system, not the model").
+
+## Foundation B1 — L2B-B payload-normalization kernel (recorded 2026-09-14; landed 99364942+0262be3c)
+**Shadow contract-kernel slice — ACCEPTED (VERDICT PASS), live cutover DEFERRED by design.** L2B-B is a
+B1 "contract kernel + parity vectors in shadow" slice: `normalize_endpoint_payload` + the AM4 reconciliation
+(recursive NFC key-collision fail-closed, canonical-VRAM accounting, closed `payload_normalization_status`
+passthrough). Attested honestly across the 5 DoD dimensions:
+- **Integrated:** PARTIAL — the normalization kernel lives in `scripts/ai/lib/local_inference_transport.py`
+  and the status field is plumbed through `dashboard/backend/api/routes/aistack.py`; but
+  `normalize_endpoint_payload` has NO live callers yet (verified: `rg` finds none outside its module+tests).
+- **Turned ON:** NO — shadow by design. Live adoption (routing dispatch through it) is Product D
+  (inference/client live convergence), not B1.
+- **Functionally validated:** YES offline — 16/16 golden parity vectors pass (`test-local-inference-l2b.py`),
+  plus the six AM4 acceptance criteria (incl. mandatory Service-Coverage passthrough). NOT yet real-world-live.
+- **Observable:** YES (plumbed) — `payload_normalization_status` (pass/fail/unavailable) renders on the
+  existing frozen dashboard consumer; defaults `unavailable` until a live probe populates it.
+- **Intervenable:** N/A — a shadow kernel has no live bad-state to intervene on yet; gained when D wires it live.
+- **Acceptance:** `VERDICT: PASS` recorded in `L2B-B-CODEX-ACCEPTANCE.md`; independent (non-author) binding
+  acceptance confirmed. Superseded/suspended AM5 drift-recovery draft retired (banner added).
+- **DEFERRAL (dated 2026-09-14):** live cutover + intervenability → Product D convergence; tracked in the
+  UNIFIED-PROGRAM-PLAN B1 row + Product D gate. B1 itself is NOT done — the "chat/batch parity in shadow"
+  tail remains before Foundation B1 closes.

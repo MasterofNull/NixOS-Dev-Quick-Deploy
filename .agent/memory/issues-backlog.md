@@ -3816,3 +3816,65 @@ Advisory task (codex is the real confirmatory backstop) — non-blocking.
   429/RESOURCE_EXHAUSTED explicitly, make wake report quota-exhaustion not cli-nudge-ok. Owner action
   (their side): check the Google account's Code Assist tier/quota (IDE account settings / Cloud console).
 - Severity: high (observability blindness). Antigravity down does NOT block work (Rule 18 routes its roles).
+
+## [OPEN] Antigravity 2.5.5 update renamed binary antigravity -> antigravity-ide (regression, 2026-09-14)
+- The fast-lane overlay bump (f1adddfb) to antigravity-ide 2.5.5 renamed the BINARY: /run/current-system/sw/bin
+  now has `antigravity-ide`, not `antigravity`. Verified post-switch: `command -v antigravity` ABSENT,
+  `antigravity-ide` PRESENT. The overlay maps the nix ATTR (pkgs.antigravity=antigravity-ide) but not the bin name.
+- Blast radius (bare-binary invocations, both now broken): (1) scripts/ai/aq-antigravity-inbox:29
+  WAKE_ARGV=["antigravity","chat",...] -> FileNotFoundError/cli-nudge-binary-missing when quota recovers;
+  (2) scripts/health/antigravity-health.sh:104 ANTIGRAVITY_BIN=$(command -v antigravity) -> empty ->
+  mis-reports binary absent (line 138). Other "antigravity" refs (aq-collab-round, aq-role-route,
+  delegate-to-antigravity) are LANE-NAME/pgrep uses, not binary invocations — fine.
+- Severity: medium (low urgency — lane is 429 quota-blocked anyway; the IDE itself works as antigravity-ide).
+- Root-cause fix (chosen): extend nix/overlays/fast-lane.nix so a renamed fast-lane pkg ALSO exposes a
+  bin/<stable-name> symlink to bin/<unstable-name> (via symlinkJoin), honoring the overlay's "consumers keep
+  the stable name" promise at the BINARY level too — fixes all bare-name references at once. Needs a rebuild.
+
+[DONE] fp-3 validation confinement — The Codex sandbox denied both AF_INET and AF_UNIX listener creation,
+so disposable Qdrant/PostgreSQL servers could not bind sockets. fp-3 validation used a stateful curl fixture
+for Qdrant and a fresh `initdb` PostgreSQL standalone backend (real SQL engine, no listener) through a psql
+shim; neither production datastore was contacted. Coordinator hint/AIDB MCP reads were also unavailable
+because approval policy was `never`; repository SSOTs were used instead.
+  Severity: low
+  Action: Retain the no-listener integration fixture for sandbox runs; fp-4 remains the real VM round-trip.
+  File: scripts/testing/test-aq-factory-restore.py
+
+## [OPEN] Agentic-databases assessment (2026-09-14) — ALIVE + used, but UNEVENLY integrated
+Owner asked to verify the agentic DBs are set up/functional/actively-used (suspected "half-done dead end").
+FINDING: NOT a dead end — substantially alive + integrated. Evidence: qdrant active w/ 33 collections
+(interaction-history 41,350 pts; knowledge 16,181; learning-feedback 10,553; error-solutions 1,852;
+agent-memory-semantic 170); redis RUNNING (ping=PONG, pid under unit `redis-mcp.service`); postgres+pgvector
+active; AIDB + hybrid-coordinator healthy (database/pgvector/rag ok); dashboard surfaces qdrant points
+(aistack.py `_fetch_qdrant_collection_points` + RAG posture); live writers exist (aq-agent-loop,
+prsi-orchestrator, aq-wiki, mcp-bridge-hybrid, backfill-interaction-history-qdrant.py).
+REAL GAPS (the kernel of the "half-done" impression — UNEVEN integration):
+1. agent-memory-EPISODIC tier thin (7 pts vs semantic 170) — episodic write path under-integrated. Severity: medium.
+2. Live agent-ctx write recency STALE: newest agent-ctx-aq epoch = 2026-08-28 (~17d ago) — the live
+   agent-context write path is quiet/intermittent. Severity: medium (verify aq-agent-loop path still fires).
+3. 15 ephemeral agent-ctx-* collections not GC'd (cruft accumulation). Severity: low.
+4. redis unit-naming misleading: `redis`/`redis-ai` units read inactive; the REAL server is `redis-mcp.service`
+   — looks broken at a glance. Severity: low (observability/naming).
+5. postgres row-content not independently verifiable in assessment (psql auth); AIDB health asserts database ok.
+   Severity: low (verify via AIDB API or authed psql).
+ACTION (Phase-1 Databases slice): agentic-memory integration audit + fix — confirm each memory tier's write
+path is live + recent, close the thin/dormant tiers (episodic), GC ephemerals, clarify redis unit naming, add
+a clear per-tier memory-health surface (freshness + points + last-write). Route to Claude sub-agent.
+
+## [OPEN] DB schema FRAGMENTATION + stale/unwired schema files (2026-09-14, owner-noticed)
+Owner reading the repo saw "many tables/fields blank/old/unused" + asked if it's the deployed-DB template.
+FINDING: the LIVE deployed Postgres schema is provisioned SOLELY by ALEMBIC (`ai-stack/migrations/versions/*.py`,
+applied via `alembic -c ai-stack/migrations/alembic.ini upgrade aidb@head` in nix/modules/services/mcp-servers.nix:950).
+That is the ONE authoritative template. BUT the repo has ~7 schema/migration locations, most NOT wired to the
+deploy path — likely legacy/superseded ("old/unused"):
+  - ai-stack/postgres/init-schema.sql (15 CREATE TABLEs) — NOT referenced by the deployment provisioning.
+  - ai-stack/postgres/migrations/006-010_*.sql, ai-stack/sql/*.sql, ai-stack/database/postgres/migrations/,
+    ai-stack/aidb/schema/ (+ /migrations), docs/sql/ — scattered; authoritative-vs-legacy unclear.
+  - ai-stack/autoresearch/experiments.sqlite — COMMITTED EMPTY sqlite (2 tables, 0 rows) = runtime cruft;
+    should be gitignored + runtime-generated (sibling scores.sqlite IS gitignored — inconsistent).
+Severity: medium (confusing/misleading; hygiene, not a live-DB break — deployed DB is alembic-correct + populated).
+ACTION (Phase-1 Databases hygiene, fold into the agentic-memory audit slice): (1) confirm alembic is the sole
+authoritative schema + which other files are truly dead vs still-consumed (grep consumers before removing);
+(2) archive (Rule 12, never delete) the confirmed-legacy schema files under .agent/archive/; (3) gitignore +
+untrack experiments.sqlite; (4) leave a one-line SCHEMA-SSOT pointer (alembic) so it's never ambiguous again.
+Do NOT remove any schema file until its non-use is proven (grep runtime/bootstrap/docker consumers).
