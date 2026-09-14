@@ -871,31 +871,62 @@ gate_qa_phase0() {
     fi
   fi
 
-  # Gate hygiene (Rule 19 / WR-5): freshness-class checks fail purely on elapsed time, not on a
-  # code regression in THIS change — WARN (never block) in --pre-commit, stay HARD in --pre-deploy
-  # (the enforced/scheduled path). A freshness lapse must never force the gaming-vs-bypass choice.
-  # Adding a freshness-class check = append its ID to FRESHNESS_CLASS_IDS below.
+  # Gate hygiene (Rule 19 / WR-5 + gate corollary): two non-blocking failure classes,
+  # both WARN (never block) in --pre-commit, both stay HARD in --pre-deploy/--maintenance
+  # (the enforced/scheduled path). Neither lapse may force the gaming-vs-bypass choice.
+  #   FRESHNESS_CLASS_IDS    — checks that fail purely on elapsed time (time-expiry), not on a
+  #                            code regression in THIS change.
+  #   LIVE_SERVICE_CLASS_IDS — checks that probe LIVE external/service/network runtime STATE
+  #                            (systemd unit/timer active, port bound, AppArmor deployed-profile +
+  #                            runtime enforcement, inference-server /health, external agent CLI/lane
+  #                            reachability) — a momentarily down/warming/cold-loading/quota-limited
+  #                            live dependency is an environmental signal, never a regression the
+  #                            staged diff introduced (gate corollary). STATIC checks (schema,
+  #                            contract/config correctness, file-structure, SSOT/canon-drift,
+  #                            secret-scan, package-count, etc.) must NEVER be added here — only a
+  #                            check whose failure mode is "is this live dependency up/reachable
+  #                            right now", not "did this diff break something".
+  # Adding a check = append its base ID below. Per-instance ids like "0.1.1:llama-cpp" or
+  # "0.1.3:ai-mcp-integrity-check.timer" match by "<base-id>:" prefix — list the base id only.
   if [[ "${MODE}" == "--pre-commit" ]]; then
     local FRESHNESS_CLASS_IDS="0.10.5"
-    local fresh_failing fresh_nonfresh ffid
+    # 0.1.x systemd service/unit/timer state; 0.2.x port-bound + live datastore reachability;
+    # 0.3.x AppArmor deployed-profile presence + live runtime enforcement; 0.4.x inference-server
+    # /health; 0.6.x external agent CLI/lane live-state; 0.7.4 AIDB live vector-search reachability.
+    local LIVE_SERVICE_CLASS_IDS="0.1.1 0.1.2 0.1.3 0.2.1 0.2.2 0.2.3 0.2.4 0.2.5 0.3.1 0.3.2 0.3.3 0.4.1 0.4.2 0.4.3 0.6.1 0.6.2 0.7.4"
+    local fresh_failing nonclass_failing ffid base_id fresh_list live_list warn_summary
     # aq-qa renders failures as a table row (`│ <id> │ <desc> │ ✗ │`) — the id column
     # precedes the ✗ column, so match ✗ ROWS then extract the id token (NOT id-after-✗).
     fresh_failing=$(echo "${output}" | sed 's/\x1b\[[0-9;]*m//g' | grep '✗' | \
       grep -oP '[0-9]+\.[0-9]+(?:\.[0-9]+)?(?::[a-z_-]+)?' | sort -u)
-    fresh_nonfresh=""
+    nonclass_failing=""
+    fresh_list=""
+    live_list=""
     while IFS= read -r ffid; do
       [[ -z "${ffid}" ]] && continue
       if echo "${xfail_ids:-}" | grep -qxF "${ffid}"; then continue; fi
-      if ! echo "${FRESHNESS_CLASS_IDS}" | tr ' ' '\n' | grep -qxF "${ffid}"; then
-        fresh_nonfresh="${fresh_nonfresh} ${ffid}"
+      base_id="${ffid%%:*}"
+      if echo "${FRESHNESS_CLASS_IDS}" | tr ' ' '\n' | grep -qxF "${base_id}"; then
+        fresh_list="${fresh_list},${ffid}"
+      elif echo "${LIVE_SERVICE_CLASS_IDS}" | tr ' ' '\n' | grep -qxF "${base_id}"; then
+        live_list="${live_list},${ffid}"
+      else
+        nonclass_failing="${nonclass_failing} ${ffid}"
       fi
     done <<< "${fresh_failing}"
-    fresh_nonfresh=$(echo "${fresh_nonfresh}" | tr -d '[:space:]')
-    if [[ -z "${fresh_nonfresh}" && -n "${fresh_failing}" ]]; then
-      local fresh_list
-      fresh_list=$(echo "${fresh_failing}" | tr '\n' ',' | sed 's/,$//')
-      pass "QA phase 0 (${passes:-unknown} checks; freshness-class WARN: ${fresh_list})"
-      log "  WARN: ${fresh_list} freshness-class (time-expiry) — maintenance-due, NOT a regression; enforced in --pre-deploy. See .agent/WORKAROUND-REGISTER.md (Rule 19 gate hygiene)."
+    nonclass_failing=$(echo "${nonclass_failing}" | tr -d '[:space:]')
+    fresh_list="${fresh_list#,}"
+    live_list="${live_list#,}"
+    if [[ -z "${nonclass_failing}" && ( -n "${fresh_list}" || -n "${live_list}" ) ]]; then
+      warn_summary=""
+      [[ -n "${fresh_list}" ]] && warn_summary="freshness-class WARN: ${fresh_list}"
+      if [[ -n "${live_list}" ]]; then
+        [[ -n "${warn_summary}" ]] && warn_summary="${warn_summary}; "
+        warn_summary="${warn_summary}live-service-class WARN: ${live_list}"
+      fi
+      pass "QA phase 0 (${passes:-unknown} checks; ${warn_summary})"
+      [[ -n "${fresh_list}" ]] && log "  WARN: ${fresh_list} freshness-class (time-expiry) — maintenance-due, NOT a regression; enforced in --pre-deploy. See .agent/WORKAROUND-REGISTER.md (Rule 19 gate hygiene)."
+      [[ -n "${live_list}" ]] && log "  WARN: ${live_list} live-service-class (external/runtime state) — momentarily down/warming/cold-loading/quota-limited, NOT a regression THIS staged change introduced; enforced in --pre-deploy/--maintenance. See .agent/WORKAROUND-REGISTER.md (Rule 19 gate corollary)."
       return 0
     fi
   fi

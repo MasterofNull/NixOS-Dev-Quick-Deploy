@@ -68,3 +68,17 @@ ACCEPTED (documented deliberate tradeoff, no band-aid) · MAINT-DUE (time/env ex
 - fix-path: same table-aware parse now used by the freshness-class block (`grep '✗' | grep -oP '<id>'`); before enabling, re-verify config/qa-xfail.yaml entries are still legitimately runtime-blocked (making xfail actually work will start excusing them). Normal slice.
 - class T3 · severity MED · status FIXED 2026-08-06 · opened 2026-08-06.
 - FIXED: applied the table-aware parse to the xfail block. Safe: config/qa-xfail.yaml is currently empty (`xfail: []`), so nothing is newly excused; the mechanism is now correct for when entries are added. tier0 25/0, no regression.
+
+### WR-5 extension (2026-09-14): LIVE_SERVICE_CLASS_IDS
+Extends the WR-5 freshness-class WARN mechanism in `gate_qa_phase0()` with a sibling
+`LIVE_SERVICE_CLASS_IDS` (QA phase-0 checks that probe LIVE external/service/runtime state:
+systemd unit/timer active, port bound, datastore reachability, AppArmor deployed+runtime
+enforcement, inference-server /health, external agent CLI/lane, AIDB vector-search). Same
+semantics: WARN (visible, non-blocking) on `--pre-commit`, HARD on `--pre-deploy`/`--maintenance`.
+Symptom: a momentarily down/warming/cold-loading/quota-limited live dependency (e.g. post-reboot
+llama-cpp cold-load, AIDB warming, antigravity quota/binary) hard-failed QA phase 0 and blocked
+commits of unrelated staged changes. Root cause / class: environmental-runtime signal, not a
+regression the staged diff introduced (Rule 19 gate corollary). Fix-path: tier0-validation-gate.sh
+`gate_qa_phase0()`. All-or-nothing preserved: any failing id NOT in a WARN class still hard-fails
+the whole gate + lists every row, so static regressions are never masked. Reclassified base ids:
+0.1.1 0.1.2 0.1.3 0.2.1-0.2.5 0.3.1-0.3.3 0.4.1-0.4.3 0.6.1 0.6.2 0.7.4.
