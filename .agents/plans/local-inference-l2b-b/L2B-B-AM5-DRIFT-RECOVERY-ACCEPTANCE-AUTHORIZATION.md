@@ -1,3 +1,10 @@
+> **SUPERSEDED / RETIRED 2026-09-14 — DO NOT ACT.** This suspended AM5 drift-recovery draft was never
+> activated. The owner reconciliation directive it defers to was resolved by adopting the AM4
+> reconciliation path, which LANDED on `main`: L2B-B base `99364942` + AM4 reconciliation `0262be3c`
+> (`payload_normalization_status` passthrough + NFC-key-collision/VRAM hardening). Terminal acceptance is
+> `VERDICT: PASS` in `L2B-B-CODEX-ACCEPTANCE.md`. The subject files are present at HEAD and the focused
+> oracle passes 16/16. This record is kept as history only — it grants no authority and is not activatable.
+
 # Foundation B1 L2B-B AM5 Drift-Recovery Acceptance Authorization
 
 **Prepared:** 2026-07-22T17:21:16Z
