@@ -35,6 +35,7 @@ Usage:
 
   aqd workflows list
   aqd workflows project-init [--target <dir>] [--name <project-name>] [--goal <goal>] [--stack <stack>] [--owner <owner>] [--force]
+  aqd workflows factory-gate-status [--target <dir>]
   aqd workflows primer [--target <dir>] [--objective <text>] [--output <file>]
   aqd workflows brownfield [--target <dir>] [--objective <text>] [--constraints <text>] [--out-of-scope <text>] [--acceptance <text>] [--force]
   aqd workflows retrofit [--target <dir>] [--name <project-name>] [--goal <goal>] [--stack <stack>] [--owner <owner>] [--force]
@@ -769,6 +770,14 @@ cmd_workflows_project_init() {
   echo "- owner: $owner"
   echo
 
+  # FT-3 is greenfield-only: preview all template destinations before either
+  # scaffold helper can create an overlapping file.  --force never bypasses
+  # factory gate collisions or a preconfigured hooksPath.
+  local factory_gate_bundle="${PROJECT_ROOT}/templates/factory-gate-bundle"
+  run_python "${PROJECT_ROOT}/scripts/ai/lib/factory_gate_install.py" preview \
+    --target "$target_dir" --bundle-root "$factory_gate_bundle" \
+    --stack "$stack" --project-name "$project_name" || return 1
+
   local -a bootstrap_args=(
     --target "$target_dir"
     --name "$project_name"
@@ -785,16 +794,36 @@ cmd_workflows_project_init() {
   if [[ ! -d "$target_dir/.git" ]]; then
     git -C "$target_dir" init >/dev/null 2>&1
   fi
-  install_git_secret_hooks "$target_dir"
+  run_python "${PROJECT_ROOT}/scripts/ai/lib/factory_gate_install.py" install \
+    --target "$target_dir" --bundle-root "$factory_gate_bundle" \
+    --stack "$stack" --project-name "$project_name" || return 1
 
   cat <<EOF
 /project-init complete.
 - AI layer scaffold created
 - slash command specs created in .agent/commands
 - .claude and .agents/plans progressive-disclosure scaffolding created
-- git secret guards installed (.git/hooks/pre-commit, .git/hooks/pre-push)
+- factory gate bundle installed (.factory/gate-bundle; core.hooksPath=.githooks)
+- run: aqd workflows factory-gate-status --target "$target_dir"
 - next: run .agent/commands/start-workflow.sh with HYBRID_URL set
 EOF
+}
+
+cmd_workflows_factory_gate_status() {
+  local target_dir="."
+  while [[ $# -gt 0 ]]; do
+    case "$1" in
+      --target) target_dir="${2:-}"; shift 2 ;;
+      *) ai_layer_error "unknown_option" "factory-gate-status" "Unknown option: $1" "Use: aqd workflows factory-gate-status --target <dir>"; return 1 ;;
+    esac
+  done
+  [[ -d "$target_dir" ]] || {
+    ai_layer_error "missing_target" "factory-gate-status" "Target directory does not exist: $target_dir"
+    return 1
+  }
+  run_python "${PROJECT_ROOT}/scripts/ai/lib/factory_gate_install.py" status \
+    --target "$target_dir" --bundle-root "${PROJECT_ROOT}/templates/factory-gate-bundle" \
+    --project-name "$(basename "$(realpath "$target_dir")")"
 }
 
 cmd_workflows_retrofit() {
@@ -1938,6 +1967,7 @@ main() {
     mcp:deploy-aidb) cmd_mcp_deploy_aidb "$@" ;;
     workflows:list) cmd_workflows_list ;;
     workflows:project-init) cmd_workflows_project_init "$@" ;;
+    workflows:factory-gate-status) cmd_workflows_factory_gate_status "$@" ;;
     workflows:primer) cmd_workflows_primer "$@" ;;
     workflows:brownfield) cmd_workflows_brownfield "$@" ;;
     workflows:retrofit) cmd_workflows_retrofit "$@" ;;

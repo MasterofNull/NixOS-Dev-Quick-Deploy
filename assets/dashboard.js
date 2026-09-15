@@ -4045,6 +4045,7 @@ async function loadQA() {
   const d = await apiFetch("/aistack/aq-qa/run/0", {}, T_SLOW);
   const badge = document.getElementById("qaBadge");
   if (!d) {
+    setText("qaFactoryGate", "Evidence unavailable");
     if (badge) {
       badge.textContent = "ERR";
       badge.className = "card-badge badge-err";
@@ -4052,6 +4053,7 @@ async function loadQA() {
     return;
   }
   if (d.pending || d.running) {
+    setText("qaFactoryGate", "Awaiting fixture evidence");
     setText("qaStatus", d.running ? "running..." : "pending");
     if (badge) {
       badge.textContent = "pending";
@@ -4064,6 +4066,11 @@ async function loadQA() {
   setText("qaSkipped", d.skipped ?? "--");
   setText("qaDuration", d.duration_s ? `${d.duration_s.toFixed(1)}s` : "--");
   setText("qaStatus", d.failed === 0 ? "ALL PASS" : `${d.failed} FAIL`);
+  const factoryProof = (Array.isArray(d.tests) ? d.tests : []).find(
+    (test) => test && test.id === "0.10.45"
+  );
+  const factoryLabels = { PASS: "Fixture passed", FAIL: "Fixture needs attention", SKIP: "Fixture not run" };
+  setText("qaFactoryGate", factoryLabels[factoryProof?.status] || "Evidence unavailable");
   if (badge) {
     badge.textContent = d.failed === 0 ? "PASS" : "FAIL";
     badge.className = `card-badge ${d.failed === 0 ? "badge-ok" : "badge-err"}`;
