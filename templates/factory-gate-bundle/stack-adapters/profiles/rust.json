@@ -1,0 +1,1 @@
+{"marker":"Cargo.toml","commands":{"build":{"command":"cargo build","tool":"cargo"},"test":{"command":"cargo test","tool":"cargo"},"lint":{"command":"cargo clippy -- -D warnings","tool":"cargo"}}}

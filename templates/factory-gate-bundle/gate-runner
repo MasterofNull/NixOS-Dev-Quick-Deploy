@@ -74,7 +74,7 @@ for check in "${checks[@]}"; do
       result="FAIL"
     fi
     if [[ "${severity}" == "WARN" ]]; then
-    printf '%s: %s\n' "${result}" "${name}" >&2
+    printf 'WARN: %s (%s)\n' "${name}" "${result}" >&2
     [[ -z "${output}" ]] || printf '%s\n' "${output}" | sed 's/^/  /' >&2
     ((warn_count += 1))
     else

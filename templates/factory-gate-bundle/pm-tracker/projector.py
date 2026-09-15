@@ -83,7 +83,7 @@ def validate(manifest: object) -> list[str]:
         if isinstance(pct_hint, bool) or not isinstance(pct_hint, (int, float)) or not 0 <= pct_hint <= 100:
             errors.append(f"item {item_id} pct_hint must be a number from 0 to 100")
         acceptance = item.get("acceptance")
-        if acceptance is not None and (
+        if "acceptance" in item and (
             not isinstance(acceptance, dict) or not isinstance(acceptance.get("status"), str)
         ):
             errors.append(f"item {item_id} acceptance.status must be a string when acceptance is provided")

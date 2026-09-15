@@ -21,6 +21,9 @@ FACTORY_FRESHNESS_NOT_APPLICABLE=1 \
   "${bundle_root}/gate-runner" --pre-commit >/dev/null
 echo "PASS: generic checks.d discovery and pre-commit run"
 
+PYTHONPYCACHEPREFIX="${work_dir}/pycache" python3 "${bundle_root}/stack-adapters/test_resolve.py" >/dev/null
+echo "PASS: stack adapter metadata fixtures"
+
 unconfigured_checks="${work_dir}/unconfigured-checks"
 mkdir -p "${unconfigured_checks}"
 cp "${bundle_root}/checks.d/hard-30-build.sh" "${unconfigured_checks}/hard-30-build.sh"
@@ -112,6 +115,13 @@ cat >"${target}/.agents/plans/sample/tracker.json" <<'EOF'
 EOF
 if FACTORY_REPO_ROOT="${target}" python3 "${bundle_root}/pm-tracker/projector.py" "${target}/.agents/plans/sample" --check >/dev/null 2>&1; then
   echo "FAIL: projector accepted invalid schema types and bounds" >&2
+  exit 1
+fi
+cat >"${target}/.agents/plans/sample/tracker.json" <<'EOF'
+{"plan":{"id":"sample","title":"Sample","goal":"Proof"},"items":[{"id":"FT-1","goal":"Proof","validation_goal":"Validate","deps":[],"detection":{"commit_match":[]},"acceptance":null}]}
+EOF
+if FACTORY_REPO_ROOT="${target}" python3 "${bundle_root}/pm-tracker/projector.py" "${target}/.agents/plans/sample" --check >/dev/null 2>&1; then
+  echo "FAIL: projector accepted null acceptance" >&2
   exit 1
 fi
 echo "PASS: projector rejects invalid types/bounds and requires git evidence for SHIPPED"

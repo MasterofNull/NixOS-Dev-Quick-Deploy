@@ -1,0 +1,1 @@
+{"marker":"flake.nix","commands":{"build":{"command":"nix flake check","tool":"nix"}}}
