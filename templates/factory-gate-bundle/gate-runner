@@ -1,0 +1,90 @@
+#!/usr/bin/env bash
+set -euo pipefail
+
+MODE="--pre-commit"
+case "${1:-}" in
+  "") ;;
+  --pre-commit|--pre-deploy) MODE="$1" ;;
+  *) echo "usage: gate-runner [--pre-commit|--pre-deploy]" >&2; exit 2 ;;
+esac
+
+SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
+CHECKS_DIR="${FACTORY_GATE_CHECKS_DIR:-${SCRIPT_DIR}/checks.d}"
+RISK_TIER="UNCLASSIFIED"
+
+# FT-6 extension point: a future classifier writes a tier for the exact change.
+# The risk policy will use this exported value to select checks and review rigor.
+if [[ -n "${FACTORY_RISK_TIER_FILE:-}" && -f "${FACTORY_RISK_TIER_FILE}" ]]; then
+  IFS= read -r RISK_TIER <"${FACTORY_RISK_TIER_FILE}" || true
+fi
+export FACTORY_GATE_MODE="${MODE}" FACTORY_RISK_TIER="${RISK_TIER}"
+
+pass_count=0
+warn_count=0
+fail_count=0
+
+severity_for() {
+  local class="$1"
+  case "${class}" in
+    warn) printf 'WARN\n' ;;
+    live|freshness)
+      [[ "${MODE}" == "--pre-deploy" ]] && printf 'HARD\n' || printf 'WARN\n'
+      ;;
+    hard) printf 'HARD\n' ;;
+    *) printf 'INVALID\n' ;;
+  esac
+}
+
+printf 'Factory gate: mode=%s risk-tier=%s\n' "${MODE}" "${RISK_TIER}"
+if [[ ! -d "${CHECKS_DIR}" ]]; then
+  echo "FAIL: checks directory missing: ${CHECKS_DIR}" >&2
+  exit 1
+fi
+
+shopt -s nullglob
+checks=("${CHECKS_DIR}"/*.sh)
+if [[ ${#checks[@]} -eq 0 ]]; then
+  echo "FAIL: no checks discovered in ${CHECKS_DIR}" >&2
+  exit 1
+fi
+
+for check in "${checks[@]}"; do
+  name="$(basename "${check}" .sh)"
+  class="${name%%-*}"
+  severity="$(severity_for "${class}")"
+  if [[ "${severity}" == "INVALID" ]]; then
+    echo "FAIL: ${name}: unknown class '${class}'" >&2
+    ((fail_count += 1))
+    continue
+  fi
+  if [[ ! -x "${check}" ]]; then
+    echo "FAIL: ${name}: check is not executable" >&2
+    ((fail_count += 1))
+    continue
+  fi
+  if output="$("${check}" "${MODE}" 2>&1)"; then
+    printf 'PASS: %s\n' "${name}"
+    [[ -z "${output}" ]] || printf '%s\n' "${output}" | sed 's/^/  /'
+    ((pass_count += 1))
+  else
+    check_status=$?
+    if [[ ${check_status} -eq 3 ]]; then
+      result="UNCONFIGURED"
+    else
+      result="FAIL"
+    fi
+    if [[ "${severity}" == "WARN" ]]; then
+    printf '%s: %s\n' "${result}" "${name}" >&2
+    [[ -z "${output}" ]] || printf '%s\n' "${output}" | sed 's/^/  /' >&2
+    ((warn_count += 1))
+    else
+    printf '%s: %s\n' "${result}" "${name}" >&2
+    [[ -z "${output}" ]] || printf '%s\n' "${output}" | sed 's/^/  /' >&2
+    ((fail_count += 1))
+    fi
+  fi
+done
+shopt -u nullglob
+
+printf 'Summary: passed=%d warned=%d failed=%d\n' "${pass_count}" "${warn_count}" "${fail_count}"
+[[ ${fail_count} -eq 0 ]]

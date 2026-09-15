@@ -1,0 +1,41 @@
+{
+  "title": "Factory PM tracker editorial manifest",
+  "type": "object",
+  "required": ["plan", "items"],
+  "properties": {
+    "plan": {
+      "type": "object",
+      "required": ["id", "title", "goal"],
+      "properties": {
+        "id": {"type": "string", "minLength": 1},
+        "title": {"type": "string", "minLength": 1},
+        "goal": {"type": "string", "minLength": 1}
+      }
+    },
+    "items": {
+      "type": "array",
+      "minItems": 1,
+      "items": {
+        "type": "object",
+        "required": ["id", "goal", "validation_goal", "deps", "detection"],
+        "not": {"required": ["status"]},
+        "properties": {
+          "id": {"type": "string", "minLength": 1},
+          "goal": {"type": "string", "minLength": 1},
+          "validation_goal": {"type": "string", "minLength": 1},
+          "deps": {"type": "array", "items": {"type": "string"}},
+          "detection": {
+            "type": "object",
+            "properties": {"commit_match": {"type": "array", "items": {"type": "string"}}}
+          },
+          "pct_hint": {"type": "number", "minimum": 0, "maximum": 100},
+          "acceptance": {
+            "type": "object",
+            "required": ["status"],
+            "properties": {"status": {"type": "string"}}
+          }
+        }
+      }
+    }
+  }
+}

@@ -1,0 +1,45 @@
+{
+  "bundle_version": "1.0.0-ft1",
+  "source_of_truth": "{{SOURCE_REPOSITORY}}",
+  "placeholders": [
+    "ARCHIVE_POLICY", "BUILD_CMD", "CLAUDE_ROLE", "CODEX_ROLE", "FRESHNESS_CHECK_CMD",
+    "GATE_RUNNER_PATH", "GEMINI_ROLE", "HOOKS_PATH", "ISSUES_PATH", "LANE_PARITY_CHECK",
+    "LINT_CMD", "LIVE_SERVICE_CHECK_CMD", "LOCAL_AGENT_ROLE", "LOCAL_CAPABILITY_CONSTRAINTS",
+    "PLAN_ROOT", "PM_TRACKER_PATH", "PROJECT_METADATA_FILE", "PROJECT_NAME", "PROTECTED_BRANCHES",
+    "PULSE_PATH", "REPOSITORY_LAYOUT", "RESUME_PATH", "RISK_TIER_POLICY", "SECRET_SCAN_CMD",
+    "SHARED_RULES", "SOURCE_DIR", "SOURCE_REPOSITORY", "TEST_CMD", "TEST_DIR", "WORKFLOW_CANON_PATH"
+  ],
+  "files": [
+    {"bundle_path": ".", "install_target": ".factory/gate-bundle", "derived_from": [".agent/PROJECT-FACTORY-GATE-TEMPLATES-PRD.md"]},
+    {"bundle_path": "MANIFEST.json", "install_target": ".factory/gate-bundle/MANIFEST.json", "derived_from": [".agent/PROJECT-FACTORY-GATE-TEMPLATES-PRD.md"]},
+    {"bundle_path": "README.md", "install_target": ".factory/gate-bundle/README.md", "derived_from": [".agent/PROJECT-FACTORY-GATE-TEMPLATES-PRD.md"]},
+    {"bundle_path": "self-test.sh", "install_target": ".factory/gate-bundle/self-test.sh", "derived_from": ["scripts/governance/tier0-validation-gate.sh", ".githooks/commit-msg", "scripts/ai/aq-pm-tracker"]},
+    {"bundle_path": "gate-runner", "install_target": "scripts/governance/gate-runner", "derived_from": ["scripts/governance/tier0-validation-gate.sh"]},
+    {"bundle_path": "repo-structure-lint", "install_target": "scripts/governance/repo-structure-lint", "derived_from": ["scripts/governance/repo-structure-lint.sh"]},
+    {"bundle_path": "repo-structure.conf.tmpl", "install_target": ".factory/repo-structure.conf", "derived_from": ["scripts/governance/repo-structure-lint.sh"]},
+    {"bundle_path": "checks.d/hard-10-repo-structure.sh", "install_target": "scripts/governance/checks.d/hard-10-repo-structure.sh", "derived_from": ["scripts/governance/tier0-validation-gate.sh", "scripts/governance/repo-structure-lint.sh"]},
+    {"bundle_path": "checks.d/hard-20-secret-scan.sh", "install_target": "scripts/governance/checks.d/hard-20-secret-scan.sh", "derived_from": ["scripts/governance/tier0-validation-gate.sh", ".githooks/pre-commit"]},
+    {"bundle_path": "checks.d/hard-30-build.sh", "install_target": "scripts/governance/checks.d/hard-30-build.sh", "derived_from": ["scripts/governance/tier0-validation-gate.sh"]},
+    {"bundle_path": "checks.d/hard-40-test.sh", "install_target": "scripts/governance/checks.d/hard-40-test.sh", "derived_from": ["scripts/governance/tier0-validation-gate.sh"]},
+    {"bundle_path": "checks.d/hard-50-lint.sh", "install_target": "scripts/governance/checks.d/hard-50-lint.sh", "derived_from": ["scripts/governance/tier0-validation-gate.sh"]},
+    {"bundle_path": "checks.d/live-60-service.sh", "install_target": "scripts/governance/checks.d/live-60-service.sh", "derived_from": ["scripts/governance/tier0-validation-gate.sh", "scripts/governance/tier0.d/check-pm-tracker.sh"]},
+    {"bundle_path": "checks.d/freshness-70-artifacts.sh", "install_target": "scripts/governance/checks.d/freshness-70-artifacts.sh", "derived_from": ["scripts/governance/tier0-validation-gate.sh", "scripts/governance/tier0.d/check-pm-tracker.sh"]},
+    {"bundle_path": "hooks/commit-msg", "install_target": ".githooks/commit-msg", "derived_from": [".githooks/commit-msg"]},
+    {"bundle_path": "hooks/pre-commit", "install_target": ".githooks/pre-commit", "derived_from": [".githooks/pre-commit"]},
+    {"bundle_path": "pm-tracker/projector.py", "install_target": "scripts/pm-tracker", "derived_from": ["scripts/ai/aq-pm-tracker"]},
+    {"bundle_path": "pm-tracker/check-pm-tracker.sh", "install_target": "scripts/governance/checks.d/hard-80-pm-tracker.sh", "derived_from": ["scripts/governance/tier0.d/check-pm-tracker.sh"]},
+    {"bundle_path": "pm-tracker/tracker.schema.json", "install_target": ".factory/pm-tracker/tracker.schema.json", "derived_from": ["scripts/ai/aq-pm-tracker", ".agents/plans/pm-tracker-standard/DESIGN.md"]},
+    {"bundle_path": "pm-tracker/sample/tracker.json", "install_target": ".factory/pm-tracker/sample-tracker.json", "derived_from": [".agents/plans/factory-gate-templates/tracker.json"]},
+    {"bundle_path": "agent-scaffolding/SHARED-RULES.md.tmpl", "install_target": ".agent/SHARED-RULES.md", "derived_from": ["AGENTS.md", ".agent/WORKFLOW-CANON.md"]},
+    {"bundle_path": "agent-scaffolding/AGENTS.md.tmpl", "install_target": "AGENTS.md", "derived_from": ["AGENTS.md"]},
+    {"bundle_path": "agent-scaffolding/CLAUDE.md.tmpl", "install_target": "CLAUDE.md", "derived_from": ["CLAUDE.md", ".agent/WORKFLOW-CANON.md"]},
+    {"bundle_path": "agent-scaffolding/CODEX.md.tmpl", "install_target": ".agent/CODEX.md", "derived_from": [".agent/CODEX.md", ".agent/WORKFLOW-CANON.md"]},
+    {"bundle_path": "agent-scaffolding/LOCAL-AGENT.md.tmpl", "install_target": ".agent/LOCAL-AGENT.md", "derived_from": [".agent/LOCAL-AGENT.md", ".agent/WORKFLOW-CANON.md"]},
+    {"bundle_path": "agent-scaffolding/GEMINI.md.tmpl", "install_target": ".agent/GEMINI.md", "derived_from": [".agent/GEMINI.md", ".agent/WORKFLOW-CANON.md"]},
+    {"bundle_path": "agent-scaffolding/WORKFLOW-CANON.md.tmpl", "install_target": ".agent/WORKFLOW-CANON.md", "derived_from": [".agent/WORKFLOW-CANON.md"]}
+  ],
+  "extension_points": {
+    "FT-6": "gate-runner exports FACTORY_RISK_TIER; commit-msg marks the tier-based reviewer-policy insertion point",
+    "FT-7": "all lane templates render one SHARED-RULES source; a later parity probe will verify identical hook/gate reachability"
+  }
+}

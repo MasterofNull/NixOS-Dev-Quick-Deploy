@@ -1,0 +1,14 @@
+# Canonical workflow — {{PROJECT_NAME}}
+
+This file and `{{SHARED_RULES}}` govern every configured agent lane.
+
+1. **ORIENT:** establish repository state, authorization, and the assigned scope.
+2. **RESEARCH:** inspect existing code and relevant project knowledge before choosing a change.
+3. **PLAN:** record problem, goal, permitted files, rollback, security concerns, and validation.
+4. **EXECUTE:** make one targeted slice and pulse each successful write to `{{PULSE_PATH}}`.
+5. **VALIDATE:** run syntax checks plus `{{BUILD_CMD}}`, `{{TEST_CMD}}`, `{{LINT_CMD}}`, and `{{SECRET_SCAN_CMD}}` as applicable.
+6. **DOC-UPDATE:** reconcile `{{ISSUES_PATH}}`, project docs, and `{{RESUME_PATH}}`.
+7. **REVIEW:** stage the slice; a non-author reviews the exact staged patch and records its SHA-256.
+8. **COMMIT:** protected branches accept only the terminal disposition enforced by `{{HOOKS_PATH}}/commit-msg`.
+
+Do not skip phases because of lane identity. `{{RISK_TIER_POLICY}}` and `{{LANE_PARITY_CHECK}}` are reserved extension points for FT-6 and FT-7.

@@ -1,0 +1,9 @@
+#!/usr/bin/env bash
+set -euo pipefail
+repo_root="$(git rev-parse --show-toplevel)"
+runner_path='{{GATE_RUNNER_PATH}}'
+if [[ "${runner_path}" == *'{{'* ]]; then
+  echo "pre-commit: render {{GATE_RUNNER_PATH}} before activating this hook" >&2
+  exit 1
+fi
+exec "${repo_root}/${runner_path}" --pre-commit

@@ -1,0 +1,56 @@
+#!/usr/bin/env bash
+set -euo pipefail
+
+MODE="${1:---pre-commit}"
+case "${MODE}" in
+  --pre-commit|--pre-deploy) ;;
+  *) echo "usage: repo-structure-lint [--pre-commit|--pre-deploy]" >&2; exit 2 ;;
+esac
+
+REPO_ROOT="${FACTORY_REPO_ROOT:-$(git rev-parse --show-toplevel 2>/dev/null)}"
+POLICY_FILE="${FACTORY_STRUCTURE_POLICY:-${REPO_ROOT}/.factory/repo-structure.conf}"
+if [[ ! -f "${POLICY_FILE}" ]]; then
+  echo "repo-structure: missing policy ${POLICY_FILE}" >&2
+  exit 1
+fi
+
+declare -a required_paths=()
+declare -a allowed_top=()
+while IFS='=' read -r key value; do
+  [[ -z "${key}" || "${key}" == \#* ]] && continue
+  case "${key}" in
+    required) required_paths+=("${value}") ;;
+    allowed_top) allowed_top+=("${value}") ;;
+    *) echo "repo-structure: unknown policy key '${key}'" >&2; exit 1 ;;
+  esac
+done <"${POLICY_FILE}"
+
+violations=0
+for path in "${required_paths[@]}"; do
+  if [[ "${path}" == *'{{'* ]]; then
+    echo "repo-structure: unresolved placeholder in required path: ${path}" >&2
+    ((violations += 1))
+  elif [[ ! -e "${REPO_ROOT}/${path}" ]]; then
+    echo "repo-structure: required path missing: ${path}" >&2
+    ((violations += 1))
+  fi
+done
+
+if [[ ${#allowed_top[@]} -gt 0 ]]; then
+  while IFS= read -r path; do
+    top="${path#./}"
+    top="${top%%/*}"
+    [[ "${top}" == ".git" ]] && continue
+    allowed=false
+    for entry in "${allowed_top[@]}"; do
+      [[ "${top}" == "${entry}" ]] && allowed=true && break
+    done
+    if [[ "${allowed}" == false ]]; then
+      echo "repo-structure: undeclared top-level path: ${top}" >&2
+      ((violations += 1))
+    fi
+  done < <(find "${REPO_ROOT}" -mindepth 1 -maxdepth 1 -printf '%f\n' | sort)
+fi
+
+[[ ${violations} -eq 0 ]] || exit 1
+echo "repo-structure: PASS (${MODE})"

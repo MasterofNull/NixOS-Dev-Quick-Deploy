@@ -1,0 +1,84 @@
+#!/usr/bin/env bash
+set -euo pipefail
+
+message_file="${1:?commit message path required}"
+branch="$(git symbolic-ref --quiet --short HEAD 2>/dev/null || true)"
+protected_branches="${FACTORY_PROTECTED_BRANCHES:-{{PROTECTED_BRANCHES}}}"
+if [[ "${protected_branches}" == *'{{'* ]]; then
+  echo "commit-msg: render {{PROTECTED_BRANCHES}} before activating this hook" >&2
+  exit 1
+fi
+
+protected=false
+for candidate in ${protected_branches}; do
+  [[ "${branch}" == "${candidate}" ]] && protected=true && break
+done
+[[ "${protected}" == true ]] || exit 0
+
+mapfile -t staged_paths < <(git diff --cached --name-only)
+[[ ${#staged_paths[@]} -eq 0 ]] && exit 0
+
+staged_subject_sha256() {
+  git diff --cached --binary --full-index --no-ext-diff -- | sha256sum | awk '{print $1}'
+}
+
+field() {
+  local key="$1"
+  sed -n "s/^${key}:[[:space:]]*//p" "${message_file}" | tail -n 1
+}
+
+reviewer_is_independent() {
+  local reviewer author_email reviewer_email
+  reviewer="$(field Reviewed-by)"
+  author_email="$(git var GIT_AUTHOR_IDENT | sed -n 's/.*<\([^>]*\)>.*/\1/p' | tr '[:upper:]' '[:lower:]')"
+  reviewer_email="$(printf '%s\n' "${reviewer}" | sed -n 's/.*<\([^>]*\)>.*/\1/p' | tr '[:upper:]' '[:lower:]')"
+  [[ -n "${reviewer}" && -n "${reviewer_email}" && "${reviewer_email}" != "${author_email}" ]]
+}
+
+disposition="$(field Review-Disposition)"
+expected_subject_sha256="$(staged_subject_sha256)"
+require_independent_bound_review() {
+  [[ "$(field Independent-Review)" == "PASS" ]] || {
+    echo "commit-msg: ${disposition} requires Independent-Review: PASS" >&2
+    exit 1
+  }
+  [[ "$(field Reviewed-subject-sha256)" =~ ^[0-9a-f]{64}$ ]] || {
+    echo "commit-msg: ${disposition} requires a lowercase Reviewed-subject-sha256" >&2
+    exit 1
+  }
+  [[ "$(field Reviewed-subject-sha256)" == "${expected_subject_sha256}" ]] || {
+    echo "commit-msg: ${disposition} Reviewed-subject-sha256 does not bind the exact staged subject" >&2
+    exit 1
+  }
+  reviewer_is_independent || {
+    echo "commit-msg: ${disposition} requires a non-author Reviewed-by identity with email" >&2
+    exit 1
+  }
+  # FT-6/FT-7 extension point: consult the classified risk tier here to
+  # require additional distinct reviewers without creating lane-specific paths.
+}
+
+case "${disposition}" in
+  ACCEPTED) require_independent_bound_review ;;
+  IMPLEMENTED_FOLLOWUP_REQUIRED)
+    require_independent_bound_review
+    [[ "$(field Safe-At-Rest)" == "true" ]] || { echo "commit-msg: forward integration requires Safe-At-Rest: true" >&2; exit 1; }
+    [[ "$(field Activation-Authority)" == "false" ]] || { echo "commit-msg: forward integration requires Activation-Authority: false" >&2; exit 1; }
+    [[ -n "$(field Next-Slice)" ]] || { echo "commit-msg: forward integration requires a bounded Next-Slice" >&2; exit 1; }
+    ;;
+  ACTIVATION_BLOCKED|REJECTED)
+    echo "commit-msg: ${disposition} work must remain isolated from ${branch}" >&2
+    exit 1
+    ;;
+  *)
+    echo "commit-msg: non-trivial ${branch} commits require a terminal Review-Disposition" >&2
+    exit 1
+    ;;
+esac
+
+subject="$(sed -n '1p' "${message_file}")"
+if grep -Eiq '(^|[^[:alpha:]])provisional([^[:alpha:]]|$)' <<<"${subject}" \
+    || [[ "$(field Integration-State)" == "provisional" ]]; then
+  echo "commit-msg: provisional work must remain on an isolated branch/worktree" >&2
+  exit 1
+fi
