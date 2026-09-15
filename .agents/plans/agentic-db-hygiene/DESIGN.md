@@ -80,3 +80,16 @@ Filename-ref=0 does NOT alone prove a schema file dead (its TABLES may be used);
     defines is either in alembic or genuinely unused; then archive as superseded).
 - **NOT DB schema (out of db-2 scope, leave):** `ai-stack/database/postgres/schemas/*.json` (workflow output
   schemas: draft-plan/context-scan/web-brief/final-aggregation), `ai-stack/workflows/schema/workflow-v1.yaml`.
+
+## db-4 F2 LANDED (2026-09-14) — ephemeral-collection GC
+Declarative weekly GC for stale `agent-ctx-*` Qdrant scratch collections: `scripts/ai/qdrant-scratch-gc.py`
++ `mySystem.deployment.qdrantScratchGc` {enable (default true), retentionDays (default 14)} in options.nix
++ a systemd oneshot service + weekly timer (OnCalendar Sun 09:00) in ai-stack.nix. Safety is defense-in-depth
+(only `agent-ctx-` prefix, prefix re-asserted before every delete, undeterminable-age fail-safe skip,
+per-collection try/except). Dry-run verified against live Qdrant: 18 agent-ctx-* candidates, 0
+protected/operational collections touched. Observability: journal logs + the F1 dashboard ephemeral-count.
+Activation: owner nixos-rebuild turns the timer ON; the first sweep prunes the 17 age-determinable stale
+collections (>17d old); the 18th (agent-ctx-test-task-large-live-rfgate-74775, unparseable name = undeterminable
+age) is skipped-unknown by the fail-safe and never deleted.
+The suspend/resume contract policy (config/suspend-resume-workloads.json) was updated to acknowledge
+qdrant-scratch-gc as a periodic timer-oneshot with no resumable in-flight state.

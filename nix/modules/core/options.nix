@@ -451,6 +451,26 @@
         };
       };
 
+      # db-4 F2: weekly garbage collector for stale ephemeral agent-ctx-*
+      # Qdrant scratch collections (scripts/ai/qdrant-scratch-gc.py). Only
+      # ever touches names matching the agent-ctx- prefix — typed memory
+      # tiers and operational collections are never inspected. Cadence is
+      # fixed at weekly via the timer's OnCalendar (nix/modules/roles/ai-stack.nix)
+      # — not configurable here.
+      qdrantScratchGc = {
+        enable = lib.mkOption {
+          type = lib.types.bool;
+          default = true;
+          description = "Enable the periodic agent-ctx-* Qdrant scratch collection garbage collector.";
+        };
+
+        retentionDays = lib.mkOption {
+          type = lib.types.ints.positive;
+          default = 14;
+          description = "Delete agent-ctx-* Qdrant collections strictly older than this many days.";
+        };
+      };
+
       bootloaderEspMinFreeMb = lib.mkOption {
         type = lib.types.ints.positive;
         default = 128;

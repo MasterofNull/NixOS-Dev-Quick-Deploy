@@ -2039,6 +2039,51 @@ in {
       };
     })
 
+    # db-4 F2 — weekly garbage collector for stale ephemeral agent-ctx-*
+    # Qdrant scratch collections (scripts/ai/qdrant-scratch-gc.py). One
+    # bounded sweep and exit — no in-flight state, so this is the
+    # periodic-timer-oneshot class already covered as out_of_scope in
+    # config/suspend-resume-workloads.json (same class as
+    # disk-health-monitor / fast-lane-staleness-monitor).
+    (lib.mkIf (roleEnabled && cfg.deployment.qdrantScratchGc.enable) {
+      systemd.services.qdrant-scratch-gc = {
+        description = "Qdrant agent-ctx-* scratch collection garbage collector";
+        after = ["ai-stack.target" "qdrant.service"];
+        wants = ["qdrant.service"];
+        path = [monitorPython];
+        serviceConfig = {
+          Type = "oneshot";
+          User = cfg.primaryUser;
+          WorkingDirectory = cfg.mcpServers.repoPath;
+          Environment = [
+            "QDRANT_URL=http://127.0.0.1:${toString ports.qdrantHttp}"
+            "RETENTION_DAYS=${toString cfg.deployment.qdrantScratchGc.retentionDays}"
+          ];
+          ExecStart = let
+            script = "${cfg.mcpServers.repoPath}/scripts/ai/qdrant-scratch-gc.py";
+          in "${monitorPython}/bin/python3 ${script}";
+          StandardOutput = "journal";
+          StandardError = "journal";
+          NoNewPrivileges = true;
+          ProtectSystem = "strict";
+          ProtectHome = "read-only";
+          PrivateTmp = true;
+          TimeoutStartSec = "180";
+          MemoryMax = "256M";
+        };
+      };
+
+      systemd.timers.qdrant-scratch-gc = {
+        description = "Qdrant agent-ctx-* scratch collection garbage collector timer (weekly)";
+        wantedBy = ["timers.target"];
+        timerConfig = {
+          OnCalendar = "Sun 09:00:00";
+          Persistent = true;
+          RandomizedDelaySec = "15min";
+        };
+      };
+    })
+
     # Phase 18.5.2 — Weekly report auto-imports to AIDB every Sunday 08:00.
     (lib.mkIf roleEnabled {
       systemd.services.ai-weekly-report = {
