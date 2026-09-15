@@ -892,8 +892,12 @@ gate_qa_phase0() {
     local FRESHNESS_CLASS_IDS="0.10.5"
     # 0.1.x systemd service/unit/timer state; 0.2.x port-bound + live datastore reachability;
     # 0.3.x AppArmor deployed-profile presence + live runtime enforcement; 0.4.x inference-server
-    # /health; 0.6.x external agent CLI/lane live-state; 0.7.4 AIDB live vector-search reachability.
-    local LIVE_SERVICE_CLASS_IDS="0.1.1 0.1.2 0.1.3 0.2.1 0.2.2 0.2.3 0.2.4 0.2.5 0.3.1 0.3.2 0.3.3 0.4.1 0.4.2 0.4.3 0.6.1 0.6.2 0.7.4"
+    # /health; 0.6.x external agent CLI/lane live-state; 0.7.4 AIDB live vector-search reachability;
+    # 0.10.22 local-model LOCAL_TOK_PER_SEC calibration vs LIVE measured throughput — fails when the
+    # resident model warms/cold-loads/drifts-to-swap (a live-perf environmental signal: "is the model
+    # fast right now"), never a regression a docs/code diff introduced. The calibration-constant drift
+    # it also catches is maintenance, surfaced HARD on --pre-deploy/--maintenance, not a commit blocker.
+    local LIVE_SERVICE_CLASS_IDS="0.1.1 0.1.2 0.1.3 0.2.1 0.2.2 0.2.3 0.2.4 0.2.5 0.3.1 0.3.2 0.3.3 0.4.1 0.4.2 0.4.3 0.6.1 0.6.2 0.7.4 0.10.22"
     local fresh_failing nonclass_failing ffid base_id fresh_list live_list warn_summary
     # aq-qa renders failures as a table row (`│ <id> │ <desc> │ ✗ │`) — the id column
     # precedes the ✗ column, so match ✗ ROWS then extract the id token (NOT id-after-✗).
