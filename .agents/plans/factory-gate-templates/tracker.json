@@ -38,8 +38,8 @@
       "validation_goal": "detection correct on fixture repos of each stack; generic fallback safe",
       "deps": ["ft-1"], "editorial_note": "framework universal, check content adapts",
       "detection": {"commit_match": ["FT-2", "stack adapter"]},
-      "pct_hint": 0,
-      "acceptance": {"status": "pending", "by": null, "date": null, "note": "not started"}
+      "pct_hint": 100,
+      "acceptance": {"status": "accepted", "by": "Codex /root/ft1_independent_acceptance", "date": "2026-09-15", "note": "Independent PASS on subject18da152ebd9ee752231f8f1d8c6b7d0c3ec5be23d27889bea0aff8b3a9dcafec; committed7b22f43d; final tier0 53/0 QA179. Configuration framework only, not target execution proof."}
     },
     {
       "id": "ft-3", "name": "greenfield injection", "phase": "greenfield", "kind": "slice",

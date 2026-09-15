@@ -1681,6 +1681,8 @@ _check 1 "0.10.5" "model catalog/profile freshness" \
       python3 "${REPO_ROOT}/scripts/testing/test-workflow-shadow-contract.py"
     _check 5 "0.10.44" "execution-cell-adapter Service-Coverage: default-OFF mint->sign->UDS->receipt fixture (Foundation C C3b R5)" \
       python3 "${REPO_ROOT}/scripts/testing/test-execution-cell-adapter.py"
+    _check 5 "0.10.45" "Factory install fixture: hooks, tracker, collision and configuration safety" \
+      python3 "${REPO_ROOT}/scripts/testing/test-factory-gate-install.py"
     _check 1 "0.10.30" "analysis-only local-agent observation loops force final synthesis" \
       python3 "${REPO_ROOT}/scripts/testing/test-agent-executor-analysis-finalization.py"
     _check 1 "0.10.31" "vectorization visualization dashboard surface" \
