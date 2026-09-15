@@ -1,0 +1,93 @@
+{
+  "plan": {
+    "id": "factory-gate-templates",
+    "title": "Factory Gate/Check Template Reproduction — greenfield + brownfield injection",
+    "prd_ref": ".agent/PROJECT-FACTORY-GATE-TEMPLATES-PRD.md",
+    "owner": "hyperd",
+    "goal": "Codify our gates/checks/discipline as a stack-adaptable template bundle and have the greenfield + brownfield workflows install + activate it into every project the factory works on — a true software factory stamps its quality apparatus into its output.",
+    "success_criteria": [
+      "A new (greenfield) target repo, after factory start, has WORKING git hooks + a tier0-style gate that blocks a bad commit + a projected PM tracker + trunk protection + agent scaffolding, adapted to its stack",
+      "An existing (brownfield) repo gains the same, installed NON-DESTRUCTIVELY (merge-not-clobber, confirm-before-replace, Rule-12 backups)",
+      "The bundle self-tests; installed gates are proven live (not dormant copies)",
+      "This repo remains the gate SSOT; the bundle is a derived, version-stamped, self-tested reproduction"
+    ]
+  },
+  "phases": [
+    {"id": "codify", "name": "codify portable gate bundle", "goal": "universal framework extracted as a tested template", "order": 1},
+    {"id": "adapt", "name": "stack adapters", "goal": "per-stack concrete check profiles", "order": 2},
+    {"id": "greenfield", "name": "greenfield injection", "goal": "project-init installs + self-tests the bundle", "order": 3},
+    {"id": "brownfield", "name": "brownfield retrofit", "goal": "non-destructive install into existing repos", "order": 4},
+    {"id": "wire", "name": "factory-start precondition + parity", "goal": "gates ensured present+passing at factory project-start", "order": 5},
+    {"id": "risk-tier", "name": "risk-tiered gate policy", "goal": "core/security/stability changes get higher review+validation+locking", "order": 6},
+    {"id": "all-agent", "name": "all-agent enforcement + validation", "goal": "every lane enforces+validates the gates, proven not assumed", "order": 7}
+  ],
+  "items": [
+    {
+      "id": "ft-1", "name": "codify the portable gate bundle", "phase": "codify", "kind": "slice",
+      "goal": "extract the universal framework (gate-runner, .githooks trunk-protection + pre-commit, repo-structure-lint, PM-tracker standard, behavioral-rules/role-contract/review-before-commit scaffolding) into templates/factory-gate-bundle/ with placeholders + an install manifest + a self-test; no behavior change to this repo",
+      "validation_goal": "bundle self-test passes; manifest lists every installed file + target path; THIS repo's tier0 + hooks unchanged (source-of-truth intact)",
+      "deps": [],
+      "editorial_note": "foundational; derives from this repo's SSOT gates, records the derivation source to avoid drift",
+      "detection": {"commit_match": ["factory-gate-bundle", "FT-1", "gate bundle"]},
+      "pct_hint": 0,
+      "acceptance": {"status": "pending", "by": null, "date": null, "note": "not started"}
+    },
+    {
+      "id": "ft-2", "name": "stack adapters (py/node/rust/go/nix/generic)", "phase": "adapt", "kind": "slice",
+      "goal": "stack detection + per-stack check profiles resolving concrete build/test/lint/secret-scan commands into the gate-runner",
+      "validation_goal": "detection correct on fixture repos of each stack; generic fallback safe",
+      "deps": ["ft-1"], "editorial_note": "framework universal, check content adapts",
+      "detection": {"commit_match": ["FT-2", "stack adapter"]},
+      "pct_hint": 0,
+      "acceptance": {"status": "pending", "by": null, "date": null, "note": "not started"}
+    },
+    {
+      "id": "ft-3", "name": "greenfield injection", "phase": "greenfield", "kind": "slice",
+      "goal": "extend project-init / bootstrap_agent_project to install + self-test the bundle into a new project",
+      "validation_goal": "e2e: scaffold a throwaway repo, confirm hooks fire + gate blocks a bad commit + tracker projects",
+      "deps": ["ft-1", "ft-2"], "editorial_note": "compose on bootstrap_agent_project (Rule 20)",
+      "detection": {"commit_match": ["FT-3", "greenfield inject"]},
+      "pct_hint": 0,
+      "acceptance": {"status": "pending", "by": null, "date": null, "note": "not started"}
+    },
+    {
+      "id": "ft-4", "name": "brownfield retrofit (non-destructive)", "phase": "brownfield", "kind": "slice",
+      "goal": "install into an existing repo without clobbering (detect, merge-not-clobber, confirm-before-replace, Rule-12 backups)",
+      "validation_goal": "e2e against a fixture existing repo; no existing config silently overwritten",
+      "deps": ["ft-1", "ft-2"], "editorial_note": "safety-critical: non-destructive + confirm-gated",
+      "detection": {"commit_match": ["FT-4", "brownfield retrofit"]},
+      "pct_hint": 0,
+      "acceptance": {"status": "pending", "by": null, "date": null, "note": "not started"}
+    },
+    {
+      "id": "ft-5", "name": "factory-start precondition + parity + docs", "phase": "wire", "kind": "slice",
+      "goal": "wire 'ensure gates present+passing' into the factory project-start path; parity-update agent instruction files (Rule 16); ACTIVATION-AUDIT",
+      "validation_goal": "factory refuses/repairs a project missing gates before slice work; parity map updated",
+      "deps": ["ft-3", "ft-4"], "editorial_note": "closes the loop",
+      "detection": {"commit_match": ["FT-5", "factory-start gate precondition"]},
+      "pct_hint": 0,
+      "acceptance": {"status": "pending", "by": null, "date": null, "note": "not started"}
+    },
+    {
+      "id": "ft-6", "name": "risk-tiered gate policy (cross-cutting B)", "phase": "risk-tier", "kind": "slice",
+      "goal": "risk classifier (compose on PRSI _risk() + high-risk-approval-rubric.json) tags changes/plans/PRDs by security/vulnerability/stability/core-piece; tier->policy map escalates reviewer count/independence, validation set, and locking (freeze + hash-bound activation) for HIGH/CORE; consulted by the gate-runner + trunk protection; recorded on the change, never self-lowered",
+      "validation_goal": "a core/security change is auto-classified top-tier and REQUIRES the escalated gates; a routine change gets the light path; tier cannot be self-lowered (anti-gaming)",
+      "deps": ["ft-1"],
+      "editorial_note": "foundational cross-cutting; applied to THIS repo first then templated; composes on PRSI risk machinery (Rule 20)",
+      "detection": {"commit_match": ["FT-6", "risk-tier", "risk-tiered gate"]},
+      "pct_hint": 0,
+      "acceptance": {"status": "pending", "by": null, "date": null, "note": "not started"}
+    },
+    {
+      "id": "ft-7", "name": "all-agent enforcement + cross-lane validation (cross-cutting A)", "phase": "all-agent", "kind": "slice",
+      "goal": "gates bind every lane (lane-independent hooks + gate-runner in shared commit flow); discipline parity-written into all agent instruction files from one templated source; a check PROVES each lane hits the same hooks/tier0",
+      "validation_goal": "parity-matrix coverage complete; a commit from any lane hits identical hooks+tier0; no lane can skip trunk protection",
+      "deps": ["ft-1"],
+      "editorial_note": "foundational cross-cutting; applied to THIS repo first then reproduced; builds on existing lane-independent .githooks + Rule-16 parity",
+      "detection": {"commit_match": ["FT-7", "all-agent enforcement", "cross-lane"]},
+      "pct_hint": 0,
+      "acceptance": {"status": "pending", "by": null, "date": null, "note": "not started"}
+    }
+  ],
+  "issues": []
+}

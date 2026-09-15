@@ -1,0 +1,19 @@
+{
+  "plan": {
+    "id": "sample-plan",
+    "title": "Sample projected plan",
+    "goal": "Demonstrate editorial goals with progress derived from git evidence"
+  },
+  "items": [
+    {
+      "id": "sample-1",
+      "name": "Create the first slice",
+      "goal": "Add one bounded capability",
+      "validation_goal": "The capability check passes",
+      "deps": [],
+      "detection": {"commit_match": ["sample slice"]},
+      "pct_hint": 60,
+      "acceptance": {"status": "pending"}
+    }
+  ]
+}
