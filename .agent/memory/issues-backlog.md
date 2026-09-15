@@ -3878,3 +3878,54 @@ authoritative schema + which other files are truly dead vs still-consumed (grep 
 (2) archive (Rule 12, never delete) the confirmed-legacy schema files under .agent/archive/; (3) gitignore +
 untrack experiments.sqlite; (4) leave a one-line SCHEMA-SSOT pointer (alembic) so it's never ambiguous again.
 Do NOT remove any schema file until its non-use is proven (grep runtime/bootstrap/docker consumers).
+
+## [OPEN] B1 chat/batch parity oracle fail-closes on llm_config.py source drift (2026-09-14)
+The B1 chat/batch parity shadow oracle (scripts/testing/test-local-inference-chat-batch-parity.py, landed
+e5460c07, accepted VERDICT PASS 2026-07-23) now FAILS: `live source drift: ai-stack/mcp-servers/shared/
+llm_config.py (predecessor hash mismatch — re-authorize)`. Mechanism (lines 450-454): the golden fixture
+carries a `live_source_manifest` pinning sha256 of the live sources it measures parity against; llm_config.py
+has legitimately evolved since 07-23, so its current hash != the pinned hash and the oracle fail-closes by
+design (anti-tautology — the parity claim must be re-established whenever the measured source changes).
+NOT a bug in the oracle; NOT wired into tier0 (tier0 --pre-commit PASSES 53/0, so it does not block commits).
+This IS the open Foundation B1 tail: parity is not currently green.
+Severity: medium (B1 shadow-exit is not re-confirmed until this is re-verified).
+ACTION (next Phase-1 B1-tail slice, bounded + authorized per the B1-parity authorization pattern): re-run
+chat/batch parity against the CURRENT llm_config.py; either (a) parity still holds on the projection → re-pin
+the live_source_manifest hashes + re-accept (B1 shadow-exit re-confirmed), or (b) a NEW divergence appeared →
+record it as typed L3/L4 evidence (not a silent re-pin). Requires a fresh single-use owner authorization
+(the 07-23 auth was CONSUMED). Do NOT hand-edit the pinned hash to make it pass (anti-gaming, Rule 19).
+
+## [AUDIT 2026-09-14] Agentic-memory integration audit (db-4) — LIVE re-verification + narrowed fix scope
+Re-ran the assessment against LIVE services (not prior-session numbers). Ground truth:
+- Services healthy under REAL unit names: ai-aidb, ai-hybrid-coordinator, ai-switchboard, qdrant, redis-mcp,
+  llama-cpp(+embed) all active. (`redis`/`redis-ai` inactive — redis-mcp.service is the real server = finding #4.)
+- Qdrant 33 collections. Typed memory TIERS thin: episodic 7, procedural 10, semantic 170. RAW operational
+  collections huge: interaction-history 41,359 (GREW from 41,350 = live writes ACTIVE), knowledge 16,181,
+  learning-feedback 10,553, error-solutions 1,852, skills-patterns 2,652, best-practices 332, wiki-sections 11.
+  knowledge/learning-feedback/error-solutions UNCHANGED vs prior assessment (quiet/periodic write paths).
+- 18 ephemeral agent-ctx-* collections, 70 points total — never GC'd (finding #3, cruft).
+ROOT CAUSE of "half-done" impression: MemoryBroker.write() (ai-stack/mcp-servers/hybrid-coordinator/
+memory_broker.py) is well-built (contradiction detection, supersession, bitemporal) but the episodic/procedural
+tiers are under-CALLED by the live loop — agents log raw interaction-history heavily, but the curated typed
+tiers barely populate. NOT a broken writer; an INTEGRATION gap.
+Dashboard aistack.py ALREADY surfaces per-tier point counts (Episodic/Procedural/Semantic/Crystalline/
+Institutional cards) — so observability is PARTIAL, not absent. Narrowed fix scope:
+  F1 (obs, low-risk): add per-tier RECENCY (last-write timestamp) + a thin-tier/anomaly FLAG + ephemeral-
+     collection count to the existing memory cards (blank/silent low-count = the bug). dashboard Python (restart).
+  F2 (GC, medium): declarative timer pruning ephemeral agent-ctx-* older than N days; keep the taxonomy tiers.
+     nix + script (rebuild).
+  F3 (integration, deeper follow-up): wire/verify the episodic+procedural write path in the live agent loop
+     (diagnose WHICH loop should write episodic — likely session-end summarization — and why it's quiet).
+Severity: medium. F1+F2 are bounded (delegate to sonnet/Codex per Rule 17); F3 is a larger integration slice.
+
+## [OPEN low] db-4 F1 memory-recency is an approximate (unordered 32-scroll), inaccurate for large tiers (2026-09-14)
+The dashboard memory-health recency added in db-4 F1 (dashboard/backend/api/routes/aistack.py
+_fetch_qdrant_collection_recency) approximates a tier's newest write by scrolling ONE bounded page (32
+points, unordered) and taking the max timestamp. Accurate for THIN tiers (episodic 7 / procedural 10 →
+scroll returns all points) but for a large memory tier (e.g. semantic 170, or if a big collection is later
+typed "memory") the 32-point scroll samples by point-ID, not time, so it can UNDER-REPORT the true newest
+write (falsely-old recency). Honestly documented in the helper docstring; degrades to None on Qdrant failure.
+Severity: low (v1 flagging works for the thin/stale case that matters; additive field).
+ACTION (db-4 F1-follow-up): for accurate recency on large tiers, add a Qdrant payload index on the timestamp
+key + use scroll/query order_by desc (limit 1), or maintain a newest-write marker per collection. Until then,
+treat newest_write_at as approximate for tiers with >32 points.
