@@ -1,0 +1,1 @@
+{"marker":"go.mod","commands":{"build":{"command":"go build ./...","tool":"go"},"test":{"command":"go test ./...","tool":"go"},"lint":{"command":"go vet ./...","tool":"go"}}}

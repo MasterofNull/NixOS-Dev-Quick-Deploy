@@ -29,8 +29,8 @@
       "deps": [],
       "editorial_note": "foundational; derives from this repo's SSOT gates, records the derivation source to avoid drift",
       "detection": {"commit_match": ["factory-gate-bundle", "FT-1", "gate bundle"]},
-      "pct_hint": 0,
-      "acceptance": {"status": "pending", "by": null, "date": null, "note": "not started"}
+      "pct_hint": 100,
+      "acceptance": {"status": "accepted", "by": "Codex /root/ft1_independent_acceptance", "date": "2026-09-15", "note": "Independent PASS on staged subject 743848d961b8220a4487016b24074b95b3750f675cc4bb3170de95f378c75477; committed 44ec2919; final tier0 53/0, QA 179. Additive only; no activation."}
     },
     {
       "id": "ft-2", "name": "stack adapters (py/node/rust/go/nix/generic)", "phase": "adapt", "kind": "slice",
