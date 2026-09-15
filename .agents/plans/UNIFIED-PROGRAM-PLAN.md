@@ -22,7 +22,7 @@ has different bytes. See `unified-program/Q1-Q2-OWNER-RATIFICATION-20260718.md`.
 | 3 | `docs/architecture/aqos-cycle1-state-spine-adr.md` | Per-authority consolidation proposal; ten SPLIT_BRAIN rows | Proposed, NOT authorized |
 | 4 | `.agent/PROJECT-LOCAL-AI-FACTORY-CODEX-FABLE-SYNTHESIS.md` | **Parent architecture** — reconciles Fable + Codex corpora | Q1 RATIFIED 2026-07-18 against historical SHA-256 `00c7dbc5…` |
 | 5 | `.agent/PROJECT-LOCAL-AI-FACTORY-REFERENCE-ARCHITECTURE-PRD.md` | Ground-up target + Cycles 0–6 roadmap + delivery gates | trajectory doc; Cycle 1A executing under it |
-| 6 | `.agent/PROJECT-LOCAL-INFERENCE-CONTRACT-PRD.md` + L-series plans | Current implementation track (Cycle 1A / Foundation B1) | L1A+L2A+L2B-A+L2B-B landed (`0262be3c`, VERDICT PASS); B1 tail = chat/batch parity in shadow |
+| 6 | `.agent/PROJECT-LOCAL-INFERENCE-CONTRACT-PRD.md` + L-series plans | Current implementation track (Cycle 1A / Foundation B1) | **Foundation B1 SHADOW-COMPLETE:** L1A+L2A+L2B-A+L2B-B landed (`0262be3c`) + chat/batch parity oracle re-verified green (`3880ebf6`). Live adoption (L3/L4) deferred→Product D |
 | 7 | `.agent/PROJECT-AQOS-CYCLE0-TRUTH-PRD.md` + `aqos-refoundation-cycle0/` | Cycle 0 record: evidence algebra, authority inventory, threat register, incidents | evidence integrated `c9fe3974`; 10/10 logical targets adjudicated; physical convergence pending |
 | 8 | `.agent/PROJECT-AQOS-PRD.md` + `.agents/plans/aqos-v1/` | Fable AQ-OS v1: WS1–WS10, 7 beats, horizon/unknowns, command-center roadmap | never ratified standalone; **absorbed as product backlog** (see §4) |
 | 9 | `.agent/PROJECT-VERIFIED-FACTORY-PRD.md` + companion meta-prompt | Cross-cutting verification/throughput layer (VF-1…VF-9) | REQUEST_REVISION; amended candidate awaits re-review |
@@ -49,11 +49,13 @@ is the merge point; the other three remain source corpora, not competitors.
 | a2a event log + PULSE/RESUME projector (`aq-event`) — files are projections now | LIVE (partial WS2/B3 delivery) | `.agents/events/a2a-events.jsonl` |
 | Fable-parity behavior contract injected in payloads/profiles | LIVE (pending model-neutral rename, owner decision Q4) | FABLE-PARITY-CONTRACT |
 | Qwen3-35B promoted primary local agent; measured envelope = bounded single-edit | MEASURED | memory |
+| B1 chat/batch parity shadow oracle (offline; 4 byte-equivalent + 8 typed-divergence evidence, 0 must-fail) | DONE — re-verified + re-pinned to current `llm_config.py` under owner-activated auth | `e5460c07`+`3880ebf6` |
 
-**B1 TAIL (next):** chat/batch parity in shadow — the last B1 sub-slice. L2B-B landed
-shadow-accepted (VERDICT PASS, `0262be3c`); its live payload adoption is deferred to Product D
-convergence (no live callers of `normalize_endpoint_payload` yet — shadow by B1 design). M1 Agent
-Ops traceability remains a separate monitored projection slice.
+**FOUNDATION B1 SHADOW-COMPLETE.** All B1 shadow items are green: L1A/L2A/L2B-A/L2B-B kernels + the
+chat/batch parity oracle (re-verified `3880ebf6`). Live payload adoption (routing dispatch through
+`normalize_endpoint_payload`; L3/L4 duplicated-logic removal) is deferred to Product D convergence — no
+live callers yet, shadow by B1 design. Next foundation gate: Q3 security model → activate Foundation C
+enforcement. M1 Agent Ops traceability remains a separate monitored projection slice.
 
 ## 3. Unified track structure (the one spine)
 
@@ -63,10 +65,10 @@ this table is the single naming bridge. Every other artifact maps INTO these tra
 | Track | = Ref-arch cycle | Content | Gate to start | Status |
 |-------|------------------|---------|---------------|--------|
 | **Foundation A** — Cycle-0 truth exit | Cycle 0 exit | Owner adjudicates target/transition-owner/deadline/rollback for all ten SPLIT_BRAIN/UNOWNED rows | owner session over `system-state-authorities.yaml` | **OWNER-ADJUDICATED: 10/10; physical convergence remains Cycle 1 work** |
-| **Foundation B1** — contract kernel + parity vectors | Cycle 1A | L-series: L1A ✅, L2A ✅, L2B-A ✅, L2B-B ✅ (shadow-accepted `0262be3c`), then chat/batch parity in shadow | fresh authorization per slice | EXECUTING (B1 tail: chat/batch parity) |
+| **Foundation B1** — contract kernel + parity vectors | Cycle 1A | L-series: L1A ✅, L2A ✅, L2B-A ✅, L2B-B ✅ (shadow-accepted `0262be3c`), chat/batch parity ✅ (shadow oracle re-verified `3880ebf6`) | fresh authorization per slice | **SHADOW-COMPLETE** — all B1 shadow items green; live adoption (L3/L4) → Product D |
 | **Foundation B2** — one shadow state vertical | Cycle 1B | CAS + outbox/replay for owner-selected workflow-run-task authority; legacy stays authoritative | Q1/Q2 ratified; each implementation slice still needs exact independent review and owner activation | **B2-D0 ACCEPTED; B2-C1 AUTHORIZATION PREPARATION/REVIEW ONLY** |
 | **Foundation B3** — projector + canon-compiler shadow | Cycle 1B/2 seam | Extend `aq-event` projector to one dashboard surface; canon compiler (docs/clients/cards; never runtime authority) | B1 contracts stable | partial (aq-event live) |
-| **Foundation C** — identity, leases, execution cells | Cycle 2 | Principal envelopes, CapabilityLease, effect brokers, network profiles, cells; absorbs F3 + WS9 core | B1 + ratified security model (Q3) | **SHADOW-BUILD IN PROGRESS (default-OFF, unactivated):** ALA rev4 `51795389`, C2-SCI issuer B4 `2c36e7d3`, capability-enforcement dashboard card `81aa65c1`; enforcement flags default 0 / service enable=false; activation gated on B1 tail + Q3 (hash-bound owner activation) |
+| **Foundation C** — identity, leases, execution cells | Cycle 2 | Principal envelopes, CapabilityLease, effect brokers, network profiles, cells; absorbs F3 + WS9 core | B1 + ratified security model (Q3) | **SHADOW-BUILD IN PROGRESS (default-OFF, unactivated):** ALA rev4 `51795389`, C2-SCI issuer B4 `2c36e7d3`, capability-enforcement dashboard card `81aa65c1`; enforcement flags default 0 / service enable=false; B1 prerequisite now MET (B1 shadow-complete), activation gated on Q3 only (hash-bound owner activation) |
 | **Product D** — inference/client live convergence | Cycle 3 | Switchboard sole gateway; delegate-to-local/aq-chat as coordinator clients; **global scheduler activation closes F2.5 HIGH**; route/profile registry consolidation | B1 parity fixtures + C boundaries | NOT STARTED |
 | **Product E** — evaluation & learning factory | Cycles 4–5 | Dataset/scorer/prompt registries, sealed answers, certified scorers, counterfactual replay, promotion ledger, small-model admission; absorbs WS8, aq-eval + inference-bench PRDs, VF-4/5/8 | B2 evidence store + C integrity | NOT STARTED |
 | **Product F** — one CLI + command center | Cycle 6 (partial) | `aq <noun> <verb>` + shims; OTel traces; SLO burn; typed console (Fleet/Runs/Evals/Approvals/…); absorbs WS4/WS5/WS6 + ws6-command-center-roadmap | authoritative telemetry from C/D | NOT STARTED |
@@ -154,7 +156,8 @@ DONE       L2B-A accepted and committed fbeffbab
 DONE       L2B-B shadow-accepted (VERDICT PASS) 99364942+0262be3c; live adoption deferred→Product D
 DONE       Q1/Q2 ratified; B2-D0 accepted at c11bf7a1
 DONE       Foundation C shadow-build slices landed default-OFF (ALA rev4, C2-SCI issuer, cap-enforcement dashboard)
-NOW        B1 tail: chat/batch parity in shadow (closes Foundation B1)
+DONE       B1 tail: chat/batch parity oracle re-verified + re-pinned (3880ebf6) — Foundation B1 SHADOW-COMPLETE
+NOW        Foundation C activation now gated on Q3 only (B1 prerequisite met); DB cleanup + agentic-memory fixes in parallel
 NEXT       Q3 security-model ratification → activate Foundation C enforcement (hash-bound owner activation)
 LATER      Prepare/review exact B2-C1 authorization (contract-only; no implementation)
 THEN       Owner may activate the independently reviewed B2-C1 contract-only slice
