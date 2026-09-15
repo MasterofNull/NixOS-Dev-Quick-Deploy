@@ -40,6 +40,7 @@ _POSTGRES_QUERY_OK_GAUGE: float = 0.0
 _AQ_REPORT_CACHE: Dict[str, Any] = {"ts": 0.0, "payload": {}}
 _AI_METRICS_CACHE: Dict[str, Any] = {"ts": 0.0, "payload": None}
 _QDRANT_POINTS_CACHE: Dict[str, Any] = {"ts": 0.0, "collections": tuple(), "payload": {}}
+_QDRANT_RECENCY_CACHE: Dict[str, Any] = {"ts": 0.0, "collections": tuple(), "payload": {}}
 # Postgres probe result cache — avoids a fresh asyncpg connection on every
 # metrics cycle.  TTL is 25 s (longer than the 10 s metrics cache so the
 # cached probe result is still valid when the metrics cache next expires).
@@ -86,6 +87,16 @@ HARNESS_EVAL_TIMEOUT = aiohttp.ClientTimeout(
 _HEALTH_PROBE_TIMEOUT = aiohttp.ClientTimeout(total=2)
 AI_METRICS_CACHE_TTL_SECONDS = float(os.getenv("DASHBOARD_AI_METRICS_TTL_SECONDS", "10"))
 QDRANT_POINTS_CACHE_TTL_SECONDS = float(os.getenv("DASHBOARD_QDRANT_POINTS_TTL_SECONDS", "30"))
+QDRANT_RECENCY_CACHE_TTL_SECONDS = float(os.getenv("DASHBOARD_QDRANT_RECENCY_TTL_SECONDS", "30"))
+# Memory tier flagged "thin" when points_count falls below this — makes a silently
+# under-populated tier (e.g. episodic/procedural next to a healthy semantic tier)
+# visible instead of blending into a plain count (db-4 F1 audit).
+MEMORY_TIER_THIN_THRESHOLD = 25
+# Ephemeral per-agent scratch collections (agent-ctx-<id>), never GC'd today.
+_EPHEMERAL_COLLECTION_PREFIX = "agent-ctx-"
+# Small bounded scroll used to approximate a collection's newest write — Qdrant has
+# no cheap order-by-payload without a field index on the timestamp key.
+_QDRANT_RECENCY_SCROLL_LIMIT = 32
 
 # Map from systemd unit name → /health endpoint URL.
 # Only units listed here receive an HTTP probe in addition to systemd check.
@@ -1661,6 +1672,53 @@ async def _fetch_qdrant_collection_points(collections: list[str]) -> Dict[str, i
     return results
 
 
+async def _fetch_qdrant_collection_recency(collections: list[str]) -> Dict[str, Optional[str]]:
+    """Approximate each collection's newest write via a bounded scroll.
+
+    Qdrant has no cheap order-by-payload without a field index on the timestamp
+    key, so this scrolls one small page of points per collection and takes the
+    max _extract_event_timestamp seen in that page. Not a hard guarantee of the
+    true newest point, but enough to flag a stale/silent memory tier. Tolerates
+    Qdrant failures the same way _fetch_qdrant_collection_points does — degrade
+    to None per collection rather than raising.
+    """
+    normalized = tuple(sorted(set(collections)))
+    if not normalized:
+        return {}
+
+    now = time.time()
+    cached_payload = _QDRANT_RECENCY_CACHE.get("payload")
+    cached_collections = tuple(_QDRANT_RECENCY_CACHE.get("collections", tuple()))
+    if (
+        isinstance(cached_payload, dict)
+        and cached_collections == normalized
+        and (now - float(_QDRANT_RECENCY_CACHE.get("ts", 0.0))) < QDRANT_RECENCY_CACHE_TTL_SECONDS
+    ):
+        return dict(cached_payload)
+
+    async def _newest_for(name: str) -> Optional[str]:
+        resp = await post_with_fallback(
+            f"{SERVICES['qdrant']}/collections/{name}/points/scroll",
+            {"limit": _QDRANT_RECENCY_SCROLL_LIMIT, "with_payload": True, "with_vector": False},
+        )
+        points = resp.get("result", {}).get("points", []) if isinstance(resp, dict) else []
+        newest: Optional[str] = None
+        for point in points:
+            payload = point.get("payload") if isinstance(point, dict) else None
+            ts = _extract_event_timestamp(payload) if isinstance(payload, dict) else None
+            if ts and (newest is None or ts > newest):
+                newest = ts
+        return newest
+
+    newest_values = await asyncio.gather(*(_newest_for(name) for name in normalized))
+    results: Dict[str, Optional[str]] = dict(zip(normalized, newest_values))
+
+    _QDRANT_RECENCY_CACHE["ts"] = now
+    _QDRANT_RECENCY_CACHE["collections"] = normalized
+    _QDRANT_RECENCY_CACHE["payload"] = dict(results)
+    return results
+
+
 @router.post("/feedback")
 async def submit_feedback(payload: FeedbackPayload) -> Dict[str, Any]:
     """Forward user feedback to the hybrid coordinator learning endpoint."""
@@ -1787,16 +1845,31 @@ async def knowledge_observatory() -> Dict[str, Any]:
 
     points_by_name = await _fetch_qdrant_collection_points(collection_names) if collection_names else {}
 
+    # Recency is only worth the extra Qdrant round-trips for the typed memory
+    # tiers (episodic/procedural/semantic/...) — bounded to those, not every
+    # collection, per db-4 F1.
+    memory_names = [
+        name for name in collection_names
+        if _COLLECTION_META.get(name, {}).get("type") == "memory"
+    ]
+    recency_by_name = await _fetch_qdrant_collection_recency(memory_names) if memory_names else {}
+
     collections_out = []
     total_points = 0
+    ephemeral_collections = 0
+    ephemeral_points = 0
     for name in sorted(collection_names):
         pts = points_by_name.get(name, 0)
         total_points += pts
+        if name.startswith(_EPHEMERAL_COLLECTION_PREFIX):
+            ephemeral_collections += 1
+            ephemeral_points += pts
         meta = _COLLECTION_META.get(name, {
             "label": name.replace("-", " ").title(),
             "type": "other",
             "purpose": "",
         })
+        is_memory_tier = meta["type"] == "memory"
         collections_out.append({
             "name": name,
             "label": meta["label"],
@@ -1804,6 +1877,11 @@ async def knowledge_observatory() -> Dict[str, Any]:
             "purpose": meta["purpose"],
             "points": pts,
             "active": pts > 0,
+            # Memory-tier health surface (db-4 F1): newest write timestamp
+            # (approximate — see _fetch_qdrant_collection_recency) and a
+            # thin-tier flag so a silently under-populated tier is visible.
+            "newest_write_at": recency_by_name.get(name) if is_memory_tier else None,
+            "thin": is_memory_tier and pts < MEMORY_TIER_THIN_THRESHOLD,
         })
 
     collections_out.sort(key=lambda x: x["points"], reverse=True)
@@ -1814,6 +1892,12 @@ async def knowledge_observatory() -> Dict[str, Any]:
         "total_collections": len(collections_out),
         "active_collections": sum(1 for c in collections_out if c["active"]),
         "collections": collections_out,
+        # Ephemeral agent-ctx-* scratch collections — never GC'd today, tracked
+        # separately from the typed memory tiers (db-4 F1).
+        "ephemeral_agent_ctx": {
+            "collections": ephemeral_collections,
+            "points": ephemeral_points,
+        },
     }
     _OBSERVATORY_CACHE["ts"] = now
     _OBSERVATORY_CACHE["payload"] = payload
