@@ -4261,6 +4261,8 @@ async function loadRuntimeDetails() {
   const off = s.offloading || {};
   const ce = s.context_efficiency || {};
   const cg = s.capability_gap || {};
+  const outcomes = cg.outcomes || {};
+  const outcomeCounts = outcomes.counts || {};
   const lrn = s.learning || {};
   const rows = [
     fwRow("Offloading", fmtImplStatus(off.status), "ok"),
@@ -4281,6 +4283,35 @@ async function loadRuntimeDetails() {
       "· detected",
       cg.gaps_detected ?? 0,
       cg.gaps_detected > 0 ? "warn" : "ok"
+    ),
+    fwRow(
+      "· outcome catalog",
+      outcomes.available ? `${outcomes.total ?? 0} · ${outcomes.status || "unverified"}` : "UNVERIFIED",
+      outcomes.available && outcomes.status === "catalog-valid" ? "info" : "warn"
+    ),
+    fwRow(
+      "· eq / partial",
+      outcomes.available
+        ? `${outcomeCounts.equivalent ?? 0} / ${outcomeCounts.partial ?? 0}`
+        : "--",
+      "info"
+    ),
+    fwRow(
+      "· catalog version",
+      outcomes.available ? `${outcomes.version || "unknown"} · ${relTime(outcomes.modified_at)}` : "UNVERIFIED",
+      "info"
+    ),
+    fwRow(
+      "· miss / deny / amb",
+      outcomes.available
+        ? `${outcomeCounts.missing ?? 0} / ${outcomeCounts.denied ?? 0} / ${outcomeCounts.ambiguous ?? 0}`
+        : "--",
+      (outcomeCounts.missing || outcomeCounts.ambiguous) ? "warn" : "info"
+    ),
+    fwRow(
+      "· unverified",
+      outcomes.available ? outcomeCounts.unverified ?? 0 : "--",
+      (outcomeCounts.unverified || !outcomes.available) ? "warn" : "ok"
     ),
     fwRow("Learning", fmtImplStatus(lrn.status), "ok"),
     fwRow("· signals", lrn.signals_recorded ?? 0),

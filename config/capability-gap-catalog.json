@@ -5,6 +5,57 @@
     "last_updated": "2026-05-20"
   },
   "version": "1.0.0",
+  "outcomes": [
+    {
+      "id": "native-validation",
+      "aliases": [
+        "tier0"
+      ],
+      "kind": "workflow",
+      "domains": [
+        "qa"
+      ],
+      "evidence_paths": [
+        "scripts/governance/tier0-validation-gate.sh"
+      ],
+      "authority": "native",
+      "status": "equivalent",
+      "qa": "aq-qa 0",
+      "visibility": "dashboard capability card"
+    },
+    {
+      "id": "accessibility-review",
+      "aliases": [
+        "a11y"
+      ],
+      "kind": "review",
+      "domains": [
+        "ui"
+      ],
+      "evidence_paths": [
+        "docs/agent-guides/48-CAPABILITY-OUTCOME-RESOLUTION.md"
+      ],
+      "authority": "native",
+      "status": "partial",
+      "qa": "",
+      "visibility": ""
+    },
+    {
+      "id": "external-auto-install",
+      "aliases": [
+        "install external"
+      ],
+      "kind": "installer",
+      "domains": [
+        "operations"
+      ],
+      "evidence_paths": [],
+      "authority": "denied",
+      "status": "denied",
+      "qa": "",
+      "visibility": ""
+    }
+  ],
   "capabilities": [
     {
       "id": "rg",

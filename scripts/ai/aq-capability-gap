@@ -10,6 +10,7 @@ from __future__ import annotations
 
 import argparse
 import datetime as dt
+import importlib.util
 import json
 import os
 import shutil
@@ -21,6 +22,25 @@ STACK_HINTS_PATH = REPO_ROOT / "config" / "capability-stack-hints.json"
 PACKAGE_RESOLVERS_PATH = REPO_ROOT / "config" / "capability-package-resolvers.json"
 WORKFLOW_BLUEPRINTS = REPO_ROOT / "config" / "workflow-blueprints.json"
 DEFAULT_OBSERVATIONS_PATH = REPO_ROOT / ".cache" / "capability-gap-observations.json"
+MAX_OUTCOME_QUERY_LENGTH = 128
+MAX_OUTCOME_CATALOG_BYTES = 1_048_576
+MAX_OUTCOMES = 256
+_OUTCOME_HELPER = None
+
+
+def _capability_outcomes_helper():
+    """Load the shared validator without changing legacy CLI import behavior."""
+    global _OUTCOME_HELPER
+    if _OUTCOME_HELPER is not None:
+        return _OUTCOME_HELPER
+    module_path = REPO_ROOT / "scripts" / "ai" / "lib" / "capability_outcomes.py"
+    spec = importlib.util.spec_from_file_location("aq_capability_outcomes", module_path)
+    if spec is None or spec.loader is None:
+        raise ValueError("catalog_validator_unavailable")
+    module = importlib.util.module_from_spec(spec)
+    spec.loader.exec_module(module)
+    _OUTCOME_HELPER = module
+    return _OUTCOME_HELPER
 
 
 def parse_args() -> argparse.Namespace:
@@ -28,6 +48,8 @@ def parse_args() -> argparse.Namespace:
     parser.add_argument("--tool", help="Binary or repo command to inspect.")
     parser.add_argument("--workflow", help="Workflow blueprint id to inspect.")
     parser.add_argument("--skill", help="Skill name to inspect.")
+    parser.add_argument("--query", help="Resolve a cataloged capability outcome without probing or activating it.")
+    parser.add_argument("--domain", help="Optional bounded domain filter for --query.")
     parser.add_argument("--context-language", dest="context_language", help="Optional implementation language hint, for example nix, python, shell.")
     parser.add_argument("--context-application", dest="context_application", help="Optional application/domain hint, for example nixos, ai-stack, prsi.")
     parser.add_argument("--context-file", dest="context_file", help="Optional current file path hint.")
@@ -200,13 +222,85 @@ def load_workflow_ids() -> set[str]:
 
 
 def normalize_request(args: argparse.Namespace) -> tuple[str, str]:
+    if args.query:
+        return args.query, "outcome"
     if args.workflow:
         return f"workflow:{args.workflow}", "workflow"
     if args.skill:
         return f"skill:{args.skill}", "skill"
     if args.tool:
         return args.tool, "tool"
-    raise SystemExit("one of --tool, --workflow, or --skill is required")
+    raise SystemExit("one of --query, --tool, --workflow, or --skill is required")
+
+
+def evidence_state(paths: list[str]) -> tuple[list[str], list[dict[str, str]]]:
+    """Inspect only safe repository-relative evidence paths, never escapes."""
+    safe: list[str] = []
+    issues: list[dict[str, str]] = []
+    root = REPO_ROOT.resolve()
+    for raw in paths:
+        candidate = Path(raw)
+        if candidate.is_absolute() or ".." in candidate.parts:
+            issues.append({"path": raw, "reason": "evidence_path_not_repo_relative"})
+            continue
+        resolved = (root / candidate).resolve()
+        if resolved != root and root not in resolved.parents:
+            issues.append({"path": raw, "reason": "evidence_path_escapes_repository"})
+        elif not (root / candidate).exists():
+            issues.append({"path": raw, "reason": "evidence_path_missing"})
+        else:
+            safe.append(raw)
+    return safe, issues
+
+
+def validate_outcome_catalog(catalog: object) -> list[dict]:
+    """Delegate full outcome validation to the shared schema-backed helper."""
+    return _capability_outcomes_helper().validate_outcome_catalog(catalog)
+
+
+def load_outcome_catalog(path: Path) -> dict:
+    """Load only a bounded, schema-valid catalog; legacy loading remains unchanged."""
+    return _capability_outcomes_helper().load_outcome_catalog(path)
+
+
+def resolve_outcomes(catalog: dict, query: str, domain: str) -> dict:
+    """Pure, deterministic outcome resolution; catalog evidence is never executed."""
+    if len(query) > MAX_OUTCOME_QUERY_LENGTH or len(domain) > MAX_OUTCOME_QUERY_LENGTH:
+        raise ValueError("query and domain must be at most 128 characters")
+    outcomes = validate_outcome_catalog(catalog)
+    needle = query.strip().casefold()
+    domain = domain.strip().casefold()
+    candidates: list[dict] = []
+    for entry in outcomes:
+        canonical = entry["id"]
+        aliases = entry["aliases"]
+        names = [canonical, *aliases]
+        score = 100 if needle == canonical.casefold() else 90 if needle in {item.casefold() for item in aliases} else 0
+        if not score and needle and any(needle in item.casefold() for item in names):
+            score = 50
+        if not score or (domain and domain not in {str(item).casefold() for item in entry.get("domains", [])}):
+            continue
+        evidence = entry["evidence_paths"]
+        safe_evidence, evidence_issues = evidence_state(evidence)
+        verdict = str(entry.get("status", "unverified"))
+        if str(entry.get("authority", "")) == "denied":
+            verdict = "denied"
+        elif evidence_issues:
+            verdict = "unverified"
+        candidates.append({"id": canonical, "kind": entry["kind"], "verdict": verdict,
+                           "score": score, "evidence_paths": safe_evidence, "evidence_issues": evidence_issues,
+                           "authority": entry["authority"], "qa": entry["qa"], "visibility": entry["visibility"]})
+    candidates.sort(key=lambda item: (-item["score"], item["id"]))
+    if not candidates:
+        return {"query": query, "domain": domain, "verdict": "missing", "candidates": []}
+    top = candidates[0]["score"]
+    if any(item["verdict"] == "denied" for item in candidates):
+        verdict = "denied"
+    elif len([item for item in candidates if item["score"] == top]) > 1:
+        verdict = "ambiguous"
+    else:
+        verdict = candidates[0]["verdict"]
+    return {"query": query, "domain": domain, "verdict": verdict, "candidates": candidates}
 
 
 def match_catalog_entry(catalog: dict, capability_id: str) -> dict | None:
@@ -643,6 +737,17 @@ def format_text(payload: dict) -> str:
 def main() -> int:
     args = parse_args()
     capability_id, capability_type = normalize_request(args)
+    if args.query:
+        try:
+            payload = resolve_outcomes(load_outcome_catalog(Path(args.catalog)), args.query, args.domain or "")
+        except (OSError, ValueError, json.JSONDecodeError) as error:
+            payload = {"query": args.query, "domain": args.domain or "", "verdict": "unverified",
+                       "candidates": [], "state": "ERROR", "reason": str(error)}
+        if args.fmt == "json":
+            print(json.dumps(payload, indent=2, sort_keys=True))
+        else:
+            print(f"query: {payload['query']}\nverdict: {payload['verdict']}")
+        return 2 if payload.get("state") == "ERROR" else 0
     catalog = load_catalog(Path(args.catalog))
     stack_hints = load_stack_hints(STACK_HINTS_PATH)
     package_resolvers = load_package_resolvers(PACKAGE_RESOLVERS_PATH)

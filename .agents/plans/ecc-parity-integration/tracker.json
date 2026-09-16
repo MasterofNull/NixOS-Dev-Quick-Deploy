@@ -29,15 +29,15 @@
       "validation_goal": "3,716 source rows reconcile to pin; intake disabled; independent plan and exact staged review PASS; Tier-0 passes",
       "deps": [], "pct_hint": 100,
       "detection": {"commit_match": ["ECC", "Gate A", "parity evidence"]},
-      "acceptance": {"status": "accepted", "by": "Codex /root/ecc_planning_acceptance", "date": "2026-09-16", "note": "Independent PLAN_READY and commit-bound PASS on the pre-tracker subject; tracker added from Tier-0 governance warning and requires final rebind before commit."}
+      "acceptance": {"status": "accepted", "by": "Codex /root/ecc_planning_acceptance", "date": "2026-09-16", "note": "Committed 2e1ac332 after final independent PASS bound to staged subject 430cf2a388b01dbbe054470f0b1dffbd96653994a21c4c5076aec03710351e0b; Tier-0 53 PASS / 0 FAIL."}
     },
     {
       "id": "p0-a", "name": "extend native capability-gap resolution", "phase": "resolve", "kind": "slice",
       "goal": "resolve equivalent, partial, missing, denied, ambiguous and unverified outcomes through existing AQ-OS surfaces",
       "validation_goal": "P0A-SLICE-BRIEF focused fixtures, integration-path aq-qa, dashboard projection and Tier-0 pass",
-      "deps": ["gate-a"], "pct_hint": 0,
+      "deps": ["gate-a"], "pct_hint": 100,
       "detection": {"commit_match": ["P0-A", "capability outcome resolver"]},
-      "acceptance": {"status": "pending", "by": null, "date": null, "note": "queued; implementation not started"}
+      "acceptance": {"status": "accepted", "by": "Codex /root/ecc_planning_acceptance", "date": "2026-09-16", "note": "Independent PASS on implementation subject 0800714240bcdad4b78dd3f0c2341d4725618377a2c383f46dc198208e94620d after bounded F1 schema-parity and F2 production-dependency fixes. Tier-0 53 PASS / 0 FAIL; phase-0 182 checks. Exact proposed production interpreter dashboard fixture PASS; Claude confirmatory PASS. Final metadata-bound subject is in commit trailers. No deployed activation."}
     },
     {
       "id": "p0-b", "name": "canonical provider projection compiler", "phase": "project", "kind": "slice",

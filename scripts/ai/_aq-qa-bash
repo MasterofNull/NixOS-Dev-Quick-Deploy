@@ -1685,6 +1685,8 @@ _check 1 "0.10.5" "model catalog/profile freshness" \
       python3 "${REPO_ROOT}/scripts/testing/test-factory-gate-install.py"
     _check 5 "0.10.46" "Factory retrofit fixture: preview, confirmation, originals and hook composition" \
       python3 "${REPO_ROOT}/scripts/testing/test-factory-gate-retrofit.py"
+    _check 5 "0.10.47" "Capability outcome resolver: verdicts, QA and dashboard visibility" \
+      python3 "${REPO_ROOT}/scripts/testing/test-capability-outcome-resolver.py" --smoke
     _check 1 "0.10.30" "analysis-only local-agent observation loops force final synthesis" \
       python3 "${REPO_ROOT}/scripts/testing/test-agent-executor-analysis-finalization.py"
     _check 1 "0.10.31" "vectorization visualization dashboard surface" \

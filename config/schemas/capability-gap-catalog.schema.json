@@ -1,0 +1,111 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "type": "object",
+  "required": [
+    "version",
+    "capabilities",
+    "outcomes"
+  ],
+  "properties": {
+    "_meta": {
+      "type": "object"
+    },
+    "version": {
+      "type": "string",
+      "minLength": 1
+    },
+    "capabilities": {
+      "type": "array"
+    },
+    "outcomes": {
+      "type": "array",
+      "maxItems": 256,
+      "uniqueItems": true,
+      "items": {
+        "$ref": "#/$defs/outcome"
+      }
+    }
+  },
+  "additionalProperties": false,
+  "$defs": {
+    "id": {
+      "type": "string",
+      "pattern": "^[a-z0-9]+(?:[a-z0-9-]*[a-z0-9])?$"
+    },
+    "path": {
+      "type": "string",
+      "pattern": "^(?!/)(?!.*(?:^|/)\\.\\.(?:/|$))[A-Za-z0-9._/-]+$"
+    },
+    "outcome": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "id",
+        "aliases",
+        "kind",
+        "domains",
+        "evidence_paths",
+        "authority",
+        "status",
+        "qa",
+        "visibility"
+      ],
+      "properties": {
+        "id": {
+          "$ref": "#/$defs/id"
+        },
+        "aliases": {
+          "type": "array",
+          "minItems": 1,
+          "uniqueItems": true,
+          "items": {
+            "type": "string",
+            "minLength": 1
+          }
+        },
+        "kind": {
+          "type": "string",
+          "minLength": 1
+        },
+        "domains": {
+          "type": "array",
+          "minItems": 1,
+          "uniqueItems": true,
+          "items": {
+            "type": "string",
+            "minLength": 1
+          }
+        },
+        "evidence_paths": {
+          "type": "array",
+          "uniqueItems": true,
+          "items": {
+            "$ref": "#/$defs/path"
+          }
+        },
+        "authority": {
+          "enum": [
+            "native",
+            "external",
+            "denied"
+          ]
+        },
+        "status": {
+          "enum": [
+            "equivalent",
+            "partial",
+            "missing",
+            "denied",
+            "unverified"
+          ]
+        },
+        "qa": {
+          "type": "string"
+        },
+        "visibility": {
+          "type": "string"
+        }
+      }
+    }
+  }
+}
