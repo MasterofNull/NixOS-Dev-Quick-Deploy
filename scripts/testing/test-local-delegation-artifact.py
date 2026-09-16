@@ -1271,6 +1271,101 @@ def test_aq_report_exposes_local_agent_monitor():
     print("PASS  aq-report exposes local-agent monitor in machine JSON")
 
 
+def test_local_direct_empty_terminal_overlay_is_read_only_and_bounded():
+    """Only a fully inspected terminal local-direct empty answer is overlaid."""
+    with tempfile.TemporaryDirectory() as tmp:
+        root = Path(tmp)
+        delegation_dir = root / "delegation"
+        output = delegation_dir / "outputs" / "empty.log"
+        output.parent.mkdir(parents=True)
+        output.write_text(" \n\t", encoding="utf-8")
+        tr_mod = _load_task_registry()
+        registry = tr_mod.TaskRegistry(delegation_dir, repo_root=root)
+        registry.append("empty-direct", "answer", str(output), "direct", "reviewer")
+        registry.update_status("empty-direct", "done")
+        before = registry.registry_file.read_bytes()
+
+        payload = registry.monitor_payload()
+        task = payload["tasks"][0]
+        assert_true(task["status"] == "failed", f"empty direct status: {task}")
+        assert_true(task["registry_status"] == "done", f"source status lost: {task}")
+        assert_true(task["inferred_reason"] == "missing_final_answer", f"missing typed reason: {task}")
+        assert_true(task["stage"] == "response_contract", f"missing response stage: {task}")
+        assert_true(registry.registry_file.read_bytes() == before, "monitor wrote registry bytes")
+
+        oversized = delegation_dir / "outputs" / "oversized.log"
+        oversized.write_bytes(b" " * (tr_mod._LOCAL_DIRECT_ANSWER_INSPECTION_BYTES + 1))
+        assert_true(not tr_mod.observed_empty_answer_artifact(oversized), "oversized prefix was treated as empty")
+    print("PASS  local-direct empty terminal overlay is bounded and read-only")
+
+
+def test_local_direct_overlay_refuses_uncertain_and_unrelated_artifacts():
+    """Missing, symlink, unreadable, non-direct, and nonempty cases stay unclassified."""
+    with tempfile.TemporaryDirectory() as tmp:
+        root = Path(tmp)
+        delegation_dir = root / "delegation"
+        outputs = delegation_dir / "outputs"
+        outputs.mkdir(parents=True)
+        tr_mod = _load_task_registry()
+        registry = tr_mod.TaskRegistry(delegation_dir, repo_root=root)
+
+        success = outputs / "success.log"
+        success.write_text('{"status": "done", "success": true}\n', encoding="utf-8")
+        missing = outputs / "missing.log"
+        target = outputs / "target.log"
+        target.write_text("\n", encoding="utf-8")
+        symlink = outputs / "symlink.log"
+        symlink.symlink_to(target)
+        for task_id, path, mode in (
+            ("direct-success", success, "direct"),
+            ("direct-missing", missing, "direct"),
+            ("direct-symlink", symlink, "direct"),
+            ("agent-empty", target, "agent"),
+        ):
+            registry.append(task_id, "answer", str(path), mode, "reviewer")
+            registry.update_status(task_id, "completed")
+
+        original_open = tr_mod.os.open
+        def unreadable_open(path, flags):
+            if Path(path) == target:
+                raise PermissionError("fixture only")
+            return original_open(path, flags)
+        tr_mod.os.open = unreadable_open
+        try:
+            observed = {entry["id"]: entry for entry in registry.monitor_payload()["tasks"]}
+        finally:
+            tr_mod.os.open = original_open
+        for task_id in ("direct-success", "direct-missing", "direct-symlink", "agent-empty"):
+            task = observed[task_id]
+            assert_true(task["inferred_reason"] != "missing_final_answer", f"false empty classification: {task}")
+            assert_true(task["stage"] != "response_contract", f"false response stage: {task}")
+        assert_true(observed["direct-success"]["status"] == "completed", "canonical success changed")
+    print("PASS  local-direct overlay refuses uncertain and unrelated artifacts")
+
+
+def test_delegate_to_local_direct_foreground_guard_uses_shared_safe_inspection():
+    """The wrapper's explicit-direct guard recognizes only a safe empty artifact."""
+    with tempfile.TemporaryDirectory() as tmp:
+        empty = Path(tmp) / "empty.log"
+        full = Path(tmp) / "full.log"
+        empty.write_text("\n\t", encoding="utf-8")
+        full.write_text("final answer", encoding="utf-8")
+        shim_path = ROOT / "scripts" / "ai" / "delegate-to-local"
+        command = (
+            f'source "{shim_path}"; '
+            f'local_direct_answer_missing "{empty}"; test $? -eq 0; '
+            f'local_direct_answer_missing "{full}" && exit 1 || exit 0'
+        )
+        result = subprocess.run(["bash", "-c", command], check=False, capture_output=True, text=True)
+        assert_true(result.returncode == 0, f"wrapper guard did not distinguish artifacts: {result.stderr}")
+    shim = (ROOT / "scripts" / "ai" / "delegate-to-local").read_text(encoding="utf-8")
+    guard = shim.find('[[ "$MODE" == "direct" ]] && local_direct_answer_missing')
+    audit = shim.find('"response_contract missing_final_answer mode=direct"')
+    cleanup = shim.find('audit_save_session "local-${MODE}"', audit)
+    assert_true(guard >= 0 and audit > guard and cleanup > audit, "direct foreground failure cleanup is missing")
+    print("PASS  delegate-to-local direct foreground guard is safe")
+
+
 # Tests that assert the cancellation-lifecycle registry API added by 93f1eff4
 # (_publish_terminal_once / record_process_topology / _proc_start_time — whole-group
 # termination, terminal-receipt serialization, wall-watchdog reaping).  That slice was
@@ -1341,6 +1436,9 @@ if __name__ == "__main__":
         test_registry_reconcile_pending_requires_typed_terminal_reason,
         test_reconcile_pending_cli_is_hermetic_dry_run_by_default_and_confirms_apply,
         test_aq_report_exposes_local_agent_monitor,
+        test_local_direct_empty_terminal_overlay_is_read_only_and_bounded,
+        test_local_direct_overlay_refuses_uncertain_and_unrelated_artifacts,
+        test_delegate_to_local_direct_foreground_guard_uses_shared_safe_inspection,
     ]
     for t in tests:
         if not _lifecycle_ready and t.__name__ in _REVERTED_CANCELLATION_LIFECYCLE_TESTS:
