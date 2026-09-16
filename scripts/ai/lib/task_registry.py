@@ -30,6 +30,7 @@ from typing import Optional
 
 _MAX_COMPLETED = 750    # max completed/failed entries in PENDING.json
 _MAX_HANDOFF_LINES = 300  # max delegation tracking lines in HANDOFF.md
+_LOCAL_DIRECT_ANSWER_INSPECTION_BYTES = 64 * 1024
 
 # ── M2A: bounds and vocabulary (dormant — activation requires M2B authorization) ──
 _M2A_MAX_REGISTRY_BYTES = 50 * 1024 * 1024
@@ -114,6 +115,40 @@ def _now() -> str:
 
 class RegistryError(ValueError):
     """Raised by M2A transactional registry operations on contract violations."""
+
+
+def observed_empty_answer_artifact(path: Path | str) -> bool:
+    """True only for a fully inspected, bounded regular whitespace-only artifact."""
+    try:
+        path = Path(path)
+        initial = path.lstat()
+        if not _stat.S_ISREG(initial.st_mode):
+            return False
+        flags = os.O_RDONLY | getattr(os, "O_CLOEXEC", 0) | getattr(os, "O_NOFOLLOW", 0)
+        descriptor = os.open(path, flags)
+    except OSError:
+        return False
+    try:
+        before = os.fstat(descriptor)
+        if (
+            not _stat.S_ISREG(before.st_mode)
+            or (before.st_dev, before.st_ino) != (initial.st_dev, initial.st_ino)
+            or before.st_size > _LOCAL_DIRECT_ANSWER_INSPECTION_BYTES
+        ):
+            return False
+        data = os.read(descriptor, _LOCAL_DIRECT_ANSWER_INSPECTION_BYTES + 1)
+        after = os.fstat(descriptor)
+        if (
+            len(data) > _LOCAL_DIRECT_ANSWER_INSPECTION_BYTES
+            or after.st_size != before.st_size
+            or after.st_mtime_ns != before.st_mtime_ns
+        ):
+            return False
+        return len(data) == before.st_size and not data.strip()
+    except OSError:
+        return False
+    finally:
+        os.close(descriptor)
 
 
 class ExecBarrier:
@@ -417,10 +452,25 @@ class TaskRegistry:
                     return "failed", "process exited before registry completion; output requires review"
         return "stale", "registry said running, but pid is missing or no longer alive"
 
+    def _local_direct_missing_final_answer(self, entry: dict) -> bool:
+        """Conservatively identify only terminal local-direct empty artifacts."""
+        if entry.get("agent") != "local-direct" or entry.get("status") not in {"done", "completed"}:
+            return False
+        output_path = self._resolve_output_path(entry)
+        return bool(output_path and observed_empty_answer_artifact(output_path))
+
     def _with_inferred_status(self, entry: dict) -> dict:
         observed = dict(entry)
         current_status = observed.get("status")
         if current_status not in {"running", "done", "completed"}:
+            return observed
+        if self._local_direct_missing_final_answer(observed):
+            observed["registry_status"] = current_status
+            observed["status"] = "failed"
+            observed["inferred_status"] = "failed"
+            observed["inferred_reason"] = "missing_final_answer"
+            observed["stage"] = "response_contract"
+            observed["inferred_only"] = True
             return observed
         if current_status == "running" and self._pid_alive(observed.get("pid")):
             observed["pid_alive"] = True
@@ -720,6 +770,7 @@ class TaskRegistry:
                 "pid_alive": entry.get("pid_alive"),
                 "inferred_only": entry.get("inferred_only", False),
                 "inferred_reason": entry.get("inferred_reason"),
+                "stage": entry.get("stage"),
                 "created": entry.get("created"),
                 "description": entry.get("description", "")[:120],
                 "artifacts": self._artifact_snapshot(entry),

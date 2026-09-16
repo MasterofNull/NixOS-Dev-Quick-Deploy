@@ -82,6 +82,17 @@ task_id() {
 
 ensure_dirs() { mkdir -p "$DELEGATION_DIR/outputs"; }
 
+local_direct_answer_missing() {
+    python3 - "$LIB_DIR" "$1" <<'PY'
+import sys
+
+sys.path.insert(0, sys.argv[1])
+from task_registry import observed_empty_answer_artifact
+
+raise SystemExit(0 if observed_empty_answer_artifact(sys.argv[2]) else 1)
+PY
+}
+
 # ── guard: only run CLI parsing when executed directly, not when sourced ─────
 [[ "${BASH_SOURCE[0]}" != "${0}" ]] && return 0
 
@@ -274,6 +285,14 @@ sys.exit(1)
         if [[ "$WAIT" == "true" ]]; then
             info "Running in blocking mode (timeout: ${TIMEOUT}s)..."
             if "${_DISPATCH_ARGS[@]}"; then
+                if [[ "$MODE" == "direct" ]] && local_direct_answer_missing "$OUTPUT_FILE"; then
+                    audit_event_end "local" "$ID" "error" "1" \
+                        "response_contract missing_final_answer mode=direct" "$MODE"
+                    audit_save_session "local-${MODE}" "$ID" "$PROMPT" "$OUTPUT_FILE"
+                    [[ "$NO_CONSULT" != "true" ]] && { timeout 10 python3 "$LIB_DIR/dispatch_consult.py" release --subject "$CONSULT_SUBJECT" --owner local >/dev/null 2>&1 || true; }
+                    info "Task $ID failed response-contract validation."
+                    exit 1
+                fi
                 audit_event_end "local" "$ID" "success" "0" \
                     "completed mode=${MODE}: ${PROMPT:0:100}" "$MODE"
                 audit_save_session "local-${MODE}" "$ID" "$PROMPT" "$OUTPUT_FILE"
