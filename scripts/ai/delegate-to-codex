@@ -19,6 +19,16 @@
 #   --model MODEL         Model override (e.g. o3, o4-mini)
 #   --wait                Block until task completes
 #   --force-quota-retry   Bypass an active quota cooldown for one call
+#   --shared, --no-worktree
+#                         Run in the SHARED checkout (REPO_ROOT) instead of an
+#                         isolated git worktree. Default is ISOLATED: every
+#                         dispatch runs in its own git worktree on branch
+#                         delegate/<task-id> and hands the result back as a
+#                         patch (.agents/delegation/outputs/<id>.patch) plus
+#                         a commit on that branch — never staging/committing
+#                         into the shared REPO_ROOT index. Use --shared only
+#                         for read-only/analysis tasks that need the live
+#                         shared tree.
 #   --check ID            Print output of a completed task
 #   --status ID           Show task status
 #   --list                List all registered tasks
@@ -46,6 +56,8 @@ COOLDOWN_FILE="$DELEGATION_DIR/.codex-quota-cooldown"
 # shellcheck disable=SC1091
 source "${SCRIPT_DIR}/lib/audit-write.sh" 2>/dev/null || true
 source "${SCRIPT_DIR}/lib/harness-grounding.sh" 2>/dev/null || true
+# CS-1 — worktree isolation (wt_create/wt_handback/wt_teardown/wt_tag_registry)
+source "${SCRIPT_DIR}/lib/worktree-isolation.sh" 2>/dev/null || true
 
 # ── helpers ─────────────────────────────────────────────────────────────────
 
@@ -172,6 +184,21 @@ PYEOF
 check_pid_alive() {
     local pid="$1"
     [[ -n "$pid" ]] && [[ "$pid" != "null" ]] && kill -0 "$pid" 2>/dev/null
+}
+
+# cmd_worktree_handback <task_id> <worktree_path> <branch>
+# CS-1: called once the codex run has fully exited (wait-mode: inline;
+# background-mode: re-invoked via --internal-worktree-handback, mirroring the
+# --internal-quota-capture re-entry pattern below). Captures the isolated
+# worktree's changes as a patch + a commit on its own delegate/<task-id>
+# branch, tags the registry, then tears the worktree down. No-op if no
+# worktree was created for this dispatch (shared-checkout mode).
+cmd_worktree_handback() {
+    local task_id="$1" wt_path="$2" branch="$3"
+    [[ -n "$wt_path" ]] || return 0
+    wt_handback "$REPO_ROOT" "$wt_path" "$task_id" "$OUTPUTS_DIR"
+    wt_tag_registry "$REGISTRY" "$task_id" "$wt_path" "$branch" "$OUTPUTS_DIR/${task_id}.patch"
+    wt_teardown "$REPO_ROOT" "$wt_path"
 }
 
 # ── quota-aware pre-check (delegate-codex-quota-precheck slice) ─────────────
@@ -333,7 +360,7 @@ PYEOF
 }
 
 cmd_delegate() {
-    local prompt="$1" mode="${2:-safe}" model_flag="${3:-}" wait_mode="${4:-false}" force_quota_retry="${5:-false}"
+    local prompt="$1" mode="${2:-safe}" model_flag="${3:-}" wait_mode="${4:-false}" force_quota_retry="${5:-false}" shared_mode="${6:-false}"
 
     require_codex
     ensure_dirs
@@ -398,6 +425,22 @@ cmd_delegate() {
 
 ${prompt}"
 
+    # CS-1: isolate this dispatch in its own git worktree by default so codex
+    # stages/commits into a private index on branch delegate/<id> — never the
+    # shared REPO_ROOT index. --shared opts out for read-only/analysis tasks.
+    # Fails OPEN to the shared checkout (old behavior) if worktree creation
+    # itself fails, so a git/disk hiccup never blocks a delegation.
+    local wt_path="" wt_branch=""
+    if [[ "$shared_mode" != "true" ]]; then
+        if wt_path="$(wt_create "$REPO_ROOT" "$id")" && [[ -n "$wt_path" ]]; then
+            wt_branch="delegate/${id}"
+            info "Worktree isolation: $wt_path (branch $wt_branch)"
+        else
+            wt_path=""
+            info "WARNING: worktree isolation unavailable — falling back to shared checkout for this dispatch"
+        fi
+    fi
+
     # Build command — codex exec is the correct headless subcommand
     local cmd=("$CODEX_BIN" "exec")
     [[ -n "$model_flag" ]] && cmd+=("-m" "$model_flag")
@@ -422,8 +465,16 @@ ${prompt}"
         # failure path (status update + quota capture) reachable AND the real exit
         # code intact, so the success/failure branches below are accurate.
         local exit_code=0
-        "${cmd[@]}" < /dev/null 2>&1 | tee "$output_file" || exit_code="${PIPESTATUS[0]}"
+        if [[ -n "$wt_path" ]]; then
+            ( cd "$wt_path" && "${cmd[@]}" < /dev/null ) 2>&1 | tee "$output_file" || exit_code="${PIPESTATUS[0]}"
+        else
+            "${cmd[@]}" < /dev/null 2>&1 | tee "$output_file" || exit_code="${PIPESTATUS[0]}"
+        fi
         quota_capture_from_output "$output_file" || true
+        # CS-1: hand back the isolated worktree's changes (patch + commit on
+        # its own delegate/<id> branch) and tear it down — regardless of
+        # exit_code, so a failed/partial run's edits are still captured.
+        cmd_worktree_handback "$id" "$wt_path" "$wt_branch"
         if [[ "$exit_code" -eq 0 ]]; then
             update_registry "$REGISTRY" "$id" "status" "done"
             audit_event_end "codex" "$id" "success" "0" "completed: ${prompt:0:100}" "$mode"
@@ -438,14 +489,19 @@ ${prompt}"
         local _coord_url="${HYBRID_COORDINATOR_URL:-http://127.0.0.1:8003}"
         local _prompt_brief; _prompt_brief="${prompt:0:100}"
         local _audit_helper; _audit_helper="$SCRIPT_DIR/lib/audit-post.sh"
+        # CS-1: cd into the isolated worktree (if any) before running codex,
+        # so it never sees the shared REPO_ROOT as its CWD.
+        local _cd_prefix=""
+        [[ -n "$wt_path" ]] && _cd_prefix="cd $(printf '%q' "$wt_path") && "
         # Background — write output to persistent file, not /tmp
         nohup bash -c "
             _start_ms=\$(date +%s%3N 2>/dev/null || echo 0)
-            $(printf '%q ' "${cmd[@]}") > \"$output_file\" 2>&1
+            ${_cd_prefix}$(printf '%q ' "${cmd[@]}") > \"$output_file\" 2>&1
             exit_code=\$?
             _end_ms=\$(date +%s%3N 2>/dev/null || echo 0)
             _lat=\$(( _end_ms - _start_ms ))
             \"$SCRIPT_PATH\" --internal-quota-capture \"$output_file\" >/dev/null 2>&1 || true
+            \"$SCRIPT_PATH\" --internal-worktree-handback $(printf '%q' "$id") $(printf '%q' "$wt_path") $(printf '%q' "$wt_branch") >/dev/null 2>&1 || true
             if [[ \$exit_code -eq 0 ]]; then
                 bash \"$_audit_helper\" \"$_coord_url\" task_completed codex success \"\$_lat\" \"$id\" \"completed: $_prompt_brief\" \"$mode\" \"$prompt\" \"$output_file\" || true
             else
@@ -486,8 +542,11 @@ MODE="safe"
 MODEL=""
 WAIT=false
 FORCE_QUOTA_RETRY=false
+SHARED_MODE=false
 SUBCMD=""
 SUBCMD_ARG=""
+WT_HB_PATH=""
+WT_HB_BRANCH=""
 
 while [[ $# -gt 0 ]]; do
     case "$1" in
@@ -497,10 +556,13 @@ while [[ $# -gt 0 ]]; do
         --model)       MODEL="$2";        shift 2 ;;
         --wait)        WAIT=true;         shift   ;;
         --force-quota-retry) FORCE_QUOTA_RETRY=true; shift ;;
+        --shared|--no-worktree) SHARED_MODE=true; shift ;;
         --check)       SUBCMD="check";   SUBCMD_ARG="$2"; shift 2 ;;
         --status)      SUBCMD="status";  SUBCMD_ARG="$2"; shift 2 ;;
         --list)        SUBCMD="list";    shift   ;;
         --internal-quota-capture) SUBCMD="quota-capture"; SUBCMD_ARG="$2"; shift 2 ;;
+        --internal-worktree-handback)
+            SUBCMD="worktree-handback"; SUBCMD_ARG="$2"; WT_HB_PATH="$3"; WT_HB_BRANCH="$4"; shift 4 ;;
         --help|-h)     grep "^#" "$0" | sed 's/^# \?//'; exit 0 ;;
         *) die "Unknown option: $1 (run with --help for usage)" ;;
     esac
@@ -520,12 +582,17 @@ case "${SUBCMD:-}" in
     # the script itself to run quota_capture_from_output after the run
     # completes. Not part of the public CLI surface.
     quota-capture) ensure_dirs; quota_capture_from_output "$SUBCMD_ARG" ;;
+    # Internal re-entry point (CS-1): background codex runs finish inside a
+    # detached nohup bash -c that cannot see this script's functions, so it
+    # re-invokes the script itself to hand back the isolated worktree once
+    # codex has fully exited. Not part of the public CLI surface.
+    worktree-handback) ensure_dirs; cmd_worktree_handback "$SUBCMD_ARG" "$WT_HB_PATH" "$WT_HB_BRANCH" ;;
     "")
         if [[ -n "$PROMPT_FILE" ]]; then
             [[ -f "$PROMPT_FILE" ]] || die "Prompt file not found: $PROMPT_FILE"
             PROMPT="$(cat "$PROMPT_FILE")"
         fi
         [[ -n "$PROMPT" ]] || die "Provide --prompt TEXT or --prompt-file FILE (or --help)"
-        cmd_delegate "$PROMPT" "$MODE" "$MODEL" "$WAIT" "$FORCE_QUOTA_RETRY"
+        cmd_delegate "$PROMPT" "$MODE" "$MODEL" "$WAIT" "$FORCE_QUOTA_RETRY" "$SHARED_MODE"
         ;;
 esac

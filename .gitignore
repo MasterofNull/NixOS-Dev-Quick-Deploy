@@ -205,6 +205,10 @@ nix/hosts/*/.sops.yaml
 # Agent delegation task output logs and local registry are runtime state.
 .agents/delegation/outputs/
 .agents/delegation/fanout/
+# CS-1: per-dispatch isolated git worktrees (delegate-to-codex/-local) — torn
+# down after handback; the delegate/<task-id> branch + outputs/*.patch are
+# the preserved evidence, this directory itself is disposable scratch.
+.agents/delegation/worktrees/
 # Phase 83 — DAG session traces (runtime; large JSONL, not for version control)
 .agents/dag-sessions/
 # Phase 153 — Candidate proposals (runtime, auto-generated from candidates.json)
