@@ -1,6 +1,9 @@
 # P0-A slice brief — extend native capability-gap resolution
 
-Status: queued after Gate-A acceptance; implementation not started
+Status: repository implementation ACCEPTED after Gate-A commit `2e1ac332`.
+Independent Codex review passed implementation subject `0800714240bcdad4b78dd3f0c2341d4725618377a2c383f46dc198208e94620d`;
+Claude supplied confirmatory PASS. Final metadata-bound hash is recorded in the
+commit review trailers. Running-system activation is not performed.
 
 ## Objective and baseline
 
@@ -33,8 +36,13 @@ Implementer-owned files:
 Root integration-owned files (separate claim, same slice):
 
 - `scripts/testing/harness_qa/phases/phase0.py`
+- `scripts/ai/_aq-qa-bash` (dual QA registration)
 - `dashboard.html`
 - `assets/dashboard.js`
+- `dashboard/backend/api/routes/aistack.py` (existing runtime-summary projection)
+- `scripts/testing/test-dashboard-advanced-runtime-summary.py`
+- `scripts/testing/test-capability-gap-integration.py` (repair pre-existing
+  removed-monolith path drift in the required validation)
 
 Do not edit coordinator routing, shared-skill persistence, capability leases,
 installer code, agent prompts, provider configs or external ECC source.
@@ -76,4 +84,3 @@ pass, an independent non-author reviewer accepts the exact subject hash, and one
 atomic commit records activation/exclusions. Stop for owner authority only if the
 slice would require secrets, external accounts, deployment/rebuild or networked
 installation. Nonblocking taxonomy suggestions go to the next slice.
-

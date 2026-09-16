@@ -10,6 +10,7 @@ import importlib.util
 import os
 import re
 import subprocess
+import sys
 import time
 from pathlib import Path
 
@@ -2011,6 +2012,7 @@ def run(ctx: RunContext) -> list[CheckResult]:
     results.extend(_check_execution_cell_adapter_service_coverage(ctx))
     results.extend(_check_factory_gate_install(ctx))
     results.extend(_check_factory_gate_retrofit(ctx))
+    results.extend(_check_capability_outcome_resolver(ctx))
     results.extend(_check_golden_eval_parity(ctx))
     results.extend(_check_agentic_parity(ctx))
     results.extend(_check_delegation_feedback_contract(ctx))
@@ -2591,6 +2593,48 @@ def _check_factory_gate_retrofit(ctx: RunContext) -> list[CheckResult]:
     except (OSError, subprocess.TimeoutExpired, ValueError) as error:
         return [failed(5, "0.10.46", description, str(error)[:160])]
     return [passed(5, "0.10.46", description)]
+
+
+def _check_capability_outcome_resolver(ctx: RunContext) -> list[CheckResult]:
+    """0.10.47: native outcome resolution plus QA/dashboard visibility."""
+    description = "capability outcome resolver: verdicts, QA and dashboard visibility"
+    focused = ctx.repo_root / "scripts" / "testing" / "test-capability-outcome-resolver.py"
+    cli = ctx.repo_root / "scripts" / "ai" / "aq-capability-gap"
+    dashboard_route = ctx.repo_root / "dashboard" / "backend" / "api" / "routes" / "aistack.py"
+    dashboard_js = ctx.repo_root / "assets" / "dashboard.js"
+    missing = [str(path.relative_to(ctx.repo_root)) for path in (focused, cli, dashboard_route, dashboard_js) if not path.exists()]
+    if missing:
+        return [failed(5, "0.10.47", description, f"missing: {', '.join(missing)}")]
+    try:
+        probe = subprocess.run(
+            [sys.executable, str(focused), "--smoke"],
+            cwd=str(ctx.repo_root),
+            capture_output=True,
+            text=True,
+            timeout=30,
+            check=False,
+        )
+        if probe.returncode != 0 or "PASS: capability outcome resolver" not in probe.stdout:
+            detail = (probe.stderr or probe.stdout or "focused resolver test failed")[-240:]
+            return [failed(5, "0.10.47", description, detail)]
+        query = subprocess.run(
+            [str(cli), "--query", "tier0", "--format", "json"],
+            cwd=str(ctx.repo_root),
+            capture_output=True,
+            text=True,
+            timeout=10,
+            check=False,
+        )
+        payload = json.loads(query.stdout) if query.returncode == 0 else {}
+        if payload.get("verdict") != "equivalent" or not payload.get("candidates"):
+            return [failed(5, "0.10.47", description, "live CLI alias query did not resolve equivalent evidence")]
+        route_text = dashboard_route.read_text(encoding="utf-8")
+        js_text = dashboard_js.read_text(encoding="utf-8")
+        if "_capability_outcome_catalog_summary" not in route_text or "· outcome catalog" not in js_text:
+            return [failed(5, "0.10.47", description, "dashboard outcome visibility contract missing")]
+    except (OSError, ValueError, json.JSONDecodeError, subprocess.TimeoutExpired) as error:
+        return [failed(5, "0.10.47", description, str(error)[:240])]
+    return [passed(5, "0.10.47", description)]
 
 
 def _check_workflow_shadow_contract(ctx: RunContext) -> list[CheckResult]:

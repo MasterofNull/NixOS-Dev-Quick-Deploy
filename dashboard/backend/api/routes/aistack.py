@@ -6573,6 +6573,95 @@ def _advanced_phase_readiness_status(readiness: Dict[str, Any], key: str) -> str
     return "unknown"
 
 
+@lru_cache(maxsize=1)
+def _capability_outcomes_module() -> Any:
+    """Load the same data-only validator used by the capability-gap CLI."""
+    module_path = _repo_root() / "scripts" / "ai" / "lib" / "capability_outcomes.py"
+    spec = importlib.util.spec_from_file_location("aq_capability_outcomes", module_path)
+    if spec is None or spec.loader is None:
+        raise ValueError("outcome validator unavailable")
+    module = importlib.util.module_from_spec(spec)
+    spec.loader.exec_module(module)
+    return module
+
+
+def _capability_outcome_catalog_summary(path: Optional[Path] = None) -> Dict[str, Any]:
+    """Return bounded, metadata-only outcome coverage for dashboard visibility."""
+    catalog_path = path or (_repo_root() / "config" / "capability-gap-catalog.json")
+    empty_counts = {
+        "equivalent": 0,
+        "partial": 0,
+        "missing": 0,
+        "denied": 0,
+        "ambiguous": 0,
+        "unverified": 0,
+    }
+    try:
+        payload = _capability_outcomes_module().load_outcome_catalog(catalog_path)
+        outcomes = payload["outcomes"]
+        counts = dict(empty_counts)
+        alias_owners: Dict[str, set[str]] = {}
+        missing_evidence = 0
+        for item in outcomes:
+            if not isinstance(item, dict):
+                counts["unverified"] += 1
+                continue
+            status = str(item.get("status") or "unverified")
+            item_missing = 0
+            outcome_id = str(item.get("id") or "")
+            aliases = item.get("aliases") or []
+            evidence_paths = item.get("evidence_paths") or []
+            if not isinstance(aliases, list) or not isinstance(evidence_paths, list):
+                counts["unverified"] += 1
+                continue
+            for alias in aliases:
+                alias_key = str(alias).strip().casefold()
+                if alias_key:
+                    alias_owners.setdefault(alias_key, set()).add(outcome_id)
+            for evidence_path in evidence_paths:
+                relative = Path(str(evidence_path))
+                if relative.is_absolute() or ".." in relative.parts:
+                    item_missing += 1
+                    continue
+                candidate = (_repo_root() / relative).resolve()
+                try:
+                    candidate.relative_to(_repo_root().resolve())
+                except ValueError:
+                    item_missing += 1
+                    continue
+                if not candidate.exists():
+                    item_missing += 1
+            missing_evidence += item_missing
+            if str(item.get("authority")) == "denied":
+                status = "denied"
+            elif item_missing:
+                status = "unverified"
+            counts[status if status in counts else "unverified"] += 1
+        counts["ambiguous"] = sum(1 for owners in alias_owners.values() if len(owners) > 1)
+        return {
+            "available": True,
+            "status": "degraded" if missing_evidence or counts["unverified"] else "catalog-valid",
+            "evidence_scope": "metadata-only",
+            "version": str(payload.get("version") or "unknown"),
+            "modified_at": datetime.fromtimestamp(catalog_path.stat().st_mtime, timezone.utc).isoformat(),
+            "total": len(outcomes),
+            "counts": counts,
+            "missing_evidence_paths": missing_evidence,
+        }
+    except (OSError, ValueError, ImportError) as exc:
+        return {
+            "available": False,
+            "status": "unverified",
+            "evidence_scope": "metadata-only",
+            "version": "unknown",
+            "modified_at": None,
+            "total": None,
+            "counts": empty_counts,
+            "missing_evidence_paths": None,
+            "reason": f"catalog_invalid_or_unavailable:{type(exc).__name__}",
+        }
+
+
 @router.get("/advanced/runtime-summary")
 async def get_advanced_runtime_summary() -> Dict[str, Any]:
     """Aggregate advanced Phase 6-10 control-plane state for dashboard visibility."""
@@ -6638,6 +6727,7 @@ async def get_advanced_runtime_summary() -> Dict[str, Any]:
                 "gaps_detected": int((capability_gap_stats or {}).get("total_gaps", 0) or 0),
                 "failure_patterns": failure_pattern_count,
                 "remediation_artifacts_recorded": bool((readiness.get("phase_9_capability_gap") or {}).get("remediation_artifacts_recorded")),
+                "outcomes": await asyncio.to_thread(_capability_outcome_catalog_summary),
             },
             "learning": {
                 "status": _advanced_phase_readiness_status(readiness, "phase_10_learning"),

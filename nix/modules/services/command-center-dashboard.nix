@@ -33,6 +33,7 @@
       uvicorn
       pydantic
       pydantic-settings
+      jsonschema
       python-dotenv
       websockets
       psutil
