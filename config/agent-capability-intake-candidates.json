@@ -522,6 +522,25 @@
       "activation_notes": "No prompt or executable workflow is imported. This record cannot scan, execute tools, issue scope receipts, or communicate externally."
     },
     {
+      "id": "ecc-reference",
+      "name": "ECC pinned agent harness feature reference",
+      "category": "agent-system-pattern-reference",
+      "source_url": "https://github.com/affaan-m/ECC",
+      "maturity": "third-party-reference",
+      "priority": "very-high",
+      "state": "proposed",
+      "pinned_version": "8321021c54d670126ce3b2969d5deb880b4b0c2a",
+      "review_status": "incomplete",
+      "blocked_reason": "Pinned read-only reference review is authorized by owner; feature parity, per-component licenses, dependency/SBOM, permissions and runtime integration evidence are not complete.",
+      "unblock_condition": "Complete source/license/parity evidence; independently accept bounded native gap slices. External runtime attachment additionally requires allowlist, sandbox, dependency scan, visibility and recovery disposition.",
+      "install": {"type": "disabled-external-repo", "command": "disabled-until-intake", "args": []},
+      "tool_allowlist": [],
+      "permissions": {"network": false, "filesystem": "none", "writes": false, "secrets": false},
+      "value": "Compare pinned ECC agents, skills, hooks, memory/learning, evals, security, integrations and CI/CD to AQ-OS; implement genuine native gaps without duplicate lifecycle authority or blind plugin installation.",
+      "risks": ["prompt-injection", "tool-execution", "authority-duplication", "hosted-plugin-surface", "external-integration", "autonomous-loop", "resource-exhaustion"],
+      "activation_notes": "Proposed, runtime disabled. Owner-authorized read-only public pinned source review only; no installer, npm package, upstream hook, plugin, credential, service or account activation. PRD: .agent/PROJECT-ECC-PARITY-INTEGRATION-PRD.md."
+    },
+    {
       "id": "herdr-agent-multiplexer",
       "name": "Herdr agent-aware terminal multiplexer",
       "category": "operations",

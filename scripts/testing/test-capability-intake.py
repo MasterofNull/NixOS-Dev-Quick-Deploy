@@ -43,6 +43,7 @@ def main() -> int:
     assert "t3mp3st" in ids
     assert {"piyaz-patterns", "sn1per-reference", "raptor-loop-hunt-reference"} <= ids
     assert "herdr-agent-multiplexer" in ids
+    assert "ecc-reference" in ids
 
     all_report = run_json("audit", "--all", "--json")
     reports = {item["id"]: item for item in all_report["reports"]}
@@ -99,6 +100,10 @@ def main() -> int:
     assert herdr["state"] == "proposed"
     assert herdr["admission"] == "review-recommended"
     assert herdr["unsafe_tool_count"] == 0
+    ecc = reports["ecc-reference"]
+    assert ecc["state"] == "proposed"
+    assert ecc["admission"] == "review-recommended"
+    assert ecc["tool_count"] == 0 and ecc["unsafe_tool_count"] == 0
 
     one_report = run_json("audit", "semgrep-mcp", "--json")
     assert len(one_report["reports"]) == 1
@@ -130,12 +135,22 @@ def test_registry_schema() -> None:
         "trivy", "syft-grype", "mcp-admission-controller", "observability-query-skill",
         "nixos-specialist-tool-pack", "code-intelligence-graph-layer", "t3mp3st",
         "piyaz-patterns", "sn1per-reference", "raptor-loop-hunt-reference",
-        "herdr-agent-multiplexer",
+        "herdr-agent-multiplexer", "ecc-reference",
     }
     assert len(candidates[:11]) == 11
     assert candidates[10]["id"] == "t3mp3st"
 
     by_id = {candidate["id"]: candidate for candidate in candidates}
+    ecc = by_id["ecc-reference"]
+    assert ecc["pinned_version"] == "8321021c54d670126ce3b2969d5deb880b4b0c2a"
+    assert ecc["state"] == "proposed" and ecc["review_status"] == "incomplete"
+    assert ecc["install"] == {
+        "type": "disabled-external-repo", "command": "disabled-until-intake", "args": []
+    }
+    assert ecc["tool_allowlist"] == []
+    assert ecc["permissions"] == {
+        "network": False, "filesystem": "none", "writes": False, "secrets": False
+    }
     herdr = by_id["herdr-agent-multiplexer"]
     assert herdr["pinned_version"] == "v0.7.5"
     assert herdr["state"] == "proposed"
