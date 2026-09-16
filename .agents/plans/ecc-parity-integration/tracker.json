@@ -1,0 +1,92 @@
+{
+  "plan": {
+    "id": "ecc-parity-integration",
+    "title": "ECC outcome parity and native AQ-OS integration",
+    "prd_ref": ".agent/PROJECT-ECC-PARITY-INTEGRATION-PRD.md",
+    "owner": "hyperd",
+    "goal": "Use pinned ECC evidence to implement only genuine missing outcomes through existing AQ-OS authorities, with measurable QA, dashboard visibility, and secure activation boundaries.",
+    "success_criteria": [
+      "Every selected outcome has pinned upstream and local evidence with an explicit parity verdict",
+      "No bulk agent/skill import or competing lifecycle authority is introduced",
+      "Each implementation slice ships tests, integration-path aq-qa coverage, dashboard visibility, documentation and independent acceptance",
+      "External code, tools and deployments remain disabled until their separate intake and owner-authority gates pass"
+    ]
+  },
+  "phases": [
+    {"id": "evidence", "name": "freeze corrected evidence", "goal": "accepted pin-bound ledger, meta-prompt and implementation queue", "order": 1},
+    {"id": "resolve", "name": "native capability resolution", "goal": "evidence-backed outcome coverage and gap resolver", "order": 2},
+    {"id": "project", "name": "provider projection", "goal": "canonical guarded multi-provider projection", "order": 3},
+    {"id": "events", "name": "lifecycle events", "goal": "typed observable events around existing admission gates", "order": 4},
+    {"id": "evaluate", "name": "hermetic evaluation", "goal": "containment-bound behavioral evidence and promotion", "order": 5},
+    {"id": "ci", "name": "portable CI", "goal": "guarded greenfield/brownfield CI enforcement", "order": 6},
+    {"id": "refine", "name": "operator and eval refinements", "goal": "measured P1 gaps only", "order": 7},
+    {"id": "deploy", "name": "approval-gated CD", "goal": "separately authorized promotion and rollback", "order": 8}
+  ],
+  "items": [
+    {
+      "id": "gate-a", "name": "corrected parity evidence and coordinator contract", "phase": "evidence", "kind": "slice",
+      "goal": "pin ECC, correct advisory claims, produce provenance-complete artifact ledger, PRD, meta-prompt and bounded plan",
+      "validation_goal": "3,716 source rows reconcile to pin; intake disabled; independent plan and exact staged review PASS; Tier-0 passes",
+      "deps": [], "pct_hint": 100,
+      "detection": {"commit_match": ["ECC", "Gate A", "parity evidence"]},
+      "acceptance": {"status": "accepted", "by": "Codex /root/ecc_planning_acceptance", "date": "2026-09-16", "note": "Independent PLAN_READY and commit-bound PASS on the pre-tracker subject; tracker added from Tier-0 governance warning and requires final rebind before commit."}
+    },
+    {
+      "id": "p0-a", "name": "extend native capability-gap resolution", "phase": "resolve", "kind": "slice",
+      "goal": "resolve equivalent, partial, missing, denied, ambiguous and unverified outcomes through existing AQ-OS surfaces",
+      "validation_goal": "P0A-SLICE-BRIEF focused fixtures, integration-path aq-qa, dashboard projection and Tier-0 pass",
+      "deps": ["gate-a"], "pct_hint": 0,
+      "detection": {"commit_match": ["P0-A", "capability outcome resolver"]},
+      "acceptance": {"status": "pending", "by": null, "date": null, "note": "queued; implementation not started"}
+    },
+    {
+      "id": "p0-b", "name": "canonical provider projection compiler", "phase": "project", "kind": "slice",
+      "goal": "extend canonical compile/sync surfaces with collision-safe, secret-free provider projections",
+      "validation_goal": "determinism, drift, brownfield preservation, stale confirmation, rollback, QA and dashboard evidence",
+      "deps": ["p0-a"], "pct_hint": 0,
+      "detection": {"commit_match": ["P0-B", "provider projection"]},
+      "acceptance": {"status": "pending", "by": null, "date": null, "note": "not started"}
+    },
+    {
+      "id": "p0-c", "name": "typed lifecycle event adapter", "phase": "events", "kind": "slice",
+      "goal": "normalize provider events around existing capability leases and tool gates",
+      "validation_goal": "malformed, timeout, crash, recursion, suspend/resume and telemetry fixtures pass",
+      "deps": ["p0-a"], "pct_hint": 0,
+      "detection": {"commit_match": ["P0-C", "lifecycle event"]},
+      "acceptance": {"status": "pending", "by": null, "date": null, "note": "not started"}
+    },
+    {
+      "id": "p0-d", "name": "hermetic candidate evaluation evidence", "phase": "evaluate", "kind": "slice",
+      "goal": "bind actual containment execution to digest, outcome evidence and reviewed promotion",
+      "validation_goal": "escape, secret, network, write, timeout, corruption, replay and reviewer mismatch fail closed",
+      "deps": ["p0-a"], "pct_hint": 0,
+      "detection": {"commit_match": ["P0-D", "hermetic candidate eval"]},
+      "acceptance": {"status": "pending", "by": null, "date": null, "note": "not started"}
+    },
+    {
+      "id": "p0-e", "name": "portable GitHub CI pack", "phase": "ci", "kind": "slice",
+      "goal": "guarded greenfield and brownfield CI with immutable pins, least privilege and provenance",
+      "validation_goal": "fixture workflows, aq-qa and dashboard distinguish local readiness from UNVERIFIED_REMOTE",
+      "deps": ["p0-a"], "pct_hint": 0,
+      "detection": {"commit_match": ["P0-E", "portable GitHub CI"]},
+      "acceptance": {"status": "pending", "by": null, "date": null, "note": "not started"}
+    },
+    {
+      "id": "p1", "name": "operator diagnostics and eval dimensions", "phase": "refine", "kind": "slice",
+      "goal": "implement only P0-A-proven memory, workspace, catalog, accessibility and eval gaps",
+      "validation_goal": "each child slice defines focused tests, aq-qa, dashboard and degraded/unverified behavior",
+      "deps": ["p0-a"], "pct_hint": 0,
+      "detection": {"commit_match": ["ECC P1", "operator diagnostics"]},
+      "acceptance": {"status": "pending", "by": null, "date": null, "note": "not started"}
+    },
+    {
+      "id": "p2", "name": "separately approval-gated CD", "phase": "deploy", "kind": "slice",
+      "goal": "render safe CD controls without mutating accounts, secrets, environments or deployments absent owner authority",
+      "validation_goal": "approval/concurrency/provenance/health/rollback fixtures, aq-qa and dashboard UNVERIFIED_REMOTE state",
+      "deps": ["p0-e"], "pct_hint": 0,
+      "detection": {"commit_match": ["ECC P2", "approval-gated CD"]},
+      "acceptance": {"status": "pending", "by": null, "date": null, "note": "not started"}
+    }
+  ],
+  "issues": []
+}
