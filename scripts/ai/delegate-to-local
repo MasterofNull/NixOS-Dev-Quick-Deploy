@@ -37,11 +37,23 @@
 #   --no-consult       Skip the router/claim consult gate before real dispatch
 #                       (also: AQ_NO_CONSULT=1). Read-only subcommands above
 #                       never consult regardless of this flag.
+#   --shared, --no-worktree
+#                       Run agent-mode dispatches in the SHARED checkout
+#                       (REPO_ROOT) instead of an isolated git worktree.
+#                       Default is ISOLATED: a dispatch that resolves to
+#                       --mode agent (explicit, or "auto" classified as agent)
+#                       runs aq-agent-loop in its own git worktree on branch
+#                       delegate/<task-id> and hands the result back as a
+#                       patch (.agents/delegation/outputs/<id>.patch) plus a
+#                       commit on that branch — never staging/committing into
+#                       the shared REPO_ROOT index. direct/hybrid/ralph modes
+#                       never touch files, so isolation is a no-op for them.
 #   --help             Show this help
 
 set -euo pipefail
 
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
+SCRIPT_PATH="$SCRIPT_DIR/$(basename "${BASH_SOURCE[0]}")"
 REPO_ROOT="$(cd "$SCRIPT_DIR/../.." && pwd)"
 DELEGATION_DIR="$REPO_ROOT/.agents/delegation"
 LIB_DIR="$SCRIPT_DIR/lib"
@@ -54,6 +66,8 @@ source "$LIB_DIR/trace-seed.sh" 2>/dev/null || true
 # Phase 56.1/56.7 — delegation audit bridge
 # shellcheck disable=SC1091
 source "${LIB_DIR}/audit-write.sh" 2>/dev/null || true
+# CS-1 — worktree isolation (wt_create/wt_handback/wt_teardown/wt_tag_registry)
+source "${LIB_DIR}/worktree-isolation.sh" 2>/dev/null || true
 
 # Ports — read from env, fall back to harness defaults (source of truth: options.nix)
 LLAMA_PORT="${LLAMA_PORT:-8080}"
@@ -116,6 +130,10 @@ TASK_TYPE=""  # Phase 173: "research"|"analysis"|"prd" raises stagnation read li
 SUBCMD=""
 SUBCMD_ARG=""
 REPAIR_STALE_APPLY=false
+# CS-1: default ON — isolate agent-mode dispatches in a private git worktree.
+SHARED_MODE=false
+WT_HB_PATH=""
+WT_HB_BRANCH=""
 # Resolution B (DISPATCH-INTEGRATION-DESIGN.md amendment): dispatch.py stays
 # frozen (L2B golden-manifest pin) — the router/claim consult seam lives here
 # in the shim instead. Escape hatch for callers that must bypass it (e.g. the
@@ -146,6 +164,11 @@ while [[ $# -gt 0 ]]; do
         --cancel)        SUBCMD="cancel";        SUBCMD_ARG="${2:-}"; shift; [[ $# -gt 0 ]] && shift ;;
         --kill-all)      SUBCMD="kill-all";      shift   ;;
         --no-consult)    NO_CONSULT=true;        shift   ;;
+        --shared|--no-worktree) SHARED_MODE=true; shift  ;;
+        --internal-worktree-handback)
+            SUBCMD="worktree-handback"
+            SUBCMD_ARG="${2:-}"; WT_HB_PATH="${3:-}"; WT_HB_BRANCH="${4:-}"
+            shift 4 ;;
         --help|-h)     grep "^#" "$0" | sed 's/^# \?//'; exit 0 ;;
         *) die "Unknown option: $1 (run with --help for usage)" ;;
     esac
@@ -206,6 +229,18 @@ case "${SUBCMD:-}" in
     kill-all)
         python3 "$DISPATCH" kill-all --delegation-dir "$DELEGATION_DIR"
         ;;
+    # Internal re-entry point (CS-1): a background agent-mode dispatch is
+    # detached via setsid and this shim's own process exits right after
+    # launch, so the worktree handback+teardown for that case is wrapped
+    # inside the backgrounded command itself, which re-invokes this script
+    # to run after dispatch.py has fully exited. Not part of the public CLI.
+    worktree-handback)
+        ensure_dirs
+        wt_handback "$REPO_ROOT" "$WT_HB_PATH" "$SUBCMD_ARG" "$DELEGATION_DIR/outputs"
+        wt_tag_registry "$DELEGATION_DIR/registry.jsonl" "$SUBCMD_ARG" "$WT_HB_PATH" "$WT_HB_BRANCH" \
+            "$DELEGATION_DIR/outputs/${SUBCMD_ARG}.patch"
+        wt_teardown "$REPO_ROOT" "$WT_HB_PATH"
+        ;;
     "")
         # Resolve prompt from file if needed
         if [[ -n "$PROMPT_FILE" ]]; then
@@ -263,6 +298,47 @@ sys.exit(1)
 
         audit_event_start "local" "$ID" "${PROMPT:0:200}"
 
+        # ── CS-1: worktree isolation for agent-mode dispatches ──────────────
+        # aq-agent-loop is the only mode that reads/writes repo files and can
+        # shell out to git (file_operations.py / shell_tools.py / git_tools.py
+        # all resolve relative paths and repo-root git ops from the process
+        # CWD / the running script's own on-disk location — see DESIGN.md).
+        # direct/hybrid/ralph never touch the working tree, so isolation is
+        # skipped for them. "auto" is resolved here with dispatch.py's own
+        # classify_mode() (imported, not reimplemented) so the common
+        # (default) auto-routed agent dispatch still gets isolated — the
+        # decision has to be made before invoking dispatch.py because the
+        # worktree-local --script-dir override must be in the argv below.
+        EFFECTIVE_SCRIPT_DIR="$SCRIPT_DIR"
+        WT_PATH=""
+        WT_BRANCH=""
+        if [[ "$SHARED_MODE" != "true" ]]; then
+            _EFFECTIVE_MODE="$MODE"
+            if [[ "$_EFFECTIVE_MODE" == "auto" ]]; then
+                _EFFECTIVE_MODE="$(PYTHONPATH="$LIB_DIR" python3 -c '
+import sys
+from dispatch import classify_mode
+print(classify_mode(sys.argv[1]))
+' "$PROMPT" 2>/dev/null || echo "auto")"
+            fi
+            if [[ "$_EFFECTIVE_MODE" == "agent" ]]; then
+                if WT_PATH="$(wt_create "$REPO_ROOT" "$ID")" && [[ -n "$WT_PATH" ]]; then
+                    WT_BRANCH="delegate/${ID}"
+                    # Point AgentRunner at the WORKTREE'S OWN copy of
+                    # scripts/ai/aq-agent-loop: its __file__-derived
+                    # _REPO_ROOT (and therefore the local-agents tool
+                    # modules it imports, including git_tools.py's
+                    # find-.git-from-__file__ repo-root resolution) then
+                    # resolves to the worktree, not the shared REPO_ROOT.
+                    EFFECTIVE_SCRIPT_DIR="$WT_PATH/scripts/ai"
+                    info "Worktree isolation: $WT_PATH (branch $WT_BRANCH)"
+                else
+                    WT_PATH=""
+                    info "WARNING: worktree isolation unavailable — falling back to shared checkout for this dispatch"
+                fi
+            fi
+        fi
+
         # Build dispatch.py argument list (bash array preserves quoting for prompts
         # containing spaces/special chars — never interpolate via printf '%q').
         _DISPATCH_ARGS=(
@@ -278,13 +354,32 @@ sys.exit(1)
             --llama-url      "http://127.0.0.1:${LLAMA_PORT}"
             --hybrid-url     "http://127.0.0.1:${HYBRID_PORT}"
             --ralph-url      "http://127.0.0.1:${RALPH_PORT}"
-            --script-dir     "$SCRIPT_DIR"
+            --script-dir     "$EFFECTIVE_SCRIPT_DIR"
         )
         [[ -n "$TASK_TYPE" ]] && _DISPATCH_ARGS+=(--task-type "$TASK_TYPE")
 
         if [[ "$WAIT" == "true" ]]; then
             info "Running in blocking mode (timeout: ${TIMEOUT}s)..."
-            if "${_DISPATCH_ARGS[@]}"; then
+            DISPATCH_OK=true
+            if [[ -n "$WT_PATH" ]]; then
+                ( cd "$WT_PATH" && "${_DISPATCH_ARGS[@]}" ) || DISPATCH_OK=false
+            else
+                "${_DISPATCH_ARGS[@]}" || DISPATCH_OK=false
+            fi
+            # CS-1: hand back the isolated worktree (patch + commit on its own
+            # delegate/<id> branch) and tear it down — regardless of outcome,
+            # so a failed/partial run's edits are still captured. No-op when
+            # no worktree was created (shared-checkout / non-agent dispatch).
+            if [[ -n "$WT_PATH" ]]; then
+                wt_handback "$REPO_ROOT" "$WT_PATH" "$ID" "$DELEGATION_DIR/outputs"
+                wt_tag_registry "$DELEGATION_DIR/registry.jsonl" "$ID" "$WT_PATH" "$WT_BRANCH" \
+                    "$DELEGATION_DIR/outputs/${ID}.patch"
+                wt_teardown "$REPO_ROOT" "$WT_PATH"
+            fi
+            if [[ "$DISPATCH_OK" == "true" ]]; then
+                # response-contract (merge-preserved from the concurrent
+                # response-contract slice): a "successful" direct-mode run that
+                # produced no final answer is itself a contract failure.
                 if [[ "$MODE" == "direct" ]] && local_direct_answer_missing "$OUTPUT_FILE"; then
                     audit_event_end "local" "$ID" "error" "1" \
                         "response_contract missing_final_answer mode=direct" "$MODE"
@@ -322,10 +417,24 @@ sys.exit(1)
             # died, and its aq-agent-loop child then orphaned (ppid=1) → the self-watchdog
             # killed a task that had barely started. setsid detaches it (own session leader,
             # no controlling terminal) — the ROOT fix for the orphaned/self-terminated dispatches.
-            setsid "${_DISPATCH_ARGS[@]}" > /dev/null 2>&1 &
+            #
+            # CS-1: when isolated, wrap the same setsid dispatch inside a
+            # bash -c string that (a) cd's into the worktree first so
+            # aq-agent-loop's CWD-relative file ops land there, and (b) once
+            # dispatch.py has fully exited, re-invokes this script's own
+            # --internal-worktree-handback re-entry point (this shim's own
+            # process already returned by then — that re-entry point is what
+            # performs the patch/branch handback + teardown for the
+            # background-mode case).
+            if [[ -n "$WT_PATH" ]]; then
+                setsid bash -c "cd $(printf '%q' "$WT_PATH") && $(printf '%q ' "${_DISPATCH_ARGS[@]}"); $(printf '%q' "$SCRIPT_PATH") --internal-worktree-handback $(printf '%q' "$ID") $(printf '%q' "$WT_PATH") $(printf '%q' "$WT_BRANCH") >/dev/null 2>&1 || true" > /dev/null 2>&1 &
+            else
+                setsid "${_DISPATCH_ARGS[@]}" > /dev/null 2>&1 &
+            fi
             BG_PID=$!
             disown "$BG_PID"
             info "Task $ID started in background (pid $BG_PID)"
+            [[ -n "$WT_PATH" ]] && info "Isolated worktree: $WT_PATH (branch $WT_BRANCH)"
             info "Check output:  delegate-to-local --check $ID"
             info "Check status:  delegate-to-local --status $ID"
             info "NOTE: Local model tasks take 90-300s. Check back in a few minutes."
