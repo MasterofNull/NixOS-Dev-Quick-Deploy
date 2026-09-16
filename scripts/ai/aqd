@@ -38,7 +38,7 @@ Usage:
   aqd workflows factory-gate-status [--target <dir>]
   aqd workflows primer [--target <dir>] [--objective <text>] [--output <file>]
   aqd workflows brownfield [--target <dir>] [--objective <text>] [--constraints <text>] [--out-of-scope <text>] [--acceptance <text>] [--force]
-  aqd workflows retrofit [--target <dir>] [--name <project-name>] [--goal <goal>] [--stack <stack>] [--owner <owner>] [--force]
+  aqd workflows retrofit [--target <dir>] [--name <project-name>] [--goal <goal>] [--stack <stack>] [--owner <owner>] [--confirm-retrofit <preview-digest>]
   aqd workflows bootstrap --name <project-name> --goal <goal> [--target <dir>] [--stack <stack>] [--owner <owner>] [--force]
   aqd policy evaluate --profile <name> --task <text> [--tool <name>]
   aqd reasoning route --query <text>
@@ -832,7 +832,7 @@ cmd_workflows_retrofit() {
   local goal="retrofit existing project AI layer for guided workflow"
   local stack="TBD"
   local owner="TBD"
-  local force="false"
+  local confirmation=""
 
   while [[ $# -gt 0 ]]; do
     case "$1" in
@@ -841,8 +841,8 @@ cmd_workflows_retrofit() {
       --goal) goal="${2:-}"; shift 2 ;;
       --stack) stack="${2:-}"; shift 2 ;;
       --owner) owner="${2:-}"; shift 2 ;;
-      --force) force="true"; shift ;;
-      *) ai_layer_error "unknown_option" "retrofit" "Unknown option: $1" "Use: aqd workflows retrofit --target <dir> --name <project> [--force]"; return 1 ;;
+      --confirm-retrofit) confirmation="${2:-}"; shift 2 ;;
+      *) ai_layer_error "unknown_option" "retrofit" "Unknown option: $1" "Use: aqd workflows retrofit --target <dir> --name <project> [--confirm-retrofit <preview-digest>]"; return 1 ;;
     esac
   done
 
@@ -855,29 +855,15 @@ cmd_workflows_retrofit() {
     project_name="$(basename "$(realpath "$target_dir")")"
   fi
 
-  local -a bootstrap_args=(
-    --target "$target_dir"
-    --name "$project_name"
-    --goal "$goal"
-    --stack "$stack"
-    --owner "$owner"
-  )
-  if [[ "$force" == "true" ]]; then
-    bootstrap_args+=(--force)
+  local factory_gate_bundle="${PROJECT_ROOT}/templates/factory-gate-bundle"
+  if [[ -z "$confirmation" ]]; then
+    run_python "${PROJECT_ROOT}/scripts/ai/lib/factory_gate_install.py" retrofit-preview \
+      --target "$target_dir" --bundle-root "$factory_gate_bundle" --stack "$stack" --project-name "$project_name"
+    return
   fi
-
-  cmd_workflows_bootstrap "${bootstrap_args[@]}"
-  write_agent_command_specs "$target_dir" "$project_name" "$goal" "$stack" "$owner"
-  if [[ -d "$target_dir/.git" ]]; then
-    install_git_secret_hooks "$target_dir"
-  fi
-
-  cat <<EOF
-/retrofit complete.
-- target: $target_dir
-- regenerated/seeded AI layer artifacts for existing project
-- next: run /brownfield workflow for first improvement slice
-EOF
+  run_python "${PROJECT_ROOT}/scripts/ai/lib/factory_gate_install.py" retrofit-install \
+    --target "$target_dir" --bundle-root "$factory_gate_bundle" --stack "$stack" --project-name "$project_name" \
+    --confirm-retrofit "$confirmation"
 }
 
 cmd_workflows_primer() {

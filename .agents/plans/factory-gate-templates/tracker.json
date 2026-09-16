@@ -47,8 +47,8 @@
       "validation_goal": "e2e: scaffold a throwaway repo, confirm hooks fire + gate blocks a bad commit + tracker projects",
       "deps": ["ft-1", "ft-2"], "editorial_note": "compose on bootstrap_agent_project (Rule 20)",
       "detection": {"commit_match": ["FT-3", "greenfield inject"]},
-      "pct_hint": 0,
-      "acceptance": {"status": "pending", "by": null, "date": null, "note": "not started"}
+      "pct_hint": 100,
+      "acceptance": {"status": "accepted", "by": "Codex /root/ft1_independent_acceptance", "date": "2026-09-15", "note": "Independent PASS on f8ac1dd0492ac5312e4203718173c54860c75e829f825fa5f82e69baf45d1190; committed175a7e58; final tier0 53/0 QA179. Pristine installed bundle and hook/redirection regressions proven; not target check execution."}
     },
     {
       "id": "ft-4", "name": "brownfield retrofit (non-destructive)", "phase": "brownfield", "kind": "slice",
@@ -57,7 +57,7 @@
       "deps": ["ft-1", "ft-2"], "editorial_note": "safety-critical: non-destructive + confirm-gated",
       "detection": {"commit_match": ["FT-4", "brownfield retrofit"]},
       "pct_hint": 0,
-      "acceptance": {"status": "pending", "by": null, "date": null, "note": "not started"}
+      "acceptance": {"status": "pending", "by": null, "date": null, "note": "Executing bounded FT4-NEXT-SLICE-BRIEF.md; separate installer/observability claims. No end-to-end acceptance or target activation yet."}
     },
     {
       "id": "ft-5", "name": "factory-start precondition + parity + docs", "phase": "wire", "kind": "slice",

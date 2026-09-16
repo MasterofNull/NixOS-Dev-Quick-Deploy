@@ -2010,6 +2010,7 @@ def run(ctx: RunContext) -> list[CheckResult]:
     results.extend(_check_workflow_shadow_contract(ctx))
     results.extend(_check_execution_cell_adapter_service_coverage(ctx))
     results.extend(_check_factory_gate_install(ctx))
+    results.extend(_check_factory_gate_retrofit(ctx))
     results.extend(_check_golden_eval_parity(ctx))
     results.extend(_check_agentic_parity(ctx))
     results.extend(_check_delegation_feedback_contract(ctx))
@@ -2561,6 +2562,35 @@ def _check_factory_gate_install(ctx: RunContext) -> list[CheckResult]:
     except (OSError, subprocess.TimeoutExpired, ValueError) as error:
         return [failed(5, "0.10.45", description, str(error)[:160])]
     return [passed(5, "0.10.45", description)]
+
+
+def _check_factory_gate_retrofit(ctx: RunContext) -> list[CheckResult]:
+    """0.10.46: existing-project preservation and confirmation fixtures."""
+    description = "Factory retrofit fixture: preview, confirmation, originals and hook composition"
+    checker = ctx.repo_root / "scripts/testing/test-factory-gate-retrofit.py"
+    if not checker.is_file():
+        return [failed(5, "0.10.46", description, "focused test missing")]
+    try:
+        probe = subprocess.run(
+            ["python3", str(checker)], cwd=ctx.repo_root,
+            capture_output=True, text=True, timeout=120,
+        )
+        if probe.returncode:
+            return [failed(5, "0.10.46", description, f"fixture exit {probe.returncode}")]
+        prefix = "AQ_QA_FACTORY_RETROFIT_FIXTURE="
+        markers = [line[len(prefix):] for line in probe.stdout.splitlines() if line.startswith(prefix)]
+        if len(markers) != 1:
+            raise ValueError("expected one fixture marker")
+        evidence = json.loads(markers[0])
+        invariants = (
+            "preview_read_only", "confirmation_enforced",
+            "originals_preserved", "hooks_composed",
+        )
+        if not isinstance(evidence, dict) or any(evidence.get(key) is not True for key in invariants):
+            raise ValueError("fixture invariant evidence is incomplete")
+    except (OSError, subprocess.TimeoutExpired, ValueError) as error:
+        return [failed(5, "0.10.46", description, str(error)[:160])]
+    return [passed(5, "0.10.46", description)]
 
 
 def _check_workflow_shadow_contract(ctx: RunContext) -> list[CheckResult]:
