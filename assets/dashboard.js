@@ -7992,6 +7992,29 @@ async function loadLocalAgentMonitor() {
   const decomposition = latest.pipeline_decomposition === "unavailable"
     ? "unavailable (not recorded)"
     : "unavailable";
+  const latestCall = latest.latest_call_timing;
+  const latestCallObserved = latest.latest_call_timing_status === "observed" && latestCall;
+  const timingSeconds = (value) =>
+    Number.isFinite(value) ? `${value.toFixed(1)}s` : "unavailable";
+  const callIdentity = latestCallObserved
+    ? `${latestCall.producer}${latestCall.call_number != null ? ` logical turn #${latestCall.call_number}` : ""}${latestCall.invocation_sequence != null ? ` · attempt #${latestCall.invocation_sequence} (executor-local)` : ""}`
+    : "unavailable (no valid producer receipt)";
+  const callPhase = latestCallObserved
+    ? latestCall.terminal_state.replaceAll("_", " ")
+    : "unavailable";
+  const localAdmission = latestCallObserved && Number.isFinite(latestCall.local_admission_wait_seconds)
+    ? `${timingSeconds(latestCall.local_admission_wait_seconds)} client-side admission (not server queue)`
+    : "unavailable (not observed by this producer)";
+  const requestElapsed = latestCallObserved
+    ? timingSeconds(latestCall.request_elapsed_seconds)
+    : "unavailable";
+  const firstVisible = latestCallObserved && Number.isFinite(latestCall.time_to_first_visible_content_seconds)
+    ? `${timingSeconds(latestCall.time_to_first_visible_content_seconds)} from request (${latestCall.first_visible_content_observation.replaceAll("_", " ")})`
+    : latestCallObserved && latestCall.timing_mode === "replay"
+      ? "unavailable (replay has no live request)"
+      : latestCallObserved && latestCall.timing_mode === "buffered"
+        ? "unavailable (buffered response is not streaming TTFT)"
+        : "unavailable (no nonblank visible-content receipt)";
 
   el.innerHTML = [
     fwRow("State", status, status === "healthy" ? "ok" : status === "stale" ? "warn" : "err"),
@@ -8003,6 +8026,13 @@ async function loadLocalAgentMonitor() {
     fwRow("Artifact Age", latestAge, latestAge === "--" ? "info" : ""),
     fwRow("Pipeline Elapsed", pipelineElapsed, pipelineElapsed === "--" ? "info" : ""),
     fwRow("Queue / Prefill / Generation", decomposition, "info"),
+    fwRow("Latest Model Call", callIdentity, latestCallObserved ? "info" : ""),
+    fwRow("Call Phase", callPhase, latestCallObserved ? "info" : ""),
+    fwRow("Local Admission", localAdmission, "info"),
+    fwRow("Request Duration", requestElapsed, requestElapsed === "unavailable" ? "info" : ""),
+    fwRow("First Visible Content", firstVisible, "info"),
+    fwRow("Server Queue", "unavailable (not observed)", "info"),
+    fwRow("Timing Clock", "per-call monotonic elapsed; suspend excluded", "info"),
     fwRow("Reason", String(reason).slice(0, 48), status === "stale" ? "warn" : "info"),
   ].join("");
 }

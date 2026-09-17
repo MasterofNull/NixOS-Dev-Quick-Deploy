@@ -33,6 +33,19 @@ _MAX_COMPLETED = 750    # max completed/failed entries in PENDING.json
 _MAX_HANDOFF_LINES = 300  # max delegation tracking lines in HANDOFF.md
 _LOCAL_DIRECT_ANSWER_INSPECTION_BYTES = 64 * 1024
 _LOCAL_DIRECT_PROGRESS_RECEIPT_BYTES = 64 * 1024
+_LOCAL_PRODUCER_TIMING_RECEIPT_BYTES = 4096
+_LOCAL_PRODUCER_TIMING_SCHEMA = "aq.local-producer-timing/v1"
+_LOCAL_PRODUCER_TIMING_KEYS = frozenset({
+    "schema", "producer", "task_id", "output_task_id", "call_number", "invocation_sequence", "streaming", "timing_mode",
+    "terminal_state", "failure_category", "local_admission_wait_seconds",
+    "server_queue_wait_seconds", "request_started_utc", "first_visible_content_utc",
+    "request_completed_utc", "request_elapsed_seconds",
+    "time_to_first_visible_content_seconds", "first_visible_content_observation",
+})
+_LOCAL_PRODUCER_FAILURE_CATEGORIES = frozenset({
+    "slot_wait_timeout", "http_4xx", "http_5xx", "connect_error", "network_error",
+    "read_timeout", "first_token_timeout", "request_error",
+})
 
 # ── M2A: bounds and vocabulary (dormant — activation requires M2B authorization) ──
 _M2A_MAX_REGISTRY_BYTES = 50 * 1024 * 1024
@@ -500,6 +513,174 @@ class TaskRegistry:
         metadata["pipeline_elapsed_seconds"] = elapsed
         return metadata
 
+    @staticmethod
+    def _timing_number(value: object) -> Optional[float]:
+        if isinstance(value, bool) or not isinstance(value, (int, float)):
+            return None
+        try:
+            return float(value) if math.isfinite(value) and value >= 0 else None
+        except OverflowError:
+            return None
+
+    @staticmethod
+    def _timing_utc(value: object) -> Optional[str]:
+        if not isinstance(value, str) or len(value) > 64:
+            return None
+        try:
+            parsed = datetime.fromisoformat(value.replace("Z", "+00:00"))
+        except ValueError:
+            return None
+        return value if parsed.tzinfo is not None else None
+
+    @staticmethod
+    def _timing_utc_ordered(*values: Optional[str]) -> bool:
+        try:
+            parsed = [
+                datetime.fromisoformat(value.replace("Z", "+00:00"))
+                for value in values
+                if value is not None
+            ]
+        except ValueError:
+            return False
+        return all(left <= right for left, right in zip(parsed, parsed[1:]))
+
+    def _local_producer_timing_metadata(self, entry: dict) -> dict:
+        """Project one exact, content-free producer receipt or explicit unavailability."""
+        unavailable = {
+            "latest_call_timing": None,
+            "latest_call_timing_status": "unavailable",
+            "latest_call_timing_reason": "not_recorded_or_invalid",
+        }
+        agent = entry.get("agent")
+        if agent not in {"local-direct", "local-agent"}:
+            return unavailable
+        output_path = self._resolve_output_path(entry)
+        task_id = entry.get("id")
+        if not output_path or not isinstance(task_id, str):
+            return unavailable
+        data = _read_bounded_regular_file(
+            Path(str(output_path) + ".timing.json"), _LOCAL_PRODUCER_TIMING_RECEIPT_BYTES
+        )
+        if data is None:
+            return unavailable
+        try:
+            receipt = json.loads(data)
+        except (UnicodeDecodeError, json.JSONDecodeError, RecursionError, ValueError):
+            return unavailable
+        if not isinstance(receipt, dict) or set(receipt) != _LOCAL_PRODUCER_TIMING_KEYS:
+            return unavailable
+
+        direct = agent == "local-direct"
+        producer = "direct_runner" if direct else "agent_executor"
+        if (
+            receipt.get("schema") != _LOCAL_PRODUCER_TIMING_SCHEMA
+            or receipt.get("producer") != producer
+            or receipt.get("output_task_id") != task_id
+            or not isinstance(receipt.get("streaming"), bool)
+            or receipt.get("server_queue_wait_seconds") is not None
+        ):
+            return unavailable
+        call_number = receipt.get("call_number")
+        invocation_sequence = receipt.get("invocation_sequence")
+        if direct:
+            if (
+                receipt.get("task_id") != task_id
+                or call_number is not None
+                or invocation_sequence is not None
+                or not receipt["streaming"]
+            ):
+                return unavailable
+        elif (
+            isinstance(call_number, bool)
+            or not isinstance(call_number, int)
+            or call_number < 1
+            or isinstance(invocation_sequence, bool)
+            or not isinstance(invocation_sequence, int)
+            or invocation_sequence < 1
+            or not isinstance(receipt.get("task_id"), str)
+            or not _re.fullmatch(r"aq-[0-9]{1,20}", receipt["task_id"])
+        ):
+            return unavailable
+
+        timing_mode = receipt.get("timing_mode")
+        terminal_state = receipt.get("terminal_state")
+        failure_category = receipt.get("failure_category")
+        if timing_mode not in {"live_stream", "buffered", "replay"}:
+            return unavailable
+        if terminal_state not in {"in_progress", "success", "failure", "local_admission_timeout", "replay"}:
+            return unavailable
+        if terminal_state in {"in_progress", "success"} and failure_category is not None:
+            return unavailable
+        if terminal_state == "failure" and failure_category not in _LOCAL_PRODUCER_FAILURE_CATEGORIES:
+            return unavailable
+        if terminal_state == "local_admission_timeout":
+            if not direct or failure_category != "slot_wait_timeout":
+                return unavailable
+        elif terminal_state == "replay":
+            if direct or timing_mode != "replay" or failure_category is not None:
+                return unavailable
+        elif timing_mode == "replay":
+            return unavailable
+
+        admission_wait = self._timing_number(receipt.get("local_admission_wait_seconds"))
+        if direct:
+            if admission_wait is None:
+                return unavailable
+        elif receipt.get("local_admission_wait_seconds") is not None:
+            return unavailable
+
+        started = self._timing_utc(receipt.get("request_started_utc"))
+        first = self._timing_utc(receipt.get("first_visible_content_utc"))
+        completed = self._timing_utc(receipt.get("request_completed_utc"))
+        request_elapsed = self._timing_number(receipt.get("request_elapsed_seconds"))
+        first_elapsed = self._timing_number(receipt.get("time_to_first_visible_content_seconds"))
+        observation = receipt.get("first_visible_content_observation")
+        if observation not in {"output_file_flush", "stream_tail_write", "unavailable"}:
+            return unavailable
+        if (first is None) != (first_elapsed is None):
+            return unavailable
+        if first is None and observation != "unavailable":
+            return unavailable
+        if first is not None and observation == "unavailable":
+            return unavailable
+        if not self._timing_utc_ordered(started, first, completed):
+            return unavailable
+        if (
+            first_elapsed is not None
+            and request_elapsed is not None
+            and first_elapsed > request_elapsed
+        ):
+            return unavailable
+        if terminal_state in {"local_admission_timeout", "replay"}:
+            if any(value is not None for value in (started, first, completed, request_elapsed, first_elapsed)):
+                return unavailable
+        elif terminal_state == "in_progress":
+            if started is None or any(value is not None for value in (completed, request_elapsed)):
+                return unavailable
+        elif started is None or completed is None or request_elapsed is None:
+            return unavailable
+
+        return {
+            "latest_call_timing": {
+                "producer": producer,
+                "call_number": call_number,
+                "invocation_sequence": invocation_sequence,
+                "timing_mode": timing_mode,
+                "terminal_state": terminal_state,
+                "failure_category": failure_category,
+                "local_admission_wait_seconds": admission_wait,
+                "server_queue_wait_seconds": None,
+                "request_started_utc": started,
+                "first_visible_content_utc": first,
+                "request_completed_utc": completed,
+                "request_elapsed_seconds": request_elapsed,
+                "time_to_first_visible_content_seconds": first_elapsed,
+                "first_visible_content_observation": observation,
+            },
+            "latest_call_timing_status": "observed",
+            "latest_call_timing_reason": None,
+        }
+
     def _with_inferred_status(self, entry: dict) -> dict:
         observed = dict(entry)
         current_status = observed.get("status")
@@ -802,6 +983,7 @@ class TaskRegistry:
         tasks = []
         for entry in recent:
             latency = self._local_direct_latency_metadata(entry)
+            producer_timing = self._local_producer_timing_metadata(entry)
             tasks.append({
                 "id": entry.get("id"),
                 "agent": entry.get("agent"),
@@ -817,6 +999,7 @@ class TaskRegistry:
                 "description": entry.get("description", "")[:120],
                 "artifacts": self._artifact_snapshot(entry),
                 **latency,
+                **producer_timing,
             })
         return {
             "ok": True,
