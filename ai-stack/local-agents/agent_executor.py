@@ -4280,7 +4280,7 @@ class LocalAgentExecutor:
                             collected.append(token)
                             _write_stream_progress("llm_streaming")
                             wrote_tail = _write_stream_tail()
-                            if first_visible_content is None and token.strip() and wrote_tail:
+                            if first_visible_content is None and token.strip():
                                 first_visible_content = time.monotonic()
                                 first_visible_content_utc = _timing_utc_now()
                                 _record_timing(
@@ -4291,7 +4291,9 @@ class LocalAgentExecutor:
                                     request_started_utc=request_started_utc,
                                     first_visible_content=first_visible_content,
                                     first_visible_content_utc=first_visible_content_utc,
-                                    first_visible_content_observation="stream_tail_write",
+                                    first_visible_content_observation=(
+                                        "stream_tail_write" if wrote_tail else "stream_observed"
+                                    ),
                                 )
         except httpx.ReadTimeout as error:
             _record_timing(

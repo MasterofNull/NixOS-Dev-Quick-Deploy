@@ -1476,10 +1476,15 @@ def test_agent_executor_timing_is_per_call_and_never_claims_replay_ttft():
         'timing_mode="buffered"',
         'timing_mode="live_stream"',
         "token.strip()",
-        'first_visible_content_observation="stream_tail_write"',
+        '"stream_tail_write"',
     ):
         assert_true(required in source, f"agent timing boundary missing: {required}")
     assert_true(source.count("_record_timing(") >= 7, "agent timing lacks lifecycle receipts")
+    assert_true(
+        "if first_visible_content is None and token.strip():" in source
+        and "and wrote_tail:" not in source,
+        "first-visible timing must not depend on throttled stream-tail writes",
+    )
     print("PASS  agent timing is per-call with replay/buffered TTFT unavailable")
 
 

@@ -635,7 +635,7 @@ class TaskRegistry:
         request_elapsed = self._timing_number(receipt.get("request_elapsed_seconds"))
         first_elapsed = self._timing_number(receipt.get("time_to_first_visible_content_seconds"))
         observation = receipt.get("first_visible_content_observation")
-        if observation not in {"output_file_flush", "stream_tail_write", "unavailable"}:
+        if observation not in {"output_file_flush", "stream_tail_write", "stream_observed", "unavailable"}:
             return unavailable
         if (first is None) != (first_elapsed is None):
             return unavailable
