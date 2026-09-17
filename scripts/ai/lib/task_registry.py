@@ -17,6 +17,7 @@ parallel.
 import errno
 import fcntl
 import json
+import math
 import os
 import re as _re
 import select
@@ -31,6 +32,7 @@ from typing import Optional
 _MAX_COMPLETED = 750    # max completed/failed entries in PENDING.json
 _MAX_HANDOFF_LINES = 300  # max delegation tracking lines in HANDOFF.md
 _LOCAL_DIRECT_ANSWER_INSPECTION_BYTES = 64 * 1024
+_LOCAL_DIRECT_PROGRESS_RECEIPT_BYTES = 64 * 1024
 
 # ── M2A: bounds and vocabulary (dormant — activation requires M2B authorization) ──
 _M2A_MAX_REGISTRY_BYTES = 50 * 1024 * 1024
@@ -117,38 +119,44 @@ class RegistryError(ValueError):
     """Raised by M2A transactional registry operations on contract violations."""
 
 
-def observed_empty_answer_artifact(path: Path | str) -> bool:
-    """True only for a fully inspected, bounded regular whitespace-only artifact."""
+def _read_bounded_regular_file(path: Path | str, maximum_bytes: int) -> Optional[bytes]:
+    """Read a complete regular file within a fixed bound, or return uncertainty."""
     try:
         path = Path(path)
         initial = path.lstat()
         if not _stat.S_ISREG(initial.st_mode):
-            return False
+            return None
         flags = os.O_RDONLY | getattr(os, "O_CLOEXEC", 0) | getattr(os, "O_NOFOLLOW", 0)
         descriptor = os.open(path, flags)
     except OSError:
-        return False
+        return None
     try:
         before = os.fstat(descriptor)
         if (
             not _stat.S_ISREG(before.st_mode)
             or (before.st_dev, before.st_ino) != (initial.st_dev, initial.st_ino)
-            or before.st_size > _LOCAL_DIRECT_ANSWER_INSPECTION_BYTES
+            or before.st_size > maximum_bytes
         ):
-            return False
-        data = os.read(descriptor, _LOCAL_DIRECT_ANSWER_INSPECTION_BYTES + 1)
+            return None
+        data = os.read(descriptor, maximum_bytes + 1)
         after = os.fstat(descriptor)
         if (
-            len(data) > _LOCAL_DIRECT_ANSWER_INSPECTION_BYTES
+            len(data) > maximum_bytes
             or after.st_size != before.st_size
             or after.st_mtime_ns != before.st_mtime_ns
         ):
-            return False
-        return len(data) == before.st_size and not data.strip()
+            return None
+        return data if len(data) == before.st_size else None
     except OSError:
-        return False
+        return None
     finally:
         os.close(descriptor)
+
+
+def observed_empty_answer_artifact(path: Path | str) -> bool:
+    """True only for a fully inspected, bounded regular whitespace-only artifact."""
+    data = _read_bounded_regular_file(path, _LOCAL_DIRECT_ANSWER_INSPECTION_BYTES)
+    return data is not None and not data.strip()
 
 
 class ExecBarrier:
@@ -459,6 +467,39 @@ class TaskRegistry:
         output_path = self._resolve_output_path(entry)
         return bool(output_path and observed_empty_answer_artifact(output_path))
 
+    def _local_direct_latency_metadata(self, entry: dict) -> dict:
+        """Expose only a validated whole-pipeline elapsed receipt for local-direct."""
+        metadata = {
+            "pipeline_elapsed_seconds": None,
+            "pipeline_decomposition": "unavailable",
+        }
+        if entry.get("agent") != "local-direct":
+            return metadata
+        output_path = self._resolve_output_path(entry)
+        if not output_path:
+            return metadata
+        receipt = _read_bounded_regular_file(
+            Path(str(output_path) + ".progress.json"),
+            _LOCAL_DIRECT_PROGRESS_RECEIPT_BYTES,
+        )
+        if receipt is None:
+            return metadata
+        try:
+            progress = json.loads(receipt)
+            elapsed = progress.get("elapsed_s") if isinstance(progress, dict) else None
+        except (UnicodeDecodeError, json.JSONDecodeError, RecursionError, ValueError):
+            return metadata
+        if isinstance(elapsed, bool) or not isinstance(elapsed, (int, float)):
+            return metadata
+        try:
+            finite = math.isfinite(elapsed)
+        except OverflowError:
+            return metadata
+        if not finite or elapsed < 0:
+            return metadata
+        metadata["pipeline_elapsed_seconds"] = elapsed
+        return metadata
+
     def _with_inferred_status(self, entry: dict) -> dict:
         observed = dict(entry)
         current_status = observed.get("status")
@@ -760,6 +801,7 @@ class TaskRegistry:
         recent = active[-limit:] if active else observed[-limit:]
         tasks = []
         for entry in recent:
+            latency = self._local_direct_latency_metadata(entry)
             tasks.append({
                 "id": entry.get("id"),
                 "agent": entry.get("agent"),
@@ -774,6 +816,7 @@ class TaskRegistry:
                 "created": entry.get("created"),
                 "description": entry.get("description", "")[:120],
                 "artifacts": self._artifact_snapshot(entry),
+                **latency,
             })
         return {
             "ok": True,
