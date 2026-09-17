@@ -7,17 +7,27 @@ ROOT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")/../.." && pwd)"
 
 usage() {
   cat <<'EOF'
-Usage: scripts/governance/pre-archive-scan.sh <file>
+Usage: scripts/governance/pre-archive-scan.sh [--staged-deletion] <file>
 
 Exits 1 when any tracked repo file links to <file>; exits 0 when no inbound
 links are found. The scan checks Markdown link/image targets plus plain path
 mentions for the repo-relative file path.
+
+With --staged-deletion, a missing target is allowed only when that exact path is
+staged for deletion in Git. This lets the pre-commit hook scan a deletion
+without recreating its old worktree path.
 EOF
 }
 
 if [[ "${1:-}" == "-h" || "${1:-}" == "--help" ]]; then
   usage
   exit 0
+fi
+
+allow_staged_deletion=0
+if [[ "${1:-}" == "--staged-deletion" ]]; then
+  allow_staged_deletion=1
+  shift
 fi
 
 if [[ $# -ne 1 ]]; then
@@ -27,7 +37,7 @@ fi
 
 target_arg="$1"
 
-python3 - "$ROOT_DIR" "$target_arg" <<'PY'
+python3 - "$ROOT_DIR" "$target_arg" "$allow_staged_deletion" <<'PY'
 from __future__ import annotations
 
 import os
@@ -39,6 +49,7 @@ from urllib.parse import unquote, urlparse
 
 root = Path(sys.argv[1]).resolve()
 target_arg = sys.argv[2]
+allow_staged_deletion = sys.argv[3] == "1"
 
 # Resolve only the parent; keep the leaf un-followed for symlink detection.
 abs_target = Path(target_arg) if Path(target_arg).is_absolute() else (root / target_arg)
@@ -52,8 +63,21 @@ except ValueError:
 
 # Use lexical-existence check (symlink counts as existing even if target is broken).
 if not os.path.lexists(lexical):
-    print(f"[pre-archive-scan] ERROR: target does not exist: {target_rel}", file=sys.stderr)
-    sys.exit(2)
+    if not allow_staged_deletion:
+        print(f"[pre-archive-scan] ERROR: target does not exist: {target_rel}", file=sys.stderr)
+        sys.exit(2)
+    staged_deletions = subprocess.run(
+        ["git", "-C", str(root), "diff", "--cached", "--name-only", "--diff-filter=D", "--", target_rel],
+        check=True,
+        text=True,
+        capture_output=True,
+    ).stdout.splitlines()
+    if staged_deletions != [target_rel]:
+        print(
+            f"[pre-archive-scan] ERROR: missing target is not staged for deletion: {target_rel}",
+            file=sys.stderr,
+        )
+        sys.exit(2)
 
 # Detect and report symlinks.
 is_link = os.path.islink(lexical)

@@ -19,24 +19,8 @@ fi
 
 status=0
 for f in "${deleted_files[@]}"; do
-  materialized=0
-  if [[ ! -e "$f" ]]; then
-    mkdir -p -- "$(dirname -- "$f")"
-    if git show "HEAD:${f}" > "$f" 2>/dev/null; then
-      materialized=1
-    else
-      printf '[pre-archive-scan-hook] ERROR: unable to read staged deletion: %s\n' "$f" >&2
-      status=1
-      continue
-    fi
-  fi
-
-  if ! "${SCRIPT_DIR}/pre-archive-scan.sh" "$f"; then
+  if ! "${SCRIPT_DIR}/pre-archive-scan.sh" --staged-deletion "$f"; then
     status=1
-  fi
-
-  if [[ "$materialized" -eq 1 ]]; then
-    rm -f -- "$f"
   fi
 done
 
