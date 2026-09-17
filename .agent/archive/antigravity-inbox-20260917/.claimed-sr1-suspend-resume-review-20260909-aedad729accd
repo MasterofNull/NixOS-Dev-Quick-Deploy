@@ -1,0 +1,28 @@
+# A2A task for antigravity — round 'sr1-suspend-resume-review-20260909'
+
+Dropped: 2026-09-10T03:25:10Z
+Output: .agents/plans/sr1-suspend-resume-review-20260909/antigravity.md
+
+Respond by writing `.agents/plans/sr1-suspend-resume-review-20260909/antigravity.md`.
+
+## SCOPE & STOP (HARD — read before writing)
+- Edit ONLY the files this task names as surfaces. A related-looking file is still out of scope.
+- NEVER implement a data/config change as a filesystem shortcut: no symlink, bind mount, mount,
+  chmod/chown/rm on tracked or runtime paths. 'Single source of truth' = a resolver in code,
+  never one directory replacing/redirecting another.
+- NO DELETE — archive to a timestamped path; never rm/rmdir.
+- If this task references an authorization/round: confirm it still reads AUTHORIZED and (where a
+  package root is named) that `aq-package-freeze verify` exits 0 BEFORE writing. If suspended,
+  STOP — do not recreate or continue suspended files.
+- Undeclared dependency discovered -> STOP and report; do not expand scope to 'make it work'.
+- Budgets/acceptance criteria are hard facts: a measured violation FAILS; a sentence calling it
+  'acceptable' does not change the number. Report the real value.
+- Write ONLY your own named output file. Do NOT edit shared files. Do NOT commit.
+- When unsure whether something is in scope: it is not. Report, do not act.
+
+COLLABORATIVE ROUND 'sr1-suspend-resume-review-20260909'.
+Review artifact: antigravity (read it).
+TASK:
+Independent read-only review of exact staged diff in /tmp/aqos-suspend-resilience. Verify sha256 43868e70b337649d0842fdfc485d4aa93598baf85230c17b5a26c78feccb2517. Review sleep policy preservation, truthful registry semantics, fail-closed Tier0 omission guard, focused triggers, and explicit SR-2/SR-3/SR-4 deferrals. Do not edit or commit. Return PASS or REQUEST_REVISION bound to hash.
+
+Write your contribution to YOUR OWN file ONLY: .agents/plans/sr1-suspend-resume-review-20260909/<AGENT>.md (<AGENT> = codex | local | antigravity). Do NOT edit any shared file. Do NOT read the artifact file (it is inlined above). Be decisive and concise.

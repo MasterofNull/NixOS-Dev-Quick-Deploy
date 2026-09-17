@@ -1,0 +1,97 @@
+{
+  "note": "Reconstructed 2026-08-29 from preserved dogfood-diffs/*.prompt.txt after the live queue + archive were lost. dogfood-01 canary is hardcoded in the runner. Verify_cmds restored by file-type heuristic; NOTE known-shallow ({file} --help masks deletions of non-help-path functions \u2014 see issues-backlog shallow-verify finding).",
+  "queue": [
+    {
+      "task": "dogfood-02",
+      "backlog_item": "router-role-route-gemini-availability-stub",
+      "file": "scripts/ai/aq-role-route",
+      "severity": "medium",
+      "bounded": true,
+      "verify_cmd": "{file} --help >/dev/null 2>&1"
+    },
+    {
+      "task": "dogfood-03",
+      "backlog_item": "delegate-to-local-status-machine-mode-flag-mismatch",
+      "file": "scripts/ai/delegate-to-local",
+      "severity": "low",
+      "bounded": true,
+      "verify_cmd": "{file} --help >/dev/null 2>&1"
+    },
+    {
+      "task": "dogfood-04",
+      "backlog_item": "aq-event-pulse-cli-contract-drift",
+      "file": "scripts/ai/aq-event",
+      "severity": "low",
+      "bounded": true,
+      "verify_cmd": "{file} --help >/dev/null 2>&1"
+    },
+    {
+      "task": "dogfood-05",
+      "backlog_item": "aq-collaborate-lacks-status-command",
+      "file": "scripts/ai/aq-collaborate",
+      "severity": "low",
+      "bounded": true,
+      "verify_cmd": "{file} --help >/dev/null 2>&1"
+    },
+    {
+      "task": "dogfood-06",
+      "backlog_item": "mcp-server-skill-validator-contract",
+      "file": ".agent/skills/mcp-server/SKILL.md",
+      "severity": "medium",
+      "bounded": true
+    },
+    {
+      "task": "dogfood-07",
+      "backlog_item": "understand-anything-architecture-graph-stale",
+      "file": ".understand-anything/knowledge-graph.json",
+      "severity": "medium",
+      "bounded": true
+    },
+    {
+      "task": "dogfood-08",
+      "backlog_item": "repository-wide-doc-link-baseline-fails",
+      "file": "scripts/governance/check-doc-links.sh",
+      "severity": "medium",
+      "bounded": true,
+      "verify_cmd": "{file} --help >/dev/null 2>&1"
+    },
+    {
+      "task": "dogfood-09",
+      "backlog_item": "stale-continue-regression-tests",
+      "file": "scripts/testing/test-continue-coordinator-ingress.py",
+      "severity": "medium",
+      "bounded": true,
+      "verify_cmd": "python3 {file}"
+    },
+    {
+      "task": "dogfood-10",
+      "backlog_item": "heartbeat-prefill-invisibility-wedge-vs-slow",
+      "file": "ai-stack/local-agents/agent_executor.py + scripts/ai/lib/dispatch.py",
+      "severity": "medium",
+      "bounded": true
+    },
+    {
+      "task": "dogfood-11",
+      "backlog_item": "codebase-context-misses-shebang-scripts",
+      "file": "(codebase-context indexer \u2014 locate ingest glob)",
+      "severity": "medium",
+      "bounded": true
+    },
+    {
+      "task": "dogfood-12",
+      "backlog_item": "local-skill-validator-metadata-drift",
+      "file": "scripts/ai/aq-skill-auto",
+      "severity": "medium",
+      "bounded": true,
+      "verify_cmd": "{file} --help >/dev/null 2>&1"
+    },
+    {
+      "task": "dogfood-13",
+      "backlog_item": "dogfood-13",
+      "file": "scripts/governance/run-focused-ci-checks.sh",
+      "severity": "medium",
+      "bounded": true,
+      "verify_cmd": "{file} --help >/dev/null 2>&1"
+    }
+  ]
+}

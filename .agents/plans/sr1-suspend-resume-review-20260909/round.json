@@ -1,0 +1,73 @@
+{
+  "schema_version": "1.0",
+  "round_id": "sr1-suspend-resume-review-20260909",
+  "state": "COLLECTED",
+  "task": {
+    "prompt": "Independent read-only review of exact staged diff in /tmp/aqos-suspend-resilience. Verify sha256 43868e70b337649d0842fdfc485d4aa93598baf85230c17b5a26c78feccb2517. Review sleep policy preservation, truthful registry semantics, fail-closed Tier0 omission guard, focused triggers, and explicit SR-2/SR-3/SR-4 deferrals. Do not edit or commit. Return PASS or REQUEST_REVISION bound to hash.",
+    "target": "antigravity",
+    "scope_files": []
+  },
+  "opened_at": "2026-09-10T03:25:10Z",
+  "quorum_policy": {
+    "min_lanes": 2,
+    "required_agents": [],
+    "late_local_admissible": true,
+    "timeout_seconds": null,
+    "deadline": null,
+    "timeout_action": "lock_with_present"
+  },
+  "lanes": [
+    {
+      "agent": "claude",
+      "dispatch_id": null,
+      "idempotency_hash": "5936aea5e6739d2fa2710b4f687b836f9f2b2855efff731fd5945b49abfbcb75",
+      "status": "pending",
+      "landed_at": null
+    },
+    {
+      "agent": "codex",
+      "dispatch_id": null,
+      "idempotency_hash": "a48262c97e3ce1852742f270a77d6645d1fcf05ed003ffb3a935d11fa0fe6587",
+      "status": "submitted",
+      "landed_at": null
+    },
+    {
+      "agent": "local",
+      "dispatch_id": null,
+      "idempotency_hash": "e1a674c94392ddb29d12a6e9a8e6df161f49492f98902a59bbe9508e99f85eb4",
+      "status": "submitted",
+      "landed_at": null
+    },
+    {
+      "agent": "antigravity",
+      "dispatch_id": null,
+      "idempotency_hash": "afd3ba19f0e08a0a08247c0395e6c1e0099f8a035cb8722ed3a585c5c8a007be",
+      "status": "pending",
+      "landed_at": null
+    }
+  ],
+  "contributions": {},
+  "conflicts": [],
+  "consensus_hash": null,
+  "aggregate_path": null,
+  "aggregate_hash": null,
+  "locked_at": null,
+  "history": [
+    {
+      "transition": "CREATED->DISPATCHED",
+      "timestamp": "2026-09-10T03:25:10Z",
+      "actor": "aq-collab-round"
+    },
+    {
+      "transition": "DISPATCHED->CONTRIBUTING",
+      "timestamp": "2026-09-10T03:37:05Z",
+      "actor": "aq-collab-round"
+    },
+    {
+      "transition": "CONTRIBUTING->COLLECTED",
+      "timestamp": "2026-09-10T03:37:05Z",
+      "actor": "aq-collab-round"
+    }
+  ],
+  "predecessor_round_id": null
+}
