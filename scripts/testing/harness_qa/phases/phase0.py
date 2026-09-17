@@ -2014,6 +2014,7 @@ def run(ctx: RunContext) -> list[CheckResult]:
     results.extend(_check_factory_gate_retrofit(ctx))
     results.extend(_check_capability_outcome_resolver(ctx))
     results.extend(_check_worktree_isolation_safety(ctx))
+    results.extend(_check_integration_guard(ctx))
     results.extend(_check_golden_eval_parity(ctx))
     results.extend(_check_agentic_parity(ctx))
     results.extend(_check_delegation_feedback_contract(ctx))
@@ -2614,6 +2615,37 @@ def _check_worktree_isolation_safety(ctx: RunContext) -> list[CheckResult]:
     except (OSError, subprocess.TimeoutExpired) as error:
         return [failed(5, "0.10.48", description, str(error)[:240])]
     return [passed(5, "0.10.48", description)]
+
+
+def _check_integration_guard(ctx: RunContext) -> list[CheckResult]:
+    """CS-3: real disposable Git process lock, hook, and Fleet projection contract."""
+    description = "process-bound integration guard and Fleet lock visibility"
+    if ctx.dashboard_safe:
+        return [skipped(5, "0.10.49", description, "temporary Git mutation fixture is host-only")]
+    checker = ctx.repo_root / "scripts" / "testing" / "test-integration-guard.py"
+    required = [
+        checker, ctx.repo_root / "scripts" / "ai" / "aq-commit-agent",
+        ctx.repo_root / "scripts" / "ai" / "lib" / "integration_guard.py",
+        ctx.repo_root / ".githooks" / "pre-commit",
+        ctx.repo_root / "dashboard" / "backend" / "api" / "routes" / "aistack.py",
+        ctx.repo_root / "assets" / "dashboard.js",
+    ]
+    missing = [str(path.relative_to(ctx.repo_root)) for path in required if not path.is_file()]
+    if missing:
+        return [failed(5, "0.10.49", description, f"missing: {', '.join(missing)}")]
+    try:
+        result = subprocess.run([sys.executable, str(checker)], cwd=ctx.repo_root,
+                                capture_output=True, text=True, timeout=45)
+    except (OSError, subprocess.TimeoutExpired) as exc:
+        return [failed(5, "0.10.49", description, str(exc)[:240])]
+    if result.returncode or "PASS: integration guard" not in result.stdout:
+        detail = (result.stderr or result.stdout or f"exit {result.returncode}")[-240:]
+        return [failed(5, "0.10.49", description, detail)]
+    route = required[-2].read_text(encoding="utf-8")
+    dashboard = required[-1].read_text(encoding="utf-8")
+    if "integration_guard" not in route or "asyncio.to_thread(_integration_guard_status" not in route or "integration guard" not in dashboard:
+        return [failed(5, "0.10.49", description, "read-only route or Fleet card linkage missing")]
+    return [passed(5, "0.10.49", description)]
 
 
 def _check_capability_outcome_resolver(ctx: RunContext) -> list[CheckResult]:

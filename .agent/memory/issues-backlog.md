@@ -4459,3 +4459,59 @@ was pending but ineligible. Added the exact Output: line under the existing plan
 status now identifies it as eligible and dispatch-once returned cli-nudge-ok.
 Action: validate task metadata before waking a lane. Completion still pending.
 File: scripts/ai/aq-antigravity-inbox (task checkpoint-contract-review-20260917)
+
+## [DONE] Pre-push sync check makes a full-history repository shallow
+Severity: medium. Main documentation Tier-0 passed its full-history check; the
+subsequent successful push used .githooks/pre-push's git fetch --depth=1. A raw
+post-push Git check returned shallow=true. This invalidates the next shallow-repo
+gate despite no source or history rewrite by the agent.
+Action: history restored non-destructively, then accepted one-line fix 161e321b
+replaced --depth=1 with --no-tags. Native Luna implemented; root independently
+repeated a four-commit local-Git probe: new fetch shallow=false/count=4, legacy
+negative control shallow=true/count=1. Tier-0 53 PASS/0 FAIL; actual authorized
+push passed 22 checks, main/origin matched and post-push shallow=false. This is
+bounded source-change qualification, not authority for autonomous model commits.
+File: .githooks/pre-push
+
+## [OPEN] Legacy commit helpers lack explicit-path and frozen-subject contracts
+Severity: high. aq-commit-agent stages the entire .agent/collaboration directory;
+ai-validate-and-commit reviews the shared Git diff and invokes a hard-coded qwen
+CLI. These do not qualify as safe lightweight commit automation in a concurrent
+factory with task ownership and independently bound review requirements.
+Action: reuse existing helpers with explicit allowed paths, deterministic subject
+hash and status checks, integration lease, structured draft inputs and qualified
+model routing. Never execute bulk-stage wrappers to preserve current work.
+File: scripts/ai/aq-commit-agent; scripts/ai/ai-validate-and-commit
+
+## [IN-FLIGHT] CS-3 draft integration and fixture safety edges
+Severity: high. Independent pre-freeze draft inspection found Git wildcard
+pathspec expansion despite explicit file arguments, rename folding hiding source
+deletions, and stripping the actual hook GIT_INDEX_FILE. Lock status also needed
+nofollow/regular/nonblocking opens, bounded metadata and escaped UI text.
+The disposable test draft must clear inherited GIT_* in its own process as well
+as child Git commands, and must not invoke --no-verify even for fixture setup.
+Action: bounded correction batch sent to isolated implementer before acceptance;
+prove literal/rename scope, temporary-index truth, FIFO safety and inherited-index
+isolation. No production source activation or PASS claimed for this draft.
+File: scripts/ai/lib/integration_guard.py; scripts/testing/test-integration-guard.py
+
+## [IN-FLIGHT] CS-3 final review found staged-deletion and rename hash defects
+Severity: high. Cold non-author review bound to c5506ed0 (50,258 bytes) returned
+REQUEST_REVISION, not PASS. Exact staged deletion/rename source is no longer in
+ls-files index; valid owned rename additionally exposes different staged git-diff
+versus published diff-tree rename defaults. A commit may exist but be reported
+as post-commit verification failure; no rollback is attempted by the guard.
+Action: preserve this candidate ACTIVATION_BLOCKED on isolated source branch;
+next named slice CS3-F1 validates exact deleted files against frozen HEAD,
+aligns published/staged hashing and adds positive deletion/owned-rename plus
+actual HEAD-object drift regressions. One bounded repair/review per invariant.
+File: scripts/ai/lib/integration_guard.py ~line 194; scripts/testing/test-integration-guard.py
+
+## [OPEN] Native Luna preservation-message task hit explicit usage limit
+Severity: medium. /root/cs3_inventory failed while drafting the CS-3 preservation
+message with an explicit usage-limit response, suggesting retry at 4:40 PM
+(timezone not provided). This is evidence for this task only, not proof about
+earlier empty tasks or other lanes. Earlier one-line implementation succeeded.
+Action: route the bounded draft to available root fallback, preserve work now;
+record quota availability before retry and never credit a failed task as review.
+File: /tmp/aq-cs3-preservation-commitmsg-20260917.txt
