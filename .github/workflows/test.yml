@@ -82,6 +82,10 @@ jobs:
           chmod +x scripts/governance/check-deprecated-docs-location.sh
           ./scripts/governance/check-deprecated-docs-location.sh
 
+      - name: Run pre-archive scan regression fixture
+        run: |
+          python3 scripts/testing/test-pre-archive-no-materialization.py
+
   harness-first-owner-approval:
     name: Harness-First Owner Approval
     if: github.event_name == 'pull_request'

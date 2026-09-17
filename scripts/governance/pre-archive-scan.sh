@@ -67,7 +67,7 @@ if not os.path.lexists(lexical):
         print(f"[pre-archive-scan] ERROR: target does not exist: {target_rel}", file=sys.stderr)
         sys.exit(2)
     staged_deletions = subprocess.run(
-        ["git", "-C", str(root), "diff", "--cached", "--name-only", "--diff-filter=D", "--", target_rel],
+        ["git", "-C", str(root), "diff", "--cached", "--no-renames", "--name-only", "--diff-filter=D", "--", target_rel],
         check=True,
         text=True,
         capture_output=True,
