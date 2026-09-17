@@ -51,6 +51,21 @@
       "timeout_seconds": 120
     },
     {
+      "id": "pre-archive-no-materialization",
+      "description": "pre-archive staged deletion and rename scan regression",
+      "trigger_paths": [
+        "scripts/governance/pre-archive-scan.sh",
+        "scripts/governance/pre-archive-scan-hook.sh",
+        "scripts/testing/test-pre-archive-no-materialization.py"
+      ],
+      "command": [
+        "python3",
+        "scripts/testing/test-pre-archive-no-materialization.py"
+      ],
+      "tier": "behavioral",
+      "timeout_seconds": 30
+    },
+    {
       "id": "dashboard-insights-cache",
       "description": "dashboard insights cache regression",
       "trigger_paths": [
