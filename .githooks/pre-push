@@ -59,7 +59,7 @@ run_upstream_sync_check() {
   echo "Running pre-push upstream sync check..."
   # Fetch with a short timeout; skip the behind-check if the network is unavailable
   # rather than blocking the push entirely.
-  if ! git fetch --quiet --depth=1 "${remote_name}" "${upstream_branch}" 2>/dev/null; then
+  if ! git fetch --quiet --no-tags "${remote_name}" "${upstream_branch}" 2>/dev/null; then
     echo "pre-push: fetch from '${remote_name}' failed or unavailable — skipping sync check"
     return 0
   fi
