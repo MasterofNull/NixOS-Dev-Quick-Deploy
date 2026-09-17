@@ -135,6 +135,7 @@ except ImportError:
 from task_config import TaskConfig  # type: ignore  # noqa: E402
 from task_registry import TaskRegistry  # type: ignore  # noqa: E402
 from slot_scheduler import SlotWaitTimeout, wait_for_slot  # type: ignore  # noqa: E402
+from producer_timing import utc_now as _timing_utc_now, write_receipt as _write_timing_receipt  # type: ignore  # noqa: E402
 
 # F2.5 wiring: banded cross-process slot queue (scheduler + backpressure +
 # model_tier). Optional import — absence or SLOT_QUEUE=0 falls back to the
@@ -510,7 +511,7 @@ class DirectRunner:
     Slot pre-poll via slot_scheduler.wait_for_slot().
     """
 
-    def run(self, config: TaskConfig, prompt: str, output_file: Path) -> bool:
+    def run(self, config: TaskConfig, prompt: str, output_file: Path, task_id: Optional[str] = None) -> bool:
         """Return True on success, False on failure. Writes result to output_file.
 
         Phase 163: incremental writes — each SSE content chunk is written and
@@ -561,6 +562,20 @@ class DirectRunner:
                 "queued_timeout",
                 role=config.role,
             )
+            _write_timing_receipt(
+                output_file,
+                producer="direct_runner",
+                task_id=task_id,
+                output_task_id=task_id,
+                call_number=None,
+                invocation_sequence=None,
+                streaming=True,
+                timing_mode="live_stream",
+                terminal_state="local_admission_timeout",
+                failure_category="slot_wait_timeout",
+                local_admission_started=_start,
+                local_admission_completed=time.monotonic(),
+            )
             return False
 
         def _release_queue_slot():
@@ -590,6 +605,26 @@ class DirectRunner:
         _gen_span = _maybe_span(
             "model.generate", task_type=config.task_type or "agent",
             max_tokens=config.max_tokens, role=config.role or "")
+        _admission_completed = time.monotonic()
+        _request_started = _admission_completed
+        _request_started_utc = _timing_utc_now()
+        _first_visible_content = None
+        _first_visible_content_utc = None
+        _write_timing_receipt(
+            output_file,
+            producer="direct_runner",
+            task_id=task_id,
+            output_task_id=task_id,
+            call_number=None,
+            invocation_sequence=None,
+            streaming=True,
+            timing_mode="live_stream",
+            terminal_state="in_progress",
+            local_admission_started=_start,
+            local_admission_completed=_admission_completed,
+            request_started=_request_started,
+            request_started_utc=_request_started_utc,
+        )
         try:
             with _gen_span as _span, urllib.request.urlopen(req, timeout=config.timeout_secs) as resp:
                 tokens_in = tokens_out = 0
@@ -614,6 +649,27 @@ class DirectRunner:
                                 if content:
                                     out_fh.write(content)
                                     out_fh.flush()
+                                    if _first_visible_content is None and content.strip():
+                                        _first_visible_content = time.monotonic()
+                                        _first_visible_content_utc = _timing_utc_now()
+                                        _write_timing_receipt(
+                                            output_file,
+                                            producer="direct_runner",
+                                            task_id=task_id,
+                                            output_task_id=task_id,
+                                            call_number=None,
+                                            invocation_sequence=None,
+                                            streaming=True,
+                                            timing_mode="live_stream",
+                                            terminal_state="in_progress",
+                                            local_admission_started=_start,
+                                            local_admission_completed=_admission_completed,
+                                            request_started=_request_started,
+                                            request_started_utc=_request_started_utc,
+                                            first_visible_content=_first_visible_content,
+                                            first_visible_content_utc=_first_visible_content_utc,
+                                            first_visible_content_observation="output_file_flush",
+                                        )
                                     _stream_toks += 1
                             usage = chunk.get("usage") or {}
                             if usage:
@@ -630,6 +686,7 @@ class DirectRunner:
                             pass
 
             _release_queue_slot()
+            _request_completed = time.monotonic()
             final_toks = tokens_out or _stream_toks
             elapsed = time.monotonic() - _start
             tps = final_toks / elapsed if elapsed > 0 and final_toks > 0 else 0.0
@@ -642,16 +699,63 @@ class DirectRunner:
                 )
             # Emit agent_step_complete to feed training ingest pipeline.
             _emit_training_event(prompt, result, tokens_in, final_toks, config.role)
+            _write_timing_receipt(
+                output_file,
+                producer="direct_runner",
+                task_id=task_id,
+                output_task_id=task_id,
+                call_number=None,
+                invocation_sequence=None,
+                streaming=True,
+                timing_mode="live_stream",
+                terminal_state="success",
+                local_admission_started=_start,
+                local_admission_completed=_admission_completed,
+                request_started=_request_started,
+                request_started_utc=_request_started_utc,
+                first_visible_content=_first_visible_content,
+                first_visible_content_utc=_first_visible_content_utc,
+                first_visible_content_observation=(
+                    "output_file_flush" if _first_visible_content is not None else "unavailable"
+                ),
+                request_completed=_request_completed,
+                request_completed_utc=_timing_utc_now(),
+            )
             return True
 
         except urllib.error.HTTPError as e:
             _release_queue_slot()
+            _request_completed = time.monotonic()
             elapsed = time.monotonic() - _start
             _write_progress(progress_file, 0, config.max_tokens, elapsed, 0.0, None, "failed")
             output_file.write_text(f"HTTP {e.code}: {e.read().decode()}")
+            _write_timing_receipt(
+                output_file,
+                producer="direct_runner",
+                task_id=task_id,
+                output_task_id=task_id,
+                call_number=None,
+                invocation_sequence=None,
+                streaming=True,
+                timing_mode="live_stream",
+                terminal_state="failure",
+                failure_category=("http_4xx" if 400 <= e.code < 500 else "http_5xx"),
+                local_admission_started=_start,
+                local_admission_completed=_admission_completed,
+                request_started=_request_started,
+                request_started_utc=_request_started_utc,
+                first_visible_content=_first_visible_content,
+                first_visible_content_utc=_first_visible_content_utc,
+                first_visible_content_observation=(
+                    "output_file_flush" if _first_visible_content is not None else "unavailable"
+                ),
+                request_completed=_request_completed,
+                request_completed_utc=_timing_utc_now(),
+            )
             return False
         except Exception as e:
             _release_queue_slot()
+            _request_completed = time.monotonic()
             elapsed = time.monotonic() - _start
             _write_progress(progress_file, 0, config.max_tokens, elapsed, 0.0, None, "failed")
             # Preserve any partial output that streamed before the failure
@@ -663,6 +767,29 @@ class DirectRunner:
                     pass
             else:
                 output_file.write_text(f"Error: {e}")
+            _write_timing_receipt(
+                output_file,
+                producer="direct_runner",
+                task_id=task_id,
+                output_task_id=task_id,
+                call_number=None,
+                invocation_sequence=None,
+                streaming=True,
+                timing_mode="live_stream",
+                terminal_state="failure",
+                failure_category="request_error",
+                local_admission_started=_start,
+                local_admission_completed=_admission_completed,
+                request_started=_request_started,
+                request_started_utc=_request_started_utc,
+                first_visible_content=_first_visible_content,
+                first_visible_content_utc=_first_visible_content_utc,
+                first_visible_content_observation=(
+                    "output_file_flush" if _first_visible_content is not None else "unavailable"
+                ),
+                request_completed=_request_completed,
+                request_completed_utc=_timing_utc_now(),
+            )
             return False
 
 
@@ -1520,7 +1647,13 @@ def dispatch_task(
         "agent":  AgentRunner(script_dir),
     }
     runner = runners[config.mode]
-    _run_kwargs = {"max_calls": max_calls} if config.mode == "agent" else {}
+    _run_kwargs = (
+        {"max_calls": max_calls}
+        if config.mode == "agent"
+        else {"task_id": task_id}
+        if config.mode == "direct"
+        else {}
+    )
     success = runner.run(config, prompt, output_file, **_run_kwargs)
 
     # Code validation: append syntax check report to output for direct-mode tasks.
