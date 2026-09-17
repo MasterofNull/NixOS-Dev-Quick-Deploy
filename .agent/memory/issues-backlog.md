@@ -4495,7 +4495,7 @@ prove literal/rename scope, temporary-index truth, FIFO safety and inherited-ind
 isolation. No production source activation or PASS claimed for this draft.
 File: scripts/ai/lib/integration_guard.py; scripts/testing/test-integration-guard.py
 
-## [IN-FLIGHT] CS-3 final review found staged-deletion and rename hash defects
+## [DONE] CS-3 final review found staged-deletion and rename hash defects
 Severity: high. Cold non-author review bound to c5506ed0 (50,258 bytes) returned
 REQUEST_REVISION, not PASS. Exact staged deletion/rename source is no longer in
 ls-files index; valid owned rename additionally exposes different staged git-diff
@@ -4505,6 +4505,11 @@ Action: preserve this candidate ACTIVATION_BLOCKED on isolated source branch;
 next named slice CS3-F1 validates exact deleted files against frozen HEAD,
 aligns published/staged hashing and adds positive deletion/owned-rename plus
 actual HEAD-object drift regressions. One bounded repair/review per invariant.
+Resolution: CS3-F1 f9ab7e42 is independently accepted on exact3332984f, 63,581
+raw bytes; Tier0 53/0 and normal push22/22 passed. Published parent/hash/path
+verification succeeded, stage empty and lease released. Original failed draft
+1a9a0567 remains safely preserved on its synchronized activation-blocked branch.
+Deployed dashboard exposure is a separate CS4 follow-up, not proof from this fix.
 File: scripts/ai/lib/integration_guard.py ~line 194; scripts/testing/test-integration-guard.py
 
 ## [OPEN] Native Luna preservation-message task hit explicit usage limit
@@ -4515,3 +4520,12 @@ earlier empty tasks or other lanes. Earlier one-line implementation succeeded.
 Action: route the bounded draft to available root fallback, preserve work now;
 record quota availability before retry and never credit a failed task as review.
 File: /tmp/aq-cs3-preservation-commitmsg-20260917.txt
+
+## [OPEN] PM tracker help path fails with an unhandled traceback
+Severity: low. `scripts/ai/aq-pm-tracker --help` interprets --help as a plan
+directory and raises FileNotFoundError for --help/tracker.json. No tracker or
+production state was changed. Root also hit avoidable guessed-path/unmatched
+zsh-glob failures during discovery; use rg --files before constructing paths.
+Action: bounded CLI usability follow-up: explicit help/usage and invalid-plan
+errors without traceback, keeping normal projection and tracker semantics intact.
+File: scripts/ai/aq-pm-tracker ~line 363
