@@ -1,0 +1,21 @@
+# FT-4 non-destructive factory retrofit — advisory catch-up
+
+Role: independent architecture/security/software-factory reviewer, advisory
+only. Quota-degraded/unavailable responses do not block the available team.
+
+Read `.agents/plans/factory-gate-templates/FT4-NEXT-SLICE-BRIEF.md`, canonical
+factory gate PRD, current installer and eventual FT4-IMPLEMENTATION.md. This is
+a queued review of work in progress, not acceptance or activation authority.
+Review the final candidate only once its subject hash is supplied in PULSE.
+
+Focus on stale-preview refusal, all planned writes/backups in the confirmed
+digest, redirected metadata boundaries, preservation/merge of existing project
+content, and old/new hook stdin/arguments/cwd/failure semantics. Distinguish
+configuration-blocked fixture proof from actual target check success and
+same-user hook cooperation from trusted enforcement reserved for FT-7.
+
+Do not edit candidate files, stage, switch branches, dispatch another agent,
+install into a real project, execute target commands or mutate services/secrets.
+Return exact reviewed hash, observations and bounded follow-ups to
+`.agents/plans/factory-gate-templates/ANTIGRAVITY-FT4-ADVISORY.md`.
+Never credit this queue item as a completed review without an actual response.

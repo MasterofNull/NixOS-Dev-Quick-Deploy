@@ -1,0 +1,27 @@
+# Coordination safety — bounded next-slice expert-team pass
+
+Output: .agents/plans/coordination-safety-worktree-isolation/GEMINI-NEXT-SLICES-20260917.md
+
+Owner explicitly appoints Codex orchestrator. CS-1 landed at
+e8a905e867bc03f1c8045519bc1917efca01a667. This is advisory planning, not approval
+to install, activate hooks, edit shared source or commit main.
+
+Same baseline for Codex, Claude and Gemini: systems architect, security engineer,
+implementation engineer and QA engineer. Inspect the landed worktree-isolation
+helper and delegate-to-codex/local/claude scripts, plus
+`.agents/plans/coordination-safety-worktree-isolation/DESIGN.md` and its tracker.
+Propose the smallest corrective slice for shared-checkout fallback and handback
+evidence-loss risks, followed by CS-2 isolation parity and CS-3 enforced trunk
+integration. Reuse existing event, claim and hook authorities. Distinguish a
+reviewed source patch from the actual integrated diff, and preserve brownfield work.
+
+Return paths, explicit invariants, hermetic/concurrent fixtures and meaningful
+QA/dashboard indicators. No second event/lease hub, repo-wide edit lock or new
+remote credential. One batch of findings; no unlimited plan-review replay.
+Evidence unknown is UNKNOWN, not PASS. Local's equivalent contribution is queued
+until a measured-ready inference lane exists after the recorded response timeout.
+
+Write ONLY `.agents/plans/coordination-safety-worktree-isolation/GEMINI-NEXT-SLICES-20260917.md`.
+Use the existing claim-bound inbox protocol. Do not edit implementations, stage,
+switch branches, mutate services, remove worktrees, access secrets or route agents.
+Return PLAN_READY_WITH_FOLLOWUPS or PLAN_BLOCKED with source-grounded reasons.

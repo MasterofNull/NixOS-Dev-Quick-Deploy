@@ -3929,3 +3929,472 @@ Severity: low (v1 flagging works for the thin/stale case that matters; additive 
 ACTION (db-4 F1-follow-up): for accurate recency on large tiers, add a Qdrant payload index on the timestamp
 key + use scroll/query order_by desc (limit 1), or maintain a newest-write marker per collection. Until then,
 treat newest_write_at as approximate for tiers with >32 points.
+
+## [OPEN] db-4 F3 scope — episodic/procedural memory write path is WIRED but under-TRIGGERED (2026-09-14)
+Diagnosis (read-only) of why agent-memory-episodic=7 / procedural=10 stay thin: the write path EXISTS and is
+integrated in multiple places — ai-stack/local-agents/builtin_tools/ai_coordination.py maps observation/event/
+milestone -> episodic; hybrid-coordinator/knowledge/{memory_manager,memory_context_handlers,
+context_lifecycle_manager,memory_crystallizer}.py handle the episodic tier; collections_config.py maps
+episodic->agent-memory-episodic; scripts/automation/prsi-orchestrator.py is instructed to write an episodic
+"PRSI cycle <date>: <summary>" entry each cycle. So it is NOT a missing writer — it is an under-TRIGGERED
+path: the events that would populate episodic (session-end/task-completion summaries, PRSI cycles, milestones)
+fire rarely, so the curated tier stays thin while raw interaction-history (41k, auto-logged per turn) balloons.
+F3 (the real "make it actively used" fix — a dedicated slice, NOT rushed): (1) trace which loop SHOULD emit an
+episodic entry on normal task completion (likely agent_executor / aq-agent-loop end-of-task summary) and
+confirm it actually invokes MemoryBroker.write("episodic",...); (2) verify the contradiction/supersession guard
+in memory_broker.py isn't silently blocking writes; (3) ensure prsi-orchestrator's episodic-summary step
+actually fires each cycle; (4) add a per-tier write-rate metric so under-triggering is visible (extends F1).
+Severity: medium (the typed memory is the "smart" memory; thin tiers = the half-done impression). Needs
+careful diagnosis + a live-loop code change — do not rush at session tail.
+
+## [IN-FLIGHT high] Sep14 two unclean host stops + wake-side inference recovery gap
+Boot journals stop abruptly at 08:57:30 and 20:17:36 PDT without panic/OOM/thermal/MCE/storage failure.
+Both follow lid-driven s2idle resumes emitting AMD DMCUB + Lenovo EC/ACPI missing-symbol errors;
+correlation is strong but hard-reset causality is NOT proven. Evening stop occurred after BIOS/EC update.
+Concrete code gap: old llama-cpp-resume unit was ordered on sleep.target entry, not a reliable wake hook.
+Action: Claude independently reviews prepared SR-3 wake-side reconciler + persistent dashboard/QA
+telemetry, evaluates/builds/activates it, then coordinates three lid cycles and a normal-use soak.
+Do not restore the deliberately removed dcdebugmask default or disable lid sleep without a reviewed trial.
+File: .agent/collaboration/ORCHESTRATOR-HANDOFF-codex-to-claude-20260915.md; nix/modules/roles/ai-stack.nix.
+
+## [OPEN medium] Antigravity recurring Electron NodeService SIGSEGV across versions
+Three 2.5.5 crashes Sep14; stable 1.23.2 also crashed Sep9–11. No useful stack or proximate evidence ties
+these to the host resets; auto-wake was not active around them. Action: maintain degraded/advisory routing,
+add coredump-signature observability and a controlled single-variable trial; do not blindly downgrade.
+
+## [OPEN low] Boot-regression test baseline assertion drift
+test-boot-stability-regressions.py fails at the health-spider osi-layered assertion (~line 187), unrelated
+to prepared SR-3 changes. Action: reconcile the current health-spider contract in a separate bounded slice.
+
+## [DONE high] FT-1 portable template false-pass/layout/PM evidence defects
+Independent staged-subject review a507cdac found unresolved checks counted PASS, declared installed
+self-test layout incoherent, and editorial acceptance producing authoritative completion without git
+evidence/schema bounds. Source live gates are unchanged; this is an unactivated additive template.
+Action: corrected and independently accepted exact743848d961b8220a4487016b24074b95b3750f675cc4bb3170de95f378c75477,
+committed44ec2919; final Tier-0 53/0 QA179. File: .agents/plans/factory-gate-templates/FT1-REVIEW-R0.md.
+
+## [OPEN low] Local FT-2 prep truncates before all stack coverage
+512-token bounded direct draft completed but omitted the requested Go/Nix/generic rows at output cap.
+Action: treat as partial proposal evidence, not PASS; fixture-driven FT-2 supplies complete coverage.
+File: .agents/plans/factory-gate-templates/LOCAL-FT2-PREP.md.
+
+## [DONE medium] FT-2 explicit stack override falsely reports readiness without metadata
+Rust/Go/Nix overrides previously enabled commands from tool presence without required root markers.
+Correction requires marker presence and proves tool-present missing/present cases; independent PASS
+on18da152ebd9ee752231f8f1d8c6b7d0c3ec5be23d27889bea0aff8b3a9dcafec. Commit waits final Tier-0.
+Action: retain missing-marker fixture regression; committed7b22f43d with final Tier-0 53/0 QA179. File: .agents/plans/factory-gate-templates/FT2-REVIEW-R0.md.
+
+## [OPEN medium] FT-2 metadata input hardening
+Metadata reads are not yet size-bounded and symlink/non-UTF-8 handling is not explicit.
+Action: bounded FT-3 input hardening with oversized/external-symlink/non-UTF-8 fixtures; no script execution.
+File: templates/factory-gate-bundle/stack-adapters/resolve.py.
+
+## [OPEN low] Skill source-of-truth scan descends into nested worktree archives
+FT-3 skill auto-selection validated references but failed source-root checks on
+archived SKILL.md files inside .codex/worktrees/agent-config-parity. This is scan
+scope friction, not a reason to delete preserved worktrees or block FT-3.
+Reproduced 2026-09-17 at f2b1d207 during article skill selection: reference lint
+passed, canonical source-root scan still traversed nested archived fixtures.
+Action: exclude nested worktree/archive fixtures from canonical-root enumeration
+in a bounded governance slice; selected installed skill files remain readable.
+File: scripts/testing/check-skill-source-of-truth.sh.
+
+## [OPEN medium] FT-3 execution lane boundary and empty Claude handoff output
+Original Codex implementer hit usage limit with partial code and no focused
+tests. A single Claude balanced continuation wrapper exited with zero-byte
+output while its registry still said running; no implementation evidence.
+Action: original worker resumed once after documented Codex quota reset;
+focused tests and independent acceptance completed at175a7e58. Exact dead
+Claude task reconciled via --repair-status (repaired1), avoiding false running
+state. Wrapper exit/empty-output cause remains a bounded follow-up; no credit.
+File: .agents/plans/factory-gate-templates/FT3-CONTINUATION-20260915.md.
+
+## [DONE high] FT-3 artifact preservation and Git metadata/hook boundaries
+Independent review found re-rendered preserved bundle failing actual installed
+self-test, bypass of active default Git hooks, and symlinked .git redirecting
+local configuration writes outside target. Four-marker fixture/source self-test
+missed these boundary cases; no commit or production activation.
+Action: bounded FT-3-R1 preserves exact bytes, tests actual preserved self-test,
+refuses active default hooks and redirected Git metadata before any writes.
+One corrective replay resolved all three invariants; final non-author PASS on
+f8ac1dd0492ac5312e4203718173c54860c75e829f825fa5f82e69baf45d1190,
+Tier-0 53/0 QA179, committed175a7e58. No production activation.
+File: .agents/plans/factory-gate-templates/FT3-REVIEW-R0.md.
+
+## [DONE low] FT-3 ad-hoc verification used zsh reserved variable
+Worker verification used `status` and aborted before installer execution.
+Action: use task-specific shell variable names; no repository mutation from failure.
+File: .agents/plans/factory-gate-templates/FT3-CONTINUATION-20260915.md.
+
+## [OPEN medium] Local advisory queue outlives explicit task budget
+FT4 advisory local-20260915-152555-ruj7am used --timeout600 but remained
+running after12minutes. Latest progress was queued_local_delayed_depth1,
+tokens0, at272.4seconds; no advisory output was available. Implementation
+continued independently. Exact task cancellation requested; no inference
+service restart or unrelated task cancellation, and no review credit.
+Action: bounded queue-deadline/cancellation telemetry test; ensure timeout
+includes slot wait and progress exposes current deadline/queue age. Compact
+advisory payload should explicitly bound tokens rather than inherit4096.
+File: scripts/ai/lib/dispatch.py (follow-up, no frozen FT4 source change).
+
+## [IN-FLIGHT high] FT4 backup/confirmation/routing/enforcement boundaries
+Independent R0 probes reproduced backup ancestor symlink escape, unframed hash
+collision and unbound rendered tool command change, Git-directory hook routing
+failure, and preserved no-op gate-runner bypass. No FT4 commit/activation.
+Action: one bounded FT4-R1 corrects all four invariants with actual negative
+fixtures; final nonauthor confirmation and final gate required before commit.
+File: .agents/plans/factory-gate-templates/FT4-REVIEW-R0.md.
+
+## [OPEN high] Factory GitHub CI/CD portability and effective enforcement gaps
+Read-only audit: current CI substantial but repo-specific; gitleaks.yml uses
+--exit-code0, selected Nix/ShellCheck paths nonblocking, action refs include
+mutable tags/master and broader write permissions. SDK publishing exists;
+no local deployment Environment approval/concurrency/rollback workflow.
+Portable bundle MANIFEST has no GitHub CI/CD template. Actual GitHub required
+checks/rulesets/environment protection cannot be inferred from YAML.
+Action: bounded portable CI + separately opt-in CD source/template/test slice;
+audit current blocking/permission/pin policy, preserve adopted workflows,
+verify remote protection only with authorized access. Track explicit
+UNVERIFIED_REMOTE, not falsePASS or automatic external deployment.
+File: .agents/plans/factory-gate-templates/FT5-NEXT-SLICE-BRIEF.md.
+
+## [DONE] ECC reference acquisition skipped contributing-agent clone discovery
+Severity: medium. Root fetched a redundant temporary bare reference before
+checking Antigravity's session scratch records. Existing clean clone found at
+`/home/hyperd/.gemini/antigravity-ide/brain/a1a06f9b-6fe8-4046-bcb9-6fcc310002c0/scratch/ecc`;
+HEAD verified as8321021c54d670126ce3b2969d5deb880b4b0c2a, origin affaan-m/ecc.
+Canonical path and prior report recorded in the multipass plan and advisory task.
+Action: reuse existing clone read-only; inspect contributor scratch/task records
+before future fetches. Automated discovery enforcement is not implemented yet.
+Temporary copy retained without deletion; no upstream execution or activation.
+File: .agents/plans/ecc-parity-integration/MULTIPASS-REVIEW-PLAN.md.
+
+## [DONE] ECC advisory report contained material parity overstatements
+Severity: high. Source-bound adversarial review verified headline inventory but
+found inconsistent harness counts, outdated AQ skill/CLI/role counts, unsupported
+skill categories, and false absence claims for admission gates, worktree support,
+continuous learning, canonical sync, evals and discovery APIs. AgentShield source
+is outside the pinned ECC subject. Corrected ledger rejects bulk intake and routes
+only bounded native outcome gaps. Original report remains advisory evidence.
+Action: require pinned source plus local implementation evidence for every queue
+item; independently review the corrected Gate-A artifacts before implementation.
+File: .agents/plans/ecc-parity-integration/PARITY-GAP-LEDGER.md.
+
+## [DONE] ECC source lane initially ignored absolute clone path
+Severity: medium. One read-only lane inspected the shared AQ-OS cwd, reported the
+wrong HEAD and stopped fail-closed. Root reverified the Antigravity clone as clean
+at the exact pin and reissued the task requiring absolute `git -C`/file paths;
+the retried semantic cluster pass then reported correct provenance.
+Action: external-source dispatches must name and verify absolute toplevel, HEAD
+and status before analysis; never rely on agent cwd for source identity.
+File: .agents/plans/ecc-parity-integration/MULTIPASS-REVIEW-PLAN.md.
+
+## [DONE] Capability-gap integration test referenced removed monolith path
+Severity: medium. `test-capability-gap-integration.py` still read the removed
+hybrid-coordinator `http_server.py`, so P0-A validation failed before assertions.
+Updated the test to inspect the actual decomposed authorities:
+`extensions/real_time_learning_engine.py`, `extensions/ai_coordinator_handlers.py`
+and `core/status_service.py`. The integration contract now passes again.
+Action: keep static architecture tests bound to canonical decomposed modules and
+update them in the same slice when authority moves.
+File: scripts/testing/test-capability-gap-integration.py.
+
+## [DONE] Dashboard runtime-summary test used obsolete inline-client contract
+Severity: medium. TestClient startup/shutdown stalled in this sandbox; after
+bounded interruption, direct async route testing exposed stale assertions for
+removed inline dashboard functions/IDs. Updated the test to inject a fake HTTP
+session, exercise the actual route without app lifespan, and assert canonical
+assets/dashboard.js/runtimeDetails wiring. It passes in about three seconds.
+Action: keep deterministic route fixtures independent of unrelated app lifespan;
+retain separate live-service QA for deployed behavior.
+File: scripts/testing/test-dashboard-advanced-runtime-summary.py.
+
+## [OPEN] Claude background delegation exits empty while registry remains running
+Severity: medium. New task claude-20260916-062108-fm4yip exited immediately with
+zero-byte output and dead PID. Exact stale status repaired; foreground --wait
+dispatch now produces real CLI output. Repeated wrapper failure, not reviewer
+acceptance or proof that Claude is unavailable.
+Action: bounded next slice captures background child exit/status/stderr and tests
+survival/reconciliation; do not blindly retry or credit empty tasks.
+File: scripts/ai/delegate-to-claude.
+
+## [OPEN] Antigravity advisory delivery is not completion
+Severity: medium. The coordination-safety task received a successful `cli-nudge-ok`
+delivery record and the IDE was foregrounded, but no claim, completion receipt, or
+declared output existed until the operator manually babysat the lane.
+Action: require an authenticated claim plus generation-matched completion receipt;
+keep passive wake and CLI nudge as delivery evidence only. Do not credit advisory
+findings as a review until the output and receipt are both present.
+File: .agent/collaboration/antigravity-inbox/coordination-safety-next-slices-20260917.md.
+
+## [DONE] Independent review lanes rate-limited during timing slice
+Severity: medium. Two non-author review dispatches terminated at provider usage
+limits, leaving the local latency observability slice unaccepted despite focused
+tests passing.
+Action: renewed Claude lane independently accepted the exact elapsed-monitor subject;
+committed c5b829a8 after 53 passing Tier-0 gates. Failed/empty dispatches received
+no review credit. Never fabricate acceptance from test results alone.
+File: .agent/PROJECT-LOCAL-LATENCY-OBSERVABILITY-PRD.md.
+
+## [DONE] Archive deletion hook recreates watched inbox tasks
+Severity: high. pre-archive-scan-hook.sh materializes deleted HEAD files at their
+original paths before scanning references, then removes them. For watched task
+inboxes this can create a false dispatch event during a commit.
+Action: explicit staged-deletion scanning committed f2b1d207; independent non-author
+review PASS, inotify fixture PASS, prior-hook negative control fails with IN_CREATE,
+Tier-0 53 PASS/0 FAIL. Preserve matching archive files and receipts; this fix does
+not authorize reviving completed tasks or bypassing inbound-reference checks.
+File: scripts/governance/pre-archive-scan-hook.sh.
+
+## [IN-FLIGHT] Archive no-replay regression lacks automatic CI registration
+Severity: medium. The new disposable inotify fixture detects transient task
+recreation and passes locally, but is not yet registered in an always-run CI
+or governance regression suite. Syntax checks alone do not exercise this property.
+Action: bounded archive integration follow-up now registers the fixture in the
+existing path-gated validation registry and Ubuntu repo-structure CI job. Exact
+independent review and final gate pending; no new service or inbox task replay.
+File: scripts/testing/test-pre-archive-no-materialization.py.
+
+## [IN-FLIGHT] Archive reference hook skips Git-detected archival renames
+Severity: high. At f2b1d207, staging identical preserved task copies produces
+R100 entries; diff-filter=D omits their old paths, so reference checks are skipped.
+The no-replay scanner fix is accepted separately and does not fix this bypass.
+Action: use --no-renames for hook discovery and scanner exact deletion verification;
+add referenced/unreferenced rename fixtures with zero inotify creation events.
+Worker scope remains the existing scanner/hook/test; no inbox resurrection.
+File: scripts/governance/pre-archive-scan-hook.sh; pre-archive-scan.sh.
+
+## [OPEN] Restore-tool filesystem checks can race concurrent path mutation
+Severity: high. Existing restore residue now rejects symlinked roots, ancestors
+and leaf files before any component apply, with a disposable regression. Its
+path checks and file writes are still separate operations, so a concurrently
+hostile writer can replace an ancestor between validation and use.
+Action: preserve the paused packaging roadmap and hold production restore;
+use directory descriptors and no-follow traversal before claiming protection
+against concurrent untrusted filesystem mutation. Existing disposal tests do
+not establish this stronger guarantee.
+File: scripts/ai/aq-factory-restore.
+
+## [OPEN] Legacy llama latency benchmark mislabels throughput and TTFT
+Severity: medium. Source inspection found benchmark-llama-latency.sh counts
+whitespace-separated output words as tokens and presents unary end-to-end latency
+as an estimated TTFT. Neither is a measured streaming first-token/decode metric.
+No run was performed and no benchmark numbers from this tool were credited.
+Action: converge this legacy helper on the existing Python benchmark timing/usage
+collector in a separate bounded slice; preserve admission and profile authority.
+File: scripts/testing/benchmark-llama-latency.sh ~104-126.
+
+## [DONE] Resume diagnostic CLI and helper path mismatches
+Severity: low. aq-claim acquire is unsupported (take is the existing command);
+guessed scripts/lib/service-endpoints.sh did not exist. Targeted discovery found
+config/service-endpoints.sh. No failed call was repeated unchanged or treated as PASS.
+Action: use discovered native helper and CLI help; no implementation needed.
+File: scripts/ai/aq-claim; config/service-endpoints.sh.
+
+## [OPEN] Local latency receipts cannot separate queue from inference
+Severity: medium. READY task local-20260916-130836-58d3m6 measured 286.1s
+whole-pipeline time but records no slot-acquired/request-start/first-content timing.
+Repeat task162805-7q6puz last saved queue receipt94.1s; health succeeded while
+slots and metrics timed out. These observations do not establish current phase
+or justify tuning model, admission or sleep settings. DirectRunner contacts llama
+after its slot queue; do not invent a switchboard completion timing component.
+Action: ship bounded duration/unknown-breakdown monitor projection; then obtain
+protected producer instrumentation authority for correlated monotonic timestamps
+before choosing an optimization. Existing dispatcher remains frozen.
+File: scripts/ai/lib/dispatch.py ~513-645; task_registry.py monitor_payload.
+
+## [DONE] Sandbox process visibility produced a false stale local task
+Severity: low. In-sandbox status inferred the running probe PID absent. Host
+namespace status verified pid_alive=true and status=running at23:34UTC; no task
+was cancelled, reconciled or rewritten based on that false observation.
+Action: host-namespace read-only verification precedes task lifecycle intervention.
+File: scripts/ai/lib/task_registry.py PID observation; local162805-7q6puz.
+
+## [OPEN] Shared HEAD/index churn blocks reviewed isolation bootstrap
+Severity: high. Claude's CS-1 worktree-isolation patch overlapped delegate-to-local
+while other commits advanced main. File claims did not establish an exclusive
+integration seam; rebasing repeatedly consumed effort without stable landing.
+Action: Codex commits held, four latency paths unstaged/preserved, index clear at
+aea18209 for Claude CS-1. Follow with mandatory isolated editing worktrees and a
+short-lived machine-enforced trunk integration lease bound to baseline/subject;
+serialize integration only, not unrelated file edits. Record completion/expiry
+and conflict disposition; do not silently steal leases or lose reviewed features.
+File: scripts/ai/delegate-to-local; collaboration integration/dispatch boundary.
+
+## [OPEN] Repeat unchanged-profile local response probe timed out
+Severity: high. local-20260916-162805-7q6puz terminal failed, timed out, receipt
+402.2s, zero output and no usage metadata. Earlier queue receipt94.1s is not exact
+queue residence. HealthOK and active llama/no restarts do not prove responsive
+inference; slots/metrics timed out. Filtered prompt timing logs are uncorrelated.
+Action: no blind retry or admission bypass. Protected producer timing authority,
+correlated prompt-processing/queue baseline and one measured fix after CS-1.
+File: scripts/ai/lib/dispatch.py direct runner; local progress receipt.
+
+## [DONE] Landed CS-1 can lose handback evidence and resume shared editing
+Severity: critical. Non-author audit of e8a905e8 diff8c96ce92 confirmed suppressed
+staging/export/commit failures followed by forced worktree removal; handback does
+not validate task-owned path/branch. Isolation failure falls back to shared writers.
+Action: CS-1F2 corrective batch retains worktrees, verifies ownership and durable
+dispatch-base aggregate binary export, and fails closed on editing-isolation error.
+Hermetic failure fixtures, QA0.10.48, exact independent review and stable gate
+required before resumed mutating wrapper dispatch. Completed in 0d835c13:
+actual caller fixture PASS, independent Claude PASS on subject 6000afac6971d3d95828a3965ae56e4b67550ba0506a951b7fd536853447b67f,
+stable Tier-0 53 PASS / 0 FAIL. No history rewrite or cleanup.
+File: scripts/ai/lib/worktree-isolation.sh; delegate-to-codex/local.
+
+## [DONE] Bounded receipt JSON numeric parsing can abort monitor
+Severity: medium. A sidecar below64KiB containing a5000digit elapsed_s integer
+raises Python numeric-limit ValueError, bypassing initial latency reader catch.
+Action: narrow parser catch and 5000-digit regression independently accepted in
+c5b829a8; focused fixture 21 PASS, 13 documented existing skips; Tier-0 53 PASS.
+Malformed numbers remain unavailable rather than aborting the monitor.
+File: scripts/ai/lib/task_registry.py _local_direct_latency_metadata.
+
+## [DONE] Antigravity advisory inbox metadata constraints discovered
+Severity: low. Wake expects a .md member, exactly one Output metadata line and
+a repo-relative output under.agents. New coordination task corrected and passive
+wake returned ok:true. No failed attempt was credited as lane review/consensus.
+Action: use existing inbox schema for future prompts; no new dispatch authority.
+File: .agent/collaboration/antigravity-inbox/coordination-safety-next-slices-20260917.md.
+
+## [OPEN] Implementation worker returned repeated partial completion without required coverage
+Severity: medium. CS1F2 checkpoints explicitly left the mandatory injected-failure
+matrix outstanding despite frozen criteria. No formal PASS/commit was credited.
+Action: root split finishing into a fresh bounded helper/wrapper/test assignment,
+preserved all prior edits, transferred claim only after worker completion, and
+requires per-case evidence rather than conditional 'if coverage required' reporting.
+Capture this as soft workflow failure for dispatch/payload completion-signal tuning;
+do not equate checkpoints to acceptance or spin another broad planning cycle.
+File: CS1F2 worker payload; .agent/PROJECT-COORDINATION-SAFETY-CORRECTIVE-PRD.md.
+
+## [OPEN] Legacy commit helper broadly stages collaboration directory
+Severity: high. aq-commit-agent calls git add .agent/collaboration/ without an
+exact owned-path set or integration lease, so unrelated concurrent handoffs or
+generated session files can be swept into another lane's commit.
+Action: CS-3 converge native commit entrypoints on exact-path staging, bounded
+integration transaction and reviewed baseline/subject. Do not invoke this helper
+as a safe integrator meanwhile. Legacy ai-validate-and-commit also needs scoped audit.
+File: scripts/ai/aq-commit-agent ~14; scripts/ai/ai-validate-and-commit.
+
+## [OPEN] Basic local response is functional but pipeline latency is high
+Severity: medium. Post-commit lookup-profile probe local-20260916-130836-58d3m6
+returned exact READY, exit0, persisted done, tokens_in1255 and tokens_out2.
+Progress receipt elapsed_s286.1 includes admission/prefill/generation; an earlier
+receipt reported queued_local_delayed_depth1 at 71.7 seconds. This is not a
+pure decode benchmark or proof of model incapability, reasoning truncation,
+hardware failure or any specific queue/prefill split.
+Action: next bounded local stewardship slice correlates queue/admission and
+prefill/first-token timings under the existing observer authority, measures warm
+versus cold baseline, then chooses one evidence-backed fix. Do not raise token
+budgets, bypass admission, replace the model or disable laptop sleep speculatively.
+File: .agents/delegation/outputs/local-20260916-130836-58d3m6.log.progress.json
+and local admission/inference observability.
+
+## [DONE] ECC P0-A catalog validation disagrees across CLI and dashboard
+Severity: medium. Independent reviewer reproduced unsupported status/authority
+values escaping CLI validation, and dashboard accepting duplicate IDs, 257
+entries and missing fields rejected by the CLI. Initial pre-staging subject
+rejected initially. Bounded F1 shared strict validation and negative parity
+fixtures; F2 closed the dedicated dashboard dependency gap. Independent final
+PASS and Tier-0 53/0 bound committed d4d299e6; no deployed activation occurred.
+Action: resolved in repository implementation; deployment remains a separate gate.
+File: scripts/ai/aq-capability-gap and dashboard/backend/api/routes/aistack.py.
+
+## [OPEN] Legacy capability resolver includes vendored upstream manifests
+Severity: medium. Compatibility probe `aq-capability-gap --tool rg --format json`
+returned available correctly, but its existing resolver hints included yarn,
+TypeScript and unrelated ecosystems from `.forks/nixpkgs` and archived code,
+producing over 1,300 JSON lines. This predates the new outcome path.
+Action: separate bounded follow-up scopes manifest discovery to owned project
+surfaces and explicit nested projects, excluding upstream/archive trees; test
+that upstream lockfiles do not alter current-project package hints. Do not change
+legacy resolver semantics inside the frozen schema-validation repair.
+File: scripts/ai/aq-capability-gap (repo_manifest_candidates/effective_repo_files).
+
+## [OPEN] Local direct delegation reports success with empty response
+Severity: medium. Foreground advisory local-20260916-093529-0vprsd returned
+status done and tokens_out 256, but its saved output is zero bytes. No local
+review contribution or successful answer is credited. Prior background
+namespace/persistence ambiguity is avoided by this host-side foreground probe.
+Action: bounded containment committed aea18209 in task_registry.py, delegate-to-local
+and the existing artifact fixture: only safely observed empty terminal local-direct
+answers become missing_final_answer, with persisted history untouched. Frozen
+dispatch.py discards finish reason/reasoning fields; cause-specific classification
+needs separate authorized transport work, not speculation or a token-budget raise.
+File: scripts/ai/lib/dispatch.py and direct-response/status handling.
+
+## [DONE] Confirmatory reviewer used noncanonical diff hash and inferred drift
+Severity: medium. Claude task claude-20260916-113457-wv3i52 returned confirmatory
+PASS but attributed 09df4063... vs 08007142... to plan self-updates without
+evidence. Root reproduced both on unchanged staging: `git diff --cached --binary`
+hashes to 09df4063..., while adding `--full-index --no-ext-diff` hashes to the
+canonical 08007142.... No content drift occurred. Advisory source review remains
+useful, but final acceptance must bind canonical raw bytes, not inferred drift.
+Action: include exact hash command in future reviewer payloads and enforce it;
+do not credit noncanonical hashes as final commit-bound review.
+File: /tmp/claude-ecc-p0a-confirm.md and commit review payloads.
+
+## [OPEN] Formatted Git output corrupts independent review hash capture
+Severity: high. Monitor review claude-20260917-085257-7y93wg passed source/test
+criteria but reported 6e77ea77... and inferred drift. Raw Python subprocess
+reproduction before/after yields unchanged 14808-byte four-path subject 69b9c54d...
+with baseline 0d835c13 and no working divergence. Tool-level Git display wrapping
+must not be used as binary review evidence or piped into a checksum.
+Action: one bounded capture correction uses raw subprocess.check_output and binds
+the existing completed functional review. Claude task claude-20260917-085736-dxqjic
+verified the unchanged raw subject and issued PASS; accepted commit c5b829a8.
+The producer/payload root cause remains open; future review payloads must explicitly
+require raw bytes. Consolidate into the existing review-evidence producer in CS-3,
+not another planner/reviewer loop. Recurrence escalates rather than replaying.
+File: /tmp/claude-latency-binding-correction.md; independent review payloads.
+
+## [OPEN] Claude permission allow rules contain overly broad interior wildcards
+Severity: high. Foreground Claude CLI warns that several agrep allow rules in
+global/local settings contain wildcard positions that can admit inserted options.
+No configuration edited by this slice; paths outside workspace require separate
+authority and exact-target review.
+Action: inspect/redact settings rules, replace ambiguous wildcard patterns with
+exact scoped command prefixes, validate negative option-insertion tests, then
+independently accept before activation.
+File: /home/hyperd/.claude/settings.json and .claude/settings.local.json.
+
+## [DONE] Returning Claude headless review reaches session limit without verdict
+Severity: medium. P0-B preparation task claude-20260916-062251-sbn92l completed,
+but P0-A review claude-20260916-072752-i528af exited 1 with session-limit message
+(reset 11:20am America/Los_Angeles). No review credit. Interactive Claude's
+separate catch-up analysis exists and remains advisory, not implementation PASS.
+Action: after actual reset, task claude-20260916-113457-wv3i52 completed P0-A
+confirmatory PASS and foreground task 115916-r2mnky completed local containment
+planning review. Independent Codex accepted/committed P0-A d4d299e6. Keep headless
+lane eligibility distinct from main-session availability; bounded P0-B stays queued.
+File: scripts/ai/delegate-to-claude.
+
+## [DONE] Antigravity inbox has an undrained stale advisory claim
+Severity: medium. Read-only inbox status showed four pending tasks and one
+undrained sr1-suspend-resume-review-20260909 claim, last nudge age 574479 seconds.
+No returned verdict credited; no claim force-released and no pending request deleted.
+Action: reconcile claim ownership/liveness with existing inbox lifecycle authority,
+then safely recover advisory draining. Operator-assisted catch-up completed
+2026-09-17: declared SR-1 output and generation-matched completion receipt are
+present. The late verdict is advisory; it cannot replace the original hash-bound
+acceptance or retroactively alter the collected round.
+File: .agent/collaboration/antigravity-inbox/.
+
+## [DONE] QA check identifiers mistaken for CLI phase selectors
+Severity: low. aq-qa 0.10.9 --machine returned unknown phase; help accepts phases,
+not dotted check IDs. The P0-A d4d299e6 body incorrectly lists the dotted
+0.10.47 CLI form as PASS. That command form is not valid PASS evidence; the
+documented full phase-0/Tier-0 passes and focused resolver fixtures are valid.
+Action: use supported phase0 and record check IDs as registration metadata;
+aea18209 explicitly documents the failed invocation. Correct granular-selector
+guidance or add a separately tested explicit selector in a future slice.
+File: scripts/ai/aq-qa, .agent/skills/testing-patterns/SKILL.md and commit d4d299e6.
+
+## [OPEN] Claude background task can exit without a review artifact
+Severity: medium. Task claude-20260916-115842-od01y1 retained registry status
+running although its process was gone and --check yielded no output. Foreground
+fallback 115916-r2mnky completed with a usable verdict. No credit for the empty task.
+Action: bounded separate dispatcher lifecycle slice captures child exit/artifact
+evidence and reconciles status; preserve this run as failure evidence. Do not
+infer quota failure or success from absent output, or blindly repeat dispatches.
+File: scripts/ai/delegate-to-claude.

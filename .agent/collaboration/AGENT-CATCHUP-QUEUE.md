@@ -27,6 +27,25 @@ Generalizes the former `CODEX-REVIEW-QUEUE.md` to ALL agents. SSOT principle:
 
 ## Live entries
 
+### Current integration state — 2026-09-17
+
+Codex remains the sole shared-checkout integrator. Claude reviews/plans without
+switching its HEAD or staging competing source. The older CS-1F2 revision report
+is superseded by accepted corrective `0d835c13`, reviewed independently by Claude
+on exact subject `6000afac6971d3d95828a3965ae56e4b67550ba0506a951b7fd536853447b67f`.
+Elapsed-time display `c5b829a8` and generated-artifact hygiene `5e3c7b7d` are also
+accepted. CS-3 enforced integration ownership remains pending; this cooperative
+handoff does not claim that enforcement is implemented.
+
+The obsolete installer-v1 task is preserved at
+`.agent/archive/antigravity-inbox-20260910/aqos-installer-prd-review.md`, SHA-256
+`84f480573f1e003cde5cf706824916c8019ee858711f87a195de19508b79fb90`.
+The completed ECC task is preserved at
+`.agent/archive/antigravity-inbox-20260917/.claimed-ecc-pinned-parity-report-20260916-d14854d8fcd8`,
+SHA-256 `d14854d8fcd8027f4566076bb5a7beac7cb421d3b0f3c41b8548b57baee792e1`.
+Historical entries below remain evidence of their original state, not instructions
+to restore or redispatch completed inbox tasks. Completion receipts remain immutable.
+
 | # | Slice / subject | Exact subject | Missed role | Missed agent(s) | Status |
 |---|-----------------|---------------|-------------|-----------------|--------|
 | C1 | B3-C1 canon compiler (committed d1c8e55b/90a55e06) | commit `90a55e06`+`d1c8e55b` | confirmatory acceptance | Antigravity (Gemini) — design-only reviewed, no code confirm; local Qwen — slow | open — fold Gemini/local confirmatory audit on availability |
