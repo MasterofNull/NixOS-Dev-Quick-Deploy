@@ -107,6 +107,20 @@ raise SystemExit(0 if observed_empty_answer_artifact(sys.argv[2]) else 1)
 PY
 }
 
+record_worktree_handback_failure() {
+    local task_id="$1" mode="$2"
+    PYTHONPATH="$LIB_DIR" python3 - "$DELEGATION_DIR" "$task_id" <<'PY'
+from pathlib import Path
+import sys
+from task_registry import TaskRegistry
+
+TaskRegistry(Path(sys.argv[1]))._update_registry(
+    sys.argv[2], {"status": "failed", "terminal_reason": "worktree_handback_failed"}
+)
+PY
+    audit_event_end "local" "$task_id" "error" "1" "worktree_handback_failed" "$mode"
+}
+
 # ── guard: only run CLI parsing when executed directly, not when sourced ─────
 [[ "${BASH_SOURCE[0]}" != "${0}" ]] && return 0
 
@@ -236,7 +250,10 @@ case "${SUBCMD:-}" in
     # to run after dispatch.py has fully exited. Not part of the public CLI.
     worktree-handback)
         ensure_dirs
-        wt_handback "$REPO_ROOT" "$WT_HB_PATH" "$SUBCMD_ARG" "$DELEGATION_DIR/outputs"
+        if ! wt_handback "$REPO_ROOT" "$WT_HB_PATH" "$SUBCMD_ARG" "$DELEGATION_DIR/outputs"; then
+            record_worktree_handback_failure "$SUBCMD_ARG" "$MODE"
+            exit 1
+        fi
         wt_tag_registry "$DELEGATION_DIR/registry.jsonl" "$SUBCMD_ARG" "$WT_HB_PATH" "$WT_HB_BRANCH" \
             "$DELEGATION_DIR/outputs/${SUBCMD_ARG}.patch"
         wt_teardown "$REPO_ROOT" "$WT_HB_PATH"
@@ -312,15 +329,18 @@ sys.exit(1)
         EFFECTIVE_SCRIPT_DIR="$SCRIPT_DIR"
         WT_PATH=""
         WT_BRANCH=""
-        if [[ "$SHARED_MODE" != "true" ]]; then
-            _EFFECTIVE_MODE="$MODE"
-            if [[ "$_EFFECTIVE_MODE" == "auto" ]]; then
-                _EFFECTIVE_MODE="$(PYTHONPATH="$LIB_DIR" python3 -c '
+        _EFFECTIVE_MODE="$MODE"
+        if [[ "$_EFFECTIVE_MODE" == "auto" ]]; then
+            _EFFECTIVE_MODE="$(PYTHONPATH="$LIB_DIR" python3 -c '
 import sys
 from dispatch import classify_mode
 print(classify_mode(sys.argv[1]))
 ' "$PROMPT" 2>/dev/null || echo "auto")"
-            fi
+        fi
+        if [[ "$SHARED_MODE" == "true" && "$_EFFECTIVE_MODE" == "agent" ]]; then
+            die "shared editing is not authorized; isolation is required"
+        fi
+        if [[ "$SHARED_MODE" != "true" ]]; then
             if [[ "$_EFFECTIVE_MODE" == "agent" ]]; then
                 if WT_PATH="$(wt_create "$REPO_ROOT" "$ID")" && [[ -n "$WT_PATH" ]]; then
                     WT_BRANCH="delegate/${ID}"
@@ -333,8 +353,7 @@ print(classify_mode(sys.argv[1]))
                     EFFECTIVE_SCRIPT_DIR="$WT_PATH/scripts/ai"
                     info "Worktree isolation: $WT_PATH (branch $WT_BRANCH)"
                 else
-                    WT_PATH=""
-                    info "WARNING: worktree isolation unavailable — falling back to shared checkout for this dispatch"
+                    die "worktree isolation creation failed; refusing editing dispatch"
                 fi
             fi
         fi
@@ -370,11 +389,22 @@ print(classify_mode(sys.argv[1]))
             # delegate/<id> branch) and tear it down — regardless of outcome,
             # so a failed/partial run's edits are still captured. No-op when
             # no worktree was created (shared-checkout / non-agent dispatch).
+            HANDBACK_OK=true
             if [[ -n "$WT_PATH" ]]; then
-                wt_handback "$REPO_ROOT" "$WT_PATH" "$ID" "$DELEGATION_DIR/outputs"
+                if ! wt_handback "$REPO_ROOT" "$WT_PATH" "$ID" "$DELEGATION_DIR/outputs"; then
+                    HANDBACK_OK=false
+                    record_worktree_handback_failure "$ID" "$MODE"
+                else
                 wt_tag_registry "$DELEGATION_DIR/registry.jsonl" "$ID" "$WT_PATH" "$WT_BRANCH" \
                     "$DELEGATION_DIR/outputs/${ID}.patch"
+                fi
                 wt_teardown "$REPO_ROOT" "$WT_PATH"
+            fi
+            if [[ "$HANDBACK_OK" != "true" ]]; then
+                ( cd "$REPO_ROOT" && audit_save_session "local-${MODE}" "$ID" "$PROMPT" "$OUTPUT_FILE" )
+                [[ "$NO_CONSULT" != "true" ]] && { timeout 10 python3 "$LIB_DIR/dispatch_consult.py" release --subject "$CONSULT_SUBJECT" --owner local >/dev/null 2>&1 || true; }
+                info "Task $ID failed: worktree handback failed."
+                exit 1
             fi
             if [[ "$DISPATCH_OK" == "true" ]]; then
                 # response-contract (merge-preserved from the concurrent
@@ -427,7 +457,7 @@ print(classify_mode(sys.argv[1]))
             # performs the patch/branch handback + teardown for the
             # background-mode case).
             if [[ -n "$WT_PATH" ]]; then
-                setsid bash -c "cd $(printf '%q' "$WT_PATH") && $(printf '%q ' "${_DISPATCH_ARGS[@]}"); $(printf '%q' "$SCRIPT_PATH") --internal-worktree-handback $(printf '%q' "$ID") $(printf '%q' "$WT_PATH") $(printf '%q' "$WT_BRANCH") >/dev/null 2>&1 || true" > /dev/null 2>&1 &
+                setsid bash -c "child_rc=0; cd $(printf '%q' "$WT_PATH") && $(printf '%q ' "${_DISPATCH_ARGS[@]}") || child_rc=\$?; handback_rc=0; $(printf '%q' "$SCRIPT_PATH") --internal-worktree-handback $(printf '%q' "$ID") $(printf '%q' "$WT_PATH") $(printf '%q' "$WT_BRANCH") >/dev/null 2>&1 || handback_rc=\$?; [[ \$handback_rc -eq 0 ]] || exit \$handback_rc; exit \$child_rc" > /dev/null 2>&1 &
             else
                 setsid "${_DISPATCH_ARGS[@]}" > /dev/null 2>&1 &
             fi

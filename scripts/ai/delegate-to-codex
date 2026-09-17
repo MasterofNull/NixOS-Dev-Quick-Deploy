@@ -196,9 +196,16 @@ check_pid_alive() {
 cmd_worktree_handback() {
     local task_id="$1" wt_path="$2" branch="$3"
     [[ -n "$wt_path" ]] || return 0
-    wt_handback "$REPO_ROOT" "$wt_path" "$task_id" "$OUTPUTS_DIR"
+    wt_handback "$REPO_ROOT" "$wt_path" "$task_id" "$OUTPUTS_DIR" || return 1
     wt_tag_registry "$REGISTRY" "$task_id" "$wt_path" "$branch" "$OUTPUTS_DIR/${task_id}.patch"
     wt_teardown "$REPO_ROOT" "$wt_path"
+}
+
+record_worktree_handback_failure() {
+    local task_id="$1" mode="$2"
+    update_registry "$REGISTRY" "$task_id" "status" "failed"
+    update_registry "$REGISTRY" "$task_id" "terminal_reason" "worktree_handback_failed"
+    audit_event_end "codex" "$task_id" "error" "1" "worktree_handback_failed" "$mode"
 }
 
 # ── quota-aware pre-check (delegate-codex-quota-precheck slice) ─────────────
@@ -428,16 +435,15 @@ ${prompt}"
     # CS-1: isolate this dispatch in its own git worktree by default so codex
     # stages/commits into a private index on branch delegate/<id> — never the
     # shared REPO_ROOT index. --shared opts out for read-only/analysis tasks.
-    # Fails OPEN to the shared checkout (old behavior) if worktree creation
-    # itself fails, so a git/disk hiccup never blocks a delegation.
     local wt_path="" wt_branch=""
-    if [[ "$shared_mode" != "true" ]]; then
+    if [[ "$shared_mode" == "true" ]]; then
+        [[ "$mode" != "edit" ]] || die "shared editing is not authorized; isolation is required"
+    else
         if wt_path="$(wt_create "$REPO_ROOT" "$id")" && [[ -n "$wt_path" ]]; then
             wt_branch="delegate/${id}"
             info "Worktree isolation: $wt_path (branch $wt_branch)"
         else
-            wt_path=""
-            info "WARNING: worktree isolation unavailable — falling back to shared checkout for this dispatch"
+            die "worktree isolation creation failed; refusing editing dispatch"
         fi
     fi
 
@@ -474,7 +480,12 @@ ${prompt}"
         # CS-1: hand back the isolated worktree's changes (patch + commit on
         # its own delegate/<id> branch) and tear it down — regardless of
         # exit_code, so a failed/partial run's edits are still captured.
-        cmd_worktree_handback "$id" "$wt_path" "$wt_branch"
+        if ! cmd_worktree_handback "$id" "$wt_path" "$wt_branch"; then
+            record_worktree_handback_failure "$id" "$mode"
+            ( cd "$REPO_ROOT" && audit_save_session "codex" "$id" "$prompt" "$output_file" )
+            info "Task $id failed: worktree handback failed."
+            return 1
+        fi
         if [[ "$exit_code" -eq 0 ]]; then
             update_registry "$REGISTRY" "$id" "status" "done"
             audit_event_end "codex" "$id" "success" "0" "completed: ${prompt:0:100}" "$mode"
@@ -501,7 +512,11 @@ ${prompt}"
             _end_ms=\$(date +%s%3N 2>/dev/null || echo 0)
             _lat=\$(( _end_ms - _start_ms ))
             \"$SCRIPT_PATH\" --internal-quota-capture \"$output_file\" >/dev/null 2>&1 || true
-            \"$SCRIPT_PATH\" --internal-worktree-handback $(printf '%q' "$id") $(printf '%q' "$wt_path") $(printf '%q' "$wt_branch") >/dev/null 2>&1 || true
+            handback_rc=0
+            \"$SCRIPT_PATH\" --internal-worktree-handback $(printf '%q' "$id") $(printf '%q' "$wt_path") $(printf '%q' "$wt_branch") >/dev/null 2>&1 || handback_rc=\$?
+            if [[ \$handback_rc -ne 0 ]]; then
+                exit \$handback_rc
+            fi
             if [[ \$exit_code -eq 0 ]]; then
                 bash \"$_audit_helper\" \"$_coord_url\" task_completed codex success \"\$_lat\" \"$id\" \"completed: $_prompt_brief\" \"$mode\" \"$prompt\" \"$output_file\" || true
             else
@@ -522,7 +537,8 @@ with open(rf) as f:
         except Exception: lines.append(line)
 with open(rf, 'w') as f: f.write('\n'.join(lines) + '\n')
 PYEOF
-        " > /dev/null 2>&1 &
+            exit \$exit_code
+" > /dev/null 2>&1 &
         local pid=$!
         disown "$pid"
         update_registry "$REGISTRY" "$id" "pid" "$pid"
@@ -586,7 +602,13 @@ case "${SUBCMD:-}" in
     # detached nohup bash -c that cannot see this script's functions, so it
     # re-invokes the script itself to hand back the isolated worktree once
     # codex has fully exited. Not part of the public CLI surface.
-    worktree-handback) ensure_dirs; cmd_worktree_handback "$SUBCMD_ARG" "$WT_HB_PATH" "$WT_HB_BRANCH" ;;
+    worktree-handback)
+        ensure_dirs
+        if ! cmd_worktree_handback "$SUBCMD_ARG" "$WT_HB_PATH" "$WT_HB_BRANCH"; then
+            record_worktree_handback_failure "$SUBCMD_ARG" "$MODE"
+            exit 1
+        fi
+        ;;
     "")
         if [[ -n "$PROMPT_FILE" ]]; then
             [[ -f "$PROMPT_FILE" ]] || die "Prompt file not found: $PROMPT_FILE"

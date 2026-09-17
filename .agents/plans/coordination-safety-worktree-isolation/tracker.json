@@ -1,0 +1,67 @@
+{
+  "plan": {
+    "id": "coordination-safety-worktree-isolation",
+    "title": "Coordination-safety: isolate implementer lanes in worktrees; only orchestrator commits main",
+    "prd_ref": ".agents/plans/coordination-safety-worktree-isolation/DESIGN.md",
+    "owner": "hyperd",
+    "goal": "No two agent lanes ever stage into the same git index: implementer delegations run in isolated worktrees and hand back a patch/branch; only the orchestrator commits to main. Root-cause fix for 3x shared-index contention.",
+    "success_criteria": [
+      "delegate-to-codex + delegate-to-local run the implementer in a fresh isolated worktree by default (--shared escape documented); result handed back as patch/branch, never staged/committed into main",
+      "Two lanes dispatched in parallel land via patches with zero shared-index contention (live proof)",
+      "Single-lane flow + --check/--status/--list unchanged (backward-safe)",
+      "Discipline parity-written into all agent instruction files (Rule 16); backstop guard refuses concurrent shared-index staging"
+    ]
+  },
+  "phases": [
+    {"id": "isolate", "name": "worktree-isolate delegation scripts", "goal": "delegations run in isolated worktrees, hand back patch/branch", "order": 1},
+    {"id": "parity", "name": "discipline doc + parity", "goal": "principle in all agent instruction files", "order": 2},
+    {"id": "guard", "name": "backstop concurrent-staging guard", "goal": "refuse/lock concurrent shared-index staging", "order": 3},
+    {"id": "validate", "name": "concurrent-dispatch validation", "goal": "parallel lanes no longer contend; single-lane regression clean", "order": 4}
+  ],
+  "items": [
+    {
+      "id": "cs-1", "name": "worktree-isolate delegate-to-codex + delegate-to-local", "phase": "isolate", "kind": "slice",
+      "goal": "each dispatch creates a fresh `git worktree add HEAD` (per-task branch delegate/<task-id>), runs the agent with CWD=worktree, hands back a patch/branch (never stages/commits into shared main), tears down + archives the patch; add --shared/--no-worktree escape (default isolated); --check/--status/--list/quota-precheck unchanged",
+      "validation_goal": "a dispatch runs in an isolated worktree + produces a patch/branch; shared main index untouched during it; existing subcommands unchanged; done while no delegation is live",
+      "deps": [],
+      "editorial_note": "core fix; reuse git worktree + the Agent-tool hand-back pattern (Rule 20); coordination-critical infra = top risk-tier, isolated impl + rigorous review",
+      "detection": {"commit_match": ["CS-1", "worktree-isolate", "coordination-safety"]},
+      "pct_hint": 0,
+      "acceptance": {"status": "pending", "by": null, "date": null, "note": "not started"}
+    },
+    {
+      "id": "cs-2", "name": "discipline doc + parity (Rule 16)", "phase": "parity", "kind": "slice",
+      "goal": "write the isolate-implementers/orchestrator-only-commit-main principle into CLAUDE/CODEX/LOCAL/GEMINI/WORKFLOW-CANON from one source; update parity matrix",
+      "validation_goal": "all 5 agent files carry it; parity-matrix updated; no lane in isolation",
+      "deps": ["cs-1"], "editorial_note": "canonical change",
+      "detection": {"commit_match": ["CS-2", "coordination parity"]},
+      "pct_hint": 0,
+      "acceptance": {"status": "pending", "by": null, "date": null, "note": "not started"}
+    },
+    {
+      "id": "cs-3", "name": "backstop concurrent-staging guard", "phase": "guard", "kind": "slice",
+      "goal": "a pre-commit/coordination check or advisory index-lock that refuses concurrent shared-index staging of another lane's claimed-in-flight paths (cooperative, not a security boundary)",
+      "validation_goal": "a simulated concurrent stage is refused/serialized; test present",
+      "deps": ["cs-1"], "editorial_note": "defense-in-depth; same-user cooperative caveat",
+      "detection": {"commit_match": ["CS-3", "concurrent-staging guard"]},
+      "pct_hint": 0,
+      "acceptance": {"status": "pending", "by": null, "date": null, "note": "not started"}
+    },
+    {
+      "id": "cs-4", "name": "concurrent-dispatch validation + visibility", "phase": "validate", "kind": "slice",
+      "goal": "prove two parallel lanes land via patches without index contention; single-lane regression clean; dashboard/QA visibility of active delegated worktrees",
+      "validation_goal": "live concurrent-dispatch proof; regression green; observable",
+      "deps": ["cs-1", "cs-3"], "editorial_note": "closes the loop with live proof",
+      "detection": {"commit_match": ["CS-4", "concurrent dispatch validation"]},
+      "pct_hint": 0,
+      "acceptance": {"status": "pending", "by": null, "date": null, "note": "not started"}
+    }
+  ],
+  "issues": [
+    {
+      "id": "cs1-handback-safety",
+      "name": "Landed CS-1 requires durable handback, ownership validation and failure containment",
+      "note": "Independent confirmatory audit of e8a905e8 found suppressed handback failures followed by forced teardown, unvalidated worktree paths and shared-checkout fallback. CS-1F2 corrective slice preserves landed history. Rich retained-worktree operator visibility remains CS-4; local inference readiness is not implied by isolation."
+    }
+  ]
+}

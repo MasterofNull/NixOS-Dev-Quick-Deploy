@@ -2013,6 +2013,7 @@ def run(ctx: RunContext) -> list[CheckResult]:
     results.extend(_check_factory_gate_install(ctx))
     results.extend(_check_factory_gate_retrofit(ctx))
     results.extend(_check_capability_outcome_resolver(ctx))
+    results.extend(_check_worktree_isolation_safety(ctx))
     results.extend(_check_golden_eval_parity(ctx))
     results.extend(_check_agentic_parity(ctx))
     results.extend(_check_delegation_feedback_contract(ctx))
@@ -2593,6 +2594,26 @@ def _check_factory_gate_retrofit(ctx: RunContext) -> list[CheckResult]:
     except (OSError, subprocess.TimeoutExpired, ValueError) as error:
         return [failed(5, "0.10.46", description, str(error)[:160])]
     return [passed(5, "0.10.46", description)]
+
+
+def _check_worktree_isolation_safety(ctx: RunContext) -> list[CheckResult]:
+    description = "delegation worktree ownership and durable handback safety"
+    if ctx.dashboard_safe:
+        return [skipped(5, "0.10.48", description, "temporary Git mutation fixture is host-only")]
+    fixture = ctx.repo_root / "scripts" / "testing" / "test-worktree-isolation.py"
+    if not fixture.is_file():
+        return [failed(5, "0.10.48", description, "worktree safety fixture missing")]
+    try:
+        result = subprocess.run(
+            [sys.executable, str(fixture)], cwd=str(ctx.repo_root),
+            text=True, capture_output=True, timeout=30, check=False,
+        )
+        if result.returncode or "PASS: worktree isolation fail-closed contracts" not in result.stdout:
+            detail = (result.stderr or result.stdout or f"exit {result.returncode}")[-240:]
+            return [failed(5, "0.10.48", description, detail)]
+    except (OSError, subprocess.TimeoutExpired) as error:
+        return [failed(5, "0.10.48", description, str(error)[:240])]
+    return [passed(5, "0.10.48", description)]
 
 
 def _check_capability_outcome_resolver(ctx: RunContext) -> list[CheckResult]:
