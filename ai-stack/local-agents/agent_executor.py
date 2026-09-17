@@ -4000,7 +4000,11 @@ class LocalAgentExecutor:
 
         progress_file = os.getenv("AGENT_PROGRESS_FILE")
         timing_output = _timing_output_path(progress_file)
-        self._timing_invocation_sequence += 1
+        # A few focused harness fixtures construct executors via ``__new__`` to
+        # isolate the transport path.  Preserve compatibility with those
+        # lightweight instances while keeping retry correlation monotonic for
+        # fully initialized executors.
+        self._timing_invocation_sequence = getattr(self, "_timing_invocation_sequence", 0) + 1
         timing_invocation_sequence = self._timing_invocation_sequence
 
         def _record_timing(
