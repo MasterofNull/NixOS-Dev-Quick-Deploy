@@ -15,6 +15,15 @@ fi
 
 echo "Running pre-commit validation..."
 
+# CS-3: while aq-commit-agent holds its common-Git-directory flock, only the
+# wrapper's own Git child may commit.  The guard is deliberately cooperative:
+# idle/uninitialized state leaves ordinary commits compatible, while the normal
+# validation functions below remain authoritative for every allowed commit.
+repo_root="$(git rev-parse --show-toplevel)"
+if ! python3 "${repo_root}/scripts/ai/lib/integration_guard.py" hook --repo "${repo_root}"; then
+  exit 1
+fi
+
 run_secret_scan() {
   # Phase 11.4.1 — block likely secrets from entering git history.
   # Skip if SKIP_SECRET_SCAN=1 (for development/testing workflows)

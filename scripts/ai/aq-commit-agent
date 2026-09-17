@@ -1,17 +1,48 @@
 #!/usr/bin/env python3
-"""
-aq-commit-agent — Atomic commit wrapper for PRSI slices.
-"""
+"""Explicit-path, process-bound commit transaction for integration slices."""
+from __future__ import annotations
+
+import argparse
 import subprocess
 import sys
+from pathlib import Path
+
+sys.path.insert(0, str(Path(__file__).resolve().parent / "lib"))
+from integration_guard import IntegrationGuardError, run_transaction  # noqa: E402
+
+
+def _canonical_tier0(repo: Path) -> None:
+    result = subprocess.run(
+        [str(repo / "scripts/governance/tier0-validation-gate.sh"), "--pre-commit"], cwd=repo, check=False,
+    )
+    if result.returncode:
+        raise IntegrationGuardError(f"canonical tier0 validation failed (exit {result.returncode}); index preserved")
+
+
+def main(argv: list[str]) -> int:
+    parser = argparse.ArgumentParser(
+        description="Commit only repeated literal paths after canonical tier0 validation.",
+        epilog=("First stage only the declared files, then pass git rev-parse HEAD and "
+                "sha256sum of `git diff --cached --binary --full-index --no-ext-diff HEAD --`. "
+                "Legacy `aq-commit-agent <message>` bulk staging is intentionally refused."),
+    )
+    parser.add_argument("--path", action="append", default=[], help="repository-relative literal file path (repeat)")
+    parser.add_argument("--expected-head", required=True, help="full current Git HEAD object ID")
+    parser.add_argument("--expected-index-sha256", required=True, help="SHA256 of the full staged binary/index diff")
+    parser.add_argument("--message-file", required=True, help="file containing the frozen commit message")
+    args = parser.parse_args(argv)
+    try:
+        commit = run_transaction(
+            Path.cwd(), paths=args.path, expected_head=args.expected_head,
+            expected_index_sha256=args.expected_index_sha256, message_file=args.message_file,
+            validator=_canonical_tier0,
+        )
+    except IntegrationGuardError as exc:
+        print(f"aq-commit-agent: refused: {exc}", file=sys.stderr)
+        return 1
+    print(f"COMMIT_SUCCESS {commit}")
+    return 0
+
 
 if __name__ == "__main__":
-    if len(sys.argv) < 2:
-        print("Usage: aq-commit-agent <message>")
-        sys.exit(1)
-        
-    msg = sys.argv[1]
-    # Commit PENDING.json, PULSE.log, and HANDOFF.md + current changes
-    subprocess.run(["git", "add", ".agent/collaboration/"], check=True)
-    subprocess.run(["git", "commit", "-m", msg], check=True)
-    print("COMMIT_SUCCESS")
+    raise SystemExit(main(sys.argv[1:]))
