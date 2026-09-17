@@ -263,7 +263,14 @@ async function loadFleet() {
 
   const locksEl = document.getElementById("intent-locks-list");
   if (locksEl) {
+    const guard = locks.integration_guard || {};
+    const guardState = guard.state || "unavailable";
+    const guardDetail = guard.attribution || guard.reason || "no local integration metadata";
+    const guardText = (value) => String(value).replace(/[&<>"']/g, (c) => ({
+      "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;", "'": "&#39;"
+    })[c]);
     locksEl.innerHTML =
+      `<div class="check-item ${guardState === "idle" ? "pass" : "warn"}"><span class="ci-status">${guardText(guardState.toUpperCase())}</span><span class="ci-id">integration guard</span><span class="ci-desc">${guardText(guardDetail)}</span></div>` +
       (locks.locks || [])
         .map(
           (l) =>

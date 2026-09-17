@@ -922,6 +922,11 @@ run_phase_59() {
 }
 
 run_phase_0() {
+  # CS-3: disposable fixture covers the common-dir lock, real hook child,
+  # linked worktree, crash release, and read-only Fleet projection seam.
+  _check_timeout 5 "0.10.49" "process-bound integration guard and Fleet lock visibility" 45 \
+    python3 "${REPO_ROOT}/scripts/testing/test-integration-guard.py"
+
   # 0.1 systemd service health
   for unit in llama-cpp.service ai-aidb.service ai-hybrid-coordinator.service \
                ai-ralph-wiggum.service llama-cpp-embed.service ai-switchboard.service \

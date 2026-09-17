@@ -8076,10 +8076,10 @@ async def get_system_navigator() -> Dict[str, Any]:
 
 @router.get("/collaboration/locks")
 async def get_collaboration_locks() -> Dict[str, Any]:
-    """Return active intent locks from the coordinator collaboration layer.
+    """Return coordinator intent locks plus read-only local integration state.
 
-    Proxies coordinator /control/collab/locks when available.
-    Falls back to an empty list so the Fleet panel renders cleanly.
+    The local probe is offloaded because flock/status metadata must not block the
+    async dashboard route.  It is a cooperative same-user indicator only.
     """
     api_key = _load_hybrid_api_key()
     headers = {"X-API-Key": api_key} if api_key else None
@@ -8091,12 +8091,29 @@ async def get_collaboration_locks() -> Dict[str, Any]:
     )
 
     locks = result.get("locks") or []
+    integration = await asyncio.to_thread(_integration_guard_status, _repo_root())
     return {
         "available": result.get("available", False),
         "lock_count": len(locks),
         "locks": locks,
+        "integration_guard": integration,
         "generated_at": datetime.now(timezone.utc).strftime("%Y-%m-%dT%H:%M:%SZ"),
     }
+
+
+def _integration_guard_status(repo: Path) -> Dict[str, Any]:
+    """Load the local stdlib guard without making route import depend on it."""
+    module_path = repo / "scripts" / "ai" / "lib" / "integration_guard.py"
+    try:
+        spec = importlib.util.spec_from_file_location("aq_integration_guard_status", module_path)
+        if spec is None or spec.loader is None:
+            raise RuntimeError("guard module unavailable")
+        module = importlib.util.module_from_spec(spec)
+        spec.loader.exec_module(module)
+        value = module.status(repo)
+        return value if isinstance(value, dict) else {"available": False, "state": "unavailable", "reason": "invalid guard status"}
+    except Exception:
+        return {"available": False, "state": "unavailable", "reason": "integration guard status unavailable"}
 
 
 @router.get("/candidate-pipeline")
