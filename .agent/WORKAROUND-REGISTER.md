@@ -82,3 +82,18 @@ regression the staged diff introduced (Rule 19 gate corollary). Fix-path: tier0-
 `gate_qa_phase0()`. All-or-nothing preserved: any failing id NOT in a WARN class still hard-fails
 the whole gate + lists every row, so static regressions are never masked. Reclassified base ids:
 0.1.1 0.1.2 0.1.3 0.2.1-0.2.5 0.3.1-0.3.3 0.4.1-0.4.3 0.6.1 0.6.2 0.7.4.
+
+### WR-5 extension (2026-09-17): add 0.8.1 (delegate 24h success) to LIVE_SERVICE_CLASS_IDS
+Symptom: QA phase-0 `0.8.1 ai_coordinator_delegate 24h success rate` dropped below its ≥50%
+floor and HARD-failed tier0 `--pre-commit`, blocking commits of unrelated staged changes
+(the local-producer-timing promotion, and any other commit factory-wide). Root cause / class:
+`0.8.1` is a rolling LIVE telemetry window ("are delegations succeeding right now") — it fell
+because remote reviewer/provider lanes (Luna + others) were quota-limited/down this window, NOT
+because any staged diff broke delegation. This is the identical live-service signal already
+recognized for `0.10.22` (live throughput), so it belongs in the same WARN-in-precommit /
+HARD-in-predeploy class (Rule 19 gate corollary). Fix: append `0.8.1` to `LIVE_SERVICE_CLASS_IDS`
+in `scripts/governance/tier0-validation-gate.sh gate_qa_phase0()`. All-or-nothing preserved:
+delegation health stays HARD on `--pre-deploy`/`--maintenance`, and any non-class failing row
+still hard-fails pre-commit. class: live-service (runtime state) · severity MED · status FIXED
+2026-09-17 · queued for Codex/Antigravity confirmatory catch-up review (author self-reviewed;
+Codex lane absent).
