@@ -15,6 +15,7 @@ import contextlib
 import io
 import json
 import os
+import asyncio
 import signal
 import sys
 import tempfile
@@ -1366,6 +1367,264 @@ def test_delegate_to_local_direct_foreground_guard_uses_shared_safe_inspection()
     print("PASS  delegate-to-local direct foreground guard is safe")
 
 
+def test_direct_runner_producer_timing_is_content_free_and_best_effort():
+    """Hermetic SSE receipts record only real direct producer milestones."""
+    with tempfile.TemporaryDirectory() as tmp:
+        root = Path(tmp)
+        output = root / "answer.log"
+        dispatch_mod = _load_dispatch()
+        config = dispatch_mod.TaskConfig(
+            mode="direct", role="implementer", timeout_secs=5, max_tokens=8,
+            llama_url="http://127.0.0.1:1", hybrid_url="http://127.0.0.1:1",
+            ralph_url="http://127.0.0.1:1", task_type="code",
+        )
+
+        class _Socket:
+            def settimeout(self, timeout):
+                return None
+
+        class _Response:
+            def __init__(self, lines):
+                self.lines = lines
+                self.fp = type("FP", (), {"raw": type("Raw", (), {"_sock": _Socket()})()})()
+            def __enter__(self):
+                return self
+            def __exit__(self, *unused):
+                return False
+            def __iter__(self):
+                return iter(self.lines)
+
+        original_urlopen = dispatch_mod.urllib.request.urlopen
+        original_wait = dispatch_mod.wait_for_slot
+        original_queue = dispatch_mod._slot_queue
+        original_emit = dispatch_mod._emit_training_event
+        original_monotonic = dispatch_mod.time.monotonic
+        ticks = [0.0]
+        def monotonic():
+            ticks[0] += 0.25
+            return ticks[0]
+        try:
+            dispatch_mod.wait_for_slot = lambda *unused: None
+            dispatch_mod._slot_queue = None
+            dispatch_mod._emit_training_event = lambda *unused: None
+            dispatch_mod.time.monotonic = monotonic
+            dispatch_mod.urllib.request.urlopen = lambda *unused, **kwargs: _Response([
+                b'data: {"choices":[{"delta":{"role":"assistant"}}]}\n',
+                b'data: {"choices":[{"delta":{"content":"   "}}]}\n',
+                b'data: {"choices":[{"delta":{"content":"visible"}}]}\n',
+                b'data: {"choices":[],"usage":{"completion_tokens":1}}\n',
+                b'data: [DONE]\n',
+            ])
+            assert_true(dispatch_mod.DirectRunner().run(config, "PROMPT_SECRET", output, "direct-timing"),
+                        "direct SSE fixture failed")
+            receipt = json.loads(Path(str(output) + ".timing.json").read_text(encoding="utf-8"))
+            assert_true(receipt["task_id"] == "direct-timing" and receipt["terminal_state"] == "success",
+                        f"missing direct terminal receipt: {receipt}")
+            assert_true(receipt["first_visible_content_observation"] == "output_file_flush"
+                        and receipt["time_to_first_visible_content_seconds"] is not None,
+                        f"nonblank flush was not measured: {receipt}")
+            assert_true("PROMPT_SECRET" not in json.dumps(receipt), "timing receipt leaked prompt content")
+
+            dispatch_mod.urllib.request.urlopen = lambda *unused, **kwargs: _Response([
+                b'data: {"choices":[]}\n', b'data: [DONE]\n',
+            ])
+            no_content = root / "no-content.log"
+            assert_true(dispatch_mod.DirectRunner().run(config, "prompt", no_content, "no-content"),
+                        "no-content stream should retain existing success behavior")
+            empty_receipt = json.loads(Path(str(no_content) + ".timing.json").read_text())
+            assert_true(empty_receipt["time_to_first_visible_content_seconds"] is None,
+                        f"no-content stream invented TTFT: {empty_receipt}")
+
+            dispatch_mod.urllib.request.urlopen = lambda *unused, **kwargs: (_ for _ in ()).throw(OSError("fixture"))
+            failed = root / "failed.log"
+            assert_true(not dispatch_mod.DirectRunner().run(config, "prompt", failed, "direct-failure"),
+                        "direct request failure should remain failure")
+            failed_receipt = json.loads(Path(str(failed) + ".timing.json").read_text())
+            assert_true(failed_receipt["terminal_state"] == "failure"
+                        and failed_receipt["failure_category"] == "request_error",
+                        f"failure receipt was not categorical: {failed_receipt}")
+
+            import producer_timing
+            original_serialize = producer_timing._serialize
+            producer_timing._serialize = lambda *unused, **kwargs: (_ for _ in ()).throw(ValueError("fixture"))
+            try:
+                dispatch_mod.urllib.request.urlopen = lambda *unused, **kwargs: _Response([
+                    b'data: {"choices":[{"delta":{"content":"still works"}}]}\n', b'data: [DONE]\n',
+                ])
+                assert_true(dispatch_mod.DirectRunner().run(config, "prompt", root / "write-failure.log", "write-failure"),
+                            "timing serialization failure changed inference result")
+            finally:
+                producer_timing._serialize = original_serialize
+        finally:
+            dispatch_mod.urllib.request.urlopen = original_urlopen
+            dispatch_mod.wait_for_slot = original_wait
+            dispatch_mod._slot_queue = original_queue
+            dispatch_mod._emit_training_event = original_emit
+            dispatch_mod.time.monotonic = original_monotonic
+    print("PASS  direct producer timing is content-free and best-effort")
+
+
+def test_agent_executor_timing_is_per_call_and_never_claims_replay_ttft():
+    """Keep agent timing tied to its internal call index and output-sidecar correlation."""
+    source = (ROOT / "ai-stack" / "local-agents" / "agent_executor.py").read_text(encoding="utf-8")
+    for required in (
+        'producer="agent_executor"',
+        "output_task_id=timing_output.stem",
+        "call_number=call_number",
+        "invocation_sequence=timing_invocation_sequence",
+        'timing_mode="replay"',
+        'timing_mode="buffered"',
+        'timing_mode="live_stream"',
+        "token.strip()",
+        'first_visible_content_observation="stream_tail_write"',
+    ):
+        assert_true(required in source, f"agent timing boundary missing: {required}")
+    assert_true(source.count("_record_timing(") >= 7, "agent timing lacks lifecycle receipts")
+    print("PASS  agent timing is per-call with replay/buffered TTFT unavailable")
+
+
+def test_agent_executor_timing_receipts_cover_sse_replay_buffered_and_retries():
+    """Exercise real _call_llama timing writes with hermetic HTTP and sidecar fixtures."""
+    local_agents = ROOT / "ai-stack" / "local-agents"
+    if str(local_agents) not in sys.path:
+        sys.path.insert(0, str(local_agents))
+    import agent_executor as ae
+
+    class _StreamResponse:
+        def __init__(self, lines=(), status_code=200):
+            self.lines = lines
+            self.status_code = status_code
+        async def __aenter__(self):
+            return self
+        async def __aexit__(self, *unused):
+            return False
+        async def aiter_lines(self):
+            for line in self.lines:
+                yield line
+        async def aread(self):
+            return b"fixture failure"
+
+    class _BufferedResponse:
+        status_code = 200
+        def json(self):
+            return {"usage": {"total_tokens": 3}, "choices": [{"message": {"content": "buffered"}}]}
+
+    stream_responses = [
+        _StreamResponse([
+            'data: {"choices":[{"delta":{"role":"assistant"}}]}',
+            'data: {"choices":[{"delta":{"content":"   "}}]}',
+            'data: {"choices":[{"delta":{"content":"visible"}}]}',
+            'data: {"choices":[],"usage":{"total_tokens":2}}',
+            "data: [DONE]",
+        ]),
+        _StreamResponse(['data: {"choices":[{"delta":{"content":"retry"}}]}', "data: [DONE]" ]),
+        _StreamResponse(status_code=503),
+    ]
+
+    class _Client:
+        def __init__(self, *unused, **kwargs):
+            self.kwargs = kwargs
+        async def __aenter__(self):
+            return self
+        async def __aexit__(self, *unused):
+            return False
+        def stream(self, *unused, **kwargs):
+            return stream_responses.pop(0)
+        async def post(self, *unused, **kwargs):
+            return _BufferedResponse()
+
+    with tempfile.TemporaryDirectory() as tmp:
+        root = Path(tmp)
+        original_client = ae.httpx.AsyncClient
+        original_path = ae.Path
+        original_streaming = os.environ.get("LLAMA_USE_STREAMING")
+        original_progress = os.environ.get("AGENT_PROGRESS_FILE")
+        try:
+            ae.httpx.AsyncClient = _Client
+            # Keep the executor's existing stream-tail publication inside this fixture.
+            def fixture_path(*parts):
+                if parts == (ae.__file__,):
+                    return root / "ai-stack" / "local-agents" / "agent_executor.py"
+                return original_path(*parts)
+            ae.Path = fixture_path
+            executor = ae.LocalAgentExecutor(tool_registry=object(), enable_fallback=False)
+            executor._cassette_record = lambda *unused: None
+            executor._cassette_replay = lambda *unused: None
+
+            output = root / "local-agent-timing.log"
+            os.environ["AGENT_PROGRESS_FILE"] = str(output) + ".progress.json"
+            os.environ["LLAMA_USE_STREAMING"] = "1"
+            asyncio.run(executor._call_llama(
+                [{"role": "user", "content": "fixture"}], task_id="aq-1726600000", call_number=1
+            ))
+            first = json.loads(Path(str(output) + ".timing.json").read_text())
+            assert_true(first["output_task_id"] == "local-agent-timing" and first["task_id"] == "aq-1726600000",
+                        f"agent output/internal identity was conflated: {first}")
+            assert_true(first["invocation_sequence"] == 1 and first["time_to_first_visible_content_seconds"] is not None,
+                        f"agent SSE first visible timing absent: {first}")
+
+            asyncio.run(executor._call_llama(
+                [{"role": "user", "content": "fixture"}], task_id="aq-1726600000", call_number=1
+            ))
+            retry = json.loads(Path(str(output) + ".timing.json").read_text())
+            assert_true(retry["call_number"] == 1 and retry["invocation_sequence"] == 2,
+                        f"same logical call did not retain a distinct attempt: {retry}")
+
+            tr_mod = _load_task_registry()
+            registry = tr_mod.TaskRegistry(root / "delegation", repo_root=root)
+            registry.append("local-agent-timing", "timing", str(output), "agent", "reviewer")
+            registry.update_status("local-agent-timing", "done")
+            observed = registry.monitor_payload()["tasks"][0]["latest_call_timing"]
+            assert_true(observed and observed["call_number"] == 1 and observed["invocation_sequence"] == 2,
+                        f"actual agent receipt was not projected: {observed}")
+
+            executor._cassette_replay = lambda *unused: ("replay", 1)
+            asyncio.run(executor._call_llama(
+                [{"role": "user", "content": "fixture"}], task_id="aq-1726600000", call_number=2
+            ))
+            replay = json.loads(Path(str(output) + ".timing.json").read_text())
+            assert_true(replay["timing_mode"] == "replay" and replay["request_started_utc"] is None,
+                        f"replay invented a live request: {replay}")
+            executor._cassette_replay = lambda *unused: None
+
+            buffered = root / "local-agent-buffered.log"
+            os.environ["AGENT_PROGRESS_FILE"] = str(buffered) + ".progress.json"
+            os.environ["LLAMA_USE_STREAMING"] = "0"
+            asyncio.run(executor._call_llama(
+                [{"role": "user", "content": "fixture"}], task_id="aq-1726600000", call_number=2
+            ))
+            buffered_receipt = json.loads(Path(str(buffered) + ".timing.json").read_text())
+            assert_true(
+                buffered_receipt["timing_mode"] == "buffered"
+                and buffered_receipt["time_to_first_visible_content_seconds"] is None,
+                f"buffered path claimed streaming TTFT: {buffered_receipt}",
+            )
+
+            os.environ["AGENT_PROGRESS_FILE"] = str(output) + ".progress.json"
+            os.environ["LLAMA_USE_STREAMING"] = "1"
+            try:
+                asyncio.run(executor._call_llama(
+                    [{"role": "user", "content": "fixture"}], task_id="aq-1726600000", call_number=3
+                ))
+                raise AssertionError("HTTP failure fixture unexpectedly succeeded")
+            except Exception:
+                failed = json.loads(Path(str(output) + ".timing.json").read_text())
+                assert_true(failed["terminal_state"] == "failure" and failed["failure_category"] == "http_5xx",
+                            f"agent failure receipt was not categorical: {failed}")
+        finally:
+            ae.httpx.AsyncClient = original_client
+            ae.Path = original_path
+            if original_streaming is None:
+                os.environ.pop("LLAMA_USE_STREAMING", None)
+            else:
+                os.environ["LLAMA_USE_STREAMING"] = original_streaming
+            if original_progress is None:
+                os.environ.pop("AGENT_PROGRESS_FILE", None)
+            else:
+                os.environ["AGENT_PROGRESS_FILE"] = original_progress
+    print("PASS  agent timing receipts cover SSE, retry, replay, buffered, and failure")
+
+
 def test_local_direct_latency_receipt_is_bounded_and_metadata_only():
     """Monitor projects only finite nonnegative local-direct elapsed time."""
     with tempfile.TemporaryDirectory() as tmp:
@@ -1376,14 +1635,42 @@ def test_local_direct_latency_receipt_is_bounded_and_metadata_only():
         tr_mod = _load_task_registry()
         registry = tr_mod.TaskRegistry(delegation_dir, repo_root=root)
 
-        def add(task_id, mode="direct", receipt=None):
+        def add(task_id, mode="direct", receipt=None, timing=None):
             output = outputs / f"{task_id}.log"
             output.write_text('{"status": "done", "success": true}\n', encoding="utf-8")
             if receipt is not None:
                 Path(str(output) + ".progress.json").write_bytes(receipt)
+            if timing is not None:
+                Path(str(output) + ".timing.json").write_text(json.dumps(timing), encoding="utf-8")
             registry.append(task_id, "metadata-only", str(output), mode, "reviewer")
             registry.update_status(task_id, "done")
             return output
+
+        def timing(task_id, producer="direct_runner", call_number=None, **overrides):
+            value = {
+                "schema": "aq.local-producer-timing/v1",
+                "producer": producer,
+                "task_id": task_id if producer == "direct_runner" else "aq-1726600000",
+                "output_task_id": task_id,
+                "call_number": call_number,
+                "invocation_sequence": None if producer == "direct_runner" else 7,
+                "streaming": True,
+                "timing_mode": "live_stream",
+                "terminal_state": "success",
+                "failure_category": None,
+                "local_admission_wait_seconds": 1.5 if producer == "direct_runner" else None,
+                "server_queue_wait_seconds": None,
+                "request_started_utc": "2026-09-17T00:00:01Z",
+                "first_visible_content_utc": "2026-09-17T00:00:02Z",
+                "request_completed_utc": "2026-09-17T00:00:03Z",
+                "request_elapsed_seconds": 2.0,
+                "time_to_first_visible_content_seconds": 1.0,
+                "first_visible_content_observation": (
+                    "output_file_flush" if producer == "direct_runner" else "stream_tail_write"
+                ),
+            }
+            value.update(overrides)
+            return value
 
         add("latency-zero", receipt=b'{"elapsed_s": 0, "secret": "never-project"}')
         add("latency-positive", receipt=b'{"elapsed_s": 286.1}')
@@ -1400,6 +1687,32 @@ def test_local_direct_latency_receipt_is_bounded_and_metadata_only():
         target.write_text('{"elapsed_s": 9}', encoding="utf-8")
         receipt_path.symlink_to(target)
         add("latency-nonlocal", mode="agent", receipt=b'{"elapsed_s": 9}')
+        add("timing-direct", timing=timing("timing-direct"))
+        add("timing-agent", mode="agent", timing=timing(
+            "timing-agent", producer="agent_executor", call_number=2,
+            local_admission_wait_seconds=None,
+        ))
+        add("timing-replay", mode="agent", timing=timing(
+            "timing-replay", producer="agent_executor", call_number=3,
+            timing_mode="replay", terminal_state="replay", streaming=True,
+            request_started_utc=None, first_visible_content_utc=None, request_completed_utc=None,
+            request_elapsed_seconds=None, time_to_first_visible_content_seconds=None,
+            first_visible_content_observation="unavailable", local_admission_wait_seconds=None,
+        ))
+        add("timing-buffered", mode="agent", timing=timing(
+            "timing-buffered", producer="agent_executor", call_number=4,
+            streaming=False, timing_mode="buffered", first_visible_content_utc=None,
+            time_to_first_visible_content_seconds=None, first_visible_content_observation="unavailable",
+            local_admission_wait_seconds=None,
+        ))
+        add("timing-mismatched", timing=timing("other-task"))
+        add("timing-agent-output-mismatch", mode="agent", timing=timing(
+            "other-output", producer="agent_executor", call_number=4,
+            local_admission_wait_seconds=None,
+        ))
+        add("timing-unordered", timing=timing(
+            "timing-unordered", first_visible_content_utc="2026-09-17T00:00:04Z"
+        ))
         before = registry.registry_file.read_bytes()
 
         tasks = {task["id"]: task for task in registry.monitor_payload()["tasks"]}
@@ -1414,12 +1727,46 @@ def test_local_direct_latency_receipt_is_bounded_and_metadata_only():
             assert_true(task["pipeline_elapsed_seconds"] is None, f"unsafe receipt accepted: {task}")
             assert_true(task["pipeline_decomposition"] == "unavailable", f"missing limit: {task}")
             assert_true("secret" not in json.dumps(task), f"receipt content leaked: {task}")
+        direct_timing = tasks["timing-direct"]["latest_call_timing"]
+        agent_timing = tasks["timing-agent"]["latest_call_timing"]
+        assert_true(
+            tasks["timing-direct"]["latest_call_timing_status"] == "observed"
+            and direct_timing["local_admission_wait_seconds"] == 1.5
+            and direct_timing["server_queue_wait_seconds"] is None,
+            f"direct timing projection lost its observed-only boundary: {tasks['timing-direct']}",
+        )
+        assert_true(
+            tasks["timing-agent"]["latest_call_timing_status"] == "observed"
+            and agent_timing["call_number"] == 2
+            and agent_timing["invocation_sequence"] == 7
+            and agent_timing["local_admission_wait_seconds"] is None,
+            f"agent latest-call correlation drifted: {tasks['timing-agent']}",
+        )
+        assert_true(
+            tasks["timing-replay"]["latest_call_timing_status"] == "observed"
+            and tasks["timing-replay"]["latest_call_timing"]["request_elapsed_seconds"] is None,
+            f"replay invented live timing: {tasks['timing-replay']}",
+        )
+        assert_true(
+            tasks["timing-buffered"]["latest_call_timing_status"] == "observed"
+            and tasks["timing-buffered"]["latest_call_timing"]["time_to_first_visible_content_seconds"] is None,
+            f"buffered output invented streaming TTFT: {tasks['timing-buffered']}",
+        )
+        for task_id in ("timing-mismatched", "timing-agent-output-mismatch", "timing-unordered"):
+            assert_true(
+                tasks[task_id]["latest_call_timing"] is None
+                and tasks[task_id]["latest_call_timing_status"] == "unavailable",
+                f"unsafe timing receipt was accepted: {tasks[task_id]}",
+            )
         assert_true(registry.registry_file.read_bytes() == before, "latency monitor mutated registry")
     dashboard = (ROOT / "assets" / "dashboard.js").read_text(encoding="utf-8")
     assert_true('fwRow("Pipeline Elapsed"' in dashboard, "dashboard pipeline row missing")
     assert_true('fwRow("Queue / Prefill / Generation"' in dashboard, "dashboard limitation row missing")
     assert_true("decode" not in dashboard[dashboard.find("Pipeline Elapsed") - 200:dashboard.find("Pipeline Elapsed") + 300].lower(),
                 "dashboard labels elapsed as decode")
+    assert_true('fwRow("Latest Model Call"' in dashboard, "dashboard latest-call timing row missing")
+    assert_true('fwRow("Server Queue", "unavailable (not observed)"' in dashboard,
+                "dashboard server-queue limitation missing")
     print("PASS  local-direct latency receipt is bounded and metadata-only")
 
 
@@ -1496,6 +1843,8 @@ if __name__ == "__main__":
         test_local_direct_empty_terminal_overlay_is_read_only_and_bounded,
         test_local_direct_overlay_refuses_uncertain_and_unrelated_artifacts,
         test_delegate_to_local_direct_foreground_guard_uses_shared_safe_inspection,
+        test_direct_runner_producer_timing_is_content_free_and_best_effort,
+        test_agent_executor_timing_is_per_call_and_never_claims_replay_ttft,
         test_local_direct_latency_receipt_is_bounded_and_metadata_only,
     ]
     for t in tests:

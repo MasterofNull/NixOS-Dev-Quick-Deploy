@@ -74,6 +74,11 @@ from collective_memory import CollectiveMemory  # noqa: E402
 from shared.llm_config import build_llama_payload, AGENT_TOOL_CALL_MAX_TOKENS, AGENT_TASK_MAX_TOKENS  # noqa: E402
 from tool_registry import ToolCall, ToolRegistry, get_registry
 from context_risk import compact_context_if_needed
+from producer_timing import (  # noqa: E402
+    output_path_from_progress as _timing_output_path,
+    utc_now as _timing_utc_now,
+    write_receipt as _write_timing_receipt,
+)
 
 # P2 (closed-local-improvement-loop): GBNF-constrained tool-call decoding. AQ_LOCAL_GBNF remains
 # DEFAULT OFF. Values true/1/on keep the original all-turn grammar plumbing for benchmarking; value
@@ -1827,6 +1832,9 @@ class LocalAgentExecutor:
         self._prompt_extensions_cache: Optional[str] = None
         self._remote_endpoint_healthy: Optional[bool] = None
         self._remote_endpoint_checked_at: float = 0.0
+        # Monotonic within this executor only.  It disambiguates retry/repair attempts
+        # that reuse the existing logical tool-call number without retaining task state.
+        self._timing_invocation_sequence = 0
 
         # Performance tracking per agent type
         self.performance: Dict[AgentType, AgentPerformance] = {
@@ -3990,6 +3998,62 @@ class LocalAgentExecutor:
                 "llama.cpp slot. Trim context: ranged reads, tool-result compaction, or fewer files."
             )
 
+        progress_file = os.getenv("AGENT_PROGRESS_FILE")
+        timing_output = _timing_output_path(progress_file)
+        self._timing_invocation_sequence += 1
+        timing_invocation_sequence = self._timing_invocation_sequence
+
+        def _record_timing(
+            *,
+            streaming: bool,
+            timing_mode: str,
+            terminal_state: str,
+            failure_category: Optional[str] = None,
+            request_started: Optional[float] = None,
+            request_started_utc: Optional[str] = None,
+            first_visible_content: Optional[float] = None,
+            first_visible_content_utc: Optional[str] = None,
+            first_visible_content_observation: str = "unavailable",
+            request_completed: Optional[float] = None,
+            request_completed_utc: Optional[str] = None,
+        ) -> None:
+            if timing_output is None:
+                return
+            _write_timing_receipt(
+                timing_output,
+                producer="agent_executor",
+                task_id=task_id,
+                output_task_id=timing_output.stem,
+                call_number=call_number,
+                invocation_sequence=timing_invocation_sequence,
+                streaming=streaming,
+                timing_mode=timing_mode,
+                terminal_state=terminal_state,
+                failure_category=failure_category,
+                request_started=request_started,
+                request_started_utc=request_started_utc,
+                first_visible_content=first_visible_content,
+                first_visible_content_utc=first_visible_content_utc,
+                first_visible_content_observation=first_visible_content_observation,
+                request_completed=request_completed,
+                request_completed_utc=request_completed_utc,
+            )
+
+        def _timing_failure_category(error: Exception) -> str:
+            if isinstance(error, httpx.ReadTimeout):
+                return "read_timeout"
+            if isinstance(error, httpx.ConnectError):
+                return "connect_error"
+            if isinstance(error, httpx.NetworkError):
+                return "network_error"
+            message = str(error)
+            if message.startswith("LLM first-token timeout"):
+                return "first_token_timeout"
+            match = re.search(r"llama\.cpp error: ([0-9]{3})", message)
+            if match:
+                return "http_4xx" if match.group(1).startswith("4") else "http_5xx"
+            return "request_error"
+
         if not use_streaming:
             # Legacy non-streaming path — 300s wall-clock limit.
             _payload_kwargs: Dict[str, Any] = {"max_tokens": max_tokens, "role": role}
@@ -4012,22 +4076,58 @@ class LocalAgentExecutor:
             # when AQ_LLM_CASSETTE_MODE=off, the default).
             _cassette_hit = self._cassette_replay(payload, task_type)
             if _cassette_hit is not None:
+                _record_timing(
+                    streaming=False,
+                    timing_mode="replay",
+                    terminal_state="replay",
+                )
                 return _cassette_hit
 
-            async with httpx.AsyncClient() as client:
-                response = await client.post(
-                    f"{self.llama_endpoint}/v1/chat/completions",
-                    json=payload,
-                    timeout=300.0,
-                    headers={"x-ai-profile": os.environ.get("AGENT_SWITCHBOARD_PROFILE", "local-agent")},
+            request_started = time.monotonic()
+            request_started_utc = _timing_utc_now()
+            _record_timing(
+                streaming=False,
+                timing_mode="buffered",
+                terminal_state="in_progress",
+                request_started=request_started,
+                request_started_utc=request_started_utc,
+            )
+            try:
+                async with httpx.AsyncClient() as client:
+                    response = await client.post(
+                        f"{self.llama_endpoint}/v1/chat/completions",
+                        json=payload,
+                        timeout=300.0,
+                        headers={"x-ai-profile": os.environ.get("AGENT_SWITCHBOARD_PROFILE", "local-agent")},
+                    )
+                    if response.status_code != 200:
+                        raise Exception(f"llama.cpp error: {response.status_code} {response.text}")
+                    data = response.json()
+                    tokens = data.get("usage", {}).get("total_tokens", 0)
+                    content = data["choices"][0]["message"]["content"]
+                    self._cassette_record(payload, task_type, content, tokens, {"path": "legacy"})
+                _record_timing(
+                    streaming=False,
+                    timing_mode="buffered",
+                    terminal_state="success",
+                    request_started=request_started,
+                    request_started_utc=request_started_utc,
+                    request_completed=time.monotonic(),
+                    request_completed_utc=_timing_utc_now(),
                 )
-                if response.status_code != 200:
-                    raise Exception(f"llama.cpp error: {response.status_code} {response.text}")
-                data = response.json()
-                tokens = data.get("usage", {}).get("total_tokens", 0)
-                content = data["choices"][0]["message"]["content"]
-                self._cassette_record(payload, task_type, content, tokens, {"path": "legacy"})
                 return content, tokens
+            except Exception as error:
+                _record_timing(
+                    streaming=False,
+                    timing_mode="buffered",
+                    terminal_state="failure",
+                    failure_category=_timing_failure_category(error),
+                    request_started=request_started,
+                    request_started_utc=request_started_utc,
+                    request_completed=time.monotonic(),
+                    request_completed_utc=_timing_utc_now(),
+                )
+                raise
 
         # Streaming path: collect SSE delta chunks.
         # Pass stream=True so build_llama_payload includes stream_options.include_usage=True,
@@ -4053,6 +4153,11 @@ class LocalAgentExecutor:
         # AQ_LLM_CASSETTE_MODE=off, the default).
         _cassette_hit = self._cassette_replay(payload, task_type)
         if _cassette_hit is not None:
+            _record_timing(
+                streaming=True,
+                timing_mode="replay",
+                terminal_state="replay",
+            )
             return _cassette_hit
 
         read_timeout = min(chunk_timeout, first_token_timeout)
@@ -4060,7 +4165,6 @@ class LocalAgentExecutor:
 
         collected: List[str] = []
         tokens_used = 0
-        progress_file = os.getenv("AGENT_PROGRESS_FILE")
         last_progress_write = 0.0
 
         def _write_stream_progress(status: str, force: bool = False) -> None:
@@ -4095,20 +4199,34 @@ class LocalAgentExecutor:
         _stream_file = _stream_dir / f"{task_id}.txt"
         _last_stream_write = [0.0]
 
-        def _write_stream_tail(final: bool = False) -> None:
+        def _write_stream_tail(final: bool = False) -> bool:
             now = time.time()
             if not final and now - _last_stream_write[0] < 0.7:
-                return
+                return False
             _last_stream_write[0] = now
             try:
                 _stream_dir.mkdir(parents=True, exist_ok=True)
                 _stream_file.write_text("".join(collected)[-4000:])
+                return True
             except OSError:
-                pass
+                return False
 
+        request_started = None
+        request_started_utc = None
+        first_visible_content = None
+        first_visible_content_utc = None
         try:
             _write_stream_progress("llm_waiting", force=True)
             _stream_start = time.monotonic()
+            request_started = _stream_start
+            request_started_utc = _timing_utc_now()
+            _record_timing(
+                streaming=True,
+                timing_mode="live_stream",
+                terminal_state="in_progress",
+                request_started=request_started,
+                request_started_utc=request_started_utc,
+            )
             # x-ai-profile: local-agent -> if the endpoint is the switchboard (:8085),
             # route to the passthrough local-agent lane (no card injection / payload
             # transform) so we gain the switchboard's concurrency + observability without
@@ -4161,21 +4279,100 @@ class LocalAgentExecutor:
                         if token:
                             collected.append(token)
                             _write_stream_progress("llm_streaming")
-                            _write_stream_tail()
-        except httpx.ReadTimeout:
+                            wrote_tail = _write_stream_tail()
+                            if first_visible_content is None and token.strip() and wrote_tail:
+                                first_visible_content = time.monotonic()
+                                first_visible_content_utc = _timing_utc_now()
+                                _record_timing(
+                                    streaming=True,
+                                    timing_mode="live_stream",
+                                    terminal_state="in_progress",
+                                    request_started=request_started,
+                                    request_started_utc=request_started_utc,
+                                    first_visible_content=first_visible_content,
+                                    first_visible_content_utc=first_visible_content_utc,
+                                    first_visible_content_observation="stream_tail_write",
+                                )
+        except httpx.ReadTimeout as error:
+            _record_timing(
+                streaming=True,
+                timing_mode="live_stream",
+                terminal_state="failure",
+                failure_category=_timing_failure_category(error),
+                request_started=request_started,
+                request_started_utc=request_started_utc,
+                first_visible_content=first_visible_content,
+                first_visible_content_utc=first_visible_content_utc,
+                first_visible_content_observation=("stream_tail_write" if first_visible_content is not None else "unavailable"),
+                request_completed=time.monotonic(),
+                request_completed_utc=_timing_utc_now(),
+            )
             raise RuntimeError(
                 f"LLM no-progress timeout: server silent for >{read_timeout:.0f}s "
                 f"(first_token_timeout={first_token_timeout:.0f}, chunk_timeout={chunk_timeout:.0f}; "
                 "context may be too large or the inference slot may be wedged)"
             )
         except httpx.ConnectError as _ce:
+            _record_timing(
+                streaming=True,
+                timing_mode="live_stream",
+                terminal_state="failure",
+                failure_category="connect_error",
+                request_started=request_started,
+                request_started_utc=request_started_utc,
+                first_visible_content=first_visible_content,
+                first_visible_content_utc=first_visible_content_utc,
+                first_visible_content_observation=("stream_tail_write" if first_visible_content is not None else "unavailable"),
+                request_completed=time.monotonic(),
+                request_completed_utc=_timing_utc_now(),
+            )
             raise RuntimeError(f"LLM connection refused at {self.llama_endpoint}: {_ce}") from _ce
         except httpx.NetworkError as _ne:
+            _record_timing(
+                streaming=True,
+                timing_mode="live_stream",
+                terminal_state="failure",
+                failure_category="network_error",
+                request_started=request_started,
+                request_started_utc=request_started_utc,
+                first_visible_content=first_visible_content,
+                first_visible_content_utc=first_visible_content_utc,
+                first_visible_content_observation=("stream_tail_write" if first_visible_content is not None else "unavailable"),
+                request_completed=time.monotonic(),
+                request_completed_utc=_timing_utc_now(),
+            )
             raise RuntimeError(f"LLM network error: {_ne}") from _ne
+        except Exception as error:
+            _record_timing(
+                streaming=True,
+                timing_mode="live_stream",
+                terminal_state="failure",
+                failure_category=_timing_failure_category(error),
+                request_started=request_started,
+                request_started_utc=request_started_utc,
+                first_visible_content=first_visible_content,
+                first_visible_content_utc=first_visible_content_utc,
+                first_visible_content_observation=("stream_tail_write" if first_visible_content is not None else "unavailable"),
+                request_completed=time.monotonic(),
+                request_completed_utc=_timing_utc_now(),
+            )
+            raise
 
         _write_stream_tail(final=True)
         content = "".join(collected)
         self._cassette_record(payload, task_type, content, tokens_used, {"path": "streaming"})
+        _record_timing(
+            streaming=True,
+            timing_mode="live_stream",
+            terminal_state="success",
+            request_started=request_started,
+            request_started_utc=request_started_utc,
+            first_visible_content=first_visible_content,
+            first_visible_content_utc=first_visible_content_utc,
+            first_visible_content_observation=("stream_tail_write" if first_visible_content is not None else "unavailable"),
+            request_completed=time.monotonic(),
+            request_completed_utc=_timing_utc_now(),
+        )
         return content, tokens_used
 
     async def _fallback_to_remote(self, task: Task) -> Task:
