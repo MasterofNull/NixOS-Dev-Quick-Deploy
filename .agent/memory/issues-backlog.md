@@ -4118,6 +4118,33 @@ Action: bounded next slice captures background child exit/status/stderr and test
 survival/reconciliation; do not blindly retry or credit empty tasks.
 File: scripts/ai/delegate-to-claude.
 
+## [DONE] Archive-scan commit fixture inherited the caller's temporary Git index
+Severity: medium. The first normal-hook commit attempt failed while building trees
+because the disposable archive fixture inherited GIT_INDEX_FILE from the commit's
+temporary index. The fixture now clears all GIT_* variables for every Git subprocess
+and proves an ambient index remains byte-for-byte unchanged; final source commit
+c6346935 passed the focused fixture and Tier-0 gates.
+Action: retain the environment-isolation regression and apply the same boundary rule
+to future disposable Git fixtures.
+File: scripts/testing/test-pre-archive-no-materialization.py
+
+## [OPEN] Holding restore checkpoint is not production-ready
+Severity: high. The prior isolated factory-state restore gate reported 51 PASS and
+2 FAIL because ignored runtime prerequisites (.agent/qa and .claude/settings.json)
+were absent; no private configuration was copied to manufacture green results.
+Action: keep the checkpoint isolated and blocked; separately harden restore TOCTOU,
+SQL trust, VM roundtrip, UI QA, cancellation rollback, and prerequisite provisioning
+before any activation or production restore.
+File: scripts/ai/aq-factory-restore
+
+## [OPEN] Foreground Claude status reported a false dead process
+Severity: medium. delegate-to-claude --status reported PID=null/process-not-running
+while the host Claude process was still alive; the host-level process check later
+confirmed completion. Do not credit or cancel a review from the sandbox-visible PID
+alone; reconcile host lifecycle evidence before routing follow-up work.
+Action: keep the lifecycle metadata follow-up queued as a separate bounded slice.
+File: scripts/ai/delegate-to-claude
+
 ## [OPEN] Antigravity advisory delivery is not completion
 Severity: medium. The coordination-safety task received a successful `cli-nudge-ok`
 delivery record and the IDE was foregrounded, but no claim, completion receipt, or
@@ -4398,3 +4425,57 @@ Action: bounded separate dispatcher lifecycle slice captures child exit/artifact
 evidence and reconciles status; preserve this run as failure evidence. Do not
 infer quota failure or success from absent output, or blindly repeat dispatches.
 File: scripts/ai/delegate-to-claude.
+
+## [OPEN] Luna orchestration soft failure: dispatch ambiguity repeatedly stopped delivery
+Severity: high. The user-attributed lightweight-model run made an unsupported CLI
+call, used the deprecated Gemini launcher, inferred host liveness from sandbox
+process visibility, and ended repeated turns without preserving or syncing the
+authorized partial work. Empty artifacts do not establish provider failure.
+Action: qualify bounded draft/comment/checkpoint tasks with explicit inputs,
+outputs, scope and escalation; use deterministic Git checks, persistent foreground
+dispatch when required, supported Antigravity inbox, and one bounded retry before
+evidence-based escalation. Preserve lighter lanes for measured eligible tasks.
+Evidence: .agent/memory/luna-failure-analysis-20260917.md
+File: scripts/ai/delegate-to-claude; scripts/ai/aq-collab-round
+
+## [OPEN] Claude checkpoint-contract review is explicitly quota-limited
+Severity: medium. Foreground host retry claude-20260917-114126-wf4ucu exited 1
+with session limit resetting 13:30 America/Los_Angeles. No review credit. Earlier
+empty background logs remain unexplained; this quota result is not retroactive proof.
+Action: retain the catch-up review and use an available independent reviewer now.
+File: scripts/ai/delegate-to-claude
+
+## [OPEN] Temporary checkpoint worktree metadata no longer exists
+Severity: medium. Holding branch commits aabd0ac9 and e5644ace remain durable,
+but /tmp/aq-paused-restore-20260917.ZMSQ85/.git is absent and Git reports the
+old worktree prunable. No prune, deletion, or branch reset was performed.
+Action: preserve current bytes on a fresh checkpoint branch and synchronize it;
+use durable worktree locations for future long-lived paused implementation lanes.
+File: .agent/PROJECT-WORKTREE-RECONCILIATION-PRD.md
+
+## [DONE] Checkpoint Antigravity task initially lacked required output metadata
+Severity: low. First inbox draft used a prose output path outside .agents/ and
+was pending but ineligible. Added the exact Output: line under the existing plan;
+status now identifies it as eligible and dispatch-once returned cli-nudge-ok.
+Action: validate task metadata before waking a lane. Completion still pending.
+File: scripts/ai/aq-antigravity-inbox (task checkpoint-contract-review-20260917)
+
+## [OPEN] Pre-push sync check makes a full-history repository shallow
+Severity: medium. Main documentation Tier-0 passed its full-history check; the
+subsequent successful push used .githooks/pre-push's git fetch --depth=1. A raw
+post-push Git check returned shallow=true. This invalidates the next shallow-repo
+gate despite no source or history rewrite by the agent.
+Action: restore full history with a non-destructive fetch --unshallow; bounded
+follow-up removes depth truncation from the existing upstream sync check and
+verifies a full-history repository remains full-history after push checks.
+File: .githooks/pre-push
+
+## [OPEN] Legacy commit helpers lack explicit-path and frozen-subject contracts
+Severity: high. aq-commit-agent stages the entire .agent/collaboration directory;
+ai-validate-and-commit reviews the shared Git diff and invokes a hard-coded qwen
+CLI. These do not qualify as safe lightweight commit automation in a concurrent
+factory with task ownership and independently bound review requirements.
+Action: reuse existing helpers with explicit allowed paths, deterministic subject
+hash and status checks, integration lease, structured draft inputs and qualified
+model routing. Never execute bulk-stage wrappers to preserve current work.
+File: scripts/ai/aq-commit-agent; scripts/ai/ai-validate-and-commit
