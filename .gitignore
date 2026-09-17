@@ -205,9 +205,8 @@ nix/hosts/*/.sops.yaml
 # Agent delegation task output logs and local registry are runtime state.
 .agents/delegation/outputs/
 .agents/delegation/fanout/
-# CS-1: per-dispatch isolated git worktrees (delegate-to-codex/-local) — torn
-# down after handback; the delegate/<task-id> branch + outputs/*.patch are
-# the preserved evidence, this directory itself is disposable scratch.
+# CS-1: per-dispatch worktrees are retained locally for recovery alongside
+# private branches and output patches. Cleanup needs separate authorization.
 .agents/delegation/worktrees/
 # Phase 83 — DAG session traces (runtime; large JSONL, not for version control)
 .agents/dag-sessions/
@@ -344,3 +343,11 @@ config/aqos/approval-signer-credentials.json
 
 # LLM record/replay cassettes (run artifacts; curate goldens explicitly)
 .agents/delegation/cassettes/
+
+# Imported skill bundles and VM images are local development artifacts. Keep
+# them out of source commits; curated skill definitions belong under .agent/skills.
+.agent/skills/synced/
+*.qcow2
+# Coordination mutex and interrupted snapshot writes are runtime state.
+.agent/collaboration/slice-claims.json.lock
+.agents/governance/state-authorities-latest.json.tmp.*
