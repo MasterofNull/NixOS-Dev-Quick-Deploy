@@ -7979,6 +7979,12 @@ async function loadLocalAgentMonitor() {
       ? `${Math.round(latestArtifact.age_seconds / 60)}m`
       : "--";
   const reason = latest.inferred_reason || latest.status || "--";
+  const pipelineElapsed = Number.isFinite(latest.pipeline_elapsed_seconds)
+    ? `${latest.pipeline_elapsed_seconds.toFixed(1)}s`
+    : "--";
+  const decomposition = latest.pipeline_decomposition === "unavailable"
+    ? "unavailable (not recorded)"
+    : "unavailable";
 
   el.innerHTML = [
     fwRow("State", status, status === "healthy" ? "ok" : status === "stale" ? "warn" : "err"),
@@ -7988,6 +7994,8 @@ async function loadLocalAgentMonitor() {
     fwRow("Repair Candidates", repair, repair > 0 ? "warn" : "ok"),
     fwRow("Latest Task", latestId),
     fwRow("Artifact Age", latestAge, latestAge === "--" ? "info" : ""),
+    fwRow("Pipeline Elapsed", pipelineElapsed, pipelineElapsed === "--" ? "info" : ""),
+    fwRow("Queue / Prefill / Generation", decomposition, "info"),
     fwRow("Reason", String(reason).slice(0, 48), status === "stale" ? "warn" : "info"),
   ].join("");
 }

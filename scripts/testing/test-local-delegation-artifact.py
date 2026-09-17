@@ -1366,6 +1366,63 @@ def test_delegate_to_local_direct_foreground_guard_uses_shared_safe_inspection()
     print("PASS  delegate-to-local direct foreground guard is safe")
 
 
+def test_local_direct_latency_receipt_is_bounded_and_metadata_only():
+    """Monitor projects only finite nonnegative local-direct elapsed time."""
+    with tempfile.TemporaryDirectory() as tmp:
+        root = Path(tmp)
+        delegation_dir = root / "delegation"
+        outputs = delegation_dir / "outputs"
+        outputs.mkdir(parents=True)
+        tr_mod = _load_task_registry()
+        registry = tr_mod.TaskRegistry(delegation_dir, repo_root=root)
+
+        def add(task_id, mode="direct", receipt=None):
+            output = outputs / f"{task_id}.log"
+            output.write_text('{"status": "done", "success": true}\n', encoding="utf-8")
+            if receipt is not None:
+                Path(str(output) + ".progress.json").write_bytes(receipt)
+            registry.append(task_id, "metadata-only", str(output), mode, "reviewer")
+            registry.update_status(task_id, "done")
+            return output
+
+        add("latency-zero", receipt=b'{"elapsed_s": 0, "secret": "never-project"}')
+        add("latency-positive", receipt=b'{"elapsed_s": 286.1}')
+        add("latency-missing")
+        add("latency-malformed", receipt=b"{not-json")
+        add("latency-bool", receipt=b'{"elapsed_s": true}')
+        add("latency-negative", receipt=b'{"elapsed_s": -1}')
+        add("latency-nonfinite", receipt=b'{"elapsed_s": NaN}')
+        add("latency-huge-integer", receipt=b'{"elapsed_s": ' + b"9" * 5000 + b"}")
+        add("latency-oversized", receipt=b" " * (tr_mod._LOCAL_DIRECT_PROGRESS_RECEIPT_BYTES + 1))
+        symlink_output = add("latency-symlink")
+        receipt_path = Path(str(symlink_output) + ".progress.json")
+        target = outputs / "latency-target.json"
+        target.write_text('{"elapsed_s": 9}', encoding="utf-8")
+        receipt_path.symlink_to(target)
+        add("latency-nonlocal", mode="agent", receipt=b'{"elapsed_s": 9}')
+        before = registry.registry_file.read_bytes()
+
+        tasks = {task["id"]: task for task in registry.monitor_payload()["tasks"]}
+        assert_true(tasks["latency-zero"]["pipeline_elapsed_seconds"] == 0, f"zero lost: {tasks}")
+        assert_true(tasks["latency-positive"]["pipeline_elapsed_seconds"] == 286.1, f"positive lost: {tasks}")
+        for task_id in (
+            "latency-missing", "latency-malformed", "latency-bool", "latency-negative",
+            "latency-nonfinite", "latency-huge-integer", "latency-oversized", "latency-symlink",
+            "latency-nonlocal",
+        ):
+            task = tasks[task_id]
+            assert_true(task["pipeline_elapsed_seconds"] is None, f"unsafe receipt accepted: {task}")
+            assert_true(task["pipeline_decomposition"] == "unavailable", f"missing limit: {task}")
+            assert_true("secret" not in json.dumps(task), f"receipt content leaked: {task}")
+        assert_true(registry.registry_file.read_bytes() == before, "latency monitor mutated registry")
+    dashboard = (ROOT / "assets" / "dashboard.js").read_text(encoding="utf-8")
+    assert_true('fwRow("Pipeline Elapsed"' in dashboard, "dashboard pipeline row missing")
+    assert_true('fwRow("Queue / Prefill / Generation"' in dashboard, "dashboard limitation row missing")
+    assert_true("decode" not in dashboard[dashboard.find("Pipeline Elapsed") - 200:dashboard.find("Pipeline Elapsed") + 300].lower(),
+                "dashboard labels elapsed as decode")
+    print("PASS  local-direct latency receipt is bounded and metadata-only")
+
+
 # Tests that assert the cancellation-lifecycle registry API added by 93f1eff4
 # (_publish_terminal_once / record_process_topology / _proc_start_time — whole-group
 # termination, terminal-receipt serialization, wall-watchdog reaping).  That slice was
@@ -1439,6 +1496,7 @@ if __name__ == "__main__":
         test_local_direct_empty_terminal_overlay_is_read_only_and_bounded,
         test_local_direct_overlay_refuses_uncertain_and_unrelated_artifacts,
         test_delegate_to_local_direct_foreground_guard_uses_shared_safe_inspection,
+        test_local_direct_latency_receipt_is_bounded_and_metadata_only,
     ]
     for t in tests:
         if not _lifecycle_ready and t.__name__ in _REVERTED_CANCELLATION_LIFECYCLE_TESTS:
