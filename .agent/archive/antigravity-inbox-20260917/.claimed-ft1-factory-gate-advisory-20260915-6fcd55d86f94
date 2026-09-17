@@ -1,0 +1,20 @@
+# FT-1 portable factory gate bundle — advisory review
+
+Role: independent architecture/security/software-factory reviewer. Advisory only;
+quota-unavailable responses are queued, not a reason to block other lanes.
+
+Read `.agent/PROJECT-FACTORY-GATE-TEMPLATES-PRD.md` and the completed/staged
+`templates/factory-gate-bundle/` candidate. Do not edit candidate files, change
+HEAD/index, activate hooks, or install into a real target repository.
+
+Review the universal framework, manifest derivation/refreshability, truthful PM
+projection, review/hash binding, WARN-vs-HARD policy, and safe future greenfield/
+brownfield seams. Distinguish FT-1 defects from FT-2/6/7 future work. Local hooks
+are cooperative enforcement, not a security boundary against a same-user agent
+deliberately disabling hooks; identify where later CI/authority enforcement is
+needed without falsely claiming FT-1 already provides it.
+
+Output: .agents/plans/factory-gate-templates/antigravity-ft1-advisory.md
+Record exact reviewed subject hash, test commands/results, uncertainties and
+bounded recommendations. Complete this inbox item when done. No implementation
+or activation authority is granted by this task.

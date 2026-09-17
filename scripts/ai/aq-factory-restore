@@ -1,0 +1,787 @@
+#!/usr/bin/env python3
+"""Restore an encrypted aq-factory-pack payload into a target factory.
+
+The whole manifest is checksum- and decryption-verified before the first target
+write.  Deploy hydrates empty stores; append merges by point/primary-key and
+never replaces a filesystem collision.
+"""
+
+from __future__ import annotations
+
+import argparse
+import hashlib
+import io
+import json
+import os
+import re
+import subprocess
+import sys
+import tarfile
+import urllib.parse
+import uuid
+from pathlib import Path, PurePosixPath
+from typing import BinaryIO, Iterator
+
+
+SCRIPT = Path(__file__).resolve()
+REPO_ROOT = SCRIPT.parents[2]
+SUPPORTED_SCHEMAS = {"aq-factory-pack.v1", "aq-factory-push.v1"}
+SUPPORTED_KINDS = {"qdrant_snapshot", "pg_dump", "var_lib_state"}
+SAFE_COLLECTION = re.compile(r"^[A-Za-z0-9._-]+$")
+
+
+class RestoreError(RuntimeError):
+    """A fail-closed restore error safe to show to the operator."""
+
+
+def log(message: str) -> None:
+    print(f"[aq-factory-restore] {message}", file=sys.stderr)
+
+
+def command_exists(name: str) -> bool:
+    return subprocess.run(
+        ["sh", "-c", "command -v \"$1\" >/dev/null 2>&1", "sh", name],
+        check=False,
+    ).returncode == 0
+
+
+def run_checked(args: list[str], *, env: dict[str, str] | None = None,
+                input_data: bytes | None = None) -> subprocess.CompletedProcess[bytes]:
+    result = subprocess.run(
+        args,
+        input=input_data,
+        stdout=subprocess.PIPE,
+        stderr=subprocess.PIPE,
+        env=env,
+        check=False,
+    )
+    if result.returncode:
+        detail = result.stderr.decode("utf-8", "replace").strip().splitlines()
+        suffix = f": {detail[-1]}" if detail else ""
+        raise RestoreError(f"command failed ({Path(args[0]).name}){suffix}")
+    return result
+
+
+def resolve_identity(explicit: str | None) -> Path:
+    if explicit:
+        path = Path(explicit)
+    elif os.environ.get("SOPS_AGE_KEY_FILE"):
+        path = Path(os.environ["SOPS_AGE_KEY_FILE"])
+    else:
+        result = subprocess.run(
+            [sys.executable, str(REPO_ROOT / "scripts/governance/manage-secrets.py"), "paths"],
+            stdout=subprocess.PIPE,
+            stderr=subprocess.DEVNULL,
+            text=True,
+            check=False,
+        )
+        values = dict(
+            line.split("=", 1) for line in result.stdout.splitlines() if "=" in line
+        )
+        path = Path(values.get("age_key_file", ""))
+    if not path.is_file():
+        raise RestoreError(
+            "target age identity not found; pass --identity or set SOPS_AGE_KEY_FILE"
+        )
+    return path
+
+
+def load_manifest(pack_dir: Path) -> tuple[dict, list[dict]]:
+    manifest_path = pack_dir / "manifest.json"
+    try:
+        manifest = json.loads(manifest_path.read_text(encoding="utf-8"))
+    except (OSError, json.JSONDecodeError) as exc:
+        raise RestoreError(f"cannot read valid manifest.json: {exc}") from exc
+    if manifest.get("schema_version") not in SUPPORTED_SCHEMAS:
+        raise RestoreError(f"unsupported manifest schema: {manifest.get('schema_version')!r}")
+    components = manifest.get("components")
+    if not isinstance(components, list) or not components:
+        raise RestoreError("manifest contains no components")
+    names: set[str] = set()
+    for component in components:
+        required = {"name", "kind", "path", "sha256", "encrypted"}
+        if not isinstance(component, dict) or not required <= component.keys():
+            raise RestoreError("manifest component is missing required fields")
+        name = component["name"]
+        if name in names:
+            raise RestoreError(f"duplicate component name in manifest: {name}")
+        names.add(name)
+        if component["kind"] not in SUPPORTED_KINDS:
+            raise RestoreError(f"unsupported component kind: {component['kind']}")
+        if component["kind"] == "qdrant_snapshot":
+            collection = str(name).removeprefix("qdrant:")
+            if not str(name).startswith("qdrant:") or not SAFE_COLLECTION.fullmatch(collection):
+                raise RestoreError(f"invalid Qdrant component name: {name!r}")
+        elif component["kind"] == "pg_dump" and not str(name).startswith("postgres:"):
+            raise RestoreError(f"invalid PostgreSQL component name: {name!r}")
+        elif component["kind"] == "var_lib_state":
+            logical = str(name).removeprefix("var-lib:")
+            if not str(name).startswith("var-lib:") or logical not in FILE_TARGETS:
+                raise RestoreError(f"unknown var-lib component target: {name!r}")
+        rel = PurePosixPath(component["path"])
+        if rel.is_absolute() or ".." in rel.parts or not rel.parts:
+            raise RestoreError(f"unsafe component path: {component['path']!r}")
+        if component["encrypted"] is not True:
+            raise RestoreError(f"component is not marked encrypted: {name}")
+        if component.get("encryption", {}).get("algorithm") != "age":
+            raise RestoreError(f"component does not declare age encryption: {name}")
+        if not re.fullmatch(r"[0-9a-f]{64}", str(component["sha256"])):
+            raise RestoreError(f"invalid sha256 in manifest for {name}")
+    return manifest, components
+
+
+def component_path(pack_dir: Path, component: dict) -> Path:
+    path = pack_dir.joinpath(*PurePosixPath(component["path"]).parts)
+    try:
+        path.resolve(strict=True).relative_to(pack_dir.resolve(strict=True))
+    except (OSError, ValueError) as exc:
+        raise RestoreError(f"component path escapes or is missing: {component['path']}") from exc
+    if not path.is_file():
+        raise RestoreError(f"component is not a regular file: {component['path']}")
+    return path
+
+
+def verify_pack(pack_dir: Path, components: list[dict], identity: Path) -> None:
+    """Verify every ciphertext hash and every decryption before any mutation."""
+    log(f"preflight: verifying {len(components)} component checksum(s)")
+    for component in components:
+        path = component_path(pack_dir, component)
+        digest = hashlib.sha256()
+        with path.open("rb") as handle:
+            for block in iter(lambda: handle.read(1024 * 1024), b""):
+                digest.update(block)
+        if digest.hexdigest() != component["sha256"]:
+            raise RestoreError(
+                f"sha256 mismatch for {component['name']}; aborting before apply"
+            )
+    log("preflight: checksums PASS; verifying target-key decryption for every component")
+    for component in components:
+        result = subprocess.run(
+            ["age", "--decrypt", "--identity", str(identity),
+             str(component_path(pack_dir, component))],
+            stdout=subprocess.DEVNULL,
+            stderr=subprocess.PIPE,
+            check=False,
+        )
+        if result.returncode:
+            raise RestoreError(
+                f"target age key cannot decrypt {component['name']}; wrong recipient or key"
+            )
+    log("preflight: target-key decryption PASS; applying components")
+
+
+def age_process(identity: Path, path: Path) -> subprocess.Popen[bytes]:
+    return subprocess.Popen(
+        ["age", "--decrypt", "--identity", str(identity), str(path)],
+        stdout=subprocess.PIPE,
+        stderr=subprocess.PIPE,
+    )
+
+
+def check_age_process(proc: subprocess.Popen[bytes], name: str) -> None:
+    stderr = proc.stderr.read().decode("utf-8", "replace") if proc.stderr else ""
+    if proc.wait():
+        detail = stderr.strip().splitlines()
+        suffix = f": {detail[-1]}" if detail else ""
+        raise RestoreError(f"decryption failed while applying {name}{suffix}")
+
+
+def http_json(method: str, url: str, body: dict | None = None,
+              *, allow_missing: bool = False) -> dict | None:
+    args = [
+        "curl", "--silent", "--show-error", "--request", method,
+        "--write-out", "\n%{http_code}",
+    ]
+    if body is not None:
+        args.extend(["--header", "Content-Type: application/json",
+                     "--data-binary", json.dumps(body)])
+    args.append(url)
+    result = subprocess.run(args, stdout=subprocess.PIPE, stderr=subprocess.PIPE, check=False)
+    if result.returncode:
+        detail = result.stderr.decode("utf-8", "replace").strip().splitlines()
+        suffix = f": {detail[-1]}" if detail else ""
+        raise RestoreError(f"Qdrant {method} failed{suffix}")
+    payload, separator, status_bytes = result.stdout.rpartition(b"\n")
+    if not separator or not status_bytes.isdigit():
+        raise RestoreError("Qdrant response did not include an HTTP status")
+    status = int(status_bytes)
+    if allow_missing and status == 404:
+        return None
+    if status < 200 or status >= 300:
+        raise RestoreError(f"Qdrant {method} failed with HTTP {status}")
+    try:
+        return json.loads(payload) if payload else {}
+    except json.JSONDecodeError as exc:
+        raise RestoreError("Qdrant returned invalid JSON") from exc
+
+
+def qdrant_url(base: str, collection: str, suffix: str = "") -> str:
+    quoted = urllib.parse.quote(collection, safe="")
+    return f"{base.rstrip('/')}/collections/{quoted}{suffix}"
+
+
+def upload_snapshot(base: str, collection: str, identity: Path,
+                    encrypted: Path, component_name: str) -> None:
+    decrypt = age_process(identity, encrypted)
+    assert decrypt.stdout is not None
+    target = qdrant_url(base, collection, "/snapshots/upload?priority=snapshot")
+    upload = subprocess.run(
+        ["curl", "--fail", "--silent", "--show-error", "--request", "POST",
+         "--form", "snapshot=@-;filename=restore.snapshot", target],
+        stdin=decrypt.stdout,
+        stdout=subprocess.PIPE,
+        stderr=subprocess.PIPE,
+        check=False,
+    )
+    decrypt.stdout.close()
+    check_age_process(decrypt, component_name)
+    if upload.returncode:
+        detail = upload.stderr.decode("utf-8", "replace").strip().splitlines()
+        suffix = f": {detail[-1]}" if detail else ""
+        raise RestoreError(f"Qdrant snapshot upload failed for {collection}{suffix}")
+
+
+def point_value(point: dict) -> dict:
+    return {"id": point.get("id"), "vector": point.get("vector"),
+            "payload": point.get("payload")}
+
+
+def merge_qdrant(base: str, source: str, target: str) -> dict[str, int]:
+    counts = {"added": 0, "updated": 0, "skipped_duplicate": 0, "conflict": 0}
+    offset: object | None = None
+    while True:
+        request: dict[str, object] = {
+            "limit": 256, "with_payload": True, "with_vector": True,
+        }
+        if offset is not None:
+            request["offset"] = offset
+        page = http_json("POST", qdrant_url(base, source, "/points/scroll"), request) or {}
+        result = page.get("result", {})
+        points = result.get("points", [])
+        if points:
+            ids = [point["id"] for point in points]
+            existing_response = http_json(
+                "POST", qdrant_url(base, target, "/points"),
+                {"ids": ids, "with_payload": True, "with_vector": True},
+            ) or {}
+            existing = {
+                str(point["id"]): point_value(point)
+                for point in existing_response.get("result", [])
+            }
+            changed = []
+            for point in points:
+                current = existing.get(str(point["id"]))
+                if current is None:
+                    counts["added"] += 1
+                    changed.append(point)
+                elif current == point_value(point):
+                    counts["skipped_duplicate"] += 1
+                else:
+                    counts["updated"] += 1
+                    changed.append(point)
+            if changed:
+                http_json(
+                    "PUT", qdrant_url(base, target, "/points?wait=true"),
+                    {"points": changed},
+                )
+        offset = result.get("next_page_offset")
+        if offset is None:
+            break
+    return counts
+
+
+def restore_qdrant(base: str, component: dict, pack_dir: Path,
+                   identity: Path) -> dict[str, int]:
+    prefix = "qdrant:"
+    if not component["name"].startswith(prefix):
+        raise RestoreError(f"Qdrant component has invalid name: {component['name']}")
+    target = component["name"][len(prefix):]
+    if not SAFE_COLLECTION.fullmatch(target):
+        raise RestoreError(f"unsafe Qdrant collection name: {target!r}")
+    existing = http_json("GET", qdrant_url(base, target), allow_missing=True)
+    encrypted = component_path(pack_dir, component)
+    if existing is None:
+        upload_snapshot(base, target, identity, encrypted, component["name"])
+        count_response = http_json("GET", qdrant_url(base, target)) or {}
+        added = int(count_response.get("result", {}).get("points_count", 0))
+        return {"added": added, "updated": 0, "skipped_duplicate": 0, "conflict": 0}
+
+    staging = f"__aq_restore_{hashlib.sha256(target.encode()).hexdigest()[:10]}_{uuid.uuid4().hex[:8]}"
+    upload_snapshot(base, staging, identity, encrypted, component["name"])
+    try:
+        return merge_qdrant(base, staging, target)
+    finally:
+        try:
+            http_json("DELETE", qdrant_url(base, staging))
+        except RestoreError as exc:
+            log(f"warning: temporary Qdrant collection cleanup failed: {exc}")
+
+
+def postgres_args(database: str) -> list[str]:
+    required = ["POSTGRES_HOST", "POSTGRES_PORT"]
+    missing = [name for name in required if not os.environ.get(name)]
+    if missing:
+        raise RestoreError(f"PostgreSQL target requires env: {', '.join(missing)}")
+    user = os.environ.get("POSTGRES_USER", "aidb")
+    return [
+        "--host", os.environ["POSTGRES_HOST"],
+        "--port", os.environ["POSTGRES_PORT"],
+        "--username", user,
+        "--dbname", database,
+    ]
+
+
+def postgres_env(identity: Path) -> dict[str, str]:
+    env = os.environ.copy()
+    if env.get("PGPASSWORD"):
+        return env
+    result = subprocess.run(
+        [sys.executable, str(REPO_ROOT / "scripts/governance/manage-secrets.py"), "paths"],
+        stdout=subprocess.PIPE, stderr=subprocess.DEVNULL, text=True, check=False,
+    )
+    paths = dict(line.split("=", 1) for line in result.stdout.splitlines() if "=" in line)
+    bundle = paths.get("bundle")
+    if bundle and Path(bundle).is_file() and command_exists("sops"):
+        decrypted = subprocess.run(
+            ["sops", "--decrypt", "--output-type", "json", bundle],
+            env={**env, "SOPS_AGE_KEY_FILE": str(identity)},
+            stdout=subprocess.PIPE, stderr=subprocess.DEVNULL, check=False,
+        )
+        if decrypted.returncode == 0:
+            try:
+                password = json.loads(decrypted.stdout).get("postgres_password")
+            except json.JSONDecodeError:
+                password = None
+            if password:
+                env["PGPASSWORD"] = str(password)
+    return env
+
+
+def psql(database: str, sql: str, env: dict[str, str]) -> str:
+    result = run_checked(
+        ["psql", *postgres_args(database), "--no-psqlrc", "--quiet",
+         "--tuples-only", "--no-align", "--set", "ON_ERROR_STOP=1"],
+        env=env, input_data=sql.encode(),
+    )
+    return result.stdout.decode("utf-8", "replace").strip()
+
+
+def database_is_empty(database: str, env: dict[str, str]) -> bool:
+    output = psql(
+        database,
+        "SELECT count(*) FROM pg_catalog.pg_class c JOIN pg_catalog.pg_namespace n "
+        "ON n.oid=c.relnamespace WHERE n.nspname='public' AND c.relkind IN ('r','p');",
+        env,
+    )
+    return output.splitlines()[-1].strip() == "0"
+
+
+def is_custom_dump(identity: Path, encrypted: Path) -> bool:
+    proc = age_process(identity, encrypted)
+    assert proc.stdout is not None
+    header = proc.stdout.read(5)
+    proc.terminate()
+    proc.wait()
+    return header == b"PGDMP"
+
+
+def sql_source(identity: Path, encrypted: Path, custom: bool,
+               name: str) -> tuple[Iterator[str], list[subprocess.Popen[bytes]]]:
+    decrypt = age_process(identity, encrypted)
+    assert decrypt.stdout is not None
+    processes = [decrypt]
+    stream: BinaryIO = decrypt.stdout
+    if custom:
+        restore = subprocess.Popen(
+            ["pg_restore", "--file=-", "--no-owner", "--no-acl", "-"],
+            stdin=stream, stdout=subprocess.PIPE, stderr=subprocess.PIPE,
+        )
+        stream.close()
+        assert restore.stdout is not None
+        stream = restore.stdout
+        processes.append(restore)
+    text_stream = io.TextIOWrapper(stream, encoding="utf-8")
+
+    def lines() -> Iterator[str]:
+        try:
+            yield from text_stream
+        finally:
+            text_stream.close()
+
+    return lines(), processes
+
+
+def finish_pipeline(processes: list[subprocess.Popen[bytes]], name: str) -> None:
+    failures = []
+    for proc in reversed(processes):
+        stderr = proc.stderr.read().decode("utf-8", "replace") if proc.stderr else ""
+        if proc.wait():
+            detail = stderr.strip().splitlines()
+            failures.append(detail[-1] if detail else f"exit {proc.returncode}")
+    if failures:
+        raise RestoreError(f"PostgreSQL dump decode failed for {name}: {failures[0]}")
+
+
+def row_count_sql(marker: str) -> str:
+    return f"""
+CREATE TEMP TABLE aq_restore_total(n bigint);
+DO $aq$
+DECLARE r record; n bigint;
+BEGIN
+  FOR r IN SELECT c.relname FROM pg_catalog.pg_class c
+           JOIN pg_catalog.pg_namespace ns ON ns.oid=c.relnamespace
+           WHERE ns.nspname='public' AND c.relkind IN ('r','p') LOOP
+    EXECUTE format('SELECT count(*) FROM public.%I', r.relname) INTO n;
+    INSERT INTO aq_restore_total VALUES (n);
+  END LOOP;
+END $aq$;
+SELECT '{marker}|' || COALESCE(sum(n),0) FROM aq_restore_total;
+"""
+
+
+def append_merge_sql(stage: str) -> str:
+    return f"""
+CREATE TEMP TABLE aq_restore_counts(added bigint, updated bigint, skipped bigint);
+DO $aq$
+DECLARE
+  r record; all_cols text; pk_cols text; join_expr text; set_cols text;
+  diff_expr text; target_exists boolean; a bigint; u bigint; s bigint;
+BEGIN
+  FOR r IN SELECT c.relname FROM pg_catalog.pg_class c
+           JOIN pg_catalog.pg_namespace ns ON ns.oid=c.relnamespace
+           WHERE ns.nspname='{stage}' AND c.relkind IN ('r','p') LOOP
+    SELECT string_agg(format('%I', attname), ', ' ORDER BY attnum)
+      INTO all_cols FROM pg_catalog.pg_attribute
+      WHERE attrelid=format('%I.%I','{stage}',r.relname)::regclass
+        AND attnum>0 AND NOT attisdropped AND attgenerated='';
+    SELECT string_agg(format('%I',a.attname), ', ' ORDER BY x.ord),
+           string_agg(format('t.%1$I IS NOT DISTINCT FROM s.%1$I',a.attname),
+                      ' AND ' ORDER BY x.ord)
+      INTO pk_cols, join_expr
+      FROM pg_catalog.pg_index i
+      CROSS JOIN LATERAL unnest(i.indkey) WITH ORDINALITY x(attnum,ord)
+      JOIN pg_catalog.pg_attribute a ON a.attrelid=i.indrelid AND a.attnum=x.attnum
+      WHERE i.indrelid=format('%I.%I','{stage}',r.relname)::regclass AND i.indisprimary;
+    IF pk_cols IS NULL THEN
+      RAISE EXCEPTION 'append requires a primary key: %.%', '{stage}', r.relname;
+    END IF;
+    SELECT to_regclass(format('public.%I',r.relname)) IS NOT NULL INTO target_exists;
+    IF NOT target_exists THEN
+      EXECUTE format('CREATE TABLE public.%I (LIKE %I.%I INCLUDING ALL)',
+                     r.relname,'{stage}',r.relname);
+      a := 0; u := 0; s := 0;
+    ELSE
+      EXECUTE format('SELECT count(*) FROM %I.%I s WHERE NOT EXISTS (SELECT 1 FROM public.%I t WHERE %s)',
+                     '{stage}',r.relname,r.relname,join_expr) INTO a;
+    END IF;
+    SELECT string_agg(format('%1$I = EXCLUDED.%1$I',a.attname), ', ' ORDER BY a.attnum),
+           string_agg(format('t.%1$I IS DISTINCT FROM s.%1$I',a.attname),
+                      ' OR ' ORDER BY a.attnum)
+      INTO set_cols, diff_expr
+      FROM pg_catalog.pg_attribute a
+      WHERE a.attrelid=format('%I.%I','{stage}',r.relname)::regclass
+        AND a.attnum>0 AND NOT a.attisdropped AND a.attgenerated=''
+        AND a.attname <> ALL(string_to_array(replace(pk_cols,' ',''),','));
+    IF target_exists THEN
+      IF diff_expr IS NULL THEN
+        u := 0;
+        EXECUTE format('SELECT count(*) FROM %I.%I s WHERE EXISTS (SELECT 1 FROM public.%I t WHERE %s)',
+                       '{stage}',r.relname,r.relname,join_expr) INTO s;
+      ELSE
+        EXECUTE format('SELECT count(*) FROM %I.%I s JOIN public.%I t ON %s WHERE %s',
+                       '{stage}',r.relname,r.relname,join_expr,diff_expr) INTO u;
+        EXECUTE format('SELECT count(*) FROM %I.%I s JOIN public.%I t ON %s WHERE NOT (%s)',
+                       '{stage}',r.relname,r.relname,join_expr,diff_expr) INTO s;
+      END IF;
+    ELSE
+      EXECUTE format('SELECT count(*) FROM %I.%I','{stage}',r.relname) INTO a;
+    END IF;
+    IF set_cols IS NULL THEN
+      EXECUTE format('INSERT INTO public.%I (%s) OVERRIDING SYSTEM VALUE SELECT %s FROM %I.%I ON CONFLICT (%s) DO NOTHING',
+                     r.relname,all_cols,all_cols,'{stage}',r.relname,pk_cols);
+    ELSE
+      EXECUTE format('INSERT INTO public.%I (%s) OVERRIDING SYSTEM VALUE SELECT %s FROM %I.%I ON CONFLICT (%s) DO UPDATE SET %s',
+                     r.relname,all_cols,all_cols,'{stage}',r.relname,pk_cols,set_cols);
+    END IF;
+    INSERT INTO aq_restore_counts VALUES (a,u,s);
+  END LOOP;
+END $aq$;
+DROP SCHEMA {stage} CASCADE;
+SELECT '__AQ_COUNTS__|' || COALESCE(sum(added),0) || '|' ||
+       COALESCE(sum(updated),0) || '|' || COALESCE(sum(skipped),0)
+FROM aq_restore_counts;
+COMMIT;
+"""
+
+
+def feed_postgres(database: str, env: dict[str, str], lines: Iterator[str],
+                  processes: list[subprocess.Popen[bytes]], prefix: str,
+                  suffix: str, stage: str | None = None) -> str:
+    proc = subprocess.Popen(
+        ["psql", *postgres_args(database), "--no-psqlrc", "--quiet",
+         "--tuples-only", "--no-align", "--set", "ON_ERROR_STOP=1"],
+        stdin=subprocess.PIPE, stdout=subprocess.PIPE, stderr=subprocess.PIPE,
+        text=True, env=env,
+    )
+    assert proc.stdin is not None
+    try:
+        proc.stdin.write(prefix)
+        for line in lines:
+            if stage:
+                line = line.replace("public.", f"{stage}.")
+                line = line.replace("SCHEMA public", f"SCHEMA {stage}")
+            proc.stdin.write(line)
+        proc.stdin.write(suffix)
+        proc.stdin.close()
+        stdout = proc.stdout.read() if proc.stdout else ""
+        stderr = proc.stderr.read() if proc.stderr else ""
+        rc = proc.wait()
+        finish_pipeline(processes, database)
+    except BaseException:
+        proc.kill()
+        proc.wait()
+        raise
+    if rc:
+        detail = stderr.strip().splitlines()
+        suffix_message = f": {detail[-1]}" if detail else ""
+        raise RestoreError(f"PostgreSQL apply failed{suffix_message}")
+    return stdout
+
+
+def restore_postgres(component: dict, pack_dir: Path, identity: Path,
+                     mode: str) -> dict[str, int]:
+    database = os.environ.get("POSTGRES_DB")
+    if not database:
+        raise RestoreError("PostgreSQL target requires POSTGRES_DB")
+    env = postgres_env(identity)
+    encrypted = component_path(pack_dir, component)
+    custom = is_custom_dump(identity, encrypted)
+    lines, processes = sql_source(identity, encrypted, custom, component["name"])
+    if mode == "deploy" and database_is_empty(database, env):
+        marker = "__AQ_DEPLOY_ROWS__"
+        output = feed_postgres(
+            database, env, lines, processes, "BEGIN;\n", row_count_sql(marker) + "COMMIT;\n",
+        )
+        match = re.search(rf"{marker}\|(\d+)", output)
+        if not match:
+            raise RestoreError("PostgreSQL deploy did not return a row summary")
+        return {"added": int(match.group(1)), "updated": 0,
+                "skipped_duplicate": 0, "conflict": 0}
+
+    stage = f"aq_restore_{uuid.uuid4().hex[:12]}"
+    prefix = f"BEGIN;\nCREATE SCHEMA {stage};\n"
+    output = feed_postgres(
+        database, env, lines, processes, prefix, append_merge_sql(stage), stage,
+    )
+    match = re.search(r"__AQ_COUNTS__\|(\d+)\|(\d+)\|(\d+)", output)
+    if not match:
+        raise RestoreError("PostgreSQL append did not return an upsert summary")
+    return {"added": int(match.group(1)), "updated": int(match.group(2)),
+            "skipped_duplicate": int(match.group(3)), "conflict": 0}
+
+
+FILE_TARGETS = {
+    "hybrid-coordinator-identity": ("identity", "identity"),
+    "closed-loop-training": ("autonomous-improvement", "autonomous-improvement"),
+    "aidb-shared-skills": ("shared-skills", "aidb/shared-skills"),
+    "aidb-federation": ("federation", "aidb/federation"),
+    "lora-adapters": ("adapters", "adapters"),
+}
+
+
+def var_target(component: dict, root: Path) -> tuple[str, Path]:
+    prefix = "var-lib:"
+    if not component["name"].startswith(prefix):
+        raise RestoreError(f"var-lib component has invalid name: {component['name']}")
+    logical = component["name"][len(prefix):]
+    if logical not in FILE_TARGETS:
+        raise RestoreError(f"unknown var-lib component target: {logical}")
+    archive_root, relative = FILE_TARGETS[logical]
+    return archive_root, root / relative
+
+
+def checked_var_root(root: Path) -> Path:
+    """Return a lexical absolute restore root without resolving symlinks.
+
+    Resolving here would turn a configured root symlink into an apparently safe
+    path outside the declared restore boundary.  The caller must instead reject
+    symlinks that already exist within this boundary.
+    """
+    return Path(os.path.abspath(root))
+
+
+def assert_safe_var_target(root: Path, target: Path) -> None:
+    """Reject symlinks in an existing restore target or its bounded ancestry."""
+    root = checked_var_root(root)
+    target = Path(os.path.abspath(target))
+    try:
+        relative = target.relative_to(root)
+    except ValueError as exc:
+        raise RestoreError(f"var-lib target escapes declared root: {target}") from exc
+
+    # A lexical root below a symlink (for example /tmp/link/ai-stack) is also
+    # an escaped restore boundary even though ``root`` itself is not a link.
+    root_ancestor = Path(root.anchor)
+    for part in root.parts[1:]:
+        root_ancestor /= part
+        if root_ancestor.is_symlink():
+            raise RestoreError(
+                f"refusing var-lib target with symlinked root ancestor: {root_ancestor}"
+            )
+
+    current = root
+    for part in relative.parts:
+        if current.is_symlink():
+            raise RestoreError(f"refusing var-lib target with symlinked ancestor: {current}")
+        current = current / part
+    if current.is_symlink():
+        raise RestoreError(f"refusing var-lib target symlink: {current}")
+
+
+def tar_members(identity: Path, encrypted: Path, name: str) -> Iterator[tuple[tarfile.TarInfo, bytes | None]]:
+    decrypt = age_process(identity, encrypted)
+    assert decrypt.stdout is not None
+    try:
+        with tarfile.open(fileobj=decrypt.stdout, mode="r|*") as archive:
+            for member in archive:
+                data = None
+                if member.isfile():
+                    extracted = archive.extractfile(member)
+                    if extracted is None:
+                        raise RestoreError(f"cannot read archive member: {member.name}")
+                    data = extracted.read()
+                yield member, data
+    except tarfile.TarError as exc:
+        raise RestoreError(f"invalid tar component {name}: {exc}") from exc
+    finally:
+        decrypt.stdout.close()
+        check_age_process(decrypt, name)
+
+
+def safe_member(member: tarfile.TarInfo, archive_root: str) -> tuple[str, ...]:
+    pure = PurePosixPath(member.name)
+    if pure.is_absolute() or ".." in pure.parts or not pure.parts:
+        raise RestoreError(f"unsafe archive member: {member.name!r}")
+    if pure.parts[0] != archive_root:
+        raise RestoreError(
+            f"archive root {pure.parts[0]!r} does not match expected {archive_root!r}"
+        )
+    if member.issym() or member.islnk() or member.isdev():
+        raise RestoreError(f"unsupported archive member type: {member.name}")
+    return pure.parts[1:]
+
+
+def preflight_tar(component: dict, pack_dir: Path, identity: Path, root: Path) -> None:
+    root = checked_var_root(root)
+    archive_root, target_root = var_target(component, root)
+    for member, _ in tar_members(
+        identity, component_path(pack_dir, component), component["name"]
+    ):
+        relative = safe_member(member, archive_root)
+        if relative:
+            assert_safe_var_target(root, target_root.joinpath(*relative))
+
+
+def restore_var_lib(component: dict, pack_dir: Path, identity: Path,
+                    root: Path, mode: str) -> dict[str, int]:
+    root = checked_var_root(root)
+    archive_root, target_root = var_target(component, root)
+    counts = {"added": 0, "updated": 0, "skipped_duplicate": 0, "conflict": 0}
+    pending: list[tuple[Path, bytes, int]] = []
+    for member, data in tar_members(
+        identity, component_path(pack_dir, component), component["name"]
+    ):
+        relative = safe_member(member, archive_root)
+        if not relative:
+            continue
+        target = target_root.joinpath(*relative)
+        assert_safe_var_target(root, target)
+        if member.isdir():
+            continue
+        if not member.isfile() or data is None:
+            raise RestoreError(f"unsupported archive member: {member.name}")
+        if target.exists():
+            if target.is_file() and target.read_bytes() == data:
+                counts["skipped_duplicate"] += 1
+            else:
+                counts["conflict"] += 1
+                log(f"conflict: kept existing file {target}")
+        else:
+            pending.append((target, data, member.mode & 0o777))
+    if mode == "deploy" and counts["conflict"]:
+        raise RestoreError(
+            f"deploy found {counts['conflict']} file collision(s); nothing from this component applied"
+        )
+    for target, data, permissions in pending:
+        assert_safe_var_target(root, target)
+        target.parent.mkdir(parents=True, exist_ok=True)
+        try:
+            with target.open("xb") as handle:
+                handle.write(data)
+        except FileExistsError:
+            counts["conflict"] += 1
+            log(f"conflict: kept concurrently-created file {target}")
+            continue
+        os.chmod(target, permissions)
+        counts["added"] += 1
+    return counts
+
+
+def parse_args() -> argparse.Namespace:
+    parser = argparse.ArgumentParser(description=__doc__)
+    parser.add_argument("--pack-dir", required=True, type=Path)
+    parser.add_argument("--mode", required=True, choices=("deploy", "append"))
+    parser.add_argument("--identity", help="target age private-key file")
+    return parser.parse_args()
+
+
+def main() -> int:
+    args = parse_args()
+    pack_dir = args.pack_dir.resolve()
+    if not pack_dir.is_dir():
+        raise RestoreError(f"pack directory not found: {pack_dir}")
+    for command in ("age", "curl", "psql", "pg_restore"):
+        if not command_exists(command):
+            raise RestoreError(f"missing required command: {command}")
+    identity = resolve_identity(args.identity)
+    _, components = load_manifest(pack_dir)
+    var_root = Path(os.environ.get("AQ_FACTORY_RESTORE_VAR_LIB_ROOT", "/var/lib/ai-stack"))
+
+    verify_pack(pack_dir, components, identity)
+    for component in components:
+        if component["kind"] == "var_lib_state":
+            preflight_tar(component, pack_dir, identity, var_root)
+
+    qdrant = os.environ.get("QDRANT_URL")
+    summaries = []
+    for component in components:
+        log(f"applying {component['name']} ({args.mode})")
+        try:
+            if component["kind"] == "qdrant_snapshot":
+                if not qdrant:
+                    raise RestoreError("Qdrant target requires QDRANT_URL")
+                counts = restore_qdrant(qdrant, component, pack_dir, identity)
+            elif component["kind"] == "pg_dump":
+                counts = restore_postgres(component, pack_dir, identity, args.mode)
+            else:
+                counts = restore_var_lib(
+                    component, pack_dir, identity, var_root, args.mode
+                )
+        except RestoreError as exc:
+            summaries.append({
+                "name": component["name"], "status": "failed", "added": 0,
+                "updated": 0, "skipped_duplicate": 0, "conflict": 0, "failed": 1,
+            })
+            print(json.dumps({"mode": args.mode, "components": summaries}, indent=2))
+            raise exc
+        summaries.append({"name": component["name"], "status": "ok", **counts, "failed": 0})
+    print(json.dumps({"mode": args.mode, "components": summaries}, indent=2))
+    return 0
+
+
+if __name__ == "__main__":
+    try:
+        raise SystemExit(main())
+    except RestoreError as exc:
+        print(f"[aq-factory-restore] ERROR: {exc}", file=sys.stderr)
+        raise SystemExit(1)
