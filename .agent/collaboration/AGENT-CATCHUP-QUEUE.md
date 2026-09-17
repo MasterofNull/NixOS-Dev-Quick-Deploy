@@ -34,8 +34,26 @@ switching its HEAD or staging competing source. The older CS-1F2 revision report
 is superseded by accepted corrective `0d835c13`, reviewed independently by Claude
 on exact subject `6000afac6971d3d95828a3965ae56e4b67550ba0506a951b7fd536853447b67f`.
 Elapsed-time display `c5b829a8` and generated-artifact hygiene `5e3c7b7d` are also
-accepted. CS-3 enforced integration ownership remains pending; this cooperative
-handoff does not claim that enforcement is implemented.
+accepted. CS3-F1 source is independently accepted and synchronized in `f9ab7e42`
+on exact subject `3332984f446889f3fd0aa52bd4e68e072f5ab1be58c42440f9bac3a2f21e24f1`.
+The guarded production commit passed Tier-0 53/0 and normal push 22/22; live lease
+status was held, foreign hook refused, then idle after release. This is cooperative
+explicit-path transaction protection, not interception of every ordinary git add or
+a same-user security boundary. CS-4 deployed visibility/parallel-dispatch proof is
+still pending. Failed draft `1a9a0567` is preserved separately, activation-blocked.
+
+### [QUEUED] Claude — CS3-F1 confirmatory audit and producer timing catch-up
+
+- Exact accepted subject: commit `f9ab7e429874eb32f91c04889aa7189daa213787`,
+  reviewed subject `3332984f446889f3fd0aa52bd4e68e072f5ab1be58c42440f9bac3a2f21e24f1`.
+- Missed role: independent code review; eligible cold flagship substitution
+  `/root/cs3_final_review` delivered actual PASS. Claude's confirmed quota reset is
+  13:30 Pacific / 20:30 UTC; no Claude review is credited for this subject.
+- On return: confirm CS3-F1 staged-deletion/rename hash parity and production lease
+  behavior; read the separately authorized local producer timing execution packet in
+  `/tmp/aq-local-producer-timing-20260917`. Its source is still under implementation,
+  not accepted. Route real findings into bounded follow-ups; do not re-open accepted
+  history or block delivery solely on Claude's availability. No staging/shared edits.
 
 The obsolete installer-v1 task is preserved at
 `.agent/archive/antigravity-inbox-20260910/aqos-installer-prd-review.md`, SHA-256
