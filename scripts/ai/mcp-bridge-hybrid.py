@@ -50,6 +50,7 @@ AIDB_URL   = os.getenv("AIDB_URL",   "http://127.0.0.1:8002")
 SCRIPT_DIR = os.path.dirname(os.path.abspath(__file__))
 REPO_ROOT = os.path.abspath(os.path.join(SCRIPT_DIR, "..", ".."))
 AQD_BIN = os.path.join(REPO_ROOT, "scripts", "ai", "aqd")
+RETROFIT_STACK_CHOICES = ("python", "node", "rust", "go", "nix", "generic")
 BRIDGE_MAX_RESULT_CHARS = max(
     256,
     int(os.getenv("AI_MCP_BRIDGE_MAX_RESULT_CHARS", os.getenv("AI_CODE_EXEC_MAX_RESULT_CHARS", "4000"))),
@@ -503,9 +504,10 @@ TOOLS = [
                 "target_dir": {"type": "string", "default": "."},
                 "project_name": {"type": "string"},
                 "goal": {"type": "string"},
-                "stack": {"type": "string"},
+                "stack": {"type": "string", "enum": list(RETROFIT_STACK_CHOICES)},
                 "owner": {"type": "string"},
                 "force": {"type": "boolean", "default": False},
+                "confirm_retrofit": {"type": "string", "description": "Exact digest returned by the current retrofit preview."},
             },
             "required": [],
         },
@@ -1223,12 +1225,20 @@ def _call_tool(name: str, args: dict) -> str:
             argv.extend(["--name", str(args.get("project_name"))])
         if args.get("goal"):
             argv.extend(["--goal", str(args.get("goal"))])
-        if args.get("stack"):
-            argv.extend(["--stack", str(args.get("stack"))])
+        stack = args.get("stack")
+        if stack is not None:
+            if not isinstance(stack, str) or stack not in RETROFIT_STACK_CHOICES:
+                return _format_result({
+                    "ok": False,
+                    "error": f"invalid retrofit stack; expected one of: {', '.join(RETROFIT_STACK_CHOICES)}",
+                })
+            argv.extend(["--stack", stack])
         if args.get("owner"):
             argv.extend(["--owner", str(args.get("owner"))])
         if bool(args.get("force", False)):
             argv.append("--force")
+        if "confirm_retrofit" in args and args["confirm_retrofit"] is not None:
+            argv.extend(["--confirm-retrofit", str(args["confirm_retrofit"])])
         r = _run_local(argv, cwd=abs_target)
         if target_warn:
             r.setdefault("warnings", []).append(target_warn)
