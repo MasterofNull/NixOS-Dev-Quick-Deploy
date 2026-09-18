@@ -36,6 +36,7 @@ Usage:
   aqd workflows list
   aqd workflows project-init [--target <dir>] [--name <project-name>] [--goal <goal>] [--stack <stack>] [--owner <owner>] [--force]
   aqd workflows factory-gate-status [--target <dir>]
+  aqd workflows factory-gate-preflight [--target <dir>]     -- metadata-only readiness verdict (FT-5)
   aqd workflows primer [--target <dir>] [--objective <text>] [--output <file>]
   aqd workflows brownfield [--target <dir>] [--objective <text>] [--constraints <text>] [--out-of-scope <text>] [--acceptance <text>] [--force]
   aqd workflows retrofit [--target <dir>] [--name <project-name>] [--goal <goal>] [--stack <stack>] [--owner <owner>] [--confirm-retrofit <preview-digest>]
@@ -826,6 +827,26 @@ cmd_workflows_factory_gate_status() {
     --project-name "$(basename "$(realpath "$target_dir")")"
 }
 
+cmd_workflows_factory_gate_preflight() {
+  local target_dir="."
+  while [[ $# -gt 0 ]]; do
+    case "$1" in
+      --target) target_dir="${2:-}"; shift 2 ;;
+      *) ai_layer_error "unknown_option" "factory-gate-preflight" "Unknown option: $1" "Use: aqd workflows factory-gate-preflight --target <dir>"; return 1 ;;
+    esac
+  done
+  [[ -d "$target_dir" ]] || {
+    ai_layer_error "missing_target" "factory-gate-preflight" "Target directory does not exist: $target_dir"
+    return 1
+  }
+  # FT-5: metadata-only readiness verdict. Never executes target build/test/
+  # lint/secret-scan commands, never installs tooling; reuses the existing
+  # installer status, gate runner receipts, structure lint and PM tracker.
+  run_python "${PROJECT_ROOT}/scripts/ai/lib/factory_gate_install.py" readiness-preflight \
+    --target "$target_dir" --bundle-root "${PROJECT_ROOT}/templates/factory-gate-bundle" \
+    --project-name "$(basename "$(realpath "$target_dir")")"
+}
+
 cmd_workflows_retrofit() {
   local target_dir="."
   local project_name=""
@@ -1005,6 +1026,14 @@ cmd_workflows_brownfield() {
       sed -n '1,20p' |
       sed 's/^/- /'
   )"
+
+  # FT-5: metadata-only readiness preflight before this brownfield project's
+  # first write. Informational only -- an absent install or unready state
+  # never blocks /brownfield (item 1/3 of the FT-5 brief); it is surfaced so
+  # the operator/agent sees readiness before slices begin.
+  echo "== factory readiness preflight (informational; never blocks /brownfield) =="
+  cmd_workflows_factory_gate_preflight --target "$target_dir" || true
+  echo
 
   cat > "$pdr_file" <<EOF
 # Brownfield Product Development Record (PDR)
@@ -1954,6 +1983,7 @@ main() {
     workflows:list) cmd_workflows_list ;;
     workflows:project-init) cmd_workflows_project_init "$@" ;;
     workflows:factory-gate-status) cmd_workflows_factory_gate_status "$@" ;;
+    workflows:factory-gate-preflight) cmd_workflows_factory_gate_preflight "$@" ;;
     workflows:primer) cmd_workflows_primer "$@" ;;
     workflows:brownfield) cmd_workflows_brownfield "$@" ;;
     workflows:retrofit) cmd_workflows_retrofit "$@" ;;

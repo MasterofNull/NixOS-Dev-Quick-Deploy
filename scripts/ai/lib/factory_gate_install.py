@@ -24,8 +24,14 @@ from typing import Any
 
 SCHEMA_VERSION = 1
 RECEIPT = Path(".factory/gate-install.json")
+EVIDENCE_RECEIPT = Path(".factory/gate-run-evidence.json")
 BUNDLE_DESTINATION = Path(".factory/gate-bundle")
 STARTER_TRACKER = Path(".agents/plans/factory-gate/tracker.json")
+# These two checks have no metadata-only conventional command (see
+# command_values below) and are WARN, not HARD, severity at --pre-commit in
+# the installed gate-runner; they can never be auto-configured, so readiness
+# must not treat them as commit-blocking the way build/test/lint/secret_scan are.
+HARD_CHECK_PREFIXES = ("build:", "test:", "lint:", "secret_scan:")
 COLLABORATION_STATE = {
     Path(".agent/collaboration/PULSE.log"): (
         b"[1970-01-01T00:00:00Z] [factory-gate] [initialize]: collaboration scaffold - ready\n"
@@ -581,9 +587,168 @@ def status(target: Path, bundle_root: Path, stack: str | None, project_name: str
     }
 
 
+def evidence_tree_digest(root: Path) -> str:
+    """Digest binding readiness evidence to active check config + target source (FT-5 Case 1).
+
+    Mirrors, field for field, the identical algorithm embedded in the
+    installed gate-runner's own evidence-record/--preflight steps
+    (templates/factory-gate-bundle/gate-runner) so a harness-side
+    recomputation matches a target-recorded receipt exactly. Excludes
+    .git/ and .factory/ (which holds this receipt, the install receipt,
+    backups, and the retained bundle copy -- all of which would make the
+    digest self-referential) except .factory/repo-structure.conf, the one
+    check-configuration file that lives under .factory/.
+    """
+    keep = root / ".factory" / "repo-structure.conf"
+    digest = hashlib.sha256()
+    for path in sorted(root.rglob("*")):
+        if path.is_symlink() or not path.is_file():
+            continue
+        relative = path.relative_to(root)
+        parts = relative.parts
+        if parts[0] == ".git":
+            continue
+        if parts[0] == ".factory" and path != keep:
+            continue
+        digest.update(f"{relative.as_posix()}\0{digest_bytes(path)}\n".encode())
+    return digest.hexdigest()
+
+
+def _execution_evidence_state(target: Path) -> tuple[str | None, dict[str, Any]]:
+    """Case 1 anti-gaming: a receipt claim alone never proves fresh execution."""
+    evidence_path = target / EVIDENCE_RECEIPT
+    if evidence_path.is_symlink() or not evidence_path.is_file():
+        return "MISSING_EXECUTION_EVIDENCE", {"present": False, "path": str(EVIDENCE_RECEIPT)}
+    recorded = load_json(evidence_path)
+    recorded_digest = recorded.get("evidence_digest") if isinstance(recorded, dict) else None
+    if not isinstance(recorded_digest, str) or recorded.get("fail_count") != 0:
+        return "MISSING_EXECUTION_EVIDENCE", {"present": True, "valid": False, "path": str(EVIDENCE_RECEIPT)}
+    current_digest = evidence_tree_digest(target)
+    if current_digest != recorded_digest:
+        return "STALE_EXECUTION_EVIDENCE", {
+            "present": True, "fresh": False, "recorded_digest": recorded_digest, "current_digest": current_digest,
+            "generated_at": recorded.get("generated_at"), "mode": recorded.get("mode"),
+        }
+    return None, {
+        "present": True, "fresh": True, "recorded_digest": recorded_digest,
+        "generated_at": recorded.get("generated_at"), "mode": recorded.get("mode"),
+        "pass_count": recorded.get("pass_count"), "warn_count": recorded.get("warn_count"),
+    }
+
+
+def _run_governance_check(target: Path, relative: str, timeout: int = 30) -> tuple[int, str]:
+    """Execute an installed FACTORY governance tool, never a target-declared command.
+
+    hard-10-repo-structure.sh and hard-80-pm-tracker.sh are fixed factory
+    tooling wrappers (repo-structure-lint / pm-tracker projector) rendered to
+    deterministic harness-relative paths at install time -- never a
+    consumer-declared build/test/lint/secret_scan command -- so invoking them
+    here is bounded structure/tracker validation, not "target script
+    execution" in the sense the metadata-only preflight must refuse.
+    """
+    path = target / relative
+    if not path.is_file() or not os.access(path, os.X_OK):
+        return 1, f"{relative} missing or not executable"
+    try:
+        result = subprocess.run([str(path), "--pre-commit"], cwd=target, capture_output=True, text=True,
+                                 timeout=timeout, check=False)
+        output = (result.stdout + result.stderr).strip()
+        return result.returncode, output[-400:]
+    except (OSError, subprocess.TimeoutExpired) as error:
+        return 1, str(error)[:200]
+
+
+def readiness_preflight(target: Path, bundle_root: Path, stack: str | None, project_name: str) -> dict[str, Any]:
+    """Metadata-only, non-executing readiness verdict (FT-5).
+
+    Never runs target-declared build/test/lint/secret_scan commands, never
+    installs tooling, and never executes documentation-notice prose. Reuses
+    the existing installer status, gate runner receipts, structure lint and
+    PM tracker check instead of a parallel policy engine.
+    """
+    report = status(target, bundle_root, stack, project_name)
+    blockers: list[dict[str, str]] = []
+    coverage: list[dict[str, Any]] = []
+
+    def add(rule: str, check: str, evidence: Any, blocker: str | None, detail: str = "") -> None:
+        coverage.append({"rule": rule, "check": check, "evidence": evidence, "blocker": blocker})
+        if blocker:
+            blockers.append({"code": blocker, "detail": detail or json.dumps(evidence, sort_keys=True)[:200]})
+
+    installed = report["installation"]["state"] == "INSTALLED"
+    add("installation", "factory_gate_install.status.installation", report["installation"],
+        None if installed else "INSTALLATION_ABSENT",
+        "no factory gate install receipt found" if not installed else "")
+
+    hooks = report["hooks"]
+    hooks_ok = hooks.get("state") == "ACTIVE" and all(hooks.get("executable", {}).values())
+    add("hook_routing", "factory_gate_install.status.hooks", hooks,
+        None if hooks_ok else "HOOKS_INVALID",
+        f"hooks state={hooks.get('state')} configured_path={hooks.get('configured_path')!r}")
+
+    checks = report["checks"]
+    unconfigured = checks.get("required_unconfigured") or []
+    hard_unconfigured = [item for item in unconfigured if item.startswith(HARD_CHECK_PREFIXES)]
+    checks_ready = not hard_unconfigured
+    add("required_checks_configured", "factory_gate_install.status.checks (hard-severity subset)",
+        {"required_unconfigured": unconfigured, "hard_blocking": hard_unconfigured},
+        None if checks_ready else "CHECKS_UNCONFIGURED", "; ".join(hard_unconfigured))
+
+    # Activation is an aggregate gate: installed + hooks routed + hard checks
+    # configured. The frozen install/retrofit receipt's own "activation"
+    # field is exposed as evidence only -- it is computed once at install
+    # time from the full (structurally WARN-inclusive) unconfigured list and
+    # can never turn READY on its own; the aggregate below can.
+    activation_ready = installed and hooks_ok and checks_ready
+    add("activation", "aggregate: installation + hook_routing + required_checks_configured",
+        {"receipt_activation": report.get("activation"), "installed": installed,
+         "hooks_ok": hooks_ok, "checks_ready": checks_ready},
+        None if activation_ready else "ACTIVATION_BLOCKED",
+        f"receipt_activation={report.get('activation')!r}")
+
+    evidence_blocker, evidence_detail = _execution_evidence_state(target)
+    add("execution_evidence_freshness", "gate-run-evidence.json digest binding (FT-5 Case 1 anti-gaming)",
+        evidence_detail, evidence_blocker)
+
+    if installed:
+        layout_rc, layout_detail = _run_governance_check(target, "scripts/governance/checks.d/hard-10-repo-structure.sh")
+        add("repository_layout", "checks.d/hard-10-repo-structure.sh", {"exit_code": layout_rc, "detail": layout_detail},
+            None if layout_rc == 0 else "LAYOUT_INVALID")
+
+        tracker_rc, tracker_detail = _run_governance_check(target, "scripts/governance/checks.d/hard-80-pm-tracker.sh")
+        add("pm_tracker", "checks.d/hard-80-pm-tracker.sh", {"exit_code": tracker_rc, "detail": tracker_detail},
+            None if tracker_rc == 0 else "TRACKER_INVALID")
+    else:
+        add("repository_layout", "checks.d/hard-10-repo-structure.sh", {"skipped": "installation absent"}, None)
+        add("pm_tracker", "checks.d/hard-80-pm-tracker.sh", {"skipped": "installation absent"}, None)
+
+    # Absent/unconfigured inference lanes are informational only (FT-5 Case 4
+    # / advisory Case 4): they are surfaced for visibility and never added to
+    # blockers, so a missing lane can never make readiness_preflight nonzero.
+    lanes = {
+        "hybrid_coordinator": {
+            "state": "CONFIGURED" if os.environ.get("HYBRID_URL") else "TRANSPORT_UNAVAILABLE",
+            "detail": "informational only; absent/unconfigured lanes never block readiness",
+        }
+    }
+
+    ready = not blockers
+    return {
+        "schema_version": SCHEMA_VERSION,
+        "operation": "readiness-preflight",
+        "target": str(target),
+        "project_name": project_name,
+        "ready": ready,
+        "state": "READY" if ready else "BLOCKED",
+        "blockers": blockers,
+        "practice_coverage": coverage,
+        "lanes": lanes,
+    }
+
+
 def main() -> int:
     parser = argparse.ArgumentParser(description=__doc__)
-    parser.add_argument("operation", choices=("preview", "install", "status", "retrofit-preview", "retrofit-install"))
+    parser.add_argument("operation", choices=("preview", "install", "status", "retrofit-preview", "retrofit-install", "readiness-preflight"))
     parser.add_argument("--target", type=Path, required=True)
     parser.add_argument("--bundle-root", type=Path, required=True)
     parser.add_argument("--stack")
@@ -608,6 +773,10 @@ def main() -> int:
             result = retrofit_install(target, bundle_root, args.stack, args.project_name, args.confirm_retrofit)
             emit(result)
             return 0 if result.get("installation", {}).get("state") == "INSTALLED" else 1
+        if args.operation == "readiness-preflight":
+            result = readiness_preflight(target, bundle_root, args.stack, args.project_name)
+            emit(result)
+            return 0 if result["ready"] else 1
         return emit(status(target, bundle_root, args.stack, args.project_name))
     except (OSError, RuntimeError, ValueError) as error:
         return emit({"schema_version": SCHEMA_VERSION, "operation": args.operation, "state": "ERROR", "error": str(error)}) or 1
