@@ -49,7 +49,8 @@ def main() -> int:
     evidence = {"preview_read_only": False, "confirmation_enforced": False,
                 "originals_preserved": False, "hooks_composed": False,
                 "layout_preserved": False, "collaboration_preserved": False,
-                "unsafe_state_refused": False, "layout_confirmation_bound": False}
+                "unsafe_state_refused": False, "layout_confirmation_bound": False,
+                "unsafe_receipt_refused": False, "existing_receipt_preserved": False}
     with tempfile.TemporaryDirectory(prefix="factory retrofit fixture ") as temporary:
         work = Path(temporary)
         target = work / "existing repo"
@@ -194,6 +195,41 @@ def main() -> int:
         assert json.loads(unsafe_state_denied.stdout)["safe_to_install"] is False
         assert not any(outside_state.iterdir())
         evidence["unsafe_state_refused"] = True
+
+        receipt_redirect = work / "receipt redirect"
+        external_receipt = work / "external receipt"
+        receipt_redirect.mkdir()
+        run("git", "init", cwd=receipt_redirect)
+        (receipt_redirect / ".factory").mkdir()
+        external_receipt.write_text("external receipt sentinel\n", encoding="utf-8")
+        (receipt_redirect / ".factory/gate-install.json").symlink_to(external_receipt)
+        receipt_config = (receipt_redirect / ".git/config").read_bytes()
+        receipt_denied = run(str(AQD), "workflows", "retrofit", "--target", str(receipt_redirect),
+                             "--name", "receipt redirect", "--stack", "generic", cwd=ROOT, expected=1)
+        assert json.loads(receipt_denied.stdout)["safe_to_install"] is False
+        assert external_receipt.read_text(encoding="utf-8") == "external receipt sentinel\n"
+        assert (receipt_redirect / ".git/config").read_bytes() == receipt_config
+        assert not (receipt_redirect / ".factory/gate-bundle").exists()
+        assert not (receipt_redirect / ".factory/gate-retrofit-hooks").exists()
+        assert not (receipt_redirect / ".githooks").exists()
+        evidence["unsafe_receipt_refused"] = True
+
+        existing_receipt = work / "existing receipt"
+        existing_receipt.mkdir()
+        run("git", "init", cwd=existing_receipt)
+        receipt_path = existing_receipt / ".factory/gate-install.json"
+        receipt_path.parent.mkdir()
+        receipt_path.write_text("ordinary receipt sentinel\n", encoding="utf-8")
+        ordinary_config = (existing_receipt / ".git/config").read_bytes()
+        ordinary_denied = run(str(AQD), "workflows", "retrofit", "--target", str(existing_receipt),
+                              "--name", "existing receipt", "--stack", "generic", cwd=ROOT, expected=1)
+        assert json.loads(ordinary_denied.stdout)["safe_to_install"] is False
+        assert receipt_path.read_text(encoding="utf-8") == "ordinary receipt sentinel\n"
+        assert (existing_receipt / ".git/config").read_bytes() == ordinary_config
+        assert not (existing_receipt / ".factory/gate-bundle").exists()
+        assert not (existing_receipt / ".factory/gate-retrofit-hooks").exists()
+        assert not (existing_receipt / ".githooks").exists()
+        evidence["existing_receipt_preserved"] = True
 
         tool_change = work / "tool availability"
         tool_change.mkdir()
