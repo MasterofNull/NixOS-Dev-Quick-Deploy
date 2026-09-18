@@ -6,7 +6,9 @@ This file and `{{SHARED_RULES}}` govern every configured agent lane.
 2. **RESEARCH:** inspect existing code and relevant project knowledge before choosing a change.
 3. **PLAN:** record problem, goal, permitted files, rollback, security concerns, and validation.
 4. **EXECUTE:** make one targeted slice and pulse each successful write to `{{PULSE_PATH}}`.
-5. **VALIDATE:** run syntax checks plus `{{BUILD_CMD}}`, `{{TEST_CMD}}`, `{{LINT_CMD}}`, and `{{SECRET_SCAN_CMD}}` as applicable.
+5. **VALIDATE:** run syntax checks and the configured gate checks. If the gate
+   reports an unconfigured required check, obtain explicit configuration; this
+   notice is not an executable command.
 6. **DOC-UPDATE:** reconcile `{{ISSUES_PATH}}`, project docs, and `{{RESUME_PATH}}`.
 7. **REVIEW:** stage the slice; a non-author reviews the exact staged patch and records its SHA-256.
 8. **COMMIT:** protected branches accept only the terminal disposition enforced by `{{HOOKS_PATH}}/commit-msg`.
