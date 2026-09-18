@@ -48,6 +48,16 @@ PY
 )"
 fi
 
+# FT-5: metadata-only readiness preflight, informational only -- it never
+# blocks this dispatch (an absent/unconfigured lane or gate is surfaced, not
+# fatal). Reuses the already-installed gate runner's own --preflight mode
+# rather than inventing new dispatch machinery; a missing bundle is a no-op.
+if [[ -x "scripts/governance/gate-runner" ]]; then
+  echo "== factory readiness preflight (informational; never blocks dispatch) =="
+  scripts/governance/gate-runner --preflight || true
+  echo
+fi
+
 echo "== workflow run start =="
 curl -sS "${auth_header[@]}" \
   -H "Content-Type: application/json" \

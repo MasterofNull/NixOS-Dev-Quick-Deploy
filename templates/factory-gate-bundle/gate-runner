@@ -4,12 +4,161 @@ set -euo pipefail
 MODE="--pre-commit"
 case "${1:-}" in
   "") ;;
-  --pre-commit|--pre-deploy) MODE="$1" ;;
-  *) echo "usage: gate-runner [--pre-commit|--pre-deploy]" >&2; exit 2 ;;
+  --pre-commit|--pre-deploy|--preflight) MODE="$1" ;;
+  *) echo "usage: gate-runner [--pre-commit|--pre-deploy|--preflight]" >&2; exit 2 ;;
 esac
 
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 CHECKS_DIR="${FACTORY_GATE_CHECKS_DIR:-${SCRIPT_DIR}/checks.d}"
+REPO_ROOT="${FACTORY_REPO_ROOT:-$(git -C "${SCRIPT_DIR}" rev-parse --show-toplevel 2>/dev/null || true)}"
+
+# --preflight is a distinct, metadata-only readiness mode (FT-5): it never
+# executes checks.d/*.sh (which run target-declared build/test/lint/secret
+# scan commands), so it is safe to invoke ahead of a project/slice start
+# without side effects. It is a bounded, target-local counterpart to the
+# harness-side `factory_gate_install.py readiness-preflight` used by
+# `aqd workflows factory-gate-preflight` -- both share the same blocker
+# vocabulary and the same evidence_digest algorithm (kept in sync manually;
+# see scripts/ai/lib/factory_gate_install.py:evidence_tree_digest).
+if [[ "${MODE}" == "--preflight" ]]; then
+  if [[ -z "${REPO_ROOT}" || ! -d "${REPO_ROOT}" ]]; then
+    echo '{"schema_version":1,"operation":"readiness-preflight","ready":false,"state":"BLOCKED","blockers":[{"code":"INSTALLATION_ABSENT","detail":"no repository root resolved"}]}'
+    exit 1
+  fi
+  exec python3 - "${REPO_ROOT}" "${CHECKS_DIR}" <<'PY'
+import hashlib, json, os, re, subprocess, sys
+from pathlib import Path
+
+root, checks_dir = Path(sys.argv[1]).resolve(), Path(sys.argv[2])
+# Matches a genuine unrendered double-brace placeholder token. A naive
+# substring check for the open-brace pair would also match each check
+# script's own defensive `*'{{'*` glob-detection code, which is present
+# verbatim in every rendered check regardless of whether its command was
+# actually configured.
+PLACEHOLDER = re.compile(r"\{\{[A-Z0-9_]+\}\}")
+
+
+def evidence_digest(base: Path) -> str:
+    keep = base / ".factory" / "repo-structure.conf"
+    digest = hashlib.sha256()
+    for path in sorted(base.rglob("*")):
+        if path.is_symlink() or not path.is_file():
+            continue
+        relative = path.relative_to(base)
+        parts = relative.parts
+        if parts[0] == ".git":
+            continue
+        if parts[0] == ".factory" and path != keep:
+            continue
+        digest.update(f"{relative.as_posix()}\0{hashlib.sha256(path.read_bytes()).hexdigest()}\n".encode())
+    return digest.hexdigest()
+
+
+blockers, coverage = [], []
+
+
+def add(rule, check, evidence, blocker, detail=""):
+    coverage.append({"rule": rule, "check": check, "evidence": evidence, "blocker": blocker})
+    if blocker:
+        blockers.append({"code": blocker, "detail": detail or json.dumps(evidence, sort_keys=True)[:200]})
+
+
+install_receipt = root / ".factory" / "gate-install.json"
+installed = install_receipt.is_file() and not install_receipt.is_symlink()
+add("installation", ".factory/gate-install.json", {"present": installed},
+    None if installed else "INSTALLATION_ABSENT",
+    "no factory gate install receipt found" if not installed else "")
+
+configured_path = None
+try:
+    result = subprocess.run(["git", "-C", str(root), "config", "--get", "core.hooksPath"],
+                             capture_output=True, text=True, timeout=5, check=False)
+    configured_path = result.stdout.strip() if result.returncode == 0 else None
+except (OSError, subprocess.TimeoutExpired):
+    configured_path = None
+hooks_dir = root / ".githooks"
+hook_files_ok = hooks_dir.is_dir() and all(
+    (hooks_dir / name).is_file() and os.access(hooks_dir / name, os.X_OK)
+    for name in ("pre-commit", "commit-msg")
+)
+hooks_ok = configured_path == ".githooks" and hook_files_ok
+add("hook_routing", "git config core.hooksPath + .githooks executables",
+    {"configured_path": configured_path, "hook_files_ok": hook_files_ok},
+    None if hooks_ok else "HOOKS_INVALID",
+    f"configured_path={configured_path!r} hook_files_ok={hook_files_ok}")
+
+# Unconfigured/invalid required checks: a rendered check script that still
+# contains an unresolved double-brace placeholder token was never wired to a
+# real command (never rendered) -- this is a text scan, never an execution,
+# of the installed check scripts (fail-closed per FT-5 Case 1's "Inert
+# Notice Prose": notice tokens are only ever inspected as data, never run).
+# live-*/freshness-* checks have no metadata-only conventional command (see
+# factory_gate_install.command_values) and are WARN, not HARD, severity at
+# --pre-commit in the loop below -- they can never be auto-configured, so an
+# unresolved placeholder there must not block readiness the way hard-* can.
+unconfigured, unconfigured_soft, invalid = [], [], []
+if checks_dir.is_dir():
+    for entry in sorted(checks_dir.glob("*.sh")):
+        if not os.access(entry, os.X_OK):
+            invalid.append(entry.name)
+            continue
+        try:
+            text = entry.read_text(encoding="utf-8", errors="replace")
+        except OSError:
+            invalid.append(entry.name)
+            continue
+        if PLACEHOLDER.search(text):
+            (unconfigured_soft if entry.name.split("-", 1)[0] in ("live", "freshness") else unconfigured).append(entry.name)
+else:
+    invalid.append("checks.d directory missing")
+checks_ready = not unconfigured and not invalid
+add("required_checks_configured", "checks.d/*.sh placeholder + executable scan (hard-severity subset)",
+    {"unconfigured": unconfigured, "unconfigured_informational": unconfigured_soft, "invalid": invalid},
+    None if checks_ready else "CHECKS_UNCONFIGURED",
+    f"unconfigured={unconfigured} invalid={invalid}")
+
+evidence_path = root / ".factory" / "gate-run-evidence.json"
+if not evidence_path.is_file() or evidence_path.is_symlink():
+    evidence_blocker, evidence_detail = "MISSING_EXECUTION_EVIDENCE", {"present": False}
+else:
+    try:
+        recorded = json.loads(evidence_path.read_text(encoding="utf-8"))
+    except (OSError, ValueError):
+        recorded = {}
+    recorded_digest = recorded.get("evidence_digest") if isinstance(recorded, dict) else None
+    if not isinstance(recorded_digest, str) or recorded.get("fail_count") != 0:
+        evidence_blocker, evidence_detail = "MISSING_EXECUTION_EVIDENCE", {"present": True, "valid": False}
+    else:
+        current_digest = evidence_digest(root)
+        if current_digest != recorded_digest:
+            evidence_blocker, evidence_detail = "STALE_EXECUTION_EVIDENCE", {
+                "present": True, "fresh": False, "recorded_digest": recorded_digest, "current_digest": current_digest}
+        else:
+            evidence_blocker, evidence_detail = None, {
+                "present": True, "fresh": True, "recorded_digest": recorded_digest,
+                "generated_at": recorded.get("generated_at"), "mode": recorded.get("mode")}
+add("execution_evidence_freshness", ".factory/gate-run-evidence.json digest binding", evidence_detail, evidence_blocker)
+
+activation_ready = installed and hooks_ok and checks_ready
+add("activation", "aggregate: installation + hook_routing + required_checks_configured",
+    {"installed": installed, "hooks_ok": hooks_ok, "checks_ready": checks_ready},
+    None if activation_ready else "ACTIVATION_BLOCKED", "")
+
+lanes = {"hybrid_coordinator": {
+    "state": "CONFIGURED" if os.environ.get("HYBRID_URL") else "TRANSPORT_UNAVAILABLE",
+    "detail": "informational only; absent/unconfigured lanes never block readiness",
+}}
+
+ready = not blockers
+print(json.dumps({
+    "schema_version": 1, "operation": "readiness-preflight", "target": str(root),
+    "ready": ready, "state": "READY" if ready else "BLOCKED",
+    "blockers": blockers, "practice_coverage": coverage, "lanes": lanes,
+}, sort_keys=True))
+sys.exit(0 if ready else 1)
+PY
+fi
+
 RISK_TIER="UNCLASSIFIED"
 
 # FT-6 extension point: a future classifier writes a tier for the exact change.
@@ -87,4 +236,46 @@ done
 shopt -u nullglob
 
 printf 'Summary: passed=%d warned=%d failed=%d\n' "${pass_count}" "${warn_count}" "${fail_count}"
+
+# FT-5 Case 1 anti-gaming: record hash/config-bound execution evidence only
+# on a genuine full pass, so a later readiness preflight can re-derive the
+# current digest and reject a stale or never-executed claim. Best-effort and
+# never fatal -- evidence recording must not change this script's own
+# pass/fail contract.
+if [[ ${fail_count} -eq 0 && -n "${REPO_ROOT}" && -d "${REPO_ROOT}" ]]; then
+  python3 - "${REPO_ROOT}" "${MODE}" "${pass_count}" "${warn_count}" <<'PY' || true
+import hashlib, json, sys
+from datetime import datetime, timezone
+from pathlib import Path
+
+root, mode, pass_count, warn_count = Path(sys.argv[1]).resolve(), sys.argv[2], int(sys.argv[3]), int(sys.argv[4])
+
+
+def evidence_digest(base: Path) -> str:
+    keep = base / ".factory" / "repo-structure.conf"
+    digest = hashlib.sha256()
+    for path in sorted(base.rglob("*")):
+        if path.is_symlink() or not path.is_file():
+            continue
+        relative = path.relative_to(base)
+        parts = relative.parts
+        if parts[0] == ".git":
+            continue
+        if parts[0] == ".factory" and path != keep:
+            continue
+        digest.update(f"{relative.as_posix()}\0{hashlib.sha256(path.read_bytes()).hexdigest()}\n".encode())
+    return digest.hexdigest()
+
+
+evidence_path = root / ".factory" / "gate-run-evidence.json"
+evidence_path.parent.mkdir(parents=True, exist_ok=True)
+evidence_path.write_text(json.dumps({
+    "schema_version": 1, "mode": mode,
+    "generated_at": datetime.now(timezone.utc).strftime("%Y-%m-%dT%H:%M:%SZ"),
+    "pass_count": pass_count, "warn_count": warn_count, "fail_count": 0,
+    "evidence_digest": evidence_digest(root),
+}, indent=2, sort_keys=True) + "\n", encoding="utf-8")
+PY
+fi
+
 [[ ${fail_count} -eq 0 ]]

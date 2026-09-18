@@ -2012,6 +2012,7 @@ def run(ctx: RunContext) -> list[CheckResult]:
     results.extend(_check_execution_cell_adapter_service_coverage(ctx))
     results.extend(_check_factory_gate_install(ctx))
     results.extend(_check_factory_gate_retrofit(ctx))
+    results.extend(_check_factory_readiness_preflight(ctx))
     results.extend(_check_capability_outcome_resolver(ctx))
     results.extend(_check_worktree_isolation_safety(ctx))
     results.extend(_check_integration_guard(ctx))
@@ -2646,6 +2647,38 @@ def _check_integration_guard(ctx: RunContext) -> list[CheckResult]:
     if "integration_guard" not in route or "asyncio.to_thread(_integration_guard_status" not in route or "integration guard" not in dashboard:
         return [failed(5, "0.10.49", description, "read-only route or Fleet card linkage missing")]
     return [passed(5, "0.10.49", description)]
+
+
+def _check_factory_readiness_preflight(ctx: RunContext) -> list[CheckResult]:
+    """0.10.50: metadata-only readiness preflight -- positive + 5 negative fixtures."""
+    description = "Factory readiness preflight: hash-bound evidence, fail-closed unconfigured checks, typed blockers"
+    checker = ctx.repo_root / "scripts/testing/test-factory-gate-readiness.py"
+    if not checker.is_file():
+        return [failed(5, "0.10.50", description, "focused test missing")]
+    try:
+        probe = subprocess.run(
+            ["python3", str(checker)], cwd=ctx.repo_root,
+            capture_output=True, text=True, timeout=120,
+        )
+        if probe.returncode:
+            return [failed(5, "0.10.50", description, f"fixture exit {probe.returncode}")]
+        prefix = "AQ_QA_FACTORY_READINESS_FIXTURE="
+        markers = [line[len(prefix):] for line in probe.stdout.splitlines() if line.startswith(prefix)]
+        if len(markers) != 1:
+            raise ValueError("expected one fixture marker")
+        evidence = json.loads(markers[0])
+        invariants = (
+            "positive_ready", "case1_missing_installation", "case1_disabled_hooks",
+            "case1_missing_execution_evidence", "case1_stale_execution_evidence",
+            "case1_unconfigured_checks_fail_closed", "bad_repository_organization",
+            "invalid_tracker", "absent_lane_informational_only",
+            "target_side_gate_runner_preflight_parity",
+        )
+        if not isinstance(evidence, dict) or any(evidence.get(key) is not True for key in invariants):
+            raise ValueError("fixture invariant evidence is incomplete")
+    except (OSError, subprocess.TimeoutExpired, ValueError) as error:
+        return [failed(5, "0.10.50", description, str(error)[:160])]
+    return [passed(5, "0.10.50", description)]
 
 
 def _check_capability_outcome_resolver(ctx: RunContext) -> list[CheckResult]:

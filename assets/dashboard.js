@@ -4054,6 +4054,7 @@ async function loadQA() {
   if (!d) {
     setText("qaFactoryGate", "Evidence unavailable");
     setText("qaFactoryRetrofit", "Evidence unavailable");
+    setText("qaFactoryReadiness", "Evidence unavailable");
     if (badge) {
       badge.textContent = "ERR";
       badge.className = "card-badge badge-err";
@@ -4063,6 +4064,7 @@ async function loadQA() {
   if (d.pending || d.running) {
     setText("qaFactoryGate", "Awaiting fixture evidence");
     setText("qaFactoryRetrofit", "Awaiting fixture evidence");
+    setText("qaFactoryReadiness", "Awaiting fixture evidence");
     setText("qaStatus", d.running ? "running..." : "pending");
     if (badge) {
       badge.textContent = "pending";
@@ -4084,6 +4086,10 @@ async function loadQA() {
     (test) => test && test.id === "0.10.46"
   );
   setText("qaFactoryRetrofit", factoryLabels[retrofitProof?.status] || "Evidence unavailable");
+  const readinessProof = (Array.isArray(d.tests) ? d.tests : []).find(
+    (test) => test && test.id === "0.10.50"
+  );
+  setText("qaFactoryReadiness", factoryLabels[readinessProof?.status] || "Evidence unavailable");
   if (badge) {
     badge.textContent = d.failed === 0 ? "PASS" : "FAIL";
     badge.className = `card-badge ${d.failed === 0 ? "badge-ok" : "badge-err"}`;
