@@ -432,6 +432,11 @@ def retrofit_preview(target: Path, bundle_root: Path, stack: str | None, project
         candidate = target / path
         if candidate.exists() or candidate.is_symlink():
             conflict = conflict or f"existing factory destination requires a separate merge plan: {path}"
+    # The receipt is written after hooks/configuration, so it must be refused
+    # during preview as rigorously as every earlier destination. In
+    # particular, do not follow a pre-existing .factory/gate-install.json
+    # symlink outside the target.
+    writes.append(str(RECEIPT))
     write_paths = [Path(path) for path in writes]
     directories = planned_directories(write_paths)
     for path in write_paths:
