@@ -787,3 +787,44 @@ Refreshed UNIFIED-PROGRAM-PLAN projection (was stale, dated 07-13): L2B-B ✅; A
 CATCH-UP for returning independent lane (Codex or fresh Claude flagship, non-author of these doc edits): confirm
 the projection edits faithfully match ground truth (commits are ancestors of HEAD; L2B-B shadow-not-live claim).
 Advisory unless a real defect. NEXT Phase-1 work: B1 tail (chat/batch parity in shadow) → closes Foundation B1.
+
+---
+## [2026-09-17] QUEUED for Codex (+ Antigravity advisory): local-producer-timing + gate-hygiene + CS-4
+Codex lane was absent while Opus (integrator seat) completed its queued local-producer-timing work.
+Landed on main (independent non-author review PASS by a fresh Claude reviewer; Opus authored the
+correctives, so an independent-lane confirmatory pass is owed):
+- **d0b814cb** `feat(local): record producer phase timing metadata` — corrected candidate, subject
+  `8611af11e684a37d2e9e4e12f886441102ed1b260f1daeeb6588d40a1486ae93`. Codex authored the substance
+  (candidate 80b04d95); Opus found+fixed a regression it hid: `_call_llama` referenced
+  `self._timing_invocation_sequence` (set only in `__init__`) → AttributeError for `__new__`-built
+  executors (test-noaction-intervention.py make_executor). Fix = defensive
+  `getattr(self, "_timing_invocation_sequence", 0) + 1`. CONFIRM: getattr fix behavior-preserving
+  (0→1→2 for fully-init'd) + best-effort; content-free/fail-closed axes unchanged. Live probe validated
+  (observed failure receipt, honest nulls). IMPLEMENTED_FOLLOWUP_REQUIRED — dashboard activation live.
+- **caa2fb6f** `fix(governance): classify delegate-24h-success (0.8.1) as live-service`, subject
+  `ea5edbff1ffa7683c70360efe20eb81a4e8dc846ee0bc291b28067293973e6c8`. Rule-19 gate hygiene: 0.8.1
+  (delegate 24h success) added to LIVE_SERVICE_CLASS_IDS → WARN in --pre-commit, HARD in --pre-deploy
+  (same class as 0.10.22). CONFIRM (anti-gaming): 0.8.1 is genuine live telemetry, rate not
+  faked/suppressed, all-or-nothing WARN logic intact, deploy-gating preserved. WR-5 extension documents it.
+- **CS-4** (in progress this session): concurrent-dispatch isolation proof + delegated-worktree
+  visibility. Codex confirmatory review to be appended with exact subject sha once landed.
+Antigravity/Gemini advisory dispatched to the inbox (task `timing-gate-hygiene-review-20260917`) for an
+independent second perspective on d0b814cb + caa2fb6f. All advisory unless a real defect (then a bounded
+follow-up, never rewrite history).
+
+---
+## [2026-09-17T22:05Z] CODex resume: timing candidate supersedes stale queue projection
+The currently authoritative local-producer-timing candidate is isolated at
+`/tmp/aq-local-producer-timing-20260917`, branch `factory/local-producer-timing-20260917`,
+tip `c4bf94b32a27d903b518b951c15e51b5e428a994`, based on `f9ab7e429874eb32f91c04889aa7189daa213787`.
+Combined diff SHA-256: `aa292cf1849d525dcdc976ac02b4d7514b1a3f502d9720ac519150034f28deeb`.
+The candidate includes the bounded compatibility fix for lightweight `__new__` executor fixtures;
+focused suites are green (50/50 no-action, 23/23 delegation, 16/16 L2B, 18/18 budget), and the
+branch is pushed. Antigravity F2 advisory review is claimed and pending against this exact tip.
+Luna/Terra remain quota-blocked; no review credit is assigned. Binding cold review and integrator
+checkout Tier-0 remain required before promotion. Main is intentionally not staged or merged because
+the shared tree contains preserved concurrent work.
+**Catch-up actions for returning lanes:** Claude — perform independent review of c4bf94b3 and privacy/
+identity invariants; Gemini/Antigravity — complete F2 advisory and flag only bounded defects; Luna —
+retry a concise mechanical qualification only after quota reset. Do not rewrite the candidate or
+claim acceptance without exact subject-hash binding.

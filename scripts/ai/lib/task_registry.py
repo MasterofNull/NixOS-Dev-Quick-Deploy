@@ -22,6 +22,7 @@ import os
 import re as _re
 import select
 import stat as _stat
+import subprocess
 import sys
 import time
 from datetime import datetime, timezone
@@ -973,6 +974,80 @@ class TaskRegistry:
         print(p.read_text(), end="")
         return 0
 
+    def delegated_worktrees_snapshot(self, limit: int = 50) -> list:
+        """Read-only snapshot of active delegated worktrees (CS-4 observability
+        deliverable: .agents/plans/coordination-safety-worktree-isolation).
+        Never creates, deletes, or mutates a worktree — enumerates
+        .agents/delegation/worktrees/<task_id> dirs cross-referenced against
+        `git worktree list --porcelain` so a stale/orphaned directory is never
+        reported as live. Bounded (default cap 50) and fail-closed: any error
+        (missing git, unreadable dir, etc.) returns [] rather than raising.
+        """
+        try:
+            wt_root = self.repo_root / ".agents" / "delegation" / "worktrees"
+            if not wt_root.is_dir():
+                return []
+            proc = subprocess.run(
+                ["git", "-C", str(self.repo_root), "worktree", "list", "--porcelain"],
+                capture_output=True, text=True, timeout=5, check=False,
+            )
+            if proc.returncode != 0:
+                return []
+            registered: dict = {}
+            cur_path = None
+            for line in proc.stdout.splitlines():
+                if line.startswith("worktree "):
+                    cur_path = line[len("worktree "):].strip()
+                    registered[cur_path] = None
+                elif line.startswith("branch ") and cur_path is not None:
+                    registered[cur_path] = line[len("branch "):].strip()
+
+            results = []
+            for entry in sorted(wt_root.iterdir()):
+                if len(results) >= limit:
+                    break
+                if not entry.is_dir():
+                    continue
+                task_id = entry.name
+                try:
+                    resolved = str(entry.resolve())
+                except Exception:
+                    continue
+                if resolved not in registered:
+                    continue  # not a live registered git worktree — skip
+                branch_ref = registered.get(resolved)
+                branch = branch_ref.replace("refs/heads/", "") if branch_ref else None
+
+                base_ref = f"refs/delegate-base/{task_id}"
+                base_check = subprocess.run(
+                    ["git", "-C", str(self.repo_root), "rev-parse", "--verify", "--quiet", base_ref],
+                    capture_output=True, text=True, timeout=5, check=False,
+                )
+                has_base_ref = base_check.returncode == 0
+
+                patch_file = self.delegation_dir / "outputs" / f"{task_id}.patch"
+
+                has_uncommitted = False
+                try:
+                    status = subprocess.run(
+                        ["git", "-C", str(entry), "status", "--porcelain"],
+                        capture_output=True, text=True, timeout=5, check=False,
+                    )
+                    has_uncommitted = bool(status.returncode == 0 and status.stdout.strip())
+                except Exception:
+                    has_uncommitted = False
+
+                results.append({
+                    "task_id": task_id,
+                    "branch": branch,
+                    "base_ref": base_ref if has_base_ref else None,
+                    "has_patch": patch_file.exists(),
+                    "has_uncommitted": has_uncommitted,
+                })
+            return results
+        except Exception:
+            return []
+
     def monitor_payload(self, limit: int = 20) -> dict:
         observed = [self._with_inferred_status(e) for e in self.list_all()]
         active = [
@@ -1001,6 +1076,7 @@ class TaskRegistry:
                 **latency,
                 **producer_timing,
             })
+        delegated_worktrees = self.delegated_worktrees_snapshot()
         return {
             "ok": True,
             "mode": "read_only",
@@ -1011,6 +1087,8 @@ class TaskRegistry:
                 "failed": sum(1 for e in observed if e.get("status") == "failed"),
             },
             "tasks": tasks,
+            "delegated_worktrees": delegated_worktrees,
+            "delegated_worktrees_count": len(delegated_worktrees),
         }
 
     def cmd_monitor(self, limit: int = 20) -> int:

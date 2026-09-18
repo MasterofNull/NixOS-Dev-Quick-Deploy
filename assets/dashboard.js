@@ -7969,6 +7969,10 @@ async function loadLocalAgentMonitor() {
     badge.className = `card-badge ${badgeClass}`;
   }
 
+  const delegatedWorktreeCount = Number.isFinite(d.delegated_worktrees_count)
+    ? d.delegated_worktrees_count
+    : 0;
+
   const tasks = Array.isArray(d.tasks) ? d.tasks : [];
   const latest = tasks[tasks.length - 1] || {};
   const artifacts = latest.artifacts || {};
@@ -8022,6 +8026,11 @@ async function loadLocalAgentMonitor() {
     fwRow("Inferred Stale", stale, stale > 0 ? "warn" : "ok"),
     fwRow("Failed", failed, failed > 0 ? "warn" : "ok"),
     fwRow("Repair Candidates", repair, repair > 0 ? "warn" : "ok"),
+    fwRow(
+      "Delegated Worktrees",
+      delegatedWorktreeCount === 0 ? "none active" : `${delegatedWorktreeCount} active`,
+      delegatedWorktreeCount > 0 ? "info" : ""
+    ),
     fwRow("Latest Task", latestId),
     fwRow("Artifact Age", latestAge, latestAge === "--" ? "info" : ""),
     fwRow("Pipeline Elapsed", pipelineElapsed, pipelineElapsed === "--" ? "info" : ""),
