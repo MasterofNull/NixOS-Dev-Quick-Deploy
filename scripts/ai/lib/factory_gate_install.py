@@ -26,6 +26,21 @@ SCHEMA_VERSION = 1
 RECEIPT = Path(".factory/gate-install.json")
 BUNDLE_DESTINATION = Path(".factory/gate-bundle")
 STARTER_TRACKER = Path(".agents/plans/factory-gate/tracker.json")
+COLLABORATION_STATE = {
+    Path(".agent/collaboration/PULSE.log"): (
+        b"[1970-01-01T00:00:00Z] [factory-gate] [initialize]: collaboration scaffold - ready\n"
+    ),
+    Path(".agent/collaboration/RESUME.json"): json.dumps({
+        "schema_version": 1,
+        "objective": "Factory gate scaffold initialized",
+        "phase": "ORIENT",
+        "remaining_work": ["Configure required checks", "Assign an authorized slice"],
+        "changed_files": [],
+        "resume_hint": "Review the install receipt before beginning work.",
+    }, indent=2, sort_keys=True).encode() + b"\n",
+    Path(".agent/memory/issues-backlog.md"): b"# Issues Backlog\n\nNo issues recorded at scaffold initialization.\n",
+    Path(".agent/archive/.gitkeep"): b"",
+}
 HOOKS_PATH = ".githooks"
 PLACEHOLDER = re.compile(r"\{\{([A-Z0-9_]+)\}\}")
 HOOK_NAME = re.compile(r"^[A-Za-z0-9][A-Za-z0-9._-]*$")
@@ -125,7 +140,7 @@ def command_values(detected: dict[str, Any]) -> tuple[dict[str, str], list[str]]
     return commands, blocked
 
 
-def render_values(project_name: str, commands: dict[str, str]) -> dict[str, str]:
+def render_values(project_name: str, commands: dict[str, str], layout_policy: str = "") -> dict[str, str]:
     return {
         "ARCHIVE_POLICY": ".agent/archive/ (preserve evidence; do not delete)",
         "BUILD_CMD": commands.get("build", "{{BUILD_CMD}}"),
@@ -147,7 +162,8 @@ def render_values(project_name: str, commands: dict[str, str]) -> dict[str, str]
         "PROJECT_NAME": project_name,
         "PROTECTED_BRANCHES": "main master trunk",
         "PULSE_PATH": ".agent/collaboration/PULSE.log",
-        "REPOSITORY_LAYOUT": "src/ and tests/ (adjust only by authorized target configuration)",
+        "LAYOUT_POLICY": layout_policy,
+        "REPOSITORY_LAYOUT": "the reviewed top-level policy in .factory/repo-structure.conf",
         "RESUME_PATH": ".agent/collaboration/RESUME.json",
         "RISK_TIER_POLICY": "reserved for FT-6",
         "SECRET_SCAN_CMD": commands.get("secret_scan", "{{SECRET_SCAN_CMD}}"),
@@ -187,7 +203,51 @@ def manifest_entries(bundle_root: Path) -> tuple[dict[str, Any], list[dict[str, 
     return manifest, checked
 
 
-def collision_report(target: Path, bundle_root: Path) -> list[str]:
+def planned_directories(paths: list[Path]) -> list[str]:
+    directories: set[Path] = set()
+    for path in paths:
+        parent = path.parent
+        while parent != Path("."):
+            directories.add(parent)
+            parent = parent.parent
+    return sorted(str(path) for path in directories)
+
+
+def layout_policy(target: Path, entries: list[dict[str, str]]) -> str:
+    """Freeze legitimate current roots and every root the installer can create."""
+    roots: set[str] = set()
+    for path in target.iterdir():
+        # Git metadata is validated by the caller and never reaches the policy.
+        if path.name == ".git":
+            continue
+        if path.is_symlink() or "=" in path.name or "\n" in path.name or "\r" in path.name:
+            raise RuntimeError(f"unsafe existing top-level path: {path.name!r}")
+        roots.add(path.name)
+    install_paths = [BUNDLE_DESTINATION, RECEIPT, STARTER_TRACKER, *COLLABORATION_STATE]
+    install_paths.extend(Path(entry["install_target"]) for entry in entries)
+    roots.update(path.parts[0] for path in install_paths if path.parts)
+    return "".join(f"allowed_top={root}\n" for root in sorted(roots))
+
+
+def rendered_outputs(bundle_root: Path, entries: list[dict[str, str]], values: dict[str, str]) -> dict[Path, bytes]:
+    """Return every non-bundle file byte the installer may create."""
+    outputs: dict[Path, bytes] = {}
+    for entry in entries:
+        destination = Path(entry["install_target"])
+        if not destination.is_relative_to(BUNDLE_DESTINATION):
+            outputs[destination] = rendered(bundle_root / entry["bundle_path"], values)
+    outputs[STARTER_TRACKER] = (bundle_root / "pm-tracker/sample/tracker.json").read_bytes()
+    outputs.update(COLLABORATION_STATE)
+    return outputs
+
+
+def bundle_write_paths(bundle_root: Path) -> list[Path]:
+    """List the preserved source files that copy_bundle writes byte-for-byte."""
+    return [BUNDLE_DESTINATION / path.relative_to(bundle_root) for path in sorted(bundle_root.rglob("*"))
+            if path.is_file() and "__pycache__" not in path.parts and path.suffix != ".pyc"]
+
+
+def collision_report(target: Path, bundle_root: Path, extra_destinations: tuple[Path, ...] = ()) -> list[str]:
     _, entries = manifest_entries(bundle_root)
     destinations = [BUNDLE_DESTINATION, RECEIPT, STARTER_TRACKER]
     for entry in entries:
@@ -195,6 +255,7 @@ def collision_report(target: Path, bundle_root: Path) -> list[str]:
         if destination.is_absolute() or ".." in destination.parts:
             raise RuntimeError(f"unsafe manifest destination: {destination}")
         destinations.append(destination)
+    destinations.extend(extra_destinations)
     conflicts: set[str] = set()
     for path in destinations:
         candidate = target / path
@@ -213,12 +274,21 @@ def collision_report(target: Path, bundle_root: Path) -> list[str]:
 def preview(target: Path, bundle_root: Path, stack: str | None, project_name: str) -> dict[str, Any]:
     detected = resolver(bundle_root, target, stack)
     commands, blocked = command_values(detected)
+    _, entries = manifest_entries(bundle_root)
+    values = render_values(project_name, commands, layout_policy(target, entries))
+    outputs = rendered_outputs(bundle_root, entries, values)
     metadata_conflict = git_metadata_conflict(target)
     configured = (git_value(target, "config", "--get", "core.hooksPath")
                   if (target / ".git").is_dir() and not metadata_conflict else None)
-    collisions = collision_report(target, bundle_root)
+    collisions = collision_report(target, bundle_root, tuple(outputs))
     hooks_conflict = configured not in (None, "", HOOKS_PATH)
     safe = not collisions and not hooks_conflict and not metadata_conflict
+    rendered_plan = [{"path": str(path), "sha256": hashlib.sha256(data).hexdigest()}
+                     for path, data in sorted(outputs.items())]
+    bundle_paths = bundle_write_paths(bundle_root)
+    directories = planned_directories([*bundle_paths, *outputs])
+    fingerprint = {"bundle_sha256": bundle_digest(bundle_root), "target_content_sha256": target_content_digest(target),
+                   "rendered_plan": rendered_plan, "directories": directories, "target": str(target), "stack": stack or ""}
     return {
         "schema_version": SCHEMA_VERSION,
         "target": str(target),
@@ -226,6 +296,10 @@ def preview(target: Path, bundle_root: Path, stack: str | None, project_name: st
         "operation": "preview",
         "safe_to_install": safe,
         "collisions": collisions,
+        "preview_digest": hashlib.sha256(json.dumps(fingerprint, sort_keys=True, separators=(",", ":")).encode()).hexdigest(),
+        "writes": sorted(str(path) for path in [*bundle_paths, *outputs]),
+        "directories": directories,
+        "rendered_plan": rendered_plan,
         "hooks": {"configured_path": configured, "expected_path": HOOKS_PATH,
                   "state": "CONFLICT" if hooks_conflict or metadata_conflict else "UNCONFIGURED",
                   "conflict": metadata_conflict},
@@ -325,14 +399,18 @@ def retrofit_preview(target: Path, bundle_root: Path, stack: str | None, project
     commands, blocked = command_values(detected)
     manifest, entries = manifest_entries(bundle_root)
     preserved: list[dict[str, Any]] = []
-    writes: list[str] = [str(BUNDLE_DESTINATION), str(RECEIPT), str(STARTER_TRACKER), ".factory/gate-retrofit-hooks/pre-commit", ".factory/gate-retrofit-hooks/commit-msg", ".githooks"]
+    writes: list[str] = [str(path) for path in bundle_write_paths(bundle_root)]
     enforcement = (Path("scripts/governance"), Path("scripts/pm-tracker"), Path(".factory/repo-structure.conf"), Path(".factory/pm-tracker"))
     rendered_plan: list[dict[str, str]] = []
-    values = render_values(project_name, commands)
-    for entry in entries:
-        destination = Path(entry["install_target"])
-        if destination.is_relative_to(BUNDLE_DESTINATION):
-            continue
+    values = render_values(project_name, commands, layout_policy(target, entries))
+    outputs = {path: content for path, content in rendered_outputs(bundle_root, entries, values).items()
+               if path.parts[0] != HOOKS_PATH}
+    routed = {record["name"] for record in hooks} | {"pre-commit", "commit-msg"}
+    for name in ("pre-commit", "commit-msg"):
+        outputs[Path(f".factory/gate-retrofit-hooks/{name}")] = rendered(bundle_root / "hooks" / name, values)
+    outputs.update({Path(HOOKS_PATH) / name: router_script(target, name, name in {"pre-commit", "commit-msg"})
+                    for name in sorted(routed)})
+    for destination, content in outputs.items():
         candidate = target / destination
         if candidate.exists() or candidate.is_symlink():
             if destination == enforcement[1] or any(prefix in destination.parents for prefix in enforcement) or destination in enforcement:
@@ -343,12 +421,14 @@ def retrofit_preview(target: Path, bundle_root: Path, stack: str | None, project
                 preserved.append({"path": str(destination), "mode": stat.S_IMODE(candidate.stat().st_mode), "sha256": digest_bytes(candidate)})
         else:
             writes.append(str(destination))
-            rendered_plan.append({"path": str(destination), "sha256": hashlib.sha256(rendered(bundle_root / entry["bundle_path"], values)).hexdigest()})
-    for path in (BUNDLE_DESTINATION, RECEIPT, STARTER_TRACKER, Path(".factory/gate-retrofit-hooks"), Path(".githooks")):
+            rendered_plan.append({"path": str(destination), "sha256": hashlib.sha256(content).hexdigest()})
+    for path in (BUNDLE_DESTINATION, Path(".factory/gate-retrofit-hooks"), Path(".githooks")):
         candidate = target / path
         if candidate.exists() or candidate.is_symlink():
             conflict = conflict or f"existing factory destination requires a separate merge plan: {path}"
-    for path in map(Path, writes):
+    write_paths = [Path(path) for path in writes]
+    directories = planned_directories(write_paths)
+    for path in write_paths:
         issue = safe_write_path(target, path)
         if issue:
             conflict = conflict or issue
@@ -357,7 +437,8 @@ def retrofit_preview(target: Path, bundle_root: Path, stack: str | None, project
     config_record = ({"mode": stat.S_IMODE(config.stat().st_mode), "sha256": digest_bytes(config)}
                      if config.is_file() and not config.is_symlink() else {"unavailable": True})
     fingerprint = {"bundle_sha256": source_hash, "config": config_record,
-                   "hooks": hooks, "preserved": preserved, "writes": sorted(set(writes)), "configured_path": configured,
+                   "hooks": hooks, "preserved": preserved, "writes": sorted(set(writes)), "directories": directories,
+                   "configured_path": configured,
                    "target_content_sha256": target_content_digest(target), "rendered_plan": rendered_plan,
                    "check_configuration": {"commands": commands, "required_unconfigured": blocked},
                    "target": str(target), "stack": stack or ""}
@@ -367,7 +448,8 @@ def retrofit_preview(target: Path, bundle_root: Path, stack: str | None, project
     conflict = conflict or backup_issue
     return {"schema_version": SCHEMA_VERSION, "operation": "retrofit-preview", "target": str(target), "project_name": project_name,
             "safe_to_install": not conflict, "blocker": conflict, "preview_digest": digest, "source_bundle_sha256": source_hash,
-            "writes": sorted(set(writes)), "preserved": preserved, "hooks": {"configured_path": configured, "existing": hooks,
+            "writes": sorted(set(writes)), "directories": directories, "rendered_plan": rendered_plan,
+            "preserved": preserved, "hooks": {"configured_path": configured, "existing": hooks,
             "routing": ".git/hooks -> .githooks wrappers"}, "backup_paths": [backup], "detector": detected,
             "checks": {"commands": commands, "state": "CONFIGURATION_BLOCKED" if blocked else "READY", "required_unconfigured": blocked}}
 
@@ -393,38 +475,31 @@ def retrofit_install(target: Path, bundle_root: Path, stack: str | None, project
         report["installation"] = {"state": "CONFIRMATION_REQUIRED", "expected_preview_digest": report["preview_digest"]}
         return report
     manifest, entries = manifest_entries(bundle_root)
-    values = render_values(project_name, report["checks"]["commands"])
+    values = render_values(project_name, report["checks"]["commands"], layout_policy(target, entries))
+    outputs = {path: content for path, content in rendered_outputs(bundle_root, entries, values).items()
+               if path.parts[0] != HOOKS_PATH}
+    routed = {record["name"] for record in report["hooks"]["existing"]} | {"pre-commit", "commit-msg"}
+    for name in ("pre-commit", "commit-msg"):
+        outputs[Path(f".factory/gate-retrofit-hooks/{name}")] = rendered(bundle_root / "hooks" / name, values)
+    outputs.update({Path(HOOKS_PATH) / name: router_script(target, name, name in {"pre-commit", "commit-msg"})
+                    for name in sorted(routed)})
     backup = target / report["backup_paths"][0]
     backup.parent.mkdir(parents=True, exist_ok=True)
     shutil.copy2(target / ".git/config", backup)
     copy_bundle(bundle_root, target)
-    for entry in entries:
-        relative = Path(entry["install_target"])
+    for relative, content in outputs.items():
         destination = target / relative
-        if (relative.is_relative_to(BUNDLE_DESTINATION) or relative.parts[0] == ".githooks"
-                or destination.exists() or destination.is_symlink()):
+        if destination.exists() or destination.is_symlink():
             continue
         destination.parent.mkdir(parents=True, exist_ok=True)
-        destination.write_bytes(rendered(bundle_root / entry["bundle_path"], values))
-        if (bundle_root / entry["bundle_path"]).stat().st_mode & stat.S_IXUSR:
+        destination.write_bytes(content)
+        bundle_entry = next((entry for entry in entries if Path(entry["install_target"]) == relative), None)
+        if bundle_entry and (bundle_root / bundle_entry["bundle_path"]).stat().st_mode & stat.S_IXUSR:
             destination.chmod(destination.stat().st_mode | stat.S_IXUSR | stat.S_IXGRP | stat.S_IXOTH)
-    starter = target / STARTER_TRACKER
-    if not starter.exists():
-        starter.parent.mkdir(parents=True, exist_ok=True)
-        shutil.copy2(bundle_root / "pm-tracker/sample/tracker.json", starter)
-    factory_hooks = target / ".factory/gate-retrofit-hooks"
-    factory_hooks.mkdir(parents=True)
     for name in ("pre-commit", "commit-msg"):
-        hook = factory_hooks / name
-        hook.write_bytes(rendered(bundle_root / "hooks" / name, values))
-        hook.chmod(0o755)
-    routed = {record["name"] for record in report["hooks"]["existing"]} | {"pre-commit", "commit-msg"}
-    hooks_dir = target / HOOKS_PATH
-    hooks_dir.mkdir()
-    for name in sorted(routed):
-        hook = hooks_dir / name
-        hook.write_bytes(router_script(target, name, name in {"pre-commit", "commit-msg"}))
-        hook.chmod(0o755)
+        (target / ".factory/gate-retrofit-hooks" / name).chmod(0o755)
+    for name in routed:
+        (target / HOOKS_PATH / name).chmod(0o755)
     configured = git(target, "config", "--local", "core.hooksPath", HOOKS_PATH)
     if configured.returncode:
         raise RuntimeError(f"could not configure core.hooksPath: {configured.stderr.strip()}")
@@ -448,26 +523,20 @@ def install(target: Path, bundle_root: Path, stack: str | None, project_name: st
         report.update({"operation": "install", "installation": {"state": "REFUSED", "reason": "target is not a git repository"}})
         return report
     manifest, entries = manifest_entries(bundle_root)
-    values = render_values(project_name, report["checks"]["commands"])
+    values = render_values(project_name, report["checks"]["commands"], layout_policy(target, entries))
+    outputs = rendered_outputs(bundle_root, entries, values)
     copy_bundle(bundle_root, target)
-    for entry in entries:
-        source = bundle_root / str(entry["bundle_path"])
-        relative_destination = Path(str(entry["install_target"]))
+    for relative_destination, content in outputs.items():
         destination = target / relative_destination
         # The complete source bundle is deliberately retained byte-for-byte as
         # a standalone recovery/reference artifact.  Do not re-render its
         # manifest, self-test, or adapter sources through their duplicate
         # manifest destinations.
-        if relative_destination.is_relative_to(BUNDLE_DESTINATION):
-            continue
         destination.parent.mkdir(parents=True, exist_ok=True)
-        destination.write_bytes(rendered(source, values))
-        source_mode = source.stat().st_mode
-        if source_mode & stat.S_IXUSR:
+        destination.write_bytes(content)
+        bundle_entry = next((entry for entry in entries if Path(entry["install_target"]) == relative_destination), None)
+        if bundle_entry and (bundle_root / bundle_entry["bundle_path"]).stat().st_mode & stat.S_IXUSR:
             destination.chmod(destination.stat().st_mode | stat.S_IXUSR | stat.S_IXGRP | stat.S_IXOTH)
-    starter = target / STARTER_TRACKER
-    starter.parent.mkdir(parents=True, exist_ok=True)
-    shutil.copy2(bundle_root / "pm-tracker/sample/tracker.json", starter)
     configured = git(target, "config", "--local", "core.hooksPath", HOOKS_PATH)
     if configured.returncode:
         raise RuntimeError(f"could not configure core.hooksPath: {configured.stderr.strip()}")

@@ -38,7 +38,9 @@ def status(target: Path) -> dict[str, object]:
 
 def main() -> int:
     evidence = {"hooks_block_bad_commit": False, "tracker_discovered": False,
-                "collision_preserved": False, "unconfigured_blocked": False}
+                "collision_preserved": False, "unconfigured_blocked": False,
+                "collaboration_seeded": False, "layout_enforced": False,
+                "agent_notice_safe": False}
     with tempfile.TemporaryDirectory(prefix="factory gate fixture ") as temporary:
         work = Path(temporary)
         target = work / "green field"
@@ -50,6 +52,18 @@ def main() -> int:
         assert receipt["checks"]["state"] == "CONFIGURATION_BLOCKED"
         assert receipt["hooks"]["state"] == "ACTIVE"
         evidence["unconfigured_blocked"] = True
+        assert (target / ".agent/collaboration/PULSE.log").is_file()
+        assert json.loads((target / ".agent/collaboration/RESUME.json").read_text(encoding="utf-8"))["phase"] == "ORIENT"
+        assert (target / ".agent/memory/issues-backlog.md").is_file()
+        assert (target / ".agent/archive/.gitkeep").is_file()
+        evidence["collaboration_seeded"] = True
+        agent_notice = (target / "AGENTS.md").read_text(encoding="utf-8")
+        workflow_notice = (target / ".agent/WORKFLOW-CANON.md").read_text(encoding="utf-8")
+        for token in ("{{BUILD_CMD}}", "{{TEST_CMD}}", "{{LINT_CMD}}", "{{SECRET_SCAN_CMD}}"):
+            assert token not in agent_notice and token not in workflow_notice
+        assert "fail-closed until explicitly configured" in agent_notice
+        assert "not an executable command" in workflow_notice
+        evidence["agent_notice_safe"] = True
 
         # The standalone bundle is a recovery/reference artifact, so every
         # preserved source byte and its own self-test must remain runnable.
@@ -58,6 +72,12 @@ def main() -> int:
                 installed = target / ".factory/gate-bundle" / source.relative_to(BUNDLE)
                 assert installed.read_bytes() == source.read_bytes(), source
         run(str(target / ".factory/gate-bundle/self-test.sh"), cwd=target)
+        policy_lint = target / "scripts/governance/repo-structure-lint"
+        run(str(policy_lint), cwd=target)
+        (target / "later-added-root").mkdir()
+        undeclared = run(str(policy_lint), cwd=target, expected=1)
+        assert "undeclared top-level path: later-added-root" in undeclared.stdout + undeclared.stderr
+        evidence["layout_enforced"] = True
 
         # A trusted fixture executable lets the metadata-only detector render
         # its declared scanner command without installing a dependency.

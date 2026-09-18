@@ -47,7 +47,9 @@ def tree_digest(root: Path) -> str:
 
 def main() -> int:
     evidence = {"preview_read_only": False, "confirmation_enforced": False,
-                "originals_preserved": False, "hooks_composed": False}
+                "originals_preserved": False, "hooks_composed": False,
+                "layout_preserved": False, "collaboration_preserved": False,
+                "unsafe_state_refused": False, "layout_confirmation_bound": False}
     with tempfile.TemporaryDirectory(prefix="factory retrofit fixture ") as temporary:
         work = Path(temporary)
         target = work / "existing repo"
@@ -61,6 +63,9 @@ def main() -> int:
         (target / "AGENTS.md").write_text("existing instructions\n", encoding="utf-8")
         (target / ".github/workflows").mkdir(parents=True)
         (target / ".github/workflows/ci.yml").write_text("name: existing-ci\n", encoding="utf-8")
+        existing_pulse = target / ".agent/collaboration/PULSE.log"
+        existing_pulse.parent.mkdir(parents=True)
+        existing_pulse.write_text("existing collaboration state\n", encoding="utf-8")
         log = target / "hook.log"
         pre_commit = target / ".git/hooks/pre-commit"
         pre_commit.write_text(f"#!/usr/bin/env sh\nprintf 'old-pre-commit:%s:%s\\n' \"$PWD\" \"$#\" >> \"{log}\"\n", encoding="utf-8")
@@ -96,6 +101,13 @@ def main() -> int:
         evidence["confirmation_enforced"] = True
 
         approved = preview(target)
+        (target / "layout captured after preview").mkdir()
+        layout_stale = run(str(AQD), "workflows", "retrofit", "--target", str(target), "--name", "existing fixture",
+                           "--stack", "generic", "--confirm-retrofit", approved["preview_digest"], cwd=ROOT, expected=1)
+        assert json.loads(layout_stale.stdout)["installation"]["state"] == "CONFIRMATION_REQUIRED"
+        assert not (target / ".factory").exists()
+        evidence["layout_confirmation_bound"] = True
+        approved = preview(target)
         installed = run(str(AQD), "workflows", "retrofit", "--target", str(target), "--name", "existing fixture",
                         "--stack", "generic", "--confirm-retrofit", approved["preview_digest"], cwd=ROOT)
         receipt = json.loads(installed.stdout)
@@ -105,7 +117,13 @@ def main() -> int:
         assert (target / "AGENTS.md").read_text(encoding="utf-8") == "existing instructions\n"
         assert (target / ".github/workflows/ci.yml").read_text(encoding="utf-8") == "name: existing-ci\n"
         assert pre_commit.read_bytes() == original_pre_commit and pre_push.read_bytes() == original_pre_push
+        assert existing_pulse.read_text(encoding="utf-8") == "existing collaboration state\n"
+        assert json.loads((target / ".agent/collaboration/RESUME.json").read_text(encoding="utf-8"))["phase"] == "ORIENT"
+        assert (target / ".agent/memory/issues-backlog.md").is_file()
+        assert (target / ".agent/archive/.gitkeep").is_file()
+        run(str(target / "scripts/governance/repo-structure-lint"), cwd=target)
         evidence["originals_preserved"] = True
+        evidence["collaboration_preserved"] = True
 
         # Existing pre-commit runs before the factory gate and the factory
         # still blocks because generic checks remain explicitly unconfigured.
@@ -128,6 +146,11 @@ def main() -> int:
         assert failed_old.returncode == 7
         assert f"old-pre-push-fail:{target / '.git'}:origin:unused:post-update" in log.read_text(encoding="utf-8")
         evidence["hooks_composed"] = True
+
+        (target / "undeclared-after-preview").mkdir()
+        layout_failure = run(str(target / "scripts/governance/repo-structure-lint"), cwd=target, expected=1)
+        assert "undeclared top-level path: undeclared-after-preview" in layout_failure.stdout + layout_failure.stderr
+        evidence["layout_preserved"] = True
 
         # The retained bundle, not a private source copy, remains executable.
         run(str(target / ".factory/gate-bundle/self-test.sh"), cwd=target)
@@ -158,6 +181,19 @@ def main() -> int:
         backup_denied = run(str(AQD), "workflows", "retrofit", "--target", str(backup_escape), "--name", "backup", "--stack", "generic", cwd=ROOT, expected=1)
         assert json.loads(backup_denied.stdout)["safe_to_install"] is False
         assert not any(outside_backup.iterdir())
+
+        unsafe_state = work / "unsafe state"
+        outside_state = work / "outside state"
+        unsafe_state.mkdir()
+        outside_state.mkdir()
+        run("git", "init", cwd=unsafe_state)
+        (unsafe_state / ".agent").mkdir()
+        (unsafe_state / ".agent/collaboration").symlink_to(outside_state, target_is_directory=True)
+        unsafe_state_denied = run(str(AQD), "workflows", "retrofit", "--target", str(unsafe_state),
+                                  "--name", "unsafe state", "--stack", "generic", cwd=ROOT, expected=1)
+        assert json.loads(unsafe_state_denied.stdout)["safe_to_install"] is False
+        assert not any(outside_state.iterdir())
+        evidence["unsafe_state_refused"] = True
 
         tool_change = work / "tool availability"
         tool_change.mkdir()
