@@ -15,6 +15,20 @@ CONTRACT_PATH="${2:-.agent/workflows/intent-contract.json}"
   exit 1
 }
 
+# FT-5: an enabled workflow start may not contact the coordinator until its
+# local factory readiness prerequisite passes. Missing runners are typed,
+# fail-closed blockers rather than an adoption-mode no-op.
+if [[ ! -x "scripts/governance/gate-runner" ]]; then
+  printf '%s\n' '{"state":"BLOCKED","code":"FACTORY_READINESS_RUNNER_MISSING"}' >&2
+  exit 1
+fi
+echo "== factory readiness preflight =="
+if ! scripts/governance/gate-runner --preflight; then
+  printf '%s\n' '{"state":"BLOCKED","code":"FACTORY_READINESS_BLOCKED"}' >&2
+  exit 1
+fi
+echo
+
 auth_header=()
 if [[ -n "$API_KEY" ]]; then
   auth_header=(-H "X-API-Key: ${API_KEY}")
@@ -46,16 +60,6 @@ print(json.dumps({
 }, separators=(",", ":")))
 PY
 )"
-fi
-
-# FT-5: metadata-only readiness preflight, informational only -- it never
-# blocks this dispatch (an absent/unconfigured lane or gate is surfaced, not
-# fatal). Reuses the already-installed gate runner's own --preflight mode
-# rather than inventing new dispatch machinery; a missing bundle is a no-op.
-if [[ -x "scripts/governance/gate-runner" ]]; then
-  echo "== factory readiness preflight (informational; never blocks dispatch) =="
-  scripts/governance/gate-runner --preflight || true
-  echo
 fi
 
 echo "== workflow run start =="
