@@ -47,8 +47,14 @@ def run(*command: str, cwd: Path | None = None, expected: int | None = 0,
     return result
 
 
-def preflight(target: Path, expected: int | None = None) -> dict[str, object]:
-    result = run(str(AQD), "workflows", "factory-gate-preflight", "--target", str(target), expected=expected)
+def preflight(target: Path, expected: int | None = None, path_prefix: Path | None = None) -> dict[str, object]:
+    # Defect-2 fix: status()/readiness-preflight now re-derive checks live
+    # from the current repo instead of the frozen install receipt, so a
+    # fixture whose install/retrofit ran with a fake tool PATH (cargo,
+    # gitleaks) must supply the SAME path_prefix here -- a real PATH is
+    # stable across calls; only this hermetic fixture varies it per-call.
+    result = run(str(AQD), "workflows", "factory-gate-preflight", "--target", str(target), expected=expected,
+                 path_prefix=path_prefix)
     return json.loads(result.stdout)
 
 
@@ -105,6 +111,8 @@ def main() -> int:
         "invalid_tracker": False,
         "absent_lane_informational_only": False,
         "target_side_gate_runner_preflight_parity": False,
+        "checks_live_reflect_current_repo": False,
+        "upgrade_refreshes_gate_runner_and_recovers_evidence": False,
     }
     with tempfile.TemporaryDirectory(prefix="factory readiness fixture ") as temporary:
         work = Path(temporary)
@@ -120,12 +128,12 @@ def main() -> int:
 
         # -- Positive: fully configured, freshly-executed repo reports ready.
         target, fake_bin = build_ready_rust_target(work, "ready target")
-        pre_commit_report = preflight(target, expected=1)
+        pre_commit_report = preflight(target, expected=1, path_prefix=fake_bin)
         assert "MISSING_EXECUTION_EVIDENCE" in blocker_codes(pre_commit_report)
         evidence["case1_missing_execution_evidence"] = True
 
         commit_fixture_change(target, fake_bin)
-        ready_report = preflight(target, expected=0)
+        ready_report = preflight(target, expected=0, path_prefix=fake_bin)
         assert ready_report["ready"] is True and ready_report["state"] == "READY"
         assert ready_report["blockers"] == []
         rule_names = {entry["rule"] for entry in ready_report["practice_coverage"]}
@@ -146,7 +154,7 @@ def main() -> int:
 
         # -- Negative: stale execution evidence (Case 1 anti-gaming) --------
         (target / "src/main.rs").write_text('fn main() { println!("changed after the recorded pass"); }\n', encoding="utf-8")
-        stale_report = preflight(target, expected=1)
+        stale_report = preflight(target, expected=1, path_prefix=fake_bin)
         assert "STALE_EXECUTION_EVIDENCE" in blocker_codes(stale_report)
         stale_entry = next(e for e in stale_report["practice_coverage"] if e["rule"] == "execution_evidence_freshness")
         assert stale_entry["evidence"]["recorded_digest"] != stale_entry["evidence"]["current_digest"]
@@ -157,7 +165,7 @@ def main() -> int:
         hooks_target, hooks_fake_bin = build_ready_rust_target(work, "disabled hooks target")
         commit_fixture_change(hooks_target, hooks_fake_bin)
         run("git", "config", "--unset", "core.hooksPath", cwd=hooks_target)
-        disabled_report = preflight(hooks_target, expected=1)
+        disabled_report = preflight(hooks_target, expected=1, path_prefix=hooks_fake_bin)
         assert "HOOKS_INVALID" in blocker_codes(disabled_report)
         evidence["case1_disabled_hooks"] = True
 
@@ -182,9 +190,9 @@ def main() -> int:
         #    added after install; repo-structure-lint must fail-closed) -----
         layout_target, layout_fake_bin = build_ready_rust_target(work, "bad layout target")
         commit_fixture_change(layout_target, layout_fake_bin)
-        assert preflight(layout_target, expected=0)["ready"] is True
+        assert preflight(layout_target, expected=0, path_prefix=layout_fake_bin)["ready"] is True
         (layout_target / "undeclared-after-install").mkdir()
-        layout_report = preflight(layout_target, expected=1)
+        layout_report = preflight(layout_target, expected=1, path_prefix=layout_fake_bin)
         assert "LAYOUT_INVALID" in blocker_codes(layout_report)
         layout_entry = next(e for e in layout_report["practice_coverage"] if e["rule"] == "repository_layout")
         assert "undeclared top-level path" in layout_entry["evidence"]["detail"]
@@ -193,12 +201,83 @@ def main() -> int:
         # -- Negative: invalid tracker (corrupt an already-discovered tracker)
         tracker_target, tracker_fake_bin = build_ready_rust_target(work, "invalid tracker target")
         commit_fixture_change(tracker_target, tracker_fake_bin)
-        assert preflight(tracker_target, expected=0)["ready"] is True
+        assert preflight(tracker_target, expected=0, path_prefix=tracker_fake_bin)["ready"] is True
         tracker_path = tracker_target / ".agents/plans/factory-gate/tracker.json"
         tracker_path.write_text("{not valid json", encoding="utf-8")
-        tracker_report = preflight(tracker_target, expected=1)
+        tracker_report = preflight(tracker_target, expected=1, path_prefix=tracker_fake_bin)
         assert "TRACKER_INVALID" in blocker_codes(tracker_report)
         evidence["invalid_tracker"] = True
+
+        # -- Defect 2: status()/readiness-preflight re-derive checks LIVE
+        #    from the current repo, never the frozen install-time receipt --
+        #    a package.json that grows test/lint scripts after install must
+        #    be reported CONFIGURED immediately, with no re-install needed.
+        node_target = work / "live checks target"
+        node_fake_bin = work / "live checks target-bin"
+        fake_tools(node_fake_bin, "npm", "gitleaks")
+        run(str(AQD), "workflows", "project-init", "--target", str(node_target),
+            "--name", "live checks", "--goal", "prove live checks", "--stack", "node",
+            "--owner", "test", cwd=ROOT, path_prefix=node_fake_bin)
+        before_json = json.loads(run(str(AQD), "workflows", "factory-gate-status", "--target", str(node_target),
+                                     path_prefix=node_fake_bin).stdout)
+        assert any(item.startswith("test:") for item in before_json["checks"]["required_unconfigured"])
+        assert any(item.startswith("lint:") for item in before_json["checks"]["required_unconfigured"])
+        (node_target / "package.json").write_text(
+            json.dumps({"name": "fixture", "scripts": {"test": "node test.js", "lint": "eslint ."}}), encoding="utf-8")
+        after_json = json.loads(run(str(AQD), "workflows", "factory-gate-status", "--target", str(node_target),
+                                    path_prefix=node_fake_bin).stdout)
+        assert not any(item.startswith("test:") for item in after_json["checks"]["required_unconfigured"])
+        assert not any(item.startswith("lint:") for item in after_json["checks"]["required_unconfigured"])
+        assert after_json["checks"]["commands"]["test"] == "npm run test"
+        assert after_json["checks"]["commands"]["lint"] == "npm run lint"
+        evidence["checks_live_reflect_current_repo"] = True
+
+        # -- Defect 1 + Defect 3: a compatible upgrade re-applies retrofit in
+        #    place (never refuses on the already-configured core.hooksPath or
+        #    the existing .factory/gate-bundle / scripts/governance
+        #    destinations) and refreshes factory tooling -- including a
+        #    gate-runner that predates evidence-writing support, which would
+        #    otherwise block MISSING_EXECUTION_EVIDENCE forever.
+        upgrade_target, upgrade_fake_bin = build_ready_rust_target(work, "upgrade target")
+        commit_fixture_change(upgrade_target, upgrade_fake_bin)
+        assert preflight(upgrade_target, expected=0, path_prefix=upgrade_fake_bin)["ready"] is True
+
+        gate_runner_path = upgrade_target / "scripts/governance/gate-runner"
+        current_gate_runner = GATE_RUNNER.read_bytes()
+        assert gate_runner_path.read_bytes() == current_gate_runner
+        evidence_path = upgrade_target / ".factory/gate-run-evidence.json"
+        assert evidence_path.is_file()
+        # Simulate a target whose installed gate-runner PREDATES evidence
+        # support: it exits 0 on --pre-commit but never writes the receipt.
+        gate_runner_path.write_text("#!/usr/bin/env bash\nset -euo pipefail\nexit 0\n", encoding="utf-8")
+        gate_runner_path.chmod(0o755)
+        evidence_path.unlink()
+        stale_runner_report = preflight(upgrade_target, expected=1, path_prefix=upgrade_fake_bin)
+        assert "MISSING_EXECUTION_EVIDENCE" in blocker_codes(stale_runner_report)
+
+        upgrade_preview = run(str(AQD), "workflows", "retrofit", "--target", str(upgrade_target), "--name", "upgrade target",
+                              "--stack", "rust", cwd=ROOT, path_prefix=upgrade_fake_bin)
+        upgrade_preview_json = json.loads(upgrade_preview.stdout)
+        assert upgrade_preview_json["safe_to_install"], upgrade_preview_json
+        assert upgrade_preview_json.get("upgrade") is True
+        upgrade_installed = run(str(AQD), "workflows", "retrofit", "--target", str(upgrade_target), "--name", "upgrade target",
+                                "--stack", "rust", "--confirm-retrofit", upgrade_preview_json["preview_digest"],
+                                cwd=ROOT, path_prefix=upgrade_fake_bin)
+        upgrade_receipt = json.loads(upgrade_installed.stdout)
+        assert upgrade_receipt["installation"]["state"] == "INSTALLED"
+        assert upgrade_receipt.get("upgrade") is True
+        # The current bundle's evidence-writing gate-runner is restored.
+        assert gate_runner_path.read_bytes() == current_gate_runner
+
+        # A normal gate run now writes evidence again and readiness recovers.
+        # (A real content change is needed -- Cargo.toml/src/main.rs are
+        # already committed from the earlier commit_fixture_change call, and
+        # an empty commit would never reach the hook's evidence write.)
+        (upgrade_target / "src/main.rs").write_text('fn main() { println!("post-upgrade"); }\n', encoding="utf-8")
+        commit_fixture_change(upgrade_target, upgrade_fake_bin, message="test: post-upgrade commit")
+        recovered_report = preflight(upgrade_target, expected=0, path_prefix=upgrade_fake_bin)
+        assert recovered_report["ready"] is True and recovered_report["blockers"] == []
+        evidence["upgrade_refreshes_gate_runner_and_recovers_evidence"] = True
 
     assert all(evidence.values()), evidence
     print("AQ_QA_FACTORY_READINESS_FIXTURE=" + json.dumps(evidence, separators=(",", ":")))
