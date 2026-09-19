@@ -8,11 +8,14 @@ Includes Advisor Strategy support for proactive guidance on complex decisions.
 
 import aiohttp
 import asyncio
+import importlib.machinery
+import importlib.util
 import logging
 import sqlite3
 import json
 import os
 import uuid
+from pathlib import Path
 from typing import Any, Dict, List, Optional, Tuple
 from datetime import datetime
 from enum import Enum
@@ -46,12 +49,130 @@ except ImportError:
     _CONTRACT_AVAILABLE = False
 
 
+# ---------------------------------------------------------------------------
+# Lane health (router-health fix): route_task() used to hardcode
+# "qwen-coder" / "llama-cpp-local" with no health check, so it could
+# recommend a lane the owner already knew was down. This block reuses
+# aq-role-route's exact filesystem-only availability probe
+# (`.agents/delegation/.<lane>-down` flags + the codex quota-cooldown file)
+# instead of a second, independently-drifting health check. Declaration
+# /flag-based only — no new network probes.
+#
+# The coordinator service runs with systemd WorkingDirectory=<repo root>
+# (nix/modules/roles/ai-stack.nix, cfg.mcpServers.repoPath), and this file
+# lives at <repo root>/ai-stack/mcp-servers/hybrid-coordinator/knowledge/,
+# so parents[4] resolves to the repo root regardless of cwd — the same
+# file-relative pattern already used by eval_runner.py / server.py /
+# http_server_impl.py in this same service (search "_REPO_ROOT" in this
+# directory). An env var override is kept for parity with eval_runner.py's
+# own REPO_ROOT override and for hermetic tests.
+_REPO_ROOT = Path(os.getenv("REPO_ROOT", str(Path(__file__).resolve().parents[4])))
+_ROLE_ROUTE_PATH = _REPO_ROOT / "scripts" / "ai" / "aq-role-route"
+
+
+def _load_role_route():
+    """Dynamically load aq-role-route (a script, not a package). Fails
+    safe (returns None) if unavailable — callers then treat every lane as
+    available rather than raising, matching aq-role-route's own fail-safe
+    bias elsewhere (e.g. its lane-eligibility-registry fallback)."""
+    try:
+        loader = importlib.machinery.SourceFileLoader("aq_role_route", str(_ROLE_ROUTE_PATH))
+        spec = importlib.util.spec_from_loader(loader.name, loader)
+        if spec is None:
+            return None
+        module = importlib.util.module_from_spec(spec)
+        loader.exec_module(module)
+        return module
+    except Exception:
+        logger.warning("aq-role-route unavailable for lane-health probe at %s; treating all lanes as healthy", _ROLE_ROUTE_PATH)
+        return None
+
+
+_ROLE_ROUTE = _load_role_route()
+
+
+def lane_health(lane_id: str) -> Tuple[bool, Optional[str]]:
+    """Return (available, unavailable_reason) for `lane_id`, reusing
+    aq-role-route's `_lane_health`. Fails safe to (True, None) if
+    aq-role-route could not be loaded."""
+    if _ROLE_ROUTE is None:
+        return True, None
+    try:
+        return _ROLE_ROUTE._lane_health(lane_id)
+    except Exception:
+        return True, None
+
+
 class AgentTier(Enum):
     """Agent tier for routing priority"""
     LOCAL = "local"      # llama-cpp (80% of tasks, $0 cost)
     FREE = "free"        # qwen, gemini-free (15% of tasks, $0 cost)
+    CODEX = "codex"       # codex CLI lane (free/roster addition — health-aware fallback target)
     PAID = "paid"        # claude-sonnet (5% of tasks, high cost)
     CRITICAL = "critical" # claude-opus (1% of tasks, highest cost)
+
+
+# route_task() model -> aq-role-route lane id. "qwen-coder" (OpenRouter
+# free-tier coding model) maps to the "local" lane: aq-role-route's own
+# LANES registry already treats bare "qwen" as an alias of the local lane
+# (scripts/ai/aq-role-route LANES["local"]["aliases"] includes "qwen" /
+# "qwen3.6-35b") — this harness has one canonical meaning for "qwen"
+# health, and this is the defect this fix closes ("router recommends
+# qwen" while local/qwen was down). "gemini-free" maps to the "gemini"
+# lane (same resource, free-tier branding).
+_MODEL_LANE: Dict[str, str] = {
+    "llama-cpp-local": "local",
+    "qwen-coder": "local",
+    "gemini-free": "gemini",
+    "claude-sonnet": "claude",
+    "claude-opus": "claude",
+    "codex": "codex",
+}
+
+# Cheapest-eligible fallback ladder, matching aq-role-route's implementer
+# eligibility order and scripts/ai/lib/model_tiering.py's ladder: this is
+# the harness's "existing policy" cost order (local -> codex -> claude),
+# not a new tier design.
+_FALLBACK_LADDER: Tuple[str, ...] = ("local", "codex", "claude")
+_LADDER_TIER_MODEL: Dict[str, Tuple["AgentTier", str]] = {
+    "local": (AgentTier.LOCAL, "llama-cpp-local"),
+    "codex": (AgentTier.CODEX, "codex"),
+    "claude": (AgentTier.PAID, "claude-sonnet"),
+}
+
+
+def _health_filter(tier: "AgentTier", model: str) -> Tuple["AgentTier", str]:
+    """Never return a (tier, model) pair whose lane aq-role-route reports
+    as unavailable while a healthy ladder lane exists. No-op when the
+    preferred lane is healthy or unmapped (e.g. "gemini-free" chosen and
+    healthy: returned unchanged)."""
+    lane = _MODEL_LANE.get(model)
+    if lane is None:
+        return tier, model
+
+    available, reason = lane_health(lane)
+    if available:
+        return tier, model
+
+    for ladder_lane in _FALLBACK_LADDER:
+        if ladder_lane == lane:
+            continue
+        ok, _reason = lane_health(ladder_lane)
+        if ok:
+            sub_tier, sub_model = _LADDER_TIER_MODEL[ladder_lane]
+            logger.warning(
+                "route_task: preferred lane '%s' (model=%s) unavailable (%s); substituting '%s' (model=%s)",
+                lane, model, reason, ladder_lane, sub_model,
+            )
+            return sub_tier, sub_model
+
+    logger.error(
+        "route_task: preferred lane '%s' (model=%s) unavailable (%s) and every fallback-ladder lane "
+        "(%s) is also unavailable; returning last-resort %s/%s so the caller's own "
+        "failure-escalation (execute_with_routing/_escalate) can take over",
+        lane, model, reason, ", ".join(_FALLBACK_LADDER), tier.value, model,
+    )
+    return tier, model
 
 
 class TaskComplexity(Enum):
@@ -209,6 +330,13 @@ class LLMRouter:
         """
         Route task to optimal agent tier
 
+        Health-aware (router-health fix): the naive complexity->tier pick
+        below is passed through `_health_filter`, which never returns a
+        lane aq-role-route's probe reports as flagged-down / in cooldown —
+        it substitutes the next healthy lane on the local -> codex ->
+        claude ladder instead, recording the reason via `logger.warning`.
+        No-op (identical to the original behavior) when nothing is down.
+
         Returns: (tier, model_name)
         """
         complexity = self.classify_complexity(task_description)
@@ -217,23 +345,25 @@ class LLMRouter:
         # Routing decision based on complexity
         if complexity == TaskComplexity.SIMPLE:
             # 80% of tasks → Local LLM
-            return (AgentTier.LOCAL, "llama-cpp-local")
+            tier, model = AgentTier.LOCAL, "llama-cpp-local"
 
         elif complexity == TaskComplexity.MEDIUM:
             # 15% of tasks → Free sub-agent
             # Prefer Qwen for code, Gemini for general
             if any(t in task_description.lower() for t in ["code", "implementation", "debug"]):
-                return (AgentTier.FREE, "qwen-coder")
+                tier, model = AgentTier.FREE, "qwen-coder"
             else:
-                return (AgentTier.FREE, "gemini-free")
+                tier, model = AgentTier.FREE, "gemini-free"
 
         elif complexity == TaskComplexity.HIGH:
             # 4% of tasks → Paid model
-            return (AgentTier.PAID, "claude-sonnet")
+            tier, model = AgentTier.PAID, "claude-sonnet"
 
         else:  # CRITICAL
             # 1% of tasks → Opus
-            return (AgentTier.CRITICAL, "claude-opus")
+            tier, model = AgentTier.CRITICAL, "claude-opus"
+
+        return _health_filter(tier, model)
 
     async def execute_with_routing(self, task: Dict) -> Dict:
         """
@@ -969,6 +1099,7 @@ Keep response under 500 words."""
         cost_map = {
             AgentTier.LOCAL: 0.0,
             AgentTier.FREE: 0.0,
+            AgentTier.CODEX: 0.0,
             AgentTier.PAID: 0.005,
             AgentTier.CRITICAL: 0.025,
         }

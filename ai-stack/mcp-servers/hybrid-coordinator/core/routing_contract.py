@@ -290,6 +290,10 @@ def profile_for_model_alias(model_alias: str, *, tier_hint: Optional[RoutingTier
         # Until switchboard exposes a distinct flagship profile, critical
         # requests reuse the strongest existing reasoning lane.
         "claude-opus": "remote-reasoning",
+        # Roster addition (router-health fix): codex is a free, coding-
+        # capable remote lane like qwen-coder, so it reuses the same
+        # existing "remote-coding" profile rather than a new one.
+        "codex": "remote-coding",
     }
     profile = explicit.get(normalized)
     if profile:
@@ -347,6 +351,10 @@ def legacy_tier_to_routing_tier(legacy_tier_value: str) -> RoutingTier:
     _map: Dict[str, RoutingTier] = {
         "local":    RoutingTier.LOCAL,
         "free":     RoutingTier.REMOTE_FREE,
+        # Roster addition (router-health fix): codex is a free lane
+        # (config/model-coordinator.json "codex".cost_per_1k_tokens == 0.0),
+        # same cost bucket as REMOTE_FREE.
+        "codex":    RoutingTier.REMOTE_FREE,
         "paid":     RoutingTier.REMOTE_PAID,
         "critical": RoutingTier.REMOTE_FLAGSHIP,
     }

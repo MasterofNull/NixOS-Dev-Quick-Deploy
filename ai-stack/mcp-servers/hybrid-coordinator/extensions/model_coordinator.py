@@ -34,11 +34,61 @@ logger = logging.getLogger(__name__)
 
 # Import LLM router for cost-optimization layer
 try:
-    from llm_router import get_router, AgentTier, TaskComplexity
+    from llm_router import get_router, AgentTier, TaskComplexity, lane_health as _lane_health
     _LLM_ROUTER_AVAILABLE = True
 except ImportError:
     logger.warning("llm_router not available, cost optimization disabled")
     _LLM_ROUTER_AVAILABLE = False
+
+    def _lane_health(lane_id: str):  # type: ignore[no-redef]
+        """Fail-safe stub matching llm_router.lane_health's (available, reason)
+        contract when llm_router couldn't be imported — treat every lane as
+        available rather than blocking routing on a missing optional probe."""
+        return True, None
+
+
+# router-health fix: model_coordinator's own `models` key -> aq-role-route
+# lane id, reusing llm_router.lane_health (which itself reuses
+# aq-role-route's exact .agents/delegation/.<lane>-down / .codex-quota-
+# cooldown probe) instead of a third, independently-drifting health check.
+# "qwen-coder" maps to the "local" lane for the same reason llm_router.py
+# does: aq-role-route's own LANES registry already treats bare "qwen" as
+# an alias of the local lane, and this is the harness's one canonical
+# meaning for "qwen" health (the exact defect this fix closes).
+_PROFILE_LANE: Dict[str, str] = {
+    "llama-cpp-local": "local",
+    "qwen-coder": "local",
+    "codex": "codex",
+    "claude-orchestrator": "claude",
+    "claude-reasoning": "claude",
+    "gemini-orchestrator": "gemini",
+}
+
+# Cheapest-eligible fallback ladder for the final "no candidates matched"
+# case — same local -> codex -> claude cost order as llm_router.py and
+# scripts/ai/lib/model_tiering.py ("existing policy"), expressed here in
+# model_coordinator's own profile-name vocabulary.
+_FALLBACK_LADDER_PROFILES: tuple = ("llama-cpp-local", "codex", "claude-reasoning")
+
+
+def _profile_is_healthy(name: str) -> bool:
+    """True when `name` is unmapped (no known lane, e.g. qdrant-embedding)
+    or aq-role-route's probe reports its lane as available."""
+    lane = _PROFILE_LANE.get(name)
+    if lane is None:
+        return True
+    available, _reason = _lane_health(lane)
+    return available
+
+
+def _first_healthy_fallback_profile(profiles: Dict[str, "ModelProfile"]) -> Optional[str]:
+    """Walk the local -> codex -> claude ladder and return the first
+    profile name present in `profiles` whose lane is healthy, or None if
+    every ladder lane is down (caller decides the last-resort behavior)."""
+    for name in _FALLBACK_LADDER_PROFILES:
+        if name in profiles and _profile_is_healthy(name):
+            return name
+    return None
 
 
 # ---------------------------------------------------------------------------
@@ -364,13 +414,18 @@ class ModelCoordinator:
             except Exception as e:
                 logger.warning(f"LLM router failed, falling back to model coordinator: {e}")
 
-        # Find models matching the primary role
+        # Find models matching the primary role. Health-aware (router-health
+        # fix): `_profile_is_healthy` excludes any profile whose lane
+        # aq-role-route's probe reports as flagged-down / in cooldown, so an
+        # unhealthy lane never reaches candidate selection below.
         primary_candidates = [
             p for p in self._profiles.values()
-            if p.role == classification.primary_role and p.is_available
+            if p.role == classification.primary_role and p.is_available and _profile_is_healthy(p.name)
         ]
 
         # Apply tier suggestion if available
+        fallback_used = False
+        fallback_all_down = False
         if tier_suggestion and tier_suggestion["model"] in [p.name for p in primary_candidates]:
             primary_model = tier_suggestion["model"]
             logger.info(f"Using LLM router suggestion: {primary_model}")
@@ -398,8 +453,21 @@ class ModelCoordinator:
             if cost_sensitive:
                 primary_candidates.sort(key=lambda p: p.cost_per_1k_tokens)
 
-            # Select primary model
-            primary_model = primary_candidates[0].name if primary_candidates else "qwen-coder"
+            # Select primary model. Health-aware (router-health fix): the
+            # old code defaulted to a bare "qwen-coder" literal whenever no
+            # role-matching candidate survived filtering — that literal is
+            # never health-checked, so it could recommend a lane already
+            # known to be down. Walk the same local -> codex -> claude
+            # fallback ladder used elsewhere in this fix instead; only fall
+            # through to the historical "qwen-coder" literal if every
+            # ladder lane is also unavailable (last resort, never crash).
+            if primary_candidates:
+                primary_model = primary_candidates[0].name
+            else:
+                healthy_fallback = _first_healthy_fallback_profile(self._profiles)
+                primary_model = healthy_fallback or "qwen-coder"
+                fallback_used = True
+                fallback_all_down = healthy_fallback is None
 
         # Handle handoff case (reasoning -> coding)
         secondary_model = None
@@ -408,7 +476,7 @@ class ModelCoordinator:
         if classification.requires_handoff:
             coding_models = [
                 p for p in self._profiles.values()
-                if p.role == ModelRole.CODING and p.is_available
+                if p.role == ModelRole.CODING and p.is_available and _profile_is_healthy(p.name)
             ]
             if cost_sensitive:
                 coding_models.sort(key=lambda p: p.cost_per_1k_tokens)
@@ -431,6 +499,13 @@ class ModelCoordinator:
             rationale_parts.append("prefer_local=true")
         if use_tier_routing and not _LLM_ROUTER_AVAILABLE:
             rationale_parts.append("tier_routing=unavailable")
+        if fallback_used:
+            rationale_parts.append(
+                "health-fallback: every ladder lane unavailable; last-resort 'qwen-coder' returned"
+                if fallback_all_down
+                else f"health-fallback: no healthy role-matching candidate; substituted '{primary_model}' "
+                     "from the local->codex->claude ladder"
+            )
 
         # Estimate cost (rough)
         primary_profile = self._profiles.get(primary_model)
