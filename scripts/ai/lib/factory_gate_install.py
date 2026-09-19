@@ -146,7 +146,26 @@ def command_values(detected: dict[str, Any]) -> tuple[dict[str, str], list[str]]
     return commands, blocked
 
 
+def engine_capability(env_var: str) -> dict[str, str]:
+    """Declare one shared-engine capability from the deploying ENV, never a live probe.
+
+    Mirrors the FT-5 readiness lane model (hybrid_coordinator: CONFIGURED vs
+    TRANSPORT_UNAVAILABLE): an endpoint is read from the environment the
+    installer runs in; when absent, the capability is a typed "unavailable"
+    declaration -- never a copied host-specific literal like 127.0.0.1:8003.
+    curl_target is a separate non-empty field so a permission allow-pattern
+    built from it can never collapse to an unbounded "curl *" wildcard.
+    """
+    endpoint = os.environ.get(env_var, "").strip()
+    if endpoint:
+        return {"state": "available", "endpoint": endpoint, "source": f"env:{env_var}", "curl_target": endpoint}
+    sentinel = f"unavailable://{env_var.lower()}-not-configured"
+    return {"state": "unavailable", "endpoint": "", "source": f"env:{env_var} (unset)", "curl_target": sentinel}
+
+
 def render_values(project_name: str, commands: dict[str, str], layout_policy: str = "") -> dict[str, str]:
+    hybrid = engine_capability("HYBRID_URL")
+    aidb = engine_capability("AIDB_URL")
     return {
         "ARCHIVE_POLICY": ".agent/archive/ (preserve evidence; do not delete)",
         "BUILD_CMD": commands.get("build", "{{BUILD_CMD}}"),
@@ -179,6 +198,16 @@ def render_values(project_name: str, commands: dict[str, str], layout_policy: st
         "TEST_CMD": commands.get("test", "{{TEST_CMD}}"),
         "TEST_DIR": "tests",
         "WORKFLOW_CANON_PATH": ".agent/WORKFLOW-CANON.md",
+        "HYBRID_COORDINATOR_STATE": hybrid["state"],
+        "HYBRID_COORDINATOR_ENDPOINT": hybrid["endpoint"],
+        "HYBRID_COORDINATOR_SOURCE": hybrid["source"],
+        "HYBRID_COORDINATOR_CURL_TARGET": hybrid["curl_target"],
+        "HYBRID_COORDINATOR_HINTS_ENDPOINT": f"{hybrid['curl_target']}/hints",
+        "HYBRID_COORDINATOR_HINTS_ENABLED": "true" if hybrid["state"] == "available" else "false",
+        "AIDB_STATE": aidb["state"],
+        "AIDB_ENDPOINT": aidb["endpoint"],
+        "AIDB_SOURCE": aidb["source"],
+        "AIDB_CURL_TARGET": aidb["curl_target"],
     }
 
 
@@ -407,12 +436,17 @@ def safe_hook_records(target: Path) -> tuple[list[dict[str, Any]], str | None]:
 # (AGENTS.md, CLAUDE.md, .agent/*.md, collaboration-state seeds, the sample
 # PM tracker) -- those stay preserved exactly as a first-time retrofit
 # already preserves them, on both a first install and a later upgrade.
+# capability-manifest.json IS included: it declares live env-derived
+# shared-engine state (F1/F2), not user content, so an upgrade must
+# re-declare the current HYBRID_URL/AIDB_URL availability rather than
+# freezing whatever state happened to exist at first install.
 FACTORY_MANAGED_PREFIXES = (
     Path("scripts/governance"),
     Path("scripts/pm-tracker"),
     Path(".factory/repo-structure.conf"),
     Path(".factory/pm-tracker"),
     Path(".factory/gate-retrofit-hooks"),
+    Path(".factory/capability-manifest.json"),
     Path(HOOKS_PATH),
     BUNDLE_DESTINATION,
 )
@@ -640,6 +674,31 @@ def install(target: Path, bundle_root: Path, stack: str | None, project_name: st
     return receipt
 
 
+def render_agentic_settings(target: Path, template_root: Path, project_name: str) -> dict[str, Any]:
+    """Render templates/agentic-workflow/.claude/settings.json.tmpl (F2 fix).
+
+    This tree is a separate template set from the gate bundle (installed by
+    scripts/ai/aqd's write_agent_command_specs, not manifest_entries()); it
+    was previously `cp`'d byte-for-byte with no placeholder substitution at
+    all, which is how the host-specific 127.0.0.1 URLs ended up hardcoded.
+    Reuses render_values()/rendered() -- the same engine-capability
+    declaration logic the gate bundle uses -- instead of a second resolver.
+    """
+    source = template_root / ".claude" / "settings.json.tmpl"
+    destination = target / ".claude" / "settings.json"
+    if not source.is_file():
+        return {"schema_version": SCHEMA_VERSION, "operation": "render-agentic-settings",
+                "state": "SKIPPED", "reason": "template not found", "source": str(source)}
+    values = render_values(project_name, {})
+    destination.parent.mkdir(parents=True, exist_ok=True)
+    content = rendered(source, values)
+    json.loads(content)  # fail closed on a template edit that breaks JSON, never write a broken file
+    destination.write_bytes(content)
+    return {"schema_version": SCHEMA_VERSION, "operation": "render-agentic-settings", "state": "RENDERED",
+            "destination": str(destination),
+            "capabilities": {"hybrid_coordinator": values["HYBRID_COORDINATOR_STATE"], "aidb": values["AIDB_STATE"]}}
+
+
 def status(target: Path, bundle_root: Path, stack: str | None, project_name: str) -> dict[str, Any]:
     receipt = load_json(target / RECEIPT)
     configured = git_value(target, "config", "--get", "core.hooksPath") if (target / ".git").exists() else None
@@ -836,7 +895,8 @@ def readiness_preflight(target: Path, bundle_root: Path, stack: str | None, proj
 
 def main() -> int:
     parser = argparse.ArgumentParser(description=__doc__)
-    parser.add_argument("operation", choices=("preview", "install", "status", "retrofit-preview", "retrofit-install", "readiness-preflight"))
+    parser.add_argument("operation", choices=("preview", "install", "status", "retrofit-preview", "retrofit-install",
+                                               "readiness-preflight", "render-agentic-settings"))
     parser.add_argument("--target", type=Path, required=True)
     parser.add_argument("--bundle-root", type=Path, required=True)
     parser.add_argument("--stack")
@@ -865,6 +925,13 @@ def main() -> int:
             result = readiness_preflight(target, bundle_root, args.stack, args.project_name)
             emit(result)
             return 0 if result["ready"] else 1
+        if args.operation == "render-agentic-settings":
+            # bundle_root is reused as the agentic-workflow template root here
+            # (a separate template tree from the gate bundle every other
+            # operation resolves it against); see render_agentic_settings().
+            result = render_agentic_settings(target, bundle_root, args.project_name)
+            emit(result)
+            return 0 if result["state"] in ("RENDERED", "SKIPPED") else 1
         return emit(status(target, bundle_root, args.stack, args.project_name))
     except (OSError, RuntimeError, ValueError) as error:
         return emit({"schema_version": SCHEMA_VERSION, "operation": args.operation, "state": "ERROR", "error": str(error)}) or 1
