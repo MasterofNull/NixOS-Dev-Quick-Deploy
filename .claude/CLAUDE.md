@@ -99,6 +99,7 @@ Use the canonical low-friction order in `docs/agent-guides/47-AGENT-TOOL-CONTRAC
 - path discovery: `als`, then `fd` — **never raw `ls` or `find` in shell commands**
 - bounded reads: `acat`, then native read tools or `sed -n` — **never raw `cat` in shell commands**
 - do not retry an unchanged failed tool call without a changed hypothesis
+- tool not on PATH and no fallback: reach it live via `aq-tool <pkg>` — no restart, no manifest gate (the capability manifest is a record, never a runtime gate; Rule 16 parity)
 
 **Agentic CLI wrappers are mandatory in Bash tool calls.** These wrappers add context injection, audit logging, and rate-limit guardrails. Bypassing them degrades harness observability.
 

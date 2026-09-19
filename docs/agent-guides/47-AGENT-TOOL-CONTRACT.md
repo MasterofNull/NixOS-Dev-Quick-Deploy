@@ -35,6 +35,16 @@ Readonly lanes may expose only non-mutating tools from that set. Execute lanes m
 4. Do not retry the same failed tool call without changing the hypothesis.
 5. Prefer bounded reads and bounded listings over full dumps.
 
+## Reaching a tool not on PATH (live, no restart, no gate)
+
+If a task needs a tool that is not already on PATH and has no fallback in the table above, reach it live via `aq-tool <pkg> [args...]` (`scripts/ai/aq-tool`). It resolves `<pkg>` from this repo's own PINNED nixpkgs (derived live from `flake.lock`'s root->nixpkgs input edge — the same nixpkgs the default "stable" track resolves) and runs it in the current session via `nix run`, forwarding args and the exit code.
+
+- No restart, no rebuild, and no manifest/permission file is consulted — any running agent, any tool, any time (ST-2, `.agents/plans/factory-shared-toolchain/DESIGN.md`).
+- `aq-tool --list` prints a short curated shortlist of commonly-needed tools; any other nixpkgs package attribute also works.
+- An unresolvable package prints `tool unavailable: <pkg> (not in pinned nixpkgs)` and exits non-zero — it never hangs (bounded timeout) and never falls back to an unpinned nixpkgs source.
+- This is the sanctioned way to gain a tool mid-session. The capability manifest (ST-3) is a RECORD for reproducibility/readiness reporting, never a runtime gate.
+- To make a tool a PERMANENT, version-pinned, fleet-wide addition (not just a one-off use), open a toolchain-contribution — that is a governed change, unlike this on-demand path.
+
 ## Security boundary
 
 Tool presence is not permission. Network access, write access, and destructive actions remain governed by the lane policy and approval boundary even when binaries are available.
@@ -64,12 +74,12 @@ This table documents what tool names each agent lane actually exposes. Calling a
 
 - `run_shell_command` is a compatibility alias for `run_command`; both still enforce the same command whitelist.
 - `invoke_agent` is blocked — implementer role may not route other agents. Escalate to orchestrator.
-- Whitelisted `run_command` targets: `bash -n`, `python3 -m py_compile`, `nix-instantiate --parse`, `git status/diff/add/log`, `aq-qa`, `agrep`, `als`, `acat`.
+- Whitelisted `run_command` targets: `bash -n`, `python3 -m py_compile`, `nix-instantiate --parse`, `git status/diff/add/log`, `aq-qa`, `agrep`, `als`, `acat`, `aq-tool`.
 
 ### When a tool is unavailable
 
 1. Record the missing tool **once** in your output or PULSE.log.
-2. Switch immediately to the approved fallback from the table above.
+2. Switch immediately to the approved fallback from the table above, or reach it live via `aq-tool <pkg>` if there is no fallback (see "Reaching a tool not on PATH" above).
 3. Do **not** retry the same unavailable tool call again in the same session.
 4. Do **not** spend multiple turns probing for the tool under different names.
 

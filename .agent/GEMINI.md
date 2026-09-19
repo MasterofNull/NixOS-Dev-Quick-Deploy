@@ -270,6 +270,7 @@ asum <file>                             # structural overview (Py, JS, Go, Nix)
 - If a read fails with `File not found`, do **not** retry nearby guesses. Search for the filename or concept, select the confirmed path, then read once.
 - Follow the canonical fallback order in `docs/agent-guides/47-AGENT-TOOL-CONTRACT.md`: `agrep → rg`, `als → fd`, `acat → native read/sed -n`.
 - If a preferred tool is unavailable, use one documented fallback and move on; do not spend multiple turns rediscovering the same missing tool.
+- If there is no fallback, reach the tool live via `run_shell_command('aq-tool <pkg> [args]')` — no restart, no manifest gate (the capability manifest is a record, never a runtime gate; Rule 16 parity). Not available in `auto_edit` mode (no shell tool) — use `yolo` mode.
 - For high-level harness architecture, start from the known entrypoints below instead of inventing document names:
   - `docs/agent-guides/00-SYSTEM-OVERVIEW.md`
   - `docs/agent-guides/45-PROGRESSIVE-DISCLOSURE.md`
