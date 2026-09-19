@@ -38,9 +38,15 @@ def main() -> int:
         properties = schema["properties"]
         assert properties["stack"]["enum"] == list(bridge.RETROFIT_STACK_CHOICES)
         assert "confirm_retrofit" in properties
+        # retrofit's CLI has no --force option; keeping it in the schema would
+        # advertise a dishonest tool contract.
+        assert "force" not in properties
 
         target = str((ROOT / "bridge workflow fixture").resolve())
         confirmation = "a" * 64
+        # retrofit's CLI has no --force option (unlike bootstrap/project-init/
+        # brownfield); force:true must never be forwarded for this tool, even
+        # though the schema and other workflow tools accept it.
         result = json.loads(bridge._call_tool("retrofit_workflow", {
             "target_dir": target,
             "project_name": "fixture",
@@ -56,16 +62,17 @@ def main() -> int:
         assert argv == [
             bridge.AQD_BIN, "workflows", "retrofit", "--target", target,
             "--name", "fixture", "--goal", "prove parity", "--stack", "python",
-            "--owner", "test", "--force", "--confirm-retrofit", confirmation,
+            "--owner", "test", "--confirm-retrofit", confirmation,
         ]
+        assert "--force" not in argv
 
         bridge._call_tool("retrofit_workflow", {"target_dir": target, "force": True})
         argv, cwd = calls.pop()
-        assert cwd == target and "--force" in argv and "--confirm-retrofit" not in argv
+        assert cwd == target and "--force" not in argv and "--confirm-retrofit" not in argv
 
         bridge._call_tool("retrofit_workflow", {"target_dir": target})
         argv, cwd = calls.pop()
-        assert cwd == target and "--stack" not in argv and "--confirm-retrofit" not in argv
+        assert cwd == target and "--stack" not in argv and "--confirm-retrofit" not in argv and "--force" not in argv
 
         for stack in ("java", "", 0, False, [], {}):
             invalid = json.loads(bridge._call_tool("retrofit_workflow", {"target_dir": target, "stack": stack}))

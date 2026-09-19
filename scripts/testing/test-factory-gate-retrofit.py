@@ -50,7 +50,11 @@ def main() -> int:
                 "originals_preserved": False, "hooks_composed": False,
                 "layout_preserved": False, "collaboration_preserved": False,
                 "unsafe_state_refused": False, "layout_confirmation_bound": False,
-                "unsafe_receipt_refused": False, "existing_receipt_preserved": False}
+                "unsafe_receipt_refused": False, "existing_receipt_preserved": False,
+                "upgrade_idempotent_preserves_user_files": False,
+                "foreign_hookspath_still_refused": False,
+                "upgrade_refuses_unsafe_receipt": False,
+                "upgrade_succeeds_with_ordinary_receipt": False}
     with tempfile.TemporaryDirectory(prefix="factory retrofit fixture ") as temporary:
         work = Path(temporary)
         target = work / "existing repo"
@@ -155,6 +159,107 @@ def main() -> int:
 
         # The retained bundle, not a private source copy, remains executable.
         run(str(target / ".factory/gate-bundle/self-test.sh"), cwd=target)
+
+        # -- Idempotent upgrade (Defect 1): re-running retrofit on an
+        #    already-onboarded repo must UPGRADE in place, never refuse with
+        #    "unsupported existing core.hooksPath" or "existing factory
+        #    destination requires a separate merge plan". A fresh fixture is
+        #    used so the earlier "undeclared-after-preview" layout probe
+        #    above never interferes with this scenario's own assertions.
+        upgrade_fixture = work / "upgrade fixture"
+        upgrade_fixture.mkdir()
+        run("git", "init", cwd=upgrade_fixture)
+        run("git", "config", "user.name", "Fixture Author", cwd=upgrade_fixture)
+        run("git", "config", "user.email", "fixture@example.invalid", cwd=upgrade_fixture)
+        (upgrade_fixture / "AGENTS.md").write_text("project instructions\n", encoding="utf-8")
+        first_preview = preview(upgrade_fixture, "upgrade fixture")
+        assert first_preview["safe_to_install"] and first_preview.get("upgrade") is False
+        first_installed = run(str(AQD), "workflows", "retrofit", "--target", str(upgrade_fixture),
+                              "--name", "upgrade fixture", "--stack", "generic",
+                              "--confirm-retrofit", first_preview["preview_digest"], cwd=ROOT)
+        first_receipt = json.loads(first_installed.stdout)
+        assert first_receipt["installation"]["state"] == "INSTALLED"
+        assert first_receipt.get("upgrade") is False
+
+        # A user working between the two retrofit runs: a new doc, an
+        # appended collaboration log line, and (simulating a gate-runner that
+        # predates a factory tooling change) a locally tampered gate-runner.
+        (upgrade_fixture / "docs").mkdir()
+        (upgrade_fixture / "docs/note.md").write_text("written between retrofit runs\n", encoding="utf-8")
+        pulse = upgrade_fixture / ".agent/collaboration/PULSE.log"
+        pulse.write_text(pulse.read_text(encoding="utf-8") + "[appended] operator note\n", encoding="utf-8")
+        gate_runner = upgrade_fixture / "scripts/governance/gate-runner"
+        gate_runner.write_text("#!/usr/bin/env bash\nset -euo pipefail\nexit 0\n", encoding="utf-8")
+        gate_runner.chmod(0o755)
+
+        second_preview = preview(upgrade_fixture, "upgrade fixture")
+        assert second_preview["safe_to_install"], second_preview
+        assert second_preview.get("upgrade") is True
+        second_installed = run(str(AQD), "workflows", "retrofit", "--target", str(upgrade_fixture),
+                               "--name", "upgrade fixture", "--stack", "generic",
+                               "--confirm-retrofit", second_preview["preview_digest"], cwd=ROOT)
+        second_receipt = json.loads(second_installed.stdout)
+        assert second_receipt["installation"]["state"] == "INSTALLED"
+        assert second_receipt.get("upgrade") is True
+        # User content created between the two runs is untouched.
+        assert (upgrade_fixture / "docs/note.md").read_text(encoding="utf-8") == "written between retrofit runs\n"
+        assert pulse.read_text(encoding="utf-8").endswith("[appended] operator note\n")
+        assert (upgrade_fixture / "AGENTS.md").read_text(encoding="utf-8") == "project instructions\n"
+        # Factory tooling refreshed in place -- the tampered gate-runner stub
+        # is replaced by the current bundle's gate-runner again.
+        assert gate_runner.read_bytes() == (BUNDLE / "gate-runner").read_bytes()
+        run(str(upgrade_fixture / "scripts/governance/repo-structure-lint"), cwd=upgrade_fixture)
+        evidence["upgrade_idempotent_preserves_user_files"] = True
+
+        # Codex's receipt-destination safety (030da8ac) is retained through
+        # the upgrade path: the ordinary pre-existing receipt from the FIRST
+        # run was rewritten in place by the confirmed upgrade install, not
+        # refused or silently left stale.
+        receipt_after_upgrade = json.loads((upgrade_fixture / ".factory/gate-install.json").read_text(encoding="utf-8"))
+        assert receipt_after_upgrade["preview_digest"] == second_preview["preview_digest"]
+        assert receipt_after_upgrade.get("upgrade") is True
+        evidence["upgrade_succeeds_with_ordinary_receipt"] = True
+
+        # -- Codex's receipt-destination safety (030da8ac) must survive the
+        #    upgrade path unchanged: an upgrade candidate (core.hooksPath
+        #    already .githooks) whose receipt is a SYMLINK to an external
+        #    file is still refused -- safe_write_path's symlink check fires
+        #    unconditionally, even with allow_existing=True for the upgrade
+        #    case. The symlink target deliberately carries a receipt-shaped
+        #    payload so _is_compatible_prior_install reports upgrade=True
+        #    and this genuinely exercises the RECEIPT branch of the
+        #    write_paths safety loop, not the earlier hooksPath refusal.
+        receipt_symlink_target = work / "external receipt for upgrade"
+        receipt_symlink_target.write_text(
+            json.dumps({"schema_version": 1, "hooks": {"configured_path": ".githooks"}}), encoding="utf-8")
+        live_receipt = upgrade_fixture / ".factory/gate-install.json"
+        live_receipt.unlink()
+        live_receipt.symlink_to(receipt_symlink_target)
+        unsafe_upgrade_config = (upgrade_fixture / ".git/config").read_bytes()
+        unsafe_upgrade_denied = run(str(AQD), "workflows", "retrofit", "--target", str(upgrade_fixture),
+                                    "--name", "upgrade fixture", "--stack", "generic", cwd=ROOT, expected=1)
+        unsafe_upgrade_json = json.loads(unsafe_upgrade_denied.stdout)
+        assert unsafe_upgrade_json["safe_to_install"] is False
+        assert unsafe_upgrade_json.get("upgrade") is True
+        assert "gate-install.json" in unsafe_upgrade_json["blocker"]
+        assert live_receipt.is_symlink()
+        assert receipt_symlink_target.read_text(encoding="utf-8") == json.dumps(
+            {"schema_version": 1, "hooks": {"configured_path": ".githooks"}})
+        assert (upgrade_fixture / ".git/config").read_bytes() == unsafe_upgrade_config
+        assert gate_runner.read_bytes() == (BUNDLE / "gate-runner").read_bytes()
+        evidence["upgrade_refuses_unsafe_receipt"] = True
+
+        # A foreign core.hooksPath is never treated as an upgrade candidate.
+        foreign = work / "foreign hooks repo"
+        foreign.mkdir()
+        run("git", "init", cwd=foreign)
+        run("git", "config", "core.hooksPath", ".myhooks", cwd=foreign)
+        foreign_denied = run(str(AQD), "workflows", "retrofit", "--target", str(foreign), "--name", "foreign",
+                             "--stack", "generic", cwd=ROOT, expected=1)
+        foreign_json = json.loads(foreign_denied.stdout)
+        assert foreign_json["safe_to_install"] is False
+        assert "unsupported existing core.hooksPath" in foreign_json["blocker"]
+        evidence["foreign_hookspath_still_refused"] = True
 
         external = work / "external hook path"
         external.mkdir()

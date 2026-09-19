@@ -316,7 +316,11 @@ def preview(target: Path, bundle_root: Path, stack: str | None, project_name: st
 
 
 def copy_bundle(bundle_root: Path, target: Path) -> None:
-    shutil.copytree(bundle_root, target / BUNDLE_DESTINATION, ignore=shutil.ignore_patterns("__pycache__", "*.pyc"))
+    # dirs_exist_ok=True lets a compatible-upgrade retrofit re-copy the
+    # retained bundle over its own prior copy; a genuinely foreign
+    # .factory/gate-bundle is refused earlier, before this is ever called.
+    shutil.copytree(bundle_root, target / BUNDLE_DESTINATION, ignore=shutil.ignore_patterns("__pycache__", "*.pyc"),
+                     dirs_exist_ok=True)
 
 
 def digest_bytes(path: Path) -> str:
@@ -352,11 +356,18 @@ def framed_tree_digest(root: Path, *, exclude_git: bool) -> str:
     return digest.hexdigest()
 
 
-def safe_write_path(target: Path, relative: Path) -> str | None:
-    """Reject exact/ancestor collisions before any archive or install write."""
+def safe_write_path(target: Path, relative: Path, *, allow_existing: bool = False) -> str | None:
+    """Reject exact/ancestor collisions before any archive or install write.
+
+    allow_existing lets a compatible-upgrade retrofit re-apply over its own
+    prior factory-managed files (already validated as ordinary files by the
+    caller); it never tolerates a symlinked destination.
+    """
     candidate = target / relative
-    if candidate.exists() or candidate.is_symlink():
+    if candidate.is_symlink() or (candidate.exists() and not allow_existing):
         return f"existing write destination: {relative}"
+    if allow_existing and candidate.exists() and not candidate.is_file():
+        return f"unsupported existing destination: {relative}"
     parent = candidate.parent
     while parent != target:
         if parent.is_symlink() or (parent.exists() and not parent.is_dir()):
@@ -391,11 +402,49 @@ def safe_hook_records(target: Path) -> tuple[list[dict[str, Any]], str | None]:
     return records, None
 
 
+# Factory-owned tooling roots a compatible upgrade re-renders in place. This
+# deliberately excludes every user/project file the manifest also installs
+# (AGENTS.md, CLAUDE.md, .agent/*.md, collaboration-state seeds, the sample
+# PM tracker) -- those stay preserved exactly as a first-time retrofit
+# already preserves them, on both a first install and a later upgrade.
+FACTORY_MANAGED_PREFIXES = (
+    Path("scripts/governance"),
+    Path("scripts/pm-tracker"),
+    Path(".factory/repo-structure.conf"),
+    Path(".factory/pm-tracker"),
+    Path(".factory/gate-retrofit-hooks"),
+    Path(HOOKS_PATH),
+    BUNDLE_DESTINATION,
+)
+
+
+def _factory_managed(destination: Path) -> bool:
+    return destination in FACTORY_MANAGED_PREFIXES or any(
+        prefix in destination.parents for prefix in FACTORY_MANAGED_PREFIXES
+    )
+
+
+def _is_compatible_prior_install(target: Path) -> bool:
+    """An already-onboarded repo (our own prior install/retrofit) is safe to re-apply.
+
+    A foreign hooksPath is still refused by the caller; this only recognizes
+    OUR OWN prior work as an upgrade target, never a stranger's identical
+    hooksPath value.
+    """
+    receipt = load_json(target / RECEIPT)
+    return bool(receipt) and receipt.get("hooks", {}).get("configured_path") == HOOKS_PATH
+
+
 def retrofit_preview(target: Path, bundle_root: Path, stack: str | None, project_name: str) -> dict[str, Any]:
     conflict = retrofit_metadata_conflict(target)
+    upgrade = False
     if not conflict:
         configured = git_value(target, "config", "--get", "core.hooksPath")
-        if configured:
+        if configured == HOOKS_PATH:
+            upgrade = _is_compatible_prior_install(target)
+            if not upgrade:
+                conflict = f"unsupported existing core.hooksPath: {configured}"
+        elif configured:
             conflict = f"unsupported existing core.hooksPath: {configured}"
     else:
         configured = None
@@ -406,7 +455,6 @@ def retrofit_preview(target: Path, bundle_root: Path, stack: str | None, project
     manifest, entries = manifest_entries(bundle_root)
     preserved: list[dict[str, Any]] = []
     writes: list[str] = [str(path) for path in bundle_write_paths(bundle_root)]
-    enforcement = (Path("scripts/governance"), Path("scripts/pm-tracker"), Path(".factory/repo-structure.conf"), Path(".factory/pm-tracker"))
     rendered_plan: list[dict[str, str]] = []
     values = render_values(project_name, commands, layout_policy(target, entries))
     outputs = {path: content for path, content in rendered_outputs(bundle_root, entries, values).items()
@@ -418,8 +466,17 @@ def retrofit_preview(target: Path, bundle_root: Path, stack: str | None, project
                     for name in sorted(routed)})
     for destination, content in outputs.items():
         candidate = target / destination
+        managed = _factory_managed(destination)
         if candidate.exists() or candidate.is_symlink():
-            if destination == enforcement[1] or any(prefix in destination.parents for prefix in enforcement) or destination in enforcement:
+            if upgrade and managed:
+                # A compatible prior install: refresh our own tooling output
+                # in place instead of refusing or silently preserving it.
+                if candidate.is_symlink() or not candidate.is_file():
+                    conflict = conflict or f"unsupported existing destination: {destination}"
+                else:
+                    writes.append(str(destination))
+                    rendered_plan.append({"path": str(destination), "sha256": hashlib.sha256(content).hexdigest()})
+            elif managed:
                 conflict = conflict or f"enforcement component collision: {destination}"
             elif candidate.is_symlink() or not candidate.is_file():
                 conflict = conflict or f"unsupported existing destination: {destination}"
@@ -430,17 +487,26 @@ def retrofit_preview(target: Path, bundle_root: Path, stack: str | None, project
             rendered_plan.append({"path": str(destination), "sha256": hashlib.sha256(content).hexdigest()})
     for path in (BUNDLE_DESTINATION, Path(".factory/gate-retrofit-hooks"), Path(".githooks")):
         candidate = target / path
-        if candidate.exists() or candidate.is_symlink():
+        exists = candidate.exists() or candidate.is_symlink()
+        if not exists:
+            continue
+        if not upgrade:
             conflict = conflict or f"existing factory destination requires a separate merge plan: {path}"
+        elif candidate.is_symlink() or not candidate.is_dir():
+            conflict = conflict or f"unsupported existing destination: {path}"
     # The receipt is written after hooks/configuration, so it must be refused
     # during preview as rigorously as every earlier destination. In
     # particular, do not follow a pre-existing .factory/gate-install.json
-    # symlink outside the target.
+    # symlink outside the target. On a compatible upgrade the receipt is
+    # ours and IS expected to already exist (it is how _is_compatible_
+    # prior_install detected the upgrade candidate in the first place) --
+    # allow_existing lets safe_write_path skip only the plain-exists
+    # refusal, never the symlink/non-file refusal Codex's fix added.
     writes.append(str(RECEIPT))
     write_paths = [Path(path) for path in writes]
     directories = planned_directories(write_paths)
     for path in write_paths:
-        issue = safe_write_path(target, path)
+        issue = safe_write_path(target, path, allow_existing=upgrade and (_factory_managed(path) or path == RECEIPT))
         if issue:
             conflict = conflict or issue
     config = target / ".git/config"
@@ -449,7 +515,7 @@ def retrofit_preview(target: Path, bundle_root: Path, stack: str | None, project
                      if config.is_file() and not config.is_symlink() else {"unavailable": True})
     fingerprint = {"bundle_sha256": source_hash, "config": config_record,
                    "hooks": hooks, "preserved": preserved, "writes": sorted(set(writes)), "directories": directories,
-                   "configured_path": configured,
+                   "configured_path": configured, "upgrade": upgrade,
                    "target_content_sha256": target_content_digest(target), "rendered_plan": rendered_plan,
                    "check_configuration": {"commands": commands, "required_unconfigured": blocked},
                    "target": str(target), "stack": stack or ""}
@@ -459,7 +525,7 @@ def retrofit_preview(target: Path, bundle_root: Path, stack: str | None, project
     conflict = conflict or backup_issue
     return {"schema_version": SCHEMA_VERSION, "operation": "retrofit-preview", "target": str(target), "project_name": project_name,
             "safe_to_install": not conflict, "blocker": conflict, "preview_digest": digest, "source_bundle_sha256": source_hash,
-            "writes": sorted(set(writes)), "directories": directories, "rendered_plan": rendered_plan,
+            "writes": sorted(set(writes)), "directories": directories, "rendered_plan": rendered_plan, "upgrade": upgrade,
             "preserved": preserved, "hooks": {"configured_path": configured, "existing": hooks,
             "routing": ".git/hooks -> .githooks wrappers"}, "backup_paths": [backup], "detector": detected,
             "checks": {"commands": commands, "state": "CONFIGURATION_BLOCKED" if blocked else "READY", "required_unconfigured": blocked}}
@@ -494,13 +560,15 @@ def retrofit_install(target: Path, bundle_root: Path, stack: str | None, project
         outputs[Path(f".factory/gate-retrofit-hooks/{name}")] = rendered(bundle_root / "hooks" / name, values)
     outputs.update({Path(HOOKS_PATH) / name: router_script(target, name, name in {"pre-commit", "commit-msg"})
                     for name in sorted(routed)})
+    upgrade = bool(report.get("upgrade"))
     backup = target / report["backup_paths"][0]
     backup.parent.mkdir(parents=True, exist_ok=True)
     shutil.copy2(target / ".git/config", backup)
     copy_bundle(bundle_root, target)
     for relative, content in outputs.items():
         destination = target / relative
-        if destination.exists() or destination.is_symlink():
+        refresh = upgrade and _factory_managed(relative)
+        if (destination.exists() or destination.is_symlink()) and not refresh:
             continue
         destination.parent.mkdir(parents=True, exist_ok=True)
         destination.write_bytes(content)
@@ -516,7 +584,7 @@ def retrofit_install(target: Path, bundle_root: Path, stack: str | None, project
         raise RuntimeError(f"could not configure core.hooksPath: {configured.stderr.strip()}")
     receipt = {"schema_version": SCHEMA_VERSION, "bundle_version": manifest.get("bundle_version"), "target": str(target), "retrofit": True,
                "preview_digest": report["preview_digest"], "backup_paths": report["backup_paths"], "checks": report["checks"],
-               "hooks": {"configured_path": HOOKS_PATH, "state": "ACTIVE", "composed": sorted(routed)},
+               "hooks": {"configured_path": HOOKS_PATH, "state": "ACTIVE", "composed": sorted(routed)}, "upgrade": upgrade,
                "proof": {"state": "HOOK_PATH_VERIFIED", "detail": "Existing hooks are routed before factory hooks; execution proof is fixture-only."},
                "activation": "ACTIVATION_BLOCKED" if report["checks"]["required_unconfigured"] else "READY"}
     (target / RECEIPT).parent.mkdir(parents=True, exist_ok=True)
@@ -580,12 +648,27 @@ def status(target: Path, bundle_root: Path, stack: str | None, project_name: str
                   for name in ("pre-commit", "commit-msg")}
     tracker_paths = [str(path.relative_to(target)) for path in target.glob(".agents/plans/**/tracker.json")]
     state = "ACTIVE" if configured == HOOKS_PATH and all(executable.values()) else "UNCONFIGURED"
+    # Checks configuration is re-derived from the CURRENT repo on every call,
+    # never read back from the frozen install-time receipt: a package.json
+    # that grows a test/lint script after install must be reported CONFIGURED
+    # immediately, not stay UNCONFIGURED until the next install/retrofit.
+    # Metadata-only, same as preview()/retrofit_preview() -- never executes
+    # a target build/test/lint/secret_scan command.
+    if receipt:
+        try:
+            detected = resolver(bundle_root, target, stack)
+            commands, blocked = command_values(detected)
+            checks = {"commands": commands, "state": "CONFIGURATION_BLOCKED" if blocked else "READY", "required_unconfigured": blocked}
+        except RuntimeError as error:
+            checks = receipt.get("checks") or {"state": "UNKNOWN", "required_unconfigured": [f"stack detector failed: {error}"]}
+    else:
+        checks = {"state": "UNKNOWN", "required_unconfigured": ["no install receipt"]}
     return {
         "schema_version": SCHEMA_VERSION, "target": str(target), "operation": "status",
         "installation": {"state": "INSTALLED" if receipt else "ABSENT", "receipt_path": str(RECEIPT)},
         "bundle_version": receipt.get("bundle_version"),
         "hooks": {"state": state, "configured_path": configured, "expected_path": HOOKS_PATH, "executable": executable},
-        "checks": receipt.get("checks", {"state": "UNKNOWN", "required_unconfigured": ["no install receipt"]}),
+        "checks": checks,
         "tracker": {"state": "DISCOVERED" if tracker_paths else "NONE", "paths": tracker_paths},
         "proof": receipt.get("proof", {"state": "NOT_RUN"}),
         "activation": receipt.get("activation", "ACTIVATION_BLOCKED"),

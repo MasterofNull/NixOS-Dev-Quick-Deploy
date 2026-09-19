@@ -506,7 +506,6 @@ TOOLS = [
                 "goal": {"type": "string"},
                 "stack": {"type": "string", "enum": list(RETROFIT_STACK_CHOICES)},
                 "owner": {"type": "string"},
-                "force": {"type": "boolean", "default": False},
                 "confirm_retrofit": {"type": "string", "description": "Exact digest returned by the current retrofit preview."},
             },
             "required": [],
@@ -1235,8 +1234,11 @@ def _call_tool(name: str, args: dict) -> str:
             argv.extend(["--stack", stack])
         if args.get("owner"):
             argv.extend(["--owner", str(args.get("owner"))])
-        if bool(args.get("force", False)):
-            argv.append("--force")
+        # retrofit's CLI (aqd workflows retrofit) accepts only --target/--name/
+        # --goal/--stack/--owner/--confirm-retrofit; it has no --force option
+        # (any unrecognized flag is a hard unknown_option error there).
+        # Confirmation is the preview digest, never a force flag -- unlike
+        # bootstrap/project-init/brownfield above, force is never forwarded here.
         if "confirm_retrofit" in args and args["confirm_retrofit"] is not None:
             argv.extend(["--confirm-retrofit", str(args["confirm_retrofit"])])
         r = _run_local(argv, cwd=abs_target)
