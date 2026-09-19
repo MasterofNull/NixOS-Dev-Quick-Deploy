@@ -289,53 +289,11 @@ ${prompt}"
         fi
     else
         # Background mode: fully detach so it survives session eviction.
-        # printf '%q ' pre-quotes each cmd element to safely embed in bash -c string.
-        local cmd_q; cmd_q="$(printf '%q ' "${cmd[@]}")"
         local _coord_url="${HYBRID_COORDINATOR_URL:-http://127.0.0.1:8003}"
-        local _prompt_brief; _prompt_brief="${prompt:0:100}"
         local _audit_helper; _audit_helper="$SCRIPT_DIR/lib/audit-post.sh"
-        nohup bash -c "
-            _start_ms=\$(date +%s%3N 2>/dev/null || echo 0)
-            $cmd_q > \"$output_file\" 2>&1
-            exit_code=\$?
-            _end_ms=\$(date +%s%3N 2>/dev/null || echo 0)
-            _lat=\$(( _end_ms - _start_ms ))
-            if [[ \$exit_code -eq 0 ]]; then
-                bash \"$_audit_helper\" \"$_coord_url\" task_completed claude success \"\$_lat\" \"$id\" \"completed: $_prompt_brief\" \"$role\" \"$prompt\" \"$output_file\" || true
-                python3 - \"$REGISTRY\" \"$id\" done <<'PYEOF'
-import sys, json
-rf, tid, ns = sys.argv[1], sys.argv[2], sys.argv[3]
-lines = []
-with open(rf) as f:
-    for l in f:
-        l = l.strip()
-        if not l: continue
-        try:
-            e = json.loads(l)
-            if e.get('id') == tid: e['status'] = ns
-            lines.append(json.dumps(e))
-        except: lines.append(l)
-with open(rf, 'w') as f: f.write('\n'.join(lines) + '\n')
-PYEOF
-            else
-                bash \"$_audit_helper\" \"$_coord_url\" error_resolution claude error \"\$_lat\" \"$id\" \"failed exit=\$exit_code: $_prompt_brief\" \"$role\" \"$prompt\" \"$output_file\" || true
-                python3 - \"$REGISTRY\" \"$id\" failed <<'PYEOF'
-import sys, json
-rf, tid, ns = sys.argv[1], sys.argv[2], sys.argv[3]
-lines = []
-with open(rf) as f:
-    for l in f:
-        l = l.strip()
-        if not l: continue
-        try:
-            e = json.loads(l)
-            if e.get('id') == tid: e['status'] = ns
-            lines.append(json.dumps(e))
-        except: lines.append(l)
-with open(rf, 'w') as f: f.write('\n'.join(lines) + '\n')
-PYEOF
-            fi
-        " > /dev/null 2>&1 &
+        nohup bash "$SCRIPT_DIR/lib/claude-background-worker.sh" \
+            "$output_file" "$_audit_helper" "$_coord_url" "$REGISTRY" "$id" "$role" "$prompt" \
+            "${cmd[@]}" </dev/null > /dev/null 2>&1 &
         local pid=$!
         disown "$pid"
 
