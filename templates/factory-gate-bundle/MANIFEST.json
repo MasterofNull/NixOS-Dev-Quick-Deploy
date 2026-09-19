@@ -7,7 +7,9 @@
     "LINT_CMD", "LIVE_SERVICE_CHECK_CMD", "LOCAL_AGENT_ROLE", "LOCAL_CAPABILITY_CONSTRAINTS",
     "PLAN_ROOT", "PM_TRACKER_PATH", "PROJECT_METADATA_FILE", "PROJECT_NAME", "PROTECTED_BRANCHES",
     "LAYOUT_POLICY", "PULSE_PATH", "REPOSITORY_LAYOUT", "RESUME_PATH", "RISK_TIER_POLICY", "SECRET_SCAN_CMD",
-    "SHARED_RULES", "SOURCE_DIR", "SOURCE_REPOSITORY", "TEST_CMD", "TEST_DIR", "WORKFLOW_CANON_PATH"
+    "SHARED_RULES", "SOURCE_DIR", "SOURCE_REPOSITORY", "TEST_CMD", "TEST_DIR", "WORKFLOW_CANON_PATH",
+    "HYBRID_COORDINATOR_STATE", "HYBRID_COORDINATOR_ENDPOINT", "HYBRID_COORDINATOR_SOURCE",
+    "AIDB_STATE", "AIDB_ENDPOINT", "AIDB_SOURCE"
   ],
   "files": [
     {"bundle_path": ".", "install_target": ".factory/gate-bundle", "derived_from": [".agent/PROJECT-FACTORY-GATE-TEMPLATES-PRD.md"]},
@@ -45,7 +47,8 @@
     {"bundle_path": "agent-scaffolding/CODEX.md.tmpl", "install_target": ".agent/CODEX.md", "derived_from": [".agent/CODEX.md", ".agent/WORKFLOW-CANON.md"]},
     {"bundle_path": "agent-scaffolding/LOCAL-AGENT.md.tmpl", "install_target": ".agent/LOCAL-AGENT.md", "derived_from": [".agent/LOCAL-AGENT.md", ".agent/WORKFLOW-CANON.md"]},
     {"bundle_path": "agent-scaffolding/GEMINI.md.tmpl", "install_target": ".agent/GEMINI.md", "derived_from": [".agent/GEMINI.md", ".agent/WORKFLOW-CANON.md"]},
-    {"bundle_path": "agent-scaffolding/WORKFLOW-CANON.md.tmpl", "install_target": ".agent/WORKFLOW-CANON.md", "derived_from": [".agent/WORKFLOW-CANON.md"]}
+    {"bundle_path": "agent-scaffolding/WORKFLOW-CANON.md.tmpl", "install_target": ".agent/WORKFLOW-CANON.md", "derived_from": [".agent/WORKFLOW-CANON.md"]},
+    {"bundle_path": "agent-scaffolding/capability-manifest.json.tmpl", "install_target": ".factory/capability-manifest.json", "derived_from": [".agent/PROJECT-FACTORY-GATE-TEMPLATES-PRD.md", ".agents/plans/factory-gate-templates/TEMPLATE-SHARED-ENGINE-AUDIT-20260918.md"]}
   ],
   "extension_points": {
     "FT-6": "gate-runner exports FACTORY_RISK_TIER; commit-msg marks the tier-based reviewer-policy insertion point",

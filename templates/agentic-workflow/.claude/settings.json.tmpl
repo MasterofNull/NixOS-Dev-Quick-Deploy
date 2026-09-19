@@ -6,8 +6,8 @@
         "/opt/nixos-quick-deploy/scripts/ai/mcp-bridge-hybrid.py"
       ],
       "env": {
-        "HYBRID_URL": "http://127.0.0.1:8003",
-        "AIDB_URL": "http://127.0.0.1:8002",
+        "HYBRID_URL": "{{HYBRID_COORDINATOR_ENDPOINT}}",
+        "AIDB_URL": "{{AIDB_ENDPOINT}}",
         "HYBRID_API_KEY_FILE": "/run/secrets/hybrid_coordinator_api_key",
         "AIDB_API_KEY_FILE": "/run/secrets/aidb_api_key"
       }
@@ -24,12 +24,13 @@
       "Bash(workflow-brownfield*)",
       "Bash(harness-rpc*)",
       "Bash(git *)",
-      "Bash(curl -sf http://127.0.0.1:800*)"
+      "Bash(curl -sf {{HYBRID_COORDINATOR_CURL_TARGET}}*)",
+      "Bash(curl -sf {{AIDB_CURL_TARGET}}*)"
     ]
   },
   "hints": {
-    "enabled": true,
-    "endpoint": "http://127.0.0.1:8003/hints",
+    "enabled": {{HYBRID_COORDINATOR_HINTS_ENABLED}},
+    "endpoint": "{{HYBRID_COORDINATOR_HINTS_ENDPOINT}}",
     "autoFetch": true,
     "minScore": 0.55
   },

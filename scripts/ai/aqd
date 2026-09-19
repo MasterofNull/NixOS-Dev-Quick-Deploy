@@ -213,9 +213,15 @@ write_agent_command_specs() {
   local template_root="${PROJECT_ROOT}/templates/agentic-workflow"
   if [[ -d "$template_root" ]]; then
     render_template_file "$template_root/.claude/CLAUDE.md.tmpl" "$target_dir/.claude/CLAUDE.md" "$project_name" "$goal" "$stack" "$owner"
-    # Copy MCP settings for AI stack harness integration
+    # Render MCP settings for AI stack harness integration. settings.json.tmpl
+    # declares shared-engine capability placeholders ({{HYBRID_COORDINATOR_*}},
+    # {{AIDB_*}}) resolved from HYBRID_URL/AIDB_URL env at render time -- a
+    # plain `cp` would ship the literal unresolved tokens, so this reuses the
+    # gate installer's render_values()/rendered() engine (F1/F2 fix) instead
+    # of a second placeholder resolver.
     if [[ -f "$template_root/.claude/settings.json.tmpl" ]]; then
-      cp "$template_root/.claude/settings.json.tmpl" "$target_dir/.claude/settings.json"
+      run_python "${PROJECT_ROOT}/scripts/ai/lib/factory_gate_install.py" render-agentic-settings \
+        --target "$target_dir" --bundle-root "$template_root" --project-name "$project_name" || true
     fi
     render_template_file "$template_root/.claude/commands/prime.md.tmpl" "$target_dir/.claude/commands/prime.md" "$project_name" "$goal" "$stack" "$owner"
     render_template_file "$template_root/.claude/commands/create-prd.md.tmpl" "$target_dir/.claude/commands/create-prd.md" "$project_name" "$goal" "$stack" "$owner"
