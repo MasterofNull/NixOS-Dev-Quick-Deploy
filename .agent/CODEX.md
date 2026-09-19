@@ -114,7 +114,7 @@ Follow the canonical low-friction order:
 - path discovery: `als`, then `fd`
 - bounded reads: `acat`, then native read tools or `sed -n`
 
-If a preferred tool is unavailable, use one documented fallback and move on. Do not waste turns rediscovering the same absence.
+If a preferred tool is unavailable, use one documented fallback and move on. Do not waste turns rediscovering the same absence. If there is no fallback, reach the tool live via `aq-tool <pkg>` — no restart, no manifest gate (the capability manifest is a record, never a runtime gate; Rule 16 parity).
 
 ## NixOS System Contract (MANDATORY — all Codex tasks)
 

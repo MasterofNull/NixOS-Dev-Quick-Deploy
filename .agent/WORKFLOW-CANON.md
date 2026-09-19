@@ -140,6 +140,7 @@ asum <file>                             # structural overview (Py, JS, Go, Nix)
 - Path discovery: prefer `als`, fall back once to `fd`
 - Bounded reads: prefer `acat`, then use a native read tool or `sed -n`
 - Never retry an unchanged failed tool call without a changed hypothesis
+- No fallback available: reach the tool live via `aq-tool <pkg>` — no restart, no manifest gate (the capability manifest is a record, never a runtime gate; Rule 16 parity)
 
 **External research** (for implementation decisions, new integrations, security topics):
 - Web search for cutting-edge practices specific to the task

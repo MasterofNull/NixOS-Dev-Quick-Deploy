@@ -490,6 +490,7 @@ When a task is beyond your capability or tools, say so and request delegation �
 | List directory | `list_files` | Do not use shell `ls` |
 | Search contents | `search_files` | grep-equivalent, returns matches |
 | Run whitelisted commands | `run_command` | SAFE_COMMANDS whitelist; RTK auto-compresses output when installed (`"compressed": true` in response) |
+| Reach a tool not on PATH | `run_command('aq-tool <pkg> [args]')` | Live, no restart — resolves `<pkg>` from the pinned nixpkgs (`flake.lock`). No manifest/permission gate; the capability manifest is a record, never a runtime gate (Rule 16 parity). |
 | Consult codebase mapping | `run_command('aq-wiki --section <name>')` | understand-anything subsystem wiki (hybrid-coordinator, switchboard, aidb, local-agent, governance, …); `--list`/`--status` for coverage. Use BEFORE scanning raw source for orientation. Now whitelisted in SAFE_COMMANDS. |
 | Git status/diff | `git_status`, `git_diff` | Read-only git introspection |
 | Stage files | `git_add` | Only stage specific files |

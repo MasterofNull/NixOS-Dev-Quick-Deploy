@@ -1,0 +1,208 @@
+#!/usr/bin/env python3
+"""aq-tool — live, on-demand reach to any package in the factory's PINNED
+nixpkgs, mid-session, with NO restart and NO manifest/permission gate.
+
+ST-2 (.agents/plans/factory-shared-toolchain/DESIGN.md, "Live / on-demand"
+speed): a running agent that needs a tool not already on PATH runs
+`aq-tool <pkg> [args...]` instead of waiting for a rebuild or a shared-
+toolchain contribution. The capability manifest (ST-3) is a RECORD for
+reproducibility/readiness reporting — it is never consulted here and never
+gates this command.
+
+Pinned source: the nixpkgs input resolved LIVE from this repo's own
+flake.lock (root -> "nixpkgs" input edge — the same input `mkPkgs` in
+flake.nix uses for the default "stable" nixpkgsTrack every host resolves
+unless it opts into unstable). This is reproducible: it always matches
+whatever `flake.lock` currently pins, never an unpinned `nixpkgs#...`
+flake-registry lookup and never nixpkgs-unstable.
+
+Usage:
+  aq-tool <pkg> [args...]   Resolve <pkg> from the pinned nixpkgs and run it
+                            live (`nix run <pinned-ref>#<pkg> -- args...`),
+                            forwarding stdout/stderr and the exit code.
+  aq-tool --list            Print a short, curated list of commonly-needed
+                            tools (not an enumeration of all of nixpkgs).
+  aq-tool --help            Show this usage.
+
+--list/--help/list/help are read-only and never invoke `nix`.
+"""
+
+from __future__ import annotations
+
+import json
+import os
+import re
+import subprocess
+import sys
+from pathlib import Path
+
+REPO_ROOT = Path(__file__).resolve().parents[2]
+FLAKE_LOCK = REPO_ROOT / "flake.lock"
+
+TIMEOUT_ENV = "AQ_TOOL_TIMEOUT"
+DEFAULT_TIMEOUT_SECONDS = 120
+
+EXIT_OK = 0
+EXIT_USAGE = 2
+EXIT_UNAVAILABLE = 4
+EXIT_TIMEOUT = 5
+EXIT_LOCK_ERROR = 6
+
+# Curated shortlist for `--list` — a hint, not an enumeration of nixpkgs.
+# Any other nixpkgs attribute path also works via `aq-tool <pkg>`.
+CURATED_TOOLS: list[tuple[str, str]] = [
+    ("hello", "GNU hello — trivial smoke-test package"),
+    ("jq", "JSON processor"),
+    ("yq", "YAML processor"),
+    ("ripgrep", "rg — fast recursive search"),
+    ("fd", "fast find alternative"),
+    ("shellcheck", "shell script linter"),
+    ("curl", "HTTP client"),
+    ("git", "version control"),
+    ("nodejs_22", "Node.js runtime"),
+    ("python3", "Python interpreter"),
+    ("ffmpeg", "audio/video transcoding"),
+    ("playwright-driver", "browser automation driver"),
+    ("k6", "load testing"),
+    ("terraform", "infra as code"),
+    ("gdal", "geospatial data abstraction (ogrinfo, gdalinfo, ...)"),
+]
+
+# Substrings nix's own attribute-resolution failure includes on stderr,
+# distinguishing "the tool doesn't exist in the pinned nixpkgs" from "the
+# tool ran and exited non-zero on its own" (which must be forwarded as-is,
+# never rewritten as "unavailable").
+RESOLUTION_FAILURE_PATTERNS = (
+    "does not provide attribute",
+    "error: flake",
+    "was not found",
+)
+
+PKG_NAME_RE = re.compile(r"^[A-Za-z0-9_][A-Za-z0-9_.+-]*$")
+
+
+def _resolve_pinned_nixpkgs_ref() -> tuple[str | None, str]:
+    """Resolve `github:<owner>/<repo>/<rev>` for the nixpkgs input this
+    repo's own flake.lock pins, by following root -> "nixpkgs" -> locked.
+    Returns (ref, error); ref is None on any parse/shape failure."""
+    try:
+        raw = FLAKE_LOCK.read_text(encoding="utf-8")
+    except OSError as exc:
+        return None, f"cannot read {FLAKE_LOCK}: {exc}"
+    try:
+        lock = json.loads(raw)
+    except json.JSONDecodeError as exc:
+        return None, f"cannot parse {FLAKE_LOCK}: {exc}"
+    try:
+        root_node = lock["nodes"][lock["root"]]
+        nixpkgs_node_name = root_node["inputs"]["nixpkgs"]
+        locked = lock["nodes"][nixpkgs_node_name]["locked"]
+    except (KeyError, TypeError) as exc:
+        return None, f"unexpected flake.lock shape (missing {exc})"
+    if locked.get("type") != "github":
+        return None, f"unsupported locked nixpkgs input type '{locked.get('type')}' (expected 'github')"
+    owner, repo, rev = locked.get("owner"), locked.get("repo"), locked.get("rev")
+    if not (owner and repo and rev):
+        return None, "locked nixpkgs input missing owner/repo/rev"
+    return f"github:{owner}/{repo}/{rev}", ""
+
+
+def _timeout_seconds() -> int:
+    raw = os.environ.get(TIMEOUT_ENV, "")
+    if raw:
+        try:
+            val = int(raw)
+            if val > 0:
+                return val
+        except ValueError:
+            pass
+    return DEFAULT_TIMEOUT_SECONDS
+
+
+def cmd_list() -> int:
+    print("aq-tool — live reach to the factory's pinned nixpkgs (no restart, no gate)")
+    print()
+    print("Usage: aq-tool <pkg> [args...]")
+    print()
+    print("Commonly-needed tools (curated shortlist — not an enumeration of nixpkgs):")
+    width = max(len(name) for name, _ in CURATED_TOOLS)
+    for name, desc in CURATED_TOOLS:
+        print(f"  {name.ljust(width)}  {desc}")
+    print()
+    print("Any other nixpkgs package attribute also works, e.g.:")
+    print("  aq-tool <pkgs-attr-path> [args...]")
+    print()
+    print(f"Pinned source: derived live from {FLAKE_LOCK.name}'s own root->nixpkgs")
+    print("input edge (the same nixpkgs the 'stable' nixpkgsTrack resolves).")
+    print("No manifest or permission file is consulted.")
+    return EXIT_OK
+
+
+def cmd_help() -> int:
+    assert __doc__ is not None
+    print(__doc__.strip())
+    return EXIT_OK
+
+
+def cmd_run(pkg: str, args: list[str]) -> int:
+    if not PKG_NAME_RE.match(pkg):
+        print(f"aq-tool: refusing malformed package name: {pkg!r}", file=sys.stderr)
+        return EXIT_USAGE
+
+    ref, err = _resolve_pinned_nixpkgs_ref()
+    if ref is None:
+        print(f"aq-tool: cannot resolve pinned nixpkgs from {FLAKE_LOCK}: {err}", file=sys.stderr)
+        return EXIT_LOCK_ERROR
+
+    target = f"{ref}#{pkg}"
+    cmd = [
+        "nix", "run",
+        "--extra-experimental-features", "nix-command flakes",
+        target, "--",
+        *args,
+    ]
+    timeout = _timeout_seconds()
+    try:
+        proc = subprocess.run(
+            cmd,
+            cwd=str(REPO_ROOT),
+            stdout=subprocess.PIPE,
+            stderr=subprocess.PIPE,
+            timeout=timeout,
+        )
+    except FileNotFoundError:
+        print("aq-tool: 'nix' is not on PATH — cannot reach any tool live", file=sys.stderr)
+        return EXIT_UNAVAILABLE
+    except subprocess.TimeoutExpired:
+        print(
+            f"aq-tool: resolving/running '{pkg}' from the pinned nixpkgs timed out after "
+            f"{timeout}s (set {TIMEOUT_ENV}=<seconds> to extend)",
+            file=sys.stderr,
+        )
+        return EXIT_TIMEOUT
+
+    stderr_text = proc.stderr.decode("utf-8", errors="replace")
+    if proc.returncode != 0 and any(p in stderr_text for p in RESOLUTION_FAILURE_PATTERNS):
+        sys.stderr.buffer.write(proc.stderr)
+        print(f"tool unavailable: {pkg} (not in pinned nixpkgs)", file=sys.stderr)
+        return EXIT_UNAVAILABLE
+
+    sys.stdout.buffer.write(proc.stdout)
+    sys.stderr.buffer.write(proc.stderr)
+    return proc.returncode
+
+
+def main(argv: list[str] | None = None) -> int:
+    argv = sys.argv[1:] if argv is None else argv
+    if not argv:
+        return cmd_help()
+    first = argv[0]
+    if first in ("--list", "list"):
+        return cmd_list()
+    if first in ("--help", "-h", "help"):
+        return cmd_help()
+    return cmd_run(first, argv[1:])
+
+
+if __name__ == "__main__":
+    raise SystemExit(main())
