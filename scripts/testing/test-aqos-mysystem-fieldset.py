@@ -4,6 +4,7 @@
 from __future__ import annotations
 
 import json
+import re
 from pathlib import Path
 
 ROOT = Path(__file__).resolve().parents[2]
@@ -54,6 +55,10 @@ def declared_paths(root: Path) -> set[str]:
         anchor = f"options.mySystem.roles.{role} = {{"
         if anchor in text and "    enable = lib.mkOption" in text[text.index(anchor):]:
             declared.add(f"roles.{role}.enable")
+    toolchain = (root / "nix/modules/roles/agentic-toolchain.nix").read_text()
+    anchor = "options.mySystem.roles.agenticToolchain = {"
+    if anchor in toolchain and "    enable = lib.mkOption" in toolchain[toolchain.index(anchor):]:
+        declared.add("roles.agenticToolchain.enable")
     return declared
 
 
@@ -85,6 +90,7 @@ def main() -> int:
 
     by_path = {entry["path"]: entry for entry in fields}
     assert by_path["roles.mobile.enable"]["authority"] == "expert-only"
+    assert by_path["roles.agenticToolchain.enable"]["authority"] == "user-intent"
     assert by_path["deployment.rootFsckMode"]["authority"] == "expert-only"
     assert by_path["hardware.isMobile"]["authority"] == "detector"
     assert by_path["hardware.systemRamGb"]["source_catalog_ids"] == [
@@ -99,6 +105,13 @@ def main() -> int:
                    "      cpuVendor = lib.mkOption { };\n    aiStack = {")
     assert not declaration_in_scope(
         wrong_scope, "    hardware = {", "    kernel = {", "      cpuVendor = lib.mkOption")
+
+    # ST-1 is installer-selectable but must not activate on an existing host.
+    # Only a future owner-gated host act may set this option true.
+    host_configs = (ROOT / "nix/hosts").glob("**/*.nix")
+    enabled = [path for path in host_configs if re.search(
+        r"mySystem\.roles\.agenticToolchain\.enable\s*=\s*true\b", path.read_text())]
+    assert not enabled, enabled
 
     # Resolver projection keys must remain a subset and activation must stay
     # visibly fail-closed until the execution verifier slice exists.

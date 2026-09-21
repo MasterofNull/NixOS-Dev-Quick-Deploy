@@ -1,5 +1,6 @@
 {...}: {
   imports = [
+    ./agentic-toolchain.nix
     ./ai-stack.nix
     ./cpp-dev.nix
     ./desktop.nix

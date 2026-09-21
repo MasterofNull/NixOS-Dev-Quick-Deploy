@@ -68,12 +68,11 @@ def artifacts() -> tuple[dict, dict, dict]:
         "mac_algorithm": "hmac-sha256",
     }
     receipt["mac_hmac_sha256"] = hmac.new(KEY, resolver.jcs_bytes(receipt), hashlib.sha256).hexdigest()
-    # Re-pinned 2026-09-07: adding the profile.aqos-workstation golden-profile
-    # entry changed the module catalog digest AND the mySystem field-set (the
-    # profile field gained a source); both flow through the resolved lock and the
-    # compiled projection into this receipt. Legitimate golden re-pin — only bound
-    # catalog/fieldset inputs changed; the MAC still binds the receipt.
-    assert receipt["mac_hmac_sha256"] == "25b9f90b1c4d10bf2cb2128910b60055c623a314d7b6cbd8ed1dece79521f93c"
+    # Re-pinned 2026-09-20: ST-1 adds the default-off agentic-toolchain catalog
+    # entry and its one allowed installer field. Both changed input bytes flow
+    # through the resolved lock and compiled projection into this receipt; the
+    # MAC still binds every receipt field and is not weakened for this re-pin.
+    assert receipt["mac_hmac_sha256"] == "78c96d541dc289d645cdd05d1f39c6df4117bd0ede7ebe6559294077b11db1db"
     return lock, projection, receipt
 
 
