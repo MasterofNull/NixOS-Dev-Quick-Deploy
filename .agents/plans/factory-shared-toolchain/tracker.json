@@ -1,0 +1,66 @@
+{
+  "plan": {
+    "id": "factory-shared-toolchain",
+    "title": "Factory shared agentic toolchain",
+    "prd_ref": ".agents/plans/factory-shared-toolchain/DESIGN.md",
+    "owner": "hyperd",
+    "goal": "Expose a reproducible, Nix-store-shared development-tool baseline without vendoring payloads into provisioned projects or activating a host by default."
+  },
+  "phases": [
+    {
+      "id": "st1",
+      "name": "ST-1 — inert Nix module and installer contract",
+      "goal": "Default-off module, installer catalog/fieldset projection, and bound execution evidence.",
+      "order": 1
+    },
+    {
+      "id": "activation",
+      "name": "Owner-gated activation",
+      "goal": "A separate owner act may enable the role and rebuild a chosen host.",
+      "order": 2
+    }
+  ],
+  "items": [
+    {
+      "id": "st1-installer-contract",
+      "name": "Default-off shared toolchain installer projection",
+      "phase": "st1",
+      "kind": "slice",
+      "goal": "Project only roles.agenticToolchain.enable and keep every host inactive.",
+      "validation_goal": "Catalog, fieldset, resolver, and execution-MAC contracts pass; Nix evaluation remains build-only.",
+      "deps": [],
+      "detection": {
+        "module": "nix/modules/roles/agentic-toolchain.nix",
+        "fieldset": "config/aqos-mysystem-fieldset-v1.json"
+      },
+      "pct_hint": 90,
+      "acceptance": {
+        "status": "prepared-review-pending",
+        "by": null,
+        "date": null,
+        "note": "WIP implementation only; independent review and owner activation decision remain required."
+      }
+    },
+    {
+      "id": "st1-owner-activation",
+      "name": "Enable selected host and rebuild",
+      "phase": "activation",
+      "kind": "owner-act",
+      "goal": "Set mySystem.roles.agenticToolchain.enable = true only after explicit owner approval.",
+      "validation_goal": "Owner-selected build/switch plus runtime tool-path evidence.",
+      "deps": [
+        "st1-installer-contract"
+      ],
+      "detection": {
+        "blocker_note": "Activation excluded from ST-1 installer-contract work."
+      },
+      "pct_hint": 0,
+      "acceptance": {
+        "status": "pending",
+        "by": null,
+        "date": null,
+        "note": "Owner-gated."
+      }
+    }
+  ]
+}

@@ -15,6 +15,15 @@ in {
     mySystem.roles.virtualization.enable = lib.mkDefault true;
     mySystem.roles.gaming.enable = lib.mkDefault false;
     mySystem.roles.desktop.enable = lib.mkDefault true;
+    # Factory shared toolchain (ST-1, .agents/plans/factory-shared-toolchain/
+    # DESIGN.md): baseline agentic dev toolchain (Playwright driver +
+    # pre-fetched browsers) surfaced here as an AVAILABLE-BUT-DISABLED
+    # option, matching roles.gaming above. Owner sets
+    # mySystem.roles.agenticToolchain.enable = true (+ optional .profiles)
+    # and reruns nixos-rebuild to put it on every agent shell's PATH; until
+    # then this line changes nothing (mkDefault false == the module's own
+    # default). See nix/modules/roles/agentic-toolchain.nix.
+    mySystem.roles.agenticToolchain.enable = lib.mkDefault false;
     mySystem.mcpServers.enable = lib.mkDefault true;
     mySystem.monitoring.enable = lib.mkDefault true;
     mySystem.monitoring.commandCenter.enable = lib.mkDefault true;

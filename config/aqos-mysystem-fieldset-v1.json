@@ -93,6 +93,15 @@
       "reason": "Closed to active profiles until the P1 golden profile lands."
     },
     {
+      "path": "roles.agenticToolchain.enable",
+      "authority": "user-intent",
+      "value_kind": "bool",
+      "source_catalog_ids": [
+        "role.agentic-toolchain"
+      ],
+      "reason": "Explicit owner choice; the shared baseline remains inert until enabled and rebuilt."
+    },
+    {
       "path": "roles.aiStack.enable",
       "authority": "user-intent",
       "value_kind": "bool",

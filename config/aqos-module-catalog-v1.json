@@ -561,6 +561,27 @@
       "source": "nix/modules/profiles/minimal.nix"
     },
     {
+      "id": "role.agentic-toolchain",
+      "category": "role",
+      "label": "Agentic shared toolchain role",
+      "description": "Default-off shared Playwright/browser baseline with opt-in profiles, pinned by this flake.",
+      "module_path": "nix/modules/roles/agentic-toolchain.nix",
+      "support_predicate": {
+        "kind": "enable-flag",
+        "option": "roles.agenticToolchain.enable"
+      },
+      "resource_cost": {
+        "ram_class": "none",
+        "disk_class": "moderate"
+      },
+      "deps": [],
+      "conflicts": [],
+      "projected_mysystem_fields": [
+        "roles.agenticToolchain.enable"
+      ],
+      "source": "nix/modules/roles/agentic-toolchain.nix"
+    },
+    {
       "id": "role.ai-stack",
       "category": "role",
       "label": "AI stack role",
