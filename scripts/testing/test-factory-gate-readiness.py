@@ -17,6 +17,7 @@ Covers the five adversarial cases from
 """
 from __future__ import annotations
 
+import hashlib
 import json
 import os
 import subprocess
@@ -251,6 +252,16 @@ def main() -> int:
         # support: it exits 0 on --pre-commit but never writes the receipt.
         gate_runner_path.write_text("#!/usr/bin/env bash\nset -euo pipefail\nexit 0\n", encoding="utf-8")
         gate_runner_path.chmod(0o755)
+        # This is an old factory-owned baseline, not arbitrary user
+        # tampering: lossless upgrades may refresh only a path whose receipt
+        # expressly records the currently installed bytes and mode.
+        prior_receipt_path = upgrade_target / ".factory/gate-install.json"
+        prior_receipt = json.loads(prior_receipt_path.read_text(encoding="utf-8"))
+        prior_receipt["managed_files"]["scripts/governance/gate-runner"] = {
+            "disposition": "factory_owned", "mode": 0o755,
+            "sha256": hashlib.sha256(gate_runner_path.read_bytes()).hexdigest(),
+        }
+        prior_receipt_path.write_text(json.dumps(prior_receipt), encoding="utf-8")
         evidence_path.unlink()
         stale_runner_report = preflight(upgrade_target, expected=1, path_prefix=upgrade_fake_bin)
         assert "MISSING_EXECUTION_EVIDENCE" in blocker_codes(stale_runner_report)

@@ -52,6 +52,9 @@ def main() -> int:
                 "unsafe_state_refused": False, "layout_confirmation_bound": False,
                 "unsafe_receipt_refused": False, "existing_receipt_preserved": False,
                 "upgrade_idempotent_preserves_user_files": False,
+                "upgrade_preserves_local_gate_configuration": False,
+                "overwrite_backups_lossless": False,
+                "legacy_receipt_migrates_losslessly": False,
                 "foreign_hookspath_still_refused": False,
                 "upgrade_refuses_unsafe_receipt": False,
                 "upgrade_succeeds_with_ordinary_receipt": False}
@@ -191,10 +194,19 @@ def main() -> int:
         gate_runner = upgrade_fixture / "scripts/governance/gate-runner"
         gate_runner.write_text("#!/usr/bin/env bash\nset -euo pipefail\nexit 0\n", encoding="utf-8")
         gate_runner.chmod(0o755)
+        secret_scan = upgrade_fixture / "scripts/governance/checks.d/hard-20-secret-scan.sh"
+        secret_scan.write_text("#!/usr/bin/env bash\necho operator-secret-scan\n", encoding="utf-8")
+        secret_scan.chmod(0o755)
+        layout = upgrade_fixture / ".factory/repo-structure.conf"
+        layout.write_text(layout.read_text(encoding="utf-8") + "required=src\nallowed_top=docs\nallowed_top=src\nallowed_top=operator_notes\n", encoding="utf-8")
+        (upgrade_fixture / "src").mkdir()
 
         second_preview = preview(upgrade_fixture, "upgrade fixture")
         assert second_preview["safe_to_install"], second_preview
         assert second_preview.get("upgrade") is True
+        before_overwrites = {path: ((upgrade_fixture / path).read_bytes(),
+                                    (upgrade_fixture / path).stat().st_mode & 0o777)
+                             for path in second_preview["overwrites"]}
         second_installed = run(str(AQD), "workflows", "retrofit", "--target", str(upgrade_fixture),
                                "--name", "upgrade fixture", "--stack", "generic",
                                "--confirm-retrofit", second_preview["preview_digest"], cwd=ROOT)
@@ -205,9 +217,14 @@ def main() -> int:
         assert (upgrade_fixture / "docs/note.md").read_text(encoding="utf-8") == "written between retrofit runs\n"
         assert pulse.read_text(encoding="utf-8").endswith("[appended] operator note\n")
         assert (upgrade_fixture / "AGENTS.md").read_text(encoding="utf-8") == "project instructions\n"
-        # Factory tooling refreshed in place -- the tampered gate-runner stub
-        # is replaced by the current bundle's gate-runner again.
-        assert gate_runner.read_bytes() == (BUNDLE / "gate-runner").read_bytes()
+        # A changed managed file is local configuration, not implicit factory
+        # ownership.  The upgrade must list and retain it rather than clobber
+        # the operator's gate.
+        assert gate_runner.read_text(encoding="utf-8").endswith("exit 0\n")
+        assert any(item["path"] == "scripts/governance/gate-runner" for item in second_preview["preserved"])
+        assert secret_scan.read_text(encoding="utf-8") == "#!/usr/bin/env bash\necho operator-secret-scan\n"
+        assert "required=src\nallowed_top=docs\nallowed_top=src\nallowed_top=operator_notes\n" in layout.read_text(encoding="utf-8")
+        evidence["upgrade_preserves_local_gate_configuration"] = True
         run(str(upgrade_fixture / "scripts/governance/repo-structure-lint"), cwd=upgrade_fixture)
         evidence["upgrade_idempotent_preserves_user_files"] = True
 
@@ -219,6 +236,27 @@ def main() -> int:
         assert receipt_after_upgrade["preview_digest"] == second_preview["preview_digest"]
         assert receipt_after_upgrade.get("upgrade") is True
         evidence["upgrade_succeeds_with_ordinary_receipt"] = True
+        for source, backup_path in zip(sorted(second_preview["overwrites"]), second_receipt["backup_paths"]):
+            backup = upgrade_fixture / backup_path
+            assert backup.read_bytes() == before_overwrites[source][0]
+            assert (backup.stat().st_mode & 0o777) == before_overwrites[source][1]
+        evidence["overwrite_backups_lossless"] = True
+
+        # Legacy receipts did not record ownership.  Treat every extant
+        # managed file as local on the first migration, then record that
+        # preserved state so a future upgrade remains lossless.
+        receipt_after_upgrade.pop("managed_files", None)
+        (upgrade_fixture / ".factory/gate-install.json").write_text(
+            json.dumps(receipt_after_upgrade), encoding="utf-8")
+        legacy_preview = preview(upgrade_fixture, "upgrade fixture")
+        assert legacy_preview["safe_to_install"] and legacy_preview["upgrade"]
+        assert any(item["path"] == "scripts/governance/gate-runner" for item in legacy_preview["preserved"])
+        legacy_install = run(str(AQD), "workflows", "retrofit", "--target", str(upgrade_fixture),
+                             "--name", "upgrade fixture", "--stack", "generic",
+                             "--confirm-retrofit", legacy_preview["preview_digest"], cwd=ROOT)
+        assert json.loads(legacy_install.stdout)["installation"]["state"] == "INSTALLED"
+        assert gate_runner.read_text(encoding="utf-8").endswith("exit 0\n")
+        evidence["legacy_receipt_migrates_losslessly"] = True
 
         # -- Codex's receipt-destination safety (030da8ac) must survive the
         #    upgrade path unchanged: an upgrade candidate (core.hooksPath
@@ -246,7 +284,7 @@ def main() -> int:
         assert receipt_symlink_target.read_text(encoding="utf-8") == json.dumps(
             {"schema_version": 1, "hooks": {"configured_path": ".githooks"}})
         assert (upgrade_fixture / ".git/config").read_bytes() == unsafe_upgrade_config
-        assert gate_runner.read_bytes() == (BUNDLE / "gate-runner").read_bytes()
+        assert gate_runner.read_text(encoding="utf-8").endswith("exit 0\n")
         evidence["upgrade_refuses_unsafe_receipt"] = True
 
         # A foreign core.hooksPath is never treated as an upgrade candidate.

@@ -345,9 +345,7 @@ def preview(target: Path, bundle_root: Path, stack: str | None, project_name: st
 
 
 def copy_bundle(bundle_root: Path, target: Path) -> None:
-    # dirs_exist_ok=True lets a compatible-upgrade retrofit re-copy the
-    # retained bundle over its own prior copy; a genuinely foreign
-    # .factory/gate-bundle is refused earlier, before this is ever called.
+    """Copy a pristine bundle for greenfield installs only."""
     shutil.copytree(bundle_root, target / BUNDLE_DESTINATION, ignore=shutil.ignore_patterns("__pycache__", "*.pyc"),
                      dirs_exist_ok=True)
 
@@ -469,6 +467,44 @@ def _is_compatible_prior_install(target: Path) -> bool:
     return bool(receipt) and receipt.get("hooks", {}).get("configured_path") == HOOKS_PATH
 
 
+def file_record(path: Path, disposition: str = "factory_owned") -> dict[str, Any]:
+    return {"disposition": disposition, "mode": stat.S_IMODE(path.stat().st_mode), "sha256": digest_bytes(path)}
+
+
+def _same_record(path: Path, record: Any) -> bool:
+    return (path.is_file() and not path.is_symlink() and isinstance(record, dict)
+            and record.get("disposition") == "factory_owned"
+            and record.get("mode") == stat.S_IMODE(path.stat().st_mode)
+            and record.get("sha256") == digest_bytes(path))
+
+
+def managed_file_plan(bundle_root: Path, target: Path, entries: list[dict[str, str]], values: dict[str, str],
+                      routed: set[str]) -> dict[Path, tuple[bytes, int]]:
+    """Exact factory-owned ordinary files and modes, without touching a target."""
+    plan: dict[Path, tuple[bytes, int]] = {}
+    for source in sorted(bundle_root.rglob("*")):
+        if source.is_file() and "__pycache__" not in source.parts and source.suffix != ".pyc":
+            plan[BUNDLE_DESTINATION / source.relative_to(bundle_root)] = (source.read_bytes(), stat.S_IMODE(source.stat().st_mode))
+    outputs = {path: content for path, content in rendered_outputs(bundle_root, entries, values).items()
+               if _factory_managed(path)}
+    for name in ("pre-commit", "commit-msg"):
+        outputs[Path(f".factory/gate-retrofit-hooks/{name}")] = rendered(bundle_root / "hooks" / name, values)
+    outputs.update({Path(HOOKS_PATH) / name: router_script(target, name, name in {"pre-commit", "commit-msg"})
+                    for name in sorted(routed)})
+    for destination, content in outputs.items():
+        # Factory hook scripts are executable even if their source template is not.
+        mode = 0o755 if destination.parts[0] == HOOKS_PATH or "gate-retrofit-hooks" in destination.parts else 0o644
+        entry = next((entry for entry in entries if Path(entry["install_target"]) == destination), None)
+        if entry and (bundle_root / entry["bundle_path"]).stat().st_mode & stat.S_IXUSR:
+            mode = 0o755
+        plan[destination] = (content, mode)
+    return plan
+
+
+def backup_path(digest: str, relative: Path) -> Path:
+    return Path(".factory/gate-backups") / digest / "files" / relative
+
+
 def retrofit_preview(target: Path, bundle_root: Path, stack: str | None, project_name: str) -> dict[str, Any]:
     conflict = retrofit_metadata_conflict(target)
     upgrade = False
@@ -487,47 +523,44 @@ def retrofit_preview(target: Path, bundle_root: Path, stack: str | None, project
     detected = resolver(bundle_root, target, stack)
     commands, blocked = command_values(detected)
     manifest, entries = manifest_entries(bundle_root)
+    receipt = load_json(target / RECEIPT)
+    prior_files = receipt.get("managed_files") if isinstance(receipt.get("managed_files"), dict) else {}
     preserved: list[dict[str, Any]] = []
-    writes: list[str] = [str(path) for path in bundle_write_paths(bundle_root)]
+    writes: list[str] = []
+    overwrites: list[str] = []
     rendered_plan: list[dict[str, str]] = []
     values = render_values(project_name, commands, layout_policy(target, entries))
-    outputs = {path: content for path, content in rendered_outputs(bundle_root, entries, values).items()
-               if path.parts[0] != HOOKS_PATH}
     routed = {record["name"] for record in hooks} | {"pre-commit", "commit-msg"}
-    for name in ("pre-commit", "commit-msg"):
-        outputs[Path(f".factory/gate-retrofit-hooks/{name}")] = rendered(bundle_root / "hooks" / name, values)
-    outputs.update({Path(HOOKS_PATH) / name: router_script(target, name, name in {"pre-commit", "commit-msg"})
-                    for name in sorted(routed)})
-    for destination, content in outputs.items():
+    managed_plan = managed_file_plan(bundle_root, target, entries, values, routed)
+    for destination, (content, _mode) in managed_plan.items():
         candidate = target / destination
-        managed = _factory_managed(destination)
         if candidate.exists() or candidate.is_symlink():
-            if upgrade and managed:
-                # A compatible prior install: refresh our own tooling output
-                # in place instead of refusing or silently preserving it.
-                if candidate.is_symlink() or not candidate.is_file():
-                    conflict = conflict or f"unsupported existing destination: {destination}"
-                else:
-                    writes.append(str(destination))
-                    rendered_plan.append({"path": str(destination), "sha256": hashlib.sha256(content).hexdigest()})
-            elif managed:
+            if not upgrade:
                 conflict = conflict or f"enforcement component collision: {destination}"
             elif candidate.is_symlink() or not candidate.is_file():
                 conflict = conflict or f"unsupported existing destination: {destination}"
+            elif _same_record(candidate, prior_files.get(str(destination))):
+                writes.append(str(destination))
+                overwrites.append(str(destination))
+                rendered_plan.append({"path": str(destination), "sha256": hashlib.sha256(content).hexdigest()})
             else:
-                preserved.append({"path": str(destination), "mode": stat.S_IMODE(candidate.stat().st_mode), "sha256": digest_bytes(candidate)})
+                preserved.append({"path": str(destination), **file_record(candidate, "preserved_local")})
         else:
             writes.append(str(destination))
             rendered_plan.append({"path": str(destination), "sha256": hashlib.sha256(content).hexdigest()})
-    for path in (BUNDLE_DESTINATION, Path(".factory/gate-retrofit-hooks"), Path(".githooks")):
-        candidate = target / path
-        exists = candidate.exists() or candidate.is_symlink()
-        if not exists:
+    # User-facing scaffold files are always preserved, including custom scans/layout.
+    for destination, content in rendered_outputs(bundle_root, entries, values).items():
+        if _factory_managed(destination):
             continue
-        if not upgrade:
-            conflict = conflict or f"existing factory destination requires a separate merge plan: {path}"
-        elif candidate.is_symlink() or not candidate.is_dir():
-            conflict = conflict or f"unsupported existing destination: {path}"
+        candidate = target / destination
+        if candidate.exists() or candidate.is_symlink():
+            if candidate.is_symlink() or not candidate.is_file():
+                conflict = conflict or f"unsupported existing destination: {destination}"
+            else:
+                preserved.append({"path": str(destination), **file_record(candidate, "preserved_local")})
+        else:
+            writes.append(str(destination))
+            rendered_plan.append({"path": str(destination), "sha256": hashlib.sha256(content).hexdigest()})
     # The receipt is written after hooks/configuration, so it must be refused
     # during preview as rigorously as every earlier destination. In
     # particular, do not follow a pre-existing .factory/gate-install.json
@@ -537,6 +570,8 @@ def retrofit_preview(target: Path, bundle_root: Path, stack: str | None, project
     # allow_existing lets safe_write_path skip only the plain-exists
     # refusal, never the symlink/non-file refusal Codex's fix added.
     writes.append(str(RECEIPT))
+    if upgrade and (target / RECEIPT).is_file():
+        overwrites.append(str(RECEIPT))
     write_paths = [Path(path) for path in writes]
     directories = planned_directories(write_paths)
     for path in write_paths:
@@ -544,24 +579,28 @@ def retrofit_preview(target: Path, bundle_root: Path, stack: str | None, project
         if issue:
             conflict = conflict or issue
     config = target / ".git/config"
+    overwrites.append(".git/config")
     source_hash = bundle_digest(bundle_root)
     config_record = ({"mode": stat.S_IMODE(config.stat().st_mode), "sha256": digest_bytes(config)}
                      if config.is_file() and not config.is_symlink() else {"unavailable": True})
+    backup_paths = [str(backup_path("DIGEST", Path(path))) for path in sorted(set(overwrites))]
     fingerprint = {"bundle_sha256": source_hash, "config": config_record,
-                   "hooks": hooks, "preserved": preserved, "writes": sorted(set(writes)), "directories": directories,
+                   "hooks": hooks, "preserved": sorted(preserved, key=lambda item: item["path"]), "writes": sorted(set(writes)),
+                   "overwrites": sorted(set(overwrites)), "backup_plan": backup_paths, "directories": directories,
                    "configured_path": configured, "upgrade": upgrade,
                    "target_content_sha256": target_content_digest(target), "rendered_plan": rendered_plan,
                    "check_configuration": {"commands": commands, "required_unconfigured": blocked},
                    "target": str(target), "stack": stack or ""}
     digest = hashlib.sha256(json.dumps(fingerprint, sort_keys=True, separators=(",", ":")).encode()).hexdigest()
-    backup = f".factory/gate-backups/{digest}/.git-config"
-    backup_issue = safe_write_path(target, Path(backup))
-    conflict = conflict or backup_issue
+    backup_paths = [str(backup_path(digest, Path(path))) for path in sorted(set(overwrites))]
+    for backup in backup_paths:
+        conflict = conflict or safe_write_path(target, Path(backup))
     return {"schema_version": SCHEMA_VERSION, "operation": "retrofit-preview", "target": str(target), "project_name": project_name,
             "safe_to_install": not conflict, "blocker": conflict, "preview_digest": digest, "source_bundle_sha256": source_hash,
             "writes": sorted(set(writes)), "directories": directories, "rendered_plan": rendered_plan, "upgrade": upgrade,
-            "preserved": preserved, "hooks": {"configured_path": configured, "existing": hooks,
-            "routing": ".git/hooks -> .githooks wrappers"}, "backup_paths": [backup], "detector": detected,
+            "preserved": sorted(preserved, key=lambda item: item["path"]), "overwrites": sorted(set(overwrites)),
+            "hooks": {"configured_path": configured, "existing": hooks, "routing": ".git/hooks -> .githooks wrappers"},
+            "backup_paths": backup_paths, "detector": detected,
             "checks": {"commands": commands, "state": "CONFIGURATION_BLOCKED" if blocked else "READY", "required_unconfigured": blocked}}
 
 
@@ -585,42 +624,51 @@ def retrofit_install(target: Path, bundle_root: Path, stack: str | None, project
     if not confirmation or confirmation != report["preview_digest"]:
         report["installation"] = {"state": "CONFIRMATION_REQUIRED", "expected_preview_digest": report["preview_digest"]}
         return report
+    # Rebuild and compare before the first mutation: confirmations bind both
+    # the exact overwrite set and every contained backup destination.
+    if retrofit_preview(target, bundle_root, stack, project_name)["preview_digest"] != report["preview_digest"]:
+        report["installation"] = {"state": "CONFIRMATION_REQUIRED", "expected_preview_digest": retrofit_preview(target, bundle_root, stack, project_name)["preview_digest"]}
+        return report
     manifest, entries = manifest_entries(bundle_root)
     values = render_values(project_name, report["checks"]["commands"], layout_policy(target, entries))
-    outputs = {path: content for path, content in rendered_outputs(bundle_root, entries, values).items()
-               if path.parts[0] != HOOKS_PATH}
     routed = {record["name"] for record in report["hooks"]["existing"]} | {"pre-commit", "commit-msg"}
-    for name in ("pre-commit", "commit-msg"):
-        outputs[Path(f".factory/gate-retrofit-hooks/{name}")] = rendered(bundle_root / "hooks" / name, values)
-    outputs.update({Path(HOOKS_PATH) / name: router_script(target, name, name in {"pre-commit", "commit-msg"})
-                    for name in sorted(routed)})
+    managed_plan = managed_file_plan(bundle_root, target, entries, values, routed)
     upgrade = bool(report.get("upgrade"))
-    backup = target / report["backup_paths"][0]
-    backup.parent.mkdir(parents=True, exist_ok=True)
-    shutil.copy2(target / ".git/config", backup)
-    copy_bundle(bundle_root, target)
-    for relative, content in outputs.items():
+    # Back up every actual overwrite, including config and our ordinary receipt,
+    # before any mutation.  Preview has already rejected links, non-files, and
+    # collisions for these paths.
+    for relative, backup_relative in zip(sorted(report["overwrites"]), report["backup_paths"]):
+        source, backup = target / relative, target / backup_relative
+        backup.parent.mkdir(parents=True, exist_ok=True)
+        shutil.copy2(source, backup)
+    for relative, (content, mode) in managed_plan.items():
         destination = target / relative
-        refresh = upgrade and _factory_managed(relative)
-        if (destination.exists() or destination.is_symlink()) and not refresh:
+        if str(relative) not in report["writes"]:
             continue
         destination.parent.mkdir(parents=True, exist_ok=True)
         destination.write_bytes(content)
-        bundle_entry = next((entry for entry in entries if Path(entry["install_target"]) == relative), None)
-        if bundle_entry and (bundle_root / bundle_entry["bundle_path"]).stat().st_mode & stat.S_IXUSR:
-            destination.chmod(destination.stat().st_mode | stat.S_IXUSR | stat.S_IXGRP | stat.S_IXOTH)
-    for name in ("pre-commit", "commit-msg"):
-        (target / ".factory/gate-retrofit-hooks" / name).chmod(0o755)
-    for name in routed:
-        (target / HOOKS_PATH / name).chmod(0o755)
+        destination.chmod(mode)
+    # Scaffold files are project-owned: create only missing ones and retain
+    # existing content verbatim on both first install and upgrades.
+    for relative, content in rendered_outputs(bundle_root, entries, values).items():
+        if _factory_managed(relative) or (target / relative).exists() or (target / relative).is_symlink():
+            continue
+        destination = target / relative
+        destination.parent.mkdir(parents=True, exist_ok=True)
+        destination.write_bytes(content)
     configured = git(target, "config", "--local", "core.hooksPath", HOOKS_PATH)
     if configured.returncode:
         raise RuntimeError(f"could not configure core.hooksPath: {configured.stderr.strip()}")
+    managed_files: dict[str, Any] = {}
+    for relative in managed_plan:
+        path = target / relative
+        managed_files[str(relative)] = file_record(path, "factory_owned" if str(relative) in report["writes"] else "preserved_local")
     receipt = {"schema_version": SCHEMA_VERSION, "bundle_version": manifest.get("bundle_version"), "target": str(target), "retrofit": True,
                "preview_digest": report["preview_digest"], "backup_paths": report["backup_paths"], "checks": report["checks"],
                "hooks": {"configured_path": HOOKS_PATH, "state": "ACTIVE", "composed": sorted(routed)}, "upgrade": upgrade,
                "proof": {"state": "HOOK_PATH_VERIFIED", "detail": "Existing hooks are routed before factory hooks; execution proof is fixture-only."},
-               "activation": "ACTIVATION_BLOCKED" if report["checks"]["required_unconfigured"] else "READY"}
+               "activation": "ACTIVATION_BLOCKED" if report["checks"]["required_unconfigured"] else "READY",
+               "managed_files": managed_files}
     (target / RECEIPT).parent.mkdir(parents=True, exist_ok=True)
     (target / RECEIPT).write_text(json.dumps(receipt, indent=2, sort_keys=True) + "\n", encoding="utf-8")
     receipt["installation"] = {"state": "INSTALLED", "receipt_path": str(RECEIPT)}
@@ -653,6 +701,15 @@ def install(target: Path, bundle_root: Path, stack: str | None, project_name: st
     configured = git(target, "config", "--local", "core.hooksPath", HOOKS_PATH)
     if configured.returncode:
         raise RuntimeError(f"could not configure core.hooksPath: {configured.stderr.strip()}")
+    # Greenfield/project-init receipts establish the same ownership baseline
+    # as retrofit receipts.  Without it, the first later retrofit would have
+    # to conservatively preserve the live capability declaration forever.
+    managed_files = {
+        str(path.relative_to(target)): file_record(path)
+        for path in target.rglob("*")
+        if path.is_file() and not path.is_symlink()
+        and _factory_managed(path.relative_to(target))
+    }
     receipt = {
         "schema_version": SCHEMA_VERSION,
         "bundle_version": manifest.get("bundle_version"),
@@ -666,6 +723,7 @@ def install(target: Path, bundle_root: Path, stack: str | None, project_name: st
         "tracker": {"state": "DISCOVERED", "paths": [str(STARTER_TRACKER)]},
         "proof": {"state": "HOOK_PATH_VERIFIED", "detail": "Configured target hook path and executable hook files; execution proof is isolated fixture coverage."},
         "activation": "ACTIVATION_BLOCKED" if report["checks"]["required_unconfigured"] else "READY",
+        "managed_files": managed_files,
     }
     receipt_path = target / RECEIPT
     receipt_path.parent.mkdir(parents=True, exist_ok=True)
