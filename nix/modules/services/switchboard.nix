@@ -472,13 +472,13 @@ in {
           # both lines + set c2SchedulerContextIssuer.enable=false → default-OFF byte-parity.
           "CAPABILITY_SCHEDULER_CONTEXT_ISSUER=1"
           "AQ_SCHEDULER_CONTEXT_SOCKET_PATH=${cfg.aiStack.c2SchedulerContextIssuer.socketPath}"
-          # C6 activation (2026-08-15): the slot_queue revocation fence + the gate's epoch resolver read
-          # the authoritative epoch from the revocation-epoch authority UDS (closes C6-B3 review CP-3, the
-          # deferred switchboard socket injection). primaryUser reaches it via aq-revocation-epoch-clients.
-          # With the flag ON, a signed owner epoch-bump revokes held scheduler reservations (the fleet
-          # kill-switch). REVERT: remove both lines + set CAPABILITY_SCHEDULER_LEASE_GATE default → OFF byte-parity.
-          "CAPABILITY_SCHEDULER_LEASE_GATE=1"
-          "AQ_REVOCATION_EPOCH_SOCKET_PATH=${cfg.aiStack.revocationEpochAuthority.socketPath}"
+          # C6 activation (2026-08-15) REVERTED (2026-09-24, independent-review Finding 6): the
+          # mechanism-test owner key was still `active` with this gate ON, so a surviving copy of
+          # that throwaway key could sign a fleet-wide epoch bump and deny scheduled work. Removed
+          # both lines per this note's own documented revert → CAPABILITY_SCHEDULER_LEASE_GATE
+          # defaults OFF (byte-parity with pre-mechtest). See capability_lease_gate.py
+          # resolve_current_epoch(): without this env var the gate never reaches the revocation
+          # authority. Re-activation requires a fresh owner-authorized cycle with a real owner key.
           "PORT=${toString swb.port}"
           "HOST=127.0.0.1"
           "LLAMA_CPP_URL=${llamaUrl}"
