@@ -1,0 +1,159 @@
+#!/usr/bin/env python3
+"""aq-activation-guard — dead-man auto-revert guard for enforcement activations
+(Foundation C SAFETY layer; default-OFF/INERT until the NixOS module's sweep
+timer is enabled AND something explicitly arms an activation).
+
+This is a bounded ADDITION on top of the existing manual kill-switches
+(CAPABILITY_LEASE_ENFORCEMENT / CAPABILITY_CELL_ADAPTER env flags in
+nix/modules/services/switchboard.nix, the C6 `aq-epoch-bump` lever) and the
+health-spider/dashboard capability-enforcement signal — it never replaces
+them, and it has NO built-in knowledge of any specific control. Every armed
+activation supplies its own health-check command and its own revert command
+(the exact documented kill action a human would run for that control).
+
+Usage:
+  aq-activation-guard arm <control-id> --window <minutes> \
+      --health-check "<shell command; exit 0 == healthy>" \
+      --revert-cmd "<shell command; the documented kill action for this control>" \
+      [--agent NAME] [--reason TEXT] [--state-dir PATH] [--force]
+
+  aq-activation-guard confirm <control-id> [--agent NAME] [--state-dir PATH]
+  aq-activation-guard disarm  <control-id> [--agent NAME] [--reason TEXT] [--state-dir PATH]
+  aq-activation-guard sweep   [--state-dir PATH] [--health-timeout S] [--revert-timeout S] [--agent NAME]
+  aq-activation-guard list    [--state-dir PATH]
+
+`sweep` is what the systemd timer runs. It is idempotent and safe to run
+manually or more often than the timer's cadence — it only acts on armed
+records whose deadline has already passed.
+"""
+from __future__ import annotations
+
+import argparse
+import json
+import sys
+from pathlib import Path
+
+_LIB = Path(__file__).resolve().parent / "lib"
+sys.path.insert(0, str(_LIB))
+
+import activation_guard as ag  # noqa: E402
+
+
+def _sdir(args) -> Path:
+    return ag.state_dir(getattr(args, "state_dir", None))
+
+
+def _cmd_arm(args) -> int:
+    try:
+        record = ag.arm(
+            args.control_id,
+            window_minutes=args.window,
+            health_check_cmd=args.health_check,
+            revert_cmd=args.revert_cmd,
+            agent=args.agent,
+            reason=args.reason,
+            sdir=_sdir(args),
+            force=args.force,
+        )
+    except ag.ActivationGuardError as exc:
+        print(f"aq-activation-guard: arm: {exc}", file=sys.stderr)
+        return 1
+    print(json.dumps(record, indent=2, sort_keys=True))
+    return 0
+
+
+def _cmd_confirm(args) -> int:
+    try:
+        record = ag.confirm(args.control_id, agent=args.agent, sdir=_sdir(args))
+    except ag.ActivationGuardError as exc:
+        print(f"aq-activation-guard: confirm: {exc}", file=sys.stderr)
+        return 1
+    print(json.dumps(record, indent=2, sort_keys=True))
+    return 0
+
+
+def _cmd_disarm(args) -> int:
+    try:
+        record = ag.disarm(args.control_id, agent=args.agent, reason=args.reason, sdir=_sdir(args))
+    except ag.ActivationGuardError as exc:
+        print(f"aq-activation-guard: disarm: {exc}", file=sys.stderr)
+        return 1
+    print(json.dumps(record, indent=2, sort_keys=True))
+    return 0
+
+
+def _cmd_sweep(args) -> int:
+    results = ag.sweep(
+        sdir=_sdir(args),
+        health_timeout=args.health_timeout,
+        revert_timeout=args.revert_timeout,
+        agent=args.agent,
+    )
+    for r in results:
+        print(json.dumps(r, sort_keys=True))
+    # Exit 1 only on an internal processing error (corrupt record, etc.) — a
+    # normal auto-revert is the guard working as designed, not a service
+    # failure; the LOUD event/alert is the notification channel for that.
+    return 1 if any(not r.get("ok", True) and r.get("action") == "error" for r in results) else 0
+
+
+def _cmd_list(args) -> int:
+    records = ag.list_armed(sdir=_sdir(args))
+    print(json.dumps(records, indent=2, sort_keys=True))
+    return 0
+
+
+def build_parser() -> argparse.ArgumentParser:
+    p = argparse.ArgumentParser(
+        prog="aq-activation-guard",
+        description="Dead-man auto-revert guard for enforcement activations (default-OFF safety layer).",
+    )
+    sub = p.add_subparsers(dest="command", required=True)
+
+    p_arm = sub.add_parser("arm", help="arm a bounded auto-revert window for an activation")
+    p_arm.add_argument("control_id")
+    p_arm.add_argument("--window", type=float, required=True, help="minutes until the deadline")
+    p_arm.add_argument("--health-check", required=True, dest="health_check",
+                        help="shell command; exit 0 == healthy (GREEN)")
+    p_arm.add_argument("--revert-cmd", required=True, dest="revert_cmd",
+                        help="shell command: the exact documented kill action for this control")
+    p_arm.add_argument("--agent", default="operator")
+    p_arm.add_argument("--reason", default=None)
+    p_arm.add_argument("--state-dir", default=None)
+    p_arm.add_argument("--force", action="store_true", help="overwrite an existing armed record for this control-id")
+    p_arm.set_defaults(func=_cmd_arm)
+
+    p_confirm = sub.add_parser("confirm", help="cancel the auto-revert (human or health-green confirms)")
+    p_confirm.add_argument("control_id")
+    p_confirm.add_argument("--agent", default="operator")
+    p_confirm.add_argument("--state-dir", default=None)
+    p_confirm.set_defaults(func=_cmd_confirm)
+
+    p_disarm = sub.add_parser("disarm", help="cancel the auto-revert (explicit no-action-needed)")
+    p_disarm.add_argument("control_id")
+    p_disarm.add_argument("--agent", default="operator")
+    p_disarm.add_argument("--reason", default=None)
+    p_disarm.add_argument("--state-dir", default=None)
+    p_disarm.set_defaults(func=_cmd_disarm)
+
+    p_sweep = sub.add_parser("sweep", help="process every armed record past its deadline (run by the systemd timer)")
+    p_sweep.add_argument("--state-dir", default=None)
+    p_sweep.add_argument("--health-timeout", type=int, default=30, dest="health_timeout")
+    p_sweep.add_argument("--revert-timeout", type=int, default=60, dest="revert_timeout")
+    p_sweep.add_argument("--agent", default="activation-guard-timer")
+    p_sweep.set_defaults(func=_cmd_sweep)
+
+    p_list = sub.add_parser("list", help="list currently-armed records")
+    p_list.add_argument("--state-dir", default=None)
+    p_list.set_defaults(func=_cmd_list)
+
+    return p
+
+
+def main(argv=None) -> int:
+    args = build_parser().parse_args(argv)
+    return args.func(args)
+
+
+if __name__ == "__main__":
+    raise SystemExit(main())
