@@ -62,6 +62,16 @@ in {
     # It holds NO private key (SOPS-free; serves the genesis epoch 0 read-only; bumps are owner-signed
     # offline). Required for C2-SCI's live mint. REVERT: enable=false.
     mySystem.aiStack.revocationEpochAuthority.enable = true;
+    # SAFETY — dead-man auto-revert guard (default-OFF/AVAILABLE, owner-directed 2026-09-24).
+    # Adds a bounded self-heal layer on top of (never replacing) the manual kill-switches +
+    # health-spider capability-enforcement check: `aq-activation-guard arm <control-id>
+    # --window <minutes> --health-check <cmd> --revert-cmd <the documented kill action>`
+    # arms a deadline; if health isn't GREEN by then (or is unreadable), the sweep timer
+    # executes that revert-cmd itself + emits a LOUD aq-event alert. Owner sets this to true
+    # to turn the sweep timer on; arming any specific activation is always a separate,
+    # explicit act — this line arms nothing. See
+    # nix/modules/services/activation-auto-revert-guard.nix.
+    mySystem.aiStack.activationAutoRevert.enable = lib.mkDefault false;
     mySystem.profileData.flatpakApps = lib.mkDefault flatpakProfiles.ai_workstation;
     mySystem.profileData.systemPackageNames = lib.mkDefault profilePackages.ai-dev;
 
