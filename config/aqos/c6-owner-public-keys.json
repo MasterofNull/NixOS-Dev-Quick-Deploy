@@ -1,11 +1,11 @@
 {
   "schema_version": "1",
-  "revision": 3,
+  "revision": 4,
   "keys": [
     {
       "key_id": "owner-mechtest-2026-08",
       "ed25519_public_key": "6f96ddf80d400219a2d9789f7e5cd7ef5c52c5930ff416d6d6ebfecdf8b55b0c",
-      "status": "active",
+      "status": "revoked",
       "not_before": null,
       "not_after": null
     }
