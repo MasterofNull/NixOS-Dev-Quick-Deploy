@@ -381,6 +381,119 @@ def test_revert_command_failure_still_alerts():
         shutil.rmtree(sdir, ignore_errors=True)
 
 
+# --------------------------------------------------------------------------
+# FOLLOW-UP 1: disarm-race guard (close the extra-revert window)
+# --------------------------------------------------------------------------
+def test_disarm_race_skips_extra_revert():
+    """If the armed record is removed (disarmed/confirmed) during the
+    health-check window, sweep must SKIP the revert — that activation was
+    legitimately cancelled, and an extra revert would be wrong, not safe."""
+    sdir = _tmp_sdir()
+    monkeys = {}
+    rec = _patch(monkeys)
+    try:
+        revert_marker = sdir / "REVERT_RAN"
+        armed_json = sdir / "armed" / "test-disarm-race.json"
+        ag.arm(
+            "test-disarm-race", window_minutes=0.0001,
+            # Simulates a legitimate disarm landing WHILE the health check is
+            # in flight: by the time run_health_check returns (RED), the
+            # armed record is already gone.
+            health_check_cmd=f"rm -f {armed_json} && exit 1",
+            revert_cmd=f"touch {revert_marker}",
+            sdir=sdir,
+        )
+        time.sleep(0.02)
+        results = ag.sweep(sdir=sdir, health_timeout=5, revert_timeout=5)
+        check("disarm-race: one result", len(results) == 1, str(results))
+        if results:
+            check(
+                "disarm-race: action == skipped-disarmed-race",
+                results[0]["action"] == "skipped-disarmed-race", str(results[0]),
+            )
+        check("disarm-race: revert command never ran (sentinel untouched)", not revert_marker.exists())
+        check(
+            "disarm-race: skip event emitted", "activation.sweep-skipped-disarm-race" in rec.types(), str(rec.types()),
+        )
+        check("disarm-race: no auto-reverted event fired", "activation.auto-reverted" not in rec.types())
+    finally:
+        _unpatch(monkeys)
+        shutil.rmtree(sdir, ignore_errors=True)
+
+
+def test_disarm_race_recheck_error_fails_safe_to_revert():
+    """FAIL-SAFE DIRECTION (must never regress): if the existence re-check
+    itself raises, that is NOT evidence of a legitimate disarm — sweep must
+    still treat the record as armed and revert+alert exactly as before."""
+    sdir = _tmp_sdir()
+    monkeys = {}
+    rec = _patch(monkeys)
+    orig_exists = ag.Path.exists
+    try:
+        revert_marker = sdir / "REVERT_RAN"
+        ag.arm(
+            "test-recheck-error", window_minutes=0.0001,
+            health_check_cmd="exit 1",  # RED
+            revert_cmd=f"touch {revert_marker}",
+            sdir=sdir,
+        )
+        time.sleep(0.02)
+
+        def _boom(self):
+            if self.name == "test-recheck-error.json":
+                raise OSError("simulated EACCES on armed-record existence re-check")
+            return orig_exists(self)
+
+        ag.Path.exists = _boom
+        results = ag.sweep(sdir=sdir, health_timeout=5, revert_timeout=5)
+        check("recheck-error: one result", len(results) == 1, str(results))
+        if results:
+            check(
+                "recheck-error: action == auto-reverted (fail-safe preserved)",
+                results[0]["action"] == "auto-reverted", str(results[0]),
+            )
+        check("recheck-error: revert command actually ran despite recheck error", revert_marker.exists())
+        check("recheck-error: LOUD alert emitted", "activation.auto-reverted" in rec.types())
+        check(
+            "recheck-error: no skip event emitted (recheck error must not skip)",
+            "activation.sweep-skipped-disarm-race" not in rec.types(),
+        )
+    finally:
+        ag.Path.exists = orig_exists
+        _unpatch(monkeys)
+        shutil.rmtree(sdir, ignore_errors=True)
+
+
+# --------------------------------------------------------------------------
+# FOLLOW-UP 2: total sweep failure still produces a LOUD alert
+# --------------------------------------------------------------------------
+def test_top_level_sweep_failure_emits_loud_alert():
+    """A total sweep failure (an exception before/outside the per-record
+    try/except — e.g. the armed-dir listing/mkdir failing) must still emit a
+    LOUD alert via emit_event/emit_pulse, the same path per-record auto-revert
+    alerts use — not just a silent journald stack trace nobody is watching."""
+    sdir = _tmp_sdir()
+    monkeys = {}
+    rec = _patch(monkeys)
+    orig_armed_dir = ag._armed_dir
+    try:
+        def _boom(_sdir):
+            raise OSError("simulated: cannot list/create the armed dir (EACCES)")
+
+        ag._armed_dir = _boom
+        results = ag.sweep(sdir=sdir, health_timeout=5, revert_timeout=5)
+        check("sweep-failed: one result", len(results) == 1, str(results))
+        if results:
+            check("sweep-failed: action == sweep-failed", results[0]["action"] == "sweep-failed", str(results[0]))
+            check("sweep-failed: ok is False", results[0]["ok"] is False, str(results[0]))
+        check("sweep-failed: loud alert event emitted", "activation.sweep-failed" in rec.types(), str(rec.types()))
+        check("sweep-failed: pulse emitted (loud, not just journald)", len(rec.pulses) == 1, str(rec.pulses))
+    finally:
+        ag._armed_dir = orig_armed_dir
+        _unpatch(monkeys)
+        shutil.rmtree(sdir, ignore_errors=True)
+
+
 def main() -> int:
     tests = [
         test_health_green_confirms_no_revert,
@@ -394,6 +507,9 @@ def main() -> int:
         test_double_arm_without_force_rejected,
         test_broken_event_spine_logs_fallback_never_raises,
         test_revert_command_failure_still_alerts,
+        test_disarm_race_skips_extra_revert,
+        test_disarm_race_recheck_error_fails_safe_to_revert,
+        test_top_level_sweep_failure_emits_loud_alert,
     ]
     for t in tests:
         print(f"\n--- {t.__name__} ---")

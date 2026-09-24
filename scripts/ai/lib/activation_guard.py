@@ -414,9 +414,37 @@ def sweep(
     unexpected exception anywhere in this function — resolves toward
     executing the revert command and emitting a LOUD alert. Never toward
     silently leaving a bad activation on.
+
+    This is a thin wrapper around `_sweep_inner`: a total sweep failure (an
+    exception BEFORE the per-record try/except below is even reached — e.g.
+    the armed-dir listing/mkdir failing, a permissions problem on the state
+    dir) would otherwise be a silent stack trace in a systemd timer's
+    journald output that nobody is watching in real time. Catching it here
+    and routing it through the same `emit_event`/`emit_pulse` LOUD-alert path
+    the per-record auto-revert branch uses means "the guard itself died" gets
+    exactly as much visibility as "a control got reverted" — both are things
+    an operator must see, and both use one alerting path instead of two.
     """
     sdir = sdir or state_dir()
     now = _now() if now is None else now
+    try:
+        return _sweep_inner(sdir, now, health_timeout, revert_timeout, agent)
+    except Exception as exc:  # noqa: BLE001 — the guard itself must never die quietly
+        detail = {"error": str(exc), "error_type": type(exc).__name__, "state_dir": str(sdir)}
+        emit_event(agent, "activation.sweep-failed", "sweep", detail, sdir=sdir)
+        emit_pulse(agent, "sweep-failed", "activation-guard", f"total sweep failure: {exc}"[:400])
+        return [{"control_id": None, "action": "sweep-failed", "ok": False, "error": str(exc)}]
+
+
+def _sweep_inner(
+    sdir: Path,
+    now: float,
+    health_timeout: int,
+    revert_timeout: int,
+    agent: str,
+) -> List[Dict[str, Any]]:
+    """The actual sweep pass — see `sweep()` for the fail-safe contract and
+    the total-failure catch-all this is wrapped by."""
     results: List[Dict[str, Any]] = []
 
     for p in sorted(_armed_dir(sdir).glob("*.json")):
@@ -475,6 +503,40 @@ def sweep(
             continue
 
         # RED or UNREADABLE — identical fail-safe handling.
+        #
+        # Disarm-race guard: the health check above can take up to
+        # health_timeout seconds, during which a human (or other automation)
+        # may have legitimately confirmed/disarmed this exact control — the
+        # armed record would then already be gone. Re-check existence
+        # IMMEDIATELY before executing revert_cmd so that a legitimate,
+        # in-window cancellation does not also earn an unnecessary revert.
+        # FAIL-SAFE: if the existence re-check itself raises (e.g. EACCES on
+        # the armed dir), that is NOT evidence of a legitimate disarm — treat
+        # it as still-armed and fall through to revert+alert exactly as
+        # before. This check may only SKIP a revert when it has positive
+        # proof (a clean, successful "file is gone") that the record was
+        # resolved elsewhere; it must never become a new way to suppress a
+        # needed revert.
+        try:
+            still_armed = p.exists()
+        except Exception:  # noqa: BLE001 — can't tell -> assume armed, fail toward revert
+            still_armed = True
+
+        if not still_armed:
+            emit_event(
+                agent, "activation.sweep-skipped-disarm-race", control_id,
+                {
+                    "health_status": health_status, "health_detail": health_detail,
+                    "reason": "armed record was disarmed/confirmed during the health-check window",
+                },
+                sdir=sdir,
+            )
+            results.append({
+                "control_id": control_id, "action": "skipped-disarmed-race", "ok": True,
+                "health_status": health_status,
+            })
+            continue
+
         revert_result = run_revert(record.get("revert_cmd", ""), timeout=revert_timeout)
         try:
             _terminate(
