@@ -64,6 +64,13 @@ reference, never copied per project.
   `deploy-options.local.nix`) and run `nixos-rebuild switch` — nothing
   changes until then. ST-3/ST-4 (this doc's remaining slices) remain
   unimplemented; ST-2 is independently implemented at `4017e5d9`.
+  **Updated 2026-09-24** (branch `factory/toolchain-add-tmux`, still
+  DEFAULT-OFF): baseline extended with `tmux` (owner-reported gap —
+  operators had no durable terminal multiplexer; previously reachable only
+  live via `aq-tool tmux`) and `procps` (for `watch`, not already covered
+  by the ai-dev profile's `bottom`/`procs`). `htop` was considered and
+  skipped — the ai-dev profile's `bottom` already covers that role.
+  Activation remains a separate owner act (unchanged).
 - ST-2: `aq-tool` live on-demand runtime reach (nix run/shell wrapper), no restart,
   no gate; implemented independently in `4017e5d9`. It remains outside ST-1's
   default-off Nix module and does not activate this baseline.
