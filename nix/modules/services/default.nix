@@ -25,5 +25,6 @@
     ./c2-scheduler-context-issuer.nix
     ./revocation-epoch-authority.nix
     ./workflow-deviation-broker.nix
+    ./activation-auto-revert-guard.nix
   ];
 }
