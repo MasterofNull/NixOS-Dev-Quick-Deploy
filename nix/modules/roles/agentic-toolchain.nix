@@ -21,8 +21,9 @@
   # checked before writing this list):
   #   - jq, ripgrep, git, curl  -> nix/modules/core/base.nix basePackageNames
   #     (unconditional, every profile)
-  #   - fd                      -> nix/data/profile-system-packages.nix
-  #     ai-dev profile list (already on PATH for the ai-dev profile)
+  #   - fd, bottom (modern htop), procs (modern ps) -> nix/data/profile-
+  #     system-packages.nix ai-dev profile list (already on PATH for the
+  #     ai-dev profile, which is also where this role is surfaced)
   #   - nodejs, go, rustc, cargo, ruby, neovim -> base.nix basePackageNames
   # ---------------------------------------------------------------------------
   baselinePackages = with pkgs; [
@@ -35,6 +36,19 @@
     # playwright npm/pip package still ships with the project; only the heavy
     # browser binaries are shared.
     playwright-driver
+
+    # Terminal multi-window/observability CLI an operator needs on every
+    # agent/operator shell (owner-reported gap 2026-09-24: tmux was only
+    # reachable via `aq-tool tmux` live/on-demand — this makes it durably
+    # present instead).
+    tmux # multi-window/multi-pane terminal session multiplexer
+
+    # Kept tight to the reported gap: `bottom` (htop-equivalent) and `procs`
+    # (ps-equivalent) are already on PATH via the ai-dev profile (see the
+    # "Deliberately NOT duplicated" note above), so htop itself is skipped.
+    # procps is added only for `watch` — the one common operator/observability
+    # command genuinely missing from both SSOTs above.
+    procps # `watch`, plus `ps`/`top`/`free`/`pgrep`/`pkill`
   ];
 
   # OPT-IN — heavier/specialized sets a project selects explicitly via
@@ -80,7 +94,8 @@ in {
       default = false;
       description = ''
         DEFAULT OFF. When true, adds the baseline shared agentic dev toolchain
-        (currently: Playwright driver + pre-fetched browsers) to every agent
+        (currently: Playwright driver + pre-fetched browsers, plus tmux and
+        procps for terminal multi-window and observability) to every agent
         shell's PATH via environment.systemPackages, pinned to this flake's
         nixpkgs (flake.lock) and reference-shared via the Nix store — never
         vendored per project.
