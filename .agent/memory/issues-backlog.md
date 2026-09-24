@@ -8,6 +8,36 @@
 
 [FIXED-PENDING-REBUILD] tier0-gates-blocked-missing-cliPython-deps — VALIDATED 2026-08-16: `tier0-validation-gate.sh --pre-commit` FAILs because the SYSTEM python 3.13.13 (`/run/current-system/sw/bin/python3` = `cliPython` in `nix/modules/core/base.nix`) lacked FOUR third-party deps the governance/QA/crypto suite imports: `pydantic` (canon-compiler + evidence-collector), `jsonschema` (28 validators: canon, evidence, phase0 L1A/L2A/L2B, state-authority ledger, agent-ops projection), `pytest` (0.10.27 round-decision authz + scheduler/backpressure suites), `cryptography` (Ed25519 in aq-epoch-bump/aq-provision-signer-key + lease/epoch libs). Same class as the known httpx/pyyaml "CLI python missing deps (transient across rebuilds)" pattern — an environment gap, NOT a code regression (reproduced with a docs-ONLY staged change). Severity: MEDIUM (blocked ALL commits, but fail-closed-safe — no false green). A SECOND dep layer surfaced once the first unblocked more phase0 checks: `fastapi`+`uvicorn` (switchboard + command-center dashboard api), `aiohttp` (local-inference contract clients), `rich` (aq-tui-dashboard) — the phase0 QA tests import the real service modules to check flag-off/wiring behavior, so they need the service deps. Checks 0.10.29/30/37-39/42/44 all failed purely on `ModuleNotFoundError` at import (even the "live inference" ones — test_dashboard_and_qa_wiring raised `No module named 'fastapi'`, not a model call). PROVEN pre-existing via `git stash` isolation (same reds on clean HEAD with deps present). ROOT-CAUSE FIX (Rule 19, durable): added the full 8-dep set to `cliPython` (`nix/modules/core/base.nix`) — pydantic, jsonschema, pytest, cryptography, fastapi, uvicorn, aiohttp, rich — each annotated with the gate/module it backs, so the entire governance+QA+crypto suite runs under system python without recurring dep-churn. pydantic landed rebuild 1 (import OK 2.12.5); jsonschema+pytest+cryptography landed rebuild 2 (all import OK); fastapi+uvicorn+aiohttp+rich land rebuild 3. NixOS declarative-only (Rule 13; no bare pip). Verify post-rebuild: `python3 -c 'import fastapi,uvicorn,aiohttp,rich'` then re-run tier0 (remaining reds, if any, would be genuine assertion failures to fix separately).
 
+## State-of-the-art tier elevation (engineering-scorecard gaps, folded 2026-09-24)
+
+[OPEN] sota-hosted-ci-on-every-pr — the tier0 governance/validation gate suite runs strongly as local/pre-commit hooks, but confirm+ensure it ALSO runs in a hosted CI on every PR so the guarantee holds even if a local hook is skipped.
+  Severity: medium.
+  Action: audit .github/workflows/* vs the tier0.d check set; wire the tier0 gate suite into a CI-on-PR job; make merge gate on it.
+
+[OPEN] sota-test-coverage-gate — no coverage measurement or coverage gate exists. Add coverage instrumentation over the test corpus and a gate that fails on a coverage drop (or below-threshold on changed files).
+  Severity: medium.
+  Action: pick a coverage tool for the Python/shell suites; baseline current coverage; add a changed-files coverage gate to tier0/CI.
+
+[OPEN] sota-perf-regression-gates — correctness is well-gated but performance is not. Add latency/throughput regression benchmarks + a gate for the hot paths (switchboard :8085, coordinator :8003, local inference).
+  Severity: medium.
+  Action: define benchmark harness + baselines; gate on a regression threshold.
+
+[OPEN] sota-supply-chain-sbom-slsa — we have gitleaks + flake-review + capability-intake, but no generated SBOM or build-provenance attestation. Add an SBOM (e.g. per release/flake) + SLSA-style provenance.
+  Severity: medium.
+  Action: generate SBOM from the flake closure; add provenance attestation to the release path.
+
+[OPEN] sota-ui-accessibility-standard — the dashboard UI surfaces are not held to an accessibility standard (contrast, keyboard nav, ARIA/semantics). Adopt an a11y checklist + a gate for dashboard.html/assets.
+  Severity: low-medium.
+  Action: define the a11y bar; audit + fix dashboard; add a lint/gate.
+
+[OPEN] sota-property-based-testing-security-primitives — targeted invariant tests exist; widen property-based / formal testing on the security primitives (capability-lease attenuation monotonicity, epoch-revocation stale-can't-revive, gate fail-closed).
+  Severity: medium.
+  Action: introduce a property-based testing tool; write properties for the lease/epoch/gate invariants.
+
+[OPEN] sota-signed-commits-and-tags — trunk protection binds review to the exact patch (hash), but commits/tags are not cryptographically signed. Add commit/tag signing (verified provenance) to strengthen authenticity/supply-chain.
+  Severity: low-medium.
+  Action: enable + document commit/tag signing; verify in the hook/CI.
+
 [OPEN][REOPENED — premature-FIXED] antigravity-wake-reports-nudge-not-drain — The two prior [FIXED] entries below (antigravity-auto-wake-path-missing-antigravity-binary, antigravity-inbox-no-auto-trigger-manual-nudge) were marked FIXED on the wrong signal: they validated that the auto-wake FIRES (`method: cli-nudge-ok`, exit 0), NOT that the advisory task actually DRAINS. VALIDATED root cause 2026-08-08: `aq-antigravity-auto-wake.path` IS active(waiting) and DID fire on inbox drops (journal Aug 8 12:13 + 20:04, cli-nudge-ok); the Antigravity IDE process IS running (antigravity-1.23.2 pid 1971139); yet 3 advisories sit pending with EMPTY receipts and no output files written. Mechanism: wake runs `antigravity chat --reuse-window --mode agent <WAKE_PROMPT>` (aq-antigravity-inbox:29) and reports success on the CHAT COMMAND's exit code — the IDE agent does NOT autonomously run the claim→work→complete workflow the prompt asks for. So `cli-nudge-ok` is a FALSE-SUCCESS signal (measures the nudge, not the outcome) — this is exactly the Activation-Gate miss (observable≠functionally-validated) + anti-gaming-adjacent (a green signal for work that didn't happen). Owner correctly flagged the premature "complete".
   Severity: HIGH (a whole advisory lane silently no-ops while reporting success; blocks fully leveraging Antigravity — acute now that Codex is down until Aug 15).
   Action: (1) DONE re-open + root-cause. (2) FIX the false signal: wake/dispatch success = DRAIN CONFIRMED (receipt.completed + declared output file exists) within a timeout, else honest state `nudged-not-drained` + surface/alert (observable+intervenable) — never report cli-nudge-ok as done. (3) Diagnose the IDE-agent-autonomy leg (does `antigravity chat --mode agent` actually auto-execute shell steps, or does it need IDE config / human approval?) — may be owner-IDE-environment-dependent; document the exact requirement. (4) VALIDATE end-to-end: a dropped task must reach receipt.completed + its output file, or the system must honestly report it did NOT. File: scripts/ai/aq-antigravity-inbox (WAKE_ARGV/wake success at :29,:156-159,:195), nix/modules/services/antigravity-auto-wake.nix.
