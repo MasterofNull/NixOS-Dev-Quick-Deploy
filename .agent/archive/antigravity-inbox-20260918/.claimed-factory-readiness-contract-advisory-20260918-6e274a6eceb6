@@ -1,0 +1,18 @@
+# Factory readiness and shared-engine contract advisory
+
+Output: .agents/plans/factory-gate-templates/FACTORY-READINESS-ADVISORY-20260918.md
+
+Read-only advisory. Do not implement, stage, commit, change HEAD, restart services,
+edit consumer files, alter inference budgets or trigger other agents.
+Read `.agent/PROJECT-FACTORY-GATE-TEMPLATES-PRD.md`,
+`.agents/plans/factory-gate-templates/FT5-NEXT-SLICE-BRIEF.md` and
+`.agents/plans/factory-gate-templates/DEPLOYMENT-CONTRACT-IMPLEMENTATION.md`.
+Owner has authorized the sequence. All software module names must describe function,
+not consumer project names. Shared engine is reused, not duplicated per project.
+
+Return at most five concrete adversarial acceptance cases for source/config-bound
+execution readiness, consumer project/root identity, scoped capabilities, absent lanes,
+and visible blocked/stale states. Distinguish local cooperative hooks from trusted CI.
+Do not expand into a new PRD/review loop; identify bounded implementation follow-ups.
+FF-015/017 process-death claims were retracted; retain progress/job visibility gap.
+Only write the declared output, then complete the claim through the inbox receipt flow.

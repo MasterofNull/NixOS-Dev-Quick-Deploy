@@ -27,6 +27,62 @@ Generalizes the former `CODEX-REVIEW-QUEUE.md` to ALL agents. SSOT principle:
 
 ## Live entries
 
+### Single-orchestrator handshake proposal — 2026-09-20
+
+Current main/origin is `4017e5d9`. Claude most recently advanced the canonical
+factory/shared-toolchain sequence (`7a25ce46`, `bdb7fa63`, `4017e5d9`) and the
+durable RESUME objective assigns ST-1 installer contracts as the active slice.
+Owner correction: Claude is rate-limited until 2026-09-23. Codex is therefore the
+**primary orchestrator** effective 2026-09-20 and owns integration ordering from
+current main. Claude's ST-1 checkpoint remains preserved and must not be discarded;
+Codex may route its remaining bounded work to available lanes. Claude becomes a
+queued confirmatory reviewer/implementer on return and does not block progress.
+
+A read-only CLI handshake attempt `claude-20260920-201209-h1n5yl` failed before a
+response because its OAuth session is expired; the owner then confirmed the Claude
+lane is rate-limited through the 23rd. This is not review credit. Returning Claude
+must read this queue and accept a bounded assignment rather than silently reclaiming
+orchestration. One main integrator, isolated worktrees, and exact file ownership
+remain mandatory.
+
+Immediate proposed order: finish ST-1 without collision; port and independently
+review Run-3 lossless upgrade on latest main; reconcile accepted evidence-scope;
+close project payload parity; consolidate the durable lifecycle authority; then
+add typed worktree-handback telemetry/remediation. Security/data-loss findings
+can preempt ordinary feature sequencing.
+
+### OWNER DECISION — Claude is coordinator; Codex near weekly limit — 2026-09-23
+
+Owner-directed 2026-09-23: "codex is reaching its near weekly limit. [Claude is] to
+take the coordinator and collaborator role." This SUPERSEDES the handshake debate
+above. CLAUDE = primary orchestrator + sole main integrator, effective now. CODEX =
+returning reviewer/catch-up lane when it has capacity (its recent landings — f35b2ea3
+lossless upgrade, de84c9e3 shared-toolchain role, 67130a9a payload inventory — stand;
+its in-flight/queued follow-ups are folded by Claude). Local Qwen = capability-limited
+implementer floor; Antigravity/Gemini = advisory reviewer. Rule 17 still holds: Claude
+routes implementation to the cheapest healthy eligible lane (Claude fast/sonnet
+sub-agents while Codex is out + local degraded), never self-implementing bounded
+slices; Claude reviews as flagship non-author. One main integrator (Claude) + isolated
+worktrees + exact file ownership. Claude's landed+pushed prior work: 7a25ce46
+(capability-manifest F1/F2), bdb7fa63 (router-health), 4017e5d9 (aq-tool ST-2); ST-1
+landed by the team (de84c9e3). Regrounding on the consolidated aq-os PRD/plans +
+Codex/Antigravity/local contributions now, then driving the next slices.
+
+### Factory corrective integration checkpoint — 2026-09-18
+
+Main now includes receipt-safety corrective `030da8ac`, independently reviewed on
+`d41524710e67427bf39a28c844c5c8fc60f8edfd8c9ee07b896119b907fc9dbf`
+and Tier0 53/0. Integration used the existing common-directory lock and refused
+changed HEAD or foreign staged work; unrelated dirty files were preserved.
+Claude's redeploy/upgrade corrective must retain receipt ancestor/symlink safety.
+
+Startup enforcement subject `fcd74ce0cd065174f4a0046cb2e4e347f92a431692c7cbf9414ecba15a6e681b`
+and Claude payload transport subject `f262fffcb3d280cee23171af6e44320baf8a65a2840d80bdf255adbbb62364a2`
+have independent non-author PASS; canonical Tier0 remains running. Neither is
+yet committed or activated. Execution-scope evidence binding is being implemented
+in its own worktree. Missing remote responses remain unavailable, not credited
+reviews; prior empty output is not attributed to a leak or shell execution.
+
 ### Current integration state — 2026-09-17
 
 Codex remains the sole shared-checkout integrator. Claude reviews/plans without
@@ -828,3 +884,147 @@ the shared tree contains preserved concurrent work.
 identity invariants; Gemini/Antigravity — complete F2 advisory and flag only bounded defects; Luna —
 retry a concise mechanical qualification only after quota reset. Do not rewrite the candidate or
 claim acceptance without exact subject-hash binding.
+
+---
+## [2026-09-18] Mendocino factory failures — diagnostic handoff for returning dev lanes
+Owner requested investigation and issue recording; no code fix or consumer mutation was performed.
+Read `.agents/summary/audits/factory-mendocino-investigation-20260918.md` first, then the original
+`.agents/drops/2026-09-18-factory-test-run-findings-mendocino.md`. Backlog entries cover FF-000
+through FF-021 with evidence dispositions and proposed bounded fix boundaries. Harness HEAD
+observed is d0b814cba4ce845d12e45936bbf91a42bde54aac; shared tree contains concurrent work.
+
+- Available architect/orchestrator: prioritize lifecycle placeholders (FF-000) and truthful
+  collective contributions/outcomes (FF-016/020); converge on existing authorities.
+- Eligible bounded implementer: after assignment, take one of consumer layout rendering
+  (FF-001), command/contract rendering (FF-002), previewed scaffolding (FF-005), MCP digest/enum
+  parity (FF-003/004), or paired RAG metric accounting (FF-011). Proposed acceptance fixtures
+  and files are in the report; work in an isolated checkout and claim exact files before edits.
+- Independent QA/reviewer: add consumer-outcome coverage (FF-021); both current factory suites
+  pass while a real consumer fails. Preserve hook safety/refusal checks and distinguish routing,
+  configuration readiness and actual target execution.
+- Operational investigator: recover task-specific handback and collective exit/signal receipts
+  (FF-007/015/017), and validate actual local/CLI/IDE transport readiness (FF-018).
+
+Corrections to carry forward: perfect collective scores are shallow heuristics rather than
+constants; negative RAG delta has a reproduced concurrency accounting bug; local Qwen is not
+the qwen OAuth CLI; marker-based polyglot detection already exists; /v1/models now returns 200.
+Force must not auto-confirm retrofit; no API-key insertion, auth loosening, frozen budget
+increase, history rewrite or unrelated staged-work commit follows from this diagnosis.
+No returning agent is credited as a reviewer of this report until it actually responds.
+## Authorized factory continuation — 2026-09-18
+
+### Integration reconciliation / immediate Claude check-in
+
+Main now includes Claude's `a81e4734` deployment rendering, `1f2237b1` MCP parity
+and `cec0012d` FT-5 readiness. Do not re-land duplicate full candidates. Codex's
+MCP branch `45d10063` is retained evidence, not a new main implementation.
+Reflection accounting branch `a510723d` is independent, Tier0 53/0 and final
+canonical reviewer PASS (`489045c95b75c6a1d0515f7cb357a225232d06351bcb3b19ef2cfa240e845d6b`).
+
+CRITICAL: native independent deployment review reproduced receipt symlink overwrite
+and ordinary existing receipt overwrite in the older subject that landed as a81e4734.
+Candidate corrective now restores RECEIPT write-path safety with both negatives,
+frozen in `/tmp/aq-factory-deployment-contract`; final whole-subject canonical hash
+`bd9e74792f59569ac98fbe9ecb1e351c12bb279f77923085125b2cd48d149c56`.
+Root will integrate only the bounded receipt delta onto current main, not old renderer.
+Claude's idempotency/status/evidence/force corrective must preserve this receipt guard;
+please hold integration touching installer while this security delta is reconciled.
+Isolated implementation may continue; no shared-index edits or HEAD switches.
+Earlier Claude/Antigravity PASS on old subject does not supersede reproduced security
+finding or certify the corrected subject. Field failures remain separately scoped.
+
+Owner authorized the canonical factory replication sequence and read-only consumer evidence
+access. Functional naming is mandatory for factory code, tests, APIs and branches. Root is
+integrator; implementations are isolated in `/tmp/aq-factory-deployment-contract`,
+`/tmp/aq-factory-mcp-workflow-parity` and `/tmp/aq-factory-reflection-metrics`.
+No consumer edits, local model/budget changes or service activation are authorized by this
+rendering/MCP correction. Main's concurrent staged work is preserved.
+
+Final operator report has 28 findings, SHA-256
+`5ad9a9fa2c82aab7620ed7c2f08213699e5de3356c9baed7c3e2dcd9ac811bb0`.
+FF-015/017 process-death claims are retracted; progress/job visibility remains open.
+Earlier internal FF-020/021 identifiers are replaced by `collective-outcome-integrity`
+and `consumer-outcome-coverage`, not confused with final operator findings.
+FF-020–027 are recorded in the issue backlog with typed boundaries and next actions.
+
+MCP candidate focused tests passed; independent exact-subject review is running.
+Other candidates remain implementation-in-progress. Unavailable lanes are queued for
+catch-up, not credited as reviewers. Next: review/validate/commit each bounded subject,
+then FT-5 executable readiness and shared-engine project scoping, followed by lifecycle,
+CI/CD and acceptance/improvement work per the existing PRD.
+
+---
+## [2026-09-23] REVIEW → CRITICAL FINDING: factory/execution-evidence-scope-lossless — DO NOT LAND as-is
+Independent non-author review (fresh Claude sonnet sub-agent, non-author of the Codex-authored slice)
+of `factory/execution-evidence-scope-lossless` (tip b2cecf4e, base de84c9e3). VERDICT: REQUEST_REVISION.
+- Reviewed full-diff subject (what actually lands): sha256 `bd6834efa05f5dfd75c0470013fee0ad0af70fb51cdbd3b635238825495e51bc`
+  (5 files — NOT 3; the security-critical logic is in `templates/factory-gate-bundle/gate-runner` +
+  `self-test.sh`, which the original review brief's pathspec omitted).
+- **CRITICAL (blocks landing):** the PRE-EXECUTION scope gate in `templates/factory-gate-bundle/gate-runner`
+  (python block ~L272-303, before the `checks=(...)` exec loop) never binds MANIFEST.json/checks.d to the
+  install receipt's recorded sha256 hashes — it only requires a name-set match (`expected==actual`) +
+  leaf symlink/non-file/exec checks. The receipt-hash binding (`canonical_scope()`) runs only in
+  `--preflight` and at post-execution evidence-write. Attack: co-edit a new `checks.d/*.sh` + a matching
+  MANIFEST.json entry (receipt untouched) → `expected==actual` true → injected check EXECUTES during a
+  normal --pre-commit/--pre-deploy run; caught only after the fact. This is a fail-OPEN in a security gate.
+- MEDIUM: TOCTOU between discovery-time validation and the re-glob exec loop (needs a race window).
+- LOW: dead `planned=` TOCTOU guard in `ensure_evidence_ignored` (both call sites pass no `planned`);
+  the retrofit `preview_digest` confirmation closes the meaningful window, so not exploitable as-is.
+- LOW/INFO: trust roots in unsigned `.factory/gate-install.json` in the target working tree (no signing
+  claimed); directory-level symlink of `.factory`/`gate-bundle` ancestors not leaf-checked.
+- Test gap: no test injects a NEW malicious check + matching manifest entry (receipt untouched) and asserts
+  refusal BEFORE any check runs (assert the injected side effect never occurs). The existing downgrade test
+  asserts exit-code only = post-hoc, not the claimed "before any discovered check executes" property.
+FIX (bounded follow-up, Codex's slice — Codex near weekly limit): pre-execution gate must call the full
+`canonical_scope()` (receipt-hash binding) BEFORE the check loop, or add per-file sha256 + receipt_expected
+verification there; add the injection-refusal test. Route to cheapest-eligible implementer (Rule 17) with
+the fix scoped; independent re-review (or /ultrareview) on the fixed subject before landing. Finding also
+logged as an OPEN issue (Rule 11). Codex confirmatory on return.
+
+### [2026-09-23] FIX IMPLEMENTED (pending independent review): evidence-scope pre-exec gate
+Bounded fix routed to a cheap implementer (Claude sonnet sub-agent, isolated worktree — Rule 17;
+Codex near-limit). Branch `factory/evidence-scope-preexec-hardening`, commit `737bb428` on top of
+b2cecf4e (NOT on main, NOT pushed). Full-slice diff `git diff de84c9e3..HEAD | sha256sum` =
+`5bbdce98c8623af36cfb751487a07b7adc068b647dc386ddadbcc02877f98c63` (verified by orchestrator: commit +
+hash + test presence + canonical_scope in the pre-exec path all confirmed on disk).
+- Fix: the pre-execution scope block in templates/factory-gate-bundle/gate-runner now calls
+  canonical_scope() (receipt-hash binding: manifest sha256/mode + per-check sha256/mode vs the receipt's
+  managed_files + receipt_expected) BEFORE the check-exec loop, raising SystemExit(3) on mismatch. A
+  manifest-only edit (fabricated entry) now breaks manifest_provenance and is refused up front — closes
+  the fail-open.
+- Test: new injected_check_refused_before_execution asserts the injected check's sentinel is NEVER created
+  (refusal before execution, not post-hoc). test-factory-gate-readiness.py 20/20 (was 19); self-test.sh PASS.
+- Residual risk flagged by implementer for the reviewer: (a) canonical_scope() is now duplicated a 3rd time
+  (matches the file's existing 2-copy pattern; a divergent copy would reintroduce the gap — reviewer must
+  confirm the 3 copies are identical); (b) does NOT harden receipt-forgery (.factory/gate-install.json write
+  authority — a different trust boundary, not this defect); (c) coarse stderr substring assertion in the test.
+- NEXT: independent non-author review (owner running /ultrareview on the branch) BEFORE landing. On PASS,
+  integrate to main with bound review (Reviewed-subject-sha256 over the staged patch). Codex confirmatory on return.
+
+### [2026-09-23] CONSOLIDATED REVIEW: evidence-scope fix (737bb428) = REQUEST_REVISION -> 2nd fix dispatched
+Two independent non-author reviews of the sonnet fix (subject 5bbdce98...): cloud /ultrareview (multi-agent)
++ Codex (CODEX-EVIDENCE-SCOPE-FIX-REVIEW-20260923.md). CONSENSUS:
+- CRITICAL static injection (new check + matching manifest entry, receipt untouched): CLOSED (both confirm; test proves it).
+- **HIGH TOCTOU (Codex REPRODUCED):** after canonical_scope() passes, the bash loop re-globs the mutable repo
+  path; replacing a receipt-recorded check mid-run (post-validation, pre-execution) executes the replacement,
+  detected only post-run. Not closed by the current fix.
+- **NORMAL umask/mode-drift (/ultrareview):** _same_record + canonical_scope compare FULL S_IMODE; git only
+  tracks 644/755, so a re-clone under a different umask permanently fails the gate (false EXECUTION_SCOPE_INVALID).
+- NITS: canonical_scope duplicated 3x (Codex: logically equivalent = maintenance risk, not a bypass); Summary
+  line prints failed=0 before post-run bump; dead planned= guard. MEMORY.md dead link = pre-existing sweep-in (separate).
+2nd bounded fix routed to cheap implementer (sonnet, isolated worktree) branch factory/evidence-scope-toctou-hardening
+off 737bb428: (1) TOCTOU -> execute verified checks from an immutable private snapshot (Codex-prescribed) + race
+regression test; (2) umask-robust mode compare (git-meaningful exec bit) across _same_record + all canonical_scope
+copies. Optional nits if clean. Independent re-review required before landing. Local review lane produced no usable
+output (response_contract missing_final_answer — known local capability miss, non-gating; not re-nudged).
+
+### [2026-09-24] evidence-scope v3 (8aefee7d) — structural TOCTOU fix, Codex closing re-review in flight
+Round 3. Branch factory/evidence-scope-toctou-v3 / review/evidence-scope-fix-v3, HEAD 8aefee7d on a3dbee29.
+delta `git diff de84c9e3..HEAD | sha256sum` = 636dc1818223dc83994b88028f43eaee0490638da4ea86646e7299f998b2e820 (orchestrator-verified: hash + mode-safety + boundary tests present).
+- FIX1 (HIGH TOCTOU closed by construction): _read_once() = os.open(O_RDONLY|O_NOFOLLOW)→fstat→read on ONE fd; snapshot-first-then-validate-the-snapshot-buffer; canonical path never reopened after step 1 → bytes-validated==bytes-executed.
+- FIX2 (MEDIUM mode): _mode_is_safe/_mode_ok reject 0o7000 (setuid/setgid/sticky) + 0o022 (group/world-write) alongside owner-exec normalization, in _same_record + all 3 canonical_scope copies; negatives 0777/4755/2755/6755/0666 rejected, 0750 passes.
+- FIX3 (MEDIUM test): deterministic boundary proof via test-only FACTORY_GATE_POST_SNAPSHOT_HOOK env seam.
+- Tests: 25 evidence flags true; install/retrofit/capability-manifest/start-enforcement suites pass; self-test PASS; no /tmp leftovers.
+- Implementer residual-risk flags for reviewer: (A) manifest/receipt JSON still read-for-hash then read-for-parse in all 3 canonical_scope copies (claimed out-of-scope trust-anchor metadata) — Codex to rule if that's a real TOCTOU; (B) new FACTORY_GATE_POST_SNAPSHOT_HOOK env seam (claimed same trust-model as existing FACTORY_* seams).
+- Review: codex-20260924-112343 → CODEX-EVIDENCE-SCOPE-V3-REREVIEW-20260924.md. On PASS → land to main with bound review (Reviewed-subject-sha256=636dc181...); Codex confirmatory-audit entry closes.
+- Review lineage: v1 CRITICAL injection fixed → v2 HIGH re-glob+umask → v3 HIGH validate/copy TOCTOU + mode over-correction. Convergent; v3 = by-construction. If v3 surfaces yet another layer, escalate keep-hardening-vs-defer to owner rather than loop.

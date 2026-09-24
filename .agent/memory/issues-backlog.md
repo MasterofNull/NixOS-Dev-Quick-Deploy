@@ -4529,3 +4529,507 @@ zsh-glob failures during discovery; use rg --files before constructing paths.
 Action: bounded CLI usability follow-up: explicit help/usage and invalid-plan
 errors without traceback, keeping normal projection and tracker semantics intact.
 File: scripts/ai/aq-pm-tracker ~line 363
+
+## [OPEN] Local read-only design advisory returned a coding-scope refusal
+Severity: medium. local-20260917-124946-uve07l completed transport successfully
+(1363 input / 167 output tokens), but did not deliver the requested three design
+pitfalls. Its answer claimed a concrete edit task was missing despite the explicit
+read-only advisory request. Do not count registry done as useful-review PASS.
+Root cause unverified: investigate prompt/grounding/role-contract interaction and
+response quality separately; this is not proof of an unavailable provider or a
+model-wide capability ceiling. No automatic retry, model/budget or settings change.
+Action: add a bounded advisory-role qualification case; compare exact constructed
+instruction/grounding without storing prompts or hidden reasoning in telemetry,
+and make role-specific deliverable validation distinguish transport from quality.
+File: .agents/delegation/outputs/local-20260917-124946-uve07l.log
+
+## [OPEN] Timing implementation lane stopped at provider quota boundary
+Severity: medium. Terra implementation `/root/cs3_implementation` reached a
+partially written timing candidate in its isolated worktree, then errored on the
+provider usage limit before returning tests or a reviewable completion receipt.
+The candidate remains safely at rest on `factory/local-producer-timing-20260917`;
+no shared index, main ref, model, budget, timeout or service state was changed.
+Action: on a future available lane, inspect the retained diff, finish the real
+agent-ID/repeated-logical-call tests, run focused suites, obtain one cold
+independent exact-subject review, and either integrate or preserve ACTIVATION_BLOCKED.
+File: /tmp/aq-local-producer-timing-20260917 (retained worktree)
+
+## [OPEN] Luna lightweight qualification was provider-quota blocked
+Severity: low. A deliberately read-only 120-word `aq-pm-tracker --help` triage
+task was dispatched to Luna; the provider returned its usage-limit error before
+any response. A Terra fallback review of the log also hit the same limit.
+No code, staging, commit, model, budget, timeout or service state changed.
+Action: retry this bounded qualification only after the provider reset; keep
+Luna limited to concise triage/prose/mechanical work and require explicit output
+validation before crediting it. Do not infer a model-quality failure from quota.
+File: .agents/delegation/outputs/ (provider task receipt; no source mutation)
+
+## [OPEN] Lightweight next-queue inventory was provider-quota blocked
+Severity: low. The requested read-only ECC/AQ-OS next-slice inventory was
+dispatched to an economical explorer and stopped at the provider usage limit
+before producing a report. No files, refs, services or runtime state changed.
+Action: run one bounded inventory after reset; do not repeatedly redispatch or
+treat the missing report as evidence that any project gate is blocked.
+File: `.agents/plans/ecc-parity-integration/tracker.json` (intended read-only scope)
+
+## [OPEN] Local timing corrective commit blocked by worktree index permissions
+Severity: medium. The corrective compatibility fix passed its focused regression
+suite (50/50), but `git commit` from the isolated worktree failed because the
+shared `.git/worktrees/.../index.lock` path is read-only in this environment.
+Action: retain the uncommitted one-file fix, then commit it in a writable
+worktree/index before requesting final independent review; do not merge the
+older tip without this correction.
+File: `/tmp/aq-local-producer-timing-20260917/ai-stack/local-agents/agent_executor.py`
+
+## [OPEN] Tier0 full gate is not hermetic in isolated candidate worktrees
+Severity: low. Running the canonical gate from the timing worktree reported
+missing `.agent/qa` and `.claude/settings.json` fixtures, while all changed-file
+focused suites passed. These are shared-checkout test fixtures rather than
+timing regressions, but they prevent a truthful full-gate result off main.
+Action: make tier0 fixture discovery worktree-local or document a supported
+shared-fixture overlay before final promotion; rerun the full gate from the
+integrator checkout.
+File: `scripts/governance/tier0-validation-gate.sh`
+
+## Mendocino factory investigation — 2026-09-18
+
+Evidence and proposed bounded follow-ups:
+`.agents/summary/audits/factory-mendocino-investigation-20260918.md`.
+Original report preserved in `.agents/drops/2026-09-18-factory-test-run-findings-mendocino.md`.
+Status below records diagnosis only; no consumer-project edits or runtime fixes were applied.
+
+[OPEN] FF-000 LIFECYCLE — Root forwarding module overrides the durable workflow with
+success-shaped phase placeholders; fake complex intake reaches COMMIT and unknown sessions
+return 200 stubs. Supplied complexity/domain are dropped.
+  Severity: critical
+  Action: converge on the existing durable lifecycle authority, or return explicit unavailable
+  states; test artifact-gated advancement, persistence and nonexistent-session refusal.
+  File: ai-stack/mcp-servers/hybrid-coordinator/intake_gateway.py ~line 169
+
+[OPEN] FF-001/002/005 RETROFIT CONTRACT — Installed structure policy rejects 24 existing
+root entries and missing tests; agent instructions retain raw command tokens; mandatory
+collaboration state paths are absent from installer output (operator repaired this consumer).
+  Severity: high
+  Action: separate reviewed layout rendering, command/configuration rendering and previewed
+  scaffolding into bounded fixes; keep required checks blocked and preserve consumer state.
+  File: scripts/ai/lib/factory_gate_install.py ~line 128
+
+[OPEN] FF-003/004 MCP RETROFIT PARITY — Tool cannot pass a confirmation digest and accepts
+free-text stack values rejected by the resolver enum. Resolver supports marker-based polyglot
+profiles already; unmarked Python scripts are a separate discovery/metadata gap.
+  Severity: high
+  Action: expose/forward exact digest and constrain stack enum; test stale/no-confirm refusal.
+  Do not interpret force as consent or bypass preview.
+  File: scripts/ai/mcp-bridge-hybrid.py ~line 495
+
+[OPEN] FF-006/008/010 MCP OPERATIONAL RESULTS — Collective subprocess has a 30-second
+timeout; health HTTP call has 5 seconds; full coordinator status can truncate to an unhelpful
+4,000-character preview. These are distinct admission, execution and presentation limits.
+  Severity: high
+  Action: use existing durable async job/progress authorities and bounded status projection;
+  distinguish queued, timed-out, partial and failed results without bypassing thermal admission.
+  File: scripts/ai/mcp-bridge-hybrid.py ~line 235
+
+[OPEN] FF-007 WORKTREE HANDBACK — Operator reports nine classified handback failures.
+Source emits the category but examined checkout receipts do not establish the first failing
+step or the task IDs; validation/staging/hook/ancestry/patch errors remain hypotheses.
+  Severity: high
+  Action: recover exact task and retained worktree receipts and classify step-specific failure;
+  preserve artifacts rather than retrying or choosing a fix from the category alone.
+  File: scripts/ai/lib/worktree-isolation.sh ~line 66
+
+[OPEN] FF-011 RAG METRICS — Live negative confidence delta reproduced as an accounting
+race: unchanged confidence samples 0.2/0.8 completing in reverse order report final mean
+0.2 rather than 0.5. Per-call code retains only improved retries; aggregate degradation
+is not evidence of worse selected results.
+  Severity: medium
+  Action: use paired/completed-sample accounting with deterministic concurrency tests before
+  measuring retry efficiency or changing retry policy.
+  File: ai-stack/mcp-servers/hybrid-coordinator/knowledge/rag_reflection.py ~line 305
+
+[OPEN] FF-015/017 COLLECTIVE OBSERVABILITY — Final operator report retracts silent-death
+and detach-death claims: first run was killed by caller timeout, second remained active
+after 14 minutes. CLI provides no durable job/partial-output receipt.
+  Severity: high
+  Action: add progress/job/terminal receipts through existing authorities and preserve
+  explicit retractions; do not treat the corrected process-death claims as live defects.
+  File: scripts/ai/aq-collective ~line 30
+
+[OPEN] FF-016 COLLECTIVE QUALITY CLAIMS — One synthetic antigravity-lead contribution,
+three generic phases and shallow structural validation reproduce perfect scores. Scores
+are computed heuristics, not constants; no independent lane was actually consulted.
+  Severity: critical
+  Action: bind actual contributor receipts and requested objectives to plans; disclose structural
+  score scope and require real independent contributions before claiming a collective result.
+  File: ai-stack/local-agents/agent_executor.py ~line 4816
+
+[OPEN] FF-018 TRANSPORT READINESS — Operator's qwen/Gemini CLI authentication failures
+do not establish local llama/Qwen or Antigravity IDE failures. Local health responds 200,
+but no inference/tool-loop capability validation was run in this investigation.
+  Severity: high
+  Action: inventory/configure and verify each actual transport separately before assignment;
+  surface auth-required/unavailable receipts without adding API keys to IDE OAuth routing.
+  File: docs/architecture/local-agent-task-eligibility.md ~line 30
+
+[OPEN] FF-019 PROPOSAL PROVENANCE — SafetyControlLayer constructor creates relative
+.agent/proposals/proposals.json in caller cwd. This is a source-backed candidate writer;
+the specific consumer invocation still needs correlation.
+  Severity: low
+  Action: confirm launcher, make state root explicit and emit write provenance; prove read-only
+  consumer diagnostics do not cause unsolicited cwd writes.
+  File: ai-stack/mcp-servers/hybrid-coordinator/workflow/safety_control_layer.py ~line 19
+
+[OPEN] collective-outcome-integrity — Required phase failures are included as text,
+but parent status is unconditionally COMPLETED and archived outcome success.
+  Severity: high
+  Action: aggregate required phase outcomes and emit failed/partial terminal evidence;
+  a failed required phase must never generate a success archive or success CLI exit.
+  File: ai-stack/local-agents/agent_executor.py ~line 4849
+
+[OPEN] consumer-outcome-coverage — Existing greenfield/retrofit fixtures pass
+despite observed rendered-policy, command-token and scaffolding gaps in the real consumer.
+  Severity: high
+  Action: add real-layout and rendered-contract outcome fixtures to the relevant fixes;
+  distinguish hook routing/blocking from usable consumer readiness and live deployment.
+  File: scripts/testing/test-factory-gate-retrofit.py ~line 49
+
+[OPEN] FF-009/012/013/014 FACTORY DOCUMENTATION AND CORRELATION — Auth response behavior
+is verified but deliberate auth boundaries are not an insecurity finding; prior commits remain
+unverified historically; profile capacity needs exact-path measurements; models discovery now
+responds 200 so the earlier timeout is historical. Details retained in the investigation report.
+  Severity: medium
+  Action: document canonical authenticated routes, review pre-install content prospectively,
+  measure task/profile budgets and correlate historical discovery timeouts before config changes.
+  File: .agents/summary/audits/factory-mendocino-investigation-20260918.md
+
+[OPEN] INVESTIGATION TOOL FRICTION — Managed sandbox blocked localhost probes and event-log
+writes; explicitly approved read-only probes and pulse succeeded. An early planner constructor
+probe attempted home-cache persistence and was blocked; the replacement used isolated in-memory
+state and no persistence. These tool restrictions are not consumer deployment failures.
+  Severity: low
+  Action: use in-memory/disposable diagnostic state and request narrowly scoped localhost/event
+  permissions only when needed; do not infer service failure from sandbox-denied networking.
+  File: .agents/summary/audits/factory-mendocino-investigation-20260918.md
+
+[IN-FLIGHT] FF-020 COORDINATION WRITE AUTHORITY — Mandatory pulse writes conflict with
+bounded worker file ownership. Root now proxies worker write receipts; this is an explicit
+coordination capability, not permission to edit unrelated project files.
+  Severity: high
+  Action: enforce narrow coordination-write capability or audited proxy in dispatcher contracts.
+  File: .agent/WORKFLOW-CANON.md
+
+[OPEN] FF-021/022/023/024 DISPATCH AND PATCH CONTRACTS — Operator observed read-only
+raw Codex execution, missing lean-ctx hydration, repeated-file patch rejection and a raw
+background stdin hang. These observations do not establish managed-dispatcher failure.
+  Severity: high
+  Action: fixture-test actual managed transport, writable scope and hook hydration; teach one
+Update File block with multiple hunks; retain typed evidence for raw versus managed paths.
+  File: scripts/ai/delegate-to-codex
+
+[OPEN] FF-025 REVIEW ATTESTATION — Git email or lane text alone does not establish
+trusted independent review; local hooks remain cooperative enforcement.
+  Severity: high
+  Action: implement trusted subject-bound review receipts and CI backstop in FT-7.
+  File: .agents/plans/factory-gate-templates/FT5-NEXT-SLICE-BRIEF.md
+
+[OPEN] FF-026 ARTIFACT INTENT — Architecture debate received edit-forcing intervention
+despite its reasoning-only deliverable. Coding completion rules must not govern all phases.
+  Severity: critical
+  Action: bind completion and tool authority to requested artifact intent; test planning prose
+success with zero edits while preserving coding no-action intervention.
+  File: ai-stack/local-agents/agent_executor.py
+
+[OPEN] FF-027 RETRY DELIVERABLE CAPACITY — Operator observed no-progress recovery with
+512-token output budget during planning, insufficient for the requested artifact.
+  Severity: high
+  Action: separately review intent-aware recovery and capacity evidence in frozen local
+inference slice; do not silently alter budgets or replace models.
+  File: ai-stack/local-agents/agent_executor.py
+
+[IN-FLIGHT] factory-validation-environment — Isolated worktree Tier0 did not detect
+unstaged candidates; staged validation then exposed missing runtime `.agent/qa` and
+connected documentation. Exact subjects are now staged only in isolated worktrees,
+QA directories provisioned and handoffs independently reviewed. Full reruns pending.
+  Severity: high
+  Action: make worktree validation setup explicit; never report an empty-subject PASS
+as candidate validation or bypass canonical gates for environmental failures.
+  File: scripts/governance/tier0-validation-gate.sh
+
+[OPEN] collaboration-terminal-visibility — Local advisory remains running without
+advertised output file; Claude review launch reports process exited with empty check
+output and registry still running. Antigravity wake succeeded but task is unclaimed.
+  Severity: high
+  Action: inspect transport receipts and reconcile typed terminal state through existing
+registry authority; do not infer model failure or credit missing review responses.
+  File: scripts/ai/delegate-to-claude
+
+[OPEN] reflection-dashboard-coverage — Corrected reflection stats expose paired averages
+and lifecycle counts, but targeted dashboard/QA search found no connected reflection
+indicator. This search is not proof that all possible visibility surfaces are absent.
+  Severity: medium
+  Action: locate current consumers and wire truthful reflection status plus integration QA
+before claiming complete deployed visibility; avoid conflicting concurrent dashboard edits.
+  File: ai-stack/mcp-servers/hybrid-coordinator/knowledge/rag_reflection.py
+
+[OPEN] factory-install-failure-recovery — Local advisory identified a partial-write
+recovery gap; source confirms sequential installer writes with no transactional failure
+ledger/rollback. This predates the rendering correction. Advisory preservation/digest
+contradiction is not supported: preview separately hashes preserved files and new writes.
+Missing check configuration deliberately blocks activation, not metadata installation.
+  Severity: high
+  Action: bounded failure-injection tests plus durable typed partial-install recovery;
+never mark ready after interrupted writes or perform destructive rollback without authority.
+  File: scripts/ai/lib/factory_gate_install.py ~line 486
+
+[DONE] local-advisory-output-visibility — Previously absent advertised output appeared;
+task terminated and registry reports done, 1239 input/366 output tokens. Actual reasoning
+deliverable returned with zero required edits. It is advisory, not exact-code acceptance.
+  Severity: low
+  Action: retain delayed-output observation as progress-visibility evidence; do not classify
+this completed request as inference failure.
+  File: .agents/delegation/outputs/local-20260918-094239-xs04lb.log
+
+[DONE] factory-receipt-destination-safety — Independent disposable reproduction
+confirmed renderer candidate omitted receipt safety checks: existing receipt was overwritten
+and receipt symlink redirected write to external sentinel despite confirmed safe preview.
+  Severity: critical
+  Action: landed bounded corrective 030da8ac on main; regular-receipt and external
+symlink sentinels preserved. Independent PASS on canonical d41524710e67427bf39a28c844c5c8fc60f8edfd8c9ee07b896119b907fc9dbf;
+Tier0 53 PASS / 0 FAIL (QA 185). No consumer activation claimed. Owned upgrade follow-up
+must retain path/ancestor safety and refuse unknown receipt destinations.
+  File: scripts/ai/lib/factory_gate_install.py ~line 402
+
+[DONE] factory-validation-environment-projection — Approved non-overwriting projections of
+actual PULSE/RESUME/candidates/Claude settings resolved isolated validation inputs. MCP and
+reflection final subjects each passed all 53 Tier0 gates (QA 183/184 checks). Renderer old
+subject passed 53 gates but is superseded by receipt safety corrective, not accepted.
+  Severity: low
+  Action: consolidate portable worktree runtime hydration in separately reviewed tooling;
+validation must retain exact frozen hash and actual shared-engine provenance.
+  File: scripts/governance/tier0-validation-gate.sh
+
+[IN-FLIGHT] R2-001/002/003/004 FACTORY REDEPLOY CONTRACT — Final second consumer report
+at cec0012d records self-installed hooksPath refusal, frozen-receipt status, old-runner
+missing new evidence and unsupported --force forwarding. Claude has queued a corrective.
+  Severity: critical
+  Action: preview/confirm owned bundle upgrades, derive current check state, surface version
+skew with a safe upgrade route, and align actual bridge/CLI force grammar. Preserve receipt
+destination safety; exercise real CLI path rather than mocked argv alone.
+  File: .agents/drops/2026-09-18-factory-test-run-2-findings-mendocino.md
+
+[OPEN] R2-005/006 TRANSPORT IDENTITY — Operator reports qwen routing to unauthenticated
+CLI and preflight coordinator unavailable despite serving. CLI Qwen, local llama Qwen and
+Antigravity IDE remain distinct transports; metadata absence is not observed health failure.
+  Severity: high
+  Action: correlate actual selected transport/auth receipt; distinguish configured/unknown
+from probed reachable/unavailable, and filter assignments by verified eligibility.
+  File: .agents/drops/2026-09-18-factory-test-run-2-findings-mendocino.md
+
+[OPEN] R2-007 DISPATCH CONTEXT COST — Consumer reports identical trivial Codex call rose
+from 6744 to 17887 tokens (2.65x). Root cause remains uncorrelated.
+  Severity: medium
+  Action: measure context-source size/token metadata and matching profile per call, without
+capturing prompts/hidden reasoning or imposing local limits on remote lanes.
+  File: .agents/drops/2026-09-18-factory-test-run-2-findings-mendocino.md
+
+[DONE] factory-start-precondition-enforcement — Confirmatory audit of cec0012d
+found brownfield and generated workflow startup discard preflight failure with `|| true`,
+contrary to authorized FT-5 requirement. Typed blockers therefore do not stop writes/dispatch.
+  Severity: critical
+  Action: landed as 646a6880 after exact independent PASS on fcd74ce0cd065174f4a0046cb2e4e347f92a431692c7cbf9414ecba15a6e681b
+and Tier0 53/0. Live disposable-consumer activation remains a separate gate; absent lanes
+remain informational.
+  File: scripts/ai/aqd ~line 1035
+
+[IN-FLIGHT] factory-execution-scope-binding — Confirmatory source audit found unvalidated
+FACTORY_GATE_CHECKS_DIR override can execute external checks then mint full target-tree
+evidence. Current digest does not bind that external execution scope.
+  Severity: high
+  Action: accepted branch 6106fa4b binds installed authority/check inventory before execution;
+redirected-root and symlink payloads do not execute. Independent PASS on canonical
+c5e4141a07a8746810b9c90a90d5644626d189a8b8446dbdd0c15db1327e5b62; Tier0 53/0 QA185.
+Main integration is deliberately held until the overlapping Run-3 lossless-upgrade corrective
+is reconciled and the combined current-main subject is revalidated.
+  File: templates/factory-gate-bundle/gate-runner ~line 12
+
+[DONE] remote-dispatch-payload-shell-boundary — Source review finds Claude background
+dispatcher embeds prompt/brief text directly into generated `bash -c` audit arguments,
+despite separately quoting the CLI command vector. Quote/metacharacter task text is
+therefore shell program text, not inert argument data. Actual empty-output cause remains
+unattributed; no assertion that a specific command executed or credentials leaked.
+  Severity: critical
+  Action: landed fixed positional-argument worker as a6502bdd after exact independent PASS
+on f262fffcb3d280cee23171af6e44320baf8a65a2840d80bdf255adbbb62364a2 and Tier0 53/0.
+Bounded live-provider activation and registry concurrency are separately queued; preserve
+model/budget/auth policy.
+  File: scripts/ai/delegate-to-claude ~line 303
+
+[OPEN] economical-lane-quota-during-factory-corrective — Three bounded economical tasks
+(evidence-scope implementation completion, commit-message preparation, and intake-authority
+inventory) ended at provider usage limits. The evidence worker had written a usable candidate;
+root checkpointed it as explicit WIP 87c0be2c and ported it. The other two produced no artifact.
+  Severity: medium
+  Action: preserve partial artifacts before retry; route only remaining exact work after quota
+reset and never credit an errored lane as implementer/reviewer for work it did not return.
+  File: .agent/collaboration/FACTORY-EXECUTION-EVIDENCE-SCOPE-HANDOFF.md
+
+[IN-FLIGHT] factory-upgrade-lossless-managed-state — Run 3 proved the compatible upgrade
+overwrites locally configured factory-managed checks: a working secret scanner became an
+unrendered `{{SECRET_SCAN_CMD}}`, changing a green gate from 6/0 to 5/1. Only `.git-config`
+was backed up although 21 managed paths were overwritten. Git, not the factory, enabled recovery.
+  Severity: critical
+  Action: preserve locally modified managed outputs using trustworthy prior-install provenance;
+preview and path-safely back up every managed file actually replaced, with content/mode recovery;
+fail closed when provenance is ambiguous. Keep receipt symlink/ancestor refusal.
+  File: scripts/ai/lib/factory_gate_install.py ~line 405
+
+[OPEN] factory-upgrade-layout-policy-weakening — Run 3 upgrade replaced reviewed
+repo-structure policy and silently removed required src/scripts/data plus allowed entries.
+The gate stayed green while enforcing fewer invariants.
+  Severity: high
+  Action: treat configured layout policy as locally managed state and preserve it on upgrade;
+include explicit preview disposition and regression for required/allowed assertions.
+  File: templates/factory-gate-bundle/repo-structure.conf.tmpl
+
+[OPEN] factory-readiness-configured-check-authority — Run 3 restored a passing non-gitleaks
+secret scanner, but readiness still probes for gitleaks and reads frozen receipt activation,
+reporting CHECKS_UNCONFIGURED/ACTIVATION_BLOCKED despite the configured check passing.
+  Severity: high
+  Action: derive configured state from safe rendered check configuration and current execution
+evidence; recompute activation from live facts rather than frozen install history.
+  File: scripts/ai/lib/factory_gate_install.py ~line 730
+
+[OPEN] factory-evidence-dirties-consumer-tree — gate-run-evidence.json rewrites generated_at
+on every hook run, leaving a tracked consumer dirty immediately after every commit.
+  Severity: high
+  Action: make identical successful evidence content deterministic and/or install a narrow
+factory-owned ignore rule; test clean-tree-after-commit without hiding other factory state.
+  File: templates/factory-gate-bundle/gate-runner ~line 320
+
+[OPEN] factory-runtime-spine-stub-persists — Third consumer run still observes agent_intake
+ending at COMMIT, explicit complexity/domain discarded, lifecycle_status `stub_status`.
+Source confirms root intake_gateway imports durable workflow symbols and then shadows them
+with a second 216-line placeholder pipeline/handlers.
+  Severity: critical
+  Action: consolidate root module into a compatibility facade over workflow/intake_gateway.py
+and workflow/lifecycle_fsm.py; replace stub-era tests with durable session/status/advance/replay
+integration coverage and dashboard/aq-qa visibility in the same delivery sequence.
+  File: ai-stack/mcp-servers/hybrid-coordinator/intake_gateway.py ~line 1
+
+[OPEN] factory-delegation-reliability-degrading-run3 — Consumer reports backend success fell
+49.2%/65 calls to 36.4%/77 calls, recent 9.1%, top error worktree_handback_failed. Collective,
+lane authentication, stale live MCP schema, health timeout and response truncation persist.
+  Severity: critical
+  Action: correlate failure receipts by transport/stage before changing routing; repair
+worktree handback first, then activate/reload the reviewed MCP schema and distinguish CLI/local/IDE
+lane eligibility. Do not insert API keys or bypass interactive auth.
+  File: .agents/drops/2026-09-19-factory-test-run-3-findings-mendocino.md
+
+[OPEN] factory-project-agent-payload-parity — Greenfield project-init renders command,
+intent, plan and client-setting templates, while gate retrofit installs only the gate
+bundle's lane/rule scaffolding, fresh collaboration seeds and capability record. Brownfield
+projects therefore lack proven parity with the full project agent payload. Copying the host's
+skills, secrets, histories or runtime state is not an acceptable shortcut.
+  Severity: critical
+  Action: converge both producers on one versioned declarative project-payload manifest;
+install thin project contracts/commands/seeds plus scoped shared-engine capability and
+skill/tool references, with lossless preview/upgrade and QA/dashboard drift visibility.
+  File: .agents/plans/factory-gate-templates/PROJECT-AGENT-PAYLOAD-CONTRACT.md
+
+[OPEN] worktree-handback-failure-is-untyped — Codex/local wrappers collapse validation,
+output, staging, missing-base, non-ancestor, commit-hook and patch-export failures into one
+`worktree_handback_failed` terminal reason. Current retained registry has no matching Run-3
+row, so the reported subtype cannot be inferred; lock expiry, cleanup and auth are not source-
+supported causes. Dashboard shows active count only and QA shows aggregate success.
+  Severity: high
+  Action: return a stable metadata-only subtype from worktree-isolation.sh, persist it in
+Codex/local receipts/audit, add adversarial fixtures for every failing operation, and expose
+subtype counts/last failure in QA/dashboard without prompt or git-stderr capture.
+  File: scripts/ai/lib/worktree-isolation.sh ~line 66
+
+[OPEN] claude-headless-auth-expired-during-role-handshake — A read-only orchestration
+handshake task (`claude-20260920-201209-h1n5yl`) failed before producing a response:
+the headless CLI OAuth session was expired and could not refresh. Owner separately confirmed
+Claude is rate-limited through 2026-09-23. This is an unavailable lane, not a failed review
+or evidence about the interactive app.
+  Severity: medium
+  Action: do not retry-storm; Codex orchestrates meanwhile. On/after the 23rd, authenticate
+the intended headless lane through the approved user flow, run a harmless read-only probe,
+then process Claude's catch-up queue before assigning bounded work.
+  File: .agents/delegation/outputs/claude-20260920-201209-h1n5yl.log
+
+[OPEN] uncommitted-isolated-worktree-lost-across-boundary — The tested Run-3 lossless-upgrade
+candidate existed only as uncommitted files under `/tmp/aq-factory-upgrade-lossless`; the later
+system/session boundary removed the worktree. Design/test evidence survived, source did not.
+This repeats the exact incomplete-slice durability failure the checkpoint workflow is meant to prevent.
+  Severity: high
+  Action: require an early truthful WIP branch commit after the first green focused fixture;
+WIP must state incomplete/unreviewed/not-for-main, then continue review on a later exact subject.
+  File: .agents/plans/factory-gate-templates/PROJECT-AGENT-PAYLOAD-CONTRACT.md
+
+[OPEN] skill-auto-source-root-and-schema-drift — `aq-skill-auto --test` selected the expected
+collaboration/context/tool-map skills but returned nonzero: source-of-truth scanning descends into
+archived `.codex/worktrees/.../archive` fixtures and reports their SKILL.md files outside approved
+roots; multi-agent-collab and context-efficiency also fail the validator's required-description
+schema despite having frontmatter descriptions (section parser mismatch or stale schema).
+  Severity: medium
+  Action: bound the SSOT scan to active roots/exclude archived worktrees and align validator schema
+with frontmatter; add regression fixtures without weakening external skill intake checks.
+  File: scripts/testing/check-skill-source-of-truth.sh
+
+[IN-FLIGHT] st1-shared-toolchain-installer-contract — Claude's default-OFF ST-1 module
+checkpoint `768849ea` remains valid but cannot land alone: imported roles require sorted module
+catalog metadata, exact mySystem field provenance, updated declaration discovery, an honestly
+recomputed install-execution HMAC golden, and a valid active-plan tracker. Main already has ST-2,
+so checkpoint wording that ST-2 is future work is stale.
+  Severity: medium
+  Action: DONE in `de84c9e3`: the default-OFF module and coupled AQ-OS installer contracts landed
+atomically; the concrete host evaluates false. Activation/rebuild remains a separate owner act.
+  File: /tmp/aq-st1-installer-contract
+
+[OPEN] local-hybrid-retrieval-only-premature-exit — Read-only producer-convergence audit
+`local-20260921-150132-igjhiq` exited before registry completion and returned only two duplicated,
+irrelevant retrieval snippets (`morph.py` and switchboard exception handlers), with no requested
+repository analysis. The registry inferred failure; no review or implementation credit applies.
+  Severity: medium
+  Action: reproduce through the hybrid route with a compact fixture; verify context assembly includes
+the four named files, require a typed terminal response instead of raw retrieval fragments, and add
+a regression that rejects duplicated retrieval-only output as task completion.
+  File: .agents/delegation/outputs/local-20260921-150132-igjhiq.log
+
+[OPEN] tier0-read-file-gate-live-backend-timeout — The payload-manifest acceptance transaction
+passed its scoped checks and 52 Tier-0 gates, but `test-read-file-gate.py` timed out at 60 seconds in
+`TestLargeFileGate.test_large_file_returns_outline_and_chunks_under_budget` with live backends enabled.
+Earlier cases passed; the payload slice changes no read-file/context code. The transaction correctly
+refused to commit and preserved the exact staged subject.
+  Severity: medium
+  Action: rerun the focused fixture under measured backend health, capture latency/stall evidence,
+then remediate the runtime/test timeout if reproducible; only rerun the frozen commit transaction
+after the focused fixture passes. Do not waive or classify it as a payload regression without evidence.
+  File: scripts/testing/test-read-file-gate.py
+
+[OPEN] collaboration-round-source-not-inlined — `aq-collab-round open` generated Codex, local, and
+Antigravity packets claiming the AQ-OS System-1/self-compact source was “inlined above,” but included
+only the task sentence. Local correctly abstained for missing context; the other lanes received the
+same incomplete packet. This wastes inference and can create placeholder consensus.
+  Severity: high
+  Action: make round creation either embed the bounded source content with a content hash or explicitly
+grant read access to declared `scope_files`; add a fixture that fails when a prompt says “inlined” but
+the source/hash is absent, and ensure retries supersede rather than double-count abstaining outputs.
+  File: scripts/ai/aq-collab-round ~cmd_open
+
+[OPEN] factory-gate-runner-preexec-scope-not-receipt-bound — In factory/execution-evidence-scope-lossless
+(tip b2cecf4e), the PRE-EXECUTION scope gate in templates/factory-gate-bundle/gate-runner (~L272-303)
+validates only a name-set match + leaf symlink/exec checks; it does NOT bind MANIFEST.json/checks.d to the
+install receipt's recorded sha256 hashes (canonical_scope() runs only in --preflight and post-execution).
+A self-consistent co-edit of a new checks.d/*.sh + matching MANIFEST.json entry (receipt untouched) passes
+the gate and executes the injected check during a normal --pre-commit/--pre-deploy run (fail-open in a
+security gate); caught only after execution.
+  Severity: high (security; slice is NOT on main — do not land as-is)
+  Root cause: pre-execution gate uses the weak self-consistency check instead of the receipt-hash-bound
+  canonical_scope(); downgrade test asserts exit-code only, masking that checks already ran.
+  File+line: templates/factory-gate-bundle/gate-runner ~L272-303 (branch factory/execution-evidence-scope-lossless)
+  Action: pre-execution gate must call canonical_scope() (receipt-hash binding) BEFORE the check loop, or add
+  per-file sha256 + receipt_expected verification there; add an injection-refusal test asserting the injected
+  check's side effect never occurs. Bounded follow-up on Codex's slice; independent re-review/ultrareview on
+  the fixed subject before landing. Full record: AGENT-CATCHUP-QUEUE.md [2026-09-23].

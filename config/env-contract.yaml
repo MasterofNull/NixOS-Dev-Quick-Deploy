@@ -761,6 +761,13 @@ variables:
     consumers: [service-endpoints.sh]
     description: "Port for Qdrant"
 
+  - canonical: AQ_FACTORY_RESTORE_VAR_LIB_ROOT
+    aliases: []
+    default: "/var/lib/ai-stack"
+    layer: python
+    consumers: [aq-factory-restore]
+    description: "Target root for learned, adapter, and institutional-memory files restored from a factory pack"
+
   # ── PostgreSQL ──────────────────────────────────────────────────────────
   - canonical: POSTGRES_URL
     aliases: []
@@ -803,6 +810,20 @@ variables:
     layer: all
     consumers: [aidb]
     description: "Path to PostgreSQL password file"
+
+  - canonical: PGPASSWORD
+    aliases: []
+    default: ""
+    layer: external
+    consumers: [aq-factory-restore, postgresql-cli]
+    description: "Ambient PostgreSQL client password; never logged or persisted by the restore consumer"
+
+  - canonical: SOPS_AGE_KEY_FILE
+    aliases: []
+    default: ""
+    layer: external
+    consumers: [aq-factory-restore, sops]
+    description: "Explicit target age identity path used by SOPS and encrypted factory-pack restore"
 
   - canonical: AIDB_POSTGRES_SSLCERT
     aliases: []

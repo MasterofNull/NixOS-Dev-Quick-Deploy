@@ -1,0 +1,138 @@
+{
+  "plan": {
+    "id": "aqos-system1-selfcompact-v1",
+    "title": "AQ-OS System-1 Decision Plane + Autonomous Self-Compaction",
+    "prd_ref": ".agent/PRD-AMENDMENT-AQOS-SYSTEM1-SELFCOMPACT.md",
+    "owner": "hyperd",
+    "goal": "Add a CPU-only System-1 microservice (system1d) for sub-30ms calibrated judgments across routing/RAG/memory/shell-safety/telemetry/reviewer-routing, plus agent-controlled self-compaction on the event spine. Security fail-CLOSED; performance fail-OPEN to System-2; shadow-first per function; APU-honest (400MB RSS, no VRAM).",
+    "success_criteria": [
+      "system1d runs CPU-only under a 400MB RSS ceiling over a UNIX socket, declared as a shared-engine capability (fail-open to System-2 when absent)",
+      "shell-safety stays fail-closed: System-1 never widens what the existing gate permits; <0.90 confidence falls through to Tier-0/operator",
+      "self_compact emits an aq-event that projects RESUME.json/PULSE.log (never hand-written) — retires the D3 clobber class",
+      "routing picks always pass the lane-health filter before dispatch (System-1 proposes, health filter disposes)",
+      "each function lands shadow-first with logged agreement/latency before cutover; DoD attested per Rule 15"
+    ]
+  },
+  "phases": [
+    {
+      "id": "design",
+      "name": "Design + review",
+      "goal": "round synthesized into a PRD amendment, independently reviewed, owner-activated",
+      "order": 1
+    },
+    {
+      "id": "build",
+      "name": "Build (S1-S4, default-off/shadow)",
+      "goal": "system1d + contracts + self-compact + RAG/memory, shadow-first, default-off",
+      "order": 2
+    },
+    {
+      "id": "deploy",
+      "name": "Deploy (S5 live + dashboard)",
+      "goal": "end-to-end live with observability tiles, no blank placeholders",
+      "order": 3
+    }
+  ],
+  "items": [
+    {
+      "id": "round",
+      "name": "Multi-agent round (fan-out + collect)",
+      "phase": "design",
+      "kind": "task",
+      "goal": "solicit expert input from all lanes on the meta-prompt",
+      "validation_goal": "quorum-of-2 substantive contributions collected",
+      "deps": [],
+      "editorial_note": "2-lane substantive (antigravity ratify-with-constraints + claude R1-R5); local blocked by known dispatch bug (collaboration-round-source-not-inlined); codex near-limit, queued",
+      "detection": {
+        "commit_match": ["System 1 decision models", "aqos-system1-selfcompact"],
+        "freeze_record": ".agents/plans/aqos-system1-selfcompact-v1/round.json"
+      },
+      "pct_hint": 100
+    },
+    {
+      "id": "amendment",
+      "name": "PRD amendment (round synthesis)",
+      "phase": "design",
+      "kind": "task",
+      "goal": "fold both substantive lanes + meta-prompt into a PRD amendment",
+      "validation_goal": "independent non-author review PASS + owner activation before any slice build",
+      "deps": ["round"],
+      "editorial_note": "proposed; pending independent review (ultrareview candidate) + owner activation",
+      "detection": {
+        "commit_match": ["System-1", "SYSTEM1-SELFCOMPACT", "self-compaction PRD amendment"],
+        "freeze_record": ".agent/PRD-AMENDMENT-AQOS-SYSTEM1-SELFCOMPACT.md"
+      },
+      "pct_hint": 90
+    },
+    {
+      "id": "s1-foundation",
+      "name": "S1 — system1d foundation (Nix module, socket, ONNX INT8, capability declaration)",
+      "phase": "build",
+      "kind": "task",
+      "goal": "system1d service reachable over UNIX socket, RSS<=350MB, P95<30ms",
+      "validation_goal": "test-system1-socket.py PASS; RSS/latency budget met; aq-qa health check green",
+      "deps": ["amendment"],
+      "detection": {
+        "commit_match": ["system1d", "system1.nix"],
+        "freeze_record": "nix/modules/services/system1.nix"
+      },
+      "pct_hint": 0
+    },
+    {
+      "id": "s2-routing-safety",
+      "name": "S2 — routing & safety wiring (shadow, through health filter)",
+      "phase": "build",
+      "kind": "task",
+      "goal": "system1d wired into task_classifier + aq-safe-gate in shadow",
+      "validation_goal": "intent bench >= regex accuracy; zero whitelist regression; shadow agreement logged",
+      "deps": ["s1-foundation"],
+      "detection": {
+        "commit_match": ["system1", "shadow"],
+        "freeze_record": ""
+      },
+      "pct_hint": 0
+    },
+    {
+      "id": "s3-selfcompact",
+      "name": "S3 — context-budget controller + self_compact tool (event-projected RESUME/PULSE)",
+      "phase": "build",
+      "kind": "task",
+      "goal": "budget telemetry per turn + self_compact tool + agent.context.compacted event",
+      "validation_goal": "simulated multi-turn hits Warning+Force accurately; RESUME/PULSE match the event",
+      "deps": ["s1-foundation"],
+      "detection": {
+        "commit_match": ["self_compact", "context_budget_controller", "context.compacted"],
+        "freeze_record": ""
+      },
+      "pct_hint": 0
+    },
+    {
+      "id": "s4-rag-memory",
+      "name": "S4 — RAG re-ranking + memory supersession (shadow -> cutover)",
+      "phase": "build",
+      "kind": "task",
+      "goal": "rag_augmentor + memory_superseder use System-1, shadow-first",
+      "validation_goal": "RAG noise-rejection verified vs shadow baseline; supersession suite 100%",
+      "deps": ["s2-routing-safety", "s3-selfcompact"],
+      "detection": {
+        "commit_match": ["rag_augmentor", "memory_superseder"],
+        "freeze_record": ""
+      },
+      "pct_hint": 0
+    },
+    {
+      "id": "s5-live-dashboard",
+      "name": "S5 — live factory stress test + dashboard tiles",
+      "phase": "deploy",
+      "kind": "task",
+      "goal": "end-to-end multi-turn task self-compacts >=2x with zero state loss; live tiles",
+      "validation_goal": "DoD 5-dimension attestation signed; System-1 KPI + context gauge live (no --)",
+      "deps": ["s4-rag-memory"],
+      "detection": {
+        "commit_match": ["System 1 Engine", "context window utilization"],
+        "freeze_record": ""
+      },
+      "pct_hint": 0
+    }
+  ]
+}

@@ -1,0 +1,26 @@
+# Frozen deployment contract — independent technical review
+
+Output: .agents/plans/factory-gate-templates/DEPLOYMENT-CONTRACT-REVIEW-20260918.md
+
+Read-only independent advisory review. Do not implement, stage, commit, change HEAD,
+launch agents or change runtime settings. Native reviewer hit usage limit and returned
+no verdict; this is real catch-up routing, not credit for that absent lane.
+
+Frozen candidate: `/tmp/aq-factory-deployment-contract`, base d0b814cb.
+Raw staged binary diff SHA-256:
+`1dab2288f449fb45bb24b0a4174696259d7eb3fe5297773ce57bf28644b338a9`.
+Read the staged installer/template/tests/handoff diff and main implementation packet
+`.agents/plans/factory-gate-templates/DEPLOYMENT-CONTRACT-IMPLEMENTATION.md`.
+
+Independently verify exact hash, legitimate brownfield layout with generated paths,
+new undeclared root rejection, no raw agent command tokens but required checks
+fail-closed, preview-to-install bytes/state binding, preserved existing collaboration
+files, unsafe ancestor/nested symlink refusal, hook/backups/bundle safety.
+Run focused disposable install/retrofit tests where tools permit; explicitly disclose
+unexecuted validation. Verify root-authored handoff truthfully records pending gates.
+Functional names only; consumer access read-only. No dependencies/model/budget changes.
+
+Return PASS/REQUEST_REVISION with exact hash, concrete findings and validation scope.
+This review is advisory evidence for independent integration, not a deployed-readiness
+claim or permission to bypass canonical Tier0. Write only declared output and complete
+the claim receipt through the inbox mechanism.

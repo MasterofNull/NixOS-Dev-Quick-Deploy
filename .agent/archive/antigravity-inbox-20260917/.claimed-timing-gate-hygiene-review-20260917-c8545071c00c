@@ -1,0 +1,52 @@
+# Independent advisory review — producer-timing + gate-hygiene (landed on main)
+
+Output: .agents/plans/coordination-safety-worktree-isolation/TIMING-GATE-HYGIENE-ANTIGRAVITY-REVIEW-20260917.md
+
+Claim this task with `aq-antigravity-inbox claim <basename> --actor ide-watch --json`
+before reading. Write only the declared output and complete with a receipt. This is
+an ADVISORY independent review; do not edit source, stage, commit, switch branches,
+deploy, restart services, or dispatch other agents. Read from the exact commits below
+(main checkout or a read-only equivalent). No prompts, responses, hidden reasoning, or
+secrets in output.
+
+Two changes already landed on main (Opus integrator; a fresh Claude non-author reviewer
+already PASSed them). You are a second independent advisory perspective — confirm or
+surface real defects. Advisory unless a real defect (then a bounded follow-up, never a
+history rewrite).
+
+## Commit d0b814cb — feat(local): record producer phase timing metadata
+Exact subject SHA-256 `8611af11e684a37d2e9e4e12f886441102ed1b260f1daeeb6588d40a1486ae93`.
+Metadata-only local-inference observability (8 files): content-free best-effort timing
+receipts (scripts/ai/lib/producer_timing.py), DirectRunner instrumentation
+(scripts/ai/lib/dispatch.py), _call_llama instrumentation
+(ai-stack/local-agents/agent_executor.py), a fail-closed projector in
+scripts/ai/lib/task_registry.py (_local_producer_timing_metadata), additive dashboard
+rows (assets/dashboard.js), an L2B golden source-hash rebind, and tests in
+scripts/testing/test-local-delegation-artifact.py.
+Verify: (1) receipts are content-free (no prompt/response) and best-effort (all write
+exceptions swallowed; atomic tmp+os.replace); (2) honest identity split (task_id/aq-NNN
+vs output_task_id; call_number vs executor-local invocation_sequence, retained across
+retries); (3) honest nulls for replay/buffered/no-content TTFT; categorical failures;
+(4) the projector fails closed (strict key-set, per-producer rules, chronological UTC
+ordering, first_elapsed<=request_elapsed) and cannot fabricate; (5) the integrator's
+regression fix at agent_executor.py ~4003 —
+`self._timing_invocation_sequence = getattr(self, "_timing_invocation_sequence", 0) + 1`
+— is behavior-preserving (0->1->2 for fully-__init__'d executors) and robust to
+__new__-built executors; (6) no payload/model/budget/timeout/control-flow change; the
+L2B golden rebind touches only the changed dispatch.py source hash.
+
+## Commit caa2fb6f — fix(governance): classify delegate-24h-success (0.8.1) as live-service
+Exact subject SHA-256 `ea5edbff1ffa7683c70360efe20eb81a4e8dc846ee0bc291b28067293973e6c8`.
+Adds QA phase-0 id 0.8.1 (ai_coordinator_delegate 24h success rate) to
+LIVE_SERVICE_CLASS_IDS in scripts/governance/tier0-validation-gate.sh, plus a
+WORKAROUND-REGISTER.md entry.
+Verify (anti-gaming is the key concern): (1) 0.8.1 is a genuine LIVE runtime-state signal
+(rolling 24h delegate success from coordinator telemetry), not a static/code check — read
+scripts/testing/harness_qa/phases/phase0.py (~706-725) and scripts/ai/_aq-qa-bash
+(~1237-1258); (2) the rate itself is not faked/suppressed — still reported, still HARD on
+--pre-deploy/--maintenance, only unblocks unrelated pre-commit (Rule 19 gate corollary,
+matching the 0.10.22 precedent); (3) all-or-nothing WARN logic intact — any failing id NOT
+in a WARN class still hard-fails QA phase 0 (gate lines ~900-935).
+
+Return at most five concrete findings with path/line references and one advisory
+disposition: `CONFIRM_PASS` or `DEFECT_FOUND`.

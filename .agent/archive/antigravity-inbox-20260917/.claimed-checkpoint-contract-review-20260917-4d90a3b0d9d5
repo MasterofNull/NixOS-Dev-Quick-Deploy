@@ -1,0 +1,25 @@
+# Checkpointable development contract — independent advisory review
+
+Owner-authorized task: Codex coordinates; review only. Write only
+`.agents/plans/coordination-safety-worktree-isolation/checkpoint-antigravity-review-20260917.md`.
+Output: .agents/plans/coordination-safety-worktree-isolation/checkpoint-antigravity-review-20260917.md
+Do not edit source, change Git HEAD/index, commit, or dispatch other agents.
+
+Review the following proposal against `.agent/WORKFLOW-CANON.md`,
+`.githooks/commit-msg`, and the existing coordination-safety plan:
+
+- Commit and sync incomplete slices on isolated branches with explicit remaining
+  work, validation results, blockers, next action, and activation prohibition.
+- Reuse existing tracker.json and its projected progress; do not introduce a
+  competing slice-status SSOT. RESUME/HANDOFF are projections of current intent.
+- CHECKPOINTED/PAUSED describe preservation/activity, not feature acceptance.
+  Existing terminal acceptance dispositions remain authoritative.
+- Protected main integration still requires independently reviewed frozen bytes.
+- Only one integrator changes the shared index/HEAD; integration lease is CS-3.
+- Scripts do hashing, path checks and Git mechanics. Lightweight models draft
+  comments/messages/checkpoint reports. Stronger lanes resolve authority/conflicts
+  and perform required final acceptance. Missing lanes remain catch-up entries.
+
+Provide concrete usability/dashboard recommendations, missing fields and three
+failure cases. End with VERDICT: PASS|CONCERNS|FAIL. This is a bounded planning
+review; it must not hold up safely preserving and syncing incomplete work.

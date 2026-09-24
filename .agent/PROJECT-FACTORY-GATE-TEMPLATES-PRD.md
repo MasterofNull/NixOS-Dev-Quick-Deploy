@@ -132,3 +132,60 @@ this repo's SSOTs; a change to a gate here should have a clear path to re-derive
 FT-1 records the derivation source so the template can be refreshed, not hand-maintained). Ports/paths/stack
 commands parameterized, never hardcoded. This repo remains the SSOT for the gates; the bundle is a derived,
 version-stamped, self-tested reproduction.
+
+## Authorized implementation continuation — factory capability replication
+
+Owner authorization: 2026-09-18. Module, API, branch and test names describe their
+function. Consumer project names belong only in provenance/evidence references.
+This continuation extends this PRD and FT dependencies; it does not establish a
+second policy engine or a competing roadmap.
+
+The intended product is a portable project configuration connected to a shared,
+versioned factory engine. Gate installation is only one capability. Projects
+must have scoped access to delegation, durable lifecycle/checkpoints, memory,
+issue capture, operational visibility, independent review, CI and explicitly
+configured deployment. Hardware, secrets, accounts, ports and user project data
+are not copied blindly from the source harness.
+
+Implementation order (owner-approved):
+
+1. Deployment contract corrections: adapt legitimate consumer layout, render
+   unconfigured command states truthfully, preview and seed required collaboration
+   paths, and expose confirmation/stack parity through MCP. Preserve existing
+   confirmation, backups, layout controls and fail-closed required checks.
+2. FT-5 start readiness: source/config/hash-bound executable readiness and visible
+   blockers before target-safe project/slice dispatch. Hook routing alone is not
+   passing target execution evidence.
+3. Shared-engine project integration: reuse existing registry, target resolution,
+   capability leases, workflow/memory/event services and dashboard APIs. Bind
+   project identity/root/capabilities explicitly; surface unavailable transports
+   before assignment. No duplicate per-project coordinator or memory authority.
+4. Lifecycle/collective correctness: converge on the existing durable workflow
+   authority, retain original objectives and analysis versus coding intent,
+   require actual contributor receipts, aggregate failed required phases, and
+   persist progress/outcomes across timeout, detach and suspend/resume.
+5. FT-6/7 and portable CI/CD: risk-appropriate independent review and trusted
+   backstops, tested source templates, separately verified GitHub protection and
+   authorized deployment. Local hooks do not establish remote enforcement.
+6. Consumer acceptance: a real bounded feature passes plan, implementation,
+   independent review, commit, CI, configured deploy and health checks; also prove
+   unavailable-lane handling, failed-task truthfulness and interruption recovery.
+7. Guided/self-improvement closure: anomaly -> evidence -> bounded proposal ->
+   authorized candidate -> independent acceptance -> canonical engine/template
+   update -> consumer regression -> measured revalidation. Learning does not
+   grant a candidate authority to weaken its own gates or silently deploy itself.
+
+Use `.agents/plans/factory-gate-templates/DEPLOYMENT-CONTRACT-IMPLEMENTATION.md`
+for the first executable boundary. Freeze each small subject, route a non-author
+review, and record implementation, validation, acceptance and activation as
+separate states. Findings requiring judgment are queued for their next slice;
+security, data-loss and authority defects block activation.
+
+Run-3 release correction (2026-09-19): a compatible upgrade is not safe merely
+because the factory recognizes its prior receipt. Before stages 3–7 activate,
+upgrade must preserve locally configured managed checks/layout policy, preview and
+back up every managed path it replaces, and prove recovery without relying on Git.
+Ambiguous ownership fails closed. Evidence files must not make a clean consumer
+dirty. The unchanged placeholder intake/status spine is stage-4's first authority
+consolidation slice; see
+`.agents/plans/factory-gate-templates/LIFECYCLE-AUTHORITY-CONSOLIDATION.md`.

@@ -1,0 +1,73 @@
+{
+  "schema_version": "1.0",
+  "round_id": "aqos-system1-selfcompact-v1",
+  "state": "COLLECTED",
+  "task": {
+    "prompt": "Incorporate .agents/prompts/AQOS_UNIFIED_SYSTEM1_SELF_COMPACT_META_PROMPT.md into AQ-OS v1 PRD and workstream plans",
+    "target": "",
+    "scope_files": []
+  },
+  "opened_at": "2026-09-21T22:06:40Z",
+  "quorum_policy": {
+    "min_lanes": 2,
+    "required_agents": [],
+    "late_local_admissible": true,
+    "timeout_seconds": null,
+    "deadline": null,
+    "timeout_action": "lock_with_present"
+  },
+  "lanes": [
+    {
+      "agent": "claude",
+      "dispatch_id": null,
+      "idempotency_hash": "1cf246a56e4d6ce1573cc0dd94bf8ee79d30c1721fba4c62a325eda9eca983fe",
+      "status": "submitted",
+      "landed_at": null
+    },
+    {
+      "agent": "codex",
+      "dispatch_id": null,
+      "idempotency_hash": "144cf3312e040bf9d4b695a476471bfe2fb88d781cf96ac4993bfeddc60eab61",
+      "status": "submitted",
+      "landed_at": null
+    },
+    {
+      "agent": "local",
+      "dispatch_id": null,
+      "idempotency_hash": "b4438c37f0ba40872f636415dc634a6d3a6c4abd790e5146dc3bc6aa8dbe386a",
+      "status": "submitted",
+      "landed_at": null
+    },
+    {
+      "agent": "antigravity",
+      "dispatch_id": null,
+      "idempotency_hash": "381042d2ab7f98dc38d66175038a6261dad2ee7c6c540cc5bdc3489af566efdb",
+      "status": "submitted",
+      "landed_at": null
+    }
+  ],
+  "contributions": {},
+  "conflicts": [],
+  "consensus_hash": null,
+  "aggregate_path": null,
+  "aggregate_hash": null,
+  "locked_at": null,
+  "history": [
+    {
+      "transition": "CREATED->DISPATCHED",
+      "timestamp": "2026-09-21T22:06:40Z",
+      "actor": "aq-collab-round"
+    },
+    {
+      "transition": "DISPATCHED->CONTRIBUTING",
+      "timestamp": "2026-09-21T22:34:28Z",
+      "actor": "aq-collab-round"
+    },
+    {
+      "transition": "CONTRIBUTING->COLLECTED",
+      "timestamp": "2026-09-21T22:34:28Z",
+      "actor": "aq-collab-round"
+    }
+  ],
+  "predecessor_round_id": null
+}

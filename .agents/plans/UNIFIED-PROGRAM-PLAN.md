@@ -140,7 +140,7 @@ only) · **STANDING** (independent of this program).
 |---|----------|----------|
 | Q1 | **RATIFIED 2026-07-18:** synthesis historical SHA-256 `00c7dbc5…` is parent; this plan's historical `2cab0bdd…` subject is its non-authoritative projection | parent trajectory decided |
 | Q2 | **RATIFIED 2026-07-18:** workflow-run-task legacy-live/Postgres-shadow hypothesis at `c11bf7a1`; migration owner `hyperd`; historical PRD §9 frozen | B2-C1 authorization preparation/review only |
-| Q3 | Security model: principal attestations + CapabilityLease, no fail-open modes; + eight network profiles (connected zero trust) | Foundation C |
+| Q3 | **RATIFIED 2026-09-24 (owner):** security model = principal attestations + CapabilityLease (deny-by-default, shrink-only, epoch-revocable), **no fail-open** (authority-down → minimal read-only lease + alert, never DoS, never bypass), + eight network profiles (connected zero-trust; deny-all default, exact enumeration still a dedicated C4 threat-pass sub-decision). Design complete + independently reviewed (Opus rev2, all 10 items folded); C2 tool-lease enforcement already live+validated. Ratification blesses continued per-slice activation — **each remaining slice stays flag-gated default-off + owner-rebuild-activated + reversible.** | **Foundation C activation UNBLOCKED** (per-slice owner activation) |
 | Q4 | Fable behavior contract → model-neutral versioned canon policy | B3 canon migration |
 | Q5 | Measured, expiring **lane-eligibility registry** (roles stay model-neutral) | all delegation; VF-8 feeds it |
 | Q6 | Kernel front door: keep `local-orchestrator` declaration or issue named revision toward `aq` gateway | Product F CLI |
@@ -148,6 +148,20 @@ only) · **STANDING** (independent of this program).
 | Q8 | Adjudicate the ten Cycle-0 authority rows (Foundation A exit) | B2 vertical selection |
 | Q9 | Activate VF (Track V) after its VF-0 round — incl. ratifying the VF-9 interrupt rubric + triage cadence (slice itself owner-approved 2026-07-13) | oracle/tier/evidence/intake gates |
 | Q10 | Rebudget the measured 27 GB envelope for a resident small model and/or speculative decoding, or defer to fleet hardware; no assumed simultaneous fit | Product D/E stacking work |
+
+### Owner-delegated dispositions — 2026-09-24 (owner: "follow your recommendations for the remaining gated tasks")
+Owner reviewed the queue and delegated the non-Q3 decisions to the coordinator recommendation on 2026-09-24.
+Recorded dispositions (Q3 remains owner-ratified explicitly — under active review with owner):
+- **Q10 → SPLIT (proceed):** System-1 decision plane (system1d, 400MB CPU-only per the amendment) is
+  approved to proceed on current hardware — it fits the measured envelope. A resident draft model /
+  speculative decoding is **deferred to fleet hardware** (does not safely co-reside with the 35B on 27GB).
+- **Q7 → DEFER** to when Product D nears done (eval-factory gate is Product E; scorer quality gap open).
+- **Q6 → DEFER** to Product F (CLI front door; far off).
+- **Q9 → DEFER** (Track V currently REQUEST_REVISION; its protections fold into C — revisit after C).
+- **Q4 → DEFER** to B3 canon-compiler pickup (low-stakes housekeeping; blocks nothing critical).
+- **Q5 → DEFER** to Product E measurement infra (lane-eligibility registry needs VF-8 measurement).
+Rationale + trade-offs: coordinator progress report + walkthrough 2026-09-24. These are revisit-when-track-arrives
+deferrals, not rejections — none is on the critical path (Q3→C→D is).
 
 ## 7. Recommended sequence from today
 

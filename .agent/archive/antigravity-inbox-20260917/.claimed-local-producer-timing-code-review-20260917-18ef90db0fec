@@ -1,0 +1,31 @@
+# Local producer timing candidate — exact code review
+
+Output: .agents/plans/coordination-safety-worktree-isolation/LOCAL-TIMING-CODE-ANTIGRAVITY-REVIEW-20260917.md
+
+Claim this task with `aq-antigravity-inbox claim <basename> --actor ide-watch --json`
+before reading. Write only the declared output and complete with a receipt. This
+is an advisory independent code review; do not edit source, stage, commit, switch
+branches, deploy, restart services, or dispatch other agents.
+
+Review exact candidate branch `factory/local-producer-timing-20260917` at commit
+`80b04d95c0137a7f43510668e6c4cea8c960a8fa`, parent `f9ab7e429874eb32f91c04889aa7189daa213787`,
+subject SHA-256 `01ff6ff281f3877433f8ba0440959d14128aed54f18045a2f985015d63a26963`.
+If your file view is the main checkout, use the branch commit/tree or an exact
+read-only equivalent; do not copy it into main. Review only these eight paths:
+the timing execution packet, dispatch.py, agent_executor.py, task_registry.py,
+producer_timing.py, dashboard.js, the L2B payload manifest and
+test-local-delegation-artifact.py.
+
+Same expert baseline: systems measurement, privacy, runtime reliability and SDET.
+Check actual direct admission/request/first-content/completion boundaries;
+agent internal aq-epoch ID versus delegation output ID; repeated logical call
+numbers versus invocation sequence; replay/buffered/no-content/failure nulls;
+atomic content-free best-effort writes; unchanged payload/settings/control flow;
+dashboard projection and test truthfulness. Existing focused evidence is 23/23
+timing artifact, L2B-B 16/16, budget 18/18, syntax and pre-push lint PASS. Do not
+accept those claims without source review, and do not infer deployed UI activation.
+
+Return at most five concrete findings with path/line references and one advisory
+disposition: `PLAN_READY_WITH_FOLLOWUPS` or `PLAN_BLOCKED`. This report is not the
+binding final acceptance; a cold exact-subject reviewer must still review before
+promotion to main. No prompts, responses, hidden reasoning or secrets in output.

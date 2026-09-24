@@ -16,6 +16,8 @@ same-user hook cooperation from trusted enforcement reserved for FT-7.
 
 Do not edit candidate files, stage, switch branches, dispatch another agent,
 install into a real project, execute target commands or mutate services/secrets.
+Output: .agents/plans/factory-gate-templates/ANTIGRAVITY-FT4-ADVISORY.md
+
 Return exact reviewed hash, observations and bounded follow-ups to
 `.agents/plans/factory-gate-templates/ANTIGRAVITY-FT4-ADVISORY.md`.
 Never credit this queue item as a completed review without an actual response.

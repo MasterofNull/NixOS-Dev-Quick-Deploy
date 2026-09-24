@@ -1,0 +1,11 @@
+# Independent advisory: local producer timing F1
+
+Output: .agents/plans/coordination-safety-worktree-isolation/LOCAL-TIMING-CODE-ANTIGRAVITY-REVIEW-F1-20260917.md
+
+Review the isolated candidate at `/tmp/aq-local-producer-timing-20260917`.
+
+- Tip: `bba5866cf17a76620dd3955daca55ad49ef15022`
+- Diff base: `f9ab7e429874eb32f91c04889aa7189daa213787`
+- Combined diff SHA-256: `4a014fd134635a316ccefb9abe62cbcbb688bf7a7ae057376323c8110b665db2`
+
+Review the full metadata-only timing slice, including the corrective first-visible observation change. Check privacy, identity/retry correlation, failure behavior, replay semantics, and test coverage. Do not edit the candidate. Write the report to `.agent/collaboration/antigravity-inbox/LOCAL-TIMING-CODE-ANTIGRAVITY-REVIEW-F1-20260917.md` and return `PASS`, `CONCERNS`, or `REQUEST_REVISION`. This is advisory only; do not claim binding acceptance.

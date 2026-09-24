@@ -4,7 +4,7 @@
 - Summarized latest videos (Jan - Jul 2026) regarding Agentic Observability, Model Stacking, and Agentic Security: `.agent/INDYDEVDAN-RESEARCH-SUMMARY.md`
 
 ## Issues Backlog
-- Active backlog: `.agent/memory/issues-backlog.md` (latest: Luna dispatch/persistence failures → `.agent/memory/luna-failure-analysis-20260917.md`; lightweight eligibility and checkpoint compatibility recorded; shared-index safety, local timing/calibration, Security Center rotation and P14s microSD reboot validation remain tracked)
+- Active backlog: `.agent/memory/issues-backlog.md` (Mendocino factory findings/evidence → `.agents/summary/audits/factory-mendocino-investigation-20260918.md`; Luna failure analysis → `.agent/memory/luna-failure-analysis-20260917.md`; existing coordination, inference, secrets and hardware issues remain tracked)
 
 ## Active Planning Docs
 - **Phase 54 (2026-05-14) COMPLETE ✓ 13/13** — Agentic-First Architecture Elevation (commits 4a6cd30c, 053a459b, b62dd21f): memory_broker.py (MemoryBroker unified typed memory), intent_classifier.py (IntentClassifier wired into handle_query:1611), rag_augmentor.py (active RAG default, L6 health gate at /api/health/rag), workflow/workflow_checkpointer.py (durable DAG + WORKFLOW_DLQ_KEY), trace_collector.py (end-to-end query trace + /api/traces), eval_runner.py (continuous eval + /eval/run + /eval/trend). config/intent-routing-map.json hot-reloadable. aq-qa phase 54: 13/13 PASS. PRD: .agent/PROJECT-AGENTIC-FIRST-ELEVATION-PRD.md. Gemini collab: gemini-20260514-171425-i7ecuo found classify_task at model_coordinator.py:126 was bypassed — now wired.

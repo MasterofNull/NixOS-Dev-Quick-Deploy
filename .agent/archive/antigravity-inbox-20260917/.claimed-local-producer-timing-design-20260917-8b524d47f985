@@ -1,0 +1,23 @@
+# Local producer timing — advisory design review
+
+Output: .agents/plans/coordination-safety-worktree-isolation/LOCAL-TIMING-ANTIGRAVITY-ADVISORY-20260917.md
+
+Claim this task through aq-antigravity-inbox before work; complete it with the
+declared output and receipt. Read-only advisory; write only the declared report.
+Codex is sole integrator. Do not edit source, stage, commit, switch branches,
+deploy, change settings or trigger other tasks. Absent lanes never block delivery.
+
+Review the new isolated execution packet at
+/tmp/aq-local-producer-timing-20260917/.agents/plans/coordination-safety-worktree-isolation/LOCAL-PRODUCER-TIMING-EXECUTION-20260917.md
+and the existing .agent/PROJECT-LOCAL-LATENCY-OBSERVABILITY-PRD.md.
+Owner explicitly authorized metadata-only producer timing in the frozen dispatcher,
+with independent review; no prompt/reasoning capture or model/budget changes.
+
+Same expert baseline: systems engineer, privacy reviewer and measurement/SDET.
+Assess actual DirectRunner local admission wait versus unobserved server queue;
+per-call agent request/first-visible/completion versus whole-task elapsed;
+replay/buffered/failed/no-content cases, correlation, suspend-excluded monotonic
+duration and safe bounded monitor projection. Avoid new service/registry/dependency.
+Return at most five concrete findings and a PLAN_READY_WITH_FOLLOWUPS or PLAN_BLOCKED
+advisory disposition. Cite code locations where verified; do not claim code acceptance,
+implemented behavior or live validation. Source implementation may still be running.

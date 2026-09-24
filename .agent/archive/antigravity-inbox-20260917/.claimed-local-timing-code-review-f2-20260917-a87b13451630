@@ -1,0 +1,8 @@
+# Independent advisory: local producer timing F2
+
+Output: .agents/plans/coordination-safety-worktree-isolation/LOCAL-TIMING-CODE-ANTIGRAVITY-REVIEW-F2-20260917.md
+
+Review `/tmp/aq-local-producer-timing-20260917` at tip `c4bf94b32a27d903b518b951c15e51b5e428a994` against base `f9ab7e429874eb32f91c04889aa7189daa213787`.
+
+The combined binary diff SHA-256 is `aa292cf1849d525dcdc976ac02b4d7514b1a3f502d9720ac519150034f28deeb`.
+The only change since the prior advisory is the compatibility fix in `agent_executor.py` initializing the timing invocation counter for lightweight `__new__` test fixtures; verify no privacy, identity, retry, or runtime regressions. Do not edit or stage the candidate. Write a report to `.agents/plans/coordination-safety-worktree-isolation/LOCAL-TIMING-CODE-ANTIGRAVITY-REVIEW-F2-20260917.md` with PASS/CONCERNS/REQUEST_REVISION. Advisory only; no binding acceptance.

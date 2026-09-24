@@ -1,0 +1,29 @@
+# Antigravity advisory review — System-1 PRD amendment (synthesis of your own round input)
+
+**Task id:** system1-amendment-advisory-20260923
+**Role:** independent advisory reviewer (design + security). NOT implementation.
+**Actor:** owner-manual wake (`aq-antigravity-inbox wake system1-amendment-advisory-20260923 --actor owner-manual`)
+Output: .agents/plans/aqos-system1-selfcompact-v1/system1-amendment-antigravity-advisory-20260923.md
+
+## What to review
+`.agent/PRD-AMENDMENT-AQOS-SYSTEM1-SELFCOMPACT.md` — the coordinator's synthesis of round
+`aqos-system1-selfcompact-v1` into a PRD amendment. It folds YOUR ratify-with-constraints contribution
+(`.agents/plans/aqos-system1-selfcompact-v1/antigravity.md`) plus the Claude lane's R1–R5
+(`.agents/plans/aqos-system1-selfcompact-v1/claude.md`). This is a second, independent design pass before
+owner activation + a scarce cloud multi-agent review.
+
+## Focus (advisory — flag concerns, don't rewrite)
+1. **Faithfulness:** does the amendment faithfully carry your APU-400MB-CPU-only ceiling, fail-closed
+   security constraint, and asymmetric 200k/32k thresholds — or did the synthesis weaken/misstate any of them?
+2. **Security:** is the fail-CLOSED-for-shell-safety vs fail-OPEN-to-System-2-for-performance split sound?
+   Can System-1 ever *widen* what the existing shell-safety gate permits (it must not)?
+3. **Architecture:** the Claude-lane additions — system1d as a declared capability (fail-open when absent),
+   System-1 routing feeding the health filter (not bypassing it), self-compaction on the event spine
+   (RESUME/PULSE as projections), shadow-first per function — are these coherent and complete?
+4. **Gaps:** anything missing before this becomes buildable slices (S1–S5)?
+
+## Output
+Write your review to `.agent/collaboration/antigravity-inbox/receipts/` per the inbox convention, or a
+per-agent response file. Verdict: RATIFY / RATIFY-WITH-CHANGES / CONCERNS + numbered findings. Advisory
+unless a real defect (then a bounded follow-up). Your factual claims about the file will be verified
+against source before adoption.
