@@ -10,6 +10,12 @@ git -C "${target}" config user.name "Factory Author"
 git -C "${target}" config user.email "author@example.invalid"
 printf 'required=src\nrequired=tests\n' >"${target}/.factory/repo-structure.conf"
 
+# Direct runner probes use a standalone copy, never an installed retained
+# bundle whose containing consumer receipt is authoritative.
+standalone_bundle="${work_dir}/standalone-bundle"
+mkdir -p "${standalone_bundle}"
+cp -a "${bundle_root}/." "${standalone_bundle}/"
+
 FACTORY_REPO_ROOT="${target}" \
 FACTORY_STRUCTURE_POLICY="${target}/.factory/repo-structure.conf" \
 FACTORY_SECRET_SCAN_NOT_APPLICABLE=1 \
@@ -18,7 +24,7 @@ FACTORY_TEST_NOT_APPLICABLE=1 \
 FACTORY_LINT_NOT_APPLICABLE=1 \
 FACTORY_LIVE_SERVICE_NOT_APPLICABLE=1 \
 FACTORY_FRESHNESS_NOT_APPLICABLE=1 \
-  "${bundle_root}/gate-runner" --pre-commit >/dev/null
+  "${standalone_bundle}/gate-runner" --pre-commit >/dev/null
 echo "PASS: generic checks.d discovery and pre-commit run"
 
 PYTHONPYCACHEPREFIX="${work_dir}/pycache" python3 "${bundle_root}/stack-adapters/test_resolve.py" >/dev/null
@@ -28,7 +34,7 @@ unconfigured_checks="${work_dir}/unconfigured-checks"
 mkdir -p "${unconfigured_checks}"
 cp "${bundle_root}/checks.d/hard-30-build.sh" "${unconfigured_checks}/hard-30-build.sh"
 chmod +x "${unconfigured_checks}/hard-30-build.sh"
-if FACTORY_GATE_CHECKS_DIR="${unconfigured_checks}" "${bundle_root}/gate-runner" --pre-commit >"${work_dir}/unconfigured.out" 2>&1; then
+if FACTORY_GATE_CHECKS_DIR="${unconfigured_checks}" "${standalone_bundle}/gate-runner" --pre-commit >"${work_dir}/unconfigured.out" 2>&1; then
   echo "FAIL: unresolved required check passed" >&2
   exit 1
 fi
@@ -42,8 +48,10 @@ cat >"${severity_checks}/live-10-synthetic.sh" <<'EOF'
 exit 1
 EOF
 chmod +x "${severity_checks}/live-10-synthetic.sh"
-FACTORY_GATE_CHECKS_DIR="${severity_checks}" "${bundle_root}/gate-runner" --pre-commit >/dev/null 2>&1
-if FACTORY_GATE_CHECKS_DIR="${severity_checks}" "${bundle_root}/gate-runner" --pre-deploy >/dev/null 2>&1; then
+severity_repo="${work_dir}/severity-repo"
+mkdir -p "${severity_repo}"
+FACTORY_REPO_ROOT="${severity_repo}" FACTORY_GATE_CHECKS_DIR="${severity_checks}" "${standalone_bundle}/gate-runner" --pre-commit >/dev/null 2>&1
+if FACTORY_REPO_ROOT="${severity_repo}" FACTORY_GATE_CHECKS_DIR="${severity_checks}" "${standalone_bundle}/gate-runner" --pre-deploy >/dev/null 2>&1; then
   echo "FAIL: live failure did not harden for pre-deploy" >&2
   exit 1
 fi

@@ -9,8 +9,16 @@ case "${1:-}" in
 esac
 
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
-CHECKS_DIR="${FACTORY_GATE_CHECKS_DIR:-${SCRIPT_DIR}/checks.d}"
+CANONICAL_CHECKS_DIR="${SCRIPT_DIR}/checks.d"
+CHECKS_DIR="${FACTORY_GATE_CHECKS_DIR:-${CANONICAL_CHECKS_DIR}}"
 REPO_ROOT="${FACTORY_REPO_ROOT:-$(git -C "${SCRIPT_DIR}" rev-parse --show-toplevel 2>/dev/null || true)}"
+ACTUAL_REPO_ROOT="$(git -C "${SCRIPT_DIR}" rev-parse --show-toplevel 2>/dev/null || true)"
+# An installed runner is authoritative for its containing repository.  A
+# caller cannot redirect installed-state detection or execution evidence to a
+# receipt-free directory with FACTORY_REPO_ROOT.
+if [[ -n "${ACTUAL_REPO_ROOT}" && ( -e "${ACTUAL_REPO_ROOT}/.factory/gate-install.json" || -L "${ACTUAL_REPO_ROOT}/.factory/gate-install.json" ) ]]; then
+  REPO_ROOT="${ACTUAL_REPO_ROOT}"
+fi
 
 # --preflight is a distinct, metadata-only readiness mode (FT-5): it never
 # executes checks.d/*.sh (which run target-declared build/test/lint/secret
@@ -25,11 +33,11 @@ if [[ "${MODE}" == "--preflight" ]]; then
     echo '{"schema_version":1,"operation":"readiness-preflight","ready":false,"state":"BLOCKED","blockers":[{"code":"INSTALLATION_ABSENT","detail":"no repository root resolved"}]}'
     exit 1
   fi
-  exec python3 - "${REPO_ROOT}" "${CHECKS_DIR}" <<'PY'
+  exec python3 - "${REPO_ROOT}" "${CANONICAL_CHECKS_DIR}" "${SCRIPT_DIR}" "${CHECKS_DIR}" <<'PY'
 import hashlib, json, os, re, subprocess, sys
 from pathlib import Path
 
-root, checks_dir = Path(sys.argv[1]).resolve(), Path(sys.argv[2])
+root, checks_dir, script_dir, requested_checks_dir = Path(sys.argv[1]).resolve(), Path(sys.argv[2]), Path(sys.argv[3]), Path(sys.argv[4])
 # Matches a genuine unrendered double-brace placeholder token. A naive
 # substring check for the open-brace pair would also match each check
 # script's own defensive `*'{{'*` glob-detection code, which is present
@@ -54,6 +62,69 @@ def evidence_digest(base: Path) -> str:
     return digest.hexdigest()
 
 
+def _git_mode(mode: int) -> int:
+    # Git tracks only the owner-exec bit (100644 vs 100755); the remaining
+    # permission bits come from the checkout's umask and drift across hosts.
+    # Normalizing both sides here keeps provenance umask-robust while still
+    # catching a real executable-bit change.
+    return 0o755 if mode & 0o100 else 0o644
+
+
+def _mode_ok(mode: int) -> bool:
+    # No setuid/setgid/sticky bit, not group- or world-writable. _git_mode()
+    # above only tracks the git-portable owner-exec bit -- a live file that
+    # drifted to 0777, 4755, 2755, 6755, or 0666 still normalizes to the same
+    # owner-exec class and must not be waved through on content+owner-exec
+    # match alone.
+    return (mode & 0o7000) == 0 and (mode & 0o022) == 0
+
+
+def canonical_scope():
+    manifest_path = root / ".factory" / "gate-bundle" / "MANIFEST.json"
+    if not manifest_path.is_file():
+        manifest_path = script_dir / "MANIFEST.json"
+    try:
+        if manifest_path.is_symlink() or not manifest_path.is_file():
+            raise ValueError("unsafe manifest")
+        receipt_path = root / ".factory" / "gate-install.json"
+        if receipt_path.is_symlink() or not receipt_path.is_file():
+            raise ValueError("unsafe install receipt")
+        receipt = json.loads(receipt_path.read_text(encoding="utf-8"))
+        managed = receipt.get("managed_files") if isinstance(receipt, dict) and isinstance(receipt.get("managed_files"), dict) else {}
+        manifest_record = managed.get(".factory/gate-bundle/MANIFEST.json")
+        manifest_mode = manifest_path.stat().st_mode & 0o7777
+        if not isinstance(manifest_record, dict) or manifest_record.get("disposition") != "factory_owned" \
+                or manifest_record.get("sha256") != hashlib.sha256(manifest_path.read_bytes()).hexdigest() \
+                or manifest_record.get("mode") != _git_mode(manifest_mode) \
+                or not _mode_ok(manifest_mode):
+            raise ValueError("manifest does not match receipt provenance")
+        manifest_provenance = True
+        manifest = json.loads(manifest_path.read_text(encoding="utf-8"))
+        expected = sorted(Path(str(entry.get("install_target", ""))).name for entry in manifest["files"]
+                          if isinstance(entry, dict) and str(entry.get("install_target", "")).startswith("scripts/governance/checks.d/"))
+        receipt_expected = sorted(Path(path).name for path, record in managed.items()
+                                  if isinstance(path, str) and path.startswith("scripts/governance/checks.d/")
+                                  and isinstance(record, dict) and record.get("disposition") == "factory_owned")
+        check_provenance = all(
+            isinstance(managed.get(f"scripts/governance/checks.d/{name}"), dict)
+            and managed[f"scripts/governance/checks.d/{name}"].get("sha256") == hashlib.sha256((checks_dir / name).read_bytes()).hexdigest()
+            and managed[f"scripts/governance/checks.d/{name}"].get("mode") == _git_mode((checks_dir / name).stat().st_mode & 0o7777)
+            and _mode_ok((checks_dir / name).stat().st_mode & 0o7777)
+            for name in receipt_expected if (checks_dir / name).is_file() and not (checks_dir / name).is_symlink())
+    except (OSError, ValueError, KeyError, TypeError):
+        expected = []
+        receipt_expected = []
+        check_provenance = False
+        manifest_provenance = False
+    actual = sorted(path.name for path in checks_dir.glob("*.sh")) if checks_dir.is_dir() and not checks_dir.is_symlink() else []
+    invalid = [path.name for path in checks_dir.glob("*.sh")
+               if path.is_symlink() or not path.is_file() or not os.access(path, os.X_OK)] if checks_dir.is_dir() else []
+    scope = {"expected": expected, "actual": actual, "receipt_expected": receipt_expected,
+             "invalid": invalid, "manifest_provenance": manifest_provenance,
+             "check_provenance": check_provenance}
+    return bool(expected) and expected == actual == receipt_expected and not invalid and check_provenance, scope
+
+
 blockers, coverage = [], []
 
 
@@ -68,6 +139,14 @@ installed = install_receipt.is_file() and not install_receipt.is_symlink()
 add("installation", ".factory/gate-install.json", {"present": installed},
     None if installed else "INSTALLATION_ABSENT",
     "no factory gate install receipt found" if not installed else "")
+
+scope_ok, scope = canonical_scope()
+add("execution_check_scope", "MANIFEST.json checks.d inventory + installed executable checks",
+    scope, None if scope_ok else "EXECUTION_SCOPE_INVALID")
+if requested_checks_dir.resolve() != checks_dir.resolve():
+    add("requested_execution_check_scope", "readiness only accepts the canonical installed checks.d",
+        {"canonical": str(checks_dir), "requested": str(requested_checks_dir)},
+        "EXECUTION_SCOPE_INVALID", "external check scope cannot certify target readiness")
 
 configured_path = None
 try:
@@ -126,8 +205,25 @@ else:
     except (OSError, ValueError):
         recorded = {}
     recorded_digest = recorded.get("evidence_digest") if isinstance(recorded, dict) else None
-    if not isinstance(recorded_digest, str) or recorded.get("fail_count") != 0:
+    counts = tuple(recorded.get(name) for name in ("pass_count", "warn_count", "fail_count")) if isinstance(recorded, dict) else ()
+    schema_valid = (isinstance(recorded, dict) and recorded.get("schema_version") == 1
+                    and isinstance(recorded_digest, str) and re.fullmatch(r"[0-9a-f]{64}", recorded_digest) is not None
+                    and recorded.get("mode") in {"--pre-commit", "--pre-deploy"}
+                    and recorded.get("status") in {"PASSED", "FAILED"}
+                    and all(isinstance(value, int) and not isinstance(value, bool) and value >= 0 for value in counts)
+                    and len(counts) == 3 and sum(counts) == len(scope["actual"])
+                    and recorded.get("status") == ("PASSED" if recorded.get("fail_count") == 0 else "FAILED")
+                    and recorded.get("check_scope") == scope)
+    if not schema_valid:
         evidence_blocker, evidence_detail = "MISSING_EXECUTION_EVIDENCE", {"present": True, "valid": False}
+    elif recorded["fail_count"] != 0:
+        evidence_blocker, evidence_detail = "FAILED_EXECUTION_EVIDENCE", {
+            "present": True, "fail_count": recorded["fail_count"],
+            "pass_count": recorded.get("pass_count"), "warn_count": recorded.get("warn_count"),
+        }
+    elif not scope_ok:
+        evidence_blocker, evidence_detail = "EXECUTION_SCOPE_INVALID", {
+            "recorded_scope": recorded.get("check_scope"), "current_scope": scope}
     else:
         current_digest = evidence_digest(root)
         if current_digest != recorded_digest:
@@ -190,10 +286,207 @@ if [[ ! -d "${CHECKS_DIR}" ]]; then
   exit 1
 fi
 
+# For an installed target, reject a substituted or partial scope before any
+# discovered path runs.  Refusing only after execution could run out-of-tree
+# code through a symlinked check.  The verified bytes are copied into a
+# private, non-repo snapshot directory (SNAPSHOT_DIR, mode 0700) FIRST, each
+# check read exactly once, and ONLY THEN is the snapshot's own copy hashed
+# against the install receipt -- the mutable repo pathname is never opened a
+# second time after the read that populated the snapshot. This closes the
+# validate-then-copy TOCTOU by construction, not by timing: the bytes that
+# get validated and the bytes that get executed are the same in-memory
+# buffer (see _read_once() below), so there is no window between "verified"
+# and "will execute" for an attacker's swap to land in. Checks execute FROM
+# THAT SNAPSHOT rather than by re-globbing the mutable repo path; the
+# private snapshot cannot be mutated by anything outside this process.
+SNAPSHOT_DIR=""
+cleanup_snapshot() {
+  if [[ -n "${SNAPSHOT_DIR}" && -d "${SNAPSHOT_DIR}" ]]; then
+    rm -rf -- "${SNAPSHOT_DIR}"
+  fi
+}
+trap cleanup_snapshot EXIT
+
+if [[ -e "${REPO_ROOT}/.factory/gate-install.json" || -L "${REPO_ROOT}/.factory/gate-install.json" ]]; then
+  if ! SNAPSHOT_DIR="$(python3 - "${REPO_ROOT}" "${CHECKS_DIR}" "${CANONICAL_CHECKS_DIR}" "${SCRIPT_DIR}" <<'PY'
+import hashlib, json, os, shutil, stat, subprocess, sys, tempfile
+from pathlib import Path
+
+root, run_checks, canonical_checks, script_dir = Path(sys.argv[1]).resolve(), Path(sys.argv[2]), Path(sys.argv[3]), Path(sys.argv[4])
+
+# Same receipt-hash-bound provenance check as canonical_scope() in the
+# --preflight block and the post-execution evidence writer below: a
+# name-set match (expected == actual) alone lets an attacker add a new
+# checks.d/*.sh PLUS a matching new MANIFEST.json entry, leaving the
+# install receipt untouched, and still pass. Binding every manifest/check
+# entry to the receipt's recorded sha256+mode closes that gap BEFORE any
+# check runs (refusing only after execution could already have run
+# out-of-tree code through the injected check).
+
+
+def _git_mode(mode: int) -> int:
+    # Git tracks only the owner-exec bit (100644 vs 100755); the remaining
+    # permission bits come from the checkout's umask and drift across hosts.
+    return 0o755 if mode & 0o100 else 0o644
+
+
+def _mode_ok(mode: int) -> bool:
+    # No setuid/setgid/sticky bit, not group- or world-writable -- see the
+    # matching helper in the --preflight block for the full rationale.
+    return (mode & 0o7000) == 0 and (mode & 0o022) == 0
+
+
+def _read_once(path: Path) -> tuple[bytes, int]:
+    """Open, fstat, and read a regular file through a single fd.
+
+    FIX 1: this is the one read per checks.d/*.sh file the snapshot-first
+    construction requires. O_NOFOLLOW makes "not a symlink" atomic with the
+    open (not a separate stat moments earlier, which a rename-swap could
+    land between); fstat()/read() then both observe that exact fd, so the
+    mode and bytes returned are guaranteed to be the same inode's contents.
+    The caller writes this same buffer to the snapshot AND hashes it for
+    provenance -- the bytes validated and the bytes executed are therefore
+    identical by construction, with no later re-open of the mutable repo
+    path for an attacker's swap to race against.
+    """
+    fd = os.open(str(path), os.O_RDONLY | os.O_NOFOLLOW)
+    try:
+        st = os.fstat(fd)
+        if not stat.S_ISREG(st.st_mode):
+            raise ValueError(f"not a regular file: {path}")
+        chunks = []
+        while True:
+            chunk = os.read(fd, 1 << 20)
+            if not chunk:
+                break
+            chunks.append(chunk)
+        return b"".join(chunks), stat.S_IMODE(st.st_mode)
+    finally:
+        os.close(fd)
+
+
+def _load_manifest_scope():
+    """Validate and parse the small metadata files (manifest, receipt) that
+    NAME the execution set. These are not copied into the snapshot or
+    executed -- only their names/hashes steer which checks.d entries get
+    snapshotted -- so they sit outside FIX 1's snapshot-first requirement,
+    same as the metadata reads in the --preflight and post-run copies of
+    canonical_scope().
+    """
+    manifest_path = root / ".factory" / "gate-bundle" / "MANIFEST.json"
+    if not manifest_path.is_file():
+        manifest_path = script_dir / "MANIFEST.json"
+    if manifest_path.is_symlink() or not manifest_path.is_file():
+        raise ValueError("unsafe manifest")
+    receipt_path = root / ".factory" / "gate-install.json"
+    if receipt_path.is_symlink() or not receipt_path.is_file():
+        raise ValueError("unsafe install receipt")
+    receipt = json.loads(receipt_path.read_text(encoding="utf-8"))
+    managed = receipt.get("managed_files") if isinstance(receipt, dict) and isinstance(receipt.get("managed_files"), dict) else {}
+    manifest_record = managed.get(".factory/gate-bundle/MANIFEST.json")
+    manifest_bytes, manifest_mode = _read_once(manifest_path)
+    if not isinstance(manifest_record, dict) or manifest_record.get("disposition") != "factory_owned" \
+            or manifest_record.get("sha256") != hashlib.sha256(manifest_bytes).hexdigest() \
+            or manifest_record.get("mode") != _git_mode(manifest_mode) \
+            or not _mode_ok(manifest_mode):
+        raise ValueError("manifest does not match receipt provenance")
+    manifest = json.loads(manifest_bytes)
+    expected = sorted(Path(str(entry.get("install_target", ""))).name for entry in manifest["files"]
+                      if isinstance(entry, dict) and str(entry.get("install_target", "")).startswith("scripts/governance/checks.d/"))
+    receipt_expected = sorted(Path(path).name for path, record in managed.items()
+                              if isinstance(path, str) and path.startswith("scripts/governance/checks.d/")
+                              and isinstance(record, dict) and record.get("disposition") == "factory_owned")
+    return managed, expected, receipt_expected
+
+
+snapshot_dir = None
+try:
+    if run_checks.resolve() != canonical_checks.resolve():
+        raise ValueError("noncanonical check directory")
+    if canonical_checks.is_symlink() or not canonical_checks.is_dir():
+        raise ValueError("unsafe canonical check directory")
+
+    managed, expected, receipt_expected = _load_manifest_scope()
+
+    actual = sorted(path.name for path in canonical_checks.glob("*.sh"))
+    invalid = [path.name for path in canonical_checks.glob("*.sh")
+               if path.is_symlink() or not path.is_file() or not os.access(path, os.X_OK)]
+    if not (bool(expected) and expected == actual == receipt_expected and not invalid):
+        raise ValueError(f"execution check scope name mismatch: expected={expected} actual={actual} "
+                          f"receipt_expected={receipt_expected} invalid={invalid}")
+
+    # SNAPSHOT-FIRST (FIX 1): copy each receipt-recorded check into the
+    # private snapshot from a single read (_read_once) BEFORE validating
+    # it, then validate the SNAPSHOT's in-memory bytes+mode against the
+    # receipt. canonical_checks/<name> is never opened again after this
+    # loop -- so there is no second, later read of the mutable repo path
+    # for a swap to land between "verified" and "executed".
+    snapshot_dir = Path(tempfile.mkdtemp(prefix="factory-gate-checks-"))
+    os.chmod(snapshot_dir, 0o700)
+    snapshot_checks = snapshot_dir / "checks.d"
+    snapshot_checks.mkdir()
+    os.chmod(snapshot_checks, 0o700)
+
+    check_provenance = True
+    for name in receipt_expected:
+        data, mode = _read_once(canonical_checks / name)
+        dst = snapshot_checks / name
+        dst.write_bytes(data)
+        os.chmod(dst, mode & 0o777)
+        record = managed.get(f"scripts/governance/checks.d/{name}")
+        if not (isinstance(record, dict)
+                and record.get("sha256") == hashlib.sha256(data).hexdigest()
+                and record.get("mode") == _git_mode(mode)
+                and _mode_ok(mode)):
+            check_provenance = False
+
+    # Development/test-only synchronization seam (never set in a production
+    # install): if FACTORY_GATE_POST_SNAPSHOT_HOOK names an executable, run
+    # it once the snapshot is fully populated and validated but before its
+    # path is handed back for execution. This lets a test deterministically
+    # mutate a check's SOURCE file right after the snapshot copy and prove
+    # the mutation has zero effect on what executes -- the property FIX 1
+    # guarantees by construction -- without relying on sleeps/thread timing.
+    post_snapshot_hook = os.environ.get("FACTORY_GATE_POST_SNAPSHOT_HOOK", "")
+    if check_provenance and post_snapshot_hook and os.access(post_snapshot_hook, os.X_OK):
+        subprocess.run([post_snapshot_hook], check=False,
+                        stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL)
+
+    if not check_provenance:
+        raise ValueError("execution check scope does not match install receipt provenance (snapshot validation)")
+
+    # The snapshot keeps the checks.d/<name> layout (not a flat directory)
+    # and mirrors sibling entries of the canonical checks directory (e.g.
+    # the repo-structure-lint helper a check execs via a path relative to
+    # its own location) as symlinks to the live files, so a check's
+    # sibling-tool lookups keep resolving exactly as they do from the real
+    # install. Those siblings are outside the hash-bound provenance above --
+    # as they always were, only checks.d/*.sh + MANIFEST.json are
+    # receipt-bound -- so linking them introduces no new trust boundary.
+    for sibling in canonical_checks.parent.iterdir():
+        if sibling.name != "checks.d":
+            os.symlink(sibling, snapshot_dir / sibling.name)
+    sys.stdout.write(str(snapshot_dir))
+except (OSError, ValueError, KeyError, TypeError, json.JSONDecodeError) as exc:
+    if snapshot_dir is not None:
+        shutil.rmtree(snapshot_dir, ignore_errors=True)
+    print(f"FAIL: execution check scope invalid before execution: {exc}", file=sys.stderr)
+    raise SystemExit(3)
+PY
+)"; then
+    exit 1
+  fi
+fi
+
+EXEC_CHECKS_DIR="${CHECKS_DIR}"
+if [[ -n "${SNAPSHOT_DIR}" ]]; then
+  EXEC_CHECKS_DIR="${SNAPSHOT_DIR}/checks.d"
+fi
+
 shopt -s nullglob
-checks=("${CHECKS_DIR}"/*.sh)
+checks=("${EXEC_CHECKS_DIR}"/*.sh)
 if [[ ${#checks[@]} -eq 0 ]]; then
-  echo "FAIL: no checks discovered in ${CHECKS_DIR}" >&2
+  echo "FAIL: no checks discovered in ${EXEC_CHECKS_DIR}" >&2
   exit 1
 fi
 
@@ -235,20 +528,84 @@ for check in "${checks[@]}"; do
 done
 shopt -u nullglob
 
-printf 'Summary: passed=%d warned=%d failed=%d\n' "${pass_count}" "${warn_count}" "${fail_count}"
-
-# FT-5 Case 1 anti-gaming: record hash/config-bound execution evidence only
-# on a genuine full pass, so a later readiness preflight can re-derive the
-# current digest and reject a stale or never-executed claim. Best-effort and
-# never fatal -- evidence recording must not change this script's own
-# pass/fail contract.
-if [[ ${fail_count} -eq 0 && -n "${REPO_ROOT}" && -d "${REPO_ROOT}" ]]; then
-  python3 - "${REPO_ROOT}" "${MODE}" "${pass_count}" "${warn_count}" <<'PY' || true
-import hashlib, json, sys
+# FT-5 Case 1 anti-gaming: record the canonical scope and the actual result
+# for every completed canonical run.  A failed run must leave explicit failed
+# evidence, not look indistinguishable from a never-executed gate.  Evidence
+# recording remains best-effort and never changes the gate's result.
+if [[ -n "${REPO_ROOT}" && -d "${REPO_ROOT}" ]]; then
+  scope_status=0
+  python3 - "${REPO_ROOT}" "${MODE}" "${pass_count}" "${warn_count}" "${fail_count}" "${CHECKS_DIR}" "${CANONICAL_CHECKS_DIR}" "${SCRIPT_DIR}" <<'PY' || scope_status=$?
+import hashlib, json, os, sys
 from datetime import datetime, timezone
 from pathlib import Path
 
-root, mode, pass_count, warn_count = Path(sys.argv[1]).resolve(), sys.argv[2], int(sys.argv[3]), int(sys.argv[4])
+root, mode, pass_count, warn_count, fail_count = Path(sys.argv[1]).resolve(), sys.argv[2], int(sys.argv[3]), int(sys.argv[4]), int(sys.argv[5])
+run_checks, canonical_checks, script_dir = Path(sys.argv[6]), Path(sys.argv[7]), Path(sys.argv[8])
+
+
+def _git_mode(mode: int) -> int:
+    # Git tracks only the owner-exec bit (100644 vs 100755); the remaining
+    # permission bits come from the checkout's umask and drift across hosts.
+    # Normalizing both sides here keeps provenance umask-robust while still
+    # catching a real executable-bit change.
+    return 0o755 if mode & 0o100 else 0o644
+
+
+def _mode_ok(mode: int) -> bool:
+    # No setuid/setgid/sticky bit, not group- or world-writable -- see the
+    # matching helper in the --preflight block above for the full rationale.
+    return (mode & 0o7000) == 0 and (mode & 0o022) == 0
+
+
+def canonical_scope():
+    manifest_path = root / ".factory" / "gate-bundle" / "MANIFEST.json"
+    if not manifest_path.is_file():
+        manifest_path = script_dir / "MANIFEST.json"
+    try:
+        if manifest_path.is_symlink() or not manifest_path.is_file():
+            raise ValueError("unsafe manifest")
+        receipt_path = root / ".factory" / "gate-install.json"
+        if receipt_path.is_symlink() or not receipt_path.is_file():
+            raise ValueError("unsafe install receipt")
+        receipt = json.loads(receipt_path.read_text(encoding="utf-8"))
+        managed = receipt.get("managed_files") if isinstance(receipt, dict) and isinstance(receipt.get("managed_files"), dict) else {}
+        manifest_record = managed.get(".factory/gate-bundle/MANIFEST.json")
+        manifest_mode = manifest_path.stat().st_mode & 0o7777
+        if not isinstance(manifest_record, dict) or manifest_record.get("disposition") != "factory_owned" \
+                or manifest_record.get("sha256") != hashlib.sha256(manifest_path.read_bytes()).hexdigest() \
+                or manifest_record.get("mode") != _git_mode(manifest_mode) \
+                or not _mode_ok(manifest_mode):
+            raise ValueError("manifest does not match receipt provenance")
+        manifest_provenance = True
+        manifest = json.loads(manifest_path.read_text(encoding="utf-8"))
+        expected = sorted(Path(str(entry.get("install_target", ""))).name for entry in manifest["files"]
+                          if isinstance(entry, dict) and str(entry.get("install_target", "")).startswith("scripts/governance/checks.d/"))
+        receipt_expected = sorted(Path(path).name for path, record in managed.items()
+                                  if isinstance(path, str) and path.startswith("scripts/governance/checks.d/")
+                                  and isinstance(record, dict) and record.get("disposition") == "factory_owned")
+        check_provenance = all(
+            isinstance(managed.get(f"scripts/governance/checks.d/{name}"), dict)
+            and managed[f"scripts/governance/checks.d/{name}"].get("sha256") == hashlib.sha256((canonical_checks / name).read_bytes()).hexdigest()
+            and managed[f"scripts/governance/checks.d/{name}"].get("mode") == _git_mode((canonical_checks / name).stat().st_mode & 0o7777)
+            and _mode_ok((canonical_checks / name).stat().st_mode & 0o7777)
+            for name in receipt_expected if (canonical_checks / name).is_file() and not (canonical_checks / name).is_symlink())
+    except (OSError, ValueError, KeyError, TypeError):
+        expected = []
+        receipt_expected = []
+        check_provenance = False
+        manifest_provenance = False
+    actual = sorted(path.name for path in canonical_checks.glob("*.sh")) if canonical_checks.is_dir() and not canonical_checks.is_symlink() else []
+    invalid = [path.name for path in canonical_checks.glob("*.sh")
+               if path.is_symlink() or not path.is_file() or not os.access(path, os.X_OK)] if canonical_checks.is_dir() else []
+    scope = {"expected": expected, "actual": actual, "receipt_expected": receipt_expected,
+             "invalid": invalid, "manifest_provenance": manifest_provenance,
+             "check_provenance": check_provenance}
+    return bool(expected) and expected == actual == receipt_expected and not invalid and check_provenance, scope
+
+
+scope_ok, scope = canonical_scope()
+if run_checks.resolve() != canonical_checks.resolve() or not scope_ok:
+    raise SystemExit(3)
 
 
 def evidence_digest(base: Path) -> str:
@@ -270,12 +627,18 @@ def evidence_digest(base: Path) -> str:
 evidence_path = root / ".factory" / "gate-run-evidence.json"
 evidence_path.parent.mkdir(parents=True, exist_ok=True)
 evidence_path.write_text(json.dumps({
-    "schema_version": 1, "mode": mode,
+    "schema_version": 1, "mode": mode, "status": "PASSED" if fail_count == 0 else "FAILED",
     "generated_at": datetime.now(timezone.utc).strftime("%Y-%m-%dT%H:%M:%SZ"),
-    "pass_count": pass_count, "warn_count": warn_count, "fail_count": 0,
-    "evidence_digest": evidence_digest(root),
+    "pass_count": pass_count, "warn_count": warn_count, "fail_count": fail_count,
+    "evidence_digest": evidence_digest(root), "check_scope": scope,
 }, indent=2, sort_keys=True) + "\n", encoding="utf-8")
 PY
+  if [[ ${scope_status} -eq 3 && -f "${REPO_ROOT}/.factory/gate-install.json" ]]; then
+    echo "FAIL: execution did not cover the canonical installed check scope" >&2
+    ((fail_count += 1))
+  fi
 fi
+
+printf 'Summary: passed=%d warned=%d failed=%d\n' "${pass_count}" "${warn_count}" "${fail_count}"
 
 [[ ${fail_count} -eq 0 ]]

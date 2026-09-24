@@ -18,6 +18,7 @@ import shutil
 import stat
 import subprocess
 import sys
+import tempfile
 from pathlib import Path
 from typing import Any
 
@@ -25,6 +26,7 @@ from typing import Any
 SCHEMA_VERSION = 1
 RECEIPT = Path(".factory/gate-install.json")
 EVIDENCE_RECEIPT = Path(".factory/gate-run-evidence.json")
+EVIDENCE_IGNORE_RULE = "/.factory/gate-run-evidence.json"
 BUNDLE_DESTINATION = Path(".factory/gate-bundle")
 STARTER_TRACKER = Path(".agents/plans/factory-gate/tracker.json")
 # These two checks have no metadata-only conventional command (see
@@ -313,17 +315,24 @@ def preview(target: Path, bundle_root: Path, stack: str | None, project_name: st
     values = render_values(project_name, commands, layout_policy(target, entries))
     outputs = rendered_outputs(bundle_root, entries, values)
     metadata_conflict = git_metadata_conflict(target)
+    try:
+        _exclude_content, exclude_plan = evidence_exclude_plan(target)
+        exclude_conflict = None
+    except RuntimeError as error:
+        exclude_plan = {"state": "unsafe", "detail": str(error)}
+        exclude_conflict = str(error)
     configured = (git_value(target, "config", "--get", "core.hooksPath")
                   if (target / ".git").is_dir() and not metadata_conflict else None)
     collisions = collision_report(target, bundle_root, tuple(outputs))
     hooks_conflict = configured not in (None, "", HOOKS_PATH)
-    safe = not collisions and not hooks_conflict and not metadata_conflict
+    safe = not collisions and not hooks_conflict and not metadata_conflict and not exclude_conflict
     rendered_plan = [{"path": str(path), "sha256": hashlib.sha256(data).hexdigest()}
                      for path, data in sorted(outputs.items())]
     bundle_paths = bundle_write_paths(bundle_root)
     directories = planned_directories([*bundle_paths, *outputs])
     fingerprint = {"bundle_sha256": bundle_digest(bundle_root), "target_content_sha256": target_content_digest(target),
-                   "rendered_plan": rendered_plan, "directories": directories, "target": str(target), "stack": stack or ""}
+                   "rendered_plan": rendered_plan, "directories": directories, "evidence_exclude": exclude_plan,
+                   "target": str(target), "stack": stack or ""}
     return {
         "schema_version": SCHEMA_VERSION,
         "target": str(target),
@@ -337,7 +346,8 @@ def preview(target: Path, bundle_root: Path, stack: str | None, project_name: st
         "rendered_plan": rendered_plan,
         "hooks": {"configured_path": configured, "expected_path": HOOKS_PATH,
                   "state": "CONFLICT" if hooks_conflict or metadata_conflict else "UNCONFIGURED",
-                  "conflict": metadata_conflict},
+                  "conflict": metadata_conflict or exclude_conflict},
+        "evidence_exclude": exclude_plan,
         "detector": detected,
         "checks": {"commands": commands, "state": "CONFIGURATION_BLOCKED" if blocked else "READY",
                    "required_unconfigured": blocked},
@@ -467,14 +477,52 @@ def _is_compatible_prior_install(target: Path) -> bool:
     return bool(receipt) and receipt.get("hooks", {}).get("configured_path") == HOOKS_PATH
 
 
+def _git_mode(mode: int) -> int:
+    """Reduce a full POSIX mode to the bit git actually tracks.
+
+    Git records only whether a blob is executable (100755) or not (100644);
+    the remaining permission bits are applied by the checkout's umask and are
+    not portable across hosts. Comparing raw filesystem modes across a fresh
+    clone made with a different umask than the original install host would
+    false-fail provenance forever. Normalizing both sides to this
+    git-meaningful bit keeps the comparison umask-robust while still catching
+    a real executable-bit change (e.g. 0644 <-> 0755).
+    """
+    return 0o755 if mode & stat.S_IXUSR else 0o644
+
+
+def _mode_is_safe(mode: int) -> bool:
+    """True if a POSIX mode carries no setuid/setgid/sticky bit and is not
+    group- or world-writable.
+
+    _git_mode() only normalizes the one bit git tracks (owner-exec); it was
+    never meant to be read as "these are the only bits provenance cares
+    about." A live file that has drifted to 0777, 4755 (setuid), 2755
+    (setgid), 6755, or 0666 still passes the owner-exec + content comparison
+    in _same_record() unless this is checked too -- silently upgrading a
+    receipt-verified script's on-disk privileges. Used by _same_record(),
+    the single provenance gate every caller in this file goes through
+    (execution_check_scope, retrofit_preview's upgrade-overwrite path); see
+    file_record() below for why it does not need this check.
+    """
+    return (mode & 0o7000) == 0 and (mode & 0o022) == 0
+
+
 def file_record(path: Path, disposition: str = "factory_owned") -> dict[str, Any]:
-    return {"disposition": disposition, "mode": stat.S_IMODE(path.stat().st_mode), "sha256": digest_bytes(path)}
+    # Descriptive only -- records the mode a factory-owned file was written
+    # with (always 0o755/0o644 by managed_file_plan()) or a preserved_local
+    # file's existing mode for audit. Never a provenance/acceptance decision,
+    # so it does not need _mode_is_safe(); that gate lives in _same_record().
+    return {"disposition": disposition, "mode": _git_mode(stat.S_IMODE(path.stat().st_mode)), "sha256": digest_bytes(path)}
 
 
 def _same_record(path: Path, record: Any) -> bool:
-    return (path.is_file() and not path.is_symlink() and isinstance(record, dict)
-            and record.get("disposition") == "factory_owned"
-            and record.get("mode") == stat.S_IMODE(path.stat().st_mode)
+    if not (path.is_file() and not path.is_symlink() and isinstance(record, dict)
+            and record.get("disposition") == "factory_owned"):
+        return False
+    raw_mode = stat.S_IMODE(path.stat().st_mode)
+    return (record.get("mode") == _git_mode(raw_mode)
+            and _mode_is_safe(raw_mode)
             and record.get("sha256") == digest_bytes(path))
 
 
@@ -572,10 +620,20 @@ def retrofit_preview(target: Path, bundle_root: Path, stack: str | None, project
     writes.append(str(RECEIPT))
     if upgrade and (target / RECEIPT).is_file():
         overwrites.append(str(RECEIPT))
+    try:
+        exclude_content, exclude_plan = evidence_exclude_plan(target)
+        if exclude_content is not None:
+            writes.append(".git/info/exclude")
+            if (target / ".git/info/exclude").is_file():
+                overwrites.append(".git/info/exclude")
+    except RuntimeError as error:
+        exclude_plan = {"state": "unsafe", "detail": str(error)}
+        conflict = conflict or str(error)
     write_paths = [Path(path) for path in writes]
     directories = planned_directories(write_paths)
     for path in write_paths:
-        issue = safe_write_path(target, path, allow_existing=upgrade and (_factory_managed(path) or path == RECEIPT))
+        issue = safe_write_path(target, path, allow_existing=(upgrade and (_factory_managed(path) or path == RECEIPT))
+                                or path == Path(".git/info/exclude"))
         if issue:
             conflict = conflict or issue
     config = target / ".git/config"
@@ -588,6 +646,7 @@ def retrofit_preview(target: Path, bundle_root: Path, stack: str | None, project
                    "hooks": hooks, "preserved": sorted(preserved, key=lambda item: item["path"]), "writes": sorted(set(writes)),
                    "overwrites": sorted(set(overwrites)), "backup_plan": backup_paths, "directories": directories,
                    "configured_path": configured, "upgrade": upgrade,
+                   "evidence_exclude": exclude_plan,
                    "target_content_sha256": target_content_digest(target), "rendered_plan": rendered_plan,
                    "check_configuration": {"commands": commands, "required_unconfigured": blocked},
                    "target": str(target), "stack": stack or ""}
@@ -600,7 +659,7 @@ def retrofit_preview(target: Path, bundle_root: Path, stack: str | None, project
             "writes": sorted(set(writes)), "directories": directories, "rendered_plan": rendered_plan, "upgrade": upgrade,
             "preserved": sorted(preserved, key=lambda item: item["path"]), "overwrites": sorted(set(overwrites)),
             "hooks": {"configured_path": configured, "existing": hooks, "routing": ".git/hooks -> .githooks wrappers"},
-            "backup_paths": backup_paths, "detector": detected,
+            "backup_paths": backup_paths, "evidence_exclude": exclude_plan, "detector": detected,
             "checks": {"commands": commands, "state": "CONFIGURATION_BLOCKED" if blocked else "READY", "required_unconfigured": blocked}}
 
 
@@ -659,6 +718,7 @@ def retrofit_install(target: Path, bundle_root: Path, stack: str | None, project
     configured = git(target, "config", "--local", "core.hooksPath", HOOKS_PATH)
     if configured.returncode:
         raise RuntimeError(f"could not configure core.hooksPath: {configured.stderr.strip()}")
+    ensure_evidence_ignored(target)
     managed_files: dict[str, Any] = {}
     for relative in managed_plan:
         path = target / relative
@@ -701,6 +761,7 @@ def install(target: Path, bundle_root: Path, stack: str | None, project_name: st
     configured = git(target, "config", "--local", "core.hooksPath", HOOKS_PATH)
     if configured.returncode:
         raise RuntimeError(f"could not configure core.hooksPath: {configured.stderr.strip()}")
+    ensure_evidence_ignored(target)
     # Greenfield/project-init receipts establish the same ownership baseline
     # as retrofit receipts.  Without it, the first later retrofit would have
     # to conservatively preserve the live capability declaration forever.
@@ -819,6 +880,41 @@ def evidence_tree_digest(root: Path) -> str:
     return digest.hexdigest()
 
 
+def execution_check_scope(target: Path) -> tuple[bool, dict[str, Any]]:
+    """Return the receipt-provenance-bound installed check inventory."""
+    manifest_path = target / BUNDLE_DESTINATION / "MANIFEST.json"
+    checks_dir = target / "scripts/governance/checks.d"
+    receipt = load_json(target / RECEIPT)
+    managed = receipt.get("managed_files") if isinstance(receipt.get("managed_files"), dict) else {}
+    manifest_record = managed.get(str(BUNDLE_DESTINATION / "MANIFEST.json"))
+    try:
+        if manifest_path.is_symlink() or not manifest_path.is_file():
+            raise ValueError("unsafe manifest")
+        manifest = load_json(manifest_path)
+        expected = sorted(Path(str(entry.get("install_target", ""))).name for entry in manifest["files"]
+                          if isinstance(entry, dict)
+                          and str(entry.get("install_target", "")).startswith("scripts/governance/checks.d/"))
+    except (KeyError, TypeError, ValueError):
+        expected = []
+    actual = sorted(path.name for path in checks_dir.glob("*.sh")) if checks_dir.is_dir() and not checks_dir.is_symlink() else []
+    invalid = [path.name for path in checks_dir.glob("*.sh")
+               if path.is_symlink() or not path.is_file() or not os.access(path, os.X_OK)] if checks_dir.is_dir() else []
+    receipt_expected = sorted(Path(path).name for path, record in managed.items()
+                              if isinstance(path, str)
+                              and path.startswith("scripts/governance/checks.d/")
+                              and isinstance(record, dict)
+                              and record.get("disposition") == "factory_owned")
+    check_provenance = all(_same_record(checks_dir / name,
+                                        managed.get(f"scripts/governance/checks.d/{name}"))
+                           for name in receipt_expected)
+    manifest_provenance = _same_record(manifest_path, manifest_record)
+    scope = {"expected": expected, "actual": actual, "receipt_expected": receipt_expected,
+             "invalid": invalid, "manifest_provenance": manifest_provenance,
+             "check_provenance": check_provenance}
+    return (bool(expected) and expected == actual == receipt_expected and not invalid
+            and manifest_provenance and check_provenance), scope
+
+
 def _execution_evidence_state(target: Path) -> tuple[str | None, dict[str, Any]]:
     """Case 1 anti-gaming: a receipt claim alone never proves fresh execution."""
     evidence_path = target / EVIDENCE_RECEIPT
@@ -826,8 +922,29 @@ def _execution_evidence_state(target: Path) -> tuple[str | None, dict[str, Any]]
         return "MISSING_EXECUTION_EVIDENCE", {"present": False, "path": str(EVIDENCE_RECEIPT)}
     recorded = load_json(evidence_path)
     recorded_digest = recorded.get("evidence_digest") if isinstance(recorded, dict) else None
-    if not isinstance(recorded_digest, str) or recorded.get("fail_count") != 0:
+    scope_ok, scope = execution_check_scope(target)
+    counts = tuple(recorded.get(name) for name in ("pass_count", "warn_count", "fail_count"))
+    schema_valid = (recorded.get("schema_version") == SCHEMA_VERSION
+                    and isinstance(recorded_digest, str) and re.fullmatch(r"[0-9a-f]{64}", recorded_digest) is not None
+                    and recorded.get("mode") in {"--pre-commit", "--pre-deploy"}
+                    and recorded.get("status") in {"PASSED", "FAILED"}
+                    and all(isinstance(value, int) and not isinstance(value, bool) and value >= 0 for value in counts)
+                    and sum(counts) == len(scope["actual"])
+                    and recorded.get("status") == ("PASSED" if recorded.get("fail_count") == 0 else "FAILED")
+                    and recorded.get("check_scope") == scope)
+    if not schema_valid:
         return "MISSING_EXECUTION_EVIDENCE", {"present": True, "valid": False, "path": str(EVIDENCE_RECEIPT)}
+    if recorded["fail_count"] != 0:
+        return "FAILED_EXECUTION_EVIDENCE", {
+            "present": True, "fail_count": recorded["fail_count"],
+            "pass_count": recorded.get("pass_count"), "warn_count": recorded.get("warn_count"),
+            "path": str(EVIDENCE_RECEIPT),
+        }
+    if not scope_ok:
+        return "EXECUTION_SCOPE_INVALID", {
+            "recorded_scope": recorded.get("check_scope"), "current_scope": scope,
+            "path": str(EVIDENCE_RECEIPT),
+        }
     current_digest = evidence_tree_digest(target)
     if current_digest != recorded_digest:
         return "STALE_EXECUTION_EVIDENCE", {
@@ -839,6 +956,45 @@ def _execution_evidence_state(target: Path) -> tuple[str | None, dict[str, Any]]
         "generated_at": recorded.get("generated_at"), "mode": recorded.get("mode"),
         "pass_count": recorded.get("pass_count"), "warn_count": recorded.get("warn_count"),
     }
+
+
+def evidence_exclude_plan(target: Path) -> tuple[bytes | None, dict[str, Any]]:
+    """Plan a local, byte-preserving evidence exclusion without following links."""
+    info = target / ".git/info"
+    exclude = info / "exclude"
+    if info.is_symlink() or (info.exists() and not info.is_dir()):
+        raise RuntimeError("unsafe git info directory")
+    if exclude.is_symlink() or (exclude.exists() and not exclude.is_file()):
+        raise RuntimeError("unsafe git exclude path")
+    before = exclude.read_bytes() if exclude.exists() else b""
+    lines = before.splitlines()
+    if EVIDENCE_IGNORE_RULE.encode() in lines:
+        return None, {"state": "present", "sha256": hashlib.sha256(before).hexdigest()}
+    separator = b"" if not before or before.endswith(b"\n") else b"\n"
+    after = before + separator + EVIDENCE_IGNORE_RULE.encode() + b"\n"
+    return after, {"state": "append", "before_sha256": hashlib.sha256(before).hexdigest(),
+                   "after_sha256": hashlib.sha256(after).hexdigest(), "path": ".git/info/exclude"}
+
+
+def ensure_evidence_ignored(target: Path) -> None:
+    """Keep generated gate evidence out of consumer working-tree status.
+
+    The receipt is execution telemetry, not source.  A local git exclude is
+    deliberately used instead of replacing a consumer's tracked .gitignore.
+    """
+    content, _ = evidence_exclude_plan(target)
+    if content is None:
+        return
+    exclude = target / ".git/info/exclude"
+    exclude.parent.mkdir(parents=True, exist_ok=True)
+    mode = stat.S_IMODE(exclude.stat().st_mode) if exclude.exists() else 0o644
+    with tempfile.NamedTemporaryFile(dir=exclude.parent, prefix=".exclude.", delete=False) as handle:
+        temporary = Path(handle.name)
+        handle.write(content)
+        handle.flush()
+        os.fsync(handle.fileno())
+    temporary.chmod(mode)
+    os.replace(temporary, exclude)
 
 
 def _run_governance_check(target: Path, relative: str, timeout: int = 30) -> tuple[int, str]:
@@ -899,6 +1055,10 @@ def readiness_preflight(target: Path, bundle_root: Path, stack: str | None, proj
         {"required_unconfigured": unconfigured, "hard_blocking": hard_unconfigured},
         None if checks_ready else "CHECKS_UNCONFIGURED", "; ".join(hard_unconfigured))
 
+    scope_ok, scope = execution_check_scope(target)
+    add("execution_check_scope", "MANIFEST.json checks.d inventory + installed executable checks",
+        scope, None if scope_ok else "EXECUTION_SCOPE_INVALID")
+
     # Activation is an aggregate gate: installed + hooks routed + hard checks
     # configured. The frozen install/retrofit receipt's own "activation"
     # field is exposed as evidence only -- it is computed once at install
@@ -912,7 +1072,7 @@ def readiness_preflight(target: Path, bundle_root: Path, stack: str | None, proj
         f"receipt_activation={report.get('activation')!r}")
 
     evidence_blocker, evidence_detail = _execution_evidence_state(target)
-    add("execution_evidence_freshness", "gate-run-evidence.json digest binding (FT-5 Case 1 anti-gaming)",
+    add("execution_evidence_freshness", "gate-run-evidence.json digest + canonical scope binding (FT-5 Case 1 anti-gaming)",
         evidence_detail, evidence_blocker)
 
     if installed:
