@@ -2,7 +2,7 @@
 title: "Foundation C — C6-S: Shared launch-socket + principal contract (mechanism B — dedicated TEG-only launch socket + aq-revocation-launch-clients group; freezes the two-socket topology before C6a/C6c fan out)"
 slice: "C6-S (foundation topology slice of the C6 decomposition — lands immediately after C6d, before C6a/C6c)"
 status: "PREPARED_ONLY — authorizes NOTHING (no build, no freeze, no activation, no epoch bump, no provider traffic, no flag flip). Design + authorization note only."
-revision: 1
+revision: 2
 kind: "design-only"
 implementation_authorization: "NONE"
 activation_authorization: "NONE"
@@ -63,7 +63,7 @@ the anchor for every path cited here).
 | Existing path | SHA-256 | C6-S role |
 |---|---|---|
 | `nix/modules/services/revocation-epoch-authority.nix` | `b539e5de6dd89eb4fd93ed2119055ad9440897b1c408a98f6c23d9ded0db0172` | **EDIT.** Declare the `launch.sock` listener (tmpfiles rule + `serve()` bind) restricted to `aq-revocation-launch-clients`; declare `users.groups.aq-revocation-launch-clients = {};`; add that group to the **authority user's** `extraGroups` (`:102`) for socket-chgrp only; add `AQ_REVOCATION_LAUNCH_SOCKET_PATH` / `AQ_REVOCATION_LAUNCH_CLIENT_GROUP` to the unit `Environment` (`:146-152`). Control socket (`:79`), `aq-revocation-epoch-clients` (`:110`), owner membership (`:111`), and hardening (`:159`/`:161`/`:166`) UNCHANGED. Keeps `enable = false;`. |
-| `scripts/ai/lib/revocation_epoch_transport.py` | `066b30c326898d6ef8e4ab085cf82ce131bb9812b08a61993de86b0812a6be28` | **EDIT (`__main__` + a bounded multi-listener helper).** Today `serve()` (`:128`) binds ONE socket and `__main__` (`:301-309`) does `serve(_sp, build_env_handler())`. C6-S makes `__main__` bind **both** sockets after C6d's `recover()` returns, each with its **own per-socket handler**: the control socket keeps `build_env_handler()` (read-epoch/bump, UNCHANGED); the launch socket gets a **deny-all stub handler** (no op reachable — `authorize_launch` is added in C6a). NO change to `build_env_handler()` dispatch, no new op. |
+| `scripts/ai/lib/revocation_epoch_transport.py` | `066b30c326898d6ef8e4ab085cf82ce131bb9812b08a61993de86b0812a6be28` | **EDIT (`__main__` + a NEW `serve_multi()` function; `serve()` itself is NOT modified — pinned at binding review, Finding 2).** Today `serve()` (`:128`) binds ONE socket, `chmod`s/chgrps it (`:142-158`), then loops `accept()`→`read_frame()`→`handler()`→respond inline (`:159-185`); `__main__` (`:301-309`) calls `serve(_sp, build_env_handler())`. C6-S adds a **sibling** function `serve_multi(control_path, control_handler, launch_path, launch_handler, ...)` that performs the *same* per-socket bind→`chmod 0660`→chgrp→`listen` sequence **twice** (once per socket) and multiplexes `accept()` across both listeners with a `selectors.DefaultSelector`; per accepted connection it runs the **identical** `read_frame()`→`handler()`→JSON-encode→`sendall()` body `serve()` already runs, with the per-socket `handler` selected by which listener produced the connection. This is **duplication of `serve()`'s loop body into a new function, not an extraction from or refactor of `serve()`** — `serve()` remains byte-for-byte unchanged and stays reachable/callable exactly as today (e.g. by any existing single-socket caller or test). `__main__` calls `serve_multi()` instead of `serve()` after C6d's `recover()` returns; the control socket's handler stays `build_env_handler()` (read-epoch/bump, UNCHANGED) and the launch socket gets a **deny-all stub handler** (no op reachable — `authorize_launch` is added in C6a). **Control-socket byte-parity is a freeze condition (§7):** the request/response wire format, `read_frame()` framing, `build_env_handler()` dispatch, and `apply_bump`'s call site (`:296`) are untouched — a control-socket client observes identical bytes on the wire whether served by `serve()` or by `serve_multi()`'s control listener. No change to `build_env_handler()` dispatch, no new op. |
 | `config/env-contract.yaml` | *(binds landed shape)* | **EDIT.** Add `AQ_REVOCATION_LAUNCH_SOCKET_PATH` (default `/run/aq-revocation-epoch-authority/launch.sock`) and `AQ_REVOCATION_LAUNCH_CLIENT_GROUP` (default `aq-revocation-launch-clients`) alongside the existing `AQ_REVOCATION_EPOCH_SOCKET_PATH` canonical (`:1339`). New capability flags default `"0"`; these are socket-path/group references (no flag). |
 | `dashboard/backend/api/routes/aistack.py` | *(binds landed shape)* | **EDIT (minimal, folded — see §6).** Add a compact `result["revocation_epoch_authority"]` section modelled on the ALA section (`:2090`) / C2-SCI section (`:2112`) reporting `control_socket`, `launch_socket` (`present\|absent`), `launch_group_teg_only`. No new dashboard **card** — rendered within the existing Foundation-C authority health block. |
 | `assets/dashboard.js` | *(binds landed shape)* | **EDIT (minimal, folded).** Read `revocation_epoch_authority` and render the launch-vs-control socket rows inside the existing Foundation-C authority health block (no new card). |
@@ -171,21 +171,41 @@ asymmetry is the whole point:
   `SO_PEERCRED` is defense-in-depth-only (`transport:9-10`, `:69-71`, `:163-171`), a *shared*
   socket could not enforce "only the TEG may launch" — precisely rev5's false claim. Under
   mechanism B the **kernel-enforced `0660` group permission on a separate inode IS the
-  authority**: only members of `aq-revocation-launch-clients` can `connect()` to `launch.sock`,
-  and the only consumer ever added to that group is the TEG (C6b). ALA (holds
+  authority** for excluding the three *external* principals: ALA (holds
   `aq-revocation-epoch-clients`, not launch), C2-SCI (same), and the owner (holds
   `aq-revocation-epoch-clients` only) are **structurally excluded** from the launch socket — the
   exclusion is a property of group membership, checked by the kernel at `connect()`, not of any
   in-process peer inspection.
 
-**Defense-in-depth recommendation carried to C6a (not a C6-S freeze condition).** Because the
-launch op is un-signed, C6-S RECOMMENDS that C6a additionally assert an operation-specific
-`SO_PEERCRED` check binding the connecting peer's uid/gid to the TEG principal, as belt-and-
-suspenders. But the **freeze's authority claim rests on the group boundary**, not on
-`SO_PEERCRED`; C6-S changes nothing about `SO_PEERCRED`'s log-only posture (`transport:163-171`
-untouched). This directly answers Finding 2's "specify an operation-specific TEG peer check, a
-dedicated launch socket/group, or the necessary membership edits" — C6-S chooses the dedicated
-socket/group as the enforceable boundary and states the membership edits exactly (§2.2).
+  **Precise membership of `aq-revocation-launch-clients` (correcting an imprecise draft of this
+  sentence flagged at binding review — Finding 1).** The launch group's ever-added members are
+  exactly two: **(a) the authority-user** (§2.2 item 3) — present **only** so `serve()` can
+  `chown`-to-group the socket inode at bind time (the same reason it also sits in
+  `aq-revocation-epoch-clients`, `:102`/`:148`); the authority is the socket's *server*, never a
+  *client* of its own `authorize_launch` op, so this membership is a chgrp role, **not** a launch
+  consumer — and **(b) the TEG** (added in C6b), the **sole intended launch consumer**. ALA,
+  C2-SCI, and the owner remain excluded from `aq-revocation-launch-clients` by kernel DAC (they
+  hold only the epoch group, never the launch group) — that three-principal exclusion is what
+  closes rev5 Finding 2's false claim, and it is unaffected by the authority-user's chgrp-only
+  membership above.
+
+**BINDING forward-condition on C6a (elevated from a §2.3 recommendation at binding review —
+Finding 1.2).** Because `authorize_launch` (C6a) is **un-signed** (rev5 §3.2 — minted under the
+authority's lock, no owner signature), the kernel group boundary excludes ALA/C2-SCI/owner but
+does **NOT** by itself exclude the authority-user from the launch group — and the authority-user
+is a launch-group member (above). A self-launch surface via the authority's own UID is therefore
+latent (inert today: C6-S ships a deny-all stub, no op reachable) and would become live the
+moment C6a attaches a reachable op to this socket. To close that residual, **C6a MUST implement
+an operation-specific `SO_PEERCRED` peer check on `authorize_launch` that verifies the connecting
+peer's uid/gid is the TEG principal** (not merely "any launch-group member") before honoring the
+request — this is now a **MUST**, not a belt-and-suspenders recommendation, and C6a's design must
+cite this condition explicitly. See §7 Freeze criteria for the binding record. This does not
+change `SO_PEERCRED`'s log-only posture for C6-S itself (`transport:163-171` untouched, no op
+exists yet); it binds only what C6a is required to add. This directly answers Finding 2's
+"specify an operation-specific TEG peer check, a dedicated launch socket/group, or the necessary
+membership edits" — C6-S chooses the dedicated socket/group as the enforceable boundary for the
+three external principals (§2.2) AND now binds C6a to close the residual self-launch gap for the
+un-signed op.
 
 ---
 
@@ -204,12 +224,16 @@ listening.** Concretely:
    emitting `sd_notify(READY=1)` only after `recover()` returns.
 2. **C6-S** extends that `__main__` to bind **two** sockets after the *same single* `recover()`
    pass — recovery is a property of the shared journal/epoch state, not of any one socket, so it
-   runs **once**, before either socket binds. The transport binds `control.sock` and `launch.sock`
-   (each `bind` → `chmod 0660` → chgrp → `listen`) and multiplexes `accept()` across both in one
-   loop (a `selectors.DefaultSelector` over the two listening sockets — the minimal bounded change
-   to the existing single-socket `serve()`; the generic accept/`read_frame`/dispatch machinery at
-   `transport:159-185` is reused per connection, with the per-socket handler chosen by which
-   listener produced the connection).
+   runs **once**, before either socket binds. The new `serve_multi()` (§1 transport row — pinned at
+   binding review, Finding 2) binds `control.sock` and `launch.sock` (each `bind` → `chmod 0660` →
+   chgrp → `listen`, the same sequence `serve()` already runs) and multiplexes `accept()` across
+   both in one loop (a `selectors.DefaultSelector` over the two listening sockets). Per connection,
+   `serve_multi()` runs the **same** `read_frame()`→`handler()`→respond body `serve()`'s
+   `:159-185` loop already runs — **duplicated into the new function, not extracted out of
+   `serve()`** — with the per-socket handler chosen by which listener produced the connection.
+   `serve()` itself is untouched; the control socket's request/response bytes are identical
+   whether served by `serve()` or by `serve_multi()`'s control listener (control-socket byte-parity
+   — a §7 freeze condition).
 3. **`sd_notify(READY=1)` fires only after `recover()` has returned AND both sockets are
    `listen()`-ing.** No dependent unit and no client observes the authority ready until the
    journal is reconciled (C6d) and both sockets are accepting (C6-S). The in-process order is
@@ -224,9 +248,12 @@ listening.** Concretely:
 **No contradiction with C6d.** C6-S does not alter `recover()`, the journal, the two uniqueness
 indexes, `Type=notify`, or the readiness semantics — it only makes the post-recovery bind cover
 two sockets instead of one. C6d's `__main__`-only edit-surface claim
-(`C6d-DESIGN-AND-AUTHORIZATION.md` §1) is preserved: C6-S's transport change is likewise confined
-to `__main__` + a bounded multi-listener helper, and does not touch `build_env_handler()`'s call
-site (`transport:296`) or `apply_bump`'s signature.
+(`C6d-DESIGN-AND-AUTHORIZATION.md` §1) is preserved: C6-S's transport change is confined to
+`__main__` (switching its call from `serve()` to the new `serve_multi()`) plus the addition of
+`serve_multi()` itself as a new, sibling function — **`serve()` is not modified, refactored, or
+extracted from** (pinned at binding review, Finding 2) — and does not touch `build_env_handler()`'s
+call site (`transport:296`) or `apply_bump`'s signature. Control-socket byte-parity holds: the
+existing request/response wire path is unchanged regardless of which function serves it.
 
 ---
 
@@ -236,7 +263,7 @@ site (`transport:296`) or `apply_bump`'s signature.
 |---|---|---|
 | **Claimed TEG-only boundary FALSE at the anchor** | rev5 asserted the TEG was the only member able to reach the authority control socket; in fact ALA (`lease-signing:76`) + C2-SCI (`c2:114`) + owner (`authority:111`) all hold `aq-revocation-epoch-clients`. | §2.1/§2.2: `authorize_launch` moves to a **separate** `launch.sock` gated by a **new** `aq-revocation-launch-clients` group whose only ever-added consumer is the TEG (C6b). ALA/C2-SCI/owner hold only `aq-revocation-epoch-clients` → structurally excluded from launch. |
 | **rev5's fix would not work** | Deleting `authority:111` removes only the owner; editing `c2:122` edits a group declaration, not a membership. | §2.2 item 1: C6-S makes **no** membership edit to `aq-revocation-epoch-clients` and does **not** delete `:111`; exclusivity comes from the separate socket/group, not from removing members of the shared one. |
-| **`SO_PEERCRED` non-authoritative** | rev5 relied on a peer check that is log-only (`transport:163-171`). | §2.3: the **kernel-enforced `0660` group on a separate inode** is the authority; `SO_PEERCRED` stays log-only; C6a MAY add an op-specific peer check as belt-and-suspenders (not a freeze condition). |
+| **`SO_PEERCRED` non-authoritative** | rev5 relied on a peer check that is log-only (`transport:163-171`). | §2.3: the **kernel-enforced `0660` group on a separate inode** excludes ALA/C2-SCI/owner; `SO_PEERCRED` stays log-only for C6-S. Because the authority-user is itself a launch-group member (chgrp role) and `authorize_launch` is un-signed, C6a **MUST** add an op-specific TEG `SO_PEERCRED` peer check — a **BINDING forward-condition** (§7), not belt-and-suspenders. |
 | **Least-privileged epoch-read path must be preserved** | Finding 2 requires exclusivity "while preserving a separately least-privileged epoch-read path." | §2.2 item 1: the control socket + `aq-revocation-epoch-clients` are untouched, so ALA/C2-SCI `read-epoch` and the owner `bump` path keep their exact current least-privileged access. |
 | **Topology chosen too late (decomposition Finding 1)** | v1 deferred the socket/group model to C6b; C6c depended on it → C6c could not freeze. | This slice freezes the topology **now** (before C6a/C6c). C6a cites the launch socket; C6c cites the control-socket owner-bump path. Neither waits on the other, and neither builds on an unfrozen surface. |
 
@@ -300,11 +327,21 @@ one new topology integration check:
   `/run`, no hard-coded healthy state, no `--` placeholder), `launch_group_teg_only` (bool: the
   launch group's non-authority members ⊆ {TEG}). `assets/dashboard.js` renders these two rows
   **inside the existing Foundation-C authority health block** — **no new dashboard card** (a
-  separate card would duplicate the block without giving the operator a new action). *(This
-  extends the decomposition §2 file list, which named only the `.nix`/transport/env-contract
-  files; the decomposition's own §2 coverage paragraph already calls for "extend the existing
-  authority health row to show both sockets" — C6-S makes that concrete with the minimal
-  API+UI edit, flagged here for the reviewer.)*
+  separate card would duplicate the block without giving the operator a new action).
+
+  **Reconciliation note (parent-decomposition file-list divergence, recorded per binding review
+  Finding 3).** C6-S's file set intentionally **extends** the parent decomposition's C6-S §2 file
+  list — which named only the `.nix`/transport/env-contract files — with two additional
+  observability files: `dashboard/backend/api/routes/aistack.py` and `assets/dashboard.js`.
+  One-line justification: Rule-15 observability requires the frozen two-socket topology be
+  dashboard-visible, and ground truth at `f1f409ef` shows **zero** `revocation_epoch_authority`
+  references in `aistack.py` — without this addition the topology this slice freezes would be
+  unobservable. The binding review (`CODEX-C6-S-DESIGN-BINDING-REVIEW-20260924.md` Finding 3)
+  confirmed this expansion is justified, minimal (folded into the existing health block, no new
+  card), and correctly inventoried (both files are already in the new check's `trigger_paths`
+  below) — **not scope-creep**. The decomposition's own §2 coverage paragraph already anticipates
+  this ("extend the existing authority health row to show both sockets"); this note makes the
+  divergence explicit in the parent-plan record rather than leaving it silent.
 - **Crypto/service tests exist** (row 7) — the topology assertions live in the integration probe
   below (C6-S ships no new crypto; the launch socket has no op). No new `test-*.py` unit file is
   required; the probe is the coverage.
@@ -358,6 +395,16 @@ one new topology integration check:
 7. The freeze binds the exact candidate hashes, reproduces the §1 base hashes, confirms the launch
    socket / launch group / launch-path env are **absent at the base**, rejects all other changed
    paths, and stops on HEAD drift.
+8. **BINDING forward-condition on C6a (added at binding review — Finding 1.2; not a criterion C6-S
+   itself must satisfy, since C6-S ships no reachable op, but a condition this freeze imposes on
+   the next slice that attaches to `launch.sock`).** C6a's design **MUST cite this freeze** and
+   **MUST implement an operation-specific `SO_PEERCRED` peer check on `authorize_launch`** that
+   verifies the connecting peer's uid/gid is the TEG principal before honoring the request. Rationale
+   (§2.3): the launch group's kernel DAC boundary excludes ALA/C2-SCI/owner, but the authority-user
+   is itself a launch-group member (chgrp role, §2.2 item 3) and `authorize_launch` is un-signed
+   (rev5 §3.2) — so the group boundary alone does not exclude the authority's own UID from a
+   self-launch attempt once the op is reachable. A C6a design that omits this peer check does not
+   satisfy this freeze's forward-condition and must be revised before it may build on C6-S.
 
 **Authorization / activation note — C6-S needs NO owner activation.** C6-S is **default-safe**:
 it declares an **idle second listener** on an authority that ships `enable = false;`. The launch
@@ -377,14 +424,23 @@ is the transport/principal contract C6a and C6c cite.
 
 ---
 
-**RECORD: PREPARED_ONLY revision 1. No implementation, freeze, activation, epoch bump, provider
+**RECORD: PREPARED_ONLY revision 2. No implementation, freeze, activation, epoch bump, provider
 traffic, deployment, restart, network authority, or flag flip is granted by this document. C6-S is
 the second foundation slice of `C6-DECOMPOSITION-20260924.md` (§2, §8); it requires its own
 independent binding review → hash-bound freeze → default-OFF build, per the decomposition's
 per-slice contract. This document closes rev5 (`f68ccf91`) Finding 2 (HIGH) at design level via
-mechanism B (a dedicated TEG-only `launch.sock` + `aq-revocation-launch-clients` group, control
-socket + `aq-revocation-epoch-clients` untouched) and decomposition-review Finding 1 (freeze the
-socket topology before C6a/C6c). It composes on top of C6d's recover-before-listen /
-`Type=notify` model (§3) and contradicts none of it. The rev5 §3.2 in-principal-execution basis
-that the launch socket ultimately serves is retained as the C6b design basis (decomposition
-§0.3).**
+mechanism B (a dedicated `launch.sock` + `aq-revocation-launch-clients` group whose only ever-added
+members are the authority-user (chgrp/server role, never a client) and the TEG (C6b, sole intended
+launch consumer) — control socket + `aq-revocation-epoch-clients` untouched) and decomposition-review
+Finding 1 (freeze the socket topology before C6a/C6c). It composes on top of C6d's
+recover-before-listen / `Type=notify` model (§3) and contradicts none of it. The rev5 §3.2
+in-principal-execution basis that the launch socket ultimately serves is retained as the C6b design
+basis (decomposition §0.3). **Revision 2 addresses `CODEX-C6-S-DESIGN-BINDING-REVIEW-20260924.md`**
+(REQUEST_REVISION on revision 1, `factory/c6s-design` @ `093c4881`): (1) corrects §2.3's exclusivity
+sentence to name the authority-user as a chgrp-only launch-group member alongside the TEG, and
+elevates the C6a op-specific TEG `SO_PEERCRED` peer check from a recommendation to a BINDING
+forward-condition (§7 item 8) that C6a must cite and implement; (2) pins the transport edit surface
+(§1, §3) — a new `serve_multi()` function is added, `serve()` itself is NOT modified, and
+control-socket byte-parity is asserted; (3) adds an explicit reconciliation note (§6) recording that
+C6-S's file set intentionally extends the parent decomposition's §2 file list with
+`aistack.py`/`dashboard.js` for Rule-15 observability.**
