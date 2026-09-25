@@ -2,7 +2,7 @@
 title: "Foundation C — C6a: Authority-transport `authorize_launch` op + single-use launch-token consume (on the C6-S launch socket; SAME-epoch.lock total ordering vs apply_bump; exactly-once issue→consume; op-specific TEG SO_PEERCRED peer check)"
 slice: "C6a (fans out from C6-S in parallel with C6c — attaches the launch op + single-use ledger to the frozen launch socket)"
 status: "PREPARED_ONLY — authorizes NOTHING (no build, no freeze, no activation, no epoch bump, no provider traffic, no flag flip). Design + authorization note only."
-revision: 1
+revision: 2
 kind: "design-only"
 implementation_authorization: "NONE"
 activation_authorization: "NONE"
@@ -58,7 +58,7 @@ extends, not a conflict — §2.4 states the exact composition).
 |---|---|---|
 | `scripts/ai/lib/revocation_epoch_transport.py` | `066b30c326898d6ef8e4ab085cf82ce131bb9812b08a61993de86b0812a6be28` | **EDIT.** Replace **C6-S's deny-all launch-socket stub** with a real launch handler that dispatches `authorize_launch` and `consume_launch`. Today (`f1f409ef`) `handler()` (`:282`) recognizes only `{"op":"read-epoch"}` (`:283`) and `{"bump":{...}}` (`:290`→`apply_bump` at `:296`) — the exact Finding-1 defect (no launch op is reachable). C6a adds a **new** `build_launch_handler()` (sibling of `build_env_handler()` at `:246`) whose `handler(request, peer_creds)` dispatches `authorize_launch`/`consume_launch`; the launch listener that C6-S's `serve_multi()` binds gets **this** handler instead of the stub. The **control** handler `build_env_handler()` (`:246`) and its `apply_bump` call site (`:296`) are UNCHANGED — control-socket byte-parity (C6-S §7 item 5) holds. `serve()` (`:128`) and C6-S's `serve_multi()` are NOT modified — C6a only supplies the launch listener's handler. The handler already receives `peer_creds` (passed by the accept loop at `:177`, threaded to `handler()`'s second arg at `:282`), so the op-specific TEG `SO_PEERCRED` check (§2.3) reads them directly — no transport-loop change needed. |
 | `scripts/ai/lib/revocation_epoch.py` | `d6c3a3b60a04fde15b5fe9a619f6fc290110776bbdefc35c6de21dcd594a75e6` | **EDIT.** Add `authorize_launch()` and `consume_launch()`, each under `_acquire_epoch_lock` (`:549`, `fcntl.flock LOCK_EX` on `epoch.lock` at `:553`) — the **same** exclusive lock `apply_bump` (`:609`, acquire at `:642`, release at `:690`) holds — and the single-use launch-authorization ledger (`issue → consume`/`expired`) built from the same `O_CREAT|O_EXCL|O_NOFOLLOW` + `fsync(file)` + `fsync(dir)` test-and-set primitive as `DurableReplayLedger.check_and_record` (`:505`/`:507`). Both are **total functions** (never raise — mirrors `apply_bump`'s contract, `:616-618`). `apply_bump`, `verify_bump` (`:432`), `read_epoch` (`:206`), `_write_epoch_atomic` (`:564`), and `DurableReplayLedger` (`:474`) signatures are **unchanged** (C6d §1 precondition preserved). |
-| `nix/modules/services/revocation-epoch-authority.nix` | `b539e5de6dd89eb4fd93ed2119055ad9440897b1c408a98f6c23d9ded0db0172` | **EDIT.** Add the launch-ledger StateDirectory subtree (`launch-ledger/issued/`, `launch-ledger/consumed/`, `launch-ledger/expired/`, each `0700 aq-revocation-epoch-authority`) as `systemd.tmpfiles.rules` alongside the existing `ledger/` rule (`:126`) and C6d's `journal/`,`by-request-id/`,`by-idempotency-key/` rules, under `statePath` (`/var/lib/aq-revocation-epoch-authority`, `:84`). Add a documented `AQ_REVOCATION_LAUNCH_TEG_UID` env reference to the unit `Environment` (`:146-152`), **empty by default** (fail-closed — §2.3); C6b provisions it. **No new socket** (C6-S declared `launch.sock`); **reuse C6d's recover-before-`listen()` ordering** (`Type=notify`, readiness after recovery — §5). `enable = false;`, control socket, `aq-revocation-epoch-clients`/`aq-revocation-launch-clients` membership, and hardening (`NoNewPrivileges`/`ProtectSystem="strict"`/`RestrictAddressFamilies=["AF_UNIX"]`, `:159`/`:161`/`:166`) all UNCHANGED. |
+| `nix/modules/services/revocation-epoch-authority.nix` | `b539e5de6dd89eb4fd93ed2119055ad9440897b1c408a98f6c23d9ded0db0172` | **EDIT.** Add the launch-ledger StateDirectory subtree (`launch-ledger/issued/`, `launch-ledger/consumed/`, `launch-ledger/expired/`, each `0700 aq-revocation-epoch-authority`) as `systemd.tmpfiles.rules` alongside the existing `ledger/` rule (`:125`) and C6d's `journal/`,`by-request-id/`,`by-idempotency-key/` rules, under `statePath` (`/var/lib/aq-revocation-epoch-authority`, `:84`). Add a documented `AQ_REVOCATION_LAUNCH_TEG_UID` env reference to the unit `Environment` (`:146-152`), **empty by default** (fail-closed — §2.3); C6b provisions it. **No new socket** (C6-S declared `launch.sock`); **reuse C6d's recover-before-`listen()` ordering** (`Type=notify`, readiness after recovery — §5). `enable = false;`, control socket, `aq-revocation-epoch-clients`/`aq-revocation-launch-clients` membership, and hardening (`NoNewPrivileges`/`ProtectSystem="strict"`/`RestrictAddressFamilies=["AF_UNIX"]`, `:159`/`:161`/`:166`) all UNCHANGED. |
 | `config/env-contract.yaml` | *(binds landed shape)* | **EDIT.** Document `AQ_REVOCATION_LAUNCH_TEG_UID` (default **empty** — no admissible peer until C6b) alongside the existing `AQ_REVOCATION_EPOCH_SOCKET_PATH` (`:1339`) and the `AQ_REVOCATION_LAUNCH_SOCKET_PATH`/`_CLIENT_GROUP` references C6-S adds. This is a principal-identity reference, **not** a capability flag (C6a introduces no capability flag). |
 | `scripts/testing/test-revocation-epoch.py` | `40cf094c73b3298698097e1d0988ca8fd187df1772b1b9beb4aa3c26a0ac59df` | **EXTEND** (494 lines today) with the serialization, single-use exactly-once, ≤250 ms expiry, epoch-supersession, binding-mismatch, TEG-peer-check, and crash-recovery vectors (§3.5, §4, §5). |
 | `dashboard/backend/api/routes/aistack.py` | *(binds landed shape)* | **EDIT.** Add a compact live-backed `result["revocation_launch_authorization"]` section, modelled on the ALA section (`result["ala"]` at `:2104`, `ala_flag` at `:2091`) / C2-SCI section (`result["c2_scheduler_context_issuer"]` at `:2133`). States: `op_present\|op_absent`, `ledger_durable` (bool), `teg_peer_check_enforced` (bool). No hard-coded healthy state, no `--` placeholder; rendered inside the existing Foundation-C authority health block — no new card. |
@@ -140,8 +140,9 @@ member of `aq-revocation-launch-clients`** (a chgrp-only role so `serve()`/`serv
 ALA/C2-SCI/owner but does **NOT** exclude the authority's own UID. A self-launch surface via the
 authority UID would become live the moment C6a attaches a reachable op — so C6-S made it a **MUST**,
 not a recommendation, that **C6a implement an operation-specific `SO_PEERCRED` peer check on
-`authorize_launch` verifying the connecting peer's uid/gid is the TEG principal** before honoring the
-request.
+`authorize_launch` verifying the connecting peer's uid is the TEG principal** before honoring the
+request. (Wording corrected to **uid-only** — the mechanism in item 2 below has never compared gid;
+consistent with C6-S §7.8's own uid-only formulation of this MUST.)
 
 **C6a satisfies this MUST as follows:**
 
@@ -151,13 +152,14 @@ request.
    *consumed* by one). `peer_creds` is `(pid, uid, gid)` from `get_peer_credentials()`
    (`revocation_epoch_transport.py:69`), already threaded to the handler's second argument by the
    accept loop (`:177`); C6a reads it directly — no transport-loop edit.
-2. **Verifies uid/gid is the TEG principal, not merely "any launch-group member."** The expected TEG
-   identity is resolved from `AQ_REVOCATION_LAUNCH_TEG_UID` (the unit `Environment` reference C6a
-   documents, provisioned by C6b's `dispatch-gateway.nix`). The check requires
-   `peer_creds is not None AND peer_creds[1] == <resolved TEG uid>`; anything else — including the
-   **authority-user's own UID** (the chgrp-role launch-group member) and a `None` peer-creds read —
-   returns `DENY_NOT_TEG_PEER`. This closes the residual self-launch gap C6-S flagged: the
-   authority-user is in the launch group but is **not** the TEG, so it is denied.
+2. **Verifies uid is the TEG principal, not merely "any launch-group member."** The check is
+   **uid-only** (there is no gid comparison anywhere in this mechanism — see the corrected wording
+   above). The expected TEG identity is resolved from `AQ_REVOCATION_LAUNCH_TEG_UID` (the unit
+   `Environment` reference C6a documents, provisioned by C6b's `dispatch-gateway.nix`). The check
+   requires `peer_creds is not None AND peer_creds[1] == <resolved TEG uid>`; anything else —
+   including the **authority-user's own UID** (the chgrp-role launch-group member) and a `None`
+   peer-creds read — returns `DENY_NOT_TEG_PEER`. This closes the residual self-launch gap C6-S
+   flagged: the authority-user is in the launch group but is **not** the TEG, so it is denied.
 3. **Fail-closed until C6b.** At C6a build time the TEG principal does not yet exist, so
    `AQ_REVOCATION_LAUNCH_TEG_UID` is **empty/unresolvable** (env-contract default empty). An
    unresolved expected-uid makes the equality check deny **every** peer — the op is inert even if a
@@ -168,9 +170,20 @@ request.
    C6-S/§2.4 keep `SO_PEERCRED` log-only (`transport:163-171` untouched). C6a elevates it to
    authoritative **only inside the launch handler**, for the two un-signed launch ops, exactly as
    C6-S's forward-condition requires — it does not change the control-socket posture.
+5. **BINDING forward-condition for C6b — the TEG uid MUST be distinct from the authority-user uid.**
+   The check in item 2 admits a peer **iff** `peer_creds[1] == resolved TEG uid`. That closes the
+   self-launch surface **only if** the uid C6b provisions into `AQ_REVOCATION_LAUNCH_TEG_UID` is
+   **different from** the uid of the `aq-revocation-epoch-authority` service user. If C6b were ever to
+   provision the TEG identity as (or aliased to) the authority-user's own uid, the equality check would
+   admit the authority-user — the exact self-launch surface this peer check exists to close reopens.
+   C6a therefore records this as a **MUST C6b inherits**: the TEG MUST run as its own distinct
+   principal, and C6b's freeze must verify `AQ_REVOCATION_LAUNCH_TEG_UID != <aq-revocation-epoch-authority uid>`
+   before that value is provisioned live.
 
 A C6a build that omits this peer check does not satisfy C6-S's freeze forward-condition and must be
-revised before it may build on C6-S (C6-S §7 item 8).
+revised before it may build on C6-S (C6-S §7 item 8). A C6b build that provisions
+`AQ_REVOCATION_LAUNCH_TEG_UID` equal to the authority-user's uid does not satisfy the forward-condition
+in item 5 above and must be revised before C6b may activate the TEG peer.
 
 ### 2.4 Control-socket byte-parity + `serve()`/`serve_multi()` untouched (inherited from C6-S)
 
@@ -343,21 +356,50 @@ sibling call in the recovery phase; it adds no param to `apply_bump`/`recover()`
 ### 5.2 The deterministic issued-but-not-consumed-across-a-crash resolution
 
 **The case the task requires defined:** a token was `issued/<nonce>` but the authority crashed before
-any `consume_launch`. Deterministic resolution — **fail-closed, no auto-launch, no auto-bump:**
+any `consume_launch`. Deterministic resolution — **fail-closed, no auto-launch, no auto-bump.**
+
+**The correctness argument rests on the unconditional under-lock-before-accept sweep, NOT on a
+recovery-timing claim.** An earlier revision of this section justified expiring surviving `issued`
+records by asserting "no crash-plus-restart of a systemd unit completes in under 250 ms" — i.e. that
+the elapsed time alone proves every surviving token's deadline has already passed. That timing claim
+is **not safe to hang correctness on**: a warm restart of an already-code-cached `Type=notify` Python
+unit (default `RestartSec` on the order of 100 ms, with `sd_notify(READY=1)` gated only on the small
+recovery pass) can plausibly complete in well under 250 ms, so "elapsed time > deadline" is not
+guaranteed at every recovery. **The design does not need that guarantee, and never did:**
+`recover_launch_ledger()`, described below, transitions **every** surviving `issued`-without-`consumed`
+record to terminal `expired` **unconditionally** — it does not read the clock, does not recheck
+`issued_at + deadline_ms`, and does not branch on elapsed time. An unconditional sweep can only ever
+**deny** a launch (move a record to a state from which no consume can ever succeed); it can never
+*authorize* one, and it never expires a token that recovery leaves in a state where it remains
+legitimately consumable, because recovery — not the deadline check — is what decides the outcome for
+every surviving `issued` record before any socket accepts. Fail-closed correctness therefore follows
+from the sweep being unconditional and running strictly before accept, independent of how fast or slow
+the crash-to-restart interval was.
+
+**The ≤ 250 ms deadline is a live-path freshness bound, not a recovery-safety assumption.** On the live
+(non-crash) path, `deadline_ms ≤ 250` bounds how long a legitimately-issued, not-yet-consumed token
+stays consumable — that is its only job (§3.1/§3.2 step 4, `DENY_LAUNCH_EXPIRED`). It plays **no role**
+in why recovery is safe; recovery is safe because the sweep is unconditional, not because the deadline
+happened to have elapsed by the time recovery runs.
+
+**Build requirement (BINDING).** The implementation of `recover_launch_ledger()` MUST expire every
+surviving `issued/<nonce>` with no `consumed/<nonce>` **unconditionally** — the transition to
+`launch-ledger/expired/<nonce>` MUST NOT be conditioned on re-checking `issued_at + deadline_ms`,
+current wall-clock time, or any other elapsed-time computation. A build that guards the sweep behind an
+elapsed-time recheck (e.g. "only expire if `now > issued_at + deadline_ms`") reintroduces exactly the
+timing dependency this section rejects and does not satisfy this design.
 
 `recover_launch_ledger()`, under `epoch.lock`, sweeps `launch-ledger/issued/`:
-- For every `issued/<nonce>` with **no** `consumed/<nonce>`: because the deadline is **≤ 250 ms** and
-  no crash-plus-restart of a systemd unit completes in under 250 ms, the token's
-  `issued_at + deadline_ms` is **necessarily in the past** at recovery. The token is therefore
-  **unconsumable by construction** (consume would deny `DENY_LAUNCH_EXPIRED`, §3.2 step 4). `recover()`
-  makes this explicit and durable: it atomically transitions the record to terminal
-  `launch-ledger/expired/<nonce>` (`O_EXCL`-create `expired/<nonce>` + `fsync`; then `unlink`
-  `issued/<nonce>` + `fsync(dir)`). Operator-visible (an expired-across-crash count), never a silent
-  launch, never `0`.
-  - **Belt-and-suspenders even if the clock is untrustworthy:** the launch ledger binds `token.epoch`,
-    and a crash+restart that spanned any revocation would also fail consume's supersession check
-    (§3.2 step 5). But the resolution does **not depend** on that — the ≤250 ms deadline alone makes a
-    crash-survived issued token unconsumable, deterministically.
+- For every `issued/<nonce>` with **no** `consumed/<nonce>`: the record is **unconditionally**
+  transitioned to terminal `launch-ledger/expired/<nonce>` (`O_EXCL`-create `expired/<nonce>` +
+  `fsync`; then `unlink` `issued/<nonce>` + `fsync(dir)`) — no clock read, no deadline recheck. The
+  token is thereby made **unconsumable by construction** (any subsequent `consume_launch` for that
+  nonce denies `DENY_LAUNCH_UNKNOWN`, since `issued/<nonce>` no longer exists — §3.2 step 2).
+  Operator-visible (an expired-across-crash count), never a silent launch, never `0`.
+  - **Independent second layer:** even setting the unconditional sweep aside, the launch ledger binds
+    `token.epoch`, and a crash+restart that spanned any revocation would also fail consume's
+    supersession check (§3.2 step 5). The resolution does **not depend** on this second layer — the
+    unconditional sweep alone is sufficient and is what the build requirement above binds.
 - For every `issued/<nonce>` **with** a `consumed/<nonce>` present (a crash after the atomic consume
   but before the best-effort audit projection, §3.4 step 3): the consume already durably won; the
   transition is complete. `recover()` reconciles the audit projection best-effort and leaves the
@@ -366,11 +408,11 @@ any `consume_launch`. Deterministic resolution — **fail-closed, no auto-launch
   terminal tombstone) is already terminal — left as-is.
 
 **Determinism.** Every crash interleaving of the `issue → {consume | expire}` machine maps to exactly
-one terminal outcome (`consumed` once, or `expired`), decided before the socket accepts. No
-issued-but-not-consumed token ever survives a crash into a live, consumable launch authorization —
-the fail-closed guarantee. This mirrors C6d's "each crash point uniquely determines the outcome"
-discipline (C6d §5) for the launch ledger, and reuses C6d's `O_EXCL` + `fsync(file)`+`fsync(dir)`
-durability-barrier ordering.
+one terminal outcome (`consumed` once, or `expired`), decided **unconditionally**, before the socket
+accepts. No issued-but-not-consumed token ever survives a crash into a live, consumable launch
+authorization — the fail-closed guarantee holds regardless of how quickly the unit restarted. This
+mirrors C6d's "each crash point uniquely determines the outcome" discipline (C6d §5) for the launch
+ledger, and reuses C6d's `O_EXCL` + `fsync(file)`+`fsync(dir)` durability-barrier ordering.
 
 ### 5.3 No contradiction with C6d
 
@@ -380,6 +422,26 @@ sibling StateDirectory subtree. C6d's `apply_bump`/`build_env_handler` signature
 `__main__`-only transport-edit surface are preserved (C6a's transport edit is the launch handler,
 already anticipated by C6-S's stub-replacement forward-condition — not a change to C6d's `__main__`
 recovery wiring; C6a only inserts the `recover_launch_ledger()` call beside C6d's `recover()`).
+
+**BINDING freeze-time verification requirement (composition with C6d's frozen `__main__` region).**
+§5.1 discloses that C6a's `recover_launch_ledger()` insertion lands **inside** C6d's declared
+`EDIT (__main__ only)` region (`revocation_epoch_transport.py:301-309`) — the same block C6d's own
+freeze declared as its frozen edit surface. C6a and C6d therefore both touch that one `__main__` block,
+and the freeze MUST NOT accept this on design prose alone. At freeze/land time, the freeze MUST verify,
+against C6d's **landed** `__main__` recovery sequence (not this design's description of it), that
+C6a's insertion is **purely additive**:
+- it adds exactly one sibling call — `recover_launch_ledger()` — inside the single `epoch.lock` hold,
+  strictly after C6d's `recover()` returns and strictly before `serve_multi()` binds or `listen()`s
+  either socket;
+- it does not alter C6d's `recover()` body, the journal, the two uniqueness indexes
+  (by-request-id/by-idempotency-key), `Type=notify`, or the `sd_notify(READY=1)`-after-recovery
+  readiness gate;
+- it does not alter the `apply_bump` or `build_env_handler` signatures C6d's §1 precondition binds.
+
+This is a landing-order condition, checked against C6d's landed code at C6a's freeze, referencing C6d's
+own edit-surface claim — not a restatement of design intent. A C6a freeze that cannot reproduce this
+purely-additive diff against C6d's landed `__main__` does not satisfy this requirement and must be
+revised before C6a may freeze.
 
 ---
 
@@ -505,17 +567,27 @@ Finding 3):
 3. **≤250 ms deadline** enforced (`DENY_LAUNCH_EXPIRED`); **binding** enforced
    (wrong-context/inode, wrong-task, stale-revision, wrong-gateway, wrong-epoch →
    `DENY_LAUNCH_BINDING_MISMATCH`); **epoch supersession** enforced (`DENY_LAUNCH_EPOCH_SUPERSEDED`).
-4. **BINDING op-specific TEG `SO_PEERCRED` peer check** (§2.3, satisfying C6-S §7 item 8): both launch
-   ops verify `peer_creds.uid == resolved TEG uid`; the authority-user (chgrp-role launch-group member)
-   and any non-TEG peer and a `None` peer-creds read all deny `DENY_NOT_TEG_PEER`; unresolved TEG uid
-   (pre-C6b) denies every peer. This freeze **cites the C6-S freeze** and this criterion is the
-   condition C6-S imposed on C6a.
+4. **BINDING op-specific TEG `SO_PEERCRED` peer check, uid-only** (§2.3, satisfying C6-S §7 item 8):
+   both launch ops verify `peer_creds[1] == resolved TEG uid` (uid-only — no gid comparison); the
+   authority-user (chgrp-role launch-group member) and any non-TEG peer and a `None` peer-creds read
+   all deny `DENY_NOT_TEG_PEER`; unresolved TEG uid (pre-C6b) denies every peer. This freeze **cites
+   the C6-S freeze** and this criterion is the condition C6-S imposed on C6a. **Forward-condition C6b
+   inherits** (§2.3 item 5): `AQ_REVOCATION_LAUNCH_TEG_UID` MUST be provisioned distinct from the
+   `aq-revocation-epoch-authority` service-user uid — C6b's own freeze must verify this before the TEG
+   peer is live, or the self-launch surface this check exists to close reopens.
 5. **`authorize_launch`/`consume_launch` reachable over the C6-S launch socket ONLY**; the control
    socket keeps `read-epoch`/`bump` byte-for-byte (§2.4 control-socket byte-parity).
-6. **Composes with C6d** (§5): `recover_launch_ledger()` runs under `epoch.lock` in the same recovery
-   phase, after C6d's `recover()` and before either socket accepts; an issued-but-not-consumed token
-   across a crash is deterministically resolved to terminal `expired` (unconsumable) — never a live
-   launch; C6d's `recover()`/journal/`Type=notify`/signatures unchanged.
+6. **Composes with C6d** (§5, and the BINDING freeze-time verification requirement in §5.3): the
+   recovery argument rests on `recover_launch_ledger()` **unconditionally** transitioning every
+   surviving `issued`-without-`consumed` record to terminal `expired` — never conditioned on an
+   elapsed-time recheck — running under `epoch.lock` in the same recovery phase, after C6d's
+   `recover()` and before either socket accepts; the ≤250 ms deadline is a live-path freshness bound
+   only, not a recovery-safety assumption. An issued-but-not-consumed token across a crash is thereby
+   resolved to terminal `expired` (unconsumable) — never a live launch. The freeze MUST additionally
+   verify, against C6d's **landed** `__main__` (not this design's prose), that the
+   `recover_launch_ledger()` insertion is purely additive: it adds one sibling call inside the single
+   lock hold and does not alter C6d's `recover()`, journal, two uniqueness indexes, `Type=notify`,
+   readiness gate, or the `apply_bump`/`build_env_handler` signatures.
 7. **Gate-OFF byte-parity — scoped to C6a's own edit** (§8 row 4): the authority ships
    `enable = false;`; when enabled but pre-C6b, every launch request denies and every control-socket
    `read-epoch`/`bump` trace is byte-for-byte identical. `CAPABILITY_SCHEDULER_LEASE_GATE` is out of
@@ -546,7 +618,7 @@ the C4 kill-lever (decomposition §0.3, §7.2 item 3) and does not unblock C4.
 
 ---
 
-**RECORD: PREPARED_ONLY revision 1. No implementation, freeze, activation, epoch bump, provider
+**RECORD: PREPARED_ONLY revision 2. No implementation, freeze, activation, epoch bump, provider
 traffic, deployment, restart, network authority, or flag flip is granted by this document. C6a is the
 `authorize_launch` + single-use launch-token slice of `C6-DECOMPOSITION-20260924.md` (§3, §8); it
 requires its own independent binding review → hash-bound freeze → default-OFF build, per the
@@ -555,9 +627,25 @@ level: it makes `authorize_launch` reachable on the C6-S launch socket, defines 
 launch-token ledger (`issue → consume`/`expired`, `O_EXCL` test-and-set consume, verifier,
 duplicate-consume serialization — exactly-once proven §3.5), reproduces the retained rev5 §3.3
 same-`epoch.lock` total-ordering proof vs `apply_bump` (§4), satisfies C6-S §7 item 8's BINDING
-op-specific TEG `SO_PEERCRED` peer check (§2.3), and composes its launch-ledger recovery with C6d's
-recover-before-listen barrier — an issued-but-not-consumed token across a crash resolves deterministically
-to terminal `expired`, never a live launch (§5). It contradicts neither C6-S's frozen transport surface
+op-specific TEG `SO_PEERCRED` peer check (§2.3, uid-only), and composes its launch-ledger recovery with
+C6d's recover-before-listen barrier — an issued-but-not-consumed token across a crash resolves
+deterministically to terminal `expired` via an **unconditional** sweep, never a live launch, and never
+on a recovery-timing assumption (§5.2). It contradicts neither C6-S's frozen transport surface
 (`serve()`/`serve_multi()` untouched, control-socket byte-parity, deny-all stub replaced) nor C6d's
-`__main__`-only / `apply_bump` / `recover()` model. The rev5 §3.3 serialization proof it builds on is
-the retained design basis (decomposition §0.3).**
+`__main__`-only / `apply_bump` / `recover()` model, and binds a BINDING freeze-time verification
+requirement that the `recover_launch_ledger()` insertion into C6d's landed `__main__` region is purely
+additive (§5.3). The rev5 §3.3 serialization proof it builds on is the retained design basis
+(decomposition §0.3).
+
+**Revision 2 (this revision) applies the focused fixes from
+`CODEX-C6A-DESIGN-BINDING-REVIEW-20260924.md` (disposition FREEZE-ELIGIBLE, NO HIGH, rev5 Finding 1
+CLOSED) against rev1 (`9066e259`, `factory/c6a-design`): **F1 (MEDIUM)** reframes §5.2's recovery
+argument off the ≤250 ms recovery-timing claim onto the unconditional under-lock-before-accept sweep,
+and adds a BINDING build requirement that the expiry sweep never conditions on elapsed time; **F2
+(MEDIUM)** adds a BINDING freeze-time verification requirement in §5.3 that the
+`recover_launch_ledger()` insertion into C6d's frozen `__main__` region is purely additive against
+C6d's *landed* code; **F3 (LOW)** corrects §2.3's "uid/gid" prose to uid-only, matching the mechanism
+and C6-S §7.8; **F4 (LOW)** records a new BINDING forward-condition C6b inherits (§2.3 item 5, §9 item
+4) — the TEG uid MUST be provisioned distinct from the authority-user uid; **F6 (informational)**
+corrects the `ledger/` tmpfiles anchor from `:126` to `:125` (§1). **F5** (single-use is per-token, not
+per-binding) required no change per the review and is unchanged.**
