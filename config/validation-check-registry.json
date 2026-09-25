@@ -1419,6 +1419,23 @@
       "enabled": true
     },
     {
+      "id": "revocation-epoch-recovery",
+      "description": "Foundation C C6d — revocation-epoch authority write-ahead journal + two-index deterministic recovery (recover-before-listen)",
+      "trigger_paths": [
+        "scripts/ai/lib/revocation_epoch.py",
+        "scripts/ai/lib/revocation_epoch_transport.py",
+        "nix/modules/services/revocation-epoch-authority.nix",
+        "scripts/testing/test-revocation-epoch.py"
+      ],
+      "command": [
+        "python3",
+        "scripts/testing/test-revocation-epoch.py"
+      ],
+      "tier": "behavioral",
+      "timeout_seconds": 30,
+      "enabled": true
+    },
+    {
       "id": "flat-prd-gate",
       "description": "Phase 155 \u2014 flat model-team PRD gate requires proposal/review/consensus artifacts",
       "trigger_paths": [

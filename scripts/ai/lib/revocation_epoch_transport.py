@@ -298,6 +298,28 @@ def build_env_handler() -> Callable[[dict[str, Any], Optional[tuple[int, int, in
     return handler
 
 
+def _sd_notify_ready() -> None:  # pragma: no cover — exercised live only under systemd
+    """Raw stdlib `sd_notify(READY=1)` — no new dependency. Best-effort: a
+    missing/unset `NOTIFY_SOCKET` (not run under `Type=notify`, e.g. this
+    file invoked directly for a smoke test) is a silent no-op, never a
+    startup failure. Mirrors the abstract/`@`-prefixed-socket handling of
+    `sd_notify(3)` (an `@` prefix or leading NUL is rewritten to the
+    abstract-namespace leading NUL byte)."""
+    notify_socket = os.environ.get("NOTIFY_SOCKET", "").strip()
+    if not notify_socket:
+        return
+    address = ("\0" + notify_socket[1:]) if notify_socket.startswith("@") else notify_socket
+    try:
+        sock = socket.socket(socket.AF_UNIX, socket.SOCK_DGRAM)
+        try:
+            sock.connect(address)
+            sock.sendall(b"READY=1")
+        finally:
+            sock.close()
+    except OSError:
+        pass  # best-effort; never fail startup over a readiness-signal fault
+
+
 if __name__ == "__main__":  # pragma: no cover — exercised live only once the unit is enabled
     _sp = os.environ.get("AQ_REVOCATION_EPOCH_SOCKET_PATH", "").strip()
     if not _sp:
@@ -306,4 +328,36 @@ if __name__ == "__main__":  # pragma: no cover — exercised live only once the 
             file=sys.stderr,
         )
         sys.exit(1)
+
+    # C6d recover-before-listen barrier (design §3.4): the write-ahead
+    # journal + two-index reconciliation pass runs to COMPLETION, under the
+    # SAME exclusive epoch.lock apply_bump uses, BEFORE serve() ever binds/
+    # listens/accepts. Readiness (`sd_notify(READY=1)` under `Type=notify`)
+    # fires ONLY after recover() returns, so any dependent unit or client
+    # observes this authority ready only once its journal is reconciled —
+    # no request is ever served against an unreconciled journal.
+    _epoch_path = os.environ.get("AQ_REVOCATION_EPOCH_EPOCH_PATH", "").strip()
+    if not _epoch_path:
+        print(
+            "revocation_epoch_transport: AQ_REVOCATION_EPOCH_EPOCH_PATH not set "
+            "(required for the recover-before-listen barrier)",
+            file=sys.stderr,
+        )
+        sys.exit(1)
+    import revocation_epoch as _re_lib  # noqa: E402  (lazy; sibling in scripts/ai/lib)
+
+    _recovery_summary = _re_lib.recover(_epoch_path)
+    if _recovery_summary.get("error"):
+        print(
+            f"revocation_epoch_transport: recover() failed: {_recovery_summary['error']} "
+            "— refusing to bind/listen until the journal can be reconciled",
+            file=sys.stderr,
+        )
+        sys.exit(1)
+    print(
+        f"[revocation-epoch-authority-transport] recover() complete: {_recovery_summary}",
+        file=sys.stderr,
+        flush=True,
+    )
+    _sd_notify_ready()
     serve(_sp, build_env_handler())

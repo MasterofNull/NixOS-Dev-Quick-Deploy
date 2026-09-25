@@ -123,6 +123,17 @@ in {
       # root) independent of unit-start ordering.
       "d ${cfg.statePath} 0700 aq-revocation-epoch-authority aq-revocation-epoch-authority -"
       "d ${cfg.statePath}/ledger 0700 aq-revocation-epoch-authority aq-revocation-epoch-authority -"
+      # C6d (`.agents/plans/aqos-foundation-c/C6d-DESIGN-AND-AUTHORIZATION.md`
+      # §2.1) journal + two-independent-uniqueness-index StateDirectories --
+      # siblings of `epoch`/`ledger` above, same 0700 authority-owned mode.
+      # `ledger/` (above) is now legacy: `revocation_epoch.apply_bump` no
+      # longer consults it for gating (recover() only detects+logs a
+      # non-empty legacy ledger, never imports it — design §2.3/§7); it
+      # stays declared so any pre-C6d StateDirectory content is preserved
+      # across a rebuild (Rule 12/13 — never dropped, never reset).
+      "d ${cfg.statePath}/journal 0700 aq-revocation-epoch-authority aq-revocation-epoch-authority -"
+      "d ${cfg.statePath}/by-request-id 0700 aq-revocation-epoch-authority aq-revocation-epoch-authority -"
+      "d ${cfg.statePath}/by-idempotency-key 0700 aq-revocation-epoch-authority aq-revocation-epoch-authority -"
       # Seed the epoch store ONCE from the tracked genesis SSOT. `f` (lowercase) creates the
       # file ONLY if it does not already exist and never rewrites its content on a later
       # rebuild — critical: a bumped epoch must survive every subsequent `nixos-rebuild switch`
@@ -136,7 +147,14 @@ in {
       description = "Foundation C C6-B2 confined revocation-epoch authority (default-OFF, no private key, owner-verify-only)";
       wantedBy = ["multi-user.target"];
       serviceConfig = {
-        Type = "simple";
+        # C6d recover-before-listen barrier (design §3.4): the transport's
+        # __main__ runs revocation_epoch.recover() to completion, under
+        # epoch.lock, BEFORE it binds/listens/accepts, and only then calls
+        # sd_notify(READY=1) (raw stdlib, no new dependency) -- so any unit
+        # ordered After= this one, and any client, observes it ready only
+        # once its journal is reconciled. Type=notify (was Type=simple) is
+        # what makes systemd actually wait for that signal.
+        Type = "notify";
         ExecStart = "${authPython}/bin/python3 ${authBundle}/revocation_epoch_transport.py";
         User = "aq-revocation-epoch-authority";
         Group = "aq-revocation-epoch-authority";
