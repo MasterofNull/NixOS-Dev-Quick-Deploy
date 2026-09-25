@@ -79,10 +79,10 @@ class ClaudeModelRoutingTest(unittest.TestCase):
         )
         self.assertEqual(result.returncode, 0, result.stderr)
         argv = json.loads(self.argv_log.read_text())
-        self.assertEqual(argv[argv.index("--model") + 1], "claude-fable-5")
+        self.assertEqual(argv[argv.index("--model") + 1], "claude-fable-5-1")
         row = self.registry()[-1]
         self.assertEqual(row["requested_model_tier"], "flagship")
-        self.assertEqual(row["resolved_model"], "claude-fable-5")
+        self.assertEqual(row["resolved_model"], "claude-fable-5-1")
         self.assertEqual(row["status"], "done")
 
     def test_no_tier_preserves_cli_default_behavior(self) -> None:
