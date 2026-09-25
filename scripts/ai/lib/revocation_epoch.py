@@ -44,14 +44,24 @@ reader/writer is a fail-open revocation kill-switch):
     re-submits a bump on the caller's behalf. A denied bump stays denied;
     the owner must construct and sign a fresh request.
 
-Flow (verify -> expected-epoch -> replay-ledger -> atomic +1): `apply_bump`
-deliberately runs the durable single-use replay-ledger check BEFORE the
-epoch mutation (not after, as a narrative read of the design doc's service
-description might suggest) so that a replayed `{request_id,
-idempotency_key}` is caught with STRICTLY ZERO chance of ever reaching the
-mutating write — the ledger check-and-record and the epoch compare-and-swap
-both happen under the same exclusive `epoch.lock`, so this ordering is
-equivalent-or-safer than write-then-record, never weaker.
+Flow (verify -> expected-epoch -> write-ahead journal + two-index reserve
+-> atomic +1 -> phase commit): C6d
+(`.agents/plans/aqos-foundation-c/C6d-DESIGN-AND-AUTHORIZATION.md`)
+replaces the single combined-key `DurableReplayLedger` marker this module
+originally recorded BEFORE the epoch mutation — which this docstring used
+to warn could permanently wedge a retry (a crash between the marker record
+and the durable epoch write left the marker burned forever, denying every
+identical retry with no recovery path) — with a write-ahead intent journal
+guarded by two INDEPENDENT single-use uniqueness indexes (`resolve()` /
+`recover()` below). The epoch CAS (`_write_epoch_atomic`) is still the
+SOLE durable commit point, and it still happens under the SAME exclusive
+`epoch.lock` as the index reservation and journal writes, so a crash at
+ANY point in the transaction leaves on-disk state that `recover()`
+deterministically reconciles to exactly-once — never a permanent wedge,
+never a fabricated commit. `DurableReplayLedger` is kept below for
+`revocation_epoch_transport.build_env_handler` call-site compatibility
+only; `apply_bump` no longer consults it for gating (see `apply_bump`'s
+own docstring).
 """
 from __future__ import annotations
 
@@ -62,6 +72,7 @@ import json
 import os
 import re
 import stat
+import sys
 import tempfile
 from dataclasses import dataclass
 from datetime import datetime, timedelta, timezone
@@ -305,6 +316,21 @@ DENY_LEDGER_UNAVAILABLE = "ledger-unavailable"
 DENY_LOCK_UNAVAILABLE = "epoch-lock-unavailable"
 DENY_EPOCH_WRITE_FAILED = "epoch-write-failed"
 DENY_INTERNAL = "internal-error"
+
+# --------------------------------------------------------------------------
+# C6d additions (`.agents/plans/aqos-foundation-c/C6d-DESIGN-AND-AUTHORIZATION.md`)
+# -- the write-ahead journal + two-index deterministic-recovery primitive.
+# `DENY_REPLAY` above is RETIRED from the `apply_bump` live path (kept
+# defined for import compatibility only): a replay of an already-COMMITTED
+# transaction is no longer denied -- `resolve()`'s `committed` row returns
+# the ORIGINAL receipt idempotently (design §3.2), and an uncommitted-intent
+# retry (the old permanently-wedged W1 defect) is never `DENY_REPLAY` either
+# -- it is one of the two new typed outcomes below.
+# --------------------------------------------------------------------------
+DENY_RETRY = "bump-retry-required"
+DENY_IDENTITY_CONFLICT = "identity-conflict"
+DENY_QUARANTINED = "quarantined"
+DENY_ABORTED_TERMINAL = "bump-aborted-terminal"
 
 
 @dataclass(frozen=True)
@@ -602,6 +628,368 @@ def _append_audit_receipt(epoch_path: Path, receipt: Mapping[str, Any]) -> None:
         os.close(fd)
 
 
+# --------------------------------------------------------------------------
+# C6d journal + two-index primitive (design §2). Three StateDirectories,
+# siblings of `epoch_path`: `journal/<entry_id>` (the write-ahead intent ->
+# committed/aborted record), `by-request-id/<H(request_id)>` and
+# `by-idempotency-key/<H(idempotency_key)>` (two INDEPENDENT single-use
+# uniqueness indexes, each storing the `entry_id` they point at). All
+# reachable only under `epoch.lock` (§3.1's serialization invariant), so
+# every helper below assumes the caller already holds it.
+# --------------------------------------------------------------------------
+
+
+def _sha256_hex(value: str) -> str:
+    return hashlib.sha256(value.encode("utf-8")).hexdigest()
+
+
+def _entry_id(request_id: str, idempotency_key: str) -> str:
+    """`sha256(request_id \\x00 idempotency_key)` -- a FILENAME only; the
+    two independent indexes below, not this composite, are what enforce
+    uniqueness (design §2.1)."""
+    return hashlib.sha256(f"{request_id}\x00{idempotency_key}".encode("utf-8")).hexdigest()
+
+
+def _derive_state_dirs(epoch_path: Path) -> tuple[Path, Path, Path]:
+    """`journal/`, `by-request-id/`, `by-idempotency-key/` -- siblings of
+    `epoch_path`. The confined Nix unit also declares these via
+    `systemd.tmpfiles.rules` (0700, authority-owned) ahead of first start;
+    creating them here too (idempotent `exist_ok=True`) means an offline
+    caller (tests, a future owner CLI) never depends on unit-start
+    ordering, mirroring `DurableReplayLedger.__init__`'s own eager
+    `os.makedirs`."""
+    parent = epoch_path.parent
+    journal_dir = parent / "journal"
+    by_request_id_dir = parent / "by-request-id"
+    by_idempotency_key_dir = parent / "by-idempotency-key"
+    for directory in (journal_dir, by_request_id_dir, by_idempotency_key_dir):
+        os.makedirs(str(directory), mode=0o700, exist_ok=True)
+    return journal_dir, by_request_id_dir, by_idempotency_key_dir
+
+
+def _fsync_dir(directory: Path) -> None:
+    dir_fd = os.open(str(directory), os.O_DIRECTORY)
+    try:
+        os.fsync(dir_fd)
+    finally:
+        os.close(dir_fd)
+
+
+def _listdir_safe(directory: Path) -> list[str]:
+    try:
+        return os.listdir(str(directory))
+    except (FileNotFoundError, NotADirectoryError):
+        return []
+
+
+def _load_json_or_none(path: Path) -> tuple[bool, Optional[dict[str, Any]]]:
+    """`(exists, data)`. `exists=False` iff the path is genuinely absent.
+    `exists=True, data=None` covers a present-but-unreadable/corrupt file
+    (torn state) -- the caller decides how to treat that (never silently
+    treated as absent, never silently treated as valid)."""
+    try:
+        with open(str(path), "rb") as fh:
+            raw = fh.read()
+    except FileNotFoundError:
+        return False, None
+    except OSError:
+        return True, None
+    try:
+        decoded = json.loads(raw.decode("utf-8"))
+    except (UnicodeDecodeError, ValueError):
+        return True, None
+    return True, (decoded if isinstance(decoded, dict) else None)
+
+
+def _create_exclusive_json(path: Path, data: Mapping[str, Any], mode: int) -> bool:
+    """`O_CREAT|O_EXCL|O_NOFOLLOW` create + `fsync(file)`+`fsync(dir)`. True
+    iff THIS call created the file; False on `EEXIST`. Any OTHER `OSError`
+    propagates -- fail-closed, mirrors `DurableReplayLedger.check_and_record`."""
+    flags = os.O_WRONLY | os.O_CREAT | os.O_EXCL | getattr(os, "O_NOFOLLOW", 0)
+    try:
+        fd = os.open(str(path), flags, mode)
+    except FileExistsError:
+        return False
+    try:
+        payload = json.dumps(dict(data), sort_keys=True, separators=(",", ":")).encode("utf-8")
+        os.write(fd, payload)
+        os.fsync(fd)
+    finally:
+        os.close(fd)
+    _fsync_dir(path.parent)
+    return True
+
+
+def _atomic_rewrite_journal_entry(path: Path, data: Mapping[str, Any]) -> None:
+    """Same-directory temp file, fsync, atomic `os.replace`, fsync the
+    directory entry -- the in-place `phase` rewrite primitive (fresh
+    `intent`->`committed`/`aborted`, and the deterministic `aborted`->
+    `intent` tombstone reuse). Mirrors `_write_epoch_atomic` exactly."""
+    directory = path.parent
+    fd, tmp_path = tempfile.mkstemp(dir=str(directory), prefix=f".{path.name}.", suffix=".tmp")
+    try:
+        os.write(fd, json.dumps(dict(data), sort_keys=True, separators=(",", ":")).encode("utf-8"))
+        os.fsync(fd)
+    finally:
+        os.close(fd)
+    os.chmod(tmp_path, 0o640)
+    os.replace(tmp_path, str(path))
+    _fsync_dir(directory)
+
+
+def _release_index_if_points_to(path: Path, entry_id: str) -> None:
+    """Unlink `path` (+ `fsync(dir)`) ONLY if it still exists and its
+    stored `entry_id` matches -- never release an index pointing at a
+    DIFFERENT (legitimate) entry. A missing or unreadable/corrupt index is
+    left untouched (never guessed at); idempotent no-op if already gone."""
+    exists, data = _load_json_or_none(path)
+    if not exists:
+        return
+    if not isinstance(data, Mapping) or data.get("entry_id") != entry_id:
+        return
+    try:
+        os.unlink(str(path))
+    except FileNotFoundError:
+        return
+    _fsync_dir(path.parent)
+
+
+def _release_indexes_for(
+    pair: tuple[str, str],
+    by_request_id_dir: Path,
+    by_idempotency_key_dir: Path,
+    entry_id: str,
+) -> None:
+    request_id, idempotency_key = pair
+    _release_index_if_points_to(by_request_id_dir / _sha256_hex(request_id), entry_id)
+    _release_index_if_points_to(by_idempotency_key_dir / _sha256_hex(idempotency_key), entry_id)
+
+
+def _receipt_ok_from_entry(entry: Mapping[str, Any]) -> dict[str, Any]:
+    receipt = {
+        "old_epoch": entry.get("old_epoch"),
+        "new_epoch": entry.get("new_epoch"),
+        "actor_key_id": entry.get("actor_key_id"),
+        "reason_code": entry.get("reason_code"),
+        "request_id": entry.get("request_id"),
+        "idempotency_key": entry.get("idempotency_key"),
+        "committed_at": entry.get("committed_at"),
+        "audit_pending": bool(entry.get("audit_pending", False)),
+    }
+    return {"ok": True, "reason": BUMP_OK, "detail": "", "receipt": receipt}
+
+
+def resolve(
+    entry_id: str,
+    epoch_path: Path,
+    journal_dir: Path,
+    by_request_id_dir: Path,
+    by_idempotency_key_dir: Path,
+    presented: Optional[tuple[str, str]] = None,
+) -> dict[str, Any]:
+    """Design §3.2 -- the deterministic branch, and the unit of `recover()`.
+    A TOTAL function: every `{journal-presence, phase, current, presented}`
+    input maps to exactly one typed outcome; NEVER raises (preserves
+    `apply_bump`'s never-raise contract). `recover()` calls this with
+    `presented=None` (the entry is authoritative for its own identity, and
+    the journal-absent identity-gate row is unreachable from `recover()` --
+    it iterates journal entries that exist). The LIVE `apply_bump` path
+    calls this with `presented=(request_id, idempotency_key)` after an
+    index `EEXIST` (§3.1 step 2)."""
+    try:
+        journal_path = journal_dir / entry_id
+
+        exists, entry = _load_json_or_none(journal_path)
+
+        if not exists:
+            # Identity gate, row 1 -- orphan reservation, intent never
+            # durable (live view of crash vectors a/b/c). `recover()` never
+            # reaches this row (its own orphan-index sweep, §3.3 step 1,
+            # handles the journal-absent case directly).
+            if presented is not None:
+                _release_indexes_for(presented, by_request_id_dir, by_idempotency_key_dir, entry_id)
+            return _bump_deny(DENY_RETRY, "journal-absent-orphan-index-released")
+
+        if entry is None:
+            # Present but unreadable/corrupt -- torn state, never fabricate.
+            return _bump_deny(DENY_QUARANTINED, "journal-entry-unreadable")
+
+        stored_pair = (entry.get("request_id"), entry.get("idempotency_key"))
+
+        if presented is not None and stored_pair != tuple(presented):
+            # Identity gate, row 2 -- cross-identity reuse. Never the
+            # existing receipt, never mutate the epoch, never release the
+            # legitimate entry's indexes, never bump.
+            return _bump_deny(DENY_IDENTITY_CONFLICT, "presented-identity-does-not-match-stored-entry")
+
+        phase = entry.get("phase")
+
+        if phase == "committed":
+            # (h) or a legitimate idempotent replay of an already-durable
+            # success -- exactly-once: return the SAME reconstructed
+            # receipt, never a fresh mutation.
+            return _receipt_ok_from_entry(entry)
+
+        if phase == "intent":
+            try:
+                current = read_epoch(epoch_path)
+            except EpochStoreError as exc:
+                return _bump_deny(exc.reason, exc.detail)
+            old_epoch = entry.get("old_epoch")
+            new_epoch = entry.get("new_epoch")
+            if current == new_epoch:
+                # (g) -- CAS committed, phase-commit rewrite crashed. Finalize.
+                committed_entry = dict(entry)
+                committed_entry["phase"] = "committed"
+                committed_entry["committed_at"] = _iso(datetime.now(timezone.utc))
+                _atomic_rewrite_journal_entry(journal_path, committed_entry)
+                return _receipt_ok_from_entry(committed_entry)
+            if current == old_epoch:
+                # (d)/W1 -- CAS never happened. Abort FIRST (durable), then
+                # release both indexes. Never `DENY_REPLAY` -- a typed
+                # retryable deny; the identical retry re-reserves fresh and
+                # (apply_bump step 3) rewrites this tombstone back to intent.
+                aborted_entry = dict(entry)
+                aborted_entry["phase"] = "aborted"
+                _atomic_rewrite_journal_entry(journal_path, aborted_entry)
+                _release_indexes_for(stored_pair, by_request_id_dir, by_idempotency_key_dir, entry_id)
+                return _bump_deny(DENY_RETRY, "intent-aborted-retry-will-bump")
+            # current NOT in {old, new} -- an unrelated bump advanced the
+            # epoch while this intent was unresolved. Never fabricate.
+            return _bump_deny(
+                DENY_QUARANTINED,
+                f"torn-intent old_epoch={old_epoch} new_epoch={new_epoch} current={current}",
+            )
+
+        if phase == "aborted":
+            # Terminal tombstone. `recover()` (presented=None) leaves it
+            # alone -- informational only, never an operator alarm. A live
+            # call only reaches this row via a stale dangling index that
+            # still points at an already-aborted entry (vector i not yet
+            # reconciled) -- release the dangling pointer and hand back a
+            # retryable deny so the identical retry re-reserves fresh.
+            if presented is not None:
+                _release_indexes_for(stored_pair, by_request_id_dir, by_idempotency_key_dir, entry_id)
+                return _bump_deny(DENY_RETRY, "aborted-tombstone-dangling-index-released")
+            return _bump_deny(DENY_ABORTED_TERMINAL, "aborted-tombstone-terminal-noop")
+
+        # Unknown/malformed `phase` value -- torn state, never fabricated.
+        return _bump_deny(DENY_QUARANTINED, f"unknown-phase:{phase!r}")
+    except Exception as exc:  # noqa: BLE001 -- total function, never raises into the caller
+        return _bump_deny(DENY_INTERNAL, f"unhandled:{exc.__class__.__name__}")
+
+
+def recover(epoch_path: Any) -> dict[str, Any]:
+    """Design §3.3 -- the index<->journal bipartite reconciliation pass.
+    Runs to COMPLETION under `epoch.lock`, BEFORE the authority transport
+    binds/listens/accepts (§3.4; see `revocation_epoch_transport.__main__`).
+    Never raises; returns a summary dict for logging/observability. An
+    entry that cannot be resolved cleanly is counted under
+    `resolved_quarantined`, never silently dropped or treated as a no-op.
+
+    Three steps, in order (each is deterministic and needs no epoch read
+    of its own except where `resolve()`'s phase table requires one):
+      1. Orphan-index sweep -- an index whose target journal is ABSENT is
+         proof the transaction never reached a durable intent (the epoch
+         CAS can only follow a durable intent) -- release it.
+      2. Journal resolution -- `resolve(entry_id)` per existing journal
+         entry: finalizes a committed-but-unphased intent, aborts+releases
+         an uncommitted intent, reconstructs a committed receipt, leaves a
+         terminal `aborted` alone, or quarantines a torn `{epoch, phase}`.
+      3. Dangling-index-after-abort cleanup -- an index that still points
+         at a now-terminal `aborted` journal entry is released (vector i).
+    """
+    epoch_path_p = Path(epoch_path)
+    summary: dict[str, Any] = {
+        "orphan_indexes_released": 0,
+        "resolved_committed": 0,
+        "resolved_aborted_and_released": 0,
+        "resolved_quarantined": 0,
+        "dangling_indexes_after_abort_released": 0,
+        "legacy_ledger_markers_detected": 0,
+        "error": None,
+    }
+    try:
+        lock_fd = _acquire_epoch_lock(epoch_path_p)
+    except OSError as exc:
+        summary["error"] = f"lock-unavailable:{exc.__class__.__name__}"
+        return summary
+    try:
+        journal_dir, by_request_id_dir, by_idempotency_key_dir = _derive_state_dirs(epoch_path_p)
+
+        # Step 1 -- orphan-index sweep (journal-absent).
+        for index_dir in (by_request_id_dir, by_idempotency_key_dir):
+            for name in sorted(_listdir_safe(index_dir)):
+                index_path = index_dir / name
+                _, data = _load_json_or_none(index_path)
+                pointed_entry_id = data.get("entry_id") if isinstance(data, Mapping) else None
+                if not isinstance(pointed_entry_id, str) or not pointed_entry_id:
+                    continue
+                if not (journal_dir / pointed_entry_id).exists():
+                    try:
+                        os.unlink(str(index_path))
+                        _fsync_dir(index_dir)
+                        summary["orphan_indexes_released"] += 1
+                    except FileNotFoundError:
+                        pass
+
+        # Step 2 -- journal resolution, per existing entry.
+        for entry_id in sorted(_listdir_safe(journal_dir)):
+            outcome = resolve(
+                entry_id, epoch_path_p, journal_dir, by_request_id_dir, by_idempotency_key_dir,
+                presented=None,
+            )
+            reason = outcome.get("reason")
+            if outcome.get("ok"):
+                summary["resolved_committed"] += 1
+            elif reason == DENY_RETRY:
+                summary["resolved_aborted_and_released"] += 1
+            elif reason == DENY_QUARANTINED:
+                summary["resolved_quarantined"] += 1
+            # DENY_ABORTED_TERMINAL (already-terminal tombstone, no action
+            # needed) and any typed epoch-store-* read failure are neither
+            # a commit nor a fresh abort -- left uncounted, never fabricated
+            # into either bucket.
+
+        # Step 3 -- dangling-index-after-abort cleanup (vector i).
+        for index_dir in (by_request_id_dir, by_idempotency_key_dir):
+            for name in sorted(_listdir_safe(index_dir)):
+                index_path = index_dir / name
+                _, data = _load_json_or_none(index_path)
+                pointed_entry_id = data.get("entry_id") if isinstance(data, Mapping) else None
+                if not isinstance(pointed_entry_id, str) or not pointed_entry_id:
+                    continue
+                _, entry = _load_json_or_none(journal_dir / pointed_entry_id)
+                if isinstance(entry, Mapping) and entry.get("phase") == "aborted":
+                    try:
+                        os.unlink(str(index_path))
+                        _fsync_dir(index_dir)
+                        summary["dangling_indexes_after_abort_released"] += 1
+                    except FileNotFoundError:
+                        pass
+
+        # Legacy single-index `DurableReplayLedger` marker detection --
+        # minimal detect-and-log ONLY, no import path (design §2.3/§7: a
+        # non-empty legacy `ledger/` is a consumed-but-unrecoverable key
+        # with no journal entry -- operator-visible, never a silent bump).
+        legacy_ledger_dir = epoch_path_p.parent / "ledger"
+        legacy_markers = _listdir_safe(legacy_ledger_dir)
+        if legacy_markers:
+            summary["legacy_ledger_markers_detected"] = len(legacy_markers)
+            print(
+                f"[revocation_epoch.recover] WARN: {len(legacy_markers)} legacy single-index "
+                f"replay-ledger marker(s) found under {legacy_ledger_dir} -- each is a "
+                f"consumed-but-unrecoverable key with no journal entry (quarantined by design, "
+                f"never imported/migrated -- see C6d-DESIGN-AND-AUTHORIZATION.md §2.3/§7)",
+                file=sys.stderr,
+                flush=True,
+            )
+
+        return summary
+    finally:
+        _release_epoch_lock(lock_fd)
+
+
 def _bump_deny(reason: str, detail: str = "") -> dict[str, Any]:
     return {"ok": False, "reason": reason, "detail": detail, "receipt": None}
 
@@ -613,22 +1001,37 @@ def apply_bump(
     owner_keys_json_dict: Any,
     now: Optional[datetime] = None,
 ) -> dict[str, Any]:
-    """Verify -> expected-epoch match -> replay-ledger -> atomic +1 ->
-    audit receipt. Returns `{"ok": True, "reason": BUMP_OK, "detail": "",
-    "receipt": {...}}` on success, or `{"ok": False, "reason": DENY_*,
-    "detail": ..., "receipt": None}` on ANY deny. Total function — never
-    raises, never mutates epoch/ledger state on any deny path (see module
-    docstring for the ledger's one documented over-denial edge case: a
-    later I/O fault AFTER the ledger record but before the epoch write).
+    """Verify -> expected-epoch match -> write-ahead journal + two-index
+    reservation -> atomic +1 -> phase commit -> audit receipt. Returns
+    `{"ok": True, "reason": BUMP_OK, "detail": "", "receipt": {...}}` on
+    success, or `{"ok": False, "reason": DENY_*, "detail": ..., "receipt":
+    None}` on ANY deny. Total function — never raises.
 
-    Order (deliberate — see module docstring): `verify_bump` first (no
-    state touched), then compare `bump_doc["expected_epoch"]` against
-    `read_epoch(epoch_path)` (stale-bump / optimistic-concurrency deny),
-    then the durable single-use `ledger.check_and_record` on
-    `(request_id, idempotency_key)` (a replay denies here, before any
-    mutation), then — and only then — `_write_epoch_atomic` advances the
-    epoch by exactly +1. All of this happens under one exclusive
-    `epoch.lock` hold."""
+    C6d (`.agents/plans/aqos-foundation-c/C6d-DESIGN-AND-AUTHORIZATION.md`
+    §3.1) replaces the OLD "burn a single combined-key ledger marker, then
+    separately advance the epoch" split — which the module used to admit
+    could permanently wedge a retry (a crash between the marker record and
+    the durable epoch write left the marker burned but the epoch
+    un-advanced, and the identical retry then hit the marker and denied
+    forever) — with a write-ahead intent journal guarded by two
+    INDEPENDENT single-use uniqueness indexes, finalized before any
+    request is served (see `recover()` / the transport's recover-before-
+    listen barrier). `ledger` is accepted but NOT consulted for gating —
+    it is kept ONLY for call-site signature compatibility with
+    `revocation_epoch_transport.build_env_handler`; re-introducing a
+    `ledger.check_and_record` gate here would reintroduce the exact
+    wedging defect this slice closes.
+
+    Order under one exclusive `epoch.lock` hold: `verify_bump` (no state
+    touched) -> `read_epoch` (typed unavailable deny, never `0`) ->
+    expected-epoch compare (stale-bump deny, stateless, no index/journal
+    touched) -> reserve both uniqueness indexes (an `EEXIST` hands off to
+    `resolve()` — replay/recovery/conflict, see design §3.1 step 2) ->
+    establish the write-ahead intent (fresh create, or the deterministic
+    `aborted`->`intent` tombstone reuse) -> the epoch CAS (`_write_epoch_
+    atomic` — the SOLE durable commit point) -> phase-commit rewrite (the
+    committed journal entry IS the durable receipt) -> best-effort audit
+    projection."""
     try:
         verdict = verify_bump(bump_doc, owner_keys_json_dict, now=now)
         if not verdict.ok:
@@ -637,6 +1040,10 @@ def apply_bump(
         data = dict(bump_doc)
         expected_epoch = data["expected_epoch"]
         epoch_path_p = Path(epoch_path)
+        request_id = data["request_id"]
+        idempotency_key = data["idempotency_key"]
+        actor_key_id = data["actor_key_id"]
+        reason_code = data["reason_code"]
 
         try:
             lock_fd = _acquire_epoch_lock(epoch_path_p)
@@ -644,42 +1051,135 @@ def apply_bump(
             return _bump_deny(DENY_LOCK_UNAVAILABLE, exc.__class__.__name__)
 
         try:
+            journal_dir, by_request_id_dir, by_idempotency_key_dir = _derive_state_dirs(epoch_path_p)
+
+            # Step 1 (design §3.1) -- read the durable epoch, typed
+            # unavailable deny, never a silent 0.
             try:
                 current = read_epoch(epoch_path_p)
             except EpochStoreError as exc:
                 return _bump_deny(exc.reason, exc.detail)
 
+            # Stale-bump / optimistic-concurrency deny -- stateless, no
+            # index/journal state touched either way (unchanged from the
+            # pre-C6d order).
             if current != expected_epoch:
                 return _bump_deny(
                     DENY_EPOCH_MISMATCH,
                     f"expected={expected_epoch} actual={current}",
                 )
 
-            replay_key = (data["request_id"], data["idempotency_key"])
-            try:
-                first_use = ledger.check_and_record(replay_key)
-            except Exception:  # noqa: BLE001 — a faulting ledger fails CLOSED, never open
-                return _bump_deny(DENY_LEDGER_UNAVAILABLE)
-            if not first_use:
-                return _bump_deny(DENY_REPLAY)
+            entry_id = _entry_id(request_id, idempotency_key)
+            rid_index_path = by_request_id_dir / _sha256_hex(request_id)
+            idem_index_path = by_idempotency_key_dir / _sha256_hex(idempotency_key)
 
+            # Step 2 -- reserve BOTH uniqueness identities.
+            rid_created = _create_exclusive_json(rid_index_path, {"entry_id": entry_id}, 0o600)
+            if rid_created:
+                idem_created = _create_exclusive_json(idem_index_path, {"entry_id": entry_id}, 0o600)
+                if not idem_created:
+                    # Partial reservation (Finding 4 case 2) -- roll back
+                    # the index THIS call just created, immediately, before
+                    # resolving the pre-existing one.
+                    _release_index_if_points_to(rid_index_path, entry_id)
+                    _, idem_data = _load_json_or_none(idem_index_path)
+                    stored_entry_id = idem_data.get("entry_id") if isinstance(idem_data, Mapping) else None
+                    if not isinstance(stored_entry_id, str) or not stored_entry_id:
+                        return _bump_deny(DENY_QUARANTINED, "idempotency-key-index-unreadable")
+                    return resolve(
+                        stored_entry_id, epoch_path_p, journal_dir,
+                        by_request_id_dir, by_idempotency_key_dir,
+                        presented=(request_id, idempotency_key),
+                    )
+            else:
+                # `by-request-id` index already exists -- this is a replay-,
+                # recovery-, or conflict-path. The incoming call's OWN
+                # `entry_id` is NOT assumed to equal the stored one; read the
+                # pre-existing index's stored pointer and hand off to
+                # `resolve()`. Never mutate the epoch on this branch.
+                _, rid_data = _load_json_or_none(rid_index_path)
+                stored_entry_id = rid_data.get("entry_id") if isinstance(rid_data, Mapping) else None
+                if not isinstance(stored_entry_id, str) or not stored_entry_id:
+                    return _bump_deny(DENY_QUARANTINED, "request-id-index-unreadable")
+                return resolve(
+                    stored_entry_id, epoch_path_p, journal_dir,
+                    by_request_id_dir, by_idempotency_key_dir,
+                    presented=(request_id, idempotency_key),
+                )
+
+            # Step 3 -- establish the write-ahead intent for `entry_id`
+            # (reached ONLY on the fresh both-indexes-created path).
+            journal_path = journal_dir / entry_id
+            exists, existing_entry = _load_json_or_none(journal_path)
             new_epoch = current + 1
+            moment = now or datetime.now(timezone.utc)
+            if not exists:
+                fresh_entry: dict[str, Any] = {
+                    "request_id": request_id,
+                    "idempotency_key": idempotency_key,
+                    "actor_key_id": actor_key_id,
+                    "reason_code": reason_code,
+                    "old_epoch": current,
+                    "new_epoch": new_epoch,
+                    "phase": "intent",
+                    "attempt_gen": 0,
+                    "issued_at_authority": _iso(moment),
+                    "committed_at": None,
+                }
+                created = _create_exclusive_json(journal_path, fresh_entry, 0o640)
+                if not created:
+                    # Impossible after a FRESH dual-index reservation this
+                    # same call just made -- torn state, never fabricated.
+                    return _bump_deny(DENY_QUARANTINED, "journal-create-raced-fresh-reservation")
+            elif isinstance(existing_entry, Mapping) and existing_entry.get("phase") == "aborted":
+                # The deterministic `aborted` -> `intent` tombstone reuse
+                # (Finding 4 case 1) -- no `O_EXCL` on this pathname, so a
+                # retry is never blocked by its own prior tombstone.
+                prior_gen = existing_entry.get("attempt_gen", 0)
+                fresh_entry = dict(existing_entry)
+                fresh_entry.update({
+                    "phase": "intent",
+                    "attempt_gen": (prior_gen if isinstance(prior_gen, int) else 0) + 1,
+                    "old_epoch": current,
+                    "new_epoch": new_epoch,
+                    "actor_key_id": actor_key_id,
+                    "reason_code": reason_code,
+                    "issued_at_authority": _iso(moment),
+                    "committed_at": None,
+                })
+                _atomic_rewrite_journal_entry(journal_path, fresh_entry)
+            else:
+                # present in intent/committed here => impossible after a
+                # fresh index reservation => torn state (only reachable
+                # through recover()'s resolve() calls, never this branch).
+                return _bump_deny(DENY_QUARANTINED, "journal-present-after-fresh-reservation")
+
+            # Step 4 -- the epoch CAS. THE sole durable commit point.
             try:
                 _write_epoch_atomic(epoch_path_p, new_epoch)
             except OSError as exc:
                 return _bump_deny(DENY_EPOCH_WRITE_FAILED, exc.__class__.__name__)
 
-            moment = now or datetime.now(timezone.utc)
+            # Step 5 -- phase commit. The committed journal entry IS the
+            # durable receipt.
+            committed_entry = dict(fresh_entry)
+            committed_entry["phase"] = "committed"
+            committed_entry["committed_at"] = _iso(moment)
+            _atomic_rewrite_journal_entry(journal_path, committed_entry)
+
             receipt: dict[str, Any] = {
                 "old_epoch": current,
                 "new_epoch": new_epoch,
-                "actor_key_id": data["actor_key_id"],
-                "reason_code": data["reason_code"],
-                "request_id": data["request_id"],
-                "idempotency_key": data["idempotency_key"],
-                "committed_at": _iso(moment),
+                "actor_key_id": actor_key_id,
+                "reason_code": reason_code,
+                "request_id": request_id,
+                "idempotency_key": idempotency_key,
+                "committed_at": committed_entry["committed_at"],
                 "audit_pending": False,
             }
+            # Step 6 -- best-effort projection; a failure marks the EVENT
+            # `audit_pending`, never the transaction incomplete (the
+            # journal is authoritative).
             try:
                 _append_audit_receipt(epoch_path_p, receipt)
             except OSError:
