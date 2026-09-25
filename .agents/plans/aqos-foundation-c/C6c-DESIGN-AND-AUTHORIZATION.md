@@ -2,9 +2,10 @@
 title: "Foundation C — C6c: Callable offline owner-key submission path for a signed epoch-bump (deliver an owner-produced offline signature to the running authority over the C6-S control-socket owner-bump path; no host private key, no owner-UID 0700 access — completes the amended C4 prerequisite)"
 slice: "C6c (fans out from C6-S in parallel with C6a; with C6d + C6-S it completes the amended C4 freeze prerequisite)"
 status: "PREPARED_ONLY — authorizes NOTHING (no build, no freeze, no activation, no epoch bump, no provider traffic, no flag flip). Design + authorization note only."
-revision: 2
+revision: 3
 kind: "design-only"
 rev2_review: "CODEX-C6C-DESIGN-BINDING-REVIEW-20260924.md (rev1, factory/c6c-design@4d0005ef, FREEZE-ELIGIBLE, no HIGH). rev2 applies the review's binding fixes: (1) MEDIUM build-time-binding — §6 Dashboard API row 5 now REQUIRES authority reachability (not just allowlist+key+verb) for the `operational` state, adds a distinct `degraded(authority-unreachable)` state, and binds a §6 probe assertion for the active-key-but-authority-down fixture (Finding 1); (2) LOW — §1/§8 pair the `import os` fix with an explicit `bump`-verb deprecation note steering owners to `submit --socket` (Finding 3); (3) LOW — §6/§8 make the dual-harness check-id collision check a HARD freeze/land-time gate, not just a 0.10.54-specific verification (Finding 2). No mechanism/submission/idempotency/rotation change."
+rev3_review: "CODEX-C6C-DESIGN-REV2-BINDING-REVIEW-20260924.md (rev2, factory/c6c-design-v2@44b1c6e0, REQUEST_REVISION — one narrow textual fix; Fixes 1 and 3 CLOSED, Fix 2 PARTIAL). rev3 closes the sole open item (F1, LOW, textual/coherence): the §1 rev2 paragraph's `bump`-deprecation rationale mis-cited `aq-epoch-bump:21-27` (the module docstring describing `submit`'s pre-C6-B2 in-process fallback, already correctly attributed to `submit` two paragraphs earlier) and mischaracterized `bump` as an 'offline/no-service fixture case' — the opposite of its actual behavior (always talks to the running authority over its control-socket UDS via `send_request`, `:204`, socket default `:260`, using a host-custodied private key, `_load_owner_key`, `:190`; docstring `:169-173`). Citation/rationale corrected to match `bump`'s real behavior; substance unchanged (still steers to `submit --signed --socket`, still keeps the `_load_owner_key` guard). No mechanism/dashboard/freeze-criteria change."
 implementation_authorization: "NONE"
 activation_authorization: "NONE"
 base_head: "f1f409ef97f73fb6ae152a297ba0c0367e30bf22"
@@ -125,12 +126,17 @@ anchor for every path cited here).
   (binding review Finding 3, LOW).** Fixing the `NameError` makes `bump` functional again, and `bump`
   is exactly the **host-private-key** path (`_load_owner_key`, `:190,:138-166`) this design deprecates
   in favor of `submit --signed --socket`. The build MUST pair the one-line `import os` fix with an
-  **explicit deprecation note** on `cmd_bump` (docstring/`--help` text): `bump` is retained only for
-  the offline/no-service fixture case its own docstring already describes (`:21-27`), `submit --signed
-  --socket` is the sanctioned owner-delivery path against a running authority. This is a documentation
-  pairing, not a behavior change — the existing `_load_owner_key` age-passphrase human-in-the-loop
-  guard (`:143-166`) stays the control on `bump` if an owner still invokes it; the note only prevents
-  the crash-fix from *implicitly* re-blessing host-key custody as an equally-sanctioned option.
+  **explicit deprecation note** on `cmd_bump` (docstring/`--help` text): `bump`'s own docstring
+  (`:169-173`) is explicit that it always talks to the **running** authority over its control-socket
+  UDS via `send_request` (`:204`, socket default `/run/aq-revocation-epoch-authority/control.sock`
+  `:260`) using a **host-custodied** private key (`_load_owner_key`, `:190`) — it is the opposite of
+  an offline/no-service path. `bump` is retained only for interactive one-shot use when an owner
+  deliberately accepts that host-key custody; `submit --signed --socket` is the sanctioned
+  owner-delivery path because it avoids host-key custody entirely (the signature is produced offline
+  and only the pre-signed document crosses the socket). This is a documentation pairing, not a
+  behavior change — the existing `_load_owner_key` age-passphrase human-in-the-loop guard
+  (`:143-166`) stays the control on `bump` if an owner still invokes it; the note only prevents the
+  crash-fix from *implicitly* re-blessing host-key custody as an equally-sanctioned option.
 
 The final freeze must reproduce every listed hash, bind the revised packet hash, reject all other
 changed paths, and stop on HEAD drift.
@@ -495,7 +501,7 @@ prerequisite (§7).
 
 ---
 
-**RECORD: PREPARED_ONLY revision 2. No implementation, freeze, activation, epoch bump, provider
+**RECORD: PREPARED_ONLY revision 3. No implementation, freeze, activation, epoch bump, provider
 traffic, deployment, restart, network authority, or flag flip is granted by this document. C6c is the
 owner-submission slice of `C6-DECOMPOSITION-20260924.md` (§4, §8); it requires its own independent
 binding review → hash-bound freeze → default-OFF build, per the decomposition's per-slice contract.
@@ -524,3 +530,13 @@ owners to `submit --signed --socket`, so reviving `bump` does not silently re-bl
 HARD gate at freeze/land time, verified against siblings actually landed rather than a static
 `0.10.54`-is-free assumption (§6, §8 criterion 10). No change to the submission mechanism,
 idempotency-by-C6d, or rotation semantics.**
+
+**rev3 closes `CODEX-C6C-DESIGN-REV2-BINDING-REVIEW-20260924.md` Finding F1 (LOW, textual/coherence).**
+The §1 rev2 paragraph's `bump`-deprecation rationale had mis-cited `aq-epoch-bump:21-27` — the module
+docstring for `submit`'s pre-C6-B2 in-process fallback, already correctly attributed to `submit`
+elsewhere in this document — and mischaracterized `bump` as an "offline/no-service fixture case,"
+the opposite of its actual behavior (always live-socket + host-private-key custody). The citation and
+rationale are corrected to `bump`'s own docstring (`:169-173`), its UDS submit call (`send_request`,
+`:204`, socket default `:260`), and its host-key read (`_load_owner_key`, `:190`); the deprecation
+steer to `submit --signed --socket` and the `_load_owner_key` guard are unchanged. No other section,
+mechanism, dashboard state, or freeze criterion was touched.**
