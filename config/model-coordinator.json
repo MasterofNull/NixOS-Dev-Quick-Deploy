@@ -1,8 +1,8 @@
 {
   "_meta": {
-    "version": "1.1",
+    "version": "1.3",
     "owner": "claude-sonnet-4-6",
-    "last_updated": "2026-07-02"
+    "last_updated": "2026-09-25"
   },
   "$schema": "./schemas/model-coordinator-schema.json",
   "version": "1.1.0",
@@ -10,52 +10,55 @@
   "tiers": {
     "_comment": "Version SSOT. Route phase/slice complexity -> tier -> concrete current model id. When a new model version ships, bump the id HERE only; downstream pools (remote_agents.py, delegate-to-antigravity _MODEL_MAP) should read these ids rather than hardcoding their own. Prevents the drift where pools stay pinned to superseded versions.",
     "anthropic": {
-      "_comment": "claude-fable-5 (Mythos-class tier, above Opus) is the flagship AND creative lane — most capable generally-available Claude. Opus 4.8 = deep fallback when Fable is unavailable; Sonnet 4-6 = balanced; Haiku = fast. Behavioral parity contract for ALL lanes (any provider): .agent/FABLE-PARITY-CONTRACT.md.",
-      "flagship": "claude-fable-5",
-      "flagship_fallback": "claude-opus-4-8",
-      "balanced": "claude-sonnet-4-6",
+      "_comment": "claude-fable-5-1 (Mythos-class tier, above Opus) is the flagship AND creative lane — most capable generally-available Claude. Opus 5.5 = deep fallback when Fable is unavailable; Sonnet 5 = balanced; Haiku 4.5 = fast. Behavioral parity contract for ALL lanes (any provider): .agent/FABLE-PARITY-CONTRACT.md.",
+      "flagship": "claude-fable-5-1",
+      "flagship_fallback": "claude-opus-5-5",
+      "balanced": "claude-sonnet-5",
       "fast": "claude-haiku-4-5-20251001",
-      "creative": "claude-fable-5"
+      "creative": "claude-fable-5-1"
     },
     "google": {
-      "_comment": "Google Gemini direct (generativelanguage.googleapis.com/v1beta/openai) via the antigravity wrapper -> switchboard -> Gemini backend; NOT OpenRouter (unused). LATEST ids: gemini-3.1-pro (advanced reasoning, complex science/coding), gemini-3.5-flash (high-efficiency, multimodal, speed, agentic loops), gemini-3.1-flash-lite (ultra-efficient, cost-sensitive high-volume). Baseline fallback ids: gemini-2.5-pro, gemini-2.5-flash, gemini-2.5-flash-lite, gemini-2.0-flash (Vertex AI adds -001 suffix). EFFORT (OPTIONAL, remote-native): the *_thinking_level values below are Google's native reasoning-depth control (thinking_level preset minimal|low|medium|high, or thinking_config.thinking_budget int; Vertex thinkingConfig.thinkingBudget). They tune remote reasoning DEPTH only — they are NOT defensive throttles. The remote lane scales to native API ceilings (large context, high concurrency, fast gen); do NOT apply the local Qwen ceilings (enable_thinking=false / thinking_budget~200) here. /v1beta/openai does NOT support OpenAI reasoning_effort. Default lane = gemini-3.5-flash; complex/critical = gemini-3.1-pro. gemini-3.5-flash ships in THREE reasoning-effort levels (low|medium|high via thinking_level) — see `gemini_3_5_flash_efforts` below for per-level capabilities + best-uses (low=fast agentic/IDE loops, medium=balanced default, high=cheaper deep-reasoning pass below the 3.1-pro architect tier).",
-      "flagship": "gemini-3.1-pro",
+      "_comment": "Google Gemini direct (generativelanguage.googleapis.com/v1beta/openai) via the antigravity wrapper -> switchboard -> Gemini backend; NOT OpenRouter (unused). LATEST ids: gemini-3.8-flash (default GA flagship+balanced — most intelligent Flash, long-horizon SWE/agents), gemini-3.5-flash-lite (fast, ultra-efficient/cost-sensitive high-volume), gemini-3.1-pro-preview (deep — advanced reasoning, complex science/coding; PREVIEW ONLY, not GA, so it is the opt-in deep tier rather than the default flagship). gemini-3.5-flash is now legacy-baseline (see baseline_fallback). Baseline fallback ids: gemini-3.5-flash, gemini-3.5-flash-lite (legacy-baseline; 2.x line is limited-access per provider docs). EFFORT (OPTIONAL, remote-native): the *_thinking_level values below are Google's native reasoning-depth control (thinking_level preset minimal|low|medium|high, or thinking_config.thinking_budget int; Vertex thinkingConfig.thinkingBudget). They tune remote reasoning DEPTH only — they are NOT defensive throttles. The remote lane scales to native API ceilings (large context, high concurrency, fast gen); do NOT apply the local Qwen ceilings (enable_thinking=false / thinking_budget~200) here. /v1beta/openai does NOT support OpenAI reasoning_effort. Default lane = gemini-3.8-flash; complex/critical deep opt-in = gemini-3.1-pro-preview (preview). gemini-3.8-flash ships in THREE reasoning-effort levels (low|medium|high via thinking_level) — see `gemini_3_8_flash_efforts` below for per-level capabilities + best-uses (low=fast agentic/IDE loops, medium=balanced default, high=cheaper deep-reasoning pass below the 3.1-pro-preview architect tier).",
+      "flagship": "gemini-3.8-flash",
       "flagship_thinking_level": "high",
-      "balanced": "gemini-3.5-flash",
+      "balanced": "gemini-3.8-flash",
       "balanced_thinking_level": "medium",
-      "fast": "gemini-3.1-flash-lite",
+      "fast": "gemini-3.5-flash-lite",
       "fast_thinking_level": "minimal",
-      "deep": "gemini-3.1-pro",
+      "deep": "gemini-3.1-pro-preview",
       "deep_thinking_level": "high",
-      "gemini_3_5_flash_efforts": {
-        "_comment": "Gemini 3.5 Flash at Google's three native reasoning-effort levels (added 2026-07-23). SAME model id `gemini-3.5-flash`; the level tunes reasoning DEPTH only via thinking_level (remote-native, NOT a defensive throttle — do not apply local Qwen ceilings). Choose by task shape, not task size. These back the balanced lane and give a cheaper high-reasoning step below the gemini-3.1-pro architect tier.",
+      "gemini_3_8_flash_efforts": {
+        "_comment": "Gemini 3.8 Flash at Google's three native reasoning-effort levels (refreshed 2026-09-25 from gemini-3.5-flash). SAME model id `gemini-3.8-flash`; the level tunes reasoning DEPTH only via thinking_level (remote-native, NOT a defensive throttle — do not apply local Qwen ceilings). Choose by task shape, not task size. These back the balanced lane and give a cheaper high-reasoning step below the gemini-3.1-pro-preview architect tier.",
         "low": {
-          "model": "gemini-3.5-flash",
+          "model": "gemini-3.8-flash",
           "thinking_level": "low",
           "capabilities": ["fast tool-calling", "high-throughput agentic loops", "real-time IDE pair-programming", "rapid patch validation", "multimodal"],
-          "best_use": "Low-latency, high-concurrency coding loops and interactive iteration where speed beats depth; light triage above gemini-3.1-flash-lite."
+          "best_use": "Low-latency, high-concurrency coding loops and interactive iteration where speed beats depth; light triage above gemini-3.5-flash-lite."
         },
         "medium": {
-          "model": "gemini-3.5-flash",
+          "model": "gemini-3.8-flash",
           "thinking_level": "medium",
           "capabilities": ["balanced reasoning + speed", "standard code synthesis", "multi-step agentic implementation", "general tool use"],
           "best_use": "Default balanced lane — general implementation slices, standard multi-step agentic work, most day-to-day tasks."
         },
         "high": {
-          "model": "gemini-3.5-flash",
+          "model": "gemini-3.8-flash",
           "thinking_level": "high",
           "capabilities": ["deeper reasoning on the fast tier", "harder multi-file edits", "tricky debugging", "review-grade analysis short of the pro architect tier"],
-          "best_use": "Complex/critical work needing more reasoning but not the gemini-3.1-pro architect tier; a cost-efficient high-reasoning pass for reviews and multi-file refactors."
+          "best_use": "Complex/critical work needing more reasoning but not the gemini-3.1-pro-preview architect tier; a cost-efficient high-reasoning pass for reviews and multi-file refactors."
         }
       },
       "baseline_fallback": {
-        "flagship": "gemini-2.5-pro",
-        "balanced": "gemini-2.5-flash",
-        "fast": "gemini-2.5-flash-lite"
+        "flagship": "gemini-3.5-flash",
+        "balanced": "gemini-3.5-flash",
+        "fast": "gemini-3.5-flash-lite"
       }
     },
     "openai": {
-      "flagship": "gpt-5.5"
+      "_comment": "OpenAI GPT-6 family (refreshed 2026-09-25 from gpt-5.5). flagship=gpt-6-astra (flagship reasoning/coding), balanced=gpt-6-sol (balanced coding/agentic), fast=gpt-6-luna (efficient/high-volume). Specialized gpt-5.6-cyber (vuln research) is available but NOT wired into a routing tier here.",
+      "flagship": "gpt-6-astra",
+      "balanced": "gpt-6-sol",
+      "fast": "gpt-6-luna"
     },
     "local": {
       "_comment": "Local Qwen (single slot, SWB_LOCAL_CONCURRENCY=1, ~1-3.45 tok/s on Renoir APU / 27GB RAM). DEFENSIVE CEILINGS APPLY HERE ONLY: switchboard injects enable_thinking=false (in chat_template_kwargs) and a small local thinking_budget (~200) to prevent a single unbounded thinking loop from locking the harness ~40min or ballooning the KV cache into a GPU OOM. These ceilings must NEVER be applied to remote lanes.",
