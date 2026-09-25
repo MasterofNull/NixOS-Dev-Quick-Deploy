@@ -97,3 +97,50 @@ delegation health stays HARD on `--pre-deploy`/`--maintenance`, and any non-clas
 still hard-fails pre-commit. class: live-service (runtime state) · severity MED · status FIXED
 2026-09-17 · queued for Codex/Antigravity confirmatory catch-up review (author self-reviewed;
 Codex lane absent).
+
+## WR-9 — focused-ci (run-focused-ci-checks.sh) lacked the freshness-class WARN treatment tier0 has — FIXED
+- symptom: `.githooks/pre-commit` runs TWO independent commit-time gates —
+  `tier0-validation-gate.sh` (via `gate_qa_phase0` aq-qa id `0.10.5`) AND
+  `run-focused-ci-checks.sh` (registry id `model-catalog-freshness`) — both wrap the same
+  producer script `scripts/testing/test-model-catalog-freshness.py`. WR-5 gave tier0 the
+  freshness-class WARN treatment (2026-08-06), but `run-focused-ci-checks.sh` was never updated
+  to match, so it still HARD-blocked ANY commit touching a trigger path (`config/model-profile.json`,
+  `model_catalog.py`, `dashboard/backend/api/routes/models.py`, `assets/dashboard.js`,
+  `scripts/testing/test-model-catalog-freshness.py`, `phase0.py`, `_aq-qa-bash`) whenever
+  `_meta.reviewed_at`/`probed_at` aged past the 45-day window — a pure time-expiry signal, not a
+  regression in the staged diff. Two commit-gate runners disagreeing on the same signal is itself
+  a gate-hygiene gap (Rule 19 corollary).
+- root cause (T4, gate-coupling): `run-focused-ci-checks.sh` has no freshness-class concept at
+  all — every non-zero, non-SKIP_EXIT_CODES exit from a registry check unconditionally sets
+  `any_failed = True` regardless of mode or failure reason.
+- producer to fix: `scripts/governance/run-focused-ci-checks.sh` (the python heredoc dispatch
+  loop).
+- fix-path: mirrored tier0's exact mechanism — the registry
+  (`config/validation-check-registry.json`) carries no per-check class/severity field (verified:
+  every entry only has `"tier": structural|behavioral`, unrelated to time-expiry), so tier0 itself
+  uses a hardcoded check-id list (`FRESHNESS_CLASS_IDS="0.10.5"`), not a registry field. Added the
+  same kind of list to run-focused-ci-checks.sh, `FRESHNESS_CLASS_CHECK_IDS = {"model-catalog-freshness"}`,
+  keyed by the registry's own id (tier0 keys by aq-qa's numeric id; both point at the same producer
+  script). Because `test-model-catalog-freshness.py` mixes structural assertions (model_id/model_path/
+  probe_model_id/dashboard-wiring required — must stay HARD) with pure time-expiry assertions
+  (`age_days(...) <= max_age`), a bare check-id match would have been unsafe — it could mask a real
+  regression in the same script. Added a second, content-based guard:
+  `FRESHNESS_TIME_EXPIRY_MARKERS` (the exact 3 `AssertionError` messages the script raises only for
+  the elapsed-days checks: "model profile review is stale", "model probe is stale", "model catalog
+  review is stale"). A `model-catalog-freshness` failure downgrades to WARN in `--pre-commit` ONLY
+  when its captured stdout+stderr contains one of those markers; any other failure in the same
+  check (structural regression, import error, missing file) still HARD-fails today, unchanged. In
+  `--pre-deploy`/`--maintenance` the downgrade never applies (gated on `mode == "--pre-commit"`),
+  so freshness stays HARD there. `model-profile.json` timestamps were NOT touched — that lapse is
+  tracked separately as ongoing maintenance, not fixed by this change (anti-gaming).
+- class T4 (gate-coupling) · severity MED · status FIXED 2026-09-25 · opened 2026-09-25.
+- FIXED: validated live — staged a trigger-path change, ran
+  `run-focused-ci-checks.sh --pre-commit`: `model-catalog-freshness` reported
+  `[focused-ci] WARN: ... freshness-class (time-expiry) ...` and the run exited 0. Ran the same
+  script `--pre-deploy` with an unstaged trigger-path change: `model-catalog-freshness` reported
+  `[focused-ci] FAIL: ...` (no WARN) and exited 1 — freshness stays HARD there. Proved non-freshness
+  checks still HARD-fail in `--pre-commit` via a synthetic always-failing canary check
+  (`command: ["false"]`) added to a scratch copy of the registry: it printed
+  `[focused-ci] FAIL: TEMP canary ...` and the run exited 1. `bash -n` + embedded-python
+  `py_compile` clean; `repo-structure-lint.sh --staged` PASS. Queued for independent Opus binding
+  review before PR (Rule 18 — author self-validated, no self-review of acceptance).

@@ -48,6 +48,37 @@ import subprocess as sp
 
 SKIP_EXIT_CODES = {77}
 
+# Gate hygiene (Rule 19 corollary): freshness-class (pure time-expiry) checks WARN
+# in --pre-commit and stay HARD in --pre-deploy/--maintenance. This mirrors the
+# treatment tier0-validation-gate.sh already applies to the SAME underlying script
+# via QA phase-0 id 0.10.5 (gate_qa_phase0 FRESHNESS_CLASS_IDS). The registry
+# (config/validation-check-registry.json) carries no class/severity field on any
+# entry — only "tier": structural|behavioral, which is unrelated to time-expiry —
+# so there is no field to reuse; this list is the exact same kind of hardcoded
+# check-id list tier0 uses, just keyed by the registry's own "id" instead of
+# aq-qa's numeric id. Do not add a second, differently-shaped mechanism; if a
+# registry class field is ever introduced, switch both runners to read it.
+FRESHNESS_CLASS_CHECK_IDS = {"model-catalog-freshness"}
+
+# test-model-catalog-freshness.py mixes structural assertions (schema/content —
+# must stay HARD, e.g. missing model_id, dashboard wiring) with pure time-expiry
+# assertions (elapsed-days vs freshness_max_age_days). Only the latter may WARN,
+# so a failure is downgraded ONLY when its AssertionError message matches one of
+# these exact markers — any other failure in the same script (a real regression)
+# still HARD-fails below.
+FRESHNESS_TIME_EXPIRY_MARKERS = (
+    "model profile review is stale",
+    "model probe is stale",
+    "model catalog review is stale",
+)
+
+
+def _is_freshness_time_expiry_failure(check_id, combined_output):
+    if check_id not in FRESHNESS_CLASS_CHECK_IDS:
+        return False
+    return any(marker in combined_output for marker in FRESHNESS_TIME_EXPIRY_MARKERS)
+
+
 def collect_changed_files(mode):
     if mode == "--pre-commit":
         r = sp.run(["git", "diff", "--cached", "--name-only", "--diff-filter=ACM"],
@@ -152,6 +183,16 @@ for check in registry.get("checks", []):
         elif exit_code in SKIP_EXIT_CODES:
             print(f"[focused-ci] SKIP: {desc}")
             result_status = "skip"
+        elif mode == "--pre-commit" and _is_freshness_time_expiry_failure(
+            check_id, f"{stdout_captured}\n{stderr_captured}"
+        ):
+            print(
+                f"[focused-ci] WARN: {desc} — freshness-class (time-expiry), "
+                "maintenance-due, NOT a regression this change introduced; "
+                "HARD in --pre-deploy/--maintenance. See .agent/WORKAROUND-REGISTER.md (Rule 19).",
+                file=sys.stderr,
+            )
+            result_status = "warn"
         else:
             print(f"[focused-ci] FAIL: {desc}", file=sys.stderr)
             any_failed = True
@@ -185,6 +226,10 @@ for check in registry.get("checks", []):
             "command": final_cmd,
             "status": result_status,
             "skip_reason": _tail(stderr_captured or stdout_captured, 3) if result_status == "skip" else None,
+            "warn_reason": (
+                "freshness-class time-expiry — maintenance-due, not a regression"
+                if result_status == "warn" else None
+            ),
             "duration_ms": duration_ms,
             "exit_code": exit_code,
             "stdout_tail": _tail(stdout_captured),
@@ -203,6 +248,7 @@ if json_out_path:
     checks_passed = sum(1 for r in check_results if r["status"] == "pass")
     checks_failed = sum(1 for r in check_results if r["status"] in ("fail", "timeout"))
     checks_skipped = sum(1 for r in check_results if r["status"] == "skip")
+    checks_warned = sum(1 for r in check_results if r["status"] == "warn")
     if any_failed:
         overall_status = "fail"
     elif checks_ran > 0:
@@ -219,6 +265,7 @@ if json_out_path:
         "checks_passed": checks_passed,
         "checks_failed": checks_failed,
         "checks_skipped": checks_skipped,
+        "checks_warned": checks_warned,
         "checks": check_results,
     }
     try:
