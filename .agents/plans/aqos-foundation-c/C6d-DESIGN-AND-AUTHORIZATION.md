@@ -2,7 +2,7 @@
 title: "Foundation C — C6d: Deterministic journal recovery for the revocation-epoch authority (recover-before-listen; crash-safe idempotent epoch-bump journaling)"
 slice: "C6d (foundation slice of the C6 decomposition — lands first)"
 status: "PREPARED_ONLY — authorizes NOTHING (no build, no freeze, no activation, no epoch bump, no provider traffic, no flag flip). Design + authorization note only."
-revision: 1
+revision: 2
 kind: "design-only"
 implementation_authorization: "NONE"
 activation_authorization: "NONE"
@@ -48,7 +48,7 @@ citation was verified against HEAD in this worktree.
 | Existing path | SHA-256 | C6d role |
 |---|---|---|
 | `scripts/ai/lib/revocation_epoch.py` | `d6c3a3b60a04fde15b5fe9a619f6fc290110776bbdefc35c6de21dcd594a75e6` | **EDIT.** Holds the primitive C6d replaces: `DurableReplayLedger` (single combined-key marker) + `apply_bump`. C6d adds the write-ahead intent journal, the two independent uniqueness indexes, the `aborted→intent` reuse, and `recover()`. |
-| `scripts/ai/lib/revocation_epoch_transport.py` | `066b30c326898d6ef8e4ab085cf82ce131bb9812b08a61993de86b0812a6be28` | **EDIT (`__main__` only).** Its `__main__` (lines 301-309) today does `serve(_sp, build_env_handler())` with **no recovery pass**. C6d makes it run `recover()` to completion before `bind()`/`listen()`, and gates readiness on it. No dispatch/op change (no `authorize_launch` — that is C6a). |
+| `scripts/ai/lib/revocation_epoch_transport.py` | `066b30c326898d6ef8e4ab085cf82ce131bb9812b08a61993de86b0812a6be28` | **EDIT (`__main__` only).** Its `__main__` (lines 301-309) today does `serve(_sp, build_env_handler())` with **no recovery pass**. C6d makes it run `recover()` to completion before `bind()`/`listen()`, and gates readiness on it. No dispatch/op change (no `authorize_launch` — that is C6a). **Precondition for the `__main__`-only scope:** the handler call site `re_lib.apply_bump(bump_doc, epoch_path, ledger, owner_keys_json)` is at `revocation_epoch_transport.py:296` — inside `build_env_handler`, **NOT** `__main__`; the `__main__`-only claim holds only if the build preserves `apply_bump`'s signature and derives `journal/`, `by-request-id/`, `by-idempotency-key/` inside `revocation_epoch.py` as siblings of `epoch_path` (no new params, no new env — §6), so `:296` is untouched. Changing that signature would drag `:296` into scope and void the `__main__`-only claim. |
 | `nix/modules/services/revocation-epoch-authority.nix` | `b539e5de6dd89eb4fd93ed2119055ad9440897b1c408a98f6c23d9ded0db0172` | **EDIT.** Adds `journal/`, `by-request-id/`, `by-idempotency-key/` StateDirectories (0700, authority-owned) via `systemd.tmpfiles.rules`; adds the recover-before-`listen()` `ExecStart` ordering / readiness. Keeps `enable = false;`, the control socket, and hardening unchanged. |
 | `nix/modules/services/default.nix` | `7873bff56d33f7d798bafa4cc1ecceebdb10975d1ae62c83e48fdcafe94e0ecc` | **NO EDIT.** Already imports `./revocation-epoch-authority.nix` at line 26 — the authority is already wired into the system. C6d binds this landed import (Service-Coverage row 2). |
 | `scripts/testing/test-revocation-epoch.py` | `40cf094c73b3298698097e1d0988ca8fd187df1772b1b9beb4aa3c26a0ac59df` | **EXTEND** (494 lines today) with the a–i crash-injection matrix (§5). |
@@ -107,7 +107,11 @@ Under the authority StateDirectory root (`/var/lib/aq-revocation-epoch-authority
 Each index file records the `entry_id` it points at. Two **independent** indexes (not the single
 combined marker of `:498-503`) are what make "the same `request_id` reused with a *different*
 `idempotency_key` (or the reverse)" a detectable **conflict** rather than a silently-admitted
-second entry.
+second entry. The mechanism that makes the conflict *detectable* is specified in §3.2 (the
+`resolve()` identity gate): on an index `EEXIST` the authority reads the stored `entry_id`,
+compares the pointed-at entry's stored `{request_id, idempotency_key}` to the presented pair, and a
+mismatch faults with typed **`DENY_IDENTITY_CONFLICT`** — never returning the original receipt,
+never mutating the epoch, never admitting a second entry.
 
 The `journal/`, `by-request-id/`, `by-idempotency-key/` dirs are declared as
 `systemd.tmpfiles.rules` mode `0700 aq-revocation-epoch-authority aq-revocation-epoch-authority`
@@ -149,10 +153,16 @@ is no TOCTOU between reading a journal entry and acting on it, and no concurrent
    `by-request-id/<H(request_id)>` then `by-idempotency-key/<H(idempotency_key)>`, each
    `fsync(file)`+`fsync(dir)`, each storing `entry_id`.
    - **BOTH newly created** → fresh reservation → go to step 3.
-   - **EITHER already exists** → this is a replay-or-recovery → **immediately roll back any index
-     THIS call just created** (if `by-request-id` was created but `by-idempotency-key` returned
-     `EEXIST`: `unlink(by-request-id/…)` + `fsync(dir)` *now*, before anything else — Finding 4
-     case 2), then hand off to `resolve(entry_id)` (§3.2). Never mutate the epoch on this branch.
+   - **EITHER already exists** → this is a replay-, recovery-, or conflict-path →
+     **immediately roll back any index THIS call just created** (if `by-request-id` was created but
+     `by-idempotency-key` returned `EEXIST`: `unlink(by-request-id/…)` + `fsync(dir)` *now*, before
+     anything else — Finding 4 case 2), then **read the `entry_id` stored in the pre-existing
+     index** and hand off to `resolve(stored_entry_id, presented={request_id, idempotency_key})`
+     (§3.2). The incoming call's own composite `entry_id` is **not** assumed to equal
+     `stored_entry_id` — the pre-existing index may point at a *different* transaction
+     (cross-identity reuse: the same `request_id` re-signed with a different `idempotency_key`, or
+     the reverse), so the stored pointer is authoritative and the identity gate (§3.2) decides
+     replay vs. conflict. Never mutate the epoch on this branch.
 3. **Establish the write-ahead intent for `entry_id`:**
    - `journal/<entry_id>` **absent** → `O_CREAT|O_EXCL|O_NOFOLLOW`-create it with
      `phase:"intent"`, `attempt_gen:0`, `old_epoch=current`, `new_epoch=current+1`, full receipt
@@ -172,12 +182,39 @@ is no TOCTOU between reading a journal entry and acting on it, and no concurrent
    failure marks the *event* `audit_pending` (`:686` semantics), never the transaction incomplete —
    the journal is authoritative.
 
-### 3.2 `resolve(entry_id)` — the deterministic branch (also the unit of `recover()`)
+### 3.2 `resolve(entry_id, presented?)` — the deterministic branch (also the unit of `recover()`)
 
-Read the journal entry and `read_epoch()` → `current`, then branch on `{phase, current}`:
+`recover()` (§3.3) calls `resolve(entry_id)` per journal entry with **no** `presented` pair — the
+entry is authoritative for its own identity. The **live** `apply_bump` path calls
+`resolve(stored_entry_id, presented={request_id, idempotency_key})` after an index `EEXIST` (§3.1
+step 2), so the presented identity is checked against the entry the pre-existing index actually
+points at. `resolve()` is a **total function**: every `{journal-presence, phase, current,
+presented}` input maps to exactly one typed outcome; it never raises, preserving `apply_bump`'s
+never-raise contract.
+
+**Identity gate — evaluated first, before the phase table.** Read `journal/<entry_id>`:
+
+- **Journal absent for this `entry_id`** — an index pointed here but the intent journal never
+  became durable (the live-path view of vectors a/b/c: an orphan reservation). Release the
+  pre-existing index(es) pointing at this `entry_id` (`unlink` + `fsync(dir)`) and return a typed
+  **retryable** deny (NOT `DENY_REPLAY`); the identical retry then re-reserves fresh (§3.1 step 2)
+  and bumps. This is the live-path mirror of the §3.3 step 1 orphan-index sweep, so a live call and
+  a `recover()` pass reach the same release. (`recover()` invoking `resolve()` never hits this row —
+  it iterates journal entries that exist.)
+- **Journal present, `presented` given, stored `{request_id, idempotency_key}` ≠ `presented`** —
+  cross-identity reuse (e.g. same `request_id`, a different separately-owner-signed
+  `idempotency_key`). Return typed **`DENY_IDENTITY_CONFLICT`**: never return the existing receipt,
+  never mutate the epoch, never release the legitimate entry's indexes, never bump. This makes
+  §2.1's "detectable conflict, never a silently-admitted second entry" guarantee concrete.
+- **Journal present, and (`presented` absent — i.e. `recover()`, or stored pair == `presented`)** —
+  fall through to the phase table below (the replay/recovery path already specified).
+
+Then branch on `{phase, current}` (`current = read_epoch()`):
 
 | Journal state | Epoch reads | Meaning (crash vector) | Deterministic action |
 |---|---|---|---|
+| **absent** for `entry_id` | any | orphan index; intent never durable (live view of a/b/c) | Identity gate: release the pre-existing index(es) (`unlink`+`fsync(dir)`); typed **retryable** deny (not `DENY_REPLAY`). Retry re-reserves fresh & bumps. `recover()`: handled by §3.3 step 1. |
+| present, stored id-pair ≠ `presented` | any | cross-identity reuse (same `request_id`/`idempotency_key` re-signed with a different counterpart) | Identity gate: typed **`DENY_IDENTITY_CONFLICT`** — never the existing receipt, never a bump, never a double-bump; legitimate entry untouched. Live path only (`recover()` passes no `presented`). |
 | `committed` | any | success already durable (h, or legit idempotent retry) | Return the receipt reconstructed from the entry. Exactly-once. |
 | `intent` | `current == new_epoch` | CAS committed, phase-commit crashed (g) | **Finalize**: rewrite `committed` (temp+fsync+replace+dir fsync); return receipt. |
 | `intent` | `current == old_epoch` | CAS never happened (W1 / d) | **Abort**: rewrite `phase:"aborted"` (temp+fsync+replace+dir fsync) **first**, THEN release both indexes (`unlink by-request-id/…` + `fsync(dir)`; `unlink by-idempotency-key/…` + `fsync(dir)`). Return a typed retryable deny (NOT `DENY_REPLAY`). The identical retry then re-reserves fresh (step 2) and, at step 3, rewrites the `aborted` entry back to `intent` and bumps. |
@@ -185,7 +222,11 @@ Read the journal entry and `read_epoch()` → `current`, then branch on `{phase,
 | `intent` | `current ∉ {old,new}` | an unrelated bump advanced the epoch while this intent was unresolved | Typed **`quarantined`** (operator-visible terminal; never fabricate a commit, never `0`). |
 
 **W1 never returns `DENY_REPLAY` for an uncommitted intent** — this is the exact defect the
-landed `:660`→`:664` record-before-commit ledger cannot avoid.
+landed `:660`→`:664` record-before-commit ledger cannot avoid. `DENY_IDENTITY_CONFLICT` joins the
+existing typed-denial family (`DENY_REPLAY`, the typed unavailable/quarantined denies) and, like
+them, is a live-path terminal that mutates no epoch — it is a completeness addition to
+`apply_bump`, not a change to any recovery/interleaving outcome (§3.3 and the a–i matrix are
+untouched: the epoch CAS still fires only on the fresh both-indexes-created path).
 
 ### 3.3 `recover()` — the index↔journal reconciliation pass (replaces "iterate non-terminal entries")
 
@@ -237,9 +278,17 @@ transport emits readiness after recovery; the accept loop cannot run before `rec
 | **3. Orphan index (crash after index fsync, before journal create)** | indexes durable but `journal/<entry_id>` absent; rev5 iterated journal entries only, so an orphan index was never reconciled. | §3.3 step 1: `recover()` sweeps BOTH index dirs; an index whose target journal is **absent** is proof of non-commit → released. Covers the half-reservation (one index) too. |
 | **4. Undefined startup reconciliation** | rev5 "iterate non-terminal journal entries" is not an algorithm over the index↔journal bipartite state. | §3.3: an **explicit bipartite reconciliation** (orphan-index sweep → per-journal `resolve()` → dangling-index-after-abort cleanup), each mapping to exactly-once or `quarantined`. |
 
+**"Both independent uniqueness" conflict facet (rev5 Finding 4's under-specified adjacent point).**
+rev5 named two independent uniqueness indexes but never specified what a *cross-identity* collision
+(same `request_id`, different owner-signed `idempotency_key`) resolves to. §3.2's identity gate
+closes this: on an index `EEXIST` the stored `entry_id`'s recorded id-pair is compared to the
+presented pair, and a mismatch faults with typed `DENY_IDENTITY_CONFLICT` (§5 vector j, §6 probe) —
+so §2.1's "detectable conflict, never a silently-admitted second entry" is now an implemented
+branch, `apply_bump`/`resolve()` stay total, and no a/b/c/d recovery behavior changes.
+
 ---
 
-## 5. Durability ordering + crash-consistency argument (the a–i matrix)
+## 5. Durability ordering + crash-consistency argument (the a–i crash matrix + live-path conflict vector j)
 
 **Durability invariant chain — each barrier durable before the next begins:**
 
@@ -264,8 +313,11 @@ exactly-once. `test-revocation-epoch.py` is EXTENDED with an injection at each b
 | g | after epoch commit, before phase-commit rewrite | `intent`, epoch `new` | §3.2 finalize → `committed` | receipt returned; exactly-once |
 | h | after phase-commit, before projection | `committed`, epoch `new` | §3.2 return committed; audit reconciled | receipt returned; `audit_pending` cleared |
 | i | during `aborted→intent` index release (partial unlink) | `aborted` journal + one dangling index | §3.3.3 releases the dangling index | retry re-reserves & bumps; exactly-once |
+| j | *(live path, no crash)* same `request_id` re-signed with a different `idempotency_key` (both owner-signed) | first entry present (`intent`/`committed`) + its indexes; second call: `by-request-id` `EEXIST`, stored id-pair ≠ presented | §3.2 identity gate → typed `DENY_IDENTITY_CONFLICT` | conflict detected; original entry & indexes untouched; no second entry, no bump, no double-bump |
 
-Each vector asserts: `recover()` reads the durable epoch, reconstructs the correct receipt,
+Vectors a–i are crash interleavings; vector j is a live-path cross-identity conflict (no crash) —
+it exercises the §3.2 identity gate. Each vector asserts: `recover()` reads the durable epoch,
+reconstructs the correct receipt,
 aborts+releases an uncommitted intent, or `quarantines` — and an idempotent retry returns
 **exactly one** committed receipt (never two bumps, never a lost bump reported as replay, never a
 committed-but-unobservable bump, never a half-reserved identity that permanently wedges a valid
@@ -284,8 +336,8 @@ than shipping a new `test-<slice>-service-coverage.py`, and names it explicitly:
 - **Nix service + import** — **bound to the landed import**: `revocation-epoch-authority.nix` is
   already imported at `default.nix:26`; C6d edits the module (three StateDirs + recover-before-
   listen) but adds no new module and does not touch the import. Module stays `enable = false;`,
-  `RestrictAddressFamilies = ["AF_UNIX"]` (`:165`), `NoNewPrivileges`/`ProtectSystem="strict"`
-  (`:158`/`:160`) unchanged.
+  `RestrictAddressFamilies = ["AF_UNIX"]` (`:166`), `NoNewPrivileges`/`ProtectSystem="strict"`
+  (`:159`/`:161`) unchanged.
 - **Durable primitive** — the `O_CREAT|O_EXCL|O_NOFOLLOW` + `fsync(file)`+`fsync(dir)` test-and-set
   is the core of both indexes and the journal create (§3.1); the extended crash-matrix test asserts
   it.
@@ -312,9 +364,11 @@ than shipping a new `test-<slice>-service-coverage.py`, and names it explicitly:
   - `scripts/ai/_aq-qa-bash` — the mirror `_check 1 "0.10.51" "revocation-epoch recovery determinism" …`
     line, modelled on the `0.10.10` entry (line 1635).
   - The probe asserts (an integration exercise, not just unit tests): an identical never-committed
-    signed request **actually bumps on retry** (never `DENY_REPLAY`), and each a–i vector yields
-    exactly-once receipt or a typed `quarantined`; and that the authority does not accept before
-    `recover()` completes (recover-before-listen).
+    signed request **actually bumps on retry** (never `DENY_REPLAY`); each a–i vector yields
+    exactly-once receipt or a typed `quarantined`; a same-`request_id`/different-`idempotency_key`
+    reuse (vector j) yields typed **`DENY_IDENTITY_CONFLICT`** — never the original receipt, never a
+    second bump; and that the authority does not accept before `recover()` completes
+    (recover-before-listen).
 
 ---
 
@@ -346,7 +400,9 @@ expansion of C6d.
 2. W2 receipt reconstruction from the committed journal (vectors g, h).
 3. Partial-reservation rollback (case 2) and orphan-index reconciliation (cases 3, 4) recovered.
 4. Each of the a–i crash vectors (§5) yields exactly-once idempotent receipt or a typed
-   `quarantined` — proven by the extended `test-revocation-epoch.py`.
+   `quarantined`, and the live-path conflict vector j yields typed `DENY_IDENTITY_CONFLICT` (never
+   the original receipt, never a second bump) — all proven by the extended
+   `test-revocation-epoch.py`.
 5. `recover()` completes before the socket accepts; readiness gated on it (recover-before-listen).
 6. The `revocation-epoch-recovery` integration check is **GREEN in both harnesses** (phase0 +
    bash), per §6.
@@ -367,7 +423,11 @@ this slice defines.
 
 ---
 
-**RECORD: PREPARED_ONLY revision 1. No implementation, freeze, activation, epoch bump, provider
+**RECORD: PREPARED_ONLY revision 2 (addresses CODEX-C6D-DESIGN-BINDING-REVIEW-20260924: Finding 1
+MEDIUM — the §3.2 cross-identity `DENY_IDENTITY_CONFLICT` branch + journal-absent row; Finding 2 LOW
+— §6 hardening citations corrected to `:159`/`:161`/`:166`; Finding 3 LOW — §1 transport
+`__main__`-only precondition made explicit. Cases a/b/c/d and the recovery algorithm are
+UNCHANGED). No implementation, freeze, activation, epoch bump, provider
 traffic, deployment, restart, network authority, or flag flip is granted by this document. C6d is
 the foundation slice of `C6-DECOMPOSITION-20260924.md`; it requires its own independent binding
 review → hash-bound freeze → default-OFF build, per the decomposition's per-slice contract. This
