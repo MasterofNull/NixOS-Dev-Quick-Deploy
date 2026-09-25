@@ -2,8 +2,9 @@
 title: "Foundation C — C6c: Callable offline owner-key submission path for a signed epoch-bump (deliver an owner-produced offline signature to the running authority over the C6-S control-socket owner-bump path; no host private key, no owner-UID 0700 access — completes the amended C4 prerequisite)"
 slice: "C6c (fans out from C6-S in parallel with C6a; with C6d + C6-S it completes the amended C4 freeze prerequisite)"
 status: "PREPARED_ONLY — authorizes NOTHING (no build, no freeze, no activation, no epoch bump, no provider traffic, no flag flip). Design + authorization note only."
-revision: 1
+revision: 2
 kind: "design-only"
+rev2_review: "CODEX-C6C-DESIGN-BINDING-REVIEW-20260924.md (rev1, factory/c6c-design@4d0005ef, FREEZE-ELIGIBLE, no HIGH). rev2 applies the review's binding fixes: (1) MEDIUM build-time-binding — §6 Dashboard API row 5 now REQUIRES authority reachability (not just allowlist+key+verb) for the `operational` state, adds a distinct `degraded(authority-unreachable)` state, and binds a §6 probe assertion for the active-key-but-authority-down fixture (Finding 1); (2) LOW — §1/§8 pair the `import os` fix with an explicit `bump`-verb deprecation note steering owners to `submit --socket` (Finding 3); (3) LOW — §6/§8 make the dual-harness check-id collision check a HARD freeze/land-time gate, not just a 0.10.54-specific verification (Finding 2). No mechanism/submission/idempotency/rotation change."
 implementation_authorization: "NONE"
 activation_authorization: "NONE"
 base_head: "f1f409ef97f73fb6ae152a297ba0c0367e30bf22"
@@ -70,13 +71,13 @@ anchor for every path cited here).
 
 | Existing path | SHA-256 | C6c role |
 |---|---|---|
-| `scripts/ai/aq-epoch-bump` | `f9cd487ce5ad447bad3cadb6453a87aa095a538670c3ddb369347b6ce1fb4b8f` | **EDIT (the crux).** Add an offline socket-submit path: `submit --signed --socket <path>` (a new `--socket` on the landed `submit` verb, `:238-250`) that reads the **pre-signed** doc from `--signed` (as `cmd_submit` already does, `:105-121`), then delivers `{"bump": <signed doc>}` over the socket via `revocation_epoch_transport.send_request` (the same client call `cmd_bump` already makes at `:204`) — **without** constructing a `DurableReplayLedger` or calling `apply_bump` in-process (no 0700 write), and **without** `_load_owner_key` (`:138-166`, no host private-key read). When `--socket` is absent, `submit` keeps its landed in-process behavior byte-for-byte (`:132-135`). Also fold in the bounded fix of the landed missing `import os` (see "Landed reality", below). |
-| `scripts/ai/lib/revocation_epoch_transport.py` | `066b30c326898d6ef8e4ab085cf82ce131bb9812b08a61993de86b0812a6be28` | **NO EDIT.** Cited as ground truth: `send_request(socket_path, request)` (`:193-219`) is the fail-closed client helper C6c reuses; `build_env_handler().handler` already accepts `{"bump": <signed doc>}` and calls `re_lib.apply_bump(bump_doc, epoch_path, ledger, owner_keys_json)` (`:290-296`) — the authority is the only writer of epoch/ledger, under its own StateDirectory. `SO_PEERCRED` is **log-only** (`:69-77`, `:163-171`). No new op, no `__main__` change (that is C6d/C6-S). |
+| `scripts/ai/aq-epoch-bump` | `f9cd487ce5ad447bad3cadb6453a87aa095a538670c3ddb369347b6ce1fb4b8f` | **EDIT (the crux).** Add an offline socket-submit path: `submit --signed --socket <path>` (a new `--socket` on the landed `submit` verb, `:238-250`) that reads the **pre-signed** doc from `--signed` (as `cmd_submit` already does, `:105-121`), then delivers `{"bump": <signed doc>}` over the socket via `revocation_epoch_transport.send_request` (the same client call `cmd_bump` already makes at `:204`) — **without** constructing a `DurableReplayLedger` or calling `apply_bump` in-process (no 0700 write), and **without** `_load_owner_key` (`:138-166`, no host private-key read). When `--socket` is absent, `submit` keeps its landed in-process behavior byte-for-byte (`:132-135`). Also fold in the bounded fix of the landed missing `import os` (see "Landed reality", below), **paired with an explicit deprecation note on `bump`** (rev2 fix): reviving `bump` by fixing its `NameError` must not silently re-bless the host-key path C6c deprecates — add a one-line docstring/help note on `cmd_bump` stating `bump` is retained only for the offline/no-socket-available fixture case and that `submit --signed --socket` is the sanctioned owner-delivery path (§8 freeze criterion 3). |
+| `scripts/ai/lib/revocation_epoch_transport.py` | `066b30c326898d6ef8e4ab085cf82ce131bb9812b08a61993de86b0812a6be28` | **NO EDIT.** Cited as ground truth: `send_request(socket_path, request)` (`:193-219`) is the fail-closed client helper C6c reuses; `build_env_handler().handler` already accepts `{"bump": <signed doc>}` and calls `re_lib.apply_bump(bump_doc, epoch_path, ledger, owner_keys_json)` (`:290-296`) — the authority is the only writer of epoch/ledger, under its own StateDirectory. `SO_PEERCRED` is **log-only** (`:69-77`, `:163-171`). No new op, no `__main__` change (that is C6d/C6-S). **rev2: also cited as ground truth for the dashboard reachability probe (§6, Finding 1)** — the handler already answers a cheap read-only `{"op": "read-epoch"}` request (`:283-289`, distinct from the `bump` branch at `:290-296`); C6c's `owner_epoch_bump_lever` reuses this landed op via `send_request` to distinguish `operational` from `degraded(authority-unreachable)`. No new authority op is added for this either. |
 | `scripts/ai/lib/revocation_epoch.py` | `d6c3a3b60a04fde15b5fe9a619f6fc290110776bbdefc35c6de21dcd594a75e6` | **NO EDIT.** Cited as ground truth: `apply_bump(bump_doc, epoch_path, ledger, owner_keys_json_dict, now=None)` (`:609-615`) verifies then advances the epoch by +1 under one exclusive `epoch.lock`; `verify_bump` (`:432`) → `_verify_signature` (`:389`) matches `actor_key_id` against the allowlist and **re-checks `status == "active"` on EVERY call** (`:407`, no caching). Replay is denied by the ledger on `(request_id, idempotency_key)` (`:658-664`, `DENY_REPLAY`). C6d replaces that single-marker ledger with the journal+two-index; C6c inherits whatever apply_bump's dedup is. |
 | `config/aqos/c6-owner-public-keys.json` | `562c81ca86b6853aed40cf7430a6512cd3cd22aa8269c479a46c65575314ae4e` | **NO EDIT by the build.** The public allowlist: `revision: 4`, exactly one key `owner-mechtest-2026-08` with `status: "revoked"` — **zero active signers** (the dormant baseline). Advancing it rev-4 → rev-5 with an active owner public key is **P-F4**, a separate owner activation act (§8), not part of this build. |
 | `nix/modules/services/revocation-epoch-authority.nix` | `b539e5de6dd89eb4fd93ed2119055ad9440897b1c408a98f6c23d9ded0db0172` | **NO EDIT.** Cited as ground truth: the owner-bump principal path is `users.users.${primaryUser}.extraGroups = mkAfter ["aq-revocation-epoch-clients"]` (`:111`), which lets the owner UID *connect* to the control socket (`socketPath` default `/run/aq-revocation-epoch-authority/control.sock`, `:79`). **C6-S froze this control-socket owner-bump path**; C6c lands ON it and needs no attribute beyond what C6-S froze. StateDirs are `0700` authority-owned (`:84-85`, `:124-125`, `StateDirectoryMode="0700"` `:145`); env `AQ_REVOCATION_EPOCH_SOCKET_PATH` (`:147`), owner-keys path (`:149`), epoch/ledger paths (`:150-151`). Keeps `enable = false;` (`:65`). |
 | `config/env-contract.yaml` | `21a64d786c1e6ea167e3baeb2b03e5a657137e343a76359ec87018589066a8b2` | **NO EDIT (binds landed).** `AQ_REVOCATION_EPOCH_SOCKET_PATH` is already the canonical control-socket reference (`:1339`). The offline socket-submit reuses that landed path reference; C6c introduces **no new env var and no capability flag**, so the "new flags default `\"0\"`" rule has nothing to gate. |
-| `dashboard/backend/api/routes/aistack.py` | `46afe8d86848bd3d2cebc0831a7c2878d1d664ec52e87c13ac371cbb73579b58` | **EDIT (minimal).** Add a compact live-backed `result["owner_epoch_bump_lever"]` section modelled on the ALA section (`:2090-2110`) / C2-SCI section (`:2112-2132`), reporting the three states **`operational` \| `none(revoked-only)` \| `unavailable`** (§6). |
+| `dashboard/backend/api/routes/aistack.py` | `46afe8d86848bd3d2cebc0831a7c2878d1d664ec52e87c13ac371cbb73579b58` | **EDIT (minimal).** Add a compact live-backed `result["owner_epoch_bump_lever"]` section modelled on the ALA section (`:2090-2110`) / C2-SCI section (`:2112-2132`), reporting the four states **`operational` \| `degraded(authority-unreachable)` \| `none(revoked-only)` \| `unavailable`** (§6, rev2 — `operational` now REQUIRES authority reachability, not just allowlist+key+verb; see Finding 1 of the binding review). |
 | `assets/dashboard.js` | `6a1610475db60a0bacd830a523013d2d825101a9721b38eaa3d70c269074001a` | **EDIT (minimal).** Read `owner_epoch_bump_lever` and render its rows inside the existing Foundation-C authority health block (no new card). |
 | `config/validation-check-registry.json` | `f679818f7c89bc0c6d888455f766e528a6d34d37054630092dd6ca73a06885a4` | **EDIT.** Register the new `c6c-owner-submission-coverage` behavioral check (§6), modelled on `c2-sci-service-coverage` (`:1398-1419`) / `ala-service-coverage` (`:1376`). |
 | `scripts/testing/harness_qa/phases/phase0.py` | `12701183de2e55040a9cf6e3015a7bf29320046dfa5195b516b3c7af3257f527` | **EDIT.** Add the owner-submission integration probe via `results.extend(...)`, modelled on `_check_intent_classifier_coverage` (`:1325`, wired at `:1985`). Allocate the **next-free id `0.10.54`** (see §6 — coordination with C6a). |
@@ -120,6 +121,16 @@ anchor for every path cited here).
   file, it **folds in the one-line fix (`import os`)** as a bounded root-cause fix carrying a one-line
   note in the commit body (Rule 19), rather than leaving a discovered defect in a security-critical
   CLI. This is logged to `memory/issues-backlog.md`.
+- **rev2: the `import os` fix must not silently revive `bump` as an equal, undeprecated path
+  (binding review Finding 3, LOW).** Fixing the `NameError` makes `bump` functional again, and `bump`
+  is exactly the **host-private-key** path (`_load_owner_key`, `:190,:138-166`) this design deprecates
+  in favor of `submit --signed --socket`. The build MUST pair the one-line `import os` fix with an
+  **explicit deprecation note** on `cmd_bump` (docstring/`--help` text): `bump` is retained only for
+  the offline/no-service fixture case its own docstring already describes (`:21-27`), `submit --signed
+  --socket` is the sanctioned owner-delivery path against a running authority. This is a documentation
+  pairing, not a behavior change — the existing `_load_owner_key` age-passphrase human-in-the-loop
+  guard (`:143-166`) stays the control on `bump` if an owner still invokes it; the note only prevents
+  the crash-fix from *implicitly* re-blessing host-key custody as an equally-sanctioned option.
 
 The final freeze must reproduce every listed hash, bind the revised packet hash, reject all other
 changed paths, and stop on HEAD drift.
@@ -309,27 +320,44 @@ its own coverage test PLUS the required registry + dual-harness + dashboard wiri
 - **Dashboard API** (row 5) — **NEW compact live-backed section.** Add
   `result["owner_epoch_bump_lever"]` in `aistack.py` (modelled on the ALA section `:2090-2110` /
   C2-SCI `:2112-2132`), probed live (no hard-coded healthy state, no `--` placeholder), with the
-  three required states:
+  **four** required states (rev2 — binding review Finding 1, MEDIUM build-time-binding: `operational`
+  must not over-claim "deliverable end to end" without confirming the delivery endpoint is live):
   - **`operational`** — the allowlist is readable AND has ≥1 `status:"active"` owner key AND the
-    callable socket-submit path is present (the `aq-epoch-bump submit --socket` verb exists) → the
-    owner can deliver a signed bump end to end.
+    callable socket-submit path is present (the `aq-epoch-bump submit --socket` verb exists) **AND
+    the authority is reachable** (the control socket answers a cheap read-only `{"op": "read-epoch"}`
+    probe via `revocation_epoch_transport.send_request`, reusing the landed handler branch at
+    `transport:283-289` — no new authority op) → the owner can deliver a signed bump end to end,
+    verified, not assumed.
+  - **`degraded(authority-unreachable)`** — **NEW state, required.** The allowlist is readable AND has
+    ≥1 active key AND the verb is present, but the authority `read-epoch` probe fails (unit
+    disabled/down, socket absent, or connect/timeout) → the lever is wired and a key is active, but
+    the delivery endpoint is NOT confirmed live. This is the state that closes Finding 1: an
+    active-key-but-authority-down fixture MUST read this, never `operational`.
   - **`none(revoked-only)`** — the allowlist is readable but has **zero** active keys (all revoked;
-    the dormant `f1f409ef` / pre-P-F4 state — revision 4, one revoked key).
+    the dormant `f1f409ef` / pre-P-F4 state — revision 4, one revoked key). Authority reachability is
+    irrelevant here (there is no active key to sign an admissible bump regardless).
   - **`unavailable`** — the allowlist is unreadable/malformed, or the submit verb / socket reference
     is absent (fail-closed; never reported healthy).
-  Also surface `allowlist_revision` and `active_owner_keys` (read from
-  `config/aqos/c6-owner-public-keys.json`) so the operator sees exactly why the lever is in its state.
+  Also surface `allowlist_revision`, `active_owner_keys`, and `authority_reachable` (bool, from the
+  `read-epoch` probe) so the operator sees exactly why the lever is in its state — including why it is
+  `degraded` rather than `operational` when a key is active but the authority did not answer.
+  **Build-time binding (Finding 1):** the §6 coverage probe (row 8) MUST assert that an
+  active-key-but-authority-unreachable fixture reads `degraded(authority-unreachable)`, never
+  `operational` — a false-green on this fleet kill-lever is unacceptable (anti-gaming /
+  observable≠functional).
 - **Dashboard UI** (row 6) — **minimal, folded.** `assets/dashboard.js` reads `owner_epoch_bump_lever`
-  and renders the state + revision/active-key rows **inside the existing Foundation-C authority health
-  block** — **no new card** (a separate card would duplicate the block without giving the operator a
-  new action). Review Finding 3's observability bar is met: the lever's `operational` vs
-  `none(revoked-only)` vs `unavailable` state is directly visible.
+  and renders the state + revision/active-key/authority-reachable rows **inside the existing
+  Foundation-C authority health block** — **no new card** (a separate card would duplicate the block
+  without giving the operator a new action). Review Finding 3's observability bar is met: the lever's
+  `operational` vs `degraded(authority-unreachable)` vs `none(revoked-only)` vs `unavailable` state is
+  directly visible (rev2 adds the degraded state, §6 row 5).
 - **Crypto/service tests exist** (row 7) — **NEW**
   `scripts/testing/test-c6c-owner-submission-service-coverage.py` (mirrors
   `test-c2-sci-service-coverage.py`), asserting: the callable `submit --socket` path exists; it reads
   **no** host private key and performs **no** in-process `apply_bump` / 0700 write; revoked / unknown /
   non-monotonic / bad-signature documents deny; the dormant allowlist state maps to
-  `none(revoked-only)`.
+  `none(revoked-only)`; **(rev2)** an active-key-but-authority-unreachable fixture maps to
+  `degraded(authority-unreachable)`, never `operational`.
 - **Integration-check registration (NEW, required)** (row 8) — register
   **`c6c-owner-submission-coverage`** in `config/validation-check-registry.json` (modelled on
   `c2-sci-service-coverage` at `:1398-1419`: `id`, `description`, `trigger_paths` =
@@ -349,15 +377,27 @@ its own coverage test PLUS the required registry + dual-harness + dashboard wiri
     (per their designs). C6a and C6c **fan out in parallel** from C6-S (decomposition §8), so their
     ids must be distinct: **C6a takes `0.10.53`** (its design's next-free), and **C6c takes
     `0.10.54`**. C6c claims `0.10.54` explicitly to avoid a collision when the two parallel siblings
-    land in either order; the freeze verifies `0.10.54` is unused in both harnesses at build time.
+    land in either order.
+  - **rev2 (binding review Finding 2, LOW — closed as a HARD gate):** `0.10.54`'s correctness depends
+    on the sibling reservations (`0.10.51`/`0.10.52`/`0.10.53`) being at HEAD as claimed when C6c
+    lands — those are unmerged sibling branches, not yet verified at C6c's freeze time. A **dual-harness
+    check-id collision check** (no duplicate id across `phase0.py` AND `_aq-qa-bash`, checked against
+    whatever siblings have actually landed, not just against the `0.10.54` assumption) is therefore a
+    **HARD gate at freeze/land time** for C6c — not an informational "verify 0.10.54 is unused"
+    note. If a sibling landed with a different id assignment than assumed here, the gate MUST block
+    the land (never silently pick a colliding id) and the id is re-coordinated before proceeding. This
+    is a HARD gate specifically so parallel-authored siblings (C6a alongside C6c) cannot land colliding
+    ids.
   - **The probe asserts** (an integration exercise, not just unit tests, per review Finding 3): a
     **signed bump submitted over the socket is accepted** (against a **test fixture** allowlist
     holding an active key + a fixture authority StateDir — never the live revoked allowlist);
     **resubmitting the same signed document yields a deterministic result** (a committed receipt or a
     typed replay/identity deny — **never a second +1**); a **bad-signature** or **revoked/unknown-key**
     document is **rejected** (`DENY_BAD_SIGNATURE` / `DENY_KEY_NOT_ACTIVE` / `DENY_UNKNOWN_KEY`); the
-    submit path performs **no host private-key read** and **no owner-UID 0700 write**; and the dormant
-    live allowlist maps the dashboard lever to `none(revoked-only)`.
+    submit path performs **no host private-key read** and **no owner-UID 0700 write**; the dormant
+    live allowlist maps the dashboard lever to `none(revoked-only)`; and **(rev2, Finding 1)** an
+    active-key fixture whose authority `read-epoch` probe is made to fail (unit down / socket absent)
+    maps the dashboard lever to `degraded(authority-unreachable)`, never `operational`.
 
 ---
 
@@ -393,7 +433,11 @@ performs it nor assumes it — C6c only supplies the operational lever the amend
 2. The path reads **no** host private key (no `_load_owner_key`) and performs **no** in-process
    `apply_bump` / no owner-UID write to the `0700` StateDirectory (the authority is the sole writer).
 3. `submit` without `--socket` keeps its landed in-process behavior **byte-for-byte**; the landed
-   `import os` defect in `cmd_bump` is fixed (one-line, with a root-cause note per Rule 19).
+   `import os` defect in `cmd_bump` is fixed (one-line, with a root-cause note per Rule 19), **paired
+   with an explicit deprecation note on `bump`** (rev2, Finding 3) steering owners to
+   `submit --signed --socket` as the sanctioned path, so the crash fix does not silently re-bless
+   `bump`'s host-key path as an equal option; the existing `_load_owner_key` age-passphrase guard
+   remains the documented control if `bump` is still invoked.
 4. **Composes with C6d (§3):** no change to `apply_bump`'s signature, `verify_bump`, the
    journal/two-index/`recover()`, or `Type=notify`; a resubmitted signed bump is a **deterministic
    receipt / typed deny, never a double-bump**, by inheritance from the C6d journal.
@@ -404,10 +448,22 @@ performs it nor assumes it — C6c only supplies the operational lever the amend
    re-read, `status:"active"` re-checked every call, monotone `revision`.
 7. **Off-is-inert byte-parity:** the authority ships `enable=false`; nothing invokes the new verb
    automatically; the dormant allowlist maps the dashboard lever to `none(revoked-only)`.
-8. The **`c6c-owner-submission-coverage` integration check is GREEN in both harnesses** (phase0
+8. **(rev2, Finding 1 — MEDIUM, build-time binding, required at build.)** The dashboard
+   `owner_epoch_bump_lever` `operational` state REQUIRES authority reachability (a live `read-epoch`
+   probe over the control socket, `transport:283-289`) IN ADDITION to allowlist-readable + ≥1 active
+   key + verb-present; an active-key-but-authority-unreachable case MUST read the distinct
+   `degraded(authority-unreachable)` state, never `operational`. The §6 coverage probe (row 8) MUST
+   assert this with an authority-down fixture. No state may assert "deliverable end to end" without a
+   confirmed-live delivery endpoint.
+9. The **`c6c-owner-submission-coverage` integration check is GREEN in both harnesses** (phase0
    `0.10.54` + bash mirror), distinct from C6d `0.10.51` / C6-S `0.10.52` / C6a `0.10.53`, per §6.
-9. The freeze binds the exact candidate hashes, reproduces the §1 base hashes, rejects all other
-   changed paths, and stops on HEAD drift.
+10. **(rev2, Finding 2 — LOW, HARD gate at freeze/land time.)** A dual-harness check-id collision
+    check (no duplicate id across `phase0.py` AND `_aq-qa-bash`) runs at freeze/land time against the
+    siblings actually landed at that moment — not merely a static "`0.10.54` is unused" assumption
+    made at design time. A collision BLOCKS the land; it is never resolved by silently picking a
+    different id without re-verifying both harnesses.
+11. The freeze binds the exact candidate hashes, reproduces the §1 base hashes, rejects all other
+    changed paths, and stops on HEAD drift.
 
 **Authorization / activation note — the DESIGN/BUILD needs NO owner activation; P-F4 is a separate
 owner act.** C6c is **default-safe**: it adds a **dormant** owner-invoked client verb to a CLI that
@@ -439,7 +495,7 @@ prerequisite (§7).
 
 ---
 
-**RECORD: PREPARED_ONLY revision 1. No implementation, freeze, activation, epoch bump, provider
+**RECORD: PREPARED_ONLY revision 2. No implementation, freeze, activation, epoch bump, provider
 traffic, deployment, restart, network authority, or flag flip is granted by this document. C6c is the
 owner-submission slice of `C6-DECOMPOSITION-20260924.md` (§4, §8); it requires its own independent
 binding review → hash-bound freeze → default-OFF build, per the decomposition's per-slice contract.
@@ -454,4 +510,17 @@ launch group; §2.4), contradicting neither. Forward-only public-key rotation / 
 carried forward unchanged (§4). The DESIGN/BUILD is dormant and needs no owner activation; **P-F4**
 (offline keygen + public-only allowlist advance rev-4 → rev-5) is a SEPARATE owner act this slice
 neither performs nor depends on (§8). A landed latent defect (`cmd_bump` uses `os` without importing
-it, `aq-epoch-bump:147,201`) was found, reported, and folded as a bounded one-line fix (Rule 19).**
+it, `aq-epoch-bump:147,201`) was found, reported, and folded as a bounded one-line fix (Rule 19).
+
+**rev2 applies the three binding fixes from `CODEX-C6C-DESIGN-BINDING-REVIEW-20260924.md`** (rev1,
+FREEZE-ELIGIBLE, no HIGH): (1) Finding 1 (MEDIUM, build-time binding) — the dashboard
+`owner_epoch_bump_lever` `operational` state now REQUIRES authority reachability (a `read-epoch`
+probe, `transport:283-289`) in addition to allowlist+active-key+verb, with a new distinct
+`degraded(authority-unreachable)` state and a bound §6 probe assertion, so the kill-lever never
+false-greens when a key is active but the authority is down (§1, §6, §8 criterion 8); (2) Finding 3
+(LOW) — the folded `import os` fix on `cmd_bump` is paired with an explicit deprecation note steering
+owners to `submit --signed --socket`, so reviving `bump` does not silently re-bless the host-key path
+(§1, §8 criterion 3); (3) Finding 2 (LOW) — the dual-harness check-id collision check is elevated to a
+HARD gate at freeze/land time, verified against siblings actually landed rather than a static
+`0.10.54`-is-free assumption (§6, §8 criterion 10). No change to the submission mechanism,
+idempotency-by-C6d, or rotation semantics.**
