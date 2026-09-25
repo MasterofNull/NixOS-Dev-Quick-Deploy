@@ -51,8 +51,8 @@ Behavior: lead with the outcome; final answer self-contained. Act, don't ask, fo
 
 ## Model-tier mirror (remote Claude lanes)
 
-Fable 5 is the most capable Claude tier (above Opus). Remote Claude selection mirrors this:
-`config/model-coordinator.json` → `tiers.anthropic.flagship = claude-fable-5` (creative also = claude-fable-5; Opus 4.8 = balanced-deep fallback). Downstream pools read tiers from that SSOT — never pin model ids locally.
+Fable 5.1 is the most capable Claude tier (above Opus). Remote Claude selection mirrors this:
+`config/model-coordinator.json` → `tiers.anthropic.flagship = claude-fable-5-1` (creative also = claude-fable-5-1; Opus 5.5 = deep fallback; Sonnet 5 = balanced). Downstream pools read tiers from that SSOT — never pin model ids locally.
 
 ## What parity does NOT mean
 
