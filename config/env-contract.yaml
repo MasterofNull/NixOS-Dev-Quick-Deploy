@@ -1342,6 +1342,18 @@ variables:
     layer: systemd
     consumers: [lease-signing-authority, c2-scheduler-context-issuer, revocation-epoch-client]
     description: "The sole read-only revocation epoch authority UDS. A missing, denied, unreachable, or malformed authority response is a typed fail-closed denial; no environment epoch, tracked epoch-file, or zero fallback is permitted."
+  - canonical: AQ_REVOCATION_LAUNCH_SOCKET_PATH
+    aliases: []
+    default: "/run/aq-revocation-epoch-authority/launch.sock"
+    layer: systemd
+    consumers: [revocation-epoch-authority]
+    description: "Foundation C C6-S (mechanism B) dedicated TEG-only launch socket, alongside the unchanged control socket (AQ_REVOCATION_EPOCH_SOCKET_PATH above) — freezes the two-socket topology `authorize_launch` (C6a) and the TEG (C6b) build on. No reachable operation exists on this socket in C6-S; every well-formed request gets a typed deny-all stub. Path/group reference only — no capability flag introduced."
+  - canonical: AQ_REVOCATION_LAUNCH_CLIENT_GROUP
+    aliases: []
+    default: "aq-revocation-launch-clients"
+    layer: systemd
+    consumers: [revocation-epoch-authority]
+    description: "The dedicated launch-socket client group (C6-S mechanism B), declared EMPTY of non-authority principals in this slice — the authority-user is a member only so serve_multi() can chgrp the socket at bind time (never a launch consumer); the TEG joins in C6b. ALA/C2-SCI/owner remain excluded by kernel DAC (they hold only AQ_REVOCATION_EPOCH_CLIENT_GROUP) — this is the enforced boundary that closes rev5 Finding 2."
 
   - canonical: CAPABILITY_ASYMMETRIC_LEASE
     aliases: []

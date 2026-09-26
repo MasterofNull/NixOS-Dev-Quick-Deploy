@@ -2139,6 +2139,45 @@ def get_capability_enforcement() -> Dict[str, Any]:
         "status": "ok" if (not sci_on or (sci_signer_active and sci_ledger_durable)) else "degraded",
     }
 
+    # 6. Revocation-epoch authority — dedicated TEG-only launch socket + principal topology
+    #    (Foundation C C6-S, mechanism B, default-OFF). Neither socket requires the authority
+    #    unit to be running for the paths to be probed; both are simple filesystem/group checks
+    #    (live, no hard-coded healthy state, no "--" placeholder) so the two-socket topology this
+    #    slice freezes is dashboard-visible even before the unit is ever enabled.
+    control_sock_path = Path("/run/aq-revocation-epoch-authority/control.sock")
+    launch_sock_path = Path("/run/aq-revocation-epoch-authority/launch.sock")
+    try:
+        control_sock_present = control_sock_path.exists()
+    except Exception:
+        control_sock_present = False
+    try:
+        launch_sock_present = launch_sock_path.exists()
+    except Exception:
+        launch_sock_present = False
+    # launch_group_teg_only: the launch group's non-authority members must be empty in C6-S (the
+    # TEG joins in C6b — until then, ANY non-authority member is a topology violation). None
+    # (not False) when the group itself does not exist yet (authority never provisioned on this
+    # host) — that is "unknown", not "unhealthy".
+    launch_group_teg_only: Optional[bool] = None
+    try:
+        import grp
+
+        launch_group = grp.getgrnam("aq-revocation-launch-clients")
+        non_authority_members = {m for m in launch_group.gr_mem if m != "aq-revocation-epoch-authority"}
+        launch_group_teg_only = len(non_authority_members) == 0
+    except KeyError:
+        launch_group_teg_only = None
+    except Exception:
+        launch_group_teg_only = None
+    result["revocation_epoch_authority"] = {
+        "control_socket": "present" if control_sock_present else "absent",
+        "launch_socket": "present" if launch_sock_present else "absent",
+        "launch_group_teg_only": launch_group_teg_only,
+        # default-OFF/absent is the healthy resting state; a present launch socket whose group
+        # has gained a non-authority member outside the frozen topology is degraded
+        "status": "ok" if launch_group_teg_only is not False else "degraded",
+    }
+
     return result
 
 

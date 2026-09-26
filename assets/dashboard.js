@@ -3512,6 +3512,7 @@ async function loadCapabilityEnforcement() {
   const c5 = d.c5 || {};
   const ala = d.ala || {};
   const sci = d.c2_scheduler_context_issuer || {};
+  const rea = d.revocation_epoch_authority || {};
 
   // Determine overall status badge
   let overallBadge = "badge-ok";
@@ -3520,6 +3521,7 @@ async function loadCapabilityEnforcement() {
     c5.status === "degraded" ||
     ala.status === "degraded" ||
     sci.status === "degraded" ||
+    rea.status === "degraded" ||
     c2.status === "unknown" ||
     c5.status === "unknown"
   ) {
@@ -3597,6 +3599,21 @@ async function loadCapabilityEnforcement() {
       "C2-SCI Status",
       sci.status || "--",
       statusColor(sci.status)
+    ),
+    fwRow(
+      "Revocation Control Socket",
+      rea.control_socket || "--",
+      rea.control_socket === "present" ? "ok" : "info"
+    ),
+    fwRow(
+      "Revocation Launch Socket",
+      rea.launch_socket || "--",
+      rea.launch_socket === "present" ? "info" : "info"
+    ),
+    fwRow(
+      "Launch Group TEG-Only",
+      rea.launch_group_teg_only === true ? "yes" : (rea.launch_group_teg_only === false ? "no" : "--"),
+      rea.launch_group_teg_only === false ? "err" : "ok"
     ),
   ].join("");
 }

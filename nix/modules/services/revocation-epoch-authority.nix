@@ -9,6 +9,16 @@
 # Its control UDS is mode 0660, group-restricted, and `revocation_epoch_transport.serve()`
 # additionally reads+logs `SO_PEERCRED` — transport membership is NEVER sufficient authority.
 #
+# C6-S (mechanism B — dedicated TEG-only launch socket + principal topology; see
+# `.agents/plans/aqos-foundation-c/C6-S-DESIGN-AND-AUTHORIZATION.md`) adds a SECOND UDS,
+# `launchSocketPath`, alongside the control socket above, gated by a NEW, separately-declared
+# `aq-revocation-launch-clients` group. That group is declared EMPTY here — the TEG joins it in
+# C6b, not this module — so the launch socket grants no one anything yet, and it carries no
+# reachable operation until C6a lands `authorize_launch` (this module's transport serves it a
+# deny-all stub via `serve_multi()`). Control-socket group membership below is UNCHANGED by
+# C6-S: ALA/C2-SCI/owner keep exactly their current `aq-revocation-epoch-clients` access; none of
+# them is added to the launch group.
+#
 # UNLIKE the C2-SCI issuer and the ALA, this service holds NO private signing key anywhere — it
 # is SOPS-free by design. Owners sign a `aq.revocation-epoch-bump/1` bump document OFFLINE with
 # their own tooling (`revocation_epoch.sign_bump` is explicitly "FOR OFFLINE OWNER-SIGNING
@@ -79,6 +89,11 @@ in {
       default = "/run/aq-revocation-epoch-authority/control.sock";
       description = "UDS the authority serves on (group-restricted 0660; SO_PEERCRED is logged as defense-in-depth only — the trust boundary is the presented owner-signed bump, verified against config/aqos/c6-owner-public-keys.json, never the peer).";
     };
+    launchSocketPath = mkOption {
+      type = types.str;
+      default = "/run/aq-revocation-epoch-authority/launch.sock";
+      description = "C6-S (mechanism B) dedicated TEG-only launch socket, alongside the unchanged control socket above — group-restricted 0660 to the NEW, separately-declared `aq-revocation-launch-clients` group (declared empty in this slice; the TEG joins in C6b). No operation is reachable over this socket yet — `authorize_launch` is added in C6a. Lives in the same RuntimeDirectory as the control socket; no new directory rule needed.";
+    };
     statePath = mkOption {
       type = types.str;
       default = "/var/lib/aq-revocation-epoch-authority";
@@ -95,25 +110,36 @@ in {
     users.users.aq-revocation-epoch-authority = {
       isSystemUser = true;
       group = "aq-revocation-epoch-authority";
-      # Member of the client group so serve() can chgrp the socket to it (chown to a group
-      # requires membership). This grants NO key access — there IS no key for this service to
-      # hold; the only trust-bearing state it touches is its own StateDirectory (0700,
-      # authority-only) and the read-only public owner-key allowlist.
-      extraGroups = ["aq-revocation-epoch-clients"];
+      # Member of BOTH client groups so serve()/serve_multi() can chgrp each socket to its own
+      # group (chown to a group requires membership). This grants NO key access and NO launch
+      # authority — there IS no key for this service to hold, and the authority is the *server*
+      # of the launch socket, never a *client* of its own authorize_launch op (C6-S design §2.2
+      # item 3: chgrp-only role, not a launch consumer). The only trust-bearing state it touches
+      # is its own StateDirectory (0700, authority-only) and the read-only public owner-key
+      # allowlist.
+      extraGroups = ["aq-revocation-epoch-clients" "aq-revocation-launch-clients"];
       description = "Foundation C C6-B2 confined revocation-epoch authority (no private key)";
     };
     users.groups.aq-revocation-epoch-authority = {};
-    # Shared client group: members may connect to the 0660 socket. Widens ONLY connect access,
-    # never epoch-write access — a peer that connects still advances nothing without a bump an
-    # active owner key actually signed (mirrors aq-lease-signing-clients / aq-c2-scheduler-
-    # context-clients / aq-execution-cell-clients).
+    # Shared client group (control socket): members may connect to the 0660 socket. Widens ONLY
+    # connect access, never epoch-write access — a peer that connects still advances nothing
+    # without a bump an active owner key actually signed (mirrors aq-lease-signing-clients /
+    # aq-c2-scheduler-context-clients / aq-execution-cell-clients).
     users.groups.aq-revocation-epoch-clients = {};
     users.users.${primaryUser}.extraGroups = mkAfter ["aq-revocation-epoch-clients"];
+    # C6-S launch-socket client group (mechanism B) — declared EMPTY of non-authority
+    # principals in this slice. The authority-user above is a member ONLY for the chgrp role;
+    # the TEG (the sole intended launch consumer) joins in C6b (dispatch-gateway.nix). The
+    # owner/primaryUser is deliberately NOT added here — the kill-lever stays on the control
+    # socket, structurally severed from the launch surface (design §2.2 item 4).
+    users.groups.aq-revocation-launch-clients = {};
 
     systemd.tmpfiles.rules = [
       # 0755 = world-traversable so a client-group member (the owner running aq-epoch-bump) can
       # reach the socket inside; the socket itself (0660, client-group) is the access control.
       # Matches the effective RuntimeDirectory mode so the two never disagree across rebuilds.
+      # C6-S's launch.sock (cfg.launchSocketPath) lives in this SAME directory by default — no
+      # separate tmpfiles rule needed; its own 0660/group restriction is the access control.
       "d ${builtins.dirOf cfg.socketPath} 0755 aq-revocation-epoch-authority aq-revocation-epoch-authority -"
       # Declare the StateDirectory root + the ledger subdir explicitly, ahead of first service
       # start (Rule 13 — declarative-only; mirrors c2-scheduler-context-issuer.nix's identical
@@ -147,13 +173,16 @@ in {
       description = "Foundation C C6-B2 confined revocation-epoch authority (default-OFF, no private key, owner-verify-only)";
       wantedBy = ["multi-user.target"];
       serviceConfig = {
-        # C6d recover-before-listen barrier (design §3.4): the transport's
-        # __main__ runs revocation_epoch.recover() to completion, under
-        # epoch.lock, BEFORE it binds/listens/accepts, and only then calls
-        # sd_notify(READY=1) (raw stdlib, no new dependency) -- so any unit
+        # C6d recover-before-listen barrier (design §3.4), extended by C6-S
+        # §3 to both sockets: the transport's __main__ runs
+        # revocation_epoch.recover() to completion, under epoch.lock, ONCE,
+        # BEFORE serve_multi() binds/listens/accepts on EITHER the control
+        # or the new launch socket, and only calls sd_notify(READY=1) (raw
+        # stdlib, no new dependency) once BOTH are listening -- so any unit
         # ordered After= this one, and any client, observes it ready only
-        # once its journal is reconciled. Type=notify (was Type=simple) is
-        # what makes systemd actually wait for that signal.
+        # once its journal is reconciled AND both sockets are up.
+        # Type=notify (was Type=simple) is what makes systemd actually wait
+        # for that signal.
         Type = "notify";
         ExecStart = "${authPython}/bin/python3 ${authBundle}/revocation_epoch_transport.py";
         User = "aq-revocation-epoch-authority";
@@ -167,6 +196,10 @@ in {
           "AQ_REVOCATION_EPOCH_OWNER_KEYS_PATH=${cfg.ownerKeysPath}"
           "AQ_REVOCATION_EPOCH_EPOCH_PATH=${cfg.statePath}/epoch"
           "AQ_REVOCATION_EPOCH_LEDGER_DIR=${cfg.statePath}/ledger"
+          # C6-S (mechanism B) — the dedicated TEG-only launch socket, alongside the
+          # unchanged control socket above. No reachable op until C6a; deny-all stub.
+          "AQ_REVOCATION_LAUNCH_SOCKET_PATH=${cfg.launchSocketPath}"
+          "AQ_REVOCATION_LAUNCH_CLIENT_GROUP=aq-revocation-launch-clients"
         ];
         Restart = "on-failure";
         RestartSec = "5s";
