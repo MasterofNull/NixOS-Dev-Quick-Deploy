@@ -28,6 +28,11 @@ REPO_ROOT="$(cd "$SCRIPT_DIR/../.." && pwd)"
 export PATH="$HOME/.local/bin:$HOME/.npm-global/bin:$SCRIPT_DIR:$REPO_ROOT/scripts/ai:$REPO_ROOT/scripts/governance:$PATH"
 export PYTHONPATH="${REPO_ROOT}:${REPO_ROOT}/ai-stack:${REPO_ROOT}/ai-stack/mcp-servers:${REPO_ROOT}/scripts/ai:${PYTHONPATH:-}"
 
+export TERM="${TERM:-xterm-256color}"
+if [ "$TERM" = "dumb" ]; then
+  export TERM="xterm-256color"
+fi
+
 cd "$REPO_ROOT"
 
 # Resolve agent binary and presentation details
@@ -51,24 +56,18 @@ case "$AGENT" in
     NEW_CMD=("$AGENT_BIN")
     ;;
   local|qwen)
-    AGENT_TITLE="Local Qwen3-35B APU (aq-chat Tool Calling)"
+    AGENT_TITLE="Local Qwen3-35B APU (llama.cpp :8080)"
     AGENT_COLOR="\033[1;36m" # Cyan
-    AGENT_BIN="$SCRIPT_DIR/aq-chat"
-    RESUME_CMD=("$SCRIPT_DIR/aq-chat")
-    NEW_CMD=("$SCRIPT_DIR/aq-chat")
+    AGENT_BIN="$SCRIPT_DIR/aq-agent-window"
+    RESUME_CMD=("python3" "$SCRIPT_DIR/aq-agent-window" "--lane" "local")
+    NEW_CMD=("python3" "$SCRIPT_DIR/aq-agent-window" "--lane" "local")
     ;;
   gemini)
-    AGENT_TITLE="Google Gemini 3.8-Flash (Gemini CLI / Adapter)"
+    AGENT_TITLE="Google Gemini 3.8-Flash (Switchboard :8085)"
     AGENT_COLOR="\033[1;34m" # Blue/Purple
-    if command -v gemini >/dev/null 2>&1; then
-      AGENT_BIN="$(command -v gemini)"
-      RESUME_CMD=("$AGENT_BIN" "--resume" "latest")
-      NEW_CMD=("$AGENT_BIN")
-    else
-      AGENT_BIN="$SCRIPT_DIR/aq-agent-window"
-      RESUME_CMD=("python3" "$SCRIPT_DIR/aq-agent-window" "--lane" "gemini")
-      NEW_CMD=("python3" "$SCRIPT_DIR/aq-agent-window" "--lane" "gemini")
-    fi
+    AGENT_BIN="$SCRIPT_DIR/aq-agent-window"
+    RESUME_CMD=("python3" "$SCRIPT_DIR/aq-agent-window" "--lane" "gemini")
+    NEW_CMD=("python3" "$SCRIPT_DIR/aq-agent-window" "--lane" "gemini")
     ;;
   coordinator|repl)
     AGENT_TITLE="Central Steering Coordinator REPL"
@@ -208,16 +207,12 @@ while true; do
       echo -e "${DIM}Check if package is installed or path is in ~/.local/bin or ~/.npm-global/bin${NC}"
     fi
 
-    echo -ne "  ${BOLD}Press [1-4] or hit Enter to resume (auto-starting in 3s)... ${NC}"
+    echo -ne "  ${BOLD}Select [1-4] or press Enter to launch: ${NC}"
     
     CHOICE=""
-    if read -t 3 -n 1 raw_key; then
-      CHOICE="$raw_key"
-      echo ""
-    else
-      echo -e "\n  ${DIM}Auto-resuming previous session...${NC}"
-      CHOICE="1"
-    fi
+    read -n 1 raw_key || true
+    echo ""
+    CHOICE="$raw_key"
 
     case "$CHOICE" in
       1|r|R|"")
