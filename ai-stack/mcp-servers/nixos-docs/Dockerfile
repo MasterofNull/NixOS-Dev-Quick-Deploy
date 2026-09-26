@@ -34,13 +34,12 @@ RUN --mount=type=cache,target=/root/.cache/pip \
     --index-url https://download.pytorch.org/whl/cpu \
     --timeout 300 \
     --retries 5 \
-    torch==2.5.1 torchvision==0.20.1
+    torch==2.11.0 torchvision==0.26.0
 
-# Copy requirements and install Python dependencies from the hash-pinned lock.
+# Copy requirements and install Python dependencies.
 COPY nixos-docs/requirements.txt /app/requirements.txt
-COPY nixos-docs/requirements.lock /app/requirements.lock
 RUN --mount=type=cache,target=/root/.cache/pip \
-    pip install --timeout 300 --retries 5 -r /app/requirements.lock
+    pip install --timeout 300 --retries 5 -r /app/requirements.txt
 
 # Copy shared libraries (for authentication middleware)
 COPY shared /app/shared

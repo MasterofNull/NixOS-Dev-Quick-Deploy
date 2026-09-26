@@ -12,6 +12,7 @@ Run: python3 scripts/testing/test-antigravity-liveness.py
 import importlib.machinery
 import importlib.util
 import json
+import os
 import time
 from pathlib import Path
 
@@ -28,6 +29,10 @@ def _setup(tmp: Path):
     m.ANTIGRAVITY_INBOX = inbox
     m._ANTIGRAVITY_STATE = inbox / ".lane-state.json"
     m.REPO = tmp  # isolate the archive destination from the real repo
+    scanner = tmp / "scripts" / "governance" / "pre-archive-scan.sh"
+    scanner.parent.mkdir(parents=True)
+    scanner.write_text("#!/usr/bin/env bash\nexit 0\n")
+    scanner.chmod(0o755)
     return inbox
 
 
@@ -61,7 +66,6 @@ def test_unrelated_backlog_does_not_poison(tmp_factory):
     # Old unrelated files exist, but the LAST tracked drop was consumed.
     old = inbox / "ancient-round.md"
     old.write_text("old")
-    import os
     os.utime(old, (time.time() - 100000, time.time() - 100000))
     m._ANTIGRAVITY_STATE.write_text(json.dumps(
         {"last_drop": {"name": "recent.md", "ts": time.time() - 60}}))  # recent.md absent = consumed
@@ -73,7 +77,6 @@ def test_unrelated_backlog_does_not_poison(tmp_factory):
 def test_archive_stops_backlog_growth(tmp_factory):
     tmp = tmp_factory()
     inbox = _setup(tmp)
-    import os
     for n in ("old1.md", "old2.md"):
         p = inbox / n
         p.write_text("x")
@@ -84,6 +87,19 @@ def test_archive_stops_backlog_growth(tmp_factory):
     assert (inbox / "current.md").exists(), "current round file must be kept"
     assert not (inbox / "old1.md").exists(), "stale file should be archived"
     print("PASS stale backlog archived, current kept (Rule 12)")
+
+
+def test_archive_scan_failure_blocks_move(tmp_factory):
+    tmp = tmp_factory()
+    inbox = _setup(tmp)
+    scanner = tmp / "scripts" / "governance" / "pre-archive-scan.sh"
+    scanner.write_text("#!/usr/bin/env bash\nexit 1\n")
+    old = inbox / "referenced.md"
+    old.write_text("x")
+    os.utime(old, (time.time() - 100000, time.time() - 100000))
+    assert m._archive_stale_inbox(keep=set()) == 0
+    assert old.exists(), "pre-archive failure must leave the source untouched"
+    print("PASS pre-archive scan failure blocks move")
 
 
 if __name__ == "__main__":
@@ -99,4 +115,5 @@ if __name__ == "__main__":
     test_unconsumed_previous_drop_unavailable(tmp_factory)
     test_unrelated_backlog_does_not_poison(tmp_factory)
     test_archive_stops_backlog_growth(tmp_factory)
+    test_archive_scan_failure_blocks_move(tmp_factory)
     print("ALL PASS")

@@ -7,6 +7,11 @@ useDefault = true
 [allowlist]
 description = "Known non-secret documentation and fixture patterns"
 paths = [
+  '''^\.claude/.*$''',
+  '''^\.codex/.*$''',
+  '''^\.understand-anything/.*$''',
+  '''^\.reports/.*$''',
+  '''^.*\.qcow2$''',
   '''^\.agent/.*$''',
   '''^\.agents/.*$''',
   '''^scripts/ai/aqd$''',
@@ -19,6 +24,11 @@ paths = [
   '''^tests/chaos-engineering/.*$''',
   '''^tests/progressive-disclosure-validation\.py$''',
   '''^scripts/governance/check-cross-surface-contract\.py$''',
+  '''^scripts/testing/.*$''',
+  '''^scripts/ai/aq-health-spider$''',
+  '''^\.sops\.yaml$''',
+  '''^config/local-model-config\.yaml$''',
+  '''^ai-stack/mcp-servers/shared/telemetry_privacy\.py$''',
 ]
 regexes = [
   '''AKIAIOSFODNN7EXAMPLE''',

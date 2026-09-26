@@ -26,8 +26,10 @@ Usage:
 from __future__ import annotations
 
 import argparse
+import hashlib
 import json
 import os
+import re
 import subprocess
 import sys
 import shutil
@@ -39,6 +41,7 @@ REPO = Path(__file__).resolve().parents[2]
 PLANS = REPO / ".agents" / "plans"
 SCRIPTS = REPO / "scripts" / "ai"
 OUTPUTS = REPO / ".agents" / "delegation" / "outputs"
+DELEGATION_REGISTRY = REPO / ".agents" / "delegation" / "registry.jsonl"
 # Watched inbox — the Antigravity IDE agent (its own OAuth) polls this dir and responds.
 ANTIGRAVITY_INBOX = REPO / ".agent" / "collaboration" / "antigravity-inbox"
 
@@ -133,12 +136,28 @@ def _typed_consensus(rd: Path, name: str) -> str | None:
         except Exception:  # noqa: BLE001
             disp = {}
         contribs = {}
+        review_subject = _review_subject(rd)
         for agent in ALL_AGENTS:
-            if not (rd / f"{agent}.md").exists() and agent not in disp:
+            markdown = rd / f"{agent}.md"
+            if not markdown.exists() and agent not in disp:
                 continue
+            # Hash-bound reviews only aggregate a landed, validated artifact.
+            # A terminal provider log may be truncated or unavailable and must
+            # never be projected as a synthetic ABSTAIN contribution.
+            if review_subject is not None and not markdown.exists():
+                continue
+            if markdown.exists():
+                ok, _reason = _validate_review_contribution(
+                    rd, markdown.read_text(encoding="utf-8", errors="replace")
+                )
+                if not ok:
+                    continue
             tid = str(disp.get(agent, ""))
             log = OUTPUTS / f"{tid}.log" if tid and not tid.startswith(("inbox", "error", "running")) else None
-            c, _note = _rcontrib.extract_contribution(agent, rd, log if (log and log.exists()) else None)
+            # For a hash-bound review the validated Markdown is authoritative;
+            # generic rounds retain the legacy log fallback.
+            use_log = None if review_subject is not None else (log if (log and log.exists()) else None)
+            c, _note = _rcontrib.extract_contribution(agent, rd, use_log)
             if c is not None:
                 contribs[agent] = c
         if not contribs:
@@ -326,14 +345,40 @@ def _archive_stale_inbox(keep: "set[str]") -> int:
         return 0
     now = time.time()
     archive_dir = REPO / ".agent" / "archive" / f"antigravity-inbox-{datetime.now(timezone.utc):%Y%m%d}"
+    scanner = REPO / "scripts" / "governance" / "pre-archive-scan.sh"
     moved = 0
     for p in ANTIGRAVITY_INBOX.glob("*.md"):
         if p.name in keep:
             continue
-        if now - p.stat().st_mtime > _ANTIGRAVITY_CONSUME_WINDOW_S:
-            archive_dir.mkdir(parents=True, exist_ok=True)
-            shutil.move(str(p), str(archive_dir / p.name))
-            moved += 1
+        if now - p.stat().st_mtime <= _ANTIGRAVITY_CONSUME_WINDOW_S:
+            continue
+        rel = p.relative_to(REPO).as_posix()
+        # A background collector must not mutate the caller's Git index. Tracked
+        # inbox entries therefore require an explicit operator-owned archive
+        # transaction (scan, reference repair, stage deletion, then move).
+        tracked = subprocess.run(
+            ["git", "-C", str(REPO), "ls-files", "--error-unmatch", "--", rel],
+            capture_output=True, text=True, timeout=10,
+        ).returncode == 0
+        if tracked:
+            print(f"[aq-collab-round] archive deferred for tracked inbox entry: {rel}",
+                  file=sys.stderr)
+            continue
+        if not scanner.is_file():
+            print(f"[aq-collab-round] archive blocked; scanner missing for: {rel}",
+                  file=sys.stderr)
+            continue
+        scan = subprocess.run(
+            [str(scanner), rel], cwd=REPO, capture_output=True, text=True, timeout=30,
+        )
+        destination = archive_dir / p.name
+        if scan.returncode != 0 or destination.exists():
+            print(f"[aq-collab-round] archive blocked by pre-scan/collision for: {rel}",
+                  file=sys.stderr)
+            continue
+        archive_dir.mkdir(parents=True, exist_ok=True)
+        shutil.move(str(p), str(destination))
+        moved += 1
     return moved
 
 
@@ -510,10 +555,142 @@ def _extract_local_verdict(rd: Path) -> str:
     text = result if isinstance(result, str) else json.dumps(result)
     if not text:
         return "local-completed-empty"
+    if d.get("success") is False or d.get("incomplete_result") is True:
+        return "local-completed-incomplete"
+    ok, reason = _validate_review_contribution(rd, text)
+    if not ok:
+        return f"local-completed-invalid:{reason}"
     lf.write_text(f"# local[Qwen] — round contribution (auto-extracted)\n\n"
                   f"_From dispatch `{tid}` (produced text, {len(d.get('tool_calls') or [])} tool "
                   f"calls; orchestrator recorded)._\n\n{text.strip()}\n")
     return "extracted"
+
+
+_TERMINAL_DISPOSITIONS = (
+    "ACCEPTED", "IMPLEMENTED_FOLLOWUP_REQUIRED", "ACTIVATION_BLOCKED", "REJECTED",
+)
+
+
+def _review_subject(rd: Path) -> str | None:
+    """Return the exact hash bound by a review prompt, or None for drafting rounds."""
+    prompt = rd / ".round-prompt.txt"
+    try:
+        text = prompt.read_text(encoding="utf-8", errors="replace")
+    except OSError:
+        return None
+    match = re.search(
+        r"(?i)(?:subject(?:\s+hash)?|commit)\s*[: ]\s*`?([0-9a-f]{40})`?", text
+    )
+    return match.group(1).lower() if match else None
+
+
+def _validate_review_contribution(rd: Path, text: str) -> tuple[bool, str]:
+    """Fail closed for hash-bound review output; drafting rounds remain compatible."""
+    subject = _review_subject(rd)
+    if subject is None:
+        return True, "not-hash-bound"
+    if subject not in text.lower():
+        return False, "subject-missing"
+    lines = [line.strip() for line in text.splitlines() if line.strip()]
+    if not lines or lines[-1] not in _TERMINAL_DISPOSITIONS:
+        return False, "terminal-disposition-missing"
+    dispositions = [line for line in lines if line in _TERMINAL_DISPOSITIONS]
+    if dispositions != [lines[-1]]:
+        return False, "terminal-disposition-ambiguous"
+    return True, "valid"
+
+
+def _delegation_record(task_id: str) -> dict | None:
+    """Read the last registry record for one exact dispatch id."""
+    try:
+        lines = DELEGATION_REGISTRY.read_text(encoding="utf-8").splitlines()
+    except OSError:
+        return None
+    record = None
+    for line in lines:
+        try:
+            candidate = json.loads(line)
+        except json.JSONDecodeError:
+            continue
+        if candidate.get("id") == task_id:
+            record = candidate
+    return record
+
+
+def _import_isolated_contribution(rd: Path, agent: str) -> str:
+    """Import only an agent's owned review file from its terminal isolated worktree."""
+    target = rd / f"{agent}.md"
+    if target.exists():
+        return "present"
+    try:
+        dispatch = json.loads((rd / ".round-dispatch.json").read_text()).get("dispatch", {})
+    except Exception:
+        return "no-dispatch-record"
+    task_id = dispatch.get(agent, "")
+    if not isinstance(task_id, str) or not task_id:
+        return "not-dispatched"
+    record = _delegation_record(task_id)
+    expected_agent = "local-agent" if agent == "local" else agent
+    if not record or record.get("agent") not in {None, expected_agent}:
+        return "registry-agent-mismatch"
+    if record.get("status") not in {"done", "completed"}:
+        return "not-terminal"
+    worktree_raw = record.get("worktree")
+    if not isinstance(worktree_raw, str) or not worktree_raw:
+        return "no-isolated-worktree"
+    worktree = Path(worktree_raw).resolve()
+    expected_root = (REPO / ".agents" / "delegation" / "worktrees" / task_id).resolve()
+    if worktree != expected_root or record.get("worktree_branch") not in {
+        None, f"delegate/{task_id}"
+    }:
+        return "worktree-identity-mismatch"
+    try:
+        rel_round = rd.resolve().relative_to(REPO.resolve())
+        candidate = worktree / rel_round / f"{agent}.md"
+        if candidate.is_symlink():
+            return "owned-file-unsafe"
+        source = candidate.resolve(strict=True)
+        source.relative_to(worktree)
+    except (OSError, ValueError):
+        return "owned-file-missing-or-unsafe"
+    if not source.is_file() or source.stat().st_size > 1_048_576:
+        return "owned-file-unsafe"
+    try:
+        text = source.read_text(encoding="utf-8", errors="strict")
+    except (OSError, UnicodeError):
+        return "owned-file-unreadable"
+    ok, reason = _validate_review_contribution(rd, text)
+    if not ok:
+        return f"owned-file-invalid:{reason}"
+    patch_raw = record.get("patch_file")
+    patch_digest = None
+    if isinstance(patch_raw, str) and patch_raw:
+        patch_path = Path(patch_raw)
+        if not patch_path.is_absolute():
+            patch_path = REPO / patch_path
+        try:
+            patch_bytes = patch_path.read_bytes()
+        except OSError:
+            return "patch-receipt-missing"
+        expected_header = f"b/{rel_round.as_posix()}/{agent}.md".encode()
+        if expected_header not in patch_bytes:
+            return "patch-owned-path-missing"
+        patch_digest = hashlib.sha256(patch_bytes).hexdigest()
+    target.write_text(text, encoding="utf-8")
+    digest = hashlib.sha256(text.encode("utf-8")).hexdigest()
+    receipt = {
+        "schema_version": "1.0",
+        "agent": agent,
+        "dispatch_id": task_id,
+        "source_kind": "isolated-worktree-owned-file",
+        "sha256": digest,
+        "patch_sha256": patch_digest,
+        "imported_at": _now(),
+    }
+    (rd / f".{agent}.import.json").write_text(
+        json.dumps(receipt, indent=2, sort_keys=True) + "\n", encoding="utf-8"
+    )
+    return "imported"
 
 
 def _legacy_round_alias(name: str) -> str | None:
@@ -608,6 +785,10 @@ def cmd_status(args, do_extract: bool = False) -> int:
         print(f"no round '{args.round}' at {rd}", file=sys.stderr)
         return 1
     if do_extract:
+        for agent in PROCESS_AGENTS:
+            imported = _import_isolated_contribution(rd, agent)
+            if imported != "present":
+                print(f"[collect] {agent} isolated contribution: {imported}")
         r = _extract_local_verdict(rd)
         print(f"[collect] local verdict: {r}")
         ar = _repair_antigravity_misplaced_output(rd, args.round)
