@@ -1455,6 +1455,47 @@
       "enabled": true
     },
     {
+      "id": "c6a-authorize-launch-coverage",
+      "description": "Foundation C C6a — authorize_launch + single-use launch-token consume on the C6-S launch socket is default-OFF, TEG-peer-gated, and dashboard-visible (Service Coverage)",
+      "trigger_paths": [
+        "scripts/ai/lib/revocation_epoch.py",
+        "scripts/ai/lib/revocation_epoch_transport.py",
+        "nix/modules/services/revocation-epoch-authority.nix",
+        "config/env-contract.yaml",
+        "dashboard/backend/api/routes/aistack.py",
+        "assets/dashboard.js",
+        "scripts/testing/test-revocation-epoch.py",
+        "scripts/testing/test-c6a-authorize-launch-service-coverage.py"
+      ],
+      "command": [
+        "python3",
+        "scripts/testing/test-c6a-authorize-launch-service-coverage.py"
+      ],
+      "tier": "behavioral",
+      "timeout_seconds": 30,
+      "enabled": true
+    },
+    {
+      "id": "c6c-owner-submission-coverage",
+      "description": "Foundation C C6c — callable offline owner-key submission path (submit --signed --socket) is default-OFF/dormant, no-host-key, no-0700-write, idempotent-by-C6d, and dashboard-visible (Service Coverage)",
+      "trigger_paths": [
+        "scripts/ai/aq-epoch-bump",
+        "scripts/ai/lib/revocation_epoch_transport.py",
+        "scripts/ai/lib/revocation_epoch.py",
+        "config/aqos/c6-owner-public-keys.json",
+        "dashboard/backend/api/routes/aistack.py",
+        "assets/dashboard.js",
+        "scripts/testing/test-c6c-owner-submission-service-coverage.py"
+      ],
+      "command": [
+        "python3",
+        "scripts/testing/test-c6c-owner-submission-service-coverage.py"
+      ],
+      "tier": "behavioral",
+      "timeout_seconds": 30,
+      "enabled": true
+    },
+    {
       "id": "flat-prd-gate",
       "description": "Phase 155 \u2014 flat model-team PRD gate requires proposal/review/consensus artifacts",
       "trigger_paths": [

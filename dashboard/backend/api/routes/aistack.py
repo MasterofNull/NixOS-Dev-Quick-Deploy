@@ -2001,6 +2001,60 @@ async def get_delegate_stats() -> Dict[str, Any]:
     return result
 
 
+def _owner_epoch_bump_read_allowlist(path: Path) -> tuple:
+    """Read the C6c owner public-key allowlist. Returns `(readable, revision,
+    active_count)`. Total function — any read/parse failure returns
+    `(False, None, None)`, never raises. Pure with respect to `path`, so a test
+    can point it at a FIXTURE allowlist without touching the live
+    `config/aqos/c6-owner-public-keys.json`."""
+    try:
+        data = json.loads(path.read_text(encoding="utf-8"))
+    except Exception:
+        return False, None, None
+    if not isinstance(data, dict) or not isinstance(data.get("keys"), list):
+        return False, None, None
+    active = sum(1 for k in data["keys"] if isinstance(k, dict) and k.get("status") == "active")
+    return True, data.get("revision"), active
+
+
+def _owner_epoch_bump_probe_authority(socket_path: str, timeout: float = 0.25) -> bool:
+    """Live read-epoch probe over the control socket — the landed read-only
+    branch (`revocation_epoch_transport.py:283-289`); no new authority op.
+    Total function — never raises; any failure (absent socket, timeout,
+    malformed response) returns `False`."""
+    try:
+        lib_dir = _repo_root() / "scripts" / "ai" / "lib"
+        if str(lib_dir) not in sys.path:
+            sys.path.insert(0, str(lib_dir))
+        import revocation_epoch_transport as _ret  # type: ignore
+
+        probe = _ret.send_request(socket_path, {"op": "read-epoch"}, timeout=timeout)
+        return isinstance(probe, dict) and probe.get("ok") is True and isinstance(probe.get("epoch"), int)
+    except Exception:
+        return False
+
+
+def _owner_epoch_bump_lever_state(
+    allowlist_readable: bool,
+    active_owner_keys: Optional[int],
+    submit_verb_present: bool,
+    authority_reachable: bool,
+) -> str:
+    """Pure four-state decision (`C6c-DESIGN-AND-AUTHORIZATION.md` §6/§8
+    criterion 8): `operational` requires reachability IN ADDITION to
+    allowlist-readable + >=1 active key + verb-present — an
+    active-key-but-authority-down input must return
+    `degraded(authority-unreachable)`, never `operational` (binding-review
+    Finding 1)."""
+    if not allowlist_readable or not submit_verb_present:
+        return "unavailable"
+    if not active_owner_keys:
+        return "none(revoked-only)"
+    if not authority_reachable:
+        return "degraded(authority-unreachable)"
+    return "operational"
+
+
 @router.get("/stats/capability-enforcement")
 def get_capability_enforcement() -> Dict[str, Any]:
     """Get capability enforcement status: C2 lease enforcement and C5 span-truth.
@@ -2176,6 +2230,135 @@ def get_capability_enforcement() -> Dict[str, Any]:
         # default-OFF/absent is the healthy resting state; a present launch socket whose group
         # has gained a non-authority member outside the frozen topology is degraded
         "status": "ok" if launch_group_teg_only is not False else "degraded",
+    }
+
+    # 7. Revocation launch authorization — authorize_launch/consume_launch single-use launch
+    #    token ops on the C6-S launch socket (Foundation C C6a, default-OFF). Reported from
+    #    the daemon's RESOLVED RUNTIME STATE only — socket present/connectable, the service's
+    #    OWN resolved StateDirectory env var (never a hardcoded path guess), and the
+    #    `aq-revocation-launch-clients` group membership already live-probed via `grp` in
+    #    section 6 above — mirroring the C6c `owner_epoch_bump_lever` precedent (live probe,
+    #    no hardcoded/source-derived state). NEVER a source-tree grep: a string match against
+    #    committed source is always true and proves nothing about whether the RUNNING
+    #    instance actually enforces anything (cohort REJECT binding-review 20260925 finding 3).
+    launch_authority_env: Dict[str, str] = {}
+    try:
+        r = subprocess.run(
+            ["systemctl", "show", "aq-revocation-epoch-authority.service", "-p", "Environment", "--value"],
+            capture_output=True, text=True, timeout=5,
+        )
+        if r.returncode == 0 and r.stdout.strip():
+            for part in r.stdout.strip().split():
+                if "=" in part:
+                    key, val = part.split("=", 1)
+                    launch_authority_env[key] = val
+    except Exception:
+        launch_authority_env = {}
+
+    launch_sock_connectable = False
+    if launch_sock_present:
+        try:
+            import socket
+
+            probe_sock = socket.socket(socket.AF_UNIX, socket.SOCK_STREAM)
+            try:
+                probe_sock.settimeout(0.25)
+                probe_sock.connect(str(launch_sock_path))
+                launch_sock_connectable = True
+            finally:
+                probe_sock.close()
+        except Exception:
+            launch_sock_connectable = False
+    # The op is reachable iff the launch socket is actually present AND accepting
+    # connections — an absent/unreachable socket (default-OFF resting state) means the op
+    # cannot be invoked on this host, regardless of what the source declares.
+    launch_op_present = launch_sock_connectable
+
+    # Resolved ledger path — the daemon's OWN `AQ_REVOCATION_EPOCH_EPOCH_PATH` env var's
+    # StateDirectory parent, never the previous hardcoded `/var/lib/...` guess. `None`
+    # (unknown) when the unit's environment cannot be resolved (never provisioned/started on
+    # this host) — unknown, not unhealthy.
+    resolved_epoch_path = launch_authority_env.get("AQ_REVOCATION_EPOCH_EPOCH_PATH")
+    launch_ledger_state_path = Path(resolved_epoch_path).parent / "launch-ledger" if resolved_epoch_path else None
+    launch_ledger_durable: Optional[bool] = None
+    if launch_ledger_state_path is not None:
+        try:
+            if launch_ledger_state_path.is_dir():
+                launch_ledger_durable = all(
+                    (launch_ledger_state_path / sub).is_dir()
+                    and (os.stat(str(launch_ledger_state_path / sub)).st_mode & 0o777) == 0o700
+                    for sub in ("issued", "consumed", "expired")
+                )
+            # else: authority never provisioned/started on this host — unknown, not unhealthy
+        except Exception:
+            launch_ledger_durable = None
+
+    # TEG peer-check enforcement: the daemon's OWN resolved `AQ_REVOCATION_LAUNCH_TEG_UID`
+    # (never a grep for the env-var NAME in source, which is always present once the code is
+    # committed). Empty/unresolved is C6a's designed fail-closed resting state — it denies
+    # every peer, including the authority's own uid — genuinely enforced. A non-empty
+    # (provisioned) value is only reported enforced once the launch group's membership
+    # (section 6's live `grp` lookup, `launch_group_teg_only`) shows no non-authority member
+    # outside the frozen C6a topology — a provisioned-but-topology-violating uid must never
+    # be reported as enforced.
+    resolved_teg_uid = launch_authority_env.get("AQ_REVOCATION_LAUNCH_TEG_UID", "").strip()
+    launch_teg_peer_check_enforced = (not resolved_teg_uid) or (launch_group_teg_only is True)
+
+    result["revocation_launch_authorization"] = {
+        "authorize_launch_op": "op_present" if launch_op_present else "op_absent",
+        "ledger_durable": launch_ledger_durable,
+        "teg_peer_check_enforced": launch_teg_peer_check_enforced,
+        "resolved_ledger_state_path": str(launch_ledger_state_path) if launch_ledger_state_path else None,
+        # default-OFF/unprovisioned is the healthy resting state; an op reachable without its
+        # enforced TEG peer check would reopen the self-launch surface C6-S/C6a closed — degraded
+        "status": "ok" if (not launch_op_present or launch_teg_peer_check_enforced) else "degraded",
+    }
+
+    # 8. Owner epoch-bump lever — the callable offline owner-key submission path
+    #    (Foundation C C6c, default-OFF/dormant). Four states, per the frozen design
+    #    (`C6c-DESIGN-AND-AUTHORIZATION.md` §6/§8 criterion 8): `operational` requires
+    #    LIVE authority reachability (a read-epoch probe over the control socket) IN
+    #    ADDITION to allowlist-readable + >=1 active owner key + the submit verb
+    #    present — an active-key-but-authority-down host must never read `operational`
+    #    (binding-review Finding 1). Never a hardcoded healthy state. The read/probe/
+    #    decide steps are factored into small module-level functions (below) so the
+    #    exact decision matrix — including the degraded case — is directly unit-testable
+    #    against a FIXTURE allowlist/socket without touching the live owner-keys file.
+    owner_keys_path = _repo_root() / "config" / "aqos" / "c6-owner-public-keys.json"
+    allowlist_readable, allowlist_revision, active_owner_keys = _owner_epoch_bump_read_allowlist(owner_keys_path)
+
+    # Verb-present: the shipped CLI declares the `submit` subcommand with a `--socket`
+    # option (the offline-signed-doc courier this slice adds) — a structural presence
+    # check on the shipped script, mirroring the existing `sci_ledger_durable` textual
+    # precedent above (line ~2130), not a claim about live enforcement.
+    submit_verb_present = False
+    try:
+        epoch_bump_cli = _repo_root() / "scripts" / "ai" / "aq-epoch-bump"
+        cli_text = epoch_bump_cli.read_text(encoding="utf-8")
+        submit_verb_present = '"submit"' in cli_text and "--socket" in cli_text
+    except Exception:
+        submit_verb_present = False
+
+    # Live authority reachability — the SAME control socket path section 6/7 already
+    # resolved (the unit's own env var when resolvable, else the fixed default path),
+    # probed with the landed read-only `{"op": "read-epoch"}` branch
+    # (`revocation_epoch_transport.py:283-289`) — no new authority op.
+    resolved_control_sock = launch_authority_env.get("AQ_REVOCATION_EPOCH_SOCKET_PATH") or str(control_sock_path)
+    authority_reachable = submit_verb_present and _owner_epoch_bump_probe_authority(resolved_control_sock)
+
+    lever_state = _owner_epoch_bump_lever_state(
+        allowlist_readable, active_owner_keys, submit_verb_present, authority_reachable
+    )
+
+    result["owner_epoch_bump_lever"] = {
+        "state": lever_state,
+        "allowlist_revision": allowlist_revision,
+        "active_owner_keys": active_owner_keys,
+        "authority_reachable": authority_reachable,
+        "submit_verb_present": submit_verb_present,
+        # dormant (none(revoked-only)) is the healthy resting state pre-P-F4;
+        # unavailable is the only unhealthy state (allowlist/verb broken)
+        "status": "degraded" if lever_state == "unavailable" else "ok",
     }
 
     return result

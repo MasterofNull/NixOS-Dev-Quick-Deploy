@@ -18,18 +18,33 @@ SECURITY-CRITICAL, two-step OFFLINE-signing workflow:
      epoch file directly — `apply_bump` is the only sanctioned mutation
      path, and this CLI has no other write mechanism.
 
-Until the confined `aq-revocation-epoch-authority` service (C6-B2) exists,
-`submit` calls `apply_bump` in-process against explicit local paths
-(`--epoch-path`, `--ledger-dir`, `--owner-keys`) supplied by the operator —
-there is no live socket/service to submit to yet, and this CLI does not
-invent one. No path is resolved from an environment variable, and
-`--ledger-dir` has NO default at all (no state directory has been
-provisioned for it by C6-B2 yet): the operator must name it explicitly.
+Without `--socket`, `submit` calls `apply_bump` in-process against explicit
+local paths (`--epoch-path`, `--ledger-dir`, `--owner-keys`) supplied by the
+operator — this remains valid only for the offline/no-service fixture case
+(no state directory is provisioned for it against a live authority; the
+running authority's `--epoch-path`/`--ledger-dir` are its own `0700`
+StateDirs the owner UID cannot write). No path is resolved from an
+environment variable, and `--ledger-dir` has NO default at all in this mode.
+
+  3. `aq-epoch-bump submit --signed <file> --socket <control.sock>` — the
+     SANCTIONED owner-delivery path against a RUNNING authority (Foundation
+     C, C6c). Delivers the pre-signed document to the running authority over
+     the C6-S control-socket owner-bump path (`revocation_epoch_transport
+     .send_request`, the identical client call `bump` makes) — reading NO
+     private key and performing NO in-process `apply_bump`/ledger write (no
+     owner-UID write to the authority's `0700` StateDirectory). The
+     authority — not the caller — is the sole writer of its own epoch/ledger
+     state. `bump` (below) is retained only for interactive one-shot use
+     when an owner deliberately accepts host-key custody
+     (age-passphrase-protected, `_load_owner_key`); `submit --signed
+     --socket` is preferred because it never puts the owner private key on
+     the harness host at all — the signature is produced fully offline.
 """
 from __future__ import annotations
 
 import argparse
 import json
+import os
 import sys
 import uuid
 from datetime import datetime, timedelta, timezone
@@ -120,6 +135,40 @@ def cmd_submit(args: argparse.Namespace) -> int:
         else signed_doc
     )
 
+    if args.socket:
+        # C6c — the sanctioned owner-delivery path: deliver the PRE-SIGNED
+        # doc to the RUNNING authority over the C6-S control-socket
+        # owner-bump path. No `_load_owner_key` (no host private key), no
+        # `DurableReplayLedger`/`apply_bump` in-process call (no owner-UID
+        # write to the authority's 0700 StateDirectory) — the authority
+        # applies the verified bump itself. `revocation_epoch_transport` is
+        # already importable (lib dir on sys.path, module top).
+        import revocation_epoch_transport as _t  # noqa: E402  (lazy; sibling module)
+
+        try:
+            resp = _t.send_request(args.socket, {"bump": bump_doc})
+        except Exception as exc:  # noqa: BLE001
+            print(
+                f"aq-epoch-bump: submit: delivery to {args.socket} failed: {exc} "
+                "(in aq-revocation-epoch-clients?)",
+                file=sys.stderr,
+            )
+            return 2
+        if isinstance(resp, dict) and "frame" in resp:
+            resp = resp["frame"]
+        print(json.dumps(resp, indent=2, sort_keys=True))
+        return 0 if isinstance(resp, dict) and resp.get("ok") else 2
+
+    # Landed in-process path — byte-for-byte unchanged when --socket is
+    # absent (offline/no-service fixture case only; unusable against a live
+    # authority's 0700 StateDirs).
+    if not args.ledger_dir:
+        print(
+            "aq-epoch-bump: submit: --ledger-dir is required when --socket is not given",
+            file=sys.stderr,
+        )
+        return 1
+
     try:
         owner_keys = json.loads(Path(args.owner_keys).read_text(encoding="utf-8"))
     except (OSError, json.JSONDecodeError) as exc:
@@ -170,7 +219,14 @@ def cmd_bump(args: argparse.Namespace) -> int:
     """One-shot owner workflow: build -> sign (with the owner's passphrase-protected key) -> submit to the
     running authority over its UDS. Removes the copy-bytes/offline-sign/paste-back friction WITHOUT
     removing the human-in-the-loop control (the passphrase). The private key is read into memory, used,
-    and never printed, logged, or written anywhere."""
+    and never printed, logged, or written anywhere.
+
+    DEPRECATED in favor of `submit --signed --socket` (C6c): this command reads and signs with a
+    private key file ON THIS HOST (`_load_owner_key`, age-passphrase-protected) before submitting over
+    the same control-socket path. `submit --signed --socket` delivers an ALREADY-signed document
+    produced fully offline — the owner private key never touches the harness host at all. `bump` is
+    retained only for interactive one-shot use when an owner deliberately accepts host-key custody; the
+    age-passphrase guard above remains the control if it is still invoked."""
     from cryptography.hazmat.primitives.asymmetric.ed25519 import Ed25519PrivateKey
     epoch_note = args.expected_epoch
     now = datetime.now(timezone.utc)
@@ -237,20 +293,41 @@ def build_parser() -> argparse.ArgumentParser:
 
     p_submit = sub.add_parser("submit", help="submit a pre-signed bump document")
     p_submit.add_argument("--signed", required=True, help="path to the signed request JSON")
+    p_submit.add_argument(
+        "--socket",
+        default=None,
+        help=(
+            "C6c — the SANCTIONED owner-delivery path: deliver the pre-signed doc to the "
+            "RUNNING authority over its control-socket owner-bump path (no host private "
+            "key, no owner-UID 0700 write). When given, --epoch-path/--ledger-dir/"
+            "--owner-keys are unused. When omitted, submit keeps its landed in-process "
+            "behavior byte-for-byte (offline/no-service fixture case only)."
+        ),
+    )
     p_submit.add_argument("--epoch-path", default=str(DEFAULT_EPOCH_PATH))
     p_submit.add_argument(
         "--ledger-dir",
-        required=True,
+        default=None,
         help=(
-            "durable replay-ledger directory — REQUIRED, no default "
-            "(no state directory is provisioned until C6-B2)"
+            "durable replay-ledger directory — REQUIRED only when --socket is not given "
+            "(no state directory is provisioned for the in-process path until C6-B2)"
         ),
     )
     p_submit.add_argument("--owner-keys", default=str(DEFAULT_OWNER_KEYS_PATH))
     p_submit.set_defaults(func=cmd_submit)
 
     # One-shot owner workflow: build -> sign (passphrase-protected key) -> submit over the authority UDS.
-    p_bump = sub.add_parser("bump", help="one-shot: build+sign+submit a bump to the running authority (owner-run)")
+    # DEPRECATED in favor of `submit --signed --socket` (C6c) — see cmd_bump's docstring: this path
+    # reads a host-custodied private key; `submit --signed --socket` never puts a private key on the
+    # harness host. Retained for interactive one-shot use when an owner accepts that trade-off.
+    p_bump = sub.add_parser(
+        "bump",
+        help=(
+            "DEPRECATED — one-shot: build+sign+submit to the running authority using a "
+            "host-custodied key (owner-run). Prefer `submit --signed --socket`, which never "
+            "reads a private key on this host."
+        ),
+    )
     p_bump.add_argument("--actor-key-id", required=True)
     p_bump.add_argument("--reason-code", required=True, choices=re_lib.REASON_CODES)
     p_bump.add_argument("--expected-epoch", type=int, required=True, help="the current epoch this bump advances from")

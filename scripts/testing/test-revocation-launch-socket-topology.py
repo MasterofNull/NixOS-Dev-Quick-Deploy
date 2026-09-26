@@ -11,8 +11,11 @@ temp-dir `AF_UNIX` socket):
    registry registers this check (offline, no service, no network).
 2. A live `serve_multi()` exercise on temp-dir sockets: BOTH sockets bind and accept, the
    control socket's `read-epoch`/`bump` behavior is byte-identical to `serve()` (byte-parity),
-   and the launch socket's deny-all stub denies every well-formed request with a typed reason
-   — never a crash, never a distinguishing response.
+   and the launch socket denies every request while the TEG peer is unresolved — never a crash,
+   never a distinguishing response. (C6a replaced the original deny-all stub with the real
+   `authorize_launch`/`consume_launch` ops, gated by the op-specific TEG SO_PEERCRED check this
+   topology test's static section still requires; the C6a-specific issue->consume->duplicate-
+   deny exercise lives in `test-c6a-authorize-launch-service-coverage.py`.)
 """
 from __future__ import annotations
 
@@ -100,7 +103,7 @@ def _check_static() -> None:
     transport = open(os.path.join(ROOT, "scripts", "ai", "lib", "revocation_epoch_transport.py")).read()
     need("def serve(" in transport, "serve() must still exist (unmodified, byte-parity)")
     need("def serve_multi(" in transport, "serve_multi() must exist as a sibling of serve()")
-    need("def build_launch_deny_all_handler(" in transport, "a deny-all stub handler must exist for the launch socket")
+    need("def build_launch_handler(" in transport, "the C6a launch handler (authorize_launch/consume_launch) must exist for the launch socket")
     need("serve_multi(" in transport.split("if __name__")[-1], "__main__ must call serve_multi(), not serve(), so both sockets bind")
     need("AQ_REVOCATION_LAUNCH_SOCKET_PATH" in transport.split("if __name__")[-1], "__main__ must read AQ_REVOCATION_LAUNCH_SOCKET_PATH")
 
@@ -145,8 +148,12 @@ class _MultiHarness:
         os.environ["AQ_REVOCATION_EPOCH_OWNER_KEYS_PATH"] = str(self.owner_keys_path)
         os.environ["AQ_REVOCATION_EPOCH_EPOCH_PATH"] = str(self.epoch_path)
         os.environ["AQ_REVOCATION_EPOCH_LEDGER_DIR"] = str(self.ledger_dir)
+        # No TEG uid provisioned in this topology test (C6b's concern) --
+        # the launch op must stay unreachable regardless of ambient env
+        # pollution from another test in the same process.
+        os.environ.pop("AQ_REVOCATION_LAUNCH_TEG_UID", None)
         control_handler = ret.build_env_handler()
-        launch_handler = ret.build_launch_deny_all_handler()
+        launch_handler = ret.build_launch_handler()
         self._thread = threading.Thread(
             target=ret.serve_multi,
             args=(self.control_path, control_handler, self.launch_path, launch_handler),
@@ -192,13 +199,15 @@ def _check_live() -> None:
         need(bad_resp.get("ok") is False and bad_resp.get("reason") == ret.DENY_MALFORMED_BUMP,
              "serve_multi()'s control listener must deny malformed requests identically to serve()")
 
-        # Launch socket: EVERY well-formed request denies via the typed stub — no reachable op.
-        launch_resp1 = harness.send_launch({"op": "authorize_launch"})
-        need(launch_resp1.get("ok") is False and launch_resp1.get("reason") == ret.DENY_LAUNCH_NOT_IMPLEMENTED,
-             "launch socket must deny an authorize_launch-shaped request with the typed stub reason")
+        # Launch socket: EVERY well-formed request denies while the TEG peer is unresolved
+        # (empty AQ_REVOCATION_LAUNCH_TEG_UID, C6a design §2.3 item 3 — fail-closed until C6b) —
+        # no reachable op for this non-TEG test peer, same typed reason for any request shape.
+        launch_resp1 = harness.send_launch({"op": "authorize_launch", "context_digest": "ab", "task_id": "t", "task_revision": 1, "gateway_instance": "gw"})
+        need(launch_resp1.get("ok") is False and launch_resp1.get("reason") == re_lib.DENY_NOT_TEG_PEER,
+             "launch socket must deny an authorize_launch-shaped request with the TEG-peer-check reason while unresolved")
         launch_resp2 = harness.send_launch({"anything": "else"})
-        need(launch_resp2.get("ok") is False and launch_resp2.get("reason") == ret.DENY_LAUNCH_NOT_IMPLEMENTED,
-             "launch socket must deny ANY well-formed request with the SAME typed stub reason (no distinguishing response)")
+        need(launch_resp2.get("ok") is False and launch_resp2.get("reason") == re_lib.DENY_NOT_TEG_PEER,
+             "launch socket must deny ANY well-formed request with the SAME typed reason (no distinguishing response)")
 
         # Garbage bytes on the launch socket must not crash the shared accept loop — the
         # control socket keeps serving right after.
