@@ -2179,42 +2179,83 @@ def get_capability_enforcement() -> Dict[str, Any]:
     }
 
     # 7. Revocation launch authorization — authorize_launch/consume_launch single-use launch
-    #    token ops on the C6-S launch socket (Foundation C C6a, default-OFF). The op is doubly
-    #    inert until C6b: no admissible launch-socket client yet, and the op-specific TEG
-    #    SO_PEERCRED peer check fails closed on an unresolved AQ_REVOCATION_LAUNCH_TEG_UID.
-    #    Live-probed from source/filesystem — never hard-coded, never a "--" placeholder.
-    launch_op_present = False
-    launch_teg_peer_check_enforced = False
+    #    token ops on the C6-S launch socket (Foundation C C6a, default-OFF). Reported from
+    #    the daemon's RESOLVED RUNTIME STATE only — socket present/connectable, the service's
+    #    OWN resolved StateDirectory env var (never a hardcoded path guess), and the
+    #    `aq-revocation-launch-clients` group membership already live-probed via `grp` in
+    #    section 6 above — mirroring the C6c `owner_epoch_bump_lever` precedent (live probe,
+    #    no hardcoded/source-derived state). NEVER a source-tree grep: a string match against
+    #    committed source is always true and proves nothing about whether the RUNNING
+    #    instance actually enforces anything (cohort REJECT binding-review 20260925 finding 3).
+    launch_authority_env: Dict[str, str] = {}
     try:
-        ret_src = (_repo_root() / "scripts" / "ai" / "lib" / "revocation_epoch_transport.py").read_text()
-        launch_op_present = (
-            "def build_launch_handler(" in ret_src
-            and '"authorize_launch"' in ret_src
-            and '"consume_launch"' in ret_src
+        r = subprocess.run(
+            ["systemctl", "show", "aq-revocation-epoch-authority.service", "-p", "Environment", "--value"],
+            capture_output=True, text=True, timeout=5,
         )
-        launch_teg_peer_check_enforced = (
-            "AQ_REVOCATION_LAUNCH_TEG_UID" in ret_src and "DENY_NOT_TEG_PEER" in ret_src
-        )
+        if r.returncode == 0 and r.stdout.strip():
+            for part in r.stdout.strip().split():
+                if "=" in part:
+                    key, val = part.split("=", 1)
+                    launch_authority_env[key] = val
     except Exception:
-        launch_op_present = False
-        launch_teg_peer_check_enforced = False
-    launch_ledger_state_path = Path("/var/lib/aq-revocation-epoch-authority/launch-ledger")
+        launch_authority_env = {}
+
+    launch_sock_connectable = False
+    if launch_sock_present:
+        try:
+            import socket
+
+            probe_sock = socket.socket(socket.AF_UNIX, socket.SOCK_STREAM)
+            try:
+                probe_sock.settimeout(0.25)
+                probe_sock.connect(str(launch_sock_path))
+                launch_sock_connectable = True
+            finally:
+                probe_sock.close()
+        except Exception:
+            launch_sock_connectable = False
+    # The op is reachable iff the launch socket is actually present AND accepting
+    # connections — an absent/unreachable socket (default-OFF resting state) means the op
+    # cannot be invoked on this host, regardless of what the source declares.
+    launch_op_present = launch_sock_connectable
+
+    # Resolved ledger path — the daemon's OWN `AQ_REVOCATION_EPOCH_EPOCH_PATH` env var's
+    # StateDirectory parent, never the previous hardcoded `/var/lib/...` guess. `None`
+    # (unknown) when the unit's environment cannot be resolved (never provisioned/started on
+    # this host) — unknown, not unhealthy.
+    resolved_epoch_path = launch_authority_env.get("AQ_REVOCATION_EPOCH_EPOCH_PATH")
+    launch_ledger_state_path = Path(resolved_epoch_path).parent / "launch-ledger" if resolved_epoch_path else None
     launch_ledger_durable: Optional[bool] = None
-    try:
-        if launch_ledger_state_path.is_dir():
-            launch_ledger_durable = all(
-                (launch_ledger_state_path / sub).is_dir()
-                and (os.stat(str(launch_ledger_state_path / sub)).st_mode & 0o777) == 0o700
-                for sub in ("issued", "consumed", "expired")
-            )
-        # else: authority never provisioned/started on this host — unknown, not unhealthy
-    except Exception:
-        launch_ledger_durable = None
+    if launch_ledger_state_path is not None:
+        try:
+            if launch_ledger_state_path.is_dir():
+                launch_ledger_durable = all(
+                    (launch_ledger_state_path / sub).is_dir()
+                    and (os.stat(str(launch_ledger_state_path / sub)).st_mode & 0o777) == 0o700
+                    for sub in ("issued", "consumed", "expired")
+                )
+            # else: authority never provisioned/started on this host — unknown, not unhealthy
+        except Exception:
+            launch_ledger_durable = None
+
+    # TEG peer-check enforcement: the daemon's OWN resolved `AQ_REVOCATION_LAUNCH_TEG_UID`
+    # (never a grep for the env-var NAME in source, which is always present once the code is
+    # committed). Empty/unresolved is C6a's designed fail-closed resting state — it denies
+    # every peer, including the authority's own uid — genuinely enforced. A non-empty
+    # (provisioned) value is only reported enforced once the launch group's membership
+    # (section 6's live `grp` lookup, `launch_group_teg_only`) shows no non-authority member
+    # outside the frozen C6a topology — a provisioned-but-topology-violating uid must never
+    # be reported as enforced.
+    resolved_teg_uid = launch_authority_env.get("AQ_REVOCATION_LAUNCH_TEG_UID", "").strip()
+    launch_teg_peer_check_enforced = (not resolved_teg_uid) or (launch_group_teg_only is True)
+
     result["revocation_launch_authorization"] = {
         "authorize_launch_op": "op_present" if launch_op_present else "op_absent",
         "ledger_durable": launch_ledger_durable,
         "teg_peer_check_enforced": launch_teg_peer_check_enforced,
-        # default-OFF/unprovisioned is the healthy resting state; an op present without its
+        "resolved_ledger_state_path": str(launch_ledger_state_path) if launch_ledger_state_path else None,
+        # default-OFF/unprovisioned is the healthy resting state; an op reachable without its
         # enforced TEG peer check would reopen the self-launch surface C6-S/C6a closed — degraded
         "status": "ok" if (not launch_op_present or launch_teg_peer_check_enforced) else "degraded",
     }
