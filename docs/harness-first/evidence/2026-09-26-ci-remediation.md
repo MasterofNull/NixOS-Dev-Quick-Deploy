@@ -15,6 +15,10 @@ Task ID: CI-20260926-REMEDIATION
   8. Gitleaks secret detection allowlist for fixtures and local worktrees.
   9. Untracked submodule gitlink causing exit code 128.
   10. Stale archived script references in advanced parity suite (`check-failed-units-classification.sh`, `check-prsi-phase7-program.sh`, `smoke-cross-client-compat.sh`, `smoke-skill-bundle-distribution.sh`) and guarded Trivy custom image table scanner.
+  11. Harness SDK packaging smoke A2A methods check (`smoke-harness-sdk-packaging.sh`) following `extensions/harness_sdk.py` after domain-split refactor.
+  12. Missing `httpx`, `aiohttp`, `requests` in `parity-scorecard-gate` runner environment.
+  13. Target resolution in `check-dryrun-failure-modes.sh` mapping `nixos-ai-dev` to canonical `hyperd-ai-dev`.
+  14. Golden evals version check in `run-harness-regression-gate.sh` accepting version >= 1.
 
 ## Workflow/Session IDs
 - Workflow ID: ci-failure-resolution
@@ -31,10 +35,13 @@ nix flake check --offline --no-build .
 ./scripts/testing/check-package-count-drift.sh
 ./scripts/testing/harness-runner.sh --offline --skip-schema
 pytest ai-stack/mcp-servers/hybrid-coordinator/tests/ -q
+./scripts/testing/smoke-harness-sdk-packaging.sh
+./scripts/automation/run-harness-regression-gate.sh --offline
+./scripts/testing/check-dryrun-failure-modes.sh --flake-ref . --nixos-target hyperd-ai-dev
 nix shell nixpkgs#gitleaks -c gitleaks detect --redact --config .gitleaks.toml --source . --no-git
 nix shell nixpkgs#hadolint -c hadolint --failure-threshold error ai-stack/mcp-servers/*/Dockerfile
 scripts/governance/tier0-validation-gate.sh --pre-commit
-FORCE_HARNESS_FIRST_EVIDENCE_GATE=true BASE_REF=main scripts/testing/check-harness-first-pr-evidence-gate.sh
+FORCE_HARNESS_FIRST_EVIDENCE_GATE=true BASE_REF=origin/main scripts/testing/check-harness-first-pr-evidence-gate.sh
 ```
 
 ## Validation Evidence
@@ -43,6 +50,9 @@ FORCE_HARNESS_FIRST_EVIDENCE_GATE=true BASE_REF=main scripts/testing/check-harne
 - `./scripts/testing/check-package-count-drift.sh`: PASS (zero package count drift).
 - `./scripts/testing/harness-runner.sh --offline --skip-schema`: PASS (2 passed, 0 failed, 2 skipped).
 - `pytest ai-stack/mcp-servers/hybrid-coordinator/tests/ -q`: PASS (208 passed).
+- `./scripts/testing/smoke-harness-sdk-packaging.sh`: PASS (python, js/ts, A2A methods, docs, and packages build cleanly).
+- `./scripts/automation/run-harness-regression-gate.sh --offline`: PASS (golden eval schema passed).
+- `./scripts/testing/check-dryrun-failure-modes.sh`: PASS (known dry-run failure modes validated).
 - `gitleaks detect`: PASS (0 leaks found).
 - `hadolint --failure-threshold error`: PASS (all MCP Dockerfiles).
 - `scripts/governance/tier0-validation-gate.sh --pre-commit`: PASS (53 passed, 0 failed).

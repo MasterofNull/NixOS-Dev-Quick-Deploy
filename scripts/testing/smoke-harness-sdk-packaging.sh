@@ -27,7 +27,12 @@ pass "js sdk syntax"
 python - <<'PY' "${SDK_DIR}/harness_sdk.py" || fail "python sdk A2A surface drift"
 from pathlib import Path
 import sys
-source = Path(sys.argv[1]).read_text(encoding="utf-8")
+py_path = Path(sys.argv[1])
+source = py_path.read_text(encoding="utf-8")
+if "from extensions.harness_sdk import" in source:
+    ext_path = py_path.parent / "extensions" / py_path.name
+    if ext_path.exists():
+        source += "\n" + ext_path.read_text(encoding="utf-8")
 required = [
     "def a2a_agent_card",
     "def a2a_get_card",
