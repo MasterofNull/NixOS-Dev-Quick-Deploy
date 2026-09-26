@@ -1,4 +1,5 @@
 import ast
+import logging
 from pathlib import Path
 from typing import Any, Dict, List, Optional
 
@@ -22,6 +23,9 @@ def _load_helpers() -> Dict[str, Any]:
         "Dict": Dict,
         "List": List,
         "Optional": Optional,
+        # http_server_impl.py defines its module-level logger the same way — match that
+        # pattern here so the extracted function's logger.debug() calls resolve.
+        "logger": logging.getLogger("hybrid-coordinator"),
         "_load_aq_report_status_summary": lambda: {"available": True},
         "_workflow_memory_first_strategy": lambda query, memory_recall_priority, summary: {
             "active": bool(memory_recall_priority),

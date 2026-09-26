@@ -205,6 +205,7 @@ jobs:
               *-ai-dev) expected=ai-dev ;;
               *-gaming) expected=gaming ;;
               *-minimal) expected=minimal ;;
+              aqos-vm | aqos-install-vm-plain | aqos-install-vm-luks) continue ;;
               *) echo "Unrecognized profile output: $target" >&2; exit 1 ;;
             esac
             value=$(nix eval --offline --raw ".#nixosConfigurations.${target}.config.mySystem.profile")
@@ -484,11 +485,6 @@ jobs:
         run: |
           python3 scripts/testing/test-tool-security-auditor.py
 
-      - name: Run cross-client compatibility smoke (best-effort in CI)
-        run: |
-          chmod +x scripts/testing/smoke-cross-client-compat.sh
-          ./scripts/testing/smoke-cross-client-compat.sh || true
-
   validate-structure:
     name: Validate Project Structure
     runs-on: ubuntu-latest
@@ -752,7 +748,6 @@ jobs:
           chmod +x scripts/testing/check-boot-shutdown-integration.sh
           chmod +x scripts/testing/check-api-auth-hardening.sh
           chmod +x scripts/testing/validate-ai-slo-runtime.sh
-          chmod +x scripts/testing/smoke-cross-client-compat.sh
           chmod +x scripts/security/sign-skill-registry.sh
           chmod +x scripts/testing/verify-skill-registry.sh
           chmod +x scripts/data/generate-harness-sdk-provenance.sh

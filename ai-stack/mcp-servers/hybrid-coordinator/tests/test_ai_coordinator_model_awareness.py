@@ -43,7 +43,7 @@ def test_planning_defaults_to_lightweight_lane():
 
     assert decision["task_archetype"] == "planning"
     assert decision["model_class"] == "lightweight"
-    assert decision["recommended_profile"] == "remote-gemini"
+    assert decision["recommended_profile"] == "antigravity-collective"
 
 
 def test_retrieval_prefers_local_when_requested():
@@ -68,7 +68,7 @@ def test_local_fallback_profile_preserves_tool_calling_lane_when_tools_are_neede
 
 
 def test_local_fallback_profile_uses_default_for_heavier_non_tool_work():
-    assert local_fallback_profile("Implement the coordinator patch and update validation") == "default"
+    assert local_fallback_profile("Implement the coordinator patch and update validation") == "local-coding"
 
 
 def test_implementation_routes_to_coding_lane():
@@ -293,7 +293,7 @@ def test_route_openai_chat_payload_uses_prompt_and_ignores_none_tool_choice():
     )
 
     assert decision["task"] == "Find the current deployment summary."
-    assert decision["recommended_profile"] == "remote-gemini"
+    assert decision["recommended_profile"] == "antigravity-collective"
     assert decision["tool_choice_requested"] is False
 
 
@@ -304,7 +304,7 @@ def test_default_runtime_id_for_profile_falls_back_to_remote_free():
 def test_runtime_defaults_expose_gemini_lane():
     records = {item["runtime_id"]: item for item in runtime_defaults(now=123)}
 
-    assert records["openrouter-gemini"]["profile"] == "remote-gemini"
+    assert records["openrouter-gemini"]["profile"] == "antigravity-collective"
     assert records["openrouter-gemini"]["model_alias"] == "google/gemini-2.5-pro"
 
 
@@ -330,7 +330,7 @@ def test_infer_profile_covers_requested_profile_and_task_fallbacks():
     assert ai_coordinator.infer_profile("Please call tools for this workflow") == "remote-tool-calling"
     assert ai_coordinator.infer_profile("Review the architecture tradeoff") == "remote-reasoning"
     assert ai_coordinator.infer_profile("Implement and debug the patch") == "remote-coding"
-    assert ai_coordinator.infer_profile("Collect bounded research findings") == "remote-gemini"
+    assert ai_coordinator.infer_profile("Collect bounded research findings") == "antigravity-collective"
 
 
 def test_coerce_orchestration_context_normalizes_invalid_roles():

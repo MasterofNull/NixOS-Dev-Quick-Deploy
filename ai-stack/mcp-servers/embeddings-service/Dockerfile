@@ -10,13 +10,12 @@ RUN apt-get update && apt-get install -y --no-install-recommends \
     ca-certificates \
     && rm -rf /var/lib/apt/lists/*
 
-# Refresh packaging tooling
- before installing runtime dependencies so the
+# Refresh packaging tooling before installing runtime dependencies so the
 # image does not retain known vulnerable pip/wheel/setuptools artifacts.
 RUN python -m pip install --no-cache-dir --upgrade \
-    pip==25.3 \
-    setuptools==82.0.1 \
-    wheel==0.46.2
+    "pip>=26.1" \
+    "setuptools>=82.0.1" \
+    "wheel>=0.46.3"
 
 # Install dependencies
 # Install PyTorch from CPU-only index

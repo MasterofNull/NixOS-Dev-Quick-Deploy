@@ -828,3 +828,55 @@ the shared tree contains preserved concurrent work.
 identity invariants; Gemini/Antigravity — complete F2 advisory and flag only bounded defects; Luna —
 retry a concise mechanical qualification only after quota reset. Do not rewrite the candidate or
 claim acceptance without exact subject-hash binding.
+
+---
+## [2026-09-26] QUEUED: full-cohort coverage audit for recent Claude-authored work
+
+Owner direction: recent Claude-authored or Claude-coauthored subjects that did not receive the full
+flat-coordinator cohort must be reviewed by **Codex + local Qwen + Gemini/Antigravity** against the
+same expert-team baseline. Existing single-lane or same-provider reviews remain useful evidence but
+do not count as full-cohort completion. Reconcile this provisional inventory against exact review
+artifacts before dispatch so already-covered subjects are not duplicated (finding-freshness rule).
+
+Priority groups, all hash-bound:
+
+- **P0 — security/runtime enforcement:** `29154d06` factory evidence/TOCTOU hardening;
+  `a6d907cf` + `f82a92bc` activation auto-revert guard; `2ef1406e` C6 mechanism-test
+  deactivation; `ebffbcb9` focused-CI freshness classification; `22c0c19b` + `4c6db070`
+  C6d journal recovery; `6b289376` C6-S launch-socket topology; `1160f18f` C6a launch
+  authorization (branch candidate, active round `c6a-impl-binding-review-20260925`, not yet main).
+- **P1 — model/tooling/configuration:** `6d2a624c` baseline agentic toolchain;
+  `4a979951` Anthropic model refresh; `240f26ee` Gemini/OpenAI model refresh; `a09a1ae8`
+  state-of-the-art engineering-gap backlog.
+- **P2 — Foundation-C plans/designs:** `c2d1e8b5`, `22e4b2b0`, `e87cc6c7`, `891b1eae`,
+  `093c4881`, `51f34902`, `4d0005ef`, `9066e259`, `44b1c6e0`, `fbf5608d`, `f9c51dda`,
+  and `2e733335`. Several have independent Codex binding-review documents; audit whether local and
+  Antigravity saw the same frozen subject before marking cohort-complete.
+
+Execution contract:
+
+1. Generate a machine-readable ledger mapping subject hash -> author -> changed paths -> existing
+   review artifact/hash -> missing cohort lanes. Absence of a `Reviewed-by` trailer is a review
+   signal, not proof by itself.
+2. Fan out bounded groups with `aq-collab-round`; do not ask local Qwen to ingest the whole set in
+   one context. Each pass uses the same baseline across lanes; group by risk and shared files.
+3. Each contribution states the exact subject hash and ends in a terminal disposition. Unavailable
+   lanes receive a catch-up entry and no review credit.
+4. A real defect opens a new bounded follow-up against current HEAD after freshness reproduction;
+   do not rewrite merged history or issue an activation grant from stale findings.
+5. Cohort completion is observable in the dashboard/QA review-coverage surface; if that surface
+   cannot distinguish single-review from full-cohort coverage, log and implement that gap as a
+   separate service-coverage slice.
+
+---
+## [2026-09-26] QUEUED: C6a revision (v2) confirmatory review — down lanes
+Round `c6a-impl-binding-review-20260925` REJECTED 3/4 (codex, antigravity, claude; local pending) on subject `1160f18f`: `consume_launch` malformed-record accept + backward-time accept, source-grep dashboard observability, `task_revision` bool/int. Revision dispatched to Claude Sonnet (the only implementer lane up — local mid-review, Codex quota-limited) -> branch `factory/c6a-impl-v2`. CATCH-UP: local + Codex (on return) run a confirmatory binding review of `factory/c6a-impl-v2` against the three findings (subject sha256 in the branch handback); advisory unless a real defect, then a bounded follow-up. Do NOT gate the revision's fresh cohort round on the down lanes — they contribute in-situ or after return. Substitution recorded per Rule 18 (implementer routed to available lane; binding review stays multi-lane).
+
+---
+## [2026-09-26] BLOCKED (authorization gate, NOT lane-availability): C4 egress-gate implementation
+C4-impl was dispatched and CORRECTLY STOPPED before any code (branch `factory/c4-impl` created, 0 commits, discarded). C4 is enforcement-tier; `C4-DESIGN-AND-AUTHORIZATION.md` frontmatter `implementation_authorization: NONE` + `PREPARED_ONLY`. The [AMEND-C4] amendment (merged as a *proposed doc* via #341, commit 2e733335) is still `status: PREPARED_ONLY — NOT accepted`. The earlier "ACCEPT" verdict for the amendment was produced by an Opus sub-agent but its review file (`CODEX-C4-AMENDMENT-BINDING-REVIEW-20260924.md`) was NEVER committed (untracked only) → NOT an authoritative accepted record. Base C4 design's only committed review = `REQUEST_REVISION`.
+**Required before C4 (and therefore C6b/C6e) can build — cohort + owner:**
+1. [AMEND-C4] gets its own independent binding review with a committed `PASS` (subject-hash bound). Binding acceptance may be Codex (on return) OR a fresh capable flagship OR Gemini/Antigravity OR local — whichever is up + independent; record it as a COMMITTED file per the review-record convention (not untracked).
+2. C4 rev2 (as amended) gets a fresh committed independent `PASS` against its exact bytes.
+3. Owner single-use build activation recorded for that frozen PASS'd revision.
+Only then re-dispatch the C4 egress-broker/epoch-recheck-teardown implementation. Do NOT fabricate a PASS or build dormant around this gate (Root-Cause Discipline / anti-gaming). C6b + C6e depend on C4, so the C6 build stack pauses here pending this chain.

@@ -24,7 +24,7 @@
       rocmGpuTarget = null;
       cpuVendor = "unknown";
       storageType = "ssd";
-      systemRamGb = 4;
+      systemRamGb = 12;
       isMobile = false;
       firmwareType = "efi";
       earlyKmsPolicy = "off";
