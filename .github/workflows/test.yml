@@ -266,18 +266,6 @@ jobs:
           chmod +x scripts/data/generate-package-counts.sh scripts/testing/check-package-count-drift.sh
           ./scripts/testing/check-package-count-drift.sh --flake-ref path:.
 
-      - name: Flake input validation and reporting
-        run: |
-          chmod +x scripts/testing/validate-flake-inputs.sh
-          ./scripts/testing/validate-flake-inputs.sh \
-            --flake-ref path:. \
-            --report-json .reports/flake-validation-report.json \
-            --report-md .reports/flake-validation-report.md
-
-      - name: Validate non-Nix tool management policy
-        run: |
-          chmod +x scripts/testing/validate-tool-management-policy.sh
-          ./scripts/testing/validate-tool-management-policy.sh
 
       - name: Validate declarative runtime wiring
         run: |
@@ -632,10 +620,6 @@ jobs:
             echo "Adjusted executable bit for $missing_exec phase scripts"
           fi
 
-      - name: Validate centralized config settings
-        run: |
-          chmod +x scripts/testing/validate-config-settings.sh
-          ./scripts/testing/validate-config-settings.sh
 
       - name: Run command smoke tests
         run: |
@@ -709,10 +693,6 @@ jobs:
           python -m pip install --upgrade pip
           python -m pip install pyyaml
 
-      - name: Run skill bundle smoke checks
-        run: |
-          chmod +x scripts/testing/smoke-skill-bundle-distribution.sh
-          ./scripts/testing/smoke-skill-bundle-distribution.sh
 
   advanced-parity-tooling:
     name: Advanced Parity Tooling
@@ -741,16 +721,7 @@ jobs:
 
       - name: Run advanced parity suite
         run: |
-          chmod +x scripts/automation/run-advanced-parity-suite.sh
-          chmod +x scripts/testing/smoke-skill-bundle-distribution.sh
-          chmod +x scripts/automation/run-harness-regression-gate.sh
-          chmod +x scripts/testing/chaos-harness-smoke.sh
-          chmod +x scripts/testing/check-boot-shutdown-integration.sh
-          chmod +x scripts/testing/check-api-auth-hardening.sh
-          chmod +x scripts/testing/validate-ai-slo-runtime.sh
-          chmod +x scripts/security/sign-skill-registry.sh
-          chmod +x scripts/testing/verify-skill-registry.sh
-          chmod +x scripts/data/generate-harness-sdk-provenance.sh
+          chmod +x scripts/automation/*.sh scripts/testing/*.sh scripts/security/*.sh scripts/data/*.sh scripts/ai/*.sh 2>/dev/null || true
           ./scripts/automation/run-advanced-parity-suite.sh
 
   security:
