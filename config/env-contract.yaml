@@ -1354,6 +1354,12 @@ variables:
     layer: systemd
     consumers: [revocation-epoch-authority]
     description: "The dedicated launch-socket client group (C6-S mechanism B), declared EMPTY of non-authority principals in this slice — the authority-user is a member only so serve_multi() can chgrp the socket at bind time (never a launch consumer); the TEG joins in C6b. ALA/C2-SCI/owner remain excluded by kernel DAC (they hold only AQ_REVOCATION_EPOCH_CLIENT_GROUP) — this is the enforced boundary that closes rev5 Finding 2."
+  - canonical: AQ_REVOCATION_LAUNCH_TEG_UID
+    aliases: []
+    default: ""
+    layer: systemd
+    consumers: [revocation-epoch-authority]
+    description: "Foundation C C6a — the TEG principal's numeric uid, verified by an op-specific SO_PEERCRED check (uid-only, no gid comparison) on BOTH `authorize_launch`/`consume_launch` launch-socket ops before either is dispatched. A principal-identity reference, NOT a capability flag. EMPTY by default: an unresolved value denies EVERY peer unconditionally — including the aq-revocation-epoch-authority service-user's own uid (the chgrp-role launch-group member) — so the launch op stays unreachable until C6b provisions this value. BINDING forward-condition C6b inherits: the provisioned uid MUST be distinct from the aq-revocation-epoch-authority service-user's own uid, or the self-launch surface this check exists to close reopens."
 
   - canonical: CAPABILITY_ASYMMETRIC_LEASE
     aliases: []

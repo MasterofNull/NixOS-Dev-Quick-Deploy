@@ -1708,6 +1708,10 @@ _check 1 "0.10.5" "model catalog/profile freshness" \
       python3 "${REPO_ROOT}/scripts/testing/test-revocation-epoch.py"
     _check 1 "0.10.52" "revocation launch-socket topology: launch.sock + empty launch group + serve_multi + deny-all stub + control-socket byte-parity (Foundation C C6-S)" \
       python3 "${REPO_ROOT}/scripts/testing/test-revocation-launch-socket-topology.py"
+    _check 1 "0.10.53" "revocation authorize-launch + single-use consume: issue->consume->duplicate-deny->non-TEG-deny->epoch-superseded-deny (Foundation C C6a)" \
+      python3 "${REPO_ROOT}/scripts/testing/test-c6a-authorize-launch-service-coverage.py"
+    _check 1 "0.10.54" "C6c owner epoch-bump submission: signed-submit accept/resubmit-deterministic/bad-key-deny, no host key, no 0700 write, dashboard lever states (Foundation C C6c)" \
+      python3 "${REPO_ROOT}/scripts/testing/test-c6c-owner-submission-service-coverage.py"
   fi
 
   # 0.9.4 Runtime safety contract policy (Phase 39)

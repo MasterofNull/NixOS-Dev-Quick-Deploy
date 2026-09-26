@@ -3513,6 +3513,8 @@ async function loadCapabilityEnforcement() {
   const ala = d.ala || {};
   const sci = d.c2_scheduler_context_issuer || {};
   const rea = d.revocation_epoch_authority || {};
+  const rla = d.revocation_launch_authorization || {};
+  const oebl = d.owner_epoch_bump_lever || {};
 
   // Determine overall status badge
   let overallBadge = "badge-ok";
@@ -3522,6 +3524,8 @@ async function loadCapabilityEnforcement() {
     ala.status === "degraded" ||
     sci.status === "degraded" ||
     rea.status === "degraded" ||
+    rla.status === "degraded" ||
+    oebl.status === "degraded" ||
     c2.status === "unknown" ||
     c5.status === "unknown"
   ) {
@@ -3614,6 +3618,46 @@ async function loadCapabilityEnforcement() {
       "Launch Group TEG-Only",
       rea.launch_group_teg_only === true ? "yes" : (rea.launch_group_teg_only === false ? "no" : "--"),
       rea.launch_group_teg_only === false ? "err" : "ok"
+    ),
+    fwRow(
+      "C6a Launch Op",
+      rla.authorize_launch_op || "--",
+      rla.authorize_launch_op === "op_present" ? "info" : "info"
+    ),
+    fwRow(
+      "C6a Launch Ledger",
+      rla.ledger_durable === true ? "durable" : (rla.ledger_durable === false ? "missing" : "--"),
+      rla.ledger_durable === false ? "warn" : "ok"
+    ),
+    fwRow(
+      "C6a TEG Peer Check",
+      rla.teg_peer_check_enforced === true ? "enforced" : (rla.teg_peer_check_enforced === false ? "absent" : "--"),
+      rla.teg_peer_check_enforced === false ? "err" : "ok"
+    ),
+    fwRow(
+      "C6a Launch Status",
+      rla.status || "--",
+      statusColor(rla.status)
+    ),
+    fwRow(
+      "C6c Owner Bump Lever",
+      oebl.state || "--",
+      oebl.state === "operational" ? "ok" : (oebl.state === "unavailable" ? "err" : "warn")
+    ),
+    fwRow(
+      "C6c Allowlist Revision",
+      oebl.allowlist_revision != null ? String(oebl.allowlist_revision) : "--",
+      "info"
+    ),
+    fwRow(
+      "C6c Active Owner Keys",
+      oebl.active_owner_keys != null ? String(oebl.active_owner_keys) : "--",
+      oebl.active_owner_keys ? "info" : "warn"
+    ),
+    fwRow(
+      "C6c Authority Reachable",
+      oebl.authority_reachable === true ? "yes" : (oebl.authority_reachable === false ? "no" : "--"),
+      oebl.authority_reachable === true ? "ok" : "info"
     ),
   ].join("");
 }
