@@ -657,9 +657,11 @@ async function loadKPIs() {
       hsKpi.textContent = healthVal;
       hsKpi.className = "kpi-v " + (healthVal < 50 ? "err" : healthVal < 80 ? "warn" : "ok");
     }
+    setText("execSwarmHealth", `${healthVal}%`);
   }).catch(() => {
     setText("healthScore", "82");
     setText("kpiHealthScore", "82");
+    setText("execSwarmHealth", "82%");
   });
 
   apiFetch("/metrics").then((metrics) => {
@@ -672,6 +674,7 @@ async function loadKPIs() {
       setText("kpiCacheHit", `${Math.round(cacheHit)}%`);
       setText("kpiEval", `${Math.round(evalPct)}%`);
       setText("kpiHintPct", `${Math.round(hintPct)}%`);
+      setText("execLocalRatio", `${Math.round(localPct)}%`);
       setColor("kpiLocalPct", localPct < 50 ? "warn" : "ok");
       setColor("kpiEval", evalPct < 70 ? "warn" : "ok");
       setColor("kpiCacheHit", cacheHit < 20 ? "warn" : "ok");
@@ -7810,6 +7813,10 @@ async function loadAgentCollabState() {
     }
     if (elPhase) {
       elPhase.textContent = resume.phase ? `phase: ${resume.phase}` : "phase --";
+    }
+    const elExecPhase = document.getElementById("execActivePhase");
+    if (elExecPhase && resume.phase) {
+      elExecPhase.textContent = resume.phase;
     }
     if (elBadge) {
       elBadge.textContent = resume.current_objective ? "active" : "idle";

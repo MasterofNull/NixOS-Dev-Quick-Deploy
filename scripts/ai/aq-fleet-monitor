@@ -1,18 +1,22 @@
 #!/usr/bin/env python3
 """
-aq-fleet-monitor — Real-time sub-agent fleet matrix & live worker stream.
+aq-fleet-monitor — Real-time sub-agent fleet matrix, delegation tree & live worker stream.
 
 Features:
-  • Live active agent tracking across lanes (Local Qwen, Codex, Claude, Gemini)
-  • Real-time thought extraction & Note-to-Self reflection streaming
-  • Active tool calls and progress meters
+  • Live active agent tracking across lanes (Local Qwen, Codex, Claude, Gemini, and custom models)
+  • Parent-to-Subagent Hierarchical Tree view (--tree) showing sub-agents spun off by parent models
+  • Agent-specific filtering (--agent claude, --agent codex, --agent gemini, --agent local)
+  • Real-time tool-call extraction (read_file, replace, run_command, git, grep)
+  • Note-to-Self thought reflection streaming
   • Token usage metrics (tokens in/out) per agent
   • Human intervention command reference (/steer, /pause, /kill, /inspect)
 
 Usage:
-  aq-fleet-monitor              # live continuous refresh
-  aq-fleet-monitor --once       # single snapshot (CI safe)
-  aq-fleet-monitor --interval N # custom refresh interval in seconds
+  aq-fleet-monitor                  # live continuous refresh of all agents
+  aq-fleet-monitor --tree           # hierarchical sub-agent delegation tree
+  aq-fleet-monitor --agent claude   # filter sub-agents spun off by Claude
+  aq-fleet-monitor --once           # single snapshot (CI safe)
+  aq-fleet-monitor --interval N     # custom refresh interval in seconds
 """
 
 import argparse
@@ -28,10 +32,12 @@ from typing import Any, Dict, List, Optional
 from rich.console import Console
 from rich.layout import Layout
 from rich.live import Live
+from rich.markup import escape
 from rich.panel import Panel
 from rich.syntax import Syntax
 from rich.table import Table
 from rich.text import Text
+from rich.tree import Tree
 
 REPO_ROOT = Path(__file__).resolve().parent.parent.parent
 REGISTRY_FILE = REPO_ROOT / ".agents" / "delegation" / "registry.jsonl"
@@ -41,8 +47,8 @@ OUTPUTS_DIR = REPO_ROOT / ".agents" / "delegation" / "outputs"
 console = Console()
 
 
-def parse_registry(limit: int = 8) -> List[Dict[str, Any]]:
-    """Parse recent entries from delegation registry."""
+def parse_registry(limit: int = 12, agent_filter: Optional[str] = None) -> List[Dict[str, Any]]:
+    """Parse recent entries from delegation registry with optional filtering."""
     if not REGISTRY_FILE.is_file():
         return []
     records = []
@@ -54,6 +60,12 @@ def parse_registry(limit: int = 8) -> List[Dict[str, Any]]:
                 continue
             try:
                 data = json.loads(line)
+                agent = data.get("agent", "")
+                desc = data.get("description", "")
+                if agent_filter:
+                    af = agent_filter.lower()
+                    if af not in agent.lower() and af not in desc.lower():
+                        continue
                 records.append(data)
                 if len(records) >= limit:
                     break
@@ -64,9 +76,8 @@ def parse_registry(limit: int = 8) -> List[Dict[str, Any]]:
     return records
 
 
-def get_agent_tail(task_id: str, max_lines: int = 5) -> str:
+def get_agent_tail(task_id: str, max_lines: int = 6) -> str:
     """Read recent stream or output tail for a given task ID."""
-    # Check streams first (live)
     stream_file = STREAMS_DIR / f"{task_id}.stream"
     if stream_file.is_file():
         try:
@@ -76,7 +87,6 @@ def get_agent_tail(task_id: str, max_lines: int = 5) -> str:
         except Exception:
             pass
 
-    # Check outputs file
     output_file = OUTPUTS_DIR / f"{task_id}.log"
     if output_file.is_file():
         try:
@@ -89,12 +99,32 @@ def get_agent_tail(task_id: str, max_lines: int = 5) -> str:
     return "No output logged yet."
 
 
+def extract_last_operation(task_id: str) -> str:
+    """Extract a concise one-line summary of the sub-agent's last operation."""
+    stream_file = STREAMS_DIR / f"{task_id}.stream"
+    output_file = OUTPUTS_DIR / f"{task_id}.log"
+    target = stream_file if stream_file.is_file() else (output_file if output_file.is_file() else None)
+    if not target:
+        return "idle / awaiting dispatch"
+    try:
+        raw_lines = [l.strip() for l in target.read_text(encoding="utf-8", errors="replace").splitlines() if l.strip()]
+        for l in reversed(raw_lines[-10:]):
+            if any(k in l for k in ("read_file", "replace", "write_to_file", "run_command", "git", "grep")):
+                return f"⚡ {l[:70]}"
+            if "<think>" in l or "Thinking:" in l:
+                return f"💭 {l[:70]}"
+        if raw_lines:
+            return raw_lines[-1][:70]
+    except Exception:
+        pass
+    return "idle"
+
+
 def format_age(created_iso: Optional[str]) -> str:
     """Compute human-friendly age from ISO timestamp."""
     if not created_iso:
         return "—"
     try:
-        # Normalize ISO timestamp
         dt_str = created_iso.replace("Z", "+00:00")
         dt = datetime.fromisoformat(dt_str)
         now = datetime.now(timezone.utc)
@@ -109,23 +139,81 @@ def format_age(created_iso: Optional[str]) -> str:
         return "—"
 
 
-def render_fleet_panel() -> Panel:
+def render_tree_panel(agent_filter: Optional[str] = None) -> Panel:
+    """Render a hierarchical sub-agent tree showing parent-to-subagent delegations."""
+    records = parse_registry(limit=16, agent_filter=agent_filter)
+
+    tree = Tree("[bold cyan]󱁤 Sovereign Swarm Orchestrator (Active Session)[/bold cyan]")
+
+    # Group subagents by parent/agent
+    groups: Dict[str, List[Dict[str, Any]]] = {}
+    for r in records:
+        agent = r.get("agent", "unknown")
+        # Identify parent model from task ID or description
+        parent = "Local Inference APU"
+        if "claude" in agent.lower():
+            parent = "Claude 3.7 / Fable-5"
+        elif "codex" in agent.lower():
+            parent = "OpenAI Codex"
+        elif "gemini" in agent.lower():
+            parent = "Google Gemini"
+        elif "local" in agent.lower():
+            parent = "Local Qwen3-35B APU"
+        else:
+            parent = f"Model {agent}"
+
+        groups.setdefault(parent, []).append(r)
+
+    if not groups:
+        tree.add("[dim]No sub-agents currently dispatched. Use /delegate <lane> \"<task>\" to spin off sub-agents.[/dim]")
+    else:
+        for parent_name, subs in groups.items():
+            branch = tree.add(f"[bold magenta]󰚩 Parent: {parent_name}[/bold magenta]")
+            for s in subs:
+                tid = s.get("id", "unknown")
+                role = s.get("role", "subagent")
+                st = s.get("status", "unknown").lower()
+                age = format_age(s.get("created"))
+                last_op = extract_last_operation(tid)
+
+                if st in ("running", "active", "in_flight"):
+                    badge = "[bold green]▶ ACTIVE[/bold green]"
+                elif st == "done":
+                    badge = "[cyan]✓ DONE[/cyan]"
+                elif st in ("failed", "error"):
+                    badge = "[bold red]✗ FAILED[/bold red]"
+                else:
+                    badge = f"[dim]{st}[/dim]"
+
+                sub_node = branch.add(f"[bold yellow]{escape(str(tid))}[/bold yellow] ({escape(str(role))}) {badge} [dim]({escape(str(age))})[/dim]")
+                sub_node.add(f"[dim white]Op: {escape(str(last_op))}[/dim white]")
+
+    title_suffix = f" · Filter: {escape(str(agent_filter))}" if agent_filter else ""
+    return Panel(
+        tree,
+        title=f"[bold #00d9ff]󰚩 Sub-Agent Delegation Hierarchy Tree{title_suffix}[/bold #00d9ff]",
+        border_style="#00d9ff",
+        padding=(1, 2),
+    )
+
+
+def render_fleet_panel(agent_filter: Optional[str] = None) -> Panel:
     """Render the active fleet table and live stream preview."""
-    records = parse_registry(limit=8)
+    records = parse_registry(limit=8, agent_filter=agent_filter)
 
     # 1. Fleet Overview Table
     table = Table(box=None, padding=(0, 1), show_header=True, header_style="bold magenta")
-    table.add_column("Task ID", style="bold cyan", width=18)
+    table.add_column("Sub-Agent ID", style="bold cyan", width=18)
     table.add_column("Lane / Role", width=16)
     table.add_column("Status", width=11)
     table.add_column("Age", justify="right", width=7)
     table.add_column("Tokens", justify="right", width=11)
-    table.add_column("Objective", style="dim white")
+    table.add_column("Current Operation / Goal", style="dim white")
 
     running_task = None
 
     if not records:
-        table.add_row("—", "No active tasks", "[dim]idle[/dim]", "—", "—", "Spawn tasks via /dispatch <role> <prompt>")
+        table.add_row("—", "No active tasks", "[dim]idle[/dim]", "—", "—", "Spin off sub-agents via /delegate <lane> \"<task>\"")
     else:
         for rec in records:
             tid = rec.get("id", "unknown")
@@ -138,12 +226,10 @@ def render_fleet_panel() -> Panel:
             tin = rec.get("tokens_in", 0) or 0
             tout = rec.get("tokens_out", 0) or 0
             tokens_str = f"{tin}+{tout}" if (tin or tout) else "—"
-            
-            desc = rec.get("description", "")
-            # Clean auto-suggested skill suffix for readability
-            clean_desc = desc.split("\n\n[Auto-suggested")[0].replace("\n", " ").strip()
-            if len(clean_desc) > 40:
-                clean_desc = clean_desc[:38] + "…"
+
+            last_op = extract_last_operation(tid)
+            if len(last_op) > 42:
+                last_op = last_op[:40] + "…"
 
             if status in ("running", "in_flight", "active"):
                 status_badge = "[bold green]▶ RUNNING[/bold green]"
@@ -158,7 +244,7 @@ def render_fleet_panel() -> Panel:
             else:
                 status_badge = f"[dim]{status}[/dim]"
 
-            table.add_row(short_id, lane_role, status_badge, age, tokens_str, clean_desc)
+            table.add_row(escape(str(short_id)), escape(str(lane_role)), status_badge, escape(str(age)), escape(str(tokens_str)), escape(str(last_op)))
 
     # 2. Live Agent Stream / Thought Inspector
     stream_text = Text()
@@ -169,48 +255,54 @@ def render_fleet_panel() -> Panel:
         status_label = "LIVE STREAM" if running_task else "LAST LOG"
         stream_text.append(f"[{status_label} · {inspect_id} ({target_name})]\n", style="bold yellow")
         for line in tail.splitlines():
-            # Format thought lines (Note-to-Self)
+            # Format thought lines and tool calls
             if "<think>" in line or "Note-to-Self" in line or line.startswith("Thinking:"):
-                stream_text.append("  💭 " + line[:80] + "\n", style="italic cyan")
-            elif line.startswith("[TOOL]") or "tool_call" in line:
-                stream_text.append("  ⚡ " + line[:80] + "\n", style="bold green")
+                stream_text.append("  💭 " + line[:82] + "\n", style="italic cyan")
+            elif any(k in line for k in ("read_file", "replace", "write_to_file", "run_command", "git", "grep", "[TOOL]", "tool_call")):
+                stream_text.append("  ⚡ " + line[:82] + "\n", style="bold green")
+            elif any(k in line for k in ("error", "failed", "warning")):
+                stream_text.append("  ✗ " + line[:82] + "\n", style="bold red")
             else:
-                stream_text.append("  " + line[:80] + "\n", style="dim white")
+                stream_text.append("  " + line[:82] + "\n", style="dim white")
     else:
-        stream_text.append("[dim]Waiting for agent dispatch... Use /dispatch to run a task.[/dim]")
+        stream_text.append("[dim]Waiting for sub-agent dispatch... Type /delegate <lane> \"<task>\" to spawn.[/dim]")
 
     # Grid layout
     grid = Table.grid(padding=0)
-    grid.add_row(Panel(table, title="[bold]Delegated Fleet Status[/bold]", border_style="magenta", padding=(0, 0)))
-    grid.add_row(Panel(stream_text, title="[bold]Live Output / Note-to-Self Stream[/bold]", border_style="cyan", padding=(0, 1)))
+    filter_label = f" ({agent_filter})" if agent_filter else ""
+    grid.add_row(Panel(table, title=f"[bold]Delegated Sub-Agent Fleet{filter_label}[/bold]", border_style="magenta", padding=(0, 0)))
+    grid.add_row(Panel(stream_text, title="[bold]Live Output & Operation Stream[/bold]", border_style="cyan", padding=(0, 1)))
 
-    # Footer with intervention controls
     footer = Text("Interventions: /steer <id> \"msg\" · /pause <id> · /resume <id> · /kill <id> · /inspect <id>", style="dim cyan")
     grid.add_row(footer)
 
     return Panel(
         grid,
-        title="[bold #ff00ff]󰚩 Sub-Agent Fleet Matrix[/bold #ff00ff]",
+        title=f"[bold #ff00ff]󰚩 Sub-Agent Fleet Matrix{filter_label}[/bold #ff00ff]",
         border_style="#ff00ff",
         padding=(0, 1),
     )
 
 
 def main():
-    parser = argparse.ArgumentParser(description="AQ-OS Fleet Matrix Monitor")
+    parser = argparse.ArgumentParser(description="AQ-OS Sub-Agent Fleet Matrix & Operations Monitor")
+    parser.add_argument("--agent", help="Filter for sub-agents spun off by specific parent agent (claude, codex, gemini, local)")
+    parser.add_argument("--tree", action="store_true", help="Render hierarchical parent-to-subagent tree")
     parser.add_argument("--once", action="store_true", help="Render a single frame and exit")
     parser.add_argument("--interval", type=float, default=2.0, help="Refresh interval in seconds (default: 2.0)")
     args = parser.parse_args()
 
+    render_func = (lambda: render_tree_panel(args.agent)) if args.tree else (lambda: render_fleet_panel(args.agent))
+
     if args.once or not sys.stdout.isatty():
-        console.print(render_fleet_panel())
+        console.print(render_func())
         return
 
-    with Live(render_fleet_panel(), refresh_per_second=2, console=console) as live:
+    with Live(render_func(), refresh_per_second=2, console=console) as live:
         try:
             while True:
                 time.sleep(args.interval)
-                live.update(render_fleet_panel())
+                live.update(render_func())
         except KeyboardInterrupt:
             pass
 

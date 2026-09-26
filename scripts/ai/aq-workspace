@@ -1,15 +1,19 @@
 #!/usr/bin/env bash
 # aq-workspace — SOTA Multi-Tiled Agentic Workspace Launcher
 #
-# Launches the IndyDevDan / Pi Agent / Herdr inspired multi-tiled workspace:
-#   • Left:   Interactive Agentic Coordinator & Steering Console (aq-coordinator-repl)
-#   • Top-R:  Sub-Agent Fleet Matrix & Live Thought Stream (aq-fleet-monitor)
-#   • Btm-R:  System Telemetry & Health Cockpit (aq-cockpit-monitor)
+# Launches the SOTA multi-window agentic workspace:
+#   • Dual-Board Floating Panes automatically aligned:
+#       - Left Board:   Main Agents (Coordinator, Claude, Codex, Gemini, Local Qwen, or Any Model)
+#       - Right Board:  Sub-Agents (Delegation Hierarchy Tree & Live Operations Stream)
+#   • Dedicated model tabs for all models + custom model launcher
+#   • Real-time sub-agent tracking and tool-call operation streaming
 #
 # Usage:
-#   aq-workspace                    # launch or attach to tiled workspace for current dir
-#   aq-workspace --tui              # single-window Rich TUI fallback (no multiplexer)
+#   aq-workspace                    # launch or attach to floating/tiled workspace for current dir
+#   aq-workspace agent <model>      # open dedicated window for any model (claude, codex, gemini, local, deepseek, etc.)
+#   aq-workspace subagents          # live hierarchical sub-agent delegation tree & operations
 #   aq-workspace repl               # launch Coordinator REPL directly
+#   aq-workspace fleet              # live sub-agent fleet matrix
 #   aq-workspace status             # print live telemetry cockpit snapshot
 #   aq-workspace list               # list active agentic sessions
 #   aq-workspace kill [session]     # terminate workspace session
@@ -34,21 +38,35 @@ show_help() {
 AQ-OS SOTA Agentic Workspace
 
 Usage:
-  aq-workspace                    Start or attach to tiled workspace for current directory
-  aq-workspace [session-name]     Start or attach with custom session name
-  aq-workspace --tui              Run single-window Rich TUI layout (no multiplexer)
+  aq-workspace                    Start or attach to floating/tiled workspace for current directory
+  aq-workspace agent <model>      Open dedicated window for ANY model (claude, codex, gemini, local, deepseek, etc.)
+  aq-workspace subagents          Live hierarchical sub-agent delegation tree & operations
+  aq-workspace tree               View sub-agent delegation tree (--tree)
   aq-workspace repl               Open Coordinator & Steering REPL directly
+  aq-workspace fleet              Open Sub-Agent Fleet Matrix monitor
   aq-workspace status             Show live AI stack & telemetry status
   aq-workspace list               List all active agentic workspace sessions
   aq-workspace kill [session]     Terminate workspace session
+  aq-workspace --tui              Run single-window Rich TUI layout (no multiplexer)
   aq-workspace --help             Show this help guide
 
-Navigation in Tiled Workspace (Zellij):
-  Alt + h/j/k/l or Arrows         Move focus between panes
-  Alt + n                         Next tab (Workspace -> Fleet Matrix -> Operations -> Shell)
+Floating Panes Navigation (Zellij):
+  Ctrl + p + w                    Toggle floating panes visibility on/off
+  Ctrl + p + e                    Toggle pane embed / float mode
+  Alt + h/j/k/l or Arrows         Move focus between panes (Left Main Agent <-> Right Sub-Agents)
+  Alt + n                         Next tab (Swarm Board -> Claude -> Codex -> Gemini -> Local -> Any Model)
   Alt + p                         Previous tab
   Alt + f                         Toggle fullscreen on active pane
   Ctrl + q                        Detach safely from workspace session (leaves agents running!)
+
+Supported Models in Windows:
+  local                           Qwen3-35B on Local APU (:8080 / :8003)
+  claude                          Claude 3.7 / Fable-5 (Switchboard :8085)
+  codex                           OpenAI Codex / GPT-6 Astra (Coordinator :8003)
+  gemini                          Google Gemini 3.8-Flash (Switchboard :8085)
+  deepseek                        DeepSeek V3 / R1 (Switchboard :8085)
+  mistral                         Mistral Large / Codestral
+  <any-model-name>                Any arbitrary model or switchboard profile!
 
 EOF
 }
@@ -67,6 +85,13 @@ case "${1:-}" in
     ;;
   fleet)
     exec python3 "${SCRIPT_DIR}/aq-fleet-monitor" "${@:2}"
+    ;;
+  subagents|tree)
+    exec python3 "${SCRIPT_DIR}/aq-fleet-monitor" --tree "${@:2}"
+    ;;
+  agent|window)
+    MODEL="${2:-local}"
+    exec python3 "${SCRIPT_DIR}/aq-agent-window" --lane "$MODEL" "${@:3}"
     ;;
   list)
     if command -v zellij >/dev/null 2>&1; then
@@ -117,4 +142,6 @@ if [[ ! -t 0 || ! -t 1 ]]; then
 fi
 
 echo "Launching SOTA Agentic Workspace [$SESSION_NAME] in $PWD..."
+echo "  • Left Board:  Main Agents"
+echo "  • Right Board: Sub-Agents & Delegations"
 exec zellij --layout "$LAYOUT_FILE" attach --create "$SESSION_NAME"

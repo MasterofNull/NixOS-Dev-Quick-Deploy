@@ -1,0 +1,336 @@
+#!/usr/bin/env python3
+"""
+aq-subagent-interactive — Interactive Sub-Agent Console & Steering Terminal.
+
+Features:
+  • Live inspection of active and recent sub-agents across the swarm
+  • Real-time operation stream (tool calls, thoughts, file writes, terminal output)
+  • Direct human-in-the-loop steering (/steer, message injection via control channel)
+  • Sub-agent cancellation (/cancel, /kill)
+  • Sub-agent spawning (/spawn <lane> "<task>")
+  • Quick task switching (/select <id_or_number>)
+
+Usage:
+  aq-subagent-interactive               # interactive steering REPL
+  aq-subagent-interactive --select <id> # attach to specific sub-agent
+  aq-subagent-interactive --once        # print current sub-agent snapshot and exit
+"""
+
+import argparse
+import asyncio
+import json
+import os
+import re
+import subprocess
+import sys
+import time
+from datetime import datetime, timezone
+from pathlib import Path
+from typing import Any, Dict, List, Optional, Tuple
+
+from prompt_toolkit import PromptSession, HTML
+from prompt_toolkit.completion import WordCompleter
+from prompt_toolkit.history import FileHistory
+from prompt_toolkit.styles import Style
+from rich.console import Console
+from rich.markup import escape
+from rich.panel import Panel
+from rich.syntax import Syntax
+from rich.table import Table
+from rich.text import Text
+
+REPO_ROOT = Path(__file__).resolve().parent.parent.parent
+REGISTRY_FILE = REPO_ROOT / ".agents" / "delegation" / "registry.jsonl"
+STREAMS_DIR = REPO_ROOT / ".agents" / "delegation" / "streams"
+OUTPUTS_DIR = REPO_ROOT / ".agents" / "delegation" / "outputs"
+SEND_SCRIPT = REPO_ROOT / "scripts" / "ai" / "aq-agent-send"
+
+console = Console()
+
+
+def get_subagent_tasks(limit: int = 15) -> List[Dict[str, Any]]:
+    """Fetch recent sub-agent tasks from registry."""
+    if not REGISTRY_FILE.is_file():
+        return []
+    records = []
+    try:
+        lines = REGISTRY_FILE.read_text(encoding="utf-8", errors="replace").splitlines()
+        for line in reversed(lines):
+            line = line.strip()
+            if not line:
+                continue
+            try:
+                rec = json.loads(line)
+                records.append(rec)
+                if len(records) >= limit:
+                    break
+            except json.JSONDecodeError:
+                continue
+    except Exception:
+        pass
+    return records
+
+
+def get_stream_lines(task_id: str, max_lines: int = 8) -> List[str]:
+    """Read recent operation lines from subagent stream or log."""
+    stream_file = STREAMS_DIR / f"{task_id}.stream"
+    output_file = OUTPUTS_DIR / f"{task_id}.log"
+    target = stream_file if stream_file.is_file() else (output_file if output_file.is_file() else None)
+    if not target:
+        return ["[dim]No output recorded yet.[/dim]"]
+
+    lines_out = []
+    try:
+        raw = [l.strip() for l in target.read_text(encoding="utf-8", errors="replace").splitlines() if l.strip()]
+        for l in raw[-20:]:
+            if any(k in l for k in ("read_file", "replace", "write_to_file", "run_command", "git", "grep", "[TOOL]", "tool_call")):
+                lines_out.append(f"[bold green]⚡ [TOOL OPERATION][/bold green] {escape(l[:90])}")
+            elif any(k in l for k in ("<think>", "Thinking:", "Note-to-Self", "plan:")):
+                lines_out.append(f"[italic cyan]💭 [THOUGHT][/italic cyan] {escape(l[:90])}")
+            elif any(k in l for k in ("error", "failed", "exception", "traceback")):
+                lines_out.append(f"[bold red]✗ [ALERT][/bold red] {escape(l[:90])}")
+            elif any(k in l for k in ("passed", "success", "completed", "accepted")):
+                lines_out.append(f"[bold #39ff14]✓ [STATUS][/bold #39ff14] {escape(l[:90])}")
+            else:
+                lines_out.append(f"[dim]{escape(l[:90])}[/dim]")
+    except Exception:
+        return ["[dim]Error reading stream.[/dim]"]
+
+    return lines_out[-max_lines:] if lines_out else ["[dim]Awaiting telemetry from sub-agent...[/dim]"]
+
+
+class InteractiveSubagentConsole:
+    def __init__(self, target_id: Optional[str] = None):
+        self.target_id = target_id
+        self.history_file = Path.home() / ".aq_subagent_interactive_history"
+
+    def resolve_target(self) -> Optional[Dict[str, Any]]:
+        """Find the selected or latest active sub-agent."""
+        tasks = get_subagent_tasks(limit=12)
+        if not tasks:
+            return None
+
+        if self.target_id:
+            for t in tasks:
+                if t.get("id") == self.target_id or t.get("id", "").startswith(self.target_id):
+                    return t
+
+        # Default to first running task, or most recent task
+        running = next((t for t in tasks if t.get("status", "").lower() in ("running", "active", "in_flight")), None)
+        return running or tasks[0]
+
+    def render_header(self, current_task: Optional[Dict[str, Any]]):
+        """Render the sub-agent control header."""
+        tasks = get_subagent_tasks(limit=6)
+
+        # 1. Quick Task Switcher Table
+        table = Table(box=None, padding=(0, 1), show_header=True, header_style="bold magenta")
+        table.add_column("#", style="bold yellow", width=3)
+        table.add_column("Sub-Agent ID", style="bold cyan", width=19)
+        table.add_column("Lane / Role", width=15)
+        table.add_column("Status", width=12)
+        table.add_column("Objective", style="dim white")
+
+        for idx, t in enumerate(tasks, 1):
+            tid = t.get("id", "unknown")
+            short_id = tid if len(tid) <= 19 else tid[:18] + "…"
+            st = t.get("status", "unknown").lower()
+            role = f"{t.get('agent', '')}/{t.get('role', 'subagent')}"
+            desc = t.get("description", "").split("\n")[0].strip()
+            if len(desc) > 38:
+                desc = desc[:36] + "…"
+
+            is_sel = current_task and current_task.get("id") == tid
+            prefix = "[bold green]▶[/bold green] " if is_sel else "  "
+
+            if st in ("running", "active", "in_flight"):
+                st_b = "[bold green]RUNNING[/bold green]"
+            elif st == "done":
+                st_b = "[cyan]DONE[/cyan]"
+            elif st in ("failed", "error"):
+                st_b = "[bold red]FAILED[/bold red]"
+            else:
+                st_b = f"[dim]{st}[/dim]"
+
+            table.add_row(f"{prefix}{idx}", escape(short_id), escape(role), st_b, escape(desc))
+
+        console.print(Panel(table, title="[bold #00d9ff]󰚩 Active Sub-Agents in Swarm[/bold #00d9ff]", border_style="#00d9ff"))
+
+        # 2. Selected Sub-Agent Detail & Operations Stream
+        if current_task:
+            tid = current_task.get("id", "unknown")
+            st = current_task.get("status", "unknown")
+            role = f"{current_task.get('agent', '')}/{current_task.get('role', 'subagent')}"
+            desc = current_task.get("description", "").strip()
+
+            meta_text = (
+                f"[bold cyan]Selected Sub-Agent:[/bold cyan] [bold yellow]{escape(tid)}[/bold yellow] · "
+                f"[bold magenta]{escape(role)}[/bold magenta] · [bold green]{escape(st)}[/bold green]\n"
+                f"[dim]Goal: {escape(desc[:120])}[/dim]\n\n"
+                f"[bold]Live Operations Stream:[/bold]\n"
+            )
+            ops_lines = get_stream_lines(tid, max_lines=6)
+            ops_text = Text.from_markup(meta_text + "\n".join(ops_lines))
+            console.print(Panel(ops_text, title=f"[bold #ff79c6]Interacting with Sub-Agent: {escape(tid)}[/bold #ff79c6]", border_style="#ff79c6"))
+        else:
+            console.print(Panel("[dim]No sub-agents currently registered. Spawn one using /spawn <lane> \"<task>\".[/dim]", border_style="cyan"))
+
+        console.print(
+            "[dim]Commands: [bold cyan]<message>[/bold cyan] (inject steering instruction) · "
+            "[bold cyan]/select <#>[/bold cyan] · [bold cyan]/cancel[/bold cyan] · "
+            "[bold cyan]/spawn <lane> \"<task>\"[/bold cyan] · [bold cyan]/refresh[/bold cyan] · /clear[/dim]"
+        )
+
+    def send_steering(self, task_id: str, message: str, cancel: bool = False):
+        """Send message or cancellation to sub-agent."""
+        if not SEND_SCRIPT.is_file():
+            console.print(f"[red]Error: {SEND_SCRIPT} not found.[/red]")
+            return
+
+        cmd = [str(SEND_SCRIPT), task_id, message]
+        if cancel:
+            cmd.append("--cancel")
+
+        try:
+            res = subprocess.run(cmd, capture_output=True, text=True, check=False)
+            if res.returncode == 0:
+                action = "Cancellation" if cancel else "Steering injection"
+                console.print(f"[bold green]✓ {action} sent to {task_id}:[/bold green] {message}")
+            else:
+                console.print(f"[bold red]✗ Failed to send steering: {res.stderr.strip() or res.stdout.strip()}[/bold red]")
+        except Exception as e:
+            console.print(f"[red]Error: {e}[/red]")
+
+    def spawn_subagent(self, lane: str, prompt: str):
+        """Spawn a new sub-agent."""
+        scripts = {
+            "local": REPO_ROOT / "scripts" / "ai" / "delegate-to-local",
+            "claude": REPO_ROOT / "scripts" / "ai" / "delegate-to-claude",
+            "codex": REPO_ROOT / "scripts" / "ai" / "delegate-to-codex",
+            "gemini": REPO_ROOT / "scripts" / "ai" / "delegate-to-antigravity",
+        }
+        script = scripts.get(lane.lower(), scripts["local"])
+        if not script.is_file():
+            console.print(f"[red]Error: Script not found: {script}[/red]")
+            return
+
+        cmd = [str(script), "--role", "subagent", "--prompt", prompt]
+        console.print(f"[bold cyan]⚡ Spawning new sub-agent ({lane})...[/bold cyan]")
+        try:
+            proc = subprocess.Popen(cmd, stdout=subprocess.PIPE, stderr=subprocess.PIPE, text=True)
+            console.print(f"[bold green]✓ Launched sub-agent (PID {proc.pid}).[/bold green]")
+        except Exception as e:
+            console.print(f"[bold red]Failed to launch: {e}[/bold red]")
+
+    async def run(self):
+        completer = WordCompleter([
+            "/select", "/steer", "/cancel", "/kill", "/spawn", "/refresh",
+            "/clear", "/help", "/exit", "local", "claude", "codex", "gemini"
+        ], ignore_case=True)
+
+        pt_style = Style.from_dict({
+            "prompt": "#ff79c6 bold",
+        })
+        pt_session = PromptSession(
+            history=FileHistory(str(self.history_file)),
+            style=pt_style,
+            completer=completer,
+        )
+
+        current_task = self.resolve_target()
+        self.render_header(current_task)
+
+        while True:
+            current_task = self.resolve_target()
+            tid_short = current_task.get("id", "none")[:12] if current_task else "idle"
+
+            try:
+                prompt_html = HTML(f"<prompt>subagent:{tid_short}</prompt> ❯ ")
+                user_input = await pt_session.prompt_async(prompt_html)
+                text = user_input.strip()
+            except (KeyboardInterrupt, EOFError):
+                break
+
+            if not text:
+                continue
+
+            if text in ("/clear", "clear"):
+                os.system("clear")
+                self.render_header(current_task)
+                continue
+            if text in ("/refresh", "refresh", "/r"):
+                current_task = self.resolve_target()
+                os.system("clear")
+                self.render_header(current_task)
+                continue
+            if text in ("/exit", "/quit", "quit"):
+                break
+            if text in ("/help", "help"):
+                console.print(
+                    "[bold cyan]Sub-Agent Interactive Commands:[/bold cyan]\n"
+                    "  [bold]<message>[/bold]                 — Inject steering message directly into active sub-agent\n"
+                    "  [bold]/select <# or ID>[/bold]         — Switch active sub-agent by list number or task ID\n"
+                    "  [bold]/cancel, /kill[/bold]            — Send cancellation signal to active sub-agent\n"
+                    "  [bold]/spawn <lane> \"<task>\"[/bold]   — Launch a new sub-agent\n"
+                    "  [bold]/refresh[/bold]                  — Refresh operation stream and status\n"
+                    "  [bold]/clear[/bold]                    — Clear terminal screen\n"
+                )
+                continue
+
+            if text.startswith("/select "):
+                parts = text.split(maxsplit=1)
+                if len(parts) > 1:
+                    arg = parts[1].strip()
+                    tasks = get_subagent_tasks(limit=15)
+                    if arg.isdigit() and 1 <= int(arg) <= len(tasks):
+                        self.target_id = tasks[int(arg) - 1].get("id")
+                    else:
+                        self.target_id = arg
+                    current_task = self.resolve_target()
+                    os.system("clear")
+                    self.render_header(current_task)
+                continue
+
+            if text in ("/cancel", "/kill", "cancel", "kill"):
+                if current_task:
+                    self.send_steering(current_task.get("id", ""), "Operator requested cancellation", cancel=True)
+                else:
+                    console.print("[yellow]No active sub-agent selected.[/yellow]")
+                continue
+
+            if text.startswith("/spawn "):
+                parts = text.split(maxsplit=2)
+                if len(parts) >= 3:
+                    self.spawn_subagent(parts[1], parts[2].strip(' "\''))
+                else:
+                    console.print("[yellow]Usage: /spawn <lane> \"<prompt>\"[/yellow]")
+                continue
+
+            # Direct message -> inject as steering instruction
+            if current_task:
+                clean_msg = text.removeprefix("/steer ").strip()
+                self.send_steering(current_task.get("id", ""), clean_msg, cancel=False)
+            else:
+                console.print("[yellow]No active sub-agent to steer. Use /spawn <lane> \"<task>\" first.[/yellow]")
+
+
+def main():
+    parser = argparse.ArgumentParser(description="AQ-OS Interactive Sub-Agent Console")
+    parser.add_argument("--select", help="Attach to specific sub-agent ID")
+    parser.add_argument("--once", action="store_true", help="Render single frame and exit")
+    args = parser.parse_args()
+
+    app = InteractiveSubagentConsole(target_id=args.select)
+
+    if args.once or not sys.stdout.isatty():
+        app.render_header(app.resolve_target())
+        return
+
+    try:
+        asyncio.run(app.run())
+    except KeyboardInterrupt:
+        pass
+
+
+if __name__ == "__main__":
+    main()
