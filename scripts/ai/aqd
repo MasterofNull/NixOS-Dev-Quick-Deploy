@@ -1652,7 +1652,7 @@ cmd_parity_chaos_smoke() {
 }
 
 cmd_parity_cross_client_smoke() {
-  "${REPO_ROOT}/scripts/testing/smoke-cross-client-compat.sh"
+  echo "smoke-cross-client-compat has been deprecated and archived."
 }
 
 cmd_mcp_scaffold() {
