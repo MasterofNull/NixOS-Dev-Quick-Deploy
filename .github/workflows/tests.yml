@@ -53,12 +53,15 @@ jobs:
       - name: Install validation dependencies
         run: |
           python -m pip install --upgrade pip
-          pip install pyyaml jsonschema pydantic httpx aiohttp requests
+          pip install pyyaml jsonschema pydantic httpx aiohttp requests pytest fastapi
+      - name: Set up telemetry directory
+        run: |
+          sudo mkdir -p /var/lib/ai-stack/hybrid/telemetry
+          sudo chown -R $(id -u):$(id -g) /var/lib/ai-stack
+          chmod 700 /var/lib/ai-stack/hybrid/telemetry
       - name: Make harness scripts executable
         run: |
-          chmod +x scripts/testing/harness-runner.sh
-          chmod +x scripts/governance/repo-structure-lint.sh
-          chmod +x scripts/governance/tier0-validation-gate.sh
+          chmod +x scripts/testing/*.sh scripts/governance/*.sh scripts/automation/*.sh scripts/ai/*.sh 2>/dev/null || true
       - name: Validate eval pack schema (PAR-002)
         run: |
           scripts/testing/harness-runner.sh --offline --skip-parity
