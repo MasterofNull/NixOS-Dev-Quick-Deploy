@@ -1,5 +1,7 @@
 // AQ-OS SOTA Agentic Workspace Layout for Zellij
-// Multi-tiled layout integrating Coordinator REPL, Sub-agent Fleet Matrix, and Telemetry Cockpit.
+// Dual-Board Swarm Layout:
+//   • LEFT BOARD:   ALL Main Models Open & Interactive (Local Qwen, Claude, Codex, Gemini)
+//   • RIGHT BOARD:  Interactive Sub-Agents (Delegation Tree & Live Steering Console)
 
 layout {
     default_tab_template {
@@ -12,85 +14,179 @@ layout {
         }
     }
 
-    tab name="Agentic Workspace" focus=true {
+    tab name="Swarm & Sub-Agents" focus=true {
         pane split_direction="vertical" {
-            pane size="58%" name="Coordinator Console" focus=true {
+            // LEFT BOARD: ALL MAIN AGENTS (LOCAL + REMOTE) READY TO INTERACT
+            pane split_direction="horizontal" size="52%" {
+                pane split_direction="vertical" size="50%" {
+                    pane name="󰚩 Local Qwen3-35B (Local APU :8080)" focus=true {
+                        command "aq-agent-window"
+                        args "--lane" "local"
+                    }
+                    pane name="󰚩 Claude 3.7 / Fable-5 (Anthropic :8085)" {
+                        command "aq-agent-window"
+                        args "--lane" "claude"
+                    }
+                }
+                pane split_direction="vertical" size="50%" {
+                    pane name="󰚩 OpenAI Codex / GPT-6 Astra (OpenAI :8003)" {
+                        command "aq-agent-window"
+                        args "--lane" "codex"
+                    }
+                    pane name="󰚩 Google Gemini 3.8-Flash (Google :8085)" {
+                        command "aq-agent-window"
+                        args "--lane" "gemini"
+                    }
+                }
+            }
+            // RIGHT BOARD: INTERACTIVE SUB-AGENTS & DELEGATIONS
+            pane split_direction="horizontal" size="48%" {
+                pane size="40%" name="󰚩 Sub-Agent Delegation Hierarchy Tree" {
+                    command "aq-fleet-monitor"
+                    args "--tree"
+                }
+                pane size="60%" name="󰚩 Interactive Sub-Agent Console & Steering" {
+                    command "aq-subagent-interactive"
+                }
+            }
+        }
+    }
+
+    tab name="Floating Swarm Board" {
+        pane size="100%" borderless=true name="Background Canvas" {
+            command "aq-cockpit-monitor"
+        }
+        floating_panes {
+            // LEFT BOARD: Main Models 2x2
+            pane x="1%" y="3%" width="24%" height="45%" name="󰚩 Local Qwen3-35B (APU)" focus=true {
+                command "aq-agent-window"
+                args "--lane" "local"
+            }
+            pane x="25%" y="3%" width="24%" height="45%" name="󰚩 Claude 3.7 / Fable-5" {
+                command "aq-agent-window"
+                args "--lane" "claude"
+            }
+            pane x="1%" y="49%" width="24%" height="47%" name="󰚩 OpenAI Codex / GPT-6 Astra" {
+                command "aq-agent-window"
+                args "--lane" "codex"
+            }
+            pane x="25%" y="49%" width="24%" height="47%" name="󰚩 Google Gemini 3.8-Flash" {
+                command "aq-agent-window"
+                args "--lane" "gemini"
+            }
+            // RIGHT BOARD: Sub-Agents Tree & Interactive Console
+            pane x="50%" y="3%" width="49%" height="40%" name="󰚩 Sub-Agent Delegation Hierarchy Tree" {
+                command "aq-fleet-monitor"
+                args "--tree"
+            }
+            pane x="50%" y="44%" width="49%" height="52%" name="󰚩 Interactive Sub-Agent Console & Steering" {
+                command "aq-subagent-interactive"
+            }
+        }
+    }
+
+    tab name="Coordinator Console" {
+        pane split_direction="vertical" {
+            pane size="58%" name="Central Steering Console" focus=true {
                 command "aq-coordinator-repl"
             }
             pane split_direction="horizontal" size="42%" {
-                pane size="52%" name="Sub-Agent Fleet Matrix" {
+                pane size="50%" name="Sub-Agent Fleet Matrix" {
                     command "aq-fleet-monitor"
                 }
-                pane size="48%" name="Telemetry Cockpit" {
+                pane size="50%" name="Telemetry Cockpit" {
                     command "aq-cockpit-monitor"
                 }
             }
         }
     }
 
-    tab name="Multi-Agent Studio" {
-        pane split_direction="horizontal" {
-            pane split_direction="vertical" size="50%" {
-                pane name="Local Qwen3-35B (APU :8080)" {
-                    command "aq-agent-window"
-                    args "--lane" "local"
-                }
-                pane name="Claude 3.7 / Fable-5 (Switchboard :8085)" {
-                    command "aq-agent-window"
-                    args "--lane" "claude"
-                }
+    tab name="Claude & Sub-Agents" {
+        pane split_direction="vertical" {
+            pane size="55%" name="󰚩 Claude 3.7 / Fable-5 Console (Left Board)" focus=true {
+                command "aq-agent-window"
+                args "--lane" "claude"
             }
-            pane split_direction="vertical" size="50%" {
-                pane name="OpenAI Codex / GPT-4o (Coordinator :8003)" {
-                    command "aq-agent-window"
-                    args "--lane" "codex"
+            pane split_direction="horizontal" size="45%" {
+                pane size="40%" name="󰚩 Claude Sub-Agent Delegation Tree (Right Board)" {
+                    command "aq-fleet-monitor"
+                    args "--tree" "--agent" "claude"
                 }
-                pane name="Google Gemini 2.5 (Switchboard :8085)" {
-                    command "aq-agent-window"
-                    args "--lane" "gemini"
+                pane size="60%" name="󰚩 Interactive Claude Sub-Agent Console" {
+                    command "aq-subagent-interactive"
                 }
             }
         }
     }
 
-    tab name="Local Qwen" {
-        pane name="Local Qwen3-35B APU Console" {
-            command "aq-agent-window"
-            args "--lane" "local"
+    tab name="Codex & Sub-Agents" {
+        pane split_direction="vertical" {
+            pane size="55%" name="󰚩 OpenAI Codex / GPT-6 Astra Console (Left Board)" focus=true {
+                command "aq-agent-window"
+                args "--lane" "codex"
+            }
+            pane split_direction="horizontal" size="45%" {
+                pane size="40%" name="󰚩 Codex Sub-Agent Delegation Tree (Right Board)" {
+                    command "aq-fleet-monitor"
+                    args "--tree" "--agent" "codex"
+                }
+                pane size="60%" name="󰚩 Interactive Codex Sub-Agent Console" {
+                    command "aq-subagent-interactive"
+                }
+            }
         }
     }
 
-    tab name="Claude" {
-        pane name="Claude 3.7 / Fable-5 Console" {
-            command "aq-agent-window"
-            args "--lane" "claude"
+    tab name="Gemini & Sub-Agents" {
+        pane split_direction="vertical" {
+            pane size="55%" name="󰚩 Google Gemini 3.8-Flash Console (Left Board)" focus=true {
+                command "aq-agent-window"
+                args "--lane" "gemini"
+            }
+            pane split_direction="horizontal" size="45%" {
+                pane size="40%" name="󰚩 Gemini Sub-Agent Delegation Tree (Right Board)" {
+                    command "aq-fleet-monitor"
+                    args "--tree" "--agent" "gemini"
+                }
+                pane size="60%" name="󰚩 Interactive Gemini Sub-Agent Console" {
+                    command "aq-subagent-interactive"
+                }
+            }
         }
     }
 
-    tab name="Codex" {
-        pane name="OpenAI Codex Console" {
-            command "aq-agent-window"
-            args "--lane" "codex"
+    tab name="Local Qwen & Sub-Agents" {
+        pane split_direction="vertical" {
+            pane size="55%" name="󰚩 Local Qwen3-35B APU Console (Left Board)" focus=true {
+                command "aq-agent-window"
+                args "--lane" "local"
+            }
+            pane split_direction="horizontal" size="45%" {
+                pane size="40%" name="󰚩 Local Sub-Agent Delegation Tree (Right Board)" {
+                    command "aq-fleet-monitor"
+                    args "--tree" "--agent" "local"
+                }
+                pane size="60%" name="󰚩 Interactive Local Sub-Agent Console" {
+                    command "aq-subagent-interactive"
+                }
+            }
         }
     }
 
-    tab name="Gemini" {
-        pane name="Google Gemini 2.5 Console" {
-            command "aq-agent-window"
-            args "--lane" "gemini"
-        }
-    }
-
-    tab name="Fleet Matrix" {
-        pane name="Agent Matrix & Live Streams" {
-            command "aq-tui-dashboard"
-            args "--matrix"
-        }
-    }
-
-    tab name="Operations & Mesh" {
-        pane name="Detailed System Operations" {
-            command "aq-tui-dashboard"
+    tab name="Any Model (Dynamic)" {
+        pane split_direction="vertical" {
+            pane size="55%" name="󰚩 Any Model Interactive Console (Left Board)" focus=true {
+                command "aq-agent-window"
+            }
+            pane split_direction="horizontal" size="45%" {
+                pane size="40%" name="󰚩 Sub-Agent Delegation Tree (Right Board)" {
+                    command "aq-fleet-monitor"
+                    args "--tree"
+                }
+                pane size="60%" name="󰚩 Interactive Sub-Agent Console" {
+                    command "aq-subagent-interactive"
+                }
+            }
         }
     }
 
@@ -98,4 +194,3 @@ layout {
         pane name="Local Development Shell"
     }
 }
-

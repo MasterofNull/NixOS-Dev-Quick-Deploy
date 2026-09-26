@@ -1,12 +1,13 @@
 #!/usr/bin/env python3
 """
-unified_workspace_tui — Single-window Rich fallback TUI for aq-workspace.
+unified_workspace_tui — Dual-Board TUI fallback for aq-workspace.
 
-Renders the multi-pane agentic workspace in a single terminal window:
+Renders the automatically aligned dual-board agentic workspace in a terminal:
   ┌──────────────────────────────┬──────────────────────────────┐
-  │ 󰚩 Coordinator / Steering      │ 󰓅 Sub-Agent Fleet Matrix     │
-  │                              ├──────────────────────────────┤
-  │                              │ 󰒋 Telemetry Cockpit          │
+  │ 󰚩 LEFT BOARD: MAIN AGENTS    │ 󰚩 RIGHT BOARD: SUB-AGENTS   │
+  │ • Coordinator / Active Model │ • Sub-Agent Delegation Tree  │
+  │ • Interactive Steering       ├──────────────────────────────┤
+  │                              │ • Sub-Agent Live Operations  │
   └──────────────────────────────┴──────────────────────────────┘
 """
 
@@ -36,47 +37,51 @@ fleet_mod = _load_script_module(REPO_ROOT / "scripts" / "ai" / "aq-fleet-monitor
 
 render_cockpit = cockpit_mod.render_cockpit
 render_fleet_panel = fleet_mod.render_fleet_panel
+render_tree_panel = fleet_mod.render_tree_panel
 
 console = Console()
 
 
 def make_layout() -> Layout:
-    """Create the 3-tile workspace layout."""
+    """Create the dual-board workspace layout: Main Agents Left, Sub-Agents Right."""
     layout = Layout(name="root")
     layout.split_row(
-        Layout(name="coordinator", ratio=6),
-        Layout(name="side", ratio=4),
+        Layout(name="main_agents", ratio=5),
+        Layout(name="sub_agents", ratio=5),
     )
-    layout["side"].split_column(
-        Layout(name="fleet", ratio=5),
-        Layout(name="cockpit", ratio=5),
+    layout["sub_agents"].split_column(
+        Layout(name="subagent_tree", ratio=5),
+        Layout(name="subagent_ops", ratio=5),
     )
     return layout
 
 
 def update_layout(layout: Layout):
     """Populate layout panes with live renderables."""
-    # Coordinator placeholder/guide
     coord_text = Text()
-    coord_text.append("󰚩 AQ-OS Agentic Coordinator\n", style="bold #00d9ff")
-    coord_text.append("Active Lane: Local APU (Qwen3-35B)\n\n", style="dim white")
-    coord_text.append("To start full interactive steering, launch without --tui:\n", style="white")
-    coord_text.append("  $ aq-workspace\n\n", style="bold green")
-    coord_text.append("Available Commands in REPL:\n", style="bold cyan")
-    coord_text.append("  /model <name>      Switch model (local, claude, codex, gemini)\n", style="dim")
-    coord_text.append("  /dispatch <role>   Spawn background sub-agent\n", style="dim")
-    coord_text.append("  /steer <id> <msg>  Inject guidance into running agent\n", style="dim")
-    coord_text.append("  /kill <id>         Cancel a running task\n", style="dim")
-    coord_text.append("  /status            Print AI stack telemetry\n\n", style="dim")
+    coord_text.append("󰚩 LEFT BOARD — MAIN AGENT ORCHESTRATION\n", style="bold #00d9ff")
+    coord_text.append("Active Models: Qwen3-35B (APU) · Claude 3.7 · Codex · Gemini 3.8\n\n", style="dim white")
+    coord_text.append("Launch dedicated interactive floating window with:\n", style="white")
+    coord_text.append("  $ aq-workspace agent claude\n", style="bold #ff79c6")
+    coord_text.append("  $ aq-workspace agent codex\n", style="bold #50fa7b")
+    coord_text.append("  $ aq-workspace agent gemini\n", style="bold #bd93f9")
+    coord_text.append("  $ aq-workspace agent local\n", style="bold #00d9ff")
+    coord_text.append("  $ aq-workspace agent <any-model-name>\n\n", style="bold #ffb86c")
+    coord_text.append("Available Controls:\n", style="bold cyan")
+    coord_text.append("  /subagents          View sub-agent hierarchy & tool calls\n", style="dim")
+    coord_text.append("  /delegate <lane>    Spin off sub-agent to execute slice\n", style="dim")
+    coord_text.append("  /model <name>       Switch active model dynamically\n", style="dim")
+    coord_text.append("  /steer <id> <msg>   Inject steering instruction into sub-agent\n", style="dim")
+    coord_text.append("  /kill <id>          Cancel running sub-agent task\n\n", style="dim")
     coord_text.append("Press Ctrl+C to return to shell.", style="dim italic")
 
-    layout["coordinator"].update(Panel(coord_text, title="[bold #00d9ff]󰚩 Coordinator Console[/bold #00d9ff]", border_style="#00d9ff"))
-    layout["fleet"].update(render_fleet_panel())
-    layout["cockpit"].update(render_cockpit())
+    layout["main_agents"].update(Panel(coord_text, title="[bold #00d9ff]󰚩 Left Board: Main Agents[/bold #00d9ff]", border_style="#00d9ff"))
+    layout["subagent_tree"].update(render_tree_panel())
+    layout["subagent_ops"].update(render_fleet_panel())
 
 
 def main():
-    parser = argparse.ArgumentParser(description="AQ-OS Unified Single-Window TUI")
+    parser = argparse.ArgumentParser(description="AQ-OS Unified Dual-Board TUI")
     parser.add_argument("--once", action="store_true", help="Render single frame and exit")
     parser.add_argument("--interval", type=float, default=2.0, help="Refresh interval")
     args = parser.parse_args()
