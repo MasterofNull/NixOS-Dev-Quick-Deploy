@@ -779,6 +779,31 @@ def _receipt_ok_from_entry(entry: Mapping[str, Any]) -> dict[str, Any]:
     return {"ok": True, "reason": BUMP_OK, "detail": "", "receipt": receipt}
 
 
+def _reconcile_audit_pending(
+    entry: Mapping[str, Any], journal_path: Path, epoch_path: Path
+) -> dict[str, Any]:
+    """Design §5 vector h -- a `committed` entry whose durably-persisted
+    `audit_pending` is `True` never got its best-effort audit line
+    written (a crash, or a live append the caller never retried). Retry
+    the append now; on success, durably clear `audit_pending` in the
+    journal entry via the existing temp+fsync+rename atomic primitive --
+    the "audit reconciled" outcome the design names for this vector.
+    Fail-closed: if the retry itself fails, the entry (and its persisted
+    `audit_pending`) is left untouched for the NEXT reconciliation pass --
+    never silently cleared without a confirmed append. Never raises
+    (mirrors the total-function contract of its callers)."""
+    receipt_for_audit = dict(_receipt_ok_from_entry(entry)["receipt"])
+    receipt_for_audit["audit_pending"] = False
+    try:
+        _append_audit_receipt(epoch_path, receipt_for_audit)
+    except OSError:
+        return dict(entry)
+    reconciled = dict(entry)
+    reconciled["audit_pending"] = False
+    _atomic_rewrite_journal_entry(journal_path, reconciled)
+    return reconciled
+
+
 def resolve(
     entry_id: str,
     epoch_path: Path,
@@ -827,7 +852,13 @@ def resolve(
         if phase == "committed":
             # (h) or a legitimate idempotent replay of an already-durable
             # success -- exactly-once: return the SAME reconstructed
-            # receipt, never a fresh mutation.
+            # receipt, never a fresh mutation. Design §5 vector h: a
+            # persisted `audit_pending=True` means the best-effort audit
+            # append never landed for this transaction -- retry it now
+            # and durably clear the flag on success (fail-closed on
+            # retry failure; see `_reconcile_audit_pending`).
+            if entry.get("audit_pending", False):
+                entry = _reconcile_audit_pending(entry, journal_path, epoch_path)
             return _receipt_ok_from_entry(entry)
 
         if phase == "intent":
@@ -838,11 +869,18 @@ def resolve(
             old_epoch = entry.get("old_epoch")
             new_epoch = entry.get("new_epoch")
             if current == new_epoch:
-                # (g) -- CAS committed, phase-commit rewrite crashed. Finalize.
+                # (g) -- CAS committed, phase-commit rewrite crashed.
+                # Finalize. The audit append never ran for this
+                # transaction either (the crash predates it) -- persist
+                # `audit_pending=True` on the same finalize write, then
+                # attempt reconciliation immediately (same fail-closed
+                # semantics as the already-`committed` branch above).
                 committed_entry = dict(entry)
                 committed_entry["phase"] = "committed"
                 committed_entry["committed_at"] = _iso(datetime.now(timezone.utc))
+                committed_entry["audit_pending"] = True
                 _atomic_rewrite_journal_entry(journal_path, committed_entry)
+                committed_entry = _reconcile_audit_pending(committed_entry, journal_path, epoch_path)
                 return _receipt_ok_from_entry(committed_entry)
             if current == old_epoch:
                 # (d)/W1 -- CAS never happened. Abort FIRST (durable), then
@@ -1161,10 +1199,15 @@ def apply_bump(
                 return _bump_deny(DENY_EPOCH_WRITE_FAILED, exc.__class__.__name__)
 
             # Step 5 -- phase commit. The committed journal entry IS the
-            # durable receipt.
+            # durable receipt. `audit_pending` is persisted True here --
+            # the audit append has not been attempted yet -- so a crash
+            # between this write and step 6 (design §5 vector h) leaves
+            # the durable entry correctly marked as not-yet-audited,
+            # never silently defaulting to `False` on reconstruction.
             committed_entry = dict(fresh_entry)
             committed_entry["phase"] = "committed"
             committed_entry["committed_at"] = _iso(moment)
+            committed_entry["audit_pending"] = True
             _atomic_rewrite_journal_entry(journal_path, committed_entry)
 
             receipt: dict[str, Any] = {
@@ -1177,13 +1220,22 @@ def apply_bump(
                 "committed_at": committed_entry["committed_at"],
                 "audit_pending": False,
             }
-            # Step 6 -- best-effort projection; a failure marks the EVENT
-            # `audit_pending`, never the transaction incomplete (the
-            # journal is authoritative).
+            # Step 6 -- best-effort projection; never blocks or reverses
+            # the already-durable epoch CAS/journal commit. On success,
+            # durably clear `audit_pending` in the journal entry now
+            # (design §5 vector h's "audit reconciled" outcome) so a
+            # LATER `resolve()`/`recover()` never has to retry a bump
+            # that already succeeded. On failure, the entry stays
+            # persisted `audit_pending=True` (already written above) for
+            # `recover()`/`resolve()` to retry -- fail-closed, never
+            # silently cleared without a confirmed append.
             try:
                 _append_audit_receipt(epoch_path_p, receipt)
             except OSError:
                 receipt["audit_pending"] = True
+            else:
+                committed_entry["audit_pending"] = False
+                _atomic_rewrite_journal_entry(journal_path, committed_entry)
 
             return {"ok": True, "reason": BUMP_OK, "detail": "", "receipt": receipt}
         finally:
