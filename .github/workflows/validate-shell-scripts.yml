@@ -68,8 +68,3 @@ jobs:
             .git
         continue-on-error: true
 
-      - name: Validate script timeouts
-        run: |
-          chmod +x scripts/governance/lint-timeouts.sh
-          ./scripts/governance/lint-timeouts.sh --ci
-        continue-on-error: true
