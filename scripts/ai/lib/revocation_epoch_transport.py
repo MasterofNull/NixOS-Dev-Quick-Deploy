@@ -20,8 +20,11 @@ tracked, public `config/aqos/c6-owner-public-keys.json` allowlist and, on a vali
 bump matching the durable current epoch, performs the ONE sanctioned mutation
 (`revocation_epoch.apply_bump`'s atomic +1). `build_env_handler()` below constructs the
 request handler entirely from the `AQ_REVOCATION_EPOCH_*` env vars the Nix unit
-(`revocation-epoch-authority.nix`) sets; `__main__` binds it to `serve()`. Still default-OFF and
-unexercised until that unit is enabled.
+(`revocation-epoch-authority.nix`) sets; `__main__` binds it, alongside a deny-all stub for the
+C6-S launch socket, to `serve_multi()` (mechanism B — see
+`.agents/plans/aqos-foundation-c/C6-S-DESIGN-AND-AUTHORIZATION.md`; `serve()` itself is
+unchanged and still usable standalone). Still default-OFF and unexercised until that unit is
+enabled.
 """
 from __future__ import annotations
 
@@ -51,6 +54,7 @@ DENY_MALFORMED_BUMP = "request-malformed-bump"
 DENY_OWNER_KEYS_UNAVAILABLE = "owner-keys-unavailable"
 DENY_LEDGER_INIT_FAILED = "ledger-init-failed"
 DENY_MALFORMED_READ = "request-malformed-read"
+DENY_LAUNCH_NOT_IMPLEMENTED = "launch-not-implemented"
 
 _UCRED_FMT = "3i"  # struct ucred { pid_t pid; uid_t uid; gid_t gid; }
 
@@ -183,6 +187,119 @@ def serve(
             pass
         finally:
             conn.close()
+
+
+# --------------------------------------------------------------------------
+# C6-S (mechanism B — dedicated TEG-only launch socket, see
+# `.agents/plans/aqos-foundation-c/C6-S-DESIGN-AND-AUTHORIZATION.md` §1-§3).
+# `serve()` above is NOT modified (pinned at binding review, Finding 2) —
+# `serve_multi()` is a SIBLING function that serves the unchanged control
+# socket AND the new launch socket from one process, duplicating serve()'s
+# bind/loop bodies rather than refactoring serve() itself. Control-socket
+# byte-parity holds: a control-socket client observes identical bytes on
+# the wire whether served by serve() or by serve_multi()'s control listener.
+# --------------------------------------------------------------------------
+
+
+def build_launch_deny_all_handler() -> Callable[[dict[str, Any], Optional[tuple[int, int, int]]], dict[str, Any]]:
+    """C6-S deny-all stub for the launch socket. No operation is reachable
+    over `launch.sock` yet — `authorize_launch` is added in C6a (design §5
+    Exclusions). Every well-formed request over this socket yields the same
+    typed deny, never a crash and never a distinguishing response that could
+    leak which requests would eventually be valid."""
+
+    def handler(_request: dict[str, Any], _peer_creds: Optional[tuple[int, int, int]]) -> dict[str, Any]:
+        return _deny(DENY_LAUNCH_NOT_IMPLEMENTED, "authorize_launch is not implemented until C6a")
+
+    return handler
+
+
+def serve_multi(
+    control_path: str,
+    control_handler: Callable[[dict[str, Any], Optional[tuple[int, int, int]]], dict[str, Any]],
+    launch_path: str,
+    launch_handler: Callable[[dict[str, Any], Optional[tuple[int, int, int]]], dict[str, Any]],
+    control_client_group_env: str = "AQ_REVOCATION_EPOCH_CLIENT_GROUP",
+    launch_client_group_env: str = "AQ_REVOCATION_LAUNCH_CLIENT_GROUP",
+    ready_callback: Optional[Callable[[], None]] = None,
+) -> None:  # pragma: no cover — exercised live only once the unit is enabled
+    """C6-S sibling of `serve()` that serves BOTH the unchanged control
+    socket and the NEW TEG-only launch socket from one process (mechanism
+    B). Duplicates `serve()`'s per-socket bind->chmod 0660->chgrp->listen
+    sequence for each socket (once per socket, via the nested `_bind`
+    helper below — new code, `serve()` itself untouched), and duplicates
+    its accept->read_frame->handler->respond loop body (not an extraction
+    from `serve()`), multiplexing `accept()` across both listeners with
+    `selectors.DefaultSelector`. The caller (`__main__`) is responsible for
+    having already run the recover-before-listen barrier (design §3)
+    BEFORE calling this function. `ready_callback`, if given, is invoked
+    once — after BOTH sockets are bound and `listen()`-ing, immediately
+    before the accept loop starts — so `sd_notify(READY=1)` fires only
+    once both listeners are up (design §3 item 3), never before."""
+    import selectors
+
+    def _bind(socket_path: str, client_group_env: str) -> "socket.socket":
+        if os.path.exists(socket_path):
+            os.unlink(socket_path)
+        srv = socket.socket(socket.AF_UNIX, socket.SOCK_STREAM)
+        srv.bind(socket_path)
+        os.chmod(socket_path, 0o660)
+        _client_group = os.environ.get(client_group_env, "").strip()
+        if _client_group:
+            import grp
+            try:
+                os.chown(socket_path, -1, grp.getgrnam(_client_group).gr_gid)
+                os.chmod(socket_path, 0o660)
+            except (KeyError, PermissionError, OSError) as exc:
+                print(
+                    f"[revocation-epoch-authority-transport] WARN: could not chgrp "
+                    f"socket {socket_path!r} to client group {_client_group!r} "
+                    f"({exc}); socket stays authority-only (clients fail-closed)",
+                    file=sys.stderr,
+                    flush=True,
+                )
+        srv.listen(16)
+        return srv
+
+    control_srv = _bind(control_path, control_client_group_env)
+    launch_srv = _bind(launch_path, launch_client_group_env)
+
+    sel = selectors.DefaultSelector()
+    sel.register(control_srv, selectors.EVENT_READ, control_handler)
+    sel.register(launch_srv, selectors.EVENT_READ, launch_handler)
+
+    if ready_callback is not None:
+        ready_callback()
+
+    while True:
+        for key, _mask in sel.select():
+            conn, _ = key.fileobj.accept()
+            handler = key.data
+            try:
+                conn.settimeout(RECV_TIMEOUT_S)
+                peer_creds = get_peer_credentials(conn)  # log-only, see module docstring
+                if peer_creds is not None:
+                    print(
+                        f"[revocation-epoch-authority-transport] peer pid={peer_creds[0]} "
+                        f"uid={peer_creds[1]} gid={peer_creds[2]} (defense-in-depth log only, "
+                        f"not authority)",
+                        file=sys.stderr,
+                        flush=True,
+                    )
+                framed = read_frame(conn)
+                if not framed.get("ok"):
+                    response = framed
+                else:
+                    try:
+                        response = handler(framed["frame"], peer_creds)
+                    except Exception as exc:  # noqa: BLE001 — a faulting handler denies, never crashes
+                        response = _deny("handler-error", exc.__class__.__name__)
+                payload = (json.dumps(response, sort_keys=True) + "\n").encode("utf-8")
+                conn.sendall(payload[:MAX_RESPONSE_BYTES])
+            except Exception:  # noqa: BLE001 — never crash the server on one bad connection
+                pass
+            finally:
+                conn.close()
 
 
 # --------------------------------------------------------------------------
@@ -329,13 +446,32 @@ if __name__ == "__main__":  # pragma: no cover — exercised live only once the 
         )
         sys.exit(1)
 
-    # C6d recover-before-listen barrier (design §3.4): the write-ahead
-    # journal + two-index reconciliation pass runs to COMPLETION, under the
-    # SAME exclusive epoch.lock apply_bump uses, BEFORE serve() ever binds/
-    # listens/accepts. Readiness (`sd_notify(READY=1)` under `Type=notify`)
-    # fires ONLY after recover() returns, so any dependent unit or client
-    # observes this authority ready only once its journal is reconciled —
-    # no request is ever served against an unreconciled journal.
+    # C6-S (mechanism B, design §1/§2): the launch socket is a SIBLING
+    # listener alongside the unchanged control socket above — required
+    # exactly like AQ_REVOCATION_EPOCH_SOCKET_PATH, since the Nix unit
+    # always sets both once this module ships (enable stays false; no
+    # activation implied by requiring the env var at process start).
+    _lp = os.environ.get("AQ_REVOCATION_LAUNCH_SOCKET_PATH", "").strip()
+    if not _lp:
+        print(
+            "revocation_epoch_transport: AQ_REVOCATION_LAUNCH_SOCKET_PATH not set",
+            file=sys.stderr,
+        )
+        sys.exit(1)
+
+    # C6d recover-before-listen barrier (design §3.4, extended by C6-S §3):
+    # the write-ahead journal + two-index reconciliation pass runs to
+    # COMPLETION, under the SAME exclusive epoch.lock apply_bump uses,
+    # BEFORE either socket ever binds/listens/accepts. Recovery is a
+    # property of the shared journal/epoch state, not of any one socket,
+    # so it runs ONCE, before both sockets bind. Readiness
+    # (`sd_notify(READY=1)` under `Type=notify`) fires ONLY after
+    # recover() returns AND both sockets are listen()-ing (via
+    # `serve_multi()`'s `ready_callback`), so any dependent unit or client
+    # observes this authority ready only once its journal is reconciled
+    # AND both listeners are up — no request is ever served against an
+    # unreconciled journal, and no client observes readiness before the
+    # launch socket exists.
     _epoch_path = os.environ.get("AQ_REVOCATION_EPOCH_EPOCH_PATH", "").strip()
     if not _epoch_path:
         print(
@@ -359,5 +495,10 @@ if __name__ == "__main__":  # pragma: no cover — exercised live only once the 
         file=sys.stderr,
         flush=True,
     )
-    _sd_notify_ready()
-    serve(_sp, build_env_handler())
+    serve_multi(
+        _sp,
+        build_env_handler(),
+        _lp,
+        build_launch_deny_all_handler(),
+        ready_callback=_sd_notify_ready,
+    )
