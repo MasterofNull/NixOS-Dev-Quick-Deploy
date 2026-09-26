@@ -721,15 +721,7 @@ jobs:
 
       - name: Run advanced parity suite
         run: |
-          chmod +x scripts/automation/run-advanced-parity-suite.sh
-          chmod +x scripts/automation/run-harness-regression-gate.sh
-          chmod +x scripts/testing/chaos-harness-smoke.sh
-          chmod +x scripts/testing/check-boot-shutdown-integration.sh
-          chmod +x scripts/testing/check-api-auth-hardening.sh
-          chmod +x scripts/testing/validate-ai-slo-runtime.sh
-          chmod +x scripts/security/sign-skill-registry.sh
-          chmod +x scripts/testing/verify-skill-registry.sh
-          chmod +x scripts/data/generate-harness-sdk-provenance.sh
+          chmod +x scripts/automation/*.sh scripts/testing/*.sh scripts/security/*.sh scripts/data/*.sh scripts/ai/*.sh 2>/dev/null || true
           ./scripts/automation/run-advanced-parity-suite.sh
 
   security:
