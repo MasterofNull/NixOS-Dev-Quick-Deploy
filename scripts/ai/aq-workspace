@@ -214,7 +214,7 @@ if [[ -n "$EXISTING_STATUS" ]]; then
   if echo "$EXISTING_STATUS" | grep -qi "EXITED"; then
     echo "Previous session '$SESSION_NAME' exited. Recreating with SOTA layout..."
     zellij delete-session -f "$SESSION_NAME" 2>/dev/null || true
-    exec zellij --layout "$LAYOUT_FILE" --session "$SESSION_NAME"
+    exec zellij -s "$SESSION_NAME" -n "$LAYOUT_FILE"
   else
     echo "Attaching to active workspace session: $SESSION_NAME..."
     exec zellij attach "$SESSION_NAME"
@@ -223,5 +223,5 @@ else
   echo "Launching SOTA Agentic Workspace [$SESSION_NAME] in $PWD..."
   echo "  • Left Board:  Main Models (Local Qwen, Claude, Codex, Gemini)"
   echo "  • Right Board: Sub-Agents (Delegation Hierarchy Tree & Live Steering)"
-  exec zellij --layout "$LAYOUT_FILE" --session "$SESSION_NAME"
+  exec zellij -s "$SESSION_NAME" -n "$LAYOUT_FILE"
 fi
