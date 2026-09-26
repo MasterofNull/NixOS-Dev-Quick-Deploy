@@ -4559,3 +4559,26 @@ zsh-glob failures during discovery; use rg --files before constructing paths.
 Action: bounded CLI usability follow-up: explicit help/usage and invalid-plan
 errors without traceback, keeping normal projection and tracker semantics intact.
 File: scripts/ai/aq-pm-tracker ~line 363
+
+## [OPEN] test-revocation-epoch-authority.py drifts after C6d + is pre-existing-broken
+Severity: low (not gated — confirmed not wired into config/validation-check-registry.json,
+phase0.py, or _aq-qa-bash; will not block any commit). Root cause, two distinct findings from
+implementing C6d (`.agents/plans/aqos-foundation-c/C6d-DESIGN-AND-AUTHORIZATION.md`):
+(1) Design-scope gap: C6d's §1 file table (the authorized edit surface) omits this test file,
+but `test_replay_over_socket_denies` (~line 204) asserts the OLD ledger-based semantic
+(`re_lib.DENY_REPLAY` on a replayed already-committed transaction). C6d's `resolve()` `committed`
+row (design §3.2) deliberately supersedes that: a replay of an already-committed identity is now
+an idempotent SUCCESS (the reconstructed original receipt), never a deny — the sibling file
+`scripts/testing/test-revocation-epoch.py` was updated to this new semantic
+(`test_committed_replay_is_idempotent_not_denied`) as part of C6d, but this file was left
+untouched per the design's explicit "C6d touches only the files in §1" scope constraint.
+(2) Independently, this file is ALREADY broken on `origin/main` before any C6d change: running
+it unmodified against baseline `b61a66c9` crashes with `ConnectionRefusedError` partway through
+(`test_malformed_json_frame_fails_closed`, ~line 263) — a pre-existing test-harness flakiness/bug
+unrelated to C6d (confirmed by stashing all C6d changes and re-running against clean HEAD).
+Action: a bounded follow-up slice should (a) update `test_replay_over_socket_denies` to the new
+idempotent-committed-replay semantic (mirroring the sibling file's fix), and (b) separately
+diagnose/fix the pre-existing `ConnectionRefusedError` harness flakiness — neither blocks C6d
+since the file is dormant (not gated), but leaving it unfixed means it lies about current
+behavior if anyone runs it manually.
+File: scripts/testing/test-revocation-epoch-authority.py ~line 204, ~line 263

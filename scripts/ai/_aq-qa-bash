@@ -1704,6 +1704,8 @@ _check 1 "0.10.5" "model catalog/profile freshness" \
       python3 "${REPO_ROOT}/scripts/testing/test-local-agent-first-token-timeout.py"
     _check 1 "0.10.33" "aq-qa rolling progress heartbeat artifacts" \
       python3 "${REPO_ROOT}/scripts/testing/test-aq-qa-progress-heartbeat.py"
+    _check 1 "0.10.51" "revocation-epoch recovery determinism: journal+two-index, a-i vectors, recover-before-listen (Foundation C C6d)" \
+      python3 "${REPO_ROOT}/scripts/testing/test-revocation-epoch.py"
   fi
 
   # 0.9.4 Runtime safety contract policy (Phase 39)
