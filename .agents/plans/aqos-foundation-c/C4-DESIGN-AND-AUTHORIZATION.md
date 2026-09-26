@@ -21,9 +21,9 @@ amendments:
     status: "PREPARED_ONLY — proposed, NOT accepted; pending its own independent binding review before any C4 freeze"
     date: "2026-09-25"
     base_head: "f1f409ef97f73fb6ae152a297ba0c0367e30bf22"
-    scope: "Narrows the C6-intervention-lever freeze prerequisite to the operational owner-authorized signed epoch-bump path (C6d + C6c + C6-S); removes the F2.5 scheduler gate and authorize_launch (C6a) from the prerequisite; binds C4's own epoch-recheck/channel-teardown (§4:140-144) as the revocability enforcement; reaffirms egress as a HARD pre-activation gate. See §0.A."
+    scope: "Narrows the C6-intervention-lever freeze prerequisite to the operational owner-authorized signed epoch-bump path (C6d + C6c + C6-S); removes the F2.5 scheduler gate and authorize_launch (C6a) from the prerequisite; binds C4's own epoch-recheck/channel-teardown (§4:237-241) as the revocability enforcement; reaffirms egress as a HARD pre-activation gate. See §0.A."
     authority: ".agents/plans/aqos-foundation-c/C6-DECOMPOSITION-20260924.md (factory/c6-decomposition-v2) §7 [AMEND-C4], §8 build order C6d → C6-S → {C6a ∥ C6c} → [AMEND-C4] → C4 → C6b → C6e"
-    supersedes_on_acceptance: "the inline [AMEND-C4 PENDING] sentences at predecessors:12, §4:143-144, §7:191-198, §8:217-219, §9:276 — only once accepted"
+    supersedes_on_acceptance: "the inline [AMEND-C4 PENDING] sentences at predecessors:12, §4:242-246, §7:302-305, §8:327-330, §9:387-389 — only once accepted"
 ---
 
 # Foundation C — C4: Receiver-Scoped Connected Profiles
@@ -82,7 +82,7 @@ reuses the authority's `epoch.lock`/state machinery (C6a design §0, branch `fac
 
 ### A.4 Revocability enforcement lives in C4's own teardown (the logical bridge)
 
-The narrowing is sound because **C4 itself enforces revocability.** §4 (lines 140-144) already specifies
+The narrowing is sound because **C4 itself enforces revocability.** §4 (lines 237-241) already specifies
 that the broker *"closes active channels, invalidates/makes unavailable their UDS endpoints, and requests
 affected-cell termination on epoch bump …"* This amendment binds that behavior explicitly: **when the
 owner bumps the revocation epoch via the C6d + C6c (+ C6-S) signed-bump lever, C4's own epoch-recheck +
