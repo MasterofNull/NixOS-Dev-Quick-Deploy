@@ -4586,3 +4586,30 @@ diagnose/fix the pre-existing `ConnectionRefusedError` harness flakiness — nei
 since the file is dormant (not gated), but leaving it unfixed means it lies about current
 behavior if anyone runs it manually.
 File: scripts/testing/test-revocation-epoch-authority.py ~line 204, ~line 263
+## Resume audit — 2026-09-26, main 4fa4e0f3
+
+[IN-FLIGHT] CI — Skill Bundle Distribution Smoke succeeds with setup steps only after its test invocation was removed. Independent current-run audit confirms no test execution.
+  Severity: high
+  Action: restore maintained distribution assertions and independently review the corrected workflow.
+  File: .github/workflows/test.yml
+
+[IN-FLIGHT] SECURITY — Upstream Trivy SARIF was replaced with expiring artifacts; dismissed findings are not proven remediated. Current green status omits that Security-tab coverage.
+  Severity: high
+  Action: restore distinct upstream SARIF categories, retain artifacts, and distinguish remediation from accepted risk. No new alert dismissals authorized by this repair.
+  File: .github/workflows/security.yml
+
+[OPEN] SECURITY — Post-CI Gitleaks configuration exempts entire testing and agent-config directories, and some dependency upgrades remove exact lockfile resolution.
+  Severity: high
+  Action: replace broad exclusions with individually justified rule/path exceptions and restore reproducible dependency locks. Reconcile historical SARIF counts before crediting closure.
+  File: .gitleaks.toml; ai-stack/mcp-servers/nixos-docs/requirements.txt
+
+[OPEN] C6A — Merged correction e645dadf lacks a fresh cohort review; current wall-clock-only expiry and unresolved dashboard TEG state remain concerns in independent Codex reconciliation.
+  Severity: high
+  Action: retain activation gate; transplant only the unpublished monotonic/observability delta into a new current-main candidate, reproduce boundary cases, and require fresh independent review.
+  File: scripts/ai/lib/revocation_epoch.py; dashboard/backend/api/routes/aistack.py
+
+[OPEN] LOCAL-LANE — aq-agent-loop returns "incomplete result" via read-stagnation abort (NOT a service outage). On the C4 citation-verify task (local-20260926-104121-8f0g88) the loop tripped "repeated-read stagnation: reads=5 call=5" on one file and aborted. llama.cpp itself was healthy (`/health`={"status":"ok"}, model loaded) — so this is the agent loop / model looping on reads, not infra down. Owner perceived local as "broken again" 2026-09-26.
+  Severity: medium
+  Root cause (suspected): model loops re-reading instead of emitting a verdict — aggravated by swap-drift slowness (~24GB model on 27GB → drifts to swap ~3 tok/s). Matches capability-envelope (multi-check read tasks) + slow-not-stalled patterns.
+  Action: (a) resident-reload `systemctl restart llama-cpp` to pull the model back off swap (~4.9 tok/s) — owner terminal (no sudo in Claude shell); (b) for local verify tasks, give a SINGLE bounded read+answer step (avoid multi-check prompts that invite re-read loops); (c) consider raising/tuning the stagnation guard's read budget vs. failing closed. Owner directed SKIP local for now — advisory-only tasks proceed without it.
+  File: scripts/ai/aq-agent-loop (stagnation guard); scripts/ai/delegate-to-local
