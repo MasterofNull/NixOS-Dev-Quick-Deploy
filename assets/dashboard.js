@@ -3660,6 +3660,51 @@ async function loadCapabilityEnforcement() {
       oebl.authority_reachable === true ? "ok" : "info"
     ),
   ].join("");
+
+  // MODAL STATE: the fire button only enables when the lever is fully armed
+  // (>=1 active owner signer AND the authority reachable) — matches the
+  // backend's fail-closed armed-state check in /revocation/fire.
+  const fireBtn = document.getElementById("revocationFireBtn");
+  if (fireBtn) {
+    const armed = !!oebl.active_owner_keys && oebl.authority_reachable === true;
+    fireBtn.disabled = !armed;
+    fireBtn.style.opacity = armed ? "1" : ".45";
+    fireBtn.style.cursor = armed ? "pointer" : "not-allowed";
+    fireBtn.title = armed
+      ? "lever armed — this will revoke ALL agent capability leases"
+      : `lever not armed (${oebl.active_owner_keys || 0} active signers, authority ${oebl.authority_reachable ? "reachable" : "unreachable"})`;
+  }
+}
+
+async function fireRevocationKillSwitch() {
+  const btn = document.getElementById("revocationFireBtn");
+  const resultEl = document.getElementById("revocationFireResult");
+  if (btn && btn.disabled) return;
+  if (
+    !confirm(
+      "Fire the kill-switch? This revokes ALL agent capability leases immediately, until re-approved. This cannot be undone from this dashboard."
+    )
+  ) {
+    return;
+  }
+  if (resultEl) resultEl.textContent = "Firing...";
+  try {
+    const r = await fetch(`${BASE}/api/aistack/revocation/fire`, {
+      method: "POST",
+      cache: "no-store",
+    });
+    const body = await r.json().catch(() => null);
+    const reason = body?.reason || body?.detail?.reason || `HTTP ${r.status}`;
+    if (resultEl) {
+      resultEl.textContent = (body?.fired || body?.detail?.fired)
+        ? "Fired: capabilities revoked."
+        : `Not fired: ${reason}`;
+    }
+  } catch (err) {
+    if (resultEl) resultEl.textContent = `Request failed: ${err?.message || err}`;
+  }
+  // Refresh the lever state/button after every press attempt.
+  await loadCapabilityEnforcement();
 }
 
 async function loadHardening() {
