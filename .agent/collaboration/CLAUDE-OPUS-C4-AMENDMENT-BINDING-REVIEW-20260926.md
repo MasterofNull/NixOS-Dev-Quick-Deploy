@@ -143,3 +143,25 @@ critical `supersedes_on_acceptance` instruction and the A.4 body — a mechanica
 change to the narrowing logic. Codex confirmatory review remains queued (substitution recorded).
 
 VERDICT: REQUEST_REVISION — correct the stale internal line-citations (frontmatter `supersedes_on_acceptance` §4/§7/§8/§9 anchors and A.4's "§4 lines 140-144") to the committed-file geometry (§4 teardown 237-241; PENDING markers at 242-246 / 302-305 / 327-330 / 387-389). All five substantive checks (1-5) are CONFIRMED and the narrowing logic is sound; this is the sole blocker to promotion at C4 freeze.
+
+---
+
+## ORCHESTRATOR RESOLUTION — 2026-09-26 (citation defect fixed)
+
+The sole blocker (item R, stale internal line-citations) is resolved in the same PR as this review.
+Each corrected anchor was re-verified against the committed 396-line file geometry before editing:
+
+| Citation site | Was | Now | Verified target content |
+|---|---|---|---|
+| frontmatter `supersedes_on_acceptance` §4 | 143-144 | 242-246 | `[AMEND-C4 PENDING (§0.A)]` marker in §4 |
+| frontmatter `supersedes_on_acceptance` §7 | 191-198 | 302-305 | PENDING marker in §7 |
+| frontmatter `supersedes_on_acceptance` §8 | 217-219 | 327-330 | PENDING marker in §8 |
+| frontmatter `supersedes_on_acceptance` §9 | 276 | 387-389 | PENDING marker in §9 |
+| frontmatter `scope` teardown ref | §4:140-144 | §4:237-241 | broker teardown paragraph |
+| A.4 body teardown ref | §4 (lines 140-144) | §4 (lines 237-241) | broker teardown paragraph |
+
+Additional finding folded in: `scope:24` carried the **same** stale `140-144` teardown ref the reviewer
+flagged only in A.4 — corrected to `237-241` for consistency. No substantive wording changed; only the
+cited line numbers. Independent confirmatory verification queued (local bounded re-verify + Codex on
+return, `AGENT-CATCHUP-QUEUE.md`). Once confirmed, the narrowing logic being CONFIRMED + this citation
+fix means the amendment is **promotable at C4 freeze** — the Foundation-C staggered-activation unblocker.
