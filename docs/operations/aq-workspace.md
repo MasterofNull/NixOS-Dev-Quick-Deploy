@@ -16,6 +16,15 @@ From **any** directory in the terminal, run:
 # Launch or attach to the tiled workspace for the current project directory:
 aq-workspace
 
+# Automatically resume previous sessions across all agent panes:
+aq-workspace resume
+
+# Directly launch specific native agent CLIs inside workspace:
+aq-workspace claude             # Claude Code with session resume
+aq-workspace codex              # OpenAI Codex with session resume
+aq-workspace local              # Local Qwen3-35B on APU (aq-chat)
+aq-workspace gemini             # Google Gemini CLI / adapter
+
 # Or run with a custom session name:
 aq-workspace my-session
 
@@ -105,7 +114,24 @@ Also renders live model profile metadata, measured token throughput rates, APU s
 
 ---
 
-## 6. Single-Window TUI Fallback Mode
+## 6. Direct Native CLI Agent Launcher (`aq-agent-launcher`)
+
+All agent panes in the workspace are powered by `aq-agent-launcher`, which directly executes native agent binaries rather than synthetic headless proxies:
+
+- **Claude Code**: Native interactive CLI (`claude --resume` / `claude`) with full session resumption and tool permission prompts.
+- **OpenAI Codex**: Native Codex CLI (`codex resume` / `codex`).
+- **Local Qwen3-35B**: Native `aq-chat` interactive tool-calling loop on APU `:8080` / `:8003`, preceded by `aq-resume` context hydration.
+- **Google Gemini**: Gemini CLI / interactive agent adapter with IDE session authentication.
+
+### Launcher Features
+- **Auto-Resume Countdown**: Default 3-second auto-resume timer allows hands-free session resumption, or press `[1-4]` / `Enter` for instant action.
+- **Live Auth Status Detection**: Detects OAuth / API login status on pane launch (e.g. `✓ Logged in`, `! Not logged in`).
+- **Sign-In Option `[4]`**: Interactive re-authentication menu option (`claude auth login`, `codex login`) without leaving Zellij.
+- **Persistent Pane Supervisor Loop**: If an agent process exits or times out, the Zellij pane stays open with an interactive menu (`[r] Resume`, `[n] New Session`, `[s] Shell`, `[q] Exit Pane`), preventing jarring UI pane clobbering.
+
+---
+
+## 7. Single-Window TUI Fallback Mode
 
 For environments without Zellij or when connected over constrained SSH / mobile terminals, the unified fallback mode renders the 3-pane layout directly in a single terminal window using Rich:
 
@@ -115,7 +141,7 @@ aq-workspace --tui
 
 ---
 
-## 7. Keyboard Navigation (Zellij)
+## 8. Keyboard Navigation (Zellij)
 
 - `Alt + h/j/k/l` or `Alt + Arrows`: Move focus between tiled panes.
 - `Alt + n`: Next tab (`Workspace` → `Fleet Matrix` → `Operations` → `Scratch Shell`).
