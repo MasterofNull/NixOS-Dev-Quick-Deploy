@@ -1361,6 +1361,27 @@ def _check_revocation_epoch_recovery(ctx: RunContext) -> list[CheckResult]:
     return [failed(1, "0.10.51", "revocation-epoch recovery determinism", detail)]
 
 
+def _check_revocation_launch_socket_topology(ctx: RunContext) -> list[CheckResult]:
+    """0.10.52: Foundation C C6-S -- dedicated TEG-only launch socket +
+    principal topology (mechanism B) frozen, control-socket byte-parity,
+    dashboard-visible."""
+    check = ctx.repo_root / "scripts" / "testing" / "test-revocation-launch-socket-topology.py"
+    if not check.exists():
+        return [failed(1, "0.10.52", "revocation launch-socket topology", "test-revocation-launch-socket-topology.py missing")]
+    proc = subprocess.run(
+        ["python3", str(check)],
+        cwd=ctx.repo_root,
+        text=True,
+        capture_output=True,
+        timeout=30,
+        check=False,
+    )
+    if proc.returncode == 0:
+        return [passed(1, "0.10.52", "revocation launch-socket topology: launch.sock + empty launch group + serve_multi + deny-all stub + control-socket byte-parity")]
+    detail = (proc.stdout + proc.stderr).strip() or f"exit {proc.returncode}"
+    return [failed(1, "0.10.52", "revocation launch-socket topology", detail)]
+
+
 def _check_modal_task_profiles(ctx: RunContext) -> list[CheckResult]:
     """Phase 162: modal task profiles for local dispatch."""
     check = ctx.repo_root / "scripts" / "testing" / "test-modal-task-profiles.py"
@@ -2043,6 +2064,7 @@ def run(ctx: RunContext) -> list[CheckResult]:
     results.extend(_check_adopt_workflow(ctx))
     results.extend(_check_phase173_training_health(ctx))
     results.extend(_check_revocation_epoch_recovery(ctx))
+    results.extend(_check_revocation_launch_socket_topology(ctx))
     if ctx.dashboard_safe:
         results.extend(_dashboard_safe_host_only_skips())
     return results
