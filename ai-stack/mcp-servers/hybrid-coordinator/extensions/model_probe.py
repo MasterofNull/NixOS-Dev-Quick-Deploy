@@ -37,7 +37,11 @@ from shared.llm_config import build_llama_payload, PROBE_MAX_TOKENS  # noqa: E40
 logger = logging.getLogger("model-probe")
 
 _PROFILE_VERSION = 2
-_PROBE_TIMEOUT = 30.0
+# The current local lane can run below 2 tok/s under memory pressure. A 60-token
+# probe therefore needs more than 30 seconds; timing it out and labelling the
+# 4.0 fallback as "measured" made freshness telemetry lie. Keep this bounded,
+# but large enough for the supported slow path.
+_PROBE_TIMEOUT = 90.0
 _SPEED_PROBE_TOKENS = 60  # generation tokens in the speed probe
 _SWITCHBOARD_TIMEOUT_S = float(os.getenv("LLAMA_CPP_SWITCHBOARD_TIMEOUT_S", "900"))
 _DIRECT_TIMEOUT_S = float(os.getenv("LLAMA_CPP_INFERENCE_TIMEOUT_SECONDS", "180"))
@@ -55,6 +59,7 @@ class ModelProfile:
     model_path: str = ""
     context_length: int = 4096
     measured_tps_output: float = 5.0
+    throughput_source: str = "unknown"
     has_thinking_mode: bool = False
     can_disable_thinking: bool = False
     supports_tools: bool = False
@@ -89,6 +94,7 @@ def _default_profile() -> ModelProfile:
     return ModelProfile(
         model_id="unknown-fallback",
         measured_tps_output=4.0,
+        throughput_source="fallback",
         has_thinking_mode=False,
         can_disable_thinking=False,
         budget_interactive=600,
@@ -136,7 +142,7 @@ def _compute_budgets(tps: float, has_thinking: bool) -> Dict[str, int]:
     }
 
 
-async def _probe_speed(client: httpx.AsyncClient, base_url: str) -> float:
+async def _probe_speed(client: httpx.AsyncClient, base_url: str) -> Optional[float]:
     """Measure output t/s with a short forced-generation prompt."""
     try:
         t0 = time.perf_counter()
@@ -158,7 +164,7 @@ async def _probe_speed(client: httpx.AsyncClient, base_url: str) -> float:
             return round(tps, 1)
     except Exception as exc:
         logger.warning("model_probe speed_probe_failed: %s", exc)
-    return 4.0  # conservative fallback
+    return None
 
 
 def _detect_thinking(chat_template: str, caps: Dict[str, Any]) -> tuple[bool, bool]:
@@ -222,6 +228,9 @@ async def probe(llama_cpp_url: str, profile_path: Optional[Path] = None) -> Mode
 
         # Step 3: Measure output t/s
         tps = await _probe_speed(client, llama_cpp_url)
+        if tps is None:
+            logger.warning("model_probe incomplete: throughput was not measured; freshness not updated")
+            return cached or _default_profile()
 
         # Step 4: Compute budgets
         budgets = _compute_budgets(tps, has_thinking and not can_disable)
@@ -232,6 +241,7 @@ async def probe(llama_cpp_url: str, profile_path: Optional[Path] = None) -> Mode
             model_path=model_path,
             context_length=context_length,
             measured_tps_output=tps,
+            throughput_source="live_probe",
             has_thinking_mode=has_thinking,
             can_disable_thinking=can_disable,
             supports_tools=supports_tools,

@@ -1944,6 +1944,22 @@
       "tier": "behavioral",
       "timeout_seconds": 30,
       "enabled": true
+    },
+    {
+      "id": "workflow-script-refs",
+      "description": "Workflow scripts/** reference-existence lint (catches archived/renamed scripts a workflow step still chmods or invokes; see fix(ci) commit that archived smoke-cross-client-compat.sh)",
+      "trigger_paths": [
+        ".github/workflows/",
+        "scripts/governance/check-workflow-script-refs.sh"
+      ],
+      "command": [
+        "bash",
+        "scripts/governance/check-workflow-script-refs.sh"
+      ],
+      "tier": "structural",
+      "timeout_seconds": 30,
+      "enabled": false,
+      "_deferred_reason": "Repo-wide run currently FAILS pre-existing (8 dangling scripts/** refs across test.yml/harness-sdk-release.yml/validate-shell-scripts.yml, from archival commit 44d8da11 + one unexplained ref) that predate and are out of scope for this fix. Flip to enabled:true once those are cleaned up (tracked as a follow-up, not silently routed around — Rule 19)."
     }
   ]
 }
