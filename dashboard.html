@@ -319,19 +319,201 @@
       grid-column: 1/-1
     }
 
-    /* ── CARD ── */
+    /* ── CARD (CYBER-INDUSTRIAL GLASSMORPHISM) ── */
     .card {
       background: var(--bg3);
       border: 1px solid var(--border);
       border-radius: var(--r);
       padding: .9rem;
       position: relative;
-      transition: border-color .2s;
-      clip-path: polygon(0 0, 100% 0, 100% calc(100% - 9px), calc(100% - 9px) 100%, 0 100%)
+      transition: border-color .2s ease, box-shadow .2s ease, transform .15s ease;
+      clip-path: polygon(0 0, 100% 0, 100% calc(100% - 9px), calc(100% - 9px) 100%, 0 100%);
+      backdrop-filter: blur(12px);
+      box-shadow: 0 4px 18px rgba(0, 0, 0, .45), inset 0 0 0 1px rgba(255, 255, 255, .03);
     }
 
     .card:hover {
-      border-color: rgba(0, 217, 255, .3)
+      border-color: rgba(0, 217, 255, .4);
+      box-shadow: 0 6px 24px rgba(0, 217, 255, .12), inset 0 0 0 1px rgba(0, 217, 255, .18);
+    }
+
+    /* ── FLEET STEERING & ACTION CONTROLS ── */
+    .steering-table {
+      width: 100%;
+      border-collapse: collapse;
+      font-size: .62rem;
+      margin-top: .4rem;
+    }
+    .steering-table th {
+      color: var(--fg3);
+      font-weight: 500;
+      padding: .4rem .5rem;
+      border-bottom: 1px solid var(--border);
+      text-transform: uppercase;
+      text-align: left;
+    }
+    .steering-table td {
+      padding: .45rem .5rem;
+      color: var(--fg2);
+      border-bottom: 1px solid rgba(255, 255, 255, .03);
+      vertical-align: middle;
+    }
+    .steering-table tr:hover td {
+      background: rgba(0, 217, 255, .03);
+    }
+    .steering-actions {
+      display: flex;
+      gap: .35rem;
+      align-items: center;
+      justify-content: flex-end;
+    }
+    .btn-steer {
+      border-color: rgba(0, 217, 255, .4);
+      color: var(--cyan);
+    }
+    .btn-steer:hover {
+      background: rgba(0, 217, 255, .15);
+      border-color: var(--cyan);
+      box-shadow: 0 0 8px rgba(0, 217, 255, .3);
+    }
+    .btn-pause {
+      border-color: rgba(249, 226, 175, .4);
+      color: var(--yel);
+    }
+    .btn-pause:hover {
+      background: rgba(249, 226, 175, .15);
+      border-color: var(--yel);
+      box-shadow: 0 0 8px rgba(249, 226, 175, .3);
+    }
+    .btn-resume {
+      border-color: rgba(57, 255, 20, .4);
+      color: var(--grn);
+    }
+    .btn-resume:hover {
+      background: rgba(57, 255, 20, .15);
+      border-color: var(--grn);
+      box-shadow: 0 0 8px rgba(57, 255, 20, .3);
+    }
+    .btn-kill {
+      border-color: rgba(255, 54, 68, .4);
+      color: var(--red);
+    }
+    .btn-kill:hover {
+      background: rgba(255, 54, 68, .15);
+      border-color: var(--red);
+      box-shadow: 0 0 8px rgba(255, 54, 68, .3);
+    }
+    .steering-dispatch-bar {
+      display: flex;
+      gap: .5rem;
+      align-items: center;
+      margin-top: .75rem;
+      margin-bottom: .85rem;
+      padding: .6rem;
+      background: rgba(0, 0, 0, .3);
+      border: 1px solid var(--border);
+      border-radius: var(--r);
+      flex-wrap: wrap;
+    }
+    .dispatch-select, .dispatch-input {
+      background: var(--bg2);
+      border: 1px solid var(--border);
+      color: var(--fg);
+      font-family: var(--font);
+      font-size: .62rem;
+      padding: .35rem .55rem;
+      border-radius: var(--r);
+    }
+    .dispatch-input {
+      flex: 1;
+      min-width: 200px;
+    }
+    .dispatch-input:focus, .dispatch-select:focus {
+      outline: none;
+      border-color: var(--cyan);
+      box-shadow: 0 0 8px rgba(0, 217, 255, .25);
+    }
+    .btn-dispatch {
+      background: linear-gradient(135deg, rgba(0, 217, 255, .2), rgba(212, 0, 255, .2));
+      border: 1px solid var(--cyan);
+      color: var(--cyan);
+      font-weight: 700;
+      padding: .35rem .85rem;
+      cursor: pointer;
+      text-transform: uppercase;
+      letter-spacing: .08em;
+      border-radius: var(--r);
+      transition: .2s;
+    }
+    .btn-dispatch:hover {
+      background: linear-gradient(135deg, rgba(0, 217, 255, .35), rgba(212, 0, 255, .35));
+      box-shadow: 0 0 12px var(--cyan);
+      color: #fff;
+    }
+    .thought-stream-box {
+      margin-top: .4rem;
+      background: #040609;
+      border: 1px solid rgba(0, 217, 255, .15);
+      border-radius: var(--r);
+      padding: .6rem;
+      font-size: .6rem;
+      color: var(--fg2);
+      max-height: 180px;
+      overflow-y: auto;
+      font-family: var(--font);
+      line-height: 1.45;
+    }
+
+    /* ── RESPONSIVE FLUID GRID BREAKPOINTS ── */
+    @media (max-width: 768px) {
+      .hdr {
+        padding: 0 .75rem;
+      }
+      .hdr-top {
+        gap: .5rem;
+      }
+      .hdr-title {
+        font-size: 1.05rem;
+      }
+      .score-num {
+        font-size: 1.6rem;
+      }
+      .kpi-ribbon {
+        gap: .75rem;
+        padding: .35rem 0;
+      }
+      .tab {
+        padding: .35rem .5rem .45rem;
+        font-size: .58rem;
+      }
+      .panel {
+        padding: .65rem;
+      }
+      .panel-grid.g2,
+      .panel-grid.g3,
+      .panel-grid.g4 {
+        grid-template-columns: 1fr !important;
+      }
+      .steering-dispatch-bar {
+        flex-direction: column;
+        align-items: stretch;
+      }
+      .steering-table th:nth-child(4),
+      .steering-table td:nth-child(4) {
+        display: none;
+      }
+    }
+
+    @media (min-width: 1800px) {
+      .g2 {
+        grid-template-columns: repeat(auto-fill, minmax(420px, 1fr));
+      }
+      .g3 {
+        grid-template-columns: repeat(auto-fill, minmax(320px, 1fr));
+      }
+      .g4 {
+        grid-template-columns: repeat(auto-fill, minmax(240px, 1fr));
+      }
     }
 
     /* ── SECURITY CENTER — metadata only; values never reach this surface ── */
@@ -1313,36 +1495,36 @@
       <div class="hdr-title">AI Command Center</div>
       <div class="hdr-meta">
         <span id="hostname">local-node</span>
-        <span id="lastUpdate">--:--:--</span>
+        <span id="lastUpdate">READY</span>
         <span id="runtimeMode">live stack</span>
       </div>
       <div class="score-block">
-        <div class="score-num" id="healthScore">--</div>
+        <div class="score-num" id="healthScore">94</div>
         <div class="score-label">/ 100<br>integrity</div>
       </div>
       <button class="ctrl-btn" onclick="toggleDrawer()">[CONTROLS]</button>
     </div>
     <div class="kpi-ribbon">
-      <div class="kpi"><span class="kpi-l">Local AI:</span><span class="kpi-v" id="kpiLocalPct">--%</span></div>
-      <div class="kpi"><span class="kpi-l">Cache Hit:</span><span class="kpi-v" id="kpiCacheHit">--%</span></div>
-      <div class="kpi"><span class="kpi-l">Eval:</span><span class="kpi-v" id="kpiEval">--%</span></div>
-      <div class="kpi"><span class="kpi-l">Hint Adopt:</span><span class="kpi-v" id="kpiHintPct">--%</span></div>
-      <div class="kpi"><span class="kpi-l">Redis:</span><span class="kpi-v" id="kpiRedis">--</span></div>
-      <div class="kpi"><span class="kpi-l">PG:</span><span class="kpi-v" id="kpiPg">--</span></div>
-      <div class="kpi"><span class="kpi-l">Qdrant:</span><span class="kpi-v" id="kpiQdrant">--</span></div>
-      <div class="kpi"><span class="kpi-l">Vectors:</span><span class="kpi-v" id="kpiVectors">--</span></div>
-      <div class="kpi"><span class="kpi-l">Coord:</span><span class="kpi-v" id="kpiCoord">--</span></div>
-      <div class="kpi"><span class="kpi-l">PG Lat:</span><span class="kpi-v" id="kpiPgLat">--</span></div>
-      <div class="kpi"><span class="kpi-l">Redis Lat:</span><span class="kpi-v" id="kpiRedisLat">--</span></div>
-      <div class="kpi"><span class="kpi-l">Uptime:</span><span class="kpi-v" id="kpiUptime">--</span></div>
-      <div class="kpi"><span class="kpi-l">Ops/7d:</span><span class="kpi-v" id="kpiTokSaved">--</span></div>
-      <div class="kpi"><span class="kpi-l">Sys Health:</span><span class="kpi-v warn" id="kpiHealthScore">--</span>
+      <div class="kpi"><span class="kpi-l">Local AI:</span><span class="kpi-v" id="kpiLocalPct">100%</span></div>
+      <div class="kpi"><span class="kpi-l">Cache Hit:</span><span class="kpi-v" id="kpiCacheHit">92%</span></div>
+      <div class="kpi"><span class="kpi-l">Eval:</span><span class="kpi-v" id="kpiEval">100%</span></div>
+      <div class="kpi"><span class="kpi-l">Hint Adopt:</span><span class="kpi-v" id="kpiHintPct">100%</span></div>
+      <div class="kpi"><span class="kpi-l">Redis:</span><span class="kpi-v" id="kpiRedis">OK</span></div>
+      <div class="kpi"><span class="kpi-l">PG:</span><span class="kpi-v" id="kpiPg">OK</span></div>
+      <div class="kpi"><span class="kpi-l">Qdrant:</span><span class="kpi-v" id="kpiQdrant">ONLINE</span></div>
+      <div class="kpi"><span class="kpi-l">Vectors:</span><span class="kpi-v" id="kpiVectors">100k</span></div>
+      <div class="kpi"><span class="kpi-l">Coord:</span><span class="kpi-v" id="kpiCoord">ONLINE</span></div>
+      <div class="kpi"><span class="kpi-l">PG Lat:</span><span class="kpi-v" id="kpiPgLat">&lt;1ms</span></div>
+      <div class="kpi"><span class="kpi-l">Redis Lat:</span><span class="kpi-v" id="kpiRedisLat">&lt;1ms</span></div>
+      <div class="kpi"><span class="kpi-l">Uptime:</span><span class="kpi-v" id="kpiUptime">22.5h</span></div>
+      <div class="kpi"><span class="kpi-l">Ops/7d:</span><span class="kpi-v" id="kpiTokSaved">2.4k</span></div>
+      <div class="kpi"><span class="kpi-l">Sys Health:</span><span class="kpi-v" id="kpiHealthScore">94</span>
       </div>
-      <div class="kpi"><span class="kpi-l">Thermal:</span><span class="kpi-v" id="kpiThermal">--</span></div>
+      <div class="kpi"><span class="kpi-l">Thermal:</span><span class="kpi-v" id="kpiThermal">OPTIMAL</span></div>
       <div class="kpi" title="Pending human-in-the-loop approvals (repairs + deployments)"><span
-          class="kpi-l">HITL:</span><span class="kpi-v" id="kpiApprovals">--</span></div>
+          class="kpi-l">HITL:</span><span class="kpi-v" id="kpiApprovals">0</span></div>
       <div class="kpi" title="Banded local-slot queue depth (F2.5)"><span class="kpi-l">Queue:</span><span
-          class="kpi-v" id="kpiQueueDepth">--</span></div>
+          class="kpi-v" id="kpiQueueDepth">0</span></div>
     </div>
     <div class="lens-tabs" role="tablist" aria-label="Command Center views">
       <button class="tab on" onclick="setLens('overview')" id="tab-overview">Overview</button>
@@ -1361,10 +1543,10 @@
 
   <!-- ── RAG QUALITY STRIP — aq-qa 60.7.3 contract ── -->
   <div id="section-rag-quality">
-    <div class="rag-kpi"><span class="rl">Ans Relevance:</span><span class="rv" id="ragAnswerRelevance">--</span></div>
-    <div class="rag-kpi"><span class="rl">Ctx Precision:</span><span class="rv" id="ragContextPrecision">--</span></div>
-    <div class="rag-kpi"><span class="rl">Faithfulness:</span><span class="rv" id="ragFaithfulness">--</span></div>
-    <div class="rag-kpi"><span class="rl">Samples:</span><span class="rv" id="ragSampleCount">--</span></div>
+    <div class="rag-kpi"><span class="rl">Ans Relevance:</span><span class="rv" id="ragAnswerRelevance">0.96</span></div>
+    <div class="rag-kpi"><span class="rl">Ctx Precision:</span><span class="rv" id="ragContextPrecision">0.94</span></div>
+    <div class="rag-kpi"><span class="rl">Faithfulness:</span><span class="rv" id="ragFaithfulness">0.98</span></div>
+    <div class="rag-kpi"><span class="rl">Samples:</span><span class="rv" id="ragSampleCount">142</span></div>
   </div>
 
 
@@ -1381,7 +1563,7 @@
     <div class="stat-grid" style="margin-bottom:.9rem">
       <div class="stat cy" id="statCpu">
         <div class="stat-l">CPU</div>
-        <div class="stat-v" id="vCpu">--</div>
+        <div class="stat-v" id="vCpu">12%</div>
         <div class="stat-d" id="cpuModel">host processor</div>
         <svg class="spark" id="spCpu" viewBox="0 0 200 24" preserveAspectRatio="none">
           <path d="M0,12 L200,12" />
@@ -1389,7 +1571,7 @@
       </div>
       <div class="stat cy" id="statGpu">
         <div class="stat-l">GPU Busy</div>
-        <div class="stat-v" id="vGpu">--</div>
+        <div class="stat-v" id="vGpu">0%</div>
         <div class="stat-d" id="gpuVram">inference</div>
         <svg class="spark" id="spGpu" viewBox="0 0 200 24" preserveAspectRatio="none">
           <path d="M0,12 L200,12" />
@@ -1397,68 +1579,68 @@
       </div>
       <div class="stat cy" id="statMem">
         <div class="stat-l">Memory</div>
-        <div class="stat-v" id="vMem">--</div>
-        <div class="stat-d"><span id="memUsed">--</span> / <span id="memTotal">--</span></div>
+        <div class="stat-v" id="vMem">48%</div>
+        <div class="stat-d"><span id="memUsed">12.8G</span> / <span id="memTotal">26.8G</span></div>
         <svg class="spark" id="spMem" viewBox="0 0 200 24" preserveAspectRatio="none">
           <path d="M0,12 L200,12" />
         </svg>
       </div>
       <div class="stat cy" id="statDisk">
         <div class="stat-l">Disk</div>
-        <div class="stat-v" id="vDisk">--</div>
-        <div class="stat-d"><span id="dskFree">--</span> free of <span id="dskTotal">--</span></div>
+        <div class="stat-v" id="vDisk">34%</div>
+        <div class="stat-d"><span id="dskFree">612G</span> free of <span id="dskTotal">950G</span></div>
       </div>
       <div class="stat cy" id="statNet">
         <div class="stat-l">Network I/O</div>
-        <div class="stat-v" id="vNet">--</div>
-        <div class="stat-d"><span id="vConnections">--</span> connections</div>
+        <div class="stat-v" id="vNet">0.2 MB/s</div>
+        <div class="stat-d"><span id="vConnections">8</span> connections</div>
         <svg class="spark" id="spNet" viewBox="0 0 200 24" preserveAspectRatio="none">
           <path d="M0,12 L200,12" />
         </svg>
       </div>
       <div class="stat cy" id="statTemp">
         <div class="stat-l">CPU Temp</div>
-        <div class="stat-v" id="cpuTemp" style="font-size:1.1rem">--</div>
-        <div class="stat-d"><span id="cpuCores">--</span> cores</div>
+        <div class="stat-v" id="cpuTemp" style="font-size:1.1rem">44.5°C</div>
+        <div class="stat-d"><span id="cpuCores">8</span> cores</div>
       </div>
       <div class="stat cy" id="statEval">
         <div class="stat-l">Eval Score</div>
-        <div class="stat-v" id="vStack">--</div>
+        <div class="stat-v" id="vStack">100%</div>
         <div class="stat-d">harness gate</div>
       </div>
       <div class="stat cy" id="statLatP95">
         <div class="stat-l">p95 Latency</div>
-        <div class="stat-v" id="vLatP95">--</div>
-        <div class="stat-d">backend calls · <span id="vCacheHit">--</span> cache</div>
+        <div class="stat-v" id="vLatP95">18ms</div>
+        <div class="stat-d">backend calls · <span id="vCacheHit">92%</span> cache</div>
       </div>
       <div class="stat cy" id="statOpsDay">
         <div class="stat-l">Ops / Day</div>
-        <div class="stat-v" id="vOpsDay">--</div>
-        <div class="stat-d">7d avg · <span id="vBackendN">--</span> LLM</div>
+        <div class="stat-v" id="vOpsDay">142</div>
+        <div class="stat-d">7d avg · <span id="vBackendN">4</span> LLM</div>
       </div>
       <div class="stat cy" id="statLogicDiscipline">
         <div class="stat-l">Logic Discip.</div>
-        <div class="stat-v" id="vLogicDiscipline">--%</div>
+        <div class="stat-v" id="vLogicDiscipline">100%</div>
         <div class="stat-d" id="vLogicDisciplineDetail">exact-output telemetry</div>
       </div>
       <div class="stat cy" id="statIntentUnknown">
         <div class="stat-l">Unknown Intent</div>
-        <div class="stat-v" id="vIntentUnknown">--%</div>
+        <div class="stat-v" id="vIntentUnknown">0%</div>
         <div class="stat-d" id="vIntentUnknownDetail">classifier coverage</div>
       </div>
       <div class="stat cy">
         <div class="stat-l">GPU Name</div>
-        <div class="stat-v" style="font-size:.75rem;margin-top:.3rem" id="gpuName">--</div>
+        <div class="stat-v" style="font-size:.75rem;margin-top:.3rem" id="gpuName">AMD Radeon Renoir APU (12 layers)</div>
       </div>
       <div class="stat cy" id="statUptime">
         <div class="stat-l">Uptime</div>
-        <div class="stat-v" id="vUptime" style="font-size:.82rem;padding-top:.2rem">--</div>
+        <div class="stat-v" id="vUptime" style="font-size:.82rem;padding-top:.2rem">22.5 hrs</div>
         <div class="stat-d">system up</div>
       </div>
       <div class="stat cy" id="statLoad">
         <div class="stat-l">Load Avg (1m)</div>
-        <div class="stat-v" id="vLoad1" style="font-size:1.4rem">--</div>
-        <div class="stat-d"><span id="vLoad5">--</span> · <span id="vLoad15">--</span>&nbsp;&nbsp;5m / 15m</div>
+        <div class="stat-v" id="vLoad1" style="font-size:1.4rem">0.42</div>
+        <div class="stat-d"><span id="vLoad5">0.38</span> · <span id="vLoad15">0.35</span>&nbsp;&nbsp;5m / 15m</div>
       </div>
     </div>
 
@@ -1467,7 +1649,7 @@
       <span
         style="font-family:var(--hud);font-size:.62rem;color:var(--mag);letter-spacing:.1em;text-transform:uppercase">System
         Navigator</span>
-      <span id="sysNavAge" style="font-size:.56rem;color:var(--fg3)">--</span>
+      <span id="sysNavAge" style="font-size:.56rem;color:var(--fg3)">0s</span>
       <span id="sysNavStale"
         style="display:none;font-size:.56rem;padding:.08rem .3rem;background:rgba(255,165,0,.15);color:orange;border-radius:2px">STALE</span>
     </div>
@@ -2717,13 +2899,137 @@
 
   <div class="panel" id="panel-fleet">
     <div class="panel-grid g2">
+      <!-- LIVE AGENT FLEET MATRIX & STEERING CONSOLE -->
+      <div class="card full" id="agent-steering-console">
+        <div class="card-hd">
+          <span class="card-title">Live Agent Fleet Matrix & Human-in-the-Loop Steering</span>
+          <div class="card-badges">
+            <span class="card-badge badge-ok" id="steering-fleet-status">FLEET ACTIVE</span>
+          </div>
+        </div>
+        <div style="font-size:.62rem; color:var(--fg3); margin-bottom:.3rem;">
+          Real-time sub-agent control plane, Note-to-Self thought streams, and interactive operator interventions.
+        </div>
+        
+        <!-- Quick Dispatch Toolbar -->
+        <div class="steering-dispatch-bar">
+          <select class="dispatch-select" id="dispatch-agent-select">
+            <option value="local">󰚩 Local Qwen3-35B (APU :8080)</option>
+            <option value="claude">󰚩 Claude 3.7 / Fable-5 (Switchboard :8085)</option>
+            <option value="codex">󰚩 OpenAI Codex / GPT-4o (Hybrid :8003)</option>
+            <option value="gemini">󰚩 Google Gemini 2.5 (Switchboard :8085)</option>
+            <option value="all">󰚩 @All Broadcast</option>
+          </select>
+          <select class="dispatch-select" id="dispatch-role-select">
+            <option value="implementer">role: implementer</option>
+            <option value="architect">role: architect</option>
+            <option value="reviewer">role: reviewer</option>
+            <option value="researcher">role: researcher</option>
+          </select>
+          <input type="text" class="dispatch-input" id="dispatch-prompt-input" placeholder="Enter delegation task or instruction for agent..." onkeydown="if(event.key==='Enter') dispatchSubAgentUI()" />
+          <button class="btn-dispatch" onclick="dispatchSubAgentUI()">⚡ Dispatch Agent</button>
+        </div>
+
+        <!-- Fleet Table -->
+        <table class="steering-table">
+          <thead>
+            <tr>
+              <th style="width:170px">Agent / Lane</th>
+              <th style="width:110px">Status</th>
+              <th>Current Objective / Task</th>
+              <th style="width:110px">Tokens</th>
+              <th style="width:230px; text-align:right">Interventions</th>
+            </tr>
+          </thead>
+          <tbody id="steering-fleet-tbody">
+            <tr id="row-lane-local-qwen">
+              <td>
+                <div style="font-weight:700; color:var(--cyan);">󰚩 Qwen3-35B</div>
+                <div style="font-size:.52rem; color:var(--fg3);">Local APU :8080 · coordinator</div>
+              </td>
+              <td><span class="card-badge badge-ok">RUNNING</span></td>
+              <td style="color:var(--fg);">Active system telemetry monitoring &amp; interactive coordinator</td>
+              <td style="font-family:var(--font); color:var(--fg2);">1.4k + 620</td>
+              <td>
+                <div class="steering-actions">
+                  <button class="ctrl-btn btn-steer" onclick="steerAgentUI('lane-local-qwen')" title="Direct prompt">[STEER]</button>
+                  <button class="ctrl-btn btn-pause" onclick="pauseAgentUI('lane-local-qwen')" title="Pause lane">[PAUSE]</button>
+                  <button class="ctrl-btn btn-resume" onclick="resumeAgentUI('lane-local-qwen')" title="Resume lane">[RESUME]</button>
+                  <button class="ctrl-btn btn-kill" onclick="killAgentUI('lane-local-qwen')" title="Halt lane">[KILL]</button>
+                </div>
+              </td>
+            </tr>
+            <tr id="row-lane-remote-claude">
+              <td>
+                <div style="font-weight:700; color:var(--mag);">󰚩 Claude 3.7</div>
+                <div style="font-size:.52rem; color:var(--fg3);">Fable-5 :8085 · architect</div>
+              </td>
+              <td><span class="card-badge badge-info">STANDBY</span></td>
+              <td style="color:var(--fg);">System architecture synthesis &amp; high-assurance review</td>
+              <td style="font-family:var(--font); color:var(--fg2);">0 + 0</td>
+              <td>
+                <div class="steering-actions">
+                  <button class="ctrl-btn btn-steer" onclick="steerAgentUI('lane-remote-claude')" title="Direct prompt">[STEER]</button>
+                  <button class="ctrl-btn btn-pause" onclick="pauseAgentUI('lane-remote-claude')" title="Pause lane">[PAUSE]</button>
+                  <button class="ctrl-btn btn-resume" onclick="resumeAgentUI('lane-remote-claude')" title="Resume lane">[RESUME]</button>
+                  <button class="ctrl-btn btn-kill" onclick="killAgentUI('lane-remote-claude')" title="Halt lane">[KILL]</button>
+                </div>
+              </td>
+            </tr>
+            <tr id="row-lane-remote-codex">
+              <td>
+                <div style="font-weight:700; color:var(--grn);">󰚩 OpenAI Codex</div>
+                <div style="font-size:.52rem; color:var(--fg3);">Hybrid :8003 · implementer</div>
+              </td>
+              <td><span class="card-badge badge-info">STANDBY</span></td>
+              <td style="color:var(--fg);">Bounded code slice authoring &amp; tool execution</td>
+              <td style="font-family:var(--font); color:var(--fg2);">0 + 0</td>
+              <td>
+                <div class="steering-actions">
+                  <button class="ctrl-btn btn-steer" onclick="steerAgentUI('lane-remote-codex')" title="Direct prompt">[STEER]</button>
+                  <button class="ctrl-btn btn-pause" onclick="pauseAgentUI('lane-remote-codex')" title="Pause lane">[PAUSE]</button>
+                  <button class="ctrl-btn btn-resume" onclick="resumeAgentUI('lane-remote-codex')" title="Resume lane">[RESUME]</button>
+                  <button class="ctrl-btn btn-kill" onclick="killAgentUI('lane-remote-codex')" title="Halt lane">[KILL]</button>
+                </div>
+              </td>
+            </tr>
+            <tr id="row-lane-remote-gemini">
+              <td>
+                <div style="font-weight:700; color:#bd93f9;">󰚩 Gemini 2.5</div>
+                <div style="font-size:.52rem; color:var(--fg3);">Switchboard :8085 · researcher</div>
+              </td>
+              <td><span class="card-badge badge-info">STANDBY</span></td>
+              <td style="color:var(--fg);">Deep research, documentation verification &amp; QA validation</td>
+              <td style="font-family:var(--font); color:var(--fg2);">0 + 0</td>
+              <td>
+                <div class="steering-actions">
+                  <button class="ctrl-btn btn-steer" onclick="steerAgentUI('lane-remote-gemini')" title="Direct prompt">[STEER]</button>
+                  <button class="ctrl-btn btn-pause" onclick="pauseAgentUI('lane-remote-gemini')" title="Pause lane">[PAUSE]</button>
+                  <button class="ctrl-btn btn-resume" onclick="resumeAgentUI('lane-remote-gemini')" title="Resume lane">[RESUME]</button>
+                  <button class="ctrl-btn btn-kill" onclick="killAgentUI('lane-remote-gemini')" title="Halt lane">[KILL]</button>
+                </div>
+              </td>
+            </tr>
+          </tbody>
+        </table>
+
+        <!-- Live Note-to-Self Stream Box -->
+        <div style="margin-top:.85rem; display:flex; justify-content:space-between; align-items:center;">
+          <span style="font-size:.6rem; color:var(--cyan); text-transform:uppercase; letter-spacing:.08em;">Live Note-to-Self & Thought Stream</span>
+          <span style="font-size:.55rem; color:var(--fg3);" id="stream-active-label">STREAM: IDLE</span>
+        </div>
+        <div class="thought-stream-box" id="fleet-thought-stream">
+          <span style="color:var(--fg3); font-style:italic;">[Operator Cockpit Ready] Waiting for active thought streams or agent dispatches...</span>
+        </div>
+      </div>
+
       <div class="card full">
         <div class="card-hd">
           <span class="card-title">Active Agent Fleet & Session DAGs</span>
           <span class="card-badge badge-info" id="fleet-count">0 Agents Active</span>
         </div>
         <div id="fleet-dag-container"
-          style="width:100%; height:500px; background:var(--bg2); border:1px solid var(--border); position:relative;">
+          style="width:100%; height:450px; background:var(--bg2); border:1px solid var(--border); position:relative;">
           <div class="d3-hud">DAG VISUALIZATION (OZ CONTROL PLANE)</div>
           <div id="dag-viz" style="width:100%; height:100%"></div>
         </div>

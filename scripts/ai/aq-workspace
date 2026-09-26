@@ -1,0 +1,120 @@
+#!/usr/bin/env bash
+# aq-workspace — SOTA Multi-Tiled Agentic Workspace Launcher
+#
+# Launches the IndyDevDan / Pi Agent / Herdr inspired multi-tiled workspace:
+#   • Left:   Interactive Agentic Coordinator & Steering Console (aq-coordinator-repl)
+#   • Top-R:  Sub-Agent Fleet Matrix & Live Thought Stream (aq-fleet-monitor)
+#   • Btm-R:  System Telemetry & Health Cockpit (aq-cockpit-monitor)
+#
+# Usage:
+#   aq-workspace                    # launch or attach to tiled workspace for current dir
+#   aq-workspace --tui              # single-window Rich TUI fallback (no multiplexer)
+#   aq-workspace repl               # launch Coordinator REPL directly
+#   aq-workspace status             # print live telemetry cockpit snapshot
+#   aq-workspace list               # list active agentic sessions
+#   aq-workspace kill [session]     # terminate workspace session
+#   aq-workspace --help             # show help
+
+set -euo pipefail
+
+# 1. Resolve repository root
+SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
+REPO_ROOT="$(cd "$SCRIPT_DIR/../.." && pwd)"
+
+# Ensure harness tools and scripts are in PATH
+export PATH="$SCRIPT_DIR:$REPO_ROOT/scripts/ai:$PATH"
+export PYTHONPATH="${REPO_ROOT}:${REPO_ROOT}/ai-stack:${REPO_ROOT}/ai-stack/mcp-servers:${REPO_ROOT}/scripts/ai:${PYTHONPATH:-}"
+
+LAYOUT_FILE="${REPO_ROOT}/config/zellij/aq-agentic-workspace.kdl"
+DIR_NAME="$(basename "$PWD")"
+DEFAULT_SESSION="aq-${DIR_NAME}"
+
+show_help() {
+  cat <<'EOF'
+AQ-OS SOTA Agentic Workspace
+
+Usage:
+  aq-workspace                    Start or attach to tiled workspace for current directory
+  aq-workspace [session-name]     Start or attach with custom session name
+  aq-workspace --tui              Run single-window Rich TUI layout (no multiplexer)
+  aq-workspace repl               Open Coordinator & Steering REPL directly
+  aq-workspace status             Show live AI stack & telemetry status
+  aq-workspace list               List all active agentic workspace sessions
+  aq-workspace kill [session]     Terminate workspace session
+  aq-workspace --help             Show this help guide
+
+Navigation in Tiled Workspace (Zellij):
+  Alt + h/j/k/l or Arrows         Move focus between panes
+  Alt + n                         Next tab (Workspace -> Fleet Matrix -> Operations -> Shell)
+  Alt + p                         Previous tab
+  Alt + f                         Toggle fullscreen on active pane
+  Ctrl + q                        Detach safely from workspace session (leaves agents running!)
+
+EOF
+}
+
+# Handle subcommands
+case "${1:-}" in
+  --help|-h)
+    show_help
+    exit 0
+    ;;
+  status)
+    exec python3 "${SCRIPT_DIR}/aq-cockpit-monitor" --once
+    ;;
+  repl)
+    exec python3 "${SCRIPT_DIR}/aq-coordinator-repl" "${@:2}"
+    ;;
+  fleet)
+    exec python3 "${SCRIPT_DIR}/aq-fleet-monitor" "${@:2}"
+    ;;
+  list)
+    if command -v zellij >/dev/null 2>&1; then
+      echo "Active Zellij Agentic Sessions:"
+      zellij list-sessions 2>/dev/null | grep -E '^aq-' || echo "  (no active aq-* sessions)"
+    else
+      echo "Zellij is not installed on PATH."
+    fi
+    exit 0
+    ;;
+  kill)
+    SESSION="${2:-$DEFAULT_SESSION}"
+    if command -v zellij >/dev/null 2>&1; then
+      zellij kill-session "$SESSION" 2>/dev/null && echo "Killed session: $SESSION" || echo "Session not found: $SESSION"
+    fi
+    exit 0
+    ;;
+  --tui|--standalone)
+    exec python3 "${REPO_ROOT}/scripts/ai/lib/unified_workspace_tui.py" "${@:2}"
+    ;;
+esac
+
+# Check for Zellij
+if ! command -v zellij >/dev/null 2>&1; then
+  echo "Notice: 'zellij' multiplexer not found. Falling back to unified single-window TUI..." >&2
+  exec python3 "${REPO_ROOT}/scripts/ai/lib/unified_workspace_tui.py" "$@"
+fi
+
+# Detect if already inside Zellij session
+if [[ -n "${ZELLIJ:-}" ]]; then
+  echo "Already inside a Zellij session ($ZELLIJ)."
+  echo "Launching Coordinator REPL directly in this pane..."
+  exec python3 "${SCRIPT_DIR}/aq-coordinator-repl" "$@"
+fi
+
+# Verify layout file exists
+if [[ ! -f "$LAYOUT_FILE" ]]; then
+  echo "Error: Layout file not found at $LAYOUT_FILE" >&2
+  exit 1
+fi
+
+SESSION_NAME="${1:-$DEFAULT_SESSION}"
+
+# If not interactive TTY, render status snapshot
+if [[ ! -t 0 || ! -t 1 ]]; then
+  echo "Non-interactive environment detected. Printing cockpit telemetry:"
+  exec python3 "${SCRIPT_DIR}/aq-cockpit-monitor" --once
+fi
+
+echo "Launching SOTA Agentic Workspace [$SESSION_NAME] in $PWD..."
+exec zellij --layout "$LAYOUT_FILE" attach --create "$SESSION_NAME"
