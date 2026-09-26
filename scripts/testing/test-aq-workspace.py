@@ -30,6 +30,7 @@ class TestAgenticWorkspace(unittest.TestCase):
         """Verify executable bits are set on all workspace tools."""
         tools = [
             SCRIPTS_AI / "aq-workspace",
+            SCRIPTS_AI / "aq-agent-launcher",
             SCRIPTS_AI / "aq-coordinator-repl",
             SCRIPTS_AI / "aq-fleet-monitor",
             SCRIPTS_AI / "aq-cockpit-monitor",
@@ -122,6 +123,18 @@ class TestAgenticWorkspace(unittest.TestCase):
         self.assertIn("Codex & Sub-Agents", content)
         self.assertIn("Gemini & Sub-Agents", content)
         self.assertIn("Local Qwen & Sub-Agents", content)
+
+    def test_agent_launcher_syntax_and_lanes(self):
+        """Verify aq-agent-launcher syntax and lane resolution."""
+        cmd = ["bash", "-n", str(SCRIPTS_AI / "aq-agent-launcher")]
+        res = subprocess.run(cmd, capture_output=True, text=True, check=False)
+        self.assertEqual(res.returncode, 0, f"aq-agent-launcher syntax error: {res.stderr}")
+        content = (SCRIPTS_AI / "aq-agent-launcher").read_text(encoding="utf-8")
+        self.assertIn("claude", content)
+        self.assertIn("codex", content)
+        self.assertIn("local", content)
+        self.assertIn("gemini", content)
+        self.assertIn("get_auth_status", content)
 
 
 if __name__ == "__main__":

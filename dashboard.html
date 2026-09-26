@@ -4354,6 +4354,19 @@
           Real-time sub-agent control plane, Note-to-Self thought streams, and interactive operator interventions.
         </div>
         
+        <!-- Terminal Workspace Quick Bar -->
+        <div class="workspace-quick-launcher" style="display:flex; align-items:center; flex-wrap:wrap; gap:0.5rem; background:rgba(0,0,0,0.3); border:1px solid rgba(0,217,255,0.2); border-radius:6px; padding:0.4rem 0.6rem; margin-bottom:0.6rem; font-size:0.65rem;">
+          <span style="color:var(--cyan); font-weight:700;">🖥️ SOTA CLI Workspace:</span>
+          <code style="background:rgba(255,255,255,0.06); padding:2px 6px; border-radius:4px; color:var(--fg);">aq-workspace</code>
+          <span style="color:var(--fg3);">· Auto-resume:</span>
+          <code style="background:rgba(255,255,255,0.06); padding:2px 6px; border-radius:4px; color:var(--fg2);">aq-workspace resume</code>
+          <span style="color:var(--fg3);">· Direct Native CLIs:</span>
+          <span class="em-tag tag-pass" style="cursor:pointer;" onclick="navigator.clipboard.writeText('aq-workspace claude')" title="Click to copy">claude</span>
+          <span class="em-tag tag-pass" style="cursor:pointer;" onclick="navigator.clipboard.writeText('aq-workspace codex')" title="Click to copy">codex</span>
+          <span class="em-tag tag-pass" style="cursor:pointer;" onclick="navigator.clipboard.writeText('aq-workspace local')" title="Click to copy">local (qwen)</span>
+          <span class="em-tag tag-pass" style="cursor:pointer;" onclick="navigator.clipboard.writeText('aq-workspace gemini')" title="Click to copy">gemini</span>
+        </div>
+        
         <!-- Quick Dispatch Toolbar -->
         <div class="steering-dispatch-bar">
           <select class="dispatch-select" id="dispatch-agent-select">
