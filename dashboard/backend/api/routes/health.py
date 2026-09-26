@@ -174,6 +174,24 @@ async def _run_aq_qa_layered_background() -> None:
         _layered_running = False
 
 
+def _load_persisted_qa_results() -> Optional[Dict[str, Any]]:
+    """Load latest verified QA evidence from disk into dashboard cache format."""
+    try:
+        from qa_evidence_store import QAEvidenceStore
+        store = QAEvidenceStore.production()
+        latest = store.read_latest(max_age_seconds=86400 * 7)
+        results = latest.payload.get("results")
+        if isinstance(results, dict) and results.get("tests"):
+            from api.services.qa_runner import _normalize_dashboard_confined_phase0, _recount
+            data = dict(results)
+            _recount(data)
+            _normalize_dashboard_confined_phase0(data)
+            return data
+    except Exception as exc:
+        logger.debug("Could not read persisted QA evidence: %s", exc)
+    return None
+
+
 @router.get("/layered")
 async def get_layered_health():
     """
@@ -204,6 +222,18 @@ async def get_layered_health():
         result["pending"] = False
         result["cache_expires_in_s"] = int(_layered_cache["expires_at"] - now)
         return result
+
+    # Cold cache: check persisted verified evidence before falling back to pending
+    if _layered_cache["result"] is None:
+        persisted = _load_persisted_qa_results()
+        if persisted:
+            _layered_cache["result"] = persisted
+            _layered_cache["expires_at"] = now + _LAYERED_CACHE_TTL
+            result = dict(persisted)
+            result["cached"] = True
+            result["pending"] = False
+            result["cache_expires_in_s"] = int(_LAYERED_CACHE_TTL)
+            return result
 
     # Cold cache — return a cheap pending response by default. aq-qa phase 0 is
     # heavy on this host and includes report-backed checks unless explicitly
