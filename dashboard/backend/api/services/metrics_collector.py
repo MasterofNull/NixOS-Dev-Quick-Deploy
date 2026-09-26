@@ -125,11 +125,67 @@ class MetricsCollector:
         return self.history[metric][-limit:]
 
     async def calculate_health_score(self) -> int:
+        """Calculate overall system health score (0-100) calibrated for an AI appliance.
+        
+        On an on-metal AI host (e.g. AMD Ryzen APU with local LLM residing in RAM),
+        high memory utilization is the expected baseline. Health is determined by:
+        1. Memory Headroom (available working RAM vs swap danger threshold)
+        2. CPU Throttle Margin (capacity headroom for background inference & ops)
+        3. Disk Headroom (NVMe capacity for vectors, logs, and AIDB)
+        4. Thermal Safety Margin (APU temperature under throttle limit)
+        """
         metrics = await self.get_system_metrics()
-        cpu_score = max(0, 100 - metrics["cpu"]["usage_percent"])
-        memory_score = max(0, 100 - metrics["memory"]["percent"])
-        disk_score = max(0, 100 - metrics["disk"]["percent"])
-        return int((cpu_score * 0.4) + (memory_score * 0.4) + (disk_score * 0.2))
+        
+        # 1. Memory Health (40% weight):
+        # Local 35B model naturally occupies ~18-20 GB.
+        # As long as available RAM >= 4.0 GB, memory health is 100%.
+        avail_gb = metrics["memory"]["free"] / (1024 ** 3)
+        if avail_gb >= 4.0:
+            memory_score = 100.0
+        elif avail_gb >= 2.0:
+            memory_score = 75.0 + 25.0 * ((avail_gb - 2.0) / 2.0)
+        elif avail_gb >= 1.0:
+            memory_score = 50.0 + 25.0 * ((avail_gb - 1.0) / 1.0)
+        else:
+            memory_score = max(0.0, avail_gb * 50.0)
+
+        # 2. CPU Capacity Headroom (25% weight):
+        # 0-50% CPU is active nominal duty cycle on a 16-thread host.
+        cpu_usage = metrics["cpu"]["usage_percent"]
+        if cpu_usage <= 50.0:
+            cpu_score = 100.0
+        elif cpu_usage <= 80.0:
+            cpu_score = 100.0 - (cpu_usage - 50.0) * 0.8
+        else:
+            cpu_score = max(0.0, 76.0 - (cpu_usage - 80.0) * 3.8)
+
+        # 3. Disk Storage Headroom (20% weight):
+        # NVMe drive has hundreds of GB free. Under 75% used is completely healthy.
+        disk_pct = metrics["disk"]["percent"]
+        if disk_pct <= 75.0:
+            disk_score = 100.0
+        elif disk_pct <= 90.0:
+            disk_score = 100.0 - (disk_pct - 75.0) * 2.0
+        else:
+            disk_score = max(0.0, 70.0 - (disk_pct - 90.0) * 7.0)
+
+        # 4. Thermal Safety Margin (15% weight):
+        # APU cool baseline is under 65°C; alert threshold is 75°C; throttle is 85°C.
+        temp_str = metrics["cpu"].get("temperature", "50.0°C")
+        try:
+            temp_val = float(str(temp_str).replace("°C", "").strip())
+        except (ValueError, TypeError):
+            temp_val = 50.0
+            
+        if temp_val <= 65.0:
+            thermal_score = 100.0
+        elif temp_val <= 75.0:
+            thermal_score = 100.0 - (temp_val - 65.0) * 2.5
+        else:
+            thermal_score = max(0.0, 75.0 - (temp_val - 75.0) * 7.5)
+
+        total_score = (memory_score * 0.40) + (cpu_score * 0.25) + (disk_score * 0.20) + (thermal_score * 0.15)
+        return int(round(min(100.0, max(0.0, total_score))))
 
     async def _get_cpu_temperature(self) -> str:
         try:

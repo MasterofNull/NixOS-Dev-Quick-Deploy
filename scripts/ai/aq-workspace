@@ -22,14 +22,38 @@
 set -euo pipefail
 
 # 1. Resolve repository root
-SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
-REPO_ROOT="$(cd "$SCRIPT_DIR/../.." && pwd)"
+REAL_SCRIPT="$(readlink -f "${BASH_SOURCE[0]}")"
+SCRIPT_DIR="$(cd "$(dirname "$REAL_SCRIPT")" && pwd)"
+
+if [ -f "${SCRIPT_DIR}/../../config/zellij/aq-agentic-workspace.kdl" ]; then
+  REPO_ROOT="$(cd "${SCRIPT_DIR}/../.." && pwd)"
+elif [ -n "${AQ_REPO_ROOT:-}" ] && [ -d "${AQ_REPO_ROOT}" ]; then
+  REPO_ROOT="${AQ_REPO_ROOT}"
+elif git rev-parse --show-toplevel &>/dev/null && [ -f "$(git rev-parse --show-toplevel)/config/zellij/aq-agentic-workspace.kdl" ]; then
+  REPO_ROOT="$(git rev-parse --show-toplevel)"
+elif [ -d "/home/hyperd/Documents/NixOS-Dev-Quick-Deploy" ]; then
+  REPO_ROOT="/home/hyperd/Documents/NixOS-Dev-Quick-Deploy"
+else
+  REPO_ROOT="$(cd "$SCRIPT_DIR/../.." && pwd)"
+fi
+
+LAYOUT_FILE="${REPO_ROOT}/config/zellij/aq-agentic-workspace.kdl"
+if [ ! -f "$LAYOUT_FILE" ]; then
+  for candidate in \
+    "${HOME}/.config/zellij/layouts/aq-agentic-workspace.kdl" \
+    "/home/hyperd/Documents/NixOS-Dev-Quick-Deploy/config/zellij/aq-agentic-workspace.kdl" \
+    "${REPO_ROOT}/config/zellij/aq-agentic-workspace.kdl"; do
+    if [ -f "$candidate" ]; then
+      LAYOUT_FILE="$candidate"
+      break
+    fi
+  done
+fi
 
 # Ensure harness tools and scripts are in PATH
 export PATH="$SCRIPT_DIR:$REPO_ROOT/scripts/ai:$PATH"
 export PYTHONPATH="${REPO_ROOT}:${REPO_ROOT}/ai-stack:${REPO_ROOT}/ai-stack/mcp-servers:${REPO_ROOT}/scripts/ai:${PYTHONPATH:-}"
 
-LAYOUT_FILE="${REPO_ROOT}/config/zellij/aq-agentic-workspace.kdl"
 DIR_NAME="$(basename "$PWD")"
 DEFAULT_SESSION="aq-${DIR_NAME}"
 
