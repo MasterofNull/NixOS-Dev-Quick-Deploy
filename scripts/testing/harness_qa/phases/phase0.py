@@ -1403,6 +1403,31 @@ def _check_c6a_authorize_launch_coverage(ctx: RunContext) -> list[CheckResult]:
     return [failed(1, "0.10.53", "C6a authorize-launch coverage", detail)]
 
 
+def _check_c6c_owner_submission_coverage(ctx: RunContext) -> list[CheckResult]:
+    """0.10.54: Foundation C C6c -- callable offline owner-key submission path:
+    submit --signed --socket delivers a pre-signed bump to the running authority
+    over the C6-S control-socket owner-bump path (no host private key, no
+    owner-UID 0700 write); resubmit -> deterministic receipt/deny (never a
+    double-bump); bad/revoked/unknown-key documents deny; the dormant live
+    allowlist maps the dashboard lever to none(revoked-only); an active-key
+    fixture with an unreachable authority maps to degraded(authority-unreachable)."""
+    check = ctx.repo_root / "scripts" / "testing" / "test-c6c-owner-submission-service-coverage.py"
+    if not check.exists():
+        return [failed(1, "0.10.54", "C6c owner epoch-bump submission", "test-c6c-owner-submission-service-coverage.py missing")]
+    proc = subprocess.run(
+        ["python3", str(check)],
+        cwd=ctx.repo_root,
+        text=True,
+        capture_output=True,
+        timeout=30,
+        check=False,
+    )
+    if proc.returncode == 0:
+        return [passed(1, "0.10.54", "C6c owner epoch-bump submission: signed-submit accept/resubmit-deterministic/bad-key-deny, no host key, no 0700 write, dashboard lever states")]
+    detail = (proc.stdout + proc.stderr).strip() or f"exit {proc.returncode}"
+    return [failed(1, "0.10.54", "C6c owner epoch-bump submission", detail)]
+
+
 def _check_modal_task_profiles(ctx: RunContext) -> list[CheckResult]:
     """Phase 162: modal task profiles for local dispatch."""
     check = ctx.repo_root / "scripts" / "testing" / "test-modal-task-profiles.py"
@@ -2087,6 +2112,7 @@ def run(ctx: RunContext) -> list[CheckResult]:
     results.extend(_check_revocation_epoch_recovery(ctx))
     results.extend(_check_revocation_launch_socket_topology(ctx))
     results.extend(_check_c6a_authorize_launch_coverage(ctx))
+    results.extend(_check_c6c_owner_submission_coverage(ctx))
     if ctx.dashboard_safe:
         results.extend(_dashboard_safe_host_only_skips())
     return results
