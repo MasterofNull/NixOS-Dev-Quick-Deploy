@@ -54,7 +54,7 @@ scipy==1.16.3
 pandas==2.3.3
 
 # Testing
-pytest>=9.0.3
+pytest==8.4.0
 pytest-asyncio==0.23.8
 pytest-cov==5.0.0
 locust==2.32.4
