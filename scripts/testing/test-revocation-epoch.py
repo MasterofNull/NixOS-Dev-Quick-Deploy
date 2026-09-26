@@ -1129,6 +1129,126 @@ def test_consume_launch_expired_denies() -> None:
         env.cleanup()
 
 
+def _issued_record_path(env: "_TempEnv", token_nonce: str) -> Path:
+    """`launch-ledger/issued/<nonce>` for a given `_TempEnv` -- mirrors
+    `_derive_launch_ledger_dirs`'s own layout (siblings of `epoch_path`)."""
+    return env.epoch_path.parent / "launch-ledger" / "issued" / token_nonce
+
+
+def _corrupt_issued_record(env: "_TempEnv", token_nonce: str, **overrides) -> None:
+    """Load the genuinely-issued `issued/<nonce>` record and rewrite it with
+    the given field overrides -- simulates a corrupted/tampered persisted
+    record without touching the durable single-use O_EXCL primitive
+    itself (that stays exercised by the legitimate-path tests)."""
+    path = _issued_record_path(env, token_nonce)
+    record = json.loads(path.read_text(encoding="utf-8"))
+    record.update(overrides)
+    if any(v is _REMOVE for v in overrides.values()):
+        for key, value in list(overrides.items()):
+            if value is _REMOVE:
+                record.pop(key, None)
+    path.write_text(json.dumps(record), encoding="utf-8")
+
+
+_REMOVE = object()
+
+
+def test_consume_launch_malformed_persisted_record_denies() -> None:
+    """Cohort REJECT binding-review 20260925 finding 1 -- Codex/Antigravity
+    reproduced THREE malformed-persisted-record accepts (bad internal
+    nonce, oversized `deadline_ms`, a `bool` `task_revision` matching an
+    `int` revision via Python's `bool`-is-`int`-subclass equality); a
+    fourth vector (a missing required field) is added here for full
+    closed-schema coverage. After the fix, EVERY one of these must deny
+    `DENY_LAUNCH_UNKNOWN` (fail-closed, malformed persisted state), never
+    be consumed."""
+    env = _TempEnv(initial_epoch="0")
+    try:
+        # (a) stored internal nonce disagrees with the ledger key/request nonce.
+        token = re_lib.authorize_launch(_base_launch_fields(), env.epoch_path)["token"]
+        _corrupt_issued_record(env, token["nonce"], nonce="f" * 64)
+        resp_a = re_lib.consume_launch(
+            dict(_base_launch_fields(), nonce=token["nonce"], epoch=token["epoch"]), env.epoch_path,
+        )
+        check("malformed-record: tampered internal nonce denies", resp_a.get("ok") is False)
+        check("malformed-record: tampered internal nonce reason is UNKNOWN", resp_a.get("reason") == re_lib.DENY_LAUNCH_UNKNOWN)
+
+        # (b) deadline_ms above the design's <=250ms ceiling.
+        token_b = re_lib.authorize_launch(_base_launch_fields(), env.epoch_path)["token"]
+        _corrupt_issued_record(env, token_b["nonce"], deadline_ms=100000)
+        resp_b = re_lib.consume_launch(
+            dict(_base_launch_fields(), nonce=token_b["nonce"], epoch=token_b["epoch"]), env.epoch_path,
+        )
+        check("malformed-record: oversized deadline_ms denies", resp_b.get("ok") is False)
+        check("malformed-record: oversized deadline_ms reason is UNKNOWN", resp_b.get("reason") == re_lib.DENY_LAUNCH_UNKNOWN)
+
+        # (c) task_revision persisted as a bool -- `True == 1` in Python, so a naive
+        # equality-only binding check silently accepted this as revision 1.
+        token_c = re_lib.authorize_launch(_base_launch_fields(), env.epoch_path)["token"]
+        _corrupt_issued_record(env, token_c["nonce"], task_revision=True)
+        resp_c = re_lib.consume_launch(
+            dict(_base_launch_fields(), nonce=token_c["nonce"], epoch=token_c["epoch"]), env.epoch_path,
+        )
+        check("malformed-record: bool task_revision denies", resp_c.get("ok") is False)
+        check("malformed-record: bool task_revision reason is UNKNOWN", resp_c.get("reason") == re_lib.DENY_LAUNCH_UNKNOWN)
+
+        # (d) a required field missing entirely (closed-schema field-set check).
+        token_d = re_lib.authorize_launch(_base_launch_fields(), env.epoch_path)["token"]
+        _corrupt_issued_record(env, token_d["nonce"], gateway_instance=_REMOVE)
+        resp_d = re_lib.consume_launch(
+            dict(_base_launch_fields(), nonce=token_d["nonce"], epoch=token_d["epoch"]), env.epoch_path,
+        )
+        check("malformed-record: missing field denies", resp_d.get("ok") is False)
+        check("malformed-record: missing field reason is UNKNOWN", resp_d.get("reason") == re_lib.DENY_LAUNCH_UNKNOWN)
+
+        # The legitimate issue -> consume-once path is UNDISTURBED by the above --
+        # a freshly-issued, untouched token still consumes exactly once.
+        good_token = re_lib.authorize_launch(_base_launch_fields(), env.epoch_path)["token"]
+        good_req = dict(_base_launch_fields(), nonce=good_token["nonce"], epoch=good_token["epoch"])
+        good_first = re_lib.consume_launch(good_req, env.epoch_path)
+        check("malformed-record: untouched token still consumes once", good_first.get("ok") is True)
+        good_second = re_lib.consume_launch(good_req, env.epoch_path)
+        check("malformed-record: untouched token's second consume still ALREADY_CONSUMED", good_second.get("reason") == re_lib.DENY_LAUNCH_ALREADY_CONSUMED)
+    finally:
+        env.cleanup()
+
+
+def test_consume_launch_backward_clock_denies_not_yet_valid() -> None:
+    """Cohort REJECT binding-review 20260925 finding 2 -- the <=250ms
+    `deadline_ms` was only ever an UPPER bound; a `moment < issued_at`
+    presentation (backward wall-clock step, or a replayed/backdated
+    request) was previously accepted because the old freshness check was
+    upper-bound-only. After the fix this denies the NEW
+    `DENY_LAUNCH_NOT_YET_VALID`, and the legitimate at-or-after-issuance
+    consume still succeeds exactly once."""
+    env = _TempEnv(initial_epoch="0")
+    try:
+        issued_at = datetime(2020, 1, 1, tzinfo=timezone.utc)
+        token = re_lib.authorize_launch(_base_launch_fields(), env.epoch_path, now=issued_at)["token"]
+        before_issuance = issued_at - timedelta(milliseconds=1000)
+        resp = re_lib.consume_launch(
+            dict(_base_launch_fields(), nonce=token["nonce"], epoch=token["epoch"]),
+            env.epoch_path, now=before_issuance,
+        )
+        check("backward-clock: moment < issued_at denies", resp.get("ok") is False)
+        check("backward-clock: reason is NOT_YET_VALID", resp.get("reason") == re_lib.DENY_LAUNCH_NOT_YET_VALID)
+
+        # The SAME token, presented at-or-after issuance, still consumes exactly once --
+        # the lower bound never disturbed a legitimately-timed consume.
+        on_time = re_lib.consume_launch(
+            dict(_base_launch_fields(), nonce=token["nonce"], epoch=token["epoch"]),
+            env.epoch_path, now=issued_at,
+        )
+        check("backward-clock: at-issuance consume still succeeds", on_time.get("ok") is True)
+        duplicate = re_lib.consume_launch(
+            dict(_base_launch_fields(), nonce=token["nonce"], epoch=token["epoch"]),
+            env.epoch_path, now=issued_at,
+        )
+        check("backward-clock: duplicate consume still ALREADY_CONSUMED", duplicate.get("reason") == re_lib.DENY_LAUNCH_ALREADY_CONSUMED)
+    finally:
+        env.cleanup()
+
+
 def test_same_lock_ordering_bump_before_issuance_read_and_denied() -> None:
     """Design §4 -- "a bump committed before issuance is read and denied":
     a REAL signed `apply_bump` commits first; `authorize_launch` afterward
@@ -1265,6 +1385,8 @@ def main() -> int:
     test_consume_launch_unknown_nonce_denies()
     test_consume_launch_binding_mismatch_denies()
     test_consume_launch_expired_denies()
+    test_consume_launch_malformed_persisted_record_denies()
+    test_consume_launch_backward_clock_denies_not_yet_valid()
     test_same_lock_ordering_bump_before_issuance_read_and_denied()
     test_same_lock_ordering_bump_after_issuance_ordered_after_denies_supersession()
     test_recover_launch_ledger_unconditional_sweep_expires_issued()

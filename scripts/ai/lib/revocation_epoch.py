@@ -349,12 +349,25 @@ DENY_NOT_TEG_PEER = "not-teg-peer"
 DENY_LAUNCH_UNKNOWN = "launch-unknown"
 DENY_LAUNCH_ALREADY_CONSUMED = "launch-already-consumed"
 DENY_LAUNCH_EXPIRED = "launch-expired"
+DENY_LAUNCH_NOT_YET_VALID = "launch-not-yet-valid"
 DENY_LAUNCH_EPOCH_SUPERSEDED = "launch-epoch-superseded"
 DENY_LAUNCH_BINDING_MISMATCH = "launch-binding-mismatch"
 
 REQUIRED_AUTHORIZE_LAUNCH_FIELDS = ("context_digest", "task_id", "task_revision", "gateway_instance")
 REQUIRED_CONSUME_LAUNCH_FIELDS = (
     "nonce", "context_digest", "task_id", "task_revision", "epoch", "gateway_instance",
+)
+
+# The persisted `issued/<nonce>` record is a CLOSED schema (design §3.1) --
+# exactly these 8 fields, nothing more, nothing less. `consume_launch` must
+# validate a loaded record against this schema before trusting ANY of its
+# fields (binding comparison, freshness, single-use transition): the file
+# is authority-owned 0700, but "authority-owned" is not "impossible to be
+# corrupt/partial/torn", and a fail-open reading of a malformed record is
+# exactly the cohort REJECT (binding-review 20260925) finding 1 defect.
+_ISSUED_LAUNCH_RECORD_FIELDS = (
+    "nonce", "context_digest", "task_id", "task_revision", "epoch",
+    "gateway_instance", "issued_at", "deadline_ms",
 )
 
 _HEX_RE = re.compile(r"^[0-9a-fA-F]+$")
@@ -1364,6 +1377,48 @@ def _validate_consume_launch_fields(data: Mapping[str, Any]) -> Optional[str]:
     return None
 
 
+def _validate_issued_launch_record(record: Mapping[str, Any], nonce: str) -> Optional[str]:
+    """Strict closed-schema validation of a PERSISTED `launch-ledger/issued/
+    <nonce>` record, run BEFORE any of its fields are trusted for binding
+    comparison, freshness, or the single-use transition (cohort REJECT
+    binding-review 20260925 finding 1). A record on disk is authority-
+    written under 0700, but that is a durability/access-control property,
+    not a type/shape guarantee -- this closes exactly the three malformed-
+    record accepts the review reproduced: an internal `nonce` that
+    disagreed with the ledger key, `deadline_ms` above the design's ≤250ms
+    ceiling, and `task_revision: true` (Python's `bool` is an `int`
+    subclass, so `True == 1` silently matched a real revision without this
+    explicit `type(...) is not bool` guard). Returns a detail string
+    (non-empty) on ANY deviation from the closed schema; `None` iff the
+    record is exactly well-formed."""
+    if set(record.keys()) != set(_ISSUED_LAUNCH_RECORD_FIELDS):
+        return "issued-record-malformed-fields"
+    stored_nonce = record.get("nonce")
+    if not isinstance(stored_nonce, str) or stored_nonce != nonce:
+        return "issued-record-malformed-nonce"
+    for field in ("context_digest", "task_id", "gateway_instance"):
+        value = record.get(field)
+        if not isinstance(value, str) or not value:
+            return f"issued-record-malformed-{field}"
+    context_digest = record.get("context_digest")
+    if not _HEX_RE.match(context_digest):
+        return "issued-record-malformed-context-digest"
+    task_revision = record.get("task_revision")
+    if not isinstance(task_revision, int) or isinstance(task_revision, bool) or task_revision < 0:
+        return "issued-record-malformed-task-revision"
+    epoch = record.get("epoch")
+    if not isinstance(epoch, int) or isinstance(epoch, bool) or epoch < 0:
+        return "issued-record-malformed-epoch"
+    if not isinstance(record.get("issued_at"), str) or not record.get("issued_at"):
+        return "issued-record-malformed-timestamp"
+    deadline_ms = record.get("deadline_ms")
+    if not isinstance(deadline_ms, int) or isinstance(deadline_ms, bool):
+        return "issued-record-malformed-deadline"
+    if deadline_ms < 0 or deadline_ms > LAUNCH_TOKEN_DEADLINE_MS:
+        return "issued-record-malformed-deadline"
+    return None
+
+
 def authorize_launch(request: Any, epoch_path: Any, now: Optional[datetime] = None) -> dict[str, Any]:
     """Design §2.1/§3.1 — mint a single-use launch token bound to
     `{context_digest, task_id, task_revision, epoch=current, gateway_instance}`
@@ -1426,8 +1481,12 @@ def consume_launch(request: Any, epoch_path: Any, now: Optional[datetime] = None
     called) then the atomic `issued -> consumed` `O_EXCL` test-and-set
     single-use transition, under the SAME `epoch.lock` `apply_bump` holds
     (design §4). Verifier order (first denial wins, mirrors `apply_bump`'s
-    own first-match-wins discipline): (2) `issued/<nonce>` exists, (3)
-    binding matches, (4) not expired, (5) not epoch-superseded, (6) the
+    own first-match-wins discipline): (2) `issued/<nonce>` exists, (2.5)
+    the persisted record matches the closed schema exactly (nonce/type/
+    field-set — cohort REJECT finding 1), (3) binding matches, (4) the
+    validity window is bounded on BOTH ends — not before `issued_at`
+    (`DENY_LAUNCH_NOT_YET_VALID`, cohort REJECT finding 2) and not expired
+    past `issued_at + deadline_ms`, (5) not epoch-superseded, (6) the
     atomic transition. NONE of steps 2-5 mutate any ledger state on denial
     — only step 6's `O_EXCL` create ever writes `consumed/<nonce>` (design
     §2.2: "Every deny is fail-closed: it mutates no epoch, releases no
@@ -1463,6 +1522,18 @@ def consume_launch(request: Any, epoch_path: Any, now: Optional[datetime] = None
             if not isinstance(issued_record, Mapping):
                 return _consume_launch_deny(DENY_LAUNCH_UNKNOWN, "issued-record-unreadable")
 
+            # Step 2.5 — strict closed-schema validation of the PERSISTED
+            # record, before ANY of its fields are trusted (binding
+            # comparison, freshness, single-use transition). Cohort REJECT
+            # binding-review 20260925 finding 1: a malformed/tampered
+            # record (bad internal nonce, oversized deadline_ms, a `bool`
+            # `task_revision` matching an `int` revision via Python's
+            # `bool`-is-`int`-subclass equality) must fail closed as
+            # unknown, never be compared against as if well-formed.
+            record_reason = _validate_issued_launch_record(issued_record, nonce)
+            if record_reason is not None:
+                return _consume_launch_deny(DENY_LAUNCH_UNKNOWN, record_reason)
+
             # Step 3 — binding matches (context/task/revision/gateway/epoch).
             presented_binding = (
                 data["context_digest"], data["task_id"], data["task_revision"],
@@ -1476,15 +1547,23 @@ def consume_launch(request: Any, epoch_path: Any, now: Optional[datetime] = None
             if presented_binding != stored_binding:
                 return _consume_launch_deny(DENY_LAUNCH_BINDING_MISMATCH)
 
-            # Step 4 — not expired (deadline_ms <= 250, freshness bound only).
+            # Step 4 — bounded validity window, BOTH ends (cohort REJECT
+            # finding 2: the ≤250ms `deadline_ms` is only ever the UPPER
+            # bound; a `moment < issued_at` presentation -- a backward
+            # wall-clock step, or a replayed/backdated request -- was
+            # previously accepted because the old check was upper-bound-
+            # only). `issued_at`/`deadline_ms` are already schema-validated
+            # by `_validate_issued_launch_record` above; `_parse_iso` is
+            # still tried here in case the string, though non-empty, is
+            # not valid ISO8601 -- fail closed rather than raise.
             try:
                 issued_at = _parse_iso(issued_record["issued_at"])
             except (KeyError, TypeError, ValueError):
                 return _consume_launch_deny(DENY_LAUNCH_UNKNOWN, "issued-record-malformed-timestamp")
-            deadline_ms = issued_record.get("deadline_ms")
-            if not isinstance(deadline_ms, int) or isinstance(deadline_ms, bool) or deadline_ms < 0:
-                return _consume_launch_deny(DENY_LAUNCH_UNKNOWN, "issued-record-malformed-deadline")
+            deadline_ms = issued_record["deadline_ms"]
             moment = now or datetime.now(timezone.utc)
+            if moment < issued_at:
+                return _consume_launch_deny(DENY_LAUNCH_NOT_YET_VALID)
             if moment > issued_at + timedelta(milliseconds=deadline_ms):
                 return _consume_launch_deny(DENY_LAUNCH_EXPIRED)
 
