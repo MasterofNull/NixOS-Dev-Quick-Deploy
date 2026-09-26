@@ -1341,6 +1341,26 @@ def _check_intent_classifier_coverage(ctx: RunContext) -> list[CheckResult]:
     return [failed(1, "0.10.10", "intent classifier coverage", detail)]
 
 
+def _check_revocation_epoch_recovery(ctx: RunContext) -> list[CheckResult]:
+    """0.10.51: Foundation C C6d -- revocation-epoch authority write-ahead
+    journal + two-index deterministic recovery (recover-before-listen)."""
+    check = ctx.repo_root / "scripts" / "testing" / "test-revocation-epoch.py"
+    if not check.exists():
+        return [failed(1, "0.10.51", "revocation-epoch recovery determinism", "test-revocation-epoch.py missing")]
+    proc = subprocess.run(
+        ["python3", str(check)],
+        cwd=ctx.repo_root,
+        text=True,
+        capture_output=True,
+        timeout=30,
+        check=False,
+    )
+    if proc.returncode == 0:
+        return [passed(1, "0.10.51", "revocation-epoch recovery determinism: journal+two-index, a-i vectors, recover-before-listen")]
+    detail = (proc.stdout + proc.stderr).strip() or f"exit {proc.returncode}"
+    return [failed(1, "0.10.51", "revocation-epoch recovery determinism", detail)]
+
+
 def _check_modal_task_profiles(ctx: RunContext) -> list[CheckResult]:
     """Phase 162: modal task profiles for local dispatch."""
     check = ctx.repo_root / "scripts" / "testing" / "test-modal-task-profiles.py"
@@ -2022,6 +2042,7 @@ def run(ctx: RunContext) -> list[CheckResult]:
     results.extend(_check_cross_model_critique(ctx))
     results.extend(_check_adopt_workflow(ctx))
     results.extend(_check_phase173_training_health(ctx))
+    results.extend(_check_revocation_epoch_recovery(ctx))
     if ctx.dashboard_safe:
         results.extend(_dashboard_safe_host_only_skips())
     return results

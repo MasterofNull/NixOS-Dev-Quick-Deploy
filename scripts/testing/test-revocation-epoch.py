@@ -286,14 +286,20 @@ def test_expected_epoch_mismatch_denies() -> None:
 
 
 # --------------------------------------------------------------------------
-# 9. REPLAY denies even across a restart-simulated fresh ledger instance
-#    on the same directory. Isolated from expected_epoch-mismatch by
-#    correctly updating expected_epoch on the replayed request_id/
-#    idempotency_key -- proves the ledger (not epoch drift) is what denies.
+# 9. A COMMITTED transaction replayed (even across a restart-simulated
+#    fresh ledger instance on the same directory, and with expected_epoch
+#    correctly updated to isolate this from an epoch-mismatch deny) is
+#    idempotent: C6d's `resolve()` `committed` row returns the SAME
+#    reconstructed receipt (ok=True) rather than the pre-C6d ledger's
+#    `DENY_REPLAY` -- the legacy `DurableReplayLedger` marker is no longer
+#    consulted for gating (see `apply_bump`'s docstring), so a second
+#    presentation of an identity whose journal entry is already
+#    `committed` is exactly-once success, never a deny, and never a
+#    second epoch advance.
 # --------------------------------------------------------------------------
 
 
-def test_replay_denies_even_across_fresh_ledger_instance() -> None:
+def test_committed_replay_is_idempotent_not_denied() -> None:
     priv, pub_hex = _make_keypair()
     keys = _owner_keys("test-owner-1", pub_hex)
     env = _TempEnv(initial_epoch="0")
@@ -311,19 +317,20 @@ def test_replay_denies_even_across_fresh_ledger_instance() -> None:
             priv,
         )
         first = re_lib.apply_bump(doc1, env.epoch_path, env.ledger(), keys)
-        check("replay setup: first apply succeeds", first["ok"] is True)
-        check("replay setup: epoch advances to 1", re_lib.read_epoch(env.epoch_path) == 1)
+        check("idempotent replay setup: first apply succeeds", first["ok"] is True)
+        check("idempotent replay setup: epoch advances to 1", re_lib.read_epoch(env.epoch_path) == 1)
 
         # Fresh ledger instance on the SAME directory -- simulates a
-        # service restart with no in-process memory carried over.
+        # service restart with no in-process memory carried over. Proves
+        # the journal (filesystem-durable), not any in-process ledger
+        # state, is what makes this idempotent.
         restarted_ledger = env.ledger()
 
         # A second, freshly-signed request reusing the SAME request_id/
         # idempotency_key, this time with a CORRECTLY updated
-        # expected_epoch (1). If this were denied by epoch-mismatch
-        # instead of replay, that would be a false negative for this
-        # test -- expected_epoch is deliberately made to match so the
-        # only possible deny reason left is the replay ledger.
+        # expected_epoch (1) -- deliberately made to match so an
+        # epoch-mismatch deny is ruled out and the only thing under test
+        # is the committed-replay identity path.
         doc2 = _sign(
             _base_bump(
                 actor_key_id="test-owner-1",
@@ -334,9 +341,14 @@ def test_replay_denies_even_across_fresh_ledger_instance() -> None:
             priv,
         )
         second = re_lib.apply_bump(doc2, env.epoch_path, restarted_ledger, keys)
-        check("replay: denied on fresh ledger instance (same dir)", second["ok"] is False)
-        check("replay: reason=replay-request", second["reason"] == re_lib.DENY_REPLAY)
-        check("replay: epoch still 1 (no second advance)", re_lib.read_epoch(env.epoch_path) == 1)
+        check("committed replay: idempotent success (ok=True, not denied)", second["ok"] is True)
+        check("committed replay: reason=ok", second.get("reason") == re_lib.BUMP_OK)
+        check(
+            "committed replay: SAME reconstructed receipt (old=0, new=1)",
+            second.get("receipt", {}).get("old_epoch") == 0
+            and second.get("receipt", {}).get("new_epoch") == 1,
+        )
+        check("committed replay: epoch still 1 (no second advance)", re_lib.read_epoch(env.epoch_path) == 1)
     finally:
         env.cleanup()
 
@@ -430,43 +442,581 @@ def test_no_bootstrap_to_zero_end_to_end() -> None:
 
 
 # --------------------------------------------------------------------------
-# 13. The real placeholder all-zeros owner key must fail closed.
+# 13. The tracked owner-key allowlist key must fail closed. `fix/c6-
+#     mechtest-revert` (now on main) rotated the placeholder all-zeros key
+#     to a tracked, REVOKED, non-placeholder key (`owner-mechtest-2026-08`)
+#     -- this fixture reads that CURRENT allowlist state rather than
+#     asserting the stale placeholder shape, and denies for the reason
+#     that actually fires first for a revoked key (`key-not-active`,
+#     checked before signature verification -- see `_verify_signature`),
+#     never a special-cased "is this a known placeholder" shortcut.
 # --------------------------------------------------------------------------
 
 
-def test_placeholder_owner_key_denies() -> None:
+def test_tracked_revoked_owner_key_denies() -> None:
     real_keys = json.loads(OWNER_KEYS_PATH.read_text(encoding="utf-8"))
-    placeholder_entry = real_keys["keys"][0]
+    tracked_entry = real_keys["keys"][0]
     check(
-        "placeholder key fixture sanity: key_id=owner-2026-08",
-        placeholder_entry.get("key_id") == "owner-2026-08",
+        "tracked owner key fixture sanity: key_id=owner-mechtest-2026-08",
+        tracked_entry.get("key_id") == "owner-mechtest-2026-08",
     )
     check(
-        "placeholder key fixture sanity: all-zeros public key (64 hex chars)",
-        placeholder_entry.get("ed25519_public_key") == "0" * 64,
+        "tracked owner key fixture sanity: status=revoked",
+        tracked_entry.get("status") == "revoked",
+    )
+    check(
+        "tracked owner key fixture sanity: non-placeholder public key (not all-zeros)",
+        tracked_entry.get("ed25519_public_key") != "0" * 64,
     )
 
-    # Sign with a REAL (non-placeholder) throwaway keypair -- the
-    # placeholder key material cannot possibly match any real signature;
-    # this proves the deny is a genuine cryptographic verification
-    # failure, not a special-cased "is this all zeros" shortcut.
-    priv, _real_pub_hex = _make_keypair()
+    # Sign with a throwaway keypair the tracked entry never produced --
+    # this key is REVOKED, so `key-not-active` fires before signature
+    # verification is even reached; a signature this key never actually
+    # made would deny on `bad-signature` regardless, so the revoked-status
+    # deny proves the allowlist gate, not merely a lucky signature failure.
+    priv, _unused_pub_hex = _make_keypair()
     env = _TempEnv(initial_epoch="0")
     try:
         doc = _sign(
-            _base_bump(actor_key_id=placeholder_entry["key_id"], expected_epoch=0),
+            _base_bump(actor_key_id=tracked_entry["key_id"], expected_epoch=0),
             priv,
         )
         result = re_lib.apply_bump(doc, env.epoch_path, env.ledger(), real_keys)
-        check("placeholder all-zeros key: denied", result["ok"] is False)
+        check("tracked revoked key: denied", result["ok"] is False)
         check(
-            "placeholder all-zeros key: reason=bad-signature",
-            result["reason"] == re_lib.DENY_BAD_SIGNATURE,
+            "tracked revoked key: reason=key-not-active",
+            result["reason"] == re_lib.DENY_KEY_NOT_ACTIVE,
         )
         check(
-            "placeholder all-zeros key: epoch unchanged",
+            "tracked revoked key: epoch unchanged",
             re_lib.read_epoch(env.epoch_path) == 0,
         )
+    finally:
+        env.cleanup()
+
+
+# --------------------------------------------------------------------------
+# C6d -- deterministic journal recovery (`.agents/plans/aqos-foundation-c/
+# C6d-DESIGN-AND-AUTHORIZATION.md` §5). Each vector injects the EXACT
+# on-disk state a crash at that durability boundary would leave (offline,
+# hermetic -- no real process is killed), then asserts `recover()` and/or a
+# live retry reach the design's deterministic outcome. Vectors e/f are the
+# SAME on-disk state as d/g respectively (`os.replace` atomicity -- the
+# design's own note) and are deliberately not duplicated as separate tests.
+# --------------------------------------------------------------------------
+
+
+def test_vector_a_no_index_no_journal() -> None:
+    """Vector a: crash before either index fsync -- no index, no journal.
+    `recover()` has nothing to do; a subsequent submission reserves fresh
+    and bumps normally."""
+    priv, pub_hex = _make_keypair()
+    keys = _owner_keys("test-owner-1", pub_hex)
+    env = _TempEnv(initial_epoch="0")
+    try:
+        summary = re_lib.recover(env.epoch_path)
+        check("vector a: recover() on clean state releases nothing", summary["orphan_indexes_released"] == 0)
+        check("vector a: recover() on clean state resolves nothing", summary["resolved_committed"] == 0)
+
+        doc = _sign(_base_bump(actor_key_id="test-owner-1", expected_epoch=0), priv)
+        result = re_lib.apply_bump(doc, env.epoch_path, env.ledger(), keys)
+        check("vector a: retry after no-op recover() reserves fresh & bumps", result["ok"] is True)
+        check("vector a: epoch advances 0 -> 1", re_lib.read_epoch(env.epoch_path) == 1)
+    finally:
+        env.cleanup()
+
+
+def test_vector_b_one_orphan_index() -> None:
+    """Vector b: crash after one index fsync, before the second -- one
+    orphan index, no journal. `recover()` releases the orphan
+    (half-reservation); retry reserves & bumps, no wedged identity."""
+    priv, pub_hex = _make_keypair()
+    keys = _owner_keys("test-owner-1", pub_hex)
+    env = _TempEnv(initial_epoch="0")
+    try:
+        request_id = f"req::{uuid.uuid4()}"
+        idempotency_key = f"idem::{uuid.uuid4()}"
+        entry_id = re_lib._entry_id(request_id, idempotency_key)
+        journal_dir, by_rid_dir, by_idem_dir = re_lib._derive_state_dirs(env.epoch_path)
+        rid_path = by_rid_dir / re_lib._sha256_hex(request_id)
+
+        assert re_lib._create_exclusive_json(rid_path, {"entry_id": entry_id}, 0o600)
+
+        summary = re_lib.recover(env.epoch_path)
+        check("vector b: recover() releases the one orphan index", summary["orphan_indexes_released"] == 1)
+        check("vector b: orphan index actually gone from disk", not rid_path.exists())
+
+        doc = _sign(
+            _base_bump(
+                actor_key_id="test-owner-1", expected_epoch=0,
+                request_id=request_id, idempotency_key=idempotency_key,
+            ),
+            priv,
+        )
+        result = re_lib.apply_bump(doc, env.epoch_path, env.ledger(), keys)
+        check("vector b: retry after recover() reserves fresh & bumps (never wedged)", result["ok"] is True)
+        check("vector b: epoch advances 0 -> 1", re_lib.read_epoch(env.epoch_path) == 1)
+    finally:
+        env.cleanup()
+
+
+def test_vector_c_two_orphan_indexes() -> None:
+    """Vector c: crash after both indexes, before intent fsync -- two
+    orphan indexes, no journal. `recover()` releases both."""
+    priv, pub_hex = _make_keypair()
+    keys = _owner_keys("test-owner-1", pub_hex)
+    env = _TempEnv(initial_epoch="0")
+    try:
+        request_id = f"req::{uuid.uuid4()}"
+        idempotency_key = f"idem::{uuid.uuid4()}"
+        entry_id = re_lib._entry_id(request_id, idempotency_key)
+        journal_dir, by_rid_dir, by_idem_dir = re_lib._derive_state_dirs(env.epoch_path)
+        rid_path = by_rid_dir / re_lib._sha256_hex(request_id)
+        idem_path = by_idem_dir / re_lib._sha256_hex(idempotency_key)
+
+        assert re_lib._create_exclusive_json(rid_path, {"entry_id": entry_id}, 0o600)
+        assert re_lib._create_exclusive_json(idem_path, {"entry_id": entry_id}, 0o600)
+
+        summary = re_lib.recover(env.epoch_path)
+        check("vector c: recover() releases both orphan indexes", summary["orphan_indexes_released"] == 2)
+        check("vector c: request-id index gone", not rid_path.exists())
+        check("vector c: idempotency-key index gone", not idem_path.exists())
+
+        doc = _sign(
+            _base_bump(
+                actor_key_id="test-owner-1", expected_epoch=0,
+                request_id=request_id, idempotency_key=idempotency_key,
+            ),
+            priv,
+        )
+        result = re_lib.apply_bump(doc, env.epoch_path, env.ledger(), keys)
+        check("vector c: retry after recover() reserves fresh & bumps", result["ok"] is True)
+        check("vector c: epoch advances 0 -> 1", re_lib.read_epoch(env.epoch_path) == 1)
+    finally:
+        env.cleanup()
+
+
+def test_vector_d_intent_epoch_old_aborts_and_retry_bumps() -> None:
+    """Vector d (W1 -- the closed defect): crash after intent durable,
+    before the epoch temp write -- journal `intent`, epoch still `old`.
+    `recover()` aborts the intent (durably, first) then releases both
+    indexes; the identical retry rewrites the tombstone `aborted` ->
+    `intent` and ACTUALLY BUMPS -- never `DENY_REPLAY`, never
+    permanently wedged (the exact defect C6d closes)."""
+    priv, pub_hex = _make_keypair()
+    keys = _owner_keys("test-owner-1", pub_hex)
+    env = _TempEnv(initial_epoch="0")
+    try:
+        request_id = f"req::{uuid.uuid4()}"
+        idempotency_key = f"idem::{uuid.uuid4()}"
+        entry_id = re_lib._entry_id(request_id, idempotency_key)
+        journal_dir, by_rid_dir, by_idem_dir = re_lib._derive_state_dirs(env.epoch_path)
+        rid_path = by_rid_dir / re_lib._sha256_hex(request_id)
+        idem_path = by_idem_dir / re_lib._sha256_hex(idempotency_key)
+
+        assert re_lib._create_exclusive_json(rid_path, {"entry_id": entry_id}, 0o600)
+        assert re_lib._create_exclusive_json(idem_path, {"entry_id": entry_id}, 0o600)
+        intent_entry = {
+            "request_id": request_id, "idempotency_key": idempotency_key,
+            "actor_key_id": "test-owner-1", "reason_code": "operator-revoke",
+            "old_epoch": 0, "new_epoch": 1, "phase": "intent", "attempt_gen": 0,
+            "issued_at_authority": "2026-01-01T00:00:00Z", "committed_at": None,
+        }
+        assert re_lib._create_exclusive_json(journal_dir / entry_id, intent_entry, 0o640)
+        # Epoch stays "0" -- the CAS (step 4) never happened; this IS the
+        # crash point under test.
+
+        summary = re_lib.recover(env.epoch_path)
+        check("vector d: recover() aborts the uncommitted intent", summary["resolved_aborted_and_released"] == 1)
+        check(
+            "vector d: journal entry rewritten to phase=aborted",
+            json.loads((journal_dir / entry_id).read_text(encoding="utf-8"))["phase"] == "aborted",
+        )
+        check("vector d: both indexes released after abort", not rid_path.exists() and not idem_path.exists())
+        check("vector d: epoch still unchanged (0) -- never fabricated", re_lib.read_epoch(env.epoch_path) == 0)
+
+        doc = _sign(
+            _base_bump(
+                actor_key_id="test-owner-1", expected_epoch=0,
+                request_id=request_id, idempotency_key=idempotency_key,
+            ),
+            priv,
+        )
+        result = re_lib.apply_bump(doc, env.epoch_path, env.ledger(), keys)
+        check("vector d: identical retry ACTUALLY BUMPS (never DENY_REPLAY, never wedged)", result["ok"] is True)
+        check("vector d: epoch advances 0 -> 1", re_lib.read_epoch(env.epoch_path) == 1)
+        check(
+            "vector d: tombstone reused via attempt_gen increment (not a fresh entry_id collision)",
+            json.loads((journal_dir / entry_id).read_text(encoding="utf-8"))["attempt_gen"] == 1,
+        )
+    finally:
+        env.cleanup()
+
+
+def test_vector_g_intent_epoch_new_finalizes() -> None:
+    """Vector g: crash after epoch commit, before the phase-commit rewrite
+    -- journal `intent`, epoch already `new`. `recover()` finalizes to
+    `committed`; the receipt is returned; a later replay of the same
+    identity is exactly-once (same receipt, no double-bump)."""
+    priv, pub_hex = _make_keypair()
+    keys = _owner_keys("test-owner-1", pub_hex)
+    env = _TempEnv(initial_epoch="1")  # the epoch CAS already landed (new_epoch=1)
+    try:
+        request_id = f"req::{uuid.uuid4()}"
+        idempotency_key = f"idem::{uuid.uuid4()}"
+        entry_id = re_lib._entry_id(request_id, idempotency_key)
+        journal_dir, by_rid_dir, by_idem_dir = re_lib._derive_state_dirs(env.epoch_path)
+        rid_path = by_rid_dir / re_lib._sha256_hex(request_id)
+        idem_path = by_idem_dir / re_lib._sha256_hex(idempotency_key)
+
+        assert re_lib._create_exclusive_json(rid_path, {"entry_id": entry_id}, 0o600)
+        assert re_lib._create_exclusive_json(idem_path, {"entry_id": entry_id}, 0o600)
+        intent_entry = {
+            "request_id": request_id, "idempotency_key": idempotency_key,
+            "actor_key_id": "test-owner-1", "reason_code": "operator-revoke",
+            "old_epoch": 0, "new_epoch": 1, "phase": "intent", "attempt_gen": 0,
+            "issued_at_authority": "2026-01-01T00:00:00Z", "committed_at": None,
+        }
+        assert re_lib._create_exclusive_json(journal_dir / entry_id, intent_entry, 0o640)
+
+        summary = re_lib.recover(env.epoch_path)
+        check("vector g: recover() finalizes the committed-but-unphased intent", summary["resolved_committed"] == 1)
+        finalized = json.loads((journal_dir / entry_id).read_text(encoding="utf-8"))
+        check("vector g: journal entry finalized to phase=committed", finalized["phase"] == "committed")
+        check("vector g: both indexes remain (a real committed transaction)", rid_path.exists() and idem_path.exists())
+        check("vector g: epoch unchanged at 1 (no second advance)", re_lib.read_epoch(env.epoch_path) == 1)
+
+        doc = _sign(
+            _base_bump(
+                actor_key_id="test-owner-1", expected_epoch=1,
+                request_id=request_id, idempotency_key=idempotency_key,
+            ),
+            priv,
+        )
+        result = re_lib.apply_bump(doc, env.epoch_path, env.ledger(), keys)
+        check("vector g: post-finalize replay returns the SAME receipt (exactly-once)", result["ok"] is True)
+        check(
+            "vector g: replayed receipt matches original old/new epoch",
+            result["receipt"]["old_epoch"] == 0 and result["receipt"]["new_epoch"] == 1,
+        )
+        check("vector g: epoch still 1 (no double-bump)", re_lib.read_epoch(env.epoch_path) == 1)
+    finally:
+        env.cleanup()
+
+
+def test_vector_i_dangling_index_after_abort_released() -> None:
+    """Vector i: crash during the `aborted` -> index-release sequence
+    (partial unlink) -- `aborted` journal plus one dangling index.
+    `recover()` releases the dangling index (step 3); retry re-reserves &
+    bumps, exactly-once."""
+    priv, pub_hex = _make_keypair()
+    keys = _owner_keys("test-owner-1", pub_hex)
+    env = _TempEnv(initial_epoch="0")
+    try:
+        request_id = f"req::{uuid.uuid4()}"
+        idempotency_key = f"idem::{uuid.uuid4()}"
+        entry_id = re_lib._entry_id(request_id, idempotency_key)
+        journal_dir, by_rid_dir, by_idem_dir = re_lib._derive_state_dirs(env.epoch_path)
+        rid_path = by_rid_dir / re_lib._sha256_hex(request_id)
+        idem_path = by_idem_dir / re_lib._sha256_hex(idempotency_key)
+
+        # The abort already rewrote phase=aborted and released the
+        # by-request-id index, then crashed BEFORE releasing the
+        # by-idempotency-key index -- one dangling index survives.
+        assert re_lib._create_exclusive_json(idem_path, {"entry_id": entry_id}, 0o600)
+        aborted_entry = {
+            "request_id": request_id, "idempotency_key": idempotency_key,
+            "actor_key_id": "test-owner-1", "reason_code": "operator-revoke",
+            "old_epoch": 0, "new_epoch": 1, "phase": "aborted", "attempt_gen": 0,
+            "issued_at_authority": "2026-01-01T00:00:00Z", "committed_at": None,
+        }
+        assert re_lib._create_exclusive_json(journal_dir / entry_id, aborted_entry, 0o640)
+        check("vector i setup: request-id index NOT present (already released)", not rid_path.exists())
+        check("vector i setup: idempotency-key index dangling", idem_path.exists())
+
+        summary = re_lib.recover(env.epoch_path)
+        check(
+            "vector i: recover() releases the dangling index pointing at the aborted entry",
+            summary["dangling_indexes_after_abort_released"] == 1,
+        )
+        check("vector i: dangling index actually gone", not idem_path.exists())
+
+        doc = _sign(
+            _base_bump(
+                actor_key_id="test-owner-1", expected_epoch=0,
+                request_id=request_id, idempotency_key=idempotency_key,
+            ),
+            priv,
+        )
+        result = re_lib.apply_bump(doc, env.epoch_path, env.ledger(), keys)
+        check("vector i: retry re-reserves fresh and bumps (exactly-once)", result["ok"] is True)
+        check("vector i: epoch advances 0 -> 1", re_lib.read_epoch(env.epoch_path) == 1)
+    finally:
+        env.cleanup()
+
+
+def test_vector_j_cross_identity_conflict_denies() -> None:
+    """Vector j (live path, no crash): the SAME `request_id` re-signed
+    with a DIFFERENT `idempotency_key` (both owner-signed) -- the §3.2
+    identity gate denies typed `DENY_IDENTITY_CONFLICT`: never the
+    original receipt, never a bump, never a second entry; the legitimate
+    entry and its indexes are untouched."""
+    priv, pub_hex = _make_keypair()
+    keys = _owner_keys("test-owner-1", pub_hex)
+    env = _TempEnv(initial_epoch="0")
+    try:
+        shared_request_id = f"req::{uuid.uuid4()}"
+
+        doc1 = _sign(
+            _base_bump(actor_key_id="test-owner-1", expected_epoch=0, request_id=shared_request_id),
+            priv,
+        )
+        first = re_lib.apply_bump(doc1, env.epoch_path, env.ledger(), keys)
+        check("vector j setup: first bump succeeds", first["ok"] is True)
+        check("vector j setup: epoch advances to 1", re_lib.read_epoch(env.epoch_path) == 1)
+
+        journal_dir, by_rid_dir, by_idem_dir = re_lib._derive_state_dirs(env.epoch_path)
+        first_entry_id = re_lib._entry_id(shared_request_id, doc1["idempotency_key"])
+        rid_index_path = by_rid_dir / re_lib._sha256_hex(shared_request_id)
+        first_idem_index_path = by_idem_dir / re_lib._sha256_hex(doc1["idempotency_key"])
+
+        # SAME request_id, a freshly-generated (DIFFERENT) idempotency_key.
+        doc2 = _sign(
+            _base_bump(actor_key_id="test-owner-1", expected_epoch=1, request_id=shared_request_id),
+            priv,
+        )
+        second = re_lib.apply_bump(doc2, env.epoch_path, env.ledger(), keys)
+        check("vector j: cross-identity reuse denied", second["ok"] is False)
+        check(
+            "vector j: reason=identity-conflict (never the original receipt)",
+            second["reason"] == re_lib.DENY_IDENTITY_CONFLICT,
+        )
+        check("vector j: no receipt handed back for the conflicting identity", second.get("receipt") is None)
+        check("vector j: epoch NOT bumped a second time (still 1)", re_lib.read_epoch(env.epoch_path) == 1)
+        check(
+            "vector j: legitimate entry's by-request-id index untouched",
+            rid_index_path.exists()
+            and json.loads(rid_index_path.read_text(encoding="utf-8"))["entry_id"] == first_entry_id,
+        )
+        check("vector j: legitimate entry's by-idempotency-key index untouched", first_idem_index_path.exists())
+        check(
+            "vector j: legitimate journal entry still committed and unchanged",
+            json.loads((journal_dir / first_entry_id).read_text(encoding="utf-8"))["phase"] == "committed",
+        )
+    finally:
+        env.cleanup()
+
+
+def test_vector_h_audit_pending_persisted_and_reconciled() -> None:
+    """Vector h (§5): crash point "after phase-commit, before projection"
+    -- design row h requires the committed entry's audit append to be
+    "reconciled" and `audit_pending` "cleared" on recovery, which
+    presupposes the entry durably PERSISTS `audit_pending` in the first
+    place (Finding 1/2). Force the best-effort audit append to fail on a
+    live bump (as the binding reviewer did): the immediate receipt
+    reports `audit_pending=True`, and -- unlike before this fix -- the
+    on-disk committed journal entry now durably records it too (it used
+    to carry no such field at all, so `_receipt_ok_from_entry` silently
+    reconstructed `False`). `recover()` then retries the append, it
+    succeeds, and `audit_pending` is durably cleared to `False` in the
+    entry -- the design's "audit reconciled" outcome. The epoch bump
+    itself (exactly-once) is unaffected throughout."""
+    priv, pub_hex = _make_keypair()
+    keys = _owner_keys("test-owner-1", pub_hex)
+    env = _TempEnv(initial_epoch="0")
+    try:
+        request_id = f"req::{uuid.uuid4()}"
+        idempotency_key = f"idem::{uuid.uuid4()}"
+        entry_id = re_lib._entry_id(request_id, idempotency_key)
+        journal_dir, by_rid_dir, by_idem_dir = re_lib._derive_state_dirs(env.epoch_path)
+        journal_path = journal_dir / entry_id
+        audit_path = env.epoch_path.parent / (env.epoch_path.name + ".audit.jsonl")
+
+        real_append = re_lib._append_audit_receipt
+
+        def _failing_append(epoch_path: Path, receipt: dict) -> None:  # noqa: ARG001
+            raise OSError("simulated audit-disk failure (test injection)")
+
+        re_lib._append_audit_receipt = _failing_append
+        try:
+            doc = _sign(
+                _base_bump(
+                    actor_key_id="test-owner-1", expected_epoch=0,
+                    request_id=request_id, idempotency_key=idempotency_key,
+                ),
+                priv,
+            )
+            result = re_lib.apply_bump(doc, env.epoch_path, env.ledger(), keys)
+        finally:
+            re_lib._append_audit_receipt = real_append  # restore before recover() below
+
+        check("vector h: live bump still succeeds despite audit-append failure", result["ok"] is True)
+        check("vector h: immediate receipt reports audit_pending=True", result["receipt"]["audit_pending"] is True)
+        check("vector h: epoch advances 0 -> 1 (unaffected by audit failure)", re_lib.read_epoch(env.epoch_path) == 1)
+        check("vector h: no audit line was written (the append failed)", not audit_path.exists())
+
+        on_disk_before = json.loads(journal_path.read_text(encoding="utf-8"))
+        check("vector h: on-disk committed entry has phase=committed", on_disk_before["phase"] == "committed")
+        check(
+            "vector h: on-disk committed entry DURABLY persists audit_pending=True (Finding 1)",
+            on_disk_before.get("audit_pending") is True,
+        )
+        pre_receipt = re_lib._receipt_ok_from_entry(on_disk_before)
+        check(
+            "vector h: a receipt reconstructed from the persisted entry reports audit_pending=True "
+            "(never a hardcoded False)",
+            pre_receipt["receipt"]["audit_pending"] is True,
+        )
+
+        # recover() must retry the audit append (now restored to the real
+        # implementation); it succeeds and durably clears audit_pending.
+        summary = re_lib.recover(env.epoch_path)
+        check("vector h: recover() resolves the committed entry", summary["resolved_committed"] == 1)
+
+        on_disk_after = json.loads(journal_path.read_text(encoding="utf-8"))
+        check(
+            "vector h: recover() durably clears audit_pending to False in the entry",
+            on_disk_after.get("audit_pending") is False,
+        )
+        check(
+            "vector h: the retried append actually wrote exactly one audit line",
+            audit_path.exists() and len(audit_path.read_text(encoding="utf-8").strip().splitlines()) == 1,
+        )
+        check("vector h: epoch still 1 after recover() (exactly-once intact, no double-bump)", re_lib.read_epoch(env.epoch_path) == 1)
+
+        # A receipt reconstructed AFTER reconciliation reports the
+        # correct (now-cleared) state, and the epoch bump is untouched.
+        reconstructed = re_lib.resolve(
+            entry_id, env.epoch_path, journal_dir, by_rid_dir, by_idem_dir, presented=None,
+        )
+        check(
+            "vector h: reconstructed receipt reports audit_pending=False AFTER reconciliation",
+            reconstructed["ok"] is True and reconstructed["receipt"]["audit_pending"] is False,
+        )
+        check(
+            "vector h: reconstructed receipt's old/new epoch unaffected (exactly-once)",
+            reconstructed["receipt"]["old_epoch"] == 0 and reconstructed["receipt"]["new_epoch"] == 1,
+        )
+    finally:
+        env.cleanup()
+
+
+def test_case2_live_reverse_cross_identity_conflict_denies() -> None:
+    """Live-path mirror of shipped vector j (§3.2 identity gate), REVERSE
+    direction: the SAME `idempotency_key` re-signed with a DIFFERENT
+    `request_id` (both owner-signed). Vector j only covers same-
+    `request_id`/different-`idempotency_key`; this exercises
+    `apply_bump`'s `rid_created=True` then `idem_created=False` partial-
+    reservation-rollback branch (Finding 4 case 2) on the LIVE path,
+    which vector j does not reach (b/g/i reach the equivalent on-disk
+    state but only through `recover()`). The binding reviewer confirmed
+    the code is already correct here -- this closes the coverage-only
+    gap (Finding 2); it is expected to PASS as-is."""
+    priv, pub_hex = _make_keypair()
+    keys = _owner_keys("test-owner-1", pub_hex)
+    env = _TempEnv(initial_epoch="0")
+    try:
+        shared_idem_key = f"idem::{uuid.uuid4()}"
+
+        doc1 = _sign(
+            _base_bump(actor_key_id="test-owner-1", expected_epoch=0, idempotency_key=shared_idem_key),
+            priv,
+        )
+        first = re_lib.apply_bump(doc1, env.epoch_path, env.ledger(), keys)
+        check("case-2 live setup: first bump succeeds", first["ok"] is True)
+        check("case-2 live setup: epoch advances to 1", re_lib.read_epoch(env.epoch_path) == 1)
+
+        journal_dir, by_rid_dir, by_idem_dir = re_lib._derive_state_dirs(env.epoch_path)
+        first_entry_id = re_lib._entry_id(doc1["request_id"], shared_idem_key)
+        idem_index_path = by_idem_dir / re_lib._sha256_hex(shared_idem_key)
+        first_rid_index_path = by_rid_dir / re_lib._sha256_hex(doc1["request_id"])
+
+        # SAME idempotency_key, a freshly-generated (DIFFERENT) request_id.
+        doc2 = _sign(
+            _base_bump(actor_key_id="test-owner-1", expected_epoch=1, idempotency_key=shared_idem_key),
+            priv,
+        )
+        second = re_lib.apply_bump(doc2, env.epoch_path, env.ledger(), keys)
+        check("case-2 live: reverse cross-identity reuse denied", second["ok"] is False)
+        check(
+            "case-2 live: reason=identity-conflict (never the original receipt)",
+            second["reason"] == re_lib.DENY_IDENTITY_CONFLICT,
+        )
+        check("case-2 live: no receipt handed back for the conflicting identity", second.get("receipt") is None)
+        check("case-2 live: epoch NOT bumped a second time (still 1)", re_lib.read_epoch(env.epoch_path) == 1)
+
+        second_rid_index_path = by_rid_dir / re_lib._sha256_hex(doc2["request_id"])
+        check(
+            "case-2 live: doc2's own freshly-created request-id index was rolled back (Finding 4 case 2)",
+            not second_rid_index_path.exists(),
+        )
+        check(
+            "case-2 live: legitimate entry's by-idempotency-key index untouched",
+            idem_index_path.exists()
+            and json.loads(idem_index_path.read_text(encoding="utf-8"))["entry_id"] == first_entry_id,
+        )
+        check("case-2 live: legitimate entry's by-request-id index untouched", first_rid_index_path.exists())
+        check(
+            "case-2 live: legitimate journal entry still committed and unchanged",
+            json.loads((journal_dir / first_entry_id).read_text(encoding="utf-8"))["phase"] == "committed",
+        )
+    finally:
+        env.cleanup()
+
+
+def test_journal_absent_orphan_index_retryable() -> None:
+    """Live-path mirror of the §3.3 orphan-index sweep (identity-gate row
+    1): an index survives with no journal counterpart, observed directly
+    on a LIVE call (not via `recover()`) -- the call itself releases the
+    orphan and returns a typed retryable deny (never `DENY_REPLAY`); the
+    identical next call reserves fresh and bumps."""
+    priv, pub_hex = _make_keypair()
+    keys = _owner_keys("test-owner-1", pub_hex)
+    env = _TempEnv(initial_epoch="0")
+    try:
+        request_id = f"req::{uuid.uuid4()}"
+        idempotency_key = f"idem::{uuid.uuid4()}"
+        entry_id = re_lib._entry_id(request_id, idempotency_key)
+        journal_dir, by_rid_dir, by_idem_dir = re_lib._derive_state_dirs(env.epoch_path)
+        rid_path = by_rid_dir / re_lib._sha256_hex(request_id)
+        assert re_lib._create_exclusive_json(rid_path, {"entry_id": entry_id}, 0o600)
+        check("journal-absent setup: no journal entry present", not (journal_dir / entry_id).exists())
+
+        doc = _sign(
+            _base_bump(
+                actor_key_id="test-owner-1", expected_epoch=0,
+                request_id=request_id, idempotency_key=idempotency_key,
+            ),
+            priv,
+        )
+        first = re_lib.apply_bump(doc, env.epoch_path, env.ledger(), keys)
+        check("journal-absent: first call denies retryable (not DENY_REPLAY)", first["ok"] is False)
+        check("journal-absent: reason=bump-retry-required", first["reason"] == re_lib.DENY_RETRY)
+        check("journal-absent: orphan index released by the call itself", not rid_path.exists())
+        check("journal-absent: epoch unchanged", re_lib.read_epoch(env.epoch_path) == 0)
+
+        second = re_lib.apply_bump(doc, env.epoch_path, env.ledger(), keys)
+        check("journal-absent: identical retry now bumps", second["ok"] is True)
+        check("journal-absent: epoch advances 0 -> 1", re_lib.read_epoch(env.epoch_path) == 1)
+    finally:
+        env.cleanup()
+
+
+def test_recover_on_clean_state_is_a_noop() -> None:
+    """`recover()` on a clean, never-touched authority StateDirectory is a
+    complete no-op summary -- proves it never fabricates work on an empty
+    journal/index tree, consistent with it running to completion before
+    any socket would bind/listen/accept (design §3.4)."""
+    env = _TempEnv(initial_epoch="0")
+    try:
+        summary = re_lib.recover(env.epoch_path)
+        check("recover() no-op: error is None", summary.get("error") is None)
+        check("recover() no-op: no orphan indexes released", summary["orphan_indexes_released"] == 0)
+        check("recover() no-op: nothing resolved committed", summary["resolved_committed"] == 0)
+        check("recover() no-op: nothing resolved aborted", summary["resolved_aborted_and_released"] == 0)
+        check("recover() no-op: nothing quarantined", summary["resolved_quarantined"] == 0)
+        check("recover() no-op: no dangling indexes", summary["dangling_indexes_after_abort_released"] == 0)
+        check("recover() no-op: no legacy ledger markers", summary["legacy_ledger_markers_detected"] == 0)
     finally:
         env.cleanup()
 
@@ -480,11 +1030,25 @@ def main() -> int:
     test_bad_reason_code_denies()
     test_expired_bump_denies()
     test_expected_epoch_mismatch_denies()
-    test_replay_denies_even_across_fresh_ledger_instance()
+    test_committed_replay_is_idempotent_not_denied()
     test_missing_epoch_store_is_typed_error_not_zero()
     test_malformed_epoch_store_is_typed_error()
     test_no_bootstrap_to_zero_end_to_end()
-    test_placeholder_owner_key_denies()
+    test_tracked_revoked_owner_key_denies()
+
+    # C6d -- deterministic journal recovery (crash vectors a-i + live-path
+    # conflict vector j; design §5).
+    test_vector_a_no_index_no_journal()
+    test_vector_b_one_orphan_index()
+    test_vector_c_two_orphan_indexes()
+    test_vector_d_intent_epoch_old_aborts_and_retry_bumps()
+    test_vector_g_intent_epoch_new_finalizes()
+    test_vector_i_dangling_index_after_abort_released()
+    test_vector_j_cross_identity_conflict_denies()
+    test_vector_h_audit_pending_persisted_and_reconciled()
+    test_case2_live_reverse_cross_identity_conflict_denies()
+    test_journal_absent_orphan_index_retryable()
+    test_recover_on_clean_state_is_a_noop()
 
     print(f"\n{passed} passed, {failed} failed (of {passed + failed} assertions)")
     return 0 if failed == 0 else 1
