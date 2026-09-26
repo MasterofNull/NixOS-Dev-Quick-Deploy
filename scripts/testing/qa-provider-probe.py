@@ -193,6 +193,8 @@ class AggregateLock:
         self.fd = -1
 
     def acquire(self) -> bool:
+        if not self.directory.exists():
+            self.directory.mkdir(parents=True, exist_ok=True, mode=0o700)
         self.dir_fd = os.open(self.directory, os.O_RDONLY | os.O_DIRECTORY | os.O_NOFOLLOW)
         directory = os.fstat(self.dir_fd)
         if not stat.S_ISDIR(directory.st_mode) or directory.st_uid != os.geteuid() or directory.st_mode & 0o022:

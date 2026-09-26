@@ -23,6 +23,7 @@ jobs:
     permissions:
       contents: read
       issues: write
+      pull-requests: write
     steps:
       - name: Checkout code
         uses: actions/checkout@fbc6f3992d24b796d5a048ff273f7fcc4a7b6c09  # v5
@@ -65,6 +66,7 @@ jobs:
 
       - name: Comment PR with audit results
         if: github.event_name == 'pull_request'
+        continue-on-error: true
         uses: actions/github-script@ed597411d8f924073f98dfc5c65a23a2325f34cd  # v8
         with:
           script: |
@@ -192,7 +194,7 @@ jobs:
 
       - name: Run Trivy scanner (table output)
         uses: aquasecurity/trivy-action@57a97c7e7821a5776cebc9bb87c984fa69cba8f1  # v0.35.0
-        if: always()
+        if: always() && steps.build.outcome == 'success'
         with:
           image-ref: ${{ steps.build.outputs.image }}
           version: 'v0.69.3'

@@ -5,51 +5,6 @@ Do not edit manually.
 
 ## Python (`harness_sdk.py`)
 
-- `plan(query)`
-- `a2a_agent_card()`
-- `a2a_get_card()`
-- `a2a_send_message(text)`
-- `a2a_stream_message(text)`
-- `a2a_get_task(task_id)`
-- `a2a_list_tasks(limit=10)`
-- `a2a_cancel_task(task_id, reason='')`
-- `query(query)`
-- `tooling_manifest(query, runtime='python', max_tools=None, max_result_chars=None)`
-- `start_session(query)`
-- `get_session(session_id)`
-- `get_session_with_lineage(session_id)`
-- `list_sessions()`
-- `workflow_tree(include_completed=True, include_failed=True, include_objective=True)`
-- `advance_session(session_id, action, note='')`
-- `fork_session(session_id, note='forked session')`
-- `review_acceptance(response, query='', criteria=None, expected_keywords=None, min_criteria_ratio=0.7, min_keyword_ratio=0.6, run_harness_eval=False)`
-- `harness_eval(query, expected_keywords=None, mode='auto', max_latency_ms=None)`
-- `qa_check(phase='0', output_format='json', timeout_seconds=60, include_sudo=False)`
-- `run_start(query, safety_mode='plan-readonly', token_limit=8000, tool_call_limit=40, intent_contract=None, requesting_agent='human', requester_role='orchestrator')`
-- `run_get(session_id, replay=False)`
-- `run_get_team(session_id)`
-- `run_set_mode(session_id, safety_mode, confirm=False)`
-- `run_arbiter(session_id, selected_candidate_id, arbiter, verdict, rationale, summary='', supporting_decisions=None)`
-- `run_get_isolation(session_id)`
-- `run_set_isolation(session_id, profile='', workspace_root='', network_policy='')`
-- `run_event(session_id, event_type, risk_class='safe', approved=False, token_delta=0, tool_call_delta=0, detail='')`
-- `run_replay(session_id)`
-- `list_blueprints()`
-- `parity_scorecard()`
-- `register_runtime(name, runtime_id='', profile='default', status='ready', runtime_class='generic', transport='http', endpoint_env_var='', tags=None)`
-- `list_runtimes()`
-- `get_runtime(runtime_id)`
-- `update_runtime_status(runtime_id, status, note='')`
-- `runtime_deploy(runtime_id, version, profile='default', target='local', status='deployed', note='', deployment_id='')`
-- `runtime_rollback(runtime_id, to_deployment_id, reason='')`
-- `runtime_schedule_policy()`
-- `runtime_schedule(objective, runtime_class='', transport='', tags=None, strategy='weighted', include_degraded=False)`
-- `ai_coordinator_status()`
-- `ai_coordinator_skills(limit=25)`
-- `ai_coordinator_delegate(task)`
-- `web_research_fetch(urls)`
-- `curated_research_fetch(workflow)`
-- `browser_research_fetch(urls)`
 
 ## TypeScript (`harness_sdk.ts`)
 

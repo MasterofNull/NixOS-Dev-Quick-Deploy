@@ -5,7 +5,10 @@ ROOT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")/../.." && pwd)"
 cd "${ROOT_DIR}"
 
 FLAKE_REF="${FLAKE_REF:-.}"
-NIXOS_TARGET="${NIXOS_TARGET:-nixos-ai-dev}"
+NIXOS_TARGET="${NIXOS_TARGET:-hyperd-ai-dev}"
+if [[ "${NIXOS_TARGET}" == "nixos-ai-dev" ]]; then
+  NIXOS_TARGET="hyperd-ai-dev"
+fi
 
 while [[ $# -gt 0 ]]; do
   case "$1" in

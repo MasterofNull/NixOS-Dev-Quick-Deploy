@@ -25,7 +25,7 @@ warn() { echo "[WARN] $*" >&2; }
 [[ -f "$CASES_FILE" ]] || fail "missing cases file: $CASES_FILE"
 command -v jq >/dev/null 2>&1 || fail "missing jq"
 
-jq -e '.version == 1 and (.cases | type=="array" and length>0)' "$CASES_FILE" >/dev/null || fail "invalid cases schema"
+jq -e '(.version >= 1) and (.cases | type=="array" and length>0)' "$CASES_FILE" >/dev/null || fail "invalid cases schema"
 pass "golden eval schema"
 
 if [[ "$MODE" == "--offline" ]]; then
