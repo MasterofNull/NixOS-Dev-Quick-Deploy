@@ -1021,6 +1021,212 @@ def test_recover_on_clean_state_is_a_noop() -> None:
         env.cleanup()
 
 
+# --------------------------------------------------------------------------
+# C6a -- `authorize_launch`/`consume_launch` + the atomic single-use launch
+# token (`.agents/plans/aqos-foundation-c/C6a-DESIGN-AND-AUTHORIZATION.md`
+# §3.5/§4/§5). Direct library calls (no transport/socket, no peer check --
+# that is `revocation_epoch_transport.build_launch_handler`'s job, exercised
+# live by `test-c6a-authorize-launch-service-coverage.py`).
+# --------------------------------------------------------------------------
+
+
+def _base_launch_fields(**overrides) -> dict:
+    fields = {
+        "context_digest": "ab12",
+        "task_id": "task-1",
+        "task_revision": 1,
+        "gateway_instance": "gw-1",
+    }
+    fields.update(overrides)
+    return fields
+
+
+def test_authorize_launch_binds_current_epoch_and_deadline() -> None:
+    env = _TempEnv(initial_epoch="5")
+    try:
+        resp = re_lib.authorize_launch(_base_launch_fields(), env.epoch_path)
+        check("authorize_launch: ok", resp.get("ok") is True)
+        token = resp.get("token") or {}
+        check("authorize_launch: epoch bound to current (5)", token.get("epoch") == 5)
+        check("authorize_launch: deadline_ms <= 250", token.get("deadline_ms", 999) <= 250)
+        check("authorize_launch: nonce present and hex", isinstance(token.get("nonce"), str) and len(token["nonce"]) == 64)
+        check("authorize_launch: binding fields echoed", token.get("task_id") == "task-1" and token.get("gateway_instance") == "gw-1")
+    finally:
+        env.cleanup()
+
+
+def test_authorize_launch_malformed_denies() -> None:
+    env = _TempEnv(initial_epoch="0")
+    try:
+        resp = re_lib.authorize_launch({"context_digest": "ab"}, env.epoch_path)
+        check("authorize_launch: malformed (missing fields) denies", resp.get("ok") is False)
+        check("authorize_launch: malformed reason", resp.get("reason") == re_lib.DENY_LAUNCH_MALFORMED)
+        check("authorize_launch: malformed token is None", resp.get("token") is None)
+    finally:
+        env.cleanup()
+
+
+def test_consume_launch_succeeds_exactly_once() -> None:
+    """Design §3.4/§3.5 -- the `O_EXCL` `issued -> consumed` transition
+    admits at most one winning consume; a duplicate consume of the SAME
+    token denies `DENY_LAUNCH_ALREADY_CONSUMED` -- the core exactly-once
+    assertion."""
+    env = _TempEnv(initial_epoch="0")
+    try:
+        token = re_lib.authorize_launch(_base_launch_fields(), env.epoch_path)["token"]
+        consume_req = dict(_base_launch_fields(), nonce=token["nonce"], epoch=token["epoch"])
+        first = re_lib.consume_launch(consume_req, env.epoch_path)
+        check("consume_launch: first consume succeeds", first.get("ok") is True)
+        check("consume_launch: receipt echoes nonce", (first.get("receipt") or {}).get("nonce") == token["nonce"])
+        second = re_lib.consume_launch(consume_req, env.epoch_path)
+        check("consume_launch: duplicate consume denies", second.get("ok") is False)
+        check("consume_launch: duplicate reason is ALREADY_CONSUMED", second.get("reason") == re_lib.DENY_LAUNCH_ALREADY_CONSUMED)
+        check("consume_launch: duplicate receipt is None", second.get("receipt") is None)
+    finally:
+        env.cleanup()
+
+
+def test_consume_launch_unknown_nonce_denies() -> None:
+    env = _TempEnv(initial_epoch="0")
+    try:
+        resp = re_lib.consume_launch(dict(_base_launch_fields(), nonce="ab" * 32, epoch=0), env.epoch_path)
+        check("consume_launch: unknown nonce denies", resp.get("ok") is False)
+        check("consume_launch: unknown nonce reason", resp.get("reason") == re_lib.DENY_LAUNCH_UNKNOWN)
+    finally:
+        env.cleanup()
+
+
+def test_consume_launch_binding_mismatch_denies() -> None:
+    env = _TempEnv(initial_epoch="0")
+    try:
+        token = re_lib.authorize_launch(_base_launch_fields(), env.epoch_path)["token"]
+        wrong_task = dict(_base_launch_fields(task_id="wrong-task"), nonce=token["nonce"], epoch=token["epoch"])
+        resp = re_lib.consume_launch(wrong_task, env.epoch_path)
+        check("consume_launch: wrong task_id denies binding mismatch", resp.get("ok") is False)
+        check("consume_launch: binding mismatch reason", resp.get("reason") == re_lib.DENY_LAUNCH_BINDING_MISMATCH)
+        # The genuinely-bound token is still consumable afterward -- the mismatch attempt
+        # mutated no ledger state (design §2.2: "every deny is fail-closed").
+        correct = dict(_base_launch_fields(), nonce=token["nonce"], epoch=token["epoch"])
+        follow_up = re_lib.consume_launch(correct, env.epoch_path)
+        check("consume_launch: correctly-bound token still consumable after a mismatch attempt", follow_up.get("ok") is True)
+    finally:
+        env.cleanup()
+
+
+def test_consume_launch_expired_denies() -> None:
+    env = _TempEnv(initial_epoch="0")
+    try:
+        issued_at = datetime(2020, 1, 1, tzinfo=timezone.utc)
+        token = re_lib.authorize_launch(_base_launch_fields(), env.epoch_path, now=issued_at)["token"]
+        past_deadline = issued_at + timedelta(milliseconds=token["deadline_ms"] + 1)
+        resp = re_lib.consume_launch(
+            dict(_base_launch_fields(), nonce=token["nonce"], epoch=token["epoch"]),
+            env.epoch_path, now=past_deadline,
+        )
+        check("consume_launch: past-deadline consume denies", resp.get("ok") is False)
+        check("consume_launch: expired reason", resp.get("reason") == re_lib.DENY_LAUNCH_EXPIRED)
+    finally:
+        env.cleanup()
+
+
+def test_same_lock_ordering_bump_before_issuance_read_and_denied() -> None:
+    """Design §4 -- "a bump committed before issuance is read and denied":
+    a REAL signed `apply_bump` commits first; `authorize_launch` afterward
+    binds the NEW epoch; a token presenting the stale (pre-bump) epoch at
+    consume denies `DENY_LAUNCH_EPOCH_SUPERSEDED` (its bound epoch no
+    longer matches `read_epoch()`)."""
+    priv, pub_hex = _make_keypair()
+    keys = _owner_keys("test-owner-launch-1", pub_hex)
+    env = _TempEnv(initial_epoch="0")
+    try:
+        doc = _sign(_base_bump(actor_key_id="test-owner-launch-1", expected_epoch=0), priv)
+        bump_resp = re_lib.apply_bump(doc, env.epoch_path, env.ledger(), keys)
+        check("ordering: real apply_bump commits (0 -> 1)", bump_resp.get("ok") is True)
+
+        issue_resp = re_lib.authorize_launch(_base_launch_fields(), env.epoch_path)
+        token = issue_resp["token"]
+        check("ordering: post-bump issuance binds the NEW epoch (1)", token.get("epoch") == 1)
+
+        # A hand-crafted request PRESENTING the stale pre-bump epoch (0) against the
+        # genuinely-issued token's nonce -- the binding check catches the mismatch first.
+        stale_presented = dict(_base_launch_fields(), nonce=token["nonce"], epoch=0)
+        stale_resp = re_lib.consume_launch(stale_presented, env.epoch_path)
+        check("ordering: presenting the stale epoch denies (binding mismatch)", stale_resp.get("ok") is False)
+        check("ordering: stale-epoch presentation reason", stale_resp.get("reason") == re_lib.DENY_LAUNCH_BINDING_MISMATCH)
+
+        # The correctly-bound (new-epoch) consume still succeeds once -- the bump-before-
+        # issuance revocation never blocked a launch that was actually issued AFTER it.
+        correct_resp = re_lib.consume_launch(dict(_base_launch_fields(), nonce=token["nonce"], epoch=1), env.epoch_path)
+        check("ordering: correctly new-epoch-bound consume succeeds", correct_resp.get("ok") is True)
+    finally:
+        env.cleanup()
+
+
+def test_same_lock_ordering_bump_after_issuance_ordered_after_denies_supersession() -> None:
+    """Design §4 -- "a bump after issuance is ordered strictly after the
+    declared launch point": `authorize_launch` issues first (binds the
+    OLD epoch); a REAL signed `apply_bump` commits after; the outstanding
+    token's `consume_launch` re-reads the epoch under the lock, sees it
+    advanced, and denies `DENY_LAUNCH_EPOCH_SUPERSEDED` -- the
+    post-issuance bump revokes the not-yet-consumed launch."""
+    priv, pub_hex = _make_keypair()
+    keys = _owner_keys("test-owner-launch-2", pub_hex)
+    env = _TempEnv(initial_epoch="3")
+    try:
+        token = re_lib.authorize_launch(_base_launch_fields(), env.epoch_path)["token"]
+        check("ordering: pre-bump issuance binds the OLD epoch (3)", token.get("epoch") == 3)
+
+        doc = _sign(_base_bump(actor_key_id="test-owner-launch-2", expected_epoch=3), priv)
+        bump_resp = re_lib.apply_bump(doc, env.epoch_path, env.ledger(), keys)
+        check("ordering: real apply_bump commits after issuance (3 -> 4)", bump_resp.get("ok") is True)
+
+        consume_resp = re_lib.consume_launch(dict(_base_launch_fields(), nonce=token["nonce"], epoch=3), env.epoch_path)
+        check("ordering: outstanding pre-bump token denies epoch-superseded", consume_resp.get("ok") is False)
+        check("ordering: epoch-superseded reason", consume_resp.get("reason") == re_lib.DENY_LAUNCH_EPOCH_SUPERSEDED)
+    finally:
+        env.cleanup()
+
+
+def test_recover_launch_ledger_unconditional_sweep_expires_issued() -> None:
+    """Design §5.2 -- the BINDING build requirement: the sweep transitions
+    every surviving `issued`-without-`consumed` record to terminal
+    `expired` UNCONDITIONALLY (no clock read, no elapsed-time recheck) --
+    exercised here on a token whose deadline has NOT elapsed, proving the
+    sweep does not wait for or check the deadline before expiring it."""
+    env = _TempEnv(initial_epoch="0")
+    try:
+        token = re_lib.authorize_launch(_base_launch_fields(), env.epoch_path)["token"]
+        summary = re_lib.recover_launch_ledger(env.epoch_path)
+        check("recover_launch_ledger: no error", summary.get("error") is None)
+        check("recover_launch_ledger: sweeps the surviving issued token", summary["issued_expired_unconditional"] == 1)
+
+        post_sweep = re_lib.consume_launch(dict(_base_launch_fields(), nonce=token["nonce"], epoch=token["epoch"]), env.epoch_path)
+        check("recover_launch_ledger: post-sweep consume denies (unknown, not expired)", post_sweep.get("ok") is False)
+        check("recover_launch_ledger: post-sweep reason is UNKNOWN (issued/<nonce> gone)", post_sweep.get("reason") == re_lib.DENY_LAUNCH_UNKNOWN)
+    finally:
+        env.cleanup()
+
+
+def test_recover_launch_ledger_leaves_consumed_terminal() -> None:
+    """Design §5.2 -- an `issued/<nonce>` WITH a `consumed/<nonce>` present
+    (a crash after the atomic consume) is left exactly as-is by the sweep
+    -- exactly-once preserved, never a re-launch, never a re-consume."""
+    env = _TempEnv(initial_epoch="0")
+    try:
+        token = re_lib.authorize_launch(_base_launch_fields(), env.epoch_path)["token"]
+        consume_resp = re_lib.consume_launch(dict(_base_launch_fields(), nonce=token["nonce"], epoch=token["epoch"]), env.epoch_path)
+        check("recover_launch_ledger setup: consume succeeds before recovery", consume_resp.get("ok") is True)
+
+        summary = re_lib.recover_launch_ledger(env.epoch_path)
+        check("recover_launch_ledger: already-consumed token left terminal, not swept", summary["issued_with_consumed_left_terminal"] == 1)
+        check("recover_launch_ledger: nothing newly expired", summary["issued_expired_unconditional"] == 0)
+
+        duplicate = re_lib.consume_launch(dict(_base_launch_fields(), nonce=token["nonce"], epoch=token["epoch"]), env.epoch_path)
+        check("recover_launch_ledger: a second consume after recovery still denies ALREADY_CONSUMED", duplicate.get("reason") == re_lib.DENY_LAUNCH_ALREADY_CONSUMED)
+    finally:
+        env.cleanup()
+
+
 def main() -> int:
     test_valid_bump_advances_epoch_by_exactly_one()
     test_forged_signature_denies()
@@ -1049,6 +1255,20 @@ def main() -> int:
     test_case2_live_reverse_cross_identity_conflict_denies()
     test_journal_absent_orphan_index_retryable()
     test_recover_on_clean_state_is_a_noop()
+
+    # C6a -- authorize_launch/consume_launch single-use launch token
+    # (design §3.5 exactly-once proof, §4 same-epoch.lock ordering proof,
+    # §5.2 unconditional recovery sweep).
+    test_authorize_launch_binds_current_epoch_and_deadline()
+    test_authorize_launch_malformed_denies()
+    test_consume_launch_succeeds_exactly_once()
+    test_consume_launch_unknown_nonce_denies()
+    test_consume_launch_binding_mismatch_denies()
+    test_consume_launch_expired_denies()
+    test_same_lock_ordering_bump_before_issuance_read_and_denied()
+    test_same_lock_ordering_bump_after_issuance_ordered_after_denies_supersession()
+    test_recover_launch_ledger_unconditional_sweep_expires_issued()
+    test_recover_launch_ledger_leaves_consumed_terminal()
 
     print(f"\n{passed} passed, {failed} failed (of {passed + failed} assertions)")
     return 0 if failed == 0 else 1

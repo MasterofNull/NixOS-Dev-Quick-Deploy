@@ -2178,6 +2178,47 @@ def get_capability_enforcement() -> Dict[str, Any]:
         "status": "ok" if launch_group_teg_only is not False else "degraded",
     }
 
+    # 7. Revocation launch authorization — authorize_launch/consume_launch single-use launch
+    #    token ops on the C6-S launch socket (Foundation C C6a, default-OFF). The op is doubly
+    #    inert until C6b: no admissible launch-socket client yet, and the op-specific TEG
+    #    SO_PEERCRED peer check fails closed on an unresolved AQ_REVOCATION_LAUNCH_TEG_UID.
+    #    Live-probed from source/filesystem — never hard-coded, never a "--" placeholder.
+    launch_op_present = False
+    launch_teg_peer_check_enforced = False
+    try:
+        ret_src = (_repo_root() / "scripts" / "ai" / "lib" / "revocation_epoch_transport.py").read_text()
+        launch_op_present = (
+            "def build_launch_handler(" in ret_src
+            and '"authorize_launch"' in ret_src
+            and '"consume_launch"' in ret_src
+        )
+        launch_teg_peer_check_enforced = (
+            "AQ_REVOCATION_LAUNCH_TEG_UID" in ret_src and "DENY_NOT_TEG_PEER" in ret_src
+        )
+    except Exception:
+        launch_op_present = False
+        launch_teg_peer_check_enforced = False
+    launch_ledger_state_path = Path("/var/lib/aq-revocation-epoch-authority/launch-ledger")
+    launch_ledger_durable: Optional[bool] = None
+    try:
+        if launch_ledger_state_path.is_dir():
+            launch_ledger_durable = all(
+                (launch_ledger_state_path / sub).is_dir()
+                and (os.stat(str(launch_ledger_state_path / sub)).st_mode & 0o777) == 0o700
+                for sub in ("issued", "consumed", "expired")
+            )
+        # else: authority never provisioned/started on this host — unknown, not unhealthy
+    except Exception:
+        launch_ledger_durable = None
+    result["revocation_launch_authorization"] = {
+        "authorize_launch_op": "op_present" if launch_op_present else "op_absent",
+        "ledger_durable": launch_ledger_durable,
+        "teg_peer_check_enforced": launch_teg_peer_check_enforced,
+        # default-OFF/unprovisioned is the healthy resting state; an op present without its
+        # enforced TEG peer check would reopen the self-launch surface C6-S/C6a closed — degraded
+        "status": "ok" if (not launch_op_present or launch_teg_peer_check_enforced) else "degraded",
+    }
+
     return result
 
 

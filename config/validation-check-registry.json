@@ -1455,6 +1455,27 @@
       "enabled": true
     },
     {
+      "id": "c6a-authorize-launch-coverage",
+      "description": "Foundation C C6a — authorize_launch + single-use launch-token consume on the C6-S launch socket is default-OFF, TEG-peer-gated, and dashboard-visible (Service Coverage)",
+      "trigger_paths": [
+        "scripts/ai/lib/revocation_epoch.py",
+        "scripts/ai/lib/revocation_epoch_transport.py",
+        "nix/modules/services/revocation-epoch-authority.nix",
+        "config/env-contract.yaml",
+        "dashboard/backend/api/routes/aistack.py",
+        "assets/dashboard.js",
+        "scripts/testing/test-revocation-epoch.py",
+        "scripts/testing/test-c6a-authorize-launch-service-coverage.py"
+      ],
+      "command": [
+        "python3",
+        "scripts/testing/test-c6a-authorize-launch-service-coverage.py"
+      ],
+      "tier": "behavioral",
+      "timeout_seconds": 30,
+      "enabled": true
+    },
+    {
       "id": "flat-prd-gate",
       "description": "Phase 155 \u2014 flat model-team PRD gate requires proposal/review/consensus artifacts",
       "trigger_paths": [
