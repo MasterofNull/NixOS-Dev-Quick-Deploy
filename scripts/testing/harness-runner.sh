@@ -74,7 +74,11 @@ run_gate() {
   if $VERBOSE; then
     "$@"
   else
-    "$@" >/dev/null 2>&1
+    local out
+    if ! out="$("$@" 2>&1)"; then
+      echo "$out" >&2
+      return 1
+    fi
   fi
 }
 

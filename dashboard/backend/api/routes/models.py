@@ -28,6 +28,7 @@ import time
 from pathlib import Path
 from typing import Any, AsyncGenerator, Dict, Optional
 
+import yaml
 from fastapi import APIRouter, HTTPException, Request, status
 from fastapi.responses import StreamingResponse
 
@@ -412,7 +413,7 @@ _REGISTRY_PATHS = [
 ]
 
 _MODEL_PROFILE_PATH = Path(os.getenv("MODEL_PROFILE_PATH", "")) if os.getenv("MODEL_PROFILE_PATH") else Path(__file__).resolve().parents[4] / "config" / "model-profile.json"
-_MODEL_CATALOG_PATH = Path(__file__).resolve().parents[4] / "ai-stack" / "mcp-servers" / "shared" / "model_catalog.py"
+_MODEL_CATALOG_PATH = Path(__file__).resolve().parents[4] / "config" / "model-catalog.yaml"
 
 
 def _parse_ts(value: str) -> Optional[dt.datetime]:
@@ -439,15 +440,18 @@ def _catalog_metadata() -> Dict[str, Any]:
     if not _MODEL_CATALOG_PATH.exists():
         return {}
     try:
-        import importlib.util
-
-        spec = importlib.util.spec_from_file_location("_dashboard_model_catalog", _MODEL_CATALOG_PATH)
-        if spec is None or spec.loader is None:
+        catalog = yaml.safe_load(_MODEL_CATALOG_PATH.read_text()) or {}
+        metadata = catalog.get("_meta", {})
+        if not isinstance(metadata, dict):
             return {}
-        module = importlib.util.module_from_spec(spec)
-        spec.loader.exec_module(module)
-        metadata = getattr(module, "CATALOG_METADATA", {})
-        return metadata.copy() if isinstance(metadata, dict) else {}
+        entries: Dict[str, Any] = {}
+        for section in ("chat_models", "embedding_models"):
+            section_entries = catalog.get(section, {})
+            if isinstance(section_entries, dict):
+                entries.update(section_entries)
+        result = metadata.copy()
+        result["entries"] = entries
+        return result
     except Exception as exc:
         logger.warning("models route: failed to load catalog metadata: %s", exc)
         return {}
@@ -474,7 +478,7 @@ def _model_freshness() -> Dict[str, Any]:
     model_path = profile.get("model_path")
     reviewed_at = meta.get("reviewed_at") or meta.get("last_updated")
     probed_at = profile.get("probed_at")
-    catalog_reviewed_at = catalog.get("catalog_reviewed_at")
+    catalog_reviewed_at = catalog.get("last_updated")
 
     profile_age_days = _age_days(str(reviewed_at or ""))
     probe_age_days = _age_days(str(probed_at or ""))
@@ -503,6 +507,19 @@ def _model_freshness() -> Dict[str, Any]:
         reasons.append("probe model does not match active model")
     if active_model_path_state in {"missing", "unknown"}:
         reasons.append("active model path is not readable")
+    declared_files = {
+        entry.get("file")
+        for entry in catalog.get("entries", {}).values()
+        if isinstance(entry, dict) and entry.get("file")
+    }
+    active_model_file = None
+    if active_model_path_exists:
+        try:
+            active_model_file = Path(model_path).resolve(strict=True).name
+        except OSError:
+            active_model_file = Path(model_path).name
+    if active_model_file and active_model_file not in declared_files:
+        reasons.append("active model file is not declared in the runtime catalog")
 
     status_value = "stale" if reasons else "fresh"
     return {
@@ -521,8 +538,11 @@ def _model_freshness() -> Dict[str, Any]:
         "profile_reviewed_at": reviewed_at,
         "probed_at": probed_at,
         "catalog_reviewed_at": catalog_reviewed_at,
-        "catalog_version": catalog.get("catalog_version"),
+        "catalog_version": catalog.get("version"),
+        "active_model_file": active_model_file,
+        "active_model_catalogued": bool(active_model_file and active_model_file in declared_files),
         "profile_path": str(_MODEL_PROFILE_PATH),
+        "catalog_path": str(_MODEL_CATALOG_PATH),
     }
 
 

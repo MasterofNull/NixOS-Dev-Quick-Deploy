@@ -18,7 +18,8 @@ which lean-ctx || bash scripts/install.sh
 If the install script is not available locally, install manually:
 
 ```bash
-curl -fsSL https://raw.githubusercontent.com/yvgude/lean-ctx/main/skills/lean-ctx/scripts/install.sh | bash
+# Pinned to yvgude/lean-ctx@1ca1ffcc6fd911f7f3f2e10aae2ca0a7a7a27249 (2026-09-25) — do not float on main; re-pin deliberately when bumping.
+curl -fsSL https://raw.githubusercontent.com/yvgude/lean-ctx/1ca1ffcc6fd911f7f3f2e10aae2ca0a7a7a27249/skills/lean-ctx/scripts/install.sh | bash
 ```
 
 After installation, configure the MCP server:

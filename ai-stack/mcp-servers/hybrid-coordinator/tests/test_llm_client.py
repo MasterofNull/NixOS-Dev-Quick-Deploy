@@ -4,6 +4,13 @@ from unittest.mock import patch
 
 from llm_client import LLMClient
 
+try:
+    import openai  # noqa: F401
+except ImportError:
+    _OPENAI_AVAILABLE = False
+else:
+    _OPENAI_AVAILABLE = True
+
 
 class _FakeResponse:
     def __init__(self, payload):
@@ -172,6 +179,7 @@ class LLMClientLocalTests(unittest.TestCase):
         )
 
 
+@unittest.skipUnless(_OPENAI_AVAILABLE, "openai package not installed (optional client dep)")
 class LLMClientOpenAITests(unittest.TestCase):
     def test_init_openai_passes_custom_base_url(self):
         recorder = _RecordingOpenAIClient({"choices": [], "usage": {}})

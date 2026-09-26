@@ -5,7 +5,7 @@
 fastapi==0.122.0
 uvicorn[standard]==0.38.0
 pydantic==2.12.5
-pydantic-settings==2.12.0  # Type-safe configuration management
+pydantic-settings>=2.14.2  # Type-safe configuration management
 
 # Database - Async PostgreSQL (psycopg3) + optimized Redis
 psycopg[binary,pool]==3.2.13  # Modern async PostgreSQL driver (20-30% faster)
@@ -25,14 +25,14 @@ httpx==0.28.1
 llama-index-core==0.14.8
 llama-index-embeddings-huggingface==0.6.1
 sentence-transformers==5.1.2
-transformers==4.57.3
+transformers>=4.57.6
 openai==2.8.1
 # HuggingFace Hub - pinned version to avoid backtracking
 huggingface-hub>=0.19.0,<1.0.0
 
 # Utilities
 pyyaml==6.0.3
-python-dotenv==1.2.1
+python-dotenv>=1.2.2
 click==8.3.1
 
 # Monitoring & Logging
@@ -54,7 +54,7 @@ scipy==1.16.3
 pandas==2.3.3
 
 # Testing
-pytest==8.4.0
+pytest>=9.0.3
 pytest-asyncio==0.23.8
 pytest-cov==5.0.0
 locust==2.32.4

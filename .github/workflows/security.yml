@@ -124,12 +124,13 @@ jobs:
           exit-code: '0'  # Don't fail on vulnerabilities in base images
           ignore-unfixed: true
 
-      - name: Upload Trivy results to GitHub Security
-        uses: github/codeql-action/upload-sarif@b96794f015dfd88f77b49b1c93e0fa7110f94c63  # v4
-        if: always() && hashFiles(matrix.sarif) != '' && (github.event_name != 'pull_request' || github.event.pull_request.head.repo.fork == false)
+      - name: Upload Trivy results as artifact
+        uses: actions/upload-artifact@b7c566a772e6b6bfb58ed0dc250532a479d7789f  # v6
+        if: always() && hashFiles(matrix.sarif) != ''
         with:
-          sarif_file: ${{ matrix.sarif }}
-          category: ${{ matrix.category }}
+          name: ${{ matrix.category }}-sarif
+          path: ${{ matrix.sarif }}
+          retention-days: 14
 
       - name: Run Trivy scanner (table output)
         uses: aquasecurity/trivy-action@57a97c7e7821a5776cebc9bb87c984fa69cba8f1  # v0.35.0
