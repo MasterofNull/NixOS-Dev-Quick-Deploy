@@ -1,0 +1,101 @@
+// AQ-OS SOTA Agentic Workspace Layout for Zellij
+// Multi-tiled layout integrating Coordinator REPL, Sub-agent Fleet Matrix, and Telemetry Cockpit.
+
+layout {
+    default_tab_template {
+        pane size=1 borderless=true {
+            plugin location="zellij:tab-bar"
+        }
+        children
+        pane size=2 borderless=true {
+            plugin location="zellij:status-bar"
+        }
+    }
+
+    tab name="Agentic Workspace" focus=true {
+        pane split_direction="vertical" {
+            pane size="58%" name="Coordinator Console" focus=true {
+                command "aq-coordinator-repl"
+            }
+            pane split_direction="horizontal" size="42%" {
+                pane size="52%" name="Sub-Agent Fleet Matrix" {
+                    command "aq-fleet-monitor"
+                }
+                pane size="48%" name="Telemetry Cockpit" {
+                    command "aq-cockpit-monitor"
+                }
+            }
+        }
+    }
+
+    tab name="Multi-Agent Studio" {
+        pane split_direction="horizontal" {
+            pane split_direction="vertical" size="50%" {
+                pane name="Local Qwen3-35B (APU :8080)" {
+                    command "aq-agent-window"
+                    args "--lane" "local"
+                }
+                pane name="Claude 3.7 / Fable-5 (Switchboard :8085)" {
+                    command "aq-agent-window"
+                    args "--lane" "claude"
+                }
+            }
+            pane split_direction="vertical" size="50%" {
+                pane name="OpenAI Codex / GPT-4o (Coordinator :8003)" {
+                    command "aq-agent-window"
+                    args "--lane" "codex"
+                }
+                pane name="Google Gemini 2.5 (Switchboard :8085)" {
+                    command "aq-agent-window"
+                    args "--lane" "gemini"
+                }
+            }
+        }
+    }
+
+    tab name="Local Qwen" {
+        pane name="Local Qwen3-35B APU Console" {
+            command "aq-agent-window"
+            args "--lane" "local"
+        }
+    }
+
+    tab name="Claude" {
+        pane name="Claude 3.7 / Fable-5 Console" {
+            command "aq-agent-window"
+            args "--lane" "claude"
+        }
+    }
+
+    tab name="Codex" {
+        pane name="OpenAI Codex Console" {
+            command "aq-agent-window"
+            args "--lane" "codex"
+        }
+    }
+
+    tab name="Gemini" {
+        pane name="Google Gemini 2.5 Console" {
+            command "aq-agent-window"
+            args "--lane" "gemini"
+        }
+    }
+
+    tab name="Fleet Matrix" {
+        pane name="Agent Matrix & Live Streams" {
+            command "aq-tui-dashboard"
+            args "--matrix"
+        }
+    }
+
+    tab name="Operations & Mesh" {
+        pane name="Detailed System Operations" {
+            command "aq-tui-dashboard"
+        }
+    }
+
+    tab name="Scratch Shell" {
+        pane name="Local Development Shell"
+    }
+}
+

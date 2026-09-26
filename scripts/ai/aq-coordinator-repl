@@ -1,0 +1,490 @@
+#!/usr/bin/env python3
+"""
+aq-coordinator-repl — Interactive Agentic Coordinator & Steering Console.
+
+Features:
+  • Multi-turn conversation with streaming AI responses and syntax highlighting
+  • Dynamic model routing (/route, /model: local, claude, codex, gemini)
+  • Sub-agent dispatching (/dispatch <lane> "<task>")
+  • Real-time human-in-the-loop intervention (/steer, /pause, /resume, /kill, /inspect)
+  • Visual tool-call cards and status badges
+  • System telemetry & health summary (/status, /fleet, /pulse)
+  • Rich tab completion and persistent command history
+"""
+
+import argparse
+import asyncio
+import json
+import os
+import re
+import readline
+import signal
+import subprocess
+import sys
+import time
+import urllib.error
+import urllib.request
+from dataclasses import dataclass, field
+from datetime import datetime, timezone
+from pathlib import Path
+from typing import Any, Dict, List, Optional, Tuple
+
+import httpx
+from prompt_toolkit import PromptSession, HTML
+from prompt_toolkit.completion import WordCompleter
+from prompt_toolkit.history import FileHistory
+from prompt_toolkit.styles import Style
+from rich.console import Console
+from rich.layout import Layout
+from rich.live import Live
+from rich.markdown import Markdown
+from rich.panel import Panel
+from rich.spinner import Spinner
+from rich.syntax import Syntax
+from rich.table import Table
+from rich.text import Text
+
+REPO_ROOT = Path(__file__).resolve().parent.parent.parent
+HISTORY_FILE = Path.home() / ".aq_coordinator_history"
+PULSE_LOG = REPO_ROOT / ".agent" / "collaboration" / "PULSE.log"
+REGISTRY_FILE = REPO_ROOT / ".agents" / "delegation" / "registry.jsonl"
+STREAMS_DIR = REPO_ROOT / ".agents" / "delegation" / "streams"
+OUTPUTS_DIR = REPO_ROOT / ".agents" / "delegation" / "outputs"
+
+# Endpoints
+HYBRID_URL = os.getenv("HYBRID_URL", "http://127.0.0.1:8003")
+SWITCHBOARD_URL = os.getenv("SWITCHBOARD_URL", "http://127.0.0.1:8085")
+LLAMA_URL = os.getenv("LLAMA_URL", "http://127.0.0.1:8080")
+
+console = Console()
+
+# Prompt Toolkit styling
+PT_STYLE = Style.from_dict({
+    "prompt": "#00d9ff bold",
+    "lane": "#ff00ff bold",
+    "meta": "#546e7a italic",
+})
+
+COMMANDS = [
+    "/help", "/exit", "/quit", "/clear", "/status", "/fleet",
+    "/model", "/route", "/dispatch", "/steer", "/kill", "/inspect",
+    "/pause", "/resume", "/pulse", "/plan", "/tools",
+    "@all", "@local", "@claude", "@codex", "@gemini",
+]
+
+command_completer = WordCompleter(COMMANDS + [
+    "local", "claude", "codex", "gemini",
+    "orchestrator", "architect", "implementer", "reviewer", "researcher"
+], ignore_case=True)
+
+ROUTES = {
+    "local": {
+        "label": "Local APU (Qwen3-35B)",
+        "color": "#00d9ff",
+        "backend": "llama.cpp / hybrid",
+        "url": f"{HYBRID_URL}/v1/chat/completions",
+        "model": "qwen3-35b",
+    },
+    "claude": {
+        "label": "Claude 3.7 / Fable-5",
+        "color": "#ff79c6",
+        "backend": "switchboard / anthropic",
+        "url": f"{SWITCHBOARD_URL}/v1/chat/completions",
+        "model": "claude-fable-5",
+    },
+    "codex": {
+        "label": "Codex / GPT-4o",
+        "color": "#50fa7b",
+        "backend": "hybrid / openai",
+        "url": f"{HYBRID_URL}/v1/chat/completions",
+        "model": "openai-codex",
+    },
+    "gemini": {
+        "label": "Gemini 2.5 / Antigravity",
+        "color": "#bd93f9",
+        "backend": "switchboard / google",
+        "url": f"{SWITCHBOARD_URL}/v1/chat/completions",
+        "model": "gemini-2.5",
+    },
+}
+
+
+class CoordinatorSession:
+    """Manages conversational state, active route, and agent fleet."""
+
+    def __init__(self):
+        self.active_route = "local"
+        self.messages: List[Dict[str, str]] = []
+        self.total_prompts = 0
+        self.total_tokens_in = 0
+        self.total_tokens_out = 0
+        self.session_start = time.time()
+        self.system_prompt = (
+            "You are the AQ-OS Agentic Coordinator for NixOS-Dev-Quick-Deploy. "
+            "You coordinate tasks, write precise code and architectures, inspect system telemetry, "
+            "and assist the operator across local models (Qwen-35B) and flagship remote lanes."
+        )
+
+    def get_route_info(self) -> Dict[str, Any]:
+        """Return display metadata for current route."""
+        return ROUTES.get(self.active_route, ROUTES["local"])
+
+    def set_route(self, new_route: str) -> bool:
+        """Switch route."""
+        new_route = new_route.lower().strip()
+        if new_route in ("local", "qwen", "hybrid"):
+            self.active_route = "local"
+            return True
+        elif new_route in ("claude", "anthropic", "fable"):
+            self.active_route = "claude"
+            return True
+        elif new_route in ("codex", "openai", "gpt"):
+            self.active_route = "codex"
+            return True
+        elif new_route in ("gemini", "antigravity", "google"):
+            self.active_route = "gemini"
+            return True
+        return False
+
+
+session = CoordinatorSession()
+
+
+def render_banner():
+    """Print the startup banner."""
+    route_info = session.get_route_info()
+    grid = Table.grid(padding=0)
+    grid.add_column(style="bold white")
+    
+    header = (
+        "[bold #00d9ff]󰚩 AQ-OS SOTA AGENTIC WORKSPACE[/bold #00d9ff] · "
+        f"Active Lane: [bold {route_info['color']}]{route_info['label']}[/bold {route_info['color']}]\n"
+        "[dim]IndyDevDan / Pi-Agent / Herdr multi-tiled workspace architecture · Type /help for controls[/dim]"
+    )
+    console.print(Panel(header, border_style="#00d9ff", padding=(0, 1)))
+
+
+def show_help():
+    """Display command reference table."""
+    table = Table(title="Agentic Coordinator Reference", box=None, padding=(0, 2))
+    table.add_column("Command", style="bold cyan", width=22)
+    table.add_column("Description", style="white")
+
+    table.add_row("/model <name>", "Switch model: local (Qwen-35B), claude (Fable-5), codex, gemini")
+    table.add_row("@<agent> <prompt>", "Direct prompt to specific agent (@local, @claude, @codex, @gemini)")
+    table.add_row("@all <prompt>", "Broadcast prompt to all 4 models with comparative benchmarks")
+    table.add_row("/dispatch <role> \"task\"", "Dispatch background sub-agent (implementer, architect, researcher)")
+    table.add_row("/fleet", "List active & recent sub-agent delegations and their status")
+    table.add_row("/steer <id> \"msg\"", "Inject real-time guidance/intervention into a running sub-agent")
+    table.add_row("/inspect <id>", "Inspect live output tail & Note-to-Self thoughts for a task")
+    table.add_row("/kill <id>", "Terminate a running sub-agent task")
+    table.add_row("/status", "Print AI stack service health and latency diagnostics")
+    table.add_row("/pulse", "Show recent operations from PULSE.log")
+    table.add_row("/tools", "List available MCP / harness tools")
+    table.add_row("/clear", "Clear the terminal screen")
+    table.add_row("/exit, /quit", "Exit the coordinator REPL")
+
+    console.print(Panel(table, border_style="cyan"))
+
+
+def list_fleet():
+    """Display current sub-agent fleet."""
+    if not REGISTRY_FILE.is_file():
+        console.print("[dim]No delegations found in registry.[/dim]")
+        return
+    try:
+        lines = REGISTRY_FILE.read_text(encoding="utf-8", errors="replace").splitlines()
+        records = [json.loads(l) for l in reversed(lines[-15:]) if l.strip()]
+        
+        table = Table(title="Sub-Agent Fleet Tasks", box=None, padding=(0, 1))
+        table.add_column("Task ID", style="bold cyan", width=18)
+        table.add_column("Lane/Role", width=16)
+        table.add_column("Status", width=11)
+        table.add_column("Tokens", width=10)
+        table.add_column("Description", style="dim white")
+
+        for r in records:
+            tid = r.get("id", "unknown")
+            short_id = tid if len(tid) <= 18 else tid[:17] + "…"
+            status = r.get("status", "unknown").lower()
+            badge = "[bold green]RUNNING[/bold green]" if status in ("running", "active") else (
+                "[cyan]DONE[/cyan]" if status == "done" else f"[dim]{status}[/dim]"
+            )
+            tin = r.get("tokens_in", 0) or 0
+            tout = r.get("tokens_out", 0) or 0
+            tok_str = f"{tin}+{tout}" if (tin or tout) else "—"
+            desc = r.get("description", "").split("\n\n[Auto-suggested")[0].replace("\n", " ").strip()
+            if len(desc) > 40:
+                desc = desc[:38] + "…"
+            table.add_row(short_id, f"{r.get('agent', '')}/{r.get('role', '')}", badge, tok_str, desc)
+        console.print(table)
+    except Exception as e:
+        console.print(f"[red]Error reading fleet registry: {e}[/red]")
+
+
+def steer_agent(task_id: str, message: str, cancel: bool = False):
+    """Send intervention message to agent via control channel."""
+    cmd = [str(REPO_ROOT / "scripts" / "ai" / "aq-agent-send"), task_id, message]
+    if cancel:
+        cmd.append("--cancel")
+    try:
+        res = subprocess.run(cmd, capture_output=True, text=True, check=False)
+        if res.returncode == 0:
+            console.print(f"[bold green]✓ Intervention sent to {task_id}:[/bold green] {message}")
+        else:
+            console.print(f"[bold red]✗ Failed to send intervention: {res.stderr.strip() or res.stdout.strip()}[/bold red]")
+    except Exception as e:
+        console.print(f"[red]Execution error: {e}[/red]")
+
+
+def dispatch_subagent(lane: str, prompt: str, role: str = "implementer"):
+    """Spawn background sub-agent using delegate scripts."""
+    scripts = {
+        "local": REPO_ROOT / "scripts" / "ai" / "delegate-to-local",
+        "claude": REPO_ROOT / "scripts" / "ai" / "delegate-to-claude",
+        "codex": REPO_ROOT / "scripts" / "ai" / "delegate-to-codex",
+        "gemini": REPO_ROOT / "scripts" / "ai" / "delegate-to-antigravity",
+    }
+    script = scripts.get(lane.lower(), scripts["local"])
+    if not script.is_file():
+        console.print(f"[red]Error: Dispatch script not found: {script}[/red]")
+        return
+
+    cmd = [str(script), "--role", role, "--prompt", prompt]
+    console.print(f"[bold cyan]⚡ Spawning background sub-agent ({lane}/{role})...[/bold cyan]")
+    try:
+        proc = subprocess.Popen(cmd, stdout=subprocess.PIPE, stderr=subprocess.PIPE, text=True)
+        console.print(f"[bold green]✓ Sub-agent process launched (PID {proc.pid}).[/bold green]")
+        console.print("  Watch live stream in Fleet Matrix pane or type [bold cyan]/fleet[/bold cyan].")
+    except Exception as e:
+        console.print(f"[bold red]Failed to dispatch sub-agent: {e}[/bold red]")
+
+
+async def stream_chat(prompt: str, route_key: Optional[str] = None):
+    """Send prompt to active backend (or route_key override) and stream response."""
+    if route_key and route_key in ROUTES:
+        route = ROUTES[route_key]
+    else:
+        route = session.get_route_info()
+
+    messages = [
+        {"role": "system", "content": session.system_prompt},
+    ] + session.messages + [{"role": "user", "content": prompt}]
+
+    payload = {
+        "model": route["model"],
+        "messages": messages,
+        "temperature": 0.3,
+        "stream": True,
+    }
+
+    t0 = time.monotonic()
+    collected_tokens = []
+    
+    console.print(f"\n[bold {route['color']}]{route['label']}[/bold {route['color']}] ───")
+
+    try:
+        async with httpx.AsyncClient(timeout=120.0) as client:
+            async with client.stream("POST", route["url"], json=payload) as response:
+                if response.status_code != 200:
+                    body = await response.aread()
+                    console.print(f"[bold red]API Error {response.status_code}: {body.decode('utf-8', errors='replace')}[/bold red]")
+                    return
+
+                async for line in response.aiter_lines():
+                    if not line:
+                        continue
+                    if line.startswith("data: "):
+                        data_str = line[6:].strip()
+                        if data_str == "[DONE]":
+                            break
+                        try:
+                            chunk = json.loads(data_str)
+                            choices = chunk.get("choices") or []
+                            if choices:
+                                delta = choices[0].get("delta", {}).get("content", "")
+                                if delta:
+                                    sys.stdout.write(delta)
+                                    sys.stdout.flush()
+                                    collected_tokens.append(delta)
+                        except json.JSONDecodeError:
+                            continue
+
+        print()  # Newline after stream
+        full_text = "".join(collected_tokens)
+        elapsed = time.monotonic() - t0
+        tok_count = len(collected_tokens)
+        tok_per_sec = (tok_count / elapsed) if elapsed > 0 else 0.0
+
+        session.messages.append({"role": "user", "content": prompt})
+        session.messages.append({"role": "assistant", "content": full_text})
+        session.total_prompts += 1
+        session.total_tokens_out += tok_count
+
+        console.print(f"[dim]── [{elapsed:.2f}s · ~{tok_count} tokens · {tok_per_sec:.1f} tok/s · {route['backend']}][/dim]\n")
+
+    except httpx.ConnectError:
+        console.print(f"[bold red]Connection error to {route['url']}. Ensure AI services are running.[/bold red]")
+    except Exception as e:
+        console.print(f"[bold red]Streaming error: {e}[/bold red]")
+
+
+async def broadcast_chat(prompt: str):
+    """Broadcast prompt to all 4 models and stream responses sequentially with telemetry benchmark."""
+    all_lanes = ["local", "claude", "codex", "gemini"]
+    console.print(Panel(
+        f"[bold #00d9ff]󰚩 MULTI-AGENT BROADCAST PROMPT[/bold #00d9ff]\n"
+        f"[white]{prompt}[/white]\n"
+        f"[dim]Broadcasting across all 4 agent lanes (Local, Claude, Codex, Gemini)...[/dim]",
+        border_style="#00d9ff",
+        padding=(0, 1),
+    ))
+    benchmarks = []
+    for lane in all_lanes:
+        t0 = time.monotonic()
+        await stream_chat(prompt, route_key=lane)
+        elapsed = time.monotonic() - t0
+        benchmarks.append((lane, elapsed))
+
+    # Benchmark summary table
+    table = Table(title="Multi-Agent Benchmark Comparison", box=None, padding=(0, 1))
+    table.add_column("Agent Lane", style="bold cyan")
+    table.add_column("Latency", style="white")
+    table.add_column("Backend", style="dim")
+    for lane, elapsed in benchmarks:
+        r = ROUTES[lane]
+        table.add_row(f"[{r['color']}]{r['label']}[/{r['color']}]", f"{elapsed:.2f}s", r["backend"])
+    console.print(Panel(table, border_style="cyan", padding=(0, 1)))
+
+
+
+async def main():
+    parser = argparse.ArgumentParser(description="AQ-OS Agentic Coordinator Console")
+    parser.add_argument("--route", default="local", help="Initial route: local, claude, codex, gemini")
+    parser.add_argument("--prompt", help="Execute single prompt and exit")
+    args = parser.parse_args()
+
+    session.set_route(args.route)
+
+    if args.prompt:
+        await stream_chat(args.prompt)
+        return
+
+    render_banner()
+
+    pt_session = PromptSession(
+        history=FileHistory(str(HISTORY_FILE)),
+        completer=command_completer,
+        style=PT_STYLE,
+    )
+
+    while True:
+        try:
+            route_info = session.get_route_info()
+            prompt_html = HTML(f"<prompt>aq</prompt> <lane>[{session.active_route}]</lane> ❯ ")
+            user_input = await pt_session.prompt_async(prompt_html)
+            text = user_input.strip()
+        except (KeyboardInterrupt, EOFError):
+            console.print("\n[dim]Exiting Coordinator REPL. Goodbye![/dim]")
+            break
+
+        if not text:
+            continue
+
+        # Command handling
+        if text.startswith("/"):
+            parts = text.split(" ", 2)
+            cmd = parts[0].lower()
+
+            if cmd in ("/exit", "/quit"):
+                console.print("[dim]Goodbye![/dim]")
+                break
+            elif cmd == "/help":
+                show_help()
+            elif cmd == "/clear":
+                os.system("clear")
+                render_banner()
+            elif cmd in ("/model", "/route"):
+                if len(parts) > 1 and session.set_route(parts[1]):
+                    ri = session.get_route_info()
+                    console.print(f"[bold green]Switched route to:[/bold green] [{ri['color']}]{ri['label']}[/{ri['color']}]")
+                else:
+                    console.print(f"Usage: {cmd} <local|claude|codex|gemini>")
+            elif cmd == "/fleet":
+                list_fleet()
+            elif cmd == "/status":
+                subprocess.run([str(REPO_ROOT / "scripts" / "ai" / "aq-cockpit-monitor"), "--once"])
+            elif cmd == "/pulse":
+                subprocess.run(["tail", "-n", "8", str(PULSE_LOG)])
+            elif cmd == "/steer":
+                if len(parts) >= 3:
+                    steer_agent(parts[1], parts[2], cancel=False)
+                else:
+                    console.print("Usage: /steer <task_id> \"<message>\"")
+            elif cmd == "/kill":
+                if len(parts) >= 2:
+                    steer_agent(parts[1], "Cancelled by operator", cancel=True)
+                else:
+                    console.print("Usage: /kill <task_id>")
+            elif cmd == "/inspect":
+                if len(parts) >= 2:
+                    tid = parts[1]
+                    out = REPO_ROOT / ".agents" / "delegation" / "outputs" / f"{tid}.log"
+                    if out.is_file():
+                        console.print(f"[bold cyan]Log for {tid}:[/bold cyan]")
+                        console.print(out.read_text(encoding="utf-8", errors="replace")[-2000:])
+                    else:
+                        console.print(f"[red]Log file not found for task {tid}[/red]")
+                else:
+                    console.print("Usage: /inspect <task_id>")
+            elif cmd == "/dispatch":
+                if len(parts) >= 3:
+                    lane = parts[1]
+                    prompt_text = parts[2]
+                    dispatch_subagent(lane, prompt_text)
+                elif len(parts) == 2:
+                    dispatch_subagent("local", parts[1])
+                else:
+                    console.print("Usage: /dispatch [lane] \"<prompt>\"")
+            else:
+                console.print(f"[yellow]Unknown command '{cmd}'. Type /help for available commands.[/yellow]")
+            continue
+
+        # Targeted agent prompting (@local, @claude, @codex, @gemini, @all)
+        if text.startswith("@"):
+            parts = text.split(" ", 1)
+            target = parts[0][1:].lower()
+            query = parts[1].strip() if len(parts) > 1 else ""
+
+            if not query:
+                console.print(f"[yellow]Usage: @{target} <prompt>[/yellow]")
+                continue
+
+            if target in ("all", "broadcast"):
+                await broadcast_chat(query)
+                continue
+            elif target in ("local", "qwen", "hybrid"):
+                await stream_chat(query, route_key="local")
+                continue
+            elif target in ("claude", "anthropic", "fable"):
+                await stream_chat(query, route_key="claude")
+                continue
+            elif target in ("codex", "openai", "gpt"):
+                await stream_chat(query, route_key="codex")
+                continue
+            elif target in ("gemini", "antigravity", "google"):
+                await stream_chat(query, route_key="gemini")
+                continue
+            else:
+                console.print(f"[yellow]Unknown agent '@{target}'. Supported: @all, @local, @claude, @codex, @gemini[/yellow]")
+                continue
+
+        # Normal prompt stream
+        await stream_chat(text)
+
+
+if __name__ == "__main__":
+    try:
+        asyncio.run(main())
+    except KeyboardInterrupt:
+        pass

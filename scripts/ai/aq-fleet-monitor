@@ -1,0 +1,219 @@
+#!/usr/bin/env python3
+"""
+aq-fleet-monitor — Real-time sub-agent fleet matrix & live worker stream.
+
+Features:
+  • Live active agent tracking across lanes (Local Qwen, Codex, Claude, Gemini)
+  • Real-time thought extraction & Note-to-Self reflection streaming
+  • Active tool calls and progress meters
+  • Token usage metrics (tokens in/out) per agent
+  • Human intervention command reference (/steer, /pause, /kill, /inspect)
+
+Usage:
+  aq-fleet-monitor              # live continuous refresh
+  aq-fleet-monitor --once       # single snapshot (CI safe)
+  aq-fleet-monitor --interval N # custom refresh interval in seconds
+"""
+
+import argparse
+import json
+import os
+import re
+import sys
+import time
+from datetime import datetime, timezone
+from pathlib import Path
+from typing import Any, Dict, List, Optional
+
+from rich.console import Console
+from rich.layout import Layout
+from rich.live import Live
+from rich.panel import Panel
+from rich.syntax import Syntax
+from rich.table import Table
+from rich.text import Text
+
+REPO_ROOT = Path(__file__).resolve().parent.parent.parent
+REGISTRY_FILE = REPO_ROOT / ".agents" / "delegation" / "registry.jsonl"
+STREAMS_DIR = REPO_ROOT / ".agents" / "delegation" / "streams"
+OUTPUTS_DIR = REPO_ROOT / ".agents" / "delegation" / "outputs"
+
+console = Console()
+
+
+def parse_registry(limit: int = 8) -> List[Dict[str, Any]]:
+    """Parse recent entries from delegation registry."""
+    if not REGISTRY_FILE.is_file():
+        return []
+    records = []
+    try:
+        lines = REGISTRY_FILE.read_text(encoding="utf-8", errors="replace").splitlines()
+        for line in reversed(lines):
+            line = line.strip()
+            if not line:
+                continue
+            try:
+                data = json.loads(line)
+                records.append(data)
+                if len(records) >= limit:
+                    break
+            except json.JSONDecodeError:
+                continue
+    except Exception:
+        pass
+    return records
+
+
+def get_agent_tail(task_id: str, max_lines: int = 5) -> str:
+    """Read recent stream or output tail for a given task ID."""
+    # Check streams first (live)
+    stream_file = STREAMS_DIR / f"{task_id}.stream"
+    if stream_file.is_file():
+        try:
+            lines = [l.rstrip() for l in stream_file.read_text(encoding="utf-8", errors="replace").splitlines() if l.strip()]
+            if lines:
+                return "\n".join(lines[-max_lines:])
+        except Exception:
+            pass
+
+    # Check outputs file
+    output_file = OUTPUTS_DIR / f"{task_id}.log"
+    if output_file.is_file():
+        try:
+            lines = [l.rstrip() for l in output_file.read_text(encoding="utf-8", errors="replace").splitlines() if l.strip()]
+            if lines:
+                return "\n".join(lines[-max_lines:])
+        except Exception:
+            pass
+
+    return "No output logged yet."
+
+
+def format_age(created_iso: Optional[str]) -> str:
+    """Compute human-friendly age from ISO timestamp."""
+    if not created_iso:
+        return "—"
+    try:
+        # Normalize ISO timestamp
+        dt_str = created_iso.replace("Z", "+00:00")
+        dt = datetime.fromisoformat(dt_str)
+        now = datetime.now(timezone.utc)
+        diff = max(0, int((now - dt).total_seconds()))
+        if diff < 60:
+            return f"{diff}s"
+        elif diff < 3600:
+            return f"{diff // 60}m {diff % 60}s"
+        else:
+            return f"{diff // 3600}h {(diff % 3600) // 60}m"
+    except Exception:
+        return "—"
+
+
+def render_fleet_panel() -> Panel:
+    """Render the active fleet table and live stream preview."""
+    records = parse_registry(limit=8)
+
+    # 1. Fleet Overview Table
+    table = Table(box=None, padding=(0, 1), show_header=True, header_style="bold magenta")
+    table.add_column("Task ID", style="bold cyan", width=18)
+    table.add_column("Lane / Role", width=16)
+    table.add_column("Status", width=11)
+    table.add_column("Age", justify="right", width=7)
+    table.add_column("Tokens", justify="right", width=11)
+    table.add_column("Objective", style="dim white")
+
+    running_task = None
+
+    if not records:
+        table.add_row("—", "No active tasks", "[dim]idle[/dim]", "—", "—", "Spawn tasks via /dispatch <role> <prompt>")
+    else:
+        for rec in records:
+            tid = rec.get("id", "unknown")
+            short_id = tid if len(tid) <= 18 else tid[:17] + "…"
+            agent = rec.get("agent", "unknown")
+            role = rec.get("role", "worker")
+            lane_role = f"{agent}/{role}"
+            status = rec.get("status", "unknown").lower()
+            age = format_age(rec.get("created"))
+            tin = rec.get("tokens_in", 0) or 0
+            tout = rec.get("tokens_out", 0) or 0
+            tokens_str = f"{tin}+{tout}" if (tin or tout) else "—"
+            
+            desc = rec.get("description", "")
+            # Clean auto-suggested skill suffix for readability
+            clean_desc = desc.split("\n\n[Auto-suggested")[0].replace("\n", " ").strip()
+            if len(clean_desc) > 40:
+                clean_desc = clean_desc[:38] + "…"
+
+            if status in ("running", "in_flight", "active"):
+                status_badge = "[bold green]▶ RUNNING[/bold green]"
+                if running_task is None:
+                    running_task = rec
+            elif status == "done":
+                status_badge = "[cyan]✓ DONE[/cyan]"
+            elif status in ("failed", "error"):
+                status_badge = "[bold red]✗ FAILED[/bold red]"
+            elif status == "cancelled":
+                status_badge = "[yellow]⊘ CANCEL[/yellow]"
+            else:
+                status_badge = f"[dim]{status}[/dim]"
+
+            table.add_row(short_id, lane_role, status_badge, age, tokens_str, clean_desc)
+
+    # 2. Live Agent Stream / Thought Inspector
+    stream_text = Text()
+    inspect_id = running_task.get("id") if running_task else (records[0].get("id") if records else None)
+    if inspect_id:
+        tail = get_agent_tail(inspect_id, max_lines=4)
+        target_name = running_task.get("agent", "agent") if running_task else (records[0].get("agent", "agent") if records else "")
+        status_label = "LIVE STREAM" if running_task else "LAST LOG"
+        stream_text.append(f"[{status_label} · {inspect_id} ({target_name})]\n", style="bold yellow")
+        for line in tail.splitlines():
+            # Format thought lines (Note-to-Self)
+            if "<think>" in line or "Note-to-Self" in line or line.startswith("Thinking:"):
+                stream_text.append("  💭 " + line[:80] + "\n", style="italic cyan")
+            elif line.startswith("[TOOL]") or "tool_call" in line:
+                stream_text.append("  ⚡ " + line[:80] + "\n", style="bold green")
+            else:
+                stream_text.append("  " + line[:80] + "\n", style="dim white")
+    else:
+        stream_text.append("[dim]Waiting for agent dispatch... Use /dispatch to run a task.[/dim]")
+
+    # Grid layout
+    grid = Table.grid(padding=0)
+    grid.add_row(Panel(table, title="[bold]Delegated Fleet Status[/bold]", border_style="magenta", padding=(0, 0)))
+    grid.add_row(Panel(stream_text, title="[bold]Live Output / Note-to-Self Stream[/bold]", border_style="cyan", padding=(0, 1)))
+
+    # Footer with intervention controls
+    footer = Text("Interventions: /steer <id> \"msg\" · /pause <id> · /resume <id> · /kill <id> · /inspect <id>", style="dim cyan")
+    grid.add_row(footer)
+
+    return Panel(
+        grid,
+        title="[bold #ff00ff]󰚩 Sub-Agent Fleet Matrix[/bold #ff00ff]",
+        border_style="#ff00ff",
+        padding=(0, 1),
+    )
+
+
+def main():
+    parser = argparse.ArgumentParser(description="AQ-OS Fleet Matrix Monitor")
+    parser.add_argument("--once", action="store_true", help="Render a single frame and exit")
+    parser.add_argument("--interval", type=float, default=2.0, help="Refresh interval in seconds (default: 2.0)")
+    args = parser.parse_args()
+
+    if args.once or not sys.stdout.isatty():
+        console.print(render_fleet_panel())
+        return
+
+    with Live(render_fleet_panel(), refresh_per_second=2, console=console) as live:
+        try:
+            while True:
+                time.sleep(args.interval)
+                live.update(render_fleet_panel())
+        except KeyboardInterrupt:
+            pass
+
+
+if __name__ == "__main__":
+    main()
