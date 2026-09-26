@@ -151,10 +151,18 @@ case "${1:-}" in
     fi
     exit 0
     ;;
+  reset|restart)
+    SESSION="${2:-$DEFAULT_SESSION}"
+    if command -v zellij >/dev/null 2>&1; then
+      zellij delete-session -f "$SESSION" 2>/dev/null || true
+    fi
+    echo "Cleared session: $SESSION. Re-spawning fresh SOTA layout..."
+    shift $(($# > 1 ? 2 : 1))
+    ;;
   kill)
     SESSION="${2:-$DEFAULT_SESSION}"
     if command -v zellij >/dev/null 2>&1; then
-      zellij kill-session "$SESSION" 2>/dev/null && echo "Killed session: $SESSION" || echo "Session not found: $SESSION"
+      zellij delete-session -f "$SESSION" 2>/dev/null && echo "Killed session: $SESSION" || echo "Session not found: $SESSION"
     fi
     exit 0
     ;;
@@ -184,13 +192,36 @@ fi
 
 SESSION_NAME="${1:-$DEFAULT_SESSION}"
 
+# Ensure proper terminal capabilities
+export TERM="${TERM:-xterm-256color}"
+if [ "$TERM" = "dumb" ]; then
+  export TERM="xterm-256color"
+fi
+
 # If not interactive TTY, render status snapshot
 if [[ ! -t 0 || ! -t 1 ]]; then
   echo "Non-interactive environment detected. Printing cockpit telemetry:"
   exec python3 "${SCRIPT_DIR}/aq-cockpit-monitor" --once
 fi
 
-echo "Launching SOTA Agentic Workspace [$SESSION_NAME] in $PWD..."
-echo "  • Left Board:  Main Agents"
-echo "  • Right Board: Sub-Agents & Delegations"
-exec zellij --layout "$LAYOUT_FILE" attach --create "$SESSION_NAME"
+# Check if session exists in zellij
+EXISTING_STATUS=""
+if command -v zellij >/dev/null 2>&1; then
+  EXISTING_STATUS="$(zellij list-sessions 2>/dev/null | grep -E "^${SESSION_NAME} " || true)"
+fi
+
+if [[ -n "$EXISTING_STATUS" ]]; then
+  if echo "$EXISTING_STATUS" | grep -qi "EXITED"; then
+    echo "Previous session '$SESSION_NAME' exited. Recreating with SOTA layout..."
+    zellij delete-session -f "$SESSION_NAME" 2>/dev/null || true
+    exec zellij --layout "$LAYOUT_FILE" --session "$SESSION_NAME"
+  else
+    echo "Attaching to active workspace session: $SESSION_NAME..."
+    exec zellij attach "$SESSION_NAME"
+  fi
+else
+  echo "Launching SOTA Agentic Workspace [$SESSION_NAME] in $PWD..."
+  echo "  • Left Board:  Main Models (Local Qwen, Claude, Codex, Gemini)"
+  echo "  • Right Board: Sub-Agents (Delegation Hierarchy Tree & Live Steering)"
+  exec zellij --layout "$LAYOUT_FILE" --session "$SESSION_NAME"
+fi
