@@ -13,11 +13,17 @@
 # `.agents/plans/aqos-foundation-c/C6-S-DESIGN-AND-AUTHORIZATION.md`) adds a SECOND UDS,
 # `launchSocketPath`, alongside the control socket above, gated by a NEW, separately-declared
 # `aq-revocation-launch-clients` group. That group is declared EMPTY here — the TEG joins it in
-# C6b, not this module — so the launch socket grants no one anything yet, and it carries no
-# reachable operation until C6a lands `authorize_launch` (this module's transport serves it a
-# deny-all stub via `serve_multi()`). Control-socket group membership below is UNCHANGED by
-# C6-S: ALA/C2-SCI/owner keep exactly their current `aq-revocation-epoch-clients` access; none of
-# them is added to the launch group.
+# C6b, not this module — so the launch socket grants no one anything yet. Control-socket group
+# membership below is UNCHANGED by C6-S: ALA/C2-SCI/owner keep exactly their current
+# `aq-revocation-epoch-clients` access; none of them is added to the launch group.
+#
+# C6a (`.agents/plans/aqos-foundation-c/C6a-DESIGN-AND-AUTHORIZATION.md`) lands the real
+# `authorize_launch`/`consume_launch` ops on that launch socket (replacing C6-S's deny-all
+# stub) plus their durable single-use `launch-ledger/{issued,consumed,expired}` StateDirectory
+# subtree (below) and the `launchTegUid` env reference. BOTH ops are op-specific
+# `SO_PEERCRED`-gated to the TEG principal ONLY — `launchTegUid` defaults to EMPTY (fail-closed:
+# an unresolved TEG uid denies every peer, including the authority-user's own uid), so the op
+# stays unreachable until C6b provisions a TEG uid DISTINCT from this service user's own uid.
 #
 # UNLIKE the C2-SCI issuer and the ALA, this service holds NO private signing key anywhere — it
 # is SOPS-free by design. Owners sign a `aq.revocation-epoch-bump/1` bump document OFFLINE with
@@ -92,7 +98,12 @@ in {
     launchSocketPath = mkOption {
       type = types.str;
       default = "/run/aq-revocation-epoch-authority/launch.sock";
-      description = "C6-S (mechanism B) dedicated TEG-only launch socket, alongside the unchanged control socket above — group-restricted 0660 to the NEW, separately-declared `aq-revocation-launch-clients` group (declared empty in this slice; the TEG joins in C6b). No operation is reachable over this socket yet — `authorize_launch` is added in C6a. Lives in the same RuntimeDirectory as the control socket; no new directory rule needed.";
+      description = "C6-S (mechanism B) dedicated TEG-only launch socket, alongside the unchanged control socket above — group-restricted 0660 to the NEW, separately-declared `aq-revocation-launch-clients` group (declared empty in this slice; the TEG joins in C6b). C6a lands `authorize_launch`/`consume_launch` on this socket, gated by `launchTegUid` below. Lives in the same RuntimeDirectory as the control socket; no new directory rule needed.";
+    };
+    launchTegUid = mkOption {
+      type = types.str;
+      default = "";
+      description = "C6a — the TEG principal's numeric uid, verified by an op-specific `SO_PEERCRED` check on BOTH launch-socket ops (uid-only, no gid comparison; `AQ_REVOCATION_LAUNCH_TEG_UID`). EMPTY by default (fail-closed): an unresolved value denies EVERY peer, including this service's own uid, so the launch op stays unreachable until C6b provisions it. BINDING forward-condition C6b inherits: this value MUST be provisioned DISTINCT from the `aq-revocation-epoch-authority` service-user's own uid, or the self-launch surface this check exists to close reopens.";
     };
     statePath = mkOption {
       type = types.str;
@@ -160,6 +171,14 @@ in {
       "d ${cfg.statePath}/journal 0700 aq-revocation-epoch-authority aq-revocation-epoch-authority -"
       "d ${cfg.statePath}/by-request-id 0700 aq-revocation-epoch-authority aq-revocation-epoch-authority -"
       "d ${cfg.statePath}/by-idempotency-key 0700 aq-revocation-epoch-authority aq-revocation-epoch-authority -"
+      # C6a (`.agents/plans/aqos-foundation-c/C6a-DESIGN-AND-AUTHORIZATION.md`
+      # §3.3/§5) — the single-use launch-token ledger StateDirectory
+      # subtree, siblings of `journal/`/`by-request-id/`/`by-idempotency-key/`
+      # above, same 0700 authority-owned mode.
+      "d ${cfg.statePath}/launch-ledger 0700 aq-revocation-epoch-authority aq-revocation-epoch-authority -"
+      "d ${cfg.statePath}/launch-ledger/issued 0700 aq-revocation-epoch-authority aq-revocation-epoch-authority -"
+      "d ${cfg.statePath}/launch-ledger/consumed 0700 aq-revocation-epoch-authority aq-revocation-epoch-authority -"
+      "d ${cfg.statePath}/launch-ledger/expired 0700 aq-revocation-epoch-authority aq-revocation-epoch-authority -"
       # Seed the epoch store ONCE from the tracked genesis SSOT. `f` (lowercase) creates the
       # file ONLY if it does not already exist and never rewrites its content on a later
       # rebuild — critical: a bumped epoch must survive every subsequent `nixos-rebuild switch`
@@ -197,9 +216,13 @@ in {
           "AQ_REVOCATION_EPOCH_EPOCH_PATH=${cfg.statePath}/epoch"
           "AQ_REVOCATION_EPOCH_LEDGER_DIR=${cfg.statePath}/ledger"
           # C6-S (mechanism B) — the dedicated TEG-only launch socket, alongside the
-          # unchanged control socket above. No reachable op until C6a; deny-all stub.
+          # unchanged control socket above.
           "AQ_REVOCATION_LAUNCH_SOCKET_PATH=${cfg.launchSocketPath}"
           "AQ_REVOCATION_LAUNCH_CLIENT_GROUP=aq-revocation-launch-clients"
+          # C6a — the TEG principal uid the launch-socket op-specific SO_PEERCRED check
+          # verifies against (uid-only). Empty by default: fails closed, denies every
+          # peer, until C6b provisions a distinct TEG uid.
+          "AQ_REVOCATION_LAUNCH_TEG_UID=${cfg.launchTegUid}"
         ];
         Restart = "on-failure";
         RestartSec = "5s";

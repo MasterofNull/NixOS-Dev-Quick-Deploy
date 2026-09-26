@@ -20,11 +20,12 @@ tracked, public `config/aqos/c6-owner-public-keys.json` allowlist and, on a vali
 bump matching the durable current epoch, performs the ONE sanctioned mutation
 (`revocation_epoch.apply_bump`'s atomic +1). `build_env_handler()` below constructs the
 request handler entirely from the `AQ_REVOCATION_EPOCH_*` env vars the Nix unit
-(`revocation-epoch-authority.nix`) sets; `__main__` binds it, alongside a deny-all stub for the
-C6-S launch socket, to `serve_multi()` (mechanism B — see
-`.agents/plans/aqos-foundation-c/C6-S-DESIGN-AND-AUTHORIZATION.md`; `serve()` itself is
-unchanged and still usable standalone). Still default-OFF and unexercised until that unit is
-enabled.
+(`revocation-epoch-authority.nix`) sets; `__main__` binds it, alongside the C6a launch handler
+(`build_launch_handler()` — `authorize_launch`/`consume_launch` on the C6-S launch socket, TEG
+peer-check gated), to `serve_multi()` (mechanism B — see
+`.agents/plans/aqos-foundation-c/C6-S-DESIGN-AND-AUTHORIZATION.md` /
+`C6a-DESIGN-AND-AUTHORIZATION.md`; `serve()` itself is unchanged and still usable standalone).
+Still default-OFF and unexercised until that unit is enabled.
 """
 from __future__ import annotations
 
@@ -54,7 +55,7 @@ DENY_MALFORMED_BUMP = "request-malformed-bump"
 DENY_OWNER_KEYS_UNAVAILABLE = "owner-keys-unavailable"
 DENY_LEDGER_INIT_FAILED = "ledger-init-failed"
 DENY_MALFORMED_READ = "request-malformed-read"
-DENY_LAUNCH_NOT_IMPLEMENTED = "launch-not-implemented"
+DENY_LAUNCH_OP_UNKNOWN = "launch-op-unknown"
 
 _UCRED_FMT = "3i"  # struct ucred { pid_t pid; uid_t uid; gid_t gid; }
 
@@ -201,15 +202,72 @@ def serve(
 # --------------------------------------------------------------------------
 
 
-def build_launch_deny_all_handler() -> Callable[[dict[str, Any], Optional[tuple[int, int, int]]], dict[str, Any]]:
-    """C6-S deny-all stub for the launch socket. No operation is reachable
-    over `launch.sock` yet — `authorize_launch` is added in C6a (design §5
-    Exclusions). Every well-formed request over this socket yields the same
-    typed deny, never a crash and never a distinguishing response that could
-    leak which requests would eventually be valid."""
+def _resolve_teg_uid(raw: str) -> Optional[int]:
+    """Parse `AQ_REVOCATION_LAUNCH_TEG_UID` into a uid, or `None` if
+    empty/unresolvable (the pre-C6b default). `None` is the fail-closed
+    state: `build_launch_handler`'s peer check denies EVERY peer while the
+    TEG uid is unresolved (design §2.3 item 3)."""
+    value = raw.strip()
+    if not value:
+        return None
+    try:
+        parsed = int(value)
+    except ValueError:
+        return None
+    if parsed < 0:
+        return None
+    return parsed
 
-    def handler(_request: dict[str, Any], _peer_creds: Optional[tuple[int, int, int]]) -> dict[str, Any]:
-        return _deny(DENY_LAUNCH_NOT_IMPLEMENTED, "authorize_launch is not implemented until C6a")
+
+def build_launch_handler(
+    teg_uid_env: str = "AQ_REVOCATION_LAUNCH_TEG_UID",
+) -> Callable[[dict[str, Any], Optional[tuple[int, int, int]]], dict[str, Any]]:
+    """C6a — REPLACES C6-S's deny-all launch stub
+    (`build_launch_deny_all_handler`, retired). Dispatches exactly two ops
+    on the C6-S launch socket: `authorize_launch` / `consume_launch`
+    (`C6a-DESIGN-AND-AUTHORIZATION.md` §2.1), each backed by
+    `revocation_epoch.authorize_launch`/`consume_launch`.
+
+    BOTH ops require the BINDING op-specific `SO_PEERCRED` peer check
+    (design §2.3, satisfying C6-S §7 item 8): the connecting peer's uid
+    must equal the TEG principal resolved from `AQ_REVOCATION_LAUNCH_TEG_UID`
+    — uid-only, no gid comparison. That env var is empty by default
+    (pre-C6b), which makes `_resolve_teg_uid` return `None` and this check
+    deny EVERY peer unconditionally — including the authority-user's own
+    uid (the chgrp-role launch-group member, C6-S §2.2 item 3) — so the op
+    stays unreachable until C6b provisions a TEG uid DISTINCT from the
+    authority-user's own (§2.3 item 5; the forward-condition C6b inherits).
+    Resolved ONCE at construction, mirroring `build_env_handler`'s
+    env-driven construction pattern.
+
+    Reads `AQ_REVOCATION_EPOCH_EPOCH_PATH` once at construction too — the
+    SAME env var `build_env_handler` reads, since the control and launch
+    listeners share the ONE epoch store and `epoch.lock` (design §4)."""
+    import revocation_epoch as re_lib  # noqa: E402  (lazy; mirrors build_env_handler)
+
+    epoch_path = os.environ.get("AQ_REVOCATION_EPOCH_EPOCH_PATH", "").strip()
+    teg_uid = _resolve_teg_uid(os.environ.get(teg_uid_env, ""))
+
+    def handler(request: dict[str, Any], peer_creds: Optional[tuple[int, int, int]]) -> dict[str, Any]:
+        op = request.get("op")
+        # Op-specific BINDING TEG SO_PEERCRED peer check (design §2.3),
+        # applied to BOTH ops, before any dispatch. uid-only. An
+        # unresolved TEG uid (`teg_uid is None`, the pre-C6b default) or a
+        # `None` peer-creds read denies unconditionally — fail-closed.
+        # Response shape matches the op's own success/deny contract
+        # (`"token": None` for `authorize_launch`, `"receipt": None`
+        # otherwise, design §2.2) even on this pre-dispatch denial.
+        if teg_uid is None or peer_creds is None or peer_creds[1] != teg_uid:
+            if op == "authorize_launch":
+                return {"ok": False, "reason": re_lib.DENY_NOT_TEG_PEER, "detail": "", "token": None}
+            return _deny(re_lib.DENY_NOT_TEG_PEER)
+
+        fields = {k: v for k, v in request.items() if k != "op"}
+        if op == "authorize_launch":
+            return re_lib.authorize_launch(fields, epoch_path)
+        if op == "consume_launch":
+            return re_lib.consume_launch(fields, epoch_path)
+        return _deny(DENY_LAUNCH_OP_UNKNOWN)
 
     return handler
 
@@ -495,10 +553,35 @@ if __name__ == "__main__":  # pragma: no cover — exercised live only once the 
         file=sys.stderr,
         flush=True,
     )
+
+    # C6a — the launch-ledger sibling recovery pass (design §5.1), added
+    # PURELY ADDITIVELY inside this same recovery phase: one sibling call,
+    # strictly AFTER C6d's recover() above returns and strictly BEFORE
+    # serve_multi() below binds/listens on either socket. Does not alter
+    # recover()'s body, the journal, the two uniqueness indexes, or the
+    # readiness gate below. Every surviving `issued`-without-`consumed`
+    # launch token is swept UNCONDITIONALLY to terminal `expired` (design
+    # §5.2 — never a live launch, never conditioned on elapsed time).
+    _launch_recovery_summary = _re_lib.recover_launch_ledger(_epoch_path)
+    if _launch_recovery_summary.get("error"):
+        print(
+            f"revocation_epoch_transport: recover_launch_ledger() failed: "
+            f"{_launch_recovery_summary['error']} — refusing to bind/listen until the "
+            "launch ledger can be reconciled",
+            file=sys.stderr,
+        )
+        sys.exit(1)
+    print(
+        f"[revocation-epoch-authority-transport] recover_launch_ledger() complete: "
+        f"{_launch_recovery_summary}",
+        file=sys.stderr,
+        flush=True,
+    )
+
     serve_multi(
         _sp,
         build_env_handler(),
         _lp,
-        build_launch_deny_all_handler(),
+        build_launch_handler(),
         ready_callback=_sd_notify_ready,
     )

@@ -71,6 +71,7 @@ import hashlib
 import json
 import os
 import re
+import secrets
 import stat
 import sys
 import tempfile
@@ -331,6 +332,43 @@ DENY_RETRY = "bump-retry-required"
 DENY_IDENTITY_CONFLICT = "identity-conflict"
 DENY_QUARANTINED = "quarantined"
 DENY_ABORTED_TERMINAL = "bump-aborted-terminal"
+
+# --------------------------------------------------------------------------
+# C6a additions (`.agents/plans/aqos-foundation-c/C6a-DESIGN-AND-AUTHORIZATION.md`)
+# -- `authorize_launch`/`consume_launch` + the atomic single-use launch-token
+# ledger (design §2/§3). New typed denials joining the DENY_* family above
+# (design §2.2); `DENY_NOT_TEG_PEER` is returned by the TRANSPORT layer
+# (`revocation_epoch_transport.build_launch_handler`), which owns the
+# op-specific SO_PEERCRED check (design §2.3) -- defined here, alongside
+# the rest of this family, purely for a single DENY_* vocabulary.
+# --------------------------------------------------------------------------
+LAUNCH_TOKEN_DEADLINE_MS = 250  # design §3.1 -- the token's ONE deadline; not caller-configurable
+
+DENY_LAUNCH_MALFORMED = "launch-malformed"
+DENY_NOT_TEG_PEER = "not-teg-peer"
+DENY_LAUNCH_UNKNOWN = "launch-unknown"
+DENY_LAUNCH_ALREADY_CONSUMED = "launch-already-consumed"
+DENY_LAUNCH_EXPIRED = "launch-expired"
+DENY_LAUNCH_EPOCH_SUPERSEDED = "launch-epoch-superseded"
+DENY_LAUNCH_BINDING_MISMATCH = "launch-binding-mismatch"
+
+REQUIRED_AUTHORIZE_LAUNCH_FIELDS = ("context_digest", "task_id", "task_revision", "gateway_instance")
+REQUIRED_CONSUME_LAUNCH_FIELDS = (
+    "nonce", "context_digest", "task_id", "task_revision", "epoch", "gateway_instance",
+)
+
+_HEX_RE = re.compile(r"^[0-9a-fA-F]+$")
+
+
+def _iso_ms(dt: datetime) -> str:
+    """Millisecond-precision ISO8601 (`Z` suffix) for the launch token's
+    `issued_at`/`consumed_at`/`expired_at` fields. `_iso()` above truncates
+    to whole seconds, which the launch token's <=250 ms deadline cannot
+    tolerate: a token minted near a second boundary would round-trip
+    through `_iso()`+`_parse_iso()` looking already expired the instant it
+    was issued. `_parse_iso` (unchanged) parses this format's 3-digit
+    fractional seconds natively."""
+    return dt.strftime("%Y-%m-%dT%H:%M:%S.") + f"{dt.microsecond // 1000:03d}Z"
 
 
 @dataclass(frozen=True)
@@ -1242,3 +1280,307 @@ def apply_bump(
             _release_epoch_lock(lock_fd)
     except Exception as exc:  # noqa: BLE001 — total function, never raises into the caller
         return _bump_deny(DENY_INTERNAL, f"unhandled:{exc.__class__.__name__}")
+
+
+# --------------------------------------------------------------------------
+# C6a — `authorize_launch` / `consume_launch` + the atomic single-use
+# launch-token ledger (`.agents/plans/aqos-foundation-c/
+# C6a-DESIGN-AND-AUTHORIZATION.md` §2-§5). Both entry points acquire the
+# SAME `epoch.lock` `apply_bump` holds (design §4 same-lock total-ordering
+# proof) and reuse the identical `O_CREAT|O_EXCL|O_NOFOLLOW` +
+# `fsync(file)`+`fsync(dir)` test-and-set primitive as `DurableReplayLedger
+# .check_and_record` / the C6d journal primitives above. Neither op takes
+# `peer_creds` — the op-specific TEG `SO_PEERCRED` check (design §2.3) is
+# the TRANSPORT layer's responsibility (`revocation_epoch_transport
+# .build_launch_handler`), exactly mirroring how `apply_bump` never sees
+# transport-level concerns either. Both are TOTAL functions — never raise
+# (mirrors `apply_bump`'s own contract).
+# --------------------------------------------------------------------------
+
+
+def _derive_launch_ledger_dirs(epoch_path: Path) -> tuple[Path, Path, Path]:
+    """`launch-ledger/{issued,consumed,expired}/` — siblings of `epoch_path`
+    (alongside `journal/`, `by-request-id/`, `by-idempotency-key/` above).
+    Created eagerly (idempotent `exist_ok=True`) so an offline caller
+    (tests, `recover_launch_ledger`) never depends on unit-start ordering —
+    mirrors `_derive_state_dirs`."""
+    parent = epoch_path.parent / "launch-ledger"
+    issued_dir = parent / "issued"
+    consumed_dir = parent / "consumed"
+    expired_dir = parent / "expired"
+    for directory in (issued_dir, consumed_dir, expired_dir):
+        os.makedirs(str(directory), mode=0o700, exist_ok=True)
+    return issued_dir, consumed_dir, expired_dir
+
+
+def _authorize_launch_deny(reason: str, detail: str = "") -> dict[str, Any]:
+    return {"ok": False, "reason": reason, "detail": detail, "token": None}
+
+
+def _consume_launch_deny(reason: str, detail: str = "") -> dict[str, Any]:
+    return {"ok": False, "reason": reason, "detail": detail, "receipt": None}
+
+
+def _validate_authorize_launch_fields(data: Mapping[str, Any]) -> Optional[str]:
+    """Closed-schema structural/type validation for an `authorize_launch`
+    request (design §2.2), mirroring `_validate_bump_fields`'s discipline."""
+    if set(data.keys()) != set(REQUIRED_AUTHORIZE_LAUNCH_FIELDS):
+        return DENY_LAUNCH_MALFORMED
+    for field in ("task_id", "gateway_instance"):
+        value = data.get(field)
+        if not isinstance(value, str) or not value:
+            return DENY_LAUNCH_MALFORMED
+    context_digest = data.get("context_digest")
+    if not isinstance(context_digest, str) or not context_digest or not _HEX_RE.match(context_digest):
+        return DENY_LAUNCH_MALFORMED
+    task_revision = data.get("task_revision")
+    if not isinstance(task_revision, int) or isinstance(task_revision, bool) or task_revision < 0:
+        return DENY_LAUNCH_MALFORMED
+    return None
+
+
+def _validate_consume_launch_fields(data: Mapping[str, Any]) -> Optional[str]:
+    """Closed-schema structural/type validation for a `consume_launch`
+    request (design §2.2). Field SET must match
+    `REQUIRED_CONSUME_LAUNCH_FIELDS` exactly."""
+    if set(data.keys()) != set(REQUIRED_CONSUME_LAUNCH_FIELDS):
+        return DENY_LAUNCH_MALFORMED
+    nonce = data.get("nonce")
+    if not isinstance(nonce, str) or not nonce or not _HEX_RE.match(nonce):
+        return DENY_LAUNCH_MALFORMED
+    for field in ("task_id", "gateway_instance"):
+        value = data.get(field)
+        if not isinstance(value, str) or not value:
+            return DENY_LAUNCH_MALFORMED
+    context_digest = data.get("context_digest")
+    if not isinstance(context_digest, str) or not context_digest or not _HEX_RE.match(context_digest):
+        return DENY_LAUNCH_MALFORMED
+    task_revision = data.get("task_revision")
+    if not isinstance(task_revision, int) or isinstance(task_revision, bool) or task_revision < 0:
+        return DENY_LAUNCH_MALFORMED
+    epoch = data.get("epoch")
+    if not isinstance(epoch, int) or isinstance(epoch, bool) or epoch < 0:
+        return DENY_LAUNCH_MALFORMED
+    return None
+
+
+def authorize_launch(request: Any, epoch_path: Any, now: Optional[datetime] = None) -> dict[str, Any]:
+    """Design §2.1/§3.1 — mint a single-use launch token bound to
+    `{context_digest, task_id, task_revision, epoch=current, gateway_instance}`
+    under the SAME `epoch.lock` `apply_bump` holds (design §4). `epoch` is
+    bound to `read_epoch()` taken UNDER THE LOCK at issuance — no unordered
+    `apply_bump` can interleave between that read and the durable
+    `issued/<nonce>` write (design §4's "no unordered bump" claim). Total
+    function — never raises. On success: `{"ok": True, "token": {...}}`. On
+    ANY fault: `{"ok": False, "reason": DENY_*, "detail": ..., "token":
+    None}` — never mutates the epoch, never touches another token's
+    ledger entry."""
+    try:
+        if not isinstance(request, Mapping):
+            return _authorize_launch_deny(DENY_LAUNCH_MALFORMED, "request not a mapping")
+        data = dict(request)
+        reason = _validate_authorize_launch_fields(data)
+        if reason is not None:
+            return _authorize_launch_deny(reason)
+
+        epoch_path_p = Path(epoch_path)
+        try:
+            lock_fd = _acquire_epoch_lock(epoch_path_p)
+        except OSError as exc:
+            return _authorize_launch_deny(DENY_LOCK_UNAVAILABLE, exc.__class__.__name__)
+        try:
+            try:
+                current_epoch = read_epoch(epoch_path_p)
+            except EpochStoreError as exc:
+                return _authorize_launch_deny(exc.reason, exc.detail)
+
+            issued_dir, _consumed_dir, _expired_dir = _derive_launch_ledger_dirs(epoch_path_p)
+            moment = now or datetime.now(timezone.utc)
+            nonce = secrets.token_hex(32)
+            record: dict[str, Any] = {
+                "nonce": nonce,
+                "context_digest": data["context_digest"],
+                "task_id": data["task_id"],
+                "task_revision": data["task_revision"],
+                "epoch": current_epoch,
+                "gateway_instance": data["gateway_instance"],
+                "issued_at": _iso_ms(moment),
+                "deadline_ms": LAUNCH_TOKEN_DEADLINE_MS,
+            }
+            created = _create_exclusive_json(issued_dir / nonce, record, 0o640)
+            if not created:
+                # A 256-bit random nonce colliding is astronomically
+                # unlikely; fail closed rather than overwrite or reuse
+                # another token's slot.
+                return _authorize_launch_deny(DENY_INTERNAL, "nonce-collision")
+            return {"ok": True, "token": record}
+        finally:
+            _release_epoch_lock(lock_fd)
+    except Exception as exc:  # noqa: BLE001 — total function, never raises into the caller
+        return _authorize_launch_deny(DENY_INTERNAL, f"unhandled:{exc.__class__.__name__}")
+
+
+def consume_launch(request: Any, epoch_path: Any, now: Optional[datetime] = None) -> dict[str, Any]:
+    """Design §3.2/§3.4 — the six-step verifier (step 1, the TEG peer
+    check, already passed at the transport layer before this is ever
+    called) then the atomic `issued -> consumed` `O_EXCL` test-and-set
+    single-use transition, under the SAME `epoch.lock` `apply_bump` holds
+    (design §4). Verifier order (first denial wins, mirrors `apply_bump`'s
+    own first-match-wins discipline): (2) `issued/<nonce>` exists, (3)
+    binding matches, (4) not expired, (5) not epoch-superseded, (6) the
+    atomic transition. NONE of steps 2-5 mutate any ledger state on denial
+    — only step 6's `O_EXCL` create ever writes `consumed/<nonce>` (design
+    §2.2: "Every deny is fail-closed: it mutates no epoch, releases no
+    other token's state"). A live-path expiry/supersession denial leaves
+    `issued/<nonce>` exactly as-is; only `recover_launch_ledger`'s
+    unconditional sweep ever transitions a surviving `issued` record to
+    `expired` (design §5.2). Total function — never raises. On the single
+    winning consume: `{"ok": True, "receipt": {...}}`. On ANY fault:
+    `{"ok": False, "reason": DENY_*, "detail": ..., "receipt": None}`."""
+    try:
+        if not isinstance(request, Mapping):
+            return _consume_launch_deny(DENY_LAUNCH_MALFORMED, "request not a mapping")
+        data = dict(request)
+        reason = _validate_consume_launch_fields(data)
+        if reason is not None:
+            return _consume_launch_deny(reason)
+
+        epoch_path_p = Path(epoch_path)
+        try:
+            lock_fd = _acquire_epoch_lock(epoch_path_p)
+        except OSError as exc:
+            return _consume_launch_deny(DENY_LOCK_UNAVAILABLE, exc.__class__.__name__)
+        try:
+            issued_dir, consumed_dir, _expired_dir = _derive_launch_ledger_dirs(epoch_path_p)
+            nonce = data["nonce"]
+            issued_path = issued_dir / nonce
+
+            # Step 2 — `issued/<nonce>` exists (never fabricated for an
+            # unreadable/torn record either — fail closed, treat as unknown).
+            exists, issued_record = _load_json_or_none(issued_path)
+            if not exists:
+                return _consume_launch_deny(DENY_LAUNCH_UNKNOWN, "no-such-token")
+            if not isinstance(issued_record, Mapping):
+                return _consume_launch_deny(DENY_LAUNCH_UNKNOWN, "issued-record-unreadable")
+
+            # Step 3 — binding matches (context/task/revision/gateway/epoch).
+            presented_binding = (
+                data["context_digest"], data["task_id"], data["task_revision"],
+                data["gateway_instance"], data["epoch"],
+            )
+            stored_binding = (
+                issued_record.get("context_digest"), issued_record.get("task_id"),
+                issued_record.get("task_revision"), issued_record.get("gateway_instance"),
+                issued_record.get("epoch"),
+            )
+            if presented_binding != stored_binding:
+                return _consume_launch_deny(DENY_LAUNCH_BINDING_MISMATCH)
+
+            # Step 4 — not expired (deadline_ms <= 250, freshness bound only).
+            try:
+                issued_at = _parse_iso(issued_record["issued_at"])
+            except (KeyError, TypeError, ValueError):
+                return _consume_launch_deny(DENY_LAUNCH_UNKNOWN, "issued-record-malformed-timestamp")
+            deadline_ms = issued_record.get("deadline_ms")
+            if not isinstance(deadline_ms, int) or isinstance(deadline_ms, bool) or deadline_ms < 0:
+                return _consume_launch_deny(DENY_LAUNCH_UNKNOWN, "issued-record-malformed-deadline")
+            moment = now or datetime.now(timezone.utc)
+            if moment > issued_at + timedelta(milliseconds=deadline_ms):
+                return _consume_launch_deny(DENY_LAUNCH_EXPIRED)
+
+            # Step 5 — not epoch-superseded: re-read the epoch UNDER THE
+            # SAME LOCK (design §4's "bump after issuance is ordered
+            # strictly after the declared launch point" claim).
+            try:
+                current_epoch = read_epoch(epoch_path_p)
+            except EpochStoreError as exc:
+                return _consume_launch_deny(exc.reason, exc.detail)
+            if current_epoch != issued_record.get("epoch"):
+                return _consume_launch_deny(DENY_LAUNCH_EPOCH_SUPERSEDED)
+
+            # Step 6 — the atomic `issued -> consumed` single-use transition.
+            receipt: dict[str, Any] = {
+                "nonce": nonce,
+                "context_digest": issued_record.get("context_digest"),
+                "task_id": issued_record.get("task_id"),
+                "task_revision": issued_record.get("task_revision"),
+                "epoch": issued_record.get("epoch"),
+                "gateway_instance": issued_record.get("gateway_instance"),
+                "consumed_at": _iso_ms(moment),
+            }
+            created = _create_exclusive_json(consumed_dir / nonce, receipt, 0o640)
+            if not created:
+                # EEXIST -- a prior consume already claimed this token.
+                return _consume_launch_deny(DENY_LAUNCH_ALREADY_CONSUMED)
+            return {"ok": True, "receipt": receipt}
+        finally:
+            _release_epoch_lock(lock_fd)
+    except Exception as exc:  # noqa: BLE001 — total function, never raises into the caller
+        return _consume_launch_deny(DENY_INTERNAL, f"unhandled:{exc.__class__.__name__}")
+
+
+def recover_launch_ledger(epoch_path: Any) -> dict[str, Any]:
+    """Design §5.1/§5.2 — the launch-ledger sibling recovery pass. Runs
+    under the SAME `epoch.lock` `apply_bump`/`recover()` use, called from
+    `revocation_epoch_transport.__main__` strictly AFTER `recover()`
+    returns and strictly BEFORE `serve_multi()` binds/listens on either
+    socket (see that module for the exact ordering — this function does
+    not itself know about sockets).
+
+    Sweeps `launch-ledger/issued/` UNCONDITIONALLY: every surviving
+    `issued/<nonce>` with no `consumed/<nonce>` is transitioned to terminal
+    `expired/<nonce>` (`O_EXCL`-create + `fsync`, then `unlink` the issued
+    record + `fsync(dir)`) with NO clock read and NO `issued_at +
+    deadline_ms` recheck — the BINDING build requirement design §5.2
+    states explicitly: an unconditional sweep can only ever deny a launch,
+    never authorize one, so correctness never depends on how fast the
+    crash-to-restart interval was. An `issued/<nonce>` WITH a
+    `consumed/<nonce>` already present (a crash after the atomic consume,
+    before any later cleanup) is left exactly as-is — the consume already
+    durably won; exactly-once is preserved, never a re-launch, never a
+    re-consume. Never raises; returns a summary dict for logging."""
+    epoch_path_p = Path(epoch_path)
+    summary: dict[str, Any] = {
+        "issued_expired_unconditional": 0,
+        "issued_with_consumed_left_terminal": 0,
+        "error": None,
+    }
+    try:
+        lock_fd = _acquire_epoch_lock(epoch_path_p)
+    except OSError as exc:
+        summary["error"] = f"lock-unavailable:{exc.__class__.__name__}"
+        return summary
+    try:
+        issued_dir, consumed_dir, expired_dir = _derive_launch_ledger_dirs(epoch_path_p)
+        for nonce in sorted(_listdir_safe(issued_dir)):
+            issued_path = issued_dir / nonce
+            consumed_path = consumed_dir / nonce
+            if consumed_path.exists():
+                # The atomic consume already durably won before the crash
+                # -- leave the terminal `consumed` state alone.
+                summary["issued_with_consumed_left_terminal"] += 1
+                continue
+
+            exists, issued_record = _load_json_or_none(issued_path)
+            if not exists:
+                continue  # raced with a concurrent sweep pass; nothing to do
+
+            expired_record: dict[str, Any] = (
+                dict(issued_record) if isinstance(issued_record, Mapping) else {"nonce": nonce}
+            )
+            expired_record["expired_at"] = _iso_ms(datetime.now(timezone.utc))
+            expired_record["expired_reason"] = "recovery-unconditional-sweep"
+            # `_create_exclusive_json` returning False here means a PRIOR
+            # recovery pass created `expired/<nonce>` but crashed before
+            # unlinking `issued/<nonce>` -- finish the unlink now
+            # (idempotent, still unconditional, no clock read).
+            _create_exclusive_json(expired_dir / nonce, expired_record, 0o640)
+            try:
+                os.unlink(str(issued_path))
+                _fsync_dir(issued_dir)
+                summary["issued_expired_unconditional"] += 1
+            except FileNotFoundError:
+                pass
+        return summary
+    finally:
+        _release_epoch_lock(lock_fd)
