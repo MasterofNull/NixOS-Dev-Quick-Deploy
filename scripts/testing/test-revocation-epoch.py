@@ -807,6 +807,163 @@ def test_vector_j_cross_identity_conflict_denies() -> None:
         env.cleanup()
 
 
+def test_vector_h_audit_pending_persisted_and_reconciled() -> None:
+    """Vector h (§5): crash point "after phase-commit, before projection"
+    -- design row h requires the committed entry's audit append to be
+    "reconciled" and `audit_pending` "cleared" on recovery, which
+    presupposes the entry durably PERSISTS `audit_pending` in the first
+    place (Finding 1/2). Force the best-effort audit append to fail on a
+    live bump (as the binding reviewer did): the immediate receipt
+    reports `audit_pending=True`, and -- unlike before this fix -- the
+    on-disk committed journal entry now durably records it too (it used
+    to carry no such field at all, so `_receipt_ok_from_entry` silently
+    reconstructed `False`). `recover()` then retries the append, it
+    succeeds, and `audit_pending` is durably cleared to `False` in the
+    entry -- the design's "audit reconciled" outcome. The epoch bump
+    itself (exactly-once) is unaffected throughout."""
+    priv, pub_hex = _make_keypair()
+    keys = _owner_keys("test-owner-1", pub_hex)
+    env = _TempEnv(initial_epoch="0")
+    try:
+        request_id = f"req::{uuid.uuid4()}"
+        idempotency_key = f"idem::{uuid.uuid4()}"
+        entry_id = re_lib._entry_id(request_id, idempotency_key)
+        journal_dir, by_rid_dir, by_idem_dir = re_lib._derive_state_dirs(env.epoch_path)
+        journal_path = journal_dir / entry_id
+        audit_path = env.epoch_path.parent / (env.epoch_path.name + ".audit.jsonl")
+
+        real_append = re_lib._append_audit_receipt
+
+        def _failing_append(epoch_path: Path, receipt: dict) -> None:  # noqa: ARG001
+            raise OSError("simulated audit-disk failure (test injection)")
+
+        re_lib._append_audit_receipt = _failing_append
+        try:
+            doc = _sign(
+                _base_bump(
+                    actor_key_id="test-owner-1", expected_epoch=0,
+                    request_id=request_id, idempotency_key=idempotency_key,
+                ),
+                priv,
+            )
+            result = re_lib.apply_bump(doc, env.epoch_path, env.ledger(), keys)
+        finally:
+            re_lib._append_audit_receipt = real_append  # restore before recover() below
+
+        check("vector h: live bump still succeeds despite audit-append failure", result["ok"] is True)
+        check("vector h: immediate receipt reports audit_pending=True", result["receipt"]["audit_pending"] is True)
+        check("vector h: epoch advances 0 -> 1 (unaffected by audit failure)", re_lib.read_epoch(env.epoch_path) == 1)
+        check("vector h: no audit line was written (the append failed)", not audit_path.exists())
+
+        on_disk_before = json.loads(journal_path.read_text(encoding="utf-8"))
+        check("vector h: on-disk committed entry has phase=committed", on_disk_before["phase"] == "committed")
+        check(
+            "vector h: on-disk committed entry DURABLY persists audit_pending=True (Finding 1)",
+            on_disk_before.get("audit_pending") is True,
+        )
+        pre_receipt = re_lib._receipt_ok_from_entry(on_disk_before)
+        check(
+            "vector h: a receipt reconstructed from the persisted entry reports audit_pending=True "
+            "(never a hardcoded False)",
+            pre_receipt["receipt"]["audit_pending"] is True,
+        )
+
+        # recover() must retry the audit append (now restored to the real
+        # implementation); it succeeds and durably clears audit_pending.
+        summary = re_lib.recover(env.epoch_path)
+        check("vector h: recover() resolves the committed entry", summary["resolved_committed"] == 1)
+
+        on_disk_after = json.loads(journal_path.read_text(encoding="utf-8"))
+        check(
+            "vector h: recover() durably clears audit_pending to False in the entry",
+            on_disk_after.get("audit_pending") is False,
+        )
+        check(
+            "vector h: the retried append actually wrote exactly one audit line",
+            audit_path.exists() and len(audit_path.read_text(encoding="utf-8").strip().splitlines()) == 1,
+        )
+        check("vector h: epoch still 1 after recover() (exactly-once intact, no double-bump)", re_lib.read_epoch(env.epoch_path) == 1)
+
+        # A receipt reconstructed AFTER reconciliation reports the
+        # correct (now-cleared) state, and the epoch bump is untouched.
+        reconstructed = re_lib.resolve(
+            entry_id, env.epoch_path, journal_dir, by_rid_dir, by_idem_dir, presented=None,
+        )
+        check(
+            "vector h: reconstructed receipt reports audit_pending=False AFTER reconciliation",
+            reconstructed["ok"] is True and reconstructed["receipt"]["audit_pending"] is False,
+        )
+        check(
+            "vector h: reconstructed receipt's old/new epoch unaffected (exactly-once)",
+            reconstructed["receipt"]["old_epoch"] == 0 and reconstructed["receipt"]["new_epoch"] == 1,
+        )
+    finally:
+        env.cleanup()
+
+
+def test_case2_live_reverse_cross_identity_conflict_denies() -> None:
+    """Live-path mirror of shipped vector j (§3.2 identity gate), REVERSE
+    direction: the SAME `idempotency_key` re-signed with a DIFFERENT
+    `request_id` (both owner-signed). Vector j only covers same-
+    `request_id`/different-`idempotency_key`; this exercises
+    `apply_bump`'s `rid_created=True` then `idem_created=False` partial-
+    reservation-rollback branch (Finding 4 case 2) on the LIVE path,
+    which vector j does not reach (b/g/i reach the equivalent on-disk
+    state but only through `recover()`). The binding reviewer confirmed
+    the code is already correct here -- this closes the coverage-only
+    gap (Finding 2); it is expected to PASS as-is."""
+    priv, pub_hex = _make_keypair()
+    keys = _owner_keys("test-owner-1", pub_hex)
+    env = _TempEnv(initial_epoch="0")
+    try:
+        shared_idem_key = f"idem::{uuid.uuid4()}"
+
+        doc1 = _sign(
+            _base_bump(actor_key_id="test-owner-1", expected_epoch=0, idempotency_key=shared_idem_key),
+            priv,
+        )
+        first = re_lib.apply_bump(doc1, env.epoch_path, env.ledger(), keys)
+        check("case-2 live setup: first bump succeeds", first["ok"] is True)
+        check("case-2 live setup: epoch advances to 1", re_lib.read_epoch(env.epoch_path) == 1)
+
+        journal_dir, by_rid_dir, by_idem_dir = re_lib._derive_state_dirs(env.epoch_path)
+        first_entry_id = re_lib._entry_id(doc1["request_id"], shared_idem_key)
+        idem_index_path = by_idem_dir / re_lib._sha256_hex(shared_idem_key)
+        first_rid_index_path = by_rid_dir / re_lib._sha256_hex(doc1["request_id"])
+
+        # SAME idempotency_key, a freshly-generated (DIFFERENT) request_id.
+        doc2 = _sign(
+            _base_bump(actor_key_id="test-owner-1", expected_epoch=1, idempotency_key=shared_idem_key),
+            priv,
+        )
+        second = re_lib.apply_bump(doc2, env.epoch_path, env.ledger(), keys)
+        check("case-2 live: reverse cross-identity reuse denied", second["ok"] is False)
+        check(
+            "case-2 live: reason=identity-conflict (never the original receipt)",
+            second["reason"] == re_lib.DENY_IDENTITY_CONFLICT,
+        )
+        check("case-2 live: no receipt handed back for the conflicting identity", second.get("receipt") is None)
+        check("case-2 live: epoch NOT bumped a second time (still 1)", re_lib.read_epoch(env.epoch_path) == 1)
+
+        second_rid_index_path = by_rid_dir / re_lib._sha256_hex(doc2["request_id"])
+        check(
+            "case-2 live: doc2's own freshly-created request-id index was rolled back (Finding 4 case 2)",
+            not second_rid_index_path.exists(),
+        )
+        check(
+            "case-2 live: legitimate entry's by-idempotency-key index untouched",
+            idem_index_path.exists()
+            and json.loads(idem_index_path.read_text(encoding="utf-8"))["entry_id"] == first_entry_id,
+        )
+        check("case-2 live: legitimate entry's by-request-id index untouched", first_rid_index_path.exists())
+        check(
+            "case-2 live: legitimate journal entry still committed and unchanged",
+            json.loads((journal_dir / first_entry_id).read_text(encoding="utf-8"))["phase"] == "committed",
+        )
+    finally:
+        env.cleanup()
+
+
 def test_journal_absent_orphan_index_retryable() -> None:
     """Live-path mirror of the §3.3 orphan-index sweep (identity-gate row
     1): an index survives with no journal counterpart, observed directly
@@ -888,6 +1045,8 @@ def main() -> int:
     test_vector_g_intent_epoch_new_finalizes()
     test_vector_i_dangling_index_after_abort_released()
     test_vector_j_cross_identity_conflict_denies()
+    test_vector_h_audit_pending_persisted_and_reconciled()
+    test_case2_live_reverse_cross_identity_conflict_denies()
     test_journal_absent_orphan_index_retryable()
     test_recover_on_clean_state_is_a_noop()
 
