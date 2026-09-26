@@ -3514,6 +3514,7 @@ async function loadCapabilityEnforcement() {
   const sci = d.c2_scheduler_context_issuer || {};
   const rea = d.revocation_epoch_authority || {};
   const rla = d.revocation_launch_authorization || {};
+  const oebl = d.owner_epoch_bump_lever || {};
 
   // Determine overall status badge
   let overallBadge = "badge-ok";
@@ -3524,6 +3525,7 @@ async function loadCapabilityEnforcement() {
     sci.status === "degraded" ||
     rea.status === "degraded" ||
     rla.status === "degraded" ||
+    oebl.status === "degraded" ||
     c2.status === "unknown" ||
     c5.status === "unknown"
   ) {
@@ -3636,6 +3638,26 @@ async function loadCapabilityEnforcement() {
       "C6a Launch Status",
       rla.status || "--",
       statusColor(rla.status)
+    ),
+    fwRow(
+      "C6c Owner Bump Lever",
+      oebl.state || "--",
+      oebl.state === "operational" ? "ok" : (oebl.state === "unavailable" ? "err" : "warn")
+    ),
+    fwRow(
+      "C6c Allowlist Revision",
+      oebl.allowlist_revision != null ? String(oebl.allowlist_revision) : "--",
+      "info"
+    ),
+    fwRow(
+      "C6c Active Owner Keys",
+      oebl.active_owner_keys != null ? String(oebl.active_owner_keys) : "--",
+      oebl.active_owner_keys ? "info" : "warn"
+    ),
+    fwRow(
+      "C6c Authority Reachable",
+      oebl.authority_reachable === true ? "yes" : (oebl.authority_reachable === false ? "no" : "--"),
+      oebl.authority_reachable === true ? "ok" : "info"
     ),
   ].join("");
 }
