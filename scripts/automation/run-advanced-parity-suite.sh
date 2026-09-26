@@ -28,7 +28,7 @@ run bash -n \
   "${ROOT}/scripts/testing/smoke-focused-parity.sh"
 
 run "${ROOT}/nixos-quick-deploy.sh" --self-check
-run "${ROOT}/scripts/testing/check-dryrun-failure-modes.sh" --flake-ref . --nixos-target nixos-ai-dev
+run "${ROOT}/scripts/testing/check-dryrun-failure-modes.sh" --flake-ref . --nixos-target hyperd-ai-dev
 
 run python -m py_compile \
   "${ROOT}/scripts/governance/skill-bundle-registry.py" \
