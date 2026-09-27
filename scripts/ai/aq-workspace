@@ -154,7 +154,7 @@ case "${1:-}" in
   list)
     if command -v zellij >/dev/null 2>&1; then
       echo "Active Zellij Agentic Sessions:"
-      zellij list-sessions 2>/dev/null | grep -E '^aq-' || echo "  (no active aq-* sessions)"
+      (zellij list-sessions -n 2>/dev/null || zellij list-sessions 2>/dev/null) | sed -r 's/\x1B\[[0-9;]*[a-zA-Z]//g' | grep -E '^aq-' || echo "  (no active aq-* sessions)"
     else
       echo "Zellij is not installed on PATH."
     fi
@@ -213,15 +213,15 @@ if [[ ! -t 0 || ! -t 1 ]]; then
   exec python3 "${SCRIPT_DIR}/aq-cockpit-monitor" --once
 fi
 
-# Check if session exists in zellij
+# Check if session exists in zellij (strip ANSI codes and use -n if available)
 EXISTING_STATUS=""
 if command -v zellij >/dev/null 2>&1; then
-  EXISTING_STATUS="$(zellij list-sessions 2>/dev/null | grep -E "^${SESSION_NAME} " || true)"
+  EXISTING_STATUS="$( (zellij list-sessions -n 2>/dev/null || zellij list-sessions 2>/dev/null) | sed -r 's/\x1B\[[0-9;]*[a-zA-Z]//g' | grep -E "^${SESSION_NAME}( |$)" || true)"
 fi
 
 if [[ -n "$EXISTING_STATUS" ]]; then
-  if echo "$EXISTING_STATUS" | grep -qi "EXITED"; then
-    echo "Previous session '$SESSION_NAME' exited. Recreating with SOTA layout..."
+  if [[ "${AQ_WORKSPACE_MODE:-}" == "new" ]] || echo "$EXISTING_STATUS" | grep -qi "EXITED"; then
+    echo "Previous session '$SESSION_NAME' exited or --new requested. Recreating with SOTA layout..."
     zellij delete-session -f "$SESSION_NAME" 2>/dev/null || true
     exec zellij -s "$SESSION_NAME" -n "$LAYOUT_FILE"
   else
@@ -232,5 +232,9 @@ else
   echo "Launching SOTA Agentic Workspace [$SESSION_NAME] in $PWD..."
   echo "  • Left Board:  Main Models (Local Qwen, Claude, Codex, Gemini)"
   echo "  • Right Board: Sub-Agents (Delegation Hierarchy Tree & Live Steering)"
-  exec zellij -s "$SESSION_NAME" -n "$LAYOUT_FILE"
+  # Fallback: if creation fails due to session already existing, cleanly attach
+  if ! zellij -s "$SESSION_NAME" -n "$LAYOUT_FILE"; then
+    echo "Session exists. Attaching to $SESSION_NAME..."
+    exec zellij attach "$SESSION_NAME"
+  fi
 fi
