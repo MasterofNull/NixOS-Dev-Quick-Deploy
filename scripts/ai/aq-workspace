@@ -64,16 +64,19 @@ AQ-OS SOTA Agentic Workspace
 Usage:
   aq-workspace                    Start or attach to floating/tiled workspace for current directory
   aq-workspace resume             Launch workspace with automatic session resumption on all agents
-  aq-workspace claude             Directly open Claude Code interactive CLI (with --resume support)
-  aq-workspace codex              Directly open OpenAI Codex interactive CLI (with resume support)
-  aq-workspace local              Directly open Local Qwen3-35B APU terminal (aq-chat)
-  aq-workspace gemini             Directly open Google Gemini CLI
+  aq-workspace claude             Directly open Claude 3.7 / Fable-5 agent window (Switchboard :8085)
+  aq-workspace codex              Directly open OpenAI Codex / GPT-6 agent window (Coordinator :8003)
+  aq-workspace local              Directly open Local Qwen3-35B APU agent window (:8080 / :8003)
+  aq-workspace gemini             Directly open Google Gemini 3.8-Flash agent window (Switchboard :8085)
+  aq-workspace antigravity        Directly open Google Antigravity IDE agent window (Switchboard :8085)
   aq-workspace agent <model>      Open dedicated window for ANY model (claude, codex, gemini, local, etc.)
   aq-workspace subagents          Live hierarchical sub-agent delegation tree & operations
   aq-workspace tree               View sub-agent delegation tree (--tree)
   aq-workspace repl               Open Coordinator & Steering REPL directly
   aq-workspace fleet              Open Sub-Agent Fleet Matrix monitor
   aq-workspace status             Show live AI stack & telemetry status
+  aq-workspace tools              List declared tools & readiness via aq-capabilities
+  aq-workspace plan               Show live program progress rollup via aq-pm-tracker
   aq-workspace list               List all active agentic workspace sessions
   aq-workspace kill [session]     Terminate workspace session
   aq-workspace --tui              Run single-window Rich TUI layout (no multiplexer)
@@ -89,12 +92,12 @@ Floating Panes Navigation (Zellij):
   Ctrl + q                        Detach safely from workspace session (leaves agents running!)
 
 Supported Models in Windows:
-  local                           Qwen3-35B on Local APU (aq-chat / :8080 / :8003)
-  claude                          Claude 3.7 / Fable-5 (Native Claude Code CLI)
-  codex                           OpenAI Codex / GPT-6 Astra (Native Codex CLI)
-  gemini                          Google Gemini 3.8-Flash (Gemini CLI)
-  deepseek                        DeepSeek V3 / R1 (Switchboard :8085)
-  mistral                         Mistral Large / Codestral
+  local                           Qwen3-35B on Local APU (llama.cpp :8080 / Switchboard :8085)
+  claude                          Claude 3.7 / Fable-5 (Switchboard :8085 Anthropic)
+  codex                           OpenAI Codex / GPT-6 Astra (Coordinator :8003 OpenAI)
+  gemini / antigravity            Google Antigravity / Gemini 3.8-Flash (Switchboard :8085 Google)
+  deepseek                        DeepSeek V3 / R1 (Switchboard :8085 DeepSeek)
+  mistral                         Mistral Large / Codestral (Switchboard :8085 Mistral)
   <any-model-name>                Any arbitrary model or switchboard profile!
 
 EOF
@@ -115,16 +118,16 @@ case "${1:-}" in
     shift
     ;;
   claude)
-    exec "${SCRIPT_DIR}/aq-agent-launcher" "claude" "${@:2}"
+    exec python3 "${SCRIPT_DIR}/aq-agent-window" --lane "claude" "${@:2}"
     ;;
   codex)
-    exec "${SCRIPT_DIR}/aq-agent-launcher" "codex" "${@:2}"
+    exec python3 "${SCRIPT_DIR}/aq-agent-window" --lane "codex" "${@:2}"
     ;;
   local|qwen)
-    exec "${SCRIPT_DIR}/aq-agent-launcher" "local" "${@:2}"
+    exec python3 "${SCRIPT_DIR}/aq-agent-window" --lane "local" "${@:2}"
     ;;
-  gemini)
-    exec "${SCRIPT_DIR}/aq-agent-launcher" "gemini" "${@:2}"
+  gemini|antigravity)
+    exec python3 "${SCRIPT_DIR}/aq-agent-window" --lane "antigravity" "${@:2}"
     ;;
   status)
     exec python3 "${SCRIPT_DIR}/aq-cockpit-monitor" --once
@@ -138,9 +141,15 @@ case "${1:-}" in
   subagents|tree)
     exec python3 "${SCRIPT_DIR}/aq-fleet-monitor" --tree "${@:2}"
     ;;
+  tools|toolchain|caps|capabilities)
+    exec python3 "${SCRIPT_DIR}/aq-capabilities" "${@:2}"
+    ;;
+  plan|tracker|pm)
+    exec python3 "${SCRIPT_DIR}/aq-pm-tracker" "${2:---all}" "${@:3}"
+    ;;
   agent|window)
     MODEL="${2:-local}"
-    exec "${SCRIPT_DIR}/aq-agent-launcher" "$MODEL" "${@:3}"
+    exec python3 "${SCRIPT_DIR}/aq-agent-window" --lane "$MODEL" "${@:3}"
     ;;
   list)
     if command -v zellij >/dev/null 2>&1; then

@@ -17,7 +17,7 @@
 set -eo pipefail
 
 AGENT="${1:-local}"
-MODE="${2:-${AQ_WORKSPACE_MODE:-prompt}}"
+MODE="${2:-${AQ_WORKSPACE_MODE:-direct}}"
 
 # 1. Resolve repository root
 REAL_SCRIPT="$(readlink -f "${BASH_SOURCE[0]}")"
@@ -42,18 +42,18 @@ AGENT_BIN=""
 
 case "$AGENT" in
   claude)
-    AGENT_TITLE="Claude 3.7 / Fable-5 (Claude Code CLI)"
+    AGENT_TITLE="Claude 3.7 / Fable-5 (Switchboard :8085)"
     AGENT_COLOR="\033[1;35m" # Magenta
-    AGENT_BIN="$(command -v claude || echo "$HOME/.local/bin/claude")"
-    RESUME_CMD=("$AGENT_BIN" "--resume")
-    NEW_CMD=("$AGENT_BIN")
+    AGENT_BIN="$SCRIPT_DIR/aq-agent-window"
+    RESUME_CMD=("python3" "$SCRIPT_DIR/aq-agent-window" "--lane" "claude")
+    NEW_CMD=("python3" "$SCRIPT_DIR/aq-agent-window" "--lane" "claude")
     ;;
   codex)
-    AGENT_TITLE="OpenAI Codex / GPT-6 Astra (Codex CLI)"
+    AGENT_TITLE="OpenAI Codex / GPT-6 Astra (Coordinator :8003)"
     AGENT_COLOR="\033[1;32m" # Green
-    AGENT_BIN="$(command -v codex || echo "$HOME/.npm-global/bin/codex")"
-    RESUME_CMD=("$AGENT_BIN" "resume")
-    NEW_CMD=("$AGENT_BIN")
+    AGENT_BIN="$SCRIPT_DIR/aq-agent-window"
+    RESUME_CMD=("python3" "$SCRIPT_DIR/aq-agent-window" "--lane" "codex")
+    NEW_CMD=("python3" "$SCRIPT_DIR/aq-agent-window" "--lane" "codex")
     ;;
   local|qwen)
     AGENT_TITLE="Local Qwen3-35B APU (llama.cpp :8080)"
@@ -62,12 +62,12 @@ case "$AGENT" in
     RESUME_CMD=("python3" "$SCRIPT_DIR/aq-agent-window" "--lane" "local")
     NEW_CMD=("python3" "$SCRIPT_DIR/aq-agent-window" "--lane" "local")
     ;;
-  gemini)
-    AGENT_TITLE="Google Gemini 3.8-Flash (Switchboard :8085)"
+  gemini|antigravity)
+    AGENT_TITLE="Google Antigravity / Gemini 3.8-Flash (Switchboard :8085)"
     AGENT_COLOR="\033[1;34m" # Blue/Purple
     AGENT_BIN="$SCRIPT_DIR/aq-agent-window"
-    RESUME_CMD=("python3" "$SCRIPT_DIR/aq-agent-window" "--lane" "gemini")
-    NEW_CMD=("python3" "$SCRIPT_DIR/aq-agent-window" "--lane" "gemini")
+    RESUME_CMD=("python3" "$SCRIPT_DIR/aq-agent-window" "--lane" "antigravity")
+    NEW_CMD=("python3" "$SCRIPT_DIR/aq-agent-window" "--lane" "antigravity")
     ;;
   coordinator|repl)
     AGENT_TITLE="Central Steering Coordinator REPL"
@@ -118,8 +118,8 @@ get_auth_status() {
     local|qwen)
       echo -e "\033[1;32m✓ Local APU (Zero login required)\033[0m"
       ;;
-    gemini)
-      echo -e "\033[1;32m✓ Cached Credentials / IDE Session\033[0m"
+    gemini|antigravity)
+      echo -e "\033[1;32m✓ Antigravity IDE OAuth / Session Active\033[0m"
       ;;
     *)
       echo -e "\033[2mLocal / Environment Auth\033[0m"
@@ -180,15 +180,14 @@ launch_agent() {
 
 # Main interactive supervisor loop (preserves Zellij pane)
 while true; do
-  clear 2>/dev/null || true
-  
-  if [ "$MODE" = "resume" ]; then
+  if [ "$MODE" = "direct" ]; then
+    launch_agent "new"
+  elif [ "$MODE" = "resume" ]; then
     launch_agent "resume"
-    MODE="prompt"
   elif [ "$MODE" = "new" ]; then
     launch_agent "new"
-    MODE="prompt"
-  else
+  elif [ "$MODE" = "prompt" ]; then
+    clear 2>/dev/null || true
     echo -e "${BOLD}${AGENT_COLOR}━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━${NC}"
     echo -e "  󰚩 ${BOLD}${AGENT_TITLE}${NC}"
     echo -e "  ${DIM}Direct Native CLI Access · AQ-OS Tiled Workspace${NC}"
@@ -200,7 +199,7 @@ while true; do
     echo -e "  ${BOLD}[4]${NC} Sign In / Re-authenticate ${DIM}(auth login)${NC}"
     echo -e "  ${BOLD}[q]${NC} Close Pane"
     echo -e "${BOLD}${AGENT_COLOR}━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━${NC}"
-    
+
     # Check if binary is present
     if [ ! -x "$AGENT_BIN" ] && ! command -v "${RESUME_CMD[0]}" >/dev/null 2>&1; then
       echo -e "\033[1;31mWarning: Binary not found at $AGENT_BIN\033[0m"
@@ -208,7 +207,7 @@ while true; do
     fi
 
     echo -ne "  ${BOLD}Select [1-4] or press Enter to launch: ${NC}"
-    
+
     CHOICE=""
     read -n 1 raw_key || true
     echo ""
@@ -239,27 +238,23 @@ while true; do
 
   echo ""
   echo -e "${BOLD}─────────────────────────────────────────────────────────────────────${NC}"
-  echo -e "  ${DIM}Agent session finished.${NC}"
-  echo -ne "  ${BOLD}[r]${NC} Resume again  ${BOLD}[n]${NC} New session  ${BOLD}[s]${NC} Shell  ${BOLD}[q]${NC} Exit pane: "
+  echo -e "  ${DIM}${AGENT_TITLE} exited.${NC}"
+  echo -ne "  ${BOLD}[Enter]${NC} Restart  ${BOLD}[s]${NC} Shell  ${BOLD}[m]${NC} Menu  ${BOLD}[q]${NC} Exit pane: "
   read -n 1 post_choice || true
   echo ""
 
   case "$post_choice" in
-    r|R)
-      MODE="resume"
-      ;;
-    n|N)
-      MODE="new"
-      ;;
     s|S)
-      MODE="prompt"
       "${SHELL:-bash}"
+      ;;
+    m|M)
+      MODE="prompt"
       ;;
     q|Q)
       exit 0
       ;;
     *)
-      MODE="prompt"
+      MODE="direct"
       ;;
   esac
 done

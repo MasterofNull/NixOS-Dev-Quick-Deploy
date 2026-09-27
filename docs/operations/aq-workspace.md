@@ -19,11 +19,11 @@ aq-workspace
 # Automatically resume previous sessions across all agent panes:
 aq-workspace resume
 
-# Directly launch specific native agent CLIs inside workspace:
-aq-workspace claude             # Claude Code with session resume
-aq-workspace codex              # OpenAI Codex with session resume
-aq-workspace local              # Local Qwen3-35B on APU (aq-chat)
-aq-workspace gemini             # Google Gemini CLI / adapter
+# Directly launch dedicated remote agent windows:
+aq-workspace claude             # Claude 3.7 / Fable-5 (Switchboard :8085)
+aq-workspace codex              # OpenAI Codex / GPT-6 (Coordinator :8003)
+aq-workspace local              # Local Qwen3-35B on APU (:8080 / :8003)
+aq-workspace gemini             # Google Gemini 3.8-Flash (Switchboard :8085)
 
 # Or run with a custom session name:
 aq-workspace my-session
@@ -114,20 +114,21 @@ Also renders live model profile metadata, measured token throughput rates, APU s
 
 ---
 
-## 6. Direct Native CLI Agent Launcher (`aq-agent-launcher`)
+## 6. Dedicated Streaming Remote Agent Windows (`aq-agent-window`)
 
-All agent panes in the workspace are powered by `aq-agent-launcher`, which directly executes native agent binaries rather than synthetic headless proxies:
+All agent panes in the workspace are powered by `aq-agent-window`, which connects directly to the harness remote model routing plane (Switchboard `:8085` and Hybrid Coordinator `:8003`) with live token streaming, Note-to-Self thought formatting, sub-agent delegation tracking, and dynamic model switching:
 
-- **Claude Code**: Native interactive CLI (`claude --resume` / `claude`) with full session resumption and tool permission prompts.
-- **OpenAI Codex**: Native Codex CLI (`codex resume` / `codex`).
-- **Local Qwen3-35B**: Native `aq-chat` interactive tool-calling loop on APU `:8080` / `:8003`, preceded by `aq-resume` context hydration.
-- **Google Gemini**: Gemini CLI / interactive agent adapter with IDE session authentication.
+- **Claude 3.7 / Fable-5**: Switchboard `:8085` under `remote-reasoning` profile with Anthropic adapter.
+- **OpenAI Codex / GPT-6 Astra**: Coordinator `:8003` / Switchboard `:8085` under `remote-coding` profile with OpenAI adapter.
+- **Local Qwen3-35B APU**: llama.cpp `:8080` / Switchboard `:8085` under `continue-local` profile.
+- **Google Antigravity / Gemini 3.8-Flash**: Switchboard `:8085` under `remote-gemini` profile and Antigravity IDE OAuth lane.
 
-### Launcher Features
-- **Auto-Resume Countdown**: Default 3-second auto-resume timer allows hands-free session resumption, or press `[1-4]` / `Enter` for instant action.
-- **Live Auth Status Detection**: Detects OAuth / API login status on pane launch (e.g. `✓ Logged in`, `! Not logged in`).
-- **Sign-In Option `[4]`**: Interactive re-authentication menu option (`claude auth login`, `codex login`) without leaving Zellij.
-- **Persistent Pane Supervisor Loop**: If an agent process exits or times out, the Zellij pane stays open with an interactive menu (`[r] Resume`, `[n] New Session`, `[s] Shell`, `[q] Exit Pane`), preventing jarring UI pane clobbering.
+### Agent Window Capabilities
+- **Live Token Streaming**: Real-time SSE token stream with elapsed duration and measured throughput (tok/s).
+- **Sub-Agent Delegation Tracking (`/subagents`)**: Inspect active and recent sub-agents spun off by this lane, including live operation streams (`[TOOL OPERATION]`, `[THOUGHT]`, `[STATUS]`).
+- **Sub-Agent Dispatch (`/delegate <lane> "<task>"`)**: Spin off autonomous sub-agents directly from within the agent's interactive window.
+- **Dynamic Model Switching (`/model <name>`)**: Switch the window's backend route dynamically at runtime (e.g. `/model deepseek-r1`).
+- **History Persistence**: Preserves multi-turn interaction history across restarts in `~/.aq_agent_<model>_history`.
 
 ---
 
