@@ -144,3 +144,28 @@ Codex lane absent).
   `[focused-ci] FAIL: TEMP canary ...` and the run exited 1. `bash -n` + embedded-python
   `py_compile` clean; `repo-structure-lint.sh --staged` PASS. Queued for independent Opus binding
   review before PR (Rule 18 — author self-validated, no self-review of acceptance).
+
+## 2026-09-27 — Resumed context guards / memory persistence
+- aq-memory swallowed disk-write failures; current temporal_facts.json is nobody:nogroup 0644. Repair failure reporting first; storage ownership and coordinator working-memory HTTP 500 remain open. Repository handoff is the checkpoint fallback; queued memory writes are not durability evidence.
+- Tier0 acquires its own checkout: do not wrap it in aq-gate-checkout run. Released only this session's outer lock after nested acquisition stalled. Direct gate reached the 120-second timeout; TERM did not stop remaining gates, so interrupted explicitly. No full PASS or commit claimed.
+- Sandbox blocked QA evidence lock under /var/lib; retry requested using normal escalation.
+
+## WR-10 — event-log fallback implemented before canonical-path root fix — FIXED
+- symptom: the agent added a writable fallback after writes to `.agents/events` failed, before establishing why that path was unwritable.
+- root cause (T5): producer-path ownership and mount authority were not checked during the first failure response; the managed `.agents` mount is intentionally read-only and the logger had the wrong canonical target.
+- resolution: move the canonical ledger to `.agent/collaboration/a2a-events.jsonl`, retain `.agents/events/a2a-events.jsonl` only as a legacy read source, and keep the fallback as an emergency guard for unexpected failures. Add a regression test pinning the default path.
+- class T5 · severity MED · status FIXED 2026-09-27 · opened 2026-09-27.
+
+### Hourly PRSI redundant LLM wrapper — FIXED / follow-up open
+- 2026-09-28 root cause resolution: isolated worktree helper defaulted to `.agents/delegation`, an intentionally read-only mount, and PRSI preflight checked neither the writable delegation root nor shared Git metadata. Dispatch now accepts `AQ_DELEGATION_DIR`, preflights both write authorities, and incident-ledger changes wake a one-item dispatcher with a five-minute queue sweep. Repository validation passed; service activation/live integration remain unverified.
+- symptom: each hourly PRSI cycle submitted a fixed Python command through `aq-ralph-task`.
+- root cause: deterministic orchestration was routed through an LLM task wrapper; `aq-report` still performs its own local-model summary, so total model use requires further measurement.
+- resolution: invoke `prsi-orchestrator.py cycle` directly from the service; keep the hourly cadence until queue/event processing is safely isolated and measured.
+- follow-up: add provider/session/lane token and cost attribution, and resolve writable isolated-worktree authority before automatic repair dispatch.
+- class T2 · severity HIGH · status PARTIAL 2026-09-28 · opened 2026-09-28.
+
+### RSI report dependency — root fix implemented, runtime follow-up open
+- Every RSI dispatch called full report discovery before incident intake; model/report outages could obstruct their own repair intake and each invocation added avoidable work.
+- Incident-only sync now reuses queue deduplication without model-backed reports and preserves existing degradation evidence. Regression exercises two dry runs with report discovery forbidden.
+- Shared atomic estimated-budget reservations are now implemented for both lanes, including failed attempts; focused concurrency tests pass. Unattended activation remains incomplete: writable isolation and runtime validation still need resolution. No guard bypass or substitute execution folder was introduced.
+- Context acquisition friction: an unverified lean-ctx range mode returned a full file. Supported `lean-ctx -c --raw` with explicit bounded `sed` ranges is used pending validation of range-mode rejection in the tool itself.
