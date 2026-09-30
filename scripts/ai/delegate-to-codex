@@ -146,7 +146,9 @@ ensure_dirs() {
 }
 
 task_id() {
-    echo "codex-$(date +%Y%m%d-%H%M%S)-$(tr -dc 'a-z0-9' </dev/urandom 2>/dev/null | head -c6 || echo 'xxxxxx')"
+    # pipefail would report tr's SIGPIPE (head exits after 6 bytes) and append the
+    # fallback to an already-valid suffix, yielding ids like "...-r5q384xxxxxx".
+    echo "codex-$(date +%Y%m%d-%H%M%S)-$( (set +o pipefail; LC_ALL=C tr -dc 'a-z0-9' </dev/urandom 2>/dev/null | head -c6) )"
 }
 
 registry_append() {

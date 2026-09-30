@@ -169,7 +169,7 @@ for stdout, stderr, code, expected in [
 ]:
     proc = type("Proc", (), {"returncode": code, "communicate": lambda self, timeout=None: (stdout, stderr)})()
     with patch.object(prsi.subprocess, "Popen", return_value=proc):
-        result, _receipt = prsi._run_rsi_delegate(row, 30, False)
+        result, _receipt = prsi._run_rsi_delegate(row, 30, False, lane="local")
     assert result == expected, (result, expected)
 print("PASS: RSI dispatch requires an exact successful delegate receipt")
 

@@ -903,3 +903,9 @@ CATCH-UP:
 - **Codex (on ~14:00 return):** binding confirmatory vote in `.agents/plans/stage1-owner-key-lever-activation-20260926/codex.md` — read PROPOSAL.md + claude.md; confirm/dispute the 5 questions, especially Q3 (allowlist-rollback revert adequacy for a Nix-module `enable=true` control) and Q1 (1a/1b split). This is the independent second lane the consensus needs before the owner's activation act.
 - **local:** skipped this round (broken); optional late vote if restored, advisory.
 Do NOT close the round or greenlight activation on the thin (claude-only) roster — round stays OPEN until ≥1 independent lane (Codex or Antigravity) votes. Orchestrator aggregates via `aq-collab-round aggregate` when votes land.
+
+---
+## [2026-09-30] LANE DOWN: antigravity (owner: unavailable for the next few days) — substitutions recorded
+- Rounds `rsi-pr353-binding-review-20260930` and `autonomous-metrics-source-prd-20260930` aggregate without antigravity (codex + local + claude seats); antigravity adds confirmatory verdicts on return (advisory unless a real defect).
+- `tier0-staged-isolation-regression-fails` fix: REROUTED to claude-haiku implementer (codex busy with RSI lane switch); antigravity confirmatory on return.
+- `acp-execute-route-latent-replay`: HELD for antigravity (ACP owner). Dormant (fixture store/stub effects); activation-blocking only, so waiting is safe.
