@@ -2364,6 +2364,99 @@ def get_capability_enforcement() -> Dict[str, Any]:
     return result
 
 
+# ─── C6c owner kill-switch fire button (human front-door only) ────────────
+# SECURITY (HARD, REVOKE-DIRECTION ONLY): this fail-closed press-a-button
+# pattern is for the KILL/REVOKE action only. It MUST NOT be copied for any
+# grant/activate/widen-authority action — a grant needs a separate,
+# un-forgeable gate (WebAuthn + TPM signing service), never a dashboard
+# button, because a forged/duplicated grant press is a privilege escalation
+# in a way a forged/duplicated revoke press is not (revoke-only is safe to
+# fail open toward "did nothing"; grant is not).
+_REVOCATION_FIRE_LOCK = threading.Lock()
+_REVOCATION_FIRE_ATTEMPT_TIMESTAMPS: List[float] = []
+_REVOCATION_FIRE_MAX_PER_WINDOW = 5
+_REVOCATION_FIRE_WINDOW_SECONDS = 60.0
+
+
+def _revocation_fire_check_rate_limit() -> Optional[int]:
+    """Dedicated, tight in-process cap for the kill-switch fire button —
+    stricter than the dashboard's generic `operator_write` budget
+    (`runtime_controls.DashboardRateLimiter`, ~240 rpm shared across every
+    POST route) because every press here is a (currently dormant) attempt to
+    revoke ALL agent capability leases. Returns None when the press is
+    allowed, else the retry-after seconds once the cap is exceeded."""
+    now = time.monotonic()
+    with _REVOCATION_FIRE_LOCK:
+        cutoff = now - _REVOCATION_FIRE_WINDOW_SECONDS
+        while _REVOCATION_FIRE_ATTEMPT_TIMESTAMPS and _REVOCATION_FIRE_ATTEMPT_TIMESTAMPS[0] <= cutoff:
+            _REVOCATION_FIRE_ATTEMPT_TIMESTAMPS.pop(0)
+        if len(_REVOCATION_FIRE_ATTEMPT_TIMESTAMPS) >= _REVOCATION_FIRE_MAX_PER_WINDOW:
+            return max(1, int(_REVOCATION_FIRE_WINDOW_SECONDS - (now - _REVOCATION_FIRE_ATTEMPT_TIMESTAMPS[0])))
+        _REVOCATION_FIRE_ATTEMPT_TIMESTAMPS.append(now)
+        return None
+
+
+@router.post("/revocation/fire")
+def fire_revocation_kill_switch() -> Dict[str, Any]:
+    """Owner-facing front door for the C6c revocation-epoch kill switch —
+    firing it bumps the revocation epoch, which revokes ALL agent capability
+    leases until re-approved. This slice adds ONLY the human press button;
+    the mechanism it fronts (the epoch authority + signed
+    `aq-epoch-bump submit --signed --socket`) already exists and is
+    unmodified by this endpoint.
+
+    FAIL-CLOSED: armed-state is read from the SAME decision the
+    `/stats/capability-enforcement` `owner_epoch_bump_lever` section already
+    computes (`_owner_epoch_bump_lever_state` above) — active_owner_keys > 0
+    AND authority_reachable. With the current allowlist (0 active signers)
+    this always refuses with HTTP 409. Any doubt (missing lever data,
+    unreachable authority, signing not provisioned) refuses; it never fires.
+
+    AUDITED: every press — allowed or refused — is already appended to the
+    dashboard's tamper-evident operator-audit JSONL chain
+    (`runtime_controls.OperatorAuditLog`), which `main.py`'s
+    `runtime_controls_middleware` applies to every POST under /api/
+    regardless of status code. No separate audit call is needed here.
+    """
+    retry_after = _revocation_fire_check_rate_limit()
+    if retry_after is not None:
+        raise HTTPException(
+            status_code=429,
+            detail={
+                "fired": False,
+                "reason": "too many presses — slow down",
+                "retry_after_seconds": retry_after,
+            },
+        )
+
+    enforcement = get_capability_enforcement()
+    lever = enforcement.get("owner_epoch_bump_lever") if isinstance(enforcement, dict) else None
+    lever = lever if isinstance(lever, dict) else {}
+    active_owner_keys = lever.get("active_owner_keys")
+    authority_reachable = bool(lever.get("authority_reachable"))
+    armed = bool(active_owner_keys) and authority_reachable
+
+    if not armed:
+        reason = (
+            "lever not armed (authority unreachable)"
+            if active_owner_keys and not authority_reachable
+            else f"lever not armed ({active_owner_keys or 0} active signers)"
+        )
+        raise HTTPException(status_code=409, detail={"fired": False, "reason": reason})
+
+    # ARMED BRANCH — currently unreachable: the live allowlist has 0 active
+    # signers, so `armed` above can never be True on this host today. This
+    # is a guarded call site for the FUTURE signed-bump submission over the
+    # control socket (`aq-epoch-bump submit --signed <file> --socket <sock>`)
+    # once a later slice provisions a TPM signing service + an active owner
+    # key. It deliberately does nothing else — it MUST NEVER submit an
+    # unsigned or fabricated epoch bump.
+    raise HTTPException(
+        status_code=409,
+        detail={"fired": False, "reason": "signing not provisioned (deferred slice)"},
+    )
+
+
 @router.get("/agent-tasks/active")
 async def get_active_agent_tasks() -> Dict[str, Any]:
     """Return in-progress agent tasks from *.progress.json files (Phase 171-C)."""
