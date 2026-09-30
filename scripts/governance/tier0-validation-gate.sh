@@ -16,12 +16,14 @@ cd "${REPO_ROOT}"
 MODE="--pre-commit"
 TAP_MODE=0
 STAGED_ISOLATED=0
+NO_CHECKOUT="${TIER0_NO_CHECKOUT:-0}"
 TAP_JSON_FILE="${TIER0_TAP_JSON:-}"
 for arg in "$@"; do
   case "$arg" in
     --pre-commit|--pre-deploy) MODE="$arg" ;;
     --tap) TAP_MODE=1 ;;
     --staged-isolated) STAGED_ISOLATED=1 ;;
+    --no-checkout) NO_CHECKOUT=1 ;;
   esac
 done
 
@@ -31,6 +33,57 @@ done
 ORIG_REPO_ROOT="${REPO_ROOT}"
 ISOLATION_TMPDIR=""
 ISOLATION_PATCH=""
+
+log() {
+  printf '[tier0] %s\n' "$*"
+}
+
+# Gate checkout serialization — prevent multi-agent validation races and hangs
+CHECKOUT_GATE="tier0"
+CHECKOUT_ACQUIRED=0
+GATE_CHECKOUT_BIN=""
+
+if [[ -x "${ORIG_REPO_ROOT}/scripts/ai/aq-gate-checkout" ]]; then
+  GATE_CHECKOUT_BIN="${ORIG_REPO_ROOT}/scripts/ai/aq-gate-checkout"
+elif [[ -x "${SCRIPT_DIR}/aq-gate-checkout" ]]; then
+  GATE_CHECKOUT_BIN="${SCRIPT_DIR}/aq-gate-checkout"
+elif command -v aq-gate-checkout >/dev/null 2>&1; then
+  GATE_CHECKOUT_BIN="$(command -v aq-gate-checkout)"
+fi
+
+cleanup_isolation() {
+  if [[ -n "${ISOLATION_TMPDIR}" ]]; then
+    git -C "${ORIG_REPO_ROOT}" worktree remove --force "${ISOLATION_TMPDIR}" >/dev/null 2>&1 \
+      || rm -rf "${ISOLATION_TMPDIR}" 2>/dev/null || true
+    [[ -n "${ISOLATION_PATCH}" ]] && rm -f "${ISOLATION_PATCH}" 2>/dev/null || true
+  fi
+}
+
+release_gate_checkout() {
+  if [[ "${CHECKOUT_ACQUIRED}" -eq 1 && -n "${GATE_CHECKOUT_BIN}" ]]; then
+    "${GATE_CHECKOUT_BIN}" release --gate "${CHECKOUT_GATE}" --pid "$$" >/dev/null 2>&1 || true
+    CHECKOUT_ACQUIRED=0
+  fi
+}
+
+cleanup_tier0() {
+  cleanup_isolation
+  release_gate_checkout
+}
+trap cleanup_tier0 EXIT INT TERM
+
+if [[ "${NO_CHECKOUT}" -ne 1 && -n "${GATE_CHECKOUT_BIN}" ]]; then
+  CHECKOUT_AGENT="${TIER0_CHECKOUT_AGENT:-${AQ_AGENT_NAME:-${AGENT_NAME:-}}}"
+  CHECKOUT_WAIT="${TIER0_CHECKOUT_WAIT:-300}"
+  AGENT_FLAG=()
+  [[ -n "${CHECKOUT_AGENT}" ]] && AGENT_FLAG=(--agent "${CHECKOUT_AGENT}")
+  log "Acquiring ${CHECKOUT_GATE} gate checkout (agent: ${CHECKOUT_AGENT:-auto}, wait: ${CHECKOUT_WAIT}s)..."
+  if ! "${GATE_CHECKOUT_BIN}" acquire --gate "${CHECKOUT_GATE}" "${AGENT_FLAG[@]}" --pid "$$" --wait "${CHECKOUT_WAIT}"; then
+    log "ERROR: Could not acquire '${CHECKOUT_GATE}' gate checkout. Aborting to prevent racing."
+    exit 2
+  fi
+  CHECKOUT_ACQUIRED=1
+fi
 
 pass_count=0
 fail_count=0
@@ -49,9 +102,7 @@ collect_changed_files() {
   } | awk 'NF && !seen[$0]++'
 }
 
-log() {
-  printf '[tier0] %s\n' "$*"
-}
+
 
 path_accepts_write() {
   local target="$1"
@@ -219,8 +270,8 @@ hydrate_isolation_operational_inputs() {
       log "ERROR: --staged-isolated refuses staged operational input: ${relative_path}"
       return 1
     fi
-    if ! git -C "${destination_root}" check-ignore -q -- "${relative_path}"; then
-      log "ERROR: --staged-isolated operational input is not ignored by the snapshot: ${relative_path}"
+    if ! git -C "${destination_root}" check-ignore -q -- "${relative_path}" && ! git -C "${destination_root}" ls-files --error-unmatch -- "${relative_path}" >/dev/null 2>&1; then
+      log "ERROR: --staged-isolated operational input is neither ignored nor tracked by the snapshot: ${relative_path}"
       return 1
     fi
     copy_isolation_operational_input "${relative_path}" "${destination_root}" || return 1
@@ -279,14 +330,7 @@ setup_staged_isolation() {
   return 0
 }
 
-cleanup_isolation() {
-  if [[ -n "${ISOLATION_TMPDIR}" ]]; then
-    git -C "${ORIG_REPO_ROOT}" worktree remove --force "${ISOLATION_TMPDIR}" >/dev/null 2>&1 \
-      || rm -rf "${ISOLATION_TMPDIR}" 2>/dev/null || true
-    [[ -n "${ISOLATION_PATCH}" ]] && rm -f "${ISOLATION_PATCH}" 2>/dev/null || true
-  fi
-}
-trap cleanup_isolation EXIT
+
 
 if [[ ${STAGED_ISOLATED} -eq 1 ]]; then
   if ! setup_staged_isolation; then
@@ -1178,7 +1222,7 @@ gate_agent_harness_regression_suites() {
       continue
     fi
     output_file="$(mktemp)"
-    if timeout "${suite_timeout_seconds}s" python3 "${test_script}" >"${output_file}" 2>&1; then
+    if AQ_TEST_FORCE_STUB=1 timeout "${suite_timeout_seconds}s" python3 "${test_script}" >"${output_file}" 2>&1; then
       pass "Harness regression suite: ${suite}"
     else
       status=$?

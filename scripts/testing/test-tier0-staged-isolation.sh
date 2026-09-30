@@ -44,8 +44,16 @@ TEST_REPO="${TEST_PARENT}/repo"
 
 cleanup() {
   rm -rf "${TEST_PARENT}"
+  if [[ -x "${SOURCE_REPO}/scripts/ai/aq-gate-checkout" ]]; then
+    "${SOURCE_REPO}/scripts/ai/aq-gate-checkout" release --gate tier0 --pid "$$" >/dev/null 2>&1 || true
+  fi
 }
-trap cleanup EXIT
+trap cleanup EXIT INT TERM
+
+# Serialize this multi-part gate test under the tier0 gate checkout to eliminate agent collision
+if [[ -x "${SOURCE_REPO}/scripts/ai/aq-gate-checkout" ]]; then
+  "${SOURCE_REPO}/scripts/ai/aq-gate-checkout" acquire --gate tier0 --pid "$$" --wait 600
+fi
 
 # Clone committed objects locally without hardlinks, so the test can exercise
 # real worktree/index behavior while remaining physically independent from the
@@ -67,6 +75,12 @@ STAGED_FIXTURE="${TEST_REPO}/${STAGED_FIXTURE_REL}"
 # test, rather than silently testing the older committed gate.
 cp "${SOURCE_GATE}" "${GATE_SCRIPT}"
 git -C "${TEST_REPO}" add -- scripts/governance/tier0-validation-gate.sh
+for test_file in test-context-assembler.py test-read-file-gate.py test-gate-checkout.py; do
+  if [[ -f "${SOURCE_REPO}/scripts/testing/${test_file}" ]]; then
+    cp "${SOURCE_REPO}/scripts/testing/${test_file}" "${TEST_REPO}/scripts/testing/${test_file}"
+    git -C "${TEST_REPO}" add -- "scripts/testing/${test_file}"
+  fi
+done
 
 # A normal live checkout provides four ignored operational projections that
 # Phase-0 intentionally validates. Populate them as UNSTAGED live inputs in
@@ -77,6 +91,7 @@ OPERATIONAL_INPUTS=(
   .agent/collaboration/RESUME.json
   .agents/improvement/candidates.json
   .agents/delegation/registry.jsonl
+  .claude/settings.json
 )
 for operational_input in "${OPERATIONAL_INPUTS[@]}"; do
   mkdir -p "$(dirname "${TEST_REPO}/${operational_input}")"
@@ -113,7 +128,7 @@ fail() {
 # `cmd || true` would do).
 run_gate() {
   set +e
-  GATE_OUT="$("${GATE_SCRIPT}" "$@" 2>&1)"
+  GATE_OUT="$("${GATE_SCRIPT}" --no-checkout "$@" 2>&1)"
   GATE_RC=$?
   set -e
 }
