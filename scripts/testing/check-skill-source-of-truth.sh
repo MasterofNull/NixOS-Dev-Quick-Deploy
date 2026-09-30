@@ -20,7 +20,7 @@ while IFS= read -r skill_file; do
       status=1
       ;;
   esac
-done < <(find . -type f -name 'SKILL.md' | sort)
+done < <(find . -type d \( -name '.git' -o -name '*worktree*' -o -name '*worktrees*' \) -prune -o -type f -name 'SKILL.md' -print | sort)
 
 if [[ "$status" -eq 0 ]]; then
   echo "PASS: skill files are confined to approved roots."

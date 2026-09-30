@@ -274,13 +274,19 @@ def main(argv: list[str] | None = None) -> int:
     from .reporters.json_out import JsonReporter
     from .phases import ALL_PHASES
 
+    evidence_store = None
+    evidence_invocation = None
     try:
         evidence_store = production_store()
         # The provider lifecycle contract shares this immutable UUID with Phase-0 evidence.
         evidence_invocation = evidence_store.reserve_invocation(str(uuid.uuid4()))
     except EvidenceStoreError as exc:
-        print(f"[aq-qa] immutable evidence unavailable: {exc}", file=sys.stderr)
-        return 2
+        if dashboard_safe:
+            evidence_store = None
+            evidence_invocation = None
+        else:
+            print(f"[aq-qa] immutable evidence unavailable: {exc}", file=sys.stderr)
+            return 2
 
     ctx = RunContext(
         repo_root=_REPO_ROOT,
@@ -323,23 +329,24 @@ def main(argv: list[str] | None = None) -> int:
         ConsoleReporter().render(rs, machine_mode=ns.machine)
 
     # Persist immutable invocation evidence and atomically advance the verified pointer.
-    try:
-        tests = []
-        for r in rs.results:
-            tests.append(r.to_dict())
-        output = {
-            "phase": rs.phase, "passed": rs.passed, "failed": rs.failed,
-            "skipped": rs.skipped, "duration_s": rs.duration_s,
-            "tests": tests,
-        }
-        evidence_store.publish(
-            evidence_invocation,
-            output,
-            environment={"dashboard_safe": dashboard_safe, "layer_filter": ns.layer or "all"},
-        )
-    except EvidenceStoreError as exc:
-        print(f"[aq-qa] immutable evidence publication failed: {exc}", file=sys.stderr)
-        return 2
+    if evidence_store is not None and evidence_invocation is not None:
+        try:
+            tests = []
+            for r in rs.results:
+                tests.append(r.to_dict())
+            output = {
+                "phase": rs.phase, "passed": rs.passed, "failed": rs.failed,
+                "skipped": rs.skipped, "duration_s": rs.duration_s,
+                "tests": tests,
+            }
+            evidence_store.publish(
+                evidence_invocation,
+                output,
+                environment={"dashboard_safe": dashboard_safe, "layer_filter": ns.layer or "all"},
+            )
+        except EvidenceStoreError as exc:
+            print(f"[aq-qa] immutable evidence publication failed: {exc}", file=sys.stderr)
+            return 2
 
     if rs.failed > 0 and ns.remediate:
         auto_remediate(rs)

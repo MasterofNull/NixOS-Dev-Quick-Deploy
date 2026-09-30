@@ -21,6 +21,7 @@
 #   --prompt TEXT      Task prompt
 #   --prompt-file FILE Read prompt from file
 #   --mode MODE        Routing: agent|hybrid|direct|ralph  [default: hybrid]
+#   --max-tokens N     Explicit output budget (overrides keyword size classifier)
 #   --timeout SECS     Request timeout in seconds  [default: 1800]  (APU-paced; ~3.3min/step)
 #   --role ROLE        Role: orchestrator|architect|implementer|reviewer  [default: implement]
 #   --wait             Block until task completes (default: background)
@@ -55,7 +56,8 @@ set -euo pipefail
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 SCRIPT_PATH="$SCRIPT_DIR/$(basename "${BASH_SOURCE[0]}")"
 REPO_ROOT="$(cd "$SCRIPT_DIR/../.." && pwd)"
-DELEGATION_DIR="$REPO_ROOT/.agents/delegation"
+DELEGATION_DIR="${AQ_DELEGATION_DIR:-$REPO_ROOT/.agents/delegation}"
+export AQ_DELEGATION_DIR="$DELEGATION_DIR"
 LIB_DIR="$SCRIPT_DIR/lib"
 DISPATCH="$LIB_DIR/dispatch.py"
 
@@ -140,6 +142,7 @@ TIMEOUT=1800
 ROLE="auto"
 WAIT=false
 TOOL_MANIFEST="full"
+MAX_TOKENS=""  # explicit budget; outranks classify_tokens keyword caps
 TASK_TYPE=""  # Phase 173: "research"|"analysis"|"prd" raises stagnation read limits to 15/25
 SUBCMD=""
 SUBCMD_ARG=""
@@ -167,6 +170,7 @@ while [[ $# -gt 0 ]]; do
         --wait)           WAIT=true;           shift   ;;
         --tool-manifest)  TOOL_MANIFEST="$2";  shift 2 ;;
         --task-type)      TASK_TYPE="$2";      shift 2 ;;
+        --max-tokens)     MAX_TOKENS="$2";     shift 2 ;;
         --check)         SUBCMD="check";         SUBCMD_ARG="${2:-}"; shift; [[ $# -gt 0 ]] && shift ;;
         --status)        SUBCMD="status";        SUBCMD_ARG="${2:-}"; shift; [[ $# -gt 0 ]] && shift ;;
         --repair-status) SUBCMD="repair-status"; SUBCMD_ARG="${2:-}"; shift; [[ $# -gt 0 ]] && shift ;;
@@ -376,6 +380,7 @@ print(classify_mode(sys.argv[1]))
             --script-dir     "$EFFECTIVE_SCRIPT_DIR"
         )
         [[ -n "$TASK_TYPE" ]] && _DISPATCH_ARGS+=(--task-type "$TASK_TYPE")
+        [[ -n "$MAX_TOKENS" ]] && _DISPATCH_ARGS+=(--max-tokens "$MAX_TOKENS")
 
         if [[ "$WAIT" == "true" ]]; then
             info "Running in blocking mode (timeout: ${TIMEOUT}s)..."

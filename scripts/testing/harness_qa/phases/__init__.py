@@ -14,7 +14,7 @@ def _load_phases() -> dict[str, PhaseRunner]:
         phase0, phase1, phase2, phase3, phase4, phase5,
         phase6, phase7, phase8, phase9, phase10,
         phase54, phase55, phase56, phase57, phase58, phase59,
-        phase68, phase69, phase70, phase71, phase72, phase73,
+        phase68, phase69, phase70, phase71, phase72, phase73, rsi,
     )
     return {
         "0":  phase0.run,
@@ -40,6 +40,7 @@ def _load_phases() -> dict[str, PhaseRunner]:
         "71": phase71.run,
         "72": phase72.run,
         "73": phase73.run,
+        "rsi": rsi.run,
     }
 
 
@@ -55,5 +56,5 @@ def get_phase_map() -> dict[str, PhaseRunner]:
 
 ALL_PHASES = [
     "0", "1", "2", "3", "4", "5", "6", "7", "8", "9", "10",
-    "54", "55", "56", "57", "58", "59", "68", "69", "70", "71", "72", "73",
+    "54", "55", "56", "57", "58", "59", "68", "69", "70", "71", "72", "73", "rsi",
 ]

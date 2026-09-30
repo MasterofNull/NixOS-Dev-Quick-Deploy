@@ -13,7 +13,8 @@
     "tier_model": "DEFINED=PRD/plan exists (designed); INTEGRATED=implemented + wired; VALIDATED=works end-to-end; ACCEPTED=owner signed off. detection.freeze_record = the PRD (existence proves DESIGNED, not done). MANY items are NOT-STARTED/unmeasured \u2014 that is the honest state.",
     "honest_note": "43 PRD docs exist; only 5 program areas have projected trackers. This board is a FIRST CUT for owner correction \u2014 add missing requirements, fix any status the owner disputes. Percentages here count INTEGRATION toward the tier, never owner-accepted completion (all acceptance=pending).",
     "rundown_ref": ".agents/plans/aqos-refactor-completion-rundown-20260823.md",
-    "editorial_note_20260823": "Deps set to the rundown's critical path (B1->C->D->E->F->G); priority_lane = start-now|gated-Q<n>|queued from rundown \u00a75-7. STATUS/% remains PROJECTED from git+systemd (never hand-typed, anti-gaming). Owner gates: Q3->C, Q6->F, Q7->E, Q9->VF."
+    "editorial_note_20260823": "Deps set to the rundown's critical path (B1->C->D->E->F->G); priority_lane = start-now|gated-Q<n>|queued from rundown \u00a75-7. STATUS/% remains PROJECTED from git+systemd (never hand-typed, anti-gaming). Owner gates: Q3->C, Q6->F, Q7->E, Q9->VF.",
+    "editorial_note_20260927": "Owner prioritizes core agent/agentic/system working MVP before security/containment activation; ACP owned by Antigravity. Full expert design and frozen plan, rapid tested build, full MVP audit. Historical percentages/dependencies are not activation authority. See .agent/PROJECT-CORE-MVP-DELIVERY-PRD.md."
   },
   "phases": [
     {

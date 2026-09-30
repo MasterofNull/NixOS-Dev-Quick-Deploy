@@ -73,5 +73,8 @@
   "progressiveDisclosure": {
     "defaultLevel": "overview",
     "escalateOnBlock": true
+  },
+  "enabledPlugins": {
+    "clangd-lsp@claude-plugins-official": false
   }
 }

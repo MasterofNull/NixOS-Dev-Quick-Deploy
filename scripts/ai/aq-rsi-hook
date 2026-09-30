@@ -1,0 +1,42 @@
+#!/usr/bin/env python3
+"""Observe the installed hook without weakening its decision or replaying a tool."""
+import json
+from pathlib import Path
+import subprocess
+import sys
+
+sys.path.insert(0, str(Path(__file__).resolve().parent / "lib"))
+from rsi_lifecycle import failure
+
+
+def run(command, payload, timeout=12):
+    try:
+        result = subprocess.run(command, input=payload, capture_output=True, timeout=timeout)
+        code, stdout, stderr = result.returncode, result.stdout, result.stderr
+    except subprocess.TimeoutExpired:
+        code, stdout, stderr = 2, b"", b"RSI: upstream hook timed out; command blocked.\n"
+    except OSError:
+        code, stdout, stderr = 2, b"", b"RSI: upstream hook unavailable; command blocked.\n"
+    denied = code != 0
+    try:
+        decision = json.loads(stdout)
+        denied |= decision.get("decision") == "block" or decision.get("hookSpecificOutput", {}).get("permissionDecision") == "deny"
+    except (ValueError, AttributeError):
+        pass
+    if denied:
+        # Never persist raw tool input or recommendations containing user commands.
+        category = "lean-ctx command routing rejected" if b"Command should run via lean-ctx" in stderr + stdout else "upstream hook denied or failed"
+        try:
+            failure("codex", "pre-tool", "lean-ctx-pretooluse", "hook/codex-pretooluse",
+                    "installed pre-tool policy", category,
+                    root_fix="Diagnose hook routing and caller contract; preserve command semantics and policy")
+        except Exception as exc:
+            stderr += f"RSI recording failed: {type(exc).__name__}; original hook decision preserved.\n".encode()
+    return code, stdout, stderr
+
+
+if __name__ == "__main__":
+    code, stdout, stderr = run(["/run/current-system/sw/bin/lean-ctx", "hook", "codex-pretooluse"], sys.stdin.buffer.read())
+    sys.stdout.buffer.write(stdout)
+    sys.stderr.buffer.write(stderr)
+    raise SystemExit(code if code >= 0 else 2)

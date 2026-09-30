@@ -42,8 +42,19 @@ def examples_dir():
 @pytest.fixture
 async def http_client():
     """Create async HTTP client with authentication."""
-    headers = {"X-API-Key": "test-key"}
-    async with httpx.AsyncClient(base_url=BASE_URL, timeout=30.0, headers=headers) as client:
+    import os
+    api_key = os.getenv("HYBRID_COORDINATOR_API_KEY", "")
+    if not api_key or api_key == "test-key":
+        for candidate in ["/run/secrets/hybrid_coordinator_api_key", "/run/secrets/coordinator_api_key"]:
+            p = Path(candidate)
+            if p.is_file():
+                try:
+                    api_key = p.read_text().strip()
+                    break
+                except Exception:
+                    pass
+    headers = {"X-API-Key": api_key or "test-key"}
+    async with httpx.AsyncClient(base_url=BASE_URL, timeout=120.0, headers=headers) as client:
         yield client
 
 

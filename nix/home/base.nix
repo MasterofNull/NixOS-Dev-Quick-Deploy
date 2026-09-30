@@ -1964,6 +1964,8 @@ if changed:
       | del(.projects."/")
       | .projects."${repoPath}".trust_level = "trusted"
       | .features.hooks = true
+      | .model_auto_compact_token_limit = 50000
+      | .model_auto_compact_token_limit_scope = "total"
       | .mcp_servers."hybrid-coordinator" = {
           "command": "python3",
           "args": ["${repoPath}/scripts/ai/mcp-bridge-hybrid.py"],

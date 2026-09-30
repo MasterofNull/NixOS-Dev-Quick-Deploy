@@ -133,6 +133,8 @@ nodes:
     outputs:
       - fixes_applied
       - rollback_needed
+      - failed_dependencies
+      - rollback_reason
     goto: test
 
   # Step 6: Security validation

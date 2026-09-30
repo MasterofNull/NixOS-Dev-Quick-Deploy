@@ -598,9 +598,10 @@ class WorkflowPhaseExecutor:
             ),
             "max_tokens": min(int(context.get("budget", {}).get("token_limit", 512) or 512), 768),
             "temperature": 0.1,
-            "timeout": 20,
+            "timeout": int(os.getenv("WORKFLOW_SPAWN_TIMEOUT", "120")),
         }
-        async with httpx.AsyncClient(timeout=30.0) as client:
+        spawn_client_timeout = float(payload["timeout"]) + 15.0
+        async with httpx.AsyncClient(timeout=spawn_client_timeout) as client:
             response = await client.post(
                 f"{self.coordinator_url}/control/agents/spawn",
                 json=payload,

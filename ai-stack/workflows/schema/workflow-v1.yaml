@@ -17,7 +17,7 @@ properties:
   name:
     type: string
     description: Unique workflow identifier
-    pattern: ^[a-z][a-z0-9-]*$
+    pattern: ^[a-z][a-z0-9_-]*$
     minLength: 3
     maxLength: 64
 
@@ -59,7 +59,7 @@ properties:
     patternProperties:
       ^[a-zA-Z_][a-zA-Z0-9_]*$:
         type: string
-        enum: [qwen, codex, claude, gemini]
+        enum: [qwen, codex, claude, gemini, local, antigravity]
 
   # Workflow execution nodes
   nodes:
@@ -76,12 +76,12 @@ properties:
         id:
           type: string
           description: Unique node identifier
-          pattern: ^[a-z][a-z0-9-]*$
+          pattern: ^[a-z][a-z0-9_-]*$
 
         agent:
           type: string
           description: Agent to execute this node
-          pattern: ^(qwen|codex|claude|gemini|\$\{agents\.[a-zA-Z_][a-zA-Z0-9_]*\})$
+          pattern: ^(qwen|codex|claude|gemini|local|antigravity|\$\{agents\.[a-zA-Z_][a-zA-Z0-9_]*\})$
 
         prompt:
           type: string

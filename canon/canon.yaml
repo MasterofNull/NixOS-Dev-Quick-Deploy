@@ -10,6 +10,16 @@
 #   python3 scripts/governance/canon-compile.py --check   # CI drift gate (exit 1 on drift)
 
 blocks:
+  mvp-delivery-sop:
+    source: blocks/mvp-delivery-sop.md
+    targets:
+      - AGENTS.md
+      - CLAUDE.md
+      - .agent/CODEX.md
+      - .agent/GEMINI.md
+      - .agent/LOCAL-AGENT.md
+      - .agent/WORKFLOW-CANON.md
+
   fable-parity:
     source: blocks/fable-parity.md
     targets:
@@ -18,3 +28,22 @@ blocks:
       - .agent/GEMINI.md
       - .agent/LOCAL-AGENT.md
       - .agent/WORKFLOW-CANON.md
+
+  memory-cache-sop:
+    source: blocks/memory-cache-sop.md
+    targets:
+      - CLAUDE.md
+      - .agent/CODEX.md
+      - .agent/GEMINI.md
+      - .agent/LOCAL-AGENT.md
+      - .agent/WORKFLOW-CANON.md
+
+  recursive-self-improvement-sop:
+    source: blocks/recursive-self-improvement-sop.md
+    targets:
+      - CLAUDE.md
+      - .agent/CODEX.md
+      - .agent/GEMINI.md
+      - .agent/LOCAL-AGENT.md
+      - .agent/WORKFLOW-CANON.md
+

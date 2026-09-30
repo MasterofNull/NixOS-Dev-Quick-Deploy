@@ -1,0 +1,252 @@
+#!/usr/bin/env bash
+# aq-workspace — SOTA Multi-Tiled Agentic Workspace Launcher
+#
+# Launches the SOTA multi-window agentic workspace:
+#   • Dual-Board Floating Panes automatically aligned:
+#       - Left Board:   Main Agents (Coordinator, Claude, Codex, Gemini, Local Qwen, or Any Model)
+#       - Right Board:  Sub-Agents (Delegation Hierarchy Tree & Live Operations Stream)
+#   • Dedicated model tabs for all models + custom model launcher
+#   • Real-time sub-agent tracking and tool-call operation streaming
+#
+# Usage:
+#   aq-workspace                    # launch or attach to floating/tiled workspace for current dir
+#   aq-workspace agent <model>      # open dedicated window for any model (claude, codex, gemini, local, deepseek, etc.)
+#   aq-workspace subagents          # live hierarchical sub-agent delegation tree & operations
+#   aq-workspace repl               # launch Coordinator REPL directly
+#   aq-workspace fleet              # live sub-agent fleet matrix
+#   aq-workspace status             # print live telemetry cockpit snapshot
+#   aq-workspace list               # list active agentic sessions
+#   aq-workspace kill [session]     # terminate workspace session
+#   aq-workspace --help             # show help
+
+set -euo pipefail
+
+# 1. Resolve repository root
+REAL_SCRIPT="$(readlink -f "${BASH_SOURCE[0]}")"
+SCRIPT_DIR="$(cd "$(dirname "$REAL_SCRIPT")" && pwd)"
+
+if [ -f "${SCRIPT_DIR}/../../config/zellij/aq-agentic-workspace.kdl" ]; then
+  REPO_ROOT="$(cd "${SCRIPT_DIR}/../.." && pwd)"
+elif [ -n "${AQ_REPO_ROOT:-}" ] && [ -d "${AQ_REPO_ROOT}" ]; then
+  REPO_ROOT="${AQ_REPO_ROOT}"
+elif git rev-parse --show-toplevel &>/dev/null && [ -f "$(git rev-parse --show-toplevel)/config/zellij/aq-agentic-workspace.kdl" ]; then
+  REPO_ROOT="$(git rev-parse --show-toplevel)"
+elif [ -d "/home/hyperd/Documents/NixOS-Dev-Quick-Deploy" ]; then
+  REPO_ROOT="/home/hyperd/Documents/NixOS-Dev-Quick-Deploy"
+else
+  REPO_ROOT="$(cd "$SCRIPT_DIR/../.." && pwd)"
+fi
+
+LAYOUT_FILE="${REPO_ROOT}/config/zellij/aq-agentic-workspace.kdl"
+if [ ! -f "$LAYOUT_FILE" ]; then
+  for candidate in \
+    "${HOME}/.config/zellij/layouts/aq-agentic-workspace.kdl" \
+    "/home/hyperd/Documents/NixOS-Dev-Quick-Deploy/config/zellij/aq-agentic-workspace.kdl" \
+    "${REPO_ROOT}/config/zellij/aq-agentic-workspace.kdl"; do
+    if [ -f "$candidate" ]; then
+      LAYOUT_FILE="$candidate"
+      break
+    fi
+  done
+fi
+
+# Ensure harness tools and scripts are in PATH
+export PATH="$HOME/.local/bin:$HOME/.npm-global/bin:$SCRIPT_DIR:$REPO_ROOT/scripts/ai:$REPO_ROOT/scripts/governance:$PATH"
+export PYTHONPATH="${REPO_ROOT}:${REPO_ROOT}/ai-stack:${REPO_ROOT}/ai-stack/mcp-servers:${REPO_ROOT}/scripts/ai:${PYTHONPATH:-}"
+
+DIR_NAME="$(basename "$PWD")"
+DEFAULT_SESSION="aq-${DIR_NAME}"
+
+show_help() {
+  cat <<'EOF'
+AQ-OS SOTA Agentic Workspace
+
+Usage:
+  aq-workspace                    Start or attach to floating/tiled workspace for current directory
+  aq-workspace resume             Launch workspace with automatic session resumption on all agents
+  aq-workspace claude             Directly open Claude 3.7 / Fable-5 agent window (Switchboard :8085)
+  aq-workspace codex              Directly open OpenAI Codex / GPT-6 agent window (Coordinator :8003)
+  aq-workspace local              Directly open Local Qwen3-35B APU agent window (:8080 / :8003)
+  aq-workspace gemini             Directly open Google Gemini 3.8-Flash agent window (Switchboard :8085)
+  aq-workspace antigravity        Directly open Google Antigravity IDE agent window (Switchboard :8085)
+  aq-workspace agent <model>      Open dedicated window for ANY model (claude, codex, gemini, local, etc.)
+  aq-workspace subagents          Live hierarchical sub-agent delegation tree & operations
+  aq-workspace tree               View sub-agent delegation tree (--tree)
+  aq-workspace repl               Open Coordinator & Steering REPL directly
+  aq-workspace fleet              Open Sub-Agent Fleet Matrix monitor
+  aq-workspace status             Show live AI stack & telemetry status
+  aq-workspace tools              List declared tools & readiness via aq-capabilities
+  aq-workspace plan               Show live program progress rollup via aq-pm-tracker
+  aq-workspace compact [agent]    Read-only session size diagnostics
+  aq-workspace reap               Reap detached/orphaned background agent daemons & monitors
+  aq-workspace list               List all active agentic workspace sessions
+  aq-workspace kill [session]     Terminate the named workspace session
+  aq-workspace reset [session]    Reset the named workspace session
+  aq-workspace --tui              Run single-window Rich TUI layout (no multiplexer)
+  aq-workspace --help             Show this help guide
+
+Floating Panes Navigation (Zellij):
+  Ctrl + p + w                    Toggle floating panes visibility on/off
+  Ctrl + p + e                    Toggle pane embed / float mode
+  Alt + h/j/k/l or Arrows         Move focus between panes (Left Main Agent <-> Right Sub-Agents)
+  Alt + n                         Next tab (Swarm Board -> Claude -> Codex -> Gemini -> Local -> Any Model)
+  Alt + p                         Previous tab
+  Alt + f                         Toggle fullscreen on active pane
+  Ctrl + q                        Detach safely from workspace session (leaves agents running!)
+
+Supported Models in Windows:
+  local                           Qwen3-35B on Local APU (llama.cpp :8080 / Switchboard :8085)
+  claude                          Claude 3.7 / Fable-5 (Switchboard :8085 Anthropic)
+  codex                           OpenAI Codex / GPT-6 Astra (Coordinator :8003 OpenAI)
+  gemini / antigravity            Google Antigravity / Gemini 3.8-Flash (Switchboard :8085 Google)
+  deepseek                        DeepSeek V3 / R1 (Switchboard :8085 DeepSeek)
+  mistral                         Mistral Large / Codestral (Switchboard :8085 Mistral)
+  <any-model-name>                Any arbitrary model or switchboard profile!
+
+EOF
+}
+
+# Handle subcommands
+case "${1:-}" in
+  --help|-h)
+    show_help
+    exit 0
+    ;;
+  resume|--resume|-r)
+    export AQ_WORKSPACE_MODE="resume"
+    shift
+    ;;
+  new|--new)
+    export AQ_WORKSPACE_MODE="new"
+    shift
+    ;;
+  claude)
+    exec "${SCRIPT_DIR}/aq-agent-launcher" "claude" "direct" "${@:2}"
+    ;;
+  codex)
+    exec "${SCRIPT_DIR}/aq-agent-launcher" "codex" "direct" "${@:2}"
+    ;;
+  local|qwen)
+    exec "${SCRIPT_DIR}/aq-agent-launcher" "local" "direct" "${@:2}"
+    ;;
+  gemini)
+    exec "${SCRIPT_DIR}/aq-agent-launcher" "gemini" "direct" "${@:2}"
+    ;;
+  antigravity)
+    exec "${SCRIPT_DIR}/aq-agent-launcher" "antigravity" "direct" "${@:2}"
+    ;;
+  status)
+    exec python3 "${SCRIPT_DIR}/aq-cockpit-monitor" --once
+    ;;
+  repl)
+    exec python3 "${SCRIPT_DIR}/aq-coordinator-repl" "${@:2}"
+    ;;
+  fleet)
+    exec python3 "${SCRIPT_DIR}/aq-fleet-monitor" "${@:2}"
+    ;;
+  subagents|tree)
+    exec python3 "${SCRIPT_DIR}/aq-fleet-monitor" --tree "${@:2}"
+    ;;
+  tools|toolchain|caps|capabilities)
+    exec python3 "${SCRIPT_DIR}/aq-capabilities" "${@:2}"
+    ;;
+  plan|tracker|pm)
+    exec python3 "${SCRIPT_DIR}/aq-pm-tracker" "${2:---all}" "${@:3}"
+    ;;
+  compact|autocompact)
+    exec python3 "${SCRIPT_DIR}/aq-session-compact" "${@:2}"
+    ;;
+  reap|reaper|cleanup)
+    exec "${SCRIPT_DIR}/aq-reap-orphans" "${@:2}"
+    ;;
+  agent|window)
+    MODEL="${2:-local}"
+    exec python3 "${SCRIPT_DIR}/aq-agent-window" --lane "$MODEL" "${@:3}"
+    ;;
+  list)
+    if command -v zellij >/dev/null 2>&1; then
+      echo "Active Zellij Agentic Sessions:"
+      (zellij list-sessions -n 2>/dev/null || zellij list-sessions 2>/dev/null) | sed -r 's/\x1B\[[0-9;]*[a-zA-Z]//g' | grep -E '^aq-' || echo "  (no active aq-* sessions)"
+    else
+      echo "Zellij is not installed on PATH."
+    fi
+    exit 0
+    ;;
+  reset|restart)
+    SESSION="${2:-$DEFAULT_SESSION}"
+    if command -v zellij >/dev/null 2>&1; then
+      zellij delete-session -f "$SESSION" 2>/dev/null || true
+    fi
+    echo "Cleared session: $SESSION. Re-spawning fresh SOTA layout..."
+    shift $(($# > 1 ? 2 : 1))
+    ;;
+  kill)
+    SESSION="${2:-$DEFAULT_SESSION}"
+    if command -v zellij >/dev/null 2>&1; then
+      zellij delete-session -f "$SESSION" 2>/dev/null && echo "Killed session: $SESSION" || echo "Session not found: $SESSION"
+    fi
+    exit 0
+    ;;
+  --tui|--standalone)
+    exec python3 "${REPO_ROOT}/scripts/ai/lib/unified_workspace_tui.py" "${@:2}"
+    ;;
+esac
+
+# Check for Zellij
+if ! command -v zellij >/dev/null 2>&1; then
+  echo "Notice: 'zellij' multiplexer not found. Falling back to unified single-window TUI..." >&2
+  exec python3 "${REPO_ROOT}/scripts/ai/lib/unified_workspace_tui.py" "$@"
+fi
+
+# Detect if already inside Zellij session
+if [[ -n "${ZELLIJ:-}" ]]; then
+  echo "Already inside a Zellij session ($ZELLIJ)."
+  echo "Launching Coordinator REPL directly in this pane..."
+  exec python3 "${SCRIPT_DIR}/aq-coordinator-repl" "$@"
+fi
+
+# Verify layout file exists
+if [[ ! -f "$LAYOUT_FILE" ]]; then
+  echo "Error: Layout file not found at $LAYOUT_FILE" >&2
+  exit 1
+fi
+
+SESSION_NAME="${1:-$DEFAULT_SESSION}"
+
+# Ensure proper terminal capabilities
+export TERM="${TERM:-xterm-256color}"
+if [ "$TERM" = "dumb" ]; then
+  export TERM="xterm-256color"
+fi
+
+# If not interactive TTY, render status snapshot
+if [[ ! -t 0 || ! -t 1 ]]; then
+  echo "Non-interactive environment detected. Printing cockpit telemetry:"
+  exec python3 "${SCRIPT_DIR}/aq-cockpit-monitor" --once
+fi
+
+# Check if session exists in zellij (strip ANSI codes and use -n if available)
+EXISTING_STATUS=""
+if command -v zellij >/dev/null 2>&1; then
+  EXISTING_STATUS="$( (zellij list-sessions -n 2>/dev/null || zellij list-sessions 2>/dev/null) | sed -r 's/\x1B\[[0-9;]*[a-zA-Z]//g' | grep -E "^${SESSION_NAME}( |$)" || true)"
+fi
+
+if [[ -n "$EXISTING_STATUS" ]]; then
+  if [[ "${AQ_WORKSPACE_MODE:-}" == "new" ]] || echo "$EXISTING_STATUS" | grep -qi "EXITED"; then
+    echo "Previous session '$SESSION_NAME' exited or --new requested. Recreating with SOTA layout..."
+    zellij delete-session -f "$SESSION_NAME" 2>/dev/null || true
+    exec zellij -s "$SESSION_NAME" -n "$LAYOUT_FILE"
+  else
+    echo "Attaching to active workspace session: $SESSION_NAME..."
+    exec zellij attach "$SESSION_NAME"
+  fi
+else
+  echo "Launching SOTA Agentic Workspace [$SESSION_NAME] in $PWD..."
+  echo "  • Left Board:  Main Models (Local Qwen, Claude, Codex, Gemini)"
+  echo "  • Right Board: Sub-Agents (Delegation Hierarchy Tree & Live Steering)"
+  # Fallback: if creation fails due to session already existing, cleanly attach
+  if ! zellij -s "$SESSION_NAME" -n "$LAYOUT_FILE"; then
+    echo "Session exists. Attaching to $SESSION_NAME..."
+    exec zellij attach "$SESSION_NAME"
+  fi
+fi

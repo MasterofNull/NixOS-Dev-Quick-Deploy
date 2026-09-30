@@ -36,7 +36,7 @@ class WorkflowValidator:
     """Validate workflows against schema and business rules."""
 
     # Valid agent IDs
-    VALID_AGENTS = {"qwen", "codex", "claude", "gemini"}
+    VALID_AGENTS = {"qwen", "codex", "claude", "gemini", "local", "antigravity"}
 
     # Valid memory layers
     VALID_LAYERS = {"L0", "L1", "L2", "L3"}
@@ -76,10 +76,10 @@ class WorkflowValidator:
         errors = []
 
         # Validate workflow name pattern
-        if not re.match(r"^[a-z][a-z0-9-]*$", workflow.name):
+        if not re.match(r"^[a-z][a-z0-9_-]*$", workflow.name):
             errors.append(
                 ValidationError(
-                    f"Workflow name '{workflow.name}' must match pattern: ^[a-z][a-z0-9-]*$",
+                    f"Workflow name '{workflow.name}' must match pattern: ^[a-z][a-z0-9_-]*$",
                     path="name",
                 )
             )
@@ -111,10 +111,10 @@ class WorkflowValidator:
         path_prefix = f"nodes[{index}]"
 
         # Validate node ID pattern
-        if not re.match(r"^[a-z][a-z0-9-]*$", node.id):
+        if not re.match(r"^[a-z][a-z0-9_-]*$", node.id):
             errors.append(
                 ValidationError(
-                    f"Node ID '{node.id}' must match pattern: ^[a-z][a-z0-9-]*$",
+                    f"Node ID '{node.id}' must match pattern: ^[a-z][a-z0-9_-]*$",
                     path=f"{path_prefix}.id",
                 )
             )
@@ -357,7 +357,7 @@ class WorkflowValidator:
 
             # Check exact match or prefix match
             found = False
-            if var_base in available_vars:
+            if var_base in available_vars or var_base == "state" or var_base.startswith("state."):
                 found = True
             else:
                 # Check if it's a prefix of any available variable

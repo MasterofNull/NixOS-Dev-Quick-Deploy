@@ -475,6 +475,33 @@ async def deny_request(request_id: str, body: DenyRequest):
     return {"request_id": request_id, "status": new_record["status"]}
 
 
+@router.post("/{request_id}/execute")
+async def execute_approved_request(request_id: str):
+    """Execute an approved runbook request through the audited executor."""
+    record = _store.get(request_id)
+    if record is None:
+        raise HTTPException(status_code=404, detail=_error_card("request_not_found"))
+    if record.get("status") != AR.STATUS_APPROVED:
+        raise HTTPException(status_code=409, detail=_error_card("not_approved"))
+    try:
+        import approval_executor as AE
+        outcome = AE.execute_request(
+            request_id,
+            load_record=lambda rid: _store.get(rid),
+            save_record=lambda r: _store._records.__setitem__(r["request_id"], r) if hasattr(_store, "_records") else None,
+            actor="acp-operator-execution",
+        )
+        return {
+            "request_id": request_id,
+            "ok": outcome.ok,
+            "reason": outcome.reason,
+            "status": outcome.record["status"] if outcome.record else record["status"],
+            "events": list(outcome.events),
+        }
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=_error_card("internal_error"))
+
+
 # --------------------------------------------------------------------------
 # Static approval view — mount at root (see module docstring wiring note).
 # Kiosk launch (systemd-run + dedicated uid + ephemeral profile) is the

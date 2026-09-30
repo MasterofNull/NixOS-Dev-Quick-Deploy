@@ -89,7 +89,7 @@ nodes:
 
   # Step 4: Configuration audit
   - id: config_audit
-    agent: ${auditor}
+    agent: ${agents.auditor}
     depends_on: [threat_model]
     prompt: |
       Audit security configurations.

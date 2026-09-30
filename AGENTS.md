@@ -23,8 +23,8 @@ ORIENT → RESEARCH → PRD/PLAN → MEMORY-CHECKPOINT → EXECUTE(slice) → VA
 - **PRD/PLAN**: write `.agent/PROJECT-<NAME>-PRD.md` before any multi-file implementation
 - **MEMORY-CHECKPOINT**: `mcp_server_store_memory` + **Intent Lock** (`.agent/collaboration/PENDING.json`) + **Atomic Resume** (`.agent/collaboration/RESUME.json`)
 - **EXECUTE**: one slice at a time; read before editing; **Atomic Pulse** (`.agent/collaboration/PULSE.log`)
-- **VALIDATE**: (1) **Live test** in the running system — catch runtime errors and friction; (2) fix issues found; (3) `scripts/governance/tier0-validation-gate.sh --pre-commit` + security checklist
-- **DOC-UPDATE**: update progressive docs (AGENTS.md, HANDOFF.md, agent .md files, CLAUDE.md); seed RAG collections (`error-solutions`, `best-practices`, `skills-patterns`) with new patterns; keep all references current and system hygienic
+- **VALIDATE**: (1) **Live test** in the running system — catch runtime errors and friction; (2) fix issues found; (3) run `scripts/governance/tier0-validation-gate.sh --pre-commit` + security checklist. The gate wrapper acquires and releases the tier0 checkout itself; do not manually acquire a second checkout around it.
+- **DOC-UPDATE**: dogfood findings back into the recursive self-improvement loops: record in issues-backlog.md & WORKAROUND-REGISTER.md; store facts in MemoryBroker (:8003); seed RAG collections (`error-solutions`, `best-practices`, `skills-patterns`); update progressive docs (AGENTS.md, HANDOFF.md, agent .md files, CLAUDE.md)
 - **COMMIT**: atomic commit + **Handoff Memo** (`.agent/collaboration/HANDOFF.md`)
 
 ## Skill Index — Lazy-Loaded Knowledge Modules
@@ -205,6 +205,9 @@ Statuses: `[OPEN]` · `[PENDING-REBUILD]` · `[IN-FLIGHT]` · `[DONE]`
   review trailers; earlier revision verdicts remain body evidence. Unavailable, timed-out, parked, or
   abstaining agents must not be credited as reviewers. Omit inapplicable authorship/review trailers.
   Trivial single-line commits may use the compact Step 8 form but retain atomicity and truthful evidence
+- **Memory, Cache & Token Efficiency Mandate (SOP)**: Zero runaway context. Sessions >2.5MB or >25 turns must diagnose size via `aq-session-compact` and compact via provider-supported mechanisms or fresh-session handoff before further turns; never archive or delete on-disk transcripts to simulate context compaction. Use the Tri-Phase Memory & Caching Loop: (1) frontend task prep via `lean-ctx` (`ctx_*`) and lightweight lazy cache/vector retrieval; (2) mid-phase AST scoping and vector search (`error-solutions`, `best-practices`); (3) backend task closeout updating MemoryBroker facts, seeding AIDB vectors, and updating `RESUME.json` for reuse by subsequent tasks.
+- **Recursive Self-Improvement (RSI) Closed-Loop Mandate (SOP)**: Every agent and task MUST close the self-improvement loop: (1) Detect & Measure: identify friction, tool contention, and anomalies; run the tier0 gate wrapper, which owns its checkout, to prevent agent races and hangs; (2) Diagnose & Register: root-cause issues into `.agent/memory/issues-backlog.md` (Rule 11a) and `.agent/WORKAROUND-REGISTER.md` (Rule 21); (3) Seed & Dogfood: store facts in MemoryBroker (`POST :8003/api/memory/facts`) and seed AIDB RAG (`error-solutions`, `best-practices`); (4) Synthesize Guards: enshrine automated guards, checks (`tier0.d/`) and tests to prevent recurrence; (5) Recursive Reuse: future tasks hydrate updated knowledge in Step 1 (ORIENT).
+
 
 ## Session Initialization (Mandatory)
 Every session MUST start with:
@@ -316,3 +319,58 @@ Prefer 3-5 repo-only slices before `nixos-quick-deploy.sh`. Deploy earlier only 
   3. `git add <file>` to stage the deletion
   4. The pre-archive-scan-hook will auto-block commits with broken refs
 - Never use `rm`/`rmdir` (Rule 12 — archive instead)
+
+<!-- canon:begin mvp-delivery-sop -->
+## Design, Build, and MVP Audit (owner directive 2026-09-27)
+
+This procedure governs delivery cadence for every agent and supersedes older
+requirements for repeated full expert rounds during ordinary implementation.
+The eight workflow steps remain; the depth of ceremony depends on the phase.
+
+### Design and freeze
+
+Use full, independent domain-expert teams across available model lanes for the
+PRD and plan. Cover architecture, implementation, UX, operations, measurement,
+failure modes, and security implications. Give teams the same evidence and
+criteria; consolidate disagreements into one decision record. Freeze the MVP
+scope, dependency contracts, owners, acceptance tests, rollout/rollback limits,
+and deferred questions as PLAN_READY or PLAN_READY_WITH_FOLLOWUPS. Existing
+approved plans are reused, not redrafted solely to satisfy this procedure.
+Record unavailable lanes honestly; never manufacture their consensus.
+
+### Build the working MVP
+
+Once the plan is frozen, prioritize implementation and end-to-end operation.
+Use bounded slices, the cheapest eligible implementers, and focused regression,
+integration, and live checks. Fix ordinary defects directly within the frozen
+scope. Do not require a fresh full expert round, debate, or all-model consensus
+for each implementation slice, fix, or commit. Collect non-blocking critique for
+the MVP audit instead of repeatedly reopening accepted design decisions.
+
+Keep atomic commits, evidence, service/dashboard coverage, and required automated
+gates. Preserve existing protections and explicit activation boundaries. A
+specific high-risk change may require targeted independent review; that is not
+a reason to restart the entire ceremony. Reopen only the affected decision for
+material scope/contract changes or critical correctness, data-loss, authority,
+or security defects. MVP implementation is not automatically release acceptance.
+
+Declare a working MVP only after the frozen end-to-end user journeys succeed
+with real dependencies, visible progress and terminal outcomes, and reproducible
+evidence. Source presence, green syntax checks, staged files, and simulated
+success do not prove operational readiness. Record limitations explicitly.
+
+### Full MVP audit and acceptance
+
+At the working MVP boundary, restore full expert scrutiny: independent code and
+runtime review, adversarial and failure testing, operator UX, performance,
+observability, and cross-model consensus. Review one exact integrated subject
+against the frozen criteria. Consolidate findings into one prioritized list;
+repair blockers and validate affected paths without restarting unrelated debate.
+Record real participant verdicts and outstanding concerns. Only that evidence
+can support release acceptance; deferred security/containment activation still
+requires its own readiness evidence and owner decision.
+
+Track delivery phase, demonstrable journeys, defects, and implementation versus
+live readiness separately. Measure time to working MVP and review overhead;
+never inflate progress to make the fast-build phase appear complete.
+<!-- canon:end mvp-delivery-sop -->

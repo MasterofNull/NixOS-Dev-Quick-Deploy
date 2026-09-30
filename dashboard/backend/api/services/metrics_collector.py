@@ -32,6 +32,8 @@ class MetricsCollector:
         # TTL caches for slow-changing data (avoid subprocess storm every second)
         self._security_signals_cache: Dict[str, Any] | None = None
         self._security_signals_ts: float = 0.0
+        self._agent_safety_cache: Dict[str, Any] | None = None
+        self._agent_safety_ts: float = 0.0
         self._net_interface_cache: str | None = None
         self._net_interface_ts: float = 0.0
         self._net_neighbors_cache: List[Dict[str, str]] | None = None
@@ -68,13 +70,14 @@ class MetricsCollector:
         # Run blocking helpers off the event loop.  Slow-changing data
         # (network topology, firewall state) uses a 30-second TTL cache to
         # avoid spawning subprocesses on every 1-second broadcast cycle.
-        primary_iface, active_conns, neighbors, cpu_temp, gpu_info, security = await asyncio.gather(
+        primary_iface, active_conns, neighbors, cpu_temp, gpu_info, security, agent_safety = await asyncio.gather(
             _cached_or_refresh(self._net_interface_cache, self._net_interface_ts, self._get_primary_network_interface),
             asyncio.to_thread(self._count_active_connections),
             _cached_or_refresh(self._net_neighbors_cache, self._net_neighbors_ts, self._get_network_neighbors),
             self._get_cpu_temperature(),
             self._get_gpu_info(),
             _cached_or_refresh(self._security_signals_cache, self._security_signals_ts, self._get_security_signals),
+            _cached_or_refresh(self._agent_safety_cache, self._agent_safety_ts, self._get_agent_safety_signals),
         )
 
         # Update slow-data caches
@@ -84,6 +87,8 @@ class MetricsCollector:
         self._net_neighbors_ts = now
         self._security_signals_cache = security
         self._security_signals_ts = now
+        self._agent_safety_cache = agent_safety
+        self._agent_safety_ts = now
 
         return {
             "cpu": {
@@ -114,6 +119,7 @@ class MetricsCollector:
             },
             "gpu": gpu_info,
             "security": security,
+            "agent_safety": agent_safety,
             "uptime": self._get_uptime(),
             "load_average": self._get_load_average(),
             "hostname": self._get_hostname(),
@@ -125,11 +131,67 @@ class MetricsCollector:
         return self.history[metric][-limit:]
 
     async def calculate_health_score(self) -> int:
+        """Calculate overall system health score (0-100) calibrated for an AI appliance.
+        
+        On an on-metal AI host (e.g. AMD Ryzen APU with local LLM residing in RAM),
+        high memory utilization is the expected baseline. Health is determined by:
+        1. Memory Headroom (available working RAM vs swap danger threshold)
+        2. CPU Throttle Margin (capacity headroom for background inference & ops)
+        3. Disk Headroom (NVMe capacity for vectors, logs, and AIDB)
+        4. Thermal Safety Margin (APU temperature under throttle limit)
+        """
         metrics = await self.get_system_metrics()
-        cpu_score = max(0, 100 - metrics["cpu"]["usage_percent"])
-        memory_score = max(0, 100 - metrics["memory"]["percent"])
-        disk_score = max(0, 100 - metrics["disk"]["percent"])
-        return int((cpu_score * 0.4) + (memory_score * 0.4) + (disk_score * 0.2))
+        
+        # 1. Memory Health (40% weight):
+        # Local 35B model naturally occupies ~18-20 GB.
+        # As long as available RAM >= 4.0 GB, memory health is 100%.
+        avail_gb = metrics["memory"]["free"] / (1024 ** 3)
+        if avail_gb >= 4.0:
+            memory_score = 100.0
+        elif avail_gb >= 2.0:
+            memory_score = 75.0 + 25.0 * ((avail_gb - 2.0) / 2.0)
+        elif avail_gb >= 1.0:
+            memory_score = 50.0 + 25.0 * ((avail_gb - 1.0) / 1.0)
+        else:
+            memory_score = max(0.0, avail_gb * 50.0)
+
+        # 2. CPU Capacity Headroom (25% weight):
+        # 0-50% CPU is active nominal duty cycle on a 16-thread host.
+        cpu_usage = metrics["cpu"]["usage_percent"]
+        if cpu_usage <= 50.0:
+            cpu_score = 100.0
+        elif cpu_usage <= 80.0:
+            cpu_score = 100.0 - (cpu_usage - 50.0) * 0.8
+        else:
+            cpu_score = max(0.0, 76.0 - (cpu_usage - 80.0) * 3.8)
+
+        # 3. Disk Storage Headroom (20% weight):
+        # NVMe drive has hundreds of GB free. Under 75% used is completely healthy.
+        disk_pct = metrics["disk"]["percent"]
+        if disk_pct <= 75.0:
+            disk_score = 100.0
+        elif disk_pct <= 90.0:
+            disk_score = 100.0 - (disk_pct - 75.0) * 2.0
+        else:
+            disk_score = max(0.0, 70.0 - (disk_pct - 90.0) * 7.0)
+
+        # 4. Thermal Safety Margin (15% weight):
+        # APU cool baseline is under 65°C; alert threshold is 75°C; throttle is 85°C.
+        temp_str = metrics["cpu"].get("temperature", "50.0°C")
+        try:
+            temp_val = float(str(temp_str).replace("°C", "").strip())
+        except (ValueError, TypeError):
+            temp_val = 50.0
+            
+        if temp_val <= 65.0:
+            thermal_score = 100.0
+        elif temp_val <= 75.0:
+            thermal_score = 100.0 - (temp_val - 65.0) * 2.5
+        else:
+            thermal_score = max(0.0, 75.0 - (temp_val - 75.0) * 7.5)
+
+        total_score = (memory_score * 0.40) + (cpu_score * 0.25) + (disk_score * 0.20) + (thermal_score * 0.15)
+        return int(round(min(100.0, max(0.0, total_score))))
 
     async def _get_cpu_temperature(self) -> str:
         try:
@@ -318,6 +380,62 @@ class MetricsCollector:
             "mandatory_access_control": {
                 "apparmor_active": apparmor_active,
             },
+        }
+
+    def _get_agent_safety_signals(self) -> Dict[str, Any]:
+        """Collect agent session bloat, orphan process health, and tool readiness."""
+        home = Path.home()
+        bloated_count = 0
+        max_mb = 0.0
+        codex_db = home / ".codex" / "state_5.sqlite"
+        if codex_db.is_file():
+            try:
+                import sqlite3
+                conn = sqlite3.connect(f"file:{codex_db}?mode=ro", uri=True)
+                cur = conn.cursor()
+                cur.execute("SELECT rollout_path FROM threads ORDER BY updated_at DESC LIMIT 5")
+                for (rp,) in cur.fetchall():
+                    p = Path(rp)
+                    if p.is_file():
+                        size_mb = p.stat().st_size / (1024 * 1024)
+                        max_mb = max(max_mb, size_mb)
+                        if size_mb > 2.5:
+                            bloated_count += 1
+                conn.close()
+            except Exception:
+                pass
+
+        orphans = 0
+        try:
+            curr_pid = os.getpid()
+            for proc in psutil.process_iter(["pid", "ppid", "cmdline"]):
+                try:
+                    if proc.info["pid"] == curr_pid:
+                        continue
+                    cmd = " ".join(proc.info["cmdline"] or [])
+                    ppid = proc.info["ppid"]
+                    if any(target in cmd for target in ["codex app-server", "aq-fleet-monitor", "aq-cockpit-monitor", "aq-agent-window"]):
+                        if ppid == 1:
+                            orphans += 1
+                except (psutil.NoSuchProcess, psutil.AccessDenied):
+                    pass
+        except Exception:
+            pass
+
+        return {
+            "session_safety": {
+                "safe": bloated_count == 0,
+                "bloated_sessions": bloated_count,
+                "max_session_mb": round(max_mb, 2),
+                "threshold_mb": 2.5,
+                "status": "nominal" if bloated_count == 0 else "bloat_warning",
+            },
+            "process_watchdog": {
+                "clean": orphans == 0,
+                "orphaned_count": orphans,
+                "status": "clean" if orphans == 0 else "orphans_detected",
+            },
+            "status": "nominal" if (bloated_count == 0 and orphans == 0) else "warning",
         }
 
     @staticmethod

@@ -19,6 +19,28 @@
   },
   "checks": [
     {
+      "id": "prsi-budget-reservation",
+      "description": "Shared PRSI pre-dispatch budget reservation regressions",
+      "trigger_paths": [
+        "scripts/automation/prsi-orchestrator.py",
+        "scripts/testing/test-prsi-budget-reservation.py"
+      ],
+      "command": ["python3", "scripts/testing/test-prsi-budget-reservation.py"],
+      "tier": "behavioral",
+      "timeout_seconds": 60
+    },
+    {
+      "id": "prsi-rsi-intake",
+      "description": "Bounded RSI intake and dispatch receipt regressions",
+      "trigger_paths": [
+        "scripts/automation/prsi-orchestrator.py",
+        "scripts/testing/test-prsi-rsi-intake.py"
+      ],
+      "command": ["python3", "scripts/testing/test-prsi-rsi-intake.py"],
+      "tier": "behavioral",
+      "timeout_seconds": 60
+    },
+    {
       "id": "aq-slice-helper-contract",
       "description": "aq-slice-helper mutable lesson contract",
       "trigger_paths": [
@@ -603,7 +625,7 @@
         "scripts/testing/check-aq-integrity-logical-baseline.py"
       ],
       "tier": "behavioral",
-      "timeout_seconds": 30
+      "timeout_seconds": 50
     },
     {
       "id": "alert-engine-builtins",

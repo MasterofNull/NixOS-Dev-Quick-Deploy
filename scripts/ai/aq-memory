@@ -82,12 +82,9 @@ class InMemoryFactStore:
     def _save(self):
         """Save facts to storage file"""
         self.storage_file.parent.mkdir(parents=True, exist_ok=True)
-        try:
-            with open(self.storage_file, 'w') as f:
-                data = [fact.to_dict() for fact in self.facts]
-                json.dump(data, f, indent=2)
-        except Exception as e:
-            print(f"Error: Could not save facts to {self.storage_file}: {e}", file=sys.stderr)
+        with open(self.storage_file, 'w') as f:
+            data = [fact.to_dict() for fact in self.facts]
+            json.dump(data, f, indent=2)
 
     def add(self, fact: TemporalFact) -> str:
         """Add a new fact"""
