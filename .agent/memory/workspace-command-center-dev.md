@@ -105,3 +105,47 @@ aq-workspace gemini
 # Verify Dashboard API status and health score
 curl -s http://127.0.0.1:8889/api/metrics/health-score
 ```
+
+---
+
+## 7. Token Economics & Rate Limit Protection (Incident 2026-09-26)
+
+### 7.1 Incident Root Cause Analysis (Codex 5-Hour Limit Depletion in < 2 Min)
+- **Zellij Multi-Tab Eager Process Spawning**:
+  - When `aq-workspace` spawned the KDL layout, Zellij eagerly initialized all panes across all 8 tabs.
+  - Redundant panes across tabs caused 3 concurrent Codex CLI instances, 3 Claude instances, and 3 Gemini instances to execute simultaneously in the background.
+- **Uncompacted Monster Thread Resumption (`codex resume`)**:
+  - `codex resume` re-attached to active thread `01a0db56-d926-7a10-baa4-1e49d858b0fc` (13 MB rollout, 3,115 items, 56.4M cumulative tokens).
+  - The thread's active context was **225,219 tokens per turn** (against a 258,400 max context window).
+  - The thread had an active background loop polling subagents (`tools.write_stdin` and `exec_command` every 7-10 seconds).
+  - Re-evaluating 225k tokens every 8 seconds consumed **1.7M tokens/minute**, instantly exhausting OpenAI's rolling usage limit in under 40 seconds (`usage_limit_exceeded`, reset at 4:10 AM).
+
+### 7.2 Systemic Safeguards Deployed
+1. **Standby-by-Default Execution (`prompt` mode)**:
+   - In `aq-agentic-workspace.kdl`, all panes now pass `"prompt"` explicitly: `command "aq-agent-launcher"` `args "<agent>" "prompt"`.
+   - Panes launch into a lightweight interactive standby menu waiting for user selection (`read -n 1`). Zero LLM processes, zero tokens, and zero CPU are consumed until the operator explicitly activates a pane.
+2. **Session Token Safety Gate (`check_session_token_safety`)**:
+   - `aq-agent-launcher` dynamically inspects the target thread/session before resuming:
+     - **Codex**: Queries `~/.codex/state_5.sqlite` for the latest rollout file size and line count.
+     - **Claude**: Inspects the latest `.jsonl` session file in `~/.claude/projects/`.
+   - If the session exceeds safety thresholds (>3MB or >1,000 lines for Codex; >5MB or >2,500 lines for Claude), automatic resumption is blocked.
+   - The launcher alerts the operator with an explicit warning banner showing token burn risk and provides options to start clean or force resume.
+3. **Clean Session Default**:
+   - The default action on `[Enter]` is now `[1] Start Clean Session (0 Context Bloat)` rather than blind resumption. Fresh sessions start at ~1,500 tokens instead of 225,000 tokens.
+
+### 7.3 Session diagnostics and scoped shutdown (corrected 2026-09-27)
+- `aq-session-compact` reports oversized transcripts for this repository. Both normal
+  and dry-run modes are read-only. It does not reset live context, delete provider
+  sessions, or replace RESUME.json. Use supported compaction or a fresh-session handoff.
+- `aq-workspace kill/reset` targets only the named Zellij session. Global process
+  reaping is no longer an implicit side effect; unrelated workspaces are preserved.
+- Historical compaction claims below describe the earlier implementation and are
+  not evidence of safe session handling or current token usage.
+
+### 7.4 Dogfooding Verification & System Telemetry
+- **Compaction Sweep**: Compacted 209 + 136 bloated sessions across Codex and Claude (recovering >2GB uncompressed JSONL, saving 625MB compressed). Active session bloat reduced to 0.
+- **Orphan Sweep**: Swept running processes via `aq-reap-orphans`; verified 0 orphaned agent daemons active.
+- **State Reconstruction**: Verified `aq-resume` restores lean working set in ~150 tokens.
+- **Harness Integration**: Verified real-time telemetry cockpit via `aq-workspace status` and ranked vector hints via `aq-hints`. All services nominal.
+- **Test Matrix**: `test-aq-workspace.py` passes 14/14 tests; Tier 0 pre-commit gate passes cleanly.
+

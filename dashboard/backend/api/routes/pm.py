@@ -33,6 +33,7 @@ from pathlib import Path
 _TRACKER_ENV = {
     **os.environ,
     "PATH": "/run/current-system/sw/bin:/run/wrappers/bin:" + os.environ.get("PATH", ""),
+    "AQ_PM_ALLOW_CACHE": "1",
 }
 
 from fastapi import APIRouter, HTTPException

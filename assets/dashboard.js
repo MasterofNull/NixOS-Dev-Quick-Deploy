@@ -257,6 +257,9 @@ async function loadFleet() {
     apiFetch("/collaboration/locks").catch(() => ({ locks: [] })),
   ]);
 
+  loadCapabilities();
+  loadAcpRunbooks();
+
   const countEl = document.getElementById("fleet-count");
   if (countEl)
     countEl.textContent = `${(fleet.agents || []).length} Agents Active`;
@@ -298,6 +301,104 @@ async function loadFleet() {
         { source: "c1", target: "a1" },
       ],
     });
+  }
+}
+
+async function loadCapabilities() {
+  const [data, sysMetrics] = await Promise.all([
+    apiFetch("/capabilities/overview").catch(() => null),
+    apiFetch("/metrics/system").catch(() => null),
+  ]);
+  const el = document.getElementById("capabilitiesOverviewDetails");
+  const badge = document.getElementById("capabilitiesBadge");
+  if (!el) return;
+  if (!data || data.status !== "ok") {
+    el.innerHTML = fwRow("Status", "Unavailable", "warn");
+    return;
+  }
+  if (badge) {
+    badge.textContent = `${data.tools.ready}/${data.tools.count} Tools Ready`;
+    badge.className = "card-badge badge-ok";
+  }
+  const toolList = Object.values(data.tools.items || {})
+    .map(t => `<span class="em-tag ${t.reachable ? 'tag-pass' : 'tag-warn'}" title="${t.path}">${t.name}</span>`)
+    .join(" ");
+
+  const safety = (sysMetrics && sysMetrics.agent_safety) || {};
+  const sessSafety = safety.session_safety || {};
+  const procWatchdog = safety.process_watchdog || {};
+
+  const sessTxt = sessSafety.safe 
+    ? `0 bloated (${sessSafety.max_session_mb || 0} MB peak · <${sessSafety.threshold_mb || 2.5}MB limit)`
+    : `${sessSafety.bloated_sessions} bloated sessions (>2.5MB!)`;
+  const sessStatus = sessSafety.safe ? "ok" : "err";
+
+  const procTxt = procWatchdog.clean
+    ? `0 orphans active (clean)`
+    : `${procWatchdog.orphaned_count} runaway processes detected`;
+  const procStatus = procWatchdog.clean ? "ok" : "warn";
+
+  el.innerHTML = [
+    fwRow("Shared Toolchain", `ST-1..ST-4 active (${data.toolchain.activation})`, "ok"),
+    fwRow("Baseline Tools", toolList, "ok"),
+    fwRow("Session Token Safety", sessTxt, sessStatus),
+    fwRow("Process Watchdog", procTxt, procStatus),
+    fwRow("Skills Library", `${data.skills.count} modules (${data.skills.routing})`, "ok"),
+    fwRow("Workflows Engine", `${data.workflows.total} total (${data.workflows.yaml_workflows} YAML + ${data.workflows.runbooks.length} runbooks)`, "ok"),
+    fwRow("Agnostic Roles", data.roles.items.join(" · "), "info"),
+    fwRow("Slash Commands", `${data.commands.count} operational (/prime, /commit, ...)`, "info"),
+  ].join("");
+}
+
+async function loadAcpRunbooks() {
+  const [approvalsList, pending] = await Promise.all([
+    apiFetch("/approvals").catch(() => []),
+    apiFetch("/approvals/pending").catch(() => null),
+  ]);
+  const el = document.getElementById("acpRunbooksDetails");
+  const badge = document.getElementById("acpRunbooksBadge");
+  if (!el) return;
+  const list = Array.isArray(approvalsList) ? approvalsList : [];
+  if (badge) {
+    const count = list.length;
+    badge.textContent = count > 0 ? `${count} Pending` : "0 Pending";
+    badge.className = `card-badge ${count > 0 ? "badge-warn" : "badge-ok"}`;
+  }
+  if (list.length === 0) {
+    el.innerHTML = '<div style="color:var(--fg3);font-size:.62rem;padding:.4rem 0">No pending ACP runbooks. All control actions authorized.</div>';
+    return;
+  }
+  el.innerHTML = list.map(item => `
+    <div style="background:rgba(255,255,255,0.02);border:1px solid rgba(0,217,255,0.15);border-radius:4px;padding:0.4rem 0.6rem;margin-bottom:0.4rem;font-size:0.62rem;">
+      <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:2px;">
+        <span style="font-weight:700;color:var(--cyan);">${item.title}</span>
+        <span class="card-badge ${item.impact === 'low' ? 'badge-ok' : item.impact === 'medium' ? 'badge-warn' : 'badge-err'}">${item.impact.toUpperCase()}</span>
+      </div>
+      <div style="color:var(--fg2);margin-bottom:4px;">${item.what}</div>
+      <div style="display:flex;justify-content:space-between;align-items:center;">
+        <span style="color:var(--fg3);font-size:0.56rem;">ID: ${item.request_id.slice(0, 16)}…</span>
+        <button class="ctrl-btn btn-steer" onclick="executeAcpRunbook('${item.request_id}')" style="padding:1px 6px;font-size:0.58rem;">[AUTHORIZE &amp; RUN]</button>
+      </div>
+    </div>
+  `).join("");
+}
+
+async function executeAcpRunbook(requestId) {
+  try {
+    const res = await fetch(`/api/approvals/${requestId}/execute`, {
+      method: "POST",
+      headers: { "Content-Type": "application/json" }
+    });
+    if (res.ok) {
+      alert(`Runbook ${requestId} executed successfully through audited executor.`);
+      loadAcpRunbooks();
+      loadApprovals();
+    } else {
+      const err = await res.json().catch(() => ({}));
+      alert(`Runbook execution returned: ${JSON.stringify(err)}`);
+    }
+  } catch (e) {
+    alert(`Execution error: ${e}`);
   }
 }
 
@@ -3171,7 +3272,13 @@ async function loadApprovals() {
   const tot = (d && d.available && d.total != null) ? d.total : 0;
   kpi.textContent = String(tot);
   kpi.className = `kpi-v${tot > 0 ? " warn" : " ok"}`;
-  kpi.title = (d && d.available) ? `repairs: ${d.repairs_pending_review} · deployments: ${d.deployment_approvals}` : "0 pending approvals";
+  const parts = [];
+  if (d && d.available) {
+    if (d.repairs_pending_review) parts.push(`repairs: ${d.repairs_pending_review}`);
+    if (d.deployment_approvals) parts.push(`deployments: ${d.deployment_approvals}`);
+    if (d.acp_pending_runbooks) parts.push(`acp runbooks: ${d.acp_pending_runbooks}`);
+  }
+  kpi.title = parts.length > 0 ? parts.join(" · ") : `${tot} pending approvals`;
 }
 
 async function loadIntelligence() {
@@ -4714,22 +4821,29 @@ async function loadPRSI() {
   if (!el) return;
   const items = d && d.prsi && d.prsi.actions ? d.prsi.actions : [];
   setText("prsiBadge", `${items.length}`);
-  el.innerHTML =
-    items
-      .slice(0, 10)
-      .map(
-        (a) =>
-          `<div class="check-item">
-      <span class="ci-id">${a.action || a.id || "--"}</span>
-      <span class="ci-desc">${a.raw_action ? JSON.stringify(a.raw_action).slice(0, 60) : a.label || ""
-          }</span>
-      <span class="ci-status" style="color:var(--fg3);font-size:.56rem">${relTime(
-            a.created_at
-          )}</span>
-    </div>`
-      )
-      .join("") ||
-    '<div style="color:var(--fg3);font-size:.62rem;padding:.5rem">Queue empty</div>';
+  el.replaceChildren();
+  const summary = document.createElement("div");
+  const rsi = d?.prsi?.rsi;
+  summary.className = "check-item";
+  summary.textContent = rsi
+    ? `RSI: ${rsi.pending} pending · ${rsi.running} running · ${rsi.failed} failed · ${rsi.stalled} stalled · ${rsi.awaiting_validation} awaiting validation${rsi.oldest_pending ? ` · oldest ${relTime(rsi.oldest_pending)}` : ""}`
+    : "RSI repair status unavailable";
+  el.append(summary);
+  for (const a of items.slice(0, 10)) {
+    const row = document.createElement("div");
+    row.className = "check-item";
+    for (const [className, value] of [
+      ["ci-id", a.action || a.id || "--"],
+      ["ci-desc", a.label || a.id || ""],
+      ["ci-status", a.status || relTime(a.created_at)],
+    ]) {
+      const cell = document.createElement("span");
+      cell.className = className;
+      cell.textContent = value;
+      row.append(cell);
+    }
+    el.append(row);
+  }
 }
 
 async function loadRuntimeDetails() {

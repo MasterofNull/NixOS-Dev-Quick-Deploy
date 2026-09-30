@@ -20,22 +20,22 @@ layout {
             pane split_direction="horizontal" size="52%" {
                 pane split_direction="vertical" size="50%" {
                     pane name="󰚩 Local Qwen3-35B (Local APU :8080)" focus=true {
-                        command "aq-agent-window"
-                        args "--lane" "local"
+                        command "aq-agent-launcher"
+                        args "local" "prompt"
                     }
-                    pane name="󰚩 Claude 3.7 / Fable-5 (Anthropic :8085)" {
-                        command "aq-agent-window"
-                        args "--lane" "claude"
+                    pane name="󰚩 Claude 3.7 / Fable-5 (Anthropic CLI)" {
+                        command "aq-agent-launcher"
+                        args "claude" "prompt"
                     }
                 }
                 pane split_direction="vertical" size="50%" {
-                    pane name="󰚩 OpenAI Codex / GPT-6 Astra (OpenAI :8003)" {
-                        command "aq-agent-window"
-                        args "--lane" "codex"
+                    pane name="󰚩 OpenAI Codex / GPT-6 Astra (Codex CLI)" {
+                        command "aq-agent-launcher"
+                        args "codex" "prompt"
                     }
-                    pane name="󰚩 Google Antigravity / Gemini 3.8-Flash (Google :8085)" {
-                        command "aq-agent-window"
-                        args "--lane" "gemini"
+                    pane name="󰚩 Google Antigravity / Gemini 3.8-Flash (Gemini CLI)" {
+                        command "aq-agent-launcher"
+                        args "gemini" "prompt"
                     }
                 }
             }
@@ -59,20 +59,20 @@ layout {
         floating_panes {
             // LEFT BOARD: Main Models 2x2
             pane x="1%" y="3%" width="24%" height="45%" name="󰚩 Local Qwen3-35B (APU)" focus=true {
-                command "aq-agent-window"
-                args "--lane" "local"
+                command "aq-agent-launcher"
+                args "local" "prompt"
             }
-            pane x="25%" y="3%" width="24%" height="45%" name="󰚩 Claude 3.7 / Fable-5" {
-                command "aq-agent-window"
-                args "--lane" "claude"
+            pane x="25%" y="3%" width="24%" height="45%" name="󰚩 Claude 3.7 / Fable-5 (Anthropic CLI)" {
+                command "aq-agent-launcher"
+                args "claude" "prompt"
             }
-            pane x="1%" y="49%" width="24%" height="47%" name="󰚩 OpenAI Codex / GPT-6 Astra" {
-                command "aq-agent-window"
-                args "--lane" "codex"
+            pane x="1%" y="49%" width="24%" height="47%" name="󰚩 OpenAI Codex / GPT-6 Astra (Codex CLI)" {
+                command "aq-agent-launcher"
+                args "codex" "prompt"
             }
-            pane x="25%" y="49%" width="24%" height="47%" name="󰚩 Google Antigravity / Gemini 3.8-Flash" {
-                command "aq-agent-window"
-                args "--lane" "gemini"
+            pane x="25%" y="49%" width="24%" height="47%" name="󰚩 Google Antigravity / Gemini 3.8-Flash (Gemini CLI)" {
+                command "aq-agent-launcher"
+                args "gemini" "prompt"
             }
             // RIGHT BOARD: Sub-Agents Tree & Interactive Console
             pane x="50%" y="3%" width="49%" height="40%" name="󰚩 Sub-Agent Delegation Hierarchy Tree" {
@@ -104,8 +104,8 @@ layout {
     tab name="Claude & Sub-Agents" {
         pane split_direction="vertical" {
             pane size="55%" name="󰚩 Claude 3.7 / Fable-5 Console (Left Board)" focus=true {
-                command "aq-agent-window"
-                args "--lane" "claude"
+                command "aq-agent-launcher"
+                args "claude" "prompt"
             }
             pane split_direction="horizontal" size="45%" {
                 pane size="40%" name="󰚩 Claude Sub-Agent Delegation Tree (Right Board)" {
@@ -122,8 +122,8 @@ layout {
     tab name="Codex & Sub-Agents" {
         pane split_direction="vertical" {
             pane size="55%" name="󰚩 OpenAI Codex / GPT-6 Astra Console (Left Board)" focus=true {
-                command "aq-agent-window"
-                args "--lane" "codex"
+                command "aq-agent-launcher"
+                args "codex" "prompt"
             }
             pane split_direction="horizontal" size="45%" {
                 pane size="40%" name="󰚩 Codex Sub-Agent Delegation Tree (Right Board)" {
@@ -140,8 +140,8 @@ layout {
     tab name="Gemini & Sub-Agents" {
         pane split_direction="vertical" {
             pane size="55%" name="󰚩 Google Antigravity / Gemini 3.8-Flash Console (Left Board)" focus=true {
-                command "aq-agent-window"
-                args "--lane" "gemini"
+                command "aq-agent-launcher"
+                args "gemini" "prompt"
             }
             pane split_direction="horizontal" size="45%" {
                 pane size="40%" name="󰚩 Antigravity Sub-Agent Delegation Tree (Right Board)" {
@@ -158,8 +158,8 @@ layout {
     tab name="Local Qwen & Sub-Agents" {
         pane split_direction="vertical" {
             pane size="55%" name="󰚩 Local Qwen3-35B APU Console (Left Board)" focus=true {
-                command "aq-agent-window"
-                args "--lane" "local"
+                command "aq-agent-launcher"
+                args "local" "prompt"
             }
             pane split_direction="horizontal" size="45%" {
                 pane size="40%" name="󰚩 Local Sub-Agent Delegation Tree (Right Board)" {

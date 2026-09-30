@@ -37,6 +37,7 @@ from drop_spec import DropSpec, DropSpecError              # noqa: E402
 from task_config import TaskConfig                         # noqa: E402
 from task_registry import TaskRegistry                     # noqa: E402
 from dispatch import classify_mode, dispatch_task          # noqa: E402
+from context_boundary import record_boundary               # noqa: E402
 
 try:
     from attention_queue import push
@@ -184,6 +185,17 @@ def _process_drop(drop_path: Path, registry: TaskRegistry) -> None:
         return
 
     if success:
+        try:
+            result = record_boundary(
+                _REPO_ROOT,
+                "drop",
+                drop_path.stat().st_size + len(spec.prompt.encode("utf-8")),
+                task=f"drop {spec.drop_id}",
+            )
+            if result["status"] != "ok":
+                log.warning("context boundary status=%s handoff=%s", result["status"], result.get("handoff"))
+        except Exception as exc:
+            log.warning("context boundary meter unavailable for drop=%s: %s", drop_path.name, exc)
         _archive(drop_path)
     else:
         _fail(drop_path, "dispatch_task returned False")

@@ -1,0 +1,422 @@
+#!/usr/bin/env python3
+"""aq-capabilities — AQ-OS Capability Manifest & Shared Toolchain Readiness CLI.
+
+ST-3 & ST-4 (.agents/plans/factory-shared-toolchain/DESIGN.md):
+The capability manifest is a RECORD for reproducibility and readiness reporting,
+never a runtime gate. A running agent reaches any tool live via `aq-tool <pkg>`
+with no restart and no permission check.
+
+This CLI provides:
+1. `aq-capabilities list` (default): inspect declared tools and their availability state.
+2. `aq-capabilities add <pkg>`: append a required/used tool to the manifest mid-session.
+3. `aq-capabilities contribute <pkg>`: open a governed toolchain contribution proposal (ST-4).
+4. `aq-capabilities check`: preflight readiness scan (WARN on declared-but-missing).
+5. `aq-capabilities overview`: unified view of AQ-OS capabilities (tools, skills, workflows, roles).
+
+Usage:
+  aq-capabilities                       List declared tools and availability status
+  aq-capabilities list [--json]         List declared tools with availability checks
+  aq-capabilities add <pkg> [--name <name>] [--category <cat>] [--required]
+                                        Append a tool to the project capability manifest
+  aq-capabilities contribute <pkg> [--name <name>] [--profile <prof>] [--justification <msg>]
+                                        Open a governed toolchain contribution proposal (ST-4)
+  aq-capabilities check [--strict]      Run preflight readiness check (WARNs on missing)
+  aq-capabilities overview [--json]     Full AQ-OS capability inventory summary
+  aq-capabilities --help                Show this help message
+"""
+
+from __future__ import annotations
+
+import argparse
+import json
+import os
+import shutil
+import sys
+from datetime import datetime, timezone
+from pathlib import Path
+from typing import Any, Dict, List, Optional, Tuple
+
+REPO_ROOT = Path(__file__).resolve().parents[2]
+DEFAULT_MANIFEST_PATH = REPO_ROOT / ".factory" / "capabilities.json"
+FALLBACK_MANIFEST_PATH = REPO_ROOT / ".aq-capabilities.json"
+SKILL_INDEX_PATH = REPO_ROOT / ".agent" / "SKILL_INDEX.md"
+SKILLS_DIR = REPO_ROOT / ".agent" / "skills"
+WORKFLOW_CANON_PATH = REPO_ROOT / ".agent" / "WORKFLOW-CANON.md"
+ROLE_MATRIX_PATH = REPO_ROOT / "docs" / "architecture" / "role-matrix.md"
+COMMANDS_DIR = REPO_ROOT / ".claude" / "commands"
+
+# Baseline tools defined in nix/modules/roles/agentic-toolchain.nix and base.nix
+BASELINE_TOOLS: List[Dict[str, str]] = [
+    {"name": "playwright", "package": "playwright-driver", "category": "testing", "source": "agentic-toolchain"},
+    {"name": "tmux", "package": "tmux", "category": "multiplexer", "source": "agentic-toolchain"},
+    {"name": "watch", "package": "procps", "category": "observability", "source": "agentic-toolchain"},
+    {"name": "ripgrep", "package": "ripgrep", "category": "search", "source": "basePackageNames"},
+    {"name": "jq", "package": "jq", "category": "json", "source": "basePackageNames"},
+    {"name": "git", "package": "git", "category": "vcs", "source": "basePackageNames"},
+    {"name": "curl", "package": "curl", "category": "network", "source": "basePackageNames"},
+    {"name": "fd", "package": "fd", "category": "search", "source": "ai-dev-profile"},
+]
+
+
+def resolve_manifest_path(explicit_path: Optional[str] = None) -> Path:
+    if explicit_path:
+        return Path(explicit_path).resolve()
+    if DEFAULT_MANIFEST_PATH.is_file():
+        return DEFAULT_MANIFEST_PATH
+    if FALLBACK_MANIFEST_PATH.is_file():
+        return FALLBACK_MANIFEST_PATH
+    return DEFAULT_MANIFEST_PATH
+
+
+def load_manifest(manifest_path: Path) -> Dict[str, Any]:
+    if manifest_path.is_file():
+        try:
+            return json.loads(manifest_path.read_text(encoding="utf-8"))
+        except Exception as exc:
+            sys.stderr.write(f"Warning: could not parse manifest {manifest_path}: {exc}\n")
+    return {
+        "schema_version": "1.0.0",
+        "project": REPO_ROOT.name,
+        "updated_at": datetime.now(timezone.utc).isoformat(),
+        "declared_tools": list(BASELINE_TOOLS),
+    }
+
+
+def save_manifest(manifest_path: Path, manifest: Dict[str, Any]) -> None:
+    manifest_path.parent.mkdir(parents=True, exist_ok=True)
+    manifest["updated_at"] = datetime.now(timezone.utc).isoformat()
+    manifest_path.write_text(json.dumps(manifest, indent=2) + "\n", encoding="utf-8")
+
+
+KNOWN_TOOLCHAIN_PACKAGES = {
+    "playwright", "playwright-driver", "tmux", "procps", "watch",
+    "ripgrep", "rg", "jq", "yq", "git", "curl", "fd",
+    "shellcheck", "nodejs", "nodejs_22", "python3", "ffmpeg",
+    "k6", "terraform", "gdal", "hello", "clippy", "rustfmt",
+    "rust-analyzer", "bottom", "procs"
+}
+
+
+def check_tool_reachability(package: str, command_name: Optional[str] = None) -> Tuple[str, str]:
+    """Check tool availability without ever gating execution.
+    Returns (status, detail) where status in (PRESENT_ON_PATH, REACHABLE_ON_DEMAND, ABSENT).
+    """
+    cmd = command_name or package
+    # 1. Is it directly on PATH?
+    path_hit = shutil.which(cmd) or shutil.which(package)
+    if path_hit:
+        return ("PRESENT_ON_PATH", f"found on PATH: {path_hit}")
+
+    # 2. Is aq-tool available and package in known shared toolchain?
+    aq_tool = REPO_ROOT / "scripts" / "ai" / "aq-tool"
+    norm_pkg = package.lower().strip()
+    norm_cmd = cmd.lower().strip()
+    if aq_tool.is_file() and os.access(aq_tool, os.X_OK):
+        if norm_pkg in KNOWN_TOOLCHAIN_PACKAGES or norm_cmd in KNOWN_TOOLCHAIN_PACKAGES:
+            return ("REACHABLE_ON_DEMAND", f"reachable live via aq-tool {package}")
+
+    return ("ABSENT", f"missing from PATH and not in shared toolchain baseline")
+
+
+def cmd_list(args: argparse.Namespace) -> int:
+    manifest_path = resolve_manifest_path(args.manifest)
+    manifest = load_manifest(manifest_path)
+    tools = manifest.get("declared_tools", [])
+
+    results = []
+    for item in tools:
+        pkg = item.get("package", item.get("name"))
+        name = item.get("name", pkg)
+        status, detail = check_tool_reachability(pkg, name)
+        results.append({
+            "name": name,
+            "package": pkg,
+            "category": item.get("category", "general"),
+            "required": item.get("required", False),
+            "status": status,
+            "detail": detail,
+        })
+
+    if args.json:
+        print(json.dumps({"manifest": str(manifest_path), "tools": results}, indent=2))
+        return 0
+
+    print(f"AQ-OS Capability Manifest — {manifest_path.relative_to(REPO_ROOT) if manifest_path.is_relative_to(REPO_ROOT) else manifest_path}")
+    print(f"Total Declared Tools: {len(results)}\n")
+    print(f"{'NAME':<15} {'PACKAGE':<18} {'CATEGORY':<14} {'STATUS':<20} {'DETAIL'}")
+    print("─" * 80)
+    for r in results:
+        status_color = ""
+        if r["status"] == "PRESENT_ON_PATH":
+            badge = "[PRESENT]"
+        elif r["status"] == "REACHABLE_ON_DEMAND":
+            badge = "[ON-DEMAND]"
+        else:
+            badge = "[ABSENT]"
+        print(f"{r['name']:<15} {r['package']:<18} {r['category']:<14} {badge:<20} {r['detail']}")
+    return 0
+
+
+def cmd_add(args: argparse.Namespace) -> int:
+    manifest_path = resolve_manifest_path(args.manifest)
+    manifest = load_manifest(manifest_path)
+    tools = manifest.setdefault("declared_tools", [])
+
+    name = args.name or args.package
+    # Check if already declared
+    for existing in tools:
+        if existing.get("name") == name or existing.get("package") == args.package:
+            existing["package"] = args.package
+            if args.category:
+                existing["category"] = args.category
+            if args.required:
+                existing["required"] = True
+            save_manifest(manifest_path, manifest)
+            print(f"Updated declared tool '{name}' in {manifest_path}")
+            return 0
+
+    new_tool = {
+        "name": name,
+        "package": args.package,
+        "category": args.category or "general",
+        "required": args.required,
+        "declared_at": datetime.now(timezone.utc).isoformat(),
+    }
+    tools.append(new_tool)
+    save_manifest(manifest_path, manifest)
+    print(f"Declared new tool '{name}' (package: {args.package}) in {manifest_path}")
+    return 0
+
+
+def cmd_contribute(args: argparse.Namespace) -> int:
+    """ST-4: Governed contribute-back flow.
+    Opens a toolchain contribution proposal, records it under .agents/proposals/,
+    and verifies live on-demand reachability without gating runtime execution.
+    """
+    package = args.package
+    name = args.name or package
+    category = args.category or "tools"
+    profile = args.profile or "baseline"
+    justification = args.justification or "Required toolchain dependency for agent workflows"
+
+    # 1. Ensure tool is declared locally in manifest
+    manifest_path = resolve_manifest_path(args.manifest)
+    manifest = load_manifest(manifest_path)
+    tools = manifest.setdefault("declared_tools", [])
+    if not any(t.get("name") == name or t.get("package") == package for t in tools):
+        tools.append({
+            "name": name,
+            "package": package,
+            "category": category,
+            "required": True,
+            "declared_at": datetime.now(timezone.utc).isoformat(),
+        })
+        save_manifest(manifest_path, manifest)
+
+    # 2. Check reachability
+    status, detail = check_tool_reachability(package, name)
+
+    # 3. Create governed contribution record
+    proposals_dir = REPO_ROOT / ".agents" / "proposals"
+    proposals_dir.mkdir(parents=True, exist_ok=True)
+    timestamp = datetime.now(timezone.utc).strftime("%Y%m%d%H%M%S")
+    proposal_file = proposals_dir / f"toolchain-contribution-{package}-{timestamp}.json"
+
+    proposal_payload = {
+        "type": "toolchain-contribution",
+        "package": package,
+        "name": name,
+        "category": category,
+        "profile": profile,
+        "justification": justification,
+        "submitted_at": datetime.now(timezone.utc).isoformat(),
+        "reachability": {
+            "status": status,
+            "detail": detail,
+        },
+        "target_ssot": "nix/modules/roles/agentic-toolchain.nix",
+        "governance_gates": [
+            "capability-intake",
+            "flake-review"
+        ],
+        "live_reach_command": f"aq-tool {package}",
+        "status": "proposed"
+    }
+
+    proposal_file.write_text(json.dumps(proposal_payload, indent=2) + "\n", encoding="utf-8")
+
+    if getattr(args, "json", False):
+        print(json.dumps({
+            "status": "proposed",
+            "proposal_file": str(proposal_file.relative_to(REPO_ROOT)),
+            "package": package,
+            "reachability": status,
+            "live_command": f"aq-tool {package}"
+        }, indent=2))
+        return 0
+
+    print(f"=== Toolchain Contribution Opened (ST-4) ===")
+    print(f"Package:        {package} (name: {name})")
+    print(f"Target Profile: {profile} in nix/modules/roles/agentic-toolchain.nix")
+    print(f"Justification:  {justification}")
+    print(f"Proposal SSOT:  {proposal_file.relative_to(REPO_ROOT)}")
+    print(f"Live Reach:     Live immediately via `aq-tool {package}` (ungoverned, zero-gate)")
+    print(f"Fleet Review:   Queued for FT-6 / capability-intake review before permanent flake pin")
+    return 0
+
+
+def cmd_check(args: argparse.Namespace) -> int:
+    manifest_path = resolve_manifest_path(args.manifest)
+    manifest = load_manifest(manifest_path)
+    tools = manifest.get("declared_tools", [])
+
+    warnings = []
+    passed = []
+    for item in tools:
+        pkg = item.get("package", item.get("name"))
+        name = item.get("name", pkg)
+        status, detail = check_tool_reachability(pkg, name)
+        if status == "ABSENT":
+            warnings.append(f"WARN: declared tool '{name}' ({pkg}) is ABSENT: {detail}")
+        else:
+            passed.append((name, status))
+
+    print(f"Readiness Preflight Check — {len(passed)} ready, {len(warnings)} warnings")
+    for w in warnings:
+        print(f"  \033[33m{w}\033[0m")
+
+    # ST-3 Principle: Manifest NEVER gates runtime access; readiness check only WARNs.
+    if args.strict and warnings:
+        print("\nStrict mode enabled: failing on warnings.")
+        return 1
+    return 0
+
+
+def cmd_overview(args: argparse.Namespace) -> int:
+    """Full AQ-OS Capability Inventory Summary."""
+    # 1. Tools
+    manifest_path = resolve_manifest_path(args.manifest)
+    manifest = load_manifest(manifest_path)
+    tools = manifest.get("declared_tools", [])
+
+    # 2. Skills
+    skills = []
+    if SKILLS_DIR.is_dir():
+        for s in SKILLS_DIR.iterdir():
+            if s.is_dir() and (s / "SKILL.md").is_file():
+                skills.append(s.name)
+    skills.sort()
+
+    # 3. Workflows
+    yaml_workflows = []
+    for d in [REPO_ROOT / "ai-stack" / "workflows" / "templates", REPO_ROOT / "ai-stack" / "workflows" / "examples"]:
+        if d.is_dir():
+            yaml_workflows.extend([f.stem for f in d.glob("*.yaml")])
+    doc_runbooks = []
+    workflows_dir = REPO_ROOT / "docs" / "workflows"
+    if workflows_dir.is_dir():
+        doc_runbooks = [f.stem for f in workflows_dir.glob("*.md")]
+    total_workflows = len(yaml_workflows) + len(doc_runbooks)
+
+    # 4. Roles
+    roles = ["orchestrator", "architect", "implementer", "reviewer", "binding-acceptance"]
+
+    # 5. Commands
+    commands = []
+    if COMMANDS_DIR.is_dir():
+        commands = [f.name for f in COMMANDS_DIR.iterdir() if f.is_file()]
+
+    payload = {
+        "status": "ready",
+        "capabilities": {
+            "tools": {
+                "count": len(tools),
+                "declared_manifest": str(manifest_path),
+                "items": [t.get("name") for t in tools],
+            },
+            "skills": {
+                "count": len(skills),
+                "items": skills,
+            },
+            "workflows": {
+                "count": total_workflows,
+                "canon": "WORKFLOW-CANON.md (8-step)",
+                "templates_and_examples": sorted(yaml_workflows),
+                "runbooks": sorted(doc_runbooks),
+            },
+            "roles": {
+                "count": len(roles),
+                "model_neutral": True,
+                "items": roles,
+            },
+            "commands": {
+                "count": len(commands),
+                "items": sorted(commands),
+            },
+        },
+    }
+
+    if args.json:
+        print(json.dumps(payload, indent=2))
+        return 0
+
+    print("=== AQ-OS Capability Inventory Overview ===")
+    print(f"Tools ({payload['capabilities']['tools']['count']}): {', '.join(payload['capabilities']['tools']['items'])}")
+    print(f"Skills ({payload['capabilities']['skills']['count']}): {len(skills)} loaded (routing via aq-skill-suggest)")
+    print(f"Workflows ({payload['capabilities']['workflows']['count']}): 8-step canon; {len(yaml_workflows)} executable YAML templates/examples; {len(doc_runbooks)} runbooks")
+    print(f"Roles ({payload['capabilities']['roles']['count']}): {', '.join(roles)} (agent-agnostic)")
+    print(f"Commands ({payload['capabilities']['commands']['count']}): {', '.join(payload['capabilities']['commands']['items'])}")
+    return 0
+
+
+def main(argv: Optional[List[str]] = None) -> int:
+    parser = argparse.ArgumentParser(description=__doc__, formatter_class=argparse.RawDescriptionHelpFormatter)
+    parser.add_argument("--manifest", help="Custom path to capability manifest JSON")
+    subparsers = parser.add_subparsers(dest="command")
+
+    # list
+    list_p = subparsers.add_parser("list", help="List declared tools and availability")
+    list_p.add_argument("--json", action="store_true", help="Emit JSON output")
+
+    # add
+    add_p = subparsers.add_parser("add", help="Append a tool to the manifest")
+    add_p.add_argument("package", help="Nix package name (e.g. playwright, ripgrep)")
+    add_p.add_argument("--name", help="Alias or command name (defaults to package)")
+    add_p.add_argument("--category", help="Tool category (testing, vcs, observability, etc.)")
+    add_p.add_argument("--required", action="store_true", help="Mark as required dependency")
+
+    # contribute (ST-4)
+    contrib_p = subparsers.add_parser("contribute", help="Open a governed toolchain contribution proposal (ST-4)")
+    contrib_p.add_argument("package", help="Nix package name (e.g. gdal, terraform, k6)")
+    contrib_p.add_argument("--name", help="Alias or command name (defaults to package)")
+    contrib_p.add_argument("--category", help="Tool category")
+    contrib_p.add_argument("--profile", default="baseline", help="Target toolchain profile (baseline, rust, security, etc.)")
+    contrib_p.add_argument("--justification", help="Why this tool belongs in the shared fleet-wide toolchain")
+    contrib_p.add_argument("--json", action="store_true", help="Emit JSON output")
+
+    # check
+    check_p = subparsers.add_parser("check", help="Readiness preflight scan")
+    check_p.add_argument("--strict", action="store_true", help="Exit non-zero if any declared tool is absent")
+
+    # overview
+    overview_p = subparsers.add_parser("overview", help="Full capability inventory overview")
+    overview_p.add_argument("--json", action="store_true", help="Emit JSON output")
+
+    args = parser.parse_args(argv)
+
+    if args.command == "add":
+        return cmd_add(args)
+    elif args.command == "contribute":
+        return cmd_contribute(args)
+    elif args.command == "check":
+        return cmd_check(args)
+    elif args.command == "overview":
+        return cmd_overview(args)
+    else:
+        # Default action is list
+        setattr(args, "json", getattr(args, "json", False))
+        return cmd_list(args)
+
+
+if __name__ == "__main__":
+    raise SystemExit(main())
