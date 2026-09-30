@@ -22,6 +22,12 @@ dispatch_service = service_config.split("systemd.services.ai-prsi-rsi-dispatch =
 for dep in ("pkgs.git", "pkgs.bash", "pkgs.util-linux", "pkgs.curl", '"/run/current-system/sw"'):
     assert dep in dispatch_service.split("path = [", 1)[1].split("];", 1)[0], dep
 assert "pkgs.python3" not in dispatch_service.split("path = [", 1)[1].split("];", 1)[0]
+# Live repair appends to the collaboration runtime and RSI registers (EROFS 2026-09-30).
+for rw in ("/.agent/collaboration\"", "/.agent/memory/issues-backlog.md\"", "/.agent/WORKAROUND-REGISTER.md\""):
+    assert rw in dispatch_service, rw
+# Repair budget must fit local agent-mode pacing and a worktree checkout.
+assert "--timeout-seconds=2400" in dispatch_service and 'TimeoutSec = "2460"' in dispatch_service
+assert 'MemoryMax = "1G"' in dispatch_service
 print("PASS: RSI dispatcher systemd PATH provides Git")
 
 

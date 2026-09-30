@@ -2394,16 +2394,31 @@ in {
           Type = "oneshot";
           User = cfg.primaryUser;
           WorkingDirectory = cfg.mcpServers.repoPath;
-          ExecStart = "${pkgs.python3}/bin/python3 ${cfg.mcpServers.repoPath}/scripts/automation/prsi-orchestrator.py rsi-dispatch --execute --apply --limit=1 --timeout-seconds=600";
-          TimeoutSec = "660";
+          ExecStart = "${pkgs.python3}/bin/python3 ${cfg.mcpServers.repoPath}/scripts/automation/prsi-orchestrator.py rsi-dispatch --execute --apply --limit=1 --timeout-seconds=2400";
+          # Local agent-mode repair runs ~3-7 min per LLM step on the APU; a dependency
+          # bump needs ~4-6 steps, so 600s guaranteed a timeout (rehearsal 2026-09-30).
+          TimeoutSec = "2460";
           StandardOutput = "journal";
           StandardError = "journal";
           NoNewPrivileges = true;
           ProtectSystem = "strict";
           ProtectHome = "read-only";
           PrivateTmp = true;
-          MemoryMax = "256M";
-          ReadWritePaths = [mutableOptimizerDir mutableLogDir "${cfg.mcpServers.repoPath}/.git"];
+          # Worktree checkout (~665M read / 111M written) plus the agent loop; 256M was
+          # reached in 11s. MemoryHigh reclaims page cache before the hard cap.
+          MemoryHigh = "768M";
+          MemoryMax = "1G";
+          # The delegation chain appends to the repo's collaboration runtime (a2a event
+          # log, PENDING/HANDOFF, rsi ledger) and rsi_lifecycle appends to the two
+          # registers; ProtectHome=read-only made the first live repair fail EROFS.
+          ReadWritePaths = [
+            mutableOptimizerDir
+            mutableLogDir
+            "${cfg.mcpServers.repoPath}/.git"
+            "${cfg.mcpServers.repoPath}/.agent/collaboration"
+            "${cfg.mcpServers.repoPath}/.agent/memory/issues-backlog.md"
+            "${cfg.mcpServers.repoPath}/.agent/WORKAROUND-REGISTER.md"
+          ];
           Environment = [
             "AQ_DELEGATION_DIR=${mutableOptimizerDir}/prsi/delegation"
             "PRSI_ACTION_QUEUE_PATH=${mutableOptimizerDir}/prsi/action-queue.json"
