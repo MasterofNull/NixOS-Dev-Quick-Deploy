@@ -1123,9 +1123,35 @@ def cmd_execute(args: argparse.Namespace) -> int:
     payload = json.loads(result.stdout or "{}")
 
     applied = payload.get("applied", [])
+    # aq-optimizer does not return PRSI row IDs. Attribute its reports by the
+    # action identity it does return, consuming each report at most once.
+    remaining = {}
+    for item in applied if isinstance(applied, list) else []:
+        if not isinstance(item, dict):
+            continue
+        identity = json.dumps(
+            [item.get("type"), item.get("action"), item.get("reason")],
+            sort_keys=True,
+        )
+        remaining[identity] = remaining.get(identity, 0) + 1
+    applied_count = 0
     for row in selected:
-        row["execution"] = {"last_run_at": _now(), "result": "applied"}
-        row["status"] = "executed" if not args.dry_run else "approved"
+        raw = row["raw_action"]
+        identity = json.dumps(
+            [raw.get("type"), raw.get("action"), raw.get("reason")],
+            sort_keys=True,
+        )
+        was_applied = remaining.get(identity, 0) > 0
+        if was_applied:
+            remaining[identity] -= 1
+            applied_count += 1
+        row["execution"] = {
+            "last_run_at": _now(),
+            "result": "dry_run_applied" if args.dry_run and was_applied else (
+                "applied" if was_applied else "optimizer_noop"
+            ),
+        }
+        row["status"] = "executed" if was_applied and not args.dry_run else "approved"
     _save_queue(queue)
 
     event = {
@@ -1134,7 +1160,7 @@ def cmd_execute(args: argparse.Namespace) -> int:
         "count": len(selected),
         "sampled_counterfactual": len(sampled),
         "dry_run": args.dry_run,
-        "applied_count": len(applied),
+        "applied_count": applied_count,
         "estimated_tokens_consumed": est_consumed,
         "remote_tokens_used_today": int(state.get("remote_tokens_used", 0) or 0),
         "remote_token_cap_daily": int(policy.get("budget", {}).get("remote_token_cap_daily", 120000)),

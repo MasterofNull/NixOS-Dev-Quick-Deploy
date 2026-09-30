@@ -123,8 +123,37 @@ with tempfile.TemporaryDirectory() as tmp:
     assert "routing-metrics-schema-unsupported" not in receipt_path.read_text()
     print("PASS: observation failure emits validated receipt and raises")
 
+    class EmptyObservationTrend:
+        async def sync_metrics_pipeline(self, since_hours=24):
+            return {
+                "metrics_collected": 0,
+                "metrics_inserted": 0,
+                "trends_updated": 9,
+                "anomalies_detected": 0,
+            }
+
+    loop.trend_db = EmptyObservationTrend()
+    os.environ["AQ_WORKFLOW_DEVIATION_LOG_PATH"] = str(receipt_path)
+    try:
+        asyncio.run(loop.run_improvement_cycle(cycle_type="empty-observation"))
+    except RuntimeError as exc:
+        assert str(exc) == "no-metrics-observed"
+    else:
+        raise AssertionError("empty observations must not report a healthy cycle")
+    finally:
+        if old_path is None:
+            os.environ.pop("AQ_WORKFLOW_DEVIATION_LOG_PATH", None)
+        else:
+            os.environ["AQ_WORKFLOW_DEVIATION_LOG_PATH"] = old_path
+    empty_record = json.loads(receipt_path.read_text().splitlines()[-1])
+    validate(empty_record)
+    assert empty_record["reason_code"] == "observation.failed"
+    assert "no new metrics" in empty_record["summary"]
+    print("PASS: cached trend refresh cannot mask zero new observations")
+
     # C1B amendment: the host producer uses the same replay-aware primitive
-    # as the broker, so a repeated receipt remains one durable record.
+    # as the broker, so a repeated receipt does not add another record.
+    receipt_count = len(receipt_path.read_text().splitlines())
     replay = append_receipt(receipt_path, records[0])
     assert replay.outcome == "replayed"
     changed = dict(records[0])
@@ -135,7 +164,7 @@ with tempfile.TemporaryDirectory() as tmp:
         assert str(exc) == "derived-field-mismatch"
     else:
         raise AssertionError("C1A must reject changed bytes with the old deterministic ID")
-    assert len(receipt_path.read_text().splitlines()) == 1
+    assert len(receipt_path.read_text().splitlines()) == receipt_count
     print("PASS: C1A direct receipts share idempotent replay semantics")
 
     unsafe_receipt_path = tmp_path / "unsafe-receipt.jsonl"
