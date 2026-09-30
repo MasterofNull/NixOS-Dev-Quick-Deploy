@@ -791,6 +791,43 @@ async def get_workflow_history(
         if order != "desc":
             applied_filters["order"] = order
 
+        if total == 0:
+            try:
+                url = f"{service_endpoints.HYBRID_URL}/yaml-workflow/executions?limit={limit}"
+                timeout = aiohttp.ClientTimeout(total=5)
+                headers = {}
+                for candidate in ["/run/secrets/hybrid_coordinator_api_key", "/run/secrets/coordinator_api_key"]:
+                    p = Path(candidate)
+                    if p.is_file():
+                        headers["X-API-Key"] = p.read_text().strip()
+                        break
+                async with aiohttp.ClientSession(timeout=timeout) as session:
+                    async with session.get(url, headers=headers) as resp:
+                        if resp.status == 200:
+                            data = await resp.json()
+                            coord_execs = data.get("executions", [])
+                            mapped = []
+                            for ce in coord_execs:
+                                mapped.append({
+                                    "id": ce.get("execution_id"),
+                                    "template_id": ce.get("workflow"),
+                                    "workflow_id": ce.get("workflow"),
+                                    "status": ce.get("status"),
+                                    "start_time": ce.get("started_at"),
+                                    "started_at": ce.get("started_at"),
+                                    "completed_at": ce.get("completed_at"),
+                                    "total_duration": 0,
+                                })
+                            if mapped:
+                                return WorkflowHistoryResponse(
+                                    executions=mapped,
+                                    total=len(mapped),
+                                    has_more=False,
+                                    filters=applied_filters if applied_filters else None,
+                                )
+            except Exception as coord_err:
+                logger.warning(f"Failed to query hybrid-coordinator executions: {coord_err}")
+
         return WorkflowHistoryResponse(
             executions=executions,
             total=total,
@@ -853,6 +890,47 @@ async def get_statistics():
     """Get workflow automation statistics."""
     try:
         stats = workflow_store.get_statistics()
+        if not stats or stats.get("total_executions", 0) == 0:
+            try:
+                url = f"{service_endpoints.HYBRID_URL}/yaml-workflow/stats"
+                timeout = aiohttp.ClientTimeout(total=5)
+                headers = {}
+                for candidate in ["/run/secrets/hybrid_coordinator_api_key", "/run/secrets/coordinator_api_key"]:
+                    p = Path(candidate)
+                    if p.is_file():
+                        headers["X-API-Key"] = p.read_text().strip()
+                        break
+                async with aiohttp.ClientSession(timeout=timeout) as session:
+                    async with session.get(url, headers=headers) as resp:
+                        if resp.status == 200:
+                            data = await resp.json()
+                            recents = data.get("recent_executions", [])
+                            if recents:
+                                total_execs = len(recents)
+                                completed = sum(1 for e in recents if e.get("status") == "completed")
+                                rate = completed / total_execs if total_execs > 0 else 1.0
+                                durations = []
+                                for e in recents:
+                                    s = e.get("started_at")
+                                    c = e.get("completed_at")
+                                    if s and c:
+                                        try:
+                                            from datetime import datetime as dt
+                                            t1 = dt.fromisoformat(s.replace('Z', '+00:00'))
+                                            t2 = dt.fromisoformat(c.replace('Z', '+00:00'))
+                                            durations.append((t2 - t1).total_seconds())
+                                        except Exception:
+                                            pass
+                                avg_dur = sum(durations) / len(durations) if durations else 0.0
+                                return {
+                                    "total_workflows": len(set(e.get("workflow", "") for e in recents)),
+                                    "total_executions": total_execs,
+                                    "success_rate": rate,
+                                    "avg_duration": avg_dur,
+                                    "recent_executions_24h": total_execs,
+                                }
+            except Exception as coord_err:
+                logger.warning(f"Failed to query hybrid-coordinator workflow stats: {coord_err}")
         return stats
 
     except Exception as e:

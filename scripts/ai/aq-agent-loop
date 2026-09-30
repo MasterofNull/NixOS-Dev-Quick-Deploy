@@ -47,6 +47,7 @@ for _p in [str(_SCRIPT_DIR / "lib"), str(_LOCAL_AGENTS), str(_BUILTIN_TOOLS)]:
         sys.path.insert(0, _p)
 
 from local_skill_projection import select_local_skills
+from rsi_lifecycle import start as rsi_start, failure as rsi_failure, complete as rsi_complete
 
 # ── imports from Phase 11 infrastructure ─────────────────────────────────────
 
@@ -369,6 +370,8 @@ async def run_task(
 ) -> int:
     """Run the agent loop. Returns 0 on success, 1 on failure."""
     del max_calls  # Deprecated: loops are progress-guarded, not count-guarded.
+    lifecycle_subject = output_file or "aq-agent-loop"
+    rsi_start("aq-agent-loop", lifecycle_subject, task_text)
 
     # LLAMA_CHUNK_TIMEOUT: per-SSE-chunk read timeout.
     # Long-horizon local tasks may spend a long time in prefill/generation on slow
@@ -487,6 +490,8 @@ async def run_task(
         print(f"\n--- Error ---\n{error_text or '(unknown error)'}\n", file=sys.stderr)
 
     if success:
+        rsi_complete("aq-agent-loop", lifecycle_subject,
+                     f"task {task_id} completed with {len(result_task.tool_calls_made)} tool calls")
         await _emit_agent_event(
             wrapper_event_task_id,
             "agent_complete",
@@ -532,6 +537,12 @@ async def run_task(
 
             asyncio.create_task(_emit_training_signal())
     else:
+        rsi_failure(
+            "aq-agent-loop", lifecycle_subject, "LocalAgentExecutor",
+            output_file or ".agent/collaboration/agent-run.json", "aq-agent-loop",
+            error_text or "unknown agent failure",
+            root_fix="inspect executor/provider evidence before selecting a fallback",
+        )
         await _emit_agent_event(
             wrapper_event_task_id,
             "agent_failed",
@@ -556,8 +567,15 @@ async def run_task(
     }
 
     if output_file:
-        Path(output_file).write_text(json.dumps(summary, indent=2, default=str))
-        print(f"[aq-agent-loop] Summary written to: {output_file}")
+        try:
+            Path(output_file).write_text(json.dumps(summary, indent=2, default=str))
+            print(f"[aq-agent-loop] Summary written to: {output_file}")
+        except OSError as exc:
+            rsi_failure("aq-agent-loop", lifecycle_subject, "aq-agent-loop", output_file,
+                        "output-writer", repr(exc), severity="high",
+                        root_fix="route operational output to the writable .agent tree")
+            print(f"[aq-agent-loop] Summary write failed: {exc}", file=sys.stderr)
+            return 1
 
     # Update progress sidecar to final state so dashboards show completion, not "running".
     _progress_path = os.environ.get("AGENT_PROGRESS_FILE")

@@ -23,9 +23,43 @@ import sys
 from pathlib import Path
 
 REPO = Path(__file__).resolve().parents[2]
+_CACHE_DIR = REPO / ".agents" / "cache"
+_GIT_LOG_CACHE_PATHS = (
+    _CACHE_DIR / "pm-git-log.cache",
+    Path("/var/lib/nixos-system-dashboard/telemetry/pm-git-log.cache"),
+)
 _STATUS_PCT_FLOOR = {"ACTIVATED": 100, "SHIPPED": 100, "BLOCKED": 0, "FROZEN": 20,
                      "IN-PROGRESS": 50, "DESIGNED": 10, "NOT-STARTED": 0}
 _SOURCE_HEALTH = frozenset(("complete", "shallow_incomplete", "unavailable"))
+
+
+def _save_git_log_cache(content: str) -> None:
+    if not content:
+        return
+    for path in _GIT_LOG_CACHE_PATHS:
+        try:
+            path.parent.mkdir(parents=True, exist_ok=True)
+            path.write_text(content, encoding="utf-8")
+        except Exception:
+            pass
+
+
+def _fallback_git_log() -> tuple[str, str]:
+    # Allow cache fallback when in dashboard context or when explicitly permitted
+    allow_cache = (
+        os.environ.get("AQ_PM_ALLOW_CACHE") == "1"
+        or os.environ.get("DASHBOARD_MODE") is not None
+    )
+    if allow_cache:
+        for path in _GIT_LOG_CACHE_PATHS:
+            try:
+                if path.is_file():
+                    cached = path.read_text(encoding="utf-8")
+                    if cached.strip():
+                        return cached, "complete"
+            except Exception:
+                pass
+    return "", "unavailable"
 
 
 def _git_log() -> tuple[str, str]:
@@ -42,19 +76,21 @@ def _git_log() -> tuple[str, str]:
             capture_output=True, text=True, timeout=10, env=git_env,
         )
         if shallow_result.returncode != 0:
-            return "", "unavailable"
+            return _fallback_git_log()
         shallow_value = shallow_result.stdout.strip()
         if shallow_value not in ("true", "false"):
-            return "", "unavailable"
+            return _fallback_git_log()
         log_result = subprocess.run(
             ["git", "--no-optional-locks", "-C", str(REPO), "log", "--oneline", "-n", "5000"],
             capture_output=True, text=True, timeout=30, env=git_env,
         )
         if log_result.returncode != 0:
-            return "", "unavailable"
+            return _fallback_git_log()
     except Exception:
-        return "", "unavailable"
+        return _fallback_git_log()
     health = "shallow_incomplete" if shallow_value == "true" else "complete"
+    if health == "complete" and log_result.stdout:
+        _save_git_log_cache(log_result.stdout)
     return log_result.stdout, health
 
 
@@ -159,11 +195,10 @@ def project_item(item: dict, gitlog: str, grants: str, source_health: str = "com
     # Positive evidence remains useful even when commit history is partial.
     # Only the *absence* of commit evidence becomes UNKNOWN in that case.
     if is_activation:
-        return _gate("ACTIVATED", 100) if granted else ("NOT-STARTED", 0)
+        return _gate("ACTIVATED", 100) if (granted or (accepted and (pct is None or pct == 100))) else ("NOT-STARTED", 0)
     if granted:
-        return _gate("SHIPPED", 100)
-    if freeze_exists:
-        return ("FROZEN", 20)
+        status_name = "ACTIVATED" if (item.get("kind") == "owner-act" or "activation" in str(item.get("phase", ""))) else "SHIPPED"
+        return _gate(status_name, 100)
     if source_health != "complete" and det.get("commit_match"):
         if accepted:
             return ("SHIPPED", 100)
@@ -171,9 +206,13 @@ def project_item(item: dict, gitlog: str, grants: str, source_health: str = "com
     if hits > 0:
         if pct is not None and pct < 100:
             return ("IN-PROGRESS", int(pct))
-        if freeze_exists or granted:
+        if accepted or freeze_exists or granted:
             return _gate("SHIPPED", 100)
         return ("IN-PROGRESS", int(pct) if pct is not None else 60)
+    if accepted and (pct is None or pct == 100):
+        return ("SHIPPED", 100)
+    if freeze_exists:
+        return ("FROZEN", 20)
     if blocker:
         return ("NOT-STARTED", 0)
     return ("DESIGNED", 10)

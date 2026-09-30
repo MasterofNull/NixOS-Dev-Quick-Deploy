@@ -77,8 +77,11 @@ Usage:
   aq-workspace status             Show live AI stack & telemetry status
   aq-workspace tools              List declared tools & readiness via aq-capabilities
   aq-workspace plan               Show live program progress rollup via aq-pm-tracker
+  aq-workspace compact [agent]    Read-only session size diagnostics
+  aq-workspace reap               Reap detached/orphaned background agent daemons & monitors
   aq-workspace list               List all active agentic workspace sessions
-  aq-workspace kill [session]     Terminate workspace session
+  aq-workspace kill [session]     Terminate the named workspace session
+  aq-workspace reset [session]    Reset the named workspace session
   aq-workspace --tui              Run single-window Rich TUI layout (no multiplexer)
   aq-workspace --help             Show this help guide
 
@@ -118,16 +121,19 @@ case "${1:-}" in
     shift
     ;;
   claude)
-    exec python3 "${SCRIPT_DIR}/aq-agent-window" --lane "claude" "${@:2}"
+    exec "${SCRIPT_DIR}/aq-agent-launcher" "claude" "direct" "${@:2}"
     ;;
   codex)
-    exec python3 "${SCRIPT_DIR}/aq-agent-window" --lane "codex" "${@:2}"
+    exec "${SCRIPT_DIR}/aq-agent-launcher" "codex" "direct" "${@:2}"
     ;;
   local|qwen)
-    exec python3 "${SCRIPT_DIR}/aq-agent-window" --lane "local" "${@:2}"
+    exec "${SCRIPT_DIR}/aq-agent-launcher" "local" "direct" "${@:2}"
     ;;
-  gemini|antigravity)
-    exec python3 "${SCRIPT_DIR}/aq-agent-window" --lane "antigravity" "${@:2}"
+  gemini)
+    exec "${SCRIPT_DIR}/aq-agent-launcher" "gemini" "direct" "${@:2}"
+    ;;
+  antigravity)
+    exec "${SCRIPT_DIR}/aq-agent-launcher" "antigravity" "direct" "${@:2}"
     ;;
   status)
     exec python3 "${SCRIPT_DIR}/aq-cockpit-monitor" --once
@@ -146,6 +152,12 @@ case "${1:-}" in
     ;;
   plan|tracker|pm)
     exec python3 "${SCRIPT_DIR}/aq-pm-tracker" "${2:---all}" "${@:3}"
+    ;;
+  compact|autocompact)
+    exec python3 "${SCRIPT_DIR}/aq-session-compact" "${@:2}"
+    ;;
+  reap|reaper|cleanup)
+    exec "${SCRIPT_DIR}/aq-reap-orphans" "${@:2}"
     ;;
   agent|window)
     MODEL="${2:-local}"
