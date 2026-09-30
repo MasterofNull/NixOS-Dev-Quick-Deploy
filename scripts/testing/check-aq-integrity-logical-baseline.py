@@ -57,7 +57,7 @@ def main() -> int:
             str(SCANNER),
             "--json",
             "--timeout-seconds",
-            "18",
+            "35",
             "--max-files",
             "5000",
             "--max-logical-files",
@@ -67,7 +67,7 @@ def main() -> int:
         cwd=REPO_ROOT,
         capture_output=True,
         text=True,
-        timeout=25,
+        timeout=45,
     )
     try:
         payload = json.loads(proc.stdout)

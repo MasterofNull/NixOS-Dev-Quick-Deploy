@@ -19,6 +19,22 @@ WORKFLOWS_DIR="${WORKFLOWS_DIR:-ai-stack/workflows}"
 TEMPLATES_DIR="${TEMPLATES_DIR:-ai-stack/workflows/templates}"
 EXAMPLES_DIR="${EXAMPLES_DIR:-ai-stack/workflows/examples}"
 
+# Resolve Coordinator API Key
+HYBRID_API_KEY="${HYBRID_COORDINATOR_API_KEY:-${COORDINATOR_API_KEY:-}}"
+if [[ -z "$HYBRID_API_KEY" ]]; then
+    for candidate in /run/secrets/hybrid_coordinator_api_key /run/secrets/coordinator_api_key /run/secrets/hybrid_api_key; do
+        if [[ -r "$candidate" ]]; then
+            HYBRID_API_KEY="$(tr -d '\n' < "$candidate")"
+            break
+        fi
+    done
+fi
+
+API_AUTH_HEADER=()
+if [[ -n "$HYBRID_API_KEY" ]]; then
+    API_AUTH_HEADER=(-H "X-API-Key: ${HYBRID_API_KEY}")
+fi
+
 # Colors for output
 if [[ -t 1 ]]; then
     RED='\033[0;31m'
@@ -54,7 +70,7 @@ warn() {
 
 # Check if coordinator is running
 check_coordinator() {
-    if ! curl -sf "${COORDINATOR_URL}/yaml-workflow/stats" >/dev/null 2>&1; then
+    if ! curl -sf "${API_AUTH_HEADER[@]}" "${COORDINATOR_URL}/yaml-workflow/stats" >/dev/null 2>&1; then
         error "Coordinator not accessible at ${COORDINATOR_URL}"
     fi
 }
@@ -188,15 +204,26 @@ cmd_run() {
 
     check_coordinator
 
-    info "Executing workflow: $file"
-
-    # Make absolute path
+    # Ensure absolute path
     file=$(realpath "$file")
 
+    # Construct JSON payload safely
+    payload=$(python3 -c '
+import json, sys
+workflow_file = sys.argv[1]
+inputs_raw = sys.argv[2]
+async_mode = sys.argv[3].lower() == "true"
+try:
+    inputs = json.loads(inputs_raw)
+except Exception:
+    inputs = {"raw_input": inputs_raw}
+print(json.dumps({"workflow_file": workflow_file, "inputs": inputs, "async_mode": async_mode}))
+' "$file" "$inputs" "$async_mode")
+
     # Execute via HTTP API
-    response=$(curl -sf -X POST "${COORDINATOR_URL}/yaml-workflow/execute" \
+    response=$(curl -sf "${API_AUTH_HEADER[@]}" -X POST "${COORDINATOR_URL}/yaml-workflow/execute" \
         -H "Content-Type: application/json" \
-        -d "{\"workflow_file\":\"$file\",\"inputs\":$inputs,\"async_mode\":$async_mode}" \
+        -d "$payload" \
         || error "Failed to execute workflow")
 
     execution_id=$(echo "$response" | python3 -c "import sys, json; print(json.load(sys.stdin).get('execution_id', ''))")
@@ -220,7 +247,7 @@ cmd_status() {
 
     check_coordinator
 
-    response=$(curl -sf "${COORDINATOR_URL}/yaml-workflow/${exec_id}/status" \
+    response=$(curl -sf "${API_AUTH_HEADER[@]}" "${COORDINATOR_URL}/yaml-workflow/${exec_id}/status" \
         || error "Failed to get status for execution: $exec_id")
 
     echo "$response" | python3 -c "
@@ -246,7 +273,7 @@ cmd_cancel() {
 
     check_coordinator
 
-    response=$(curl -sf -X POST "${COORDINATOR_URL}/yaml-workflow/${exec_id}/cancel" \
+    response=$(curl -sf "${API_AUTH_HEADER[@]}" -X POST "${COORDINATOR_URL}/yaml-workflow/${exec_id}/cancel" \
         || error "Failed to cancel execution: $exec_id")
 
     status=$(echo "$response" | python3 -c "import sys, json; print(json.load(sys.stdin).get('status', ''))")
@@ -271,7 +298,7 @@ cmd_history() {
         url="${COORDINATOR_URL}/yaml-workflow/executions?limit=${limit}"
     fi
 
-    response=$(curl -sf "$url" || error "Failed to get execution history")
+    response=$(curl -sf "${API_AUTH_HEADER[@]}" "$url" || error "Failed to get execution history")
 
     echo "$response" | python3 -c "
 import sys, json

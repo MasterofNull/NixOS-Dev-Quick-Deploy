@@ -1,0 +1,145 @@
+#!/usr/bin/env bash
+# aq-reap-orphans — Systematic process watchdog & orphan reaper for AQ-OS workspace
+#
+# Scans for detached, orphaned, or runaway agent processes and monitors:
+#   • OpenAI Codex app-servers and code-mode-hosts
+#   • Node/NPM agent wrappers (@openai/codex, @google/gemini)
+#   • Claude Code CLI detached processes
+#   • Stale aq-fleet-monitor / aq-cockpit-monitor / aq-agent-window instances
+#
+# Modes:
+#   aq-reap-orphans             # reaps only orphaned processes (PPID == 1 or dead session)
+#   aq-reap-orphans --all       # force-reaps all workspace agent & monitor processes
+#   aq-reap-orphans --dry-run   # lists target processes without terminating
+#   aq-reap-orphans --quiet     # silent execution (exit 0)
+
+set -eo pipefail
+
+FORCE_ALL=0
+DRY_RUN=0
+QUIET=0
+
+while [[ $# -gt 0 ]]; do
+  case "$1" in
+    --all|-a|--force|-f)
+      FORCE_ALL=1
+      shift
+      ;;
+    --dry-run|-d)
+      DRY_RUN=1
+      shift
+      ;;
+    --quiet|-q)
+      QUIET=1
+      shift
+      ;;
+    *)
+      shift
+      ;;
+  esac
+done
+
+TARGET_PATTERNS=(
+  "codex app-server"
+  "codex-code-mode-host"
+  "node .*/@openai/codex"
+  "node .*/@google/gemini"
+  "node .*/\.npm-global/bin/(codex|gemini)"
+  "/home/hyperd/\.local/bin/claude"
+  "aq-fleet-monitor"
+  "aq-cockpit-monitor"
+  "aq-agent-window"
+  "aq-subagent-interactive"
+  "aq-agent-launcher"
+)
+
+# Check if an active Zellij session exists
+HAS_ACTIVE_ZELLIJ=0
+if command -v zellij >/dev/null 2>&1; then
+  if zellij list-sessions 2>/dev/null | grep -qE '^aq-'; then
+    HAS_ACTIVE_ZELLIJ=1
+  fi
+fi
+
+PIDS_TO_KILL=()
+
+for pat in "${TARGET_PATTERNS[@]}"; do
+  # Get matches: pid, ppid, cmd
+  while read -r pid ppid cmd; do
+    [[ -n "$pid" ]] || continue
+    # Don't kill current shell or script
+    [[ "$pid" == "$$" ]] && continue
+
+    if [[ "$FORCE_ALL" -eq 1 ]]; then
+      PIDS_TO_KILL+=("$pid:$cmd")
+    elif [[ "$ppid" -eq 1 ]]; then
+      # Orphaned to init/systemd
+      PIDS_TO_KILL+=("$pid:$cmd")
+    elif [[ "$HAS_ACTIVE_ZELLIJ" -eq 0 && "$cmd" =~ (aq-fleet-monitor|aq-cockpit-monitor|aq-agent-window|codex\ app-server) ]]; then
+      # Monitor running with no active Zellij session
+      PIDS_TO_KILL+=("$pid:$cmd")
+    fi
+  done < <(ps -eo pid,ppid,args 2>/dev/null | grep -E "$pat" | grep -v grep | grep -v "aq-reap-orphans" || true)
+done
+
+# De-duplicate PIDs
+declare -A SEEN_PIDS
+UNIQUE_PIDS=()
+for item in "${PIDS_TO_KILL[@]}"; do
+  pid="${item%%:*}"
+  cmd="${item#*:}"
+  if [[ -z "${SEEN_PIDS[$pid]:-}" ]]; then
+    SEEN_PIDS[$pid]=1
+    UNIQUE_PIDS+=("$pid:$cmd")
+  fi
+done
+
+if [[ ${#UNIQUE_PIDS[@]} -eq 0 ]]; then
+  if [[ "$QUIET" -eq 0 ]]; then
+    echo "✓ Zero orphaned or runaway agent processes detected."
+  fi
+  exit 0
+fi
+
+if [[ "$DRY_RUN" -eq 1 ]]; then
+  echo "Orphaned / runaway processes detected (${#UNIQUE_PIDS[@]}):"
+  for item in "${UNIQUE_PIDS[@]}"; do
+    pid="${item%%:*}"
+    cmd="${item#*:}"
+    echo "  • PID $pid: $cmd"
+  done
+  exit 0
+fi
+
+# Terminate cleanly with SIGTERM
+PIDS=()
+for item in "${UNIQUE_PIDS[@]}"; do
+  pid="${item%%:*}"
+  PIDS+=("$pid")
+done
+
+if [[ "$QUIET" -eq 0 ]]; then
+  echo "Reaping ${#PIDS[@]} orphaned/runaway agent processes..."
+fi
+
+for pid in "${PIDS[@]}"; do
+  kill -15 "$pid" 2>/dev/null || true
+done
+
+# Grace period of 1.2 seconds
+sleep 1.2
+
+# Check for stubborn processes and send SIGKILL
+STUBBORN_COUNT=0
+for pid in "${PIDS[@]}"; do
+  if kill -0 "$pid" 2>/dev/null; then
+    kill -9 "$pid" 2>/dev/null || true
+    STUBBORN_COUNT=$((STUBBORN_COUNT + 1))
+  fi
+done
+
+if [[ "$QUIET" -eq 0 ]]; then
+  echo "✓ Successfully reaped ${#PIDS[@]} processes ($STUBBORN_COUNT force-killed)."
+fi
+
+exit 0

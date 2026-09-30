@@ -65,7 +65,13 @@ REPO_ROOT="$(cd "${SCRIPT_DIR}/../.." && pwd)"
 # tests point AQ_ANTIGRAVITY_INBOX_BIN at a stub rather than the real inbox supervisor.
 INBOX_BIN="${AQ_ANTIGRAVITY_INBOX_BIN:-${REPO_ROOT}/scripts/ai/aq-antigravity-inbox}"
 INBOX_DIR="${AQ_ANTIGRAVITY_INBOX_DIR:-${REPO_ROOT}/.agent/collaboration/antigravity-inbox}"
-ANTIGRAVITY_LOG_ROOT="${HOME}/.config/Antigravity/logs"
+if [[ -z "${ANTIGRAVITY_LOG_ROOT:-}" ]]; then
+  if [[ -d "${HOME}/.config/Antigravity IDE/logs" ]]; then
+    ANTIGRAVITY_LOG_ROOT="${HOME}/.config/Antigravity IDE/logs"
+  else
+    ANTIGRAVITY_LOG_ROOT="${HOME}/.config/Antigravity/logs"
+  fi
+fi
 QUOTA_RECENT_WINDOW_S="${QUOTA_RECENT_WINDOW_S:-86400}"  # 24h: evidence newer than this counts as "current"
 
 MODE="check"

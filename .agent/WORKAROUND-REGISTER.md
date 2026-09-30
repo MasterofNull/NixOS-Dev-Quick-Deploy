@@ -144,3 +144,48 @@ Codex lane absent).
   `[focused-ci] FAIL: TEMP canary ...` and the run exited 1. `bash -n` + embedded-python
   `py_compile` clean; `repo-structure-lint.sh --staged` PASS. Queued for independent Opus binding
   review before PR (Rule 18 — author self-validated, no self-review of acceptance).
+
+## 2026-09-27 — Resumed context guards / memory persistence
+- aq-memory swallowed disk-write failures; current temporal_facts.json is nobody:nogroup 0644. Repair failure reporting first; storage ownership and coordinator working-memory HTTP 500 remain open. Repository handoff is the checkpoint fallback; queued memory writes are not durability evidence.
+- Tier0 acquires its own checkout: do not wrap it in aq-gate-checkout run. Released only this session's outer lock after nested acquisition stalled. Direct gate reached the 120-second timeout; TERM did not stop remaining gates, so interrupted explicitly. No full PASS or commit claimed.
+- Sandbox blocked QA evidence lock under /var/lib; retry requested using normal escalation.
+
+## WR-10 — event-log fallback implemented before canonical-path root fix — FIXED
+- symptom: the agent added a writable fallback after writes to `.agents/events` failed, before establishing why that path was unwritable.
+- root cause (T5): producer-path ownership and mount authority were not checked during the first failure response; the managed `.agents` mount is intentionally read-only and the logger had the wrong canonical target.
+- resolution: move the canonical ledger to `.agent/collaboration/a2a-events.jsonl`, retain `.agents/events/a2a-events.jsonl` only as a legacy read source, and keep the fallback as an emergency guard for unexpected failures. Add a regression test pinning the default path.
+- class T5 · severity MED · status FIXED 2026-09-27 · opened 2026-09-27.
+
+### Hourly PRSI redundant LLM wrapper — FIXED / follow-up open
+- 2026-09-28 root cause resolution: isolated worktree helper defaulted to `.agents/delegation`, an intentionally read-only mount, and PRSI preflight checked neither the writable delegation root nor shared Git metadata. Dispatch now accepts `AQ_DELEGATION_DIR`, preflights both write authorities, and incident-ledger changes wake a one-item dispatcher with a five-minute queue sweep. Repository validation passed; service activation/live integration remain unverified.
+- symptom: each hourly PRSI cycle submitted a fixed Python command through `aq-ralph-task`.
+- root cause: deterministic orchestration was routed through an LLM task wrapper; `aq-report` still performs its own local-model summary, so total model use requires further measurement.
+- resolution: invoke `prsi-orchestrator.py cycle` directly from the service; keep the hourly cadence until queue/event processing is safely isolated and measured.
+- follow-up: add provider/session/lane token and cost attribution, and resolve writable isolated-worktree authority before automatic repair dispatch.
+- class T2 · severity HIGH · status PARTIAL 2026-09-28 · opened 2026-09-28.
+
+### RSI report dependency — root fix implemented, runtime follow-up open
+- Every RSI dispatch called full report discovery before incident intake; model/report outages could obstruct their own repair intake and each invocation added avoidable work.
+- Incident-only sync now reuses queue deduplication without model-backed reports and preserves existing degradation evidence. Regression exercises two dry runs with report discovery forbidden.
+- Shared atomic estimated-budget reservations are now implemented for both lanes, including failed attempts; focused concurrency tests pass. Unattended activation remains incomplete: writable isolation and runtime validation still need resolution. No guard bypass or substitute execution folder was introduced.
+- Context acquisition friction: an unverified lean-ctx range mode returned a full file. Supported `lean-ctx -c --raw` with explicit bounded `sed` ranges is used pending validation of range-mode rejection in the tool itself.
+
+### RSI dispatcher omitted required Git runtime dependency — FIXED / activation pending
+- 2026-09-28 root cause: the hardened systemd `PATH` for `ai-prsi-rsi-dispatch` provided Python but omitted Git, although fail-closed repository/worktree preflight invokes Git. This made every queued repair block before claim (five pending incidents observed).
+- Root fix: add `pkgs.git` to the unit's `path` and pin the service dependency in `test-prsi-rsi-intake.py`. Activation and live terminal-outcome verification remain required.
+- Investigation friction: lean-ctx blocked another broad search after its 11-search/300-second loop limit; switched to exact-path reads and tree navigation instead of retrying.
+- class T2 · severity HIGH · status FIXED / activation pending 2026-09-28.
+### 2026-09-28 — deploy projection exhausted RAM-backed /tmp; target lookup masked timeout
+- Temporary workaround: run deploy with `TMPDIR=/var/tmp`; the 7.3 GB projection fits disk-backed storage and avoids pressure on `/tmp` tmpfs. Do not increase tmpfs for this workload; first measure RAM headroom and projection cleanup.
+- Root cause found separately: deploy target membership called full per-target NixOS config evaluation; timeout was converted to false even while flake name discovery listed the target. Fix membership using the discovered names and retain the distinct evaluation-error path. Focused regression added.
+- Follow-up: consider making disk-backed deploy temp the documented/default policy after checking cleanup and available-space guard.
+### 2026-09-28 — Tier 0 pre-commit gate stall
+- Attempted mandated serialized gate; after >4 minutes it emitted no output and a nested `tier0-validation-gate.sh` process appeared. Stopped the run (exit 130); focused tests passed, full gate is unverified.
+- No gate bypass used and no commit or activation claimed. Diagnose nested invocation/quiet runner before retrying; preserve this as an open validation blocker.
+
+### 2026-09-30 — aq-report token metrics exceeded PRSI memory bound
+- Root cause: `useful_token_metrics` loaded the complete 92,164,469-byte `agent-run-events.jsonl` and built/copy-filtered historical timelines before selecting the requested window.
+- Bounded fix: stream JSONL and retain only in-window token rows plus per-run duration aggregates. Regression asserts the whole-file `load_jsonl` path is not used.
+- Evidence: same redirected, profiled aq-report path fell from 552,192 KiB process-tree peak (active `useful_token_metrics` stack ~538,236 KiB) to 115,852 KiB (−422,384 KiB / 78%). Focused test 7/7 and py_compile passed. Keep the 256M service cap unchanged.
+- Runtime remains pending exact-subject independent review and a serialized live acceptance window; do not manually start the executing PRSI unit while Remediator/timer ownership is unsettled.
+- 2026-09-30 live acceptance (claude-opus): scheduled `ai-prsi-orchestrator` cycle 09:28 PDT failed `oom-kill` (pre-fix, 2m25s); first post-fix cycle 10:08 PDT ran sync (aq-report) to `Result=success` in 9s under the unchanged 256M cap. Exact subject 6c06b38b/243885d0 independently reviewed PASS by claude-opus (streaming path is order-independent; missing-file still yields `status=no_data`); local Qwen review local-20260930-105223-xbkns7 dispatched.

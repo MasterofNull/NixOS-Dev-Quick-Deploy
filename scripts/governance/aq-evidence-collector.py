@@ -17,7 +17,8 @@ hash and redact them; they are never logged, never written, and never
 returned to the caller. This satisfies both "digest of payload_bytes" and
 "redact BEFORE writing" without ever persisting a secret, even transiently.
 
-Shared-ledger note: `.agents/events/a2a-events.jsonl` is also the event log
+Shared-ledger note: `.agent/collaboration/a2a-events.jsonl` is the writable event
+log; `.agents/events/a2a-events.jsonl` is retained as a legacy read source.
 for `aq-event` (resume.update / pulse.append projections, see
 scripts/ai/lib/event_log.py + resume_projector.py). Every record this script
 appends is a schema-compatible `contracts.events.Envelope` (same top-level
@@ -59,7 +60,7 @@ RECORD_KIND = "vf7.evidence.v1"
 EVENT_TYPE = "vf7.evidence.v1"
 
 _REPO_ROOT = Path(__file__).resolve().parent.parent.parent
-DEFAULT_LEDGER = _REPO_ROOT / ".agents" / "events" / "a2a-events.jsonl"
+DEFAULT_LEDGER = _REPO_ROOT / ".agent" / "collaboration" / "a2a-events.jsonl"
 
 # ── redaction ────────────────────────────────────────────────────────────────
 # Deliberately conservative (over-redact rather than leak). Order matters:
@@ -289,7 +290,7 @@ def main(argv: Optional[list[str]] = None) -> int:
     rec = sub.add_parser("record", help="capture and append one unwrapped evidence record")
     rec.add_argument("--caller-agent-id", required=True)
     rec.add_argument("--subject", default=None)
-    rec.add_argument("--ledger", default=None, help="override ledger path (default: .agents/events/a2a-events.jsonl)")
+    rec.add_argument("--ledger", default=None, help="override ledger path (default: .agent/collaboration/a2a-events.jsonl)")
     src = rec.add_mutually_exclusive_group(required=False)
     src.add_argument("--command", default=None, help="shell command to run and capture raw stdout+stderr from")
     src.add_argument("--stdin", action="store_true", help="read raw evidence bytes from stdin")

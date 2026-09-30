@@ -22,6 +22,7 @@ during migration. Path override: A2A_EVENT_LOG env.
 
 from __future__ import annotations
 
+import errno
 import json
 import os
 import sys
@@ -35,30 +36,74 @@ if str(_REPO_ROOT) not in sys.path:
 
 from contracts.events import Envelope  # noqa: E402
 
+_FALLBACK_NOTICE_EMITTED = False
+
 
 def log_path() -> Path:
     p = os.environ.get("A2A_EVENT_LOG", "").strip()
     if p:
         return Path(p)
+    # `.agent` is the writable collaboration runtime. `.agents` is a managed
+    # read-only projection in some deployments and remains a legacy read source.
+    return _REPO_ROOT / ".agent" / "collaboration" / "a2a-events.jsonl"
+
+
+def legacy_log_path() -> Path:
+    """Read-only legacy ledger retained for history during the path migration."""
     return _REPO_ROOT / ".agents" / "events" / "a2a-events.jsonl"
+
+
+def fallback_log_path() -> Path:
+    """Writable local spool used when the canonical event mount is read-only."""
+    override = os.environ.get("A2A_EVENT_LOG", "").strip()
+    if override:
+        # Test and service-specific overrides stay isolated from the session
+        # spool; only the default managed mount falls back to .agent.
+        return Path(override).with_name(Path(override).name + ".fallback")
+    return _REPO_ROOT / ".agent" / "collaboration" / "a2a-events-fallback.jsonl"
+
+
+def _read_paths() -> list[Path]:
+    primary = log_path()
+    fallback = fallback_log_path()
+    paths = [primary, fallback]
+    if not os.environ.get("A2A_EVENT_LOG", "").strip():
+        paths.append(legacy_log_path())
+    return list(dict.fromkeys(paths))
+
+
+def _append_to(path: Path, line: str) -> None:
+    path.parent.mkdir(parents=True, exist_ok=True)
+    fd = os.open(str(path), os.O_WRONLY | os.O_CREAT | os.O_APPEND, 0o644)
+    try:
+        os.write(fd, line.encode("utf-8"))
+    finally:
+        os.close(fd)
 
 
 def append(env: Envelope) -> Envelope:
     """Atomically append one envelope (signed if a key is available)."""
     signed = env.signed()
-    path = log_path()
-    path.parent.mkdir(parents=True, exist_ok=True)
     # LEADING newline (not trailing): if a crashed writer left a torn line with
     # no newline, our leading "\n" starts us on a fresh line so we never glue
     # onto — and thereby corrupt/lose — a following event. Readers skip the
     # blank first line. Records stay one-per-line and independently parseable.
     line = "\n" + signed.model_dump_json()
     # O_APPEND makes the write atomic wrt other appenders (no lock, no clobber).
-    fd = os.open(str(path), os.O_WRONLY | os.O_CREAT | os.O_APPEND, 0o644)
     try:
-        os.write(fd, line.encode("utf-8"))
-    finally:
-        os.close(fd)
+        _append_to(log_path(), line)
+    except OSError as exc:
+        if exc.errno not in (errno.EACCES, errno.EROFS, errno.EPERM):
+            raise
+        _append_to(fallback_log_path(), line)
+        global _FALLBACK_NOTICE_EMITTED
+        if not _FALLBACK_NOTICE_EMITTED:
+            print(
+                f"aq-event: canonical log unavailable ({exc.strerror}); "
+                f"using writable fallback {fallback_log_path()}",
+                file=sys.stderr,
+            )
+            _FALLBACK_NOTICE_EMITTED = True
     _mirror_to_redis(signed)
     return signed
 
@@ -87,27 +132,28 @@ def read_all(*, verify: bool = True) -> list[Envelope]:
     break every reader). Events with a present-but-invalid signature are dropped
     when verify=True.
     """
-    path = log_path()
     out: list[Envelope] = []
     seen: set[str] = set()
-    try:
-        raw = path.read_text(encoding="utf-8", errors="replace")
-    except OSError:
-        return out
-    for line in raw.splitlines():
-        line = line.strip()
-        if not line:
-            continue
+    for path in _read_paths():
         try:
-            env = Envelope.model_validate_json(line)
-        except Exception:
-            continue  # skip torn/corrupt line
-        if env.event_id in seen:
-            continue  # idempotent collapse
-        if verify and not env.verify():
-            continue  # bad signature
-        seen.add(env.event_id)
-        out.append(env)
+            raw = path.read_text(encoding="utf-8", errors="replace")
+        except OSError:
+            continue
+        for line in raw.splitlines():
+            line = line.strip()
+            if not line:
+                continue
+            try:
+                env = Envelope.model_validate_json(line)
+            except Exception:
+                continue  # skip torn/corrupt line
+            if env.event_id in seen:
+                continue  # idempotent collapse
+            if verify and not env.verify():
+                continue  # bad signature
+            seen.add(env.event_id)
+            out.append(env)
+    out.sort(key=lambda env: env.ts)
     return out
 
 

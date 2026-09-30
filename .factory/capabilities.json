@@ -1,0 +1,62 @@
+{
+  "schema_version": "1.0.0",
+  "project": "NixOS-Dev-Quick-Deploy",
+  "updated_at": "2026-09-27T01:24:36.788741+00:00",
+  "declared_tools": [
+    {
+      "name": "playwright",
+      "package": "playwright-driver",
+      "category": "testing",
+      "source": "agentic-toolchain"
+    },
+    {
+      "name": "tmux",
+      "package": "tmux",
+      "category": "multiplexer",
+      "source": "agentic-toolchain"
+    },
+    {
+      "name": "watch",
+      "package": "procps",
+      "category": "observability",
+      "source": "agentic-toolchain"
+    },
+    {
+      "name": "ripgrep",
+      "package": "ripgrep",
+      "category": "search",
+      "source": "basePackageNames"
+    },
+    {
+      "name": "jq",
+      "package": "jq",
+      "category": "json",
+      "source": "basePackageNames"
+    },
+    {
+      "name": "git",
+      "package": "git",
+      "category": "vcs",
+      "source": "basePackageNames"
+    },
+    {
+      "name": "curl",
+      "package": "curl",
+      "category": "network",
+      "source": "basePackageNames"
+    },
+    {
+      "name": "fd",
+      "package": "fd",
+      "category": "search",
+      "source": "ai-dev-profile"
+    },
+    {
+      "name": "gdal",
+      "package": "gdal",
+      "category": "geospatial",
+      "required": true,
+      "declared_at": "2026-09-27T01:24:36.787975+00:00"
+    }
+  ]
+}

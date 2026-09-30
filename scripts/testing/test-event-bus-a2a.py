@@ -27,6 +27,25 @@ def _fresh_log(tmp: Path):
     os.environ["PULSE_LOG_PATH"] = str(tmp / "PULSE.log")
 
 
+def test_default_ledger_uses_writable_agent_tree():
+    """The canonical default must not regress to the managed read-only mount."""
+    import importlib
+    import event_log
+
+    previous = os.environ.pop("A2A_EVENT_LOG", None)
+    try:
+        importlib.reload(event_log)
+        expected = REPO / ".agent" / "collaboration" / "a2a-events.jsonl"
+        assert event_log.log_path() == expected, (
+            f"canonical event ledger regressed to {event_log.log_path()}"
+        )
+    finally:
+        if previous is not None:
+            os.environ["A2A_EVENT_LOG"] = previous
+        importlib.reload(event_log)
+    print("PASS default ledger uses writable .agent tree")
+
+
 def test_envelope_idempotency_and_signing():
     from contracts.events import Envelope
     e = Envelope(agent="a", type="x.y", payload={"n": 1})
@@ -54,6 +73,31 @@ def test_append_and_idempotent_read():
         evs = event_log.read_all()
         assert len(evs) == 2, f"idempotent dedup failed: {len(evs)}"
         print("PASS append + idempotent dedup")
+
+
+def test_read_only_primary_uses_writable_fallback():
+    """A read-only managed primary must not drop checkpoint events."""
+    with tempfile.TemporaryDirectory() as d:
+        _fresh_log(Path(d))
+        import importlib
+        import event_log
+        importlib.reload(event_log)
+        primary = Path(d) / "primary.jsonl"
+        fallback = Path(d) / "fallback.jsonl"
+        event_log.log_path = lambda: primary
+        event_log.fallback_log_path = lambda: fallback
+        original_append = event_log._append_to
+
+        def deny_primary(path, line):
+            if path == primary:
+                raise OSError(30, "Read-only file system")
+            return original_append(path, line)
+
+        event_log._append_to = deny_primary
+        event_log.emit("codex", "pulse.append", payload={"action": "fallback"})
+        assert fallback.exists(), "fallback spool was not created"
+        assert len(event_log.read_all()) == 1, "fallback event was not readable"
+        print("PASS read-only primary uses writable fallback")
 
 
 def test_corrupt_line_skipped():
@@ -160,7 +204,10 @@ def test_projector_honors_output_override():
         real = REPO / ".agent" / "collaboration" / "RESUME.json"
         # The real file must not contain our sentinel objective.
         if real.exists():
-            assert "isolated" not in real.read_text(), "projector wrote the REAL RESUME.json!"
+            real_data = json.loads(real.read_text())
+            assert real_data.get("current_objective") != "isolated", (
+                "projector wrote the REAL RESUME.json!"
+            )
         print("PASS projector honors output override (real anchor untouched)")
 
 
@@ -184,8 +231,10 @@ def test_backward_compatible_resume_shape():
 
 
 if __name__ == "__main__":
+    test_default_ledger_uses_writable_agent_tree()
     test_envelope_idempotency_and_signing()
     test_append_and_idempotent_read()
+    test_read_only_primary_uses_writable_fallback()
     test_corrupt_line_skipped()
     test_per_field_merge_no_clobber()
     test_same_field_lww_preserves_loser()

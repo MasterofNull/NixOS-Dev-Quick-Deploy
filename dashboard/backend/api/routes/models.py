@@ -28,7 +28,10 @@ import time
 from pathlib import Path
 from typing import Any, AsyncGenerator, Dict, Optional
 
-import yaml
+try:
+    import yaml
+except ImportError:
+    yaml = None
 from fastapi import APIRouter, HTTPException, Request, status
 from fastapi.responses import StreamingResponse
 
@@ -440,6 +443,8 @@ def _catalog_metadata() -> Dict[str, Any]:
     if not _MODEL_CATALOG_PATH.exists():
         return {}
     try:
+        if yaml is None:
+            return {}
         catalog = yaml.safe_load(_MODEL_CATALOG_PATH.read_text()) or {}
         metadata = catalog.get("_meta", {})
         if not isinstance(metadata, dict):

@@ -23,8 +23,10 @@ from pathlib import Path
 
 # Add context_memory to path
 sys.path.insert(0, str(Path(__file__).parent.parent.parent / "ai-stack" / "context_memory"))
+sys.path.insert(0, str(Path(__file__).parent / "lib"))
 
 from context_manager import ContextMemoryManager
+from context_boundary import record_boundary
 
 
 AQ_MEMORY_SCRIPT = Path(__file__).with_name("aq-memory")
@@ -528,6 +530,35 @@ def cmd_summary(args):
     print(payload["guidance"])
 
 
+def cmd_boundary(args):
+    """Record a post-tool/drop boundary without retaining the payload."""
+    chars = args.chars
+    if args.payload_file:
+        chars = Path(args.payload_file).stat().st_size
+    if chars is None and args.tokens is None:
+        raise SystemExit("boundary requires --chars, --tokens, or --payload-file")
+    chars = chars if chars is not None else 0
+    result = record_boundary(
+        Path.cwd(),
+        args.source,
+        chars,
+        tokens=args.tokens,
+        task=args.task or "resume context work",
+        session_id=args.session_id,
+        native_limit=args.native_limit,
+        safe_ratio=args.safe_ratio,
+        hard_ratio=args.hard_ratio,
+        reset=args.reset,
+        force=args.force,
+    )
+    if args.json:
+        print(json.dumps(result, indent=2))
+    else:
+        print(f"{result['status']}: {result['cumulative_tokens']:,} estimated tokens")
+        if result.get("handoff"):
+            print(f"Handoff: {result['handoff']}")
+
+
 def main():
     parser = argparse.ArgumentParser(
         description="Context Memory Management CLI",
@@ -541,13 +572,14 @@ Examples:
   aq-context-manage compact               # Trigger compaction
   aq-context-manage checkpoint --task "resume slice" --decision "bounded retries to 2" --next-step "start fresh session"
   aq-context-manage summary --task "resume slice" --json
+  aq-context-manage boundary --source mcp --chars 12000 --task "resume slice" --json
   aq-context-manage stats --json          # JSON output
         """
     )
 
     parser.add_argument(
         "command",
-        choices=["stats", "check", "plan", "update", "compact", "checkpoint", "summary"],
+        choices=["stats", "check", "plan", "update", "compact", "checkpoint", "summary", "boundary"],
         help="Command to execute"
     )
 
@@ -581,6 +613,15 @@ Examples:
     parser.add_argument("--created-by", help="Creator identifier for checkpoint entries.")
     parser.add_argument("--tags", default="checkpoint,resume", help="Shared comma-separated tags for checkpoint entries.")
     parser.add_argument("--memory-storage", default=".aidb/temporal_facts.json", help="aq-memory storage path for checkpoint writes.")
+    parser.add_argument("--source", default="tool", help="Boundary source label (tool, mcp, drop, etc.).")
+    parser.add_argument("--chars", type=int, help="Payload character/byte count; payload contents are not stored.")
+    parser.add_argument("--payload-file", help="Read only the file size as the payload count.")
+    parser.add_argument("--tokens", type=int, help="Use an explicit token estimate instead of --chars.")
+    parser.add_argument("--session-id", help="Stable session id; a new value resets the counter.")
+    parser.add_argument("--native-limit", type=int, default=50000, help="Native context limit estimate.")
+    parser.add_argument("--safe-ratio", type=float, default=0.80, help="Safe handoff ratio of native limit.")
+    parser.add_argument("--hard-ratio", type=float, default=0.90, help="Hard handoff ratio of native limit.")
+    parser.add_argument("--reset", action="store_true", help="Reset the current boundary counter before recording.")
 
     args = parser.parse_args()
 
@@ -594,6 +635,9 @@ Examples:
         if not args.task:
             parser.error("--task is required for summary")
         cmd_summary(args)
+        return
+    if args.command == "boundary":
+        cmd_boundary(args)
         return
 
     manager = ContextMemoryManager(db_path=args.db)

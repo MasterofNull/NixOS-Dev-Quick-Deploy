@@ -1,0 +1,9 @@
+{
+  "agent": "codex",
+  "dispatch_id": "codex-20260925-183730-j7czk8xxxxxx",
+  "imported_at": "2026-09-26T01:59:11Z",
+  "patch_sha256": "1f81600fa7c6a8f1a17abed242621b74d2cfc417808b4dff1b22b6db1cd5fdc1",
+  "schema_version": "1.0",
+  "sha256": "ac71362a87e1282f0168d6e15c93ff54f7f978e81e295a1da6ce6e85104df211",
+  "source_kind": "isolated-worktree-owned-file"
+}

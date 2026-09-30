@@ -25,6 +25,13 @@ _meta:
 
 variables:
 
+  - canonical: AQ_DELEGATION_DIR
+    aliases: []
+    default: ".agents/delegation"
+    layer: all
+    consumers: [delegate-to-local, prsi-orchestrator]
+    description: "Writable root for isolated agent delegation artifacts and worktrees"
+
   - canonical: AQ_ROUTING_METRICS_DB_PATH
     aliases: []
     default: "routing_metrics.db"
@@ -1373,3 +1380,10 @@ variables:
     layer: all
     consumers: [switchboard capability-lease-gate (ai-stack/switchboard/capability_lease_gate.py), dispatch ingress (scripts/ai/lib/dispatch.py), c2-scheduler-context-issuer (scripts/ai/lib/scheduler_context_issuer.py)]
     description: "Foundation C Q-C6-1 C2 scheduler-context issuer, default-OFF. '0' (default): capability_lease_gate.enforce() + dispatch.py are BYTE-IDENTICAL to pre-slice (no outbound issuer call, no context ingress; gate suite 83/83). '1': on an admission ALLOW the gate makes an outbound UDS call (AQ_SCHEDULER_CONTEXT_SOCKET_PATH) presenting the verified signed lease to the confined aq-c2-scheduler-context-issuer, which verify_authoritative-verifies it + layers OBLIG-1 expiry/epoch + re-derives the tuple from the lease's own signed fields + single-use {lease_id,grant_digest} DURABLE ledger + Ed25519-signs an aq.scheduler-lease-context/1; dispatch.py verify_ingress_scheduler_context accepts ONLY that signed context (verify_scheduler_context against config/aqos/c6-scheduler-signer-keys.json + audience + expiry + epoch), never a caller arg. FAIL-CLOSED + NON-BLOCKING: an unreachable/denying issuer yields NO context and NEVER alters the tool ADMIT/DENY. Independent of CAPABILITY_SCHEDULER_LEASE_GATE (the C6 gate) and of the c2SchedulerContextIssuer.service enable + SOPS key provisioning \u2014 all separate owner acts."
+
+  - canonical: AQ_TEST_FORCE_STUB
+    aliases: []
+    default: "0"
+    layer: python
+    consumers: [test-context-assembler, test-read-file-gate, tier0-validation-gate]
+    description: "Force offline stubs in test suites even if live endpoints (:8081, :6333) respond, preventing timeout under heavy system load."

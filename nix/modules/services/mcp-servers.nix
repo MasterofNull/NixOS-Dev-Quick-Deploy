@@ -2799,6 +2799,12 @@ in {
             /sys/fs/cgroup/** r,
             /proc/@{pids}/cgroup r,
 
+            # git — PM progress route shells out to aq-pm-tracker which reads bounded commit evidence
+            /nix/store/**/bin/git ix,
+            /run/current-system/sw/bin/git ix,
+            /nix/store/**/libexec/git-core/** ix,
+            /etc/gitconfig r,
+
             # Network — localhost only (:8889) + outbound to coordinator loopback
             network inet stream,
             network unix stream,

@@ -271,6 +271,40 @@ class AutonomousLoop:
                 ) from receipt_error
             raise RuntimeError("metric-sync-failed") from e
 
+        if int(stats.get("metrics_collected", 0) or 0) == 0:
+            summary = "Autonomous improvement observed no new metrics before trigger evaluation."
+            evidence_digest = hashlib.sha256(
+                json.dumps(stats, sort_keys=True, default=str).encode("utf-8")
+            ).hexdigest()
+            record = build_deviation(
+                occurred_at=datetime.now(timezone.utc).isoformat().replace("+00:00", "Z"),
+                source={
+                    "lane": "local",
+                    "component": "ai-autonomous-improvement",
+                    "phase": "OBSERVE",
+                    "workflow_id": cycle_type,
+                },
+                reason_code="observation.failed",
+                summary=summary,
+                root_issue_key="autonomous-improvement-metric-sync-false-green",
+                evidence=[{
+                    "kind": "log",
+                    "ref": "systemd:ai-autonomous-improvement.service",
+                    "digest": evidence_digest,
+                }],
+            )
+            receipt_path = Path(os.environ.get(
+                "AQ_WORKFLOW_DEVIATION_LOG_PATH",
+                "/var/lib/ai-stack/hybrid/telemetry/workflow-deviations.jsonl",
+            ))
+            try:
+                append_receipt(receipt_path, record)
+            except Exception as receipt_error:
+                raise RuntimeError(
+                    "metric-sync-failed-and-deviation-receipt-unavailable"
+                ) from receipt_error
+            raise RuntimeError("no-metrics-observed")
+
         # Phase 2: Check Triggers
         print("🎯 Phase 2: Checking trigger conditions...")
         try:

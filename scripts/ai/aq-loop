@@ -49,11 +49,14 @@ _DELEGATION_OUTPUTS = _REPO_ROOT / ".agents" / "delegation" / "outputs"
 # Ensure loop_state module is importable
 if str(_LOCAL_AGENTS) not in sys.path:
     sys.path.insert(0, str(_LOCAL_AGENTS))
+if str(_SCRIPT_DIR / "lib") not in sys.path:
+    sys.path.insert(0, str(_SCRIPT_DIR / "lib"))
 
 from loop_state import (  # noqa: E402
     LoopState, write_state, read_state, archive_state,
     append_pulse, update_resume, extract_evidence, is_completed, consume_review_result,
 )
+from rsi_lifecycle import start as rsi_start, failure as rsi_failure, complete as rsi_complete  # noqa: E402
 
 
 # ── helpers ───────────────────────────────────────────────────────────────────
@@ -495,6 +498,7 @@ def run_loop(
 ) -> int:
     """Run the outer orchestration loop. Returns 0 on success, 1 on escalation."""
     loop_id = _loop_id()
+    rsi_start("aq-loop", loop_id, intent)
 
     state = LoopState(
         loop_id=loop_id,
@@ -557,7 +561,12 @@ def run_loop(
 
         print(f"\n[aq-loop] === Iteration {iteration}/{max_iter} ===")
         t0 = time.time()
-        result = run_inner_loop(grounded, loop_id, iteration, timeout=timeout, tool_manifest=tool_manifest, task_type=task_type)
+        try:
+            result = run_inner_loop(grounded, loop_id, iteration, timeout=timeout, tool_manifest=tool_manifest, task_type=task_type)
+        except Exception as exc:
+            rsi_failure("aq-loop", loop_id, "aq-agent-loop", ".agent/collaboration/LOOP_STATE.json",
+                        "aq-loop", repr(exc), root_fix="inspect the inner-loop producer and retry with evidence")
+            result = {"success": False, "error": repr(exc), "tool_calls": []}
         elapsed = round(time.time() - t0, 1)
 
         evidence = extract_evidence(result)
@@ -603,6 +612,8 @@ def run_loop(
                             state.review_repair["escalation_written"] = True
                             write_state(state)
                         append_pulse(loop_id, iteration, "ESCALATED", reason)
+                        rsi_failure("aq-loop", loop_id, "review-gate", ".agent/memory/issues-backlog.md",
+                                    "aq-loop", reason, root_fix="repair the reviewed defect and rerun the bounded slice")
                         return 1
 
             state.phase = "COMPLETE"
@@ -613,9 +624,13 @@ def run_loop(
             if backlog_line:
                 _release_backlog_item(backlog_line, success=True)
             print(f"\n[aq-loop] Loop completed in {iteration} iteration(s).")
+            rsi_complete("aq-loop", loop_id, f"completed iteration {iteration}")
             return 0
 
         if iteration < max_iter:
+            rsi_failure("aq-loop", loop_id, "aq-agent-loop", ".agent/collaboration/LOOP_STATE.json",
+                        "aq-loop", str(result.get("error") or "incomplete result"),
+                        root_fix="use the recorded evidence to repair the producer before retry")
             print(f"[aq-loop] Incomplete — will retry (iter {iteration+1}/{max_iter})")
 
     # Exhausted iterations
@@ -624,6 +639,9 @@ def run_loop(
     append_pulse(loop_id, max_iter, "ESCALATED", "max iterations reached")
     update_resume(intent, "ESCALATED", "escalated", loop_id)
     write_escalation(state)
+    rsi_failure("aq-loop", loop_id, "aq-loop", ".agent/memory/issues-backlog.md",
+                "aq-loop", f"max iterations reached ({max_iter})",
+                root_fix="claim the RSI backlog item and execute a bounded repair slice")
     if backlog_line:
         _release_backlog_item(backlog_line, success=False)  # restore [OPEN]
     print(f"\n[aq-loop] Escalated after {max_iter} iterations. See issues-backlog.md.")

@@ -1,0 +1,48 @@
+#!/usr/bin/env python3
+"""Run an explicit command once and observe its terminal status, without replay."""
+import argparse
+import os
+from pathlib import Path
+import subprocess
+import signal
+import sys
+
+sys.path.insert(0, str(Path(__file__).resolve().parent / "lib"))
+from rsi_lifecycle import failure
+
+parser = argparse.ArgumentParser(description=__doc__)
+parser.add_argument("--agent", default="codex")
+parser.add_argument("--subject", required=True)
+parser.add_argument("--timeout", type=float, default=120)
+parser.add_argument("command", nargs=argparse.REMAINDER)
+args = parser.parse_args()
+command = args.command[1:] if args.command[:1] == ["--"] else args.command
+if not command:
+    parser.error("command required")
+producer = Path(command[0]).name
+try:
+    process = subprocess.Popen(command, start_new_session=True)
+    try:
+        code = process.wait(timeout=args.timeout)
+    except subprocess.TimeoutExpired:
+        os.killpg(process.pid, signal.SIGTERM)
+        try:
+            process.wait(timeout=2)
+        except subprocess.TimeoutExpired:
+            pass
+        try:
+            os.killpg(process.pid, signal.SIGKILL)
+        except ProcessLookupError:
+            pass
+        process.wait()
+        code = 124
+except OSError:
+    code = 127
+# rg/grep document exit 1 as a valid no-match result.
+if code and not (producer in {"rg", "grep"} and code == 1):
+    try:
+        failure(args.agent, args.subject, producer, command[0], "explicit command invocation",
+                f"command exit status {code}", root_fix="Inspect bounded command evidence and fix the producer before retrying")
+    except Exception as exc:
+        print(f"RSI recording failed: {type(exc).__name__}", file=sys.stderr)
+raise SystemExit(code if code >= 0 else 128 - code)

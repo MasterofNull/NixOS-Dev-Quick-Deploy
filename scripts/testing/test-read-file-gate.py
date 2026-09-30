@@ -28,6 +28,7 @@ Coverage:
 """
 from __future__ import annotations
 
+import os
 import sys
 import unittest
 from pathlib import Path
@@ -46,6 +47,10 @@ import tool_registry  # noqa: E402
 
 def _live_backends_available() -> bool:
     """Same proof pattern as test-context-assembler.py's _live_backends_available()."""
+    if os.environ.get("AQ_TEST_FORCE_STUB", "").strip().lower() in ("1", "true", "yes"):
+        return False
+    if os.environ.get("TIER0_OFFLINE", "").strip().lower() in ("1", "true", "yes"):
+        return False
     try:
         return context_cache.embed_text("read-file-gate-live-probe") is not None
     except Exception:

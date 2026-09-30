@@ -2345,13 +2345,15 @@ in {
 
       systemd.services.ai-prsi-orchestrator = {
         description = "PRSI orchestrator cycle (identify → approve-low-risk → execute)";
-        after = ["network-online.target" "ai-aidb.service" "ai-hybrid-coordinator.service" "ai-ralph-wiggum.service"];
-        wants = ["network-online.target" "ai-ralph-wiggum.service"];
+        after = ["network-online.target" "ai-aidb.service" "ai-hybrid-coordinator.service"];
+        wants = ["network-online.target"];
         serviceConfig = {
           Type = "oneshot";
           User = cfg.primaryUser;
           WorkingDirectory = cfg.mcpServers.repoPath;
-          ExecStart = "${pkgs.bash}/bin/bash ${cfg.mcpServers.repoPath}/scripts/ai/aq-ralph-task \"Execute PRSI orchestrator cycle: ${pkgs.python3}/bin/python3 ${cfg.mcpServers.repoPath}/scripts/automation/prsi-orchestrator.py cycle --since=1d --execute-limit=5\" aider";
+          # This cycle is deterministic Python orchestration. Do not submit the
+          # fixed command through aq-ralph-task, which adds an unnecessary LLM call.
+          ExecStart = "${pkgs.python3}/bin/python3 ${cfg.mcpServers.repoPath}/scripts/automation/prsi-orchestrator.py cycle --since=1d --execute-limit=5";
           # aq-report --format=json can take 180-240s on cold Qwen3 start; give the
           # full cycle (report + approve + execute) 10 minutes to avoid false failures.
           TimeoutSec = "600";
@@ -2374,6 +2376,52 @@ in {
             "PRSI_STATE_PATH=${mutableOptimizerDir}/prsi/runtime-state.json"
           ];
         };
+      };
+
+      # Incident repair dispatch is event-driven with a short periodic sweep as
+      # a lost-event backstop. The Python queue lock and per-cycle limit bound work.
+      systemd.services.ai-prsi-rsi-dispatch = {
+        description = "Bounded PRSI incident repair dispatch";
+        after = ["network-online.target" "ai-hybrid-coordinator.service"];
+        wants = ["network-online.target"];
+        path = [pkgs.git];
+        serviceConfig = {
+          Type = "oneshot";
+          User = cfg.primaryUser;
+          WorkingDirectory = cfg.mcpServers.repoPath;
+          ExecStart = "${pkgs.python3}/bin/python3 ${cfg.mcpServers.repoPath}/scripts/automation/prsi-orchestrator.py rsi-dispatch --execute --apply --limit=1 --timeout-seconds=600";
+          TimeoutSec = "660";
+          StandardOutput = "journal";
+          StandardError = "journal";
+          NoNewPrivileges = true;
+          ProtectSystem = "strict";
+          ProtectHome = "read-only";
+          PrivateTmp = true;
+          MemoryMax = "256M";
+          ReadWritePaths = [mutableOptimizerDir mutableLogDir "${cfg.mcpServers.repoPath}/.git"];
+          Environment = [
+            "AQ_DELEGATION_DIR=${mutableOptimizerDir}/prsi/delegation"
+            "PRSI_ACTION_QUEUE_PATH=${mutableOptimizerDir}/prsi/action-queue.json"
+            "PRSI_ACTIONS_LOG_PATH=${mutableLogDir}/prsi-actions.jsonl"
+            "PRSI_POLICY_FILE=${cfg.mcpServers.repoPath}/config/runtime-prsi-policy.json"
+            "PRSI_STATE_PATH=${mutableOptimizerDir}/prsi/runtime-state.json"
+          ];
+        };
+      };
+
+      systemd.paths.ai-prsi-rsi-dispatch = {
+        description = "Dispatch PRSI when a new incident is recorded";
+        wantedBy = ["multi-user.target"];
+        pathConfig = {
+          PathChanged = "${cfg.mcpServers.repoPath}/.agent/collaboration/rsi-incidents.json";
+          Unit = "ai-prsi-rsi-dispatch.service";
+        };
+      };
+
+      systemd.timers.ai-prsi-rsi-dispatch = {
+        description = "Periodic bounded PRSI incident queue sweep";
+        wantedBy = ["timers.target"];
+        timerConfig = {OnBootSec = "5min"; OnUnitActiveSec = "5min"; Persistent = true;};
       };
 
       systemd.timers.ai-prsi-orchestrator = {

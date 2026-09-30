@@ -48,7 +48,7 @@ wt_create() {
     [[ -d "$repo_root/.git" || -f "$repo_root/.git" ]] || return 1
     local base wt_root
     base="$(git -C "$repo_root" rev-parse --verify HEAD 2>/dev/null)" || return 1
-    wt_root="$repo_root/.agents/delegation/worktrees"
+    wt_root="${AQ_DELEGATION_DIR:-$repo_root/.agents/delegation}/worktrees"
     local wt_path="$wt_root/$task_id"
     local branch="delegate/$task_id"
     mkdir -p "$wt_root" 2>/dev/null || true
@@ -87,7 +87,10 @@ wt_validate() {
     local repo_real wt_real
     repo_real="$(cd "$repo_root" 2>/dev/null && pwd -P)" || return 1
     wt_real="$(cd "$wt_path" 2>/dev/null && pwd -P)" || return 1
-    [[ "$wt_real" == "$repo_real/.agents/delegation/worktrees/$task_id" && "$wt_real" != "$repo_real" ]] || return 1
+    local expected_root
+    expected_root="${AQ_DELEGATION_DIR:-$repo_real/.agents/delegation}/worktrees"
+    expected_root="$(mkdir -p "$expected_root" 2>/dev/null && cd "$expected_root" && pwd -P)" || return 1
+    [[ "$wt_real" == "$expected_root/$task_id" && "$wt_real" != "$repo_real" ]] || return 1
     git -C "$repo_real" worktree list --porcelain | grep -Fx "worktree $wt_real" >/dev/null || return 1
     [[ "$(git -C "$wt_real" branch --show-current 2>/dev/null)" == "$branch" ]] || return 1
 }

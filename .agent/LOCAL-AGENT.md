@@ -10,6 +10,13 @@ This file provides guidance to whichever locally hosted model fills the **local 
 **Currently running:** Qwen3-35B (unsloth/Qwen3.6-35B-A3B-MTP-GGUF:UD-Q4_K_XL)
 **Full policy, workflow contracts → `AGENTS.md` (repo root)**
 
+## Progressive disclosure and fetch-on-demand
+
+- Keep the always-on prompt to role/authority, active objective, owned paths, acceptance criteria, and stop/validation constraints.
+- Fetch `aq-resume`, then task hints and at most 2–3 matching skills; use `lean-ctx` outlines/signatures before bounded reads of exact symbols.
+- Load domain instructions, memory topics, and full policy sections only when their task trigger or pointer requires them.
+- Pass delegation pointers and slice criteria, never parent history, full transcripts, whole files, or full skill bodies; persist the active envelope in `RESUME.json`.
+
 ## Service Ports (defaults — canonical SSOT: `nix/modules/core/options.nix`)
 ```
 llama:8080  embed:8081  aidb:8002  hybrid:8003  ralph:8004  swb:8085  dash:8889
@@ -444,6 +451,9 @@ All agents share these canonical references — read before any non-trivial task
 | 18 | **AGENT-AGNOSTIC ROLES + CATCH-UP QUEUE (no single point of failure)** | Roles/gates/funnels/lanes are model-agnostic: NO role (orchestrator, architect, implementer, reviewer, binding-acceptance) is permanently tied to one model/agent. The orchestrator routes each role instance at dispatch time to whichever lane is available + eligible (role-matrix + `config/model-coordinator.json` tiers) + independent (never self-review) + cheapest (Rule 17). Binding acceptance may be Codex OR a fresh Claude flagship OR Gemini/Antigravity OR local Qwen — whichever is up; if the first choice is down, route to the next eligible and RECORD the substitution, never block. Local Qwen is the always-available floor (never-skip-local). A returning agent plays catch-up via `.agent/collaboration/AGENT-CATCHUP-QUEUE.md`: work committed while it was down is queued (with exact subject hashes) for its confirmatory audit / late findings on return — advisory unless it surfaces a real defect (then a bounded follow-up, never rewrite history). Owner directive 2026-07-22; SSOT `.agents/plans/agent-agnostic-factory/DESIGN.md`. |
 | 19 | **ROOT-CAUSE DISCIPLINE** | No silent workarounds. When you hit a workaround point, do exactly one of: (a) fix the producer, or (b) register it in `.agent/WORKAROUND-REGISTER.md` with {symptom, root cause, producer, fix-path, class, severity} — never leave an ad-hoc band-aid in place. Any ad-hoc change to a designed system carries a one-line root-cause note in its commit body. **Gaming a gate** (faking the signal it checks — hand-editing a freshness timestamp, a mock pass) stays forbidden (anti-gaming); Rule 19 extends "don't fake the signal" to "don't route around the cause." **Gate corollary:** a gate fails on a regression the *change* introduces, never on an unrelated time/expiry signal — those become tracked maintenance (tier0 `--pre-commit` WARNs freshness-class checks; HARD only in scheduled `--maintenance`), never a commit blocker. Owner-ratified 2026-08-06; SSOT `.agent/PROJECT-ROOT-CAUSE-DISCIPLINE-PRD.md`; register `.agent/WORKAROUND-REGISTER.md`. |
 | 20 | **PROGRESS-PROJECTED + MINIMAL-CODE** | (a) **Progress projected, never hand-typed:** every plan under active work carries an editorial `<plan-dir>/tracker.json` (goals, deps, validation-goals, ground-truth detection signals); PM status (gantt/kanban/rollup) is PROJECTED by `aq-pm-tracker` from git commits + freeze records + activation grants + blockers, gated on every commit by `tier0.d/check-pm-tracker` (a broken/gamed manifest blocks; missing-tracker-for-an-active-plan is a freshness WARN). Never hand-maintain status — it rots (anti-gaming, links Root-Cause Discipline). (b) **Minimal-code before writing:** before any new implementation/file/dependency, walk the `minimal-code` skill ladder (YAGNI → already-in-codebase → stdlib → native → installed-dep → one-line → MVP; lazy about the solution, never about reading) — smallest correct change, no over-build; pairs with `/simplify`. NEVER at the cost of correctness, fail-closed, security, or a HARD rule. SSOT `.agents/plans/pm-tracker-standard/DESIGN.md` + skill `minimal-code`. |
+| 21 | **COLLABORATIVE STEWARDSHIP (not adversarial)** | Flat collaborative org. Steward local agent; critique only where wanted. SSOT auto-memory `feedback-collaborative-stewardship-not-adversarial`. |
+| 22 | **MEMORY, CACHE & TOKEN EFFICIENCY** | Zero runaway context. Small-window models compact every 3-4 exchanges. Offload facts to MemoryBroker (:8003). Query AIDB, never dump raw context. |
+
 
 > **Local-model allowances**: Rules 4, 5, 6 are tightened relative to the canonical remote-model values
 > to account for context window size and APU thermal constraints. These apply to ANY locally hosted
@@ -469,6 +479,147 @@ SSOT: `.agent/FABLE-PARITY-CONTRACT.md`. Every agent and inference lane in this 
 
 Enforcement: local payloads auto-inject the MICRO variant (`shared/llm_config.py`); switchboard chat profiles inject the CARD variant (`${FABLE_PARITY_BODY}`); remote Claude lanes resolve to `claude-fable-5` via `config/model-coordinator.json`. Kill switch: `FABLE_PARITY=0`. HARD harness rules win on any conflict.
 <!-- canon:end fable-parity -->
+
+<!-- canon:begin memory-cache-sop -->
+## Local Agentic Memory, Cache & Token Efficiency SOP (Canonical — all agents)
+
+SSOT: `.agent/skills/context-efficiency/SKILL.md` · Harness memory contract: `AGENTS.md` §Memory Discipline.
+Every agent (Claude, Codex, Gemini, local Qwen) MUST leverage local memory, caching, and compaction as first-line context offloaders to maximize reasoning performance, ensure deterministic outcomes, and prevent token burn.
+
+### 0. Operational priority (owner directive 2026-09-27)
+
+Memory, cache, context, token accounting, and supporting system tools are core operational infrastructure. Prioritize correct structure, integration, actual agent use, runtime enablement, and observable evidence across all providers. Documented, implemented, configured, enabled, and verified are distinct states. Treat silent memory failures, ineffective compaction, ignored cache paths, and uncontrolled token use as delivery blockers for the affected workflow. Apply shared contracts with provider-specific adapters; never claim universal enforcement from instruction text alone.
+
+### 1. The Tri-Phase Memory & Caching Closed-Loop
+The memory and cache architecture operates as a continuous, closed-loop lifecycle across all 8 canonical workflow steps:
+
+```
+[FRONTEND PREP: Steps 1-2]         [MID-PHASE: Steps 3-6]            [BACKEND INGEST: Steps 7-8]
+Fast/Lazy Cache & Vector Hits  ──►  AST Scoping & DB Cache Hits  ──►  Seed & Update Caches, DBs & Vectors
+(ctx_*, hints, RESUME, AIDB)       (error-solutions, KV cache)        (MemoryBroker facts, RAG seeds)
+       ▲                                                                            │
+       └─────────────────────────── Reused by Next Task ────────────────────────────┘
+```
+
+- **Frontend Task Prep (Steps 1–2: ORIENT & RESEARCH)**:
+  - **`lean-ctx` First**: Use frontend task prep tools like `lean-ctx` (`ctx_read`, `ctx_search`, `ctx_tree`, `ctx_shell`) throughout every phase where applicable.
+  - **Lightweight, Fast, Lazy Retrieval**: Never drag full conversation history or entire files into context. Hydrate instantly from pre-warmed caches and vectors:
+    - `aq-resume` (state anchor from `RESUME.json`, ~150–300 tokens)
+    - `aq-session-start --task "<task>"` + `aq-hints` (ranked vector hints from AIDB)
+    - `ctx_read(path, mode="signatures"|"outline")` (AST pruning; cached re-reads cost ~13 tokens)
+    - Redis KV and embedding cache hits (sub-millisecond semantic retrieval)
+
+- **Mid-Phase Execution (Steps 3–6: PRD/PLAN, EXECUTE, VALIDATE)**:
+  - **Vector & Cache Traversal**: Before writing code or diagnosing errors, leverage targeted database and vector queries:
+    - Query AIDB collection `error-solutions` before investigating bug patterns
+    - Query `best-practices` and `skills-patterns` for harness idioms
+    - Use `ctx_search` (bounded regex) and `ctx_read` with offset/limit instead of unbounded file scans
+    - **Prompt Cache Alignment**: Keep system prompts, instructions, and grounding SSOT at the message head to maximize KV cache hits on local models and provider prompt cache hits (90%+ cost/token reduction)
+    - **Output Capping**: Strictly cap tool outputs at 3,000 characters (~750 tokens) to prevent megabyte log dumps
+
+- **Backend Task Closeout & Ingest (Steps 7–8: DOC-UPDATE, COMMIT & HANDOFF)**:
+  - **Input and Update Caches, Databases, and Vectors**: Every completed task must feed its findings back into the system so subsequent tasks can reuse them in lightweight, fast, lazy mode:
+    - **Seed RAG Vectors**: Seed AIDB collections (`error-solutions`, `best-practices`, `skills-patterns`) with newly discovered patterns and root-cause solutions
+    - **Store Facts**: POST completed-task learnings to MemoryBroker (`POST :8003/api/memory/facts` or `mcp_server_store_memory`)
+    - **Warm Memory**: Write architecture notes to `.agent/memory/<topic>.md`; collapse old pointers in `ai-stack/agent-memory/MEMORY.md`
+    - **Checkpoint & Compact**: Update `.agent/collaboration/RESUME.json` and append to `PULSE.log`. Use `aq-session-compact` for read-only size diagnostics. Compact through the provider's supported mechanism or start a fresh session from a deliberate handoff; never archive/delete provider-owned transcripts to simulate context compaction.
+
+### 2. High-Signal Anti-Thrashing Compaction (Selective Eviction vs. Anchor Retention)
+Compaction and trimming must be **aggressive but discerning** — never strip context so deeply that the agent wastes tokens re-discovering active working context:
+
+- **What to Evict Aggressively (No Longer Used or Cheaply Retrievable)**:
+  - Stale intermediate tool executions: raw grep dumps already acted upon, verbose file listings, resolved lint/build outputs
+  - Historical conversation turns from completed sub-tasks or merged slices
+  - Full file bodies already saved to disk (re-read cheaply on demand via `ctx_read` at ~13 tokens)
+  - Static background documentation easily retrieved from AIDB vectors or `aq-hints`
+- **What to Retain as Working Anchors (Active Execution State)**:
+  - The active slice objective, immediate task constraints, and acceptance criteria
+  - The exact list of uncommitted modified files and active symbol names under edit
+  - Unresolved error traces or test failure outputs currently being diagnosed
+  - Explicit pointers/paths to relevant topic memory files so retrieval is single-step rather than exploratory
+- **Anti-Thrashing Principle**: If an item is actively needed for the next 1–2 turns, keep it in working context. If an item is historical, resolved, or indexable, evict it to MemoryBroker or topic files immediately.
+
+### 3. Zero Runaway Context & Compaction Mandate
+- **Measured guard, every model**: Before continued autonomous execution, use the latest total input-token measurement (including cached input), not transcript bytes or uncached tokens alone. Budget is at most 50,000 tokens and 80% of the model's actual context window, whichever is smaller. If over budget, checkpoint and use supported native compaction or a fresh-session handoff before further work. If measurements are unavailable, label them unknown and obtain evidence; do not claim a clean guard.
+- **Verify the reduction**: `aq-session-compact --verify-usage <record.json>` accepts provider-neutral telemetry: `session_id`, `input_tokens`, `context_window_tokens`, `before_input_tokens`, `compaction_observed`, `before_request_sequence`, `request_sequence`. Inputs must refer to the same session with the after request later than the before request. Only a measured decrease within budget returns `verified_reduction` / exit 0; all other outcomes exit 2. Codex rollouts can use `--verify-rollout <path>` directly. This verifier observes evidence; it does not itself trigger provider compaction.
+- **Provider adapters**: Codex native startup configuration uses `model_auto_compact_token_limit = 50000` and scope `total`. Claude, Gemini/Antigravity, local models, and future providers follow the same measured guard contract using their supported context management. Do not pretend a provider adapter is installed or operational merely because this instruction is projected. Verify each adapter separately.
+- **Avoid amplification**: No full-history delegation; pass a bounded task and file pointers. Wait inside tools between meaningful events instead of repeated model-driven status polls. Saving memory or compressing tool output does not remove the existing conversation history.
+- **Hard Session Thresholds**: If active conversation history exceeds **2.5 MB** on disk, **25 turns**, or **50k tokens**, agents MUST compact before executing further turns.
+- **Never Resume Bloat**: Diagnose oversized sessions with `aq-session-compact` (or `aq-workspace compact`), then use supported compaction or a fresh-session handoff. Historical scans must never replace the active objective, and transcript size alone does not establish live token usage or a successful context reset.
+- **Clean Hydration**: All sessions hydrate leanly via `aq-resume` + `aq-session-start --task "<task>"` (~1,500 tokens), preserving full task continuity without token bloat.
+
+### 4. Bounded Sub-Agents & Standby Pane Execution
+- **Sub-Agent Context Slicing**: When delegating to sub-agents, pass ONLY the slice objective (1-2 sentences), target file paths (by address, not content), acceptance criteria, constraints, and reference skill names. NEVER forward conversation history or prior agent transcripts.
+- **Standby Mode by Default**: Workspace panes and daemon processes must launch in standby (`prompt`) mode (`read -n 1`). Never run unthrottled auto-execution loops in background terminals.
+- **Session-Scoped Shutdown**: Workspace reset/exit may terminate only the requested workspace. Never invoke global process reaping as an implicit side effect; separate cleanup requires evidence of ownership and must preserve other active workspaces.
+<!-- canon:end memory-cache-sop -->
+
+<!-- canon:begin recursive-self-improvement-sop -->
+## Recursive Self-Improvement (RSI) Closed-Loop SOP (Canonical — all agents)
+
+SSOT: `.agent/WORKFLOW-CANON.md` · Philosophy: `AGENTS.md` §Project Philosophy · Rule SSOT: Rule 11a & Rule 21.
+NixOS-Dev-Quick-Deploy is an immutable, declarative **Pessimistic Recursive Self-Improvement (PRSI)** environment. Every agent (Claude, Codex, Gemini/Antigravity, local Qwen) and every task slice MUST execute within the recursive self-improvement closed-loop: findings, friction, errors, and mitigations are never discarded or bypassed with silent workarounds; they MUST be dogfooded back into the system to drive continuous, compounding platform evolution.
+
+### 1. The 5-Stage Recursive Self-Improvement Closed-Loop
+The recursive self-improvement loop operates across every phase of task execution:
+
+```
+[1. DETECT & MEASURE]           [2. DIAGNOSE & REGISTER]         [3. SEED & DOGFOOD]
+Runtime friction, race       ──► Root cause analysis (R-21)   ──► Store facts in MemoryBroker (:8003)
+conditions, tool contention,     Register in issues-backlog       Seed RAG vectors (error-solutions)
+or metric anomalies              and WORKAROUND-REGISTER          Update topic memory & MEMORY.md
+                                                                           │
+                                                                           ▼
+[5. RECURSIVE REUSE]            [4. SYNTHESIZE GUARDS]                     │
+Next task hydrates via       ◄── Harden CLI tools & scripts   ◄────────────┘
+aq-session-start + aq-hints      Add deterministic checks (tier0.d)
+Lean-ctx & pre-warmed caches     Zero recurring failures
+```
+
+- **Stage 1: Detect & Measure (Execution / Mid-Phase)**:
+  - Continuously monitor execution for runtime friction, concurrency races, latency spikes, or tool contention.
+  - "You cannot manage what you cannot measure": if an issue occurs without observable telemetry or clear diagnostics, instrument it immediately.
+  - **Gate Contention**: When multiple agents run heavyweight validation simultaneously, serialize access using `aq-gate-checkout` to prevent tool contention, memory exhaustion, and hanging processes.
+
+- **Stage 2: Root-Cause Diagnosis & Registration**:
+  - **No Silent Workarounds (Rule 21)**: Trace every failure or friction point to its system producer. Never leave an ad-hoc band-aid in place.
+  - **Mandatory Issue Logging (Rule 11a)**: Any discovered error, friction, misconfiguration, or system limitation (fixed immediately or deferred) MUST be recorded in `.agent/memory/issues-backlog.md`:
+    ```markdown
+    [STATUS] SCOPE — Description — Root cause / fix notes
+      Severity: low|medium|high|critical
+      Action: specific next step
+      File: path/to/file ~line N
+    ```
+  - **Workaround Registration (Rule 21)**: If an interim mitigation is necessary, register it in `.agent/WORKAROUND-REGISTER.md` with `{symptom, root cause, producer, fix-path, class, severity}`.
+
+- **Stage 3: Knowledge Seeding & Dogfooding (Doc-Update / Backend Ingest)**:
+  - **Store Factual Learnings**: POST architectural and operational facts to MemoryBroker (`POST :8003/api/memory/facts` or `mcp_server_store_memory`).
+  - **Seed RAG Vectors**: Seed AIDB collections via `scripts/data/seed-rag-knowledge.py`:
+    - `error-solutions`: newly identified bugs, root causes, and verified fixes.
+    - `best-practices`: operational patterns, harness conventions, and tool contracts.
+    - `skills-patterns`: reusable workflows and multi-agent coordination patterns.
+  - **Topic Memory Curation**: Write detailed findings to `.agent/memory/<topic>.md` and update index entries in `ai-stack/agent-memory/MEMORY.md` within the line budget.
+
+- **Stage 4: Automated Guard & Gate Synthesis**:
+  - Never stop at fixing a bug in code: synthesize an automated, deterministic guard to prevent recurrence.
+  - Add regression tests to `scripts/testing/` or deterministic pre-commit checks to `scripts/governance/tier0.d/`.
+  - Update tool wrappers (e.g. `aq-gate-checkout`, `aq-session-compact`, `aq-reap-orphans`) to enforce guards mechanically rather than relying on agent discipline.
+
+- **Stage 5: Continuous Reuse in Frontend Prep**:
+  - Every completed cycle enriches the shared AIDB knowledge base, MemoryBroker, and cached indexes.
+  - Future agent sessions hydrate these learnings automatically in Step 1 (ORIENT) via `aq-session-start`, `aq-hints`, and `aq-resume`.
+  - The harness achieves compounding capability: each task makes subsequent tasks faster, leaner, and less error-prone.
+
+### 2. Mandatory Task Closeout Checklist
+Before marking any slice, phase, or PRD complete, verify that the recursive self-improvement loop is closed:
+- [ ] Any friction, concurrency hang, or error observed during the task is diagnosed to root cause.
+- [ ] Documented in `.agent/memory/issues-backlog.md` (and `.agent/WORKAROUND-REGISTER.md` if an interim workaround was used).
+- [ ] Newly discovered patterns or fixes are seeded to MemoryBroker (:8003) and AIDB RAG (`error-solutions`).
+- [ ] A deterministic guard, check, or test was added or updated to prevent recurrence.
+- [ ] Findings and evidence are recorded in `.agent/collaboration/HANDOFF.md` and `.agent/collaboration/PULSE.log`.
+<!-- canon:end recursive-self-improvement-sop -->
+
+
 
 ## Role & Mode
 
@@ -669,3 +820,58 @@ Source of truth: `nix/modules/core/options.nix`. Never hardcode.
 | gis-systems | `.agent/GIS-SYSTEMS-INSTRUCTIONS.md` |
 | embedded-hardware | `.agent/EMBEDDED-HARDWARE-INSTRUCTIONS.md` |
 | scientific-research | `.agent/SCIENTIFIC-RESEARCH-INSTRUCTIONS.md` |
+
+<!-- canon:begin mvp-delivery-sop -->
+## Design, Build, and MVP Audit (owner directive 2026-09-27)
+
+This procedure governs delivery cadence for every agent and supersedes older
+requirements for repeated full expert rounds during ordinary implementation.
+The eight workflow steps remain; the depth of ceremony depends on the phase.
+
+### Design and freeze
+
+Use full, independent domain-expert teams across available model lanes for the
+PRD and plan. Cover architecture, implementation, UX, operations, measurement,
+failure modes, and security implications. Give teams the same evidence and
+criteria; consolidate disagreements into one decision record. Freeze the MVP
+scope, dependency contracts, owners, acceptance tests, rollout/rollback limits,
+and deferred questions as PLAN_READY or PLAN_READY_WITH_FOLLOWUPS. Existing
+approved plans are reused, not redrafted solely to satisfy this procedure.
+Record unavailable lanes honestly; never manufacture their consensus.
+
+### Build the working MVP
+
+Once the plan is frozen, prioritize implementation and end-to-end operation.
+Use bounded slices, the cheapest eligible implementers, and focused regression,
+integration, and live checks. Fix ordinary defects directly within the frozen
+scope. Do not require a fresh full expert round, debate, or all-model consensus
+for each implementation slice, fix, or commit. Collect non-blocking critique for
+the MVP audit instead of repeatedly reopening accepted design decisions.
+
+Keep atomic commits, evidence, service/dashboard coverage, and required automated
+gates. Preserve existing protections and explicit activation boundaries. A
+specific high-risk change may require targeted independent review; that is not
+a reason to restart the entire ceremony. Reopen only the affected decision for
+material scope/contract changes or critical correctness, data-loss, authority,
+or security defects. MVP implementation is not automatically release acceptance.
+
+Declare a working MVP only after the frozen end-to-end user journeys succeed
+with real dependencies, visible progress and terminal outcomes, and reproducible
+evidence. Source presence, green syntax checks, staged files, and simulated
+success do not prove operational readiness. Record limitations explicitly.
+
+### Full MVP audit and acceptance
+
+At the working MVP boundary, restore full expert scrutiny: independent code and
+runtime review, adversarial and failure testing, operator UX, performance,
+observability, and cross-model consensus. Review one exact integrated subject
+against the frozen criteria. Consolidate findings into one prioritized list;
+repair blockers and validate affected paths without restarting unrelated debate.
+Record real participant verdicts and outstanding concerns. Only that evidence
+can support release acceptance; deferred security/containment activation still
+requires its own readiness evidence and owner decision.
+
+Track delivery phase, demonstrable journeys, defects, and implementation versus
+live readiness separately. Measure time to working MVP and review overhead;
+never inflate progress to make the fast-build phase appear complete.
+<!-- canon:end mvp-delivery-sop -->

@@ -1,0 +1,432 @@
+#!/usr/bin/env python3
+"""
+aq-gate-checkout — Atomic check-out and mutual exclusion for validation gates.
+
+Prevents multi-agent race conditions (e.g. Codex, Antigravity, Claude, Local Qwen)
+when invoking heavyweight validation gates like tier0-validation-gate.sh, qa-phase0,
+or pre-deploy validation.
+
+Features:
+- CAS / Exclusive lock via fcntl.flock on .agent/collaboration/gate-checkouts/<gate>.lock
+- Lease JSON record in .agent/collaboration/gate-checkouts/<gate>.json with holder PID,
+  agent name, task, hostname, timestamp, and TTL.
+- Dead-PID auto-reclaim: if the holder process crashed or terminated without releasing,
+  the stale lease is cleaned up immediately without waiting.
+- Graceful polling with informative progress: when a gate is held by another active agent,
+  waits up to --wait seconds (default: 300) with status messages, avoiding lock thrashing.
+- Auto-release context runner: `aq-gate-checkout run -- <cmd>` handles signals (SIGINT, SIGTERM)
+  and guarantees lease release on exit.
+"""
+
+from __future__ import annotations
+
+import argparse
+import datetime
+import errno
+import fcntl
+import json
+import os
+import signal
+import socket
+import subprocess
+import sys
+import time
+from pathlib import Path
+from typing import Any, Dict, Optional
+
+
+def find_repo_root() -> Path:
+    env_root = os.environ.get("REPO_ROOT")
+    if env_root and Path(env_root).is_dir():
+        return Path(env_root).resolve()
+    # Check parent hierarchy of this script
+    script_dir = Path(__file__).resolve().parent
+    for parent in [script_dir] + list(script_dir.parents):
+        if (parent / ".git").exists() or (parent / "flake.nix").exists():
+            return parent
+    return Path.cwd().resolve()
+
+
+REPO_ROOT = find_repo_root()
+CHECKOUTS_DIR = REPO_ROOT / ".agent" / "collaboration" / "gate-checkouts"
+DEFAULT_TTL_SECONDS = 900  # 15 minutes max lease before auto-expiry
+DEFAULT_WAIT_SECONDS = 300  # 5 minutes wait timeout
+
+
+def ensure_dir() -> Path:
+    CHECKOUTS_DIR.mkdir(parents=True, exist_ok=True)
+    return CHECKOUTS_DIR
+
+
+def now_iso() -> str:
+    return datetime.datetime.now(datetime.timezone.utc).strftime("%Y-%m-%dT%H:%M:%SZ")
+
+
+def is_pid_alive(pid: int) -> bool:
+    if pid <= 0:
+        return False
+    try:
+        os.kill(pid, 0)
+        return True
+    except ProcessLookupError:
+        return False
+    except PermissionError:
+        return True  # Exists under different user
+    except OSError:
+        return False
+
+
+def detect_agent() -> str:
+    for var in ["AQ_AGENT_NAME", "AGENT_NAME", "AQ_ACTIVE_AGENT", "USER_AGENT"]:
+        val = os.environ.get(var)
+        if val and val.strip():
+            return val.strip()
+    # Heuristic based on current or parent process
+    try:
+        ppid = os.getppid()
+        with open(f"/proc/{ppid}/cmdline", "rb") as f:
+            cmd = f.read().decode("utf-8", errors="ignore").lower()
+            for agent in ["codex", "claude", "antigravity", "gemini", "qwen"]:
+                if agent in cmd:
+                    return agent
+    except Exception:
+        pass
+    return os.environ.get("USER", "unknown-agent")
+
+
+def detect_task() -> str:
+    task = os.environ.get("AQ_CURRENT_TASK")
+    if task and task.strip():
+        return task.strip()
+    resume_file = REPO_ROOT / ".agent" / "collaboration" / "RESUME.json"
+    if resume_file.is_file():
+        try:
+            with open(resume_file, "r", encoding="utf-8") as f:
+                data = json.load(f)
+                obj = data.get("current_objective")
+                if obj and isinstance(obj, str):
+                    return obj.strip()
+        except Exception:
+            pass
+    return "unspecified-task"
+
+
+def get_gate_paths(gate: str) -> tuple[Path, Path]:
+    safe_name = "".join(c for c in gate if c.isalnum() or c in ("-", "_", "."))
+    if not safe_name:
+        safe_name = "tier0"
+    base = ensure_dir()
+    return base / f"{safe_name}.lock", base / f"{safe_name}.json"
+
+
+def read_lease(json_path: Path) -> Optional[Dict[str, Any]]:
+    if not json_path.is_file():
+        return None
+    try:
+        with open(json_path, "r", encoding="utf-8") as f:
+            return json.load(f)
+    except Exception:
+        return None
+
+
+def write_lease(json_path: Path, data: Dict[str, Any]) -> None:
+    tmp_path = json_path.with_suffix(".tmp." + str(os.getpid()))
+    with open(tmp_path, "w", encoding="utf-8") as f:
+        json.dump(data, f, indent=2)
+        f.flush()
+        os.fsync(f.fileno())
+    tmp_path.replace(json_path)
+
+
+def acquire_gate(
+    gate: str,
+    agent: str,
+    task: str,
+    pid: int,
+    wait_seconds: int = DEFAULT_WAIT_SECONDS,
+    ttl_seconds: int = DEFAULT_TTL_SECONDS,
+) -> int:
+    lock_path, json_path = get_gate_paths(gate)
+    start_time = time.time()
+    last_log_time = 0.0
+
+    while True:
+        with open(lock_path, "a+") as lock_file:
+            fcntl.flock(lock_file.fileno(), fcntl.LOCK_EX)
+            try:
+                lease = read_lease(json_path)
+                now = time.time()
+                is_stale = False
+                stale_reason = ""
+
+                if lease:
+                    holder_pid = lease.get("holder_pid", -1)
+                    claimed_epoch = lease.get("claimed_at_epoch", 0.0)
+                    lease_ttl = lease.get("ttl_seconds", ttl_seconds)
+
+                    # Re-entrant / idempotent: same PID already holds it
+                    if holder_pid == pid:
+                        lease["claimed_at_epoch"] = now
+                        lease["claimed_at"] = now_iso()
+                        write_lease(json_path, lease)
+                        return 0
+
+                    if not is_pid_alive(holder_pid):
+                        is_stale = True
+                        stale_reason = f"holder PID {holder_pid} is no longer running"
+                    elif (now - claimed_epoch) > lease_ttl:
+                        is_stale = True
+                        stale_reason = f"lease TTL expired ({now - claimed_epoch:.0f}s > {lease_ttl}s)"
+
+                    if is_stale:
+                        sys.stderr.write(
+                            f"[aq-gate-checkout] Reclaiming stale '{gate}' lease ({stale_reason}).\n"
+                        )
+                        sys.stderr.flush()
+                        lease = None
+
+                if not lease:
+                    # Free to checkout
+                    new_lease = {
+                        "gate": gate,
+                        "holder_agent": agent,
+                        "holder_pid": pid,
+                        "holder_task": task,
+                        "claimed_at": now_iso(),
+                        "claimed_at_epoch": now,
+                        "ttl_seconds": ttl_seconds,
+                        "hostname": socket.gethostname(),
+                    }
+                    write_lease(json_path, new_lease)
+                    return 0
+
+                # A descendant cannot wait for an ancestor that is waiting for it.
+                ancestor = pid
+                visited = set()
+                while ancestor > 1 and ancestor not in visited:
+                    visited.add(ancestor)
+                    try:
+                        stat = Path(f"/proc/{ancestor}/stat").read_text()
+                        ancestor = int(stat.rsplit(")", 1)[1].split()[1])
+                    except (OSError, ValueError, IndexError):
+                        break
+                    if ancestor == lease.get("holder_pid"):
+                        sys.stderr.write(
+                            f"[aq-gate-checkout] Nested checkout rejected: gate '{gate}' "
+                            f"is held by ancestor PID {ancestor}; invoke the gate entrypoint directly.\n"
+                        )
+                        return 2
+
+                # Still held by an active process
+                elapsed = time.time() - start_time
+                if elapsed >= wait_seconds:
+                    holder = lease.get("holder_agent", "unknown")
+                    h_pid = lease.get("holder_pid", -1)
+                    h_task = lease.get("holder_task", "")
+                    sys.stderr.write(
+                        f"[aq-gate-checkout] TIMEOUT: Gate '{gate}' is currently held by '{holder}' (PID {h_pid}, task: '{h_task}'). "
+                        f"Waited {elapsed:.1f}s without release (max wait: {wait_seconds}s). Exiting.\n"
+                    )
+                    sys.stderr.flush()
+                    return 2
+            finally:
+                fcntl.flock(lock_file.fileno(), fcntl.LOCK_UN)
+
+        # Informative progress log
+        now_time = time.time()
+        if now_time - last_log_time >= 10.0 or last_log_time == 0.0:
+            holder = lease.get("holder_agent", "unknown") if lease else "unknown"
+            h_pid = lease.get("holder_pid", -1) if lease else -1
+            h_task = lease.get("holder_task", "") if lease else ""
+            elapsed = now_time - start_time
+            sys.stderr.write(
+                f"[aq-gate-checkout] Gate '{gate}' held by '{holder}' (PID {h_pid}, task: '{h_task}'). "
+                f"Waiting for release ({elapsed:.0f}s elapsed / timeout {wait_seconds}s)...\n"
+            )
+            sys.stderr.flush()
+            last_log_time = now_time
+
+        time.sleep(2.0)
+
+
+def release_gate(gate: str, pid: int, force: bool = False) -> int:
+    lock_path, json_path = get_gate_paths(gate)
+    with open(lock_path, "a+") as lock_file:
+        fcntl.flock(lock_file.fileno(), fcntl.LOCK_EX)
+        try:
+            lease = read_lease(json_path)
+            if not lease:
+                return 0
+            holder_pid = lease.get("holder_pid", -1)
+            if force or holder_pid == pid or not is_pid_alive(holder_pid):
+                if json_path.exists():
+                    json_path.unlink()
+                return 0
+            else:
+                sys.stderr.write(
+                    f"[aq-gate-checkout] WARNING: Cannot release gate '{gate}': held by PID {holder_pid}, but caller PID is {pid}.\n"
+                )
+                sys.stderr.flush()
+                return 1
+        finally:
+            fcntl.flock(lock_file.fileno(), fcntl.LOCK_UN)
+
+
+def get_status(gate: str, as_json: bool = False) -> int:
+    _, json_path = get_gate_paths(gate)
+    lease = read_lease(json_path)
+    now = time.time()
+
+    if not lease:
+        if as_json:
+            print(json.dumps({"gate": gate, "status": "AVAILABLE"}))
+        else:
+            print(f"Gate '{gate}': AVAILABLE (no active checkout)")
+        return 0
+
+    holder_pid = lease.get("holder_pid", -1)
+    claimed_epoch = lease.get("claimed_at_epoch", 0.0)
+    ttl = lease.get("ttl_seconds", DEFAULT_TTL_SECONDS)
+    alive = is_pid_alive(holder_pid)
+    expired = (now - claimed_epoch) > ttl
+    remaining = max(0.0, ttl - (now - claimed_epoch))
+
+    status = "CHECKED_OUT"
+    if not alive:
+        status = "STALE_DEAD_PID"
+    elif expired:
+        status = "STALE_EXPIRED"
+
+    data = {
+        "gate": gate,
+        "status": status,
+        "holder_agent": lease.get("holder_agent"),
+        "holder_pid": holder_pid,
+        "holder_task": lease.get("holder_task"),
+        "claimed_at": lease.get("claimed_at"),
+        "ttl_seconds": ttl,
+        "remaining_seconds": round(remaining, 1),
+        "is_pid_alive": alive,
+    }
+
+    if as_json:
+        print(json.dumps(data, indent=2))
+    else:
+        print(f"Gate '{gate}': {status}")
+        print(f"  Holder Agent: {data['holder_agent']}")
+        print(f"  Holder PID:   {data['holder_pid']} (alive={alive})")
+        print(f"  Task:         {data['holder_task']}")
+        print(f"  Claimed At:   {data['claimed_at']}")
+        print(f"  TTL / Left:   {ttl}s / {data['remaining_seconds']}s")
+    return 0
+
+
+def run_command(gate: str, agent: str, task: str, wait_seconds: int, ttl_seconds: int, cmd: list[str]) -> int:
+    pid = os.getpid()
+    rc = acquire_gate(
+        gate=gate,
+        agent=agent,
+        task=task,
+        pid=pid,
+        wait_seconds=wait_seconds,
+        ttl_seconds=ttl_seconds,
+    )
+    if rc != 0:
+        return rc
+
+    child_proc: Optional[subprocess.Popen] = None
+
+    def _sig_handler(signum: int, frame: Any) -> None:
+        if child_proc and child_proc.poll() is None:
+            try:
+                child_proc.send_signal(signum)
+            except Exception:
+                pass
+
+    signal.signal(signal.SIGINT, _sig_handler)
+    signal.signal(signal.SIGTERM, _sig_handler)
+
+    try:
+        child_proc = subprocess.Popen(cmd)
+        child_proc.wait()
+        return child_proc.returncode
+    finally:
+        release_gate(gate=gate, pid=pid)
+
+
+def main() -> int:
+    parser = argparse.ArgumentParser(
+        description="Atomic validation gate check-out system to serialize multi-agent validation runs."
+    )
+    subparsers = parser.add_subparsers(dest="command", required=True)
+
+    # acquire
+    p_acquire = subparsers.add_parser("acquire", help="Acquire a validation gate checkout.")
+    p_acquire.add_argument("--gate", default="tier0", help="Gate identifier (default: tier0).")
+    p_acquire.add_argument("--agent", default=None, help="Agent name (auto-detected if omitted).")
+    p_acquire.add_argument("--task", default=None, help="Task description (auto-detected if omitted).")
+    p_acquire.add_argument("--pid", type=int, default=None, help="Holder process ID (default: parent PID).")
+    p_acquire.add_argument("--wait", type=int, default=DEFAULT_WAIT_SECONDS, help=f"Wait timeout seconds (default: {DEFAULT_WAIT_SECONDS}).")
+    p_acquire.add_argument("--ttl", type=int, default=DEFAULT_TTL_SECONDS, help=f"Lease TTL seconds (default: {DEFAULT_TTL_SECONDS}).")
+
+    # release
+    p_release = subparsers.add_parser("release", help="Release a validation gate checkout.")
+    p_release.add_argument("--gate", default="tier0", help="Gate identifier (default: tier0).")
+    p_release.add_argument("--pid", type=int, default=None, help="Holder process ID (default: parent PID).")
+    p_release.add_argument("--force", action="store_true", help="Force release regardless of PID.")
+
+    # status
+    p_status = subparsers.add_parser("status", help="Check status of a validation gate.")
+    p_status.add_argument("--gate", default="tier0", help="Gate identifier (default: tier0).")
+    p_status.add_argument("--json", action="store_true", help="Output machine-readable JSON.")
+
+    # run
+    p_run = subparsers.add_parser("run", help="Execute a command under an exclusive gate checkout.")
+    p_run.add_argument("--gate", default="tier0", help="Gate identifier (default: tier0).")
+    p_run.add_argument("--agent", default=None, help="Agent name (auto-detected if omitted).")
+    p_run.add_argument("--task", default=None, help="Task description (auto-detected if omitted).")
+    p_run.add_argument("--wait", type=int, default=DEFAULT_WAIT_SECONDS, help=f"Wait timeout seconds (default: {DEFAULT_WAIT_SECONDS}).")
+    p_run.add_argument("--ttl", type=int, default=DEFAULT_TTL_SECONDS, help=f"Lease TTL seconds (default: {DEFAULT_TTL_SECONDS}).")
+    p_run.add_argument("cmd", nargs=argparse.REMAINDER, help="Command to execute.")
+
+    args = parser.parse_args()
+
+    agent = args.agent if getattr(args, "agent", None) else detect_agent()
+    task = args.task if getattr(args, "task", None) else detect_task()
+    pid = getattr(args, "pid", None)
+    if pid is None:
+        pid = os.getppid()
+
+    if args.command == "acquire":
+        return acquire_gate(
+            gate=args.gate,
+            agent=agent,
+            task=task,
+            pid=pid,
+            wait_seconds=args.wait,
+            ttl_seconds=args.ttl,
+        )
+    elif args.command == "release":
+        return release_gate(gate=args.gate, pid=pid, force=args.force)
+    elif args.command == "status":
+        return get_status(gate=args.gate, as_json=args.json)
+    elif args.command == "run":
+        cmd = args.cmd
+        if cmd and cmd[0] == "--":
+            cmd = cmd[1:]
+        if not cmd:
+            sys.stderr.write("[aq-gate-checkout] ERROR: No command provided to run.\n")
+            return 1
+        return run_command(
+            gate=args.gate,
+            agent=agent,
+            task=task,
+            wait_seconds=args.wait,
+            ttl_seconds=args.ttl,
+            cmd=cmd,
+        )
+    return 0
+
+
+if __name__ == "__main__":
+    sys.exit(main())

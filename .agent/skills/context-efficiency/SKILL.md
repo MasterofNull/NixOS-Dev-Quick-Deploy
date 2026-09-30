@@ -23,6 +23,53 @@ Rule: **load by address, not by content**. Pass file paths to sub-agents; let th
 
 ---
 
+## 1.1 The Tri-Phase Memory & Caching Closed-Loop SOP
+
+The harness leverages a continuous tri-phase cycle to minimize token burn and maximize reasoning quality:
+
+1. **Frontend Task Prep (Steps 1–2: ORIENT & RESEARCH)**:
+   - **`lean-ctx` Through Every Phase**: Always use `lean-ctx` MCP tools (`ctx_read`, `ctx_search`, `ctx_tree`, `ctx_shell`) across all phases.
+   - **Lightweight, Fast, Lazy Retrieval**: Never drag full conversation history or entire files. Hydrate instantly from pre-warmed caches and vectors:
+     - `aq-resume` (state anchor from `RESUME.json`, ~150–300 tokens)
+     - `aq-session-start --task "<task>"` + `aq-hints` (ranked vector hints from AIDB)
+     - `ctx_read(path, mode="signatures"|"outline")` (AST pruning; cached re-reads cost ~13 tokens)
+     - Redis KV and embedding cache hits (sub-millisecond semantic retrieval)
+
+2. **Mid-Phase Execution (Steps 3–6: PRD/PLAN, EXECUTE, VALIDATE)**:
+   - **Vector & Cache Traversal**: Before editing code or diagnosing errors, leverage targeted database and vector queries:
+     - Query AIDB collection `error-solutions` before investigating bug patterns
+     - Query `best-practices` and `skills-patterns` for harness idioms
+     - Use `ctx_search` (bounded regex) and `ctx_read` with offset/limit instead of unbounded file scans
+     - **Prompt Cache Alignment**: Keep system prompts, instructions, and grounding SSOT at the message head to maximize KV cache hits on local models and provider prompt cache hits (90%+ cost/token reduction)
+     - **Output Capping**: Strictly cap tool outputs at 3,000 characters (~750 tokens) to prevent megabyte log dumps
+
+3. **Backend Task Closeout & Ingest (Steps 7–8: DOC-UPDATE, COMMIT & HANDOFF)**:
+   - **Input and Update Caches, Databases, and Vectors**: Every completed task feeds its findings back into the system so subsequent tasks can reuse them in lightweight, fast, lazy mode:
+     - **Seed RAG Vectors**: Seed AIDB collections (`error-solutions`, `best-practices`, `skills-patterns`) with newly discovered patterns and root-cause solutions
+     - **Store Facts**: POST completed-task learnings to MemoryBroker (`POST :8003/api/memory/facts` or `mcp_server_store_memory`)
+     - **Warm Memory**: Write architecture notes to `.agent/memory/<topic>.md`; collapse old pointers in `ai-stack/agent-memory/MEMORY.md`
+     - **Checkpoint & Compact**: Update `.agent/collaboration/RESUME.json` and append to `PULSE.log`. If session size > 2.5 MB or > 25 turns, use `aq-session-compact` for read-only diagnostics, then provider-supported compaction or an explicit fresh-session handoff. Never delete/archive provider-owned transcripts or overwrite active recovery state from historical scans
+
+---
+
+## 1.2 High-Signal Anti-Thrashing Compaction (Selective Eviction vs. Anchor Retention)
+
+Compaction and context trimming must be **aggressive but discerning** — never strip context to the point where the agent spends more tokens re-discovering information than were saved by the trim:
+
+- **What to Evict Aggressively (No Longer Used or Cheaply Retrievable)**:
+  - Stale intermediate tool executions: raw grep dumps already acted upon, verbose file listings, resolved lint/build outputs
+  - Historical conversation turns from completed sub-tasks or merged slices
+  - Full file bodies already saved to disk (re-read cheaply on demand via `ctx_read` at ~13 tokens)
+  - Static background documentation easily retrieved from AIDB vectors or `aq-hints`
+- **What to Retain as Working Anchors (Active Execution State)**:
+  - The active slice objective, immediate task constraints, and acceptance criteria
+  - The exact list of uncommitted modified files and active symbol names under edit
+  - Unresolved error traces or test failure outputs currently being diagnosed
+  - Explicit pointers/paths to relevant topic memory files so retrieval is single-step rather than exploratory
+- **Anti-Thrashing Principle**: If an item is actively needed for the next 1–2 turns, keep it in working context. If an item is historical, resolved, or indexable, evict it to MemoryBroker or topic files immediately.
+
+---
+
 ## 2. RESUME.json — The Compaction Anchor
 
 Write RESUME.json at two mandatory triggers:

@@ -1,0 +1,27 @@
+diff --git a/scripts/ai/lib/dispatch.py b/scripts/ai/lib/dispatch.py
+index 3252ce5e..ac76a737 100644
+--- a/scripts/ai/lib/dispatch.py
++++ b/scripts/ai/lib/dispatch.py
+@@ -307,6 +307,7 @@ def _emit_training_event(
+ 
+ # ── token budget heuristic ───────────────────────────────────────────────────
+ 
++_SIZE_DOWN_SCAN_CHARS = 300
+ _TINY_SIGNALS   = frozenset(["one-liner", "one line", "one sentence", "briefly",
+                               "in one word", "yes or no", "true or false", "reply with",
+                               "respond with exactly", "say:", "ping"])
+@@ -342,9 +343,12 @@ def classify_tokens(prompt: str, mode: str = "direct") -> Optional[int]:
+     being silently overridden by a hardcoded 800-token default.
+     """
+     p = prompt.lower()
+-    if any(k in p for k in _TINY_SIGNALS):
++    # Size-down signals only count in the instruction head: embedded diffs or
++    # files routinely contain "reply with"/"ping" and must not cap a review.
++    head = p[:_SIZE_DOWN_SCAN_CHARS]
++    if any(k in head for k in _TINY_SIGNALS):
+         return 150
+-    if any(k in p for k in _SMALL_SIGNALS):
++    if any(k in head for k in _SMALL_SIGNALS):
+         return 400
+     if any(k in p for k in _LARGE_SIGNALS):
+         return 4096

@@ -1,0 +1,500 @@
+#!/usr/bin/env python3
+"""
+aq-agent-window — Dedicated interactive terminal window for any agent/model lane.
+
+Supported Models & Lanes:
+  • local     — Qwen3-35B on Local APU (llama.cpp :8080 / coordinator :8003)
+  • claude    — Claude 3.7 / Fable-5 (switchboard :8085 / anthropic)
+  • codex     — OpenAI Codex / GPT-6 Astra (coordinator :8003 / openai)
+  • gemini    — Google Gemini 3.8-Flash / 2.5 (switchboard :8085 / google)
+  • deepseek  — DeepSeek V3 / R1 (switchboard :8085 / deepseek)
+  • mistral   — Mistral Large / Codestral (switchboard :8085)
+  • llama     — Llama 3.3 (local :8080 or switchboard :8085)
+  • <any>     — Any arbitrary model or profile string on the fly!
+
+Sub-Agent Delegation Tracking:
+  • Detects when agents spin off other sub-agents in real time
+  • Shows sub-agent operations (tool calls, thinking, files edited, live stdout)
+  • Interactive commands: /subagents, /delegate <lane> "<task>", /model <name>, /tail <id>
+"""
+
+import argparse
+import asyncio
+import json
+import os
+import re
+import subprocess
+import sys
+import time
+from datetime import datetime, timezone
+from pathlib import Path
+from typing import Any, Dict, List, Optional
+
+import httpx
+from prompt_toolkit import PromptSession, HTML
+from prompt_toolkit.completion import WordCompleter
+from prompt_toolkit.history import FileHistory
+from prompt_toolkit.styles import Style
+from rich.console import Console
+from rich.markdown import Markdown
+from rich.panel import Panel
+from rich.syntax import Syntax
+from rich.table import Table
+from rich.text import Text
+
+REPO_ROOT = Path(__file__).resolve().parent.parent.parent
+
+HYBRID_URL = os.getenv("HYBRID_URL", "http://127.0.0.1:8003")
+SWITCHBOARD_URL = os.getenv("SWITCHBOARD_URL", "http://127.0.0.1:8085")
+LLAMA_URL = os.getenv("LLAMA_URL", "http://127.0.0.1:8080")
+
+REGISTRY_FILE = REPO_ROOT / ".agents" / "delegation" / "registry.jsonl"
+STREAMS_DIR = REPO_ROOT / ".agents" / "delegation" / "streams"
+OUTPUTS_DIR = REPO_ROOT / ".agents" / "delegation" / "outputs"
+
+console = Console()
+
+BUILTIN_LANES = {
+    "local": {
+        "title": "󰚩 Qwen3-35B (Local APU)",
+        "color": "#00d9ff",
+        "backend": "Local APU :8080 / Switchboard :8085",
+        "url": f"{SWITCHBOARD_URL}/v1/chat/completions",
+        "model": "qwen3-35b",
+        "profile": "continue-local",
+        "prompt_symbol": "qwen",
+    },
+    "claude": {
+        "title": "󰚩 Claude 3.7 / Fable-5",
+        "color": "#ff79c6",
+        "backend": "Switchboard :8085 (Anthropic)",
+        "url": f"{SWITCHBOARD_URL}/v1/chat/completions",
+        "model": "claude-fable-5-1",
+        "profile": "remote-reasoning",
+        "prompt_symbol": "claude",
+    },
+    "codex": {
+        "title": "󰚩 OpenAI Codex / GPT-6 Astra",
+        "color": "#50fa7b",
+        "backend": "Coordinator :8003 / Switchboard :8085 (OpenAI)",
+        "url": f"{SWITCHBOARD_URL}/v1/chat/completions",
+        "model": "gpt-6-astra",
+        "profile": "remote-coding",
+        "prompt_symbol": "codex",
+    },
+    "gemini": {
+        "title": "󰚩 Google Gemini 3.8-Flash",
+        "color": "#bd93f9",
+        "backend": "Switchboard :8085 (Google)",
+        "url": f"{SWITCHBOARD_URL}/v1/chat/completions",
+        "model": "gemini-3.8-flash",
+        "profile": "remote-gemini",
+        "prompt_symbol": "gemini",
+    },
+    "antigravity": {
+        "title": "󰚩 Google Antigravity / Gemini 3.8",
+        "color": "#bd93f9",
+        "backend": "Switchboard :8085 / Antigravity IDE",
+        "url": f"{SWITCHBOARD_URL}/v1/chat/completions",
+        "model": "gemini-3.8-flash",
+        "profile": "remote-gemini",
+        "prompt_symbol": "antigravity",
+    },
+    "deepseek": {
+        "title": "󰚩 DeepSeek V3 / R1",
+        "color": "#ffb86c",
+        "backend": "Switchboard :8085 (DeepSeek)",
+        "url": f"{SWITCHBOARD_URL}/v1/chat/completions",
+        "model": "deepseek-reasoner",
+        "profile": "remote-reasoning",
+        "prompt_symbol": "deepseek",
+    },
+    "mistral": {
+        "title": "󰚩 Mistral Large / Codestral",
+        "color": "#f1fa8c",
+        "backend": "Switchboard :8085 (Mistral)",
+        "url": f"{SWITCHBOARD_URL}/v1/chat/completions",
+        "model": "mistral-large-latest",
+        "profile": "remote-coding",
+        "prompt_symbol": "mistral",
+    },
+    "llama": {
+        "title": "󰚩 Llama 3.3",
+        "color": "#8be9fd",
+        "backend": "Local APU :8080 / Switchboard :8085",
+        "url": f"{SWITCHBOARD_URL}/v1/chat/completions",
+        "model": "llama-3.3-70b-instruct",
+        "profile": "continue-local",
+        "prompt_symbol": "llama",
+    },
+}
+
+
+def resolve_lane_config(key_or_model: str, custom_backend: Optional[str] = None) -> Dict[str, Any]:
+    """Resolve lane configuration for any model name or key."""
+    norm = key_or_model.lower().strip()
+    if norm in BUILTIN_LANES:
+        return dict(BUILTIN_LANES[norm])
+
+    # Dynamic resolution for arbitrary models
+    clean_sym = norm.replace(":", "-").replace("/", "-")
+    short_sym = clean_sym.split("-")[0] if "-" in clean_sym else clean_sym[:8]
+
+    # Infer provider and backend url
+    if any(k in norm for k in ("claude", "anthropic", "sonnet", "opus", "haiku")):
+        url = f"{SWITCHBOARD_URL}/v1/chat/completions"
+        backend = "Switchboard :8085 (Anthropic)"
+        color = "#ff79c6"
+    elif any(k in norm for k in ("gemini", "google", "antigravity")):
+        url = f"{SWITCHBOARD_URL}/v1/chat/completions"
+        backend = "Switchboard :8085 (Google / Antigravity)"
+        color = "#bd93f9"
+    elif any(k in norm for k in ("gpt", "openai", "codex", "o1", "o3")):
+        url = f"{HYBRID_URL}/v1/chat/completions"
+        backend = "Coordinator :8003 (OpenAI)"
+        color = "#50fa7b"
+    elif any(k in norm for k in ("deepseek", "r1")):
+        url = f"{SWITCHBOARD_URL}/v1/chat/completions"
+        backend = "Switchboard :8085 (DeepSeek)"
+        color = "#ffb86c"
+    elif any(k in norm for k in ("qwen", "local", "llama", "mistral")):
+        url = f"{HYBRID_URL}/v1/chat/completions"
+        backend = "Local APU :8080 / Hybrid :8003"
+        color = "#00d9ff"
+    else:
+        url = custom_backend or f"{SWITCHBOARD_URL}/v1/chat/completions"
+        backend = f"Switchboard :8085 ({key_or_model})"
+        color = "#ff79c6"
+
+    return {
+        "title": f"󰚩 {key_or_model}",
+        "color": color,
+        "backend": backend,
+        "url": url,
+        "model": key_or_model,
+        "prompt_symbol": short_sym,
+    }
+
+
+def get_subagent_records(limit: int = 10, agent_filter: Optional[str] = None) -> List[Dict[str, Any]]:
+    """Parse recent sub-agent delegation records from registry."""
+    if not REGISTRY_FILE.is_file():
+        return []
+    records = []
+    try:
+        lines = REGISTRY_FILE.read_text(encoding="utf-8", errors="replace").splitlines()
+        for line in reversed(lines):
+            line = line.strip()
+            if not line:
+                continue
+            try:
+                rec = json.loads(line)
+                agent = rec.get("agent", "")
+                desc = rec.get("description", "")
+                if agent_filter:
+                    af = agent_filter.lower()
+                    if af not in agent.lower() and af not in desc.lower():
+                        continue
+                records.append(rec)
+                if len(records) >= limit:
+                    break
+            except json.JSONDecodeError:
+                continue
+    except Exception:
+        pass
+    return records
+
+
+def extract_subagent_operations(task_id: str, max_lines: int = 6) -> List[str]:
+    """Extract recent operations (tool calls, thinking, actions) from a sub-agent stream."""
+    lines_found = []
+    stream_file = STREAMS_DIR / f"{task_id}.stream"
+    output_file = OUTPUTS_DIR / f"{task_id}.log"
+
+    target_file = stream_file if stream_file.is_file() else (output_file if output_file.is_file() else None)
+    if not target_file:
+        return ["[dim]No operations logged yet.[/dim]"]
+
+    try:
+        raw_lines = [l.strip() for l in target_file.read_text(encoding="utf-8", errors="replace").splitlines() if l.strip()]
+        for l in raw_lines[-15:]:
+            # Highlight tool calls
+            if any(k in l for k in ("read_file", "replace", "write_to_file", "run_command", "git", "grep", "tool_call", "[TOOL]")):
+                lines_found.append(f"[bold green]⚡ [TOOL OPERATION][/bold green] {l[:95]}")
+            elif any(k in l for k in ("<think>", "Thinking:", "Note-to-Self", "plan:")):
+                lines_found.append(f"[italic cyan]💭 [THOUGHT][/italic cyan] {l[:95]}")
+            elif any(k in l for k in ("error", "failed", "exception", "traceback")):
+                lines_found.append(f"[bold red]✗ [ALERT][/bold red] {l[:95]}")
+            elif any(k in l for k in ("passed", "success", "completed", "accepted")):
+                lines_found.append(f"[bold #39ff14]✓ [STATUS][/bold #39ff14] {l[:95]}")
+            else:
+                lines_found.append(f"[dim]{l[:95]}[/dim]")
+    except Exception:
+        return ["[dim]Error reading operation stream.[/dim]"]
+
+    return lines_found[-max_lines:] if lines_found else ["[dim]Awaiting operation telemetry...[/dim]"]
+
+
+class AgentWindow:
+    def __init__(self, key_or_model: str):
+        self.lane_key = key_or_model.strip()
+        self.lane = resolve_lane_config(self.lane_key)
+        self.messages: List[Dict[str, str]] = []
+        self.system_prompt = (
+            f"You are the dedicated {self.lane['title']} agent in the AQ-OS workspace. "
+            "Respond concisely, with working code, precise technical answers, and clear evidence."
+        )
+        safe_name = re.sub(r'[^a-zA-Z0-9_-]', '_', self.lane['model'])
+        self.history_file = Path.home() / f".aq_agent_{safe_name}_history"
+        self._last_subagent_ids = set()
+
+    def set_model(self, new_model: str):
+        """Switch model dynamically at runtime."""
+        self.lane_key = new_model.strip()
+        self.lane = resolve_lane_config(self.lane_key)
+        self.system_prompt = (
+            f"You are the dedicated {self.lane['title']} agent in the AQ-OS workspace. "
+            "Respond concisely, with working code, precise technical answers, and clear evidence."
+        )
+        safe_name = re.sub(r'[^a-zA-Z0-9_-]', '_', self.lane['model'])
+        self.history_file = Path.home() / f".aq_agent_{safe_name}_history"
+        console.print(f"[bold green]✓ Switched model to {self.lane['title']} ({self.lane['backend']})[/bold green]")
+        self.render_header()
+
+    def render_header(self):
+        txt = (
+            f"[bold {self.lane['color']}]{self.lane['title']}[/bold {self.lane['color']}] · "
+            f"[dim]{self.lane['backend']}[/dim]\n"
+            "[dim]Commands: [bold cyan]/subagents[/bold cyan] (view delegations) · "
+            "[bold cyan]/delegate <lane> \"<task>\"[/bold cyan] (spin off sub-agent) · "
+            "[bold cyan]/model <name>[/bold cyan] (switch model) · /clear · /exit[/dim]"
+        )
+        console.print(Panel(txt, border_style=self.lane["color"], padding=(0, 1)))
+
+    def show_subagents(self):
+        """Display sub-agents spun off by or associated with this agent."""
+        recs = get_subagent_records(limit=6, agent_filter=self.lane["prompt_symbol"])
+        if not recs:
+            # Fallback to general recent subagents
+            recs = get_subagent_records(limit=6)
+
+        table = Table(box=None, padding=(0, 1), show_header=True, header_style="bold magenta")
+        table.add_column("Sub-Agent ID", style="bold cyan", width=19)
+        table.add_column("Lane / Role", width=15)
+        table.add_column("Status", width=12)
+        table.add_column("Objective", style="dim white")
+
+        if not recs:
+            table.add_row("—", "No sub-agents", "[dim]idle[/dim]", "Spin off sub-agents via /delegate <lane> \"<task>\"")
+        else:
+            for r in recs:
+                tid = r.get("id", "unknown")
+                short_id = tid if len(tid) <= 19 else tid[:18] + "…"
+                agent = r.get("agent", "unknown")
+                role = r.get("role", "subagent")
+                st = r.get("status", "unknown").lower()
+                desc = r.get("description", "").split("\n")[0].strip()
+                if len(desc) > 42:
+                    desc = desc[:40] + "…"
+
+                if st in ("running", "active", "in_flight"):
+                    st_b = "[bold green]▶ RUNNING[/bold green]"
+                elif st == "done":
+                    st_b = "[cyan]✓ DONE[/cyan]"
+                elif st in ("failed", "error"):
+                    st_b = "[bold red]✗ FAILED[/bold red]"
+                else:
+                    st_b = f"[dim]{st}[/dim]"
+
+                table.add_row(short_id, f"{agent}/{role}", st_b, desc)
+
+        console.print(Panel(table, title=f"[bold #ff79c6]Active Sub-Agent Delegations ({self.lane['prompt_symbol']})[/bold #ff79c6]", border_style="#ff79c6"))
+
+        # If there's an active subagent, print its live operations
+        active_rec = next((r for r in recs if r.get("status", "").lower() in ("running", "active", "in_flight")), None)
+        if not active_rec and recs:
+            active_rec = recs[0]
+
+        if active_rec:
+            ops = extract_subagent_operations(active_rec.get("id", ""), max_lines=4)
+            ops_text = Text.from_markup("\n".join(ops))
+            console.print(Panel(ops_text, title=f"[bold cyan]Sub-Agent Operations Stream · {active_rec.get('id', '')}[/bold cyan]", border_style="cyan"))
+
+    def delegate_task(self, target_lane: str, prompt: str, role: str = "subagent"):
+        """Spin off a sub-agent from this window."""
+        scripts = {
+            "local": REPO_ROOT / "scripts" / "ai" / "delegate-to-local",
+            "claude": REPO_ROOT / "scripts" / "ai" / "delegate-to-claude",
+            "codex": REPO_ROOT / "scripts" / "ai" / "delegate-to-codex",
+            "gemini": REPO_ROOT / "scripts" / "ai" / "delegate-to-antigravity",
+        }
+        lane_key = target_lane.strip().lower()
+        if lane_key not in scripts:
+            console.print(f"[red]Error: Unsupported lane '{target_lane}'. Choose one of: {', '.join(scripts)}.[/red]")
+            return
+        script = scripts[lane_key]
+        if not script.is_file():
+            console.print(f"[red]Error: Dispatch script not found: {script}[/red]")
+            return
+
+        cmd = [str(script), "--role", role, "--prompt", prompt]
+        console.print(f"[bold cyan]⚡ {self.lane['prompt_symbol']} spinning off sub-agent ({target_lane}/{role})...[/bold cyan]")
+        try:
+            proc = subprocess.Popen(cmd, stdout=subprocess.PIPE, stderr=subprocess.PIPE, text=True)
+            console.print(f"[bold green]✓ Sub-agent process launched (PID {proc.pid}).[/bold green]")
+            console.print(f"[dim]Tracking operations... Type [bold cyan]/subagents[/bold cyan] to inspect.[/dim]\n")
+        except Exception as e:
+            console.print(f"[bold red]Failed to spin off sub-agent: {e}[/bold red]")
+
+    async def stream_reply(self, prompt: str):
+        messages = [{"role": "system", "content": self.system_prompt}] + self.messages + [{"role": "user", "content": prompt}]
+        payload = {
+            "model": self.lane["model"],
+            "messages": messages,
+            "temperature": 0.3,
+            "stream": True,
+        }
+
+        t0 = time.monotonic()
+        collected = []
+        console.print(f"\n[bold {self.lane['color']}]{self.lane['prompt_symbol']}[/bold {self.lane['color']}] ───")
+
+        headers = {
+            "Content-Type": "application/json",
+        }
+        if "profile" in self.lane:
+            headers["x-ai-profile"] = self.lane["profile"]
+
+        try:
+            async with httpx.AsyncClient(timeout=120.0) as client:
+                async with client.stream("POST", self.lane["url"], json=payload, headers=headers) as resp:
+                    if resp.status_code != 200:
+                        body = await resp.aread()
+                        console.print(f"[bold red]API Error {resp.status_code}: {body.decode('utf-8', errors='replace')}[/bold red]")
+                        return
+
+                    async for line in resp.aiter_lines():
+                        if not line or not line.startswith("data: "):
+                            continue
+                        data = line[6:].strip()
+                        if data == "[DONE]":
+                            break
+                        try:
+                            chunk = json.loads(data)
+                            choices = chunk.get("choices") or []
+                            if choices:
+                                delta = choices[0].get("delta", {}).get("content", "")
+                                if delta:
+                                    sys.stdout.write(delta)
+                                    sys.stdout.flush()
+                                    collected.append(delta)
+                        except json.JSONDecodeError:
+                            continue
+
+            print()
+            full_text = "".join(collected)
+            elapsed = time.monotonic() - t0
+            toks = len(collected)
+            tok_s = (toks / elapsed) if elapsed > 0 else 0.0
+
+            self.messages.append({"role": "user", "content": prompt})
+            self.messages.append({"role": "assistant", "content": full_text})
+
+            console.print(f"[dim]── [{elapsed:.2f}s · ~{toks} tokens · {tok_s:.1f} tok/s][/dim]\n")
+
+        except httpx.ConnectError:
+            console.print(f"[bold red]Connection to {self.lane['backend']} failed. Ensure service is active.[/bold red]")
+        except Exception as e:
+            console.print(f"[bold red]Error: {e}[/bold red]")
+
+    async def run(self):
+        self.render_header()
+        completer = WordCompleter([
+            "/subagents", "/delegations", "/delegate", "/model", "/clear",
+            "/exit", "/quit", "/help", "local", "claude", "codex", "gemini", "deepseek"
+        ], ignore_case=True)
+
+        pt_style = Style.from_dict({
+            "prompt": f"{self.lane['color']} bold",
+        })
+        pt_session = PromptSession(
+            history=FileHistory(str(self.history_file)),
+            style=pt_style,
+            completer=completer,
+        )
+
+        while True:
+            try:
+                prompt_html = HTML(f"<prompt>{self.lane['prompt_symbol']}</prompt> ❯ ")
+                user_input = await pt_session.prompt_async(prompt_html)
+                text = user_input.strip()
+            except (KeyboardInterrupt, EOFError):
+                break
+
+            if not text:
+                continue
+
+            if text in ("/clear", "clear"):
+                os.system("clear")
+                self.render_header()
+                continue
+            if text in ("/exit", "/quit", "quit"):
+                break
+            if text in ("/help", "help"):
+                console.print(
+                    "[bold cyan]AQ-OS Agent Window Controls:[/bold cyan]\n"
+                    "  [bold]/subagents[/bold]              — View active sub-agents spun off and their operations\n"
+                    "  [bold]/delegate <lane> \"<task>\"[/bold] — Spin off sub-agent to another model\n"
+                    "  [bold]/model <model_name>[/bold]      — Switch to any model dynamically (e.g. /model deepseek-r1)\n"
+                    "  [bold]/clear[/bold]                   — Clear terminal screen\n"
+                    "  [bold]/exit[/bold]                    — Close this agent window\n"
+                )
+                continue
+            if text in ("/subagents", "/delegations", "subagents"):
+                self.show_subagents()
+                continue
+            if text.startswith("/model "):
+                parts = text.split(maxsplit=1)
+                if len(parts) > 1:
+                    self.set_model(parts[1])
+                continue
+            if text.startswith("/delegate "):
+                parts = text.split(maxsplit=2)
+                if len(parts) >= 3:
+                    target_lane = parts[1]
+                    task_prompt = parts[2].strip(' "\'')
+                    self.delegate_task(target_lane, task_prompt)
+                else:
+                    console.print("[yellow]Usage: /delegate <lane> \"<prompt>\"[/yellow]")
+                continue
+
+            await self.stream_reply(text)
+
+
+def main():
+    parser = argparse.ArgumentParser(description="AQ-OS Dedicated Agent Window with Sub-Agent Tracking")
+    parser.add_argument("--lane", default="local", help="Agent lane or any model name (local, claude, codex, gemini, deepseek, or custom)")
+    parser.add_argument("--model", help="Explicit model name override")
+    parser.add_argument("--prompt", help="Execute single prompt and exit")
+    parser.add_argument("--subagents", action="store_true", help="Print active sub-agents and exit")
+    args = parser.parse_args()
+
+    chosen_model = args.model or args.lane
+    win = AgentWindow(chosen_model)
+
+    if args.subagents:
+        win.show_subagents()
+        return
+
+    if args.prompt:
+        asyncio.run(win.stream_reply(args.prompt))
+        return
+
+    try:
+        asyncio.run(win.run())
+    except KeyboardInterrupt:
+        pass
+
+
+if __name__ == "__main__":
+    main()

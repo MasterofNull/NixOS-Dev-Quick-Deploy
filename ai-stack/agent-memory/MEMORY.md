@@ -4,9 +4,10 @@
 - Summarized latest videos (Jan - Jul 2026) regarding Agentic Observability, Model Stacking, and Agentic Security: `.agent/INDYDEVDAN-RESEARCH-SUMMARY.md`
 
 ## Issues Backlog
-- Active backlog: `.agent/memory/issues-backlog.md` (latest: C6a fail-closed token defects; flat-round isolated-contribution loss; skill-loader/source-check drift; machine-mode phase-0 timeout; prior Luna/local/shared-index and hardware validation items remain tracked)
+- Active backlog: `.agent/memory/issues-backlog.md` (context guards, memory persistence, token attribution, RSI isolation/dispatch PATH, validation blockers, and `agent-workaround-before-root-fix`).
 
 ## Active Planning Docs
+- **SOTA Agentic Workspace & AI Command Center (2026-09-26)**: Architecture, dual-board swarm layout, model backends, and operational runbook: `.agent/memory/workspace-command-center-dev.md`. PRD: `.agent/PROJECT-AGENTIC-WORKSPACE-PRD.md`.
 - **Phase 54 (2026-05-14) COMPLETE ✓ 13/13** — Agentic-First Architecture Elevation (commits 4a6cd30c, 053a459b, b62dd21f): memory_broker.py (MemoryBroker unified typed memory), intent_classifier.py (IntentClassifier wired into handle_query:1611), rag_augmentor.py (active RAG default, L6 health gate at /api/health/rag), workflow/workflow_checkpointer.py (durable DAG + WORKFLOW_DLQ_KEY), trace_collector.py (end-to-end query trace + /api/traces), eval_runner.py (continuous eval + /eval/run + /eval/trend). config/intent-routing-map.json hot-reloadable. aq-qa phase 54: 13/13 PASS. PRD: .agent/PROJECT-AGENTIC-FIRST-ELEVATION-PRD.md. Gemini collab: gemini-20260514-171425-i7ecuo found classify_task at model_coordinator.py:126 was bypassed — now wired.
 - **Phase 54 key wiring**: IntentClassifier injected before `_execute_query_search` in handle_query; RAG augmentation before tooling injection; trace span committed async via create_task; server.py wires trace_collector.init + eval_runner.init after postgres_client connect.
 - **Phase 54 auth fix**: DUAL inline auth in http_server.py — `_is_loopback_agent_request()` at ~line 1412 has its own `agent_prefixes` tuple (NOT core/auth_middleware.py). Always patch BOTH when adding new loopback-accessible endpoints.

@@ -1,0 +1,73 @@
+{
+  "schema_version": "1.0",
+  "round_id": "rsi-autonomy-20260930",
+  "state": "COLLECTED",
+  "task": {
+    "prompt": "Read-only expert-team review: architecture, operations, measurement, failure modes and repair authority for restoring bounded autonomous RSI. User requires Codex orchestrator only and actual Claude, Gemini/Antigravity, Codex and local participation. Inspect scripts/automation/prsi-orchestrator.py, autonomous_loop.py, config/runtime-prsi-policy.json and existing tests; locate paths as needed. Known evidence: aq-report sampled RSS 552192 KiB versus orchestrator MemoryMax 256 MiB; zero fresh metrics reported healthy; optimizer applied=[] reported executed; five incidents lack independent verifier; rsi_awaiting_validation has no consumer. Luna workers own aq-report diagnosis and orchestrator accounting/autonomous_loop metric fixes: do not edit these or duplicate implementation. Propose minimal plan for review-validation-integration closure, stale incident closure evidence, scoped activation and live end-to-end acceptance. Preserve authority gates and all concurrent edits. No implementation, restart, commit, staging or approval mutation. Write only your assigned round contribution with exact paths, blockers, acceptance criteria and truthful verdict; keep concise. Existing Codex reviewer covers incident details, so focus design and operational contract.",
+    "target": "",
+    "scope_files": []
+  },
+  "opened_at": "2026-09-30T16:54:34Z",
+  "quorum_policy": {
+    "min_lanes": 2,
+    "required_agents": [],
+    "late_local_admissible": true,
+    "timeout_seconds": null,
+    "deadline": null,
+    "timeout_action": "lock_with_present"
+  },
+  "lanes": [
+    {
+      "agent": "claude",
+      "dispatch_id": null,
+      "idempotency_hash": "1e0626379e43091acd7dc1df4168e97a5f69a74def9b83c9f191ba8ddb8c4f61",
+      "status": "submitted",
+      "landed_at": null
+    },
+    {
+      "agent": "codex",
+      "dispatch_id": null,
+      "idempotency_hash": "60665e49f942f6f6a047a5304e0220a76b8ad2b37bd1e4a518eb9e8930b3fc5b",
+      "status": "submitted",
+      "landed_at": null
+    },
+    {
+      "agent": "local",
+      "dispatch_id": null,
+      "idempotency_hash": "b60b258a84ce88aab70d285fc24482f4409171c3f7d79e8748eccf692c03d8cd",
+      "status": "submitted",
+      "landed_at": null
+    },
+    {
+      "agent": "antigravity",
+      "dispatch_id": null,
+      "idempotency_hash": "b196f8e6189902e05eb6cbf1027b2cbb9afbf88b3e956f2229e4f8d9e769e8ce",
+      "status": "pending",
+      "landed_at": null
+    }
+  ],
+  "contributions": {},
+  "conflicts": [],
+  "consensus_hash": null,
+  "aggregate_path": null,
+  "aggregate_hash": null,
+  "locked_at": null,
+  "history": [
+    {
+      "transition": "CREATED->DISPATCHED",
+      "timestamp": "2026-09-30T16:54:34Z",
+      "actor": "aq-collab-round"
+    },
+    {
+      "transition": "DISPATCHED->CONTRIBUTING",
+      "timestamp": "2026-09-30T16:58:00Z",
+      "actor": "aq-collab-round"
+    },
+    {
+      "transition": "CONTRIBUTING->COLLECTED",
+      "timestamp": "2026-09-30T16:58:00Z",
+      "actor": "aq-collab-round"
+    }
+  ],
+  "predecessor_round_id": null
+}

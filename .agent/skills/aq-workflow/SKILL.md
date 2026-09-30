@@ -175,21 +175,37 @@ scripts/ai/delegate-fanout --prompt "..." --agents gemini,local --role implement
 
 ---
 
-## 6. Validation Gates
+## 6. Validation Gates & Concurrency Checkout
 
 ```bash
-# Required before every commit:
+# Check gate status (tier0, pre-deploy, etc.)
+scripts/ai/aq-gate-checkout status --gate tier0
+
+# Explicitly acquire or run under a gate checkout (prevents multi-agent race conditions)
+scripts/ai/aq-gate-checkout acquire --gate tier0 --wait 300
+scripts/ai/aq-gate-checkout run --gate tier0 -- scripts/governance/tier0-validation-gate.sh --pre-commit
+
+# Required before every commit (automatically acquires and releases gate checkout):
 AQ_QA_SKIP_REPORT_BACKED_CHECKS=1 scripts/governance/tier0-validation-gate.sh --pre-commit
+
+# Bypass checkout if explicitly needed for isolated testing:
+scripts/governance/tier0-validation-gate.sh --pre-commit --no-checkout
 
 # Repo structure lint (staged files):
 scripts/governance/repo-structure-lint.sh --staged
-
-# Full tier0 with env contract check:
-scripts/governance/tier0-validation-gate.sh --pre-commit
 ```
 
 Tier0 checks: roadmap verification (609 points), QA phase 0, env var contract, cross-surface
-docs/dashboard contract. All 17 checks must pass.
+docs/dashboard contract. Multi-agent validation runs are automatically serialized via `aq-gate-checkout`
+to prevent memory exhaustion, port collisions, and process hangs.
+
+### 6.1. Recursive Self-Improvement (RSI) Closed-Loop
+Every agent and task MUST dogfood findings into the self-improvement loop:
+1. **Detect & Measure**: Identify friction, concurrency races, or errors during execution.
+2. **Diagnose & Register**: Trace root cause (Rule 21); record in `.agent/memory/issues-backlog.md` (Rule 11a) and `.agent/WORKAROUND-REGISTER.md`.
+3. **Seed & Dogfood**: Seed MemoryBroker facts (`POST :8003/api/memory/facts`) and AIDB RAG (`scripts/data/seed-rag-knowledge.py --collection error-solutions`).
+4. **Synthesize Guards**: Build deterministic gate checks (`tier0.d/`), regression tests, or CLI tools (`aq-gate-checkout`, `aq-session-compact`).
+5. **Recursive Reuse**: Next task hydrates updated knowledge in Step 1 (ORIENT) via `aq-session-start` and `aq-hints`.
 
 ---
 

@@ -1,0 +1,100 @@
+#!/usr/bin/env python3
+"""Install the RSI observer around exactly one recognized Codex hook."""
+import argparse
+import json
+import os
+from pathlib import Path
+import shlex
+import stat
+import sys
+import tempfile
+
+_UPSTREAM_COMMAND = "lean-ctx hook codex-pretooluse"
+
+
+def _pre_tool_hooks(state: dict) -> list[dict]:
+    hooks = state.get("hooks", {})
+    if not isinstance(hooks, dict):
+        raise ValueError("hooks must be an object")
+    groups = hooks.get("PreToolUse", [])
+    if not isinstance(groups, list):
+        raise ValueError("hooks.PreToolUse must be an array")
+
+    result = []
+    for group in groups:
+        if not isinstance(group, dict) or not isinstance(group.get("hooks"), list):
+            raise ValueError("each PreToolUse group must contain a hooks array")
+        for hook in group["hooks"]:
+            if not isinstance(hook, dict):
+                raise ValueError("each hook must be an object")
+            result.append(hook)
+    return result
+
+
+def _replace_atomically(path: Path, content: bytes, mode: int) -> None:
+    temporary: Path | None = None
+    try:
+        with tempfile.NamedTemporaryFile(dir=path.parent, delete=False) as handle:
+            temporary = Path(handle.name)
+            handle.write(content)
+            handle.flush()
+            os.fsync(handle.fileno())
+        os.chmod(temporary, mode)
+        os.replace(temporary, path)
+    finally:
+        if temporary is not None:
+            temporary.unlink(missing_ok=True)
+
+
+def main(argv: list[str] | None = None) -> int:
+    parser = argparse.ArgumentParser(description=__doc__)
+    parser.add_argument("settings", type=Path, help="Codex settings JSON to update")
+    args = parser.parse_args(argv)
+    path = args.settings
+
+    if path.is_symlink() or not path.is_file():
+        raise SystemExit("Settings path must be an existing regular file")
+    try:
+        original = path.read_bytes()
+        state = json.loads(original)
+    except (OSError, ValueError) as exc:
+        raise SystemExit(f"Cannot read settings JSON: {exc}") from exc
+    if not isinstance(state, dict):
+        raise SystemExit("Settings JSON must be an object")
+
+    adapter = Path(__file__).resolve().with_name("aq-rsi-hook")
+    command = shlex.join([sys.executable, str(adapter)])
+    try:
+        hooks = _pre_tool_hooks(state)
+    except ValueError as exc:
+        raise SystemExit(f"Invalid hook configuration: {exc}") from exc
+    upstream = [hook for hook in hooks if hook.get("command") == _UPSTREAM_COMMAND]
+    installed = [hook for hook in hooks if hook.get("command") == command]
+
+    if len(installed) == 1 and not upstream:
+        print("RSI hook already installed")
+        return 0
+    if len(upstream) != 1 or installed:
+        raise SystemExit(
+            "Expected exactly one unwrapped lean-ctx hook and no RSI adapter; "
+            "no configuration written"
+        )
+
+    upstream[0]["command"] = command
+    backup = path.with_name(path.name + ".before-rsi")
+    if not backup.exists():
+        backup.write_bytes(original)
+    try:
+        _replace_atomically(
+            path,
+            (json.dumps(state, indent=2) + "\n").encode(),
+            stat.S_IMODE(path.stat().st_mode),
+        )
+    except OSError as exc:
+        raise SystemExit(f"Cannot write settings JSON: {exc}") from exc
+    print("Installed RSI observer; upstream lean-ctx policy retained")
+    return 0
+
+
+if __name__ == "__main__":
+    raise SystemExit(main())
