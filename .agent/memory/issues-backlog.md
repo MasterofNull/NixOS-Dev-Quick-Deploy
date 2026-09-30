@@ -4869,3 +4869,8 @@ File: scripts/ai/lib/worktree-isolation.sh; scripts/automation/prsi-orchestrator
   Severity: medium
   Action: make the dispatcher kill the delegate's process group on timeout and record rsi_failed(timeout); reconcile stale rsi_running rows on start.
   File: scripts/automation/prsi-orchestrator.py (_run_rsi_delegate)
+
+[DONE] delegate-to-codex-task-id-xxxxxx-suffix — Codex task ids looked like `codex-...-r5q384xxxxxx`: `task_id()` (scripts/ai/delegate-to-codex:149) ran `tr ... </dev/urandom | head -c6 || echo 'xxxxxx'` under pipefail; tr's SIGPIPE made the pipeline fail after head already printed 6 chars, so the fallback was appended. Codex's RSI lane patch had widened the receipt regex to accept the suffix (workaround); instead the producer now disables pipefail in that subshell, and the regex + test reject `xxxxxx` again.
+  Severity: low
+  Action: none; guard test-rsi-repair-lane.py.
+  File: scripts/ai/delegate-to-codex ~line 149

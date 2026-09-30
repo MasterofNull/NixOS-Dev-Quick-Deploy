@@ -301,8 +301,15 @@ setup_staged_isolation() {
   # `git worktree add` wants to create its own target directory.
   rmdir "${tmpdir}" 2>/dev/null || true
 
-  if ! git worktree add --detach --quiet "${tmpdir}" HEAD >/dev/null 2>&1; then
-    log "ERROR: --staged-isolated: git worktree add failed"
+  # git 2.54 can exit nonzero ("BUG: builtin/worktree.c: How come '' becomes empty
+  # after sanitization?") after creating a usable worktree, so verify the result
+  # itself: a checked-out worktree at exactly HEAD, not just a directory.
+  local head_sha
+  head_sha="$(git rev-parse HEAD)"
+  git worktree add --detach --quiet "${tmpdir}" HEAD >/dev/null 2>&1 || true
+  if [[ "$(git -C "${tmpdir}" rev-parse --is-inside-work-tree 2>/dev/null)" != "true" ]] \
+     || [[ "$(git -C "${tmpdir}" rev-parse HEAD 2>/dev/null)" != "${head_sha}" ]]; then
+    log "ERROR: --staged-isolated: git worktree add failed (no worktree at HEAD)"
     rm -rf "${tmpdir}" 2>/dev/null || true
     return 1
   fi

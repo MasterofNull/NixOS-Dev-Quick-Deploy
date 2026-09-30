@@ -4,6 +4,9 @@
     "owner": "claude-sonnet-4-6",
     "last_updated": "2026-05-20"
   },
+  "rsi": {
+    "repair_lane": "codex"
+  },
   "enabled": true,
   "since": "1d",
   "max_execute_per_cycle": 5,

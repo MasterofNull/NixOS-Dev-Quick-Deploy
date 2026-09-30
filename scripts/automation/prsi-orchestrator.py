@@ -66,6 +66,7 @@ _RSI_MAX_ATTEMPTS = 3
 
 
 DEFAULT_POLICY: Dict[str, Any] = {
+    "rsi": {"repair_lane": "codex"},
     "enabled": True,
     "since": "1d",
     "max_execute_per_cycle": 5,
@@ -791,9 +792,9 @@ def _acquire_rsi_dispatch_lock() -> Any:
     return handle
 
 
-def _rsi_dispatch_preflight() -> Tuple[bool, str]:
+def _rsi_dispatch_preflight(lane: str = "codex") -> Tuple[bool, str]:
     """Require the established isolated-worktree dispatcher before agent launch."""
-    delegate = AI_SCRIPT_DIR / "delegate-to-local"
+    delegate = AI_SCRIPT_DIR / f"delegate-to-{lane}"
     isolation = AI_LIB_DIR / "worktree-isolation.sh"
     if not delegate.is_file() or not os.access(delegate, os.X_OK):
         return False, "blocked_missing_isolated_delegate"
@@ -847,12 +848,17 @@ def _rsi_task_prompt(row: Dict[str, Any], apply: bool) -> str:
     )
 
 
-def _run_rsi_delegate(row: Dict[str, Any], timeout_seconds: int, apply: bool) -> Tuple[str, Dict[str, Any]]:
-    """Launch through delegate-to-local, which creates and retains a private worktree."""
+def _run_rsi_delegate(row: Dict[str, Any], timeout_seconds: int, apply: bool, lane: str = "codex") -> Tuple[str, Dict[str, Any]]:
+    """Launch the selected delegate with its default isolated worktree."""
+    if lane not in {"codex", "local"}:
+        raise ValueError("invalid RSI repair lane")
     argv = [
         str(AI_SCRIPT_DIR / "delegate-to-local"), "--mode", "agent", "--wait",
         "--timeout", str(timeout_seconds), "--role", "implementer", "--prompt", _rsi_task_prompt(row, apply),
     ]
+    if lane == "codex":
+        argv = [str(AI_SCRIPT_DIR / "delegate-to-codex"), "--wait", "--mode", "edit",
+                "--prompt", _rsi_task_prompt(row, apply)]
     proc = subprocess.Popen(
         argv, stdout=subprocess.PIPE, stderr=subprocess.PIPE, text=True,
         start_new_session=True, cwd=str(REPO_ROOT),
@@ -872,10 +878,11 @@ def _run_rsi_delegate(row: Dict[str, Any], timeout_seconds: int, apply: bool) ->
             except ProcessLookupError:
                 pass
             proc.communicate()
-        return "rsi_stalled", {"reason": "delegate_timeout"}
+        return "rsi_stalled", {"lane": lane, "reason": "delegate_timeout"}
     # Persist only a bounded receipt. Full agent output may contain sensitive or
     # untrusted data and must not inflate the shared queue/context.
     receipt = {
+        "lane": lane,
         "exit_code": proc.returncode,
         "stdout_tail": (stdout or "")[-2000:],
         "stderr_tail": (stderr or "")[-1000:],
@@ -883,27 +890,59 @@ def _run_rsi_delegate(row: Dict[str, Any], timeout_seconds: int, apply: bool) ->
     if proc.returncode != 0:
         return "rsi_failed", receipt
     # Exit status and generic task-like text are not proof of delivery. Match
-    # the terminal receipt emitted by delegate-to-local on stdout only.
-    if not re.search(
-        r"(?m)^\[delegate-to-local\] Task local-\d{8}-\d{6}-[a-z0-9]{6} completed\.$",
-        stdout or "",
-    ):
+    # the lane's terminal receipt on stdout only.
+    receipt_patterns = {
+        "local": r"(?m)^\[delegate-to-local\] Task local-\d{8}-\d{6}-[a-z0-9]{6} completed\.$",
+        "codex": r"(?m)^\[delegate-to-codex\] Task codex-\d{8}-\d{6}-[a-z0-9]{6} completed\.$",
+    }
+    if not re.search(receipt_patterns[lane], stdout or ""):
         receipt["reason"] = "missing_delegate_receipt"
         return "rsi_failed", receipt
     return "rsi_awaiting_validation", receipt
 
 
+def _reconcile_stale_rsi_running(queue: Dict[str, Any], timeout_seconds: int) -> int:
+    """Release abandoned running rows once the delegate timeout and grace expire."""
+    now = datetime.now(timezone.utc)
+    stale = 0
+    for row in queue["actions"]:
+        if not isinstance(row, dict) or not _is_rsi_row(row) or row.get("status") != "rsi_running":
+            continue
+        execution = row.get("execution") or {}
+        try:
+            started = datetime.fromisoformat(str(execution.get("last_run_at", "")).replace("Z", "+00:00"))
+            if started.tzinfo is None:
+                started = started.replace(tzinfo=timezone.utc)
+        except ValueError:
+            continue
+        if (now - started).total_seconds() <= timeout_seconds + 60:
+            continue
+        row["status"] = "rsi_failed"
+        execution["result"] = "failed"
+        execution["receipt"] = {**(execution.get("receipt") or {}), "reason": "stale_running"}
+        row["execution"] = execution
+        stale += 1
+    return stale
+
+
 def cmd_rsi_dispatch(args: argparse.Namespace) -> int:
     """Reconcile and dispatch a bounded RSI diagnostic/repair through isolated delegation."""
+    policy = _load_policy()
+    lane = getattr(args, "lane", None) or policy.get("rsi", {}).get("repair_lane", "codex")
+    if lane not in {"codex", "local"}:
+        print(json.dumps({"ok": False, "lane": lane, "message": "invalid_repair_lane"}, sort_keys=True))
+        return 1
+    timeout_seconds = max(30, int(getattr(args, "timeout_seconds", 600)))
     lock = _acquire_rsi_dispatch_lock()
     if lock is None:
-        print(json.dumps({"ok": True, "message": "rsi_dispatch_already_running"}, sort_keys=True))
+        print(json.dumps({"ok": True, "message": "rsi_dispatch_already_running", "lane": lane}, sort_keys=True))
         return 0
     try:
         # This makes the command independent of the hourly PRSI service cycle.
         cmd_sync(argparse.Namespace(since=args.since), incidents_only=True)
         queue = _load_queue()
         resolved = _reconcile_rsi_queue(queue)
+        _reconcile_stale_rsi_running(queue, timeout_seconds)
         for row in queue["actions"]:
             if isinstance(row, dict) and _is_rsi_row(row) and row.get("status") == "shadow_queued":
                 row["status"] = "rsi_pending"
@@ -914,21 +953,20 @@ def cmd_rsi_dispatch(args: argparse.Namespace) -> int:
             attempts = int(row.get("rsi_attempts", 0) or 0)
             if attempts >= max_attempts:
                 row["status"] = "rsi_stalled"
-                row["execution"] = {"last_run_at": _now(), "result": "max_attempts_exhausted"}
+                row["execution"] = {**(row.get("execution") or {}), "last_run_at": _now(), "result": "max_attempts_exhausted"}
         _save_queue(queue)
 
         if not args.execute:
-            payload = {"ok": True, "executed": 0, "resolved": resolved, "dry_run": True, "rsi": _rsi_summary(queue)}
+            payload = {"ok": True, "lane": lane, "executed": 0, "resolved": resolved, "dry_run": True, "rsi": _rsi_summary(queue)}
             print(json.dumps(payload, sort_keys=True))
             return 0
-        policy = _load_policy()
         if not bool(policy.get("enabled", True)):
-            print(json.dumps({"ok": True, "executed": 0, "message": "policy_disabled", "rsi": _rsi_summary(queue)}, sort_keys=True))
+            print(json.dumps({"ok": True, "lane": lane, "executed": 0, "message": "policy_disabled", "rsi": _rsi_summary(queue)}, sort_keys=True))
             return 0
-        ok, reason = _rsi_dispatch_preflight()
+        ok, reason = _rsi_dispatch_preflight(lane)
         if not ok:
             _log_event({"ts": _now(), "event": "rsi_dispatch_blocked", "reason": reason})
-            print(json.dumps({"ok": False, "executed": 0, "message": reason, "rsi": _rsi_summary(queue)}, sort_keys=True))
+            print(json.dumps({"ok": False, "lane": lane, "executed": 0, "message": reason, "rsi": _rsi_summary(queue)}, sort_keys=True))
             return 1
 
         limit = max(1, min(int(args.limit), int(policy.get("max_execute_per_cycle", 1) or 1), _RSI_MAX_DISPATCH_PER_CYCLE))
@@ -976,17 +1014,17 @@ def cmd_rsi_dispatch(args: argparse.Namespace) -> int:
         for row in selected_rows:
             row["status"] = "rsi_running"
             row["rsi_attempts"] = int(row.get("rsi_attempts", 0) or 0) + 1
-            row["execution"] = {"last_run_at": _now(), "result": "dispatching_isolated_worktree"}
+            row["execution"] = {"last_run_at": _now(), "result": "dispatching_isolated_worktree", "receipt": {"lane": lane}}
             _save_queue(queue)
-            result, receipt = _run_rsi_delegate(row, max(30, int(args.timeout_seconds)), bool(args.apply))
+            result, receipt = _run_rsi_delegate(row, timeout_seconds, bool(args.apply), lane)
             if result == "rsi_failed" and int(row["rsi_attempts"]) >= max_attempts:
                 result = "rsi_stalled"
             row["status"] = result
             row["execution"] = {"last_run_at": _now(), "result": result.removeprefix("rsi_"), "receipt": receipt}
             executed += 1
             _save_queue(queue)
-        _log_event({"ts": _now(), "event": "rsi_dispatch", "executed": executed, "mode": "apply" if args.apply else "diagnose", "isolation": reason})
-        output = {"ok": True, "executed": executed, "resolved": resolved, "mode": "apply" if args.apply else "diagnose", "rsi": _rsi_summary(queue)}
+        _log_event({"ts": _now(), "event": "rsi_dispatch", "lane": lane, "executed": executed, "mode": "apply" if args.apply else "diagnose", "isolation": reason})
+        output = {"ok": True, "lane": lane, "executed": executed, "resolved": resolved, "mode": "apply" if args.apply else "diagnose", "rsi": _rsi_summary(queue)}
         if skipped_reasons:
             output["skipped"] = skipped_reasons
         print(json.dumps(output, sort_keys=True))
@@ -1292,6 +1330,7 @@ def build_parser() -> argparse.ArgumentParser:
     s_rsi.add_argument("--limit", type=int, default=1)
     s_rsi.add_argument("--max-attempts", type=int, default=_RSI_MAX_ATTEMPTS)
     s_rsi.add_argument("--timeout-seconds", type=int, default=600)
+    s_rsi.add_argument("--lane", choices=("codex", "local"), default=None)
     s_rsi.set_defaults(func=cmd_rsi_dispatch)
     return p
 

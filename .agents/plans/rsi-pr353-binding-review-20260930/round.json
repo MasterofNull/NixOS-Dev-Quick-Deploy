@@ -1,0 +1,63 @@
+{
+  "schema_version": "1.0",
+  "round_id": "rsi-pr353-binding-review-20260930",
+  "state": "DISPATCHED",
+  "task": {
+    "prompt": "ROLE: independent reviewer (you did NOT author these commits). Read-only: do not edit files, commit, or run services.\nSUBJECT: branch chore/commit-backlog-20260930 (PR #353). Review ONLY these commits:\n- 0c0ff4d7 fix(report): aq-report useful_token_metrics streams agent-run-events.jsonl (PRSI 256M OOM)\n- 923e9c75 feat(rsi): rsi_lifecycle ledger + scripts/security/rsi-intake-code-scanning.py (Trivy alerts -> RSI incidents)\n- 7a1cf7a9 + a7f39858 fix(rsi): prsi-orchestrator cmd_rsi_dispatch skip-reason copy-back, aq-rsi-pending, aq-resume banner, dispatch unit PATH (bash, util-linux, curl, /run/current-system/sw for cliPython)\n- e1e4fd69 fix(rsi): dispatch unit ReadWritePaths (+.agent/collaboration, issues-backlog.md, WORKAROUND-REGISTER.md), --timeout-seconds 2400 / TimeoutSec 2460, MemoryHigh 768M / MemoryMax 1G\nUse: git show <sha>. Key files: scripts/automation/prsi-orchestrator.py (cmd_rsi_dispatch), scripts/security/rsi-intake-code-scanning.py, nix/modules/roles/ai-stack.nix (ai-prsi-rsi-dispatch), scripts/ai/aq-rsi-pending.\nQUESTIONS: (1) correctness regressions; (2) does widening ReadWritePaths or MemoryMax weaken the sandbox beyond need; (3) is an owner verifier sign-off still required for every high-risk RSI row (no gate bypass); (4) prior local finding: intake identity includes fixed_version, so a raised fix version opens a duplicate incident — agree/disagree and fix.\nOUTPUT: first line `VERDICT: PASS` or `VERDICT: REQUEST_CHANGES`, then at most 6 numbered findings with file:line and severity.",
+    "target": "",
+    "scope_files": []
+  },
+  "opened_at": "2026-09-30T21:52:12Z",
+  "quorum_policy": {
+    "min_lanes": 2,
+    "required_agents": [],
+    "late_local_admissible": true,
+    "timeout_seconds": null,
+    "deadline": null,
+    "timeout_action": "lock_with_present"
+  },
+  "lanes": [
+    {
+      "agent": "claude",
+      "dispatch_id": null,
+      "idempotency_hash": "34ab57a08ad165b9d67b710c7341515f85c15b75d4d77d40d6dd9bd490fb273b",
+      "status": "pending",
+      "landed_at": null
+    },
+    {
+      "agent": "codex",
+      "dispatch_id": null,
+      "idempotency_hash": "e6cb7507de4200bd26ffed5093038f4951abc11dcf0d19e35e673669ea4f8910",
+      "status": "pending",
+      "landed_at": null
+    },
+    {
+      "agent": "local",
+      "dispatch_id": null,
+      "idempotency_hash": "6883d8dcc303f7c151e5926f2e0d31bff30f5307ef09411b847e5494e883f82f",
+      "status": "pending",
+      "landed_at": null
+    },
+    {
+      "agent": "antigravity",
+      "dispatch_id": null,
+      "idempotency_hash": "2a70b14a1ba826e2377a10ffcfaf8066444768ff12ed0bf1b60bc14396e8b89e",
+      "status": "pending",
+      "landed_at": null
+    }
+  ],
+  "contributions": {},
+  "conflicts": [],
+  "consensus_hash": null,
+  "aggregate_path": null,
+  "aggregate_hash": null,
+  "locked_at": null,
+  "history": [
+    {
+      "transition": "CREATED->DISPATCHED",
+      "timestamp": "2026-09-30T21:52:12Z",
+      "actor": "aq-collab-round"
+    }
+  ],
+  "predecessor_round_id": null
+}
