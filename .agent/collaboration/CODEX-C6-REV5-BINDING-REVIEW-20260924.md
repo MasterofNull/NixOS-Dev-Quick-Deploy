@@ -1,0 +1,46 @@
+# C6 Revision 5 — Independent Binding Re-Review
+
+Subject: `factory/c6-rev5` at `f68ccf912f07c4a872f17c1cbe6c469eac444350`  
+Baseline: `f1f409ef97f73fb6ae152a297ba0c0367e30bf22`  
+Review role: independent binding reviewer  
+Disposition: **REQUEST_REVISION — not freeze-eligible**
+
+The re-anchor is reproducible: every full §1 hash checked against `f1f409ef`, all four §1.4 NEW paths are absent, and the baseline is dormant (owner allowlist revision 4 with the mechanism-test key revoked; scheduler-lease gate env removed). The requested diff digest is:
+
+`git diff f1f409ef..factory/c6-rev5 | sha256sum`  
+`fbaa5e85d6ad9aa28922c78522227dcd36ec75ecd71b6974e6fca18a5eaedd62  -`
+
+## Numbered findings
+
+1. **HIGH — The shared-lock ordering is sound, but `authorize_launch` is not implementable from the frozen inventory and its token is not actually specified as single-use.**  
+   **Section:** §1.2, §3.3, §4.  
+   **Exact scenario:** `apply_bump` really does acquire the exclusive `epoch.lock` through `_acquire_epoch_lock`, so an implemented `authorize_launch` taking that same lock would be totally ordered: a bump committed before issuance is read and denied, while a bump after issuance is ordered after the declared launch point. There is no unordered bump between the under-lock read and token-issuance commit. However, the landed authority endpoint is `scripts/ai/lib/revocation_epoch_transport.py`: its handler recognizes only `{"op":"read-epoch"}` and `{"bump":...}`. That file is not an EDIT surface, so a TEG request cannot reach the proposed `revocation_epoch.authorize_launch`. The same omission defeats the stated in-process `recover() → listen() → sd_notify(READY=1)` sequence, because the landed transport owns `bind()`, `listen()`, and request dispatch. Separately, §3.3 creates an issuance ledger entry and says the token “must be consumed,” but defines no atomic consume operation, ledger state transition, verifier, or duplicate-consumption serialization. Two provider-start attempts can therefore reuse the same returned token unless an unstated checkpoint is added. The ≤250 ms deadline and task/context/gateway fields provide expiry and binding, but not single-use enforcement.
+
+2. **HIGH — The TEG direction is correct, but the claimed TEG-only authority boundary is false at the anchored Nix baseline.**  
+   **Section:** §2.1, §3.2, §4.  
+   **Exact scenario:** executing `urlopen()` inside the dedicated TEG and returning only response bytes is the sound direction; it removes the impossible caller-side token checkpoint, and the request/response/output/cancellation contract is adequate at design level. Retaining the shared UID's `aq-lease-signing-clients` and `aq-c2-scheduler-context-clients` memberships is also not by itself a bypass if only the TEG can feed the live queue and start the provider. But rev5 asserts that after its edits the TEG is the only member able to reach the revocation-authority control socket. In fact, `lease-signing-authority.nix:76` and `c2-scheduler-context-issuer.nix:114` put their service principals in `aq-revocation-epoch-clients`, while `c2-scheduler-context-issuer.nix:122` merely declares the group and does not add `primaryUser` to it. Only `revocation-epoch-authority.nix:111` grants the shared UID that membership. Deleting line 111 removes the shared UID, but leaves the ALA and C2-SCI principals able to call the same socket. Because `authorize_launch` has no owner signature and rev5 treats `SO_PEERCRED` as non-authoritative/log-only, either service principal can request a launch token. Freeze must specify an operation-specific TEG peer check, a dedicated launch socket/group, or the necessary membership edits while preserving a separately least-privileged epoch-read path. The claimed coordination edit to remove a nonexistent shared-UID revocation membership from `c2-scheduler-context-issuer.nix` must also be corrected.
+
+3. **HIGH — The selected offline owner-key ceremony has no callable submission path after the proposed principal separation.**  
+   **Section:** §2.3, §3.2, §4, §6 P-F4.  
+   **Exact scenario:** the landed CLI command is `aq-epoch-bump build`, not `prepare`. More importantly, `aq-epoch-bump submit --signed` never connects to the authority: it invokes `apply_bump` in-process against `--epoch-path` and `--ledger-dir`. Those authority StateDirectory paths are `0700` and authority-owned, so the owner UID cannot use that path in the running system. The landed socket command is `aq-epoch-bump bump`, but it reads/signs with a private-key file on the host, contrary to rev5's chosen “private key never on the harness host” model; after §3.2 removes the owner UID from `aq-revocation-epoch-clients`, it also cannot connect to the control socket. The TEG public envelope expressly accepts no authority object and no signed-bump courier is inventoried. Thus the owner can create a valid offline signature but cannot deliver it to the authority through any authorized rev5 path. `aq-epoch-bump` is verify-only/excluded, so the mismatch cannot be repaired during the build without scope expansion. The forward-only public-key rotation semantics are otherwise sound, but Finding 4 is not closed.
+
+4. **HIGH — W1 retry and dual-index recovery remain non-deterministic despite the claimed `aborted → intent` transition.**  
+   **Section:** §2.2, §4.  
+   **Exact scenario:** W1 recovery rewrites deterministic `journal/<sha256(request_id || NUL || idempotency_key)>` to `phase:"aborted"` and releases both indexes. The identical retry can re-create both indexes, but step 2 then performs `O_CREAT|O_EXCL` on the same journal pathname, which still contains the aborted tombstone; rev5 never specifies an atomic `aborted → intent` rewrite or a new attempt-generation pathname. The retry therefore cannot “actually bump.” There is a second orphan case: if the request-id reservation succeeds and the idempotency-key reservation conflicts, the new request-id index must be rolled back immediately; “resolve the existing journal” does not specify that rollback. Crashes after one/both index fsyncs but before journal creation likewise leave indexes whose target journal does not exist, while the stated startup pass iterates non-terminal journal entries rather than defining an index-to-journal reconciliation algorithm. W2 receipt reconstruction and the recovery-before-accept intent are sound, but both independent uniqueness and the a–c/i crash cases remain under-specified.
+
+5. **HIGH — Deferring enforceable TEG network confinement to C4 is not acceptable under rev5's activation order.**  
+   **Section:** §3.2 Egress, §4 exclusions, §6.  
+   **Exact scenario:** saying `dispatch-gateway.nix` “scopes” egress to provider URL(s) does not name an enforceable mechanism; a URL/environment value is a routing target, not an OS network boundary. With AF_INET/AF_INET6 available, a compromised TEG can contact destinations other than the provider. The owner-ratified DESIGN-PACKET resequence places C4 before C6, but rev5 §6 orders the C6 flag-enable before C4 and calls C4 a successor. Full C4 implementation may be deferred from the C6 code slice only if C4 is made a hard pre-activation dependency. Otherwise rev5 must freeze an exact interim enforcement mechanism (for example, a dedicated proxy/network namespace/firewall policy) that denies every non-provider destination. The current narrative bound is not sufficient for freeze.
+
+## Closure assessment
+
+- Rev4 Finding 1: **OPEN/PARTIAL** — the one-lock linearization proof is correct, including the classification of a bump after token issuance, but the authority transport is outside scope and single-use token consumption is undefined.
+- Rev4 Finding 2: **OPEN/PARTIAL** — in-principal provider execution is correct and keeping the shared UID's ALA/C2 client memberships can be safe, but the revocation socket is not TEG-only and the stated C2-SCI group edit does not exist at the anchor.
+- Rev4 Finding 3: **CLOSED** — `f1f409ef` is dormant; hashes/absences reproduce; P-F4 is explicitly a separately hash-bound, owner-authorized monotonic revision advance and is consistent with C6-P0 §3 rather than a runtime mutation of frozen bytes.
+- Rev4 Finding 4: **OPEN** — offline custody and revoke-on-rotation are sound, but the landed verify-only CLI cannot submit an offline-signed document to the running authority under the proposed group model.
+- Rev4 Finding 5: **OPEN** — W2 and the before-accept objective are improved, but deterministic W1 reuse, partial dual-index rollback, orphan-index recovery, and the transport surface are not closed.
+- Rev4 Finding 6: **CLOSED** — merge `785ff50b` includes revert `2ef1406e`; at `f1f409ef` the mechanism-test key is revoked and the scheduler-lease gate env is absent.
+
+Revision 5 is **not FREEZE-ELIGIBLE**. No implementation, activation, epoch bump, provider traffic, or rollback is authorized by this verdict.
+
+VERDICT: REQUEST_REVISION — inventory the authority transport and define atomic launch-token consumption; make authorize-launch TEG-only across the actual service-principal memberships; provide a callable offline-signed owner submission path; specify deterministic aborted-journal reuse and dual-index rollback/recovery; and make C4 a hard pre-activation gate or freeze an enforceable interim egress boundary
