@@ -4814,3 +4814,38 @@ File: scripts/ai/lib/worktree-isolation.sh; scripts/automation/prsi-orchestrator
   Severity: high (silently wastes every research-classified local task)
   Action: set research/deep_reasoning enable_thinking=False (or strip reasoning budget from max_tokens) via L2B process; add a guard that fails a direct task whose tokens_out>0 but visible output is empty with a specific reason (thinking_consumed_budget).
   File: ai-stack/mcp-servers/shared/llm_config.py (task profiles)
+
+[OPEN] rsi-84173bc271644e4c3c288274 — github-code-scanning:trivy-custom-nixos-docs failure in code-scanning:trivy-custom-nixos-docs. Root cause evidence: producer=github-code-scanning:trivy-custom-nixos-docs; path=ai-stack/mcp-servers/nixos-docs/Dockerfile; authority=trivy; os_error=setuptools 78.1.0 vulnerable; fixed in >= 83.0.0. Detected=2026-09-30T19:11:11.394347Z.
+  Severity: high
+  Action: bump setuptools to >= 83.0.0 in ai-stack/mcp-servers/nixos-docs/Dockerfile; rebuild image and confirm Trivy clears the alerts (2 open alert(s), max severity high)
+  File: ai-stack/mcp-servers/nixos-docs/Dockerfile
+
+[OPEN] rsi-4e1ae0cb4f86e261bb7e0fd2 — github-code-scanning:trivy-custom-nixos-docs failure in code-scanning:trivy-custom-nixos-docs. Root cause evidence: producer=github-code-scanning:trivy-custom-nixos-docs; path=ai-stack/mcp-servers/nixos-docs/requirements.txt; authority=trivy; os_error=GitPython 3.1.43 vulnerable; fixed in >= 3.1.59. Detected=2026-09-30T19:11:11.836905Z.
+  Severity: critical
+  Action: bump GitPython to >= 3.1.59 in ai-stack/mcp-servers/nixos-docs/requirements.txt; rebuild image and confirm Trivy clears the alerts (27 open alert(s), max severity critical)
+  File: ai-stack/mcp-servers/nixos-docs/requirements.txt
+
+[OPEN] rsi-46cc707a2337d244ed1ba93d — github-code-scanning:trivy-custom-aidb failure in code-scanning:trivy-custom-aidb. Root cause evidence: producer=github-code-scanning:trivy-custom-aidb; path=ai-stack/mcp-servers/aidb/requirements.txt; authority=trivy; os_error=transformers 4.57.6 vulnerable; fixed in >= 5.10.0. Detected=2026-09-30T19:11:11.841619Z.
+  Severity: high
+  Action: bump transformers to >= 5.10.0 in ai-stack/mcp-servers/aidb/requirements.txt; rebuild image and confirm Trivy clears the alerts (3 open alert(s), max severity high)
+  File: ai-stack/mcp-servers/aidb/requirements.txt
+
+[OPEN] rsi-07bc5623cfbc4a771a9d1049 — github-code-scanning:trivy-custom-nixos-docs failure in code-scanning:trivy-custom-nixos-docs. Root cause evidence: producer=github-code-scanning:trivy-custom-nixos-docs; path=ai-stack/mcp-servers/nixos-docs/Dockerfile; authority=trivy; os_error=wheel 0.45.1 vulnerable; fixed in >= 0.46.2. Detected=2026-09-30T19:11:11.846054Z.
+  Severity: high
+  Action: bump wheel to >= 0.46.2 in ai-stack/mcp-servers/nixos-docs/Dockerfile; rebuild image and confirm Trivy clears the alerts (1 open alert(s), max severity high)
+  File: ai-stack/mcp-servers/nixos-docs/Dockerfile
+
+[OPEN] rsi-fa0759de8ff42db3e5f8003b — github-code-scanning:trivy-custom-nixos-docs failure in code-scanning:trivy-custom-nixos-docs. Root cause evidence: producer=github-code-scanning:trivy-custom-nixos-docs; path=ai-stack/mcp-servers/nixos-docs/Dockerfile; authority=trivy; os_error=jaraco.context 5.3.0 vulnerable; fixed in >= 6.1.0. Detected=2026-09-30T19:11:11.850630Z.
+  Severity: high
+  Action: bump jaraco.context to >= 6.1.0 in ai-stack/mcp-servers/nixos-docs/Dockerfile; rebuild image and confirm Trivy clears the alerts (1 open alert(s), max severity high)
+  File: ai-stack/mcp-servers/nixos-docs/Dockerfile
+
+[OPEN] rsi-dispatch-silently-never-executes — Since 2026-09-28 every ai-prsi-rsi-dispatch run reports `executed: 0` with 10 rows `rsi_pending`. Root cause: `_fetch_rsi_incident_actions` rows carry safe=False -> `risk: high`; runtime-prsi-policy `require_independent_verifier_for_high_risk: true` skips any high-risk row lacking `approval.verifier_by`, and nothing prompts for or records that sign-off for RSI rows. The skip reason (`skipped_missing_independent_verifier`) is written onto the copied selection row in `_select_actions_for_execution`, so the queue and journal never show why (the action log only says `isolation: isolated_worktree_required`). Pending: 5 codex friction incidents + 5 code-scanning incidents (GitPython critical).
+  Severity: high (RSI loop is live but inert; failure is invisible)
+  Action: (1) owner/independent verifier signs off via `prsi-orchestrator.py verify --id <row> --by <verifier>` or dashboard; (2) persist skip reason onto the queue row + include per-row skip counts in rsi-dispatch JSON; (3) add health-spider alert when rsi pending age > 24h with executed=0; (4) decide risk tier for dependency-bump incidents (bounded, isolated-worktree) vs verifier requirement — UX-first: approval surface must exist before relying on it.
+  File: scripts/automation/prsi-orchestrator.py ~line 995-1010; config/runtime-prsi-policy.json
+
+[FIXED-PENDING-REBUILD] rsi-dispatch-unit-path-missing-bash — First post-sign-off RSI execution (row 9f9f88fbcc7f9e90, setuptools bump, 2026-09-30 12:16 PDT) failed exit 127 `env: 'bash': No such file or directory`: the hardened unit PATH had git (2026-09-28 fix) but not bash, python3, util-linux (flock/setsid) or curl, all used by delegate-to-local. Same class as the earlier missing-git defect — the unit was never exercised end-to-end because the verifier gate blocked every row.
+  Severity: high
+  Action: owner `nixos-rebuild switch`; next sweep retries (attempts 1 < max). Guard: test-prsi-rsi-intake.py pins all five PATH deps.
+  File: nix/modules/roles/ai-stack.nix (ai-prsi-rsi-dispatch.path)

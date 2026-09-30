@@ -2384,7 +2384,9 @@ in {
         description = "Bounded PRSI incident repair dispatch";
         after = ["network-online.target" "ai-hybrid-coordinator.service"];
         wants = ["network-online.target"];
-        path = [pkgs.git];
+        # delegate-to-local is `#!/usr/bin/env bash` and shells out to python3,
+        # flock/setsid (util-linux) and curl; the unit PATH has none by default.
+        path = [pkgs.git pkgs.bash pkgs.python3 pkgs.util-linux pkgs.curl];
         serviceConfig = {
           Type = "oneshot";
           User = cfg.primaryUser;
