@@ -2622,7 +2622,10 @@ assert_targets_exist() {
   local eval_err reason
 
   available_nixos="$(list_configuration_names "nixosConfigurations" || true)"
-  if ! has_configuration_name "nixosConfigurations" "${nixos_target}"; then
+  # Attribute-name discovery is the existence check. Evaluating an entire
+  # NixOS configuration here can exceed the evaluation timeout; treating that
+  # timeout as "not found" contradicts the already discovered name list.
+  if [[ " ${available_nixos} " != *" ${nixos_target} "* ]]; then
     die "NixOS target '${nixos_target}' not found in flake. Available nixosConfigurations: ${available_nixos:-<unavailable>}."
   fi
 

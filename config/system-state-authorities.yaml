@@ -174,7 +174,7 @@ authorities:
       action: "Stop the failing projector, retain the append log, and rebuild projections; do not restore direct projection writers."
       authority_during_rollback: "Typed Intent Lock plus the single aq-event append authority."
     projections:
-      - {name: "RESUME.json (resume_projector per-field latest producer)", reader_path: "scripts/ai/lib/resume_projector.py", rebuild_source: "aq-event project resume over a2a-events.jsonl (first-ID-wins)"}
+      - {name: "RESUME.json (resume_projector per-field latest producer)", reader_path: "scripts/ai/lib/resume_projector.py", rebuild_source: "aq-event project resume over .agent/collaboration/a2a-events.jsonl plus legacy .agents/events history (first-ID-wins)"}
       - {name: "PULSE.log", reader_path: "scripts/ai/aq-resume", rebuild_source: "aq-event project pulse"}
     ordering_revision: "resume projector uses per-field latest producer time (resume_projector.py:70,111); replay can erase direct-only state"
     provenance_freshness: "event ts per field; direct writes lack event provenance"
