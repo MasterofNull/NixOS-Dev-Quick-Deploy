@@ -4,7 +4,7 @@
 - Summarized latest videos (Jan - Jul 2026) regarding Agentic Observability, Model Stacking, and Agentic Security: `.agent/INDYDEVDAN-RESEARCH-SUMMARY.md`
 
 ## Issues Backlog
-- Active backlog: `.agent/memory/issues-backlog.md` (latest: C6a fail-closed token defects; flat-round isolated-contribution loss; skill-loader/source-check drift; machine-mode phase-0 timeout; prior Luna/local/shared-index and hardware validation items remain tracked)
+- Active backlog: `.agent/memory/issues-backlog.md` (context guards, memory persistence, token attribution, RSI isolation/dispatch PATH, validation blockers, and `agent-workaround-before-root-fix`).
 
 ## Active Planning Docs
 - **SOTA Agentic Workspace & AI Command Center (2026-09-26)**: Architecture, dual-board swarm layout, model backends, and operational runbook: `.agent/memory/workspace-command-center-dev.md`. PRD: `.agent/PROJECT-AGENTIC-WORKSPACE-PRD.md`.

@@ -4670,6 +4670,11 @@ File: .agent/WORKFLOW-CANON.md; .agent/CODEX.md; evidence in .agent/collaboratio
   Action: Diagnose hook routing and caller contract; preserve command semantics and policy
   File: hook/codex-pretooluse
 
+[DONE] aq-report useful-token telemetry OOM — `useful_token_metrics` materialized full historical agent-run JSONL and reconstructed/copy-filtered timelines. The 92,164,469-byte source drove the active stack to ~538,236 KiB; same redirected report profile after streaming window filter peaked at 115,852 KiB (−422,384 KiB, 78%). Fix in `scripts/ai/aq-report:8041`; focused guard in `scripts/testing/test-useful-token-metrics.py:108`.
+  Severity: high
+  Action: Retain the streaming regression; after exact-subject independent PASS, perform bounded runtime acceptance under existing 256M limit. No service restart or limit increase yet.
+  File: scripts/ai/aq-report; scripts/testing/test-useful-token-metrics.py
+
 [OPEN] rsi-80d039137a26e48c5a18826d — agent-command-construction failure in rsi-implementation. Root cause evidence: producer=agent-command-construction; path=scripts/governance/tier0-validation-gate.sh; authority=validation-serialization; os_error=Nested checkout waited on its own parent lease. Detected=2026-09-28T04:09:18.692955Z.
   Severity: medium
   Action: Use the tier0 entrypoint which acquires its own gate; reject nested acquisition with regression coverage
@@ -4738,3 +4743,21 @@ File: scripts/ai/lib/worktree-isolation.sh; scripts/automation/prsi-orchestrator
   Severity: medium
   Action: Diagnose gate checkout/contention and silent wait path; ensure bounded timeout and progress reporting.
   File: scripts/governance/tier0-validation-gate.sh
+[DONE] RSI dispatcher blocked before incident claim — systemd supplied a minimal PATH without Git, while dispatch preflight requires Git to verify repository/worktree authority; five incidents remained pending. Added Git to the service PATH and a regression assertion. A bounded lean-ctx search was also rejected by its 11-search/300s loop guard; switched to exact-path reads/tree navigation.
+  Severity: high
+  Action: Rebuild/activate the unit, confirm Git in its effective PATH, and verify a real incident reaches a safe terminal state; use exact-path context reads after search throttling.
+  File: nix/modules/roles/ai-stack.nix; scripts/testing/test-prsi-rsi-intake.py
+[OPEN] deploy-target-discovery-timeout — `nixos-quick-deploy.sh` rejected `hyperd-ai-dev` although flake name discovery listed it; per-target config evaluation timed out and was collapsed into “not found.”
+  Severity: high
+  Action: discover existence from the authoritative configuration-name list, then report actual evaluation failure separately; regression guard added. Retry activation after focused validation.
+  File: nixos-quick-deploy.sh ~line 2620; scripts/testing/test-quick-deploy-target-discovery.py
+
+[OPEN] tier0-precommit-stalls — Tier 0 pre-commit produced no output for over four minutes and spawned a nested `tier0-validation-gate.sh`; stopped by operator to avoid leaving the process tree running. Focused tests passed, full gate did not.
+  Severity: high
+  Action: diagnose nested gate invocation and quiet/hanging focused runner; rerun serialized Tier 0 to a terminal result before commit or activation.
+  File: scripts/governance/tier0-validation-gate.sh; scripts/governance/run-focused-ci-checks.sh
+
+[OPEN] rsi-f6c51d38de20750a67ef4807 — lean-ctx-pretooluse failure in pre-tool. Root cause evidence: producer=lean-ctx-pretooluse; path=hook/codex-pretooluse; authority=installed pre-tool policy; os_error=lean-ctx command routing rejected. Detected=2026-09-28T17:46:50.427158Z.
+  Severity: medium
+  Action: Diagnose hook routing and caller contract; preserve command semantics and policy
+  File: hook/codex-pretooluse

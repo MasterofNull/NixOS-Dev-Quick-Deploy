@@ -105,6 +105,35 @@ def test_per_run_breakdown() -> None:
     Path(tmp_path).unlink(missing_ok=True)
 
 
+def test_streams_only_events_in_requested_window() -> None:
+    mod = _load_aq_report()
+    now = datetime.now(timezone.utc)
+    old = _are.make_event(
+        "token_usage", source="test", run_id="old",
+        tokens={"total": 900, "accepted_artifact": 900},
+    )
+    old["timestamp"] = "2020-01-01T00:00:00Z"
+    recent = _are.make_event(
+        "token_usage", source="test", run_id="recent",
+        tokens={"total": 200, "accepted_artifact": 100},
+        duration_ms=25,
+    )
+    recent["timestamp"] = now.isoformat().replace("+00:00", "Z")
+    with tempfile.NamedTemporaryFile(mode="w", suffix=".jsonl", delete=False) as fh:
+        fh.write(json.dumps(old) + "\n")
+        fh.write(json.dumps(recent) + "\n")
+        tmp_path = Path(fh.name)
+    mod.AGENT_RUN_EVENTS_PATH = tmp_path
+    # Guard against regressing to whole-file materialization through the helper.
+    _are.load_jsonl = lambda *_args, **_kwargs: (_ for _ in ()).throw(AssertionError("must stream"))
+    result = mod.useful_token_metrics(now.replace(hour=0, minute=0, second=0, microsecond=0))
+    assert_true(result["window_events"] == 1, f"only current-window event counted, got {result['window_events']}")
+    assert_true(result["token_events"] == 1, f"only current-window token counted, got {result['token_events']}")
+    assert_true(result["total_tokens"] == 200, f"old token counts excluded, got {result['total_tokens']}")
+    assert_true(result["per_run"][0]["duration_ms"] == 25, "current run duration preserved")
+    tmp_path.unlink(missing_ok=True)
+
+
 def test_format_json_includes_useful_tokens() -> None:
     mod = _load_aq_report()
     dummy = {"available": True, "status": "ok", "useful_ratio": 0.72}
@@ -139,6 +168,7 @@ if __name__ == "__main__":
         ("no_data when file empty", test_no_data_when_file_empty),
         ("aggregates token events", test_aggregates_token_events),
         ("per-run breakdown", test_per_run_breakdown),
+        ("streams current-window events", test_streams_only_events_in_requested_window),
         ("format_json includes useful_tokens", test_format_json_includes_useful_tokens),
         ("format_json includes validation_health", test_format_json_includes_validation_health),
     ]

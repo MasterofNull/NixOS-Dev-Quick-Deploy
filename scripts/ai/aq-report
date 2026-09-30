@@ -8061,8 +8061,38 @@ def useful_token_metrics(since_dt: Optional[datetime] = None) -> Dict[str, Any]:
             "reason": "agent_run_events helper not importable",
         }
 
+    cutoff_str = None
+    if since_dt is not None:
+        cutoff_str = since_dt.replace(microsecond=0).isoformat().replace("+00:00", "Z")
+    token_events: List[dict] = []
+    fallback_token_events: List[dict] = []
+    window_events = 0
+    valid_records = 0
+    run_durations: Dict[str, int] = {}
     try:
-        records = _are.load_jsonl(AGENT_RUN_EVENTS_PATH)
+        with AGENT_RUN_EVENTS_PATH.open("r", encoding="utf-8") as handle:
+            for line in handle:
+                if not line.strip():
+                    continue
+                try:
+                    record = json.loads(line)
+                    _are.validate_event(record)
+                except (json.JSONDecodeError, TypeError, ValueError):
+                    continue
+                valid_records += 1
+                if cutoff_str is not None and record.get("timestamp", "") < cutoff_str:
+                    continue
+                window_events += 1
+                run_id = record.get("run_id")
+                if run_id:
+                    run_durations[run_id] = run_durations.get(run_id, 0) + (record.get("duration_ms") or 0)
+                if record.get("event_type") == "token_usage" and record.get("tokens"):
+                    token_events.append(record)
+                elif record.get("tokens") and any(
+                    record["tokens"].get(k) is not None
+                    for k in ("total", "input", "output", "accepted_artifact")
+                ):
+                    fallback_token_events.append(record)
     except Exception as exc:
         return {
             "available": False,
@@ -8070,39 +8100,21 @@ def useful_token_metrics(since_dt: Optional[datetime] = None) -> Dict[str, Any]:
             "reason": f"failed to load agent-run events: {exc}",
         }
 
-    if not records:
+    if valid_records == 0:
         return {
             "available": False,
             "status": "no_data",
             "reason": "agent-run events file is empty",
         }
-
-    # Filter to window
-    if since_dt is not None:
-        cutoff_str = since_dt.replace(microsecond=0).isoformat().replace("+00:00", "Z")
-        records = [r for r in records if r.get("timestamp", "") >= cutoff_str]
-
-    # Extract token events
-    token_events = [
-        r for r in records
-        if r.get("event_type") == "token_usage" and r.get("tokens")
-    ]
     if not token_events:
-        # Fallback: any event that carries token data
-        token_events = [
-            r for r in records
-            if r.get("tokens") and any(
-                r["tokens"].get(k) is not None
-                for k in ("total", "input", "output", "accepted_artifact")
-            )
-        ]
+        token_events = fallback_token_events
 
     if not token_events:
         return {
             "available": True,
             "status": "no_data",
             "reason": "no token attribution found in agent-run events for this window",
-            "events_in_window": len(records),
+            "events_in_window": window_events,
         }
 
     total_tokens = 0
@@ -8151,9 +8163,7 @@ def useful_token_metrics(since_dt: Optional[datetime] = None) -> Dict[str, Any]:
         run_accepted = sum(
             (e.get("tokens") or {}).get("accepted_artifact") or 0 for e in run_evs
         )
-        run_dur = sum(
-            (e.get("duration_ms") or 0) for e in records if e.get("run_id") == run_id
-        )
+        run_dur = run_durations.get(run_id, 0)
         per_run.append({
             "run_id": run_id,
             "total_tokens": run_toks or None,
@@ -8164,7 +8174,7 @@ def useful_token_metrics(since_dt: Optional[datetime] = None) -> Dict[str, Any]:
     return {
         "available": True,
         "status": "ok" if aggregate_useful_ratio is not None else "no_data",
-        "window_events": len(records),
+        "window_events": window_events,
         "token_events": len(token_events),
         "runs": len(run_ids),
         "total_tokens": total_tokens or None,
