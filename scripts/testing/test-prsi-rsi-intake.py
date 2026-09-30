@@ -18,8 +18,10 @@ ROOT = Path(__file__).resolve().parents[2]
 service_config = (ROOT / "nix/modules/roles/ai-stack.nix").read_text(encoding="utf-8")
 dispatch_service = service_config.split("systemd.services.ai-prsi-rsi-dispatch = {", 1)[1].split("\n      };", 1)[0]
 # delegate-to-local needs bash/python3/util-linux/curl on the unit PATH (exit 127 on 2026-09-30).
-for dep in ("pkgs.git", "pkgs.bash", "pkgs.python3", "pkgs.util-linux", "pkgs.curl"):
+# python3 must come from the system cliPython (httpx etc.), not bare pkgs.python3.
+for dep in ("pkgs.git", "pkgs.bash", "pkgs.util-linux", "pkgs.curl", '"/run/current-system/sw"'):
     assert dep in dispatch_service.split("path = [", 1)[1].split("];", 1)[0], dep
+assert "pkgs.python3" not in dispatch_service.split("path = [", 1)[1].split("];", 1)[0]
 print("PASS: RSI dispatcher systemd PATH provides Git")
 
 
