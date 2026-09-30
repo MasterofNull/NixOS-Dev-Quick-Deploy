@@ -328,7 +328,11 @@ class AgentWindow:
             "codex": REPO_ROOT / "scripts" / "ai" / "delegate-to-codex",
             "gemini": REPO_ROOT / "scripts" / "ai" / "delegate-to-antigravity",
         }
-        script = scripts.get(target_lane.lower(), scripts["local"])
+        lane_key = target_lane.strip().lower()
+        if lane_key not in scripts:
+            console.print(f"[red]Error: Unsupported lane '{target_lane}'. Choose one of: {', '.join(scripts)}.[/red]")
+            return
+        script = scripts[lane_key]
         if not script.is_file():
             console.print(f"[red]Error: Dispatch script not found: {script}[/red]")
             return

@@ -1,0 +1,244 @@
+#!/usr/bin/env python3
+"""Read-only diagnostics for oversized Claude and Codex session transcripts.
+
+This tool cannot compact a provider's live context. It reports transcript files
+above a size threshold and recommends provider-native compaction or an explicit
+fresh-session handoff. It never changes transcripts or collaboration state.
+"""
+
+import argparse
+import json
+import math
+from pathlib import Path
+from typing import Any, Dict, Iterable, List, Optional
+
+
+def threshold_value(value: str) -> float:
+    """Parse a finite, positive megabyte threshold."""
+    try:
+        threshold = float(value)
+    except ValueError as exc:
+        raise argparse.ArgumentTypeError("threshold must be a finite positive number") from exc
+    if not math.isfinite(threshold) or threshold <= 0:
+        raise argparse.ArgumentTypeError("threshold must be a finite positive number")
+    return threshold
+
+
+def _same_path(value: str, expected: Path) -> bool:
+    try:
+        return Path(value).expanduser().resolve() == expected.resolve()
+    except (OSError, RuntimeError):
+        return False
+
+
+def _codex_session_meta(rollout: Path) -> Optional[Dict[str, Any]]:
+    """Read rollout metadata, failing closed when its session scope is unknown."""
+    try:
+        with rollout.open("r", encoding="utf-8", errors="replace") as stream:
+            for line_number, line in enumerate(stream):
+                if line_number >= 64:
+                    break
+                try:
+                    record = json.loads(line)
+                except json.JSONDecodeError:
+                    continue
+                if not isinstance(record, dict):
+                    continue
+                if record.get("type") == "session_meta":
+                    payload = record.get("payload")
+                    return payload if isinstance(payload, dict) else None
+    except OSError:
+        return None
+    return None
+
+
+def _session_entry(agent: str, session_id: str, path: Path, threshold_bytes: int) -> Optional[Dict[str, Any]]:
+    try:
+        size = path.stat().st_size
+    except OSError:
+        return None
+    if size <= threshold_bytes:
+        return None
+    return {
+        "agent": agent,
+        "session_id": session_id,
+        "path": path,
+        "size_bytes": size,
+        "size_mb": size / (1024 * 1024),
+    }
+
+
+def scan_claude(home: Path, repo_root: Path, threshold_bytes: int) -> List[Dict[str, Any]]:
+    """Report oversized JSONL records in this repository's Claude project store."""
+    encoded_repo = str(repo_root.resolve()).replace("/", "-")
+    project_dir = home / ".claude" / "projects" / encoded_repo
+    if not project_dir.is_dir():
+        return []
+    results = []
+    for session_file in sorted(project_dir.glob("*.jsonl")):
+        if session_file.is_symlink():
+            continue
+        entry = _session_entry("claude", session_file.stem, session_file, threshold_bytes)
+        if entry:
+            results.append(entry)
+    return results
+
+
+def scan_codex(home: Path, repo_root: Path, threshold_bytes: int) -> List[Dict[str, Any]]:
+    """Report oversized Codex rollouts whose metadata names this repository."""
+    sessions_dir = home / ".codex" / "sessions"
+    if not sessions_dir.is_dir():
+        return []
+    results = []
+    for rollout in sorted(sessions_dir.rglob("rollout-*.jsonl")):
+        if rollout.is_symlink() or "archive" in rollout.parts:
+            continue
+        meta = _codex_session_meta(rollout)
+        if not meta or not isinstance(meta.get("cwd"), str) or not _same_path(meta["cwd"], repo_root):
+            continue
+        session_id = meta.get("id")
+        if not isinstance(session_id, str) or not session_id.strip():
+            # An explicit repository cwd establishes scope; retain the full file
+            # stem as the best available session identifier.
+            session_id = rollout.stem.removeprefix("rollout-")
+        entry = _session_entry("codex", session_id, rollout, threshold_bytes)
+        if entry:
+            results.append(entry)
+    return results
+
+
+def report(entries: Iterable[Dict[str, Any]], threshold_mb: float, dry_run: bool) -> int:
+    entries = list(entries)
+    mode = " (dry-run; read-only)" if dry_run else " (read-only)"
+    print(f"=== AQ-OS Session Size Diagnostic (threshold: {threshold_mb:g} MB){mode} ===")
+    if not entries:
+        print("No session transcripts exceeded the diagnostic threshold.")
+        return 0
+    for entry in entries:
+        print(
+            f"[{entry['agent']}] session {entry['session_id']} is "
+            f"{entry['size_mb']:.2f} MB: {entry['path']}"
+        )
+    print(
+        "Transcript size does not show or reset live model context. Use the "
+        "provider's native compaction, or make an explicit fresh-session handoff."
+    )
+    print(f"Oversized transcripts: {len(entries)}")
+    return len(entries)
+
+
+def verify_rollout(path: Path, limit: int) -> Dict[str, Any]:
+    """Verify measured reduction after native compaction, never infer it from bytes."""
+    latest = before = after = None
+    compacted = False
+    canonical_usage = False
+    try:
+        if path.stat().st_size > 32 * 1024 * 1024:
+            return {"status": "unknown", "reason": "rollout exceeds 32 MiB read bound"}
+        with path.open(encoding="utf-8") as stream:
+            for line in stream:
+                try:
+                    record = json.loads(line)
+                except json.JSONDecodeError:
+                    continue  # An actively appended final record may be incomplete.
+                if not isinstance(record, dict):
+                    continue
+                payload = record.get("payload")
+                if record.get("type") == "compacted":
+                    before, after, compacted = latest, None, True
+                    continue
+                if not isinstance(payload, dict):
+                    continue
+                usage = None
+                if record.get("type") == "token_usage_record":
+                    canonical_usage = True
+                    usage = payload.get("usage")
+                elif not canonical_usage and record.get("type") == "event_msg" and payload.get("type") == "token_count":
+                    info = payload.get("info")
+                    usage = info.get("last_token_usage") if isinstance(info, dict) else None
+                tokens = usage.get("input_tokens") if isinstance(usage, dict) else None
+                if type(tokens) is int and tokens > 0:
+                    latest = tokens
+                    if compacted and after is None:
+                        after = tokens
+    except (OSError, UnicodeError) as exc:
+        return {"status": "unknown", "reason": type(exc).__name__}
+    status = "unknown"
+    if latest is not None:
+        status = "handoff_required" if latest > limit else "within_budget_unverified"
+        if compacted and after is None:
+            status = "awaiting_post_compaction_measurement"
+        elif compacted and before is not None and after is not None:
+            if after < before and after <= limit and latest <= limit:
+                status = "verified_reduction"
+    return {"status": status, "threshold_tokens": limit, "latest_input_tokens": latest,
+            "before_compaction_tokens": before, "first_after_compaction_tokens": after,
+            "native_compaction_observed": compacted}
+
+
+def verify_usage(data: Any, limit: int) -> Dict[str, Any]:
+    """Provider-neutral measured usage contract; missing evidence never means safe.
+
+    Adapters supply total input including cache reads/writes, never uncached input
+    alone. Evidence belongs to one named session and a later request sequence.
+    """
+    if not isinstance(data, dict):
+        return {"status": "unknown", "reason": "usage must be an object"}
+    def positive(value):
+        return type(value) is int and value > 0
+    current, window = data.get("input_tokens"), data.get("context_window_tokens")
+    if not isinstance(data.get("session_id"), str) or not data["session_id"].strip() or not positive(current) or not positive(window):
+        return {"status": "unknown", "reason": "session and measured token counts required"}
+    ceiling = min(limit, window * 4 // 5)
+    status = "handoff_required" if current > ceiling else "within_budget_unverified"
+    prior = data.get("before_input_tokens")
+    before_seq, after_seq = data.get("before_request_sequence"), data.get("request_sequence")
+    if (data.get("compaction_observed") is True and positive(prior) and
+            positive(before_seq) and positive(after_seq) and after_seq > before_seq and
+            current < prior and current <= ceiling):
+        status = "verified_reduction"
+    return {"status": status, "session_id": data["session_id"], "threshold_tokens": ceiling,
+            "latest_input_tokens": current, "before_compaction_tokens": prior}
+
+
+def main(argv: Optional[List[str]] = None) -> int:
+    parser = argparse.ArgumentParser(description="Read-only agent session size diagnostic")
+    parser.add_argument("--agent", choices=["all", "codex", "claude"], default="all", help="Session provider to scan")
+    parser.add_argument("--threshold-mb", type=threshold_value, default=2.5, help="Positive size threshold in MB (default: 2.5)")
+    parser.add_argument("--dry-run", action="store_true", help="Compatibility option; all scans are read-only")
+    parser.add_argument("--verify-rollout", type=Path, help="Verify native compaction from explicit rollout telemetry; output JSON")
+    parser.add_argument("--verify-usage", type=Path, help="Verify provider-neutral measured usage JSON (all models)")
+    parser.add_argument("--token-limit", type=int, default=50000, help="Measured input ceiling (default: 50000)")
+    args = parser.parse_args(argv)
+    if args.token_limit <= 0:
+        parser.error("--token-limit must be positive")
+    if args.verify_usage and args.verify_rollout:
+        parser.error("select one verification input")
+    if args.verify_usage:
+        try:
+            if args.verify_usage.stat().st_size > 65536:
+                raise ValueError("usage record exceeds 64 KiB")
+            result = verify_usage(json.loads(args.verify_usage.read_text()), args.token_limit)
+        except (OSError, ValueError) as exc:
+            result = {"status": "unknown", "reason": type(exc).__name__}
+        print(json.dumps(result, sort_keys=True))
+        return 0 if result["status"] == "verified_reduction" else 2
+    if args.verify_rollout:
+        result = verify_rollout(args.verify_rollout, args.token_limit)
+        print(json.dumps(result, sort_keys=True))
+        return 0 if result["status"] == "verified_reduction" else 2
+
+    repo_root = Path(__file__).resolve().parent.parent.parent
+    home = Path.home()
+    threshold_bytes = int(args.threshold_mb * 1024 * 1024)
+    entries: List[Dict[str, Any]] = []
+    if args.agent in ("all", "claude"):
+        entries.extend(scan_claude(home, repo_root, threshold_bytes))
+    if args.agent in ("all", "codex"):
+        entries.extend(scan_codex(home, repo_root, threshold_bytes))
+    report(entries, args.threshold_mb, args.dry_run)
+    return 0
+
+
+if __name__ == "__main__":
+    raise SystemExit(main())

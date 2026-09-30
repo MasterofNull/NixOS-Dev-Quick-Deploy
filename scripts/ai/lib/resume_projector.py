@@ -96,7 +96,7 @@ def project_resume(events=None) -> dict[str, Any]:
     top["written_at"] = (
         time.strftime("%Y-%m-%dT%H:%M:%SZ", time.gmtime(last_ts)) if last_ts else None
     )
-    top["_generated"] = "projection of .agents/events/a2a-events.jsonl (resume.update) — do not edit by hand; emit events via aq-event"
+    top["_generated"] = "projection of the A2A event log (writable .agent/collaboration; legacy .agents/events read-only) — do not edit by hand; emit events via aq-event"
     top["_provenance"] = provenance
     top["agent_snapshots"] = agent_snapshots
     return top

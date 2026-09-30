@@ -4761,3 +4761,18 @@ File: scripts/ai/lib/worktree-isolation.sh; scripts/automation/prsi-orchestrator
   Severity: medium
   Action: Diagnose hook routing and caller contract; preserve command semantics and policy
   File: hook/codex-pretooluse
+
+[OPEN] local-direct review capped at 150 tokens by keyword classifier — `classify_tokens` substring-matched tiny signals ("reply with", "ping") anywhere in the prompt, so a 4.7 KB diff review (local-20260930-105223-xbkns7) got max_tokens=150, produced no visible content in 620s (0.23 tok/s while tier0 ran concurrently) and terminalized `missing_final_answer`. Proposed fix (NOT applied): scan size-down signals only in the first 300 chars — patch + 4-case regression parked in .agents/plans/dispatch-classify-tokens-fix/. dispatch.py is a frozen L2B live source (sha pinned in scripts/testing/fixtures/local-inference-l2b-payload-golden.json and chat-batch-parity golden; live transport health fails closed on drift), so applying it needs the L2B owner process + fixture re-pin. Interim: callers set DIRECT_MAX_TOKENS for review prompts.
+  Severity: medium
+  Action: apply parked patch via L2B freeze process with fixture re-pin + independent review. Also: task profile.json recorded `enable_thinking: true` for task_type=research although dispatch.py profiles all send False; confirm which value reached llama.cpp (first_visible_content was null for all 150 tokens).
+  File: scripts/ai/lib/dispatch.py ~line 310
+
+[OPEN] claude-plugin-selection-not-covered-by-context-SOP — Claude Code plugins (`enabledPlugins`) load statically at session start; the context-efficiency SOP covers MCP deferral (ToolSearch) and lean-ctx but not plugins. `clangd-lsp` was enabled globally (~/.claude/settings.json) in a Python/Nix repo, costing startup/context every session (CLI tip 2026-09-30). Interim: project-scoped disable in .claude/settings.json (global kept for cpp-dev work).
+  Severity: low
+  Action: add a plugin-scope rule to .agent/skills/context-efficiency/SKILL.md (+ parity files): plugins enabled per-project by stack, never globally by default; add a tier0/aq-qa check that flags globally-enabled language plugins with no matching files in the repo.
+  File: .claude/settings.json; .agent/skills/context-efficiency/SKILL.md
+
+[OPEN] tier0-staged-isolation-regression-fails — REOPENS the 2026-09-27 [DONE] tier0-validation-gate-multi-agent-race-and-staged-isolation-hermeticity claim. 2026-09-30 run of scripts/testing/test-tier0-staged-isolation.sh (committed 2026-09-30 on chore/commit-backlog-20260930): missing-input and whole-tree cases PASS, but "--staged-isolated: valid staged change + unrelated dirty file" fails with `tier0-validation-gate.sh: No such file or directory` (rc=127) inside the isolated clone; total run exceeded 300s (timeout 124). `--pre-commit` mode itself passes 53/0, so commits are not blocked; the isolation mode is broken.
+  Severity: medium
+  Action: authoring lane (codex/antigravity) diagnose why the isolated snapshot lacks the gate script; fix + rerun the test; do not mark DONE without the test's own PASS output.
+  File: scripts/governance/tier0-validation-gate.sh; scripts/testing/test-tier0-staged-isolation.sh ~line 131

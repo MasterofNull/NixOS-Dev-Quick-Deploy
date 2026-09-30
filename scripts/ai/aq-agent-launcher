@@ -17,7 +17,7 @@
 set -eo pipefail
 
 AGENT="${1:-local}"
-MODE="${2:-${AQ_WORKSPACE_MODE:-direct}}"
+MODE="${2:-${AQ_WORKSPACE_MODE:-prompt}}"
 
 # 1. Resolve repository root
 REAL_SCRIPT="$(readlink -f "${BASH_SOURCE[0]}")"
@@ -42,32 +42,50 @@ AGENT_BIN=""
 
 case "$AGENT" in
   claude)
-    AGENT_TITLE="Claude 3.7 / Fable-5 (Switchboard :8085)"
+    AGENT_TITLE="Claude 3.7 / Fable-5 (Claude Code CLI)"
     AGENT_COLOR="\033[1;35m" # Magenta
-    AGENT_BIN="$SCRIPT_DIR/aq-agent-window"
-    RESUME_CMD=("python3" "$SCRIPT_DIR/aq-agent-window" "--lane" "claude")
-    NEW_CMD=("python3" "$SCRIPT_DIR/aq-agent-window" "--lane" "claude")
+    AGENT_BIN="$(command -v claude 2>/dev/null || echo "$HOME/.local/bin/claude")"
+    if [ -x "$AGENT_BIN" ]; then
+      RESUME_CMD=("$AGENT_BIN" "--resume")
+      NEW_CMD=("$AGENT_BIN")
+    else
+      AGENT_BIN="$SCRIPT_DIR/aq-agent-window"
+      RESUME_CMD=("python3" "$SCRIPT_DIR/aq-agent-window" "--lane" "claude")
+      NEW_CMD=("python3" "$SCRIPT_DIR/aq-agent-window" "--lane" "claude")
+    fi
     ;;
   codex)
-    AGENT_TITLE="OpenAI Codex / GPT-6 Astra (Coordinator :8003)"
+    AGENT_TITLE="OpenAI Codex / GPT-6 Astra (Codex CLI)"
     AGENT_COLOR="\033[1;32m" # Green
-    AGENT_BIN="$SCRIPT_DIR/aq-agent-window"
-    RESUME_CMD=("python3" "$SCRIPT_DIR/aq-agent-window" "--lane" "codex")
-    NEW_CMD=("python3" "$SCRIPT_DIR/aq-agent-window" "--lane" "codex")
+    AGENT_BIN="$(command -v codex 2>/dev/null || echo "$HOME/.npm-global/bin/codex")"
+    if [ -x "$AGENT_BIN" ]; then
+      RESUME_CMD=("$AGENT_BIN" "resume")
+      NEW_CMD=("$AGENT_BIN")
+    else
+      AGENT_BIN="$SCRIPT_DIR/aq-agent-window"
+      RESUME_CMD=("python3" "$SCRIPT_DIR/aq-agent-window" "--lane" "codex")
+      NEW_CMD=("python3" "$SCRIPT_DIR/aq-agent-window" "--lane" "codex")
+    fi
     ;;
   local|qwen)
-    AGENT_TITLE="Local Qwen3-35B APU (llama.cpp :8080)"
+    AGENT_TITLE="Local Qwen3-35B APU (aq-chat Tool Calling)"
     AGENT_COLOR="\033[1;36m" # Cyan
-    AGENT_BIN="$SCRIPT_DIR/aq-agent-window"
-    RESUME_CMD=("python3" "$SCRIPT_DIR/aq-agent-window" "--lane" "local")
-    NEW_CMD=("python3" "$SCRIPT_DIR/aq-agent-window" "--lane" "local")
+    AGENT_BIN="$(command -v aq-chat 2>/dev/null || echo "$SCRIPT_DIR/aq-chat")"
+    if [ -x "$AGENT_BIN" ]; then
+      RESUME_CMD=("$AGENT_BIN")
+      NEW_CMD=("$AGENT_BIN")
+    else
+      AGENT_BIN="$SCRIPT_DIR/aq-agent-window"
+      RESUME_CMD=("python3" "$SCRIPT_DIR/aq-agent-window" "--lane" "local")
+      NEW_CMD=("python3" "$SCRIPT_DIR/aq-agent-window" "--lane" "local")
+    fi
     ;;
   gemini|antigravity)
     AGENT_TITLE="Google Antigravity / Gemini 3.8-Flash (Switchboard :8085)"
     AGENT_COLOR="\033[1;34m" # Blue/Purple
     AGENT_BIN="$SCRIPT_DIR/aq-agent-window"
-    RESUME_CMD=("python3" "$SCRIPT_DIR/aq-agent-window" "--lane" "antigravity")
-    NEW_CMD=("python3" "$SCRIPT_DIR/aq-agent-window" "--lane" "antigravity")
+    RESUME_CMD=("python3" "$SCRIPT_DIR/aq-agent-window" "--lane" "gemini")
+    NEW_CMD=("python3" "$SCRIPT_DIR/aq-agent-window" "--lane" "gemini")
     ;;
   coordinator|repl)
     AGENT_TITLE="Central Steering Coordinator REPL"
@@ -84,6 +102,13 @@ case "$AGENT" in
     NEW_CMD=("python3" "$SCRIPT_DIR/aq-agent-window" "--lane" "$AGENT")
     ;;
 esac
+
+# Append extra arguments if passed
+if [ "$#" -gt 2 ]; then
+  EXTRA_ARGS=("${@:3}")
+  NEW_CMD+=("${EXTRA_ARGS[@]}")
+  RESUME_CMD+=("${EXTRA_ARGS[@]}")
+fi
 
 NC="\033[0m"
 DIM="\033[2m"
@@ -127,21 +152,141 @@ get_auth_status() {
   esac
 }
 
+check_session_token_safety() {
+  local target_agent="$1"
+
+  if [ "$target_agent" = "claude" ]; then
+    local encoded_pwd
+    encoded_pwd="$(echo "$REPO_ROOT" | sed 's|/|-|g')"
+    local project_dir="$HOME/.claude/projects/$encoded_pwd"
+    if [ -d "$project_dir" ]; then
+      local latest_session
+      latest_session="$(ls -t "$project_dir"/*.jsonl 2>/dev/null | grep -v "/archive/" | head -1 || true)"
+      if [ -n "$latest_session" ] && [ -f "$latest_session" ]; then
+        local size_bytes
+        size_bytes="$(stat -c%s "$latest_session" 2>/dev/null || echo 0)"
+        local size_mb=$((size_bytes / 1024 / 1024))
+        local lines
+        lines="$(wc -l < "$latest_session" 2>/dev/null || echo 0)"
+        local session_id
+        session_id="$(basename "$latest_session" .jsonl)"
+
+        # Transcript size is a diagnostic trigger, not a measurement of model context.
+        if [ "$size_mb" -gt 3 ] || [ "$lines" -gt 1500 ]; then
+          echo ""
+          echo -e "\033[1;31m━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━\033[0m"
+          echo -e "  \033[1;31m⚠️  CLAUDE TOKEN BUDGET SAFETY WARNING\033[0m"
+          echo -e "  Latest recorded session is \033[1;33m${size_mb} MB (${lines} lines)\033[0m: ${session_id}"
+          echo -e "  Transcript size does not measure current input tokens or compaction state."
+          echo -e "  Check provider usage before choosing a session to resume."
+          echo -e "\033[1;31m━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━\033[0m"
+          echo -e "  \033[1m[1]\033[0m Start Clean Session \033[1;32m(loads configured startup context)\033[0m \033[1;32m[DEFAULT]\033[0m"
+          echo -e "  \033[1m[2]\033[0m Inspect Sessions & Start Fresh \033[1;36m(read-only diagnostic)\033[0m"
+          echo -e "  \033[1m[3]\033[0m Force Resume Anyway \033[1;31m(usage not measured)\033[0m"
+          echo -e "\033[1;31m━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━\033[0m"
+          echo -ne "  \033[1mSelect [1-3] or press Enter to start clean: \033[0m"
+          local safety_choice=""
+          read -n 1 safety_choice || true
+          echo ""
+          case "$safety_choice" in
+            2|c|C)
+              if [ -x "$SCRIPT_DIR/aq-session-compact" ] && python3 "$SCRIPT_DIR/aq-session-compact" --agent claude; then
+                echo "  Read-only scan complete; no session was compacted or handoff saved."
+              else
+                echo "  Session scan unavailable or failed; no compaction or handoff verified." >&2
+              fi
+              echo "  Starting fresh. Save a handoff first if prior session state is needed."
+              return 1  # start clean
+              ;;
+            3)
+              echo -e "  \033[1;33m! Proceeding with force resume (monitor token usage!)...\033[0m"
+              return 0  # proceed with resume
+              ;;
+            *)
+              echo -e "  \033[1;32m✓ Starting fresh clean session (token-efficient)...\033[0m"
+              return 1  # start clean
+              ;;
+          esac
+        fi
+      fi
+    fi
+  elif [ "$target_agent" = "codex" ]; then
+    local codex_db="$HOME/.codex/state_5.sqlite"
+    if [ -f "$codex_db" ] && command -v sqlite3 >/dev/null 2>&1; then
+      local latest_rollout
+      latest_rollout="$(sqlite3 "$codex_db" "SELECT rollout_path FROM threads ORDER BY updated_at DESC LIMIT 1;" 2>/dev/null || true)"
+      if [ -n "$latest_rollout" ] && [ -f "$latest_rollout" ]; then
+        local size_bytes
+        size_bytes="$(stat -c%s "$latest_rollout" 2>/dev/null || echo 0)"
+        local size_mb=$((size_bytes / 1024 / 1024))
+        local lines
+        lines="$(wc -l < "$latest_rollout" 2>/dev/null || echo 0)"
+        local thread_id
+        thread_id="$(basename "$latest_rollout" .jsonl | sed 's/.*rollout-[0-9T-]*-\?//')"
+
+        # Transcript size does not establish current context or remaining provider budget.
+        if [ "$size_mb" -gt 2 ] || [ "$lines" -gt 500 ]; then
+          echo ""
+          echo -e "\033[1;31m━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━\033[0m"
+          echo -e "  \033[1;31m⚠️  CODEX TOKEN BUDGET SAFETY WARNING\033[0m"
+          echo -e "  Latest recorded thread is \033[1;33m${size_mb} MB (${lines} lines)\033[0m: ${thread_id}"
+          echo -e "  Transcript size does not measure current input tokens or compaction state."
+          echo -e "  Check provider usage before choosing a session to resume."
+          echo -e "\033[1;31m━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━\033[0m"
+          echo -e "  \033[1m[1]\033[0m Start Clean Session \033[1;32m(loads configured startup context)\033[0m \033[1;32m[DEFAULT]\033[0m"
+          echo -e "  \033[1m[2]\033[0m Inspect Sessions & Start Fresh \033[1;36m(read-only diagnostic)\033[0m"
+          echo -e "  \033[1m[3]\033[0m Force Resume Anyway \033[1;31m(usage not measured)\033[0m"
+          echo -e "\033[1;31m━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━\033[0m"
+          echo -ne "  \033[1mSelect [1-3] or press Enter to start clean: \033[0m"
+          local safety_choice=""
+          read -n 1 safety_choice || true
+          echo ""
+          case "$safety_choice" in
+            2|c|C)
+              if [ -x "$SCRIPT_DIR/aq-session-compact" ] && python3 "$SCRIPT_DIR/aq-session-compact" --agent codex; then
+                echo "  Read-only scan complete; no session was compacted or handoff saved."
+              else
+                echo "  Session scan unavailable or failed; no compaction or handoff verified." >&2
+              fi
+              echo "  Starting fresh. Save a handoff first if prior session state is needed."
+              return 1  # start clean
+              ;;
+            3)
+              echo -e "  \033[1;33m! Proceeding with force resume (monitor token usage!)...\033[0m"
+              return 0  # proceed with resume
+              ;;
+            *)
+              echo -e "  \033[1;32m✓ Starting fresh clean Codex session (token-efficient)...\033[0m"
+              return 1  # start clean
+              ;;
+          esac
+        fi
+      fi
+    fi
+  fi
+  return 0
+}
+
 launch_agent() {
   local action="$1"
 
   echo -e "\n${BOLD}${AGENT_COLOR}▶ Starting ${AGENT_TITLE}...${NC}\n"
   
-  # For local agent on resume, run aq-resume to hydrate context first
-  if [[ "$AGENT" =~ ^(local|qwen)$ && "$action" == "resume" ]]; then
-    if [ -x "$SCRIPT_DIR/aq-resume" ]; then
-      echo -e "${DIM}Hydrating context via aq-resume...${NC}"
-      "$SCRIPT_DIR/aq-resume" || true
-      echo ""
-    fi
+  # Hydrate context from aq-resume for agents to preserve state without token bloat
+  if [ -x "$SCRIPT_DIR/aq-resume" ]; then
+    echo -e "${DIM}Hydrating context via aq-resume...${NC}"
+    "$SCRIPT_DIR/aq-resume" || true
+    echo ""
   fi
 
   if [ "$action" = "resume" ]; then
+    if ! check_session_token_safety "$AGENT"; then
+      "${NEW_CMD[@]}" || {
+        local ec=$?
+        echo -e "\n${DIM}Session exited with code $ec.${NC}"
+      }
+      return
+    fi
     "${RESUME_CMD[@]}" || {
       local ec=$?
       echo -e "\n${DIM}Resume exited with code $ec. Falling back to fresh session option...${NC}"
@@ -193,10 +338,10 @@ while true; do
     echo -e "  ${DIM}Direct Native CLI Access · AQ-OS Tiled Workspace${NC}"
     echo -e "  Auth Status: $(get_auth_status)"
     echo -e "${BOLD}${AGENT_COLOR}━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━${NC}"
-    echo -e "  ${BOLD}[1]${NC} Resume Previous Session  ${DIM}(e.g. --resume / session picker)${NC} ${BOLD}${AGENT_COLOR}[DEFAULT]${NC}"
-    echo -e "  ${BOLD}[2]${NC} Start New Session        ${DIM}(fresh interactive prompt)${NC}"
-    echo -e "  ${BOLD}[3]${NC} Open Workspace Shell     ${DIM}(bash inside repo root)${NC}"
-    echo -e "  ${BOLD}[4]${NC} Sign In / Re-authenticate ${DIM}(auth login)${NC}"
+    echo -e "  ${BOLD}[1]${NC} Start Clean Session        ${DIM}(fresh interactive prompt — token efficient)${NC} ${BOLD}${AGENT_COLOR}[DEFAULT]${NC}"
+    echo -e "  ${BOLD}[2]${NC} Resume Previous Session    ${DIM}(safety-checked against context bloat)${NC}"
+    echo -e "  ${BOLD}[3]${NC} Open Workspace Shell       ${DIM}(bash inside repo root)${NC}"
+    echo -e "  ${BOLD}[4]${NC} Sign In / Re-authenticate   ${DIM}(auth login)${NC}"
     echo -e "  ${BOLD}[q]${NC} Close Pane"
     echo -e "${BOLD}${AGENT_COLOR}━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━${NC}"
 
@@ -209,16 +354,19 @@ while true; do
     echo -ne "  ${BOLD}Select [1-4] or press Enter to launch: ${NC}"
 
     CHOICE=""
-    read -n 1 raw_key || true
+    if ! read -r -n 1 raw_key; then
+      echo "Input closed; exiting pane."
+      exit 0
+    fi
     echo ""
     CHOICE="$raw_key"
 
     case "$CHOICE" in
-      1|r|R|"")
-        launch_agent "resume"
-        ;;
-      2|n|N)
+      1|n|N|"")
         launch_agent "new"
+        ;;
+      2|r|R)
+        launch_agent "resume"
         ;;
       3|s|S)
         launch_agent "shell"
@@ -231,7 +379,7 @@ while true; do
         exit 0
         ;;
       *)
-        launch_agent "resume"
+        launch_agent "new"
         ;;
     esac
   fi
@@ -240,7 +388,10 @@ while true; do
   echo -e "${BOLD}─────────────────────────────────────────────────────────────────────${NC}"
   echo -e "  ${DIM}${AGENT_TITLE} exited.${NC}"
   echo -ne "  ${BOLD}[Enter]${NC} Restart  ${BOLD}[s]${NC} Shell  ${BOLD}[m]${NC} Menu  ${BOLD}[q]${NC} Exit pane: "
-  read -n 1 post_choice || true
+  if ! read -r -n 1 post_choice; then
+    echo "Input closed; exiting pane."
+    exit 0
+  fi
   echo ""
 
   case "$post_choice" in

@@ -209,7 +209,11 @@ class InteractiveSubagentConsole:
             "codex": REPO_ROOT / "scripts" / "ai" / "delegate-to-codex",
             "gemini": REPO_ROOT / "scripts" / "ai" / "delegate-to-antigravity",
         }
-        script = scripts.get(lane.lower(), scripts["local"])
+        lane_key = lane.strip().lower()
+        if lane_key not in scripts:
+            console.print(f"[red]Error: Unsupported lane '{lane}'. Choose one of: {', '.join(scripts)}.[/red]")
+            return
+        script = scripts[lane_key]
         if not script.is_file():
             console.print(f"[red]Error: Script not found: {script}[/red]")
             return
