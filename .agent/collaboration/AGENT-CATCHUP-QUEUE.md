@@ -888,3 +888,7 @@ Subjects: `scripts/security/rsi-intake-code-scanning.py` sha256 21b3e485f37b…,
 ---
 ## [2026-09-30] QUEUED FIX: tier0 --staged-isolated snapshot missing gate script (codex or antigravity)
 `scripts/testing/test-tier0-staged-isolation.sh` fails its valid-staged case (rc=127, gate script absent in isolated clone). Prior [DONE] claim reopened in issues-backlog `tier0-staged-isolation-regression-fails`. Blocking only for isolation mode; pre-commit passes. Bounded fix + test PASS output required.
+
+---
+## [2026-09-30] QUEUED (ACP owner: antigravity): execute-route single-use persistence before live store activation
+See issues-backlog `acp-execute-route-latent-replay`. Dormant now; activation-blocking for live ACP store/effects.

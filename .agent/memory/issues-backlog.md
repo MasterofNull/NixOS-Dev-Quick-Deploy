@@ -4776,3 +4776,8 @@ File: scripts/ai/lib/worktree-isolation.sh; scripts/automation/prsi-orchestrator
   Severity: medium
   Action: authoring lane (codex/antigravity) diagnose why the isolated snapshot lacks the gate script; fix + rerun the test; do not mark DONE without the test's own PASS output.
   File: scripts/governance/tier0-validation-gate.sh; scripts/testing/test-tier0-staged-isolation.sh ~line 131
+
+[OPEN] acp-execute-route-latent-replay — `POST /api/approvals/{id}/execute` (dashboard/backend/api/routes/approvals.py ~478) passes `save_record=lambda r: _store._records.__setitem__(...) if hasattr(_store, "_records") else None`. With the P0 FixtureApprovalStore this works; once `configure_store()` injects a live store (no `_records`), the executed/failed transition is silently dropped, the record stays `approved`, and the same request can be executed again (replay). Also `execute_request` is synchronous inside an async route (blocks the event loop for the runbook duration once effects become real). Dormant today: fixture signer/store and stub runbook effects (no subprocess).
+  Severity: medium (latent; high once live effects land)
+  Action: add `ApprovalStore.save(record)` (or transition-based persistence) to the protocol and use it here; claim-before-execute (approved -> executing CAS) to make execution single-use; run executor via run_in_threadpool. Gate: must land before live store/effects activation.
+  File: dashboard/backend/api/routes/approvals.py ~line 478

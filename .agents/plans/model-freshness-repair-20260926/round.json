@@ -1,0 +1,73 @@
+{
+  "schema_version": "1.0",
+  "round_id": "model-freshness-repair-20260926",
+  "state": "COLLECTED",
+  "task": {
+    "prompt": "Independent security/correctness review of the exact staged patch at /tmp/model-freshness-candidate.patch. Subject SHA-256: c138d32a3e855825f93fa1d50b9151c48b42ac8acc94e3d0a58041b006d6fb65. Review only; do not edit. Verify model_probe never refreshes freshness on failed throughput, live/fallback provenance, runtime catalog SSOT/dashboard truthfulness, active symlink target membership, tests, and regressions. Final nonblank line must be exactly ACCEPTED, REJECTED, or IMPLEMENTED_FOLLOWUP_REQUIRED. Include exact subject hash.",
+    "target": "/tmp/model-freshness-candidate.patch",
+    "scope_files": []
+  },
+  "opened_at": "2026-09-26T02:52:17Z",
+  "quorum_policy": {
+    "min_lanes": 2,
+    "required_agents": [],
+    "late_local_admissible": true,
+    "timeout_seconds": null,
+    "deadline": null,
+    "timeout_action": "lock_with_present"
+  },
+  "lanes": [
+    {
+      "agent": "claude",
+      "dispatch_id": null,
+      "idempotency_hash": "b3cc29c7b2749af867a338b193142ac52fc87365b7ac87fa06a8c95d23c6e075",
+      "status": "submitted",
+      "landed_at": null
+    },
+    {
+      "agent": "codex",
+      "dispatch_id": null,
+      "idempotency_hash": "9a444e602325c39df9bd60980fdf00eb243e4bff4b8ef1cebfce612a8636cfe0",
+      "status": "submitted",
+      "landed_at": null
+    },
+    {
+      "agent": "local",
+      "dispatch_id": null,
+      "idempotency_hash": "562e2969bc4252582d9332a12a17d5f5ce8ac97232d81b862373a5f5761c2bc8",
+      "status": "submitted",
+      "landed_at": null
+    },
+    {
+      "agent": "antigravity",
+      "dispatch_id": null,
+      "idempotency_hash": "cd2a6f438173402685732e37796a6e3b104462ab703843a084081132d635b739",
+      "status": "submitted",
+      "landed_at": null
+    }
+  ],
+  "contributions": {},
+  "conflicts": [],
+  "consensus_hash": null,
+  "aggregate_path": null,
+  "aggregate_hash": null,
+  "locked_at": null,
+  "history": [
+    {
+      "transition": "CREATED->DISPATCHED",
+      "timestamp": "2026-09-26T02:52:17Z",
+      "actor": "aq-collab-round"
+    },
+    {
+      "transition": "DISPATCHED->CONTRIBUTING",
+      "timestamp": "2026-09-26T02:52:22Z",
+      "actor": "aq-collab-round"
+    },
+    {
+      "transition": "CONTRIBUTING->COLLECTED",
+      "timestamp": "2026-09-26T02:52:22Z",
+      "actor": "aq-collab-round"
+    }
+  ],
+  "predecessor_round_id": null
+}

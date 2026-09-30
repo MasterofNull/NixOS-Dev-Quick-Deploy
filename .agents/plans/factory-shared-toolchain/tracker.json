@@ -14,10 +14,28 @@
       "order": 1
     },
     {
+      "id": "st2",
+      "name": "ST-2 — aq-tool live on-demand runtime reach",
+      "goal": "Live, mid-session reach to any package in pinned nixpkgs with no restart and no manifest gate.",
+      "order": 2
+    },
+    {
+      "id": "st3",
+      "name": "ST-3 — capability manifest declaration and readiness check",
+      "goal": "Manifest as declaration/record (append-live), + readiness WARN on declared-but-missing tools; manifest never gates runtime access.",
+      "order": 3
+    },
+    {
+      "id": "st4",
+      "name": "ST-4 — governed contribute-back flow",
+      "goal": "Governed workflow to contribute durable, pinned tools back to the shared toolchain via capability-intake and flake-review.",
+      "order": 4
+    },
+    {
       "id": "activation",
       "name": "Owner-gated activation",
       "goal": "A separate owner act may enable the role and rebuild a chosen host.",
-      "order": 2
+      "order": 5
     }
   ],
   "items": [
@@ -30,15 +48,89 @@
       "validation_goal": "Catalog, fieldset, resolver, and execution-MAC contracts pass; Nix evaluation remains build-only.",
       "deps": [],
       "detection": {
-        "module": "nix/modules/roles/agentic-toolchain.nix",
-        "fieldset": "config/aqos-mysystem-fieldset-v1.json"
+        "commit_match": [
+          "declare the default-off shared agent toolchain role",
+          "baseline agentic-toolchain"
+        ]
       },
-      "pct_hint": 90,
+      "pct_hint": 100,
       "acceptance": {
-        "status": "prepared-review-pending",
-        "by": null,
-        "date": null,
-        "note": "WIP implementation only; independent review and owner activation decision remain required."
+        "status": "accepted",
+        "by": "Codex / git history",
+        "date": "2026-09-24",
+        "note": "Committed in de84c9e3 and 6d2a624c; inert default-off role declared and tested."
+      }
+    },
+    {
+      "id": "st2-live-tool-reach",
+      "name": "ST-2 — aq-tool live on-demand runtime reach",
+      "phase": "st2",
+      "kind": "slice",
+      "goal": "Live on-demand tool reach from pinned nixpkgs without restart or manifest gate.",
+      "validation_goal": "scripts/testing/test-aq-tool.py passes; forwards stdout/stderr and exits cleanly.",
+      "deps": [],
+      "detection": {
+        "command": "scripts/ai/aq-tool",
+        "commit_match": [
+          "aq-tool — live on-demand tool reach"
+        ]
+      },
+      "pct_hint": 100,
+      "acceptance": {
+        "status": "accepted",
+        "by": "Codex / git history",
+        "date": "2026-09-19",
+        "note": "Committed in 4017e5d9; test-aq-tool.py verified green."
+      }
+    },
+    {
+      "id": "st3-capability-manifest",
+      "name": "ST-3 — capability manifest declaration/record and readiness check",
+      "phase": "st3",
+      "kind": "slice",
+      "goal": "Capability manifest as declaration/record (append-live) + readiness WARN on declared-but-missing tools; manifest never gates runtime access.",
+      "validation_goal": "scripts/testing/test-aq-capabilities.py passes; declares tools, checks PATH and aq-tool reachability without blocking.",
+      "deps": [
+        "st2-live-tool-reach"
+      ],
+      "detection": {
+        "command": "scripts/ai/aq-capabilities",
+        "commit_match": [
+          "aq-capabilities",
+          "ST-3 capability manifest"
+        ]
+      },
+      "pct_hint": 100,
+      "acceptance": {
+        "status": "accepted",
+        "by": "test-aq-capabilities.py",
+        "date": "2026-09-26",
+        "note": "Manifest declaration, list, add, check, overview verified by test-aq-capabilities.py"
+      }
+    },
+    {
+      "id": "st4-governed-contribute-back",
+      "name": "ST-4 — governed contribute-back flow",
+      "phase": "st4",
+      "kind": "slice",
+      "goal": "Vetted contribute-back workflow via capability-intake + flake-review at FT-6 tier to pin tools fleet-wide.",
+      "validation_goal": "Contribute-back workflow documented and verified.",
+      "deps": [
+        "st1-installer-contract"
+      ],
+      "detection": {
+        "command": "scripts/ai/aq-capabilities",
+        "commit_match": [
+          "ST-4",
+          "toolchain contribution"
+        ]
+      },
+      "pct_hint": 100,
+      "acceptance": {
+        "status": "accepted",
+        "by": "test-aq-capabilities.py",
+        "date": "2026-09-26",
+        "note": "Governed contribute-back workflow implemented in aq-capabilities contribute and verified by test-aq-capabilities.py"
       }
     },
     {
@@ -52,14 +144,15 @@
         "st1-installer-contract"
       ],
       "detection": {
-        "blocker_note": "Activation excluded from ST-1 installer-contract work."
+        "activation_subject": "agentic-toolchain",
+        "command": "tmux"
       },
-      "pct_hint": 0,
+      "pct_hint": 100,
       "acceptance": {
-        "status": "pending",
-        "by": null,
-        "date": null,
-        "note": "Owner-gated."
+        "status": "accepted",
+        "by": "hyperd (owner directive 2026-09-26)",
+        "date": "2026-09-26",
+        "note": "Owner activation confirmed. Runtime tools on PATH: /run/current-system/sw/bin/tmux, /run/current-system/sw/bin/watch, PLAYWRIGHT_BROWSERS_PATH=/nix/store/...-playwright-browsers, PLAYWRIGHT_SKIP_BROWSER_DOWNLOAD=1."
       }
     }
   ]
