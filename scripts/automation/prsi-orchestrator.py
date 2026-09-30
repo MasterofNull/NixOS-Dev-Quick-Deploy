@@ -939,24 +939,35 @@ def cmd_rsi_dispatch(args: argparse.Namespace) -> int:
         ]
         # Reuse PRSI's policy/budget gates.  The explicit rsi-dispatch command
         # is the bounded authority source for its isolated delegated task.
-        selection = [{**row, "status": "approved"} for row in eligible]
+        # Fresh execution dicts: a shallow copy would share the original's dict, letting
+        # the gate write onto live rows and re-count stale skip reasons every run.
+        selection = [
+            {**row, "status": "approved",
+             "execution": {k: v for k, v in (row.get("execution") or {}).items() if k != "result"}}
+            for row in eligible
+        ]
         selected, _sampled, _cost, _state = _reserve_actions_for_execution(selection, policy, limit)
 
-        # Copy execution results back to original queue rows; collect skipped reasons.
-        skipped_reasons = {}
+        # Copy gate results back onto queue rows so skip reasons persist and are
+        # reported; clear a stale skip reason once a row passes the gate.
+        skipped_reasons: Dict[str, int] = {}
+        originals = {row.get("id"): row for row in eligible}
+        queue_dirty = False
         for sel_row in selection:
-            row_id = sel_row.get("id")
-            exec_result = sel_row.get("execution", {}).get("result")
+            orig_row = originals.get(sel_row.get("id"))
+            if orig_row is None:
+                continue
+            exec_result = (sel_row.get("execution") or {}).get("result")
+            orig_exec = orig_row.setdefault("execution", {})
             if exec_result:
-                # Find matching original row by id
-                for orig_row in eligible:
-                    if orig_row.get("id") == row_id:
-                        orig_row.setdefault("execution", {})["result"] = exec_result
-                        # Count skipped reasons
-                        if exec_result.startswith("skipped_"):
-                            skipped_reasons[exec_result] = skipped_reasons.get(exec_result, 0) + 1
-                        break
-        if skipped_reasons:
+                orig_exec["result"] = exec_result
+                queue_dirty = True
+                if exec_result.startswith("skipped_"):
+                    skipped_reasons[exec_result] = skipped_reasons.get(exec_result, 0) + 1
+            elif str(orig_exec.get("result", "")).startswith("skipped_"):
+                orig_exec.pop("result", None)
+                queue_dirty = True
+        if queue_dirty:
             _save_queue(queue)
 
         selected_ids = {row.get("id") for row in selected}

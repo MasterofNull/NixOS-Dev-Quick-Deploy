@@ -4849,3 +4849,13 @@ File: scripts/ai/lib/worktree-isolation.sh; scripts/automation/prsi-orchestrator
   Severity: high
   Action: owner `nixos-rebuild switch`; next sweep retries (attempts 1 < max). Guard: test-prsi-rsi-intake.py pins all five PATH deps.
   File: nix/modules/roles/ai-stack.nix (ai-prsi-rsi-dispatch.path)
+
+[OPEN] autonomous-improvement-metric-source-dead — Post-rebuild 2026-09-30, `ai-autonomous-improvement.service` fails `RuntimeError: no-metrics-observed` (codex's intentional fail-closed replacing a false-green "Metrics collected: 0"; it also caused nixos-rebuild switch exit 4). Root cause: TrendDatabase's only routing source is `routing_decisions` in /var/lib/ai-stack/routing_metrics.db (0 rows, file untouched since 2026-04-25). Its producer `LLMRouter._record_routing` (hybrid-coordinator/knowledge/llm_router.py:1108) runs only via the coordinator's own `route()` (model_coordinator extension + router endpoints); live traffic is routed by the switchboard, which never records there. experiments.sqlite last written 2026-03-13; baseline collector returns [] by design.
+  Severity: high (self-improvement loop has had no input for ~5 months; now visibly failing, correctly)
+  Action: repoint TrendDatabase at a live source (agent-run-events.jsonl lane/tier/status/duration, or switchboard telemetry) with a regression that fails on zero live rows; do NOT silence the fail-closed. Owner/codex slice (was codex's open "verify metrics intake" item).
+  File: ai-stack/autonomous-improvement/trend_database.py:105; ai-stack/mcp-servers/hybrid-coordinator/knowledge/llm_router.py:1108
+
+[FIXED-PENDING-REBUILD] rsi-dispatch-python-missing-httpx — After the bash PATH fix was deployed, RSI row 2f99a616dbd52bc3 got an isolated worktree and ran delegate-to-local, then the agent loop exited 1: `No module named 'httpx'` (bare pkgs.python3 on the unit PATH). Fix: unit PATH resolves python3 from /run/current-system/sw (system cliPython, core/base.nix); test pins it and forbids pkgs.python3. Also fixed: selection rows were shallow copies sharing `execution` with queue rows, so skip reasons leaked onto live rows and stale ones were re-counted (`skipped: 10` after all rows were signed). Sign-offs paused again (verify_paused) to protect the 3-attempt budget; owner approval 2026-09-30 stands — restore after rebuild.
+  Severity: high
+  Action: owner nixos-rebuild switch; restore sign-offs; watch first RSI repair reach a terminal state.
+  File: nix/modules/roles/ai-stack.nix (ai-prsi-rsi-dispatch.path); scripts/automation/prsi-orchestrator.py cmd_rsi_dispatch

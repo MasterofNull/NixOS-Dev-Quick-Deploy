@@ -2386,7 +2386,10 @@ in {
         wants = ["network-online.target"];
         # delegate-to-local is `#!/usr/bin/env bash` and shells out to python3,
         # flock/setsid (util-linux) and curl; the unit PATH has none by default.
-        path = [pkgs.git pkgs.bash pkgs.python3 pkgs.util-linux pkgs.curl];
+        # Agent mode imports httpx/pyyaml/etc., which only the system cliPython
+        # (core/base.nix, let-scoped) provides — bare pkgs.python3 failed with
+        # "No module named 'httpx'", so resolve python3 from the system profile.
+        path = [pkgs.git pkgs.bash pkgs.util-linux pkgs.curl "/run/current-system/sw"];
         serviceConfig = {
           Type = "oneshot";
           User = cfg.primaryUser;
