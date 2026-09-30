@@ -941,6 +941,24 @@ def cmd_rsi_dispatch(args: argparse.Namespace) -> int:
         # is the bounded authority source for its isolated delegated task.
         selection = [{**row, "status": "approved"} for row in eligible]
         selected, _sampled, _cost, _state = _reserve_actions_for_execution(selection, policy, limit)
+
+        # Copy execution results back to original queue rows; collect skipped reasons.
+        skipped_reasons = {}
+        for sel_row in selection:
+            row_id = sel_row.get("id")
+            exec_result = sel_row.get("execution", {}).get("result")
+            if exec_result:
+                # Find matching original row by id
+                for orig_row in eligible:
+                    if orig_row.get("id") == row_id:
+                        orig_row.setdefault("execution", {})["result"] = exec_result
+                        # Count skipped reasons
+                        if exec_result.startswith("skipped_"):
+                            skipped_reasons[exec_result] = skipped_reasons.get(exec_result, 0) + 1
+                        break
+        if skipped_reasons:
+            _save_queue(queue)
+
         selected_ids = {row.get("id") for row in selected}
         selected_rows = [row for row in eligible if row.get("id") in selected_ids]
         executed = 0
@@ -957,7 +975,10 @@ def cmd_rsi_dispatch(args: argparse.Namespace) -> int:
             executed += 1
             _save_queue(queue)
         _log_event({"ts": _now(), "event": "rsi_dispatch", "executed": executed, "mode": "apply" if args.apply else "diagnose", "isolation": reason})
-        print(json.dumps({"ok": True, "executed": executed, "resolved": resolved, "mode": "apply" if args.apply else "diagnose", "rsi": _rsi_summary(queue)}, sort_keys=True))
+        output = {"ok": True, "executed": executed, "resolved": resolved, "mode": "apply" if args.apply else "diagnose", "rsi": _rsi_summary(queue)}
+        if skipped_reasons:
+            output["skipped"] = skipped_reasons
+        print(json.dumps(output, sort_keys=True))
         return 0
     finally:
         fcntl.flock(lock.fileno(), fcntl.LOCK_UN)
