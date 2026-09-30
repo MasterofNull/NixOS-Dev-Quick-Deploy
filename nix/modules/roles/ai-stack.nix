@@ -2384,6 +2384,7 @@ in {
         description = "Bounded PRSI incident repair dispatch";
         after = ["network-online.target" "ai-hybrid-coordinator.service"];
         wants = ["network-online.target"];
+        path = [pkgs.git];
         serviceConfig = {
           Type = "oneshot";
           User = cfg.primaryUser;

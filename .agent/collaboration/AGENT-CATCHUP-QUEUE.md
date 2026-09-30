@@ -880,3 +880,7 @@ C4-impl was dispatched and CORRECTLY STOPPED before any code (branch `factory/c4
 2. C4 rev2 (as amended) gets a fresh committed independent `PASS` against its exact bytes.
 3. Owner single-use build activation recorded for that frozen PASS'd revision.
 Only then re-dispatch the C4 egress-broker/epoch-recheck-teardown implementation. Do NOT fabricate a PASS or build dormant around this gate (Root-Cause Discipline / anti-gaming). C6b + C6e depend on C4, so the C6 build stack pauses here pending this chain.
+
+---
+## [2026-09-30] QUEUED: code-scanning -> RSI intake bridge + aq-report OOM fix — confirmatory review (codex, antigravity)
+Subjects: `scripts/security/rsi-intake-code-scanning.py` sha256 21b3e485f37b…, `scripts/testing/test-rsi-intake-code-scanning.py` 9ea399562d3f…; `scripts/ai/aq-report` 6c06b38b… (useful_token_metrics streaming). Built by claude-haiku (implementer), fetch/error-path corrected + reviewed by claude-opus; local Qwen review dispatched. Branch `chore/commit-backlog-20260930`. Ask: verify incident identity stability (os_error excludes counts), fail-closed on unreadable alert source (exit 2), manifest resolution, and that PRSI rsi-dispatch receives only id+path. Advisory unless a real defect.
