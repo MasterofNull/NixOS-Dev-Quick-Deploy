@@ -4859,3 +4859,13 @@ File: scripts/ai/lib/worktree-isolation.sh; scripts/automation/prsi-orchestrator
   Severity: high
   Action: owner nixos-rebuild switch; restore sign-offs; watch first RSI repair reach a terminal state.
   File: nix/modules/roles/ai-stack.nix (ai-prsi-rsi-dispatch.path); scripts/automation/prsi-orchestrator.py cmd_rsi_dispatch
+
+[FIXED-PENDING-REBUILD] rsi-dispatch-sandbox-erofs-timeout-memory — Third layer after bash/httpx: live repair 2f99a616dbd52bc3 (14:01 PDT) failed `OSError [Errno 30] Read-only file system: .agent/collaboration/a2a-events-fallback.jsonl` (ProtectHome=read-only; collaboration runtime not in ReadWritePaths). Unsandboxed rehearsal on a temp queue (GitPython row) proved the rest of the chain: isolated worktree, requirements.txt front-loaded, agent loop tool calls — but ~7 min per LLM step, so the 600s budget guaranteed timeouts; the live unit also hit its 256M MemoryMax in 11s from the worktree checkout. Fix: ReadWritePaths += .agent/collaboration, issues-backlog.md, WORKAROUND-REGISTER.md; --timeout-seconds 2400 / TimeoutSec 2460; MemoryHigh 768M / MemoryMax 1G. test-prsi-rsi-intake.py pins all of it.
+  Severity: high
+  Action: owner nixos-rebuild; restore the 10 owner sign-offs (approval 2026-09-30 stands); watch first repair to terminal state.
+  File: nix/modules/roles/ai-stack.nix (ai-prsi-rsi-dispatch)
+
+[OPEN] rsi-dispatch-inner-timeout-does-not-terminate-delegate — In the rehearsal, rsi-dispatch --timeout-seconds=600 (and delegate-to-local/aq-agent-loop --timeout 600) had not returned after 700s; the agent loop survived as an orphan after the parent was killed. Under systemd the unit TimeoutSec kills the cgroup, so production is backstopped, but outside systemd timeouts leak processes and the row stays `rsi_running`.
+  Severity: medium
+  Action: make the dispatcher kill the delegate's process group on timeout and record rsi_failed(timeout); reconcile stale rsi_running rows on start.
+  File: scripts/automation/prsi-orchestrator.py (_run_rsi_delegate)
