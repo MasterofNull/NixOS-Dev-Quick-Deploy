@@ -169,3 +169,23 @@ Codex lane absent).
 - Incident-only sync now reuses queue deduplication without model-backed reports and preserves existing degradation evidence. Regression exercises two dry runs with report discovery forbidden.
 - Shared atomic estimated-budget reservations are now implemented for both lanes, including failed attempts; focused concurrency tests pass. Unattended activation remains incomplete: writable isolation and runtime validation still need resolution. No guard bypass or substitute execution folder was introduced.
 - Context acquisition friction: an unverified lean-ctx range mode returned a full file. Supported `lean-ctx -c --raw` with explicit bounded `sed` ranges is used pending validation of range-mode rejection in the tool itself.
+
+### RSI dispatcher omitted required Git runtime dependency — FIXED / activation pending
+- 2026-09-28 root cause: the hardened systemd `PATH` for `ai-prsi-rsi-dispatch` provided Python but omitted Git, although fail-closed repository/worktree preflight invokes Git. This made every queued repair block before claim (five pending incidents observed).
+- Root fix: add `pkgs.git` to the unit's `path` and pin the service dependency in `test-prsi-rsi-intake.py`. Activation and live terminal-outcome verification remain required.
+- Investigation friction: lean-ctx blocked another broad search after its 11-search/300-second loop limit; switched to exact-path reads and tree navigation instead of retrying.
+- class T2 · severity HIGH · status FIXED / activation pending 2026-09-28.
+### 2026-09-28 — deploy projection exhausted RAM-backed /tmp; target lookup masked timeout
+- Temporary workaround: run deploy with `TMPDIR=/var/tmp`; the 7.3 GB projection fits disk-backed storage and avoids pressure on `/tmp` tmpfs. Do not increase tmpfs for this workload; first measure RAM headroom and projection cleanup.
+- Root cause found separately: deploy target membership called full per-target NixOS config evaluation; timeout was converted to false even while flake name discovery listed the target. Fix membership using the discovered names and retain the distinct evaluation-error path. Focused regression added.
+- Follow-up: consider making disk-backed deploy temp the documented/default policy after checking cleanup and available-space guard.
+### 2026-09-28 — Tier 0 pre-commit gate stall
+- Attempted mandated serialized gate; after >4 minutes it emitted no output and a nested `tier0-validation-gate.sh` process appeared. Stopped the run (exit 130); focused tests passed, full gate is unverified.
+- No gate bypass used and no commit or activation claimed. Diagnose nested invocation/quiet runner before retrying; preserve this as an open validation blocker.
+
+### 2026-09-30 — aq-report token metrics exceeded PRSI memory bound
+- Root cause: `useful_token_metrics` loaded the complete 92,164,469-byte `agent-run-events.jsonl` and built/copy-filtered historical timelines before selecting the requested window.
+- Bounded fix: stream JSONL and retain only in-window token rows plus per-run duration aggregates. Regression asserts the whole-file `load_jsonl` path is not used.
+- Evidence: same redirected, profiled aq-report path fell from 552,192 KiB process-tree peak (active `useful_token_metrics` stack ~538,236 KiB) to 115,852 KiB (−422,384 KiB / 78%). Focused test 7/7 and py_compile passed. Keep the 256M service cap unchanged.
+- Runtime remains pending exact-subject independent review and a serialized live acceptance window; do not manually start the executing PRSI unit while Remediator/timer ownership is unsettled.
+- 2026-09-30 live acceptance (claude-opus): scheduled `ai-prsi-orchestrator` cycle 09:28 PDT failed `oom-kill` (pre-fix, 2m25s); first post-fix cycle 10:08 PDT ran sync (aq-report) to `Result=success` in 9s under the unchanged 256M cap. Exact subject 6c06b38b/243885d0 independently reviewed PASS by claude-opus (streaming path is order-independent; missing-file still yields `status=no_data`); local Qwen review local-20260930-105223-xbkns7 dispatched.

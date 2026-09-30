@@ -171,11 +171,14 @@ nix/hosts/*/.sops.yaml
 
 # Strands-style workflow artifacts (scratchpad is temporary working files)
 .agents/scratchpad/
+.agents/cache/
 # Local agent runtime state. Portable knowledge belongs in prompts/plans/docs/memory,
 # not in these live coordination and telemetry spools.
 .agent/collaboration/HANDOFF.md
 .agent/collaboration/PENDING.json
 .agent/collaboration/PULSE.log
+.agent/collaboration/a2a-events-fallback.jsonl
+.agent/collaboration/a2a-events.jsonl
 .agent/collaboration/RESUME.json
 # Foundation C1 shadow admission->issuance log (aq-capability-shadow): runtime
 # observability spool, not history — never committed.
@@ -183,6 +186,12 @@ nix/hosts/*/.sops.yaml
 # Atomic slice-claim locks (aq-slice-claim): ephemeral CAS lock files, not history.
 .agent/collaboration/slice-claims/
 .agent/collaboration/slice-claims.json
+# Validation gate checkout leases and locks (aq-gate-checkout): ephemeral runtime locks.
+.agent/collaboration/gate-checkouts/
+# Context-boundary token accumulator and RSI ledger flock: per-host runtime state.
+.agent/collaboration/CONTEXT-BOUNDARY.json
+.agent/collaboration/rsi-incidents.lock
+.agent/archive/*-egg-info/
 .agent/comms/command.json
 .agent/comms/output.json
 .agent/comms/output.txt
@@ -207,6 +216,7 @@ nix/hosts/*/.sops.yaml
 # CS-1: per-dispatch worktrees are retained locally for recovery alongside
 # private branches and output patches. Cleanup needs separate authorization.
 .agents/delegation/worktrees/
+.review-worktrees/
 # Phase 83 — DAG session traces (runtime; large JSONL, not for version control)
 .agents/dag-sessions/
 # Phase 153 — Candidate proposals (runtime, auto-generated from candidates.json)
