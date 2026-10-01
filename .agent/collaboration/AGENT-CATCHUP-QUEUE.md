@@ -909,3 +909,7 @@ Do NOT close the round or greenlight activation on the thin (claude-only) roster
 - Rounds `rsi-pr353-binding-review-20260930` and `autonomous-metrics-source-prd-20260930` aggregate without antigravity (codex + local + claude seats); antigravity adds confirmatory verdicts on return (advisory unless a real defect).
 - `tier0-staged-isolation-regression-fails` fix: REROUTED to claude-haiku implementer (codex busy with RSI lane switch); antigravity confirmatory on return.
 - `acp-execute-route-latent-replay`: HELD for antigravity (ACP owner). Dormant (fixture store/stub effects); activation-blocking only, so waiting is safe.
+
+---
+## [2026-09-30] QUEUED (codex, after quota reset ~19:52 PDT): finish RSI state-dir slice
+codex-20260930-164927-y033fv hit the usage limit mid-slice. Partial diff (5 files: env-contract, ai-stack.nix, aq-rsi-pending, rsi_lifecycle.py, prsi-orchestrator.py) preserved at `.agents/plans/rsi-state-dir-partial-20260930/partial.patch` (applies clean on 3a575757+). Original task: scratchpad prompt mirrored in the patch dir README. Delegate mode: do NOT re-hydrate canon; read only the patch + named files; do not run tier0 (orchestrator gates).
