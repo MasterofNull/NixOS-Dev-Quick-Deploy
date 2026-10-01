@@ -1,0 +1,122 @@
+#!/usr/bin/env python3
+"""rsi_sweep adapter + idempotence tests with fixtures; no systemctl, no network, no aq-qa run."""
+import json
+import os
+import sys
+import tempfile
+import time
+import unittest
+from pathlib import Path
+from types import SimpleNamespace
+from unittest.mock import patch
+
+ROOT = Path(__file__).resolve().parents[2]
+sys.path.insert(0, str(ROOT / "scripts/ai/lib"))
+import rsi_lifecycle as rsi
+import rsi_sweep as sw
+
+
+def _proc(out, rc=0):
+    return SimpleNamespace(stdout=out, stderr="", returncode=rc)
+
+
+class AdapterTests(unittest.TestCase):
+    def test_failed_units_parsed_and_instances_collapsed(self):
+        out = "● foo.service loaded failed failed Foo\n● bar@abc123.service loaded failed failed Bar\n"
+        state, f, _ = sw.adapter_failed_units(lambda: _proc(out))
+        self.assertEqual(state, "findings")
+        self.assertEqual([x["path"] for x in f], ["foo.service", "bar@*.service"])
+
+    def test_failed_units_none_is_ok_and_error_is_unknown(self):
+        self.assertEqual(sw.adapter_failed_units(lambda: _proc(""))[0], "ok")
+        self.assertEqual(sw.adapter_failed_units(lambda: _proc("", 1))[0], "unknown")
+        def boom(): raise OSError("no systemctl")
+        self.assertEqual(sw.adapter_failed_units(boom)[0], "unknown")
+
+    def test_qa_missing_stale_fresh(self):
+        with tempfile.TemporaryDirectory() as t:
+            p = Path(t) / "p.jsonl"
+            self.assertEqual(sw.adapter_qa_phase0(p)[0], "unknown")
+            recs = [{"check_id": "0.1.1", "state": "fail", "description": "x"},
+                    {"check_id": "0.1.1", "state": "fail", "description": "x"},
+                    {"check_id": "0.1.2", "state": "pass"},
+                    {"check_id": "0.1.3", "state": "fail", "description": "y"},
+                    {"check_id": "0.1.3", "state": "pass", "description": "y"}]
+            p.write_text("garbage-cut-line\n" + "\n".join(json.dumps(r) for r in recs))
+            state, f, _ = sw.adapter_qa_phase0(p, max_age_s=3600)
+            self.assertEqual((state, [x["subject"] for x in f]), ("findings", ["aq-qa:0.1.1"]))
+            state, f, d = sw.adapter_qa_phase0(p, max_age_s=3600, now=time.time() + 7200)
+            self.assertEqual((state, f), ("unknown", []))
+            self.assertIn("stale", d)
+
+    def test_payload_audit_only_high(self):
+        out = json.dumps({"findings": [
+            {"lane": "claude", "check_id": 1, "severity": "high", "measured": 9, "threshold": "5", "evidence_path": "CLAUDE.md", "suggested_fix": "trim"},
+            {"lane": "codex", "check_id": 5, "severity": "medium", "measured": 1, "threshold": "2", "evidence_path": "x", "suggested_fix": ""}]})
+        state, f, _ = sw.adapter_payload_audit(lambda: _proc(out))
+        self.assertEqual((state, len(f)), ("findings", 1))
+        self.assertEqual(sw.adapter_payload_audit(lambda: _proc("not json"))[0], "unknown")
+
+    def test_code_scanning_missing_alerts_is_unknown(self):
+        self.assertEqual(sw.adapter_code_scanning("/nonexistent/alerts.json")[0], "unknown")
+
+    def test_code_scanning_stale_export_is_unknown(self):
+        with tempfile.TemporaryDirectory() as t:
+            p = Path(t) / "a.json"
+            p.write_text("[]")
+            state, f, d = sw.adapter_code_scanning(p, max_age_s=3600, now=time.time() + 7200)
+        self.assertEqual((state, f), ("unknown", []))
+        self.assertIn("stale", d)
+
+    def test_code_scanning_plans_from_fixture(self):
+        alert = {"state": "open", "rule": {"security_severity_level": "high"},
+                 "most_recent_instance": {"category": "trivy-custom-aidb", "message": {"text":
+                     "Package: transformers\nInstalled Version: 4.57.6\nFixed Version: 5.10.0"}}}
+        with tempfile.TemporaryDirectory() as t:
+            p = Path(t) / "a.json"
+            p.write_text(json.dumps([alert]))
+            state, f, _ = sw.adapter_code_scanning(p)
+        self.assertEqual(state, "findings")
+        self.assertNotIn("5.10.0", f[0]["os_error"])  # fixed version stays out of identity
+
+
+class RunTests(unittest.TestCase):
+    def setUp(self):
+        self.tmp = tempfile.TemporaryDirectory()
+        self.addCleanup(self.tmp.cleanup)
+        root = Path(self.tmp.name)
+        for name, value in {"_RUNTIME": root, "_BACKLOG": root / "b.md", "_WORKAROUNDS": root / "w.md"}.items():
+            p = patch.object(rsi, name, value); p.start(); self.addCleanup(p.stop)
+        p = patch.object(rsi, "_event"); p.start(); self.addCleanup(p.stop)
+
+    def ledger(self):
+        return json.loads((rsi._RUNTIME / "rsi-incidents.json").read_text())["incidents"]
+
+    def test_two_sweeps_no_duplicates_and_unknown_recorded_as_unknown(self):
+        finding = dict(subject="failed-unit:x.service", producer="systemd:failed-unit", path="x.service",
+                       authority="systemd", os_error="unit x.service in failed state", severity="medium", root_fix="fix")
+        adapters = {"failed-units": lambda: ("findings", [finding], "1"),
+                    "aq-qa-phase0": lambda: ("unknown", [], "stale"),
+                    "broken": lambda: 1 / 0}
+        with patch("builtins.print"):
+            sw.run(adapters=adapters)
+            sw.run(adapters=adapters)
+        inc = self.ledger()
+        self.assertEqual(len(inc), 1)
+        self.assertEqual(next(iter(inc.values()))["count"], 2)
+        self.assertEqual(rsi._BACKLOG.read_text().count("[OPEN]"), 1)
+
+    def test_dry_run_records_nothing_and_reports_unknown(self):
+        out = []
+        adapters = {"a": lambda: ("findings", [dict(subject="s", producer="p", path="p", authority="a",
+                                                  os_error="e", severity="low", root_fix="")], "1"),
+                    "b": lambda: ("unknown", [], "stale")}
+        with patch("builtins.print", side_effect=lambda *a, **k: out.append(a[0])):
+            sw.run(dry_run=True, as_json=True, adapters=adapters)
+        summary = json.loads(out[0])
+        self.assertEqual((summary["recorded"], summary["unknown"]), (0, ["b"]))
+        self.assertFalse((rsi._RUNTIME / "rsi-incidents.json").exists())
+
+
+if __name__ == "__main__":
+    unittest.main()
