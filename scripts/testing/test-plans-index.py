@@ -132,6 +132,46 @@ class TrackerRollupTests(PlansIndexTestBase):
         self.assertEqual(rec["status"], "active")
 
 
+class ClassificationTests(PlansIndexTestBase):
+    def test_explicit_classification_and_route_are_projected(self):
+        d = self._mk_plan("explicit-plan")
+        _write_json(d / ".plan-classification.json", {
+            "classification": "durable_plan", "tracking_route": "tracker.json",
+            "evidence": "Primary DESIGN.md defines implementation scope"})
+        rec = self.mod._plan_record(d)
+        self.assertEqual(rec["classification"], "durable_plan")
+        self.assertEqual(rec["tracking_route"], "tracker.json")
+        self.assertEqual(rec["classification_issue"], "")
+
+    def test_missing_or_malformed_classification_is_visible(self):
+        missing = self._mk_plan("missing-class")
+        malformed = self._mk_plan("bad-class")
+        _write(malformed / ".plan-classification.json", "{")
+        self.assertEqual(self.mod._plan_record(missing)["classification"], "unclassified")
+        self.assertEqual(self.mod._plan_record(missing)["tracking_route"], "classification_queue")
+        self.assertIn("missing", self.mod._plan_record(missing)["classification_issue"])
+        self.assertIn("invalid", self.mod._plan_record(malformed)["classification_issue"])
+
+    def test_non_object_classification_is_queued_without_crashing(self):
+        d = self._mk_plan("list-class")
+        _write(d / ".plan-classification.json", "[]")
+        rec = self.mod._plan_record(d)
+        self.assertEqual(rec["classification"], "unclassified")
+        self.assertEqual(rec["tracking_route"], "classification_queue")
+
+    def test_index_counts_unclassified_and_routes(self):
+        d = self._mk_plan("routed")
+        _write_json(d / ".plan-classification.json", {
+            "classification": "review", "tracking_route": "collaboration-round",
+            "evidence": "Primary record identifies this as a review round"})
+        self._mk_plan("needs-classification")
+        data = self.mod.index()
+        self.assertEqual(data["by_classification"], {"review": 1, "unclassified": 1})
+        self.assertEqual(data["by_tracking_route"], {
+            "collaboration-round": 1, "classification_queue": 1})
+        self.assertEqual(data["unclassified_count"], 1)
+
+
 class RecencyHeuristicTests(PlansIndexTestBase):
     def test_recent_date_is_active_and_untracked(self):
         recent = (datetime.date.today() - datetime.timedelta(days=10)).isoformat()
@@ -236,6 +276,11 @@ class RenderHtmlTests(PlansIndexTestBase):
         self.assertIn("distbar", out)
         self.assertIn("pbar-fill", out)
         self.assertIn("hist", out)
+        self.assertIn("Class / route", out)
+        self.assertIn("unclassified", out)
+        self.assertIn("Classification coverage", out)
+        self.assertIn('data-f="unclassified"', out)
+        self.assertIn('data-classification="unclassified"', out)
 
         row_count = out.count('<tr data-status="')
         self.assertEqual(row_count, len(data["plans"]))

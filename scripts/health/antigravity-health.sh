@@ -108,34 +108,37 @@ QUOTA_EVIDENCE_AGE_S=""
 UNDRAINED_COUNT="unknown"
 SMOKE_RESULT="not_tested"
 ANTIGRAVITY_BIN="$(command -v antigravity 2>/dev/null || echo "")"
+REMOTE_KEY_ENDPOINT_COMPATIBLE="unknown"
 
 emit_result() {
   local exit_code="$1"
   if [[ "${JSON_OUTPUT}" -eq 1 ]]; then
     printf '{'
-    printf '"status":%s,'                  "$(json_escape "${STATUS}")"
-    printf '"reason":%s,'                  "$(json_escape "${REASON}")"
-    printf '"quota_status":%s,'            "$(json_escape "${QUOTA_STATUS}")"
-    printf '"quota_evidence_session":%s,'  "$(json_escape "${QUOTA_EVIDENCE_SESSION}")"
-    printf '"quota_evidence_age_s":%s,'    "$(json_escape "${QUOTA_EVIDENCE_AGE_S}")"
-    printf '"undrained_count":%s,'         "$(json_escape "${UNDRAINED_COUNT}")"
-    printf '"smoke_result":%s,'            "$(json_escape "${SMOKE_RESULT}")"
-    printf '"antigravity_bin":%s,'         "$(json_escape "${ANTIGRAVITY_BIN}")"
-    printf '"inbox_bin":%s,'               "$(json_escape "${INBOX_BIN}")"
-    printf '"delegate_bin":%s,'            "$(json_escape "${INBOX_BIN}")"
-    printf '"inbox_dir":%s'                "$(json_escape "${INBOX_DIR}")"
+    printf '"status":%s,'                        "$(json_escape "${STATUS}")"
+    printf '"reason":%s,'                        "$(json_escape "${REASON}")"
+    printf '"quota_status":%s,'                  "$(json_escape "${QUOTA_STATUS}")"
+    printf '"quota_evidence_session":%s,'        "$(json_escape "${QUOTA_EVIDENCE_SESSION}")"
+    printf '"quota_evidence_age_s":%s,'          "$(json_escape "${QUOTA_EVIDENCE_AGE_S}")"
+    printf '"undrained_count":%s,'               "$(json_escape "${UNDRAINED_COUNT}")"
+    printf '"remote_key_endpoint_compatible":%s,' "$(json_escape "${REMOTE_KEY_ENDPOINT_COMPATIBLE}")"
+    printf '"smoke_result":%s,'                  "$(json_escape "${SMOKE_RESULT}")"
+    printf '"antigravity_bin":%s,'               "$(json_escape "${ANTIGRAVITY_BIN}")"
+    printf '"inbox_bin":%s,'                     "$(json_escape "${INBOX_BIN}")"
+    printf '"delegate_bin":%s,'                  "$(json_escape "${INBOX_BIN}")"
+    printf '"inbox_dir":%s'                      "$(json_escape "${INBOX_DIR}")"
     printf '}\n'
   else
-    printf 'status=%s\n'                  "${STATUS}"
-    printf 'reason=%s\n'                  "${REASON}"
-    printf 'quota_status=%s\n'            "${QUOTA_STATUS}"
-    printf 'quota_evidence_session=%s\n'  "${QUOTA_EVIDENCE_SESSION}"
-    printf 'quota_evidence_age_s=%s\n'    "${QUOTA_EVIDENCE_AGE_S}"
-    printf 'undrained_count=%s\n'         "${UNDRAINED_COUNT}"
-    printf 'smoke_result=%s\n'            "${SMOKE_RESULT}"
-    printf 'antigravity_bin=%s\n'         "${ANTIGRAVITY_BIN}"
-    printf 'inbox_bin=%s\n'               "${INBOX_BIN}"
-    printf 'inbox_dir=%s\n'               "${INBOX_DIR}"
+    printf 'status=%s\n'                        "${STATUS}"
+    printf 'reason=%s\n'                        "${REASON}"
+    printf 'quota_status=%s\n'                  "${QUOTA_STATUS}"
+    printf 'quota_evidence_session=%s\n'        "${QUOTA_EVIDENCE_SESSION}"
+    printf 'quota_evidence_age_s=%s\n'          "${QUOTA_EVIDENCE_AGE_S}"
+    printf 'undrained_count=%s\n'               "${UNDRAINED_COUNT}"
+    printf 'remote_key_endpoint_compatible=%s\n' "${REMOTE_KEY_ENDPOINT_COMPATIBLE}"
+    printf 'smoke_result=%s\n'                  "${SMOKE_RESULT}"
+    printf 'antigravity_bin=%s\n'               "${ANTIGRAVITY_BIN}"
+    printf 'inbox_bin=%s\n'                     "${INBOX_BIN}"
+    printf 'inbox_dir=%s\n'                     "${INBOX_DIR}"
   fi
   exit "${exit_code}"
 }
@@ -224,6 +227,53 @@ scan_quota() {
 }
 scan_quota
 
+# ── 4.5 Remote key/endpoint compatibility check (preflight) ───────────────────
+check_remote_key_endpoint() {
+  # Detects if switchboard is configured with:
+  #   - An OpenRouter key (sk-or-*)
+  #   - But a Google Gemini endpoint (generativelanguage.googleapis.com)
+  # This is the credential endpoint mismatch case switchboard refuses at 3319.
+  # Read-only preflight: no network, no service call.
+
+  local remote_key="${REMOTE_LLM_API_KEY:-}"
+  local remote_url="${REMOTE_LLM_URL:-}"
+
+  # If either env var is unset, read from switchboard config if available
+  if [[ -z "${remote_key}" || -z "${remote_url}" ]]; then
+    local switchboard_py="${REPO_ROOT}/ai-stack/switchboard/switchboard.py"
+    if [[ -f "${switchboard_py}" ]]; then
+      # Extract REMOTE_API_KEY assignment (simplified)
+      remote_key="$(python3 -c "
+import re
+with open('${switchboard_py}') as f:
+    content = f.read()
+    # Look for os.getenv('REMOTE_LLM_API_KEY')
+    m = re.search(r\"REMOTE_API_KEY\s*=\s*os\.getenv\(['\\\"]REMOTE_LLM_API_KEY['\\\"]\", content)
+    if m:
+        print('REMOTE_LLM_API_KEY')
+" 2>/dev/null || echo "")"
+      # Pragmatically: read live env vars instead; they're the actual runtime state
+      remote_key="${REMOTE_LLM_API_KEY:-}"
+      remote_url="${REMOTE_LLM_URL:-}"
+    fi
+  fi
+
+  # Both must be set to check for mismatch
+  if [[ -z "${remote_key}" || -z "${remote_url}" ]]; then
+    REMOTE_KEY_ENDPOINT_COMPATIBLE="ok"
+    return
+  fi
+
+  # Check for the mismatch condition: OpenRouter key + Gemini endpoint
+  if [[ "${remote_key}" =~ ^sk-or- ]] && [[ "${remote_url}" == *"generativelanguage.googleapis.com"* ]]; then
+    REMOTE_KEY_ENDPOINT_COMPATIBLE="mismatch"
+    return
+  fi
+
+  REMOTE_KEY_ENDPOINT_COMPATIBLE="ok"
+}
+check_remote_key_endpoint
+
 # ── 5. Undrained signal (reuse aq-antigravity-inbox's own fail-closed audit) ──
 scan_undrained() {
   local out
@@ -242,6 +292,11 @@ scan_undrained
 
 # ── Compose result ─────────────────────────────────────────────────────────────
 compose_check_result() {
+  if [[ "${REMOTE_KEY_ENDPOINT_COMPATIBLE}" == "mismatch" ]]; then
+    STATUS="unhealthy"
+    REASON="Remote key/endpoint mismatch detected: OpenRouter key (sk-or-*) configured but REMOTE_LLM_URL points to Google Gemini (generativelanguage.googleapis.com). Configure either an OpenRouter URL or use the no-key Antigravity IDE/OAuth lane instead."
+    return
+  fi
   if [[ "${QUOTA_STATUS}" == "exhausted" ]]; then
     STATUS="unhealthy"
     REASON="Gemini Code Assist quota exhausted (HTTP 429 RESOURCE_EXHAUSTED) on the signed-in Google account — account quota, not our automation; check the account's Code Assist tier/quota. Evidence: ${ANTIGRAVITY_LOG_ROOT}/${QUOTA_EVIDENCE_SESSION} (${QUOTA_EVIDENCE_AGE_S}s old)."

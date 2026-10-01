@@ -140,9 +140,15 @@ log_failed_qa_rows() {
   local max_rows="${2:-30}"
   local failed_rows
 
-  failed_rows=$(echo "$output" | sed 's/\x1b\[[0-9;]*m//g' | grep '✗' | head -n "${max_rows}" || true)
+  # Non-live-service failures first: with 30+ host-only rows failing the real regression used to be
+  # truncated off the end of the list (nondeterministic-looking CI failures, incident 38aff77a4f).
+  local live_re='(^|[^0-9.])0\.(1\.[123]|2\.[1-5]|3\.[123]|4\.[123]|6\.[12]|7\.4|8\.1|10\.22)([^0-9]|$)'
+  local all_rows total
+  all_rows=$(echo "$output" | sed 's/\x1b\[[0-9;]*m//g' | grep '✗' || true)
+  total=$(printf '%s\n' "${all_rows}" | grep -c '✗' || true)
+  failed_rows=$( { printf '%s\n' "${all_rows}" | grep -vE "${live_re}" || true; printf '%s\n' "${all_rows}" | grep -E "${live_re}" || true; } | grep '✗' | head -n "${max_rows}" || true)
   if [[ -n "${failed_rows}" ]]; then
-    log "QA failed rows (first ${max_rows}):"
+    log "QA failed rows (first ${max_rows} of ${total}; non-live-service first):"
     while IFS= read -r row; do
       [[ -n "${row}" ]] && log "  ${row}"
     done <<< "${failed_rows}"

@@ -80,173 +80,68 @@ jobs:
               body: body
             });
 
-  trivy-scan-core:
-    name: Trivy Vulnerability Scan (Core Images)
-    runs-on: ubuntu-latest
-    permissions:
-      contents: read
-      security-events: write
-    strategy:
-      fail-fast: false
-      matrix:
-        include:
-          - image: postgres:17.9-alpine3.23
-            sarif: trivy-postgres-17.9-alpine3.23.sarif
-            category: trivy-postgres
-          - image: redis:7.4.8-alpine3.21
-            sarif: trivy-redis-7.4.8-alpine3.21.sarif
-            category: trivy-redis
-          - image: qdrant/qdrant:v1.17.0
-            sarif: trivy-qdrant-v1.17.0.sarif
-            category: trivy-qdrant
-          - image: nginx:1.28.2-alpine
-            sarif: trivy-nginx-1.28.2-alpine.sarif
-            category: trivy-nginx
-          - image: grafana/grafana:12.4.1
-            sarif: trivy-grafana-12.4.1.sarif
-            category: trivy-grafana
-          - image: prom/prometheus:v3.10.0
-            sarif: trivy-prometheus-v3.10.0.sarif
-            category: trivy-prometheus
-          - image: cr.jaegertracing.io/jaegertracing/jaeger:2.16.0
-            sarif: trivy-jaeger-v2.16.0.sarif
-            category: trivy-jaeger
-    steps:
-      - name: Checkout code
-        uses: actions/checkout@fbc6f3992d24b796d5a048ff273f7fcc4a7b6c09  # v5
-
-      - name: Run Trivy vulnerability scanner
-        uses: aquasecurity/trivy-action@57a97c7e7821a5776cebc9bb87c984fa69cba8f1  # v0.35.0
-        with:
-          image-ref: ${{ matrix.image }}
-          version: 'v0.69.3'
-          format: 'sarif'
-          output: ${{ matrix.sarif }}
-          severity: 'CRITICAL,HIGH'
-          exit-code: '0'  # Don't fail on vulnerabilities in base images
-          ignore-unfixed: true
-
-      - name: Upload Trivy results as artifact
-        uses: actions/upload-artifact@b7c566a772e6b6bfb58ed0dc250532a479d7789f  # v6
-        if: always() && hashFiles(matrix.sarif) != ''
-        with:
-          name: ${{ matrix.category }}-sarif
-          path: ${{ matrix.sarif }}
-          retention-days: 14
-
-      - name: Run Trivy scanner (table output)
-        uses: aquasecurity/trivy-action@57a97c7e7821a5776cebc9bb87c984fa69cba8f1  # v0.35.0
-        with:
-          image-ref: ${{ matrix.image }}
-          version: 'v0.69.3'
-          format: 'table'
-          severity: 'CRITICAL,HIGH'
-          ignore-unfixed: true
-
-  trivy-scan-custom:
-    name: Trivy Scan (Custom Images)
+  nix-closure-vuln-scan:
+    name: Nix Closure Vulnerability Scan
+    # Nix is the single source of truth for deployed dependencies (owner decision
+    # 2026-10-01): scan the real hyperd-ai-dev system closure, not container images
+    # or pip manifests.  Findings go to code scanning (non-blocking, as the former
+    # Trivy jobs were); a build or scanner failure fails the job.
     runs-on: ubuntu-latest
     needs: security-audit
+    timeout-minutes: 120
     permissions:
       contents: read
       security-events: write
-    strategy:
-      fail-fast: false
-      matrix:
-        service:
-          - aidb
-          - embeddings-service
-          - hybrid-coordinator
-          - nixos-docs
     steps:
       - name: Checkout code
         uses: actions/checkout@fbc6f3992d24b796d5a048ff273f7fcc4a7b6c09  # v5
 
-      - name: Set up Docker Buildx
-        uses: docker/setup-buildx-action@8d2750c68a42422c14e847fe6c8ac0403b4cbd6f  # v3
-
-      - name: Build image for scanning
-        id: build
+      - name: Free runner disk space
         run: |
-          docker build \
-            -f ai-stack/mcp-servers/${{ matrix.service }}/Dockerfile \
-            -t local/${{ matrix.service }}:scan \
-            ai-stack/mcp-servers
-          echo "image=local/${{ matrix.service }}:scan" >> $GITHUB_OUTPUT
+          sudo rm -rf /usr/share/dotnet /opt/ghc /usr/local/lib/android /opt/hostedtoolcache/CodeQL
+          df -h /
 
-      - name: Run Trivy vulnerability scanner
-        uses: aquasecurity/trivy-action@57a97c7e7821a5776cebc9bb87c984fa69cba8f1  # v0.35.0
+      - name: Install Nix
+        uses: cachix/install-nix-action@08dcb3a5e62fa31e2da3d490afc4176ef55ecd72  # v30
         with:
-          image-ref: ${{ steps.build.outputs.image }}
-          version: 'v0.69.3'
-          format: 'sarif'
-          output: 'trivy-${{ matrix.service }}.sarif'
-          severity: 'CRITICAL,HIGH'
-          exit-code: '0'  # Report findings but keep CI non-blocking
-          ignore-unfixed: true
+          nix_path: nixpkgs=channel:nixos-25.11
+          extra_nix_config: |
+            experimental-features = nix-command flakes
 
-      - name: Upload Trivy results to GitHub Security
-        uses: github/codeql-action/upload-sarif@b96794f015dfd88f77b49b1c93e0fa7110f94c63  # v4
-        if: always() && hashFiles(format('trivy-{0}.sarif', matrix.service)) != '' && (github.event_name != 'pull_request' || github.event.pull_request.head.repo.fork == false)
-        with:
-          sarif_file: 'trivy-${{ matrix.service }}.sarif'
-          category: trivy-custom-${{ matrix.service }}
-
-      - name: Run Trivy scanner (table output)
-        uses: aquasecurity/trivy-action@57a97c7e7821a5776cebc9bb87c984fa69cba8f1  # v0.35.0
-        if: always() && steps.build.outcome == 'success'
-        with:
-          image-ref: ${{ steps.build.outputs.image }}
-          version: 'v0.69.3'
-          format: 'table'
-          severity: 'CRITICAL,HIGH'
-          ignore-unfixed: true
-
-  dockerfile-lint:
-    name: Dockerfile Linting
-    runs-on: ubuntu-latest
-    steps:
-      - name: Checkout code
-        uses: actions/checkout@fbc6f3992d24b796d5a048ff273f7fcc4a7b6c09  # v5
-
-      - name: Install hadolint
+      - name: Build hyperd-ai-dev system closure
         run: |
-          HADOLINT_VERSION=v2.14.0
-          curl -fsSL "https://github.com/hadolint/hadolint/releases/download/${HADOLINT_VERSION}/hadolint-Linux-x86_64" -o hadolint
-          chmod +x hadolint
-          sudo mv hadolint /usr/local/bin/hadolint
+          nix build .#nixosConfigurations.hyperd-ai-dev.config.system.build.toplevel \
+            --print-build-logs --out-link result-toplevel
+          test -e result-toplevel
 
-      - name: Run hadolint on all Dockerfiles
+      - name: Scan closure (sbomnix -> grype)
         run: |
           set -euo pipefail
-          mapfile -t dockerfiles < <(find ai-stack/mcp-servers -mindepth 2 -maxdepth 2 -name Dockerfile | sort)
+          # nixpkgs comes from flake.lock so scanner versions track the deployed pin.
+          # Errors are never suppressed: a crash in either scanner must fail the job.
+          scripts/security/aq-closure-scan \
+            --target "$(readlink -f result-toplevel)" \
+            --sbom nix-closure.cdx.json \
+            --sarif nix-closure.sarif \
+            --json | tee nix-closure-summary.json
+          test -s nix-closure.sarif
 
-          if [ "${#dockerfiles[@]}" -eq 0 ]; then
-            echo "No Dockerfiles found under ai-stack/mcp-servers"
-            exit 0
-          fi
-
-          failed=0
-          : > hadolint-results.txt
-          for dockerfile in "${dockerfiles[@]}"; do
-            echo "Linting ${dockerfile}" | tee -a hadolint-results.txt
-            if ! hadolint --failure-threshold error "${dockerfile}" 2>&1 | tee -a hadolint-results.txt; then
-              failed=1
-            fi
-            echo "" >> hadolint-results.txt
-          done
-
-          if [ "$failed" -ne 0 ]; then
-            echo "Hadolint reported blocking issues."
-            exit 1
-          fi
-
-      - name: Upload Hadolint results
-        uses: actions/upload-artifact@b7c566a772e6b6bfb58ed0dc250532a479d7789f  # v6
-        if: always()
+      - name: Upload Nix closure SARIF
+        if: always() && hashFiles('nix-closure.sarif') != '' && (github.event_name != 'pull_request' || github.event.pull_request.head.repo.fork == false)
+        uses: github/codeql-action/upload-sarif@b96794f015dfd88f77b49b1c93e0fa7110f94c63  # v4
         with:
-          name: hadolint-results
-          path: hadolint-results.txt
+          sarif_file: nix-closure.sarif
+          category: nix-closure
+
+      - name: Upload closure SBOM and summary
+        if: always()
+        uses: actions/upload-artifact@b7c566a772e6b6bfb58ed0dc250532a479d7789f  # v6
+        with:
+          name: nix-closure-scan
+          path: |
+            nix-closure.cdx.json
+            nix-closure-summary.json
+          if-no-files-found: ignore
 
   secrets-scan:
     name: Secret Detection
@@ -288,7 +183,7 @@ jobs:
   security-summary:
     name: Security Summary
     runs-on: ubuntu-latest
-    needs: [security-audit, trivy-scan-core, trivy-scan-custom, dockerfile-lint, secrets-scan]
+    needs: [security-audit, nix-closure-vuln-scan, secrets-scan]
     if: always()
     steps:
       - name: Download audit results
@@ -308,11 +203,9 @@ jobs:
           fi
           echo "" >> $GITHUB_STEP_SUMMARY
           echo "### Vulnerability Scans" >> $GITHUB_STEP_SUMMARY
-          echo "- Core Images: ${{ needs.trivy-scan-core.result }}" >> $GITHUB_STEP_SUMMARY
-          echo "- Custom Images: ${{ needs.trivy-scan-custom.result }}" >> $GITHUB_STEP_SUMMARY
+          echo "- Nix Closure: ${{ needs.nix-closure-vuln-scan.result }}" >> $GITHUB_STEP_SUMMARY
           echo "" >> $GITHUB_STEP_SUMMARY
           echo "### Additional Checks" >> $GITHUB_STEP_SUMMARY
-          echo "- Dockerfile Lint: ${{ needs.dockerfile-lint.result }}" >> $GITHUB_STEP_SUMMARY
           echo "- Secret Detection: ${{ needs.secrets-scan.result }}" >> $GITHUB_STEP_SUMMARY
           echo "" >> $GITHUB_STEP_SUMMARY
           echo "📊 See the Security tab for detailed vulnerability reports" >> $GITHUB_STEP_SUMMARY

@@ -473,14 +473,6 @@
       "rationale": "Has CLI/runtime entrypoint shape but no scanned import/reference; verify service, timer, or command wiring."
     },
     {
-      "action": "verify-entrypoint-wiring",
-      "classification": "entrypoint_candidate",
-      "module": "populate",
-      "owner": "unassigned",
-      "path": "ai-stack/mcp-servers/qdrant-populator/populate.py",
-      "rationale": "Has CLI/runtime entrypoint shape but no scanned import/reference; verify service, timer, or command wiring."
-    },
-    {
       "action": "verify-entrypoint-coverage",
       "classification": "referenced_entrypoint_candidate",
       "module": "ab_testing",

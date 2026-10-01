@@ -25,10 +25,13 @@ def run(command, payload, timeout=12):
         pass
     if denied:
         # Never persist raw tool input or recommendations containing user commands.
-        category = "lean-ctx command routing rejected" if b"Command should run via lean-ctx" in stderr + stdout else "upstream hook denied or failed"
+        if b"Command should run via lean-ctx" in stderr + stdout:
+            # Routing a raw shell command to lean-ctx is the policy working as designed, not a failure:
+            # recording it opened a permanent incident (count 21) that no fix could ever close.
+            return code, stdout, stderr
         try:
             failure("codex", "pre-tool", "lean-ctx-pretooluse", "hook/codex-pretooluse",
-                    "installed pre-tool policy", category,
+                    "installed pre-tool policy", "upstream hook denied or failed",
                     root_fix="Diagnose hook routing and caller contract; preserve command semantics and policy")
         except Exception as exc:
             stderr += f"RSI recording failed: {type(exc).__name__}; original hook decision preserved.\n".encode()

@@ -110,7 +110,7 @@ Co-Authored-By: <active-agent-name> <noreply@anthropic.com>"
 
 ## On-demand reference
 
-Moved-out lane history, long examples and reference tables (with contents list): `.agent/lanes/claude-reference.md`. Shared lookups: `.agent/REFERENCE-INDEX.md`. Read before any non-trivial task: `.agent/PROMOTED-BUG-PATTERNS.md`, `.agent/INFRASTRUCTURE-CONSTRAINTS.md`. Validation: `git status --short`, `scripts/governance/repo-structure-lint.sh --staged`, `scripts/governance/tier0-validation-gate.sh --pre-commit`.
+Lane reference (history, examples, tables): `.agent/lanes/claude-reference.md`. Shared lookups: `.agent/REFERENCE-INDEX.md`. Read before any non-trivial task: `.agent/PROMOTED-BUG-PATTERNS.md`, `.agent/INFRASTRUCTURE-CONSTRAINTS.md`. Validation: `git status --short`, `scripts/governance/repo-structure-lint.sh --staged`, `scripts/governance/tier0-validation-gate.sh --pre-commit`.
 <!-- lane:end -->
 
 <!-- canon:begin behavioral-rules -->
@@ -170,7 +170,7 @@ Enforcement: local payloads auto-inject the MICRO variant (`shared/llm_config.py
 - Prep: `aq-resume`, `aq-session-start --task`, `aq-hints`, lean-ctx (signatures/ranges); never drag full history/whole files; query AIDB `error-solutions` before debugging; cap tool output at 3,000 chars; keep instructions at the prompt head.
 - Closeout: seed AIDB + MemoryBroker, write `.agent/memory/<topic>.md`, update `RESUME.json` + `PULSE.log`; compact via the provider mechanism or fresh-session handoff; NEVER archive/delete provider transcripts to fake compaction. Evict stale dumps/finished turns; RETAIN objective+acceptance, uncommitted files, live errors, memory pointers.
 - Guard: use measured total input tokens (incl. cached); budget = min(50,000, 80% of window); over budget -> checkpoint + compact/handoff; unknown measurement -> say unknown, never claim clean. MUST compact at >2.5 MB, >25 turns, or >50k tokens. Verify with `aq-session-compact --verify-usage` (exit 0 only on measured decrease); verify each provider adapter separately.
-- Sub-agents: pass only objective, paths, acceptance, constraints, skill names; NEVER history/transcripts; no polling loops. Panes start in standby; shutdown touches only that workspace; never global process reaping.
+- Sub-agents: pass only objective, paths, acceptance, constraints, skill names; NEVER history/transcripts; no polling loops. Panes start in standby; shutdown touches only that workspace; never global process reaping. Plugins: enable per project by stack, never globally (aq-payload-audit flags unused).
 - Full text: `canon/blocks/memory-cache-sop.md`
 <!-- canon:end memory-cache-sop -->
 

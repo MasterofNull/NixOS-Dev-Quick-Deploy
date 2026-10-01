@@ -1,0 +1,93 @@
+OPEN|high|[REOPENED — premature-FIXED] antigravity-wake-reports-nudge-not-drain — The two prior [FIXED] entries below (a
+OPEN|high|3d45e03c-epoch-authority-dependency-regression-blocks-lease-chain — VALIDATED 2026-08-15 during C2-SCI activat
+OPEN|high|local-detached-launch-acknowledgement-gap — Local advisory attempts `local-20260808-121358-f9phj0` and `local-
+OPEN|high|c6-b3-live-handoff-and-pre-exec-fence-activation-blocker — Independent exact-commit review of `36a5e2c4` prove
+OPEN|high|router-core-stale-reclaim-toctou — aq-slice-claim's `_reclaim_stale` reads-then-unlinks the expired claim by P
+OPEN|high|concurrent-orchestrator-commit-authority-race-b3 — After Codex committed the exact four-file accepted B3 candi
+OPEN|high|b3-c1-authorization-flagship-review-hash-mismatch — `claude-subagent-b3-c1-implementer` was activated (PULSE `
+OPEN|high|l2b-b-authorization-flagship-review-hash-mismatch — `claude-subagent-l2b-b-implementer` was activated (PULSE `
+OPEN|high|registry-show-is-globally-blocked-by-one-oversized-unrelated-row — After the read-only hotfix, `aq-delegation-
+OPEN|high|archive-secret-scan-tooling-is-not-runnable-as-documented — Repository hygiene called for `gitleaks protect --
+OPEN|high|orchestrator-validation-ran-against-active-writer-lease — While C0.5B held the three-file write lease for `age
+OPEN|high|local-direct-review-ignored-request-timeout-and-emitted-no-output — Local direct reviewer `local-20260716-1458
+OPEN|high|local-agent-review-prefill-progress-misclassified-as-silence — Advisory review `local-20260728-222458-wy1txd`
+OPEN|high|c05-local-round-review-completes-with-truncated-preamble — Local review `local-20260716-135947-j7t073` stayed
+OPEN|high|c05-codex-collab-lane-died-after-caller-return — The monitored `aq-collab-round` architecture pass launched `c
+OPEN|high|claude-implementer-dirty-worktree-stash-and-output-contract-violation — The monitored Sonnet M2A implementer r
+OPEN|high|tier0-staged-bash-change-detection-gap — Tier0 passed the exact staged Fable-routing bootstrap but reported `N
+OPEN|high|retired-gemini-dispatch-route-remains-executable — `delegate-to-gemini` still exposes the retired Gemini CLI l
+OPEN|high|collab-round-typed-consensus-verdict-extraction-gap — `aq-collab-round collect` reported `verdicts={'ABSTAIN':
+OPEN|high|output-wrapper-corrupts-evidence-and-redirected-output — the rtk/lean-ctx output-compression wrapper altered c
+OPEN|high|t3mp3st-runtime-attachment — T3MP3ST is scope-gated and source-pinned for authorized self red-team prep, but t
+OPEN|high|claude-wait-mode-registry-omits-live-pid — A monitored `delegate-to-claude --wait` M1 task remained live as Cl
+OPEN|high|health-spider-missing-agent-integrity-detection — The system health spider (aq-health-spider) + remediation su
+OPEN|high|drop-daemon-cannot-write-delegation-registry — `ai-drop-daemon` accepted and consumed direct-mode drop `2cb639
+OPEN|high|antigravity-oauth-lane-vs-switchboard-keyed-remote-confusion — `antigravity-collective` was silently routed to
+OPEN|high|local-agent-textual-tool-call-false-success — Local/Qwen agent-mode retry `local-20260709-001430-f3llz1` compl
+OPEN|high|continue-inline-completion-latency — The live `continue-local` `/v1/completions` route returns valid suggestio
+OPEN|high|local-inference-contract-parity — `aq-chat` and `delegate-to-local` independently resolve prompts, profiles, r
+OPEN|high|local-review-first-token-timeout — Three independent `delegate-to-local --mode agent --role reviewer` tasks pr
+OPEN|high|runtime-diagnose-sandbox-observer-false-inactive — `aq-runtime-diagnose --preset llama-cpp --json` reported `h
+OPEN|high|agent-task-eligibility-policy-is-stale — Local skill/task routing guidance still hardcodes model/vendor roles
+OPEN|high|dispatch-ralph-adapter-route-contract-broken — L2B inventory found `RalphRunner` posting `{"prompt": ...}` to
+OPEN|high|claude-parallel-implementer-shared-quota-exhaustion — Two concurrent Sonnet implementation packets completed s
+OPEN|high|tier0-untracked-change-detection-gap — Tier0 reported no Python/JSON/JS changes while the L2B-A candidate incl
+OPEN|high|tier0-phase0-output-contract-drift — Tier0 launches `aq-qa 0`, but the current runner returns no human-readabl
+OPEN|high|antigravity-direct-route-credential-endpoint-mismatch — A traced independent C0.6 review delegation failed bef
+OPEN|high|lean-ctx-global-session-pointer-cross-repo-root-pinning — lean-ctx v3.3.7 keeps ONE machine-global "latest ses
+OPEN|high|provider-capacity-reset-not-scheduled — The orchestrator left Claude marked unavailable after a provider sessi
+OPEN|high|phase0-provider-help-probe-suspends-completion — Post-deploy `aq-qa 0 --json` repeatedly spawned `timeout --fo
+OPEN|high|quick-deploy-previous-fsck-false-positive — Quick deploy blocked a live switch for a claimed previous-boot roo
+OPEN|high|program-tracker-semantic-state-lag — The canonical dashboard tracker still renders Foundation B2 as blocked at
+OPEN|high|c1c-am2-haiku-candidate-bound-wrong-contract — The C1C-AM2 Haiku implementer produced a passing-tests candidat
+OPEN|high|codex-cli-quota-exhausted-blocks-delegate-to-codex — Both B2-M1A-AM2 (`codex-20260718-204057-i0hlfyxxxxxx`) an
+OPEN|high|sub-agent-identity-substitution-risk-acceptance-inconsistent — Two Claude sub-agents dispatched with near-iden
+OPEN|high|C3b R1 epoch-authority contract disagrees with live C2 semantics — The reviewed C3b
+OPEN|high|Local inference L3-A cannot freeze against current adoption and overlap state — No
+OPEN|high|RELEASE-INDEX-OWNERSHIP — Concurrent Claude commit `97427609` consumed the independently accepted package-coun
+OPEN|high|herdr-h2a-handoff-evidence-drift — The inherited H2A handoff and pulse described five PREPARED_ONLY documents
+OPEN|high|HERDR-H1-PREMATURE-ACCEPTANCE-COMMIT — A concurrent Claude lane committed H1 as "accepted" while its independe
+OPEN|high|STAGED-ISOLATED-ALTERNATE-INDEX-INCOMPATIBILITY — Running Tier-0 `--staged-isolated` with an alternate `GIT_IN
+OPEN|high|REVIEW-AGENT-SUBSTRING-ACCEPTANCE-BYPASS — The coordinator review handoff parser falls back from failed JSON p
+OPEN|high|local-read-loop-defeats-context-gate — With micro grounding (budget cleared) + assembler (spans front-loaded)
+OPEN|high|local-edit-from-summary-fails-oldstring-match — SHARPENS local-read-loop-defeats-context-gate. Confirmed root
+OPEN|high|local-diffs-plausible-but-incorrect — Local's "edit-captured" dogfood diffs are NOT reliably correct. dogfood-
+OPEN|high|local-autonomous-edit-completion-rate-~5pct-EMPIRICAL — DEFINITIVE dogfood result (2026-08-18): 20 task-runs (
+OPEN|high|local-reread-stagnation-despite-verbatim-frontload — DEFINITIVE: verbatim front-loading confirmed reaching loc
+OPEN|high|local-over-explores-run_command-instead-of-editing — DIAGNOSED OFFLINE VIA CASSETTE REPLAY (record/replay harn
+OPEN|high|codex-review-local-agent-batch-20260821 — Independent Codex review of this session's local-agent+harness batch
+OPEN|high|antigravity-autonomous-lane-nonfunctional — VERIFIED 2026-08-21: the Antigravity/Gemini lane produces NOTHING
+OPEN|high|antigravity-review-verified-criticals-20260821 — Antigravity (untrusted-advisory lane) independent review of t
+OPEN|high|local-agent-rendered-prompt-latency-and-budget-drift — Post-fix dogfood task `local-20260823-201540-1qjt48` re
+OPEN|high|aqos-resolved-owner-gates-reported-as-pending — The 2026-08-23 AQ-OS rundown relabeled Q3 and Q6–Q10 as owner
+OPEN|high|cancellation-lifecycle-slice-regressed-inference — The cancellation-lifecycle F1 slice (commit 93f1eff4, dispa
+OPEN|high|local-edit-third-failure-mode-undefined-name — Coach-gate measured run (2026-08-26, clean APU): coach correctl
+OPEN|high|local-agent-completion-signal-after-correct-edit — Task `local-20260828-064534-n1khvu` completed both requeste
+OPEN|high|local-tool-grammar-active-lease-drift — Grammar construction uses every enabled tool in the registry, while th
+OPEN|high|reviewer-invoked-live-pending-reconciliation — An independent reviewer accidentally ran `aq-delegation-registr
+OPEN|high|shallow-dogfood-verify-cmd-false-passes-deletions — HIGH. The scaffolded dogfood-01 rerun (2026-08-29, scaffol
+OPEN|high|local-edit-destructive-span-correct-logic-wrong-blast-radius — HIGH. Same run: local's edit CONTENT was logica
+OPEN|high|local-benchmark-visible-quality-run-times-out-after-thinking-disable — The corrected Qwen benchmark disabled t
+OPEN|high|temporary-worktree-uncommitted-checkpoint-loss — The isolated SR-1 worktree under `/tmp` disappeared after the
+OPEN|high|core-mvp-token-discipline — Oversized recovery reads and full-history audit delegation repeated large context;
+OPEN|high|core-mvp-memory-write-evidence — aq-memory reports Added and exit 0 after permission-denied persistence; coord
+OPEN|high|TOKEN BURN — Task-only Codex children start at ~31.4k input tokens; two children accumulated 1,035,237 input t
+OPEN|high|parent-payload-progressive-disclosure — Main Codex and agent instructions declared lazy loading but lacked a s
+OPEN|high|Token attribution and RSI auto-repair safety — Hourly PRSI submitted deterministic Python work through aq-ralp
+OPEN|high|deploy-target-discovery-timeout — `nixos-quick-deploy.sh` rejected `hyperd-ai-dev` although flake name discove
+OPEN|high|tier0-precommit-stalls — Tier 0 pre-commit produced no output for over four minutes and spawned a nested `tier
+OPEN|high|SECURITY — Post-CI Gitleaks configuration exempts entire testing and agent-config directories, and some depend
+OPEN|high|C6A — Merged correction e645dadf lacks a fresh cohort review; current wall-clock-only expiry and unresolved da
+OPEN|high|rsi-84173bc271644e4c3c288274 — github-code-scanning:trivy-custom-nixos-docs failure in code-scanning:trivy-cus
+OPEN|high|rsi-46cc707a2337d244ed1ba93d — github-code-scanning:trivy-custom-aidb failure in code-scanning:trivy-custom-ai
+OPEN|high|rsi-07bc5623cfbc4a771a9d1049 — github-code-scanning:trivy-custom-nixos-docs failure in code-scanning:trivy-cus
+OPEN|high|rsi-fa0759de8ff42db3e5f8003b — github-code-scanning:trivy-custom-nixos-docs failure in code-scanning:trivy-cus
+OPEN|high|rsi-dispatch-silently-never-executes — Since 2026-09-28 every ai-prsi-rsi-dispatch run reports `executed: 0` w
+OPEN|high|codex-headless-dispatch-token-overuse — 2026-09-30: 7 headless Codex dispatches from one Claude orchestrator s
+OPEN|high|agentic-payload-misconfiguration-audit — Owner 2026-09-30: tools/plugins/workflows/roles/payloads may be misco
+OPEN|high|rsi-657c7b2bc51c2ae0d6a61607 — github-code-scanning:trivy-custom-nixos-docs failure in code-scanning:trivy-cus
+OPEN|high|rsi-792612b055567ceaf12ed6fb — github-code-scanning:trivy-custom-aidb failure in code-scanning:trivy-custom-ai
+OPEN|high|rsi-f80f6b4d2ea17a765ea57c9a — github-code-scanning:trivy-custom-nixos-docs failure in code-scanning:trivy-cus
+OPEN|high|rsi-0d3fdfb04eab33f2014325e0 — github-code-scanning:trivy-custom-nixos-docs failure in code-scanning:trivy-cus
+OPEN|high|rsi-81a7a3566140f3a60d5fcc6c — delegate-run-events failure in steward ingest 2026-09-30. Root cause evidence:
+OPEN|high|rsi-917090649b7fba1313da041b — hybrid-coordinator:/stats/delegate failure in steward ingest 2026-09-30. Root c

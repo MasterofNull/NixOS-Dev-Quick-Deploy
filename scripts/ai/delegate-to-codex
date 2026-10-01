@@ -502,6 +502,11 @@ ${prompt}"
     if [[ "$mode" == "edit" ]]; then
         cmd+=("--dangerously-bypass-approvals-and-sandbox")
     fi
+    # Shared mode: set codex's working directory to the repo root so it knows
+    # where the project boundary is (prevents "writing outside of project" errors)
+    if [[ "$shared_mode" == "true" ]]; then
+        cmd+=("-C" "$REPO_ROOT")
+    fi
     # Last argument: full prompt with harness constraints prepended
     cmd+=("$full_prompt")
 
@@ -523,7 +528,8 @@ ${prompt}"
         if [[ -n "$wt_path" ]]; then
             ( cd "$wt_path" && "${cmd[@]}" < /dev/null ) 2>&1 | tee "$output_file" || exit_code="${PIPESTATUS[0]}"
         else
-            "${cmd[@]}" < /dev/null 2>&1 | tee "$output_file" || exit_code="${PIPESTATUS[0]}"
+            # For shared mode, run from repo root (though -C flag tells codex the root)
+            ( cd "$REPO_ROOT" && "${cmd[@]}" < /dev/null ) 2>&1 | tee "$output_file" || exit_code="${PIPESTATUS[0]}"
         fi
         quota_capture_from_output "$output_file" || true
         # CS-1: hand back the isolated worktree's changes (patch + commit on
@@ -549,10 +555,14 @@ ${prompt}"
         local _coord_url="${HYBRID_COORDINATOR_URL:-http://127.0.0.1:8003}"
         local _prompt_brief; _prompt_brief="${prompt:0:100}"
         local _audit_helper; _audit_helper="$SCRIPT_DIR/lib/audit-post.sh"
-        # CS-1: cd into the isolated worktree (if any) before running codex,
-        # so it never sees the shared REPO_ROOT as its CWD.
+        # CS-1: cd into the isolated worktree (if any) before running codex.
+        # For shared mode, cd to repo root (even though -C flag tells codex the root).
         local _cd_prefix=""
-        [[ -n "$wt_path" ]] && _cd_prefix="cd $(printf '%q' "$wt_path") && "
+        if [[ -n "$wt_path" ]]; then
+            _cd_prefix="cd $(printf '%q' "$wt_path") && "
+        else
+            _cd_prefix="cd $(printf '%q' "$REPO_ROOT") && "
+        fi
         # Background — write output to persistent file, not /tmp
         nohup bash -c "
             _start_ms=\$(date +%s%3N 2>/dev/null || echo 0)
@@ -610,6 +620,7 @@ WAIT=false
 FORCE_QUOTA_RETRY=false
 FORCE_BUDGET=false
 SHARED_MODE=false
+PRINT_ARGV=false
 SUBCMD=""
 SUBCMD_ARG=""
 WT_HB_PATH=""
@@ -626,6 +637,7 @@ while [[ $# -gt 0 ]]; do
         --force-quota-retry) FORCE_QUOTA_RETRY=true; shift ;;
         --force-budget) FORCE_BUDGET=true; shift ;;
         --shared|--no-worktree) SHARED_MODE=true; shift ;;
+        --print-argv)  PRINT_ARGV=true;   shift   ;;
         --check)       SUBCMD="check";   SUBCMD_ARG="$2"; shift 2 ;;
         --status)      SUBCMD="status";  SUBCMD_ARG="$2"; shift 2 ;;
         --list)        SUBCMD="list";    shift   ;;
@@ -674,6 +686,25 @@ case "${SUBCMD:-}" in
             PROMPT="$(cat "$PROMPT_FILE")"
         fi
         [[ -n "$PROMPT" ]] || die "Provide --prompt TEXT or --prompt-file FILE (or --help)"
+        if [[ "$PRINT_ARGV" == "true" ]]; then
+            # Diagnostic mode: print argv without budgets/registry/auditing
+            # Build the same cmd as cmd_delegate would, but exit early
+            cmd=("${CODEX_BIN:-$HOME/.npm-global/bin/codex}" "exec")
+            [[ -n "$MODEL" ]] && cmd+=("-m" "$MODEL")
+            if [[ "$EFFORT" != "medium" ]]; then
+                cmd+=("-c" "model_reasoning_effort=$EFFORT")
+            fi
+            if [[ "$MODE" == "edit" ]]; then
+                cmd+=("--dangerously-bypass-approvals-and-sandbox")
+            fi
+            # Shared mode: set codex's working directory to the repo root
+            if [[ "$SHARED_MODE" == "true" ]]; then
+                cmd+=("-C" "$REPO_ROOT")
+            fi
+            cmd+=("$PROMPT")
+            printf '%s\n' "${cmd[@]}"
+            exit 0
+        fi
         cmd_delegate "$PROMPT" "$MODE" "$MODEL" "$EFFORT" "$WAIT" "$FORCE_QUOTA_RETRY" "$FORCE_BUDGET" "$SHARED_MODE"
         ;;
 esac

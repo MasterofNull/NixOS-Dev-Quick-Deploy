@@ -17,6 +17,9 @@ _AUDIT_COORD_URL="${HYBRID_COORDINATOR_URL:-http://127.0.0.1:8003}"
 # Degrades gracefully: if coordinator is down the calling script continues.
 _audit_post_event() {
     local agent="$1" task_id="$2" event_type="$3" outcome="$4" latency_ms="$5" summary="$6" sub_type="$7"
+    # Tests and fixtures set AQ_AUDIT_DISABLE=1 so synthetic failures never reach the production
+    # audit log that /stats/delegate reads (test-worktree-isolation alone injected 262 fake errors).
+    [[ "${AQ_AUDIT_DISABLE:-0}" == "1" ]] && return 0
     # Truncate summary to 400 chars (token budget)
     summary="${summary:0:400}"
     local payload

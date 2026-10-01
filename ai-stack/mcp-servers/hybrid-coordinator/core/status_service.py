@@ -16,6 +16,7 @@ from __future__ import annotations
 
 import asyncio
 import json
+import re
 import logging
 import os
 import time
@@ -187,16 +188,35 @@ _DELEGATE_TAIL_BYTES = 256 * 1024 * 1024  # read last 256 MB max (covers multi-d
 
 
 def _classify_failure_reason(error_message: str) -> str:
-    """Map a raw error_message string to a structured failure_reason enum value."""
+    """Map a raw error_message string to a structured failure_reason enum value.
+
+    Single source of truth: http_server_impl imports this.  "unknown" is reserved for messages
+    that match nothing here, so a growing "unknown" bucket signals a classifier gap, not noise.
+    """
     msg = (error_message or "").lower()
     if not msg.strip():
         return "empty_response"
+    if "worktree_handback_failed" in msg:
+        return "worktree_handback_failed"
+    if "usage limit" in msg or "quota" in msg or "rate limit" in msg or "429" in msg:
+        return "quota_exceeded"
+    if "cancel" in msg or "interrupt" in msg or "sigterm" in msg or "operator stop" in msg or "killed" in msg:
+        return "cancelled"
+    if "read-only file system" in msg or "erofs" in msg or "permission denied" in msg or "eacces" in msg or "sandbox" in msg:
+        return "sandbox_denied"
     if "timeout" in msg or "504" in msg or "408" in msg or "timed out" in msg:
         return "timeout"
     if "context" in msg or "413" in msg or "too long" in msg or "context_length" in msg:
         return "context_overflow"
     if "500" in msg or "internal server" in msg or "backend" in msg:
         return "backend_500"
+    http = re.search(r"http[_ ]status[_ =:]*(\d{3})", msg)
+    if http:
+        return f"http_{http.group(1)}"
+    if msg.startswith("failed mode="):
+        return "agent_task_failed"
+    if "model" in msg or "llama" in msg or "empty answer" in msg or "thinking" in msg:
+        return "model_error"
     return "unknown"
 
 

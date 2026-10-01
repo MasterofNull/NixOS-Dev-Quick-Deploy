@@ -29,6 +29,7 @@ import json
 import logging
 import os
 import re
+import secrets
 import sys
 import time
 from datetime import datetime, timezone
@@ -430,7 +431,7 @@ async def run_task(
         allow_degraded_local_execution=True,
     )
 
-    task_id = f"aq-{int(time.time())}"
+    task_id = f"aq-{int(time.time())}-{secrets.token_hex(3)}"
     skill_projection = select_local_skills(task_text, repo_root=_REPO_ROOT)
     task = Task(
         id=task_id,

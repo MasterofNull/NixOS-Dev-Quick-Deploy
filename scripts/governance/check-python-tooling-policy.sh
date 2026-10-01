@@ -45,10 +45,19 @@ for path in sorted(set(targets)):
     rel = path.relative_to(root).as_posix()
     if rel in allowlist or rel == "scripts/governance/check-python-tooling-policy.sh":
         continue
+    # Allowlist test files that intentionally contain "pip install" in string literals
+    if rel == "scripts/testing/test-requirements-floor-policy.py":
+        continue
     text = path.read_text(encoding="utf-8", errors="ignore")
     for line_no, line in enumerate(text.splitlines(), start=1):
+        # Skip comment lines (first non-space char is #)
+        stripped = line.lstrip()
+        if stripped.startswith("#"):
+            continue
+        # Skip uv pip install (approved pattern)
         if "uv pip install" in line:
             continue
+        # Check for bare pip install violations
         if pattern.search(line):
             violations.append((rel, line_no, line.strip()))
 

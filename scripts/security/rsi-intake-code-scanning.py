@@ -73,14 +73,29 @@ def _max_version(versions: list[str]) -> str:
     return max_v
 
 
+NIX_CLOSURE_CATEGORY = "nix-closure"
+NIX_CLOSURE_MANIFEST = "nix/"
+
+
+def _is_nix_closure(category: str) -> bool:
+    return category == NIX_CLOSURE_CATEGORY
+
+
 def _resolve_manifest_path(category: str, package: str) -> str:
     """Resolve manifest path for a package in a given category.
+
+    Category "nix-closure" (Nix system-closure scan) always maps to nix/: the fix
+    is a nixpkgs bump (flake.lock) or fast-lane promotion, not a manifest edit.
 
     For category "trivy-custom-<svc>", checks:
     1. ai-stack/mcp-servers/<svc>/requirements.txt (if package present)
     2. ai-stack/mcp-servers/<svc>/Dockerfile
     3. .github/workflows/security.yml
     """
+    if _is_nix_closure(category):
+        return NIX_CLOSURE_MANIFEST
+
+    # Legacy container-image categories (kept while old alerts age out).
     # Try to extract service name from category like "trivy-custom-nixos-docs"
     if category.startswith("trivy-custom-"):
         svc = category.replace("trivy-custom-", "")
@@ -109,6 +124,14 @@ def _resolve_manifest_path(category: str, package: str) -> str:
 def _parse_alert_message(text: str) -> dict[str, str]:
     """Extract Package, Installed Version, Fixed Version from alert text."""
     result = {}
+    # grype SARIF (nix-closure): "A high vulnerability in nix package: <pkg>, version <ver> was found [...]"
+    grype = re.search(r"package:\s*(\S+?),\s*version\s+(\S+)\s+was found", text or "")
+    if grype:
+        result["package"], result["installed"] = grype.group(1), grype.group(2)
+        fix = re.search(r"[Ff]ix(?:ed)?(?: [Vv]ersion| in)?:?\s*([0-9][^\s,]*)", text or "")
+        if fix:
+            result["fixed"] = fix.group(1)
+        return result
     for line in (text or "").split("\n"):
         if "Package:" in line:
             result["package"] = line.split("Package:")[-1].strip()
@@ -284,7 +307,10 @@ def main() -> int:
 
         # Build root_fix (includes fixed version, count and severity)
         manifest = _resolve_manifest_path(category, package)
-        root_fix = f"raise the minimum-version floor: {package}>={fixed_ver} in {manifest} (owner policy: floors, never exact == pins); rebuild image and confirm Trivy clears the alerts ({count} open alert(s), max severity {max_sev})"
+        if _is_nix_closure(category):
+            root_fix = f"nix flake update / fast-lane promotion: pull a nixpkgs revision with {package}>={fixed_ver} (flake.lock under {manifest}), rebuild hyperd-ai-dev, and confirm the nix-closure scan clears the alerts ({count} open alert(s), max severity {max_sev})"
+        else:
+            root_fix = f"raise the minimum-version floor: {package}>={fixed_ver} in {manifest} (owner policy: floors, never exact == pins); rebuild image and confirm Trivy clears the alerts ({count} open alert(s), max severity {max_sev})"
 
         subject = f"code-scanning:{category}"
 
@@ -309,7 +335,7 @@ def main() -> int:
                     subject=subject,
                     producer=f"github-code-scanning:{category}",
                     path=manifest,
-                    authority="trivy",
+                    authority="grype" if _is_nix_closure(category) else "trivy",
                     os_error=os_error,
                     severity=max_sev,
                     root_fix=root_fix,
