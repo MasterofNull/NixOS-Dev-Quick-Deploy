@@ -5037,3 +5037,8 @@ File: scripts/ai/lib/worktree-isolation.sh; scripts/automation/prsi-orchestrator
   Severity: medium
   Action: give the codex sandbox write access to the repo root in --shared mode (or have the round collector parse the verdict from the task log); remove the contradictory legacy lines from the codex grounding (scripts/ai/lib/harness-grounding.sh / codex grounding source).
   File: scripts/ai/delegate-to-codex; scripts/ai/aq-collab-round; scripts/ai/lib/harness-grounding.sh
+
+[OPEN] rsi-38aff77a4f3f3f8452603a12 — github-actions:parity-scorecard-gate failure in PR #355 CI run 36850061887. Root cause evidence: producer=github-actions:parity-scorecard-gate; path=scripts/governance/tier0-validation-gate.sh; authority=ci; os_error=QA phase 0 nondeterministic on GitHub runners: 30+ host-only checks failed (postgresql unit, ports 5432/6379/8080..., AppArmor, llama /health) then passed on rerun of the same commit. Detected=2026-10-01T10:43:06.301788Z.
+  Severity: medium
+  Action: find why aq-qa phase 0 on GitHub runners sometimes executes host-only checks (units/ports/AppArmor/llama health) and fails, and on rerun of the same commit passes; make phase 0 deterministic in CI (explicit host detection + skip, or xfail runtime-only ids for CI)
+  File: scripts/governance/tier0-validation-gate.sh
