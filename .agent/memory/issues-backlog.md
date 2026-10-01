@@ -5027,3 +5027,8 @@ File: scripts/ai/lib/worktree-isolation.sh; scripts/automation/prsi-orchestrator
 [DONE 2026-10-01] post-merge-trivy-residuals — After #354 merged, open Trivy alerts fell 198 -> 7 (Debian openssl/libssl/pcre2 + GitPython cleared). Residuals: nixos-docs setuptools 78.1.0 / vendored wheel 0.45.1 / jaraco.context 5.3.0 in /usr/local site-packages (a later install step re-pulled them despite an early floor) and aidb transformers 4.57.6. Fix: final pip-tooling floor step + build-failing setuptools>=83 assertion after all installs in the 4 Dockerfiles; torch/torchvision/torchaudio exact pins -> floors; aidb transformers>=5.10.0 with sentence-transformers>=5.2.0 (5.1.x caps transformers<5; verified on PyPI). requirements.lock refresh skipped: no resolver (pip-tools) available locally — lock drift is reported, not fatal.
   Severity: high (security)
   File: ai-stack/mcp-servers/{nixos-docs,aidb,embeddings-service,hybrid-coordinator}/Dockerfile; ai-stack/mcp-servers/aidb/requirements.txt
+
+
+[OPEN] pre-push-python-tooling-lint-matches-prose — the pre-push "Python tooling policy" lint flags any literal "pip install" text outside its allowlist, including comments and assertion messages in tests that enforce pip policy (5 hits in test-requirements-floor-policy.py, 2026-10-01). Worked around by rewording to "pip-install"; better: lint should match command invocations (RUN/subprocess/shell lines) or allowlist tests/.
+  Severity: low
+  File: scripts/governance/check-python-tooling-policy.sh
