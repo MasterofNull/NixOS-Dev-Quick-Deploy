@@ -718,6 +718,7 @@ Compaction and trimming must be **aggressive but discerning** — never strip co
 - **Sub-Agent Context Slicing**: When delegating to sub-agents, pass ONLY the slice objective (1-2 sentences), target file paths (by address, not content), acceptance criteria, constraints, and reference skill names. NEVER forward conversation history or prior agent transcripts.
 - **Standby Mode by Default**: Workspace panes and daemon processes must launch in standby (`prompt`) mode (`read -n 1`). Never run unthrottled auto-execution loops in background terminals.
 - **Session-Scoped Shutdown**: Workspace reset/exit may terminate only the requested workspace. Never invoke global process reaping as an implicit side effect; separate cleanup requires evidence of ownership and must preserve other active workspaces.
+- **Claude Code Plugin Load Strategy**: Claude Code plugins load statically at session start. Enable language/tool plugins per project by stack (via `.claude/settings.json`), never globally by default. Use `aq-payload-audit` to flag unused enabled plugins and reduce session overhead.
 <!-- canon:end memory-cache-sop -->
 
 <!-- canon:begin recursive-self-improvement-sop -->
@@ -1019,6 +1020,6 @@ Applies to any agent dispatched non-interactively (`delegate-to-*`, `codex exec`
 
 **Orchestrator (before dispatching):**
 - Dependencies the slice needs are committed (or the prompt names the uncommitted paths explicitly).
-- The deliverable path is visible to the delegate (shared worktree/absolute path), not a private temp dir.
+- The deliverable path is visible to the delegate (shared worktree/absolute path), not a private temp dir. Long-running domain sub-orchestrators get an orchestrator-created persistent worktree via `aq-worktree new --name <n> --base <branch>` (creates `.agents/delegation/worktrees/<n>` on branch `<n>` from `<base>` via `git worktree add -b`, auto-removed when unchanged).
 - Quota/rate-limit headroom exists on the chosen lane; otherwise route to the next eligible lane (Rule 18) rather than dispatching into a stall.
 <!-- canon:end headless-delegate-mode -->

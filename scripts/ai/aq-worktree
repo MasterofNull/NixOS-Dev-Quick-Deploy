@@ -1,0 +1,132 @@
+#!/usr/bin/env bash
+# aq-worktree — create and manage persistent git worktrees for orchestrator delegation
+#
+# Usage:
+#   aq-worktree new --name <name> --base <branch>    Create isolated worktree
+#   aq-worktree list                                  List active worktrees
+#
+# Purpose:
+# Long-running domain sub-orchestrators get an orchestrator-created persistent worktree
+# via aq-worktree (Claude Agent isolation:worktree branches from main and is auto-removed
+# when unchanged). Each worktree is an isolated git worktree on a branch derived from <base>,
+# providing delegated agents their own git index and working tree.
+
+set -euo pipefail
+
+SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
+REPO_ROOT="$(cd "$SCRIPT_DIR/../.." && pwd)"
+WORKTREE_BASE="${REPO_ROOT}/.agents/delegation/worktrees"
+
+die() {
+    echo "ERROR: $*" >&2
+    exit 1
+}
+
+info() {
+    echo "[aq-worktree] $*"
+}
+
+# aq-worktree new --name <name> --base <branch>
+# Creates a new persistent worktree at .agents/delegation/worktrees/<name>
+# on a new branch <name> derived from <base>
+cmd_new() {
+    local name="${1:-}"
+    local base="${2:-}"
+
+    [[ -n "$name" ]] || die "new: --name is required"
+    [[ -n "$base" ]] || die "new: --base is required"
+
+    mkdir -p "$WORKTREE_BASE"
+
+    local wt_path="${WORKTREE_BASE}/${name}"
+
+    # Check if worktree already exists
+    if [[ -d "$wt_path" ]]; then
+        die "Worktree already exists at: $wt_path"
+    fi
+
+    # Verify base branch exists
+    if ! git -C "$REPO_ROOT" rev-parse --verify "$base" >/dev/null 2>&1; then
+        die "Base branch does not exist: $base"
+    fi
+
+    # Create worktree on new branch derived from base
+    if git -C "$REPO_ROOT" worktree add -b "$name" "$wt_path" "$base" 2>&1; then
+        info "Created worktree: $wt_path (branch: $name, base: $base)"
+        echo "$wt_path"
+    else
+        die "Failed to create worktree"
+    fi
+}
+
+# aq-worktree list
+# List all active worktrees under .agents/delegation/worktrees/
+cmd_list() {
+    if [[ ! -d "$WORKTREE_BASE" ]]; then
+        echo "No worktrees yet"
+        return 0
+    fi
+
+    echo "Active worktrees:"
+    git -C "$REPO_ROOT" worktree list --porcelain 2>/dev/null | while read -r line; do
+        # Format: worktree <path>
+        # branch <branch>
+        # detached
+        if [[ "$line" =~ ^worktree\ (.*)$ ]]; then
+            wt_path="${BASH_REMATCH[1]}"
+            if [[ "$wt_path" =~ $WORKTREE_BASE ]]; then
+                basename "$wt_path"
+            fi
+        fi
+    done || echo "  (none active)"
+}
+
+# aq-worktree remove <name>
+# Remove a worktree (cleanup)
+cmd_remove() {
+    local name="${1:-}"
+    [[ -n "$name" ]] || die "remove: name is required"
+
+    local wt_path="${WORKTREE_BASE}/${name}"
+
+    if [[ ! -d "$wt_path" ]]; then
+        die "Worktree not found: $wt_path"
+    fi
+
+    if git -C "$REPO_ROOT" worktree remove "$wt_path" 2>&1; then
+        info "Removed worktree: $name"
+    else
+        die "Failed to remove worktree: $name"
+    fi
+}
+
+# Argument parsing
+SUBCMD="${1:-}"
+case "$SUBCMD" in
+    new)
+        shift || die "new: missing arguments"
+        name=""
+        base=""
+        while [[ $# -gt 0 ]]; do
+            case "$1" in
+                --name) name="$2"; shift 2 ;;
+                --base) base="$2"; shift 2 ;;
+                *) die "Unknown option: $1" ;;
+            esac
+        done
+        cmd_new "$name" "$base"
+        ;;
+    list)
+        cmd_list
+        ;;
+    remove)
+        shift || die "remove: missing name"
+        cmd_remove "$1"
+        ;;
+    "")
+        die "Usage: aq-worktree {new|list|remove} [options]"
+        ;;
+    *)
+        die "Unknown subcommand: $SUBCMD"
+        ;;
+esac
