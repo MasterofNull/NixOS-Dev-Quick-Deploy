@@ -890,20 +890,29 @@ class PublicationBarrierInProcessTests(unittest.TestCase):
 
         signal.signal(signal.SIGTERM, returning_handler)
 
-        # Deterministically exhaust the ~4.9s barrier budget via a single, targeted, real-time
-        # injection at normalize_probe_output -- the one call site guaranteed to run exactly
-        # once, immediately before the barrier is reached, regardless of any other process's
-        # residual child-table state in this shared test interpreter (unlike patching a reap
-        # helper that may or may not run depending on adopted-child bookkeeping). Not a blind
-        # sleep-and-hope race: the delay is unconditional and singular by construction.
+        # Deterministically exhaust the ~4.9s barrier budget by controlling the clock the
+        # barrier reads (LIFECYCLE.time.monotonic), not by sleeping: once normalize_probe_output
+        # (the last call before the barrier) has run, the module clock jumps far past
+        # first_signal_at + 4.9s, so remaining budget is exactly zero regardless of how long
+        # TERM grace/reaping took in real time.
         original_normalize = LIFECYCLE.normalize_probe_output
+        original_time = LIFECYCLE.time
+        skew = {"offset": 0.0}
+
+        class _SkewedTime:
+            def __getattr__(self, name: str) -> object:
+                return getattr(original_time, name)
+
+            def monotonic(self) -> float:
+                return original_time.monotonic() + skew["offset"]
 
         def delayed_normalize(**kwargs: object) -> tuple[str, str]:
-            time.sleep(3.3)
+            skew["offset"] = 60.0
             return original_normalize(**kwargs)
 
         threading.Thread(target=sender, daemon=True).start()
         LIFECYCLE.normalize_probe_output = delayed_normalize
+        LIFECYCLE.time = _SkewedTime()
         try:
             result = LIFECYCLE.run_owned_process(
                 _fixture("ignore_term_sleep"),
@@ -917,6 +926,7 @@ class PublicationBarrierInProcessTests(unittest.TestCase):
             )
         finally:
             LIFECYCLE.normalize_probe_output = original_normalize
+            LIFECYCLE.time = original_time
             signal.signal(signal.SIGTERM, prior)
             os.close(write_fd)
         raw = _read_all(read_fd)
