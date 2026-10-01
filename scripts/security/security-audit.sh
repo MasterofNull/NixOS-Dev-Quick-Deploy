@@ -13,7 +13,7 @@ usage() {
   cat <<'EOF'
 Usage: scripts/security/security-audit.sh [--repo-root PATH] [--output-dir PATH] [--notify-user USER]
 
-Runs pip-audit on requirements.lock files and npm audit on package.json roots.
+Runs pip-audit on any ai-stack requirements.lock files (none since the 2026-10-01 Nix-only decision; closure scanning lives in scripts/security/aq-closure-scan) and npm audit on package.json roots.
 Writes JSON report: audit-YYYY-MM-DD.json and latest-security-audit.json.
 EOF
 }
