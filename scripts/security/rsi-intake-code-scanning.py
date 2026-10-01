@@ -156,6 +156,15 @@ def _load_alerts(path: str) -> list[dict[str, Any]]:
     raise AlertSourceError(f"unexpected alert format in {path}")
 
 
+_SEVERITY_ALIASES = {"note": "low", "info": "low", "none": "low", "warning": "medium", "error": "high"}
+
+
+def _normalize_severity(sev: str) -> str:
+    """Map code-scanning levels (note/warning/error) onto the ledger's low..critical scale."""
+    sev = str(sev or "medium").strip().lower()
+    return _SEVERITY_ALIASES.get(sev, sev if sev in {"low", "medium", "high", "critical"} else "medium")
+
+
 def _severity_order(sev: str) -> int:
     """Return sort order for severity (higher = worse)."""
     order = {"critical": 4, "high": 3, "medium": 2, "low": 1}
@@ -240,7 +249,7 @@ def main() -> int:
                 "alert_count": 0,
             }
 
-        groups[key]["severities"].append(severity)
+        groups[key]["severities"].append(_normalize_severity(severity))
         if fixed and fixed.strip():
             # Handle comma-separated fixed versions
             for v in fixed.split(","):

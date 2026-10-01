@@ -168,6 +168,18 @@ def resolve(incident_id: str, root_cause: str, regression: str, validation: str)
         _save(ledger, state)
 
 
+def annotate(incident_id: str, note: str) -> None:
+    """Attach a bounded operator/steward note without changing incident status."""
+    if not note.strip():
+        raise ValueError("note must not be empty")
+    ledger = _RUNTIME / "rsi-incidents.json"
+    with (_RUNTIME / "rsi-incidents.lock").open("a") as lock:
+        fcntl.flock(lock, fcntl.LOCK_EX)
+        state = json.loads(ledger.read_text())
+        state["incidents"][incident_id]["note"] = _clean(note)
+        _save(ledger, state)
+
+
 def complete(agent: str, subject: str, evidence: str = "") -> None:
     _event(agent, "rsi.complete", {"evidence": evidence[:500]}, subject)
 
