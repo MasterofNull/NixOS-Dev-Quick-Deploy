@@ -1,0 +1,6 @@
+VERDICT: PASS
+
+1. **Line 295**: The fix correctly restricts the check to `Path(rel).parts` (repo-relative), ensuring that absolute path components like `.agents` in the filesystem root or worktree location do not trigger exclusion for valid repo files.
+2. **Line 378**: The logic `path.relative_to(REPO_ROOT).parts if path.is_relative_to(REPO_ROOT) else path.parts` ensures that only paths within the repo are subject to part-based exclusion, preventing false positives for external or absolute paths while maintaining the exclusion intent for internal paths containing ignored parts.
+3. **Lines 29-40**: The added contract test `check_checkout_under_excluded_dir` validates both sides of the fix: it confirms that a file under `.agents/` (simulating a worktree checkout) is NOT excluded, and a file actually named `.agents/y.md` IS excluded, verifying no regression in exclusion logic.
+4. **Scope Integrity**: The changes are localized to `scripts/ai/aq-integrity-scan` and its specific contract test, with no side effects on other modules or global state.

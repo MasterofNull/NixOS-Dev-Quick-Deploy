@@ -25,6 +25,10 @@ RUN pip install --no-cache-dir torch --index-url https://download.pytorch.org/wh
 # Install other packages from PyPI
 RUN pip install --no-cache-dir flask sentence-transformers requests prometheus-client structlog pydantic pyyaml
 
+# FINAL: Verify floor versions after all dependency installs to catch downgrades
+RUN pip install --upgrade --no-cache-dir "pip>=26.1" "wheel>=0.46.3" "setuptools>=83.0.0" && \
+    python -c "import setuptools,sys; v=tuple(int(x) for x in setuptools.__version__.split('.')[:2]); sys.exit(0 if v>=(83,0) else 1)"
+
 # Copy server code and shared config helpers
 COPY embeddings-service/server.py .
 COPY shared/ /app/shared/

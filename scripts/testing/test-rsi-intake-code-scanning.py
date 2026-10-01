@@ -294,6 +294,27 @@ def test_os_error_stability() -> None:
         Path(tmp_path2).unlink(missing_ok=True)
 
 
+def test_note_severity_maps_to_low() -> None:
+    """Trivy emits 'note'; an unmapped level aborted the whole intake mid-run."""
+    alerts = [{
+        "state": "open",
+        "most_recent_instance": {"category": "trivy-custom-test",
+                                 "message": {"text": "Package: p\nInstalled Version: 1.0\nFixed Version: 2.0"}},
+        "rule": {"security_severity_level": None, "severity": "note"},
+    }]
+    with tempfile.NamedTemporaryFile(mode="w", suffix=".json", delete=False) as fh:
+        json.dump(alerts, fh)
+        tmp_path = fh.name
+    try:
+        result = subprocess.run([str(INTAKE_SCRIPT), "--alerts", tmp_path, "--dry-run"],
+                                capture_output=True, text=True, check=False)
+        assert_true(result.returncode == 0, f"intake failed: {result.stderr}")
+        planned = json.loads(result.stdout.strip().split("\n")[0])
+        assert_true(planned[0]["severity"] == "low", f"expected low, got {planned[0]['severity']}")
+    finally:
+        Path(tmp_path).unlink(missing_ok=True)
+
+
 def test_dry_run_does_not_record() -> None:
     """--dry-run must not write to the RSI ledger."""
     alerts = [
@@ -478,6 +499,7 @@ def main() -> int:
         ("manifest resolution requirements.txt", test_manifest_resolution_requirements_txt),
         ("os_error stability", test_os_error_stability),
         ("os_error stable when fixed version changes", test_os_error_stable_when_fixed_version_changes),
+        ("note severity maps to low", test_note_severity_maps_to_low),
         ("dry_run does not record", test_dry_run_does_not_record),
         ("empty alerts returns zero groups", test_empty_alerts_returns_zero_groups),
     ]

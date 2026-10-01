@@ -19,9 +19,10 @@ from datetime import datetime, timezone
 from pathlib import Path
 
 _REPO_ROOT = Path(__file__).resolve().parents[3]
-_RUNTIME = _REPO_ROOT / ".agent" / "collaboration"
-_BACKLOG = _REPO_ROOT / ".agent" / "memory" / "issues-backlog.md"
-_WORKAROUNDS = _REPO_ROOT / ".agent" / "WORKAROUND-REGISTER.md"
+# Env overrides exist so CLIs and tests can target an isolated ledger; unset = canonical paths.
+_RUNTIME = Path(os.environ.get("RSI_RUNTIME_DIR") or _REPO_ROOT / ".agent" / "collaboration")
+_BACKLOG = Path(os.environ.get("RSI_BACKLOG_FILE") or _REPO_ROOT / ".agent" / "memory" / "issues-backlog.md")
+_WORKAROUNDS = Path(os.environ.get("RSI_WORKAROUNDS_FILE") or _REPO_ROOT / ".agent" / "WORKAROUND-REGISTER.md")
 
 
 def _now() -> str:
@@ -164,6 +165,34 @@ def resolve(incident_id: str, root_cause: str, regression: str, validation: str)
         incident.update(status="resolved", resolved_at=_now(),
                         resolution=dict(zip(("root_cause", "regression", "validation"),
                                             map(_clean, (root_cause, regression, validation)))))
+        _save(ledger, state)
+        _close_backlog_line(incident_id)
+
+
+def _close_backlog_line(incident_id: str) -> None:
+    """Flip the incident's `[OPEN] rsi-<id>` backlog line to `[DONE <date>]` (no-op if absent)."""
+    try:
+        text = _BACKLOG.read_text(encoding="utf-8")
+    except OSError:
+        return
+    marker = f"[OPEN] rsi-{incident_id} "
+    if marker not in text:
+        return
+    done = f"[DONE {_now()[:10]}] rsi-{incident_id} "
+    tmp = _BACKLOG.with_name(_BACKLOG.name + ".tmp")
+    tmp.write_text(text.replace(marker, done), encoding="utf-8")
+    os.replace(tmp, _BACKLOG)
+
+
+def annotate(incident_id: str, note: str) -> None:
+    """Attach a bounded operator/steward note without changing incident status."""
+    if not note.strip():
+        raise ValueError("note must not be empty")
+    ledger = _RUNTIME / "rsi-incidents.json"
+    with (_RUNTIME / "rsi-incidents.lock").open("a") as lock:
+        fcntl.flock(lock, fcntl.LOCK_EX)
+        state = json.loads(ledger.read_text())
+        state["incidents"][incident_id]["note"] = _clean(note)
         _save(ledger, state)
 
 

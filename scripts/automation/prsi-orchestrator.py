@@ -38,6 +38,7 @@ AI_LIB_DIR = AI_SCRIPT_DIR / "lib"
 if str(AI_LIB_DIR) not in sys.path:
     sys.path.insert(0, str(AI_LIB_DIR))
 
+import rsi_gate  # noqa: E402
 from workflow_deviation import (  # noqa: E402
     DeviationContractError,
     learning_candidate,
@@ -925,6 +926,26 @@ def _reconcile_stale_rsi_running(queue: Dict[str, Any], timeout_seconds: int) ->
     return stale
 
 
+def _rsi_gate_filter(eligible: List[Dict[str, Any]], cfg: Dict[str, Any], apply: bool) -> Tuple[List[Dict[str, Any]], Dict[str, int]]:
+    """Drop rows lacking a valid bound owner approval (policy rsi.approval_binding_enabled)."""
+    incidents = (_read_json(_RSI_INCIDENTS, {}) or {}).get("incidents", {})
+    authorities = tuple(cfg.get("approval_authorities") or ("owner",))
+    scope = "apply" if apply else "diagnose"
+    allowed: List[Dict[str, Any]] = []
+    skips: Dict[str, int] = {}
+    for row in eligible:
+        incident = incidents.get((row.get("raw_action") or {}).get("incident_id"))
+        ok, reason = (False, "no_incident") if not isinstance(incident, dict) else rsi_gate.check(
+            incident, scope, authorities=authorities, store=_RSI_INCIDENTS.parent)
+        if ok:
+            allowed.append(row)
+            continue
+        result = f"skipped_{reason}"
+        row.setdefault("execution", {})["result"] = result
+        skips[result] = skips.get(result, 0) + 1
+    return allowed, skips
+
+
 def cmd_rsi_dispatch(args: argparse.Namespace) -> int:
     """Reconcile and dispatch a bounded RSI diagnostic/repair through isolated delegation."""
     policy = _load_policy()
@@ -975,6 +996,13 @@ def cmd_rsi_dispatch(args: argparse.Namespace) -> int:
             and row.get("status") in {"rsi_pending", "rsi_failed"}
             and int(row.get("rsi_attempts", 0) or 0) < max_attempts
         ]
+        rsi_cfg = policy.get("rsi", {}) if isinstance(policy.get("rsi"), dict) else {}
+        binding_on = bool(rsi_cfg.get("approval_binding_enabled", False))
+        gate_skips: Dict[str, int] = {}
+        if binding_on:
+            eligible, gate_skips = _rsi_gate_filter(eligible, rsi_cfg, bool(args.apply))
+            if gate_skips:
+                _save_queue(queue)
         # Reuse PRSI's policy/budget gates.  The explicit rsi-dispatch command
         # is the bounded authority source for its isolated delegated task.
         # Fresh execution dicts: a shallow copy would share the original's dict, letting
@@ -988,7 +1016,7 @@ def cmd_rsi_dispatch(args: argparse.Namespace) -> int:
 
         # Copy gate results back onto queue rows so skip reasons persist and are
         # reported; clear a stale skip reason once a row passes the gate.
-        skipped_reasons: Dict[str, int] = {}
+        skipped_reasons: Dict[str, int] = dict(gate_skips)
         originals = {row.get("id"): row for row in eligible}
         queue_dirty = False
         for sel_row in selection:
@@ -1011,18 +1039,33 @@ def cmd_rsi_dispatch(args: argparse.Namespace) -> int:
         selected_ids = {row.get("id") for row in selected}
         selected_rows = [row for row in eligible if row.get("id") in selected_ids]
         executed = 0
+        lease_owner = f"rsi-dispatch:{os.getpid()}"
         for row in selected_rows:
-            row["status"] = "rsi_running"
-            row["rsi_attempts"] = int(row.get("rsi_attempts", 0) or 0) + 1
-            row["execution"] = {"last_run_at": _now(), "result": "dispatching_isolated_worktree", "receipt": {"lane": lane}}
-            _save_queue(queue)
-            result, receipt = _run_rsi_delegate(row, timeout_seconds, bool(args.apply), lane)
-            if result == "rsi_failed" and int(row["rsi_attempts"]) >= max_attempts:
-                result = "rsi_stalled"
-            row["status"] = result
-            row["execution"] = {"last_run_at": _now(), "result": result.removeprefix("rsi_"), "receipt": receipt}
-            executed += 1
-            _save_queue(queue)
+            if binding_on:
+                # Lease first (one claimant per row across triggers), then reserve a daily run.
+                if not rsi_gate.claim(str(row.get("id")), lease_owner, timeout_seconds + 120, store=_RSI_INCIDENTS.parent):
+                    skipped_reasons["skipped_lease_held"] = skipped_reasons.get("skipped_lease_held", 0) + 1
+                    continue
+                reserved, _runs = rsi_gate.reserve_daily_run(PRSI_STATE_PATH, int(rsi_cfg.get("daily_run_cap", 0) or 0))
+                if not reserved:
+                    rsi_gate.release(str(row.get("id")), lease_owner, store=_RSI_INCIDENTS.parent)
+                    skipped_reasons["skipped_daily_run_cap"] = skipped_reasons.get("skipped_daily_run_cap", 0) + 1
+                    break
+            try:
+                row["status"] = "rsi_running"
+                row["rsi_attempts"] = int(row.get("rsi_attempts", 0) or 0) + 1
+                row["execution"] = {"last_run_at": _now(), "result": "dispatching_isolated_worktree", "receipt": {"lane": lane}}
+                _save_queue(queue)
+                result, receipt = _run_rsi_delegate(row, timeout_seconds, bool(args.apply), lane)
+                if result == "rsi_failed" and int(row["rsi_attempts"]) >= max_attempts:
+                    result = "rsi_stalled"
+                row["status"] = result
+                row["execution"] = {"last_run_at": _now(), "result": result.removeprefix("rsi_"), "receipt": receipt}
+                executed += 1
+                _save_queue(queue)
+            finally:
+                if binding_on:
+                    rsi_gate.release(str(row.get("id")), lease_owner, store=_RSI_INCIDENTS.parent)
         _log_event({"ts": _now(), "event": "rsi_dispatch", "lane": lane, "executed": executed, "mode": "apply" if args.apply else "diagnose", "isolation": reason})
         output = {"ok": True, "lane": lane, "executed": executed, "resolved": resolved, "mode": "apply" if args.apply else "diagnose", "rsi": _rsi_summary(queue)}
         if skipped_reasons:
