@@ -123,12 +123,13 @@ class AlertSourceError(RuntimeError):
     """Alert source unreadable; distinct from a successful read with zero alerts."""
 
 
-def _fetch_alerts_from_github() -> list[dict[str, Any]]:
-    """Fetch open alerts from GitHub API using gh."""
+def _fetch_alerts_from_github(state: str = "open") -> list[dict[str, Any]]:
+    """Fetch alerts from GitHub API using gh; state="" returns every state (used to verify closure)."""
+    query = f"state={state}&per_page=100" if state else "per_page=100"
     try:
         result = subprocess.run(
             ["gh", "api", "--paginate", "--slurp",
-             "repos/{owner}/{repo}/code-scanning/alerts?state=open&per_page=100"],
+             f"repos/{{owner}}/{{repo}}/code-scanning/alerts?{query}"],
             capture_output=True, text=True, check=False, cwd=_REPO_ROOT, timeout=120,
         )
     except (FileNotFoundError, subprocess.TimeoutExpired) as exc:
