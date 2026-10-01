@@ -166,6 +166,22 @@ def resolve(incident_id: str, root_cause: str, regression: str, validation: str)
                         resolution=dict(zip(("root_cause", "regression", "validation"),
                                             map(_clean, (root_cause, regression, validation)))))
         _save(ledger, state)
+        _close_backlog_line(incident_id)
+
+
+def _close_backlog_line(incident_id: str) -> None:
+    """Flip the incident's `[OPEN] rsi-<id>` backlog line to `[DONE <date>]` (no-op if absent)."""
+    try:
+        text = _BACKLOG.read_text(encoding="utf-8")
+    except OSError:
+        return
+    marker = f"[OPEN] rsi-{incident_id} "
+    if marker not in text:
+        return
+    done = f"[DONE {_now()[:10]}] rsi-{incident_id} "
+    tmp = _BACKLOG.with_name(_BACKLOG.name + ".tmp")
+    tmp.write_text(text.replace(marker, done), encoding="utf-8")
+    os.replace(tmp, _BACKLOG)
 
 
 def annotate(incident_id: str, note: str) -> None:

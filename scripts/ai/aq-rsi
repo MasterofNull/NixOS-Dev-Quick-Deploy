@@ -5,6 +5,7 @@
   status   steward health from the PRSI action queue + incident ledger
   pending  high-risk rows awaiting owner sign-off (delegates to aq-rsi-pending)
   approve  print the exact owner verify command for a row; never approves anything
+  reconcile resolve code-scanning incidents whose alerts are all closed upstream (positive evidence only)
   sweep    observation-only ingest of persistent signals into the ledger (unknown != healthy)
 """
 from __future__ import annotations
@@ -163,6 +164,18 @@ def cmd_approve(args) -> int:
     return 1
 
 
+def cmd_reconcile(args) -> int:
+    import rsi_sweep
+    alerts = None
+    if args.alerts:
+        data, err = _load(Path(args.alerts))
+        if err:
+            print(f"UNKNOWN: {err}", file=sys.stderr)
+            return 2
+        alerts = data.get("alerts", []) if isinstance(data, dict) else data
+    return rsi_sweep.reconcile(alerts=alerts, dry_run=args.dry_run, as_json=args.json)
+
+
 def cmd_sweep(args) -> int:
     import rsi_sweep
     return rsi_sweep.run(dry_run=args.dry_run, as_json=args.json)
@@ -191,6 +204,11 @@ def main() -> int:
     p = sub.add_parser("approve", help="print the owner verify command")
     p.add_argument("id")
     p.set_defaults(fn=cmd_approve)
+    p = sub.add_parser("reconcile", help="resolve incidents proven fixed by closed code-scanning alerts")
+    p.add_argument("--alerts", help="alerts JSON with all states (default: fetch via gh)")
+    p.add_argument("--dry-run", action="store_true")
+    p.add_argument("--json", action="store_true")
+    p.set_defaults(fn=cmd_reconcile)
     p = sub.add_parser("sweep", help="observation-only persistent-signal ingest")
     p.add_argument("--dry-run", action="store_true")
     p.add_argument("--json", action="store_true")

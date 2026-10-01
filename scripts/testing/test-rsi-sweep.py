@@ -80,6 +80,69 @@ class AdapterTests(unittest.TestCase):
         self.assertNotIn("5.10.0", f[0]["os_error"])  # fixed version stays out of identity
 
 
+def _alert(category, pkg, installed, state, **extra):
+    return {"state": state, "most_recent_instance": {
+        "category": category, "commit_sha": "abcdef1234567890",
+        "message": {"text": f"Package: {pkg}\nInstalled Version: {installed}\nFixed Version: 9.9"}}, **extra}
+
+
+class ReconcileTests(unittest.TestCase):
+    def setUp(self):
+        self.tmp = tempfile.TemporaryDirectory()
+        self.addCleanup(self.tmp.cleanup)
+        root = Path(self.tmp.name)
+        for name, value in {"_RUNTIME": root, "_BACKLOG": root / "b.md", "_WORKAROUNDS": root / "w.md"}.items():
+            p = patch.object(rsi, name, value); p.start(); self.addCleanup(p.stop)
+        p = patch.object(rsi, "_event"); p.start(); self.addCleanup(p.stop)
+        self.ids = {}
+        for pkg in ("wheel", "setuptools", "ghost"):
+            self.ids[pkg] = rsi.failure("a", "s", "github-code-scanning:trivy-custom-x", "Dockerfile",
+                                        "trivy", f"{pkg} 1.0 vulnerable")
+
+    def incidents(self):
+        return json.loads((rsi._RUNTIME / "rsi-incidents.json").read_text())["incidents"]
+
+    def test_resolves_only_on_positive_closed_evidence(self):
+        cat = "trivy-custom-x"
+        alerts = [_alert(cat, "wheel", "1.0", "fixed", fixed_at="2026-10-01T00:00:00Z"),
+                  _alert(cat, "wheel", "1.0", "dismissed"),
+                  _alert(cat, "setuptools", "1.0", "fixed"),
+                  _alert(cat, "setuptools", "1.0", "open")]   # one still open: stays open
+        # "ghost" has no alerts at all: missing data must not resolve
+        with patch("builtins.print"):
+            self.assertEqual(sw.reconcile(alerts=alerts), 0)
+        inc = self.incidents()
+        self.assertEqual(inc[self.ids["wheel"]]["status"], "resolved")
+        res = inc[self.ids["wheel"]]["resolution"]
+        self.assertIn("upstream fix verified", res["root_cause"])
+        self.assertIn("2 alerts", res["root_cause"])
+        self.assertIn("abcdef123456", res["root_cause"])
+        self.assertEqual((res["regression"], res["validation"]), ("trivy rescan", "alert state fixed"))
+        self.assertEqual(inc[self.ids["setuptools"]]["status"], "open")
+        self.assertEqual(inc[self.ids["ghost"]]["status"], "open")
+        text = rsi._BACKLOG.read_text()
+        self.assertIn(f"[DONE", text)
+        self.assertNotIn(f"[OPEN] rsi-{self.ids['wheel']} ", text)
+        self.assertIn(f"[OPEN] rsi-{self.ids['ghost']} ", text)
+
+    def test_dry_run_changes_nothing_and_fetch_failure_is_unknown(self):
+        alerts = [_alert("trivy-custom-x", "wheel", "1.0", "fixed")]
+        with patch("builtins.print"):
+            sw.reconcile(alerts=alerts, dry_run=True)
+        self.assertEqual(self.incidents()[self.ids["wheel"]]["status"], "open")
+        intake = sw._load_intake()
+        with patch.object(intake, "_fetch_alerts_from_github", side_effect=intake.AlertSourceError("gh down")), \
+             patch.object(sw, "_load_intake", return_value=intake), patch("builtins.print"):
+            self.assertEqual(sw.reconcile(), 2)
+        self.assertEqual(self.incidents()[self.ids["wheel"]]["status"], "open")
+
+    def test_non_code_scanning_incidents_ignored(self):
+        other = rsi.failure("a", "s", "hook", "p", "a", "wheel 1.0 vulnerable")
+        with patch("builtins.print"):
+            sw.reconcile(alerts=[_alert("hook", "wheel", "1.0", "fixed")])
+        self.assertEqual(self.incidents()[other]["status"], "open")
+
+
 class RunTests(unittest.TestCase):
     def setUp(self):
         self.tmp = tempfile.TemporaryDirectory()

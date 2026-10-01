@@ -141,6 +141,86 @@ def adapter_payload_audit(runner=None):
     return ("findings" if findings else "ok"), findings, f"{len(findings)} high finding(s)"
 
 
+def _load_intake():
+    import importlib.util
+    from importlib.machinery import SourceFileLoader
+    path = _REPO / "scripts" / "security" / "rsi-intake-code-scanning.py"
+    loader = SourceFileLoader("rsi_intake_code_scanning", str(path))
+    module = importlib.util.module_from_spec(importlib.util.spec_from_loader(loader.name, loader))
+    loader.exec_module(module)
+    return module
+
+
+def _alert_key(alert, intake):
+    recent = alert.get("most_recent_instance") or {}
+    parsed = intake._parse_alert_message((recent.get("message") or {}).get("text", ""))
+    category = recent.get("category") or "unknown"
+    return (f"github-code-scanning:{category}", parsed.get("package", "unknown"), parsed.get("installed", "unknown"))
+
+
+def plan_reconcile(alerts, incidents, intake=None):
+    """Return [(incident_id, evidence)] for open code-scanning incidents with positive closure proof.
+
+    Positive proof = at least one alert for the incident's (category, package, installed) exists in
+    the API data and every such alert is fixed/dismissed.  No matching alerts = no evidence = open.
+    """
+    intake = intake or _load_intake()
+    by_key: dict[tuple, list] = {}
+    for alert in alerts:
+        if isinstance(alert, dict):
+            by_key.setdefault(_alert_key(alert, intake), []).append(alert)
+    plan = []
+    for iid, inc in sorted(incidents.items()):
+        if not isinstance(inc, dict) or inc.get("status") != "open":
+            continue
+        if not str(inc.get("producer", "")).startswith("github-code-scanning:"):
+            continue
+        error = str(inc.get("error", ""))
+        m = re.match(r"^(\S+) (\S+) vulnerable", error)
+        if not m:
+            continue
+        matched = by_key.get((inc["producer"], m.group(1), m.group(2)), [])
+        if not matched or any(a.get("state") not in ("fixed", "dismissed") for a in matched):
+            continue
+        stamps = sorted(str(a.get("fixed_at") or a.get("dismissed_at") or "") for a in matched)
+        commit = ((matched[0].get("most_recent_instance") or {}).get("commit_sha") or "")[:12]
+        plan.append((iid, {"alerts": len(matched), "analysis": commit or (stamps[-1][:10] if stamps and stamps[-1] else "unknown"),
+                           "states": sorted({a["state"] for a in matched})}))
+    return plan
+
+
+def reconcile(alerts=None, dry_run=False, as_json=False) -> int:
+    """Resolve code-scanning incidents whose alerts are all closed upstream; unknown source = no change."""
+    os.environ.pop("REDIS_URL", None)
+    import rsi_lifecycle
+    intake = _load_intake()
+    if alerts is None:
+        try:
+            alerts = intake._fetch_alerts_from_github(state="")
+        except intake.AlertSourceError as exc:
+            print(json.dumps({"state": "unknown", "error": str(exc)}) if as_json else f"UNKNOWN: {exc}")
+            return 2
+    ledger = rsi_lifecycle._RUNTIME / "rsi-incidents.json"
+    try:
+        incidents = json.loads(ledger.read_text()).get("incidents", {})
+    except (OSError, json.JSONDecodeError) as exc:
+        print(f"UNKNOWN: incident ledger unreadable: {exc}", file=sys.stderr)
+        return 2
+    plan = plan_reconcile(alerts, incidents, intake)
+    resolved = []
+    for iid, ev in plan:
+        if not dry_run:
+            rsi_lifecycle.resolve(
+                iid,
+                f"upstream fix verified: code-scanning alerts closed ({ev['alerts']} alerts, analysis {ev['analysis']})",
+                "trivy rescan", "alert state fixed")
+        resolved.append({"id": iid, **ev})
+    summary = {"dry_run": dry_run, "resolved": resolved, "alerts_seen": len(alerts)}
+    print(json.dumps(summary, sort_keys=True) if as_json else
+          f"reconcile: {len(resolved)} incident(s) {'would resolve' if dry_run else 'resolved'} from {len(alerts)} alerts")
+    return 0
+
+
 def run(dry_run=False, as_json=False, adapters=None) -> int:
     os.environ.pop("REDIS_URL", None)
     import rsi_lifecycle
