@@ -43,6 +43,22 @@ class Summarize(unittest.TestCase):
         out = scan.summarize({}, top=5)
         self.assertEqual(out["total"], 0)
 
+    def test_sarif_results_get_non_empty_artifact_location(self):
+        # grype emits uri "" for SBOM inputs; GitHub code scanning rejects that upload.
+        doc = {"runs": [{"results": [
+            {"ruleId": "CVE-1-redis", "locations": [{"physicalLocation": {"artifactLocation": {"uri": ""}}}]},
+            {"ruleId": "CVE-2-zlib"},
+            {"ruleId": "CVE-3-curl", "locations": [{"physicalLocation": {"artifactLocation": {"uri": "keep.txt"}}}]},
+        ]}]}
+        with tempfile.TemporaryDirectory() as tmp:
+            path = Path(tmp) / "c.sarif"
+            path.write_text(json.dumps(doc))
+            self.assertEqual(scan.anchor_sarif(path), 2)
+            for res in json.loads(path.read_text())["runs"][0]["results"]:
+                self.assertTrue(res["locations"][0]["physicalLocation"]["artifactLocation"]["uri"])
+            self.assertEqual(json.loads(path.read_text())["runs"][0]["results"][2]["locations"][0]
+                             ["physicalLocation"]["artifactLocation"]["uri"], "keep.txt")
+
     def test_scanner_crash_is_error_not_clean(self):
         def boom(*a, **k):
             raise scan.ScanError("grype exited 1")

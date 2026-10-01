@@ -20,6 +20,12 @@ HOST_ONLY_IDS = frozenset({
     "0.1.1", "0.1.2", "0.1.3", "0.2.1", "0.2.2", "0.2.3", "0.2.4", "0.2.5",
     "0.3.1", "0.3.2", "0.3.3", "0.4.1", "0.4.2", "0.4.3", "0.5.1", "0.5.3",
     "0.6.1", "0.6.2", "0.7.4", "0.8.1", "0.10.22",
+    # Live HTTP endpoints of the deployed stack (switchboard, hybrid-coordinator, dashboard).
+    "0.5.2", "0.7.1", "0.7.2", "0.9.1", "0.9.2", "0.9.3", "0.10.40", "0.10.42", "0.10.44",
+    "0.12.1", "0.16.2", "86.7",
+    # Deployed host state absent off-host: the active model file, untracked operational state
+    # (PULSE.log, RESUME.json, candidates.json) and the fine-tuning dataset under /var/lib.
+    "0.10.5", "0.13.2", "0.13.4", "0.152.3", "0.152.4", "0.152.9",
 })
 _TRUE = {"1", "true", "yes", "on"}
 
