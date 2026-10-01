@@ -32,6 +32,7 @@ COPY aidb/requirements.txt /app/requirements.txt
 # CRITICAL: Install PyTorch CPU-only FIRST using --index-url (not --extra-index-url)
 # This prevents sentence-transformers from pulling in CUDA dependencies
 # Cache mount persists pip downloads across rebuilds
+# Use floors (>=) to allow newer CPU-compatible versions (exact pins only in requirements.lock)
 # See: https://github.com/pytorch/pytorch/issues/146786
 #      https://github.com/UKPLab/sentence-transformers/issues/2637
 #      https://pythonspeed.com/articles/docker-cache-pip-downloads/
@@ -40,7 +41,7 @@ RUN --mount=type=cache,target=/root/.cache/pip \
     --index-url https://download.pytorch.org/whl/cpu \
     --timeout 300 \
     --retries 5 \
-    torch==2.11.0 torchvision==0.26.0 torchaudio==2.11.0
+    "torch>=2.11.0" "torchvision>=0.26.0" "torchaudio>=2.11.0"
 
 # Then install remaining dependencies (will use already-installed PyTorch CPU)
 # Cache mount reuses previously downloaded packages
@@ -49,6 +50,11 @@ RUN --mount=type=cache,target=/root/.cache/pip \
     --timeout 300 \
     --retries 5 \
     -r /app/requirements.txt
+
+# FINAL: Verify floor versions after all dependency installs to catch downgrades
+RUN --mount=type=cache,target=/root/.cache/pip \
+    pip install --upgrade "pip>=26.1" "wheel>=0.46.3" "setuptools>=83.0.0" && \
+    python -c "import setuptools,sys; v=tuple(int(x) for x in setuptools.__version__.split('.')[:2]); sys.exit(0 if v>=(83,0) else 1)"
 
 COPY aidb/ /app/
 COPY shared/ /app/shared/
