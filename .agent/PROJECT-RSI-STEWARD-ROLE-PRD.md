@@ -86,3 +86,6 @@ Which existing timers fold into the steward sweep vs stay as signal producers
 Built 2026-09-30: code-scanning -> ledger bridge, aq-rsi-pending + aq-resume banner,
 skip-reason persistence, dispatch unit sandbox fixes; lane switch in progress
 (codex task codex-20260930-150253). See issues-backlog `rsi-dispatch-*` entries.
+
+## Steward evidence log (rsi-steward, 2026-09-30)
+- S1 `aq-rsi` CLI (`scripts/ai/aq-rsi`): `report` (rsi_lifecycle.failure; local, no model/network, <2s), `status` (steward health; missing queue = unknown, exit 2; alert on pending >24h with zero executed), `pending` (delegates to aq-rsi-pending), `approve` (prints the owner verify command only). Tests: `scripts/testing/test-aq-rsi.py`. `rsi_lifecycle` ledger paths accept `RSI_RUNTIME_DIR` / `RSI_BACKLOG_FILE` / `RSI_WORKAROUNDS_FILE` for isolated runs.

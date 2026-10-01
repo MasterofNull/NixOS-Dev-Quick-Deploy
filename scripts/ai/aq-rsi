@@ -1,0 +1,193 @@
+#!/usr/bin/env python3
+"""aq-rsi — hand friction to the RSI loop and read the loop's own health.
+
+  report   record a failure via rsi_lifecycle (identity/dedupe); local, no model/network
+  status   steward health from the PRSI action queue + incident ledger
+  pending  high-risk rows awaiting owner sign-off (delegates to aq-rsi-pending)
+  approve  print the exact owner verify command for a row; never approves anything
+"""
+from __future__ import annotations
+
+import argparse
+import json
+import os
+import subprocess
+import sys
+from datetime import datetime, timezone
+from pathlib import Path
+
+REPO_ROOT = Path(__file__).resolve().parents[2]
+sys.path.insert(0, str(REPO_ROOT / "scripts" / "ai" / "lib"))
+
+PENDING_ALERT_HOURS = 24
+
+
+def _queue_path() -> Path:
+    return Path(os.getenv("PRSI_ACTION_QUEUE_PATH", "/var/lib/nixos-ai-stack/optimizer/prsi/action-queue.json"))
+
+
+def _incidents_path() -> Path:
+    runtime = os.getenv("RSI_RUNTIME_DIR")
+    default = Path(runtime) / "rsi-incidents.json" if runtime else REPO_ROOT / ".agent" / "collaboration" / "rsi-incidents.json"
+    return Path(os.getenv("PRSI_INCIDENTS_FILE", str(default)))
+
+
+def _load(path: Path):
+    """Return (data, error). A missing/corrupt source is an error, never an empty-healthy answer."""
+    try:
+        return json.loads(path.read_text()), None
+    except FileNotFoundError:
+        return None, f"not found: {path}"
+    except (OSError, json.JSONDecodeError) as exc:
+        return None, f"unreadable {path}: {exc}"
+
+
+def _parse_ts(value):
+    try:
+        dt = datetime.fromisoformat(str(value).replace("Z", "+00:00"))
+        return dt if dt.tzinfo else dt.replace(tzinfo=timezone.utc)
+    except ValueError:
+        return None
+
+
+def _is_rsi_row(row) -> bool:
+    action = row.get("raw_action") if isinstance(row, dict) else None
+    return isinstance(action, dict) and action.get("source") == "rsi-incidents.json"
+
+
+def compute_status(queue, incidents, now=None) -> dict:
+    now = now or datetime.now(timezone.utc)
+    rows = [r for r in queue.get("actions", []) if _is_rsi_row(r)]
+    by_status: dict[str, int] = {}
+    skipped: dict[str, int] = {}
+    lanes: dict[str, dict[str, int]] = {}
+    executed = stalled = 0
+    pending_times = []
+    for row in rows:
+        status = str(row.get("status", "unknown"))
+        by_status[status] = by_status.get(status, 0) + 1
+        execution = row.get("execution") if isinstance(row.get("execution"), dict) else {}
+        result = str(execution.get("result", ""))
+        if result.startswith("skipped_"):
+            skipped[result] = skipped.get(result, 0) + 1
+        if int(row.get("rsi_attempts", 0) or 0) > 0:
+            executed += 1
+            receipt = execution.get("receipt") if isinstance(execution.get("receipt"), dict) else {}
+            lane = str(receipt.get("lane", "unknown"))
+            lanes.setdefault(lane, {})
+            lanes[lane][status] = lanes[lane].get(status, 0) + 1
+        if status == "rsi_stalled":
+            stalled += 1
+        if status == "rsi_pending":
+            ts = _parse_ts(row.get("created_at"))
+            if ts:
+                pending_times.append(ts)
+    oldest_age_h = round((now - min(pending_times)).total_seconds() / 3600, 2) if pending_times else None
+    alerts = []
+    if oldest_age_h is not None and oldest_age_h > PENDING_ALERT_HOURS and executed == 0:
+        alerts.append(f"pending>{PENDING_ALERT_HOURS}h with zero executed (oldest {oldest_age_h}h)")
+    open_incidents = sum(1 for i in (incidents or {}).values() if isinstance(i, dict) and i.get("status") == "open")
+    return {
+        "rsi_rows": len(rows), "by_status": by_status, "executed": executed,
+        "skipped": skipped, "skipped_total": sum(skipped.values()), "stalled": stalled,
+        "oldest_pending_age_hours": oldest_age_h, "per_lane": lanes,
+        "open_incidents": open_incidents, "alerts": alerts, "healthy": not alerts and not stalled,
+    }
+
+
+def cmd_report(args) -> int:
+    # Telemetry mirroring must never reach the network from an on-demand report.
+    os.environ.pop("REDIS_URL", None)
+    import rsi_lifecycle
+    try:
+        incident = rsi_lifecycle.failure(
+            args.agent, args.subject, args.producer, args.path, args.authority, args.error,
+            severity=args.severity, root_fix=args.root_fix)
+    except (ValueError, OSError) as exc:
+        print(f"aq-rsi report: {exc}", file=sys.stderr)
+        return 2
+    print(json.dumps({"ok": True, "incident": incident}, sort_keys=True))
+    return 0
+
+
+def cmd_status(args) -> int:
+    queue, qerr = _load(_queue_path())
+    incidents, ierr = _load(_incidents_path())
+    if qerr:
+        # Unknown, not healthy: a missing queue must not read as an all-clear.
+        out = {"healthy": None, "state": "unknown", "error": qerr}
+        print(json.dumps(out, sort_keys=True) if args.json else f"UNKNOWN: {qerr}")
+        return 2
+    out = compute_status(queue, (incidents or {}).get("incidents", {}) if not ierr else {})
+    if ierr:
+        out["incident_ledger"] = f"unknown ({ierr})"
+    if args.json:
+        print(json.dumps(out, sort_keys=True))
+    else:
+        print(f"rsi rows={out['rsi_rows']} executed={out['executed']} skipped={out['skipped_total']} "
+              f"stalled={out['stalled']} open_incidents={out['open_incidents']}")
+        print(f"oldest pending age (h): {out['oldest_pending_age_hours']}")
+        for lane, counts in sorted(out["per_lane"].items()):
+            print(f"lane {lane}: {counts}")
+        for reason, n in sorted(out["skipped"].items()):
+            print(f"skipped {reason}: {n}")
+        for alert in out["alerts"]:
+            print(f"ALERT: {alert}")
+    return 0 if out["healthy"] else 1
+
+
+def cmd_pending(args) -> int:
+    cmd = [sys.executable, str(REPO_ROOT / "scripts" / "ai" / "aq-rsi-pending")]
+    if args.json:
+        cmd.append("--json")
+    if args.count:
+        cmd.append("--count")
+    return subprocess.call(cmd)
+
+
+def cmd_approve(args) -> int:
+    queue, err = _load(_queue_path())
+    if err:
+        print(f"aq-rsi approve: {err}", file=sys.stderr)
+        return 2
+    for row in queue.get("actions", []):
+        if not _is_rsi_row(row):
+            continue
+        if args.id in (row.get("id"), row["raw_action"].get("incident_id")):
+            rid = row.get("id")
+            print(f"Owner sign-off required (aq-rsi does not approve). Run:\n"
+                  f'  scripts/automation/prsi-orchestrator.py verify --id {rid} --by owner --note "<reason>"')
+            return 0
+    print(f"aq-rsi approve: no RSI row or incident matches {args.id!r}", file=sys.stderr)
+    return 1
+
+
+def main() -> int:
+    ap = argparse.ArgumentParser(description=__doc__, formatter_class=argparse.RawDescriptionHelpFormatter)
+    sub = ap.add_subparsers(dest="cmd", required=True)
+    p = sub.add_parser("report", help="record friction/failure (non-blocking)")
+    p.add_argument("error")
+    p.add_argument("--agent", default=os.getenv("AQ_AGENT", "agent"))
+    p.add_argument("--subject", default="on-demand report")
+    p.add_argument("--producer", default="aq-rsi-report")
+    p.add_argument("--path", default="unspecified")
+    p.add_argument("--authority", default="agent-reported")
+    p.add_argument("--severity", default="medium")
+    p.add_argument("--root-fix", default="")
+    p.set_defaults(fn=cmd_report)
+    p = sub.add_parser("status", help="steward health")
+    p.add_argument("--json", action="store_true")
+    p.set_defaults(fn=cmd_status)
+    p = sub.add_parser("pending", help="rows awaiting owner sign-off")
+    p.add_argument("--json", action="store_true")
+    p.add_argument("--count", action="store_true")
+    p.set_defaults(fn=cmd_pending)
+    p = sub.add_parser("approve", help="print the owner verify command")
+    p.add_argument("id")
+    p.set_defaults(fn=cmd_approve)
+    args = ap.parse_args()
+    return args.fn(args)
+
+
+if __name__ == "__main__":
+    sys.exit(main())
