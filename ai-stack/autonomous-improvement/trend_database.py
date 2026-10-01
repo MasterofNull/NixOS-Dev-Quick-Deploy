@@ -11,6 +11,7 @@ import asyncio
 import json
 import os
 import sqlite3
+import sys
 from dataclasses import dataclass
 from datetime import datetime, timedelta
 from pathlib import Path
@@ -22,6 +23,16 @@ try:
 except ModuleNotFoundError:  # Offline metric-source tests do not need PostgreSQL.
     psycopg2 = None  # type: ignore[assignment]
     execute_values = None  # type: ignore[assignment]
+
+# Import run_event_metrics (same directory)
+_AI_LIB = Path(__file__).parent
+if str(_AI_LIB) not in sys.path:
+    sys.path.insert(0, str(_AI_LIB))
+
+try:
+    from run_event_metrics import collect_run_event_metrics as _collect_run_events
+except ImportError:
+    _collect_run_events = None  # type: ignore[assignment]
 
 
 @dataclass
@@ -77,6 +88,10 @@ class TrendDatabase:
             os.environ.get("AQ_ROUTING_METRICS_DB_PATH", self.repo_root / "routing_metrics.db")
         )
         self.experiments_db = self.repo_root / "ai-stack/autoresearch/experiments.sqlite"
+        self.agent_run_events_path = Path(os.environ.get(
+            "AQ_AGENT_RUN_EVENTS_PATH",
+            "/var/lib/ai-stack/hybrid/telemetry/agent-run-events.jsonl"
+        ))
 
     def connect(self) -> psycopg2.extensions.connection:
         """Get or create PostgreSQL connection"""
@@ -253,6 +268,22 @@ class TrendDatabase:
 
         return snapshots
 
+    def collect_agent_run_event_metrics(self, since_hours: int = 24) -> List[MetricSnapshot]:
+        """
+        Collect metrics from agent-run-events JSONL (live observed activity).
+        This is the canonical source for autonomous improvement metrics.
+        Requires run_event_metrics.collect_run_event_metrics to be available.
+        """
+        if _collect_run_events is None:
+            return []
+
+        try:
+            snapshots, stats = _collect_run_events(self.agent_run_events_path, since_hours=since_hours)
+            return snapshots
+        except Exception:
+            # Graceful degradation: if collection fails, return empty list
+            return []
+
     def collect_baseline_metrics(self) -> List[MetricSnapshot]:
         """
         Collect metrics from baseline profiler
@@ -264,9 +295,12 @@ class TrendDatabase:
 
     def collect_all_metrics(self, since_hours: int = 24) -> List[MetricSnapshot]:
         """
-        Aggregate metrics from all data sources
+        Aggregate metrics from all data sources.
+        Primary source: agent-run-events JSONL (live observed activity).
+        Secondary sources: routing_metrics.db, experiments.sqlite
         """
         all_metrics = []
+        all_metrics.extend(self.collect_agent_run_event_metrics(since_hours))
         all_metrics.extend(self.collect_routing_metrics(since_hours))
         all_metrics.extend(self.collect_experiment_metrics(since_hours))
         all_metrics.extend(self.collect_baseline_metrics())
