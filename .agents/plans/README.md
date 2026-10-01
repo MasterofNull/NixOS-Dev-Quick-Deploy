@@ -1,54 +1,32 @@
-# Plans Index
+# Development Plans
 
 Status: Active
 Owner: AI Stack Maintainers
-Last Updated: 2026-05-25
+Last Updated: 2026-10-01
 
-## Start Here
+This directory contains durable implementation plans and some historical or operational records. Use the [system and software development map](../../docs/architecture/development-map.md) for the canonical source-of-truth boundaries, lifecycle, and workflow.
 
-Use this directory for active implementation plans and short-lived phase records. Do not treat every file in this directory as current authority.
+## Start here
 
-For agent behavior, instruction, routing, and feature parity work, start with:
+- Portfolio and lifecycle view: `aq-plans-index`
+- A plan’s projected tasks and dependencies: `aq-pm-tracker <plan>`
+- AQ-OS program rollup: `aq-refactor-status`
+- Workflow and tracker policy: `.agent/WORKFLOW-CANON.md`
+- Document retention and archival: `docs/operations/document-lifecycle-hygiene.md`
+- Agent behavior parity index: `docs/architecture/agent-behavior-parity-index.md`
 
-- `docs/architecture/agent-behavior-parity-index.md`
-- `docs/architecture/role-matrix.md`
-- `docs/architecture/routing-profile-inventory.md`
-- `.agents/plans/multi-agent-edge-harness/PARITY-INTEGRATION-PLAN.md`
+Historical plans are evidence, not default instructions.
 
-For document lifecycle and retirement rules, use:
+Use `--help` on the installed commands for supported output modes. The generated views are projections; this README and plan prose do not maintain completion percentages or current status.
 
-- `docs/operations/document-lifecycle-hygiene.md`
+## What belongs here
 
-## Required Plan Header
+Put durable, owned implementation work in a plan directory with a stable objective, scope, dependencies, validation goals, and completion condition. Follow the workflow contract for its editorial `tracker.json`; projected progress is derived from evidence.
 
-Every new active plan should include:
+Keep short-lived coordination, handoffs, reviews, and consensus-round records in their established operational locations. Where an existing record lives under this tree, do not treat its location alone as evidence that it is an active project. Link operational evidence to the durable plan it supports.
 
-```text
-# Title
+## Lifecycle and records
 
-Status: Active
-Owner: <agent/team>
-Last Updated: YYYY-MM-DD
-Supersedes: none
-Superseded-By: none
-```
+Use `.plan-lifecycle.json` for explicit `active`, `complete`, `superseded`, or `retired` decisions. A superseded record names its replacement; a retired record states why work stopped. Preserve plans and their evidence according to the [document lifecycle policy](../../docs/operations/document-lifecycle-hygiene.md). Age alone does not establish that work is dormant or obsolete.
 
-## Plan Contents
-
-Each plan should include:
-
-1. Objective
-2. Scope lock
-3. Active authority links
-4. Steps
-5. Validation commands
-6. Rollback notes
-7. Retirement condition
-
-## Rules
-
-- Keep one logical slice per plan file.
-- Link to source docs instead of duplicating long policy text.
-- Include explicit validation evidence and rollback notes in each plan.
-- When a slice ships, mark the plan `Reference` or `Superseded`, or move it to an archive path after summarizing it in the nearest active index.
-- Historical plans are evidence, not default instructions.
+Before bulk status or lifecycle changes, reconcile each candidate against its plan, tracker, lifecycle evidence, recent work, and owner. Perform that reconciliation as a separately reviewable slice.

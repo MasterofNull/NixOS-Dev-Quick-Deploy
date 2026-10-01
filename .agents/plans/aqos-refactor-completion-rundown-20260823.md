@@ -95,6 +95,12 @@ finish Foundation B1 + build the Observability pillar + prep Product D convergen
    chat/batch parity-in-shadow are the next slices. Feeds Product D and unblocks Track V (VF-1).
 
 ## 6. QUEUE AFTER (dependency-gated — do not start until their gate clears)
+- **Dedicated guest init evaluation (system-dev queue)** — compare publicly maintained, non-custom PID 1 options
+  for a slim, security-focused guest role (with s6-linux-init/s6 as a candidate). Keep systemd as the host
+  service manager and automation layer. In a later authorized dev slice, use existing Nix Flake configurations
+  to build isolated VM/container prototypes and run a targeted boot, service supervision, shutdown, recovery,
+  and security-surface test suite. Record compatibility and maintenance tradeoffs, then make a separate
+  evidence-based decision; no host PID 1 switch is implied by this queue item.
 - **Foundation C** (identity/leases/cells/network-profiles) — the Q3 security direction is ratified. C2 remains
   blocked before activation until a first-party/built-in-tool lease source closes the fail-closed enforcement gap.
   Absorbs F3 + the WS9 core. The confinement spine.

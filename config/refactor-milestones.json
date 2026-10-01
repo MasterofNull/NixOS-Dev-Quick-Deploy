@@ -266,6 +266,16 @@
           "llama-cpp-resume fire-and-forget"
         ]
       }
+    },
+    {
+      "code": "PID1",
+      "name": "Dedicated guest PID 1 evaluation",
+      "sub": "hybrid guest init system evaluation",
+      "note": "Queued in aqos-requirements-inventory as req-guest-init-evaluation. Evaluate publicly maintained init options in isolated Flake-built VMs/containers; retain host systemd for services and automation. No candidate is selected and no host PID 1 switch is authorized.",
+      "order": 150,
+      "ongoing": true,
+      "pct": 0,
+      "detection": {}
     }
   ],
   "gate": [

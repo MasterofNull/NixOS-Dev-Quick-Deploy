@@ -1,0 +1,5 @@
+{
+  "classification": "program",
+  "tracking_route": "aq-refactor-status",
+  "evidence": "SPEC.md defines the AQ-OS refactor status projector and names config/refactor-milestones.json as its declarative milestone source; the generated projection is the program-level progress view."
+}
