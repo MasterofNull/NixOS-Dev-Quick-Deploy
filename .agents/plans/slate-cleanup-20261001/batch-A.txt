@@ -1,0 +1,58 @@
+FIXED-PENDING-REBUILD|?|dashboard-compat-gate-missing-psutil — 2026-08-17: focused-ci `dashboard compatibility routes for visibility c
+FIXED-PENDING-REBUILD|medium|tier0-gates-blocked-missing-cliPython-deps — VALIDATED 2026-08-16: `tier0-validation-gate.sh --pre-commit` FAI
+OPEN|critical|concurrent-l2b-authorization-writer-collision — After the owner explicitly activated reviewed L2B-B-AM2 `d5e78
+OPEN|critical|l2b-b-committed-after-binding-request-revision — Parallel commit `99364942` landed the partial L2B-B candidate
+IN-FLIGHT|high|l2b-b-normalization-contract-gaps — Independent Codex acceptance found that L2B-B normalizes string values but
+IN-FLIGHT|high|antigravity-cli-wake-has-no-attributable-claim-receipt — Two `antigravity chat --reuse-window --mode agent` wa
+IN-FLIGHT|high|agent-corrections-do-not-propagate-through-a-closed-feedback-contract — C0.5A commit `9dfde8f8` delivered stri
+IN-FLIGHT|high|flagship-review-expert-team-and-telemetry-not-enforced — C0.5A/C0.5B now define and project strict subject/bas
+OPEN|critical|sandbox-parent-death-breaks-all-background-agent-launches — Delegation wrappers use `nohup ... &` and claim th
+OPEN|critical|generated-background-shell-loses-errors-and-reparses-prompts — Claude, Codex, and retired Gemini wrappers gene
+OPEN|critical|claude-blocking-mode-has-no-progress-or-terminal-reconciliation — The authorized C0 Sonnet task `claude-202607
+IN-FLIGHT|high|m2a-candidate-cas-barrier-and-tempfile-enforcement-gaps — The accepted dormant M2A foundation exposes optional
+OPEN|critical|delegation-registry-writers-not-transactional — Supported dispatch wrappers use five divergent registry append
+IN-PROGRESS|medium|opencode-undici-bun-crash — opencode v1.3.0 crashes on every invocation with `ReferenceError: undici is not de
+IN-FLIGHT|high|learning-loop-dormant-local-not-improving — The improve-from-failure loop is not closing: local repeats identi
+OPEN|critical|c03-claude-invented-singletons-during-resource-evidence — The direct Claude Opus evidence lane changed all ten
+OPEN|critical|c03-antigravity-overwrote-authorized-recovery-evidence — During independent review, a second artifact self-ide
+OPEN|critical|parallel-local-delegation-task-id-collision-and-budget-collapse — Two non-overlapping local implementer packet
+IN-FLIGHT|medium|l2ba-dashboard-drops-new-parity-dimensions — The accepted L2B-A module separately reports `source_shape_parity
+OPEN|critical|local-delegation-false-launch-acknowledgement — `delegate-to-local` reported task `local-20260716-155448-nrjxv
+IN-FLIGHT|high|registry-compatibility-fifo-open-hangs-r01-suite — The R0.1 focused projection suite repeatedly blocks in the
+IN-FLIGHT|high|qppr-heartbeat-observer-contract-omission — Accepted QPPR-C1 defined provider result/policy/vector contracts b
+IN-FLIGHT|critical|b2-migration-multihead-and-bootstrap-contract-gap — Foundation B2-M1 inventory found the canonical Alembic ser
+IN-FLIGHT|high|b2-m1a-prohibited-integration-flag-invocation — The authorized M1A implementer invoked the dormant integration
+IN-FLIGHT|critical|b2-m1a-static-oracle-contract-coverage-gap — Recovery review proved that the M1A oracle lists but does not rea
+IN-FLIGHT|medium|b2-recovery-literal-command-allowlist-drift — The static-only recovery operator used preliminary lean-ctx help
+IN-FLIGHT|critical|b2-am1-authorization-conflicts-with-mandatory-agent-workflow — B2-M1A-AM1 forbade session hydration, RESUME re
+IN-FLIGHT|critical|qppr-a1-terminal-and-evidence-contract-gaps — A1 focused tests passed, but independent review found that termi
+IN-FLIGHT|high|qppr-a1-roadmap-verifier-adjacency — The frozen A1 candidate correctly replaces the legacy inline flagship CLI
+IN-PROGRESS|high|a1-am3-barrier-ack-before-commit — A1-AM3 acceptance review (REQUEST_REVISION) found the C1C publication-barri
+IN-FLIGHT|critical|qppr-lifecycle-publication-cancellation-boundary — The proposed C1C cooperative publication deadline cannot gu
+OPEN|critical|Foundation C activation-ready batch failed binding Codex depth review — All four
+IN-FLIGHT|high|HERDR — H0 incorrectly recorded pinned v0.7.5 as Apache-2.0 — Direct inspection of the immutable source shows
+OPEN|critical|attention-approval-pre-effect-fence-and-actor-auth-gap — `scripts/ai/aq-approve` invokes AppArmor and drop-dis
+IN-FLIGHT|high|HERDR-H2A-P0B-INCOMPLETE-GREEN-ORACLE — The first pure presentation projection passed its five hermetic tests
+IN-FLIGHT|high|HERDR-H2A-P0-INCOMPLETE-GREEN-ORACLE — The first operator-context projection passed its hermetic test while ac
+IN-FLIGHT|high|REVIEW-REVISION-CONVERGENCE-SOFT-FAILURE — HERDR H2A produced repeated green implementer suites followed by se
+IN-FLIGHT|critical|local-dogfood-help-launched-queue-and-reverted-foreign-edits — `aq-local-dogfood-run --help` previously ignore
+IN-FLIGHT|high|local-dogfood-late-invalid-edit-after-time-budget — The same measured task crossed its 1,800-second budget, re
+IN-FLIGHT|high|dogfood-payload-receipt-overwritten-at-terminal-state — Fast-fail task `local-20260823-212901-nbbr8w` correctl
+IN-FLIGHT|high|local-tool-grammar-required-arguments-unbound — Live task `local-20260828-094134-6kogc5` ran with GBNF enabled
+IN-FLIGHT|high|local-agent-midtask-model-reload-terminalizes-recoverable-work — Post-grammar dogfood task `local-20260828-102
+IN-FLIGHT|high|p14s-gl9750-microsd-dma-corruption — The built-in Genesys Logic GL9750 [17a0:9750] is detected by `sdhci-pci`
+IN-FLIGHT|high|credential-lifecycle-inventory-and-breach-response-gap — The live encrypted SOPS bundle contains 13 entries, w
+OPEN|critical|git-history-secret-scan-candidates-require-triage-and-rotation — A fully redacted Gitleaks 8.30.1 scan of 4,15
+OPEN|critical|dashboard-retains-broad-ai-stack-secret-read-surface — The existing dashboard service runs as the primary user
+IN-FLIGHT|high|suspend-resume-contract-missing-for-managed-workloads — A lid-close suspend interval overlapped a `llama-cpp`
+IN-FLIGHT|high|core-mvp-session-preservation — Historical transcript sweep overwrote active RESUME and unlinked provider-owne
+IN-FLIGHT|high|core-mvp-workspace-isolation — Help implicitly replaced user binaries and reset/kill invoked a global process
+OPEN|critical|codex-context-replay-quota-exhaustion — 56 main requests replayed 6.32M input tokens; 0→100% primary quota in
+IN-FLIGHT|critical|model-agnostic-context-guards — Codex native 50k startup threshold installed; shared verifier passes five test
+IN-FLIGHT|high|RSI dispatch budget accounting — RSI discarded estimated cost; normal execution charged only successful attemp
+IN-FLIGHT|medium|PRSI regression enforcement — Budget/intake regressions were not registered in path-aware focused CI. Both are
+IN-FLIGHT|high|CI — Skill Bundle Distribution Smoke succeeds with setup steps only after its test invocation was removed. Ind
+IN-FLIGHT|high|SECURITY — Upstream Trivy SARIF was replaced with expiring artifacts; dismissed findings are not proven remedi
+FIXED-PENDING-REBUILD|high|rsi-dispatch-unit-path-missing-bash — First post-sign-off RSI execution (row 9f9f88fbcc7f9e90, setuptools bump
+FIXED-PENDING-REBUILD|high|rsi-dispatch-python-missing-httpx — After the bash PATH fix was deployed, RSI row 2f99a616dbd52bc3 got an isol
+FIXED-PENDING-REBUILD|high|rsi-dispatch-sandbox-erofs-timeout-memory — Third layer after bash/httpx: live repair 2f99a616dbd52bc3 (14:01

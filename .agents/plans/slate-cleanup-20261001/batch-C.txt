@@ -1,0 +1,118 @@
+FIXED-DEEPENED|?|local-clone-shallow-breaks-git-groundtruth-tooling — DISCOVERED 2026-08-17 while wiring the PM tracker: the lo
+OPEN|medium|sota-hosted-ci-on-every-pr — the tier0 governance/validation gate suite runs strongly as local/pre-commit hook
+OPEN|medium|sota-test-coverage-gate — no coverage measurement or coverage gate exists. Add coverage instrumentation over t
+OPEN|medium|sota-perf-regression-gates — correctness is well-gated but performance is not. Add latency/throughput regressi
+OPEN|medium|sota-supply-chain-sbom-slsa — we have gitleaks + flake-review + capability-intake, but no generated SBOM or bu
+OPEN|low|sota-ui-accessibility-standard — the dashboard UI surfaces are not held to an accessibility standard (contrast
+OPEN|medium|sota-property-based-testing-security-primitives — targeted invariant tests exist; widen property-based / forma
+OPEN|low|sota-signed-commits-and-tags — trunk protection binds review to the exact patch (hash), but commits/tags are n
+OPEN|medium|flat-org-friction-THREE-WAY-CONSENSUS (Claude+Codex+Antigravity, complete 2026-08-15) — All three agents answe
+OPEN|medium|catchup-queue-unstructured-no-backpressure (Codex three-way consensus 2026-08-14, sharpens #2+#4+#5) — Codex's
+OPEN|medium|concurrent-lane-commit-collision — FREQUENCY: ~4×/session (TOP). Multiple lanes (herdr, TEG, ALA-C2, H2A) edit
+OPEN|medium|stale-finding-acted-before-freshness-check — FREQUENCY: 1×/session (near-miss, high-cost-if-missed). The audit
+OPEN|medium|gate-allowlist-lags-practice → silent-workaround — FREQUENCY: 1×/session (root-caused). The doc-frontmatter va
+OPEN|low|single-implementer-lane-bottleneck — FREQUENCY: 1 cooldown/session. audit→B3 build→B3 fix→TEG revision→H2A pre
+OPEN|medium|no-unified-in-flight-view-across-lanes — FREQUENCY: persistent. ~6 background waiters + hand-tracked task IDs
+OPEN|medium|independent-temp-review-mutates-sealed-candidate — During ALA-C2-R1 temp acceptance, the independent reviewer
+OPEN|medium|disposable-tier0-requires-unmodeled-runtime-evidence-seed — A clean disposable clone could not produce truthfu
+OPEN|medium|c6-b3-commit-atomicity-contamination — Commit `36a5e2c4`, described as the C6-B3 amended runtime slice, also c
+OPEN|medium|ai-autonomous-improvement-service-fails-deviation-target-unsafe — After `nixos-rebuild switch --flake .#hyperd
+OPEN|low|c2-issuer-b1-review-observations — B1 code review PASS (e01d48a7) surfaced 3 NON-blocking observations to fold
+OPEN|low|c2-sci-ledger-burn-before-signer-check + O2-observability (pre-activation polish, NON-blocking) — All 5 C2-SCI
+OPEN|medium|router-role-route-exclude-lane-granularity — aq-role-route `--exclude` matches by lane alias, so excluding a s
+OPEN|medium|router-role-route-gemini-availability-stub — aq-role-route's gemini availability is a stub returning available
+OPEN|medium|router-phase2-dispatch-integration — the delegate-to-* wrappers + Agent-tool dispatch do NOT yet consult aq-ro
+OPEN|medium|l2b-b-dashboard-payload-normalization-status-not-passed-through-by-backend — L2B-B (implemented 2026-07-22, st
+OPEN|low|delegate-to-local-status-machine-mode-flag-mismatch — `delegate-to-local --status <task> --json` rejects `--js
+OPEN|medium|claude-lane-dead-process-stuck-running-no-repair-flag — two `delegate-to-claude` dispatches for the "Agent Ops
+OPEN|medium|codex-safe-mode-headless-write-fails-closed — codex round-review fold-in (`codex-20260715-073241-esjr59xxxxxx`
+OPEN|medium|local-lane-round-review-envelope-mismatch — local[Qwen] lane produced 1055B of truncated planning preamble, 0
+OPEN|medium|collab-round-dispatches-to-known-down-lane — round `unified-program` dispatched to codex (`codex-20260713-1049
+OPEN|low|precommit-hook-blocks-multiline-commit-message — `git commit -m "<multiline body>"` was rejected by the PreToo
+OPEN|low|codex-startup-local-state-warnings — `codex_hooks = true` persists at /home/hyperd/.codex/config.toml:48 becau
+DEFERRED|info|hardware — ROCm not available on Renoir APU (gfx90c) — no code fix possible
+DEFERRED|high|agentic-mind — cross-model workflow standardization — multi-phase PRD project
+DEFERRED|high|desktop-input — post-build cursor/text input instability (gens 697-700, Jun 8)
+OPEN|medium|sandbox-observability-contract-fragmentation — Agent-side audits still surface routine host-observability deni
+OPEN|medium|codex-delegation-stale-running-zero-output — `delegate-to-codex --status` reported `codex-20260708-230805-yq4n
+OPEN|medium|antigravity-inbox-watcher-visibility-gap — Antigravity IDE and Gemini Code Assist A2A processes are running, a
+LARGELY-VERIFIED|medium|switchboard-remote-lane-ceiling-isolation — CONFIRMED mostly handled: switchboard.py:2440 _apply_local_thinkin
+OPEN|medium|drop-zone-agent-mode-disabled-by-default-visible-only-in-journal — `aq-drop --mode agent` submissions are reje
+OPEN|medium|direct-delegation-prompt-token-heuristic-false-tiny — Local/Qwen direct retry `local-20260709-002206-ei5of8` p
+OPEN|medium|claude-google-connectors-oauth — Google Drive, Gmail, and Google Calendar are configured as claude.ai connecto
+OPEN|medium|stale-continue-regression-tests — Two standalone Continue/coordinator regression scripts fail against refactor
+OPEN|medium|mcp-server-skill-validator-contract — `aq-skill-auto --test` rejects the local `mcp-server` skill because exec
+OPEN|medium|local-direct-planning-output-invents-source-identifiers — Compact direct inventory task `local-20260901-112905
+OPEN|medium|claude-review-dispatch-orphaned-with-empty-output — Independent PRD-v2 review task `claude-20260901-114730-d0p
+OPEN|medium|local-skill-validator-metadata-drift — `aq-skill-auto` selected relevant skills but its validation reported me
+OPEN|medium|understand-anything-architecture-graph-stale — The current knowledge graph was generated 2026-07-01 and predat
+OPEN|medium|staged-frontmatter-validator-decodes-binary-evidence-as-utf8 — Focused CI failed when a deterministic `.py.gz`
+OPEN|low|aq-event-pulse-cli-contract-drift — The documented collaboration examples use phase/status/detail arguments, b
+OPEN|medium|tier0-sandbox-qa-evidence-lock-false-failure — Tier0 passed 22 gates in the Codex sandbox but marked Phase 0 f
+OPEN|low|lean-ctx-git-hook-output-broken-pipe — The authorized integrating commit succeeded and all hooks passed, but w
+OPEN|low|collaboration-subagent-progress-not-file-atomic — The L1A contract-core subagent produced schemas, module, and
+OPEN|medium|focused-ci-dashboard-tests-time-out-under-overlapping-runs — Two dashboard tests timed out at 90s/30s when dup
+OPEN|low|aq-collaborate-lacks-status-command — The L2 prerequisite audit attempted the intuitive documented-style `aq-c
+OPEN|low|aq-event-pulse-flag-contract-inconsistent — The L2A write checkpoint initially used intuitive `--files` and `-
+OPEN|low|security-audit-dashboard-probe-unavailable — The L2A comprehensive dependency audit completed cleanly (zero pi
+OPEN|low|aq-collaborate-machine-mode-missing — L2B orientation followed the factory-wide machine-mode rule with `aq-col
+OPEN|medium|aq-event-sandbox-cannot-write-canonical-ledger — L2B intent checkpoint could edit the projected collaboration
+OPEN|medium|claude-opus-noninteractive-edit-silent-failure — The exact one-file L2B-A implementation delegated through `cl
+OPEN|medium|claude-sonnet-sandbox-network-silent-wedge — Two disjoint L2B-A Sonnet implementation packets launched from th
+OPEN|medium|agent-ops-process-classification-and-collaboration-visibility-gap — The Agentic Ops matrix showed current Code
+OPEN|medium|antigravity-m0-acceptance-factual-drift — The accepted M0 review reports reader bounds of 256/128 although the
+OPEN|medium|codex-private-pid-namespace-host-visibility-gap — Managed Codex commands see only their own bwrap PID namespac
+OPEN|medium|repository-wide-doc-link-baseline-fails — `check-doc-links.sh --all` reports 249 broken local links, predomina
+OPEN|medium|playwright-cli-wrapper-config-version-skew — The bundled Playwright skill wrapper appends `--config ~/.config/
+OPEN|medium|quick-deploy-active-model-selector-drift — The live deploy selector presented `qwen3.6-35b-mtp-q5` as the curr
+OPEN|low|validation-environment-time-binary-absence — The bounded C1B implementer could not use `/usr/bin/time` because
+OPEN|low|aq-event CLI contract drift — The active workflow guidance describes phase/message-style
+OPEN|medium|workflow-deviation-recovery — Tier-0 reports the active plan directory has no tracker.json projection.
+OPEN|medium|apply-patch-control-plane-latency — A two-document `apply_patch` call completed successfully but the orchestra
+OPEN|medium|herdr-agent-operations-missing-progress-projection — Tier-0 reports the new Herdr program directory has no tra
+OPEN|medium|NETWORK-PROFILE-INTEROPERABILITY — During the Herdr design cycle the host switched Wi-Fi networks and connecti
+OPEN|medium|collaboration-subagent-progress-observability-gap — The independent H2A reviewer remained reported only as `ru
+OPEN|medium|LEAN-CTX-COMMIT-HOOK-BROKEN-PIPE — The successful HERDR H1 correction commit emitted `printf: Broken pipe` fro
+OPEN|medium|AQ-EVENT-INTENT-LOCK-SANDBOX-RECURRENCE — Canonical `aq-event emit` failed with EROFS when appending `.agents/
+OPEN|medium|CODEX-GIT-INDEX-PERMISSION-DRIFT — After an earlier exact-path stage succeeded, a later exact `git add` failed
+OPEN|medium|ANTIGRAVITY-RECEIPT-LOCK-TRACKING-DEBT — Runtime inbox mutexes are zero-byte mode-0600 coordination files crea
+OPEN|medium|PM-TRACKER-IFRAME-OPAQUE-ORIGIN-CORS — `dashboard.html` embeds `assets/aqos-progress-tracker.html` in `<iframe
+OPEN|medium|heartbeat-prefill-invisibility-wedge-vs-slow — The local agent-loop heartbeat/progress instruments (dispatch.p
+OPEN|medium|codebase-context-misses-shebang-scripts — The `codebase-context` Qdrant collection (25,980 pts) does not surfa
+OPEN|low|read-file-gate-char-guard-env-var-misnamed — agent_executor.py reads the prefill char guard as `int(os.getenv(
+OPEN|medium|orchestration-state-reconciliation-drift — The accepted Claude handoff found `RESUME.json` still declaring Clu
+OPEN|medium|local-code-execution-capability-quarantined — The delegated local-agent registry can discover the `code_execut
+OPEN|low|managed-sandbox-loopback-security-audit-blindness — The direct security audit completed with dependency/lock/s
+OPEN|medium|claude-delegation-empty-output-stale-running-state — Two `delegate-to-claude` final-review jobs (Fable and Opu
+OPEN|medium|security-audit-scans-ignored-nixpkgs-fork-dependencies — A host-context security audit reported five npm high
+OPEN|low|confined-readiness-curl-nss-denials — The successful confined readiness probe still generated non-fatal AppArm
+OPEN|medium|managed-sandbox-local-delegation-registry-readonly — The first post-refinement dogfood dispatch failed before
+OPEN|medium|pytest-asyncio-missing-blocks-harness-suites — `pytest_asyncio` is not importable in the active python3 env (M
+OPEN|medium|claude-readonly-handoff-checkin-timeout — A direct read-only Claude Sonnet handoff query timed out without a r
+OPEN|medium|local-skill-schema-quality-drift — `aq-skill-auto --json --test` selected the canonical multi-agent, task-elig
+OPEN|medium|delegate-cancel-registry-rewrite-readonly-after-sigterm — `delegate-to-local --cancel local-20260901-091511-zy
+OPEN|medium|lean-ctx-corrupts-exact-reviewed-diff-hash — The command hook rewrote `git diff --cached --binary | sha256sum`
+OPEN|medium|prompt-evaluator-dirties-tracked-registry-during-concurrent-validation — While the AQ-OS planning slice was pa
+OPEN|medium|aqos-golden-profile-not-yet-active — The install-plan schema intentionally defaults to `aqos-workstation`, but
+OPEN|medium|boot-stability-aggregate-stale-health-spider-contract — The broad `test-boot-stability-regressions.py` current
+OPEN|medium|aq-integrity-logical-baseline-reference-timeout-flake — The microSD commit hook failed once because the AQ int
+OPEN|medium|core-mvp-readiness-overclaims — Missing tools count as ready, ST1-ST4 activation is hardcoded, and missing saf
+OPEN|medium|context-guard-validation-environment — Tier0 nested checkout blocked its own lock; direct gate exceeded 120 se
+OPEN|medium|tool-event-auto-compaction — Native Codex compaction is threshold-based at 50k total tokens; aq-context-manage
+OPEN|medium|rsi-f6c51d38de20750a67ef4807 — lean-ctx-pretooluse failure in pre-tool. Root cause evidence: producer=lean-ctx
+OPEN|medium|rsi-80d039137a26e48c5a18826d — agent-command-construction failure in rsi-implementation. Root cause evidence:
+OPEN|medium|rsi-74724f55cfa00bc191fa711b — test-rsi-adapters failure in rsi-implementation. Root cause evidence: producer=
+OPEN|medium|rsi-f5c1f07a2724216458e6a453 — zsh failure in rsi-implementation. Root cause evidence: producer=zsh; path=scri
+OPEN|medium|rsi-ee58a81a2f4f2e697825c2d6 — tier0-validation-gate.sh failure in rsi-tier0-validation. Root cause evidence:
+OPEN|medium|Oversized context read — lean-ctx read with mode lines:900-1080 returned the entire 1208-line file, not the re
+OPEN|medium|Validation — tier0 pre-commit gate hung without output — Root cause not isolated; process tree showed nested g
+OPEN|medium|rsi-f6c51d38de20750a67ef4807 — lean-ctx-pretooluse failure in pre-tool. Root cause evidence: producer=lean-ctx
+OPEN|low|claude-plugin-selection-not-covered-by-context-SOP — Claude Code plugins (`enabledPlugins`) load statically at
+OPEN|medium|acp-execute-route-latent-replay — `POST /api/approvals/{id}/execute` (dashboard/backend/api/routes/approvals.p
+OPEN|medium|LOCAL-LANE — aq-agent-loop returns "incomplete result" via read-stagnation abort (NOT a service outage). On th
+OPEN|medium|rsi-dispatch-inner-timeout-does-not-terminate-delegate — In the rehearsal, rsi-dispatch --timeout-seconds=600
+OPEN|medium|claude-agent-worktree-isolation-base-and-cleanup — Claude Code Agent `isolation: worktree` created the RSI ste
+OPEN|low|pre-push-python-tooling-lint-matches-prose — the pre-push "Python tooling policy" lint flags any literal "pip
+OPEN|medium|codex-shared-mode-cannot-write-round-files — `delegate-to-codex --shared --mode edit` rejected writing `.agent
+OPEN|medium|rsi-38aff77a4f3f3f8452603a12 — github-actions:parity-scorecard-gate failure in PR #355 CI run 36850061887. Roo
+OPEN|medium|user-profile-python-shadows-cliPython — In agent shells `python3` resolves to ~/.nix-profile/bin/python3 (no h
