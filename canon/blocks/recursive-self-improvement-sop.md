@@ -22,7 +22,7 @@ Lean-ctx & pre-warmed caches     Zero recurring failures
 - **Stage 1: Detect & Measure (Execution / Mid-Phase)**:
   - Continuously monitor execution for runtime friction, concurrency races, latency spikes, or tool contention.
   - "You cannot manage what you cannot measure": if an issue occurs without observable telemetry or clear diagnostics, instrument it immediately.
-  - **Gate Contention**: When multiple agents run heavyweight validation simultaneously, serialize access using `aq-gate-checkout` to prevent tool contention, memory exhaustion, and hanging processes.
+  - **Gate Contention**: When multiple agents run heavyweight validation simultaneously, serialize access by running tier0 via its wrapper (`scripts/governance/tier0-validation-gate.sh`), which acquires and releases the `aq-gate-checkout` lock itself — never take a second checkout around it — to prevent tool contention, memory exhaustion, and hanging processes.
 
 - **Stage 2: Root-Cause Diagnosis & Registration**:
   - **No Silent Workarounds (Rule 21)**: Trace every failure or friction point to its system producer. Never leave an ad-hoc band-aid in place.
