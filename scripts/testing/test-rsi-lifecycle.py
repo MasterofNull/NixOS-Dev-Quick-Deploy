@@ -44,6 +44,15 @@ class RecorderTests(unittest.TestCase):
         self.record()
         self.assertEqual(json.loads((rsi._RUNTIME / "rsi-incidents.json").read_text())["incidents"][ids[0]]["status"], "open")
 
+    def test_annotate_keeps_status_and_redacts(self):
+        iid = self.record()
+        rsi.annotate(iid, "awaiting rescan token=hunter2")
+        inc = json.loads((rsi._RUNTIME / "rsi-incidents.json").read_text())["incidents"][iid]
+        self.assertEqual(inc["status"], "open")
+        self.assertIn("awaiting rescan", inc["note"])
+        self.assertNotIn("hunter2", inc["note"])
+        with self.assertRaises(ValueError): rsi.annotate(iid, " ")
+
     def test_write_failure_is_not_success(self):
         with patch.object(rsi, "_save", side_effect=PermissionError):
             with self.assertRaises(PermissionError): self.record()

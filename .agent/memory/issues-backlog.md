@@ -4820,7 +4820,7 @@ File: scripts/ai/lib/worktree-isolation.sh; scripts/automation/prsi-orchestrator
   Action: bump setuptools to >= 83.0.0 in ai-stack/mcp-servers/nixos-docs/Dockerfile; rebuild image and confirm Trivy clears the alerts (2 open alert(s), max severity high)
   File: ai-stack/mcp-servers/nixos-docs/Dockerfile
 
-[OPEN] rsi-4e1ae0cb4f86e261bb7e0fd2 — github-code-scanning:trivy-custom-nixos-docs failure in code-scanning:trivy-custom-nixos-docs. Root cause evidence: producer=github-code-scanning:trivy-custom-nixos-docs; path=ai-stack/mcp-servers/nixos-docs/requirements.txt; authority=trivy; os_error=GitPython 3.1.43 vulnerable; fixed in >= 3.1.59. Detected=2026-09-30T19:11:11.836905Z.
+[DONE 2026-10-01] rsi-4e1ae0cb4f86e261bb7e0fd2 — github-code-scanning:trivy-custom-nixos-docs failure in code-scanning:trivy-custom-nixos-docs. Root cause evidence: producer=github-code-scanning:trivy-custom-nixos-docs; path=ai-stack/mcp-servers/nixos-docs/requirements.txt; authority=trivy; os_error=GitPython 3.1.43 vulnerable; fixed in >= 3.1.59. Detected=2026-09-30T19:11:11.836905Z.
   Severity: critical
   Action: bump GitPython to >= 3.1.59 in ai-stack/mcp-servers/nixos-docs/requirements.txt; rebuild image and confirm Trivy clears the alerts (27 open alert(s), max severity critical)
   File: ai-stack/mcp-servers/nixos-docs/requirements.txt
@@ -4891,7 +4891,7 @@ File: scripts/ai/lib/worktree-isolation.sh; scripts/automation/prsi-orchestrator
 
 - 2026-09-30 resolution for the two entries above: classify_tokens scans size-down signals only in the first 300 chars; research/deep_reasoning profiles enable_thinking=False; L2B + chat-batch-parity manifests re-pinned (dispatch.py bfc1bf0e…, llm_config.py 1150f16e…); no golden payload changed (goldens use lookup/structured/reasoning/agent). Tests: classify 4/4, L2B 16 checks, chat-batch-parity PASS. delegate-to-local also gained --max-tokens.
 
-[OPEN] exact-version-pins-vs-owner-floor-policy — Owner policy 2026-09-30: do not pin package versions (daily upstream churn + elevated AI-generated exploit threat); security repairs raise `>=` floors. 88 exact `==` pins remain across ai-stack/mcp-servers/*/requirements.txt. GitPython converted to `gitpython>=3.1.59`; RSI intake root_fix now instructs floors.
+[DONE 2026-09-30 rsi-steward] exact-version-pins-vs-owner-floor-policy — Owner policy 2026-09-30: do not pin package versions (daily upstream churn + elevated AI-generated exploit threat); security repairs raise `>=` floors. 88 exact `==` pins remain across ai-stack/mcp-servers/*/requirements.txt. GitPython converted to `gitpython>=3.1.59`; RSI intake root_fix now instructs floors.
   Severity: medium
   Action: RSI steward slice — convert exact pins to floors (keep upper bounds only where a known-breaking major exists, documented); rely on Trivy/code-scanning -> RSI intake + frequent lock refresh. Note: unpinned deps ingest a compromised new release quickly; scanning + floors are the mitigation.
   File: ai-stack/mcp-servers/*/requirements.txt
@@ -4907,3 +4907,138 @@ File: scripts/ai/lib/worktree-isolation.sh; scripts/automation/prsi-orchestrator
 [DONE 2026-09-30] hardened-base-oneshot-restart-storm — nix/lib/hardened-service.nix sets Restart=on-failure/RestartSec=10s for every caller; timer-driven Type=oneshot units inherit it and retry every 10s forever (StartLimitBurst 5/10s never trips). ai-autonomous-improvement failed 593 times between the 14:49 rebuild and the 17:52 fix. Same inheritance: ai-mcp-integrity-check, ai-mcp-process-watch, ai-sync-knowledge-sources. Fix in flight (claude-haiku): `restart` parameter, oneshots pass "no", regression test. Needs owner nixos-rebuild.
   Severity: high (CPU/journal churn; masks failures as noise)
   File: nix/lib/hardened-service.nix ~line 84
+  Resolution: 87 `==` pins converted to `>=` (5 documented upper bounds); guard scripts/testing/test-requirements-floor-policy.py. Follow-up: requirements.lock files predate several raised floors (needs networked pip-compile refresh, owner/CI).
+
+[DONE 2026-10-01] rsi-666d337e3c4c7942585b8142 — github-code-scanning:trivy-custom-aidb failure in code-scanning:trivy-custom-aidb. Root cause evidence: producer=github-code-scanning:trivy-custom-aidb; path=ai-stack/mcp-servers/aidb/Dockerfile; authority=trivy; os_error=openssl-provider-legacy 3.5.7-1~deb13u2 vulnerable. Detected=2026-10-01T03:08:49.250919Z.
+  Severity: high
+  Action: raise the minimum-version floor: openssl-provider-legacy>=3.5.7-1~deb13u3 in ai-stack/mcp-servers/aidb/Dockerfile (owner policy: floors, never exact == pins); rebuild image and confirm Trivy clears the alerts (13 open alert(s), max severity high)
+  File: ai-stack/mcp-servers/aidb/Dockerfile
+
+[DONE 2026-10-01] rsi-5412382a7ce48c5b2a34f375 — github-code-scanning:trivy-custom-aidb failure in code-scanning:trivy-custom-aidb. Root cause evidence: producer=github-code-scanning:trivy-custom-aidb; path=ai-stack/mcp-servers/aidb/Dockerfile; authority=trivy; os_error=openssl 3.5.7-1~deb13u2 vulnerable. Detected=2026-10-01T03:08:49.490749Z.
+  Severity: high
+  Action: raise the minimum-version floor: openssl>=3.5.7-1~deb13u3 in ai-stack/mcp-servers/aidb/Dockerfile (owner policy: floors, never exact == pins); rebuild image and confirm Trivy clears the alerts (13 open alert(s), max severity high)
+  File: ai-stack/mcp-servers/aidb/Dockerfile
+
+[DONE 2026-10-01] rsi-940a43ea411e88c01c03006c — github-code-scanning:trivy-custom-aidb failure in code-scanning:trivy-custom-aidb. Root cause evidence: producer=github-code-scanning:trivy-custom-aidb; path=ai-stack/mcp-servers/aidb/Dockerfile; authority=trivy; os_error=libssl3t64 3.5.7-1~deb13u2 vulnerable. Detected=2026-10-01T03:08:49.495595Z.
+  Severity: high
+  Action: raise the minimum-version floor: libssl3t64>=3.5.7-1~deb13u3 in ai-stack/mcp-servers/aidb/Dockerfile (owner policy: floors, never exact == pins); rebuild image and confirm Trivy clears the alerts (13 open alert(s), max severity high)
+  File: ai-stack/mcp-servers/aidb/Dockerfile
+
+[DONE 2026-10-01] rsi-7ca8b9f1a50eb64623255adf — github-code-scanning:trivy-custom-aidb failure in code-scanning:trivy-custom-aidb. Root cause evidence: producer=github-code-scanning:trivy-custom-aidb; path=ai-stack/mcp-servers/aidb/Dockerfile; authority=trivy; os_error=libpcre2-8-0 10.46-1~deb13u2 vulnerable. Detected=2026-10-01T03:09:15.528898Z.
+  Severity: low
+  Action: raise the minimum-version floor: libpcre2-8-0>=10.46-1~deb13u3 in ai-stack/mcp-servers/aidb/Dockerfile (owner policy: floors, never exact == pins); rebuild image and confirm Trivy clears the alerts (2 open alert(s), max severity low)
+  File: ai-stack/mcp-servers/aidb/Dockerfile
+
+[DONE 2026-10-01] rsi-b77cb59cef29f72e24d8cc36 — github-code-scanning:trivy-custom-nixos-docs failure in code-scanning:trivy-custom-nixos-docs. Root cause evidence: producer=github-code-scanning:trivy-custom-nixos-docs; path=ai-stack/mcp-servers/nixos-docs/Dockerfile; authority=trivy; os_error=openssl-provider-legacy 3.5.7-1~deb13u2 vulnerable. Detected=2026-10-01T03:09:15.533393Z.
+  Severity: high
+  Action: raise the minimum-version floor: openssl-provider-legacy>=3.5.7-1~deb13u3 in ai-stack/mcp-servers/nixos-docs/Dockerfile (owner policy: floors, never exact == pins); rebuild image and confirm Trivy clears the alerts (13 open alert(s), max severity high)
+  File: ai-stack/mcp-servers/nixos-docs/Dockerfile
+
+[DONE 2026-10-01] rsi-44f9f23397603cff67937e70 — github-code-scanning:trivy-custom-nixos-docs failure in code-scanning:trivy-custom-nixos-docs. Root cause evidence: producer=github-code-scanning:trivy-custom-nixos-docs; path=ai-stack/mcp-servers/nixos-docs/Dockerfile; authority=trivy; os_error=openssl 3.5.7-1~deb13u2 vulnerable. Detected=2026-10-01T03:09:15.537814Z.
+  Severity: high
+  Action: raise the minimum-version floor: openssl>=3.5.7-1~deb13u3 in ai-stack/mcp-servers/nixos-docs/Dockerfile (owner policy: floors, never exact == pins); rebuild image and confirm Trivy clears the alerts (13 open alert(s), max severity high)
+  File: ai-stack/mcp-servers/nixos-docs/Dockerfile
+
+[DONE 2026-10-01] rsi-b1619f0e4c32e14e5653eb20 — github-code-scanning:trivy-custom-nixos-docs failure in code-scanning:trivy-custom-nixos-docs. Root cause evidence: producer=github-code-scanning:trivy-custom-nixos-docs; path=ai-stack/mcp-servers/nixos-docs/Dockerfile; authority=trivy; os_error=libssl3t64 3.5.7-1~deb13u2 vulnerable. Detected=2026-10-01T03:09:15.541992Z.
+  Severity: high
+  Action: raise the minimum-version floor: libssl3t64>=3.5.7-1~deb13u3 in ai-stack/mcp-servers/nixos-docs/Dockerfile (owner policy: floors, never exact == pins); rebuild image and confirm Trivy clears the alerts (13 open alert(s), max severity high)
+  File: ai-stack/mcp-servers/nixos-docs/Dockerfile
+
+[DONE 2026-10-01] rsi-c58f1c548509a250a4dcbb26 — github-code-scanning:trivy-custom-nixos-docs failure in code-scanning:trivy-custom-nixos-docs. Root cause evidence: producer=github-code-scanning:trivy-custom-nixos-docs; path=ai-stack/mcp-servers/nixos-docs/Dockerfile; authority=trivy; os_error=libpcre2-8-0 10.46-1~deb13u2 vulnerable. Detected=2026-10-01T03:09:15.546039Z.
+  Severity: low
+  Action: raise the minimum-version floor: libpcre2-8-0>=10.46-1~deb13u3 in ai-stack/mcp-servers/nixos-docs/Dockerfile (owner policy: floors, never exact == pins); rebuild image and confirm Trivy clears the alerts (2 open alert(s), max severity low)
+  File: ai-stack/mcp-servers/nixos-docs/Dockerfile
+
+[DONE 2026-10-01] rsi-92b63e082a3a2b98344ab39a — github-code-scanning:trivy-custom-embeddings-service failure in code-scanning:trivy-custom-embeddings-service. Root cause evidence: producer=github-code-scanning:trivy-custom-embeddings-service; path=ai-stack/mcp-servers/embeddings-service/Dockerfile; authority=trivy; os_error=openssl-provider-legacy 3.5.7-1~deb13u2 vulnerable. Detected=2026-10-01T03:09:15.550518Z.
+  Severity: high
+  Action: raise the minimum-version floor: openssl-provider-legacy>=3.5.7-1~deb13u3 in ai-stack/mcp-servers/embeddings-service/Dockerfile (owner policy: floors, never exact == pins); rebuild image and confirm Trivy clears the alerts (13 open alert(s), max severity high)
+  File: ai-stack/mcp-servers/embeddings-service/Dockerfile
+
+[DONE 2026-10-01] rsi-5b8c2426c31e1350045031ec — github-code-scanning:trivy-custom-embeddings-service failure in code-scanning:trivy-custom-embeddings-service. Root cause evidence: producer=github-code-scanning:trivy-custom-embeddings-service; path=ai-stack/mcp-servers/embeddings-service/Dockerfile; authority=trivy; os_error=openssl 3.5.7-1~deb13u2 vulnerable. Detected=2026-10-01T03:09:15.554985Z.
+  Severity: high
+  Action: raise the minimum-version floor: openssl>=3.5.7-1~deb13u3 in ai-stack/mcp-servers/embeddings-service/Dockerfile (owner policy: floors, never exact == pins); rebuild image and confirm Trivy clears the alerts (13 open alert(s), max severity high)
+  File: ai-stack/mcp-servers/embeddings-service/Dockerfile
+
+[DONE 2026-10-01] rsi-44e8b30a5aabfe9a0832fe08 — github-code-scanning:trivy-custom-embeddings-service failure in code-scanning:trivy-custom-embeddings-service. Root cause evidence: producer=github-code-scanning:trivy-custom-embeddings-service; path=ai-stack/mcp-servers/embeddings-service/Dockerfile; authority=trivy; os_error=libssl3t64 3.5.7-1~deb13u2 vulnerable. Detected=2026-10-01T03:09:15.559035Z.
+  Severity: high
+  Action: raise the minimum-version floor: libssl3t64>=3.5.7-1~deb13u3 in ai-stack/mcp-servers/embeddings-service/Dockerfile (owner policy: floors, never exact == pins); rebuild image and confirm Trivy clears the alerts (13 open alert(s), max severity high)
+  File: ai-stack/mcp-servers/embeddings-service/Dockerfile
+
+[DONE 2026-10-01] rsi-f9be9a9ac061727919025bc1 — github-code-scanning:trivy-custom-embeddings-service failure in code-scanning:trivy-custom-embeddings-service. Root cause evidence: producer=github-code-scanning:trivy-custom-embeddings-service; path=ai-stack/mcp-servers/embeddings-service/Dockerfile; authority=trivy; os_error=libpcre2-8-0 10.46-1~deb13u2 vulnerable. Detected=2026-10-01T03:09:15.562889Z.
+  Severity: low
+  Action: raise the minimum-version floor: libpcre2-8-0>=10.46-1~deb13u3 in ai-stack/mcp-servers/embeddings-service/Dockerfile (owner policy: floors, never exact == pins); rebuild image and confirm Trivy clears the alerts (2 open alert(s), max severity low)
+  File: ai-stack/mcp-servers/embeddings-service/Dockerfile
+
+[DONE 2026-10-01] rsi-8bb917c5e19cf8ad129be0b8 — github-code-scanning:trivy-custom-hybrid-coordinator failure in code-scanning:trivy-custom-hybrid-coordinator. Root cause evidence: producer=github-code-scanning:trivy-custom-hybrid-coordinator; path=ai-stack/mcp-servers/hybrid-coordinator/Dockerfile; authority=trivy; os_error=openssl-provider-legacy 3.5.7-1~deb13u2 vulnerable. Detected=2026-10-01T03:09:15.567552Z.
+  Severity: high
+  Action: raise the minimum-version floor: openssl-provider-legacy>=3.5.7-1~deb13u3 in ai-stack/mcp-servers/hybrid-coordinator/Dockerfile (owner policy: floors, never exact == pins); rebuild image and confirm Trivy clears the alerts (13 open alert(s), max severity high)
+  File: ai-stack/mcp-servers/hybrid-coordinator/Dockerfile
+
+[DONE 2026-10-01] rsi-feb0de3a1ee50e9d26234bf8 — github-code-scanning:trivy-custom-hybrid-coordinator failure in code-scanning:trivy-custom-hybrid-coordinator. Root cause evidence: producer=github-code-scanning:trivy-custom-hybrid-coordinator; path=ai-stack/mcp-servers/hybrid-coordinator/Dockerfile; authority=trivy; os_error=openssl 3.5.7-1~deb13u2 vulnerable. Detected=2026-10-01T03:09:15.572097Z.
+  Severity: high
+  Action: raise the minimum-version floor: openssl>=3.5.7-1~deb13u3 in ai-stack/mcp-servers/hybrid-coordinator/Dockerfile (owner policy: floors, never exact == pins); rebuild image and confirm Trivy clears the alerts (13 open alert(s), max severity high)
+  File: ai-stack/mcp-servers/hybrid-coordinator/Dockerfile
+
+[DONE 2026-10-01] rsi-3b6dc0e7b8ba192b0fd059ab — github-code-scanning:trivy-custom-hybrid-coordinator failure in code-scanning:trivy-custom-hybrid-coordinator. Root cause evidence: producer=github-code-scanning:trivy-custom-hybrid-coordinator; path=ai-stack/mcp-servers/hybrid-coordinator/Dockerfile; authority=trivy; os_error=libssl3t64 3.5.7-1~deb13u2 vulnerable. Detected=2026-10-01T03:09:15.579522Z.
+  Severity: high
+  Action: raise the minimum-version floor: libssl3t64>=3.5.7-1~deb13u3 in ai-stack/mcp-servers/hybrid-coordinator/Dockerfile (owner policy: floors, never exact == pins); rebuild image and confirm Trivy clears the alerts (13 open alert(s), max severity high)
+  File: ai-stack/mcp-servers/hybrid-coordinator/Dockerfile
+
+[DONE 2026-10-01] rsi-b9e7668ec7156518b85d5aef — github-code-scanning:trivy-custom-hybrid-coordinator failure in code-scanning:trivy-custom-hybrid-coordinator. Root cause evidence: producer=github-code-scanning:trivy-custom-hybrid-coordinator; path=ai-stack/mcp-servers/hybrid-coordinator/Dockerfile; authority=trivy; os_error=libpcre2-8-0 10.46-1~deb13u2 vulnerable. Detected=2026-10-01T03:09:15.584213Z.
+  Severity: low
+  Action: raise the minimum-version floor: libpcre2-8-0>=10.46-1~deb13u3 in ai-stack/mcp-servers/hybrid-coordinator/Dockerfile (owner policy: floors, never exact == pins); rebuild image and confirm Trivy clears the alerts (2 open alert(s), max severity low)
+  File: ai-stack/mcp-servers/hybrid-coordinator/Dockerfile
+
+[OPEN] rsi-657c7b2bc51c2ae0d6a61607 — github-code-scanning:trivy-custom-nixos-docs failure in code-scanning:trivy-custom-nixos-docs. Root cause evidence: producer=github-code-scanning:trivy-custom-nixos-docs; path=ai-stack/mcp-servers/nixos-docs/Dockerfile; authority=trivy; os_error=setuptools 78.1.0 vulnerable. Detected=2026-10-01T03:09:15.588927Z.
+  Severity: high
+  Action: raise the minimum-version floor: setuptools>=83.0.0 in ai-stack/mcp-servers/nixos-docs/Dockerfile (owner policy: floors, never exact == pins); rebuild image and confirm Trivy clears the alerts (2 open alert(s), max severity high)
+  File: ai-stack/mcp-servers/nixos-docs/Dockerfile
+
+[DONE 2026-10-01] rsi-b91a6ca53f8a157a60a24a07 — github-code-scanning:trivy-custom-nixos-docs failure in code-scanning:trivy-custom-nixos-docs. Root cause evidence: producer=github-code-scanning:trivy-custom-nixos-docs; path=ai-stack/mcp-servers/nixos-docs/requirements.txt; authority=trivy; os_error=GitPython 3.1.43 vulnerable. Detected=2026-10-01T03:09:15.593373Z.
+  Severity: critical
+  Action: raise the minimum-version floor: GitPython>=3.1.59 in ai-stack/mcp-servers/nixos-docs/requirements.txt (owner policy: floors, never exact == pins); rebuild image and confirm Trivy clears the alerts (27 open alert(s), max severity critical)
+  File: ai-stack/mcp-servers/nixos-docs/requirements.txt
+
+[OPEN] rsi-792612b055567ceaf12ed6fb — github-code-scanning:trivy-custom-aidb failure in code-scanning:trivy-custom-aidb. Root cause evidence: producer=github-code-scanning:trivy-custom-aidb; path=ai-stack/mcp-servers/aidb/requirements.txt; authority=trivy; os_error=transformers 4.57.6 vulnerable. Detected=2026-10-01T03:09:15.598025Z.
+  Severity: high
+  Action: raise the minimum-version floor: transformers>=5.10.0 in ai-stack/mcp-servers/aidb/requirements.txt (owner policy: floors, never exact == pins); rebuild image and confirm Trivy clears the alerts (3 open alert(s), max severity high)
+  File: ai-stack/mcp-servers/aidb/requirements.txt
+
+[OPEN] rsi-f80f6b4d2ea17a765ea57c9a — github-code-scanning:trivy-custom-nixos-docs failure in code-scanning:trivy-custom-nixos-docs. Root cause evidence: producer=github-code-scanning:trivy-custom-nixos-docs; path=ai-stack/mcp-servers/nixos-docs/Dockerfile; authority=trivy; os_error=wheel 0.45.1 vulnerable. Detected=2026-10-01T03:09:15.603132Z.
+  Severity: high
+  Action: raise the minimum-version floor: wheel>=0.46.2 in ai-stack/mcp-servers/nixos-docs/Dockerfile (owner policy: floors, never exact == pins); rebuild image and confirm Trivy clears the alerts (1 open alert(s), max severity high)
+  File: ai-stack/mcp-servers/nixos-docs/Dockerfile
+
+[OPEN] rsi-0d3fdfb04eab33f2014325e0 — github-code-scanning:trivy-custom-nixos-docs failure in code-scanning:trivy-custom-nixos-docs. Root cause evidence: producer=github-code-scanning:trivy-custom-nixos-docs; path=ai-stack/mcp-servers/nixos-docs/Dockerfile; authority=trivy; os_error=jaraco.context 5.3.0 vulnerable. Detected=2026-10-01T03:09:15.607922Z.
+  Severity: high
+  Action: raise the minimum-version floor: jaraco.context>=6.1.0 in ai-stack/mcp-servers/nixos-docs/Dockerfile (owner policy: floors, never exact == pins); rebuild image and confirm Trivy clears the alerts (1 open alert(s), max severity high)
+  File: ai-stack/mcp-servers/nixos-docs/Dockerfile
+
+[OPEN] rsi-81a7a3566140f3a60d5fcc6c — delegate-run-events failure in steward ingest 2026-09-30. Root cause evidence: producer=delegate-run-events; path=scripts/ai/delegate-to-local; authority=run-event-metrics; os_error=local delegate success rate 0.47 over 24h (509 calls) per run-event metrics. Detected=2026-10-01T03:09:23.876005Z.
+  Severity: high
+  Action: classify failures by lane/cause from run events, then fix the dominant producer (local lane degradation)
+  File: scripts/ai/delegate-to-local
+
+[OPEN] rsi-917090649b7fba1313da041b — hybrid-coordinator:/stats/delegate failure in steward ingest 2026-09-30. Root cause evidence: producer=hybrid-coordinator:/stats/delegate; path=ai-stack/mcp-servers/hybrid-coordinator; authority=coordinator-stats; os_error=coordinator /stats/delegate success 18%; 54 failures all classified unknown (classification gap). Detected=2026-10-01T03:09:24.123816Z.
+  Severity: high
+  Action: add failure classification at the producer so unknown failures carry a cause; the classification gap is itself an incident
+  File: ai-stack/mcp-servers/hybrid-coordinator
+
+[DONE 2026-10-01] post-merge-trivy-residuals — After #354 merged, open Trivy alerts fell 198 -> 7 (Debian openssl/libssl/pcre2 + GitPython cleared). Residuals: nixos-docs setuptools 78.1.0 / vendored wheel 0.45.1 / jaraco.context 5.3.0 in /usr/local site-packages (a later install step re-pulled them despite an early floor) and aidb transformers 4.57.6. Fix: final pip-tooling floor step + build-failing setuptools>=83 assertion after all installs in the 4 Dockerfiles; torch/torchvision/torchaudio exact pins -> floors; aidb transformers>=5.10.0 with sentence-transformers>=5.2.0 (5.1.x caps transformers<5; verified on PyPI). requirements.lock refresh skipped: no resolver (pip-tools) available locally — lock drift is reported, not fatal.
+  Severity: high (security)
+  File: ai-stack/mcp-servers/{nixos-docs,aidb,embeddings-service,hybrid-coordinator}/Dockerfile; ai-stack/mcp-servers/aidb/requirements.txt
+
+
+[OPEN] pre-push-python-tooling-lint-matches-prose — the pre-push "Python tooling policy" lint flags any literal "pip install" text outside its allowlist, including comments and assertion messages in tests that enforce pip policy (5 hits in test-requirements-floor-policy.py, 2026-10-01). Worked around by rewording to "pip-install"; better: lint should match command invocations (RUN/subprocess/shell lines) or allowlist tests/.
+  Severity: low
+  File: scripts/governance/check-python-tooling-policy.sh
+
+[OPEN] codex-shared-mode-cannot-write-round-files — `delegate-to-codex --shared --mode edit` rejected writing `.agents/plans/<round>/codex-*.md` as "writing outside of the project; rejected by user approval settings" (codex-20261001-024352). The round-dispatch fix (aq-collab-round codex --shared) therefore still loses codex verdicts as files; verdict survived only in the task log. Also: the injected codex grounding still contains legacy instructions ("re-run tier0 gate", "Max 4 read_file per slice") contradicting the new DELEGATE MODE block; the review still used 69.5k tokens.
+  Severity: medium
+  Action: give the codex sandbox write access to the repo root in --shared mode (or have the round collector parse the verdict from the task log); remove the contradictory legacy lines from the codex grounding (scripts/ai/lib/harness-grounding.sh / codex grounding source).
+  File: scripts/ai/delegate-to-codex; scripts/ai/aq-collab-round; scripts/ai/lib/harness-grounding.sh
+
+[OPEN] rsi-38aff77a4f3f3f8452603a12 — github-actions:parity-scorecard-gate failure in PR #355 CI run 36850061887. Root cause evidence: producer=github-actions:parity-scorecard-gate; path=scripts/governance/tier0-validation-gate.sh; authority=ci; os_error=QA phase 0 nondeterministic on GitHub runners: 30+ host-only checks failed (postgresql unit, ports 5432/6379/8080..., AppArmor, llama /health) then passed on rerun of the same commit. Detected=2026-10-01T10:43:06.301788Z.
+  Severity: medium
+  Action: find why aq-qa phase 0 on GitHub runners sometimes executes host-only checks (units/ports/AppArmor/llama health) and fails, and on rerun of the same commit passes; make phase 0 deterministic in CI (explicit host detection + skip, or xfail runtime-only ids for CI)
+  File: scripts/governance/tier0-validation-gate.sh

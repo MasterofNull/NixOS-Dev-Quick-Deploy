@@ -123,12 +123,13 @@ class AlertSourceError(RuntimeError):
     """Alert source unreadable; distinct from a successful read with zero alerts."""
 
 
-def _fetch_alerts_from_github() -> list[dict[str, Any]]:
-    """Fetch open alerts from GitHub API using gh."""
+def _fetch_alerts_from_github(state: str = "open") -> list[dict[str, Any]]:
+    """Fetch alerts from GitHub API using gh; state="" returns every state (used to verify closure)."""
+    query = f"state={state}&per_page=100" if state else "per_page=100"
     try:
         result = subprocess.run(
             ["gh", "api", "--paginate", "--slurp",
-             "repos/{owner}/{repo}/code-scanning/alerts?state=open&per_page=100"],
+             f"repos/{{owner}}/{{repo}}/code-scanning/alerts?{query}"],
             capture_output=True, text=True, check=False, cwd=_REPO_ROOT, timeout=120,
         )
     except (FileNotFoundError, subprocess.TimeoutExpired) as exc:
@@ -154,6 +155,15 @@ def _load_alerts(path: str) -> list[dict[str, Any]]:
     if isinstance(data, list):
         return data
     raise AlertSourceError(f"unexpected alert format in {path}")
+
+
+_SEVERITY_ALIASES = {"note": "low", "info": "low", "none": "low", "warning": "medium", "error": "high"}
+
+
+def _normalize_severity(sev: str) -> str:
+    """Map code-scanning levels (note/warning/error) onto the ledger's low..critical scale."""
+    sev = str(sev or "medium").strip().lower()
+    return _SEVERITY_ALIASES.get(sev, sev if sev in {"low", "medium", "high", "critical"} else "medium")
 
 
 def _severity_order(sev: str) -> int:
@@ -240,7 +250,7 @@ def main() -> int:
                 "alert_count": 0,
             }
 
-        groups[key]["severities"].append(severity)
+        groups[key]["severities"].append(_normalize_severity(severity))
         if fixed and fixed.strip():
             # Handle comma-separated fixed versions
             for v in fixed.split(","):

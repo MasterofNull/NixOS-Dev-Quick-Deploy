@@ -191,6 +191,8 @@ nix/hosts/*/.sops.yaml
 # Context-boundary token accumulator and RSI ledger flock: per-host runtime state.
 .agent/collaboration/CONTEXT-BOUNDARY.json
 .agent/collaboration/rsi-incidents.lock
+.agent/collaboration/rsi-approvals.json
+.agent/collaboration/rsi-leases.json
 .agent/archive/*-egg-info/
 .agent/comms/command.json
 .agent/comms/output.json

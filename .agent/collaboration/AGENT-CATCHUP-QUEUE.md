@@ -921,3 +921,9 @@ Subject: `43e9ccd3` (behavioral-rules canon block, lane regions, summary project
 ---
 ## [2026-09-30] MVP-first directive (owner): build on available lanes; fold codex / antigravity-gemini / local contributions in later per SOP
 Pending fold-ins for returning lanes: (1) confirmatory review of RSI steward commits on branch `rsi/steward-20260930` (S1 aq-rsi CLI, S2 sweep, identity migration, floor migration); (2) review of the autonomous-improvement live metrics source (agent-run-events collector); (3) canon parity refactor 43e9ccd3 (entry above); (4) remaining code-scanning repairs (setuptools, wheel, jaraco.context, transformers) on the codex lane after quota reset + daily budget; (5) local verdicts for rounds rsi-pr353 / autonomous-metrics / rsi-steward (late-admissible).
+## [2026-09-30] QUEUED (codex + antigravity): rsi-steward S1-S4 confirmatory review
+Subject: branch `rsi/steward-20260930`, `43e9ccd3..HEAD` (aq-rsi CLI, sweep, identity migration + intake severity fix + annotate, requirements floor policy). Codex is budget-blocked today; antigravity down. Focus: unknown-vs-healthy semantics in `aq-rsi status`/sweep, annotate redaction, upper bounds in requirements, merge with codex's RSI state-dir partial patch (rsi_lifecycle.py). Advisory unless a real defect. Report: `.agents/plans/rsi-steward-role-prd-20260930/STEWARD-REPORT.md`.
+
+---
+## [2026-09-30] QUEUED binding review (codex after budget reset; local when idle): PR #354
+PR #354 (13 commits 7a1cf7a9..5c11089b) is MERGEABLE, CI green (46 pass, NixOS build pending), branch protection REVIEW_REQUIRED. claude-opus is author/integrator (cannot self-review). Steward branch `rsi/steward-20260930` (dd0eebe8..658a6eb6) reviewed PASS by claude-opus; opens as a follow-up PR after #354 merges (rebase onto main; live ledger migration re-run in the shared checkout).
