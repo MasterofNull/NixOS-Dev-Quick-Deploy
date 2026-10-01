@@ -123,6 +123,47 @@ PY
     audit_event_end "local" "$task_id" "error" "1" "worktree_handback_failed" "$mode"
 }
 
+verify_launch_success() {
+    local pid="$1" task_id="$2"
+    local max_wait=3  # seconds
+    local elapsed=0
+
+    # Check if process is alive
+    if ! kill -0 "$pid" 2>/dev/null; then
+        echo "ERROR: Process $pid failed to launch or exited immediately" >&2
+        return 1
+    fi
+
+    # Poll registry for task entry (up to max_wait seconds)
+    while [[ $elapsed -lt $max_wait ]]; do
+        # Check if registry row exists
+        if PYTHONPATH="$LIB_DIR" python3 - "$DELEGATION_DIR" "$task_id" <<'PYCHECK' 2>/dev/null; then
+from pathlib import Path
+import sys
+from task_registry import TaskRegistry
+
+try:
+    reg = TaskRegistry(Path(sys.argv[1]))
+    # Try to read the task entry
+    for line in (Path(sys.argv[1]) / "registry.jsonl").read_text().splitlines():
+        if f'"{sys.argv[2]}"' in line:
+            sys.exit(0)
+except:
+    pass
+sys.exit(1)
+PYCHECK
+            return 0
+        fi
+        sleep 0.1
+        elapsed=$((elapsed + 1))
+    done
+
+    # If we got here, registry entry wasn't found but process is alive
+    # This is still a failure condition - the task should have registered itself
+    echo "ERROR: Task $task_id launched but did not register in time" >&2
+    return 1
+}
+
 # ── guard: only run CLI parsing when executed directly, not when sourced ─────
 [[ "${BASH_SOURCE[0]}" != "${0}" ]] && return 0
 
@@ -468,6 +509,12 @@ print(classify_mode(sys.argv[1]))
             fi
             BG_PID=$!
             disown "$BG_PID"
+
+            # Verify that the process is alive and the registry entry exists
+            if ! verify_launch_success "$BG_PID" "$ID"; then
+                exit 1
+            fi
+
             info "Task $ID started in background (pid $BG_PID)"
             [[ -n "$WT_PATH" ]] && info "Isolated worktree: $WT_PATH (branch $WT_BRANCH)"
             info "Check output:  delegate-to-local --check $ID"
