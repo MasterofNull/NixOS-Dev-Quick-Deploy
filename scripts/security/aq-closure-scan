@@ -1,0 +1,141 @@
+#!/usr/bin/env python3
+"""Scan a Nix system closure for known vulnerabilities (SBOM -> grype).
+
+Nix is the single source of truth for deployed dependencies (owner decision
+2026-10-01), so this replaces container-image/pip-manifest scanning.
+
+  aq-closure-scan [--target PATH] [--json] [--sarif FILE] [--sbom FILE] [--top N]
+
+Pipeline: sbomnix <target> --cdx <sbom>; grype sbom:<sbom> -o json.
+Any scanner failure exits non-zero (exit 2); findings never change the exit
+code unless --fail-on {critical,high} is given.  nixpkgs is taken from this
+repo's flake.lock (--inputs-from) so scanner versions track the deployed pin.
+"""
+from __future__ import annotations
+
+import argparse
+import json
+import os
+import shutil
+import subprocess
+import sys
+import tempfile
+from collections import Counter
+from pathlib import Path
+
+REPO_ROOT = Path(__file__).resolve().parents[2]
+SEVERITIES = ("critical", "high", "medium", "low")
+
+
+class ScanError(RuntimeError):
+    pass
+
+
+def _nix_run(pkg: str, args: list[str], timeout: int, cwd: Path | None = None) -> subprocess.CompletedProcess:
+    cmd = ["nix", "run", "--inputs-from", str(REPO_ROOT), f"nixpkgs#{pkg}", "--", *args]
+    try:
+        proc = subprocess.run(cmd, capture_output=True, text=True, timeout=timeout, cwd=cwd or Path(tempfile.gettempdir()))
+    except FileNotFoundError as exc:
+        raise ScanError(f"nix not found: {exc}") from exc
+    except subprocess.TimeoutExpired as exc:
+        raise ScanError(f"{pkg} timed out after {timeout}s") from exc
+    if proc.returncode != 0:
+        raise ScanError(f"{pkg} exited {proc.returncode}: {proc.stderr.strip()[-600:]}")
+    return proc
+
+
+def summarize(grype_doc: dict, top: int) -> dict:
+    """Reduce grype JSON to severity counts plus the worst packages."""
+    counts: Counter = Counter()
+    per_pkg: dict[str, Counter] = {}
+    seen: set[tuple[str, str, str]] = set()
+    for match in grype_doc.get("matches", []):
+        vuln = match.get("vulnerability") or {}
+        art = match.get("artifact") or {}
+        vid, name, ver = vuln.get("id", "?"), art.get("name", "?"), art.get("version", "?")
+        if (vid, name, ver) in seen:
+            continue
+        seen.add((vid, name, ver))
+        sev = str(vuln.get("severity", "")).lower()
+        bucket = sev if sev in SEVERITIES else "unknown"
+        counts[bucket] += 1
+        per_pkg.setdefault(f"{name} {ver}", Counter())[bucket] += 1
+
+    def weight(c: Counter) -> tuple:
+        return tuple(c.get(s, 0) for s in SEVERITIES)
+
+    ranked = sorted(per_pkg.items(), key=lambda kv: weight(kv[1]), reverse=True)[:top]
+    return {
+        **{s: counts.get(s, 0) for s in SEVERITIES},
+        "unknown": counts.get("unknown", 0),
+        "total": sum(counts.values()),
+        "top_packages": [{"package": k, **{s: v.get(s, 0) for s in SEVERITIES}} for k, v in ranked],
+    }
+
+
+def scan(target: str, sbom: Path, sarif: Path | None, top: int, timeout: int) -> dict:
+    # sbomnix drops sbom.csv/sbom.spdx.json/http_cache.sqlite into its cwd; keep that scratch off the repo.
+    work = Path(tempfile.mkdtemp(prefix="aq-closure-work-"))
+    try:
+        _nix_run("sbomnix", [target, "--cdx", str(sbom.resolve())], timeout, cwd=work)
+    finally:
+        shutil.rmtree(work, ignore_errors=True)
+    if not sbom.is_file() or sbom.stat().st_size == 0:
+        raise ScanError(f"sbomnix produced no SBOM at {sbom}")
+    components = len(json.loads(sbom.read_text()).get("components", []))
+    if components == 0:
+        raise ScanError("SBOM has zero components; refusing to report a clean scan")
+    grype_args = [f"sbom:{sbom}", "-o", "json"]
+    if sarif is not None:
+        grype_args += ["-o", f"sarif={sarif}"]
+    proc = _nix_run("grype", grype_args, timeout)
+    try:
+        doc = json.loads(proc.stdout)
+    except json.JSONDecodeError as exc:
+        raise ScanError(f"grype output is not JSON: {exc}") from exc
+    if sarif is not None and not sarif.is_file():
+        raise ScanError(f"grype did not write SARIF at {sarif}")
+    result = summarize(doc, top)
+    result.update({"target": target, "components": components})
+    return result
+
+
+def main() -> int:
+    ap = argparse.ArgumentParser(description=__doc__, formatter_class=argparse.RawDescriptionHelpFormatter)
+    ap.add_argument("--target", default="/run/current-system", help="store path or flakeref (default: /run/current-system)")
+    ap.add_argument("--json", action="store_true", help="emit JSON summary on stdout")
+    ap.add_argument("--sarif", type=Path, help="also write a SARIF report to this path")
+    ap.add_argument("--sbom", type=Path, help="keep the CycloneDX SBOM at this path")
+    ap.add_argument("--top", type=int, default=10, help="number of top packages (default 10)")
+    ap.add_argument("--timeout", type=int, default=900, help="per-tool timeout seconds")
+    ap.add_argument("--fail-on", choices=("critical", "high"), help="exit 1 if findings at/above this severity exist")
+    args = ap.parse_args()
+
+    with tempfile.TemporaryDirectory(prefix="aq-closure-scan-") as tmp:
+        sbom = (args.sbom or Path(tmp) / "closure.cdx.json").resolve()
+        if args.sarif:
+            args.sarif = args.sarif.resolve()
+        try:
+            result = scan(args.target, sbom, args.sarif, args.top, args.timeout)
+        except ScanError as exc:
+            print(f"aq-closure-scan: scanner failure: {exc}", file=sys.stderr)
+            return 2
+
+    if args.json:
+        print(json.dumps(result, indent=2))
+    else:
+        print(f"target={result['target']} components={result['components']} "
+              f"critical={result['critical']} high={result['high']} medium={result['medium']} "
+              f"low={result['low']} total={result['total']}")
+        for row in result["top_packages"]:
+            print(f"  {row['package']}: C{row['critical']} H{row['high']} M{row['medium']} L{row['low']}")
+
+    if args.fail_on:
+        gate = ("critical",) if args.fail_on == "critical" else ("critical", "high")
+        if any(result[s] for s in gate):
+            return 1
+    return 0
+
+
+if __name__ == "__main__":
+    sys.exit(main())

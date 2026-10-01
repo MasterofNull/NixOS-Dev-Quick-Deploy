@@ -53,3 +53,11 @@ Task ID: RSI-STEWARD-20261001
 - Second-order: wave-1 `verify_launch_success` counted 0.1s ticks as seconds and failed live tasks whose registration lags ~35s (ctx-freshness + worktree setup). Now fails only on a child that died unregistered; alive-unregistered warns. Test rewritten behavioral (was string-match, which is how the timing bug passed).
 - Live: round `tiered-auto-update-prd-r2-20261001` dispatched codex-20261001-131321-69hfw7 + local-20261001-131352-mklnhi, both running.
 - Tests: test-aq-collab-round-dispatch-contract.py (4), test-delegate-to-local-launch-verification.py (5), test-aq-collab-round-recovery.py.
+
+## Nix single source: closure scan replaces image scans (2026-10-01)
+- Owner decision: deployed deps come only from Nix; the Trivy image/Dockerfile scans covered images never deployed (all AI services run natively from Nix python envs).
+- Archived (`.agent/archive/20261001-docker-pip-layer/`): 10 Dockerfiles, 7 requirements.lock, 4 requirements.txt, qdrant-populator, verify-python-lock-runtime + test. Inventory: `.agents/plans/slate-cleanup-20261001/NIX-ONLY-INVENTORY.md`. These moves landed in b78af0fc (staged renames swept by a whole-index commit).
+- Kept: requirements.txt for aidb/hybrid-coordinator/nixos-docs (CI unit-test jobs still pip install them; follow-up: Nix devShell for test envs); mlops/qa/trading tools (spawned by hybrid-coordinator mcp_handlers).
+- CI: `nix-closure-vuln-scan` builds the hyperd-ai-dev toplevel (nix-build.yml shows the same build completes on hosted runners in ~26 min) and runs `scripts/security/aq-closure-scan` (sbomnix -> grype, nixpkgs from flake.lock), SARIF category `nix-closure`; scanner failure fails the job, findings are non-blocking.
+- Intake: `rsi-intake-code-scanning.py` maps `nix-closure` to `nix/` with root fix "nix flake update / fast-lane promotion".
+- Live local run on /run/current-system: 2854 components; critical 20, high 107, medium 93, low 16.
