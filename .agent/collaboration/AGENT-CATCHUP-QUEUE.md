@@ -931,3 +931,7 @@ PR #354 (13 commits 7a1cf7a9..5c11089b) is MERGEABLE, CI green (46 pass, NixOS b
 ---
 ## [2026-10-01] QUEUED (codex + antigravity): rsi-steward incident-queue round confirmatory review
 Subject: branch `rsi/steward-20260930`, commits 37733508, 3700ac10 and the follow-up hook/hung-delegate commit (delegate metric pollution guards + unified failure classifier; aq-qa host/CI mode; aq-rsi-hook routing-denial policy; test-rsi-hung-delegate). Focus: `AQ_AUDIT_DISABLE` / `AQ_AGENT_RUN_EVENTS_PATH` isolation completeness (other fixtures posting to production telemetry), host_mode demotion list (HOST_ONLY_IDS), hook no longer recording routing denials. Advisory unless a real defect.
+
+---
+## [2026-10-01] QUEUED binding review (codex after round r2; local when idle): slate PR (0ce74b99..HEAD on `slate/nix-only-autoupdate-20261001`)
+Author/integrator: claude-opus (cannot self-review). Priority subjects: `7a5bb5fc` (Nix-only closure scan: CI job builds full toplevel; aq-closure-scan error handling; intake nix-closure mapping), `689efe1b` (aq-pin-watch rewrites tool-authority pin sites — verify restore-on-failure, composite skip, never bumps quarantined/major), `676d113c` (aq-collab-round dispatch id parsing + delegate-to-local launch verification semantics), `0ce74b99` (ACP store-level single-use claim). Codex's own `6a3eca89` gets a non-codex reviewer (local). Advisory unless a real defect; defects -> bounded follow-up, never rewrite history.
