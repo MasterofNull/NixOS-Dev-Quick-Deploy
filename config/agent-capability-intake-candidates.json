@@ -88,11 +88,11 @@
       "maturity": "official",
       "priority": "very-high",
       "state": "enabled",
-      "pinned_version": "0.9.0",
+      "pinned_version": "nixpkgs",
       "review_status": "accepted-with-mitigations",
       "mitigations": [
-        "pinned semgrep-mcp PyPI package version",
-        "Nix-provided uv runtime",
+        "Nix-provided semgrep binary; version follows flake.lock (uvx semgrep-mcp is deprecated upstream)",
+        "tracing and metrics disabled (SEMGREP_MCP_DISABLE_TRACING=true, SEMGREP_SEND_METRICS=off); default tracing exports git user/repo/branch",
         "stdio transport only",
         "no SEMGREP_APP_TOKEN configured",
         "workspace-read security scanning use only",
@@ -100,8 +100,8 @@
       ],
       "install": {
         "type": "mcp",
-        "command": "nix",
-        "args": ["shell", "nixpkgs#uv", "-c", "uvx", "semgrep-mcp==0.9.0", "--transport", "stdio"]
+        "command": "/run/current-system/sw/bin/semgrep",
+        "args": ["mcp", "--transport", "stdio"]
       },
       "tool_allowlist": [
         "security_check",
@@ -116,8 +116,8 @@
         "secrets": false
       },
       "value": "Agent-triggered generated-code security scans and custom rule validation.",
-      "risks": ["python-package-execution", "nix-package-bootstrap"],
-      "activation_notes": "Enabled with Nix-provided uv, pinned semgrep-mcp package, stdio transport, and no Semgrep cloud token."
+      "risks": ["python-package-execution"],
+      "activation_notes": "Enabled via the Nix-provided `semgrep mcp` subcommand (replaces deprecated uvx semgrep-mcp==0.9.0, which only returns a deprecation notice), stdio transport, telemetry off, no Semgrep cloud token."
     },
     {
       "id": "github-mcp-readonly",
