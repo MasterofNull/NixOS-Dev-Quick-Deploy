@@ -36,3 +36,12 @@ Task ID: RSI-STEWARD-20261001
 
 ## Hint Feedback
 - None.
+
+## Slate wave 1 (2026-10-01)
+- aq-agent-loop: task ids get a `secrets.token_hex` suffix (same-second collisions overwrote run dirs). Test: test-agent-loop-task-id-collision.py.
+- delegate-to-local: launch is acknowledged only after the child is verified alive (false launch acks hid dead delegates). Test: test-delegate-to-local-launch-verification.py.
+- .githooks/pre-commit: `git diff --cached --check`. Test: test-pre-commit-whitespace-check.py.
+- antigravity-health.sh: credential/route preflight reported as its own signal. Test: test-antigravity-health-credential-check.py.
+- CI skill-bundle-parity job had no test step; the smoke script was wrongly archived (it exercises the live `scripts/governance/skill-bundle-registry.py`), so it is restored to `scripts/testing/` and CI runs it from there. Test: test-ci-skill-bundle-smoke.py.
+- Dropped: Trivy SARIF per-category upload (moot under the Nix-only pivot; image scans replaced by the Nix closure scan).
+- Reverted: QPPR zero-budget test delay increase (weakened the test); a code fix is still open.

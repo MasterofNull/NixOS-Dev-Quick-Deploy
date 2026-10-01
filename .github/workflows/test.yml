@@ -693,6 +693,11 @@ jobs:
           python -m pip install --upgrade pip
           python -m pip install pyyaml
 
+      - name: Run skill bundle smoke checks
+        run: |
+          chmod +x scripts/testing/smoke-skill-bundle-distribution.sh
+          ./scripts/testing/smoke-skill-bundle-distribution.sh
+
 
   advanced-parity-tooling:
     name: Advanced Parity Tooling
