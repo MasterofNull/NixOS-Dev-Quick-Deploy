@@ -56,8 +56,12 @@ let
     ]);
 
   # Common hardening base (tier-aware)
+  # Timer-driven oneshot unit: pass restart = "no" to prevent infinite restart loops
   mkHardenedService = import ../../lib/hardened-service.nix {inherit lib;};
-  hardenedBase = mkHardenedService {tier = cfg.hardwareTier;};
+  hardenedBase = mkHardenedService {
+    tier = cfg.hardwareTier;
+    restart = "no";
+  };
 
   svcUser = cfg.primaryUser;
   svcGroup = lib.attrByPath ["users" "users" svcUser "group"] "users" config;
