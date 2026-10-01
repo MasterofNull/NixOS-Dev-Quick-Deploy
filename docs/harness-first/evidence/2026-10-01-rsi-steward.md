@@ -36,3 +36,33 @@ Task ID: RSI-STEWARD-20261001
 
 ## Hint Feedback
 - None.
+
+## Slate wave 1 (2026-10-01)
+- aq-agent-loop: task ids get a `secrets.token_hex` suffix (same-second collisions overwrote run dirs). Test: test-agent-loop-task-id-collision.py.
+- delegate-to-local: launch is acknowledged only after the child is verified alive (false launch acks hid dead delegates). Test: test-delegate-to-local-launch-verification.py.
+- .githooks/pre-commit: `git diff --cached --check`. Test: test-pre-commit-whitespace-check.py.
+- antigravity-health.sh: credential/route preflight reported as its own signal. Test: test-antigravity-health-credential-check.py.
+- CI skill-bundle-parity job had no test step; the smoke script was wrongly archived (it exercises the live `scripts/governance/skill-bundle-registry.py`), so it is restored to `scripts/testing/` and CI runs it from there. Test: test-ci-skill-bundle-smoke.py.
+- Dropped: Trivy SARIF per-category upload (moot under the Nix-only pivot; image scans replaced by the Nix closure scan).
+- Reverted: QPPR zero-budget test delay increase (weakened the test); a code fix is still open.
+
+## Collab-round dispatch was silently dead (2026-10-01)
+- Symptom: round `tiered-auto-update-prd-20261001` sat DISPATCHED for 5h with 0 live lanes; `collect` said `registry-agent-mismatch`.
+- Root causes (scripts/ai/aq-collab-round `_dispatch_process`): codex was sent `--mode edit --shared`, which delegate-to-codex refuses (stderr discarded); the recorded "task id" was the last stdout line (`Output file: ...`); local's shim was killed by a 30s `subprocess.run` timeout before launch, recorded as "running-async".
+- Fix: codex dispatched isolated (collect already imports its owned file from the terminal worktree); task id parsed from the `Delegating task:` line; nonzero exit or missing id recorded as `error:rc=..:<stderr>`; launch budget 300s.
+- Second-order: wave-1 `verify_launch_success` counted 0.1s ticks as seconds and failed live tasks whose registration lags ~35s (ctx-freshness + worktree setup). Now fails only on a child that died unregistered; alive-unregistered warns. Test rewritten behavioral (was string-match, which is how the timing bug passed).
+- Live: round `tiered-auto-update-prd-r2-20261001` dispatched codex-20261001-131321-69hfw7 + local-20261001-131352-mklnhi, both running.
+- Tests: test-aq-collab-round-dispatch-contract.py (4), test-delegate-to-local-launch-verification.py (5), test-aq-collab-round-recovery.py.
+
+## Nix single source: closure scan replaces image scans (2026-10-01)
+- Owner decision: deployed deps come only from Nix; the Trivy image/Dockerfile scans covered images never deployed (all AI services run natively from Nix python envs).
+- Archived (`.agent/archive/20261001-docker-pip-layer/`): 10 Dockerfiles, 7 requirements.lock, 4 requirements.txt, qdrant-populator, verify-python-lock-runtime + test. Inventory: `.agents/plans/slate-cleanup-20261001/NIX-ONLY-INVENTORY.md`. These moves landed in b78af0fc (staged renames swept by a whole-index commit).
+- Kept: requirements.txt for aidb/hybrid-coordinator/nixos-docs (CI unit-test jobs still pip install them; follow-up: Nix devShell for test envs); mlops/qa/trading tools (spawned by hybrid-coordinator mcp_handlers).
+- CI: `nix-closure-vuln-scan` builds the hyperd-ai-dev toplevel (nix-build.yml shows the same build completes on hosted runners in ~26 min) and runs `scripts/security/aq-closure-scan` (sbomnix -> grype, nixpkgs from flake.lock), SARIF category `nix-closure`; scanner failure fails the job, findings are non-blocking.
+- Intake: `rsi-intake-code-scanning.py` maps `nix-closure` to `nix/` with root fix "nix flake update / fast-lane promotion".
+- Live local run on /run/current-system: 2854 components; critical 20, high 107, medium 93, low 16.
+
+## U1 aq-pin-watch (2026-10-01)
+- Deterministic release watcher for tool-authority executables (no LLM): registry query -> semver compare -> minor/patch bump across every pin site + intake registry -> intake test; major -> owner sign-off record; quarantined never bumped. PRD: `.agent/PROJECT-TIERED-AUTO-UPDATE-PRD.md`.
+- Review fixes before first commit: (1) backups keyed by basename collided for `.claude/settings.json` and `.gemini/settings.json`, so a failed validation restored Gemini's settings over Claude's (mutation-confirmed; test now asserts all pin sites byte-identical); (2) composite pins (`syft-X+grype-Y`) were compared against one component's release and would be overwritten with a bare version; now skipped.
+- Live check: github-mcp 0.20.2->1.13.0 (major, sign-off), osv-scanner 2.2.4->2.6.0, trivy 0.66.0->0.75.0 (minor). Not yet wired into the update pipeline (U3).

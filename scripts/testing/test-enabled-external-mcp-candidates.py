@@ -78,6 +78,8 @@ def assert_semgrep_config(entry: dict) -> None:
     assert "semgrep-mcp@latest" not in joined, "Semgrep MCP must not use latest"
     assert "--transport" in args and "stdio" in args, "Semgrep MCP must use stdio transport"
     assert "SEMGREP_APP_TOKEN" not in (entry.get("env") or {}), "Semgrep cloud token must not be configured"
+    # semgrep-mcp needs the semgrep CLI; uvx's tool env shadows PATH, so point at the system binary.
+    assert (entry.get("env") or {}).get("SEMGREP_PATH") == "/run/current-system/sw/bin/semgrep", "Semgrep MCP must set SEMGREP_PATH to the system semgrep"
 
 
 def assert_enabled_candidate(entry: dict, pinned_version: str) -> None:

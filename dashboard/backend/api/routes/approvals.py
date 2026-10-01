@@ -49,6 +49,7 @@ matching the prep doc's kiosk launch command
 
 from __future__ import annotations
 
+import asyncio
 import base64
 import os
 import sys
@@ -58,6 +59,7 @@ from typing import Any, Dict, List, Mapping, Optional, Protocol
 
 from fastapi import APIRouter, HTTPException
 from fastapi.responses import HTMLResponse
+from fastapi.concurrency import run_in_threadpool
 from pydantic import BaseModel, ConfigDict, Field
 
 # --------------------------------------------------------------------------
@@ -233,6 +235,18 @@ class ApprovalStore(Protocol):
 
     def transition(self, request_id: str, new_status: str, *, actor: str) -> dict: ...
 
+    def save(self, record: dict) -> None:
+        """Persist a record after execution. Subclasses must implement this
+        to handle the transition from execute route's save_record callback."""
+        ...
+
+    def claim_for_execution(self, request_id: str) -> bool:
+        """Atomically claim an approved record for execution via compare-and-set:
+        if status is STATUS_APPROVED, transition to STATUS_EXECUTING and return True.
+        Otherwise (already executing, already completed, not found), return False.
+        This prevents replay and concurrent execution."""
+        ...
+
 
 @dataclass(frozen=True)
 class ChallengeResult:
@@ -297,6 +311,7 @@ class FixtureApprovalStore:
     def __init__(self, records: Optional[List[dict]] = None) -> None:
         seed = records if records is not None else _default_fixture_records()
         self._records: Dict[str, dict] = {r["request_id"]: r for r in seed}
+        self._execution_claimed: set = set()  # Track claimed records for single-use
 
     def list_pending(self) -> List[dict]:
         return [r for r in self._records.values() if r["status"] == AR.STATUS_PENDING]
@@ -311,6 +326,31 @@ class FixtureApprovalStore:
         new_record, _event = AR.transition(record, new_status, actor=actor)
         self._records[request_id] = new_record
         return new_record
+
+    def save(self, record: dict) -> None:
+        """Persist a record after execution (e.g., after executor transitions
+        it to executed/failed). Called by the execute route via the executor's
+        save_record callback."""
+        if record is None:
+            return
+        self._records[record["request_id"]] = record
+
+    def claim_for_execution(self, request_id: str) -> bool:
+        """Atomically claim an approved record for single-use execution.
+
+        Returns True if the record's status is still APPROVED and hasn't been
+        claimed yet. Returns False if already claimed, already completed, or
+        not found. This prevents replay and concurrent execution without
+        changing the status machine."""
+        record = self._records.get(request_id)
+        if record is None:
+            return False
+        # Check if already claimed or no longer approved
+        if request_id in self._execution_claimed or record["status"] != AR.STATUS_APPROVED:
+            return False
+        # Atomically mark as claimed
+        self._execution_claimed.add(request_id)
+        return True
 
 
 class FixtureSignerClient:
@@ -477,18 +517,31 @@ async def deny_request(request_id: str, body: DenyRequest):
 
 @router.post("/{request_id}/execute")
 async def execute_approved_request(request_id: str):
-    """Execute an approved runbook request through the audited executor."""
+    """Execute an approved runbook request through the audited executor.
+
+    Atomically claims the record for single-use execution at the store level
+    before calling the executor, preventing replay and concurrent execution
+    without changing the status machine. The executor runs off the event loop
+    via threadpool to avoid blocking."""
     record = _store.get(request_id)
     if record is None:
         raise HTTPException(status_code=404, detail=_error_card("request_not_found"))
-    if record.get("status") != AR.STATUS_APPROVED:
-        raise HTTPException(status_code=409, detail=_error_card("not_approved"))
+
+    # Atomically claim the record for single-use execution at the store level.
+    # If claim fails, the record is not approved or has already been claimed
+    # (concurrent/replay). claim_for_execution() does not change status.
+    if not _store.claim_for_execution(request_id):
+        raise HTTPException(status_code=409, detail=_error_card("already_completed"))
+
     try:
         import approval_executor as AE
-        outcome = AE.execute_request(
+
+        # Run executor off the event loop to prevent blocking.
+        outcome = await run_in_threadpool(
+            AE.execute_request,
             request_id,
             load_record=lambda rid: _store.get(rid),
-            save_record=lambda r: _store._records.__setitem__(r["request_id"], r) if hasattr(_store, "_records") else None,
+            save_record=lambda r: _store.save(r),
             actor="acp-operator-execution",
         )
         return {

@@ -313,6 +313,9 @@ def main(argv: list[str] | None = None) -> int:
         all_results = _run_phase(phase, ctx)
         phase_label = phase
 
+    from .core.host_mode import demote_host_only
+    all_results = demote_host_only(all_results)
+
     duration = int(time.monotonic() - start)
 
     rs = ResultSet(

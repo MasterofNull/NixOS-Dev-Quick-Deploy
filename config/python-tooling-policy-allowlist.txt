@@ -10,3 +10,5 @@ scripts/data/import-tool-recommendations.py
 scripts/data/sync-knowledge-sources
 scripts/testing/run-a2a-tck.sh
 scripts/testing/test-blast-radius-classifier.py
+scripts/testing/test-python-tooling-policy.py
+scripts/testing/test-requirements-floor-policy.py

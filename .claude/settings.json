@@ -47,7 +47,10 @@
         "semgrep-mcp==0.9.0",
         "--transport",
         "stdio"
-      ]
+      ],
+      "env": {
+        "SEMGREP_PATH": "/run/current-system/sw/bin/semgrep"
+      }
     }
   },
   "permissions": {

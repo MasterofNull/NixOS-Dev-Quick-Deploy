@@ -17,6 +17,9 @@ assert GIT, "git is required for this fixture"
 
 
 def run(args, *, env=None, check=True):
+    # Fixture failures must never reach the production audit log read by /stats/delegate.
+    if env is None:
+        env = {**os.environ, "AQ_AUDIT_DISABLE": "1"}
     result = subprocess.run(args, env=env, text=True, capture_output=True)
     if check and result.returncode:
         raise AssertionError(f"command failed ({result.returncode}): {args}\n{result.stderr}")

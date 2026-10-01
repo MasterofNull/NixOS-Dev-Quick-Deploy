@@ -24,3 +24,4 @@ README.md
 # This is an explicit root hygiene guardrail for migration stability.
 .trivyignore
 .vscode.configs.import.cspell.config.json
+.mcp.json

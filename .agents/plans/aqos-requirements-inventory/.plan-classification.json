@@ -1,0 +1,5 @@
+{
+  "classification": "inventory",
+  "tracking_route": "tracker.json",
+  "evidence": "The plan's tracker.json is the authoritative AQ-OS requirements inventory and contains req-guest-init-evaluation with its scope, validation goals, queued priority, and pending acceptance."
+}

@@ -264,9 +264,29 @@ EOF
   return 0
 }
 
+run_whitespace_and_conflict_check() {
+  # Blocks trailing whitespace, conflict markers, and blank lines at EOF in staged content.
+
+  if ! git diff --cached --check; then
+    cat >&2 <<'EOF'
+Commit blocked: whitespace or conflict marker issues detected.
+Fix issues reported above and re-stage files:
+  git add <files>
+  git commit
+
+To auto-fix trailing whitespace: sed -i 's/[[:space:]]*$//' <file>
+To resolve conflicts: edit marked sections and complete the merge.
+EOF
+    return 1
+  fi
+
+  return 0
+}
+
 run_secret_scan
 run_shell_validation
 run_syntax_check
+run_whitespace_and_conflict_check
 run_repo_structure_validation
 run_migration_governance_checks
 run_focused_ci_checks

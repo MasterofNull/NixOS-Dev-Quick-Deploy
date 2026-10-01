@@ -64,6 +64,7 @@ _RSI_SEVERITIES = {"low", "medium", "high", "critical"}
 _RSI_DISPATCH_LOCK = QUEUE_PATH.with_name("rsi-dispatch.lock")
 _RSI_MAX_DISPATCH_PER_CYCLE = 3
 _RSI_MAX_ATTEMPTS = 3
+_RSI_DELEGATE_GRACE_S = 30  # grace beyond the delegate's own --timeout before the dispatcher kills its process group
 
 
 DEFAULT_POLICY: Dict[str, Any] = {
@@ -865,7 +866,7 @@ def _run_rsi_delegate(row: Dict[str, Any], timeout_seconds: int, apply: bool, la
         start_new_session=True, cwd=str(REPO_ROOT),
     )
     try:
-        stdout, stderr = proc.communicate(timeout=timeout_seconds + 30)
+        stdout, stderr = proc.communicate(timeout=timeout_seconds + _RSI_DELEGATE_GRACE_S)
     except subprocess.TimeoutExpired:
         try:
             os.killpg(proc.pid, signal.SIGTERM)

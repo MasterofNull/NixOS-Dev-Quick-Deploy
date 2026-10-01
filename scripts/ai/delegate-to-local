@@ -123,6 +123,28 @@ PY
     audit_event_end "local" "$task_id" "error" "1" "worktree_handback_failed" "$mode"
 }
 
+verify_launch_success() {
+    # Fails only on a dead child. Registration can legitimately lag launch by 30s+
+    # (ctx-freshness + worktree setup run first), so alive-but-unregistered is a
+    # warning, not a failure: a refused id would orphan a running task.
+    local pid="$1" task_id="$2" registry="${3:-$DELEGATION_DIR/registry.jsonl}"
+    local ticks=0
+    while [[ $ticks -lt 10 ]]; do  # 0.1s polls = 1s to catch immediate exits
+        kill -0 "$pid" 2>/dev/null || break
+        sleep 0.1
+        ticks=$((ticks + 1))
+    done
+    local registered=false
+    grep -qF "\"$task_id\"" "$registry" 2>/dev/null && registered=true
+    if ! kill -0 "$pid" 2>/dev/null && [[ "$registered" != true ]]; then
+        echo "ERROR: Task $task_id (pid $pid) exited before registering" >&2
+        return 1
+    fi
+    [[ "$registered" == true ]] || \
+        echo "WARN: Task $task_id alive (pid $pid) but not yet registered; check --status shortly" >&2
+    return 0
+}
+
 # ── guard: only run CLI parsing when executed directly, not when sourced ─────
 [[ "${BASH_SOURCE[0]}" != "${0}" ]] && return 0
 
@@ -468,6 +490,12 @@ print(classify_mode(sys.argv[1]))
             fi
             BG_PID=$!
             disown "$BG_PID"
+
+            # Verify that the process is alive and the registry entry exists
+            if ! verify_launch_success "$BG_PID" "$ID"; then
+                exit 1
+            fi
+
             info "Task $ID started in background (pid $BG_PID)"
             [[ -n "$WT_PATH" ]] && info "Isolated worktree: $WT_PATH (branch $WT_BRANCH)"
             info "Check output:  delegate-to-local --check $ID"

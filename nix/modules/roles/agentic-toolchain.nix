@@ -49,6 +49,13 @@
     # procps is added only for `watch` — the one common operator/observability
     # command genuinely missing from both SSOTs above.
     procps # `watch`, plus `ps`/`top`/`free`/`pgrep`/`pkill`
+
+    # Security scanners agents and MCP servers call by name. semgrep-mcp needs
+    # the semgrep CLI on a stable path (SEMGREP_PATH=/run/current-system/sw/bin/semgrep);
+    # gitleaks backs the documented secret-scan tooling (backlog
+    # archive-secret-scan-tooling-is-not-runnable-as-documented).
+    semgrep
+    gitleaks
   ];
 
   # OPT-IN — heavier/specialized sets a project selects explicitly via

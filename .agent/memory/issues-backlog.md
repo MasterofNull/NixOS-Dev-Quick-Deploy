@@ -4666,7 +4666,7 @@ File: .agent/WORKFLOW-CANON.md; .agent/CODEX.md; evidence in .agent/collaboratio
   Action: route command through lean-ctx
   File: command
 
-[OPEN] rsi-f6c51d38de20750a67ef4807 — lean-ctx-pretooluse failure in pre-tool. Root cause evidence: producer=lean-ctx-pretooluse; path=hook/codex-pretooluse; authority=installed pre-tool policy; os_error=lean-ctx command routing rejected. Detected=2026-09-28T04:04:17.941492Z.
+[DONE 2026-10-01] rsi-f6c51d38de20750a67ef4807 — lean-ctx-pretooluse failure in pre-tool. Root cause evidence: producer=lean-ctx-pretooluse; path=hook/codex-pretooluse; authority=installed pre-tool policy; os_error=lean-ctx command routing rejected. Detected=2026-09-28T04:04:17.941492Z.
   Severity: medium
   Action: Diagnose hook routing and caller contract; preserve command semantics and policy
   File: hook/codex-pretooluse
@@ -4676,12 +4676,12 @@ File: .agent/WORKFLOW-CANON.md; .agent/CODEX.md; evidence in .agent/collaboratio
   Action: Retain the streaming regression; after exact-subject independent PASS, perform bounded runtime acceptance under existing 256M limit. No service restart or limit increase yet.
   File: scripts/ai/aq-report; scripts/testing/test-useful-token-metrics.py
 
-[OPEN] rsi-80d039137a26e48c5a18826d — agent-command-construction failure in rsi-implementation. Root cause evidence: producer=agent-command-construction; path=scripts/governance/tier0-validation-gate.sh; authority=validation-serialization; os_error=Nested checkout waited on its own parent lease. Detected=2026-09-28T04:09:18.692955Z.
+[DONE 2026-10-01] rsi-80d039137a26e48c5a18826d — agent-command-construction failure in rsi-implementation. Root cause evidence: producer=agent-command-construction; path=scripts/governance/tier0-validation-gate.sh; authority=validation-serialization; os_error=Nested checkout waited on its own parent lease. Detected=2026-09-28T04:09:18.692955Z.
   Severity: medium
   Action: Use the tier0 entrypoint which acquires its own gate; reject nested acquisition with regression coverage
   File: scripts/governance/tier0-validation-gate.sh
 
-[OPEN] rsi-74724f55cfa00bc191fa711b — test-rsi-adapters failure in rsi-implementation. Root cause evidence: producer=test-rsi-adapters; path=scripts/testing/test-rsi-adapters.py; authority=regression; os_error=Assertion expected placeholder path after runner began preserving executable path. Detected=2026-09-28T04:12:54.992367Z.
+[DONE 2026-10-01] rsi-74724f55cfa00bc191fa711b — test-rsi-adapters failure in rsi-implementation. Root cause evidence: producer=test-rsi-adapters; path=scripts/testing/test-rsi-adapters.py; authority=regression; os_error=Assertion expected placeholder path after runner began preserving executable path. Detected=2026-09-28T04:12:54.992367Z.
   Severity: medium
   Action: Update regression to require actual executable path
   File: scripts/testing/test-rsi-adapters.py
@@ -4691,7 +4691,7 @@ File: .agent/WORKFLOW-CANON.md; .agent/CODEX.md; evidence in .agent/collaboratio
   Action: Use literal existing roots and quoted rg --glob filters
   File: scripts/ai
 
-[OPEN] rsi-ee58a81a2f4f2e697825c2d6 — tier0-validation-gate.sh failure in rsi-tier0-validation. Root cause evidence: producer=tier0-validation-gate.sh; path=scripts/governance/tier0-validation-gate.sh; authority=explicit command invocation; os_error=command exit status 1. Detected=2026-09-28T04:21:16.122303Z.
+[DONE 2026-10-01] rsi-ee58a81a2f4f2e697825c2d6 — tier0-validation-gate.sh failure in rsi-tier0-validation. Root cause evidence: producer=tier0-validation-gate.sh; path=scripts/governance/tier0-validation-gate.sh; authority=explicit command invocation; os_error=command exit status 1. Detected=2026-09-28T04:21:16.122303Z.
   Severity: medium
 Action: Inspect bounded command evidence and fix the producer before retrying
 File: scripts/governance/tier0-validation-gate.sh
@@ -4758,7 +4758,7 @@ File: scripts/ai/lib/worktree-isolation.sh; scripts/automation/prsi-orchestrator
   Action: diagnose nested gate invocation and quiet/hanging focused runner; rerun serialized Tier 0 to a terminal result before commit or activation.
   File: scripts/governance/tier0-validation-gate.sh; scripts/governance/run-focused-ci-checks.sh
 
-[OPEN] rsi-f6c51d38de20750a67ef4807 — lean-ctx-pretooluse failure in pre-tool. Root cause evidence: producer=lean-ctx-pretooluse; path=hook/codex-pretooluse; authority=installed pre-tool policy; os_error=lean-ctx command routing rejected. Detected=2026-09-28T17:46:50.427158Z.
+[DONE 2026-10-01] rsi-f6c51d38de20750a67ef4807 — lean-ctx-pretooluse failure in pre-tool. Root cause evidence: producer=lean-ctx-pretooluse; path=hook/codex-pretooluse; authority=installed pre-tool policy; os_error=lean-ctx command routing rejected. Detected=2026-09-28T17:46:50.427158Z.
   Severity: medium
   Action: Diagnose hook routing and caller contract; preserve command semantics and policy
   File: hook/codex-pretooluse
@@ -4768,7 +4768,7 @@ File: scripts/ai/lib/worktree-isolation.sh; scripts/automation/prsi-orchestrator
   Action: apply parked patch via L2B freeze process with fixture re-pin + independent review. Also: task profile.json recorded `enable_thinking: true` for task_type=research although dispatch.py profiles all send False; confirm which value reached llama.cpp (first_visible_content was null for all 150 tokens).
   File: scripts/ai/lib/dispatch.py ~line 310
 
-[OPEN] claude-plugin-selection-not-covered-by-context-SOP — Claude Code plugins (`enabledPlugins`) load statically at session start; the context-efficiency SOP covers MCP deferral (ToolSearch) and lean-ctx but not plugins. `clangd-lsp` was enabled globally (~/.claude/settings.json) in a Python/Nix repo, costing startup/context every session (CLI tip 2026-09-30). Interim: project-scoped disable in .claude/settings.json (global kept for cpp-dev work).
+[DONE 2026-10-01] claude-plugin-selection-not-covered-by-context-SOP — Claude Code plugins (`enabledPlugins`) load statically at session start; the context-efficiency SOP covers MCP deferral (ToolSearch) and lean-ctx but not plugins. `clangd-lsp` was enabled globally (~/.claude/settings.json) in a Python/Nix repo, costing startup/context every session (CLI tip 2026-09-30). Interim: project-scoped disable in .claude/settings.json (global kept for cpp-dev work).
   Severity: low
   Action: add a plugin-scope rule to .agent/skills/context-efficiency/SKILL.md (+ parity files): plugins enabled per-project by stack, never globally by default; add a tier0/aq-qa check that flags globally-enabled language plugins with no matching files in the repo.
   File: .claude/settings.json; .agent/skills/context-efficiency/SKILL.md
@@ -4778,7 +4778,7 @@ File: scripts/ai/lib/worktree-isolation.sh; scripts/automation/prsi-orchestrator
   Action: DONE — root cause: git 2.54 `worktree add` exits nonzero ("BUG: builtin/worktree.c: How come '' becomes empty after sanitization?") after creating a usable worktree; gate now verifies a checked-out worktree at exactly HEAD (3a575757). Test PASS on committed gate: 4/4 cases incl. staged violation still fails. Diagnosis claude-haiku; check tightened by claude-opus.
   File: scripts/governance/tier0-validation-gate.sh; scripts/testing/test-tier0-staged-isolation.sh ~line 131
 
-[OPEN] acp-execute-route-latent-replay — `POST /api/approvals/{id}/execute` (dashboard/backend/api/routes/approvals.py ~478) passes `save_record=lambda r: _store._records.__setitem__(...) if hasattr(_store, "_records") else None`. With the P0 FixtureApprovalStore this works; once `configure_store()` injects a live store (no `_records`), the executed/failed transition is silently dropped, the record stays `approved`, and the same request can be executed again (replay). Also `execute_request` is synchronous inside an async route (blocks the event loop for the runbook duration once effects become real). Dormant today: fixture signer/store and stub runbook effects (no subprocess).
+[DONE 2026-10-01] acp-execute-route-latent-replay — `POST /api/approvals/{id}/execute` (dashboard/backend/api/routes/approvals.py ~478) passes `save_record=lambda r: _store._records.__setitem__(...) if hasattr(_store, "_records") else None`. With the P0 FixtureApprovalStore this works; once `configure_store()` injects a live store (no `_records`), the executed/failed transition is silently dropped, the record stays `approved`, and the same request can be executed again (replay). Also `execute_request` is synchronous inside an async route (blocks the event loop for the runbook duration once effects become real). Dormant today: fixture signer/store and stub runbook effects (no subprocess).
   Severity: medium (latent; high once live effects land)
   Action: add `ApprovalStore.save(record)` (or transition-based persistence) to the protocol and use it here; claim-before-execute (approved -> executing CAS) to make execution single-use; run executor via run_in_threadpool. Gate: must land before live store/effects activation.
   File: dashboard/backend/api/routes/approvals.py ~line 478
@@ -4865,10 +4865,11 @@ File: scripts/ai/lib/worktree-isolation.sh; scripts/automation/prsi-orchestrator
   Action: owner nixos-rebuild; restore the 10 owner sign-offs (approval 2026-09-30 stands); watch first repair to terminal state.
   File: nix/modules/roles/ai-stack.nix (ai-prsi-rsi-dispatch)
 
-[OPEN] rsi-dispatch-inner-timeout-does-not-terminate-delegate — In the rehearsal, rsi-dispatch --timeout-seconds=600 (and delegate-to-local/aq-agent-loop --timeout 600) had not returned after 700s; the agent loop survived as an orphan after the parent was killed. Under systemd the unit TimeoutSec kills the cgroup, so production is backstopped, but outside systemd timeouts leak processes and the row stays `rsi_running`.
+[DONE 2026-10-01 rsi-steward] rsi-dispatch-inner-timeout-does-not-terminate-delegate — In the rehearsal, rsi-dispatch --timeout-seconds=600 (and delegate-to-local/aq-agent-loop --timeout 600) had not returned after 700s; the agent loop survived as an orphan after the parent was killed. Under systemd the unit TimeoutSec kills the cgroup, so production is backstopped, but outside systemd timeouts leak processes and the row stays `rsi_running`.
   Severity: medium
   Action: make the dispatcher kill the delegate's process group on timeout and record rsi_failed(timeout); reconcile stale rsi_running rows on start.
   File: scripts/automation/prsi-orchestrator.py (_run_rsi_delegate)
+  Resolution: _run_rsi_delegate already kills the delegate's process group (SIGTERM then SIGKILL) and returns rsi_stalled; stale rsi_running rows are reconciled to rsi_failed. Verified with a real hung fake delegate + grandchild: scripts/testing/test-rsi-hung-delegate.py (grace window now `_RSI_DELEGATE_GRACE_S`).
 
 [DONE] delegate-to-codex-task-id-xxxxxx-suffix — Codex task ids looked like `codex-...-r5q384xxxxxx`: `task_id()` (scripts/ai/delegate-to-codex:149) ran `tr ... </dev/urandom | head -c6 || echo 'xxxxxx'` under pipefail; tr's SIGPIPE made the pipeline fail after head already printed 6 chars, so the fallback was appended. Codex's RSI lane patch had widened the receipt regex to accept the suffix (workaround); instead the producer now disables pipefail in that subshell, and the regex + test reject `xxxxxx` again.
   Severity: low
@@ -4896,7 +4897,7 @@ File: scripts/ai/lib/worktree-isolation.sh; scripts/automation/prsi-orchestrator
   Action: RSI steward slice — convert exact pins to floors (keep upper bounds only where a known-breaking major exists, documented); rely on Trivy/code-scanning -> RSI intake + frequent lock refresh. Note: unpinned deps ingest a compromised new release quickly; scanning + floors are the mitigation.
   File: ai-stack/mcp-servers/*/requirements.txt
 
-[OPEN] claude-agent-worktree-isolation-base-and-cleanup — Claude Code Agent `isolation: worktree` created the RSI steward's worktree from `main` (c1fb116e), not the orchestrator's current branch (chore/commit-backlog-20260930), and auto-removed the unchanged worktree when the agent paused to report, leaving it homeless on resume. Workaround in use: orchestrator creates a persistent worktree under the gitignored .agents/delegation/worktrees/ (`git worktree add -b <branch> <path> <base>`) and passes the path; steward uses `cd <path> &&` + `command git`; ctx_* MCP tools resolve against the shared checkout (read-only use only).
+[DONE 2026-10-01] claude-agent-worktree-isolation-base-and-cleanup — Claude Code Agent `isolation: worktree` created the RSI steward's worktree from `main` (c1fb116e), not the orchestrator's current branch (chore/commit-backlog-20260930), and auto-removed the unchanged worktree when the agent paused to report, leaving it homeless on resume. Workaround in use: orchestrator creates a persistent worktree under the gitignored .agents/delegation/worktrees/ (`git worktree add -b <branch> <path> <base>`) and passes the path; steward uses `cd <path> &&` + `command git`; ctx_* MCP tools resolve against the shared checkout (read-only use only).
   Severity: medium
   Action: document in role-matrix/headless-delegate-mode: long-running domain sub-orchestrators get an orchestrator-created persistent worktree; prefer it over ephemeral isolation. Consider an `aq-worktree new --for <agent> --base <branch>` helper.
   File: docs/architecture/role-matrix.md; canon/blocks/headless-delegate-mode.md
@@ -5014,12 +5015,12 @@ File: scripts/ai/lib/worktree-isolation.sh; scripts/automation/prsi-orchestrator
   Action: raise the minimum-version floor: jaraco.context>=6.1.0 in ai-stack/mcp-servers/nixos-docs/Dockerfile (owner policy: floors, never exact == pins); rebuild image and confirm Trivy clears the alerts (1 open alert(s), max severity high)
   File: ai-stack/mcp-servers/nixos-docs/Dockerfile
 
-[OPEN] rsi-81a7a3566140f3a60d5fcc6c — delegate-run-events failure in steward ingest 2026-09-30. Root cause evidence: producer=delegate-run-events; path=scripts/ai/delegate-to-local; authority=run-event-metrics; os_error=local delegate success rate 0.47 over 24h (509 calls) per run-event metrics. Detected=2026-10-01T03:09:23.876005Z.
+[DONE 2026-10-01] rsi-81a7a3566140f3a60d5fcc6c — delegate-run-events failure in steward ingest 2026-09-30. Root cause evidence: producer=delegate-run-events; path=scripts/ai/delegate-to-local; authority=run-event-metrics; os_error=local delegate success rate 0.47 over 24h (509 calls) per run-event metrics. Detected=2026-10-01T03:09:23.876005Z.
   Severity: high
   Action: classify failures by lane/cause from run events, then fix the dominant producer (local lane degradation)
   File: scripts/ai/delegate-to-local
 
-[OPEN] rsi-917090649b7fba1313da041b — hybrid-coordinator:/stats/delegate failure in steward ingest 2026-09-30. Root cause evidence: producer=hybrid-coordinator:/stats/delegate; path=ai-stack/mcp-servers/hybrid-coordinator; authority=coordinator-stats; os_error=coordinator /stats/delegate success 18%; 54 failures all classified unknown (classification gap). Detected=2026-10-01T03:09:24.123816Z.
+[DONE 2026-10-01] rsi-917090649b7fba1313da041b — hybrid-coordinator:/stats/delegate failure in steward ingest 2026-09-30. Root cause evidence: producer=hybrid-coordinator:/stats/delegate; path=ai-stack/mcp-servers/hybrid-coordinator; authority=coordinator-stats; os_error=coordinator /stats/delegate success 18%; 54 failures all classified unknown (classification gap). Detected=2026-10-01T03:09:24.123816Z.
   Severity: high
   Action: add failure classification at the producer so unknown failures carry a cause; the classification gap is itself an incident
   File: ai-stack/mcp-servers/hybrid-coordinator
@@ -5029,11 +5030,11 @@ File: scripts/ai/lib/worktree-isolation.sh; scripts/automation/prsi-orchestrator
   File: ai-stack/mcp-servers/{nixos-docs,aidb,embeddings-service,hybrid-coordinator}/Dockerfile; ai-stack/mcp-servers/aidb/requirements.txt
 
 
-[OPEN] pre-push-python-tooling-lint-matches-prose — the pre-push "Python tooling policy" lint flags any literal "pip install" text outside its allowlist, including comments and assertion messages in tests that enforce pip policy (5 hits in test-requirements-floor-policy.py, 2026-10-01). Worked around by rewording to "pip-install"; better: lint should match command invocations (RUN/subprocess/shell lines) or allowlist tests/.
+[DONE 2026-10-01] pre-push-python-tooling-lint-matches-prose — the pre-push "Python tooling policy" lint flags any literal "pip install" text outside its allowlist, including comments and assertion messages in tests that enforce pip policy (5 hits in test-requirements-floor-policy.py, 2026-10-01). Worked around by rewording to "pip-install"; better: lint should match command invocations (RUN/subprocess/shell lines) or allowlist tests/.
   Severity: low
   File: scripts/governance/check-python-tooling-policy.sh
 
-[OPEN] codex-shared-mode-cannot-write-round-files — `delegate-to-codex --shared --mode edit` rejected writing `.agents/plans/<round>/codex-*.md` as "writing outside of the project; rejected by user approval settings" (codex-20261001-024352). The round-dispatch fix (aq-collab-round codex --shared) therefore still loses codex verdicts as files; verdict survived only in the task log. Also: the injected codex grounding still contains legacy instructions ("re-run tier0 gate", "Max 4 read_file per slice") contradicting the new DELEGATE MODE block; the review still used 69.5k tokens.
+[DONE 2026-10-01] codex-shared-mode-cannot-write-round-files — `delegate-to-codex --shared --mode edit` rejected writing `.agents/plans/<round>/codex-*.md` as "writing outside of the project; rejected by user approval settings" (codex-20261001-024352). The round-dispatch fix (aq-collab-round codex --shared) therefore still loses codex verdicts as files; verdict survived only in the task log. Also: the injected codex grounding still contains legacy instructions ("re-run tier0 gate", "Max 4 read_file per slice") contradicting the new DELEGATE MODE block; the review still used 69.5k tokens.
   Severity: medium
   Action: give the codex sandbox write access to the repo root in --shared mode (or have the round collector parse the verdict from the task log); remove the contradictory legacy lines from the codex grounding (scripts/ai/lib/harness-grounding.sh / codex grounding source).
   File: scripts/ai/delegate-to-codex; scripts/ai/aq-collab-round; scripts/ai/lib/harness-grounding.sh
@@ -5042,3 +5043,37 @@ File: scripts/ai/lib/worktree-isolation.sh; scripts/automation/prsi-orchestrator
   Severity: medium
   Action: find why aq-qa phase 0 on GitHub runners sometimes executes host-only checks (units/ports/AppArmor/llama health) and fails, and on rerun of the same commit passes; make phase 0 deterministic in CI (explicit host detection + skip, or xfail runtime-only ids for CI)
   File: scripts/governance/tier0-validation-gate.sh
+
+[OPEN] user-profile-python-shadows-cliPython — In agent shells `python3` resolves to ~/.nix-profile/bin/python3 (no harness deps), shadowing the system cliPython (/run/current-system/sw/bin/python3, which has fido2/httpx/pydantic...). Approval suites (test-approval-signer, test-approval-recovery) then fail with ModuleNotFoundError: fido2 although they pass under cliPython (20 and 9 checks, 2026-10-01). Same class as the earlier rsi-dispatch httpx failure.
+  Severity: medium (false test failures; agents misdiagnose)
+  Action: remove/rename python3 from the home-manager profile or put /run/current-system/sw/bin first for agent shells (nix/home declaration, Rule 13); tests that need harness deps should exec via cliPython explicitly.
+  File: nix/home/base.nix (home.packages python3?)
+
+- 2026-10-01 acp-execute-route-latent-replay fix: ApprovalStore protocol gains save() + claim_for_execution() (store-level single-use claim, no shared state-machine change), executor runs via run_in_threadpool; replay/concurrent POST -> 409; approval suites (request/surface/runbook-engine/p2c/p3/signer/recovery) pass under cliPython.
+
+[OPEN] uv-lock-unsafe-best-match-torch-services — aidb and nixos-docs requirements.lock were regenerated with `uv pip compile --index-strategy unsafe-best-match` (PyPI + download.pytorch.org/whl/cpu). That lets any package name resolve from the PyTorch index (dependency-confusion surface). Images install from requirements.txt, not the locks, so runtime exposure is limited.
+  Severity: medium (supply chain)
+  Action: regenerate with first-index semantics and torch/torchvision/torchaudio pinned to the PyTorch index only (uv explicit index / per-package index), or document the lock as advisory.
+  File: ai-stack/mcp-servers/{aidb,nixos-docs}/requirements.lock
+
+[OPEN] rsi-629a1f1c1c8ce41f01cfd09a — systemd:llama-cpp.service failure in live health 2026-10-01. Root cause evidence: producer=systemd:llama-cpp.service; path=nix/modules/roles/ai-stack.nix; authority=systemd; os_error=llama-cpp start fails with exit-code ~2 min after launch (3 consecutive failed starts 08:16/08:18/08:20, success on 4th); readiness gate shorter than cold model load. Detected=2026-10-01T15:23:41.876184Z.
+  Severity: high
+  Action: align start readiness timeout (ExecStartPost/TimeoutStartSec) with measured cold-load time under memory pressure, or make readiness non-fatal with a longer budget; identify the 07:25 stop actor
+  File: nix/modules/roles/ai-stack.nix
+
+[OPEN] rsi-353f98f90c2d9fb8d85bc895 — llama-server:log-verbosity failure in live health 2026-10-01. Root cause evidence: producer=llama-server:log-verbosity; path=nix/modules/roles/ai-stack.nix; authority=systemd; os_error=llama-server logs 'update_slots: all slots are idle' ~187 lines/min while idle (journal churn). Detected=2026-10-01T15:23:42.470281Z.
+  Severity: low
+  Action: lower llama-server log verbosity for idle slot polling (e.g. --log-verbosity / LLAMA_LOG level) so idle state does not emit per-poll lines
+  File: nix/modules/roles/ai-stack.nix
+
+[INFO 2026-10-01] mcp-playwright-quarantined-by-design — playwright MCP not connecting is intentional: capability-intake candidate `playwright-mcp` is quarantined until enforce-mode AppArmor confinement exists (launcher --check-admission fails closed). Not a broken tool; unblock_condition in config/agent-capability-intake-candidates.json. Third-party MCP executables keep exact reviewed pins (intake gate) — distinct from the library floor-not-pin policy.
+
+[OPEN] requirements-lock-refresh-dropped-hashes — The 2026-10-01 lock refresh (claude-haiku via `uv pip compile`) removed all --hash lines (12,285 across 7 locks: aidb 3307, nixos-docs 2993, hybrid-coordinator 2464, ralph-wiggum 1323, health-monitor 1226, container-engine 489, aider-wrapper 483) despite the instruction to keep hashes, and used --index-strategy unsafe-best-match for torch services. Caught by claude-opus before commit (diffstat −13k lines); hashed locks restored from HEAD; rejected outputs kept in .agents/plans/slate-cleanup-20261001/unhashed-locks-rejected/.
+  Severity: high (supply-chain integrity regression prevented)
+  Action: redo with `uv pip compile --generate-hashes`, torch/torchvision/torchaudio sourced only from the PyTorch CPU index (explicit per-package index, first-index default); add a guard test failing if a lock that had hashes loses them.
+  File: ai-stack/mcp-servers/*/requirements.lock
+
+[RESOLVED] dashboard-plan-portfolio-python-path — The dashboard progress API's embedded plan inventory showed unavailable even though `aq-plans-index --json` succeeded in an interactive shell. Root cause: `aq-pm-tracker` launched the Python script by its env shebang, while `command-center-dashboard-api.service` has a restricted PATH without `python3`; the `OSError` was converted to an unavailable inventory.
+  Severity: medium (user-facing portfolio and prioritization inventory omitted)
+  Action: invoke the index script with `sys.executable`; regression test passes; live API now reports complete inventory (104 plans) and tracker page returns HTTP 200.
+  File: scripts/ai/aq-pm-tracker:270

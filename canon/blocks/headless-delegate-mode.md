@@ -11,5 +11,5 @@ Applies to any agent dispatched non-interactively (`delegate-to-*`, `codex exec`
 
 **Orchestrator (before dispatching):**
 - Dependencies the slice needs are committed (or the prompt names the uncommitted paths explicitly).
-- The deliverable path is visible to the delegate (shared worktree/absolute path), not a private temp dir.
+- The deliverable path is visible to the delegate (shared worktree/absolute path), not a private temp dir. Long-running domain sub-orchestrators get an orchestrator-created persistent worktree via `aq-worktree new --name <n> --base <branch>` (creates `.agents/delegation/worktrees/<n>` on branch `<n>` from `<base>` via `git worktree add -b`, auto-removed when unchanged).
 - Quota/rate-limit headroom exists on the chosen lane; otherwise route to the next eligible lane (Rule 18) rather than dispatching into a stall.

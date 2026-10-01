@@ -96,9 +96,17 @@ import yaml
 from pathlib import Path
 
 workflow = yaml.safe_load(Path(".github/workflows/security.yml").read_text())
-core = [item["category"] for item in workflow["jobs"]["trivy-scan-core"]["strategy"]["matrix"]["include"]]
-custom = [f"trivy-custom-{svc}" for svc in workflow["jobs"]["trivy-scan-custom"]["strategy"]["matrix"]["service"]]
-print(json.dumps(core + custom))
+# Categories are read from every upload-sarif step (static values only); the
+# container-image Trivy categories were retired with the Nix-only decision, so
+# only `nix-closure` (and gitleaks) remain current.
+categories = [
+    step["with"]["category"]
+    for job in workflow["jobs"].values()
+    for step in job.get("steps", [])
+    if "codeql-action/upload-sarif" in str(step.get("uses", ""))
+    and "${{" not in str(step.get("with", {}).get("category", "${{"))
+]
+print(json.dumps(categories))
 PY
 )"
 printf '%s\n' "${workflow_categories_json}" > "${workflow_categories_path}"

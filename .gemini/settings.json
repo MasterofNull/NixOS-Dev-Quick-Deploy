@@ -50,7 +50,10 @@
         "--transport",
         "stdio"
       ],
-      "trust": false
+      "trust": false,
+      "env": {
+        "SEMGREP_PATH": "/run/current-system/sw/bin/semgrep"
+      }
     }
   }
 }

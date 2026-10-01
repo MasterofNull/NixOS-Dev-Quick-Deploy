@@ -93,6 +93,37 @@ def load_pm_tracker_module() -> types.ModuleType:
 
 
 class ProjectionProvenanceTests(unittest.TestCase):
+    def test_portfolio_runner_uses_active_python_without_path_lookup(self) -> None:
+        import json
+        import sys
+
+        tracker = load_pm_tracker_module()
+        calls = []
+        expected = {"plans": [], "total": 0}
+
+        def fake_run(args, **kwargs):
+            calls.append((args, kwargs))
+            return subprocess.CompletedProcess(args, 0, json.dumps(expected), "")
+
+        tracker.subprocess = types.SimpleNamespace(
+            run=fake_run, TimeoutExpired=subprocess.TimeoutExpired,
+        )
+        self.assertEqual(tracker.project_plan_portfolio()["health"], "complete")
+        self.assertEqual(calls[0][0][0], sys.executable)
+        self.assertEqual(calls[0][0][1], str(ROOT / "scripts" / "ai" / "aq-plans-index"))
+
+    def test_program_projection_embeds_complete_canonical_portfolio(self) -> None:
+        tracker = load_pm_tracker_module()
+        portfolio = tracker.project_plan_portfolio()
+        canonical = subprocess.run(
+            [str(ROOT / "scripts" / "ai" / "aq-plans-index"), "--json"],
+            cwd=ROOT, capture_output=True, text=True, timeout=45, check=True,
+        )
+        expected = __import__("json").loads(canonical.stdout)
+        self.assertEqual(portfolio["health"], "complete")
+        self.assertEqual(portfolio["plans"], expected["plans"])
+        self.assertEqual(portfolio["total"], expected["total"])
+
     def test_git_read_path_never_fetches_or_updates_refs(self) -> None:
         tracker = load_pm_tracker_module()
         calls: list[list[str]] = []
@@ -105,7 +136,10 @@ class ProjectionProvenanceTests(unittest.TestCase):
                 return subprocess.CompletedProcess(args, 0, "abc ship slice\n", "")
             raise AssertionError(f"unexpected process: {args}")
 
-        tracker.subprocess.run = fake_run
+        tracker.subprocess = types.SimpleNamespace(
+            run=fake_run, CompletedProcess=subprocess.CompletedProcess,
+            TimeoutExpired=subprocess.TimeoutExpired,
+        )
         gitlog, health = tracker._git_log()
         self.assertEqual((gitlog, health), ("abc ship slice\n", "complete"))
         self.assertTrue(all("--no-optional-locks" in call for call in calls))
@@ -137,7 +171,10 @@ class ProjectionProvenanceTests(unittest.TestCase):
                 raise OSError("git unavailable")
             raise AssertionError(f"unexpected process: {args}")
 
-        tracker.subprocess.run = failing_run
+        tracker.subprocess = types.SimpleNamespace(
+            run=failing_run, CompletedProcess=subprocess.CompletedProcess,
+            TimeoutExpired=subprocess.TimeoutExpired,
+        )
         self.assertEqual(tracker._git_log(), ("", "unavailable"))
         self.assertEqual(
             tracker.project_item({"detection": {"commit_match": ["slice"]}}, "", "", "unavailable"),
@@ -152,7 +189,10 @@ class ProjectionProvenanceTests(unittest.TestCase):
                 return subprocess.CompletedProcess(args, 0, "perhaps\n", "")
             raise AssertionError(f"git log must not run after malformed probe: {args}")
 
-        tracker.subprocess.run = malformed_run
+        tracker.subprocess = types.SimpleNamespace(
+            run=malformed_run, CompletedProcess=subprocess.CompletedProcess,
+            TimeoutExpired=subprocess.TimeoutExpired,
+        )
         self.assertEqual(tracker._git_log(), ("", "unavailable"))
 
     def test_rollup_excludes_unknown_evidence(self) -> None:
@@ -216,6 +256,20 @@ class StaticContractTests(unittest.TestCase):
         self.assertIn("REFRESH_INTERVAL_MS = 30000", doc)
         self.assertIn("setInterval(load, REFRESH_INTERVAL_MS)", doc)
         self.assertIn("cache: 'no-store'", doc)
+
+    def test_complete_portfolio_controls_and_tracking_actions_are_live(self) -> None:
+        doc = text(TRACKER)
+        for token in (
+            'aria-label="Complete plan portfolio"', 'id="portfolio-search"',
+            'id="portfolio-lifecycle"', 'id="portfolio-root"',
+            'function portfolioAction(plan)', 'function renderPortfolio(data)',
+            "renderPortfolio(data.portfolio)", 'data.health !== \'complete\'',
+            "plan.classification_issue", "plan.has_tracker",
+            "p.tracking_route || 'unrouted'", "escapeHtml(p.primary_doc",
+        ):
+            self.assertIn(token, doc)
+        projection = text(PM_TRACKER_CLI)
+        self.assertIn('"portfolio": project_plan_portfolio()', projection)
 
     def test_loading_and_error_states_present(self) -> None:
         doc = text(TRACKER)
