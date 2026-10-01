@@ -5032,3 +5032,8 @@ File: scripts/ai/lib/worktree-isolation.sh; scripts/automation/prsi-orchestrator
 [OPEN] pre-push-python-tooling-lint-matches-prose — the pre-push "Python tooling policy" lint flags any literal "pip install" text outside its allowlist, including comments and assertion messages in tests that enforce pip policy (5 hits in test-requirements-floor-policy.py, 2026-10-01). Worked around by rewording to "pip-install"; better: lint should match command invocations (RUN/subprocess/shell lines) or allowlist tests/.
   Severity: low
   File: scripts/governance/check-python-tooling-policy.sh
+
+[OPEN] codex-shared-mode-cannot-write-round-files — `delegate-to-codex --shared --mode edit` rejected writing `.agents/plans/<round>/codex-*.md` as "writing outside of the project; rejected by user approval settings" (codex-20261001-024352). The round-dispatch fix (aq-collab-round codex --shared) therefore still loses codex verdicts as files; verdict survived only in the task log. Also: the injected codex grounding still contains legacy instructions ("re-run tier0 gate", "Max 4 read_file per slice") contradicting the new DELEGATE MODE block; the review still used 69.5k tokens.
+  Severity: medium
+  Action: give the codex sandbox write access to the repo root in --shared mode (or have the round collector parse the verdict from the task log); remove the contradictory legacy lines from the codex grounding (scripts/ai/lib/harness-grounding.sh / codex grounding source).
+  File: scripts/ai/delegate-to-codex; scripts/ai/aq-collab-round; scripts/ai/lib/harness-grounding.sh
