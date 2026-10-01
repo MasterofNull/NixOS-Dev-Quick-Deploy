@@ -61,3 +61,8 @@ Task ID: RSI-STEWARD-20261001
 - CI: `nix-closure-vuln-scan` builds the hyperd-ai-dev toplevel (nix-build.yml shows the same build completes on hosted runners in ~26 min) and runs `scripts/security/aq-closure-scan` (sbomnix -> grype, nixpkgs from flake.lock), SARIF category `nix-closure`; scanner failure fails the job, findings are non-blocking.
 - Intake: `rsi-intake-code-scanning.py` maps `nix-closure` to `nix/` with root fix "nix flake update / fast-lane promotion".
 - Live local run on /run/current-system: 2854 components; critical 20, high 107, medium 93, low 16.
+
+## U1 aq-pin-watch (2026-10-01)
+- Deterministic release watcher for tool-authority executables (no LLM): registry query -> semver compare -> minor/patch bump across every pin site + intake registry -> intake test; major -> owner sign-off record; quarantined never bumped. PRD: `.agent/PROJECT-TIERED-AUTO-UPDATE-PRD.md`.
+- Review fixes before first commit: (1) backups keyed by basename collided for `.claude/settings.json` and `.gemini/settings.json`, so a failed validation restored Gemini's settings over Claude's (mutation-confirmed; test now asserts all pin sites byte-identical); (2) composite pins (`syft-X+grype-Y`) were compared against one component's release and would be overwritten with a bare version; now skipped.
+- Live check: github-mcp 0.20.2->1.13.0 (major, sign-off), osv-scanner 2.2.4->2.6.0, trivy 0.66.0->0.75.0 (minor). Not yet wired into the update pipeline (U3).
