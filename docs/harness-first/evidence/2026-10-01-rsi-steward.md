@@ -1,0 +1,38 @@
+# Harness-First Task Evidence
+
+Date: 2026-10-01
+Task ID: RSI-STEWARD-20261001
+
+## Objective
+- Land the RSI steward domain sub-orchestrator's slices and the owner-approved dependency decisions (PR #355):
+  1. `aq-rsi` CLI (report/status/pending/approve), observation-only `aq-rsi sweep`, `aq-rsi reconcile` (positive-evidence closure), bound approvals + ownership leases + daily run budget (default off).
+  2. Code-scanning incident identity migration; Trivy severity normalization.
+  3. Floors-not-pins: 87 requirements pins -> floors; Dockerfile torch pins -> floors; final pip-tooling floor step with a build-failing setuptools assertion; transformers>=5.10 (+ sentence-transformers>=5.2, huggingface-hub>=1.5).
+  4. aq-integrity-scan repo-relative exclusion fix.
+
+## Workflow/Session IDs
+- Orchestrator: claude-opus session 1effe100-8460-43e7-ae08-1d32bfb8be9a
+- RSI steward: Claude sonnet sub-agent, worktree branch rsi/steward-20260930
+- Reviews: codex-20261001-024352 (REQUEST_CHANGES) -> fix b4a2a84a -> codex-20261001-031744 (PASS); local-20261001-024401 (PASS, 6611b153)
+
+## Delegation Decision
+- Steward = domain sub-orchestrator (sonnet) owning the RSI domain; dependency follow-ups by claude-haiku; orchestrator reviewed and integrated each slice; binding review by codex (non-author).
+
+## Commands Executed
+- `scripts/governance/tier0-validation-gate.sh --pre-commit --staged-isolated` per commit (54/0).
+- Suites: test-aq-rsi, test-rsi-sweep, test-rsi-gate, test-rsi-lifecycle, test-rsi-intake-code-scanning, test-requirements-floor-policy, test-aq-integrity-scan-contract, test-prsi-budget-reservation, test-rsi-repair-lane, test-aq-rsi-pending.
+- Live: `rsi-intake-code-scanning.py --fetch`, `aq-rsi reconcile` (2533 alerts; 18 incidents resolved on positive evidence).
+
+## Validation Evidence
+- Open Trivy alerts 198 -> 7 after #354; remaining 4 groups addressed here (pending CI image rescan).
+- CI caught a real resolver conflict (transformers 5.x vs huggingface-hub<1.0 cap); fixed by raising the floor.
+
+## Rollback Plan
+- Commits are topic-scoped; approval binding/leases/budget are policy-gated and default off; dependency floors revert per file.
+
+## Residual Risk
+- transformers 5.x is a major version for aidb; runtime embedding behavior must be verified after image rebuild.
+- requirements.lock files not regenerated (no local resolver); lock drift is reported, not fatal.
+
+## Hint Feedback
+- None.
