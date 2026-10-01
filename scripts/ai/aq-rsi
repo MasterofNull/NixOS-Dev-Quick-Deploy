@@ -115,14 +115,13 @@ def cmd_report(args) -> int:
 def cmd_status(args) -> int:
     queue, qerr = _load(_queue_path())
     incidents, ierr = _load(_incidents_path())
-    if qerr:
-        # Unknown, not healthy: a missing queue must not read as an all-clear.
-        out = {"healthy": None, "state": "unknown", "error": qerr}
-        print(json.dumps(out, sort_keys=True) if args.json else f"UNKNOWN: {qerr}")
+    if qerr or ierr:
+        # Unknown, not healthy: a missing/corrupt queue or incident ledger must not read as an all-clear.
+        error = "; ".join(e for e in (f"action queue {qerr}" if qerr else "", f"incident ledger {ierr}" if ierr else "") if e)
+        out = {"healthy": None, "state": "unknown", "error": error}
+        print(json.dumps(out, sort_keys=True) if args.json else f"UNKNOWN: {error}")
         return 2
-    out = compute_status(queue, (incidents or {}).get("incidents", {}) if not ierr else {})
-    if ierr:
-        out["incident_ledger"] = f"unknown ({ierr})"
+    out = compute_status(queue, (incidents or {}).get("incidents", {}))
     if args.json:
         print(json.dumps(out, sort_keys=True))
     else:

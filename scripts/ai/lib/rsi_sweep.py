@@ -109,16 +109,24 @@ def adapter_qa_phase0(progress=None, max_age_s=None, now=None):
             rec = json.loads(line)
         except json.JSONDecodeError:
             continue  # first line of a tail window may be cut
-        if isinstance(rec, dict) and rec.get("check_id"):
+        if isinstance(rec, dict) and str(rec.get("check_id", "")).startswith("0."):
             last[str(rec["check_id"])] = rec
+    if not last:
+        return "unknown", [], "no phase-0 records in aq-qa output (empty, truncated or other phase)"
     findings = []
     for cid, rec in sorted(last.items()):
-        if rec.get("state") == "fail" and str(cid).startswith("0."):
+        if rec.get("state") == "fail":
             desc = str(rec.get("description") or "")[:120]
             findings.append(dict(subject=f"aq-qa:{cid}", producer="aq-qa:phase0", path=f"aq-qa check {cid}",
                                  authority="aq-qa", os_error=f"phase-0 check {cid} failing: {desc}",
                                  severity="medium", root_fix=f"run aq-qa 0 --machine and fix check {cid} at its producer"))
-    return ("findings" if findings else "ok"), findings, f"{len(findings)} failing phase-0 check(s) in {len(last)} seen"
+    if findings:
+        return "findings", findings, f"{len(findings)} failing phase-0 check(s) in {len(last)} seen"
+    unfinished = sorted(c for c, r in last.items() if r.get("state") not in ("pass", "skip"))
+    if unfinished:
+        # No failure seen, but the run never reached a verdict for these checks: not evidence of health.
+        return "unknown", [], f"aq-qa run incomplete or unrecognised state for {len(unfinished)} check(s), e.g. {unfinished[0]}"
+    return "ok", [], f"all {len(last)} phase-0 checks pass/skip"
 
 
 def adapter_payload_audit(runner=None):
@@ -136,8 +144,11 @@ def adapter_payload_audit(runner=None):
             findings.append(dict(subject=f"payload-audit:{f.get('lane')}:{f.get('check_id')}",
                                  producer="aq-payload-audit", path=str(f.get("evidence_path") or "payload"),
                                  authority=str(f.get("lane") or "payload"),
-                                 os_error=f"check {f.get('check_id')} high: measured {f.get('measured')} vs {f.get('threshold')}",
-                                 severity="high", root_fix=str(f.get("suggested_fix") or "")))
+                                 # Identity must be stable across sweeps: measurements vary every run, so they
+                                 # live in root_fix (updated on each sighting), never in os_error.
+                                 os_error=f"payload audit check {f.get('check_id')} high on lane {f.get('lane')}",
+                                 severity="high",
+                                 root_fix=f"{f.get('suggested_fix') or 'reduce payload'} (latest: measured {f.get('measured')} vs {f.get('threshold')})"))
     return ("findings" if findings else "ok"), findings, f"{len(findings)} high finding(s)"
 
 
@@ -243,11 +254,14 @@ def run(dry_run=False, as_json=False, adapters=None) -> int:
         recorded += len(ids)
         report[name] = {"state": state, "findings": len(findings), "detail": detail}
     summary = {"dry_run": dry_run, "recorded": recorded, "sources": report,
-               "unknown": sorted(k for k, v in report.items() if v["state"] == "unknown")}
+               "unknown": sorted(k for k, v in report.items() if v["state"] == "unknown"),
+               "healthy_sources": sorted(k for k, v in report.items() if v["state"] == "ok")}
+    # Healthy only when every source positively reported ok; unknown and findings both deny it.
+    summary["healthy"] = bool(report) and len(summary["healthy_sources"]) == len(report)
     if as_json:
         print(json.dumps(summary, sort_keys=True))
     else:
         for name, v in report.items():
             print(f"{name}: {v['state']} ({v['detail']})")
-        print(f"recorded={recorded} dry_run={dry_run}")
+        print(f"recorded={recorded} dry_run={dry_run} healthy={summary['healthy']} unknown={summary['unknown']}")
     return 0
