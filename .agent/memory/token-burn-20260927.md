@@ -27,3 +27,8 @@ Memory and lean-ctx reduce newly retrieved content only when used correctly; the
 
 Official usage explanation: https://learn.chatgpt.com/docs/pricing (usage varies by model, context, reasoning, tools, retrieval and caching; no exact subscription debit formula supplied).
 Analysis is complete; no claim that quota safeguards are implemented or root cause fixed.
+
+## 2026-09-30 measured follow-up (claude-opus)
+- Headless Codex: 7 dispatches ~447k tokens in one day (37k-89k each) exhausted the shared plan quota and closed the owner's interactive Codex window. Cause: fresh-session re-hydration (auto-loaded AGENTS.md + canon/skill/whole-file reads), delegates running tier0, plus orchestrator dispatch errors (uncommitted baseline; round verdicts written into isolated worktrees).
+- Fixes: headless DELEGATE MODE block in harness grounding; `delegate-to-codex --effort` and a daily headless token budget (default 250k, exit 3 when exhausted, `--force-budget`); collab rounds dispatch codex `--shared`; `aq-payload-audit` measures per-lane always-on/per-turn payload and dispatch overhead (`--fail-on high` for the RSI steward sweep).
+- Claude: UserPromptSubmit mandate hook (1.1KB on every prompt and notification) moved to SessionStart (486B once); always-on instruction files slimmed via canon summary mode.

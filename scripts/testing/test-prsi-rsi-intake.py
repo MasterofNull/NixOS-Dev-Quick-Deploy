@@ -17,7 +17,17 @@ ROOT = Path(__file__).resolve().parents[2]
 # systemd runtime PATH contract explicit so hardening cannot disable RSI.
 service_config = (ROOT / "nix/modules/roles/ai-stack.nix").read_text(encoding="utf-8")
 dispatch_service = service_config.split("systemd.services.ai-prsi-rsi-dispatch = {", 1)[1].split("\n      };", 1)[0]
-assert "path = [pkgs.git];" in dispatch_service
+# delegate-to-local needs bash/python3/util-linux/curl on the unit PATH (exit 127 on 2026-09-30).
+# python3 must come from the system cliPython (httpx etc.), not bare pkgs.python3.
+for dep in ("pkgs.git", "pkgs.bash", "pkgs.util-linux", "pkgs.curl", '"/run/current-system/sw"'):
+    assert dep in dispatch_service.split("path = [", 1)[1].split("];", 1)[0], dep
+assert "pkgs.python3" not in dispatch_service.split("path = [", 1)[1].split("];", 1)[0]
+# Live repair appends to the collaboration runtime and RSI registers (EROFS 2026-09-30).
+for rw in ("/.agent/collaboration\"", "/.agent/memory/issues-backlog.md\"", "/.agent/WORKAROUND-REGISTER.md\""):
+    assert rw in dispatch_service, rw
+# Repair budget must fit local agent-mode pacing and a worktree checkout.
+assert "--timeout-seconds=2400" in dispatch_service and 'TimeoutSec = "2460"' in dispatch_service
+assert 'MemoryMax = "1G"' in dispatch_service
 print("PASS: RSI dispatcher systemd PATH provides Git")
 
 
@@ -159,7 +169,7 @@ for stdout, stderr, code, expected in [
 ]:
     proc = type("Proc", (), {"returncode": code, "communicate": lambda self, timeout=None: (stdout, stderr)})()
     with patch.object(prsi.subprocess, "Popen", return_value=proc):
-        result, _receipt = prsi._run_rsi_delegate(row, 30, False)
+        result, _receipt = prsi._run_rsi_delegate(row, 30, False, lane="local")
     assert result == expected, (result, expected)
 print("PASS: RSI dispatch requires an exact successful delegate receipt")
 

@@ -376,6 +376,98 @@ def test_syntax_valid_python() -> None:
     assert_true(result.returncode == 0, f"Intake script has syntax errors: {result.stderr.decode()}")
 
 
+def test_os_error_stable_when_fixed_version_changes() -> None:
+    """Regression: os_error must be stable when fixed version changes.
+
+    Two alerts for the same package/installed version with different fixed versions
+    must produce identical os_error (for incident identity) but different root_fix.
+    This ensures incident identity is stable across fix version updates.
+    """
+    alerts_v1 = [
+        {
+            "state": "open",
+            "most_recent_instance": {
+                "category": "trivy-custom-test",
+                "message": {"text": "Package: mypkg\nInstalled Version: 1.0\nFixed Version: 2.0"}
+            },
+            "rule": {"security_severity_level": "high"}
+        },
+    ]
+
+    alerts_v2 = [
+        {
+            "state": "open",
+            "most_recent_instance": {
+                "category": "trivy-custom-test",
+                "message": {"text": "Package: mypkg\nInstalled Version: 1.0\nFixed Version: 2.5"}
+            },
+            "rule": {"security_severity_level": "high"}
+        },
+    ]
+
+    with tempfile.NamedTemporaryFile(mode="w", suffix=".json", delete=False) as fh:
+        json.dump(alerts_v1, fh)
+        tmp_path1 = fh.name
+
+    with tempfile.NamedTemporaryFile(mode="w", suffix=".json", delete=False) as fh:
+        json.dump(alerts_v2, fh)
+        tmp_path2 = fh.name
+
+    try:
+        result1 = subprocess.run(
+            [str(INTAKE_SCRIPT), "--alerts", tmp_path1, "--dry-run"],
+            capture_output=True,
+            text=True,
+            check=False
+        )
+        result2 = subprocess.run(
+            [str(INTAKE_SCRIPT), "--alerts", tmp_path2, "--dry-run"],
+            capture_output=True,
+            text=True,
+            check=False
+        )
+
+        assert_true(result1.returncode == 0, f"Script 1 failed: {result1.stderr}")
+        assert_true(result2.returncode == 0, f"Script 2 failed: {result2.stderr}")
+
+        lines1 = result1.stdout.strip().split("\n")
+        lines2 = result2.stdout.strip().split("\n")
+
+        planned1 = json.loads(lines1[-2]) if len(lines1) > 1 else []
+        planned2 = json.loads(lines2[-2]) if len(lines2) > 1 else []
+
+        assert_true(len(planned1) > 0, "Expected incident in first run")
+        assert_true(len(planned2) > 0, "Expected incident in second run")
+
+        incident1 = planned1[0]
+        incident2 = planned2[0]
+
+        # os_error must be identical (identity basis for incident hash)
+        assert_true(
+            incident1["os_error"] == incident2["os_error"],
+            f"os_error must be stable: '{incident1['os_error']}' vs '{incident2['os_error']}'"
+        )
+
+        # root_fix must differ (contains fixed version)
+        assert_true(
+            incident1["root_fix"] != incident2["root_fix"],
+            f"root_fix must differ when fixed version changes: '{incident1['root_fix']}' vs '{incident2['root_fix']}'"
+        )
+
+        # Verify root_fix contains the different fixed versions
+        assert_true(
+            ">=2.0" in incident1["root_fix"],
+            f"First root_fix must mention 2.0: {incident1['root_fix']}"
+        )
+        assert_true(
+            ">=2.5" in incident2["root_fix"],
+            f"Second root_fix must mention 2.5: {incident2['root_fix']}"
+        )
+    finally:
+        Path(tmp_path1).unlink(missing_ok=True)
+        Path(tmp_path2).unlink(missing_ok=True)
+
+
 def main() -> int:
     tests = [
         ("syntax valid python", test_syntax_valid_python),
@@ -385,6 +477,7 @@ def main() -> int:
         ("version comparison semver", test_version_comparison_semver),
         ("manifest resolution requirements.txt", test_manifest_resolution_requirements_txt),
         ("os_error stability", test_os_error_stability),
+        ("os_error stable when fixed version changes", test_os_error_stable_when_fixed_version_changes),
         ("dry_run does not record", test_dry_run_does_not_record),
         ("empty alerts returns zero groups", test_empty_alerts_returns_zero_groups),
     ]

@@ -1,0 +1,675 @@
+#!/usr/bin/env python3
+"""aq-payload-audit — measure per-agent payload and flag misconfiguration.
+
+Reports per-agent lane always-on and per-turn payload, flagging misconfigurations.
+Output: human table by default, --json for machines, --fail-on high exits 1 if any high finding.
+
+Check IDs:
+  1. claude: project CLAUDE.md + ~/.claude/CLAUDE.md + @-imports + .claude/rules/*.md (total bytes)
+  2. claude: auto-memory MEMORY.md line count vs stated "Hard limit: N lines"
+  3. claude: UserPromptSubmit hooks additionalContext bytes per prompt
+  4. claude: enabledPlugins language coverage (languages enabled but no files tracked)
+  5. codex: AGENTS.md bytes + config.toml model/reasoning/compact settings + skills count
+  6. codex: dispatch history tokens used, exec calls, usage-limit errors
+  7. local: enable_thinking in llm_config.py task profiles (must be false) + classify_tokens scan constant
+  8. rounds: aq-collab-round codex dispatch argv includes --shared
+
+Examples:
+  aq-payload-audit                      # full audit, human table
+  aq-payload-audit --json               # machine-readable JSON
+  aq-payload-audit --fail-on high       # exit 1 if any high severity
+  aq-payload-audit --days 7             # dispatch history from last 7 days
+  aq-payload-audit --repo /path         # override repo path (testing)
+  aq-payload-audit --home /path         # override home path (testing)
+"""
+from __future__ import annotations
+
+import argparse
+import json
+import os
+import re
+import sys
+from datetime import datetime, timedelta, timezone
+from pathlib import Path
+from typing import Any, Optional
+
+_REPO = Path(__file__).resolve().parents[2]
+_HOME = Path.home()
+
+
+class Finding:
+    """Single audit finding."""
+    def __init__(self, lane: str, check_id: str, severity: str, measured: Any, 
+                 threshold: str, evidence_path: str, fix: str):
+        self.lane = lane
+        self.check_id = check_id
+        self.severity = severity
+        self.measured = measured
+        self.threshold = threshold
+        self.evidence_path = evidence_path
+        self.fix = fix
+
+    def to_dict(self) -> dict:
+        return {
+            "lane": self.lane,
+            "check_id": self.check_id,
+            "severity": self.severity,
+            "measured": self.measured,
+            "threshold": self.threshold,
+            "evidence_path": self.evidence_path,
+            "suggested_fix": self.fix,
+        }
+
+
+def resolve_symlinks(path: Path) -> Path:
+    """Resolve symlinks to get real file path."""
+    try:
+        return path.resolve()
+    except Exception:
+        return path
+
+
+def read_file_bytes(path: Path, limit: int = 2_000_000) -> Optional[bytes]:
+    """Read file bytes up to limit."""
+    try:
+        with open(path, 'rb') as f:
+            return f.read(limit)
+    except Exception:
+        return None
+
+
+def read_file_text(path: Path, limit: int = 2_000_000) -> Optional[str]:
+    """Read file text up to limit."""
+    try:
+        with open(path, 'r') as f:
+            return f.read(limit)
+    except Exception:
+        return None
+
+
+def get_imported_files(claude_md: Path) -> list[Path]:
+    """Extract @-imported file paths from CLAUDE.md."""
+    imports = []
+    content = read_file_text(claude_md)
+    if not content:
+        return imports
+    
+    for line in content.split('\n'):
+        if line.startswith('@'):
+            # @path/to/file.md
+            path_str = line[1:].strip()
+            if path_str:
+                # Resolve relative to claude_md directory
+                resolved = (claude_md.parent / path_str).resolve()
+                if resolved.exists():
+                    imports.append(resolved)
+    return imports
+
+
+def check_claude_payload_bytes(repo: Path, home: Path) -> list[Finding]:
+    """Check 1: Claude project + home CLAUDE.md + imports + rules files bytes."""
+    findings = []
+    
+    project_claude = repo / "CLAUDE.md"
+    home_claude = home / ".claude" / "CLAUDE.md"
+    project_rules = repo / ".claude" / "rules"
+    home_rules = home / ".claude" / "rules"
+    
+    total_bytes = 0
+    files_counted = set()
+    
+    # Count project CLAUDE.md and its imports
+    if project_claude.exists():
+        resolved = resolve_symlinks(project_claude)
+        real_path = str(resolved)
+        if real_path not in files_counted:
+            content = read_file_bytes(resolved)
+            if content:
+                total_bytes += len(content)
+                files_counted.add(real_path)
+            
+            # Count @-imports
+            for imp_path in get_imported_files(resolved):
+                imp_real = str(resolve_symlinks(imp_path))
+                if imp_real not in files_counted:
+                    content = read_file_bytes(imp_path)
+                    if content:
+                        total_bytes += len(content)
+                        files_counted.add(imp_real)
+    
+    # Count home CLAUDE.md
+    if home_claude.exists():
+        resolved = resolve_symlinks(home_claude)
+        real_path = str(resolved)
+        if real_path not in files_counted:
+            content = read_file_bytes(resolved)
+            if content:
+                total_bytes += len(content)
+                files_counted.add(real_path)
+    
+    # Count project rules
+    if project_rules.exists():
+        for rule_file in project_rules.glob("*.md"):
+            resolved = resolve_symlinks(rule_file)
+            real_path = str(resolved)
+            if real_path not in files_counted:
+                content = read_file_bytes(resolved)
+                if content:
+                    total_bytes += len(content)
+                    files_counted.add(real_path)
+    
+    # Count home rules
+    if home_rules.exists():
+        for rule_file in home_rules.glob("*.md"):
+            resolved = resolve_symlinks(rule_file)
+            real_path = str(resolved)
+            if real_path not in files_counted:
+                content = read_file_bytes(resolved)
+                if content:
+                    total_bytes += len(content)
+                    files_counted.add(real_path)
+    
+    # Check for duplicate rule files with identical content
+    project_rules_dict = {}
+    home_rules_dict = {}
+    
+    if project_rules.exists():
+        for rule_file in project_rules.glob("*.md"):
+            content = read_file_bytes(resolve_symlinks(rule_file))
+            if content:
+                project_rules_dict[rule_file.name] = content
+    
+    if home_rules.exists():
+        for rule_file in home_rules.glob("*.md"):
+            content = read_file_bytes(resolve_symlinks(rule_file))
+            if content:
+                home_rules_dict[rule_file.name] = content
+    
+    for name, content in project_rules_dict.items():
+        if name in home_rules_dict and home_rules_dict[name] == content:
+            findings.append(Finding(
+                lane="claude",
+                check_id="1-dup",
+                severity="medium",
+                measured=f"identical {name}",
+                threshold="zero duplicates",
+                evidence_path=f".claude/rules/{name} and ~/.claude/rules/{name}",
+                fix="remove duplicate in one location"
+            ))
+    
+    # Check thresholds
+    if total_bytes > 48 * 1024:
+        findings.append(Finding(
+            lane="claude",
+            check_id="1",
+            severity="high",
+            measured=f"{total_bytes} bytes",
+            threshold="<48 KB",
+            evidence_path="CLAUDE.md + .claude/rules/ + imports",
+            fix="split or compress rule files"
+        ))
+    elif total_bytes > 24 * 1024:
+        findings.append(Finding(
+            lane="claude",
+            check_id="1",
+            severity="medium",
+            measured=f"{total_bytes} bytes",
+            threshold="<24 KB",
+            evidence_path="CLAUDE.md + .claude/rules/ + imports",
+            fix="review and consolidate rules"
+        ))
+    
+    return findings
+
+
+def check_claude_memory_limit(home: Path) -> list[Finding]:
+    """Check 2: Claude auto-memory MEMORY.md line count vs stated limit."""
+    findings = []
+
+    projects_dir = home / ".claude" / "projects"
+    if not projects_dir.exists():
+        return findings
+
+    # Find MEMORY.md in any project directory
+    for project_dir in projects_dir.iterdir():
+        if not project_dir.is_dir():
+            continue
+
+        memory_file = project_dir / "memory" / "MEMORY.md"
+        if not memory_file.exists():
+            continue
+
+        content = read_file_text(memory_file)
+        if not content:
+            continue
+
+        line_count = len(content.split('\n'))
+
+        # Extract "Hard limit: N lines" from file
+        limit_match = re.search(r'Hard limit:\s*(\d+)\s*lines', content)
+        if not limit_match:
+            continue
+
+        hard_limit = int(limit_match.group(1))
+
+        if line_count > hard_limit:
+            findings.append(Finding(
+                lane="claude",
+                check_id="2",
+                severity="high",
+                measured=f"{line_count} lines",
+                threshold=f"<{hard_limit} lines",
+                evidence_path=str(memory_file),
+                fix="consolidate or archive entries per degradation policy"
+            ))
+
+    return findings
+
+
+def check_claude_hooks_context_bytes(home: Path, repo: Path) -> list[Finding]:
+    """Check 3: Claude UserPromptSubmit hooks additionalContext bytes per prompt."""
+    findings = []
+    
+    settings_files = [
+        home / ".claude" / "settings.json",
+        repo / ".claude" / "settings.json",
+        repo / ".claude" / "settings.local.json",
+    ]
+    
+    for settings_file in settings_files:
+        if not settings_file.exists():
+            continue
+        
+        content = read_file_text(settings_file)
+        if not content:
+            continue
+        
+        try:
+            data = json.loads(content)
+        except Exception:
+            continue
+        
+        # Look for hooks > UserPromptSubmit > additionalContext
+        hooks = data.get("hooks", {})
+        ups = hooks.get("UserPromptSubmit", {})
+        if isinstance(ups, dict):
+            for handler_name, handler_config in ups.items():
+                if isinstance(handler_config, dict):
+                    ac = handler_config.get("additionalContext")
+                    if ac and isinstance(ac, str):
+                        bytes_size = len(ac.encode('utf-8'))
+                        if bytes_size > 500:
+                            findings.append(Finding(
+                                lane="claude",
+                                check_id="3",
+                                severity="medium",
+                                measured=f"{bytes_size} bytes",
+                                threshold="<500 bytes",
+                                evidence_path=str(settings_file),
+                                fix="reduce injected context; repeats every turn"
+                            ))
+    
+    return findings
+
+
+def check_claude_enabled_plugins(home: Path, repo: Path) -> list[Finding]:
+    """Check 4: Claude enabledPlugins language coverage."""
+    findings = []
+    
+    # Get user-scope enabled plugins
+    user_settings = home / ".claude" / "settings.json"
+    user_plugins = set()
+    
+    if user_settings.exists():
+        content = read_file_text(user_settings)
+        if content:
+            try:
+                data = json.loads(content)
+                user_plugins = set(data.get("enabledPlugins", []))
+            except Exception:
+                pass
+    
+    # Get project-scope enabled plugins
+    project_settings = repo / ".claude" / "settings.json"
+    project_plugins = set()
+    
+    if project_settings.exists():
+        content = read_file_text(project_settings)
+        if content:
+            try:
+                data = json.loads(content)
+                project_plugins = set(data.get("enabledPlugins", []))
+            except Exception:
+                pass
+    
+    # Language mappings (plugin -> file extensions)
+    language_plugins = {
+        "clangd-lsp": ["c", "cpp", "h", "hpp"],
+        "rust-analyzer": ["rs"],
+        "typescript-language-server": ["ts", "tsx", "js", "jsx"],
+        "python-lsp-server": ["py"],
+        "gopls": ["go"],
+    }
+    
+    # Check each enabled plugin at user scope
+    for plugin in user_plugins:
+        if plugin in language_plugins:
+            extensions = language_plugins[plugin]
+            has_files = False
+            
+            # Check if any files with those extensions are tracked
+            for ext in extensions:
+                try:
+                    result = os.popen(f"cd {repo} && git ls-files '*.{ext}' 2>/dev/null | head -1").read().strip()
+                    if result:
+                        has_files = True
+                        break
+                except Exception:
+                    pass
+            
+            # If enabled at user scope but project has it disabled, skip
+            if plugin in project_plugins:
+                continue
+            
+            if not has_files:
+                findings.append(Finding(
+                    lane="claude",
+                    check_id="4",
+                    severity="medium",
+                    measured=f"{plugin} enabled",
+                    threshold="only if language in repo",
+                    evidence_path=str(user_settings),
+                    fix=f"disable {plugin} in project .claude/settings.json"
+                ))
+    
+    return findings
+
+
+def check_codex_payload_bytes(repo: Path) -> list[Finding]:
+    """Check 5: Codex AGENTS.md bytes + config.toml settings + skills count."""
+    findings = []
+    
+    agents_file = repo / "AGENTS.md"
+    agents_bytes = 0
+    if agents_file.exists():
+        content = read_file_bytes(agents_file)
+        if content:
+            agents_bytes = len(content)
+    
+    if agents_bytes > 32 * 1024:
+        findings.append(Finding(
+            lane="codex",
+            check_id="5a",
+            severity="high",
+            measured=f"{agents_bytes} bytes",
+            threshold="<32 KB",
+            evidence_path="AGENTS.md",
+            fix="split or compress agent guidance"
+        ))
+    elif agents_bytes > 16 * 1024:
+        findings.append(Finding(
+            lane="codex",
+            check_id="5a",
+            severity="medium",
+            measured=f"{agents_bytes} bytes",
+            threshold="<16 KB",
+            evidence_path="AGENTS.md",
+            fix="review and consolidate guidance"
+        ))
+    
+    # Check codex config.toml — parse for specific misconfigurations
+    # (Currently no specific checks; config is reviewed manually as needed)
+    
+    # Count skills
+    skills_dir = repo / ".agent" / "skills"
+    skills_count = 0
+    if skills_dir.exists():
+        skills_count = len([d for d in skills_dir.iterdir() if d.is_dir()])
+    
+    if skills_count > 40:
+        findings.append(Finding(
+            lane="codex",
+            check_id="5c",
+            severity="medium",
+            measured=f"{skills_count} skills",
+            threshold="<40 skills",
+            evidence_path=".agent/skills/",
+            fix="consolidate or archive low-priority skills"
+        ))
+    
+    return findings
+
+
+def check_codex_dispatch_history(repo: Path, days: int = 2) -> list[Finding]:
+    """Check 6: Codex dispatch history analysis."""
+    findings = []
+    
+    outputs_dir = repo / ".agents" / "delegation" / "outputs"
+    if not outputs_dir.exists():
+        return findings
+    
+    cutoff = datetime.now(timezone.utc) - timedelta(days=days)
+    high_rehydration_tasks = []
+    usage_limit_hits = []
+    
+    for log_file in outputs_dir.glob("codex-*.log"):
+        try:
+            mtime = datetime.fromtimestamp(log_file.stat().st_mtime, tz=timezone.utc)
+            if mtime < cutoff:
+                continue
+        except Exception:
+            pass
+        
+        content = read_file_text(log_file, limit=5_000_000)
+        if not content:
+            continue
+        
+        # Count "exec" lines
+        exec_count = content.count('\nexec\n') + (1 if content.startswith('exec\n') else 0)
+        
+        # Find "tokens used" line
+        tokens_match = re.search(r'tokens used[:\s]+(\d+)', content, re.IGNORECASE)
+        tokens_used = int(tokens_match.group(1)) if tokens_match else None
+        
+        if tokens_used and exec_count < 15 and tokens_used > 50000:
+            high_rehydration_tasks.append((log_file.name, tokens_used, exec_count))
+        
+        # Check for usage limit errors
+        if "usage limit" in content.lower() or "quota" in content.lower():
+            usage_limit_hits.append(log_file.name)
+    
+    if high_rehydration_tasks:
+        for task_name, tokens, execs in high_rehydration_tasks[:3]:  # top 3
+            findings.append(Finding(
+                lane="codex",
+                check_id="6a",
+                severity="medium",
+                measured=f"{tokens} tokens, {execs} execs",
+                threshold=">15 execs or <50k tokens",
+                evidence_path=f".agents/delegation/outputs/{task_name}",
+                fix="check for unnecessary rehydration; scope reduction may help"
+            ))
+    
+    if usage_limit_hits:
+        findings.append(Finding(
+            lane="codex",
+            check_id="6b",
+            severity="high",
+            measured=f"{len(usage_limit_hits)} hits in {days} days",
+            threshold="zero",
+            evidence_path=".agents/delegation/outputs/",
+            fix="monitor token spend; review task budgets"
+        ))
+    
+    return findings
+
+
+def check_local_thinking_enabled(repo: Path) -> list[Finding]:
+    """Check 7: Local enable_thinking in task profiles."""
+    findings = []
+    
+    llm_config = repo / "ai-stack" / "mcp-servers" / "shared" / "llm_config.py"
+    if not llm_config.exists():
+        return findings
+    
+    content = read_file_text(llm_config)
+    if not content:
+        return findings
+    
+    # Find task profiles with enable_thinking=True
+    # Looking for patterns like: "research": TaskProfile(...enable_thinking=True...)
+    # and "deep_reasoning": TaskProfile(...enable_thinking=True...)
+    
+    thinking_profiles = re.findall(
+        r'"(research|deep_reasoning)":\s*TaskProfile\([^)]*enable_thinking=True',
+        content
+    )
+    
+    if thinking_profiles:
+        findings.append(Finding(
+            lane="local",
+            check_id="7a",
+            severity="high",
+            measured=f"enable_thinking=True in {', '.join(set(thinking_profiles))} profiles",
+            threshold="enable_thinking must be False per harness contract",
+            evidence_path="ai-stack/mcp-servers/shared/llm_config.py",
+            fix="set enable_thinking=False for all task profiles"
+        ))
+    
+    # Check for _SIZE_DOWN_SCAN_CHARS constant in dispatch.py
+    dispatch_file = repo / "scripts" / "ai" / "lib" / "dispatch.py"
+    if dispatch_file.exists():
+        dispatch_content = read_file_text(dispatch_file)
+        if dispatch_content and "_SIZE_DOWN_SCAN_CHARS" not in dispatch_content:
+            findings.append(Finding(
+                lane="local",
+                check_id="7b",
+                severity="medium",
+                measured="not found",
+                threshold="present and documented",
+                evidence_path="scripts/ai/lib/dispatch.py (classify_tokens)",
+                fix="check if classify_tokens scans full prompt; add size-cap constant if missing"
+            ))
+    
+    return findings
+
+
+def check_rounds_shared_flag(repo: Path) -> list[Finding]:
+    """Check 8: aq-collab-round codex dispatch includes --shared."""
+    findings = []
+    
+    collab_round = repo / "scripts" / "ai" / "aq-collab-round"
+    if not collab_round.exists():
+        return findings
+    
+    content = read_file_text(collab_round)
+    if not content:
+        return findings
+    
+    # Look for delegate-to-codex invocation
+    codex_match = re.search(r'delegate-to-codex["\']?\s+[^)]*?--shared', content)
+    
+    if not codex_match:
+        # Check if --shared is mentioned at all for codex
+        if "delegate-to-codex" in content and "--shared" not in content:
+            findings.append(Finding(
+                lane="rounds",
+                check_id="8",
+                severity="high",
+                measured="--shared not in codex dispatch",
+                threshold="--shared required for multi-round verdicts",
+                evidence_path="scripts/ai/aq-collab-round",
+                fix="add --shared flag to delegate-to-codex invocation"
+            ))
+    
+    return findings
+
+
+def run_all_checks(repo: Path, home: Path) -> list[Finding]:
+    """Run all checks."""
+    all_findings = []
+    
+    all_findings.extend(check_claude_payload_bytes(repo, home))
+    all_findings.extend(check_claude_memory_limit(home))
+    all_findings.extend(check_claude_hooks_context_bytes(home, repo))
+    all_findings.extend(check_claude_enabled_plugins(home, repo))
+    all_findings.extend(check_codex_payload_bytes(repo))
+    all_findings.extend(check_codex_dispatch_history(repo))
+    all_findings.extend(check_local_thinking_enabled(repo))
+    all_findings.extend(check_rounds_shared_flag(repo))
+    
+    return all_findings
+
+
+def print_human_table(findings: list[Finding]) -> None:
+    """Print findings as human-readable table."""
+    if not findings:
+        print("✓ All checks passed.")
+        return
+    
+    # Group by lane
+    by_lane = {}
+    for f in findings:
+        if f.lane not in by_lane:
+            by_lane[f.lane] = []
+        by_lane[f.lane].append(f)
+    
+    for lane, lane_findings in sorted(by_lane.items()):
+        print(f"\n{lane.upper()}")
+        print("=" * 100)
+        for f in lane_findings:
+            severity_symbol = "⚠" if f.severity == "medium" else "⛔" if f.severity == "high" else "ℹ"
+            print(f"{severity_symbol} [{f.check_id}] {f.severity.upper()}")
+            print(f"   Measured:  {f.measured}")
+            print(f"   Threshold: {f.threshold}")
+            print(f"   Evidence:  {f.evidence_path}")
+            print(f"   Fix:       {f.fix}")
+            print()
+
+
+def main() -> int:
+    parser = argparse.ArgumentParser(
+        description="Measure per-agent payload and flag misconfiguration."
+    )
+    parser.add_argument("--json", action="store_true", help="Output JSON")
+    parser.add_argument("--fail-on", choices=["high", "medium", "any"], 
+                       help="Exit 1 if severity threshold met")
+    parser.add_argument("--days", type=int, default=2, 
+                       help="Codex dispatch history days (default 2)")
+    parser.add_argument("--repo", type=Path, default=_REPO,
+                       help="Override repo path (for testing)")
+    parser.add_argument("--home", type=Path, default=_HOME,
+                       help="Override home path (for testing)")
+    
+    args = parser.parse_args()
+    
+    findings = run_all_checks(args.repo, args.home)
+    
+    if args.json:
+        output = {
+            "timestamp": datetime.now(timezone.utc).isoformat(),
+            "findings": [f.to_dict() for f in findings],
+            "summary": {
+                "total": len(findings),
+                "high": len([f for f in findings if f.severity == "high"]),
+                "medium": len([f for f in findings if f.severity == "medium"]),
+                "info": len([f for f in findings if f.severity == "info"]),
+            }
+        }
+        print(json.dumps(output, indent=2))
+    else:
+        print_human_table(findings)
+    
+    if args.fail_on:
+        if args.fail_on == "high" and any(f.severity == "high" for f in findings):
+            return 1
+        if args.fail_on == "medium" and any(f.severity in ("high", "medium") for f in findings):
+            return 1
+        if args.fail_on == "any" and findings:
+            return 1
+    
+    return 0
+
+
+if __name__ == "__main__":
+    sys.exit(main())

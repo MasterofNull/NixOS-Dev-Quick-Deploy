@@ -1,0 +1,183 @@
+diff --git a/config/env-contract.yaml b/config/env-contract.yaml
+index 1ca18184..5e11c387 100644
+--- a/config/env-contract.yaml
++++ b/config/env-contract.yaml
+@@ -25,6 +25,20 @@ _meta:
+ 
+ variables:
+ 
++  - canonical: AQ_RSI_RUNTIME_DIR
++    aliases: []
++    default: ".agent/collaboration (relative to repo root)"
++    layer: all
++    consumers: [rsi_lifecycle, prsi-orchestrator, aq-rsi-pending, aq-resume]
++    description: "RSI ledger, lock and atomic-save directory. Export the unit value for service incident inspection/resolution; unset preserves the separate interactive repo ledger."
++
++  - canonical: A2A_EVENT_LOG
++    aliases: []
++    default: ".agent/collaboration/a2a-events.jsonl (relative to repo root)"
++    layer: all
++    consumers: [event_log]
++    description: "A2A append log override; RSI dispatch places this in its mutable runtime directory."
++
+   - canonical: AQ_DELEGATION_DIR
+     aliases: []
+     default: ".agents/delegation"
+diff --git a/nix/modules/roles/ai-stack.nix b/nix/modules/roles/ai-stack.nix
+index 8e4036a1..22afed9c 100644
+--- a/nix/modules/roles/ai-stack.nix
++++ b/nix/modules/roles/ai-stack.nix
+@@ -2408,19 +2408,20 @@ in {
+           # reached in 11s. MemoryHigh reclaims page cache before the hard cap.
+           MemoryHigh = "768M";
+           MemoryMax = "1G";
+-          # The delegation chain appends to the repo's collaboration runtime (a2a event
+-          # log, PENDING/HANDOFF, rsi ledger) and rsi_lifecycle appends to the two
+-          # registers; ProtectHome=read-only made the first live repair fail EROFS.
++          # Ledger/lock/atomic saves and a2a events stay in mutableOptimizerDir.
++          # Only the two append registers need repository write grants; collaboration
++          # authorization, PENDING and HANDOFF state must remain read-only.
+           ReadWritePaths = [
+             mutableOptimizerDir
+             mutableLogDir
+             "${cfg.mcpServers.repoPath}/.git"
+-            "${cfg.mcpServers.repoPath}/.agent/collaboration"
+             "${cfg.mcpServers.repoPath}/.agent/memory/issues-backlog.md"
+             "${cfg.mcpServers.repoPath}/.agent/WORKAROUND-REGISTER.md"
+           ];
+           Environment = [
+             "AQ_DELEGATION_DIR=${mutableOptimizerDir}/prsi/delegation"
++            "AQ_RSI_RUNTIME_DIR=${mutableOptimizerDir}/prsi/rsi-state"
++            "A2A_EVENT_LOG=${mutableOptimizerDir}/prsi/rsi-state/a2a-events.jsonl"
+             "PRSI_ACTION_QUEUE_PATH=${mutableOptimizerDir}/prsi/action-queue.json"
+             "PRSI_ACTIONS_LOG_PATH=${mutableLogDir}/prsi-actions.jsonl"
+             "PRSI_POLICY_FILE=${cfg.mcpServers.repoPath}/config/runtime-prsi-policy.json"
+@@ -2433,7 +2434,7 @@ in {
+         description = "Dispatch PRSI when a new incident is recorded";
+         wantedBy = ["multi-user.target"];
+         pathConfig = {
+-          PathChanged = "${cfg.mcpServers.repoPath}/.agent/collaboration/rsi-incidents.json";
++          PathChanged = "${mutableOptimizerDir}/prsi/rsi-state/rsi-incidents.json";
+           Unit = "ai-prsi-rsi-dispatch.service";
+         };
+       };
+diff --git a/scripts/ai/aq-rsi-pending b/scripts/ai/aq-rsi-pending
+index 0608faa4..68335d12 100755
+--- a/scripts/ai/aq-rsi-pending
++++ b/scripts/ai/aq-rsi-pending
+@@ -8,6 +8,7 @@ to sign off on each repair.
+ """
+ 
+ import json
++import os
+ import sys
+ from pathlib import Path
+ 
+@@ -18,11 +19,13 @@ QUEUE_PATH = Path(
+         "/var/lib/nixos-ai-stack/optimizer/prsi/action-queue.json"
+     )
+ )
+-# For testing: allow PRSI_INCIDENTS_FILE override
++# Share the lifecycle runtime selection; an explicit file override still wins.
++# aq-resume inherits this environment when invoking this script.
+ INCIDENTS_FILE = Path(
+     __import__("os").getenv(
+         "PRSI_INCIDENTS_FILE",
+-        str(REPO_ROOT / ".agent" / "collaboration" / "rsi-incidents.json")
++        str(Path(os.environ.get("AQ_RSI_RUNTIME_DIR",
++                                str(REPO_ROOT / ".agent" / "collaboration"))) / "rsi-incidents.json")
+     )
+ )
+ 
+diff --git a/scripts/ai/lib/rsi_lifecycle.py b/scripts/ai/lib/rsi_lifecycle.py
+index 9c0639c8..c868ba06 100644
+--- a/scripts/ai/lib/rsi_lifecycle.py
++++ b/scripts/ai/lib/rsi_lifecycle.py
+@@ -4,6 +4,19 @@ The guard is deliberately local and synchronous: a failed hook, blocked write,
+ or incomplete run must leave durable evidence even when the model loop itself
+ is unavailable.  It never starts another agent loop, so recording a failure
+ cannot recurse or amplify token use.
++
++AQ_RSI_RUNTIME_DIR selects the ledger/lock/atomic-save directory; unset retains
++repo .agent/collaboration. For service-ledger inspection and resolution, export
++that same directory for aq-rsi-pending, aq-resume and this CLI. Also export the
++unit's PRSI_ACTION_QUEUE_PATH when running the displayed orchestrator verify
++command: approval belongs to the queue, not the ledger.
++
++Migration before enabling the unit: quiesce ledger writers and copy the existing
++rsi-incidents.json into the configured directory, preserving incident ids and
++resolution evidence. Do not overwrite an existing destination ledger: reconcile
++it under both ledger locks first. No automatic merge or repo-ledger fallback is
++performed. Producers intended for service intake must inherit the override;
++unconfigured interactive producers continue using the separate repo ledger.
+ """
+ from __future__ import annotations
+ 
+@@ -19,7 +32,7 @@ from datetime import datetime, timezone
+ from pathlib import Path
+ 
+ _REPO_ROOT = Path(__file__).resolve().parents[3]
+-_RUNTIME = _REPO_ROOT / ".agent" / "collaboration"
++_RUNTIME = Path(os.environ.get("AQ_RSI_RUNTIME_DIR", str(_REPO_ROOT / ".agent" / "collaboration")))
+ _BACKLOG = _REPO_ROOT / ".agent" / "memory" / "issues-backlog.md"
+ _WORKAROUNDS = _REPO_ROOT / ".agent" / "WORKAROUND-REGISTER.md"
+ 
+@@ -53,18 +66,24 @@ def _event(agent: str, event_type: str, payload: dict[str, str], subject: str) -
+ 
+ def check(repo_root: Path = _REPO_ROOT) -> tuple[bool, str]:
+     """Verify that operational state has a writable canonical home."""
+-    runtime = repo_root / ".agent" / "collaboration"
+-    memory = repo_root / ".agent" / "memory"
++    runtime = _RUNTIME if repo_root == _REPO_ROOT else Path(
++        os.environ.get("AQ_RSI_RUNTIME_DIR", str(repo_root / ".agent" / "collaboration")))
++    registers = (repo_root / ".agent" / "memory" / "issues-backlog.md",
++                 repo_root / ".agent" / "WORKAROUND-REGISTER.md")
+     try:
+         runtime.mkdir(parents=True, exist_ok=True)
+-        memory.mkdir(parents=True, exist_ok=True)
+-        for directory in (runtime, memory):
+-            with tempfile.TemporaryFile(dir=directory) as probe:
+-                probe.write(b"ok\n")
+-                probe.flush()
++        with tempfile.TemporaryFile(dir=runtime) as probe:
++            probe.write(b"ok\n")
++            probe.flush()
++        # The service has file-level grants, not directory-wide register access.
++        # Opening for append checks the recorder's operation without changing text.
++        for register in registers:
++            register.parent.mkdir(parents=True, exist_ok=True)
++            with register.open("a", encoding="utf-8"):
++                pass
+     except OSError as exc:
+-        return False, f"canonical .agent runtime is not writable: {exc}"
+-    return True, "canonical .agent runtime writable"
++        return False, f"RSI runtime/registers are not writable: {exc}"
++    return True, f"RSI runtime writable: {runtime}; registers appendable"
+ 
+ 
+ def start(agent: str, subject: str, objective: str = "") -> None:
+@@ -72,8 +91,8 @@ def start(agent: str, subject: str, objective: str = "") -> None:
+     payload = {"objective": objective[:240], "check": detail}
+     _event(agent, "rsi.start", payload, subject)
+     if not ok:
+-        failure(agent, subject, "rsi-lifecycle", ".agent/collaboration", "rsi", detail,
+-                severity="critical", root_fix="restore writable canonical .agent runtime")
++        failure(agent, subject, "rsi-lifecycle", str(_RUNTIME), "rsi", detail,
++                severity="critical", root_fix="restore writable RSI runtime and appendable registers")
+ 
+ 
+ def _clean(value: str) -> str:
+diff --git a/scripts/automation/prsi-orchestrator.py b/scripts/automation/prsi-orchestrator.py
+index 11363576..4e28cbce 100755
+--- a/scripts/automation/prsi-orchestrator.py
++++ b/scripts/automation/prsi-orchestrator.py
+@@ -56,7 +56,8 @@ _WORKFLOW_DEVIATIONS = Path(os.getenv(
+ # RSI failures are recorded locally by rsi_lifecycle.  This reader deliberately
+ # projects only a small, inert candidate into PRSI; it never forwards the raw
+ # error text to an optimizer or an agent task.
+-_RSI_INCIDENTS = REPO_ROOT / ".agent" / "collaboration" / "rsi-incidents.json"
++_RSI_INCIDENTS = Path(os.environ.get(
++    "AQ_RSI_RUNTIME_DIR", str(REPO_ROOT / ".agent" / "collaboration"))) / "rsi-incidents.json"
+ _MAX_RSI_INCIDENTS_PER_SYNC = 50
+ _RSI_INCIDENT_ID_RE = re.compile(r"[A-Za-z0-9][A-Za-z0-9._:-]{0,127}")
+ _RSI_SEVERITIES = {"low", "medium", "high", "critical"}
