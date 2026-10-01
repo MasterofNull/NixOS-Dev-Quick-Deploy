@@ -1,0 +1,63 @@
+{
+  "schema_version": "1.0",
+  "round_id": "autonomous-metrics-source-prd-20260930",
+  "state": "DISPATCHED",
+  "task": {
+    "prompt": "ROLE: architect perspective for a PRD + plan (read-only; do not edit files).\nPROBLEM: ai-autonomous-improvement.service now fails closed with RuntimeError no-metrics-observed (ai-stack/autonomous-improvement/autonomous_loop.py ~306). TrendDatabase (ai-stack/autonomous-improvement/trend_database.py:105-275) reads routing_decisions from /var/lib/ai-stack/routing_metrics.db (0 rows, untouched since 2026-04-25) and experiments.sqlite (last 2026-03-13); baseline collector returns []. The producer LLMRouter._record_routing (ai-stack/mcp-servers/hybrid-coordinator/knowledge/llm_router.py:1108) only runs via the coordinator's own route(); live traffic goes through the switchboard (ai-stack/switchboard/switchboard.py), which never records there. Live telemetry that does exist: /var/lib/ai-stack/hybrid/telemetry/agent-run-events.jsonl (~92MB, schema scripts/ai/lib/agent_run_events.py: run_id, event_type, status, lane/tier, duration_ms, tokens, timestamp Z).\nASK: propose the minimal MVP to give the autonomous-improvement loop a live, trustworthy metric source. Cover: which source(s) are canonical; metric names/definitions (local_routing_pct, success rate, latency, token efficiency); bounded memory (the PRSI unit is capped at 256M — stream, do not load whole files); keep the fail-closed on zero live rows; acceptance tests; rollout + rollback; what NOT to build. Note: switchboard.py and llm_config.py are frozen L2B live sources (sha-pinned) — prefer designs that do not edit them.\nOUTPUT: <= 40 lines: Decision, Metrics, Design, Acceptance tests, Risks, Out of scope. End with `VERDICT: PLAN_READY` or `VERDICT: PLAN_READY_WITH_FOLLOWUPS` or `VERDICT: NEEDS_DECISION` plus the open question.",
+    "target": "",
+    "scope_files": []
+  },
+  "opened_at": "2026-09-30T21:52:55Z",
+  "quorum_policy": {
+    "min_lanes": 2,
+    "required_agents": [],
+    "late_local_admissible": true,
+    "timeout_seconds": null,
+    "deadline": null,
+    "timeout_action": "lock_with_present"
+  },
+  "lanes": [
+    {
+      "agent": "claude",
+      "dispatch_id": null,
+      "idempotency_hash": "4e21efc06354de9893a27c3e97ee0d1e5637db9c5dbbb232aeef2f0676ad5925",
+      "status": "pending",
+      "landed_at": null
+    },
+    {
+      "agent": "codex",
+      "dispatch_id": null,
+      "idempotency_hash": "b0abd87705dc1bcb50aa3f8f822cd6832b9bcdfbda1e0e91dc2b8c34c545335b",
+      "status": "pending",
+      "landed_at": null
+    },
+    {
+      "agent": "local",
+      "dispatch_id": null,
+      "idempotency_hash": "b9b6f3c5e6272e4f9b0b706429c4df4194c84cf563b1092791505ddff2f4d835",
+      "status": "pending",
+      "landed_at": null
+    },
+    {
+      "agent": "antigravity",
+      "dispatch_id": null,
+      "idempotency_hash": "004f256543455b10f331b28560f2a7e0821f60229ae8e2f11d9e852a57bd7682",
+      "status": "pending",
+      "landed_at": null
+    }
+  ],
+  "contributions": {},
+  "conflicts": [],
+  "consensus_hash": null,
+  "aggregate_path": null,
+  "aggregate_hash": null,
+  "locked_at": null,
+  "history": [
+    {
+      "transition": "CREATED->DISPATCHED",
+      "timestamp": "2026-09-30T21:52:55Z",
+      "actor": "aq-collab-round"
+    }
+  ],
+  "predecessor_round_id": null
+}

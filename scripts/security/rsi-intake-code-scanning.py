@@ -269,12 +269,12 @@ def main() -> int:
         installed = installed[:300]
         fixed_ver = fixed_ver[:300]
 
-        # Build os_error (stable across runs)
-        os_error = f"{package} {installed} vulnerable; fixed in >= {fixed_ver}"
+        # Build os_error (identity = category/producer + manifest path + package + installed version)
+        os_error = f"{package} {installed} vulnerable"
 
-        # Build root_fix (includes count and severity)
+        # Build root_fix (includes fixed version, count and severity)
         manifest = _resolve_manifest_path(category, package)
-        root_fix = f"bump {package} to >= {fixed_ver} in {manifest}; rebuild image and confirm Trivy clears the alerts ({count} open alert(s), max severity {max_sev})"
+        root_fix = f"raise the minimum-version floor: {package}>={fixed_ver} in {manifest} (owner policy: floors, never exact == pins); rebuild image and confirm Trivy clears the alerts ({count} open alert(s), max severity {max_sev})"
 
         subject = f"code-scanning:{category}"
 

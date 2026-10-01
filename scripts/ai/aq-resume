@@ -9,6 +9,7 @@ for an agent resuming a session after context compaction or failure.
 
 import json
 import os
+import subprocess
 import sys
 from datetime import datetime
 from pathlib import Path
@@ -18,6 +19,7 @@ COLLAB_DIR = REPO_ROOT / ".agent" / "collaboration"
 RESUME_FILE = COLLAB_DIR / "RESUME.json"
 PULSE_FILE = COLLAB_DIR / "PULSE.log"
 HANDOFF_FILE = COLLAB_DIR / "HANDOFF.md"
+RSI_PENDING_SCRIPT = Path(__file__).parent / "aq-rsi-pending"
 
 def get_resume_state():
     if not RESUME_FILE.exists():
@@ -50,6 +52,23 @@ def get_handoff_summary():
         return lines[-3:] if len(lines) > 3 else lines
     except Exception:
         return "Error reading HANDOFF.md"
+
+def get_rsi_pending_count():
+    """Get count of high-risk RSI repairs awaiting sign-off."""
+    if not RSI_PENDING_SCRIPT.exists():
+        return None
+    try:
+        result = subprocess.run(
+            [RSI_PENDING_SCRIPT, "--count"],
+            capture_output=True,
+            text=True,
+            timeout=5
+        )
+        if result.returncode == 0:
+            return int(result.stdout.strip())
+    except (subprocess.TimeoutExpired, ValueError, Exception):
+        pass
+    return None
 
 def main():
     state = get_resume_state()
@@ -90,6 +109,11 @@ def main():
             print(f"  {line}")
     else:
         print(f"  {handoff}")
+
+    # Check for pending RSI repairs awaiting sign-off
+    rsi_pending = get_rsi_pending_count()
+    if rsi_pending and rsi_pending > 0:
+        print(f"\nRSI: {rsi_pending} repair(s) awaiting owner sign-off — run: aq-rsi-pending")
 
     print("\n" + "=" * 60)
     print("INSTRUCTIONS:")

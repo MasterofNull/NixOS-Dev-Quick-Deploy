@@ -232,33 +232,35 @@ TASK_PROFILES: dict[str, TaskProfile] = {
         description="Tool calls, agent steps, harness ops",
         max_tokens_hint=512,
     ),
-    # Research, PRSI, and discovery tasks. Thinking enabled with a hard budget
-    # cap so the model deliberates before answering without filling all tokens.
-    # Budget: 100 thinking + 800 content = 900 total (900s worst case at 1 tok/s).
-    # Use for PRSI self-questioning, harness audits, root-cause analysis.
+    # Research, PRSI, and discovery tasks. Thinking disabled per harness contract
+    # "enable_thinking: false in EVERY llama.cpp request". Unbounded thinking
+    # consumes the entire budget with zero visible output on Renoir APU.
+    # Budget: 900 tokens for discovery, root-cause analysis, harness audits.
+    # Use for PRSI self-questioning and detailed analysis tasks.
     "research": TaskProfile(
         name="research",
         temperature=0.4,
         frequency_penalty=0.0,
-        enable_thinking=True,
+        enable_thinking=False,
         suggested_remote_profile="remote-reasoning",
         description="PRSI, discovery, root-cause analysis, harness audits",
         max_tokens_hint=900,
-        thinking_budget=100,
+        thinking_budget=None,
     ),
-    # Deep reasoning for multi-hop architecture/design decisions. Higher
-    # thinking budget (150 tok) for complex synthesis; larger content window.
-    # Budget: 150 thinking + 1000 content = 1150 total.
-    # Use only for high-value planning tasks — not routine agent steps.
+    # Deep reasoning for multi-hop architecture/design decisions. Higher temperature
+    # (0.5) for complex synthesis; larger content window. Thinking disabled per harness
+    # contract "enable_thinking: false in EVERY llama.cpp request". Unbounded thinking
+    # consumed the entire budget with zero visible output on Renoir APU.
+    # Budget: 1150 tokens for high-value planning tasks.
     "deep_reasoning": TaskProfile(
         name="deep_reasoning",
         temperature=0.5,
         frequency_penalty=0.05,
-        enable_thinking=True,
+        enable_thinking=False,
         suggested_remote_profile="remote-reasoning",
         description="Architecture, multi-hop design, PRSI loop planning",
         max_tokens_hint=1150,
-        thinking_budget=150,
+        thinking_budget=None,
     ),
 }
 

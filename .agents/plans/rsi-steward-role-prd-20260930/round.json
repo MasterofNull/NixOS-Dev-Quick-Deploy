@@ -1,0 +1,63 @@
+{
+  "schema_version": "1.0",
+  "round_id": "rsi-steward-role-prd-20260930",
+  "state": "DISPATCHED",
+  "task": {
+    "prompt": "ROLE: architect/PRD reviewer (read-only; do not edit files). Read .agent/PROJECT-RSI-STEWARD-ROLE-PRD.md (draft) plus the six existing units it names (nix/modules: grep for ai-auto-remediate, ai-gap-auto-remediate, ai-stack-health-monitor, ai-prsi-orchestrator, ai-prsi-rsi-dispatch, disk-health-monitor) and scripts/ai/lib/rsi_lifecycle.py. Give your perspective in <= 40 lines: (1) is the role boundary/authority right; (2) consolidation: which timers fold into the steward sweep vs stay producers, and what to retire; (3) the minimal MVP slice order (<= 5 slices, each independently shippable, with acceptance); (4) failure modes/risks (runaway repairs, budget, duplicate incidents, noisy signals, sandbox); (5) what to cut. Constraints: owner-approval stays CLI-first; remote lane (codex) proofs first, local later; no gate bypass; no API keys. End with VERDICT: PLAN_READY | PLAN_READY_WITH_FOLLOWUPS | NEEDS_DECISION (+ the open question).",
+    "target": "",
+    "scope_files": []
+  },
+  "opened_at": "2026-09-30T22:11:41Z",
+  "quorum_policy": {
+    "min_lanes": 2,
+    "required_agents": [],
+    "late_local_admissible": true,
+    "timeout_seconds": null,
+    "deadline": null,
+    "timeout_action": "lock_with_present"
+  },
+  "lanes": [
+    {
+      "agent": "claude",
+      "dispatch_id": null,
+      "idempotency_hash": "cc20e8437f25d3f8fd8679acedd36a278b9d67e9a842a8468f312e51026c2d3e",
+      "status": "pending",
+      "landed_at": null
+    },
+    {
+      "agent": "codex",
+      "dispatch_id": null,
+      "idempotency_hash": "1f88a9aa7e3c0e1239b0fd2ee93c6d06cb5d0e060596b0df3d98ebb7bca16761",
+      "status": "pending",
+      "landed_at": null
+    },
+    {
+      "agent": "local",
+      "dispatch_id": null,
+      "idempotency_hash": "3f1f4e6b6853d37d4cbbc44dc9e8474d68aa613c16a0fdaffa71090332c90ec8",
+      "status": "pending",
+      "landed_at": null
+    },
+    {
+      "agent": "antigravity",
+      "dispatch_id": null,
+      "idempotency_hash": "2d43f15729b85c37518b85b47ef3ffe35a2961050e4b0ac00b9f20321a16b3cd",
+      "status": "pending",
+      "landed_at": null
+    }
+  ],
+  "contributions": {},
+  "conflicts": [],
+  "consensus_hash": null,
+  "aggregate_path": null,
+  "aggregate_hash": null,
+  "locked_at": null,
+  "history": [
+    {
+      "transition": "CREATED->DISPATCHED",
+      "timestamp": "2026-09-30T22:11:41Z",
+      "actor": "aq-collab-round"
+    }
+  ],
+  "predecessor_round_id": null
+}

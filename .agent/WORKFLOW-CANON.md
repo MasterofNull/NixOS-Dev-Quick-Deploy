@@ -585,22 +585,38 @@ Definition-of-Done attestation — <feature>
 
 ---
 
-## Root-Cause Discipline (Canonical — Behavioral Rule 19, all agents)
+<!-- canon:begin behavioral-rules -->
+## Behavioral Rules (Canonical — all agents)
 
-Owner-ratified 2026-08-06. No silent workarounds. When any agent hits a workaround point —
-before committing the band-aid — it MUST do exactly one of: (a) fix the producer that emitted the
-bad state/signal, or (b) register the workaround in `.agent/WORKAROUND-REGISTER.md` with {symptom,
-root cause, producer, fix-path, class, severity}. An ad-hoc change to a designed system carries a
-one-line root-cause note in its commit body. Gaming a gate (faking the signal it checks — a
-hand-edited freshness timestamp, a mock pass) stays forbidden (anti-gaming); Rule 19 extends that
-from "don't fake the signal" to "don't route around the cause." **Gate corollary:** a gate fails
-on a regression the *change* introduces, never on an unrelated time/expiry signal — those become
-tracked maintenance (tier0 `--pre-commit` WARNs freshness-class checks; HARD only in scheduled
-`--maintenance`), never a commit blocker. SSOT `.agent/PROJECT-ROOT-CAUSE-DISCIPLINE-PRD.md`.
+| # | Rule | Contract |
+|---|------|----------|
+| 1 | **CONVERSATIONAL GUARD** | No unsolicited features, refactors, or cleanups. One slice, one concern. |
+| 2 | **HARNESS-FIRST** | Query aq-hints / `/query` / AIDB before reading raw files. Tools before assumptions. |
+| 3 | **COMMIT FORMAT** | `type(scope): description` + `Co-Authored-By: <agent> <noreply@domain>` |
+| 4 | **LANE SELECTION** | Prefer local inference for bounded tasks; remote only when task value justifies cost. |
+| 5 | **CONTEXT LIMITS** | Compact aggressively near context ceiling. Sub-agents receive slice-relevant context only. |
+| 6 | **RETRY BUDGET** | Max 3 retries on any failing op. 3rd failure → stop and report to orchestrator. |
+| 7 | **SHELL SAFETY** | No injection patterns. Sanitize external input. Never bypass tool whitelists. |
+| 8 | **PRD GATE** | No coding without a written plan. Log plan to PULSE.log before touching any file. |
+| 8a | **ATOMIC PULSE** | Append one line to `.agent/collaboration/PULSE.log` after every successful write/commit: `[ISO-timestamp] [agent] [action]: [file-or-scope] — [outcome]`. Never skip this step. |
+| 8b | **ATOMIC RESUME** | Write `.agent/collaboration/RESUME.json` when starting a new user task AND after each completed todo item. Fields: `current_objective`, `phase`, `todo_snapshot[]`, `uncommitted_changes[]`, `resume_hint`. This is the compaction anchor — survives 401 summarization failures. |
+| 9 | **MEMORY DISCIPLINE** | Write completed-task facts to MemoryBroker. Read HANDOFF.md on session resume. |
+| 10 | **SECURITY GATE** | OWASP check before commit. No hardcoded secrets, ports, tokens, or credentials. |
+| 11 | **ISSUE LOGGING** | Any discovered error, friction, misconfiguration, or system limitation — fixed now or deferred — MUST be recorded in `memory/issues-backlog.md`: status, scope, root cause, file+line, severity, action. Update the `ai-stack/agent-memory/MEMORY.md` index. Never silently discard a found issue. |
+| 12 | **NO DELETE — ARCHIVE** | Never use `rm`/`rmdir` to delete files or directories. Move to a timestamped path instead: `mv <path> .agent/archive/<YYYYMMDD>-<name>`. Use a context-appropriate archive dir (`.agent/archive/`, `.agents/archive/`, etc.) if a closer one exists. |
+| 13 | **NIXOS DECLARATIVE-ONLY** | Runtime `chmod`/`chown`/config writes are wiped by the next `nixos-rebuild switch`. ALWAYS commit the Nix declaration (`system.activationScripts`, `systemd.tmpfiles.rules`, `users.users.<n>.extraGroups`) in the same cycle as any runtime fix. A runtime workaround with no Nix counterpart is an incomplete fix. |
+| 14 | **READWRITEPATHS ≠ DAC BYPASS** | `ReadWritePaths` + `ProtectHome=read-only` set up a namespace bind-mount but the kernel checks inode `uid/gid/mode` against the service UID — POSIX DAC is NOT bypassed. A service blocked by a `0700` dir gets `EACCES` regardless. Fix: `system.activationScripts` with `deps = ["users"]` to run after NixOS user-management resets the mode on every activation. |
+| 15 | **ACTIVATION GATE (Definition of Done)** | "Committed" ≠ "done." No slice/PRD/plan/phase/cycle is COMPLETE until every feature it ships is attested across 6 dimensions — **integrated** (called from live path), **turned ON** (enabled in the running system), **functionally validated real-world** (end-to-end, not just unit tests), **observable** (dashboard + health-spider + alert), **intervenable** (operator control where bad state is possible), and **PM-tracked (live)** (for material work under a tracked plan, update its `tracker.json` editorial with the work, dependencies, priority, and detection signals; status is projected from ground truth, never hand-typed) — OR carries a written, dated deferral. Paste the attestation into the commit body + `.agent/ACTIVATION-AUDIT.md`. A cycle with a dormant or stale-tracked feature is *paused pending activation*, not done. SSOT: `.agent/DEFINITION-OF-DONE.md`. |
+| 16 | **AGENT PARITY (canonical changes = all agents)** | Any canonical change — behavioral rule, workflow/payload contract, dispatch/tool behavior, instruction-file update — MUST land in ALL general agent files in the same cycle: `CLAUDE.md`, `.agent/CODEX.md`, `.agent/LOCAL-AGENT.md`, `.agent/GEMINI.md`, and the shared `.agent/WORKFLOW-CANON.md`. Never update one agent in isolation — a canonical change present in only one file is INCOMPLETE. **Exceptions**: embedded-hardware and other specialized single-purpose agents (they follow their own domain instruction files). Parity map: `docs/AGENT-PARITY-MATRIX.md`. |
+| 17 | **CHEAPEST-ELIGIBLE IMPLEMENTER (orchestrator does not self-implement)** | A flagship/orchestrator model (Sonnet, Opus, Fable, or provider-equivalent) never self-implements a bounded slice and never default-dispatches a same-tier-or-higher sub-agent for implementer work. Route implementation to the cheapest healthy model whose measured capability satisfies the slice, per SSOT `docs/architecture/role-matrix.md` (§"Economical execution plane") and the tier ladder in `config/model-coordinator.json`. Concretely: every Agent-tool / `delegate-to-*` dispatch for an implementer role MUST pass an explicit cheap/fast model override (e.g. `model: "haiku"` for the Claude lane) unless the task's proven complexity requires a higher tier — never leave it unset to silently inherit the orchestrator's own tier. Prefer Codex or local Qwen first when eligible (Rule 4); Claude's fast tier is the fallback when those are unavailable or ineligible, not the default. Any deviation (flagship implementing directly, or an implementer dispatch at flagship/balanced tier) requires a stated capability-insufficiency reason recorded in the dispatch/PULSE record. |
+| 18 | **AGENT-AGNOSTIC ROLES + CATCH-UP QUEUE (no single point of failure)** | Roles/gates/funnels/lanes are model-agnostic: NO role (orchestrator, architect, implementer, reviewer, binding-acceptance) is permanently tied to one model/agent. The orchestrator routes each role instance at dispatch time to whichever lane is available + eligible (role-matrix + `config/model-coordinator.json` tiers) + independent (never self-review) + cheapest (Rule 17). Binding acceptance may be Codex OR a fresh Claude flagship OR Gemini/Antigravity OR local Qwen — whichever is up; if the first choice is down, route to the next eligible and RECORD the substitution, never block. Local Qwen is the always-available floor (never-skip-local). A returning agent plays catch-up via `.agent/collaboration/AGENT-CATCHUP-QUEUE.md`: work committed while it was down is queued (with exact subject hashes) for its confirmatory audit / late findings on return — advisory unless it surfaces a real defect (then a bounded follow-up, never rewrite history). Owner directive 2026-07-22; SSOT `.agents/plans/agent-agnostic-factory/DESIGN.md`. |
+| 19 | **ROOT-CAUSE DISCIPLINE** | No silent workarounds. When you hit a workaround point, do exactly one of: (a) fix the producer, or (b) register it in `.agent/WORKAROUND-REGISTER.md` with {symptom, root cause, producer, fix-path, class, severity} — never leave an ad-hoc band-aid in place. Any ad-hoc change to a designed system carries a one-line root-cause note in its commit body. **Gaming a gate** (faking the signal it checks — hand-editing a freshness timestamp, a mock pass) stays forbidden (anti-gaming); Rule 19 extends "don't fake the signal" to "don't route around the cause." **Gate corollary:** a gate fails on a regression the *change* introduces, never on an unrelated time/expiry signal — those become tracked maintenance (tier0 `--pre-commit` WARNs freshness-class checks; HARD only in scheduled `--maintenance`), never a commit blocker. Owner-ratified 2026-08-06; SSOT `.agent/PROJECT-ROOT-CAUSE-DISCIPLINE-PRD.md`; register `.agent/WORKAROUND-REGISTER.md`. |
+| 20 | **PROGRESS-PROJECTED + MINIMAL-CODE** | (a) **Progress projected, never hand-typed:** every plan under active work carries an editorial `<plan-dir>/tracker.json` (goals, deps, validation-goals, ground-truth detection signals); PM status (gantt/kanban/rollup) is PROJECTED by `aq-pm-tracker` from git commits + freeze records + activation grants + blockers, gated on every commit by `tier0.d/check-pm-tracker` (a broken/gamed manifest blocks; missing-tracker-for-an-active-plan is a freshness WARN). Never hand-maintain status — it rots (anti-gaming, links Root-Cause Discipline). (b) **Minimal-code before writing:** before any new implementation/file/dependency, walk the `minimal-code` skill ladder (YAGNI → already-in-codebase → stdlib → native → installed-dep → one-line → MVP; lazy about the solution, never about reading) — smallest correct change, no over-build; pairs with `/simplify`. NEVER at the cost of correctness, fail-closed, security, or a HARD rule. SSOT `.agents/plans/pm-tracker-standard/DESIGN.md` + skill `minimal-code`. |
+| 21 | **COLLABORATIVE STEWARDSHIP (not adversarial)** | Owner-directed 2026-08-25. This is a **collaborative, creative environment for ALL agents/models** (Claude, Codex, Antigravity/Gemini, local/Qwen) — we help each other reach our best, and all lanes progress forward EQUALLY, not as a competition or hierarchy. **Adversarial/critical scrutiny ONLY where explicitly wanted** (independent review, alternative perspectives, red-teaming, targeted feedback) — there the critique IS the collaborative help; it is never a general stance toward another lane. **Steward the local agent to its best possible self:** local is EARLY in its capability journey, not a failure — when its correctness is low, the response is SCAFFOLDING that helps it succeed (verify gates, decomposition, front-loaded context, narrow task-types it's measurably good at), framed as help, never punishment. Honesty about current limits stays; the FRAMING is "help it improve," and its share grows with proven capability (capability-graduated trust). Describe lanes by measured capability + how we're helping them grow, not with dismissive framing. SSOT auto-memory `feedback-collaborative-stewardship-not-adversarial`; extends the flat-collaborative-org principle. |
+| 22 | **MEMORY, CACHE & TOKEN EFFICIENCY** | Zero runaway context. Mandatory compaction at >2.5MB/>25 turns. lean-ctx & cache-first reads. Offload to AIDB/topic files, never drag context. |
+<!-- canon:end behavioral-rules -->
 
----
-
-### Root-cause-first enforcement gate
+## Root-Cause-First Enforcement Gate (supplements Behavioral Rule 19)
 
 At the first failure, record the failing producer, target path or authority, and
 observed OS or service error before changing behavior. Check mount, permissions,
@@ -729,7 +745,7 @@ Lean-ctx & pre-warmed caches     Zero recurring failures
 - **Stage 1: Detect & Measure (Execution / Mid-Phase)**:
   - Continuously monitor execution for runtime friction, concurrency races, latency spikes, or tool contention.
   - "You cannot manage what you cannot measure": if an issue occurs without observable telemetry or clear diagnostics, instrument it immediately.
-  - **Gate Contention**: When multiple agents run heavyweight validation simultaneously, serialize access using `aq-gate-checkout` to prevent tool contention, memory exhaustion, and hanging processes.
+  - **Gate Contention**: When multiple agents run heavyweight validation simultaneously, serialize access by running tier0 via its wrapper (`scripts/governance/tier0-validation-gate.sh`), which acquires and releases the `aq-gate-checkout` lock itself — never take a second checkout around it — to prevent tool contention, memory exhaustion, and hanging processes.
 
 - **Stage 2: Root-Cause Diagnosis & Registration**:
   - **No Silent Workarounds (Rule 21)**: Trace every failure or friction point to its system producer. Never leave an ad-hoc band-aid in place.
@@ -930,9 +946,7 @@ These targets are applied inside the relevant existing steps:
 4. **Resilience Out-Loops**: Ensure failovers (e.g., local queue saturated -> fallback to `remote-reasoning`).
 5. **Zero Touch Engineering**: Agents must autonomously commit via the PRSI queue to fix their own findings.
 
-## Progress-Projected + Minimal-Code (Canonical — Behavioral Rule 20, all agents)
-
-**(a) Progress projected, never hand-typed.** Every plan under active work carries an editorial `<plan-dir>/tracker.json`; PM status (gantt/kanban/rollup) is PROJECTED by `aq-pm-tracker` from git commits + freeze records + activation grants + blockers, and gated every commit by `scripts/governance/tier0.d/check-pm-tracker.sh` (a broken/gamed manifest blocks; missing-tracker-for-an-active-plan is a freshness-class WARN). Hand-maintained status rots — forbidden (anti-gaming). **(b) Minimal-code before writing.** Before any new implementation/file/dependency, walk the `minimal-code` skill ladder (YAGNI → already-in-codebase → stdlib → native → installed-dep → one-line → MVP; lazy about the solution, never about reading); smallest correct change, no over-build; pairs with `/simplify`. Never at the cost of correctness, fail-closed, security, or a HARD rule. SSOT `.agents/plans/pm-tracker-standard/DESIGN.md` + skill `minimal-code`.
+## Terminal Disposition (Canonical)
 
 **Terminal disposition SSOT:** planning freezes as `PLAN_READY`, `PLAN_READY_WITH_FOLLOWUPS`, `PLAN_BLOCKED`, or `PLAN_REJECTED`; implementation terminates as `ACCEPTED`, `IMPLEMENTED_FOLLOWUP_REQUIRED`, `ACTIVATION_BLOCKED`, or `REJECTED`. Frozen criteria stay stable except critical defects. Safe inert-at-rest bytes may commit with `ACTIVATION_BLOCKED` but cannot activate; unsafe-at-rest bytes are `REJECTED`.
 
@@ -990,3 +1004,21 @@ Track delivery phase, demonstrable journeys, defects, and implementation versus
 live readiness separately. Measure time to working MVP and review overhead;
 never inflate progress to make the fast-build phase appear complete.
 <!-- canon:end mvp-delivery-sop -->
+
+<!-- canon:begin headless-delegate-mode -->
+## Headless Delegate Mode (Canonical — all agents)
+
+Applies to any agent dispatched non-interactively (`delegate-to-*`, `codex exec`, Agent-tool sub-agents) with a bounded slice.
+
+**Delegate (the agent receiving the prompt):**
+- Work from the bounded prompt only; read only the named files/line ranges. Do not forward or reconstruct conversation history.
+- Skip session-start hydration (`aq-resume`, `aq-prime`, `aq-session-start`); the orchestrator already supplied the context.
+- Never run `tier0-validation-gate.sh` or `aq-qa`; the orchestrator gates once, after integration. Run only the focused test named in the prompt.
+- If blocked (missing dependency, unreadable path, ambiguity, quota/rate limit), STOP and report the exact blocker. Do not widen scope or retry beyond Rule 6.
+- Do not commit, stage, or push unless the prompt says so.
+
+**Orchestrator (before dispatching):**
+- Dependencies the slice needs are committed (or the prompt names the uncommitted paths explicitly).
+- The deliverable path is visible to the delegate (shared worktree/absolute path), not a private temp dir.
+- Quota/rate-limit headroom exists on the chosen lane; otherwise route to the next eligible lane (Rule 18) rather than dispatching into a stall.
+<!-- canon:end headless-delegate-mode -->

@@ -13,7 +13,8 @@ ENV PYTHONUNBUFFERED=1 \
     HTTP_TIMEOUT=300
 
 # Install system dependencies
-RUN apt-get update \
+# security updates at build time (owner floor-not-pin policy)
+RUN apt-get update && apt-get upgrade -y --no-install-recommends \
     && apt-get install -y --no-install-recommends \
         build-essential \
         curl \
@@ -25,7 +26,7 @@ RUN apt-get update \
 RUN --mount=type=cache,target=/root/.cache/pip \
     pip config set global.timeout 300 && \
     pip config set global.retries 5 && \
-    pip install --upgrade pip wheel setuptools
+    pip install "pip>=26.1" "wheel>=0.46.3" "setuptools>=83.0.0"
 
 # CRITICAL: Install PyTorch CPU-only FIRST to prevent CUDA dependencies
 # sentence-transformers requires PyTorch, so we install CPU version before requirements.txt

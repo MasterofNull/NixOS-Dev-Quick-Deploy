@@ -1,0 +1,180 @@
+#!/usr/bin/env python3
+"""
+aq-rsi-pending — List high-risk RSI repairs awaiting owner sign-off.
+
+Reads the PRSI action queue and rsi-incidents.json to find rows that need
+independent verifier approval. Output format shows the exact command needed
+to sign off on each repair.
+"""
+
+import json
+import sys
+from pathlib import Path
+
+REPO_ROOT = Path(__file__).resolve().parent.parent.parent
+QUEUE_PATH = Path(
+    __import__("os").getenv(
+        "PRSI_ACTION_QUEUE_PATH",
+        "/var/lib/nixos-ai-stack/optimizer/prsi/action-queue.json"
+    )
+)
+# For testing: allow PRSI_INCIDENTS_FILE override
+INCIDENTS_FILE = Path(
+    __import__("os").getenv(
+        "PRSI_INCIDENTS_FILE",
+        str(REPO_ROOT / ".agent" / "collaboration" / "rsi-incidents.json")
+    )
+)
+
+
+def load_queue():
+    """Load and parse the action queue. Return None on error with stderr message."""
+    try:
+        if not QUEUE_PATH.exists():
+            print(f"aq-rsi-pending: queue not found at {QUEUE_PATH}", file=sys.stderr)
+            return None
+        with open(QUEUE_PATH) as f:
+            return json.load(f)
+    except (IOError, json.JSONDecodeError) as e:
+        print(f"aq-rsi-pending: error reading queue {QUEUE_PATH}: {e}", file=sys.stderr)
+        return None
+
+
+def load_incidents():
+    """Load and parse the incidents file. Return empty dict on error."""
+    try:
+        if not INCIDENTS_FILE.exists():
+            return {}
+        with open(INCIDENTS_FILE) as f:
+            data = json.load(f)
+            return data.get("incidents", {})
+    except (IOError, json.JSONDecodeError):
+        return {}
+
+
+def find_pending_high_risk():
+    """
+    Find RSI rows with high risk that lack independent verifier sign-off.
+    Return list of (row, incident) tuples.
+    """
+    queue = load_queue()
+    if queue is None:
+        return None
+
+    incidents = load_incidents()
+
+    pending = []
+    for row in queue.get("actions", []):
+        if not isinstance(row, dict):
+            continue
+
+        # Check if it's an RSI row (source == "rsi-incidents.json")
+        raw_action = row.get("raw_action", {})
+        if not isinstance(raw_action, dict):
+            continue
+        if raw_action.get("source") != "rsi-incidents.json":
+            continue
+
+        # Check status
+        status = row.get("status", "")
+        if status not in ("rsi_pending", "rsi_failed"):
+            continue
+
+        # Check risk and approval
+        risk = row.get("risk", "")
+        if risk != "high":
+            continue
+
+        approval = row.get("approval", {})
+        if not isinstance(approval, dict):
+            approval = {}
+
+        if approval.get("verifier_by"):
+            # Already signed off
+            continue
+
+        # Found a pending high-risk row
+        incident_id = raw_action.get("incident_id")
+        incident = incidents.get(incident_id, {})
+        pending.append((row, incident))
+
+    return pending
+
+
+def format_pending_rows(pending):
+    """Format pending rows for human output."""
+    if not pending:
+        return []
+
+    lines = []
+    for row, incident in pending:
+        row_id = row.get("id", "?")
+        severity = incident.get("severity", "?")
+        agent = incident.get("agent", "?")
+        error = incident.get("error", "")
+        error_preview = error[:80] if error else "(no error)"
+
+        verify_cmd = f'scripts/automation/prsi-orchestrator.py verify --id {row_id} --by owner --note "<reason>"'
+
+        lines.append(f"{row_id}: severity={severity} agent={agent}")
+        lines.append(f"  Error: {error_preview}")
+        lines.append(f"  Command: {verify_cmd}")
+
+    return lines
+
+
+def format_json_output(pending):
+    """Format pending rows as JSON."""
+    items = []
+    for row, incident in pending:
+        row_id = row.get("id", "")
+        severity = incident.get("severity", "")
+        agent = incident.get("agent", "")
+        error = incident.get("error", "")
+
+        items.append({
+            "id": row_id,
+            "severity": severity,
+            "agent": agent,
+            "error": error[:80] if error else "",
+            "verify_command": f'scripts/automation/prsi-orchestrator.py verify --id {row_id} --by owner --note "<reason>"'
+        })
+
+    return items
+
+
+def main():
+    import argparse
+
+    parser = argparse.ArgumentParser(description="List high-risk RSI repairs awaiting sign-off")
+    parser.add_argument("--count", action="store_true", help="Print only the count")
+    parser.add_argument("--json", action="store_true", help="Print machine-readable JSON output")
+    args = parser.parse_args()
+
+    pending = find_pending_high_risk()
+
+    if pending is None:
+        # Error reading queue
+        sys.exit(2)
+
+    if args.count:
+        print(len(pending))
+        return 0
+
+    if args.json:
+        print(json.dumps(format_json_output(pending), sort_keys=True))
+        return 0
+
+    # Default: human-readable output
+    lines = format_pending_rows(pending)
+    if lines:
+        for line in lines:
+            print(line)
+    else:
+        print("No high-risk RSI repairs pending verification.")
+
+    return 0
+
+
+if __name__ == "__main__":
+    sys.exit(main())

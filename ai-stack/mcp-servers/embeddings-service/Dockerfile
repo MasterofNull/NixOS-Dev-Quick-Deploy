@@ -5,16 +5,18 @@ FROM docker.io/library/python:3.11-slim
 WORKDIR /app
 
 # Install system dependencies
-RUN apt-get update && apt-get install -y --no-install-recommends \
+# security updates at build time (owner floor-not-pin policy)
+RUN apt-get update && apt-get upgrade -y --no-install-recommends \
+    && apt-get install -y --no-install-recommends \
     curl \
     ca-certificates \
     && rm -rf /var/lib/apt/lists/*
 
 # Refresh packaging tooling before installing runtime dependencies so the
 # image does not retain known vulnerable pip/wheel/setuptools artifacts.
-RUN python -m pip install --no-cache-dir --upgrade \
+RUN python -m pip install --no-cache-dir \
     "pip>=26.1" \
-    "setuptools>=82.0.1" \
+    "setuptools>=83.0.0" \
     "wheel>=0.46.3"
 
 # Install dependencies

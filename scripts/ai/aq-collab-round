@@ -290,7 +290,7 @@ def _dispatch_process(agent: str, prompt_file: Path, local_timeout: int) -> str:
     try:
         if agent == "codex":
             cmd = ["bash", str(SCRIPTS / "delegate-to-codex"), "--mode", "edit",
-                   "--prompt-file", str(prompt_file)]
+                   "--shared", "--prompt-file", str(prompt_file)]
             env = os.environ
         else:  # local — never-skip: agent-mode, budget-fitting local prompt, async
             # Use the local-specific bounded prompt (smaller inline + leaf-node rules)
