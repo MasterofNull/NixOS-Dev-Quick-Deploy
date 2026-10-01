@@ -15,6 +15,11 @@ Usage:
     canon-compile.py --adopt NAME   # wrap an existing identical section with
                                     # markers in all targets (one-time migration)
 
+Targets may be a plain path (full block) or {path, mode: full|summary}. A
+summary-mode target receives the block's `summary:` file (canon/blocks/
+<name>.summary.md) instead of the full text, so always-on agent files stay small
+while canon/blocks/<name>.md remains the full SSOT.
+
 A target missing its markers is reported (check) or gets the block appended at
 a marked insertion point only via --adopt — never silently.
 """
@@ -46,6 +51,21 @@ def _region_re(name: str) -> re.Pattern:
     )
 
 
+def _targets(spec: dict, name: str):
+    """Yield (path, body) per target, resolving full vs summary mode."""
+    full = (CANON / spec["source"]).read_text(encoding="utf-8")
+    for t in spec["targets"]:
+        path, mode = (t, "full") if isinstance(t, str) else (t["path"], t.get("mode", "full"))
+        if mode == "full":
+            yield path, full
+        elif mode == "summary":
+            if "summary" not in spec:
+                raise SystemExit(f"block '{name}': target {path} wants summary mode but block has no `summary:` source")
+            yield path, (CANON / spec["summary"]).read_text(encoding="utf-8")
+        else:
+            raise SystemExit(f"block '{name}': target {path} has unknown mode '{mode}'")
+
+
 def _rendered(name: str, body: str) -> str:
     return f"{BEGIN.format(name=name)}\n{body.rstrip()}\n{END.format(name=name)}"
 
@@ -53,8 +73,7 @@ def _rendered(name: str, body: str) -> str:
 def cmd_write(manifest: dict) -> int:
     changed = 0
     for name, spec in manifest["blocks"].items():
-        body = (CANON / spec["source"]).read_text(encoding="utf-8")
-        for target in spec["targets"]:
+        for target, body in _targets(spec, name):
             path = REPO / target
             text = path.read_text(encoding="utf-8")
             region = _region_re(name)
@@ -73,9 +92,8 @@ def cmd_write(manifest: dict) -> int:
 def cmd_check(manifest: dict) -> int:
     drift = []
     for name, spec in manifest["blocks"].items():
-        body = (CANON / spec["source"]).read_text(encoding="utf-8")
-        want = _rendered(name, body)
-        for target in spec["targets"]:
+        for target, body in _targets(spec, name):
+            want = _rendered(name, body)
             path = REPO / target
             if not path.exists():
                 drift.append(f"{target}: file missing")
@@ -101,7 +119,7 @@ def cmd_adopt(manifest: dict, name: str) -> int:
         print(f"unknown block '{name}'", file=sys.stderr)
         return 1
     body = (CANON / spec["source"]).read_text(encoding="utf-8").rstrip()
-    for target in spec["targets"]:
+    for target, _ in _targets(spec, name):
         path = REPO / target
         text = path.read_text(encoding="utf-8")
         if _region_re(name).search(text):

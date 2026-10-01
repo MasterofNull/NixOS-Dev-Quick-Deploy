@@ -1,0 +1,8 @@
+## Local Agentic Memory, Cache & Token Efficiency SOP (Canonical — all agents)
+
+- Every agent MUST use local memory/cache/compaction first; silent memory failures, ineffective compaction, ignored caches, uncontrolled token use are delivery blockers. Documented != implemented != enabled != verified; never claim universal enforcement from instruction text.
+- Prep: `aq-resume`, `aq-session-start --task`, `aq-hints`, lean-ctx (signatures/ranges); never drag full history/whole files; query AIDB `error-solutions` before debugging; cap tool output at 3,000 chars; keep instructions at the prompt head.
+- Closeout: seed AIDB + MemoryBroker, write `.agent/memory/<topic>.md`, update `RESUME.json` + `PULSE.log`; compact via the provider mechanism or fresh-session handoff; NEVER archive/delete provider transcripts to fake compaction. Evict stale dumps/finished turns; RETAIN objective+acceptance, uncommitted files, live errors, memory pointers.
+- Guard: use measured total input tokens (incl. cached); budget = min(50,000, 80% of window); over budget -> checkpoint + compact/handoff; unknown measurement -> say unknown, never claim clean. MUST compact at >2.5 MB, >25 turns, or >50k tokens. Verify with `aq-session-compact --verify-usage` (exit 0 only on measured decrease); verify each provider adapter separately.
+- Sub-agents: pass only objective, paths, acceptance, constraints, skill names; NEVER history/transcripts; no polling loops. Panes start in standby; shutdown touches only that workspace; never global process reaping.
+- Full text: `canon/blocks/memory-cache-sop.md`

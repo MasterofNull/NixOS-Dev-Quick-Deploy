@@ -321,25 +321,12 @@ def sync_memory_md(dry_run: bool, verbose: bool) -> bool:
 
 
 def main() -> None:
-    args = _parse_args()
-    claude_md = _load_file(CLAUDE_MD)
-    if not claude_md:
-        print(f"ERROR: {CLAUDE_MD} not found", file=sys.stderr)
-        sys.exit(1)
-
-    print(f"sync-agent-instructions: reading {CLAUDE_MD.relative_to(REPO_ROOT)}")
-    changed = 0
-    changed += sync_memory_md(args.dry_run, args.verbose)
-    changed += sync_agents_md(claude_md, args.dry_run, args.verbose)
-    changed += sync_aider_md(claude_md, args.dry_run, args.verbose)
-    changed += sync_gemini_context(claude_md, args.dry_run, args.verbose)
-
-    if args.dry_run:
-        print(f"dry-run: {changed} file(s) would change")
-    else:
-        print(f"done: {changed} file(s) updated")
-        if not args.dry_run:
-            _print_aidb_hint()
+    """No-op: agent instruction files are compiled from canon/, not synced from CLAUDE.md."""
+    print(
+        "sync-agent-instructions is retired: shared instruction content is projected by "
+        "`python3 scripts/governance/canon-compile.py --write` (SSOT canon/blocks/, "
+        "gate: tier0.d/check-canon-drift.sh). Nothing was changed."
+    )
 
 
 if __name__ == "__main__":

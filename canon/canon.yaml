@@ -1,7 +1,10 @@
 # Canon manifest — SSOT for shared canonical blocks compiled into agent files.
 # WS1.4 (AQ-OS PRD): Rule 16 agent parity becomes a build step, not a discipline.
 #
-# Each block lives in canon/blocks/<name>.md and is injected verbatim between
+# Each block lives in canon/blocks/<name>.md (full SSOT). A target is either a
+# plain path (full text injected verbatim) or {path, mode: summary}, which injects
+# the block's `summary:` file instead (always-on agent files stay small).
+# Blocks are injected between
 #   <!-- canon:begin <name> -->  /  <!-- canon:end <name> -->
 # markers in every target file.
 #
@@ -10,8 +13,8 @@
 #   python3 scripts/governance/canon-compile.py --check   # CI drift gate (exit 1 on drift)
 
 blocks:
-  mvp-delivery-sop:
-    source: blocks/mvp-delivery-sop.md
+  behavioral-rules:
+    source: blocks/behavioral-rules.md
     targets:
       - AGENTS.md
       - CLAUDE.md
@@ -23,6 +26,7 @@ blocks:
   fable-parity:
     source: blocks/fable-parity.md
     targets:
+      - AGENTS.md
       - CLAUDE.md
       - .agent/CODEX.md
       - .agent/GEMINI.md
@@ -31,19 +35,57 @@ blocks:
 
   memory-cache-sop:
     source: blocks/memory-cache-sop.md
+    summary: blocks/memory-cache-sop.summary.md
     targets:
-      - CLAUDE.md
-      - .agent/CODEX.md
-      - .agent/GEMINI.md
-      - .agent/LOCAL-AGENT.md
+      - {path: AGENTS.md, mode: summary}
+      - {path: CLAUDE.md, mode: summary}
+      - {path: .agent/CODEX.md, mode: summary}
+      - {path: .agent/GEMINI.md, mode: summary}
+      - {path: .agent/LOCAL-AGENT.md, mode: summary}
       - .agent/WORKFLOW-CANON.md
 
   recursive-self-improvement-sop:
     source: blocks/recursive-self-improvement-sop.md
+    summary: blocks/recursive-self-improvement-sop.summary.md
     targets:
-      - CLAUDE.md
-      - .agent/CODEX.md
-      - .agent/GEMINI.md
-      - .agent/LOCAL-AGENT.md
+      - {path: AGENTS.md, mode: summary}
+      - {path: CLAUDE.md, mode: summary}
+      - {path: .agent/CODEX.md, mode: summary}
+      - {path: .agent/GEMINI.md, mode: summary}
+      - {path: .agent/LOCAL-AGENT.md, mode: summary}
       - .agent/WORKFLOW-CANON.md
 
+  mvp-delivery-sop:
+    source: blocks/mvp-delivery-sop.md
+    summary: blocks/mvp-delivery-sop.summary.md
+    targets:
+      - {path: AGENTS.md, mode: summary}
+      - {path: CLAUDE.md, mode: summary}
+      - {path: .agent/CODEX.md, mode: summary}
+      - {path: .agent/GEMINI.md, mode: summary}
+      - {path: .agent/LOCAL-AGENT.md, mode: summary}
+      - .agent/WORKFLOW-CANON.md
+
+  headless-delegate-mode:
+    source: blocks/headless-delegate-mode.md
+    summary: blocks/headless-delegate-mode.summary.md
+    targets:
+      - {path: AGENTS.md, mode: summary}
+      - {path: CLAUDE.md, mode: summary}
+      - {path: .agent/CODEX.md, mode: summary}
+      - {path: .agent/GEMINI.md, mode: summary}
+      - {path: .agent/LOCAL-AGENT.md, mode: summary}
+      - .agent/WORKFLOW-CANON.md
+
+# Always-on agent instruction files: required canon blocks are every block above
+# targeting the file; budgets are enforced by tier0.d/check-agent-instruction-parity.py.
+# lane_budget_bytes bounds the hand-written <!-- lane:begin/end --> region.
+agent_files:
+  budget_bytes: 24000
+  lane_budget_bytes: 8000
+  files:
+    - AGENTS.md
+    - CLAUDE.md
+    - .agent/CODEX.md
+    - .agent/GEMINI.md
+    - .agent/LOCAL-AGENT.md
