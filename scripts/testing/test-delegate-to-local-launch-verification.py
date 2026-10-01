@@ -1,121 +1,62 @@
 #!/usr/bin/env python3
-"""
-Test local delegation launch verification.
+"""delegate-to-local launch verification: fail on a dead child, never on slow registration.
 
-Verifies that delegate-to-local confirms process is alive after launch
-and that the registry entry exists.
+History: wave 1 (2b654d8b) added registry polling to stop false launch acks, but its
+loop counted 0.1s ticks as seconds (0.3s window) and failed live tasks whose
+registration lags launch by ~35s (ctx-freshness + worktree setup), so aq-collab-round
+recorded a running local lane as an error. These cases run the real function.
 """
-
 import subprocess
 import sys
 import tempfile
 from pathlib import Path
 
-def get_test_root():
-    """Find the repository root."""
-    script_dir = Path(__file__).resolve().parent
-    return script_dir.parent.parent
+SCRIPT = Path(__file__).resolve().parents[2] / "scripts" / "ai" / "delegate-to-local"
 
-def test_launch_verification_exists():
-    """Verify that launch verification function is present."""
-    repo_root = get_test_root()
-    script_file = repo_root / "scripts" / "ai" / "delegate-to-local"
 
-    content = script_file.read_text()
+def _verify(pid_expr: str, registry_text: str | None) -> subprocess.CompletedProcess:
+    with tempfile.TemporaryDirectory() as d:
+        reg = Path(d) / "registry.jsonl"
+        if registry_text is not None:
+            reg.write_text(registry_text)
+        script = (f"source {SCRIPT!s} >/dev/null 2>&1; {pid_expr}; "
+                  f"verify_launch_success \"$P\" task-x {reg!s}; rc=$?; kill $P 2>/dev/null || true; exit $rc")
+        return subprocess.run(["bash", "-c", script], capture_output=True, text=True, timeout=30)
 
-    # Check for the verify_launch_success function
-    assert 'verify_launch_success()' in content, \
-        "verify_launch_success function should be defined"
 
-    # Check that it verifies PID is alive
-    assert 'kill -0' in content, \
-        "Should verify process is alive with kill -0"
+def test_dead_unregistered_child_fails():
+    r = _verify("true & P=$!; wait $P", None)
+    assert r.returncode == 1 and "exited before registering" in r.stderr, r
 
-    # Check that it verifies registry entry exists
-    assert 'registry.jsonl' in content, \
-        "Should check registry entry exists"
 
-    # Check that the function is called after setsid launch
-    assert 'verify_launch_success "$BG_PID"' in content, \
-        "verify_launch_success should be called with BG_PID"
+def test_alive_unregistered_child_succeeds_with_warning():
+    r = _verify("sleep 20 & P=$!", "")
+    assert r.returncode == 0 and "not yet registered" in r.stderr, r
 
-def test_launch_verification_catches_failures():
-    """Verify that launch verification fails on bad launch."""
-    repo_root = get_test_root()
-    script_file = repo_root / "scripts" / "ai" / "delegate-to-local"
 
-    content = script_file.read_text()
+def test_alive_registered_child_succeeds_quietly():
+    r = _verify("sleep 20 & P=$!", '{"id": "task-x"}\n')
+    assert r.returncode == 0 and "WARN" not in r.stderr, r
 
-    # Check that on failure, the script exits nonzero
-    assert 'exit 1' in content or 'return 1' in content, \
-        "Should exit with error on launch failure"
 
-    # Check that error message is printed
-    assert 'ERROR' in content, \
-        "Should print error messages on launch failure"
+def test_fast_finished_registered_child_succeeds():
+    r = _verify("true & P=$!; wait $P", '{"id": "task-x"}\n')
+    assert r.returncode == 0, r
 
-def test_launch_verification_timeout():
-    """Verify that launch verification has a reasonable timeout."""
-    repo_root = get_test_root()
-    script_file = repo_root / "scripts" / "ai" / "delegate-to-local"
 
-    content = script_file.read_text()
+def test_caller_aborts_on_failure():
+    content = SCRIPT.read_text()
+    assert 'if ! verify_launch_success "$BG_PID" "$ID"; then' in content
 
-    # Check for timeout value
-    assert 'max_wait' in content or 'timeout' in content, \
-        "Should have a timeout mechanism for registry polling"
-
-    # The timeout should be reasonable (not too long)
-    # Looking for something like 3 seconds or similar
-    assert '3' in content or '2' in content or '1' in content, \
-        "Should have a bounded wait time"
-
-def test_launch_verification_integration():
-    """Test that the function can be sourced and called."""
-    repo_root = get_test_root()
-    script_file = repo_root / "scripts" / "ai" / "delegate-to-local"
-
-    # Read the script content
-    content = script_file.read_text()
-
-    # Extract the verify_launch_success function
-    start_idx = content.find('verify_launch_success()')
-    end_idx = content.find('\n}', start_idx) + 2
-
-    if start_idx > 0 and end_idx > start_idx:
-        function_def = content[start_idx:end_idx]
-
-        # The function should:
-        # 1. Take pid and task_id as arguments
-        # 2. Check if process is alive
-        # 3. Check registry
-        # 4. Return 0 on success, 1 on failure
-
-        assert 'local pid=' in function_def or 'pid="$1"' in function_def, \
-            "Function should take pid as first argument"
-
-        assert 'task_id=' in function_def or 'task_id="$2"' in function_def, \
-            "Function should take task_id as second argument"
-
-        assert 'return 0' in function_def or 'return 1' in function_def, \
-            "Function should return 0 or 1"
 
 if __name__ == "__main__":
-    print("Testing launch verification exists...")
-    test_launch_verification_exists()
-    print("✓ Launch verification exists test passed")
-
-    print("Testing launch verification catches failures...")
-    test_launch_verification_catches_failures()
-    print("✓ Launch verification failure detection test passed")
-
-    print("Testing launch verification timeout...")
-    test_launch_verification_timeout()
-    print("✓ Launch verification timeout test passed")
-
-    print("Testing launch verification integration...")
-    test_launch_verification_integration()
-    print("✓ Launch verification integration test passed")
-
-    print("\nAll tests passed!")
-    sys.exit(0)
+    fails = 0
+    for name, fn in sorted(globals().items()):
+        if name.startswith("test_") and callable(fn):
+            try:
+                fn()
+                print(f"PASS {name}")
+            except Exception as e:  # noqa: BLE001
+                fails += 1
+                print(f"FAIL {name}: {e!r}")
+    sys.exit(1 if fails else 0)
