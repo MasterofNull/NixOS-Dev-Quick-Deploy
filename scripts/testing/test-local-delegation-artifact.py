@@ -27,6 +27,13 @@ ROOT = Path(__file__).resolve().parents[2]
 LIB = ROOT / "scripts" / "ai" / "lib"
 sys.path.insert(0, str(LIB))
 
+# Fixture runs fail on purpose (exit 23/24/-15, max_tokens 8/20).  Without an isolated event spool
+# they were appended to the production agent-run-events.jsonl and made up 432 of 436 "failed"
+# delegate-to-local model calls (success 0.47) in one day.
+if not os.environ.get("AQ_AGENT_RUN_EVENTS_PATH"):
+    _EVENT_SPOOL = tempfile.mkdtemp(prefix="aq-run-events-")
+    os.environ["AQ_AGENT_RUN_EVENTS_PATH"] = os.path.join(_EVENT_SPOOL, "agent-run-events.jsonl")
+
 
 def assert_true(condition: bool, message: str) -> None:
     if not condition:

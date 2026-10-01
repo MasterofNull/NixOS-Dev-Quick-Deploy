@@ -1877,19 +1877,8 @@ async def run_http_mode(port: int) -> None:
             "window_size":      20,
         })
 
-    # Phase 90 — failure_reason classifier
-    def _classify_failure_reason(error_message: str) -> str:
-        """Map a raw error_message string to a structured failure_reason enum value."""
-        msg = (error_message or "").lower()
-        if not msg.strip():
-            return "empty_response"
-        if "timeout" in msg or "504" in msg or "408" in msg or "timed out" in msg:
-            return "timeout"
-        if "context" in msg or "413" in msg or "too long" in msg or "context_length" in msg:
-            return "context_overflow"
-        if "500" in msg or "internal server" in msg or "backend" in msg:
-            return "backend_500"
-        return "unknown"
+    # Phase 90 — failure_reason classifier: single implementation lives in core.status_service
+    from core.status_service import _classify_failure_reason
 
     # Phase 56.6 — Agent Event Bus
     _VALID_EVENT_TYPES = frozenset({
