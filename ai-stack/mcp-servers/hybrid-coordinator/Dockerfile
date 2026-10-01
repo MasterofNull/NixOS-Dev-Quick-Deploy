@@ -23,10 +23,10 @@ RUN apt-get update && apt-get upgrade -y && apt-get install -y --no-install-reco
 RUN --mount=type=cache,target=/root/.cache/pip \
     pip config set global.timeout 300 && \
     pip config set global.retries 5 && \
-    pip install --upgrade \
-      pip==26.0 \
-      wheel==0.46.3 \
-      setuptools==82.0.1
+    pip install \
+      "pip>=26.1" \
+      "wheel>=0.46.3" \
+      "setuptools>=83.0.0"
 
 # Copy requirements and install Python dependencies
 # Use --prefix to install to /build/.local instead of /root/.local
@@ -43,7 +43,9 @@ FROM docker.io/library/python:3.13-slim
 ENV DEBIAN_FRONTEND=noninteractive
 
 # Install runtime dependencies
-RUN apt-get update && apt-get install -y --no-install-recommends \
+# security updates at build time (owner floor-not-pin policy)
+RUN apt-get update && apt-get upgrade -y --no-install-recommends \
+    && apt-get install -y --no-install-recommends \
     curl \
     wget \
     && rm -rf /var/lib/apt/lists/*
