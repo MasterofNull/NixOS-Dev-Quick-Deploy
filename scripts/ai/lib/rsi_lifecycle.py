@@ -19,9 +19,10 @@ from datetime import datetime, timezone
 from pathlib import Path
 
 _REPO_ROOT = Path(__file__).resolve().parents[3]
-_RUNTIME = _REPO_ROOT / ".agent" / "collaboration"
-_BACKLOG = _REPO_ROOT / ".agent" / "memory" / "issues-backlog.md"
-_WORKAROUNDS = _REPO_ROOT / ".agent" / "WORKAROUND-REGISTER.md"
+# Env overrides exist so CLIs and tests can target an isolated ledger; unset = canonical paths.
+_RUNTIME = Path(os.environ.get("RSI_RUNTIME_DIR") or _REPO_ROOT / ".agent" / "collaboration")
+_BACKLOG = Path(os.environ.get("RSI_BACKLOG_FILE") or _REPO_ROOT / ".agent" / "memory" / "issues-backlog.md")
+_WORKAROUNDS = Path(os.environ.get("RSI_WORKAROUNDS_FILE") or _REPO_ROOT / ".agent" / "WORKAROUND-REGISTER.md")
 
 
 def _now() -> str:
