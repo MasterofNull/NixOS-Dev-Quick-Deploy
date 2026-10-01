@@ -50,6 +50,21 @@ let
   # Each MCP service gets a MemoryMax ceiling sized to the detected hardware tier
   # (nano→256M, micro→512M, small→1G, medium→2G, large→4G).
   hardenedBase = mkHardenedService {tier = cfg.hardwareTier;};
+  # Oneshot services: timer-driven units must have Restart = "no" to prevent
+  # infinite restart loops on failure (Phase 16.4.3).
+  oneshotServiceConfig =
+    hardenedBase
+    // {
+      Group = aiGroup;
+      Restart = "no";
+      ProtectHome = "read-only";
+      ReadWritePaths = serviceWritablePaths;
+      ReadOnlyPaths = [repoSource];
+      WorkingDirectory = dataDir;
+      RestrictAddressFamilies = ["AF_UNIX" "AF_INET" "AF_INET6"];
+      SystemCallFilter = ["@system-service"];
+      SystemCallErrorNumber = "EPERM";
+    };
 
   # Repo source for pure evaluation: use flakeRepoPath if set, otherwise import
   # repoPath into Nix store via builtins.path. This allows access to repo files
@@ -1606,7 +1621,7 @@ in {
         requires = ["ai-aidb.service"];
         wants = ["network-online.target"];
         serviceConfig =
-          commonServiceConfig
+          oneshotServiceConfig
           // {
             Type = "oneshot";
             ExecStart = lib.escapeShellArgs [
@@ -2342,6 +2357,7 @@ in {
           (mkHardenedService {
             tier = cfg.hardwareTier;
             memoryMax = "64M";
+            restart = "no";
           })
           // {
             # Phase 14.1.2 — Runs as primaryUser (not DynamicUser) because the repo
@@ -2397,6 +2413,7 @@ in {
             tier = cfg.hardwareTier;
             memoryMax = "32M";
             tasksMax = 16;
+            restart = "no";
           })
           // {
             Type = "oneshot";

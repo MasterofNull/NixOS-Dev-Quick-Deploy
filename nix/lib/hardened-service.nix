@@ -20,6 +20,17 @@ memoryMax : string | null (optional)
   Override the tier-derived `MemoryMax`.  Pass a systemd size string such as
   "512M", "2G", etc.  When null the tier default is used.
 
+restart : string (optional, default "on-failure")
+  Restart policy for the service. Set to "no" for timer-driven oneshot units
+  to prevent infinite restart loops. Valid values: "no" | "on-failure" | others.
+  When "no", Restart is set to "no" and RestartSec is omitted.
+  Otherwise, Restart = "on-failure" and RestartSec = "10s".
+
+tasksMax : integer | null (optional)
+  Maximum number of kernel tasks (threads + processes) for this unit.
+  Prevents runaway child-process spawning.  Phase 12.4.1.
+  null = use systemd default (4915 per DefaultTasksMax).
+
 extra : attrs (optional)
   Additional serviceConfig attributes merged in last (highest priority).
 
@@ -34,6 +45,7 @@ MemoryMax defaults per tier
 {...}: {
   tier ? "medium",
   memoryMax ? null,
+  restart ? "on-failure",
   # tasksMax: maximum number of kernel tasks (threads + processes) for this unit.
   # Prevents runaway child-process spawning.  Phase 12.4.1.
   # null = use systemd default (4915 per DefaultTasksMax).
@@ -79,9 +91,17 @@ in
     # prevent runaway subprocess spawning.  256 is generous for Python asyncio
     # services (they use ~10-30 threads normally).
     TasksMax = tasksMax;
-
-    # --- Restart policy -------------------------------------------------------
-    Restart = "on-failure";
-    RestartSec = "10s";
   }
+  // (
+    # --- Restart policy (Phase 16.4.3) ----------------------------------------
+    # Timer-driven oneshot units must have Restart = "no" to prevent infinite
+    # restart loops when a scheduled execution fails. Long-running services use
+    # Restart = "on-failure" with RestartSec = "10s" (the default).
+    if restart == "no"
+    then {Restart = "no";}
+    else {
+      Restart = "on-failure";
+      RestartSec = "10s";
+    }
+  )
   // extra
