@@ -5,7 +5,12 @@
     "last_updated": "2026-05-20"
   },
   "rsi": {
-    "repair_lane": "codex"
+    "repair_lane": "codex",
+    "approval_binding_enabled": false,
+    "daily_run_cap": 3,
+    "approval_authorities": [
+      "owner"
+    ]
   },
   "enabled": true,
   "since": "1d",
