@@ -3,6 +3,7 @@
 
 Exact, hash-verified pins live in requirements.lock (pip-compile output).  Each
 lock must still satisfy the loosened requirements.txt so the lock stays valid.
+Dockerfiles must also use floors (>=) in pip-install lines; exact pins only in requirements.lock.
 No network or installs.
 """
 import re
@@ -16,7 +17,16 @@ from packaging.version import Version
 
 ROOT = Path(__file__).resolve().parents[2]
 SERVICES = sorted((ROOT / "ai-stack" / "mcp-servers").glob("*/requirements.txt"))
+# Owner policy: Check floor versions in pip-install lines for these four key services
+POLICY_DOCKERFILES = [
+    ROOT / "ai-stack" / "mcp-servers" / "nixos-docs" / "Dockerfile",
+    ROOT / "ai-stack" / "mcp-servers" / "aidb" / "Dockerfile",
+    ROOT / "ai-stack" / "mcp-servers" / "embeddings-service" / "Dockerfile",
+    ROOT / "ai-stack" / "mcp-servers" / "hybrid-coordinator" / "Dockerfile",
+]
 LOCK_PIN = re.compile(r"^([A-Za-z0-9_.\-]+(?:\[[^\]]*\])?)==([^\s;\\]+)", re.M)
+# Match pip-install lines with exact == pins (e.g. torch==2.11.0)
+DOCKERFILE_PIP_PIN = re.compile(r"pip\s+install.*\s+([A-Za-z0-9_.\-]+(?:\[[^\]]*\])?)==([^\s\"\n]+)", re.M)
 
 
 def requirements(path):
@@ -52,6 +62,20 @@ class FloorPolicy(unittest.TestCase):
                 if not req.specifier.contains(version, prereleases=True):
                     print(f"WARN lock drift: {lock.relative_to(ROOT)} pins {req.name}=={version}, violates {req}",
                           file=sys.stderr)
+
+    def test_no_exact_pins_in_policy_dockerfiles(self):
+        """Policy enforcement: nixos-docs, aidb, embeddings-service, and hybrid-coordinator Dockerfiles
+        must use floors (>=) in pip-install lines, not exact == pins.
+        Exact pins belong only in requirements.lock files (pip-compile output)."""
+        for dockerfile in POLICY_DOCKERFILES:
+            if not dockerfile.exists():
+                self.fail(f"Policy Dockerfile not found: {dockerfile.relative_to(ROOT)}")
+            content = dockerfile.read_text()
+            exact_pins = DOCKERFILE_PIP_PIN.findall(content)
+            self.assertEqual(
+                len(exact_pins), 0,
+                f"{dockerfile.relative_to(ROOT)}: pip-install lines contain exact == pins: {exact_pins}; use >= floors instead"
+            )
 
 
 if __name__ == "__main__":

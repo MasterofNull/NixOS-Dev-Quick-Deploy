@@ -30,17 +30,23 @@ RUN --mount=type=cache,target=/root/.cache/pip \
 
 # CRITICAL: Install PyTorch CPU-only FIRST to prevent CUDA dependencies
 # sentence-transformers requires PyTorch, so we install CPU version before requirements.txt
+# Use floors (>=) to allow newer CPU-compatible versions (exact pins only in requirements.lock)
 RUN --mount=type=cache,target=/root/.cache/pip \
     pip install \
     --index-url https://download.pytorch.org/whl/cpu \
     --timeout 300 \
     --retries 5 \
-    torch==2.11.0 torchvision==0.26.0
+    "torch>=2.11.0" "torchvision>=0.26.0"
 
 # Copy requirements and install Python dependencies.
 COPY nixos-docs/requirements.txt /app/requirements.txt
 RUN --mount=type=cache,target=/root/.cache/pip \
     pip install --timeout 300 --retries 5 -r /app/requirements.txt
+
+# FINAL: Verify floor versions after all dependency installs to catch downgrades
+RUN --mount=type=cache,target=/root/.cache/pip \
+    pip install --upgrade "pip>=26.1" "wheel>=0.46.3" "setuptools>=83.0.0" && \
+    python -c "import setuptools,sys; v=tuple(int(x) for x in setuptools.__version__.split('.')[:2]); sys.exit(0 if v>=(83,0) else 1)"
 
 # Copy shared libraries (for authentication middleware)
 COPY shared /app/shared

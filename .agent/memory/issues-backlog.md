@@ -5023,3 +5023,7 @@ File: scripts/ai/lib/worktree-isolation.sh; scripts/automation/prsi-orchestrator
   Severity: high
   Action: add failure classification at the producer so unknown failures carry a cause; the classification gap is itself an incident
   File: ai-stack/mcp-servers/hybrid-coordinator
+
+[DONE 2026-10-01] post-merge-trivy-residuals — After #354 merged, open Trivy alerts fell 198 -> 7 (Debian openssl/libssl/pcre2 + GitPython cleared). Residuals: nixos-docs setuptools 78.1.0 / vendored wheel 0.45.1 / jaraco.context 5.3.0 in /usr/local site-packages (a later install step re-pulled them despite an early floor) and aidb transformers 4.57.6. Fix: final pip-tooling floor step + build-failing setuptools>=83 assertion after all installs in the 4 Dockerfiles; torch/torchvision/torchaudio exact pins -> floors; aidb transformers>=5.10.0 with sentence-transformers>=5.2.0 (5.1.x caps transformers<5; verified on PyPI). requirements.lock refresh skipped: no resolver (pip-tools) available locally — lock drift is reported, not fatal.
+  Severity: high (security)
+  File: ai-stack/mcp-servers/{nixos-docs,aidb,embeddings-service,hybrid-coordinator}/Dockerfile; ai-stack/mcp-servers/aidb/requirements.txt
