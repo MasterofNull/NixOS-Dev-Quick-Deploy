@@ -28,6 +28,7 @@ class AqRsiTests(unittest.TestCase):
                         RSI_WORKAROUNDS_FILE=str(t / "wa.md"), PRSI_ACTION_QUEUE_PATH=str(self.queue),
                         A2A_EVENT_LOG=str(t / "events.jsonl"), REDIS_URL="redis://127.0.0.1:1/0")
         self.env.pop("PRSI_INCIDENTS_FILE", None)
+        (t / "rsi-incidents.json").write_text(json.dumps({"version": 1, "incidents": {}}))
 
     def run_cli(self, *args):
         r = subprocess.run([sys.executable, str(CLI), *args], capture_output=True, text=True,
@@ -83,6 +84,21 @@ class AqRsiTests(unittest.TestCase):
         self.assertEqual(data["skipped"], {"skipped_verifier_required": 1})
         self.assertEqual(set(data["per_lane"]), {"codex", "local"})
         self.assertEqual(rc, 1)  # stalled => not healthy
+
+    def test_status_missing_or_corrupt_incident_ledger_is_unknown(self):
+        self.write_queue([self.row("r1", "rsi_awaiting_validation", rsi_attempts=1, created_at=_iso(1),
+                                   execution={"receipt": {"lane": "codex"}})])
+        ledger = Path(self.tmp.name) / "rsi-incidents.json"
+        ledger.unlink()
+        for body in (None, "{not json"):  # missing, then corrupt
+            if body is not None:
+                ledger.write_text(body)
+            out, _, rc = self.run_cli("status", "--json")
+            data = json.loads(out)
+            self.assertEqual((rc, data["state"], data["healthy"]), (2, "unknown", None), body)
+            self.assertIn("incident ledger", data["error"])
+        ledger.write_text(json.dumps({"incidents": {}}))
+        self.assertEqual(self.run_cli("status", "--json")[2], 0)
 
     def test_status_missing_queue_is_unknown_not_healthy(self):
         out, _, rc = self.run_cli("status", "--json")

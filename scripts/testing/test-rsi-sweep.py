@@ -49,6 +49,46 @@ class AdapterTests(unittest.TestCase):
             self.assertEqual((state, f), ("unknown", []))
             self.assertIn("stale", d)
 
+    def test_qa_no_phase0_records_is_unknown_not_ok(self):
+        with tempfile.TemporaryDirectory() as t:
+            p = Path(t) / "p.jsonl"
+            for body in ("", "garbage\nmore garbage\n",
+                         json.dumps({"check_id": "1.2.3", "state": "pass"})):  # no phase-0 record
+                p.write_text(body)
+                state, f, d = sw.adapter_qa_phase0(p, max_age_s=3600)
+                self.assertEqual((state, f), ("unknown", []), body)
+                self.assertIn("no phase-0", d)
+
+    def test_qa_incomplete_run_without_failures_is_unknown(self):
+        with tempfile.TemporaryDirectory() as t:
+            p = Path(t) / "p.jsonl"
+            p.write_text("\n".join(json.dumps(r) for r in [
+                {"check_id": "0.1.1", "state": "pass"}, {"check_id": "0.1.2", "state": "running"}]))
+            self.assertEqual(sw.adapter_qa_phase0(p, max_age_s=3600)[0], "unknown")
+            p.write_text("\n".join(json.dumps(r) for r in [
+                {"check_id": "0.1.1", "state": "pass"}, {"check_id": "0.1.2", "state": "pass"}]))
+            self.assertEqual(sw.adapter_qa_phase0(p, max_age_s=3600)[0], "ok")
+
+    def test_summary_never_calls_unknown_healthy(self):
+        out = []
+        adapters = {"a": lambda: ("ok", [], "fine"), "b": lambda: ("unknown", [], "stale")}
+        with patch("builtins.print", side_effect=lambda *a, **k: out.append(a[0])):
+            sw.run(dry_run=True, as_json=True, adapters=adapters)
+        summary = json.loads(out[0])
+        self.assertIs(summary["healthy"], False)
+        self.assertEqual(summary["healthy_sources"], ["a"])
+
+    def test_payload_audit_identity_excludes_measurements(self):
+        def audit(measured, threshold):
+            return json.dumps({"findings": [{"lane": "claude", "check_id": 1, "severity": "high",
+                "measured": measured, "threshold": threshold, "evidence_path": "CLAUDE.md", "suggested_fix": "trim"}]})
+        f1 = sw.adapter_payload_audit(lambda: _proc(audit(51234, "<= 40000 bytes")))[1][0]
+        f2 = sw.adapter_payload_audit(lambda: _proc(audit(61999, "<= 40000 bytes")))[1][0]
+        for key in ("subject", "producer", "path", "authority", "os_error"):
+            self.assertEqual(f1[key], f2[key], key)
+        self.assertIn("51234", f1["root_fix"])  # measurement stays visible, outside identity
+        self.assertNotEqual(f1["root_fix"], f2["root_fix"])
+
     def test_payload_audit_only_high(self):
         out = json.dumps({"findings": [
             {"lane": "claude", "check_id": 1, "severity": "high", "measured": 9, "threshold": "5", "evidence_path": "CLAUDE.md", "suggested_fix": "trim"},
@@ -168,6 +208,19 @@ class RunTests(unittest.TestCase):
         self.assertEqual(len(inc), 1)
         self.assertEqual(next(iter(inc.values()))["count"], 2)
         self.assertEqual(rsi._BACKLOG.read_text().count("[OPEN]"), 1)
+
+    def test_two_payload_sweeps_with_different_measurements_one_incident(self):
+        def audit(m):
+            return _proc(json.dumps({"findings": [{"lane": "claude", "check_id": 1, "severity": "high",
+                "measured": m, "threshold": "5", "evidence_path": "CLAUDE.md", "suggested_fix": "trim"}]}))
+        with patch("builtins.print"):
+            for m in (51234, 61999):
+                sw.run(adapters={"payload-audit": lambda m=m: sw.adapter_payload_audit(lambda: audit(m))})
+        inc = self.ledger()
+        self.assertEqual(len(inc), 1)
+        only = next(iter(inc.values()))
+        self.assertEqual(only["count"], 2)
+        self.assertIn("61999", only["root_fix"])
 
     def test_dry_run_records_nothing_and_reports_unknown(self):
         out = []
