@@ -57,6 +57,20 @@ def test_launch_budget_exceeds_preflight_gates(tmp_path):
         assert mod._dispatch_process("local", pf, 60) == "error:launch-timeout"
 
 
+def test_uncommitted_task_inputs_detected(tmp_path):
+    # Committed file -> clean; untracked file -> flagged; nonexistent path -> ignored.
+    repo = tmp_path / "r"; (repo / "docs").mkdir(parents=True)
+    run = lambda *a: subprocess.run(["git", "-C", str(repo), *a], check=True, capture_output=True)
+    run("init", "-q"); run("config", "user.email", "t@t"); run("config", "user.name", "t")
+    (repo / "docs/committed.md").write_text("a"); run("add", "."); run("commit", "-qm", "x")
+    (repo / "docs/new-prd.md").write_text("b")
+    with mock.patch.object(mod, "REPO", repo):
+        task = "Read docs/committed.md, docs/new-prd.md and nix/missing.nix (bounded reads)."
+        assert mod._uncommitted_task_inputs(task) == ["docs/new-prd.md"]
+        (repo / "docs/committed.md").write_text("changed")
+        assert mod._uncommitted_task_inputs(task) == ["docs/committed.md", "docs/new-prd.md"]
+
+
 if __name__ == "__main__":
     import tempfile
     fails = 0
