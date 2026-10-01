@@ -292,7 +292,8 @@ class IntegrityScanner:
             return True
         if any(rel.startswith(prefix) for prefix in REFERENCE_EXCLUDED_PREFIXES):
             return True
-        return any(part in REFERENCE_EXCLUDED_PARTS for part in path.parts)
+        # Parts of the repo-relative path only: a checkout under .agents/ (worktrees) must not exclude everything.
+        return any(part in REFERENCE_EXCLUDED_PARTS for part in Path(rel).parts)
 
     def _text_reference_examples(self, target: Path, reference_files: List[Path]) -> List[str]:
         rel = str(target.relative_to(REPO_ROOT))
@@ -375,7 +376,8 @@ class IntegrityScanner:
             "examples",
             "__pycache__",
         }
-        if any(part in ignored_parts for part in path.parts):
+        rel_parts = path.relative_to(REPO_ROOT).parts if path.is_relative_to(REPO_ROOT) else path.parts
+        if any(part in ignored_parts for part in rel_parts):
             self.meta["logical_files_ignored"] += 1
             return True
         if stem.startswith(("test_", "example_", "bench_", "benchmark_")):
