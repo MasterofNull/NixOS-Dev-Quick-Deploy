@@ -27,7 +27,9 @@ harness_grounding() {
     [[ -f "$gf" ]] || return 0
 
     # Delegate mode prefix: headless execution constraints (<=600 bytes)
+    local is_headless=false
     if [[ "$agent" == "codex" ]] || [[ "$agent" == "gemini" ]]; then
+        is_headless=true
         printf '%s\n' '=== DELEGATE MODE (headless) ==='
         printf '%s\n' 'Bounded headless slice. CRITICAL:'
         printf '%s\n' '- Do NOT run aq-resume/aq-session-start/tier0 (orchestrator gates once)'
@@ -38,6 +40,23 @@ harness_grounding() {
     fi
 
     printf '=== HARNESS GROUNDING (canonical SSOT — applies to %s) ===\n' "$agent"
-    cat "$gf"
+
+    # For headless agents, filter out interactive workflow phases and provide headless-specific ones
+    if [[ "$is_headless" == "true" ]]; then
+        # Use sed to skip Workflow Phases section and inject headless-specific one
+        sed '/^## Workflow Phases/,$d' "$gf"
+        # Inject headless-specific workflow (no tier0, no 4-file limit, no interactive gates)
+        printf '\n## Workflow Phases (Headless Slice)\n\n'
+        printf 'Follow in order. Headless agents do NOT run tier0 gates or commit:\n'
+        printf '1. ORIENT   — read task scope and file list only.\n'
+        printf '2. RESEARCH — query_aidb(collection='"'"'error-solutions'"'"') for patterns; read specified files only.\n'
+        printf '3. PLAN     — brief plan (problem/goal/files/validation) to stdout or PULSE.log.\n'
+        printf '4. EXECUTE  — edit specified files only. One targeted change per slice.\n'
+        printf '5. VALIDATE — run Python/shell syntax checks. Do NOT run tier0 gate.\n'
+        printf '6. DOC-UPDATE — if applicable, note changes to issues-backlog.md.\n'
+        printf '7. HANDOFF  — list all modified files + summary. Do NOT commit or stage.\n'
+    else
+        cat "$gf"
+    fi
     printf '\n=== END HARNESS GROUNDING ===\n'
 }
