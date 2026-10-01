@@ -1,0 +1,592 @@
+#!/run/current-system/sw/bin/python3
+"""Deterministic release watcher for tool-authority pinned executables.
+
+Queries registries for latest versions of pinned candidates and can apply
+patches/minor bumps deterministically without LLM involvement.
+
+Environment overrides for testing:
+- AQ_PIN_WATCH_REGISTRY_FIXTURE: JSON file mapping "pypi:<pkg>"/"npm:<pkg>"/"github:<owner/repo>" -> version
+- AQ_PIN_WATCH_VALIDATE_CMD: Override validation command (default: python3 scripts/testing/test-enabled-external-mcp-candidates.py)
+"""
+import argparse
+import json
+import os
+import re
+import shutil
+import subprocess
+import sys
+import tempfile
+import urllib.error
+import urllib.request
+from dataclasses import dataclass, field
+from pathlib import Path
+from typing import Optional, List, Dict, Tuple
+
+# Inject scripts/ai/lib to sys.path for rsi_lifecycle import
+_lib_path = Path(__file__).resolve().parents[2] / "ai" / "lib"
+if str(_lib_path) not in sys.path:
+    sys.path.insert(0, str(_lib_path))
+
+
+def parse_semver(version: str) -> Tuple[int, int, int]:
+    """Parse semantic version into (major, minor, patch) tuple.
+
+    Returns (0, 0, 0) if version cannot be parsed.
+    """
+    version = version.lstrip('v')
+
+    match = re.search(r'(\d+(?:\.\d+)*)', version)
+    if not match:
+        return 0, 0, 0
+
+    parts = match.group(1).split('.')
+
+    major = minor = patch = 0
+    try:
+        if len(parts) >= 1:
+            major = int(parts[0])
+        if len(parts) >= 2:
+            minor = int(parts[1])
+        if len(parts) >= 3:
+            patch = int(parts[2])
+    except (ValueError, IndexError):
+        return 0, 0, 0
+
+    return major, minor, patch
+
+
+def classify_version_change(current: Tuple[int, int, int],
+                          latest: Tuple[int, int, int]) -> str:
+    """Classify change as none, patch, minor, major, or unknown."""
+    if current == (0, 0, 0) or latest == (0, 0, 0):
+        return "unknown"
+    if current == latest:
+        return "none"
+    if current[0] < latest[0]:
+        return "major"
+    if current[0] == latest[0] and current[1] < latest[1]:
+        return "minor"
+    if current[0] == latest[0] and current[1] == latest[1] and current[2] < latest[2]:
+        return "patch"
+    return "unknown"
+
+
+def fetch_json(url: str, timeout: int = 15) -> Optional[dict]:
+    """Fetch JSON from URL with timeout."""
+    try:
+        with urllib.request.urlopen(url, timeout=timeout) as response:
+            return json.loads(response.read())
+    except (urllib.error.URLError, urllib.error.HTTPError,
+            json.JSONDecodeError, TimeoutError):
+        return None
+
+
+def query_pypi_latest(package: str) -> Optional[str]:
+    """Query PyPI for latest version of a package."""
+    data = fetch_json(f"https://pypi.org/pypi/{package}/json")
+    if data and "info" in data and "version" in data["info"]:
+        return data["info"]["version"]
+    return None
+
+
+def query_npm_latest(package: str) -> Optional[str]:
+    """Query npm registry for latest version of a package."""
+    url_pkg = package.replace("@", "%40")
+    data = fetch_json(f"https://registry.npmjs.org/{url_pkg}/latest")
+    if data and "version" in data:
+        return data["version"]
+    return None
+
+
+def query_github_releases(owner: str, repo: str) -> Optional[str]:
+    """Query GitHub API for latest release version."""
+    data = fetch_json(
+        f"https://api.github.com/repos/{owner}/{repo}/releases/latest",
+        timeout=15
+    )
+    if data and "tag_name" in data:
+        tag = data["tag_name"].lstrip('v')
+        return tag
+    return None
+
+
+@dataclass
+class Candidate:
+    id: str
+    name: str
+    state: str
+    pinned_version: str
+    install_type: str
+    install_command: str
+    install_args: List[str]
+    source_url: str = ""
+
+    # Derived fields
+    ecosystem: Optional[str] = None
+    package_name: Optional[str] = None
+    current_version: Optional[str] = None
+    github_owner: Optional[str] = None
+    github_repo: Optional[str] = None
+    components: List[Dict] = field(default_factory=list)  # For compound versions
+
+
+def parse_candidate(raw: dict) -> Optional[Candidate]:
+    """Parse a candidate from the intake JSON."""
+    try:
+        c = Candidate(
+            id=raw["id"],
+            name=raw.get("name", ""),
+            state=raw.get("state", ""),
+            pinned_version=raw.get("pinned_version", ""),
+            install_type=raw["install"]["type"],
+            install_command=raw["install"]["command"],
+            install_args=raw["install"].get("args", []),
+            source_url=raw.get("source_url", ""),
+        )
+
+        # Extract GitHub owner/repo if available
+        if c.source_url:
+            match = re.match(r'https://github\.com/([^/]+)/([^/]+)', c.source_url)
+            if match:
+                c.github_owner = match.group(1)
+                c.github_repo = match.group(2)
+
+        # Detect ecosystem and extract package name + version
+        if c.install_type == "mcp":
+            # Look for version specs in args
+            for arg in c.install_args:
+                if "==" in arg:
+                    # PyPI format: semgrep-mcp==0.9.0
+                    parts = arg.split("==")
+                    if len(parts) == 2:
+                        c.ecosystem = "pypi"
+                        c.package_name = parts[0]
+                        c.current_version = parts[1]
+                        break
+                elif "@" in arg and not arg.startswith("-"):
+                    # npm format: @playwright/mcp@0.0.76
+                    parts = arg.rsplit("@", 1)
+                    if len(parts) == 2 and parts[1] and parts[1][0].isdigit():
+                        c.ecosystem = "npm"
+                        c.package_name = parts[0]
+                        c.current_version = parts[1]
+                        break
+
+            # If no version found in args but command is a known tool, try GitHub
+            if not c.ecosystem and c.install_command in ["github-mcp-server"]:
+                if c.github_owner and c.github_repo:
+                    c.ecosystem = "github"
+                    c.package_name = c.install_command
+                    c.current_version = c.pinned_version
+
+        elif c.install_type == "cli":
+            # System-installed CLI tools - check for GitHub-hosted tools
+            command = c.install_command
+
+            # Check if it's a GitHub-hosted tool
+            if c.github_owner and c.github_repo:
+                c.ecosystem = "github"
+                c.package_name = command
+                c.current_version = c.pinned_version
+            elif command in ["osv-scanner", "trivy", "github-mcp-server"]:
+                # These are GitHub-hosted but detect from known commands
+                c.ecosystem = "github"
+                c.package_name = command
+                c.current_version = c.pinned_version
+                # Map command to GitHub repo
+                if command == "osv-scanner":
+                    c.github_owner = "google"
+                    c.github_repo = "osv-scanner"
+                elif command == "trivy":
+                    c.github_owner = "aquasecurity"
+                    c.github_repo = "trivy"
+                elif command == "github-mcp-server":
+                    c.github_owner = "github"
+                    c.github_repo = "github-mcp-server"
+            else:
+                c.ecosystem = "system"
+                c.package_name = command
+                c.current_version = c.pinned_version
+
+        elif c.install_type == "local-skill":
+            # Local tools, not externally pinned
+            c.ecosystem = "local"
+            c.package_name = c.install_command.split("/")[-1]
+            c.current_version = c.pinned_version
+
+        # Handle compound versions like "syft-1.38.0+grype-0.104.1"
+        if c.current_version and "+" in c.current_version and not c.ecosystem:
+            # This looks like a compound version
+            parts = c.current_version.split("+")
+            for part in parts:
+                if "-" in part:
+                    # Extract component name and version
+                    comp_parts = part.rsplit("-", 1)
+                    if len(comp_parts) == 2:
+                        c.components.append({
+                            "name": comp_parts[0],
+                            "version": comp_parts[1]
+                        })
+            if c.components:
+                c.ecosystem = "compound"
+                c.package_name = "syft+grype"  # or generic compound
+
+        return c
+    except (KeyError, IndexError):
+        return None
+
+
+def query_latest(candidate: Candidate) -> Optional[str]:
+    """Query registry for latest version. Returns None on network error."""
+    fixture_env = os.environ.get("AQ_PIN_WATCH_REGISTRY_FIXTURE")
+
+    if not candidate.current_version:
+        return None
+
+    # Check fixture first
+    if fixture_env:
+        try:
+            with open(fixture_env) as f:
+                fixture_data = json.load(f)
+
+            if candidate.ecosystem == "pypi":
+                key = f"pypi:{candidate.package_name}"
+                if key in fixture_data:
+                    return fixture_data[key]
+            elif candidate.ecosystem == "npm":
+                key = f"npm:{candidate.package_name}"
+                if key in fixture_data:
+                    return fixture_data[key]
+            elif candidate.ecosystem == "github":
+                if candidate.github_owner and candidate.github_repo:
+                    key = f"github:{candidate.github_owner}/{candidate.github_repo}"
+                    if key in fixture_data:
+                        return fixture_data[key]
+        except Exception:
+            pass
+
+    # Query registry
+    if not candidate.ecosystem or not candidate.package_name:
+        return None
+
+    if candidate.ecosystem == "pypi":
+        return query_pypi_latest(candidate.package_name)
+    elif candidate.ecosystem == "npm":
+        return query_npm_latest(candidate.package_name)
+    elif candidate.ecosystem == "github":
+        if candidate.github_owner and candidate.github_repo:
+            return query_github_releases(candidate.github_owner, candidate.github_repo)
+        return None
+    elif candidate.ecosystem == "local":
+        return candidate.current_version
+    elif candidate.ecosystem == "compound":
+        # For compound versions, we'd need to query each component separately
+        # For now, return None (not implemented)
+        return None
+    elif candidate.ecosystem == "system":
+        # System packages not directly queryable
+        return None
+
+    return None
+
+
+def check_command(intake_path: str, json_output: bool = False) -> int:
+    """Check for updates. Returns 0 if all ok, 2 if all network failures."""
+    try:
+        with open(intake_path) as f:
+            data = json.load(f)
+    except (FileNotFoundError, json.JSONDecodeError) as e:
+        print(f"Error reading {intake_path}: {e}", file=sys.stderr)
+        return 1
+
+    results = []
+    unknown_count = 0
+
+    for raw in data.get("candidates", []):
+        candidate = parse_candidate(raw)
+        if not candidate:
+            continue
+
+        if candidate.state == "quarantined":
+            results.append({
+                "id": candidate.id,
+                "name": candidate.name,
+                "current": candidate.current_version or "unknown",
+                "latest": "quarantined",
+                "change_class": "none",
+                "status": "quarantined"
+            })
+            continue
+
+        # Skip unparseable and composite pins (e.g. syft-X+grype-Y: one upstream
+        # release cannot bump both components).
+        if not candidate.current_version or not candidate.ecosystem or "+" in candidate.current_version:
+            results.append({
+                "id": candidate.id,
+                "name": candidate.name,
+                "current": candidate.current_version or "unparseable",
+                "latest": "unknown",
+                "change_class": "unknown",
+                "status": "skipped"
+            })
+            continue
+
+        latest = query_latest(candidate)
+        if latest is None:
+            unknown_count += 1
+            results.append({
+                "id": candidate.id,
+                "name": candidate.name,
+                "current": candidate.current_version,
+                "latest": "unknown",
+                "change_class": "unknown",
+                "status": "network_error"
+            })
+            continue
+
+        current_sem = parse_semver(candidate.current_version)
+        latest_sem = parse_semver(latest)
+        change_class = classify_version_change(current_sem, latest_sem)
+
+        results.append({
+            "id": candidate.id,
+            "name": candidate.name,
+            "current": candidate.current_version,
+            "latest": latest,
+            "change_class": change_class,
+            "status": "ok"
+        })
+
+    if json_output:
+        print(json.dumps(results, indent=2))
+    else:
+        for r in results:
+            status_char = {
+                "ok": "✓" if r["change_class"] == "none" else "→",
+                "network_error": "✗",
+                "skipped": "∘",
+                "quarantined": "◆"
+            }.get(r["status"], "?")
+            print(f"{status_char} {r['id']:30} {r['current']:15} → {r['latest']:15} ({r['change_class']})")
+
+    if unknown_count == len(results):
+        return 2
+    return 0
+
+
+def apply_command(intake_path: str, dry_run: bool = False,
+                 allow_major: bool = False, root_path: Optional[str] = None) -> int:
+    """Apply available updates. Returns 0 on success, 1 on validation failure."""
+    if root_path:
+        repo_root = Path(root_path)
+    else:
+        repo_root = Path(intake_path).parent.parent
+
+    try:
+        with open(intake_path) as f:
+            data = json.load(f)
+    except (FileNotFoundError, json.JSONDecodeError) as e:
+        print(f"Error reading {intake_path}: {e}", file=sys.stderr)
+        return 1
+
+    files_to_modify = [
+        repo_root / "config" / "agent-capability-intake-candidates.json",
+        repo_root / ".mcp.json",
+        repo_root / ".claude" / "settings.json",
+        repo_root / ".gemini" / "settings.json",
+        repo_root / "ai-stack" / "continue" / "config.json",
+        repo_root / "scripts" / "testing" / "test-enabled-external-mcp-candidates.py",
+    ]
+
+    backup_dir = Path(tempfile.mkdtemp(prefix="aq-pin-watch-backup-"))
+    backups = {}
+
+    for fpath in files_to_modify:
+        if fpath.exists():
+            # Indexed: .claude/ and .gemini/ both hold settings.json.
+            backup_path = backup_dir / f"{len(backups)}-{fpath.name}"
+            shutil.copy2(fpath, backup_path)
+            backups[fpath] = backup_path
+
+    updates_applied = 0
+    signoff_needed = []
+
+    try:
+        for raw in data.get("candidates", []):
+            candidate = parse_candidate(raw)
+            if not candidate:
+                continue
+
+            if candidate.state == "quarantined":
+                continue
+
+            if not candidate.current_version or not candidate.ecosystem or "+" in candidate.current_version:
+                continue
+
+            latest = query_latest(candidate)
+            if latest is None:
+                continue
+
+            current_sem = parse_semver(candidate.current_version)
+            latest_sem = parse_semver(latest)
+            change_class = classify_version_change(current_sem, latest_sem)
+
+            if change_class == "none" or change_class == "unknown":
+                continue
+
+            if change_class == "major" and not allow_major:
+                signoff_needed.append((candidate.id, candidate.current_version, latest))
+                continue
+
+            # Build old and new pin strings
+            old_pin = None
+            new_pin = None
+
+            if candidate.ecosystem == "pypi":
+                old_pin = f"{candidate.package_name}=={candidate.current_version}"
+                new_pin = f"{candidate.package_name}=={latest}"
+            elif candidate.ecosystem == "npm":
+                old_pin = f"{candidate.package_name}@{candidate.current_version}"
+                new_pin = f"{candidate.package_name}@{latest}"
+            elif candidate.ecosystem == "github":
+                # GitHub tools may not have direct pins in these files
+                continue
+            else:
+                continue
+
+            if not old_pin or not new_pin:
+                continue
+
+            # Find and replace in all files
+            for fpath in files_to_modify:
+                if not fpath.exists():
+                    continue
+
+                try:
+                    content = fpath.read_text()
+                    if old_pin in content:
+                        new_content = content.replace(old_pin, new_pin)
+                        if not dry_run:
+                            fpath.write_text(new_content)
+                        updates_applied += 1
+                except Exception as e:
+                    print(f"Error modifying {fpath}: {e}", file=sys.stderr)
+                    for orig, bak in backups.items():
+                        if orig.exists():
+                            shutil.copy2(bak, orig)
+                    shutil.rmtree(backup_dir)
+                    return 1
+
+        # If there are updates, run validation test
+        if updates_applied > 0 and not dry_run:
+            validate_cmd = os.environ.get("AQ_PIN_WATCH_VALIDATE_CMD")
+            test_script = validate_cmd or str(repo_root / "scripts" / "testing" / "test-enabled-external-mcp-candidates.py")
+
+            if Path(test_script).exists() or validate_cmd:
+                try:
+                    result = subprocess.run(
+                        [sys.executable, test_script] if not validate_cmd else validate_cmd.split(),
+                        cwd=str(repo_root),
+                        capture_output=True,
+                        timeout=60
+                    )
+                    if result.returncode != 0:
+                        print(f"Validation test failed, restoring backups.", file=sys.stderr)
+                        for orig, bak in backups.items():
+                            if orig.exists():
+                                shutil.copy2(bak, orig)
+                        shutil.rmtree(backup_dir)
+                        return 1
+                except Exception as e:
+                    print(f"Error running validation test: {e}", file=sys.stderr)
+                    for orig, bak in backups.items():
+                        if orig.exists():
+                            shutil.copy2(bak, orig)
+                    shutil.rmtree(backup_dir)
+                    return 1
+
+        # Record sign-off needed items
+        if signoff_needed:
+            try:
+                import subprocess
+                for pkg_id, current, latest in signoff_needed:
+                    subprocess.run(
+                        [sys.executable, "-c",
+                         f"""
+import sys
+sys.path.insert(0, '{_lib_path}')
+from rsi_lifecycle import failure
+failure(
+    agent='aq-pin-watch',
+    subject='pin-watch',
+    producer='pin-watch:{pkg_id}',
+    path='config/agent-capability-intake-candidates.json',
+    authority='owner',
+    os_error='{pkg_id} {current} -> {latest} major release requires owner sign-off',
+    severity='medium'
+)
+"""],
+                        cwd=str(repo_root),
+                        capture_output=True,
+                    )
+            except Exception as e:
+                print(f"Warning: Could not record sign-off items: {e}", file=sys.stderr)
+
+        shutil.rmtree(backup_dir)
+
+        summary = {
+            "updates_applied": updates_applied,
+            "signoff_needed": len(signoff_needed),
+            "dry_run": dry_run
+        }
+        print(json.dumps(summary))
+        return 0
+
+    except Exception as e:
+        print(f"Error during apply: {e}", file=sys.stderr)
+        for orig, bak in backups.items():
+            if orig.exists():
+                shutil.copy2(bak, orig)
+        shutil.rmtree(backup_dir)
+        return 1
+
+
+def main():
+    parser = argparse.ArgumentParser(
+        description="Deterministic release watcher for pinned tool-authority executables."
+    )
+    subparsers = parser.add_subparsers(dest="command", help="Command")
+
+    check_parser = subparsers.add_parser("check", help="Check for updates")
+    check_parser.add_argument("--json", action="store_true", help="Output as JSON")
+
+    apply_parser = subparsers.add_parser("apply", help="Apply updates")
+    apply_parser.add_argument("--dry-run", action="store_true", help="Don't modify files")
+    apply_parser.add_argument("--allow-major", action="store_true",
+                            help="Allow major version bumps")
+    apply_parser.add_argument("--root", help="Override repo root for testing")
+
+    script_dir = Path(__file__).resolve().parent
+    repo_root = script_dir.parent.parent
+    default_intake = repo_root / "config" / "agent-capability-intake-candidates.json"
+
+    parser.add_argument("--intake", default=str(default_intake),
+                       help="Path to intake candidates JSON")
+
+    args = parser.parse_args()
+
+    if not args.command:
+        parser.print_help()
+        return 1
+
+    if args.command == "check":
+        return check_command(args.intake, json_output=args.json)
+    elif args.command == "apply":
+        return apply_command(args.intake, dry_run=args.dry_run,
+                            allow_major=args.allow_major, root_path=args.root)
+
+    return 1
+
+
+if __name__ == "__main__":
+    sys.exit(main())
