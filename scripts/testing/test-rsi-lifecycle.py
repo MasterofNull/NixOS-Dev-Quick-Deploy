@@ -87,6 +87,13 @@ class RecorderTests(unittest.TestCase):
         self.assertEqual((code, out, err), (2, b"deny\n", b"reason"))
         record.assert_called_once()
 
+    def test_lean_ctx_routing_denial_is_policy_not_failure(self):
+        code_src = "import sys; sys.stderr.write('Command should run via lean-ctx'); sys.exit(2)"
+        with patch.object(hook, "failure") as record:
+            code, _, err = hook.run([sys.executable, "-c", code_src], b"{}")
+        self.assertEqual((code, err), (2, b"Command should run via lean-ctx"))  # decision preserved
+        record.assert_not_called()
+
     def test_allowed_hook_does_not_record(self):
         with patch.object(hook, "failure") as record:
             self.assertEqual(hook.run([sys.executable, "-c", "pass"], b"{}")[0], 0)

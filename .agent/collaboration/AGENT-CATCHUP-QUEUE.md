@@ -927,3 +927,7 @@ Subject: branch `rsi/steward-20260930`, `43e9ccd3..HEAD` (aq-rsi CLI, sweep, ide
 ---
 ## [2026-09-30] QUEUED binding review (codex after budget reset; local when idle): PR #354
 PR #354 (13 commits 7a1cf7a9..5c11089b) is MERGEABLE, CI green (46 pass, NixOS build pending), branch protection REVIEW_REQUIRED. claude-opus is author/integrator (cannot self-review). Steward branch `rsi/steward-20260930` (dd0eebe8..658a6eb6) reviewed PASS by claude-opus; opens as a follow-up PR after #354 merges (rebase onto main; live ledger migration re-run in the shared checkout).
+
+---
+## [2026-10-01] QUEUED (codex + antigravity): rsi-steward incident-queue round confirmatory review
+Subject: branch `rsi/steward-20260930`, commits 37733508, 3700ac10 and the follow-up hook/hung-delegate commit (delegate metric pollution guards + unified failure classifier; aq-qa host/CI mode; aq-rsi-hook routing-denial policy; test-rsi-hung-delegate). Focus: `AQ_AUDIT_DISABLE` / `AQ_AGENT_RUN_EVENTS_PATH` isolation completeness (other fixtures posting to production telemetry), host_mode demotion list (HOST_ONLY_IDS), hook no longer recording routing denials. Advisory unless a real defect.

@@ -4666,7 +4666,7 @@ File: .agent/WORKFLOW-CANON.md; .agent/CODEX.md; evidence in .agent/collaboratio
   Action: route command through lean-ctx
   File: command
 
-[OPEN] rsi-f6c51d38de20750a67ef4807 — lean-ctx-pretooluse failure in pre-tool. Root cause evidence: producer=lean-ctx-pretooluse; path=hook/codex-pretooluse; authority=installed pre-tool policy; os_error=lean-ctx command routing rejected. Detected=2026-09-28T04:04:17.941492Z.
+[DONE 2026-10-01] rsi-f6c51d38de20750a67ef4807 — lean-ctx-pretooluse failure in pre-tool. Root cause evidence: producer=lean-ctx-pretooluse; path=hook/codex-pretooluse; authority=installed pre-tool policy; os_error=lean-ctx command routing rejected. Detected=2026-09-28T04:04:17.941492Z.
   Severity: medium
   Action: Diagnose hook routing and caller contract; preserve command semantics and policy
   File: hook/codex-pretooluse
@@ -4676,12 +4676,12 @@ File: .agent/WORKFLOW-CANON.md; .agent/CODEX.md; evidence in .agent/collaboratio
   Action: Retain the streaming regression; after exact-subject independent PASS, perform bounded runtime acceptance under existing 256M limit. No service restart or limit increase yet.
   File: scripts/ai/aq-report; scripts/testing/test-useful-token-metrics.py
 
-[OPEN] rsi-80d039137a26e48c5a18826d — agent-command-construction failure in rsi-implementation. Root cause evidence: producer=agent-command-construction; path=scripts/governance/tier0-validation-gate.sh; authority=validation-serialization; os_error=Nested checkout waited on its own parent lease. Detected=2026-09-28T04:09:18.692955Z.
+[DONE 2026-10-01] rsi-80d039137a26e48c5a18826d — agent-command-construction failure in rsi-implementation. Root cause evidence: producer=agent-command-construction; path=scripts/governance/tier0-validation-gate.sh; authority=validation-serialization; os_error=Nested checkout waited on its own parent lease. Detected=2026-09-28T04:09:18.692955Z.
   Severity: medium
   Action: Use the tier0 entrypoint which acquires its own gate; reject nested acquisition with regression coverage
   File: scripts/governance/tier0-validation-gate.sh
 
-[OPEN] rsi-74724f55cfa00bc191fa711b — test-rsi-adapters failure in rsi-implementation. Root cause evidence: producer=test-rsi-adapters; path=scripts/testing/test-rsi-adapters.py; authority=regression; os_error=Assertion expected placeholder path after runner began preserving executable path. Detected=2026-09-28T04:12:54.992367Z.
+[DONE 2026-10-01] rsi-74724f55cfa00bc191fa711b — test-rsi-adapters failure in rsi-implementation. Root cause evidence: producer=test-rsi-adapters; path=scripts/testing/test-rsi-adapters.py; authority=regression; os_error=Assertion expected placeholder path after runner began preserving executable path. Detected=2026-09-28T04:12:54.992367Z.
   Severity: medium
   Action: Update regression to require actual executable path
   File: scripts/testing/test-rsi-adapters.py
@@ -4691,7 +4691,7 @@ File: .agent/WORKFLOW-CANON.md; .agent/CODEX.md; evidence in .agent/collaboratio
   Action: Use literal existing roots and quoted rg --glob filters
   File: scripts/ai
 
-[OPEN] rsi-ee58a81a2f4f2e697825c2d6 — tier0-validation-gate.sh failure in rsi-tier0-validation. Root cause evidence: producer=tier0-validation-gate.sh; path=scripts/governance/tier0-validation-gate.sh; authority=explicit command invocation; os_error=command exit status 1. Detected=2026-09-28T04:21:16.122303Z.
+[DONE 2026-10-01] rsi-ee58a81a2f4f2e697825c2d6 — tier0-validation-gate.sh failure in rsi-tier0-validation. Root cause evidence: producer=tier0-validation-gate.sh; path=scripts/governance/tier0-validation-gate.sh; authority=explicit command invocation; os_error=command exit status 1. Detected=2026-09-28T04:21:16.122303Z.
   Severity: medium
 Action: Inspect bounded command evidence and fix the producer before retrying
 File: scripts/governance/tier0-validation-gate.sh
@@ -4758,7 +4758,7 @@ File: scripts/ai/lib/worktree-isolation.sh; scripts/automation/prsi-orchestrator
   Action: diagnose nested gate invocation and quiet/hanging focused runner; rerun serialized Tier 0 to a terminal result before commit or activation.
   File: scripts/governance/tier0-validation-gate.sh; scripts/governance/run-focused-ci-checks.sh
 
-[OPEN] rsi-f6c51d38de20750a67ef4807 — lean-ctx-pretooluse failure in pre-tool. Root cause evidence: producer=lean-ctx-pretooluse; path=hook/codex-pretooluse; authority=installed pre-tool policy; os_error=lean-ctx command routing rejected. Detected=2026-09-28T17:46:50.427158Z.
+[DONE 2026-10-01] rsi-f6c51d38de20750a67ef4807 — lean-ctx-pretooluse failure in pre-tool. Root cause evidence: producer=lean-ctx-pretooluse; path=hook/codex-pretooluse; authority=installed pre-tool policy; os_error=lean-ctx command routing rejected. Detected=2026-09-28T17:46:50.427158Z.
   Severity: medium
   Action: Diagnose hook routing and caller contract; preserve command semantics and policy
   File: hook/codex-pretooluse
@@ -4865,10 +4865,11 @@ File: scripts/ai/lib/worktree-isolation.sh; scripts/automation/prsi-orchestrator
   Action: owner nixos-rebuild; restore the 10 owner sign-offs (approval 2026-09-30 stands); watch first repair to terminal state.
   File: nix/modules/roles/ai-stack.nix (ai-prsi-rsi-dispatch)
 
-[OPEN] rsi-dispatch-inner-timeout-does-not-terminate-delegate — In the rehearsal, rsi-dispatch --timeout-seconds=600 (and delegate-to-local/aq-agent-loop --timeout 600) had not returned after 700s; the agent loop survived as an orphan after the parent was killed. Under systemd the unit TimeoutSec kills the cgroup, so production is backstopped, but outside systemd timeouts leak processes and the row stays `rsi_running`.
+[DONE 2026-10-01 rsi-steward] rsi-dispatch-inner-timeout-does-not-terminate-delegate — In the rehearsal, rsi-dispatch --timeout-seconds=600 (and delegate-to-local/aq-agent-loop --timeout 600) had not returned after 700s; the agent loop survived as an orphan after the parent was killed. Under systemd the unit TimeoutSec kills the cgroup, so production is backstopped, but outside systemd timeouts leak processes and the row stays `rsi_running`.
   Severity: medium
   Action: make the dispatcher kill the delegate's process group on timeout and record rsi_failed(timeout); reconcile stale rsi_running rows on start.
   File: scripts/automation/prsi-orchestrator.py (_run_rsi_delegate)
+  Resolution: _run_rsi_delegate already kills the delegate's process group (SIGTERM then SIGKILL) and returns rsi_stalled; stale rsi_running rows are reconciled to rsi_failed. Verified with a real hung fake delegate + grandchild: scripts/testing/test-rsi-hung-delegate.py (grace window now `_RSI_DELEGATE_GRACE_S`).
 
 [DONE] delegate-to-codex-task-id-xxxxxx-suffix — Codex task ids looked like `codex-...-r5q384xxxxxx`: `task_id()` (scripts/ai/delegate-to-codex:149) ran `tr ... </dev/urandom | head -c6 || echo 'xxxxxx'` under pipefail; tr's SIGPIPE made the pipeline fail after head already printed 6 chars, so the fallback was appended. Codex's RSI lane patch had widened the receipt regex to accept the suffix (workaround); instead the producer now disables pipefail in that subshell, and the regex + test reject `xxxxxx` again.
   Severity: low
@@ -5014,12 +5015,12 @@ File: scripts/ai/lib/worktree-isolation.sh; scripts/automation/prsi-orchestrator
   Action: raise the minimum-version floor: jaraco.context>=6.1.0 in ai-stack/mcp-servers/nixos-docs/Dockerfile (owner policy: floors, never exact == pins); rebuild image and confirm Trivy clears the alerts (1 open alert(s), max severity high)
   File: ai-stack/mcp-servers/nixos-docs/Dockerfile
 
-[OPEN] rsi-81a7a3566140f3a60d5fcc6c — delegate-run-events failure in steward ingest 2026-09-30. Root cause evidence: producer=delegate-run-events; path=scripts/ai/delegate-to-local; authority=run-event-metrics; os_error=local delegate success rate 0.47 over 24h (509 calls) per run-event metrics. Detected=2026-10-01T03:09:23.876005Z.
+[DONE 2026-10-01] rsi-81a7a3566140f3a60d5fcc6c — delegate-run-events failure in steward ingest 2026-09-30. Root cause evidence: producer=delegate-run-events; path=scripts/ai/delegate-to-local; authority=run-event-metrics; os_error=local delegate success rate 0.47 over 24h (509 calls) per run-event metrics. Detected=2026-10-01T03:09:23.876005Z.
   Severity: high
   Action: classify failures by lane/cause from run events, then fix the dominant producer (local lane degradation)
   File: scripts/ai/delegate-to-local
 
-[OPEN] rsi-917090649b7fba1313da041b — hybrid-coordinator:/stats/delegate failure in steward ingest 2026-09-30. Root cause evidence: producer=hybrid-coordinator:/stats/delegate; path=ai-stack/mcp-servers/hybrid-coordinator; authority=coordinator-stats; os_error=coordinator /stats/delegate success 18%; 54 failures all classified unknown (classification gap). Detected=2026-10-01T03:09:24.123816Z.
+[DONE 2026-10-01] rsi-917090649b7fba1313da041b — hybrid-coordinator:/stats/delegate failure in steward ingest 2026-09-30. Root cause evidence: producer=hybrid-coordinator:/stats/delegate; path=ai-stack/mcp-servers/hybrid-coordinator; authority=coordinator-stats; os_error=coordinator /stats/delegate success 18%; 54 failures all classified unknown (classification gap). Detected=2026-10-01T03:09:24.123816Z.
   Severity: high
   Action: add failure classification at the producer so unknown failures carry a cause; the classification gap is itself an incident
   File: ai-stack/mcp-servers/hybrid-coordinator
