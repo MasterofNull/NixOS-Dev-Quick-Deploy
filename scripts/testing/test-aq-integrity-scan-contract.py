@@ -27,7 +27,22 @@ def assert_true(condition, message):
         raise AssertionError(message)
 
 
+def check_checkout_under_excluded_dir():
+    """A checkout living under .agents/ (delegation worktree) must not exclude every reference."""
+    module = load_scanner()
+    with tempfile.TemporaryDirectory() as tmp:
+        root = Path(tmp) / ".agents" / "delegation" / "wt"
+        (root / "scripts").mkdir(parents=True)
+        module.REPO_ROOT = root
+        scanner = module.IntegrityScanner(include_logical=False)
+        assert_true(not scanner._ignore_reference_file(root / "scripts" / "x.py"),
+                    "absolute-path .agents part wrongly excluded a repo file")
+        assert_true(scanner._ignore_reference_file(root / ".agents" / "y.md"),
+                    "repo-relative .agents path must stay excluded")
+
+
 def main():
+    check_checkout_under_excluded_dir()
     module = load_scanner()
     with tempfile.TemporaryDirectory() as tmp:
         root = Path(tmp)
