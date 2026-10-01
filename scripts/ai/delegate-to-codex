@@ -17,8 +17,10 @@
 #   --prompt-file FILE    Read prompt from file
 #   --mode MODE           Execution mode: safe|edit  [default: safe]
 #   --model MODEL         Model override (e.g. o3, o4-mini)
+#   --effort LEVEL        Reasoning effort: low|medium|high  [default: medium]
 #   --wait                Block until task completes
 #   --force-quota-retry   Bypass an active quota cooldown for one call
+#   --force-budget        Bypass daily headless token budget limit for one call
 #   --shared, --no-worktree
 #                         Run in the SHARED checkout (REPO_ROOT) instead of an
 #                         isolated git worktree. Default is ISOLATED: every
@@ -32,8 +34,11 @@
 #   --check ID            Print output of a completed task
 #   --status ID           Show task status
 #   --list                List all registered tasks
+#   --budget-check-only   Check daily headless budget only, then exit
 #   --help                Show this help
 #
+# Token budget: daily headless token limit (env DELEGATE_CODEX_DAILY_TOKEN_BUDGET,
+# default 250000). Sums tokens from .agents/delegation/outputs/codex-<YYYYMMDD>-*.log.
 # Quota-aware pre-check: after a "usage limit" error, dispatches fast-fail
 # until the parsed reset time (.agents/delegation/.codex-quota-cooldown).
 # Bypass once: DELEGATE_CODEX_IGNORE_COOLDOWN=1 or --force-quota-retry.
@@ -62,6 +67,7 @@ source "${SCRIPT_DIR}/lib/worktree-isolation.sh" 2>/dev/null || true
 # ── helpers ─────────────────────────────────────────────────────────────────
 
 die()  { echo "ERROR: $*" >&2; exit 1; }
+die_budget() { echo "[delegate-to-codex] $*" >&2; exit 3; }
 info() { echo "[delegate-to-codex] $*"; }
 
 # A2A outbound safeguard: scan the prompt for secrets BEFORE it leaves the harness
@@ -208,6 +214,41 @@ record_worktree_handback_failure() {
     update_registry "$REGISTRY" "$task_id" "status" "failed"
     update_registry "$REGISTRY" "$task_id" "terminal_reason" "worktree_handback_failed"
     audit_event_end "codex" "$task_id" "error" "1" "worktree_handback_failed" "$mode"
+}
+
+# ── daily headless token budget check ───────────────────────────────────────
+# Sums tokens from today's .agents/delegation/outputs/codex-<YYYYMMDD>-*.log files.
+# Compares against DELEGATE_CODEX_DAILY_TOKEN_BUDGET (default 250000).
+# Returns 0 if under budget; exits 3 and prints error if over budget (unless --force-budget).
+
+daily_budget_check() {
+    local force_budget="${1:-false}"
+    local budget="${DELEGATE_CODEX_DAILY_TOKEN_BUDGET:-250000}"
+    local today; today="$(date +%Y%m%d)"
+    # Support env override for testing
+    local outdir="${DELEGATE_OUTPUTS_DIR:-$OUTPUTS_DIR}"
+    local budget_file="${outdir}/codex-${today}-*.log"
+    local total_tokens=0
+
+    # Sum tokens from log files matching today's date
+    for logfile in $budget_file; do
+        [[ -f "$logfile" ]] || continue
+        # Parse lines exactly matching "tokens used" followed by token count with commas
+        # Format: "tokens used" or "tokens used: 12,345"
+        local file_tokens
+        file_tokens="$(grep -A1 '^tokens used' "$logfile" 2>/dev/null | grep -v '^tokens used$' | tr -d ',' | tail -1 || echo '0')"
+        file_tokens="${file_tokens:-0}"
+        total_tokens=$((total_tokens + file_tokens))
+    done
+
+    info "Token budget: ${total_tokens}/${budget} (daily headless)"
+
+    if [[ $total_tokens -ge $budget ]]; then
+        if [[ "$force_budget" != "true" ]]; then
+            die_budget "daily headless budget exhausted: ${total_tokens}/${budget} tokens; reserving quota for interactive sessions. Route to another lane or set --force-budget."
+        fi
+        info "Daily budget exhausted but --force-budget passed; proceeding at risk."
+    fi
 }
 
 # ── quota-aware pre-check (delegate-codex-quota-precheck slice) ─────────────
@@ -369,7 +410,7 @@ PYEOF
 }
 
 cmd_delegate() {
-    local prompt="$1" mode="${2:-safe}" model_flag="${3:-}" wait_mode="${4:-false}" force_quota_retry="${5:-false}" shared_mode="${6:-false}"
+    local prompt="$1" mode="${2:-safe}" model_flag="${3:-}" effort="${4:-medium}" wait_mode="${5:-false}" force_quota_retry="${6:-false}" force_budget="${7:-false}" shared_mode="${8:-false}"
 
     require_codex
     ensure_dirs
@@ -379,6 +420,9 @@ cmd_delegate() {
     policy_gate_action codex "$mode" "$id"
     guard_outbound_prompt "$prompt" "$id"
     budget_gate_dispatch codex
+
+    # Check daily headless token budget
+    daily_budget_check "$force_budget"
 
     # Quota-aware pre-check: fast-fail before spawning codex if a prior run
     # recorded a quota-exhausted cooldown. Bypass once with
@@ -452,6 +496,9 @@ ${prompt}"
     # Build command — codex exec is the correct headless subcommand
     local cmd=("$CODEX_BIN" "exec")
     [[ -n "$model_flag" ]] && cmd+=("-m" "$model_flag")
+    if [[ "$effort" != "medium" ]]; then
+        cmd+=("-c" "model_reasoning_effort=$effort")
+    fi
     if [[ "$mode" == "edit" ]]; then
         cmd+=("--dangerously-bypass-approvals-and-sandbox")
     fi
@@ -558,8 +605,10 @@ PROMPT=""
 PROMPT_FILE=""
 MODE="safe"
 MODEL=""
+EFFORT="medium"
 WAIT=false
 FORCE_QUOTA_RETRY=false
+FORCE_BUDGET=false
 SHARED_MODE=false
 SUBCMD=""
 SUBCMD_ARG=""
@@ -572,12 +621,15 @@ while [[ $# -gt 0 ]]; do
         --prompt-file) PROMPT_FILE="$2";  shift 2 ;;
         --mode)        MODE="$2";         shift 2 ;;
         --model)       MODEL="$2";        shift 2 ;;
+        --effort)      EFFORT="$2";       shift 2 ;;
         --wait)        WAIT=true;         shift   ;;
         --force-quota-retry) FORCE_QUOTA_RETRY=true; shift ;;
+        --force-budget) FORCE_BUDGET=true; shift ;;
         --shared|--no-worktree) SHARED_MODE=true; shift ;;
         --check)       SUBCMD="check";   SUBCMD_ARG="$2"; shift 2 ;;
         --status)      SUBCMD="status";  SUBCMD_ARG="$2"; shift 2 ;;
         --list)        SUBCMD="list";    shift   ;;
+        --budget-check-only) SUBCMD="budget-check"; shift ;;
         --internal-quota-capture) SUBCMD="quota-capture"; SUBCMD_ARG="$2"; shift 2 ;;
         --internal-worktree-handback)
             SUBCMD="worktree-handback"; SUBCMD_ARG="$2"; WT_HB_PATH="$3"; WT_HB_BRANCH="$4"; shift 4 ;;
@@ -595,6 +647,11 @@ case "${SUBCMD:-}" in
     list)   ensure_dirs; cmd_list ;;
     status) ensure_dirs; cmd_status "$SUBCMD_ARG" ;;
     check)  ensure_dirs; cmd_check "$SUBCMD_ARG" ;;
+    budget-check)
+        ensure_dirs
+        daily_budget_check "$FORCE_BUDGET"
+        exit 0
+        ;;
     # Internal re-entry point: the background (nohup) run mode is a separate
     # bash process that cannot see this script's functions, so it re-invokes
     # the script itself to run quota_capture_from_output after the run
@@ -617,6 +674,6 @@ case "${SUBCMD:-}" in
             PROMPT="$(cat "$PROMPT_FILE")"
         fi
         [[ -n "$PROMPT" ]] || die "Provide --prompt TEXT or --prompt-file FILE (or --help)"
-        cmd_delegate "$PROMPT" "$MODE" "$MODEL" "$WAIT" "$FORCE_QUOTA_RETRY" "$SHARED_MODE"
+        cmd_delegate "$PROMPT" "$MODE" "$MODEL" "$EFFORT" "$WAIT" "$FORCE_QUOTA_RETRY" "$FORCE_BUDGET" "$SHARED_MODE"
         ;;
 esac

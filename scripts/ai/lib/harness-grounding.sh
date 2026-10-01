@@ -25,6 +25,18 @@ harness_grounding() {
     local agent="${1:-agent}"
     local gf="${_HG_REPO_ROOT}/config/local-agent-grounding.md"
     [[ -f "$gf" ]] || return 0
+
+    # Delegate mode prefix: headless execution constraints (<=600 bytes)
+    if [[ "$agent" == "codex" ]] || [[ "$agent" == "gemini" ]]; then
+        printf '%s\n' '=== DELEGATE MODE (headless) ==='
+        printf '%s\n' 'Bounded headless slice. CRITICAL:'
+        printf '%s\n' '- Do NOT run aq-resume/aq-session-start/tier0 (orchestrator gates once)'
+        printf '%s\n' '- Do NOT read WORKFLOW-CANON/HANDOFF/skills unless task names them'
+        printf '%s\n' '- Read ONLY files/line ranges the task specifies; use rg+sed, never whole files'
+        printf '%s\n' '- Stop after stated output; if blocked, explain blocker in <=3 lines'
+        printf '%s\n\n' '=== END DELEGATE MODE ==='
+    fi
+
     printf '=== HARNESS GROUNDING (canonical SSOT — applies to %s) ===\n' "$agent"
     cat "$gf"
     printf '\n=== END HARNESS GROUNDING ===\n'
