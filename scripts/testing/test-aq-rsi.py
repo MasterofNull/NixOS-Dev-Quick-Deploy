@@ -94,6 +94,21 @@ class AqRsiTests(unittest.TestCase):
         out, _, rc = self.run_cli("pending", "--count")
         self.assertEqual((rc, out.strip()), (0, "1"))
 
+    def test_approve_bind_stores_scoped_expiring_approval(self):
+        t = Path(self.tmp.name)
+        (t / "rsi-incidents.json").write_text(json.dumps({"incidents": {"inc-r1": {
+            "id": "inc-r1", "producer": "p", "path": "x", "authority": "a", "error": "e"}}}))
+        self.write_queue([self.row("r1", "rsi_pending")])
+        out, err, rc = self.run_cli("approve", "r1", "--bind", "--scope", "apply", "--ttl", "120")
+        self.assertEqual(rc, 0, err)
+        self.assertIn("scope=apply", out)
+        rec = json.loads((t / "rsi-approvals.json").read_text())["inc-r1"]
+        self.assertEqual((rec["scope"], rec["by"]), ("apply", "owner"))
+        self.assertEqual(len(rec["subject_sha256"]), 64)
+        _, err, rc = self.run_cli("approve", "r1", "--bind", "--ttl", "99999999")
+        self.assertEqual(rc, 2)
+        self.assertEqual(json.loads(self.queue.read_text())["actions"][0]["status"], "rsi_pending")
+
     def test_approve_prints_command_only(self):
         self.write_queue([self.row("r1", "rsi_pending")])
         for key in ("r1", "inc-r1"):

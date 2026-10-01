@@ -157,11 +157,34 @@ def cmd_approve(args) -> int:
             continue
         if args.id in (row.get("id"), row["raw_action"].get("incident_id")):
             rid = row.get("id")
+            if args.bind:
+                return _bind(args, row)
             print(f"Owner sign-off required (aq-rsi does not approve). Run:\n"
                   f'  scripts/automation/prsi-orchestrator.py verify --id {rid} --by owner --note "<reason>"')
             return 0
     print(f"aq-rsi approve: no RSI row or incident matches {args.id!r}", file=sys.stderr)
     return 1
+
+
+def _bind(args, row) -> int:
+    """Record an owner approval bound to incident id + subject hash + scope + expiry (consulted by dispatch)."""
+    import rsi_gate
+    iid = row["raw_action"].get("incident_id")
+    incidents, ierr = _load(_incidents_path())
+    incident = ((incidents or {}).get("incidents") or {}).get(iid)
+    if ierr or not isinstance(incident, dict):
+        print(f"aq-rsi approve --bind: incident {iid} not found in ledger ({ierr or 'missing'})", file=sys.stderr)
+        return 2
+    try:
+        rec = rsi_gate.bind(incident, args.scope, args.ttl, args.by)
+    except ValueError as exc:
+        print(f"aq-rsi approve --bind: {exc}", file=sys.stderr)
+        return 2
+    print(f"Bound approval stored: incident={iid} subject_sha256={rec['subject_sha256'][:16]}... "
+          f"scope={rec['scope']} by={rec['by']} expires={rec['expires_at']}")
+    print("Dispatch consults this only when policy rsi.approval_binding_enabled is true.")
+    print(f'High-risk rows still need the verifier sign-off:\n  scripts/automation/prsi-orchestrator.py verify --id {row.get("id")} --by owner --note "<reason>"')
+    return 0
 
 
 def cmd_reconcile(args) -> int:
@@ -201,8 +224,12 @@ def main() -> int:
     p.add_argument("--json", action="store_true")
     p.add_argument("--count", action="store_true")
     p.set_defaults(fn=cmd_pending)
-    p = sub.add_parser("approve", help="print the owner verify command")
+    p = sub.add_parser("approve", help="print the owner verify command; --bind stores a scoped, expiring approval")
     p.add_argument("id")
+    p.add_argument("--bind", action="store_true", help="store an approval bound to the incident subject hash")
+    p.add_argument("--scope", choices=("diagnose", "apply"), default="diagnose")
+    p.add_argument("--ttl", type=int, default=3600, help="seconds until the approval expires (max 86400)")
+    p.add_argument("--by", default="owner", help="approver identity; dispatch accepts rsi.approval_authorities only")
     p.set_defaults(fn=cmd_approve)
     p = sub.add_parser("reconcile", help="resolve incidents proven fixed by closed code-scanning alerts")
     p.add_argument("--alerts", help="alerts JSON with all states (default: fetch via gh)")
