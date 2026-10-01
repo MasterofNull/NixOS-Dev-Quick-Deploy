@@ -45,3 +45,11 @@ Task ID: RSI-STEWARD-20261001
 - CI skill-bundle-parity job had no test step; the smoke script was wrongly archived (it exercises the live `scripts/governance/skill-bundle-registry.py`), so it is restored to `scripts/testing/` and CI runs it from there. Test: test-ci-skill-bundle-smoke.py.
 - Dropped: Trivy SARIF per-category upload (moot under the Nix-only pivot; image scans replaced by the Nix closure scan).
 - Reverted: QPPR zero-budget test delay increase (weakened the test); a code fix is still open.
+
+## Collab-round dispatch was silently dead (2026-10-01)
+- Symptom: round `tiered-auto-update-prd-20261001` sat DISPATCHED for 5h with 0 live lanes; `collect` said `registry-agent-mismatch`.
+- Root causes (scripts/ai/aq-collab-round `_dispatch_process`): codex was sent `--mode edit --shared`, which delegate-to-codex refuses (stderr discarded); the recorded "task id" was the last stdout line (`Output file: ...`); local's shim was killed by a 30s `subprocess.run` timeout before launch, recorded as "running-async".
+- Fix: codex dispatched isolated (collect already imports its owned file from the terminal worktree); task id parsed from the `Delegating task:` line; nonzero exit or missing id recorded as `error:rc=..:<stderr>`; launch budget 300s.
+- Second-order: wave-1 `verify_launch_success` counted 0.1s ticks as seconds and failed live tasks whose registration lags ~35s (ctx-freshness + worktree setup). Now fails only on a child that died unregistered; alive-unregistered warns. Test rewritten behavioral (was string-match, which is how the timing bug passed).
+- Live: round `tiered-auto-update-prd-r2-20261001` dispatched codex-20261001-131321-69hfw7 + local-20261001-131352-mklnhi, both running.
+- Tests: test-aq-collab-round-dispatch-contract.py (4), test-delegate-to-local-launch-verification.py (5), test-aq-collab-round-recovery.py.

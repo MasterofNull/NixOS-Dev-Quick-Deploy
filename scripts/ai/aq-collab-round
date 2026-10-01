@@ -285,12 +285,23 @@ def _write_prompt(rd: Path, name: str, task: str, target: str) -> Path:
     return pf
 
 
+_TASK_ID_RE = re.compile(r"\] Delegating task:\s*(\S+)")
+
+
+def _parse_task_id(stdout: str) -> str:
+    """Task id from the shim's 'Delegating task: <id>' line ('' when it never got there)."""
+    m = _TASK_ID_RE.search(stdout or "")
+    return m.group(1) if m else ""
+
+
 def _dispatch_process(agent: str, prompt_file: Path, local_timeout: int) -> str:
     """Fire a live process dispatch (codex/local), background. Returns the task id (or error)."""
     try:
         if agent == "codex":
+            # Isolated worktree, not --shared: delegate-to-codex refuses shared editing,
+            # and collect imports the lane's owned file from its terminal worktree.
             cmd = ["bash", str(SCRIPTS / "delegate-to-codex"), "--mode", "edit",
-                   "--shared", "--prompt-file", str(prompt_file)]
+                   "--prompt-file", str(prompt_file)]
             env = os.environ
         else:  # local — never-skip: agent-mode, budget-fitting local prompt, async
             # Use the local-specific bounded prompt (smaller inline + leaf-node rules)
@@ -300,10 +311,17 @@ def _dispatch_process(agent: str, prompt_file: Path, local_timeout: int) -> str:
             cmd = ["bash", str(SCRIPTS / "delegate-to-local"), "--mode", "agent", "--role",
                    "reviewer", "--timeout", str(local_timeout), "--prompt-file", str(use_pf)]
             env = {**os.environ, "AQ_AGENT_ROLE": "reviewer"}
-        out = subprocess.run(cmd, capture_output=True, text=True, timeout=30, env=env).stdout
-        return (out.strip().splitlines() or ["?"])[-1]
+        # The shims detach the real task and exit; pre-launch gates (consult, budget,
+        # worktree) can take well over 30s, and a run() timeout kills the shim before
+        # it launches anything.
+        proc = subprocess.run(cmd, capture_output=True, text=True, timeout=300, env=env)
+        tid = _parse_task_id(proc.stdout)
+        if tid and proc.returncode == 0:
+            return tid
+        err = (proc.stderr.strip().splitlines() or proc.stdout.strip().splitlines() or ["no output"])[-1]
+        return f"error:rc={proc.returncode}:{err[:300]}"
     except subprocess.TimeoutExpired:
-        return "running-async"
+        return "error:launch-timeout"
     except Exception as e:  # noqa: BLE001 — one lane failing must not abort the fan-out
         return f"error:{e}"
 
