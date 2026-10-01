@@ -42,6 +42,32 @@ STATUS_ORDER = {"blocked": 0, "active": 1, "untracked": 2, "dormant": 3,
 # Lifecycle statuses declared explicitly in a plan's .plan-lifecycle.json override
 # every projected/heuristic status (an owner/orchestrator retirement decision wins).
 LIFECYCLE_STATUSES = ("active", "complete", "superseded", "retired")
+PLAN_CLASSES = {"program", "durable_plan", "review", "decision", "baseline",
+                "inventory", "coordination", "record"}
+
+
+def _classification(plan_path: Path) -> dict:
+    """Read an explicit classification; never guess a plan's purpose."""
+    f = plan_path / ".plan-classification.json"
+    if not f.is_file():
+        return {"classification": "unclassified", "tracking_route": "classification_queue",
+                "classification_issue": "missing .plan-classification.json"}
+    try:
+        d = json.loads(f.read_text(encoding="utf-8"))
+    except (OSError, json.JSONDecodeError):
+        return {"classification": "unclassified", "tracking_route": "classification_queue",
+                "classification_issue": "invalid classification JSON"}
+    if not isinstance(d, dict):
+        return {"classification": "unclassified", "tracking_route": "classification_queue",
+                "classification_issue": "classification JSON must be an object"}
+    cls, route, evidence = (d.get("classification"), d.get("tracking_route"), d.get("evidence"))
+    if cls not in PLAN_CLASSES or not isinstance(route, str) or not route.strip() \
+            or not isinstance(evidence, str) or not evidence.strip():
+        return {"classification": "unclassified", "tracking_route": "classification_queue",
+                "classification_issue": "classification, tracking_route, and evidence are required"}
+    return {"classification": cls, "tracking_route": route.strip(),
+            "classification_issue": "", "classification_evidence": evidence.strip(),
+            "parent": str(d.get("parent", ""))}
 
 
 def _today() -> str:
@@ -193,6 +219,7 @@ def _plan_record(plan_path: Path) -> dict:
     last = _git_last_date(rel)
     days = _days_since(last)
     has_open, has_done = _doc_markers(plan_path)
+    classification = _classification(plan_path)
 
     lifecycle = _read_lifecycle(plan_path)
     if lifecycle is not None:
@@ -205,6 +232,7 @@ def _plan_record(plan_path: Path) -> dict:
             "untracked": not has_tracker, "has_tracker": has_tracker,
             "primary_doc": (f"{rel}/{doc.name}" if doc else ""),
             "doc_count": doc_count, "last_activity": last, **rec_extra,
+            **classification,
         }
 
     if has_tracker:
@@ -234,6 +262,7 @@ def _plan_record(plan_path: Path) -> dict:
         "primary_doc": (f"{rel}/{doc.name}" if doc else ""),
         "doc_count": doc_count,
         "last_activity": last,
+        **classification,
     }
 
 
@@ -246,19 +275,31 @@ def index() -> dict:
                     plans.append(_plan_record(entry))
                 except Exception:
                     plans.append({"id": entry.name, "title": entry.name,
-                                  "status": "dormant", "untracked": True,
-                                  "has_tracker": False, "primary_doc": "",
-                                  "doc_count": 0, "last_activity": ""})
+                    "status": "dormant", "untracked": True,
+                    "has_tracker": False, "primary_doc": "",
+                    "doc_count": 0, "last_activity": "",
+                    "classification": "unclassified",
+                    "tracking_route": "classification_queue",
+                    "classification_issue": "plan record projection failed"})
     plans.sort(key=lambda p: (STATUS_ORDER.get(p["status"], 9),
                               _neg_date(p["last_activity"]), p["id"]))
     by_status: dict[str, int] = {}
+    by_classification: dict[str, int] = {}
+    by_tracking_route: dict[str, int] = {}
     for p in plans:
         by_status[p["status"]] = by_status.get(p["status"], 0) + 1
+        cls = p.get("classification", "unclassified")
+        route = p.get("tracking_route") or "unrouted"
+        by_classification[cls] = by_classification.get(cls, 0) + 1
+        by_tracking_route[route] = by_tracking_route.get(route, 0) + 1
     return {
         "generated": _today(),
         "total": len(plans),
         "by_status": by_status,
         "untracked_count": sum(1 for p in plans if p["untracked"]),
+        "by_classification": by_classification,
+        "by_tracking_route": by_tracking_route,
+        "unclassified_count": by_classification.get("unclassified", 0),
         "plans": plans,
     }
 
@@ -303,6 +344,9 @@ def _viz_html(data: dict) -> str:
     dist = "".join(segs)
     tracked = data["total"] - data["untracked_count"]
     tracked_pct = tracked / total * 100
+    unclassified = data.get("unclassified_count", data.get("by_classification", {}).get("unclassified", 0))
+    classified = data["total"] - unclassified
+    classified_pct = classified / total * 100
 
     # activity histogram: plans per YYYY-MM of last commit (last 8 buckets)
     from collections import Counter
@@ -332,6 +376,10 @@ def _viz_html(data: dict) -> str:
         f'<div class="pbar"><span class="pbar-fill" style="width:{tracked_pct:.1f}%"></span>'
         f'<span class="pbar-lab">{tracked}/{data["total"]} plans have a tracker.json</span></div>'
         '<div class="viz-sub">PM-tracker rollout target: 100%</div></div>'
+        '<div class="viz-card"><div class="viz-t">Classification coverage</div>'
+        f'<div class="pbar"><span class="pbar-fill" style="width:{classified_pct:.1f}%"></span>'
+        f'<span class="pbar-lab">{classified}/{data["total"]} classified · {unclassified} in queue</span></div>'
+        '<div class="viz-sub">Unresolved plans remain individually searchable below.</div></div>'
         '<div class="viz-card"><div class="viz-t">Activity by month</div>'
         f'<div class="hist">{bars}</div></div>'
         '</section>'
@@ -346,6 +394,10 @@ def render_html(data: dict) -> str:
         title = _html.escape(p["title"])
         pid = _html.escape(p["id"])
         tracker_badge = "●" if p["has_tracker"] else "<span class='no-tracker'>no tracker</span>"
+        cls = _html.escape(p.get("classification", "unclassified"))
+        route = _html.escape(p.get("tracking_route") or "unrouted")
+        classification_issue = _html.escape(p.get("classification_issue", ""))
+        class_cell = f'<span title="{classification_issue}">{cls}</span><small class="pid">{route}</small>'
         sub = ""
         if p["status"] in ("superseded", "retired") and p.get("superseded_by"):
             sub = f'<span class="supby">→ {_html.escape(str(p["superseded_by"]))}</span>'
@@ -364,12 +416,13 @@ def render_html(data: dict) -> str:
                     f'<span class="prog-fill" style="width:{pv}%;background:var({pcol})"></span>'
                     f'</span></span>')
         rows.append(
-            f'<tr data-status="{p["status"]}" data-search="{pid.lower()} {title.lower()}">'
+            f'<tr data-status="{p["status"]}" data-classification="{cls}" data-search="{pid.lower()} {title.lower()} {cls.lower()} {route.lower()} {classification_issue.lower()}">'
             f'<td><span class="dot" style="background:var({var})"></span>'
             f'<span class="st">{label}</span></td>'
             f'<td class="name"><a href="../../{doc}" title="{doc}">{title}</a>'
             f'<span class="pid">{pid}</span>{sub}</td>'
             f'<td class="prog-td">{prog}</td>'
+            f'<td class="class">{class_cell}</td>'
             f'<td class="act">{_html.escape(p["last_activity"] or "—")}</td>'
             f'<td class="trk">{tracker_badge}</td>'
             f'<td class="dc">{p["doc_count"]}</td></tr>'
@@ -430,7 +483,7 @@ tr[data-status="superseded"] .name a,tr[data-status="retired"] .name a{color:var
 .dc{text-align:center;color:var(--ink-faint);font-family:var(--mono);font-size:.74rem}
 footer{margin-top:22px;font-family:var(--mono);font-size:.68rem;color:var(--ink-faint)}
 .hidden{display:none}
-.viz{display:grid;grid-template-columns:1.4fr 1fr 1.2fr;gap:12px;margin-bottom:22px}
+.viz{display:grid;grid-template-columns:repeat(auto-fit,minmax(220px,1fr));gap:12px;margin-bottom:22px}
 .viz-card{background:var(--surface);border:1px solid var(--border);border-radius:var(--radius);padding:13px 15px}
 .viz-t{font-family:var(--mono);font-size:.64rem;text-transform:uppercase;letter-spacing:.05em;color:var(--ink-faint);margin-bottom:10px}
 .distbar{display:flex;height:16px;border-radius:5px;overflow:hidden;background:var(--surface-2)}
@@ -458,18 +511,19 @@ __VIZ__
 <button class="filter on" data-f="all">All</button>
 <button class="filter" data-f="active">Active</button>
 <button class="filter" data-f="blocked">Blocked</button>
-<button class="filter" data-f="untracked">Untracked</button>
+ <button class="filter" data-f="untracked">Untracked</button>
+ <button class="filter" data-f="unclassified">Unclassified</button>
 <button class="filter" data-f="superseded">Superseded</button>
 <button class="filter" data-f="complete">Complete</button>
 </div>
-<div class="panel"><table><thead><tr><th>Status</th><th>Plan</th><th class="prog">Progress</th><th>Last activity</th><th class="trk">Trk</th><th class="dc">Docs</th></tr></thead><tbody id="rows">
+<div class="panel"><table><thead><tr><th>Status</th><th>Plan</th><th class="prog">Progress</th><th>Class / route</th><th>Last activity</th><th class="trk">Trk</th><th class="dc">Docs</th></tr></thead><tbody id="rows">
 __ROWS__
 </tbody></table></div>
 <footer>SSOT: projected by <code>aq-plans-index</code> from .agents/plans/ + git history + per-plan tracker.json — regenerate, never hand-edit.</footer>
 </div>
 <script>
 const q=document.getElementById('q'),rows=[...document.querySelectorAll('#rows tr')];let f='all';
-function apply(){const t=q.value.trim().toLowerCase();rows.forEach(r=>{const okF=(f==='all'||r.dataset.status===f||(f==='untracked'&&r.querySelector('.no-tracker')));const okQ=!t||r.dataset.search.includes(t);r.classList.toggle('hidden',!(okF&&okQ))})}
+function apply(){const t=q.value.trim().toLowerCase();rows.forEach(r=>{const okF=(f==='all'||r.dataset.status===f||(f==='untracked'&&r.querySelector('.no-tracker'))||(f==='unclassified'&&r.dataset.classification==='unclassified'));const okQ=!t||r.dataset.search.includes(t);r.classList.toggle('hidden',!(okF&&okQ))})}
 q.addEventListener('input',apply);
 document.querySelectorAll('.filter').forEach(b=>b.addEventListener('click',()=>{document.querySelectorAll('.filter').forEach(x=>x.classList.remove('on'));b.classList.add('on');f=b.dataset.f;apply()}));
 </script>

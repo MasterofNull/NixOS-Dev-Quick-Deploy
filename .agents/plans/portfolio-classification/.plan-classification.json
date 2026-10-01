@@ -1,0 +1,5 @@
+{
+  "classification": "durable_plan",
+  "tracking_route": "tracker.json",
+  "evidence": "PRD.md defines an owned implementation objective, bounded acceptance criteria, and durable follow-up work for portfolio classification and tracking coverage."
+}

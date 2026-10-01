@@ -5072,3 +5072,8 @@ File: scripts/ai/lib/worktree-isolation.sh; scripts/automation/prsi-orchestrator
   Severity: high (supply-chain integrity regression prevented)
   Action: redo with `uv pip compile --generate-hashes`, torch/torchvision/torchaudio sourced only from the PyTorch CPU index (explicit per-package index, first-index default); add a guard test failing if a lock that had hashes loses them.
   File: ai-stack/mcp-servers/*/requirements.lock
+
+[RESOLVED] dashboard-plan-portfolio-python-path — The dashboard progress API's embedded plan inventory showed unavailable even though `aq-plans-index --json` succeeded in an interactive shell. Root cause: `aq-pm-tracker` launched the Python script by its env shebang, while `command-center-dashboard-api.service` has a restricted PATH without `python3`; the `OSError` was converted to an unavailable inventory.
+  Severity: medium (user-facing portfolio and prioritization inventory omitted)
+  Action: invoke the index script with `sys.executable`; regression test passes; live API now reports complete inventory (104 plans) and tracker page returns HTTP 200.
+  File: scripts/ai/aq-pm-tracker:270

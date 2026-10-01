@@ -1,0 +1,53 @@
+{
+  "plan": {
+    "id": "portfolio-classification",
+    "title": "Portfolio classification and tracking coverage",
+    "prd_ref": "PRD.md",
+    "owner": "project",
+    "goal": "Make every plan and its child work individually classifiable, routable, and visible from authoritative sources.",
+    "success_criteria": [
+      "Every indexed plan has valid classification metadata or a visible unresolved reason.",
+      "Plans route durable goals, slices, and tasks to their tracker manifests and operational actions to their owning registries.",
+      "Portfolio coverage and unresolved records are displayed without hand-entered progress or lifecycle status."
+    ]
+  },
+  "phases": [
+    {"id": "coverage-ui", "name": "Coverage visibility", "goal": "Expose portfolio classification coverage and per-record resolution state.", "order": 1},
+    {"id": "source-reconciliation", "name": "Source reconciliation", "goal": "Classify each existing record from primary evidence and route child work to its authoritative tracker or registry.", "order": 2}
+  ],
+  "items": [
+    {
+      "id": "coverage-dashboard",
+      "name": "Expose classification coverage in portfolio dashboard",
+      "phase": "coverage-ui",
+      "kind": "slice",
+      "goal": "Show classified and unresolved totals and filter individual unresolved records.",
+      "validation_goal": "Focused tests verify coverage rendering, unresolved filtering, and existing dashboard behavior.",
+      "deps": [],
+      "editorial_note": "Initial implementation in progress; completion remains projector-derived.",
+      "detection": {"commit_match": [], "activation_subject": "", "freeze_record": "", "authorization_record": "", "slice_claim": "", "blocker_note": ""}
+    },
+    {
+      "id": "reconcile-plan-classifications",
+      "name": "Individually classify indexed plan records",
+      "phase": "source-reconciliation",
+      "kind": "slice",
+      "goal": "Add evidence-backed classification and tracking routes for all plan directories, leaving uncertain cases visibly unresolved.",
+      "validation_goal": "Every indexed record has valid metadata or a specific unresolved issue, with counts reconciling to the index.",
+      "deps": ["coverage-dashboard"],
+      "editorial_note": "Live index snapshot (2026-10-01): 101 of 104 records remain unclassified. Three evidence-backed classifications are present; continue individual source review without inferring from names or recency.",
+      "detection": {"commit_match": [], "activation_subject": "", "freeze_record": "", "authorization_record": "", "slice_claim": "", "blocker_note": ""}
+    },
+    {
+      "id": "route-child-work",
+      "name": "Map goals, slices, tasks, and actions to SSOT sources",
+      "phase": "source-reconciliation",
+      "kind": "task",
+      "goal": "Ensure durable child work lives in plan trackers and operational actions link to their authoritative registries.",
+      "validation_goal": "Development map documents routes and coverage checks; no duplicate manual progress source is introduced.",
+      "deps": ["reconcile-plan-classifications"],
+      "editorial_note": "Map now documents portfolio coverage and AQ-OS child routes: req-guest-init-evaluation in the requirements inventory and PID1 in the program milestone projector. Lifecycle changes and archival remain out of scope.",
+      "detection": {"commit_match": [], "activation_subject": "", "freeze_record": "", "authorization_record": "", "slice_claim": "", "blocker_note": ""}
+    }
+  ]
+}

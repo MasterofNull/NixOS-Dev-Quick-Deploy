@@ -264,6 +264,24 @@ def discover_tracked_plans() -> list[Path]:
     )
 
 
+def project_plan_portfolio() -> dict:
+    """Embed the canonical classified inventory; keep failure explicit."""
+    try:
+        result = subprocess.run(
+            [sys.executable, str(REPO / "scripts" / "ai" / "aq-plans-index"), "--json"],
+            capture_output=True, text=True, timeout=30, cwd=REPO,
+        )
+        if result.returncode != 0:
+            return {"health": "unavailable", "error": "aq-plans-index exited unsuccessfully", "plans": []}
+        portfolio = json.loads(result.stdout)
+        if not isinstance(portfolio, dict) or not isinstance(portfolio.get("plans"), list):
+            raise ValueError("unexpected portfolio shape")
+        portfolio["health"] = "complete"
+        return portfolio
+    except (OSError, subprocess.TimeoutExpired, json.JSONDecodeError, ValueError):
+        return {"health": "unavailable", "error": "aq-plans-index could not provide a valid inventory", "plans": []}
+
+
 def project_all() -> dict:
     """Aggregate projection across every tracked plan — reuses project() per
     plan from one read-only git/aq-event evidence snapshot, shared across plans
@@ -316,6 +334,7 @@ def project_all() -> dict:
         "unknown_items": unknown_items,
         "source_health": source_health,
         "rollup_authoritative": source_health == "complete",
+        "portfolio": project_plan_portfolio(),
     }
 
 

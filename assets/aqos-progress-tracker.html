@@ -207,6 +207,18 @@
     margin: 0;
   }
   .hint { font-size: 0.78rem; color: var(--ink-faint); margin: 0; }
+  .portfolio-tools { display: flex; gap: 10px; margin: 12px 0; flex-wrap: wrap; }
+  .portfolio-tools input, .portfolio-tools select { background: var(--surface); color: var(--ink); border: 1px solid var(--border); border-radius: var(--radius); padding: 9px 11px; font: inherit; }
+  .portfolio-tools input { flex: 1 1 240px; }
+  .portfolio-summary { color: var(--ink-muted); font-size: .8rem; margin: 8px 0; }
+  .portfolio-table-wrap { overflow-x: auto; border: 1px solid var(--border); border-radius: var(--radius); background: var(--surface); }
+  .portfolio-table { width: 100%; border-collapse: collapse; min-width: 850px; font-size: .8rem; }
+  .portfolio-table th, .portfolio-table td { text-align: left; vertical-align: top; padding: 9px 11px; border-bottom: 1px solid var(--border); }
+  .portfolio-table th { color: var(--ink-muted); font: 600 .68rem var(--font-mono); text-transform: uppercase; }
+  .portfolio-table td:first-child { font-weight: 600; }
+  .portfolio-id, .portfolio-doc { display: block; color: var(--ink-faint); font: .68rem var(--font-mono); overflow-wrap: anywhere; }
+  .portfolio-action { color: var(--active); }
+  .portfolio-health { color: var(--blocked); }
 
   /* ---------- state panels (loading / error) ---------- */
   .state-panel {
@@ -495,6 +507,21 @@
     </div>
   </section>
 
+  <section aria-live="polite" aria-label="Complete plan portfolio">
+    <div class="section-head">
+      <h2>Complete plan portfolio</h2>
+      <p class="hint">Canonical aq-plans-index inventory. Lifecycle and classification are explicit; progress is shown only for itemized manifests above.</p>
+    </div>
+    <div class="portfolio-tools">
+      <label class="sr-only" for="portfolio-search">Search plans</label>
+      <input id="portfolio-search" type="search" placeholder="Search plan, ID, classification, or route">
+      <label class="sr-only" for="portfolio-lifecycle">Filter lifecycle</label>
+      <select id="portfolio-lifecycle"><option value="all">All lifecycle states</option><option>active</option><option>blocked</option><option>untracked</option><option>dormant</option><option>complete</option><option>superseded</option><option>retired</option></select>
+    </div>
+    <p class="portfolio-summary" id="portfolio-summary">Loading canonical portfolio…</p>
+    <div id="portfolio-root"><div class="state-panel">Waiting for the live portfolio…</div></div>
+  </section>
+
   <footer>
     Live read-only projection · source: <code>GET /api/pm/progress</code> (shells out to <code>scripts/ai/aq-pm-tracker --all-json</code>) ·
     refreshes every 30s · <span id="footer-fetch-count">0</span> fetches this session
@@ -511,6 +538,11 @@
   const kanbanRoot = document.getElementById('kanban-root');
   const footerFetchCount = document.getElementById('footer-fetch-count');
   const provenanceBanner = document.getElementById('provenance-banner');
+  const portfolioRoot = document.getElementById('portfolio-root');
+  const portfolioSummary = document.getElementById('portfolio-summary');
+  const portfolioSearch = document.getElementById('portfolio-search');
+  const portfolioLifecycle = document.getElementById('portfolio-lifecycle');
+  let latestPortfolio = null;
 
   let fetchCount = 0;
   let inFlight = false;
@@ -562,6 +594,37 @@
     provenanceBanner.dataset.visible = 'true';
     provenanceBanner.innerHTML = `<strong>Degraded provenance:</strong> ${escapeHtml(labels[health] || 'provenance is incomplete')}. ${unknown} item${unknown === 1 ? '' : 's'} ${unknown === 1 ? 'is' : 'are'} marked UNKNOWN. Rollups use known evidence only and are not authoritative.`;
   }
+
+  function portfolioAction(plan) {
+    if (plan.classification_issue || plan.classification === 'unclassified') return 'Classify and select its SSOT tracking route';
+    if (plan.tracking_route === 'aq-refactor-status') return 'Follow the AQ-OS refactor status projector';
+    if (!plan.has_tracker) return 'Review classification; add item manifest if this is shippable work';
+    if (plan.tracking_route !== 'tracker.json') return `Follow declared route: ${plan.tracking_route || 'unrouted'}`;
+    return 'Review item goals, dependencies, validation gates, and priority lane below';
+  }
+
+  function renderPortfolio(data) {
+    latestPortfolio = data && Array.isArray(data.plans) ? data : null;
+    if (!latestPortfolio || data.health !== 'complete') {
+      portfolioSummary.textContent = 'Canonical portfolio unavailable; itemized progress below may still load.';
+      portfolioRoot.innerHTML = `<div class="state-panel portfolio-health">${escapeHtml(data && data.error || 'The plan inventory did not return a valid projection.')}</div>`;
+      return;
+    }
+    const plans = data.plans;
+    const active = plans.filter(p => ['active', 'blocked', 'untracked'].includes(p.status)).length;
+    portfolioSummary.textContent = `${data.total} records · ${active} active/open · ${data.unclassified_count} awaiting classification · ${data.untracked_count} without itemized progress · generated ${escapeHtml(data.generated || 'time unavailable')}`;
+    const query = portfolioSearch.value.trim().toLowerCase();
+    const lifecycle = portfolioLifecycle.value;
+    const visible = plans.filter(p => (lifecycle === 'all' || p.status === lifecycle) &&
+      (!query || [p.id, p.title, p.status, p.classification, p.tracking_route, p.classification_issue, p.primary_doc].some(v => String(v || '').toLowerCase().includes(query))));
+    portfolioRoot.innerHTML = `<div class="portfolio-table-wrap"><table class="portfolio-table"><thead><tr><th>Plan / source</th><th>Lifecycle</th><th>Classification / route</th><th>Item manifest</th><th>Next tracking action</th></tr></thead><tbody>${visible.map(p => {
+      const action = portfolioAction(p);
+      return `<tr><td>${escapeHtml(p.title || p.id)}<span class="portfolio-id">${escapeHtml(p.id)}</span><span class="portfolio-doc">${escapeHtml(p.primary_doc || 'source document unavailable')}</span></td><td>${escapeHtml(p.status || 'unknown')}</td><td>${escapeHtml(p.classification || 'unclassified')}<span class="portfolio-id">${escapeHtml(p.tracking_route || 'unrouted')}${p.classification_issue ? ` · ${escapeHtml(p.classification_issue)}` : ''}</span></td><td>${p.has_tracker ? 'tracker.json present' : 'not itemized'}</td><td class="portfolio-action">${escapeHtml(action)}</td></tr>`;
+    }).join('') || '<tr><td colspan="5">No plans match these filters.</td></tr>'}</tbody></table></div>`;
+  }
+
+  portfolioSearch.addEventListener('input', () => { if (latestPortfolio) renderPortfolio(latestPortfolio); });
+  portfolioLifecycle.addEventListener('change', () => { if (latestPortfolio) renderPortfolio(latestPortfolio); });
 
   function normalizedItem(item, planId) {
     const rawStatus = String(item && item.status || 'NOT-STARTED');
@@ -735,6 +798,7 @@
       }
       const data = await resp.json();
       renderProvenance(data);
+      renderPortfolio(data.portfolio);
       window.latestProgramData = data;
       fetchCount += 1;
       footerFetchCount.textContent = fetchCount;

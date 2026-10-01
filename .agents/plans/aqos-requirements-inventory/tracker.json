@@ -421,6 +421,25 @@
         "note": ""
       },
       "priority_lane": "start-now"
+    },
+    {
+      "id": "req-guest-init-evaluation",
+      "name": "Dedicated guest PID 1 evaluation (system-dev queue)",
+      "phase": "foundations",
+      "kind": "slice",
+      "goal": "Evaluate publicly maintained slim PID 1 options for isolated guests while retaining systemd for host services and automation",
+      "validation_goal": "Build candidate VM/container images from existing Flake configurations; run targeted boot, supervision, shutdown, recovery, and security-surface tests; document tradeoffs and a decision record",
+      "deps": [],
+      "editorial_note": "Queued for a future dev slice; s6-linux-init/s6 is a candidate, not yet selected. Host PID 1 migration requires separate evidence and owner decision.",
+      "detection": {},
+      "pct_hint": 0,
+      "acceptance": {
+        "status": "pending",
+        "by": null,
+        "date": null,
+        "note": "Evaluation and owner decision pending"
+      },
+      "priority_lane": "queued"
     }
   ]
 }
