@@ -47,6 +47,6 @@ performance tools) on the newest versions.
 
 ## Open questions for the round
 1. Which packages exactly belong to frontier vs core (initial list)?
-2. Kernel on frontier: `linuxPackages_latest` vs a pinned recent LTS bumped by the pipeline?
+2. Kernel on frontier: RESOLVED 2026-10-01 (owner) — newest LTS series, build staged, reboot owner-scheduled, post-boot audio/GPU/inference probes gate acceptance.
 3. Post-switch health gate thresholds and rollback trigger set.
 4. Timer cadence and quiet hours; how to avoid switching during active agent work.
