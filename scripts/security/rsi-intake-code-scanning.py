@@ -274,7 +274,7 @@ def main() -> int:
 
         # Build root_fix (includes fixed version, count and severity)
         manifest = _resolve_manifest_path(category, package)
-        root_fix = f"bump {package} to >= {fixed_ver} in {manifest}; rebuild image and confirm Trivy clears the alerts ({count} open alert(s), max severity {max_sev})"
+        root_fix = f"raise the minimum-version floor: {package}>={fixed_ver} in {manifest} (owner policy: floors, never exact == pins); rebuild image and confirm Trivy clears the alerts ({count} open alert(s), max severity {max_sev})"
 
         subject = f"code-scanning:{category}"
 

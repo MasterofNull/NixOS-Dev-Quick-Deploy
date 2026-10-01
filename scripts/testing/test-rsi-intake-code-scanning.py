@@ -456,11 +456,11 @@ def test_os_error_stable_when_fixed_version_changes() -> None:
 
         # Verify root_fix contains the different fixed versions
         assert_true(
-            ">= 2.0" in incident1["root_fix"],
+            ">=2.0" in incident1["root_fix"],
             f"First root_fix must mention 2.0: {incident1['root_fix']}"
         )
         assert_true(
-            ">= 2.5" in incident2["root_fix"],
+            ">=2.5" in incident2["root_fix"],
             f"Second root_fix must mention 2.5: {incident2['root_fix']}"
         )
     finally:

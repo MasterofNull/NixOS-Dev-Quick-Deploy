@@ -4890,3 +4890,8 @@ File: scripts/ai/lib/worktree-isolation.sh; scripts/automation/prsi-orchestrator
   File: scripts/security/rsi-intake-code-scanning.py
 
 - 2026-09-30 resolution for the two entries above: classify_tokens scans size-down signals only in the first 300 chars; research/deep_reasoning profiles enable_thinking=False; L2B + chat-batch-parity manifests re-pinned (dispatch.py bfc1bf0e…, llm_config.py 1150f16e…); no golden payload changed (goldens use lookup/structured/reasoning/agent). Tests: classify 4/4, L2B 16 checks, chat-batch-parity PASS. delegate-to-local also gained --max-tokens.
+
+[OPEN] exact-version-pins-vs-owner-floor-policy — Owner policy 2026-09-30: do not pin package versions (daily upstream churn + elevated AI-generated exploit threat); security repairs raise `>=` floors. 88 exact `==` pins remain across ai-stack/mcp-servers/*/requirements.txt. GitPython converted to `gitpython>=3.1.59`; RSI intake root_fix now instructs floors.
+  Severity: medium
+  Action: RSI steward slice — convert exact pins to floors (keep upper bounds only where a known-breaking major exists, documented); rely on Trivy/code-scanning -> RSI intake + frequent lock refresh. Note: unpinned deps ingest a compromised new release quickly; scanning + floors are the mitigation.
+  File: ai-stack/mcp-servers/*/requirements.txt
