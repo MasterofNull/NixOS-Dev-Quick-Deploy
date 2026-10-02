@@ -2019,8 +2019,12 @@ in {
           NoNewPrivileges = true;
           ProtectSystem = "strict";
           ProtectHome = "read-only";
-          # Attention queue lives in .agents/attention/ inside the repo.
-          ReadWritePaths = ["${cfg.mcpServers.repoPath}/.agents"];
+          # Attention queue lives in .agents/attention/ inside the repo; aq-qa
+          # phase 0 takes its evidence lock in the shared telemetry dir.
+          ReadWritePaths = [
+            "${cfg.mcpServers.repoPath}/.agents"
+            "${cfg.mcpServers.dataDir}/hybrid/telemetry"
+          ];
           PrivateTmp = true;
           TimeoutStartSec = "180";
           MemoryMax = "256M";
