@@ -19,11 +19,12 @@
 let
   cfg = config.mySystem;
   virtEnabled = cfg.roles.virtualization.enable;
+  libvirtPackage = pkgs.libvirt.override { enableXen = false; };
 
   vmHelper = name: command:
     pkgs.writeShellScriptBin name ''
       set -euo pipefail
-      exec ${pkgs.libvirt}/bin/virsh ${command} "$@"
+      exec ${libvirtPackage}/bin/virsh ${command} "$@"
     '';
 in {
   config = lib.mkIf virtEnabled {
@@ -40,6 +41,7 @@ in {
 
     # ---- libvirtd / QEMU --------------------------------------------------
     virtualisation.libvirtd = {
+      package = libvirtPackage;
       enable = lib.mkDefault true;
       # Keep libvirtd resident to avoid idle-timeout forced shutdowns that can
       # leave the legacy monolithic unit in failed state on some hosts.
@@ -63,9 +65,9 @@ in {
 
     # ---- Extra packages ---------------------------------------------------
     environment.systemPackages = with pkgs; [
-      libvirt # virsh CLI expected by health checks
+      libvirtPackage # virsh CLI expected by health checks
       qemu_kvm # qemu-system-* binaries for local VM execution
-      virt-viewer # Display guest VM consoles (VNC/SPICE)
+      (virt-viewer.override {libvirt = libvirtPackage;}) # VM consoles; same Xen-free libvirt
       spice-gtk # SPICE client libraries for virt-viewer
       (vmHelper "vm-list" "list --all")
       (vmHelper "vm-snapshot" "snapshot-list")

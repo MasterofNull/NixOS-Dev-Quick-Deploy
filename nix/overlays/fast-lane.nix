@@ -66,8 +66,20 @@
             pname = resolved.pname or name;
           };
       };
+  # Leaf members are exposed under pkgs.fastLaneLeaf only; pkgs.<name> stays stable.
+  leafAttrs = builtins.listToAttrs (
+    builtins.filter (x: x != null) (
+      map (name: let
+        resolved = resolveFromUnstable name;
+      in
+        if resolved != null
+        then {inherit name; value = resolved;}
+        else null) (manifest.leaf or [])
+    )
+  );
 in
-  builtins.listToAttrs (
+  {fastLaneLeaf = leafAttrs;}
+  // builtins.listToAttrs (
     builtins.filter (x: x != null) (
       map (
         name: let
