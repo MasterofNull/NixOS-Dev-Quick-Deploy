@@ -25,9 +25,8 @@ FILES_TO_CHECK = {
     SCRIPTS_DIR / "ai" / "aq-prsi-review": r'PRSI_ACTION_QUEUE_PATH",\s*"([^"]+)"',
 }
 
-# aq-throttler list-wraps the queue dict on write, which the orchestrator reads
-# as an empty queue (2026-10-02 incident wiped 198 rows and owner sign-offs).
-# It must stay off the canonical queue until its writer preserves the schema.
+# aq-throttler once list-wrapped the queue dict on write (2026-10-02 incident
+# wiped 198 rows). It must perform no queue writes at all.
 THROTTLER = SCRIPTS_DIR / "ai" / "aq-throttler"
 
 NIX_FILE = ROOT / "nix" / "modules" / "roles" / "ai-stack.nix"
@@ -87,9 +86,9 @@ def main():
             all_passed = False
 
     throttler_src = THROTTLER.read_text()
-    if CANONICAL_PATH in throttler_src or "PRSI_ACTION_QUEUE_PATH" in throttler_src:
+    if any(t in throttler_src for t in ("prsi_queue.save", "prsi_queue.locked", "json.dump(", "write_text")):
         print(
-            f"FAIL: {THROTTLER} targets the canonical queue but list-wraps it on write",
+            f"FAIL: {THROTTLER} must perform no queue writes (no prsi_queue.save/locked, json.dump, write_text)",
             file=sys.stderr,
         )
         all_passed = False

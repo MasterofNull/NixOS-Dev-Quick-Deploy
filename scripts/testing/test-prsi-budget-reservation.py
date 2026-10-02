@@ -29,6 +29,7 @@ def reserve(start, results):
 def main():
     with tempfile.TemporaryDirectory() as tmp:
         prsi.PRSI_STATE_PATH = Path(tmp) / "state.json"
+        prsi.QUEUE_PATH = Path(tmp) / "action-queue.json"
         # Preview must not persist usage, including counterfactual state.
         assert len(prsi._reserve_actions_for_execution([row()], POLICY, 1, dry_run=True)[0]) == 1
         assert not prsi.PRSI_STATE_PATH.exists()

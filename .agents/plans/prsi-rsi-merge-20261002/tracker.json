@@ -1,0 +1,111 @@
+{
+  "plan": {
+    "id": "prsi-rsi-merge-20261002",
+    "title": "PRSI -> RSI consolidation",
+    "prd_ref": ".agents/plans/prsi-rsi-merge-20261002/PLAN.md",
+    "owner": "hyperd",
+    "goal": "One engine, one queue, one writer, one approval front door",
+    "success_criteria": [
+      "One canonical queue with one writer",
+      "Coordinator and inbox agree on pending set"
+    ]
+  },
+  "phases": [
+    {
+      "id": "consolidate",
+      "name": "Consolidate",
+      "goal": "Retire duplicates, fix shared-state hazards",
+      "order": 1
+    }
+  ],
+  "items": [
+    {
+      "id": "m1",
+      "name": "Single queue writer",
+      "phase": "consolidate",
+      "kind": "slice",
+      "goal": "Single queue writer",
+      "validation_goal": "slice test + tier0 + live check",
+      "deps": [],
+      "detection": {
+        "commit_match": [
+          "fix(prsi): single queue writer"
+        ]
+      }
+    },
+    {
+      "id": "m2",
+      "name": "Retire Ralph PRSI routes",
+      "phase": "consolidate",
+      "kind": "slice",
+      "goal": "Retire Ralph PRSI routes",
+      "validation_goal": "slice test + tier0 + live check",
+      "deps": [],
+      "detection": {
+        "commit_match": [
+          "refactor(ralph): retire private PRSI queue"
+        ]
+      }
+    },
+    {
+      "id": "m3",
+      "name": "Coordinator PRSI handlers canonical+schema",
+      "phase": "consolidate",
+      "kind": "slice",
+      "goal": "Coordinator PRSI handlers canonical+schema",
+      "validation_goal": "slice test + tier0 + live check",
+      "deps": [
+        "m1"
+      ],
+      "detection": {
+        "commit_match": [
+          "fix(coordinator): PRSI handlers read canonical queue"
+        ]
+      }
+    },
+    {
+      "id": "m4",
+      "name": "Override activation reload",
+      "phase": "consolidate",
+      "kind": "slice",
+      "goal": "Override activation reload",
+      "validation_goal": "slice test + tier0 + live check",
+      "deps": [],
+      "detection": {
+        "commit_match": [
+          "fix(optimizer): reload override consumers"
+        ]
+      }
+    },
+    {
+      "id": "m5",
+      "name": "Archive legacy PRSI paths",
+      "phase": "consolidate",
+      "kind": "slice",
+      "goal": "Archive legacy PRSI paths",
+      "validation_goal": "slice test + tier0 + live check",
+      "deps": [
+        "m1"
+      ],
+      "detection": {
+        "commit_match": [
+          "chore(prsi): archive legacy queue paths"
+        ]
+      }
+    },
+    {
+      "id": "m6",
+      "name": "Dashboard inbox view",
+      "phase": "consolidate",
+      "kind": "slice",
+      "goal": "Dashboard inbox view",
+      "validation_goal": "slice test + tier0 + live check",
+      "deps": [],
+      "detection": {
+        "commit_match": [
+          "feat(dashboard): approval inbox view"
+        ]
+      }
+    }
+  ]
+}
