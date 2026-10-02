@@ -106,6 +106,22 @@
           "feat(dashboard): approval inbox view"
         ]
       }
+    },
+    {
+      "id": "m7",
+      "name": "Close execute-endpoint approval bypass",
+      "phase": "consolidate",
+      "kind": "slice",
+      "goal": "No optimizer side effects without owner-approved queue rows",
+      "validation_goal": "endpoint dry-run only or queue-gated; test",
+      "deps": [
+        "m3"
+      ],
+      "detection": {
+        "commit_match": [
+          "fix(coordinator): gate PRSI execute endpoint"
+        ]
+      }
     }
   ]
 }

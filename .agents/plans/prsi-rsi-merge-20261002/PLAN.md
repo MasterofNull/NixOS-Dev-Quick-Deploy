@@ -21,6 +21,7 @@ The RSI steward already runs on the PRSI engine. RSI incidents become PRSI queue
 | M3 | Coordinator PRSI handlers + MCP tools: read the canonical queue; fix the row schema (`status`/`raw_action`/`risk`, not `state`/`action_detail`/`risk_level`); the critical-risk block works again. Needs declared group-read on the optimizer prsi dir (activationScript deps=["users"], Rule 14) for ai-hybrid. | fix |
 | M4 | Optimizer override activation: executing a routing action triggers a declared reload of its `services` (systemd path unit on overrides.env), or records `applied-pending-restart` in the inbox. | fix |
 | M5 | Archive the legacy `/var/lib/nixos-ai-stack/prsi/` queue/state after M1/M3; point hint text (switchboard profiles, context cards, aq-delegate) at the canonical paths. | retire |
+| M7 | Close the coordinator `/control/prsi/actions/execute` bypass (runs aq-optimizer non-dry-run without queue approval; local-agent "Execute PRSI action"): dry-run only, or apply via approved queue rows. | fix |
 | M6 | Dashboard: show the RSI/approval inbox read-only from the same backend (no separate approve path until ACP crypto). | extend |
 
 ## Not in scope

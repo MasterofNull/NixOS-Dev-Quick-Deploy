@@ -233,6 +233,22 @@ def _get_hints_cached(url: str, key: str) -> dict:
     return result
 
 
+_PRSI_OWNER_MSG = "Owner decisions are not recorded by agents. Use the approval inbox: `aq-approve` (numbered list); the owner confirms in chat."
+_PRSI_TIMER_MSG = "Run by the ai-prsi-orchestrator timers; agents do not execute or sync the queue."
+
+
+def _prsi_orchestrate_refusal(command):
+    """None for read-only `list`; otherwise a structured refusal (no subprocess is ever spawned)."""
+    command = str(command or "").strip()
+    if command == "list":
+        return None
+    if command in ("approve", "reject"):
+        return {"status": "refused", "action": command, "reason": _PRSI_OWNER_MSG, "valid_actions": ["list"]}
+    if command in ("execute", "sync"):
+        return {"status": "refused", "action": command, "reason": _PRSI_TIMER_MSG, "valid_actions": ["list"]}
+    return {"status": "error", "error": f"unknown command '{command}'", "valid_actions": ["list"]}
+
+
 def _run_local(argv: list[str], cwd: str | None = None, timeout: int = 30) -> dict:
     # Safety gate — block destructive commands before execution
     _cmd_str = " ".join(str(a) for a in argv)
@@ -707,17 +723,17 @@ TOOLS = [
     {
         "name": "prsi_orchestrate",
         "description": (
-            "Run a PRSI orchestrator command: sync (refresh queue from aq-report), "
-            "list (show all actions with optional risk filter), approve (mark an action "
-            "approved by a named reviewer), or execute (run up to N approved actions). "
-            "Use after get_prsi_pending to act on pending items."
+            "Read-only PRSI queue view: command='list' (optional risk filter). "
+            "approve/reject/execute/sync are refused: owner decisions go through the approval "
+            "inbox (`aq-approve`, owner confirms in chat); execution and sync run on the "
+            "ai-prsi-orchestrator timers."
         ),
         "inputSchema": {
             "type": "object",
             "properties": {
                 "command": {
                     "type": "string",
-                    "enum": ["sync", "list", "approve", "execute"],
+                    "enum": ["list", "approve", "reject", "execute", "sync"],
                     "description": "Orchestrator command to run",
                 },
                 "since":   {"type": "string", "default": "1d",
@@ -1307,22 +1323,14 @@ def _call_tool(name: str, args: dict) -> str:
     if name == "prsi_orchestrate":
         import shutil
         command = args.get("command", "list")
+        refusal = _prsi_orchestrate_refusal(command)
+        if refusal is not None:
+            return _format_result(refusal)
         orchestrator = os.path.join(REPO_ROOT, "scripts", "automation", "prsi-orchestrator.py")
         python = shutil.which("python3") or sys.executable
-        argv = [python, orchestrator, command]
-        if command == "sync":
-            argv += ["--since", args.get("since", "1d")]
-        elif command == "list":
-            if args.get("risk"):
-                argv += ["--risk", args["risk"]]
-        elif command == "approve":
-            argv += ["--id", args.get("id", ""), "--by", args.get("by", "local-agent")]
-            if args.get("note"):
-                argv += ["--note", args["note"]]
-        elif command == "execute":
-            argv += ["--limit", str(args.get("limit", 1))]
-            if args.get("dry_run", True):
-                argv.append("--dry-run")
+        argv = [python, orchestrator, "list"]
+        if args.get("risk"):
+            argv += ["--risk", args["risk"]]
         r = _run_local(argv)
         return _format_result(r)
 
