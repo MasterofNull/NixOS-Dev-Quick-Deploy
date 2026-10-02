@@ -110,7 +110,11 @@ jobs:
 
       - name: Build hyperd-ai-dev system closure
         run: |
+          # Bounded parallelism: llama-cpp's Vulkan shader generation forks many compilers per
+          # job; the hosted runner's default (max-jobs=auto x all cores) exhausted it
+          # ("Failed to fork process", then ld failure) on 2026-10-02.
           nix build .#nixosConfigurations.hyperd-ai-dev.config.system.build.toplevel \
+            --max-jobs 2 --cores 2 \
             --print-build-logs --out-link result-toplevel
           test -e result-toplevel
 

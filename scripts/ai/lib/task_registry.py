@@ -14,6 +14,7 @@ corrupt the registry — a real concern when fanout dispatches 2–4 tasks in
 parallel.
 """
 
+import contextlib
 import errno
 import fcntl
 import json
@@ -258,6 +259,54 @@ class ExecBarrier:
         self._released = True
 
 
+def _atomic_write_bytes(path: Path, data: bytes) -> None:
+    """Crash-safe replace: unique O_EXCL|O_NOFOLLOW temp in same dir, full write loop,
+    fsync, os.replace, fsync parent. Readers see the old or new inode, never a truncation."""
+    import secrets
+    path = Path(path)
+    parent = path.parent
+    parent.mkdir(parents=True, exist_ok=True)
+    tmp = parent / f".{path.name}.{os.getpid()}.{secrets.token_hex(8)}.tmp"
+    fd = os.open(
+        str(tmp),
+        os.O_WRONLY | os.O_CREAT | os.O_EXCL | os.O_NOFOLLOW | os.O_CLOEXEC,
+        0o600,
+    )
+    try:
+        view = memoryview(data)
+        while view:
+            n = os.write(fd, view)
+            if n <= 0:
+                raise OSError(errno.EIO, "short write to registry temp file")
+            view = view[n:]
+        os.fsync(fd)
+    except BaseException:
+        os.close(fd)
+        try:
+            os.unlink(tmp)
+        except OSError:
+            pass
+        raise
+    os.close(fd)
+    try:
+        os.chmod(tmp, 0o644 if path.exists() and (path.stat().st_mode & 0o044) else 0o600)
+    except OSError:
+        pass
+    try:
+        os.replace(str(tmp), str(path))
+    except BaseException:
+        try:
+            os.unlink(tmp)
+        except OSError:
+            pass
+        raise
+    dfd = os.open(str(parent), os.O_RDONLY | os.O_DIRECTORY)
+    try:
+        os.fsync(dfd)
+    finally:
+        os.close(dfd)
+
+
 class TaskRegistry:
     """Unified registry for local task dispatch lifecycle."""
 
@@ -270,25 +319,38 @@ class TaskRegistry:
 
     # ── file-locked write helpers ────────────────────────────────────────────
 
-    def _locked_rewrite(self, path: Path, lines: list[str]) -> None:
-        """Atomically rewrite a file under exclusive lock."""
+    @staticmethod
+    @contextlib.contextmanager
+    def _path_lock(path: Path):
+        """Exclusive flock on a stable sibling lock file (never on the data inode,
+        which atomic replacement swaps out)."""
         path.parent.mkdir(parents=True, exist_ok=True)
-        with open(path, "w") as fh:
-            fcntl.flock(fh, fcntl.LOCK_EX)
+        lock_path = path.parent / (path.name + ".lock")
+        fd = os.open(str(lock_path), os.O_CREAT | os.O_RDWR | os.O_NOFOLLOW | os.O_CLOEXEC, 0o600)
+        try:
+            fcntl.flock(fd, fcntl.LOCK_EX)
+            yield
+        finally:
             try:
-                fh.write("\n".join(lines) + "\n")
+                fcntl.flock(fd, fcntl.LOCK_UN)
             finally:
-                fcntl.flock(fh, fcntl.LOCK_UN)
+                os.close(fd)
+
+    def _locked_rewrite(self, path: Path, lines: list[str]) -> None:
+        """Atomically rewrite a file: lock sibling lock file, temp+fsync+rename."""
+        with self._path_lock(path):
+            _atomic_write_bytes(path, ("\n".join(lines) + "\n").encode("utf-8"))
 
     def _locked_append(self, path: Path, line: str) -> None:
-        """Append a line under exclusive lock."""
-        path.parent.mkdir(parents=True, exist_ok=True)
-        with open(path, "a") as fh:
-            fcntl.flock(fh, fcntl.LOCK_EX)
+        """Append a line under the same sibling lock the rewriters use."""
+        with self._path_lock(path):
+            fd = os.open(str(path), os.O_WRONLY | os.O_APPEND | os.O_CREAT | os.O_NOFOLLOW | os.O_CLOEXEC, 0o644)
             try:
-                fh.write(line + "\n")
+                view = memoryview((line + "\n").encode("utf-8"))
+                while view:
+                    view = view[os.write(fd, view):]
             finally:
-                fcntl.flock(fh, fcntl.LOCK_UN)
+                os.close(fd)
 
     # ── registry.jsonl ───────────────────────────────────────────────────────
 
@@ -315,13 +377,31 @@ class TaskRegistry:
         """Apply updates dict to the entry matching task_id."""
         self.registry_file.parent.mkdir(parents=True, exist_ok=True)
         # Read under shared lock, then rewrite under exclusive lock
-        entries = self._read_registry()
-        lines = []
-        for e in entries:
-            if e.get("id") == task_id:
-                e.update(updates)
-            lines.append(json.dumps(e))
-        self._locked_rewrite(self.registry_file, lines)
+        with self._path_lock(self.registry_file):
+            raw = self.registry_file.read_text().splitlines() if self.registry_file.exists() else []
+            lines = []
+            for line in raw:
+                if not line.strip():
+                    continue
+                try:
+                    e = json.loads(line)
+                except json.JSONDecodeError:
+                    # A rewrite must never silently drop rows it cannot parse.
+                    lines.append(line)
+                    continue
+                if isinstance(e, dict) and e.get("id") == task_id:
+                    e.update(updates)
+                    line = json.dumps(e)
+                lines.append(line)
+            _atomic_write_bytes(self.registry_file, ("\n".join(lines) + "\n").encode("utf-8"))
+
+    def update_fields_atomic(self, task_id: str, updates: dict) -> None:
+        """Public transactional field update (shared lock + atomic replace) for shell wrappers."""
+        self._update_registry(task_id, updates)
+
+    def append_row_atomic(self, row: dict) -> None:
+        """Public append under the same sibling lock the rewriters use."""
+        self._locked_append(self.registry_file, json.dumps(row))
 
     def append(
         self,
@@ -1274,25 +1354,97 @@ class TaskRegistry:
         print(json.dumps(self.reconcile_pending(apply=apply), indent=2))
         return 0
 
-    def cmd_cancel(self, task_id: str) -> int:
+    @staticmethod
+    def _pid_alive(pid: int) -> bool:
+        try:
+            os.kill(pid, 0)
+        except ProcessLookupError:
+            return False
+        except PermissionError:
+            return True
+        # A zombie still answers kill(0); treat it as dead.
+        try:
+            with open(f"/proc/{pid}/stat") as fh:
+                return fh.read().rsplit(")", 1)[1].split()[0] != "Z"
+        except (OSError, IndexError):
+            return True
+
+    def _group_alive(self, pid: int, pgid: Optional[int]) -> bool:
+        if self._pid_alive(pid):
+            return True
+        if pgid is None:
+            return False
+        try:
+            names = os.listdir("/proc")
+        except OSError:
+            return False
+        for name in names:
+            if not name.isdigit():
+                continue
+            try:
+                with open(f"/proc/{name}/stat") as fh:
+                    fields = fh.read().rsplit(")", 1)[1].split()
+            except (OSError, IndexError):
+                continue
+            # fields: state ppid pgrp ...; zombies are already dead
+            if len(fields) > 2 and fields[0] != "Z" and fields[2] == str(pgid):
+                return True
+        return False
+
+    def cmd_cancel(self, task_id: str, grace_s: Optional[float] = None) -> int:
+        import signal
+        if grace_s is None:
+            try:
+                grace_s = float(os.environ.get("TASK_CANCEL_GRACE_S", "10"))
+            except ValueError:
+                grace_s = 10.0
         pid = self.get_pid(task_id)
+        survived = False
+        detail = ""
         if pid:
             try:
-                os.kill(-(pid), 0)  # check group exists
-            except ProcessLookupError:
-                pass
-            try:
-                import signal
-                os.kill(pid, signal.SIGTERM)
+                pgid = os.getpgid(pid)
+            except OSError:
+                pgid = None
+            # Never signal our own group.
+            if pgid is not None and pgid == os.getpgrp():
+                pgid = None
+
+            def _send(sig) -> None:
+                if pgid is not None:
+                    try:
+                        os.killpg(pgid, sig)
+                    except (ProcessLookupError, PermissionError):
+                        pass
                 try:
-                    os.killpg(os.getpgid(pid), signal.SIGTERM)
-                except Exception:
+                    os.kill(pid, sig)
+                except (ProcessLookupError, PermissionError):
                     pass
-            except Exception:
-                pass
+
+            _send(signal.SIGTERM)
             print(f"[task_registry] Sent SIGTERM to pid {pid} for task {task_id}")
+            deadline = time.monotonic() + max(0.0, grace_s)
+            while self._group_alive(pid, pgid) and time.monotonic() < deadline:
+                time.sleep(0.05)
+            if self._group_alive(pid, pgid):
+                _send(signal.SIGKILL)
+                print(f"[task_registry] Escalated to SIGKILL for pid {pid} (task {task_id})")
+                kdl = time.monotonic() + 5.0
+                while self._group_alive(pid, pgid) and time.monotonic() < kdl:
+                    time.sleep(0.05)
+                if self._group_alive(pid, pgid):
+                    survived = True
+                    detail = f"pid {pid} survived SIGTERM+SIGKILL"
         else:
             print(f"[task_registry] No PID found for {task_id}")
+        if survived:
+            self.update_status(task_id, "cancel-failed")
+            try:
+                self._update_registry(task_id, {"cancel_detail": detail})
+            except Exception:
+                pass
+            print(f"[task_registry] cancel-failed: {detail}", file=sys.stderr)
+            return 1
         self.update_status(task_id, "cancelled")
         self.record_completion(task_id, "cancelled")
         return 0
@@ -1321,6 +1473,12 @@ class TaskRegistry:
             raise RegistryError(f"registry_source_symlink: {path.name}")
         if not _stat.S_ISREG(st.st_mode):
             raise RegistryError(f"registry_source_not_regular: {path.name}")
+
+    @staticmethod
+    def _require_revision(expected_revision) -> None:
+        if (not isinstance(expected_revision, int) or isinstance(expected_revision, bool)
+                or expected_revision < 0):
+            raise RegistryError("registry_expected_revision_required")
 
     def _m2a_acquire_lock(self) -> int:
         """Open stable sibling lock inode and acquire LOCK_EX with bounded wait. Returns fd."""
@@ -1410,21 +1568,7 @@ class TaskRegistry:
             "\n".join(json.dumps(r, separators=(",", ":"), ensure_ascii=False) for r in records)
             + "\n"
         ).encode("utf-8")
-        tmp_path = self.registry_file.parent / (self.registry_file.name + ".tmp")
-        tmp_fd = os.open(
-            str(tmp_path), os.O_WRONLY | os.O_CREAT | os.O_TRUNC | os.O_CLOEXEC, 0o600
-        )
-        try:
-            os.write(tmp_fd, content)
-            os.fsync(tmp_fd)
-        finally:
-            os.close(tmp_fd)
-        os.replace(str(tmp_path), str(self.registry_file))
-        dir_fd = os.open(str(self.registry_file.parent), os.O_RDONLY | os.O_DIRECTORY)
-        try:
-            os.fsync(dir_fd)
-        finally:
-            os.close(dir_fd)
+        _atomic_write_bytes(self.registry_file, content)
 
     def _m2a_transact(self, mutator) -> dict:
         """Full transactional cycle: acquire lock → read → mutate → write → release lock."""
@@ -1487,11 +1631,12 @@ class TaskRegistry:
         return self._m2a_transact(_mutate)
 
     def attach_process(self, task_id: str, pid: int, pid_start_time: int,
-                       expected_revision: Optional[int] = None) -> dict:
+                       expected_revision: int) -> dict:
         """Transactional attach-process: add PID+start_time to queued record → running.
 
         DORMANT: No live wrapper calls this. Activation is M2B wrapper adoption.
         """
+        self._require_revision(expected_revision)
         if not isinstance(pid, int) or pid < 1 or pid > 4194304:
             raise RegistryError("registry_pid_invalid")
         if not isinstance(pid_start_time, int) or pid_start_time < 0:
@@ -1504,7 +1649,7 @@ class TaskRegistry:
                 if rec.get("record_version") != _M2A_RECORD_SCHEMA_VERSION:
                     raise RegistryError("registry_legacy_record_cannot_attach")
                 current_rev = rec.get("record_revision", 0)
-                if expected_revision is not None and current_rev != expected_revision:
+                if current_rev != expected_revision:
                     raise RegistryError(
                         f"registry_stale_revision: expected {expected_revision}, got {current_rev}"
                     )
@@ -1527,11 +1672,12 @@ class TaskRegistry:
 
     def transition_m2a(self, task_id: str, to_status: str,
                        terminal_reason: Optional[str] = None,
-                       expected_revision: Optional[int] = None) -> dict:
+                       *, expected_revision: int) -> dict:
         """Transactional state transition for M2A records. Returns the updated record.
 
         DORMANT: No live wrapper calls this. Activation is M2B wrapper adoption.
         """
+        self._require_revision(expected_revision)
         if to_status not in _M2A_LEGAL_TRANSITIONS:
             raise RegistryError(f"registry_illegal_to_status: {to_status!r}")
         if terminal_reason is not None:
@@ -1546,7 +1692,7 @@ class TaskRegistry:
                 if rec.get("record_version") != _M2A_RECORD_SCHEMA_VERSION:
                     raise RegistryError("registry_legacy_record_cannot_transition")
                 current_rev = rec.get("record_revision", 0)
-                if expected_revision is not None and current_rev != expected_revision:
+                if current_rev != expected_revision:
                     raise RegistryError(
                         f"registry_stale_revision: expected {expected_revision}, got {current_rev}"
                     )

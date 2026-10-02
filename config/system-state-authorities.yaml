@@ -105,6 +105,7 @@ authorities:
     observed_writers:
       - {path: "scripts/ai/lib/task_registry.py", line: 35, note: "appends registry.jsonl (35,88,100,364)"}
       - {path: "scripts/ai/delegate-to-codex", line: null, note: "direct registry append/rewrite (also -claude,-gemini,-antigravity)"}
+      - {path: "scripts/ai/lib/registry-update.py", line: 5, note: "argv-only CLI used by delegate-to-codex/-gemini and their background workers; writes via TaskRegistry shared lock + atomic replace"}
       - {path: "ai-stack/mcp-servers/hybrid-coordinator/dispatch.py", line: 1224, note: "direct registry writes (1224,1474)"}
       - {path: "scripts/ai/aq-agent-reap", line: 137, note: "second reconciler rewrites registry.jsonl (json.dumps + fh.write + os.replace, 133-139)"}
     current_condition: SPLIT_BRAIN

@@ -396,6 +396,77 @@ def resolve(alert_id: str, new_status: str, resolved_by: str = "human") -> bool:
     return True
 
 
+def claim_for_execution(alert_id: str, actor: str = "unknown") -> tuple:
+    """Atomically claim a pending alert BEFORE its executor side effect runs.
+
+    Under a blocking exclusive lock, transitions pending -> executing. Exactly
+    one caller wins; everyone else (concurrent approve, approve after reject /
+    expiry / prior claim) gets (False, reason) and must not execute anything.
+    Returns (claimed, reason_or_status, alert_snapshot_or_None).
+    """
+    if not _QUEUE_FILE.exists():
+        return (False, "not_found", None)
+    with open(_QUEUE_FILE, "r+", encoding="utf-8") as fh:
+        fcntl.flock(fh, fcntl.LOCK_EX)  # blocking: claim must serialize, not fail
+        try:
+            data = _load_queue(fh)
+            for a in data.get("alerts", []):
+                if a.get("id") != alert_id:
+                    continue
+                if a.get("status") != "pending":
+                    return (False, str(a.get("status")), None)
+                try:
+                    exp = datetime.fromisoformat(
+                        str(a.get("expires_at", "")).replace("Z", "+00:00")
+                    ).timestamp()
+                    if time.time() > exp:
+                        return (False, "expired", None)
+                except ValueError:
+                    pass
+                a["status"] = "executing"
+                a["claimed_by"] = actor
+                a["claimed_at"] = _now_iso()
+                _save_queue(fh, data)
+                _write_mirror_snapshot(data["alerts"])
+                return (True, "executing", dict(a))
+            return (False, "not_found", None)
+        finally:
+            fcntl.flock(fh, fcntl.LOCK_UN)
+
+
+def finalize_claim(alert_id: str, ok: bool, actor: str = "unknown", error: str = "") -> bool:
+    """Move a claimed (executing) alert to a terminal state: approved or failed.
+
+    Never returns it to pending, so a failed executor is not silently re-run.
+    """
+    if not _QUEUE_FILE.exists():
+        return False
+    with open(_QUEUE_FILE, "r+", encoding="utf-8") as fh:
+        fcntl.flock(fh, fcntl.LOCK_EX)
+        try:
+            data = _load_queue(fh)
+            alerts = data.get("alerts", [])
+            done = None
+            for a in alerts:
+                if a.get("id") == alert_id and a.get("status") == "executing":
+                    a["status"] = "approved" if ok else "failed"
+                    a["resolved_at"] = _now_iso()
+                    a["resolved_by"] = actor
+                    if error:
+                        a["error"] = error[:500]
+                    done = dict(a)
+                    break
+            if done is None:
+                return False
+            data["alerts"] = [a for a in alerts if a.get("id") != alert_id]
+            _save_queue(fh, data)
+            _write_mirror_snapshot(data["alerts"])
+        finally:
+            fcntl.flock(fh, fcntl.LOCK_UN)
+    _append_archive(done)
+    return True
+
+
 def extend_ttl(alert_id: str, extra_hours: int) -> bool:
     """Extend the TTL of a pending alert (aq-defer). Returns True on success."""
     if not _QUEUE_FILE.exists():
