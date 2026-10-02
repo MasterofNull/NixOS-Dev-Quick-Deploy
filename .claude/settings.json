@@ -62,6 +62,24 @@
       "Bash(harness-rpc*)",
       "Bash(git *)",
       "Bash(curl -sf http://127.0.0.1:800*)"
+    ],
+    "ask": [
+      "Bash(aq-approve approve *)",
+      "Bash(scripts/ai/aq-approve approve *)",
+      "Bash(/home/hyperd/Documents/NixOS-Dev-Quick-Deploy/scripts/ai/aq-approve approve *)",
+      "Bash(*aq-approve approve*)",
+      "Bash(aq-approve deny *)",
+      "Bash(scripts/ai/aq-approve deny *)",
+      "Bash(/home/hyperd/Documents/NixOS-Dev-Quick-Deploy/scripts/ai/aq-approve deny *)",
+      "Bash(*aq-approve deny*)",
+      "Bash(aq-approve dismiss *)",
+      "Bash(scripts/ai/aq-approve dismiss *)",
+      "Bash(/home/hyperd/Documents/NixOS-Dev-Quick-Deploy/scripts/ai/aq-approve dismiss *)",
+      "Bash(*aq-approve dismiss*)",
+      "Bash(aq-approve attn-*)",
+      "Bash(scripts/ai/aq-approve attn-*)",
+      "Bash(/home/hyperd/Documents/NixOS-Dev-Quick-Deploy/scripts/ai/aq-approve attn-*)",
+      "Bash(*aq-approve attn-*)"
     ]
   },
   "hooks": {
@@ -72,6 +90,16 @@
           {
             "type": "command",
             "command": "python3 \"$CLAUDE_PROJECT_DIR/scripts/ai/aq-worktree-write-guard\""
+          }
+        ]
+      },
+      {
+        "matcher": "Bash",
+        "hooks": [
+          {
+            "type": "command",
+            "command": "python3 \"$CLAUDE_PROJECT_DIR/scripts/ai/aq-approval-ask-hook\"",
+            "timeout": 5
           }
         ]
       }

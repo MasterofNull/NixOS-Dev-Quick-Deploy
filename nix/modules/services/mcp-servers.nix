@@ -747,6 +747,10 @@ in {
       # not unsafe transitions under a user-owned parent.
       systemd.tmpfiles.rules = lib.mkAfter [
         "z ${mutableLogDir} 0770 root ${aiGroup} -"
+        # M3 (Rule 14): ai-hybrid must traverse the hyperd-owned optimizer dir to read the
+        # canonical PRSI queue. Additive ACL (traverse only) keeps owner/group/mode from base.nix;
+        # prsi/ (0755) and action-queue.json (group ai-stack) are already readable.
+        "a+ ${mutableOptimizerDir} - - - - g:${aiGroup}:--x"
       ];
     })
 
@@ -1098,6 +1102,8 @@ in {
                 "MCP_SERVER_MODE=http"
                 "MCP_SERVER_PORT=${toString mcp.hybridPort}"
                 "HOST=127.0.0.1"
+                # M3: coordinator PRSI handlers read the canonical queue (read-only; mutations shell out to prsi-orchestrator).
+                "PRSI_ACTION_QUEUE_PATH=${mutableOptimizerDir}/prsi/action-queue.json"
                 # s1c (END-TO-END-BARE-METAL-PLAN.md) finding: llama.activeModel
                 # defaults to null ("use explicit model/huggingFaceRepo values
                 # below") — any host that sets the chat model directly instead

@@ -1,0 +1,70 @@
+{
+  "plan": {
+    "id": "approval-inbox-20261002",
+    "title": "Approval inbox SOP",
+    "prd_ref": ".agents/plans/approval-inbox-20261002/PLAN.md",
+    "owner": "hyperd",
+    "goal": "One durable approval inbox; approve in chat; numbered deferred list",
+    "success_criteria": [
+      "Owner approves in chat with one confirmation",
+      "Deferred issues visible as numbered list at session start"
+    ]
+  },
+  "phases": [
+    {
+      "id": "build",
+      "name": "Build",
+      "goal": "Inbox + SOP",
+      "order": 1
+    }
+  ],
+  "items": [
+    {
+      "id": "s1",
+      "name": "aq-approve inbox",
+      "phase": "build",
+      "kind": "slice",
+      "goal": "List/approve/deny/dismiss across stores with snapshot tag",
+      "validation_goal": "test-aq-approve-inbox passes; aq-resume shows counts",
+      "deps": [],
+      "detection": {
+        "commit_match": [
+          "feat(approvals): aq-approve inbox"
+        ]
+      }
+    },
+    {
+      "id": "s2",
+      "name": "Ask-always rule + SOP parity",
+      "phase": "build",
+      "kind": "slice",
+      "goal": "Agents cannot self-approve; SOP in all agent files",
+      "validation_goal": "settings rule present; parity files updated",
+      "deps": [
+        "s1"
+      ],
+      "detection": {
+        "commit_match": [
+          "docs(approvals): approval inbox SOP"
+        ]
+      }
+    },
+    {
+      "id": "s3",
+      "name": "Live chat-door approval",
+      "phase": "build",
+      "kind": "validation",
+      "goal": "Owner re-approves wiped sign-offs via chat",
+      "validation_goal": "verifier_by=owner with door=chat in audit",
+      "deps": [
+        "s1",
+        "s2"
+      ],
+      "detection": {
+        "commit_match": [
+          "chore(approvals): live chat-door validation"
+        ]
+      }
+    }
+  ]
+}

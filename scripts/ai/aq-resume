@@ -19,7 +19,6 @@ COLLAB_DIR = REPO_ROOT / ".agent" / "collaboration"
 RESUME_FILE = COLLAB_DIR / "RESUME.json"
 PULSE_FILE = COLLAB_DIR / "PULSE.log"
 HANDOFF_FILE = COLLAB_DIR / "HANDOFF.md"
-RSI_PENDING_SCRIPT = Path(__file__).parent / "aq-rsi-pending"
 
 def get_resume_state():
     if not RESUME_FILE.exists():
@@ -53,22 +52,23 @@ def get_handoff_summary():
     except Exception:
         return "Error reading HANDOFF.md"
 
-def get_rsi_pending_count():
-    """Get count of high-risk RSI repairs awaiting sign-off."""
-    if not RSI_PENDING_SCRIPT.exists():
-        return None
+def get_inbox_banner():
+    """Approval inbox summary + first 5 numbered lines; silent on any failure."""
+    script = Path(__file__).parent / "aq-approve"
     try:
-        result = subprocess.run(
-            [RSI_PENDING_SCRIPT, "--count"],
-            capture_output=True,
-            text=True,
-            timeout=5
-        )
-        if result.returncode == 0:
-            return int(result.stdout.strip())
-    except (subprocess.TimeoutExpired, ValueError, Exception):
-        pass
-    return None
+        summ = subprocess.run([sys.executable, str(script), "--summary"],
+                              capture_output=True, text=True, timeout=10)
+        if summ.returncode != 0 or not summ.stdout.strip():
+            return []
+        lines = [summ.stdout.strip()]
+        if "need approval" in lines[0] and ": 0 need approval" not in lines[0]:
+            full = subprocess.run([sys.executable, str(script)],
+                                  capture_output=True, text=True, timeout=10)
+            if full.returncode == 0:
+                lines += [l for l in full.stdout.splitlines() if l.startswith("  ")][:5]
+        return lines
+    except Exception:
+        return []
 
 def main():
     state = get_resume_state()
@@ -110,10 +110,11 @@ def main():
     else:
         print(f"  {handoff}")
 
-    # Check for pending RSI repairs awaiting sign-off
-    rsi_pending = get_rsi_pending_count()
-    if rsi_pending and rsi_pending > 0:
-        print(f"\nRSI: {rsi_pending} repair(s) awaiting owner sign-off — run: aq-rsi-pending")
+    banner = get_inbox_banner()
+    if banner:
+        print()
+        for line in banner:
+            print(line)
 
     print("\n" + "=" * 60)
     print("INSTRUCTIONS:")

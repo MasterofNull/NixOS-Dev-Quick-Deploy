@@ -53,6 +53,23 @@ MEMORY_TYPE_ALIASES = {
 }
 
 
+def _prsi_pending_rows(rows) -> list:
+    """Rows awaiting owner sign-off; same rule as approval_inbox.collect() approval section."""
+    out = []
+    for row in rows if isinstance(rows, list) else []:
+        if not isinstance(row, dict) or not row.get("id"):
+            continue
+        raw = row.get("raw_action") if isinstance(row.get("raw_action"), dict) else {}
+        ap = row.get("approval") if isinstance(row.get("approval"), dict) else {}
+        status = row.get("status", "")
+        if raw.get("source") == "rsi-incidents.json":
+            if status in ("rsi_pending", "rsi_failed") and row.get("risk") == "high" and not ap.get("verifier_by"):
+                out.append(row)
+        elif status == "pending_approval":
+            out.append(row)
+    return out
+
+
 def normalize_store_memory_type(context_type: str) -> str:
     """Map local-agent store_memory aliases onto coordinator memory tiers."""
     normalized = str(context_type or "").strip().lower()
@@ -326,30 +343,28 @@ async def discover_objectives_handler(
             resp = await client.get(f"{HYBRID_COORDINATOR_URL}/control/prsi/pending")
             if resp.status_code == 200:
                 data = resp.json()
-                actions = data if isinstance(data, list) else data.get("actions", [])
+                actions = data.get("pending", []) if isinstance(data, dict) else []
                 for a in actions[:10]:
-                    if a.get("approval", {}).get("at") is None:
-                        prsi_items.append({
-                            "id": a.get("id", "")[:16],
-                            "action": a.get("action", ""),
-                            "confidence": a.get("confidence"),
-                            "reason": (a.get("raw_action") or {}).get("reason", "")[:80],
-                        })
+                    prsi_items.append({
+                        "id": str(a.get("id", ""))[:16],
+                        "action": a.get("action", ""),
+                        "confidence": a.get("confidence"),
+                        "reason": str(a.get("reason", ""))[:80],
+                    })
     except Exception:
         # Fall back to reading the queue file directly
         try:
-            qf = _Path("/var/lib/nixos-ai-stack/prsi/action-queue.json")
+            qf = _Path(__import__("os").getenv("PRSI_ACTION_QUEUE_PATH", "/var/lib/nixos-ai-stack/optimizer/prsi/action-queue.json"))
             if qf.exists():
                 data = _json.loads(qf.read_text())
                 actions = data if isinstance(data, list) else data.get("actions", [])
-                for a in actions[:10]:
-                    if a.get("approval", {}).get("at") is None:
-                        prsi_items.append({
-                            "id": a.get("id", "")[:16],
-                            "action": a.get("action", ""),
-                            "confidence": a.get("confidence"),
-                            "reason": (a.get("raw_action") or {}).get("reason", "")[:80],
-                        })
+                for a in _prsi_pending_rows(actions)[:10]:
+                    prsi_items.append({
+                        "id": str(a.get("id", ""))[:16],
+                        "action": a.get("action", ""),
+                        "confidence": a.get("confidence"),
+                        "reason": str(a.get("reason") or (a.get("raw_action") or {}).get("reason", ""))[:80],
+                    })
         except Exception:
             pass
 

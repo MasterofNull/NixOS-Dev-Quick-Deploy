@@ -573,3 +573,17 @@ passthrough). Attested honestly across the 5 DoD dimensions:
 - **DEFERRAL (dated 2026-09-14):** live cutover + intervenability → Product D convergence; tracked in the
   UNIFIED-PROGRAM-PLAN B1 row + Product D gate. B1 itself is NOT done — the "chat/batch parity in shadow"
   tail remains before Foundation B1 closes.
+## RSI M7 — PRSI action dry-run enforcement (2026-10-02)
+
+Subject: branch `fix/rsi-takeover-20261002`, baseline `9b637768`; M7 handler/runtime changes. Final independent review PASS on exact four-file closeout subject SHA-256 `10a589bee9fc20cb04681ca10c52e0f1177e6a4727598b316aa6c87b07022a6b`; original code-subject review PASS on three-file hash `86de407a0efc9e6f29d7e2f3d19309536645f76441e230a83fbb4d7361e25d45`.
+
+- Integrated: YES — execution handler validates the action request and forces optimizer/gap invocations to dry-run.
+- Turned on: DEFERRED — running service remains on Nix-store source; activation deferred to the next batch after gates (dated 2026-10-02).
+- Functionally validated: isolated actual-handler regression PASS; isolated aiohttp HTTP checks PASS for false/type/malformed requests. Safe preview returned 404 due to pre-existing `repo_root` calculation; deployed end-to-end behavior is unverified.
+- Observable: existing observability surface; M6 follow-up is deferred. No new live dashboard signal attested here.
+- Intervenable: `aq-approve` and canonical queue authority remain the route for non-dry-run actions; request `dry_run=false` receives 403.
+- PM-tracked: existing `.agents/plans/prsi-rsi-merge-20261002/tracker.json`; M7 commit match reported.
+
+RAG: one record each acknowledged in `error-solutions`, `best-practices`, and `skills-patterns`. L2B actual-runtime hash refreshed for the legitimate single entry; focused 16 checks PASS.
+
+Validation boundary: final host tier0 rerun PASS, 54 PASS/0 FAIL (`/tmp/codex-rsi-m7-tier0-final.log`). The earlier run had 53 PASS/1 FAIL, QA 0/10.39; artifact 1106 ran 21:38:43Z–21:41:23Z across the 21:40:38Z fixture edit and explicitly reported the old live-source hash at runtime. That transient result was superseded by the passing rerun. Host execution resolved sandbox QA evidence-lock `EROFS` and test timeouts. Runtime activation remains deferred; tier0 success does not attest deployment or full runtime activation. Closeout detail: `.agent/memory/rsi-m7-20261002.md`.
