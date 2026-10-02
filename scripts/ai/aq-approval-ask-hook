@@ -13,7 +13,7 @@ import time
 
 OWNER_DECISION = re.compile(
     r"aq-approve\s+(?:approve|deny|dismiss|attn-)"
-    r"|prsi-orchestrator(?:\.py)?\s+(?:verify|approve|reject)\b"
+    r"|prsi-orchestrator(?:\.py)?\s+(?:verify|approve|reject|rsi-requeue)\b"
     r"|aq-rsi\s+approve\b"
 )
 

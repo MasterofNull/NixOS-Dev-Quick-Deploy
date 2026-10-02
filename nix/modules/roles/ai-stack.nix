@@ -2421,6 +2421,8 @@ in {
             "${cfg.mcpServers.repoPath}/.agent/collaboration"
             "${cfg.mcpServers.repoPath}/.agent/memory/issues-backlog.md"
             "${cfg.mcpServers.repoPath}/.agent/WORKAROUND-REGISTER.md"
+            # codex exec keeps sessions/logs under CODEX_HOME (default ~/.codex).
+            "${config.users.users.${cfg.primaryUser}.home}/.codex"
           ];
           Environment = [
             "AQ_DELEGATION_DIR=${mutableOptimizerDir}/prsi/delegation"

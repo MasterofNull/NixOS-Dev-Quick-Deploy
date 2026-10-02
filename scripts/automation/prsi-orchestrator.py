@@ -345,7 +345,8 @@ def _locked():
 
 
 _EXECUTE_OWNED_FIELDS = ("status", "execution")
-_RSI_OWNED_FIELDS = ("status", "execution", "rsi_attempts")
+_RSI_OWNED_FIELDS = ("status", "execution", "rsi_attempts", "rsi_infra_failures")
+_RSI_INFRA_FAILURE_LIMIT = 6
 
 
 def _merge_save(
@@ -957,6 +958,29 @@ def _run_rsi_delegate(row: Dict[str, Any], timeout_seconds: int, apply: bool, la
     return "rsi_awaiting_validation", receipt
 
 
+_INFRA_PATTERNS = re.compile(r"read-only file system|permission denied|\bEROFS\b|\bEACCES\b|command not found|cannot touch", re.I)
+
+
+def _is_infra_failure(receipt: Any) -> bool:
+    """True when a failed delegate receipt shows an environment fault (not a task/quality failure)."""
+    if not isinstance(receipt, dict):
+        return False
+    try:
+        code = int(receipt.get("exit_code"))
+    except (TypeError, ValueError):
+        return False
+    if code == 0 or receipt.get("reason") == "delegate_timeout":
+        return False
+    tail = str(receipt.get("stderr_tail") or "")
+    if _INFRA_PATTERNS.search(tail):
+        return True
+    for line in tail.splitlines():
+        if re.search(r"no such file or directory", line, re.I) and (
+                re.search(r"exec|env:", line, re.I) or line.lstrip().startswith(("delegate-to-", "[delegate-to-"))):
+            return True
+    return False
+
+
 def _reconcile_stale_rsi_running(queue: Dict[str, Any], timeout_seconds: int) -> int:
     """Release abandoned running rows once the delegate timeout and grace expire."""
     now = datetime.now(timezone.utc)
@@ -1117,6 +1141,22 @@ def cmd_rsi_dispatch(args: argparse.Namespace) -> int:
                     skipped_reasons["skipped_status_changed"] = skipped_reasons.get("skipped_status_changed", 0) + 1
                     continue
                 result, receipt = _run_rsi_delegate(row, timeout_seconds, bool(args.apply), lane)
+                if result == "rsi_failed" and _is_infra_failure(receipt):
+                    # Environment fault: the attempt did not test the repair, so refund it.
+                    row["rsi_attempts"] = max(0, int(row["rsi_attempts"]) - 1)
+                    infra = int(row.get("rsi_infra_failures", 0) or 0) + 1
+                    row["rsi_infra_failures"] = infra
+                    if infra >= _RSI_INFRA_FAILURE_LIMIT:
+                        row["status"] = "rsi_stalled"
+                        row["execution"] = {"last_run_at": _now(), "result": "stalled",
+                                            "reason": "infra_failures_exhausted", "receipt": receipt}
+                    else:
+                        row["status"] = observed_status
+                        row["execution"] = {"last_run_at": _now(), "result": "infra_error", "receipt": receipt}
+                    executed += 1
+                    _merge_save(queue, [row], _RSI_OWNED_FIELDS, {row.get("id"): "rsi_running"})
+                    continue
+                row["rsi_infra_failures"] = 0
                 if result == "rsi_failed" and int(row["rsi_attempts"]) >= max_attempts:
                     result = "rsi_stalled"
                 row["status"] = result
@@ -1462,7 +1502,60 @@ def build_parser() -> argparse.ArgumentParser:
     s_rsi.add_argument("--timeout-seconds", type=int, default=600)
     s_rsi.add_argument("--lane", choices=("codex", "local"), default=None)
     s_rsi.set_defaults(func=cmd_rsi_dispatch)
+
+    s_rq = sub.add_parser("rsi-requeue", help="Requeue owner-approved RSI rows stalled by infrastructure failures")
+    s_rq.add_argument("--id", action="append", default=[])
+    s_rq.add_argument("--dry-run", action="store_true")
+    s_rq.set_defaults(func=cmd_rsi_requeue)
     return p
+
+
+def cmd_rsi_requeue(args: argparse.Namespace) -> int:
+    """Return owner-approved RSI rows stalled by infrastructure faults to rsi_pending."""
+    wanted = list(getattr(args, "id", None) or [])
+    requeued: List[str] = []
+    skipped: Dict[str, str] = {}
+    with _locked():
+        queue = _load_queue()
+        for row in queue["actions"]:
+            if not isinstance(row, dict) or not _is_rsi_row(row):
+                continue
+            rid = row.get("id")
+            if wanted and rid not in wanted:
+                continue
+            execution = row.get("execution") or {}
+            if row.get("status") != "rsi_stalled":
+                reason = f"status_{row.get('status')}"
+            elif not (row.get("approval") or {}).get("verifier_by"):
+                reason = "not_owner_approved"
+            elif not (execution.get("reason") == "infra_failures_exhausted"
+                      or _is_infra_failure(execution.get("receipt"))):
+                reason = "not_infra_failure"
+            else:
+                reason = ""
+            if reason:
+                if wanted:
+                    skipped[str(rid)] = reason
+                continue
+            requeued.append(str(rid))
+            if args.dry_run:
+                continue
+            history = list(execution.get("requeue_history") or [])
+            history.append({"at": _now(), "prior_status": row.get("status"),
+                            "prior_attempts": int(row.get("rsi_attempts", 0) or 0), "reason": "infra_failure"})
+            row["execution"] = {**execution, "requeue_history": history}
+            row["status"] = "rsi_pending"
+            row["rsi_attempts"] = 0
+            row["rsi_infra_failures"] = 0
+        for rid in wanted:
+            if rid not in requeued and rid not in skipped:
+                skipped[rid] = "not_found"
+        if requeued and not args.dry_run:
+            _save_queue(queue)
+    if requeued and not args.dry_run:
+        _log_event({"ts": _now(), "event": "rsi_requeue", "ids": requeued})
+    print(json.dumps({"requeued": requeued, "skipped": skipped, "dry_run": bool(args.dry_run)}, sort_keys=True))
+    return 0
 
 
 def main() -> int:
