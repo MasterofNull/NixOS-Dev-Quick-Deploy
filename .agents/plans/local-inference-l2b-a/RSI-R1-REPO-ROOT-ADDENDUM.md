@@ -34,3 +34,27 @@ tmpfiles `z` re-own was refused by systemd-tmpfiles as an unsafe path transition
 
 Boundary unchanged: queue persistence only; no `local_inference_transport`, no route/auth/dispatch/execution change.
 Evidence: `test-local-inference-l2b.py` 16 PASS; `test-ralph-prsi-repo-root.py` PASS (0444 pre-existing file replaced, mode 0640, no temp leftovers).
+
+## Amendment 2 — Ralph PRSI routes retired (2026-10-02)
+Ralph's private `/api/prsi/*` queue handlers (`sync_prsi_queue`, `execute_prsi_actions`, `approve_prsi_action`, `get_prsi_actions`)
+and the `prsi_sync` capability endpoint are removed. The canonical engine is `scripts/automation/prsi-orchestrator.py`.
+Verification: rg across ai-stack/, scripts/, dashboard/, nix/, config/ found no live caller of Ralph's routes.
+
+| | sha256 |
+|---|---|
+| prior pin (4fedde70) | `a2ee122dc4c21e2e8aaf8099ab54cbfe6e865cc7033403491b96ce11cb7b3110` |
+| rebound pin | `60f5bff936ade5120c319310692222512ccc86679abc2d24943579d30d7a6a3a` |
+
+Boundary: removal only (no `local_inference_transport` introduction; Ralph's health, loop, and task routes unchanged).
+Evidence: `test-local-inference-l2b.py` 16 PASS; `test-ralph-prsi-repo-root.py` PASS (check_service_path only; handler tests removed).
+
+## Amendment 3 — switchboard PRSI hint path (2026-10-02)
+`ai-stack/switchboard/switchboard.py` line 153: one prompt-text string changes from the legacy PRSI queue path to the canonical
+`/var/lib/nixos-ai-stack/optimizer/prsi/action-queue.json`, matching `nix/modules/services/switchboard.nix` (PRSI merge slice M5a).
+
+| | sha256 |
+|---|---|
+| prior pin | `165aff6018be78f5f76f09023b52e4768b01395fa0f8729de9cae16f0e5e5b6d` |
+| rebound pin | `c2d021b7cd6da67739a95090884d026344d893c62a584453495e805233243061` |
+
+Boundary: hint text only; no payload builder, transport, routing or dispatch change.

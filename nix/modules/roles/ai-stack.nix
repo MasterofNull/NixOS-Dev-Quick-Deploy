@@ -2019,8 +2019,12 @@ in {
           NoNewPrivileges = true;
           ProtectSystem = "strict";
           ProtectHome = "read-only";
-          # Attention queue lives in .agents/attention/ inside the repo.
-          ReadWritePaths = ["${cfg.mcpServers.repoPath}/.agents"];
+          # Attention queue lives in .agents/attention/ inside the repo; aq-qa
+          # phase 0 takes its evidence lock in the shared telemetry dir.
+          ReadWritePaths = [
+            "${cfg.mcpServers.repoPath}/.agents"
+            "${cfg.mcpServers.dataDir}/hybrid/telemetry"
+          ];
           PrivateTmp = true;
           TimeoutStartSec = "180";
           MemoryMax = "256M";
@@ -2417,6 +2421,8 @@ in {
             "${cfg.mcpServers.repoPath}/.agent/collaboration"
             "${cfg.mcpServers.repoPath}/.agent/memory/issues-backlog.md"
             "${cfg.mcpServers.repoPath}/.agent/WORKAROUND-REGISTER.md"
+            # codex exec keeps sessions/logs under CODEX_HOME (default ~/.codex).
+            "${config.users.users.${cfg.primaryUser}.home}/.codex"
           ];
           Environment = [
             "AQ_DELEGATION_DIR=${mutableOptimizerDir}/prsi/delegation"

@@ -38,6 +38,7 @@ AI_LIB_DIR = AI_SCRIPT_DIR / "lib"
 if str(AI_LIB_DIR) not in sys.path:
     sys.path.insert(0, str(AI_LIB_DIR))
 
+import prsi_queue  # noqa: E402
 import rsi_gate  # noqa: E402
 from workflow_deviation import (  # noqa: E402
     DeviationContractError,
@@ -331,27 +332,57 @@ def _risk_tier(action: Dict[str, Any]) -> str:
 
 
 def _load_queue() -> Dict[str, Any]:
-    # Fail closed on a malformed file: treating it as empty lets the next save
-    # erase every row and owner sign-off (2026-10-02 aq-throttler incident).
-    payload: Any = {}
-    if QUEUE_PATH.exists():
-        try:
-            payload = json.loads(QUEUE_PATH.read_text(encoding="utf-8"))
-        except ValueError as exc:
-            raise RuntimeError(f"PRSI queue {QUEUE_PATH} is not valid JSON; refusing to overwrite") from exc
-        if not isinstance(payload, dict) or not isinstance(payload.get("actions", []), list):
-            raise RuntimeError(f"PRSI queue {QUEUE_PATH} is not a {{'actions': [...]}} object; refusing to overwrite")
-    actions = payload.get("actions", [])
-    return {
-        "updated_at": payload.get("updated_at"),
-        "actions": actions,
-        "meta": payload.get("meta") if isinstance(payload.get("meta"), dict) else {},
-    }
+    # Fail-closed load shared with every other queue writer (prsi_queue).
+    return prsi_queue.load(QUEUE_PATH)
 
 
 def _save_queue(queue: Dict[str, Any]) -> None:
-    queue["updated_at"] = _now()
-    _write_json(QUEUE_PATH, queue)
+    prsi_queue.save(queue, QUEUE_PATH)
+
+
+def _locked():
+    return prsi_queue.locked(QUEUE_PATH)
+
+
+_EXECUTE_OWNED_FIELDS = ("status", "execution")
+_RSI_OWNED_FIELDS = ("status", "execution", "rsi_attempts", "rsi_infra_failures")
+_RSI_INFRA_FAILURE_LIMIT = 6
+
+
+def _merge_save(
+    queue: Dict[str, Any],
+    rows: List[Dict[str, Any]],
+    fields: Tuple[str, ...],
+    expected_status: Dict[Any, str] | None = None,
+) -> List[Any]:
+    """Write only `fields` of `rows` onto the FRESH queue rows (long-running callers
+    hold a stale snapshot; whole-row replacement would clobber owner actions such as
+    reject/verify and sync bumps).  If "status" is among `fields`, it is written only
+    while the fresh row's status still equals `expected_status[id]`; otherwise the row
+    is left untouched and a merge_conflict event is logged.  Rows absent from the
+    fresh queue are not re-added.  Never touches `approval`.  Returns conflicted ids."""
+    conflicts: List[Any] = []
+    expected_status = expected_status or {}
+    with _locked():
+        fresh = _load_queue()
+        by_id = {r.get("id"): r for r in fresh["actions"] if isinstance(r, dict)}
+        for row in rows:
+            rid = row.get("id")
+            target = by_id.get(rid)
+            if target is None:
+                continue
+            if "status" in fields and target.get("status") != expected_status.get(rid):
+                conflicts.append(rid)
+                _log_event({"ts": _now(), "event": "merge_conflict", "id": rid,
+                            "expected_status": expected_status.get(rid),
+                            "fresh_status": target.get("status")})
+                continue
+            for field in fields:
+                if field in row:
+                    target[field] = row[field]
+        _save_queue(fresh)
+        queue["updated_at"] = fresh.get("updated_at")
+    return conflicts
 
 
 def _fetch_report(since: str) -> Dict[str, Any]:
@@ -575,15 +606,24 @@ def _estimate_action_token_cost(action: Dict[str, Any], policy: Dict[str, Any]) 
 
 def cmd_sync(args: argparse.Namespace, *, incidents_only: bool = False) -> int:
     policy = _load_policy()
-    queue = _load_queue()
-    existing = {a.get("id"): a for a in queue["actions"] if isinstance(a, dict)}
+    # Slow discovery runs before the queue lock; only the load->save is locked.
     if incidents_only:
         # Event-driven intake must not pay for (or depend on) model-backed
         # report generation. Preserve the last full-cycle degradation evidence.
         discovered = _fetch_rsi_incident_actions()
-        degradation = queue.get("meta", {}).get("degradation", {})
+        report = {}
     else:
         discovered, report = _fetch_structured_actions(args.since)
+    with _locked():
+        return _sync_locked(args, policy, discovered, report, incidents_only)
+
+
+def _sync_locked(args, policy, discovered, report, incidents_only: bool) -> int:
+    queue = _load_queue()
+    existing = {a.get("id"): a for a in queue["actions"] if isinstance(a, dict)}
+    if incidents_only:
+        degradation = queue.get("meta", {}).get("degradation", {})
+    else:
         degradation = _compute_degradation_flags(report, policy)
     added = 0
     updated = 0
@@ -650,6 +690,11 @@ def cmd_sync(args: argparse.Namespace, *, incidents_only: bool = False) -> int:
 
 
 def _set_approval(action_id: str, decision: str, by: str, note: str) -> Dict[str, Any]:
+    with _locked():
+        return _set_approval_locked(action_id, decision, by, note)
+
+
+def _set_approval_locked(action_id: str, decision: str, by: str, note: str) -> Dict[str, Any]:
     queue = _load_queue()
     for row in queue["actions"]:
         if row.get("id") == action_id:
@@ -666,6 +711,11 @@ def _set_approval(action_id: str, decision: str, by: str, note: str) -> Dict[str
 
 
 def _set_verifier(action_id: str, by: str, note: str) -> Dict[str, Any]:
+    with _locked():
+        return _set_verifier_locked(action_id, by, note)
+
+
+def _set_verifier_locked(action_id: str, by: str, note: str) -> Dict[str, Any]:
     queue = _load_queue()
     for row in queue["actions"]:
         if row.get("id") == action_id:
@@ -908,6 +958,29 @@ def _run_rsi_delegate(row: Dict[str, Any], timeout_seconds: int, apply: bool, la
     return "rsi_awaiting_validation", receipt
 
 
+_INFRA_PATTERNS = re.compile(r"read-only file system|permission denied|\bEROFS\b|\bEACCES\b|command not found|cannot touch", re.I)
+
+
+def _is_infra_failure(receipt: Any) -> bool:
+    """True when a failed delegate receipt shows an environment fault (not a task/quality failure)."""
+    if not isinstance(receipt, dict):
+        return False
+    try:
+        code = int(receipt.get("exit_code"))
+    except (TypeError, ValueError):
+        return False
+    if code == 0 or receipt.get("reason") == "delegate_timeout":
+        return False
+    tail = str(receipt.get("stderr_tail") or "")
+    if _INFRA_PATTERNS.search(tail):
+        return True
+    for line in tail.splitlines():
+        if re.search(r"no such file or directory", line, re.I) and (
+                re.search(r"exec|env:", line, re.I) or line.lstrip().startswith(("delegate-to-", "[delegate-to-"))):
+            return True
+    return False
+
+
 def _reconcile_stale_rsi_running(queue: Dict[str, Any], timeout_seconds: int) -> int:
     """Release abandoned running rows once the delegate timeout and grace expire."""
     now = datetime.now(timezone.utc)
@@ -967,21 +1040,22 @@ def cmd_rsi_dispatch(args: argparse.Namespace) -> int:
     try:
         # This makes the command independent of the hourly PRSI service cycle.
         cmd_sync(argparse.Namespace(since=args.since), incidents_only=True)
-        queue = _load_queue()
-        resolved = _reconcile_rsi_queue(queue)
-        _reconcile_stale_rsi_running(queue, timeout_seconds)
-        for row in queue["actions"]:
-            if isinstance(row, dict) and _is_rsi_row(row) and row.get("status") == "shadow_queued":
-                row["status"] = "rsi_pending"
         max_attempts = max(1, min(int(args.max_attempts), _RSI_MAX_ATTEMPTS))
-        for row in queue["actions"]:
-            if not isinstance(row, dict) or not _is_rsi_row(row) or row.get("status") != "rsi_failed":
-                continue
-            attempts = int(row.get("rsi_attempts", 0) or 0)
-            if attempts >= max_attempts:
-                row["status"] = "rsi_stalled"
-                row["execution"] = {**(row.get("execution") or {}), "last_run_at": _now(), "result": "max_attempts_exhausted"}
-        _save_queue(queue)
+        with _locked():
+            queue = _load_queue()
+            resolved = _reconcile_rsi_queue(queue)
+            _reconcile_stale_rsi_running(queue, timeout_seconds)
+            for row in queue["actions"]:
+                if isinstance(row, dict) and _is_rsi_row(row) and row.get("status") == "shadow_queued":
+                    row["status"] = "rsi_pending"
+            for row in queue["actions"]:
+                if not isinstance(row, dict) or not _is_rsi_row(row) or row.get("status") != "rsi_failed":
+                    continue
+                attempts = int(row.get("rsi_attempts", 0) or 0)
+                if attempts >= max_attempts:
+                    row["status"] = "rsi_stalled"
+                    row["execution"] = {**(row.get("execution") or {}), "last_run_at": _now(), "result": "max_attempts_exhausted"}
+            _save_queue(queue)
 
         if not args.execute:
             payload = {"ok": True, "lane": lane, "executed": 0, "resolved": resolved, "dry_run": True, "rsi": _rsi_summary(queue)}
@@ -1006,9 +1080,10 @@ def cmd_rsi_dispatch(args: argparse.Namespace) -> int:
         binding_on = bool(rsi_cfg.get("approval_binding_enabled", False))
         gate_skips: Dict[str, int] = {}
         if binding_on:
+            candidates = eligible
             eligible, gate_skips = _rsi_gate_filter(eligible, rsi_cfg, bool(args.apply))
             if gate_skips:
-                _save_queue(queue)
+                _merge_save(queue, candidates, ("execution",))
         # Reuse PRSI's policy/budget gates.  The explicit rsi-dispatch command
         # is the bounded authority source for its isolated delegated task.
         # Fresh execution dicts: a shallow copy would share the original's dict, letting
@@ -1040,7 +1115,7 @@ def cmd_rsi_dispatch(args: argparse.Namespace) -> int:
                 orig_exec.pop("result", None)
                 queue_dirty = True
         if queue_dirty:
-            _save_queue(queue)
+            _merge_save(queue, eligible, ("execution",))
 
         selected_ids = {row.get("id") for row in selected}
         selected_rows = [row for row in eligible if row.get("id") in selected_ids]
@@ -1058,17 +1133,36 @@ def cmd_rsi_dispatch(args: argparse.Namespace) -> int:
                     skipped_reasons["skipped_daily_run_cap"] = skipped_reasons.get("skipped_daily_run_cap", 0) + 1
                     break
             try:
+                observed_status = row.get("status")
                 row["status"] = "rsi_running"
                 row["rsi_attempts"] = int(row.get("rsi_attempts", 0) or 0) + 1
                 row["execution"] = {"last_run_at": _now(), "result": "dispatching_isolated_worktree", "receipt": {"lane": lane}}
-                _save_queue(queue)
+                if _merge_save(queue, [row], _RSI_OWNED_FIELDS, {row.get("id"): observed_status}):
+                    skipped_reasons["skipped_status_changed"] = skipped_reasons.get("skipped_status_changed", 0) + 1
+                    continue
                 result, receipt = _run_rsi_delegate(row, timeout_seconds, bool(args.apply), lane)
+                if result == "rsi_failed" and _is_infra_failure(receipt):
+                    # Environment fault: the attempt did not test the repair, so refund it.
+                    row["rsi_attempts"] = max(0, int(row["rsi_attempts"]) - 1)
+                    infra = int(row.get("rsi_infra_failures", 0) or 0) + 1
+                    row["rsi_infra_failures"] = infra
+                    if infra >= _RSI_INFRA_FAILURE_LIMIT:
+                        row["status"] = "rsi_stalled"
+                        row["execution"] = {"last_run_at": _now(), "result": "stalled",
+                                            "reason": "infra_failures_exhausted", "receipt": receipt}
+                    else:
+                        row["status"] = observed_status
+                        row["execution"] = {"last_run_at": _now(), "result": "infra_error", "receipt": receipt}
+                    executed += 1
+                    _merge_save(queue, [row], _RSI_OWNED_FIELDS, {row.get("id"): "rsi_running"})
+                    continue
+                row["rsi_infra_failures"] = 0
                 if result == "rsi_failed" and int(row["rsi_attempts"]) >= max_attempts:
                     result = "rsi_stalled"
                 row["status"] = result
                 row["execution"] = {"last_run_at": _now(), "result": result.removeprefix("rsi_"), "receipt": receipt}
                 executed += 1
-                _save_queue(queue)
+                _merge_save(queue, [row], _RSI_OWNED_FIELDS, {row.get("id"): "rsi_running"})
             finally:
                 if binding_on:
                     rsi_gate.release(str(row.get("id")), lease_owner, store=_RSI_INCIDENTS.parent)
@@ -1174,53 +1268,77 @@ def _reserve_actions_for_execution(approved, policy, limit, *, dry_run=False):
 
 
 def cmd_execute(args: argparse.Namespace) -> int:
+    # Separate non-queue lock: one execute at a time, but the queue flock is only
+    # held for the short select/mark and result-write phases, never across the
+    # aq-optimizer subprocess (it would starve approve/verify and other writers).
+    exec_lock = QUEUE_PATH.with_name(QUEUE_PATH.name + ".execute.lock")
+    exec_lock.parent.mkdir(parents=True, exist_ok=True)
+    with exec_lock.open("a") as fh:
+        try:
+            fcntl.flock(fh.fileno(), fcntl.LOCK_EX | fcntl.LOCK_NB)
+        except OSError:
+            print(json.dumps({"ok": True, "executed": 0, "message": "execute_already_running"}, sort_keys=True))
+            return 0
+        return _cmd_execute_locked(args)
+
+
+def _execute_select(args: argparse.Namespace, policy: Dict[str, Any]):
+    """Short queue-locked phase. Returns (early_rc, queue, selected, sampled, est_consumed, state)."""
+    with _locked():
+        queue = _load_queue()
+        shadow_blocked = [
+            a for a in queue["actions"]
+            if isinstance(a, dict)
+            and a.get("status") == "approved"
+            and isinstance(a.get("raw_action"), dict)
+            and a["raw_action"].get("shadow_only") is True
+        ]
+        for row in shadow_blocked:
+            row["status"] = "shadow_queued"
+            row.setdefault("execution", {})["result"] = "blocked_shadow_only"
+        approved = [
+            a for a in queue["actions"]
+            if isinstance(a, dict)
+            and a.get("status") == "approved"
+            and isinstance(a.get("raw_action"), dict)
+            and a["raw_action"].get("shadow_only") is not True
+        ]
+        limit = int(args.limit or int(policy.get("max_execute_per_cycle", 5) or 5))
+        if limit > 0:
+            approved = approved[: limit]
+        if not approved:
+            if shadow_blocked:
+                _save_queue(queue)
+            print(json.dumps({"ok": True, "executed": 0, "message": "no approved actions"}, sort_keys=True))
+            return 0, queue, [], [], 0, {}
+
+        selected, sampled, est_consumed, state = _reserve_actions_for_execution(
+            approved, policy, limit, dry_run=args.dry_run
+        )
+        if not selected:
+            _save_queue(queue)
+            payload = {
+                "ok": True,
+                "selected": 0,
+                "sampled_counterfactual": len(sampled),
+                "estimated_tokens_consumed": 0,
+                "message": "no actions selected after policy gates",
+            }
+            _log_event({"ts": _now(), "event": "execute_skipped", **payload})
+            print(json.dumps(payload, sort_keys=True))
+            return 0, queue, [], sampled, 0, state
+        return None, queue, selected, sampled, est_consumed, state
+
+
+def _cmd_execute_locked(args: argparse.Namespace) -> int:
     policy = _load_policy()
     if not bool(policy.get("enabled", True)):
         print(json.dumps({"ok": True, "executed": 0, "message": "policy disabled"}, sort_keys=True))
         return 0
 
-    queue = _load_queue()
-    shadow_blocked = [
-        a for a in queue["actions"]
-        if isinstance(a, dict)
-        and a.get("status") == "approved"
-        and isinstance(a.get("raw_action"), dict)
-        and a["raw_action"].get("shadow_only") is True
-    ]
-    for row in shadow_blocked:
-        row["status"] = "shadow_queued"
-        row.setdefault("execution", {})["result"] = "blocked_shadow_only"
-    approved = [
-        a for a in queue["actions"]
-        if isinstance(a, dict)
-        and a.get("status") == "approved"
-        and isinstance(a.get("raw_action"), dict)
-        and a["raw_action"].get("shadow_only") is not True
-    ]
-    limit = int(args.limit or int(policy.get("max_execute_per_cycle", 5) or 5))
-    if limit > 0:
-        approved = approved[: limit]
-    if not approved:
-        if shadow_blocked:
-            _save_queue(queue)
-        print(json.dumps({"ok": True, "executed": 0, "message": "no approved actions"}, sort_keys=True))
-        return 0
-
-    selected, sampled, est_consumed, state = _reserve_actions_for_execution(
-        approved, policy, limit, dry_run=args.dry_run
-    )
-    if not selected:
-        _save_queue(queue)
-        payload = {
-            "ok": True,
-            "selected": 0,
-            "sampled_counterfactual": len(sampled),
-            "estimated_tokens_consumed": 0,
-            "message": "no actions selected after policy gates",
-        }
-        _log_event({"ts": _now(), "event": "execute_skipped", **payload})
-        print(json.dumps(payload, sort_keys=True))
-        return 0
+    early, queue, selected, sampled, est_consumed, state = _execute_select(args, policy)
+    if early is not None:
+        return early
 
     actions_payload = [a["raw_action"] for a in selected]
     tmp_actions = Path("/tmp/prsi-actions-exec.json")
@@ -1271,7 +1389,7 @@ def cmd_execute(args: argparse.Namespace) -> int:
             ),
         }
         row["status"] = "executed" if was_applied and not args.dry_run else "approved"
-    _save_queue(queue)
+    _merge_save(queue, selected, _EXECUTE_OWNED_FIELDS, {r.get("id"): "approved" for r in selected})
 
     event = {
         "ts": _now(),
@@ -1309,13 +1427,16 @@ def cmd_cycle(args: argparse.Namespace) -> int:
     # Auto-approve low-risk pending actions when configured.
     if AUTO_APPROVE_LOW_RISK:
         changed = 0
-        for row in queue["actions"]:
-            if row.get("status") == "pending_approval" and row.get("risk") == "low":
-                row["status"] = "approved"
-                row["approval"] = {"by": "prsi-auto", "at": _now(), "note": "auto-approve low risk"}
-                changed += 1
+        with _locked():
+            queue = _load_queue()
+            for row in queue["actions"]:
+                if row.get("status") == "pending_approval" and row.get("risk") == "low":
+                    row["status"] = "approved"
+                    row["approval"] = {"by": "prsi-auto", "at": _now(), "note": "auto-approve low risk"}
+                    changed += 1
+            if changed:
+                _save_queue(queue)
         if changed:
-            _save_queue(queue)
             _log_event({"ts": _now(), "event": "auto_approve", "count": changed})
 
     limit = int(args.execute_limit or int(policy.get("max_execute_per_cycle", 5) or 5))
@@ -1381,7 +1502,60 @@ def build_parser() -> argparse.ArgumentParser:
     s_rsi.add_argument("--timeout-seconds", type=int, default=600)
     s_rsi.add_argument("--lane", choices=("codex", "local"), default=None)
     s_rsi.set_defaults(func=cmd_rsi_dispatch)
+
+    s_rq = sub.add_parser("rsi-requeue", help="Requeue owner-approved RSI rows stalled by infrastructure failures")
+    s_rq.add_argument("--id", action="append", default=[])
+    s_rq.add_argument("--dry-run", action="store_true")
+    s_rq.set_defaults(func=cmd_rsi_requeue)
     return p
+
+
+def cmd_rsi_requeue(args: argparse.Namespace) -> int:
+    """Return owner-approved RSI rows stalled by infrastructure faults to rsi_pending."""
+    wanted = list(getattr(args, "id", None) or [])
+    requeued: List[str] = []
+    skipped: Dict[str, str] = {}
+    with _locked():
+        queue = _load_queue()
+        for row in queue["actions"]:
+            if not isinstance(row, dict) or not _is_rsi_row(row):
+                continue
+            rid = row.get("id")
+            if wanted and rid not in wanted:
+                continue
+            execution = row.get("execution") or {}
+            if row.get("status") != "rsi_stalled":
+                reason = f"status_{row.get('status')}"
+            elif not (row.get("approval") or {}).get("verifier_by"):
+                reason = "not_owner_approved"
+            elif not (execution.get("reason") == "infra_failures_exhausted"
+                      or _is_infra_failure(execution.get("receipt"))):
+                reason = "not_infra_failure"
+            else:
+                reason = ""
+            if reason:
+                if wanted:
+                    skipped[str(rid)] = reason
+                continue
+            requeued.append(str(rid))
+            if args.dry_run:
+                continue
+            history = list(execution.get("requeue_history") or [])
+            history.append({"at": _now(), "prior_status": row.get("status"),
+                            "prior_attempts": int(row.get("rsi_attempts", 0) or 0), "reason": "infra_failure"})
+            row["execution"] = {**execution, "requeue_history": history}
+            row["status"] = "rsi_pending"
+            row["rsi_attempts"] = 0
+            row["rsi_infra_failures"] = 0
+        for rid in wanted:
+            if rid not in requeued and rid not in skipped:
+                skipped[rid] = "not_found"
+        if requeued and not args.dry_run:
+            _save_queue(queue)
+    if requeued and not args.dry_run:
+        _log_event({"ts": _now(), "event": "rsi_requeue", "ids": requeued})
+    print(json.dumps({"requeued": requeued, "skipped": skipped, "dry_run": bool(args.dry_run)}, sort_keys=True))
+    return 0
 
 
 def main() -> int:

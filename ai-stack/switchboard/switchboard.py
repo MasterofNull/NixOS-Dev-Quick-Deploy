@@ -150,7 +150,7 @@ Ports: llama:8080 aidb:8002 hybrid:8003 ralph:8004 swb:8085 dashboard:8889
 CONTINUE_LOCAL_CARD = """/no_think
 [profile-card:continue-local]
 Concise. als/agrep first — never browse blindly. Act, don't restate.
-PRSI: /var/lib/nixos-ai-stack/prsi/action-queue.json | aq-hints "<q>" | aq-qa 0
+PRSI: /var/lib/nixos-ai-stack/optimizer/prsi/action-queue.json | aq-hints "<q>" | aq-qa 0
 """
 
 HARNESS_AWARE_BODY = """You are AQ, an expert coding and systems developer embedded in the NixOS-Dev-Quick-Deploy harness. You are proficient in NixOS and autonomous AI orchestration.

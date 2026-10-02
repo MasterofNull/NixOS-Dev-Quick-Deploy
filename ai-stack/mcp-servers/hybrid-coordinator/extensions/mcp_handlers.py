@@ -1026,10 +1026,9 @@ TOOL_DEFINITIONS: List[Tool] = [
     Tool(
         name="mcp_server_prsi_orchestrate",
         description=(
-            "Orchestrate PRSI queue actions via prsi-orchestrator.py. "
-            "Supports: approve/reject a specific queued action by ID, execute all approved actions, "
-            "or sync the queue from aq-report. High-risk actions (risk_level=critical) "
-            "are blocked from MCP approve — require human CLI sign-off."
+            "Read-only view of the PRSI queue: action='list' returns rows awaiting owner sign-off. "
+            "approve/reject/execute/sync are refused: owner decisions go through the approval inbox "
+            "(`aq-approve`), execution and sync run on the ai-prsi-orchestrator timers."
         ),
         inputSchema={
             "type": "object",
@@ -1037,7 +1036,7 @@ TOOL_DEFINITIONS: List[Tool] = [
                 "action": {
                     "type": "string",
                     "description": "Orchestrator subcommand to run.",
-                    "enum": ["approve", "reject", "sync", "execute"],
+                    "enum": ["list", "approve", "reject", "sync", "execute"],
                 },
                 "action_id": {
                     "type": "string",
@@ -2031,28 +2030,19 @@ async def dispatch_tool(name: str, arguments: Any) -> List[TextContent]:
         # P1 — PRSI bridge (Phase audit 2026-05-23)
         elif name == "mcp_server_get_prsi_pending":
             import json as _json
-            queue_path = Path("/var/lib/nixos-ai-stack/prsi/action-queue.json")
+            from workflow.prsi_handlers import _prsi_queue_path, _prsi_pending_rows, _prsi_summary
+            queue_path = _prsi_queue_path()
             if not queue_path.exists():
                 result = {"status": "ok", "pending": [], "count": 0, "queue_exists": False}
             else:
                 queue = _json.loads(queue_path.read_text())
-                terminal_states = {"approved", "rejected", "executed", "completed", "failed", "counterfactual_queued"}
-                all_actions = queue.get("actions", [])
-                pending = [
-                    {
-                        "id": a.get("id", ""),
-                        "type": a.get("type", ""),
-                        "risk_level": a.get("risk_level", ""),
-                        "state": a.get("state", ""),
-                        "summary": str(a.get("action_detail", {}).get("summary", ""))[:200],
-                        "created_at": a.get("created_at", ""),
-                    }
-                    for a in all_actions if a.get("state") not in terminal_states
-                ]
+                all_actions = queue if isinstance(queue, list) else (queue.get("actions", []) if isinstance(queue, dict) else [])
+                pending = [_prsi_summary(a) for a in _prsi_pending_rows(all_actions)]
                 state_counts: Dict[str, int] = {}
                 for a in all_actions:
-                    s = a.get("state", "unknown")
-                    state_counts[s] = state_counts.get(s, 0) + 1
+                    if isinstance(a, dict):
+                        s = a.get("status", "unknown")
+                        state_counts[s] = state_counts.get(s, 0) + 1
                 result = {
                     "status": "ok",
                     "pending": pending,
@@ -2122,71 +2112,9 @@ async def dispatch_tool(name: str, arguments: Any) -> List[TextContent]:
             return [TextContent(type="text", text=json.dumps(result, indent=2))]
 
         elif name == "mcp_server_prsi_orchestrate":
-            import subprocess as _sp
-            import sys as _sys
-            action = str(arguments.get("action", "")).strip()
-            action_id = str(arguments.get("action_id", "")).strip()
-            approved_by = str(arguments.get("approved_by", "mcp-agent")).strip()
-            note = str(arguments.get("note", "")).strip()
-            limit = int(arguments.get("limit", 1))
-            repo_root = Path(__file__).resolve().parents[4]
-            orchestrator = repo_root / "scripts" / "automation" / "prsi-orchestrator.py"
-            if not orchestrator.exists():
-                result = {"status": "error", "error": "prsi-orchestrator.py not found", "path": str(orchestrator)}
-            elif action in ("approve", "reject"):
-                if not action_id:
-                    result = {"status": "error", "error": "action_id required for approve/reject"}
-                else:
-                    # Safety gate: block MCP approval of critical-risk items
-                    queue_path = Path("/var/lib/nixos-ai-stack/prsi/action-queue.json")
-                    if queue_path.exists():
-                        import json as _json
-                        queue = _json.loads(queue_path.read_text())
-                        entry = next((a for a in queue.get("actions", []) if a.get("id") == action_id), None)
-                        if entry and entry.get("risk_level") == "critical" and action == "approve":
-                            result = {
-                                "status": "blocked",
-                                "reason": "critical-risk actions require human CLI sign-off",
-                                "cli": f"python3 scripts/automation/prsi-orchestrator.py approve --id {action_id} --by <name>",
-                            }
-                            _write_audit(name, 'client_error', result["reason"], (_time.perf_counter() - _start) * 1000, arguments)
-                            return [TextContent(type="text", text=json.dumps(result, indent=2))]
-                    cmd = [_sys.executable, str(orchestrator), action, "--id", action_id, "--by", approved_by]
-                    if note:
-                        cmd += ["--note", note]
-                    proc = await asyncio.to_thread(lambda: _sp.run(cmd, capture_output=True, text=True, timeout=30))
-                    result = {
-                        "status": "ok" if proc.returncode == 0 else "failed",
-                        "action": action,
-                        "action_id": action_id,
-                        "exit_code": proc.returncode,
-                        "stdout": proc.stdout[:1000],
-                        "stderr": proc.stderr[:500] if proc.stderr else "",
-                    }
-            elif action == "execute":
-                cmd = [_sys.executable, str(orchestrator), "execute", "--limit", str(limit)]
-                proc = await asyncio.to_thread(lambda: _sp.run(cmd, capture_output=True, text=True, timeout=300))
-                result = {
-                    "status": "ok" if proc.returncode == 0 else "failed",
-                    "action": "execute",
-                    "limit": limit,
-                    "exit_code": proc.returncode,
-                    "stdout": proc.stdout[:2000],
-                    "stderr": proc.stderr[:500] if proc.stderr else "",
-                }
-            elif action == "sync":
-                cmd = [_sys.executable, str(orchestrator), "sync"]
-                proc = await asyncio.to_thread(lambda: _sp.run(cmd, capture_output=True, text=True, timeout=60))
-                result = {
-                    "status": "ok" if proc.returncode == 0 else "failed",
-                    "action": "sync",
-                    "exit_code": proc.returncode,
-                    "stdout": proc.stdout[:2000],
-                    "stderr": proc.stderr[:500] if proc.stderr else "",
-                }
-            else:
-                result = {"status": "error", "error": f"unknown action '{action}'", "valid_actions": ["approve", "reject", "execute", "sync"]}
-            _write_audit(name, 'success' if result.get("status") == "ok" else 'error', None, (_time.perf_counter() - _start) * 1000, arguments)
+            from workflow.prsi_handlers import prsi_orchestrate_readonly
+            result = prsi_orchestrate_readonly(str(arguments.get("action", "")))
+            _write_audit(name, 'success' if result.get("status") == "ok" else 'client_error', None, (_time.perf_counter() - _start) * 1000, arguments)
             return [TextContent(type="text", text=json.dumps(result, indent=2))]
 
         elif name == "context_system_state":

@@ -1,5 +1,14 @@
 # Workaround / Debt Register (SSOT)
 
+## WR-PRSI-M7-REPO-ROOT — dry-run preview resolves wrong repository root — OPEN
+- symptom: safe dry-run preview reaches HTTP handler but returns 404 because `repo_root` resolves to `ai-stack`.
+- band-aid in place? no.
+- root cause: existing `Path.parents` calculation is one level short for this checkout layout.
+- producer to fix: PRSI action execution handler root calculation.
+- fix-path: bounded root-resolution correction with focused handler and isolated HTTP regression; validate against actual expected file path.
+- class: T2 validation-gap · severity: medium · status: OPEN · opened: 2026-10-02.
+- evidence: `/tmp/codex-rsi-m7-live.py` verified request guard behavior; safe preview 404. No deployed-service claim.
+
 Every workaround, band-aid, or ad-hoc fix that is NOT yet fixed at its producer lives here —
 never silently in the code. Governed by `.agent/PROJECT-ROOT-CAUSE-DISCIPLINE-PRD.md` (proposed
 Rule 19). Swept like the agent catch-up queue; items aging past their window escalate.

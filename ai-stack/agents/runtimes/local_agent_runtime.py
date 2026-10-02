@@ -407,7 +407,7 @@ TOOL_SCHEMAS = [
     _T("run_opencode",              "Run opencode agent",       {"prompt": "string"}),
     _T("harness_health",            "Run QA health"),
     _T("get_prsi_pending",          "List PRSI pending"),
-    _T("prsi_orchestrate",          "Execute PRSI action",      {"action": "string"}),
+    _T("prsi_orchestrate",          "Preview PRSI actions (dry-run)", {"action": "string"}),
     _T("recommend_agent_for_task",  "Recommend agent",          {"query": "string"}),
     _T("query_aidb",                "Search AIDB",              {"query": "string"}),
     _T("get_working_memory",        "Get working memory"),
@@ -1145,6 +1145,7 @@ async def _dispatch_tool(client: httpx.AsyncClient, name: str, args: dict) -> st
             if args.get("note"):
                 payload_data["note"] = str(args["note"])
             if action == "execute":
+                payload_data["dry_run"] = True
                 r = await client.post(
                     f"{HYBRID_URL}/control/prsi/actions/execute",
                     json=payload_data,
