@@ -50,8 +50,13 @@ def nix_version(channel: str, attr: str, version_attr: str = "version"):
 
 
 def active_attrs(text: str):
-    m = re.search(r"active\s*=\s*\[(.*?)\];", text, re.S)
-    return re.findall(r'^\s*"([^"]+)"', m.group(1), re.M) if m else []
+    """Promoted members: global `active` plus install-only `leaf` (both count as promoted)."""
+    out = []
+    for key in ("active", "leaf"):
+        m = re.search(key + r"\s*=\s*\[(.*?)\];", text, re.S)
+        if m:
+            out += re.findall(r'^\s*"([^"]+)"', m.group(1), re.M)
+    return out
 
 
 def evaluate(config: dict, manifest_text: str):
@@ -73,7 +78,7 @@ def evaluate(config: dict, manifest_text: str):
                 status = "candidate"
             else:
                 status = "current"
-            rows.append({"category": cat, "attr": attr, "rename": e.get("rename"),
+            rows.append({"category": cat, "attr": attr, "rename": e.get("rename"), "mode": e.get("mode", "active"),
                          "stable": s, "unstable": u, "status": status})
     return rows
 
@@ -114,7 +119,9 @@ def cmd_promote(args) -> int:
     attr = pick["attr"]
     text = original.decode()
     entry = f'    "{attr}" # frontier/{pick["category"]}: stable {pick["stable"]} -> unstable {pick["unstable"]}.\n'
-    text = insert_before_close(text, "active = [", "  ];", entry)
+    # mode "leaf": install-only (no global override) for widely-linked libraries.
+    target = "leaf = [" if pick.get("mode") == "leaf" else "active = ["
+    text = insert_before_close(text, target, "  ];", entry)
     if pick["rename"]:
         text = insert_before_close(text, "renames = {", "  };", f'    {attr} = "{pick["rename"]}";\n')
     MANIFEST.write_text(text)

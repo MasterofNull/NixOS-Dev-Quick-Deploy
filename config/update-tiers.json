@@ -107,6 +107,23 @@
         "policy": "Newest stable kernel, always (owner security protocol 2026-10-01; matches mySystem.kernel.track = latest-stable, host mkForce). Not LTS: upstream fixes land in the newest stable first, LTS receives selected backports later, and the 2026 AI-driven CVE volume (400+ kernel CVEs in a day) makes per-CVE backport triage unworkable. Promote to the fast lane whenever nixpkgs-unstable carries a newer linuxPackages_latest than stable.",
         "activation": "Patched != running: NixOS has no live patching, so a kernel update is only effective after reboot. The pipeline stages the switch and records pending_reboot_since; U4 escalates when a security kernel is pending past the reboot SLA. Previous generations stay in the boot menu as fallback; post-boot audio/GPU/inference probes gate acceptance."
       }
+    ],
+    "media": [
+      {
+        "attr": "ffmpeg",
+        "mode": "leaf",
+        "note": "Install-only: a global override cascades ~60 extra local builds (qtwebengine, opencv, torchaudio)."
+      }
+    ],
+    "security-tools": [
+      {
+        "attr": "nmap"
+      }
+    ],
+    "monitoring": [
+      {
+        "attr": "grafana"
+      }
     ]
   },
   "core": {
