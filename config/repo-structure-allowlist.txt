@@ -263,6 +263,7 @@ scripts/health/system-health-check.sh
 scripts/kernel/kdev
 scripts/kernel/ktest
 scripts/maintenance/system-update-full.sh
+scripts/maintenance/aq-auto-update
 scripts/maintenance/aq-pin-watch
 scripts/maintenance/aq-update-tiers
 scripts/mangohud-profile.sh
