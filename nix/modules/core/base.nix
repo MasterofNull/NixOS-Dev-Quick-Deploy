@@ -114,7 +114,9 @@
   resolvedPackages = builtins.filter (pkg: pkg != null) (
     map (
       name:
-        if builtins.hasAttr name pkgs
+        if (pkgs.fastLaneLeaf or {}) ? ${name}
+        then pkgs.fastLaneLeaf.${name}
+        else if builtins.hasAttr name pkgs
         then pkgs.${name}
         else null
     )

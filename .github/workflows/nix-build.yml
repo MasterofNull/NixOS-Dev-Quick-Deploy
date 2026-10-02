@@ -28,6 +28,18 @@ jobs:
       - name: Check flake
         run: nix flake check --all-systems || true
       
+      - name: Add swap and pre-build llama-cpp alone
+        # llama-cpp's vulkan-shaders-gen spawns its own compiler processes regardless of
+        # --cores; beside other builds, fork() hit ENOMEM on the hosted runner ("Failed to
+        # fork process" -> missing matmul shader symbols -> ld failure, 2026-10-02). Swap
+        # plus a solo build removes the contention; the system build then reuses it.
+        run: |
+          sudo fallocate -l 8G /swapfile-ci && sudo chmod 600 /swapfile-ci
+          sudo mkswap /swapfile-ci >/dev/null && sudo swapon /swapfile-ci
+          free -g
+          nix build .#nixosConfigurations.hyperd-ai-dev.pkgs.llama-cpp \
+            --max-jobs 1 --cores 2 --no-link --print-build-logs
+
       - name: Build hyperd-ai-dev configuration
         run: |
           # No `|| true`: a failed system build must fail this job (it previously always passed).

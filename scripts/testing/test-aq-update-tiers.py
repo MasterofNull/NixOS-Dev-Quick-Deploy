@@ -102,6 +102,25 @@ def test_promote_never_touches_kernel_when_only_kernel_differs():
         assert before == (Path(t) / "manifest.nix").read_bytes()
 
 
+def test_leaf_mode_installs_without_global_override():
+    # Widely-linked libraries promote into `leaf` (install-only), never `active`,
+    # and an existing leaf member counts as promoted (not re-proposed globally).
+    with tempfile.TemporaryDirectory() as d:
+        tmp = Path(d)
+        env = setup(tmp, {"stable:libz": "1.0", "unstable:libz": "2.0"})
+        (tmp / "config.json").write_text(json.dumps({"frontier": {"media": [{"attr": "libz", "mode": "leaf"}]}}))
+        env["AQ_UPDATE_TIERS_BUILD_CMD"] = "true"
+        r = run(env, "promote", "--one")
+        assert r.returncode == 0, r.stderr
+        text = (tmp / "manifest.nix").read_text()
+        import re
+        leaf = re.search(r"leaf\s*=\s*\[(.*?)\];", text, re.S).group(1)
+        active = re.search(r"active\s*=\s*\[(.*?)\];", text, re.S).group(1)
+        assert '"libz"' in leaf and '"libz"' not in active, text
+        r2 = run(env, "promote", "--one")
+        assert "no eligible" in r2.stdout, r2.stdout
+
+
 def test_real_config_is_well_formed():
     cfg = json.loads((ROOT / "config" / "update-tiers.json").read_text())
     cats = set(cfg["frontier"])
