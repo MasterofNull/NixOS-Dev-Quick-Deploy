@@ -134,12 +134,12 @@ Enforcement: local payloads auto-inject the MICRO variant (`shared/llm_config.py
 <!-- canon:begin recursive-self-improvement-sop -->
 ## Recursive Self-Improvement (RSI) Closed-Loop SOP (Canonical — all agents)
 
-- Every agent/slice MUST run the loop: Detect/Measure -> Diagnose/Register -> Seed/Dogfood -> Synthesize Guards -> Reuse. Findings, friction, errors are never discarded or bypassed with silent workarounds; instrument anything unobservable.
-- Serialize heavyweight validation: run tier0 via its wrapper, which serializes through `aq-gate-checkout` itself (never take a second checkout around it).
-- Every found error/friction/limitation (fixed or deferred) MUST be logged in `.agent/memory/issues-backlog.md` ([STATUS] SCOPE — desc — root cause; Severity; Action; File ~line); interim mitigations MUST be registered in `.agent/WORKAROUND-REGISTER.md`.
-- Seed MemoryBroker (`POST :8003/api/memory/facts`) and AIDB (`error-solutions`, `best-practices`, `skills-patterns` via `scripts/data/seed-rag-knowledge.py`); write `.agent/memory/<topic>.md`.
-- Never stop at the fix: add a regression test (`scripts/testing/`) or tier0.d check.
-- Closeout checklist before COMPLETE: root cause diagnosed; backlog/register updated; facts+RAG seeded; guard added; evidence in `HANDOFF.md` + `PULSE.log`.
+- Run the loop every slice: Detect/Measure -> Diagnose/Register -> Seed/Dogfood -> Synthesize Guards -> Reuse. Never discard or silently work around findings; instrument the unobservable.
+- Run tier0 via its wrapper (it takes `aq-gate-checkout` itself; never nest a second checkout).
+- Log every error/friction/limitation (fixed or deferred) in `.agent/memory/issues-backlog.md` ([STATUS] SCOPE — desc — root cause; Severity; Action; File ~line); register interim mitigations in `.agent/WORKAROUND-REGISTER.md`.
+- Seed MemoryBroker (`POST :8003/api/memory/facts`) + AIDB `error-solutions`/`best-practices`/`skills-patterns` (`scripts/data/seed-rag-knowledge.py`); write `.agent/memory/<topic>.md`. Add a regression test or tier0.d check.
+- Owner decisions: show `aq-approve` (numbered; needs-approval + deferred); owner replies "approve 1 3"; run `aq-approve approve 1 3 --tag T --door chat` (always prompts). Agents never self-approve.
+- Closeout: root cause, backlog/register, facts+RAG, guard, evidence in `HANDOFF.md` + `PULSE.log`.
 - Full text: `canon/blocks/recursive-self-improvement-sop.md`
 <!-- canon:end recursive-self-improvement-sop -->
 

@@ -1,0 +1,45 @@
+#!/usr/bin/env python3
+"""PreToolUse hook: force a human permission prompt for owner-decision commands.
+
+Permission `ask` rules do not prompt in auto mode (the classifier decides), so
+the approval-inbox SOP's "harness prompt = owner confirmation" needs a hook
+returning permissionDecision=ask. Read-only inbox listing is not matched.
+"""
+import json
+import os
+import re
+import sys
+import time
+
+OWNER_DECISION = re.compile(
+    r"aq-approve\s+(?:approve|deny|dismiss|attn-)"
+    r"|prsi-orchestrator(?:\.py)?\s+(?:verify|approve|reject)\b"
+    r"|aq-rsi\s+approve\b"
+)
+
+
+def main() -> int:
+    try:
+        payload = json.load(sys.stdin)
+    except ValueError:
+        return 0
+    command = str((payload.get("tool_input") or {}).get("command") or "")
+    if not OWNER_DECISION.search(command):
+        return 0
+    try:
+        with open(os.environ.get("AQ_APPROVAL_HOOK_LOG", os.path.expanduser("~/.cache/aq-approval-ask-hook.log")), "a", encoding="utf-8") as fh:
+            fh.write(json.dumps({"ts": time.time(), "command": command[:200]}) + "\n")
+    except OSError:
+        pass
+    print(json.dumps({
+        "hookSpecificOutput": {
+            "hookEventName": "PreToolUse",
+            "permissionDecision": "ask",
+            "permissionDecisionReason": "Owner decision (approval inbox SOP): confirm to record it as owner.",
+        }
+    }))
+    return 0
+
+
+if __name__ == "__main__":
+    sys.exit(main())

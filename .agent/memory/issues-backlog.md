@@ -5243,6 +5243,7 @@ File: scripts/ai/lib/worktree-isolation.sh; scripts/automation/prsi-orchestrator
 
 [OPEN] shell-hook-rewrites-cat-in-command-substitution — In Claude Bash calls, `KEY=$(cat /run/secrets/...)` did not yield the raw file bytes. The lean-ctx/RTK command-rewrite hook wraps `cat`, so curl sent a wrong key and every protected coordinator route returned 401. The same key read via python got 200. This cost ~10 diagnostic tool calls chasing a phantom coordinator auth bug (token thrash). It also led to a raw `od -c` dump that exposed most of the hybrid coordinator API key in the transcript.
   Severity: medium (silent data corruption in agent shell commands; false-positive outages; secret-exposure side effect).
+  Second symptom (2026-10-02, seen twice): multi-line `python3 -c "<newline>..."` arrives with a literal `\n` prefix -> SyntaxError; the rewrite re-quotes embedded newlines. Interim: use `python3 - <<'EOF'` heredocs.
   Action: exempt `cat` inside `$(...)` and pipelines from the rewrite (only rewrite top-level display reads); interim: read secrets via python/`< file` redirection, never `$(cat)`. Rotate hybrid_coordinator_api_key (owner, sops).
   File: lean-ctx/RTK PreToolUse hook (~/.claude settings hooks)
 
@@ -5270,3 +5271,13 @@ File: scripts/ai/lib/worktree-isolation.sh; scripts/automation/prsi-orchestrator
   Severity: medium (agents see wrong pending set; risk block dead).
   Action: fold into the PRSI->RSI merge plan (repoint + schema fix + test against real row fixtures).
   File: ai-stack/mcp-servers/hybrid-coordinator/workflow/prsi_handlers.py:37,55-68; extensions/mcp_handlers.py:2034,2038-2050,2141,2146
+
+[DONE 2026-10-02] permission-ask-rules-silent-in-auto-mode — Approval-inbox SOP relied on `.claude/settings.json` `permissions.ask` rules for aq-approve so the owner sees a prompt; in auto mode (user defaultMode=auto) ask rules do NOT prompt (classifier decides), so the first live chat-door approvals ran with no prompt (owner: "i did not see any questions requesting permissions"). Root cause: ask rules are advisory to the auto-mode classifier. Fix: PreToolUse hook `scripts/ai/aq-approval-ask-hook` returns permissionDecision=ask for owner-decision commands (aq-approve approve|deny|dismiss|attn-, prsi-orchestrator verify|approve|reject, aq-rsi approve); owner confirmed prompts appear after session restart. Hook logs fires to ~/.cache/aq-approval-ask-hook.log. Regression: test-aq-approval-ask-hook.py.
+  Severity: high (owner-confirmation guard silently absent).
+  Action: done; ask rules kept for non-auto modes.
+  File: .claude/settings.json; scripts/ai/aq-approval-ask-hook
+
+[OPEN] optimizer-routing-override-half-applied — Approved PRSI routing action prefer_local (1961fedbd4138622, owner chat 2026-10-02) executed 18:58Z and wrote DEFAULT_PROVIDER=local to optimizer/overrides.env, but consumers load it only via systemd EnvironmentFile at start: ai-hybrid-coordinator picked it up (restarted 19:01Z by switch), ai-switchboard (started 14:17Z) did not. Root cause: aq-optimizer applies env overrides without restarting/reloading the declared consumer services (`services` field on the action), and runs as hyperd without restart authority, so approved routing changes land only at the next coincidental restart (inconsistent routing between coordinator and switchboard meanwhile).
+  Severity: medium (approved change silently partial).
+  Action: PRSI->RSI merge plan: execution must either trigger a declared reload path (e.g. a systemd path unit on overrides.env restarting listed consumers) or record "applied-pending-restart" with the consumer list surfaced in the approval inbox; interim owner restart of ai-switchboard.
+  File: scripts/ai/aq-optimizer (apply_routing ~167); nix/modules/services/switchboard.nix:564; nix/modules/services/mcp-servers.nix:1412
