@@ -6,8 +6,9 @@
 `promote --one`    add the first eligible, not-yet-promoted attr to
                    nix/overlays/fast-lane-manifest.nix, build-check it and run
                    the manifest tests; restore the manifest byte-identical on
-                   failure. The kernel entry is never promoted (staged
-                   separately; only reported).
+                   failure. Entries with "promote": false are only reported.
+                   The kernel follows linuxPackages_latest (newest stable);
+                   its activation needs a reboot, tracked by aq-auto-update.
 
 Environment overrides for testing (mirrors aq-pin-watch):
 - AQ_UPDATE_TIERS_VERSION_FIXTURE: JSON file mapping "stable:<attr>" /

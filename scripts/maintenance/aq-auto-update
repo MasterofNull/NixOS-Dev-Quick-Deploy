@@ -328,7 +328,35 @@ def activate(ctx, closure):
 
 # ---------------------------------------------------------------- commands
 
+def check_running_kernel(ctx):
+    """Patched != running: no live patching on NixOS, so a newer installed kernel only protects
+    after reboot. Track that gap however it arose and escalate past the reboot SLA."""
+    booted = kernel_of(env("BOOTED_SYSTEM", "/run/booted-system"))
+    current = kernel_of(env("CURRENT_SYSTEM", "/run/current-system"))
+    marker = ctx.state_dir / "pending-reboot"
+    if not booted or not current or booted == current:
+        ctx.status["pending_reboot"] = False
+        if marker.exists() and not ctx.dry:
+            marker.rename(ctx.state_dir / f"pending-reboot.cleared-{now_utc():%Y%m%dT%H%M%SZ}")
+        return
+    since = now_utc()
+    try:
+        since = dt.datetime.fromisoformat(json.loads(marker.read_text())["since"])
+    except (OSError, ValueError, KeyError):
+        if not ctx.dry:
+            marker.write_text(json.dumps({"since": since.isoformat(), "kernel": current}))
+    age_h = (now_utc() - since).total_seconds() / 3600
+    sla_h = float(env("REBOOT_SLA_HOURS", "24"))
+    ctx.status.update({"pending_reboot": True, "pending_reboot_since": since.isoformat(),
+                       "pending_reboot_hours": round(age_h, 1), "reboot_sla_hours": sla_h,
+                       "booted_kernel": booted, "installed_kernel": current})
+    if age_h > sla_h:
+        report_incident(ctx, f"running kernel {booted} is older than installed {current} for "
+                             f"{age_h:.0f}h (reboot SLA {sla_h:.0f}h): security fixes are not active until reboot")
+
+
 def cmd_check(ctx):
+    check_running_kernel(ctx)
     rc, out = ctx.cmd("PIN_WATCH", [str(ctx.repo / "scripts/maintenance/aq-pin-watch"), "check", "--json"],
                       side_effect=False)
     ctx.status["pin_watch_rc"] = rc

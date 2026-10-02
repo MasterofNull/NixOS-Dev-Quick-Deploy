@@ -107,7 +107,10 @@ def test_real_config_is_well_formed():
     cats = set(cfg["frontier"])
     assert {"agent-cli", "ide", "toolchain", "db-client-lang", "sops-cli", "kernel", "perf-tools"} <= cats
     assert "core" in cfg
-    assert all(e.get("promote") is False for e in cfg["frontier"]["kernel"])
+    # Owner security protocol: newest stable kernel, never an LTS pin.
+    kernel = cfg["frontier"]["kernel"]
+    assert [e["attr"] for e in kernel] == ["linuxPackages_latest"], kernel
+    assert all(e.get("promote") is True for e in kernel), kernel
 
 
 if __name__ == "__main__":
