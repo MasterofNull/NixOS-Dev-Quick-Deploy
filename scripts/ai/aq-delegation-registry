@@ -146,7 +146,7 @@ def main() -> int:
     ap.add_argument("task_id")
     ap.add_argument("--pid", type=int, required=True)
     ap.add_argument("--start-time", dest="pid_start_time", type=int, required=True)
-    ap.add_argument("--expected-revision", dest="expected_revision", type=int, default=None)
+    ap.add_argument("--expected-revision", dest="expected_revision", type=int, required=True)
 
     tr = sub.add_parser(
         "transition",
@@ -155,7 +155,7 @@ def main() -> int:
     tr.add_argument("task_id")
     tr.add_argument("--to-status", dest="to_status", required=True)
     tr.add_argument("--terminal-reason", dest="terminal_reason", default=None)
-    tr.add_argument("--expected-revision", dest="expected_revision", type=int, default=None)
+    tr.add_argument("--expected-revision", dest="expected_revision", type=int, required=True)
 
     sh = sub.add_parser("show", help="[M2A dormant] show a single M2A record")
     sh.add_argument("task_id")
@@ -207,7 +207,8 @@ def main() -> int:
     if args.cmd == "transition":
         try:
             result = reg.transition_m2a(
-                args.task_id, args.to_status, args.terminal_reason, args.expected_revision,
+                args.task_id, args.to_status, args.terminal_reason,
+                expected_revision=args.expected_revision,
             )
             print(json.dumps({"ok": True, "record": result}, indent=2))
             return 0
