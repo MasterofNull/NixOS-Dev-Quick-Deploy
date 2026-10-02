@@ -469,7 +469,7 @@ ${prompt}"
         local _audit_helper; _audit_helper="$SCRIPT_DIR/lib/audit-post.sh"
         nohup bash "$SCRIPT_DIR/lib/claude-background-worker.sh" \
             "$output_file" "$_audit_helper" "$_coord_url" "$REGISTRY" "$id" "$role" "$prompt" \
-            "${cmd[@]}" </dev/null > /dev/null 2>&1 &
+            "${cmd[@]}" </dev/null >> "$output_file" 2>&1 &
         local pid=$!
         disown "$pid"
         release_slot
