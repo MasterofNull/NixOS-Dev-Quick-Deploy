@@ -230,6 +230,66 @@ def test_backward_compatible_resume_shape():
         print("PASS backward-compatible RESUME.json shape")
 
 
+def test_snapshot_ttl_pruning():
+    """Stale snapshots are pruned by TTL; agents owning provenance fields are kept."""
+    with tempfile.TemporaryDirectory() as d:
+        _fresh_log(Path(d))
+        import importlib
+        import event_log
+        importlib.reload(event_log)
+        import resume_projector as rp
+        importlib.reload(rp)
+
+        now = time.time()
+        old_ts = now - (30 * 86400)  # 30 days ago
+        recent_ts = now - (5 * 86400)  # 5 days ago
+
+        # Emit old event from agent_old, then recent from agent_recent.
+        # Manually construct events to control timestamps.
+        from contracts.events import Envelope
+        old_ev = Envelope(agent="agent_old", type="resume.update",
+                         ts=old_ts, payload={"resume_hint": "old"})
+        recent_ev = Envelope(agent="agent_recent", type="resume.update",
+                            ts=recent_ts, payload={"resume_hint": "recent"})
+        # Manually inject into event log to bypass time.time() in emit.
+        log_path = event_log.log_path()
+        log_path.parent.mkdir(parents=True, exist_ok=True)
+        with open(log_path, "a") as f:
+            f.write(old_ev.model_dump_json() + "\n")
+            f.write(recent_ev.model_dump_json() + "\n")
+
+        # (a) Default TTL (14 days): agent_old (30 days) is dropped, agent_recent (5 days) stays.
+        proj = rp.project_resume()
+        assert "agent_old" not in proj["agent_snapshots"], "30-day-old snapshot must be pruned"
+        assert "agent_recent" in proj["agent_snapshots"], "5-day-old snapshot must remain"
+        assert proj["_snapshot_ttl_days"] == 14.0, "_snapshot_ttl_days not set correctly"
+
+        # (b) Stale agent that owns a provenance field is kept.
+        # Re-emit old agent with a current_objective field so it owns provenance.
+        old_ev2 = Envelope(agent="agent_old", type="resume.update",
+                          ts=old_ts, payload={"current_objective": "critical"})
+        with open(log_path, "a") as f:
+            f.write(old_ev2.model_dump_json() + "\n")
+        proj = rp.project_resume()
+        assert "agent_old" in proj["agent_snapshots"], \
+            "stale agent owning provenance field must be kept"
+        assert proj["_provenance"]["current_objective"]["agent"] == "agent_old"
+
+        # (c) TTL disabled (=0) keeps all snapshots.
+        prev_ttl = os.environ.pop("RESUME_SNAPSHOT_TTL_DAYS", None)
+        try:
+            os.environ["RESUME_SNAPSHOT_TTL_DAYS"] = "0"
+            proj = rp.project_resume()
+            assert "agent_old" in proj["agent_snapshots"], "TTL=0 must keep stale snapshots"
+            assert proj["_snapshot_ttl_days"] is None, "_snapshot_ttl_days must be None when disabled"
+        finally:
+            if prev_ttl is not None:
+                os.environ["RESUME_SNAPSHOT_TTL_DAYS"] = prev_ttl
+            elif "RESUME_SNAPSHOT_TTL_DAYS" in os.environ:
+                del os.environ["RESUME_SNAPSHOT_TTL_DAYS"]
+        print("PASS snapshot TTL pruning (stale dropped, provenance kept, TTL=0 disabled)")
+
+
 if __name__ == "__main__":
     test_default_ledger_uses_writable_agent_tree()
     test_envelope_idempotency_and_signing()
@@ -241,4 +301,5 @@ if __name__ == "__main__":
     test_concurrent_clobber_resistance()
     test_projector_honors_output_override()
     test_backward_compatible_resume_shape()
+    test_snapshot_ttl_pruning()
     print("ALL PASS")
