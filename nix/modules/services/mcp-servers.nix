@@ -681,8 +681,6 @@ in {
           "d ${dataDir}/ralph/state        0750 ${ralphUser} ${aiGroup} -"
           "d ${dataDir}/ralph/telemetry    0750 ${ralphUser} ${aiGroup} -"
           "f ${dataDir}/ralph/telemetry/ralph-events.jsonl 0640 ${ralphUser} ${aiGroup} - -"
-          # z: a pre-existing hyperd:users 0644 copy blocked Ralph's PRSI queue writes.
-          "z ${dataDir}/ralph/prsi-queue.json 0640 ${ralphUser} ${aiGroup} -"
           "d ${dataDir}/security           0750 ${auditUser} ${aiGroup} -"
           "Z ${dataDir}/security           0750 ${auditUser} ${aiGroup} -"
           "d ${dataDir}/security/evidence  0770 ${auditUser} ${aiGroup} -"

@@ -87,28 +87,60 @@ def check_service_path() -> None:
     )
 
 
-def check_queue_ownership() -> None:
-    result = subprocess.run(
-        [
-            "nix", "eval", "--json",
-            ".#nixosConfigurations.hyperd-ai-dev.config.systemd.tmpfiles.rules",
-        ],
-        check=True,
-        capture_output=True,
-        text=True,
-        timeout=60,
-    )
-    rules = [rule.split() for rule in json.loads(result.stdout)]
-    queue_rules = [r for r in rules if len(r) >= 5 and r[1].endswith("/ralph/prsi-queue.json")]
-    check(
-        any(r[0] == "z" and r[2:5] == ["0640", "ai-ralph", "ai-stack"] for r in queue_rules),
-        f"PRSI queue must be re-owned to ai-ralph:ai-stack 0640; got {queue_rules!r}",
-    )
+def test_atomic_write() -> None:
+    """Extract and test _save_prsi_queue with a read-only file."""
+    tree = ast.parse(SERVER_PATH.read_text(encoding="utf-8"))
+    save_func = None
+    for node in tree.body:
+        if isinstance(node, ast.FunctionDef) and node.name == "_save_prsi_queue":
+            save_func = node
+            break
+
+    check(save_func is not None, "_save_prsi_queue function not found in server.py")
+
+    with tempfile.TemporaryDirectory() as temp_dir:
+        temp_root = Path(temp_dir)
+        queue_file = temp_root / "prsi-queue.json"
+
+        # Create initial file with read-only mode (simulating hyperd-owned file)
+        queue_file.write_text(json.dumps({"actions": []}), encoding="utf-8")
+        queue_file.chmod(0o444)
+
+        namespace = {
+            "asyncio": __import__("asyncio"),
+            "datetime": datetime,
+            "json": json,
+            "os": os,
+            "Path": Path,
+            "tempfile": tempfile,
+            "timezone": timezone,
+            "PRSI_QUEUE_PATH": queue_file,
+        }
+
+        module = ast.Module(body=[save_func], type_ignores=[])
+        module = ast.fix_missing_locations(module)
+        exec(compile(module, str(SERVER_PATH), "exec"), namespace)
+
+        # Call the function with a new action
+        namespace["_save_prsi_queue"]({"actions": [{"id": "test"}]})
+
+        # Verify file is writable now and contains valid JSON
+        content = json.loads(queue_file.read_text(encoding="utf-8"))
+        check("updated_at" in content, f"File should contain updated_at; got {content}")
+        check(content["actions"] == [{"id": "test"}], f"File should contain actions; got {content}")
+
+        # Verify file mode is 0o640
+        stat_mode = queue_file.stat().st_mode & 0o777
+        check(stat_mode == 0o640, f"File mode should be 0o640; got {oct(stat_mode)}")
+
+        # Verify no temp files left behind
+        tmp_files = list(temp_root.glob(".prsi-queue.*.tmp"))
+        check(len(tmp_files) == 0, f"Temp files should be cleaned up; found {tmp_files}")
 
 
 async def main() -> None:
     check_service_path()
-    check_queue_ownership()
+    test_atomic_write()
     server = load_handlers()
     with tempfile.TemporaryDirectory() as temp_dir:
         temp_root = Path(temp_dir)

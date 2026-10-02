@@ -20,6 +20,7 @@ import os
 import sys
 import signal
 import socket
+import tempfile
 import time
 from contextlib import asynccontextmanager
 from datetime import datetime, timezone
@@ -603,10 +604,32 @@ def _load_prsi_queue() -> dict:
 
 
 def _save_prsi_queue(queue: dict) -> None:
-    """Save the PRSI action queue to disk."""
+    """Save the PRSI action queue to disk.
+
+    Atomic rename, not in-place write: a legacy copy may be owned by another
+    user, and only ownership of the directory is guaranteed.
+    """
     PRSI_QUEUE_PATH.parent.mkdir(parents=True, exist_ok=True)
     queue["updated_at"] = datetime.now(timezone.utc).isoformat()
-    PRSI_QUEUE_PATH.write_text(json.dumps(queue, indent=2, default=str), encoding="utf-8")
+    data = json.dumps(queue, indent=2, default=str)
+
+    fd, tmp_path = tempfile.mkstemp(
+        dir=str(PRSI_QUEUE_PATH.parent),
+        prefix=".prsi-queue.",
+        suffix=".tmp"
+    )
+    try:
+        with os.fdopen(fd, "w", encoding="utf-8") as f:
+            f.write(data)
+            os.fsync(f.fileno())
+        os.chmod(tmp_path, 0o640)
+        os.replace(tmp_path, str(PRSI_QUEUE_PATH))
+    except Exception:
+        try:
+            os.unlink(tmp_path)
+        except OSError:
+            pass
+        raise
 
 
 def _recompute_counts(queue: dict) -> None:
