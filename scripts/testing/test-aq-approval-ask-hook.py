@@ -17,6 +17,7 @@ ASK = [
     "/repo/scripts/automation/prsi-orchestrator.py verify --id x --by owner",
     "python3 scripts/automation/prsi-orchestrator.py approve --id x --by owner",
     "aq-rsi approve --bind x",
+    "python3 scripts/automation/prsi-orchestrator.py rsi-requeue --id x",
 ]
 PASS = ["aq-approve", "aq-approve --summary", "aq-approve list --json", "prsi-orchestrator.py list", "true"]
 

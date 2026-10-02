@@ -37,7 +37,8 @@ set -euo pipefail
 
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 REPO_ROOT="$(cd "$SCRIPT_DIR/../.." && pwd)"
-DELEGATION_DIR="$REPO_ROOT/.agents/delegation"
+DELEGATION_DIR="${AQ_DELEGATION_DIR:-$REPO_ROOT/.agents/delegation}"
+export AQ_DELEGATION_DIR="$DELEGATION_DIR"
 OUTPUTS_DIR="$DELEGATION_DIR/outputs"
 REGISTRY="$DELEGATION_DIR/registry.jsonl"
 CLAUDE_BIN="${CLAUDE_BIN:-$HOME/.local/bin/claude}"
