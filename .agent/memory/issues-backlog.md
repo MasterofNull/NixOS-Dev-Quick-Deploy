@@ -5170,3 +5170,8 @@ File: scripts/ai/lib/worktree-isolation.sh; scripts/automation/prsi-orchestrator
   Severity: medium
   Action: Worktree isolation is cwd-only: absolute repo paths and alternate shell tools (lean-ctx ctx_shell) are not confined. Fix: delegate briefs must pass worktree-relative paths only; add a PreToolUse guard denying Write/Edit/shell writes to the main checkout path from worktree sessions, and apply the same git policy to ctx_shell as to Bash.
   File: .claude/worktrees
+
+[OPEN] rsi-f7d1ad90883cfa9a147eb81e — aq-health-spider:osi-layer-cards failure in boot-stability-osi-card-check. Root cause evidence: producer=aq-health-spider:osi-layer-cards; path=scripts/testing/test-boot-stability-regressions.py; authority=harness-qa; os_error=test-boot-stability-regressions.py fails on main at line 191: 'health spider should catch OSI layer cards stuck pending or showing 0/0' — the assertion aborts the file before later regression checks (e.g. aq-approve AppArmor dedupe at line 256) run. Detected=2026-10-02T02:53:52.587969Z.
+  Severity: medium
+  Action: Find whether the health spider lost its OSI-layer pending/0-0 card check (producer regression) or the test's static string drifted; fix the producer, then split the file so one failure cannot mask later regression checks.
+  File: scripts/testing/test-boot-stability-regressions.py

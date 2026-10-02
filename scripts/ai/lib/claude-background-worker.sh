@@ -58,7 +58,7 @@ on_term() {
 }
 trap on_term TERM INT HUP
 
-"$@" > "$output_file" 2>&1 &
+"$@" >> "$output_file" 2>&1 &
 child=$!
 reg_update "provider_pid=$child" "heartbeat_at=$(date -u +%Y-%m-%dT%H:%M:%SZ)" || true
 (
