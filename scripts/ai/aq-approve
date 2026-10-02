@@ -19,7 +19,7 @@ _REPO_ROOT = _HERE.parent.parent
 sys.path.insert(0, str(_HERE))
 sys.path.insert(0, str(_HERE / "lib"))
 
-from attention_queue import get_by_id, resolve  # noqa: E402
+from attention_queue import get_by_id, claim_for_execution, finalize_claim  # noqa: E402
 from task_config import TaskConfig               # noqa: E402
 from task_registry import TaskRegistry           # noqa: E402
 from dispatch import dispatch_task                # noqa: E402
@@ -138,12 +138,33 @@ def _apparmor_rules_already_present(profile: str, rules: list) -> bool:
     return all(str(rule).strip() in text for rule in rules)
 
 
-def main() -> int:
-    if len(sys.argv) < 2 or sys.argv[1] in ("-h", "--help"):
-        print("Usage: aq-approve <alert-id>")
+def _resolve_actor(label: str = "") -> str:
+    """OS identity of the approver (never a hardcoded string), plus optional label."""
+    import os
+    import pwd
+    try:
+        user = pwd.getpwuid(os.getuid()).pw_name
+    except KeyError:
+        user = f"uid:{os.getuid()}"
+    return f"{user}:{label}" if label else user
+
+
+def main(argv=None) -> int:
+    argv = list(sys.argv[1:] if argv is None else argv)
+    actor_label = ""
+    if "--actor" in argv:
+        i = argv.index("--actor")
+        if i + 1 >= len(argv):
+            print("--actor requires a value", file=sys.stderr)
+            return 1
+        actor_label = argv[i + 1][:64]
+        del argv[i:i + 2]
+    if not argv or argv[0] in ("-h", "--help"):
+        print("Usage: aq-approve [--actor LABEL] <alert-id>")
         return 1
 
-    alert_id = sys.argv[1]
+    alert_id = argv[0]
+    actor = _resolve_actor(actor_label)
     alert = get_by_id(alert_id)
 
     if not alert:
@@ -154,41 +175,50 @@ def main() -> int:
         print(f"Alert {alert_id} is already {alert.get('status')!r} — nothing to approve.")
         return 0
 
+    # Atomic single-use claim BEFORE any side effect: only the winner executes.
+    claimed, reason, alert = claim_for_execution(alert_id, actor)
+    if not claimed:
+        print(f"Alert {alert_id} already claimed/resolved ({reason}) — nothing executed.")
+        return 0
+
     boundary = alert.get("autonomy_boundary", "")
     print(f"\n  Approving: {alert.get('title', alert_id)}")
     print(f"  Boundary:  {boundary}")
 
-    # Run executor if present
     executor_key = alert.get("executor")
-    if executor_key:
-        if (
-            executor_key == "apparmor_fix"
-            and _apparmor_rules_already_present(
-                alert.get("payload", {}).get("profile", ""),
-                alert.get("payload", {}).get("rules_proposed", []),
-            )
-        ):
-            print("  Proposed AppArmor rule(s) already present in mcp-servers.nix.")
-            executor_key = None
-        handler = _EXECUTOR_TABLE.get(executor_key)
-        if executor_key is None:
-            pass
-        elif not handler:
-            print(f"  Unknown executor key {executor_key!r} — approval recorded but no action taken.", file=sys.stderr)
-        else:
-            ok = handler(alert)
-            if not ok:
-                print(f"  Executor failed. Alert NOT resolved — retry after fixing the issue.")
-                return 1
+    ok, err = True, ""
+    try:
+        if executor_key:
+            if (
+                executor_key == "apparmor_fix"
+                and _apparmor_rules_already_present(
+                    alert.get("payload", {}).get("profile", ""),
+                    alert.get("payload", {}).get("rules_proposed", []),
+                )
+            ):
+                print("  Proposed AppArmor rule(s) already present in mcp-servers.nix.")
+                executor_key = None
+            handler = _EXECUTOR_TABLE.get(executor_key)
+            if executor_key is None:
+                pass
+            elif not handler:
+                print(f"  Unknown executor key {executor_key!r} — approval recorded but no action taken.", file=sys.stderr)
+            else:
+                ok = bool(handler(alert))
+                if not ok:
+                    err = "executor returned failure"
+    except Exception as exc:  # noqa: BLE001 — record terminal failure, never re-run
+        ok, err = False, f"{type(exc).__name__}: {exc}"
 
-    # Mark resolved
-    ok = resolve(alert_id, "approved", resolved_by="human")
-    if ok:
-        print(f"  Approved. Alert archived.")
-        return 0
-    else:
-        print(f"  resolve() failed — alert may have been resolved by another process.", file=sys.stderr)
+    if not finalize_claim(alert_id, ok, actor=actor, error=err):
+        print("  finalize failed — claimed alert state changed unexpectedly.", file=sys.stderr)
         return 1
+    if not ok:
+        print(f"  Executor failed ({err}). Alert marked FAILED (terminal; not re-run). "
+              "Push a new alert to retry.", file=sys.stderr)
+        return 1
+    print("  Approved. Alert archived.")
+    return 0
 
 
 if __name__ == "__main__":
