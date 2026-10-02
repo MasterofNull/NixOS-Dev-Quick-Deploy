@@ -634,7 +634,7 @@ async def sync_prsi_queue(since: str = "1d", auth: str = Depends(require_auth)):
     try:
         result = subprocess.run(
             ["scripts/ai/aq-optimizer", "--dry-run", "--output-json"],
-            cwd="/home/hyperd/Documents/NixOS-Dev-Quick-Deploy",
+            cwd=os.environ["REPO_ROOT"],
             capture_output=True,
             text=True,
             timeout=30
@@ -697,7 +697,7 @@ async def execute_prsi_actions(
                 if not dry_run:
                     result = subprocess.run(
                         ["scripts/ai/aq-optimizer", "--apply", "--output-json"],
-                        cwd="/home/hyperd/Documents/NixOS-Dev-Quick-Deploy",
+                        cwd=os.environ["REPO_ROOT"],
                         capture_output=True,
                         text=True,
                         timeout=60

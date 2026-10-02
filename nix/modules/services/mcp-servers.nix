@@ -631,7 +631,7 @@ in {
             local path="$2"
             ${pkgs.coreutils}/bin/install -d -m "$mode" -o ${lib.escapeShellArg svcUser} -g ${lib.escapeShellArg aiGroup} "$path"
           }
-          ${lib.concatMapStringsSep "\n" (path: "create_path 0750 ${lib.escapeShellArg path}") (lib.unique (mutableProgramPaths ++ cfg.deployment.mutableSpaces.userWritablePaths))}
+          ${lib.concatMapStringsSep "\n" (path: "create_path 0750 ${lib.escapeShellArg path}") (lib.unique (lib.filter (path: path != mutableStateDir) (mutableProgramPaths ++ cfg.deployment.mutableSpaces.userWritablePaths)))}
           ${lib.concatMapStringsSep "\n" (path: "create_path 0770 ${lib.escapeShellArg path}") (lib.unique runtimeWorkspaceRoots)}
         '';
       };
@@ -648,6 +648,7 @@ in {
           "d ${dataDir}/aidb/shared-skills 0750 ${aidbUser} ${aiGroup} -"
           "Z ${dataDir}/aidb/shared-skills 0750 ${aidbUser} ${aiGroup} -"
           "d ${dataDir}/hybrid             0750 ${hybridUser} ${aiGroup} -"
+          "d ${mutableStateDir}/agent       0750 ${hybridUser} ${aiGroup} -"
           # Phase 117.1 — 0770 lets hyperd (in ai-stack group) write mirror artifacts
           # (attention-snapshot.json, agent-resume.json) from aq-session-start and
           # attention_queue.py so ai-system-state can read them as ai-hybrid.
@@ -1431,6 +1432,7 @@ in {
         after = ralphDeps;
         requires = ralphDeps;
         wants = ["network-online.target"];
+        path = [ralphPython];
         serviceConfig =
           commonServiceConfig
           // {
@@ -1463,6 +1465,7 @@ in {
                 "AIDER_WRAPPER_HOST=127.0.0.1"
                 "AIDER_WRAPPER_PORT=${toString mcp.aiderWrapperPort}"
                 "DATA_DIR=${dataDir}/ralph"
+                "REPO_ROOT=${mcp.repoPath}"
                 "XDG_STATE_HOME=${dataDir}/ralph/state"
                 "RALPH_STATE_FILE=${dataDir}/ralph/ralph-state.json"
                 "RALPH_TELEMETRY_PATH=${dataDir}/ralph/telemetry/ralph-events.jsonl"
