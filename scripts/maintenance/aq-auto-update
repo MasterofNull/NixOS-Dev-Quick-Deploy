@@ -1,0 +1,520 @@
+#!/run/current-system/sw/bin/python3
+"""Deterministic unattended update pipeline (tiered-auto-update slice U3). No LLM.
+
+Subcommands:
+  check                 notify-only: report pending pin updates + write status. No lock lease,
+                        no build, no switch.
+  run [--dry-run]       gated activation (see decisions 3-5 in the plan FREEZE.md).
+  rollback --to PATH    switch to a recorded closure (used by the watchdog unit).
+
+Every external command is overridable for tests with AQ_AUTO_UPDATE_CMD_<NAME>
+(shlex-split; placeholders {repo} {attr} {closure} {state_dir} are substituted):
+  FLAKE_UPDATE PIN_WATCH STOP_LLAMA START_LLAMA BUILD SET_PROFILE SWITCH DIFF
+  FAILED_UNITS QA RSI WATCHDOG_ARM WATCHDOG_DISARM
+Other injection points:
+  AQ_AUTO_UPDATE_REPO, _STATE_DIR, _FLAKE_ATTR, _NOW (ISO-8601 UTC), _CURRENT_SYSTEM,
+  _LLAMA_URL, _COORDINATOR_URL, _HTTP_FIXTURE (json url->body|null), _REGISTRY,
+  _LOOP_STATE, _MEMINFO, _ROOT_PATH, _BOOT_PATH, _MIN_FREE_ROOT_GB, _MIN_FREE_BOOT_MB,
+  _MIN_MEM_AVAILABLE_GB, _QUIET_SECONDS (default 900), _HEALTH_TIMEOUT (300),
+  _HEALTH_INTERVAL (20), _HEALTH_PASSES (3).
+
+Exit: 0 = deferred/no-op/success, 1 = failed (rollback attempted), 2 = usage/internal.
+"""
+import argparse
+import datetime as dt
+import fcntl
+import json
+import os
+import shlex
+import shutil
+import subprocess
+import sys
+import time
+import urllib.request
+from pathlib import Path
+
+E = "AQ_AUTO_UPDATE_"
+TERMINAL_LOOP_PHASES = {"COMPLETE", "COMPLETED", "ESCALATED"}
+ACTIVE_REGISTRY_STATES = {"running", "queued"}
+
+
+def env(name, default=None):
+    return os.environ.get(E + name, default)
+
+
+def now_utc():
+    raw = env("NOW")
+    if raw:
+        return dt.datetime.fromisoformat(raw.replace("Z", "+00:00")).astimezone(dt.timezone.utc)
+    return dt.datetime.now(dt.timezone.utc)
+
+
+def in_window(t):
+    """Weekly activation window: Sunday 02:00-04:00 UTC."""
+    return t.weekday() == 6 and 2 <= t.hour < 4
+
+
+OWNER_CMDS = frozenset({"FLAKE_UPDATE", "PIN_WATCH", "QA", "RSI"})
+
+
+class Ctx:
+    def __init__(self, dry_run=False):
+        here = Path(__file__).resolve().parents[2]
+        self.repo = Path(env("REPO", str(here)))
+        self.state_dir = Path(env("STATE_DIR", "/var/lib/aq-auto-update"))
+        self.attr = env("FLAKE_ATTR", "hyperd-ai-dev")
+        self.dry = dry_run
+        self.log_lines = []
+        self.status = {
+            "outcome": "unknown", "started_at": now_utc().isoformat(), "dry_run": dry_run,
+            "versions_moved": [], "rollback": False, "pending_reboot": False, "reason": "",
+            "previous_closure": None, "new_closure": None,
+        }
+
+    def log(self, msg):
+        line = f"[aq-auto-update] {msg}"
+        self.log_lines.append(line)
+        print(line, file=sys.stderr)
+
+    def fmt(self, s):
+        for k, v in (("{repo}", str(self.repo)), ("{attr}", self.attr),
+                     ("{state_dir}", str(self.state_dir)), ("{closure}", getattr(self, "closure", ""))):
+            s = s.replace(k, v)
+        return s
+
+    def cmd(self, name, default_argv, side_effect=True, closure="", cwd=None, timeout=7200):
+        """Run an overridable external command. Side-effecting commands are only logged in dry-run."""
+        self.closure = closure
+        override = env("CMD_" + name)
+        argv = shlex.split(self.fmt(override)) if override else [self.fmt(a) for a in default_argv]
+        # Repo helpers are user-writable code: never execute them as root. Run them as the
+        # repo owner (also keeps flake.lock/pin edits owner-owned).
+        run_as = env("RUN_AS")
+        if run_as and name in OWNER_CMDS:
+            argv = ["runuser", "-u", run_as, "--"] + argv
+        if self.dry and side_effect:
+            self.log(f"DRY-RUN would run {name}: {' '.join(argv)}")
+            return 0, ""
+        try:
+            p = subprocess.run(argv, capture_output=True, text=True, timeout=timeout,
+                               cwd=cwd or str(self.repo))
+        except (OSError, subprocess.TimeoutExpired) as exc:
+            self.log(f"{name} could not run: {exc}")
+            return 127, str(exc)
+        out = (p.stdout or "") + (p.stderr or "")
+        self.log(f"{name} rc={p.returncode}")
+        return p.returncode, out
+
+    def save_status(self):
+        self.status["finished_at"] = now_utc().isoformat()
+        if self.dry:
+            self.log(f"DRY-RUN would write status.json: {json.dumps(self.status, sort_keys=True)}")
+            return
+        try:
+            self.state_dir.mkdir(parents=True, exist_ok=True)
+            tmp = self.state_dir / "status.json.tmp"
+            tmp.write_text(json.dumps(self.status, indent=2, sort_keys=True))
+            os.replace(tmp, self.state_dir / "status.json")
+        except OSError as exc:
+            self.log(f"cannot write status.json: {exc}")
+
+    def finish(self, outcome, reason, code=0):
+        self.status["outcome"] = outcome
+        self.status["reason"] = reason
+        self.log(f"outcome={outcome} reason={reason}")
+        self.save_status()
+        return code
+
+
+# ---------------------------------------------------------------- signals
+
+def http_get(url, timeout=5):
+    """Return body text, or None if unreachable/unreadable."""
+    fx = env("HTTP_FIXTURE")
+    if fx:
+        try:
+            body = json.loads(Path(fx).read_text()).get(url)
+        except (OSError, ValueError):
+            return None
+        return None if body is None else (body if isinstance(body, str) else json.dumps(body))
+    try:
+        with urllib.request.urlopen(url, timeout=timeout) as r:
+            return r.read().decode()
+    except Exception:
+        return None
+
+
+def llama_url():
+    return env("LLAMA_URL", "http://127.0.0.1:" + os.environ.get("LLAMA_CPP_PORT", "8080"))
+
+
+def coord_url():
+    return env("COORDINATOR_URL", "http://127.0.0.1:" + os.environ.get("HYBRID_COORDINATOR_PORT", "8003"))
+
+
+def activity_signals(ctx):
+    """Return (active_reasons, unknown_reasons). Any unknown is treated as busy by the caller."""
+    active, unknown = [], []
+
+    body = http_get(llama_url() + "/slots")
+    try:
+        slots = json.loads(body) if body is not None else None
+    except ValueError:
+        slots = None
+    if not isinstance(slots, list):
+        unknown.append("llama /slots unreadable")
+    else:
+        if any(isinstance(s, dict) and s.get("is_processing") for s in slots):
+            active.append("llama slot is_processing")
+        if any(not isinstance(s, dict) or "is_processing" not in s for s in slots):
+            unknown.append("llama /slots malformed")
+
+    reg = Path(env("REGISTRY", str(ctx.repo / ".agents" / "delegation" / "registry.jsonl")))
+    if reg.exists():
+        try:
+            for ln in reg.read_text().splitlines():
+                if not ln.strip():
+                    continue
+                st = json.loads(ln).get("status")
+                if st in ACTIVE_REGISTRY_STATES:
+                    active.append(f"delegation registry row status={st}")
+                    break
+        except (OSError, ValueError):
+            unknown.append("delegation registry unreadable")
+    elif not reg.parent.is_dir():
+        unknown.append("delegation registry directory missing")
+
+    ls = Path(env("LOOP_STATE", str(ctx.repo / ".agent" / "collaboration" / "LOOP_STATE.json")))
+    if ls.exists():
+        try:
+            phase = str(json.loads(ls.read_text()).get("phase", "")).upper()
+            if phase not in TERMINAL_LOOP_PHASES:
+                active.append(f"aq-loop phase={phase or 'unset'}")
+        except (OSError, ValueError):
+            unknown.append("LOOP_STATE.json unreadable")
+    elif not ls.parent.is_dir():
+        unknown.append("LOOP_STATE directory missing")
+    return active, unknown
+
+
+def admission_lease(ctx, persist=True):
+    """True only if signals have been continuously idle for QUIET_SECONDS across observations."""
+    quiet_need = int(env("QUIET_SECONDS", "900"))
+    path = ctx.state_dir / "lease.json"
+    t = now_utc().timestamp()
+    active, unknown = activity_signals(ctx)
+    prev = {}
+    try:
+        prev = json.loads(path.read_text())
+    except (OSError, ValueError):
+        pass
+
+    def store(quiet_since):
+        if persist and not ctx.dry:
+            try:
+                ctx.state_dir.mkdir(parents=True, exist_ok=True)
+                path.write_text(json.dumps({"quiet_since": quiet_since, "last_observed": t}))
+            except OSError as exc:
+                ctx.log(f"cannot persist lease: {exc}")
+
+    if active or unknown:
+        store(None)
+        ctx.log(f"lease denied: active={active} unknown={unknown}")
+        return False, "agent activity" if active else "unknown activity signal"
+    quiet_since = prev.get("quiet_since")
+    # An observation gap larger than 2x the quiet window means continuity is unproven.
+    if quiet_since is None or t - float(prev.get("last_observed", 0)) > 2 * quiet_need or quiet_since > t:
+        store(t)
+        ctx.log("lease: idle observed, quiet window started")
+        return False, "quiet window not yet elapsed"
+    store(quiet_since)
+    elapsed = t - float(quiet_since)
+    if elapsed < quiet_need:
+        ctx.log(f"lease: idle for {int(elapsed)}s of {quiet_need}s")
+        return False, "quiet window not yet elapsed"
+    return True, ""
+
+
+def preflight(ctx):
+    root = env("ROOT_PATH", "/")
+    boot = env("BOOT_PATH", "/boot")
+    min_root = float(env("MIN_FREE_ROOT_GB", "20")) * 2**30
+    min_boot = float(env("MIN_FREE_BOOT_MB", "100")) * 2**20
+    min_mem = float(env("MIN_MEM_AVAILABLE_GB", "2")) * 2**30
+    try:
+        if shutil.disk_usage(root).free < min_root:
+            return f"free space on {root} below threshold"
+        if os.path.exists(boot) and shutil.disk_usage(boot).free < min_boot:
+            return f"free space on {boot} below threshold"
+        avail = None
+        for ln in Path(env("MEMINFO", "/proc/meminfo")).read_text().splitlines():
+            if ln.startswith("MemAvailable:"):
+                avail = int(ln.split()[1]) * 1024
+        if avail is None:
+            return "MemAvailable unreadable"
+        # llama-cpp is stopped before the build, so this is checked against the post-stop budget
+        # only for sanity; it must at least leave room for the OS.
+        if avail < min_mem:
+            return "MemAvailable below threshold"
+    except (OSError, ValueError) as exc:
+        return f"resource preflight unreadable: {exc}"
+    return ""
+
+
+def failed_units(ctx):
+    rc, out = ctx.cmd("FAILED_UNITS", ["systemctl", "--failed", "--no-legend", "--plain"], side_effect=False)
+    if rc != 0:
+        return None
+    return {ln.split()[0] for ln in out.splitlines() if ln.strip()}
+
+
+def health_ok(ctx, baseline_failed):
+    """One health probe pass. Returns (ok, why)."""
+    cur = failed_units(ctx)
+    if cur is None:
+        return False, "systemctl --failed unreadable"
+    new = cur - (baseline_failed or set())
+    if new:
+        return False, f"new failed units: {sorted(new)}"
+    for name, url in (("llama", llama_url() + "/health"), ("coordinator", coord_url() + "/health")):
+        body = http_get(url)
+        if body is None:
+            return False, f"{name} /health unreachable"
+    rc, _ = ctx.cmd("QA", [str(ctx.repo / "scripts/ai/aq-qa"), "0", "--machine"], side_effect=False, timeout=600)
+    if rc != 0:
+        return False, "aq-qa phase 0 failed"
+    return True, ""
+
+
+def health_gate(ctx, baseline_failed):
+    timeout = float(env("HEALTH_TIMEOUT", "300"))
+    interval = float(env("HEALTH_INTERVAL", "20"))
+    need = int(env("HEALTH_PASSES", "3"))
+    deadline = time.monotonic() + timeout
+    streak, why = 0, ""
+    while True:
+        ok, why = health_ok(ctx, baseline_failed)
+        streak = streak + 1 if ok else 0
+        ctx.log(f"health streak={streak}/{need} {why}")
+        if streak >= need:
+            return True, ""
+        if time.monotonic() + interval > deadline:
+            return False, why or "health gate timed out"
+        time.sleep(interval)
+
+
+def report_incident(ctx, text):
+    ctx.cmd("RSI", [str(ctx.repo / "scripts/ai/aq-rsi"), "report", text,
+                    "--producer", "aq-auto-update", "--subject", "unattended update",
+                    "--severity", "high", "--path", "scripts/maintenance/aq-auto-update"],
+            timeout=120)
+
+
+def kernel_of(closure):
+    try:
+        return os.path.realpath(os.path.join(closure, "kernel"))
+    except OSError:
+        return None
+
+
+def activate(ctx, closure):
+    rc, _ = ctx.cmd("SET_PROFILE", ["nix-env", "-p", "/nix/var/nix/profiles/system", "--set", "{closure}"],
+                    closure=closure)
+    if rc != 0:
+        return rc
+    rc, _ = ctx.cmd("SWITCH", ["{closure}/bin/switch-to-configuration", "switch"], closure=closure)
+    return rc
+
+
+# ---------------------------------------------------------------- commands
+
+def check_running_kernel(ctx):
+    """Patched != running: no live patching on NixOS, so a newer installed kernel only protects
+    after reboot. Track that gap however it arose and escalate past the reboot SLA."""
+    booted = kernel_of(env("BOOTED_SYSTEM", "/run/booted-system"))
+    current = kernel_of(env("CURRENT_SYSTEM", "/run/current-system"))
+    marker = ctx.state_dir / "pending-reboot"
+    if not booted or not current or booted == current:
+        ctx.status["pending_reboot"] = False
+        if marker.exists() and not ctx.dry:
+            marker.rename(ctx.state_dir / f"pending-reboot.cleared-{now_utc():%Y%m%dT%H%M%SZ}")
+        return
+    since = now_utc()
+    try:
+        since = dt.datetime.fromisoformat(json.loads(marker.read_text())["since"])
+    except (OSError, ValueError, KeyError):
+        if not ctx.dry:
+            marker.write_text(json.dumps({"since": since.isoformat(), "kernel": current}))
+    age_h = (now_utc() - since).total_seconds() / 3600
+    sla_h = float(env("REBOOT_SLA_HOURS", "24"))
+    ctx.status.update({"pending_reboot": True, "pending_reboot_since": since.isoformat(),
+                       "pending_reboot_hours": round(age_h, 1), "reboot_sla_hours": sla_h,
+                       "booted_kernel": booted, "installed_kernel": current})
+    if age_h > sla_h:
+        report_incident(ctx, f"running kernel {booted} is older than installed {current} for "
+                             f"{age_h:.0f}h (reboot SLA {sla_h:.0f}h): security fixes are not active until reboot")
+
+
+def cmd_check(ctx):
+    check_running_kernel(ctx)
+    rc, out = ctx.cmd("PIN_WATCH", [str(ctx.repo / "scripts/maintenance/aq-pin-watch"), "check", "--json"],
+                      side_effect=False)
+    ctx.status["pin_watch_rc"] = rc
+    ctx.status["pin_watch"] = out[-2000:]
+    in_w = in_window(now_utc())
+    ctx.status["in_activation_window"] = in_w
+    return ctx.finish("check-only", "notify-only check complete", 0 if rc == 0 else 1)
+
+
+def cmd_rollback(ctx, target):
+    rc = activate(ctx, target)
+    return ctx.finish("rolled-back" if rc == 0 else "rollback-failed", f"watchdog rollback to {target}", rc)
+
+
+def cmd_run(ctx):
+    t = now_utc()
+    if not in_window(t):
+        return ctx.finish("refused", "outside Sun 02:00-04:00 UTC window")
+    if (ctx.state_dir / "halted").exists():
+        return ctx.finish("deferred", "updates halted after a failed recovery; clear state_dir/halted to resume")
+
+    lock_fh = None
+    if not ctx.dry:
+        try:
+            ctx.state_dir.mkdir(parents=True, exist_ok=True)
+            lock_fh = open(ctx.state_dir / "update.lock", "w")
+            fcntl.flock(lock_fh, fcntl.LOCK_EX | fcntl.LOCK_NB)
+        except OSError:
+            return ctx.finish("deferred", "another update run holds the lock")
+
+    ok, why = admission_lease(ctx)
+    if not ok:
+        return ctx.finish("deferred", f"admission lease: {why}")
+
+    why = preflight(ctx)
+    if why:
+        return ctx.finish("deferred", f"resource preflight: {why}")
+
+    # Baseline: essential services must be healthy before touching anything.
+    baseline = failed_units(ctx)
+    if baseline is None:
+        return ctx.finish("deferred", "baseline systemctl --failed unreadable")
+    for name, url in (("llama", llama_url() + "/health"), ("coordinator", coord_url() + "/health")):
+        if http_get(url) is None:
+            return ctx.finish("deferred", f"baseline {name} unhealthy")
+
+    prev = os.path.realpath(env("CURRENT_SYSTEM", "/run/current-system"))
+    ctx.status["previous_closure"] = prev
+    ctx.log(f"rollback target recorded: {prev}")
+
+    lock_bak = ctx.state_dir / "flake.lock.bak"
+    if not ctx.dry:
+        try:
+            shutil.copy2(ctx.repo / "flake.lock", lock_bak)
+        except OSError as exc:
+            return ctx.finish("deferred", f"cannot back up flake.lock: {exc}")
+
+    def restore_inputs():
+        if not ctx.dry and lock_bak.exists():
+            shutil.copy2(lock_bak, ctx.repo / "flake.lock")
+
+    rc, out = ctx.cmd("FLAKE_UPDATE", ["nix", "flake", "update"])
+    if rc != 0:
+        restore_inputs()
+        report_incident(ctx, f"flake update failed: {out[-400:]}")
+        return ctx.finish("failed", "flake update failed", 1)
+    rc, out = ctx.cmd("PIN_WATCH", [str(ctx.repo / "scripts/maintenance/aq-pin-watch"), "apply",
+                                    "--root", str(ctx.repo)])
+    if rc != 0:
+        restore_inputs()
+        report_incident(ctx, f"aq-pin-watch apply failed: {out[-400:]}")
+        return ctx.finish("failed", "pin-watch apply failed", 1)
+
+    # Atomic recheck inside the lease: inference must be provably idle right before it is stopped.
+    active, unknown = activity_signals(ctx)
+    if active or unknown:
+        restore_inputs()
+        return ctx.finish("deferred", f"lease lost before llama stop: {active or unknown}")
+
+    ctx.cmd("STOP_LLAMA", ["systemctl", "stop", "llama-cpp"])
+    ctx.status["llama_stopped"] = True
+
+    rc, out = ctx.cmd("BUILD", ["nixos-rebuild", "build", "--flake", "{repo}#{attr}"], cwd=str(ctx.state_dir)
+                      if not ctx.dry else None)
+    new = os.path.realpath(str(ctx.state_dir / "result")) if not ctx.dry else "<dry-run-built-closure>"
+    if rc != 0 or not new:
+        ctx.cmd("START_LLAMA", ["systemctl", "start", "llama-cpp"])
+        restore_inputs()
+        report_incident(ctx, f"nixos-rebuild build failed for {ctx.attr}: {out[-400:]}")
+        return ctx.finish("failed", "build failed; nothing switched", 1)
+    ctx.status["new_closure"] = new
+
+    if not in_window(now_utc()):
+        ctx.cmd("START_LLAMA", ["systemctl", "start", "llama-cpp"])
+        restore_inputs()
+        return ctx.finish("refused", "window closed before switch; nothing switched")
+
+    _, diff = ctx.cmd("DIFF", ["nix", "store", "diff-closures", prev, new], side_effect=False)
+    ctx.status["versions_moved"] = [ln for ln in diff.splitlines() if "→" in ln or "->" in ln][:200]
+
+    ctx.cmd("WATCHDOG_ARM", ["systemd-run", "--unit=aq-auto-update-watchdog", "--on-active=1500",
+                             sys.executable, os.path.abspath(__file__), "rollback", "--to", prev])
+    rc = activate(ctx, new)
+    if rc == 0:
+        ctx.cmd("START_LLAMA", ["systemctl", "start", "llama-cpp"])
+        if ctx.dry:
+            ctx.log("DRY-RUN would run the post-switch health gate (300s, 3 passes 20s apart)")
+            healthy, why = True, ""
+        else:
+            healthy, why = health_gate(ctx, baseline)
+    else:
+        healthy, why = False, f"switch-to-configuration rc={rc}"
+
+    if not healthy:
+        ctx.log(f"post-switch failure: {why}; rolling back to {prev}")
+        ctx.status["rollback"] = True
+        rrc = activate(ctx, prev)
+        ctx.cmd("START_LLAMA", ["systemctl", "start", "llama-cpp"])
+        rh = False
+        if rrc == 0 and not ctx.dry:
+            rh, _ = health_gate(ctx, baseline)
+        ctx.status["rollback_healthy"] = rh
+        restore_inputs()
+        if not ctx.dry and not rh:
+            (ctx.state_dir / "halted").write_text(now_utc().isoformat())
+        report_incident(ctx, f"unattended update to {new} failed ({why}); rolled back to {prev} "
+                             f"rc={rrc} healthy_after_rollback={rh}")
+        ctx.cmd("WATCHDOG_DISARM", ["systemctl", "stop", "aq-auto-update-watchdog.timer"])
+        return ctx.finish("rolled-back" if rrc == 0 and rh else "rollback-failed", why, 1)
+
+    ctx.cmd("WATCHDOG_DISARM", ["systemctl", "stop", "aq-auto-update-watchdog.timer"])
+    if kernel_of(prev) != kernel_of(new) and not ctx.dry:
+        ctx.status["pending_reboot"] = True
+        try:
+            (ctx.state_dir / "pending-reboot").write_text(json.dumps(
+                {"since": now_utc().isoformat(), "closure": new}))
+        except OSError as exc:
+            ctx.log(f"cannot write pending-reboot marker: {exc}")
+        ctx.log("kernel changed: pending-reboot recorded; NOT rebooting (owner-scheduled)")
+    return ctx.finish("switched", "healthy after switch", 0)
+
+
+def main(argv=None):
+    ap = argparse.ArgumentParser(description=__doc__, formatter_class=argparse.RawDescriptionHelpFormatter)
+    sub = ap.add_subparsers(dest="mode", required=True)
+    sub.add_parser("check")
+    r = sub.add_parser("run")
+    r.add_argument("--dry-run", action="store_true")
+    b = sub.add_parser("rollback")
+    b.add_argument("--to", required=True)
+    args = ap.parse_args(argv)
+    ctx = Ctx(dry_run=getattr(args, "dry_run", False))
+    if args.mode == "check":
+        return cmd_check(ctx)
+    if args.mode == "rollback":
+        return cmd_rollback(ctx, args.to)
+    return cmd_run(ctx)
+
+
+if __name__ == "__main__":
+    sys.exit(main())
