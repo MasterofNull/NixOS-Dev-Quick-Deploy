@@ -2,7 +2,7 @@
 """aq-rsi — hand friction to the RSI loop and read the loop's own health.
 
   report   record a failure via rsi_lifecycle (identity/dedupe); local, no model/network
-  status   steward health from the PRSI action queue + incident ledger
+  status   steward health (+ auto-update pipeline state) from the PRSI action queue + incident ledger
   pending  high-risk rows awaiting owner sign-off (delegates to aq-rsi-pending)
   approve  print the exact owner verify command for a row; never approves anything
   reconcile resolve code-scanning incidents whose alerts are all closed upstream (positive evidence only)
@@ -113,15 +113,18 @@ def cmd_report(args) -> int:
 
 
 def cmd_status(args) -> int:
+    import auto_update_status
+    au = auto_update_status.read_status()
     queue, qerr = _load(_queue_path())
     incidents, ierr = _load(_incidents_path())
     if qerr or ierr:
         # Unknown, not healthy: a missing/corrupt queue or incident ledger must not read as an all-clear.
         error = "; ".join(e for e in (f"action queue {qerr}" if qerr else "", f"incident ledger {ierr}" if ierr else "") if e)
-        out = {"healthy": None, "state": "unknown", "error": error}
-        print(json.dumps(out, sort_keys=True) if args.json else f"UNKNOWN: {error}")
+        out = {"healthy": None, "state": "unknown", "error": error, "auto_update": au}
+        print(json.dumps(out, sort_keys=True) if args.json else "\n".join([f"UNKNOWN: {error}"] + auto_update_status.format_lines(au)))
         return 2
     out = compute_status(queue, (incidents or {}).get("incidents", {}))
+    out["auto_update"] = au
     if args.json:
         print(json.dumps(out, sort_keys=True))
     else:
@@ -134,6 +137,8 @@ def cmd_status(args) -> int:
             print(f"skipped {reason}: {n}")
         for alert in out["alerts"]:
             print(f"ALERT: {alert}")
+        for line in auto_update_status.format_lines(au):
+            print(line)
     return 0 if out["healthy"] else 1
 
 
