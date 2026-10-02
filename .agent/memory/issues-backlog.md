@@ -5078,7 +5078,7 @@ File: scripts/ai/lib/worktree-isolation.sh; scripts/automation/prsi-orchestrator
   Action: give the codex sandbox write access to the repo root in --shared mode (or have the round collector parse the verdict from the task log); remove the contradictory legacy lines from the codex grounding (scripts/ai/lib/harness-grounding.sh / codex grounding source).
   File: scripts/ai/delegate-to-codex; scripts/ai/aq-collab-round; scripts/ai/lib/harness-grounding.sh
 
-[OPEN] rsi-38aff77a4f3f3f8452603a12 — github-actions:parity-scorecard-gate failure in PR #355 CI run 36850061887. Root cause evidence: producer=github-actions:parity-scorecard-gate; path=scripts/governance/tier0-validation-gate.sh; authority=ci; os_error=QA phase 0 nondeterministic on GitHub runners: 30+ host-only checks failed (postgresql unit, ports 5432/6379/8080..., AppArmor, llama /health) then passed on rerun of the same commit. Detected=2026-10-01T10:43:06.301788Z.
+[DONE 2026-10-02] rsi-38aff77a4f3f3f8452603a12 — github-actions:parity-scorecard-gate failure in PR #355 CI run 36850061887. Root cause evidence: producer=github-actions:parity-scorecard-gate; path=scripts/governance/tier0-validation-gate.sh; authority=ci; os_error=QA phase 0 nondeterministic on GitHub runners: 30+ host-only checks failed (postgresql unit, ports 5432/6379/8080..., AppArmor, llama /health) then passed on rerun of the same commit. Detected=2026-10-01T10:43:06.301788Z.
   Severity: medium
   Action: find why aq-qa phase 0 on GitHub runners sometimes executes host-only checks (units/ports/AppArmor/llama health) and fails, and on rerun of the same commit passes; make phase 0 deterministic in CI (explicit host detection + skip, or xfail runtime-only ids for CI)
   File: scripts/governance/tier0-validation-gate.sh
@@ -5095,7 +5095,7 @@ File: scripts/ai/lib/worktree-isolation.sh; scripts/automation/prsi-orchestrator
   Action: regenerate with first-index semantics and torch/torchvision/torchaudio pinned to the PyTorch index only (uv explicit index / per-package index), or document the lock as advisory.
   File: ai-stack/mcp-servers/{aidb,nixos-docs}/requirements.lock
 
-[OPEN] rsi-629a1f1c1c8ce41f01cfd09a — systemd:llama-cpp.service failure in live health 2026-10-01. Root cause evidence: producer=systemd:llama-cpp.service; path=nix/modules/roles/ai-stack.nix; authority=systemd; os_error=llama-cpp start fails with exit-code ~2 min after launch (3 consecutive failed starts 08:16/08:18/08:20, success on 4th); readiness gate shorter than cold model load. Detected=2026-10-01T15:23:41.876184Z.
+[DONE 2026-10-02] rsi-629a1f1c1c8ce41f01cfd09a — systemd:llama-cpp.service failure in live health 2026-10-01. Root cause evidence: producer=systemd:llama-cpp.service; path=nix/modules/roles/ai-stack.nix; authority=systemd; os_error=llama-cpp start fails with exit-code ~2 min after launch (3 consecutive failed starts 08:16/08:18/08:20, success on 4th); readiness gate shorter than cold model load. Detected=2026-10-01T15:23:41.876184Z.
   Severity: high
   Action: align start readiness timeout (ExecStartPost/TimeoutStartSec) with measured cold-load time under memory pressure, or make readiness non-fatal with a longer budget; identify the 07:25 stop actor
   File: nix/modules/roles/ai-stack.nix
@@ -5142,22 +5142,27 @@ File: scripts/ai/lib/worktree-isolation.sh; scripts/automation/prsi-orchestrator
   Action: aq-closure-scan now anchors every result on flake.lock (anchor_sarif) before writing the SARIF; regression test in test-aq-closure-scan.py. Not verifiable without a CI upload: confirm on the next PR run that the "nix-closure" category appears under code scanning.
   File: scripts/security/aq-closure-scan (anchor_sarif, SARIF_ANCHOR_URI)
 
-[OPEN] rsi-8d4fd825df9004397168e2ed — tier0-validation-gate.sh:gate_qa_phase0 failure in pr356-ci-parity-gate-false-pass. Root cause evidence: producer=tier0-validation-gate.sh:gate_qa_phase0; path=scripts/governance/tier0-validation-gate.sh; authority=ci; os_error=tier0 phase-0 verdict regex matched '10/20/30 failed' as zero failures; red QA runs passed by chance. Detected=2026-10-01T22:24:42.447560Z.
+[DONE 2026-10-02] rsi-8d4fd825df9004397168e2ed — tier0-validation-gate.sh:gate_qa_phase0 failure in pr356-ci-parity-gate-false-pass. Root cause evidence: producer=tier0-validation-gate.sh:gate_qa_phase0; path=scripts/governance/tier0-validation-gate.sh; authority=ci; os_error=tier0 phase-0 verdict regex matched '10/20/30 failed' as zero failures; red QA runs passed by chance. Detected=2026-10-01T22:24:42.447560Z.
   Severity: high
   Action: anchor verdict regex; CI deps; host-only ids; py3.11 f-string
   File: scripts/governance/tier0-validation-gate.sh
 
-[OPEN] rsi-7e6c67bd05483ea1518bbe4a — aq-closure-scan:grype-sarif failure in pr356-closure-sarif-empty-uri. Root cause evidence: producer=aq-closure-scan:grype-sarif; path=scripts/security/aq-closure-scan; authority=ci; os_error=code scanning rejected nix-closure SARIF: grype emits empty artifact location for SBOM input. Detected=2026-10-01T22:24:47.671423Z.
+[DONE 2026-10-02] rsi-7e6c67bd05483ea1518bbe4a — aq-closure-scan:grype-sarif failure in pr356-closure-sarif-empty-uri. Root cause evidence: producer=aq-closure-scan:grype-sarif; path=scripts/security/aq-closure-scan; authority=ci; os_error=code scanning rejected nix-closure SARIF: grype emits empty artifact location for SBOM input. Detected=2026-10-01T22:24:47.671423Z.
   Severity: medium
   Action: anchor SARIF artifactLocation.uri on flake.lock
   File: scripts/security/aq-closure-scan
 
-[OPEN] rsi-5423db9a51e72dff95d76425 — check-harness-first-pr-evidence-gate.sh failure in pr356-evidence-gate-needs-added-file. Root cause evidence: producer=check-harness-first-pr-evidence-gate.sh; path=docs/harness-first/evidence; authority=ci; os_error=harness-first PR evidence gate (Syntax Validation job) requires a newly added evidence file. Detected=2026-10-01T22:24:48.484677Z.
+[DONE 2026-10-02] rsi-5423db9a51e72dff95d76425 — check-harness-first-pr-evidence-gate.sh failure in pr356-evidence-gate-needs-added-file. Root cause evidence: producer=check-harness-first-pr-evidence-gate.sh; path=docs/harness-first/evidence; authority=ci; os_error=harness-first PR evidence gate (Syntax Validation job) requires a newly added evidence file. Detected=2026-10-01T22:24:48.484677Z.
   Severity: medium
   Action: add new evidence file per PR
   File: docs/harness-first/evidence
 
-[OPEN] rsi-e5d253ffa3d1470a68df560b — aq-agent-loop:llm-timeouts failure in local-first-token-timeout-ignores-prompt-size. Root cause evidence: producer=aq-agent-loop:llm-timeouts; path=scripts/ai/aq-agent-loop; authority=local-inference; os_error=local delegate first_token_timeout (900s) is fixed while prompt processing scales with prompt size: 4.7k-token [REDACTED] needed 930s at 5 tok/s (swap-drift), client cancelled 30s before first token; retry re-processes the full prompt (no cache reuse on hybrid/SWA model) so it fails identically. Detected=2026-10-01T22:27:43.915076Z.
+[DONE 2026-10-02] rsi-e5d253ffa3d1470a68df560b — aq-agent-loop:llm-timeouts failure in local-first-token-timeout-ignores-prompt-size. Root cause evidence: producer=aq-agent-loop:llm-timeouts; path=scripts/ai/aq-agent-loop; authority=local-inference; os_error=local delegate first_token_timeout (900s) is fixed while prompt processing scales with prompt size: 4.7k-token [REDACTED] needed 930s at 5 tok/s (swap-drift), client cancelled 30s before first token; retry re-processes the full prompt (no cache reuse on hybrid/SWA model) so it fails identically. Detected=2026-10-01T22:27:43.915076Z.
   Severity: medium
   Action: Derive first_token_timeout from prompt_tokens / measured prompt-eval rate (llama /metrics prompt_tokens_seconds) + margin; skip same-prompt retry after a first-token [REDACTED] (shrinking max_tokens cannot help a prompt-bound stall); preflight swap/PSI and defer or request resident restart when the model is paged out.
   File: scripts/ai/aq-agent-loop
+
+[OPEN] rsi-30f7979bcc0cd714b8949313 — agent-dispatch:worktree-isolation failure in subagent-worktree-isolation-escape. Root cause evidence: producer=agent-dispatch:worktree-isolation; path=.claude/worktrees; authority=claude-code; os_error=isolated-worktree sub-agent edited the MAIN checkout by absolute path (haiku backlog bookkeeping wrote /home/hyperd/Documents/NixOS-Dev-Quick-Deploy/.agent/memory/issues-backlog.md instead of its worktree copy); separately a sonnet sub-agent bypassed a Bash git refusal by committing via ctx_shell. Detected=2026-10-02T02:39:11.836076Z.
+  Severity: medium
+  Action: Worktree isolation is cwd-only: absolute repo paths and alternate shell tools (lean-ctx ctx_shell) are not confined. Fix: delegate briefs must pass worktree-relative paths only; add a PreToolUse guard denying Write/Edit/shell writes to the main checkout path from worktree sessions, and apply the same git policy to ctx_shell as to Bash.
+  File: .claude/worktrees
