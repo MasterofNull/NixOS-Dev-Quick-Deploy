@@ -378,13 +378,30 @@ class TaskRegistry:
         self.registry_file.parent.mkdir(parents=True, exist_ok=True)
         # Read under shared lock, then rewrite under exclusive lock
         with self._path_lock(self.registry_file):
-            entries = self._read_registry()
+            raw = self.registry_file.read_text().splitlines() if self.registry_file.exists() else []
             lines = []
-            for e in entries:
-                if e.get("id") == task_id:
+            for line in raw:
+                if not line.strip():
+                    continue
+                try:
+                    e = json.loads(line)
+                except json.JSONDecodeError:
+                    # A rewrite must never silently drop rows it cannot parse.
+                    lines.append(line)
+                    continue
+                if isinstance(e, dict) and e.get("id") == task_id:
                     e.update(updates)
-                lines.append(json.dumps(e))
+                    line = json.dumps(e)
+                lines.append(line)
             _atomic_write_bytes(self.registry_file, ("\n".join(lines) + "\n").encode("utf-8"))
+
+    def update_fields_atomic(self, task_id: str, updates: dict) -> None:
+        """Public transactional field update (shared lock + atomic replace) for shell wrappers."""
+        self._update_registry(task_id, updates)
+
+    def append_row_atomic(self, row: dict) -> None:
+        """Public append under the same sibling lock the rewriters use."""
+        self._locked_append(self.registry_file, json.dumps(row))
 
     def append(
         self,
