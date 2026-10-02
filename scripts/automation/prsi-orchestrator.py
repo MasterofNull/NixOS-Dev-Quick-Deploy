@@ -44,7 +44,7 @@ from workflow_deviation import (  # noqa: E402
     learning_candidate,
     validate as validate_deviation,
 )
-QUEUE_PATH = Path(os.getenv("PRSI_ACTION_QUEUE_PATH", "/var/lib/nixos-ai-stack/prsi/action-queue.json"))
+QUEUE_PATH = Path(os.getenv("PRSI_ACTION_QUEUE_PATH", "/var/lib/nixos-ai-stack/optimizer/prsi/action-queue.json"))
 ACTIONS_LOG_PATH = Path(os.getenv("PRSI_ACTIONS_LOG_PATH", "/var/log/nixos-ai-stack/prsi-actions.jsonl"))
 AUTO_APPROVE_LOW_RISK = os.getenv("PRSI_AUTO_APPROVE_LOW_RISK", "true").lower() == "true"
 PRSI_POLICY_FILE = Path(os.getenv("PRSI_POLICY_FILE", str(REPO_ROOT / "config/runtime-prsi-policy.json")))
