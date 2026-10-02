@@ -15,12 +15,18 @@
 #   --model-tier TIER  Resolve Anthropic tier via config/model-coordinator.json
 #                      flagship|flagship_fallback|balanced|fast|creative
 #   --wait             Block until task completes (default: background)
+#   --force-budget     Bypass the daily dispatch cap and parallel-slot limit once
+#   --budget-check-only  Check cap + slot availability for --role, then exit (0 ok, 3 refused)
 #   --check ID         Print output of a completed task
 #   --status ID        Show status of a task
 #   --list             List all registered tasks
 #   --help             Show this help
 #
 # Claude CLI invoked as: claude -p "prompt" --output-format text
+# Admission control (exit 3 when refused; --force-budget overrides):
+#   DELEGATE_CLAUDE_DAILY_DISPATCH_CAP  dispatches/day (UTC) [default: 40]
+#   DELEGATE_CLAUDE_MAX_PARALLEL        simultaneous delegates (flock slots) [default: 2]
+#   One slot (slot-0) is reserved for --role review when MAX_PARALLEL >= 2.
 # REPO_ROOT is resolved from BASH_SOURCE — no external env var required.
 
 set -euo pipefail
@@ -46,6 +52,7 @@ source "${SCRIPT_DIR}/lib/harness-grounding.sh" 2>/dev/null || true
 # ── helpers ──────────────────────────────────────────────────────────────────
 
 die()  { echo "ERROR: $*" >&2; exit 1; }
+die_budget() { echo "[delegate-to-claude] $*" >&2; exit 3; }
 info() { echo "[delegate-to-claude] $*"; }
 
 require_claude() {
@@ -88,41 +95,171 @@ print(model)
 PYEOF
 }
 
+SLOTS_DIR="$DELEGATION_DIR/claude-slots"
+SLOT_FD=""
+TERMINAL_RECORDED=false
+CURRENT_TASK_ID=""
+HEARTBEAT_PID=""
+PROVIDER_PID=""
+TAIL_PID=""
+
+# registry_append <id> <desc> <output_file> <pid> <role> <tier> <model> <daily_cap|0>
+# Cap check and append happen under one flock so concurrent dispatchers cannot
+# both slip under the cap. Exits 3 (printed refusal) when over cap.
 registry_append() {
-    local id="$1" description="$2" output_file="$3" pid="${4:-}" role="${5:-implement}"
-    local requested_model_tier="${6:-}" resolved_model="${7:-}"
-    local ts; ts="$(date -u +%Y-%m-%dT%H:%M:%SZ)"
-    printf '{"id":"%s","agent":"claude","role":"%s","description":%s,"output_file":"%s","pid":%s,"status":"running","tokens_in":null,"tokens_out":null,"requested_model_tier":%s,"resolved_model":%s,"created":"%s"}\n' \
-        "$id" "$role" \
-        "$(printf '%s' "$description" | python3 -c 'import json,sys; print(json.dumps(sys.stdin.read()))')" \
-        "$output_file" \
-        "${pid:-null}" \
-        "$(python3 -c 'import json,sys; print(json.dumps(sys.argv[1] or None))' "$requested_model_tier")" \
-        "$(python3 -c 'import json,sys; print(json.dumps(sys.argv[1] or None))' "$resolved_model")" \
-        "$ts" >> "$REGISTRY"
+    local rc=0
+    python3 - "$REGISTRY" "$@" <<'PYEOF' || rc=$?
+import fcntl, json, sys, time
+from datetime import datetime, timezone
+registry, tid, desc, out, pid, role, tier, model, cap = sys.argv[1:10]
+with open(registry + ".lock", "a") as lk:
+    fcntl.flock(lk, fcntl.LOCK_EX)
+    today = datetime.now(timezone.utc).strftime("%Y-%m-%d")
+    n = 0
+    try:
+        with open(registry) as fh:
+            for line in fh:
+                try:
+                    e = json.loads(line)
+                except ValueError:
+                    continue
+                if e.get("agent") == "claude" and str(e.get("created", "")).startswith(today):
+                    n += 1
+    except FileNotFoundError:
+        pass
+    if int(cap) > 0 and n >= int(cap):
+        print(f"daily dispatch cap reached: {n}/{cap} claude dispatches today; reserving quota. "
+              "Route to another lane or pass --force-budget.", file=sys.stderr)
+        sys.exit(3)
+    row = {"id": tid, "agent": "claude", "role": role, "description": desc,
+           "output_file": out, "pid": int(pid) if pid else None, "status": "running",
+           "tokens_in": None, "tokens_out": None,
+           "requested_model_tier": tier or None, "resolved_model": model or None,
+           "created": datetime.now(timezone.utc).strftime("%Y-%m-%dT%H:%M:%SZ")}
+    with open(registry, "a") as fh:
+        fh.write(json.dumps(row) + "\n")
+PYEOF
+    [[ "$rc" -eq 0 ]] || { [[ "$rc" -eq 3 ]] && echo "[delegate-to-claude] dispatch refused (daily cap)" >&2; exit "$rc"; }
+}
+
+# reg_update <id> key=value...   (value: int, "null", or string) — flock + atomic replace.
+reg_update() {
+    python3 - "$REGISTRY" "$@" <<'PYEOF'
+import fcntl, json, os, sys
+registry, tid, *pairs = sys.argv[1:]
+upd = {}
+for p in pairs:
+    k, _, v = p.partition("=")
+    upd[k] = None if v == "null" else (int(v) if v.lstrip("-").isdigit() else v)
+with open(registry + ".lock", "a") as lk:
+    fcntl.flock(lk, fcntl.LOCK_EX)
+    out = []
+    with open(registry) as fh:
+        for line in fh:
+            line = line.strip()
+            if not line:
+                continue
+            try:
+                e = json.loads(line)
+                if e.get("id") == tid:
+                    e.update(upd)
+                out.append(json.dumps(e))
+            except ValueError:
+                out.append(line)
+    tmp = registry + ".tmp.%d" % os.getpid()
+    with open(tmp, "w") as fh:
+        fh.write("\n".join(out) + ("\n" if out else ""))
+        fh.flush()
+        os.fsync(fh.fileno())
+    os.replace(tmp, registry)
+PYEOF
 }
 
 registry_update_status() {
-    local id="$1" new_status="$2"
-    python3 - "$REGISTRY" "$id" "$new_status" <<'PYEOF'
-import sys, json
-registry_file, task_id, new_status = sys.argv[1], sys.argv[2], sys.argv[3]
-lines = []
-with open(registry_file) as f:
-    for line in f:
-        line = line.strip()
-        if not line:
-            continue
+    reg_update "$1" "status=$2"
+}
+
+# Terminal reconciliation: runs on EVERY exit path of a dispatch (provider
+# failure, signal, set -e abort) so a task is never left "running" forever.
+record_terminal() {
+    local status="$1" code="$2" reason="${3:-}"
+    [[ "$TERMINAL_RECORDED" == "true" ]] && return 0
+    TERMINAL_RECORDED=true
+    local ts; ts="$(date -u +%Y-%m-%dT%H:%M:%SZ)"
+    reg_update "$CURRENT_TASK_ID" "status=$status" "exit_code=$code" "finished_at=$ts" \
+        "terminal_reason=${reason:-provider_exit_$code}" "heartbeat_at=$ts" \
+        || echo "[delegate-to-claude] WARN: terminal registry write failed for $CURRENT_TASK_ID" >&2
+}
+
+on_exit_reconcile() {
+    local rc=$?
+    # Aborted mid-run: do not leave the provider/tail/heartbeat orphaned.
+    local p
+    for p in "$HEARTBEAT_PID" "$PROVIDER_PID" "$TAIL_PID"; do
+        [[ -n "$p" ]] && kill "$p" 2>/dev/null || true
+    done
+    if [[ -n "$CURRENT_TASK_ID" && "$TERMINAL_RECORDED" != "true" ]]; then
+        record_terminal failed "$rc" "wrapper_aborted_exit_$rc"
+    fi
+}
+
+heartbeat_loop() {
+    # heartbeat_loop <id> <pid> — update heartbeat_at while pid is alive.
+    local id="$1" pid="$2" every="${DELEGATE_CLAUDE_HEARTBEAT_S:-30}"
+    while kill -0 "$pid" 2>/dev/null; do
+        reg_update "$id" "heartbeat_at=$(date -u +%Y-%m-%dT%H:%M:%SZ)" 2>/dev/null || true
+        sleep "$every"
+    done
+}
+
+# acquire_slot <role>: flock-based concurrency slot, auto-released when the
+# holder (and any inheriting child) dies. slot-0 is reserved for reviewers.
+acquire_slot() {
+    local role="$1" max="${DELEGATE_CLAUDE_MAX_PARALLEL:-2}" start=0 i fd
+    [[ "$max" =~ ^[0-9]+$ && "$max" -ge 1 ]] || max=2
+    command -v flock >/dev/null 2>&1 || die "flock(1) not found; cannot enforce parallel limit"
+    mkdir -p "$SLOTS_DIR"
+    if [[ "$role" != "review" && "$max" -ge 2 ]]; then start=1; fi
+    for ((i=start; i<max; i++)); do
+        exec {fd}>>"$SLOTS_DIR/slot-$i.lock"
+        if flock -n "$fd"; then SLOT_FD="$fd"; return 0; fi
+        exec {fd}>&-
+    done
+    return 1
+}
+
+release_slot() { [[ -n "$SLOT_FD" ]] && { exec {SLOT_FD}>&-; SLOT_FD=""; } || true; }
+
+daily_cap_value() { echo "${DELEGATE_CLAUDE_DAILY_DISPATCH_CAP:-40}"; }
+
+budget_check_only() {
+    local role="$1" force="$2" cap; cap="$(daily_cap_value)"
+    local n; n="$(python3 - "$REGISTRY" <<'PYEOF'
+import json, sys
+from datetime import datetime, timezone
+today = datetime.now(timezone.utc).strftime("%Y-%m-%d")
+n = 0
+try:
+    for line in open(sys.argv[1]):
         try:
-            entry = json.loads(line)
-            if entry.get("id") == task_id:
-                entry["status"] = new_status
-            lines.append(json.dumps(entry))
-        except json.JSONDecodeError:
-            lines.append(line)
-with open(registry_file, "w") as f:
-    f.write("\n".join(lines) + ("\n" if lines else ""))
+            e = json.loads(line)
+        except ValueError:
+            continue
+        if e.get("agent") == "claude" and str(e.get("created", "")).startswith(today):
+            n += 1
+except FileNotFoundError:
+    pass
+print(n)
 PYEOF
+)"
+    info "Dispatch budget: ${n}/${cap} today; parallel max ${DELEGATE_CLAUDE_MAX_PARALLEL:-2}"
+    if [[ "$cap" -gt 0 && "$n" -ge "$cap" && "$force" != "true" ]]; then
+        die_budget "daily dispatch cap reached: ${n}/${cap}; route to another lane or set --force-budget."
+    fi
+    if [[ "$force" != "true" ]]; then
+        if acquire_slot "$role"; then release_slot
+        else die_budget "no free claude slot for role=$role (DELEGATE_CLAUDE_MAX_PARALLEL=${DELEGATE_CLAUDE_MAX_PARALLEL:-2}); retry later or set --force-budget."; fi
+    fi
 }
 
 check_pid_alive() {
@@ -229,7 +366,7 @@ PYEOF
 }
 
 cmd_delegate() {
-    local prompt="$1" wait_mode="${2:-false}" role="${3:-implement}" model_tier="${4:-}"
+    local prompt="$1" wait_mode="${2:-false}" role="${3:-implement}" model_tier="${4:-}" force_budget="${5:-false}"
 
     require_claude
     ensure_dirs
@@ -268,27 +405,66 @@ ${prompt}"
         cmd+=("--model" "$resolved_model")
     fi
 
+    # Admission control BEFORE any registry row exists: refused dispatches leave no
+    # "running" ghost. --force-budget bypasses cap and slot limit.
+    local cap; cap="$(daily_cap_value)"
+    if [[ "$force_budget" == "true" ]]; then
+        cap=0
+        info "Budget override: --force-budget (cap and slot limit bypassed)"
+    elif ! acquire_slot "$role"; then
+        die_budget "no free claude slot for role=$role (DELEGATE_CLAUDE_MAX_PARALLEL=${DELEGATE_CLAUDE_MAX_PARALLEL:-2}; one slot reserved for review). Retry later, route to another lane, or set --force-budget."
+    fi
+
     # Register before launching so the task is findable even if we die
-    registry_append "$id" "$prompt" "$rel_output" "" "$role" "$model_tier" "$resolved_model"
-    audit_event_start "claude" "$id" "${prompt:0:200}"
+    local rc=0
+    registry_append "$id" "$prompt" "$rel_output" "" "$role" "$model_tier" "$resolved_model" "$cap" || rc=$?
+    if [[ "$rc" -ne 0 ]]; then release_slot; exit "$rc"; fi
+    CURRENT_TASK_ID="$id"
+    TERMINAL_RECORDED=false
+    trap on_exit_reconcile EXIT
+    trap 'exit 143' TERM
+    trap 'exit 130' INT
+    audit_event_start "claude" "$id" "${prompt:0:200}" || true
 
     if [[ "$wait_mode" == "true" ]]; then
         info "Running in blocking mode..."
-        "${cmd[@]}" 2>&1 | tee "$output_file"
-        local exit_code="${PIPESTATUS[0]}"
+        # set -e must not abort before the terminal write: run the provider
+        # backgrounded so its PID is recorded and heartbeated, then reap it.
+        local exit_code=0 provider_pid tail_pid=""
+        : > "$output_file"
+        "${cmd[@]}" > "$output_file" 2>&1 </dev/null &
+        provider_pid=$!; PROVIDER_PID=$provider_pid
+        reg_update "$id" "pid=$provider_pid" "wrapper_pid=$$" \
+            "heartbeat_at=$(date -u +%Y-%m-%dT%H:%M:%SZ)" || true
+        heartbeat_loop "$id" "$provider_pid" >/dev/null 2>&1 &
+        HEARTBEAT_PID=$!
+        tail -n +1 -s 0.1 -f "$output_file" 2>/dev/null &
+        tail_pid=$!; TAIL_PID=$tail_pid
+        wait "$provider_pid" || exit_code=$?
+        # tail --pid cannot be relied on (zombie/already-reaped races); give it one
+        # poll interval to flush the final bytes, then stop it explicitly.
+        sleep 0.4
+        kill "$tail_pid" 2>/dev/null || true
+        wait "$tail_pid" 2>/dev/null || true
+        kill "$HEARTBEAT_PID" 2>/dev/null || true
+        wait "$HEARTBEAT_PID" 2>/dev/null || true
+        HEARTBEAT_PID=""; PROVIDER_PID=""; TAIL_PID=""
         if [[ "$exit_code" -eq 0 ]]; then
-            registry_update_status "$id" "done"
-            audit_event_end "claude" "$id" "success" "0" "completed: ${prompt:0:100}" "$role"
-            audit_save_session "claude" "$id" "$prompt" "$output_file"
+            record_terminal done 0 "completed"
+            audit_event_end "claude" "$id" "success" "0" "completed: ${prompt:0:100}" "$role" || true
+            audit_save_session "claude" "$id" "$prompt" "$output_file" || true
             info "Task $id completed successfully."
         else
-            registry_update_status "$id" "failed"
-            audit_event_end "claude" "$id" "error" "0" "failed exit=${exit_code}: ${prompt:0:100}" "$role"
-            audit_save_session "claude" "$id" "$prompt" "$output_file"
+            record_terminal failed "$exit_code"
+            audit_event_end "claude" "$id" "error" "0" "failed exit=${exit_code}: ${prompt:0:100}" "$role" || true
+            audit_save_session "claude" "$id" "$prompt" "$output_file" || true
             info "Task $id failed (exit $exit_code)."
         fi
+        release_slot
+        return 0
     else
-        # Background mode: fully detach so it survives session eviction.
+        # Background mode: fully detach so it survives session eviction. The
+        # worker inherits the slot fd, holding the slot until the provider dies.
         local _coord_url="${HYBRID_COORDINATOR_URL:-http://127.0.0.1:8003}"
         local _audit_helper; _audit_helper="$SCRIPT_DIR/lib/audit-post.sh"
         nohup bash "$SCRIPT_DIR/lib/claude-background-worker.sh" \
@@ -296,30 +472,10 @@ ${prompt}"
             "${cmd[@]}" </dev/null > /dev/null 2>&1 &
         local pid=$!
         disown "$pid"
-
-        # Update registry with PID
-        python3 - "$REGISTRY" "$id" "$pid" <<'PYEOF'
-import sys, json
-registry_file, task_id, pid = sys.argv[1], sys.argv[2], sys.argv[3]
-lines = []
-with open(registry_file) as f:
-    for line in f:
-        line = line.strip()
-        if not line:
-            continue
-        try:
-            e = json.loads(line)
-            if e.get("id") == task_id:
-                try:
-                    e["pid"] = int(pid)
-                except ValueError:
-                    e["pid"] = pid
-            lines.append(json.dumps(e))
-        except Exception:
-            lines.append(line)
-with open(registry_file, "w") as f:
-    f.write("\n".join(lines) + "\n")
-PYEOF
+        release_slot
+        # Worker is the lifecycle owner from here; it writes the terminal state.
+        TERMINAL_RECORDED=true
+        reg_update "$id" "pid=$pid" "heartbeat_at=$(date -u +%Y-%m-%dT%H:%M:%SZ)" || true
 
         info "Task $id started in background (pid $pid)"
         info "Check output:  delegate-to-claude --check $id"
@@ -335,6 +491,7 @@ PROMPT_FILE=""
 ROLE="implement"
 MODEL_TIER=""
 WAIT=false
+FORCE_BUDGET=false
 SUBCMD=""
 SUBCMD_ARG=""
 
@@ -345,6 +502,8 @@ while [[ $# -gt 0 ]]; do
         --role)        ROLE="$2";        shift 2 ;;
         --model-tier)  MODEL_TIER="$2";  shift 2 ;;
         --wait)        WAIT=true;        shift   ;;
+        --force-budget) FORCE_BUDGET=true; shift  ;;
+        --budget-check-only) SUBCMD="budget"; shift ;;
         --check)       SUBCMD="check";   SUBCMD_ARG="$2"; shift 2 ;;
         --status)      SUBCMD="status";  SUBCMD_ARG="$2"; shift 2 ;;
         --list)        SUBCMD="list";    shift   ;;
@@ -367,12 +526,13 @@ case "${SUBCMD:-}" in
     list)   ensure_dirs; cmd_list ;;
     status) ensure_dirs; cmd_status "$SUBCMD_ARG" ;;
     check)  ensure_dirs; cmd_check "$SUBCMD_ARG" ;;
+    budget) ensure_dirs; budget_check_only "$ROLE" "$FORCE_BUDGET" ;;
     "")
         if [[ -n "$PROMPT_FILE" ]]; then
             [[ -f "$PROMPT_FILE" ]] || die "Prompt file not found: $PROMPT_FILE"
             PROMPT="$(cat "$PROMPT_FILE")"
         fi
         [[ -n "$PROMPT" ]] || die "Provide --prompt TEXT or --prompt-file FILE (or --help)"
-        cmd_delegate "$PROMPT" "$WAIT" "$ROLE" "$MODEL_TIER"
+        cmd_delegate "$PROMPT" "$WAIT" "$ROLE" "$MODEL_TIER" "$FORCE_BUDGET"
         ;;
 esac
