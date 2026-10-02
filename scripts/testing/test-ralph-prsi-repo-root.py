@@ -87,8 +87,28 @@ def check_service_path() -> None:
     )
 
 
+def check_queue_ownership() -> None:
+    result = subprocess.run(
+        [
+            "nix", "eval", "--json",
+            ".#nixosConfigurations.hyperd-ai-dev.config.systemd.tmpfiles.rules",
+        ],
+        check=True,
+        capture_output=True,
+        text=True,
+        timeout=60,
+    )
+    rules = [rule.split() for rule in json.loads(result.stdout)]
+    queue_rules = [r for r in rules if len(r) >= 5 and r[1].endswith("/ralph/prsi-queue.json")]
+    check(
+        any(r[0] == "z" and r[2:5] == ["0640", "ai-ralph", "ai-stack"] for r in queue_rules),
+        f"PRSI queue must be re-owned to ai-ralph:ai-stack 0640; got {queue_rules!r}",
+    )
+
+
 async def main() -> None:
     check_service_path()
+    check_queue_ownership()
     server = load_handlers()
     with tempfile.TemporaryDirectory() as temp_dir:
         temp_root = Path(temp_dir)
