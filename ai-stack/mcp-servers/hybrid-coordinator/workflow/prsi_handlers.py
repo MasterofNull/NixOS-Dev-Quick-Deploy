@@ -187,19 +187,49 @@ async def handle_prsi_actions_list(_request: web.Request) -> web.Response:
 
 async def handle_prsi_action_execute(request: web.Request) -> web.Response:
     """
-    POST /control/prsi/actions/execute — Execute a PRSI optimization action.
+    POST /control/prsi/actions/execute — Run a dry-run PRSI optimization action.
 
     Body:
         {
             "action_id": "routing.01",  # Optional - defaults to running aq-optimizer
-            "dry_run": true,            # Optional - defaults to true
+            "dry_run": true,            # Optional; only true is accepted
             "action_type": "routing",   # Optional: routing, knowledge, maintenance
             "params": {}                # Optional: action-specific parameters
         }
+
+    This coordinator endpoint never performs live remediation. Owner approval is
+    handled through aq-approve and the canonical PRSI queue.
     """
     try:
-        data = await request.json() if request.can_read_body else {}
-        dry_run = bool(data.get("dry_run", True))
+        try:
+            data = await request.json() if request.can_read_body else {}
+        except Exception as exc:
+            return web.json_response({
+                "status": "error",
+                "error": "invalid_json",
+                "reason": str(exc),
+            }, status=400)
+        if not isinstance(data, dict):
+            return web.json_response({
+                "status": "error",
+                "error": "invalid_request",
+                "reason": "request body must be a JSON object",
+            }, status=400)
+        dry_run = data.get("dry_run", True)
+        if type(dry_run) is not bool:
+            return web.json_response({
+                "status": "error",
+                "error": "invalid_dry_run",
+                "reason": "dry_run must be a JSON boolean",
+            }, status=400)
+        if not dry_run:
+            return web.json_response({
+                "status": "refused",
+                "error": "live_execution_forbidden",
+                "reason": "Live PRSI execution requires owner approval through aq-approve and the canonical action queue.",
+                "approval_command": "aq-approve",
+                "queue": "canonical PRSI action queue",
+            }, status=403)
         action_type = str(data.get("action_type", "")).strip()
 
         repo_root = Path(__file__).parent.parent.parent.parent
@@ -214,8 +244,7 @@ async def handle_prsi_action_execute(request: web.Request) -> web.Response:
                 }, status=404)
 
             cmd = [sys.executable, str(aq_optimizer_path)]
-            if dry_run:
-                cmd.append("--dry-run")
+            cmd.append("--dry-run")
             cmd.append("--output-json")
 
             result = subprocess.run(
@@ -245,8 +274,7 @@ async def handle_prsi_action_execute(request: web.Request) -> web.Response:
                 }, status=404)
 
             cmd = [sys.executable, str(aq_gap_path)]
-            if dry_run:
-                cmd.append("--dry-run")
+            cmd.append("--dry-run")
             cmd.extend(["--limit", "5"])
 
             result = subprocess.run(
