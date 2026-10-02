@@ -356,10 +356,12 @@ def test_agent_runner_redacts_long_multibyte_stderr_before_tail_bound():
         long_prompt = "PROMPT_SECRET_" + ("🚨" * 1500)
         long_tool_value = "TOOL_SECRET_" + ("Ω" * 2000)
         agent_loop = script_dir / "aq-agent-loop"
+        # Hoisted: backslashes inside f-string expressions are a SyntaxError before Python 3.12 (CI runs 3.11).
+        tool_line = 'tool arguments={\\"payload\\": \\"' + long_tool_value + '\\"}\\n'
         agent_loop.write_text(
             "import sys\n"
             f"sys.stderr.write({('RuntimeError: ' + long_prompt + chr(10))!r})\n"
-            f"sys.stderr.write({('tool arguments={\\\"payload\\\": \\\"' + long_tool_value + '\\\"}\\n')!r})\n"
+            f"sys.stderr.write({tool_line!r})\n"
             f"sys.stderr.write({('safe multibyte tail ' + ('é' * 2000) + chr(10))!r})\n"
             "sys.exit(24)\n",
             encoding="utf-8",

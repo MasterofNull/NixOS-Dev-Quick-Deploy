@@ -69,17 +69,14 @@ def assert_playwright_quarantined(candidate: dict) -> None:
 
 
 def assert_semgrep_config(entry: dict) -> None:
-    args = entry.get("args") or []
-    joined = " ".join(args)
-    assert entry.get("command") == "nix", "Semgrep MCP must run through Nix"
-    assert args[:4] == ["shell", "nixpkgs#uv", "-c", "uvx"], "Semgrep MCP must use Nix-provided uvx"
-    assert "semgrep-mcp==0.9.0" in args, "Semgrep MCP must be pinned"
-    assert "semgrep-mcp" not in args, "Semgrep MCP must not use an unpinned package"
-    assert "semgrep-mcp@latest" not in joined, "Semgrep MCP must not use latest"
-    assert "--transport" in args and "stdio" in args, "Semgrep MCP must use stdio transport"
-    assert "SEMGREP_APP_TOKEN" not in (entry.get("env") or {}), "Semgrep cloud token must not be configured"
-    # semgrep-mcp needs the semgrep CLI; uvx's tool env shadows PATH, so point at the system binary.
-    assert (entry.get("env") or {}).get("SEMGREP_PATH") == "/run/current-system/sw/bin/semgrep", "Semgrep MCP must set SEMGREP_PATH to the system semgrep"
+    # Nix-provided `semgrep mcp`; the uvx semgrep-mcp package is deprecated upstream.
+    env = entry.get("env") or {}
+    assert entry.get("command") == "/run/current-system/sw/bin/semgrep", "Semgrep MCP must use the Nix system binary"
+    assert entry.get("args") == ["mcp", "--transport", "stdio"], "Semgrep MCP must run `semgrep mcp` over stdio"
+    assert "SEMGREP_APP_TOKEN" not in env, "Semgrep cloud token must not be configured"
+    # Default tracing exports git user/repo/branch to Semgrep's collector.
+    assert env.get("SEMGREP_MCP_DISABLE_TRACING") == "true", "Semgrep MCP tracing must be disabled"
+    assert env.get("SEMGREP_SEND_METRICS") == "off", "Semgrep metrics must be off"
 
 
 def assert_enabled_candidate(entry: dict, pinned_version: str) -> None:
@@ -113,6 +110,7 @@ def main() -> int:
     assert_playwright_config(gemini["mcpServers"]["Playwright MCP"])
     cont_pw = next(item for item in continue_cfg["mcpServers"] if item["name"] == "Playwright MCP")
     assert_playwright_config(cont_pw)
+    assert_semgrep_config(load_json(".mcp.json")["mcpServers"]["semgrep"])
     assert_semgrep_config(claude["mcpServers"]["semgrep"])
     assert_semgrep_config(gemini["mcpServers"]["Semgrep MCP"])
     cont_semgrep = next(item for item in continue_cfg["mcpServers"] if item["name"] == "Semgrep MCP")
@@ -124,8 +122,8 @@ def main() -> int:
     assert_enabled_candidate(candidates["github-mcp-readonly"], "0.20.2")
     assert candidates["github-mcp-readonly"]["install"]["args"][0] == "--read-only"
     assert candidates["github-mcp-readonly"]["permissions"]["writes"] is False
-    assert_enabled_candidate(candidates["semgrep-mcp"], "0.9.0")
-    assert "semgrep-mcp==0.9.0" in candidates["semgrep-mcp"]["install"]["args"]
+    assert_enabled_candidate(candidates["semgrep-mcp"], "nixpkgs")
+    assert candidates["semgrep-mcp"]["install"]["args"] == ["mcp", "--transport", "stdio"]
     assert candidates["semgrep-mcp"]["permissions"]["secrets"] is False
     assert_enabled_candidate(candidates["mcp-admission-controller"], "local-2026-06-28")
     assert candidates["mcp-admission-controller"]["permissions"]["network"] is False

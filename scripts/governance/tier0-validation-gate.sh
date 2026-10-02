@@ -892,7 +892,8 @@ gate_qa_phase0() {
     return 1
   fi
   passes=$(echo "$output" | grep -oE '[0-9]+ passed' | head -1 | awk '{print $1}')
-  if echo "$output" | grep -qE "[0-9]+ passed.*0 failed"; then
+  # Anchor the zero: an unanchored "0 failed" also matched "10/20/30 failed" and let a red QA run pass.
+  if echo "$output" | grep -qE "[0-9]+ passed[^0-9]+0 failed"; then
     pass "QA phase 0 (${passes:-unknown} checks)"
     return 0
   fi

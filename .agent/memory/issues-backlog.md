@@ -4990,7 +4990,7 @@ File: scripts/ai/lib/worktree-isolation.sh; scripts/automation/prsi-orchestrator
   Action: raise the minimum-version floor: libpcre2-8-0>=10.46-1~deb13u3 in ai-stack/mcp-servers/hybrid-coordinator/Dockerfile (owner policy: floors, never exact == pins); rebuild image and confirm Trivy clears the alerts (2 open alert(s), max severity low)
   File: ai-stack/mcp-servers/hybrid-coordinator/Dockerfile
 
-[OPEN] rsi-657c7b2bc51c2ae0d6a61607 — github-code-scanning:trivy-custom-nixos-docs failure in code-scanning:trivy-custom-nixos-docs. Root cause evidence: producer=github-code-scanning:trivy-custom-nixos-docs; path=ai-stack/mcp-servers/nixos-docs/Dockerfile; authority=trivy; os_error=setuptools 78.1.0 vulnerable. Detected=2026-10-01T03:09:15.588927Z.
+[DONE 2026-10-01] rsi-657c7b2bc51c2ae0d6a61607 — github-code-scanning:trivy-custom-nixos-docs failure in code-scanning:trivy-custom-nixos-docs. Root cause evidence: producer=github-code-scanning:trivy-custom-nixos-docs; path=ai-stack/mcp-servers/nixos-docs/Dockerfile; authority=trivy; os_error=setuptools 78.1.0 vulnerable. Detected=2026-10-01T03:09:15.588927Z.
   Severity: high
   Action: raise the minimum-version floor: setuptools>=83.0.0 in ai-stack/mcp-servers/nixos-docs/Dockerfile (owner policy: floors, never exact == pins); rebuild image and confirm Trivy clears the alerts (2 open alert(s), max severity high)
   File: ai-stack/mcp-servers/nixos-docs/Dockerfile
@@ -5000,17 +5000,17 @@ File: scripts/ai/lib/worktree-isolation.sh; scripts/automation/prsi-orchestrator
   Action: raise the minimum-version floor: GitPython>=3.1.59 in ai-stack/mcp-servers/nixos-docs/requirements.txt (owner policy: floors, never exact == pins); rebuild image and confirm Trivy clears the alerts (27 open alert(s), max severity critical)
   File: ai-stack/mcp-servers/nixos-docs/requirements.txt
 
-[OPEN] rsi-792612b055567ceaf12ed6fb — github-code-scanning:trivy-custom-aidb failure in code-scanning:trivy-custom-aidb. Root cause evidence: producer=github-code-scanning:trivy-custom-aidb; path=ai-stack/mcp-servers/aidb/requirements.txt; authority=trivy; os_error=transformers 4.57.6 vulnerable. Detected=2026-10-01T03:09:15.598025Z.
+[DONE 2026-10-01] rsi-792612b055567ceaf12ed6fb — github-code-scanning:trivy-custom-aidb failure in code-scanning:trivy-custom-aidb. Root cause evidence: producer=github-code-scanning:trivy-custom-aidb; path=ai-stack/mcp-servers/aidb/requirements.txt; authority=trivy; os_error=transformers 4.57.6 vulnerable. Detected=2026-10-01T03:09:15.598025Z.
   Severity: high
   Action: raise the minimum-version floor: transformers>=5.10.0 in ai-stack/mcp-servers/aidb/requirements.txt (owner policy: floors, never exact == pins); rebuild image and confirm Trivy clears the alerts (3 open alert(s), max severity high)
   File: ai-stack/mcp-servers/aidb/requirements.txt
 
-[OPEN] rsi-f80f6b4d2ea17a765ea57c9a — github-code-scanning:trivy-custom-nixos-docs failure in code-scanning:trivy-custom-nixos-docs. Root cause evidence: producer=github-code-scanning:trivy-custom-nixos-docs; path=ai-stack/mcp-servers/nixos-docs/Dockerfile; authority=trivy; os_error=wheel 0.45.1 vulnerable. Detected=2026-10-01T03:09:15.603132Z.
+[DONE 2026-10-01] rsi-f80f6b4d2ea17a765ea57c9a — github-code-scanning:trivy-custom-nixos-docs failure in code-scanning:trivy-custom-nixos-docs. Root cause evidence: producer=github-code-scanning:trivy-custom-nixos-docs; path=ai-stack/mcp-servers/nixos-docs/Dockerfile; authority=trivy; os_error=wheel 0.45.1 vulnerable. Detected=2026-10-01T03:09:15.603132Z.
   Severity: high
   Action: raise the minimum-version floor: wheel>=0.46.2 in ai-stack/mcp-servers/nixos-docs/Dockerfile (owner policy: floors, never exact == pins); rebuild image and confirm Trivy clears the alerts (1 open alert(s), max severity high)
   File: ai-stack/mcp-servers/nixos-docs/Dockerfile
 
-[OPEN] rsi-0d3fdfb04eab33f2014325e0 — github-code-scanning:trivy-custom-nixos-docs failure in code-scanning:trivy-custom-nixos-docs. Root cause evidence: producer=github-code-scanning:trivy-custom-nixos-docs; path=ai-stack/mcp-servers/nixos-docs/Dockerfile; authority=trivy; os_error=jaraco.context 5.3.0 vulnerable. Detected=2026-10-01T03:09:15.607922Z.
+[DONE 2026-10-01] rsi-0d3fdfb04eab33f2014325e0 — github-code-scanning:trivy-custom-nixos-docs failure in code-scanning:trivy-custom-nixos-docs. Root cause evidence: producer=github-code-scanning:trivy-custom-nixos-docs; path=ai-stack/mcp-servers/nixos-docs/Dockerfile; authority=trivy; os_error=jaraco.context 5.3.0 vulnerable. Detected=2026-10-01T03:09:15.607922Z.
   Severity: high
   Action: raise the minimum-version floor: jaraco.context>=6.1.0 in ai-stack/mcp-servers/nixos-docs/Dockerfile (owner policy: floors, never exact == pins); rebuild image and confirm Trivy clears the alerts (1 open alert(s), max severity high)
   File: ai-stack/mcp-servers/nixos-docs/Dockerfile
@@ -5077,3 +5077,48 @@ File: scripts/ai/lib/worktree-isolation.sh; scripts/automation/prsi-orchestrator
   Severity: medium (user-facing portfolio and prioritization inventory omitted)
   Action: invoke the index script with `sys.executable`; regression test passes; live API now reports complete inventory (104 plans) and tracker page returns HTTP 200.
   File: scripts/ai/aq-pm-tracker:270
+
+[OPEN] rsi-cecc9df5e8899cca3ddc26f6 — llama-server:log-verbosity failure in llama-cpp-decode-step-cancel-log. Root cause evidence: producer=llama-server:log-verbosity; path=nix/modules/roles/ai-stack.nix; authority=systemd; os_error=llama-server logs 3 WARN lines per decode step during generation (cancel task + should_stop + PR 22907 ref); ~8k cancels/h while a local task runs. Detected=2026-10-01T21:49:44.373347Z.
+  Severity: low
+  Action: Evidence 2026-10-01: cancel cadence ~0.3s == decode rate (~3 tok/s, MTP --spec-type); zero cancels in idle hours; slot 0 busy on one task (98590) throughout; task ids +2 per step => per-step speculative child task cancelled, WARN since llama.cpp PR 22907. Not a client storm (all /slots pollers use 5s timeouts; coordinator polls :8081). Fix: confirm benign upstream, then raise log threshold (--log-verbosity) or journald LogRateLimit for llama-cpp.service; do not hide real warnings.
+  File: nix/modules/roles/ai-stack.nix
+
+[DONE 2026-10-01] CI-PR356-PKGCOUNT — Flake Validation "Package count drift check" red on PR #356 — root cause: config/package-count-baseline.json not regenerated when semgrep + gitleaks were added to nix/modules/roles/agentic-toolchain.nix (b78af0fc); drift is exactly +2 on the four ai-dev targets (hyperd-ai-dev 379->381, aqos-vm-ai-dev 372->374, aqos-install-vm-ai-dev 374->376) and nothing else.
+  Severity: low
+  Action: regenerated with scripts/testing/check-package-count-drift.sh --write-baseline (diff reviewed: only ai-dev system/combined counts + max/avg moved). Guard already exists (the drift check itself); the miss was committing a package add without running it locally.
+  File: config/package-count-baseline.json
+
+[DONE 2026-10-01] CI-PR356-EVIDENCE — "Syntax Validation" job red (really check-harness-first-pr-evidence-gate.sh, invoked by check-harness-first-static-gates.sh) — root cause: PR touched high-impact paths (hybrid-coordinator status_service.py/http_server_impl.py, prsi-orchestrator.py) but only MODIFIED the existing evidence file 2026-10-01-rsi-steward.md; the gate requires a newly ADDED docs/harness-first/evidence/YYYY-MM-DD-<task>.md (--diff-filter=A).
+  Severity: medium (blocks merge; tier0 does not run this gate locally, so it is only seen in CI)
+  Action: added docs/harness-first/evidence/2026-10-01-slate-nix-only-autoupdate.md with all required_evidence_sections. Follow-up: a long-running branch that keeps appending to one evidence file will hit this each PR; consider running the PR evidence gate (FORCE_HARNESS_FIRST_EVIDENCE_GATE=true BASE_REF=main) from tier0 --pre-commit so it fails locally.
+  File: scripts/testing/check-harness-first-pr-evidence-gate.sh ~line 75
+
+[DONE 2026-10-01] CI-PR356-PARITY — parity-scorecard-gate red (tier0 phase-0 "QA phase 0 failed", 26 rows) — three stacked root causes: (1) tier0 verdict regex `[0-9]+ passed.*0 failed` also matched "10/20/30 failed", so red QA runs passed whenever the failure count ended in 0 (the "nondeterministic CI" of incident 38aff77a4f; once host_mode.py demoted the host-only failures the count stopped landing on a multiple of 10 and the gate went honestly red); (2) the CI job's pip line lacked `cryptography` and `rich`, so 0.10.42/44/51-54 died on ImportError; (3) HOST_ONLY_IDS did not cover live-HTTP/host-state probes (0.5.2, 0.7.1/2, 0.9.1-3, 0.10.5, 0.10.40/42/44, 0.12.1, 0.13.x, 0.16.2, 0.152.3/4/9, 86.7), which can only fail off-host; (4) test-local-delegation-artifact.py:364 used a backslash inside an f-string expression (SyntaxError on the CI's Python 3.11; valid only on 3.12+).
+  Severity: high (gate silently passed red runs)
+  Action: anchored the verdict regex (scripts/governance/tier0-validation-gate.sh ~895), added cryptography+rich to .github/workflows/tests.yml:56, extended HOST_ONLY_IDS (scripts/testing/harness_qa/core/host_mode.py), hoisted the f-string expression. Guards: test-qa-host-mode.py GateQaVerdict (verdict regex incl. 10/20/30; host-only ids). Follow-up: no CI step compiles tracked python under the CI interpreter (3.11) while the host runs 3.13 — py_compile sweep with 3.11 found only this one file.
+  File: scripts/testing/test-local-delegation-artifact.py:364; scripts/governance/tier0-validation-gate.sh ~895; .github/workflows/tests.yml:56; scripts/testing/harness_qa/core/host_mode.py
+
+[DONE 2026-10-01] CI-PR356-CLOSURE-SARIF — Nix Closure Vulnerability Scan red at SARIF upload ("Code Scanning could not process the submitted SARIF file: ... expected artifact location") — root cause: grype emits every SBOM-sourced SARIF result with artifactLocation.uri == "" (a Nix store path has no repo file; verified on a real 343-result report), which code scanning rejects. Scan and build themselves succeeded (28 min).
+  Severity: medium (findings never reached code scanning; the RSI intake for category nix-closure had nothing to ingest)
+  Action: aq-closure-scan now anchors every result on flake.lock (anchor_sarif) before writing the SARIF; regression test in test-aq-closure-scan.py. Not verifiable without a CI upload: confirm on the next PR run that the "nix-closure" category appears under code scanning.
+  File: scripts/security/aq-closure-scan (anchor_sarif, SARIF_ANCHOR_URI)
+
+[OPEN] rsi-8d4fd825df9004397168e2ed — tier0-validation-gate.sh:gate_qa_phase0 failure in pr356-ci-parity-gate-false-pass. Root cause evidence: producer=tier0-validation-gate.sh:gate_qa_phase0; path=scripts/governance/tier0-validation-gate.sh; authority=ci; os_error=tier0 phase-0 verdict regex matched '10/20/30 failed' as zero failures; red QA runs passed by chance. Detected=2026-10-01T22:24:42.447560Z.
+  Severity: high
+  Action: anchor verdict regex; CI deps; host-only ids; py3.11 f-string
+  File: scripts/governance/tier0-validation-gate.sh
+
+[OPEN] rsi-7e6c67bd05483ea1518bbe4a — aq-closure-scan:grype-sarif failure in pr356-closure-sarif-empty-uri. Root cause evidence: producer=aq-closure-scan:grype-sarif; path=scripts/security/aq-closure-scan; authority=ci; os_error=code scanning rejected nix-closure SARIF: grype emits empty artifact location for SBOM input. Detected=2026-10-01T22:24:47.671423Z.
+  Severity: medium
+  Action: anchor SARIF artifactLocation.uri on flake.lock
+  File: scripts/security/aq-closure-scan
+
+[OPEN] rsi-5423db9a51e72dff95d76425 — check-harness-first-pr-evidence-gate.sh failure in pr356-evidence-gate-needs-added-file. Root cause evidence: producer=check-harness-first-pr-evidence-gate.sh; path=docs/harness-first/evidence; authority=ci; os_error=harness-first PR evidence gate (Syntax Validation job) requires a newly added evidence file. Detected=2026-10-01T22:24:48.484677Z.
+  Severity: medium
+  Action: add new evidence file per PR
+  File: docs/harness-first/evidence
+
+[OPEN] rsi-e5d253ffa3d1470a68df560b — aq-agent-loop:llm-timeouts failure in local-first-token-timeout-ignores-prompt-size. Root cause evidence: producer=aq-agent-loop:llm-timeouts; path=scripts/ai/aq-agent-loop; authority=local-inference; os_error=local delegate first_token_timeout (900s) is fixed while prompt processing scales with prompt size: 4.7k-token [REDACTED] needed 930s at 5 tok/s (swap-drift), client cancelled 30s before first token; retry re-processes the full prompt (no cache reuse on hybrid/SWA model) so it fails identically. Detected=2026-10-01T22:27:43.915076Z.
+  Severity: medium
+  Action: Derive first_token_timeout from prompt_tokens / measured prompt-eval rate (llama /metrics prompt_tokens_seconds) + margin; skip same-prompt retry after a first-token [REDACTED] (shrinking max_tokens cannot help a prompt-bound stall); preflight swap/PSI and defer or request resident restart when the model is paged out.
+  File: scripts/ai/aq-agent-loop

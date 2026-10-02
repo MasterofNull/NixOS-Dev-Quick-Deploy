@@ -54,6 +54,33 @@ class HostMode(unittest.TestCase):
         self.assertEqual(a, b)
 
 
+class GateQaVerdict(unittest.TestCase):
+    """tier0 phase-0 verdict regex: an unanchored "0 failed" also matched "10/20/30 failed" and
+    let a red QA run pass (CI parity-scorecard-gate passed only when the failure count ended in 0)."""
+
+    def _verdict_pattern(self):
+        import re
+        src = (ROOT / "scripts/governance/tier0-validation-gate.sh").read_text()
+        return re.search(r'grep -qE "(\[0-9\]\+ passed[^"]*0 failed)"', src).group(1)
+
+    def test_only_a_true_zero_failed_summary_passes(self):
+        import subprocess
+        pat = self._verdict_pattern()
+
+        def verdict(summary):
+            return subprocess.run(["grep", "-qE", pat], input=summary, text=True).returncode == 0
+
+        self.assertTrue(verdict("186 passed \u00b7 0 failed \u00b7 11 skipped \u00b7 259s"))
+        for n in (10, 20, 30, 100, 26):
+            self.assertFalse(verdict(f"140 passed \u00b7 {n} failed \u00b7 11 skipped \u00b7 259s"), n)
+
+    def test_ci_off_host_probes_are_host_only(self):
+        # Ids that can only fail on a runner without the stack (found by replaying aq-qa 0 offline).
+        from harness_qa.core.host_mode import HOST_ONLY_IDS
+        for cid in ("0.5.2", "0.7.1", "0.12.1", "0.10.5", "0.152.3", "0.152.4", "0.152.9", "86.7"):
+            self.assertIn(cid, HOST_ONLY_IDS)
+
+
 class GateRowOrdering(unittest.TestCase):
     def test_non_live_failure_is_not_truncated_behind_host_only_rows(self):
         import subprocess
