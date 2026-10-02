@@ -253,7 +253,66 @@
           - lts: use the supported long-term support kernel track.
           - default: use pkgs.linuxPackages (board/vendor defaults).
           This is generated from local hardware facts during deployment.
+          Per-variant choice: a workstation/agent-dev flake tracks latest-stable
+          (security protocol); other variants (e.g. a computer-lab flake) may pick
+          differently.
         '';
+      };
+    };
+
+    security = {
+      kernelHardening.enable = lib.mkOption {
+        type = lib.types.bool;
+        default = true;
+        description = ''
+          Baseline kernel information-leak hardening: kernel.kptr_restrict = 2,
+          kernel.dmesg_restrict = 1 (priority 900: above NixOS defaults, below normal assignments, so a role such as kernel-dev
+          can relax them deliberately).
+        '';
+      };
+
+      unprivilegedUserNamespaces = lib.mkOption {
+        type = lib.types.enum ["allow" "restrict"];
+        default = "allow";
+        description = ''
+          Unprivileged user namespace policy, chosen per flake variant.
+          - allow: required here — agent execution cells (bubblewrap), Electron
+            app sandboxes and rootless tooling depend on them.
+          - restrict: security.allowUserNamespaces = false; for hosts with
+            untrusted interactive users and no agent sandboxes (e.g. a computer
+            lab). Nix's own sandbox assertion and the execution-cell assertion
+            below make the trade-off explicit at eval time.
+        '';
+      };
+    };
+
+    # Tiered unattended update pipeline (.agents/plans/tiered-auto-update-prd-r3-20261001/FREEZE.md,
+    # slice U3). Ships DISABLED. Implemented by scripts/maintenance/aq-auto-update
+    # and nix/modules/core/auto-update.nix.
+    autoUpdate = {
+      enable = lib.mkOption {
+        type = lib.types.bool;
+        default = false;
+        description = ''
+          Enable the unattended update pipeline: a daily notify-only check and an
+          activation run in the weekly Sunday 02:00-04:00 UTC window. Activation
+          requires a proven-idle admission lease (zero active agent jobs for 15
+          minutes), stops llama-cpp for the build, switches to the exact built
+          closure, health-gates it, and rolls back to the recorded previous closure
+          on failure. Never reboots; a kernel change is recorded as pending-reboot.
+        '';
+      };
+
+      flakeAttr = lib.mkOption {
+        type = lib.types.str;
+        default = "hyperd-ai-dev";
+        description = "nixosConfigurations attribute built and activated by the pipeline.";
+      };
+
+      stateDir = lib.mkOption {
+        type = lib.types.str;
+        default = "/var/lib/aq-auto-update";
+        description = "Directory for the lock, admission-lease state, pending-reboot marker and status.json.";
       };
     };
 

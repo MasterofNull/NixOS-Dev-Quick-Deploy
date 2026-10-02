@@ -1,0 +1,115 @@
+{
+  "version": 1,
+  "description": "Tiered auto-update policy (frontier vs core). Frontier attrs are promoted one per run into nix/overlays/fast-lane-manifest.nix by scripts/maintenance/aq-update-tiers. Every attr listed resolves via nix eval against both nixpkgs and nixpkgs-unstable (verified 2026-10-01). Deliberately excluded: python3 (3.13 -> 3.14 runtime major under services) and postgresql (17 -> 18 on-disk major); both stay core.",
+  "frontier": {
+    "agent-cli": [
+      {
+        "attr": "claude-code"
+      },
+      {
+        "attr": "codex"
+      },
+      {
+        "attr": "gemini-cli"
+      },
+      {
+        "attr": "opencode"
+      }
+    ],
+    "ide": [
+      {
+        "attr": "antigravity",
+        "rename": "antigravity-ide"
+      },
+      {
+        "attr": "vscodium"
+      },
+      {
+        "attr": "vscode"
+      },
+      {
+        "attr": "zed-editor"
+      }
+    ],
+    "toolchain": [
+      {
+        "attr": "rustc"
+      },
+      {
+        "attr": "cargo"
+      },
+      {
+        "attr": "go"
+      },
+      {
+        "attr": "nodejs"
+      },
+      {
+        "attr": "uv"
+      },
+      {
+        "attr": "bun"
+      },
+      {
+        "attr": "deno"
+      },
+      {
+        "attr": "zig"
+      }
+    ],
+    "db-client-lang": [
+      {
+        "attr": "pgcli"
+      },
+      {
+        "attr": "usql"
+      },
+      {
+        "attr": "redis"
+      },
+      {
+        "attr": "sqlite"
+      }
+    ],
+    "sops-cli": [
+      {
+        "attr": "sops"
+      },
+      {
+        "attr": "age"
+      },
+      {
+        "attr": "ssh-to-age"
+      }
+    ],
+    "perf-tools": [
+      {
+        "attr": "hyperfine"
+      },
+      {
+        "attr": "bpftrace"
+      },
+      {
+        "attr": "valgrind"
+      },
+      {
+        "attr": "hotspot"
+      },
+      {
+        "attr": "samply"
+      }
+    ],
+    "kernel": [
+      {
+        "attr": "linuxPackages_latest",
+        "version_attr": "kernel.version",
+        "promote": true,
+        "policy": "Newest stable kernel, always (owner security protocol 2026-10-01; matches mySystem.kernel.track = latest-stable, host mkForce). Not LTS: upstream fixes land in the newest stable first, LTS receives selected backports later, and the 2026 AI-driven CVE volume (400+ kernel CVEs in a day) makes per-CVE backport triage unworkable. Promote to the fast lane whenever nixpkgs-unstable carries a newer linuxPackages_latest than stable.",
+        "activation": "Patched != running: NixOS has no live patching, so a kernel update is only effective after reboot. The pipeline stages the switch and records pending_reboot_since; U4 escalates when a security kernel is pending past the reboot SLA. Previous generations stay in the boot menu as fallback; post-boot audio/GPU/inference probes gate acceptance."
+      }
+    ]
+  },
+  "core": {
+    "policy": "Everything not listed under frontier stays on the stable nixpkgs input and moves only with the monthly stable bump through its tier gate."
+  }
+}

@@ -126,6 +126,45 @@
       },
       "compliance": "blocked",
       "next_slice": "SR-4 adds signal-safe checkpointing, --resume, typed outcomes, and live evidence."
+    },
+    {
+      "id": "aq-auto-update-run",
+      "workload_class": "resumable-job",
+      "implementation_paths": [
+        "nix/modules/core/auto-update.nix",
+        "scripts/maintenance/aq-auto-update"
+      ],
+      "suspend_behavior": {
+        "mode": "inhibit_sleep_during_run",
+        "resume_trigger": "none: systemd-inhibit blocks sleep/shutdown/lid for the run; an interruption is recovered by the transient aq-auto-update-watchdog rollback to the recorded closure",
+        "implementation_status": "implemented"
+      },
+      "state_safety": {
+        "checkpoint_required": false,
+        "idempotency": "A run that never switched leaves the system unchanged (flake.lock restored); a run interrupted after switch is rolled back to the recorded previous closure by the watchdog.",
+        "signal_behavior": "systemd oneshot, Restart=no; never retried within a window"
+      },
+      "readiness": {
+        "strategy": "bounded_health_poll",
+        "evidence": "scripts/maintenance/aq-auto-update health gate (300s, 3 consecutive passes)",
+        "max_wait_seconds": 300,
+        "implementation_status": "implemented"
+      },
+      "resume_outcomes": {
+        "required": [
+          "ready",
+          "timeout",
+          "interrupted"
+        ],
+        "implementation_status": "partial"
+      },
+      "observability": {
+        "telemetry": "partial",
+        "dashboard": "planned",
+        "qa": "planned"
+      },
+      "compliance": "partial",
+      "next_slice": "U4: status.json surfaced via aq-rsi status + dashboard card; watchdog survival + injected-failure recovery drill before activation."
     }
   ]
 }

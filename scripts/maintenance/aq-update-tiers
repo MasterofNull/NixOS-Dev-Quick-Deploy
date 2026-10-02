@@ -1,0 +1,147 @@
+#!/run/current-system/sw/bin/python3
+"""Deterministic frontier-tier update checker/promoter (no LLM).
+
+`check`            compare stable vs unstable version per frontier attr in
+                   config/update-tiers.json and report candidates.
+`promote --one`    add the first eligible, not-yet-promoted attr to
+                   nix/overlays/fast-lane-manifest.nix, build-check it and run
+                   the manifest tests; restore the manifest byte-identical on
+                   failure. Entries with "promote": false are only reported.
+                   The kernel follows linuxPackages_latest (newest stable);
+                   its activation needs a reboot, tracked by aq-auto-update.
+
+Environment overrides for testing (mirrors aq-pin-watch):
+- AQ_UPDATE_TIERS_VERSION_FIXTURE: JSON file mapping "stable:<attr>" /
+  "unstable:<attr>" -> version
+- AQ_UPDATE_TIERS_BUILD_CMD: build command, "{attr}" substituted (default:
+  nix build --no-link .#nixosConfigurations.$AQ_UPDATE_TIERS_HOST.pkgs.{attr})
+- AQ_UPDATE_TIERS_TEST_CMD: manifest test command
+- AQ_UPDATE_TIERS_CONFIG / AQ_UPDATE_TIERS_MANIFEST: path overrides
+- AQ_UPDATE_TIERS_HOST: flake host for the build check (default hyperd-ai-dev)
+"""
+import argparse
+import json
+import os
+import re
+import shlex
+import subprocess
+import sys
+from pathlib import Path
+
+ROOT = Path(__file__).resolve().parents[2]
+CONFIG = Path(os.environ.get("AQ_UPDATE_TIERS_CONFIG", ROOT / "config/update-tiers.json"))
+MANIFEST = Path(os.environ.get("AQ_UPDATE_TIERS_MANIFEST", ROOT / "nix/overlays/fast-lane-manifest.nix"))
+DEFAULT_TEST_CMD = "/run/current-system/sw/bin/python3 -m pytest -q scripts/testing/test-fast-lane-staleness-check.py"
+
+
+def nix_version(channel: str, attr: str, version_attr: str = "version"):
+    """channel is 'stable' (nixpkgs) or 'unstable' (nixpkgs-unstable)."""
+    fixture = os.environ.get("AQ_UPDATE_TIERS_VERSION_FIXTURE")
+    if fixture:
+        return json.loads(Path(fixture).read_text()).get(f"{channel}:{attr}")
+    inp = "nixpkgs" if channel == "stable" else "nixpkgs-unstable"
+    try:
+        p = subprocess.run(["nix", "eval", "--raw", "--inputs-from", str(ROOT),
+                            f"{inp}#{attr}.{version_attr}"],
+                           capture_output=True, text=True, timeout=300)
+    except (subprocess.TimeoutExpired, OSError):
+        return None
+    return (p.stdout.strip() or None) if p.returncode == 0 else None
+
+
+def active_attrs(text: str):
+    m = re.search(r"active\s*=\s*\[(.*?)\];", text, re.S)
+    return re.findall(r'^\s*"([^"]+)"', m.group(1), re.M) if m else []
+
+
+def evaluate(config: dict, manifest_text: str):
+    active = set(active_attrs(manifest_text))
+    rows = []
+    for cat, entries in config["frontier"].items():
+        for e in entries:
+            attr = e["attr"]
+            vattr = e.get("version_attr", "version")
+            s = nix_version("stable", attr, vattr)
+            u = nix_version("unstable", e.get("rename", attr), vattr)
+            if e.get("promote") is False:
+                status = "staged-only"
+            elif attr in active:
+                status = "promoted"
+            elif u is None:
+                status = "unresolved"
+            elif s != u:
+                status = "candidate"
+            else:
+                status = "current"
+            rows.append({"category": cat, "attr": attr, "rename": e.get("rename"),
+                         "stable": s, "unstable": u, "status": status})
+    return rows
+
+
+def cmd_check(args) -> int:
+    rows = evaluate(json.loads(CONFIG.read_text()), MANIFEST.read_text())
+    if args.json:
+        print(json.dumps(rows, indent=2))
+    else:
+        for r in rows:
+            print(f"{r['status']:<11} {r['category']:<15} {r['attr']:<22} {r['stable']} -> {r['unstable']}")
+    return 0
+
+
+def insert_before_close(text: str, opener: str, close: str, line: str) -> str:
+    end = text.index(close, text.index(opener))
+    return text[:end] + line + text[end:]
+
+
+def run(cmd: str) -> int:
+    print(f"+ {cmd}", file=sys.stderr)
+    return subprocess.run(shlex.split(cmd), cwd=ROOT).returncode
+
+
+def cmd_promote(args) -> int:
+    if not args.one:
+        print("promote requires --one", file=sys.stderr)
+        return 2
+    original = MANIFEST.read_bytes()
+    rows = evaluate(json.loads(CONFIG.read_text()), original.decode())
+    for r in rows:
+        if r["status"] == "staged-only":
+            print(f"report: {r['attr']} {r['stable']} (staged separately, not promoted)")
+    pick = next((r for r in rows if r["status"] == "candidate"), None)
+    if not pick:
+        print("no eligible frontier candidate")
+        return 0
+    attr = pick["attr"]
+    text = original.decode()
+    entry = f'    "{attr}" # frontier/{pick["category"]}: stable {pick["stable"]} -> unstable {pick["unstable"]}.\n'
+    text = insert_before_close(text, "active = [", "  ];", entry)
+    if pick["rename"]:
+        text = insert_before_close(text, "renames = {", "  };", f'    {attr} = "{pick["rename"]}";\n')
+    MANIFEST.write_text(text)
+    build = os.environ.get("AQ_UPDATE_TIERS_BUILD_CMD") or (
+        "nix build --no-link .#nixosConfigurations."
+        f"{os.environ.get('AQ_UPDATE_TIERS_HOST', 'hyperd-ai-dev')}.pkgs.{{attr}}")
+    test = os.environ.get("AQ_UPDATE_TIERS_TEST_CMD", DEFAULT_TEST_CMD)
+    if run(build.replace("{attr}", attr)) != 0 or run(test) != 0:
+        MANIFEST.write_bytes(original)
+        print(f"FAILED: {attr}; manifest restored", file=sys.stderr)
+        return 1
+    print(f"promoted: {attr} ({pick['stable']} -> {pick['unstable']})")
+    return 0
+
+
+def main() -> int:
+    ap = argparse.ArgumentParser(description=__doc__.splitlines()[0])
+    sub = ap.add_subparsers(dest="cmd", required=True)
+    c = sub.add_parser("check")
+    c.add_argument("--json", action="store_true")
+    c.set_defaults(fn=cmd_check)
+    p = sub.add_parser("promote")
+    p.add_argument("--one", action="store_true")
+    p.set_defaults(fn=cmd_promote)
+    args = ap.parse_args()
+    return args.fn(args)
+
+
+if __name__ == "__main__":
+    sys.exit(main())
