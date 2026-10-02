@@ -7,7 +7,7 @@ import tempfile
 import shutil
 from pathlib import Path
 
-_LOCAL_AGENTS = "/home/hyperd/Documents/NixOS-Dev-Quick-Deploy/ai-stack/local-agents"
+_LOCAL_AGENTS = str(Path(__file__).resolve().parents[2] / "ai-stack" / "local-agents")
 # Add project root to path to import CandidateLifecycleManager
 sys.path.append(_LOCAL_AGENTS)
 from candidate_lifecycle import CandidateLifecycleManager

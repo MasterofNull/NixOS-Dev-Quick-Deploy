@@ -5122,3 +5122,8 @@ File: scripts/ai/lib/worktree-isolation.sh; scripts/automation/prsi-orchestrator
   Severity: medium
   Action: Derive first_token_timeout from prompt_tokens / measured prompt-eval rate (llama /metrics prompt_tokens_seconds) + margin; skip same-prompt retry after a first-token [REDACTED] (shrinking max_tokens cannot help a prompt-bound stall); preflight swap/PSI and defer or request resident restart when the model is paged out.
   File: scripts/ai/aq-agent-loop
+
+[OPEN] ralph-wiggum-hardcoded-repo-cwd — ai-stack/mcp-servers/ralph-wiggum/server.py runs subprocesses with cwd="/home/hyperd/Documents/NixOS-Dev-Quick-Deploy" (no env override), unlike switchboard/coordination which read REPO_PATH/REPO_ROOT. Same class as the test path bug fixed 2026-10-01 (QA 0.150.1).
+  Severity: low
+  Action: read REPO_ROOT from the service environment (declared in nix/modules/roles/ai-stack.nix) with the current path only as fallback.
+  File: ai-stack/mcp-servers/ralph-wiggum/server.py ~line 637, 700
