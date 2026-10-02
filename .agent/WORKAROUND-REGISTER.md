@@ -193,3 +193,10 @@ Codex lane absent).
 - Evidence: same redirected, profiled aq-report path fell from 552,192 KiB process-tree peak (active `useful_token_metrics` stack ~538,236 KiB) to 115,852 KiB (−422,384 KiB / 78%). Focused test 7/7 and py_compile passed. Keep the 256M service cap unchanged.
 - Runtime remains pending exact-subject independent review and a serialized live acceptance window; do not manually start the executing PRSI unit while Remediator/timer ownership is unsettled.
 - 2026-09-30 live acceptance (claude-opus): scheduled `ai-prsi-orchestrator` cycle 09:28 PDT failed `oom-kill` (pre-fix, 2m25s); first post-fix cycle 10:08 PDT ran sync (aq-report) to `Result=success` in 9s under the unchanged 256M cap. Exact subject 6c06b38b/243885d0 independently reviewed PASS by claude-opus (streaming path is order-independent; missing-file still yields `status=no_data`); local Qwen review local-20260930-105223-xbkns7 dispatched.
+
+## WR-PRSI-THROTTLER — aq-throttler kept on legacy PRSI queue file — OPEN
+- symptom: aq-throttler list-wraps the PRSI queue dict on write; pointed at the canonical queue it erased state (2026-10-02).
+- band-aid in place? yes: aq-throttler hardcoded to legacy /var/lib/nixos-ai-stack/prsi/action-queue.json (guarded by test-prsi-queue-path-ssot); ai-throttler.service stopped by owner.
+- root cause (T5): throttler writer predates the queue schema; no shared queue-write API.
+- producer to fix: scripts/ai/aq-throttler (write via the orchestrator's queue API, or retire in the PRSI->RSI merge).
+- class: T5 producer-governance-fracture · severity: high · status: OPEN · opened: 2026-10-02

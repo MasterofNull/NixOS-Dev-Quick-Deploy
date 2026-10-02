@@ -33,7 +33,9 @@ async def trigger_action(action: str):
     logger.info(f"ThrottlerAction: {action}")
     python_bin = sys.executable
     orchestrator = REPO_ROOT / "scripts" / "automation" / "prsi-orchestrator.py"
-    queue_path = Path(os.getenv("PRSI_ACTION_QUEUE_PATH", "/var/lib/nixos-ai-stack/optimizer/prsi/action-queue.json"))
+    # Not the canonical PRSI queue: this writer list-wraps the queue dict, which
+    # the orchestrator reads as empty (backlog aq-throttler-corrupts-prsi-queue).
+    queue_path = Path("/var/lib/nixos-ai-stack/prsi/action-queue.json")
     
     # Manually add action to the queue
     queue = []

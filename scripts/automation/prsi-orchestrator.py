@@ -331,12 +331,17 @@ def _risk_tier(action: Dict[str, Any]) -> str:
 
 
 def _load_queue() -> Dict[str, Any]:
-    payload = _read_json(QUEUE_PATH, {})
-    if not isinstance(payload, dict):
-        payload = {}
+    # Fail closed on a malformed file: treating it as empty lets the next save
+    # erase every row and owner sign-off (2026-10-02 aq-throttler incident).
+    payload: Any = {}
+    if QUEUE_PATH.exists():
+        try:
+            payload = json.loads(QUEUE_PATH.read_text(encoding="utf-8"))
+        except ValueError as exc:
+            raise RuntimeError(f"PRSI queue {QUEUE_PATH} is not valid JSON; refusing to overwrite") from exc
+        if not isinstance(payload, dict) or not isinstance(payload.get("actions", []), list):
+            raise RuntimeError(f"PRSI queue {QUEUE_PATH} is not a {{'actions': [...]}} object; refusing to overwrite")
     actions = payload.get("actions", [])
-    if not isinstance(actions, list):
-        actions = []
     return {
         "updated_at": payload.get("updated_at"),
         "actions": actions,
