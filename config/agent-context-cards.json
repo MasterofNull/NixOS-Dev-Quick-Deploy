@@ -395,7 +395,7 @@
         "validating PRSI policy, budget, or quarantine logic"
       ],
       "rules": [
-        "Search-first: read the live queue before acting. cat /var/lib/nixos-ai-stack/prsi/action-queue.json | python3 -m json.tool. Then read scripts/automation/prsi-orchestrator.py for schema. Never guess queue contents.",
+        "Search-first: read the live queue before acting. aq-approve --json. Then read scripts/automation/prsi-orchestrator.py for schema. Never guess queue contents.",
         "Keep PRSI changes pessimistic: gated, bounded, and artifact-backed.",
         "Prefer policy/config/schema changes over hidden behavior in code.",
         "Validate budget, approval, and quarantine behavior before widening automation.",

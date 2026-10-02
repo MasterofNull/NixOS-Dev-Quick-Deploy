@@ -5311,3 +5311,8 @@ File: scripts/ai/lib/worktree-isolation.sh; scripts/automation/prsi-orchestrator
   Severity: medium-high (approval bypass for optimizer side effects).
   Action: PRSI merge follow-up (added to plan as M7): force dry-run on this endpoint or route real application through approved queue rows only (orchestrator execute); relabel the local-agent tool.
   File: ai-stack/mcp-servers/hybrid-coordinator/workflow/prsi_handlers.py ~202; ai-stack/agents/runtimes/local_agent_runtime.py ~410, ~1140
+
+[DONE 2026-10-02] ralph-private-prsi-queue-and-legacy-hint-paths — PRSI merge M2+M5a. Ralph's /api/prsi/* handlers, private prsi-queue.json persistence and the prsi_sync capability entry are removed. They formed a third queue with no live caller (rg across ai-stack/scripts/dashboard/nix/config), and they caused today's Errno-13 and optimizer-dir permission chase. L2B pins were rebound with addendum Amendments 2 (server.py) and 3 (switchboard.py hint string). Hint/config text (switchboard profiles + nix + py, agent-context-cards, prsi-review skill) now points at the canonical queue / `aq-approve --json`; no legacy-path reference remains in live code. Lane: owner assigned Antigravity, inbox unclaimed, so routed to Claude haiku (Rule 18 substitution; catch-up queued). Also restages .claude/CLAUDE.md, a canon target that S2's compile updated but was not committed (canon drift in the committed tree).
+  Severity: medium.
+  Action: done. Remaining M5: archive the live legacy files (/var/lib/nixos-ai-stack/prsi/*, /var/lib/ai-stack/ralph/prsi-queue.json) — an owner/runtime act, recorded in the plan.
+  File: ai-stack/mcp-servers/ralph-wiggum/server.py; ai-stack/switchboard/switchboard.py:153; scripts/testing/fixtures/local-inference-l2b-payload-golden.json

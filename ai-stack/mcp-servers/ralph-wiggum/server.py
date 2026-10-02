@@ -339,7 +339,6 @@ async def well_known_mcp():
         },
         "capabilities": {
             "agent_loops": True,
-            "prsi_queue": True,
             "task_dispatch": True,
             "backend_routing": True,
             "health_monitoring": True,
@@ -351,8 +350,6 @@ async def well_known_mcp():
         "endpoints": {
             "health": "/health",
             "health_detailed": "/health/detailed",
-            "prsi_actions": "/api/prsi/actions",
-            "prsi_sync": "/api/prsi/sync",
             "loop_status": "/loop/status",
         },
         "rate_limiting": {
@@ -584,184 +581,6 @@ async def metrics():
         media_type=CONTENT_TYPE_LATEST
     )
 
-
-# ============================================================================
-# PRSI Queue Endpoints
-# ============================================================================
-
-PRSI_QUEUE_PATH = Path(os.getenv("PRSI_QUEUE_PATH", "/var/lib/ai-stack/ralph/prsi-queue.json"))
-PRSI_QUEUE_LOCK = asyncio.Lock()
-
-
-def _load_prsi_queue() -> dict:
-    """Load the PRSI action queue from disk."""
-    if not PRSI_QUEUE_PATH.exists():
-        return {"actions": [], "counts": {"pending_approval": 0, "approved": 0, "executed": 0, "rejected": 0}, "updated_at": None}
-    try:
-        return json.loads(PRSI_QUEUE_PATH.read_text(encoding="utf-8"))
-    except Exception:
-        return {"actions": [], "counts": {"pending_approval": 0, "approved": 0, "executed": 0, "rejected": 0}, "updated_at": None}
-
-
-def _save_prsi_queue(queue: dict) -> None:
-    """Save the PRSI action queue to disk.
-
-    Atomic rename, not in-place write: a legacy copy may be owned by another
-    user, and only ownership of the directory is guaranteed.
-    """
-    PRSI_QUEUE_PATH.parent.mkdir(parents=True, exist_ok=True)
-    queue["updated_at"] = datetime.now(timezone.utc).isoformat()
-    data = json.dumps(queue, indent=2, default=str)
-
-    fd, tmp_path = tempfile.mkstemp(
-        dir=str(PRSI_QUEUE_PATH.parent),
-        prefix=".prsi-queue.",
-        suffix=".tmp"
-    )
-    try:
-        with os.fdopen(fd, "w", encoding="utf-8") as f:
-            f.write(data)
-            os.fsync(f.fileno())
-        os.chmod(tmp_path, 0o640)
-        os.replace(tmp_path, str(PRSI_QUEUE_PATH))
-    except Exception:
-        try:
-            os.unlink(tmp_path)
-        except OSError:
-            pass
-        raise
-
-
-def _recompute_counts(queue: dict) -> None:
-    """Recompute action counts from the action list."""
-    counts = {"pending_approval": 0, "approved": 0, "executed": 0, "rejected": 0}
-    for action in queue.get("actions", []):
-        status = action.get("status", "pending_approval")
-        if status in counts:
-            counts[status] += 1
-    queue["counts"] = counts
-
-
-@app.get("/api/prsi/actions")
-async def get_prsi_actions(auth: str = Depends(require_auth)):
-    """Get the PRSI action queue with counts and pending actions."""
-    async with PRSI_QUEUE_LOCK:
-        queue = _load_prsi_queue()
-    return {"prsi": queue}
-
-
-@app.post("/api/prsi/sync")
-async def sync_prsi_queue(since: str = "1d", auth: str = Depends(require_auth)):
-    """Sync the PRSI queue from optimizer output."""
-    import subprocess
-    try:
-        result = subprocess.run(
-            ["scripts/ai/aq-optimizer", "--dry-run", "--output-json"],
-            cwd=os.environ["REPO_ROOT"],
-            capture_output=True,
-            text=True,
-            timeout=30
-        )
-        if result.returncode != 0:
-            return {"status": "error", "detail": result.stderr}
-
-        optimizer_output = json.loads(result.stdout)
-        actions = optimizer_output.get("applied", [])
-
-        async with PRSI_QUEUE_LOCK:
-            queue = _load_prsi_queue()
-            existing_ids = {a.get("id") for a in queue.get("actions", []) if a.get("id")}
-
-            for action in actions:
-                action_id = hashlib.sha256(json.dumps(action, sort_keys=True, default=str).encode()).hexdigest()[:16]
-                if action_id not in existing_ids:
-                    queue_action = {
-                        "id": action_id,
-                        "status": "pending_approval",
-                        "type": action.get("type", "change"),
-                        "action": action.get("action", "unknown"),
-                        "reason": action.get("reason", ""),
-                        "raw_action": action,
-                        "created_at": datetime.now(timezone.utc).isoformat(),
-                        "risk": "low" if action.get("dry_run") else "medium",
-                        "safe": True,
-                        "confidence": 0.8,
-                    }
-                    queue.setdefault("actions", []).append(queue_action)
-                    existing_ids.add(action_id)
-
-            _recompute_counts(queue)
-            _save_prsi_queue(queue)
-
-        return {"status": "ok", "synced": len(actions), "total_pending": queue["counts"]["pending_approval"]}
-    except Exception as exc:
-        logger.error("prsi_sync_failed", error=str(exc))
-        return {"status": "error", "detail": str(exc)}
-
-
-@app.post("/api/prsi/execute")
-async def execute_prsi_actions(
-    limit: int = 5,
-    dry_run: bool = True,
-    auto_sync: bool = True,
-    auth: str = Depends(require_auth)
-):
-    """Execute approved PRSI actions."""
-    import subprocess
-
-    async with PRSI_QUEUE_LOCK:
-        queue = _load_prsi_queue()
-        approved = [a for a in queue.get("actions", []) if a.get("status") == "approved"][:limit]
-
-        executed = []
-        for action in approved:
-            try:
-                # Run the actual optimizer with the action
-                if not dry_run:
-                    result = subprocess.run(
-                        ["scripts/ai/aq-optimizer", "--apply", "--output-json"],
-                        cwd=os.environ["REPO_ROOT"],
-                        capture_output=True,
-                        text=True,
-                        timeout=60
-                    )
-                    action["status"] = "executed" if result.returncode == 0 else "failed"
-                    action["executed_at"] = datetime.now(timezone.utc).isoformat()
-                else:
-                    action["status"] = "executed"
-                    action["executed_at"] = datetime.now(timezone.utc).isoformat()
-                    action["dry_run"] = True
-                executed.append(action)
-            except Exception as exc:
-                action["status"] = "failed"
-                action["error"] = str(exc)
-
-        _recompute_counts(queue)
-        _save_prsi_queue(queue)
-
-    return {"status": "ok", "executed": len(executed), "dry_run": dry_run}
-
-
-@app.post("/api/prsi/approve/{action_id}")
-async def approve_prsi_action(action_id: str, approved: bool = True, auth: str = Depends(require_auth)):
-    """Approve or reject a specific PRSI action."""
-    async with PRSI_QUEUE_LOCK:
-        queue = _load_prsi_queue()
-        found = False
-        for action in queue.get("actions", []):
-            if action.get("id") == action_id:
-                action["status"] = "approved" if approved else "rejected"
-                action["reviewed_at"] = datetime.now(timezone.utc).isoformat()
-                found = True
-                break
-
-        if not found:
-            raise HTTPException(status_code=404, detail=f"Action {action_id} not found")
-
-        _recompute_counts(queue)
-        _save_prsi_queue(queue)
-
-    return {"status": "ok", "action_id": action_id, "approved": approved}
 
 
 @app.exception_handler(Exception)
