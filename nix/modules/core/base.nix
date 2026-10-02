@@ -230,7 +230,7 @@ in {
   # the concurrently-in-flight s1c slice. base.nix already owns antigravity's
   # package resolution (basePackageNames below), so this is a natural home for
   # the checker that watches its fast-lane freshness.
-  imports = [./fast-lane-staleness-monitor.nix ./auto-update.nix];
+  imports = [./fast-lane-staleness-monitor.nix ./auto-update.nix ./kernel-hardening.nix];
 
   config = {
     networking.hostName = lib.mkDefault cfg.hostName;

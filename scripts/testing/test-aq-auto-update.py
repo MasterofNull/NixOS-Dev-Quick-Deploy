@@ -214,6 +214,25 @@ def t_repo_helpers_run_as_owner():
     assert all(c[:4] == ["runuser", "-u", "owner", "--"] for c in calls[:4]), calls
     assert calls[4][0] == "nixos-rebuild", calls[4]
 
+
+def t_check_escalates_running_kernel_past_reboot_sla():
+    # Patched != running: a newer installed kernel must be surfaced, then escalated past the SLA.
+    with tempfile.TemporaryDirectory() as d:
+        fx = Fx(d, kernel_change=True)
+        fx.cur.unlink(); fx.cur.symlink_to(fx.new)          # installed: kernelB
+        booted = fx.tmp / "booted-system"; booted.symlink_to(fx.prev)  # running: kernelA
+        fx.env.update({"AQ_AUTO_UPDATE_BOOTED_SYSTEM": str(booted), "AQ_AUTO_UPDATE_REBOOT_SLA_HOURS": "24"})
+        fx.run("check")
+        st = fx.status()
+        check(st["pending_reboot"] is True and st["pending_reboot_hours"] == 0.0, st)
+        check(fx.lines("RSI") == [], "no incident inside the SLA")
+        (fx.state / "pending-reboot").write_text(json.dumps({"since": "2026-09-29T00:00:00+00:00"}))
+        fx.run("check")
+        check(len(fx.lines("RSI")) == 1, fx.lines("RSI"))
+        booted.unlink(); booted.symlink_to(fx.new)          # rebooted into kernelB
+        fx.run("check")
+        check(fx.status()["pending_reboot"] is False and not (fx.state / "pending-reboot").exists(), fx.status())
+
 TESTS = [v for k, v in sorted(globals().items()) if k.startswith("t_")]
 
 if __name__ == "__main__":
