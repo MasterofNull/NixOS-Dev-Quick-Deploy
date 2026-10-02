@@ -961,6 +961,31 @@ def _run_rsi_delegate(row: Dict[str, Any], timeout_seconds: int, apply: bool, la
 _INFRA_PATTERNS = re.compile(r"read-only file system|permission denied|\bEROFS\b|\bEACCES\b|command not found|cannot touch", re.I)
 
 
+_LANE_UNAVAILABLE = re.compile(r"hit your usage limit|quota cooldown active|rate limit(ed)? exceeded", re.I)
+
+
+def _is_lane_unavailable(receipt: Any) -> bool:
+    """True when the delegate never got to work on the repair because its lane was out of quota."""
+    if not isinstance(receipt, dict):
+        return False
+    text = str(receipt.get("stderr_tail") or "") + "\n" + str(receipt.get("stdout_tail") or "")
+    return bool(_LANE_UNAVAILABLE.search(text))
+
+
+def _lane_cooldown_until(lane: str) -> "str | None":
+    """Active delegate quota cooldown for `lane` (ISO UTC) or None."""
+    if lane != "codex":
+        return None
+    base = os.environ.get("AQ_DELEGATION_DIR") or str(REPO_ROOT / ".agents" / "delegation")
+    path = Path(base) / ".codex-quota-cooldown"
+    try:
+        raw = path.read_text(encoding="utf-8").strip()
+        until = datetime.fromisoformat(raw.replace("Z", "+00:00"))
+    except (OSError, ValueError):
+        return None
+    return raw if until > datetime.now(timezone.utc) else None
+
+
 def _is_infra_failure(receipt: Any) -> bool:
     """True when a failed delegate receipt shows an environment fault (not a task/quality failure)."""
     if not isinstance(receipt, dict):
@@ -1119,6 +1144,10 @@ def cmd_rsi_dispatch(args: argparse.Namespace) -> int:
 
         selected_ids = {row.get("id") for row in selected}
         selected_rows = [row for row in eligible if row.get("id") in selected_ids]
+        if selected_rows and _lane_cooldown_until(lane):
+            # Quota cooldown recorded by the delegate: don't spend attempts until it resets.
+            skipped_reasons["lane_cooldown"] = len(selected_rows)
+            selected_rows = []
         executed = 0
         lease_owner = f"rsi-dispatch:{os.getpid()}"
         for row in selected_rows:
@@ -1141,6 +1170,14 @@ def cmd_rsi_dispatch(args: argparse.Namespace) -> int:
                     skipped_reasons["skipped_status_changed"] = skipped_reasons.get("skipped_status_changed", 0) + 1
                     continue
                 result, receipt = _run_rsi_delegate(row, timeout_seconds, bool(args.apply), lane)
+                if result == "rsi_failed" and _is_lane_unavailable(receipt):
+                    # Lane out of quota: the repair was never attempted; refund and wait for reset.
+                    row["rsi_attempts"] = max(0, int(row["rsi_attempts"]) - 1)
+                    row["status"] = observed_status
+                    row["execution"] = {"last_run_at": _now(), "result": "lane_unavailable", "receipt": receipt}
+                    _merge_save(queue, [row], _RSI_OWNED_FIELDS, {row.get("id"): "rsi_running"})
+                    skipped_reasons["lane_unavailable"] = skipped_reasons.get("lane_unavailable", 0) + 1
+                    break
                 if result == "rsi_failed" and _is_infra_failure(receipt):
                     # Environment fault: the attempt did not test the repair, so refund it.
                     row["rsi_attempts"] = max(0, int(row["rsi_attempts"]) - 1)
