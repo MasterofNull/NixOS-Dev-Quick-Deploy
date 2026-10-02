@@ -19,7 +19,9 @@
 let
   cfg = config.mySystem;
   virtEnabled = cfg.roles.virtualization.enable;
-  libvirtPackage = pkgs.libvirt.override { enableXen = false; };
+  # Xen-free libvirt comes from the overlay below, so every consumer
+  # (libvirtd, virsh, libvirt-glib, python bindings, virt-manager, virt-viewer) uses it.
+  libvirtPackage = pkgs.libvirt;
 
   vmHelper = name: command:
     pkgs.writeShellScriptBin name ''
@@ -28,6 +30,12 @@ let
     '';
 in {
   config = lib.mkIf virtEnabled {
+    # KVM-only host: build libvirt without Xen once, for all consumers. Per-package
+    # overrides leaked Xen back in via libvirt-glib and the python bindings.
+    nixpkgs.overlays = [
+      (_final: prev: {libvirt = prev.libvirt.override {enableXen = false;};})
+    ];
+
     # ---- KVM kernel modules -----------------------------------------------
     # Explicitly load the appropriate KVM module so the health check finds it
     # even on first boot before a reboot has loaded it from hardware-config.
@@ -67,7 +75,7 @@ in {
     environment.systemPackages = with pkgs; [
       libvirtPackage # virsh CLI expected by health checks
       qemu_kvm # qemu-system-* binaries for local VM execution
-      (virt-viewer.override {libvirt = libvirtPackage;}) # VM consoles; same Xen-free libvirt
+      virt-viewer # Display guest VM consoles (VNC/SPICE)
       spice-gtk # SPICE client libraries for virt-viewer
       (vmHelper "vm-list" "list --all")
       (vmHelper "vm-snapshot" "snapshot-list")
