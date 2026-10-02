@@ -787,22 +787,22 @@ class AgentOpsProjectionM2A(unittest.TestCase):
             r.begin("ill-t1", "local", "implementer", "writer", "code_generation", "file_output")
             # queued → done is not a legal direct transition
             with self.assertRaisesRegex(self.tr_mod.RegistryError, "illegal_transition"):
-                r.transition_m2a("ill-t1", "done")
+                r.transition_m2a("ill-t1", "done", expected_revision=1)
             # queued → waiting is not legal
             with self.assertRaisesRegex(self.tr_mod.RegistryError, "illegal_transition"):
-                r.transition_m2a("ill-t1", "waiting")
+                r.transition_m2a("ill-t1", "waiting", expected_revision=1)
 
     def test_m2a_14_terminal_state_idempotent_only(self) -> None:
         with tempfile.TemporaryDirectory() as d:
             r = self._make_registry(Path(d))
             r.begin("term-t1", "claude", "implementer", "writer", "testing", "file_output")
-            r.transition_m2a("term-t1", "cancelled")
+            r.transition_m2a("term-t1", "cancelled", expected_revision=1)
             # cancelled → cancelled is idempotent (legal)
-            rec = r.transition_m2a("term-t1", "cancelled")
+            rec = r.transition_m2a("term-t1", "cancelled", expected_revision=2)
             self.assertEqual(rec["status"], "cancelled")
             # cancelled → running is illegal
             with self.assertRaisesRegex(self.tr_mod.RegistryError, "illegal_transition"):
-                r.transition_m2a("term-t1", "running")
+                r.transition_m2a("term-t1", "running", expected_revision=3)
 
     def test_m2a_15_legacy_record_cannot_attach_or_transition(self) -> None:
         with tempfile.TemporaryDirectory() as d:
@@ -811,9 +811,9 @@ class AgentOpsProjectionM2A(unittest.TestCase):
             legacy = json.dumps({"id": "legacy-1", "status": "running", "pid": 999})
             r.registry_file.write_text(legacy + "\n", encoding="utf-8")
             with self.assertRaisesRegex(self.tr_mod.RegistryError, "legacy_record_cannot"):
-                r.attach_process("legacy-1", 1234, 5678)
+                r.attach_process("legacy-1", 1234, 5678, expected_revision=1)
             with self.assertRaisesRegex(self.tr_mod.RegistryError, "legacy_record_cannot"):
-                r.transition_m2a("legacy-1", "done")
+                r.transition_m2a("legacy-1", "done", expected_revision=1)
 
     # ── queued grace / future-skew bounds ─────────────────────────────────────
 
@@ -1032,7 +1032,7 @@ class AgentOpsProjectionM2A(unittest.TestCase):
             proc = subprocess.Popen(["true"])
             dead_pid = proc.pid
             proc.wait()
-            r.attach_process("recon-t1", dead_pid, 0)
+            r.attach_process("recon-t1", dead_pid, 0, expected_revision=1)
             result = r.reconcile_m2a()
             self.assertIn("recon-t1", result["reconciled"])
             rec = r.show_m2a("recon-t1")
