@@ -5,17 +5,32 @@ Nix is the single source of truth for deployed dependencies (owner decision
 2026-10-01), so this replaces container-image/pip-manifest scanning.
 
   aq-closure-scan [--target PATH] [--json] [--sarif FILE] [--sbom FILE] [--top N]
+  aq-closure-scan --triage-json FILE [--target PATH]        # Nix-aware triage (see below)
 
 Pipeline: sbomnix <target> --cdx <sbom>; grype sbom:<sbom> -o json.
 Any scanner failure exits non-zero (exit 2); findings never change the exit
 code unless --fail-on {critical,high} is given.  nixpkgs is taken from this
 repo's flake.lock (--inputs-from) so scanner versions track the deployed pin.
+
+Triage mode (--triage-json FILE) separates false positives from actionable findings.
+grype matches CPEs by version string and cannot see that nixpkgs backports patches without
+a version bump, so every finding is classified:
+  patched_in_nixpkgs         a patch named after the CVE is applied to that derivation
+                             (same rule as sbomnix vulnxscan; evidence = patch file name)
+  fixed_in_nixpkgs_unstable  repology/vulnxscan --triage: nixpkgs-unstable carries a fixed version
+  fixed_upstream_only        upstream released a fix, nixpkgs has not packaged it yet
+  no_upstream_fix            no fixed version known anywhere
+  needs_review               repology could not decide (or the triage backend was unavailable)
+The JSON carries per-finding classes plus `actionable_groups` keyed by root fix.  When repology is unreachable the fixed-version check falls back to grype's fix versions vs
+nixpkgs stable (pinned + channel head) and unstable.  Offline / fixture runs: --grype-json g.json
+--sbom-csv sbom.csv [--triage-input vulns.triage.csv] [--versions-json v.json].
 """
 from __future__ import annotations
 
 import argparse
 import json
 import os
+import re
 import shutil
 import subprocess
 import sys
@@ -128,6 +143,308 @@ def scan(target: str, sbom: Path, sarif: Path | None, top: int, timeout: int) ->
     return result
 
 
+CLASS_PATCHED = "patched_in_nixpkgs"
+CLASS_LEGACY = "legacy_variant_in_closure"
+CLASS_UNBOUNDED = "unbounded_cpe_match"
+CLASS_FIXED_STABLE = "fixed_in_nixpkgs_stable"
+CLASS_FIXED_NIXPKGS = "fixed_in_nixpkgs_unstable"
+CLASS_FIXED_UPSTREAM = "fixed_upstream_only"
+CLASS_NO_FIX = "no_upstream_fix"
+CLASS_REVIEW = "needs_review"
+CLASSES = (CLASS_PATCHED, CLASS_LEGACY, CLASS_FIXED_STABLE, CLASS_FIXED_NIXPKGS,
+           CLASS_FIXED_UPSTREAM, CLASS_NO_FIX, CLASS_UNBOUNDED, CLASS_REVIEW)
+# vulnxscan --triage `classify` column -> our class.  err_not_vulnerable_based_on_repology means
+# repology's affected-range data says this version is NOT vulnerable (a likely false positive,
+# but not backed by a patch file, so it is surfaced for human confirmation, not auto-dismissed).
+_TRIAGE_MAP = {
+    "fix_update_to_version_nixpkgs": CLASS_FIXED_NIXPKGS,
+    "fix_update_to_version_upstream": CLASS_FIXED_UPSTREAM,
+    "fix_not_available": CLASS_NO_FIX,
+}
+
+
+def _read_csv(path: Path) -> list[dict]:
+    import csv
+    with path.open(newline="") as fh:
+        return list(csv.DictReader(fh))
+
+
+def patches_index(sbom_rows: list[dict]) -> dict[tuple[str, str], str]:
+    """(pname, version) -> space-joined patch names, from the sbomnix CSV `patches` column."""
+    idx: dict[tuple[str, str], str] = {}
+    for row in sbom_rows:
+        key = (row.get("pname", ""), row.get("version", ""))
+        idx[key] = (idx.get(key, "") + " " + (row.get("patches") or "")).strip()
+    return idx
+
+
+def patch_evidence(vuln_id: str, patches: str) -> str | None:
+    """Patch file names mentioning the vuln id (case-insensitive); mirrors vulnxscan._is_patched."""
+    if not vuln_id:
+        return None
+    hits = [p for p in patches.split() if vuln_id.lower() in p.lower()]
+    # sbomnix lists every output's copy of a patch; keep one entry per distinct file name.
+    names = list(dict.fromkeys(re.sub(r"^/nix/store/[a-z0-9]{32}-", "", p) for p in hits))
+    return " ".join(names) or None
+
+
+def _root_fix(cls: str, pkg: str, ver: str, fixed_in: str, locked: bool = False) -> str:
+    if cls == CLASS_PATCHED:
+        return "dismiss: nixpkgs backport (false positive)"
+    if cls == CLASS_LEGACY:
+        return f"drop the consumer of legacy {pkg} {ver} (nixpkgs now ships a newer {pkg}; the closure carries an old variant)"
+    if cls == CLASS_FIXED_STABLE:
+        return f"flake update (nixpkgs stable channel head already has {pkg} {fixed_in})"
+    if cls == CLASS_FIXED_NIXPKGS:
+        if locked:
+            return f"fast-lane promotion of {pkg} (locked nixpkgs-unstable already has {fixed_in})"
+        return f"flake update nixpkgs-unstable + fast-lane promotion of {pkg} (nixpkgs-unstable head has {fixed_in or 'a fixed version'})"
+    if cls == CLASS_FIXED_UPSTREAM:
+        return f"await nixpkgs bump of {pkg} (upstream fixed in {fixed_in or 'newer release'}); remove if unused"
+    if cls == CLASS_UNBOUNDED:
+        return (f"triage manually: the NVD CPE for {pkg} carries no version bound (matches every release; "
+                "usually a false positive) - dismiss as won't-fix if the CVE does not apply")
+    if cls == CLASS_NO_FIX:
+        return f"no upstream fix for {pkg} {ver}: remove from closure if unused, else accept/monitor"
+    return f"manual review of {pkg} {ver}"
+
+
+def _vtuple(version: str) -> tuple | None:
+    """Numeric-prefix version tuple; None when there are no leading digits (never guess)."""
+    if re.match(r"^\d{4}-\d{2}-\d{2}", version.strip()):
+        return None  # date-stamped "versions" (some advisories) are not comparable with release numbers
+    m = re.match(r"^v?(\d+(?:\.\d+)*)", version.strip())
+    return tuple(int(x) for x in m.group(1).split(".")) if m else None
+
+
+def version_ge(have: str, want: str) -> bool | None:
+    a, b = _vtuple(have), _vtuple(want)
+    if a is None or b is None:
+        return None
+    n = max(len(a), len(b))
+    return a + (0,) * (n - len(a)) >= b + (0,) * (n - len(b))
+
+
+_UPPER_RE = re.compile(r"(?:<=|(?<![<>])=)\s*([^\s,|]+)")
+
+
+def _nvd_upper_bound(constraint: str) -> str | None:
+    """Highest inclusive upper bound in a grype NVD constraint such as '>= 1.0, <= 2.7 (unknown)'."""
+    bounds = [b for b in _UPPER_RE.findall(constraint) if _vtuple(b)]
+    return max(bounds, key=_vtuple) if bounds else None
+
+
+def _fallback_class(row: dict, tv: dict[str, dict[str, str]]) -> tuple[str, str, str, bool] | None:
+    """Version-compare approximation, used when the repology backend is unavailable.
+
+    Fixed version = grype's fix version for the installed branch when it lists one; otherwise the first
+    release newer than the NVD constraint's inclusive upper bound ("last affected").  A package is
+    "fixed in" a nixpkgs track only if that track carries a version at/after that point.
+    Returns (class, fixed_in, evidence, locked_unstable_has_fix) or None (human decides).
+    """
+    pkg, installed = row["package"], _vtuple(row["version"])
+    if installed is None:
+        return None
+
+    def have(track: str) -> str:
+        return tv.get(track, {}).get(pkg, "")
+    pinned = _vtuple(have("stable_pinned"))
+    if pinned and pinned > installed and pinned[:2] != installed[:2]:
+        # nixpkgs' own attribute moved on; this older copy rides in via a pinned/compat variant.
+        return CLASS_LEGACY, have("stable_pinned"), f"closure has {pkg} {row['version']}, pinned nixpkgs ships {have('stable_pinned')}", False
+    fixes = [f for f in row["grype_fix_versions"].split(",") if f and _vtuple(f)]
+    if fixes:
+        later = sorted((f for f in fixes if _vtuple(f) > installed), key=_vtuple)
+        if not later:
+            return CLASS_REVIEW, "", f"installed {row['version']} >= every grype fix ({','.join(fixes)}); pre-release naming, likely false positive", False
+        branch = [f for f in later if _vtuple(f)[:2] == installed[:2]]
+        want = (branch or later)[0]  # backport lists name one fix per branch; use the installed branch's
+        reached = lambda v: bool(version_ge(v, want))  # noqa: E731
+        basis, unfixed = f"fix {want}", CLASS_FIXED_UPSTREAM
+    else:
+        constraint = row.get("constraint", "")
+        if not constraint:
+            return None
+        want = None if constraint.startswith("none") else _nvd_upper_bound(constraint)
+        if want is None:
+            return CLASS_UNBOUNDED, "", f"NVD gives no upper version bound ({constraint})", False
+        if installed > _vtuple(want):
+            return CLASS_REVIEW, "", f"installed {row['version']} > NVD last-affected {want}; pre-release suffix mis-order, likely false positive", False
+        reached = lambda v: bool(_vtuple(v) and _vtuple(v) > _vtuple(want))  # noqa: E731
+        basis, unfixed = f"release newer than NVD last-affected {want}", CLASS_NO_FIX
+    for track, cls in (("stable_head", CLASS_FIXED_STABLE), ("unstable_pinned", CLASS_FIXED_NIXPKGS),
+                       ("unstable_head", CLASS_FIXED_NIXPKGS)):
+        if have(track) and reached(have(track)):
+            return cls, have(track), f"{track} {have(track)} reaches {basis}", track == "unstable_pinned"
+    hint = " ".join(f"{t}={have(t) or '?'}" for t in ("stable_head", "unstable_pinned", "unstable_head"))
+    return unfixed, (want if unfixed == CLASS_FIXED_UPSTREAM else ""), f"no nixpkgs track has a {basis} ({hint})", False
+
+
+def classify_findings(grype_doc: dict, patches: dict[tuple[str, str], str], triage_rows: list[dict] | None,
+                      track_versions: dict[str, dict[str, str]] | None = None) -> list[dict]:
+    """Classify each unique (vuln, package, version) grype finding; deterministic for fixed inputs."""
+    triage = {(r.get("vuln_id", ""), r.get("package", ""), r.get("version_local", "")): r for r in triage_rows or []}
+    out: list[dict] = []
+    seen: set[tuple[str, str, str]] = set()
+    for match in grype_doc.get("matches", []):
+        vuln, art = match.get("vulnerability") or {}, match.get("artifact") or {}
+        vid, name, ver = vuln.get("id", "?"), art.get("name", "?"), art.get("version", "?")
+        if (vid, name, ver) in seen:
+            continue
+        seen.add((vid, name, ver))
+        sev = str(vuln.get("severity", "")).lower()
+        grype_fix = ",".join((vuln.get("fix") or {}).get("versions") or [])
+        details = match.get("matchDetails") or [{}]
+        constraint = ((details[0].get("found") or {}).get("versionConstraint")) or ""
+        row = {"id": vid, "package": name, "version": ver,
+               "severity": sev if sev in SEVERITIES else "unknown",
+               "grype_fix_versions": grype_fix, "constraint": constraint, "evidence": "", "fixed_in": ""}
+        patch = patch_evidence(vid, patches.get((name, ver), ""))
+        t = triage.get((vid, name, ver))
+        if patch:
+            row.update(cls=CLASS_PATCHED, evidence=f"patch: {patch}")
+        elif t is not None and t.get("classify") in _TRIAGE_MAP:
+            cls = _TRIAGE_MAP[t["classify"]]
+            fixed = t.get("version_nixpkgs", "") if cls == CLASS_FIXED_NIXPKGS else t.get("version_upstream", "")
+            row.update(cls=cls, fixed_in=fixed, evidence=f"vulnxscan:{t['classify']} repology:{t.get('package_repology', '')}")
+            if t.get("nixpkgs_pr"):
+                row["evidence"] += f" prs:{t['nixpkgs_pr']}"
+        elif (fb := _fallback_class(row, track_versions or {})) is not None:
+            row.update(cls=fb[0], fixed_in=fb[1], evidence=f"version-compare: {fb[2]}", locked=fb[3])
+        else:
+            why = f"vulnxscan:{t['classify']}" if t else "no triage row; no fixed version in grype data"
+            tv = track_versions or {}
+            row.update(cls=CLASS_REVIEW, evidence=f"{why}; nixpkgs stable={tv.get('stable_head', {}).get(name, '?')} "
+                                                  f"unstable={tv.get('unstable_head', {}).get(name, '?')}")
+        row["root_fix"] = _root_fix(row["cls"], name, ver, row["fixed_in"], row.pop("locked", False))
+        out.append(row)
+    return out
+
+
+def triage_report(findings: list[dict], target: str) -> dict:
+    by_class: dict[str, Counter] = {c: Counter() for c in CLASSES}
+    groups: dict[str, dict] = {}
+    for f in findings:
+        by_class[f["cls"]][f["severity"]] += 1
+        if f["cls"] == CLASS_PATCHED:
+            continue
+        g = groups.setdefault(f["root_fix"], {"root_fix": f["root_fix"], "class": f["cls"], "findings": 0,
+                                              "severity": Counter(), "ids": []})
+        g["findings"] += 1
+        g["severity"][f["severity"]] += 1
+        g["ids"].append(f["id"])
+    actionable = sorted(groups.values(),
+                        key=lambda g: tuple(-g["severity"].get(s, 0) for s in SEVERITIES) + (g["root_fix"],))
+    for g in actionable:
+        g["severity"] = {s: g["severity"].get(s, 0) for s in SEVERITIES}
+    return {
+        "target": target,
+        "total": len(findings),
+        "by_class": {c: {"total": sum(v.values()), **{s: v.get(s, 0) for s in SEVERITIES}} for c, v in by_class.items()},
+        "actionable_groups": actionable,
+        "findings": [{**{k: v for k, v in f.items() if k != "cls"}, "class": f["cls"]}
+                     for f in sorted(findings, key=lambda f: (f["cls"], f["package"], f["id"]))],
+    }
+
+
+_PNAME_RE = re.compile(r"^[A-Za-z0-9_.+-]+$")
+# SBOM pname -> nixpkgs attribute path where they differ (multi-component or renamed packages).
+_ATTR_ALIASES = {
+    "gstreamer": "gst_all_1.gstreamer", "gst-plugins-base": "gst_all_1.gst-plugins-base",
+    "gst-plugins-good": "gst_all_1.gst-plugins-good", "gst-plugins-bad": "gst_all_1.gst-plugins-bad",
+    "gst-plugins-ugly": "gst_all_1.gst-plugins-ugly", "libusb": "libusb1",
+}
+
+
+def lock_track_sources(lock_path: Path | None = None) -> dict[str, list[str]]:
+    """`nix eval` flake arguments per track.  *_pinned = what this repo's flake.lock deploys;
+    *_head = current head of the input's channel (needs network)."""
+    nodes = json.loads((lock_path or REPO_ROOT / "flake.lock").read_text())["nodes"]
+    root = nodes["root"]["inputs"]
+
+    def head(name: str) -> str:
+        orig = nodes[root[name]]["original"]
+        return f"github:{orig['owner']}/{orig['repo']}/{orig['ref']}#legacyPackages.x86_64-linux"
+    return {
+        "stable_pinned": ["--inputs-from", str(REPO_ROOT), "nixpkgs#legacyPackages.x86_64-linux"],
+        "stable_head": [head("nixpkgs")],
+        "unstable_pinned": ["--inputs-from", str(REPO_ROOT), "nixpkgs-unstable#legacyPackages.x86_64-linux"],
+        "unstable_head": [head("nixpkgs-unstable")],
+    }
+
+
+def fetch_track_versions(pnames: list[str], timeout: int) -> dict[str, dict[str, str]]:
+    """track -> {pname: version} via `nix eval` (tracks: see lock_track_sources).
+
+    A pname that is not a top-level nixpkgs attribute (or fails to evaluate) is simply absent.
+    """
+    names = sorted({n for n in pnames if _PNAME_RE.match(n)})  # charset-checked: safe inside a Nix string
+    pairs = " ".join(f'{{ n = "{n}"; a = "{_ATTR_ALIASES.get(n, n)}"; }}' for n in names)
+    apply = ("p: builtins.listToAttrs (map (e: { name = e.n; value = let r = builtins.tryEval "
+             '(let v = p.lib.attrByPath (p.lib.splitString "." e.a) null p; in if v == null then "" else (v.version or "")); '
+             f'in if r.success then r.value else ""; }}) [ {pairs} ])')
+    out: dict[str, dict[str, str]] = {}
+    for track, src in lock_track_sources().items():
+        out[track] = {}
+        try:
+            proc = subprocess.run(["nix", "eval", "--json", "--apply", apply, *src], capture_output=True, text=True,
+                                  timeout=timeout, cwd=tempfile.gettempdir())
+        except (OSError, subprocess.TimeoutExpired) as exc:
+            print(f"aq-closure-scan: version lookup {track} failed: {exc}", file=sys.stderr)
+            continue
+        if proc.returncode != 0:
+            print(f"aq-closure-scan: version lookup {track} failed: {proc.stderr.strip()[-200:]}", file=sys.stderr)
+            continue
+        out[track] = {n: v for n, v in json.loads(proc.stdout).items() if v}
+    return out
+
+
+def triage_scan(target: str, timeout: int, offline: dict | None = None) -> dict:
+    """Full pipeline: sbomnix(cdx+csv) -> grype json -> vulnxscan --sbom --triage -> classification.
+
+    `offline` ({grype_json, sbom_csv, triage_csv, versions_json} paths) bypasses all tooling for fixtures/replay.
+    """
+    if offline:
+        grype_doc = json.loads(Path(offline["grype_json"]).read_text())
+        patches = patches_index(_read_csv(Path(offline["sbom_csv"])))
+        triage_rows = _read_csv(Path(offline["triage_csv"])) if offline.get("triage_csv") else None
+        tv = json.loads(Path(offline["versions_json"]).read_text()) if offline.get("versions_json") else None
+        return triage_report(classify_findings(grype_doc, patches, triage_rows, tv), target)
+    work = Path(tempfile.mkdtemp(prefix="aq-closure-triage-"))
+    try:
+        sbom, csv_path = work / "sbom.cdx.json", work / "sbom.csv"
+        _nix_run("sbomnix", [target, "--cdx", str(sbom), "--csv", str(csv_path)], timeout, cwd=work)
+        if not sbom.is_file() or not csv_path.is_file():
+            raise ScanError("sbomnix produced no SBOM/CSV for triage")
+        if not json.loads(sbom.read_text()).get("components"):
+            raise ScanError("SBOM has zero components; refusing to triage")
+        proc = _nix_run("grype", [f"sbom:{sbom}", "-o", "json"], timeout)
+        try:
+            grype_doc = json.loads(proc.stdout)
+        except json.JSONDecodeError as exc:
+            raise ScanError(f"grype output is not JSON: {exc}") from exc
+        triage_rows: list[dict] | None = None
+        try:
+            cmd = ["nix", "shell", "--inputs-from", str(REPO_ROOT), "nixpkgs#sbomnix", "-c", "vulnxscan",
+                   "--sbom", str(sbom), "--triage", "--out", str(work / "vulns.csv")]
+            proc = subprocess.run(cmd, capture_output=True, text=True, timeout=timeout, cwd=work)
+            triage_csv = work / "vulns.triage.csv"
+            if proc.returncode == 0 and triage_csv.is_file():
+                triage_rows = _read_csv(triage_csv)
+            else:
+                print(f"aq-closure-scan: vulnxscan triage unavailable (exit {proc.returncode}); "
+                      "falling back to nixpkgs version comparison", file=sys.stderr)
+        except (OSError, subprocess.TimeoutExpired) as exc:
+            print(f"aq-closure-scan: vulnxscan triage unavailable: {exc}", file=sys.stderr)
+        patches = patches_index(_read_csv(csv_path))
+        fixable = [(m.get("artifact") or {}).get("name", "") for m in grype_doc.get("matches", [])
+                   if ((m.get("vulnerability") or {}).get("fix") or {}).get("versions")]
+        tv = fetch_track_versions(fixable, timeout)
+        return triage_report(classify_findings(grype_doc, patches, triage_rows, tv), target)
+    finally:
+        shutil.rmtree(work, ignore_errors=True)
+
+
 def main() -> int:
     ap = argparse.ArgumentParser(description=__doc__, formatter_class=argparse.RawDescriptionHelpFormatter)
     ap.add_argument("--target", default="/run/current-system", help="store path or flakeref (default: /run/current-system)")
@@ -137,7 +454,29 @@ def main() -> int:
     ap.add_argument("--top", type=int, default=10, help="number of top packages (default 10)")
     ap.add_argument("--timeout", type=int, default=900, help="per-tool timeout seconds")
     ap.add_argument("--fail-on", choices=("critical", "high"), help="exit 1 if findings at/above this severity exist")
+    ap.add_argument("--triage-json", type=Path, help="run Nix-aware triage and write the JSON classification here")
+    ap.add_argument("--triage-input", type=Path, help="offline: existing vulnxscan vulns.triage.csv (with --sbom-csv, --grype-json)")
+    ap.add_argument("--sbom-csv", type=Path, help="offline: existing sbomnix CSV (patches column)")
+    ap.add_argument("--grype-json", type=Path, help="offline: existing grype -o json output")
+    ap.add_argument("--versions-json", type=Path, help='offline: {"stable": {pname: ver}, "unstable": {...}} nixpkgs versions')
     args = ap.parse_args()
+
+    if args.triage_json:
+        offline = None
+        if args.grype_json or args.sbom_csv or args.triage_input:
+            if not (args.grype_json and args.sbom_csv):
+                ap.error("offline triage needs --grype-json and --sbom-csv (and optionally --triage-input)")
+            offline = {"grype_json": args.grype_json, "sbom_csv": args.sbom_csv, "triage_csv": args.triage_input,
+                       "versions_json": args.versions_json}
+        try:
+            report = triage_scan(args.target, args.timeout, offline)
+        except (ScanError, OSError, ValueError) as exc:
+            print(f"aq-closure-scan: triage failure: {exc}", file=sys.stderr)
+            return 2
+        args.triage_json.write_text(json.dumps(report, indent=2))
+        bc = report["by_class"]
+        print("triage " + " ".join(f"{c}={bc[c]['total']}" for c in CLASSES) + f" total={report['total']}")
+        return 0
 
     with tempfile.TemporaryDirectory(prefix="aq-closure-scan-") as tmp:
         sbom = (args.sbom or Path(tmp) / "closure.cdx.json").resolve()
