@@ -5296,3 +5296,18 @@ File: scripts/ai/lib/worktree-isolation.sh; scripts/automation/prsi-orchestrator
   Severity: high (state-loss class).
   Action: done; regression test-prsi-queue-single-writer.py (+ path-ssot guard).
   File: scripts/ai/lib/prsi_queue.py; scripts/automation/prsi-orchestrator.py _merge_save ~351; scripts/ai/aq-throttler
+
+[OPEN] workflow-blueprints-test-collaborator-lanes — `python3 scripts/testing/test-workflow-blueprints.py` fails: "blueprint lifecycle-aware-intake must declare collaborator_lanes when parallel subagents are enabled". Pre-existing: config/workflow-blueprints.json is unchanged since c355bed0 (2026-05-20) and the failure is independent of the 2026-10-02 PRSI work; found while regression-testing PRSI merge M3. Either the test's newer contract was never satisfied by this blueprint, or the test is not in a gate that runs it.
+  Severity: low (validation gap; blueprint may launch parallel subagents without declared lanes).
+  Action: add collaborator_lanes to lifecycle-aware-intake (or relax the test with a recorded reason); check why no gate caught it.
+  File: config/workflow-blueprints.json (lifecycle-aware-intake); scripts/testing/test-workflow-blueprints.py
+
+[DONE 2026-10-02] coordinator-prsi-legacy-queue-and-agent-approve-path — PRSI merge M3. Coordinator handlers, MCP tools and the local-agent tool read the canonical queue (PRSI_ACTION_QUEUE_PATH on the unit; tmpfiles ACL g:ai-stack:--x for traverse) and filter on the real row schema (status/raw_action/risk; parity-tested against approval_inbox.collect()). get_prsi_pending is no longer "everything pending". The MCP `prsi_orchestrate` in both the coordinator and scripts/ai/mcp-bridge-hybrid.py is list-only. approve/reject/execute/sync are refused with SOP pointers (aq-approve, timers). The bridge previously let any agent run `approve --by local-agent` as hyperd via an MCP call that bypasses the Bash ask-hook (self-approval vector). The local-agent tool read the wrong HTTP key (`actions` vs `pending`) and always returned empty.
+  Severity: high (agent self-approval vector + wrong pending set).
+  Action: done; regression test-coordinator-prsi-canonical-queue.py. Independent review: REQUEST_REVISION (fail-open gate, approve path, wrong key) then PASS.
+  File: ai-stack/mcp-servers/hybrid-coordinator/workflow/prsi_handlers.py; extensions/mcp_handlers.py; ai-stack/local-agents/builtin_tools/ai_coordination.py; scripts/ai/mcp-bridge-hybrid.py; nix/modules/services/mcp-servers.nix
+
+[OPEN] prsi-action-execute-endpoint-bypasses-owner-gate — POST /control/prsi/actions/execute (hybrid-coordinator workflow/prsi_handlers.py handle_prsi_action_execute ~202-263) runs `aq-optimizer` without --dry-run when dry_run=false, applying optimizer actions (routing overrides, knowledge imports, ...) with no PRSI queue approval. It is reachable by local agents via local_agent_runtime.py ~1140-1161 ("Execute PRSI action", tool label ~410). Pre-existing; found by the independent M3 review 2026-10-02. It does not corrupt the queue, but it sidesteps the owner approval SOP.
+  Severity: medium-high (approval bypass for optimizer side effects).
+  Action: PRSI merge follow-up (added to plan as M7): force dry-run on this endpoint or route real application through approved queue rows only (orchestrator execute); relabel the local-agent tool.
+  File: ai-stack/mcp-servers/hybrid-coordinator/workflow/prsi_handlers.py ~202; ai-stack/agents/runtimes/local_agent_runtime.py ~410, ~1140

@@ -8,6 +8,7 @@ All handlers are file/subprocess-only; no ML model calls.
 """
 
 import json
+import os
 import subprocess
 import sys
 from datetime import datetime, timezone
@@ -25,6 +26,67 @@ def init(*, error_payload_fn: Callable[[str, Exception], Dict[str, Any]]) -> Non
     global _error_payload
     _error_payload = error_payload_fn
 
+def _prsi_queue_path() -> Path:
+    return Path(os.getenv("PRSI_ACTION_QUEUE_PATH", "/var/lib/nixos-ai-stack/optimizer/prsi/action-queue.json"))
+
+
+def _prsi_pending_rows(rows) -> list:
+    """Rows awaiting owner sign-off; same rule as approval_inbox.collect() approval section."""
+    out = []
+    for row in rows if isinstance(rows, list) else []:
+        if not isinstance(row, dict) or not row.get("id"):
+            continue
+        raw = row.get("raw_action") if isinstance(row.get("raw_action"), dict) else {}
+        ap = row.get("approval") if isinstance(row.get("approval"), dict) else {}
+        status = row.get("status", "")
+        if raw.get("source") == "rsi-incidents.json":
+            if status in ("rsi_pending", "rsi_failed") and row.get("risk") == "high" and not ap.get("verifier_by"):
+                out.append(row)
+        elif status == "pending_approval":
+            out.append(row)
+    return out
+
+
+def _prsi_summary(row) -> dict:
+    raw = row.get("raw_action") if isinstance(row.get("raw_action"), dict) else {}
+    return {
+        "id": row.get("id", ""),
+        "type": row.get("type", ""),
+        "action": row.get("action", ""),
+        "reason": str(row.get("reason") or raw.get("reason") or "")[:200],
+        "risk": row.get("risk", ""),
+        "status": row.get("status", ""),
+        "summary": str(row.get("reason") or raw.get("reason") or row.get("action") or "")[:200],
+        "created_at": row.get("created_at", ""),
+    }
+
+
+_PRSI_REFUSALS = {
+    "approve": "Owner decisions are not recorded by agents. Use the approval inbox: `aq-approve` (numbered list); the owner confirms in chat.",
+    "reject": "Owner decisions are not recorded by agents. Use the approval inbox: `aq-approve` (numbered list); the owner confirms in chat.",
+    "execute": "Execution is run by the ai-prsi-orchestrator timers (the coordinator cannot write the canonical queue).",
+    "sync": "Queue sync is run by the ai-prsi-orchestrator timers (the coordinator cannot write the canonical queue).",
+}
+
+
+def prsi_orchestrate_readonly(action: str) -> Dict[str, Any]:
+    """MCP prsi_orchestrate: read-only `list`; every mutation is refused with a pointer to its owner path."""
+    action = str(action or "").strip()
+    if action in _PRSI_REFUSALS:
+        return {"status": "refused", "action": action, "reason": _PRSI_REFUSALS[action], "valid_actions": ["list"]}
+    if action != "list":
+        return {"status": "error", "error": f"unknown action '{action}'", "valid_actions": ["list"]}
+    path = _prsi_queue_path()
+    if not path.exists():
+        return {"status": "ok", "pending": [], "count": 0, "queue_exists": False}
+    try:
+        queue = json.loads(path.read_text())
+    except (OSError, ValueError) as exc:
+        return {"status": "error", "error": f"queue unreadable: {exc}"}
+    rows = queue if isinstance(queue, list) else (queue.get("actions", []) if isinstance(queue, dict) else [])
+    pending = [_prsi_summary(a) for a in _prsi_pending_rows(rows)]
+    return {"status": "ok", "pending": pending, "count": len(pending), "queue_exists": True}
+
 
 async def handle_prsi_pending(_request: web.Request) -> web.Response:
     """
@@ -34,7 +96,7 @@ async def handle_prsi_pending(_request: web.Request) -> web.Response:
     directly and returns only actions in a pending/awaiting-approval state.
     Intended for local model context injection and MCP tool calls.
     """
-    queue_path = Path("/var/lib/nixos-ai-stack/prsi/action-queue.json")
+    queue_path = _prsi_queue_path()
     try:
         if not queue_path.exists():
             return web.json_response({
@@ -47,29 +109,13 @@ async def handle_prsi_pending(_request: web.Request) -> web.Response:
         with open(queue_path) as f:
             queue = json.load(f)
 
-        terminal_states = {"approved", "rejected", "executed", "completed",
-                           "failed", "counterfactual_queued"}
-        # queue file may be a bare list or {"actions": [...]}
-        if isinstance(queue, list):
-            all_actions = queue
-        else:
-            all_actions = queue.get("actions", [])
-        pending = [
-            {
-                "id": a.get("id", ""),
-                "type": a.get("type", ""),
-                "risk_level": a.get("risk_level", ""),
-                "state": a.get("state", ""),
-                "summary": str(a.get("action_detail", {}).get("summary", ""))[:200],
-                "created_at": a.get("created_at", ""),
-            }
-            for a in all_actions
-            if a.get("state") not in terminal_states
-        ]
+        all_actions = queue if isinstance(queue, list) else (queue.get("actions", []) if isinstance(queue, dict) else [])
+        pending = [_prsi_summary(a) for a in _prsi_pending_rows(all_actions)]
         state_counts: Dict[str, int] = {}
         for a in all_actions:
-            s = a.get("state", "unknown")
-            state_counts[s] = state_counts.get(s, 0) + 1
+            if isinstance(a, dict):
+                s = a.get("status", "unknown")
+                state_counts[s] = state_counts.get(s, 0) + 1
 
         return web.json_response({
             "status": "ok",
