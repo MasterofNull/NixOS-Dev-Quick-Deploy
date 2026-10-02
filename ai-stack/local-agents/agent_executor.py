@@ -416,6 +416,58 @@ def _env_flag(name: str, default: bool) -> bool:
     return value.strip().lower() in {"1", "true", "yes", "on"}
 
 
+class _FirstTokenTimeout(RuntimeError):
+    """No content token arrived within the first-token budget (prompt-processing stall).
+
+    Retrying the same prompt with a smaller max_tokens cannot help: prompt
+    evaluation is independent of max_tokens and llama.cpp gets no cache reuse on
+    hybrid/SWA models, so the retry re-processes the full prompt and fails the same way.
+    """
+
+
+def _estimate_prompt_tokens(messages: List[Dict]) -> int:
+    """Rough prompt-token estimate (chars/4; no tokenizer is available client-side)."""
+    chars = 0
+    for m in messages:
+        content = m.get("content")
+        if isinstance(content, str):
+            chars += len(content)
+        elif content:
+            chars += len(json.dumps(content, ensure_ascii=False))
+    return max(1, chars // 4)
+
+
+def _parse_prompt_eval_rate(metrics_text: str) -> Optional[float]:
+    """Extract llamacpp:prompt_tokens_seconds (tok/s) from Prometheus text; None if absent/invalid."""
+    for line in metrics_text.splitlines():
+        if line.startswith("llamacpp:prompt_tokens_seconds"):
+            try:
+                rate = float(line.rsplit(None, 1)[-1])
+            except ValueError:
+                return None
+            return rate if rate > 0 else None
+    return None
+
+
+def _compute_first_token_budget(
+    base_s: float,
+    prompt_tokens: int,
+    rate_tok_s: Optional[float],
+    *,
+    safety_factor: float = 2.0,
+    cap_s: float = 3600.0,
+) -> float:
+    """Scale the first-token timeout to prompt size / measured prompt-eval rate.
+
+    Floor is base_s (the configured fixed value); cap is cap_s (never below the
+    floor). Unknown/invalid rate -> base_s unchanged.
+    """
+    if not rate_tok_s or rate_tok_s <= 0:
+        return base_s
+    needed = (prompt_tokens / rate_tok_s) * safety_factor
+    return max(base_s, min(max(cap_s, base_s), needed))
+
+
 def _env_float(name: str, default: float) -> float:
     """Parse a float environment setting with fallback."""
     value = os.getenv(name)
@@ -2703,6 +2755,15 @@ class LocalAgentExecutor:
                 # surfacing the regression.
                 _cancel_watchdog()
                 raise
+            except _FirstTokenTimeout as _ft_err:
+                # Prompt-processing stall: max_tokens cannot help and the retry would
+                # re-process the identical prompt. Fail fast.
+                _cancel_watchdog()
+                raise RuntimeError(
+                    f"{_ft_err} Not retrying: a first-token stall is prompt-bound, and a "
+                    "smaller max_tokens re-processes the same prompt. Shrink the prompt "
+                    "or raise LLAMA_FIRST_TOKEN_CAP."
+                ) from _ft_err
             except Exception as _llm_err:
                 # Retry once with reduced budget on transient failures (timeout, connection drop).
                 logger.warning(
@@ -3904,6 +3965,20 @@ class LocalAgentExecutor:
         direct_llama = os.environ.get("LLAMA_URL", "").rstrip("/")
         return direct_llama or None
 
+    async def _fetch_prompt_eval_rate(self) -> Optional[float]:
+        """Best-effort llamacpp:prompt_tokens_seconds from the direct llama /metrics; None on any failure."""
+        endpoint = self._local_model_health_endpoint()
+        if not endpoint:
+            return None
+        try:
+            async with httpx.AsyncClient(timeout=httpx.Timeout(3.0)) as client:
+                resp = await client.get(f"{endpoint}/metrics")
+            if resp.status_code != 200:
+                return None
+            return _parse_prompt_eval_rate(resp.text)
+        except Exception:
+            return None
+
     async def _local_model_is_ready(self, timeout_seconds: float) -> bool:
         """Probe the truthful direct llama endpoint without changing state."""
         health_endpoint = self._local_model_health_endpoint()
@@ -3996,6 +4071,26 @@ class LocalAgentExecutor:
                 f"prompt too large for single-slot prefill: {_prompt_chars} chars > {_max_prompt_chars} "
                 "(LLAMA_MAX_PROMPT_CHARS) — refusing to send; an oversized prefill would orphan/wedge the "
                 "llama.cpp slot. Trim context: ranged reads, tool-result compaction, or fewer files."
+            )
+
+        # Prompt-size-aware first-token budget: the fixed value is the floor; scale up
+        # by estimated prompt tokens / measured prompt-eval rate (llama.cpp /metrics).
+        # Metrics unavailable -> keep the fixed value.
+        if use_streaming and _env_flag("LLAMA_FIRST_TOKEN_ADAPTIVE", default=True):
+            _base_ft = first_token_timeout
+            _rate = await self._fetch_prompt_eval_rate()
+            _est_tokens = _estimate_prompt_tokens(messages)
+            first_token_timeout = _compute_first_token_budget(
+                _base_ft,
+                _est_tokens,
+                _rate,
+                safety_factor=_env_float("LLAMA_FIRST_TOKEN_SAFETY", default=2.0),
+                cap_s=_env_float("LLAMA_FIRST_TOKEN_CAP", default=3600.0),
+            )
+            logger.info(
+                "first-token budget: %.0fs (base=%.0fs est_prompt_tokens=%d prompt_eval_rate=%s)",
+                first_token_timeout, _base_ft, _est_tokens,
+                f"{_rate:.2f} tok/s" if _rate else "unavailable",
             )
 
         progress_file = os.getenv("AGENT_PROGRESS_FILE")
@@ -4254,7 +4349,7 @@ class LocalAgentExecutor:
                         # CONTENT token; fires even while keep-alives arrive. Measured: this
                         # is what let runs wedge 10-23 min with 0 tokens.
                         if not collected and (time.monotonic() - _stream_start) > first_token_timeout:
-                            raise RuntimeError(
+                            raise _FirstTokenTimeout(
                                 f"LLM first-token timeout: no content within "
                                 f"{first_token_timeout:.0f}s of request start "
                                 "(single-slot prefill wedge or context too large)."
@@ -4309,7 +4404,8 @@ class LocalAgentExecutor:
                 request_completed=time.monotonic(),
                 request_completed_utc=_timing_utc_now(),
             )
-            raise RuntimeError(
+            _no_progress_cls = _FirstTokenTimeout if not collected else RuntimeError
+            raise _no_progress_cls(
                 f"LLM no-progress timeout: server silent for >{read_timeout:.0f}s "
                 f"(first_token_timeout={first_token_timeout:.0f}, chunk_timeout={chunk_timeout:.0f}; "
                 "context may be too large or the inference slot may be wedged)"
