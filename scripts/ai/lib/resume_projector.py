@@ -11,7 +11,9 @@ RESUME.json stops being directly written; it becomes a read-only PROJECTION of
 Backward-compatible: top-level current_objective / phase / todo_snapshot /
 uncommitted_changes / resume_hint / written_at are still present exactly as
 aq-resume expects. Added keys (_generated, _provenance, agent_snapshots) are
-additive.
+additive. agent_snapshots are pruned by TTL relative to newest event (configurable
+via RESUME_SNAPSHOT_TTL_DAYS env var, default 14 days); full history persists in
+the event log.
 
 PULSE.log is rendered from `pulse.append` events (append-only already; here it
 becomes reproducible from the log).
@@ -93,12 +95,30 @@ def project_resume(events=None) -> dict[str, Any]:
                 provenance[field] = {"agent": ev.agent, "ts": ev.ts, "event_id": ev.event_id}
             snap["fields"][field] = value
 
+    # Prune stale snapshots by TTL relative to newest event (full history in event log).
+    ttl_days = None
+    ttl_str = os.environ.get("RESUME_SNAPSHOT_TTL_DAYS", "14")
+    try:
+        ttl_days = float(ttl_str)
+    except ValueError:
+        ttl_days = None
+    if ttl_days is not None and ttl_days > 0:
+        ttl_secs = ttl_days * 86400
+        agents_in_provenance = {prov["agent"] for prov in provenance.values()}
+        to_drop = [
+            agent for agent, snap in agent_snapshots.items()
+            if snap["updated_at"] < last_ts - ttl_secs and agent not in agents_in_provenance
+        ]
+        for agent in to_drop:
+            del agent_snapshots[agent]
+
     top["written_at"] = (
         time.strftime("%Y-%m-%dT%H:%M:%SZ", time.gmtime(last_ts)) if last_ts else None
     )
     top["_generated"] = "projection of the A2A event log (writable .agent/collaboration; legacy .agents/events read-only) — do not edit by hand; emit events via aq-event"
     top["_provenance"] = provenance
     top["agent_snapshots"] = agent_snapshots
+    top["_snapshot_ttl_days"] = ttl_days if ttl_days is not None and ttl_days > 0 else None
     return top
 
 

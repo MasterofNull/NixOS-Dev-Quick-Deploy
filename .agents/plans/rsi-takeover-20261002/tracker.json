@@ -1,0 +1,81 @@
+{
+  "plan": {
+    "id": "rsi-takeover-20261002",
+    "title": "Recover current RSI backlog",
+    "prd_ref": ".agent/PROJECT-RSI-TAKEOVER-20261002-PRD.md",
+    "owner": "hyperd",
+    "goal": "Evidence-based repair and validation of current blockers",
+    "success_criteria": [
+      "Actual integration and regression checks pass",
+      "No unresolved findings hidden by historical closures"
+    ]
+  },
+  "phases": [
+    {
+      "id": "repair",
+      "name": "Bounded confirmed repairs",
+      "goal": "Repair verified defects",
+      "order": 1
+    }
+  ],
+  "items": [
+    {
+      "id": "r1",
+      "name": "Ralph configured repository root",
+      "phase": "repair",
+      "kind": "slice",
+      "goal": "Both optimizer calls honor configured repoPath",
+      "validation_goal": "Handler regressions and live service environment verified",
+      "deps": [],
+      "detection": {
+        "commit_match": [
+          "fix(mcp-servers): Ralph repo-root + python PATH; working-memory state ownership"
+        ]
+      },
+      "editorial_note": "Runtime activation requires declarative unit deployment; source commit alone insufficient"
+    },
+    {
+      "id": "r2",
+      "name": "Boot OSI contract check",
+      "phase": "repair",
+      "kind": "slice",
+      "goal": "Aggregate checks current semantics",
+      "validation_goal": "Dedicated OSI and full boot aggregate pass",
+      "deps": [],
+      "detection": {
+        "commit_match": [
+          "test(health-spider): align OSI layered assertions with producer contract"
+        ]
+      }
+    },
+    {
+      "id": "r3",
+      "name": "Hybrid working-memory state ownership",
+      "phase": "repair",
+      "kind": "slice",
+      "goal": "Preserve the root-owned shared state parent and provision the agent child for hybrid-coordinator",
+      "validation_goal": "Focused declaration regression and post-activation working-memory save/read round trip pass",
+      "deps": [],
+      "detection": {
+        "commit_match": [
+          "fix(mcp-servers): Ralph repo-root + python PATH; working-memory state ownership"
+        ]
+      },
+      "editorial_note": "Child ownership declaration is not live validation; verify save/read after activation"
+    },
+    {
+      "id": "resume-ttl",
+      "name": "RESUME projection snapshot TTL",
+      "phase": "repair",
+      "kind": "slice",
+      "goal": "Stop stale agent_snapshots bloating the compaction anchor",
+      "validation_goal": "test-event-bus-a2a pass; live RESUME.json shrinks",
+      "deps": [],
+      "detection": {
+        "commit_match": [
+          "perf(resume): TTL-prune stale agent_snapshots in RESUME projection"
+        ]
+      }
+    }
+  ]
+}

@@ -128,13 +128,13 @@ CONTEXT_BLOCKS+=("KEY DIRECTORIES:
 if echo "$TASK_LOWER" | grep -qE 'prsi|self.?improv|queue|action.queue|loop|pessimistic|recursive'; then
   CONTEXT_BLOCKS+=("PRSI CONTEXT:
   Orchestrator:     scripts/automation/prsi-orchestrator.py
-  Runtime queue:    /var/lib/nixos-ai-stack/prsi/action-queue.json
+  Runtime queue:    /var/lib/nixos-ai-stack/optimizer/prsi/action-queue.json
   Runtime state:    /var/lib/nixos-ai-stack/prsi/runtime-state.json
   Actions log:      /var/log/nixos-ai-stack/prsi-actions.jsonl
   Policy file:      ${REPO_ROOT}/config/runtime-prsi-policy.json
   Discovery latest: ${REPO_ROOT}/data/prsi-artifacts/prsi-discovery-latest.json
   Run orchestrator: python3 scripts/automation/prsi-orchestrator.py --list
-  Read queue:       cat /var/lib/nixos-ai-stack/prsi/action-queue.json | python3 -m json.tool
+  Read queue:       cat /var/lib/nixos-ai-stack/optimizer/prsi/action-queue.json | python3 -m json.tool
   SEARCH FIRST: grep -r 'prsi' scripts/ --include='*.py' -l")
 fi
 

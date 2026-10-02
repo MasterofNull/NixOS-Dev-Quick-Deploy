@@ -363,3 +363,4 @@ config/aqos/approval-signer-credentials.json
 # Coordination mutex and interrupted snapshot writes are runtime state.
 .agent/collaboration/slice-claims.json.lock
 .agents/governance/state-authorities-latest.json.tmp.*
+.agent/collaboration/*.lock
