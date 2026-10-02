@@ -9,6 +9,7 @@ import logging
 import asyncio
 import json
 import os
+import sys
 import time
 from pathlib import Path
 from urllib.parse import urlencode
@@ -21,6 +22,11 @@ from api.config.service_endpoints import HYBRID_URL
 logger = logging.getLogger(__name__)
 
 router = APIRouter()
+
+# scripts/ai/lib sits outside the backend package tree (same pattern as approvals.py).
+_LIB_DIR = Path(__file__).resolve().parents[4] / "scripts" / "ai" / "lib"
+if str(_LIB_DIR) not in sys.path:
+    sys.path.insert(0, str(_LIB_DIR))
 
 # WebSocket connections for real-time health updates
 health_connections: List[WebSocket] = []
@@ -129,6 +135,13 @@ async def list_categories():
         "categories": sorted(categories),
         "count": len(categories),
     }
+
+
+@router.get("/auto-update")
+async def get_auto_update_status():
+    """Unattended update pipeline state (aq-auto-update status.json); unknown != healthy."""
+    import auto_update_status
+    return auto_update_status.read_status()
 
 
 @router.get("/aggregate")

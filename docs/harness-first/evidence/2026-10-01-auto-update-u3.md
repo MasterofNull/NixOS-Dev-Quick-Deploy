@@ -24,3 +24,9 @@ ACTIVATION_BLOCKED until the follow-ups above pass and the owner enables the opt
 
 ## Agents
 Implementer: Claude Sonnet (isolated worktree). Review + security fix: Claude Opus. Binding review queued (codex/local).
+
+## U4 observability (2026-10-01)
+- `scripts/ai/lib/auto_update_status.py`: read-only projection of `<state_dir>/status.json` + `halted` into not_enabled / unknown / attention / ok (unknown != healthy: corrupt or missing status is UNKNOWN).
+- CLI-first: `aq-rsi status` prints last outcome/time, versions moved, rollback, halted, pending-reboot hours vs SLA (BREACH); `--json` carries `auto_update`.
+- API: `GET /api/health/auto-update` (dashboard backend) returns the same projection. Dashboard card deferred.
+- Tests: test-auto-update-observability (8 fixture cases, CLI text + JSON + API function agree); test-aq-rsi still passes.
