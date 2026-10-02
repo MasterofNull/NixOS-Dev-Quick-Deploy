@@ -187,8 +187,9 @@ def main() -> int:
     assert_true(
         '"name": "osi-layered"' in health_spider_text
         and '"semantic_checks": ["osi_layered_ready"]' in health_spider_text
-        and "osi_layered_pending" in health_spider_text,
-        "health spider should catch OSI layer cards stuck pending or showing 0/0",
+        and '"osi_layered_no_results"' in health_spider_text
+        and 'osi_layered_failed={failed}' in health_spider_text,
+        "health spider should flag OSI layered probes with no results or failed layers",
     )
     assert_true(
         '"name": "ragas-faithfulness"' in health_spider_text

@@ -150,6 +150,7 @@ ralph-wiggum TaskRequest field: `prompt` (not `task`). AIDB vector search: POST 
 - `nix/modules/roles/ai-stack.nix` — main AI stack NixOS module
 - `nix/modules/core/options.nix` — all port options (single source of truth)
 - `scripts/ai/aq-qa` — phase 0 health checker (40 checks)
+- 2026-10-02 RSI takeover evidence: Ralph R1 tests/syntax pass and service `REPO_ROOT` is active, but authenticated sync reaches the handler and reports missing `python3`; runtime fix/verification remains open. R2 aggregate and dedicated checks both pass. Working-memory save returned HTTP 500 (separate MemoryBroker fact-store status unknown); shared parent is `0711 root:root`, intended child owner `ai-hybrid` (no `childagent` account intended). Retirement/querygaps have separate DAC symptoms under investigation. `/readyz` currently 200. Outside-sandbox tier0: 52 pass / 2 fail (L2B source hash drift; readiness during owner switch); write-region and loop-bounds passed. QA phase 0 timed out externally at 120s (124) with empty log; no pass claim. No failed systemd units observed; token usage unknown.
 - `scripts/ai/aq-report` — system report (now includes editor_rescue_windows telemetry)
 - `scripts/ai/aq-editor-rescue` — bounded rescue workflow (now writes JSONL telemetry history)
 

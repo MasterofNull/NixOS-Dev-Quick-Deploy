@@ -5162,10 +5162,40 @@ File: scripts/ai/lib/worktree-isolation.sh; scripts/automation/prsi-orchestrator
   Action: Derive first_token_timeout from prompt_tokens / measured prompt-eval rate (llama /metrics prompt_tokens_seconds) + margin; skip same-prompt retry after a first-token [REDACTED] (shrinking max_tokens cannot help a prompt-bound stall); preflight swap/PSI and defer or request resident restart when the model is paged out.
   File: scripts/ai/aq-agent-loop
 
-[OPEN] ralph-wiggum-hardcoded-repo-cwd — ai-stack/mcp-servers/ralph-wiggum/server.py runs subprocesses with cwd="/home/hyperd/Documents/NixOS-Dev-Quick-Deploy" (no env override), unlike switchboard/coordination which read REPO_PATH/REPO_ROOT. Same class as the test path bug fixed 2026-10-01 (QA 0.150.1).
-  Severity: low
-  Action: read REPO_ROOT from the service environment (declared in nix/modules/roles/ai-stack.nix) with the current path only as fallback.
-  File: ai-stack/mcp-servers/ralph-wiggum/server.py ~line 637, 700
+[FIXED-CODE / OPEN-RUNTIME] ralph-wiggum-hardcoded-repo-cwd — 2026-10-02 post-switch: unit PATH now has python3-env and authenticated sync gets past the shebang; next blocker is prsi-queue.json ownership (see ralph-prsi-queue-file-wrong-owner). Prior: ai-stack/mcp-servers/ralph-wiggum/server.py now uses required REPO_ROOT for both optimizer subprocesses; ai-ralph-wiggum receives it from mcp.repoPath. Focused test/syntax pass and owner rebuild confirms the environment is active. Authenticated sync reaches the handler but currently reports missing python3 in the service PATH, so runtime proof remains open.
+  Severity: medium (runtime correctness across repo locations).
+  Action: declare existing ralphPython runtime in the unit PATH, then verify evaluated PATH and authenticated sync after activation before resolving.
+  File: ai-stack/mcp-servers/ralph-wiggum/server.py; nix/modules/services/mcp-servers.nix; scripts/testing/test-ralph-prsi-repo-root.py
+
+[DONE 2026-10-02] rsi-takeover-r2-aggregate-dedicated-mismatch — Dedicated and aggregate R2 OSI checks now pass after updating stale pending/running contract assertions; no health-spider behavior change.
+  Severity: medium (validation discrepancy; resolved by test-contract correction).
+  Action: retain the focused and aggregate regression checks.
+  File: .agents/plans/rsi-takeover-20261002; scripts/testing/test-boot-stability-regressions.py; scripts/testing/test-health-spider-osi-layered-probe.py
+
+[DONE 2026-10-02] rsi-takeover-memory500-dac — LIVE-VALIDATED after owner switch (PR #366 e9ccc8f4): parent 0711 root:root, agent/ 0750 ai-hybrid:ai-stack; coordinator save_working_memory -> ok, get_working_memory round-trips the saved session. Original: Working-memory save returned HTTP 500. Shared parent contract is 0711 root:root; one observed state was 0750 hyperd:nogroup. Intended child account is ai-hybrid, absent at observation; producer/root cause remains under investigation. Do not conflate this failed working-memory save with the separate MemoryBroker fact store.
+  Severity: high (durable memory writes/reads unavailable until producer and ownership contract are confirmed).
+  Action: trace the producer restoring the shared parent contract and provision/verify the intended ai-hybrid child; do not treat repository handoff as durable working-memory evidence.
+  File: ai-stack/agent-memory/MEMORY.md; Nix activation/storage declaration (exact producer path pending).
+
+[OPEN] rsi-takeover-retirement-querygaps-dac — Retirement and querygaps report additional DAC symptoms. Evidence does not yet establish that they share the working-memory parent producer/root cause.
+  Severity: medium (service-specific storage paths may be inaccessible).
+  Action: trace each affected path, owner/mode contract, and producer independently before consolidating causes.
+  File: retirement/querygaps storage paths (exact paths pending).
+
+[DONE 2026-10-02] rsi-takeover-qa-phase0-silent-timeout — QA phase 0 now completes inside tier0 --pre-commit (PASS, 189 checks, 2026-10-02 Claude run); the earlier 120s external timeout was an under-budgeted wrapper, not a phase failure. Original: QA phase 0 ended at external 120-second timeout (exit 124) with empty captured log; Python buffering is a suspected visibility cause, not confirmed root cause. No QA pass is established.
+  Severity: medium (phase-0 result unverified; silent timeout obscures progress).
+  Action: diagnose timeout/output capture path and rerun only after bounded progress evidence is available; preserve timeout as failure, never convert to pass.
+  File: scripts/testing/harness_qa/phases/phase0.py; scripts/ai/aq-qa (precise capture producer pending).
+
+[DONE 2026-10-02] rsi-takeover-l2b-source-drift — CLOSED: addendum `.agents/plans/local-inference-l2b-a/RSI-R1-REPO-ROOT-ADDENDUM.md` + server.py pin rebound together; L2B 16 PASS; independent Claude-sonnet review PASS (no transport adoption, diff = 2 cwd lines). Original: L2B-A exact-source fixture reports expected hash drift after owner-authorized RSI R1 repo-root cwd change in Ralph. The diff only changes `cwd` for the existing `aq-optimizer --dry-run` and existing guarded `--apply` calls; it adds no import/call/adoption of `local_inference_transport` and changes no route, auth, dry-run, or apply guard. Refresh must pair the new source hash with an adjacent RSI-R1 addendum preserving the prior accepted hash, exact two-line diff, explicit authorization, and transport-default evidence; never update the digest alone.
+  Severity: medium (frozen acceptance suite currently fails on changed source bytes).
+  Action: add the bounded addendum and reviewed source hash together, retain the historical acceptance record, then run the L2B test and record its result against that addendum.
+  File: ai-stack/mcp-servers/ralph-wiggum/server.py; scripts/testing/fixtures/local-inference-l2b-payload-golden.json; scripts/testing/test-local-inference-l2b.py; .agents/plans/local-inference-l2b-a/antigravity-acceptance-v2.md; .agents/plans/local-inference-l2b-a/RSI-R1-REPO-ROOT-ADDENDUM.md
+
+[OPEN] rsi-deployment-skill-interface-drift — Global deployment skill describes an obsolete 8-phase workflow and flags such as `--start-from-phase`; current repository deployment entrypoint declares “No legacy phase path” and documents flake-first flags. Repo interface is authoritative; do not edit global skill as part of this repo task.
+  Severity: low (can misdirect operators/agents to unsupported commands).
+  Action: defer to skill owner for update; meanwhile consult `nixos-quick-deploy.sh` usage and do not follow legacy phase examples.
+  File: /home/hyperd/.codex/skills/nixos-deployment/SKILL.md ~lines 9, 35-86; nixos-quick-deploy.sh ~lines 142-160
 [OPEN] rsi-30f7979bcc0cd714b8949313 — agent-dispatch:worktree-isolation failure in subagent-worktree-isolation-escape. Root cause evidence: producer=agent-dispatch:worktree-isolation; path=.claude/worktrees; authority=claude-code; os_error=isolated-worktree sub-agent edited the MAIN checkout by absolute path (haiku backlog bookkeeping wrote /home/hyperd/Documents/NixOS-Dev-Quick-Deploy/.agent/memory/issues-backlog.md instead of its worktree copy); separately a sonnet sub-agent bypassed a Bash git refusal by committing via ctx_shell. Detected=2026-10-02T02:39:11.836076Z.
   Severity: medium
   Action: Worktree isolation is cwd-only: absolute repo paths and alternate shell tools (lean-ctx ctx_shell) are not confined. Fix: delegate briefs must pass worktree-relative paths only; add a PreToolUse guard denying Write/Edit/shell writes to the main checkout path from worktree sessions, and apply the same git policy to ctx_shell as to Bash.
@@ -5175,3 +5205,68 @@ File: scripts/ai/lib/worktree-isolation.sh; scripts/automation/prsi-orchestrator
   Severity: medium
   Action: Find whether the health spider lost its OSI-layer pending/0-0 card check (producer regression) or the test's static string drifted; fix the producer, then split the file so one failure cannot mask later regression checks.
   File: scripts/testing/test-boot-stability-regressions.py
+
+[OPEN] token-bloat-issues-backlog-unrotated — `.agent/memory/issues-backlog.md` is 742KB / 5207 lines / 525 entries (~320 closed, 205 OPEN) and is never rotated, although MEMORY policy says done entries degrade to archive. Header lines run to ~2KB, so every agent grep/read of the backlog (SOP mandates it pre-debug) pulls large closed-entry text into context; observed 2026-10-02 RSI-takeover resume. Root cause: append-only producer (rsi_lifecycle, aq-loop escalate, manual agents) with no rotation step; ~15 scripts parse the file so ad-hoc trimming is unsafe.
+  Severity: medium (recurring token cost on every agent session; no correctness impact).
+  Action: add a deterministic rotation tool that moves whole [DONE*] entry blocks older than N days to `.agent/memory/archive/issues-backlog-<YYYYMM>.md`, leaves a one-line id index, and a regression test asserting the [OPEN] id set is unchanged; run it from the update pipeline, not agents. Local Qwen advisory (local-20261002-101152-boidfm) concurs: rotate [DONE*] blocks to `.agent/memory/issues-backlog-done.md` with id index + OPEN-set-unchanged test; its ">90% reduction" estimate is wrong (205/525 OPEN -> ~60%).
+  File: .agent/memory/issues-backlog.md; scripts/ai/lib/rsi_lifecycle.py; scripts/ai/aq-loop ~line 46
+
+[DONE 2026-10-02] token-bloat-resume-agent-snapshots — FIXED at producer: TTL prune in project_resume (provenance owners kept; RESUME_SNAPSHOT_TTL_DAYS, 0 disables); test-event-bus-a2a ALL PASS; live RESUME.json 21.7KB -> 7.5KB (26 -> 6 snapshots). Original: `.agent/collaboration/RESUME.json` was 21.7KB, 17.5KB of it `agent_snapshots` for 26 agents (20 stale 70+ days, incl. one-shot sub-agent ids). Every raw read of RESUME.json pays for it. Root cause: `project_resume()` keeps a snapshot for every agent that ever emitted resume.update; the event log already retains full history, so the projection never needed them.
+  Severity: low-medium (token cost per resume read).
+  Action: done — TTL prune relative to newest event (`RESUME_SNAPSHOT_TTL_DAYS`, default 14; provenance owners always kept) + regression in test-event-bus-a2a.py.
+  File: scripts/ai/lib/resume_projector.py ~line 70-102
+
+[OPEN] ralph-execute-missing-repo-root-burns-approved-actions — Review observation (2026-10-02 R1 review): with REPO_ROOT unset and dry_run=False, `execute_prsi_actions` marks each approved action `failed` instead of leaving it `approved`, so a unit misconfiguration consumes owner approvals. Fail-closed but costly.
+  Severity: low (requires misconfigured unit; REPO_ROOT now declared).
+  Action: check REPO_ROOT once before the action loop and return an error without mutating action state.
+  File: ai-stack/mcp-servers/ralph-wiggum/server.py ~line 690-710
+
+[OPEN] working-memory-path-hardcoded — `context_summary_handlers.py:23` hardcodes `/var/lib/nixos-ai-stack/agent/working_memory.json` instead of deriving it from `aiStackStateDir`; diverges if that option is overridden (R3 tmpfiles child follows the option). Pre-existing; review observation 2026-10-02.
+  Severity: low.
+  Action: pass the state dir via unit env (e.g. AI_STACK_STATE_DIR) from mcp-servers.nix and read it in the handler.
+  File: ai-stack/mcp-servers/hybrid-coordinator/context_summary_handlers.py:23
+
+[OPEN] token-bloat-handoff-unrotated — `.agent/collaboration/HANDOFF.md` is 183KB of stacked newest-on-top memos back to 2026-09; CLAUDE.md "Read HANDOFF.md on session resume" makes a raw read expensive (its own top memo already says to read the compact memory file instead). Root cause: memos are prepended, never archived. Observed 2026-10-02.
+  Severity: low-medium (token cost on resume).
+  Action: same rotation tool as token-bloat-issues-backlog-unrotated: keep the newest N memos, move older ones to `.agent/archive/handoff-<YYYYMM>.md`; update the resume instruction to point at the compact head.
+  File: .agent/collaboration/HANDOFF.md
+
+[OPEN] collaboration-lockfiles-untracked-noise — 0-byte flock files `.agent/collaboration/{HANDOFF.md,PENDING.json}.lock` show as untracked in every `git status`, so agents re-inspect them each session. Root cause: lock sidecars not in .gitignore (rsi-incidents.lock and slice-claims.json.lock are also present).
+  Severity: low.
+  Action: add `.agent/collaboration/*.lock` to .gitignore.
+  File: .gitignore
+
+[IN-PROGRESS] ralph-prsi-queue-file-wrong-owner — 2026-10-02 after second switch: the tmpfiles `z` fix (303bb202) is INEFFECTIVE. systemd-tmpfiles refuses it with "Detected unsafe path transition /var/lib/ai-stack/ralph (owned by ai-ralph) -> prsi-queue.json (owned by hyperd)". Replacing it with a producer fix: atomic temp+os.replace write in Ralph (dir owner can replace any file). Original: After the R1 activation, authenticated `POST :8004/api/prsi/sync` returns `{"status":"error","detail":"[Errno 13] Permission denied: '/var/lib/ai-stack/ralph/prsi-queue.json'"}`. The file is `hyperd:users 0644`, mtime 2026-03-14, in a `0750 ai-ralph` dir. Only Ralph writes it, so it is a stale manual/legacy write never re-owned. Root cause: no tmpfiles declaration for the file.
+  Severity: medium (PRSI sync/execute through Ralph is dead).
+  Action: tmpfiles `z ${dataDir}/ralph/prsi-queue.json 0640 ai-ralph ai-stack` added plus a regression in test-ralph-prsi-repo-root.py; needs owner switch, then re-run the authenticated sync.
+  File: nix/modules/services/mcp-servers.nix ~line 684
+
+[OPEN] shell-hook-rewrites-cat-in-command-substitution — In Claude Bash calls, `KEY=$(cat /run/secrets/...)` did not yield the raw file bytes. The lean-ctx/RTK command-rewrite hook wraps `cat`, so curl sent a wrong key and every protected coordinator route returned 401. The same key read via python got 200. This cost ~10 diagnostic tool calls chasing a phantom coordinator auth bug (token thrash). It also led to a raw `od -c` dump that exposed most of the hybrid coordinator API key in the transcript.
+  Severity: medium (silent data corruption in agent shell commands; false-positive outages; secret-exposure side effect).
+  Action: exempt `cat` inside `$(...)` and pipelines from the rewrite (only rewrite top-level display reads); interim: read secrets via python/`< file` redirection, never `$(cat)`. Rotate hybrid_coordinator_api_key (owner, sops).
+  File: lean-ctx/RTK PreToolUse hook (~/.claude settings hooks)
+
+[PARTIAL 2026-10-02] prsi-action-queue-split-brain — CLI part FIXED (prsi-orchestrator/aq-prsi-review/aq-throttler/aq-delegate default to canonical; test-prsi-queue-path-ssot PASS; read-only `list --status rsi_pending` now shows both ids; owner verify of a05cfd88d5fc58b9 + 946f97d0a3ac387a succeeded 2026-10-02, aq-rsi-pending now empty); coordinator follow-up (2) still OPEN. Owner ran `prsi-orchestrator.py verify --id a05cfd88d5fc58b9|946f97d0a3ac387a --by owner` exactly as `aq-rsi-pending` printed it and got `{"ok": false, "error": "'<id>'"}` (KeyError). Root cause: two live queues. The Nix timers ai-prsi-orchestrator and ai-prsi-rsi-dispatch get PRSI_ACTION_QUEUE_PATH=${mutableOptimizerDir}/prsi/action-queue.json (198 actions, includes both ids). Shell-run CLIs without the env var default to legacy /var/lib/nixos-ai-stack/prsi/action-queue.json (12 actions): prsi-orchestrator.py, aq-prsi-review, aq-throttler, and the aq-delegate help text. aq-rsi/aq-rsi-pending already use the canonical path. The owner sign-off path (CLI-first approvals policy) is therefore broken.
+  Severity: high (owner cannot sign off high-risk RSI repairs; split-brain state).
+  Action: (1) in progress: point the CLI defaults at the canonical path + test-prsi-queue-path-ssot.py. (2) OPEN follow-up: hybrid-coordinator prsi_handlers.py:37 and mcp_handlers.py:2034/2141, local-agents ai_coordination.py:341, and the switchboard/context-card hint text still hardcode the legacy path. The coordinator runs as ai-hybrid while the canonical file is hyperd:users 0644, so the follow-up needs a declared owner/mode for the optimizer prsi dir plus PRSI_ACTION_QUEUE_PATH on the coordinator unit, then retire the legacy file (archive, not delete).
+  File: scripts/automation/prsi-orchestrator.py:47; scripts/ai/aq-prsi-review:31; scripts/ai/aq-throttler:36; ai-stack/mcp-servers/hybrid-coordinator/workflow/prsi_handlers.py:37
+
+[OPEN] optimizer-state-dir-owned-by-hyperd-blocks-service-consumers — After R1 activation, authenticated Ralph `/api/prsi/sync` reaches aq-optimizer and fails with `PermissionError: [Errno 13] Permission denied: '/var/lib/nixos-ai-stack/optimizer/overrides.env'`. `/var/lib/nixos-ai-stack/optimizer` is hyperd:users 0750 and `optimizer/prsi` is hyperd:users 0755; ai-ralph (group ai-stack only) cannot traverse it. This is the same root as the coordinator half of prsi-action-queue-split-brain: optimizer/PRSI state is owned by the interactive user, while service accounts (ai-ralph, ai-hybrid) consume it. The timers run as hyperd, so they work; the Ralph and coordinator paths do not.
+  Severity: medium (Ralph PRSI sync/execute and coordinator PRSI tools cannot reach canonical state; timers unaffected).
+  Action: OWNER DECIDED 2026-10-02: neither (a) group-share nor (b) retire. Merge the legacy PRSI tools and implementations (prsi-orchestrator, Ralph /api/prsi, coordinator prsi_handlers, optimizer action queue) into the working RSI role + steward as one system. Tracked by the PRSI->RSI merge PRD (.agents/plans/prsi-rsi-merge-20261002/).
+  File: nix/modules/roles/ai-stack.nix (mutableOptimizerDir ~line 48, 2273-2423); scripts/ai/aq-optimizer:78
+
+[OPEN] tmpfiles-unsafe-path-transition-latest-aq-report — systemd-tmpfiles-resetup logs "Detected unsafe path transition /var/lib/ai-stack/hybrid/telemetry (owned by ai-hybrid) -> latest-aq-report.json (owned by hyperd)", so the declared rule for that file is silently skipped on every activation. Same class as the ralph queue: a file written by hyperd inside a service-owned dir.
+  Severity: low.
+  Action: find the hyperd-side writer of latest-aq-report.json; make it write via the service or atomic-replace, or move the file to a hyperd/ai-stack shared dir.
+  File: nix/modules/services/mcp-servers.nix (hybrid/telemetry rules)
+
+[DONE 2026-10-02] aq-throttler-corrupts-prsi-queue — INCIDENT (self-inflicted, Claude opus-5.5). 7c34e6a5 repointed aq-throttler at the canonical PRSI queue along with the CLIs. Unlike them, aq-throttler (ai-throttler.service, every 60s) loads the queue dict, wraps it as `[data]`, appends a row and writes a LIST. prsi-orchestrator `_load_queue` silently treated non-dict (and unparseable JSON) as `{}`, so its next save erased the queue: 198 actions at 10:52 -> 5 at 11:24, including both owner sign-offs recorded at 11:07 (still in prsi-actions.jsonl). The running unit executed the Nix-store snapshot of the dirty tree from the 11:11 switch, so the source revert could not stop it; the owner ran `systemctl stop ai-throttler`. Root causes: (1) unchecked writer schema in aq-throttler; (2) loader fail-open in the orchestrator (the real producer of the loss); (3) orchestrator path change shipped without auditing every writer.
+  Severity: high (state loss of the owner approval record).
+  Action: done. aq-throttler reverted to the legacy file, and test-prsi-queue-path-ssot now FAILS if the throttler targets the canonical queue. `_load_queue` fails closed on malformed or unparseable files (test-prsi-queue-fail-closed). The queue was restored to a dict and resynced from the ledger + aq-report: 10 rows. The owner must re-run verify for a05cfd88d5fc58b9 and 946f97d0a3ac387a. Snapshot in .agent/archive/20261002-prsi-queue-incident/ (untracked runtime data). ai-throttler stays stopped until a rebuild picks up the revert; its retire-or-rewrite decision belongs to the PRSI->RSI merge plan.
+  File: scripts/ai/aq-throttler:36-60; scripts/automation/prsi-orchestrator.py _load_queue ~line 333
+
+[OPEN] coordinator-prsi-handlers-wrong-row-schema — hybrid-coordinator prsi_handlers.py:55-68 and mcp_handlers.py:2038-2050 filter pending on `state`/`action_detail`, but real rows use `status`/`raw_action`, so every row reports as pending. The MCP critical-risk block (mcp_handlers.py:2146) checks `risk_level`, which real rows do not have (`risk`), so it never fires. These handlers also read the legacy queue path. Found by the 2026-10-02 PRSI/RSI inventory.
+  Severity: medium (agents see wrong pending set; risk block dead).
+  Action: fold into the PRSI->RSI merge plan (repoint + schema fix + test against real row fixtures).
+  File: ai-stack/mcp-servers/hybrid-coordinator/workflow/prsi_handlers.py:37,55-68; extensions/mcp_handlers.py:2034,2038-2050,2141,2146

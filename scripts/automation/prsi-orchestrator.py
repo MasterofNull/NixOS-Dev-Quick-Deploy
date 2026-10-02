@@ -44,7 +44,7 @@ from workflow_deviation import (  # noqa: E402
     learning_candidate,
     validate as validate_deviation,
 )
-QUEUE_PATH = Path(os.getenv("PRSI_ACTION_QUEUE_PATH", "/var/lib/nixos-ai-stack/prsi/action-queue.json"))
+QUEUE_PATH = Path(os.getenv("PRSI_ACTION_QUEUE_PATH", "/var/lib/nixos-ai-stack/optimizer/prsi/action-queue.json"))
 ACTIONS_LOG_PATH = Path(os.getenv("PRSI_ACTIONS_LOG_PATH", "/var/log/nixos-ai-stack/prsi-actions.jsonl"))
 AUTO_APPROVE_LOW_RISK = os.getenv("PRSI_AUTO_APPROVE_LOW_RISK", "true").lower() == "true"
 PRSI_POLICY_FILE = Path(os.getenv("PRSI_POLICY_FILE", str(REPO_ROOT / "config/runtime-prsi-policy.json")))
@@ -331,12 +331,17 @@ def _risk_tier(action: Dict[str, Any]) -> str:
 
 
 def _load_queue() -> Dict[str, Any]:
-    payload = _read_json(QUEUE_PATH, {})
-    if not isinstance(payload, dict):
-        payload = {}
+    # Fail closed on a malformed file: treating it as empty lets the next save
+    # erase every row and owner sign-off (2026-10-02 aq-throttler incident).
+    payload: Any = {}
+    if QUEUE_PATH.exists():
+        try:
+            payload = json.loads(QUEUE_PATH.read_text(encoding="utf-8"))
+        except ValueError as exc:
+            raise RuntimeError(f"PRSI queue {QUEUE_PATH} is not valid JSON; refusing to overwrite") from exc
+        if not isinstance(payload, dict) or not isinstance(payload.get("actions", []), list):
+            raise RuntimeError(f"PRSI queue {QUEUE_PATH} is not a {{'actions': [...]}} object; refusing to overwrite")
     actions = payload.get("actions", [])
-    if not isinstance(actions, list):
-        actions = []
     return {
         "updated_at": payload.get("updated_at"),
         "actions": actions,

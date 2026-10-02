@@ -147,6 +147,10 @@ Codex lane absent).
 
 ## 2026-09-27 — Resumed context guards / memory persistence
 - aq-memory swallowed disk-write failures; current temporal_facts.json is nobody:nogroup 0644. Repair failure reporting first; storage ownership and coordinator working-memory HTTP 500 remain open. Repository handoff is the checkpoint fallback; queued memory writes are not durability evidence.
+- 2026-10-02 takeover update: the working-memory save endpoint returned HTTP 500; this does not establish that the separate MemoryBroker fact store is down. The shared parent is `0711 root:root` and the intended child owner is `ai-hybrid` (no `childagent` account is intended). Retirement and querygaps show additional DAC symptoms, but their paths/producers are being traced independently. No successful working-memory save is claimed.
+- 2026-10-02 runtime evidence: Ralph R1 source tests pass and `REPO_ROOT` is active in the service environment, but authenticated sync reaches the handler and reports missing `python3`; add the existing `ralphPython` runtime to the declared service PATH and verify live sync. R2 aggregate and dedicated checks now both pass. `/readyz` currently returns 200.
+- 2026-10-02 validation evidence: outside-sandbox tier0 reported 52 PASS / 2 FAIL: L2B whole-source hash drift after the authorized repo-root change and `/readyz` during owner switch. Write-region and loop-bounds checks passed outside sandbox. QA phase 0's external 120s timeout (124) with empty output remains a failure; buffering is suspected, unproven.
+- 2026-10-02 QA phase-0 observation: external 120s timeout (exit 124) left an empty log; Python output buffering is suspected but unproven. This is diagnostic context, not a workaround or pass signal. Keep the failure visible while tracing capture/flush behavior.
 - Tier0 acquires its own checkout: do not wrap it in aq-gate-checkout run. Released only this session's outer lock after nested acquisition stalled. Direct gate reached the 120-second timeout; TERM did not stop remaining gates, so interrupted explicitly. No full PASS or commit claimed.
 - Sandbox blocked QA evidence lock under /var/lib; retry requested using normal escalation.
 
@@ -189,3 +193,10 @@ Codex lane absent).
 - Evidence: same redirected, profiled aq-report path fell from 552,192 KiB process-tree peak (active `useful_token_metrics` stack ~538,236 KiB) to 115,852 KiB (−422,384 KiB / 78%). Focused test 7/7 and py_compile passed. Keep the 256M service cap unchanged.
 - Runtime remains pending exact-subject independent review and a serialized live acceptance window; do not manually start the executing PRSI unit while Remediator/timer ownership is unsettled.
 - 2026-09-30 live acceptance (claude-opus): scheduled `ai-prsi-orchestrator` cycle 09:28 PDT failed `oom-kill` (pre-fix, 2m25s); first post-fix cycle 10:08 PDT ran sync (aq-report) to `Result=success` in 9s under the unchanged 256M cap. Exact subject 6c06b38b/243885d0 independently reviewed PASS by claude-opus (streaming path is order-independent; missing-file still yields `status=no_data`); local Qwen review local-20260930-105223-xbkns7 dispatched.
+
+## WR-PRSI-THROTTLER — aq-throttler kept on legacy PRSI queue file — OPEN
+- symptom: aq-throttler list-wraps the PRSI queue dict on write; pointed at the canonical queue it erased state (2026-10-02).
+- band-aid in place? yes: aq-throttler hardcoded to legacy /var/lib/nixos-ai-stack/prsi/action-queue.json (guarded by test-prsi-queue-path-ssot); ai-throttler.service stopped by owner.
+- root cause (T5): throttler writer predates the queue schema; no shared queue-write API.
+- producer to fix: scripts/ai/aq-throttler (write via the orchestrator's queue API, or retire in the PRSI->RSI merge).
+- class: T5 producer-governance-fracture · severity: high · status: OPEN · opened: 2026-10-02

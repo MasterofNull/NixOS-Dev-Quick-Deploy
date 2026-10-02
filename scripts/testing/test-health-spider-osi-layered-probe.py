@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""Verify health-spider osi_layered_ready probe tolerates running:True (Phase 166)."""
+"""Verify health-spider keeps queued/running OSI checks healthy while in progress."""
 import sys, re
 from pathlib import Path
 
@@ -8,10 +8,10 @@ src = SPIDER.read_text()
 
 checks = [
     ("osi_layered_ready probe present", "osi_layered_ready" in src),
-    # Condition must include 'and not data.get("running")' or single-quote variant
-    ("probe tolerates running:True",
-     'and not data.get("running")' in src or "and not data.get('running')" in src),
-    # The original vulnerable condition (no running check) must NOT be present
+    # The producer represents queued and active work with pending:true.
+    ("in-progress pending probe stays healthy",
+     'if data.get("pending") is True:\n            return ""' in src),
+    # In-progress work must not be reported as a pending failure.
     ("old vulnerable condition removed",
      'if data.get("pending") is True:\n            return "osi_layered_pending"' not in src),
     ("dashboard recovery resolver present", "def _resolve_recovered_dashboard_probe_alerts" in src),
@@ -34,7 +34,7 @@ if failed:
     print(f"FAIL: osi_layered_ready probe missing elements: {failed}")
     sys.exit(1)
 
-# Extract just the osi_layered_ready block via regex and verify the condition text
+# Extract just the osi_layered_ready block via regex and verify the pending contract.
 block_match = re.search(
     r'if check == "osi_layered_ready":(.*?)(?=\n    if check ==|\Z)',
     src, re.DOTALL
@@ -44,9 +44,9 @@ if not block_match:
     sys.exit(1)
 
 block = block_match.group(1)
-# Running warm-up line must contain 'and not data.get("running")'
-if 'and not data.get("running")' not in block and "and not data.get('running')" not in block:
-    print(f"FAIL: osi_layered_ready block does not have running guard:\n{block[:300]}")
+# Queued or active work must return healthy until the next probe observes a result.
+if 'if data.get("pending") is True:\n            return ""' not in block:
+    print(f"FAIL: osi_layered_ready block does not treat pending work as healthy:\n{block[:300]}")
     sys.exit(1)
 
-print("PASS: health-spider osi_layered_ready probe correctly tolerates running:True transient state")
+print("PASS: health-spider osi_layered_ready probe correctly tolerates in-progress pending state")
