@@ -286,7 +286,8 @@ try:
 except Exception:
     sys.exit(0)
 
-if "You've hit your usage limit" not in text:
+# Codex prints a typographic apostrophe ("You’ve"); match apostrophe-agnostically.
+if "hit your usage limit" not in text.lower():
     sys.exit(0)
 
 now = datetime.now(timezone.utc)
