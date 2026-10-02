@@ -64,6 +64,19 @@
       "Bash(curl -sf http://127.0.0.1:800*)"
     ]
   },
+  "hooks": {
+    "PreToolUse": [
+      {
+        "matcher": "Write|Edit|MultiEdit|NotebookEdit|mcp__lean-ctx__ctx_edit",
+        "hooks": [
+          {
+            "type": "command",
+            "command": "python3 \"$CLAUDE_PROJECT_DIR/scripts/ai/aq-worktree-write-guard\""
+          }
+        ]
+      }
+    ]
+  },
   "hints": {
     "enabled": true,
     "endpoint": "http://127.0.0.1:8003/hints",
