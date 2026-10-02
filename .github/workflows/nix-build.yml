@@ -30,7 +30,9 @@ jobs:
       
       - name: Build hyperd-ai-dev configuration
         run: |
-          nix build .#nixosConfigurations.hyperd-ai-dev.config.system.build.toplevel --print-build-logs || true
+          # No `|| true`: a failed system build must fail this job (it previously always passed).
+          nix build .#nixosConfigurations.hyperd-ai-dev.config.system.build.toplevel \
+            --max-jobs 2 --cores 2 --print-build-logs
       
       - name: Build Summary
         if: always()
