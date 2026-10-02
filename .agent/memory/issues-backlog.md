@@ -5286,3 +5286,13 @@ File: scripts/ai/lib/worktree-isolation.sh; scripts/automation/prsi-orchestrator
   Severity: high (scheduled health check blind; false high alert every 15 min).
   Action: ReadWritePaths += ${mcpServers.dataDir}/hybrid/telemetry (DAC ok: dir 0770 ai-stack, hyperd in ai-stack); regression in test-ai-stack-health-monitor.py. After the owner switch, confirm the next timer run is error-free, then deny/resolve attn-c6442c73 via the inbox.
   File: nix/modules/roles/ai-stack.nix ~2022
+
+[OPEN] live-timers-run-unreviewed-working-tree-scripts — ai-prsi-orchestrator (hourly), ai-prsi-rsi-dispatch (5 min/path), ai-stack-health-monitor and others ExecStart `${cfg.mcpServers.repoPath}/scripts/...` from the owner's working checkout, not a Nix-store snapshot. Any in-progress implementer edit (e.g. PRSI merge M1 on prsi-orchestrator.py, 2026-10-02) is live the moment it is written, before review/tier0/commit. The aq-throttler queue-wipe incident had the inverse shape (store snapshot of a dirty tree). Root cause: repoPath-sourced service scripts plus implementers editing the main checkout.
+  Severity: medium (unreviewed code can mutate live state; mitigated today by fail-closed queue load + tests passing before each edit landed).
+  Action: implementer slices touching live-run scripts use an isolated git worktree (EnterWorktree / Agent isolation=worktree; mind the cf74048a worktree-escape incident); longer-term: run timers from a pinned committed ref or store path.
+  File: nix/modules/roles/ai-stack.nix (ai-prsi-* ExecStart ~2345-2430)
+
+[DONE 2026-10-02] prsi-queue-multiple-writers-lost-updates — PRSI merge M1. Single writer: new scripts/ai/lib/prsi_queue.py (fail-closed load, atomic same-dir save, re-entrant flock). The orchestrator delegates to it, and every read-modify-write runs under the lock or through field-scoped `_merge_save`. No queue lock is held across aq-optimizer/delegate subprocesses (separate non-blocking execute lock). Field-scoped merge with an expected-status check keeps owner reject/verify that races a running execute/rsi-dispatch (independent reviewer finding; `merge_conflict` event logged). aq-throttler writes no queue rows (dead data that would have flooded the approval inbox). test-prsi-budget-reservation no longer touches /var/lib.
+  Severity: high (state-loss class).
+  Action: done; regression test-prsi-queue-single-writer.py (+ path-ssot guard).
+  File: scripts/ai/lib/prsi_queue.py; scripts/automation/prsi-orchestrator.py _merge_save ~351; scripts/ai/aq-throttler
