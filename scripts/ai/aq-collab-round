@@ -509,8 +509,36 @@ def _dispatch_antigravity(name: str, prompt_file: Path) -> str:
     return f"{marker} UNAVAILABLE: {why}{triggered}{arch}"
 
 
+_TASK_PATH_RE = re.compile(r"(?<![\w/.-])((?:\.?[\w-]+/)+[\w.-]+\.\w+)")
+
+
+def _uncommitted_task_inputs(task: str) -> list[str]:
+    """Repo paths named in the task that are untracked or differ from HEAD.
+
+    Isolated lanes run in worktrees cut from HEAD, so such inputs are missing or
+    stale there (round tiered-auto-update-prd-r2: codex could not see the PRD).
+    """
+    bad = []
+    for rel in sorted(set(_TASK_PATH_RE.findall(task or ""))):
+        if not (REPO / rel).exists():
+            continue
+        tracked = subprocess.run(["git", "-C", str(REPO), "ls-files", "--error-unmatch", rel],
+                                 capture_output=True).returncode == 0
+        clean = tracked and subprocess.run(["git", "-C", str(REPO), "diff", "--quiet", "HEAD", "--", rel],
+                                           capture_output=True).returncode == 0
+        if not clean:
+            bad.append(rel)
+    return bad
+
+
 def cmd_open(args) -> int:
     rd = _round_dir(args.round)
+    dirty = _uncommitted_task_inputs(args.task)
+    if dirty and not args.allow_uncommitted_inputs:
+        print("[aq-collab-round] refusing to open: isolated lanes see HEAD, but these task inputs "
+              f"are uncommitted: {', '.join(dirty)}. Commit them or pass --allow-uncommitted-inputs.",
+              file=sys.stderr)
+        return 2
     if args.dry_run:
         print(f"[dry-run] would open '{args.round}' at {rd}")
         print(f"[dry-run] dispatch: codex(edit), local(agent,{args.local_timeout}s,inlined,never-skip)")
@@ -905,6 +933,7 @@ def main() -> int:
     o = sub.add_parser("open", help="fan a task out to all agents")
     o.add_argument("--round", required=True); o.add_argument("--task", required=True)
     o.add_argument("--target"); o.add_argument("--local-timeout", type=int, default=5400)
+    o.add_argument("--allow-uncommitted-inputs", action="store_true")
     o.add_argument("--dry-run", action="store_true"); o.set_defaults(fn=cmd_open)
     s = sub.add_parser("status", help="poll contributions"); s.add_argument("--round", required=True)
     s.set_defaults(fn=lambda a: cmd_status(a, do_extract=False))

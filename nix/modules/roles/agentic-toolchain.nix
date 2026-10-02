@@ -50,8 +50,8 @@
     # command genuinely missing from both SSOTs above.
     procps # `watch`, plus `ps`/`top`/`free`/`pgrep`/`pkill`
 
-    # Security scanners agents and MCP servers call by name. semgrep-mcp needs
-    # the semgrep CLI on a stable path (SEMGREP_PATH=/run/current-system/sw/bin/semgrep);
+    # Security scanners agents and MCP servers call by name. The semgrep MCP server
+    # is `semgrep mcp` at /run/current-system/sw/bin/semgrep (version follows flake.lock);
     # gitleaks backs the documented secret-scan tooling (backlog
     # archive-secret-scan-tooling-is-not-runnable-as-documented).
     semgrep

@@ -1089,14 +1089,13 @@ in {
           # systemd marks the service active only after this probe succeeds,
           # so ai-hybrid-coordinator (after=llama-cpp.service) starts only when
           # the model is genuinely ready for inference.
+          # Unbounded on purpose: TimeoutStartSec bounds the whole start including this
+          # probe. A fixed internal cap (was 60x2s ~= 120s) undercut it, so loads slowed
+          # by memory pressure failed the probe and looped restarts (incident 629a1f1c).
           ExecStartPost = pkgs.writeShellScript "llama-cpp-ready-probe" ''
-            for i in $(${pkgs.coreutils}/bin/seq 60); do
-              if ${pkgs.curl}/bin/curl -sf "http://127.0.0.1:${toString llama.port}/health" >/dev/null 2>&1; then
-                exit 0
-              fi
+            until ${pkgs.curl}/bin/curl -sf "http://127.0.0.1:${toString llama.port}/health" >/dev/null 2>&1; do
               ${pkgs.coreutils}/bin/sleep 2
             done
-            exit 1
           '';
           StateDirectory = "llama-cpp";
           RuntimeDirectory = "llama-cpp";

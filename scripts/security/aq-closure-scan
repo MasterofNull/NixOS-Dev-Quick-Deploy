@@ -73,6 +73,29 @@ def summarize(grype_doc: dict, top: int) -> dict:
     }
 
 
+# grype emits SARIF results for SBOM inputs with artifactLocation.uri == "" (a store path has no
+# repo file); GitHub code scanning rejects the upload ("expected artifact location").  Anchor every
+# result on the repo file that pins the closure's package versions.
+SARIF_ANCHOR_URI = "flake.lock"
+
+
+def anchor_sarif(sarif: Path, uri: str = SARIF_ANCHOR_URI) -> int:
+    """Give every SARIF result a non-empty artifact location; return how many were rewritten."""
+    doc = json.loads(sarif.read_text())
+    fixed = 0
+    for run in doc.get("runs", []):
+        for res in run.get("results", []):
+            locs = res.get("locations") or [{}]
+            for loc in locs:
+                art = loc.setdefault("physicalLocation", {}).setdefault("artifactLocation", {})
+                if not art.get("uri"):
+                    art["uri"] = uri
+                    fixed += 1
+            res["locations"] = locs
+    sarif.write_text(json.dumps(doc))
+    return fixed
+
+
 def scan(target: str, sbom: Path, sarif: Path | None, top: int, timeout: int) -> dict:
     # sbomnix drops sbom.csv/sbom.spdx.json/http_cache.sqlite into its cwd; keep that scratch off the repo.
     work = Path(tempfile.mkdtemp(prefix="aq-closure-work-"))
@@ -95,6 +118,11 @@ def scan(target: str, sbom: Path, sarif: Path | None, top: int, timeout: int) ->
         raise ScanError(f"grype output is not JSON: {exc}") from exc
     if sarif is not None and not sarif.is_file():
         raise ScanError(f"grype did not write SARIF at {sarif}")
+    if sarif is not None:
+        try:
+            anchor_sarif(sarif)
+        except (OSError, json.JSONDecodeError) as exc:
+            raise ScanError(f"grype SARIF is unreadable: {exc}") from exc
     result = summarize(doc, top)
     result.update({"target": target, "components": components})
     return result
