@@ -257,6 +257,36 @@
       };
     };
 
+    # Tiered unattended update pipeline (.agents/plans/tiered-auto-update-prd-r3-20261001/FREEZE.md,
+    # slice U3). Ships DISABLED. Implemented by scripts/maintenance/aq-auto-update
+    # and nix/modules/core/auto-update.nix.
+    autoUpdate = {
+      enable = lib.mkOption {
+        type = lib.types.bool;
+        default = false;
+        description = ''
+          Enable the unattended update pipeline: a daily notify-only check and an
+          activation run in the weekly Sunday 02:00-04:00 UTC window. Activation
+          requires a proven-idle admission lease (zero active agent jobs for 15
+          minutes), stops llama-cpp for the build, switches to the exact built
+          closure, health-gates it, and rolls back to the recorded previous closure
+          on failure. Never reboots; a kernel change is recorded as pending-reboot.
+        '';
+      };
+
+      flakeAttr = lib.mkOption {
+        type = lib.types.str;
+        default = "hyperd-ai-dev";
+        description = "nixosConfigurations attribute built and activated by the pipeline.";
+      };
+
+      stateDir = lib.mkOption {
+        type = lib.types.str;
+        default = "/var/lib/aq-auto-update";
+        description = "Directory for the lock, admission-lease state, pending-reboot marker and status.json.";
+      };
+    };
+
     deployment = {
       enableHibernation = lib.mkOption {
         type = lib.types.bool;
