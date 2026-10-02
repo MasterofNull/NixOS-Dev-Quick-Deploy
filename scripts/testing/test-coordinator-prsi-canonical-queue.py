@@ -3,19 +3,28 @@
 from __future__ import annotations
 
 import ast
+import asyncio
+import importlib.util
 import json
 import os
 import subprocess
 import sys
 import tempfile
 from pathlib import Path
+from types import SimpleNamespace
 from typing import Any, Dict
+from unittest.mock import Mock, patch
+
+from aiohttp import web
+from aiohttp.test_utils import make_mocked_request
+from aiohttp.streams import StreamReader
 
 ROOT = Path(__file__).resolve().parents[2]
 HC = ROOT / "ai-stack" / "mcp-servers" / "hybrid-coordinator"
 PH = HC / "workflow" / "prsi_handlers.py"
 MH = HC / "extensions" / "mcp_handlers.py"
 AC = ROOT / "ai-stack" / "local-agents" / "builtin_tools" / "ai_coordination.py"
+RUNTIME = ROOT / "ai-stack" / "agents" / "runtimes" / "local_agent_runtime.py"
 LEGACY = "/var/lib/nixos-ai-stack/prsi/"
 
 
@@ -44,6 +53,62 @@ def load_ac_helper():
     return ns["_prsi_pending_rows"]
 
 
+def load_prsi_handler():
+    spec = importlib.util.spec_from_file_location("prsi_handlers_under_test", PH)
+    check(spec is not None and spec.loader is not None, "could not load PRSI HTTP handler")
+    module = importlib.util.module_from_spec(spec)
+    spec.loader.exec_module(module)
+    return module
+
+
+async def exercise_execute_guard() -> None:
+    handlers = load_prsi_handler()
+    run_result = SimpleNamespace(returncode=0, stdout="{}", stderr="")
+
+    async def post(body_text: str | None):
+        headers = {"Content-Type": "application/json"} if body_text is not None else {}
+        payload = None
+        if body_text is not None:
+            payload = StreamReader(protocol=Mock(), limit=65536)
+            payload.feed_data(body_text.encode())
+            payload.feed_eof()
+        request = make_mocked_request("POST", "/execute", headers=headers, payload=payload)
+        response = await handlers.handle_prsi_action_execute(request)
+        return response, json.loads(response.body)
+
+    with patch.object(handlers.Path, "exists", return_value=True), patch.object(
+        handlers.subprocess, "run", return_value=run_result
+    ) as run:
+        for action_type in ("", "gap_remediation"):
+            response, body = await post(json.dumps({"action_type": action_type, "dry_run": False}))
+            check(response.status == 403, f"{action_type or 'optimizer'} live execution was not refused: {body}")
+            check(body.get("error") == "live_execution_forbidden" and "aq-approve" in body.get("reason", ""),
+                  f"live refusal lacks approval guidance: {body}")
+        check(run.call_count == 0, "false dry_run invoked a subprocess")
+
+        invalid_requests = ("{", "[]", json.dumps({"dry_run": "false"}),
+                            json.dumps({"dry_run": 0}), json.dumps({"dry_run": None}))
+        for body_text in invalid_requests:
+            response, body = await post(body_text)
+            check(response.status == 400, f"invalid request accepted: {body_text!r} -> {response.status}")
+            check(body.get("status") == "error", f"invalid request lacks machine-readable error: {body}")
+        check(run.call_count == 0, "invalid request invoked a subprocess")
+
+        for action_type, request_body in (
+            ("", {}),
+            ("", {"dry_run": True}),
+            ("gap_remediation", {}),
+            ("gap_remediation", {"dry_run": True}),
+        ):
+            request_body = {**request_body, "action_type": action_type}
+            response, body = await post(json.dumps(request_body))
+            check(response.status == 200 and body.get("status") == "ok", f"dry-run request failed: {body}")
+        check(run.call_count == 4, f"expected four dry-run subprocess calls, got {run.call_count}")
+        for call in run.call_args_list:
+            argv = call.args[0]
+            check("--dry-run" in argv, f"subprocess missing forced --dry-run: {argv}")
+
+
 ROWS = [
     {"id": "a1", "status": "pending_approval", "risk": "medium", "type": "routing", "action": "x", "reason": "r"},
     {"id": "a2", "status": "executed", "risk": "low"},
@@ -56,6 +121,7 @@ ROWS = [
 
 
 def main() -> int:
+    asyncio.run(exercise_execute_guard())
     for f in (PH, MH, AC):
         check(LEGACY not in f.read_text(), f"legacy queue path still in {f.name}")
     mh = MH.read_text()
@@ -63,6 +129,10 @@ def main() -> int:
     check("_sp.run" not in mh.split('name == "mcp_server_prsi_orchestrate"')[1].split('name == "context_system_state"')[0], "prsi_orchestrate must not spawn the orchestrator")
     ac = AC.read_text()
     check('data.get("pending"' in ac, "ai_coordination HTTP branch must read 'pending'")
+    runtime = RUNTIME.read_text()
+    check('"Preview PRSI actions (dry-run)"' in runtime, "local-agent PRSI tool must be labeled as a preview")
+    execute_branch = runtime.split('if action == "execute":')[1].split("else:", 1)[0]
+    check('payload_data["dry_run"] = True' in execute_branch, "local-agent execute request must explicitly request dry-run")
 
     ns = load_helpers()
     got = sorted(r["id"] for r in ns["_prsi_pending_rows"](ROWS))

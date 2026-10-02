@@ -5316,3 +5316,18 @@ File: scripts/ai/lib/worktree-isolation.sh; scripts/automation/prsi-orchestrator
   Severity: medium.
   Action: done. Remaining M5: archive the live legacy files (/var/lib/nixos-ai-stack/prsi/*, /var/lib/ai-stack/ralph/prsi-queue.json) — an owner/runtime act, recorded in the plan.
   File: ai-stack/mcp-servers/ralph-wiggum/server.py; ai-stack/switchboard/switchboard.py:153; scripts/testing/fixtures/local-inference-l2b-payload-golden.json
+
+[FIXED-CODE / OPEN-ACTIVATION] rsi-m7-prsi-execute-dry-run-owner-gate — M7 hardens `handle_prsi_action_execute`: `dry_run` must be a JSON boolean (default true); false returns 403 with the `aq-approve`/canonical-queue route; malformed inputs return 400 before access; optimizer and gap commands always retain `--dry-run`; local label preview explicitly sends true. Focused actual-handler and isolated HTTP checks PASS. Final independent review PASS on closeout subject SHA-256 `10a589bee9fc20cb04681ca10c52e0f1177e6a4727598b316aa6c87b07022a6b`. Runtime activation remains deferred to the next batch; the deployed service still uses Nix-store source, so end-to-end deployed behavior is not attested.
+  Severity: high (approval boundary for PRSI action execution).
+  Action: code fixed; activate only through the scheduled batch/gates and validate deployed behavior. Do not claim full completion before activation audit and gates pass.
+  File: ai-stack/mcp-servers/hybrid-coordinator/workflow/prsi_handlers.py; ai-stack/agents/runtimes/local_agent_runtime.py; `.agent/ACTIVATION-AUDIT.md` M7 section.
+
+[OPEN] prsi-m7-safe-preview-repo-root-derivation — Isolated HTTP exercise of safe dry-run preview returned 404 because the existing `repo_root` `Path.parents` calculation resolves to `ai-stack` instead of repository root. This is a pre-existing producer/path derivation defect; no workaround patch was applied. The strict request guard itself passed isolated HTTP checks; deployed endpoint remains unverified.
+  Severity: medium (safe preview path unavailable in isolated run; deployed impact not established).
+  Action: correct root derivation in a separately reviewed bounded follow-up, then add a regression and rerun the isolated HTTP check.
+  File: ai-stack/mcp-servers/hybrid-coordinator/workflow/prsi_handlers.py:142,235.
+
+[FIXED-ENVIRONMENT / FIXED-VALIDATION] rsi-m7-tier0-sandbox-evidence-lock-and-test-timeouts — Initial sandbox tier0 validation hit QA evidence-lock `EROFS` and two test timeouts. Host execution resolved those environment symptoms. An intermediate host run completed 53 PASS, 1 FAIL, QA 0/10.39; artifact 1106 ran 21:38:43Z–21:41:23Z across the fixture edit at 21:40:38Z and explicitly failed on the old live-source hash at runtime, so that read was transient. Final host tier0 rerun passed 54/54 with 0 failures (`/tmp/codex-rsi-m7-tier0-final.log`).
+  Severity: medium (validation reliability; does not indicate a clean gate).
+  Action: retain the final passing gate evidence; no remaining tier0 failure. Runtime activation remains separately deferred and is not established by this host tier0 pass.
+  File: `/tmp/codex-rsi-m7-tier0-host.log`; `/tmp/codex-rsi-m7-tier0-final.log`; M7 closeout validation.
