@@ -5281,3 +5281,8 @@ File: scripts/ai/lib/worktree-isolation.sh; scripts/automation/prsi-orchestrator
   Severity: medium (approved change silently partial).
   Action: PRSI->RSI merge plan: execution must either trigger a declared reload path (e.g. a systemd path unit on overrides.env restarting listed consumers) or record "applied-pending-restart" with the consumer list surfaced in the approval inbox; interim owner restart of ai-switchboard.
   File: scripts/ai/aq-optimizer (apply_routing ~167); nix/modules/services/switchboard.nix:564; nix/modules/services/mcp-servers.nix:1412
+
+[FIXED-CODE / OPEN-RUNTIME] health-monitor-qa-phase0-evidence-lock-erofs — ai-stack-health-monitor (every 15 min) has reported "aq-qa phase 0 could not run: Expecting value: line 1 column 1 (char 0); rc=2" (attention attn-c6442c73, high). stderr: `LOCK_UNAVAILABLE: [Errno 30] Read-only file system: '/var/lib/ai-stack/hybrid/telemetry/.qa-evidence.lock'`. Root cause: the unit runs with ProtectSystem=strict and ReadWritePaths=[repo/.agents] only, so aq-qa cannot take its immutable-evidence lock, exits 2 before printing JSON, and the monitor reports a JSON parse error instead of the real cause. tier0 phase 0 passes because it runs outside that sandbox. This is the same evidence-lock class as the Codex takeover's sandboxed QA phase-0 failure.
+  Severity: high (scheduled health check blind; false high alert every 15 min).
+  Action: ReadWritePaths += ${mcpServers.dataDir}/hybrid/telemetry (DAC ok: dir 0770 ai-stack, hyperd in ai-stack); regression in test-ai-stack-health-monitor.py. After the owner switch, confirm the next timer run is error-free, then deny/resolve attn-c6442c73 via the inbox.
+  File: nix/modules/roles/ai-stack.nix ~2022

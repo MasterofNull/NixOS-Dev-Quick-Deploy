@@ -75,7 +75,14 @@ def main() -> int:
     finally:
         monitor._STATUS_PATH = original_status_path
 
-    print("PASS: ai-stack-health-monitor handles aq-qa JSON schema, TMPDIR, and status writes")
+    # aq-qa phase 0 takes its evidence lock in hybrid/telemetry; under
+    # ProtectSystem=strict the unit must declare it writable (2026-10-02 EROFS).
+    nix_src = (Path(__file__).resolve().parents[2] / "nix/modules/roles/ai-stack.nix").read_text(encoding="utf-8")
+    unit = nix_src.split("systemd.services.ai-stack-health-monitor = {", 1)[1].split("systemd.timers.ai-stack-health-monitor", 1)[0]
+    assert_true('"${cfg.mcpServers.dataDir}/hybrid/telemetry"' in unit,
+                "health monitor unit must allow writes to the QA evidence lock dir")
+
+    print("PASS: ai-stack-health-monitor handles aq-qa JSON schema, TMPDIR, status writes, and evidence-lock path")
     return 0
 
 
