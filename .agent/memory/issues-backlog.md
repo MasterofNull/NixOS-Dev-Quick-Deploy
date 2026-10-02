@@ -5162,7 +5162,7 @@ File: scripts/ai/lib/worktree-isolation.sh; scripts/automation/prsi-orchestrator
   Action: Derive first_token_timeout from prompt_tokens / measured prompt-eval rate (llama /metrics prompt_tokens_seconds) + margin; skip same-prompt retry after a first-token [REDACTED] (shrinking max_tokens cannot help a prompt-bound stall); preflight swap/PSI and defer or request resident restart when the model is paged out.
   File: scripts/ai/aq-agent-loop
 
-[FIXED-CODE / OPEN-RUNTIME] ralph-wiggum-hardcoded-repo-cwd — ai-stack/mcp-servers/ralph-wiggum/server.py now uses required REPO_ROOT for both optimizer subprocesses; ai-ralph-wiggum receives it from mcp.repoPath. Focused test/syntax pass and owner rebuild confirms the environment is active. Authenticated sync reaches the handler but currently reports missing python3 in the service PATH, so runtime proof remains open.
+[FIXED-CODE / OPEN-RUNTIME] ralph-wiggum-hardcoded-repo-cwd — 2026-10-02 post-switch: unit PATH now has python3-env and authenticated sync gets past the shebang; next blocker is prsi-queue.json ownership (see ralph-prsi-queue-file-wrong-owner). Prior: ai-stack/mcp-servers/ralph-wiggum/server.py now uses required REPO_ROOT for both optimizer subprocesses; ai-ralph-wiggum receives it from mcp.repoPath. Focused test/syntax pass and owner rebuild confirms the environment is active. Authenticated sync reaches the handler but currently reports missing python3 in the service PATH, so runtime proof remains open.
   Severity: medium (runtime correctness across repo locations).
   Action: declare existing ralphPython runtime in the unit PATH, then verify evaluated PATH and authenticated sync after activation before resolving.
   File: ai-stack/mcp-servers/ralph-wiggum/server.py; nix/modules/services/mcp-servers.nix; scripts/testing/test-ralph-prsi-repo-root.py
@@ -5172,7 +5172,7 @@ File: scripts/ai/lib/worktree-isolation.sh; scripts/automation/prsi-orchestrator
   Action: retain the focused and aggregate regression checks.
   File: .agents/plans/rsi-takeover-20261002; scripts/testing/test-boot-stability-regressions.py; scripts/testing/test-health-spider-osi-layered-probe.py
 
-[OPEN] rsi-takeover-memory500-dac — Working-memory save returned HTTP 500. Shared parent contract is 0711 root:root; one observed state was 0750 hyperd:nogroup. Intended child account is ai-hybrid, absent at observation; producer/root cause remains under investigation. Do not conflate this failed working-memory save with the separate MemoryBroker fact store.
+[DONE 2026-10-02] rsi-takeover-memory500-dac — LIVE-VALIDATED after owner switch (PR #366 e9ccc8f4): parent 0711 root:root, agent/ 0750 ai-hybrid:ai-stack; coordinator save_working_memory -> ok, get_working_memory round-trips the saved session. Original: Working-memory save returned HTTP 500. Shared parent contract is 0711 root:root; one observed state was 0750 hyperd:nogroup. Intended child account is ai-hybrid, absent at observation; producer/root cause remains under investigation. Do not conflate this failed working-memory save with the separate MemoryBroker fact store.
   Severity: high (durable memory writes/reads unavailable until producer and ownership contract are confirmed).
   Action: trace the producer restoring the shared parent contract and provision/verify the intended ai-hybrid child; do not treat repository handoff as durable working-memory evidence.
   File: ai-stack/agent-memory/MEMORY.md; Nix activation/storage declaration (exact producer path pending).
@@ -5235,3 +5235,13 @@ File: scripts/ai/lib/worktree-isolation.sh; scripts/automation/prsi-orchestrator
   Severity: low.
   Action: add `.agent/collaboration/*.lock` to .gitignore.
   File: .gitignore
+
+[OPEN] ralph-prsi-queue-file-wrong-owner — After the R1 activation, authenticated `POST :8004/api/prsi/sync` returns `{"status":"error","detail":"[Errno 13] Permission denied: '/var/lib/ai-stack/ralph/prsi-queue.json'"}`. The file is `hyperd:users 0644`, mtime 2026-03-14, in a `0750 ai-ralph` dir. Only Ralph writes it, so it is a stale manual/legacy write never re-owned. Root cause: no tmpfiles declaration for the file.
+  Severity: medium (PRSI sync/execute through Ralph is dead).
+  Action: tmpfiles `z ${dataDir}/ralph/prsi-queue.json 0640 ai-ralph ai-stack` added plus a regression in test-ralph-prsi-repo-root.py; needs owner switch, then re-run the authenticated sync.
+  File: nix/modules/services/mcp-servers.nix ~line 684
+
+[OPEN] shell-hook-rewrites-cat-in-command-substitution — In Claude Bash calls, `KEY=$(cat /run/secrets/...)` did not yield the raw file bytes. The lean-ctx/RTK command-rewrite hook wraps `cat`, so curl sent a wrong key and every protected coordinator route returned 401. The same key read via python got 200. This cost ~10 diagnostic tool calls chasing a phantom coordinator auth bug (token thrash). It also led to a raw `od -c` dump that exposed most of the hybrid coordinator API key in the transcript.
+  Severity: medium (silent data corruption in agent shell commands; false-positive outages; secret-exposure side effect).
+  Action: exempt `cat` inside `$(...)` and pipelines from the rewrite (only rewrite top-level display reads); interim: read secrets via python/`< file` redirection, never `$(cat)`. Rotate hybrid_coordinator_api_key (owner, sops).
+  File: lean-ctx/RTK PreToolUse hook (~/.claude settings hooks)
