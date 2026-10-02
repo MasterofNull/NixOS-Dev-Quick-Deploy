@@ -264,6 +264,7 @@ scripts/kernel/kdev
 scripts/kernel/ktest
 scripts/maintenance/system-update-full.sh
 scripts/maintenance/aq-pin-watch
+scripts/maintenance/aq-update-tiers
 scripts/mangohud-profile.sh
 scripts/nix-static-analysis.sh
 scripts/npm-security-monitor.sh
