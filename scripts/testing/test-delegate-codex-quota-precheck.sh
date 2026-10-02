@@ -70,6 +70,10 @@ trap cleanup EXIT
 pass() { PASS=$((PASS+1)); echo "PASS: $1"; }
 fail() { FAIL=$((FAIL+1)); echo "FAIL: $1"; }
 
+# The stub says "try again at Jul 25th"; the parser resolves the NEXT Jul 25 (a past
+# date rolls to next year), so derive the expected date instead of hardcoding a year.
+EXPECTED_RESET_DATE="$(python3 -c 'import datetime as d; t=d.date.today(); y=t.year if t<=d.date(t.year,7,25) else t.year+1; print(f"{y}-07-25")')"
+
 reset_state() {
     rm -f "$COOLDOWN_FILE"
     rm -f "$MARKER"
@@ -139,8 +143,8 @@ echo "=== delegate-to-codex quota pre-check tests ==="
 reset_state
 printf '%s' "quota" > "$STUB_MODE_FILE"
 "$DELEGATE" --wait --prompt "quota-precheck-test-a" >/dev/null 2>&1
-if [[ -f "$COOLDOWN_FILE" ]] && grep -q "^2026-07-25T" "$COOLDOWN_FILE"; then
-    pass "(a) wait-mode quota error writes parsed cooldown (2026-07-25)"
+if [[ -f "$COOLDOWN_FILE" ]] && grep -q "^${EXPECTED_RESET_DATE}T" "$COOLDOWN_FILE"; then
+    pass "(a) wait-mode quota error writes parsed cooldown (${EXPECTED_RESET_DATE})"
 else
     fail "(a) wait-mode quota error writes parsed cooldown — got: $(cat "$COOLDOWN_FILE" 2>/dev/null || echo MISSING)"
 fi
@@ -301,7 +305,7 @@ unset TEST_CURL_LOG
 # (a-bg) cooldown written with the parsed reset time on quota error.
 reset_state
 run_bg quota
-if [[ -f "$COOLDOWN_FILE" ]] && grep -q "^2026-07-25T" "$COOLDOWN_FILE"; then
+if [[ -f "$COOLDOWN_FILE" ]] && grep -q "^${EXPECTED_RESET_DATE}T" "$COOLDOWN_FILE"; then
     pass "(a-bg) background quota error writes parsed cooldown"
 else
     fail "(a-bg) background quota error cooldown — got: $(cat "$COOLDOWN_FILE" 2>/dev/null || echo MISSING)"

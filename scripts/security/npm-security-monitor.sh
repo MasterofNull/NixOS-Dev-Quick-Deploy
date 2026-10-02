@@ -87,7 +87,9 @@ trap 'rm -rf "${tmp_root}"' EXIT
 mapfile -t package_files < <(find "${REPO_ROOT}" -type f -name 'package.json' \
   -not -path '*/node_modules/*' \
   -not -path '*/archive/*' \
-  -not -path '*/.git/*' | sort)
+  -not -path '*/.git/*' \
+  -not -path '*/.claude/worktrees/*' \
+  -not -path '*/.agents/delegation/worktrees/*' | sort)
 
 project_reports="${tmp_root}/projects.jsonl"
 touch "${project_reports}"
@@ -421,7 +423,7 @@ jq -n \
   --argjson medium_findings "${medium_findings}" \
   --arg threat_intel_file "${THREAT_INTEL_FILE}" \
   --argjson threat_intel_loaded "$( [[ "${threat_intel_loaded}" == "true" ]] && echo true || echo false )" \
-  --argjson projects "$(jq -s . "${project_reports}")" \
+  --slurpfile projects "${project_reports}" \
   --arg response_mode "${RESPONSE_MODE}" \
   --arg quarantine_state_file "${QUARANTINE_STATE_FILE}" \
   --arg incident_log_file "${INCIDENT_LOG_FILE}" \

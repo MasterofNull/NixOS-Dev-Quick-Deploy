@@ -160,33 +160,17 @@ task_id() {
 registry_append() {
     local id="$1" description="$2" output_file="$3"
     local ts; ts="$(date -u +%Y-%m-%dT%H:%M:%SZ)"
-    printf '{"id":"%s","agent":"codex","description":%s,"output_file":"%s","pid":null,"status":"running","created":"%s"}\n' \
-        "$id" \
-        "$(printf '%s' "$description" | python3 -c 'import json,sys; print(json.dumps(sys.stdin.read()))')" \
-        "$output_file" \
-        "$ts" >> "$REGISTRY"
+    # Row built in python from argv (no shell re-parse); written via the shared-lock +
+    # atomic-replace TaskRegistry path.
+    local row
+    row="$(python3 -c 'import json,sys; print(json.dumps({"id":sys.argv[1],"agent":"codex","description":sys.argv[2],"output_file":sys.argv[3],"pid":None,"status":"running","created":sys.argv[4]}))' \
+        "$id" "$description" "$output_file" "$ts")"
+    python3 "$SCRIPT_DIR/lib/registry-update.py" append "$REGISTRY" "$row"
 }
 
 update_registry() {
-    # update_registry <registry> <id> <field> <value>
-    python3 - "$1" "$2" "$3" "$4" <<'PYEOF'
-import sys, json
-rf, tid, field, val = sys.argv[1], sys.argv[2], sys.argv[3], sys.argv[4]
-lines = []
-with open(rf) as f:
-    for line in f:
-        line = line.strip()
-        if not line: continue
-        try:
-            e = json.loads(line)
-            if e.get("id") == tid:
-                try: e[field] = int(val)
-                except (ValueError, TypeError): e[field] = val
-            lines.append(json.dumps(e))
-        except Exception: lines.append(line)
-with open(rf, "w") as f:
-    f.write("\n".join(lines) + "\n")
-PYEOF
+    # update_registry <registry> <id> <field> <value>  (transactional: TaskRegistry lock + atomic replace)
+    python3 "$SCRIPT_DIR/lib/registry-update.py" set "$1" "$2" "$3" "$4"
 }
 
 check_pid_alive() {
@@ -553,51 +537,18 @@ ${prompt}"
         info "Task $id $([ "$exit_code" -eq 0 ] && echo 'completed' || echo 'failed')."
     else
         local _coord_url="${HYBRID_COORDINATOR_URL:-http://127.0.0.1:8003}"
-        local _prompt_brief; _prompt_brief="${prompt:0:100}"
         local _audit_helper; _audit_helper="$SCRIPT_DIR/lib/audit-post.sh"
         # CS-1: cd into the isolated worktree (if any) before running codex.
         # For shared mode, cd to repo root (even though -C flag tells codex the root).
-        local _cd_prefix=""
-        if [[ -n "$wt_path" ]]; then
-            _cd_prefix="cd $(printf '%q' "$wt_path") && "
-        else
-            _cd_prefix="cd $(printf '%q' "$REPO_ROOT") && "
-        fi
-        # Background — write output to persistent file, not /tmp
-        nohup bash -c "
-            _start_ms=\$(date +%s%3N 2>/dev/null || echo 0)
-            ${_cd_prefix}$(printf '%q ' "${cmd[@]}") > \"$output_file\" 2>&1
-            exit_code=\$?
-            _end_ms=\$(date +%s%3N 2>/dev/null || echo 0)
-            _lat=\$(( _end_ms - _start_ms ))
-            \"$SCRIPT_PATH\" --internal-quota-capture \"$output_file\" >/dev/null 2>&1 || true
-            handback_rc=0
-            \"$SCRIPT_PATH\" --internal-worktree-handback $(printf '%q' "$id") $(printf '%q' "$wt_path") $(printf '%q' "$wt_branch") >/dev/null 2>&1 || handback_rc=\$?
-            if [[ \$handback_rc -ne 0 ]]; then
-                exit \$handback_rc
-            fi
-            if [[ \$exit_code -eq 0 ]]; then
-                bash \"$_audit_helper\" \"$_coord_url\" task_completed codex success \"\$_lat\" \"$id\" \"completed: $_prompt_brief\" \"$mode\" \"$prompt\" \"$output_file\" || true
-            else
-                bash \"$_audit_helper\" \"$_coord_url\" error_resolution codex error \"\$_lat\" \"$id\" \"failed exit=\$exit_code: $_prompt_brief\" \"$mode\" \"$prompt\" \"$output_file\" || true
-            fi
-            python3 - \"$REGISTRY\" \"$id\" status \"\$([ \$exit_code -eq 0 ] && echo done || echo failed)\" <<'PYEOF'
-import sys, json
-rf, tid, field, val = sys.argv[1], sys.argv[2], sys.argv[3], sys.argv[4]
-lines = []
-with open(rf) as f:
-    for line in f:
-        line = line.strip()
-        if not line: continue
-        try:
-            e = json.loads(line)
-            if e.get('id') == tid: e[field] = val
-            lines.append(json.dumps(e))
-        except Exception: lines.append(line)
-with open(rf, 'w') as f: f.write('\n'.join(lines) + '\n')
-PYEOF
-            exit \$exit_code
-" > /dev/null 2>&1 &
+        # CS-1: run inside the isolated worktree (if any); shared mode runs from repo root.
+        local _cd_dir="$REPO_ROOT"
+        [[ -n "$wt_path" ]] && _cd_dir="$wt_path"
+        # Background: dynamic values travel as argv to a fixed worker (never re-parsed by a
+        # shell). Launch errors go to the task output file, not /dev/null.
+        nohup bash "$SCRIPT_DIR/lib/codex-background-worker.sh" \
+            "$output_file" "$_audit_helper" "$_coord_url" "$REGISTRY" "$id" "$mode" "$prompt" \
+            "$SCRIPT_PATH" "$wt_path" "$wt_branch" "$_cd_dir" -- "${cmd[@]}" \
+            </dev/null >> "$output_file" 2>&1 &
         local pid=$!
         disown "$pid"
         update_registry "$REGISTRY" "$id" "pid" "$pid"

@@ -1,0 +1,78 @@
+#!/usr/bin/env python3
+"""PreToolUse guard (incident 30f7979b): worktree sub-agents must not write outside their worktree.
+
+Claude Code worktree isolation is cwd-only; an absolute path to the main checkout bypasses it.
+When the session cwd is inside <repo>/.claude/worktrees/<name>/, deny Write/Edit/MultiEdit/
+NotebookEdit/ctx_edit whose realpath target is outside that worktree, except the session
+scratchpad (/tmp/claude-*/) and ~/.claude/projects/*/memory. Other sessions: allow everything.
+Malformed input fails open (stderr note); a resolvable out-of-worktree path never does.
+"""
+import fnmatch
+import json
+import os
+import sys
+
+GUARDED = {"Write", "Edit", "MultiEdit", "NotebookEdit", "mcp__lean-ctx__ctx_edit"}
+PATH_KEYS = ("file_path", "notebook_path", "path")
+
+
+def worktree_root(cwd):
+    parts = os.path.realpath(cwd).split(os.sep)
+    for i in range(len(parts) - 2):
+        if parts[i] == ".claude" and parts[i + 1] == "worktrees" and parts[i + 2]:
+            return os.sep.join(parts[: i + 3]) or os.sep
+    return None
+
+
+def inside(path, root):
+    return path == root or path.startswith(root.rstrip(os.sep) + os.sep)
+
+
+def allowed_elsewhere(path):
+    if fnmatch.fnmatchcase(path, "/tmp/claude-*/*"):
+        return True
+    home = os.path.realpath(os.environ.get("HOME", os.path.expanduser("~")))
+    return fnmatch.fnmatchcase(path, home + "/.claude/projects/*/memory/*")
+
+
+def decide(payload):
+    """Return a denial reason string, or None to allow."""
+    if payload.get("tool_name") not in GUARDED:
+        return None
+    cwd = payload.get("cwd")
+    root = worktree_root(cwd) if isinstance(cwd, str) and cwd else None
+    if root is None:
+        return None
+    tool_input = payload.get("tool_input")
+    if not isinstance(tool_input, dict):
+        return None
+    for key in PATH_KEYS:
+        target = tool_input.get(key)
+        if not isinstance(target, str) or not target:
+            continue
+        resolved = os.path.realpath(os.path.join(os.path.realpath(cwd), os.path.expanduser(target)))
+        if inside(resolved, root) or allowed_elsewhere(resolved):
+            continue
+        return (f"Blocked: {resolved} is outside this worktree ({root}). Worktree sub-agents must edit "
+                f"only inside their own worktree; use a path relative to the cwd. (incident 30f7979b)")
+    return None
+
+
+def main():
+    try:
+        payload = json.load(sys.stdin)
+        if not isinstance(payload, dict):
+            raise ValueError("input is not a JSON object")
+        reason = decide(payload)
+    except (ValueError, OSError) as exc:
+        print(f"aq-worktree-write-guard: malformed input, failing open: {exc}", file=sys.stderr)
+        return 0
+    if reason:
+        json.dump({"hookSpecificOutput": {"hookEventName": "PreToolUse", "permissionDecision": "deny",
+                                          "permissionDecisionReason": reason}}, sys.stdout)
+        sys.stdout.write("\n")
+    return 0
+
+
+if __name__ == "__main__":
+    sys.exit(main())
