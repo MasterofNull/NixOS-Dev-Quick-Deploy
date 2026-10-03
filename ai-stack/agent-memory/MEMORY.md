@@ -194,5 +194,7 @@ ralph-wiggum TaskRequest field: `prompt` (not `task`). AIDB vector search: POST 
 - M7 closeout & security checks diagnosis: `.agent/memory/rsi-m7-20261002.md`, `.agent/memory/security-checks-20261002.md`.
 - Producer fixes: `WR-PRSI-M7-REPO-ROOT` (`parents[4]`) & `WR-PRSI-THROTTLER` marked FIXED.
 - Multi-lane RSI repair: fallback across `repair_lanes` with cooldown checks (`test-rsi-repair-lane.py`).
-- Antigravity autonomous bridge: `delegate-to-antigravity` inbox bridge, 60s wake debounce, registered in PRSI.
-- Antigravity inbox drained (9/9 receipts); returning agent review tasks queued in `AGENT-CATCHUP-QUEUE.md`.
+- Antigravity autonomous bridge: full subagent, collab-round, fanout & coordinator routing via delegate-to-antigravity.
+- Antigravity catchup/review tasks queued in AGENT-CATCHUP-QUEUE.md; test-subagent-workflows-antigravity passes (7/7).
+
+- Antigravity delegation review (2026-10-03 UTC) RESOLVED: four findings addressed (wt_create/handback isolation, supervisor receipt validation, immutable outputs, claude --role implement); 54/54 tier-0 PASS.

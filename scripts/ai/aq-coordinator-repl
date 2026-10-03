@@ -244,6 +244,7 @@ def dispatch_subagent(lane: str, prompt: str, role: str = "implementer"):
         "claude": REPO_ROOT / "scripts" / "ai" / "delegate-to-claude",
         "codex": REPO_ROOT / "scripts" / "ai" / "delegate-to-codex",
         "gemini": REPO_ROOT / "scripts" / "ai" / "delegate-to-antigravity",
+        "antigravity": REPO_ROOT / "scripts" / "ai" / "delegate-to-antigravity",
     }
     script = scripts.get(lane.lower(), scripts["local"])
     if not script.is_file():

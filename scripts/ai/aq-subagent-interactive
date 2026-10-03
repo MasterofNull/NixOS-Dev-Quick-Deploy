@@ -208,6 +208,7 @@ class InteractiveSubagentConsole:
             "claude": REPO_ROOT / "scripts" / "ai" / "delegate-to-claude",
             "codex": REPO_ROOT / "scripts" / "ai" / "delegate-to-codex",
             "gemini": REPO_ROOT / "scripts" / "ai" / "delegate-to-antigravity",
+            "antigravity": REPO_ROOT / "scripts" / "ai" / "delegate-to-antigravity",
         }
         lane_key = lane.strip().lower()
         if lane_key not in scripts:

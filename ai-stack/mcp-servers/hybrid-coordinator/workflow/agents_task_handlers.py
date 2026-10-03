@@ -196,25 +196,117 @@ async def handle_agents_status(request: web.Request) -> web.Response:
     })
 
 
+async def _spawn_delegated_agent_instance(
+    *,
+    lane: str,
+    role: str,
+    task_text: str,
+    timeout_sec: float,
+    team_id: Optional[str] = None,
+) -> tuple:
+    lane_norm = lane.lower().strip()
+    repo_root = Path(__file__).resolve().parents[4]
+    script_map = {
+        "antigravity": repo_root / "scripts" / "ai" / "delegate-to-antigravity",
+        "gemini": repo_root / "scripts" / "ai" / "delegate-to-antigravity",
+        "codex": repo_root / "scripts" / "ai" / "delegate-to-codex",
+        "claude": repo_root / "scripts" / "ai" / "delegate-to-claude",
+    }
+    script = script_map.get(lane_norm)
+    agent_id = f"{lane_norm[:2]}-{uuid4().hex[:8]}"
+    if not script or not script.is_file():
+        instance = {
+            "id": agent_id,
+            "role": role,
+            "lane": lane_norm,
+            "task": task_text,
+            "status": "failed",
+            "error": f"Unsupported or missing delegate script for lane: {lane}",
+            "completed_at": datetime.now().isoformat(),
+        }
+        _AGENT_STATE[agent_id] = instance
+        return instance, 500
+
+    cmd = [str(script), "--wait", "--prompt", task_text]
+    if lane_norm in ("antigravity", "gemini"):
+        valid_roles = ("implementer", "reviewer", "subagent", "coordinator", "plan", "research")
+        cmd.extend(["--role", role if role in valid_roles else "implementer", "--timeout", str(int(timeout_sec))])
+    elif lane_norm == "claude":
+        claude_role = "implement" if role in ("implementer", "coordinator", "subagent") else (role if role in ("plan", "review", "research") else "implement")
+        cmd.extend(["--role", claude_role])
+
+    proc = await asyncio.create_subprocess_exec(
+        *cmd,
+        stdout=asyncio.subprocess.PIPE,
+        stderr=asyncio.subprocess.PIPE,
+        start_new_session=True,
+    )
+
+    instance = {
+        "id": agent_id,
+        "role": role,
+        "lane": lane_norm,
+        "task": task_text,
+        "status": "running",
+        "pid": proc.pid,
+        "started_at": datetime.now().isoformat(),
+    }
+    if team_id:
+        instance["team_id"] = team_id
+    _AGENT_STATE[agent_id] = instance
+
+    try:
+        stdout, stderr = await asyncio.wait_for(proc.communicate(), timeout=timeout_sec)
+    except asyncio.TimeoutError:
+        try:
+            proc.kill()
+        except ProcessLookupError:
+            pass
+        instance["status"] = "timeout"
+        instance["error"] = f"Task timed out after {timeout_sec}s"
+        instance["completed_at"] = datetime.now().isoformat()
+        return instance, 504
+
+    if proc.returncode != 0:
+        instance["status"] = "failed"
+        instance["error"] = stderr.decode(errors="replace")[:500] if stderr else "unknown"
+        instance["completed_at"] = datetime.now().isoformat()
+        return instance, 500
+
+    instance["status"] = "completed"
+    instance["result"] = stdout.decode(errors="replace").strip()
+    instance["completed_at"] = datetime.now().isoformat()
+    return instance, 201
+
+
 async def handle_agents_spawn(request: web.Request) -> web.Response:
     """POST /control/agents/spawn — spawn a single agent subprocess"""
     data = await request.json()
     role = data.get("role", "coordinator")
+    lane = str(data.get("lane") or data.get("agent") or "local").lower().strip()
     task_text = data.get("task", "")
     if not task_text:
         return web.json_response({"error": "task required"}, status=400)
-    instance, status_code = await _spawn_local_agent_instance(
-        role=role,
-        task_text=task_text,
-        system_prompt=data.get("system_prompt", f"You are a {role} agent. Complete the assigned task."),
-        max_tokens=int(data.get("max_tokens", 2048)),
-        temperature=float(data.get("temperature", 0.3)),
-        timeout_sec=float(data.get("timeout", 120)),
-    )
+    if lane in ("antigravity", "gemini", "codex", "claude"):
+        instance, status_code = await _spawn_delegated_agent_instance(
+            lane=lane,
+            role=role,
+            task_text=task_text,
+            timeout_sec=float(data.get("timeout", 120)),
+        )
+    else:
+        instance, status_code = await _spawn_local_agent_instance(
+            role=role,
+            task_text=task_text,
+            system_prompt=data.get("system_prompt", f"You are a {role} agent. Complete the assigned task."),
+            max_tokens=int(data.get("max_tokens", 2048)),
+            temperature=float(data.get("temperature", 0.3)),
+            timeout_sec=float(data.get("timeout", 120)),
+        )
     result_text = str(instance.get("result", "") or "").strip()
     return web.json_response(
         {
-            "status": "ok",
+            "status": "ok" if status_code in (200, 201) else "failed",
             "instance": instance,
             "agent_id": instance.get("id"),
             "result": result_text,
@@ -234,19 +326,29 @@ async def handle_agents_team(request: web.Request) -> web.Response:
     results = []
     for spec in agents_spec:
         role = spec.get("role", "agent")
+        lane = str(spec.get("lane") or spec.get("agent") or "local").lower().strip()
         task_text = spec.get("task", "")
         if not task_text:
             results.append({"role": role, "error": "task required", "status": "skipped"})
             continue
-        instance, _status = await _spawn_local_agent_instance(
-            role=role,
-            task_text=task_text,
-            system_prompt=spec.get("system_prompt", f"You are a {role} agent. Complete the assigned task."),
-            max_tokens=int(spec.get("max_tokens", 2048)),
-            temperature=float(spec.get("temperature", 0.3)),
-            timeout_sec=float(spec.get("timeout", 120)),
-            team_id=team_id,
-        )
+        if lane in ("antigravity", "gemini", "codex", "claude"):
+            instance, _status = await _spawn_delegated_agent_instance(
+                lane=lane,
+                role=role,
+                task_text=task_text,
+                timeout_sec=float(spec.get("timeout", 120)),
+                team_id=team_id,
+            )
+        else:
+            instance, _status = await _spawn_local_agent_instance(
+                role=role,
+                task_text=task_text,
+                system_prompt=spec.get("system_prompt", f"You are a {role} agent. Complete the assigned task."),
+                max_tokens=int(spec.get("max_tokens", 2048)),
+                temperature=float(spec.get("temperature", 0.3)),
+                timeout_sec=float(spec.get("timeout", 120)),
+                team_id=team_id,
+            )
         results.append(instance)
     return web.json_response({
         "status": "ok",

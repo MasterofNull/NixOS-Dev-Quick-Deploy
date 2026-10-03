@@ -1,6 +1,7 @@
 #!/usr/bin/env python3
 """Offline RSI lane and abandoned-dispatch regression tests; no real delegates."""
 import contextlib
+import importlib.machinery
 import importlib.util
 import io
 import json
@@ -73,7 +74,7 @@ class LaneTests(unittest.TestCase):
                 if expected == "codex":
                     expected_args = ["--wait", "--mode", "edit"]
                 elif expected == "claude":
-                    expected_args = ["--wait", "--role", "implementer"]
+                    expected_args = ["--wait", "--role", "implement"]
                 elif expected == "antigravity":
                     expected_args = ["--wait", "--timeout", "600", "--role", "implementer"]
                 else:
@@ -137,6 +138,16 @@ class LaneTests(unittest.TestCase):
         code, output, _ = self.dispatch(["--execute"])
         self.assertEqual(code, 1)
         self.assertEqual(output["message"], "invalid_repair_lane")
+
+    def test_explicit_antigravity_lane_fails_closed_before_launch(self):
+        self.preflight.return_value = (False, "blocked_unsupported_ide_worktree_isolation")
+        with patch.object(prsi.subprocess, "Popen", side_effect=AssertionError("delegate must not launch")):
+            code, output, rows = self.dispatch(["--execute", "--lane", "antigravity"])
+        self.assertEqual(code, 1)
+        self.assertEqual(output["lane"], "antigravity")
+        self.assertEqual(output["executed"], 0)
+        self.assertEqual(output["message"], "blocked_unsupported_ide_worktree_isolation")
+        self.assertEqual(rows[0]["status"], "rsi_pending")
     def test_multi_lane_cooldown_fallback(self):
         policy = {"rsi": {"repair_lanes": ["codex", "claude", "antigravity", "local"]}}
         prsi.PRSI_POLICY_FILE.write_text(json.dumps(policy))
@@ -177,6 +188,82 @@ class LaneTests(unittest.TestCase):
         self.assertEqual(output["lane"], "local")
         self.assertEqual(rows[0]["execution"]["receipt"]["lane"], "local")
         self.assertEqual(rows[0]["execution"]["receipt"]["substituted_from"], "codex")
+
+    def test_claude_role_contract_validation(self):
+        claude_script = prsi.AI_SCRIPT_DIR / "delegate-to-claude"
+        self.assertTrue(claude_script.exists())
+        # Verify valid role implement is accepted by argument parser
+        res_ok = prsi.subprocess.run([str(claude_script), "--role", "implement", "--budget-check-only"],
+                                    capture_output=True, text=True)
+        self.assertNotIn("Invalid --role", res_ok.stderr)
+        # Verify invalid role implementer is rejected by argument parser
+        res_bad = prsi.subprocess.run([str(claude_script), "--role", "implementer", "--budget-check-only"],
+                                     capture_output=True, text=True)
+        self.assertIn("Invalid --role 'implementer'", res_bad.stderr)
+
+
+class IsolationPreflightTests(unittest.TestCase):
+    def test_supported_lanes_pass_isolation_preflight(self):
+        for lane in ("codex", "claude", "antigravity", "local"):
+            with self.subTest(lane=lane):
+                ok, reason = prsi._rsi_dispatch_preflight(lane)
+                self.assertTrue(ok, f"Lane {lane} failed preflight: {reason}")
+                self.assertEqual(reason, "isolated_worktree_required")
+
+    def test_missing_delegate_fails_isolation_preflight(self):
+        ok, reason = prsi._rsi_dispatch_preflight("nonexistent_lane")
+        self.assertFalse(ok)
+        self.assertEqual(reason, "blocked_missing_isolated_delegate")
+
+
+class InboxIsolationTests(unittest.TestCase):
+    def setUp(self):
+        self.tmp = tempfile.TemporaryDirectory()
+        self.addCleanup(self.tmp.cleanup)
+        root = Path(self.tmp.name)
+        loader = importlib.machinery.SourceFileLoader("aq_inbox_isolation", str(ROOT / "scripts/ai/aq-antigravity-inbox"))
+        spec = importlib.util.spec_from_loader("aq_inbox_isolation", loader)
+        self.inbox = importlib.util.module_from_spec(spec)
+        loader.exec_module(self.inbox)
+        inbox_dir = root / ".agent/collaboration/antigravity-inbox"
+        inbox_dir.mkdir(parents=True)
+        self.enterContext(patch.object(self.inbox, "REPO", root))
+        self.enterContext(patch.object(self.inbox, "INBOX", inbox_dir))
+        self.enterContext(patch.object(self.inbox, "STATE", inbox_dir / ".lane-state.json"))
+
+    def test_unisolated_implementation_cannot_claim_or_dispatch(self):
+        for role in ("implementer", "implement"):
+            raw = f"Role: {role}\nOutput: .agents/delegation/outputs/{role}.md\n".encode()
+            with self.subTest(role=role):
+                with self.assertRaisesRegex(self.inbox.InboxError, "blocked_unsupported_ide_worktree_isolation"):
+                    self.inbox._require_isolated_implementation_lane(raw)
+
+        task = self.inbox.INBOX / "repair.md"
+        task.write_text("Role: implementer\nOutput: .agents/delegation/outputs/repair.md\n")
+        claim_args = self.inbox.build_parser().parse_args(["claim", "repair.md", "--actor", "ide-watch", "--json"])
+        with contextlib.redirect_stderr(io.StringIO()):
+            self.assertEqual(self.inbox.cmd_claim(claim_args), 1)
+        self.assertTrue(task.exists())
+        dispatch_args = self.inbox.build_parser().parse_args(["dispatch-once", "--json"])
+        output = io.StringIO()
+        with contextlib.redirect_stdout(output), patch.object(self.inbox, "_invoke_wake", side_effect=AssertionError("wake must not run")):
+            self.assertEqual(self.inbox.cmd_dispatch_once(dispatch_args), 1)
+        payload = json.loads(output.getvalue())
+        self.assertEqual(payload["reason"], "blocked_unsupported_ide_worktree_isolation")
+
+    def test_isolated_implementation_and_subagent_roles_can_claim_and_dispatch(self):
+        root = Path(self.tmp.name)
+        wt = root / ".agents/delegation/worktrees/repair"
+        wt.mkdir(parents=True)
+        task = self.inbox.INBOX / "repair.md"
+        task.write_text(f"Role: implementer\nOutput: .agents/delegation/outputs/repair.md\nWorktree: {wt}\n")
+        raw = task.read_bytes()
+        self.inbox._require_isolated_implementation_lane(raw)
+
+        for role in ("coordinator", "subagent", "reviewer", "architect", "research", "plan"):
+            with self.subTest(role=role):
+                r_raw = f"Role: {role}\nOutput: .agents/delegation/outputs/{role}.md\n".encode()
+                self.inbox._require_isolated_implementation_lane(r_raw)
 
 
 if __name__ == "__main__":

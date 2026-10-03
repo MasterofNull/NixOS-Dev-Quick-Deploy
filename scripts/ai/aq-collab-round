@@ -336,6 +336,8 @@ def _drop_antigravity(name: str, prompt_file: Path) -> str:
     ANTIGRAVITY_INBOX.mkdir(parents=True, exist_ok=True)
     inbox = ANTIGRAVITY_INBOX / f"{name}.md"
     inbox.write_text(f"# A2A task for antigravity — round '{name}'\n\n"
+                     f"Output: .agents/plans/{name}/antigravity.md\n"
+                     f"Role: review\n"
                      f"Dropped: {_now()}\n\n"
                      f"Respond by writing `.agents/plans/{name}/antigravity.md`.\n\n"
                      f"{INBOX_SCOPE_STOP_PREAMBLE}"

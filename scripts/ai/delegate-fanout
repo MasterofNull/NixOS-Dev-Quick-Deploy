@@ -5,13 +5,13 @@
 # with the harness routing tasks and arbitrating which agent produces superior results."
 #
 # Usage:
-#   delegate-fanout --prompt "task" --agents gemini,local [--wait] [--role implement]
+#   delegate-fanout --prompt "task" --agents antigravity,local [--wait] [--role implement]
 #   delegate-fanout --list
 #
 # Options:
 #   --prompt TEXT      Task to fan out
 #   --prompt-file FILE Read prompt from file
-#   --agents LIST      Comma-separated agents: gemini,local,codex  [default: gemini,local]
+#   --agents LIST      Comma-separated agents: antigravity,local,codex,claude  [default: antigravity,local]
 #   --role ROLE        plan|implement|review|research               [default: implement]
 #   --wait             Block until all agents complete
 #   --list             List all fanout runs
@@ -90,7 +90,7 @@ PYEOF
 }
 
 cmd_fanout() {
-    local prompt="$1" agents_str="${2:-gemini,local}" role="${3:-implement}" wait_mode="${4:-false}"
+    local prompt="$1" agents_str="${2:-antigravity,local}" role="${3:-implement}" wait_mode="${4:-false}"
     ensure_dirs
 
     local fid; fid="$(fanout_id)"
@@ -103,7 +103,12 @@ cmd_fanout() {
     IFS=',' read -ra agents <<< "$agents_str"
     for agent in "${agents[@]}"; do
         agent="${agent// /}"  # trim spaces
-        local delegate_script="$SCRIPT_DIR/delegate-to-${agent}"
+        local delegate_script
+        if [[ "$agent" == "gemini" || "$agent" == "antigravity" ]]; then
+            delegate_script="$SCRIPT_DIR/delegate-to-antigravity"
+        else
+            delegate_script="$SCRIPT_DIR/delegate-to-${agent}"
+        fi
         [[ -x "$delegate_script" ]] || { info "SKIP: $delegate_script not found"; continue; }
 
         local child_id

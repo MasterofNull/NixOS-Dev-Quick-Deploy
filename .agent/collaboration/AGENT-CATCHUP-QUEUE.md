@@ -988,3 +988,16 @@ Returning agents (Claude upon unfreeze/quota refresh, Codex upon quota reset ~19
      - `config/runtime-prsi-policy.json` (`"repair_lanes": ["codex", "claude", "antigravity", "local"]`)
      - `scripts/testing/test-delegate-to-antigravity.py`, `scripts/testing/test-antigravity-inbox.py`, `scripts/testing/test-rsi-repair-lane.py`
    - **Validation Goal**: Confirm: (1) Systemd path retrigger storm is eliminated via generation-aware debounce; (2) Autonomous delegation across agents (Claude, Codex, Local, PRSI) drops tasks and harvests results through the running IDE's OAuth session without manual human prompting; (3) PRSI multi-lane cooldown fallback smoothly traverses `codex` -> `claude` -> `antigravity` -> `local`. All unit and regression tests passing.
+
+6. **Autonomous Antigravity Delegation for All Sub-Agent & Collaborative Roles & Workflows**:
+   - **Subjects**:
+     - `scripts/ai/aq-antigravity-inbox` (generalized `WAKE_PROMPT` removing advisory restriction to allow active role execution; expanded `--actor` choices to `["owner-manual", "auto-delegate", "systemd-auto-wake", "aq-collab-round", "workflow-executor", "subagent", "delegate-fanout"]`)
+     - `scripts/ai/delegate-to-antigravity` (added `subagent` and `coordinator` to `_VALID_ROLES`)
+     - `scripts/ai/aq-collab-round` (injected `Output:` and `Role: review` metadata headers into task markdown; wired wake notification with `--actor aq-collab-round`)
+     - `scripts/ai/delegate-fanout` (mapped `gemini` & `antigravity` to `delegate-to-antigravity`; default agents set to `antigravity,local`)
+     - `scripts/ai/aq-subagent-interactive`, `scripts/ai/aq-agent-window`, `scripts/ai/aq-coordinator-repl` (wired `antigravity` to `delegate-to-antigravity` across subagent consoles)
+     - `ai-stack/mcp-servers/hybrid-coordinator/workflow/workflow_executor.py` (`_delegate_phase_execution` forwards target `lane` and `role` to `/control/agents/spawn`)
+     - `ai-stack/mcp-servers/hybrid-coordinator/workflow/agents_task_handlers.py` (added async `_spawn_delegated_agent_instance` awaiting `delegate-to-antigravity`, `delegate-to-codex`, and `delegate-to-claude` with `--wait`; wired `handle_agents_spawn` and `handle_agents_team`)
+     - `ai-stack/mcp-servers/hybrid-coordinator/extensions/ai_coordinator_handlers.py` (added `"antigravity": "gemini-orchestrator"` mapping)
+     - `scripts/testing/test-subagent-workflows-antigravity.py` (7/7 test suite)
+   - **Validation Goal**: Confirm that Antigravity/Gemini participates autonomously as a peer across collaborative plan review rounds (`aq-collab-round`), subagent interactive consoles (`aq-subagent-interactive`), parallel fanout arbitration (`delegate-fanout`), workflow executor automated phases (`workflow_executor.py`), and REPL dispatch consoles (`aq-coordinator-repl`) without human prompt engineering or falling into advisory deadlock. All 7 test cases pass.

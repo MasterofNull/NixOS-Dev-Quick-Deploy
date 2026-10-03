@@ -3,6 +3,7 @@
 
 import importlib.machinery
 import importlib.util
+import io
 import json
 import os
 import shutil
@@ -30,6 +31,19 @@ def _load_module(repo_path: Path):
     return mod
 
 
+def _load_inbox(repo_path: Path):
+    loader = importlib.machinery.SourceFileLoader(
+        "test_antigravity_inbox", str(ROOT / "scripts" / "ai" / "aq-antigravity-inbox")
+    )
+    spec = importlib.util.spec_from_loader(loader.name, loader)
+    assert spec is not None
+    mod = importlib.util.module_from_spec(spec)
+    loader.exec_module(mod)
+    mod.REPO = repo_path
+    mod.INBOX = repo_path / ".agent" / "collaboration" / "antigravity-inbox"
+    return mod
+
+
 def test_inbox_bridge_dispatch_and_completion():
     with tempfile.TemporaryDirectory() as td:
         repo = Path(td)
@@ -43,26 +57,21 @@ def test_inbox_bridge_dispatch_and_completion():
         receipts_dir.mkdir(parents=True, exist_ok=True)
 
         prompt = "Diagnose RSI incident rsi-20261002-001."
-        role = "implementer"
+        role = "reviewer"
 
-        # Mock out aq-antigravity-inbox call by not blocking
-        # Simulate worker completing task after 0.2s in a background thread or pre-written
         task_file = inbox_dir / f"{tid}.md"
 
-        # Write output and receipt right after starting
         def simulate_worker():
             import time
             time.sleep(0.1)
             log_path.parent.mkdir(parents=True, exist_ok=True)
             log_path.write_text("Detailed diagnosis: root cause verified.\n", encoding="utf-8")
-            receipt_file = receipts_dir / f"{tid}.json"
-            receipt_file.write_text(json.dumps({
-                "task_id": tid,
-                "records": [
-                    {"type": "claim", "task_id": tid, "actor": "ide-watch"},
-                    {"type": "completion", "task_id": tid, "ts": "2026-10-02T12:00:01Z"}
-                ]
-            }), encoding="utf-8")
+            inbox = _load_inbox(repo)
+            assert inbox.main(["claim", task_file.name, "--actor", "ide-watch"]) == 0
+            assert inbox.main([
+                "complete", f".claimed-{tid}",
+                "--output", f".agents/delegation/outputs/{tid}.log",
+            ]) == 0
 
         import threading
         t = threading.Thread(target=simulate_worker)
@@ -72,15 +81,52 @@ def test_inbox_bridge_dispatch_and_completion():
         t.join()
 
         assert status == "done", f"expected done, got {status}"
-        assert task_file.exists(), "task file must exist in inbox"
-        content = task_file.read_text(encoding="utf-8")
-        assert f"Output: .agents/delegation/outputs/{tid}.log" in content
-        assert "Role: implementer" in content
-        assert prompt in content
-
+        assert task_file.exists() or (repo / ".agent" / "archive").exists(), "task file must be processed"
         log_content = log_path.read_text(encoding="utf-8")
-        assert f"[delegate-to-antigravity] Task {tid} completed." in log_content
+        assert "[delegate-to-antigravity]" not in log_content, "output must remain strictly immutable"
         print("PASS: test_inbox_bridge_dispatch_and_completion")
+
+
+def test_inbox_bridge_refuses_unisolated_implementation():
+    with tempfile.TemporaryDirectory() as td:
+        repo = Path(td)
+        mod = _load_module(repo)
+        mod._ensure_dirs()
+
+        tid = "antigravity-20261002-120000-tst002"
+        log_path = mod._OUTPUTS_DIR / f"{tid}.log"
+
+        for imp_role in ("implement", "implementer"):
+            status, ti, to = mod._run_inbox(tid, "code task", imp_role, timeout=5, log_path=log_path, print_to_stdout=False)
+            assert status == "failed", f"expected failed for role {imp_role}, got {status}"
+            assert log_path.exists()
+            content = log_path.read_text(encoding="utf-8")
+            assert "refusing editing dispatch" in content or "worktree isolation creation failed" in content
+        print("PASS: test_inbox_bridge_refuses_unisolated_implementation")
+
+
+def test_inbox_bridge_rejects_corrupted_or_mismatched_receipt():
+    with tempfile.TemporaryDirectory() as td:
+        repo = Path(td)
+        mod = _load_module(repo)
+        mod._ensure_dirs()
+
+        tid = "antigravity-20261002-120000-tst003"
+        log_path = mod._OUTPUTS_DIR / f"{tid}.log"
+        inbox_dir = repo / ".agent" / "collaboration" / "antigravity-inbox"
+        receipts_dir = inbox_dir / "receipts"
+        receipts_dir.mkdir(parents=True, exist_ok=True)
+
+        # Write fake receipt with wrong task_id and wrong records
+        receipt_file = receipts_dir / f"{tid}.json"
+        receipt_file.write_text(json.dumps({
+            "task_id": "wrong-task",
+            "records": [{"type": "completion", "task_id": "wrong-task"}]
+        }), encoding="utf-8")
+
+        status, ti, to = mod._run_inbox(tid, "prompt", "reviewer", timeout=1, log_path=log_path, print_to_stdout=False)
+        assert status == "failed", f"expected failed on mismatched receipt, got {status}"
+        print("PASS: test_inbox_bridge_rejects_corrupted_or_mismatched_receipt")
 
 
 def test_inbox_bridge_timeout():
@@ -89,7 +135,7 @@ def test_inbox_bridge_timeout():
         mod = _load_module(repo)
         mod._ensure_dirs()
 
-        tid = "antigravity-20261002-120000-tst002"
+        tid = "antigravity-20261002-120000-tst004"
         log_path = mod._OUTPUTS_DIR / f"{tid}.log"
 
         status, ti, to = mod._run_inbox(tid, "short prompt", "reviewer", timeout=1, log_path=log_path, print_to_stdout=False)
@@ -105,22 +151,24 @@ def test_cmd_status_and_check():
         mod = _load_module(repo)
         mod._ensure_dirs()
 
-        tid = "antigravity-20261002-120000-tst003"
+        tid = "antigravity-20261002-120000-tst005"
         log_path = mod._OUTPUTS_DIR / f"{tid}.log"
         log_path.write_text("Output from antigravity task.\n", encoding="utf-8")
+        mod._registry_append(tid, "reviewer", "Test description", log_path)
 
-        mod._registry_append(tid, "implementer", "Test description", log_path)
+        inbox_dir = repo / ".agent" / "collaboration" / "antigravity-inbox"
+        task_file = inbox_dir / f"{tid}.md"
+        task_file.parent.mkdir(parents=True, exist_ok=True)
+        task_file.write_text(f"# Task\nOutput: .agents/delegation/outputs/{tid}.log\nRole: reviewer\n\nprompt\n", encoding="utf-8")
 
-        receipts_dir = repo / ".agent" / "collaboration" / "antigravity-inbox" / "receipts"
-        receipts_dir.mkdir(parents=True, exist_ok=True)
-        receipt_file = receipts_dir / f"{tid}.json"
-        receipt_file.write_text(json.dumps({
-            "task_id": tid,
-            "records": [{"type": "completion", "task_id": tid}]
-        }), encoding="utf-8")
+        inbox = _load_inbox(repo)
+        assert inbox.main(["claim", task_file.name, "--actor", "ide-watch"]) == 0
+        assert inbox.main([
+            "complete", f".claimed-{tid}",
+            "--output", f".agents/delegation/outputs/{tid}.log",
+        ]) == 0
 
-        # Capture status
-        import io
+        # Capture status with valid supervisor receipt
         buf = io.StringIO()
         old_stdout = sys.stdout
         sys.stdout = buf
@@ -130,7 +178,7 @@ def test_cmd_status_and_check():
             sys.stdout = old_stdout
 
         status_text = buf.getvalue()
-        assert "completed" in status_text
+        assert '"status": "completed"' in status_text
 
         # Capture check
         buf_check = io.StringIO()
@@ -147,6 +195,8 @@ def test_cmd_status_and_check():
 
 def main():
     test_inbox_bridge_dispatch_and_completion()
+    test_inbox_bridge_refuses_unisolated_implementation()
+    test_inbox_bridge_rejects_corrupted_or_mismatched_receipt()
     test_inbox_bridge_timeout()
     test_cmd_status_and_check()
     print("ALL PASS: delegate-to-antigravity unit tests")

@@ -850,7 +850,7 @@ def _acquire_rsi_dispatch_lock() -> Any:
 
 
 def _rsi_dispatch_preflight(lane: str = "codex") -> Tuple[bool, str]:
-    """Require the established isolated-worktree dispatcher before agent launch."""
+    """Require a dispatcher with enforceable isolated-worktree execution."""
     delegate = AI_SCRIPT_DIR / f"delegate-to-{lane}"
     isolation = AI_LIB_DIR / "worktree-isolation.sh"
     if not delegate.is_file() or not os.access(delegate, os.X_OK):
@@ -916,7 +916,7 @@ def _run_rsi_delegate(row: Dict[str, Any], timeout_seconds: int, apply: bool, la
         argv = [str(AI_SCRIPT_DIR / "delegate-to-codex"), "--wait", "--mode", "edit",
                 "--prompt", _rsi_task_prompt(row, apply)]
     elif lane == "claude":
-        argv = [str(AI_SCRIPT_DIR / "delegate-to-claude"), "--wait", "--role", "implementer",
+        argv = [str(AI_SCRIPT_DIR / "delegate-to-claude"), "--wait", "--role", "implement",
                 "--prompt", _rsi_task_prompt(row, apply)]
     elif lane == "antigravity":
         argv = [

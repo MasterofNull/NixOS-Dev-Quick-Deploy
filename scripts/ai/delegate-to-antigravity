@@ -39,6 +39,9 @@ Usage:
 
 import argparse
 import fcntl
+import hashlib
+import importlib.machinery
+import importlib.util
 import json
 import os
 import random
@@ -95,6 +98,7 @@ _VALID_ROLES = {
     "orchestrator", "architect", "implementer", "reviewer",
     "full-expert-team",
     "plan", "implement", "review", "research",
+    "subagent", "coordinator",
 }
 
 _HARNESS_SYSTEM_BASE = (
@@ -426,25 +430,116 @@ def _run_switchboard(task_id: str, prompt: str, role: str, model: str,
 
 # ── delegation via sanctioned advisory inbox ─────────────────────────────────
 
+def _validate_inbox_completion(task_id: str) -> "tuple[bool, str]":
+    """Validate a terminal inbox receipt without altering its hashed output."""
+    inbox_script = _HERE / "aq-antigravity-inbox"
+    expected_output = f".agents/delegation/outputs/{task_id}.log"
+    try:
+        loader = importlib.machinery.SourceFileLoader(
+            "_delegate_antigravity_inbox", str(inbox_script)
+        )
+        spec = importlib.util.spec_from_loader(loader.name, loader)
+        if spec is None:
+            return False, "could not load inbox evidence validator"
+        inbox = importlib.util.module_from_spec(spec)
+        loader.exec_module(inbox)
+        inbox.REPO = _REPO
+        inbox.INBOX = _REPO / ".agent" / "collaboration" / "antigravity-inbox"
+        receipt = inbox._load(task_id)
+        completed = [
+            record for record in receipt["records"]
+            if record.get("type") == "completion"
+        ]
+        if not completed:
+            return False, "receipt has no completion record"
+        terminal = completed[-1]
+        generation = terminal.get("generation")
+        if terminal.get("task_id") != task_id or not isinstance(generation, str):
+            return False, "completion task or generation does not match"
+        prepared = [
+            record for record in receipt["records"]
+            if record.get("type") == "completion_prepared"
+            and record.get("generation") == generation
+        ]
+        if not prepared or prepared[-1].get("declared_output") != expected_output:
+            return False, "completion output does not match dispatched task"
+        verified = inbox._reconcile_prepared(task_id, receipt, generation)
+        if verified is None or verified.get("declared_output") != expected_output:
+            return False, "completion evidence is incomplete"
+    except Exception as exc:
+        return False, str(exc)
+    return True, ""
+
+
+def _wt_create(repo_root: Path, task_id: str) -> "tuple[Path | None, str]":
+    """Create an isolated git worktree via worktree-isolation.sh."""
+    sh_lib = _HERE / "lib" / "worktree-isolation.sh"
+    if not sh_lib.exists():
+        return None, ""
+    cmd = ["bash", "-c", f'source "{sh_lib}" && wt_create "{repo_root}" "{task_id}"']
+    res = subprocess.run(cmd, capture_output=True, text=True, check=False)
+    if res.returncode == 0 and res.stdout.strip():
+        wt_path = Path(res.stdout.strip())
+        return wt_path, f"delegate/{task_id}"
+    return None, ""
+
+
+def _wt_handback(repo_root: Path, wt_path: Path, task_id: str, outputs_dir: Path) -> bool:
+    """Hand back worktree changes (commit + patch) via worktree-isolation.sh."""
+    sh_lib = _HERE / "lib" / "worktree-isolation.sh"
+    if not sh_lib.exists():
+        return False
+    cmd = ["bash", "-c", f'source "{sh_lib}" && wt_handback "{repo_root}" "{wt_path}" "{task_id}" "{outputs_dir}"']
+    res = subprocess.run(cmd, capture_output=True, text=True, check=False)
+    return res.returncode == 0
+
+
 def _run_inbox(task_id: str, prompt: str, role: str, timeout: int, log_path: Path,
-               print_to_stdout: bool = False) -> "tuple[str, int, int]":
+               print_to_stdout: bool = False, shared_mode: bool = False) -> "tuple[str, int, int]":
     """Drop task into sanctioned advisory inbox, wake IDE, and optionally await completion."""
     inbox_dir = _REPO / ".agent" / "collaboration" / "antigravity-inbox"
     receipts_dir = inbox_dir / "receipts"
     inbox_dir.mkdir(parents=True, exist_ok=True)
     receipts_dir.mkdir(parents=True, exist_ok=True)
 
+    wt_path = None
+    wt_branch = ""
+    if role in ("implement", "implementer") and not shared_mode:
+        wt_path, wt_branch = _wt_create(_REPO, task_id)
+        if not wt_path:
+            err = f"ERROR: worktree isolation creation failed for {task_id}; refusing editing dispatch\n"
+            with open(log_path, "a") as f:
+                f.write(err)
+            if print_to_stdout:
+                sys.stderr.write(err)
+            return "failed", 0, 0
+
     rel_log = f".agents/delegation/outputs/{task_id}.log"
     task_file = inbox_dir / f"{task_id}.md"
     tmp_file = inbox_dir / f".{task_id}.md.tmp"
 
-    content = (
-        f"# Antigravity Task: {task_id}\n"
-        f"Output: {rel_log}\n"
-        f"Role: {role}\n"
-        f"Created: {datetime.now(timezone.utc).isoformat()}\n\n"
-        f"{prompt.strip()}\n"
-    )
+    header = [
+        f"# Antigravity Task: {task_id}",
+        f"Output: {rel_log}",
+        f"Role: {role}",
+    ]
+    if wt_path:
+        header.append(f"Worktree: {wt_path}")
+        header.append(f"Branch: {wt_branch}")
+    header.append(f"Created: {datetime.now(timezone.utc).isoformat()}")
+    header.append("")
+
+    prompt_body = prompt.strip()
+    if wt_path:
+        prompt_body = (
+            f"WORKTREE ISOLATION ACTIVE:\n"
+            f"Make all code and file changes inside the assigned worktree directory:\n"
+            f"  {wt_path}\n"
+            f"Do not modify files in the shared repository root.\n\n"
+            f"{prompt_body}"
+        )
+
+    content = "\n".join(header) + "\n" + prompt_body + "\n"
 
     try:
         tmp_file.write_text(content, encoding="utf-8")
@@ -484,20 +579,25 @@ def _run_inbox(task_id: str, prompt: str, role: str, timeout: int, log_path: Pat
                 data = json.loads(receipt_file.read_text(encoding="utf-8"))
                 records = data.get("records", [])
                 if any(r.get("type") == "completion" for r in records):
-                    # Output has landed
+                    valid, reason = _validate_inbox_completion(task_id)
+                    if not valid:
+                        print(f"[delegate-to-antigravity] rejected completion receipt: {reason}", file=sys.stderr)
+                        return "failed", 0, 0
+                    if wt_path:
+                        if not _wt_handback(_REPO, wt_path, task_id, _OUTPUTS_DIR):
+                            err_msg = f"ERROR: Task {task_id} failed worktree handback.\n"
+                            if print_to_stdout:
+                                sys.stderr.write(err_msg)
+                            return "failed", 0, 0
                     out_text = ""
                     if log_path.exists():
                         out_text = log_path.read_text(encoding="utf-8")
                     if print_to_stdout and out_text:
                         sys.stdout.write(out_text.strip() + "\n")
                         sys.stdout.flush()
-                    receipt_marker = f"[delegate-to-antigravity] Task {task_id} completed.\n"
                     if print_to_stdout:
-                        sys.stdout.write(receipt_marker)
+                        sys.stdout.write(f"[delegate-to-antigravity] Task {task_id} completed.\n")
                         sys.stdout.flush()
-                    with open(log_path, "a") as f:
-                        if receipt_marker.strip() not in out_text:
-                            f.write("\n" + receipt_marker)
                     tokens_out = len(out_text.split())
                     return "done", 0, tokens_out
             except Exception:
@@ -575,7 +675,11 @@ def cmd_status(task_id: str):
                         rdata = json.loads(inbox_receipt.read_text(encoding="utf-8"))
                         recs = rdata.get("records", [])
                         if any(r.get("type") == "completion" for r in recs):
-                            e["status"] = "completed"
+                            valid, _reason = _validate_inbox_completion(task_id)
+                            if valid:
+                                e["status"] = "completed"
+                            else:
+                                e["status"] = "invalid-receipt"
                         elif any(r.get("type") == "claim" for r in recs):
                             e["status"] = "claimed"
                     except Exception:
@@ -636,7 +740,7 @@ def _dispatch_budget_gate(agent: str = "antigravity") -> None:
 def cmd_delegate(prompt: str, role: str, mode: str,
                  model_override: "str | None", max_tokens: int,
                  timeout: int, wait: bool, loop: bool = False,
-                 backend: str = "inbox"):
+                 backend: str = "inbox", shared_mode: bool = False):
     _ensure_dirs()
     _dispatch_budget_gate("antigravity")
 
@@ -709,7 +813,7 @@ def cmd_delegate(prompt: str, role: str, mode: str,
         if wait:
             status, ti, to = _run_inbox(
                 tid, prompt, role, timeout, log_path,
-                print_to_stdout=True,
+                print_to_stdout=True, shared_mode=shared_mode,
             )
             _registry_update(tid, status, tokens_in=ti, tokens_out=to)
             _pending_update(status, tid)
@@ -735,7 +839,7 @@ def cmd_delegate(prompt: str, role: str, mode: str,
 
         try:
             status, ti, to = _run_inbox(
-                tid, prompt, role, timeout, log_path,
+                tid, prompt, role, timeout, log_path, shared_mode=shared_mode,
             )
             _registry_update(tid, status, tokens_in=ti, tokens_out=to)
             _pending_update(status, tid)
@@ -834,6 +938,8 @@ def _build_parser() -> argparse.ArgumentParser:
     p.add_argument("--backend", choices=["inbox", "switchboard"],
                    default=os.environ.get("ANTIGRAVITY_BACKEND", "inbox"),
                    help="Delegation backend: inbox (sanctioned IDE OAuth bridge, default) or switchboard")
+    p.add_argument("--shared", "--no-worktree", dest="shared_mode", action="store_true",
+                   help="Run in primary workspace without isolated worktree")
     return p
 
 
@@ -865,7 +971,8 @@ def main():
             p.error("Provide --prompt TEXT or --prompt-file FILE")
         cmd_delegate(prompt, args.role, args.mode, args.model,
                      args.max_tokens, args.timeout, args.wait, args.loop,
-                     getattr(args, "backend", "inbox"))
+                     getattr(args, "backend", "inbox"),
+                     shared_mode=getattr(args, "shared_mode", False))
 
 
 if __name__ == "__main__":

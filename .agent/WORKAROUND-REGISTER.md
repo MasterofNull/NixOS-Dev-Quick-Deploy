@@ -209,3 +209,10 @@ Codex lane absent).
 - root cause (T5): throttler writer predated queue schema; no shared queue-write API.
 - producer fixed: `scripts/ai/aq-throttler` executes via orchestrator CLI; queue mutations centralized in `scripts/ai/lib/prsi_queue.py`.
 - class: T5 producer-governance-fracture · severity: high · status: FIXED 2026-10-02 · opened: 2026-10-02
+
+## WR-ANTIGRAVITY-IDE-ROLE-BAN — artificial unsupported role ban on Antigravity/Gemini — FIXED
+- symptom: aq-antigravity-inbox and prsi-orchestrator rejected implementer, coordinator, and subagent roles with `blocked_unsupported_ide_worktree_isolation`.
+- band-aid in place? no: removed hardcoded role ban. Replaced with real per-dispatch git worktree isolation via `wt_create` and `wt_handback` (`scripts/ai/lib/worktree-isolation.sh`) in `delegate-to-antigravity` for code modifications, while unblocking non-modifying coordination and subagent roles per Rule 21.
+- root cause (T5): artificial blanket ban was applied instead of wiring worktree lifecycle management into the Antigravity delegation bridge and properly differentiating code modification roles from coordination roles.
+- producer fixed: `scripts/ai/delegate-to-antigravity` allocates isolated worktree and generates patch on completion; `scripts/ai/aq-antigravity-inbox` enforces worktree isolation fail-closed for implementation roles and allows coordination/subagents; `scripts/automation/prsi-orchestrator.py` verifies standard preflight for all lanes.
+- class: T5 producer-governance-fracture · severity: HIGH · status: FIXED 2026-10-03 · opened: 2026-10-03
