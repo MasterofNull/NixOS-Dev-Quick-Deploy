@@ -194,5 +194,5 @@ ralph-wiggum TaskRequest field: `prompt` (not `task`). AIDB vector search: POST 
 - M7 closeout & security: `.agent/memory/rsi-m7-20261002.md`, `.agent/memory/security-checks-20261002.md`.
 - 269 CVEs unmerged/tracked in `.agents/plans/cve-triage-20261002/TRIAGE.md` (Batches 1–4, open).
 - Multi-lane RSI repair: fallback across `repair_lanes` (`codex`, `claude`, `local`) with cooldown checks.
-- Antigravity env strengthened: lean-ctx/mcp/hooks enabled; advisory role boundary enforced (`WR-ANTIGRAVITY-IDE-WORKSPACE-BINDING`).
+- Antigravity env strengthened: lean-ctx/mcp/hooks enabled; advisory role boundary; aq-agent-loop/dispatch fixes.
 - Antigravity delegation review: receipt validation fails closed; live IDE mutation deferred pending verified workspace binding.

@@ -42,8 +42,9 @@ _CANONICAL_ROLES = {"orchestrator", "architect", "implementer", "reviewer"}
 # "review this design" lands reviewer; implementer is the fallback.
 _ROLE_PATTERNS: list[tuple[str, str]] = [
     (r"\b(review|critique|verdict|pass/fail|assess|score|ratif|approve|reject|audit)\b", "reviewer"),
-    (r"\b(architect|design doc|prd|trade-?off|architecture|roadmap|risk analysis|threat model)\b", "architect"),
+    (r"\b(architect|design doc|write (a )?prd|draft (a )?prd|architecture|roadmap|risk analysis|threat model)\b", "architect"),
     (r"\b(implement|fix|write|edit|refactor|add|create|build|patch|wire|migrate)\b", "implementer"),
+    (r"\bprd\b", "architect"),
 ]
 
 # Band inference: caller source dominates; prompt only breaks ties.

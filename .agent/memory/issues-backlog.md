@@ -5369,3 +5369,13 @@ File: scripts/ai/lib/worktree-isolation.sh; scripts/automation/prsi-orchestrator
   Severity: medium (agent tool contract and context efficiency alignment).
   Action: verified by test-antigravity-claim-receipt.py, test-antigravity-inbox.py, test-delegate-to-antigravity.py, test-local-inference-l2b.py, and tier0-validation-gate.sh --pre-commit (54/54 passed).
   File: .agents/mcp_config.json; .agents/hooks.json; scripts/ai/aq-antigravity-inbox; scripts/testing/fixtures/local-inference-l2b-payload-golden.json; .agent/ACTIVATION-AUDIT.md; .agent/WORKAROUND-REGISTER.md
+
+[DONE 2026-10-03] aq-agent-loop-code-execution-relative-import — In scripts/ai/aq-agent-loop build_registry, importing code_execution failed with "attempted relative import with no known parent package" and "AttributeError: type object 'ToolCategory' has no attribute 'CODE_EXECUTION'" / parameter naming mismatches with ToolDefinition. Resolved by: (1) try/except fallback imports in ai-stack/local-agents/builtin_tools/code_execution.py; (2) added CODE_EXECUTION alias in ToolCategory and register_tool alias in ToolRegistry; (3) aligned ToolDefinition kwargs (handler, requires_confirmation, max_calls_per_minute); (4) guarded build_registry to respect quarantined status in local-agent-capability-manifest.json. Verified by test-local-agent-capability-reachability.py and aq-agent-loop --list-tools.
+  Severity: medium (silent tool registration failure in local agent loop).
+  Action: done.
+  File: ai-stack/local-agents/builtin_tools/code_execution.py; ai-stack/local-agents/tool_registry.py; scripts/ai/aq-agent-loop
+
+[DONE 2026-10-03] dispatch-prd-keyword-clamping — When delegating implementation tasks referencing a PRD or containing boundary constraints (e.g. "do not edit files outside..."), scripts/ai/lib/dispatch.py and auto_assign.py misassigned the task to role "architect" and task-type "research" with 0 tool calls and injected huge grounding documents. Root cause: (1) _ROLE_PATTERNS placed \bprd\b before implementer keywords; (2) _TASK_ANALYSIS_ONLY_SIGNALS contained bare "prd" and classify_task_type did not check for code signals before checking analysis-only signals. Resolved by: (1) prioritizing implementer keywords over bare \bprd\b in auto_assign.py; (2) refining PRD analysis signals to "prd only", "write a prd", etc.; (3) checking has_code_signals in classify_task_type before treating prompts as research. Verified by test-auto-assign.py and batch1 prompt evaluation.
+  Severity: high (caused local agent APU timeout >900s on implementation tasks).
+  Action: done.
+  File: scripts/ai/lib/auto_assign.py; scripts/ai/lib/dispatch.py
