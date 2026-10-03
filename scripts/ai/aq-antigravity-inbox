@@ -19,12 +19,13 @@ REPO = Path(__file__).resolve().parents[2]
 INBOX = REPO / ".agent" / "collaboration" / "antigravity-inbox"
 STATE = INBOX / ".lane-state.json"
 WAKE_PROMPT = (
-    "You are the Antigravity ADVISORY node (review / PRD / plan / research ONLY). "
+    "Execute the assigned Antigravity task following harness security and isolation standards. "
     "Run `aq-antigravity-inbox next --json`, then atomically run "
     "`aq-antigravity-inbox claim <basename> --actor ide-watch --json` BEFORE reading task work. "
-    "If claim fails STOP. Perform only the claimed advisory task and write only its declared output. "
-    "Then run `aq-antigravity-inbox complete .claimed-<task-id> --output <declared-output> --json`. "
-    "Do not implement, build, stage, commit, or edit any other file."
+    "If claim fails STOP. Fulfill the claimed task's assigned role and objective. "
+    "If a Worktree path is declared, make all code changes strictly inside that isolated worktree directory. "
+    "Write the result to the declared Output path. "
+    "Then run `aq-antigravity-inbox complete .claimed-<task-id> --output <declared-output> --json`."
 )
 WAKE_ARGV = ["antigravity", "chat", "--reuse-window", "--mode", "agent", WAKE_PROMPT]
 _OUTPUT_PATTERNS = [
@@ -34,6 +35,10 @@ _OUTPUT_PATTERNS = [
     re.compile(r"Return[^\r\n]+?to[ \t]*(?:\r?\n)?[`'\"]?(\.agents/[^`'\"\s]+?\.md)`?\.?", re.MULTILINE),
 ]
 _TASK_ID = re.compile(r"^[A-Za-z0-9][A-Za-z0-9._-]{0,127}$")
+_ROLE = re.compile(r"^Role:\s*([A-Za-z][A-Za-z0-9_-]*)\s*$", re.MULTILINE | re.IGNORECASE)
+_WORKTREE = re.compile(r"^Worktree:\s*([^\r\n]+?)\s*$", re.MULTILINE | re.IGNORECASE)
+_SHARED = re.compile(r"^Shared:\s*(true|yes|1)\s*$", re.MULTILINE | re.IGNORECASE)
+_IMPLEMENTATION_ROLES = frozenset({"implement", "implementer"})
 _WAKE_DEBOUNCE_S = 60
 
 
@@ -88,6 +93,32 @@ def _metadata(raw: bytes) -> tuple[str, str]:
     if p.is_absolute() or ".." in p.parts or not value.startswith(".agents/"):
         raise InboxError("declared output must be repo-relative under .agents/")
     return value, hashlib.sha256(raw).hexdigest()
+
+def _task_role(raw: bytes) -> str | None:
+    match = _ROLE.search(raw.decode("utf-8", errors="strict"))
+    return match.group(1).lower() if match else None
+
+def _task_worktree(raw: bytes) -> str | None:
+    match = _WORKTREE.search(raw.decode("utf-8", errors="strict"))
+    return match.group(1).strip().strip("`").strip('"').strip("'") if match else None
+
+def _task_is_shared(raw: bytes) -> bool:
+    return bool(_SHARED.search(raw.decode("utf-8", errors="strict")))
+
+def _require_isolated_implementation_lane(raw: bytes) -> None:
+    role = _task_role(raw)
+    if role in _IMPLEMENTATION_ROLES:
+        if _task_is_shared(raw):
+            return
+        wt = _task_worktree(raw)
+        if not wt:
+            raise InboxError("blocked_unsupported_ide_worktree_isolation")
+        try:
+            wt_path = Path(wt).resolve()
+            if wt_path == REPO.resolve():
+                raise InboxError("blocked_unsupported_ide_worktree_isolation")
+        except Exception:
+            raise InboxError("blocked_unsupported_ide_worktree_isolation")
 
 def _load(tid: str) -> dict[str, Any]:
     path = _receipt_path(tid)
@@ -229,7 +260,7 @@ def cmd_claim(args: argparse.Namespace)->int:
         with _locked(_supervisor_lock()) as lock:
             fcntl.flock(lock.fileno(),fcntl.LOCK_EX)
             try:
-                path=_safe_member(args.name); raw=_read_regular(path); output,generation=_metadata(raw); _load(tid); marker=INBOX/f".claimed-{tid}"
+                path=_safe_member(args.name); raw=_read_regular(path); _require_isolated_implementation_lane(raw); output,generation=_metadata(raw); _load(tid); marker=INBOX/f".claimed-{tid}"
                 if _is_parked(tid,generation): raise InboxError("current task generation is parked")
                 if marker.exists() or not _regular(path): raise InboxError("claim lost race")
                 os.rename(path,marker)
@@ -241,7 +272,7 @@ def cmd_claim(args: argparse.Namespace)->int:
 def cmd_wake(args: argparse.Namespace)->int:
     try:
         if args.timeout < 1 or args.timeout > 120: raise InboxError("invalid wake timeout")
-        path=_safe_member(args.name); _,generation=_metadata(_read_regular(path))
+        path=_safe_member(args.name); raw=_read_regular(path); _require_isolated_implementation_lane(raw); _,generation=_metadata(raw)
         tid=_tid(path.name)
         if not getattr(args, "force", False) and not args.passive_only:
             recs = _load(tid)["records"]
@@ -369,13 +400,19 @@ def cmd_dispatch_once(args: argparse.Namespace)->int:
         with _locked(_supervisor_lock()) as lock:
             fcntl.flock(lock.fileno(),fcntl.LOCK_EX)
             try:
-                candidates=[]
+                candidates=[]; blocked_task_id=None
                 for p in _pending():
                     try:
-                        _,gen=_metadata(_read_regular(p)); tid=_tid(p.name)
+                        raw=_read_regular(p); _,gen=_metadata(raw); tid=_tid(p.name)
+                        try:
+                            _require_isolated_implementation_lane(raw)
+                        except InboxError:
+                            blocked_task_id=tid; break
                         if not _is_parked(tid,gen): candidates.append((p,tid,gen))
                     except InboxError: continue
-                if not candidates:
+                if blocked_task_id is not None:
+                    payload={"ok":False,"state":"blocked","task_id":blocked_task_id,"reason":"blocked_unsupported_ide_worktree_isolation"}
+                elif not candidates:
                     claimed=_claimed(); payload={"ok":True,"state":"claimed","task_id":_tid(claimed[0].name)} if claimed else {"ok":True,"state":"empty"}
                 else:
                     p,tid,gen=candidates[0]; attempts=[r for r in _records(tid,"wake_attempt",gen) if r.get("actor")=="dispatch-once" and r.get("non_passive") is True]
@@ -400,7 +437,9 @@ def cmd_dispatch_once(args: argparse.Namespace)->int:
                         nonce=secrets.token_hex(16); _append(tid,{"type":"wake_reservation","task_id":tid,"generation":gen,"ts":_now(),"actor":"dispatch-once","nonce":nonce}); reservation=(tid,gen,nonce); payload={"ok":True,"state":"reserved","task_id":tid}
             finally: fcntl.flock(lock.fileno(),fcntl.LOCK_UN)
     except InboxError as exc: print(str(exc),file=sys.stderr); return 1
-    if reservation is None: return _emit(payload,args.json)
+    if reservation is None:
+        _emit(payload,args.json)
+        return 0 if payload.get("ok") else 1
     tid,gen,nonce=reservation; method,code=_invoke_wake(args.timeout)
     try:
         with _locked(_supervisor_lock()) as lock:
@@ -420,7 +459,7 @@ def build_parser()->argparse.ArgumentParser:
     for name,func in (("status",cmd_status),("next",cmd_next),("verify",cmd_verify)):
         q=sub.add_parser(name); q.add_argument("--json",action="store_true"); q.set_defaults(func=func)
     q=sub.add_parser("claim"); q.add_argument("name"); q.add_argument("--actor",required=True,choices=["ide-watch","owner-manual"]); q.add_argument("--json",action="store_true"); q.set_defaults(func=cmd_claim)
-    q=sub.add_parser("wake"); q.add_argument("name"); q.add_argument("--actor",default="owner-manual",choices=["owner-manual","auto-delegate","systemd-auto-wake"]); q.add_argument("--passive-only",action="store_true"); q.add_argument("--timeout",type=int,default=10); q.add_argument("--force",action="store_true"); q.add_argument("--json",action="store_true"); q.set_defaults(func=cmd_wake)
+    q=sub.add_parser("wake"); q.add_argument("name"); q.add_argument("--actor",default="owner-manual",choices=["owner-manual","auto-delegate","systemd-auto-wake","aq-collab-round","workflow-executor","subagent","delegate-fanout"]); q.add_argument("--passive-only",action="store_true"); q.add_argument("--timeout",type=int,default=10); q.add_argument("--force",action="store_true"); q.add_argument("--json",action="store_true"); q.set_defaults(func=cmd_wake)
     q=sub.add_parser("complete"); q.add_argument("name"); q.add_argument("--output",required=True); q.add_argument("--recovery-allow-unclaimed",action="store_true"); q.add_argument("--recovery-allow-missing-output",action="store_true"); q.add_argument("--recovery-actor",choices=["owner-manual"]); q.add_argument("--recovery-reason"); q.add_argument("--json",action="store_true"); q.set_defaults(func=cmd_complete)
     q=sub.add_parser("dispatch-once"); q.add_argument("--attempt-ceiling",type=int,default=3); q.add_argument("--retry-interval",type=int,default=60); q.add_argument("--timeout",type=int,default=10); q.add_argument("--json",action="store_true"); q.set_defaults(func=cmd_dispatch_once)
     return p

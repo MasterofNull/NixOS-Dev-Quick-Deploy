@@ -589,8 +589,10 @@ class WorkflowPhaseExecutor:
         context: Dict[str, Any],
     ) -> Dict[str, Any]:
         task = self._build_phase_task(phase, objective, context)
+        target_lane = str(phase.get("lane") or phase.get("agent") or context.get("lane", "local")).lower().strip()
         payload = {
-            "role": "coordinator",
+            "role": str(phase.get("role") or "coordinator"),
+            "lane": target_lane,
             "task": task,
             "system_prompt": (
                 "You are executing one bounded workflow phase through the local harness. "
@@ -620,13 +622,14 @@ class WorkflowPhaseExecutor:
             "output": content,
             "tokens_used": 0,
             "tool_calls_made": 0,
-            "summary": f"Local harness phase execution completed: {content[:100]}",
+            "summary": f"Delegated {target_lane} phase execution completed: {content[:100]}",
             "events": [
                 {
                     "ts": time.time(),
-                    "event_type": "local_phase_execution",
+                    "event_type": "phase_delegation",
                     "phase_id": str(phase.get("id", "unknown")),
-                    "detail": "Phase executed via local harness sub-agent spawn",
+                    "lane": target_lane,
+                    "detail": f"Phase executed via {target_lane} sub-agent spawn",
                 }
             ],
         }
