@@ -9,6 +9,7 @@
     "repair_lanes": [
       "codex",
       "claude",
+      "antigravity",
       "local"
     ],
     "approval_binding_enabled": false,

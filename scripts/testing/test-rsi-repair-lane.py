@@ -52,8 +52,10 @@ class LaneTests(unittest.TestCase):
     def test_lane_selection_and_execution_receipt(self):
         for policy, flags, expected in [({}, [], "codex"), ({}, ["--lane", "local"], "local"),
                                          ({}, ["--lane", "claude"], "claude"),
+                                         ({}, ["--lane", "antigravity"], "antigravity"),
                                          ({"rsi": {"repair_lane": "local"}}, [], "local"),
                                          ({"rsi": {"repair_lane": "claude"}}, [], "claude"),
+                                         ({"rsi": {"repair_lane": "antigravity"}}, [], "antigravity"),
                                          ({"rsi": {"repair_lane": "local"}}, ["--lane", "codex"], "codex")]:
             with self.subTest(policy=policy, flags=flags):
                 prsi.PRSI_POLICY_FILE.write_text(json.dumps(policy))
@@ -72,6 +74,8 @@ class LaneTests(unittest.TestCase):
                     expected_args = ["--wait", "--mode", "edit"]
                 elif expected == "claude":
                     expected_args = ["--wait", "--role", "implementer"]
+                elif expected == "antigravity":
+                    expected_args = ["--wait", "--timeout", "600", "--role", "implementer"]
                 else:
                     expected_args = ["--mode", "agent", "--wait", "--timeout", "600", "--role", "implementer"]
                 self.assertEqual(argv, [str(prsi.AI_SCRIPT_DIR / f"delegate-to-{expected}"),
@@ -79,7 +83,7 @@ class LaneTests(unittest.TestCase):
                 self.assertTrue(popen.call_args.kwargs["start_new_session"])
 
     def test_strict_lane_receipts(self):
-        for lane in ("codex", "local"):
+        for lane in ("codex", "local", "antigravity"):
             other = "local" if lane == "codex" else "codex"
             cases = [(completion(lane), "", 0, True), (completion(other), "", 0, False),
                      ("", completion(lane), 0, False), (completion(lane), "", 1, False),
@@ -134,7 +138,7 @@ class LaneTests(unittest.TestCase):
         self.assertEqual(code, 1)
         self.assertEqual(output["message"], "invalid_repair_lane")
     def test_multi_lane_cooldown_fallback(self):
-        policy = {"rsi": {"repair_lanes": ["codex", "claude", "local"]}}
+        policy = {"rsi": {"repair_lanes": ["codex", "claude", "antigravity", "local"]}}
         prsi.PRSI_POLICY_FILE.write_text(json.dumps(policy))
         delegation_dir = self.root / "delegation"
         delegation_dir.mkdir(parents=True, exist_ok=True)
@@ -152,8 +156,19 @@ class LaneTests(unittest.TestCase):
         self.assertEqual(rows[0]["execution"]["receipt"]["lane"], "claude")
         self.assertEqual(rows[0]["execution"]["receipt"]["substituted_from"], "codex")
 
-        # 2. codex and claude on cooldown -> falls back to local
+        # 2. codex and claude on cooldown -> falls back to antigravity
         (delegation_dir / ".claude-quota-cooldown").write_text(future)
+        proc.communicate.return_value = (completion("antigravity"), "")
+        with patch.dict("os.environ", {"AQ_DELEGATION_DIR": str(delegation_dir)}), \
+             patch.object(prsi.subprocess, "Popen", return_value=proc):
+            code, output, rows = self.dispatch(["--execute"])
+        self.assertEqual(code, 0)
+        self.assertEqual(output["lane"], "antigravity")
+        self.assertEqual(rows[0]["execution"]["receipt"]["lane"], "antigravity")
+        self.assertEqual(rows[0]["execution"]["receipt"]["substituted_from"], "codex")
+
+        # 3. codex, claude, and antigravity on cooldown -> falls back to local
+        (delegation_dir / ".antigravity-quota-cooldown").write_text(future)
         proc.communicate.return_value = (completion("local"), "")
         with patch.dict("os.environ", {"AQ_DELEGATION_DIR": str(delegation_dir)}), \
              patch.object(prsi.subprocess, "Popen", return_value=proc):

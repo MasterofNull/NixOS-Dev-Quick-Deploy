@@ -193,5 +193,6 @@ ralph-wiggum TaskRequest field: `prompt` (not `task`). AIDB vector search: POST 
 ## RSI & Maintenance Pointers (2026-10-02)
 - M7 closeout & security checks diagnosis: `.agent/memory/rsi-m7-20261002.md`, `.agent/memory/security-checks-20261002.md`.
 - Producer fixes: `WR-PRSI-M7-REPO-ROOT` (`parents[4]`) & `WR-PRSI-THROTTLER` marked FIXED.
-- Multi-lane RSI repair: fallback across `repair_lanes` with cooldown checks; verified by `test-rsi-repair-lane.py`.
+- Multi-lane RSI repair: fallback across `repair_lanes` with cooldown checks (`test-rsi-repair-lane.py`).
+- Antigravity autonomous bridge: `delegate-to-antigravity` inbox bridge, 60s wake debounce, registered in PRSI.
 - Antigravity inbox drained (9/9 receipts); returning agent review tasks queued in `AGENT-CATCHUP-QUEUE.md`.

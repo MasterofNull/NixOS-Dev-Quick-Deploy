@@ -979,3 +979,12 @@ Returning agents (Claude upon unfreeze/quota refresh, Codex upon quota reset ~19
      - `.agents/plans/rsi-autonomy-20260930/antigravity.md` (`PLAN_READY_WITH_FOLLOWUPS`)
      - `.agents/plans/rsi-steward-role-prd-20260930/antigravity.md` (`PLAN_READY_WITH_FOLLOWUPS`)
    - **Validation Goal**: Confirm alignment on lockstep tier rollback, autonomous telemetry separation, and dedicated steward role boundaries. Advisory unless a material defect is discovered.
+
+5. **Antigravity Autonomous Bridge & Auto-Wake Loop Closure**:
+   - **Subjects**:
+     - `scripts/ai/aq-antigravity-inbox` (`cmd_wake` 60s debounce, expanded actors `["owner-manual", "auto-delegate", "systemd-auto-wake"]`, `--force` bypass)
+     - `scripts/ai/delegate-to-antigravity` (default `--backend inbox`, `_run_inbox` task file drop + wake + synchronous `--wait` harvester)
+     - `scripts/automation/prsi-orchestrator.py` (`antigravity` registered in `_VALID_RSI_LANES`, wired to `delegate-to-antigravity --wait`, cooldown fallback across `["codex", "claude", "antigravity", "local"]`)
+     - `config/runtime-prsi-policy.json` (`"repair_lanes": ["codex", "claude", "antigravity", "local"]`)
+     - `scripts/testing/test-delegate-to-antigravity.py`, `scripts/testing/test-antigravity-inbox.py`, `scripts/testing/test-rsi-repair-lane.py`
+   - **Validation Goal**: Confirm: (1) Systemd path retrigger storm is eliminated via generation-aware debounce; (2) Autonomous delegation across agents (Claude, Codex, Local, PRSI) drops tasks and harvests results through the running IDE's OAuth session without manual human prompting; (3) PRSI multi-lane cooldown fallback smoothly traverses `codex` -> `claude` -> `antigravity` -> `local`. All unit and regression tests passing.

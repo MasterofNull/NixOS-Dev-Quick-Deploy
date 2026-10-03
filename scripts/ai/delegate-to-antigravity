@@ -423,6 +423,99 @@ def _run_switchboard(task_id: str, prompt: str, role: str, model: str,
         )
     return "failed", 0, 0
 
+
+# ── delegation via sanctioned advisory inbox ─────────────────────────────────
+
+def _run_inbox(task_id: str, prompt: str, role: str, timeout: int, log_path: Path,
+               print_to_stdout: bool = False) -> "tuple[str, int, int]":
+    """Drop task into sanctioned advisory inbox, wake IDE, and optionally await completion."""
+    inbox_dir = _REPO / ".agent" / "collaboration" / "antigravity-inbox"
+    receipts_dir = inbox_dir / "receipts"
+    inbox_dir.mkdir(parents=True, exist_ok=True)
+    receipts_dir.mkdir(parents=True, exist_ok=True)
+
+    rel_log = f".agents/delegation/outputs/{task_id}.log"
+    task_file = inbox_dir / f"{task_id}.md"
+    tmp_file = inbox_dir / f".{task_id}.md.tmp"
+
+    content = (
+        f"# Antigravity Task: {task_id}\n"
+        f"Output: {rel_log}\n"
+        f"Role: {role}\n"
+        f"Created: {datetime.now(timezone.utc).isoformat()}\n\n"
+        f"{prompt.strip()}\n"
+    )
+
+    try:
+        tmp_file.write_text(content, encoding="utf-8")
+        tmp_file.replace(task_file)
+    except OSError as exc:
+        err = f"ERROR: failed to write inbox task file: {exc}\n"
+        with open(log_path, "a") as f:
+            f.write(err)
+        if print_to_stdout:
+            sys.stderr.write(err)
+        return "failed", 0, 0
+
+    # Wake the IDE via aq-antigravity-inbox
+    aq_inbox = _REPO / "scripts" / "ai" / "aq-antigravity-inbox"
+    if aq_inbox.exists():
+        try:
+            wake_env = os.environ.copy()
+            wake_env["PATH"] = f"/run/current-system/sw/bin:/run/wrappers/bin:{wake_env.get('PATH', '')}"
+            subprocess.run(
+                [sys.executable, str(aq_inbox), "wake", f"{task_id}.md",
+                 "--actor", "auto-delegate", "--timeout", "15", "--json"],
+                capture_output=True, text=True, timeout=20, check=False,
+                env=wake_env,
+            )
+        except Exception as exc:
+            with open(log_path, "a") as f:
+                f.write(f"WARNING: wake invocation error: {exc}\n")
+
+    # Await completion
+    receipt_file = receipts_dir / f"{task_id}.json"
+    deadline = time.time() + timeout
+    tokens_out = 0
+
+    while time.time() < deadline:
+        if receipt_file.exists():
+            try:
+                data = json.loads(receipt_file.read_text(encoding="utf-8"))
+                records = data.get("records", [])
+                if any(r.get("type") == "completion" for r in records):
+                    # Output has landed
+                    out_text = ""
+                    if log_path.exists():
+                        out_text = log_path.read_text(encoding="utf-8")
+                    if print_to_stdout and out_text:
+                        sys.stdout.write(out_text.strip() + "\n")
+                        sys.stdout.flush()
+                    receipt_marker = f"[delegate-to-antigravity] Task {task_id} completed.\n"
+                    if print_to_stdout:
+                        sys.stdout.write(receipt_marker)
+                        sys.stdout.flush()
+                    with open(log_path, "a") as f:
+                        if receipt_marker.strip() not in out_text:
+                            f.write("\n" + receipt_marker)
+                    tokens_out = len(out_text.split())
+                    return "done", 0, tokens_out
+            except Exception:
+                pass
+        time.sleep(1.0)
+
+    timeout_msg = (
+        f"ERROR: Antigravity task {task_id} timed out after {timeout}s without completion receipt.\n"
+        f"  Inbox file: {task_file}\n"
+        f"  Receipt:    {receipt_file}\n"
+    )
+    with open(log_path, "a") as f:
+        f.write(timeout_msg)
+    if print_to_stdout:
+        sys.stderr.write(timeout_msg)
+    return "timeout", 0, 0
+
+
 # ── pending / audit helpers ─────────────────────────────────────────────────
 
 def _pending_update(*args):
@@ -476,6 +569,17 @@ def cmd_status(task_id: str):
         try:
             e = json.loads(line)
             if e.get("id") == task_id:
+                inbox_receipt = _REPO / ".agent" / "collaboration" / "antigravity-inbox" / "receipts" / f"{task_id}.json"
+                if inbox_receipt.exists():
+                    try:
+                        rdata = json.loads(inbox_receipt.read_text(encoding="utf-8"))
+                        recs = rdata.get("records", [])
+                        if any(r.get("type") == "completion" for r in recs):
+                            e["status"] = "completed"
+                        elif any(r.get("type") == "claim" for r in recs):
+                            e["status"] = "claimed"
+                    except Exception:
+                        pass
                 print(json.dumps(e, indent=2))
                 pid = e.get("pid")
                 if pid and _pid_alive(int(pid)):
@@ -531,7 +635,8 @@ def _dispatch_budget_gate(agent: str = "antigravity") -> None:
 
 def cmd_delegate(prompt: str, role: str, mode: str,
                  model_override: "str | None", max_tokens: int,
-                 timeout: int, wait: bool, loop: bool = False):
+                 timeout: int, wait: bool, loop: bool = False,
+                 backend: str = "inbox"):
     _ensure_dirs()
     _dispatch_budget_gate("antigravity")
 
@@ -552,6 +657,7 @@ def cmd_delegate(prompt: str, role: str, mode: str,
 
     _info(f"Delegating task: {tid}")
     _info(f"Role:            {role}")
+    _info(f"Backend:         {backend}")
     _info(f"Model:           {model} (--mode {mode})")
     _info(f"Output file:     {log_path}")
 
@@ -599,6 +705,53 @@ def cmd_delegate(prompt: str, role: str, mode: str,
     _pending_update("add", tid, "antigravity", rel_log, prompt[:120])
     _audit("start", tid, prompt[:200])
 
+    if backend == "inbox":
+        if wait:
+            status, ti, to = _run_inbox(
+                tid, prompt, role, timeout, log_path,
+                print_to_stdout=True,
+            )
+            _registry_update(tid, status, tokens_in=ti, tokens_out=to)
+            _pending_update(status, tid)
+            _audit("end", tid, "success" if status == "done" else "error", "0",
+                   f"{status}: {prompt[:100]}", role)
+            _info(f"Task {tid} {status}")
+            print(tid)
+            if status != "done":
+                sys.exit(1)
+            return
+
+        child = os.fork()
+        if child > 0:
+            _registry_set_pid(tid, child)
+            _info(f"Task {tid} started in background (pid {child})")
+            _info(f"Check output:  delegate-to-antigravity --check {tid}")
+            _info(f"Check status:  delegate-to-antigravity --status {tid}")
+            print(tid)
+            return
+
+        os.setsid()
+        _redirect_background_stdio(log_path)
+
+        try:
+            status, ti, to = _run_inbox(
+                tid, prompt, role, timeout, log_path,
+            )
+            _registry_update(tid, status, tokens_in=ti, tokens_out=to)
+            _pending_update(status, tid)
+            _audit("end", tid, "success" if status == "done" else "error", "0",
+                   f"{status}: {prompt[:100]}", role)
+        except Exception as exc:
+            try:
+                with open(log_path, "a") as f:
+                    f.write(f"FATAL: unhandled exception in child: {exc}\n")
+            except Exception:
+                pass
+            _registry_update(tid, "failed")
+            _pending_update("failed", tid)
+
+        os._exit(0)
+
     if wait:
         status, ti, to = _run_switchboard(
             tid, prompt, role, model, timeout, log_path,
@@ -607,7 +760,7 @@ def cmd_delegate(prompt: str, role: str, mode: str,
         _registry_update(tid, status, tokens_in=ti, tokens_out=to)
         _pending_update(status, tid)
         _audit("end", tid, "success" if status == "done" else "error", "0",
-               f"{status}: {prompt[:100]}", role)
+                   f"{status}: {prompt[:100]}", role)
         _info(f"Task {tid} {status}")
         print(tid)
         return
@@ -678,6 +831,9 @@ def _build_parser() -> argparse.ArgumentParser:
     p.add_argument("--list",   action="store_true", help="List all antigravity tasks")
     p.add_argument("--loop",   action="store_true",
                    help="Run as agentic loop with tool access (aq-antigravity-agent)")
+    p.add_argument("--backend", choices=["inbox", "switchboard"],
+                   default=os.environ.get("ANTIGRAVITY_BACKEND", "inbox"),
+                   help="Delegation backend: inbox (sanctioned IDE OAuth bridge, default) or switchboard")
     return p
 
 
@@ -708,7 +864,8 @@ def main():
         if not prompt.strip():
             p.error("Provide --prompt TEXT or --prompt-file FILE")
         cmd_delegate(prompt, args.role, args.mode, args.model,
-                     args.max_tokens, args.timeout, args.wait, args.loop)
+                     args.max_tokens, args.timeout, args.wait, args.loop,
+                     getattr(args, "backend", "inbox"))
 
 
 if __name__ == "__main__":
