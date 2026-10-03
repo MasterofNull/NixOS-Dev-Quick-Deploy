@@ -11,7 +11,7 @@ class Result:
 def box(tmp:Path):
  m.REPO=tmp; m.INBOX=tmp/".agent/collaboration/antigravity-inbox"; m.STATE=m.INBOX/".lane-state.json"; m.INBOX.mkdir(parents=True)
 def drop(name:str,out:str|None=None):
- body="# advisory\n"+(f"Output: {out}\n" if out else "")
+ body="# advisory\nRole: reviewer\n"+(f"Output: {out}\n" if out else "")
  p=m.INBOX/f"{name}.md"; p.write_text(body); return p
 def output(path:str):
  p=m.REPO/path; p.parent.mkdir(parents=True,exist_ok=True); p.write_text("result\n"); return p
@@ -97,7 +97,7 @@ def test_am5_generation_reuse_recovery_and_stale_budget():
   drop("reuse",declared); assert call(["claim","reuse.md","--actor","ide-watch"])==0; assert call(["complete",".claimed-reuse","--output",declared])==0
   # Same task id, new bytes, same UTC day: the archive must not collide or
   # inherit the previous generation's prepared/completion evidence.
-  (m.INBOX/"reuse.md").write_text("# new generation\nOutput: .agents/plans/reuse/antigravity.md\n")
+  (m.INBOX/"reuse.md").write_text("# new generation\nRole: reviewer\nOutput: .agents/plans/reuse/antigravity.md\n")
   assert call(["claim","reuse.md","--actor","ide-watch"])==0; assert call(["complete",".claimed-reuse","--output",declared])==0
   archived=list((m.REPO/".agent/archive").rglob(".claimed-reuse-*")); assert len(archived)==2 and archived[0].name != archived[1].name
   # A self-consistent prepared record still has no authority without claim or
@@ -212,7 +212,7 @@ def test_am7_archive_and_wake_failure_boundaries():
     box(root/f"dispatch-{name}"); declared=f".agents/plans/dispatch-{name}/antigravity.md"; drop("dispatch",declared)
     stream=io.StringIO()
     with contextlib.redirect_stdout(stream): rc=m.main(["dispatch-once","--json"])
-    lines=stream.getvalue().splitlines(); payload=json.loads(lines[0]); assert rc==1 and len(lines)==1 and payload=={"ok":False,"state":"wake-failed","task_id":"dispatch","method":method,"exit_code":exit_code}
+    lines=stream.getvalue().splitlines(); payload=json.loads(lines[0]); assert rc==1 and len(lines)==1 and payload=={"blocked":[],"blocked_count":0,"exit_code":exit_code,"method":method,"ok":False,"state":"wake-failed","task_id":"dispatch"}
   finally: m.subprocess.run=old
  print("PASS: AM7 archive safety, terminal idempotence, and provider failure semantics")
 

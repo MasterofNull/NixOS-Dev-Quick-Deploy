@@ -9,6 +9,7 @@ paths = [
     AI_STACK_ROOT,
     AI_STACK_ROOT / "aidb",
     AI_STACK_ROOT / "offloading",
+    AI_STACK_ROOT / "mcp-servers",
     AI_STACK_ROOT / "mcp-servers" / "hybrid-coordinator",
     AI_STACK_ROOT / "mcp-servers" / "hybrid-coordinator" / "core",
     AI_STACK_ROOT / "mcp-servers" / "hybrid-coordinator" / "knowledge",

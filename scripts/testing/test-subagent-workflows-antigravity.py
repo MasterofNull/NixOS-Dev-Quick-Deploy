@@ -104,6 +104,35 @@ class TestSubagentWorkflowsAntigravity(unittest.TestCase):
         content_repl = repl_script.read_text(encoding="utf-8")
         self.assertIn('"antigravity": REPO_ROOT / "scripts" / "ai" / "delegate-to-antigravity"', content_repl)
 
+    def test_interactive_consoles_block_antigravity_editing_roles_before_launch(self):
+        def load_module(name, script):
+            loader = importlib.machinery.SourceFileLoader(name, str(script))
+            spec = importlib.util.spec_from_loader(name, loader)
+            module = importlib.util.module_from_spec(spec)
+            loader.exec_module(module)
+            return module
+
+        scripts = REPO_ROOT / "scripts" / "ai"
+        window = load_module("aq_agent_window_preflight", scripts / "aq-agent-window")
+        interactive = load_module("aq_subagent_interactive_preflight", scripts / "aq-subagent-interactive")
+        repl = load_module("aq_coordinator_repl_preflight", scripts / "aq-coordinator-repl")
+
+        callers = (
+            (window, lambda: window.AgentWindow("local").delegate_task("antigravity", "edit", "implementer")),
+            (interactive, lambda: interactive.InteractiveSubagentConsole().spawn_subagent("antigravity", "edit")),
+            (repl, lambda: repl.dispatch_subagent("antigravity", "edit", "implementer")),
+        )
+        for module, dispatch in callers:
+            with mock.patch.object(module, "console") as console, \
+                 mock.patch.object(module.subprocess, "Popen") as popen:
+                dispatch()
+            popen.assert_not_called()
+            self.assertIn(
+                "blocked_unsupported_ide_worktree_isolation",
+                str(console.print.call_args),
+            )
+            self.assertFalse(module.reject_unsupported_antigravity_editing_role("local", "implementer"))
+
     def test_workflow_executor_lane_forwarding(self):
         we_script = REPO_ROOT / "ai-stack" / "mcp-servers" / "hybrid-coordinator" / "workflow" / "workflow_executor.py"
         content = we_script.read_text(encoding="utf-8")

@@ -45,6 +45,16 @@ from rich.table import Table
 from rich.text import Text
 
 REPO_ROOT = Path(__file__).resolve().parent.parent.parent
+
+_ANTIGRAVITY_EDITING_ROLES = frozenset({"implement", "implementer", "rsi", "coordinator", "subagent"})
+
+
+def reject_unsupported_antigravity_editing_role(lane: str, role: str) -> bool:
+    if lane.strip().lower() in ("antigravity", "gemini") and role.strip().lower() in _ANTIGRAVITY_EDITING_ROLES:
+        console.print("[bold red]ERROR: blocked_unsupported_ide_worktree_isolation: Antigravity IDE bridge cannot verify a task-specific workspace binding[/bold red]")
+        return True
+    return False
+
 HISTORY_FILE = Path.home() / ".aq_coordinator_history"
 PULSE_LOG = REPO_ROOT / ".agent" / "collaboration" / "PULSE.log"
 REGISTRY_FILE = REPO_ROOT / ".agents" / "delegation" / "registry.jsonl"
@@ -247,6 +257,8 @@ def dispatch_subagent(lane: str, prompt: str, role: str = "implementer"):
         "antigravity": REPO_ROOT / "scripts" / "ai" / "delegate-to-antigravity",
     }
     script = scripts.get(lane.lower(), scripts["local"])
+    if reject_unsupported_antigravity_editing_role(lane, role):
+        return
     if not script.is_file():
         console.print(f"[red]Error: Dispatch script not found: {script}[/red]")
         return

@@ -30,6 +30,8 @@ logger = logging.getLogger("hybrid-coordinator")
 _DELEGATE_ROLE_ALIASES = {
     "implement": "implementer",
     "implementer": "implementer",
+    "coder": "implementer",
+    "agent": "implementer",
     "review": "reviewer",
     "reviewer": "reviewer",
     "plan": "plan",
@@ -257,7 +259,10 @@ async def _spawn_delegated_agent_instance(
         _AGENT_STATE[agent_id] = instance
         return instance, 500
 
-    cmd = [str(script), "--wait", "--prompt", task_text]
+    prompt_text = task_text
+    if lane_norm == "codex":
+        prompt_text = f"Assigned role: {normalized_role}\n\n{task_text}"
+    cmd = [str(script), "--wait", "--prompt", prompt_text]
     if lane_norm in ("antigravity", "gemini"):
         cmd.extend(["--role", normalized_role, "--timeout", str(int(timeout_sec))])
     elif lane_norm == "claude":
@@ -300,11 +305,15 @@ async def _spawn_delegated_agent_instance(
         except ProcessLookupError:
             pass
         await proc.communicate()
+        if instance.get("status") != "running":
+            return instance, 200
         instance["status"] = "timeout"
         instance["error"] = f"Task timed out after {timeout_sec}s"
         instance["completed_at"] = datetime.now().isoformat()
         return instance, 504
 
+    if instance.get("status") != "running":
+        return instance, 200
     if proc.returncode != 0:
         instance["status"] = "failed"
         instance["error"] = stderr.decode(errors="replace")[:500] if stderr else "unknown"
@@ -403,6 +412,8 @@ async def handle_agents_kill(request: web.Request) -> web.Response:
     instance = _AGENT_STATE.get(agent_id)
     if not instance:
         return web.json_response({"error": f"Agent {agent_id} not found"}, status=404)
+    if instance.get("status") != "running":
+        return web.json_response({"status": "ok", "agent_id": agent_id, "instance": instance})
     pid = instance.get("pid")
     if pid:
         try:

@@ -5379,3 +5379,9 @@ File: scripts/ai/lib/worktree-isolation.sh; scripts/automation/prsi-orchestrator
   Severity: high (caused local agent APU timeout >900s on implementation tasks).
   Action: done.
   File: scripts/ai/lib/auto_assign.py; scripts/ai/lib/dispatch.py
+
+- [RESOLVED 2026-10-03] Antigravity final review 2026-10-03 — malformed pending metadata/receipt errors are explicitly surfaced and blocked-only queues report blocked state with blocked_count and reasons. Resolved by `_eligible_advisory_pending`, `_ADVISORY_ROLES` enforcement, and `cmd_next`/`cmd_dispatch_once` payload reporting in scripts/ai/aq-antigravity-inbox. Verified by scripts/testing/test-antigravity-inbox.py and test-antigravity-claim-receipt.py.
+- [RESOLVED 2026-10-03] Delegated lifecycle 2026-10-03 — terminal instances check status before signaling PIDs and spawn waiter avoids overwriting killed/terminated instances. Resolved in ai-stack/mcp-servers/hybrid-coordinator/workflow/agents_task_handlers.py (`handle_agents_kill`, `_spawn_delegated_agent_instance`). Verified by test_delegated_caller_safety.py (9/9 passed).
+- [RESOLVED 2026-10-03] Interactive Antigravity launchers 2026-10-03 — added preflight rejection of unsupported Antigravity editing roles across interactive launchers: aq-agent-window, aq-coordinator-repl, and aq-subagent-interactive (`reject_unsupported_antigravity_editing_role`). Verified by scripts/testing/test-subagent-workflows-antigravity.py.
+- [DEFERRED] Collaboration pulse 2026-10-03 — concurrent pulse writers contend on a shared temporary path. Root cause: non-unique atomic write staging; Severity: medium; Action: serialize this slice's pulse writes; producer fix remains backlog. File: scripts/ai/aq-event.
+- [DEFERRED] Test environment 2026-10-03 — pytest reports unknown asyncio_mode and asyncio_default_fixture_loop_scope options; Severity: low; Action: reconcile installed pytest plugins/config in separate maintenance slice. Focused caller tests still pass.

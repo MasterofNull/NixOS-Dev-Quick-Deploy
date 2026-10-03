@@ -41,6 +41,114 @@ def test_delegated_reviewer_uses_reviewer_role(monkeypatch):
     assert spawned[0][spawned[0].index("--role") + 1] == "review"
 
 
+def test_delegated_codex_embeds_normalized_role_without_role_flag(monkeypatch):
+    spawned = []
+
+    async def create_process(*args, **kwargs):
+        spawned.append(args)
+        return _Process()
+
+    monkeypatch.setattr(handlers.asyncio, "create_subprocess_exec", create_process)
+    for requested_role in ("coder", "agent"):
+        instance, status = asyncio.run(handlers._spawn_delegated_agent_instance(
+            lane="codex", role=requested_role, task_text="implement this", timeout_sec=1,
+        ))
+        command = spawned[-1]
+        assert status == 201
+        assert instance["role"] == "implementer"
+        assert "--role" not in command
+        assert command[command.index("--prompt") + 1] == "Assigned role: implementer\n\nimplement this"
+
+
+class _Request:
+    def __init__(self, body):
+        self.body = body
+
+    async def json(self):
+        return self.body
+
+
+def test_kill_delegated_instance_terminates_its_process_group(monkeypatch):
+    killed = []
+    monkeypatch.setattr(handlers, "_AGENT_STATE", {
+        "delegated": {"id": "delegated", "status": "running", "pid": 4321, "process_group": 4321},
+    })
+    monkeypatch.setattr(handlers.os, "killpg", lambda pid, sig: killed.append((pid, sig)))
+
+    response = asyncio.run(handlers.handle_agents_kill(_Request({"id": "delegated"})))
+
+    assert response.status == 200
+    assert killed == [(4321, handlers.signal.SIGTERM)]
+    assert handlers._AGENT_STATE["delegated"]["status"] == "killed"
+
+
+def test_kill_terminal_instance_does_not_signal_stale_process_group(monkeypatch):
+    killed = []
+    monkeypatch.setattr(handlers.os, "killpg", lambda pid, sig: killed.append((pid, sig)))
+
+    for status in ("completed", "failed", "timeout", "killed", "already_gone"):
+        monkeypatch.setattr(handlers, "_AGENT_STATE", {
+            "delegated": {
+                "id": "delegated",
+                "status": status,
+                "pid": 4321,
+                "process_group": 4321,
+            },
+        })
+        response = asyncio.run(handlers.handle_agents_kill(_Request({"id": "delegated"})))
+
+        assert response.status == 200
+        assert handlers._AGENT_STATE["delegated"]["status"] == status
+
+    assert killed == []
+
+
+class _BlockingProcess:
+    pid = 8765
+
+    def __init__(self):
+        self.returncode = None
+        self.communicating = asyncio.Event()
+        self.release = asyncio.Event()
+
+    async def communicate(self):
+        self.communicating.set()
+        await self.release.wait()
+        self.returncode = -handlers.signal.SIGTERM
+        return b"", b"terminated"
+
+
+def test_delegated_kill_survives_spawn_waiter_reap(monkeypatch):
+    process = _BlockingProcess()
+    killed = []
+    monkeypatch.setattr(handlers, "_AGENT_STATE", {})
+
+    async def create_process(*_args, **_kwargs):
+        return process
+
+    monkeypatch.setattr(handlers.asyncio, "create_subprocess_exec", create_process)
+    monkeypatch.setattr(handlers.os, "killpg", lambda pid, sig: killed.append((pid, sig)))
+
+    async def spawn_kill_and_reap():
+        spawn = asyncio.create_task(handlers._spawn_delegated_agent_instance(
+            lane="gemini", role="implement", task_text="x", timeout_sec=1,
+        ))
+        await process.communicating.wait()
+        agent_id = next(iter(handlers._AGENT_STATE))
+        response = await handlers.handle_agents_kill(_Request({"id": agent_id}))
+        process.release.set()
+        instance, status = await spawn
+        return response, instance, status
+
+    response, instance, status = asyncio.run(spawn_kill_and_reap())
+
+    assert response.status == 200
+    assert killed == [(process.pid, handlers.signal.SIGTERM)]
+    assert process.returncode == -handlers.signal.SIGTERM
+    assert status == 200
+    assert instance["status"] == "killed"
+
+
 def test_delegated_unknown_role_is_rejected_before_spawn(monkeypatch):
     async def create_process(*_args, **_kwargs):
         raise AssertionError("unknown roles must not start a subprocess")
