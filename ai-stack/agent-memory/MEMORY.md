@@ -190,7 +190,8 @@ ralph-wiggum TaskRequest field: `prompt` (not `task`). AIDB vector search: POST 
 ## User Preferences
 - Prefers symbols and shorthand for memory savings (e.g. `§13`, `§8.3`, `×3`) — do NOT expand to spelled-out forms without asking
 - Ask before converting shorthand or symbols to verbose equivalents
-# RSI M7 closeout memory pointer (2026-10-02)
-- Compact evidence, independent review hash, activation boundary, and validation limits: `.agent/memory/rsi-m7-20261002.md`.
-- Open producer defect: PRSI safe dry-run `repo_root` resolves to `ai-stack`; see `.agent/WORKAROUND-REGISTER.md` entry `WR-PRSI-M7-REPO-ROOT`.
-- Do not infer deployed-service activation or clean tier0/QA from isolated handler/HTTP PASS; see `.agent/ACTIVATION-AUDIT.md` and current HANDOFF.
+## RSI & Maintenance Pointers (2026-10-02)
+- M7 closeout & security checks diagnosis: `.agent/memory/rsi-m7-20261002.md`, `.agent/memory/security-checks-20261002.md`.
+- Producer fixes: `WR-PRSI-M7-REPO-ROOT` (`parents[4]`) & `WR-PRSI-THROTTLER` marked FIXED.
+- Multi-lane RSI repair: fallback across `repair_lanes` with cooldown checks; verified by `test-rsi-repair-lane.py`.
+- Antigravity inbox drained (9/9 receipts); returning agent review tasks queued in `AGENT-CATCHUP-QUEUE.md`.

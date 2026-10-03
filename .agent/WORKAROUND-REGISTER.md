@@ -1,13 +1,13 @@
 # Workaround / Debt Register (SSOT)
 
-## WR-PRSI-M7-REPO-ROOT — dry-run preview resolves wrong repository root — OPEN
+## WR-PRSI-M7-REPO-ROOT — dry-run preview resolves wrong repository root — FIXED
 - symptom: safe dry-run preview reaches HTTP handler but returns 404 because `repo_root` resolves to `ai-stack`.
 - band-aid in place? no.
-- root cause: existing `Path.parents` calculation is one level short for this checkout layout.
-- producer to fix: PRSI action execution handler root calculation.
-- fix-path: bounded root-resolution correction with focused handler and isolated HTTP regression; validate against actual expected file path.
-- class: T2 validation-gap · severity: medium · status: OPEN · opened: 2026-10-02.
-- evidence: `/tmp/codex-rsi-m7-live.py` verified request guard behavior; safe preview 404. No deployed-service claim.
+- root cause: existing `Path.parents` calculation was one level short (`parent.parent.parent.parent` instead of 5 levels up / `resolve().parents[4]`) for this checkout layout.
+- producer to fix: PRSI action execution handler root calculation in `ai-stack/mcp-servers/hybrid-coordinator/workflow/prsi_handlers.py`.
+- fix-path: corrected `repo_root = Path(__file__).resolve().parents[4]` in `handle_prsi_actions_list` and `handle_prsi_action_execute`.
+- class: T2 validation-gap · severity: medium · status: FIXED · opened: 2026-10-02 · closed: 2026-10-02.
+- evidence: unit tests and path resolution tests verify `(repo_root / 'scripts/ai/aq-report').exists()` and `(repo_root / 'scripts/ai/aq-optimizer').exists()`.
 
 Every workaround, band-aid, or ad-hoc fix that is NOT yet fixed at its producer lives here —
 never silently in the code. Governed by `.agent/PROJECT-ROOT-CAUSE-DISCIPLINE-PRD.md` (proposed
@@ -203,9 +203,9 @@ Codex lane absent).
 - Runtime remains pending exact-subject independent review and a serialized live acceptance window; do not manually start the executing PRSI unit while Remediator/timer ownership is unsettled.
 - 2026-09-30 live acceptance (claude-opus): scheduled `ai-prsi-orchestrator` cycle 09:28 PDT failed `oom-kill` (pre-fix, 2m25s); first post-fix cycle 10:08 PDT ran sync (aq-report) to `Result=success` in 9s under the unchanged 256M cap. Exact subject 6c06b38b/243885d0 independently reviewed PASS by claude-opus (streaming path is order-independent; missing-file still yields `status=no_data`); local Qwen review local-20260930-105223-xbkns7 dispatched.
 
-## WR-PRSI-THROTTLER — aq-throttler kept on legacy PRSI queue file — OPEN
+## WR-PRSI-THROTTLER — aq-throttler kept on legacy PRSI queue file — FIXED
 - symptom: aq-throttler list-wraps the PRSI queue dict on write; pointed at the canonical queue it erased state (2026-10-02).
-- band-aid in place? yes: aq-throttler hardcoded to legacy /var/lib/nixos-ai-stack/prsi/action-queue.json (guarded by test-prsi-queue-path-ssot); ai-throttler.service stopped by owner.
-- root cause (T5): throttler writer predates the queue schema; no shared queue-write API.
-- producer to fix: scripts/ai/aq-throttler (write via the orchestrator's queue API, or retire in the PRSI->RSI merge).
-- class: T5 producer-governance-fracture · severity: high · status: OPEN · opened: 2026-10-02
+- band-aid in place? no: aq-throttler stripped of direct queue mutations in commit `1cd5b206`; runs `prsi-orchestrator.py execute --limit 1`. Pinned by `test-prsi-queue-path-ssot.py` lines 88-94 (asserts zero queue writes in aq-throttler).
+- root cause (T5): throttler writer predated queue schema; no shared queue-write API.
+- producer fixed: `scripts/ai/aq-throttler` executes via orchestrator CLI; queue mutations centralized in `scripts/ai/lib/prsi_queue.py`.
+- class: T5 producer-governance-fracture · severity: high · status: FIXED 2026-10-02 · opened: 2026-10-02
