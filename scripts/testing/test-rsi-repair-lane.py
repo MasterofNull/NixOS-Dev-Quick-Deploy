@@ -51,7 +51,9 @@ class LaneTests(unittest.TestCase):
 
     def test_lane_selection_and_execution_receipt(self):
         for policy, flags, expected in [({}, [], "codex"), ({}, ["--lane", "local"], "local"),
+                                         ({}, ["--lane", "claude"], "claude"),
                                          ({"rsi": {"repair_lane": "local"}}, [], "local"),
+                                         ({"rsi": {"repair_lane": "claude"}}, [], "claude"),
                                          ({"rsi": {"repair_lane": "local"}}, ["--lane", "codex"], "codex")]:
             with self.subTest(policy=policy, flags=flags):
                 prsi.PRSI_POLICY_FILE.write_text(json.dumps(policy))
@@ -66,8 +68,12 @@ class LaneTests(unittest.TestCase):
                 self.assertEqual(rows[0]["execution"]["receipt"]["lane"], expected)
                 self.preflight.assert_called_with(expected)
                 argv = popen.call_args.args[0]
-                expected_args = (["--wait", "--mode", "edit"] if expected == "codex" else
-                                 ["--mode", "agent", "--wait", "--timeout", "600", "--role", "implementer"])
+                if expected == "codex":
+                    expected_args = ["--wait", "--mode", "edit"]
+                elif expected == "claude":
+                    expected_args = ["--wait", "--role", "implementer"]
+                else:
+                    expected_args = ["--mode", "agent", "--wait", "--timeout", "600", "--role", "implementer"]
                 self.assertEqual(argv, [str(prsi.AI_SCRIPT_DIR / f"delegate-to-{expected}"),
                                         *expected_args, "--prompt", prsi._rsi_task_prompt(row(), False)])
                 self.assertTrue(popen.call_args.kwargs["start_new_session"])
@@ -127,7 +133,35 @@ class LaneTests(unittest.TestCase):
         code, output, _ = self.dispatch(["--execute"])
         self.assertEqual(code, 1)
         self.assertEqual(output["message"], "invalid_repair_lane")
-        self.preflight.assert_not_called()
+    def test_multi_lane_cooldown_fallback(self):
+        policy = {"rsi": {"repair_lanes": ["codex", "claude", "local"]}}
+        prsi.PRSI_POLICY_FILE.write_text(json.dumps(policy))
+        delegation_dir = self.root / "delegation"
+        delegation_dir.mkdir(parents=True, exist_ok=True)
+        future = (datetime.now(timezone.utc) + timedelta(hours=1)).strftime("%Y-%m-%dT%H:%M:%SZ")
+
+        # 1. codex on cooldown -> falls back to claude
+        (delegation_dir / ".codex-quota-cooldown").write_text(future)
+        proc = Mock(returncode=0)
+        proc.communicate.return_value = (completion("claude"), "")
+        with patch.dict("os.environ", {"AQ_DELEGATION_DIR": str(delegation_dir)}), \
+             patch.object(prsi.subprocess, "Popen", return_value=proc):
+            code, output, rows = self.dispatch(["--execute"])
+        self.assertEqual(code, 0)
+        self.assertEqual(output["lane"], "claude")
+        self.assertEqual(rows[0]["execution"]["receipt"]["lane"], "claude")
+        self.assertEqual(rows[0]["execution"]["receipt"]["substituted_from"], "codex")
+
+        # 2. codex and claude on cooldown -> falls back to local
+        (delegation_dir / ".claude-quota-cooldown").write_text(future)
+        proc.communicate.return_value = (completion("local"), "")
+        with patch.dict("os.environ", {"AQ_DELEGATION_DIR": str(delegation_dir)}), \
+             patch.object(prsi.subprocess, "Popen", return_value=proc):
+            code, output, rows = self.dispatch(["--execute"])
+        self.assertEqual(code, 0)
+        self.assertEqual(output["lane"], "local")
+        self.assertEqual(rows[0]["execution"]["receipt"]["lane"], "local")
+        self.assertEqual(rows[0]["execution"]["receipt"]["substituted_from"], "codex")
 
 
 if __name__ == "__main__":

@@ -27,8 +27,12 @@ WAKE_PROMPT = (
     "Do not implement, build, stage, commit, or edit any other file."
 )
 WAKE_ARGV = ["antigravity", "chat", "--reuse-window", "--mode", "agent", WAKE_PROMPT]
-_OUTPUT_LINE = re.compile(r"^(?:Output|output_file):[ \t]*([^\r\n]+?)[ \t]*$", re.MULTILINE)
-_PRODUCTION_OUTPUT = re.compile(r"Respond by writing only:[ \t]*\r?\n`([^`\r\n]+)`")
+_OUTPUT_PATTERNS = [
+    re.compile(r"^(?:Output|output_file):[ \t]*([^\r\n]+?)[ \t]*$", re.MULTILINE),
+    re.compile(r"Respond by writing(?: only:)?[ \t]*(?:\r?\n)?[`'\"]?([^`'\"\r\n]+?)[`'\"]?\.?[ \t]*$", re.MULTILINE),
+    re.compile(r"Report to[ \t]+`?([^`\r\n\s]+)`?\.?", re.MULTILINE),
+    re.compile(r"Return[^\r\n]+?to[ \t]*(?:\r?\n)?[`'\"]?(\.agents/[^`'\"\s]+?\.md)`?\.?", re.MULTILINE),
+]
 _TASK_ID = re.compile(r"^[A-Za-z0-9][A-Za-z0-9._-]{0,127}$")
 
 class InboxError(RuntimeError): pass
@@ -70,7 +74,12 @@ def _safe_member(name: str, *, claimed: bool = False) -> Path:
 
 def _metadata(raw: bytes) -> tuple[str, str]:
     text = raw.decode("utf-8", "strict")
-    values = _OUTPUT_LINE.findall(text) + _PRODUCTION_OUTPUT.findall(text)
+    values: list[str] = []
+    for pat in _OUTPUT_PATTERNS:
+        for m in pat.findall(text):
+            c = m.strip().strip("`").strip('"').strip("'").rstrip(".").rstrip("`")
+            if c.startswith(".agents/") and c not in values:
+                values.append(c)
     if len(values) != 1: raise InboxError("task requires exactly one Output: or output_file: metadata line")
     value = values[0]
     p = Path(value)

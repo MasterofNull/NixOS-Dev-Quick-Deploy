@@ -907,15 +907,19 @@ def _rsi_task_prompt(row: Dict[str, Any], apply: bool) -> str:
 
 def _run_rsi_delegate(row: Dict[str, Any], timeout_seconds: int, apply: bool, lane: str = "codex") -> Tuple[str, Dict[str, Any]]:
     """Launch the selected delegate with its default isolated worktree."""
-    if lane not in {"codex", "local"}:
+    if lane not in {"codex", "claude", "local"}:
         raise ValueError("invalid RSI repair lane")
-    argv = [
-        str(AI_SCRIPT_DIR / "delegate-to-local"), "--mode", "agent", "--wait",
-        "--timeout", str(timeout_seconds), "--role", "implementer", "--prompt", _rsi_task_prompt(row, apply),
-    ]
     if lane == "codex":
         argv = [str(AI_SCRIPT_DIR / "delegate-to-codex"), "--wait", "--mode", "edit",
                 "--prompt", _rsi_task_prompt(row, apply)]
+    elif lane == "claude":
+        argv = [str(AI_SCRIPT_DIR / "delegate-to-claude"), "--wait", "--role", "implementer",
+                "--prompt", _rsi_task_prompt(row, apply)]
+    else:
+        argv = [
+            str(AI_SCRIPT_DIR / "delegate-to-local"), "--mode", "agent", "--wait",
+            "--timeout", str(timeout_seconds), "--role", "implementer", "--prompt", _rsi_task_prompt(row, apply),
+        ]
     proc = subprocess.Popen(
         argv, stdout=subprocess.PIPE, stderr=subprocess.PIPE, text=True,
         start_new_session=True, cwd=str(REPO_ROOT),
@@ -951,6 +955,7 @@ def _run_rsi_delegate(row: Dict[str, Any], timeout_seconds: int, apply: bool, la
     receipt_patterns = {
         "local": r"(?m)^\[delegate-to-local\] Task local-\d{8}-\d{6}-[a-z0-9]{6} completed\.$",
         "codex": r"(?m)^\[delegate-to-codex\] Task codex-\d{8}-\d{6}-[a-z0-9]{6} completed\.$",
+        "claude": r"(?m)^\[delegate-to-claude\] Task claude-\d{8}-\d{6}-[a-z0-9]{6} completed( successfully)?\.$",
     }
     if not re.search(receipt_patterns[lane], stdout or ""):
         receipt["reason"] = "missing_delegate_receipt"
@@ -974,16 +979,29 @@ def _is_lane_unavailable(receipt: Any) -> bool:
 
 def _lane_cooldown_until(lane: str) -> "str | None":
     """Active delegate quota cooldown for `lane` (ISO UTC) or None."""
-    if lane != "codex":
-        return None
     base = os.environ.get("AQ_DELEGATION_DIR") or str(REPO_ROOT / ".agents" / "delegation")
-    path = Path(base) / ".codex-quota-cooldown"
+    path = Path(base) / f".{lane}-quota-cooldown"
     try:
         raw = path.read_text(encoding="utf-8").strip()
         until = datetime.fromisoformat(raw.replace("Z", "+00:00"))
     except (OSError, ValueError):
         return None
     return raw if until > datetime.now(timezone.utc) else None
+
+
+def _select_healthy_repair_lane(candidate_lanes: List[str]) -> Tuple[str, bool]:
+    """Select the first healthy repair lane not in cooldown.
+    Returns (selected_lane, is_cooldown_fallback).
+    """
+    first_choice = candidate_lanes[0] if candidate_lanes else "codex"
+    for candidate in candidate_lanes:
+        if _lane_cooldown_until(candidate):
+            continue
+        ok, _ = _rsi_dispatch_preflight(candidate)
+        if not ok:
+            continue
+        return candidate, (candidate != first_choice)
+    return first_choice, False
 
 
 def _is_infra_failure(receipt: Any) -> bool:
@@ -1053,10 +1071,33 @@ def _rsi_gate_filter(eligible: List[Dict[str, Any]], cfg: Dict[str, Any], apply:
 def cmd_rsi_dispatch(args: argparse.Namespace) -> int:
     """Reconcile and dispatch a bounded RSI diagnostic/repair through isolated delegation."""
     policy = _load_policy()
-    lane = getattr(args, "lane", None) or policy.get("rsi", {}).get("repair_lane", "codex")
-    if lane not in {"codex", "local"}:
-        print(json.dumps({"ok": False, "lane": lane, "message": "invalid_repair_lane"}, sort_keys=True))
-        return 1
+    rsi_cfg = policy.get("rsi", {})
+    if not isinstance(rsi_cfg, dict):
+        rsi_cfg = {}
+
+    cli_lane = getattr(args, "lane", None)
+    if cli_lane:
+        if cli_lane not in {"codex", "claude", "local"}:
+            print(json.dumps({"ok": False, "lane": cli_lane, "message": "invalid_repair_lane"}, sort_keys=True))
+            return 1
+        candidate_lanes = [cli_lane]
+    elif "repair_lanes" in rsi_cfg:
+        configured_lanes = rsi_cfg.get("repair_lanes")
+        if not isinstance(configured_lanes, list) or not configured_lanes:
+            configured_lanes = ["codex"]
+        candidate_lanes = [l for l in configured_lanes if l in {"codex", "claude", "local"}]
+        if not candidate_lanes:
+            first_invalid = configured_lanes[0] if configured_lanes else "unknown"
+            print(json.dumps({"ok": False, "lane": first_invalid, "message": "invalid_repair_lane"}, sort_keys=True))
+            return 1
+    else:
+        single = rsi_cfg.get("repair_lane", "codex")
+        if single not in {"codex", "claude", "local"}:
+            print(json.dumps({"ok": False, "lane": single, "message": "invalid_repair_lane"}, sort_keys=True))
+            return 1
+        candidate_lanes = [single]
+
+    lane, substituted = _select_healthy_repair_lane(candidate_lanes)
     timeout_seconds = max(30, int(getattr(args, "timeout_seconds", 600)))
     lock = _acquire_rsi_dispatch_lock()
     if lock is None:
@@ -1165,11 +1206,16 @@ def cmd_rsi_dispatch(args: argparse.Namespace) -> int:
                 observed_status = row.get("status")
                 row["status"] = "rsi_running"
                 row["rsi_attempts"] = int(row.get("rsi_attempts", 0) or 0) + 1
-                row["execution"] = {"last_run_at": _now(), "result": "dispatching_isolated_worktree", "receipt": {"lane": lane}}
+                receipt_meta = {"lane": lane}
+                if substituted:
+                    receipt_meta["substituted_from"] = candidate_lanes[0]
+                row["execution"] = {"last_run_at": _now(), "result": "dispatching_isolated_worktree", "receipt": receipt_meta}
                 if _merge_save(queue, [row], _RSI_OWNED_FIELDS, {row.get("id"): observed_status}):
                     skipped_reasons["skipped_status_changed"] = skipped_reasons.get("skipped_status_changed", 0) + 1
                     continue
                 result, receipt = _run_rsi_delegate(row, timeout_seconds, bool(args.apply), lane)
+                if substituted:
+                    receipt["substituted_from"] = candidate_lanes[0]
                 if result == "rsi_failed" and _is_lane_unavailable(receipt):
                     # Lane out of quota: the repair was never attempted; refund and wait for reset.
                     row["rsi_attempts"] = max(0, int(row["rsi_attempts"]) - 1)
@@ -1537,7 +1583,7 @@ def build_parser() -> argparse.ArgumentParser:
     s_rsi.add_argument("--limit", type=int, default=1)
     s_rsi.add_argument("--max-attempts", type=int, default=_RSI_MAX_ATTEMPTS)
     s_rsi.add_argument("--timeout-seconds", type=int, default=600)
-    s_rsi.add_argument("--lane", choices=("codex", "local"), default=None)
+    s_rsi.add_argument("--lane", choices=("codex", "claude", "local"), default=None)
     s_rsi.set_defaults(func=cmd_rsi_dispatch)
 
     s_rq = sub.add_parser("rsi-requeue", help="Requeue owner-approved RSI rows stalled by infrastructure failures")
