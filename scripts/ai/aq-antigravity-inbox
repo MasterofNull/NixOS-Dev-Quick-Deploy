@@ -38,6 +38,7 @@ _OUTPUT_PATTERNS = [
 _TASK_ID = re.compile(r"^[A-Za-z0-9][A-Za-z0-9._-]{0,127}$")
 _ROLE = re.compile(r"^Role:\s*([A-Za-z][A-Za-z0-9_-]*)\s*$", re.MULTILINE | re.IGNORECASE)
 _EDITING_ROLES = frozenset({"implement", "implementer", "rsi", "coordinator", "subagent"})
+_ADVISORY_ROLES = frozenset({"architect", "full-expert-team", "orchestrator", "plan", "research", "review", "reviewer"})
 _WAKE_DEBOUNCE_S = 60
 
 
@@ -79,7 +80,10 @@ def _safe_member(name: str, *, claimed: bool = False) -> Path:
     return path
 
 def _metadata(raw: bytes) -> tuple[str, str]:
-    text = raw.decode("utf-8", "strict")
+    try:
+        text = raw.decode("utf-8", "strict")
+    except UnicodeDecodeError as exc:
+        raise InboxError("task metadata is not valid UTF-8") from exc
     values: list[str] = []
     for pat in _OUTPUT_PATTERNS:
         for m in pat.findall(text):
@@ -102,6 +106,24 @@ def _require_advisory_ide_lane(raw: bytes) -> None:
     role = _task_role(raw)
     if role in _EDITING_ROLES:
         raise InboxError("blocked_unsupported_ide_worktree_isolation")
+    if role not in _ADVISORY_ROLES:
+        raise InboxError("blocked_unsupported_ide_role")
+
+def _blocked_pending(p: Path, exc: InboxError) -> dict[str, str]:
+    """Expose rejected pending work without echoing an untrusted filename or controls."""
+    task_id = p.stem if _TASK_ID.fullmatch(p.stem) else "invalid-task-id"
+    reason = re.sub(r"[\x00-\x1f\x7f]+", " ", str(exc)).strip()[:240]
+    return {"task_id": task_id, "reason": reason or "pending task rejected"}
+
+def _eligible_advisory_pending() -> tuple[list[tuple[Path, str, str, str]], list[dict[str, str]]]:
+    eligible=[]; blocked=[]
+    for p in _pending():
+        try:
+            raw=_read_regular(p); output,generation=_metadata(raw); tid=_tid(p.name)
+            _require_advisory_ide_lane(raw)
+            if not _is_parked(tid,generation): eligible.append((p,tid,output,generation))
+        except InboxError as exc: blocked.append(_blocked_pending(p,exc))
+    return eligible,blocked
 
 def _load(tid: str) -> dict[str, Any]:
     path = _receipt_path(tid)
@@ -161,15 +183,21 @@ def _parse_ts(x: Any) -> datetime | None:
     except ValueError: return None
 
 def _state() -> dict[str, Any]:
-    pending=_pending(); parked=[]; eligible=[]; required=[]
+    pending=_pending(); parked=[]; eligible=[]; required=[]; blocked=[]
     for p in pending:
         try:
-            _,gen=_metadata(_read_regular(p)); tid=_tid(p.name)
+            raw=_read_regular(p); _,gen=_metadata(raw); tid=_tid(p.name)
             if _is_parked(tid,gen): parked.append(p)
-            else: eligible.append(p); required.append(p)
-        except InboxError: required.append(p)
+            else:
+                required.append(p)
+                try: _require_advisory_ide_lane(raw)
+                except InboxError as exc: blocked.append({"task_id":tid,"reason":str(exc)})
+                else: eligible.append(p)
+        except InboxError as exc:
+            required.append(p)
+            blocked.append(_blocked_pending(p,exc))
     undrained=_undrained()
-    return {"inbox":_rel(INBOX),"exists":INBOX.exists(),"pending_count":len(pending),"claimed_count":len(_claimed()),"parked_count":len(parked),"claim_required_count":len(required),"undrained_count":len(undrained),"undrained":undrained,"next":_rel(eligible[0]) if eligible else None,"next_eligible":_rel(eligible[0]) if eligible else None,"pending":[_rel(p) for p in pending],"claimed":[_rel(p) for p in _claimed()],"parked":[_rel(p) for p in parked]}
+    return {"inbox":_rel(INBOX),"exists":INBOX.exists(),"pending_count":len(pending),"claimed_count":len(_claimed()),"parked_count":len(parked),"blocked_count":len(blocked),"blocked":blocked,"claim_required_count":len(required),"undrained_count":len(undrained),"undrained":undrained,"next":_rel(eligible[0]) if eligible else None,"next_eligible":_rel(eligible[0]) if eligible else None,"pending":[_rel(p) for p in pending],"claimed":[_rel(p) for p in _claimed()],"parked":[_rel(p) for p in parked]}
 
 def _emit(payload: dict[str, Any], as_json: bool) -> int:
     if as_json: print(json.dumps(payload,sort_keys=True)); return 0
@@ -226,16 +254,11 @@ def cmd_verify(args: argparse.Namespace)->int:
 
 def cmd_status(args: argparse.Namespace)->int: return _emit(_state(),args.json)
 def cmd_next(args: argparse.Namespace)->int:
-    eligible=[]
-    for p in _pending():
-        try:
-            out,gen=_metadata(_read_regular(p))
-            if not _is_parked(_tid(p.name),gen): eligible.append((p,out,gen))
-        except InboxError: continue
+    eligible,blocked=_eligible_advisory_pending()
     if not eligible:
-        _emit({"ok":False,"reason":"empty-or-no-eligible-inbox"},args.json); return 1
-    p,out,gen=eligible[0]
-    return _emit({"ok":True,"basename":p.name,"declared_output":out,"generation":gen},args.json)
+        _emit({"ok":False,"state":"blocked" if blocked else "empty","reason":"empty-or-no-eligible-inbox","blocked_count":len(blocked),"blocked":blocked},args.json); return 1
+    p,_,out,gen=eligible[0]
+    return _emit({"ok":True,"state":"available","basename":p.name,"declared_output":out,"generation":gen,"blocked_count":len(blocked),"blocked":blocked},args.json)
 
 def cmd_claim(args: argparse.Namespace)->int:
     tid=_tid(args.name)
@@ -383,22 +406,11 @@ def cmd_dispatch_once(args: argparse.Namespace)->int:
         with _locked(_supervisor_lock()) as lock:
             fcntl.flock(lock.fileno(),fcntl.LOCK_EX)
             try:
-                candidates=[]; blocked_task_id=None
-                for p in _pending():
-                    try:
-                        raw=_read_regular(p); _,gen=_metadata(raw); tid=_tid(p.name)
-                        try:
-                            _require_advisory_ide_lane(raw)
-                        except InboxError:
-                            blocked_task_id=tid; break
-                        if not _is_parked(tid,gen): candidates.append((p,tid,gen))
-                    except InboxError: continue
-                if blocked_task_id is not None:
-                    payload={"ok":False,"state":"blocked","task_id":blocked_task_id,"reason":"blocked_unsupported_ide_worktree_isolation"}
-                elif not candidates:
-                    claimed=_claimed(); payload={"ok":True,"state":"claimed","task_id":_tid(claimed[0].name)} if claimed else {"ok":True,"state":"empty"}
+                candidates,blocked=_eligible_advisory_pending()
+                if not candidates:
+                    claimed=_claimed(); payload={"ok":True,"state":"claimed","task_id":_tid(claimed[0].name)} if claimed else ({"ok":False,"state":"blocked"} if blocked else {"ok":True,"state":"empty"})
                 else:
-                    p,tid,gen=candidates[0]; attempts=[r for r in _records(tid,"wake_attempt",gen) if r.get("actor")=="dispatch-once" and r.get("non_passive") is True]
+                    p,tid,_,gen=candidates[0]; attempts=[r for r in _records(tid,"wake_attempt",gen) if r.get("actor")=="dispatch-once" and r.get("non_passive") is True]
                     reservations=_records(tid,"wake_reservation",gen)
                     finals={r.get("reservation") for r in attempts}
                     live=[]
@@ -420,6 +432,7 @@ def cmd_dispatch_once(args: argparse.Namespace)->int:
                         nonce=secrets.token_hex(16); _append(tid,{"type":"wake_reservation","task_id":tid,"generation":gen,"ts":_now(),"actor":"dispatch-once","nonce":nonce}); reservation=(tid,gen,nonce); payload={"ok":True,"state":"reserved","task_id":tid}
             finally: fcntl.flock(lock.fileno(),fcntl.LOCK_UN)
     except InboxError as exc: print(str(exc),file=sys.stderr); return 1
+    payload.update({"blocked_count":len(blocked),"blocked":blocked})
     if reservation is None:
         _emit(payload,args.json)
         return 0 if payload.get("ok") else 1
@@ -434,6 +447,7 @@ def cmd_dispatch_once(args: argparse.Namespace)->int:
                 else: payload={"ok":False,"state":"reservation-lost","task_id":tid}
             finally: fcntl.flock(lock.fileno(),fcntl.LOCK_UN)
     except InboxError as exc: print(str(exc),file=sys.stderr); return 1
+    payload.update({"blocked_count":len(blocked),"blocked":blocked})
     _emit(payload,args.json)
     return 0 if payload.get("ok") else 1
 

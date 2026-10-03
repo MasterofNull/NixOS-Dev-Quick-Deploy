@@ -47,6 +47,15 @@ SEND_SCRIPT = REPO_ROOT / "scripts" / "ai" / "aq-agent-send"
 
 console = Console()
 
+_ANTIGRAVITY_EDITING_ROLES = frozenset({"implement", "implementer", "rsi", "coordinator", "subagent"})
+
+
+def reject_unsupported_antigravity_editing_role(lane: str, role: str) -> bool:
+    if lane.strip().lower() in ("antigravity", "gemini") and role.strip().lower() in _ANTIGRAVITY_EDITING_ROLES:
+        console.print("[bold red]ERROR: blocked_unsupported_ide_worktree_isolation: Antigravity IDE bridge cannot verify a task-specific workspace binding[/bold red]")
+        return True
+    return False
+
 
 def get_subagent_tasks(limit: int = 15) -> List[Dict[str, Any]]:
     """Fetch recent sub-agent tasks from registry."""
@@ -213,6 +222,8 @@ class InteractiveSubagentConsole:
         lane_key = lane.strip().lower()
         if lane_key not in scripts:
             console.print(f"[red]Error: Unsupported lane '{lane}'. Choose one of: {', '.join(scripts)}.[/red]")
+            return
+        if reject_unsupported_antigravity_editing_role(lane_key, "subagent"):
             return
         script = scripts[lane_key]
         if not script.is_file():
