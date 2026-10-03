@@ -1,0 +1,214 @@
+[
+  {
+    "actions": [
+      {
+        "action": "prepare bounded RSI incident repair",
+        "approval": {
+          "at": null,
+          "by": null,
+          "note": null
+        },
+        "confidence": null,
+        "created_at": "2026-10-02T18:22:49.148274+00:00",
+        "estimated_token_cost": 900,
+        "execution": {
+          "last_run_at": null,
+          "result": "skipped_missing_independent_verifier"
+        },
+        "id": "cf74048af9045b4d",
+        "last_seen_at": "2026-10-02T18:22:49.148286+00:00",
+        "raw_action": {
+          "action": "prepare bounded RSI incident repair",
+          "incident_count": 1,
+          "incident_id": "30f7979bcc0cd714b8949313",
+          "incident_path": ".claude/worktrees",
+          "incident_severity": "medium",
+          "reason": "rsi-incident-open",
+          "requires_owner": false,
+          "root_issue_key": "rsi-incident:30f7979bcc0cd714b8949313",
+          "safe": false,
+          "shadow_only": true,
+          "source": "rsi-incidents.json",
+          "topic": "rsi-incident-recovery",
+          "type": "maintenance"
+        },
+        "reason": "rsi-incident-open",
+        "risk": "high",
+        "safe": false,
+        "seen_count": 1,
+        "status": "rsi_pending",
+        "type": "maintenance"
+      },
+      {
+        "action": "prepare bounded RSI incident repair",
+        "approval": {
+          "at": null,
+          "by": null,
+          "note": null
+        },
+        "confidence": null,
+        "created_at": "2026-10-02T18:22:49.148318+00:00",
+        "estimated_token_cost": 900,
+        "execution": {
+          "last_run_at": null,
+          "result": "skipped_missing_independent_verifier"
+        },
+        "id": "b16317092b714ea0",
+        "last_seen_at": "2026-10-02T18:22:49.148324+00:00",
+        "raw_action": {
+          "action": "prepare bounded RSI incident repair",
+          "incident_count": 1,
+          "incident_id": "353f98f90c2d9fb8d85bc895",
+          "incident_path": "nix/modules/roles/ai-stack.nix",
+          "incident_severity": "low",
+          "reason": "rsi-incident-open",
+          "requires_owner": false,
+          "root_issue_key": "rsi-incident:353f98f90c2d9fb8d85bc895",
+          "safe": false,
+          "shadow_only": true,
+          "source": "rsi-incidents.json",
+          "topic": "rsi-incident-recovery",
+          "type": "maintenance"
+        },
+        "reason": "rsi-incident-open",
+        "risk": "high",
+        "safe": false,
+        "seen_count": 1,
+        "status": "rsi_pending",
+        "type": "maintenance"
+      },
+      {
+        "action": "prepare bounded RSI incident repair",
+        "approval": {
+          "at": null,
+          "by": null,
+          "note": null
+        },
+        "confidence": null,
+        "created_at": "2026-10-02T18:22:49.148344+00:00",
+        "estimated_token_cost": 900,
+        "execution": {
+          "last_run_at": null,
+          "result": "skipped_missing_independent_verifier"
+        },
+        "id": "946f97d0a3ac387a",
+        "last_seen_at": "2026-10-02T18:22:49.148348+00:00",
+        "raw_action": {
+          "action": "prepare bounded RSI incident repair",
+          "incident_count": 1,
+          "incident_id": "cecc9df5e8899cca3ddc26f6",
+          "incident_path": "nix/modules/roles/ai-stack.nix",
+          "incident_severity": "low",
+          "reason": "rsi-incident-open",
+          "requires_owner": false,
+          "root_issue_key": "rsi-incident:cecc9df5e8899cca3ddc26f6",
+          "safe": false,
+          "shadow_only": true,
+          "source": "rsi-incidents.json",
+          "topic": "rsi-incident-recovery",
+          "type": "maintenance"
+        },
+        "reason": "rsi-incident-open",
+        "risk": "high",
+        "safe": false,
+        "seen_count": 1,
+        "status": "rsi_pending",
+        "type": "maintenance"
+      },
+      {
+        "action": "prepare bounded RSI incident repair",
+        "approval": {
+          "at": null,
+          "by": null,
+          "note": null
+        },
+        "confidence": null,
+        "created_at": "2026-10-02T18:22:49.148365+00:00",
+        "estimated_token_cost": 900,
+        "execution": {
+          "last_run_at": null,
+          "result": "skipped_missing_independent_verifier"
+        },
+        "id": "a05cfd88d5fc58b9",
+        "last_seen_at": "2026-10-02T18:22:49.148369+00:00",
+        "raw_action": {
+          "action": "prepare bounded RSI incident repair",
+          "incident_count": 1,
+          "incident_id": "f5c1f07a2724216458e6a453",
+          "incident_path": "scripts/ai",
+          "incident_severity": "medium",
+          "reason": "rsi-incident-open",
+          "requires_owner": false,
+          "root_issue_key": "rsi-incident:f5c1f07a2724216458e6a453",
+          "safe": false,
+          "shadow_only": true,
+          "source": "rsi-incidents.json",
+          "topic": "rsi-incident-recovery",
+          "type": "maintenance"
+        },
+        "reason": "rsi-incident-open",
+        "risk": "high",
+        "safe": false,
+        "seen_count": 1,
+        "status": "rsi_pending",
+        "type": "maintenance"
+      },
+      {
+        "action": "prepare bounded RSI incident repair",
+        "approval": {
+          "at": null,
+          "by": null,
+          "note": null
+        },
+        "confidence": null,
+        "created_at": "2026-10-02T18:22:49.148385+00:00",
+        "estimated_token_cost": 900,
+        "execution": {
+          "last_run_at": null,
+          "result": "skipped_missing_independent_verifier"
+        },
+        "id": "2388e4c2553748ae",
+        "last_seen_at": "2026-10-02T18:22:49.148390+00:00",
+        "raw_action": {
+          "action": "prepare bounded RSI incident repair",
+          "incident_count": 1,
+          "incident_id": "f7d1ad90883cfa9a147eb81e",
+          "incident_path": "scripts/testing/test-boot-stability-regressions.py",
+          "incident_severity": "medium",
+          "reason": "rsi-incident-open",
+          "requires_owner": false,
+          "root_issue_key": "rsi-incident:f7d1ad90883cfa9a147eb81e",
+          "safe": false,
+          "shadow_only": true,
+          "source": "rsi-incidents.json",
+          "topic": "rsi-incident-recovery",
+          "type": "maintenance"
+        },
+        "reason": "rsi-incident-open",
+        "risk": "high",
+        "safe": false,
+        "seen_count": 1,
+        "status": "rsi_pending",
+        "type": "maintenance"
+      }
+    ],
+    "meta": {},
+    "updated_at": "2026-10-02T18:22:49.155528+00:00"
+  },
+  {
+    "type": "maintenance",
+    "risk": "low",
+    "summary": "resume_background_maintenance",
+    "details": "Throttler initiated action: resume_background_maintenance",
+    "status": "queued",
+    "created_at": 1790965391.0857902
+  },
+  {
+    "type": "maintenance",
+    "risk": "low",
+    "summary": "resume_background_maintenance",
+    "details": "Throttler initiated action: resume_background_maintenance",
+    "status": "queued",
+    "created_at": 1790965451.2562735
+  }
+]

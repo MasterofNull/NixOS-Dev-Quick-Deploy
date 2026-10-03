@@ -5,14 +5,14 @@
 # with the harness routing tasks and arbitrating which agent produces superior results."
 #
 # Usage:
-#   delegate-fanout --prompt "task" --agents antigravity,local [--wait] [--role implement]
+#   delegate-fanout --prompt "task" --agents gemini,local [--wait] [--role implementer]
 #   delegate-fanout --list
 #
 # Options:
 #   --prompt TEXT      Task to fan out
 #   --prompt-file FILE Read prompt from file
-#   --agents LIST      Comma-separated agents: antigravity,local,codex,claude  [default: antigravity,local]
-#   --role ROLE        plan|implement|review|research               [default: implement]
+#   --agents LIST      Comma-separated agents: gemini,local,codex,claude  [default: gemini,local]
+#   --role ROLE        orchestrator|architect|implementer|reviewer  [default: implementer]
 #   --wait             Block until all agents complete
 #   --list             List all fanout runs
 #   --help             Show this help
@@ -31,6 +31,31 @@ info() { echo "[delegate-fanout] $*"; }
 ensure_dirs() {
     mkdir -p "$FANOUT_DIR"
     touch "$REGISTRY"
+}
+
+normalize_role() {
+    case "${1,,}" in
+        orchestrator|coordinator) echo "orchestrator" ;;
+        architect|plan) echo "architect" ;;
+        implementer|implement) echo "implementer" ;;
+        reviewer|review) echo "reviewer" ;;
+        research|researcher) echo "research" ;;
+        *) return 1 ;;
+    esac
+}
+
+delegate_role_for_agent() {
+    local agent="$1" role="$2"
+    case "$agent:$role" in
+        claude:orchestrator|claude:implementer) echo "implement" ;;
+        claude:architect) echo "plan" ;;
+        claude:reviewer) echo "review" ;;
+        *) echo "$role" ;;
+    esac
+}
+
+is_task_id() {
+    [[ "$1" =~ ^(local|codex|claude|antigravity)-[0-9]{8}-[0-9]{6}-[a-z0-9]{6}$ ]]
 }
 
 fanout_id() {
@@ -90,11 +115,12 @@ PYEOF
 }
 
 cmd_fanout() {
-    local prompt="$1" agents_str="${2:-antigravity,local}" role="${3:-implement}" wait_mode="${4:-false}"
+    local prompt="$1" agents_str="${2:-gemini,local}" role="$3" wait_mode="${4:-false}"
     ensure_dirs
 
     local fid; fid="$(fanout_id)"
     local child_ids=()
+    local failed_implementers=()
 
     info "Fanout run: $fid"
     info "Agents:     $agents_str"
@@ -109,11 +135,36 @@ cmd_fanout() {
         else
             delegate_script="$SCRIPT_DIR/delegate-to-${agent}"
         fi
-        [[ -x "$delegate_script" ]] || { info "SKIP: $delegate_script not found"; continue; }
+        if [[ ! -x "$delegate_script" ]]; then
+            info "SKIP: $delegate_script not found"
+            [[ "$role" == "implementer" ]] && failed_implementers+=("$agent")
+            continue
+        fi
 
-        local child_id
-        child_id=$("$delegate_script" --prompt "$prompt" --role "$role" 2>/dev/null | tail -1)
-        [[ -z "$child_id" ]] && continue
+        local child_id dispatch_output delegate_role delegate_prompt
+        delegate_role="$(delegate_role_for_agent "$agent" "$role")"
+        delegate_prompt="$prompt"
+        if [[ "$agent" == "codex" ]]; then
+            # delegate-to-codex has no --role option; preserve the assignment in its prompt.
+            delegate_prompt="Assigned role: $role
+
+$prompt"
+            if ! dispatch_output=$("$delegate_script" --prompt "$delegate_prompt" 2>&1); then
+                info "SKIP: $agent dispatch failed: ${dispatch_output##*$'\n'}"
+                [[ "$role" == "implementer" ]] && failed_implementers+=("$agent")
+                continue
+            fi
+        elif ! dispatch_output=$("$delegate_script" --prompt "$delegate_prompt" --role "$delegate_role" 2>&1); then
+            info "SKIP: $agent dispatch failed: ${dispatch_output##*$'\n'}"
+            [[ "$role" == "implementer" ]] && failed_implementers+=("$agent")
+            continue
+        fi
+        child_id="$(printf '%s\n' "$dispatch_output" | tail -n 1)"
+        if ! is_task_id "$child_id"; then
+            info "SKIP: $agent returned an invalid task id"
+            [[ "$role" == "implementer" ]] && failed_implementers+=("$agent")
+            continue
+        fi
         child_ids+=("$child_id")
         info "  Spawned $agent → $child_id"
 
@@ -135,15 +186,33 @@ with open(rf, "w") as f: f.write("\n".join(lines) + "\n")
 PYEOF
     done
 
-    [[ ${#child_ids[@]} -eq 0 ]] && die "No agents spawned"
+    if [[ ${#child_ids[@]} -eq 0 ]]; then
+        if [[ ${#failed_implementers[@]} -gt 0 ]]; then
+            die "Implementation dispatch failed for: ${failed_implementers[*]}"
+        fi
+        die "No agents spawned"
+    fi
 
     # Write fanout manifest
     local manifest="$FANOUT_DIR/${fid}.json"
     python3 -c "
 import json, sys
-data = {'id': sys.argv[1], 'role': sys.argv[2], 'agents': sys.argv[3].split(','), 'child_ids': sys.argv[4:]}
+args = sys.argv[4:]
+separator = args.index('--failed')
+data = {
+    'id': sys.argv[1],
+    'role': sys.argv[2],
+    'agents': sys.argv[3].split(','),
+    'child_ids': args[:separator],
+    'failed_implementers': args[separator + 1:],
+}
 print(json.dumps(data, indent=2))
-" "$fid" "$role" "$agents_str" "${child_ids[@]}" > "$manifest"
+" "$fid" "$role" "$agents_str" "${child_ids[@]}" --failed "${failed_implementers[@]}" > "$manifest"
+
+    if [[ ${#failed_implementers[@]} -gt 0 ]]; then
+        info "Fanout record retained: $manifest"
+        die "Implementation dispatch failed for: ${failed_implementers[*]}"
+    fi
 
     if [[ "$wait_mode" == "true" ]]; then
         info "Waiting for all agents to complete..."
@@ -212,7 +281,7 @@ print(f\"{d.get('id','?'):<30}  {d.get('role','?'):<10}  {','.join(d.get('agents
 PROMPT=""
 PROMPT_FILE=""
 AGENTS="gemini,local"
-ROLE="implement"
+ROLE="implementer"
 WAIT=false
 SUBCMD=""
 
@@ -229,11 +298,8 @@ while [[ $# -gt 0 ]]; do
     esac
 done
 
-case "$ROLE" in
-    orchestrator|architect|implementer|reviewer) ;;
-    plan|implement|review|research) ;;  # legacy aliases
-    *) die "Invalid --role '$ROLE'. Valid: orchestrator | architect | implementer | reviewer" ;;
-esac
+REQUESTED_ROLE="$ROLE"
+ROLE="$(normalize_role "$ROLE")" || die "Invalid --role '$REQUESTED_ROLE'. Valid: orchestrator | architect | implementer | reviewer | research"
 
 case "${SUBCMD:-}" in
     list) ensure_dirs; cmd_list ;;

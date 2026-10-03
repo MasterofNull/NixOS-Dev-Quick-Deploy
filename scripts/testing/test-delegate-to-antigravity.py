@@ -44,6 +44,31 @@ def _load_inbox(repo_path: Path):
     return mod
 
 
+def _complete_with_supervisor(repo: Path, mod, tid: str, output_text: str):
+    """Create a receipt through the real claim/complete supervisor commands."""
+    log_path = mod._OUTPUTS_DIR / f"{tid}.log"
+    log_path.parent.mkdir(parents=True, exist_ok=True)
+    log_path.write_text(output_text, encoding="utf-8")
+    inbox_dir = repo / ".agent" / "collaboration" / "antigravity-inbox"
+    task_file = inbox_dir / f"{tid}.md"
+    task_file.parent.mkdir(parents=True, exist_ok=True)
+    task_file.write_text(
+        f"# Antigravity Task: {tid}\n"
+        f"Output: .agents/delegation/outputs/{tid}.log\n"
+        "Role: reviewer\n\nprompt\n",
+        encoding="utf-8",
+    )
+    inbox = _load_inbox(repo)
+    assert inbox.main(["claim", task_file.name, "--actor", "ide-watch"]) == 0
+    assert inbox.main([
+        "complete", f".claimed-{tid}",
+        "--output", f".agents/delegation/outputs/{tid}.log",
+    ]) == 0
+    receipt_file = inbox_dir / "receipts" / f"{tid}.json"
+    assert receipt_file.exists()
+    return log_path, receipt_file
+
+
 def test_inbox_bridge_dispatch_and_completion():
     with tempfile.TemporaryDirectory() as td:
         repo = Path(td)
@@ -77,13 +102,23 @@ def test_inbox_bridge_dispatch_and_completion():
         t = threading.Thread(target=simulate_worker)
         t.start()
 
-        status, ti, to = mod._run_inbox(tid, prompt, role, timeout=5, log_path=log_path, print_to_stdout=False)
+        output = io.StringIO()
+        old_stdout = sys.stdout
+        sys.stdout = output
+        try:
+            status, ti, to = mod._run_inbox(
+                tid, prompt, role, timeout=5, log_path=log_path, print_to_stdout=True
+            )
+        finally:
+            sys.stdout = old_stdout
         t.join()
 
         assert status == "done", f"expected done, got {status}"
         assert task_file.exists() or (repo / ".agent" / "archive").exists(), "task file must be processed"
         log_content = log_path.read_text(encoding="utf-8")
-        assert "[delegate-to-antigravity]" not in log_content, "output must remain strictly immutable"
+        assert log_content == "Detailed diagnosis: root cause verified.\n"
+        assert "Detailed diagnosis: root cause verified." in output.getvalue()
+        assert f"Task {tid} completed." in output.getvalue()
         print("PASS: test_inbox_bridge_dispatch_and_completion")
 
 
@@ -95,13 +130,20 @@ def test_inbox_bridge_refuses_unisolated_implementation():
 
         tid = "antigravity-20261002-120000-tst002"
         log_path = mod._OUTPUTS_DIR / f"{tid}.log"
+        inbox_dir = repo / ".agent" / "collaboration" / "antigravity-inbox"
 
-        for imp_role in ("implement", "implementer"):
-            status, ti, to = mod._run_inbox(tid, "code task", imp_role, timeout=5, log_path=log_path, print_to_stdout=False)
-            assert status == "failed", f"expected failed for role {imp_role}, got {status}"
-            assert log_path.exists()
-            content = log_path.read_text(encoding="utf-8")
-            assert "refusing editing dispatch" in content or "worktree isolation creation failed" in content
+        for editing_role in ("implement", "implementer", "rsi", "coordinator", "subagent"):
+            try:
+                mod._run_inbox(
+                    tid, "code task", editing_role, timeout=5, log_path=log_path,
+                    print_to_stdout=False,
+                )
+            except SystemExit as exc:
+                assert "blocked_unsupported_ide_worktree_isolation" in str(exc)
+            else:
+                raise AssertionError(f"expected pre-dispatch refusal for role {editing_role}")
+            assert not inbox_dir.exists(), f"role {editing_role} created an inbox task before refusal"
+            assert not log_path.exists(), f"role {editing_role} created output before refusal"
         print("PASS: test_inbox_bridge_refuses_unisolated_implementation")
 
 
@@ -127,6 +169,43 @@ def test_inbox_bridge_rejects_corrupted_or_mismatched_receipt():
         status, ti, to = mod._run_inbox(tid, "prompt", "reviewer", timeout=1, log_path=log_path, print_to_stdout=False)
         assert status == "failed", f"expected failed on mismatched receipt, got {status}"
         print("PASS: test_inbox_bridge_rejects_corrupted_or_mismatched_receipt")
+
+
+def test_inbox_bridge_rejects_forged_terminal_evidence():
+    cases = {
+        "task": lambda receipt, _log: receipt.__setitem__("task_id", "wrong-task"),
+        "generation": lambda receipt, _log: next(
+            record for record in receipt["records"] if record.get("type") == "completion"
+        ).__setitem__("generation", "0" * 64),
+        "claim": lambda receipt, _log: next(
+            record for record in receipt["records"] if record.get("type") == "claim"
+        ).__setitem__("content_hash", "0" * 64),
+        "output": lambda receipt, _log: next(
+            record for record in receipt["records"] if record.get("type") == "completion_prepared"
+        ).__setitem__("declared_output", ".agents/delegation/outputs/forged.log"),
+        "missing output": lambda _receipt, log_path: log_path.rename(log_path.with_name("relocated.log")),
+        "hash": lambda _receipt, log_path: log_path.write_text("tampered after completion\n", encoding="utf-8"),
+    }
+    for index, (name, forge) in enumerate(cases.items(), start=6):
+        with tempfile.TemporaryDirectory() as td:
+            repo = Path(td)
+            mod = _load_module(repo)
+            mod._ensure_dirs()
+            tid = f"antigravity-20261002-120000-tst{index:03d}"
+            log_path, receipt_file = _complete_with_supervisor(
+                repo, mod, tid, "Verified supervisor output.\n"
+            )
+            receipt = json.loads(receipt_file.read_text(encoding="utf-8"))
+            forge(receipt, log_path)
+            receipt_file.write_text(json.dumps(receipt), encoding="utf-8")
+
+            valid, reason = mod._validate_inbox_completion(tid)
+            assert not valid, f"forged {name} evidence was accepted: {reason}"
+            status, _ti, _to = mod._run_inbox(
+                tid, "prompt", "reviewer", timeout=1, log_path=log_path, print_to_stdout=False
+            )
+            assert status == "failed", f"forged {name} receipt was not rejected by bridge"
+    print("PASS: test_inbox_bridge_rejects_forged_terminal_evidence")
 
 
 def test_inbox_bridge_timeout():
@@ -180,6 +259,18 @@ def test_cmd_status_and_check():
         status_text = buf.getvalue()
         assert '"status": "completed"' in status_text
 
+        receipt_file = inbox_dir / "receipts" / f"{tid}.json"
+        receipt = json.loads(receipt_file.read_text(encoding="utf-8"))
+        next(record for record in receipt["records"] if record.get("type") == "completion")["generation"] = "0" * 64
+        receipt_file.write_text(json.dumps(receipt), encoding="utf-8")
+        invalid_buf = io.StringIO()
+        sys.stdout = invalid_buf
+        try:
+            mod.cmd_status(tid)
+        finally:
+            sys.stdout = old_stdout
+        assert '"status": "invalid-receipt"' in invalid_buf.getvalue()
+
         # Capture check
         buf_check = io.StringIO()
         sys.stdout = buf_check
@@ -197,6 +288,7 @@ def main():
     test_inbox_bridge_dispatch_and_completion()
     test_inbox_bridge_refuses_unisolated_implementation()
     test_inbox_bridge_rejects_corrupted_or_mismatched_receipt()
+    test_inbox_bridge_rejects_forged_terminal_evidence()
     test_inbox_bridge_timeout()
     test_cmd_status_and_check()
     print("ALL PASS: delegate-to-antigravity unit tests")

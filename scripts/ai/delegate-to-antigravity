@@ -87,6 +87,7 @@ _MODEL_MAP = {
     "architect":   "gemini-3.1-pro",
     "implementer": "gemini-3.5-flash",
     "reviewer":    "gemini-3.5-flash",
+    "rsi":         "gemini-3.5-flash",
 }
 
 def _swb_url() -> str:
@@ -98,8 +99,19 @@ _VALID_ROLES = {
     "orchestrator", "architect", "implementer", "reviewer",
     "full-expert-team",
     "plan", "implement", "review", "research",
-    "subagent", "coordinator",
+    "subagent", "coordinator", "rsi",
 }
+
+_IDE_EDITING_ROLES = frozenset({"implement", "implementer", "rsi", "coordinator", "subagent"})
+
+
+def _require_advisory_ide_role(role: str) -> None:
+    """Reject roles that require edits: --reuse-window has no workspace binding."""
+    if role in _IDE_EDITING_ROLES:
+        sys.exit(
+            "ERROR: blocked_unsupported_ide_worktree_isolation: "
+            "the Antigravity IDE bridge cannot verify a task-specific workspace binding"
+        )
 
 _HARNESS_SYSTEM_BASE = (
     "You are an AI agent in the NixOS-Dev-Quick-Deploy harness.\n"
@@ -109,7 +121,8 @@ _HARNESS_SYSTEM_BASE = (
     "SECURITY: No hardcoded secrets, tokens, or credentials.\n"
     "ATOMIC PULSE: Append one line to PULSE.log after every file write.\n"
     "ATOMIC RESUME: Update .agent/collaboration/RESUME.json at every phase start.\n"
-    "DO NOT COMMIT — the orchestrator (Claude) reviews and commits.\n"
+    "TOOLING: Always leverage lean-ctx (ctx_read, ctx_search, ctx_tree), MemoryBroker (:8003), AIDB (:8002), and aq-hints.\n"
+    "ROLE CONTRACT: Orchestrators review, validate, and commit; implementers/rsi execute in isolated worktrees and return diff receipts. Roles are model-agnostic (Rule 18).\n"
     # Fable-parity CARD variant — SSOT: .agent/FABLE-PARITY-CONTRACT.md §2.
     "=== FABLE-PARITY BEHAVIOR ===\n"
     "Lead with the outcome; detail after. Final answer must be self-contained.\n"
@@ -471,48 +484,14 @@ def _validate_inbox_completion(task_id: str) -> "tuple[bool, str]":
     return True, ""
 
 
-def _wt_create(repo_root: Path, task_id: str) -> "tuple[Path | None, str]":
-    """Create an isolated git worktree via worktree-isolation.sh."""
-    sh_lib = _HERE / "lib" / "worktree-isolation.sh"
-    if not sh_lib.exists():
-        return None, ""
-    cmd = ["bash", "-c", f'source "{sh_lib}" && wt_create "{repo_root}" "{task_id}"']
-    res = subprocess.run(cmd, capture_output=True, text=True, check=False)
-    if res.returncode == 0 and res.stdout.strip():
-        wt_path = Path(res.stdout.strip())
-        return wt_path, f"delegate/{task_id}"
-    return None, ""
-
-
-def _wt_handback(repo_root: Path, wt_path: Path, task_id: str, outputs_dir: Path) -> bool:
-    """Hand back worktree changes (commit + patch) via worktree-isolation.sh."""
-    sh_lib = _HERE / "lib" / "worktree-isolation.sh"
-    if not sh_lib.exists():
-        return False
-    cmd = ["bash", "-c", f'source "{sh_lib}" && wt_handback "{repo_root}" "{wt_path}" "{task_id}" "{outputs_dir}"']
-    res = subprocess.run(cmd, capture_output=True, text=True, check=False)
-    return res.returncode == 0
-
-
 def _run_inbox(task_id: str, prompt: str, role: str, timeout: int, log_path: Path,
                print_to_stdout: bool = False, shared_mode: bool = False) -> "tuple[str, int, int]":
     """Drop task into sanctioned advisory inbox, wake IDE, and optionally await completion."""
+    _require_advisory_ide_role(role)
     inbox_dir = _REPO / ".agent" / "collaboration" / "antigravity-inbox"
     receipts_dir = inbox_dir / "receipts"
     inbox_dir.mkdir(parents=True, exist_ok=True)
     receipts_dir.mkdir(parents=True, exist_ok=True)
-
-    wt_path = None
-    wt_branch = ""
-    if role in ("implement", "implementer") and not shared_mode:
-        wt_path, wt_branch = _wt_create(_REPO, task_id)
-        if not wt_path:
-            err = f"ERROR: worktree isolation creation failed for {task_id}; refusing editing dispatch\n"
-            with open(log_path, "a") as f:
-                f.write(err)
-            if print_to_stdout:
-                sys.stderr.write(err)
-            return "failed", 0, 0
 
     rel_log = f".agents/delegation/outputs/{task_id}.log"
     task_file = inbox_dir / f"{task_id}.md"
@@ -523,21 +502,10 @@ def _run_inbox(task_id: str, prompt: str, role: str, timeout: int, log_path: Pat
         f"Output: {rel_log}",
         f"Role: {role}",
     ]
-    if wt_path:
-        header.append(f"Worktree: {wt_path}")
-        header.append(f"Branch: {wt_branch}")
     header.append(f"Created: {datetime.now(timezone.utc).isoformat()}")
     header.append("")
 
     prompt_body = prompt.strip()
-    if wt_path:
-        prompt_body = (
-            f"WORKTREE ISOLATION ACTIVE:\n"
-            f"Make all code and file changes inside the assigned worktree directory:\n"
-            f"  {wt_path}\n"
-            f"Do not modify files in the shared repository root.\n\n"
-            f"{prompt_body}"
-        )
 
     content = "\n".join(header) + "\n" + prompt_body + "\n"
 
@@ -583,12 +551,6 @@ def _run_inbox(task_id: str, prompt: str, role: str, timeout: int, log_path: Pat
                     if not valid:
                         print(f"[delegate-to-antigravity] rejected completion receipt: {reason}", file=sys.stderr)
                         return "failed", 0, 0
-                    if wt_path:
-                        if not _wt_handback(_REPO, wt_path, task_id, _OUTPUTS_DIR):
-                            err_msg = f"ERROR: Task {task_id} failed worktree handback.\n"
-                            if print_to_stdout:
-                                sys.stderr.write(err_msg)
-                            return "failed", 0, 0
                     out_text = ""
                     if log_path.exists():
                         out_text = log_path.read_text(encoding="utf-8")
@@ -741,6 +703,8 @@ def cmd_delegate(prompt: str, role: str, mode: str,
                  model_override: "str | None", max_tokens: int,
                  timeout: int, wait: bool, loop: bool = False,
                  backend: str = "inbox", shared_mode: bool = False):
+    if backend == "inbox":
+        _require_advisory_ide_role(role)
     _ensure_dirs()
     _dispatch_budget_gate("antigravity")
 
@@ -939,7 +903,7 @@ def _build_parser() -> argparse.ArgumentParser:
                    default=os.environ.get("ANTIGRAVITY_BACKEND", "inbox"),
                    help="Delegation backend: inbox (sanctioned IDE OAuth bridge, default) or switchboard")
     p.add_argument("--shared", "--no-worktree", dest="shared_mode", action="store_true",
-                   help="Run in primary workspace without isolated worktree")
+                   help="Compatibility flag; editing inbox roles remain unsupported")
     return p
 
 
@@ -952,6 +916,8 @@ def main():
     if args.mode not in _MODEL_MAP:
         p.error(f"Invalid --mode '{args.mode}'. Valid: {', '.join(sorted(_MODEL_MAP))}")
 
+    if not (args.list or args.check or args.status) and args.backend == "inbox":
+        _require_advisory_ide_role(args.role)
     _ensure_dirs()
 
     if args.list:

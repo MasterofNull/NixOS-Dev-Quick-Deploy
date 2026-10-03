@@ -851,6 +851,8 @@ def _acquire_rsi_dispatch_lock() -> Any:
 
 def _rsi_dispatch_preflight(lane: str = "codex") -> Tuple[bool, str]:
     """Require a dispatcher with enforceable isolated-worktree execution."""
+    if lane == "antigravity":
+        return False, "blocked_unsupported_ide_worktree_isolation"
     delegate = AI_SCRIPT_DIR / f"delegate-to-{lane}"
     isolation = AI_LIB_DIR / "worktree-isolation.sh"
     if not delegate.is_file() or not os.access(delegate, os.X_OK):
@@ -921,12 +923,12 @@ def _run_rsi_delegate(row: Dict[str, Any], timeout_seconds: int, apply: bool, la
     elif lane == "antigravity":
         argv = [
             str(AI_SCRIPT_DIR / "delegate-to-antigravity"), "--wait",
-            "--timeout", str(timeout_seconds), "--role", "implementer", "--prompt", _rsi_task_prompt(row, apply),
+            "--timeout", str(timeout_seconds), "--role", "rsi", "--prompt", _rsi_task_prompt(row, apply),
         ]
     else:
         argv = [
             str(AI_SCRIPT_DIR / "delegate-to-local"), "--mode", "agent", "--wait",
-            "--timeout", str(timeout_seconds), "--role", "implementer", "--prompt", _rsi_task_prompt(row, apply),
+            "--timeout", str(timeout_seconds), "--role", "rsi", "--prompt", _rsi_task_prompt(row, apply),
         ]
     proc = subprocess.Popen(
         argv, stdout=subprocess.PIPE, stderr=subprocess.PIPE, text=True,

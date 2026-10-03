@@ -60,6 +60,7 @@ _MODE_PROFILE = {
     "architect":   "antigravity-collective",
     "implementer": "antigravity-collective",
     "reviewer":    "antigravity-collective",
+    "rsi":         "antigravity-collective",
 }
 
 # ── logging ───────────────────────────────────────────────────────────────────
@@ -162,7 +163,7 @@ def main():
     parser = argparse.ArgumentParser(description="Headless Antigravity Agent Loop")
     parser.add_argument("--task",   required=True, help="Task objective")
     parser.add_argument("--role",   help="Agent role (architect, implementer, etc.)")
-    parser.add_argument("--mode",   help="Model mode: fast|flash|pro|architect|implementer|reviewer")
+    parser.add_argument("--mode",   help="Model mode: fast|flash|pro|architect|implementer|reviewer|rsi")
     parser.add_argument("--model",  help="Gemini model ID override (e.g. gemini-2.5-flash)")
     parser.add_argument("--output", help="Output log file path")
     args = parser.parse_args()

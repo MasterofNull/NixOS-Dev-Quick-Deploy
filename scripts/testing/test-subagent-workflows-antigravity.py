@@ -37,7 +37,9 @@ class TestSubagentWorkflowsAntigravity(unittest.TestCase):
         # WAKE_PROMPT assertions
         self.assertIn("claim <basename>", mod.WAKE_PROMPT)
         self.assertIn("complete .claimed-<task-id>", mod.WAKE_PROMPT)
-        self.assertIn("If a Worktree path is declared", mod.WAKE_PROMPT)
+        self.assertIn("Perform only non-editing advisory", mod.WAKE_PROMPT)
+        self.assertIn("Do not modify files in any IDE workspace or shared checkout", mod.WAKE_PROMPT)
+        self.assertIn("cannot verify a task-specific workspace binding", mod.WAKE_PROMPT)
 
         # Actor choices
         parser = mod.build_parser()
