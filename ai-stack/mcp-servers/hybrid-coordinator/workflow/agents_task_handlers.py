@@ -13,6 +13,7 @@ import asyncio
 import json
 import logging
 import os
+import signal
 import sys
 import time
 from datetime import datetime
@@ -25,6 +26,20 @@ from aiohttp import web
 from config import Config
 
 logger = logging.getLogger("hybrid-coordinator")
+
+_DELEGATE_ROLE_ALIASES = {
+    "implement": "implementer",
+    "implementer": "implementer",
+    "review": "reviewer",
+    "reviewer": "reviewer",
+    "plan": "plan",
+    "architect": "plan",
+    "research": "research",
+    "researcher": "research",
+    "coordinator": "coordinator",
+    "orchestrator": "coordinator",
+    "subagent": "subagent",
+}
 
 # ---------------------------------------------------------------------------
 # Module-level state (promoted from run_http_mode() closures)
@@ -137,6 +152,7 @@ async def _spawn_local_agent_instance(
         "task": task_text,
         "status": "running",
         "pid": proc.pid,
+        "process_group": proc.pid,
         "started_at": datetime.now().isoformat(),
         "state_file": state_file,
     }
@@ -148,9 +164,10 @@ async def _spawn_local_agent_instance(
         stdout, stderr = await asyncio.wait_for(proc.communicate(), timeout=timeout_sec)
     except asyncio.TimeoutError:
         try:
-            proc.kill()
+            os.killpg(proc.pid, signal.SIGKILL)
         except ProcessLookupError:
             pass
+        await proc.communicate()
         instance["status"] = "timeout"
         instance["completed_at"] = datetime.now().isoformat()
         return instance, 504
@@ -214,6 +231,19 @@ async def _spawn_delegated_agent_instance(
     }
     script = script_map.get(lane_norm)
     agent_id = f"{lane_norm[:2]}-{uuid4().hex[:8]}"
+    normalized_role = _DELEGATE_ROLE_ALIASES.get(str(role or "").strip().lower())
+    if not normalized_role:
+        instance = {
+            "id": agent_id,
+            "role": role,
+            "lane": lane_norm,
+            "task": task_text,
+            "status": "failed",
+            "error": f"Unsupported delegated role: {role}",
+            "completed_at": datetime.now().isoformat(),
+        }
+        _AGENT_STATE[agent_id] = instance
+        return instance, 400
     if not script or not script.is_file():
         instance = {
             "id": agent_id,
@@ -229,10 +259,16 @@ async def _spawn_delegated_agent_instance(
 
     cmd = [str(script), "--wait", "--prompt", task_text]
     if lane_norm in ("antigravity", "gemini"):
-        valid_roles = ("implementer", "reviewer", "subagent", "coordinator", "plan", "research")
-        cmd.extend(["--role", role if role in valid_roles else "implementer", "--timeout", str(int(timeout_sec))])
+        cmd.extend(["--role", normalized_role, "--timeout", str(int(timeout_sec))])
     elif lane_norm == "claude":
-        claude_role = "implement" if role in ("implementer", "coordinator", "subagent") else (role if role in ("plan", "review", "research") else "implement")
+        claude_role = {
+            "implementer": "implement",
+            "reviewer": "review",
+            "plan": "plan",
+            "research": "research",
+            "coordinator": "implement",
+            "subagent": "implement",
+        }[normalized_role]
         cmd.extend(["--role", claude_role])
 
     proc = await asyncio.create_subprocess_exec(
@@ -244,11 +280,12 @@ async def _spawn_delegated_agent_instance(
 
     instance = {
         "id": agent_id,
-        "role": role,
+        "role": normalized_role,
         "lane": lane_norm,
         "task": task_text,
         "status": "running",
         "pid": proc.pid,
+        "process_group": proc.pid,
         "started_at": datetime.now().isoformat(),
     }
     if team_id:
@@ -259,9 +296,10 @@ async def _spawn_delegated_agent_instance(
         stdout, stderr = await asyncio.wait_for(proc.communicate(), timeout=timeout_sec)
     except asyncio.TimeoutError:
         try:
-            proc.kill()
+            os.killpg(proc.pid, signal.SIGKILL)
         except ProcessLookupError:
             pass
+        await proc.communicate()
         instance["status"] = "timeout"
         instance["error"] = f"Task timed out after {timeout_sec}s"
         instance["completed_at"] = datetime.now().isoformat()
@@ -368,8 +406,11 @@ async def handle_agents_kill(request: web.Request) -> web.Response:
     pid = instance.get("pid")
     if pid:
         try:
-            import signal
-            os.kill(pid, signal.SIGTERM)
+            process_group = instance.get("process_group")
+            if process_group:
+                os.killpg(int(process_group), signal.SIGTERM)
+            else:
+                os.kill(pid, signal.SIGTERM)
             instance["status"] = "killed"
             instance["completed_at"] = datetime.now().isoformat()
         except ProcessLookupError:

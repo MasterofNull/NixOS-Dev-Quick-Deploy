@@ -216,3 +216,11 @@ Codex lane absent).
 - root cause (T5): artificial blanket ban was applied instead of wiring worktree lifecycle management into the Antigravity delegation bridge and properly differentiating code modification roles from coordination roles.
 - producer fixed: `scripts/ai/delegate-to-antigravity` allocates isolated worktree and generates patch on completion; `scripts/ai/aq-antigravity-inbox` enforces worktree isolation fail-closed for implementation roles and allows coordination/subagents; `scripts/automation/prsi-orchestrator.py` verifies standard preflight for all lanes.
 - class: T5 producer-governance-fracture · severity: HIGH · status: FIXED 2026-10-03 · opened: 2026-10-03
+## WR-ANTIGRAVITY-IDE-WORKSPACE-BINDING (2026-10-03)
+
+- **Symptom:** A receipt/task metadata record can indicate completion without proving that Antigravity performed an editing task in that task's isolated workspace.
+- **Root cause:** The IDE `--reuse-window` route provides no verifiable per-task workspace/worktree binding; receipt evidence authenticates completion output, not IDE workspace authority.
+- **Producer:** Antigravity bridge/inbox integration and caller dispatch contract.
+- **Fix path:** Fail closed for editing roles until bridge dispatch and inbox enforcement establish and verify a dedicated task workspace; root integrates caller/isolation repairs and submits the frozen subject to independent review.
+- **Class / severity:** authority/isolation; high.
+- **Interim state:** Live IDE mutation is deferred. Receipt findings 2/3 have focused temporary-repository real-supervisor coverage only; earlier resolved/pass statements are Antigravity self-report, not final acceptance.

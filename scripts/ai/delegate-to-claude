@@ -514,8 +514,8 @@ while [[ $# -gt 0 ]]; do
 done
 
 case "$ROLE" in
-    plan|implement|review|research) ;;
-    *) die "Invalid --role '$ROLE'. Valid: plan | implement | review | research" ;;
+    plan|implement|review|research|rsi) ;;
+    *) die "Invalid --role '$ROLE'. Valid: plan | implement | review | research | rsi" ;;
 esac
 
 case "$MODEL_TIER" in

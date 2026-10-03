@@ -112,6 +112,19 @@ follow-up; never a committed-history rewrite). Design SSOT: `.agents/plans/agent
 
 ---
 
+### rsi
+
+**Kernel authority:** incident diagnosis, minimal remediation, and regression guard synthesis
+
+| Dimension | Detail |
+|---|---|
+| **May** | diagnose root causes of harness failures, tool friction, and test regressions; formulate minimal verified remediations in an isolated git worktree; synthesize regression tests/guards; record findings in `.agent/memory/issues-backlog.md` and MemoryBroker |
+| **Must** | execute in an isolated git worktree when modifying files; validate repairs with targeted test passes before proposing; document root cause, evidence, and fix path; stay strictly confined to declared incident paths |
+| **May not** | bypass orchestrator or reviewer gate; commit directly to shared checkout; self-accept; broaden task into general refactoring |
+| **Escalation trigger** | structural architectural defect → escalate to architect; infrastructure or provider outage → escalate to orchestrator |
+
+---
+
 ## Role Assignment Rules
 
 1. **Roles are assigned per slice, not permanently per model.** The orchestrator for the session assigns roles at slice start. An agent may fill different roles across slices.
@@ -130,7 +143,7 @@ Every assignment records four independent decisions:
 
 | Axis | Question | Examples |
 |---|---|---|
-| Role | What authority applies? | architect, implementer, reviewer, orchestrator |
+| Role | What authority applies? | architect, implementer, reviewer, orchestrator, rsi |
 | AgentType/modality | What execution shape is used? | agent/tool loop, planner, chat/logic, embedded retrieval |
 | Capability/resource class | Can this model and host execute the slice within bounds? | flagship reasoning, economical coding, local hardware profile |
 | Review eligibility | Can this identity provide advisory input or binding acceptance? | advisory, independent flagship acceptor, recused |
@@ -148,7 +161,7 @@ These are current typical assignments. Any model may fill any role when the orch
 |---|---|---|
 | Claude (Sonnet/Opus) | orchestrator, architect, reviewer | Primary orchestrator for Phase 58A |
 | Codex | orchestrator (own sequences), implementer, reviewer | Final acceptance on most 58A slices per team plan |
-| Gemini (Antigravity IDE) | **proposal, findings review, cross-check reviewer** | See lane-state rule below — NOT default implementer for stateful slices |
+| Gemini (Antigravity IDE) | **orchestrator, findings review, cross-check reviewer, architect** | Front-door orchestrator and reviewer; delegates bounded implementation and RSI repair roles to sub-agents per Rule 17 |
 | Local inference (current Qwen) | bounded reasoner or implementer; embedded retrieval | First-class lane under common contracts, shaped by measured hardware/model/tool limits; see 58A.5 |
 
 ### Lane state-observability rule (2026-07-11, from the C0.2 incident)
@@ -224,7 +237,7 @@ This table is the single source of truth for auto-assignment in `agent_executor.
 
 | AgentType | Execution shape | Default role | Eligible roles | Notes |
 |-----------|----------------|-------------|----------------|-------|
-| `AGENT` | full coding loop (tool use, file edits, git) | `implementer` | `implementer`, `reviewer` | Default for coding tasks |
+| `AGENT` | full coding loop (tool use, file edits, git) | `implementer` | `implementer`, `reviewer`, `rsi` | Default for coding tasks |
 | `PLANNER` | synthesis + document production | `architect` | `architect`, `orchestrator`, `implementer` | PRDs, plans, risk docs |
 | `CHAT` | conversational / Q&A | `implementer` | `implementer` | No tool use |
 | `EMBEDDED` | retrieval only — no text generation | `None` | `[]` | Never receives role injection |
@@ -246,3 +259,4 @@ This table is the single source of truth for auto-assignment in `agent_executor.
 | `architect` | `[Role: architect] Draft architecture docs, flag risks, write PRDs. Requires orchestrator review before commit.` |
 | `implementer` | `[Role: implementer] Execute assigned slice only. Validate output. Propose commit. Do not re-scope goals.` |
 | `reviewer` | `[Role: reviewer] Explicit pass/fail verdict against criteria. Do not review your own work.` |
+| `rsi` | `[Role: rsi] Root-cause incidents and friction, formulate minimal verified remediations with automated guards, and record findings in backlog and memory. Do not broaden scope.` |

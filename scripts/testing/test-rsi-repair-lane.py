@@ -76,9 +76,9 @@ class LaneTests(unittest.TestCase):
                 elif expected == "claude":
                     expected_args = ["--wait", "--role", "implement"]
                 elif expected == "antigravity":
-                    expected_args = ["--wait", "--timeout", "600", "--role", "implementer"]
+                    expected_args = ["--wait", "--timeout", "600", "--role", "rsi"]
                 else:
-                    expected_args = ["--mode", "agent", "--wait", "--timeout", "600", "--role", "implementer"]
+                    expected_args = ["--mode", "agent", "--wait", "--timeout", "600", "--role", "rsi"]
                 self.assertEqual(argv, [str(prsi.AI_SCRIPT_DIR / f"delegate-to-{expected}"),
                                         *expected_args, "--prompt", prsi._rsi_task_prompt(row(), False)])
                 self.assertTrue(popen.call_args.kwargs["start_new_session"])
@@ -192,10 +192,13 @@ class LaneTests(unittest.TestCase):
     def test_claude_role_contract_validation(self):
         claude_script = prsi.AI_SCRIPT_DIR / "delegate-to-claude"
         self.assertTrue(claude_script.exists())
-        # Verify valid role implement is accepted by argument parser
+        # Verify valid role implement and rsi are accepted by argument parser
         res_ok = prsi.subprocess.run([str(claude_script), "--role", "implement", "--budget-check-only"],
                                     capture_output=True, text=True)
         self.assertNotIn("Invalid --role", res_ok.stderr)
+        res_rsi = prsi.subprocess.run([str(claude_script), "--role", "rsi", "--budget-check-only"],
+                                     capture_output=True, text=True)
+        self.assertNotIn("Invalid --role", res_rsi.stderr)
         # Verify invalid role implementer is rejected by argument parser
         res_bad = prsi.subprocess.run([str(claude_script), "--role", "implementer", "--budget-check-only"],
                                      capture_output=True, text=True)
@@ -204,11 +207,19 @@ class LaneTests(unittest.TestCase):
 
 class IsolationPreflightTests(unittest.TestCase):
     def test_supported_lanes_pass_isolation_preflight(self):
-        for lane in ("codex", "claude", "antigravity", "local"):
-            with self.subTest(lane=lane):
-                ok, reason = prsi._rsi_dispatch_preflight(lane)
-                self.assertTrue(ok, f"Lane {lane} failed preflight: {reason}")
-                self.assertEqual(reason, "isolated_worktree_required")
+        with tempfile.TemporaryDirectory() as delegation_dir, \
+             patch.dict("os.environ", {"AQ_DELEGATION_DIR": delegation_dir}), \
+             patch.object(prsi.os, "access", return_value=True):
+            for lane in ("codex", "claude", "local"):
+                with self.subTest(lane=lane):
+                    ok, reason = prsi._rsi_dispatch_preflight(lane)
+                    self.assertTrue(ok, f"Lane {lane} failed preflight: {reason}")
+                    self.assertEqual(reason, "isolated_worktree_required")
+
+    def test_antigravity_rsi_fails_without_verified_ide_workspace_binding(self):
+        ok, reason = prsi._rsi_dispatch_preflight("antigravity")
+        self.assertFalse(ok)
+        self.assertEqual(reason, "blocked_unsupported_ide_worktree_isolation")
 
     def test_missing_delegate_fails_isolation_preflight(self):
         ok, reason = prsi._rsi_dispatch_preflight("nonexistent_lane")
@@ -231,15 +242,15 @@ class InboxIsolationTests(unittest.TestCase):
         self.enterContext(patch.object(self.inbox, "INBOX", inbox_dir))
         self.enterContext(patch.object(self.inbox, "STATE", inbox_dir / ".lane-state.json"))
 
-    def test_unisolated_implementation_cannot_claim_or_dispatch(self):
-        for role in ("implementer", "implement"):
-            raw = f"Role: {role}\nOutput: .agents/delegation/outputs/{role}.md\n".encode()
+    def test_editing_roles_cannot_claim_or_dispatch(self):
+        for role in ("implementer", "implement", "rsi", "coordinator", "subagent"):
+            raw = f"Role: {role}\nShared: true\nWorktree: /tmp/claimed-isolated\nOutput: .agents/delegation/outputs/{role}.md\n".encode()
             with self.subTest(role=role):
                 with self.assertRaisesRegex(self.inbox.InboxError, "blocked_unsupported_ide_worktree_isolation"):
-                    self.inbox._require_isolated_implementation_lane(raw)
+                    self.inbox._require_advisory_ide_lane(raw)
 
         task = self.inbox.INBOX / "repair.md"
-        task.write_text("Role: implementer\nOutput: .agents/delegation/outputs/repair.md\n")
+        task.write_text("Role: implementer\nShared: true\nWorktree: /tmp/claimed-isolated\nOutput: .agents/delegation/outputs/repair.md\n")
         claim_args = self.inbox.build_parser().parse_args(["claim", "repair.md", "--actor", "ide-watch", "--json"])
         with contextlib.redirect_stderr(io.StringIO()):
             self.assertEqual(self.inbox.cmd_claim(claim_args), 1)
@@ -251,19 +262,11 @@ class InboxIsolationTests(unittest.TestCase):
         payload = json.loads(output.getvalue())
         self.assertEqual(payload["reason"], "blocked_unsupported_ide_worktree_isolation")
 
-    def test_isolated_implementation_and_subagent_roles_can_claim_and_dispatch(self):
-        root = Path(self.tmp.name)
-        wt = root / ".agents/delegation/worktrees/repair"
-        wt.mkdir(parents=True)
-        task = self.inbox.INBOX / "repair.md"
-        task.write_text(f"Role: implementer\nOutput: .agents/delegation/outputs/repair.md\nWorktree: {wt}\n")
-        raw = task.read_bytes()
-        self.inbox._require_isolated_implementation_lane(raw)
-
-        for role in ("coordinator", "subagent", "reviewer", "architect", "research", "plan"):
+    def test_advisory_roles_remain_usable(self):
+        for role in ("reviewer", "architect", "research", "plan"):
             with self.subTest(role=role):
                 r_raw = f"Role: {role}\nOutput: .agents/delegation/outputs/{role}.md\n".encode()
-                self.inbox._require_isolated_implementation_lane(r_raw)
+                self.inbox._require_advisory_ide_lane(r_raw)
 
 
 if __name__ == "__main__":

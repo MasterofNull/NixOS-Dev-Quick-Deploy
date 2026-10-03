@@ -190,11 +190,9 @@ ralph-wiggum TaskRequest field: `prompt` (not `task`). AIDB vector search: POST 
 ## User Preferences
 - Prefers symbols and shorthand for memory savings (e.g. `§13`, `§8.3`, `×3`) — do NOT expand to spelled-out forms without asking
 - Ask before converting shorthand or symbols to verbose equivalents
-## RSI & Maintenance Pointers (2026-10-02)
-- M7 closeout & security checks diagnosis: `.agent/memory/rsi-m7-20261002.md`, `.agent/memory/security-checks-20261002.md`.
-- Producer fixes: `WR-PRSI-M7-REPO-ROOT` (`parents[4]`) & `WR-PRSI-THROTTLER` marked FIXED.
-- Multi-lane RSI repair: fallback across `repair_lanes` with cooldown checks (`test-rsi-repair-lane.py`).
-- Antigravity autonomous bridge: full subagent, collab-round, fanout & coordinator routing via delegate-to-antigravity.
-- Antigravity catchup/review tasks queued in AGENT-CATCHUP-QUEUE.md; test-subagent-workflows-antigravity passes (7/7).
-
-- Antigravity delegation review (2026-10-03 UTC) RESOLVED: four findings addressed (wt_create/handback isolation, supervisor receipt validation, immutable outputs, claude --role implement); 54/54 tier-0 PASS.
+## RSI & Maintenance Pointers (2026-10-03)
+- M7 closeout & security: `.agent/memory/rsi-m7-20261002.md`, `.agent/memory/security-checks-20261002.md`.
+- 269 CVEs unmerged/tracked in `.agents/plans/cve-triage-20261002/TRIAGE.md` (Batches 1–4, open).
+- Multi-lane RSI repair: fallback across `repair_lanes` (`codex`, `claude`, `local`) with cooldown checks.
+- Antigravity env strengthened: lean-ctx/mcp/hooks enabled; advisory role boundary enforced (`WR-ANTIGRAVITY-IDE-WORKSPACE-BINDING`).
+- Antigravity delegation review: receipt validation fails closed; live IDE mutation deferred pending verified workspace binding.

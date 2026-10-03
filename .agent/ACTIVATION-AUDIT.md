@@ -587,3 +587,10 @@ Subject: branch `fix/rsi-takeover-20261002`, baseline `9b637768`; M7 handler/run
 RAG: one record each acknowledged in `error-solutions`, `best-practices`, and `skills-patterns`. L2B actual-runtime hash refreshed for the legitimate single entry; focused 16 checks PASS.
 
 Validation boundary: final host tier0 rerun PASS, 54 PASS/0 FAIL (`/tmp/codex-rsi-m7-tier0-final.log`). The earlier run had 53 PASS/1 FAIL, QA 0/10.39; artifact 1106 ran 21:38:43Z–21:41:23Z across the 21:40:38Z fixture edit and explicitly reported the old live-source hash at runtime. That transient result was superseded by the passing rerun. Host execution resolved sandbox QA evidence-lock `EROFS` and test timeouts. Runtime activation remains deferred; tier0 success does not attest deployment or full runtime activation. Closeout detail: `.agent/memory/rsi-m7-20261002.md`.
+## Antigravity delegation repair — dated deferral (2026-10-03)
+
+- **Integrated / turned on:** Deferred for live IDE editing. No verified per-task Antigravity IDE workspace binding exists.
+- **Functionally validated:** Receipt findings 2/3 have focused real-supervisor claim/complete integration coverage in a temporary repository: forged task, generation, claim, declared output, missing output, and output-hash evidence fail closed; status validates receipts; persisted output remains immutable and is transported on stdout.
+- **Pending:** Root integration and independent review of RSI role worktree enforcement, Shared-header bypass, metadata-versus-IDE workspace binding, caller reviewer alias, process-group timeout/pipe draining, and failed/empty workflow rejection.
+- **Observable / intervenable:** Current safe control is fail-closed/deferred live editing pending binding verification.
+- **Acceptance boundary:** Earlier resolved/tier0 assertions are Antigravity self-report only. No final PASS, runtime activation, deployment, or independent acceptance is claimed.

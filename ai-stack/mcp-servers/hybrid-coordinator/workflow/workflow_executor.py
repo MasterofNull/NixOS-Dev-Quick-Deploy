@@ -610,14 +610,25 @@ class WorkflowPhaseExecutor:
             )
         response.raise_for_status()
         body = response.json()
-        content = ""
-        if isinstance(body, dict):
-            content = str(body.get("result") or body.get("content") or body.get("response") or "").strip()
-            if not content and isinstance(body.get("instance"), dict):
-                nested = body["instance"]
-                content = str(nested.get("result") or nested.get("content") or nested.get("response") or "").strip()
+        if not isinstance(body, dict):
+            raise RuntimeError(f"Delegated {target_lane} phase execution returned an invalid response")
+        nested = body.get("instance")
+        status = str(body.get("status") or "").lower()
+        nested_status = str(nested.get("status") or "").lower() if isinstance(nested, dict) else ""
+        if status != "ok" or not isinstance(nested, dict) or nested_status != "completed":
+            error = str(
+                (nested.get("error") if isinstance(nested, dict) else "")
+                or body.get("error")
+                or nested_status
+                or status
+                or "unknown failure"
+            )
+            raise RuntimeError(f"Delegated {target_lane} phase execution failed: {error}")
+        content = str(body.get("result") or body.get("content") or body.get("response") or "").strip()
         if not content:
-            content = json.dumps(body)[:2000]
+            content = str(nested.get("result") or nested.get("content") or nested.get("response") or "").strip()
+        if not content:
+            raise RuntimeError(f"Delegated {target_lane} phase execution completed without a meaningful result")
         return {
             "output": content,
             "tokens_used": 0,

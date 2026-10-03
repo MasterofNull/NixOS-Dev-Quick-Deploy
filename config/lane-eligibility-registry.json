@@ -1,7 +1,7 @@
 {
   "schema_version": 1,
   "_comment": "Measured, EXPIRING lane-eligibility registry (owner Q5, ratified 2026-07-23, see .agents/plans/unified-program/Q3-Q10-OWNER-RATIFICATION-20260723.md and .agents/plans/agent-agnostic-factory/Q5-LANE-ELIGIBILITY-REGISTRY-DESIGN.md). Roles are model-neutral; a lane's eligibility for a role is EARNED (evidence) and EXPIRES. INELIGIBLE-BY-DEFAULT: a lane with no non-expired eligible entry for a role cannot fill it. A hard-ineligible entry ALWAYS blocks, overriding any eligible entry for the same lane+role. VF-8 promotion evidence updates this registry via `aq-lane-eligibility promote`.",
-  "roles": ["orchestrator", "architect", "implementer", "reviewer", "binding-acceptance", "research"],
+  "roles": ["orchestrator", "architect", "implementer", "reviewer", "binding-acceptance", "research", "rsi"],
   "default_ttl_days": 45,
   "lanes": {
     "codex": {
@@ -27,6 +27,11 @@
           "evidence": "owner Q5 ratification (Q3-Q10-OWNER-RATIFICATION-20260723.md)"
         },
         "architect": {
+          "measured_at": "2026-07-23T00:00:00Z",
+          "expires_at": "2026-09-06T00:00:00Z",
+          "evidence": "owner Q5 ratification (Q3-Q10-OWNER-RATIFICATION-20260723.md)"
+        },
+        "rsi": {
           "measured_at": "2026-07-23T00:00:00Z",
           "expires_at": "2026-09-06T00:00:00Z",
           "evidence": "owner Q5 ratification (Q3-Q10-OWNER-RATIFICATION-20260723.md)"
@@ -60,6 +65,11 @@
           "measured_at": "2026-07-23T00:00:00Z",
           "expires_at": "2026-09-06T00:00:00Z",
           "evidence": "owner Q5 ratification (Q3-Q10-OWNER-RATIFICATION-20260723.md)"
+        },
+        "rsi": {
+          "measured_at": "2026-07-23T00:00:00Z",
+          "expires_at": "2026-09-06T00:00:00Z",
+          "evidence": "owner Q5 ratification (Q3-Q10-OWNER-RATIFICATION-20260723.md)"
         }
       }
     },
@@ -71,6 +81,11 @@
           "evidence": "owner Q5 ratification (Q3-Q10-OWNER-RATIFICATION-20260723.md)"
         },
         "reviewer": {
+          "measured_at": "2026-07-23T00:00:00Z",
+          "expires_at": "2026-09-06T00:00:00Z",
+          "evidence": "owner Q5 ratification (Q3-Q10-OWNER-RATIFICATION-20260723.md)"
+        },
+        "rsi": {
           "measured_at": "2026-07-23T00:00:00Z",
           "expires_at": "2026-09-06T00:00:00Z",
           "evidence": "owner Q5 ratification (Q3-Q10-OWNER-RATIFICATION-20260723.md)"
@@ -114,6 +129,12 @@
           "measured_at": "2026-07-23T00:00:00Z",
           "expires_at": "2026-09-06T00:00:00Z",
           "evidence": "owner Q5 ratification (Q3-Q10-OWNER-RATIFICATION-20260723.md)"
+        },
+        "rsi": {
+          "measured_at": "2026-07-23T00:00:00Z",
+          "expires_at": "2026-09-06T00:00:00Z",
+          "evidence": "owner Q5 ratification (Q3-Q10-OWNER-RATIFICATION-20260723.md)",
+          "capability_note": "measured envelope: bounded single-edit, NOT multi-site"
         }
       }
     },
@@ -143,6 +164,12 @@
           "measured_at": "2026-07-23T00:00:00Z",
           "expires_at": "2026-09-06T00:00:00Z",
           "evidence": "owner Q5 ratification (Q3-Q10-OWNER-RATIFICATION-20260723.md)"
+        },
+        "rsi": {
+          "measured_at": "2026-07-23T00:00:00Z",
+          "expires_at": "2026-09-06T00:00:00Z",
+          "evidence": "owner Q5 ratification (Q3-Q10-OWNER-RATIFICATION-20260723.md)",
+          "capability_note": "orchestrator and reviewer for RSI repair slices"
         }
       }
     }

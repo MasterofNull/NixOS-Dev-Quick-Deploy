@@ -1139,6 +1139,9 @@ in {
               "--ctx-size"
               (toString llama.ctxSize)
               "--metrics"
+              # Idle slot polling logs at INFO; retain warnings and errors.
+              "--log-verbosity"
+              "2"
             ]
             ++ (lib.optionals (llama.specType != "") [
               "--spec-type"
