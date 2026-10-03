@@ -16,18 +16,32 @@ import json
 import logging
 from typing import Any, Dict, Optional
 
-from ..code_executor import (
-    CodeExecutor,
-    Language,
-    ResourceLimits,
-    get_executor,
-)
-from ..tool_registry import (
-    SafetyPolicy,
-    ToolCategory,
-    ToolDefinition,
-    ToolRegistry,
-)
+try:
+    from ..code_executor import (
+        CodeExecutor,
+        Language,
+        ResourceLimits,
+        get_executor,
+    )
+    from ..tool_registry import (
+        SafetyPolicy,
+        ToolCategory,
+        ToolDefinition,
+        ToolRegistry,
+    )
+except (ImportError, ValueError):
+    from code_executor import (
+        CodeExecutor,
+        Language,
+        ResourceLimits,
+        get_executor,
+    )
+    from tool_registry import (
+        SafetyPolicy,
+        ToolCategory,
+        ToolDefinition,
+        ToolRegistry,
+    )
 
 logger = logging.getLogger(__name__)
 
@@ -222,7 +236,7 @@ def register_code_execution_tools(registry: ToolRegistry):
         registry: Tool registry to register with
     """
     # Tool 1: run_python
-    registry.register_tool(
+    registry.register(
         ToolDefinition(
             name="run_python",
             description="Execute Python code in isolated sandbox with resource limits",
@@ -249,16 +263,16 @@ def register_code_execution_tools(registry: ToolRegistry):
                 },
                 "required": ["code"],
             },
-            implementation=run_python_impl,
+            handler=run_python_impl,
             safety_policy=SafetyPolicy.SYSTEM_MODIFY,
-            require_confirmation=True,
-            rate_limit_per_minute=5,
-            rate_limit_per_hour=30,
+            requires_confirmation=True,
+            max_calls_per_minute=5,
+            max_calls_per_hour=30,
         )
     )
 
     # Tool 2: run_bash
-    registry.register_tool(
+    registry.register(
         ToolDefinition(
             name="run_bash",
             description="Execute Bash script in isolated sandbox with resource limits",
@@ -279,16 +293,16 @@ def register_code_execution_tools(registry: ToolRegistry):
                 },
                 "required": ["script"],
             },
-            implementation=run_bash_impl,
+            handler=run_bash_impl,
             safety_policy=SafetyPolicy.SYSTEM_MODIFY,
-            require_confirmation=True,
-            rate_limit_per_minute=5,
-            rate_limit_per_hour=30,
+            requires_confirmation=True,
+            max_calls_per_minute=5,
+            max_calls_per_hour=30,
         )
     )
 
     # Tool 3: run_javascript
-    registry.register_tool(
+    registry.register(
         ToolDefinition(
             name="run_javascript",
             description="Execute JavaScript code in isolated sandbox with resource limits",
@@ -315,16 +329,16 @@ def register_code_execution_tools(registry: ToolRegistry):
                 },
                 "required": ["code"],
             },
-            implementation=run_javascript_impl,
+            handler=run_javascript_impl,
             safety_policy=SafetyPolicy.SYSTEM_MODIFY,
-            require_confirmation=True,
-            rate_limit_per_minute=5,
-            rate_limit_per_hour=30,
+            requires_confirmation=True,
+            max_calls_per_minute=5,
+            max_calls_per_hour=30,
         )
     )
 
     # Tool 4: validate_code
-    registry.register_tool(
+    registry.register(
         ToolDefinition(
             name="validate_code",
             description="Validate code security without executing (static analysis)",
@@ -344,11 +358,11 @@ def register_code_execution_tools(registry: ToolRegistry):
                 },
                 "required": ["code", "language"],
             },
-            implementation=validate_code_impl,
+            handler=validate_code_impl,
             safety_policy=SafetyPolicy.READ_ONLY,
-            require_confirmation=False,
-            rate_limit_per_minute=30,
-            rate_limit_per_hour=200,
+            requires_confirmation=False,
+            max_calls_per_minute=30,
+            max_calls_per_hour=200,
         )
     )
 
