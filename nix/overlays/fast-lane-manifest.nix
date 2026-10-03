@@ -20,6 +20,8 @@
     "grafana" # Build-checked vulnerability fix from unstable.
     "nmap" # Build-checked vulnerability fix from unstable.
     "antigravity" # IDE. Unstable renamed it: antigravity -> antigravity-ide (2.5.5 vs stable 1.23.2).
+    "pipewire" # Media pipeline vulnerability fix from unstable (CVE-2024-47537 etc.)
+    "xdg-desktop-portal" # Desktop portal update matching pipewire 1.6+
   ];
 
   # LEAF fast-lane members: the unstable build is installed where the package is
@@ -29,6 +31,7 @@
   # opencv, torchaudio, ... = 120 local derivations measured 2026-10-02).
   leaf = [
     "ffmpeg" # CLI/media: stable 8.1.2 -> unstable 9.0.1 (21 closure alerts).
+    "perl" # Scripting runtime (CVE-2023-31484, CVE-2023-31486)
   ];
 
   # Upstream attr renames: stable-era name (the name consumers like
