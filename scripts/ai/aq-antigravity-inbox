@@ -34,6 +34,8 @@ _OUTPUT_PATTERNS = [
     re.compile(r"Return[^\r\n]+?to[ \t]*(?:\r?\n)?[`'\"]?(\.agents/[^`'\"\s]+?\.md)`?\.?", re.MULTILINE),
 ]
 _TASK_ID = re.compile(r"^[A-Za-z0-9][A-Za-z0-9._-]{0,127}$")
+_WAKE_DEBOUNCE_S = 60
+
 
 class InboxError(RuntimeError): pass
 
@@ -239,7 +241,23 @@ def cmd_claim(args: argparse.Namespace)->int:
 def cmd_wake(args: argparse.Namespace)->int:
     try:
         if args.timeout < 1 or args.timeout > 120: raise InboxError("invalid wake timeout")
-        path=_safe_member(args.name); _,generation=_metadata(_read_regular(path)); method,code=("passive",None) if args.passive_only else _invoke_wake(args.timeout); record={"type":"wake_attempt","task_id":_tid(path.name),"generation":generation,"ts":_now(),"actor":args.actor,"method":method,"exit_code":code,"non_passive":not args.passive_only}; _append(_tid(path.name),record)
+        path=_safe_member(args.name); _,generation=_metadata(_read_regular(path))
+        tid=_tid(path.name)
+        if not getattr(args, "force", False) and not args.passive_only:
+            recs = _load(tid)["records"]
+            recent_nudges = [
+                t for r in recs if r.get("generation") == generation
+                and r.get("type") == "wake_attempt"
+                and r.get("method") == "cli-nudge-ok"
+                for t in (_parse_ts(r.get("ts")),) if t
+            ]
+            if recent_nudges:
+                age = (datetime.now(timezone.utc) - max(recent_nudges)).total_seconds()
+                if 0 <= age < _WAKE_DEBOUNCE_S:
+                    return _emit({"ok": True, "debounced": True, "task_id": tid, "method": "cli-nudge-ok", "exit_code": 0, "age_s": round(age, 2)}, args.json)
+        method,code=("passive",None) if args.passive_only else _invoke_wake(args.timeout)
+        record={"type":"wake_attempt","task_id":tid,"generation":generation,"ts":_now(),"actor":args.actor,"method":method,"exit_code":code,"non_passive":not args.passive_only}
+        _append(tid,record)
     except InboxError as exc: print(str(exc),file=sys.stderr); return 1
     ok=record["method"]=="cli-nudge-ok" or args.passive_only
     _emit({"ok":ok,"task_id":record["task_id"],"method":record["method"],"exit_code":record["exit_code"]},args.json)
@@ -402,7 +420,7 @@ def build_parser()->argparse.ArgumentParser:
     for name,func in (("status",cmd_status),("next",cmd_next),("verify",cmd_verify)):
         q=sub.add_parser(name); q.add_argument("--json",action="store_true"); q.set_defaults(func=func)
     q=sub.add_parser("claim"); q.add_argument("name"); q.add_argument("--actor",required=True,choices=["ide-watch","owner-manual"]); q.add_argument("--json",action="store_true"); q.set_defaults(func=cmd_claim)
-    q=sub.add_parser("wake"); q.add_argument("name"); q.add_argument("--actor",default="owner-manual",choices=["owner-manual"]); q.add_argument("--passive-only",action="store_true"); q.add_argument("--timeout",type=int,default=10); q.add_argument("--json",action="store_true"); q.set_defaults(func=cmd_wake)
+    q=sub.add_parser("wake"); q.add_argument("name"); q.add_argument("--actor",default="owner-manual",choices=["owner-manual","auto-delegate","systemd-auto-wake"]); q.add_argument("--passive-only",action="store_true"); q.add_argument("--timeout",type=int,default=10); q.add_argument("--force",action="store_true"); q.add_argument("--json",action="store_true"); q.set_defaults(func=cmd_wake)
     q=sub.add_parser("complete"); q.add_argument("name"); q.add_argument("--output",required=True); q.add_argument("--recovery-allow-unclaimed",action="store_true"); q.add_argument("--recovery-allow-missing-output",action="store_true"); q.add_argument("--recovery-actor",choices=["owner-manual"]); q.add_argument("--recovery-reason"); q.add_argument("--json",action="store_true"); q.set_defaults(func=cmd_complete)
     q=sub.add_parser("dispatch-once"); q.add_argument("--attempt-ceiling",type=int,default=3); q.add_argument("--retry-interval",type=int,default=60); q.add_argument("--timeout",type=int,default=10); q.add_argument("--json",action="store_true"); q.set_defaults(func=cmd_dispatch_once)
     return p

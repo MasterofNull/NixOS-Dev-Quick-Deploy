@@ -65,5 +65,14 @@ def main():
   m._append("dt",{"type":"completion","task_id":"dt","generation":genA,"ts":old})
   assert m._drain_status("dt",genA)[0]=="drained", "canonical `completion` for this generation = drained"
   assert m._drain_status("dt","f"*64)[0]=="unnudged", "a different generation is NOT masked by genA evidence"
+  # Regression: wake debounce prevents retrigger storms
+  dbn=tmp/"debounce"; m.REPO=dbn; m.INBOX=dbn/".agent/collaboration/antigravity-inbox"; m.STATE=m.INBOX/".lane-state.json"; m.INBOX.mkdir(parents=True)
+  (m.INBOX/"db.md").write_text("# task\nOutput: .agents/plans/db/antigravity.md\n")
+  genDB=m._metadata(m._read_regular(m.INBOX/"db.md"))[1]
+  now_iso=m._now()
+  m._append("db",{"type":"wake_attempt","task_id":"db","generation":genDB,"method":"cli-nudge-ok","ts":now_iso})
+  recs_before = len(m._load("db")["records"])
+  assert m.main(["wake","db.md","--json"])==0
+  assert len(m._load("db")["records"])==recs_before, "debounced wake must not append duplicate record"
  print("PASS: strict inbox regression")
 if __name__=="__main__": main()

@@ -905,9 +905,12 @@ def _rsi_task_prompt(row: Dict[str, Any], apply: bool) -> str:
     )
 
 
+_VALID_RSI_LANES = {"codex", "claude", "antigravity", "local"}
+
+
 def _run_rsi_delegate(row: Dict[str, Any], timeout_seconds: int, apply: bool, lane: str = "codex") -> Tuple[str, Dict[str, Any]]:
     """Launch the selected delegate with its default isolated worktree."""
-    if lane not in {"codex", "claude", "local"}:
+    if lane not in _VALID_RSI_LANES:
         raise ValueError("invalid RSI repair lane")
     if lane == "codex":
         argv = [str(AI_SCRIPT_DIR / "delegate-to-codex"), "--wait", "--mode", "edit",
@@ -915,6 +918,11 @@ def _run_rsi_delegate(row: Dict[str, Any], timeout_seconds: int, apply: bool, la
     elif lane == "claude":
         argv = [str(AI_SCRIPT_DIR / "delegate-to-claude"), "--wait", "--role", "implementer",
                 "--prompt", _rsi_task_prompt(row, apply)]
+    elif lane == "antigravity":
+        argv = [
+            str(AI_SCRIPT_DIR / "delegate-to-antigravity"), "--wait",
+            "--timeout", str(timeout_seconds), "--role", "implementer", "--prompt", _rsi_task_prompt(row, apply),
+        ]
     else:
         argv = [
             str(AI_SCRIPT_DIR / "delegate-to-local"), "--mode", "agent", "--wait",
@@ -956,6 +964,7 @@ def _run_rsi_delegate(row: Dict[str, Any], timeout_seconds: int, apply: bool, la
         "local": r"(?m)^\[delegate-to-local\] Task local-\d{8}-\d{6}-[a-z0-9]{6} completed\.$",
         "codex": r"(?m)^\[delegate-to-codex\] Task codex-\d{8}-\d{6}-[a-z0-9]{6} completed\.$",
         "claude": r"(?m)^\[delegate-to-claude\] Task claude-\d{8}-\d{6}-[a-z0-9]{6} completed( successfully)?\.$",
+        "antigravity": r"(?m)^\[delegate-to-antigravity\] Task antigravity-\d{8}-\d{6}-[a-z0-9]{6} completed\.$",
     }
     if not re.search(receipt_patterns[lane], stdout or ""):
         receipt["reason"] = "missing_delegate_receipt"
@@ -1077,7 +1086,7 @@ def cmd_rsi_dispatch(args: argparse.Namespace) -> int:
 
     cli_lane = getattr(args, "lane", None)
     if cli_lane:
-        if cli_lane not in {"codex", "claude", "local"}:
+        if cli_lane not in _VALID_RSI_LANES:
             print(json.dumps({"ok": False, "lane": cli_lane, "message": "invalid_repair_lane"}, sort_keys=True))
             return 1
         candidate_lanes = [cli_lane]
@@ -1085,14 +1094,14 @@ def cmd_rsi_dispatch(args: argparse.Namespace) -> int:
         configured_lanes = rsi_cfg.get("repair_lanes")
         if not isinstance(configured_lanes, list) or not configured_lanes:
             configured_lanes = ["codex"]
-        candidate_lanes = [l for l in configured_lanes if l in {"codex", "claude", "local"}]
+        candidate_lanes = [l for l in configured_lanes if l in _VALID_RSI_LANES]
         if not candidate_lanes:
             first_invalid = configured_lanes[0] if configured_lanes else "unknown"
             print(json.dumps({"ok": False, "lane": first_invalid, "message": "invalid_repair_lane"}, sort_keys=True))
             return 1
     else:
         single = rsi_cfg.get("repair_lane", "codex")
-        if single not in {"codex", "claude", "local"}:
+        if single not in _VALID_RSI_LANES:
             print(json.dumps({"ok": False, "lane": single, "message": "invalid_repair_lane"}, sort_keys=True))
             return 1
         candidate_lanes = [single]
@@ -1583,7 +1592,7 @@ def build_parser() -> argparse.ArgumentParser:
     s_rsi.add_argument("--limit", type=int, default=1)
     s_rsi.add_argument("--max-attempts", type=int, default=_RSI_MAX_ATTEMPTS)
     s_rsi.add_argument("--timeout-seconds", type=int, default=600)
-    s_rsi.add_argument("--lane", choices=("codex", "claude", "local"), default=None)
+    s_rsi.add_argument("--lane", choices=("codex", "claude", "antigravity", "local"), default=None)
     s_rsi.set_defaults(func=cmd_rsi_dispatch)
 
     s_rq = sub.add_parser("rsi-requeue", help="Requeue owner-approved RSI rows stalled by infrastructure failures")
