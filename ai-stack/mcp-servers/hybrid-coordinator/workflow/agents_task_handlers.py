@@ -48,6 +48,7 @@ _DELEGATE_ROLE_ALIASES = {
 # ---------------------------------------------------------------------------
 
 _AGENT_STATE: Dict[str, Any] = {}       # agent_id -> instance dict
+_AGENT_PROCESSES: Dict[str, Any] = {}   # agent_id -> live asyncio subprocess
 _TASK_QUEUE: List[Dict[str, Any]] = []  # In-memory task queue
 _REVIEW_QUEUE: Dict[str, Dict[str, Any]] = {}  # session_id -> review state
 
@@ -112,6 +113,64 @@ asyncio.run(run())
 # Agent subprocess helper
 # ---------------------------------------------------------------------------
 
+def _clear_agent_process_ownership(instance: Dict[str, Any], proc: Any) -> None:
+    """Drop process identifiers once this exact child has been reaped."""
+    agent_id = instance["id"]
+    if _AGENT_PROCESSES.get(agent_id) is proc:
+        _AGENT_PROCESSES.pop(agent_id, None)
+        instance.pop("pid", None)
+        instance.pop("process_group", None)
+
+
+_CANCELLATION_REAP_GRACE_SEC = 1.0
+
+
+async def _terminate_and_reap_agent_process(
+    proc: Any,
+    sig: int = signal.SIGTERM,
+    *,
+    force: bool = False,
+    grace_sec: Optional[float] = None,
+) -> None:
+    """Terminate a live process group and wait for its child to exit."""
+    if force or proc.returncode is None:
+        try:
+            os.killpg(proc.pid, sig)
+        except ProcessLookupError:
+            pass
+    if grace_sec is None:
+        await proc.communicate()
+        return
+    try:
+        await asyncio.wait_for(proc.communicate(), timeout=grace_sec)
+    except asyncio.TimeoutError:
+        if proc.returncode is None:
+            try:
+                os.killpg(proc.pid, signal.SIGKILL)
+            except ProcessLookupError:
+                pass
+        await proc.communicate()
+
+
+async def _cancel_and_reap_agent_process(instance: Dict[str, Any], proc: Any) -> None:
+    """Preserve cancellation ownership until the child has been reaped."""
+    if instance.get("status") == "running":
+        instance["status"] = "killed"
+        instance["completed_at"] = datetime.now().isoformat()
+    reap_task = asyncio.create_task(_terminate_and_reap_agent_process(
+        proc, grace_sec=_CANCELLATION_REAP_GRACE_SEC,
+    ))
+    try:
+        await asyncio.shield(reap_task)
+    except asyncio.CancelledError:
+        def clear_after_reap(task: asyncio.Task) -> None:
+            if not task.cancelled() and task.exception() is None:
+                _clear_agent_process_ownership(instance, proc)
+
+        reap_task.add_done_callback(clear_after_reap)
+        raise
+
+
 async def _spawn_local_agent_instance(
     *,
     role: str,
@@ -161,39 +220,47 @@ async def _spawn_local_agent_instance(
     if team_id:
         instance["team_id"] = team_id
     _AGENT_STATE[agent_id] = instance
+    _AGENT_PROCESSES[agent_id] = proc
 
     try:
-        stdout, stderr = await asyncio.wait_for(proc.communicate(), timeout=timeout_sec)
-    except asyncio.TimeoutError:
         try:
-            os.killpg(proc.pid, signal.SIGKILL)
-        except ProcessLookupError:
-            pass
-        await proc.communicate()
-        instance["status"] = "timeout"
-        instance["completed_at"] = datetime.now().isoformat()
-        return instance, 504
+            stdout, stderr = await asyncio.wait_for(proc.communicate(), timeout=timeout_sec)
+        except asyncio.TimeoutError:
+            await _terminate_and_reap_agent_process(proc, signal.SIGKILL, force=True)
+            if instance.get("status") != "running":
+                return instance, 200
+            instance["status"] = "timeout"
+            instance["completed_at"] = datetime.now().isoformat()
+            return instance, 504
+        except asyncio.CancelledError:
+            await _cancel_and_reap_agent_process(instance, proc)
+            raise
 
-    if proc.returncode != 0:
-        instance["status"] = "failed"
-        instance["error"] = stderr.decode(errors="replace")[:500] if stderr else "unknown"
-        instance["completed_at"] = datetime.now().isoformat()
-        return instance, 500
-
-    try:
-        result = json.loads(stdout.decode())
-        if result.get("ok"):
-            instance["status"] = "completed"
-            instance["result"] = result.get("content", "")
-        else:
+        if instance.get("status") != "running":
+            return instance, 200
+        if proc.returncode != 0:
             instance["status"] = "failed"
-            instance["error"] = result.get("error", "unknown")
-    except (json.JSONDecodeError, UnicodeDecodeError):
-        instance["status"] = "completed"
-        instance["result"] = stdout.decode(errors="replace")[:2000]
+            instance["error"] = stderr.decode(errors="replace")[:500] if stderr else "unknown"
+            instance["completed_at"] = datetime.now().isoformat()
+            return instance, 500
 
-    instance["completed_at"] = datetime.now().isoformat()
-    return instance, 201
+        try:
+            result = json.loads(stdout.decode())
+            if result.get("ok"):
+                instance["status"] = "completed"
+                instance["result"] = result.get("content", "")
+            else:
+                instance["status"] = "failed"
+                instance["error"] = result.get("error", "unknown")
+        except (json.JSONDecodeError, UnicodeDecodeError):
+            instance["status"] = "completed"
+            instance["result"] = stdout.decode(errors="replace")[:2000]
+
+        instance["completed_at"] = datetime.now().isoformat()
+        return instance, 201
+    finally:
+        if proc.returncode is not None:
+            _clear_agent_process_ownership(instance, proc)
 
 
 # ---------------------------------------------------------------------------
@@ -296,34 +363,38 @@ async def _spawn_delegated_agent_instance(
     if team_id:
         instance["team_id"] = team_id
     _AGENT_STATE[agent_id] = instance
+    _AGENT_PROCESSES[agent_id] = proc
 
     try:
-        stdout, stderr = await asyncio.wait_for(proc.communicate(), timeout=timeout_sec)
-    except asyncio.TimeoutError:
         try:
-            os.killpg(proc.pid, signal.SIGKILL)
-        except ProcessLookupError:
-            pass
-        await proc.communicate()
+            stdout, stderr = await asyncio.wait_for(proc.communicate(), timeout=timeout_sec)
+        except asyncio.TimeoutError:
+            await _terminate_and_reap_agent_process(proc, signal.SIGKILL, force=True)
+            if instance.get("status") != "running":
+                return instance, 200
+            instance["status"] = "timeout"
+            instance["error"] = f"Task timed out after {timeout_sec}s"
+            instance["completed_at"] = datetime.now().isoformat()
+            return instance, 504
+        except asyncio.CancelledError:
+            await _cancel_and_reap_agent_process(instance, proc)
+            raise
+
         if instance.get("status") != "running":
             return instance, 200
-        instance["status"] = "timeout"
-        instance["error"] = f"Task timed out after {timeout_sec}s"
-        instance["completed_at"] = datetime.now().isoformat()
-        return instance, 504
+        if proc.returncode != 0:
+            instance["status"] = "failed"
+            instance["error"] = stderr.decode(errors="replace")[:500] if stderr else "unknown"
+            instance["completed_at"] = datetime.now().isoformat()
+            return instance, 500
 
-    if instance.get("status") != "running":
-        return instance, 200
-    if proc.returncode != 0:
-        instance["status"] = "failed"
-        instance["error"] = stderr.decode(errors="replace")[:500] if stderr else "unknown"
+        instance["status"] = "completed"
+        instance["result"] = stdout.decode(errors="replace").strip()
         instance["completed_at"] = datetime.now().isoformat()
-        return instance, 500
-
-    instance["status"] = "completed"
-    instance["result"] = stdout.decode(errors="replace").strip()
-    instance["completed_at"] = datetime.now().isoformat()
-    return instance, 201
+        return instance, 201
+    finally:
+        if proc.returncode is not None:
+            _clear_agent_process_ownership(instance, proc)
 
 
 async def handle_agents_spawn(request: web.Request) -> web.Response:
@@ -413,6 +484,9 @@ async def handle_agents_kill(request: web.Request) -> web.Response:
     if not instance:
         return web.json_response({"error": f"Agent {agent_id} not found"}, status=404)
     if instance.get("status") != "running":
+        return web.json_response({"status": "ok", "agent_id": agent_id, "instance": instance})
+    proc = _AGENT_PROCESSES.get(agent_id)
+    if not proc or proc.returncode is not None:
         return web.json_response({"status": "ok", "agent_id": agent_id, "instance": instance})
     pid = instance.get("pid")
     if pid:
