@@ -1,0 +1,255 @@
+# Grype configuration file for NixOS closure security scans
+# SSOT: .agents/plans/cve-triage-20261002/TRIAGE.md
+# Governed by Rule 19 (Root-Cause Discipline) — every ignore rule has an explicit reason and package name.
+
+ignore:
+  # --- False Positives: Product Name Collisions ---
+  - vulnerability: CVE-2021-28794
+    package:
+      name: shellcheck
+    reason: "Mediawiki/other product collision; upstream Haskell shellcheck is not affected"
+
+  - vulnerability: CVE-2011-2411
+    package:
+      name: samba
+    reason: "NetApp Data ONTAP name collision; not Samba networking daemon"
+
+  - vulnerability: CVE-2018-17930
+    package:
+      name: sherlock
+    reason: "Name collision with an unrelated software product named Sherlock"
+
+  - vulnerability: CVE-2026-24845
+    package:
+      name: malcontent
+    reason: "Name collision with Malcontent malware scanner; not the desktop parental-controls library"
+
+  # --- False Positives: Pre-release and Version Suffix Ordering ---
+  - vulnerability: CVE-2024-47175
+    package:
+      name: libppd
+    reason: "Affects <=2.1b1; 2.1.1 is newer; Grype version parser fails on b-suffix ordering"
+
+  - vulnerability: CVE-2024-47076
+    package:
+      name: libcupsfilters
+    reason: "Affects <=2.1b1; 2.1.1 is newer; Grype version parser fails on b-suffix ordering"
+
+  - vulnerability: CVE-2026-6507
+    package:
+      name: dnsmasq
+    reason: "Fix 2.93test9 is a pre-release prior to installed 2.93 final"
+
+  - vulnerability: CVE-2021-4048
+    package:
+      name: lapack
+    reason: "Fixed in LAPACK 3.10; nixpkgs lapack-3 is modern 3.x; Grype parses bare version '3'"
+
+  # --- False Positives: Distro-Specific Packaging / Disputed / Already Fixed Upstream ---
+  - vulnerability: CVE-2022-0543
+    package:
+      name: redis
+    reason: "Debian/Ubuntu-specific Lua sandbox packaging defect; not present in upstream Redis"
+
+  - vulnerability: CVE-2022-3734
+    package:
+      name: redis
+    reason: "Fixed in upstream Redis prior to 8.x; installed version is 8.8.3"
+
+  - vulnerability: CVE-2025-49112
+    package:
+      name: redis
+    reason: "Disputed / fixed upstream; installed version is 8.8.3"
+
+  - vulnerability: CVE-2016-0749
+    package:
+      name: spice
+    reason: "Fixed in SPICE <=0.14.x; installed version is 0.16.0"
+
+  - vulnerability: CVE-2016-2150
+    package:
+      name: spice
+    reason: "Fixed in SPICE <=0.14.x; installed version is 0.16.0"
+
+  - vulnerability: CVE-2018-10893
+    package:
+      name: spice
+    reason: "Fixed in SPICE <=0.14.x; installed version is 0.16.0"
+
+  - vulnerability: CVE-2020-1416
+    package:
+      name: typescript
+    reason: "Visual Studio TypeScript SDK 2020 flaw; modern TypeScript 5.9.3 is not affected"
+
+  - vulnerability: CVE-2017-5436
+    package:
+      name: graphite2
+    reason: "Fixed in graphite2 1.3.10; installed version is 1.3.15"
+
+  - vulnerability: CVE-2025-62689
+    package:
+      name: libmicrohttpd
+    reason: "Fix date in Grype corresponds to 1.0.2 release; installed version is 1.0.2"
+
+  - vulnerability: CVE-2025-59777
+    package:
+      name: libmicrohttpd
+    reason: "Fix date in Grype corresponds to 1.0.2 release; installed version is 1.0.2"
+
+  - vulnerability: CVE-2025-7425
+    package:
+      name: libxslt
+    reason: "Fixed in libxslt 1.1.44+; installed version is 1.1.45"
+
+  - vulnerability: CVE-2025-10911
+    package:
+      name: libxslt
+    reason: "Fixed in libxslt 1.1.44+; installed version is 1.1.45"
+
+  - vulnerability: CVE-2010-4226
+    package:
+      name: cpio
+    reason: "Fixed in cpio 2.11+; installed version is 2.15"
+
+  - vulnerability: CVE-2023-7216
+    package:
+      name: cpio
+    reason: "Fixed upstream in cpio 2.15"
+
+  - vulnerability: CVE-2021-30499
+    package:
+      name: libcaca
+    reason: "Fixed in upstream libcaca post-beta19; installed version is 0.99.beta20"
+
+  - vulnerability: CVE-2022-0856
+    package:
+      name: libcaca
+    reason: "Fixed upstream in libcaca 0.99.beta20"
+
+  - vulnerability: CVE-2020-15945
+    package:
+      name: lua
+    reason: "Fixed upstream in installed Lua releases (5.2.4 / 5.3.6)"
+
+  - vulnerability: CVE-2021-43519
+    package:
+      name: lua
+    reason: "Fixed upstream in installed Lua releases (5.3.6)"
+
+  - vulnerability: CVE-2024-9410
+    package:
+      name: ada
+    reason: "Fix date in Grype 2024-10-01 is prior to installed ada 3.4.4"
+
+  - vulnerability: CVE-2022-37416
+    package:
+      name: libmpeg2
+    reason: "Fix date in Grype 2022-07-27 is prior to installed libmpeg2 0.5.1"
+
+  - vulnerability: CVE-2026-2340
+    package:
+      name: samba
+    reason: "Patched / fixed upstream; installed version 4.23.10 is latest"
+
+  # --- QEMU false positives (disputed / addressed pre-10.x; 10.2.4 installed) ---
+  - vulnerability: CVE-2018-18438
+    package:
+      name: qemu
+    reason: "Fixed upstream prior to QEMU 10.x; installed version is 10.2.4"
+
+  - vulnerability: CVE-2019-12067
+    package:
+      name: qemu
+    reason: "Fixed upstream prior to QEMU 10.x; installed version is 10.2.4"
+
+  - vulnerability: CVE-2021-20255
+    package:
+      name: qemu
+    reason: "Fixed upstream prior to QEMU 10.x; installed version is 10.2.4"
+
+  - vulnerability: CVE-2023-1386
+    package:
+      name: qemu
+    reason: "Disputed / fixed upstream prior to QEMU 10.x; installed version is 10.2.4"
+
+  - vulnerability: CVE-2023-2680
+    package:
+      name: qemu
+    reason: "Disputed / fixed upstream prior to QEMU 10.x; installed version is 10.2.4"
+
+  - vulnerability: CVE-2024-6505
+    package:
+      name: qemu
+    reason: "Fixed upstream prior to QEMU 10.x; installed version is 10.2.4"
+
+  - vulnerability: CVE-2024-6519
+    package:
+      name: qemu
+    reason: "Fixed upstream prior to QEMU 10.x; installed version is 10.2.4"
+
+  - vulnerability: CVE-2024-8354
+    package:
+      name: qemu
+    reason: "Fixed upstream prior to QEMU 10.x; installed version is 10.2.4"
+
+  # --- OpenSSH false positives (distro packaging, rowhammer, or fixed in 10.5p1) ---
+  - vulnerability: CVE-2007-2768
+    package:
+      name: openssh
+    reason: "Legacy flaw fixed upstream; installed OpenSSH is 10.5p1"
+
+  - vulnerability: CVE-2008-3844
+    package:
+      name: openssh
+    reason: "RedHat-specific packaging repackage flaw; not upstream OpenSSH"
+
+  - vulnerability: CVE-2014-9278
+    package:
+      name: openssh
+    reason: "Fixed upstream; installed OpenSSH is 10.5p1"
+
+  - vulnerability: CVE-2023-51767
+    package:
+      name: openssh
+    reason: "Disputed hardware Rowhammer attack vector; not OpenSSH software flaw"
+
+  - vulnerability: CVE-2026-3497
+    package:
+      name: openssh
+    reason: "No upstream fix published; installed OpenSSH 10.5p1 is latest upstream"
+
+  - vulnerability: CVE-2026-55653
+    package:
+      name: openssh
+    reason: "Fixed in OpenSSH 10.5p1"
+
+  - vulnerability: CVE-2026-55654
+    package:
+      name: openssh
+    reason: "Fixed in OpenSSH 10.5p1"
+
+  - vulnerability: CVE-2026-55655
+    package:
+      name: openssh
+    reason: "Fixed in OpenSSH 10.5p1"
+
+  # --- Contained & Accepted Risks (Batch 4) ---
+  - vulnerability: CVE-2026-4757
+    package:
+      name: libpng
+    reason: "Legacy libpng 1.2.59 contained strictly to appimage-run bubblewrap sandbox; no upstream 1.2.x updates exist"
+
+  - vulnerability: CVE-2018-7263
+    package:
+      name: libmad
+    reason: "Unmaintained upstream; contained audio decoding dependency via roc-toolkit"
+
+  - vulnerability: CVE-2024-58251
+    package:
+      name: busybox
+    reason: "Internal helper inside nix-store tmpfiles; no exposed network listening surface"
+
+  - vulnerability: CVE-2025-46394
+    package:
+      name: busybox
+    reason: "Internal helper inside nix-store tmpfiles; no exposed network listening surface"
