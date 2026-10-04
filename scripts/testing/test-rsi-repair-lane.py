@@ -260,7 +260,18 @@ class InboxIsolationTests(unittest.TestCase):
         with contextlib.redirect_stdout(output), patch.object(self.inbox, "_invoke_wake", side_effect=AssertionError("wake must not run")):
             self.assertEqual(self.inbox.cmd_dispatch_once(dispatch_args), 1)
         payload = json.loads(output.getvalue())
-        self.assertEqual(payload["reason"], "blocked_unsupported_ide_worktree_isolation")
+        self.assertFalse(payload["ok"])
+        self.assertEqual(payload["state"], "blocked")
+        self.assertEqual(payload["blocked_count"], 1)
+        self.assertEqual(
+            payload["blocked"],
+            [
+                {
+                    "task_id": "repair",
+                    "reason": "blocked_unsupported_ide_worktree_isolation",
+                }
+            ],
+        )
 
     def test_advisory_roles_remain_usable(self):
         for role in ("reviewer", "architect", "research", "plan"):

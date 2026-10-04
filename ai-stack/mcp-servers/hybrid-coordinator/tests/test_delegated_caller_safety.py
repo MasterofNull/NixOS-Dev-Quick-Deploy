@@ -24,6 +24,11 @@ class _Process:
         return b"delegated output", b""
 
 
+class _LiveProcess:
+    pid = 4321
+    returncode = None
+
+
 def test_delegated_reviewer_uses_reviewer_role(monkeypatch):
     spawned = []
 
@@ -70,9 +75,11 @@ class _Request:
 
 def test_kill_delegated_instance_terminates_its_process_group(monkeypatch):
     killed = []
+    process = _LiveProcess()
     monkeypatch.setattr(handlers, "_AGENT_STATE", {
         "delegated": {"id": "delegated", "status": "running", "pid": 4321, "process_group": 4321},
     })
+    monkeypatch.setattr(handlers, "_AGENT_PROCESSES", {"delegated": process})
     monkeypatch.setattr(handlers.os, "killpg", lambda pid, sig: killed.append((pid, sig)))
 
     response = asyncio.run(handlers.handle_agents_kill(_Request({"id": "delegated"})))
@@ -95,6 +102,7 @@ def test_kill_terminal_instance_does_not_signal_stale_process_group(monkeypatch)
                 "process_group": 4321,
             },
         })
+        monkeypatch.setattr(handlers, "_AGENT_PROCESSES", {"delegated": _LiveProcess()})
         response = asyncio.run(handlers.handle_agents_kill(_Request({"id": "delegated"})))
 
         assert response.status == 200
@@ -116,6 +124,23 @@ class _BlockingProcess:
         await self.release.wait()
         self.returncode = -handlers.signal.SIGTERM
         return b"", b"terminated"
+
+
+class _StubbornProcess:
+    pid = 8766
+
+    def __init__(self):
+        self.returncode = None
+        self.communicating = asyncio.Event()
+        self.calls = 0
+
+    async def communicate(self):
+        self.calls += 1
+        if self.calls < 3:
+            self.communicating.set()
+            await asyncio.Future()
+        self.returncode = -handlers.signal.SIGKILL
+        return b"", b"killed"
 
 
 def test_delegated_kill_survives_spawn_waiter_reap(monkeypatch):
@@ -147,6 +172,200 @@ def test_delegated_kill_survives_spawn_waiter_reap(monkeypatch):
     assert process.returncode == -handlers.signal.SIGTERM
     assert status == 200
     assert instance["status"] == "killed"
+    assert "pid" not in instance
+    assert "process_group" not in instance
+    assert handlers._AGENT_PROCESSES == {}
+
+
+def test_local_kill_survives_spawn_waiter_reap(monkeypatch):
+    process = _BlockingProcess()
+    killed = []
+    monkeypatch.setattr(handlers, "_AGENT_STATE", {})
+
+    async def create_process(*_args, **_kwargs):
+        return process
+
+    monkeypatch.setattr(handlers.asyncio, "create_subprocess_exec", create_process)
+    monkeypatch.setattr(handlers.os, "killpg", lambda pid, sig: killed.append((pid, sig)))
+
+    async def spawn_kill_and_reap():
+        spawn = asyncio.create_task(handlers._spawn_local_agent_instance(
+            role="implementer", task_text="x", system_prompt="test",
+            max_tokens=1, temperature=0, timeout_sec=1,
+        ))
+        await process.communicating.wait()
+        agent_id = next(iter(handlers._AGENT_STATE))
+        response = await handlers.handle_agents_kill(_Request({"id": agent_id}))
+        process.release.set()
+        instance, status = await spawn
+        return response, instance, status
+
+    response, instance, status = asyncio.run(spawn_kill_and_reap())
+
+    assert response.status == 200
+    assert killed == [(process.pid, handlers.signal.SIGTERM)]
+    assert status == 200
+    assert instance["status"] == "killed"
+    assert "pid" not in instance
+    assert "process_group" not in instance
+    assert handlers._AGENT_PROCESSES == {}
+
+
+class _TimeoutRaceProcess:
+    pid = 9876
+
+    def __init__(self):
+        self.returncode = None
+        self.communicating = asyncio.Event()
+        self.calls = 0
+
+    async def communicate(self):
+        self.calls += 1
+        if self.calls == 1:
+            self.communicating.set()
+            await asyncio.Future()
+        self.returncode = -handlers.signal.SIGKILL
+        return b"", b""
+
+
+def test_local_timeout_preserves_concurrent_killed_state(monkeypatch):
+    process = _TimeoutRaceProcess()
+    killed = []
+    monkeypatch.setattr(handlers, "_AGENT_STATE", {})
+
+    async def create_process(*_args, **_kwargs):
+        return process
+
+    monkeypatch.setattr(handlers.asyncio, "create_subprocess_exec", create_process)
+
+    def killpg(pid, sig):
+        killed.append((pid, sig))
+        instance = next(iter(handlers._AGENT_STATE.values()))
+        instance["status"] = "killed"
+
+    monkeypatch.setattr(handlers.os, "killpg", killpg)
+    instance, status = asyncio.run(handlers._spawn_local_agent_instance(
+        role="implementer", task_text="x", system_prompt="test",
+        max_tokens=1, temperature=0, timeout_sec=0.01,
+    ))
+
+    assert status == 200
+    assert instance["status"] == "killed"
+    assert killed == [(process.pid, handlers.signal.SIGKILL)]
+    assert handlers._AGENT_PROCESSES == {}
+
+
+def test_spawn_cancellation_reaps_owned_local_and_delegated_processes(monkeypatch):
+    killed = []
+    monkeypatch.setattr(handlers, "_AGENT_STATE", {})
+
+    async def cancel_spawn(spawn_factory):
+        process = _BlockingProcess()
+
+        async def create_process(*_args, **_kwargs):
+            return process
+
+        monkeypatch.setattr(handlers.asyncio, "create_subprocess_exec", create_process)
+        task = asyncio.create_task(spawn_factory())
+        await process.communicating.wait()
+        task.cancel()
+        try:
+            await task
+        except asyncio.CancelledError:
+            pass
+        else:
+            raise AssertionError("spawn cancellation must propagate")
+        instance = next(iter(handlers._AGENT_STATE.values()))
+        assert instance["status"] == "killed"
+        assert "pid" not in instance
+        assert "process_group" not in instance
+        assert handlers._AGENT_PROCESSES == {}
+
+    monkeypatch.setattr(
+        handlers.os,
+        "killpg",
+        lambda pid, sig: (killed.append((pid, sig)), next(iter(handlers._AGENT_PROCESSES.values())).release.set()),
+    )
+
+    async def run():
+        await cancel_spawn(lambda: handlers._spawn_local_agent_instance(
+            role="implementer", task_text="x", system_prompt="test",
+            max_tokens=1, temperature=0, timeout_sec=1,
+        ))
+        handlers._AGENT_STATE.clear()
+        await cancel_spawn(lambda: handlers._spawn_delegated_agent_instance(
+            lane="gemini", role="implement", task_text="x", timeout_sec=1,
+        ))
+
+    asyncio.run(run())
+
+    assert killed == [
+        (8765, handlers.signal.SIGTERM),
+        (8765, handlers.signal.SIGTERM),
+    ]
+
+
+def test_spawn_cancellation_escalates_before_releasing_ownership(monkeypatch):
+    process = _StubbornProcess()
+    killed = []
+    monkeypatch.setattr(handlers, "_AGENT_STATE", {})
+    monkeypatch.setattr(handlers, "_CANCELLATION_REAP_GRACE_SEC", 0.01)
+
+    async def create_process(*_args, **_kwargs):
+        return process
+
+    monkeypatch.setattr(handlers.asyncio, "create_subprocess_exec", create_process)
+    monkeypatch.setattr(handlers.os, "killpg", lambda pid, sig: killed.append((pid, sig)))
+
+    async def cancel_spawn():
+        task = asyncio.create_task(handlers._spawn_local_agent_instance(
+            role="implementer", task_text="x", system_prompt="test",
+            max_tokens=1, temperature=0, timeout_sec=1,
+        ))
+        await process.communicating.wait()
+        task.cancel()
+        try:
+            await task
+        except asyncio.CancelledError:
+            pass
+        else:
+            raise AssertionError("spawn cancellation must propagate")
+
+    asyncio.run(cancel_spawn())
+
+    instance = next(iter(handlers._AGENT_STATE.values()))
+    assert instance["status"] == "killed"
+    assert "pid" not in instance
+    assert "process_group" not in instance
+    assert handlers._AGENT_PROCESSES == {}
+    assert killed == [
+        (process.pid, handlers.signal.SIGTERM),
+        (process.pid, handlers.signal.SIGKILL),
+    ]
+
+
+def test_delegated_completion_releases_ownership_before_kill(monkeypatch):
+    process = _Process()
+    killed = []
+    monkeypatch.setattr(handlers, "_AGENT_STATE", {})
+
+    async def create_process(*_args, **_kwargs):
+        return process
+
+    monkeypatch.setattr(handlers.asyncio, "create_subprocess_exec", create_process)
+    monkeypatch.setattr(handlers.os, "killpg", lambda pid, sig: killed.append((pid, sig)))
+    instance, status = asyncio.run(handlers._spawn_delegated_agent_instance(
+        lane="gemini", role="implement", task_text="x", timeout_sec=1,
+    ))
+    response = asyncio.run(handlers.handle_agents_kill(_Request({"id": instance["id"]})))
+
+    assert status == 201
+    assert instance["status"] == "completed"
+    assert "pid" not in instance
+    assert "process_group" not in instance
+    assert handlers._AGENT_PROCESSES == {}
+    assert response.status == 200
+    assert killed == []
 
 
 def test_delegated_unknown_role_is_rejected_before_spawn(monkeypatch):

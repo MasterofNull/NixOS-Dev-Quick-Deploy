@@ -224,3 +224,11 @@ Codex lane absent).
 - **Fix path:** Fail closed for editing roles until bridge dispatch and inbox enforcement establish and verify a dedicated task workspace; root integrates caller/isolation repairs and submits the frozen subject to independent review.
 - **Class / severity:** authority/isolation; high.
 - **Interim state:** Live IDE mutation is deferred. Receipt findings 2/3 have focused temporary-repository real-supervisor coverage only; earlier resolved/pass statements are Antigravity self-report, not final acceptance.
+
+## WR-COLLAB-PULSE-TEMP-CONTENTION (2026-10-03)
+
+- Symptom: concurrent aq-event writers contend on a common temporary path.
+- Root cause / producer: shared atomic-write staging in scripts/ai/aq-event.
+- Fix path: unique writer staging plus concurrency regression in a separate bounded slice.
+- Class / severity: concurrency; medium. Status: DEFERRED.
+- Interim mitigation: serialize this slice's pulse writes; this does not establish global concurrency safety.
