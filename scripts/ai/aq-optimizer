@@ -99,14 +99,28 @@ def _restart_service(svc: str, dry_run: bool) -> str:
     if dry_run:
         return "dry_run"
     last_error = ""
+    cmd = ["systemctl", "restart", "--no-ask-password", svc]
+    if os.geteuid() != 0:
+        cmd = ["sudo", "-n", "systemctl", "restart", "--no-ask-password", svc]
+
     for attempt in range(1, OPTIMIZER_RESTART_RETRIES + 1):
         try:
             result = subprocess.run(
-                ["systemctl", "restart", svc],
+                cmd,
                 capture_output=True,
                 text=True,
                 timeout=OPTIMIZER_RESTART_TIMEOUT_SECONDS,
             )
+            if result.returncode != 0 and os.geteuid() != 0:
+                # Fallback to direct systemctl with --no-ask-password
+                fallback = subprocess.run(
+                    ["systemctl", "restart", "--no-ask-password", svc],
+                    capture_output=True,
+                    text=True,
+                    timeout=OPTIMIZER_RESTART_TIMEOUT_SECONDS,
+                )
+                if fallback.returncode == 0:
+                    result = fallback
             if result.returncode == 0:
                 active = subprocess.run(
                     ["systemctl", "is-active", "--quiet", svc],
