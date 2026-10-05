@@ -78,6 +78,7 @@
     pydantic
     jsonschema
     pytest
+    ps."pytest-asyncio"
     cryptography
     # Service modules the phase0 QA suite imports to test flag-off/wiring behavior
     # (switchboard, dashboard api, aq-tui-dashboard, local-inference contracts)
