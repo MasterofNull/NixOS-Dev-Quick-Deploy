@@ -266,3 +266,27 @@ Codex lane absent).
 - **Fix path:** Updated `mount_targets()` in `qa_evidence_store.py` to classify mounts: only pseudo-filesystems (`tmpfs`, `ramfs`, `overlay`, `fuse`, `shm`) or redirected mounts (`root_within_fs != mount_point`) are classified as forbidden targets; benign systemd namespace self-bind mounts on durable filesystems are accepted. Added regressions in `scripts/testing/test-telemetry-root-boundary.py`.
 - **Class / severity:** Stability / observability false-alarm; medium. Status: FIXED 2026-10-05.
 - **Evidence:** `scripts/testing/test-telemetry-root-boundary.py` PASS (6/6 tests), `scripts/testing/test-qa-evidence-store.py` PASS (4/4 tests), `scripts/testing/test-ai-stack-health-monitor.py` PASS.
+
+## WR-CI-NIX-BUILD-RUNNER-DISK-SPACE (2026-10-05) — FIXED
+
+- **Symptom:** CI job `Nix Build / Build NixOS Configuration` failed with `System.IO.IOException: No space left on device` during `nix build .#nixosConfigurations.hyperd-ai-dev.config.system.build.toplevel`.
+- **Root cause / producer:** `.github/workflows/nix-build.yml` allocated an 8GB swapfile without clearing pre-installed caches and toolchains (`/usr/share/dotnet`, `/opt/ghc`, `/usr/local/lib/android`, `/opt/hostedtoolcache/CodeQL`), leaving under 6GB of disk space on `ubuntu-latest` hosted runners.
+- **Fix path:** Added `Free disk space` step to `.github/workflows/nix-build.yml` before installing Nix, matching the existing production pattern in `.github/workflows/security.yml`.
+- **Class / severity:** CI / infra; medium. Status: FIXED 2026-10-05.
+- **Evidence:** Prunes ~25-30 GB before Nix evaluation; commit `1b673c8e`.
+
+## WR-AQ-OPTIMIZER-SUDO-AUTH (2026-10-05) — FIXED
+
+- **Symptom:** `aq-optimizer` hangs for up to 3 x 120s = 360s on unattended service restarts (`systemctl restart svc`), blocking `prsi-orchestrator.py execute`.
+- **Root cause / producer:** `_restart_service(svc)` in `scripts/ai/aq-optimizer` invoked bare `["systemctl", "restart", svc]` without `--no-ask-password` or `sudo -n`. When executed unprivileged, polkit prompts for interactive credentials, blocking non-interactive runners on stdin.
+- **Fix path:** Updated `_restart_service` to run `sudo -n systemctl restart --no-ask-password svc` when non-root with fallback to direct `systemctl restart --no-ask-password svc`.
+- **Class / severity:** T1 tooling / automation; medium. Status: FIXED 2026-10-05.
+- **Evidence:** `python3 scripts/automation/prsi-orchestrator.py execute` runs in 1.1s with 2 actions applied without hanging; commit `ba30137d`.
+
+## WR-PYTEST-ASYNCIO-DECLARATION (2026-10-05) — FIXED
+
+- **Symptom:** Every pytest test invocation produced `PytestConfigWarning: Unknown config option: asyncio_mode` and `asyncio_default_fixture_loop_scope`.
+- **Root cause / producer:** `pytest.ini` declares `asyncio_mode = auto`, but `nix/home/base.nix` and `nix/modules/core/base.nix` only included `pytest-cov` and `pytest-xdist`, omitting `pytest-asyncio`.
+- **Fix path:** Declared `ps."pytest-asyncio"` in `nix/home/base.nix` and `nix/modules/core/base.nix`.
+- **Class / severity:** T1 tooling / test hygiene; low. Status: FIXED 2026-10-05.
+- **Evidence:** `nix eval .#nixosConfigurations.hyperd-ai-dev.pkgs.python3Packages.pytest-asyncio.name` evaluates `"python3.13-pytest-asyncio-1.3.0"`; `check-package-count-drift.sh` PASS; commit `ba30137d`.
