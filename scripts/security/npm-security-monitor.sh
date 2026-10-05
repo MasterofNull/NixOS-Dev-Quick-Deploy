@@ -84,12 +84,27 @@ latest_file="${OUTPUT_DIR}/latest-npm-security.json"
 tmp_root="$(mktemp -d)"
 trap 'rm -rf "${tmp_root}"' EXIT
 
-mapfile -t package_files < <(find "${REPO_ROOT}" -type f -name 'package.json' \
-  -not -path '*/node_modules/*' \
-  -not -path '*/archive/*' \
-  -not -path '*/.git/*' \
-  -not -path '*/.claude/worktrees/*' \
-  -not -path '*/.agents/delegation/worktrees/*' | sort)
+if git -C "${REPO_ROOT}" rev-parse --is-inside-work-tree >/dev/null 2>&1; then
+  mapfile -t package_files < <(
+    {
+      git -C "${REPO_ROOT}" ls-files -- '**/package.json' 'package.json'
+      git -C "${REPO_ROOT}" ls-files --others --exclude-standard -- '**/package.json' 'package.json'
+    } | sort -u | while IFS= read -r rel; do
+      [[ -n "${rel}" && -f "${REPO_ROOT}/${rel}" ]] && echo "${REPO_ROOT}/${rel}"
+    done
+  )
+else
+  mapfile -t package_files < <(find "${REPO_ROOT}" -type f -name 'package.json' \
+    -not -path '*/node_modules/*' \
+    -not -path '*/archive/*' \
+    -not -path '*/.forks/*' \
+    -not -path '*/.agents/*' \
+    -not -path '*/.claude/*' \
+    -not -path '*/.codex/*' \
+    -not -path '*/.review-worktrees/*' \
+    -not -path '*/.venv/*' \
+    -not -path '*/.git/*' | sort)
+fi
 
 project_reports="${tmp_root}/projects.jsonl"
 touch "${project_reports}"

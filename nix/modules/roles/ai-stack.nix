@@ -2023,9 +2023,10 @@ in {
           ProtectSystem = "strict";
           ProtectHome = "read-only";
           # Attention queue lives in .agents/attention/ inside the repo; aq-qa
-          # phase 0 takes its evidence lock in the shared telemetry dir.
+          # phase 0 takes its evidence lock in the shared telemetry dir and provider-probe lock in .agent/qa/.
           ReadWritePaths = [
             "${cfg.mcpServers.repoPath}/.agents"
+            "${cfg.mcpServers.repoPath}/.agent"
             "${cfg.mcpServers.dataDir}/hybrid/telemetry"
           ];
           PrivateTmp = true;

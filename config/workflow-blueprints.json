@@ -743,6 +743,10 @@
         "consensus_mode": "reviewer-gate",
         "selection_strategy": "orchestrator-first",
         "allow_parallel_subagents": true,
+        "collaborator_lanes": [
+          "implementation",
+          "remote-reasoning"
+        ],
         "max_parallel_subagents": 3
       },
       "intent_contract": {
@@ -857,6 +861,8 @@
       "orchestration_policy": {
         "primary_lane": "local-agent",
         "reviewer_lane": "self",
+        "escalation_lane": "remote-reasoning",
+        "consensus_mode": "reviewer-gate",
         "selection_strategy": "orchestrator-first",
         "allow_parallel_subagents": false,
         "max_parallel_subagents": 1
@@ -937,8 +943,13 @@
         "primary_lane": "local-agent",
         "reviewer_lane": "self",
         "escalation_lane": "remote-reasoning",
+        "consensus_mode": "reviewer-gate",
         "selection_strategy": "domain-first",
         "allow_parallel_subagents": true,
+        "collaborator_lanes": [
+          "implementation",
+          "remote-reasoning"
+        ],
         "max_parallel_subagents": 3
       },
       "intent_contract": {
