@@ -27,42 +27,49 @@ lean_ctx_bin="$(command -v lean-ctx 2>/dev/null || true)"
 graph_store="${HOME}/.lean-ctx/graphs"
 
 find_graph_dir() {
-    local current_common candidate_common candidate_root index
-    local shared_repo_match=""
+    local current_common
 
     [[ -d "$graph_store" ]] || return 1
     command -v python3 >/dev/null 2>&1 || return 1
     current_common="$(git -C "$repo_root" rev-parse --path-format=absolute --git-common-dir 2>/dev/null || true)"
 
-    while IFS= read -r -d '' index; do
-        candidate_root="$(python3 - "$index" <<'PY' 2>/dev/null || true
-import json
+    python3 - "$graph_store" "$repo_root" "$current_common" <<'PYTHON'
+import glob
+import os
+import re
+import subprocess
 import sys
 
-try:
-    with open(sys.argv[1], encoding="utf-8") as handle:
-        print(json.load(handle).get("project_root", ""))
-except (OSError, ValueError):
-    pass
-PY
-        )"
-        [[ -n "$candidate_root" ]] || continue
-
-        if [[ "$candidate_root" == "$repo_root" ]]; then
-            dirname "$index"
-            return 0
-        fi
-
-        if [[ -z "$shared_repo_match" && -n "$current_common" ]]; then
-            candidate_common="$(git -C "$candidate_root" rev-parse --path-format=absolute --git-common-dir 2>/dev/null || true)"
-            if [[ "$candidate_common" == "$current_common" ]]; then
-                shared_repo_match="$(dirname "$index")"
-            fi
-        fi
-    done < <(find "$graph_store" -mindepth 2 -maxdepth 2 -type f -name index.json -print0 2>/dev/null)
-
-    [[ -n "$shared_repo_match" ]] || return 1
-    printf '%s\n' "$shared_repo_match"
+graph_store, repo_root, current_common = sys.argv[1:]
+shared_repo_match = ""
+for index_file in glob.iglob(os.path.join(graph_store, "*", "index.json")):
+    try:
+        with open(index_file, "rb") as handle:
+            head = handle.read(1024).decode("utf-8", errors="replace")
+    except OSError:
+        continue
+    match = re.search(r'"project_root":\s*"([^"]+)"', head)
+    if not match:
+        continue
+    cand_root = match.group(1)
+    if os.path.realpath(cand_root) == repo_root:
+        print(os.path.dirname(index_file))
+        sys.exit(0)
+    if not shared_repo_match and current_common and os.path.isdir(cand_root):
+        try:
+            result = subprocess.run(
+                ["git", "-C", cand_root, "rev-parse", "--path-format=absolute", "--git-common-dir"],
+                stdout=subprocess.PIPE, stderr=subprocess.DEVNULL, text=True,
+            )
+        except OSError:
+            continue
+        if result.returncode == 0 and result.stdout.strip() == current_common:
+            shared_repo_match = os.path.dirname(index_file)
+if shared_repo_match:
+    print(shared_repo_match)
+    sys.exit(0)
+sys.exit(1)
+PYTHON
 }
 
 format_age() {
