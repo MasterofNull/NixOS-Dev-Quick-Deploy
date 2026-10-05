@@ -188,6 +188,29 @@ def test_concurrent_clobber_resistance():
         print(f"PASS concurrent clobber resistance — 60 events, {len(agents)} agents, zero loss")
 
 
+def test_concurrent_atomic_write_resistance():
+    """Concurrent writers each publish a complete payload without staging collisions."""
+    from concurrent.futures import ThreadPoolExecutor
+    import resume_projector as rp
+
+    with tempfile.TemporaryDirectory() as d:
+        target = Path(d) / "RESUME.json"
+        payloads = [f"writer-{i}: " + str(i) * 4096 for i in range(20)]
+        barrier = threading.Barrier(len(payloads))
+
+        def worker(text):
+            barrier.wait(timeout=10)
+            rp._atomic_write(target, text)
+
+        with ThreadPoolExecutor(max_workers=len(payloads)) as executor:
+            futures = [executor.submit(worker, text) for text in payloads]
+            for future in futures:
+                future.result()
+
+        assert target.read_text(encoding="utf-8") in payloads, "incomplete or invalid payload"
+        print("PASS concurrent atomic writes — 20 writers, zero staging collisions")
+
+
 def test_projector_honors_output_override():
     """write_resume must write ONLY to RESUME_JSON_PATH, never the real anchor."""
     with tempfile.TemporaryDirectory() as d:
@@ -299,6 +322,7 @@ if __name__ == "__main__":
     test_per_field_merge_no_clobber()
     test_same_field_lww_preserves_loser()
     test_concurrent_clobber_resistance()
+    test_concurrent_atomic_write_resistance()
     test_projector_honors_output_override()
     test_backward_compatible_resume_shape()
     test_snapshot_ttl_pruning()
