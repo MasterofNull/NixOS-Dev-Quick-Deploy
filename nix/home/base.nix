@@ -583,6 +583,7 @@ in {
         pytest
         ps."pytest-cov"
         ps."pytest-xdist"
+        ps."pytest-asyncio"
         ps.trio
         ps.httpx
         ps.fastapi
