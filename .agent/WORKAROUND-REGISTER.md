@@ -238,7 +238,8 @@ Codex lane absent).
 - Symptom: `pstree`, `fuser`, and `killall` unavailable on host and agent PATH (`command not found`).
 - Root cause: `nix/modules/roles/agentic-toolchain.nix` included `procps` (`ps`, `watch`, `top`) but omitted `psmisc`; `nix/modules/core/base.nix` omitted `psmisc` from `basePackageNames`.
 - Fix path: add `psmisc` to `baselinePackages` in `agentic-toolchain.nix` and `basePackageNames` in `base.nix`; assert in `test-agentic-toolchain-baseline.py`.
-- Class / severity: T1 tooling; medium. Status: IN-PROGRESS.
+- Class / severity: T1 tooling; medium. Status: FIXED 2026-10-05.
+- Evidence: `psmisc` declared in `nix/modules/roles/agentic-toolchain.nix` baselinePackages and `nix/modules/core/base.nix` basePackageNames; `scripts/testing/test-agentic-toolchain-baseline.py` checks both declarations and retained `procps`. Runtime availability awaits orchestrator deployment.
 
 ## WR-CVE-NIXOS-CLOSURE-TRIAGE — configured dismissals / accepted containment / updates deferred (2026-10-03)
 
