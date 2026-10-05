@@ -58,6 +58,32 @@ def test_symlink_and_mount_target_fail_closed() -> None:
         assert real.is_dir() and not real.is_symlink()
 
 
+def test_systemd_sandbox_self_bind_mount_accepted() -> None:
+    with tempfile.TemporaryDirectory() as tmp:
+        root = Path(tmp)
+        mount_line = f"24 1 259:2 {root} {root} rw - ext4 /dev/nvme0n1p2 rw"
+        assert mount_targets(mount_line) == set()
+        store = QAEvidenceStore.for_isolated_test(root, mountinfo_text=mount_line)
+        assert store.root == root
+
+
+def test_redirected_cross_directory_bind_mount_rejected() -> None:
+    with tempfile.TemporaryDirectory() as tmp:
+        base = Path(tmp)
+        source = base / "source"
+        target = base / "target"
+        source.mkdir()
+        target.mkdir()
+        mount_line = f"24 1 259:2 {source} {target} rw - ext4 /dev/nvme0n1p2 rw"
+        assert mount_targets(mount_line) == {target}
+        try:
+            QAEvidenceStore.for_isolated_test(target, mountinfo_text=mount_line)
+        except EvidenceStoreError as exc:
+            assert exc.reason_code == "ROOT_MOUNT_TARGET"
+        else:
+            raise AssertionError("cross-directory bind mount accepted")
+
+
 def test_absolute_and_traversal_targets_fail_closed() -> None:
     with tempfile.TemporaryDirectory() as tmp:
         store = QAEvidenceStore.for_isolated_test(Path(tmp))

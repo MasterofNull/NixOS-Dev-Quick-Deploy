@@ -75,15 +75,28 @@ def _decode_mount_path(value: str) -> str:
     return value.replace("\\040", " ").replace("\\011", "\t").replace("\\012", "\n").replace("\\134", "\\")
 
 
+FORBIDDEN_PSEUDO_FS = {"tmpfs", "ramfs", "overlay", "overlayfs", "fuse", "shm"}
+
+
 def mount_targets(mountinfo_text: str) -> set[Path]:
-    """Parse mount targets from bounded Linux mountinfo text without probing mounts."""
+    """Parse redirected or pseudo-filesystem mount targets from bounded Linux mountinfo text.
+
+    Excludes benign self-bind mounts (where root-within-fs matches the mount-point on
+    a durable non-pseudo filesystem), such as those established by systemd under
+    ProtectSystem=strict / ReadWritePaths sandbox isolation.
+    """
     if len(mountinfo_text.encode()) > 4 * 1024 * 1024:
         raise EvidenceStoreError("MOUNTINFO_TOO_LARGE")
     targets: set[Path] = set()
     for line in mountinfo_text.splitlines()[:65536]:
         fields = line.split()
         if len(fields) >= 5 and "-" in fields:
-            targets.add(Path(_decode_mount_path(fields[4])))
+            root_within_fs = Path(_decode_mount_path(fields[3]))
+            mount_point = Path(_decode_mount_path(fields[4]))
+            dash_idx = fields.index("-")
+            fstype = fields[dash_idx + 1].lower() if len(fields) > dash_idx + 1 else ""
+            if fstype in FORBIDDEN_PSEUDO_FS or root_within_fs != mount_point:
+                targets.add(mount_point)
     return targets
 
 

@@ -258,3 +258,11 @@ Codex lane absent).
 - **Fix path:** Replaced serial subshell loop with a single `python3` invocation that reads bounded 1,024-byte headers from `index.json` files (where `project_root` lives on line 3), extracts candidate roots with regex, checks exact match first, and falls back to git-common directory checks for worktrees.
 - **Class / severity:** Performance / latency friction; medium. Status: FIXED 2026-10-05.
 - **Evidence:** Runtime dropped from 25.060s to 0.134s (a 187x speedup). Validated by `bash -n scripts/ai/aq-ctx-freshness` and `scripts/testing/test-aq-ctx-freshness.sh` PASS.
+
+## WR-QA-EVIDENCE-SYSTEMD-MOUNT (2026-10-05) — FIXED
+
+- **Symptom:** `ai-stack-health-monitor.service` failed every 15 minutes with `[aq-qa] immutable evidence unavailable: ROOT_MOUNT_TARGET: /var/lib/ai-stack/hybrid/telemetry` and pushed recurring high-severity alerts (`attn-14dd7fb8`) to the attention queue.
+- **Root cause / producer:** `scripts/ai/lib/qa_evidence_store.py`'s `mount_targets()` treated all entries in `/proc/self/mountinfo` as forbidden mount targets. When systemd runs services under `ProtectSystem=strict` with `ReadWritePaths = [ ... "/var/lib/ai-stack/hybrid/telemetry" ]`, it establishes a namespace self-bind mount (`root_within_fs == mount_point` on the same physical filesystem) to permit writing, which tripped `ROOT_MOUNT_TARGET`.
+- **Fix path:** Updated `mount_targets()` in `qa_evidence_store.py` to classify mounts: only pseudo-filesystems (`tmpfs`, `ramfs`, `overlay`, `fuse`, `shm`) or redirected mounts (`root_within_fs != mount_point`) are classified as forbidden targets; benign systemd namespace self-bind mounts on durable filesystems are accepted. Added regressions in `scripts/testing/test-telemetry-root-boundary.py`.
+- **Class / severity:** Stability / observability false-alarm; medium. Status: FIXED 2026-10-05.
+- **Evidence:** `scripts/testing/test-telemetry-root-boundary.py` PASS (6/6 tests), `scripts/testing/test-qa-evidence-store.py` PASS (4/4 tests), `scripts/testing/test-ai-stack-health-monitor.py` PASS.
