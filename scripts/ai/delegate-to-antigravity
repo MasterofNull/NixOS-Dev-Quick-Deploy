@@ -479,6 +479,8 @@ def _validate_inbox_completion(task_id: str) -> "tuple[bool, str]":
         verified = inbox._reconcile_prepared(task_id, receipt, generation)
         if verified is None or verified.get("declared_output") != expected_output:
             return False, "completion evidence is incomplete"
+        if not isinstance(verified.get("output_path"), str) or not isinstance(verified.get("output_hash"), str):
+            return False, "completion has no output evidence"
     except Exception as exc:
         return False, str(exc)
     return True, ""

@@ -3,6 +3,7 @@
 
 import importlib.machinery
 import importlib.util
+import hashlib
 import io
 import json
 import os
@@ -171,6 +172,25 @@ def test_inbox_bridge_rejects_corrupted_or_mismatched_receipt():
         print("PASS: test_inbox_bridge_rejects_corrupted_or_mismatched_receipt")
 
 
+def _forge_whitespace_output(receipt, log_path):
+    log_path.write_text(" \n\t", encoding="utf-8")
+    output_hash = hashlib.sha256(log_path.read_bytes()).hexdigest()
+    for record in receipt["records"]:
+        if record.get("type") in {"completion_prepared", "completion"}:
+            record["output_hash"] = output_hash
+
+
+def _forge_missing_output_recovery(receipt, _log_path):
+    for record in receipt["records"]:
+        if record.get("type") in {"completion_prepared", "completion"}:
+            record.pop("output_path", None)
+            record.pop("output_hash", None)
+        if record.get("type") == "completion_prepared":
+            record.update({"recovery": True, "recovery_actor": "owner-manual",
+                           "recovery_reason": "missing output", "recovery_unclaimed": False,
+                           "recovery_missing_output": True})
+
+
 def test_inbox_bridge_rejects_forged_terminal_evidence():
     cases = {
         "task": lambda receipt, _log: receipt.__setitem__("task_id", "wrong-task"),
@@ -185,6 +205,8 @@ def test_inbox_bridge_rejects_forged_terminal_evidence():
         ).__setitem__("declared_output", ".agents/delegation/outputs/forged.log"),
         "missing output": lambda _receipt, log_path: log_path.rename(log_path.with_name("relocated.log")),
         "hash": lambda _receipt, log_path: log_path.write_text("tampered after completion\n", encoding="utf-8"),
+        "whitespace output": _forge_whitespace_output,
+        "missing-output recovery": _forge_missing_output_recovery,
     }
     for index, (name, forge) in enumerate(cases.items(), start=6):
         with tempfile.TemporaryDirectory() as td:

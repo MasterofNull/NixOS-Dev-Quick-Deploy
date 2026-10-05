@@ -306,7 +306,9 @@ def _output(path_text: str, declared: str) -> tuple[Path,str]:
     try: path.resolve(strict=True).relative_to(REPO.resolve())
     except (FileNotFoundError,ValueError): raise InboxError("declared output missing or outside repo")
     if path.is_symlink() or not _regular(path): raise InboxError("declared output is not regular")
-    return path,hashlib.sha256(_read_regular(path)).hexdigest()
+    content=_read_regular(path)
+    if not content.strip(): raise InboxError("declared output is empty")
+    return path,hashlib.sha256(content).hexdigest()
 
 def _archive_nonclobber(source: Path, dest: Path) -> None:
     dest.parent.mkdir(parents=True,exist_ok=True)

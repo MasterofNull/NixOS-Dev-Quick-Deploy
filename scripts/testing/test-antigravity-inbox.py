@@ -46,6 +46,14 @@ def main():
   for reason in ("", "x"*241):
    assert m.main(["complete","reason.md","--output",".agents/x","--recovery-allow-unclaimed","--recovery-actor","owner-manual","--recovery-reason",reason,"--json"])==1
    assert (m.INBOX/"reason.md").exists()
+  # A successful completion must contain more than whitespace before it consumes the claim.
+  blank=tmp/"blank-output"; m.REPO=blank; m.INBOX=blank/".agent/collaboration/antigravity-inbox"; m.STATE=m.INBOX/".lane-state.json"; m.INBOX.mkdir(parents=True)
+  for index, content in enumerate((b"", b" \n\t"), start=1):
+   tid=f"blank{index}"; task=m.INBOX/f"{tid}.md"; task.write_text(f"Role: reviewer\nOutput: .agents/plans/{tid}/antigravity.md\n")
+   output=blank/f".agents/plans/{tid}/antigravity.md"; output.parent.mkdir(parents=True,exist_ok=True); output.write_bytes(content)
+   assert m.main(["claim",task.name,"--actor","ide-watch","--json"])==0
+   assert m.main(["complete",f".claimed-{tid}","--output",f".agents/plans/{tid}/antigravity.md","--json"])==1
+   assert (m.INBOX/f".claimed-{tid}").exists() and not [r for r in m._load(tid)["records"] if r["type"]=="completion_prepared"]
   # AM7: preplanted archive symlink must fail before prepared receipt/source move.
   root=tmp/"escape"; m.REPO=root; m.INBOX=root/".agent/collaboration/antigravity-inbox"; m.STATE=m.INBOX/".lane-state.json"; m.INBOX.mkdir(parents=True)
   task=m.INBOX/"escape.md"; task.write_text("Role: reviewer\nOutput: .agents/plans/escape/antigravity.md\n"); out=root/".agents/plans/escape/antigravity.md"; out.parent.mkdir(parents=True); out.write_text("ok")
