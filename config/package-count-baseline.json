@@ -1,17 +1,17 @@
 {
   "nixosTargets": {
-    "aqos-install-vm-ai-dev": 376,
-    "aqos-install-vm-gaming": 263,
-    "aqos-install-vm-luks": 316,
-    "aqos-install-vm-minimal": 162,
-    "aqos-install-vm-plain": 315,
-    "aqos-vm": 313,
-    "aqos-vm-ai-dev": 374,
-    "aqos-vm-gaming": 261,
-    "aqos-vm-minimal": 160,
-    "hyperd-ai-dev": 381,
-    "hyperd-gaming": 270,
-    "hyperd-minimal": 170
+    "aqos-install-vm-ai-dev": 378,
+    "aqos-install-vm-gaming": 264,
+    "aqos-install-vm-luks": 317,
+    "aqos-install-vm-minimal": 163,
+    "aqos-install-vm-plain": 316,
+    "aqos-vm": 314,
+    "aqos-vm-ai-dev": 376,
+    "aqos-vm-gaming": 262,
+    "aqos-vm-minimal": 161,
+    "hyperd-ai-dev": 383,
+    "hyperd-gaming": 271,
+    "hyperd-minimal": 171
   },
   "homeTargets": {
     "aqosvm": 66,
@@ -21,26 +21,26 @@
     "hyperd-hyperd": 67
   },
   "combinedTargets": {
-    "aqos-install-vm-ai-dev": 442,
-    "aqos-install-vm-gaming": 329,
-    "aqos-install-vm-luks": 382,
-    "aqos-install-vm-minimal": 228,
-    "aqos-install-vm-plain": 381,
-    "aqos-vm": 379,
-    "aqos-vm-ai-dev": 440,
-    "aqos-vm-gaming": 327,
-    "aqos-vm-minimal": 226,
-    "hyperd-ai-dev": 448,
-    "hyperd-gaming": 337,
-    "hyperd-minimal": 237
+    "aqos-install-vm-ai-dev": 444,
+    "aqos-install-vm-gaming": 330,
+    "aqos-install-vm-luks": 383,
+    "aqos-install-vm-minimal": 229,
+    "aqos-install-vm-plain": 382,
+    "aqos-vm": 380,
+    "aqos-vm-ai-dev": 442,
+    "aqos-vm-gaming": 328,
+    "aqos-vm-minimal": 227,
+    "hyperd-ai-dev": 450,
+    "hyperd-gaming": 338,
+    "hyperd-minimal": 238
   },
   "summary": {
     "nixosTargetCount": 12,
     "homeTargetCount": 5,
     "systemPackages": {
-      "min": 160,
-      "max": 381,
-      "avg": 280.08
+      "min": 161,
+      "max": 383,
+      "avg": 281.33
     },
     "homePackages": {
       "min": 66,
@@ -48,9 +48,9 @@
       "avg": 66.40
     },
     "combinedPackages": {
-      "min": 226,
-      "max": 448,
-      "avg": 346.33
+      "min": 227,
+      "max": 450,
+      "avg": 347.58
     }
   }
 }
