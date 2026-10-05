@@ -250,3 +250,11 @@ Codex lane absent).
 - **Class / severity:** Accepted contained risk (`d`) plus scanner false positives (`a`); underlying CVE severities remain unchanged. Lack of an upstream fix alone does not establish a false positive; supplied disputed/no-fix rationales remain reviewable exceptions.
 - **Fix path:** Reassess rules against upstream advisories and actual installed versions/consumers, update producer bundles when fixes exist, perform owner-directed tiered lock updates, then rescan. Package-name rules are not version/path scoped, so reassess whenever the closure changes.
 - **Evidence / limits:** SSOT `.agents/plans/cve-triage-20261002/TRIAGE.md`; dry-run findings and containment supplied by orchestrator. Focused tests verify config forwarding, not runtime containment or reduced live alert counts. No deployment, lock update, or GitHub dismissal performed by this slice.
+
+## WR-AQ-CTX-FRESHNESS-SERIAL-SPAWN (2026-10-05) — FIXED
+
+- **Symptom:** `aq-ctx-freshness --check` and `--ensure` took 25–35 seconds on every Git checkout hook, worktree creation, and session-start invocation.
+- **Root cause / producer:** `find_graph_dir()` in `scripts/ai/aq-ctx-freshness` executed a `while IFS= read` loop over `find ... -name index.json` that spawned a separate `python3` subprocess for every graph (211+ graphs) and called `json.load()` on each 7.3 MB index file, parsing 1.54 GB of JSON AST/symbol dictionaries serially.
+- **Fix path:** Replaced serial subshell loop with a single `python3` invocation that reads bounded 1,024-byte headers from `index.json` files (where `project_root` lives on line 3), extracts candidate roots with regex, checks exact match first, and falls back to git-common directory checks for worktrees.
+- **Class / severity:** Performance / latency friction; medium. Status: FIXED 2026-10-05.
+- **Evidence:** Runtime dropped from 25.060s to 0.134s (a 187x speedup). Validated by `bash -n scripts/ai/aq-ctx-freshness` and `scripts/testing/test-aq-ctx-freshness.sh` PASS.
