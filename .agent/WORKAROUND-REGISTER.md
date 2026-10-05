@@ -225,13 +225,20 @@ Codex lane absent).
 - **Class / severity:** authority/isolation; high.
 - **Interim state:** Live IDE mutation is deferred. Receipt findings 2/3 have focused temporary-repository real-supervisor coverage only; earlier resolved/pass statements are Antigravity self-report, not final acceptance.
 
-## WR-COLLAB-PULSE-TEMP-CONTENTION (2026-10-03)
+## WR-COLLAB-PULSE-TEMP-CONTENTION (2026-10-03) — FIXED
 
-- Symptom: concurrent aq-event writers contend on a common temporary path.
-- Root cause / producer: shared atomic-write staging in scripts/ai/aq-event.
-- Fix path: unique writer staging plus concurrency regression in a separate bounded slice.
-- Class / severity: concurrency; medium. Status: DEFERRED.
-- Interim mitigation: serialize this slice's pulse writes; this does not establish global concurrency safety.
+- Symptom: concurrent aq-event writers contend on a common temporary path (`path.with_suffix(".tmp")`).
+- Root cause / producer: shared atomic-write staging in `scripts/ai/lib/resume_projector.py` and `scripts/ai/lib/span_projector.py`.
+- Fix path: unique writer staging with PID and 8-byte random token (`.{name}.{pid}.{secret}.tmp`) in same parent directory plus concurrency regression.
+- Class / severity: concurrency; medium. Status: FIXED 2026-10-05.
+- Evidence: `scripts/testing/test-event-bus-a2a.py` `test_concurrent_atomic_write_resistance` exercises 20 synchronized concurrent threads with barrier start and zero staging collisions.
+
+## WR-TOOLCHAIN-PSMISC-MISSING (2026-10-05)
+
+- Symptom: `pstree`, `fuser`, and `killall` unavailable on host and agent PATH (`command not found`).
+- Root cause: `nix/modules/roles/agentic-toolchain.nix` included `procps` (`ps`, `watch`, `top`) but omitted `psmisc`; `nix/modules/core/base.nix` omitted `psmisc` from `basePackageNames`.
+- Fix path: add `psmisc` to `baselinePackages` in `agentic-toolchain.nix` and `basePackageNames` in `base.nix`; assert in `test-agentic-toolchain-baseline.py`.
+- Class / severity: T1 tooling; medium. Status: IN-PROGRESS.
 
 ## WR-CVE-NIXOS-CLOSURE-TRIAGE — configured dismissals / accepted containment / updates deferred (2026-10-03)
 
