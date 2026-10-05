@@ -1,0 +1,31 @@
+# A2A task for antigravity — slice M5a of 'prsi-rsi-merge-20261002' (IMPLEMENTER, bounded, text-only)
+
+Dropped: 2026-10-02T19:19:49Z
+Plan: `.agents/plans/prsi-rsi-merge-20261002/PLAN.md`. Report to `.agents/plans/prsi-rsi-merge-20261002/antigravity-m5.md`.
+
+## SCOPE & STOP (HARD — read before writing)
+- Edit ONLY the files this task names. A related-looking file is still out of scope.
+- NO DELETE — archive to `.agent/archive/20261002-<name>`; never rm/rmdir.
+- No symlinks/mounts/chmod/chown shortcuts. Undeclared dependency -> STOP and report.
+- Do NOT commit, stage, or push. Do NOT run tier0/aq-qa (orchestrator gates once).
+- Verify every factual claim against the file before writing it (cite file:line).
+- When unsure whether something is in scope: it is not. Report, do not act.
+
+## Goal
+Point human/agent-facing HINT TEXT at the canonical PRSI queue `/var/lib/nixos-ai-stack/optimizer/prsi/action-queue.json` instead of the legacy `/var/lib/nixos-ai-stack/prsi/action-queue.json`. Text/config strings only — no code-path changes (the coordinator handlers are slice M3, owned by Claude; do NOT edit them).
+
+## Files you may edit (strings only)
+- `config/switchboard-profiles.yaml` (~line 116)
+- `nix/modules/services/switchboard.nix` (~line 76; string inside a prompt/profile text block only)
+- `ai-stack/switchboard/switchboard.py` (~line 153; string constant only)
+- `config/agent-context-cards.json` (~line 398)
+- `.agent/skills/prsi-review/SKILL.md` (~line 10)
+
+Do NOT edit: hybrid-coordinator/*, local-agents/*, prsi-orchestrator.py, aq-* scripts, tests.
+
+## Acceptance (run and paste outputs)
+- `rg -n 'nixos-ai-stack/prsi/action-queue' config ai-stack/switchboard nix/modules/services/switchboard.nix .agent/skills` -> no hits
+- `python3 -c "import json;json.load(open('config/agent-context-cards.json'))"` OK; `python3 -c "import yaml;yaml.safe_load(open('config/switchboard-profiles.yaml'))"` OK
+- `python3 -m py_compile ai-stack/switchboard/switchboard.py`
+- `nix-instantiate --parse nix/modules/services/switchboard.nix >/dev/null`
+- If switchboard.py/switchboard.nix are pinned by any L2B/golden fixture (rg the sha in scripts/testing/fixtures), STOP and report instead of editing them.

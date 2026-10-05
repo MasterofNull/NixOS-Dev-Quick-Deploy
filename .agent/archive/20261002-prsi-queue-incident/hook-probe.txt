@@ -1,0 +1,9 @@
+true
+python3 -c "
+import os;p=os.path.expanduser('~/.cache/aq-approval-ask-hook.probe');print('INVOKED' if os.path.exists(p) else 'NOT invoked'); print(open(p).read(
+scripts/ai/aq-approve approve 1 --tag 00000000 --door chat --note "hook proof 4" >/dev/null; echo "exit=$?"
+python3 -c "
+import os
+for f in ['aq-approval-ask-hook.probe','aq-approval-ask-hook.log']:
+    p=os.path.expanduser('~/.cache/'+f); print('==',f); print(open(p)
+sed -i '/# PROBE-REMOVE/d' scripts/ai/aq-approval-ask-hook && rg -c 'PROBE' scripts/ai/aq-approval-ask-hook; python3 -m py_compile scripts/ai/aq-approval-ask-ho

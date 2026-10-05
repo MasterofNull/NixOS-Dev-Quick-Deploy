@@ -1,0 +1,28 @@
+# A2A task for antigravity — slice M2 of 'prsi-rsi-merge-20261002' (IMPLEMENTER, bounded, non-critical)
+
+Dropped: 2026-10-02T19:19:49Z
+Plan: `.agents/plans/prsi-rsi-merge-20261002/PLAN.md` (read first). Report to `.agents/plans/prsi-rsi-merge-20261002/antigravity-m2.md`.
+
+## SCOPE & STOP (HARD — read before writing)
+- Edit ONLY the files this task names. A related-looking file is still out of scope.
+- NO DELETE — archive to `.agent/archive/20261002-<name>`; never rm/rmdir.
+- No symlinks/mounts/chmod/chown shortcuts. Undeclared dependency -> STOP and report.
+- Do NOT commit, stage, or push. Do NOT run tier0/aq-qa (orchestrator gates once).
+- Verify every factual claim against the file before writing it (cite file:line).
+- When unsure whether something is in scope: it is not. Report, do not act.
+
+## Goal
+Retire Ralph's private PRSI queue: the `/api/prsi/*` routes in `ai-stack/mcp-servers/ralph-wiggum/server.py` (~lines 589-762: PRSI_QUEUE_PATH, _load/_save_prsi_queue, _recompute_counts, sync_prsi_queue, approve/execute handlers) and the `prsi_sync` entry in its capability discovery (~line 354). The canonical engine is `scripts/automation/prsi-orchestrator.py`; no live caller of Ralph's routes exists (verify with rg across ai-stack/ scripts/ dashboard/ nix/ config/ before removing; if you find a live caller, STOP and report it).
+
+## Files you may edit
+1. `ai-stack/mcp-servers/ralph-wiggum/server.py` — remove the PRSI routes/helpers; keep every other route and import that is still used.
+2. `scripts/testing/test-ralph-prsi-repo-root.py` — retire: `mv` it to `.agent/archive/20261002-test-ralph-prsi-repo-root.py` (it only tests the removed handlers) — ONLY if rg shows nothing else imports it; list any tier0/QA registration that references it in your report (do not edit those).
+3. `scripts/testing/fixtures/local-inference-l2b-payload-golden.json` — rebind ONLY the server.py sha256 to the new bytes.
+4. `.agents/plans/local-inference-l2b-a/RSI-R1-REPO-ROOT-ADDENDUM.md` — append "Amendment 2 — Ralph PRSI routes retired" with prior/new pin and boundary statement (no local_inference_transport; removal only).
+
+## Acceptance (run and paste outputs)
+- `python3 -m py_compile ai-stack/mcp-servers/ralph-wiggum/server.py`
+- `rg -n 'prsi' ai-stack/mcp-servers/ralph-wiggum/server.py` -> no route/queue code left (report remaining hits)
+- `python3 scripts/testing/test-local-inference-l2b.py` -> PASS 16
+- `rg -c local_inference_transport ai-stack/mcp-servers/ralph-wiggum/server.py` -> 0
+- Archive the live stale file `/var/lib/ai-stack/ralph/prsi-queue.json`: DO NOT touch it; list it in your report for the orchestrator.

@@ -7,6 +7,7 @@ import subprocess
 import tempfile
 import unittest
 from pathlib import Path
+from unittest.mock import patch
 
 ROOT = Path(__file__).resolve().parents[2]
 SCAN = ROOT / "scripts" / "security" / "aq-closure-scan"
@@ -84,6 +85,43 @@ class Summarize(unittest.TestCase):
                     scan.scan("/x", sbom, None, 5, 5)
             finally:
                 scan._nix_run = orig
+
+
+class GrypeConfig(unittest.TestCase):
+    def test_repository_config_in_both_live_paths(self):
+        for triage in (False, True):
+            for present in (False, True):
+                with self.subTest(triage=triage, present=present), tempfile.TemporaryDirectory() as tmp:
+                    root = Path(tmp)
+                    config = root / ".grype.yaml"
+                    if present:
+                        config.write_text("ignore: []\n")
+                    calls = []
+
+                    def fake_run(pkg, args, timeout, cwd=None):
+                        if pkg == "sbomnix":
+                            Path(args[args.index("--cdx") + 1]).write_text(
+                                json.dumps({"components": [{"name": "fixture"}]}))
+                            if "--csv" in args:
+                                Path(args[args.index("--csv") + 1]).write_text("name,version\n")
+                        elif pkg == "grype":
+                            calls.append(args)
+                        return subprocess.CompletedProcess([], 0, '{"matches": []}', "")
+
+                    with patch.object(scan, "REPO_ROOT", root), \
+                         patch.object(scan, "_nix_run", side_effect=fake_run), \
+                         patch.object(scan.subprocess, "run", return_value=subprocess.CompletedProcess([], 1)), \
+                         patch.object(scan, "fetch_track_versions", return_value={}):
+                        if triage:
+                            scan.triage_scan("/fixture", 5)
+                        else:
+                            scan.scan("/fixture", root / "sbom.json", None, 5, 5)
+                    self.assertEqual(len(calls), 1)
+                    if present:
+                        self.assertIn("-c", calls[0])
+                        self.assertEqual(calls[0][calls[0].index("-c") + 1], str(config))
+                    else:
+                        self.assertNotIn("-c", calls[0])
 
 
 class Triage(unittest.TestCase):

@@ -139,7 +139,7 @@ async def handle_prsi_actions_list(_request: web.Request) -> web.Response:
     Calls aq-report --format=json and returns structured_actions.
     """
     try:
-        repo_root = Path(__file__).parent.parent.parent.parent
+        repo_root = Path(__file__).resolve().parents[4]
         scripts_dir = repo_root / "scripts/ai"
         aq_report_path = scripts_dir / "aq-report"
 
@@ -232,7 +232,7 @@ async def handle_prsi_action_execute(request: web.Request) -> web.Response:
             }, status=403)
         action_type = str(data.get("action_type", "")).strip()
 
-        repo_root = Path(__file__).parent.parent.parent.parent
+        repo_root = Path(__file__).resolve().parents[4]
         scripts_dir = repo_root / "scripts/ai"
 
         if not action_type:

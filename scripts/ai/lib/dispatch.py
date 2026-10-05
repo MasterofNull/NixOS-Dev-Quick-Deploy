@@ -421,7 +421,8 @@ _TASK_CODE_SIGNALS = frozenset([
 
 _TASK_ANALYSIS_ONLY_SIGNALS = frozenset([
     "analysis only", "analysis-only", "research only", "research-only",
-    "planning only", "planning-only", "prd", "no edits", "do not edit",
+    "planning only", "planning-only", "prd only", "write a prd", "draft a prd",
+    "no edits", "do not edit",
     "do not implement", "do not install", "do not write files",
     "ranked remaining slices", "dependency order", "validation plan",
     "read these local artifacts", "catalog", "synthesis", "assess and plan",
@@ -448,7 +449,8 @@ def classify_task_type(prompt: str, mode: str = "direct") -> str:
     if mode == "ralph":
         return "structured"
     p = prompt.lower()
-    if any(k in p for k in _TASK_ANALYSIS_ONLY_SIGNALS):
+    has_code_signals = any(k in p for k in _TASK_CODE_SIGNALS)
+    if any(k in p for k in _TASK_ANALYSIS_ONLY_SIGNALS) and not has_code_signals:
         return "research"
     if mode == "agent":
         return "agent"
@@ -458,7 +460,7 @@ def classify_task_type(prompt: str, mode: str = "direct") -> str:
         return "lookup"
     if any(k in p for k in _TASK_REASONING_SIGNALS):
         return "reasoning"
-    if any(k in p for k in _TASK_CODE_SIGNALS):
+    if has_code_signals:
         return "code"
     return "code"
 

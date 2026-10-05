@@ -1,6 +1,7 @@
 #!/usr/bin/env python3
 """Offline RSI lane and abandoned-dispatch regression tests; no real delegates."""
 import contextlib
+import importlib.machinery
 import importlib.util
 import io
 import json
@@ -51,7 +52,11 @@ class LaneTests(unittest.TestCase):
 
     def test_lane_selection_and_execution_receipt(self):
         for policy, flags, expected in [({}, [], "codex"), ({}, ["--lane", "local"], "local"),
+                                         ({}, ["--lane", "claude"], "claude"),
+                                         ({}, ["--lane", "antigravity"], "antigravity"),
                                          ({"rsi": {"repair_lane": "local"}}, [], "local"),
+                                         ({"rsi": {"repair_lane": "claude"}}, [], "claude"),
+                                         ({"rsi": {"repair_lane": "antigravity"}}, [], "antigravity"),
                                          ({"rsi": {"repair_lane": "local"}}, ["--lane", "codex"], "codex")]:
             with self.subTest(policy=policy, flags=flags):
                 prsi.PRSI_POLICY_FILE.write_text(json.dumps(policy))
@@ -66,14 +71,20 @@ class LaneTests(unittest.TestCase):
                 self.assertEqual(rows[0]["execution"]["receipt"]["lane"], expected)
                 self.preflight.assert_called_with(expected)
                 argv = popen.call_args.args[0]
-                expected_args = (["--wait", "--mode", "edit"] if expected == "codex" else
-                                 ["--mode", "agent", "--wait", "--timeout", "600", "--role", "implementer"])
+                if expected == "codex":
+                    expected_args = ["--wait", "--mode", "edit"]
+                elif expected == "claude":
+                    expected_args = ["--wait", "--role", "implement"]
+                elif expected == "antigravity":
+                    expected_args = ["--wait", "--timeout", "600", "--role", "rsi"]
+                else:
+                    expected_args = ["--mode", "agent", "--wait", "--timeout", "600", "--role", "rsi"]
                 self.assertEqual(argv, [str(prsi.AI_SCRIPT_DIR / f"delegate-to-{expected}"),
                                         *expected_args, "--prompt", prsi._rsi_task_prompt(row(), False)])
                 self.assertTrue(popen.call_args.kwargs["start_new_session"])
 
     def test_strict_lane_receipts(self):
-        for lane in ("codex", "local"):
+        for lane in ("codex", "local", "antigravity"):
             other = "local" if lane == "codex" else "codex"
             cases = [(completion(lane), "", 0, True), (completion(other), "", 0, False),
                      ("", completion(lane), 0, False), (completion(lane), "", 1, False),
@@ -127,7 +138,146 @@ class LaneTests(unittest.TestCase):
         code, output, _ = self.dispatch(["--execute"])
         self.assertEqual(code, 1)
         self.assertEqual(output["message"], "invalid_repair_lane")
-        self.preflight.assert_not_called()
+
+    def test_explicit_antigravity_lane_fails_closed_before_launch(self):
+        self.preflight.return_value = (False, "blocked_unsupported_ide_worktree_isolation")
+        with patch.object(prsi.subprocess, "Popen", side_effect=AssertionError("delegate must not launch")):
+            code, output, rows = self.dispatch(["--execute", "--lane", "antigravity"])
+        self.assertEqual(code, 1)
+        self.assertEqual(output["lane"], "antigravity")
+        self.assertEqual(output["executed"], 0)
+        self.assertEqual(output["message"], "blocked_unsupported_ide_worktree_isolation")
+        self.assertEqual(rows[0]["status"], "rsi_pending")
+    def test_multi_lane_cooldown_fallback(self):
+        policy = {"rsi": {"repair_lanes": ["codex", "claude", "antigravity", "local"]}}
+        prsi.PRSI_POLICY_FILE.write_text(json.dumps(policy))
+        delegation_dir = self.root / "delegation"
+        delegation_dir.mkdir(parents=True, exist_ok=True)
+        future = (datetime.now(timezone.utc) + timedelta(hours=1)).strftime("%Y-%m-%dT%H:%M:%SZ")
+
+        # 1. codex on cooldown -> falls back to claude
+        (delegation_dir / ".codex-quota-cooldown").write_text(future)
+        proc = Mock(returncode=0)
+        proc.communicate.return_value = (completion("claude"), "")
+        with patch.dict("os.environ", {"AQ_DELEGATION_DIR": str(delegation_dir)}), \
+             patch.object(prsi.subprocess, "Popen", return_value=proc):
+            code, output, rows = self.dispatch(["--execute"])
+        self.assertEqual(code, 0)
+        self.assertEqual(output["lane"], "claude")
+        self.assertEqual(rows[0]["execution"]["receipt"]["lane"], "claude")
+        self.assertEqual(rows[0]["execution"]["receipt"]["substituted_from"], "codex")
+
+        # 2. codex and claude on cooldown -> falls back to antigravity
+        (delegation_dir / ".claude-quota-cooldown").write_text(future)
+        proc.communicate.return_value = (completion("antigravity"), "")
+        with patch.dict("os.environ", {"AQ_DELEGATION_DIR": str(delegation_dir)}), \
+             patch.object(prsi.subprocess, "Popen", return_value=proc):
+            code, output, rows = self.dispatch(["--execute"])
+        self.assertEqual(code, 0)
+        self.assertEqual(output["lane"], "antigravity")
+        self.assertEqual(rows[0]["execution"]["receipt"]["lane"], "antigravity")
+        self.assertEqual(rows[0]["execution"]["receipt"]["substituted_from"], "codex")
+
+        # 3. codex, claude, and antigravity on cooldown -> falls back to local
+        (delegation_dir / ".antigravity-quota-cooldown").write_text(future)
+        proc.communicate.return_value = (completion("local"), "")
+        with patch.dict("os.environ", {"AQ_DELEGATION_DIR": str(delegation_dir)}), \
+             patch.object(prsi.subprocess, "Popen", return_value=proc):
+            code, output, rows = self.dispatch(["--execute"])
+        self.assertEqual(code, 0)
+        self.assertEqual(output["lane"], "local")
+        self.assertEqual(rows[0]["execution"]["receipt"]["lane"], "local")
+        self.assertEqual(rows[0]["execution"]["receipt"]["substituted_from"], "codex")
+
+    def test_claude_role_contract_validation(self):
+        claude_script = prsi.AI_SCRIPT_DIR / "delegate-to-claude"
+        self.assertTrue(claude_script.exists())
+        # Verify valid role implement and rsi are accepted by argument parser
+        res_ok = prsi.subprocess.run([str(claude_script), "--role", "implement", "--budget-check-only"],
+                                    capture_output=True, text=True)
+        self.assertNotIn("Invalid --role", res_ok.stderr)
+        res_rsi = prsi.subprocess.run([str(claude_script), "--role", "rsi", "--budget-check-only"],
+                                     capture_output=True, text=True)
+        self.assertNotIn("Invalid --role", res_rsi.stderr)
+        # Verify invalid role implementer is rejected by argument parser
+        res_bad = prsi.subprocess.run([str(claude_script), "--role", "implementer", "--budget-check-only"],
+                                     capture_output=True, text=True)
+        self.assertIn("Invalid --role 'implementer'", res_bad.stderr)
+
+
+class IsolationPreflightTests(unittest.TestCase):
+    def test_supported_lanes_pass_isolation_preflight(self):
+        with tempfile.TemporaryDirectory() as delegation_dir, \
+             patch.dict("os.environ", {"AQ_DELEGATION_DIR": delegation_dir}), \
+             patch.object(prsi.os, "access", return_value=True):
+            for lane in ("codex", "claude", "local"):
+                with self.subTest(lane=lane):
+                    ok, reason = prsi._rsi_dispatch_preflight(lane)
+                    self.assertTrue(ok, f"Lane {lane} failed preflight: {reason}")
+                    self.assertEqual(reason, "isolated_worktree_required")
+
+    def test_antigravity_rsi_fails_without_verified_ide_workspace_binding(self):
+        ok, reason = prsi._rsi_dispatch_preflight("antigravity")
+        self.assertFalse(ok)
+        self.assertEqual(reason, "blocked_unsupported_ide_worktree_isolation")
+
+    def test_missing_delegate_fails_isolation_preflight(self):
+        ok, reason = prsi._rsi_dispatch_preflight("nonexistent_lane")
+        self.assertFalse(ok)
+        self.assertEqual(reason, "blocked_missing_isolated_delegate")
+
+
+class InboxIsolationTests(unittest.TestCase):
+    def setUp(self):
+        self.tmp = tempfile.TemporaryDirectory()
+        self.addCleanup(self.tmp.cleanup)
+        root = Path(self.tmp.name)
+        loader = importlib.machinery.SourceFileLoader("aq_inbox_isolation", str(ROOT / "scripts/ai/aq-antigravity-inbox"))
+        spec = importlib.util.spec_from_loader("aq_inbox_isolation", loader)
+        self.inbox = importlib.util.module_from_spec(spec)
+        loader.exec_module(self.inbox)
+        inbox_dir = root / ".agent/collaboration/antigravity-inbox"
+        inbox_dir.mkdir(parents=True)
+        self.enterContext(patch.object(self.inbox, "REPO", root))
+        self.enterContext(patch.object(self.inbox, "INBOX", inbox_dir))
+        self.enterContext(patch.object(self.inbox, "STATE", inbox_dir / ".lane-state.json"))
+
+    def test_editing_roles_cannot_claim_or_dispatch(self):
+        for role in ("implementer", "implement", "rsi", "coordinator", "subagent"):
+            raw = f"Role: {role}\nShared: true\nWorktree: /tmp/claimed-isolated\nOutput: .agents/delegation/outputs/{role}.md\n".encode()
+            with self.subTest(role=role):
+                with self.assertRaisesRegex(self.inbox.InboxError, "blocked_unsupported_ide_worktree_isolation"):
+                    self.inbox._require_advisory_ide_lane(raw)
+
+        task = self.inbox.INBOX / "repair.md"
+        task.write_text("Role: implementer\nShared: true\nWorktree: /tmp/claimed-isolated\nOutput: .agents/delegation/outputs/repair.md\n")
+        claim_args = self.inbox.build_parser().parse_args(["claim", "repair.md", "--actor", "ide-watch", "--json"])
+        with contextlib.redirect_stderr(io.StringIO()):
+            self.assertEqual(self.inbox.cmd_claim(claim_args), 1)
+        self.assertTrue(task.exists())
+        dispatch_args = self.inbox.build_parser().parse_args(["dispatch-once", "--json"])
+        output = io.StringIO()
+        with contextlib.redirect_stdout(output), patch.object(self.inbox, "_invoke_wake", side_effect=AssertionError("wake must not run")):
+            self.assertEqual(self.inbox.cmd_dispatch_once(dispatch_args), 1)
+        payload = json.loads(output.getvalue())
+        self.assertFalse(payload["ok"])
+        self.assertEqual(payload["state"], "blocked")
+        self.assertEqual(payload["blocked_count"], 1)
+        self.assertEqual(
+            payload["blocked"],
+            [
+                {
+                    "task_id": "repair",
+                    "reason": "blocked_unsupported_ide_worktree_isolation",
+                }
+            ],
+        )
+
+    def test_advisory_roles_remain_usable(self):
+        for role in ("reviewer", "architect", "research", "plan"):
+            with self.subTest(role=role):
+                r_raw = f"Role: {role}\nOutput: .agents/delegation/outputs/{role}.md\n".encode()
+                self.inbox._require_advisory_ide_lane(r_raw)
 
 
 if __name__ == "__main__":

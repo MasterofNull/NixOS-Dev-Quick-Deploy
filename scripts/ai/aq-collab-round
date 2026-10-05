@@ -29,6 +29,7 @@ import argparse
 import hashlib
 import json
 import os
+import signal
 import re
 import subprocess
 import sys
@@ -314,14 +315,28 @@ def _dispatch_process(agent: str, prompt_file: Path, local_timeout: int) -> str:
         # The shims detach the real task and exit; pre-launch gates (consult, budget,
         # worktree) can take well over 30s, and a run() timeout kills the shim before
         # it launches anything.
-        proc = subprocess.run(cmd, capture_output=True, text=True, timeout=300, env=env)
-        tid = _parse_task_id(proc.stdout)
+        proc = subprocess.Popen(
+            cmd,
+            stdout=subprocess.PIPE,
+            stderr=subprocess.PIPE,
+            text=True,
+            env=env,
+            start_new_session=True,
+        )
+        try:
+            stdout, stderr = proc.communicate(timeout=300)
+        except subprocess.TimeoutExpired:
+            try:
+                os.killpg(proc.pid, signal.SIGKILL)
+            except ProcessLookupError:
+                pass
+            proc.communicate()
+            return "error:launch-timeout"
+        tid = _parse_task_id(stdout)
         if tid and proc.returncode == 0:
             return tid
-        err = (proc.stderr.strip().splitlines() or proc.stdout.strip().splitlines() or ["no output"])[-1]
+        err = (stderr.strip().splitlines() or stdout.strip().splitlines() or ["no output"])[-1]
         return f"error:rc={proc.returncode}:{err[:300]}"
-    except subprocess.TimeoutExpired:
-        return "error:launch-timeout"
     except Exception as e:  # noqa: BLE001 — one lane failing must not abort the fan-out
         return f"error:{e}"
 
@@ -336,6 +351,8 @@ def _drop_antigravity(name: str, prompt_file: Path) -> str:
     ANTIGRAVITY_INBOX.mkdir(parents=True, exist_ok=True)
     inbox = ANTIGRAVITY_INBOX / f"{name}.md"
     inbox.write_text(f"# A2A task for antigravity — round '{name}'\n\n"
+                     f"Output: .agents/plans/{name}/antigravity.md\n"
+                     f"Role: review\n"
                      f"Dropped: {_now()}\n\n"
                      f"Respond by writing `.agents/plans/{name}/antigravity.md`.\n\n"
                      f"{INBOX_SCOPE_STOP_PREAMBLE}"
