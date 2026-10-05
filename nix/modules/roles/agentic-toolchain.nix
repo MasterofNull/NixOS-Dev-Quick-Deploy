@@ -50,6 +50,11 @@
     # command genuinely missing from both SSOTs above.
     procps # `watch`, plus `ps`/`top`/`free`/`pgrep`/`pkill`
 
+    # psmisc provides classic process inspection and termination utilities:
+    # `pstree`, `fuser`, `killall`. Essential for agent process-tree inspection
+    # and deterministic subprocess management.
+    psmisc # `pstree`, `fuser`, `killall`
+
     # Security scanners agents and MCP servers call by name. The semgrep MCP server
     # is `semgrep mcp` at /run/current-system/sw/bin/semgrep (version follows flake.lock);
     # gitleaks backs the documented secret-scan tooling (backlog

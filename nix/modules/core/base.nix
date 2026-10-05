@@ -43,6 +43,7 @@
     "git"
     "jq"
     "ripgrep"
+    "psmisc"
     "nodejs"
     "go"
     "rustc"
