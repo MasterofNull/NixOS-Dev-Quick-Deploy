@@ -255,10 +255,17 @@ def build_registry(tool_manifest: str = "full") -> ToolRegistry:
     from ai_coordination import register_ai_coordination_tools
     register_ai_coordination_tools(registry)
     try:
-        from code_execution import register_code_execution_tools
-        register_code_execution_tools(registry)
-    except ImportError as e:
-        logger.warning("[aq-agent-loop] code_execution tools unavailable: %s", e)
+        raw_manifest = json.loads(_CAPABILITY_MANIFEST.read_text(encoding="utf-8"))
+        code_exec_enabled = bool(raw_manifest.get("quarantined_capabilities", {}).get("code_execution", {}).get("enabled", False))
+    except Exception:
+        code_exec_enabled = False
+
+    if code_exec_enabled:
+        try:
+            from code_execution import register_code_execution_tools
+            register_code_execution_tools(registry)
+        except (ImportError, AttributeError) as e:
+            logger.warning("[aq-agent-loop] code_execution tools unavailable: %s", e)
     try:
         from github_tools import register_github_tools
         register_github_tools(registry)

@@ -13,6 +13,7 @@ import asyncio
 import json
 import logging
 import os
+import signal
 import sys
 import time
 from datetime import datetime
@@ -26,11 +27,28 @@ from config import Config
 
 logger = logging.getLogger("hybrid-coordinator")
 
+_DELEGATE_ROLE_ALIASES = {
+    "implement": "implementer",
+    "implementer": "implementer",
+    "coder": "implementer",
+    "agent": "implementer",
+    "review": "reviewer",
+    "reviewer": "reviewer",
+    "plan": "plan",
+    "architect": "plan",
+    "research": "research",
+    "researcher": "research",
+    "coordinator": "coordinator",
+    "orchestrator": "coordinator",
+    "subagent": "subagent",
+}
+
 # ---------------------------------------------------------------------------
 # Module-level state (promoted from run_http_mode() closures)
 # ---------------------------------------------------------------------------
 
 _AGENT_STATE: Dict[str, Any] = {}       # agent_id -> instance dict
+_AGENT_PROCESSES: Dict[str, Any] = {}   # agent_id -> live asyncio subprocess
 _TASK_QUEUE: List[Dict[str, Any]] = []  # In-memory task queue
 _REVIEW_QUEUE: Dict[str, Dict[str, Any]] = {}  # session_id -> review state
 
@@ -95,6 +113,64 @@ asyncio.run(run())
 # Agent subprocess helper
 # ---------------------------------------------------------------------------
 
+def _clear_agent_process_ownership(instance: Dict[str, Any], proc: Any) -> None:
+    """Drop process identifiers once this exact child has been reaped."""
+    agent_id = instance["id"]
+    if _AGENT_PROCESSES.get(agent_id) is proc:
+        _AGENT_PROCESSES.pop(agent_id, None)
+        instance.pop("pid", None)
+        instance.pop("process_group", None)
+
+
+_CANCELLATION_REAP_GRACE_SEC = 1.0
+
+
+async def _terminate_and_reap_agent_process(
+    proc: Any,
+    sig: int = signal.SIGTERM,
+    *,
+    force: bool = False,
+    grace_sec: Optional[float] = None,
+) -> None:
+    """Terminate a live process group and wait for its child to exit."""
+    if force or proc.returncode is None:
+        try:
+            os.killpg(proc.pid, sig)
+        except ProcessLookupError:
+            pass
+    if grace_sec is None:
+        await proc.communicate()
+        return
+    try:
+        await asyncio.wait_for(proc.communicate(), timeout=grace_sec)
+    except asyncio.TimeoutError:
+        if proc.returncode is None:
+            try:
+                os.killpg(proc.pid, signal.SIGKILL)
+            except ProcessLookupError:
+                pass
+        await proc.communicate()
+
+
+async def _cancel_and_reap_agent_process(instance: Dict[str, Any], proc: Any) -> None:
+    """Preserve cancellation ownership until the child has been reaped."""
+    if instance.get("status") == "running":
+        instance["status"] = "killed"
+        instance["completed_at"] = datetime.now().isoformat()
+    reap_task = asyncio.create_task(_terminate_and_reap_agent_process(
+        proc, grace_sec=_CANCELLATION_REAP_GRACE_SEC,
+    ))
+    try:
+        await asyncio.shield(reap_task)
+    except asyncio.CancelledError:
+        def clear_after_reap(task: asyncio.Task) -> None:
+            if not task.cancelled() and task.exception() is None:
+                _clear_agent_process_ownership(instance, proc)
+
+        reap_task.add_done_callback(clear_after_reap)
+        raise
+
+
 async def _spawn_local_agent_instance(
     *,
     role: str,
@@ -137,44 +213,54 @@ async def _spawn_local_agent_instance(
         "task": task_text,
         "status": "running",
         "pid": proc.pid,
+        "process_group": proc.pid,
         "started_at": datetime.now().isoformat(),
         "state_file": state_file,
     }
     if team_id:
         instance["team_id"] = team_id
     _AGENT_STATE[agent_id] = instance
+    _AGENT_PROCESSES[agent_id] = proc
 
     try:
-        stdout, stderr = await asyncio.wait_for(proc.communicate(), timeout=timeout_sec)
-    except asyncio.TimeoutError:
         try:
-            proc.kill()
-        except ProcessLookupError:
-            pass
-        instance["status"] = "timeout"
-        instance["completed_at"] = datetime.now().isoformat()
-        return instance, 504
+            stdout, stderr = await asyncio.wait_for(proc.communicate(), timeout=timeout_sec)
+        except asyncio.TimeoutError:
+            await _terminate_and_reap_agent_process(proc, signal.SIGKILL, force=True)
+            if instance.get("status") != "running":
+                return instance, 200
+            instance["status"] = "timeout"
+            instance["completed_at"] = datetime.now().isoformat()
+            return instance, 504
+        except asyncio.CancelledError:
+            await _cancel_and_reap_agent_process(instance, proc)
+            raise
 
-    if proc.returncode != 0:
-        instance["status"] = "failed"
-        instance["error"] = stderr.decode(errors="replace")[:500] if stderr else "unknown"
-        instance["completed_at"] = datetime.now().isoformat()
-        return instance, 500
-
-    try:
-        result = json.loads(stdout.decode())
-        if result.get("ok"):
-            instance["status"] = "completed"
-            instance["result"] = result.get("content", "")
-        else:
+        if instance.get("status") != "running":
+            return instance, 200
+        if proc.returncode != 0:
             instance["status"] = "failed"
-            instance["error"] = result.get("error", "unknown")
-    except (json.JSONDecodeError, UnicodeDecodeError):
-        instance["status"] = "completed"
-        instance["result"] = stdout.decode(errors="replace")[:2000]
+            instance["error"] = stderr.decode(errors="replace")[:500] if stderr else "unknown"
+            instance["completed_at"] = datetime.now().isoformat()
+            return instance, 500
 
-    instance["completed_at"] = datetime.now().isoformat()
-    return instance, 201
+        try:
+            result = json.loads(stdout.decode())
+            if result.get("ok"):
+                instance["status"] = "completed"
+                instance["result"] = result.get("content", "")
+            else:
+                instance["status"] = "failed"
+                instance["error"] = result.get("error", "unknown")
+        except (json.JSONDecodeError, UnicodeDecodeError):
+            instance["status"] = "completed"
+            instance["result"] = stdout.decode(errors="replace")[:2000]
+
+        instance["completed_at"] = datetime.now().isoformat()
+        return instance, 201
+    finally:
+        if proc.returncode is not None:
+            _clear_agent_process_ownership(instance, proc)
 
 
 # ---------------------------------------------------------------------------
@@ -196,25 +282,149 @@ async def handle_agents_status(request: web.Request) -> web.Response:
     })
 
 
+async def _spawn_delegated_agent_instance(
+    *,
+    lane: str,
+    role: str,
+    task_text: str,
+    timeout_sec: float,
+    team_id: Optional[str] = None,
+) -> tuple:
+    lane_norm = lane.lower().strip()
+    repo_root = Path(__file__).resolve().parents[4]
+    script_map = {
+        "antigravity": repo_root / "scripts" / "ai" / "delegate-to-antigravity",
+        "gemini": repo_root / "scripts" / "ai" / "delegate-to-antigravity",
+        "codex": repo_root / "scripts" / "ai" / "delegate-to-codex",
+        "claude": repo_root / "scripts" / "ai" / "delegate-to-claude",
+    }
+    script = script_map.get(lane_norm)
+    agent_id = f"{lane_norm[:2]}-{uuid4().hex[:8]}"
+    normalized_role = _DELEGATE_ROLE_ALIASES.get(str(role or "").strip().lower())
+    if not normalized_role:
+        instance = {
+            "id": agent_id,
+            "role": role,
+            "lane": lane_norm,
+            "task": task_text,
+            "status": "failed",
+            "error": f"Unsupported delegated role: {role}",
+            "completed_at": datetime.now().isoformat(),
+        }
+        _AGENT_STATE[agent_id] = instance
+        return instance, 400
+    if not script or not script.is_file():
+        instance = {
+            "id": agent_id,
+            "role": role,
+            "lane": lane_norm,
+            "task": task_text,
+            "status": "failed",
+            "error": f"Unsupported or missing delegate script for lane: {lane}",
+            "completed_at": datetime.now().isoformat(),
+        }
+        _AGENT_STATE[agent_id] = instance
+        return instance, 500
+
+    prompt_text = task_text
+    if lane_norm == "codex":
+        prompt_text = f"Assigned role: {normalized_role}\n\n{task_text}"
+    cmd = [str(script), "--wait", "--prompt", prompt_text]
+    if lane_norm in ("antigravity", "gemini"):
+        cmd.extend(["--role", normalized_role, "--timeout", str(int(timeout_sec))])
+    elif lane_norm == "claude":
+        claude_role = {
+            "implementer": "implement",
+            "reviewer": "review",
+            "plan": "plan",
+            "research": "research",
+            "coordinator": "implement",
+            "subagent": "implement",
+        }[normalized_role]
+        cmd.extend(["--role", claude_role])
+
+    proc = await asyncio.create_subprocess_exec(
+        *cmd,
+        stdout=asyncio.subprocess.PIPE,
+        stderr=asyncio.subprocess.PIPE,
+        start_new_session=True,
+    )
+
+    instance = {
+        "id": agent_id,
+        "role": normalized_role,
+        "lane": lane_norm,
+        "task": task_text,
+        "status": "running",
+        "pid": proc.pid,
+        "process_group": proc.pid,
+        "started_at": datetime.now().isoformat(),
+    }
+    if team_id:
+        instance["team_id"] = team_id
+    _AGENT_STATE[agent_id] = instance
+    _AGENT_PROCESSES[agent_id] = proc
+
+    try:
+        try:
+            stdout, stderr = await asyncio.wait_for(proc.communicate(), timeout=timeout_sec)
+        except asyncio.TimeoutError:
+            await _terminate_and_reap_agent_process(proc, signal.SIGKILL, force=True)
+            if instance.get("status") != "running":
+                return instance, 200
+            instance["status"] = "timeout"
+            instance["error"] = f"Task timed out after {timeout_sec}s"
+            instance["completed_at"] = datetime.now().isoformat()
+            return instance, 504
+        except asyncio.CancelledError:
+            await _cancel_and_reap_agent_process(instance, proc)
+            raise
+
+        if instance.get("status") != "running":
+            return instance, 200
+        if proc.returncode != 0:
+            instance["status"] = "failed"
+            instance["error"] = stderr.decode(errors="replace")[:500] if stderr else "unknown"
+            instance["completed_at"] = datetime.now().isoformat()
+            return instance, 500
+
+        instance["status"] = "completed"
+        instance["result"] = stdout.decode(errors="replace").strip()
+        instance["completed_at"] = datetime.now().isoformat()
+        return instance, 201
+    finally:
+        if proc.returncode is not None:
+            _clear_agent_process_ownership(instance, proc)
+
+
 async def handle_agents_spawn(request: web.Request) -> web.Response:
     """POST /control/agents/spawn — spawn a single agent subprocess"""
     data = await request.json()
     role = data.get("role", "coordinator")
+    lane = str(data.get("lane") or data.get("agent") or "local").lower().strip()
     task_text = data.get("task", "")
     if not task_text:
         return web.json_response({"error": "task required"}, status=400)
-    instance, status_code = await _spawn_local_agent_instance(
-        role=role,
-        task_text=task_text,
-        system_prompt=data.get("system_prompt", f"You are a {role} agent. Complete the assigned task."),
-        max_tokens=int(data.get("max_tokens", 2048)),
-        temperature=float(data.get("temperature", 0.3)),
-        timeout_sec=float(data.get("timeout", 120)),
-    )
+    if lane in ("antigravity", "gemini", "codex", "claude"):
+        instance, status_code = await _spawn_delegated_agent_instance(
+            lane=lane,
+            role=role,
+            task_text=task_text,
+            timeout_sec=float(data.get("timeout", 120)),
+        )
+    else:
+        instance, status_code = await _spawn_local_agent_instance(
+            role=role,
+            task_text=task_text,
+            system_prompt=data.get("system_prompt", f"You are a {role} agent. Complete the assigned task."),
+            max_tokens=int(data.get("max_tokens", 2048)),
+            temperature=float(data.get("temperature", 0.3)),
+            timeout_sec=float(data.get("timeout", 120)),
+        )
     result_text = str(instance.get("result", "") or "").strip()
     return web.json_response(
         {
-            "status": "ok",
+            "status": "ok" if status_code in (200, 201) else "failed",
             "instance": instance,
             "agent_id": instance.get("id"),
             "result": result_text,
@@ -234,19 +444,29 @@ async def handle_agents_team(request: web.Request) -> web.Response:
     results = []
     for spec in agents_spec:
         role = spec.get("role", "agent")
+        lane = str(spec.get("lane") or spec.get("agent") or "local").lower().strip()
         task_text = spec.get("task", "")
         if not task_text:
             results.append({"role": role, "error": "task required", "status": "skipped"})
             continue
-        instance, _status = await _spawn_local_agent_instance(
-            role=role,
-            task_text=task_text,
-            system_prompt=spec.get("system_prompt", f"You are a {role} agent. Complete the assigned task."),
-            max_tokens=int(spec.get("max_tokens", 2048)),
-            temperature=float(spec.get("temperature", 0.3)),
-            timeout_sec=float(spec.get("timeout", 120)),
-            team_id=team_id,
-        )
+        if lane in ("antigravity", "gemini", "codex", "claude"):
+            instance, _status = await _spawn_delegated_agent_instance(
+                lane=lane,
+                role=role,
+                task_text=task_text,
+                timeout_sec=float(spec.get("timeout", 120)),
+                team_id=team_id,
+            )
+        else:
+            instance, _status = await _spawn_local_agent_instance(
+                role=role,
+                task_text=task_text,
+                system_prompt=spec.get("system_prompt", f"You are a {role} agent. Complete the assigned task."),
+                max_tokens=int(spec.get("max_tokens", 2048)),
+                temperature=float(spec.get("temperature", 0.3)),
+                timeout_sec=float(spec.get("timeout", 120)),
+                team_id=team_id,
+            )
         results.append(instance)
     return web.json_response({
         "status": "ok",
@@ -263,11 +483,19 @@ async def handle_agents_kill(request: web.Request) -> web.Response:
     instance = _AGENT_STATE.get(agent_id)
     if not instance:
         return web.json_response({"error": f"Agent {agent_id} not found"}, status=404)
+    if instance.get("status") != "running":
+        return web.json_response({"status": "ok", "agent_id": agent_id, "instance": instance})
+    proc = _AGENT_PROCESSES.get(agent_id)
+    if not proc or proc.returncode is not None:
+        return web.json_response({"status": "ok", "agent_id": agent_id, "instance": instance})
     pid = instance.get("pid")
     if pid:
         try:
-            import signal
-            os.kill(pid, signal.SIGTERM)
+            process_group = instance.get("process_group")
+            if process_group:
+                os.killpg(int(process_group), signal.SIGTERM)
+            else:
+                os.kill(pid, signal.SIGTERM)
             instance["status"] = "killed"
             instance["completed_at"] = datetime.now().isoformat()
         except ProcessLookupError:

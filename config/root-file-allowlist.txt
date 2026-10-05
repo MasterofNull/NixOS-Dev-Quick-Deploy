@@ -25,3 +25,4 @@ README.md
 .trivyignore
 .vscode.configs.import.cspell.config.json
 .mcp.json
+.grype.yaml

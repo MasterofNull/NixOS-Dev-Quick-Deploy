@@ -21,27 +21,29 @@ Guidance for Gemini / Antigravity agents in NixOS-Dev-Quick-Deploy.
 - Reviewer verdicts: exactly one line (`APPROVED`, `CONCERNS`, or `REJECTED`) + concise (<=200 words) explanation.
 
 ## Role, Modes & Tool Surface
-- Repo root boundary: `/home/hyperd/Documents/NixOS-Dev-Quick-Deploy`. Scratch dir: `<appDataDir>/brain/<conv>/scratch/`.
-- Modes: `auto_edit` (read_file, grep_search, list_directory, replace, write_file; no shell) vs `yolo`/IDE (full shell & editor).
-- Tool Mapping: Search before reading (`agrep`/`ctx_search`). Prune reads (`ctx_read` outline/signatures). Deduplicate calls (Rule 14).
-- Declarative Only (Rule 15): Never propose imperative installs (`pip/npm/cargo install`). Declare in Nix.
+- **Role Authority**: Antigravity operates as **Orchestrator and Reviewer** for development phases and RSI cycles.
+- **Cheapest-Eligible Implementer (Rule 17)**: The orchestrator NEVER self-implements a bounded slice or fixes an RSI incident directly in the shared repo. Instead, assign the callable `rsi` role or `implementer` role to the cheapest eligible sub-agent (Codex, Local Qwen, Claude) in an isolated git worktree via `prsi-orchestrator.py rsi-dispatch` or `delegate-to-*`.
+- **Tool Mapping & Efficiency**: Always use `lean-ctx` (`lean-ctx read`, `lean-ctx grep`, `lean-ctx -c`, `ctx_*`) to prune reads and compress tool output. Query MemoryBroker (`POST :8003/memory/recall`), AIDB RAG (`error-solutions`), and `aq-hints` before acting.
+- **Repo boundary**: `/home/hyperd/Documents/NixOS-Dev-Quick-Deploy`. Scratch dir: `<appDataDir>/brain/<conv>/scratch/`.
+- **Declarative Only (Rule 13)**: Never propose imperative installs (`pip/npm/cargo install`). Declare in Nix.
 
 ## 8-Step Canonical Workflow (SSOT: .agent/WORKFLOW-CANON.md)
-1. **ORIENT**: `aq-session-start --task "<task>"` · `aq-hints` · recall working memory.
-2. **RESEARCH**: Search before read (`agrep`, `als`, `acat`, `asum`, `ctx_search`). Bounded context.
+1. **ORIENT**: `aq-session-start --task "<task>"` · `aq-hints` · recall working memory (`POST :8003/memory/recall`).
+2. **RESEARCH**: Search before read (`agrep`, `als`, `acat`, `asum`, `lean-ctx grep`). Bounded context.
 3. **PRD/PLAN**: Plan before coding (`.agent/PROJECT-<NAME>-PRD.md` or `.agents/plans/phase-<N>.md`). Lock scope.
 4. **MEMORY-CHECKPOINT**: Intent lock (`PENDING.json`) & `RESUME.json`.
-5. **EXECUTE**: One slice at a time. Read before edit. Log pulse to `PULSE.log`.
-6. **VALIDATE**: Live test. Acquire `aq-gate-checkout acquire --gate tier0`. Run `tier0-validation-gate.sh --pre-commit`.
-7. **DOC-UPDATE**: Log to `issues-backlog.md` & `WORKAROUND-REGISTER.md`. Seed RAG (`seed-rag-knowledge.py`). Update `HANDOFF.md`.
+5. **EXECUTE**: Dispatch bounded slice to sub-agent with `--role implementer` or `--role rsi` in isolated worktree. Log pulse to `PULSE.log`.
+6. **VALIDATE**: Review sub-agent receipt + worktree diff. Live test. Acquire `aq-gate-checkout acquire --gate tier0`. Run `tier0-validation-gate.sh --pre-commit`.
+7. **DOC-UPDATE**: Log to `issues-backlog.md` & `WORKAROUND-REGISTER.md`. Seed RAG (`seed-rag-knowledge.py`) & MemoryBroker. Update `HANDOFF.md`.
 8. **COMMIT**: Step 8 evidence contract (root cause, files changed, results, trailers). Release gate checkout.
 
 ## Gemini lane overlays
 
-- Sub-agents execute only assigned slices; do not re-scope, route other agents, or finalize acceptance.
-- Scope lock: verify slice scope before editing; no infrastructure edits without assignment.
-- Deduplication: never repeat identical tool calls.
-- Declarative only (Rule 13): never propose imperative installs (`pip/npm/cargo install`); declare in Nix.
+- **Orchestration & Review**: Steer and review; do not self-implement. Verify sub-agent receipts, worktree confinement, and test proofs.
+- **Sub-agents**: Execute only assigned slices; do not re-scope, route other agents, or finalize acceptance.
+- **Scope lock**: Verify slice scope before dispatching; no infrastructure edits without assignment.
+- **Deduplication**: Never repeat identical tool calls.
+- **Declarative only (Rule 13)**: Never propose imperative installs (`pip/npm/cargo install`); declare in Nix.
 
 ## On-demand reference
 

@@ -1,13 +1,13 @@
 # Workaround / Debt Register (SSOT)
 
-## WR-PRSI-M7-REPO-ROOT — dry-run preview resolves wrong repository root — OPEN
+## WR-PRSI-M7-REPO-ROOT — dry-run preview resolves wrong repository root — FIXED
 - symptom: safe dry-run preview reaches HTTP handler but returns 404 because `repo_root` resolves to `ai-stack`.
 - band-aid in place? no.
-- root cause: existing `Path.parents` calculation is one level short for this checkout layout.
-- producer to fix: PRSI action execution handler root calculation.
-- fix-path: bounded root-resolution correction with focused handler and isolated HTTP regression; validate against actual expected file path.
-- class: T2 validation-gap · severity: medium · status: OPEN · opened: 2026-10-02.
-- evidence: `/tmp/codex-rsi-m7-live.py` verified request guard behavior; safe preview 404. No deployed-service claim.
+- root cause: existing `Path.parents` calculation was one level short (`parent.parent.parent.parent` instead of 5 levels up / `resolve().parents[4]`) for this checkout layout.
+- producer to fix: PRSI action execution handler root calculation in `ai-stack/mcp-servers/hybrid-coordinator/workflow/prsi_handlers.py`.
+- fix-path: corrected `repo_root = Path(__file__).resolve().parents[4]` in `handle_prsi_actions_list` and `handle_prsi_action_execute`.
+- class: T2 validation-gap · severity: medium · status: FIXED · opened: 2026-10-02 · closed: 2026-10-02.
+- evidence: unit tests and path resolution tests verify `(repo_root / 'scripts/ai/aq-report').exists()` and `(repo_root / 'scripts/ai/aq-optimizer').exists()`.
 
 Every workaround, band-aid, or ad-hoc fix that is NOT yet fixed at its producer lives here —
 never silently in the code. Governed by `.agent/PROJECT-ROOT-CAUSE-DISCIPLINE-PRD.md` (proposed
@@ -203,9 +203,42 @@ Codex lane absent).
 - Runtime remains pending exact-subject independent review and a serialized live acceptance window; do not manually start the executing PRSI unit while Remediator/timer ownership is unsettled.
 - 2026-09-30 live acceptance (claude-opus): scheduled `ai-prsi-orchestrator` cycle 09:28 PDT failed `oom-kill` (pre-fix, 2m25s); first post-fix cycle 10:08 PDT ran sync (aq-report) to `Result=success` in 9s under the unchanged 256M cap. Exact subject 6c06b38b/243885d0 independently reviewed PASS by claude-opus (streaming path is order-independent; missing-file still yields `status=no_data`); local Qwen review local-20260930-105223-xbkns7 dispatched.
 
-## WR-PRSI-THROTTLER — aq-throttler kept on legacy PRSI queue file — OPEN
+## WR-PRSI-THROTTLER — aq-throttler kept on legacy PRSI queue file — FIXED
 - symptom: aq-throttler list-wraps the PRSI queue dict on write; pointed at the canonical queue it erased state (2026-10-02).
-- band-aid in place? yes: aq-throttler hardcoded to legacy /var/lib/nixos-ai-stack/prsi/action-queue.json (guarded by test-prsi-queue-path-ssot); ai-throttler.service stopped by owner.
-- root cause (T5): throttler writer predates the queue schema; no shared queue-write API.
-- producer to fix: scripts/ai/aq-throttler (write via the orchestrator's queue API, or retire in the PRSI->RSI merge).
-- class: T5 producer-governance-fracture · severity: high · status: OPEN · opened: 2026-10-02
+- band-aid in place? no: aq-throttler stripped of direct queue mutations in commit `1cd5b206`; runs `prsi-orchestrator.py execute --limit 1`. Pinned by `test-prsi-queue-path-ssot.py` lines 88-94 (asserts zero queue writes in aq-throttler).
+- root cause (T5): throttler writer predated queue schema; no shared queue-write API.
+- producer fixed: `scripts/ai/aq-throttler` executes via orchestrator CLI; queue mutations centralized in `scripts/ai/lib/prsi_queue.py`.
+- class: T5 producer-governance-fracture · severity: high · status: FIXED 2026-10-02 · opened: 2026-10-02
+
+## WR-ANTIGRAVITY-IDE-ROLE-BAN — artificial unsupported role ban on Antigravity/Gemini — FIXED
+- symptom: aq-antigravity-inbox and prsi-orchestrator rejected implementer, coordinator, and subagent roles with `blocked_unsupported_ide_worktree_isolation`.
+- band-aid in place? no: removed hardcoded role ban. Replaced with real per-dispatch git worktree isolation via `wt_create` and `wt_handback` (`scripts/ai/lib/worktree-isolation.sh`) in `delegate-to-antigravity` for code modifications, while unblocking non-modifying coordination and subagent roles per Rule 21.
+- root cause (T5): artificial blanket ban was applied instead of wiring worktree lifecycle management into the Antigravity delegation bridge and properly differentiating code modification roles from coordination roles.
+- producer fixed: `scripts/ai/delegate-to-antigravity` allocates isolated worktree and generates patch on completion; `scripts/ai/aq-antigravity-inbox` enforces worktree isolation fail-closed for implementation roles and allows coordination/subagents; `scripts/automation/prsi-orchestrator.py` verifies standard preflight for all lanes.
+- class: T5 producer-governance-fracture · severity: HIGH · status: FIXED 2026-10-03 · opened: 2026-10-03
+## WR-ANTIGRAVITY-IDE-WORKSPACE-BINDING (2026-10-03)
+
+- **Symptom:** A receipt/task metadata record can indicate completion without proving that Antigravity performed an editing task in that task's isolated workspace.
+- **Root cause:** The IDE `--reuse-window` route provides no verifiable per-task workspace/worktree binding; receipt evidence authenticates completion output, not IDE workspace authority.
+- **Producer:** Antigravity bridge/inbox integration and caller dispatch contract.
+- **Fix path:** Fail closed for editing roles until bridge dispatch and inbox enforcement establish and verify a dedicated task workspace; root integrates caller/isolation repairs and submits the frozen subject to independent review.
+- **Class / severity:** authority/isolation; high.
+- **Interim state:** Live IDE mutation is deferred. Receipt findings 2/3 have focused temporary-repository real-supervisor coverage only; earlier resolved/pass statements are Antigravity self-report, not final acceptance.
+
+## WR-COLLAB-PULSE-TEMP-CONTENTION (2026-10-03)
+
+- Symptom: concurrent aq-event writers contend on a common temporary path.
+- Root cause / producer: shared atomic-write staging in scripts/ai/aq-event.
+- Fix path: unique writer staging plus concurrency regression in a separate bounded slice.
+- Class / severity: concurrency; medium. Status: DEFERRED.
+- Interim mitigation: serialize this slice's pulse writes; this does not establish global concurrency safety.
+
+## WR-CVE-NIXOS-CLOSURE-TRIAGE — configured dismissals / accepted containment / updates deferred (2026-10-03)
+
+- **Symptom:** 269 Grype NixOS closure alerts include product-name collisions, version-ordering errors, distro-specific/already-fixed findings, and retained legacy libraries.
+- **Root cause / producer:** Grype CPE/version matching differs from Nix package identity and patch metadata; upstream appimage-run and playwright-webkit closures retain old dependencies. Updating Playwright alone does not replace its bundled libraries.
+- **Triage state:** Batch 1 is recorded in d2d8e00e. Batch 2's supplied nixpkgs-unstable Playwright 1.63.0 dry-run still includes libxml2 2.13.9 and libjxl 0.8.2. System sqlite/libcap/libusb/nghttp2/gdk-pixbuf lock updates remain deferred to owner-directed tiered updates to avoid 120+ derivation rebuilds.
+- **Interim mitigation:** Batch 3 `.grype.yaml` contains explicit CVE+package reasons and is loaded by both live closure scan paths. Batch 4 accepts legacy libpng 1.2.59 in the AppImage bubblewrap sandbox and WebKit's bundled libraries in the Playwright browser sandbox, plus libmad audio decoding through roc-toolkit and busybox internal helpers. Only the supplied libpng/libmad/busybox pairs are suppressed; WebKit is documented without blanket ignores.
+- **Class / severity:** Accepted contained risk (`d`) plus scanner false positives (`a`); underlying CVE severities remain unchanged. Lack of an upstream fix alone does not establish a false positive; supplied disputed/no-fix rationales remain reviewable exceptions.
+- **Fix path:** Reassess rules against upstream advisories and actual installed versions/consumers, update producer bundles when fixes exist, perform owner-directed tiered lock updates, then rescan. Package-name rules are not version/path scoped, so reassess whenever the closure changes.
+- **Evidence / limits:** SSOT `.agents/plans/cve-triage-20261002/TRIAGE.md`; dry-run findings and containment supplied by orchestrator. Focused tests verify config forwarding, not runtime containment or reduced live alert counts. No deployment, lock update, or GitHub dismissal performed by this slice.

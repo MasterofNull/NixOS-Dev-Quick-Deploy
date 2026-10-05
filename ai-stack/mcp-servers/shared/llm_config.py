@@ -53,6 +53,7 @@ ROLE_SYSTEM_PROMPTS: dict[str, str] = {
     "architect":    "[Role: architect] Draft architecture docs, flag risks, write PRDs. Requires orchestrator review before commit.",
     "implementer":  "[Role: implementer] Execute assigned slice only. Validate output. Propose commit. Do not re-scope goals.",
     "reviewer":     "[Role: reviewer] Explicit pass/fail verdict against criteria. Do not review your own work.",
+    "rsi":          "[Role: rsi] Root-cause incidents and friction, formulate minimal verified remediations with automated guards, and record findings in backlog and memory. Do not broaden scope.",
 }
 
 # Fable-parity behavioral block (~55 tok) — MICRO variant.

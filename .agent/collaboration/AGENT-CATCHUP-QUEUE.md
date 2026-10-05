@@ -658,7 +658,7 @@ is session-limited, so the binding independent review of branch `feat/aqos-insta
 orchestrator-reviewed as non-author], 6d626d57 tracker, 1caca03f handoff, e547101c P1 golden profile) was
 ROUTED to a fresh independent flagship lane NOW. Focus: the golden profile's AI-off-has-no-AI-deps invariant
 + the cascade re-pins + verifier inertness. On OVERALL: PASS -> merge to main with the bound Review-Disposition
-envelope (Independent-Review: PASS + Reviewed-subject-sha256 of the staged merge diff + Reviewed-by). 
+envelope (Independent-Review: PASS + Reviewed-subject-sha256 of the staged merge diff + Reviewed-by).
 **Codex on return:** confirmatory audit of the same branch — advisory unless it surfaces a real defect (then
 a bounded follow-up, never rewrite). Dev cycle does not wait.
 ## [2026-09-08] CORRECTION: frontier findings are PROPOSALS pending multi-expert debate (not adopted)
@@ -939,3 +939,65 @@ Author/integrator: claude-opus (cannot self-review). Priority subjects: `7a5bb5f
 ---
 ## [2026-10-02] QUEUED (antigravity + codex): PRSI->RSI merge + RSI takeover confirmatory review (PR #366, `fix/rsi-takeover-20261002`)
 Substitution recorded: the owner assigned PRSI merge slices M2 (retire Ralph PRSI routes) and M5a (hint-text canonical paths) to Antigravity/Gemini; inbox tasks `prsi-rsi-merge-m2-20261002.md` and `prsi-rsi-merge-m5-20261002.md` stayed unclaimed (claimed_count 0; auto-engagement gap), so per Rule 18 they were routed to Claude haiku implementers on 2026-10-02 using the same task files. On return: Antigravity does a confirmatory review of the M2/M5a commits against those task files. Codex (original takeover author) does a confirmatory audit of e9ccc8f4 996f9cde a21309b4 303bb202 7c34e6a5 b704130a f301ca0d d121c5a2 376dff4d ff124421 1cd5b206 2aa475c8 (+ the M2/M5a commits). Advisory unless a real defect is found.
+
+### RSI M7 takeover — 2026-10-02
+
+| codex-rsi-m7-20261002 | PRSI execute dry-run guard | commit `0785d235`; reviewed four-file diff SHA256 `10a589bee9fc20cb04681ca10c52e0f1177e6a4727598b316aa6c87b07022a6b` | Advisory confirmatory audit on return | Claude unavailable until 3pm; Gemini until 6:45pm per owner; independent gpt-5.6-sol substituted and PASS | Committed; 54/0 tier0; activation deferred to Nix batch |
+
+---
+### [CLOSED 2026-10-02] Antigravity — PRSI->RSI merge M2 + M5a confirmatory reviews + Inbox Backlog Drain — PASS
+- **Slice M2** (retire Ralph private PRSI queue; commit `9b637768`): Confirmatory audit completed in `.agents/plans/prsi-rsi-merge-20261002/antigravity-m2.md`. Verdict: PASS. Verified zero `/api/prsi/*` routes remaining in Ralph `server.py`, 16 L2B checks passed, golden SHA-256 pin rebound, unit tests passed. Task completed & receipt generated.
+- **Slice M5a** (canonical PRSI queue hint paths; commit `9b637768`): Confirmatory audit completed in `.agents/plans/prsi-rsi-merge-20261002/antigravity-m5.md`. Verdict: PASS. Zero legacy paths in config/switchboard/skills, JSON/YAML/Nix/Python syntax verified clean. Task completed & receipt generated.
+- **Antigravity Inbox Backlog Drain**: 100% drained (9/9 tasks completed and archived with immutable receipts). Auto-engagement parsing fixed in `scripts/ai/aq-antigravity-inbox` (`_OUTPUT_PATTERNS` generalized for all task formats).
+- **WR-PRSI-M7-REPO-ROOT**: Producer bug in `prsi_handlers.py` lines 142 and 235 fixed (`Path(__file__).resolve().parents[4]` to repo root), marked FIXED in `WORKAROUND-REGISTER.md` and `issues-backlog.md`.
+- **Model-Agnostic RSI Dispatch**: `scripts/automation/prsi-orchestrator.py` generalized to multi-lane `repair_lanes: ["codex", "claude", "local"]` with per-lane quota cooldown checks and graceful substitution fallback, verified by `test-rsi-repair-lane.py` (6/6 pass).
+
+---
+## [2026-10-02] QUEUED (Claude + Codex on return): Confirmatory review of Antigravity session work & implementations
+Returning agents (Claude upon unfreeze/quota refresh, Codex upon quota reset ~19:52 PDT) must review and validate the following work items implemented by Antigravity:
+
+1. **WR-PRSI-M7-REPO-ROOT Producer Bug Fix**:
+   - **Subject**: `ai-stack/mcp-servers/hybrid-coordinator/workflow/prsi_handlers.py` (lines 142 & 235).
+   - **Change**: Replaced faulty 4-level parent relative path (`ai-stack/`) with `.parents[4]` (exact repository root).
+   - **Validation Goal**: Confirm `scripts/ai/aq-report` and `scripts/ai/aq-optimizer` executable path resolution succeeds without 404 in discovery.
+   - **Status**: Tested, verified, marked FIXED in `WORKAROUND-REGISTER.md` and RESOLVED in `issues-backlog.md`.
+
+2. **Model-Agnostic RSI Multi-Lane Dispatch & Quota Cooldown Fallback**:
+   - **Subject**: `scripts/automation/prsi-orchestrator.py` & `config/runtime-prsi-policy.json`.
+   - **Change**: Added Claude lane implementer delegation (`delegate-to-claude --wait --role implementer`), generalized `_lane_cooldown_until` across all lanes (`.{lane}-quota-cooldown`), dynamic selection in candidate list `["codex", "claude", "local"]`, and substitution tracking in execution receipts.
+   - **Validation Goal**: Confirm multi-lane fallback preserves error-solution provenance and doesn't stall when the primary repair lane is in cooldown. Verified by `scripts/testing/test-rsi-repair-lane.py` (6/6 pass).
+
+3. **Auto-Engagement Parser Generalization & Inbox Backlog Drain**:
+   - **Subject**: `scripts/ai/aq-antigravity-inbox` & `.agent/archive/antigravity-inbox-20261003/`.
+   - **Change**: Generalized `_OUTPUT_PATTERNS` regex to capture all declared output target formats (YAML headers, `Respond by writing`, `Return ... to`). Drained 9 queued tasks, archived input files, and emitted immutable execution receipts in `.agent/collaboration/antigravity-inbox/receipts/`.
+   - **Validation Goal**: Confirm zero ReDoS vulnerability, correct receipt structure, and clean inbox status (`pending_count: 0`).
+
+4. **Antigravity Plan Reviews & PRD Readiness Audits**:
+   - **Subjects**:
+     - `.agents/plans/tiered-auto-update-prd-r2-20261001/antigravity.md` (`PLAN_READY_WITH_FOLLOWUPS`)
+     - `.agents/plans/tiered-auto-update-prd-r3-20261001/antigravity.md` (`PLAN_READY_WITH_FOLLOWUPS`)
+     - `.agents/plans/rsi-autonomy-20260930/antigravity.md` (`PLAN_READY_WITH_FOLLOWUPS`)
+     - `.agents/plans/rsi-steward-role-prd-20260930/antigravity.md` (`PLAN_READY_WITH_FOLLOWUPS`)
+   - **Validation Goal**: Confirm alignment on lockstep tier rollback, autonomous telemetry separation, and dedicated steward role boundaries. Advisory unless a material defect is discovered.
+
+5. **Antigravity Autonomous Bridge & Auto-Wake Loop Closure**:
+   - **Subjects**:
+     - `scripts/ai/aq-antigravity-inbox` (`cmd_wake` 60s debounce, expanded actors `["owner-manual", "auto-delegate", "systemd-auto-wake"]`, `--force` bypass)
+     - `scripts/ai/delegate-to-antigravity` (default `--backend inbox`, `_run_inbox` task file drop + wake + synchronous `--wait` harvester)
+     - `scripts/automation/prsi-orchestrator.py` (`antigravity` registered in `_VALID_RSI_LANES`, wired to `delegate-to-antigravity --wait`, cooldown fallback across `["codex", "claude", "antigravity", "local"]`)
+     - `config/runtime-prsi-policy.json` (`"repair_lanes": ["codex", "claude", "antigravity", "local"]`)
+     - `scripts/testing/test-delegate-to-antigravity.py`, `scripts/testing/test-antigravity-inbox.py`, `scripts/testing/test-rsi-repair-lane.py`
+   - **Validation Goal**: Confirm: (1) Systemd path retrigger storm is eliminated via generation-aware debounce; (2) Autonomous delegation across agents (Claude, Codex, Local, PRSI) drops tasks and harvests results through the running IDE's OAuth session without manual human prompting; (3) PRSI multi-lane cooldown fallback smoothly traverses `codex` -> `claude` -> `antigravity` -> `local`. All unit and regression tests passing.
+
+6. **Autonomous Antigravity Delegation for All Sub-Agent & Collaborative Roles & Workflows**:
+   - **Subjects**:
+     - `scripts/ai/aq-antigravity-inbox` (generalized `WAKE_PROMPT` removing advisory restriction to allow active role execution; expanded `--actor` choices to `["owner-manual", "auto-delegate", "systemd-auto-wake", "aq-collab-round", "workflow-executor", "subagent", "delegate-fanout"]`)
+     - `scripts/ai/delegate-to-antigravity` (added `subagent` and `coordinator` to `_VALID_ROLES`)
+     - `scripts/ai/aq-collab-round` (injected `Output:` and `Role: review` metadata headers into task markdown; wired wake notification with `--actor aq-collab-round`)
+     - `scripts/ai/delegate-fanout` (mapped `gemini` & `antigravity` to `delegate-to-antigravity`; default agents set to `antigravity,local`)
+     - `scripts/ai/aq-subagent-interactive`, `scripts/ai/aq-agent-window`, `scripts/ai/aq-coordinator-repl` (wired `antigravity` to `delegate-to-antigravity` across subagent consoles)
+     - `ai-stack/mcp-servers/hybrid-coordinator/workflow/workflow_executor.py` (`_delegate_phase_execution` forwards target `lane` and `role` to `/control/agents/spawn`)
+     - `ai-stack/mcp-servers/hybrid-coordinator/workflow/agents_task_handlers.py` (added async `_spawn_delegated_agent_instance` awaiting `delegate-to-antigravity`, `delegate-to-codex`, and `delegate-to-claude` with `--wait`; wired `handle_agents_spawn` and `handle_agents_team`)
+     - `ai-stack/mcp-servers/hybrid-coordinator/extensions/ai_coordinator_handlers.py` (added `"antigravity": "gemini-orchestrator"` mapping)
+     - `scripts/testing/test-subagent-workflows-antigravity.py` (7/7 test suite)
+   - **Validation Goal**: Confirm that Antigravity/Gemini participates autonomously as a peer across collaborative plan review rounds (`aq-collab-round`), subagent interactive consoles (`aq-subagent-interactive`), parallel fanout arbitration (`delegate-fanout`), workflow executor automated phases (`workflow_executor.py`), and REPL dispatch consoles (`aq-coordinator-repl`) without human prompt engineering or falling into advisory deadlock. All 7 test cases pass.

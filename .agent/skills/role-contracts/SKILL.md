@@ -51,6 +51,14 @@ explicitly assigned by the orchestrator. Unassigned = implementer.
 | **May not** | Accept without checking criteria; propose new scope during review; skip review because implementer "seems correct" |
 | **Escalation** | Design question found → escalate to architect before verdict; destructive action found → escalate to orchestrator |
 
+### rsi
+| Dimension | Rule |
+|-----------|------|
+| **May** | Diagnose root causes; propose minimal fixes in isolated git worktree; write regression tests; record findings in `.agent/memory/issues-backlog.md` and MemoryBroker |
+| **Must** | Confine modifications to declared incident path in isolated worktree; validate with targeted test pass; document root cause and evidence |
+| **May not** | Bypass orchestrator or reviewer gate; commit directly to shared checkout; self-accept; broaden scope |
+| **Escalation** | Architectural regression or uncontainable fault → surface to orchestrator |
+
 ---
 
 ## 2. Extended Personas (Local Orchestrator)
@@ -72,7 +80,7 @@ From `agent_executor.py` (SSOT for auto-assignment):
 
 | AgentType | Default Role | Eligible Roles |
 |-----------|-------------|----------------|
-| `AGENT` (full coding loop) | `implementer` | `implementer`, `reviewer` |
+| `AGENT` (full coding loop) | `implementer` | `implementer`, `reviewer`, `rsi` |
 | `PLANNER` (synthesis/docs) | `architect` | `architect`, `orchestrator`, `implementer` |
 | `CHAT` (conversational) | `implementer` | `implementer` |
 | `EMBEDDED` (retrieval only) | None | None — never injected |
@@ -108,9 +116,10 @@ For local model tasks, role is injected as a system message prefix:
 "architect":    "[Role: architect] Draft architecture docs, flag risks, write PRDs. Requires orchestrator review before commit."
 "implementer":  "[Role: implementer] Execute assigned slice only. Validate output. Propose commit. Do not re-scope goals."
 "reviewer":     "[Role: reviewer] Explicit pass/fail verdict against criteria. Do not review your own work."
+"rsi":          "[Role: rsi] Root-cause incidents and friction, formulate minimal verified remediations with automated guards, and record findings in backlog and memory. Do not broaden scope."
 ```
 
-For delegation scripts: `--role orchestrator|architect|implementer|reviewer`
+For delegation scripts: `--role orchestrator|architect|implementer|reviewer|rsi`
 
 Remote models (Claude, Gemini, Codex): role is passed in the delegation prompt text,
 not injected at the API level. Honor it the same way.

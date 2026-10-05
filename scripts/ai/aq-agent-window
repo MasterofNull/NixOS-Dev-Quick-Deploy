@@ -54,6 +54,15 @@ OUTPUTS_DIR = REPO_ROOT / ".agents" / "delegation" / "outputs"
 
 console = Console()
 
+_ANTIGRAVITY_EDITING_ROLES = frozenset({"implement", "implementer", "rsi", "coordinator", "subagent"})
+
+
+def reject_unsupported_antigravity_editing_role(lane: str, role: str) -> bool:
+    if lane.strip().lower() in ("antigravity", "gemini") and role.strip().lower() in _ANTIGRAVITY_EDITING_ROLES:
+        console.print("[bold red]ERROR: blocked_unsupported_ide_worktree_isolation: Antigravity IDE bridge cannot verify a task-specific workspace binding[/bold red]")
+        return True
+    return False
+
 BUILTIN_LANES = {
     "local": {
         "title": "󰚩 Qwen3-35B (Local APU)",
@@ -327,10 +336,13 @@ class AgentWindow:
             "claude": REPO_ROOT / "scripts" / "ai" / "delegate-to-claude",
             "codex": REPO_ROOT / "scripts" / "ai" / "delegate-to-codex",
             "gemini": REPO_ROOT / "scripts" / "ai" / "delegate-to-antigravity",
+            "antigravity": REPO_ROOT / "scripts" / "ai" / "delegate-to-antigravity",
         }
         lane_key = target_lane.strip().lower()
         if lane_key not in scripts:
             console.print(f"[red]Error: Unsupported lane '{target_lane}'. Choose one of: {', '.join(scripts)}.[/red]")
+            return
+        if reject_unsupported_antigravity_editing_role(lane_key, role):
             return
         script = scripts[lane_key]
         if not script.is_file():
@@ -340,7 +352,7 @@ class AgentWindow:
         cmd = [str(script), "--role", role, "--prompt", prompt]
         console.print(f"[bold cyan]⚡ {self.lane['prompt_symbol']} spinning off sub-agent ({target_lane}/{role})...[/bold cyan]")
         try:
-            proc = subprocess.Popen(cmd, stdout=subprocess.PIPE, stderr=subprocess.PIPE, text=True)
+            proc = subprocess.Popen(cmd, stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL)
             console.print(f"[bold green]✓ Sub-agent process launched (PID {proc.pid}).[/bold green]")
             console.print(f"[dim]Tracking operations... Type [bold cyan]/subagents[/bold cyan] to inspect.[/dim]\n")
         except Exception as e:

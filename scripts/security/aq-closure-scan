@@ -124,6 +124,8 @@ def scan(target: str, sbom: Path, sarif: Path | None, top: int, timeout: int) ->
     if components == 0:
         raise ScanError("SBOM has zero components; refusing to report a clean scan")
     grype_args = [f"sbom:{sbom}", "-o", "json"]
+    if (REPO_ROOT / ".grype.yaml").is_file():
+        grype_args += ["-c", str(REPO_ROOT / ".grype.yaml")]
     if sarif is not None:
         grype_args += ["-o", f"sarif={sarif}"]
     proc = _nix_run("grype", grype_args, timeout)
@@ -418,7 +420,10 @@ def triage_scan(target: str, timeout: int, offline: dict | None = None) -> dict:
             raise ScanError("sbomnix produced no SBOM/CSV for triage")
         if not json.loads(sbom.read_text()).get("components"):
             raise ScanError("SBOM has zero components; refusing to triage")
-        proc = _nix_run("grype", [f"sbom:{sbom}", "-o", "json"], timeout)
+        grype_args = [f"sbom:{sbom}", "-o", "json"]
+        if (REPO_ROOT / ".grype.yaml").is_file():
+            grype_args += ["-c", str(REPO_ROOT / ".grype.yaml")]
+        proc = _nix_run("grype", grype_args, timeout)
         try:
             grype_doc = json.loads(proc.stdout)
         except json.JSONDecodeError as exc:

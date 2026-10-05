@@ -115,6 +115,7 @@ class ToolCategory(Enum):
     VISION = "vision_computer_use"
     MEMORY = "memory_database"
     CODE_EXEC = "code_execution"
+    CODE_EXECUTION = "code_execution"
     AI_COORD = "ai_coordination"
 
 
@@ -373,6 +374,8 @@ class ToolRegistry:
             f"Registered tool: {tool.name} "
             f"(category={tool.category.value}, policy={tool.safety_policy.value})"
         )
+
+    register_tool = register
 
     def unregister(self, tool_name: str):
         """Unregister a tool"""

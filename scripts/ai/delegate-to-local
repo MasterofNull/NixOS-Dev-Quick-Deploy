@@ -223,10 +223,10 @@ case "$ROLE" in
     # auto: dispatch.py auto_assign infers the canonical role from the task
     auto) ;;
     # Canonical role-matrix values
-    orchestrator|architect|implementer|reviewer) ;;
+    orchestrator|architect|implementer|reviewer|rsi) ;;
     # Legacy aliases (mapped to canonical in task_config.py)
     plan|implement|review|research) ;;
-    *) die "Invalid --role '$ROLE'. Valid: auto | orchestrator | architect | implementer | reviewer" ;;
+    *) die "Invalid --role '$ROLE'. Valid: auto | orchestrator | architect | implementer | reviewer | rsi" ;;
 esac
 
 # ── subcommands ───────────────────────────────────────────────────────────────
