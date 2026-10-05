@@ -290,3 +290,35 @@ Codex lane absent).
 - **Fix path:** Declared `ps."pytest-asyncio"` in `nix/home/base.nix` and `nix/modules/core/base.nix`.
 - **Class / severity:** T1 tooling / test hygiene; low. Status: FIXED 2026-10-05.
 - **Evidence:** `nix eval .#nixosConfigurations.hyperd-ai-dev.pkgs.python3Packages.pytest-asyncio.name` evaluates `"python3.13-pytest-asyncio-1.3.0"`; `check-package-count-drift.sh` PASS; commit `ba30137d`.
+
+## WR-SECURITY-AUDIT-GITIGNORED-FORKS-SCAN (2026-10-05) — FIXED
+
+- **Symptom:** `scripts/security/security-audit.sh` generated high-severity alert `latest-high-cve-alert.json` reporting 6 npm high/critical vulnerabilities.
+- **Root cause / producer:** `security-audit.sh` and `npm-security-monitor.sh` used an unfiltered `find` command that traversed `.forks/nixpkgs/ci/github-script/package.json` (a third-party checkout in `.gitignore`). Repo root packages have 0 vulnerabilities.
+- **Fix path:** Updated package discovery in both scripts to use git-aware `git ls-files` (tracked + untracked non-ignored) when inside a git worktree, and exclude `.forks`, `.agents`, `.codex`, `.claude`, `.review-worktrees`, `node_modules`, `archive`, `.venv` in the fallback `find`.
+- **Class / severity:** T2 validation-gap / false alarm; medium. Status: FIXED 2026-10-05.
+- **Evidence:** `bash scripts/security/security-audit.sh` and `bash scripts/security/npm-security-monitor.sh` report 0 vulnerabilities, status ok, no alert generated.
+
+## WR-GITLEAKS-REVIEW-WORKTREES-ALLOWLIST (2026-10-05) — FIXED
+
+- **Symptom:** Local executions of `gitleaks detect --redact --config .gitleaks.toml --source . --no-git` flagged 36 secrets in `.review-worktrees/claude-handback-20260927/`.
+- **Root cause / producer:** `.review-worktrees/` is in `.gitignore`, but `.gitleaks.toml` `[allowlist].paths` omitted `.review-worktrees/.*` while already including `.claude/.*` and `.codex/.*`.
+- **Fix path:** Added `'''^\.review-worktrees/.*$'''` to `[allowlist].paths` in `.gitleaks.toml`.
+- **Class / severity:** T1 tooling / false alarm; medium. Status: FIXED 2026-10-05.
+- **Evidence:** `gitleaks detect --redact --config .gitleaks.toml --source . --no-git` reports 0 leaks in 18.6s.
+
+## WR-HEALTH-MONITOR-SANDBOX-READWRITE-AGENT-PATH (2026-10-05) — FIXED
+
+- **Symptom:** `ai-stack-health-monitor.service` crashed on `aq-qa 0` with `OSError: [Errno 30] Read-only file system: 'provider-probe.lock'` under `ProtectSystem=strict` sandbox, producing recurrent attention alert `attn-74221181`.
+- **Root cause / producer:** `nix/modules/roles/ai-stack.nix` declared `ReadWritePaths = [ "${cfg.mcpServers.repoPath}/.agents" ... ]` (plural) but omitted `${cfg.mcpServers.repoPath}/.agent` (singular) where `AggregateLock(repo_root / ".agent/qa")` writes `provider-probe.lock`.
+- **Fix path:** Added `${cfg.mcpServers.repoPath}/.agent` to `ReadWritePaths` in `nix/modules/roles/ai-stack.nix`.
+- **Class / severity:** Sandbox / systemd isolation; medium. Status: FIXED 2026-10-05.
+- **Evidence:** `python3 scripts/testing/test-qa-provider-probe-adoption.py` PASS (24/24 tests in 21.8s).
+
+## WR-WORKFLOW-BLUEPRINTS-COLLABORATOR-LANES (2026-10-05) — FIXED
+
+- **Symptom:** `python3 scripts/testing/test-workflow-blueprints.py` failed with `AssertionError: blueprint lifecycle-aware-intake must declare collaborator_lanes when parallel subagents are enabled`.
+- **Root cause / producer:** `config/workflow-blueprints.json` blueprints `lifecycle-aware-intake`, `simple-task-direct`, and `domain-delegated-task` were missing required `collaborator_lanes`, `consensus_mode`, or `escalation_lane` fields.
+- **Fix path:** Updated orchestration policies in `config/workflow-blueprints.json` to declare `collaborator_lanes: ["implementation", "remote-reasoning"]`, `consensus_mode: "reviewer-gate"`, and `escalation_lane: "remote-reasoning"`.
+- **Class / severity:** T2 validation-gap; low. Status: FIXED 2026-10-05.
+- **Evidence:** `python3 scripts/testing/test-workflow-blueprints.py` PASS (`PASS: workflow blueprints cover the required harness task families`).
