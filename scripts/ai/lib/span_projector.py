@@ -76,8 +76,10 @@ def _hand_activation_audit_path() -> Path:
 
 
 def _atomic_write(path: Path, text: str) -> None:
-    path.parent.mkdir(parents=True, exist_ok=True)
-    tmp = path.with_suffix(path.suffix + ".tmp")
+    import secrets
+    parent = path.parent
+    parent.mkdir(parents=True, exist_ok=True)
+    tmp = parent / f".{path.name}.{os.getpid()}.{secrets.token_hex(8)}.tmp"
     tmp.write_text(text, encoding="utf-8")
     os.replace(tmp, path)
 
