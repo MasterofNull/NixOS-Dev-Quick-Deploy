@@ -21,6 +21,7 @@ paths = [
   '''^archive/.*\.cert$''',
   '''^archive/.*$''',
   '''^\.forks/.*$''',
+  '''^\.review-worktrees/.*$''',
   '''^tests/chaos-engineering/.*$''',
   '''^tests/progressive-disclosure-validation\.py$''',
   '''^scripts/governance/check-cross-surface-contract\.py$''',
