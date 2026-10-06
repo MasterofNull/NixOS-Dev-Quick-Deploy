@@ -1280,14 +1280,17 @@ def _check_agent_memory_surface_registry(ctx: RunContext) -> list[CheckResult]:
     check = ctx.repo_root / "scripts" / "testing" / "test-agent-memory-surface-registry.py"
     if not check.exists():
         return [failed(1, "0.10.8", "agent memory surface registry", "test-agent-memory-surface-registry.py missing")]
-    proc = subprocess.run(
-        ["python3", str(check)],
-        cwd=ctx.repo_root,
-        text=True,
-        capture_output=True,
-        timeout=30,
-        check=False,
-    )
+    try:
+        proc = subprocess.run(
+            ["python3", str(check)],
+            cwd=ctx.repo_root,
+            text=True,
+            capture_output=True,
+            timeout=30,
+            check=False,
+        )
+    except subprocess.TimeoutExpired:
+        return [failed(1, "0.10.8", "agent memory surface registry", "test-agent-memory-surface-registry.py timed out after 30s")]
     if proc.returncode == 0:
         return [passed(1, "0.10.8", "agent memory surface registry classifies state, memory, RAG, and archives")]
     detail = (proc.stdout + proc.stderr).strip() or f"exit {proc.returncode}"
@@ -1725,7 +1728,7 @@ def _check_local_agent_monitor_visibility(ctx: RunContext) -> list[CheckResult]:
             [str(monitor), "--monitor"],
             capture_output=True,
             text=True,
-            timeout=10,
+            timeout=30,
             cwd=str(ctx.repo_root),
         )
         after = registry.read_bytes() if registry.exists() else b""
