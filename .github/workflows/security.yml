@@ -98,7 +98,16 @@ jobs:
 
       - name: Free runner disk space
         run: |
-          sudo rm -rf /usr/share/dotnet /opt/ghc /usr/local/lib/android /opt/hostedtoolcache/CodeQL
+          sudo rm -rf \
+            /usr/share/dotnet \
+            /usr/local/lib/android \
+            /opt/ghc \
+            /opt/hostedtoolcache \
+            /usr/share/swift \
+            /usr/local/share/boost \
+            /var/lib/docker \
+            /var/run/docker.sock
+          docker system prune --all --volumes -f 2>/dev/null || true
           df -h /
 
       - name: Install Nix
@@ -107,6 +116,8 @@ jobs:
           nix_path: nixpkgs=channel:nixos-25.11
           extra_nix_config: |
             experimental-features = nix-command flakes
+            substituters = https://cache.nixos.org https://nix-community.cachix.org https://cosmic.cachix.org
+            trusted-public-keys = cache.nixos.org-1:6NCHdD59X431o0gWypbMrAURkbJ16ZPMQFGspcDShjY= nix-community.cachix.org-1:mB9FSh9qf2dCimDSUo8Zy7bkq5CX+/rkCWyvRCYg3Fs= cosmic.cachix.org-1:Dya9IyXD4xdBehWjrkPv6rtxpmMdRel02smYzA85dPE=
 
       - name: Add swap and pre-build llama-cpp alone
         # llama-cpp's vulkan-shaders-gen spawns its own compiler processes regardless of
@@ -114,7 +125,7 @@ jobs:
         # fork process" -> missing matmul shader symbols -> ld failure, 2026-10-02). Swap
         # plus a solo build removes the contention; the system build then reuses it.
         run: |
-          sudo fallocate -l 8G /swapfile-ci && sudo chmod 600 /swapfile-ci
+          sudo fallocate -l 4G /swapfile-ci && sudo chmod 600 /swapfile-ci
           sudo mkswap /swapfile-ci >/dev/null && sudo swapon /swapfile-ci
           free -g
           nix build .#nixosConfigurations.hyperd-ai-dev.pkgs.llama-cpp \
@@ -203,7 +214,7 @@ jobs:
     if: always()
     steps:
       - name: Download audit results
-        uses: actions/download-artifact@634f93cb2916e3fdff6788551b99b062d0335ce0  # v5
+        uses: actions/download-artifact@018cc2cf5baa6db3ef3c5f8a56943fffe632ef53  # v6
         with:
           name: security-audit-results
 
