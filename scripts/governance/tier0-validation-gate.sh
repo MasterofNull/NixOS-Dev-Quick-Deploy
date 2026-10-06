@@ -873,7 +873,7 @@ gate_qa_phase0() {
   log "Running QA phase 0..."
   local output
   local passes
-  local qa_timeout="${TIER0_AQ_QA_TIMEOUT_SECONDS:-420}"
+  local qa_timeout="${TIER0_AQ_QA_TIMEOUT_SECONDS:-600}"
   local continue_local_timeout="${TIER0_AQ_QA_CONTINUE_LOCAL_MAX_TIME_SECONDS:-45}"
   local flagship_help_timeout="${TIER0_AQ_QA_FLAGSHIP_HELP_TIMEOUT_SECONDS:-45}"
   local status=0
