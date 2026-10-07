@@ -1009,3 +1009,8 @@ Subjects: 116b5ae5 d7a55c55 b3138620 37f4fa55 fd2bd31d 8da52f1f 4ed55b7f c7b801c
 - REQUEST_OWNER: 1d6ca16b — pushed directly to main (no PR), Reviewed-by = author, and flips owner `acceptance` blocks to `accepted by hyperd` without evidence pointer. Owner must confirm or revert.
 - Runtime defects found in Antigravity-wired RSI multi-lane dispatch (item 2/5 of the 2026-10-02 queue): nix-closure CVE incidents dispatched agentically every 5 min; Claude weekly-limit not detected as quota. Fix on branch `fix/rsi-dispatch-skip-deterministic-producers-20261007`.
 Details: .agent/memory/issues-backlog.md "Antigravity 2026-10-03..10-06 review findings".
+
+## [2026-10-07] QUEUED (antigravity on return; codex when quota allows): confirmatory review of merged PRs #379 #380 #381 #382 and open #383
+- Antigravity review antigravity-20261007-095108-yz007d timed out (inbox not drained). Prompt: /tmp scratch copy summarized here — review each for correctness, data integrity (live-state writes, restart storms, lost updates), token/compute cost, Nix↔code contract mismatches; verdict per PR. Output → .agents/plans/prsi-rsi-merge-20261002/review-antigravity-20261007.md
+- Local Qwen advisory on #382 DONE (2 low defects + redaction gap → issues-backlog).
+- Advisory unless a real defect surfaces (then bounded follow-up).
