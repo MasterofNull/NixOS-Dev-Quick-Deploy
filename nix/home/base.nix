@@ -966,9 +966,9 @@ in {
     if [ -f "$settings_file" ] && command -v jq >/dev/null 2>&1; then
       tmp="$(mktemp)"
       # Normalize JSONC to JSON first (handles trailing commas, comments)
-      if command -v python3 >/dev/null 2>&1; then
+      if [ -x ${pkgs.python3}/bin/python3 ]; then
         normalized="$(mktemp)"
-        if python3 "${repoPath}/scripts/ai/lib/jsonc_to_json.py" "$settings_file" "$normalized" 2>/dev/null; then
+        if ${pkgs.python3}/bin/python3 "${repoPath}/scripts/ai/lib/jsonc_to_json.py" "$settings_file" "$normalized" 2>/dev/null; then
           cp "$normalized" "$settings_file"
           rm -f "$normalized"
         else
@@ -999,9 +999,9 @@ in {
     if [ -f "$settings_file" ] && command -v jq >/dev/null 2>&1; then
       tmp="$(mktemp)"
       # Normalize JSONC to JSON first (handles trailing commas, comments)
-      if command -v python3 >/dev/null 2>&1; then
+      if [ -x ${pkgs.python3}/bin/python3 ]; then
         normalized="$(mktemp)"
-        if python3 "${repoPath}/scripts/ai/lib/jsonc_to_json.py" "$settings_file" "$normalized" 2>/dev/null; then
+        if ${pkgs.python3}/bin/python3 "${repoPath}/scripts/ai/lib/jsonc_to_json.py" "$settings_file" "$normalized" 2>/dev/null; then
           cp "$normalized" "$settings_file"
           rm -f "$normalized"
         else
@@ -1041,9 +1041,9 @@ in {
     if [ -f "$settings_file" ] && command -v jq >/dev/null 2>&1; then
       tmp="$(mktemp)"
       # Normalize JSONC to JSON first (handles trailing commas, comments)
-      if command -v python3 >/dev/null 2>&1; then
+      if [ -x ${pkgs.python3}/bin/python3 ]; then
         normalized="$(mktemp)"
-        if python3 "${repoPath}/scripts/ai/lib/jsonc_to_json.py" "$settings_file" "$normalized" 2>/dev/null; then
+        if ${pkgs.python3}/bin/python3 "${repoPath}/scripts/ai/lib/jsonc_to_json.py" "$settings_file" "$normalized" 2>/dev/null; then
           cp "$normalized" "$settings_file"
           rm -f "$normalized"
         else
