@@ -386,9 +386,9 @@ def test_redact_secrets_long_hex():
 
 def test_redact_secrets_pem_keys():
     """Test redaction of PEM private keys."""
-    text = """-----BEGIN PRIVATE KEY-----
-MIIEvQIBADANBgkqhkiG9w0BAQEFAASCBKcwggSjAgEAAoIBAQDU8+1Jx+Z+...
------END PRIVATE KEY-----"""
+    # Assembled at runtime so secret scanners never see a PEM block literal in the repo.
+    marker = "PRIVATE" + " KEY"
+    text = f"-----BEGIN {marker}-----\n" + "A" * 64 + f"\n-----END {marker}-----"
     result = redact_secrets(text)
     assert "[REDACTED]" in result
     assert "BEGIN PRIVATE KEY" not in result
@@ -657,3 +657,27 @@ def test_handler_routes_dict_payload_over_unreadable_file():
 if __name__ == "__main__":
     import pytest
     pytest.main([__file__, "-v"])
+
+
+def test_redact_secrets_github_fine_grained_pat():
+    import session_transcripts
+    # Built at runtime so secret scanners never see a token-shaped literal in the repo.
+    tok = "github" + "_pat_" + "x" * 40
+    out = session_transcripts.redact_secrets(f"token {tok} end")
+    assert tok not in out and "[REDACTED]" in out
+
+
+def test_aq_crystallize_dry_run_executes_under_set_e(tmp_path):
+    # bash -n only checks syntax; (( var++ )) from 0 aborts under set -e at runtime.
+    import json, subprocess
+    from pathlib import Path
+    repo = Path(__file__).resolve().parents[4]
+    proj = tmp_path / "projects" / "p"
+    proj.mkdir(parents=True)
+    rows = [{"type": r, "message": {"content": [{"type": "text", "text": f"message number {i} long enough"}]}}
+            for i, r in enumerate(["user", "assistant", "user", "assistant"])]
+    (proj / "s.jsonl").write_text("\n".join(json.dumps(x) for x in rows))
+    res = subprocess.run(["bash", str(repo / "scripts/ai/aq-crystallize"), "--session-dir", str(tmp_path / "projects"),
+                          "--max-sessions", "2", "--dry-run"], capture_output=True, text=True, timeout=60)
+    assert res.returncode == 0, res.stderr
+    assert "s.jsonl" in res.stdout
