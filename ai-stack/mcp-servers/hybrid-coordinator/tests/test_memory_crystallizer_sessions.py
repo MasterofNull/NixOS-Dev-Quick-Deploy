@@ -697,3 +697,21 @@ def test_local_llm_client_timeout_override():
     custom = LLMClient(provider="local", base_url="http://127.0.0.1:1", timeout=900.0)
     assert default.client.timeout.read == 120.0
     assert custom.client.timeout.read == 900.0
+
+
+def test_queued_broker_writes_count_as_stored():
+    # store_agent_memory reports "queued" for successful async ingestion (live 2026-10-07: 0 counted, facts present in Qdrant).
+    import asyncio
+    import memory_crystallizer as mc
+
+    class _QueuedBroker(_FakeBroker):
+        async def write(self, memory_type, content, context, source):
+            await super().write(memory_type, content, context, source)
+            return {"status": "queued"}
+
+    broker = _QueuedBroker()
+    c = mc.MemoryCrystallizer(broker=broker, llama_client=_FakeLlamaClient())
+    history = [{"role": "user" if i % 2 == 0 else "assistant", "content": f"message {i} with enough text"} for i in range(6)]
+    result = asyncio.run(c._crystallize_history(history))
+    assert result["status"] == "complete"
+    assert result["facts_stored"] == len(broker.writes) > 0
