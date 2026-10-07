@@ -49,7 +49,7 @@ QUEUE_PATH = Path(os.getenv("PRSI_ACTION_QUEUE_PATH", "/var/lib/nixos-ai-stack/o
 ACTIONS_LOG_PATH = Path(os.getenv("PRSI_ACTIONS_LOG_PATH", "/var/log/nixos-ai-stack/prsi-actions.jsonl"))
 AUTO_APPROVE_LOW_RISK = os.getenv("PRSI_AUTO_APPROVE_LOW_RISK", "true").lower() == "true"
 PRSI_POLICY_FILE = Path(os.getenv("PRSI_POLICY_FILE", str(REPO_ROOT / "config/runtime-prsi-policy.json")))
-PRSI_STATE_PATH = Path(os.getenv("PRSI_STATE_PATH", "/var/lib/nixos-ai-stack/prsi/runtime-state.json"))
+PRSI_STATE_PATH = Path(os.getenv("PRSI_STATE_PATH", "/var/lib/nixos-ai-stack/optimizer/prsi/runtime-state.json"))
 _DELEGATION_FEEDBACK = Path(os.getenv("TELEMETRY_DIR", "/var/lib/ai-stack/hybrid/telemetry")) / "delegation-feedback.jsonl"
 _WORKFLOW_DEVIATIONS = Path(os.getenv(
     "AQ_WORKFLOW_DEVIATION_LOG_PATH",
