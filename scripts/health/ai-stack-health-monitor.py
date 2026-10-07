@@ -33,6 +33,17 @@ _SOURCE = "ai-stack-health-monitor"
 _COOLDOWN_S = 600  # don't re-alert the same failure within 10 minutes
 
 
+def push_alert(**spec) -> None:
+    title = spec["title"]
+    if len(title) > 80:
+        spec["title"] = title[:79] + "…"
+        spec["detail"] = title + "\n\n" + spec["detail"]
+    try:
+        push(**spec)
+    except (ValueError, TypeError) as exc:
+        print(f"[{_SOURCE}] Skipping invalid alert: {exc}", file=sys.stderr)
+
+
 def run_aq_qa(phase: str) -> dict:
     """Run aq-qa <phase> --json and return parsed output."""
     try:
@@ -102,7 +113,7 @@ def main() -> int:
                 "stdout": data.get("stdout", ""),
                 "failed": 1,
             })
-            push(
+            push_alert(
                 source=_SOURCE,
                 severity="high",
                 autonomy_boundary="human_gate",
@@ -148,7 +159,7 @@ def main() -> int:
             message = c.get("message") or c.get("detail") or ""
             lines.append(f"  [{c.get('id', '?')}] {label}: {message}")
 
-        push(
+        push_alert(
             source=_SOURCE,
             severity="critical" if len(failures) >= 3 else "high",
             autonomy_boundary="human_gate",
@@ -174,7 +185,7 @@ def main() -> int:
     if total_failures == 0:
         print(f"[{_SOURCE}] All checks passed at {time.strftime('%Y-%m-%dT%H:%M:%S')}")
     else:
-        print(f"[{_SOURCE}] {total_failures} failure(s) pushed to attention queue", file=sys.stderr)
+        print(f"[{_SOURCE}] {total_failures} failure(s) found; attention queue submission attempted", file=sys.stderr)
 
     return 0
 

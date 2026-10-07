@@ -5,12 +5,12 @@
     "last_updated": "2026-05-20"
   },
   "rsi": {
-    "repair_lane": "codex",
+    "repair_lane": "local",
     "repair_lanes": [
-      "codex",
+      "local",
       "claude",
       "antigravity",
-      "local"
+      "codex"
     ],
     "approval_binding_enabled": false,
     "daily_run_cap": 3,
