@@ -15,6 +15,9 @@ from unittest.mock import Mock, patch
 _INCIDENTS_TMP = tempfile.TemporaryDirectory(prefix="prsi-incidents-test-")
 os.environ["PRSI_INCIDENTS_FILE"] = str(Path(_INCIDENTS_TMP.name) / "rsi-incidents.json")
 
+_DELEGATION_TMP = tempfile.TemporaryDirectory(prefix="prsi-delegation-test-")
+os.environ["AQ_DELEGATION_DIR"] = str(_DELEGATION_TMP.name)
+
 ROOT = Path(__file__).resolve().parents[2]
 spec = importlib.util.spec_from_file_location("prsi_lane", ROOT / "scripts/automation/prsi-orchestrator.py")
 prsi = importlib.util.module_from_spec(spec)
