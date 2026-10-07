@@ -238,14 +238,28 @@ class MemoryCrystallizer:
 
             stored_count = 0
             for fact in facts:
+                context = {
+                    "distillation_date": datetime.now(timezone.utc).isoformat(),
+                    "crystalline": True,
+                }
+                if metadata:
+                    # Fallback: session_id > session_path > session_hash
+                    context["crystallized_from"] = (
+                        metadata.get("session_id")
+                        or metadata.get("session_path")
+                        or metadata.get("session_hash")
+                        or "unknown"
+                    )
+                    # Include session_path when present
+                    if metadata.get("session_path"):
+                        context["session_path"] = metadata["session_path"]
+                else:
+                    context["crystallized_from"] = "unknown"
+
                 result = await broker.write(
                     memory_type="semantic",
                     content=fact,
-                    context={
-                        "crystallized_from": metadata.get("session_id") if metadata else "unknown",
-                        "distillation_date": datetime.now(timezone.utc).isoformat(),
-                        "crystalline": True,
-                    },
+                    context=context,
                     source="crystallizer",
                 )
                 if result.get("status") in {"stored", "success"}:

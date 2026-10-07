@@ -263,6 +263,76 @@ def test_crystallize_history_filters_facts():
     asyncio.run(run_test())
 
 
+def test_crystallized_from_fallback_metadata():
+    """Test crystallized_from context uses fallback: session_id > session_path > session_hash."""
+
+    async def run_test():
+        broker = _FakeBroker()
+        llama_client = _FakeLlamaClient("- fact one long enough")
+        crystallizer = MemoryCrystallizer(
+            postgres_client=None,
+            broker=broker,
+            llama_client=llama_client,
+        )
+
+        # History for testing
+        history = [
+            {"role": "user", "content": "hello"},
+            {"role": "assistant", "content": "world"},
+            {"role": "user", "content": "test"},
+            {"role": "assistant", "content": "ok"},
+        ]
+
+        # Test 1: metadata with session_id should use session_id
+        result = await crystallizer._crystallize_history(
+            history,
+            metadata={"session_id": "id123", "session_path": "/path/to/session", "session_hash": "hash456"}
+        )
+        assert result["status"] == "complete"
+        assert broker.writes[-1]["context"]["crystallized_from"] == "id123"
+        assert broker.writes[-1]["context"]["session_path"] == "/path/to/session"
+
+        # Test 2: metadata without session_id should fallback to session_path
+        broker.writes.clear()
+        result = await crystallizer._crystallize_history(
+            history,
+            metadata={"session_path": "/path/to/session", "session_hash": "hash456"}
+        )
+        assert result["status"] == "complete"
+        assert broker.writes[-1]["context"]["crystallized_from"] == "/path/to/session"
+        assert broker.writes[-1]["context"]["session_path"] == "/path/to/session"
+
+        # Test 3: metadata without session_id or session_path should fallback to session_hash
+        broker.writes.clear()
+        result = await crystallizer._crystallize_history(
+            history,
+            metadata={"session_hash": "hash456"}
+        )
+        assert result["status"] == "complete"
+        assert broker.writes[-1]["context"]["crystallized_from"] == "hash456"
+        assert "session_path" not in broker.writes[-1]["context"]
+
+        # Test 4: empty metadata should use "unknown"
+        broker.writes.clear()
+        result = await crystallizer._crystallize_history(
+            history,
+            metadata={}
+        )
+        assert result["status"] == "complete"
+        assert broker.writes[-1]["context"]["crystallized_from"] == "unknown"
+
+        # Test 5: None metadata should use "unknown"
+        broker.writes.clear()
+        result = await crystallizer._crystallize_history(
+            history,
+            metadata=None
+        )
+        assert result["status"] == "complete"
+        assert broker.writes[-1]["context"]["crystallized_from"] == "unknown"
+
+    asyncio.run(run_test())
+
+
 if __name__ == "__main__":
     import pytest
     pytest.main([__file__, "-v"])
