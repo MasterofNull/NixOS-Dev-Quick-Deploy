@@ -66,6 +66,7 @@ class LLMClient:
         provider: str = "anthropic",
         api_key: Optional[str] = None,
         base_url: Optional[str] = None,
+        timeout: Optional[float] = None,
     ):
         """
         Initialize LLM client.
@@ -84,6 +85,7 @@ class LLMClient:
         self.provider = provider
         self.api_key = api_key or self._get_api_key(provider)
         self.base_url = base_url
+        self.timeout = timeout
 
         if provider == "anthropic":
             self._init_anthropic()
@@ -241,7 +243,7 @@ class LLMClient:
             "LLM_CLIENT_LOCAL_TOOL_PROFILE",
             "local-tool-calling",
         )
-        self.client = httpx.AsyncClient(timeout=120.0)
+        self.client = httpx.AsyncClient(timeout=self.timeout or 120.0)
         self.default_model = "local"
         logger.info("Local model client initialized via switchboard at %s", self.base_url)
 
