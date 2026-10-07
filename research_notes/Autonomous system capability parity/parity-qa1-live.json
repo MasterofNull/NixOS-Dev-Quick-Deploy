@@ -1,0 +1,152 @@
+{
+  "phase": "1",
+  "passed": 11,
+  "failed": 0,
+  "skipped": 0,
+  "duration_s": 12,
+  "degraded_confidence": false,
+  "tests": [
+    {
+      "layer": 2,
+      "id": "1.1.1",
+      "status": "PASS",
+      "description": "redis ping"
+    },
+    {
+      "layer": 2,
+      "id": "1.1.2",
+      "status": "PASS",
+      "description": "redis latency <= 5ms (got 0.67ms avg)"
+    },
+    {
+      "layer": 5,
+      "id": "1.2.1",
+      "status": "PASS",
+      "description": "postgres responds (user=aidb)"
+    },
+    {
+      "layer": 5,
+      "id": "1.2.2",
+      "status": "PASS",
+      "description": "AIDB schema tables present"
+    },
+    {
+      "layer": 5,
+      "id": "1.2.3",
+      "status": "PASS",
+      "description": "pgvector hnsw index present on document_embeddings"
+    },
+    {
+      "layer": 5,
+      "id": "1.3.1",
+      "status": "PASS",
+      "description": "qdrant cluster info"
+    },
+    {
+      "layer": 5,
+      "id": "1.4.1",
+      "status": "PASS",
+      "description": "AIDB /health"
+    },
+    {
+      "layer": 5,
+      "id": "1.4.2",
+      "status": "PASS",
+      "description": "AIDB /documents returns (count=1)"
+    },
+    {
+      "layer": 4,
+      "id": "1.5.1",
+      "status": "PASS",
+      "description": "hybrid-coordinator /health (healthy)"
+    },
+    {
+      "layer": 6,
+      "id": "1.5.2",
+      "status": "PASS",
+      "description": "hybrid-coordinator GET /hints returns hints (count=4)"
+    },
+    {
+      "layer": 6,
+      "id": "1.5.3",
+      "status": "PASS",
+      "description": "aq-report exposes retrieval acceptance metrics (recent_calls=46, route_calls=39, avg_collection_count=1.46, memory_recall_share_pct=43.5, fallback_available=yes)"
+    }
+  ],
+  "layers": {
+    "2": [
+      {
+        "layer": 2,
+        "id": "1.1.1",
+        "status": "PASS",
+        "description": "redis ping"
+      },
+      {
+        "layer": 2,
+        "id": "1.1.2",
+        "status": "PASS",
+        "description": "redis latency <= 5ms (got 0.67ms avg)"
+      }
+    ],
+    "4": [
+      {
+        "layer": 4,
+        "id": "1.5.1",
+        "status": "PASS",
+        "description": "hybrid-coordinator /health (healthy)"
+      }
+    ],
+    "5": [
+      {
+        "layer": 5,
+        "id": "1.2.1",
+        "status": "PASS",
+        "description": "postgres responds (user=aidb)"
+      },
+      {
+        "layer": 5,
+        "id": "1.2.2",
+        "status": "PASS",
+        "description": "AIDB schema tables present"
+      },
+      {
+        "layer": 5,
+        "id": "1.2.3",
+        "status": "PASS",
+        "description": "pgvector hnsw index present on document_embeddings"
+      },
+      {
+        "layer": 5,
+        "id": "1.3.1",
+        "status": "PASS",
+        "description": "qdrant cluster info"
+      },
+      {
+        "layer": 5,
+        "id": "1.4.1",
+        "status": "PASS",
+        "description": "AIDB /health"
+      },
+      {
+        "layer": 5,
+        "id": "1.4.2",
+        "status": "PASS",
+        "description": "AIDB /documents returns (count=1)"
+      }
+    ],
+    "6": [
+      {
+        "layer": 6,
+        "id": "1.5.2",
+        "status": "PASS",
+        "description": "hybrid-coordinator GET /hints returns hints (count=4)"
+      },
+      {
+        "layer": 6,
+        "id": "1.5.3",
+        "status": "PASS",
+        "description": "aq-report exposes retrieval acceptance metrics (recent_calls=46, route_calls=39, avg_collection_count=1.46, memory_recall_share_pct=43.5, fallback_available=yes)"
+      }
+    ]
+  }
+}

@@ -196,3 +196,5 @@ ralph-wiggum TaskRequest field: `prompt` (not `task`). AIDB vector search: POST 
 - Multi-lane RSI repair: fallback across `repair_lanes` (`codex`, `claude`, `local`) with cooldown checks.
 - Antigravity env strengthened: lean-ctx/mcp/hooks enabled; advisory role boundary; aq-agent-loop/dispatch fixes.
 - Antigravity delegation review: receipt validation fails closed; live IDE mutation deferred pending verified workspace binding.
+
+- 2026-10-06 capability parity: `.agent/memory/parity-audit-20261006.md`; report `docs/architecture/capability-parity-audit-20261006.md`. QA 214 pass/0 fail/8 skip; five-turn crystallizer broker wiring gap; durable consolidation not proven.
