@@ -4,11 +4,15 @@ import contextlib
 import importlib.util
 import io
 import json
+import os
 import tempfile
 import unittest
 from datetime import datetime, timezone, timedelta
 from pathlib import Path
 from unittest.mock import patch, MagicMock
+
+_INCIDENTS_TMP = tempfile.TemporaryDirectory(prefix="prsi-incidents-test-")
+os.environ["PRSI_INCIDENTS_FILE"] = str(Path(_INCIDENTS_TMP.name) / "rsi-incidents.json")
 
 ROOT = Path(__file__).resolve().parents[2]
 spec = importlib.util.spec_from_file_location("prsi_orchestrator", ROOT / "scripts/automation/prsi-orchestrator.py")
