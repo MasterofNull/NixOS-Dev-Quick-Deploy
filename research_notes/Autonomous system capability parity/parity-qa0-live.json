@@ -1,0 +1,2686 @@
+{
+  "phase": "0",
+  "passed": 190,
+  "failed": 0,
+  "skipped": 8,
+  "duration_s": 329,
+  "degraded_confidence": false,
+  "tests": [
+    {
+      "layer": 1,
+      "id": "0.1.1:llama-cpp",
+      "status": "PASS",
+      "description": "unit llama-cpp.service active"
+    },
+    {
+      "layer": 1,
+      "id": "0.1.1:ai-aidb",
+      "status": "PASS",
+      "description": "unit ai-aidb.service active"
+    },
+    {
+      "layer": 1,
+      "id": "0.1.1:ai-hybrid-coordinator",
+      "status": "PASS",
+      "description": "unit ai-hybrid-coordinator.service active"
+    },
+    {
+      "layer": 1,
+      "id": "0.1.1:ai-ralph-wiggum",
+      "status": "PASS",
+      "description": "unit ai-ralph-wiggum.service active"
+    },
+    {
+      "layer": 1,
+      "id": "0.1.1:llama-cpp-embed",
+      "status": "PASS",
+      "description": "unit llama-cpp-embed.service active"
+    },
+    {
+      "layer": 1,
+      "id": "0.1.1:ai-switchboard",
+      "status": "PASS",
+      "description": "unit ai-switchboard.service active"
+    },
+    {
+      "layer": 1,
+      "id": "0.1.1:redis-mcp",
+      "status": "PASS",
+      "description": "unit redis-mcp.service active"
+    },
+    {
+      "layer": 1,
+      "id": "0.1.1:qdrant",
+      "status": "PASS",
+      "description": "unit qdrant.service active"
+    },
+    {
+      "layer": 1,
+      "id": "0.1.1:postgresql",
+      "status": "PASS",
+      "description": "unit postgresql.service active"
+    },
+    {
+      "layer": 1,
+      "id": "0.1.2",
+      "status": "PASS",
+      "description": "no AI units in failed state"
+    },
+    {
+      "layer": 1,
+      "id": "0.1.3:ai-mcp-integrity-check.timer",
+      "status": "PASS",
+      "description": "timer ai-mcp-integrity-check.timer scheduled"
+    },
+    {
+      "layer": 1,
+      "id": "0.1.3:ai-mcp-process-watch.timer",
+      "status": "PASS",
+      "description": "timer ai-mcp-process-watch.timer scheduled"
+    },
+    {
+      "layer": 1,
+      "id": "0.1.3:ai-weekly-report.timer",
+      "status": "PASS",
+      "description": "timer ai-weekly-report.timer scheduled"
+    },
+    {
+      "layer": 3,
+      "id": "0.2.1:redis",
+      "status": "PASS",
+      "description": "port 6379 (redis) bound"
+    },
+    {
+      "layer": 3,
+      "id": "0.2.1:postgres",
+      "status": "PASS",
+      "description": "port 5432 (postgres) bound"
+    },
+    {
+      "layer": 3,
+      "id": "0.2.1:qdrant",
+      "status": "PASS",
+      "description": "port 6333 (qdrant) bound"
+    },
+    {
+      "layer": 3,
+      "id": "0.2.1:llama-cpp",
+      "status": "PASS",
+      "description": "port 8080 (llama-cpp) bound"
+    },
+    {
+      "layer": 3,
+      "id": "0.2.1:llama-embed",
+      "status": "PASS",
+      "description": "port 8081 (llama-embed) bound"
+    },
+    {
+      "layer": 3,
+      "id": "0.2.1:aidb",
+      "status": "PASS",
+      "description": "port 8002 (aidb) bound"
+    },
+    {
+      "layer": 3,
+      "id": "0.2.1:hybrid-coordinator",
+      "status": "PASS",
+      "description": "port 8003 (hybrid-coordinator) bound"
+    },
+    {
+      "layer": 3,
+      "id": "0.2.1:ralph-wiggum",
+      "status": "PASS",
+      "description": "port 8004 (ralph-wiggum) bound"
+    },
+    {
+      "layer": 3,
+      "id": "0.2.1:switchboard",
+      "status": "PASS",
+      "description": "port 8085 (switchboard) bound"
+    },
+    {
+      "layer": 3,
+      "id": "0.2.1:open-webui",
+      "status": "PASS",
+      "description": "open-webui disabled + port 3001 correctly not bound"
+    },
+    {
+      "layer": 3,
+      "id": "0.2.1:prometheus",
+      "status": "PASS",
+      "description": "port 9090 (prometheus) bound"
+    },
+    {
+      "layer": 3,
+      "id": "0.2.2",
+      "status": "PASS",
+      "description": "port 3000 = Grafana (no Open-WebUI regression)"
+    },
+    {
+      "layer": 5,
+      "id": "0.2.3",
+      "status": "PASS",
+      "description": "Qdrant has 103707 total points across 17 collections"
+    },
+    {
+      "layer": 5,
+      "id": "0.2.4",
+      "status": "PASS",
+      "description": "Postgres has 39 tables"
+    },
+    {
+      "layer": 5,
+      "id": "0.2.5",
+      "status": "PASS",
+      "description": "Redis has 9574 keys"
+    },
+    {
+      "layer": 1,
+      "id": "0.3.1",
+      "status": "PASS",
+      "description": "AppArmor profiles on disk (/etc/apparmor.d/ai-llama-cpp, ai-mcp-base)"
+    },
+    {
+      "layer": 1,
+      "id": "0.3.2",
+      "status": "PASS",
+      "description": "AppArmor service active"
+    },
+    {
+      "layer": 1,
+      "id": "0.3.3",
+      "status": "PASS",
+      "description": "llama-cpp AppArmor enforced at runtime"
+    },
+    {
+      "layer": 2,
+      "id": "0.4.1",
+      "status": "PASS",
+      "description": "llama-server /health"
+    },
+    {
+      "layer": 2,
+      "id": "0.4.2",
+      "status": "PASS",
+      "description": "embedding server /health"
+    },
+    {
+      "layer": 6,
+      "id": "0.4.3",
+      "status": "PASS",
+      "description": "embedding server returns model info"
+    },
+    {
+      "layer": 7,
+      "id": "0.5.1",
+      "status": "PASS",
+      "description": "switchboard exposes local-agent profile"
+    },
+    {
+      "layer": 7,
+      "id": "0.5.2",
+      "status": "PASS",
+      "description": "switchboard exposes local-coding profile"
+    },
+    {
+      "layer": 7,
+      "id": "0.5.3",
+      "status": "SKIP",
+      "description": "Continue extension health gate (retired; local agents route through switchboard profiles)"
+    },
+    {
+      "layer": 7,
+      "id": "0.5.4",
+      "status": "SKIP",
+      "description": "continue-local switchboard profile ready (retired; use local-agent/local-coding profiles)"
+    },
+    {
+      "layer": 7,
+      "id": "0.5.5",
+      "status": "SKIP",
+      "description": "continue-local context trimming (retired; context budgets are enforced by switchboard profiles)"
+    },
+    {
+      "layer": 7,
+      "id": "0.5.6",
+      "status": "SKIP",
+      "description": "Continue/editor prompt to feedback smoke (retired; no local-agent runtime dependency)"
+    },
+    {
+      "layer": 7,
+      "id": "0.5.7",
+      "status": "SKIP",
+      "description": "Editor-local agent corpus stays within bounded budgets (editor state budget unavailable in snapshot (no data yet \u2014 run aq-report to seed))"
+    },
+    {
+      "layer": 7,
+      "id": "0.6.1",
+      "status": "PASS",
+      "description": "flagship agent CLI help smokes",
+      "details": [
+        {
+          "schema_version": "qa.provider-probe-result.v1",
+          "invocation_id": "85f374bd-292c-4465-9150-9f51b13e3b87",
+          "provider_id": "codex",
+          "profile_id": "codex_help",
+          "lifecycle_state": "terminal",
+          "started_monotonic_ms": 5522102,
+          "ended_monotonic_ms": 5522838,
+          "duration_ms": 735,
+          "deadline_ms": 45000,
+          "exit_code": 0,
+          "result": "pass",
+          "failure_class": "none",
+          "termination_actions": [
+            {
+              "action": "quiescence",
+              "outcome": "complete",
+              "at_ms": 734
+            },
+            {
+              "action": "reap",
+              "outcome": "complete",
+              "at_ms": 734
+            }
+          ],
+          "stdout_truncated": false,
+          "stderr_truncated": false,
+          "stderr_summary": "",
+          "disposition": {
+            "class": null,
+            "redelivered": false,
+            "coalesced_signals": 0
+          },
+          "evidence_digest": "sha256:499c4f5c0d3408ecaa2d39e96724954d4c9d962ceb5014d0cf1300a242dc8294"
+        },
+        {
+          "schema_version": "qa.provider-probe-result.v1",
+          "invocation_id": "85f374bd-292c-4465-9150-9f51b13e3b87",
+          "provider_id": "qwen",
+          "profile_id": "qwen_help",
+          "lifecycle_state": "terminal",
+          "started_monotonic_ms": 5522852,
+          "ended_monotonic_ms": 5525983,
+          "duration_ms": 3131,
+          "deadline_ms": 45000,
+          "exit_code": 0,
+          "result": "pass",
+          "failure_class": "none",
+          "termination_actions": [
+            {
+              "action": "quiescence",
+              "outcome": "complete",
+              "at_ms": 3130
+            },
+            {
+              "action": "reap",
+              "outcome": "complete",
+              "at_ms": 3130
+            }
+          ],
+          "stdout_truncated": false,
+          "stderr_truncated": false,
+          "stderr_summary": "",
+          "disposition": {
+            "class": null,
+            "redelivered": false,
+            "coalesced_signals": 0
+          },
+          "evidence_digest": "sha256:5ae3a0fb6c7079f83cf3e30389f595b6341d3f87daf03143b6ddd7efbd4be352"
+        },
+        {
+          "schema_version": "qa.provider-probe-result.v1",
+          "invocation_id": "85f374bd-292c-4465-9150-9f51b13e3b87",
+          "provider_id": "claude",
+          "profile_id": "claude_help",
+          "lifecycle_state": "terminal",
+          "started_monotonic_ms": 5525987,
+          "ended_monotonic_ms": 5527232,
+          "duration_ms": 1244,
+          "deadline_ms": 45000,
+          "exit_code": 0,
+          "result": "pass",
+          "failure_class": "none",
+          "termination_actions": [
+            {
+              "action": "quiescence",
+              "outcome": "complete",
+              "at_ms": 1244
+            },
+            {
+              "action": "reap",
+              "outcome": "complete",
+              "at_ms": 1244
+            }
+          ],
+          "stdout_truncated": false,
+          "stderr_truncated": false,
+          "stderr_summary": "",
+          "disposition": {
+            "class": null,
+            "redelivered": false,
+            "coalesced_signals": 0
+          },
+          "evidence_digest": "sha256:5a73ffcf336984a4282777fe9e6284e0686703947066e311bb263033586c50a5"
+        },
+        {
+          "schema_version": "qa.provider-probe-result.v1",
+          "invocation_id": "85f374bd-292c-4465-9150-9f51b13e3b87",
+          "provider_id": "pi",
+          "profile_id": "pi_help",
+          "lifecycle_state": "terminal",
+          "started_monotonic_ms": 5527243,
+          "ended_monotonic_ms": 5530582,
+          "duration_ms": 3338,
+          "deadline_ms": 45000,
+          "exit_code": 0,
+          "result": "pass",
+          "failure_class": "none",
+          "termination_actions": [
+            {
+              "action": "quiescence",
+              "outcome": "complete",
+              "at_ms": 3338
+            },
+            {
+              "action": "reap",
+              "outcome": "complete",
+              "at_ms": 3338
+            }
+          ],
+          "stdout_truncated": false,
+          "stderr_truncated": false,
+          "stderr_summary": "",
+          "disposition": {
+            "class": null,
+            "redelivered": false,
+            "coalesced_signals": 0
+          },
+          "evidence_digest": "sha256:06565e4cb1e1362a9c11691466700833dfb433ca336a490e7a1c7d386ff69478"
+        }
+      ]
+    },
+    {
+      "layer": 7,
+      "id": "0.6.2",
+      "status": "PASS",
+      "description": "gemini CLI live-state health check"
+    },
+    {
+      "layer": 4,
+      "id": "0.7.1",
+      "status": "PASS",
+      "description": "/v1/orchestrate front-door smoke (route=Explore)"
+    },
+    {
+      "layer": 4,
+      "id": "0.7.2",
+      "status": "PASS",
+      "description": "hybrid /query retrieval smoke"
+    },
+    {
+      "layer": 6,
+      "id": "0.7.3",
+      "status": "PASS",
+      "description": "RAG recall quality > 0% (got 43.5%)"
+    },
+    {
+      "layer": 6,
+      "id": "0.7.4",
+      "status": "PASS",
+      "description": "AIDB vector search returns results"
+    },
+    {
+      "layer": 4,
+      "id": "0.8.1",
+      "status": "SKIP",
+      "description": "delegate 24h success rate (coordinator /stats/delegate unavailable (needs nixos-rebuild))"
+    },
+    {
+      "layer": 4,
+      "id": "0.9.1",
+      "status": "PASS",
+      "description": "safety gate endpoint responds (POST /control/safety/gate)"
+    },
+    {
+      "layer": 4,
+      "id": "0.9.2",
+      "status": "PASS",
+      "description": "UAG lifecycle replay endpoint wired (GET /agent/lifecycle/{id}/replay)"
+    },
+    {
+      "layer": 4,
+      "id": "0.9.3",
+      "status": "PASS",
+      "description": "DAG executor execute/status endpoint wired"
+    },
+    {
+      "layer": 4,
+      "id": "0.9.4",
+      "status": "PASS",
+      "description": "runtime safety policy: plan-readonly blocks mutating; execute-mutating allows review-required"
+    },
+    {
+      "layer": 4,
+      "id": "0.9.5",
+      "status": "PASS",
+      "description": "trust-root infra: verify-skill-registry.sh + rotate-skill-registry-key.sh + trust-roots.json present"
+    },
+    {
+      "layer": 4,
+      "id": "0.9.6",
+      "status": "PASS",
+      "description": "per-run workspace isolation: provision/teardown + endpoint present"
+    },
+    {
+      "layer": 4,
+      "id": "0.9.7",
+      "status": "PASS",
+      "description": "fleet control-plane: deregister + deployment history + fleet summary + health probe present"
+    },
+    {
+      "layer": 4,
+      "id": "0.9.8",
+      "status": "PASS",
+      "description": "benchmark harness: eval pack (12 cases) + trend publisher + benchmark gate present"
+    },
+    {
+      "layer": 4,
+      "id": "0.9.9",
+      "status": "PASS",
+      "description": "unified harness runner + PAR-002 CI gate present"
+    },
+    {
+      "layer": 4,
+      "id": "0.9.10",
+      "status": "PASS",
+      "description": "budget/cost guardrail: policy file valid + GET/POST /control/budget/policy handlers registered"
+    },
+    {
+      "layer": 4,
+      "id": "0.9.11",
+      "status": "PASS",
+      "description": "PAR-012 rollout/rollback drill: drill-rollback.sh + runbook present"
+    },
+    {
+      "layer": 4,
+      "id": "0.9.12",
+      "status": "PASS",
+      "description": "CLI ergonomics: aqd v0.7.0 run subcommands present (plan/execute/replay/review/status/budget)"
+    },
+    {
+      "layer": 4,
+      "id": "0.9.13",
+      "status": "PASS",
+      "description": "MCP workflow blueprints: 12 blueprints v1.1 with category+tags + GET /workflow/blueprints wired"
+    },
+    {
+      "layer": 4,
+      "id": "0.9.14",
+      "status": "PASS",
+      "description": "orchestration graph runner: POST/GET /workflow/graph/run + 5 templates"
+    },
+    {
+      "layer": 4,
+      "id": "0.9.15",
+      "status": "PASS",
+      "description": "IDE adapter compatibility gate: smoke-ide-adapter-compat.sh (Continue + VS Code + CLI + MCP)"
+    },
+    {
+      "layer": 4,
+      "id": "0.9.16",
+      "status": "PASS",
+      "description": "ablation/reasoning profile pack: 8 profiles + coordinator routes wired"
+    },
+    {
+      "layer": 4,
+      "id": "0.9.17",
+      "status": "PASS",
+      "description": "aqd reasoning list/get/apply subcommands present"
+    },
+    {
+      "layer": 4,
+      "id": "0.9.18",
+      "status": "PASS",
+      "description": "logic pattern indexer + /api/logic/search route present"
+    },
+    {
+      "layer": 4,
+      "id": "0.9.19",
+      "status": "PASS",
+      "description": "aqd logic:search + topology subcommands present"
+    },
+    {
+      "layer": 4,
+      "id": "0.9.20",
+      "status": "PASS",
+      "description": "topology API: GET /api/topology + GET /api/topology/flow registered"
+    },
+    {
+      "layer": 4,
+      "id": "60.0.1",
+      "status": "PASS",
+      "description": "local-model-config.yaml valid (schema + thinking guard)"
+    },
+    {
+      "layer": 4,
+      "id": "60.0.2",
+      "status": "PASS",
+      "description": "smoke-local-model.sh present (thinking guard + MTP gates)"
+    },
+    {
+      "layer": 1,
+      "id": "0.10.1",
+      "status": "PASS",
+      "description": "local inference payload discipline (no enable_thinking=True)"
+    },
+    {
+      "layer": 1,
+      "id": "0.10.4",
+      "status": "PASS",
+      "description": "discovery agent opportunity scanner emits dashboard candidates"
+    },
+    {
+      "layer": 1,
+      "id": "0.10.5",
+      "status": "PASS",
+      "description": "model catalog/profile freshness telemetry wired"
+    },
+    {
+      "layer": 1,
+      "id": "0.10.6",
+      "status": "PASS",
+      "description": "flat model-team PRD gate enforces proposal/review/consensus artifacts"
+    },
+    {
+      "layer": 1,
+      "id": "0.10.7",
+      "status": "PASS",
+      "description": "agent artifact distribution policy keeps runtime state local"
+    },
+    {
+      "layer": 1,
+      "id": "0.10.8",
+      "status": "PASS",
+      "description": "agent memory surface registry classifies state, memory, RAG, and archives"
+    },
+    {
+      "layer": 4,
+      "id": "60.7.1",
+      "status": "PASS",
+      "description": "eval_runner.py RAGAS (eval_results + scoring functions + feature flag)"
+    },
+    {
+      "layer": 4,
+      "id": "60.7.2",
+      "status": "PASS",
+      "description": "POST /eval/score-query registered in insights_service.py"
+    },
+    {
+      "layer": 4,
+      "id": "60.7.3",
+      "status": "PASS",
+      "description": "dashboard RAG Quality card (HTML + JS wired)"
+    },
+    {
+      "layer": 4,
+      "id": "60.7.4",
+      "status": "PASS",
+      "description": "GET /eval/trend contains ragas_metrics key"
+    },
+    {
+      "layer": 4,
+      "id": "61.1",
+      "status": "PASS",
+      "description": "CLM: 3-tier Hot/Warm/Cold + thermal gate + compaction"
+    },
+    {
+      "layer": 4,
+      "id": "61.2",
+      "status": "PASS",
+      "description": "clm-compaction-prompt.yaml valid (template + {session_id})"
+    },
+    {
+      "layer": 4,
+      "id": "61.3",
+      "status": "PASS",
+      "description": "MLFQ apply_clm_pressure() wired (Phase 61.5)"
+    },
+    {
+      "layer": 4,
+      "id": "61.4",
+      "status": "PASS",
+      "description": "GET /context/lifecycle/status OK (pressure=46.5%)"
+    },
+    {
+      "layer": 4,
+      "id": "62.1",
+      "status": "PASS",
+      "description": "nsjail binary available: /nix/store/9q8xvb8rnajf4750rbwl2jqz9nllqcmv-nsjail-3.6/bin/nsjail"
+    },
+    {
+      "layer": 4,
+      "id": "62.2",
+      "status": "PASS",
+      "description": "safety-rails.yaml valid (version=1.0, 5 rails)"
+    },
+    {
+      "layer": 4,
+      "id": "62.3",
+      "status": "PASS",
+      "description": "NsjailSandbox class present (NSJAIL_BIN + fail-closed required mode)"
+    },
+    {
+      "layer": 4,
+      "id": "62.4",
+      "status": "PASS",
+      "description": "evidence safety handler evaluates YAML rails"
+    },
+    {
+      "layer": 4,
+      "id": "63.1",
+      "status": "PASS",
+      "description": "aq-index-knowledge-graph --skip-llm exits 0 (25575 triples)"
+    },
+    {
+      "layer": 4,
+      "id": "63.2",
+      "status": "PASS",
+      "description": "graph_search.py BFS-2 handler (entity extraction + register_routes)"
+    },
+    {
+      "layer": 4,
+      "id": "63.3",
+      "status": "PASS",
+      "description": "rag_augmentor.graph_augment() (knowledge_lookup + systems_software gates)"
+    },
+    {
+      "layer": 4,
+      "id": "63.4",
+      "status": "PASS",
+      "description": "impermanence declared in host-class (enable-flag guarded, /persist optional)"
+    },
+    {
+      "layer": 4,
+      "id": "63.5",
+      "status": "PASS",
+      "description": "P14s GL9750 microSD reader uses DMA/ADMA-disable PIO workaround"
+    },
+    {
+      "layer": 4,
+      "id": "S2.1",
+      "status": "PASS",
+      "description": "middleware/auth.py: AUTH_PROFILE_TOOL_POLICY + check/record/stats functions"
+    },
+    {
+      "layer": 4,
+      "id": "S2.2",
+      "status": "PASS",
+      "description": "workflow_session_handlers: S2 auth profile tool enforcement wired"
+    },
+    {
+      "layer": 4,
+      "id": "S2.3",
+      "status": "PASS",
+      "description": "GET /admin/v1/policy/tool-deny-stats registered in control_service.py"
+    },
+    {
+      "layer": 4,
+      "id": "S2.4",
+      "status": "PASS",
+      "description": "check_tool_access: readonly-strict blocks mutating tools, execute-guarded allows all"
+    },
+    {
+      "layer": 4,
+      "id": "S2.5",
+      "status": "PASS",
+      "description": "GET /admin/v1/policy/tool-deny-stats returns valid denial stats shape"
+    },
+    {
+      "layer": 4,
+      "id": "LA.1",
+      "status": "PASS",
+      "description": "LOCAL-AGENT.md: Hardware Floor + Current Model Config + swap checklist + Behavioral Rules"
+    },
+    {
+      "layer": 4,
+      "id": "LA.2",
+      "status": "PASS",
+      "description": "QWEN.md: redirect stub points to LOCAL-AGENT.md"
+    },
+    {
+      "layer": 4,
+      "id": "LA.3",
+      "status": "PASS",
+      "description": "aq-insights: executable, extract_signals+build_prompt+call_local_model+write_insights present"
+    },
+    {
+      "layer": 4,
+      "id": "LA.4",
+      "status": "PASS",
+      "description": "aq-chat: harness-aware system prompt injection + behavioral rules wired"
+    },
+    {
+      "layer": 4,
+      "id": "67.1.a",
+      "status": "PASS",
+      "description": "Agent Outcomes Gauge: HTML card present (section-agent-outcomes)"
+    },
+    {
+      "layer": 4,
+      "id": "67.1.b",
+      "status": "PASS",
+      "description": "loadAgentOutcomes: defined in dashboard.js"
+    },
+    {
+      "layer": 4,
+      "id": "67.1.c",
+      "status": "PASS",
+      "description": "loadAgentOutcomes: wired into Intelligence wave 2"
+    },
+    {
+      "layer": 4,
+      "id": "67.2.a",
+      "status": "PASS",
+      "description": "Mission Control: HTML card present (section-mission-control)"
+    },
+    {
+      "layer": 4,
+      "id": "67.2.b",
+      "status": "PASS",
+      "description": "loadMissionControl: defined in dashboard.js"
+    },
+    {
+      "layer": 4,
+      "id": "67.2.c",
+      "status": "PASS",
+      "description": "loadMissionControl: wired into Operations wave 2"
+    },
+    {
+      "layer": 4,
+      "id": "66.1.a",
+      "status": "PASS",
+      "description": "Wasmtime: present in flake.nix devShells.full"
+    },
+    {
+      "layer": 4,
+      "id": "66.1.b",
+      "status": "PASS",
+      "description": "smoke-wasmtime.sh: present and executable"
+    },
+    {
+      "layer": 4,
+      "id": "66.1.c",
+      "status": "SKIP",
+      "description": "wasmtime binary (not in PATH \u2014 activate nix develop .#full to test L2 sandbox)"
+    },
+    {
+      "layer": 4,
+      "id": "83.1",
+      "status": "PASS",
+      "description": "dag_manager.py: exists and syntax-clean"
+    },
+    {
+      "layer": 4,
+      "id": "83.2",
+      "status": "PASS",
+      "description": "context-merger.py: exists and syntax-clean"
+    },
+    {
+      "layer": 4,
+      "id": "83.3",
+      "status": "PASS",
+      "description": "Phase 1 integration test: 4/4 PASS (dag_manager + context_merger + handoff)"
+    },
+    {
+      "layer": 4,
+      "id": "83.4",
+      "status": "PASS",
+      "description": "dag_manager wired into workflow_session_handlers"
+    },
+    {
+      "layer": 4,
+      "id": "85.1",
+      "status": "PASS",
+      "description": "aq-drop-daemon: exists and syntax-clean"
+    },
+    {
+      "layer": 4,
+      "id": "85.2",
+      "status": "PASS",
+      "description": "drop_spec.py: schema validator + injection guard pass"
+    },
+    {
+      "layer": 4,
+      "id": "85.3",
+      "status": "PASS",
+      "description": "Intent Lock v2: acquire_lock + release_expired_locks + heartbeat present"
+    },
+    {
+      "layer": 1,
+      "id": "85.4",
+      "status": "PASS",
+      "description": "drop zone directories: .agents/drops/{,archive/,failed/} exist"
+    },
+    {
+      "layer": 4,
+      "id": "85.5",
+      "status": "PASS",
+      "description": "ai-drop-daemon service wired in mcp-servers.nix"
+    },
+    {
+      "layer": 4,
+      "id": "86.1",
+      "status": "PASS",
+      "description": "attention_queue.py: importable with all public symbols"
+    },
+    {
+      "layer": 4,
+      "id": "86.2",
+      "status": "PASS",
+      "description": "auto_ok push: archived immediately, queue stays empty"
+    },
+    {
+      "layer": 4,
+      "id": "86.3",
+      "status": "PASS",
+      "description": "aq-alerts: exists and executable"
+    },
+    {
+      "layer": 4,
+      "id": "86.4",
+      "status": "PASS",
+      "description": "aq-alerts --count: returned 2 (numeric, no crash)"
+    },
+    {
+      "layer": 4,
+      "id": "86.5",
+      "status": "PASS",
+      "description": "aq-approve: exists and executable"
+    },
+    {
+      "layer": 4,
+      "id": "86.6",
+      "status": "PASS",
+      "description": "aq-reject: exists and executable"
+    },
+    {
+      "layer": 5,
+      "id": "86.7",
+      "status": "PASS",
+      "description": "dashboard /api/aistack/alerts/status: 200 OK"
+    },
+    {
+      "layer": 4,
+      "id": "87.3.1",
+      "status": "PASS",
+      "description": "training_ingest.py: exists at ai-stack/local-agents/"
+    },
+    {
+      "layer": 4,
+      "id": "87.3.2",
+      "status": "PASS",
+      "description": "ai-training-ingest service+timer wired in mcp-servers.nix"
+    },
+    {
+      "layer": 4,
+      "id": "87.3.3",
+      "status": "PASS",
+      "description": "ai-local-training-loop service+timer wired in mcp-servers.nix"
+    },
+    {
+      "layer": 4,
+      "id": "87.3.4",
+      "status": "PASS",
+      "description": "fine-tuning/dataset.jsonl (runtime): 5941 rows"
+    },
+    {
+      "layer": 1,
+      "id": "0.16.1",
+      "status": "PASS",
+      "description": "Security Center inventory components present; 13 Nix declarations cataloged; runtime parity delegated to protected publisher"
+    },
+    {
+      "layer": 5,
+      "id": "0.16.2",
+      "status": "PASS",
+      "description": "Security Center live metadata: 17 cataloged credentials"
+    },
+    {
+      "layer": 4,
+      "id": "146.1",
+      "status": "PASS",
+      "description": "agent identity request headers captured"
+    },
+    {
+      "layer": 4,
+      "id": "146.2",
+      "status": "PASS",
+      "description": "agent identity OTel attributes emitted"
+    },
+    {
+      "layer": 4,
+      "id": "146.3",
+      "status": "PASS",
+      "description": "dashboard identity coverage surface wired"
+    },
+    {
+      "layer": 4,
+      "id": "146.4",
+      "status": "PASS",
+      "description": "live trace identity coverage 16/100 known callers"
+    },
+    {
+      "layer": 1,
+      "id": "0.10.9",
+      "status": "PASS",
+      "description": "local delegation pre-registers artifact before blocking ops"
+    },
+    {
+      "layer": 1,
+      "id": "0.10.10",
+      "status": "PASS",
+      "description": "intent classifier coverage: unknown-rate tile and 4c panel wired"
+    },
+    {
+      "layer": 1,
+      "id": "0.10.11",
+      "status": "PASS",
+      "description": "RAGAS faithfulness: modal guard + judge prompt calibration"
+    },
+    {
+      "layer": 1,
+      "id": "0.10.2",
+      "status": "PASS",
+      "description": "token_usage coverage \u2265 50% of recent model_calls"
+    },
+    {
+      "layer": 1,
+      "id": "0.10.12",
+      "status": "PASS",
+      "description": "modal task profiles: 5 profiles, classify_task_type, TaskConfig wired"
+    },
+    {
+      "layer": 1,
+      "id": "0.10.37",
+      "status": "PASS",
+      "description": "local inference contract L1A: schemas, golden parity, dashboard health"
+    },
+    {
+      "layer": 1,
+      "id": "0.10.38",
+      "status": "PASS",
+      "description": "local inference L2A: shadow policy, context, tier parity, dashboard health"
+    },
+    {
+      "layer": 1,
+      "id": "0.10.39",
+      "status": "PASS",
+      "description": "local inference L2B-A: shadow payload, stream parity, dashboard health"
+    },
+    {
+      "layer": 1,
+      "id": "0.10.13",
+      "status": "PASS",
+      "description": "local inference budget: hints, timeout scaling, progress sidecar, watch"
+    },
+    {
+      "layer": 1,
+      "id": "0.10.14",
+      "status": "PASS",
+      "description": "local-agent store_memory uses canonical memory tiers and aliases"
+    },
+    {
+      "layer": 1,
+      "id": "0.10.22",
+      "status": "PASS",
+      "description": "LOCAL_TOK_PER_SEC throughput calibration"
+    },
+    {
+      "layer": 1,
+      "id": "0.10.23",
+      "status": "PASS",
+      "description": "OSINT active recon gate fail-closed"
+    },
+    {
+      "layer": 1,
+      "id": "0.10.24",
+      "status": "PASS",
+      "description": "analysis-only local-agent stagnation mode"
+    },
+    {
+      "layer": 1,
+      "id": "0.12.1",
+      "status": "PASS",
+      "description": "coordinator /readyz endpoint exists"
+    },
+    {
+      "layer": 1,
+      "id": "0.12.2",
+      "status": "SKIP",
+      "description": "delegation success rate 24h (no events in last 24h)"
+    },
+    {
+      "layer": 1,
+      "id": "0.12.3",
+      "status": "PASS",
+      "description": "feedback event_type coverage (0 null in last 20)"
+    },
+    {
+      "layer": 1,
+      "id": "0.12.4",
+      "status": "PASS",
+      "description": "llama.cpp slot available (1 idle)"
+    },
+    {
+      "layer": 4,
+      "id": "0.12.5",
+      "status": "PASS",
+      "description": "local-agent monitor CLI read-only JSON (running=0, stale=0)"
+    },
+    {
+      "layer": 4,
+      "id": "0.12.6",
+      "status": "PASS",
+      "description": "aq-report --machine exposes local_agent_monitor"
+    },
+    {
+      "layer": 4,
+      "id": "0.12.7",
+      "status": "PASS",
+      "description": "local-agent monitor dashboard surface wired"
+    },
+    {
+      "layer": 5,
+      "id": "0.12.8",
+      "status": "PASS",
+      "description": "dashboard local-agent monitor endpoint returns counts"
+    },
+    {
+      "layer": 1,
+      "id": "0.150.1",
+      "status": "PASS",
+      "description": "candidate lifecycle state machine + defaults"
+    },
+    {
+      "layer": 1,
+      "id": "0.150.5",
+      "status": "PASS",
+      "description": "eval sandbox static checks + hardware constraint guard"
+    },
+    {
+      "layer": 1,
+      "id": "0.10.25",
+      "status": "PASS",
+      "description": "aq-eval static red-team harness metrics + provenance"
+    },
+    {
+      "layer": 1,
+      "id": "0.10.26",
+      "status": "PASS",
+      "description": "context-risk outputs route through artifact compaction + aq-context-manage guidance"
+    },
+    {
+      "layer": 5,
+      "id": "0.10.27",
+      "status": "PASS",
+      "description": "positive, negative, and cascade assignment invariants"
+    },
+    {
+      "layer": 5,
+      "id": "0.10.28",
+      "status": "PASS",
+      "description": "concurrent immutable QA CAS, required-unknown blocking, and telemetry boundary"
+    },
+    {
+      "layer": 5,
+      "id": "0.10.29",
+      "status": "PASS",
+      "description": "bounded authority checker + validated projection: 10 ratification-blockers, conditions {'SINGLE': 0, 'SPLIT_BRAIN': 10, 'UNKNOWN': 0, 'UNOWNED': 0}, 3.701s"
+    },
+    {
+      "layer": 5,
+      "id": "0.10.30",
+      "status": "PASS",
+      "description": "bounded legacy lookup + strict mutation + closed projection + TUI visibility: Ran 122 tests in 3.185s"
+    },
+    {
+      "layer": 5,
+      "id": "0.10.42",
+      "status": "PASS",
+      "description": "local-direct lifecycle route contract"
+    },
+    {
+      "layer": 5,
+      "id": "0.10.43",
+      "status": "PASS",
+      "description": "local-direct Agent Ops card visibility"
+    },
+    {
+      "layer": 5,
+      "id": "0.10.40",
+      "status": "PASS",
+      "description": "canonical tracker static contract + live asset/dashboard HTTP 200"
+    },
+    {
+      "layer": 5,
+      "id": "0.10.41",
+      "status": "PASS",
+      "description": "fixture-only workflow shadow contract {\"authority\":\"legacy_json_authoritative\",\"coverage\":{\"aq_qa\":\"ready\",\"web_dashboard\":\"not_wired\"}}"
+    },
+    {
+      "layer": 5,
+      "id": "0.10.44",
+      "status": "PASS",
+      "description": "default-OFF adapter mint->sign->UDS->receipt fixture {\"denial\":\"signing-key-unavailable\",\"success\":\"green\"}"
+    },
+    {
+      "layer": 5,
+      "id": "0.10.45",
+      "status": "PASS",
+      "description": "Factory install fixture: hooks, tracker, collision and configuration safety"
+    },
+    {
+      "layer": 5,
+      "id": "0.10.46",
+      "status": "PASS",
+      "description": "Factory retrofit fixture: preview, confirmation, originals and hook composition"
+    },
+    {
+      "layer": 5,
+      "id": "0.10.50",
+      "status": "PASS",
+      "description": "Factory readiness preflight: hash-bound evidence, fail-closed unconfigured checks, typed blockers"
+    },
+    {
+      "layer": 5,
+      "id": "0.10.47",
+      "status": "PASS",
+      "description": "capability outcome resolver: verdicts, QA and dashboard visibility"
+    },
+    {
+      "layer": 5,
+      "id": "0.10.48",
+      "status": "PASS",
+      "description": "delegation worktree ownership and durable handback safety"
+    },
+    {
+      "layer": 5,
+      "id": "0.10.49",
+      "status": "PASS",
+      "description": "process-bound integration guard and Fleet lock visibility"
+    },
+    {
+      "layer": 1,
+      "id": "0.152.1",
+      "status": "PASS",
+      "description": "golden eval set size: 25 entries (\u226515 required)"
+    },
+    {
+      "layer": 1,
+      "id": "0.152.2",
+      "status": "PASS",
+      "description": "WORKFLOW-CANON.md contains canonical 8-step keywords"
+    },
+    {
+      "layer": 1,
+      "id": "0.152.3",
+      "status": "PASS",
+      "description": "PULSE.log format: 836 conforming lines"
+    },
+    {
+      "layer": 1,
+      "id": "0.152.4",
+      "status": "PASS",
+      "description": "RESUME.json has all required fields"
+    },
+    {
+      "layer": 1,
+      "id": "0.152.5",
+      "status": "PASS",
+      "description": "role-matrix.md: 4 canonical roles defined + sub-agent constraint present"
+    },
+    {
+      "layer": 1,
+      "id": "0.152.6",
+      "status": "PASS",
+      "description": "GEMINI.md, CODEX.md, LOCAL-AGENT.md: WORKFLOW-CANON ref + canonical roles present"
+    },
+    {
+      "layer": 1,
+      "id": "0.152.7",
+      "status": "PASS",
+      "description": "switchboard-profiles.yaml: local-coding, remote-default, local-tool-calling present"
+    },
+    {
+      "layer": 1,
+      "id": "0.152.8",
+      "status": "PASS",
+      "description": "trust_scoring.py exists"
+    },
+    {
+      "layer": 1,
+      "id": "0.152.9",
+      "status": "PASS",
+      "description": "candidates.json: 13 candidate(s) with trust_score > 0"
+    },
+    {
+      "layer": 1,
+      "id": "0.154.1",
+      "status": "PASS",
+      "description": "cross-model workflow parity verified"
+    },
+    {
+      "layer": 1,
+      "id": "0.156.1",
+      "status": "PASS",
+      "description": "delegation feedback contract detection: json + exact-output signals correct"
+    },
+    {
+      "layer": 1,
+      "id": "0.157.1",
+      "status": "PASS",
+      "description": "cross-model critique"
+    },
+    {
+      "layer": 1,
+      "id": "0.157.2",
+      "status": "PASS",
+      "description": "adopt workflow"
+    },
+    {
+      "layer": 4,
+      "id": "0.13.1",
+      "status": "PASS",
+      "description": "Training telemetry path exists and is a directory"
+    },
+    {
+      "layer": 4,
+      "id": "0.13.2",
+      "status": "PASS",
+      "description": "Training dataset non-empty (at least 1 line)"
+    },
+    {
+      "layer": 4,
+      "id": "0.13.3",
+      "status": "PASS",
+      "description": "Training health endpoint reachable (HTTP 200)"
+    },
+    {
+      "layer": 4,
+      "id": "0.13.4",
+      "status": "PASS",
+      "description": "tool_result samples present in dataset"
+    },
+    {
+      "layer": 1,
+      "id": "0.10.51",
+      "status": "PASS",
+      "description": "revocation-epoch recovery determinism: journal+two-index, a-i vectors, recover-before-listen"
+    },
+    {
+      "layer": 1,
+      "id": "0.10.52",
+      "status": "PASS",
+      "description": "revocation launch-socket topology: launch.sock + empty launch group + serve_multi + deny-all stub + control-socket byte-parity"
+    },
+    {
+      "layer": 1,
+      "id": "0.10.53",
+      "status": "PASS",
+      "description": "C6a authorize-launch coverage: issue->consume->duplicate-deny->non-TEG-deny->epoch-superseded-deny"
+    },
+    {
+      "layer": 1,
+      "id": "0.10.54",
+      "status": "PASS",
+      "description": "C6c owner epoch-bump submission: signed-submit accept/resubmit-deterministic/bad-key-deny, no host key, no 0700 write, dashboard lever states"
+    }
+  ],
+  "layers": {
+    "1": [
+      {
+        "layer": 1,
+        "id": "0.1.1:llama-cpp",
+        "status": "PASS",
+        "description": "unit llama-cpp.service active"
+      },
+      {
+        "layer": 1,
+        "id": "0.1.1:ai-aidb",
+        "status": "PASS",
+        "description": "unit ai-aidb.service active"
+      },
+      {
+        "layer": 1,
+        "id": "0.1.1:ai-hybrid-coordinator",
+        "status": "PASS",
+        "description": "unit ai-hybrid-coordinator.service active"
+      },
+      {
+        "layer": 1,
+        "id": "0.1.1:ai-ralph-wiggum",
+        "status": "PASS",
+        "description": "unit ai-ralph-wiggum.service active"
+      },
+      {
+        "layer": 1,
+        "id": "0.1.1:llama-cpp-embed",
+        "status": "PASS",
+        "description": "unit llama-cpp-embed.service active"
+      },
+      {
+        "layer": 1,
+        "id": "0.1.1:ai-switchboard",
+        "status": "PASS",
+        "description": "unit ai-switchboard.service active"
+      },
+      {
+        "layer": 1,
+        "id": "0.1.1:redis-mcp",
+        "status": "PASS",
+        "description": "unit redis-mcp.service active"
+      },
+      {
+        "layer": 1,
+        "id": "0.1.1:qdrant",
+        "status": "PASS",
+        "description": "unit qdrant.service active"
+      },
+      {
+        "layer": 1,
+        "id": "0.1.1:postgresql",
+        "status": "PASS",
+        "description": "unit postgresql.service active"
+      },
+      {
+        "layer": 1,
+        "id": "0.1.2",
+        "status": "PASS",
+        "description": "no AI units in failed state"
+      },
+      {
+        "layer": 1,
+        "id": "0.1.3:ai-mcp-integrity-check.timer",
+        "status": "PASS",
+        "description": "timer ai-mcp-integrity-check.timer scheduled"
+      },
+      {
+        "layer": 1,
+        "id": "0.1.3:ai-mcp-process-watch.timer",
+        "status": "PASS",
+        "description": "timer ai-mcp-process-watch.timer scheduled"
+      },
+      {
+        "layer": 1,
+        "id": "0.1.3:ai-weekly-report.timer",
+        "status": "PASS",
+        "description": "timer ai-weekly-report.timer scheduled"
+      },
+      {
+        "layer": 1,
+        "id": "0.3.1",
+        "status": "PASS",
+        "description": "AppArmor profiles on disk (/etc/apparmor.d/ai-llama-cpp, ai-mcp-base)"
+      },
+      {
+        "layer": 1,
+        "id": "0.3.2",
+        "status": "PASS",
+        "description": "AppArmor service active"
+      },
+      {
+        "layer": 1,
+        "id": "0.3.3",
+        "status": "PASS",
+        "description": "llama-cpp AppArmor enforced at runtime"
+      },
+      {
+        "layer": 1,
+        "id": "0.10.1",
+        "status": "PASS",
+        "description": "local inference payload discipline (no enable_thinking=True)"
+      },
+      {
+        "layer": 1,
+        "id": "0.10.4",
+        "status": "PASS",
+        "description": "discovery agent opportunity scanner emits dashboard candidates"
+      },
+      {
+        "layer": 1,
+        "id": "0.10.5",
+        "status": "PASS",
+        "description": "model catalog/profile freshness telemetry wired"
+      },
+      {
+        "layer": 1,
+        "id": "0.10.6",
+        "status": "PASS",
+        "description": "flat model-team PRD gate enforces proposal/review/consensus artifacts"
+      },
+      {
+        "layer": 1,
+        "id": "0.10.7",
+        "status": "PASS",
+        "description": "agent artifact distribution policy keeps runtime state local"
+      },
+      {
+        "layer": 1,
+        "id": "0.10.8",
+        "status": "PASS",
+        "description": "agent memory surface registry classifies state, memory, RAG, and archives"
+      },
+      {
+        "layer": 1,
+        "id": "85.4",
+        "status": "PASS",
+        "description": "drop zone directories: .agents/drops/{,archive/,failed/} exist"
+      },
+      {
+        "layer": 1,
+        "id": "0.16.1",
+        "status": "PASS",
+        "description": "Security Center inventory components present; 13 Nix declarations cataloged; runtime parity delegated to protected publisher"
+      },
+      {
+        "layer": 1,
+        "id": "0.10.9",
+        "status": "PASS",
+        "description": "local delegation pre-registers artifact before blocking ops"
+      },
+      {
+        "layer": 1,
+        "id": "0.10.10",
+        "status": "PASS",
+        "description": "intent classifier coverage: unknown-rate tile and 4c panel wired"
+      },
+      {
+        "layer": 1,
+        "id": "0.10.11",
+        "status": "PASS",
+        "description": "RAGAS faithfulness: modal guard + judge prompt calibration"
+      },
+      {
+        "layer": 1,
+        "id": "0.10.2",
+        "status": "PASS",
+        "description": "token_usage coverage \u2265 50% of recent model_calls"
+      },
+      {
+        "layer": 1,
+        "id": "0.10.12",
+        "status": "PASS",
+        "description": "modal task profiles: 5 profiles, classify_task_type, TaskConfig wired"
+      },
+      {
+        "layer": 1,
+        "id": "0.10.37",
+        "status": "PASS",
+        "description": "local inference contract L1A: schemas, golden parity, dashboard health"
+      },
+      {
+        "layer": 1,
+        "id": "0.10.38",
+        "status": "PASS",
+        "description": "local inference L2A: shadow policy, context, tier parity, dashboard health"
+      },
+      {
+        "layer": 1,
+        "id": "0.10.39",
+        "status": "PASS",
+        "description": "local inference L2B-A: shadow payload, stream parity, dashboard health"
+      },
+      {
+        "layer": 1,
+        "id": "0.10.13",
+        "status": "PASS",
+        "description": "local inference budget: hints, timeout scaling, progress sidecar, watch"
+      },
+      {
+        "layer": 1,
+        "id": "0.10.14",
+        "status": "PASS",
+        "description": "local-agent store_memory uses canonical memory tiers and aliases"
+      },
+      {
+        "layer": 1,
+        "id": "0.10.22",
+        "status": "PASS",
+        "description": "LOCAL_TOK_PER_SEC throughput calibration"
+      },
+      {
+        "layer": 1,
+        "id": "0.10.23",
+        "status": "PASS",
+        "description": "OSINT active recon gate fail-closed"
+      },
+      {
+        "layer": 1,
+        "id": "0.10.24",
+        "status": "PASS",
+        "description": "analysis-only local-agent stagnation mode"
+      },
+      {
+        "layer": 1,
+        "id": "0.12.1",
+        "status": "PASS",
+        "description": "coordinator /readyz endpoint exists"
+      },
+      {
+        "layer": 1,
+        "id": "0.12.2",
+        "status": "SKIP",
+        "description": "delegation success rate 24h (no events in last 24h)"
+      },
+      {
+        "layer": 1,
+        "id": "0.12.3",
+        "status": "PASS",
+        "description": "feedback event_type coverage (0 null in last 20)"
+      },
+      {
+        "layer": 1,
+        "id": "0.12.4",
+        "status": "PASS",
+        "description": "llama.cpp slot available (1 idle)"
+      },
+      {
+        "layer": 1,
+        "id": "0.150.1",
+        "status": "PASS",
+        "description": "candidate lifecycle state machine + defaults"
+      },
+      {
+        "layer": 1,
+        "id": "0.150.5",
+        "status": "PASS",
+        "description": "eval sandbox static checks + hardware constraint guard"
+      },
+      {
+        "layer": 1,
+        "id": "0.10.25",
+        "status": "PASS",
+        "description": "aq-eval static red-team harness metrics + provenance"
+      },
+      {
+        "layer": 1,
+        "id": "0.10.26",
+        "status": "PASS",
+        "description": "context-risk outputs route through artifact compaction + aq-context-manage guidance"
+      },
+      {
+        "layer": 1,
+        "id": "0.152.1",
+        "status": "PASS",
+        "description": "golden eval set size: 25 entries (\u226515 required)"
+      },
+      {
+        "layer": 1,
+        "id": "0.152.2",
+        "status": "PASS",
+        "description": "WORKFLOW-CANON.md contains canonical 8-step keywords"
+      },
+      {
+        "layer": 1,
+        "id": "0.152.3",
+        "status": "PASS",
+        "description": "PULSE.log format: 836 conforming lines"
+      },
+      {
+        "layer": 1,
+        "id": "0.152.4",
+        "status": "PASS",
+        "description": "RESUME.json has all required fields"
+      },
+      {
+        "layer": 1,
+        "id": "0.152.5",
+        "status": "PASS",
+        "description": "role-matrix.md: 4 canonical roles defined + sub-agent constraint present"
+      },
+      {
+        "layer": 1,
+        "id": "0.152.6",
+        "status": "PASS",
+        "description": "GEMINI.md, CODEX.md, LOCAL-AGENT.md: WORKFLOW-CANON ref + canonical roles present"
+      },
+      {
+        "layer": 1,
+        "id": "0.152.7",
+        "status": "PASS",
+        "description": "switchboard-profiles.yaml: local-coding, remote-default, local-tool-calling present"
+      },
+      {
+        "layer": 1,
+        "id": "0.152.8",
+        "status": "PASS",
+        "description": "trust_scoring.py exists"
+      },
+      {
+        "layer": 1,
+        "id": "0.152.9",
+        "status": "PASS",
+        "description": "candidates.json: 13 candidate(s) with trust_score > 0"
+      },
+      {
+        "layer": 1,
+        "id": "0.154.1",
+        "status": "PASS",
+        "description": "cross-model workflow parity verified"
+      },
+      {
+        "layer": 1,
+        "id": "0.156.1",
+        "status": "PASS",
+        "description": "delegation feedback contract detection: json + exact-output signals correct"
+      },
+      {
+        "layer": 1,
+        "id": "0.157.1",
+        "status": "PASS",
+        "description": "cross-model critique"
+      },
+      {
+        "layer": 1,
+        "id": "0.157.2",
+        "status": "PASS",
+        "description": "adopt workflow"
+      },
+      {
+        "layer": 1,
+        "id": "0.10.51",
+        "status": "PASS",
+        "description": "revocation-epoch recovery determinism: journal+two-index, a-i vectors, recover-before-listen"
+      },
+      {
+        "layer": 1,
+        "id": "0.10.52",
+        "status": "PASS",
+        "description": "revocation launch-socket topology: launch.sock + empty launch group + serve_multi + deny-all stub + control-socket byte-parity"
+      },
+      {
+        "layer": 1,
+        "id": "0.10.53",
+        "status": "PASS",
+        "description": "C6a authorize-launch coverage: issue->consume->duplicate-deny->non-TEG-deny->epoch-superseded-deny"
+      },
+      {
+        "layer": 1,
+        "id": "0.10.54",
+        "status": "PASS",
+        "description": "C6c owner epoch-bump submission: signed-submit accept/resubmit-deterministic/bad-key-deny, no host key, no 0700 write, dashboard lever states"
+      }
+    ],
+    "2": [
+      {
+        "layer": 2,
+        "id": "0.4.1",
+        "status": "PASS",
+        "description": "llama-server /health"
+      },
+      {
+        "layer": 2,
+        "id": "0.4.2",
+        "status": "PASS",
+        "description": "embedding server /health"
+      }
+    ],
+    "3": [
+      {
+        "layer": 3,
+        "id": "0.2.1:redis",
+        "status": "PASS",
+        "description": "port 6379 (redis) bound"
+      },
+      {
+        "layer": 3,
+        "id": "0.2.1:postgres",
+        "status": "PASS",
+        "description": "port 5432 (postgres) bound"
+      },
+      {
+        "layer": 3,
+        "id": "0.2.1:qdrant",
+        "status": "PASS",
+        "description": "port 6333 (qdrant) bound"
+      },
+      {
+        "layer": 3,
+        "id": "0.2.1:llama-cpp",
+        "status": "PASS",
+        "description": "port 8080 (llama-cpp) bound"
+      },
+      {
+        "layer": 3,
+        "id": "0.2.1:llama-embed",
+        "status": "PASS",
+        "description": "port 8081 (llama-embed) bound"
+      },
+      {
+        "layer": 3,
+        "id": "0.2.1:aidb",
+        "status": "PASS",
+        "description": "port 8002 (aidb) bound"
+      },
+      {
+        "layer": 3,
+        "id": "0.2.1:hybrid-coordinator",
+        "status": "PASS",
+        "description": "port 8003 (hybrid-coordinator) bound"
+      },
+      {
+        "layer": 3,
+        "id": "0.2.1:ralph-wiggum",
+        "status": "PASS",
+        "description": "port 8004 (ralph-wiggum) bound"
+      },
+      {
+        "layer": 3,
+        "id": "0.2.1:switchboard",
+        "status": "PASS",
+        "description": "port 8085 (switchboard) bound"
+      },
+      {
+        "layer": 3,
+        "id": "0.2.1:open-webui",
+        "status": "PASS",
+        "description": "open-webui disabled + port 3001 correctly not bound"
+      },
+      {
+        "layer": 3,
+        "id": "0.2.1:prometheus",
+        "status": "PASS",
+        "description": "port 9090 (prometheus) bound"
+      },
+      {
+        "layer": 3,
+        "id": "0.2.2",
+        "status": "PASS",
+        "description": "port 3000 = Grafana (no Open-WebUI regression)"
+      }
+    ],
+    "4": [
+      {
+        "layer": 4,
+        "id": "0.7.1",
+        "status": "PASS",
+        "description": "/v1/orchestrate front-door smoke (route=Explore)"
+      },
+      {
+        "layer": 4,
+        "id": "0.7.2",
+        "status": "PASS",
+        "description": "hybrid /query retrieval smoke"
+      },
+      {
+        "layer": 4,
+        "id": "0.8.1",
+        "status": "SKIP",
+        "description": "delegate 24h success rate (coordinator /stats/delegate unavailable (needs nixos-rebuild))"
+      },
+      {
+        "layer": 4,
+        "id": "0.9.1",
+        "status": "PASS",
+        "description": "safety gate endpoint responds (POST /control/safety/gate)"
+      },
+      {
+        "layer": 4,
+        "id": "0.9.2",
+        "status": "PASS",
+        "description": "UAG lifecycle replay endpoint wired (GET /agent/lifecycle/{id}/replay)"
+      },
+      {
+        "layer": 4,
+        "id": "0.9.3",
+        "status": "PASS",
+        "description": "DAG executor execute/status endpoint wired"
+      },
+      {
+        "layer": 4,
+        "id": "0.9.4",
+        "status": "PASS",
+        "description": "runtime safety policy: plan-readonly blocks mutating; execute-mutating allows review-required"
+      },
+      {
+        "layer": 4,
+        "id": "0.9.5",
+        "status": "PASS",
+        "description": "trust-root infra: verify-skill-registry.sh + rotate-skill-registry-key.sh + trust-roots.json present"
+      },
+      {
+        "layer": 4,
+        "id": "0.9.6",
+        "status": "PASS",
+        "description": "per-run workspace isolation: provision/teardown + endpoint present"
+      },
+      {
+        "layer": 4,
+        "id": "0.9.7",
+        "status": "PASS",
+        "description": "fleet control-plane: deregister + deployment history + fleet summary + health probe present"
+      },
+      {
+        "layer": 4,
+        "id": "0.9.8",
+        "status": "PASS",
+        "description": "benchmark harness: eval pack (12 cases) + trend publisher + benchmark gate present"
+      },
+      {
+        "layer": 4,
+        "id": "0.9.9",
+        "status": "PASS",
+        "description": "unified harness runner + PAR-002 CI gate present"
+      },
+      {
+        "layer": 4,
+        "id": "0.9.10",
+        "status": "PASS",
+        "description": "budget/cost guardrail: policy file valid + GET/POST /control/budget/policy handlers registered"
+      },
+      {
+        "layer": 4,
+        "id": "0.9.11",
+        "status": "PASS",
+        "description": "PAR-012 rollout/rollback drill: drill-rollback.sh + runbook present"
+      },
+      {
+        "layer": 4,
+        "id": "0.9.12",
+        "status": "PASS",
+        "description": "CLI ergonomics: aqd v0.7.0 run subcommands present (plan/execute/replay/review/status/budget)"
+      },
+      {
+        "layer": 4,
+        "id": "0.9.13",
+        "status": "PASS",
+        "description": "MCP workflow blueprints: 12 blueprints v1.1 with category+tags + GET /workflow/blueprints wired"
+      },
+      {
+        "layer": 4,
+        "id": "0.9.14",
+        "status": "PASS",
+        "description": "orchestration graph runner: POST/GET /workflow/graph/run + 5 templates"
+      },
+      {
+        "layer": 4,
+        "id": "0.9.15",
+        "status": "PASS",
+        "description": "IDE adapter compatibility gate: smoke-ide-adapter-compat.sh (Continue + VS Code + CLI + MCP)"
+      },
+      {
+        "layer": 4,
+        "id": "0.9.16",
+        "status": "PASS",
+        "description": "ablation/reasoning profile pack: 8 profiles + coordinator routes wired"
+      },
+      {
+        "layer": 4,
+        "id": "0.9.17",
+        "status": "PASS",
+        "description": "aqd reasoning list/get/apply subcommands present"
+      },
+      {
+        "layer": 4,
+        "id": "0.9.18",
+        "status": "PASS",
+        "description": "logic pattern indexer + /api/logic/search route present"
+      },
+      {
+        "layer": 4,
+        "id": "0.9.19",
+        "status": "PASS",
+        "description": "aqd logic:search + topology subcommands present"
+      },
+      {
+        "layer": 4,
+        "id": "0.9.20",
+        "status": "PASS",
+        "description": "topology API: GET /api/topology + GET /api/topology/flow registered"
+      },
+      {
+        "layer": 4,
+        "id": "60.0.1",
+        "status": "PASS",
+        "description": "local-model-config.yaml valid (schema + thinking guard)"
+      },
+      {
+        "layer": 4,
+        "id": "60.0.2",
+        "status": "PASS",
+        "description": "smoke-local-model.sh present (thinking guard + MTP gates)"
+      },
+      {
+        "layer": 4,
+        "id": "60.7.1",
+        "status": "PASS",
+        "description": "eval_runner.py RAGAS (eval_results + scoring functions + feature flag)"
+      },
+      {
+        "layer": 4,
+        "id": "60.7.2",
+        "status": "PASS",
+        "description": "POST /eval/score-query registered in insights_service.py"
+      },
+      {
+        "layer": 4,
+        "id": "60.7.3",
+        "status": "PASS",
+        "description": "dashboard RAG Quality card (HTML + JS wired)"
+      },
+      {
+        "layer": 4,
+        "id": "60.7.4",
+        "status": "PASS",
+        "description": "GET /eval/trend contains ragas_metrics key"
+      },
+      {
+        "layer": 4,
+        "id": "61.1",
+        "status": "PASS",
+        "description": "CLM: 3-tier Hot/Warm/Cold + thermal gate + compaction"
+      },
+      {
+        "layer": 4,
+        "id": "61.2",
+        "status": "PASS",
+        "description": "clm-compaction-prompt.yaml valid (template + {session_id})"
+      },
+      {
+        "layer": 4,
+        "id": "61.3",
+        "status": "PASS",
+        "description": "MLFQ apply_clm_pressure() wired (Phase 61.5)"
+      },
+      {
+        "layer": 4,
+        "id": "61.4",
+        "status": "PASS",
+        "description": "GET /context/lifecycle/status OK (pressure=46.5%)"
+      },
+      {
+        "layer": 4,
+        "id": "62.1",
+        "status": "PASS",
+        "description": "nsjail binary available: /nix/store/9q8xvb8rnajf4750rbwl2jqz9nllqcmv-nsjail-3.6/bin/nsjail"
+      },
+      {
+        "layer": 4,
+        "id": "62.2",
+        "status": "PASS",
+        "description": "safety-rails.yaml valid (version=1.0, 5 rails)"
+      },
+      {
+        "layer": 4,
+        "id": "62.3",
+        "status": "PASS",
+        "description": "NsjailSandbox class present (NSJAIL_BIN + fail-closed required mode)"
+      },
+      {
+        "layer": 4,
+        "id": "62.4",
+        "status": "PASS",
+        "description": "evidence safety handler evaluates YAML rails"
+      },
+      {
+        "layer": 4,
+        "id": "63.1",
+        "status": "PASS",
+        "description": "aq-index-knowledge-graph --skip-llm exits 0 (25575 triples)"
+      },
+      {
+        "layer": 4,
+        "id": "63.2",
+        "status": "PASS",
+        "description": "graph_search.py BFS-2 handler (entity extraction + register_routes)"
+      },
+      {
+        "layer": 4,
+        "id": "63.3",
+        "status": "PASS",
+        "description": "rag_augmentor.graph_augment() (knowledge_lookup + systems_software gates)"
+      },
+      {
+        "layer": 4,
+        "id": "63.4",
+        "status": "PASS",
+        "description": "impermanence declared in host-class (enable-flag guarded, /persist optional)"
+      },
+      {
+        "layer": 4,
+        "id": "63.5",
+        "status": "PASS",
+        "description": "P14s GL9750 microSD reader uses DMA/ADMA-disable PIO workaround"
+      },
+      {
+        "layer": 4,
+        "id": "S2.1",
+        "status": "PASS",
+        "description": "middleware/auth.py: AUTH_PROFILE_TOOL_POLICY + check/record/stats functions"
+      },
+      {
+        "layer": 4,
+        "id": "S2.2",
+        "status": "PASS",
+        "description": "workflow_session_handlers: S2 auth profile tool enforcement wired"
+      },
+      {
+        "layer": 4,
+        "id": "S2.3",
+        "status": "PASS",
+        "description": "GET /admin/v1/policy/tool-deny-stats registered in control_service.py"
+      },
+      {
+        "layer": 4,
+        "id": "S2.4",
+        "status": "PASS",
+        "description": "check_tool_access: readonly-strict blocks mutating tools, execute-guarded allows all"
+      },
+      {
+        "layer": 4,
+        "id": "S2.5",
+        "status": "PASS",
+        "description": "GET /admin/v1/policy/tool-deny-stats returns valid denial stats shape"
+      },
+      {
+        "layer": 4,
+        "id": "LA.1",
+        "status": "PASS",
+        "description": "LOCAL-AGENT.md: Hardware Floor + Current Model Config + swap checklist + Behavioral Rules"
+      },
+      {
+        "layer": 4,
+        "id": "LA.2",
+        "status": "PASS",
+        "description": "QWEN.md: redirect stub points to LOCAL-AGENT.md"
+      },
+      {
+        "layer": 4,
+        "id": "LA.3",
+        "status": "PASS",
+        "description": "aq-insights: executable, extract_signals+build_prompt+call_local_model+write_insights present"
+      },
+      {
+        "layer": 4,
+        "id": "LA.4",
+        "status": "PASS",
+        "description": "aq-chat: harness-aware system prompt injection + behavioral rules wired"
+      },
+      {
+        "layer": 4,
+        "id": "67.1.a",
+        "status": "PASS",
+        "description": "Agent Outcomes Gauge: HTML card present (section-agent-outcomes)"
+      },
+      {
+        "layer": 4,
+        "id": "67.1.b",
+        "status": "PASS",
+        "description": "loadAgentOutcomes: defined in dashboard.js"
+      },
+      {
+        "layer": 4,
+        "id": "67.1.c",
+        "status": "PASS",
+        "description": "loadAgentOutcomes: wired into Intelligence wave 2"
+      },
+      {
+        "layer": 4,
+        "id": "67.2.a",
+        "status": "PASS",
+        "description": "Mission Control: HTML card present (section-mission-control)"
+      },
+      {
+        "layer": 4,
+        "id": "67.2.b",
+        "status": "PASS",
+        "description": "loadMissionControl: defined in dashboard.js"
+      },
+      {
+        "layer": 4,
+        "id": "67.2.c",
+        "status": "PASS",
+        "description": "loadMissionControl: wired into Operations wave 2"
+      },
+      {
+        "layer": 4,
+        "id": "66.1.a",
+        "status": "PASS",
+        "description": "Wasmtime: present in flake.nix devShells.full"
+      },
+      {
+        "layer": 4,
+        "id": "66.1.b",
+        "status": "PASS",
+        "description": "smoke-wasmtime.sh: present and executable"
+      },
+      {
+        "layer": 4,
+        "id": "66.1.c",
+        "status": "SKIP",
+        "description": "wasmtime binary (not in PATH \u2014 activate nix develop .#full to test L2 sandbox)"
+      },
+      {
+        "layer": 4,
+        "id": "83.1",
+        "status": "PASS",
+        "description": "dag_manager.py: exists and syntax-clean"
+      },
+      {
+        "layer": 4,
+        "id": "83.2",
+        "status": "PASS",
+        "description": "context-merger.py: exists and syntax-clean"
+      },
+      {
+        "layer": 4,
+        "id": "83.3",
+        "status": "PASS",
+        "description": "Phase 1 integration test: 4/4 PASS (dag_manager + context_merger + handoff)"
+      },
+      {
+        "layer": 4,
+        "id": "83.4",
+        "status": "PASS",
+        "description": "dag_manager wired into workflow_session_handlers"
+      },
+      {
+        "layer": 4,
+        "id": "85.1",
+        "status": "PASS",
+        "description": "aq-drop-daemon: exists and syntax-clean"
+      },
+      {
+        "layer": 4,
+        "id": "85.2",
+        "status": "PASS",
+        "description": "drop_spec.py: schema validator + injection guard pass"
+      },
+      {
+        "layer": 4,
+        "id": "85.3",
+        "status": "PASS",
+        "description": "Intent Lock v2: acquire_lock + release_expired_locks + heartbeat present"
+      },
+      {
+        "layer": 4,
+        "id": "85.5",
+        "status": "PASS",
+        "description": "ai-drop-daemon service wired in mcp-servers.nix"
+      },
+      {
+        "layer": 4,
+        "id": "86.1",
+        "status": "PASS",
+        "description": "attention_queue.py: importable with all public symbols"
+      },
+      {
+        "layer": 4,
+        "id": "86.2",
+        "status": "PASS",
+        "description": "auto_ok push: archived immediately, queue stays empty"
+      },
+      {
+        "layer": 4,
+        "id": "86.3",
+        "status": "PASS",
+        "description": "aq-alerts: exists and executable"
+      },
+      {
+        "layer": 4,
+        "id": "86.4",
+        "status": "PASS",
+        "description": "aq-alerts --count: returned 2 (numeric, no crash)"
+      },
+      {
+        "layer": 4,
+        "id": "86.5",
+        "status": "PASS",
+        "description": "aq-approve: exists and executable"
+      },
+      {
+        "layer": 4,
+        "id": "86.6",
+        "status": "PASS",
+        "description": "aq-reject: exists and executable"
+      },
+      {
+        "layer": 4,
+        "id": "87.3.1",
+        "status": "PASS",
+        "description": "training_ingest.py: exists at ai-stack/local-agents/"
+      },
+      {
+        "layer": 4,
+        "id": "87.3.2",
+        "status": "PASS",
+        "description": "ai-training-ingest service+timer wired in mcp-servers.nix"
+      },
+      {
+        "layer": 4,
+        "id": "87.3.3",
+        "status": "PASS",
+        "description": "ai-local-training-loop service+timer wired in mcp-servers.nix"
+      },
+      {
+        "layer": 4,
+        "id": "87.3.4",
+        "status": "PASS",
+        "description": "fine-tuning/dataset.jsonl (runtime): 5941 rows"
+      },
+      {
+        "layer": 4,
+        "id": "146.1",
+        "status": "PASS",
+        "description": "agent identity request headers captured"
+      },
+      {
+        "layer": 4,
+        "id": "146.2",
+        "status": "PASS",
+        "description": "agent identity OTel attributes emitted"
+      },
+      {
+        "layer": 4,
+        "id": "146.3",
+        "status": "PASS",
+        "description": "dashboard identity coverage surface wired"
+      },
+      {
+        "layer": 4,
+        "id": "146.4",
+        "status": "PASS",
+        "description": "live trace identity coverage 16/100 known callers"
+      },
+      {
+        "layer": 4,
+        "id": "0.12.5",
+        "status": "PASS",
+        "description": "local-agent monitor CLI read-only JSON (running=0, stale=0)"
+      },
+      {
+        "layer": 4,
+        "id": "0.12.6",
+        "status": "PASS",
+        "description": "aq-report --machine exposes local_agent_monitor"
+      },
+      {
+        "layer": 4,
+        "id": "0.12.7",
+        "status": "PASS",
+        "description": "local-agent monitor dashboard surface wired"
+      },
+      {
+        "layer": 4,
+        "id": "0.13.1",
+        "status": "PASS",
+        "description": "Training telemetry path exists and is a directory"
+      },
+      {
+        "layer": 4,
+        "id": "0.13.2",
+        "status": "PASS",
+        "description": "Training dataset non-empty (at least 1 line)"
+      },
+      {
+        "layer": 4,
+        "id": "0.13.3",
+        "status": "PASS",
+        "description": "Training health endpoint reachable (HTTP 200)"
+      },
+      {
+        "layer": 4,
+        "id": "0.13.4",
+        "status": "PASS",
+        "description": "tool_result samples present in dataset"
+      }
+    ],
+    "5": [
+      {
+        "layer": 5,
+        "id": "0.2.3",
+        "status": "PASS",
+        "description": "Qdrant has 103707 total points across 17 collections"
+      },
+      {
+        "layer": 5,
+        "id": "0.2.4",
+        "status": "PASS",
+        "description": "Postgres has 39 tables"
+      },
+      {
+        "layer": 5,
+        "id": "0.2.5",
+        "status": "PASS",
+        "description": "Redis has 9574 keys"
+      },
+      {
+        "layer": 5,
+        "id": "86.7",
+        "status": "PASS",
+        "description": "dashboard /api/aistack/alerts/status: 200 OK"
+      },
+      {
+        "layer": 5,
+        "id": "0.16.2",
+        "status": "PASS",
+        "description": "Security Center live metadata: 17 cataloged credentials"
+      },
+      {
+        "layer": 5,
+        "id": "0.12.8",
+        "status": "PASS",
+        "description": "dashboard local-agent monitor endpoint returns counts"
+      },
+      {
+        "layer": 5,
+        "id": "0.10.27",
+        "status": "PASS",
+        "description": "positive, negative, and cascade assignment invariants"
+      },
+      {
+        "layer": 5,
+        "id": "0.10.28",
+        "status": "PASS",
+        "description": "concurrent immutable QA CAS, required-unknown blocking, and telemetry boundary"
+      },
+      {
+        "layer": 5,
+        "id": "0.10.29",
+        "status": "PASS",
+        "description": "bounded authority checker + validated projection: 10 ratification-blockers, conditions {'SINGLE': 0, 'SPLIT_BRAIN': 10, 'UNKNOWN': 0, 'UNOWNED': 0}, 3.701s"
+      },
+      {
+        "layer": 5,
+        "id": "0.10.30",
+        "status": "PASS",
+        "description": "bounded legacy lookup + strict mutation + closed projection + TUI visibility: Ran 122 tests in 3.185s"
+      },
+      {
+        "layer": 5,
+        "id": "0.10.42",
+        "status": "PASS",
+        "description": "local-direct lifecycle route contract"
+      },
+      {
+        "layer": 5,
+        "id": "0.10.43",
+        "status": "PASS",
+        "description": "local-direct Agent Ops card visibility"
+      },
+      {
+        "layer": 5,
+        "id": "0.10.40",
+        "status": "PASS",
+        "description": "canonical tracker static contract + live asset/dashboard HTTP 200"
+      },
+      {
+        "layer": 5,
+        "id": "0.10.41",
+        "status": "PASS",
+        "description": "fixture-only workflow shadow contract {\"authority\":\"legacy_json_authoritative\",\"coverage\":{\"aq_qa\":\"ready\",\"web_dashboard\":\"not_wired\"}}"
+      },
+      {
+        "layer": 5,
+        "id": "0.10.44",
+        "status": "PASS",
+        "description": "default-OFF adapter mint->sign->UDS->receipt fixture {\"denial\":\"signing-key-unavailable\",\"success\":\"green\"}"
+      },
+      {
+        "layer": 5,
+        "id": "0.10.45",
+        "status": "PASS",
+        "description": "Factory install fixture: hooks, tracker, collision and configuration safety"
+      },
+      {
+        "layer": 5,
+        "id": "0.10.46",
+        "status": "PASS",
+        "description": "Factory retrofit fixture: preview, confirmation, originals and hook composition"
+      },
+      {
+        "layer": 5,
+        "id": "0.10.50",
+        "status": "PASS",
+        "description": "Factory readiness preflight: hash-bound evidence, fail-closed unconfigured checks, typed blockers"
+      },
+      {
+        "layer": 5,
+        "id": "0.10.47",
+        "status": "PASS",
+        "description": "capability outcome resolver: verdicts, QA and dashboard visibility"
+      },
+      {
+        "layer": 5,
+        "id": "0.10.48",
+        "status": "PASS",
+        "description": "delegation worktree ownership and durable handback safety"
+      },
+      {
+        "layer": 5,
+        "id": "0.10.49",
+        "status": "PASS",
+        "description": "process-bound integration guard and Fleet lock visibility"
+      }
+    ],
+    "6": [
+      {
+        "layer": 6,
+        "id": "0.4.3",
+        "status": "PASS",
+        "description": "embedding server returns model info"
+      },
+      {
+        "layer": 6,
+        "id": "0.7.3",
+        "status": "PASS",
+        "description": "RAG recall quality > 0% (got 43.5%)"
+      },
+      {
+        "layer": 6,
+        "id": "0.7.4",
+        "status": "PASS",
+        "description": "AIDB vector search returns results"
+      }
+    ],
+    "7": [
+      {
+        "layer": 7,
+        "id": "0.5.1",
+        "status": "PASS",
+        "description": "switchboard exposes local-agent profile"
+      },
+      {
+        "layer": 7,
+        "id": "0.5.2",
+        "status": "PASS",
+        "description": "switchboard exposes local-coding profile"
+      },
+      {
+        "layer": 7,
+        "id": "0.5.3",
+        "status": "SKIP",
+        "description": "Continue extension health gate (retired; local agents route through switchboard profiles)"
+      },
+      {
+        "layer": 7,
+        "id": "0.5.4",
+        "status": "SKIP",
+        "description": "continue-local switchboard profile ready (retired; use local-agent/local-coding profiles)"
+      },
+      {
+        "layer": 7,
+        "id": "0.5.5",
+        "status": "SKIP",
+        "description": "continue-local context trimming (retired; context budgets are enforced by switchboard profiles)"
+      },
+      {
+        "layer": 7,
+        "id": "0.5.6",
+        "status": "SKIP",
+        "description": "Continue/editor prompt to feedback smoke (retired; no local-agent runtime dependency)"
+      },
+      {
+        "layer": 7,
+        "id": "0.5.7",
+        "status": "SKIP",
+        "description": "Editor-local agent corpus stays within bounded budgets (editor state budget unavailable in snapshot (no data yet \u2014 run aq-report to seed))"
+      },
+      {
+        "layer": 7,
+        "id": "0.6.1",
+        "status": "PASS",
+        "description": "flagship agent CLI help smokes",
+        "details": [
+          {
+            "schema_version": "qa.provider-probe-result.v1",
+            "invocation_id": "85f374bd-292c-4465-9150-9f51b13e3b87",
+            "provider_id": "codex",
+            "profile_id": "codex_help",
+            "lifecycle_state": "terminal",
+            "started_monotonic_ms": 5522102,
+            "ended_monotonic_ms": 5522838,
+            "duration_ms": 735,
+            "deadline_ms": 45000,
+            "exit_code": 0,
+            "result": "pass",
+            "failure_class": "none",
+            "termination_actions": [
+              {
+                "action": "quiescence",
+                "outcome": "complete",
+                "at_ms": 734
+              },
+              {
+                "action": "reap",
+                "outcome": "complete",
+                "at_ms": 734
+              }
+            ],
+            "stdout_truncated": false,
+            "stderr_truncated": false,
+            "stderr_summary": "",
+            "disposition": {
+              "class": null,
+              "redelivered": false,
+              "coalesced_signals": 0
+            },
+            "evidence_digest": "sha256:499c4f5c0d3408ecaa2d39e96724954d4c9d962ceb5014d0cf1300a242dc8294"
+          },
+          {
+            "schema_version": "qa.provider-probe-result.v1",
+            "invocation_id": "85f374bd-292c-4465-9150-9f51b13e3b87",
+            "provider_id": "qwen",
+            "profile_id": "qwen_help",
+            "lifecycle_state": "terminal",
+            "started_monotonic_ms": 5522852,
+            "ended_monotonic_ms": 5525983,
+            "duration_ms": 3131,
+            "deadline_ms": 45000,
+            "exit_code": 0,
+            "result": "pass",
+            "failure_class": "none",
+            "termination_actions": [
+              {
+                "action": "quiescence",
+                "outcome": "complete",
+                "at_ms": 3130
+              },
+              {
+                "action": "reap",
+                "outcome": "complete",
+                "at_ms": 3130
+              }
+            ],
+            "stdout_truncated": false,
+            "stderr_truncated": false,
+            "stderr_summary": "",
+            "disposition": {
+              "class": null,
+              "redelivered": false,
+              "coalesced_signals": 0
+            },
+            "evidence_digest": "sha256:5ae3a0fb6c7079f83cf3e30389f595b6341d3f87daf03143b6ddd7efbd4be352"
+          },
+          {
+            "schema_version": "qa.provider-probe-result.v1",
+            "invocation_id": "85f374bd-292c-4465-9150-9f51b13e3b87",
+            "provider_id": "claude",
+            "profile_id": "claude_help",
+            "lifecycle_state": "terminal",
+            "started_monotonic_ms": 5525987,
+            "ended_monotonic_ms": 5527232,
+            "duration_ms": 1244,
+            "deadline_ms": 45000,
+            "exit_code": 0,
+            "result": "pass",
+            "failure_class": "none",
+            "termination_actions": [
+              {
+                "action": "quiescence",
+                "outcome": "complete",
+                "at_ms": 1244
+              },
+              {
+                "action": "reap",
+                "outcome": "complete",
+                "at_ms": 1244
+              }
+            ],
+            "stdout_truncated": false,
+            "stderr_truncated": false,
+            "stderr_summary": "",
+            "disposition": {
+              "class": null,
+              "redelivered": false,
+              "coalesced_signals": 0
+            },
+            "evidence_digest": "sha256:5a73ffcf336984a4282777fe9e6284e0686703947066e311bb263033586c50a5"
+          },
+          {
+            "schema_version": "qa.provider-probe-result.v1",
+            "invocation_id": "85f374bd-292c-4465-9150-9f51b13e3b87",
+            "provider_id": "pi",
+            "profile_id": "pi_help",
+            "lifecycle_state": "terminal",
+            "started_monotonic_ms": 5527243,
+            "ended_monotonic_ms": 5530582,
+            "duration_ms": 3338,
+            "deadline_ms": 45000,
+            "exit_code": 0,
+            "result": "pass",
+            "failure_class": "none",
+            "termination_actions": [
+              {
+                "action": "quiescence",
+                "outcome": "complete",
+                "at_ms": 3338
+              },
+              {
+                "action": "reap",
+                "outcome": "complete",
+                "at_ms": 3338
+              }
+            ],
+            "stdout_truncated": false,
+            "stderr_truncated": false,
+            "stderr_summary": "",
+            "disposition": {
+              "class": null,
+              "redelivered": false,
+              "coalesced_signals": 0
+            },
+            "evidence_digest": "sha256:06565e4cb1e1362a9c11691466700833dfb433ca336a490e7a1c7d386ff69478"
+          }
+        ]
+      },
+      {
+        "layer": 7,
+        "id": "0.6.2",
+        "status": "PASS",
+        "description": "gemini CLI live-state health check"
+      }
+    ]
+  }
+}
