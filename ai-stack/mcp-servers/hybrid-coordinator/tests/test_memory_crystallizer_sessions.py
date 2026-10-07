@@ -657,3 +657,26 @@ def test_handler_routes_dict_payload_over_unreadable_file():
 if __name__ == "__main__":
     import pytest
     pytest.main([__file__, "-v"])
+
+
+def test_redact_secrets_github_fine_grained_pat():
+    import session_transcripts
+    tok = "github_pat_11ABCDEFG0123456789_abcdefghijklmnopqrstuvwxyz0123456789"
+    out = session_transcripts.redact_secrets(f"token {tok} end")
+    assert tok not in out and "[REDACTED]" in out
+
+
+def test_aq_crystallize_dry_run_executes_under_set_e(tmp_path):
+    # bash -n only checks syntax; (( var++ )) from 0 aborts under set -e at runtime.
+    import json, subprocess
+    from pathlib import Path
+    repo = Path(__file__).resolve().parents[4]
+    proj = tmp_path / "projects" / "p"
+    proj.mkdir(parents=True)
+    rows = [{"type": r, "message": {"content": [{"type": "text", "text": f"message number {i} long enough"}]}}
+            for i, r in enumerate(["user", "assistant", "user", "assistant"])]
+    (proj / "s.jsonl").write_text("\n".join(json.dumps(x) for x in rows))
+    res = subprocess.run(["bash", str(repo / "scripts/ai/aq-crystallize"), "--session-dir", str(tmp_path / "projects"),
+                          "--max-sessions", "2", "--dry-run"], capture_output=True, text=True, timeout=60)
+    assert res.returncode == 0, res.stderr
+    assert "s.jsonl" in res.stdout

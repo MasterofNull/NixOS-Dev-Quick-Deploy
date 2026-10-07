@@ -155,7 +155,7 @@ skipped=0
 for session_path in "${sorted_sessions[@]}"; do
   if [[ "${DRY_RUN}" -eq 1 ]]; then
     printf '%s\n' "${session_path}"
-    ((selected++))
+    selected=$((selected + 1))
     continue
   fi
 
@@ -165,21 +165,21 @@ for session_path in "${sorted_sessions[@]}"; do
 
   if [[ $exit_code -eq 1 ]]; then
     # File error (unreadable, etc.)
-    ((skipped++))
+    skipped=$((skipped + 1))
     continue
   fi
   if [[ $exit_code -eq 2 ]]; then
     # History too short
-    ((skipped++))
+    skipped=$((skipped + 1))
     continue
   fi
 
   if [[ -z "${_payload}" ]]; then
-    ((skipped++))
+    skipped=$((skipped + 1))
     continue
   fi
 
-  ((selected++))
+  selected=$((selected + 1))
 
   # Add API key header if HYBRID_API_KEY_FILE is readable
   declare -a curl_args=(-sf -X POST "${HYBRID_COORDINATOR_URL}/memory/crystalline/run" -H 'Content-Type: application/json')
@@ -190,9 +190,9 @@ for session_path in "${sorted_sessions[@]}"; do
   curl_args+=(-d "${_payload}")
 
   if curl "${curl_args[@]}" >/dev/null 2>&1; then
-    ((posted++))
+    posted=$((posted + 1))
   else
-    ((skipped++))
+    skipped=$((skipped + 1))
   fi
 done
 
