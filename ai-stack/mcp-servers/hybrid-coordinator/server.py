@@ -753,7 +753,12 @@ async def initialize_server():
         )
 
     # Memory Crystallizer (L5) initialization
-    crystallizer_llm = LLMClient(provider="local", base_url=Config.SWITCHBOARD_URL)
+    # Batch distillation on the APU needs minutes for prefill+generation; 120s default timed out.
+    crystallizer_llm = LLMClient(
+        provider="local",
+        base_url=Config.SWITCHBOARD_URL,
+        timeout=float(os.getenv("CRYSTALLIZER_LLM_TIMEOUT_S", "900")),
+    )
     memory_crystallizer.init(
         postgres_client=postgres_client,
         store_insight_fn=_store_crystallized_insight,

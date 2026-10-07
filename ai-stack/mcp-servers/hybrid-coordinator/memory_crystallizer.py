@@ -34,6 +34,9 @@ CREATE INDEX IF NOT EXISTS idx_crystallized_sessions_processed_at
 """
 
 
+_DISTILL_HISTORY_CHAR_BUDGET = 6000
+
+
 class MemoryCrystallizer:
     """Unified crystallizer for file-backed sessions and in-memory chat history."""
 
@@ -323,6 +326,8 @@ class MemoryCrystallizer:
 
     def _build_distillation_prompt(self, history: List[Dict[str, str]]) -> str:
         history_text = "\n".join(f"{m['role']}: {m['content']}" for m in history[-20:])
+        # Bound prompt size: APU prefill cost dominates; keep the most recent context.
+        history_text = history_text[-_DISTILL_HISTORY_CHAR_BUDGET:]
         return f"""You are a Knowledge Crystallizer. Your job is to extract atomic, permanent facts from the following chat history.
 Avoid duplicates. Be concise. Output ONLY a bulleted list of 3-10 facts (each fact on one line, prefixed with a dash).
 
