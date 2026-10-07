@@ -1,0 +1,64 @@
+{
+  "phase": "7",
+  "passed": 4,
+  "failed": 0,
+  "skipped": 0,
+  "duration_s": 1,
+  "degraded_confidence": false,
+  "tests": [
+    {
+      "layer": 7,
+      "id": "7.1.1",
+      "status": "PASS",
+      "description": "aq-prompt-eval script executable"
+    },
+    {
+      "layer": 7,
+      "id": "7.2.1",
+      "status": "PASS",
+      "description": "prompt registry.yaml present"
+    },
+    {
+      "layer": 7,
+      "id": "7.2.2",
+      "status": "PASS",
+      "description": "prompt registry has 21 entries (\u22653)"
+    },
+    {
+      "layer": 6,
+      "id": "7.3.1",
+      "status": "PASS",
+      "description": "query_gaps table accessible (5559 rows)"
+    }
+  ],
+  "layers": {
+    "6": [
+      {
+        "layer": 6,
+        "id": "7.3.1",
+        "status": "PASS",
+        "description": "query_gaps table accessible (5559 rows)"
+      }
+    ],
+    "7": [
+      {
+        "layer": 7,
+        "id": "7.1.1",
+        "status": "PASS",
+        "description": "aq-prompt-eval script executable"
+      },
+      {
+        "layer": 7,
+        "id": "7.2.1",
+        "status": "PASS",
+        "description": "prompt registry.yaml present"
+      },
+      {
+        "layer": 7,
+        "id": "7.2.2",
+        "status": "PASS",
+        "description": "prompt registry has 21 entries (\u22653)"
+      }
+    ]
+  }
+}

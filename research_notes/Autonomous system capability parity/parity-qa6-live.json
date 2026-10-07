@@ -1,0 +1,76 @@
+{
+  "phase": "6",
+  "passed": 5,
+  "failed": 0,
+  "skipped": 0,
+  "duration_s": 10,
+  "degraded_confidence": false,
+  "tests": [
+    {
+      "layer": 6,
+      "id": "6.1.1",
+      "status": "PASS",
+      "description": "Prometheus /metrics responds"
+    },
+    {
+      "layer": 6,
+      "id": "6.1.2",
+      "status": "PASS",
+      "description": "AI metrics exported"
+    },
+    {
+      "layer": 6,
+      "id": "6.3.1",
+      "status": "PASS",
+      "description": "tool-audit.jsonl has 228 entries"
+    },
+    {
+      "layer": 6,
+      "id": "6.4.1",
+      "status": "PASS",
+      "description": "aq-report persisted JSON snapshot available"
+    },
+    {
+      "layer": 4,
+      "id": "6.5.1",
+      "status": "PASS",
+      "description": "check-mcp-integrity.sh present and executable"
+    }
+  ],
+  "layers": {
+    "4": [
+      {
+        "layer": 4,
+        "id": "6.5.1",
+        "status": "PASS",
+        "description": "check-mcp-integrity.sh present and executable"
+      }
+    ],
+    "6": [
+      {
+        "layer": 6,
+        "id": "6.1.1",
+        "status": "PASS",
+        "description": "Prometheus /metrics responds"
+      },
+      {
+        "layer": 6,
+        "id": "6.1.2",
+        "status": "PASS",
+        "description": "AI metrics exported"
+      },
+      {
+        "layer": 6,
+        "id": "6.3.1",
+        "status": "PASS",
+        "description": "tool-audit.jsonl has 228 entries"
+      },
+      {
+        "layer": 6,
+        "id": "6.4.1",
+        "status": "PASS",
+        "description": "aq-report persisted JSON snapshot available"
+      }
+    ]
+  }
+}
