@@ -2163,8 +2163,14 @@ in {
             "${toString repoSource}/scripts/ai/aq-crystallize"
             "--session-dir"
             "/home/hyperd/.continue/sessions"
+            "--session-dir"
+            "/home/hyperd/.claude/projects"
+            "--session-dir"
+            "/home/hyperd/.codex/sessions"
             "--since-hours"
             "25" # process sessions from last 25h (overlap buffer)
+            "--max-sessions"
+            "10" # bound nightly local-LLM load
           ];
           PrivateTmp = true;
           PrivateNetwork = false;
