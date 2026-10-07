@@ -1275,7 +1275,7 @@ class HintsEngine:
                 "prsi_contract": {
                     "purpose": "Budget-aware pessimistic recursive self-improvement without always-on dual prompt execution.",
                     "policy_file": os.getenv("PRSI_POLICY_FILE", "config/runtime-prsi-policy.json"),
-                    "state_file": os.getenv("PRSI_STATE_PATH", "/var/lib/nixos-ai-stack/prsi/runtime-state.json"),
+                    "state_file": os.getenv("PRSI_STATE_PATH", "/var/lib/nixos-ai-stack/optimizer/prsi/runtime-state.json"),
                     "loop": [
                         "1) run normal single-path execution with hints",
                         "2) send hint feedback + agent_preferences when useful/unhelpful",

@@ -3,7 +3,7 @@ set -euo pipefail
 
 ROOT_DIR="${ROOT:-$(cd "$(dirname "${BASH_SOURCE[0]}")/../.." && pwd)}"
 POLICY_FILE="${PRSI_POLICY_FILE:-${ROOT_DIR}/config/runtime-prsi-policy.json}"
-STATE_FILE="${PRSI_STATE_PATH:-/var/lib/nixos-ai-stack/prsi/runtime-state.json}"
+STATE_FILE="${PRSI_STATE_PATH:-/var/lib/nixos-ai-stack/optimizer/prsi/runtime-state.json}"
 
 python3 - "$POLICY_FILE" "$STATE_FILE" <<'PY'
 import json
