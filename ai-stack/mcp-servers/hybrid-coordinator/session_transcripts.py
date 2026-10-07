@@ -18,7 +18,7 @@ def redact_secrets(text: str) -> str:
     """
     patterns = [
         r'sk-[A-Za-z0-9_-]{16,}',                                    # OpenAI keys
-        r'gh[pousr]_[A-Za-z0-9]{20,}',                               # GitHub tokens
+        r'(?:gh[pousr]_|github_pat_)[A-Za-z0-9_]{20,}',                               # GitHub tokens
         r'AKIA[0-9A-Z]{16}',                                         # AWS Access Key ID
         r'(?i)bearer\s+[A-Za-z0-9._-]{16,}',                         # Bearer tokens
         r'\b[0-9a-fA-F]{40,}\b',                                     # Long hex (40+ chars)
