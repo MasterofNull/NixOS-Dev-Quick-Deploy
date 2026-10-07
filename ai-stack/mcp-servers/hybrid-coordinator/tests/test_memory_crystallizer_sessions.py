@@ -681,3 +681,19 @@ def test_aq_crystallize_dry_run_executes_under_set_e(tmp_path):
                           "--max-sessions", "2", "--dry-run"], capture_output=True, text=True, timeout=60)
     assert res.returncode == 0, res.stderr
     assert "s.jsonl" in res.stdout
+
+
+def test_distillation_prompt_respects_char_budget():
+    import memory_crystallizer as mc
+    c = mc.MemoryCrystallizer()
+    history = [{"role": "user" if i % 2 == 0 else "assistant", "content": "x" * 1200} for i in range(20)]
+    prompt = c._build_distillation_prompt(history)
+    assert len(prompt) < mc._DISTILL_HISTORY_CHAR_BUDGET + 1000
+
+
+def test_local_llm_client_timeout_override():
+    from core.llm_client import LLMClient
+    default = LLMClient(provider="local", base_url="http://127.0.0.1:1")
+    custom = LLMClient(provider="local", base_url="http://127.0.0.1:1", timeout=900.0)
+    assert default.client.timeout.read == 120.0
+    assert custom.client.timeout.read == 900.0

@@ -546,6 +546,17 @@ async def call_tool(name: str, arguments: Any) -> List[TextContent]:
 # ============================================================================
 
 
+def _env_float(name: str, default: float) -> float:
+    """Parse a positive float env var; a typo must not crash coordinator startup."""
+    raw = os.getenv(name)
+    try:
+        value = float(raw) if raw else default
+    except ValueError:
+        logger.warning("%s=%r is not a number; using %s", name, raw, default)
+        return default
+    return value if value > 0 else default
+
+
 async def initialize_server():
     """Initialize global clients and collections"""
     global qdrant_client, llama_cpp_client, llama_cpp_reasoning_client, switchboard_client, embedding_client, aidb_client, multi_turn_manager, feedback_api, progressive_disclosure, learning_pipeline, postgres_client, context_compressor, embedding_cache, federated_integration_client
@@ -753,7 +764,12 @@ async def initialize_server():
         )
 
     # Memory Crystallizer (L5) initialization
-    crystallizer_llm = LLMClient(provider="local", base_url=Config.SWITCHBOARD_URL)
+    # Batch distillation on the APU needs minutes for prefill+generation; 120s default timed out.
+    crystallizer_llm = LLMClient(
+        provider="local",
+        base_url=Config.SWITCHBOARD_URL,
+        timeout=_env_float("CRYSTALLIZER_LLM_TIMEOUT_S", 900.0),
+    )
     memory_crystallizer.init(
         postgres_client=postgres_client,
         store_insight_fn=_store_crystallized_insight,
