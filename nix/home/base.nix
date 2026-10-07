@@ -965,6 +965,17 @@ in {
     fi
     if [ -f "$settings_file" ] && command -v jq >/dev/null 2>&1; then
       tmp="$(mktemp)"
+      # Normalize JSONC to JSON first (handles trailing commas, comments)
+      if command -v python3 >/dev/null 2>&1; then
+        normalized="$(mktemp)"
+        if python3 "${repoPath}/scripts/ai/lib/jsonc_to_json.py" "$settings_file" "$normalized" 2>/dev/null; then
+          cp "$normalized" "$settings_file"
+          rm -f "$normalized"
+        else
+          rm -f "$normalized"
+          echo "[home-manager] WARNING: Failed to normalize JSONC in $settings_file" >&2
+        fi
+      fi
       if jq '
         .["workbench.colorTheme"] = "Activate SCARLET protocol (beta)" |
         .["workbench.preferredDarkColorTheme"] = "Activate SCARLET protocol (beta)" |
@@ -987,6 +998,17 @@ in {
     settings_file="$HOME/.config/VSCodium/User/settings.json"
     if [ -f "$settings_file" ] && command -v jq >/dev/null 2>&1; then
       tmp="$(mktemp)"
+      # Normalize JSONC to JSON first (handles trailing commas, comments)
+      if command -v python3 >/dev/null 2>&1; then
+        normalized="$(mktemp)"
+        if python3 "${repoPath}/scripts/ai/lib/jsonc_to_json.py" "$settings_file" "$normalized" 2>/dev/null; then
+          cp "$normalized" "$settings_file"
+          rm -f "$normalized"
+        else
+          rm -f "$normalized"
+          echo "[home-manager] WARNING: Failed to normalize JSONC in $settings_file" >&2
+        fi
+      fi
       if jq '
         del(.["claude-code.claudeProcessWrapper"], .["claudeCode.claudeProcessWrapper"]) |
         .["claude-code.environmentVariables"] = ((.["claude-code.environmentVariables"] // []) | map(select(.name != "ANTHROPIC_BASE_URL"))) |
@@ -1018,6 +1040,17 @@ in {
     settings_file="$HOME/.config/VSCodium/User/settings.json"
     if [ -f "$settings_file" ] && command -v jq >/dev/null 2>&1; then
       tmp="$(mktemp)"
+      # Normalize JSONC to JSON first (handles trailing commas, comments)
+      if command -v python3 >/dev/null 2>&1; then
+        normalized="$(mktemp)"
+        if python3 "${repoPath}/scripts/ai/lib/jsonc_to_json.py" "$settings_file" "$normalized" 2>/dev/null; then
+          cp "$normalized" "$settings_file"
+          rm -f "$normalized"
+        else
+          rm -f "$normalized"
+          echo "[home-manager] WARNING: Failed to normalize JSONC in $settings_file" >&2
+        fi
+      fi
       if jq '
         .["chatgpt.cliExecutable"] = (env.HOME + "/.npm-global/bin/codex") |
         # Converge the agentic-dev automation-quieting keys onto the EXISTING
