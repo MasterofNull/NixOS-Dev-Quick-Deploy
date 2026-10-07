@@ -977,7 +977,7 @@ def _run_rsi_delegate(row: Dict[str, Any], timeout_seconds: int, apply: bool, la
 _INFRA_PATTERNS = re.compile(r"read-only file system|permission denied|\bEROFS\b|\bEACCES\b|command not found|cannot touch", re.I)
 
 
-_LANE_UNAVAILABLE = re.compile(r"hit your usage limit|quota cooldown active|rate limit(ed)? exceeded", re.I)
+_LANE_UNAVAILABLE = re.compile(r"hit your (?:\w+ )?limit|quota cooldown active|rate limit(ed)? exceeded", re.I)
 
 
 def _is_lane_unavailable(receipt: Any) -> bool:
@@ -1079,6 +1079,44 @@ def _rsi_gate_filter(eligible: List[Dict[str, Any]], cfg: Dict[str, Any], apply:
     return allowed, skips
 
 
+def _rsi_non_agentic_filter(eligible: List[Dict[str, Any]], cfg: Dict[str, Any]) -> Tuple[List[Dict[str, Any]], Dict[str, int]]:
+    """Drop rows whose incident producer is in the non_agentic_producers list (handled by deterministic scripts)."""
+    incidents = (_read_json(_RSI_INCIDENTS, {}) or {}).get("incidents", {})
+    non_agentic = cfg.get("non_agentic_producers")
+    if not isinstance(non_agentic, list):
+        non_agentic = []
+    if not non_agentic:
+        return eligible, {}
+    allowed: List[Dict[str, Any]] = []
+    skips: Dict[str, int] = {}
+    for row in eligible:
+        incident = incidents.get((row.get("raw_action") or {}).get("incident_id"))
+        if not isinstance(incident, dict):
+            # Missing incident passes through unchanged; gate filter handles the error.
+            allowed.append(row)
+            continue
+        producer = incident.get("producer", "")
+        if not isinstance(producer, str):
+            producer = ""
+        # Exact match or prefix match (value ending with ":*").
+        is_non_agentic = False
+        for pattern in non_agentic:
+            if pattern.endswith(":*"):
+                prefix = pattern[:-2]
+                if producer.startswith(prefix + ":"):
+                    is_non_agentic = True
+                    break
+            elif producer == pattern:
+                is_non_agentic = True
+                break
+        if is_non_agentic:
+            row.setdefault("execution", {})["result"] = "skipped_deterministic_lane"
+            skips["skipped_deterministic_lane"] = skips.get("skipped_deterministic_lane", 0) + 1
+            continue
+        allowed.append(row)
+    return allowed, skips
+
+
 def cmd_rsi_dispatch(args: argparse.Namespace) -> int:
     """Reconcile and dispatch a bounded RSI diagnostic/repair through isolated delegation."""
     policy = _load_policy()
@@ -1154,8 +1192,13 @@ def cmd_rsi_dispatch(args: argparse.Namespace) -> int:
             and int(row.get("rsi_attempts", 0) or 0) < max_attempts
         ]
         rsi_cfg = policy.get("rsi", {}) if isinstance(policy.get("rsi"), dict) else {}
+        # Filter out incidents from non-agentic producers (e.g. nix-closure CVEs) handled by deterministic scripts.
+        candidates = eligible
+        eligible, non_agentic_skips = _rsi_non_agentic_filter(eligible, rsi_cfg)
         binding_on = bool(rsi_cfg.get("approval_binding_enabled", False))
         gate_skips: Dict[str, int] = {}
+        if non_agentic_skips:
+            _merge_save(queue, candidates, ("execution",))
         if binding_on:
             candidates = eligible
             eligible, gate_skips = _rsi_gate_filter(eligible, rsi_cfg, bool(args.apply))
@@ -1174,7 +1217,7 @@ def cmd_rsi_dispatch(args: argparse.Namespace) -> int:
 
         # Copy gate results back onto queue rows so skip reasons persist and are
         # reported; clear a stale skip reason once a row passes the gate.
-        skipped_reasons: Dict[str, int] = dict(gate_skips)
+        skipped_reasons: Dict[str, int] = {**non_agentic_skips, **gate_skips}
         originals = {row.get("id"): row for row in eligible}
         queue_dirty = False
         for sel_row in selection:
