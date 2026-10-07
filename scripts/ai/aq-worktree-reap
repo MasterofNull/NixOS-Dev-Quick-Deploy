@@ -1,0 +1,534 @@
+#!/usr/bin/env python3
+"""
+aq-worktree-reap
+
+Automatically remove delegate worktrees and branches with zero changes.
+Optionally clean up orphaned lean-ctx graphs.
+
+Default is DRY RUN (prints JSON plan); use --apply to perform removal.
+
+Usage:
+    aq-worktree-reap [--apply] [--repo PATH] [--min-age-hours N] [--json] [--graphs]
+    aq-worktree-reap --help
+"""
+
+from __future__ import annotations
+
+import argparse
+import json
+import os
+import re
+import subprocess
+import sys
+from dataclasses import dataclass, asdict
+from datetime import datetime, timezone
+from pathlib import Path
+from typing import Any, Dict, List, Optional
+
+
+CANDIDATE_ROOTS = [
+    ".agents/delegation/worktrees/",
+    ".claude/worktrees/",
+    "/var/lib/nixos-ai-stack/optimizer/prsi/delegation/worktrees/",
+]
+
+# Tool-generated patterns to ignore when checking for dirty status
+IGNORABLE_PATTERNS = [
+    "__pycache__",
+    ".pytest_cache",
+    ".pyc",
+    ".pyo",
+    ".egg-info",
+    ".lean-ctx",
+    ".venv",
+    "node_modules",
+]
+
+
+@dataclass
+class WorktreeCandidate:
+    path: str
+    branch: str
+    is_locked: bool
+    is_prunable_missing: bool
+    is_dirty: bool
+    is_ahead: bool
+    is_old_enough: bool
+    reapable: bool
+
+
+@dataclass
+class SummaryStats:
+    scanned: int
+    reapable: int
+    kept_dirty: int
+    kept_ahead: int
+    kept_young: int
+    kept_locked: int
+    prunable: int
+    bytes_freed: int = 0
+    graphs_orphaned: int = 0
+    graphs_archived: int = 0
+    graphs_bytes_archived: int = 0
+
+
+def get_repo_root(repo_path: Optional[str]) -> Path:
+    """Get repo root from git."""
+    if repo_path:
+        return Path(repo_path).resolve()
+
+    result = subprocess.run(
+        ["git", "rev-parse", "--show-toplevel"],
+        capture_output=True,
+        text=True,
+        check=False
+    )
+    if result.returncode != 0:
+        raise RuntimeError("Could not determine repo root")
+    return Path(result.stdout.strip())
+
+
+def list_worktrees(repo_root: Path) -> List[Dict[str, str]]:
+    """List all git worktrees using git worktree list --porcelain.
+
+    Each worktree in porcelain output is a multi-line stanza:
+      worktree /path/to/wt
+      HEAD <sha>
+      branch refs/heads/<branch>
+      <blank line>
+
+    Returns list of dicts with path and branch.
+    """
+    result = subprocess.run(
+        ["git", "-C", str(repo_root), "worktree", "list", "--porcelain"],
+        capture_output=True,
+        text=True,
+        check=False
+    )
+    if result.returncode != 0:
+        return []
+
+    worktrees = []
+    lines = result.stdout.split('\n')
+
+    i = 0
+    while i < len(lines):
+        line = lines[i]
+        if line.startswith("worktree "):
+            wt_path = line.split(maxsplit=1)[1]
+            branch = None
+            locked = False
+            prunable = False
+
+            # Parse the stanza
+            i += 1
+            while i < len(lines) and lines[i].strip():
+                if lines[i].startswith("branch "):
+                    # refs/heads/branch-name -> branch-name
+                    branch_ref = lines[i].split(maxsplit=1)[1]
+                    branch = branch_ref.replace("refs/heads/", "")
+                elif lines[i].startswith("detached"):
+                    branch = "HEAD"
+                elif "locked" in lines[i]:
+                    locked = True
+                elif "prunable" in lines[i]:
+                    prunable = True
+                i += 1
+
+            if branch:
+                worktrees.append({
+                    "path": wt_path,
+                    "branch": branch,
+                    "locked": locked,
+                    "prunable": prunable,
+                })
+        else:
+            i += 1
+
+    return worktrees
+
+
+def is_candidate_worktree(wt_path: str, repo_root: Path) -> bool:
+    """Check if worktree is under a candidate root."""
+    wt_abs = Path(wt_path).resolve()
+    repo_abs = repo_root.resolve()
+
+    # Never the main worktree
+    if wt_abs == repo_abs:
+        return False
+
+    for root in CANDIDATE_ROOTS:
+        if root.startswith("/"):
+            candidate = Path(root).resolve()
+        else:
+            candidate = (repo_abs / root).resolve()
+
+        try:
+            wt_abs.relative_to(candidate)
+            return True
+        except ValueError:
+            continue
+
+    return False
+
+
+def is_ignorable_file(path: str) -> bool:
+    """Check if file matches ignorable patterns."""
+    path_lower = path.lower()
+    for pattern in IGNORABLE_PATTERNS:
+        if pattern in path_lower or path_lower.endswith(pattern):
+            return True
+    return False
+
+
+def check_worktree_dirty(wt_path: str) -> tuple[bool, List[str]]:
+    """Check if worktree has modified/untracked files (excluding tool artifacts).
+
+    Returns (is_dirty, sample_lines)
+    """
+    result = subprocess.run(
+        ["git", "-C", wt_path, "status", "--porcelain"],
+        capture_output=True,
+        text=True,
+        check=False
+    )
+    if result.returncode != 0:
+        return True, ["git status failed"]
+
+    lines = result.stdout.strip().split('\n') if result.stdout.strip() else []
+
+    # Filter out ignorable patterns
+    real_changes = [line for line in lines if line and not is_ignorable_file(line)]
+
+    return len(real_changes) > 0, real_changes[:3]
+
+
+def check_branch_ahead(repo_root: Path, branch: str) -> bool:
+    """Check if branch has commits not in origin/main."""
+    result = subprocess.run(
+        ["git", "-C", str(repo_root), "rev-list", branch, "--not", "origin/main"],
+        capture_output=True,
+        text=True,
+        check=False
+    )
+    if result.returncode != 0:
+        return True  # Assume ahead on error
+
+    commits = result.stdout.strip()
+    return len(commits) > 0
+
+
+def get_mtime(path: str) -> float:
+    """Get directory mtime."""
+    try:
+        return Path(path).stat().st_mtime
+    except OSError:
+        return 0
+
+
+def is_old_enough(path: str, min_age_hours: int) -> bool:
+    """Check if directory is older than min_age_hours."""
+    mtime = get_mtime(path)
+    if mtime == 0:
+        return True
+
+    age_seconds = (datetime.now(timezone.utc).timestamp() - mtime)
+    return age_seconds > (min_age_hours * 3600)
+
+
+def analyze_worktrees(
+    repo_root: Path,
+    min_age_hours: int = 6,
+) -> tuple[List[WorktreeCandidate], SummaryStats]:
+    """Analyze all worktrees and return candidates for reaping."""
+    candidates = []
+    stats = SummaryStats(scanned=0, reapable=0, kept_dirty=0, kept_ahead=0, kept_young=0, kept_locked=0, prunable=0)
+
+    worktrees = list_worktrees(repo_root)
+
+    for wt in worktrees:
+        stats.scanned += 1
+        path = wt["path"]
+        branch = wt["branch"]
+        is_locked = wt.get("locked", False)
+        is_prunable = wt.get("prunable", False)
+
+        # Skip locked or prunable-missing
+        if is_locked:
+            stats.kept_locked += 1
+            candidates.append(WorktreeCandidate(
+                path=path, branch=branch, is_locked=True, is_prunable_missing=False,
+                is_dirty=False, is_ahead=False, is_old_enough=False, reapable=False
+            ))
+            continue
+
+        if is_prunable:
+            stats.prunable += 1
+            candidates.append(WorktreeCandidate(
+                path=path, branch=branch, is_locked=False, is_prunable_missing=True,
+                is_dirty=False, is_ahead=False, is_old_enough=False, reapable=False
+            ))
+            continue
+
+        # Check if it's a candidate at all
+        if not is_candidate_worktree(path, repo_root):
+            continue
+
+        # Check if it's dirty
+        is_dirty, _ = check_worktree_dirty(path)
+        if is_dirty:
+            stats.kept_dirty += 1
+            candidates.append(WorktreeCandidate(
+                path=path, branch=branch, is_locked=False, is_prunable_missing=False,
+                is_dirty=True, is_ahead=False, is_old_enough=False, reapable=False
+            ))
+            continue
+
+        # Check if branch is ahead of origin/main
+        is_ahead = check_branch_ahead(repo_root, branch)
+        if is_ahead:
+            stats.kept_ahead += 1
+            candidates.append(WorktreeCandidate(
+                path=path, branch=branch, is_locked=False, is_prunable_missing=False,
+                is_dirty=False, is_ahead=True, is_old_enough=False, reapable=False
+            ))
+            continue
+
+        # Check if branch name matches pattern
+        if not (branch.startswith("delegate/") or branch.startswith("worktree-agent-")):
+            continue
+
+        # Check age
+        is_old = is_old_enough(path, min_age_hours)
+        if not is_old:
+            stats.kept_young += 1
+            candidates.append(WorktreeCandidate(
+                path=path, branch=branch, is_locked=False, is_prunable_missing=False,
+                is_dirty=False, is_ahead=False, is_old_enough=False, reapable=False
+            ))
+            continue
+
+        # This one is reapable
+        stats.reapable += 1
+        candidates.append(WorktreeCandidate(
+            path=path, branch=branch, is_locked=False, is_prunable_missing=False,
+            is_dirty=False, is_ahead=False, is_old_enough=True, reapable=True
+        ))
+
+    return candidates, stats
+
+
+def remove_worktree(repo_root: Path, wt_path: str, branch: str) -> tuple[bool, str]:
+    """Remove a worktree and its branch."""
+    # Remove worktree
+    result = subprocess.run(
+        ["git", "worktree", "remove", wt_path],
+        cwd=str(repo_root),
+        capture_output=True,
+        text=True,
+        check=False
+    )
+    if result.returncode != 0:
+        return False, f"worktree remove failed: {result.stderr}"
+
+    # Remove branch
+    result = subprocess.run(
+        ["git", "branch", "-D", branch],
+        cwd=str(repo_root),
+        capture_output=True,
+        text=True,
+        check=False
+    )
+    if result.returncode != 0:
+        return False, f"branch delete failed: {result.stderr}"
+
+    return True, "removed"
+
+
+def find_orphaned_graphs(graph_root: Optional[Path] = None) -> List[Dict[str, Any]]:
+    """Find orphaned lean-ctx graphs whose project_root no longer exists."""
+    if graph_root is None:
+        graph_root = Path.home() / ".lean-ctx" / "graphs"
+
+    if not graph_root.exists():
+        return []
+
+    orphans = []
+    for entry in graph_root.iterdir():
+        if not entry.is_dir():
+            continue
+
+        index_file = entry / "index.json"
+        if not index_file.exists():
+            continue
+
+        try:
+            with open(index_file) as f:
+                data = json.load(f)
+                project_root = data.get("project_root")
+                if project_root and not Path(project_root).exists():
+                    orphans.append({
+                        "graph_dir": str(entry),
+                        "project_root": project_root,
+                        "size_bytes": sum(f.stat().st_size for f in entry.rglob("*") if f.is_file()),
+                    })
+        except (json.JSONDecodeError, OSError):
+            continue
+
+    return orphans
+
+
+def archive_graphs(orphans: List[Dict[str, Any]]) -> int:
+    """Move orphaned graphs to archive directory."""
+    archive_root = Path.home() / ".lean-ctx" / "graphs-archive"
+    archive_root.mkdir(parents=True, exist_ok=True)
+
+    # Create dated subdirectory
+    dated_dir = archive_root / datetime.now(timezone.utc).strftime("%Y%m%d")
+    dated_dir.mkdir(exist_ok=True)
+
+    total_bytes = 0
+    for orphan in orphans:
+        src = Path(orphan["graph_dir"])
+        dst = dated_dir / src.name
+
+        try:
+            src.rename(dst)
+            total_bytes += orphan["size_bytes"]
+        except OSError:
+            pass  # Silently skip on error
+
+    return total_bytes
+
+
+def main():
+    parser = argparse.ArgumentParser(
+        description="Remove delegate worktrees and branches with zero changes."
+    )
+    parser.add_argument(
+        "--apply",
+        action="store_true",
+        help="Perform removal (default is dry run)"
+    )
+    parser.add_argument(
+        "--repo",
+        default=None,
+        help="Repo root (default: auto-detect)"
+    )
+    parser.add_argument(
+        "--min-age-hours",
+        type=int,
+        default=6,
+        help="Minimum age in hours (default: 6)"
+    )
+    parser.add_argument(
+        "--json",
+        action="store_true",
+        help="Output as JSON"
+    )
+    parser.add_argument(
+        "--graphs",
+        action="store_true",
+        help="Also check and report orphaned lean-ctx graphs"
+    )
+
+    args = parser.parse_args()
+
+    try:
+        repo_root = get_repo_root(args.repo)
+    except RuntimeError as e:
+        print(f"Error: {e}", file=sys.stderr)
+        sys.exit(1)
+
+    # Analyze worktrees
+    candidates, stats = analyze_worktrees(repo_root, args.min_age_hours)
+
+    # Handle graphs if requested
+    graphs_orphans = []
+    if args.graphs:
+        graphs_orphans = find_orphaned_graphs()
+        stats.graphs_orphaned = len(graphs_orphans)
+
+    # Build action plan
+    plan = {
+        "dry_run": not args.apply,
+        "repo_root": str(repo_root),
+        "min_age_hours": args.min_age_hours,
+        "stats": asdict(stats),
+        "removals": [],
+        "graph_actions": [],
+    }
+
+    # Collect reapable worktrees
+    reapable_wts = [c for c in candidates if c.reapable]
+    for wt in reapable_wts:
+        plan["removals"].append({
+            "path": wt.path,
+            "branch": wt.branch,
+        })
+
+    # Collect graph actions
+    for orphan in graphs_orphans:
+        plan["graph_actions"].append({
+            "graph_dir": orphan["graph_dir"],
+            "action": "archive" if args.apply else "would-archive",
+            "size_bytes": orphan["size_bytes"],
+        })
+
+    # Apply if requested
+    if args.apply:
+        reap_log = repo_root / ".agent" / "collaboration" / "worktree-reap.jsonl"
+        reap_log.parent.mkdir(parents=True, exist_ok=True)
+
+        # Apply worktree removals
+        for wt in reapable_wts:
+            success, msg = remove_worktree(repo_root, wt.path, wt.branch)
+            result_entry = {
+                "timestamp": datetime.now(timezone.utc).isoformat(),
+                "path": wt.path,
+                "branch": wt.branch,
+                "action": "remove",
+                "result": "success" if success else f"error: {msg}",
+            }
+            if success:
+                stats.bytes_freed += sum(
+                    f.stat().st_size for f in Path(wt.path).rglob("*") if f.is_file()
+                )
+            with open(reap_log, "a") as f:
+                f.write(json.dumps(result_entry) + "\n")
+
+        # Apply graph archival
+        if graphs_orphans:
+            bytes_archived = archive_graphs(graphs_orphans)
+            stats.graphs_archived = len(graphs_orphans)
+            stats.graphs_bytes_archived = bytes_archived
+
+        # Prune
+        subprocess.run(
+            ["git", "-C", str(repo_root), "worktree", "prune"],
+            capture_output=True,
+            check=False
+        )
+
+    # Output
+    if args.json:
+        print(json.dumps(plan, indent=2))
+    else:
+        print(f"Scanned: {stats.scanned}")
+        print(f"Reapable: {stats.reapable}")
+        print(f"Kept (dirty): {stats.kept_dirty}")
+        print(f"Kept (ahead): {stats.kept_ahead}")
+        print(f"Kept (young): {stats.kept_young}")
+        print(f"Kept (locked): {stats.kept_locked}")
+        print(f"Prunable (missing): {stats.prunable}")
+        if args.graphs:
+            print(f"Graphs orphaned: {stats.graphs_orphaned}")
+            print(f"Graphs archived: {stats.graphs_archived}")
+            if stats.graphs_bytes_archived:
+                print(f"Graphs bytes archived: {stats.graphs_bytes_archived}")
+        if args.apply:
+            print(f"Bytes freed: {stats.bytes_freed}")
+
+
+if __name__ == "__main__":
+    main()
