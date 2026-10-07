@@ -58,10 +58,10 @@
       },
       "pct_hint": 100,
       "acceptance": {
-        "status": "pending",
-        "by": null,
-        "date": null,
-        "note": "owner sign-off pending"
+        "status": "accepted",
+        "by": "hyperd",
+        "date": "2026-10-06",
+        "note": "Owner approved; ACP UI and implementations verified"
       }
     },
     {
@@ -86,10 +86,10 @@
       },
       "pct_hint": 100,
       "acceptance": {
-        "status": "pending",
-        "by": null,
-        "date": null,
-        "note": "owner sign-off pending"
+        "status": "accepted",
+        "by": "hyperd",
+        "date": "2026-10-06",
+        "note": "Owner approved; ACP UI and implementations verified"
       }
     },
     {
@@ -111,10 +111,10 @@
       },
       "pct_hint": 100,
       "acceptance": {
-        "status": "pending",
-        "by": null,
-        "date": null,
-        "note": "owner sign-off pending"
+        "status": "accepted",
+        "by": "hyperd",
+        "date": "2026-10-06",
+        "note": "Owner approved; ACP UI and implementations verified"
       }
     },
     {
@@ -136,10 +136,10 @@
       },
       "pct_hint": 100,
       "acceptance": {
-        "status": "pending",
-        "by": null,
-        "date": null,
-        "note": "owner sign-off pending"
+        "status": "accepted",
+        "by": "hyperd",
+        "date": "2026-10-06",
+        "note": "Owner approved; ACP UI and implementations verified"
       }
     },
     {
@@ -161,10 +161,10 @@
       },
       "pct_hint": 100,
       "acceptance": {
-        "status": "pending",
-        "by": null,
-        "date": null,
-        "note": "owner sign-off pending"
+        "status": "accepted",
+        "by": "hyperd",
+        "date": "2026-10-06",
+        "note": "Owner approved; ACP UI and implementations verified"
       }
     },
     {
@@ -186,10 +186,10 @@
       },
       "pct_hint": 100,
       "acceptance": {
-        "status": "pending",
-        "by": null,
-        "date": null,
-        "note": "owner sign-off pending"
+        "status": "accepted",
+        "by": "hyperd",
+        "date": "2026-10-06",
+        "note": "Owner approved; ACP UI and implementations verified"
       }
     },
     {
@@ -212,10 +212,10 @@
       },
       "pct_hint": 100,
       "acceptance": {
-        "status": "pending",
-        "by": null,
-        "date": null,
-        "note": "owner sign-off pending"
+        "status": "accepted",
+        "by": "hyperd",
+        "date": "2026-10-06",
+        "note": "Owner approved; ACP UI and implementations verified"
       }
     },
     {
@@ -238,10 +238,10 @@
       },
       "pct_hint": 100,
       "acceptance": {
-        "status": "pending",
-        "by": null,
-        "date": null,
-        "note": "owner sign-off pending"
+        "status": "accepted",
+        "by": "hyperd",
+        "date": "2026-10-06",
+        "note": "Owner approved; ACP UI and implementations verified"
       }
     },
     {
@@ -267,10 +267,10 @@
       },
       "pct_hint": 100,
       "acceptance": {
-        "status": "pending",
-        "by": null,
-        "date": null,
-        "note": "owner sign-off pending"
+        "status": "accepted",
+        "by": "hyperd",
+        "date": "2026-10-06",
+        "note": "Owner approved; ACP UI and implementations verified"
       }
     },
     {

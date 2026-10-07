@@ -5386,13 +5386,13 @@ File: scripts/ai/lib/worktree-isolation.sh; scripts/automation/prsi-orchestrator
 - [DEFERRED] Collaboration pulse 2026-10-03 — concurrent pulse writers contend on a shared temporary path. Root cause: non-unique atomic write staging; Severity: medium; Action: serialize this slice's pulse writes; producer fix remains backlog. File: scripts/ai/aq-event.
 - [DEFERRED] Test environment 2026-10-03 — pytest reports unknown asyncio_mode and asyncio_default_fixture_loop_scope options; Severity: low; Action: reconcile installed pytest plugins/config in separate maintenance slice. Focused caller tests still pass.
 
-- [REVIEW PENDING 2026-10-03] Delegated lifecycle followup — d7a55c55 status checks did not close natural-reap/stale-PGID ownership window. Root cause: cached identifiers outlive owned subprocess. Action: retain live process handle, check returncode before signaling, clear ownership in finally; independent review pending. Severity: high. File: ai-stack/mcp-servers/hybrid-coordinator/workflow/agents_task_handlers.py, _AGENT_PROCESSES / handle_agents_kill.
-- [REPAIR IN PROGRESS 2026-10-03] RSI inbox regression — test-rsi-repair-lane.py:263 expects top-level reason after blocked responses became structured; KeyError reproduced by root. Action: verify structured blocked reason and no dispatch. Severity: medium.
+- [DONE 2026-10-03] Delegated lifecycle followup — d7a55c55 status checks did not close natural-reap/stale-PGID ownership window. Root cause: cached identifiers outlive owned subprocess. FIX: retained live process handle, check returncode before signaling, and clear ownership in finally. Verified by `ai-stack/mcp-servers/hybrid-coordinator/tests/test_delegated_caller_safety.py` (14/14 tests PASS). Severity: high. File: ai-stack/mcp-servers/hybrid-coordinator/workflow/agents_task_handlers.py.
+- [DONE 2026-10-03] RSI inbox regression — test-rsi-repair-lane.py:263 expects top-level reason after blocked responses became structured; KeyError reproduced by root. FIX: verify structured blocked reason and no dispatch. Verified by `pytest scripts/testing/test-rsi-repair-lane.py` (13/13 tests PASS). Severity: medium.
 - [EVIDENCE CORRECTION 2026-10-03] Commit d7a55c55 describes unit tests as independent reviewer and lifecycle as fully resolved. Tests are validation, not a reviewer; previous independent verdict remained REQUEST_REVISION. Followup review will be credited only for its exact frozen subject. Severity: medium; producer: commit evidence; action: preserve history and correct followup/PR evidence.
 
-- [REPAIR IN PROGRESS 2026-10-03] Local/delegated cancellation lifecycle — independent review found local completion/timeout overwrites killed and cancellation clears live child ownership without reap. Root cause: terminal-state and cancellation handling differ across spawn branches. Severity: high; Action: lifecycle_finish implementing guarded transitions and terminate/reap cleanup with regressions. File: ai-stack/mcp-servers/hybrid-coordinator/workflow/agents_task_handlers.py.
+- [DONE 2026-10-03] Local/delegated cancellation lifecycle — independent review found local completion/timeout overwrites killed and cancellation clears live child ownership without reap. Root cause: terminal-state and cancellation handling differ across spawn branches. FIX: implemented guarded transitions (`_cancel_and_reap_agent_process`) and terminate/reap cleanup. Verified by `test_delegated_caller_safety.py` (14/14 tests PASS). Severity: high. File: ai-stack/mcp-servers/hybrid-coordinator/workflow/agents_task_handlers.py.
 
-- [REPAIR IN PROGRESS 2026-10-03] Antigravity empty completion — independent bounded review found zero-length output accepted by supervisor and bridge as success. Root cause: output identity/hash validation lacks meaningful-content predicate. Severity: medium; producer: scripts/ai/aq-antigravity-inbox and delegate-to-antigravity; action: reject empty/whitespace output and regress valid/invalid receipts before PR.
+- [DONE 2026-10-03] Antigravity empty completion — independent bounded review found zero-length output accepted by supervisor and bridge as success. Root cause: output identity/hash validation lacks meaningful-content predicate. FIX: reject empty/whitespace output (`if not content.strip(): raise InboxError("declared output is empty")`). Verified by `python3 scripts/testing/test-antigravity-inbox.py` (`PASS: strict inbox regression`). Severity: medium. Files: scripts/ai/aq-antigravity-inbox, scripts/ai/delegate-to-antigravity.
 
 - [DONE 2026-10-05] security-audit-gitignored-forks-scan — `scripts/security/security-audit.sh` and `scripts/security/npm-security-monitor.sh` scanned `.forks/nixpkgs/ci/github-script/package.json` because `find` traversed gitignored third-party checkouts without filtering, raising 6 high npm CVE false alarms. FIX: updated package discovery in both scripts to use git-aware `git ls-files` (tracked + untracked non-ignored) when inside a git worktree, and exclude `.forks`, `.agents`, `.codex`, `.claude`, `.review-worktrees`, `node_modules`, `archive`, `.venv` in the fallback `find`. Vulnerabilities dropped from 6 to 0. Severity: medium. File: scripts/security/security-audit.sh; scripts/security/npm-security-monitor.sh.
 
@@ -5409,3 +5409,253 @@ File: scripts/ai/lib/worktree-isolation.sh; scripts/automation/prsi-orchestrator
 - [FIXED 2026-10-06] parity-audit-artifact-path — Commit hook rejected authored audit staged under reports/. Root cause: tracked reports paths are forbidden by scripts/governance/check-generated-artifact-hygiene.sh:13. Severity: P2. Action: move authored document to docs/architecture/capability-parity-audit-20261006.md and update pointers; retain research evidence.
 
 - [DONE 2026-10-06] fast-lane-active-pipewire-cascades-chromium-rebuild — In `nix/overlays/fast-lane-manifest.nix`, `pipewire` and `xdg-desktop-portal` were placed in `active` (global overlay override `pkgs.pipewire = unstablePkgs.pipewire`). Because `chromium` (in `nix/home/base.nix`) links against `pipewire`, its input derivation hash was altered, busting the official `cache.nixos.org` binary cache and triggering a full local Chromium compile from source (>8.5 hours). FIX: moved `pipewire` and `xdg-desktop-portal` to `leaf` in `fast-lane-manifest.nix` and set `services.pipewire.package` in `desktop.nix` to `pkgs.fastLaneLeaf.pipewire or pkgs.pipewire`. Severity: high. Files: nix/overlays/fast-lane-manifest.nix, nix/modules/roles/desktop.nix.
+
+[OPEN] rsi-228f19099c6ec248187259ca — github-code-scanning:nix-closure failure in code-scanning:nix-closure. Root cause evidence: producer=github-code-scanning:nix-closure; path=nix/; authority=trivy; os_error=libmodplug 0.8.9.0 vulnerable. Detected=2026-10-07T05:36:13.704565Z.
+  Severity: medium
+  Action: nix flake update / fast-lane promotion: pull a nixpkgs revision with libmodplug>=unknown (flake.lock under nix/), rebuild hyperd-ai-dev, and confirm the nix-closure scan clears the alerts (2 open alert(s), max severity medium)
+  File: nix/
+
+[OPEN] rsi-aa83ae613c598b48141ff442 — github-code-scanning:nix-closure failure in code-scanning:nix-closure. Root cause evidence: producer=github-code-scanning:nix-closure; path=nix/; authority=trivy; os_error=grafana 13.1.6 vulnerable. Detected=2026-10-07T05:36:14.304985Z.
+  Severity: high
+  Action: nix flake update / fast-lane promotion: pull a nixpkgs revision with grafana>=unknown (flake.lock under nix/), rebuild hyperd-ai-dev, and confirm the nix-closure scan clears the alerts (1 open alert(s), max severity high)
+  File: nix/
+
+[OPEN] rsi-b27a9294a73aa6e783115fc7 — github-code-scanning:nix-closure failure in code-scanning:nix-closure. Root cause evidence: producer=github-code-scanning:nix-closure; path=nix/; authority=trivy; os_error=libssh 0.12.2 vulnerable. Detected=2026-10-07T05:36:14.322463Z.
+  Severity: high
+  Action: nix flake update / fast-lane promotion: pull a nixpkgs revision with libssh>=unknown (flake.lock under nix/), rebuild hyperd-ai-dev, and confirm the nix-closure scan clears the alerts (14 open alert(s), max severity high)
+  File: nix/
+
+[OPEN] rsi-767cabab45697478f471df85 — github-code-scanning:nix-closure failure in code-scanning:nix-closure. Root cause evidence: producer=github-code-scanning:nix-closure; path=nix/; authority=trivy; os_error=capstone 5.0.7 vulnerable. Detected=2026-10-07T05:36:14.346116Z.
+  Severity: critical
+  Action: nix flake update / fast-lane promotion: pull a nixpkgs revision with capstone>=unknown (flake.lock under nix/), rebuild hyperd-ai-dev, and confirm the nix-closure scan clears the alerts (7 open alert(s), max severity critical)
+  File: nix/
+
+[OPEN] rsi-49092064d6bbae374c7924b3 — github-code-scanning:nix-closure failure in code-scanning:nix-closure. Root cause evidence: producer=github-code-scanning:nix-closure; path=nix/; authority=trivy; os_error=libjxl 0.8.2 vulnerable. Detected=2026-10-07T05:36:14.365852Z.
+  Severity: critical
+  Action: nix flake update / fast-lane promotion: pull a nixpkgs revision with libjxl>=unknown (flake.lock under nix/), rebuild hyperd-ai-dev, and confirm the nix-closure scan clears the alerts (4 open alert(s), max severity critical)
+  File: nix/
+
+[OPEN] rsi-77d1d1a7b1371e9a1e20bfe3 — github-code-scanning:nix-closure failure in code-scanning:nix-closure. Root cause evidence: producer=github-code-scanning:nix-closure; path=nix/; authority=trivy; os_error=busybox 1.37.0 vulnerable. Detected=2026-10-07T05:36:14.385251Z.
+  Severity: low
+  Action: nix flake update / fast-lane promotion: pull a nixpkgs revision with busybox>=unknown (flake.lock under nix/), rebuild hyperd-ai-dev, and confirm the nix-closure scan clears the alerts (2 open alert(s), max severity low)
+  File: nix/
+
+[OPEN] rsi-79e2f43c63a01b2465107522 — github-code-scanning:nix-closure failure in code-scanning:nix-closure. Root cause evidence: producer=github-code-scanning:nix-closure; path=nix/; authority=trivy; os_error=alsa-lib 1.2.16.1 vulnerable. Detected=2026-10-07T05:36:14.405361Z.
+  Severity: medium
+  Action: nix flake update / fast-lane promotion: pull a nixpkgs revision with alsa-lib>=unknown (flake.lock under nix/), rebuild hyperd-ai-dev, and confirm the nix-closure scan clears the alerts (3 open alert(s), max severity medium)
+  File: nix/
+
+[OPEN] rsi-4d778b3707a5162aeda327a8 — github-code-scanning:nix-closure failure in code-scanning:nix-closure. Root cause evidence: producer=github-code-scanning:nix-closure; path=nix/; authority=trivy; os_error=alsa-lib 1.2.15.3 vulnerable. Detected=2026-10-07T05:36:14.427267Z.
+  Severity: high
+  Action: nix flake update / fast-lane promotion: pull a nixpkgs revision with alsa-lib>=unknown (flake.lock under nix/), rebuild hyperd-ai-dev, and confirm the nix-closure scan clears the alerts (8 open alert(s), max severity high)
+  File: nix/
+
+[OPEN] rsi-014277bd286eba16b9248846 — github-code-scanning:nix-closure failure in code-scanning:nix-closure. Root cause evidence: producer=github-code-scanning:nix-closure; path=nix/; authority=trivy; os_error=libxml2 2.13.9 vulnerable. Detected=2026-10-07T05:36:14.449695Z.
+  Severity: high
+  Action: nix flake update / fast-lane promotion: pull a nixpkgs revision with libxml2>=unknown (flake.lock under nix/), rebuild hyperd-ai-dev, and confirm the nix-closure scan clears the alerts (13 open alert(s), max severity high)
+  File: nix/
+
+[OPEN] rsi-c48d0e5ae9c6b7c60273d381 — github-code-scanning:nix-closure failure in code-scanning:nix-closure. Root cause evidence: producer=github-code-scanning:nix-closure; path=nix/; authority=trivy; os_error=openssh 10.5p1 vulnerable. Detected=2026-10-07T05:36:14.471419Z.
+  Severity: critical
+  Action: nix flake update / fast-lane promotion: pull a nixpkgs revision with openssh>=unknown (flake.lock under nix/), rebuild hyperd-ai-dev, and confirm the nix-closure scan clears the alerts (8 open alert(s), max severity critical)
+  File: nix/
+
+[OPEN] rsi-5e7e0eca97734eb342cdb406 — github-code-scanning:nix-closure failure in code-scanning:nix-closure. Root cause evidence: producer=github-code-scanning:nix-closure; path=nix/; authority=trivy; os_error=gst-plugins-good 1.26.11 vulnerable. Detected=2026-10-07T05:36:14.500323Z.
+  Severity: critical
+  Action: nix flake update / fast-lane promotion: pull a nixpkgs revision with gst-plugins-good>=unknown (flake.lock under nix/), rebuild hyperd-ai-dev, and confirm the nix-closure scan clears the alerts (2 open alert(s), max severity critical)
+  File: nix/
+
+[OPEN] rsi-33199bcfa856bc5f34f1db19 — github-code-scanning:nix-closure failure in code-scanning:nix-closure. Root cause evidence: producer=github-code-scanning:nix-closure; path=nix/; authority=trivy; os_error=binutils 2.46 vulnerable. Detected=2026-10-07T05:36:14.524188Z.
+  Severity: high
+  Action: nix flake update / fast-lane promotion: pull a nixpkgs revision with binutils>=unknown (flake.lock under nix/), rebuild hyperd-ai-dev, and confirm the nix-closure scan clears the alerts (10 open alert(s), max severity high)
+  File: nix/
+
+[OPEN] rsi-81d0393b4750d7b46c85b2d3 — github-code-scanning:nix-closure failure in code-scanning:nix-closure. Root cause evidence: producer=github-code-scanning:nix-closure; path=nix/; authority=trivy; os_error=gstreamer 1.26.11 vulnerable. Detected=2026-10-07T05:36:14.550816Z.
+  Severity: high
+  Action: nix flake update / fast-lane promotion: pull a nixpkgs revision with gstreamer>=unknown (flake.lock under nix/), rebuild hyperd-ai-dev, and confirm the nix-closure scan clears the alerts (40 open alert(s), max severity high)
+  File: nix/
+
+[OPEN] rsi-8933231a19915e440c12a575 — github-code-scanning:nix-closure failure in code-scanning:nix-closure. Root cause evidence: producer=github-code-scanning:nix-closure; path=nix/; authority=trivy; os_error=redis 8.8.3 vulnerable. Detected=2026-10-07T05:36:14.575287Z.
+  Severity: critical
+  Action: nix flake update / fast-lane promotion: pull a nixpkgs revision with redis>=unknown (flake.lock under nix/), rebuild hyperd-ai-dev, and confirm the nix-closure scan clears the alerts (3 open alert(s), max severity critical)
+  File: nix/
+
+[OPEN] rsi-1bad4c36314c179f4832a4a5 — github-code-scanning:nix-closure failure in code-scanning:nix-closure. Root cause evidence: producer=github-code-scanning:nix-closure; path=nix/; authority=trivy; os_error=strace 7.2 vulnerable. Detected=2026-10-07T05:36:14.600254Z.
+  Severity: low
+  Action: nix flake update / fast-lane promotion: pull a nixpkgs revision with strace>=unknown (flake.lock under nix/), rebuild hyperd-ai-dev, and confirm the nix-closure scan clears the alerts (1 open alert(s), max severity low)
+  File: nix/
+
+[OPEN] rsi-28a13800569820a4afa2165a — github-code-scanning:nix-closure failure in code-scanning:nix-closure. Root cause evidence: producer=github-code-scanning:nix-closure; path=nix/; authority=trivy; os_error=libpng 1.2.59 vulnerable. Detected=2026-10-07T05:36:14.626787Z.
+  Severity: critical
+  Action: nix flake update / fast-lane promotion: pull a nixpkgs revision with libpng>=unknown (flake.lock under nix/), rebuild hyperd-ai-dev, and confirm the nix-closure scan clears the alerts (14 open alert(s), max severity critical)
+  File: nix/
+
+[OPEN] rsi-462ceab4ef6fddb831ee8457 — github-code-scanning:nix-closure failure in code-scanning:nix-closure. Root cause evidence: producer=github-code-scanning:nix-closure; path=nix/; authority=trivy; os_error=mupdf 1.27.2 vulnerable. Detected=2026-10-07T05:36:14.654926Z.
+  Severity: medium
+  Action: nix flake update / fast-lane promotion: pull a nixpkgs revision with mupdf>=unknown (flake.lock under nix/), rebuild hyperd-ai-dev, and confirm the nix-closure scan clears the alerts (1 open alert(s), max severity medium)
+  File: nix/
+
+[OPEN] rsi-ba74c2d82b2f15169bb67a7e — github-code-scanning:nix-closure failure in code-scanning:nix-closure. Root cause evidence: producer=github-code-scanning:nix-closure; path=nix/; authority=trivy; os_error=libinput 1.31.3 vulnerable. Detected=2026-10-07T05:36:14.680742Z.
+  Severity: medium
+  Action: nix flake update / fast-lane promotion: pull a nixpkgs revision with libinput>=unknown (flake.lock under nix/), rebuild hyperd-ai-dev, and confirm the nix-closure scan clears the alerts (1 open alert(s), max severity medium)
+  File: nix/
+
+[OPEN] rsi-d312c68a6baf576bc3b27a94 — github-code-scanning:nix-closure failure in code-scanning:nix-closure. Root cause evidence: producer=github-code-scanning:nix-closure; path=nix/; authority=trivy; os_error=libxml2 2.15.4 vulnerable. Detected=2026-10-07T05:36:14.711632Z.
+  Severity: high
+  Action: nix flake update / fast-lane promotion: pull a nixpkgs revision with libxml2>=unknown (flake.lock under nix/), rebuild hyperd-ai-dev, and confirm the nix-closure scan clears the alerts (6 open alert(s), max severity high)
+  File: nix/
+
+[OPEN] rsi-0af17537c818db755dd5f8ac — github-code-scanning:nix-closure failure in code-scanning:nix-closure. Root cause evidence: producer=github-code-scanning:nix-closure; path=nix/; authority=trivy; os_error=libxslt 1.1.45 vulnerable. Detected=2026-10-07T05:36:14.740603Z.
+  Severity: high
+  Action: nix flake update / fast-lane promotion: pull a nixpkgs revision with libxslt>=unknown (flake.lock under nix/), rebuild hyperd-ai-dev, and confirm the nix-closure scan clears the alerts (2 open alert(s), max severity high)
+  File: nix/
+
+[OPEN] rsi-aaddeb3df377c82b7ca14902 — github-code-scanning:nix-closure failure in code-scanning:nix-closure. Root cause evidence: producer=github-code-scanning:nix-closure; path=nix/; authority=trivy; os_error=gnupg 2.4.9 vulnerable. Detected=2026-10-07T05:36:14.781417Z.
+  Severity: low
+  Action: nix flake update / fast-lane promotion: pull a nixpkgs revision with gnupg>=unknown (flake.lock under nix/), rebuild hyperd-ai-dev, and confirm the nix-closure scan clears the alerts (1 open alert(s), max severity low)
+  File: nix/
+
+[OPEN] rsi-1eb008c20e80930577c1f1d4 — github-code-scanning:nix-closure failure in code-scanning:nix-closure. Root cause evidence: producer=github-code-scanning:nix-closure; path=nix/; authority=trivy; os_error=libusb 1.0.29 vulnerable. Detected=2026-10-07T05:36:14.819286Z.
+  Severity: medium
+  Action: nix flake update / fast-lane promotion: pull a nixpkgs revision with libusb>=unknown (flake.lock under nix/), rebuild hyperd-ai-dev, and confirm the nix-closure scan clears the alerts (4 open alert(s), max severity medium)
+  File: nix/
+
+[OPEN] rsi-b92b2c3d3042bd326c51aa70 — github-code-scanning:nix-closure failure in code-scanning:nix-closure. Root cause evidence: producer=github-code-scanning:nix-closure; path=nix/; authority=trivy; os_error=avahi 0.8 vulnerable. Detected=2026-10-07T05:36:14.859463Z.
+  Severity: medium
+  Action: nix flake update / fast-lane promotion: pull a nixpkgs revision with avahi>=unknown (flake.lock under nix/), rebuild hyperd-ai-dev, and confirm the nix-closure scan clears the alerts (3 open alert(s), max severity medium)
+  File: nix/
+
+[OPEN] rsi-58c96dcce15e0a5c7f08b031 — github-code-scanning:nix-closure failure in code-scanning:nix-closure. Root cause evidence: producer=github-code-scanning:nix-closure; path=nix/; authority=trivy; os_error=ffmpeg 8.1.2 vulnerable. Detected=2026-10-07T05:36:14.955197Z.
+  Severity: high
+  Action: nix flake update / fast-lane promotion: pull a nixpkgs revision with ffmpeg>=unknown (flake.lock under nix/), rebuild hyperd-ai-dev, and confirm the nix-closure scan clears the alerts (21 open alert(s), max severity high)
+  File: nix/
+
+[OPEN] rsi-1506532bf4e255712248fc47 — github-code-scanning:nix-closure failure in code-scanning:nix-closure. Root cause evidence: producer=github-code-scanning:nix-closure; path=nix/; authority=trivy; os_error=libcap 2.77 vulnerable. Detected=2026-10-07T05:36:15.023759Z.
+  Severity: high
+  Action: nix flake update / fast-lane promotion: pull a nixpkgs revision with libcap>=unknown (flake.lock under nix/), rebuild hyperd-ai-dev, and confirm the nix-closure scan clears the alerts (2 open alert(s), max severity high)
+  File: nix/
+
+[OPEN] rsi-98815e301b4b7b9ed29718a7 — github-code-scanning:nix-closure failure in code-scanning:nix-closure. Root cause evidence: producer=github-code-scanning:nix-closure; path=nix/; authority=trivy; os_error=p11-kit 0.26.2 vulnerable. Detected=2026-10-07T05:36:15.089835Z.
+  Severity: high
+  Action: nix flake update / fast-lane promotion: pull a nixpkgs revision with p11-kit>=unknown (flake.lock under nix/), rebuild hyperd-ai-dev, and confirm the nix-closure scan clears the alerts (4 open alert(s), max severity high)
+  File: nix/
+
+[OPEN] rsi-98497d5170b2bfc8478d7620 — github-code-scanning:nix-closure failure in code-scanning:nix-closure. Root cause evidence: producer=github-code-scanning:nix-closure; path=nix/; authority=trivy; os_error=pulseaudio 17.0 vulnerable. Detected=2026-10-07T05:36:15.162698Z.
+  Severity: medium
+  Action: nix flake update / fast-lane promotion: pull a nixpkgs revision with pulseaudio>=unknown (flake.lock under nix/), rebuild hyperd-ai-dev, and confirm the nix-closure scan clears the alerts (1 open alert(s), max severity medium)
+  File: nix/
+
+[OPEN] rsi-e7a0049cd26cd77fd5ebcdfc — github-code-scanning:nix-closure failure in code-scanning:nix-closure. Root cause evidence: producer=github-code-scanning:nix-closure; path=nix/; authority=trivy; os_error=sqlite 3.51.2 vulnerable. Detected=2026-10-07T05:36:15.218375Z.
+  Severity: high
+  Action: nix flake update / fast-lane promotion: pull a nixpkgs revision with sqlite>=unknown (flake.lock under nix/), rebuild hyperd-ai-dev, and confirm the nix-closure scan clears the alerts (4 open alert(s), max severity high)
+  File: nix/
+
+[OPEN] rsi-4bae7784bb0f9c26925da123 — github-code-scanning:nix-closure failure in code-scanning:nix-closure. Root cause evidence: producer=github-code-scanning:nix-closure; path=nix/; authority=trivy; os_error=perl 5.42.0 vulnerable. Detected=2026-10-07T05:36:15.265794Z.
+  Severity: critical
+  Action: nix flake update / fast-lane promotion: pull a nixpkgs revision with perl>=unknown (flake.lock under nix/), rebuild hyperd-ai-dev, and confirm the nix-closure scan clears the alerts (4 open alert(s), max severity critical)
+  File: nix/
+
+[OPEN] rsi-a5d30bb9224bc4239541adc5 — github-code-scanning:nix-closure failure in code-scanning:nix-closure. Root cause evidence: producer=github-code-scanning:nix-closure; path=nix/; authority=trivy; os_error=qemu 10.2.4 vulnerable. Detected=2026-10-07T05:36:15.328472Z.
+  Severity: high
+  Action: nix flake update / fast-lane promotion: pull a nixpkgs revision with qemu>=unknown (flake.lock under nix/), rebuild hyperd-ai-dev, and confirm the nix-closure scan clears the alerts (8 open alert(s), max severity high)
+  File: nix/
+
+[OPEN] rsi-fd15a30733abcf57c129bddd — github-code-scanning:nix-closure failure in code-scanning:nix-closure. Root cause evidence: producer=github-code-scanning:nix-closure; path=nix/; authority=trivy; os_error=ada 3.4.4 vulnerable. Detected=2026-10-07T05:36:15.397090Z.
+  Severity: medium
+  Action: nix flake update / fast-lane promotion: pull a nixpkgs revision with ada>=unknown (flake.lock under nix/), rebuild hyperd-ai-dev, and confirm the nix-closure scan clears the alerts (1 open alert(s), max severity medium)
+  File: nix/
+
+[OPEN] rsi-6f9e524192e00b871ca4da4c — github-code-scanning:nix-closure failure in code-scanning:nix-closure. Root cause evidence: producer=github-code-scanning:nix-closure; path=nix/; authority=trivy; os_error=nghttp2 1.69.0 vulnerable. Detected=2026-10-07T05:36:15.460724Z.
+  Severity: medium
+  Action: nix flake update / fast-lane promotion: pull a nixpkgs revision with nghttp2>=unknown (flake.lock under nix/), rebuild hyperd-ai-dev, and confirm the nix-closure scan clears the alerts (2 open alert(s), max severity medium)
+  File: nix/
+
+[OPEN] rsi-9dd168980eb90c43e228e97b — github-code-scanning:nix-closure failure in code-scanning:nix-closure. Root cause evidence: producer=github-code-scanning:nix-closure; path=nix/; authority=trivy; os_error=libtiff 4.7.2 vulnerable. Detected=2026-10-07T05:36:15.512762Z.
+  Severity: high
+  Action: nix flake update / fast-lane promotion: pull a nixpkgs revision with libtiff>=unknown (flake.lock under nix/), rebuild hyperd-ai-dev, and confirm the nix-closure scan clears the alerts (12 open alert(s), max severity high)
+  File: nix/
+
+[OPEN] rsi-54ba41ad92a957cc49425721 — github-code-scanning:nix-closure failure in code-scanning:nix-closure. Root cause evidence: producer=github-code-scanning:nix-closure; path=nix/; authority=trivy; os_error=libjxl 0.11.2 vulnerable. Detected=2026-10-07T05:36:15.570155Z.
+  Severity: medium
+  Action: nix flake update / fast-lane promotion: pull a nixpkgs revision with libjxl>=unknown (flake.lock under nix/), rebuild hyperd-ai-dev, and confirm the nix-closure scan clears the alerts (1 open alert(s), max severity medium)
+  File: nix/
+
+[OPEN] rsi-8daaed22afabfe464e6533f8 — github-code-scanning:nix-closure failure in code-scanning:nix-closure. Root cause evidence: producer=github-code-scanning:nix-closure; path=nix/; authority=trivy; os_error=malcontent 0.13.1 vulnerable. Detected=2026-10-07T05:36:15.655287Z.
+  Severity: medium
+  Action: nix flake update / fast-lane promotion: pull a nixpkgs revision with malcontent>=unknown (flake.lock under nix/), rebuild hyperd-ai-dev, and confirm the nix-closure scan clears the alerts (1 open alert(s), max severity medium)
+  File: nix/
+
+[OPEN] rsi-8c55b196dd522813ad168282 — github-code-scanning:nix-closure failure in code-scanning:nix-closure. Root cause evidence: producer=github-code-scanning:nix-closure; path=nix/; authority=trivy; os_error=spice 0.16.0 vulnerable. Detected=2026-10-07T05:36:15.721206Z.
+  Severity: critical
+  Action: nix flake update / fast-lane promotion: pull a nixpkgs revision with spice>=unknown (flake.lock under nix/), rebuild hyperd-ai-dev, and confirm the nix-closure scan clears the alerts (3 open alert(s), max severity critical)
+  File: nix/
+
+[OPEN] rsi-291fcaa8e48b80f086d13c75 — github-code-scanning:nix-closure failure in code-scanning:nix-closure. Root cause evidence: producer=github-code-scanning:nix-closure; path=nix/; authority=trivy; os_error=lua 5.3.6 vulnerable. Detected=2026-10-07T05:36:15.793732Z.
+  Severity: medium
+  Action: nix flake update / fast-lane promotion: pull a nixpkgs revision with lua>=unknown (flake.lock under nix/), rebuild hyperd-ai-dev, and confirm the nix-closure scan clears the alerts (1 open alert(s), max severity medium)
+  File: nix/
+
+[OPEN] rsi-b7984193fcd58ba770d8abe0 — github-code-scanning:nix-closure failure in code-scanning:nix-closure. Root cause evidence: producer=github-code-scanning:nix-closure; path=nix/; authority=trivy; os_error=giflib 5.2.2 vulnerable. Detected=2026-10-07T05:36:15.838218Z.
+  Severity: medium
+  Action: nix flake update / fast-lane promotion: pull a nixpkgs revision with giflib>=unknown (flake.lock under nix/), rebuild hyperd-ai-dev, and confirm the nix-closure scan clears the alerts (2 open alert(s), max severity medium)
+  File: nix/
+
+[OPEN] rsi-7a8cdfae3e19f130a125ac07 — github-code-scanning:nix-closure failure in code-scanning:nix-closure. Root cause evidence: producer=github-code-scanning:nix-closure; path=nix/; authority=trivy; os_error=gnutls 3.8.13 vulnerable. Detected=2026-10-07T05:36:15.895394Z.
+  Severity: critical
+  Action: nix flake update / fast-lane promotion: pull a nixpkgs revision with gnutls>=unknown (flake.lock under nix/), rebuild hyperd-ai-dev, and confirm the nix-closure scan clears the alerts (16 open alert(s), max severity critical)
+  File: nix/
+
+[OPEN] rsi-6b15dd2f636aec338ea12149 — github-code-scanning:nix-closure failure in code-scanning:nix-closure. Root cause evidence: producer=github-code-scanning:nix-closure; path=nix/; authority=trivy; os_error=libmicrohttpd 1.0.2 vulnerable. Detected=2026-10-07T05:36:15.962205Z.
+  Severity: high
+  Action: nix flake update / fast-lane promotion: pull a nixpkgs revision with libmicrohttpd>=unknown (flake.lock under nix/), rebuild hyperd-ai-dev, and confirm the nix-closure scan clears the alerts (4 open alert(s), max severity high)
+  File: nix/
+
+[OPEN] rsi-8d17961141cdee67bd45b65a — github-code-scanning:nix-closure failure in code-scanning:nix-closure. Root cause evidence: producer=github-code-scanning:nix-closure; path=nix/; authority=trivy; os_error=pixman 0.46.4 vulnerable. Detected=2026-10-07T05:36:16.024504Z.
+  Severity: medium
+  Action: nix flake update / fast-lane promotion: pull a nixpkgs revision with pixman>=unknown (flake.lock under nix/), rebuild hyperd-ai-dev, and confirm the nix-closure scan clears the alerts (3 open alert(s), max severity medium)
+  File: nix/
+
+[OPEN] rsi-4fb2b2f0c44ccf6d78fc716b — github-code-scanning:nix-closure failure in code-scanning:nix-closure. Root cause evidence: producer=github-code-scanning:nix-closure; path=nix/; authority=trivy; os_error=jbig2dec 0.20 vulnerable. Detected=2026-10-07T05:36:16.068386Z.
+  Severity: medium
+  Action: nix flake update / fast-lane promotion: pull a nixpkgs revision with jbig2dec>=unknown (flake.lock under nix/), rebuild hyperd-ai-dev, and confirm the nix-closure scan clears the alerts (1 open alert(s), max severity medium)
+  File: nix/
+
+[OPEN] rsi-4ae3108d73f98ba3ba81ba99 — github-code-scanning:nix-closure failure in code-scanning:nix-closure. Root cause evidence: producer=github-code-scanning:nix-closure; path=nix/; authority=trivy; os_error=dnsmasq 2.93 vulnerable. Detected=2026-10-07T05:36:16.141971Z.
+  Severity: high
+  Action: nix flake update / fast-lane promotion: pull a nixpkgs revision with dnsmasq>=unknown (flake.lock under nix/), rebuild hyperd-ai-dev, and confirm the nix-closure scan clears the alerts (1 open alert(s), max severity high)
+  File: nix/
+
+[OPEN] rsi-599b1bca88782e70d11fb0d8 — github-code-scanning:nix-closure failure in code-scanning:nix-closure. Root cause evidence: producer=github-code-scanning:nix-closure; path=nix/; authority=trivy; os_error=zlib 1.3.2 vulnerable. Detected=2026-10-07T05:36:16.187566Z.
+  Severity: high
+  Action: nix flake update / fast-lane promotion: pull a nixpkgs revision with zlib>=unknown (flake.lock under nix/), rebuild hyperd-ai-dev, and confirm the nix-closure scan clears the alerts (2 open alert(s), max severity high)
+  File: nix/
+
+[OPEN] rsi-41f33f1af1010790aa7fd887 — github-code-scanning:nix-closure failure in code-scanning:nix-closure. Root cause evidence: producer=github-code-scanning:nix-closure; path=nix/; authority=trivy; os_error=cpio 2.15 vulnerable. Detected=2026-10-07T05:36:16.223602Z.
+  Severity: high
+  Action: nix flake update / fast-lane promotion: pull a nixpkgs revision with cpio>=unknown (flake.lock under nix/), rebuild hyperd-ai-dev, and confirm the nix-closure scan clears the alerts (2 open alert(s), max severity high)
+  File: nix/
+
+[OPEN] rsi-ab97b70d873e780f5a7ffdec — github-code-scanning:nix-closure failure in code-scanning:nix-closure. Root cause evidence: producer=github-code-scanning:nix-closure; path=nix/; authority=trivy; os_error=pgvector 0.8.2 vulnerable. Detected=2026-10-07T05:36:16.282212Z.
+  Severity: high
+  Action: nix flake update / fast-lane promotion: pull a nixpkgs revision with pgvector>=unknown (flake.lock under nix/), rebuild hyperd-ai-dev, and confirm the nix-closure scan clears the alerts (1 open alert(s), max severity high)
+  File: nix/
+
+[OPEN] rsi-2b1e42c2f7bd5b673aaf5900 — github-code-scanning:nix-closure failure in code-scanning:nix-closure. Root cause evidence: producer=github-code-scanning:nix-closure; path=nix/; authority=trivy; os_error=libmpeg2 0.5.1 vulnerable. Detected=2026-10-07T05:36:16.330904Z.
+  Severity: medium
+  Action: nix flake update / fast-lane promotion: pull a nixpkgs revision with libmpeg2>=unknown (flake.lock under nix/), rebuild hyperd-ai-dev, and confirm the nix-closure scan clears the alerts (1 open alert(s), max severity medium)
+  File: nix/
+
+[OPEN] rsi-a8e8c19a67f40753d72c32a1 — github-code-scanning:nix-closure failure in code-scanning:nix-closure. Root cause evidence: producer=github-code-scanning:nix-closure; path=nix/; authority=trivy; os_error=samba 4.23.10 vulnerable. Detected=2026-10-07T05:36:16.366822Z.
+  Severity: critical
+  Action: nix flake update / fast-lane promotion: pull a nixpkgs revision with samba>=unknown (flake.lock under nix/), rebuild hyperd-ai-dev, and confirm the nix-closure scan clears the alerts (2 open alert(s), max severity critical)
+  File: nix/
+
+[OPEN] rsi-ca847132a05bac13eed42a02 — github-code-scanning:nix-closure failure in code-scanning:nix-closure. Root cause evidence: producer=github-code-scanning:nix-closure; path=nix/; authority=trivy; os_error=lua 5.2.4 vulnerable. Detected=2026-10-07T05:36:16.415477Z.
+  Severity: medium
+  Action: nix flake update / fast-lane promotion: pull a nixpkgs revision with lua>=unknown (flake.lock under nix/), rebuild hyperd-ai-dev, and confirm the nix-closure scan clears the alerts (1 open alert(s), max severity medium)
+  File: nix/
+
+[OPEN] rsi-347ebdc29afecda7bd556758 — github-code-scanning:nix-closure failure in code-scanning:nix-closure. Root cause evidence: producer=github-code-scanning:nix-closure; path=nix/; authority=trivy; os_error=gdk-pixbuf 2.44.8 vulnerable. Detected=2026-10-07T05:36:16.458366Z.
+  Severity: high
+  Action: nix flake update / fast-lane promotion: pull a nixpkgs revision with gdk-pixbuf>=unknown (flake.lock under nix/), rebuild hyperd-ai-dev, and confirm the nix-closure scan clears the alerts (1 open alert(s), max severity high)
+  File: nix/

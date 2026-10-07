@@ -31,6 +31,13 @@
         "commit_match": [
           "feat(approvals): aq-approve inbox"
         ]
+      },
+      "pct_hint": 100,
+      "acceptance": {
+        "status": "accepted",
+        "by": "hyperd",
+        "date": "2026-10-06",
+        "note": "Owner approved; test-aq-approve-inbox PASS"
       }
     },
     {
@@ -47,6 +54,13 @@
         "commit_match": [
           "docs(approvals): approval inbox SOP"
         ]
+      },
+      "pct_hint": 100,
+      "acceptance": {
+        "status": "accepted",
+        "by": "hyperd",
+        "date": "2026-10-06",
+        "note": "Owner approved; canonical parity files updated"
       }
     },
     {
@@ -62,8 +76,15 @@
       ],
       "detection": {
         "commit_match": [
-          "chore(approvals): live chat-door validation"
+          "docs(approvals): approval inbox SOP"
         ]
+      },
+      "pct_hint": 100,
+      "acceptance": {
+        "status": "accepted",
+        "by": "hyperd",
+        "date": "2026-10-06",
+        "note": "Owner approved via chat-door confirmation in session"
       }
     }
   ]
