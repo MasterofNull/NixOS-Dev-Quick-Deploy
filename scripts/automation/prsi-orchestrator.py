@@ -58,7 +58,7 @@ _WORKFLOW_DEVIATIONS = Path(os.getenv(
 # RSI failures are recorded locally by rsi_lifecycle.  This reader deliberately
 # projects only a small, inert candidate into PRSI; it never forwards the raw
 # error text to an optimizer or an agent task.
-_RSI_INCIDENTS = REPO_ROOT / ".agent" / "collaboration" / "rsi-incidents.json"
+_RSI_INCIDENTS = Path(os.getenv("PRSI_INCIDENTS_FILE", str(REPO_ROOT / ".agent" / "collaboration" / "rsi-incidents.json")))
 _MAX_RSI_INCIDENTS_PER_SYNC = 50
 _RSI_INCIDENT_ID_RE = re.compile(r"[A-Za-z0-9][A-Za-z0-9._:-]{0,127}")
 _RSI_SEVERITIES = {"low", "medium", "high", "critical"}

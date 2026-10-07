@@ -2,11 +2,15 @@
 """Offline regressions for shared, pre-dispatch PRSI budget reservations."""
 import importlib.util
 import multiprocessing
+import os
 import tempfile
 from argparse import Namespace
 from pathlib import Path
 from subprocess import CompletedProcess, TimeoutExpired
 from unittest.mock import patch
+
+_INCIDENTS_TMP = tempfile.TemporaryDirectory(prefix="prsi-incidents-test-")
+os.environ["PRSI_INCIDENTS_FILE"] = str(Path(_INCIDENTS_TMP.name) / "rsi-incidents.json")
 
 ROOT = Path(__file__).resolve().parents[2]
 spec = importlib.util.spec_from_file_location("prsi", ROOT / "scripts/automation/prsi-orchestrator.py")
