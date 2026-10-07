@@ -12,93 +12,14 @@ from typing import Any, Awaitable, Callable, Dict, List, Optional
 
 from aiohttp import web
 
+import session_transcripts
+
 logger = logging.getLogger("hybrid-coordinator")
 
+# Compatibility alias
+_extract_history = session_transcripts.extract_history
 
-def _extract_history(raw: bytes) -> List[Dict[str, str]]:
-    """Extract chat history from multiple session formats.
 
-    Parses Claude Code JSONL, Codex JSONL, and Continue JSON formats,
-    extracting only text content. Returns the last 20 messages (≤1200 chars each).
-    """
-    messages: List[Dict[str, str]] = []
-    raw_str = raw.decode("utf-8", errors="replace")
-
-    # Try JSONL formats (Claude Code / Codex)
-    for line in raw_str.split("\n"):
-        line = line.strip()
-        if not line:
-            continue
-
-        try:
-            obj = json.loads(line)
-        except (json.JSONDecodeError, ValueError):
-            continue
-
-        # Claude Code JSONL: type in ["user", "assistant"], message.content is str or list of blocks
-        if obj.get("type") in {"user", "assistant"}:
-            role = obj["type"]
-            msg_obj = obj.get("message", {})
-            content = msg_obj.get("content", "")
-
-            # Handle list of blocks (e.g., tool_use, text)
-            if isinstance(content, list):
-                text_parts = []
-                for block in content:
-                    if isinstance(block, dict) and block.get("type") == "text":
-                        text_parts.append(block.get("text", ""))
-                content = " ".join(text_parts)
-
-            # Truncate to 1200 chars and skip empty
-            content = str(content).strip()[:1200]
-            if content:
-                messages.append({"role": role, "content": content})
-
-        # Codex JSONL: type=="response_item", payload.type=="message", payload.role in ["user", "assistant"]
-        elif obj.get("type") == "response_item":
-            payload = obj.get("payload", {})
-            if payload.get("type") == "message" and payload.get("role") in {"user", "assistant"}:
-                role = payload["role"]
-                content_list = payload.get("content", [])
-                text_parts = []
-                if isinstance(content_list, list):
-                    for item in content_list:
-                        if isinstance(item, dict) and item.get("type") in {"input_text", "output_text"}:
-                            text_parts.append(item.get("text", ""))
-                content = " ".join(text_parts).strip()[:1200]
-                if content:
-                    messages.append({"role": role, "content": content})
-
-    # Try single-object Continue JSON format
-    if not messages:
-        try:
-            obj = json.loads(raw_str)
-            if isinstance(obj, dict) and "history" in obj:
-                history_list = obj["history"]
-                if isinstance(history_list, list):
-                    for item in history_list:
-                        if isinstance(item, dict):
-                            msg = item.get("message", {})
-                            if isinstance(msg, dict):
-                                role = msg.get("role")
-                                content = msg.get("content", "")
-
-                                # Handle str or list of {text}
-                                if isinstance(content, list):
-                                    text_parts = []
-                                    for block in content:
-                                        if isinstance(block, dict):
-                                            text_parts.append(block.get("text", ""))
-                                    content = " ".join(text_parts)
-
-                                content = str(content).strip()[:1200]
-                                if role and content:
-                                    messages.append({"role": role, "content": content})
-        except (json.JSONDecodeError, ValueError, KeyError):
-            pass
-
-    # Return last 20 messages
-    return messages[-20:] if messages else []
 
 
 DDL_CRYSTALLIZED_SESSIONS = """
@@ -154,19 +75,99 @@ class MemoryCrystallizer:
 
     async def crystallize_session(
         self,
-        session: str | List[Dict[str, str]],
+        session: str | List[Dict[str, str]] | Dict[str, Any],
         metadata: Optional[Dict[str, Any]] = None,
     ) -> Dict[str, Any]:
+        # Handle dict payload (client-side extracted: {"history": [...], "session_hash": str, "session_path": str})
+        if isinstance(session, dict):
+            return await self._crystallize_dict_payload(session)
+        # Handle file path (legacy, server-side extraction)
         if isinstance(session, str):
             return await self._crystallize_file_session(session)
+        # Handle in-memory history list
         return await self._crystallize_history(session, metadata=metadata)
+
+    async def _crystallize_dict_payload(self, payload: Dict[str, Any]) -> Dict[str, Any]:
+        """Process client-submitted history dict with validation and deduplication."""
+        session_hash = payload.get("session_hash", "").strip()
+        session_path = payload.get("session_path", "").strip()
+        history = payload.get("history", [])
+
+        # Validate inputs
+        if not isinstance(history, list):
+            return {"status": "error", "reason": "history_not_list"}
+        if len(history) < 4:
+            return {"status": "skipped", "reason": "history_too_short"}
+
+        # Validate each message: must have role in {user, assistant} and str content
+        validated_history = []
+        for msg in history[:20]:  # Cap at 20 items
+            if isinstance(msg, dict):
+                role = msg.get("role", "").strip()
+                content = msg.get("content", "")
+                if role in {"user", "assistant"} and isinstance(content, str):
+                    # Re-apply redaction server-side for defense in depth
+                    content = session_transcripts.redact_secrets(content.strip())[:1200]
+                    if content:
+                        validated_history.append({"role": role, "content": content})
+
+        if len(validated_history) < 4:
+            return {"status": "skipped", "reason": "history_too_short"}
+
+        # Dedupe on session_hash if provided
+        if session_hash:
+            await self.ensure_schema()
+            if await self._already_processed(session_hash):
+                return {"status": "already_processed", "session_hash": session_hash, "insights_stored": 0}
+
+        # Distill the history
+        result = await self._crystallize_history(
+            validated_history,
+            metadata={"session_path": session_path, "session_hash": session_hash}
+        )
+
+        # Record hash only on success/skip
+        if session_hash and result.get("status") in {"complete", "skipped"}:
+            if self._pg is not None:
+                try:
+                    await self._pg.execute(
+                        """
+                        INSERT INTO crystallized_sessions
+                            (session_hash, session_path, insights_stored, processed_at)
+                        VALUES (%s, %s, %s, %s)
+                        """,
+                        session_hash,
+                        session_path,
+                        result.get("facts_stored", 0),
+                        datetime.now(timezone.utc).isoformat(),
+                    )
+                except Exception:
+                    pass  # Ignore DB errors on hash recording
+            self._processed[session_hash] = {
+                "session_hash": session_hash,
+                "session_path": session_path,
+                "insights_stored": result.get("facts_stored", 0),
+                "processed_at": datetime.now(timezone.utc).isoformat(),
+            }
+            self._last_run = datetime.now(timezone.utc).isoformat()
+            self._insights_stored += result.get("facts_stored", 0)
+
+        return {
+            "status": result.get("status"),
+            "session_hash": session_hash or None,
+            "insights_stored": result.get("facts_stored", 0)
+        }
 
     async def _crystallize_file_session(self, session_path: str) -> Dict[str, Any]:
         path = Path(session_path).expanduser()
         if not path.is_file():
             raise ValueError("session_path must point to an existing file")
 
-        raw = path.read_bytes()
+        try:
+            raw = path.read_bytes()
+        except (PermissionError, OSError) as exc:
+            return {"status": "error", "reason": "unreadable_session_path", "detail": str(exc)}
+
         session_hash = hashlib.sha256(raw).hexdigest()
         await self.ensure_schema()
         if await self._already_processed(session_hash):
@@ -238,14 +239,28 @@ class MemoryCrystallizer:
 
             stored_count = 0
             for fact in facts:
+                context = {
+                    "distillation_date": datetime.now(timezone.utc).isoformat(),
+                    "crystalline": True,
+                }
+                if metadata:
+                    # Fallback: session_id > session_path > session_hash
+                    context["crystallized_from"] = (
+                        metadata.get("session_id")
+                        or metadata.get("session_path")
+                        or metadata.get("session_hash")
+                        or "unknown"
+                    )
+                    # Include session_path when present
+                    if metadata.get("session_path"):
+                        context["session_path"] = metadata["session_path"]
+                else:
+                    context["crystallized_from"] = "unknown"
+
                 result = await broker.write(
                     memory_type="semantic",
                     content=fact,
-                    context={
-                        "crystallized_from": metadata.get("session_id") if metadata else "unknown",
-                        "distillation_date": datetime.now(timezone.utc).isoformat(),
-                        "crystalline": True,
-                    },
+                    context=context,
                     source="crystallizer",
                 )
                 if result.get("status") in {"stored", "success"}:
@@ -348,10 +363,34 @@ async def handle_memory_crystalline_run(request: web.Request) -> web.Response:
     try:
         data = await request.json()
         session_path = str(data.get("session_path") or "").strip()
-        if not session_path:
-            raise ValueError("session_path required")
-        asyncio.create_task(_crystallizer.crystallize_session(session_path))
-        return web.json_response({"accepted": True, "session_path": session_path}, status=202)
+        history = data.get("history")
+
+        # Support either session_path (legacy) or history+session_hash+session_path (client-side).
+        # When both are present, history takes priority (dict payload branch avoids file read).
+        if history:
+            # Client-side extracted history: session_path is just provenance, never used for file read
+            if not isinstance(history, list):
+                raise ValueError("history must be a list")
+            payload = {
+                "history": history,
+                "session_hash": str(data.get("session_hash") or "").strip(),
+                "session_path": session_path,
+            }
+        elif session_path:
+            # Legacy file-path branch (server-side extraction, may hit PermissionError)
+            payload = session_path
+        else:
+            raise ValueError("either session_path or history required")
+
+        # Wrap background task to log exceptions
+        async def _wrapped_crystallize():
+            try:
+                await _crystallizer.crystallize_session(payload)
+            except Exception as exc:
+                logger.warning("memory_crystallizer: background task exception: %s", exc)
+
+        asyncio.create_task(_wrapped_crystallize())
+        return web.json_response({"accepted": True}, status=202)
     except ValueError as exc:
         return web.json_response({"error": "memory_crystalline_invalid", "detail": str(exc)}, status=400)
     except Exception as exc:

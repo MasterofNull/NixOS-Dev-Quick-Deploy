@@ -38,43 +38,148 @@ while [[ $# -gt 0 ]]; do
   esac
 done
 
-# Collect all session files from all directories
-declare -a all_sessions=()
-for dir in "${SESSION_DIRS[@]}"; do
-  if [[ ! -d "${dir}" ]]; then
-    continue
-  fi
-  # Find both *.json and *.jsonl files
-  while IFS= read -r session_path; do
-    [[ -n "${session_path}" ]] && all_sessions+=("${session_path}")
-  done < <(find "${dir}" -type f \( -name '*.json' -o -name '*.jsonl' \) 2>/dev/null)
-done
+# Collect, filter, sort all session files in a single Python pass
+# (avoids 650+ subprocess forks for per-file stat checks)
+read -r -d '' _PYTHON_DISCOVERY << 'PYEOF' || true
+import os
+import pathlib
+import sys
+from datetime import datetime, timedelta, timezone
 
-# Filter by mtime if --since-hours given
-if [[ "${SINCE_HOURS}" -gt 0 ]] 2>/dev/null; then
-  declare -a filtered_sessions=()
-  for session_path in "${all_sessions[@]}"; do
-    mtime_min=$(find "${session_path}" -type f -mmin "-$(( SINCE_HOURS * 60 ))" 2>/dev/null | wc -l)
-    [[ "${mtime_min}" -gt 0 ]] && filtered_sessions+=("${session_path}")
-  done
-  all_sessions=("${filtered_sessions[@]}")
-fi
+session_dirs = sys.argv[1:]
+since_minutes = int(os.environ.get("SINCE_MINUTES", 0))
+max_sessions = int(os.environ.get("MAX_SESSIONS", 10))
 
-# Sort by mtime (newest first) and limit to MAX_SESSIONS
+cutoff_time = None
+if since_minutes > 0:
+    cutoff_time = (datetime.now(timezone.utc) - timedelta(minutes=since_minutes)).timestamp()
+
+candidates = []
+for session_dir in session_dirs:
+    p = pathlib.Path(session_dir)
+    if not p.is_dir():
+        continue
+
+    # Find *.json and *.jsonl, excluding metadata and index files
+    is_projects_dir = "projects" in p.parts
+
+    for item in p.rglob("*"):
+        if not item.is_file():
+            continue
+
+        # Skip subagent transcripts (parent session already has results)
+        if "/subagents/" in str(item):
+            continue
+
+        name = item.name
+        # Skip metadata and index files
+        if name.endswith(".meta.json") or "index" in name:
+            continue
+
+        # In projects/ dirs: only accept *.jsonl (Codex) and *.json (Continue, but not metadata)
+        if is_projects_dir:
+            if not (name.endswith(".jsonl") or (name.endswith(".json") and not name.endswith(".meta.json"))):
+                continue
+        else:
+            # For other dirs: accept *.json and *.jsonl
+            if not (name.endswith(".json") or name.endswith(".jsonl")):
+                continue
+
+        # Check mtime filter
+        mtime = item.stat().st_mtime
+        if cutoff_time and mtime < cutoff_time:
+            continue
+
+        candidates.append((mtime, str(item)))
+
+# Sort by mtime (newest first), take first MAX_SESSIONS
+candidates.sort(reverse=True, key=lambda x: x[0])
+for _, path in candidates[:max_sessions]:
+    print(path)
+PYEOF
+
+export SINCE_MINUTES=$(( SINCE_HOURS * 60 ))
+export MAX_SESSIONS
+
 declare -a sorted_sessions=()
 while IFS= read -r session_path; do
   [[ -n "${session_path}" ]] && sorted_sessions+=("${session_path}")
-done < <(printf '%s\n' "${all_sessions[@]}" | xargs -I{} stat -c '%Y %n' {} 2>/dev/null | sort -rn | cut -d' ' -f2- | head -n "${MAX_SESSIONS}")
+done < <(python3 -c "${_PYTHON_DISCOVERY}" "${SESSION_DIRS[@]}")
 
-# Process each session
+# Process each session (client-side extraction + server-side redaction)
+read -r -d '' _PYTHON_EXTRACT << 'PYEOF' || true
+import hashlib
+import json
+import sys
+from pathlib import Path
+
+# Add module path for session_transcripts
+sys.path.insert(0, "/home/hyperd/Documents/NixOS-Dev-Quick-Deploy/ai-stack/mcp-servers/hybrid-coordinator")
+
+from session_transcripts import extract_history
+
+session_path = sys.argv[1]
+path = Path(session_path)
+
+if not path.is_file():
+    sys.exit(1)
+
+try:
+    raw = path.read_bytes()
+except (PermissionError, OSError):
+    sys.exit(1)
+
+# Compute sha256 of raw bytes
+session_hash = hashlib.sha256(raw).hexdigest()
+
+# Extract history
+history = extract_history(raw)
+
+# Skip if <4 messages
+if len(history) < 4:
+    sys.exit(2)  # Skip status
+
+# Output JSON: {"history": [...], "session_hash": str, "session_path": str}
+payload = {
+    "history": history,
+    "session_hash": session_hash,
+    "session_path": session_path,
+}
+print(json.dumps(payload))
+PYEOF
+
+selected=0
+posted=0
+skipped=0
+
 for session_path in "${sorted_sessions[@]}"; do
   if [[ "${DRY_RUN}" -eq 1 ]]; then
     printf '%s\n' "${session_path}"
+    ((selected++))
     continue
   fi
 
-  # Build JSON payload safely with Python
-  _payload=$(python3 -c "import json, sys; print(json.dumps({'session_path': sys.argv[1]}))" "${session_path}" 2>/dev/null || printf '{}')
+  # Extract history client-side
+  _payload=$(python3 -c "${_PYTHON_EXTRACT}" "${session_path}" 2>/dev/null)
+  exit_code=$?
+
+  if [[ $exit_code -eq 1 ]]; then
+    # File error (unreadable, etc.)
+    ((skipped++))
+    continue
+  fi
+  if [[ $exit_code -eq 2 ]]; then
+    # History too short
+    ((skipped++))
+    continue
+  fi
+
+  if [[ -z "${_payload}" ]]; then
+    ((skipped++))
+    continue
+  fi
+
+  ((selected++))
 
   # Add API key header if HYBRID_API_KEY_FILE is readable
   declare -a curl_args=(-sf -X POST "${HYBRID_COORDINATOR_URL}/memory/crystalline/run" -H 'Content-Type: application/json')
@@ -84,6 +189,11 @@ for session_path in "${sorted_sessions[@]}"; do
   fi
   curl_args+=(-d "${_payload}")
 
-  curl "${curl_args[@]}" >/dev/null 2>&1 \
-    || printf 'WARN: crystallize skipped %s (coordinator unavailable)\n' "${session_path}" >&2
+  if curl "${curl_args[@]}" >/dev/null 2>&1; then
+    ((posted++))
+  else
+    ((skipped++))
+  fi
 done
+
+printf 'selected=%d posted=%d skipped=%d\n' "$selected" "$posted" "$skipped"
