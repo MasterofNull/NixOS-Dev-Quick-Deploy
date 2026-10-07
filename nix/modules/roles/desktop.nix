@@ -91,6 +91,7 @@ in {
     services.pulseaudio.enable = lib.mkDefault false;
     services.pipewire = {
       enable = lib.mkDefault true;
+      package = lib.mkDefault (pkgs.fastLaneLeaf.pipewire or pkgs.pipewire);
       alsa.enable = lib.mkDefault true;
       alsa.support32Bit = lib.mkDefault true;
       pulse.enable = lib.mkDefault true;

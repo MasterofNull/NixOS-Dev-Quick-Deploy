@@ -758,7 +758,7 @@ async def initialize_server():
         postgres_client=postgres_client,
         store_insight_fn=_store_crystallized_insight,
         llama_client=crystallizer_llm,
-        broker=None # wired later in initialize_server if needed
+        broker=None, # resolves dynamically via broker property or http_server_impl wiring (P1-1)
     )
 
     # Homeostasis Manager (L6 Active Remediation)
