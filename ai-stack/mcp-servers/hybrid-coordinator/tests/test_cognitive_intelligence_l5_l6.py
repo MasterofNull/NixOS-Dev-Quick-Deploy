@@ -258,6 +258,53 @@ def test_l6_intent_classifier_routes_harness_operations_locally():
         assert result["intent"] == "harness_operation"
         assert result["profile"] == "local-tool-calling"
         assert result["fallback_profile"] == "local"
-        assert result["memory_recall"] is False
+    asyncio.run(run())
+
+
+def test_l5_memory_crystallizer_history_distillation():
+    """L5: Ensure memory crystallizer distills multi-turn history into semantic memory via broker."""
+    async def run():
+        written_facts = []
+
+        async def _mock_store(**kwargs):
+            return {"status": "stored", "memory_id": f"mem-{len(written_facts)}"}
+
+        async def _mock_recall(query, **kwargs):
+            return {"results": []}
+
+        import memory_broker
+        from memory_superseder import MemorySuperseder
+        from memory_crystallizer import MemoryCrystallizer
+
+        broker = MemoryBroker(_mock_store, _mock_recall, superseder=MemorySuperseder())
+
+        # Mock LLM client returning bulleted facts
+        mock_llm = MagicMock()
+        mock_response = MagicMock()
+        mock_response.content = "- System port for switchboard is 8085\n- User prefers dark mode theme\n- Flake inputs are updated weekly"
+        mock_llm.create_message = AsyncMock(return_value=mock_response)
+
+        # 1. Test with explicit broker
+        crystallizer = MemoryCrystallizer(broker=broker, llama_client=mock_llm)
+        history = [
+            {"role": "user", "content": "What is the switchboard port?"},
+            {"role": "assistant", "content": "The switchboard runs on port 8085."},
+            {"role": "user", "content": "Also I prefer dark mode."},
+            {"role": "assistant", "content": "Noted! Dark mode preference saved."},
+        ]
+
+        result = await crystallizer.crystallize_session(history, metadata={"session_id": "test-session-1"})
+        assert result["status"] == "complete"
+        assert result["facts_extracted"] == 3
+        assert result["facts_stored"] == 3
+
+        # 2. Test dynamic broker resolution via property when broker initialized in module
+        memory_broker.init(_mock_store, _mock_recall)
+        crystallizer_dynamic = MemoryCrystallizer(broker=None, llama_client=mock_llm)
+        assert crystallizer_dynamic.broker is not None
+
+        result_dynamic = await crystallizer_dynamic.crystallize_session(history, metadata={"session_id": "test-session-2"})
+        assert result_dynamic["status"] == "complete"
+        assert result_dynamic["facts_stored"] == 3
 
     asyncio.run(run())

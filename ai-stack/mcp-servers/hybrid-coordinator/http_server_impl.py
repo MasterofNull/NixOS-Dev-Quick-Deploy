@@ -844,6 +844,11 @@ def init(
     )
     # Phase 54.1 — MemoryBroker: unified typed memory interface
     memory_broker.init(store_fn=_store_memory, recall_fn=_recall_memory)
+    # Phase 55.2 — Wire MemoryBroker into MemoryCrystallizer singleton (P1-1 resolution)
+    try:
+        memory_crystallizer.get_crystallizer()._broker = memory_broker.get_broker()
+    except Exception as _e_cryst:
+        logger.warning("memory_crystallizer: broker wiring deferred: %s", _e_cryst)
 
     # Phase 54.3 — RagAugmentor: active RAG pipeline
     # Build a dedicated httpx client — journal stores only URL strings, has no _aidb_client attr.
