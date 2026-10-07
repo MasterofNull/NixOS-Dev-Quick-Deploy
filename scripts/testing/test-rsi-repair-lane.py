@@ -148,6 +148,39 @@ class LaneTests(unittest.TestCase):
         self.assertEqual(output["executed"], 0)
         self.assertEqual(output["message"], "blocked_unsupported_ide_worktree_isolation")
         self.assertEqual(rows[0]["status"], "rsi_pending")
+
+    def test_non_agentic_producer_skipped(self):
+        # nix-closure incidents are handled by deterministic scripts, not agents.
+        policy = {"rsi": {"non_agentic_producers": ["github-code-scanning:nix-closure"]}}
+        prsi.PRSI_POLICY_FILE.write_text(json.dumps(policy))
+        # Create two rows: one nix-closure (should skip), one other (should dispatch)
+        nix_closure_row = {**row(), "id": "nix-closure-incident",
+                          "raw_action": {"source": "rsi-incidents.json", "reason": "rsi-incident-open", "incident_id": "nix-closure-rsi"}}
+        other_row = {**row(), "id": "other-incident",
+                    "raw_action": {"source": "rsi-incidents.json", "reason": "rsi-incident-open", "incident_id": "rsi-test"}}
+        # Seed incidents: nix-closure with deterministic producer, other with default
+        incidents = {
+            "nix-closure-rsi": {"producer": "github-code-scanning:nix-closure", "severity": "high"},
+            "rsi-test": {"producer": "github-actions", "severity": "medium"}
+        }
+        incidents_file = self.root / "_RSI_INCIDENTS"
+        incidents_file.write_text(json.dumps({"incidents": incidents}))
+        self.enterContext(patch.object(prsi, "_RSI_INCIDENTS", incidents_file))
+        # Update mock to include both incident IDs as open
+        self.enterContext(patch.object(prsi, "_rsi_open_incident_ids", return_value=(True, {"nix-closure-rsi", "rsi-test"})))
+        # Dispatch
+        proc = Mock(returncode=0)
+        proc.communicate.return_value = (completion("codex"), "")
+        with patch.object(prsi.subprocess, "Popen", return_value=proc) as popen:
+            code, output, rows = self.dispatch(["--execute"], [nix_closure_row, other_row])
+        self.assertEqual(code, 0)
+        self.assertEqual(output["executed"], 1)  # Only other_row dispatched
+        self.assertEqual(output["skipped"].get("skipped_deterministic_lane"), 1)
+        # Check both rows persisted properly
+        rows_by_id = {r["id"]: r for r in rows}
+        self.assertEqual(rows_by_id["nix-closure-incident"]["execution"]["result"], "skipped_deterministic_lane")
+        self.assertEqual(rows_by_id["nix-closure-incident"]["status"], "rsi_pending")  # Status unchanged
+        self.assertEqual(rows_by_id["other-incident"]["status"], "rsi_awaiting_validation")  # Executed
     def test_multi_lane_cooldown_fallback(self):
         policy = {"rsi": {"repair_lanes": ["codex", "claude", "antigravity", "local"]}}
         prsi.PRSI_POLICY_FILE.write_text(json.dumps(policy))

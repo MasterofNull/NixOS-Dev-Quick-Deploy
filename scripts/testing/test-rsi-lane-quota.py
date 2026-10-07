@@ -100,6 +100,15 @@ class LaneUnavailableDetector(unittest.TestCase):
         }
         self.assertTrue(prsi._is_lane_unavailable(receipt))
 
+    def test_claude_weekly_limit(self):
+        """Claude's weekly limit message variant."""
+        receipt = {
+            "exit_code": 1,
+            "lane": "claude",
+            "stderr_tail": "You've hit your weekly limit · resets 2am (America/Los_Angeles)\n",
+        }
+        self.assertTrue(prsi._is_lane_unavailable(receipt))
+
     def test_quality_failure_not_lane_unavailable(self):
         """Normal quality failure should not be detected as lane unavailable."""
         self.assertFalse(prsi._is_lane_unavailable(QUALITY_FAILURE))

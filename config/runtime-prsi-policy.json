@@ -16,6 +16,9 @@
     "daily_run_cap": 3,
     "approval_authorities": [
       "owner"
+    ],
+    "non_agentic_producers": [
+      "github-code-scanning:nix-closure"
     ]
   },
   "enabled": true,
