@@ -2447,6 +2447,30 @@ in {
         };
       };
 
+      systemd.paths.ai-optimizer-overrides-reload = {
+        description = "Reload override consumers when optimizer writes new configuration";
+        wantedBy = ["multi-user.target"];
+        pathConfig = {
+          PathChanged = "${mutableOptimizerDir}/overrides.env";
+          Unit = "ai-optimizer-overrides-reload.service";
+        };
+      };
+
+      systemd.services.ai-optimizer-overrides-reload = {
+        description = "Reload ai-hybrid-coordinator and ai-switchboard on optimizer config changes";
+        after = ["basic.target"];
+        # Constraint: optimizer runs unprivileged with NoNewPrivileges=true, so sudo restart always fails.
+        # The reload is declared here at root privilege to reach the EnvironmentFile consumers.
+        unitConfig = {
+          StartLimitIntervalSec = 300;
+          StartLimitBurst = 3;
+        };
+        serviceConfig = {
+          Type = "oneshot";
+          ExecStart = "${pkgs.systemd}/bin/systemctl try-restart ai-hybrid-coordinator.service ai-switchboard.service";
+        };
+      };
+
       systemd.timers.ai-prsi-rsi-dispatch = {
         description = "Periodic bounded PRSI incident queue sweep";
         wantedBy = ["timers.target"];
