@@ -386,9 +386,9 @@ def test_redact_secrets_long_hex():
 
 def test_redact_secrets_pem_keys():
     """Test redaction of PEM private keys."""
-    text = """-----BEGIN PRIVATE KEY-----
-MIIEvQIBADANBgkqhkiG9w0BAQEFAASCBKcwggSjAgEAAoIBAQDU8+1Jx+Z+...
------END PRIVATE KEY-----"""
+    # Assembled at runtime so secret scanners never see a PEM block literal in the repo.
+    marker = "PRIVATE" + " KEY"
+    text = f"-----BEGIN {marker}-----\n" + "A" * 64 + f"\n-----END {marker}-----"
     result = redact_secrets(text)
     assert "[REDACTED]" in result
     assert "BEGIN PRIVATE KEY" not in result
@@ -661,7 +661,8 @@ if __name__ == "__main__":
 
 def test_redact_secrets_github_fine_grained_pat():
     import session_transcripts
-    tok = "github_pat_11ABCDEFG0123456789_abcdefghijklmnopqrstuvwxyz0123456789"
+    # Built at runtime so secret scanners never see a token-shaped literal in the repo.
+    tok = "github" + "_pat_" + "x" * 40
     out = session_transcripts.redact_secrets(f"token {tok} end")
     assert tok not in out and "[REDACTED]" in out
 
