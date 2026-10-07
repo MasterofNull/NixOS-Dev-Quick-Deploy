@@ -106,15 +106,80 @@ while IFS= read -r session_path; do
   [[ -n "${session_path}" ]] && sorted_sessions+=("${session_path}")
 done < <(python3 -c "${_PYTHON_DISCOVERY}" "${SESSION_DIRS[@]}")
 
-# Process each session
+# Process each session (client-side extraction + server-side redaction)
+read -r -d '' _PYTHON_EXTRACT << 'PYEOF' || true
+import hashlib
+import json
+import sys
+from pathlib import Path
+
+# Add module path for session_transcripts
+sys.path.insert(0, "/home/hyperd/Documents/NixOS-Dev-Quick-Deploy/ai-stack/mcp-servers/hybrid-coordinator")
+
+from session_transcripts import extract_history
+
+session_path = sys.argv[1]
+path = Path(session_path)
+
+if not path.is_file():
+    sys.exit(1)
+
+try:
+    raw = path.read_bytes()
+except (PermissionError, OSError):
+    sys.exit(1)
+
+# Compute sha256 of raw bytes
+session_hash = hashlib.sha256(raw).hexdigest()
+
+# Extract history
+history = extract_history(raw)
+
+# Skip if <4 messages
+if len(history) < 4:
+    sys.exit(2)  # Skip status
+
+# Output JSON: {"history": [...], "session_hash": str, "session_path": str}
+payload = {
+    "history": history,
+    "session_hash": session_hash,
+    "session_path": session_path,
+}
+print(json.dumps(payload))
+PYEOF
+
+selected=0
+posted=0
+skipped=0
+
 for session_path in "${sorted_sessions[@]}"; do
   if [[ "${DRY_RUN}" -eq 1 ]]; then
     printf '%s\n' "${session_path}"
+    ((selected++))
     continue
   fi
 
-  # Build JSON payload safely with Python
-  _payload=$(python3 -c "import json, sys; print(json.dumps({'session_path': sys.argv[1]}))" "${session_path}" 2>/dev/null || printf '{}')
+  # Extract history client-side
+  _payload=$(python3 -c "${_PYTHON_EXTRACT}" "${session_path}" 2>/dev/null)
+  exit_code=$?
+
+  if [[ $exit_code -eq 1 ]]; then
+    # File error (unreadable, etc.)
+    ((skipped++))
+    continue
+  fi
+  if [[ $exit_code -eq 2 ]]; then
+    # History too short
+    ((skipped++))
+    continue
+  fi
+
+  if [[ -z "${_payload}" ]]; then
+    ((skipped++))
+    continue
+  fi
+
+  ((selected++))
 
   # Add API key header if HYBRID_API_KEY_FILE is readable
   declare -a curl_args=(-sf -X POST "${HYBRID_COORDINATOR_URL}/memory/crystalline/run" -H 'Content-Type: application/json')
@@ -124,6 +189,11 @@ for session_path in "${sorted_sessions[@]}"; do
   fi
   curl_args+=(-d "${_payload}")
 
-  curl "${curl_args[@]}" >/dev/null 2>&1 \
-    || printf 'WARN: crystallize skipped %s (coordinator unavailable)\n' "${session_path}" >&2
+  if curl "${curl_args[@]}" >/dev/null 2>&1; then
+    ((posted++))
+  else
+    ((skipped++))
+  fi
 done
+
+printf 'selected=%d posted=%d skipped=%d\n' "$selected" "$posted" "$skipped"
