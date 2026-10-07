@@ -690,12 +690,10 @@ in {
       gs = "git status";
       gd = "git diff";
       gl = "git log --oneline --graph --decorate -20";
-      # NixOS rebuild shortcuts — nrs runs preflight first, nrs-force skips it
+      # NixOS rebuild shortcuts — nrs runs preflight first (which now includes checkout check)
       nrs = "scripts/governance/pre-rebuild-preflight.sh && sudo nixos-rebuild switch --flake .#hyperd-ai-dev";
-      nrs-force = "sudo nixos-rebuild switch --flake .#hyperd-ai-dev";
       nrb = "sudo nixos-rebuild boot --flake .#hyperd-ai-dev";
       nrd = "sudo nixos-rebuild dry-build --flake .#hyperd-ai-dev";
-      hms = "home-manager switch --flake .#hyperd";
       # AI CLI tools
       continue = "cn"; # Continue CLI shorthand
       # Agentic CLI Tools (Token-optimized)
@@ -742,6 +740,21 @@ in {
       fi
 
       [[ ! -f ~/.p10k.zsh ]] || source ~/.p10k.zsh
+
+      # NixOS rebuild functions with checkout freshness guard
+      # nrs-force: rebuild immediately, bypassing pre-rebuild preflight but NOT the checkout guard
+      nrs-force() {
+        local _repo="''${REPO:-.}"
+        bash "$_repo/scripts/governance/check-checkout-fresh.sh" || return $?
+        sudo nixos-rebuild switch --flake "$_repo#hyperd-ai-dev"
+      }
+
+      # hms: home-manager switch with checkout freshness guard
+      hms() {
+        local _repo="''${REPO:-.}"
+        bash "$_repo/scripts/governance/check-checkout-fresh.sh" || return $?
+        home-manager switch --flake "$_repo#hyperd"
+      }
 
       # Phase 86 — HITL alert indicator
       # Prints "[ ATTN: N PENDING ALERT(S) ]" before each prompt if human_gate

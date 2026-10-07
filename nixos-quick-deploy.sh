@@ -4437,6 +4437,13 @@ run_boot_mode_workflow() {
 }
 
 run_switch_mode_workflow() {
+  # Check that the repository checkout is up-to-date before rebuilding
+  # (prevents deploying stale code after GitHub merges without local pulls)
+  section "Pre-switch checkout freshness check"
+  bash "${REPO_ROOT}/scripts/governance/check-checkout-fresh.sh" || {
+    die "Checkout is behind origin — pull and retry"
+  }
+
   if [[ "${SKIP_SYSTEM_SWITCH}" == false ]]; then
     section "System Switch"
     log "Switching system configuration"

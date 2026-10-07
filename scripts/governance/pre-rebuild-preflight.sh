@@ -37,6 +37,21 @@ hdr()  { echo; echo "=== $* ==="; }
 
 hdr "Pre-rebuild preflight for .#${FLAKE_TARGET}"
 
+# --- 0. Checkout freshness (prevent rebuilding stale code) ---
+hdr "0. Checkout freshness check"
+if bash scripts/governance/check-checkout-fresh.sh 2>&1; then
+  ok "Working tree is up-to-date with origin"
+else
+  exit_code=$?
+  if [[ $exit_code -eq 3 ]]; then
+    fail "Checkout is behind origin — pull first before rebuilding"
+    exit 3
+  else
+    fail "Could not verify checkout freshness (exit code $exit_code)"
+    exit 1
+  fi
+fi
+
 # --- 1. SOPS manifest sync ---
 hdr "1. SOPS secret sync"
 if [[ "$SKIP_SOPS" == true ]]; then
