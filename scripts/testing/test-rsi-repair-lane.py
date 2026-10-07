@@ -5,11 +5,15 @@ import importlib.machinery
 import importlib.util
 import io
 import json
+import os
 import tempfile
 import unittest
 from datetime import datetime, timedelta, timezone
 from pathlib import Path
 from unittest.mock import Mock, patch
+
+_INCIDENTS_TMP = tempfile.TemporaryDirectory(prefix="prsi-incidents-test-")
+os.environ["PRSI_INCIDENTS_FILE"] = str(Path(_INCIDENTS_TMP.name) / "rsi-incidents.json")
 
 ROOT = Path(__file__).resolve().parents[2]
 spec = importlib.util.spec_from_file_location("prsi_lane", ROOT / "scripts/automation/prsi-orchestrator.py")
@@ -30,6 +34,10 @@ def row(age=0, status="rsi_pending"):
 
 
 class LaneTests(unittest.TestCase):
+    def test_incident_store_uses_environment(self):
+        self.assertEqual(prsi._RSI_INCIDENTS, Path(os.environ["PRSI_INCIDENTS_FILE"]))
+        self.assertFalse(prsi._RSI_INCIDENTS.resolve().is_relative_to(ROOT / ".agent"))
+
     def setUp(self):
         self.tmp = tempfile.TemporaryDirectory()
         self.addCleanup(self.tmp.cleanup)
