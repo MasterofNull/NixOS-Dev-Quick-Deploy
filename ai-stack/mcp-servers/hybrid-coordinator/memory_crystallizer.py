@@ -46,6 +46,18 @@ class MemoryCrystallizer:
         self._last_run: Optional[str] = None
         self._insights_stored = 0
 
+    @property
+    def broker(self) -> Optional[Any]:
+        """Return the wired MemoryBroker, dynamically resolving from memory_broker module if unset."""
+        if self._broker is not None:
+            return self._broker
+        try:
+            import memory_broker
+            self._broker = memory_broker.get_broker()
+            return self._broker
+        except Exception:
+            return None
+
     async def ensure_schema(self) -> None:
         if self._schema_ready or self._pg is None:
             return
@@ -122,7 +134,8 @@ class MemoryCrystallizer:
     ) -> Dict[str, Any]:
         if not history or len(history) < 4:
             return {"status": "skipped", "reason": "history_too_short"}
-        if self._llama_client is None or self._broker is None:
+        broker = self.broker
+        if self._llama_client is None or broker is None:
             return {"status": "error", "reason": "dependencies_not_met"}
 
         prompt = self._build_distillation_prompt(history)
@@ -138,7 +151,7 @@ class MemoryCrystallizer:
 
             stored_count = 0
             for fact in facts:
-                result = await self._broker.write(
+                result = await broker.write(
                     memory_type="semantic",
                     content=fact,
                     context={
