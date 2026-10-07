@@ -14,6 +14,93 @@ from aiohttp import web
 
 logger = logging.getLogger("hybrid-coordinator")
 
+
+def _extract_history(raw: bytes) -> List[Dict[str, str]]:
+    """Extract chat history from multiple session formats.
+
+    Parses Claude Code JSONL, Codex JSONL, and Continue JSON formats,
+    extracting only text content. Returns the last 20 messages (≤1200 chars each).
+    """
+    messages: List[Dict[str, str]] = []
+    raw_str = raw.decode("utf-8", errors="replace")
+
+    # Try JSONL formats (Claude Code / Codex)
+    for line in raw_str.split("\n"):
+        line = line.strip()
+        if not line:
+            continue
+
+        try:
+            obj = json.loads(line)
+        except (json.JSONDecodeError, ValueError):
+            continue
+
+        # Claude Code JSONL: type in ["user", "assistant"], message.content is str or list of blocks
+        if obj.get("type") in {"user", "assistant"}:
+            role = obj["type"]
+            msg_obj = obj.get("message", {})
+            content = msg_obj.get("content", "")
+
+            # Handle list of blocks (e.g., tool_use, text)
+            if isinstance(content, list):
+                text_parts = []
+                for block in content:
+                    if isinstance(block, dict) and block.get("type") == "text":
+                        text_parts.append(block.get("text", ""))
+                content = " ".join(text_parts)
+
+            # Truncate to 1200 chars and skip empty
+            content = str(content).strip()[:1200]
+            if content:
+                messages.append({"role": role, "content": content})
+
+        # Codex JSONL: type=="response_item", payload.type=="message", payload.role in ["user", "assistant"]
+        elif obj.get("type") == "response_item":
+            payload = obj.get("payload", {})
+            if payload.get("type") == "message" and payload.get("role") in {"user", "assistant"}:
+                role = payload["role"]
+                content_list = payload.get("content", [])
+                text_parts = []
+                if isinstance(content_list, list):
+                    for item in content_list:
+                        if isinstance(item, dict) and item.get("type") in {"input_text", "output_text"}:
+                            text_parts.append(item.get("text", ""))
+                content = " ".join(text_parts).strip()[:1200]
+                if content:
+                    messages.append({"role": role, "content": content})
+
+    # Try single-object Continue JSON format
+    if not messages:
+        try:
+            obj = json.loads(raw_str)
+            if isinstance(obj, dict) and "history" in obj:
+                history_list = obj["history"]
+                if isinstance(history_list, list):
+                    for item in history_list:
+                        if isinstance(item, dict):
+                            msg = item.get("message", {})
+                            if isinstance(msg, dict):
+                                role = msg.get("role")
+                                content = msg.get("content", "")
+
+                                # Handle str or list of {text}
+                                if isinstance(content, list):
+                                    text_parts = []
+                                    for block in content:
+                                        if isinstance(block, dict):
+                                            text_parts.append(block.get("text", ""))
+                                    content = " ".join(text_parts)
+
+                                content = str(content).strip()[:1200]
+                                if role and content:
+                                    messages.append({"role": role, "content": content})
+        except (json.JSONDecodeError, ValueError, KeyError):
+            pass
+
+    # Return last 20 messages
+    return messages[-20:] if messages else []
+
+
 DDL_CRYSTALLIZED_SESSIONS = """
 CREATE TABLE IF NOT EXISTS crystallized_sessions (
     session_hash      TEXT PRIMARY KEY,
@@ -85,46 +172,40 @@ class MemoryCrystallizer:
         if await self._already_processed(session_hash):
             return {"status": "already_processed", "session_hash": session_hash, "insights_stored": 0}
 
-        insight = _distill_session_payload(raw)
-        now = datetime.now(timezone.utc).isoformat()
-        if self._store_insight is not None:
-            await self._store_insight(
-                insight,
-                {
-                    "source_event_id": f"session:{session_hash}",
-                    "evidence": [{"type": "session_hash", "value": session_hash}],
-                    "scope": "episodic",
-                    "confidence": 0.8,
-                    "last_validated_at": now,
-                    "promotion_status": "crystallized",
-                    "supersedes": [],
-                    "expires_at": None,
-                    "source": "memory_crystallizer",
-                    "session_path": str(path),
-                },
-            )
+        history = _extract_history(raw)
+        result = await self._crystallize_history(
+            history,
+            metadata={"session_path": str(path), "session_hash": session_hash}
+        )
 
-        if self._pg is not None:
-            await self._pg.execute(
-                """
-                INSERT INTO crystallized_sessions
-                    (session_hash, session_path, insights_stored, processed_at)
-                VALUES (%s, %s, %s, %s)
-                """,
-                session_hash,
-                str(path),
-                1,
-                now,
-            )
-        self._processed[session_hash] = {
+        # Record hash only on success/skip (retry on dependency/LLM errors)
+        if result.get("status") in {"complete", "skipped"}:
+            if self._pg is not None:
+                await self._pg.execute(
+                    """
+                    INSERT INTO crystallized_sessions
+                        (session_hash, session_path, insights_stored, processed_at)
+                    VALUES (%s, %s, %s, %s)
+                    """,
+                    session_hash,
+                    str(path),
+                    result.get("facts_stored", 0),
+                    datetime.now(timezone.utc).isoformat(),
+                )
+            self._processed[session_hash] = {
+                "session_hash": session_hash,
+                "session_path": str(path),
+                "insights_stored": result.get("facts_stored", 0),
+                "processed_at": datetime.now(timezone.utc).isoformat(),
+            }
+            self._last_run = datetime.now(timezone.utc).isoformat()
+            self._insights_stored += result.get("facts_stored", 0)
+
+        return {
+            "status": result.get("status"),
             "session_hash": session_hash,
-            "session_path": str(path),
-            "insights_stored": 1,
-            "processed_at": now,
+            "insights_stored": result.get("facts_stored", 0)
         }
-        self._last_run = now
-        self._insights_stored += 1
-        return {"status": "crystallized", "session_hash": session_hash, "insights_stored": 1}
 
     async def _crystallize_history(
         self,
@@ -147,7 +228,13 @@ class MemoryCrystallizer:
                 system="You are a Knowledge Crystallizer.",
             )
             raw_text = response.content
-            facts = [fact.strip("- ").strip() for fact in raw_text.split("\n") if len(fact.strip()) > 10]
+            # Extract only lines starting with "-" or "*", strip markers, keep max 10
+            raw_facts = [
+                fact.strip()
+                for fact in raw_text.split("\n")
+                if fact.strip() and fact.strip()[0] in {"-", "*"}
+            ]
+            facts = [fact[1:].strip() for fact in raw_facts[:10] if len(fact.strip()) > 10]
 
             stored_count = 0
             for fact in facts:
@@ -221,27 +308,13 @@ class MemoryCrystallizer:
 
     def _build_distillation_prompt(self, history: List[Dict[str, str]]) -> str:
         history_text = "\n".join(f"{m['role']}: {m['content']}" for m in history[-20:])
-        return f"""<|im_start|>system
-You are a 'Knowledge Crystallizer'. Your job is to extract atomic, permanent facts from the following chat history.
-Avoid duplicates. Be concise. Output ONLY a bulleted list of facts.
+        return f"""You are a Knowledge Crystallizer. Your job is to extract atomic, permanent facts from the following chat history.
+Avoid duplicates. Be concise. Output ONLY a bulleted list of 3-10 facts (each fact on one line, prefixed with a dash).
 
 HISTORY:
 {history_text}
 
-EXTRACTED FACTS:
-- <|im_end|>
-<|im_start|>assistant
-- """
-
-
-def _distill_session_payload(raw: bytes) -> str:
-    try:
-        payload = json.loads(raw.decode("utf-8"))
-    except Exception:
-        payload = raw.decode("utf-8", errors="replace")
-    text = json.dumps(payload, sort_keys=True) if isinstance(payload, (dict, list)) else str(payload)
-    compact = " ".join(text.split())
-    return compact[:4000]
+EXTRACTED FACTS:"""
 
 
 _crystallizer = MemoryCrystallizer()
