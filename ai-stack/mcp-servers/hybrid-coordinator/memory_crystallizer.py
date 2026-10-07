@@ -266,7 +266,8 @@ class MemoryCrystallizer:
                     context=context,
                     source="crystallizer",
                 )
-                if result.get("status") in {"stored", "success"}:
+                # store_agent_memory ingests asynchronously and reports "queued" on success.
+                if result.get("status") in {"stored", "success", "queued"}:
                     stored_count += 1
                     try:
                         from metrics import CRYSTALLIZATION_FACTS_EXTRACTED
