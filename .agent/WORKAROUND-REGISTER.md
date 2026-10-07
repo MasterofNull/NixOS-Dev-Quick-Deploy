@@ -322,3 +322,11 @@ Codex lane absent).
 - **Fix path:** Updated orchestration policies in `config/workflow-blueprints.json` to declare `collaborator_lanes: ["implementation", "remote-reasoning"]`, `consensus_mode: "reviewer-gate"`, and `escalation_lane: "remote-reasoning"`.
 - **Class / severity:** T2 validation-gap; low. Status: FIXED 2026-10-05.
 - **Evidence:** `python3 scripts/testing/test-workflow-blueprints.py` PASS (`PASS: workflow blueprints cover the required harness task families`).
+
+## WR-FAST-LANE-PIPEWIRE-LEAF-REBUILD (2026-10-06) — FIXED
+
+- **Symptom:** `home-manager switch --flake .#hyperd` compiled Chromium from source (>8.5 hours of local `ninja` compilation on clang 21).
+- **Root cause / producer:** In `nix/overlays/fast-lane-manifest.nix`, `pipewire` and `xdg-desktop-portal` were in `active` instead of `leaf`. The global overlay replaced `pkgs.pipewire` with `unstablePkgs.pipewire`, altering the derivation hash of everything linking against `pipewire` (including `chromium` in `nix/home/base.nix`) and invalidating official binary caches.
+- **Fix path:** Moved `pipewire` and `xdg-desktop-portal` from `active` to `leaf` in `nix/overlays/fast-lane-manifest.nix`. Wired `services.pipewire.package = lib.mkDefault (pkgs.fastLaneLeaf.pipewire or pkgs.pipewire);` in `nix/modules/roles/desktop.nix` so the desktop daemon uses the updated build without forcing downstream mass recompilation.
+- **Class / severity:** Packaging / mass rebuild cascade; high. Status: FIXED 2026-10-06.
+- **Evidence:** `python3 scripts/health/fast-lane-staleness-check.py` PASS; `pytest -q scripts/testing/test-fast-lane-staleness-check.py` PASS (8/8 passed); `scripts/governance/quick-deploy-lint.sh --mode fast` PASS (22/22 checks).
