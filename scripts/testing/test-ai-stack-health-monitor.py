@@ -3,6 +3,8 @@
 
 from __future__ import annotations
 
+import contextlib
+import io
 import importlib.util
 import json
 import subprocess
@@ -37,6 +39,59 @@ def main() -> int:
         ]
     })
     assert_true(len(failures) == 1 and failures[0]["id"] == "bad", "monitor should read current aq-qa tests schema")
+
+    from attention_queue import AlertSpec
+
+    accepted = []
+    def validating_push(**spec):
+        AlertSpec(**spec).validate()
+        accepted.append(spec)
+
+    original_push = monitor.push
+    original_run_qa = monitor.run_aq_qa
+    original_phases = monitor._PHASES
+    original_write_status = monitor.write_status
+    try:
+        monitor.push = validating_push
+        full_title = "x" * 243
+        monitor.push_alert(source="test", severity="high", autonomy_boundary="human_gate",
+                           title=full_title, detail="detail", proposed_action="inspect")
+        assert_true(accepted[0]["title"] == "x" * 79 + "…", "243-character title should truncate")
+        assert_true(full_title in accepted[0]["detail"], "full title should remain in detail")
+        try:
+            AlertSpec(source="test", severity="high", autonomy_boundary="human_gate",
+                      title=full_title, detail="detail", proposed_action="inspect").validate()
+        except ValueError:
+            pass
+        else:
+            raise AssertionError("queue validation must remain strict")
+
+        calls = []
+        def reject_first(**spec):
+            calls.append(spec)
+            if len(calls) == 1:
+                spec["severity"] = "invalid"
+            return validating_push(**spec)
+
+        monitor.push = reject_first
+        monitor._PHASES = ["bad", "good"]
+        monitor.run_aq_qa = lambda phase: {"error": full_title} if phase == "bad" else {
+            "tests": [{"id": "bad", "status": "FAIL", "description": full_title}]}
+        statuses = []
+        monitor.write_status = statuses.append
+        stderr = io.StringIO()
+        with contextlib.redirect_stderr(stderr):
+            assert_true(monitor.main() == 0, "invalid alert must not abort monitor")
+        assert_true(len(calls) == 2 and len(accepted) == 2, "batch should queue the next valid alert")
+        assert_true(all(len(item["title"]) <= 80 for item in calls), "both producers should bound titles")
+        assert_true(full_title in accepted[-1]["detail"], "QA row detail should remain intact")
+        assert_true("Skipping invalid alert" in stderr.getvalue(), "invalid alert should be logged")
+        assert_true(statuses[0]["total_failures"] == 2, "status should record both failures")
+    finally:
+        monitor.push = original_push
+        monitor.run_aq_qa = original_run_qa
+        monitor._PHASES = original_phases
+        monitor.write_status = original_write_status
 
     captured = {}
 
