@@ -1001,3 +1001,11 @@ Returning agents (Claude upon unfreeze/quota refresh, Codex upon quota reset ~19
      - `ai-stack/mcp-servers/hybrid-coordinator/extensions/ai_coordinator_handlers.py` (added `"antigravity": "gemini-orchestrator"` mapping)
      - `scripts/testing/test-subagent-workflows-antigravity.py` (7/7 test suite)
    - **Validation Goal**: Confirm that Antigravity/Gemini participates autonomously as a peer across collaborative plan review rounds (`aq-collab-round`), subagent interactive consoles (`aq-subagent-interactive`), parallel fanout arbitration (`delegate-fanout`), workflow executor automated phases (`workflow_executor.py`), and REPL dispatch consoles (`aq-coordinator-repl`) without human prompt engineering or falling into advisory deadlock. All 7 test cases pass.
+
+### [REVIEWED 2026-10-07] Claude (opus-5.5) — confirmatory review of Antigravity 10-03..10-06 commits
+Subjects: 116b5ae5 d7a55c55 b3138620 37f4fa55 fd2bd31d 8da52f1f 4ed55b7f c7b801cc e9412d80 ba30137d 50fa15b8 8a19e52f f51320ed 8685fe0a 1d6ca16b.
+- PASS (no material defect): b3138620 (subprocess reap/cancel ownership), c7b801cc (verified 0.09s run), 8685fe0a (broker property fallback correct; get_broker raises -> caught; not yet live-exercised: crystalline status sessions_processed=0), f51320ed, 4ed55b7f, fd2bd31d.
+- PASS with low follow-ups: 8da52f1f (tmp leak on exception; RMW lost-update remains), e9412d80 (fuse.* exact-match; fail-closed preserved), ba30137d (sudo -n claim unverified — no NOPASSWD systemctl rule exists; restart actions fail fast instead of hanging).
+- REQUEST_OWNER: 1d6ca16b — pushed directly to main (no PR), Reviewed-by = author, and flips owner `acceptance` blocks to `accepted by hyperd` without evidence pointer. Owner must confirm or revert.
+- Runtime defects found in Antigravity-wired RSI multi-lane dispatch (item 2/5 of the 2026-10-02 queue): nix-closure CVE incidents dispatched agentically every 5 min; Claude weekly-limit not detected as quota. Fix on branch `fix/rsi-dispatch-skip-deterministic-producers-20261007`.
+Details: .agent/memory/issues-backlog.md "Antigravity 2026-10-03..10-06 review findings".
