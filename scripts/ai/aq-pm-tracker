@@ -127,6 +127,29 @@ def _systemd_state(unit: str) -> dict:
     return d
 
 
+def _systemd_timer_state(unit: str) -> dict:
+    """Read a timer's ground-truth state (cached, bounded). Used to detect whether
+    a oneshot service's associated timer has ever triggered (when timestamps are
+    empty but service has Result=success). Empty on any error."""
+    timer_unit = unit.replace(".service", ".timer") if unit.endswith(".service") else unit + ".timer"
+    cache_key = f"timer:{timer_unit}"
+    if cache_key in _SYSTEMD_CACHE:
+        return _SYSTEMD_CACHE[cache_key]
+    d: dict = {}
+    try:
+        out = subprocess.run(
+            ["systemctl", "show", timer_unit, "-p", "LastTriggerUSec", "-p", "Result"],
+            capture_output=True, text=True, timeout=8).stdout
+        for line in out.splitlines():
+            if "=" in line:
+                k, v = line.split("=", 1)
+                d[k] = v.strip()
+    except Exception:
+        pass
+    _SYSTEMD_CACHE[cache_key] = d
+    return d
+
+
 def _project_systemd(unit: str, accepted: bool) -> tuple[str, int]:
     """Honest tier for a systemd-backed feature. VALIDATED-run/active still caps at
     IN-PROGRESS until the owner ACCEPTS — 'running' proves integrated, not
@@ -147,6 +170,13 @@ def _project_systemd(unit: str, accepted: bool) -> tuple[str, int]:
         return ("SHIPPED", 100) if accepted else ("IN-PROGRESS", 70)
     if result not in ("", "success"):            # failed
         return ("BLOCKED", 0)
+    # For oneshot services, after deactivation the timestamps become empty but Result
+    # persists. Check the timer's LastTriggerUSec to detect past successful runs.
+    if not ran and result == "success":
+        timer_st = _systemd_timer_state(unit)
+        triggered = bool(timer_st.get("LastTriggerUSec", "").strip())
+        if triggered:                            # timer triggered + unit has Result=success
+            return ("SHIPPED", 100) if accepted else ("IN-PROGRESS", 70)
     if enabled:                                   # enabled but never observed running its job
         return ("IN-PROGRESS", 40)
     return ("DESIGNED", 15)
