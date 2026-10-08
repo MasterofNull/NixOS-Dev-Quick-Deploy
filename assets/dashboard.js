@@ -1507,6 +1507,40 @@ async function loadDropZone() {
 }
 
 // ─── OVERVIEW: ATTENTION REQUIRED (Phase 86 HITL) ────────────────────────────
+async function loadApprovalInbox() {
+  const details = document.getElementById("approvalInboxDetails");
+  const badge = document.getElementById("approvalInboxBadge");
+  if (!details || !badge) return;
+  try {
+    const d = await apiFetch("/approval-inbox");
+    if (!d || d.status === "unavailable") throw new Error("Unavailable");
+    badge.textContent = `${d.counts.needs_approval} need approval · ${d.counts.deferred} deferred`;
+    badge.className = `card-badge ${d.counts.needs_approval ? "badge-warn" : "badge-ok"}`;
+    details.replaceChildren();
+    const line = (label, value) => {
+      const row = document.createElement("div");
+      row.className = "fw-row";
+      const key = document.createElement("span");
+      key.className = "fk";
+      key.textContent = label;
+      const text = document.createElement("span");
+      text.className = "fv info";
+      text.textContent = value;
+      row.append(key, text);
+      details.appendChild(row);
+    };
+    line("Tag", d.tag);
+    for (const [label, items] of [["Needs approval", d.needs_approval], ["Deferred", d.deferred]]) {
+      line(label, String(items.length));
+      for (const item of items) line(`${item.n}. [${item.severity}]`, item.title);
+    }
+  } catch (_) {
+    badge.textContent = "--";
+    badge.className = "card-badge badge-warn";
+    details.textContent = "Approval inbox unavailable";
+  }
+}
+
 async function loadAlerts() {
   try {
     const d = await apiFetch("/alerts/status");
@@ -8263,6 +8297,7 @@ async function refreshAll() {
     loadHardwareState(),
     loadDropZone(),
     loadAlerts(),
+    loadApprovalInbox(),
     loadSystemNavigator(),
   ]);
   // Dependents
@@ -8294,6 +8329,7 @@ document.addEventListener("DOMContentLoaded", () => {
     loadHardwareState(),
     loadDropZone(),
     loadAlerts(),
+    loadApprovalInbox(),
     loadSystemNavigator(),
   ]).then(() => {
     loadInferenceSlots();
@@ -8316,6 +8352,7 @@ document.addEventListener("DOMContentLoaded", () => {
   setInterval(loadServices, 30_000);
   setInterval(loadDropZone, 30_000);
   setInterval(loadAlerts, 30_000);
+  setInterval(loadApprovalInbox, 30_000);
   setInterval(loadDatabase, 60_000);
   setInterval(loadSystemNavigator, 120_000); // artifact refreshes every 15m; poll every 2m
   setInterval(loadActiveAgentTasks, 10_000); // agent tasks change fast

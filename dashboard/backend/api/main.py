@@ -251,6 +251,9 @@ app.include_router(approvals_mod.view_router, tags=["approvals-view"])
 from .routes import pm as pm_mod  # noqa: E402
 app.include_router(pm_mod.router, prefix="/api", tags=["pm"])
 
+from .routes import approval_inbox as approval_inbox_mod  # noqa: E402
+app.include_router(approval_inbox_mod.router, prefix="/api", tags=["approval-inbox"])
+
 
 # ── Direct routes — must be registered BEFORE the StaticFiles mount ──────────
 # app.mount("/", StaticFiles(...)) is a catch-all that shadows any route
