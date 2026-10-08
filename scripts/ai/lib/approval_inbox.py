@@ -38,6 +38,21 @@ def _load_json(path: Path, default):
         return default
 
 
+def _load_json_with_status(path: Path, default) -> tuple:
+    """Load JSON; distinguish missing file (OK) from unreadable/corrupt (DEGRADED).
+
+    Returns (data, error_info):
+      - error_info is None if successful or file missing
+      - error_info is {"path": str, "error": str} if unreadable/corrupt
+    """
+    try:
+        return json.loads(path.read_text(encoding="utf-8")), None
+    except FileNotFoundError:
+        return default, None
+    except (OSError, json.JSONDecodeError) as e:
+        return default, {"path": str(path), "error": f"{type(e).__name__}: {str(e)[:80]}"}
+
+
 def load_dismissed() -> dict:
     d = _load_json(_inbox_dir() / "approval-inbox.json", {})
     dis = d.get("dismissed") if isinstance(d, dict) else None
@@ -94,13 +109,28 @@ def _attention_pending() -> list:
         return []
 
 
-def collect() -> list:
+def collect_with_status() -> tuple:
+    """Collect approval items and track degradation.
+
+    Returns (items, degraded_sources):
+      - items: list of approval items (same as collect())
+      - degraded_sources: list of {"path": str, "error": str} for unreadable/corrupt files,
+                          or [] if all sources are readable
+    """
     dismissed = load_dismissed()
-    incidents = (_load_json(_incidents_path(), {}) or {}).get("incidents", {})
+    degraded = []
+
+    incidents_data, inc_err = _load_json_with_status(_incidents_path(), {})
+    if inc_err:
+        degraded.append(inc_err)
+    incidents = (incidents_data or {}).get("incidents", {})
     if not isinstance(incidents, dict):
         incidents = {}
-    queue = _load_json(_queue_path(), {})
-    rows = queue.get("actions", []) if isinstance(queue, dict) else []
+
+    queue_data, queue_err = _load_json_with_status(_queue_path(), {})
+    if queue_err:
+        degraded.append(queue_err)
+    rows = queue_data.get("actions", []) if isinstance(queue_data, dict) else []
 
     approval, represented = [], set()
     for row in rows:
@@ -156,7 +186,16 @@ def collect() -> list:
                          "action": str(inc.get("root_fix") or ""), "kind": "rsi", "ref": iid, "incident_id": iid})
 
     items = _sort(approval) + _sort(deferred)
-    return [i for i in items if i["key"] not in dismissed]
+    return [i for i in items if i["key"] not in dismissed], degraded
+
+
+def collect() -> list:
+    """Legacy interface; use collect_with_status() to detect degradation.
+
+    Returns items only, ignoring degradation (missing file is treated as empty).
+    """
+    items, _ = collect_with_status()
+    return items
 
 
 def snapshot_tag(items: list) -> str:
@@ -260,7 +299,10 @@ def inbox_cli(argv: list, approve_alert, resolve_actor) -> int:
     ap.add_argument("--note", default="")
     args = ap.parse_args(argv)
 
-    items = collect()
+    items, degraded = collect_with_status()
+    if degraded:
+        for deg in degraded:
+            print(f"WARNING: Approval inbox degraded: {deg['path']} — {deg['error']}", file=sys.stderr)
     tag = snapshot_tag(items)
     if args.cmd == "list":
         if args.summary:
