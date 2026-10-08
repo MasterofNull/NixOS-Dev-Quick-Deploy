@@ -1406,6 +1406,27 @@ def _check_c6a_authorize_launch_coverage(ctx: RunContext) -> list[CheckResult]:
     return [failed(1, "0.10.53", "C6a authorize-launch coverage", detail)]
 
 
+def _check_factory_ci_pack(ctx: RunContext) -> list[CheckResult]:
+    """0.10.58: ECC P0-E portable GitHub CI pack fixtures plus dashboard visibility (local verdict only)."""
+    desc = "ECC P0-E portable GitHub CI pack: SHA pins, least-privilege, brownfield preserved, UNVERIFIED_REMOTE verdict, dashboard visibility"
+    test = ctx.repo_root / "scripts" / "testing" / "test-factory-ci-pack.py"
+    route = ctx.repo_root / "dashboard" / "backend" / "api" / "routes" / "aistack.py"
+    js = ctx.repo_root / "assets" / "dashboard.js"
+    missing = [str(p.relative_to(ctx.repo_root)) for p in (test, route, js) if not p.exists()]
+    if missing:
+        return [failed(5, "0.10.58", desc, f"missing: {', '.join(missing)}")]
+    try:
+        proc = subprocess.run([sys.executable, str(test)], cwd=str(ctx.repo_root), capture_output=True, text=True,
+                              timeout=120, check=False)
+        if proc.returncode != 0 or "PASS: factory CI pack" not in proc.stdout:
+            return [failed(5, "0.10.58", desc, (proc.stderr or proc.stdout or "fixture failed")[-240:])]
+        if "_ci_pack_health_summary" not in route.read_text(encoding="utf-8") or "· CI pack" not in js.read_text(encoding="utf-8"):
+            return [failed(5, "0.10.58", desc, "dashboard CI pack visibility contract missing")]
+    except (OSError, subprocess.TimeoutExpired) as error:
+        return [failed(5, "0.10.58", desc, str(error)[:240])]
+    return [passed(5, "0.10.58", desc)]
+
+
 def _check_provider_projection(ctx: RunContext) -> list[CheckResult]:
     """0.10.55: ECC P0-B provider projection fixtures plus live drift status (preview-only)."""
     desc = "ECC P0-B provider projection: deterministic preview, drift/preserved/refusal fixtures, live drift status"
@@ -2164,6 +2185,7 @@ def run(ctx: RunContext) -> list[CheckResult]:
     results.extend(_check_c6c_owner_submission_coverage(ctx))
     results.extend(_check_provider_projection(ctx))
     results.extend(_check_ecc_diagnostics(ctx))
+    results.extend(_check_factory_ci_pack(ctx))
     if ctx.dashboard_safe:
         results.extend(_dashboard_safe_host_only_skips())
     return results

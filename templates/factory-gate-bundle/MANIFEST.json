@@ -35,6 +35,8 @@
     {"bundle_path": "checks.d/hard-50-lint.sh", "install_target": "scripts/governance/checks.d/hard-50-lint.sh", "derived_from": ["scripts/governance/tier0-validation-gate.sh"]},
     {"bundle_path": "checks.d/live-60-service.sh", "install_target": "scripts/governance/checks.d/live-60-service.sh", "derived_from": ["scripts/governance/tier0-validation-gate.sh", "scripts/governance/tier0.d/check-pm-tracker.sh"]},
     {"bundle_path": "checks.d/freshness-70-artifacts.sh", "install_target": "scripts/governance/checks.d/freshness-70-artifacts.sh", "derived_from": ["scripts/governance/tier0-validation-gate.sh", "scripts/governance/tier0.d/check-pm-tracker.sh"]},
+    {"bundle_path": "ci/factory-gate.yml.tmpl", "install_target": ".github/workflows/factory-gate.yml", "derived_from": [".github/workflows/security.yml", ".github/workflows/gitleaks.yml", ".agents/plans/ecc-parity-integration/IMPLEMENTATION-PLAN.md"]},
+    {"bundle_path": "ci/ci_policy.py", "install_target": ".factory/gate-bundle/ci/ci_policy.py", "derived_from": [".agents/plans/ecc-parity-integration/IMPLEMENTATION-PLAN.md"]},
     {"bundle_path": "hooks/commit-msg", "install_target": ".githooks/commit-msg", "derived_from": [".githooks/commit-msg"]},
     {"bundle_path": "hooks/pre-commit", "install_target": ".githooks/pre-commit", "derived_from": [".githooks/pre-commit"]},
     {"bundle_path": "pm-tracker/projector.py", "install_target": "scripts/pm-tracker", "derived_from": ["scripts/ai/aq-pm-tracker"]},
