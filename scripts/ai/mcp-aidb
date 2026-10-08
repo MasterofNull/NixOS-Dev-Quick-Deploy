@@ -1,0 +1,7 @@
+#!/usr/bin/env bash
+# mcp-aidb — CLI / MCP helper for AIDB operations and queries
+SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
+if [[ "$1" == "--health" || "$1" == "health" ]]; then
+  exec curl -s http://127.0.0.1:8002/health
+fi
+exec python3 "${SCRIPT_DIR}/mcp-bridge-hybrid.py" "$@"

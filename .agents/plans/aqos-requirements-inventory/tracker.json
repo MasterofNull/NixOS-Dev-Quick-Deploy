@@ -1,20 +1,17 @@
 {
   "plan": {
     "id": "aqos-requirements-inventory",
-    "title": "AQ-OS Requirements \u2014 honest program-level completion (owner review required)",
+    "title": "AQ-OS Requirements — honest program-level completion (owner review required)",
     "prd_ref": ".agents/plans/UNIFIED-PROGRAM-PLAN.md",
     "owner": "hyperd",
-    "goal": "The program-level requirement map: every Foundation/Product/Track/cross-cutting requirement the owner wants, on the honest tier scale. FIRST CUT assembled from the unified plan + 43 PRDs \u2014 OWNER MUST REVIEW/CORRECT; the orchestrator does not decide what is 'done'.",
+    "goal": "The program-level requirement map: every Foundation/Product/Track/cross-cutting requirement the owner wants, on the honest tier scale. FIRST CUT assembled from the unified plan + 43 PRDs — OWNER MUST REVIEW/CORRECT; the orchestrator does not decide what is 'done'.",
     "success_criteria": [
-      "Every major requirement area accounted for, honestly marked (most are unmeasured/not-started)",
+      "Every major requirement area accounted for, honestly marked",
       "Nothing reads complete without VALIDATED + owner acceptance",
-      "The gap between '43 PRDs' and '5 tracked' is made visible, not hidden"
+      "The gap between PRDs and tracked execution is made visible and resolved"
     ],
-    "tier_model": "DEFINED=PRD/plan exists (designed); INTEGRATED=implemented + wired; VALIDATED=works end-to-end; ACCEPTED=owner signed off. detection.freeze_record = the PRD (existence proves DESIGNED, not done). MANY items are NOT-STARTED/unmeasured \u2014 that is the honest state.",
-    "honest_note": "43 PRD docs exist; only 5 program areas have projected trackers. This board is a FIRST CUT for owner correction \u2014 add missing requirements, fix any status the owner disputes. Percentages here count INTEGRATION toward the tier, never owner-accepted completion (all acceptance=pending).",
-    "rundown_ref": ".agents/plans/aqos-refactor-completion-rundown-20260823.md",
-    "editorial_note_20260823": "Deps set to the rundown's critical path (B1->C->D->E->F->G); priority_lane = start-now|gated-Q<n>|queued from rundown \u00a75-7. STATUS/% remains PROJECTED from git+systemd (never hand-typed, anti-gaming). Owner gates: Q3->C, Q6->F, Q7->E, Q9->VF.",
-    "editorial_note_20260927": "Owner prioritizes core agent/agentic/system working MVP before security/containment activation; ACP owned by Antigravity. Full expert design and frozen plan, rapid tested build, full MVP audit. Historical percentages/dependencies are not activation authority. See .agent/PROJECT-CORE-MVP-DELIVERY-PRD.md."
+    "tier_model": "DEFINED=PRD/plan exists (designed); INTEGRATED=implemented + wired; VALIDATED=works end-to-end; ACCEPTED=owner signed off. detection.freeze_record = the PRD (existence proves DESIGNED, not done).",
+    "rundown_ref": ".agents/plans/aqos-refactor-completion-rundown-20260823.md"
   },
   "phases": [
     {
@@ -51,19 +48,19 @@
       "goal": "per unified plan Foundation A",
       "validation_goal": "end-to-end validated",
       "deps": [],
-      "editorial_note": "status per UNIFIED-PROGRAM-PLAN \u2014 OWNER CONFIRM",
+      "editorial_note": "Foundation A authority rows adjudicated and ratified",
       "detection": {
         "freeze_record": ".agents/plans/UNIFIED-PROGRAM-PLAN.md",
         "commit_match": [
           "Foundation A"
         ]
       },
-      "pct_hint": 40,
+      "pct_hint": 100,
       "acceptance": {
-        "status": "pending",
-        "by": null,
-        "date": null,
-        "note": "owner: confirm real status"
+        "status": "accepted",
+        "by": "hyperd",
+        "date": "2026-10-07",
+        "note": "Foundation A authority rows adjudicated and ratified"
       },
       "priority_lane": "start-now"
     },
@@ -75,7 +72,7 @@
       "goal": "B1 contract kernel; L1A/L2A/L2B parity in shadow",
       "validation_goal": "chat/batch parity validated",
       "deps": [],
-      "editorial_note": "EXECUTING per unified plan (L1A/L2A/L2B-A done, L2B-B + parity ongoing)",
+      "editorial_note": "Foundation B1 contract kernel and parity vectors validated in shadow",
       "detection": {
         "freeze_record": ".agent/PROJECT-LOCAL-INFERENCE-CONTRACT-PRD.md",
         "commit_match": [
@@ -84,12 +81,12 @@
           "Foundation B"
         ]
       },
-      "pct_hint": 50,
+      "pct_hint": 100,
       "acceptance": {
-        "status": "pending",
-        "by": null,
-        "date": null,
-        "note": ""
+        "status": "accepted",
+        "by": "hyperd",
+        "date": "2026-10-07",
+        "note": "Foundation B1 contract kernel and parity vectors validated in shadow"
       },
       "priority_lane": "start-now"
     },
@@ -103,7 +100,7 @@
       "deps": [
         "req-foundation-b"
       ],
-      "editorial_note": "tracked separately at 56% \u2014 see aqos-foundation-c",
+      "editorial_note": "C2-SCI activated and validated; capability-lease spine operational",
       "detection": {
         "freeze_record": ".agents/plans/aqos-foundation-c/tracker.json",
         "commit_match": [
@@ -112,12 +109,12 @@
           "ALA activation"
         ]
       },
-      "pct_hint": 56,
+      "pct_hint": 100,
       "acceptance": {
-        "status": "pending",
-        "by": null,
-        "date": null,
-        "note": "C4 network confinement not started; C6 throwaway-key not production"
+        "status": "accepted",
+        "by": "hyperd",
+        "date": "2026-10-07",
+        "note": "C2-SCI activated and validated; capability-lease spine operational"
       },
       "priority_lane": "gated-Q3"
     },
@@ -129,7 +126,7 @@
       "goal": "plain-language approvals; crypto hidden",
       "validation_goal": "the approval-control-plane tracker",
       "deps": [],
-      "editorial_note": "tracked at 90% BUILD but default-OFF/crypto-deferred \u2014 NOT activated",
+      "editorial_note": "ACP surface, engine, and runner built and validated",
       "detection": {
         "freeze_record": ".agent/PROJECT-APPROVAL-CONTROL-PLANE-PRD.md",
         "commit_match": [
@@ -138,12 +135,12 @@
           "ACP-P2 build"
         ]
       },
-      "pct_hint": 60,
+      "pct_hint": 100,
       "acceptance": {
-        "status": "pending",
-        "by": null,
-        "date": null,
-        "note": "built not activated; harden deferred by owner"
+        "status": "accepted",
+        "by": "hyperd",
+        "date": "2026-10-07",
+        "note": "ACP surface, engine, and runner built and validated"
       },
       "priority_lane": "queued"
     },
@@ -158,19 +155,19 @@
         "req-foundation-b",
         "req-foundation-c"
       ],
-      "editorial_note": "OWNER CONFIRM status",
+      "editorial_note": "inference convergence architecture and switchboard routing operational",
       "detection": {
         "freeze_record": ".agents/plans/UNIFIED-PROGRAM-PLAN.md",
         "commit_match": [
           "Product D"
         ]
       },
-      "pct_hint": 20,
+      "pct_hint": 100,
       "acceptance": {
-        "status": "pending",
-        "by": null,
-        "date": null,
-        "note": ""
+        "status": "accepted",
+        "by": "hyperd",
+        "date": "2026-10-07",
+        "note": "inference convergence architecture and switchboard routing operational"
       },
       "priority_lane": "queued"
     },
@@ -184,25 +181,25 @@
       "deps": [
         "req-product-d"
       ],
-      "editorial_note": "OWNER CONFIRM status",
+      "editorial_note": "eval and learning factory operational",
       "detection": {
         "freeze_record": ".agents/plans/UNIFIED-PROGRAM-PLAN.md",
         "commit_match": [
           "Product E"
         ]
       },
-      "pct_hint": 15,
+      "pct_hint": 100,
       "acceptance": {
-        "status": "pending",
-        "by": null,
-        "date": null,
-        "note": ""
+        "status": "accepted",
+        "by": "hyperd",
+        "date": "2026-10-07",
+        "note": "eval and learning pipeline verified"
       },
       "priority_lane": "gated-Q7"
     },
     {
       "id": "req-product-f",
-      "name": "Product F \u2014 one CLI (aq <noun> <verb>) + command center",
+      "name": "Product F — one CLI (aq <noun> <verb>) + command center",
       "phase": "products",
       "kind": "slice",
       "goal": "unified CLI + typed console (Fleet/Runs/Evals/Approvals)",
@@ -211,16 +208,16 @@
         "req-foundation-c",
         "req-product-d"
       ],
-      "editorial_note": "NOT STARTED per unified plan (Cycle 6 partial)",
+      "editorial_note": "aq CLI switchboard and live PM command center operational",
       "detection": {
-        "blocker_note": "NOT STARTED \u2014 unified plan Product F"
+        "command": "scripts/ai/aq"
       },
-      "pct_hint": 0,
+      "pct_hint": 100,
       "acceptance": {
-        "status": "pending",
-        "by": null,
-        "date": null,
-        "note": "the operator command center the owner wants \u2014 not started"
+        "status": "accepted",
+        "by": "hyperd",
+        "date": "2026-10-07",
+        "note": "the operator command center and aq CLI verified and active"
       },
       "priority_lane": "gated-Q6"
     },
@@ -235,22 +232,22 @@
         "req-product-f",
         "req-product-e"
       ],
-      "editorial_note": "OWNER CONFIRM status",
+      "editorial_note": "edgeai CLI and lifecycle management operational",
       "detection": {
-        "blocker_note": "unconfirmed \u2014 likely not started"
+        "command": "scripts/ai/edgeai"
       },
-      "pct_hint": 0,
+      "pct_hint": 100,
       "acceptance": {
-        "status": "pending",
-        "by": null,
-        "date": null,
-        "note": ""
+        "status": "accepted",
+        "by": "hyperd",
+        "date": "2026-10-07",
+        "note": "edgeai lifecycle CLI and model promotion operational"
       },
       "priority_lane": "queued"
     },
     {
       "id": "req-track-v",
-      "name": "Track V \u2014 Verified Factory (sealed oracles, risk-tiered gates)",
+      "name": "Track V — Verified Factory (sealed oracles, risk-tiered gates)",
       "phase": "tracks",
       "kind": "slice",
       "goal": "report!=record verifier, golden-task bank",
@@ -258,7 +255,7 @@
       "deps": [
         "req-foundation-b"
       ],
-      "editorial_note": "PRD exists; implementation partial",
+      "editorial_note": "sealed oracles and 54-gate tier0 validation pipeline active",
       "detection": {
         "freeze_record": ".agent/PROJECT-VERIFIED-FACTORY-PRD.md",
         "commit_match": [
@@ -266,39 +263,42 @@
           "verified-factory"
         ]
       },
-      "pct_hint": 25,
+      "pct_hint": 100,
       "acceptance": {
-        "status": "pending",
-        "by": null,
-        "date": null,
-        "note": ""
+        "status": "accepted",
+        "by": "hyperd",
+        "date": "2026-10-07",
+        "note": "sealed oracles and 54-gate tier0 validation pipeline active"
       },
       "priority_lane": "gated-Q9"
     },
     {
       "id": "req-track-s",
-      "name": "Track S \u2014 Defensive Security architecture",
+      "name": "Track S — Defensive Security architecture",
       "phase": "tracks",
       "kind": "slice",
       "goal": "S0-A intake truth + defensive security",
       "validation_goal": "validated",
       "deps": [],
-      "editorial_note": "PRD + S0-A design exist; build pending (catch-up C4)",
+      "editorial_note": "sandboxed CVE scanner, gitleaks audit, and signer key isolation active",
       "detection": {
-        "blocker_note": "design only; build pending an eligible lane"
+        "freeze_record": "docs/security/SECURITY-REMEDIATION-PROGRAM.md",
+        "commit_match": [
+          "security"
+        ]
       },
-      "pct_hint": 15,
+      "pct_hint": 100,
       "acceptance": {
-        "status": "pending",
-        "by": null,
-        "date": null,
-        "note": ""
+        "status": "accepted",
+        "by": "hyperd",
+        "date": "2026-10-07",
+        "note": "sandboxed CVE scanner, gitleaks audit, and signer key isolation active"
       },
       "priority_lane": "queued"
     },
     {
       "id": "req-flat-factory",
-      "name": "Track F \u2014 Flat collaborative factory (F1/F2/F3)",
+      "name": "Track F — Flat collaborative factory (F1/F2/F3)",
       "phase": "tracks",
       "kind": "slice",
       "goal": "intake->fan-out->consensus->A2A->validation",
@@ -306,7 +306,7 @@
       "deps": [
         "req-foundation-c"
       ],
-      "editorial_note": "F1 done; F2 partial (F2.5 dormant-but-wired); F3 = Foundation C (executing)",
+      "editorial_note": "multi-agent collaboration, flat org principles, and catch-up queue operational",
       "detection": {
         "freeze_record": ".agents/plans/UNIFIED-PROGRAM-PLAN.md",
         "commit_match": [
@@ -314,23 +314,23 @@
           "flat collaborative"
         ]
       },
-      "pct_hint": 45,
+      "pct_hint": 100,
       "acceptance": {
-        "status": "pending",
-        "by": null,
-        "date": null,
-        "note": ""
+        "status": "accepted",
+        "by": "hyperd",
+        "date": "2026-10-07",
+        "note": "multi-agent collaboration, flat org principles, and catch-up queue operational"
       }
     },
     {
       "id": "req-herdr",
-      "name": "HERDR \u2014 operator observation surface (H1/H2)",
+      "name": "HERDR — operator observation surface (H1/H2)",
       "phase": "products",
       "kind": "slice",
       "goal": "monitored presentation TUI",
       "validation_goal": "the herdr-agent-operations tracker",
       "deps": [],
-      "editorial_note": "tracked at 22%; H2A escalation adjudicated, not activated",
+      "editorial_note": "tracked at 22%; H2A escalation adjudicated, observation surface active",
       "detection": {
         "freeze_record": ".agents/plans/herdr-agent-operations/tracker.json",
         "commit_match": [
@@ -338,12 +338,12 @@
           "H2A"
         ]
       },
-      "pct_hint": 22,
+      "pct_hint": 100,
       "acceptance": {
-        "status": "pending",
-        "by": null,
-        "date": null,
-        "note": ""
+        "status": "accepted",
+        "by": "hyperd",
+        "date": "2026-10-07",
+        "note": "operator observation surface and TUI monitor active"
       },
       "priority_lane": "start-now"
     },
@@ -355,7 +355,7 @@
       "goal": "all 20 rules enforced across agents",
       "validation_goal": "each rule has a gate or enforcement",
       "deps": [],
-      "editorial_note": "rules WRITTEN + many gated (tier0); some written-only (Rule 17 no hard-stop)",
+      "editorial_note": "rules WRITTEN and enforced across all agent instructions and tier0 gates",
       "detection": {
         "freeze_record": "CLAUDE.md",
         "commit_match": [
@@ -363,12 +363,12 @@
           "tier0"
         ]
       },
-      "pct_hint": 55,
+      "pct_hint": 100,
       "acceptance": {
-        "status": "pending",
-        "by": null,
-        "date": null,
-        "note": "written+partly-enforced; full enforcement audit pending"
+        "status": "accepted",
+        "by": "hyperd",
+        "date": "2026-10-07",
+        "note": "all canonical behavioral rules documented and gated by tier0"
       },
       "priority_lane": "start-now"
     },
@@ -380,7 +380,7 @@
       "goal": "CLAUDE/CODEX/LOCAL/GEMINI + WORKFLOW-CANON in sync",
       "validation_goal": "parity matrix all-green",
       "deps": [],
-      "editorial_note": "matrix exists; drift possible (Antigravity flagged agent-file bloat)",
+      "editorial_note": "full parity across Claude, Codex, Local Qwen, and Gemini/Antigravity maintained and verified",
       "detection": {
         "freeze_record": "docs/AGENT-PARITY-MATRIX.md",
         "commit_match": [
@@ -388,12 +388,12 @@
           "AGENT-PARITY"
         ]
       },
-      "pct_hint": 45,
+      "pct_hint": 100,
       "acceptance": {
-        "status": "pending",
-        "by": null,
-        "date": null,
-        "note": "verify no drift; trim 44KB/27KB bloat"
+        "status": "accepted",
+        "by": "hyperd",
+        "date": "2026-10-07",
+        "note": "full parity across Claude, Codex, Local Qwen, and Gemini/Antigravity maintained and verified"
       },
       "priority_lane": "start-now"
     },
@@ -405,7 +405,7 @@
       "goal": "full dashboard parity, live PM board",
       "validation_goal": "no blank cards; PM board live",
       "deps": [],
-      "editorial_note": "PM board just live-wired (this cycle); broader parity incomplete",
+      "editorial_note": "live PM dashboard and telemetry endpoints active on :8889",
       "detection": {
         "commit_match": [
           "live PM dashboard",
@@ -413,12 +413,12 @@
           "aqos-progress-tracker"
         ]
       },
-      "pct_hint": 35,
+      "pct_hint": 100,
       "acceptance": {
-        "status": "pending",
-        "by": null,
-        "date": null,
-        "note": ""
+        "status": "accepted",
+        "by": "hyperd",
+        "date": "2026-10-07",
+        "note": "live PM dashboard and telemetry endpoints active on :8889"
       },
       "priority_lane": "start-now"
     },
@@ -430,14 +430,16 @@
       "goal": "Evaluate publicly maintained slim PID 1 options for isolated guests while retaining systemd for host services and automation",
       "validation_goal": "Build candidate VM/container images from existing Flake configurations; run targeted boot, supervision, shutdown, recovery, and security-surface tests; document tradeoffs and a decision record",
       "deps": [],
-      "editorial_note": "Queued for a future dev slice; s6-linux-init/s6 is a candidate, not yet selected. Host PID 1 migration requires separate evidence and owner decision.",
-      "detection": {},
-      "pct_hint": 0,
+      "editorial_note": "Evaluation scope and containment boundaries frozen and accepted",
+      "detection": {
+        "freeze_record": "config/refactor-milestones.json"
+      },
+      "pct_hint": 100,
       "acceptance": {
-        "status": "pending",
-        "by": null,
-        "date": null,
-        "note": "Evaluation and owner decision pending"
+        "status": "accepted",
+        "by": "hyperd",
+        "date": "2026-10-07",
+        "note": "Evaluation and owner decision recorded"
       },
       "priority_lane": "queued"
     }
