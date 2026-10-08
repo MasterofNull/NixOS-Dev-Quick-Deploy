@@ -7059,6 +7059,21 @@ def _capability_outcome_catalog_summary(path: Optional[Path] = None) -> Dict[str
         }
 
 
+def _lifecycle_events_health_summary() -> Dict[str, Any]:
+    """Bounded, read-only lifecycle adapter health (dormant when no state file is configured)."""
+    try:
+        module_path = _repo_root() / "scripts" / "ai" / "lib" / "lifecycle_events.py"
+        spec = importlib.util.spec_from_file_location("aq_lifecycle_events", module_path)
+        if spec is None or spec.loader is None:
+            raise ImportError("lifecycle adapter unavailable")
+        module = importlib.util.module_from_spec(spec)
+        spec.loader.exec_module(module)
+        return module.health_summary(os.getenv("LIFECYCLE_EVENTS_STATE_FILE") or None)
+    except (OSError, ValueError, ImportError, SyntaxError) as exc:
+        return {"available": False, "status": "unverified",
+                "reason": f"adapter_unavailable:{type(exc).__name__}"}
+
+
 @router.get("/advanced/runtime-summary")
 async def get_advanced_runtime_summary() -> Dict[str, Any]:
     """Aggregate advanced Phase 6-10 control-plane state for dashboard visibility."""
@@ -7125,6 +7140,7 @@ async def get_advanced_runtime_summary() -> Dict[str, Any]:
                 "failure_patterns": failure_pattern_count,
                 "remediation_artifacts_recorded": bool((readiness.get("phase_9_capability_gap") or {}).get("remediation_artifacts_recorded")),
                 "outcomes": await asyncio.to_thread(_capability_outcome_catalog_summary),
+                "lifecycle_events": await asyncio.to_thread(_lifecycle_events_health_summary),
             },
             "learning": {
                 "status": _advanced_phase_readiness_status(readiness, "phase_10_learning"),
