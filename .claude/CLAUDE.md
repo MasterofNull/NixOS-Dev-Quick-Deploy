@@ -110,7 +110,7 @@ Co-Authored-By: <active-agent-name> <noreply@anthropic.com>"
 
 ## On-demand reference
 
-Lane reference (history, examples, tables): `.agent/lanes/claude-reference.md`. Shared lookups: `.agent/REFERENCE-INDEX.md`. Read before any non-trivial task: `.agent/PROMOTED-BUG-PATTERNS.md`, `.agent/INFRASTRUCTURE-CONSTRAINTS.md`. Validation: `git status --short`, `scripts/governance/repo-structure-lint.sh --staged`, `scripts/governance/tier0-validation-gate.sh --pre-commit`.
+Lane reference: `.agent/lanes/claude-reference.md`. Shared: `.agent/REFERENCE-INDEX.md`. Read: `.agent/PROMOTED-BUG-PATTERNS.md`, `.agent/INFRASTRUCTURE-CONSTRAINTS.md`. Validation: `git status --short`, `repo-structure-lint.sh --staged`, `tier0-validation-gate.sh --pre-commit`.
 <!-- lane:end -->
 
 <!-- canon:begin behavioral-rules -->
@@ -199,7 +199,7 @@ Enforcement: local payloads auto-inject the MICRO variant (`shared/llm_config.py
 <!-- canon:begin headless-delegate-mode -->
 ## Headless Delegate Mode (Canonical — all agents)
 
-- Delegate: bounded prompt only; read only named files/ranges; skip session-start hydration; NEVER run tier0/`aq-qa` (orchestrator gates once); no commit/stage/push unless told; if blocked, STOP and report the exact blocker.
+- Delegate: bounded prompt only; read only named files/ranges; skip session-start hydration; NEVER run tier0/`aq-qa` (orchestrator gates once); no commit/stage/push unless told; paste validation output; verify worktree before git writes; build fake secrets at runtime; leave staged for bridge delegates.
 - Orchestrator before dispatch: dependencies committed (or paths named), deliverable path shared-visible, quota headroom on the lane (else route per Rule 18).
 - Full text: `canon/blocks/headless-delegate-mode.md`
 <!-- canon:end headless-delegate-mode -->
