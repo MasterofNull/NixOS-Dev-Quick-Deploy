@@ -8,6 +8,10 @@ Applies to any agent dispatched non-interactively (`delegate-to-*`, `codex exec`
 - Never run `tier0-validation-gate.sh` or `aq-qa`; the orchestrator gates once, after integration. Run only the focused test named in the prompt.
 - If blocked (missing dependency, unreadable path, ambiguity, quota/rate limit), STOP and report the exact blocker. Do not widen scope or retry beyond Rule 6.
 - Do not commit, stage, or push unless the prompt says so.
+- **Validation output required:** Paste actual command output (tail) for every validation step in your hand-back report; claimed-but-unshown validation is treated as not run, and the orchestrator re-validates.
+- **Worktree isolation:** Never run `git stash`, `git switch/checkout <branch>`, `git branch -m/-D`, or `git pull` outside your assigned worktree; verify `git rev-parse --show-toplevel` equals your worktree before any git write, and run repo tools (generators, gates) via your worktree's own path — a main-checkout copy writes to the main checkout.
+- **Fixture secrets at runtime:** Tests build fake secrets at runtime (string concatenation), never as token-shaped literals (github_pat_…, PEM blocks).
+- **Bridge-managed handoff:** For bridge-managed delegates (delegate-to-codex/local/antigravity), leave changes staged and uncommitted unless the prompt explicitly says to commit.
 
 **Orchestrator (before dispatching):**
 - Dependencies the slice needs are committed (or the prompt names the uncommitted paths explicitly).
