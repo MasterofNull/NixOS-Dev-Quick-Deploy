@@ -875,6 +875,18 @@ in {
     # Subsequent swaps are performed by aq-model-switch (no rebuild required).
     (lib.mkIf (roleEnabled && llama.useSymlink) {
       mySystem.aiStack.llamaCpp.model = lib.mkForce "${dataDir}/models/active.gguf";
+      # Rule 14: something resets /var/lib/llama-cpp to 0700 (root cause open,
+      # issues-backlog llama-cpp-state-dir-mode-reset-0700) despite the 0750 tmpfiles
+      # rules; members of the llama group (owner, QA gates) must be able to read models.
+      system.activationScripts.llamaCppStateDirMode = {
+        deps = ["users"];
+        text = ''
+          for d in ${dataDir} ${dataDir}/models; do
+            [ -d "$d" ] && chmod 0750 "$d" || true
+          done
+        '';
+      };
+
       system.activationScripts.llamaCppActiveSymlink = let
         catalog = llama.modelCatalog // defaultModelCatalog;
         key = llama.activeModel;
