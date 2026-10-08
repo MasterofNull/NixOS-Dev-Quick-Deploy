@@ -2025,6 +2025,9 @@ in {
           WorkingDirectory = cfg.mcpServers.repoPath;
           Environment = [
             "REPO_ROOT=${cfg.mcpServers.repoPath}"
+            # Harness subprocess timeout: max(2.5 * measured_wall_time, 300s).
+            # Phase 0 measured at 147s; 2.5 * 147 = 367.5s ≈ 370s (6min 10s).
+            "HARNESS_TIMEOUT_S=430"
           ];
           ExecStart = let
             script = "${cfg.mcpServers.repoPath}/scripts/health/ai-stack-health-monitor.py";
@@ -2042,8 +2045,11 @@ in {
             "${cfg.mcpServers.dataDir}/hybrid/telemetry"
           ];
           PrivateTmp = true;
-          TimeoutStartSec = "180";
-          MemoryMax = "256M";
+          # TimeoutStartSec: must exceed harness subprocess timeout + margin for cleanup.
+          # Subprocess timeout is 370s; add 60s margin = 430s (7m 10s).
+          TimeoutStartSec = "490";
+          # MemoryMax: measured peak child RSS 504M (2026-10-08); ~1.5x headroom.
+          MemoryMax = "768M";
         };
       };
 

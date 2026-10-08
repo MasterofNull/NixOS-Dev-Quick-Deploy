@@ -137,7 +137,19 @@ def main() -> int:
     assert_true('"${cfg.mcpServers.dataDir}/hybrid/telemetry"' in unit,
                 "health monitor unit must allow writes to the QA evidence lock dir")
 
-    print("PASS: ai-stack-health-monitor handles aq-qa JSON schema, TMPDIR, status writes, and evidence-lock path")
+    # Verify configurable harness timeout is properly configured.
+    assert_true(hasattr(monitor, "_HARNESS_TIMEOUT_S"),
+                "monitor should define _HARNESS_TIMEOUT_S constant")
+    assert_true(monitor._HARNESS_TIMEOUT_S >= 430,
+                f"default _HARNESS_TIMEOUT_S ({monitor._HARNESS_TIMEOUT_S}s) must be >= 430s (measured 2.5x phase 0 time)")
+    assert_true("HARNESS_TIMEOUT_S=430" in unit or "HARNESS_TIMEOUT_S" in unit,
+                "health monitor unit serviceConfig must set HARNESS_TIMEOUT_S env var")
+    assert_true("TimeoutStartSec" in unit and "490" in unit,
+                "health monitor unit must set TimeoutStartSec >= 490s (harness timeout + margin)")
+    assert_true("MemoryMax" in unit and "768M" in unit,
+                "health monitor unit must set MemoryMax >= 768M (1.5x measured 504M peak RSS)")
+
+    print("PASS: ai-stack-health-monitor handles aq-qa JSON schema, TMPDIR, status writes, evidence-lock path, and configurable timeout")
     return 0
 
 
