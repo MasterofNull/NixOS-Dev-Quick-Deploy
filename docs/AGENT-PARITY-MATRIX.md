@@ -13,6 +13,20 @@ This matrix compares feature structures from:
 
 Against this repository's current AI stack implementation.
 
+## Factory-start prerequisite parity (2026-10-08)
+
+FT-5 uses `canon/blocks/behavioral-rules.md` rule 8c, compiled by
+`scripts/governance/canon-compile.py --write` into `AGENTS.md`, `CLAUDE.md`,
+`.agent/CODEX.md`, `.agent/GEMINI.md`, `.agent/LOCAL-AGENT.md`, and
+`.agent/WORKFLOW-CANON.md`. All lanes require passing readiness before factory
+work. The `aqd workflows brownfield` path checks before creating project state;
+the installed workflow start checks before coordinator dispatch. Neither
+`--force` nor missing tooling converts a blocked prerequisite into a pass.
+
+Evidence: [FT-4/FT-5 fixture verification](harness-first/evidence/2026-10-08-factory-gates.md).
+Fixtures establish repository behavior, not deployed coordinator activation
+or owner acceptance.
+
 ## Capability Matrix
 
 | Capability | Codebuff | pi coding-agent | This repo status | Notes |

@@ -606,3 +606,14 @@ This supersedes the pending-boundary summary above without changing its historic
 - PM-tracked: existing `.agents/plans/prsi-rsi-merge-20261002/tracker.json`; no projected status is hand-edited. Runtime acceptance is pending its deployment evidence.
 
 This slice is repository repair awaiting activation, not a fully activated MVP. Exact final independent review and gate results are recorded in `.agent/memory/antigravity-delegation-review-20261003.md`.
+
+## FT-4 / FT-5 factory gates — 2026-10-08 dated deferral
+
+- Integrated: existing retrofit installer, `aqd workflows brownfield` readiness prerequisite, and installed workflow start dispatch gate exercised through CLI fixtures. Canonical rule 8c compiled across all six general instruction targets.
+- Turned on: verified in temporary installed repositories only. Live target rollout remains deferred to the orchestrator deployment/review cycle; this task changes instructions and evidence, not runtime code.
+- Functionally validated: install, retrofit, readiness, startup, and MCP parity suites passed. Retrofit proves confirmation, preservation, lossless backups, and repeat installation. Fake build/scan tools and transport keep fixtures hermetic; real project toolchains and coordinator E2E remain deferred.
+- Observable: typed readiness reports and fixture evidence verified. Live dashboard/health-spider/alert attestation remains deferred to target activation.
+- Intervenable: current preview digest is required before retrofit replacement; local configuration is preserved and backups retained; missing or stale passing execution evidence blocks start.
+- PM-tracked: `.agents/plans/factory-gate-templates/tracker.json` ft-4/ft-5 editorial notes link evidence; projected progress and owner acceptance are untouched.
+
+Evidence: `docs/harness-first/evidence/2026-10-08-factory-gates.md`. Independent acceptance, orchestrator tier0, commit, and live activation are pending; this is not an MVP release claim.
