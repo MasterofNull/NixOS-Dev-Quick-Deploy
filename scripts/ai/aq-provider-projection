@@ -1,0 +1,35 @@
+#!/usr/bin/env python3
+"""aq-provider-projection -- preview/check provider projections (P0-B MVP, no write mode)."""
+
+from __future__ import annotations
+
+import argparse
+import json
+import sys
+from pathlib import Path
+
+REPO = Path(__file__).resolve().parent.parent.parent
+sys.path.insert(0, str(REPO / "scripts" / "ai" / "lib"))
+import provider_projection as pp  # noqa: E402
+
+
+def main(argv: list[str] | None = None) -> int:
+    ap = argparse.ArgumentParser(description=__doc__)
+    ap.add_argument("--repo", default=str(REPO), help="repo root (default: this checkout)")
+    sub = ap.add_subparsers(dest="cmd", required=True)
+    sub.add_parser("preview", help="deterministic per-provider projection JSON + output hash")
+    sub.add_parser("check", help="drift report vs current provider files (exit 1 on drift)")
+    args = ap.parse_args(argv)
+    repo = Path(args.repo).resolve()
+    try:
+        doc = pp.project(repo) if args.cmd == "preview" else pp.check(repo)
+    except pp.ProjectionError as exc:
+        print(json.dumps({"status": "refused", "error": str(exc)}), file=sys.stderr)
+        return 2
+    sys.stdout.write(json.dumps(doc, indent=2, sort_keys=True) + "\n")
+    print(f"output_sha256={doc['output_sha256']}", file=sys.stderr)
+    return 1 if args.cmd == "check" and doc["status"] == "drift" else 0
+
+
+if __name__ == "__main__":
+    sys.exit(main())
