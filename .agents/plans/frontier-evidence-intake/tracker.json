@@ -151,7 +151,13 @@
           "FA-3 auto-fold + FA-4 scan-topic refresh + FA-5 parity sweep"
         ]
       },
-      "notes": "scan-topic command live and dogfooded (observability gap closure); no formal test suite; systemd timer NOT YET SCHEDULED (deferred to FA-4 owner decision)"
+      "notes": "scan-topic command live and dogfooded (observability gap closure); no formal test suite; systemd timer NOT YET SCHEDULED (deferred to FA-4 owner decision)",
+      "acceptance": {
+        "status": "accepted",
+        "by": "hyperd",
+        "date": "2026-10-08",
+        "note": "Owner chat 'accept 1-11' 2026-10-08; evidence: 838b814a + test-frontier-scan-topic 3/3; 2 real scan requests in scan-requests.jsonl"
+      }
     },
     {
       "id": "fa-5-parity-backstop",
