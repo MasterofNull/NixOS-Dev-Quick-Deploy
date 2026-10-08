@@ -1,0 +1,162 @@
+#!/usr/bin/env python3
+"""aq-prm-eval — FE-1 process-reward steering A/B on a fixed 5-task dogfood set.
+
+Builds a self-contained fixture (buggy single-file modules + deterministic check
+scripts) in a temp dir, then for each arm (AQ_PRM_STEERING off/on) dispatches each
+task through delegate-to-local (agent mode, AQ_EDIT_VERIFY_CMD wired to the task's
+check) and scores pass = the check exits 0 on the final file. Emits JSON:
+per-arm pass_rate, wall_s per task, plus prm_steering telemetry rows seen.
+
+  aq-prm-eval --dry-run              # validate fixtures (broken fails, reference passes) + print plan
+  aq-prm-eval --tasks 1 --arms off,on   # smoke
+  aq-prm-eval --out result.json         # full run (hours on the APU)
+Local NEVER commits; the fixture lives under a temp dir and is discarded.
+"""
+from __future__ import annotations
+
+import argparse
+import json
+import os
+import subprocess
+import sys
+import tempfile
+import time
+from pathlib import Path
+
+ROOT = Path(__file__).resolve().parents[2]
+DELEGATE = ROOT / "scripts/ai/delegate-to-local"
+
+# name, buggy source, reference-fixed source, check body (asserts on module `m`)
+TASKS = [
+    ("clamp", "def clamp(x, lo, hi):\n    return x\n",
+     "def clamp(x, lo, hi):\n    return max(lo, min(hi, x))\n",
+     "assert m.clamp(5, 0, 3) == 3 and m.clamp(-1, 0, 3) == 0 and m.clamp(2, 0, 3) == 2",
+     "Implement clamp(x, lo, hi) so it limits x to the inclusive range [lo, hi]."),
+    ("slugify", "def slugify(s):\n    return s\n",
+     "def slugify(s):\n    return '-'.join(s.lower().split())\n",
+     "assert m.slugify('Hello  World') == 'hello-world' and m.slugify('A b') == 'a-b'",
+     "Make slugify(s) lowercase the text and join whitespace-separated words with single hyphens."),
+    ("evens", "def evens(xs):\n    return [x for x in xs if x % 2 == 1]\n",
+     "def evens(xs):\n    return [x for x in xs if x % 2 == 0]\n",
+     "assert m.evens([1, 2, 3, 4]) == [2, 4] and m.evens([]) == []",
+     "evens(xs) must return only the even numbers, preserving order. It currently returns the odd ones."),
+    ("mean", "def mean(xs):\n    return sum(xs) / (len(xs) + 1)\n",
+     "def mean(xs):\n    return sum(xs) / len(xs) if xs else 0.0\n",
+     "assert m.mean([2, 4]) == 3 and m.mean([]) == 0.0",
+     "Fix mean(xs): it must be the true arithmetic mean, and return 0.0 for an empty list."),
+    ("dedupe", "def dedupe(xs):\n    return sorted(set(xs))\n",
+     "def dedupe(xs):\n    seen = set()\n    return [x for x in xs if not (x in seen or seen.add(x))]\n",
+     "assert m.dedupe([3, 1, 3, 2, 1]) == [3, 1, 2]",
+     "dedupe(xs) must drop duplicates while preserving first-seen order (it currently sorts)."),
+]
+
+CHECK_TMPL = (
+    "import importlib.util, sys\nsys.dont_write_bytecode = True\n"
+    "spec = importlib.util.spec_from_file_location('m', sys.argv[1])\n"
+    "m = importlib.util.module_from_spec(spec); spec.loader.exec_module(m)\n"
+    "{body}\n"
+)
+
+
+def build_fixture(base: Path) -> list:
+    out = []
+    for name, buggy, ref, body, goal in TASKS:
+        d = base / name
+        d.mkdir(parents=True)
+        f = d / f"{name}.py"
+        f.write_text(buggy)
+        chk = d / "check.py"
+        chk.write_text(CHECK_TMPL.format(body=body))
+        out.append({"name": name, "file": str(f), "ref": ref, "goal": goal,
+                    "verify_cmd": f"python3 {chk} {{file}}", "buggy": buggy})
+    return out
+
+
+def passes(task: dict) -> bool:
+    return subprocess.run(["bash", "-c", task["verify_cmd"].replace("{file}", task["file"])],
+                          capture_output=True, timeout=60).returncode == 0
+
+
+def run_arm(task: dict, steer: bool, timeout_s: int, state: Path) -> dict:
+    Path(task["file"]).write_text(task["buggy"])
+    events = state / f"events-{task['name']}-{'on' if steer else 'off'}.jsonl"
+    (state / "deleg").mkdir(exist_ok=True)
+    env = {**os.environ,
+           "AQ_PRM_STEERING": "1" if steer else "0",
+           "AQ_EDIT_VERIFY_CMD": task["verify_cmd"],
+           "AQ_AGENT_RUN_EVENTS_PATH": str(events), "AQ_DELEGATION_DIR": str(state / "deleg"),
+           "AQ_LOCAL_GBNF": "1", "AQ_EDIT_FEEDBACK": "1", "AQ_WRITE_REGION": "1"}
+    prompt = (f"{task['goal']}\nEdit ONLY the file {task['file']} using edit_file "
+              f"(absolute path). After the edit succeeds, state in one sentence what you changed.")
+    t0 = time.monotonic()
+    try:
+        proc = subprocess.run(
+            [str(DELEGATE), "--mode", "agent", "--role", "implementer", "--wait",
+             "--timeout", str(timeout_s), "--prompt", prompt],
+            env=env, cwd=str(ROOT), capture_output=True, text=True, timeout=timeout_s + 300)
+        rc = proc.returncode
+    except subprocess.TimeoutExpired:
+        rc = -1
+    prm = []
+    if events.exists():
+        for ln in events.read_text().splitlines():
+            try:
+                e = json.loads(ln)
+            except ValueError:
+                continue
+            if e.get("event_type") == "prm_steering":
+                prm.append({k: e.get(k) for k in ("candidates", "verified_index", "extra_steps", "wall_s")})
+    return {"task": task["name"], "steering": steer, "pass": passes(task),
+            "wall_s": round(time.monotonic() - t0, 1), "delegate_rc": rc, "prm_steering": prm}
+
+
+class _Keep:
+    def __init__(self, p): self.p = p
+    def __enter__(self): return self.p
+    def __exit__(self, *e): return False
+
+
+def main() -> int:
+    ap = argparse.ArgumentParser()
+    ap.add_argument("--dry-run", action="store_true")
+    ap.add_argument("--tasks", type=int, default=len(TASKS))
+    ap.add_argument("--arms", default="off,on")
+    ap.add_argument("--timeout", type=int, default=1800)
+    ap.add_argument("--out", default="")
+    ap.add_argument("--keep-dir", default="", help="persist fixtures/events/delegation logs here (default: temp, discarded)")
+    a = ap.parse_args()
+    arms = [x.strip() for x in a.arms.split(",") if x.strip()]
+    if a.keep_dir:
+        Path(a.keep_dir).mkdir(parents=True, exist_ok=True)
+    with (tempfile.TemporaryDirectory(prefix="aq-prm-eval-") if not a.keep_dir else _Keep(a.keep_dir)) as td:
+        tasks = build_fixture(Path(td))[: a.tasks]
+        if a.dry_run:
+            rep = []
+            for t in tasks:
+                broken_fails = not passes(t)
+                Path(t["file"]).write_text(t["ref"])
+                ref_passes = passes(t)
+                Path(t["file"]).write_text(t["buggy"])
+                rep.append({"task": t["name"], "broken_fails": broken_fails, "reference_passes": ref_passes})
+            ok = all(r["broken_fails"] and r["reference_passes"] for r in rep)
+            print(json.dumps({"dry_run": True, "delegate": str(DELEGATE), "delegate_exists": DELEGATE.exists(),
+                              "arms": arms, "fixtures_ok": ok, "tasks": rep}, indent=2))
+            return 0 if ok else 1
+        rows = [run_arm(t, arm == "on", a.timeout, Path(td)) for arm in arms for t in tasks]
+    summary = {}
+    for arm in arms:
+        rs = [r for r in rows if r["steering"] == (arm == "on")]
+        summary[arm] = {"n": len(rs), "pass_rate": round(sum(r["pass"] for r in rs) / max(1, len(rs)), 3),
+                        "wall_s_total": round(sum(r["wall_s"] for r in rs), 1),
+                        "wall_s_mean": round(sum(r["wall_s"] for r in rs) / max(1, len(rs)), 1)}
+    res = {"arms": summary, "rows": rows,
+           "telemetry_hint": "grep prm_steering in agent-run-events.jsonl for candidates/verified_index/extra_steps/wall_s"}
+    txt = json.dumps(res, indent=2)
+    print(txt)
+    if a.out:
+        Path(a.out).write_text(txt)
+    return 0
+
+
+if __name__ == "__main__":
+    sys.exit(main())
