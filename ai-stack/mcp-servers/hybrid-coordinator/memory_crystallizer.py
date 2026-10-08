@@ -6,6 +6,8 @@ import asyncio
 import hashlib
 import json
 import logging
+import os
+import re
 from datetime import datetime, timezone
 from pathlib import Path
 from typing import Any, Awaitable, Callable, Dict, List, Optional
@@ -18,6 +20,57 @@ logger = logging.getLogger("hybrid-coordinator")
 
 # Compatibility alias
 _extract_history = session_transcripts.extract_history
+
+
+def _fact_support_score(fact: str, source_text: str) -> float:
+    """Compute lexical overlap score between fact and source history.
+
+    Returns a float 0.0-1.0 representing the fraction of fact content words
+    present in source. Short facts (<3 content words) return 0.0.
+
+    Args:
+        fact: The fact to score (from LLM output)
+        source_text: The concatenated history that was passed to the LLM
+
+    Returns:
+        Overlap fraction (0.0-1.0); 0.0 for facts too short to judge
+    """
+    stopwords = {
+        "the", "a", "an", "and", "or", "but", "in", "on", "at", "to", "for",
+        "of", "is", "are", "was", "were", "be", "been", "being", "have", "has",
+        "had", "do", "does", "did", "will", "would", "could", "should", "may",
+        "might", "can", "must", "it", "its", "that", "this", "these", "those",
+        "i", "you", "he", "she", "we", "they", "me", "him", "her", "us", "them",
+    }
+
+    def tokenize(text: str) -> set:
+        tokens = re.findall(r'[a-z0-9]{3,}', text.lower())
+        return {t for t in tokens if t not in stopwords}
+
+    fact_words = tokenize(fact)
+    source_words = tokenize(source_text)
+
+    # Facts with <3 content words are too short to judge
+    if len(fact_words) < 3:
+        return 0.0
+
+    # Return fraction of fact words found in source
+    supported_count = len(fact_words & source_words)
+    return supported_count / len(fact_words)
+
+
+def _fact_supported(fact: str, source_text: str, min_overlap: float = 0.6) -> bool:
+    """Wrapper: check if support score meets threshold.
+
+    Args:
+        fact: The fact to verify
+        source_text: The concatenated history
+        min_overlap: Minimum overlap fraction required (default 0.6)
+
+    Returns:
+        True if score >= min_overlap
+    """
+    return _fact_support_score(fact, source_text) >= min_overlap
 
 
 
@@ -223,6 +276,24 @@ class MemoryCrystallizer:
         if self._llama_client is None or broker is None:
             return {"status": "error", "reason": "dependencies_not_met"}
 
+        # Build source text for fact verification
+        source_text = "\n".join(f"{m['role']}: {m['content']}" for m in history)
+
+        # Parse min_overlap threshold from environment
+        # SHADOW MODE: if unset/empty/invalid → never filter (collect scores for calibration)
+        # FILTER MODE: if set to value > 0 → filter by threshold
+        min_overlap_env = os.environ.get("CRYSTALLIZER_FACT_MIN_OVERLAP", "").strip()
+        filter_enabled = False
+        min_overlap = 0.0
+
+        if min_overlap_env:
+            try:
+                min_overlap = float(min_overlap_env)
+                filter_enabled = min_overlap > 0
+            except (ValueError, TypeError):
+                # Invalid value → shadow mode (never crash)
+                filter_enabled = False
+
         prompt = self._build_distillation_prompt(history)
         try:
             response = await self._llama_client.create_message(
@@ -241,10 +312,28 @@ class MemoryCrystallizer:
             facts = [fact[1:].strip() for fact in raw_facts[:10] if len(fact.strip()) > 10]
 
             stored_count = 0
+            facts_low_support = 0
+            facts_rejected = 0
+
             for fact in facts:
+                # Compute support score (always, for shadow mode observation)
+                score = _fact_support_score(fact, source_text)
+
+                # Track low support (score < 0.6) for observability
+                if score < 0.6:
+                    facts_low_support += 1
+
+                # Decide whether to filter based on mode
+                if filter_enabled and score < min_overlap:
+                    facts_rejected += 1
+                    continue
+
+                # SHADOW MODE or score >= threshold: ALWAYS store
+
                 context = {
                     "distillation_date": datetime.now(timezone.utc).isoformat(),
                     "crystalline": True,
+                    "support_score": round(score, 3),  # Add score for calibration
                 }
                 if metadata:
                     # Fallback: session_id > session_path > session_hash
@@ -275,11 +364,19 @@ class MemoryCrystallizer:
                         CRYSTALLIZATION_FACTS_EXTRACTED.inc()
                     except (ImportError, Exception):
                         pass
-            logger.info("memory_crystallizer: distilled %d facts from %d messages", stored_count, len(history))
+
+            # Log mode and stats
+            mode_str = f"filter={min_overlap}" if filter_enabled else "shadow"
+            logger.info(
+                "memory_crystallizer: distilled %d facts from %d messages, %s, low_support=%d, rejected=%d",
+                stored_count, len(history), mode_str, facts_low_support, facts_rejected
+            )
             return {
                 "status": "complete",
                 "facts_extracted": len(facts),
                 "facts_stored": stored_count,
+                "facts_low_support": facts_low_support,
+                "facts_rejected": facts_rejected,
                 "history_length": len(history),
             }
         except Exception as exc:
