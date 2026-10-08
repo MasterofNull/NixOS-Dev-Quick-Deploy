@@ -624,6 +624,39 @@ _DECLARED_SINGLE_FILE_SCOPE_RE = re.compile(
 )
 _VERIFIED_EDIT_SYNTHESIS_MAX_TOKENS = 96
 
+# FE-1 process-reward steering: when an edit fails the behavioral check, request
+# alternative candidate edits and keep the verified one. Default OFF (read at
+# call time via _prm_enabled so tests/eval arms can flip it per run).
+def _prm_enabled() -> bool:
+    return os.getenv("AQ_PRM_STEERING", "0").strip().lower() in ("1", "true", "yes", "on")
+
+
+def _prm_max_candidates() -> int:
+    try:
+        return max(1, int(os.getenv("AQ_PRM_MAX_CANDIDATES", "2")))
+    except ValueError:
+        return 2
+
+
+def _prm_wall_budget_s() -> float:
+    try:
+        return float(os.getenv("AQ_PRM_WALL_BUDGET_S", "900"))
+    except ValueError:
+        return 900.0
+
+
+def _prm_static_ok(file_path: str) -> bool:
+    """Tie-break signal: file still parses (python via ast, shell via bash -n)."""
+    try:
+        p = Path(file_path)
+        if p.suffix == ".py":
+            ast.parse(p.read_text(encoding="utf-8"))
+        elif p.suffix in (".sh", ".bash"):
+            return subprocess.run(["bash", "-n", str(p)], capture_output=True, timeout=10).returncode == 0
+        return True
+    except Exception:  # noqa: BLE001
+        return False
+
 # Heuristic substrings indicating the model is explicitly declining/stopping
 # rather than narrating a plan it forgot to execute. Kept conservative and
 # lowercase-matched — false negatives (treated as a plan) just cost one nudge
@@ -1940,6 +1973,82 @@ class LocalAgentExecutor:
         }
         asyncio.create_task(self._async_append_jsonl(path, event))
 
+    async def _prm_steer_alternative(
+        self, *, task: Task, messages: list, role: Any, path: str,
+        pre_content: Optional[str], failure_output: str, state: dict,
+        tool_call_count: int, watchdog: Any = None,
+    ) -> Optional[ToolCall]:
+        """FE-1: after a behavioral-verify failure, request ONE alternative edit,
+        verify it with the existing gate, and leave the best candidate on disk.
+
+        Returns the winning alternative ToolCall (so the caller can re-verify and
+        keep the transcript consistent) or None when the original stays. Bounded
+        by AQ_PRM_MAX_CANDIDATES and AQ_PRM_WALL_BUDGET_S; any error restores the
+        original candidate and falls back to the plain coaching gate.
+        """
+        if pre_content is None or not path:
+            return None
+        p = Path(path) if Path(path).is_absolute() else Path.cwd() / path
+        cands: list = state["cands"]
+        try:
+            first_content = p.read_text(encoding="utf-8")
+        except Exception:  # noqa: BLE001
+            return None
+        if not cands:
+            cands.append({"verified": False, "static": _prm_static_ok(str(p)), "content": first_content})
+        if len(cands) >= _prm_max_candidates() or state["extra_wall_s"] >= _prm_wall_budget_s():
+            return None
+        t0 = time.time()
+        winner: Optional[ToolCall] = None
+        try:
+            p.write_text(pre_content, encoding="utf-8")
+            ask = list(messages) + [{
+                "role": "user",
+                "content": (
+                    "Your edit FAILED the task's own check:\n\n" + failure_output
+                    + "\n\nThe file was restored to its original state. Propose a "
+                    "DIFFERENT edit that changes what the code DOES to fix this."
+                ),
+            }]
+            resp, _tok = await self._call_llama(
+                ask, role=role, max_tokens=AGENT_TASK_MAX_TOKENS, task_type=task.task_type,
+                task_id=task.id, call_number=tool_call_count + 1,
+            )
+            alt = self.tool_registry.parse_tool_call_from_llama(resp)
+            if alt is not None and alt.tool_name in ("edit_file", "write_file", "write_region"):
+                alt = await self.tool_registry.execute_tool_call(alt)
+                ok = bool((alt.result or {}).get("success", True)) if isinstance(alt.result, dict) else True
+                if ok:
+                    br = _behavioral_verify_result(str(p))
+                    cands.append({
+                        "verified": bool(br.ran and br.passed),
+                        "static": _prm_static_ok(str(p)),
+                        "content": p.read_text(encoding="utf-8"),
+                    })
+                    winner = alt
+        except Exception as exc:  # noqa: BLE001 — fall back to the original gate
+            logger.warning("prm steering candidate failed (%s) — keeping original", exc)
+        state["extra_steps"] += 1
+        state["extra_wall_s"] += time.time() - t0
+        best_i = max(range(len(cands)), key=lambda i: (cands[i]["verified"], cands[i]["static"], -i))
+        try:
+            p.write_text(cands[best_i]["content"], encoding="utf-8")
+        except Exception as exc:  # noqa: BLE001
+            logger.warning("prm steering could not restore best candidate (%s)", exc)
+        state["verified_index"] = best_i if cands[best_i]["verified"] else None
+        await self._emit_agent_event(
+            task.id, "prm_steering",
+            {
+                "file_path": path,
+                "candidates": len(cands),
+                "verified_index": state["verified_index"],
+                "extra_steps": state["extra_steps"],
+                "wall_s": round(state["extra_wall_s"], 2),
+            },
+            watchdog,
+        )
+        return winner if best_i > 0 else None
+
     async def _emit_terminal_agent_event(self, task: Task, event_type: str, payload: dict) -> None:
         """Emit a terminal event and release per-task sequence state."""
         await self._emit_agent_event(task.id, event_type, payload)
@@ -2444,6 +2553,8 @@ class LocalAgentExecutor:
         # reflects the "after" side by the time the tool result reaches us).
         _edit_verify_counts: dict = {}  # file_path → coach-fire count
         _verify_pre_edit_content: dict = {}  # file_path → content before the in-flight call
+        _prm_pre_content: dict = {}  # FE-1: pre-image for edit_file too (revert target)
+        _prm_state: dict = {"cands": [], "extra_wall_s": 0.0, "extra_steps": 0, "verified_index": None}
         # A completion candidate is intentionally opt-in: normal tasks keep the
         # ordinary tool loop.  For the marked case, retain every accepted write
         # so an out-of-scope earlier edit can never be hidden by a later good one.
@@ -3013,6 +3124,14 @@ class LocalAgentExecutor:
             # safe: any read error just leaves no snapshot — the verify gate
             # treats that as "unknown before-content" and skips checks that
             # need it, it never blocks the edit itself.
+            if _prm_enabled() and tool_call.tool_name in ("edit_file", "write_region", "write_file"):
+                try:
+                    _prm_p = str(tool_call.arguments.get("file_path") or tool_call.arguments.get("path") or "")
+                    _prm_pp = Path(_prm_p) if Path(_prm_p).is_absolute() else Path.cwd() / _prm_p
+                    if _prm_p and _prm_pp.is_file():
+                        _prm_pre_content[_prm_p] = _prm_pp.read_text(encoding="utf-8")
+                except Exception:
+                    pass
             if (
                 _EDIT_VERIFY_ENABLED
                 and tool_call.tool_name in ("write_region", "write_file")
@@ -3439,6 +3558,34 @@ class LocalAgentExecutor:
                                 "to plain accept (fail-safe)", _ev_exc,
                             )
                             _ev_verdict = None
+
+                    if (
+                        _prm_enabled()
+                        and _ev_verdict is not None
+                        and not _ev_verdict.passed
+                        and _ev_verdict.reason == "behavioral_verify_failed"
+                    ):
+                        try:
+                            _prm_winner = await self._prm_steer_alternative(
+                                task=task, messages=messages, role=role, path=_ev_path,
+                                pre_content=_prm_pre_content.get(_ev_path),
+                                failure_output=_ev_verdict.coaching_message,
+                                state=_prm_state, tool_call_count=tool_call_count,
+                                watchdog=_watchdog_last_activity,
+                            )
+                            if _prm_winner is not None:
+                                result.arguments = _prm_winner.arguments
+                                result.result = _prm_winner.result
+                            if _prm_winner is not None or _prm_state["extra_steps"]:
+                                _ev_verdict = _verify_edit_quality(
+                                    tool_name=result.tool_name,
+                                    arguments=result.arguments or {},
+                                    file_path=_ev_path,
+                                    pre_content=_verify_pre_edit_content.get(_ev_path),
+                                    task_objective=task.objective,
+                                )
+                        except Exception as _prm_exc:
+                            logger.warning("prm steering failed (%s) — plain gate", _prm_exc)
 
                     _ev_fires = _edit_verify_counts.get(_ev_path, 0)
                     _ev_coached = False
