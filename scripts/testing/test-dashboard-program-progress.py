@@ -14,6 +14,7 @@ from __future__ import annotations
 import argparse
 import re
 import subprocess
+import sys
 import types
 import unittest
 import urllib.request
@@ -270,6 +271,29 @@ class StaticContractTests(unittest.TestCase):
             self.assertIn(token, doc)
         projection = text(PM_TRACKER_CLI)
         self.assertIn('"portfolio": project_plan_portfolio()', projection)
+
+    def test_portfolio_coverage_and_unresolved_filter_present(self) -> None:
+        doc = text(TRACKER)
+        for token in (
+            'id="portfolio-coverage"', 'id="portfolio-resolution"',
+            'value="unresolved"', "const isUnresolved = p =>",
+            "unresolvedCount", "data.by_classification",
+            "(resolution === 'unresolved') === isUnresolved(p)",
+            "portfolioResolution.addEventListener('change'",
+        ):
+            self.assertIn(token, doc)
+
+    def test_portfolio_unresolved_total_reconciles_with_index(self) -> None:
+        import json
+        canonical = subprocess.run(
+            [sys.executable, str(ROOT / "scripts" / "ai" / "aq-plans-index"), "--json"],
+            cwd=ROOT, capture_output=True, text=True, timeout=45, check=True,
+        )
+        data = json.loads(canonical.stdout)
+        unresolved = [p for p in data["plans"]
+                      if p["classification"] == "unclassified" or p["classification_issue"]]
+        self.assertEqual(len(unresolved), data["unclassified_count"])
+        self.assertEqual(sum(data["by_classification"].values()), data["total"])
 
     def test_loading_and_error_states_present(self) -> None:
         doc = text(TRACKER)

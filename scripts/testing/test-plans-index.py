@@ -135,6 +135,7 @@ class TrackerRollupTests(PlansIndexTestBase):
 class ClassificationTests(PlansIndexTestBase):
     def test_explicit_classification_and_route_are_projected(self):
         d = self._mk_plan("explicit-plan")
+        _write_json(d / "tracker.json", {"plan": {"id": "explicit-plan"}, "items": []})
         _write_json(d / ".plan-classification.json", {
             "classification": "durable_plan", "tracking_route": "tracker.json",
             "evidence": "Primary DESIGN.md defines implementation scope"})
@@ -170,6 +171,74 @@ class ClassificationTests(PlansIndexTestBase):
         self.assertEqual(data["by_tracking_route"], {
             "collaboration-round": 1, "classification_queue": 1})
         self.assertEqual(data["unclassified_count"], 1)
+
+
+class UnresolvedReasonTests(PlansIndexTestBase):
+    def test_explicit_unresolved_record_keeps_reason_and_stays_queued(self):
+        d = self._mk_plan("reviewed-unresolved")
+        _write_json(d / ".plan-classification.json", {
+            "classification": "unclassified", "reason": "no record declares a plan type"})
+        rec = self.mod._plan_record(d)
+        self.assertEqual(rec["classification"], "unclassified")
+        self.assertEqual(rec["tracking_route"], "classification_queue")
+        self.assertEqual(rec["classification_issue"], "unresolved: no record declares a plan type")
+
+    def test_unresolved_without_reason_is_still_visible(self):
+        d = self._mk_plan("no-reason")
+        _write_json(d / ".plan-classification.json", {"classification": "unclassified"})
+        self.assertIn("no reason", self.mod._plan_record(d)["classification_issue"])
+
+    def test_unresolved_with_route_and_evidence_does_not_count_as_classified(self):
+        d = self._mk_plan("sneaky")
+        _write_json(d / ".plan-classification.json", {
+            "classification": "unclassified", "tracking_route": "tracker.json", "evidence": "x"})
+        data = self.mod.index()
+        self.assertEqual(data["unclassified_count"], 1)
+        self.assertEqual(data["by_tracking_route"], {"classification_queue": 1})
+
+
+class RouteSourceTests(PlansIndexTestBase):
+    def _declare(self, d, route):
+        _write_json(d / ".plan-classification.json", {
+            "classification": "durable_plan", "tracking_route": route, "evidence": "declared"})
+
+    def test_file_route_requires_the_file(self):
+        d = self._mk_plan("no-tracker")
+        self._declare(d, "tracker.json")
+        rec = self.mod._plan_record(d)
+        self.assertEqual(rec["classification"], "unclassified")
+        self.assertIn("tracker.json is not present", rec["classification_issue"])
+
+    def test_file_route_with_file_is_accepted(self):
+        d = self._mk_plan("has-round")
+        self._declare(d, "round.json")
+        _write_json(d / "round.json", {"round_id": "has-round", "lanes": []})
+        self.assertEqual(self.mod._plan_record(d)["tracking_route"], "round.json")
+
+    def test_registry_route_is_not_file_checked(self):
+        d = self._mk_plan("registry")
+        self._declare(d, "aq-refactor-status")
+        self.assertEqual(self.mod._plan_record(d)["classification"], "durable_plan")
+
+
+class RepoReconciliationTests(unittest.TestCase):
+    """Real .agents/plans: every directory is classified or carries a specific reason."""
+
+    def test_every_plan_dir_is_classified_or_has_explicit_reason(self):
+        mod = _load_module()
+        data = mod.index()
+        self.assertGreater(data["total"], 0)
+        for p in data["plans"]:
+            if p["classification"] == "unclassified":
+                self.assertTrue(p["classification_issue"].startswith("unresolved: "),
+                                f'{p["id"]}: {p["classification_issue"]}')
+                self.assertNotIn("no reason", p["classification_issue"], p["id"])
+            else:
+                self.assertEqual(p["classification_issue"], "", p["id"])
+                self.assertTrue(p["classification_evidence"], p["id"])
+        self.assertEqual(sum(data["by_classification"].values()), data["total"])
+        self.assertEqual(sum(data["by_tracking_route"].values()), data["total"])
+        self.assertEqual(data["unclassified_count"], data["by_classification"].get("unclassified", 0))
 
 
 class RecencyHeuristicTests(PlansIndexTestBase):

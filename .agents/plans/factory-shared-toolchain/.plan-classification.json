@@ -1,0 +1,5 @@
+{
+  "classification": "durable_plan",
+  "tracking_route": "tracker.json",
+  "evidence": "tracker.json declares plan.id=factory-shared-toolchain, an owned goal, prd_ref=.agents/plans/factory-shared-toolchain/DESIGN.md (exists) and 5 items; durable goals, slices and tasks are authored there."
+}

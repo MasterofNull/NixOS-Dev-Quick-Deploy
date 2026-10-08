@@ -1,0 +1,5 @@
+{
+  "classification": "durable_plan",
+  "tracking_route": "tracker.json",
+  "evidence": "tracker.json declares plan.id=factory-gate-templates, an owned goal, prd_ref=.agent/PROJECT-FACTORY-GATE-TEMPLATES-PRD.md (exists) and 7 items; durable goals, slices and tasks are authored there."
+}

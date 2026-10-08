@@ -1,0 +1,5 @@
+{
+  "classification": "durable_plan",
+  "tracking_route": "tracker.json",
+  "evidence": "tracker.json declares plan.id=coordination-safety-worktree-isolation, an owned goal, prd_ref=.agents/plans/coordination-safety-worktree-isolation/DESIGN.md (exists) and 4 items; durable goals, slices and tasks are authored there."
+}
