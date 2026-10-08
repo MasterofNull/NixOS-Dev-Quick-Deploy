@@ -4905,6 +4905,7 @@ async function loadRuntimeDetails() {
   const cg = s.capability_gap || {};
   const outcomes = cg.outcomes || {};
   const outcomeCounts = outcomes.counts || {};
+  const lce = cg.lifecycle_events || {};
   const lrn = s.learning || {};
   const rows = [
     fwRow("Offloading", fmtImplStatus(off.status), "ok"),
@@ -4954,6 +4955,18 @@ async function loadRuntimeDetails() {
       "· unverified",
       outcomes.available ? outcomeCounts.unverified ?? 0 : "--",
       (outcomeCounts.unverified || !outcomes.available) ? "warn" : "ok"
+    ),
+    fwRow(
+      "· lifecycle events",
+      lce.available
+        ? `${lce.status || "unverified"} · ${lce.handlers_registered ?? 0} handlers · ${lce.latency_avg_ms ?? 0}ms avg / ${lce.latency_max_ms ?? 0}ms max`
+        : "UNVERIFIED",
+      lce.status === "healthy" || lce.status === "dormant" ? "info" : "warn"
+    ),
+    fwRow(
+      "· lifecycle fail / disabled",
+      lce.available ? `${lce.failures ?? 0} / ${(lce.disabled || []).length}` : "--",
+      (lce.failures || (lce.disabled || []).length) ? "warn" : "ok"
     ),
     fwRow("Learning", fmtImplStatus(lrn.status), "ok"),
     fwRow("· signals", lrn.signals_recorded ?? 0),
