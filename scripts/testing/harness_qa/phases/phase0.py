@@ -2124,6 +2124,7 @@ def run(ctx: RunContext) -> list[CheckResult]:
     results.extend(_check_factory_gate_retrofit(ctx))
     results.extend(_check_factory_readiness_preflight(ctx))
     results.extend(_check_capability_outcome_resolver(ctx))
+    results.extend(_check_lifecycle_event_adapter(ctx))
     results.extend(_check_worktree_isolation_safety(ctx))
     results.extend(_check_integration_guard(ctx))
     results.extend(_check_golden_eval_parity(ctx))
@@ -2836,6 +2837,31 @@ def _check_capability_outcome_resolver(ctx: RunContext) -> list[CheckResult]:
     except (OSError, ValueError, json.JSONDecodeError, subprocess.TimeoutExpired) as error:
         return [failed(5, "0.10.47", description, str(error)[:240])]
     return [passed(5, "0.10.47", description)]
+
+
+def _check_lifecycle_event_adapter(ctx: RunContext) -> list[CheckResult]:
+    """0.10.56: typed lifecycle event adapter (dormant) plus dashboard projection."""
+    description = "lifecycle event adapter: typed events, isolation, QA and dashboard visibility"
+    focused = ctx.repo_root / "scripts" / "testing" / "test-lifecycle-events.py"
+    dashboard_route = ctx.repo_root / "dashboard" / "backend" / "api" / "routes" / "aistack.py"
+    dashboard_js = ctx.repo_root / "assets" / "dashboard.js"
+    missing = [str(path.relative_to(ctx.repo_root)) for path in (focused, dashboard_route, dashboard_js) if not path.exists()]
+    if missing:
+        return [failed(5, "0.10.56", description, f"missing: {', '.join(missing)}")]
+    try:
+        probe = subprocess.run(
+            [sys.executable, str(focused), "--smoke"],
+            cwd=str(ctx.repo_root), capture_output=True, text=True, timeout=30, check=False,
+        )
+        if probe.returncode != 0 or "PASS: lifecycle event adapter" not in probe.stdout:
+            return [failed(5, "0.10.56", description, (probe.stderr or probe.stdout or "fixture failed")[-240:])]
+        route_text = dashboard_route.read_text(encoding="utf-8")
+        js_text = dashboard_js.read_text(encoding="utf-8")
+        if "_lifecycle_events_health_summary" not in route_text or "· lifecycle events" not in js_text:
+            return [failed(5, "0.10.56", description, "dashboard lifecycle visibility contract missing")]
+    except (OSError, subprocess.TimeoutExpired) as error:
+        return [failed(5, "0.10.56", description, str(error)[:240])]
+    return [passed(5, "0.10.56", description)]
 
 
 def _check_workflow_shadow_contract(ctx: RunContext) -> list[CheckResult]:
