@@ -72,7 +72,10 @@ wt_handback() {
     local base; base="$(git -C "$repo_root" rev-parse "refs/delegate-base/$task_id")" || return 1
     git -C "$wt_path" merge-base --is-ancestor "$base" HEAD || return 1
     if ! git -C "$wt_path" diff --cached --quiet; then
-        git -C "$wt_path" \
+        # Transport commit: the orchestrator gates the handed-back patch once, so the
+        # repo's own validation hook skips (AQ_DELEGATE_HANDBACK); other hooks still run
+        # and a failing commit still fails the handback closed.
+        AQ_DELEGATE_HANDBACK=1 git -C "$wt_path" \
             -c user.email="delegate-bot@harness.local" \
             -c user.name="delegate-bot" \
             commit -q -m "delegate: ${task_id}" || return 1
