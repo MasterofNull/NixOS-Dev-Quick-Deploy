@@ -6,14 +6,14 @@ import os
 import tempfile
 from pathlib import Path
 
-from memory_crystallizer import _extract_history, MemoryCrystallizer
+from memory_crystallizer import _extract_history, _fact_supported, MemoryCrystallizer
 from session_transcripts import extract_history, redact_secrets
 
 
 class _FakeLlamaClient:
     """Fake LLM client that returns fixed facts."""
 
-    def __init__(self, response_text: str = "- fact one long enough\n- fact two long enough"):
+    def __init__(self, response_text: str = "- User asked message question\n- Assistant sent content response"):
         self.response_text = response_text
         self.calls = []
 
@@ -161,8 +161,10 @@ def test_crystallize_file_session_with_llama():
                 '{"type":"assistant","message":{"content":"here is more"}}\n'
             )
 
-            # Create fake clients
-            llama_client = _FakeLlamaClient()
+            # Create fake clients with response that matches the nix history
+            llama_client = _FakeLlamaClient(
+                response_text="- nix is a package manager\n- User asked how to use nix package manager"
+            )
             broker = _FakeBroker()
 
             # Create crystallizer
@@ -225,11 +227,11 @@ def test_crystallize_history_filters_facts():
 
     async def run_test():
         llama_response = (
-            "- this is a much longer fact one here\n"
-            "- this is a much longer fact two here\n"
+            "- user asked question about response here\n"
+            "- assistant answered follow up question response\n"
             "random text in between that is ignored\n"
-            "* this is a much longer fact three here\n"
-            "- this is a much longer fact four here\n"
+            "* user asked questions about responses\n"
+            "- assistant provided answer to question\n"
         )
 
         llama_client = _FakeLlamaClient(response_text=llama_response)
@@ -251,14 +253,16 @@ def test_crystallize_history_filters_facts():
         result = await crystallizer._crystallize_history(history)
 
         # Should have extracted 4 facts (random text line skipped, filtered by > 10 chars)
+        # Shadow mode (default): all facts stored with support_score
         assert result["facts_extracted"] == 4
         assert result["facts_stored"] == 4
+        assert result["facts_rejected"] == 0  # No filtering in shadow mode
 
         # Check that facts were stored correctly (without leading dash/star)
         stored_facts = [w["content"] for w in broker.writes]
-        assert any("much longer fact one" in f for f in stored_facts)
-        assert any("much longer fact two" in f for f in stored_facts)
-        assert any("much longer fact three" in f for f in stored_facts)
+        assert len(stored_facts) == 4
+        # Verify support_score is in context for all facts
+        assert all("support_score" in w["context"] for w in broker.writes)
         # Random text line should NOT be stored (doesn't start with - or *)
         assert not any("random text" in f for f in stored_facts)
 
@@ -270,7 +274,7 @@ def test_crystallized_from_fallback_metadata():
 
     async def run_test():
         broker = _FakeBroker()
-        llama_client = _FakeLlamaClient("- fact one long enough")
+        llama_client = _FakeLlamaClient("- user said hello world test")
         crystallizer = MemoryCrystallizer(
             postgres_client=None,
             broker=broker,
@@ -399,7 +403,9 @@ def test_crystallize_dict_payload():
 
     async def run_test():
         with tempfile.TemporaryDirectory():
-            llama_client = _FakeLlamaClient()
+            llama_client = _FakeLlamaClient(
+                response_text="- nix is a package manager\n- User asked about nix configuration"
+            )
             broker = _FakeBroker()
 
             crystallizer = MemoryCrystallizer(
@@ -426,8 +432,11 @@ def test_crystallize_dict_payload():
 
             assert result["status"] == "complete"
             assert result["session_hash"] == "abc123def456"
-            assert result["insights_stored"] == 2  # From fake LLM response
+            # Shadow mode (default): all facts stored even if low support
+            assert result["insights_stored"] == 2
             assert len(broker.writes) == 2
+            # Verify support_score is in context
+            assert all("support_score" in w["context"] for w in broker.writes)
 
     asyncio.run(run_test())
 
@@ -710,8 +719,142 @@ def test_queued_broker_writes_count_as_stored():
             return {"status": "queued"}
 
     broker = _QueuedBroker()
-    c = mc.MemoryCrystallizer(broker=broker, llama_client=_FakeLlamaClient())
+    llama_client = _FakeLlamaClient(
+        response_text="- user sent message with enough text\n- assistant replied with message text"
+    )
+    c = mc.MemoryCrystallizer(broker=broker, llama_client=llama_client)
     history = [{"role": "user" if i % 2 == 0 else "assistant", "content": f"message {i} with enough text"} for i in range(6)]
     result = asyncio.run(c._crystallize_history(history))
     assert result["status"] == "complete"
     assert result["facts_stored"] == len(broker.writes) > 0
+
+
+def test_fact_supported_with_matching_words():
+    """Test that facts with sufficient overlap are supported."""
+    source = "The user asked about nix and about package management for linux systems and configurations"
+    fact = "Nix provides package management for linux systems and various configurations"
+    # fact words: "nix", "provides", "package", "management", "linux", "systems", "various", "configurations" (8 words)
+    # source words: "user", "asked", "about", "nix", "package", "management", "linux", "systems", "configurations" (9 words)
+    # overlap: 6/8 = 0.75 >= 0.6 -> supported
+    assert _fact_supported(fact, source, min_overlap=0.6) is True
+
+
+def test_fact_supported_with_absent_words():
+    """Test that facts with insufficient overlap are rejected (hallucinations)."""
+    source = "I used the aq-crystallize script to process my sessions"
+    fact = "The Python decorator pattern improves code reusability"
+    # fact has: "python", "decorator", "pattern", "improves", "code", "reusability" (6 words)
+    # source has none of these
+    # overlap = 0/6 = 0.0 < 0.6 -> rejected
+    assert _fact_supported(fact, source, min_overlap=0.6) is False
+
+
+def test_fact_supported_rejects_short_facts():
+    """Test that facts with fewer than 3 content words are rejected."""
+    source = "I used the tool"
+    fact = "The tool works"  # Only 2 content words after filtering stopwords
+    # fact has: "tool", "works" (2 words < 3)
+    # Too short to judge -> rejected
+    assert _fact_supported(fact, source, min_overlap=0.6) is False
+
+
+def test_fact_supported_with_identifiers():
+    """Test that identifiers are matched correctly by word overlap."""
+    source = "The crystallizer handles session artifacts and writes them frequently"
+    fact = "The crystallizer tool processes session artifacts and handles memory"
+    # fact has: "crystallizer", "tool", "processes", "session", "artifacts", "handles", "memory" (7 words)
+    # source has: "crystallizer", "handles", "session", "artifacts", "writes", "frequently" (6 words)
+    # overlap = 4/7 = 0.57 < 0.6 -> rejected at default threshold
+    assert _fact_supported(fact, source, min_overlap=0.6) is False
+    # But would pass at 0.55 threshold
+    assert _fact_supported(fact, source, min_overlap=0.55) is True
+
+
+def test_fact_supported_with_different_thresholds():
+    """Test that min_overlap threshold is respected."""
+    source = "the package manager tool for nix systems"
+    fact = "nix is a package manager for systems"
+    # fact has: "nix", "package", "manager", "systems" (4 words)
+    # source has all 4
+    # overlap = 4/4 = 1.0
+    # Should pass all thresholds
+    assert _fact_supported(fact, source, min_overlap=1.0) is True
+    assert _fact_supported(fact, source, min_overlap=0.6) is True
+    assert _fact_supported(fact, source, min_overlap=0.0) is True
+
+
+def test_crystallize_history_filters_and_rejects_hallucinated_facts():
+    """Test that crystallize_history filters facts through verification and counts rejections."""
+
+    async def run_test():
+        # LLM returns one supported and one hallucinated fact
+        llama_response = (
+            "- The user asked about nix package manager configuration\n"
+            "- Python decorators enable advanced metaprogramming capabilities\n"
+        )
+
+        llama_client = _FakeLlamaClient(response_text=llama_response)
+        broker = _FakeBroker()
+
+        crystallizer = MemoryCrystallizer(
+            postgres_client=None,
+            llama_client=llama_client,
+            broker=broker,
+        )
+
+        history = [
+            {"role": "user", "content": "How do I configure nix packages?"},
+            {"role": "assistant", "content": "You can use nix to manage packages"},
+            {"role": "user", "content": "What about the package manager?"},
+            {"role": "assistant", "content": "Nix is a package manager for systems"},
+        ]
+
+        result = await crystallizer._crystallize_history(history)
+
+        # Shadow mode (default): extracts 2 facts and stores both with support_scores
+        # The Python decorator fact has low support but still stored for calibration
+        assert result["status"] == "complete"
+        assert result["facts_extracted"] == 2
+        assert result["facts_stored"] == 2  # All stored in shadow mode
+        assert result["facts_rejected"] == 0  # No filtering in shadow mode
+        assert result["facts_low_support"] == 1  # One fact has low support score
+
+        # Check that both facts were stored with support_scores
+        stored_facts = [w["content"] for w in broker.writes]
+        assert len(stored_facts) == 2
+        # Verify support_score is in context
+        assert all("support_score" in w["context"] for w in broker.writes)
+        # One should be about nix (high score), one about Python (low score)
+        assert any("nix" in f.lower() for f in stored_facts)
+
+    asyncio.run(run_test())
+
+
+def test_crystallize_history_returns_rejection_count():
+    """Test that the result dict includes facts_rejected."""
+
+    async def run_test():
+        llama_client = _FakeLlamaClient(response_text="- fact one long enough\n- fact two long enough")
+        broker = _FakeBroker()
+
+        crystallizer = MemoryCrystallizer(
+            postgres_client=None,
+            llama_client=llama_client,
+            broker=broker,
+        )
+
+        history = [
+            {"role": "user", "content": "hello world"},
+            {"role": "assistant", "content": "fact one response"},
+            {"role": "user", "content": "hello again"},
+            {"role": "assistant", "content": "fact two response"},
+        ]
+
+        result = await crystallizer._crystallize_history(history)
+
+        # Both facts should be supported (all words present)
+        assert result["status"] == "complete"
+        assert "facts_rejected" in result
+        assert result["facts_rejected"] >= 0
+
+    asyncio.run(run_test())

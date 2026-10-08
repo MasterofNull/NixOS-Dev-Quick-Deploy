@@ -28,16 +28,18 @@ class _FakeBroker:
 
 
 class _FakeLlamaClient:
-    def __init__(self):
+    def __init__(self, response_text: str = "- user sent message text\n- assistant replied message"):
         self.calls = []
+        self.response_text = response_text
 
     async def create_message(self, prompt: str, max_tokens: int, temperature: float, system: str):
         self.calls.append({"prompt": prompt})
 
         class FakeResponse:
-            content = "- fact one long enough\n- fact two long enough"
+            def __init__(self, content):
+                self.content = content
 
-        return FakeResponse()
+        return FakeResponse(self.response_text)
 
 
 def test_crystallizer_ddl_tracks_session_hash():
@@ -79,9 +81,12 @@ def test_crystallizer_emits_runtime_learning_metadata(tmp_path: Path):
     )
 
     broker = _FakeBroker()
+    llama_client = _FakeLlamaClient(
+        response_text="- fact user said hello world response\n- fact assistant provided more response"
+    )
     crystallizer = MemoryCrystallizer(
         postgres_client=None,
-        llama_client=_FakeLlamaClient(),
+        llama_client=llama_client,
         broker=broker,
     )
 
