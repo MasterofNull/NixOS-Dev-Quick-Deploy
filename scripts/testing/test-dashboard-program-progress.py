@@ -203,6 +203,111 @@ class ProjectionProvenanceTests(unittest.TestCase):
         ])
         self.assertEqual((rollup, known, unknown), (60, 2, 1))
 
+    def test_oneshot_service_empty_timestamps_timer_triggered_accepted(self) -> None:
+        """Oneshot with deactivated empty timestamps, timer triggered, success, accepted -> SHIPPED 100."""
+        tracker = load_pm_tracker_module()
+        calls = []
+
+        def fake_systemctl_run(args, **_kwargs):
+            calls.append(list(args))
+            if "ai-training-ingest.service" in args:
+                # Unit state: no timestamps, but Result=success
+                return subprocess.CompletedProcess(args, 0, ""
+                    "ActiveState=inactive\n"
+                    "Result=success\n"
+                    "ActiveEnterTimestamp=\n"
+                    "ExecMainStartTimestamp=\n"
+                    "InactiveExitTimestamp=\n"
+                    "UnitFileState=enabled\n", "")
+            elif "ai-training-ingest.timer" in args:
+                # Timer state: triggered, success
+                return subprocess.CompletedProcess(args, 0, ""
+                    "LastTriggerUSec=1696780860000000\n"
+                    "Result=success\n", "")
+            raise AssertionError(f"unexpected systemctl call: {args}")
+
+        self.addCleanup(setattr, tracker.subprocess, "run", tracker.subprocess.run)
+        tracker.subprocess.run = fake_systemctl_run
+        tracker._SYSTEMD_CACHE.clear()
+        status, pct = tracker._project_systemd("ai-training-ingest.service", accepted=True)
+        self.assertEqual((status, pct), ("SHIPPED", 100))
+        self.assertTrue(any("ai-training-ingest.service" in call for call in calls))
+        self.assertTrue(any("ai-training-ingest.timer" in call for call in calls))
+
+    def test_oneshot_service_empty_timestamps_timer_triggered_unaccepted(self) -> None:
+        """Oneshot with deactivated empty timestamps, timer triggered, success, unaccepted -> IN-PROGRESS 70."""
+        tracker = load_pm_tracker_module()
+        calls = []
+
+        def fake_systemctl_run(args, **_kwargs):
+            calls.append(list(args))
+            if "ai-crystallize-sessions.service" in args:
+                return subprocess.CompletedProcess(args, 0, ""
+                    "ActiveState=inactive\n"
+                    "Result=success\n"
+                    "ActiveEnterTimestamp=\n"
+                    "ExecMainStartTimestamp=\n"
+                    "InactiveExitTimestamp=\n"
+                    "UnitFileState=enabled\n", "")
+            elif "ai-crystallize-sessions.timer" in args:
+                return subprocess.CompletedProcess(args, 0, ""
+                    "LastTriggerUSec=1696780860000000\n"
+                    "Result=success\n", "")
+            raise AssertionError(f"unexpected systemctl call: {args}")
+
+        self.addCleanup(setattr, tracker.subprocess, "run", tracker.subprocess.run)
+        tracker.subprocess.run = fake_systemctl_run
+        tracker._SYSTEMD_CACHE.clear()
+        status, pct = tracker._project_systemd("ai-crystallize-sessions.service", accepted=False)
+        self.assertEqual((status, pct), ("IN-PROGRESS", 70))
+
+    def test_oneshot_service_empty_timestamps_timer_never_triggered(self) -> None:
+        """Oneshot with deactivated empty timestamps, timer never triggered -> IN-PROGRESS 40."""
+        tracker = load_pm_tracker_module()
+
+        def fake_systemctl_run(args, **_kwargs):
+            if "ai-prompt-eval.service" in args:
+                return subprocess.CompletedProcess(args, 0, ""
+                    "ActiveState=inactive\n"
+                    "Result=success\n"
+                    "ActiveEnterTimestamp=\n"
+                    "ExecMainStartTimestamp=\n"
+                    "InactiveExitTimestamp=\n"
+                    "UnitFileState=enabled\n", "")
+            elif "ai-prompt-eval.timer" in args:
+                # Never triggered: LastTriggerUSec is empty
+                return subprocess.CompletedProcess(args, 0, ""
+                    "LastTriggerUSec=\n"
+                    "Result=\n", "")
+            raise AssertionError(f"unexpected systemctl call: {args}")
+
+        self.addCleanup(setattr, tracker.subprocess, "run", tracker.subprocess.run)
+        tracker.subprocess.run = fake_systemctl_run
+        tracker._SYSTEMD_CACHE.clear()
+        status, pct = tracker._project_systemd("ai-prompt-eval.service", accepted=False)
+        self.assertEqual((status, pct), ("IN-PROGRESS", 40))
+
+    def test_oneshot_service_failed_result_returns_blocked(self) -> None:
+        """Oneshot with failed Result -> BLOCKED 0."""
+        tracker = load_pm_tracker_module()
+
+        def fake_systemctl_run(args, **_kwargs):
+            if "ai-sync-knowledge-sources.service" in args:
+                return subprocess.CompletedProcess(args, 0, ""
+                    "ActiveState=inactive\n"
+                    "Result=exit-code\n"
+                    "ActiveEnterTimestamp=\n"
+                    "ExecMainStartTimestamp=\n"
+                    "InactiveExitTimestamp=\n"
+                    "UnitFileState=enabled\n", "")
+            raise AssertionError(f"unexpected systemctl call: {args}")
+
+        self.addCleanup(setattr, tracker.subprocess, "run", tracker.subprocess.run)
+        tracker.subprocess.run = fake_systemctl_run
+        tracker._SYSTEMD_CACHE.clear()
+        status, pct = tracker._project_systemd("ai-sync-knowledge-sources.service", accepted=False)
+        self.assertEqual((status, pct), ("BLOCKED", 0))
+
     def test_malformed_and_escaped_provenance_are_defensive(self) -> None:
         doc = text(TRACKER)
         # The browser does not trust a malformed source_health field, and all
