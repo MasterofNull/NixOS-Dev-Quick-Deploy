@@ -31,6 +31,7 @@ _SYSTEM_BIN = "/run/current-system/sw/bin"
 _PHASES = ["0"]  # phase 0 = pre-flight smoke; fast enough for a 15-min timer
 _SOURCE = "ai-stack-health-monitor"
 _COOLDOWN_S = 600  # don't re-alert the same failure within 10 minutes
+_HARNESS_TIMEOUT_S = int(os.environ.get("HARNESS_TIMEOUT_S", "430"))  # ~2.5x measured phase-0 wall (147-171s)
 
 
 def push_alert(**spec) -> None:
@@ -59,7 +60,7 @@ def run_aq_qa(phase: str) -> dict:
         result = subprocess.run(
             [sys.executable, str(_HARNESS_RUNNER), phase, "--json"],
             env=env,
-            capture_output=True, text=True, timeout=120,
+            capture_output=True, text=True, timeout=_HARNESS_TIMEOUT_S,
         )
         try:
             data = json.loads(result.stdout)
