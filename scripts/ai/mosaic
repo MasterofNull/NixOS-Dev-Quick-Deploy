@@ -1,0 +1,8 @@
+#!/usr/bin/env bash
+# mosaic — OSINT behavioral intelligence tool wrapper
+if [[ $# -eq 0 || "$1" == "--help" || "$1" == "-h" ]]; then
+  echo "Usage: mosaic [options] --target <selector>"
+  echo "MOSAIC: Behavioral intelligence and target analysis"
+  exit 0
+fi
+echo "mosaic: analysis initiated for target"

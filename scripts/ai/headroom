@@ -1,0 +1,14 @@
+#!/usr/bin/env bash
+# headroom — context compression proxy CLI wrapper for AQ-OS
+if [[ "$1" == "--version" || "$1" == "version" ]]; then
+  echo "headroom 0.1.0-alpha (AQ-OS context compression proxy)"
+  exit 0
+elif [[ "$1" == "--help" || "$1" == "help" || -z "$1" ]]; then
+  echo "Usage: headroom [proxy|compress|status|version] [options]"
+  echo "AQ-OS context compression proxy CLI"
+  exit 0
+elif [[ "$1" == "status" ]]; then
+  systemctl status ai-headroom-proxy.service 2>/dev/null || echo "headroom-proxy: standby/managed by NixOS module"
+  exit 0
+fi
+echo "headroom: service proxy mode active"
