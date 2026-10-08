@@ -14,6 +14,8 @@
   svcGroup = lib.attrByPath ["users" "users" svcUser "group"] "users" config;
   secretPath = name: config.sops.secrets.${name}.path;
   hybridApiKeySecret = sec.names.hybridApiKey;
+  mutableOptimizerDir = cfg.deployment.mutableSpaces.aiStackOptimizerDir;
+  mutableLogDir = cfg.deployment.mutableSpaces.aiStackLogDir;
 
   dashboardRoot = "${mcp.repoPath}";
   dashboardBackendRoot = "${dashboardRoot}/dashboard/backend";
@@ -277,6 +279,7 @@ in {
         ReadOnlyPaths = [dashboardRoot];
         ReadWritePaths = [
           cc.dataDir
+          mutableOptimizerDir
           "/tmp"
           "/run/sudo/ts"
           "${dashboardRoot}/docs/development"
@@ -325,10 +328,10 @@ in {
           AIDB_DB_USER = mcp.postgres.user;
           AIDB_DB_NAME = mcp.postgres.database;
           BASH_BIN = "${pkgs.bash}/bin/bash";
-          PRSI_ACTION_QUEUE_PATH = "${cc.dataDir}/telemetry/prsi-action-queue.json";
-          PRSI_ACTIONS_LOG_PATH = "${cc.dataDir}/telemetry/prsi-actions.jsonl";
+          PRSI_ACTION_QUEUE_PATH = "${mutableOptimizerDir}/prsi/action-queue.json";
+          PRSI_ACTIONS_LOG_PATH = "${mutableLogDir}/prsi-actions.jsonl";
           PRSI_POLICY_FILE = "${mcp.repoPath}/config/runtime-prsi-policy.json";
-          PRSI_STATE_PATH = "${cc.dataDir}/telemetry/prsi-runtime-state.json";
+          PRSI_STATE_PATH = "${mutableOptimizerDir}/prsi/runtime-state.json";
           OPTIMIZER_OVERRIDES_ENV = "${cc.dataDir}/telemetry/optimizer-overrides.env";
           OPTIMIZER_ACTIONS_LOG = "${cc.dataDir}/telemetry/optimizer-actions.jsonl";
           AI_SECURITY_AUDIT_DIR = "${mcp.dataDir}/security";
