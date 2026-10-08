@@ -31,7 +31,7 @@ def _public_text(value: object) -> str:
 
 def _project() -> dict:
     inbox = importlib.import_module("approval_inbox")
-    items = inbox.collect()
+    items, degraded = inbox.collect_with_status()
     needs_approval, deferred = [], []
     for n, item in enumerate(items, 1):
         row = {"n": n, **{field: _public_text(item[key]) for field, key in (
@@ -39,13 +39,17 @@ def _project() -> dict:
             ("source", "source"), ("id", "key"),
         )}}
         (needs_approval if item["section"] == "approval" else deferred).append(row)
-    return {
+    result = {
         "tag": inbox.snapshot_tag(items),
         "needs_approval": needs_approval,
         "deferred": deferred,
         "counts": {"needs_approval": len(needs_approval), "deferred": len(deferred), "total": len(items)},
         "generated_at": datetime.now(timezone.utc).isoformat(),
     }
+    if degraded:
+        result["status"] = "degraded"
+        result["degraded_sources"] = [{"path": _public_text(d["path"]), "error": d["error"]} for d in degraded]
+    return result
 
 
 @router.get("/approval-inbox")
