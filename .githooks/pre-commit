@@ -8,6 +8,12 @@ if [ -f "$(git rev-parse --git-dir)/MERGE_HEAD" ] && [ "$(git rev-parse --is-sha
     exit 1
 fi
 
+# Delegate handback transport commits (scripts/ai/lib/worktree-isolation.sh wt_handback)
+# skip repo validation: the orchestrator validates the handed-back patch once.
+if [ "${AQ_DELEGATE_HANDBACK:-}" = "1" ]; then
+  exit 0
+fi
+
 if ! command -v git >/dev/null 2>&1; then
   echo "pre-commit: git not found" >&2
   exit 1
