@@ -25,7 +25,7 @@
       "validation_goal": "Focused tests verify coverage rendering, unresolved filtering, and existing dashboard behavior.",
       "deps": [],
       "editorial_note": "Initial implementation in progress; completion remains projector-derived.",
-      "detection": {"commit_match": [], "activation_subject": "", "freeze_record": "", "authorization_record": "", "slice_claim": "", "blocker_note": ""}
+      "detection": {"commit_match": ["portfolio classification coverage"], "activation_subject": "", "freeze_record": "", "authorization_record": "", "slice_claim": "", "blocker_note": ""}
     },
     {
       "id": "reconcile-plan-classifications",
@@ -35,8 +35,8 @@
       "goal": "Add evidence-backed classification and tracking routes for all plan directories, leaving uncertain cases visibly unresolved.",
       "validation_goal": "Every indexed record has valid metadata or a specific unresolved issue, with counts reconciling to the index.",
       "deps": ["coverage-dashboard"],
-      "editorial_note": "Live index snapshot (2026-10-01): 101 of 104 records remain unclassified. Three evidence-backed classifications are present; continue individual source review without inferring from names or recency.",
-      "detection": {"commit_match": [], "activation_subject": "", "freeze_record": "", "authorization_record": "", "slice_claim": "", "blocker_note": ""}
+      "editorial_note": "Live index (2026-10-08): 53 of 113 records classified from explicit primary-record evidence (tracker.json plan declarations and round.json round records); 60 remain visibly unresolved, each with a recorded reason. Continue owner source review without inferring from names or recency.",
+      "detection": {"commit_match": ["reconcile plan classifications"], "activation_subject": "", "freeze_record": "", "authorization_record": "", "slice_claim": "", "blocker_note": ""}
     },
     {
       "id": "route-child-work",
@@ -47,7 +47,7 @@
       "validation_goal": "Development map documents routes and coverage checks; no duplicate manual progress source is introduced.",
       "deps": ["reconcile-plan-classifications"],
       "editorial_note": "Map now documents portfolio coverage and AQ-OS child routes: req-guest-init-evaluation in the requirements inventory and PID1 in the program milestone projector. Lifecycle changes and archival remain out of scope.",
-      "detection": {"commit_match": [], "activation_subject": "", "freeze_record": "", "authorization_record": "", "slice_claim": "", "blocker_note": ""}
+      "detection": {"commit_match": ["child-work routing"], "activation_subject": "", "freeze_record": "", "authorization_record": "", "slice_claim": "", "blocker_note": ""}
     }
   ]
 }
