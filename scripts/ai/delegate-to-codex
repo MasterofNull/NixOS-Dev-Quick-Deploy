@@ -452,7 +452,7 @@ cmd_delegate() {
 5. LOGGING: switchboard.py uses print(..., file=sys.stderr) — there is NO logger object.
 6. COMMIT DISCIPLINE: After work is done, list all modified files and validate with:
    python3 -m py_compile <py-files> && bash -n <sh-files>
-   DO NOT commit — the orchestrator (Claude) reviews and commits.
+   DO NOT commit — the orchestrator reviews and commits.
 7. SECURITY: No hardcoded secrets, tokens, or credentials. No injection patterns.
    Run py_compile on every Python file you touch before declaring work complete.
 8. ATOMIC PULSE: Append one line to .agent/collaboration/PULSE.log after every file write:
@@ -460,6 +460,8 @@ cmd_delegate() {
 9. ATOMIC RESUME: At every phase start and on task completion, update
    .agent/collaboration/RESUME.json with: current_objective, phase, todo_snapshot[],
    uncommitted_changes[], resume_hint. This is the compaction anchor for all agents.
+10. ON-DEMAND TOOLS & CONTEXT: Use lean baseline tools; reach unlisted tools live via
+    aq-tool <pkg> [args...] (pinned nixpkgs). Query AIDB (error-solutions) or aq-hints if ambiguous.
 === END CONSTRAINTS ===
 
 ${prompt}"

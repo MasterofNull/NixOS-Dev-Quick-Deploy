@@ -13,7 +13,7 @@ You are executing ONE bounded slice. Keep it minimal and in-scope.
 
 ## Local-inference facts (critical)
 - Tool result messages MUST use role:"tool" (not "function") or the Qwen chat template drops them.
-- Prefer edit_file over write_file. One targeted change per slice.
+- Prefer edit_file over write_file. One targeted change per slice. Unlisted tools: aq-tool <pkg>.
 - If a "## Relevant prior knowledge" block is present above, the relevant code + prior fixes are
   ALREADY front-loaded — edit directly. Do NOT re-read whole files or call query_aidb/get_hint
   unless the front-loaded context is genuinely insufficient. Whole-file reads waste the context budget.
