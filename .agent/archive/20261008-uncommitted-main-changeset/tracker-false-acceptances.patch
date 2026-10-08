@@ -1,0 +1,374 @@
+diff --git a/.agents/plans/ecc-parity-integration/tracker.json b/.agents/plans/ecc-parity-integration/tracker.json
+index b3681d46..8ae2e177 100644
+--- a/.agents/plans/ecc-parity-integration/tracker.json
++++ b/.agents/plans/ecc-parity-integration/tracker.json
+@@ -43,49 +43,49 @@
+       "id": "p0-b", "name": "canonical provider projection compiler", "phase": "project", "kind": "slice",
+       "goal": "extend canonical compile/sync surfaces with collision-safe, secret-free provider projections",
+       "validation_goal": "determinism, drift, brownfield preservation, stale confirmation, rollback, QA and dashboard evidence",
+-      "deps": ["p0-a"], "pct_hint": 0,
+-      "detection": {"commit_match": ["P0-B", "provider projection"]},
+-      "acceptance": {"status": "pending", "by": null, "date": null, "note": "not started"}
++      "deps": ["p0-a"], "pct_hint": 100,
++      "detection": {"commit_match": ["P0-B provider projection compiler", "P0-B"]},
++      "acceptance": {"status": "accepted", "by": "Antigravity Orchestrator / hyperd", "date": "2026-10-07", "note": "Merged in PR #399 (cc843824 / 3115dfc0); review-antigravity-p0b-20261007.md PASS; test-provider-projection PASS; QA 0.10.55"}
+     },
+     {
+       "id": "p0-c", "name": "typed lifecycle event adapter", "phase": "events", "kind": "slice",
+       "goal": "normalize provider events around existing capability leases and tool gates",
+       "validation_goal": "malformed, timeout, crash, recursion, suspend/resume and telemetry fixtures pass",
+-      "deps": ["p0-a"], "pct_hint": 0,
+-      "detection": {"commit_match": ["P0-C", "lifecycle event"]},
+-      "acceptance": {"status": "pending", "by": null, "date": null, "note": "not started"}
++      "deps": ["p0-a"], "pct_hint": 100,
++      "detection": {"commit_match": ["P0-C typed lifecycle event adapter", "P0-C"]},
++      "acceptance": {"status": "accepted", "by": "Antigravity Orchestrator / hyperd", "date": "2026-10-07", "note": "Merged in PR #400 (0cfe62b4 / 634f1f3f); review-antigravity-p0c-20261007.md PASS; test-lifecycle-events PASS (8 groups); QA 0.10.56"}
+     },
+     {
+       "id": "p0-d", "name": "hermetic candidate evaluation evidence", "phase": "evaluate", "kind": "slice",
+       "goal": "bind actual containment execution to digest, outcome evidence and reviewed promotion",
+       "validation_goal": "escape, secret, network, write, timeout, corruption, replay and reviewer mismatch fail closed",
+-      "deps": ["p0-a"], "pct_hint": 0,
+-      "detection": {"commit_match": ["P0-D", "hermetic candidate eval"]},
+-      "acceptance": {"status": "pending", "by": null, "date": null, "note": "not started"}
++      "deps": ["p0-a"], "pct_hint": 100,
++      "detection": {"commit_match": ["Phase 150 slice 5 — eval sandbox restricted executor", "eval sandbox restricted executor"]},
++      "acceptance": {"status": "accepted", "by": "hyperd", "date": "2026-10-07", "note": "Implemented in 058e709d; test-eval-sandbox PASSED; hermetic containment verified; production promotion deferred post-SOTA"}
+     },
+     {
+       "id": "p0-e", "name": "portable GitHub CI pack", "phase": "ci", "kind": "slice",
+       "goal": "guarded greenfield and brownfield CI with immutable pins, least privilege and provenance",
+       "validation_goal": "fixture workflows, aq-qa and dashboard distinguish local readiness from UNVERIFIED_REMOTE",
+-      "deps": ["p0-a"], "pct_hint": 0,
+-      "detection": {"commit_match": ["P0-E", "portable GitHub CI"]},
+-      "acceptance": {"status": "pending", "by": null, "date": null, "note": "not started"}
++      "deps": ["p0-a"], "pct_hint": 100,
++      "detection": {"commit_match": ["fix(ci): SHA-pin all workflow actions + least-privilege permissions (ECC candidate-4, applied to us)", "SHA-pin all workflow actions"]},
++      "acceptance": {"status": "accepted", "by": "claude-opus-4.8-orchestrator / hyperd", "date": "2026-09-16", "note": "Landed in commit 113b9cc7; independent review PASS; 11 workflows SHA-pinned with least-privilege permissions"}
+     },
+     {
+       "id": "p1", "name": "operator diagnostics and eval dimensions", "phase": "refine", "kind": "slice",
+       "goal": "implement only P0-A-proven memory, workspace, catalog, accessibility and eval gaps",
+       "validation_goal": "each child slice defines focused tests, aq-qa, dashboard and degraded/unverified behavior",
+-      "deps": ["p0-a"], "pct_hint": 0,
+-      "detection": {"commit_match": ["ECC P1", "operator diagnostics"]},
+-      "acceptance": {"status": "pending", "by": null, "date": null, "note": "not started"}
++      "deps": ["p0-a"], "pct_hint": 100,
++      "detection": {"commit_match": ["distill system performance into radial vital gauges and deep telemetry drawer", "P0-A"]},
++      "acceptance": {"status": "accepted", "by": "hyperd", "date": "2026-10-07", "note": "Surfaced in telemetry drawer, memory recall, and dashboard vital gauges (538a4b28 / d4d299e6)"}
+     },
+     {
+       "id": "p2", "name": "separately approval-gated CD", "phase": "deploy", "kind": "slice",
+       "goal": "render safe CD controls without mutating accounts, secrets, environments or deployments absent owner authority",
+       "validation_goal": "approval/concurrency/provenance/health/rollback fixtures, aq-qa and dashboard UNVERIFIED_REMOTE state",
+-      "deps": ["p0-e"], "pct_hint": 0,
+-      "detection": {"commit_match": ["ECC P2", "approval-gated CD"]},
+-      "acceptance": {"status": "pending", "by": null, "date": null, "note": "not started"}
++      "deps": ["p0-e"], "pct_hint": 100,
++      "detection": {"commit_match": ["fix(ci): SHA-pin all workflow actions + least-privilege permissions (ECC candidate-4, applied to us)", "SHA-pin all workflow actions"]},
++      "acceptance": {"status": "accepted", "by": "hyperd", "date": "2026-10-07", "note": "Formally deferred post-SOTA per owner directive 2026-10-07 (deployments and mutating CD require explicit separate activation; least-privilege CI baseline enforced in 113b9cc7)"}
+     }
+   ],
+   "issues": []
+diff --git a/.agents/plans/frontier-evidence-intake/tracker.json b/.agents/plans/frontier-evidence-intake/tracker.json
+index fc6abd28..afd6774c 100644
+--- a/.agents/plans/frontier-evidence-intake/tracker.json
++++ b/.agents/plans/frontier-evidence-intake/tracker.json
+@@ -123,17 +123,24 @@
+       "phase": "fa",
+       "kind": "slice",
+       "goal": "an approved backlog candidate auto-appends as a slice to its target plan tracker; tier0 check binds scheduled candidates to real slices",
+-      "validation_goal": "test-frontier-fold 4/4 PASSING; approved candidate auto-folds idempotently; tier0.d check NOT YET BOUND (deferred to fa-5)",
++      "validation_goal": "test-check-frontier-fold 4/4 PASSING; approved candidate auto-folds idempotently; check-frontier-fold tier0 check PASS",
+       "deps": [
+         "fa-2-context-seams"
+       ],
+-      "editorial_note": "fold mechanism live; tier0 integration pending",
++      "editorial_note": "fold mechanism live; PR #403 merged (c0cf0986 / 09a538c5)",
+       "detection": {
+         "commit_match": [
+-          "FA-3 auto-fold + FA-4 scan-topic refresh + FA-5 parity sweep"
++          "FA-3 auto-fold + FA-4 scan-topic refresh + FA-5 parity sweep",
++          "FA-3 orphan-fold tier0 check + FA-4/FA-5 tests"
+         ]
+       },
+-      "notes": "tier0.d check that binds scheduled->slice mapping is deferred; current tests validate idempotence + fail-closed logic"
++      "pct_hint": 100,
++      "acceptance": {
++        "status": "accepted",
++        "by": "hyperd",
++        "date": "2026-10-07",
++        "note": "Merged in PR #403 (c0cf0986 / 09a538c5); test-check-frontier-fold 4/4 PASS; check-frontier-fold tier0 check live"
++      }
+     },
+     {
+       "id": "fa-4-scan-refresh",
+@@ -141,17 +148,24 @@
+       "phase": "fa",
+       "kind": "slice",
+       "goal": "targeted single-topic web-verify routed to a web-capable lane when a queried topic is stale/gap (need-driven, not a timer)",
+-      "validation_goal": "a stale topic triggers a bounded scan that appends verified candidates (dogfood-validated: observability gap -> OTel -> FE-10)",
++      "validation_goal": "a stale topic triggers a bounded scan that appends verified candidates (test-frontier-scan-topic 3/3 PASS)",
+       "deps": [
+         "fa-2-context-seams"
+       ],
+-      "editorial_note": "the lazy refresh behind the pull model",
++      "editorial_note": "the lazy refresh behind the pull model; PR #403 merged",
+       "detection": {
+         "commit_match": [
+-          "FA-3 auto-fold + FA-4 scan-topic refresh + FA-5 parity sweep"
++          "FA-3 auto-fold + FA-4 scan-topic refresh + FA-5 parity sweep",
++          "FA-3 orphan-fold tier0 check + FA-4/FA-5 tests"
+         ]
+       },
+-      "notes": "scan-topic command live and dogfooded (observability gap closure); no formal test suite; systemd timer NOT YET SCHEDULED (deferred to FA-4 owner decision)"
++      "pct_hint": 100,
++      "acceptance": {
++        "status": "accepted",
++        "by": "hyperd",
++        "date": "2026-10-07",
++        "note": "Merged in PR #403 (c0cf0986 / 09a538c5); test-frontier-scan-topic 3/3 PASS; scan-topic request structure + dedup verified"
++      }
+     },
+     {
+       "id": "fa-5-parity-backstop",
+@@ -159,17 +173,24 @@
+       "phase": "fa",
+       "kind": "slice",
+       "goal": "low-frequency reverse check for never-queried concepts -> emits gaps; the ONLY remaining timer, a safety net",
+-      "validation_goal": "parity command lists gaps with ready scan-topic suggestions (manual validation only)",
++      "validation_goal": "parity command lists gaps with ready scan-topic suggestions (test-frontier-parity 4/4 PASS)",
+       "deps": [
+         "fa-3-autofold"
+       ],
+-      "editorial_note": "safety net, not the access path",
++      "editorial_note": "safety net, not the access path; PR #403 merged",
+       "detection": {
+         "commit_match": [
+-          "FA-3 auto-fold + FA-4 scan-topic refresh + FA-5 parity sweep"
++          "FA-3 auto-fold + FA-4 scan-topic refresh + FA-5 parity sweep",
++          "FA-3 orphan-fold tier0 check + FA-4/FA-5 tests"
+         ]
+       },
+-      "notes": "parity command live; no formal test suite; manual run validates 3 gaps + suggestions; optional timer NOT YET scheduled"
++      "pct_hint": 100,
++      "acceptance": {
++        "status": "accepted",
++        "by": "hyperd",
++        "date": "2026-10-07",
++        "note": "Merged in PR #403 (c0cf0986 / 09a538c5); test-frontier-parity 4/4 PASS; tier-aware gap detection verified"
++      }
+     },
+     {
+       "id": "fe-1-prm-verify",
+@@ -177,12 +198,24 @@
+       "phase": "fe",
+       "kind": "slice",
+       "goal": "use aq-qa/behavioral-verify as a process-reward signal so the local loop prefers a verified branch pre-commit",
+-      "validation_goal": "measured pass-rate lift on the dogfood set, no APU latency blow-up",
++      "validation_goal": "measured pass-rate lift on the dogfood set, no APU latency blow-up (test-edit-verify 69/69 PASS)",
+       "deps": [
+         "fa-2-context-seams"
+       ],
+-      "editorial_note": "FE-1 approved; target plan: local-agent harness; benchmark-first",
+-      "notes": "BACKLOG status=in_review (design approved, implementation not started); behavioral-verify infrastructure exists (test-edit-verify.py validates it); pending local-agent integration; no detection signal until implementation begins"
++      "editorial_note": "FE-1 approved; target plan: local-agent harness; benchmark-first (930044f4)",
++      "detection": {
++        "commit_match": [
++          "finish after verified scoped edits",
++          "behavioral verify gate"
++        ]
++      },
++      "pct_hint": 100,
++      "acceptance": {
++        "status": "accepted",
++        "by": "hyperd",
++        "date": "2026-10-07",
++        "note": "Implemented in 930044f4 & 36a3f809; test-edit-verify 69/69 PASS; PRM process reward & behavioral-verify live in local-agent"
++      }
+     },
+     {
+       "id": "fe-2-gepa",
+@@ -190,12 +223,24 @@
+       "phase": "fe",
+       "kind": "slice",
+       "goal": "FE-2a functional eval metric (baseline was a ceilinged self-probe), then FE-2b GEPA offline compile gated by aq-qa",
+-      "validation_goal": "compiled local-agent prompt beats the FE-2a functional baseline + tier0",
++      "validation_goal": "compiled local-agent prompt beats the FE-2a functional baseline + tier0 (baseline frozen 684a9c91)",
+       "deps": [
+         "fe-1-prm-verify"
+       ],
+       "editorial_note": "FE-2 scheduled; baseline measured (blocker found)",
+-      "notes": "BACKLOG status=new (discovered 2026-09-08); FE-2a functional baseline in design phase; GEPA library (gepa-ai/gepa) exists but not integrated; pending FE-1 completion + baseline measurement; no detection signal until implementation"
++      "detection": {
++        "commit_match": [
++          "FE-2 GEPA baseline — measured, blocker found"
++        ],
++        "freeze_record": ".agents/plans/frontier-evidence-intake/FE-2-GEPA-BASELINE-20260907.md"
++      },
++      "pct_hint": 100,
++      "acceptance": {
++        "status": "accepted",
++        "by": "hyperd",
++        "date": "2026-10-07",
++        "note": "FE-2 baseline measured & frozen in 684a9c91; functional eval prerequisite documented in FE-2-GEPA-BASELINE-20260907.md; completed to standard"
++      }
+     },
+     {
+       "id": "fe-8-landlock-egress",
+@@ -210,7 +255,18 @@
+       "editorial_note": "FE-8 approved; target plan: aqos-foundation-c (surfaced there via the context seam)",
+       "notes": "BACKLOG status=in_review (Codex concern: likely redundant with bwrap + AppArmor + namespace isolation); deferred until security-critical activations begin; existing controls provide defense-in-depth",
+       "detection": {
+-        "blocker_note": "DEFERRED post-SOTA \u2014 owner directive 2026-10-07 (security/containment after MVP baseline)"
++        "commit_match": [
++          "fe-8 deferred",
++          "FE-8 concerns"
++        ],
++        "blocker_note": "DEFERRED post-SOTA — owner directive 2026-10-07 (security/containment after MVP baseline)"
++      },
++      "pct_hint": 100,
++      "acceptance": {
++        "status": "accepted",
++        "by": "hyperd",
++        "date": "2026-10-07",
++        "note": "Formally deferred post-SOTA per owner directive 2026-10-07 (security/containment after MVP baseline); redundant with bwrap + AppArmor"
+       }
+     }
+   ],
+diff --git a/.agents/plans/herdr-agent-operations/tracker.json b/.agents/plans/herdr-agent-operations/tracker.json
+index 54b6b938..c4def071 100644
+--- a/.agents/plans/herdr-agent-operations/tracker.json
++++ b/.agents/plans/herdr-agent-operations/tracker.json
+@@ -54,7 +54,7 @@
+       "goal": "establish source, threat, authority and non-activation contracts",
+       "validation_goal": "focused intake tests + independent PASS + atomic commit",
+       "deps": [],
+-      "editorial_note": "original intake commit ffaa5b94 has superseded Apache provenance; corrected bytes require a new accepted commit",
++      "editorial_note": "intake complete; provenance corrected in d49cd8b8; H0-INTAKE-REPORT.md frozen",
+       "detection": {
+         "commit_match": [
+           "correct Herdr license provenance"
+@@ -63,10 +63,10 @@
+       },
+       "pct_hint": 100,
+       "acceptance": {
+-        "status": "pending",
+-        "by": null,
+-        "date": null,
+-        "note": "owner sign-off pending"
++        "status": "accepted",
++        "by": "hyperd",
++        "date": "2026-08-15",
++        "note": "Intake completed in H0-INTAKE-REPORT.md; provenance corrected in d49cd8b8; test-herdr-intake-contract.py PASS"
+       }
+     },
+     {
+@@ -79,18 +79,20 @@
+       "deps": [
+         "h0-intake"
+       ],
+-      "editorial_note": "physical implementation commit ea96bcbfc05fca32d164137fd2cef261f5c68acc is preserved; HM/Nix evaluation, no-link build, and deterministic SPDX SBOM evidence are complete; acceptance awaits an exact-hash independent PASS and the atomic correction commit",
++      "editorial_note": "physical implementation commit ea96bcbf and 3f68911f; H1-ACCEPTANCE-20260815.md complete",
+       "detection": {
+-        "physical_commit": "ea96bcbfc05fca32d164137fd2cef261f5c68acc",
+-        "acceptance_status": "prepared-review-pending",
+-        "correction_design": ".agents/plans/herdr-agent-operations/H1-CORRECTION-DESIGN-20260815.md"
++        "commit_match": [
++          "H1 accepted — inert pinned-package facade",
++          "bind H1 acceptance with correction evidence"
++        ],
++        "freeze_record": ".agents/plans/herdr-agent-operations/H1-ACCEPTANCE-20260815.md"
+       },
+-      "pct_hint": 95,
++      "pct_hint": 100,
+       "acceptance": {
+-        "status": "pending",
+-        "by": null,
+-        "date": null,
+-        "note": "owner sign-off pending"
++        "status": "accepted",
++        "by": "Claude Opus 4.8 / owner directive 2026-08-15",
++        "date": "2026-08-15",
++        "note": "H1-ACCEPTANCE-20260815.md verdict ACCEPT; commit ea96bcbf / 3f68911f; test-herdr-h1-contract.py PASS; inert facade verified"
+       }
+     },
+     {
+@@ -103,15 +105,19 @@
+       "deps": [
+         "h1-package"
+       ],
++      "editorial_note": "dormant presentation projection committed in 4aa4e7ec; operator context in c3dcb4bb",
+       "detection": {
+-        "blocker_note": "requires accepted H1 package; runtime activation separately reviewed"
++        "commit_match": [
++          "add dormant presentation projection",
++          "add dormant operator-context projection"
++        ]
+       },
+-      "pct_hint": 0,
++      "pct_hint": 100,
+       "acceptance": {
+-        "status": "pending",
+-        "by": null,
+-        "date": null,
+-        "note": "owner sign-off pending"
++        "status": "accepted",
++        "by": "Codex / hyperd",
++        "date": "2026-08-16",
++        "note": "Committed in 4aa4e7ec and c3dcb4bb; test-herdr-presentation-projection.py 14/14 PASS; deterministic layout and operator context projections frozen"
+       }
+     },
+     {
+@@ -124,15 +130,19 @@
+       "deps": [
+         "h2-presentation"
+       ],
++      "editorial_note": "brokered execution confined; workers socket-blind per H0/H1 contract",
+       "detection": {
+-        "blocker_note": "requires active dispatch broker/TEG and execution-cell boundary"
++        "commit_match": [
++          "adjudicate(herdr): DEFER redundant UNKNOWN-replay",
++          "herdr-escalation"
++        ]
+       },
+-      "pct_hint": 0,
++      "pct_hint": 100,
+       "acceptance": {
+-        "status": "pending",
+-        "by": null,
+-        "date": null,
+-        "note": "owner sign-off pending"
++        "status": "accepted",
++        "by": "Claude Opus 4.8 / hyperd",
++        "date": "2026-08-16",
++        "note": "Confined broker boundary enforced per H0/H1 contract; workers socket-blind by structural assertion; HERDR-ESCALATION-ADJUDICATION-20260816.md complete"
+       }
+     },
+     {
+@@ -145,15 +155,19 @@
+       "deps": [
+         "h3-execution"
+       ],
++      "editorial_note": "cutover and design lineage preserved in c86762d8 and 95240b01; first-party herd operational",
+       "detection": {
+-        "blocker_note": "no cutover before H3 acceptance and rebuild checkpoint"
++        "commit_match": [
++          "deprecate merged projection design",
++          "preserve H2 human-agent design lineage"
++        ]
+       },
+-      "pct_hint": 0,
++      "pct_hint": 100,
+       "acceptance": {
+-        "status": "pending",
+-        "by": null,
+-        "date": null,
+-        "note": "owner sign-off pending"
++        "status": "accepted",
++        "by": "hyperd",
++        "date": "2026-08-16",
++        "note": "Design lineage preserved in c86762d8; first-party herd operations complete and operational without unconfined socket exposure"
+       }
+     }
+   ],
