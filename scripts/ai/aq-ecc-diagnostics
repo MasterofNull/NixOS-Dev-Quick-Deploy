@@ -1,0 +1,29 @@
+#!/usr/bin/env python3
+"""aq-ecc-diagnostics -- one read-only report over the ECC parity surfaces (ECC P1)."""
+from __future__ import annotations
+
+import argparse
+import json
+import os
+import sys
+from pathlib import Path
+
+REPO = Path(__file__).resolve().parent.parent.parent
+sys.path.insert(0, str(REPO / "scripts" / "ai" / "lib"))
+import ecc_diagnostics as ed  # noqa: E402
+
+
+def main(argv: list[str] | None = None) -> int:
+    ap = argparse.ArgumentParser(description=__doc__)
+    ap.add_argument("--repo", default=str(REPO))
+    ap.add_argument("--format", choices=["text", "json"], default="text")
+    ap.add_argument("--memory-dir", action="append", default=None, help="memory topic dir (repeatable)")
+    args = ap.parse_args(argv)
+    doc = ed.collect(Path(args.repo).resolve(), state_file=os.getenv("LIFECYCLE_EVENTS_STATE_FILE") or None,
+                     memory_dirs=[Path(d) for d in args.memory_dir] if args.memory_dir else None)
+    print(json.dumps(doc, indent=2, sort_keys=True) if args.format == "json" else ed.render_text(doc))
+    return {"ok": 0, "unverified": 3, "degraded": 1}[doc["status"]]
+
+
+if __name__ == "__main__":
+    sys.exit(main())

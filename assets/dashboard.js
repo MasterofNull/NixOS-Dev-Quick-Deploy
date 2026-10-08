@@ -4940,6 +4940,7 @@ async function loadRuntimeDetails() {
   const outcomes = cg.outcomes || {};
   const outcomeCounts = outcomes.counts || {};
   const lce = cg.lifecycle_events || {};
+  const ecc = cg.ecc_diagnostics || {};
   const lrn = s.learning || {};
   const rows = [
     fwRow("Offloading", fmtImplStatus(off.status), "ok"),
@@ -5001,6 +5002,13 @@ async function loadRuntimeDetails() {
       "· lifecycle fail / disabled",
       lce.available ? `${lce.failures ?? 0} / ${(lce.disabled || []).length}` : "--",
       (lce.failures || (lce.disabled || []).length) ? "warn" : "ok"
+    ),
+    fwRow(
+      "· ecc diagnostics",
+      ecc.available
+        ? `${String(ecc.status || "unverified").toUpperCase()} · ${Object.entries(ecc.sections || {}).filter(([, v]) => v !== "ok").map(([k, v]) => `${k}:${v}`).join(", ") || "all sections ok"}`
+        : "UNVERIFIED",
+      ecc.available && ecc.status === "ok" ? "ok" : "warn"
     ),
     fwRow("Learning", fmtImplStatus(lrn.status), "ok"),
     fwRow("· signals", lrn.signals_recorded ?? 0),
