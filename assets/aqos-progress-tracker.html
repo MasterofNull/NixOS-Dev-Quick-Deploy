@@ -210,6 +210,9 @@
   .portfolio-tools { display: flex; gap: 10px; margin: 12px 0; flex-wrap: wrap; }
   .portfolio-tools input, .portfolio-tools select { background: var(--surface); color: var(--ink); border: 1px solid var(--border); border-radius: var(--radius); padding: 9px 11px; font: inherit; }
   .portfolio-tools input { flex: 1 1 240px; }
+  .portfolio-coverage { display: flex; gap: 8px; flex-wrap: wrap; margin: 8px 0; font: .72rem var(--font-mono); color: var(--ink-muted); }
+  .portfolio-coverage span { border: 1px solid var(--border); border-radius: var(--radius); padding: 4px 8px; background: var(--surface); }
+  .portfolio-coverage .unresolved { color: var(--blocked); }
   .portfolio-summary { color: var(--ink-muted); font-size: .8rem; margin: 8px 0; }
   .portfolio-table-wrap { overflow-x: auto; border: 1px solid var(--border); border-radius: var(--radius); background: var(--surface); }
   .portfolio-table { width: 100%; border-collapse: collapse; min-width: 850px; font-size: .8rem; }
@@ -517,7 +520,10 @@
       <input id="portfolio-search" type="search" placeholder="Search plan, ID, classification, or route">
       <label class="sr-only" for="portfolio-lifecycle">Filter lifecycle</label>
       <select id="portfolio-lifecycle"><option value="all">All lifecycle states</option><option>active</option><option>blocked</option><option>untracked</option><option>dormant</option><option>complete</option><option>superseded</option><option>retired</option></select>
+      <label class="sr-only" for="portfolio-resolution">Filter classification coverage</label>
+      <select id="portfolio-resolution"><option value="all">All records</option><option value="unresolved">Unresolved only</option><option value="classified">Classified only</option></select>
     </div>
+    <div class="portfolio-coverage" id="portfolio-coverage" aria-label="Classification coverage"></div>
     <p class="portfolio-summary" id="portfolio-summary">Loading canonical portfolio…</p>
     <div id="portfolio-root"><div class="state-panel">Waiting for the live portfolio…</div></div>
   </section>
@@ -542,6 +548,8 @@
   const portfolioSummary = document.getElementById('portfolio-summary');
   const portfolioSearch = document.getElementById('portfolio-search');
   const portfolioLifecycle = document.getElementById('portfolio-lifecycle');
+  const portfolioResolution = document.getElementById('portfolio-resolution');
+  const portfolioCoverage = document.getElementById('portfolio-coverage');
   let latestPortfolio = null;
 
   let fetchCount = 0;
@@ -613,9 +621,16 @@
     const plans = data.plans;
     const active = plans.filter(p => ['active', 'blocked', 'untracked'].includes(p.status)).length;
     portfolioSummary.textContent = `${data.total} records · ${active} active/open · ${data.unclassified_count} awaiting classification · ${data.untracked_count} without itemized progress · generated ${escapeHtml(data.generated || 'time unavailable')}`;
+    const isUnresolved = p => !p.classification || p.classification === 'unclassified' || Boolean(p.classification_issue);
+    const unresolvedCount = plans.filter(isUnresolved).length;
+    const byClass = data.by_classification || {};
+    portfolioCoverage.innerHTML = `<span>classified ${plans.length - unresolvedCount}/${plans.length}</span><span class="unresolved">unresolved ${unresolvedCount}</span>` +
+      Object.keys(byClass).filter(k => k !== 'unclassified').sort().map(k => `<span>${escapeHtml(k)} ${Number(byClass[k]) || 0}</span>`).join('');
     const query = portfolioSearch.value.trim().toLowerCase();
     const lifecycle = portfolioLifecycle.value;
+    const resolution = portfolioResolution.value;
     const visible = plans.filter(p => (lifecycle === 'all' || p.status === lifecycle) &&
+      (resolution === 'all' || (resolution === 'unresolved') === isUnresolved(p)) &&
       (!query || [p.id, p.title, p.status, p.classification, p.tracking_route, p.classification_issue, p.primary_doc].some(v => String(v || '').toLowerCase().includes(query))));
     portfolioRoot.innerHTML = `<div class="portfolio-table-wrap"><table class="portfolio-table"><thead><tr><th>Plan / source</th><th>Lifecycle</th><th>Classification / route</th><th>Item manifest</th><th>Next tracking action</th></tr></thead><tbody>${visible.map(p => {
       const action = portfolioAction(p);
@@ -625,6 +640,7 @@
 
   portfolioSearch.addEventListener('input', () => { if (latestPortfolio) renderPortfolio(latestPortfolio); });
   portfolioLifecycle.addEventListener('change', () => { if (latestPortfolio) renderPortfolio(latestPortfolio); });
+  portfolioResolution.addEventListener('change', () => { if (latestPortfolio) renderPortfolio(latestPortfolio); });
 
   function normalizedItem(item, planId) {
     const rawStatus = String(item && item.status || 'NOT-STARTED');
