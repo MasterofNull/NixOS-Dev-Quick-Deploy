@@ -2926,8 +2926,21 @@ def _check_golden_eval_parity(ctx: RunContext) -> list[CheckResult]:
         else:
             results.append(passed(1, "0.152.2", "WORKFLOW-CANON.md contains canonical 8-step keywords"))
 
+    # Ignored runtime state belongs to the primary checkout, not each worktree.
+    state_root = ctx.repo_root
+    try:
+        common_dir = subprocess.run(
+            ["git", "-C", str(ctx.repo_root), "rev-parse",
+             "--path-format=absolute", "--git-common-dir"],
+            capture_output=True, text=True, timeout=5, check=True,
+        ).stdout.strip()
+        if common_dir:
+            state_root = Path(common_dir).parent
+    except (OSError, subprocess.SubprocessError):
+        pass  # Non-git source trees retain the existing local-state checks.
+
     # 0.152.3 — PULSE.log: at least one line matches expected format
-    pulse_path = _rp(".agent/collaboration/PULSE.log")
+    pulse_path = state_root / ".agent/collaboration/PULSE.log"
     if not pulse_path.exists():
         results.append(failed(1, "0.152.3", "PULSE.log format", "file missing"))
     else:
@@ -2943,7 +2956,7 @@ def _check_golden_eval_parity(ctx: RunContext) -> list[CheckResult]:
             results.append(passed(1, "0.152.3", f"PULSE.log format: {len(matching)} conforming lines"))
 
     # 0.152.4 — RESUME.json has all required fields
-    resume_path = _rp(".agent/collaboration/RESUME.json")
+    resume_path = state_root / ".agent/collaboration/RESUME.json"
     if not resume_path.exists():
         results.append(failed(1, "0.152.4", "RESUME.json required fields", "file missing"))
     else:
@@ -3026,7 +3039,7 @@ def _check_golden_eval_parity(ctx: RunContext) -> list[CheckResult]:
         results.append(passed(1, "0.152.8", "trust_scoring.py exists"))
 
     # 0.152.9 — candidates.json exists and has ≥1 candidate with trust_score > 0
-    cands_path = _rp(".agents/improvement/candidates.json")
+    cands_path = state_root / ".agents/improvement/candidates.json"
     if not cands_path.exists():
         results.append(failed(1, "0.152.9", "candidates.json trust scores", ".agents/improvement/candidates.json missing"))
     else:
