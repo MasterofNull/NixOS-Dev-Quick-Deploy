@@ -33,9 +33,14 @@
       "phase": "fa",
       "kind": "slice",
       "goal": "durable append-only deduped candidate store + CLI (add/list/digest/status/seed)",
-      "validation_goal": "test-frontier-backlog 5/5; dedup by content hash; fail-safe reads",
+      "validation_goal": "test-frontier-backlog 6/6 PASSING; dedup by content hash; fail-safe reads",
       "deps": [],
-      "editorial_note": "the loop, running (b4410b43)"
+      "editorial_note": "the loop, running (b4410b43)",
+      "detection": {
+        "commit_match": [
+          "FA-1 backlog + aq-frontier CLI"
+        ]
+      }
     },
     {
       "id": "fa-1b-sources",
@@ -43,11 +48,16 @@
       "phase": "fa",
       "kind": "slice",
       "goal": "27-source curated catalog across 5 pillars + adopt-rate/coverage metrics",
-      "validation_goal": "test-frontier-sources 5/5; every pillar has a primary source",
+      "validation_goal": "test-frontier-sources 5/5 PASSING; every pillar has a primary source",
       "deps": [
         "fa-1-backlog"
       ],
-      "editorial_note": "assess/refine which sources earn their place (0867a06e)"
+      "editorial_note": "assess/refine which sources earn their place (0867a06e)",
+      "detection": {
+        "commit_match": [
+          "source-quality metrics + reference library (FA-1b)"
+        ]
+      }
     },
     {
       "id": "fa-1c-relevance",
@@ -55,11 +65,16 @@
       "phase": "fa",
       "kind": "slice",
       "goal": "hybrid keyword-taxonomy + live vector-DB relevance; coverage gaps",
-      "validation_goal": "test-frontier-relevance 6/6; dogfood found+fixed 2 bugs",
+      "validation_goal": "test-frontier-relevance 6/6 PASSING; dogfood found+fixed 2 bugs",
       "deps": [
         "fa-1b-sources"
       ],
-      "editorial_note": "focus-on-core ranking + breadth guarantee, dogfood-validated"
+      "editorial_note": "focus-on-core ranking + breadth guarantee, dogfood-validated",
+      "detection": {
+        "commit_match": [
+          "FA-1c relevance scoring + concept coverage"
+        ]
+      }
     },
     {
       "id": "fa-2-context-seams",
@@ -67,11 +82,16 @@
       "phase": "fa",
       "kind": "slice",
       "goal": "aq-frontier context provider (pull, not poll) + wired into create-prd/plan-feature/session-start",
-      "validation_goal": "test-frontier-context 5/5; session-start shows frontier block live",
+      "validation_goal": "test-frontier-context 5/5 PASSING; session-start shows frontier block live VERIFIED",
       "deps": [
         "fa-1c-relevance"
       ],
-      "editorial_note": "frontier research incorporated by default into every workflow"
+      "editorial_note": "frontier research incorporated by default into every workflow",
+      "detection": {
+        "commit_match": [
+          "FA-2 on-demand context provider"
+        ]
+      }
     },
     {
       "id": "fa-3-autofold",
@@ -79,11 +99,17 @@
       "phase": "fa",
       "kind": "slice",
       "goal": "an approved backlog candidate auto-appends as a slice to its target plan tracker; tier0 check binds scheduled candidates to real slices",
-      "validation_goal": "approved FE item appears as a projected slice; fail-closed on orphan",
+      "validation_goal": "test-frontier-fold 4/4 PASSING; approved candidate auto-folds idempotently; tier0.d check NOT YET BOUND (deferred to fa-5)",
       "deps": [
         "fa-2-context-seams"
       ],
-      "editorial_note": "next"
+      "editorial_note": "fold mechanism live; tier0 integration pending",
+      "detection": {
+        "commit_match": [
+          "FA-3 auto-fold + FA-4 scan-topic refresh + FA-5 parity sweep"
+        ]
+      },
+      "notes": "tier0.d check that binds scheduled->slice mapping is deferred; current tests validate idempotence + fail-closed logic"
     },
     {
       "id": "fa-4-scan-refresh",
@@ -91,11 +117,17 @@
       "phase": "fa",
       "kind": "slice",
       "goal": "targeted single-topic web-verify routed to a web-capable lane when a queried topic is stale/gap (need-driven, not a timer)",
-      "validation_goal": "a stale topic triggers a bounded scan that appends verified candidates",
+      "validation_goal": "a stale topic triggers a bounded scan that appends verified candidates (dogfood-validated: observability gap -> OTel -> FE-10)",
       "deps": [
         "fa-2-context-seams"
       ],
-      "editorial_note": "the lazy refresh behind the pull model"
+      "editorial_note": "the lazy refresh behind the pull model",
+      "detection": {
+        "commit_match": [
+          "FA-3 auto-fold + FA-4 scan-topic refresh + FA-5 parity sweep"
+        ]
+      },
+      "notes": "scan-topic command live and dogfooded (observability gap closure); no formal test suite; systemd timer NOT YET SCHEDULED (deferred to FA-4 owner decision)"
     },
     {
       "id": "fa-5-parity-backstop",
@@ -103,11 +135,17 @@
       "phase": "fa",
       "kind": "slice",
       "goal": "low-frequency reverse check for never-queried concepts -> emits gaps; the ONLY remaining timer, a safety net",
-      "validation_goal": "emits a gap for a deliberately-untracked concept",
+      "validation_goal": "parity command lists gaps with ready scan-topic suggestions (manual validation only)",
       "deps": [
         "fa-3-autofold"
       ],
-      "editorial_note": "safety net, not the access path"
+      "editorial_note": "safety net, not the access path",
+      "detection": {
+        "commit_match": [
+          "FA-3 auto-fold + FA-4 scan-topic refresh + FA-5 parity sweep"
+        ]
+      },
+      "notes": "parity command live; no formal test suite; manual run validates 3 gaps + suggestions; optional timer NOT YET scheduled"
     },
     {
       "id": "fe-1-prm-verify",
@@ -119,7 +157,8 @@
       "deps": [
         "fa-2-context-seams"
       ],
-      "editorial_note": "FE-1 approved; target plan: local-agent harness; benchmark-first"
+      "editorial_note": "FE-1 approved; target plan: local-agent harness; benchmark-first",
+      "notes": "BACKLOG status=in_review (design approved, implementation not started); behavioral-verify infrastructure exists (test-edit-verify.py validates it); pending local-agent integration; no detection signal until implementation begins"
     },
     {
       "id": "fe-2-gepa",
@@ -131,7 +170,8 @@
       "deps": [
         "fe-1-prm-verify"
       ],
-      "editorial_note": "FE-2 scheduled; baseline measured (blocker found)"
+      "editorial_note": "FE-2 scheduled; baseline measured (blocker found)",
+      "notes": "BACKLOG status=new (discovered 2026-09-08); FE-2a functional baseline in design phase; GEPA library (gepa-ai/gepa) exists but not integrated; pending FE-1 completion + baseline measurement; no detection signal until implementation"
     },
     {
       "id": "fe-8-landlock-egress",
@@ -143,7 +183,11 @@
       "deps": [
         "fa-2-context-seams"
       ],
-      "editorial_note": "FE-8 approved; target plan: aqos-foundation-c (surfaced there via the context seam)"
+      "editorial_note": "FE-8 approved; target plan: aqos-foundation-c (surfaced there via the context seam)",
+      "notes": "BACKLOG status=in_review (Codex concern: likely redundant with bwrap + AppArmor + namespace isolation); deferred until security-critical activations begin; existing controls provide defense-in-depth",
+      "detection": {
+        "blocker_note": "DEFERRED post-SOTA \u2014 owner directive 2026-10-07 (security/containment after MVP baseline)"
+      }
     }
   ],
   "issues": []
