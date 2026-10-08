@@ -121,7 +121,7 @@ _HARNESS_SYSTEM_BASE = (
     "SECURITY: No hardcoded secrets, tokens, or credentials.\n"
     "ATOMIC PULSE: Append one line to PULSE.log after every file write.\n"
     "ATOMIC RESUME: Update .agent/collaboration/RESUME.json at every phase start.\n"
-    "TOOLING: Always leverage lean-ctx (ctx_read, ctx_search, ctx_tree), MemoryBroker (:8003), AIDB (:8002), and aq-hints.\n"
+    "TOOLING: Always leverage lean-ctx (ctx_read, ctx_search, ctx_tree), MemoryBroker (:8003), AIDB (:8002), and aq-hints. Reach unlisted tools on-demand via aq-tool <pkg>.\n"
     "ROLE CONTRACT: Orchestrators review, validate, and commit; implementers/rsi execute in isolated worktrees and return diff receipts. Roles are model-agnostic (Rule 18).\n"
     # Fable-parity CARD variant — SSOT: .agent/FABLE-PARITY-CONTRACT.md §2.
     "=== FABLE-PARITY BEHAVIOR ===\n"

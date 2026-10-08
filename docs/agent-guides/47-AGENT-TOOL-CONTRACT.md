@@ -27,6 +27,10 @@ The default coding/research baseline should expose:
 
 Readonly lanes may expose only non-mutating tools from that set. Execute lanes may add mutation-capable orchestration tools, but should keep the same discovery/read preferences.
 
+### Primary vs sub-agent baseline contract
+- **Primary / Orchestrator Agents**: Enforce all agentic features (8-step canon, Rules 1–22, Tier-0 gates, 6-dimension Activation Definition of Done).
+- **Sub-Agents**: Dispatched with slimmed-down, token-efficient tools (`lean-ctx`, `agrep`, `acat`, `als`, `asum`, targeted edit tools, syntax checks) and bounded payloads (no conversational transcripts). Retain full on-demand access to reach ANY tool live via `aq-tool <pkg> [args...]` and query AIDB/hints on demand.
+
 ## Token-efficiency rules
 
 1. Use the preferred repo-native tool first.
