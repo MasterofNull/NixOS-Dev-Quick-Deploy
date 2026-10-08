@@ -114,7 +114,8 @@ def _systemd_state(unit: str) -> dict:
     try:
         out = subprocess.run(
             ["systemctl", "show", unit, "-p", "ActiveState", "-p", "Result",
-             "-p", "ActiveEnterTimestamp", "-p", "UnitFileState"],
+             "-p", "ActiveEnterTimestamp", "-p", "ExecMainStartTimestamp",
+             "-p", "InactiveExitTimestamp", "-p", "UnitFileState"],
             capture_output=True, text=True, timeout=8).stdout
         for line in out.splitlines():
             if "=" in line:
@@ -135,7 +136,9 @@ def _project_systemd(unit: str, accepted: bool) -> tuple[str, int]:
         return ("DESIGNED", 10)
     active = st.get("ActiveState", "")
     ufs = st.get("UnitFileState", "")
-    ran = bool(st.get("ActiveEnterTimestamp", "").strip())
+    ran = bool(st.get("ActiveEnterTimestamp", "").strip()
+               or st.get("ExecMainStartTimestamp", "").strip()
+               or st.get("InactiveExitTimestamp", "").strip())
     result = st.get("Result", "")
     enabled = ufs in ("enabled", "enabled-runtime", "linked", "linked-runtime", "static")
     if active == "active":                       # running now: integrated + up

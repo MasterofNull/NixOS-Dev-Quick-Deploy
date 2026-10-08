@@ -1,0 +1,7 @@
+#!/usr/bin/env bash
+# maigret — OSINT username enumeration wrapper (delegates to sherlock per OSINT MCP contract)
+if [[ $# -eq 0 || "$1" == "--help" || "$1" == "-h" ]]; then
+  echo "maigret (running via sherlock engine per OSINT MCP contract)"
+  exec sherlock --help
+fi
+exec sherlock "$@"
