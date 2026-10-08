@@ -12,8 +12,18 @@
     ]
   },
   "phases": [
-    {"id": "coverage-ui", "name": "Coverage visibility", "goal": "Expose portfolio classification coverage and per-record resolution state.", "order": 1},
-    {"id": "source-reconciliation", "name": "Source reconciliation", "goal": "Classify each existing record from primary evidence and route child work to its authoritative tracker or registry.", "order": 2}
+    {
+      "id": "coverage-ui",
+      "name": "Coverage visibility",
+      "goal": "Expose portfolio classification coverage and per-record resolution state.",
+      "order": 1
+    },
+    {
+      "id": "source-reconciliation",
+      "name": "Source reconciliation",
+      "goal": "Classify each existing record from primary evidence and route child work to its authoritative tracker or registry.",
+      "order": 2
+    }
   ],
   "items": [
     {
@@ -25,7 +35,22 @@
       "validation_goal": "Focused tests verify coverage rendering, unresolved filtering, and existing dashboard behavior.",
       "deps": [],
       "editorial_note": "Initial implementation in progress; completion remains projector-derived.",
-      "detection": {"commit_match": ["portfolio classification coverage"], "activation_subject": "", "freeze_record": "", "authorization_record": "", "slice_claim": "", "blocker_note": ""}
+      "detection": {
+        "commit_match": [
+          "portfolio classification coverage"
+        ],
+        "activation_subject": "",
+        "freeze_record": "",
+        "authorization_record": "",
+        "slice_claim": "",
+        "blocker_note": ""
+      },
+      "acceptance": {
+        "status": "accepted",
+        "by": "hyperd",
+        "date": "2026-10-08",
+        "note": "Owner chat 'I accept installer + portfolio' 2026-10-08; evidence: portfolio: commits 54fe5b2b/2d65dfba/a4a9a8d5; tests plans-index 31, program-progress 31; live /api/pm/progress embeds aq-plans-index on every dashboard fetch (53/113 classified, 60 explicitly unresolved)"
+      }
     },
     {
       "id": "reconcile-plan-classifications",
@@ -34,9 +59,26 @@
       "kind": "slice",
       "goal": "Add evidence-backed classification and tracking routes for all plan directories, leaving uncertain cases visibly unresolved.",
       "validation_goal": "Every indexed record has valid metadata or a specific unresolved issue, with counts reconciling to the index.",
-      "deps": ["coverage-dashboard"],
+      "deps": [
+        "coverage-dashboard"
+      ],
       "editorial_note": "Live index (2026-10-08): 53 of 113 records classified from explicit primary-record evidence (tracker.json plan declarations and round.json round records); 60 remain visibly unresolved, each with a recorded reason. Continue owner source review without inferring from names or recency.",
-      "detection": {"commit_match": ["reconcile plan classifications"], "activation_subject": "", "freeze_record": "", "authorization_record": "", "slice_claim": "", "blocker_note": ""}
+      "detection": {
+        "commit_match": [
+          "reconcile plan classifications"
+        ],
+        "activation_subject": "",
+        "freeze_record": "",
+        "authorization_record": "",
+        "slice_claim": "",
+        "blocker_note": ""
+      },
+      "acceptance": {
+        "status": "accepted",
+        "by": "hyperd",
+        "date": "2026-10-08",
+        "note": "Owner chat 'I accept installer + portfolio' 2026-10-08; evidence: portfolio: commits 54fe5b2b/2d65dfba/a4a9a8d5; tests plans-index 31, program-progress 31; live /api/pm/progress embeds aq-plans-index on every dashboard fetch (53/113 classified, 60 explicitly unresolved)"
+      }
     },
     {
       "id": "route-child-work",
@@ -45,9 +87,26 @@
       "kind": "task",
       "goal": "Ensure durable child work lives in plan trackers and operational actions link to their authoritative registries.",
       "validation_goal": "Development map documents routes and coverage checks; no duplicate manual progress source is introduced.",
-      "deps": ["reconcile-plan-classifications"],
+      "deps": [
+        "reconcile-plan-classifications"
+      ],
       "editorial_note": "Map now documents portfolio coverage and AQ-OS child routes: req-guest-init-evaluation in the requirements inventory and PID1 in the program milestone projector. Lifecycle changes and archival remain out of scope.",
-      "detection": {"commit_match": ["child-work routing"], "activation_subject": "", "freeze_record": "", "authorization_record": "", "slice_claim": "", "blocker_note": ""}
+      "detection": {
+        "commit_match": [
+          "child-work routing"
+        ],
+        "activation_subject": "",
+        "freeze_record": "",
+        "authorization_record": "",
+        "slice_claim": "",
+        "blocker_note": ""
+      },
+      "acceptance": {
+        "status": "accepted",
+        "by": "hyperd",
+        "date": "2026-10-08",
+        "note": "Owner chat 'I accept installer + portfolio' 2026-10-08; evidence: portfolio: commits 54fe5b2b/2d65dfba/a4a9a8d5; tests plans-index 31, program-progress 31; live /api/pm/progress embeds aq-plans-index on every dashboard fetch (53/113 classified, 60 explicitly unresolved)"
+      }
     }
   ]
 }
