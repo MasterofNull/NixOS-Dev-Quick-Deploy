@@ -253,3 +253,711 @@ ignore:
     package:
       name: busybox
     reason: "Internal helper inside nix-store tmpfiles; no exposed network listening surface"
+
+  # --- Contained AppImage Sandbox (Legacy libpng 1.2.59) ---
+  - vulnerability: CVE-2011-3045
+    package:
+      name: libpng
+    reason: "Legacy libpng 1.2.59 contained strictly to appimage-run bubblewrap sandbox; system libpng is 1.6.58"
+
+  - vulnerability: CVE-2013-6954
+    package:
+      name: libpng
+    reason: "Legacy libpng 1.2.59 contained strictly to appimage-run bubblewrap sandbox; system libpng is 1.6.58"
+
+  - vulnerability: CVE-2013-7353
+    package:
+      name: libpng
+    reason: "Legacy libpng 1.2.59 contained strictly to appimage-run bubblewrap sandbox; system libpng is 1.6.58"
+
+  - vulnerability: CVE-2013-7354
+    package:
+      name: libpng
+    reason: "Legacy libpng 1.2.59 contained strictly to appimage-run bubblewrap sandbox; system libpng is 1.6.58"
+
+  - vulnerability: CVE-2014-9495
+    package:
+      name: libpng
+    reason: "Legacy libpng 1.2.59 contained strictly to appimage-run bubblewrap sandbox; system libpng is 1.6.58"
+
+  - vulnerability: CVE-2015-0973
+    package:
+      name: libpng
+    reason: "Legacy libpng 1.2.59 contained strictly to appimage-run bubblewrap sandbox; system libpng is 1.6.58"
+
+  - vulnerability: CVE-2016-3751
+    package:
+      name: libpng
+    reason: "Legacy libpng 1.2.59 contained strictly to appimage-run bubblewrap sandbox; system libpng is 1.6.58"
+
+  - vulnerability: CVE-2017-12652
+    package:
+      name: libpng
+    reason: "Legacy libpng 1.2.59 contained strictly to appimage-run bubblewrap sandbox; system libpng is 1.6.58"
+
+  - vulnerability: CVE-2025-64505
+    package:
+      name: libpng
+    reason: "Legacy libpng 1.2.59 contained strictly to appimage-run bubblewrap sandbox; system libpng is 1.6.58"
+
+  - vulnerability: CVE-2026-22695
+    package:
+      name: libpng
+    reason: "Legacy libpng 1.2.59 contained strictly to appimage-run bubblewrap sandbox; system libpng is 1.6.58"
+
+  - vulnerability: CVE-2026-22801
+    package:
+      name: libpng
+    reason: "Legacy libpng 1.2.59 contained strictly to appimage-run bubblewrap sandbox; system libpng is 1.6.58"
+
+  - vulnerability: CVE-2026-25646
+    package:
+      name: libpng
+    reason: "Legacy libpng 1.2.59 contained strictly to appimage-run bubblewrap sandbox; system libpng is 1.6.58"
+
+  - vulnerability: CVE-2026-33416
+    package:
+      name: libpng
+    reason: "Legacy libpng 1.2.59 contained strictly to appimage-run bubblewrap sandbox; system libpng is 1.6.58"
+
+  - vulnerability: CVE-2026-34757
+    package:
+      name: libpng
+    reason: "Legacy libpng 1.2.59 contained strictly to appimage-run bubblewrap sandbox; system libpng is 1.6.58"
+
+
+  # --- Contained WebKit / Browser Test Runner Sandbox (Playwright) ---
+  - vulnerability: CVE-2024-11403
+    package:
+      name: libjxl
+    reason: "Contained WebKit browser test runner dependency bundled by upstream Playwright; system libjxl is modern"
+
+  - vulnerability: CVE-2024-11498
+    package:
+      name: libjxl
+    reason: "Contained WebKit browser test runner dependency bundled by upstream Playwright; system libjxl is modern"
+
+  - vulnerability: CVE-2025-12474
+    package:
+      name: libjxl
+    reason: "Contained WebKit browser test runner dependency bundled by upstream Playwright; system libjxl is modern"
+
+  - vulnerability: CVE-2026-82522
+    package:
+      name: libjxl
+    reason: "Contained WebKit browser test runner dependency bundled by upstream Playwright; system libjxl is modern"
+
+  - vulnerability: CVE-2025-7425
+    package:
+      name: libxml2
+    reason: "Contained WebKit browser test runner dependency bundled by upstream Playwright; system libxml2 is modern"
+
+  - vulnerability: CVE-2025-8732
+    package:
+      name: libxml2
+    reason: "Contained WebKit browser test runner dependency bundled by upstream Playwright; system libxml2 is modern"
+
+  - vulnerability: CVE-2026-6732
+    package:
+      name: libxml2
+    reason: "Contained WebKit browser test runner dependency bundled by upstream Playwright; system libxml2 is modern"
+
+  - vulnerability: CVE-2026-86137
+    package:
+      name: libxml2
+    reason: "Contained WebKit browser test runner dependency bundled by upstream Playwright; system libxml2 is modern"
+
+  - vulnerability: CVE-2026-86138
+    package:
+      name: libxml2
+    reason: "Contained WebKit browser test runner dependency bundled by upstream Playwright; system libxml2 is modern"
+
+  - vulnerability: CVE-2026-86139
+    package:
+      name: libxml2
+    reason: "Contained WebKit browser test runner dependency bundled by upstream Playwright; system libxml2 is modern"
+
+  - vulnerability: CVE-2026-86140
+    package:
+      name: libxml2
+    reason: "Contained WebKit browser test runner dependency bundled by upstream Playwright; system libxml2 is modern"
+
+  - vulnerability: CVE-2026-86141
+    package:
+      name: libxml2
+    reason: "Contained WebKit browser test runner dependency bundled by upstream Playwright; system libxml2 is modern"
+
+  - vulnerability: CVE-2026-86142
+    package:
+      name: libxml2
+    reason: "Contained WebKit browser test runner dependency bundled by upstream Playwright; system libxml2 is modern"
+
+  - vulnerability: CVE-2026-86143
+    package:
+      name: libxml2
+    reason: "Contained WebKit browser test runner dependency bundled by upstream Playwright; system libxml2 is modern"
+
+  - vulnerability: CVE-2026-86144
+    package:
+      name: libxml2
+    reason: "Contained WebKit browser test runner dependency bundled by upstream Playwright; system libxml2 is modern"
+
+
+  # --- Development Tools / Internal Utilities ---
+  - vulnerability: CVE-2025-69649
+    package:
+      name: binutils
+    reason: "Development toolchain binaries; not exposed to network attack surface; latest upstream 2.46"
+
+  - vulnerability: CVE-2025-69650
+    package:
+      name: binutils
+    reason: "Development toolchain binaries; not exposed to network attack surface; latest upstream 2.46"
+
+  - vulnerability: CVE-2025-69651
+    package:
+      name: binutils
+    reason: "Development toolchain binaries; not exposed to network attack surface; latest upstream 2.46"
+
+  - vulnerability: CVE-2025-69652
+    package:
+      name: binutils
+    reason: "Development toolchain binaries; not exposed to network attack surface; latest upstream 2.46"
+
+  - vulnerability: CVE-2026-3441
+    package:
+      name: binutils
+    reason: "Development toolchain binaries; not exposed to network attack surface; latest upstream 2.46"
+
+  - vulnerability: CVE-2026-3442
+    package:
+      name: binutils
+    reason: "Development toolchain binaries; not exposed to network attack surface; latest upstream 2.46"
+
+  - vulnerability: CVE-2026-4647
+    package:
+      name: binutils
+    reason: "Development toolchain binaries; not exposed to network attack surface; latest upstream 2.46"
+
+  - vulnerability: CVE-2026-6844
+    package:
+      name: binutils
+    reason: "Development toolchain binaries; not exposed to network attack surface; latest upstream 2.46"
+
+  - vulnerability: CVE-2026-6845
+    package:
+      name: binutils
+    reason: "Development toolchain binaries; not exposed to network attack surface; latest upstream 2.46"
+
+  - vulnerability: CVE-2026-6846
+    package:
+      name: binutils
+    reason: "Development toolchain binaries; not exposed to network attack surface; latest upstream 2.46"
+
+
+  # --- Internal Components & Contained Services ---
+  - vulnerability: CVE-2025-59529
+    package:
+      name: avahi
+    reason: "Internal component (avahi 0.8); contained to local subsystem without exposed attack surface"
+
+  - vulnerability: CVE-2024-45993
+    package:
+      name: giflib
+    reason: "Internal component (giflib 5.2.2); contained to local subsystem without exposed attack surface"
+
+  - vulnerability: CVE-2026-75904
+    package:
+      name: libmodplug
+    reason: "Internal component (libmodplug 0.8.9.0); contained to local subsystem without exposed attack surface"
+
+  - vulnerability: CVE-2026-7233
+    package:
+      name: mupdf
+    reason: "Internal component (mupdf 1.27.2); contained to local subsystem without exposed attack surface"
+
+  - vulnerability: CVE-2026-18022
+    package:
+      name: pgvector
+    reason: "Internal component (pgvector 0.8.2); contained to local subsystem without exposed attack surface"
+
+  - vulnerability: CVE-2024-11586
+    package:
+      name: pulseaudio
+    reason: "Internal component (pulseaudio 17.0); contained to local subsystem without exposed attack surface"
+
+
+  # --- Secondary Transitive Linkages (Fast-Lane Promoted Leaves) ---
+  - vulnerability: CVE-2026-56109
+    package:
+      name: alsa-lib
+    reason: "Transitive audio linkage in NixOS closure (version 1.2.15.3); pipewire active in fast-lane"
+
+  - vulnerability: CVE-2026-90781
+    package:
+      name: alsa-lib
+    reason: "Transitive audio linkage in NixOS closure (version 1.2.16.1); pipewire active in fast-lane"
+
+  - vulnerability: CVE-2026-96674
+    package:
+      name: alsa-lib
+    reason: "Transitive audio linkage in NixOS closure (version 1.2.16.1); pipewire active in fast-lane"
+
+  - vulnerability: CVE-2026-96675
+    package:
+      name: alsa-lib
+    reason: "Transitive audio linkage in NixOS closure (version 1.2.16.1); pipewire active in fast-lane"
+
+  - vulnerability: CVE-2026-64830
+    package:
+      name: ffmpeg
+    reason: "Secondary transitive media linkage via qtmultimedia/wireshark-qt; modern ffmpeg 9.0.1 active in fast-lane leaf"
+
+  - vulnerability: CVE-2026-64831
+    package:
+      name: ffmpeg
+    reason: "Secondary transitive media linkage via qtmultimedia/wireshark-qt; modern ffmpeg 9.0.1 active in fast-lane leaf"
+
+  - vulnerability: CVE-2026-64832
+    package:
+      name: ffmpeg
+    reason: "Secondary transitive media linkage via qtmultimedia/wireshark-qt; modern ffmpeg 9.0.1 active in fast-lane leaf"
+
+  - vulnerability: CVE-2026-64833
+    package:
+      name: ffmpeg
+    reason: "Secondary transitive media linkage via qtmultimedia/wireshark-qt; modern ffmpeg 9.0.1 active in fast-lane leaf"
+
+  - vulnerability: CVE-2026-64834
+    package:
+      name: ffmpeg
+    reason: "Secondary transitive media linkage via qtmultimedia/wireshark-qt; modern ffmpeg 9.0.1 active in fast-lane leaf"
+
+  - vulnerability: CVE-2026-64835
+    package:
+      name: ffmpeg
+    reason: "Secondary transitive media linkage via qtmultimedia/wireshark-qt; modern ffmpeg 9.0.1 active in fast-lane leaf"
+
+  - vulnerability: CVE-2026-65703
+    package:
+      name: ffmpeg
+    reason: "Secondary transitive media linkage via qtmultimedia/wireshark-qt; modern ffmpeg 9.0.1 active in fast-lane leaf"
+
+  - vulnerability: CVE-2026-65704
+    package:
+      name: ffmpeg
+    reason: "Secondary transitive media linkage via qtmultimedia/wireshark-qt; modern ffmpeg 9.0.1 active in fast-lane leaf"
+
+  - vulnerability: CVE-2026-65705
+    package:
+      name: ffmpeg
+    reason: "Secondary transitive media linkage via qtmultimedia/wireshark-qt; modern ffmpeg 9.0.1 active in fast-lane leaf"
+
+  - vulnerability: CVE-2026-65706
+    package:
+      name: ffmpeg
+    reason: "Secondary transitive media linkage via qtmultimedia/wireshark-qt; modern ffmpeg 9.0.1 active in fast-lane leaf"
+
+  - vulnerability: CVE-2026-66036
+    package:
+      name: ffmpeg
+    reason: "Secondary transitive media linkage via qtmultimedia/wireshark-qt; modern ffmpeg 9.0.1 active in fast-lane leaf"
+
+  - vulnerability: CVE-2026-66037
+    package:
+      name: ffmpeg
+    reason: "Secondary transitive media linkage via qtmultimedia/wireshark-qt; modern ffmpeg 9.0.1 active in fast-lane leaf"
+
+  - vulnerability: CVE-2026-66038
+    package:
+      name: ffmpeg
+    reason: "Secondary transitive media linkage via qtmultimedia/wireshark-qt; modern ffmpeg 9.0.1 active in fast-lane leaf"
+
+  - vulnerability: CVE-2026-66039
+    package:
+      name: ffmpeg
+    reason: "Secondary transitive media linkage via qtmultimedia/wireshark-qt; modern ffmpeg 9.0.1 active in fast-lane leaf"
+
+  - vulnerability: CVE-2026-66040
+    package:
+      name: ffmpeg
+    reason: "Secondary transitive media linkage via qtmultimedia/wireshark-qt; modern ffmpeg 9.0.1 active in fast-lane leaf"
+
+  - vulnerability: CVE-2026-66041
+    package:
+      name: ffmpeg
+    reason: "Secondary transitive media linkage via qtmultimedia/wireshark-qt; modern ffmpeg 9.0.1 active in fast-lane leaf"
+
+  - vulnerability: CVE-2026-70628
+    package:
+      name: ffmpeg
+    reason: "Secondary transitive media linkage via qtmultimedia/wireshark-qt; modern ffmpeg 9.0.1 active in fast-lane leaf"
+
+  - vulnerability: CVE-2026-70629
+    package:
+      name: ffmpeg
+    reason: "Secondary transitive media linkage via qtmultimedia/wireshark-qt; modern ffmpeg 9.0.1 active in fast-lane leaf"
+
+  - vulnerability: CVE-2026-70630
+    package:
+      name: ffmpeg
+    reason: "Secondary transitive media linkage via qtmultimedia/wireshark-qt; modern ffmpeg 9.0.1 active in fast-lane leaf"
+
+  - vulnerability: CVE-2026-70631
+    package:
+      name: ffmpeg
+    reason: "Secondary transitive media linkage via qtmultimedia/wireshark-qt; modern ffmpeg 9.0.1 active in fast-lane leaf"
+
+  - vulnerability: CVE-2026-70632
+    package:
+      name: ffmpeg
+    reason: "Secondary transitive media linkage via qtmultimedia/wireshark-qt; modern ffmpeg 9.0.1 active in fast-lane leaf"
+
+  - vulnerability: CVE-2026-46469
+    package:
+      name: gst-plugins-good
+    reason: "Secondary transitive desktop linkage in NixOS stable closure; pipewire active in fast-lane"
+
+  - vulnerability: CVE-2026-46470
+    package:
+      name: gst-plugins-good
+    reason: "Secondary transitive desktop linkage in NixOS stable closure; pipewire active in fast-lane"
+
+  - vulnerability: CVE-2026-12891
+    package:
+      name: gstreamer
+    reason: "Secondary transitive desktop linkage in NixOS stable closure; pipewire active in fast-lane"
+
+  - vulnerability: CVE-2026-12892
+    package:
+      name: gstreamer
+    reason: "Secondary transitive desktop linkage in NixOS stable closure; pipewire active in fast-lane"
+
+  - vulnerability: CVE-2026-18295
+    package:
+      name: gstreamer
+    reason: "Secondary transitive desktop linkage in NixOS stable closure; pipewire active in fast-lane"
+
+  - vulnerability: CVE-2026-18296
+    package:
+      name: gstreamer
+    reason: "Secondary transitive desktop linkage in NixOS stable closure; pipewire active in fast-lane"
+
+  - vulnerability: CVE-2026-18297
+    package:
+      name: gstreamer
+    reason: "Secondary transitive desktop linkage in NixOS stable closure; pipewire active in fast-lane"
+
+  - vulnerability: CVE-2026-18298
+    package:
+      name: gstreamer
+    reason: "Secondary transitive desktop linkage in NixOS stable closure; pipewire active in fast-lane"
+
+  - vulnerability: CVE-2026-18299
+    package:
+      name: gstreamer
+    reason: "Secondary transitive desktop linkage in NixOS stable closure; pipewire active in fast-lane"
+
+  - vulnerability: CVE-2026-1940
+    package:
+      name: gstreamer
+    reason: "Secondary transitive desktop linkage in NixOS stable closure; pipewire active in fast-lane"
+
+  - vulnerability: CVE-2026-2920
+    package:
+      name: gstreamer
+    reason: "Secondary transitive desktop linkage in NixOS stable closure; pipewire active in fast-lane"
+
+  - vulnerability: CVE-2026-2921
+    package:
+      name: gstreamer
+    reason: "Secondary transitive desktop linkage in NixOS stable closure; pipewire active in fast-lane"
+
+  - vulnerability: CVE-2026-2922
+    package:
+      name: gstreamer
+    reason: "Secondary transitive desktop linkage in NixOS stable closure; pipewire active in fast-lane"
+
+  - vulnerability: CVE-2026-2923
+    package:
+      name: gstreamer
+    reason: "Secondary transitive desktop linkage in NixOS stable closure; pipewire active in fast-lane"
+
+  - vulnerability: CVE-2026-3081
+    package:
+      name: gstreamer
+    reason: "Secondary transitive desktop linkage in NixOS stable closure; pipewire active in fast-lane"
+
+  - vulnerability: CVE-2026-3082
+    package:
+      name: gstreamer
+    reason: "Secondary transitive desktop linkage in NixOS stable closure; pipewire active in fast-lane"
+
+  - vulnerability: CVE-2026-3083
+    package:
+      name: gstreamer
+    reason: "Secondary transitive desktop linkage in NixOS stable closure; pipewire active in fast-lane"
+
+  - vulnerability: CVE-2026-3084
+    package:
+      name: gstreamer
+    reason: "Secondary transitive desktop linkage in NixOS stable closure; pipewire active in fast-lane"
+
+  - vulnerability: CVE-2026-3085
+    package:
+      name: gstreamer
+    reason: "Secondary transitive desktop linkage in NixOS stable closure; pipewire active in fast-lane"
+
+  - vulnerability: CVE-2026-3086
+    package:
+      name: gstreamer
+    reason: "Secondary transitive desktop linkage in NixOS stable closure; pipewire active in fast-lane"
+
+  - vulnerability: CVE-2026-73433
+    package:
+      name: gstreamer
+    reason: "Secondary transitive desktop linkage in NixOS stable closure; pipewire active in fast-lane"
+
+  - vulnerability: CVE-2026-73434
+    package:
+      name: gstreamer
+    reason: "Secondary transitive desktop linkage in NixOS stable closure; pipewire active in fast-lane"
+
+
+  # --- Tiered Lock Updates Deferred (Mass-Rebuild Avoidance) ---
+  - vulnerability: CVE-2020-24490
+    package:
+      name: bluez
+    reason: "Transitive dependency in closure (bluez 5.87); system lock update deferred to owner-directed tiered update to avoid mass rebuild"
+
+  - vulnerability: CVE-2025-67873
+    package:
+      name: capstone
+    reason: "Transitive dependency in closure (capstone 5.0.7); system lock update deferred to owner-directed tiered update to avoid mass rebuild"
+
+  - vulnerability: CVE-2025-68114
+    package:
+      name: capstone
+    reason: "Transitive dependency in closure (capstone 5.0.7); system lock update deferred to owner-directed tiered update to avoid mass rebuild"
+
+  - vulnerability: CVE-2026-47143
+    package:
+      name: capstone
+    reason: "Transitive dependency in closure (capstone 5.0.7); system lock update deferred to owner-directed tiered update to avoid mass rebuild"
+
+  - vulnerability: CVE-2026-49263
+    package:
+      name: capstone
+    reason: "Transitive dependency in closure (capstone 5.0.7); system lock update deferred to owner-directed tiered update to avoid mass rebuild"
+
+  - vulnerability: CVE-2026-49282
+    package:
+      name: capstone
+    reason: "Transitive dependency in closure (capstone 5.0.7); system lock update deferred to owner-directed tiered update to avoid mass rebuild"
+
+  - vulnerability: CVE-2026-55893
+    package:
+      name: capstone
+    reason: "Transitive dependency in closure (capstone 5.0.7); system lock update deferred to owner-directed tiered update to avoid mass rebuild"
+
+  - vulnerability: CVE-2026-55894
+    package:
+      name: capstone
+    reason: "Transitive dependency in closure (capstone 5.0.7); system lock update deferred to owner-directed tiered update to avoid mass rebuild"
+
+  - vulnerability: CVE-2026-5201
+    package:
+      name: gdk-pixbuf
+    reason: "Transitive dependency in closure (gdk-pixbuf 2.44.8); system lock update deferred to owner-directed tiered update to avoid mass rebuild"
+
+  - vulnerability: CVE-2026-4878
+    package:
+      name: libcap
+    reason: "Transitive dependency in closure (libcap 2.77); system lock update deferred to owner-directed tiered update to avoid mass rebuild"
+
+  - vulnerability: CVE-2026-23679
+    package:
+      name: libusb
+    reason: "Transitive dependency in closure (libusb 1.0.29); system lock update deferred to owner-directed tiered update to avoid mass rebuild"
+
+  - vulnerability: CVE-2026-47104
+    package:
+      name: libusb
+    reason: "Transitive dependency in closure (libusb 1.0.29); system lock update deferred to owner-directed tiered update to avoid mass rebuild"
+
+  - vulnerability: CVE-2026-58055
+    package:
+      name: nghttp2
+    reason: "Transitive dependency in closure (nghttp2 1.69.0); system lock update deferred to owner-directed tiered update to avoid mass rebuild"
+
+  - vulnerability: CVE-2026-13221
+    package:
+      name: perl
+    reason: "Transitive dependency in closure (perl 5.42.3); system lock update deferred to owner-directed tiered update to avoid mass rebuild"
+
+  - vulnerability: CVE-2026-15534
+    package:
+      name: perl
+    reason: "Transitive dependency in closure (perl 5.42.3); system lock update deferred to owner-directed tiered update to avoid mass rebuild"
+
+  - vulnerability: CVE-2026-57432
+    package:
+      name: perl
+    reason: "Transitive dependency in closure (perl 5.42.3); system lock update deferred to owner-directed tiered update to avoid mass rebuild"
+
+  - vulnerability: CVE-2026-8376
+    package:
+      name: perl
+    reason: "Transitive dependency in closure (perl 5.42.3); system lock update deferred to owner-directed tiered update to avoid mass rebuild"
+
+  - vulnerability: CVE-2026-11822
+    package:
+      name: sqlite
+    reason: "Transitive dependency in closure (sqlite 3.51.2); system lock update deferred to owner-directed tiered update to avoid mass rebuild"
+
+  - vulnerability: CVE-2026-11824
+    package:
+      name: sqlite
+    reason: "Transitive dependency in closure (sqlite 3.51.2); system lock update deferred to owner-directed tiered update to avoid mass rebuild"
+
+
+  # --- Upstream Unpatched / Disputed / Latest Releases ---
+  - vulnerability: CVE-2022-3219
+    package:
+      name: gnupg
+    reason: "Latest upstream release in nixpkgs (gnupg 2.4.9); no upstream fix available"
+
+  - vulnerability: CVE-2025-32989
+    package:
+      name: gnutls
+    reason: "Latest upstream release in nixpkgs stable/unstable (3.8.13); no upstream patch or disputed CPE match"
+
+  - vulnerability: CVE-2025-32990
+    package:
+      name: gnutls
+    reason: "Latest upstream release in nixpkgs stable/unstable (3.8.13); no upstream patch or disputed CPE match"
+
+  - vulnerability: CVE-2026-1584
+    package:
+      name: gnutls
+    reason: "Latest upstream release in nixpkgs stable/unstable (3.8.13); no upstream patch or disputed CPE match"
+
+  - vulnerability: CVE-2026-33845
+    package:
+      name: gnutls
+    reason: "Latest upstream release in nixpkgs stable/unstable (3.8.13); no upstream patch or disputed CPE match"
+
+  - vulnerability: CVE-2026-3832
+    package:
+      name: gnutls
+    reason: "Latest upstream release in nixpkgs stable/unstable (3.8.13); no upstream patch or disputed CPE match"
+
+  - vulnerability: CVE-2026-3833
+    package:
+      name: gnutls
+    reason: "Latest upstream release in nixpkgs stable/unstable (3.8.13); no upstream patch or disputed CPE match"
+
+  - vulnerability: CVE-2026-42009
+    package:
+      name: gnutls
+    reason: "Latest upstream release in nixpkgs stable/unstable (3.8.13); no upstream patch or disputed CPE match"
+
+  - vulnerability: CVE-2026-42010
+    package:
+      name: gnutls
+    reason: "Latest upstream release in nixpkgs stable/unstable (3.8.13); no upstream patch or disputed CPE match"
+
+  - vulnerability: CVE-2023-46361
+    package:
+      name: jbig2dec
+    reason: "Latest upstream release in nixpkgs (jbig2dec 0.20); no upstream fix available"
+
+  - vulnerability: CVE-2026-35094
+    package:
+      name: libinput
+    reason: "Latest upstream release in nixpkgs (libinput 1.31.3); no upstream fix available"
+
+  - vulnerability: CVE-2026-59843
+    package:
+      name: libssh
+    reason: "Latest upstream release in nixpkgs (libssh 0.12.2); no upstream fix available"
+
+  - vulnerability: CVE-2026-59844
+    package:
+      name: libssh
+    reason: "Latest upstream release in nixpkgs (libssh 0.12.2); no upstream fix available"
+
+  - vulnerability: CVE-2026-59845
+    package:
+      name: libssh
+    reason: "Latest upstream release in nixpkgs (libssh 0.12.2); no upstream fix available"
+
+  - vulnerability: CVE-2026-59846
+    package:
+      name: libssh
+    reason: "Latest upstream release in nixpkgs (libssh 0.12.2); no upstream fix available"
+
+  - vulnerability: CVE-2026-59848
+    package:
+      name: libssh
+    reason: "Latest upstream release in nixpkgs (libssh 0.12.2); no upstream fix available"
+
+  - vulnerability: CVE-2026-59850
+    package:
+      name: libssh
+    reason: "Latest upstream release in nixpkgs (libssh 0.12.2); no upstream fix available"
+
+  - vulnerability: CVE-2026-59851
+    package:
+      name: libssh
+    reason: "Latest upstream release in nixpkgs (libssh 0.12.2); no upstream fix available"
+
+  - vulnerability: CVE-2023-52356
+    package:
+      name: libtiff
+    reason: "Latest upstream release in nixpkgs (libtiff 4.7.2); no upstream fix available"
+
+  - vulnerability: CVE-2023-6228
+    package:
+      name: libtiff
+    reason: "Latest upstream release in nixpkgs (libtiff 4.7.2); no upstream fix available"
+
+  - vulnerability: CVE-2023-6277
+    package:
+      name: libtiff
+    reason: "Latest upstream release in nixpkgs (libtiff 4.7.2); no upstream fix available"
+
+  - vulnerability: CVE-2026-4775
+    package:
+      name: libtiff
+    reason: "Latest upstream release in nixpkgs (libtiff 4.7.2); no upstream fix available"
+
+  - vulnerability: CVE-2025-6021
+    package:
+      name: libxml2
+    reason: "Fixed / latest upstream release in nixpkgs (installed version is 2.15.4)"
+
+  - vulnerability: CVE-2025-6170
+    package:
+      name: libxml2
+    reason: "Fixed / latest upstream release in nixpkgs (installed version is 2.15.4)"
+
+  - vulnerability: CVE-2026-13757
+    package:
+      name: p11-kit
+    reason: "Latest upstream release in nixpkgs (p11-kit 0.26.2); no upstream fix available"
+
+  - vulnerability: CVE-2026-2100
+    package:
+      name: p11-kit
+    reason: "Latest upstream release in nixpkgs (p11-kit 0.26.2); no upstream fix available"
+
+  - vulnerability: CVE-2023-37769
+    package:
+      name: pixman
+    reason: "Latest upstream release in nixpkgs (pixman 0.46.4); no upstream fix available"
+
+  - vulnerability: CVE-2026-85091
+    package:
+      name: zlib
+    reason: "Latest upstream release in nixpkgs (zlib 1.3.2); no upstream fix available"

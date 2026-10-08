@@ -181,7 +181,7 @@ Enforcement: local payloads auto-inject the MICRO variant (`shared/llm_config.py
 - Prep: `aq-resume`, `aq-session-start --task`, `aq-hints`, lean-ctx (signatures/ranges); never drag full history/whole files; query AIDB `error-solutions` before debugging; cap tool output at 3,000 chars; keep instructions at the prompt head.
 - Closeout: seed AIDB + MemoryBroker, write `.agent/memory/<topic>.md`, update `RESUME.json` + `PULSE.log`; compact via the provider mechanism or fresh-session handoff; NEVER archive/delete provider transcripts to fake compaction. Evict stale dumps/finished turns; RETAIN objective+acceptance, uncommitted files, live errors, memory pointers.
 - Guard: use measured total input tokens (incl. cached); budget = min(50,000, 80% of window); over budget -> checkpoint + compact/handoff; unknown measurement -> say unknown, never claim clean. MUST compact at >2.5 MB, >25 turns, or >50k tokens. Verify with `aq-session-compact --verify-usage` (exit 0 only on measured decrease); verify each provider adapter separately.
-- Sub-agents: pass only objective, paths, acceptance, constraints, skill names; NEVER history/transcripts; no polling loops. Panes start in standby; shutdown touches only that workspace; never global process reaping. Plugins: enable per project by stack, never globally (aq-payload-audit flags unused).
+- Sub-agents: pass only objective, paths, acceptance, constraints; lean tools (reach unlisted live via aq-tool); NEVER history/transcripts; no polling loops. Panes start in standby; shutdown touches only that workspace. Plugins: enable per project by stack, never globally (aq-payload-audit flags unused).
 - Full text: `canon/blocks/memory-cache-sop.md`
 <!-- canon:end memory-cache-sop -->
 
@@ -210,7 +210,8 @@ Enforcement: local payloads auto-inject the MICRO variant (`shared/llm_config.py
 <!-- canon:begin headless-delegate-mode -->
 ## Headless Delegate Mode (Canonical — all agents)
 
-- Delegate: bounded prompt only; read only named files/ranges; skip session-start hydration; NEVER run tier0/`aq-qa` (orchestrator gates once); no commit/stage/push unless told; paste validation output; verify worktree before git writes; build fake secrets at runtime; leave staged for bridge delegates.
-- Orchestrator before dispatch: dependencies committed (or paths named), deliverable path shared-visible, quota headroom on the lane (else route per Rule 18).
+- Primary agents: enforce all agentic features (8-step canon, Rules 1-22, memory checkpoints, tier0, activation DoD).
+- Sub-agents: slim payload (bounded task, paths, criteria; no transcripts); lean tools; skip hydration/tier0; on-demand full tool access via `aq-tool <pkg>` & AIDB; paste test output; worktree isolation; leave staged.
+- Orchestrator: commit slice deps, deliverable path shared-visible, quota headroom verified (Rule 18).
 - Full text: `canon/blocks/headless-delegate-mode.md`
 <!-- canon:end headless-delegate-mode -->
