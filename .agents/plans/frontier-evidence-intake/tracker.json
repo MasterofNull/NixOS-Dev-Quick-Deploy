@@ -40,6 +40,12 @@
         "commit_match": [
           "FA-1 backlog + aq-frontier CLI"
         ]
+      },
+      "acceptance": {
+        "status": "accepted",
+        "by": "hyperd",
+        "date": "2026-10-07",
+        "note": "Owner chat 'accept frontier 1-4' 2026-10-07; evidence: b4410b43; test-frontier-backlog 6/6"
       }
     },
     {
@@ -57,6 +63,12 @@
         "commit_match": [
           "source-quality metrics + reference library (FA-1b)"
         ]
+      },
+      "acceptance": {
+        "status": "accepted",
+        "by": "hyperd",
+        "date": "2026-10-07",
+        "note": "Owner chat 'accept frontier 1-4' 2026-10-07; evidence: 0867a06e; test-frontier-sources 5/5"
       }
     },
     {
@@ -74,6 +86,12 @@
         "commit_match": [
           "FA-1c relevance scoring + concept coverage"
         ]
+      },
+      "acceptance": {
+        "status": "accepted",
+        "by": "hyperd",
+        "date": "2026-10-07",
+        "note": "Owner chat 'accept frontier 1-4' 2026-10-07; evidence: 3066b648; test-frontier-relevance 6/6"
       }
     },
     {
@@ -91,6 +109,12 @@
         "commit_match": [
           "FA-2 on-demand context provider"
         ]
+      },
+      "acceptance": {
+        "status": "accepted",
+        "by": "hyperd",
+        "date": "2026-10-07",
+        "note": "Owner chat 'accept frontier 1-4' 2026-10-07; evidence: 9d65fff7; test-frontier-context 5/5 + frontier block live in session-start"
       }
     },
     {
