@@ -32,7 +32,13 @@
           "fix(mcp-servers): Ralph repo-root + python PATH; working-memory state ownership"
         ]
       },
-      "editorial_note": "Runtime activation requires declarative unit deployment; source commit alone insufficient"
+      "editorial_note": "Runtime activation requires declarative unit deployment; source commit alone insufficient",
+      "acceptance": {
+        "status": "accepted",
+        "by": "hyperd",
+        "date": "2026-10-08",
+        "note": "Owner chat 'accept 1-11' 2026-10-08; evidence: e9ccc8f4; Ralph service env REPO_ROOT set (live systemd)"
+      }
     },
     {
       "id": "r2",
@@ -46,6 +52,12 @@
         "commit_match": [
           "test(health-spider): align OSI layered assertions with producer contract"
         ]
+      },
+      "acceptance": {
+        "status": "accepted",
+        "by": "hyperd",
+        "date": "2026-10-08",
+        "note": "Owner chat 'accept 1-11' 2026-10-08; evidence: 996f9cde; health-spider scheduled probe 'osi-layered OK 6.8ms' (live journal)"
       }
     },
     {
@@ -61,7 +73,13 @@
           "fix(mcp-servers): Ralph repo-root + python PATH; working-memory state ownership"
         ]
       },
-      "editorial_note": "Child ownership declaration is not live validation; verify save/read after activation"
+      "editorial_note": "Child ownership declaration is not live validation; verify save/read after activation",
+      "acceptance": {
+        "status": "accepted",
+        "by": "hyperd",
+        "date": "2026-10-08",
+        "note": "Owner chat 'accept 1-11' 2026-10-08; evidence: e9ccc8f4; /var/lib/ai-stack/hybrid 0750 hybrid:ai-stack in live use"
+      }
     },
     {
       "id": "resume-ttl",
@@ -75,6 +93,12 @@
         "commit_match": [
           "perf(resume): TTL-prune stale agent_snapshots in RESUME projection"
         ]
+      },
+      "acceptance": {
+        "status": "accepted",
+        "by": "hyperd",
+        "date": "2026-10-08",
+        "note": "Owner chat 'accept 1-11' 2026-10-08; evidence: a21309b4; test-event-bus-a2a 11/11; live RESUME agent_snapshots pruned to 0"
       }
     }
   ]
