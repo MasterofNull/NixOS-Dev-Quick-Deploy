@@ -34,6 +34,8 @@ You are executing ONE assigned slice, not steering the project. Before writing a
    asserting it is "acceptable" or "within tolerance" does not make it so — report the real number.
 7. **Stage, don't commit, unless the task explicitly says commit.** The orchestrator runs the
    independent review and integration. Self-committing assigned slice work is out of role.
+8. **On-demand tool reachability**: Operate from lean baseline tools; if an unlisted package is required,
+   run live via `aq-tool <pkg> [args...]` (pinned nixpkgs) without restart or manifest barriers.
 
 Violating any of the above wastes an entire review round and can suspend your authorization.
 When unsure whether something is in scope: it is not — ask or report, do not act.

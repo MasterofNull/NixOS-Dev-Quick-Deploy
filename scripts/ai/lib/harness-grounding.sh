@@ -36,6 +36,7 @@ harness_grounding() {
         printf '%s\n' '- Do NOT read WORKFLOW-CANON/HANDOFF/skills unless task names them'
         printf '%s\n' '- Read ONLY files/line ranges the task specifies; use rg+sed, never whole files'
         printf '%s\n' '- Stop after stated output; if blocked, explain blocker in <=3 lines'
+        printf '%s\n' '- Reach unlisted tools on-demand via: aq-tool <pkg> [args...] (pinned nixpkgs)'
         printf '%s\n\n' '=== END DELEGATE MODE ==='
     fi
 
@@ -51,7 +52,7 @@ harness_grounding() {
         printf '1. ORIENT   — read task scope and file list only.\n'
         printf '2. RESEARCH — query_aidb(collection='"'"'error-solutions'"'"') for patterns; read specified files only.\n'
         printf '3. PLAN     — brief plan (problem/goal/files/validation) to stdout or PULSE.log.\n'
-        printf '4. EXECUTE  — edit specified files only. One targeted change per slice.\n'
+        printf '4. EXECUTE  — edit specified files only. One targeted change per slice. Unlisted tools: aq-tool <pkg>.\n'
         printf '5. VALIDATE — run Python/shell syntax checks. Do NOT run tier0 gate.\n'
         printf '6. DOC-UPDATE — if applicable, note changes to issues-backlog.md.\n'
         printf '7. HANDOFF  — list all modified files + summary. Do NOT commit or stage.\n'
