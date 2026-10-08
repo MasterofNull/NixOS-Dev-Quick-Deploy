@@ -1406,6 +1406,26 @@ def _check_c6a_authorize_launch_coverage(ctx: RunContext) -> list[CheckResult]:
     return [failed(1, "0.10.53", "C6a authorize-launch coverage", detail)]
 
 
+def _check_provider_projection(ctx: RunContext) -> list[CheckResult]:
+    """0.10.55: ECC P0-B provider projection fixtures plus live drift status (preview-only)."""
+    desc = "ECC P0-B provider projection: deterministic preview, drift/preserved/refusal fixtures, live drift status"
+    test = ctx.repo_root / "scripts" / "testing" / "test-provider-projection.py"
+    cli = ctx.repo_root / "scripts" / "ai" / "aq-provider-projection"
+    if not test.exists() or not cli.exists():
+        return [failed(1, "0.10.55", desc, "test-provider-projection.py or aq-provider-projection missing")]
+    proc = subprocess.run(["python3", str(test)], cwd=ctx.repo_root, text=True,
+                          capture_output=True, timeout=60, check=False)
+    if proc.returncode != 0:
+        detail = (proc.stdout + proc.stderr).strip() or f"exit {proc.returncode}"
+        return [failed(1, "0.10.55", desc, detail[:240])]
+    live = subprocess.run(["python3", str(cli), "--repo", str(ctx.repo_root), "check"], cwd=ctx.repo_root,
+                          text=True, capture_output=True, timeout=30, check=False)
+    if live.returncode not in (0, 1):
+        return [failed(1, "0.10.55", desc, (live.stderr or f"exit {live.returncode}").strip()[:240])]
+    state = "drift" if live.returncode == 1 else "clean"
+    return [passed(1, "0.10.55", f"{desc} [live projection: {state}]")]
+
+
 def _check_c6c_owner_submission_coverage(ctx: RunContext) -> list[CheckResult]:
     """0.10.54: Foundation C C6c -- callable offline owner-key submission path:
     submit --signed --socket delivers a pre-signed bump to the running authority
@@ -2116,6 +2136,7 @@ def run(ctx: RunContext) -> list[CheckResult]:
     results.extend(_check_revocation_launch_socket_topology(ctx))
     results.extend(_check_c6a_authorize_launch_coverage(ctx))
     results.extend(_check_c6c_owner_submission_coverage(ctx))
+    results.extend(_check_provider_projection(ctx))
     if ctx.dashboard_safe:
         results.extend(_dashboard_safe_host_only_skips())
     return results
