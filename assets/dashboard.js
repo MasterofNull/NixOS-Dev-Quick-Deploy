@@ -1517,18 +1517,24 @@ async function loadApprovalInbox() {
     badge.textContent = `${d.counts.needs_approval} need approval · ${d.counts.deferred} deferred`;
     badge.className = `card-badge ${d.counts.needs_approval ? "badge-warn" : "badge-ok"}`;
     details.replaceChildren();
-    const line = (label, value) => {
+    const line = (label, value, cls = "info") => {
       const row = document.createElement("div");
       row.className = "fw-row";
       const key = document.createElement("span");
       key.className = "fk";
       key.textContent = label;
       const text = document.createElement("span");
-      text.className = "fv info";
+      text.className = `fv ${cls}`;
       text.textContent = value;
       row.append(key, text);
       details.appendChild(row);
     };
+    if (d.status === "degraded" && d.degraded_sources && d.degraded_sources.length > 0) {
+      line("⚠ Status", "DEGRADED", "warn");
+      for (const src of d.degraded_sources) {
+        line(`  ${src.path}`, src.error, "err");
+      }
+    }
     line("Tag", d.tag);
     for (const [label, items] of [["Needs approval", d.needs_approval], ["Deferred", d.deferred]]) {
       line(label, String(items.length));

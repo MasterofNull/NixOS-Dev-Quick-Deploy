@@ -63,7 +63,7 @@ class ApprovalInboxTests(unittest.TestCase):
         self.assertIsNotNone(datetime.fromisoformat(data["generated_at"]).tzinfo)
 
     def test_failure_is_safe_and_unavailable(self):
-        with patch.object(inbox, "collect", side_effect=RuntimeError(self.secret)):
+        with patch.object(inbox, "collect_with_status", side_effect=RuntimeError(self.secret)):
             with self.assertLogs(route.logger, level="WARNING") as logs:
                 response = self.client.get("/api/approval-inbox")
         self.assertEqual(response.status_code, 200)
@@ -77,7 +77,7 @@ class ApprovalInboxTests(unittest.TestCase):
                 self.assertEqual(self.client.request(method, "/api/approval-inbox").status_code, 405)
 
     def test_empty_inbox(self):
-        with patch.object(inbox, "collect", return_value=[]):
+        with patch.object(inbox, "collect_with_status", return_value=([], [])):
             data = self.client.get("/api/approval-inbox").json()
         self.assertEqual(data["counts"]["total"], 0)
         self.assertEqual(data["needs_approval"], [])
@@ -90,6 +90,68 @@ class ApprovalInboxTests(unittest.TestCase):
         self.assertIn('apiFetch("/approval-inbox")', client)
         self.assertIn('setInterval(loadApprovalInbox, 30_000)', client)
         self.assertIn('id="approvalInboxDetails"', (ROOT / "dashboard.html").read_text())
+
+    def test_degraded_unreadable_queue(self):
+        """Unreadable PRSI queue → status=degraded with degraded_sources."""
+        import stat
+        root = Path(self.tmp.name)
+        queue_path = root / "queue.json"
+        # Make queue unreadable (skip if root)
+        if os.getuid() != 0:
+            os.chmod(queue_path, 0o000)
+            try:
+                response = self.client.get("/api/approval-inbox")
+                self.assertEqual(response.status_code, 200)
+                data = response.json()
+                self.assertEqual(data.get("status"), "degraded")
+                self.assertIn("degraded_sources", data)
+                self.assertTrue(any(str(queue_path) in s.get("path", "") for s in data["degraded_sources"]))
+                # Items should still be populated from incidents
+                self.assertEqual(data["counts"]["deferred"], 1)
+            finally:
+                os.chmod(queue_path, 0o644)
+        else:
+            self.skipTest("root can read mode 0o000 files")
+
+    def test_degraded_corrupt_json(self):
+        """Corrupt JSON in queue → status=degraded."""
+        root = Path(self.tmp.name)
+        queue_path = root / "queue.json"
+        queue_path.write_text("{ invalid json")
+        response = self.client.get("/api/approval-inbox")
+        self.assertEqual(response.status_code, 200)
+        data = response.json()
+        self.assertEqual(data.get("status"), "degraded")
+        self.assertIn("degraded_sources", data)
+        self.assertTrue(any("JSONDecodeError" in s.get("error", "") for s in data["degraded_sources"]))
+
+    def test_missing_queue_not_degraded(self):
+        """Missing queue file (no actions) is OK, not degraded."""
+        root = Path(self.tmp.name)
+        queue_path = root / "queue.json"
+        queue_path.unlink()
+        response = self.client.get("/api/approval-inbox")
+        self.assertEqual(response.status_code, 200)
+        data = response.json()
+        self.assertNotEqual(data.get("status"), "degraded")
+        # Deferred should still have the incident
+        self.assertEqual(data["counts"]["deferred"], 1)
+
+    def test_degraded_in_collect_with_status(self):
+        """collect_with_status() distinguishes missing vs unreadable."""
+        root = Path(self.tmp.name)
+        queue_path = root / "queue.json"
+
+        # Missing file: no degradation
+        queue_path.unlink()
+        items, degraded = inbox.collect_with_status()
+        self.assertEqual(degraded, [])
+
+        # Corrupt file: degradation
+        queue_path.write_text("broken")
+        items, degraded = inbox.collect_with_status()
+        self.assertTrue(len(degraded) > 0)
+        self.assertTrue(any("JSONDecodeError" in d.get("error", "") for d in degraded))
 
 
 if __name__ == "__main__":
