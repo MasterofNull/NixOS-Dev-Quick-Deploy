@@ -5683,3 +5683,22 @@ File: scripts/ai/lib/worktree-isolation.sh; scripts/automation/prsi-orchestrator
 - [OPEN] sop-local-gate-misses-ci-pr-evidence — tier0 --pre-commit does not run scripts/testing/check-harness-first-pr-evidence-gate.sh, so every high-impact PR fails CI "Syntax Validation" until a docs/harness-first/evidence/YYYY-MM-DD-*.md is added (hit 4/4 PRs on 2026-10-07). Fix: run the gate in tier0 against `origin/main...HEAD` when on a non-main branch, or have the commit skill scaffold the evidence file. Severity: medium (CI round-trip waste).
 - [OPEN] antigravity-review-timeout-no-drain — antigravity-20261007-095108-yz007d (4-PR review) timed out; wake rejected task id ("unsafe inbox member"); IDE did not drain. Same root as antigravity-wake-reports-nudge-not-drain. Review routed to catch-up queue (Rule 18).
 - [DONE 2026-10-07] prsi-legacy-dir-archived — after #381 merge, /var/lib/nixos-ai-stack/prsi/* moved to /var/lib/nixos-ai-stack/optimizer/archive/20261007-legacy-prsi/ (parent dir root-owned 0711, so empty legacy dir remains; no Nix declaration recreates it). purge-audit.jsonl copied to canonical first.
+
+## 2026-10-07 afternoon — consolidated (re-recorded; uncommitted entries lost when the main checkout's backlog was overwritten during a delegate worktree escape)
+- [DONE] memory-crystallizer-never-ran — LIVE: sessions_processed=2, insights_stored=8 after #382/#386/#387/#388/#392 + rebuild. Root causes fixed in sequence: stale Continue-only scan; raw-JSON "distillation"; coordinator (ai-hybrid) cannot read ~/.claude (0700) → client-side extraction; handler routed session_path before history; set -e `(( x++ ))` abort; github_pat_ redaction gap; 120s local LLM timeout; "queued" writes uncounted.
+- [DONE] vscodium-settings-jsonc-breaks-jq — #390 + #391 (activation PATH has no python3 → store path). Owner switch clean.
+- [DONE] sop-rebuild-from-stale-checkout — hit twice; #393 guard in nrs/nrs-force/hms/nixos-quick-deploy.sh.
+- [DONE] pr388-l2b-live-source-manifest-drift — llm_client.py is pinned in local-inference-l2b-payload-golden.json; re-pinned. Process cause: tier0 skipped before commit.
+- [DONE] antigravity-unattended-drain-policy — owner IDE auto-accept; probe drained unattended (~105s).
+- [OPEN] antigravity-autodrain-intermittent — later tasks sat undrained >60 min until owner manual prompt; drain-verify unit correctly fails. Severity: medium.
+- [OPEN] antigravity-implementer-blocked-by-ide-worktree-guard — implementer role refused (no per-task workspace binding); Antigravity = advisory lane only. Severity: medium.
+- [OPEN] antigravity-wake-actor-mislabel — auto wake recorded as actor owner-manual. Severity: low.
+- [OPEN] crystallizer-fact-verification — lexical overlap does NOT discriminate on real data (rejects 3/5 accurate paraphrased facts at 0.6; passes a hallucinated fact at 0.5); shipping as SHADOW scoring (support_score stored, no filtering by default) to collect calibration data. Severity: medium.
+- [OPEN] chat-batch-parity-llm-config-pin-stale — shared/llm_config.py pins stale since 116b5ae5 (Antigravity 2026-10-03); Antigravity advisory investigation dispatched. Severity: medium.
+- [OPEN] l2b-transport-health-swallows-reason — transport_health hides TransportError code (needed sys.settrace). Severity: low.
+- [OPEN] llm-client-local-retry-silently-disabled — RuntimeError wrapping bypasses retry_with_backoff for local; worst case one 900s timeout (accidental). Severity: low.
+- [OPEN] sop-tier0-worktree-env-false-fails — QA phase 0 rows 0.152.3/.4/.9 fail in every worktree (gitignored state only in primary checkout); Codex fix dispatched. Severity: medium.
+- [OPEN] sop-local-gate-misses-gitleaks-on-tests — CI Secret Detection caught token-shaped test literals local gates missed. Severity: medium.
+- [OPEN] delegate-reports-unexecuted-tests + delegate-worktree-escape — Haiku delegates claimed unrun validation (x2) and one ran the main checkout's canon generator from the wrong worktree (wrote 8 files into main, and the main backlog's uncommitted entries were lost in the same window). Canon rules added (this PR). Severity: high (data integrity).
+- [OPEN] local-lane-first-token-stall — agent-mode context exceeds APU prefill budget for single edits; scaffold = direct mode with inline function text. Severity: medium (stewardship).
+- [OPEN] aq-worktree-reap-stats-undercount — stats report 0 graphs archived after moving 679 MB. Severity: low.
