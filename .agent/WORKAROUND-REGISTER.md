@@ -330,3 +330,11 @@ Codex lane absent).
 - **Fix path:** Moved `pipewire` and `xdg-desktop-portal` from `active` to `leaf` in `nix/overlays/fast-lane-manifest.nix`. Wired `services.pipewire.package = lib.mkDefault (pkgs.fastLaneLeaf.pipewire or pkgs.pipewire);` in `nix/modules/roles/desktop.nix` so the desktop daemon uses the updated build without forcing downstream mass recompilation.
 - **Class / severity:** Packaging / mass rebuild cascade; high. Status: FIXED 2026-10-06.
 - **Evidence:** `python3 scripts/health/fast-lane-staleness-check.py` PASS; `pytest -q scripts/testing/test-fast-lane-staleness-check.py` PASS (8/8 passed); `scripts/governance/quick-deploy-lint.sh --mode fast` PASS (22/22 checks).
+
+## WR-LLAMA-STATE-DIR-MODE-0700 (2026-10-08) — REGISTERED
+- Symptom: /var/lib/llama-cpp found 0700 (declared 0750 via tmpfiles d+z); owner/QA (llama group) cannot read models → tier0 PermissionError on active.gguf blocks every commit.
+- Root cause: UNKNOWN. Not llama-cpp/llama-cpp-embed StateDirectory (both 0755, not restarted), not security-audit (no chmod), not llamaCppActiveSymlink (ln/chown -h only). tmpfiles z rule did not correct it during activation.
+- Producer: unknown (candidate: something running as root between 22:50 and 23:48 2026-10-07).
+- Interim mitigation: system.activationScripts.llamaCppStateDirMode (deps=users) re-applies 0750 on every activation (Rule 14 pattern).
+- Fix path: find the resetter (auditd watch on /var/lib/llama-cpp attribute changes), fix it, then remove the activation snippet.
+- Class: permission drift. Severity: high.
