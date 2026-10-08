@@ -281,7 +281,7 @@ def test_l5_memory_crystallizer_history_distillation():
         # Mock LLM client returning bulleted facts
         mock_llm = MagicMock()
         mock_response = MagicMock()
-        mock_response.content = "- System port for switchboard is 8085\n- User prefers dark mode theme\n- Flake inputs are updated weekly"
+        mock_response.content = "- Switchboard runs on port 8085\n- User prefers dark mode preference\n- Dark mode saved successfully"
         mock_llm.create_message = AsyncMock(return_value=mock_response)
 
         # 1. Test with explicit broker
