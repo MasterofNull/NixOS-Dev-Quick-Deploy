@@ -1426,6 +1426,31 @@ def _check_provider_projection(ctx: RunContext) -> list[CheckResult]:
     return [passed(1, "0.10.55", f"{desc} [live projection: {state}]")]
 
 
+def _check_ecc_diagnostics(ctx: RunContext) -> list[CheckResult]:
+    """0.10.57: ECC P1 operator diagnostics fixtures plus live report (UNVERIFIED/DEGRADED are reported, never hidden)."""
+    desc = "ECC P1 operator diagnostics: degraded/unverified fixtures, live aggregate report"
+    test = ctx.repo_root / "scripts" / "testing" / "test-ecc-diagnostics.py"
+    cli = ctx.repo_root / "scripts" / "ai" / "aq-ecc-diagnostics"
+    route = ctx.repo_root / "dashboard" / "backend" / "api" / "routes" / "aistack.py"
+    js = ctx.repo_root / "assets" / "dashboard.js"
+    missing = [p.name for p in (test, cli, route, js) if not p.exists()]
+    if missing:
+        return [failed(1, "0.10.57", desc, f"missing: {', '.join(missing)}")]
+    proc = subprocess.run(["python3", str(test)], cwd=ctx.repo_root, text=True,
+                          capture_output=True, timeout=60, check=False)
+    if proc.returncode != 0:
+        return [failed(1, "0.10.57", desc, ((proc.stdout + proc.stderr).strip() or f"exit {proc.returncode}")[-240:])]
+    if "_ecc_diagnostics_summary" not in route.read_text(encoding="utf-8") or "· ecc diagnostics" not in js.read_text(encoding="utf-8"):
+        return [failed(1, "0.10.57", desc, "dashboard ECC diagnostics visibility contract missing")]
+    live = subprocess.run(["python3", str(cli), "--repo", str(ctx.repo_root), "--format", "json"], cwd=ctx.repo_root,
+                          text=True, capture_output=True, timeout=60, check=False)
+    try:
+        state = json.loads(live.stdout)["status"]
+    except (ValueError, KeyError):
+        return [failed(1, "0.10.57", desc, (live.stderr or f"exit {live.returncode}").strip()[:240])]
+    return [passed(1, "0.10.57", f"{desc} [live ECC status: {state}]")]
+
+
 def _check_c6c_owner_submission_coverage(ctx: RunContext) -> list[CheckResult]:
     """0.10.54: Foundation C C6c -- callable offline owner-key submission path:
     submit --signed --socket delivers a pre-signed bump to the running authority
@@ -2138,6 +2163,7 @@ def run(ctx: RunContext) -> list[CheckResult]:
     results.extend(_check_c6a_authorize_launch_coverage(ctx))
     results.extend(_check_c6c_owner_submission_coverage(ctx))
     results.extend(_check_provider_projection(ctx))
+    results.extend(_check_ecc_diagnostics(ctx))
     if ctx.dashboard_safe:
         results.extend(_dashboard_safe_host_only_skips())
     return results

@@ -1716,6 +1716,8 @@ _check 1 "0.10.5" "model catalog/profile freshness" \
       python3 "${REPO_ROOT}/scripts/testing/test-c6c-owner-submission-service-coverage.py"
     _check 1 "0.10.55" "ECC P0-B provider projection: deterministic preview, drift/preserved/refusal fixtures, live drift status" \
       python3 "${REPO_ROOT}/scripts/testing/test-provider-projection.py"
+    _check 1 "0.10.57" "ECC P1 operator diagnostics: degraded/unverified fixtures, live aggregate report" \
+      python3 "${REPO_ROOT}/scripts/testing/test-ecc-diagnostics.py"
   fi
 
   # 0.9.4 Runtime safety contract policy (Phase 39)
