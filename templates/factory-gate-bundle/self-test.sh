@@ -204,6 +204,7 @@ required=tests
 allowed_top=.agent
 allowed_top=.agents
 allowed_top=.factory
+allowed_top=.github
 allowed_top=.githooks
 allowed_top=AGENTS.md
 allowed_top=CLAUDE.md

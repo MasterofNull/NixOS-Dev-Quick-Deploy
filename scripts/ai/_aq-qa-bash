@@ -1718,6 +1718,8 @@ _check 1 "0.10.5" "model catalog/profile freshness" \
       python3 "${REPO_ROOT}/scripts/testing/test-provider-projection.py"
     _check 1 "0.10.57" "ECC P1 operator diagnostics: degraded/unverified fixtures, live aggregate report" \
       python3 "${REPO_ROOT}/scripts/testing/test-ecc-diagnostics.py"
+    _check 5 "0.10.58" "ECC P0-E portable GitHub CI pack: SHA pins, least-privilege, brownfield preserved, UNVERIFIED_REMOTE verdict, dashboard visibility" \
+      python3 "${REPO_ROOT}/scripts/testing/test-factory-ci-pack.py"
   fi
 
   # 0.9.4 Runtime safety contract policy (Phase 39)
