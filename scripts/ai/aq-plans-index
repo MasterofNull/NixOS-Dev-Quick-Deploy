@@ -42,6 +42,9 @@ STATUS_ORDER = {"blocked": 0, "active": 1, "untracked": 2, "dormant": 3,
 # Lifecycle statuses declared explicitly in a plan's .plan-lifecycle.json override
 # every projected/heuristic status (an owner/orchestrator retirement decision wins).
 LIFECYCLE_STATUSES = ("active", "complete", "superseded", "retired")
+# Routes naming a file inside the plan dir must point at a file that exists; otherwise the
+# declared authoritative source is absent and the record is reported unresolved.
+ROUTE_FILES = ("tracker.json", "round.json", ".plan-lifecycle.json")
 PLAN_CLASSES = {"program", "durable_plan", "review", "decision", "baseline",
                 "inventory", "coordination", "record"}
 
@@ -60,11 +63,21 @@ def _classification(plan_path: Path) -> dict:
     if not isinstance(d, dict):
         return {"classification": "unclassified", "tracking_route": "classification_queue",
                 "classification_issue": "classification JSON must be an object"}
+    if d.get("classification") == "unclassified":
+        # Explicit "reviewed, still unresolved" record: stays in the queue, carries its reason.
+        reason = d.get("reason")
+        issue = (f"unresolved: {reason.strip()}" if isinstance(reason, str) and reason.strip()
+                 else "unresolved: no reason recorded")
+        return {"classification": "unclassified", "tracking_route": "classification_queue",
+                "classification_issue": issue}
     cls, route, evidence = (d.get("classification"), d.get("tracking_route"), d.get("evidence"))
     if cls not in PLAN_CLASSES or not isinstance(route, str) or not route.strip() \
             or not isinstance(evidence, str) or not evidence.strip():
         return {"classification": "unclassified", "tracking_route": "classification_queue",
                 "classification_issue": "classification, tracking_route, and evidence are required"}
+    if route.strip() in ROUTE_FILES and not (plan_path / route.strip()).is_file():
+        return {"classification": "unclassified", "tracking_route": "classification_queue",
+                "classification_issue": f"declared route {route.strip()} is not present in the plan directory"}
     return {"classification": cls, "tracking_route": route.strip(),
             "classification_issue": "", "classification_evidence": evidence.strip(),
             "parent": str(d.get("parent", ""))}

@@ -1,0 +1,5 @@
+{
+  "classification": "durable_plan",
+  "tracking_route": "tracker.json",
+  "evidence": "tracker.json declares plan.id=approval-control-plane, an owned goal, prd_ref=.agent/PROJECT-APPROVAL-CONTROL-PLANE-PRD.md (exists) and 10 items; durable goals, slices and tasks are authored there."
+}

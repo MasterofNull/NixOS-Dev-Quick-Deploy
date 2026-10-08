@@ -1,0 +1,5 @@
+{
+  "classification": "inventory",
+  "tracking_route": "tracker.json",
+  "evidence": "tracker.json plan.goal states \"Every systemd service the AQ-OS refactor ships, marked on the honest tier scale — DEFINED (unit exists) -> INTEGRATED (enabled + wired + not-failed) -> VALIDATE\" and itemizes 23 entries as the authoritative inventory; plan.id matches the directory."
+}

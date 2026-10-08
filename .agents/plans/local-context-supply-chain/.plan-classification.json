@@ -1,0 +1,5 @@
+{
+  "classification": "durable_plan",
+  "tracking_route": "tracker.json",
+  "evidence": "tracker.json declares plan.id=local-context-supply-chain, an owned goal, prd_ref=.agents/plans/local-context-supply-chain/DESIGN.md (exists) and 3 items; durable goals, slices and tasks are authored there."
+}

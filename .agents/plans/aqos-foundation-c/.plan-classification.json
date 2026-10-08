@@ -1,0 +1,5 @@
+{
+  "classification": "durable_plan",
+  "tracking_route": "tracker.json",
+  "evidence": "tracker.json declares plan.id=aqos-foundation-c, an owned goal, prd_ref=.agents/plans/aqos-foundation-c/ (exists) and 9 items; durable goals, slices and tasks are authored there."
+}

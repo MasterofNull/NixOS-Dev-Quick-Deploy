@@ -1,0 +1,5 @@
+{
+  "classification": "coordination",
+  "tracking_route": "round.json",
+  "evidence": "round.json declares round_id=tiered-auto-update-prd-20261001, state=ABORTED, 4 lanes and lane contributions; the round record (with per-agent files and AGGREGATE.md) is the authoritative collaboration source."
+}
