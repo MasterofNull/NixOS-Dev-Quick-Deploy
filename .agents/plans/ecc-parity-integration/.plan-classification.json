@@ -1,0 +1,5 @@
+{
+  "classification": "durable_plan",
+  "tracking_route": "tracker.json",
+  "evidence": "tracker.json declares plan.id=ecc-parity-integration, an owned goal, prd_ref=.agent/PROJECT-ECC-PARITY-INTEGRATION-PRD.md (exists) and 8 items; durable goals, slices and tasks are authored there."
+}

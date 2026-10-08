@@ -1,0 +1,5 @@
+{
+  "classification": "coordination",
+  "tracking_route": "round.json",
+  "evidence": "round.json declares round_id=sr1-suspend-resume-review-20260909, state=COLLECTED, 4 lanes and lane contributions; the round record (with per-agent files and AGGREGATE.md) is the authoritative collaboration source."
+}

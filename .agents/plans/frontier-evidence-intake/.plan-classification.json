@@ -1,0 +1,5 @@
+{
+  "classification": "durable_plan",
+  "tracking_route": "tracker.json",
+  "evidence": "tracker.json declares plan.id=frontier-evidence-intake, an owned goal, prd_ref=.agents/plans/frontier-evidence-intake/FRONTIER-AUTOPILOT.md (exists) and 10 items; durable goals, slices and tasks are authored there."
+}
