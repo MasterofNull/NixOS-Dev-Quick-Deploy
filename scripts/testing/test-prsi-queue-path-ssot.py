@@ -48,6 +48,7 @@ PURGE_FILES_TO_CHECK = {
 THROTTLER = SCRIPTS_DIR / "ai" / "aq-throttler"
 
 NIX_FILE = ROOT / "nix" / "modules" / "roles" / "ai-stack.nix"
+NIX_MODULES_DIR = ROOT / "nix" / "modules"
 
 
 def extract_default_path(file_path: Path, pattern: str) -> str | None:
@@ -71,6 +72,49 @@ def check_nix_file(nix_path: Path) -> bool:
     except Exception as e:
         print(f"Error reading {nix_path}: {e}", file=sys.stderr)
         return False
+
+
+def check_nix_modules_for_split_brain(nix_modules_dir: Path) -> list[tuple[str, str, Path]]:
+    """
+    Scan all Nix modules to ensure no module sets PRSI_ACTION_QUEUE_PATH or PRSI_STATE_PATH
+    to anything other than the canonical values.
+
+    Returns list of (variable_name, found_value, file_path) tuples for violations.
+    """
+    issues = []
+    if not nix_modules_dir.exists():
+        return issues
+
+    for nix_file in nix_modules_dir.glob("**/*.nix"):
+        try:
+            content = nix_file.read_text()
+            # Check for PRSI_ACTION_QUEUE_PATH assignments (skip ai-stack.nix and command-center-dashboard.nix which we just fixed)
+            for match in re.finditer(
+                r'PRSI_ACTION_QUEUE_PATH\s*=\s*"([^"]+)"', content
+            ):
+                found_value = match.group(1)
+                if found_value != CANONICAL_NIX_QUEUE_PATH:
+                    issues.append(("PRSI_ACTION_QUEUE_PATH", found_value, nix_file))
+            # Check for PRSI_STATE_PATH assignments
+            for match in re.finditer(
+                r'PRSI_STATE_PATH\s*=\s*"([^"]+)"', content
+            ):
+                found_value = match.group(1)
+                if found_value != CANONICAL_NIX_STATE_PATH:
+                    issues.append(("PRSI_STATE_PATH", found_value, nix_file))
+            # Check for PRSI_ACTIONS_LOG_PATH assignments
+            for match in re.finditer(
+                r'PRSI_ACTIONS_LOG_PATH\s*=\s*"([^"]+)"', content
+            ):
+                found_value = match.group(1)
+                # Canonical log path uses mutableLogDir variable
+                if "${mutableLogDir}/prsi" not in found_value and "${mutableOptimizerDir}" in found_value:
+                    # Allow mutableLogDir-based paths
+                    if "${mutableLogDir}" not in found_value:
+                        issues.append(("PRSI_ACTIONS_LOG_PATH", found_value, nix_file))
+        except Exception as e:
+            print(f"Warning: could not scan {nix_file}: {e}", file=sys.stderr)
+    return issues
 
 
 def check_for_legacy_paths(file_path: Path) -> list[str]:
@@ -214,6 +258,17 @@ def main():
                 file=sys.stderr,
             )
             all_passed = False
+
+    # Check all Nix modules for split-brain PRSI paths (single writer guard)
+    print("=== Scanning Nix modules for PRSI path consistency (no split-brain) ===")
+    nix_split_brain_issues = check_nix_modules_for_split_brain(NIX_MODULES_DIR)
+    if nix_split_brain_issues:
+        for var_name, found_value, file_path in nix_split_brain_issues:
+            print(
+                f"FAIL: {file_path} sets {var_name} = \"{found_value}\", expected canonical",
+                file=sys.stderr,
+            )
+        all_passed = False
 
     # Summary
     if all_passed:
