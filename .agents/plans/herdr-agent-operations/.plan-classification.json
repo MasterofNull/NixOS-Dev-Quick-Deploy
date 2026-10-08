@@ -1,0 +1,5 @@
+{
+  "classification": "durable_plan",
+  "tracking_route": "tracker.json",
+  "evidence": "tracker.json declares plan.id=herdr-agent-operations, an owned goal, prd_ref=.agent/PROJECT-HERDR-AGENT-OPERATIONS-PRD.md (exists) and 5 items; durable goals, slices and tasks are authored there."
+}

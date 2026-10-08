@@ -1,0 +1,5 @@
+{
+  "classification": "durable_plan",
+  "tracking_route": "tracker.json",
+  "evidence": "tracker.json declares plan.id=aqos-installer-experience, an owned goal, prd_ref=.agent/AQOS-INSTALLER-EXPERIENCE-PRD-CONSOLIDATED.md (exists) and 11 items; durable goals, slices and tasks are authored there."
+}
