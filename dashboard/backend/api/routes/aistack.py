@@ -7059,6 +7059,21 @@ def _capability_outcome_catalog_summary(path: Optional[Path] = None) -> Dict[str
         }
 
 
+def _ci_pack_health_summary() -> Dict[str, Any]:
+    """Bounded, read-only portable-CI pack readiness; the remote axis is always UNVERIFIED_REMOTE."""
+    try:
+        module_path = _repo_root() / "templates" / "factory-gate-bundle" / "ci" / "ci_policy.py"
+        spec = importlib.util.spec_from_file_location("aq_ci_policy", module_path)
+        if spec is None or spec.loader is None:
+            raise ImportError("ci pack unavailable")
+        module = importlib.util.module_from_spec(spec)
+        spec.loader.exec_module(module)
+        return module.health_summary(_repo_root(), module_path.parent.parent)
+    except (OSError, ValueError, ImportError, SyntaxError) as exc:
+        return {"available": False, "status": "unverified", "verdict": "UNVERIFIED", "remote": "UNVERIFIED_REMOTE",
+                "reason": f"ci_pack_unavailable:{type(exc).__name__}"}
+
+
 def _lifecycle_events_health_summary() -> Dict[str, Any]:
     """Bounded, read-only lifecycle adapter health (dormant when no state file is configured)."""
     try:
@@ -7157,6 +7172,7 @@ async def get_advanced_runtime_summary() -> Dict[str, Any]:
                 "outcomes": await asyncio.to_thread(_capability_outcome_catalog_summary),
                 "lifecycle_events": await asyncio.to_thread(_lifecycle_events_health_summary),
                 "ecc_diagnostics": await asyncio.to_thread(_ecc_diagnostics_summary),
+                "ci_pack": await asyncio.to_thread(_ci_pack_health_summary),
             },
             "learning": {
                 "status": _advanced_phase_readiness_status(readiness, "phase_10_learning"),
