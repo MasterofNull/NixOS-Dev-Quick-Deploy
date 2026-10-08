@@ -31,6 +31,12 @@
         "commit_match": [
           "fix(prsi): single queue writer"
         ]
+      },
+      "acceptance": {
+        "status": "accepted",
+        "by": "hyperd",
+        "date": "2026-10-07",
+        "note": "Owner chat 'accept 1-6' 2026-10-07; evidence: single-writer tests pass; prsi-orchestrator sole writer; aq-throttler retired (verified by claude-opus-5.5 + haiku evidence pack)"
       }
     },
     {
@@ -45,6 +51,12 @@
         "commit_match": [
           "refactor(ralph): retire private PRSI queue"
         ]
+      },
+      "acceptance": {
+        "status": "accepted",
+        "by": "hyperd",
+        "date": "2026-10-07",
+        "note": "Owner chat 'accept 1-6' 2026-10-07; evidence: no PRSI routes in Ralph; private queue retired (verified by claude-opus-5.5 + haiku evidence pack)"
       }
     },
     {
@@ -61,6 +73,12 @@
         "commit_match": [
           "fix(coordinator): PRSI handlers read canonical queue"
         ]
+      },
+      "acceptance": {
+        "status": "accepted",
+        "by": "hyperd",
+        "date": "2026-10-07",
+        "note": "Owner chat 'accept 1-6' 2026-10-07; evidence: /control/prsi/pending live count 0 == aq-approve needs_approval 0 (verified by claude-opus-5.5 + haiku evidence pack)"
       }
     },
     {
@@ -75,6 +93,12 @@
         "commit_match": [
           "fix(optimizer): reload override consumers"
         ]
+      },
+      "acceptance": {
+        "status": "accepted",
+        "by": "hyperd",
+        "date": "2026-10-07",
+        "note": "Owner chat 'accept 1-6' 2026-10-07; evidence: ai-optimizer-overrides-reload.path active; 6/6 tests; StartLimit 3/300s (verified by claude-opus-5.5 + haiku evidence pack)"
       }
     },
     {
@@ -91,6 +115,12 @@
         "commit_match": [
           "chore(prsi): archive legacy queue paths"
         ]
+      },
+      "acceptance": {
+        "status": "accepted",
+        "by": "hyperd",
+        "date": "2026-10-07",
+        "note": "Owner chat 'accept 1-6' 2026-10-07; evidence: SSOT test pass; legacy dir empty; late stragglers archived to optimizer/archive/20261007-legacy-prsi (verified by claude-opus-5.5 + haiku evidence pack)"
       }
     },
     {
@@ -121,6 +151,12 @@
         "commit_match": [
           "fix(coordinator): gate PRSI execute endpoint"
         ]
+      },
+      "acceptance": {
+        "status": "accepted",
+        "by": "hyperd",
+        "date": "2026-10-07",
+        "note": "Owner chat 'accept 1-6' 2026-10-07; evidence: execute returns 403 without aq-approve approval; test-approvals-execute-single-use 8/8 (verified by claude-opus-5.5 + haiku evidence pack)"
       }
     }
   ]
