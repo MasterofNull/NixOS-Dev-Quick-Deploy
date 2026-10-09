@@ -28,7 +28,7 @@ External ingestion gate: `capability-intake`
 | auto-skill-selection | agent-skills | repo-cli | enabled | local-governance / low | codex, claude, gemini, local-agent | `python3 scripts/testing/test-skill-auto.py` |
 | tooling-manifest | agent-tools | python-module | enabled | local-governance / medium | codex, claude, gemini, local-agent | `python3 scripts/testing/test-tooling-manifest.py` |
 | playwright-mcp | browser-automation | external-mcp | quarantined | incomplete / high | codex, claude, local-agent | `python3 scripts/testing/test-enabled-external-mcp-candidates.py` |
-| understand-anything | code-intelligence | repo-skill | enabled | accepted-with-mitigations / medium | codex, claude, gemini, local-agent | `scripts/ai/aq-understand-anything status`<br>`scripts/ai/aq-understand-anything validate-batches` |
+| understand-anything | code-intelligence | repo-skill | partial | accepted-with-mitigations / medium | codex, claude, gemini, local-agent | `scripts/ai/aq-understand-anything status --check`<br>`scripts/ai/aq-graph-query staleness --check`<br>`python3 scripts/testing/test-graph-query.py`<br>`scripts/ai/aq-understand-anything validate-batches` |
 | aidb-rag-stores | data-store | service-dataset | enabled | local-governance / medium | codex, claude, gemini, local-agent | `AQ_QA_SKIP_REPORT_BACKED_CHECKS=1 scripts/ai/aq-qa 0 --machine` |
 | aq-eval-harness | evaluation-redteam | repo-cli | enabled | local-governance / medium | codex, claude, gemini, local-agent | `python3 scripts/testing/test-aq-eval.py` |
 | aq-inference-bench | local-inference | repo-cli | enabled | local-governance / medium | codex, claude, gemini, local-agent | `python3 scripts/testing/test-aq-inference-bench.py` |
@@ -124,13 +124,13 @@ Quarantined headless browser automation; unavailable until enforce-mode AppArmor
 
 ### understand-anything
 
-Codebase graph generation, dashboard visualization, diff impact, and graph-backed explanations.
+Codebase graph generation, dashboard visualization, diff impact, and graph-backed explanations. PARTIAL: graph queries (aq-graph-query, MCP graph_query) and staleness reporting are live; the knowledge graph itself is stale (generated 2026-07-01) and regeneration is pending.
 
 - Name: Understand Anything Graph Skills
 - Owner: agent-runtime
 - Maturity: integrated
-- State: enabled
-- Primary refs: `.agent/skills/understand-anything/SKILL.md`, `scripts/ai/aq-understand-anything`, `.understand-anything/knowledge-graph.json`
+- State: partial
+- Primary refs: `.agent/skills/understand-anything/SKILL.md`, `scripts/ai/aq-understand-anything`, `scripts/ai/aq-graph-query`, `config/understand-anything.json`, `.understand-anything/knowledge-graph.json`
 - Data stores: `codebase-context`
 - Parity targets: repo graph agents, impact analysis tools, codebase visualization systems
 - Security gate: `scripts/ai/aq-understand-anything validate-batches`

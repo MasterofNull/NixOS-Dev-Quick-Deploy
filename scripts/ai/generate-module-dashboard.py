@@ -275,6 +275,38 @@ ENRICHED_DETAILS = {
     }
 }
 
+# Per-module live-data blocks (plain strings, not .format templates). Fetch read-only
+# dashboard API routes so the static page shows real values instead of catalog text.
+LIVE_BLOCKS = {
+    "understand-anything": """<div class="card info" id="ua-live" style="margin-bottom:1.5rem;">
+      <div class="card-title">Live Graph Status <span style="font-size:0.7rem;color:var(--fg3)">GET /api/understand/summary</span></div>
+      <div id="ua-live-body" style="font-size:0.85rem;color:var(--fg2);">Loading...</div>
+    </div>
+    <script>
+    (function () {
+      var body = document.getElementById('ua-live-body');
+      var dot = document.querySelector('.status-dot');
+      function kv(k, v) { return '<div class="kv-row"><span class="kv-key">' + k + '</span><span class="kv-val">' + v + '</span></div>'; }
+      function esc(t) { return String(t).replace(/[&<>"]/g, function (c) { return {'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;'}[c]; }); }
+      fetch('/api/understand/summary', {cache: 'no-store'}).then(function (r) { if (!r.ok) throw new Error('HTTP ' + r.status); return r.json(); }).then(function (d) {
+        var s = d.staleness || {};
+        var types = Object.keys(d.node_types || {}).map(function (k) { return esc(k) + ' ' + d.node_types[k]; }).join(' &middot; ');
+        body.innerHTML =
+          kv('Verdict', s.stale ? '<span class="badge badge-warning">STALE</span> ' + esc((s.reasons || []).join('; ')) : '<span class="badge badge-enabled">FRESH</span>') +
+          kv('Graph generated', esc(s.graph_generated || 'missing') + ' (' + esc(s.graph_age_days) + ' d, max ' + esc(s.max_age_days) + ')') +
+          kv('Commits since graph', esc(s.commits_since_graph == null ? 'unknown' : s.commits_since_graph) + ' (max ' + esc(s.max_commits) + ')') +
+          kv('Wiki', esc(s.wiki_age_days == null ? 'n/a' : s.wiki_age_days + ' d old') + ' / ' + esc(s.wiki_vs_graph || 'n/a') + ' vs graph') +
+          kv('Nodes / edges', esc(d.nodes) + ' / ' + esc(d.edges)) +
+          '<div style="margin-top:0.6rem;font-size:0.75rem;">' + types + '</div>';
+        if (dot) { dot.className = 'status-dot ' + (s.stale ? 'warning' : 'enabled'); }
+      }).catch(function (e) {
+        body.textContent = 'Live status unavailable: ' + e.message;
+        if (dot) { dot.className = 'status-dot disabled'; }
+      });
+    })();
+    </script>""",
+}
+
 def main():
     repo_root = os.path.dirname(os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
     catalog_path = os.path.join(repo_root, "config/system-capability-catalog.json")
@@ -371,6 +403,10 @@ def main():
     .status-dot.disabled {{
       background-color: var(--red);
       box-shadow: 0 0 8px var(--red);
+    }}
+    .status-dot.warning {{
+      background-color: var(--yel);
+      box-shadow: 0 0 8px var(--yel);
     }}
     h1 {{
       font-family: var(--hud);
@@ -617,6 +653,8 @@ def main():
       {summary}
     </div>
 
+    {live_block}
+
     <!-- WORKFLOW & RESEARCH PARADIGMS GRID -->
     <div class="grid2">
       <!-- System Workflow Card -->
@@ -804,7 +842,7 @@ def main():
 
         # Determine status styling
         state = item.get("state", "unknown")
-        status_class = "enabled" if state == "enabled" else "disabled"
+        status_class = {"enabled": "enabled", "partial": "warning"}.get(state, "disabled")
 
         # Risk styling
         sec = item.get("security", {})
@@ -889,7 +927,8 @@ def main():
             func_text=details["function"],
             ground_text=details["grounding"],
             mermaid_graph=details.get("mermaid", "graph TD\\n  A[Start] --> B[End]"),
-            publications_list=publications_list
+            publications_list=publications_list,
+            live_block=LIVE_BLOCKS.get(item_id, "")
         )
 
         file_path = os.path.join(output_dir, f"{item_id}.html")

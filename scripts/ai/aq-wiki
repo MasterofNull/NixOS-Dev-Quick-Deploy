@@ -11,7 +11,7 @@ let agents discover and fetch docs as needed.
 Modes:
   aq-wiki --init          Full generation (all subsystems)
   aq-wiki --update        Differential: only subsystems with recent git changes
-  aq-wiki --status        Wiki freshness and coverage table
+  aq-wiki --status        Wiki freshness and coverage table (+ graph staleness; --check exits 1 if stale)
   aq-wiki --list          List available sections with line counts
   aq-wiki --section NAME  Print named section to stdout
   aq-wiki --seed-aidb     Seed sections into AIDB wiki-sections collection
@@ -498,7 +498,13 @@ def cmd_update():
         print("No sections needed update.")
 
 
-def cmd_status():
+def cmd_status(check=False):
+    sys.path.insert(0, str(_REPO / "scripts" / "ai" / "lib"))
+    import understand_graph as _ug
+    st = _ug.staleness(_REPO)
+    print("Staleness (limits: config/understand-anything.json):")
+    print("\n".join(_ug.format_staleness(st)))
+    print()
     graph = _load_graph()
     graph_meta = graph.get("metadata", {})
     wiki_meta = _load_meta()
@@ -525,6 +531,8 @@ def cmd_status():
     readme = _WIKI_DIR / "README.md"
     print(f"\n  Index: {'present' if readme.exists() else 'MISSING'} ({readme})")
     print(f"\nRefresh: aq-wiki --update  (diff)  |  aq-wiki --init --force  (full)")
+    if check and st["stale"]:
+        sys.exit(1)
 
 
 def cmd_list():
@@ -734,6 +742,8 @@ def main():
                    help="Seed wiki sections into AIDB wiki-sections collection")
     p.add_argument("--force", action="store_true",
                    help="Force regeneration (use with --init)")
+    p.add_argument("--check", action="store_true",
+                   help="With --status: exit 1 when graph/wiki is stale")
     args = p.parse_args()
 
     if args.init:
@@ -741,7 +751,7 @@ def main():
     elif args.update:
         cmd_update()
     elif args.status:
-        cmd_status()
+        cmd_status(check=args.check)
     elif args.list:
         cmd_list()
     elif args.section:

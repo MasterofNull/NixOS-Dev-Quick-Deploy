@@ -2993,8 +2993,8 @@
             <div class="svc-dot" style="background:var(--grn)"></div><span class="svc-name">Github MCP
               (RO)</span><span class="svc-port">tools</span>
           </a>
-          <a href="/assets/modules/understand-anything.html" target="_blank" class="svc" style="text-decoration:none;">
-            <div class="svc-dot" style="background:var(--grn)"></div><span class="svc-name">Understand
+          <a href="/assets/modules/understand-anything.html" target="_blank" class="svc" id="ua-tile" style="text-decoration:none;">
+            <div class="svc-dot" id="ua-tile-dot" style="background:var(--fg3,#4a6278)"></div><span class="svc-name">Understand
               Anything</span><span class="svc-port">skills</span>
           </a>
           <a href="/assets/modules/osint-research-store.html" target="_blank" class="svc" style="text-decoration:none;">
@@ -4923,6 +4923,17 @@
   <script src="/assets/dashboard.js?v=4"></script>
   <script>
     // aq-qa 60.7.3: section-rag-quality ragAnswerRelevance ragContextPrecision ragFaithfulness loadRagQuality
+
+    // Understand-Anything tile: dot reflects GET /api/understand/summary (green fresh, yellow stale, red unreachable).
+    (function () {
+      var dot = document.getElementById('ua-tile-dot');
+      var tile = document.getElementById('ua-tile');
+      if (!dot) return;
+      fetch('/api/understand/summary', {cache: 'no-store'}).then(function (r) { if (!r.ok) throw new Error('HTTP ' + r.status); return r.json(); }).then(function (d) {
+        dot.style.background = d.stale ? 'var(--yel)' : 'var(--grn)';
+        if (tile) tile.title = d.stale ? 'Graph STALE: ' + ((d.staleness && d.staleness.reasons) || []).join('; ') : 'Graph fresh';
+      }).catch(function () { dot.style.background = 'var(--red)'; if (tile) tile.title = 'Graph status unavailable'; });
+    })();
   </script>
 </body>
 

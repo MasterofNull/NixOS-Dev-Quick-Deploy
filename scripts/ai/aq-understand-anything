@@ -2,7 +2,14 @@
 . "${BASH_SOURCE[0]%/*}/lib/aq-shim.sh" 2>/dev/null || true  # aq-usage-hook
 set -euo pipefail
 
-REPO_URL="${UA_REPO_URL:-https://github.com/Egonex-AI/Understand-Anything.git}"
+SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
+CONFIG_FILE="${UA_CONFIG:-$SCRIPT_DIR/../../config/understand-anything.json}"
+
+# Upstream pin + staleness limits live in config/understand-anything.json (single place).
+cfg_get() { python3 -c 'import json,sys; d=json.load(open(sys.argv[1])); print(d.get("pin",{}).get(sys.argv[2],""))' "$CONFIG_FILE" "$1" 2>/dev/null || true; }
+PINNED_REV="${UA_REV:-$(cfg_get rev)}"
+REPO_URL="${UA_REPO_URL:-$(cfg_get repo_url)}"
+REPO_URL="${REPO_URL:-https://github.com/Egonex-AI/Understand-Anything.git}"
 REPO_DIR="${UA_DIR:-$HOME/.understand-anything/repo}"
 PLUGIN_ROOT="$REPO_DIR/understand-anything-plugin"
 DEFAULT_PLATFORMS=(codex gemini antigravity)
@@ -11,7 +18,7 @@ usage() {
   cat <<'EOF'
 Usage:
   aq-understand-anything ensure [platform ...]
-  aq-understand-anything status [project-dir]
+  aq-understand-anything status [--check] [project-dir]   (--check: exit 1 if graph stale)
   aq-understand-anything validate-batches [project-dir]
   aq-understand-anything dashboard [project-dir]
   aq-understand-anything dashboard-command [project-dir]
@@ -21,6 +28,7 @@ Platforms are passed through to upstream install.sh. Common values:
 
 Environment:
   UA_REPO_URL   Override upstream clone URL
+  UA_REV        Override pinned upstream commit (default: config/understand-anything.json pin.rev)
   UA_DIR        Override checkout directory (default: ~/.understand-anything/repo)
 EOF
 }
@@ -30,12 +38,26 @@ project_dir() {
   cd "$candidate" 2>/dev/null && pwd -P
 }
 
+# Checkout is pinned to PINNED_REV (never HEAD); the resulting commit is verified.
 clone_or_update() {
-  if [[ -d "$REPO_DIR/.git" ]]; then
-    git -C "$REPO_DIR" pull --ff-only
-  else
-    mkdir -p "$(dirname "$REPO_DIR")"
-    git clone --depth 1 "$REPO_URL" "$REPO_DIR"
+  if [[ -z "$PINNED_REV" ]]; then
+    echo "No pinned rev (config/understand-anything.json pin.rev or UA_REV)" >&2
+    return 1
+  fi
+  if [[ ! -d "$REPO_DIR/.git" ]]; then
+    mkdir -p "$REPO_DIR"
+    git -C "$REPO_DIR" init -q
+    git -C "$REPO_DIR" remote add origin "$REPO_URL"
+  fi
+  if [[ "$(git -C "$REPO_DIR" rev-parse HEAD 2>/dev/null || true)" != "$PINNED_REV" ]]; then
+    git -C "$REPO_DIR" fetch --depth 1 origin "$PINNED_REV"
+    git -C "$REPO_DIR" checkout -q --detach "$PINNED_REV"
+  fi
+  local actual
+  actual="$(git -C "$REPO_DIR" rev-parse HEAD)"
+  if [[ "$actual" != "$PINNED_REV" ]]; then
+    echo "Pin mismatch: checkout is $actual, expected $PINNED_REV" >&2
+    return 1
   fi
 }
 
@@ -58,7 +80,8 @@ ensure_plugin() {
 }
 
 plugin_status() {
-  local project
+  local check=0 project
+  if [[ "${1:-}" == "--check" ]]; then check=1; shift; fi
   project="$(project_dir "${1:-$PWD}")"
 
   echo "Understand-Anything status"
@@ -66,7 +89,14 @@ plugin_status() {
   echo "  checkout: $REPO_DIR"
   if [[ -d "$REPO_DIR/.git" ]]; then
     echo "  checkout_state: present"
-    echo "  checkout_commit: $(git -C "$REPO_DIR" rev-parse --short HEAD 2>/dev/null || echo unknown)"
+    local head_rev
+    head_rev="$(git -C "$REPO_DIR" rev-parse HEAD 2>/dev/null || echo unknown)"
+    echo "  checkout_commit: ${head_rev:0:7}"
+    if [[ "$head_rev" == "$PINNED_REV" ]]; then
+      echo "  pin: ${PINNED_REV:0:7} (match)"
+    else
+      echo "  pin: ${PINNED_REV:0:7} (MISMATCH; run: aq-understand-anything ensure)"
+    fi
   else
     echo "  checkout_state: missing"
   fi
@@ -101,6 +131,10 @@ plugin_status() {
   else
     echo "  graph: missing"
   fi
+
+  local rc=0
+  python3 "$SCRIPT_DIR/aq-graph-query" --root "$project" staleness ${check:+--check} || rc=$?
+  return "$rc"
 }
 
 validate_batches() {
@@ -238,7 +272,7 @@ main() {
       ;;
     status)
       shift
-      plugin_status "${1:-$PWD}"
+      plugin_status "$@"
       ;;
     validate-batches)
       shift

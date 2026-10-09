@@ -1856,6 +1856,26 @@
       "enabled": true
     },
     {
+      "id": "understand-graph-query",
+      "description": "Understand-Anything graph query CLI, staleness limits, MCP graph_query tool and dashboard summary route work on a fixture graph",
+      "trigger_paths": [
+        "scripts/ai/aq-graph-query",
+        "scripts/ai/lib/understand_graph.py",
+        "scripts/ai/aq-understand-anything",
+        "scripts/ai/aq-wiki",
+        "config/understand-anything.json",
+        "dashboard/backend/api/routes/understand.py",
+        "scripts/testing/test-graph-query.py"
+      ],
+      "command": [
+        "python3",
+        "scripts/testing/test-graph-query.py"
+      ],
+      "tier": "behavioral",
+      "timeout_seconds": 60,
+      "enabled": true
+    },
+    {
       "id": "aq-tempest-safe-intake",
       "description": "T3MP3ST facade stays metadata-only and blocks active execution while the external dual-use capability is in security intake",
       "trigger_paths": [
