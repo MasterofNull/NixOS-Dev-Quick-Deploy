@@ -1037,8 +1037,11 @@ in {
                 "AIDB_RATE_LIMIT_GLOBAL_RPH=10000"
                 # Bound fire-and-forget Qdrant vectorization so imports cannot starve foreground
                 # vector search or overload the local embedding server.
-                "AIDB_QDRANT_VECTORIZE_MAX_CONCURRENCY=2"
-                "AIDB_QDRANT_VECTORIZE_MAX_QUEUE=16"
+                # Concurrency matches the embed server's 4 slots; the larger queue lets the
+                # spool drain (30s cycle) backfill ~28k docs after the uuid5 id change in hours,
+                # not days. Overflow beyond the queue spools durably instead of dropping.
+                "AIDB_QDRANT_VECTORIZE_MAX_CONCURRENCY=4"
+                "AIDB_QDRANT_VECTORIZE_MAX_QUEUE=64"
                 "AIDB_QDRANT_VECTORIZE_TIMEOUT_S=45"
               ]
               ++ lib.optional mcp.postgres.enable
