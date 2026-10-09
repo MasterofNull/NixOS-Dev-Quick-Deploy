@@ -1,4 +1,6 @@
 ---
+name: aq-workflow
+description: "AQ harness session workflow: resume, hints, QA/health checks, delegation, commit gate and validation."
 doc_type: skill
 id: aq-workflow
 title: AQ Workflow Skill
