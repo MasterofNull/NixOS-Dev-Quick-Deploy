@@ -246,7 +246,7 @@ async def handle_hints_feedback(request: web.Request) -> web.Response:
         return web.json_response({"error": "helpful or score required"}, status=400)
 
     entry = {
-        "timestamp": datetime.now(timezone.utc).isoformat() + "Z",
+        "timestamp": datetime.now(timezone.utc).isoformat().replace("+00:00", "Z"),
         "hint_id": hint_id,
         "helpful": helpful,
         "score": score_val,
