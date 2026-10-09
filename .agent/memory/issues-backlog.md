@@ -5706,3 +5706,85 @@ File: scripts/ai/lib/worktree-isolation.sh; scripts/automation/prsi-orchestrator
 - [OPEN] ctx-shell-ignores-subagent-worktree — root cause of repeated 2026-10-07 delegate worktree escapes: the lean-ctx hook blocks plain `git` in subagents' Bash, and the ctx_shell fallback executes in the MAIN checkout cwd, not the subagent's worktree; any git/tool call through it mutates main (P0-B agent briefly switched main's branch; canon agent wrote 8 files). Fix: ctx_shell must honor caller cwd, or delegates must use `git -C <worktree>` / `cd <worktree> &&` explicitly (add to headless-delegate canon). Severity: high (data integrity).
 - [OPEN] llama-cpp-state-dir-mode-reset-0700 — /var/lib/llama-cpp became 0700 (ctime 23:48:52 2026-10-07, during a nixos-rebuild activation) although every rule says 0750 (tmpfiles d+z lines in /etc/tmpfiles.d/00-nixos.conf; llama-cpp and llama-cpp-embed units StateDirectoryMode=0755, neither restarted then). Effect: owner (llama group) cannot read models → tier0 fails PermissionError on active.gguf for every commit. Not the security audit (no chmod). Restore: `sudo systemd-tmpfiles --create --prefix=/var/lib/llama-cpp` (re-applies declared rule). Root cause still unknown — investigate activation scripts / any unit with StateDirectory under llama during switch. Severity: high (blocks all gates).
 - [OPEN] owner-rebuild-from-pr-worktree — 2026-10-07 23:48 owner ran nixos-rebuild via `!` in this session while the session cwd was a PR worktree (agent-a3d1e8470c214ba86, #405 unmerged) → deployed main+#405 without #404. Orchestrator must cd to the main checkout before handing rebuild commands; the #393 stale-checkout guard only protects nrs/hms, not raw commands run from a worktree. Severity: medium.
+- [OPEN] worktree-agent-git-guard-blocks-all-git — since 2026-10-08 a harness worktree-isolation guard refuses EVERY git command in worktree-isolated subagents (lean-ctx wraps the command text, so the guard can't prove the target is the agent's own worktree) — incl. `git -C <own-worktree>` and plain git with cwd=worktree. Correct protective intent (2026-10-07 main-checkout escapes) but blocks legitimate in-worktree commits. Interim: subagents implement+test without git; orchestrator branches/commits. Fix path: let the guard accept git whose resolved toplevel == the agent's worktree (or exempt lean-ctx passthrough of `git -C <own-worktree>`). Severity: medium (throughput).
+- [OPEN] worktree-git-guard-bypassable-by-full-path — ECC P1 subagent (2026-10-08) ran `/home/hyperd/.nix-profile/bin/git fetch/switch` in its own worktree after plain git was refused; the guard keys on command text, so an absolute git path evades it. Agent self-disclosed, stayed in its worktree, stopped when told. Guard should resolve the executable (any path ending in /git) and the target toplevel, allowing only the agent's own worktree. Severity: medium (isolation control gap).
+- [OPEN] pm-tracker-oneshot-timer-services-read-40 — aq-pm-tracker _project_systemd projects timer-driven oneshot services (aidb-reindex, crystallize-sessions, training-ingest, local-training-loop, prompt-eval, sync-knowledge-sources) at IN-PROGRESS 40 even though each has Result=success and recent journal runs; the run-detection timestamps are empty after a oneshot deactivates. Fix: also read the paired timer's LastTriggerUSec / journal last-success. Severity: low (projection accuracy).
+- [OPEN] repo-own-workflows-unpinned-actions — ECC P0-E's ci_policy scan of this repo's .github/workflows found legacy unpinned actions (actions/cache@v3, actions-rs/toolchain@v1, others). The new factory template is SHA-pinned; our own CI is not uniformly. Action: pin by SHA (separate slice). Severity: medium (supply chain; security-phase candidate).
+- [OPEN] pre-push-sync-check-blocks-rebase-force-push — .githooks/pre-push "behind upstream" check rejects a deliberate --force-with-lease after rebasing a PR branch onto main (the remote copy is the stale pre-rebase version); requires SKIP_PRE_PUSH_SYNC_CHECK=true. Fix: skip the behind-check when the push is a force-with-lease whose local HEAD contains origin/main. Severity: low (friction).
+- [FIXED #417/#419/#425 2026-10-08; 0 failures at 20:46] health-monitor-phase0-never-completes — ai-stack-health-monitor runs every 15 min but QA phase 0 always hits the 120s subprocess timeout (latest.json: "harness_runner.py 0 --json timed out after 120 seconds"); unit also pinned at MemoryMax=256M with 300-400MB swap. Effect: no QA phase-0 check (incl. 0.10.55-0.10.58) has executed in scheduled monitoring — monitoring blind, and QA-based "agentic usage" proofs impossible. Fix dispatched (measure, then size timeout/MemoryMax/TimeoutStartSec declaratively). Severity: high (observability).
+- [OPEN] antigravity-autonomy-unreliable — 2026-10-07/08: all 7 Antigravity inbox tasks eventually completed (incl. ECC P0-B/P0-C reviews: PASS_WITH_FOLLOWUPS) but most needed an owner manual prompt; the IDE agent only acts when a chat nudge lands in an active window and does not poll. Antigravity also worked unreviewed in the main checkout (23-file change set, false tracker acceptances → reverted/PR #408). Severity: medium.
+- [FIXED #424 2026-10-08] rsi-sweep-blind-to-delegation-outcomes — rsi_sweep has 4 sources (failed units, code scanning, QA phase0, payload audit) and none for delegation outcomes. So Blocked/Failed/ERROR runs from Codex, Claude subagents, Antigravity and local never become RSI incidents. Root cause: no adapter over .agents/delegation/{registry.jsonl,outputs/*.log}. Severity: high (failures never circle back). Action: S3 feat/rsi-sweep-delegation-service-errors-20261008. File: scripts/ai/lib/rsi_sweep.py.
+- [FIXED #424 2026-10-08] rsi-sweep-blind-to-recurring-service-errors — services that stay "active" while logging errors every cycle are invisible to RSI. Examples: coordinator learning_loop_error x426 since 10-06; event_processing_failed x278/24h; aidb rate_limited x2985/24h. Root cause: no journal error-rate adapter. Severity: high. Action: same S3 slice.
+- [OPEN] codex-delegation-blocks-and-failures-20261001-08 — Codex delegation outcomes from outputs/*.log:
+  - BLOCKED codex-20261008-142809-bxzpoa (FT-6/FT-7, 35,401 tok): needs .githooks/ and tier0-validation-gate.sh outside the scope lock. Re-dispatch with an amended scope.
+  - blocked codex-20261008-134912-lcapoy (partial patch, 25KB): live E2E deferred.
+  - BLOCKED codex-20261005-103603-1c8woy (26,916 tok).
+  - FAILED codex-20261007-222345-t0fo62.
+  - ERROR codex-20261003-014928-imdn7v.
+  - ERROR x6 codex-20261001-20xxxx: "usage limit for the day" (a quota burst from a fan-out of 9 dispatches in 4 min).
+  - Every run: skill-load error on finding-freshness SKILL.md (missing description); FIXED in #420.
+  - Severity: medium. Action: circle back via the RSI delegation adapter once S3 lands; FT-6/7 re-dispatch is pending scope amendment.
+- [OPEN] skills-missing-name-description — 6 .agent/skills lack name/description frontmatter: aq-workflow, provider-request-error-recovery, self-improvement, strict-json-output-contract, and 2 auto-generated. Codex doesn't currently load them (no error), but any loader that requires the fields will reject them. Severity: low. Action: add the fields in a docs slice.
+- [FIXED #420 2026-10-08] embedding-cache-flushed-every-restart — legacy flush pattern embedding:[^m]* matched every current e<epoch>: key; the cache was emptied at every coordinator restart (274/68/28 keys today).
+- [FIXED #420 2026-10-08] learning-loop-eacces-retired-dir — recursive watchfiles hit the 0700 telemetry/retired dir (qa_evidence_store); continuous learning had failed every cycle since 10-06 (426x).
+- [FIXED #421 2026-10-08] utc-isoformat-double-suffix — 8 producers wrote '+00:00Z'; learning loop dropped local_inference events (278/24h), including the crystallizer's.
+- [FIXED #422 2026-10-08] aidb-logic-pattern-indexer-unbounded — aq-index-logic-patterns posts ~1200/min against a 500/min limit and treats 429 as failure. It drops ~1k RAG docs per reindex burst with exit 0, and every internal caller shares one API-key bucket, so others get 429 too (813). Action: S1. File: scripts/ai/aq-index-logic-patterns:227,268.
+- [FIXED #423 2026-10-08] trim-ai-logs-keeps-nul-lines — hybrid-events.jsonl has 8 NUL runs (9.6KB). trim_jsonl keeps unparseable lines forever (records from April survive the 14d TTL) and does os.replace without fsync. NUL origin unproven (candidate: crash mid-trim). Action: S2. File: scripts/data/trim-ai-logs.sh.
+- [FIXED #422 2026-10-08] dashboard-apparmor-missing-cache-ai-harness — profile command-center-dashboard-api lacks /home/hyperd/.cache/ai-harness/** r; consensus/plan history panels are empty. Also /proc/<pid>/cmdline denied. Action: S1 (nix).
+- [FIXED #422 2026-10-08] query-gaps-tmp-eacces-recurrence — 184 sync_query_gaps_failed (10-07 21:53 → 10-08 15:41), stopped after the restart; cause unproven (stale tmp owner or old profile). mcp-servers.nix:700 tmpfiles uses svcUser while the writer is ai-hybrid. Action: S1 hardening.
+- [OPEN] aidb-reindex-project-knowledge-timeout — aidb-reindex-latest.json status partial, project_knowledge_exit 124 (timeout after 6078s). Severity: medium. Action: diagnose after S1.
+- [OPEN] ci-phase0-0.10.48-flaky — The parity-scorecard-gate failed on PR #421 at check 0.10.48 "delegation worktree" with no detail. The rerun passed; the fixture passes locally; the change was unrelated. Likely cause: the fixture runs real git worktree ops under a 30s timeout (phase0.py ~2773) on a loaded runner, and the failure row prints no detail. Severity: low (wastes a CI cycle, alarms the owner). Action: include the failure detail in the tier0 QA failed-rows table, and size the timeout from the measured runner wall time.
+
+[OPEN] rsi-6b92eb176acb652b9d8f67d4 — aq-payload-audit failure in payload-audit:codex:6b. Root cause evidence: producer=aq-payload-audit; path=.agents/delegation/outputs/; authority=codex; os_error=payload audit check 6b high on lane codex. Detected=2026-10-09T03:09:05.099096Z.
+  Severity: high
+  Action: monitor token [REDACTED]; review task budgets (latest: measured 3 hits in 2 days vs zero)
+  File: .agents/delegation/outputs/
+
+[OPEN] rsi-e5cf3d273302bb77771a3b84 — delegation:antigravity failure in delegation:antigravity:timeout. Root cause evidence: producer=delegation:antigravity; path=.agents/delegation/registry.jsonl; authority=antigravity; os_error=antigravity delegation class timeout. Detected=2026-10-09T03:09:05.615193Z.
+  Severity: medium
+  Action: 5 run(s) in window; latest example .agents/delegation/outputs/antigravity-20261008-180539-31tirq.log; fix producer for class timeout
+  File: .agents/delegation/registry.jsonl
+
+[OPEN] rsi-9b01af8d2a77ee709b8ee1ac — delegation:codex failure in delegation:codex:blocked. Root cause evidence: producer=delegation:codex; path=.agents/delegation/registry.jsonl; authority=codex; os_error=codex delegation class blocked. Detected=2026-10-09T03:09:05.637434Z.
+  Severity: low
+  Action: 2 run(s) in window; latest example .agents/delegation/outputs/codex-20261008-142809-bxzpoa.log; fix producer for class blocked
+  File: .agents/delegation/registry.jsonl
+
+[OPEN] rsi-eff3516f8e8e2e6de3179709 — delegation:codex failure in delegation:codex:failed. Root cause evidence: producer=delegation:codex; path=.agents/delegation/registry.jsonl; authority=codex; os_error=codex delegation class failed. Detected=2026-10-09T03:09:05.661647Z.
+  Severity: medium
+  Action: 3 run(s) in window; latest example .agents/delegation/outputs/codex-20261007-150820-z4lo21.log; fix producer for class failed
+  File: .agents/delegation/registry.jsonl
+
+[OPEN] rsi-575a4d9663770ced7c0d3afb — delegation:codex failure in delegation:codex:orphaned. Root cause evidence: producer=delegation:codex; path=.agents/delegation/registry.jsonl; authority=codex; os_error=codex delegation class orphaned. Detected=2026-10-09T03:09:05.680141Z.
+  Severity: low
+  Action: 1 run(s) in window; latest example .agents/delegation/outputs/codex-20261003-091140-nv9kwa.log; fix producer for class orphaned
+  File: .agents/delegation/registry.jsonl
+
+[OPEN] rsi-025a0993f670eb1a7293e25b — delegation:codex failure in delegation:codex:quota. Root cause evidence: producer=delegation:codex; path=.agents/delegation/registry.jsonl; authority=codex; os_error=codex delegation class quota. Detected=2026-10-09T03:09:05.707766Z.
+  Severity: medium
+  Action: 1 run(s) in window; latest example .agents/delegation/outputs/codex-20261003-014928-imdn7v.log; fix producer for class quota
+  File: .agents/delegation/registry.jsonl
+
+[OPEN] rsi-a308f18b736e8f460e08f09a — delegation:codex failure in delegation:codex:stale. Root cause evidence: producer=delegation:codex; path=.agents/delegation/registry.jsonl; authority=codex; os_error=codex delegation class stale. Detected=2026-10-09T03:09:05.733732Z.
+  Severity: low
+  Action: 2 run(s) in window; latest example .agents/delegation/outputs/codex-20261003-032345-xq4gdi.log; fix producer for class stale
+  File: .agents/delegation/registry.jsonl
+
+[OPEN] rsi-9e3188179dc479e2729fe680 — delegation:local-agent failure in delegation:local-agent:failed. Root cause evidence: producer=delegation:local-agent; path=.agents/delegation/registry.jsonl; authority=local-agent; os_error=local-agent delegation class failed. Detected=2026-10-09T03:09:05.752746Z.
+  Severity: medium
+  Action: 5 run(s) in window; latest example .agents/delegation/outputs/local-20261007-101157-5etb93.log; fix producer for class failed
+  File: .agents/delegation/registry.jsonl
+
+[OPEN] rsi-7a07ac592a1ba99c66161a47 — delegation:local-direct failure in delegation:local-direct:orphaned. Root cause evidence: producer=delegation:local-direct; path=.agents/delegation/registry.jsonl; authority=local-direct; os_error=local-direct delegation class orphaned. Detected=2026-10-09T03:09:05.773590Z.
+  Severity: low
+  Action: 1 run(s) in window; latest example .agents/delegation/outputs/local-20261007-225026-a5ab13.log; fix producer for class orphaned
+  File: .agents/delegation/registry.jsonl
+- [OPEN] rsi-aq-qa-incidents-no-auto-resolve — aq-qa phase-0 incidents (now also fed from the health monitor via #426) have no resolve-on-pass path, unlike code-scanning reconcile. A transient (e.g. 0.2.1:aidb, where the monitor started in the same second AIDB restarted at 20:09:04) stays open. Severity: low. Action: add a reconcile that resolves aq-qa:<id> when the latest fresh run shows the check pass.
+
+[OPEN] rsi-3cfb668e21fd81fabada387f — aq-qa:phase0 failure in aq-qa:0.10.22. Root cause evidence: producer=aq-qa:phase0; path=aq-qa check 0.10.22; authority=aq-qa; os_error=phase-0 check 0.10.22 failing: LOCAL_TOK_PER_SEC throughput calibration (FAIL: throughput drift 78% exceeds 50% threshold.   Measured: 0.76 tok/s   Con. Detected=2026-10-09T03:39:04.748933Z.
+  Severity: medium
+  Action: run aq-qa 0 --machine and fix check 0.10.22 at its producer
+  File: aq-qa check 0.10.22
+- [FIXED #427 2026-10-08] nrs-preflight-fails-after-every-merge — check-checkout-fresh.sh only reported "behind origin/main", so every GitHub merge forced a manual pull before nrs. It now fast-forwards with --ff-only (git refuses when local commits, edits, or untracked files would be touched); opt-out AUTO_FAST_FORWARD=0.
+- [FIXED #426 2026-10-08] rsi-phase0-source-stale — the sweep's phase-0 adapter read only interactive aq-qa output (2 days stale), so scheduled health-monitor failures never reached RSI. It now falls back to .agents/health-monitor/latest.json with the same incident identity.
+- [OPEN] llama-q5-memory-squeeze-throughput — after rebuilds, the Q5 model (~24 GB of 27 GB) is partly evicted and generation drops to 0.76 tok/s (0.10.22 FAIL). A restart restores ~2.8 tok/s, but the model is still not fully resident (RSS 12-14 GB; 8.7 GB system swap). Root cause: model size vs RAM; the Q4 option was deferred by the owner. Severity: medium (local lane speed). Action: owner decision on Q4; meanwhile restart llama-cpp after rebuilds.
