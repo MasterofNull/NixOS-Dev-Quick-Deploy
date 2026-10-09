@@ -1843,7 +1843,7 @@ class MonitoringServer:
             # Validate input using query validator
             try:
                 validated_request = VectorSearchRequest(
-                    collection=payload.get("collection", "nixos_docs"),
+                    collection=payload.get("collection", "best-practices"),
                     query=payload.get("query", ""),
                     limit=payload.get("limit", 10),
                     offset=payload.get("offset", 0),

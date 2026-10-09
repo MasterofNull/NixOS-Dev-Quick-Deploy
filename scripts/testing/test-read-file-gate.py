@@ -60,6 +60,24 @@ def _live_backends_available() -> bool:
 LIVE = _live_backends_available()
 
 
+def _drop_test_collections(task_id: str) -> None:
+    """Delete live scratch collections this test may have created.
+
+    The gate names its collection `agent-ctx-<task_id>-rfgate-<random>`, so the
+    test cannot know the exact name; match only this test's own prefix.
+    """
+    prefix = context_cache._collection_name(task_id) + "-rfgate-"
+    try:
+        import httpx
+        resp = httpx.get(f"{context_cache.QDRANT_URL}/collections", timeout=8.0)
+        names = [c["name"] for c in resp.json()["result"]["collections"]]
+    except Exception:
+        return
+    for name in names:
+        if name.startswith(prefix):
+            context_cache.delete_collection(name)
+
+
 def _make_large_python_content(n_funcs: int = 220) -> str:
     """A synthetic file comfortably over the ~6000-char gate threshold, with
     enough def markers for the outline scan to find real structure."""
@@ -95,9 +113,12 @@ class TestLargeFileGate(unittest.TestCase):
         task_id = "test-task-large-live" if LIVE else "test-task-large-stub"
 
         if LIVE:
-            gated_text, was_gated = ae._gate_large_file_content(
-                content, "fake/large_file.py", task_objective, task_id,
-            )
+            try:
+                gated_text, was_gated = ae._gate_large_file_content(
+                    content, "fake/large_file.py", task_objective, task_id,
+                )
+            finally:
+                _drop_test_collections(task_id)
         else:
             fake_collection = "fake-rfgate-collection"
             fake_retrieved = [
