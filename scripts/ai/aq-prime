@@ -505,6 +505,10 @@ def format_text_output(data: dict[str, Any]) -> str:
     lines.append("  - docs/agent-guides/22-CONTINUOUS-LEARNING.md")
     lines.append("  - docs/agent-guides/45-PROGRESSIVE-DISCLOSURE.md  # token-efficient loading")
     lines.append("")
+    lines.append("Coordinator MCP tools (call instead of guessing):")
+    lines.append("  - workflow_blueprints  # multi-step / planned work: ready phase+role templates")
+    lines.append("  - tooling_manifest     # which tool to use: live tool list + when-to-use")
+    lines.append("")
 
     # Disclosure Stats
     level_info = data["level_info"]

@@ -2757,10 +2757,19 @@ class HintsEngine:
     def _hints_from_static_rules(self, query_tokens: List[str]) -> List[Hint]:
         hints: List[Hint] = []
         token_set = set(query_tokens)
+        # Multi-word keywords ("new script", "hash mismatch") can never be a single
+        # token; match them as consecutive tokens instead.
+        token_line = " " + " ".join(query_tokens) + " "
+
+        def _kw_match(kw: str) -> bool:
+            parts = re.findall(r"[a-z0-9]+", kw.lower())
+            if len(parts) <= 1:
+                return kw in token_set or (bool(parts) and parts[0] in token_set)
+            return (" " + " ".join(parts) + " ") in token_line
 
         for rule in _STATIC_RULES:
             keywords: List[str] = rule["keywords"]
-            matched = any(kw in token_set for kw in keywords)
+            matched = any(_kw_match(kw) for kw in keywords)
             if not matched:
                 continue
 

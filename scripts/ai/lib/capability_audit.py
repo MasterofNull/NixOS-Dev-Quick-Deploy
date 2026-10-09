@@ -38,8 +38,25 @@ LIVE_CLAIM_STATES = {"enabled", "active", "on"}
 # Only these maturities assert "integrated and in use". available-unused / partial / enabled-unmeasured /
 # scope-gated / quarantined are honest non-claims and can never be a STALE-CLAIM.
 LIVE_CLAIM_MATURITY = {"integrated", "production", "official"}
-# artifact path (relative to live root) -> max age in days before it is stale
-ARTIFACT_REFRESH_DAYS = {".understand-anything/knowledge-graph.json": 14}
+GRAPH_ARTIFACT = ".understand-anything/knowledge-graph.json"
+_GRAPH_MAX_AGE_FALLBACK = 14  # used only when config/understand-anything.json is unreadable
+
+
+def artifact_refresh_days(repo_root: Path) -> Dict[str, float]:
+    """Artifact path (relative to live root) -> max age in days before it is stale.
+
+    The graph limit lives in config/understand-anything.json (staleness.max_age_days)
+    so aq-graph-query staleness, phase-0 0.10.59 and this audit share one number.
+    """
+    days: float = _GRAPH_MAX_AGE_FALLBACK
+    try:
+        raw = json.loads((Path(repo_root) / "config" / "understand-anything.json").read_text(encoding="utf-8"))
+        value = raw["staleness"]["max_age_days"]
+        if isinstance(value, (int, float)) and not isinstance(value, bool) and value > 0:
+            days = value
+    except (OSError, ValueError, KeyError, TypeError):
+        pass
+    return {GRAPH_ARTIFACT: days}
 
 CODE_EXT = {".py", ".sh", ".nix", ".js", ".ts", ".json", ".yaml", ".yml", ".toml", ".html", ".bash", ".rs"}
 SKIP_DIRS = {"__pycache__", "node_modules", ".git", "archive", ".venv", "target"}
@@ -522,7 +539,8 @@ def run_audit(
             caps[k]["catalog"].append({"id": e["id"], "state": e.get("state"), "maturity": e.get("maturity"), "usage_evidence": e.get("usage_evidence"),
                                        "refs": [norm(Path(r).name) for r in e.get("primary_refs", [])]})
 
-    for rel, days_max in ARTIFACT_REFRESH_DAYS.items():
+    artifact_days = artifact_refresh_days(repo_root)
+    for rel, days_max in artifact_days.items():
         add({"name": Path(rel).name + "@" + rel, "kind": "artifact", "path": rel})
 
     # --- usage evidence ----------------------------------------------------
@@ -656,7 +674,7 @@ def run_audit(
             p = live_root / rel
             if p.exists():
                 age_days = round((now - p.stat().st_mtime) / 86400, 1)
-                artifact_stale = age_days > ARTIFACT_REFRESH_DAYS[rel]
+                artifact_stale = age_days > artifact_days[rel]
             else:
                 artifact_stale = True
             used = not artifact_stale
