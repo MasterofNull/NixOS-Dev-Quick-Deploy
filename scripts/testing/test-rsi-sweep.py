@@ -327,6 +327,154 @@ class RunTests(unittest.TestCase):
         self.assertFalse((rsi._RUNTIME / "rsi-incidents.json").exists())
 
 
+class ResolveTests(unittest.TestCase):
+    """Sweep resolves open incidents only on positive re-observation, never on unknown."""
+
+    def setUp(self):
+        self.tmp = tempfile.TemporaryDirectory()
+        self.addCleanup(self.tmp.cleanup)
+        self.root = Path(self.tmp.name)
+        for name, value in {"_RUNTIME": self.root, "_BACKLOG": self.root / "b.md", "_WORKAROUNDS": self.root / "w.md"}.items():
+            p = patch.object(rsi, name, value); p.start(); self.addCleanup(p.stop)
+        p = patch.object(rsi, "_event"); p.start(); self.addCleanup(p.stop)
+
+    def ledger(self):
+        return json.loads((rsi._RUNTIME / "rsi-incidents.json").read_text())["incidents"]
+
+    def sweep(self, adapter, name="src", dry_run=False):
+        out = []
+        with patch("builtins.print", side_effect=lambda *a, **k: out.append(a[0])):
+            sw.run(dry_run=dry_run, as_json=True, adapters={name: adapter})
+        return json.loads(out[0])
+
+    def status(self, producer):
+        return {i["path"]: i["status"] for i in self.ledger().values() if i["producer"] == producer}
+
+    def test_failed_units_record_then_resolve_and_partial_overlap(self):
+        two = "● a.service loaded failed failed A\n● b.service loaded failed failed B\n"
+        self.sweep(lambda: sw.adapter_failed_units(lambda: _proc(two)))
+        self.assertEqual(self.status("systemd:failed-unit"), {"a.service": "open", "b.service": "open"})
+        s = self.sweep(lambda: sw.adapter_failed_units(lambda: _proc("● b.service loaded failed failed B\n")))
+        self.assertEqual([r["source"] for r in s["resolved"]], ["src"])
+        self.assertEqual(self.status("systemd:failed-unit"), {"a.service": "resolved", "b.service": "open"})
+        self.sweep(lambda: sw.adapter_failed_units(lambda: _proc("")))
+        self.assertEqual(set(self.status("systemd:failed-unit").values()), {"resolved"})
+        self.assertIn("[DONE", rsi._BACKLOG.read_text())
+
+    def test_unknown_never_resolves(self):
+        self.sweep(lambda: sw.adapter_failed_units(lambda: _proc("● a.service loaded failed failed A\n")))
+        s = self.sweep(lambda: sw.adapter_failed_units(lambda: _proc("", 1)))
+        self.assertEqual(s["resolved"], [])
+        self.assertEqual(self.status("systemd:failed-unit"), {"a.service": "open"})
+
+    def test_dry_run_reports_but_writes_nothing(self):
+        self.sweep(lambda: sw.adapter_failed_units(lambda: _proc("● a.service loaded failed failed A\n")))
+        before = (rsi._RUNTIME / "rsi-incidents.json").read_text()
+        s = self.sweep(lambda: sw.adapter_failed_units(lambda: _proc("")), dry_run=True)
+        self.assertEqual(len(s["resolved"]), 1)
+        self.assertEqual((rsi._RUNTIME / "rsi-incidents.json").read_text(), before)
+        self.assertEqual(self.status("systemd:failed-unit"), {"a.service": "open"})
+
+    def test_qa_progress_resolve_on_pass_skip_only(self):
+        p = self.root / "p.jsonl"
+        def write(*recs): p.write_text("\n".join(json.dumps(r) for r in recs))
+        ad = lambda: sw.adapter_qa_phase0(p, max_age_s=3600, health_monitor_json=self.root / "none.json")
+        write({"check_id": "0.2.1", "state": "fail", "description": "aidb"}, {"check_id": "0.3.1", "state": "fail", "description": "x"})
+        self.sweep(ad)
+        write({"check_id": "0.2.1", "state": "pass"}, {"check_id": "0.3.1", "state": "fail", "description": "x"})
+        s = self.sweep(ad)
+        self.assertEqual(self.status("aq-qa:phase0"), {"aq-qa check 0.2.1": "resolved", "aq-qa check 0.3.1": "open"})
+        self.assertIn("phase-0 check 0.2.1 passing in aq-qa progress run", s["resolved"][0]["evidence"])
+        # check absent from the run, or still running: no evidence
+        write({"check_id": "0.9.9", "state": "pass"})
+        self.sweep(ad)
+        self.assertEqual(self.status("aq-qa:phase0")["aq-qa check 0.3.1"], "open")
+        write({"check_id": "0.3.1", "state": "running"})
+        self.assertEqual(self.sweep(ad)["resolved"], [])
+
+    def test_qa_health_monitor_resolve(self):
+        m = self.root / "m.json"
+        ad = lambda: sw.adapter_qa_phase0(self.root / "missing.jsonl", max_age_s=3600, health_monitor_json=m)
+        def write(**ph): m.write_text(json.dumps({"phase_results": [dict(phase=0, **ph)]}))
+        write(returncode=1, total=5, failures=[{"id": "0.2.1", "label": "aidb"}, {"id": "0.4.1", "label": "y"}])
+        self.sweep(ad)
+        write(returncode=1, total=5, failures=[{"id": "0.4.1", "label": "y"}])
+        self.sweep(ad)
+        self.assertEqual(self.status("aq-qa:phase0"), {"aq-qa check 0.2.1": "resolved", "aq-qa check 0.4.1": "open"})
+        write(returncode=0, total=5, failures=[])
+        s = self.sweep(ad)
+        self.assertIn("health-monitor JSON run", s["resolved"][0]["evidence"])
+        self.assertEqual(set(self.status("aq-qa:phase0").values()), {"resolved"})
+
+    def test_qa_health_monitor_nonzero_without_total_or_detail_is_unknown(self):
+        m = self.root / "m.json"
+        ad = lambda: sw.adapter_qa_phase0(self.root / "missing.jsonl", max_age_s=3600, health_monitor_json=m)
+        m.write_text(json.dumps({"phase_results": [{"phase": 0, "returncode": 1, "total": 5, "failures": [{"id": "0.2.1"}]}]}))
+        self.sweep(ad)
+        m.write_text(json.dumps({"phase_results": [{"phase": 0, "returncode": 1, "total": 0, "failures": []}]}))
+        self.assertEqual(self.sweep(ad)["resolved"], [])
+        self.assertEqual(self.status("aq-qa:phase0"), {"aq-qa check 0.2.1": "open"})
+
+    def test_service_error_rate_resolve_requires_read_unit(self):
+        bad = "\n".join(json.dumps({"level": "error", "event": "boom"}) for _ in range(6))
+        run = lambda out, rc=0: (lambda u: _proc(out, rc))
+        mk = lambda r, units: (lambda: sw.adapter_service_error_rate(r, units=units, window_s=60, min_count=5))
+        self.sweep(mk(run(bad), ["u1"]))
+        self.assertEqual(self.sweep(mk(run("", 1), ["u1"]))["resolved"], [])
+        self.assertEqual(self.sweep(mk(run(""), ["u2"]))["resolved"], [])  # u1 not read this time
+        s = self.sweep(mk(run("quiet"), ["u1"]))
+        self.assertEqual(len(s["resolved"]), 1)
+        self.assertEqual(set(self.status("journal:u1").values()), {"resolved"})
+
+    def test_delegation_resolve_only_when_registry_read_and_class_absent(self):
+        reg = self.root / "reg.jsonl"
+        now = time.time()
+        iso = lambda t: time.strftime("%Y-%m-%dT%H:%M:%SZ", time.gmtime(t))
+        def write(*recs): reg.write_text("\n".join(json.dumps(dict(r, created=iso(now - 60))) for r in recs))
+        ad = lambda: sw.adapter_delegation_outcomes(reg, window_s=3600, now=now)
+        write({"id": "1", "agent": "codex", "status": "failed"}, {"id": "2", "agent": "local", "status": "timeout"})
+        self.sweep(ad)
+        write({"id": "3", "agent": "local", "status": "timeout"})
+        self.sweep(ad)
+        self.assertEqual(self.status("delegation:codex"), {".agents/delegation/registry.jsonl": "resolved"})
+        self.assertEqual(self.status("delegation:local"), {".agents/delegation/registry.jsonl": "open"})
+        reg.unlink()  # unreadable registry -> unknown -> nothing resolves
+        self.assertEqual(self.sweep(ad)["resolved"], [])
+        self.assertEqual(self.status("delegation:local"), {".agents/delegation/registry.jsonl": "open"})
+
+    def test_delegation_missing_log_blocks_marker_class_resolution(self):
+        reg = self.root / "reg.jsonl"
+        now = time.time()
+        created = time.strftime("%Y-%m-%dT%H:%M:%SZ", time.gmtime(now - 60))
+        log = self.root / "out.log"
+        rec = lambda **kw: json.dumps(dict(id="1", agent="codex", created=created, **kw))
+        ad = lambda: sw.adapter_delegation_outcomes(reg, window_s=3600, now=now)
+        log.write_text("work\nBlocked: need approval\n")
+        reg.write_text(rec(status="done", output_file=str(log)))
+        self.sweep(ad)
+        self.assertEqual(self.status("delegation:codex"), {".agents/delegation/registry.jsonl": "open"})
+        # (a) log archived: lane has an unreadable log -> blocked must stay open
+        log.unlink()
+        s = self.sweep(ad)
+        self.assertEqual(s["resolved"], [])
+        self.assertIn("1 unreadable log", s["sources"]["src"]["detail"])
+        self.assertEqual(set(self.status("delegation:codex").values()), {"open"})
+        # (b) log readable and marker-free -> resolves
+        log.write_text("work\nall good\n")
+        self.assertEqual(len(self.sweep(ad)["resolved"]), 1)
+        self.assertEqual(set(self.status("delegation:codex").values()), {"resolved"})
+
+    def test_delegation_missing_log_does_not_block_status_class(self):
+        reg = self.root / "reg.jsonl"
+        now = time.time()
+        created = time.strftime("%Y-%m-%dT%H:%M:%SZ", time.gmtime(now - 60))
+        ad = lambda: sw.adapter_delegation_outcomes(reg, window_s=3600, now=now)
+        reg.write_text(json.dumps(dict(id="1", agent="codex", created=created, status="failed")))
+        self.sweep(ad)
+        reg.write_text(json.dumps(dict(id="2", agent="codex", created=created, status="done",
+                                       output_file=str(self.root / "gone.log"))))
+        self.assertEqual(len(self.sweep(ad)["resolved"]), 1)
+
 class DelegationServiceTests(unittest.TestCase):
     def _reg(self, d, rows):
         reg = Path(d) / "registry.jsonl"
