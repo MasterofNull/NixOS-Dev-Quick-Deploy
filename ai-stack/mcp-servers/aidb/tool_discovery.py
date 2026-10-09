@@ -24,6 +24,16 @@ from pydantic import BaseModel, Field
 logger = structlog.get_logger()
 
 
+def _is_missing_collection_error(exc: Exception) -> bool:
+    text = str(exc).lower()
+    return (
+        getattr(exc, "status_code", None) == 404
+        or "doesn't exist" in text
+        or "does not exist" in text
+        or "not found" in text
+    )
+
+
 class ToolMetadata(BaseModel):
     """Metadata for a discovered tool"""
     tool_id: str
@@ -420,6 +430,11 @@ class ToolDiscoveryEngine:
                 logger.info("tools_indexed", count=len(points))
 
         except Exception as e:
+            if _is_missing_collection_error(e):
+                if not getattr(self, "_missing_logged", False):
+                    self._missing_logged = True
+                    logger.debug("tool_indexing_collection_absent", collection="mcp-semantic-search")
+                return
             logger.error("tool_indexing_failed", error=str(e))
 
     async def _generate_embedding(self, text: str) -> Optional[List[float]]:
@@ -491,6 +506,13 @@ class ToolDiscoveryEngine:
             return tools
 
         except Exception as e:
+            if _is_missing_collection_error(e):
+                # Collection is created by hybrid-coordinator init; until then
+                # semantic search has no store. Not an error worth paging on.
+                if not getattr(self, "_missing_logged", False):
+                    self._missing_logged = True
+                    logger.debug("tool_search_collection_absent", collection="mcp-semantic-search")
+                return []
             logger.error("tool_search_failed", error=str(e))
             return []
 

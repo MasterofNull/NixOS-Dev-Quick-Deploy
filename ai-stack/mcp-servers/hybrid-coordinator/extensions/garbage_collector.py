@@ -298,6 +298,36 @@ class GarbageCollector:
 
                 return deleted_count
 
+    @staticmethod
+    def _is_missing_collection_error(exc: Exception) -> bool:
+        text = str(exc).lower()
+        return (
+            getattr(exc, "status_code", None) == 404
+            or "doesn't exist" in text
+            or "does not exist" in text
+            or "not found" in text
+        )
+
+    def _log_missing_collection_once(self, name: str) -> None:
+        seen = self.__dict__.setdefault("_missing_collections_logged", set())
+        if name not in seen:
+            seen.add(name)
+            logger.debug("Qdrant collection %s absent; skipping orphan cleanup", name)
+
+    def _qdrant_collection_present(self, name: str) -> bool:
+        try:
+            exists = self.qdrant.collection_exists(name)
+        except AttributeError:
+            return True  # older client: fall through to scroll + 404 handling
+        except Exception as exc:
+            if self._is_missing_collection_error(exc):
+                exists = False
+            else:
+                return True
+        if not exists:
+            self._log_missing_collection_once(name)
+        return bool(exists)
+
     async def cleanup_qdrant_orphans(self) -> int:
         """
         Remove vectors from Qdrant that have no corresponding database entry.
@@ -313,6 +343,12 @@ class GarbageCollector:
         with GC_EXECUTION_TIME.labels(operation="cleanup_orphans").time():
             try:
                 collection_name = "solved_issues"
+
+                # solved_issues is a PostgreSQL table; no Qdrant collection of
+                # that name is provisioned (solutions live in error-solutions).
+                # Absence means there are no orphan vectors to clean.
+                if not self._qdrant_collection_present(collection_name):
+                    return 0
 
                 # Get all vector IDs from Qdrant
                 # Note: This uses scroll API for large collections
@@ -371,6 +407,9 @@ class GarbageCollector:
                 return deleted_count
 
             except Exception as e:
+                if self._is_missing_collection_error(e):
+                    self._log_missing_collection_once("solved_issues")
+                    return 0
                 logger.error(f"Failed to cleanup Qdrant orphans: {e}", exc_info=True)
                 return 0
 

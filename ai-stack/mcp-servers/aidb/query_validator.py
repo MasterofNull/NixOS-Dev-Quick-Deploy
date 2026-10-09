@@ -366,7 +366,7 @@ if __name__ == "__main__":
     print("\nTest 1: Valid query")
     try:
         req = VectorSearchRequest(
-            collection="nixos_docs",
+            collection="best-practices",
             query="How do I install vim?",
             limit=10,
             offset=0
@@ -391,7 +391,7 @@ if __name__ == "__main__":
     print("\nTest 3: Malicious query (XSS)")
     try:
         req = VectorSearchRequest(
-            collection="nixos_docs",
+            collection="best-practices",
             query="<script>alert('xss')</script>",
             limit=10
         )
@@ -403,7 +403,7 @@ if __name__ == "__main__":
     print("\nTest 4: Query too large")
     try:
         req = VectorSearchRequest(
-            collection="nixos_docs",
+            collection="best-practices",
             query="x" * 11_000,  # 11KB
             limit=10
         )
