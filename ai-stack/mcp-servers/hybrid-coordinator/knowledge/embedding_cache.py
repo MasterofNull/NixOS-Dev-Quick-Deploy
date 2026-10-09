@@ -65,15 +65,14 @@ class EmbeddingCache:
             # These were written by an older version of _text_to_key and carry
             # vectors from an unknown embedding space.
             if flush_on_model_change:
-                # Legacy keys match the bare prefix with no "m<slug>:" segment.
-                # They look like  "embedding:<64-hex-chars>"  (no 'm' after prefix).
-                legacy_pattern = f"{self.key_prefix}[^m]*"
+                # Legacy keys are the bare  "embedding:<64-hex-chars>"  form. Every
+                # current form ("e<epoch>:m<slug>:..." and "m<slug>:...") has a ':'
+                # segment; matching on a leading 'm' alone flushed the whole live
+                # cache on every restart once the epoch segment was added.
                 keys = []
-                async for key in self.redis.scan_iter(match=legacy_pattern):
-                    # Exclude keys that already carry the new model-slug format.
+                async for key in self.redis.scan_iter(match=f"{self.key_prefix}*"):
                     key_str = key.decode("utf-8") if isinstance(key, bytes) else key
-                    suffix = key_str[len(self.key_prefix):]
-                    if not suffix.startswith("m"):
+                    if ":" not in key_str[len(self.key_prefix):]:
                         keys.append(key)
                 count = 0
                 if keys:
