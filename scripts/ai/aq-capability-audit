@@ -1,0 +1,47 @@
+#!/usr/bin/env python3
+"""aq-capability-audit - deterministic, read-only capability integration audit.
+
+Classifies every capability (catalog, scripts/ai, skills, MCP tools, systemd
+units) as ACTIVE / UNUSED-AVAILABLE / UNDISCOVERABLE / STALE-CLAIM /
+DEAD-CANDIDATE / BROKEN with an advisory next_action.  No LLM, no writes
+(except an explicit --out file), never archives anything.
+"""
+import argparse
+import json
+import sys
+from pathlib import Path
+
+HERE = Path(__file__).resolve().parent
+sys.path.insert(0, str(HERE / "lib"))
+import capability_audit as ca  # noqa: E402
+
+
+def main() -> int:
+    ap = argparse.ArgumentParser(description=__doc__.splitlines()[0])
+    ap.add_argument("--json", action="store_true", help="emit JSON instead of the human summary")
+    ap.add_argument("--out", help="also write the JSON report to this path")
+    ap.add_argument("--days", type=int, default=30, help="usage window in days (default 30)")
+    ap.add_argument("--repo-root", default=str(HERE.parent.parent), help="tree to scan statically")
+    ap.add_argument("--live-root", help="tree holding runtime state (delegation, artifacts); default repo root")
+    ap.add_argument("--delegation-dir")
+    ap.add_argument("--tool-audit", default="/var/log/ai-audit-sidecar/tool-audit.jsonl")
+    ap.add_argument("--telemetry-dir", default="/var/lib/ai-stack/hybrid/telemetry")
+    ap.add_argument("--no-systemd", action="store_true", help="skip systemctl/journalctl probes")
+    ap.add_argument("--no-journal", action="store_true", help="skip per-unit journalctl probes")
+    ap.add_argument("--top", type=int, default=10, help="rows per class in the human summary")
+    a = ap.parse_args()
+    rep = ca.run_audit(
+        Path(a.repo_root), Path(a.live_root) if a.live_root else None, days=a.days,
+        tool_audit=Path(a.tool_audit), telemetry_dir=Path(a.telemetry_dir),
+        delegation_dir=Path(a.delegation_dir) if a.delegation_dir else None,
+        use_systemd=not a.no_systemd, use_journal=not a.no_journal,
+    )
+    if a.out:
+        Path(a.out).parent.mkdir(parents=True, exist_ok=True)
+        Path(a.out).write_text(json.dumps(rep, indent=1) + "\n")
+    print(json.dumps(rep, indent=1) if a.json else ca.render_human(rep, a.top))
+    return 0
+
+
+if __name__ == "__main__":
+    sys.exit(main())
