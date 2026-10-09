@@ -1,4 +1,6 @@
 ---
+name: provider-request-error-recovery
+description: "Recover from provider/LLM request errors (llama.cpp, delegation) with bounded retries and clear failure capture."
 doc_type: skill
 id: provider-request-error-recovery
 title: Provider Request Error Recovery
