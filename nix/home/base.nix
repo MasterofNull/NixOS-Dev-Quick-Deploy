@@ -2005,11 +2005,25 @@ if changed:
 
     codex_cfg="$HOME/.codex/config.toml"
     touch "$codex_cfg"
+    if [ ! -s "$codex_cfg" ]; then
+      printf 'approval_policy = "on-request"\n' > "$codex_cfg"
+    fi
     codex_tmp="$(mktemp)"
+    # Named permission profiles do not compose with legacy sandbox settings.
+    # Keep their filesystem/network policy instead of silently overriding it.
     ${pkgs.yq-go}/bin/yq -p toml -o toml '
       del(.features.codex_hooks)
       | del(.projects."/")
       | .projects."${repoPath}".trust_level = "trusted"
+      | .approval_policy = "on-request"
+      | .approvals_reviewer = "user"
+      | with(select(.permissions == null and .default_permissions == null);
+          .sandbox_mode = "workspace-write"
+          | .sandbox_workspace_write.network_access = true
+          | .sandbox_workspace_write.writable_roots = ["${repoPath}"]
+          | .sandbox_workspace_write.exclude_slash_tmp = false
+          | .sandbox_workspace_write.exclude_tmpdir_env_var = false
+        )
       | .features.hooks = true
       | .model_auto_compact_token_limit = 50000
       | .model_auto_compact_token_limit_scope = "total"
@@ -2033,6 +2047,7 @@ if changed:
           "url": "https://developers.openai.com/mcp",
           "default_tools_approval_mode": "auto"
         }
+      | to_entries | sort_by(.value | kind == "map") | from_entries
     ' "$codex_cfg" > "$codex_tmp"
     chmod 600 "$codex_tmp"
     mv "$codex_tmp" "$codex_cfg"

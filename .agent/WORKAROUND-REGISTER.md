@@ -337,3 +337,12 @@ Codex lane absent).
 - Interim mitigation: system.activationScripts.llamaCppStateDirMode (deps=users) re-applies 0750 on every activation (Rule 14 pattern).
 - Fix path: find the resetter (auditd watch on /var/lib/llama-cpp attribute changes), fix it, then remove the activation snippet.
 - Class: permission drift. Severity: high.
+
+## WR-SANDBOX-TOOLS-20261009 — installed tools absent from sandbox environment
+- symptom: host-installed tools do not imply sandbox visibility; client writes/network prompt independently.
+- root cause: Codex config omitted explicit sandbox defaults; local jail mounts/PATH omitted declared repository tool dependencies.
+- producer: `nix/home/base.nix`; `nix/modules/services/mcp-servers.nix`; `ai-stack/local-agents/builtin_tools/shell_tools.py`.
+- fix-path: explicit future-session config and scoped read-only tool exposure; next rebuild then live probes.
+- class: T1 tooling; severity: medium; status: ACTIVATION DEFERRED 2026-10-09.
+- band-aid: none; managed filesystem rules, privileged operations, network-isolated jail boundaries and host sockets remain separate authorities.
+- runtime root causes: nsjail3.6 parsed colon tmpfs size as destination; /dev/null absent. Corrected producer mounts; live Git/read-only/temp probe exited0. Existing optional-mode host fallback remains a declared limitation.
