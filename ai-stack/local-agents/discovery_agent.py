@@ -181,10 +181,17 @@ class DiscoveryAgent:
 
         candidates: List[Dict[str, Any]] = []
         current: Optional[Dict[str, Any]] = None
-        for raw in path.read_text(encoding="utf-8", errors="replace").splitlines():
+        lines = path.read_text(encoding="utf-8", errors="replace").splitlines()
+        # A later non-active status line for a scope supersedes earlier active entries for it.
+        closed_scopes = set()
+        for raw in lines:
+            m = _STATUS_RE.match(raw)
+            if m and m.group(1) not in _ACTIVE_STATUSES:
+                closed_scopes.add(m.group(2).strip())
+        for raw in lines:
             match = _STATUS_RE.match(raw)
             if match:
-                if current:
+                if current and current["scope"] not in closed_scopes:
                     candidates.append(self._issue_candidate(current))
                 status, scope, description = match.groups()
                 if status not in _ACTIVE_STATUSES:
@@ -207,7 +214,7 @@ class DiscoveryAgent:
             files = _FILE_RE.match(raw)
             if files:
                 current["files"] = [part.strip() for part in re.split(r";|,", files.group(1)) if part.strip()]
-        if current:
+        if current and current["scope"] not in closed_scopes:
             candidates.append(self._issue_candidate(current))
         return candidates
 
