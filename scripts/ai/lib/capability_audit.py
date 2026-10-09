@@ -21,8 +21,8 @@ from pathlib import Path
 from typing import Any, Dict, Iterable, List, Optional, Set
 
 CLASSES = ("ACTIVE", "UNUSED-AVAILABLE", "UNDISCOVERABLE", "STALE-CLAIM", "ACKNOWLEDGED", "STALE-ARTIFACT",
-           "DEAD-CANDIDATE", "BROKEN")
-AUDIT_VERSION = 2  # bump when classification rules change; the RSI adapter skips cross-version comparison
+           "DEAD-CANDIDATE", "KEEP-DECLARED", "BROKEN")
+AUDIT_VERSION = 3  # bump when classification rules change; the RSI adapter skips cross-version comparison
 NEXT_ACTION = {
     "ACTIVE": "none",
     "UNUSED-AVAILABLE": "integrate-into-repertoire",
@@ -31,6 +31,7 @@ NEXT_ACTION = {
     "ACKNOWLEDGED": "none",
     "STALE-ARTIFACT": "regenerate",
     "DEAD-CANDIDATE": "archive-candidate",
+    "KEEP-DECLARED": "none",
     "BROKEN": "fix",
 }
 LIVE_CLAIM_STATES = {"enabled", "active", "on"}
@@ -45,6 +46,17 @@ SKIP_DIRS = {"__pycache__", "node_modules", ".git", "archive", ".venv", "target"
 TOKEN_RE = re.compile(r"[A-Za-z0-9_][A-Za-z0-9_.\-/]*")
 EXT_STRIP = (".py", ".sh", ".nix", ".json", ".js", ".ts", ".md", ".yaml", ".yml", ".bash")
 MAX_FILE = 1_500_000
+
+
+def load_triage(root: Path) -> Dict[str, str]:
+    """config/capability-triage.json -> {normalized key: reason} for deliberately-kept
+    capabilities the usage/wiring heuristics cannot see (other hosts/profiles, hooks
+    outside the scanned trees, operator-run tools).  Missing/invalid file -> {}."""
+    try:
+        data = json.loads((root / "config" / "capability-triage.json").read_text())
+        return {norm(e["name"]): str(e.get("reason", "")) for e in data.get("keep", []) if e.get("name")}
+    except (OSError, ValueError, AttributeError, TypeError):
+        return {}
 
 
 def norm(name: str) -> str:
@@ -573,6 +585,7 @@ def run_audit(
                 journal_cache[n] = ok
 
     # --- per-capability evidence ------------------------------------------
+    triage = load_triage(repo_root)
     rows: List[Dict[str, Any]] = []
     for k, c in caps.items():
         defining = set(c["paths"])
@@ -668,6 +681,8 @@ def run_audit(
             cls = "ACTIVE"
         elif claim_stale:
             cls = "ACKNOWLEDGED" if claim_acked else "STALE-CLAIM"
+        elif k in triage and not (used or wired):
+            cls = "KEEP-DECLARED"
         elif not discoverable and (wired or used or loaded_unit):
             cls = "UNDISCOVERABLE"
         elif discoverable and not used:
@@ -690,6 +705,7 @@ def run_audit(
                 **({"catalog_claims": c["catalog"]} if c["catalog"] else {}),
                 **({"artifact_age_days": age_days} if age_days is not None else {}),
                 **({"broken": broken} if broken else {}),
+                **({"keep_reason": triage[k]} if k in triage else {}),
             },
         })
 
@@ -724,7 +740,7 @@ def render_human(report: Dict[str, Any], top: int = 10) -> str:
     lines.append("  " + "  ".join(f"{c}={t['by_class'][c]}" for c in CLASSES))
     lines.append("  kinds: " + ", ".join(f"{k}={v}" for k, v in sorted(t["by_kind"].items())))
     lines.append("  usage sources: " + ", ".join(f"{k}={v}" for k, v in report["usage_sources"].items()))
-    for cls in ("BROKEN", "STALE-CLAIM", "STALE-ARTIFACT", "UNDISCOVERABLE", "DEAD-CANDIDATE", "UNUSED-AVAILABLE"):
+    for cls in ("BROKEN", "STALE-CLAIM", "STALE-ARTIFACT", "UNDISCOVERABLE", "DEAD-CANDIDATE", "KEEP-DECLARED", "UNUSED-AVAILABLE"):
         rs = [r for r in report["capabilities"] if r["class"] == cls]
         if not rs:
             continue

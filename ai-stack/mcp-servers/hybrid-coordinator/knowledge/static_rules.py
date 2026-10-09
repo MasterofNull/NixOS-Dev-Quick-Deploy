@@ -80,6 +80,36 @@ STATIC_RULES: List[dict] = [
         "tags": ["capability", "reuse", "discovery"],
     },
     {
+        "id": "verify_committed_bytes_not_piped_hash",
+        "title": "Verify committed bytes with git blob IDs, not piped hashes",
+        "keywords": ["sha256", "hash mismatch", "committed bytes", "git show", "verify commit", "checksum"],
+        "snippet": (
+            "Output-rewriting hooks can corrupt `git show HEAD:f | sha256sum` (false mismatch). "
+            "Use `scripts/ai/aq-verify-committed <path> [sha256]` (git blob IDs, fail-closed)."
+        ),
+        "tags": ["verification", "git", "hooks"],
+    },
+    {
+        "id": "parallel_lanes_claim_paths",
+        "title": "Claim slices/paths before parallel lane edits",
+        "keywords": ["parallel", "concurrent", "claim", "collision", "same file", "other lane", "lock"],
+        "snippet": (
+            "When another agent lane may touch the same files, take an advisory claim: "
+            "`scripts/ai/aq-claim` (take/check/release slice+path claims) before editing."
+        ),
+        "tags": ["coordination", "multi-agent"],
+    },
+    {
+        "id": "transcribe_media_locally",
+        "title": "Transcribe video/audio locally for research ingestion",
+        "keywords": ["transcribe", "transcript", "youtube", "video", "audio", "podcast", "talk"],
+        "snippet": (
+            "Use `scripts/ai/aq-transcribe <url|file>` (fully local, no cloud API) to turn a "
+            "talk/video into text for agent research notes."
+        ),
+        "tags": ["research", "ingestion"],
+    },
+    {
         "id": "aider_scope_small",
         "title": "Keep aider tasks small and targeted",
         "keywords": ["aider", "code", "generate", "edit", "change", "modify"],

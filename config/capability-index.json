@@ -1,6 +1,6 @@
 {
  "audit_window_days": 30,
- "count": 388,
+ "count": 424,
  "entries": [
   {
    "category": "Agents, delegation and loops",
@@ -84,11 +84,27 @@
   },
   {
    "category": "Agents, delegation and loops",
+   "class": "KEEP-DECLARED",
+   "kind": "script",
+   "name": "aq-bitnet-compare.py",
+   "path": "scripts/ai/aq-bitnet-compare.py",
+   "purpose": "Compare the active local llama.cpp baseline against the current BitNet artifa\u2026"
+  },
+  {
+   "category": "Agents, delegation and loops",
    "class": "UNUSED-AVAILABLE",
    "kind": "script",
    "name": "aq-chat",
    "path": "scripts/ai/aq-chat",
    "purpose": "High-end interactive terminal for locally hosted AI models."
+  },
+  {
+   "category": "Agents, delegation and loops",
+   "class": "KEEP-DECLARED",
+   "kind": "script",
+   "name": "aq-coach-events",
+   "path": "scripts/ai/aq-coach-events",
+   "purpose": "surface edit-verify COACHING telemetry (local-agent stewardship)."
   },
   {
    "category": "Agents, delegation and loops",
@@ -180,6 +196,14 @@
   },
   {
    "category": "Agents, delegation and loops",
+   "class": "KEEP-DECLARED",
+   "kind": "script",
+   "name": "aq-factory-push",
+   "path": "scripts/ai/aq-factory-push",
+   "purpose": "fp-2: secret-scan + push a local factory pack to a remote destination"
+  },
+  {
+   "category": "Agents, delegation and loops",
    "class": "UNUSED-AVAILABLE",
    "kind": "script",
    "name": "aq-feedback-loop",
@@ -193,6 +217,22 @@
    "name": "aq-introspection-validate",
    "path": "scripts/ai/aq-introspection-validate",
    "purpose": "validate local-agent operational introspection output."
+  },
+  {
+   "category": "Agents, delegation and loops",
+   "class": "KEEP-DECLARED",
+   "kind": "script",
+   "name": "aq-local-dogfood-run",
+   "path": "scripts/ai/aq-local-dogfood-run",
+   "purpose": "sequential, unattended overnight local dogfood runner."
+  },
+  {
+   "category": "Agents, delegation and loops",
+   "class": "KEEP-DECLARED",
+   "kind": "script",
+   "name": "aq-local-review",
+   "path": "scripts/ai/aq-local-review",
+   "purpose": "chunked map-reduce review of a large artifact via the local model."
   },
   {
    "category": "Agents, delegation and loops",
@@ -564,6 +604,14 @@
   },
   {
    "category": "Capability, audit and reuse",
+   "class": "KEEP-DECLARED",
+   "kind": "script",
+   "name": "aq-capability-flush",
+   "path": "scripts/ai/aq-capability-flush",
+   "purpose": "Exercise the local capability stack without enabling new external code."
+  },
+  {
+   "category": "Capability, audit and reuse",
    "class": "UNUSED-AVAILABLE",
    "kind": "script",
    "name": "aq-capability-gap",
@@ -628,6 +676,14 @@
   },
   {
    "category": "Capability, audit and reuse",
+   "class": "KEEP-DECLARED",
+   "kind": "script",
+   "name": "aq-capability-shadow",
+   "path": "scripts/ai/aq-capability-shadow",
+   "purpose": "SHADOW / LOG-ONLY capability-lease issuance observer \u2014 Foundation C1."
+  },
+  {
+   "category": "Capability, audit and reuse",
    "class": "UNUSED-AVAILABLE",
    "kind": "script",
    "name": "aq-capability-stub",
@@ -636,7 +692,7 @@
   },
   {
    "category": "Capability, audit and reuse",
-   "class": "ACTIVE",
+   "class": "UNUSED-AVAILABLE",
    "kind": "script",
    "name": "aq-payload-audit",
    "path": "scripts/ai/aq-payload-audit",
@@ -678,9 +734,25 @@
    "category": "Git, commit and release",
    "class": "UNUSED-AVAILABLE",
    "kind": "script",
+   "name": "aq-verify-committed",
+   "path": "scripts/ai/aq-verify-committed",
+   "purpose": "verify a file's committed bytes match its working-tree bytes"
+  },
+  {
+   "category": "Git, commit and release",
+   "class": "UNUSED-AVAILABLE",
+   "kind": "script",
    "name": "aq-worktree",
    "path": "scripts/ai/aq-worktree",
    "purpose": "create and manage persistent git worktrees for orchestrator delegation"
+  },
+  {
+   "category": "Git, commit and release",
+   "class": "KEEP-DECLARED",
+   "kind": "script",
+   "name": "aq-worktree-reap",
+   "path": "scripts/ai/aq-worktree-reap",
+   "purpose": "Automatically remove delegate worktrees and branches with zero changes."
   },
   {
    "category": "Git, commit and release",
@@ -737,6 +809,14 @@
    "name": "aq-ctx-freshness",
    "path": "scripts/ai/aq-ctx-freshness",
    "purpose": "Surface and repair stale lean-ctx code graphs without blocking Git or session\u2026"
+  },
+  {
+   "category": "Hints, context and memory",
+   "class": "KEEP-DECLARED",
+   "kind": "script",
+   "name": "aq-editor-rescue",
+   "path": "scripts/ai/aq-editor-rescue",
+   "purpose": "bounded rescue workflow for swollen Continue/VSCodium sessions."
   },
   {
    "category": "Hints, context and memory",
@@ -825,6 +905,14 @@
    "name": "headroom",
    "path": "scripts/ai/headroom",
    "purpose": "context compression proxy CLI wrapper for AQ-OS"
+  },
+  {
+   "category": "Hints, context and memory",
+   "class": "KEEP-DECLARED",
+   "kind": "script",
+   "name": "sync-workflow-sessions.py",
+   "path": "scripts/ai/sync-workflow-sessions.py",
+   "purpose": "Sync workflow sessions from coordinator API to executor's file."
   },
   {
    "category": "Hints, context and memory",
@@ -1228,6 +1316,14 @@
   },
   {
    "category": "MCP tools",
+   "class": "KEEP-DECLARED",
+   "kind": "script",
+   "name": "mcp-hybrid-coordinator",
+   "path": "scripts/ai/mcp-hybrid-coordinator",
+   "purpose": "MCP stdio bridge for hybrid-coordinator"
+  },
+  {
+   "category": "MCP tools",
    "class": "UNUSED-AVAILABLE",
    "kind": "script",
    "name": "mcp-playwright-sandboxed",
@@ -1308,6 +1404,14 @@
   },
   {
    "category": "Models and inference",
+   "class": "KEEP-DECLARED",
+   "kind": "script",
+   "name": "aq-llama-benchmark.py",
+   "path": "scripts/ai/aq-llama-benchmark.py",
+   "purpose": "Generate and record a repo-native llama.cpp benchmark scorecard."
+  },
+  {
+   "category": "Models and inference",
    "class": "UNUSED-AVAILABLE",
    "kind": "script",
    "name": "aq-llama-debug",
@@ -1324,11 +1428,27 @@
   },
   {
    "category": "Models and inference",
+   "class": "KEEP-DECLARED",
+   "kind": "script",
+   "name": "aq-model-eval",
+   "path": "scripts/ai/aq-model-eval",
+   "purpose": "Probe the loaded llama.cpp model and write a model-profile.json."
+  },
+  {
+   "category": "Models and inference",
    "class": "UNUSED-AVAILABLE",
    "kind": "script",
    "name": "aq-model-switch",
    "path": "scripts/ai/aq-model-switch",
    "purpose": "Runtime model swap without nixos-rebuild."
+  },
+  {
+   "category": "Models and inference",
+   "class": "KEEP-DECLARED",
+   "kind": "script",
+   "name": "aq-prm-eval",
+   "path": "scripts/ai/aq-prm-eval",
+   "purpose": "FE-1 process-reward steering A/B on a fixed 5-task dogfood set."
   },
   {
    "category": "Models and inference",
@@ -1812,6 +1932,14 @@
   },
   {
    "category": "Other tools",
+   "class": "KEEP-DECLARED",
+   "kind": "skill",
+   "name": "template-skill",
+   "path": ".agent/skills/template-skill/SKILL.md",
+   "purpose": "Replace with description of the skill and when Claude should use it."
+  },
+  {
+   "category": "Other tools",
    "class": "UNUSED-AVAILABLE",
    "kind": "skill",
    "name": "test-remediation",
@@ -1886,6 +2014,14 @@
    "category": "QA, health and monitoring",
    "class": "UNUSED-AVAILABLE",
    "kind": "script",
+   "name": "aq-claim",
+   "path": "scripts/ai/aq-claim",
+   "purpose": "advisory take/check/release slice+path claims for cooperative lanes."
+  },
+  {
+   "category": "QA, health and monitoring",
+   "class": "UNUSED-AVAILABLE",
+   "kind": "script",
    "name": "aq-cockpit-monitor",
    "path": "scripts/ai/aq-cockpit-monitor",
    "purpose": "Real-time telemetry cockpit for the SOTA agentic workspace."
@@ -1945,6 +2081,14 @@
    "name": "aq-insights",
    "path": "scripts/ai/aq-insights",
    "purpose": "Local model analysis of the latest aq-report snapshot."
+  },
+  {
+   "category": "QA, health and monitoring",
+   "class": "KEEP-DECLARED",
+   "kind": "script",
+   "name": "aq-llama-staging-status.py",
+   "path": "scripts/ai/aq-llama-staging-status.py",
+   "purpose": "Watch staged llama.cpp model downloads and print ready-to-paste config values."
   },
   {
    "category": "QA, health and monitoring",
@@ -2012,7 +2156,7 @@
   },
   {
    "category": "QA, health and monitoring",
-   "class": "ACTIVE",
+   "class": "UNUSED-AVAILABLE",
    "kind": "script",
    "name": "aq-rsi",
    "path": "scripts/ai/aq-rsi",
@@ -2140,6 +2284,14 @@
   },
   {
    "category": "Search, RAG and knowledge",
+   "class": "KEEP-DECLARED",
+   "kind": "script",
+   "name": "aq-index-knowledge-graph",
+   "path": "scripts/ai/aq-index-knowledge-graph",
+   "purpose": "extract knowledge graph triples and index into AIDB."
+  },
+  {
+   "category": "Search, RAG and knowledge",
    "class": "UNUSED-AVAILABLE",
    "kind": "script",
    "name": "aq-index-logic-patterns",
@@ -2172,6 +2324,14 @@
   },
   {
    "category": "Search, RAG and knowledge",
+   "class": "KEEP-DECLARED",
+   "kind": "script",
+   "name": "aq-qdrant-prune-test-collections",
+   "path": "scripts/ai/aq-qdrant-prune-test-collections",
+   "purpose": "One-off: list (default) or delete (--apply) leaked `agent-ctx-test-*` Qdrant\u2026"
+  },
+  {
+   "category": "Search, RAG and knowledge",
    "class": "UNUSED-AVAILABLE",
    "kind": "script",
    "name": "aq-rag-prewarm",
@@ -2185,6 +2345,14 @@
    "name": "aq-sync-shared-skills.py",
    "path": "scripts/ai/aq-sync-shared-skills.py",
    "purpose": "Sync shared local SKILL.md entries into the approved AIDB skill registry."
+  },
+  {
+   "category": "Search, RAG and knowledge",
+   "class": "UNUSED-AVAILABLE",
+   "kind": "script",
+   "name": "aq-transcribe",
+   "path": "scripts/ai/aq-transcribe",
+   "purpose": "fully-local video/audio -> text for agent research ingestion."
   },
   {
    "category": "Search, RAG and knowledge",
@@ -2217,6 +2385,14 @@
    "name": "ingest-trading-knowledge.sh",
    "path": "scripts/ai/ingest-trading-knowledge.sh",
    "purpose": "Ingests tradingagents documentation and agent prompts into AIDB"
+  },
+  {
+   "category": "Search, RAG and knowledge",
+   "class": "KEEP-DECLARED",
+   "kind": "script",
+   "name": "mcp-aidb",
+   "path": "scripts/ai/mcp-aidb",
+   "purpose": "CLI / MCP helper for AIDB operations and queries"
   },
   {
    "category": "Search, RAG and knowledge",
@@ -2257,6 +2433,14 @@
    "name": "rag-techniques",
    "path": ".agent/skills/rag-techniques/SKILL.md",
    "purpose": "Instructions and workflow for the rag-techniques skill."
+  },
+  {
+   "category": "Search, RAG and knowledge",
+   "class": "KEEP-DECLARED",
+   "kind": "skill",
+   "name": "slack-gif-creator",
+   "path": ".agent/skills/slack-gif-creator/SKILL.md",
+   "purpose": "Knowledge and utilities for creating animated GIFs optimized for Slac\u2026"
   },
   {
    "category": "Search, RAG and knowledge",
@@ -2340,11 +2524,19 @@
   },
   {
    "category": "Security, approval and governance",
-   "class": "ACTIVE",
+   "class": "UNUSED-AVAILABLE",
    "kind": "script",
    "name": "aq-rsi-pending",
    "path": "scripts/ai/aq-rsi-pending",
    "purpose": "List high-risk RSI repairs awaiting owner sign-off."
+  },
+  {
+   "category": "Security, approval and governance",
+   "class": "KEEP-DECLARED",
+   "kind": "script",
+   "name": "aq-worktree-write-guard",
+   "path": "scripts/ai/aq-worktree-write-guard",
+   "purpose": "PreToolUse guard (incident 30f7979b): worktree sub-agents must not write outs\u2026"
   },
   {
    "category": "Security, approval and governance",
@@ -2377,6 +2569,14 @@
    "name": "security-scanner",
    "path": ".agent/skills/security-scanner/SKILL.md",
    "purpose": "Security audit and vulnerability scanning workflow. Use when reviewin\u2026"
+  },
+  {
+   "category": "Systemd units (services and timers)",
+   "class": "KEEP-DECLARED",
+   "kind": "unit",
+   "name": "activation-auto-revert",
+   "path": "nix/modules/services/activation-auto-revert-guard.nix",
+   "purpose": ""
   },
   {
    "category": "Systemd units (services and timers)",
@@ -2496,6 +2696,14 @@
    "kind": "unit",
    "name": "ai-gap-import",
    "path": "nix/modules/roles/ai-stack.nix",
+   "purpose": ""
+  },
+  {
+   "category": "Systemd units (services and timers)",
+   "class": "KEEP-DECLARED",
+   "kind": "unit",
+   "name": "ai-headroom-proxy",
+   "path": "nix/modules/services/headroom-proxy.nix",
    "purpose": ""
   },
   {
@@ -2732,6 +2940,22 @@
   },
   {
    "category": "Systemd units (services and timers)",
+   "class": "KEEP-DECLARED",
+   "kind": "unit",
+   "name": "aq-auto-update-check",
+   "path": "nix/modules/core/auto-update.nix",
+   "purpose": ""
+  },
+  {
+   "category": "Systemd units (services and timers)",
+   "class": "KEEP-DECLARED",
+   "kind": "unit",
+   "name": "aq-auto-update-run",
+   "path": "nix/modules/core/auto-update.nix",
+   "purpose": ""
+  },
+  {
+   "category": "Systemd units (services and timers)",
    "class": "UNUSED-AVAILABLE",
    "kind": "unit",
    "name": "aq-c2-scheduler-context-issuer",
@@ -2784,6 +3008,22 @@
    "kind": "unit",
    "name": "aqos-security-credential-status",
    "path": "nix/modules/services/command-center-dashboard.nix",
+   "purpose": ""
+  },
+  {
+   "category": "Systemd units (services and timers)",
+   "class": "KEEP-DECLARED",
+   "kind": "unit",
+   "name": "audit-rules-nixos",
+   "path": "nix/modules/core/logging.nix",
+   "purpose": ""
+  },
+  {
+   "category": "Systemd units (services and timers)",
+   "class": "KEEP-DECLARED",
+   "kind": "unit",
+   "name": "battery-charge-thresholds",
+   "path": "nix/modules/hardware/mobile.nix",
    "purpose": ""
   },
   {
@@ -2924,10 +3164,42 @@
   },
   {
    "category": "Systemd units (services and timers)",
+   "class": "KEEP-DECLARED",
+   "kind": "unit",
+   "name": "llama-router",
+   "path": "nix/modules/services/llama-router.nix",
+   "purpose": ""
+  },
+  {
+   "category": "Systemd units (services and timers)",
    "class": "UNUSED-AVAILABLE",
    "kind": "unit",
    "name": "lore-sync",
    "path": "nix/modules/services/lore-sync.nix",
+   "purpose": ""
+  },
+  {
+   "category": "Systemd units (services and timers)",
+   "class": "KEEP-DECLARED",
+   "kind": "unit",
+   "name": "meta-optimization-analysis",
+   "path": "nix/modules/services/meta-optimization.nix",
+   "purpose": ""
+  },
+  {
+   "category": "Systemd units (services and timers)",
+   "class": "KEEP-DECLARED",
+   "kind": "unit",
+   "name": "meta-optimization-applier",
+   "path": "nix/modules/services/meta-optimization.nix",
+   "purpose": ""
+  },
+  {
+   "category": "Systemd units (services and timers)",
+   "class": "KEEP-DECLARED",
+   "kind": "unit",
+   "name": "meta-optimization-validator",
+   "path": "nix/modules/services/meta-optimization.nix",
    "purpose": ""
   },
   {
@@ -2961,6 +3233,14 @@
    "name": "redis-mcp",
    "path": "nix/modules/services/mcp-servers.nix",
    "purpose": ""
+  },
+  {
+   "category": "Workflow, planning and PM",
+   "class": "KEEP-DECLARED",
+   "kind": "script",
+   "name": "aq-adopt-workflow",
+   "path": "scripts/ai/aq-adopt-workflow",
+   "purpose": "Phase 157: generate PRD stubs for adopted candidates"
   },
   {
    "category": "Workflow, planning and PM",
@@ -3073,6 +3353,14 @@
    "name": "performance-profiler",
    "path": ".agent/skills/performance-profiler/SKILL.md",
    "purpose": "Performance analysis and optimization workflow. Use when investigatin\u2026"
+  },
+  {
+   "category": "Workflow, planning and PM",
+   "class": "KEEP-DECLARED",
+   "kind": "skill",
+   "name": "project-import",
+   "path": ".agent/skills/project-import/SKILL.md",
+   "purpose": "Instructions and workflow for the project-import skill."
   },
   {
    "category": "Workflow, planning and PM",

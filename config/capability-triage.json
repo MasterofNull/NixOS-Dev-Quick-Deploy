@@ -1,0 +1,171 @@
+{
+ "schema": "capability-triage/1",
+ "note": "Deliberately-kept capabilities the audit heuristics cannot see (other hosts/profiles, external hooks, operator-run tools). Audit class KEEP-DECLARED instead of DEAD-CANDIDATE while not used/wired. Review entries when the reason lapses.",
+ "keep": [
+  {
+   "name": "activation-auto-revert",
+   "kind": "unit",
+   "reason": "Nix-declared, option-gated unit (disabled by default or on this host only); enabled per host/profile; ai-dev profile opt-in (default false), has test-activation-auto-revert-guard.py"
+  },
+  {
+   "name": "ai-headroom-proxy",
+   "kind": "unit",
+   "reason": "Nix-declared, option-gated unit (disabled by default or on this host only); enabled per host/profile; headroom payload-compression proxy (Phase 164)"
+  },
+  {
+   "name": "aq-auto-update-check",
+   "kind": "unit",
+   "reason": "Nix-declared, option-gated unit (disabled by default or on this host only); enabled per host/profile; U3 unattended-update pipeline, default off"
+  },
+  {
+   "name": "aq-auto-update-run",
+   "kind": "unit",
+   "reason": "Nix-declared, option-gated unit (disabled by default or on this host only); enabled per host/profile; U3 unattended-update pipeline, default off, in suspend-resume-workloads.json"
+  },
+  {
+   "name": "audit-rules-nixos",
+   "kind": "unit",
+   "reason": "Nix-declared in core/logging.nix (SuccessExitStatus override of upstream audit-rules unit); not an own unit"
+  },
+  {
+   "name": "battery-charge-thresholds",
+   "kind": "unit",
+   "reason": "laptop-only hardware module nix/modules/hardware/mobile.nix; not applicable on desktop hosts"
+  },
+  {
+   "name": "llama-router",
+   "kind": "unit",
+   "reason": "Nix-declared, option-gated unit (disabled by default or on this host only); enabled per host/profile; llama.cpp router service (enable option)"
+  },
+  {
+   "name": "meta-optimization-analysis",
+   "kind": "unit",
+   "reason": "Nix-declared, option-gated unit (disabled by default or on this host only); enabled per host/profile; meta-optimization.nix"
+  },
+  {
+   "name": "meta-optimization-applier",
+   "kind": "unit",
+   "reason": "Nix-declared, option-gated unit (disabled by default or on this host only); enabled per host/profile; meta-optimization.nix"
+  },
+  {
+   "name": "meta-optimization-validator",
+   "kind": "unit",
+   "reason": "Nix-declared, option-gated unit (disabled by default or on this host only); enabled per host/profile; meta-optimization.nix"
+  },
+  {
+   "name": "project-import",
+   "kind": "skill",
+   "reason": "generic skill; skills rarely log use; mirrored in ai-stack/agents/skills"
+  },
+  {
+   "name": "slack-gif-creator",
+   "kind": "skill",
+   "reason": "generic imported skill; rarely used, listed in aq-integrity-logical-orphans.json"
+  },
+  {
+   "name": "template-skill",
+   "kind": "skill",
+   "reason": "skill authoring template, intentionally never invoked"
+  },
+  {
+   "name": "aq-adopt-workflow",
+   "kind": "script",
+   "reason": "operator-run adoption helper; referenced by harness_qa phase0 and aq-integrity-logical-orphans.json"
+  },
+  {
+   "name": "aq-bitnet-compare.py",
+   "kind": "script",
+   "reason": "BitNet benchmarking for bitnet-profile hosts; has test-bitnet-compare.py"
+  },
+  {
+   "name": "aq-capability-flush",
+   "kind": "script",
+   "reason": "operator/agent-lane flush tool; has test-capability-flush.py"
+  },
+  {
+   "name": "aq-capability-shadow",
+   "kind": "script",
+   "reason": "Foundation-C capability-lease shadow admission (schema + test-capability-lease-issuance.py); gitignored shadow records"
+  },
+  {
+   "name": "aq-coach-events",
+   "kind": "script",
+   "reason": "local-agent coach telemetry reader; has test-aq-coach-events.py"
+  },
+  {
+   "name": "aq-editor-rescue",
+   "kind": "script",
+   "reason": "editor-state recovery, documented in EDITOR-STATE-RECOVERY-RUNBOOK.md; has test"
+  },
+  {
+   "name": "aq-factory-push",
+   "kind": "script",
+   "reason": "factory-pack fp-2 outward push (2026-09), companion of aq-factory-pack; operator-run by design"
+  },
+  {
+   "name": "aq-index-knowledge-graph",
+   "kind": "script",
+   "reason": "GraphRAG index builder (phase0 check, env-contract.yaml, test-aq-index-knowledge-graph.py)"
+  },
+  {
+   "name": "aq-llama-benchmark.py",
+   "kind": "script",
+   "reason": "inference benchmark; has test-llama-benchmark.py; PROJECT-AQ-INFERENCE-BENCH-PRD"
+  },
+  {
+   "name": "aq-llama-staging-status.py",
+   "kind": "script",
+   "reason": "llama staging status reader; has test-llama-staging-status.py"
+  },
+  {
+   "name": "aq-local-dogfood-run",
+   "kind": "script",
+   "reason": "local-agent dogfood runner; 3 guard tests, in suspend-resume-workloads.json"
+  },
+  {
+   "name": "aq-local-review",
+   "kind": "script",
+   "reason": "local-embed review lane (July); has test-aq-local-review.py"
+  },
+  {
+   "name": "aq-model-eval",
+   "kind": "script",
+   "reason": "probes loaded llama.cpp model and writes model-profile.json; operator-run after model load"
+  },
+  {
+   "name": "aq-prm-eval",
+   "kind": "script",
+   "reason": "FE-1 process-reward steering A/B (2026-10-08 evidence doc); operator-run eval"
+  },
+  {
+   "name": "aq-qdrant-prune-test-collections",
+   "kind": "script",
+   "reason": "Qdrant test-collection hygiene; operator-run, covered by test_vector_routing_collections.py"
+  },
+  {
+   "name": "aq-worktree-reap",
+   "kind": "script",
+   "reason": "zero-change delegate worktree reaper (2026-10-07); has test-aq-worktree-reap.py"
+  },
+  {
+   "name": "aq-worktree-write-guard",
+   "kind": "script",
+   "reason": "wired by .claude/settings.json PreToolUse hook (outside audit scan trees); has test"
+  },
+  {
+   "name": "mcp-aidb",
+   "kind": "script",
+   "reason": "MCP stdio helper launched from external MCP client config (outside repo); keep"
+  },
+  {
+   "name": "mcp-hybrid-coordinator",
+   "kind": "script",
+   "reason": "MCP stdio bridge launched from external MCP client config (outside repo); keep"
+  },
+  {
+   "name": "sync-workflow-sessions.py",
+   "kind": "script",
+   "reason": "named as state authority in config/system-state-authorities.yaml and aqos ADRs"
+  }
+ ]
+}
