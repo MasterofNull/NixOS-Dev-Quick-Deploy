@@ -24,6 +24,25 @@ CODE_SCANNING_MAX_AGE_S = int(os.getenv("RSI_SWEEP_CODE_SCANNING_MAX_AGE_S", str
 _TAIL_BYTES = 1 << 20
 
 
+class Findings(list):
+    """Findings list that may carry `cleared(incident) -> evidence|None`.
+
+    Set only when the source positively observed its subjects (state ok/findings); the sweep
+    resolves an open incident only if `cleared` returns evidence.  Absent = never resolves.
+    """
+    cleared = None
+
+
+def _with_cleared(findings, cleared):
+    out = Findings(findings)
+    out.cleared = cleared
+    return out
+
+
+def _iso(ts):
+    return time.strftime("%Y-%m-%dT%H:%M:%SZ", time.gmtime(ts))
+
+
 def _unit_key(name: str) -> str:
     # Instance suffixes/hashes vary per run; identity is the unit template.
     return re.sub(r"@.*(?=\.)", "@*", name)
@@ -47,7 +66,13 @@ def adapter_failed_units(runner=None):
             findings.append(dict(subject=f"failed-unit:{unit}", producer="systemd:failed-unit",
                                  path=unit, authority="systemd", os_error=f"unit {unit} in failed state",
                                  severity="medium", root_fix=f"journalctl -u {unit}; fix producer, then systemctl reset-failed"))
-    return ("findings" if findings else "ok"), findings, f"{len(findings)} failed unit(s)"
+    live = {f["path"] for f in findings}
+
+    def cleared(inc):
+        if inc.get("producer") != "systemd:failed-unit" or inc.get("path") in live:
+            return None
+        return f"unit {inc.get('path')} no longer in systemctl --failed ({_iso(time.time())})"
+    return ("findings" if findings else "ok"), _with_cleared(findings, cleared), f"{len(findings)} failed unit(s)"
 
 
 DELEGATION_REGISTRY = Path(os.getenv("RSI_SWEEP_DELEGATION_REGISTRY") or _REPO / ".agents" / "delegation" / "registry.jsonl")
@@ -55,6 +80,8 @@ DELEGATION_WINDOW_S = int(os.getenv("RSI_SWEEP_DELEGATION_WINDOW_S", str(7 * 864
 ERROR_UNITS = os.getenv("RSI_SWEEP_ERROR_UNITS", "ai-hybrid-coordinator ai-aidb ai-switchboard command-center-dashboard-api").split()
 ERROR_WINDOW_S = int(os.getenv("RSI_SWEEP_ERROR_WINDOW_S", "3600"))
 ERROR_MIN_COUNT = int(os.getenv("RSI_SWEEP_ERROR_MIN_COUNT", "5"))
+DELEGATION_LOG_ROOT = Path(os.getenv("DELEGATION_LOG_ROOT") or _REPO)
+_LOG_MARKER_CLASSES = {"blocked", "quota", "skill-load-error"}
 _LOG_TAIL_BYTES = 4096
 _JOURNAL_MAX_BYTES = 4 << 20
 _BAD_STATUSES = {"failed", "timeout", "orphaned", "stale", "failed_orphaned_no_output"}
@@ -71,16 +98,17 @@ def _parse_iso(value):
 
 
 def _log_tail(output_file):
+    """Return the log tail, or None when the file is missing/unreadable (distinct from an empty log)."""
     p = Path(output_file)
     if not p.is_absolute():
-        p = _REPO / p
+        p = DELEGATION_LOG_ROOT / p
     try:
         with p.open("rb") as fh:
             fh.seek(0, os.SEEK_END)
             fh.seek(max(0, fh.tell() - _LOG_TAIL_BYTES))
             return fh.read().decode("utf-8", "replace")
     except OSError:
-        return ""
+        return None
 
 
 def _classify_delegation(rec, tail):
@@ -113,6 +141,7 @@ def adapter_delegation_outcomes(registry=None, window_s=None, now=None):
         return "unknown", [], f"delegation registry unavailable: {exc}"
     groups: dict[tuple, dict] = {}
     seen = 0
+    unreadable: dict[str, int] = {}
     for line in lines:
         try:
             rec = json.loads(line)
@@ -124,7 +153,12 @@ def adapter_delegation_outcomes(registry=None, window_s=None, now=None):
         if ts is None or now - ts > window:
             continue
         seen += 1
-        cls = _classify_delegation(rec, _log_tail(rec["output_file"]) if rec.get("output_file") else "")
+        tail = _log_tail(rec["output_file"]) if rec.get("output_file") else ""
+        if tail is None:
+            lane_u = str(rec.get("agent") or "unknown").strip().lower()
+            unreadable[lane_u] = unreadable.get(lane_u, 0) + 1
+            tail = ""
+        cls = _classify_delegation(rec, tail)
         if not cls:
             continue
         lane = str(rec.get("agent") or "unknown").strip().lower()
@@ -142,7 +176,18 @@ def adapter_delegation_outcomes(registry=None, window_s=None, now=None):
             # Identity is lane+class(+skill path); counts/run ids live in root_fix (refreshed each sighting).
             os_error=f"{lane} delegation class {label}", severity=severity,
             root_fix=f"{g['count']} run(s) in window; latest example .agents/delegation/outputs/{g['id']}.log; fix producer for class {cls}"))
-    return ("findings" if findings else "ok"), findings, f"{len(findings)} class(es) across {seen} recent run(s)"
+    live = {f["subject"] for f in findings}
+
+    def cleared(inc):
+        if not str(inc.get("producer", "")).startswith("delegation:") or inc.get("subject") in live:
+            return None
+        parts = str(inc.get("subject", "")).split(":", 2)
+        # Log-marker classes cannot be proven absent when any of the lane's in-window logs was unreadable.
+        if len(parts) == 3 and parts[2].split(":")[0] in _LOG_MARKER_CLASSES and unreadable.get(parts[1]):
+            return None
+        return (f"delegation class {inc.get('subject')} had zero occurrences in the last {window}s "
+                f"({seen} run(s) read from registry, {_iso(now)})")
+    return ("findings" if findings else "ok"), _with_cleared(findings, cleared), f"{len(findings)} class(es) across {seen} recent run(s); {sum(unreadable.values())} unreadable log(s)"
 
 
 _SIG_SUBS = [
@@ -205,7 +250,16 @@ def adapter_service_error_rate(runner=None, units=None, window_s=None, min_count
                     authority="journald", os_error=f"recurring error in {unit}: {sig}",
                     severity="medium",
                     root_fix=f"{n} occurrence(s) in last {window}s; example: {example[:200]}; journalctl -u {unit}; fix producer"))
-    return ("findings" if findings else "ok"), findings, f"{len(findings)} recurring signature(s) in {readable} unit(s)"
+    live = {f["subject"] for f in findings}
+    read_units = set(units)
+
+    def cleared(inc):
+        if (not str(inc.get("producer", "")).startswith("journal:") or inc.get("path") not in read_units
+                or inc.get("subject") in live):
+            return None
+        return (f"journal of {inc.get('path')} read OK; signature below {threshold} occurrence(s) "
+                f"in last {window}s ({_iso(time.time())})")
+    return ("findings" if findings else "ok"), _with_cleared(findings, cleared), f"{len(findings)} recurring signature(s) in {readable} unit(s)"
 
 
 def _default_alerts_path() -> Path:
@@ -285,13 +339,20 @@ def adapter_qa_phase0(progress=None, max_age_s=None, now=None, health_monitor_js
                         findings.append(dict(subject=f"aq-qa:{cid}", producer="aq-qa:phase0", path=f"aq-qa check {cid}",
                                              authority="aq-qa", os_error=f"phase-0 check {cid} failing: {desc}",
                                              severity="medium", root_fix=f"run aq-qa 0 --machine and fix check {cid} at its producer"))
+                stamp = _iso(now - progress_age)
+
+                def cleared(inc, last=last, stamp=stamp):
+                    cid = str(inc.get("path", "")).removeprefix("aq-qa check ")
+                    if inc.get("producer") != "aq-qa:phase0" or last.get(cid, {}).get("state") not in ("pass", "skip"):
+                        return None
+                    return f"phase-0 check {cid} passing in aq-qa progress run {stamp}"
                 if findings:
-                    return "findings", findings, f"{len(findings)} failing phase-0 check(s) in {len(last)} seen (source: aq-qa progress)"
+                    return "findings", _with_cleared(findings, cleared), f"{len(findings)} failing phase-0 check(s) in {len(last)} seen (source: aq-qa progress)"
                 unfinished = sorted(c for c, r in last.items() if r.get("state") not in ("pass", "skip"))
                 if unfinished:
                     # No failure seen, but the run never reached a verdict for these checks: not evidence of health.
                     return "unknown", [], f"aq-qa run incomplete or unrecognised state for {len(unfinished)} check(s), e.g. {unfinished[0]}"
-                return "ok", [], f"all {len(last)} phase-0 checks pass/skip (source: aq-qa progress)"
+                return "ok", _with_cleared([], cleared), f"all {len(last)} phase-0 checks pass/skip (source: aq-qa progress)"
             # progress JSONL is fresh but has no phase-0 records; don't fall back
             return "unknown", [], "no phase-0 records in aq-qa output (empty, truncated or other phase)"
     except OSError:
@@ -320,13 +381,24 @@ def adapter_qa_phase0(progress=None, max_age_s=None, now=None, health_monitor_js
                                          authority="aq-qa", os_error=f"phase-0 check {fid} failing: {label}",
                                          severity="medium", root_fix=f"run aq-qa 0 --machine and fix check {fid} at its producer"))
 
-            if findings:
-                return "findings", findings, f"{len(findings)} failing phase-0 check(s) from health-monitor (source: health-monitor JSON)"
-
             returncode = phase0.get("returncode")
             total = phase0.get("total", 0)
+            failing = {str(fl.get("id") or "") for fl in phase0.get("failures", [])}
+            stamp = _iso(now - monitor_age)
+
+            def cleared(inc):
+                cid = str(inc.get("path", "")).removeprefix("aq-qa check ")
+                if inc.get("producer") != "aq-qa:phase0" or cid in failing:
+                    return None
+                if returncode == 0 or (isinstance(total, int) and total > 0):
+                    return f"phase-0 check {cid} passing in health-monitor JSON run {stamp}"
+                return None
+
+            if findings:
+                return "findings", _with_cleared(findings, cleared), f"{len(findings)} failing phase-0 check(s) from health-monitor (source: health-monitor JSON)"
+
             if returncode == 0:
-                return "ok", [], f"all {total} phase-0 checks pass/skip (source: health-monitor JSON)"
+                return "ok", _with_cleared([], cleared), f"all {total} phase-0 checks pass/skip (source: health-monitor JSON)"
 
             return "unknown", [], f"health-monitor phase-0 returned {returncode} with no failures detail"
     except (OSError, json.JSONDecodeError):
@@ -443,6 +515,15 @@ def reconcile(alerts=None, dry_run=False, as_json=False) -> int:
     return 0
 
 
+def _open_incidents():
+    import rsi_lifecycle
+    try:
+        incidents = json.loads((rsi_lifecycle._RUNTIME / "rsi-incidents.json").read_text()).get("incidents", {})
+    except (OSError, json.JSONDecodeError):
+        return {}
+    return {k: v for k, v in incidents.items() if isinstance(v, dict)}
+
+
 def run(dry_run=False, as_json=False, adapters=None) -> int:
     os.environ.pop("REDIS_URL", None)
     import rsi_lifecycle
@@ -452,6 +533,8 @@ def run(dry_run=False, as_json=False, adapters=None) -> int:
         "delegation-outcomes": adapter_delegation_outcomes, "service-error-rate": adapter_service_error_rate}
     report = {}
     recorded = 0
+    resolved = []
+    open_incidents = _open_incidents()
     for name, fn in adapters.items():
         try:
             state, findings, detail = fn()
@@ -464,8 +547,24 @@ def run(dry_run=False, as_json=False, adapters=None) -> int:
             ids.append(rsi_lifecycle.failure(AGENT, f["subject"], f["producer"], f["path"], f["authority"],
                                              f["os_error"], severity=f["severity"], root_fix=f["root_fix"]))
         recorded += len(ids)
+        cleared = getattr(findings, "cleared", None)
+        if state in ("ok", "findings") and cleared:
+            live = {rsi_lifecycle._clean(f["producer"]) + "\0" + rsi_lifecycle._clean(f["path"]) + "\0" +
+                    rsi_lifecycle._clean(f["authority"]) + "\0" + rsi_lifecycle._clean(f["os_error"]) for f in findings}
+            for iid, inc in sorted(open_incidents.items()):
+                if inc.get("status") != "open" or iid in {r["id"] for r in resolved}:
+                    continue
+                if "\0".join(str(inc.get(k, "")) for k in ("producer", "path", "authority", "error")) in live:
+                    continue
+                evidence = cleared(inc)
+                if not evidence:
+                    continue
+                if not dry_run:
+                    rsi_lifecycle.resolve(iid, f"condition cleared on re-observation: {evidence}",
+                                          f"rsi-sweep {name} adapter", evidence)
+                resolved.append({"id": iid, "source": name, "evidence": evidence})
         report[name] = {"state": state, "findings": len(findings), "detail": detail}
-    summary = {"dry_run": dry_run, "recorded": recorded, "sources": report,
+    summary = {"dry_run": dry_run, "recorded": recorded, "resolved": resolved, "sources": report,
                "unknown": sorted(k for k, v in report.items() if v["state"] == "unknown"),
                "healthy_sources": sorted(k for k, v in report.items() if v["state"] == "ok")}
     # Healthy only when every source positively reported ok; unknown and findings both deny it.
@@ -475,5 +574,7 @@ def run(dry_run=False, as_json=False, adapters=None) -> int:
     else:
         for name, v in report.items():
             print(f"{name}: {v['state']} ({v['detail']})")
-        print(f"recorded={recorded} dry_run={dry_run} healthy={summary['healthy']} unknown={summary['unknown']}")
+        for r in resolved:
+            print(f"resolved {r['id']} ({r['source']}): {r['evidence']}")
+        print(f"recorded={recorded} resolved={len(resolved)} dry_run={dry_run} healthy={summary['healthy']} unknown={summary['unknown']}")
     return 0
