@@ -56,6 +56,12 @@ def _read_secret(path: str) -> str:
     return p.read_text(encoding="utf-8").strip()
 
 
+def _stable_point_id(pattern_id: str) -> int:
+    """Deterministic Qdrant point id; builtin hash() is salted per process, so
+    restarts re-inserted duplicate skills-patterns points."""
+    return int(hashlib.sha1(str(pattern_id).encode("utf-8")).hexdigest()[:8], 16) % (10 ** 8)
+
+
 class Checkpointer:
     """
     P2-REL-001: Checkpoint manager for crash recovery
@@ -1283,7 +1289,7 @@ class ContinuousLearningPipeline:
 
             for pattern, embedding in zip(patterns, embeddings):
                 point = PointStruct(
-                    id=hash(pattern.pattern_id) % (10 ** 8),
+                    id=_stable_point_id(pattern.pattern_id),
                     vector=embedding,
                     payload={
                         "pattern_id": pattern.pattern_id,

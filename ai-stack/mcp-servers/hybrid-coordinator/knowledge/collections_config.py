@@ -158,6 +158,17 @@ COLLECTIONS: Dict[str, Any] = {
             "imported_at": "string",
         },
     },
+    # Written by scripts/ai/aq-wiki (--seed-aidb); declared here so init owns
+    # creation and the router can include it for architecture questions.
+    "wiki-sections": {
+        "vector_size": Config.EMBEDDING_DIM,
+        "distance": Distance.COSINE,
+        "payload_schema": {
+            "section": "string",
+            "title": "string",
+            "content": "text",
+        },
+    },
     "learning-feedback": {
         "vector_size": Config.EMBEDDING_DIM,
         "distance": Distance.COSINE,
@@ -207,6 +218,16 @@ COLLECTIONS: Dict[str, Any] = {
             "tags": "array",
             "timestamp": "integer",
         },
+    },
+}
+
+# Created by init but NOT part of COLLECTIONS: these are infrastructure stores
+# (tool registry embeddings) that must not join retrieval fan-out.
+INFRA_COLLECTIONS: Dict[str, Any] = {
+    "mcp-semantic-search": {
+        "vector_size": Config.EMBEDDING_DIM,
+        "distance": Distance.COSINE,
+        "payload_schema": {"tool_id": "string", "name": "string", "description": "text"},
     },
 }
 
@@ -282,7 +303,7 @@ async def initialize_collections(qdrant_client: Any) -> None:
             return None
         return None
 
-    for collection_name, schema in COLLECTIONS.items():
+    for collection_name, schema in {**COLLECTIONS, **INFRA_COLLECTIONS}.items():
         try:
             collections = qdrant_client.get_collections().collections
             exists = any(c.name == collection_name for c in collections)

@@ -105,26 +105,39 @@ def cache_evicted(task_id: str, chunks: list, timeout: float = 8.0) -> Optional[
 
         collection = _collection_name(task_id)
         vector_size = len(embedded[0][1])
-        with httpx.Client(timeout=timeout) as client:
-            _ensure_collection(client, collection, vector_size)
-            points = [
-                {
-                    "id": str(uuid.uuid4()),
-                    "vector": vector,
-                    "payload": {"text": chunk, "idx": idx},
-                }
-                for idx, (chunk, vector) in enumerate(embedded)
-            ]
-            resp = client.put(
-                f"{QDRANT_URL}/collections/{collection}/points",
-                params={"wait": "true"},
-                json={"points": points},
-            )
-            if resp.status_code not in (200, 201):
-                return None
-        return collection
+        try:
+            return _upsert_chunks(collection, vector_size, embedded, timeout)
+        except Exception:
+            # Root cause of leaked agent-ctx-* collections: the collection is
+            # created before the upsert, and callers only delete a returned
+            # name. On failure nothing is returned, so tear down here.
+            delete_collection(collection, timeout=timeout)
+            return None
     except Exception:
         return None
+
+
+def _upsert_chunks(collection: str, vector_size: int, embedded: list, timeout: float) -> Optional[str]:
+    """Create collection + upsert; deletes the collection and returns None on a non-2xx upsert."""
+    with httpx.Client(timeout=timeout) as client:
+        _ensure_collection(client, collection, vector_size)
+        points = [
+            {
+                "id": str(uuid.uuid4()),
+                "vector": vector,
+                "payload": {"text": chunk, "idx": idx},
+            }
+            for idx, (chunk, vector) in enumerate(embedded)
+        ]
+        resp = client.put(
+            f"{QDRANT_URL}/collections/{collection}/points",
+            params={"wait": "true"},
+            json={"points": points},
+        )
+        if resp.status_code not in (200, 201):
+            delete_collection(collection, timeout=timeout)
+            return None
+    return collection
 
 
 def retrieve_ctx(collection: str, query: str, k: int = 6, timeout: float = 8.0) -> list:
