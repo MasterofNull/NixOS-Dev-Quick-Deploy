@@ -43,9 +43,12 @@
                   # The harness CLIs + dashboard do not depend on Open WebUI. Plain assignment (no lib in this
                   # module's scope) — overrides the ai-stack module's lib.mkDefault for ui.enable.
                   ui.enable = false;
-                                          # Q5_K_S MTP model (manually placed from ~/Downloads after browser download).
+                                          # Q4_K_XL MTP trial (2026-10-08): Q5_K_S (~23.8 GiB) could not stay resident
+                                          # next to the desktop (swap drift to 0.76 tok/s, Vulkan DeviceLost at 21:24).
+                                          # Q4_K_XL is ~21.3 GiB with the same MTP heads/args. Revert to
+                                          # "qwen3.6-35b-mtp-q5" if quality regresses (sudo aq-model-switch, no rebuild).
                                           # MTP draft heads enable speculative decoding (~1.5–2× throughput gain).
-                                          llamaCpp.activeModel = "qwen3.6-35b-mtp-q5";
+                                          llamaCpp.activeModel = "qwen3.6-35b-mtp";
                                           # This 27GB mobile workstation cannot keep the Q5_K_S chat
                                           # model mlocked while VSCodium, browser, dashboard, AIDB,
                                           # Qdrant, and the embedding server are active. Keep the local
