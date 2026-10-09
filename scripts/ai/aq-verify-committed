@@ -1,4 +1,5 @@
 #!/usr/bin/env bash
+. "${BASH_SOURCE[0]%/*}/lib/aq-shim.sh" 2>/dev/null || true  # aq-usage-hook
 # aq-verify-committed — verify a file's committed bytes match its working-tree bytes
 # and (optionally) an expected SHA-256, using git's own blob object IDs.
 #

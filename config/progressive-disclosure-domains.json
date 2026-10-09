@@ -223,7 +223,8 @@
           "docs": [
             "CLAUDE.md",
             "docs/agent-guides/01-QUICK-START.md",
-            "docs/agent-guides/48-WIKI-MAINTENANCE.md"
+            "docs/agent-guides/48-WIKI-MAINTENANCE.md",
+            "docs/agent-guides/CAPABILITY-INDEX.md"
           ],
           "wiki_sections": [
             "aq-wiki --section hybrid-coordinator",
@@ -565,6 +566,59 @@
           ],
           "wiki_sections": [
             "aq-wiki --section <subsystem>  # replace <subsystem> with relevant domain"
+          ]
+        }
+      }
+    },
+    "capability-reuse": {
+      "name": "Capability Reuse",
+      "description": "Find an existing aq-* script, skill, or MCP tool before writing new code",
+      "triggers": [
+        "capability",
+        "existing tool",
+        "reuse",
+        "new script",
+        "helper",
+        "utility",
+        "aq-",
+        "is there a tool",
+        "already exists"
+      ],
+      "disclosure": {
+        "minimal": {
+          "context": "Before writing new code, grep docs/agent-guides/CAPABILITY-INDEX.md for the task keyword; reuse or extend what exists.",
+          "tools": [
+            "aq-hints",
+            "aq-capability-index",
+            "aq-capability-audit"
+          ],
+          "hints": [
+            "Grep the index for the keyword; read only matching rows",
+            "Machine form: config/capability-index.json"
+          ]
+        },
+        "standard": {
+          "extends": "minimal",
+          "tools": [
+            "aq-capability-audit",
+            "aq-wiki"
+          ],
+          "docs": [
+            "docs/agent-guides/CAPABILITY-INDEX.md"
+          ],
+          "mcp_endpoints": [
+            "/discovery/capabilities",
+            "/hints"
+          ]
+        },
+        "full": {
+          "extends": "standard",
+          "docs": [
+            "docs/agent-guides/CAPABILITY-INDEX.md",
+            "config/capability-index.json"
+          ],
+          "wiki_sections": [
+            "aq-wiki --section ai-scripts"
           ]
         }
       }

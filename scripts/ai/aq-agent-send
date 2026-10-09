@@ -8,6 +8,12 @@ into its conversation (as [OPERATOR INTERVENTION]) or stops on --cancel. Pair wi
   aq-agent-send <task_id> "focus on the switchboard path, not the coordinator"
   aq-agent-send <task_id> "wrong direction — stop and re-plan" --cancel
 """
+try:  # aq-usage-hook
+    import importlib.util as _aqu, os as _aqo
+    _aqs = _aqu.spec_from_file_location("aq_usage", _aqo.path.join(_aqo.path.dirname(_aqo.path.realpath(__file__)), "lib", "aq_usage.py"))
+    _aqm = _aqu.module_from_spec(_aqs); _aqs.loader.exec_module(_aqm); _aqm.record(__file__, __name__)
+except Exception:
+    pass
 import sys
 from importlib.machinery import SourceFileLoader
 from pathlib import Path

@@ -1,4 +1,5 @@
 #!/usr/bin/env bash
+. "${BASH_SOURCE[0]%/*}/lib/aq-shim.sh" 2>/dev/null || true  # aq-usage-hook
 # Surface and repair stale lean-ctx code graphs without blocking Git or sessions.
 # AQ_UNSHALLOW_DEPTH=N makes --heal-shallow fetch that depth from origin instead
 # of fetching the repository's complete history with --unshallow.

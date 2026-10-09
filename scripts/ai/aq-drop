@@ -1,4 +1,5 @@
 #!/usr/bin/env bash
+. "${BASH_SOURCE[0]%/*}/lib/aq-shim.sh" 2>/dev/null || true  # aq-usage-hook
 # aq-drop — Phase 85 PAEA Drop Zone CLI helper.
 #
 # Writes a *.drop.yaml to .agents/drops/ so aq-drop-daemon picks it up.

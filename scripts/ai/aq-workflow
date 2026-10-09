@@ -1,4 +1,5 @@
 #!/usr/bin/env bash
+. "${BASH_SOURCE[0]%/*}/lib/aq-shim.sh" 2>/dev/null || true  # aq-usage-hook
 # aq-workflow: CLI tool for YAML workflow management
 # Phase 2.6: Workflow CLI
 #

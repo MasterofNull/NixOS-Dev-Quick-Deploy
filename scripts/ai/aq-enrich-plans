@@ -1,4 +1,5 @@
 #!/usr/bin/env bash
+. "${BASH_SOURCE[0]%/*}/lib/aq-shim.sh" 2>/dev/null || true  # aq-usage-hook
 # aq-enrich-plans — Autonomously annotate all phase plans with tool sequences
 #
 # Scans .agents/plans/ and auto-injects tool recommendations for each task
