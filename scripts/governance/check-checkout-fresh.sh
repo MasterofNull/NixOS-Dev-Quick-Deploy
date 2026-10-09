@@ -4,14 +4,16 @@
 # GitHub merges while the local clone was not pulled.
 #
 # Exit codes:
-#   0 — checkout is current or ALLOW_STALE_CHECKOUT=1 is set
-#   3 — checkout is behind origin (blocking error on main branch)
+#   0 — checkout is current, was fast-forwarded, or ALLOW_STALE_CHECKOUT=1 is set
+#   3 — checkout is behind origin and could not be fast-forwarded safely
 #   other — fetch failed (exits 0 with warning, never blocks offline systems)
 #
 # Usage:
 #   scripts/governance/check-checkout-fresh.sh
 #   # Or skip the check:
 #   ALLOW_STALE_CHECKOUT=1 nrs
+#   # Report instead of fast-forwarding:
+#   AUTO_FAST_FORWARD=0 nrs
 #
 set -euo pipefail
 
@@ -37,6 +39,15 @@ COMMITS_BEHIND=0
 if [[ "$CURRENT_BRANCH" == "main" ]]; then
   # main branch — strict check
   COMMITS_BEHIND=$(git rev-list --count HEAD..origin/main 2>/dev/null || echo 0)
+
+  # Merging a PR on GitHub always leaves the checkout behind. --ff-only refuses
+  # when there are local commits or when local edits/untracked files would be
+  # overwritten, so a successful merge here never loses work.
+  if [[ $COMMITS_BEHIND -gt 0 && "${AUTO_FAST_FORWARD:-1}" == "1" ]] \
+      && git merge --ff-only --quiet origin/main >/dev/null 2>&1; then
+    echo "[OK] Fast-forwarded checkout $COMMITS_BEHIND commit(s) to origin/main ($(git rev-parse --short HEAD))"
+    COMMITS_BEHIND=0
+  fi
 
   if [[ $COMMITS_BEHIND -gt 0 ]]; then
     echo ""
