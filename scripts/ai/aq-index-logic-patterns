@@ -199,6 +199,8 @@ def _aidb_key() -> str:
 
 def _ingest(doc: PatternDoc, key: str, verbose: bool) -> bool:
     import urllib.request
+    import urllib.error
+
     rel = _rel(doc.path)
     payload = json.dumps({
         "content":       doc.content,
@@ -212,21 +214,46 @@ def _ingest(doc: PatternDoc, key: str, verbose: bool) -> bool:
             "tags":         doc.tags,
         },
     }).encode()
-    req = urllib.request.Request(
-        f"{AIDB_URL}/documents",
-        data=payload,
-        headers={"Content-Type": "application/json", "X-API-Key": key},
-        method="POST",
-    )
-    try:
-        with urllib.request.urlopen(req, timeout=10) as resp:
-            ok = resp.status in (200, 201)
-            if verbose:
-                print(f"  {'OK' if ok else 'FAIL'} [{resp.status}] {doc.title}")
-            return ok
-    except Exception as exc:
-        sys.stderr.write(f"  ERR {doc.title}: {exc}\n")
-        return False
+
+    max_retries = 5
+    cooloff_seconds = 60
+
+    for attempt in range(max_retries + 1):
+        req = urllib.request.Request(
+            f"{AIDB_URL}/documents",
+            data=payload,
+            headers={"Content-Type": "application/json", "X-API-Key": key},
+            method="POST",
+        )
+        try:
+            with urllib.request.urlopen(req, timeout=10) as resp:
+                ok = resp.status in (200, 201)
+                if verbose:
+                    print(f"  {'OK' if ok else 'FAIL'} [{resp.status}] {doc.title}")
+                return ok
+        except urllib.error.HTTPError as e:
+            if e.code == 429:
+                if attempt < max_retries:
+                    backoff = 2 ** (attempt + 1)  # 2s, 4s, 8s, 16s, 32s
+                    print(
+                        f"  [429] rate limited — backing off {backoff}s (attempt {attempt + 1}/{max_retries})",
+                        file=sys.stderr,
+                    )
+                    time.sleep(backoff)
+                    continue
+                # All retries exhausted — wait for the rate limit window to fully clear
+                print(
+                    f"  [429] max retries exhausted for {doc.title} — cooling off {cooloff_seconds}s",
+                    file=sys.stderr,
+                )
+                time.sleep(cooloff_seconds)
+                return False
+            body = e.read().decode(errors="replace")[:200]
+            sys.stderr.write(f"  [HTTP {e.code}] {doc.title}: {body}\n")
+            return False
+        except Exception as exc:
+            sys.stderr.write(f"  ERR {doc.title}: {exc}\n")
+            return False
 
 
 # ---------------------------------------------------------------------------
@@ -261,14 +288,15 @@ def main() -> int:
         sys.stderr.write("[index] ERROR: AIDB API key not found\n")
         return 1
 
+    pace_s = float(os.getenv("AQ_INDEX_PACE_S", "0.2"))
     ok_count = 0
     for doc in docs:
         if _ingest(doc, key, args.verbose):
             ok_count += 1
-        time.sleep(0.05)  # gentle rate pacing
+        time.sleep(pace_s)
 
     print(f"[index] ingested {ok_count}/{len(docs)} documents into AIDB project '{AIDB_PROJECT}'")
-    return 0 if ok_count > 0 else 1
+    return 0 if ok_count == len(docs) else 1
 
 
 if __name__ == "__main__":
