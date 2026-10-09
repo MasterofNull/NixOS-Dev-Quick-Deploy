@@ -1,4 +1,6 @@
 ---
+name: strict-json-output-contract
+description: "Enforce strict JSON-only model output with schema validation for machine-consumed responses."
 doc_type: skill
 id: strict-json-output-contract
 title: Strict JSON Output Contract
