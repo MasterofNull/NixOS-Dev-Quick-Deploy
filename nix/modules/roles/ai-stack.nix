@@ -582,7 +582,8 @@ let
       name = "Qwen3.6 35B A3B MTP Instruct";
       repo = "unsloth/Qwen3.6-35B-A3B-MTP-GGUF";
       file = "Qwen3.6-35B-A3B-UD-Q4_K_XL.gguf";
-      sha256 = null;
+      # Verified against the HF x-linked-etag on 2026-10-09 (22853663008 bytes).
+      sha256 = "55983c5a75a1ab969824077b3bb3de4146e82a9234072b48ad4e8f92ad3fe9f1";
       params = "35B (3B active MoE) + MTP heads";
       contextSize = 262144;
       ramEstimate = "~22.5 GB Q4_K_XL";
