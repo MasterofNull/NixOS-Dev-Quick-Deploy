@@ -69,6 +69,99 @@ class AdapterTests(unittest.TestCase):
                 {"check_id": "0.1.1", "state": "pass"}, {"check_id": "0.1.2", "state": "pass"}]))
             self.assertEqual(sw.adapter_qa_phase0(p, max_age_s=3600)[0], "ok")
 
+    def test_qa_fallback_to_health_monitor_with_failure(self):
+        with tempfile.TemporaryDirectory() as t:
+            progress = Path(t) / "progress.jsonl"
+            monitor = Path(t) / "monitor.json"
+
+            # Stale progress file
+            progress.write_text(json.dumps({"check_id": "0.1.1", "state": "pass"}))
+            os.utime(progress, (time.time() - 7200, time.time() - 7200))
+
+            # Fresh monitor with 1 failure
+            monitor_data = {
+                "phase_results": [
+                    {"phase": "0", "status": "failed", "returncode": 1, "total": 202,
+                     "failures": [{"id": "0.10.44", "label": "execution-cell-adapter fixture contract drift"}]}
+                ],
+                "source": "ai-stack-health-monitor",
+                "timestamp": "2026-10-09T03:04:17Z"
+            }
+            monitor.write_text(json.dumps(monitor_data))
+
+            state, f, d = sw.adapter_qa_phase0(progress, max_age_s=3600, health_monitor_json=monitor, now=time.time())
+            self.assertEqual(state, "findings")
+            self.assertEqual(len(f), 1)
+            self.assertEqual(f[0]["subject"], "aq-qa:0.10.44")
+            self.assertEqual(f[0]["producer"], "aq-qa:phase0")
+            self.assertIn("health-monitor", d)
+
+    def test_qa_fallback_to_health_monitor_no_failures(self):
+        with tempfile.TemporaryDirectory() as t:
+            progress = Path(t) / "progress.jsonl"
+            monitor = Path(t) / "monitor.json"
+
+            # Stale progress file
+            progress.write_text(json.dumps({"check_id": "0.1.1", "state": "pass"}))
+            os.utime(progress, (time.time() - 7200, time.time() - 7200))
+
+            # Fresh monitor with 0 failures
+            monitor_data = {
+                "phase_results": [
+                    {"phase": "0", "status": "passed", "returncode": 0, "total": 202, "failures": []}
+                ],
+                "source": "ai-stack-health-monitor",
+                "timestamp": "2026-10-09T03:04:17Z"
+            }
+            monitor.write_text(json.dumps(monitor_data))
+
+            state, f, d = sw.adapter_qa_phase0(progress, max_age_s=3600, health_monitor_json=monitor, now=time.time())
+            self.assertEqual(state, "ok")
+            self.assertEqual(f, [])
+            self.assertIn("202", d)
+            self.assertIn("health-monitor", d)
+
+    def test_qa_both_stale_is_unknown(self):
+        with tempfile.TemporaryDirectory() as t:
+            progress = Path(t) / "progress.jsonl"
+            monitor = Path(t) / "monitor.json"
+
+            # Both stale
+            progress.write_text(json.dumps({"check_id": "0.1.1", "state": "pass"}))
+            os.utime(progress, (time.time() - 7200, time.time() - 7200))
+
+            monitor_data = {"phase_results": [{"phase": "0", "status": "passed", "returncode": 0, "total": 202}]}
+            monitor.write_text(json.dumps(monitor_data))
+            os.utime(monitor, (time.time() - 7200, time.time() - 7200))
+
+            state, f, d = sw.adapter_qa_phase0(progress, max_age_s=3600, health_monitor_json=monitor, now=time.time())
+            self.assertEqual(state, "unknown")
+            self.assertEqual(f, [])
+            self.assertIn("stale", d)
+
+    def test_qa_fresh_progress_preferred_over_monitor(self):
+        with tempfile.TemporaryDirectory() as t:
+            progress = Path(t) / "progress.jsonl"
+            monitor = Path(t) / "monitor.json"
+
+            # Fresh progress with pass
+            recs = [{"check_id": "0.1.1", "state": "pass"}]
+            progress.write_text("\n".join(json.dumps(r) for r in recs))
+
+            # Fresh monitor with failure
+            monitor_data = {
+                "phase_results": [
+                    {"phase": "0", "status": "failed", "returncode": 1, "total": 202,
+                     "failures": [{"id": "0.10.44", "label": "some failure"}]}
+                ]
+            }
+            monitor.write_text(json.dumps(monitor_data))
+
+            state, f, d = sw.adapter_qa_phase0(progress, max_age_s=3600, health_monitor_json=monitor, now=time.time())
+            self.assertEqual(state, "ok")
+            self.assertEqual(f, [])
+            self.assertIn("aq-qa progress", d)  # Should prefer progress source
+
     def test_summary_never_calls_unknown_healthy(self):
         out = []
         adapters = {"a": lambda: ("ok", [], "fine"), "b": lambda: ("unknown", [], "stale")}
