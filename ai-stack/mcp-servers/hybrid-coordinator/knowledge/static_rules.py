@@ -110,6 +110,78 @@ STATIC_RULES: List[dict] = [
         "tags": ["research", "ingestion"],
     },
     {
+        "id": "annotate_plans_with_tools",
+        "title": "Annotate plan files with recommended tool sequences",
+        "keywords": ['enrich plan', 'annotate plan', 'plan tools', 'tool sequence', 'plan annotation'],
+        "snippet": (
+            '`scripts/ai/aq-enrich-plans [--plan P|--task T] [--write]` pre-loads plans with tool recommendations via the coordinator /tools/enrich-plan (dry-run by default).'
+        ),
+        "tags": ['planning', 'tools'],
+    },
+    {
+        "id": "generate_improvement_proposals",
+        "title": "Turn high-trust improvement candidates into proposal files",
+        "keywords": ['proposal', 'improvement candidate', 'candidates.json', 'generate proposal', 'discovery proposal'],
+        "snippet": (
+            '`scripts/ai/aq-propose [--dry-run]` renders .agents/proposals/<id>.md from .agents/improvement/candidates.json (trust>=0.70, relevance>=0.40, state=proposed).'
+        ),
+        "tags": ['improvement', 'governance'],
+    },
+    {
+        "id": "cli_output_helpers",
+        "title": "Shared CLI output helpers (spinner, progress, humanize, confirm)",
+        "keywords": ['spinner', 'progress bar', 'humanize bytes', 'humanize duration', 'cli helper', 'confirm prompt', 'print table'],
+        "snippet": (
+            'Python: `scripts/ai/cli-utils.py` (Logger, ProgressBar, Spinner, confirm, humanize_*, format_table). Bash: `source scripts/ai/cli-enhanced.sh` (spinner, run_with_spinner, humanize_*, print_table, show_error). Reuse instead of re-implementing.'
+        ),
+        "tags": ['cli', 'ux'],
+    },
+    {
+        "id": "scaffold_new_skill",
+        "title": "Scaffold a lint-conformant skill, or draft skills from gap patterns",
+        "keywords": ['new skill', 'scaffold skill', 'create skill', 'skill stub', 'gap pattern skill'],
+        "snippet": (
+            '`scripts/ai/aq-factory <name> \\"<purpose>\\"` scaffolds ai-stack/agents/skills/<name>/SKILL.md (then run scripts/governance/lint-skill-template.sh); `scripts/ai/aq-skill-factory [--dry-run]` drafts stubs in .agent/skills/auto-generated/ from delegation gap patterns.'
+        ),
+        "tags": ['skills', 'scaffolding'],
+    },
+    {
+        "id": "backfill_interaction_history_qdrant",
+        "title": "Backfill AIDB interaction_history into Qdrant",
+        "keywords": ['interaction-history', 'interaction history', 'backfill qdrant', 'history collection empty'],
+        "snippet": (
+            'If the Qdrant interaction-history collection is empty or behind AIDB /history, run `scripts/ai/backfill-interaction-history-qdrant.py [--batch-size N] [--dry-run]` (operator-run; touches AIDB+Qdrant).'
+        ),
+        "tags": ['qdrant', 'aidb', 'operations'],
+    },
+    {
+        "id": "regenerate_module_dashboard_pages",
+        "title": "Regenerate capability module HTML pages",
+        "keywords": ['module dashboard', 'assets/modules', 'capability catalog html', 'module page', 'system-capability-catalog'],
+        "snippet": (
+            'After editing config/system-capability-catalog.json, regenerate assets/modules/*.html with `python3 scripts/ai/generate-module-dashboard.py` (use --out-dir DIR to preview elsewhere).'
+        ),
+        "tags": ['dashboard', 'catalog'],
+    },
+    {
+        "id": "resume_interrupted_model_download",
+        "title": "Resume an interrupted multi-GB model download",
+        "keywords": ['resume download', 'partial download', 'gguf download', 'model download interrupted', 'curl resume'],
+        "snippet": (
+            'llama-cpp-model-fetch restarts from zero on interruption; `scripts/ai/resume-model-download.sh --repo R --file F [--dest-dir D] [--dry-run]` resumes by byte range (curl -C -).'
+        ),
+        "tags": ['models', 'operations'],
+    },
+    {
+        "id": "legacy_ai_stack_script_names",
+        "title": "Legacy ai-stack-* script names map to current tools",
+        "keywords": ['ai-stack-e2e-test', 'ai-stack-troubleshoot', 'ai-stack-resume-recovery', 'ai-stack-feature-scenario', 'ai-model-setup', 'llama-model-cli', 'ai-metrics-auto-updater'],
+        "snippet": (
+            'CI-pinned compat shims in scripts/ai/: ai-stack-e2e-test (aq-qa 0/1 + workflow smoke), ai-stack-troubleshoot (diagnostic bundle), ai-stack-resume-recovery (aq-system-act/aq-runtime-act), ai-stack-feature-scenario (aq-context-bootstrap), ai-model-setup + llama-model-cli (ai-model-manager.sh), ai-metrics-auto-updater (collect-ai-metrics.sh). Prefer the current tools.'
+        ),
+        "tags": ['compat', 'legacy'],
+    },
+    {
         "id": "aider_scope_small",
         "title": "Keep aider tasks small and targeted",
         "keywords": ["aider", "code", "generate", "edit", "change", "modify"],

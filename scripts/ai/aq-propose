@@ -78,6 +78,10 @@ generated_at: {generated_at}
 
 
 def main() -> int:
+    import argparse
+    ap = argparse.ArgumentParser(description=__doc__.splitlines()[0])
+    ap.add_argument("--dry-run", action="store_true", help="list qualifying candidates without writing proposals")
+    args = ap.parse_args()
     if not CANDIDATES_PATH.exists():
         print(f"ERROR: candidates.json not found at {CANDIDATES_PATH}", file=sys.stderr)
         return 1
@@ -86,7 +90,8 @@ def main() -> int:
         data = json.load(f)
 
     candidates = data.get("candidates", [])
-    PROPOSALS_DIR.mkdir(parents=True, exist_ok=True)
+    if not args.dry_run:
+        PROPOSALS_DIR.mkdir(parents=True, exist_ok=True)
 
     generated_at = datetime.now(tz=timezone.utc).strftime("%Y-%m-%dT%H:%M:%SZ")
     proposed_count = 0
@@ -114,6 +119,9 @@ def main() -> int:
             skipped_count += 1
             continue
 
+        if args.dry_run:
+            print(f"WOULD PROPOSE: {cid}")
+            continue
         content = _render_proposal(c, generated_at)
         proposal_path.write_text(content, encoding="utf-8")
         print(f"PROPOSED: {cid} -> .agents/proposals/{cid}.md")

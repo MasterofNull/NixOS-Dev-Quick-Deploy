@@ -542,7 +542,7 @@
       "module": "anomaly_alert_integration",
       "owner": "unassigned",
       "path": "ai-stack/observability/anomaly_alert_integration.py",
-      "rationale": "Referenced outside ai-stack import graph; verify runtime/QA/dashboard coverage. Examples: config/ai-harness-slice-registry.json, scripts/ai/autonomous-coordinator-local.sh"
+      "rationale": "Referenced outside ai-stack import graph; verify runtime/QA/dashboard coverage. Examples: config/ai-harness-slice-registry.json"
     },
     {
       "action": "verify-entrypoint-wiring",

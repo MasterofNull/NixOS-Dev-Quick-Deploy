@@ -1,171 +1,517 @@
 {
- "schema": "capability-triage/1",
- "note": "Deliberately-kept capabilities the audit heuristics cannot see (other hosts/profiles, external hooks, operator-run tools). Audit class KEEP-DECLARED instead of DEAD-CANDIDATE while not used/wired. Review entries when the reason lapses.",
- "keep": [
-  {
-   "name": "activation-auto-revert",
-   "kind": "unit",
-   "reason": "Nix-declared, option-gated unit (disabled by default or on this host only); enabled per host/profile; ai-dev profile opt-in (default false), has test-activation-auto-revert-guard.py"
-  },
-  {
-   "name": "ai-headroom-proxy",
-   "kind": "unit",
-   "reason": "Nix-declared, option-gated unit (disabled by default or on this host only); enabled per host/profile; headroom payload-compression proxy (Phase 164)"
-  },
-  {
-   "name": "aq-auto-update-check",
-   "kind": "unit",
-   "reason": "Nix-declared, option-gated unit (disabled by default or on this host only); enabled per host/profile; U3 unattended-update pipeline, default off"
-  },
-  {
-   "name": "aq-auto-update-run",
-   "kind": "unit",
-   "reason": "Nix-declared, option-gated unit (disabled by default or on this host only); enabled per host/profile; U3 unattended-update pipeline, default off, in suspend-resume-workloads.json"
-  },
-  {
-   "name": "audit-rules-nixos",
-   "kind": "unit",
-   "reason": "Nix-declared in core/logging.nix (SuccessExitStatus override of upstream audit-rules unit); not an own unit"
-  },
-  {
-   "name": "battery-charge-thresholds",
-   "kind": "unit",
-   "reason": "laptop-only hardware module nix/modules/hardware/mobile.nix; not applicable on desktop hosts"
-  },
-  {
-   "name": "llama-router",
-   "kind": "unit",
-   "reason": "Nix-declared, option-gated unit (disabled by default or on this host only); enabled per host/profile; llama.cpp router service (enable option)"
-  },
-  {
-   "name": "meta-optimization-analysis",
-   "kind": "unit",
-   "reason": "Nix-declared, option-gated unit (disabled by default or on this host only); enabled per host/profile; meta-optimization.nix"
-  },
-  {
-   "name": "meta-optimization-applier",
-   "kind": "unit",
-   "reason": "Nix-declared, option-gated unit (disabled by default or on this host only); enabled per host/profile; meta-optimization.nix"
-  },
-  {
-   "name": "meta-optimization-validator",
-   "kind": "unit",
-   "reason": "Nix-declared, option-gated unit (disabled by default or on this host only); enabled per host/profile; meta-optimization.nix"
-  },
-  {
-   "name": "project-import",
-   "kind": "skill",
-   "reason": "generic skill; skills rarely log use; mirrored in ai-stack/agents/skills"
-  },
-  {
-   "name": "slack-gif-creator",
-   "kind": "skill",
-   "reason": "generic imported skill; rarely used, listed in aq-integrity-logical-orphans.json"
-  },
-  {
-   "name": "template-skill",
-   "kind": "skill",
-   "reason": "skill authoring template, intentionally never invoked"
-  },
-  {
-   "name": "aq-adopt-workflow",
-   "kind": "script",
-   "reason": "operator-run adoption helper; referenced by harness_qa phase0 and aq-integrity-logical-orphans.json"
-  },
-  {
-   "name": "aq-bitnet-compare.py",
-   "kind": "script",
-   "reason": "BitNet benchmarking for bitnet-profile hosts; has test-bitnet-compare.py"
-  },
-  {
-   "name": "aq-capability-flush",
-   "kind": "script",
-   "reason": "operator/agent-lane flush tool; has test-capability-flush.py"
-  },
-  {
-   "name": "aq-capability-shadow",
-   "kind": "script",
-   "reason": "Foundation-C capability-lease shadow admission (schema + test-capability-lease-issuance.py); gitignored shadow records"
-  },
-  {
-   "name": "aq-coach-events",
-   "kind": "script",
-   "reason": "local-agent coach telemetry reader; has test-aq-coach-events.py"
-  },
-  {
-   "name": "aq-editor-rescue",
-   "kind": "script",
-   "reason": "editor-state recovery, documented in EDITOR-STATE-RECOVERY-RUNBOOK.md; has test"
-  },
-  {
-   "name": "aq-factory-push",
-   "kind": "script",
-   "reason": "factory-pack fp-2 outward push (2026-09), companion of aq-factory-pack; operator-run by design"
-  },
-  {
-   "name": "aq-index-knowledge-graph",
-   "kind": "script",
-   "reason": "GraphRAG index builder (phase0 check, env-contract.yaml, test-aq-index-knowledge-graph.py)"
-  },
-  {
-   "name": "aq-llama-benchmark.py",
-   "kind": "script",
-   "reason": "inference benchmark; has test-llama-benchmark.py; PROJECT-AQ-INFERENCE-BENCH-PRD"
-  },
-  {
-   "name": "aq-llama-staging-status.py",
-   "kind": "script",
-   "reason": "llama staging status reader; has test-llama-staging-status.py"
-  },
-  {
-   "name": "aq-local-dogfood-run",
-   "kind": "script",
-   "reason": "local-agent dogfood runner; 3 guard tests, in suspend-resume-workloads.json"
-  },
-  {
-   "name": "aq-local-review",
-   "kind": "script",
-   "reason": "local-embed review lane (July); has test-aq-local-review.py"
-  },
-  {
-   "name": "aq-model-eval",
-   "kind": "script",
-   "reason": "probes loaded llama.cpp model and writes model-profile.json; operator-run after model load"
-  },
-  {
-   "name": "aq-prm-eval",
-   "kind": "script",
-   "reason": "FE-1 process-reward steering A/B (2026-10-08 evidence doc); operator-run eval"
-  },
-  {
-   "name": "aq-qdrant-prune-test-collections",
-   "kind": "script",
-   "reason": "Qdrant test-collection hygiene; operator-run, covered by test_vector_routing_collections.py"
-  },
-  {
-   "name": "aq-worktree-reap",
-   "kind": "script",
-   "reason": "zero-change delegate worktree reaper (2026-10-07); has test-aq-worktree-reap.py"
-  },
-  {
-   "name": "aq-worktree-write-guard",
-   "kind": "script",
-   "reason": "wired by .claude/settings.json PreToolUse hook (outside audit scan trees); has test"
-  },
-  {
-   "name": "mcp-aidb",
-   "kind": "script",
-   "reason": "MCP stdio helper launched from external MCP client config (outside repo); keep"
-  },
-  {
-   "name": "mcp-hybrid-coordinator",
-   "kind": "script",
-   "reason": "MCP stdio bridge launched from external MCP client config (outside repo); keep"
-  },
-  {
-   "name": "sync-workflow-sessions.py",
-   "kind": "script",
-   "reason": "named as state authority in config/system-state-authorities.yaml and aqos ADRs"
-  }
- ]
+  "schema": "capability-triage/1",
+  "note": "Deliberately-kept capabilities the audit heuristics cannot see (other hosts/profiles, external hooks, operator-run tools). Audit class KEEP-DECLARED instead of DEAD-CANDIDATE while not used/wired. Review entries when the reason lapses.",
+  "keep": [
+    {
+      "name": "activation-auto-revert",
+      "kind": "unit",
+      "reason": "Nix-declared, option-gated unit (disabled by default or on this host only); enabled per host/profile; ai-dev profile opt-in (default false), has test-activation-auto-revert-guard.py"
+    },
+    {
+      "name": "ai-headroom-proxy",
+      "kind": "unit",
+      "reason": "Nix-declared, option-gated unit (disabled by default or on this host only); enabled per host/profile; headroom payload-compression proxy (Phase 164)"
+    },
+    {
+      "name": "aq-auto-update-check",
+      "kind": "unit",
+      "reason": "Nix-declared, option-gated unit (disabled by default or on this host only); enabled per host/profile; U3 unattended-update pipeline, default off"
+    },
+    {
+      "name": "aq-auto-update-run",
+      "kind": "unit",
+      "reason": "Nix-declared, option-gated unit (disabled by default or on this host only); enabled per host/profile; U3 unattended-update pipeline, default off, in suspend-resume-workloads.json"
+    },
+    {
+      "name": "audit-rules-nixos",
+      "kind": "unit",
+      "reason": "Nix-declared in core/logging.nix (SuccessExitStatus override of upstream audit-rules unit); not an own unit"
+    },
+    {
+      "name": "battery-charge-thresholds",
+      "kind": "unit",
+      "reason": "laptop-only hardware module nix/modules/hardware/mobile.nix; not applicable on desktop hosts"
+    },
+    {
+      "name": "llama-router",
+      "kind": "unit",
+      "reason": "Nix-declared, option-gated unit (disabled by default or on this host only); enabled per host/profile; llama.cpp router service (enable option)"
+    },
+    {
+      "name": "meta-optimization-analysis",
+      "kind": "unit",
+      "reason": "Nix-declared, option-gated unit (disabled by default or on this host only); enabled per host/profile; meta-optimization.nix"
+    },
+    {
+      "name": "meta-optimization-applier",
+      "kind": "unit",
+      "reason": "Nix-declared, option-gated unit (disabled by default or on this host only); enabled per host/profile; meta-optimization.nix"
+    },
+    {
+      "name": "meta-optimization-validator",
+      "kind": "unit",
+      "reason": "Nix-declared, option-gated unit (disabled by default or on this host only); enabled per host/profile; meta-optimization.nix"
+    },
+    {
+      "name": "project-import",
+      "kind": "skill",
+      "reason": "generic skill; skills rarely log use; mirrored in ai-stack/agents/skills"
+    },
+    {
+      "name": "slack-gif-creator",
+      "kind": "skill",
+      "reason": "generic imported skill; rarely used, listed in aq-integrity-logical-orphans.json"
+    },
+    {
+      "name": "template-skill",
+      "kind": "skill",
+      "reason": "skill authoring template, intentionally never invoked"
+    },
+    {
+      "name": "aq-adopt-workflow",
+      "kind": "script",
+      "reason": "operator-run adoption helper; referenced by harness_qa phase0 and aq-integrity-logical-orphans.json"
+    },
+    {
+      "name": "aq-bitnet-compare.py",
+      "kind": "script",
+      "reason": "BitNet benchmarking for bitnet-profile hosts; has test-bitnet-compare.py"
+    },
+    {
+      "name": "aq-capability-flush",
+      "kind": "script",
+      "reason": "operator/agent-lane flush tool; has test-capability-flush.py"
+    },
+    {
+      "name": "aq-capability-shadow",
+      "kind": "script",
+      "reason": "Foundation-C capability-lease shadow admission (schema + test-capability-lease-issuance.py); gitignored shadow records"
+    },
+    {
+      "name": "aq-coach-events",
+      "kind": "script",
+      "reason": "local-agent coach telemetry reader; has test-aq-coach-events.py"
+    },
+    {
+      "name": "aq-editor-rescue",
+      "kind": "script",
+      "reason": "editor-state recovery, documented in EDITOR-STATE-RECOVERY-RUNBOOK.md; has test"
+    },
+    {
+      "name": "aq-factory-push",
+      "kind": "script",
+      "reason": "factory-pack fp-2 outward push (2026-09), companion of aq-factory-pack; operator-run by design"
+    },
+    {
+      "name": "aq-index-knowledge-graph",
+      "kind": "script",
+      "reason": "GraphRAG index builder (phase0 check, env-contract.yaml, test-aq-index-knowledge-graph.py)"
+    },
+    {
+      "name": "aq-llama-benchmark.py",
+      "kind": "script",
+      "reason": "inference benchmark; has test-llama-benchmark.py; PROJECT-AQ-INFERENCE-BENCH-PRD"
+    },
+    {
+      "name": "aq-llama-staging-status.py",
+      "kind": "script",
+      "reason": "llama staging status reader; has test-llama-staging-status.py"
+    },
+    {
+      "name": "aq-local-dogfood-run",
+      "kind": "script",
+      "reason": "local-agent dogfood runner; 3 guard tests, in suspend-resume-workloads.json"
+    },
+    {
+      "name": "aq-local-review",
+      "kind": "script",
+      "reason": "local-embed review lane (July); has test-aq-local-review.py"
+    },
+    {
+      "name": "aq-model-eval",
+      "kind": "script",
+      "reason": "probes loaded llama.cpp model and writes model-profile.json; operator-run after model load"
+    },
+    {
+      "name": "aq-prm-eval",
+      "kind": "script",
+      "reason": "FE-1 process-reward steering A/B (2026-10-08 evidence doc); operator-run eval"
+    },
+    {
+      "name": "aq-qdrant-prune-test-collections",
+      "kind": "script",
+      "reason": "Qdrant test-collection hygiene; operator-run, covered by test_vector_routing_collections.py"
+    },
+    {
+      "name": "aq-worktree-reap",
+      "kind": "script",
+      "reason": "zero-change delegate worktree reaper (2026-10-07); has test-aq-worktree-reap.py"
+    },
+    {
+      "name": "aq-worktree-write-guard",
+      "kind": "script",
+      "reason": "wired by .claude/settings.json PreToolUse hook (outside audit scan trees); has test"
+    },
+    {
+      "name": "mcp-aidb",
+      "kind": "script",
+      "reason": "MCP stdio helper launched from external MCP client config (outside repo); keep"
+    },
+    {
+      "name": "mcp-hybrid-coordinator",
+      "kind": "script",
+      "reason": "MCP stdio bridge launched from external MCP client config (outside repo); keep"
+    },
+    {
+      "name": "sync-workflow-sessions.py",
+      "kind": "script",
+      "reason": "named as state authority in config/system-state-authorities.yaml and aqos ADRs"
+    },
+    {
+      "name": "aq-enrich-plans",
+      "kind": "script",
+      "reason": "triage 2026-10-09 REVIVE-INTEGRATE: Revived to scripts/ai/aq-enrich-plans; added --help. Trigger: `aq enrich-plans` (router auto-discovery) + hints rule annotate_plans_with_tools."
+    },
+    {
+      "name": "aq-propose",
+      "kind": "script",
+      "reason": "triage 2026-10-09 REVIVE-INTEGRATE: Revived to scripts/ai/aq-propose; added --dry-run/--help. Trigger: `aq propose` + hints rule generate_improvement_proposals."
+    },
+    {
+      "name": "cli-enhanced.sh",
+      "kind": "script",
+      "reason": "triage 2026-10-09 REVIVE-INTEGRATE: Revived to scripts/ai/cli-enhanced.sh (source-able). Trigger: hints rule cli_output_helpers + smoke test. Merge into lib/l7-interaction left as follow-up (not s"
+    },
+    {
+      "name": "cli-utils.py",
+      "kind": "script",
+      "reason": "triage 2026-10-09 REVIVE-INTEGRATE: Revived to scripts/ai/cli-utils.py. Trigger: hints rule cli_output_helpers + smoke test (humanize assertions)."
+    },
+    {
+      "name": "ai-metrics-auto-updater.sh",
+      "kind": "script",
+      "reason": "triage 2026-10-09 REVIVE-INTEGRATE: Kept in place: archiving would break the CI/deploy verifier; wired via hints rule legacy_ai_stack_script_names; smoke --help."
+    },
+    {
+      "name": "ai-model-setup.sh",
+      "kind": "script",
+      "reason": "triage 2026-10-09 REVIVE-INTEGRATE: Same as ai-metrics-auto-updater.sh."
+    },
+    {
+      "name": "ai-stack-e2e-test.sh",
+      "kind": "script",
+      "reason": "triage 2026-10-09 REVIVE-INTEGRATE: Same."
+    },
+    {
+      "name": "ai-stack-feature-scenario.sh",
+      "kind": "script",
+      "reason": "triage 2026-10-09 REVIVE-INTEGRATE: Same."
+    },
+    {
+      "name": "ai-stack-resume-recovery.sh",
+      "kind": "script",
+      "reason": "triage 2026-10-09 REVIVE-INTEGRATE: Same."
+    },
+    {
+      "name": "ai-stack-troubleshoot.sh",
+      "kind": "script",
+      "reason": "triage 2026-10-09 REVIVE-INTEGRATE: Kept in place (has a bats test, unique bundle output); hints rule; bash -n smoke (run needs live services)."
+    },
+    {
+      "name": "llama-model-cli.sh",
+      "kind": "script",
+      "reason": "triage 2026-10-09 REVIVE-INTEGRATE: Same as ai-metrics-auto-updater.sh."
+    },
+    {
+      "name": "aq-factory",
+      "kind": "script",
+      "reason": "triage 2026-10-09 REVIVE-INTEGRATE: Old output (no frontmatter, 'Not implemented' __init__.py) failed the current skill lint contract. Rewritten to emit name/description frontmatter SKILL.md; adde"
+    },
+    {
+      "name": "aq-skill-factory",
+      "kind": "script",
+      "reason": "triage 2026-10-09 REVIVE-INTEGRATE: Kept in place; hints rule scaffold_new_skill; smoke --help."
+    },
+    {
+      "name": "backfill-interaction-history-qdrant.py",
+      "kind": "script",
+      "reason": "triage 2026-10-09 REVIVE-INTEGRATE: Kept in place (operator tool; a DB backfill is running now, not executed). Hints rule; --help smoke only."
+    },
+    {
+      "name": "generate-module-dashboard.py",
+      "kind": "script",
+      "reason": "triage 2026-10-09 REVIVE-INTEGRATE: Actively used; added --out-dir for safe preview; hints rule regenerate_module_dashboard_pages; smoke generates into tmp."
+    },
+    {
+      "name": "resume-model-download.sh",
+      "kind": "script",
+      "reason": "triage 2026-10-09 REVIVE-INTEGRATE: Generalised from hardcoded Qwen3.6 Q4: --repo/--file/--dest-dir/--dry-run. Hints rule resume_interrupted_model_download."
+    }
+  ],
+  "decisions": [
+    {
+      "set": "A",
+      "item": "adk-discovery-workflow.sh",
+      "function": "Weekly grep-scored ADK parity self-assessment + discovery log",
+      "parity": "lib/l4-coord/adk/implementation-discovery.sh + parity-tracker.py (dashboard/backend/api/routes/adk.py calls both; scripts/testing/test-adk-integration.py; scripts/automation/adk/schedule-discovery.sh)",
+      "decision": "ARCHIVE",
+      "reason": "Same-day (2026-03-20) superset: release monitoring, parity tracker, dashboard API, scheduler."
+    },
+    {
+      "set": "A",
+      "item": "ai-commit-simple",
+      "function": "Suggest a one-line commit message from the diff via local /query, then git add -A + commit",
+      "parity": "Partial only: aq-commit-agent (tier0-gated explicit-path commit, no message generation); /commit skill",
+      "decision": "RETIRE-WITH-REASON",
+      "reason": "Commits with git add -A and no tier0 gate, 72-char head-only messages; violates commit discipline and commit-verbosity policy. Message suggestion can be re-added to aq-commit-agent if wanted."
+    },
+    {
+      "set": "A",
+      "item": "ai-env-summary.sh",
+      "function": "Print legacy HOST_PROFILE/AI_PROFILE/AI_STACK_PROFILE env + edge-model registry count",
+      "parity": "Partial: aq-model --active (model catalog), aq-system-state, scripts/governance/edge-model-registry-validate.sh",
+      "decision": "RETIRE-WITH-REASON",
+      "reason": "Profile selection is now declarative Nix (nix/modules/profiles/*, nix/hosts/*/facts.nix); the env vars it prints are installer-era and read by nothing else."
+    },
+    {
+      "set": "A",
+      "item": "ai-validate-and-commit",
+      "function": "Local-agent diff review (APPROVE/REJECT) then commit with generated message",
+      "parity": "Review: delegate-to-local --role reviewer, aq-local-review, reviewer-gate skill; commit: aq-commit-agent",
+      "decision": "RETIRE-WITH-REASON",
+      "reason": "Mandated review-before-commit flow already exists with independent reviewers; this one hardcodes ~/.npm-global/bin/qwen and commits with git add -A, bypassing tier0 and trunk protection."
+    },
+    {
+      "set": "A",
+      "item": "aq-enrich-plans",
+      "function": "CLI client that annotates .agents/plans/*.md with tool sequences via coordinator /tools/enrich-plan",
+      "parity": "None for the CLI: server endpoint exists (auto_tool_select_handlers.py) and MCP auto_select_tools/tool_catalog cover per-task lookup, but nothing batch-annotates plan files",
+      "decision": "REVIVE-INTEGRATE",
+      "reason": "Revived to scripts/ai/aq-enrich-plans; added --help. Trigger: `aq enrich-plans` (router auto-discovery) + hints rule annotate_plans_with_tools."
+    },
+    {
+      "set": "A",
+      "item": "aq-propose",
+      "function": "Render .agents/proposals/<id>.md from high-trust candidates.json (Phase 153)",
+      "parity": "None: sole producer of .agents/proposals (11 live files); candidates.json still written by improvement_detector.py",
+      "decision": "REVIVE-INTEGRATE",
+      "reason": "Revived to scripts/ai/aq-propose; added --dry-run/--help. Trigger: `aq propose` + hints rule generate_improvement_proposals."
+    },
+    {
+      "set": "A",
+      "item": "aq-qa-agent",
+      "function": "Machine-readable aq-qa",
+      "parity": "scripts/ai/aq-qa --machine (same flag; aq router `aq qa`)",
+      "decision": "ARCHIVE",
+      "reason": "Exact wrapper of the live flag; the wrapper also used a cwd-relative path."
+    },
+    {
+      "set": "A",
+      "item": "autonomous-coordinator-simple.sh",
+      "function": "Execute pending roadmap batches via CLI delegation, auto-commit",
+      "parity": "scripts/ai/aq-loop-queue (+aq-loop; --no-fanout for local-only) drains the backlog sequentially",
+      "decision": "ARCHIVE",
+      "reason": "Reads NEXT-GEN-AGENTIC-ROADMAP-2026-03.md, which no longer exists; auto-commits with git add -A bypassing tier0."
+    },
+    {
+      "set": "A",
+      "item": "autonomous-coordinator.sh",
+      "function": "Same, via delegate-to-claude",
+      "parity": "scripts/ai/aq-loop-queue + aq-loop",
+      "decision": "ARCHIVE",
+      "reason": "Same as autonomous-coordinator-simple.sh."
+    },
+    {
+      "set": "A",
+      "item": "bash-completion.sh",
+      "function": "Tab completion for aq-report, deploy, aq-orchestrator, dashboard",
+      "parity": "scripts/ai/aq-completions.sh (_aq_report_complete, router, aq-hints; installed by nix ai-stack.nix when mySystem.aiStack.shellCompletions, default true in ai-dev profile)",
+      "decision": "ARCHIVE",
+      "reason": "Only aq-report completion was real and is covered; the others complete commands that do not exist (aq-orchestrator absent, generic deploy/dashboard)."
+    },
+    {
+      "set": "A",
+      "item": "cli-enhanced.sh",
+      "function": "Bash UX helpers: spinner, run_with_spinner, humanize_bytes/duration, print_table, show_error, progress, confirm",
+      "parity": "Partial only: lib/l7-interaction/user-interaction.sh + progress.sh cover print_*, confirm, progress bar; no spinner/humanize/table/show_error",
+      "decision": "REVIVE-INTEGRATE",
+      "reason": "Revived to scripts/ai/cli-enhanced.sh (source-able). Trigger: hints rule cli_output_helpers + smoke test. Merge into lib/l7-interaction left as follow-up (not small)."
+    },
+    {
+      "set": "A",
+      "item": "cli-utils.py",
+      "function": "Python UX helpers: Logger, ProgressBar, Spinner, confirm, ContextualError, format_table, humanize_*",
+      "parity": "None: no Python equivalent in repo (rg for humanize/Spinner/ProgressBar finds nothing live)",
+      "decision": "REVIVE-INTEGRATE",
+      "reason": "Revived to scripts/ai/cli-utils.py. Trigger: hints rule cli_output_helpers + smoke test (humanize assertions)."
+    },
+    {
+      "set": "A",
+      "item": "export-container-config",
+      "function": "Generate Docker/Podman compose + env for a standalone containerized AI stack",
+      "parity": "None by design",
+      "decision": "RETIRE-WITH-REASON",
+      "reason": "Nix is the single source of truth (feedback-nix-single-source-no-bloat 2026-10-01): no parallel Docker layers. Its guide lives only in docs/archive/legacy-2025."
+    },
+    {
+      "set": "A",
+      "item": "local-harness-proxy.py",
+      "function": "File-drop bridge: runs shell commands from .agent/comms/command.json",
+      "parity": "Native MCP: scripts/ai/mcp-bridge-hybrid.py (wired in nix/home/base.nix) for coordinator tools; aq-agent-loop / lean-ctx ctx_shell for command execution",
+      "decision": "RETIRE-WITH-REASON",
+      "reason": "Self-declared superseded by the MCP bridge; arbitrary command execution from a writable file has no allowlist (Rule 7). .agent/comms files are empty placeholders."
+    },
+    {
+      "set": "A",
+      "item": "mcp-db-setup",
+      "function": "Renamed alias to mcp-db-validate",
+      "parity": "scripts/ai/mcp-db-validate (the exec target itself)",
+      "decision": "ARCHIVE",
+      "reason": "Pure rename shim."
+    },
+    {
+      "set": "A",
+      "item": "optimize-and-validate.sh",
+      "function": "One-off 2026-04-09 optimization session: baseline vs optimized aq-report p95 for 3 tools, 50% target",
+      "parity": "Partial: aq-report trend vs 24h baseline, aq-optimizer, aq-inference-bench",
+      "decision": "RETIRE-WITH-REASON",
+      "reason": "Session-bound (hardcoded tools/target, placeholder 'apply' step) and broken: depends on aq-report JSON key tool_performance that no longer exists. Generic before/after delta could be added as `aq-report --compare` (follow-up)."
+    },
+    {
+      "set": "A",
+      "item": "test-ux-improvements.sh",
+      "function": "Phase 6.2 structural test of dashboard.html UX features + UX bundle files",
+      "parity": "Dashboard UI replaced; new smoke test scripts/testing/test-revived-capabilities-smoke.sh covers the revived UX libs",
+      "decision": "RETIRE-WITH-REASON",
+      "reason": "Verified failing on its first assertion: dashboard.html no longer contains empty-state, success-toast, NotificationManager, KeyboardShortcutsManager etc. Asserts removed UI."
+    },
+    {
+      "set": "B",
+      "item": "ai-metrics-auto-updater.sh",
+      "function": "Legacy-name shim: bounded refresh loop over collect-ai-metrics.sh",
+      "parity": "Wrapped tool scripts/observability/collect-ai-metrics.sh; shim itself pinned by verify-flake-first-roadmap-completion.sh (CI tests.yml + nixos-quick-deploy.sh)",
+      "decision": "REVIVE-INTEGRATE",
+      "reason": "Kept in place: archiving would break the CI/deploy verifier; wired via hints rule legacy_ai_stack_script_names; smoke --help."
+    },
+    {
+      "set": "B",
+      "item": "ai-model-setup.sh",
+      "function": "Legacy shim over ai-model-manager.sh / update-llama-cpp.sh",
+      "parity": "ai-model-manager.sh, update-llama-cpp.sh, aq-model; CI-pinned",
+      "decision": "REVIVE-INTEGRATE",
+      "reason": "Same as ai-metrics-auto-updater.sh."
+    },
+    {
+      "set": "B",
+      "item": "ai-stack-e2e-test.sh",
+      "function": "Legacy shim: aq-qa 0, aq-qa 1, real-world workflow smoke",
+      "parity": "aq-qa + scripts/testing/test-real-world-workflows.sh; CI-pinned",
+      "decision": "REVIVE-INTEGRATE",
+      "reason": "Same."
+    },
+    {
+      "set": "B",
+      "item": "ai-stack-feature-scenario.sh",
+      "function": "Legacy shim over aq-context-bootstrap / workflow smoke",
+      "parity": "aq-context-bootstrap; CI-pinned",
+      "decision": "REVIVE-INTEGRATE",
+      "reason": "Same."
+    },
+    {
+      "set": "B",
+      "item": "ai-stack-resume-recovery.sh",
+      "function": "Legacy shim over aq-system-act / aq-runtime-act",
+      "parity": "aq-system-act, aq-runtime-act; CI-pinned",
+      "decision": "REVIVE-INTEGRATE",
+      "reason": "Same."
+    },
+    {
+      "set": "B",
+      "item": "ai-stack-troubleshoot.sh",
+      "function": "Writes artifacts/troubleshooting bundle (failed units, aq-qa 0, dashboard health)",
+      "parity": "Partial: aq-runtime-plan / aq-runtime-diagnose do not write this bundle; tested by tests/unit/ai-stack-troubleshoot.bats",
+      "decision": "REVIVE-INTEGRATE",
+      "reason": "Kept in place (has a bats test, unique bundle output); hints rule; bash -n smoke (run needs live services)."
+    },
+    {
+      "set": "B",
+      "item": "llama-model-cli.sh",
+      "function": "Legacy shim: model status/logs/debug/update/reload",
+      "parity": "ai-model-manager.sh, aq-llama-debug, aq-model; CI-pinned",
+      "decision": "REVIVE-INTEGRATE",
+      "reason": "Same as ai-metrics-auto-updater.sh."
+    },
+    {
+      "set": "B",
+      "item": "aq-factory",
+      "function": "One-command skill scaffolder",
+      "parity": "None: template-skill is copy-by-hand; lint-skill-template.sh only lints; aq-skill-factory starts from gap patterns",
+      "decision": "REVIVE-INTEGRATE",
+      "reason": "Old output (no frontmatter, 'Not implemented' __init__.py) failed the current skill lint contract. Rewritten to emit name/description frontmatter SKILL.md; added --root/--dry-run. Trigger: `aq factory` + hints rule scaffold_new_skill."
+    },
+    {
+      "set": "B",
+      "item": "aq-push-intelligence",
+      "function": "Extract lessons from aq-insights and push to AIDB agent-intelligence",
+      "parity": "ai-crystallize-sessions timer running scripts/ai/aq-crystallize (nix ai-stack.nix:2156), aq-lesson-promote, coordinator lessons (ai_coordinator_handlers.py)",
+      "decision": "ARCHIVE",
+      "reason": "The push was SIMULATED (log only). Removed its existence/run test from tests/integration/test-phase5-production-hardening.py."
+    },
+    {
+      "set": "B",
+      "item": "aq-skill-factory",
+      "function": "Draft skill stubs from delegation gap_patterns (PAEA 89.5)",
+      "parity": "None: training_ingest still emits gap_patterns; .agent/skills/auto-generated holds its output",
+      "decision": "REVIVE-INTEGRATE",
+      "reason": "Kept in place; hints rule scaffold_new_skill; smoke --help."
+    },
+    {
+      "set": "B",
+      "item": "autonomous-coordinator-local.sh",
+      "function": "Local-only (aq-hints + local model) roadmap batch executor",
+      "parity": "scripts/ai/aq-loop-queue --no-fanout (local-only)",
+      "decision": "ARCHIVE",
+      "reason": "Roadmap file it reads is gone; auto-commit bypasses tier0. Dropped its mention from config/aq-integrity-logical-orphans.json."
+    },
+    {
+      "set": "B",
+      "item": "backfill-interaction-history-qdrant.py",
+      "function": "Backfill AIDB interaction_history into Qdrant interaction-history",
+      "parity": "None: aq-vector-reconcile covers imported_documents->knowledge, not interaction-history",
+      "decision": "REVIVE-INTEGRATE",
+      "reason": "Kept in place (operator tool; a DB backfill is running now, not executed). Hints rule; --help smoke only."
+    },
+    {
+      "set": "B",
+      "item": "generate-module-dashboard.py",
+      "function": "Generate assets/modules/*.html from system-capability-catalog.json (linked from dashboard.html)",
+      "parity": "None: aq-capability-catalog renders markdown only",
+      "decision": "REVIVE-INTEGRATE",
+      "reason": "Actively used; added --out-dir for safe preview; hints rule regenerate_module_dashboard_pages; smoke generates into tmp."
+    },
+    {
+      "set": "B",
+      "item": "prime-local-agent",
+      "function": "Markdown context dump for a local agent (service status, quick commands)",
+      "parity": "scripts/ai/aq-prime (health check, roles, progressive disclosure, --format json; mandated in CLAUDE.md session start); /primer workflow",
+      "decision": "ARCHIVE",
+      "reason": "Refers to missing .agent/LOCAL-AGENT-HARNESS-PRIMER.md."
+    },
+    {
+      "set": "B",
+      "item": "render-continue-config.sh",
+      "function": "Render Continue.dev config.json from template with port substitution",
+      "parity": "nix/home/base.nix home.activation.createContinueConfig (config version 34.0, switchboard-profile driven)",
+      "decision": "ARCHIVE",
+      "reason": "Template no longer contains the shell variables it substitutes, so the script was a no-op copy."
+    },
+    {
+      "set": "B",
+      "item": "resume-model-download.sh",
+      "function": "Byte-range resumable model download",
+      "parity": "Partial: llama-cpp-model-fetch (nix ai-stack.nix:1185) retries but restarts from zero (no curl -C -)",
+      "decision": "REVIVE-INTEGRATE",
+      "reason": "Generalised from hardcoded Qwen3.6 Q4: --repo/--file/--dest-dir/--dry-run. Hints rule resume_interrupted_model_download."
+    }
+  ]
 }
