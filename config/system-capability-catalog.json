@@ -396,10 +396,10 @@
       "name": "Understand Anything Graph Skills",
       "category": "code-intelligence",
       "kind": "repo-skill",
-      "state": "enabled",
+      "state": "partial",
       "maturity": "integrated",
       "owner": "agent-runtime",
-      "summary": "Codebase graph generation, dashboard visualization, diff impact, and graph-backed explanations.",
+      "summary": "Codebase graph generation, dashboard visualization, diff impact, and graph-backed explanations. PARTIAL: graph queries (aq-graph-query, MCP graph_query) and staleness reporting are live; the knowledge graph itself is stale (generated 2026-07-01) and regeneration is pending.",
       "agent_access": [
         "codex",
         "claude",
@@ -409,6 +409,8 @@
       "primary_refs": [
         ".agent/skills/understand-anything/SKILL.md",
         "scripts/ai/aq-understand-anything",
+        "scripts/ai/aq-graph-query",
+        "config/understand-anything.json",
         ".understand-anything/knowledge-graph.json"
       ],
       "security": {
@@ -418,7 +420,9 @@
         "required_gate": "scripts/ai/aq-understand-anything validate-batches"
       },
       "validation": [
-        "scripts/ai/aq-understand-anything status",
+        "scripts/ai/aq-understand-anything status --check",
+        "scripts/ai/aq-graph-query staleness --check",
+        "python3 scripts/testing/test-graph-query.py",
         "scripts/ai/aq-understand-anything validate-batches"
       ],
       "parity_targets": [

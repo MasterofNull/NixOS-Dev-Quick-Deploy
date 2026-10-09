@@ -1,0 +1,13 @@
+{
+  "version": "understand-anything-config.v1",
+  "comment": "Single declared place for Understand-Anything refresh limits and the upstream pin. Read by scripts/ai/lib/understand_graph.py and scripts/ai/aq-understand-anything.",
+  "staleness": {
+    "max_age_days": 14,
+    "max_commits": 300
+  },
+  "pin": {
+    "repo_url": "https://github.com/Egonex-AI/Understand-Anything.git",
+    "rev": "54754a6f97051d1d76c8758353d8ea41afe502a6",
+    "version": "2.8.1"
+  }
+}
