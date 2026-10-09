@@ -677,7 +677,10 @@ class ContinuousLearningPipeline:
         if not watch_dirs:
             return False
         tracked_files = {path.name for path in self.telemetry_paths}
-        watcher = awatch(*watch_dirs, debounce=self.watch_debounce_ms)
+        # Non-recursive: telemetry/ holds private subdirs owned by other users
+        # (qa_evidence_store's 0700 retired/), and a recursive watch fails the
+        # whole loop with EACCES on them. Tracked files are all top-level.
+        watcher = awatch(*watch_dirs, debounce=self.watch_debounce_ms, recursive=False)
         try:
             while True:
                 changes = await asyncio.wait_for(watcher.__anext__(), timeout=timeout_seconds)
