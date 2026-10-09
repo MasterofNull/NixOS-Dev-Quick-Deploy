@@ -73,7 +73,7 @@
       "goal": "risk classifier (compose on PRSI _risk() + high-risk-approval-rubric.json) tags changes/plans/PRDs by security/vulnerability/stability/core-piece; tier->policy map escalates reviewer count/independence, validation set, and locking (freeze + hash-bound activation) for HIGH/CORE; consulted by the gate-runner + trunk protection; recorded on the change, never self-lowered",
       "validation_goal": "a core/security change is auto-classified top-tier and REQUIRES the escalated gates; a routine change gets the light path; tier cannot be self-lowered (anti-gaming)",
       "deps": ["ft-1"],
-      "editorial_note": "foundational cross-cutting; applied to THIS repo first then templated; composes on PRSI risk machinery (Rule 20)",
+      "editorial_note": "foundational cross-cutting; applied to THIS repo first then templated; composes on PRSI risk machinery (Rule 20) | Ships REPORT-ONLY (config/factory/risk-tier-policy.json, scripts/ai/lib/risk_tier.py, scripts/ai/aq-risk-tier; gate-runner prints the would-require policy, exit code unchanged). Activation deferral: enforcement of reviewer/validation/lock gating is a separate later owner decision.",
       "detection": {"commit_match": ["FT-6", "risk-tier", "risk-tiered gate"]},
       "pct_hint": 0,
       "acceptance": {"status": "pending", "by": null, "date": null, "note": "not started"}
@@ -83,7 +83,7 @@
       "goal": "gates bind every lane (lane-independent hooks + gate-runner in shared commit flow); discipline parity-written into all agent instruction files from one templated source; a check PROVES each lane hits the same hooks/tier0",
       "validation_goal": "parity-matrix coverage complete; a commit from any lane hits identical hooks+tier0; no lane can skip trunk protection",
       "deps": ["ft-1"],
-      "editorial_note": "foundational cross-cutting; applied to THIS repo first then reproduced; builds on existing lane-independent .githooks + Rule-16 parity",
+      "editorial_note": "foundational cross-cutting; applied to THIS repo first then reproduced; builds on existing lane-independent .githooks + Rule-16 parity | Ships REPORT-ONLY (scripts/governance/tier0.d/check-lane-hook-parity.sh, WARN-class, always exit 0). Activation deferral: making lane-parity GAPs blocking is a separate later owner decision.",
       "detection": {"commit_match": ["FT-7", "all-agent enforcement", "cross-lane"]},
       "pct_hint": 0,
       "acceptance": {"status": "pending", "by": null, "date": null, "note": "not started"}
