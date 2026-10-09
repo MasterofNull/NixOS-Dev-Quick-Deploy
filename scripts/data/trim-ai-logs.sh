@@ -72,6 +72,7 @@ lines_kept = []
 with open(path, encoding="utf-8", errors="replace") as f:
     for line in f:
         line = line.rstrip("\n")
+        line = line.replace("\x00", "")
         if not line.strip():
             continue
         lines_before += 1
@@ -111,6 +112,8 @@ try:
         f.write("\n".join(lines_kept))
         if lines_kept:
             f.write("\n")
+        f.flush()
+        os.fsync(f.fileno())
     os.replace(tmp, path)
     # Restore ownership + mode lost by os.replace (new inode is owned by writer).
     try:
@@ -118,6 +121,12 @@ try:
         os.chmod(path, orig_mode)
     except PermissionError:
         pass  # Not root — file already has correct ownership from same-user write
+    # Fsync the directory to ensure metadata durability.
+    dir_fd = os.open(os.path.dirname(path), os.O_RDONLY | getattr(os, "O_DIRECTORY", 0))
+    try:
+        os.fsync(dir_fd)
+    finally:
+        os.close(dir_fd)
     print(f"[trim-ai-logs] {label}: removed {removed}/{lines_before} lines, kept {len(lines_kept)}")
 except Exception as e:
     if os.path.exists(tmp):
