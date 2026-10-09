@@ -26,3 +26,9 @@ nix eval --raw .#...ai-stack-health-monitor.serviceConfig.ExecStart   # /run/cur
 
 ## Rollback Plan
 - Revert this commit and rebuild.
+
+## Residual Risk
+- The monitor now follows /run/current-system's python. That keeps it aligned with interactive phase 0, but a cliPython regression would hit both. The 1536M cap is provisional until MemoryPeak is measured after rebuild.
+
+## Hint Feedback
+- None.
