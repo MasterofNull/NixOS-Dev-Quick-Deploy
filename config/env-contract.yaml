@@ -124,6 +124,13 @@ variables:
     consumers: [local-agents]
     description: "GBNF tool-call constraint mode for local agents: unset/off disables it, repair constrains only malformed tool-call retries, true/1/on constrains all local tool-call generations for benchmarking"
 
+  - canonical: AQ_PRM_STEERING
+    aliases: []
+    default: "1"
+    layer: shell
+    consumers: [local-agents]
+    description: "FE-1 process-reward steering: on a behavioral_verify_failed edit, request alternative candidates and keep the verified one. Inert without AQ_EDIT_VERIFY_CMD. Bounded by AQ_PRM_MAX_CANDIDATES (2) and AQ_PRM_WALL_BUDGET_S (900). 0 disables"
+
   - canonical: LLAMA_CTX_SIZE
     aliases: []
     default: "8192"
@@ -439,7 +446,7 @@ variables:
 
   - canonical: SWB_ADAPTIVE_LOCAL_BUDGET
     aliases: []
-    default: "0"
+    default: "1"
     layer: nix
     consumers: [switchboard]
     description: "Enable adaptive local max_tokens clamping based on local lane occupancy"

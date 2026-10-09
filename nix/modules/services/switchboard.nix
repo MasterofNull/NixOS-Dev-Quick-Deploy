@@ -544,6 +544,9 @@ in {
           "SWB_MAX_TOTAL_TIMEOUT=${toString swb.maxTotalTimeoutSeconds}"
           "RATE_LIMIT_DELEGATE_RPM=${toString swb.rateLimitDelegateRpm}"
           "RATE_LIMIT_RESEARCH_RPM=${toString swb.rateLimitResearchRpm}"
+          # MVP activation: clamp local max_tokens by lane occupancy (idle/busy caps in env-contract).
+          # Kill switch: change to SWB_ADAPTIVE_LOCAL_BUDGET=0.
+          "SWB_ADAPTIVE_LOCAL_BUDGET=1"
           "SWB_LOCAL_TOOL_CALL_LIMIT=16"
           "SWB_ACTIVE_TOOL_SCHEMA_LIMIT=7"
           "SWB_TOOL_WORKING_SET_ENABLED=1"
