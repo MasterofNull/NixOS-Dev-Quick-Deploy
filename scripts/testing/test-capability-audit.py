@@ -47,6 +47,9 @@ class CapabilityAuditTest(unittest.TestCase):
         os.utime(r / ".understand-anything/knowledge-graph.json", (NOW - 100 * 86400, NOW - 100 * 86400))
         # DEAD-CANDIDATE: nothing references it
         w(r, "scripts/ai/aq-orphan", py)
+        # KEEP-DECLARED: would be DEAD-CANDIDATE but declared in config/capability-triage.json
+        w(r, "scripts/ai/aq-hostonly", py)
+        w(r, "config/capability-triage.json", json.dumps({"keep": [{"name": "aq-hostonly", "reason": "other host"}]}), 0o644)
         # BROKEN: python syntax error
         w(r, "scripts/ai/aq-broken", "#!/usr/bin/env python3\ndef (:\n")
         # tested
@@ -141,6 +144,7 @@ class CapabilityAuditTest(unittest.TestCase):
 
     def test_skill_dead_when_unreferenced(self):
         self.assertEqual(self.cls_of("lonely-skill"), "DEAD-CANDIDATE")
+        self.assertEqual(self.cls_of("aq-hostonly"), "KEEP-DECLARED")
 
     def test_mcp_tool_used_and_registry_discoverable(self):
         self.assertEqual(self.cls_of("qa-check"), "ACTIVE")
