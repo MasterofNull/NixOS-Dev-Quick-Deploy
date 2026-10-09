@@ -1,4 +1,6 @@
 ---
+name: self-improvement
+description: "Run a self-improvement slice: log issues, plan via PRD, implement, validate and record harness evolution."
 doc_type: skill
 id: self-improvement
 title: Self-Improvement Slice Workflow
