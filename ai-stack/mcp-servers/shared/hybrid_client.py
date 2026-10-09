@@ -474,7 +474,7 @@ class AIDBClient:
         # Vector search
         results = await client.vector_search(
             query="NixOS configuration",
-            collection="nixos_docs",
+            collection="best-practices",
             limit=5
         )
 

@@ -1,0 +1,57 @@
+#!/usr/bin/env python3
+"""One-off: list (default) or delete (--apply) leaked `agent-ctx-test-*` Qdrant collections.
+
+Leaked by scripts/testing/test-read-file-gate.py before it cleaned up after
+itself. Only names matching ^agent-ctx-test- are ever selected, and the
+pattern is re-asserted immediately before each delete.
+
+Usage:
+    aq-qdrant-prune-test-collections            # dry-run: list matches
+    aq-qdrant-prune-test-collections --apply    # delete matches
+"""
+from __future__ import annotations
+
+import argparse
+import os
+import re
+import sys
+
+import httpx
+
+QDRANT_URL = os.environ.get(
+    "QDRANT_URL", f"http://127.0.0.1:{os.environ.get('QDRANT_PORT', '6333')}"
+).rstrip("/")
+TEST_NAME_RE = re.compile(r"^agent-ctx-test-")
+
+
+def select_test_collections(names):
+    """Return only names matching the leaked-test pattern."""
+    return sorted(n for n in names if isinstance(n, str) and TEST_NAME_RE.match(n))
+
+
+def main(argv=None) -> int:
+    ap = argparse.ArgumentParser(description=__doc__.splitlines()[0])
+    ap.add_argument("--apply", action="store_true", help="actually delete (default: dry-run)")
+    args = ap.parse_args(argv)
+    with httpx.Client(timeout=15.0) as client:
+        resp = client.get(f"{QDRANT_URL}/collections")
+        resp.raise_for_status()
+        names = [c["name"] for c in resp.json()["result"]["collections"]]
+        targets = select_test_collections(names)
+        if not targets:
+            print("no agent-ctx-test-* collections found")
+            return 0
+        for name in targets:
+            if not args.apply:
+                print(f"would-delete {name}")
+                continue
+            assert TEST_NAME_RE.match(name), name  # defense in depth
+            r = client.delete(f"{QDRANT_URL}/collections/{name}")
+            print(f"deleted {name}" if r.status_code == 200 else f"error {name}: HTTP {r.status_code}")
+    if not args.apply:
+        print(f"{len(targets)} match(es); dry-run, pass --apply to delete")
+    return 0
+
+
+if __name__ == "__main__":
+    sys.exit(main())

@@ -560,6 +560,16 @@ def _query_wants_capability_discovery(query: str, context: Optional[Dict[str, An
     )
 
 
+def _collection_hit_counts(results: Any) -> Dict[str, int]:
+    """Per-collection result counts for telemetry (observes which stores get used)."""
+    counts: Dict[str, int] = {}
+    for r in results or []:
+        if isinstance(r, dict):
+            name = str(r.get("collection") or "unknown")
+            counts[name] = counts.get(name, 0) + 1
+    return counts
+
+
 def _non_memory_collections() -> List[str]:
     return [
         name for name in _COLLECTIONS.keys()
@@ -653,6 +663,27 @@ def _select_route_collections(
 
     if continuation and "interaction-history" in selected:
         selected.remove("interaction-history")
+
+    # `knowledge` (AIDB documents, ~17k points) was almost never routed: it only
+    # entered via lookup/reasoning/pattern queries. Give it a slot on code and
+    # general queries too, and add `wiki-sections` for architecture questions.
+    # Inserted at index 1 (after the primary store) so that under a cap of 2 it
+    # displaces error-solutions only when the query has no error signal (with an
+    # error signal it goes after error-solutions, ahead of skills-patterns). History/continuation keep their sets.
+    if not continuation and not wants_history:
+        wants_architecture = any(
+            term in q
+            for term in ("architecture", "design", "overview", "subsystem", "component", "how does", "how do", "structure", "codebase")
+        )
+        extras: List[str] = []
+        if "knowledge" not in selected:
+            extras.append("knowledge")
+        if wants_architecture:
+            extras.append("wiki-sections")  # inserted last => ahead of knowledge
+        for name in extras:
+            if name in ordered and name not in selected:
+                at = min(2, len(selected)) if (wants_error and "error-solutions" in selected[:2]) else min(1, len(selected))
+                selected.insert(at, name)
 
     max_collections = 3
     profile = "standard"
@@ -2015,6 +2046,7 @@ async def route_search(
                     "profile": retrieval_profile.get("profile", "standard"),
                     "collection_count": len(target_collections),
                     "collections": target_collections,
+                    "collection_hits": _collection_hit_counts(_all_combined),
                     "keyword_pool": keyword_pool,
                 },
             },
