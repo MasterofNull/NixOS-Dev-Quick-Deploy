@@ -1,6 +1,6 @@
 {
  "audit_window_days": 30,
- "count": 386,
+ "count": 388,
  "entries": [
   {
    "category": "Agents, delegation and loops",
@@ -36,7 +36,7 @@
   },
   {
    "category": "Agents, delegation and loops",
-   "class": "ACTIVE",
+   "class": "UNUSED-AVAILABLE",
    "kind": "script",
    "name": "aq-agent-loop",
    "path": "scripts/ai/aq-agent-loop",
@@ -76,7 +76,7 @@
   },
   {
    "category": "Agents, delegation and loops",
-   "class": "ACTIVE",
+   "class": "UNUSED-AVAILABLE",
    "kind": "script",
    "name": "aq-antigravity-inbox",
    "path": "scripts/ai/aq-antigravity-inbox",
@@ -84,7 +84,7 @@
   },
   {
    "category": "Agents, delegation and loops",
-   "class": "ACTIVE",
+   "class": "UNUSED-AVAILABLE",
    "kind": "script",
    "name": "aq-chat",
    "path": "scripts/ai/aq-chat",
@@ -148,7 +148,7 @@
   },
   {
    "category": "Agents, delegation and loops",
-   "class": "ACTIVE",
+   "class": "UNUSED-AVAILABLE",
    "kind": "script",
    "name": "aq-delegate",
    "path": "scripts/ai/aq-delegate",
@@ -164,7 +164,7 @@
   },
   {
    "category": "Agents, delegation and loops",
-   "class": "ACTIVE",
+   "class": "UNUSED-AVAILABLE",
    "kind": "script",
    "name": "aq-event",
    "path": "scripts/ai/aq-event",
@@ -196,7 +196,7 @@
   },
   {
    "category": "Agents, delegation and loops",
-   "class": "STALE-CLAIM",
+   "class": "UNUSED-AVAILABLE",
    "kind": "script",
    "name": "aq-local-surface-scan",
    "path": "scripts/ai/aq-local-surface-scan",
@@ -212,7 +212,7 @@
   },
   {
    "category": "Agents, delegation and loops",
-   "class": "ACTIVE",
+   "class": "UNUSED-AVAILABLE",
    "kind": "script",
    "name": "aq-loop",
    "path": "scripts/ai/aq-loop",
@@ -228,7 +228,7 @@
   },
   {
    "category": "Agents, delegation and loops",
-   "class": "ACTIVE",
+   "class": "UNUSED-AVAILABLE",
    "kind": "script",
    "name": "aq-optimizer",
    "path": "scripts/ai/aq-optimizer",
@@ -236,7 +236,7 @@
   },
   {
    "category": "Agents, delegation and loops",
-   "class": "ACTIVE",
+   "class": "UNUSED-AVAILABLE",
    "kind": "script",
    "name": "aq-prsi-review",
    "path": "scripts/ai/aq-prsi-review",
@@ -252,7 +252,7 @@
   },
   {
    "category": "Agents, delegation and loops",
-   "class": "ACTIVE",
+   "class": "UNUSED-AVAILABLE",
    "kind": "script",
    "name": "aq-refine",
    "path": "scripts/ai/aq-refine",
@@ -260,7 +260,7 @@
   },
   {
    "category": "Agents, delegation and loops",
-   "class": "ACTIVE",
+   "class": "UNUSED-AVAILABLE",
    "kind": "script",
    "name": "aq-review",
    "path": "scripts/ai/aq-review",
@@ -276,7 +276,7 @@
   },
   {
    "category": "Agents, delegation and loops",
-   "class": "ACTIVE",
+   "class": "UNUSED-AVAILABLE",
    "kind": "script",
    "name": "aq-role-route",
    "path": "scripts/ai/aq-role-route",
@@ -300,7 +300,7 @@
   },
   {
    "category": "Agents, delegation and loops",
-   "class": "ACTIVE",
+   "class": "UNUSED-AVAILABLE",
    "kind": "script",
    "name": "aq-sequential-edit",
    "path": "scripts/ai/aq-sequential-edit",
@@ -308,7 +308,7 @@
   },
   {
    "category": "Agents, delegation and loops",
-   "class": "ACTIVE",
+   "class": "STALE-CLAIM",
    "kind": "script",
    "name": "aq-skill-auto",
    "path": "scripts/ai/aq-skill-auto",
@@ -316,7 +316,7 @@
   },
   {
    "category": "Agents, delegation and loops",
-   "class": "ACTIVE",
+   "class": "UNUSED-AVAILABLE",
    "kind": "script",
    "name": "aq-skill-suggest",
    "path": "scripts/ai/aq-skill-suggest",
@@ -340,7 +340,7 @@
   },
   {
    "category": "Agents, delegation and loops",
-   "class": "ACTIVE",
+   "class": "UNUSED-AVAILABLE",
    "kind": "script",
    "name": "aq-workspace",
    "path": "scripts/ai/aq-workspace",
@@ -380,7 +380,7 @@
   },
   {
    "category": "Agents, delegation and loops",
-   "class": "ACTIVE",
+   "class": "UNUSED-AVAILABLE",
    "kind": "script",
    "name": "delegate-to-antigravity",
    "path": "scripts/ai/delegate-to-antigravity",
@@ -388,7 +388,7 @@
   },
   {
    "category": "Agents, delegation and loops",
-   "class": "ACTIVE",
+   "class": "UNUSED-AVAILABLE",
    "kind": "script",
    "name": "delegate-to-claude",
    "path": "scripts/ai/delegate-to-claude",
@@ -396,7 +396,7 @@
   },
   {
    "category": "Agents, delegation and loops",
-   "class": "ACTIVE",
+   "class": "UNUSED-AVAILABLE",
    "kind": "script",
    "name": "delegate-to-codex",
    "path": "scripts/ai/delegate-to-codex",
@@ -404,7 +404,7 @@
   },
   {
    "category": "Agents, delegation and loops",
-   "class": "ACTIVE",
+   "class": "UNUSED-AVAILABLE",
    "kind": "script",
    "name": "delegate-to-gemini",
    "path": "scripts/ai/delegate-to-gemini",
@@ -412,7 +412,7 @@
   },
   {
    "category": "Agents, delegation and loops",
-   "class": "ACTIVE",
+   "class": "STALE-CLAIM",
    "kind": "script",
    "name": "delegate-to-local",
    "path": "scripts/ai/delegate-to-local",
@@ -452,7 +452,7 @@
   },
   {
    "category": "Agents, delegation and loops",
-   "class": "ACTIVE",
+   "class": "UNUSED-AVAILABLE",
    "kind": "skill",
    "name": "agent-tool-map",
    "path": ".agent/skills/agent-tool-map/SKILL.md",
@@ -468,7 +468,7 @@
   },
   {
    "category": "Agents, delegation and loops",
-   "class": "ACTIVE",
+   "class": "UNUSED-AVAILABLE",
    "kind": "skill",
    "name": "flake-review",
    "path": ".agent/skills/flake-review/SKILL.md",
@@ -484,7 +484,7 @@
   },
   {
    "category": "Agents, delegation and loops",
-   "class": "ACTIVE",
+   "class": "UNUSED-AVAILABLE",
    "kind": "skill",
    "name": "provider-request-error-recovery",
    "path": ".agent/skills/provider-request-error-recovery/SKILL.md",
@@ -492,7 +492,7 @@
   },
   {
    "category": "Agents, delegation and loops",
-   "class": "ACTIVE",
+   "class": "UNUSED-AVAILABLE",
    "kind": "skill",
    "name": "prsi-review",
    "path": ".agent/skills/prsi-review/SKILL.md",
@@ -500,7 +500,7 @@
   },
   {
    "category": "Agents, delegation and loops",
-   "class": "ACTIVE",
+   "class": "UNUSED-AVAILABLE",
    "kind": "skill",
    "name": "reviewer-gate",
    "path": ".agent/skills/reviewer-gate/SKILL.md",
@@ -524,7 +524,7 @@
   },
   {
    "category": "Capability, audit and reuse",
-   "class": "ACTIVE",
+   "class": "UNUSED-AVAILABLE",
    "kind": "script",
    "name": "aq-a2a-audit",
    "path": "scripts/ai/aq-a2a-audit",
@@ -540,7 +540,7 @@
   },
   {
    "category": "Capability, audit and reuse",
-   "class": "UNUSED-AVAILABLE",
+   "class": "ACTIVE",
    "kind": "script",
    "name": "aq-capability-audit",
    "path": "scripts/ai/aq-capability-audit",
@@ -572,7 +572,7 @@
   },
   {
    "category": "Capability, audit and reuse",
-   "class": "UNUSED-AVAILABLE",
+   "class": "ACTIVE",
    "kind": "script",
    "name": "aq-capability-index",
    "path": "scripts/ai/aq-capability-index",
@@ -580,7 +580,7 @@
   },
   {
    "category": "Capability, audit and reuse",
-   "class": "ACTIVE",
+   "class": "STALE-CLAIM",
    "kind": "script",
    "name": "aq-capability-intake",
    "path": "scripts/ai/aq-capability-intake",
@@ -644,7 +644,7 @@
   },
   {
    "category": "Capability, audit and reuse",
-   "class": "STALE-CLAIM",
+   "class": "UNUSED-AVAILABLE",
    "kind": "script",
    "name": "aq-tempest",
    "path": "scripts/ai/aq-tempest",
@@ -652,7 +652,7 @@
   },
   {
    "category": "Capability, audit and reuse",
-   "class": "ACTIVE",
+   "class": "STALE-CLAIM",
    "kind": "skill",
    "name": "capability-intake",
    "path": ".agent/skills/capability-intake/SKILL.md",
@@ -660,7 +660,7 @@
   },
   {
    "category": "Capability, audit and reuse",
-   "class": "ACTIVE",
+   "class": "UNUSED-AVAILABLE",
    "kind": "skill",
    "name": "security-audit",
    "path": ".agent/skills/security-audit/SKILL.md",
@@ -692,7 +692,7 @@
   },
   {
    "category": "Hints, context and memory",
-   "class": "ACTIVE",
+   "class": "UNUSED-AVAILABLE",
    "kind": "script",
    "name": "aq-context-bootstrap",
    "path": "scripts/ai/aq-context-bootstrap",
@@ -756,7 +756,7 @@
   },
   {
    "category": "Hints, context and memory",
-   "class": "ACTIVE",
+   "class": "UNUSED-AVAILABLE",
    "kind": "script",
    "name": "aq-memory",
    "path": "scripts/ai/aq-memory",
@@ -780,7 +780,7 @@
   },
   {
    "category": "Hints, context and memory",
-   "class": "ACTIVE",
+   "class": "UNUSED-AVAILABLE",
    "kind": "script",
    "name": "aq-prime",
    "path": "scripts/ai/aq-prime",
@@ -788,7 +788,7 @@
   },
   {
    "category": "Hints, context and memory",
-   "class": "ACTIVE",
+   "class": "UNUSED-AVAILABLE",
    "kind": "script",
    "name": "aq-resume",
    "path": "scripts/ai/aq-resume",
@@ -796,7 +796,7 @@
   },
   {
    "category": "Hints, context and memory",
-   "class": "ACTIVE",
+   "class": "UNUSED-AVAILABLE",
    "kind": "script",
    "name": "aq-session-compact",
    "path": "scripts/ai/aq-session-compact",
@@ -804,7 +804,7 @@
   },
   {
    "category": "Hints, context and memory",
-   "class": "ACTIVE",
+   "class": "UNUSED-AVAILABLE",
    "kind": "script",
    "name": "aq-session-start",
    "path": "scripts/ai/aq-session-start",
@@ -836,7 +836,7 @@
   },
   {
    "category": "Hints, context and memory",
-   "class": "ACTIVE",
+   "class": "UNUSED-AVAILABLE",
    "kind": "skill",
    "name": "lean-ctx",
    "path": ".agent/skills/lean-ctx/SKILL.md",
@@ -876,7 +876,7 @@
   },
   {
    "category": "MCP tools",
-   "class": "ACTIVE",
+   "class": "UNUSED-AVAILABLE",
    "kind": "mcp-tool",
    "name": "bootstrap_agent_project",
    "path": "scripts/ai/mcp-bridge-hybrid.py",
@@ -932,7 +932,7 @@
   },
   {
    "category": "MCP tools",
-   "class": "ACTIVE",
+   "class": "UNUSED-AVAILABLE",
    "kind": "mcp-tool",
    "name": "get_prsi_pending",
    "path": "scripts/ai/mcp-bridge-hybrid.py",
@@ -957,6 +957,14 @@
   {
    "category": "MCP tools",
    "class": "ACTIVE",
+   "kind": "mcp-tool",
+   "name": "graph_query",
+   "path": "scripts/ai/mcp-bridge-hybrid.py",
+   "purpose": "Read-only codebase knowledge-graph queries (Understand-Anything graph, no LLM\u2026"
+  },
+  {
+   "category": "MCP tools",
+   "class": "UNUSED-AVAILABLE",
    "kind": "mcp-tool",
    "name": "harness_health",
    "path": "scripts/ai/mcp-bridge-hybrid.py",
@@ -1044,7 +1052,7 @@
   },
   {
    "category": "MCP tools",
-   "class": "ACTIVE",
+   "class": "UNUSED-AVAILABLE",
    "kind": "mcp-tool",
    "name": "prsi_orchestrate",
    "path": "scripts/ai/mcp-bridge-hybrid.py",
@@ -1076,7 +1084,7 @@
   },
   {
    "category": "MCP tools",
-   "class": "ACTIVE",
+   "class": "UNUSED-AVAILABLE",
    "kind": "mcp-tool",
    "name": "retrofit_workflow",
    "path": "scripts/ai/mcp-bridge-hybrid.py",
@@ -1100,7 +1108,7 @@
   },
   {
    "category": "MCP tools",
-   "class": "ACTIVE",
+   "class": "UNUSED-AVAILABLE",
    "kind": "mcp-tool",
    "name": "store_memory",
    "path": "scripts/ai/mcp-bridge-hybrid.py",
@@ -1124,7 +1132,7 @@
   },
   {
    "category": "MCP tools",
-   "class": "STALE-CLAIM",
+   "class": "UNUSED-AVAILABLE",
    "kind": "mcp-tool",
    "name": "tooling_manifest",
    "path": "scripts/ai/mcp-bridge-hybrid.py",
@@ -1172,7 +1180,7 @@
   },
   {
    "category": "MCP tools",
-   "class": "STALE-CLAIM",
+   "class": "UNUSED-AVAILABLE",
    "kind": "mcp-tool",
    "name": "workflow_blueprints",
    "path": "scripts/ai/mcp-bridge-hybrid.py",
@@ -1204,7 +1212,7 @@
   },
   {
    "category": "MCP tools",
-   "class": "ACTIVE",
+   "class": "UNUSED-AVAILABLE",
    "kind": "script",
    "name": "mcp-bridge-hybrid.py",
    "path": "scripts/ai/mcp-bridge-hybrid.py",
@@ -1228,7 +1236,7 @@
   },
   {
    "category": "MCP tools",
-   "class": "ACTIVE",
+   "class": "UNUSED-AVAILABLE",
    "kind": "script",
    "name": "mcp-server",
    "path": "scripts/ai/mcp-server",
@@ -1236,7 +1244,7 @@
   },
   {
    "category": "MCP tools",
-   "class": "ACTIVE",
+   "class": "UNUSED-AVAILABLE",
    "kind": "skill",
    "name": "all-mcp-directory",
    "path": ".agent/skills/all-mcp-directory/SKILL.md",
@@ -1244,7 +1252,7 @@
   },
   {
    "category": "MCP tools",
-   "class": "ACTIVE",
+   "class": "UNUSED-AVAILABLE",
    "kind": "skill",
    "name": "mcp-builder",
    "path": ".agent/skills/mcp-builder/SKILL.md",
@@ -1276,7 +1284,7 @@
   },
   {
    "category": "Models and inference",
-   "class": "STALE-CLAIM",
+   "class": "UNUSED-AVAILABLE",
    "kind": "script",
    "name": "aq-eval",
    "path": "scripts/ai/aq-eval",
@@ -1284,7 +1292,7 @@
   },
   {
    "category": "Models and inference",
-   "class": "STALE-CLAIM",
+   "class": "UNUSED-AVAILABLE",
    "kind": "script",
    "name": "aq-inference-bench",
    "path": "scripts/ai/aq-inference-bench",
@@ -1308,7 +1316,7 @@
   },
   {
    "category": "Models and inference",
-   "class": "ACTIVE",
+   "class": "UNUSED-AVAILABLE",
    "kind": "script",
    "name": "aq-model",
    "path": "scripts/ai/aq-model",
@@ -1324,7 +1332,7 @@
   },
   {
    "category": "Models and inference",
-   "class": "ACTIVE",
+   "class": "UNUSED-AVAILABLE",
    "kind": "script",
    "name": "aq-prompt-eval",
    "path": "scripts/ai/aq-prompt-eval",
@@ -1340,7 +1348,7 @@
   },
   {
    "category": "Models and inference",
-   "class": "ACTIVE",
+   "class": "UNUSED-AVAILABLE",
    "kind": "skill",
    "name": "llm-config",
    "path": ".agent/skills/llm-config/SKILL.md",
@@ -1356,7 +1364,7 @@
   },
   {
    "category": "NixOS, deploy and system",
-   "class": "ACTIVE",
+   "class": "UNUSED-AVAILABLE",
    "kind": "script",
    "name": "aq-reap-orphans",
    "path": "scripts/ai/aq-reap-orphans",
@@ -1364,7 +1372,7 @@
   },
   {
    "category": "NixOS, deploy and system",
-   "class": "ACTIVE",
+   "class": "UNUSED-AVAILABLE",
    "kind": "script",
    "name": "aq-rsi-hook",
    "path": "scripts/ai/aq-rsi-hook",
@@ -1372,7 +1380,7 @@
   },
   {
    "category": "NixOS, deploy and system",
-   "class": "ACTIVE",
+   "class": "UNUSED-AVAILABLE",
    "kind": "script",
    "name": "aq-rsi-hook-install",
    "path": "scripts/ai/aq-rsi-hook-install",
@@ -1388,7 +1396,7 @@
   },
   {
    "category": "NixOS, deploy and system",
-   "class": "ACTIVE",
+   "class": "UNUSED-AVAILABLE",
    "kind": "script",
    "name": "aq-system-state",
    "path": "scripts/ai/aq-system-state",
@@ -1436,7 +1444,7 @@
   },
   {
    "category": "NixOS, deploy and system",
-   "class": "ACTIVE",
+   "class": "UNUSED-AVAILABLE",
    "kind": "skill",
    "name": "apparmor-rules",
    "path": ".agent/skills/apparmor-rules/SKILL.md",
@@ -1484,7 +1492,7 @@
   },
   {
    "category": "NixOS, deploy and system",
-   "class": "ACTIVE",
+   "class": "UNUSED-AVAILABLE",
    "kind": "skill",
    "name": "system-recovery",
    "path": ".agent/skills/system-recovery/SKILL.md",
@@ -1500,7 +1508,7 @@
   },
   {
    "category": "Other tools",
-   "class": "ACTIVE",
+   "class": "UNUSED-AVAILABLE",
    "kind": "script",
    "name": "aq",
    "path": "scripts/ai/aq",
@@ -1540,7 +1548,7 @@
   },
   {
    "category": "Other tools",
-   "class": "ACTIVE",
+   "class": "UNUSED-AVAILABLE",
    "kind": "script",
    "name": "aq-crystallize",
    "path": "scripts/ai/aq-crystallize",
@@ -1556,7 +1564,7 @@
   },
   {
    "category": "Other tools",
-   "class": "ACTIVE",
+   "class": "UNUSED-AVAILABLE",
    "kind": "script",
    "name": "aq-drop-daemon",
    "path": "scripts/ai/aq-drop-daemon",
@@ -1564,7 +1572,7 @@
   },
   {
    "category": "Other tools",
-   "class": "ACTIVE",
+   "class": "UNUSED-AVAILABLE",
    "kind": "script",
    "name": "aq-epoch-bump",
    "path": "scripts/ai/aq-epoch-bump",
@@ -1644,7 +1652,7 @@
   },
   {
    "category": "Other tools",
-   "class": "ACTIVE",
+   "class": "UNUSED-AVAILABLE",
    "kind": "script",
    "name": "aq-throttler",
    "path": "scripts/ai/aq-throttler",
@@ -1652,7 +1660,7 @@
   },
   {
    "category": "Other tools",
-   "class": "ACTIVE",
+   "class": "UNUSED-AVAILABLE",
    "kind": "script",
    "name": "aq-tool",
    "path": "scripts/ai/aq-tool",
@@ -1660,7 +1668,7 @@
   },
   {
    "category": "Other tools",
-   "class": "ACTIVE",
+   "class": "UNUSED-AVAILABLE",
    "kind": "script",
    "name": "aq-understand-anything",
    "path": "scripts/ai/aq-understand-anything",
@@ -1668,7 +1676,7 @@
   },
   {
    "category": "Other tools",
-   "class": "ACTIVE",
+   "class": "UNUSED-AVAILABLE",
    "kind": "script",
    "name": "aqd",
    "path": "scripts/ai/aqd",
@@ -1716,7 +1724,7 @@
   },
   {
    "category": "Other tools",
-   "class": "ACTIVE",
+   "class": "UNUSED-AVAILABLE",
    "kind": "skill",
    "name": "coordinator-api",
    "path": ".agent/skills/coordinator-api/SKILL.md",
@@ -1732,7 +1740,7 @@
   },
   {
    "category": "Other tools",
-   "class": "ACTIVE",
+   "class": "UNUSED-AVAILABLE",
    "kind": "skill",
    "name": "escalation-protocol",
    "path": ".agent/skills/escalation-protocol/SKILL.md",
@@ -1748,7 +1756,7 @@
   },
   {
    "category": "Other tools",
-   "class": "ACTIVE",
+   "class": "UNUSED-AVAILABLE",
    "kind": "skill",
    "name": "internal-comms",
    "path": ".agent/skills/internal-comms/SKILL.md",
@@ -1756,7 +1764,7 @@
   },
   {
    "category": "Other tools",
-   "class": "ACTIVE",
+   "class": "UNUSED-AVAILABLE",
    "kind": "skill",
    "name": "minimal-code",
    "path": ".agent/skills/minimal-code/SKILL.md",
@@ -1844,7 +1852,7 @@
   },
   {
    "category": "QA, health and monitoring",
-   "class": "ACTIVE",
+   "class": "UNUSED-AVAILABLE",
    "kind": "script",
    "name": "_aq-qa-bash",
    "path": "scripts/ai/_aq-qa-bash",
@@ -1860,7 +1868,7 @@
   },
   {
    "category": "QA, health and monitoring",
-   "class": "ACTIVE",
+   "class": "UNUSED-AVAILABLE",
    "kind": "script",
    "name": "aq-alerts",
    "path": "scripts/ai/aq-alerts",
@@ -1868,7 +1876,7 @@
   },
   {
    "category": "QA, health and monitoring",
-   "class": "ACTIVE",
+   "class": "UNUSED-AVAILABLE",
    "kind": "script",
    "name": "aq-auto-remediate.py",
    "path": "scripts/ai/aq-auto-remediate.py",
@@ -1884,7 +1892,7 @@
   },
   {
    "category": "QA, health and monitoring",
-   "class": "ACTIVE",
+   "class": "UNUSED-AVAILABLE",
    "kind": "script",
    "name": "aq-defer",
    "path": "scripts/ai/aq-defer",
@@ -1908,7 +1916,7 @@
   },
   {
    "category": "QA, health and monitoring",
-   "class": "ACTIVE",
+   "class": "UNUSED-AVAILABLE",
    "kind": "script",
    "name": "aq-gate-checkout",
    "path": "scripts/ai/aq-gate-checkout",
@@ -1924,7 +1932,7 @@
   },
   {
    "category": "QA, health and monitoring",
-   "class": "ACTIVE",
+   "class": "UNUSED-AVAILABLE",
    "kind": "script",
    "name": "aq-health-spider",
    "path": "scripts/ai/aq-health-spider",
@@ -1932,7 +1940,7 @@
   },
   {
    "category": "QA, health and monitoring",
-   "class": "ACTIVE",
+   "class": "UNUSED-AVAILABLE",
    "kind": "script",
    "name": "aq-insights",
    "path": "scripts/ai/aq-insights",
@@ -1972,7 +1980,7 @@
   },
   {
    "category": "QA, health and monitoring",
-   "class": "ACTIVE",
+   "class": "UNUSED-AVAILABLE",
    "kind": "script",
    "name": "aq-reject",
    "path": "scripts/ai/aq-reject",
@@ -1980,7 +1988,7 @@
   },
   {
    "category": "QA, health and monitoring",
-   "class": "ACTIVE",
+   "class": "STALE-CLAIM",
    "kind": "script",
    "name": "aq-report",
    "path": "scripts/ai/aq-report",
@@ -1996,7 +2004,7 @@
   },
   {
    "category": "QA, health and monitoring",
-   "class": "ACTIVE",
+   "class": "UNUSED-AVAILABLE",
    "kind": "script",
    "name": "aq-risk-tier",
    "path": "scripts/ai/aq-risk-tier",
@@ -2012,7 +2020,7 @@
   },
   {
    "category": "QA, health and monitoring",
-   "class": "ACTIVE",
+   "class": "UNUSED-AVAILABLE",
    "kind": "script",
    "name": "aq-rsi-run",
    "path": "scripts/ai/aq-rsi-run",
@@ -2052,7 +2060,7 @@
   },
   {
    "category": "QA, health and monitoring",
-   "class": "ACTIVE",
+   "class": "UNUSED-AVAILABLE",
    "kind": "script",
    "name": "aq-tui-dashboard",
    "path": "scripts/ai/aq-tui-dashboard",
@@ -2092,7 +2100,7 @@
   },
   {
    "category": "Search, RAG and knowledge",
-   "class": "ACTIVE",
+   "class": "UNUSED-AVAILABLE",
    "kind": "script",
    "name": "aq-cache-prewarm",
    "path": "scripts/ai/aq-cache-prewarm",
@@ -2100,7 +2108,7 @@
   },
   {
    "category": "Search, RAG and knowledge",
-   "class": "ACTIVE",
+   "class": "UNUSED-AVAILABLE",
    "kind": "script",
    "name": "aq-gap-auto-remediate",
    "path": "scripts/ai/aq-gap-auto-remediate",
@@ -2113,6 +2121,14 @@
    "name": "aq-gap-import",
    "path": "scripts/ai/aq-gap-import",
    "purpose": "auto-import knowledge for recurring query gaps into AIDB."
+  },
+  {
+   "category": "Search, RAG and knowledge",
+   "class": "ACTIVE",
+   "kind": "script",
+   "name": "aq-graph-query",
+   "path": "scripts/ai/aq-graph-query",
+   "purpose": "read-only, no-LLM queries over .understand-anything/knowledge-graph.json."
   },
   {
    "category": "Search, RAG and knowledge",
@@ -2148,7 +2164,7 @@
   },
   {
    "category": "Search, RAG and knowledge",
-   "class": "ACTIVE",
+   "class": "UNUSED-AVAILABLE",
    "kind": "script",
    "name": "aq-plans-index",
    "path": "scripts/ai/aq-plans-index",
@@ -2180,7 +2196,7 @@
   },
   {
    "category": "Search, RAG and knowledge",
-   "class": "ACTIVE",
+   "class": "UNUSED-AVAILABLE",
    "kind": "script",
    "name": "aq-wiki",
    "path": "scripts/ai/aq-wiki",
@@ -2204,7 +2220,7 @@
   },
   {
    "category": "Search, RAG and knowledge",
-   "class": "ACTIVE",
+   "class": "UNUSED-AVAILABLE",
    "kind": "script",
    "name": "qdrant-scratch-gc.py",
    "path": "scripts/ai/qdrant-scratch-gc.py",
@@ -2244,7 +2260,7 @@
   },
   {
    "category": "Search, RAG and knowledge",
-   "class": "ACTIVE",
+   "class": "UNUSED-AVAILABLE",
    "kind": "skill",
    "name": "understand-anything",
    "path": ".agent/skills/understand-anything/SKILL.md",
@@ -2252,7 +2268,7 @@
   },
   {
    "category": "Search, RAG and knowledge",
-   "class": "ACTIVE",
+   "class": "UNUSED-AVAILABLE",
    "kind": "skill",
    "name": "wiki-navigation",
    "path": ".agent/skills/wiki-navigation/SKILL.md",
@@ -2260,7 +2276,7 @@
   },
   {
    "category": "Security, approval and governance",
-   "class": "ACTIVE",
+   "class": "UNUSED-AVAILABLE",
    "kind": "script",
    "name": "aq-activation-guard",
    "path": "scripts/ai/aq-activation-guard",
@@ -2276,7 +2292,7 @@
   },
   {
    "category": "Security, approval and governance",
-   "class": "ACTIVE",
+   "class": "UNUSED-AVAILABLE",
    "kind": "script",
    "name": "aq-approve",
    "path": "scripts/ai/aq-approve",
@@ -2284,7 +2300,7 @@
   },
   {
    "category": "Security, approval and governance",
-   "class": "ACTIVE",
+   "class": "UNUSED-AVAILABLE",
    "kind": "script",
    "name": "aq-approve-headless",
    "path": "scripts/ai/aq-approve-headless",
@@ -2292,7 +2308,7 @@
   },
   {
    "category": "Security, approval and governance",
-   "class": "ACTIVE",
+   "class": "UNUSED-AVAILABLE",
    "kind": "script",
    "name": "aq-integrity-scan",
    "path": "scripts/ai/aq-integrity-scan",
@@ -2300,7 +2316,7 @@
   },
   {
    "category": "Security, approval and governance",
-   "class": "ACTIVE",
+   "class": "UNUSED-AVAILABLE",
    "kind": "script",
    "name": "aq-lease",
    "path": "scripts/ai/aq-lease",
@@ -2308,7 +2324,7 @@
   },
   {
    "category": "Security, approval and governance",
-   "class": "ACTIVE",
+   "class": "UNUSED-AVAILABLE",
    "kind": "script",
    "name": "aq-provision-signer-key",
    "path": "scripts/ai/aq-provision-signer-key",
@@ -2316,7 +2332,7 @@
   },
   {
    "category": "Security, approval and governance",
-   "class": "ACTIVE",
+   "class": "UNUSED-AVAILABLE",
    "kind": "script",
    "name": "aq-rsi-guard",
    "path": "scripts/ai/aq-rsi-guard",
@@ -2356,7 +2372,7 @@
   },
   {
    "category": "Security, approval and governance",
-   "class": "ACTIVE",
+   "class": "UNUSED-AVAILABLE",
    "kind": "skill",
    "name": "security-scanner",
    "path": ".agent/skills/security-scanner/SKILL.md",
@@ -2364,7 +2380,7 @@
   },
   {
    "category": "Systemd units (services and timers)",
-   "class": "BROKEN",
+   "class": "UNUSED-AVAILABLE",
    "kind": "unit",
    "name": "agent-reap",
    "path": "nix/modules/services/agent-reap.nix",
@@ -2372,7 +2388,7 @@
   },
   {
    "category": "Systemd units (services and timers)",
-   "class": "ACTIVE",
+   "class": "UNUSED-AVAILABLE",
    "kind": "unit",
    "name": "ai-aidb",
    "path": "nix/modules/services/mcp-servers.nix",
@@ -2380,7 +2396,7 @@
   },
   {
    "category": "Systemd units (services and timers)",
-   "class": "ACTIVE",
+   "class": "UNUSED-AVAILABLE",
    "kind": "unit",
    "name": "ai-aidb-reindex",
    "path": "nix/modules/services/mcp-servers.nix",
@@ -2388,7 +2404,7 @@
   },
   {
    "category": "Systemd units (services and timers)",
-   "class": "ACTIVE",
+   "class": "UNUSED-AVAILABLE",
    "kind": "unit",
    "name": "ai-aider-wrapper",
    "path": "nix/modules/services/mcp-servers.nix",
@@ -2396,7 +2412,7 @@
   },
   {
    "category": "Systemd units (services and timers)",
-   "class": "ACTIVE",
+   "class": "UNUSED-AVAILABLE",
    "kind": "unit",
    "name": "ai-amdgpu-metrics-exporter",
    "path": "nix/modules/services/monitoring.nix",
@@ -2404,7 +2420,7 @@
   },
   {
    "category": "Systemd units (services and timers)",
-   "class": "ACTIVE",
+   "class": "UNUSED-AVAILABLE",
    "kind": "unit",
    "name": "ai-audit-sidecar",
    "path": "nix/modules/services/mcp-servers.nix",
@@ -2412,7 +2428,7 @@
   },
   {
    "category": "Systemd units (services and timers)",
-   "class": "ACTIVE",
+   "class": "UNUSED-AVAILABLE",
    "kind": "unit",
    "name": "ai-auth-selftest",
    "path": "nix/modules/services/mcp-servers.nix",
@@ -2420,7 +2436,7 @@
   },
   {
    "category": "Systemd units (services and timers)",
-   "class": "ACTIVE",
+   "class": "UNUSED-AVAILABLE",
    "kind": "unit",
    "name": "ai-auto-remediate",
    "path": "nix/modules/services/mcp-servers.nix",
@@ -2428,7 +2444,7 @@
   },
   {
    "category": "Systemd units (services and timers)",
-   "class": "ACTIVE",
+   "class": "UNUSED-AVAILABLE",
    "kind": "unit",
    "name": "ai-autonomous-improvement",
    "path": "nix/modules/services/autonomous-improvement.nix",
@@ -2436,7 +2452,7 @@
   },
   {
    "category": "Systemd units (services and timers)",
-   "class": "ACTIVE",
+   "class": "UNUSED-AVAILABLE",
    "kind": "unit",
    "name": "ai-cache-prewarm",
    "path": "nix/modules/roles/ai-stack.nix",
@@ -2444,7 +2460,7 @@
   },
   {
    "category": "Systemd units (services and timers)",
-   "class": "ACTIVE",
+   "class": "UNUSED-AVAILABLE",
    "kind": "unit",
    "name": "ai-context-warmer",
    "path": "nix/modules/roles/ai-stack.nix",
@@ -2452,7 +2468,7 @@
   },
   {
    "category": "Systemd units (services and timers)",
-   "class": "ACTIVE",
+   "class": "UNUSED-AVAILABLE",
    "kind": "unit",
    "name": "ai-crystallize-sessions",
    "path": "nix/modules/services/mcp-servers.nix",
@@ -2460,7 +2476,7 @@
   },
   {
    "category": "Systemd units (services and timers)",
-   "class": "ACTIVE",
+   "class": "UNUSED-AVAILABLE",
    "kind": "unit",
    "name": "ai-drop-daemon",
    "path": "nix/modules/services/mcp-servers.nix",
@@ -2468,7 +2484,7 @@
   },
   {
    "category": "Systemd units (services and timers)",
-   "class": "ACTIVE",
+   "class": "UNUSED-AVAILABLE",
    "kind": "unit",
    "name": "ai-gap-auto-remediate",
    "path": "nix/modules/roles/ai-stack.nix",
@@ -2476,7 +2492,7 @@
   },
   {
    "category": "Systemd units (services and timers)",
-   "class": "ACTIVE",
+   "class": "UNUSED-AVAILABLE",
    "kind": "unit",
    "name": "ai-gap-import",
    "path": "nix/modules/roles/ai-stack.nix",
@@ -2484,7 +2500,7 @@
   },
   {
    "category": "Systemd units (services and timers)",
-   "class": "ACTIVE",
+   "class": "UNUSED-AVAILABLE",
    "kind": "unit",
    "name": "ai-health-spider",
    "path": "nix/modules/services/mcp-servers.nix",
@@ -2492,7 +2508,7 @@
   },
   {
    "category": "Systemd units (services and timers)",
-   "class": "ACTIVE",
+   "class": "UNUSED-AVAILABLE",
    "kind": "unit",
    "name": "ai-hybrid-coordinator",
    "path": "nix/modules/services/world-model.nix",
@@ -2500,7 +2516,7 @@
   },
   {
    "category": "Systemd units (services and timers)",
-   "class": "ACTIVE",
+   "class": "UNUSED-AVAILABLE",
    "kind": "unit",
    "name": "ai-import-agent-instructions",
    "path": "nix/modules/roles/ai-stack.nix",
@@ -2508,7 +2524,7 @@
   },
   {
    "category": "Systemd units (services and timers)",
-   "class": "ACTIVE",
+   "class": "UNUSED-AVAILABLE",
    "kind": "unit",
    "name": "ai-local-model-access",
    "path": "nix/modules/roles/ai-stack.nix",
@@ -2516,7 +2532,7 @@
   },
   {
    "category": "Systemd units (services and timers)",
-   "class": "ACTIVE",
+   "class": "UNUSED-AVAILABLE",
    "kind": "unit",
    "name": "ai-local-training-loop",
    "path": "nix/modules/services/mcp-servers.nix",
@@ -2524,7 +2540,7 @@
   },
   {
    "category": "Systemd units (services and timers)",
-   "class": "ACTIVE",
+   "class": "UNUSED-AVAILABLE",
    "kind": "unit",
    "name": "ai-mcp-integrity-check",
    "path": "nix/modules/services/mcp-servers.nix",
@@ -2532,7 +2548,7 @@
   },
   {
    "category": "Systemd units (services and timers)",
-   "class": "ACTIVE",
+   "class": "UNUSED-AVAILABLE",
    "kind": "unit",
    "name": "ai-mcp-process-watch",
    "path": "nix/modules/services/mcp-servers.nix",
@@ -2540,7 +2556,7 @@
   },
   {
    "category": "Systemd units (services and timers)",
-   "class": "ACTIVE",
+   "class": "UNUSED-AVAILABLE",
    "kind": "unit",
    "name": "ai-mutable-path-bootstrap",
    "path": "nix/modules/services/mcp-servers.nix",
@@ -2548,7 +2564,7 @@
   },
   {
    "category": "Systemd units (services and timers)",
-   "class": "ACTIVE",
+   "class": "UNUSED-AVAILABLE",
    "kind": "unit",
    "name": "ai-nixos-docs",
    "path": "nix/modules/services/mcp-servers.nix",
@@ -2556,7 +2572,7 @@
   },
   {
    "category": "Systemd units (services and timers)",
-   "class": "ACTIVE",
+   "class": "UNUSED-AVAILABLE",
    "kind": "unit",
    "name": "ai-npm-security-monitor",
    "path": "nix/modules/services/mcp-servers.nix",
@@ -2564,7 +2580,7 @@
   },
   {
    "category": "Systemd units (services and timers)",
-   "class": "ACTIVE",
+   "class": "UNUSED-AVAILABLE",
    "kind": "unit",
    "name": "ai-optimizer",
    "path": "nix/modules/roles/ai-stack.nix",
@@ -2580,7 +2596,7 @@
   },
   {
    "category": "Systemd units (services and timers)",
-   "class": "ACTIVE",
+   "class": "UNUSED-AVAILABLE",
    "kind": "unit",
    "name": "ai-otel-collector",
    "path": "nix/modules/services/mcp-servers.nix",
@@ -2588,7 +2604,7 @@
   },
   {
    "category": "Systemd units (services and timers)",
-   "class": "ACTIVE",
+   "class": "UNUSED-AVAILABLE",
    "kind": "unit",
    "name": "ai-pgvector-bootstrap",
    "path": "nix/modules/services/mcp-servers.nix",
@@ -2596,7 +2612,7 @@
   },
   {
    "category": "Systemd units (services and timers)",
-   "class": "ACTIVE",
+   "class": "UNUSED-AVAILABLE",
    "kind": "unit",
    "name": "ai-post-deploy-converge",
    "path": "nix/modules/services/mcp-servers.nix",
@@ -2604,7 +2620,7 @@
   },
   {
    "category": "Systemd units (services and timers)",
-   "class": "ACTIVE",
+   "class": "UNUSED-AVAILABLE",
    "kind": "unit",
    "name": "ai-prompt-eval",
    "path": "nix/modules/roles/ai-stack.nix",
@@ -2612,7 +2628,7 @@
   },
   {
    "category": "Systemd units (services and timers)",
-   "class": "ACTIVE",
+   "class": "UNUSED-AVAILABLE",
    "kind": "unit",
    "name": "ai-prsi-orchestrator",
    "path": "nix/modules/roles/ai-stack.nix",
@@ -2620,7 +2636,7 @@
   },
   {
    "category": "Systemd units (services and timers)",
-   "class": "ACTIVE",
+   "class": "UNUSED-AVAILABLE",
    "kind": "unit",
    "name": "ai-prsi-rsi-dispatch",
    "path": "nix/modules/roles/ai-stack.nix",
@@ -2628,7 +2644,7 @@
   },
   {
    "category": "Systemd units (services and timers)",
-   "class": "ACTIVE",
+   "class": "UNUSED-AVAILABLE",
    "kind": "unit",
    "name": "ai-ralph-wiggum",
    "path": "nix/modules/services/mcp-servers.nix",
@@ -2636,7 +2652,7 @@
   },
   {
    "category": "Systemd units (services and timers)",
-   "class": "ACTIVE",
+   "class": "UNUSED-AVAILABLE",
    "kind": "unit",
    "name": "ai-rsi-sweep",
    "path": "nix/modules/roles/ai-stack.nix",
@@ -2644,7 +2660,7 @@
   },
   {
    "category": "Systemd units (services and timers)",
-   "class": "ACTIVE",
+   "class": "UNUSED-AVAILABLE",
    "kind": "unit",
    "name": "ai-security-audit",
    "path": "nix/modules/services/mcp-servers.nix",
@@ -2652,7 +2668,7 @@
   },
   {
    "category": "Systemd units (services and timers)",
-   "class": "ACTIVE",
+   "class": "UNUSED-AVAILABLE",
    "kind": "unit",
    "name": "ai-stack-health-monitor",
    "path": "nix/modules/roles/ai-stack.nix",
@@ -2660,7 +2676,7 @@
   },
   {
    "category": "Systemd units (services and timers)",
-   "class": "ACTIVE",
+   "class": "UNUSED-AVAILABLE",
    "kind": "unit",
    "name": "ai-switchboard",
    "path": "nix/modules/services/switchboard.nix",
@@ -2668,7 +2684,7 @@
   },
   {
    "category": "Systemd units (services and timers)",
-   "class": "ACTIVE",
+   "class": "UNUSED-AVAILABLE",
    "kind": "unit",
    "name": "ai-sync-knowledge-sources",
    "path": "nix/modules/services/mcp-servers.nix",
@@ -2676,7 +2692,7 @@
   },
   {
    "category": "Systemd units (services and timers)",
-   "class": "ACTIVE",
+   "class": "UNUSED-AVAILABLE",
    "kind": "unit",
    "name": "ai-system-state",
    "path": "nix/modules/services/mcp-servers.nix",
@@ -2684,7 +2700,7 @@
   },
   {
    "category": "Systemd units (services and timers)",
-   "class": "ACTIVE",
+   "class": "UNUSED-AVAILABLE",
    "kind": "unit",
    "name": "ai-tempo",
    "path": "nix/modules/services/monitoring.nix",
@@ -2692,7 +2708,7 @@
   },
   {
    "category": "Systemd units (services and timers)",
-   "class": "ACTIVE",
+   "class": "UNUSED-AVAILABLE",
    "kind": "unit",
    "name": "ai-throttler",
    "path": "nix/modules/services/mcp-servers.nix",
@@ -2700,7 +2716,7 @@
   },
   {
    "category": "Systemd units (services and timers)",
-   "class": "ACTIVE",
+   "class": "UNUSED-AVAILABLE",
    "kind": "unit",
    "name": "ai-training-ingest",
    "path": "nix/modules/services/mcp-servers.nix",
@@ -2708,7 +2724,7 @@
   },
   {
    "category": "Systemd units (services and timers)",
-   "class": "ACTIVE",
+   "class": "UNUSED-AVAILABLE",
    "kind": "unit",
    "name": "ai-weekly-report",
    "path": "nix/modules/roles/ai-stack.nix",
@@ -2716,7 +2732,7 @@
   },
   {
    "category": "Systemd units (services and timers)",
-   "class": "ACTIVE",
+   "class": "UNUSED-AVAILABLE",
    "kind": "unit",
    "name": "aq-c2-scheduler-context-issuer",
    "path": "nix/modules/services/c2-scheduler-context-issuer.nix",
@@ -2724,7 +2740,7 @@
   },
   {
    "category": "Systemd units (services and timers)",
-   "class": "ACTIVE",
+   "class": "UNUSED-AVAILABLE",
    "kind": "unit",
    "name": "aq-execution-cell-runner",
    "path": "nix/modules/services/execution-cell-runner.nix",
@@ -2732,7 +2748,7 @@
   },
   {
    "category": "Systemd units (services and timers)",
-   "class": "ACTIVE",
+   "class": "UNUSED-AVAILABLE",
    "kind": "unit",
    "name": "aq-execution-cell-runner-mirror",
    "path": "nix/modules/services/execution-cell-runner.nix",
@@ -2740,7 +2756,7 @@
   },
   {
    "category": "Systemd units (services and timers)",
-   "class": "ACTIVE",
+   "class": "UNUSED-AVAILABLE",
    "kind": "unit",
    "name": "aq-lease-signing-authority",
    "path": "nix/modules/services/lease-signing-authority.nix",
@@ -2748,7 +2764,7 @@
   },
   {
    "category": "Systemd units (services and timers)",
-   "class": "ACTIVE",
+   "class": "UNUSED-AVAILABLE",
    "kind": "unit",
    "name": "aq-revocation-epoch-authority",
    "path": "nix/modules/services/revocation-epoch-authority.nix",
@@ -2756,7 +2772,7 @@
   },
   {
    "category": "Systemd units (services and timers)",
-   "class": "ACTIVE",
+   "class": "UNUSED-AVAILABLE",
    "kind": "unit",
    "name": "aq-workflow-deviation-broker",
    "path": "nix/modules/services/workflow-deviation-broker.nix",
@@ -2764,7 +2780,7 @@
   },
   {
    "category": "Systemd units (services and timers)",
-   "class": "ACTIVE",
+   "class": "UNUSED-AVAILABLE",
    "kind": "unit",
    "name": "aqos-security-credential-status",
    "path": "nix/modules/services/command-center-dashboard.nix",
@@ -2772,7 +2788,7 @@
   },
   {
    "category": "Systemd units (services and timers)",
-   "class": "ACTIVE",
+   "class": "UNUSED-AVAILABLE",
    "kind": "unit",
    "name": "command-center-dashboard-api",
    "path": "nix/modules/services/command-center-dashboard.nix",
@@ -2780,7 +2796,7 @@
   },
   {
    "category": "Systemd units (services and timers)",
-   "class": "ACTIVE",
+   "class": "UNUSED-AVAILABLE",
    "kind": "unit",
    "name": "cosmic-battery-bridge",
    "path": "nix/modules/hardware/mobile.nix",
@@ -2788,7 +2804,7 @@
   },
   {
    "category": "Systemd units (services and timers)",
-   "class": "ACTIVE",
+   "class": "UNUSED-AVAILABLE",
    "kind": "unit",
    "name": "cosmic-greeter-config-seed",
    "path": "nix/modules/roles/desktop.nix",
@@ -2796,7 +2812,7 @@
   },
   {
    "category": "Systemd units (services and timers)",
-   "class": "ACTIVE",
+   "class": "UNUSED-AVAILABLE",
    "kind": "unit",
    "name": "cpu-governor-amd",
    "path": "nix/modules/hardware/cpu/amd.nix",
@@ -2804,7 +2820,7 @@
   },
   {
    "category": "Systemd units (services and timers)",
-   "class": "ACTIVE",
+   "class": "UNUSED-AVAILABLE",
    "kind": "unit",
    "name": "crowdsec",
    "path": "nix/modules/services/crowdsec.nix",
@@ -2812,7 +2828,7 @@
   },
   {
    "category": "Systemd units (services and timers)",
-   "class": "ACTIVE",
+   "class": "UNUSED-AVAILABLE",
    "kind": "unit",
    "name": "crowdsec-firewall-bouncer",
    "path": "nix/modules/services/crowdsec.nix",
@@ -2820,7 +2836,7 @@
   },
   {
    "category": "Systemd units (services and timers)",
-   "class": "ACTIVE",
+   "class": "UNUSED-AVAILABLE",
    "kind": "unit",
    "name": "crowdsec-firewall-bouncer-key-sync",
    "path": "nix/modules/services/crowdsec.nix",
@@ -2828,7 +2844,7 @@
   },
   {
    "category": "Systemd units (services and timers)",
-   "class": "ACTIVE",
+   "class": "UNUSED-AVAILABLE",
    "kind": "unit",
    "name": "data-retention",
    "path": "nix/modules/services/data-retention.nix",
@@ -2836,7 +2852,7 @@
   },
   {
    "category": "Systemd units (services and timers)",
-   "class": "ACTIVE",
+   "class": "UNUSED-AVAILABLE",
    "kind": "unit",
    "name": "disk-health-monitor",
    "path": "nix/modules/core/disk-health-monitor.nix",
@@ -2844,7 +2860,7 @@
   },
   {
    "category": "Systemd units (services and timers)",
-   "class": "ACTIVE",
+   "class": "UNUSED-AVAILABLE",
    "kind": "unit",
    "name": "fast-lane-staleness-check",
    "path": "nix/modules/core/fast-lane-staleness-monitor.nix",
@@ -2852,7 +2868,7 @@
   },
   {
    "category": "Systemd units (services and timers)",
-   "class": "ACTIVE",
+   "class": "UNUSED-AVAILABLE",
    "kind": "unit",
    "name": "fs-integrity-monitor",
    "path": "nix/modules/core/fs-integrity-monitor.nix",
@@ -2860,7 +2876,7 @@
   },
   {
    "category": "Systemd units (services and timers)",
-   "class": "ACTIVE",
+   "class": "UNUSED-AVAILABLE",
    "kind": "unit",
    "name": "kernel-cve-scan",
    "path": "nix/modules/core/custom-kernel.nix",
@@ -2868,7 +2884,7 @@
   },
   {
    "category": "Systemd units (services and timers)",
-   "class": "ACTIVE",
+   "class": "UNUSED-AVAILABLE",
    "kind": "unit",
    "name": "llama-cpp",
    "path": "nix/modules/roles/ai-stack.nix",
@@ -2876,7 +2892,7 @@
   },
   {
    "category": "Systemd units (services and timers)",
-   "class": "ACTIVE",
+   "class": "UNUSED-AVAILABLE",
    "kind": "unit",
    "name": "llama-cpp-embed",
    "path": "nix/modules/roles/ai-stack.nix",
@@ -2908,7 +2924,7 @@
   },
   {
    "category": "Systemd units (services and timers)",
-   "class": "ACTIVE",
+   "class": "UNUSED-AVAILABLE",
    "kind": "unit",
    "name": "lore-sync",
    "path": "nix/modules/services/lore-sync.nix",
@@ -2916,7 +2932,7 @@
   },
   {
    "category": "Systemd units (services and timers)",
-   "class": "ACTIVE",
+   "class": "UNUSED-AVAILABLE",
    "kind": "unit",
    "name": "nvd-sync",
    "path": "nix/modules/services/nvd-sync.nix",
@@ -2924,7 +2940,7 @@
   },
   {
    "category": "Systemd units (services and timers)",
-   "class": "ACTIVE",
+   "class": "UNUSED-AVAILABLE",
    "kind": "unit",
    "name": "postgresql",
    "path": "nix/modules/services/mcp-servers.nix",
@@ -2932,7 +2948,7 @@
   },
   {
    "category": "Systemd units (services and timers)",
-   "class": "ACTIVE",
+   "class": "UNUSED-AVAILABLE",
    "kind": "unit",
    "name": "qdrant",
    "path": "nix/modules/roles/ai-stack.nix",
@@ -2940,7 +2956,7 @@
   },
   {
    "category": "Systemd units (services and timers)",
-   "class": "ACTIVE",
+   "class": "UNUSED-AVAILABLE",
    "kind": "unit",
    "name": "redis-mcp",
    "path": "nix/modules/services/mcp-servers.nix",
@@ -2956,7 +2972,7 @@
   },
   {
    "category": "Workflow, planning and PM",
-   "class": "ACTIVE",
+   "class": "UNUSED-AVAILABLE",
    "kind": "script",
    "name": "aq-flat-prd-gate",
    "path": "scripts/ai/aq-flat-prd-gate",
@@ -2964,7 +2980,7 @@
   },
   {
    "category": "Workflow, planning and PM",
-   "class": "ACTIVE",
+   "class": "UNUSED-AVAILABLE",
    "kind": "script",
    "name": "aq-pm-tracker",
    "path": "scripts/ai/aq-pm-tracker",
@@ -2972,7 +2988,7 @@
   },
   {
    "category": "Workflow, planning and PM",
-   "class": "ACTIVE",
+   "class": "UNUSED-AVAILABLE",
    "kind": "script",
    "name": "aq-ralph-task",
    "path": "scripts/ai/aq-ralph-task",
@@ -3020,7 +3036,7 @@
   },
   {
    "category": "Workflow, planning and PM",
-   "class": "ACTIVE",
+   "class": "UNUSED-AVAILABLE",
    "kind": "script",
    "name": "aq-workflow-deviation",
    "path": "scripts/ai/aq-workflow-deviation",
@@ -3036,7 +3052,7 @@
   },
   {
    "category": "Workflow, planning and PM",
-   "class": "ACTIVE",
+   "class": "UNUSED-AVAILABLE",
    "kind": "script",
    "name": "workflow-deviation-broker",
    "path": "scripts/ai/workflow-deviation-broker",
@@ -3044,7 +3060,7 @@
   },
   {
    "category": "Workflow, planning and PM",
-   "class": "ACTIVE",
+   "class": "UNUSED-AVAILABLE",
    "kind": "skill",
    "name": "debug-workflow",
    "path": ".agent/skills/debug-workflow/SKILL.md",
@@ -3060,7 +3076,7 @@
   },
   {
    "category": "Workflow, planning and PM",
-   "class": "ACTIVE",
+   "class": "UNUSED-AVAILABLE",
    "kind": "skill",
    "name": "self-improvement",
    "path": ".agent/skills/self-improvement/SKILL.md",
@@ -3076,7 +3092,7 @@
   },
   {
    "category": "Workflow, planning and PM",
-   "class": "STALE-CLAIM",
+   "class": "UNUSED-AVAILABLE",
    "kind": "skill",
    "name": "t3mp3st-intake",
    "path": ".agent/skills/t3mp3st-intake/SKILL.md",
@@ -3095,5 +3111,5 @@
   "DEAD-CANDIDATE"
  ],
  "schema": "capability-index/1",
- "source_audit": "capability-audit-20261009.json"
+ "source_audit": ""
 }

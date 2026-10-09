@@ -556,5 +556,88 @@ class DelegationServiceTests(unittest.TestCase):
         self.assertEqual(sw.adapter_service_error_rate(lambda u: _proc("", 1), units=["u1"])[0], "unknown")
 
 
+def _cap_report(d, name, gen, classes, by_class=None, version=2):
+    caps = [{"key": k, "class": c} for k, c in classes.items()]
+    totals = by_class if by_class is not None else {}
+    (Path(d) / name).write_text(json.dumps({"schema": "capability-audit/1", "audit_version": version, "generated_at": gen,
+                                            "totals": {"by_class": totals}, "capabilities": caps}))
+
+
+class CapabilityAuditTests(unittest.TestCase):
+    def _dir(self, prev, cur, cur_totals=None):
+        t = tempfile.TemporaryDirectory()
+        self.addCleanup(t.cleanup)
+        _cap_report(t.name, "20261008.json", "2026-10-08T06:00:00Z", prev)
+        _cap_report(t.name, "20261009.json", "2026-10-09T06:00:00Z", cur, cur_totals)
+        _cap_report(t.name, "latest.json", "2026-10-09T06:00:00Z", cur, cur_totals)
+        return t.name
+
+    def test_regression_detected_with_severity(self):
+        d = self._dir({"a": "ACTIVE", "b": "ACTIVE", "c": "UNUSED-AVAILABLE", "d": "UNUSED-AVAILABLE", "e": "ACTIVE"},
+                      {"a": "UNUSED-AVAILABLE", "b": "STALE-CLAIM", "c": "BROKEN", "d": "UNUSED-AVAILABLE", "e": "ACTIVE"})
+        state, f, _ = sw.adapter_capability_audit(d)
+        self.assertEqual(state, "findings")
+        by = {x["path"]: x for x in f}
+        self.assertEqual(sorted(by), ["a", "b", "c"])
+        self.assertEqual(by["a"]["severity"], "low")
+        self.assertEqual(by["b"]["severity"], "medium")
+        self.assertEqual(by["c"]["severity"], "medium")
+        self.assertIn("regressed from ACTIVE", by["a"]["os_error"])
+
+    def test_no_timer_baseline_means_thresholds_only(self):
+        # a committed one-off report in the parent dir must never be the baseline
+        with tempfile.TemporaryDirectory() as t:
+            sub = Path(t) / "capability-audit"
+            sub.mkdir()
+            _cap_report(t, "capability-audit-20261008.json", "2026-10-08T06:00:00Z", {"a": "ACTIVE"})
+            _cap_report(sub, "latest.json", "2026-10-09T06:00:00Z", {"a": "BROKEN"}, {"BROKEN": 1})
+            state, f, detail = sw.adapter_capability_audit(sub)
+            self.assertEqual([x["path"] for x in f], ["threshold:BROKEN"])
+            self.assertIn("previous=none", detail)
+
+    def test_version_mismatch_skips_regressions(self):
+        d = self._dir({"a": "ACTIVE"}, {"a": "BROKEN"})
+        _cap_report(d, "20261008.json", "2026-10-08T06:00:00Z", {"a": "ACTIVE"}, version=1)
+        state, f, detail = sw.adapter_capability_audit(d)
+        self.assertEqual([x for x in f if not x["path"].startswith("threshold:")], [])
+        self.assertIn("version-mismatch", detail)
+
+    def test_improvement_is_not_a_finding(self):
+        d = self._dir({"a": "BROKEN", "b": "UNDISCOVERABLE"}, {"a": "ACTIVE", "b": "UNUSED-AVAILABLE"})
+        self.assertEqual(sw.adapter_capability_audit(d)[:2], ("ok", []))
+
+    def test_threshold_crossed(self):
+        d = self._dir({"a": "ACTIVE"}, {"a": "ACTIVE"}, {"UNDISCOVERABLE": 11, "STALE-CLAIM": 1, "BROKEN": 0})
+        state, f, _ = sw.adapter_capability_audit(d)
+        self.assertEqual(state, "findings")
+        self.assertEqual(sorted(x["path"] for x in f), ["threshold:STALE-CLAIM", "threshold:UNDISCOVERABLE"])
+        d = self._dir({"a": "ACTIVE"}, {"a": "ACTIVE"}, {"UNDISCOVERABLE": 10})
+        self.assertEqual(sw.adapter_capability_audit(d)[0], "ok")
+
+    def test_missing_or_stale_report_unknown(self):
+        with tempfile.TemporaryDirectory() as t:
+            self.assertEqual(sw.adapter_capability_audit(t)[:2], ("unknown", []))
+        d = self._dir({"a": "ACTIVE"}, {"a": "ACTIVE"})
+        state, f, detail = sw.adapter_capability_audit(d, now=time.time() + 3 * 86400)
+        self.assertEqual((state, f), ("unknown", []))
+        self.assertIn("stale", detail)
+
+    def test_resolves_when_restored(self):
+        d = self._dir({"a": "ACTIVE"}, {"a": "STALE-CLAIM"}, {"STALE-CLAIM": 1})
+        _, f, _ = sw.adapter_capability_audit(d)
+        incs = {x["path"]: {"producer": x["producer"], "path": x["path"], "error": x["os_error"]} for x in f}
+        self.assertEqual(set(incs), {"a", "threshold:STALE-CLAIM"})
+        self.assertIsNone(f.cleared(incs["a"]))
+        self.assertIsNone(f.cleared(incs["threshold:STALE-CLAIM"]))
+        # next day: restored, totals back under limit
+        _cap_report(d, "20261010.json", "2026-10-10T06:00:00Z", {"a": "ACTIVE"}, {"STALE-CLAIM": 0})
+        _cap_report(d, "latest.json", "2026-10-10T06:00:00Z", {"a": "ACTIVE"}, {"STALE-CLAIM": 0})
+        state, f2, _ = sw.adapter_capability_audit(d)
+        self.assertEqual((state, list(f2)), ("ok", []))
+        self.assertIn("restored to ACTIVE", f2.cleared(incs["a"]))
+        self.assertIn("count 0", f2.cleared(incs["threshold:STALE-CLAIM"]))
+        self.assertIsNone(f2.cleared({"producer": "other", "path": "a", "error": ""}))
+
+
 if __name__ == "__main__":
     unittest.main()

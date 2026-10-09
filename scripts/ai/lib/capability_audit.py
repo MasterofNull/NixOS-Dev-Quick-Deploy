@@ -20,17 +20,23 @@ from collections import Counter, defaultdict
 from pathlib import Path
 from typing import Any, Dict, Iterable, List, Optional, Set
 
-CLASSES = ("ACTIVE", "UNUSED-AVAILABLE", "UNDISCOVERABLE", "STALE-CLAIM", "DEAD-CANDIDATE", "BROKEN")
+CLASSES = ("ACTIVE", "UNUSED-AVAILABLE", "UNDISCOVERABLE", "STALE-CLAIM", "ACKNOWLEDGED", "STALE-ARTIFACT",
+           "DEAD-CANDIDATE", "BROKEN")
+AUDIT_VERSION = 2  # bump when classification rules change; the RSI adapter skips cross-version comparison
 NEXT_ACTION = {
     "ACTIVE": "none",
     "UNUSED-AVAILABLE": "integrate-into-repertoire",
     "UNDISCOVERABLE": "add-discovery",
     "STALE-CLAIM": "refresh",
+    "ACKNOWLEDGED": "none",
+    "STALE-ARTIFACT": "regenerate",
     "DEAD-CANDIDATE": "archive-candidate",
     "BROKEN": "fix",
 }
 LIVE_CLAIM_STATES = {"enabled", "active", "on"}
-LIVE_CLAIM_MATURITY = {"integrated", "production", "official", "scope-gated"}
+# Only these maturities assert "integrated and in use". available-unused / partial / enabled-unmeasured /
+# scope-gated / quarantined are honest non-claims and can never be a STALE-CLAIM.
+LIVE_CLAIM_MATURITY = {"integrated", "production", "official"}
 # artifact path (relative to live root) -> max age in days before it is stale
 ARTIFACT_REFRESH_DAYS = {".understand-anything/knowledge-graph.json": 14}
 
@@ -501,7 +507,7 @@ def run_audit(
             c = add({"name": e["id"], "kind": "catalog", "path": "config/system-capability-catalog.json"})
             linked = [c["key"]]
         for k in dict.fromkeys(linked):
-            caps[k]["catalog"].append({"id": e["id"], "state": e.get("state"), "maturity": e.get("maturity"),
+            caps[k]["catalog"].append({"id": e["id"], "state": e.get("state"), "maturity": e.get("maturity"), "usage_evidence": e.get("usage_evidence"),
                                        "refs": [norm(Path(r).name) for r in e.get("primary_refs", [])]})
 
     for rel, days_max in ARTIFACT_REFRESH_DAYS.items():
@@ -618,6 +624,7 @@ def run_audit(
         claims = [x for x in c["catalog"]
                   if x["state"] in LIVE_CLAIM_STATES and x["maturity"] in LIVE_CLAIM_MATURITY]
         claim_stale = False
+        claim_acked = False
         if claims:
             # entry-level usage: any linked capability or the entry id itself used
             ent_used = used
@@ -627,6 +634,8 @@ def run_audit(
                         if a in u.exact or (distinctive(a) and a in u.text):
                             ent_used = True
             claim_stale = not ent_used
+            # A stale claim whose catalog entry documents why it is kept is acknowledged, not false.
+            claim_acked = claim_stale and all(str(x.get("usage_evidence") or "").strip() for x in claims)
         artifact_stale = False
         age_days = None
         if "artifact" in c["kinds"]:
@@ -654,11 +663,11 @@ def run_audit(
         if broken:
             cls = "BROKEN"
         elif "artifact" in c["kinds"]:
-            cls = "STALE-CLAIM" if artifact_stale else "ACTIVE"
+            cls = "STALE-ARTIFACT" if artifact_stale else "ACTIVE"
         elif used and (discoverable or wired) and not claim_stale:
             cls = "ACTIVE"
         elif claim_stale:
-            cls = "STALE-CLAIM"
+            cls = "ACKNOWLEDGED" if claim_acked else "STALE-CLAIM"
         elif not discoverable and (wired or used or loaded_unit):
             cls = "UNDISCOVERABLE"
         elif discoverable and not used:
@@ -688,6 +697,7 @@ def run_audit(
     counts = Counter(r["class"] for r in rows)
     return {
         "schema": "capability-audit/1",
+        "audit_version": AUDIT_VERSION,
         "generated_at": _iso(now),
         "window_days": days,
         "repo_root": str(repo_root),
@@ -714,7 +724,7 @@ def render_human(report: Dict[str, Any], top: int = 10) -> str:
     lines.append("  " + "  ".join(f"{c}={t['by_class'][c]}" for c in CLASSES))
     lines.append("  kinds: " + ", ".join(f"{k}={v}" for k, v in sorted(t["by_kind"].items())))
     lines.append("  usage sources: " + ", ".join(f"{k}={v}" for k, v in report["usage_sources"].items()))
-    for cls in ("BROKEN", "STALE-CLAIM", "UNDISCOVERABLE", "DEAD-CANDIDATE", "UNUSED-AVAILABLE"):
+    for cls in ("BROKEN", "STALE-CLAIM", "STALE-ARTIFACT", "UNDISCOVERABLE", "DEAD-CANDIDATE", "UNUSED-AVAILABLE"):
         rs = [r for r in report["capabilities"] if r["class"] == cls]
         if not rs:
             continue
