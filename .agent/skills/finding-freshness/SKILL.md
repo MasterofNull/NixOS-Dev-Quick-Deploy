@@ -1,4 +1,6 @@
 ---
+name: finding-freshness
+description: "Verify a finding is still current against live state before logging it or acting on it (multi-agent, concurrent edits)."
 doc_type: skill
 id: finding-freshness
 title: Finding Freshness — verify before logging or acting
