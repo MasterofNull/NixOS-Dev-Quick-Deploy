@@ -165,6 +165,46 @@
       },
       "compliance": "partial",
       "next_slice": "U4: status.json surfaced via aq-rsi status + dashboard card; watchdog survival + injected-failure recovery drill before activation."
+    },
+    {
+      "id": "ai-capability-audit",
+      "workload_class": "resumable-job",
+      "implementation_paths": [
+        "nix/modules/roles/ai-stack.nix",
+        "scripts/ai/aq-capability-audit",
+        "scripts/ai/lib/capability_audit.py"
+      ],
+      "suspend_behavior": {
+        "mode": "rerun_on_next_trigger",
+        "resume_trigger": "ai-capability-audit.timer (Persistent=true catches up a missed run)",
+        "implementation_status": "implemented"
+      },
+      "state_safety": {
+        "checkpoint_required": false,
+        "idempotency": "Read-only audit; writes a report via tmp+rename, so an interrupted run leaves the previous latest.json intact and the next run regenerates it.",
+        "signal_behavior": "systemd oneshot; interruption only loses the in-progress report"
+      },
+      "readiness": {
+        "strategy": "bounded_completion",
+        "evidence": "nix ai-capability-audit TimeoutSec bounds the run; report written via tmp+rename",
+        "max_wait_seconds": 600,
+        "implementation_status": "implemented"
+      },
+      "resume_outcomes": {
+        "required": [
+          "ready",
+          "timeout",
+          "interrupted"
+        ],
+        "implementation_status": "implemented"
+      },
+      "observability": {
+        "telemetry": "implemented",
+        "dashboard": "planned",
+        "qa": "implemented"
+      },
+      "compliance": "partial",
+      "next_slice": "Surface latest class counts on the dashboard; RSI capability-audit adapter already consumes the reports."
     }
   ]
 }
