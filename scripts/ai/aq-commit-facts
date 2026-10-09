@@ -1,4 +1,5 @@
 #!/usr/bin/env bash
+. "${BASH_SOURCE[0]%/*}/lib/aq-shim.sh" 2>/dev/null || true  # aq-usage-hook
 # aq-commit-facts — Extract semantic facts from recent commits via local model (Phase 56.4)
 #
 # Usage:

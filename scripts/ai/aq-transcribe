@@ -1,4 +1,5 @@
 #!/usr/bin/env bash
+. "${BASH_SOURCE[0]%/*}/lib/aq-shim.sh" 2>/dev/null || true  # aq-usage-hook
 # aq-transcribe — fully-local video/audio -> text for agent research ingestion.
 #
 # Purpose: turn a talk/video (YouTube URL or a local audio/video file) into text

@@ -144,7 +144,8 @@ def build_discovery_index(root: Path) -> TokenIndex:
     files += list((root / "docs" / "agent-guides").glob("*.md"))
     files += list((root / "canon").rglob("*.md")) if (root / "canon").exists() else []
     files += list((ag / "skills").glob("*/SKILL.md")) if ag.exists() else []
-    files += [root / "config" / "progressive-disclosure-domains.json", root / "config" / "workflow-blueprints.json"]
+    files += [root / "config" / "progressive-disclosure-domains.json", root / "config" / "workflow-blueprints.json",
+              root / "config" / "capability-index.json"]
     hc = root / "ai-stack" / "mcp-servers" / "hybrid-coordinator"
     files += [hc / "knowledge" / "tooling_manifest.py", hc / "tooling_manifest.py"]
     files += list(hc.rglob("static_rules.py")) + list(hc.rglob("hints_engine*.py"))
@@ -308,6 +309,29 @@ def scan_jsonl_names(path: Path, cutoff: float, u: Usage, keys: Iterable[str], t
     u.sources[tag] = n
 
 
+AQ_USAGE_PREFER_MIN_TOOLS = 10
+
+
+def aq_usage_distinct_tools(*paths: Path, cutoff: float) -> int:
+    """Distinct tools in the window across aq-usage ledgers (0 if missing/empty)."""
+    seen = set()
+    for path in paths:
+        try:
+            with open(path, "r", errors="ignore") as f:
+                for line in f:
+                    try:
+                        d = json.loads(line)
+                    except ValueError:
+                        continue
+                    ts = _parse_ts(d.get("ts"))
+                    name = d.get("script") or d.get("command")
+                    if name and ts is not None and ts >= cutoff:
+                        seen.add(str(name))
+        except OSError:
+            continue
+    return len(seen)
+
+
 def scan_text_tree(root: Path, cutoff: float, u: Usage, tag: str, max_bytes: int = 400_000) -> None:
     """Free-text evidence: distinctive name tokens in recently modified files."""
     n = 0
@@ -338,7 +362,12 @@ def scan_registry(path: Path, cutoff: float, u: Usage) -> None:
         u.sources["delegation_registry"] = "missing"
         return
     n = 0
-    with open(path, "r", errors="ignore") as f:
+    try:
+        f = open(path, "r", errors="ignore")
+    except PermissionError:  # root-owned 0600 on the live host
+        u.sources["delegation_registry"] = "permission-denied"
+        return
+    with f:
         for line in f:
             try:
                 d = json.loads(line)
@@ -480,11 +509,24 @@ def run_audit(
 
     # --- usage evidence ----------------------------------------------------
     u = Usage()
+    prefer_ledger = False
     if tool_audit:
         scan_tool_audit(tool_audit, cutoff, u)
     if telemetry_dir:
         scan_jsonl_names(telemetry_dir / "hybrid-events.jsonl", cutoff, u, ("event_type", "event"), "hybrid_events")
         scan_jsonl_names(telemetry_dir / "aq-usage.jsonl", cutoff, u, ("script", "command"), "aq_usage")
+        # Exact ledger is authoritative for aq-* scripts once it looks representative
+        # (several distinct tools, not just one self-invoking timer); text-token
+        # evidence is then ignored for them. See lib/aq-shim.sh.
+        # The producer writes <repo>/.agents/telemetry/aq-usage.jsonl (gitignored);
+        # the system telemetry dir held a stale Jul-11 copy. Read both.
+        local_ledger = live_root / ".agents" / "telemetry" / "aq-usage.jsonl"
+        if local_ledger.exists() and local_ledger.resolve() != (telemetry_dir / "aq-usage.jsonl").resolve():
+            scan_jsonl_names(local_ledger, cutoff, u, ("script", "command"), "aq_usage_local")
+        n_tools = aq_usage_distinct_tools(telemetry_dir / "aq-usage.jsonl", local_ledger, cutoff=cutoff)
+        u.sources["aq_usage_distinct_tools"] = n_tools
+        prefer_ledger = n_tools >= AQ_USAGE_PREFER_MIN_TOOLS
+        u.sources["aq_usage_preferred"] = prefer_ledger
         scan_jsonl_names(telemetry_dir / "agent-run-events.jsonl", cutoff, u, ("tool", "tool_name", "event_type"),
                          "agent_run_events")
     scan_registry(delegation_dir / "registry.jsonl", cutoff, u)
@@ -536,7 +578,7 @@ def run_audit(
         for a in al:
             if a in u.exact:
                 used_n += int(u.exact[a][0]); last = max(last, u.exact[a][1]); where.append("exact-log")
-        if distinctive(k):
+        if distinctive(k) and not (prefer_ledger and k.startswith("aq-") and "script" in c["kinds"]):
             for a in al:
                 if a in u.text and distinctive(a):
                     used_n += int(u.text[a][0]); last = max(last, u.text[a][1]); where.append("delegation-text")

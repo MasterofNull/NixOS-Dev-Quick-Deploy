@@ -5,6 +5,12 @@ This tool cannot compact a provider's live context. It reports transcript files
 above a size threshold and recommends provider-native compaction or an explicit
 fresh-session handoff. It never changes transcripts or collaboration state.
 """
+try:  # aq-usage-hook
+    import importlib.util as _aqu, os as _aqo
+    _aqs = _aqu.spec_from_file_location("aq_usage", _aqo.path.join(_aqo.path.dirname(_aqo.path.realpath(__file__)), "lib", "aq_usage.py"))
+    _aqm = _aqu.module_from_spec(_aqs); _aqs.loader.exec_module(_aqm); _aqm.record(__file__, __name__)
+except Exception:
+    pass
 
 import argparse
 import json

@@ -68,6 +68,18 @@ STATIC_RULES: List[dict] = [
     },
     # ── Agentic / Code Generation ────────────────────────────────────────────
     {
+        "id": "check_capability_index_before_new_code",
+        "title": "Check CAPABILITY-INDEX for an existing tool before writing new code",
+        "keywords": ["new script", "write a script", "implement", "helper", "utility", "add a tool",
+                     "new tool", "create script", "build a", "reimplement", "existing tool", "aq-"],
+        "snippet": (
+            "Before writing a new script/helper, grep `docs/agent-guides/CAPABILITY-INDEX.md` "
+            "(machine form: `config/capability-index.json`) for the task keyword. Reuse or "
+            "extend an existing aq-*/skill/MCP tool; read only the matching rows."
+        ),
+        "tags": ["capability", "reuse", "discovery"],
+    },
+    {
         "id": "aider_scope_small",
         "title": "Keep aider tasks small and targeted",
         "keywords": ["aider", "code", "generate", "edit", "change", "modify"],
