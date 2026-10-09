@@ -1427,6 +1427,23 @@ def _check_factory_ci_pack(ctx: RunContext) -> list[CheckResult]:
     return [passed(5, "0.10.58", desc)]
 
 
+def _check_understand_graph_freshness(ctx: RunContext) -> list[CheckResult]:
+    """0.10.59: Understand-Anything graph freshness. WARN-class: STALE reports as SKIP with the reason, never FAIL."""
+    desc = "Understand-Anything graph freshness (limits in config/understand-anything.json)"
+    cli = ctx.repo_root / "scripts" / "ai" / "aq-graph-query"
+    if not cli.exists():
+        return [failed(1, "0.10.59", desc, "aq-graph-query missing")]
+    try:
+        proc = subprocess.run([sys.executable, str(cli), "--json", "staleness"], cwd=str(ctx.repo_root),
+                              capture_output=True, text=True, timeout=60, check=False)
+        verdict = json.loads(proc.stdout)
+    except (OSError, subprocess.TimeoutExpired, ValueError) as error:
+        return [skipped(1, "0.10.59", desc, f"WARN: staleness probe unavailable: {str(error)[:160]}")]
+    if verdict.get("stale"):
+        return [skipped(1, "0.10.59", desc, "WARN STALE: " + "; ".join(verdict.get("reasons") or ["unknown"]) + " -- regenerate graph, then aq-wiki --init --force")]
+    return [passed(1, "0.10.59", f"{desc} [age {verdict.get('graph_age_days')}d, {verdict.get('commits_since_graph')} commits]")]
+
+
 def _check_provider_projection(ctx: RunContext) -> list[CheckResult]:
     """0.10.55: ECC P0-B provider projection fixtures plus live drift status (preview-only)."""
     desc = "ECC P0-B provider projection: deterministic preview, drift/preserved/refusal fixtures, live drift status"
@@ -2186,6 +2203,7 @@ def run(ctx: RunContext) -> list[CheckResult]:
     results.extend(_check_provider_projection(ctx))
     results.extend(_check_ecc_diagnostics(ctx))
     results.extend(_check_factory_ci_pack(ctx))
+    results.extend(_check_understand_graph_freshness(ctx))
     if ctx.dashboard_safe:
         results.extend(_dashboard_safe_host_only_skips())
     return results

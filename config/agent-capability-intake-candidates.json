@@ -368,9 +368,9 @@
       "source_url": "local",
       "maturity": "local-build",
       "priority": "medium-high",
-      "state": "enabled",
+      "state": "partial",
       "review_status": "accepted-with-mitigations",
-      "pinned_version": "understand-anything-54754a6+graph-2026-07-09",
+      "pinned_version": "understand-anything-54754a6+graph-2026-07-01",
       "mitigations": [
         "graph completion is validated with scripts/ai/aq-understand-anything validate-batches",
         "graph answers are advisory and must be verified against source before deploy or security decisions",
@@ -382,7 +382,7 @@
         "command": "scripts/ai/aq-understand-anything",
         "args": ["status"]
       },
-      "tool_allowlist": ["graph_query", "symbol_lookup", "impact_path"],
+      "tool_allowlist": ["graph_query"],
       "permissions": {
         "network": false,
         "filesystem": "workspace-read",
@@ -391,7 +391,7 @@
       },
       "value": "Combine Understand-Anything, lean-ctx, and language-aware indexes for deterministic impact answers.",
       "risks": ["llm-generated-graph-inaccuracy"],
-      "activation_notes": "Enabled after Understand-Anything generated a complete 296-batch graph with .understand-anything/knowledge-graph.json present. Use graph as advisory; verify deploy/security conclusions against source and live checks."
+      "activation_notes": "PARTIAL: the 296-batch graph exists but was generated 2026-07-01 and is stale (limits in config/understand-anything.json); regeneration is pending an LLM run. Queries are live through scripts/ai/aq-graph-query (search, symbol, neighbors, impact, staleness), exposed as MCP tool graph_query. Use graph as advisory; check staleness first; verify deploy/security conclusions against source and live checks."
     },
     {
       "id": "t3mp3st",

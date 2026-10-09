@@ -105,6 +105,8 @@ SAFE_COMMANDS = {
     # (aq-wiki --section/--list/--status). Without this the agent cannot benefit
     # from the codebase mapping during autonomous runs.
     "aq-wiki",
+    # read-only graph queries (search/symbol/neighbors/impact/staleness); no LLM, no writes
+    "aq-graph-query",
     # OpenCode CLI (Phase 60 Integration)
     "opencode",
     # JSON/YAML inspection

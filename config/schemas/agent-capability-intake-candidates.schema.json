@@ -71,7 +71,7 @@
         "secondary_source_url": {"$ref": "#/$defs/urlOrLocal"},
         "maturity": {"enum": ["official", "mature", "local-build", "third-party-dual-use", "third-party-reference"]},
         "priority": {"enum": ["very-high", "high", "medium-high", "medium"]},
-        "state": {"enum": ["enabled", "ready-scope-gated", "proposed", "quarantined"]},
+        "state": {"enum": ["enabled", "partial", "ready-scope-gated", "proposed", "quarantined"]},
         "pinned_version": {"type": "string", "minLength": 1, "maxLength": 256},
         "source_hash": {"type": "string", "minLength": 1, "maxLength": 256},
         "review_status": {"enum": ["accepted-with-mitigations", "incomplete"]},
