@@ -2770,14 +2770,17 @@ def _check_worktree_isolation_safety(ctx: RunContext) -> list[CheckResult]:
     if not fixture.is_file():
         return [failed(5, "0.10.48", description, "worktree safety fixture missing")]
     try:
+        # Real git worktree ops: ~10s on the dev host; 30s flaked on loaded CI runners.
         result = subprocess.run(
             [sys.executable, str(fixture)], cwd=str(ctx.repo_root),
-            text=True, capture_output=True, timeout=30, check=False,
+            text=True, capture_output=True, timeout=90, check=False,
         )
         if result.returncode or "PASS: worktree isolation fail-closed contracts" not in result.stdout:
             detail = (result.stderr or result.stdout or f"exit {result.returncode}")[-240:]
             return [failed(5, "0.10.48", description, detail)]
-    except (OSError, subprocess.TimeoutExpired) as error:
+    except subprocess.TimeoutExpired:
+        return [failed(5, "0.10.48", description, "worktree isolation fixture timed out after 90s")]
+    except OSError as error:
         return [failed(5, "0.10.48", description, str(error)[:240])]
     return [passed(5, "0.10.48", description)]
 
