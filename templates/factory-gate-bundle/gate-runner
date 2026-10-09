@@ -262,6 +262,18 @@ RISK_TIER="UNCLASSIFIED"
 if [[ -n "${FACTORY_RISK_TIER_FILE:-}" && -f "${FACTORY_RISK_TIER_FILE}" ]]; then
   IFS= read -r RISK_TIER <"${FACTORY_RISK_TIER_FILE}" || true
 fi
+
+# FT-6 (REPORT-ONLY): if the classifier is installed, compute the tier for the staged change and
+# print the policy it WOULD require. Never self-lowers (a lower claimed tier is overridden), never
+# alters the exit code or the checks that run; activation is a separate owner decision.
+RISK_TIER_CMD="${FACTORY_RISK_TIER_CMD:-${REPO_ROOT}/scripts/ai/aq-risk-tier}"
+if [[ -x "${RISK_TIER_CMD}" ]]; then
+  if _rt_out="$(cd "${REPO_ROOT}" && "${RISK_TIER_CMD}" --staged --claimed "${RISK_TIER}" 2>/dev/null)"; then
+    RISK_TIER="$(printf '%s\n' "${_rt_out}" | sed -n '1s/^risk-tier=\([a-z]*\).*/\1/p')"
+    RISK_TIER="${RISK_TIER:-UNCLASSIFIED}"
+    printf 'Factory gate (report-only) would require: %s\n' "$(printf '%s\n' "${_rt_out}" | head -1)"
+  fi
+fi
 export FACTORY_GATE_MODE="${MODE}" FACTORY_RISK_TIER="${RISK_TIER}"
 
 pass_count=0

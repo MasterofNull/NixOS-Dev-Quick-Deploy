@@ -1,0 +1,29 @@
+{
+  "version": "1.0",
+  "mode": "report-only",
+  "note": "FT-6. Tiers low<medium<high<core. Tier is recorded on the change and never self-lowered. Report-only until the owner activates enforcement.",
+  "tier_order": ["low", "medium", "high", "core"],
+  "tiers": {
+    "low":    {"min_reviewers": 0, "independent_reviewer_required": false, "validation_set": ["tier0-pre-commit"], "lock": "none"},
+    "medium": {"min_reviewers": 1, "independent_reviewer_required": false, "validation_set": ["tier0-pre-commit", "targeted-tests"], "lock": "none"},
+    "high":   {"min_reviewers": 1, "independent_reviewer_required": true,  "validation_set": ["tier0-pre-commit", "targeted-tests", "security-review", "high-risk-rubric"], "lock": "freeze"},
+    "core":   {"min_reviewers": 2, "independent_reviewer_required": true,  "validation_set": ["tier0-pre-commit", "targeted-tests", "security-review", "high-risk-rubric", "live-e2e", "tier0-pre-deploy"], "lock": "hash-bound"}
+  },
+  "rubric": "config/prsi/high-risk-approval-rubric.json",
+  "rubric_tiers": ["high", "core"],
+  "diff_escalation": {"changed_lines": 400, "files": 25},
+  "rules": {
+    "core": {
+      "tag": "core-piece",
+      "patterns": ["^\\.githooks/", "^scripts/governance/tier0", "^scripts/governance/tier0\\.d/", "rsi_lifecycle", "rsi_gate", "integration_guard", "^scripts/automation/prsi-orchestrator", "^templates/factory-gate-bundle/gate-runner$", "^config/factory/", "risk_tier\\.py$", "^scripts/ai/aq-risk-tier$", "trunk-protection", "^scripts/ai/lib/worktree-isolation\\.sh$"]
+    },
+    "high": {
+      "security": ["secret", "sops", "apparmor", "(^|/)auth", "credential", "token", "firewall", "(^|/)keys?/", "\\.pem$"],
+      "stability": ["\\.nix$", "^nix/", "^flake\\.(nix|lock)$", "systemd", "^scripts/governance/", "^scripts/deploy", "^config/"],
+      "vulnerability": ["requirements.*\\.txt$", "package-lock\\.json$", "Cargo\\.lock$", "pyproject\\.toml$"]
+    },
+    "low": {
+      "patterns": ["\\.md$", "^docs/", "^\\.agent/", "^\\.agents/", "^tests?/", "^scripts/testing/", "^LICENSE", "\\.txt$"]
+    }
+  }
+}
