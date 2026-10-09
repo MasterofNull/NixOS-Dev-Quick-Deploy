@@ -8,6 +8,10 @@
 #   4. Unreachable origin → exit 0 + warning (offline systems don't block)
 #   5. Clean clone behind origin → fast-forwarded, exit 0, HEAD == origin/main
 #   6. AUTO_FAST_FORWARD=0 with clean clone behind → exit 3, HEAD unchanged
+#   7. Behind + local pure append to issues-backlog.md + incoming append → ff, suffix re-applied
+#   8. Behind + local NON-append edit to issues-backlog.md → exit 3, nothing changed
+#   9. Allowlisted append + non-allowlisted overlapping edit → exit 3, nothing changed
+#  10. ff fails after restore (untracked file collides with incoming add) → exit 3, tree byte-identical
 #
 set -u
 
@@ -202,6 +206,104 @@ if [[ $EXIT6 -eq 3 && "$(git -C "$CLONE_REPO6" rev-parse HEAD)" == "$BEFORE6" ]]
   ((PASSED++)) || true
 else
   echo "  ✗ FAIL: expected exit 3 and unchanged HEAD, got $EXIT6"
+  ((FAILED++)) || true
+fi
+echo
+
+# Tests 7-10: append-only auto-merge. Each builds its own origin + clone.
+BL=".agent/memory/issues-backlog.md"
+# $1=name; creates $TEST_ROOT/$1-origin.git and clone $TEST_ROOT/$1 whose HEAD is
+# the base commit (backlog with 3 lines + other.txt); origin/main has 1 more commit
+# appended by $2 (a shell snippet run in a scratch clone, then pushed).
+make_append_fixture() {
+  local name="$1" incoming="$2"
+  local o="$TEST_ROOT/$name-origin.git" w="$TEST_ROOT/$name-work" c="$TEST_ROOT/$name"
+  git init --bare -q "$o" >/dev/null 2>&1
+  git init -q "$w" >/dev/null 2>&1
+  git -C "$w" config user.email t@t.local; git -C "$w" config user.name T
+  mkdir -p "$w/.agent/memory"
+  printf 'line1\nline2\nline3\n' > "$w/$BL"
+  echo base > "$w/other.txt"
+  git -C "$w" add -A; git -C "$w" commit -qm base
+  git -C "$w" remote add origin "$o"
+  git -C "$w" push -q origin HEAD:main >/dev/null 2>&1
+  git clone -q "$o" "$c" >/dev/null 2>&1
+  git -C "$c" config user.email t@t.local; git -C "$c" config user.name T
+  ( cd "$w" && eval "$incoming" )
+  git -C "$w" add -A; git -C "$w" commit -qm incoming
+  git -C "$w" push -q origin HEAD:main >/dev/null 2>&1
+  git -C "$c" fetch -q origin
+}
+
+echo "[TEST 7] Local pure append + incoming append → ff, suffix re-applied, exit 0"
+make_append_fixture t7 "printf 'incoming4\n' >> $BL"
+C7="$TEST_ROOT/t7"
+printf 'local-a\nlocal-b' >> "$C7/$BL"   # note: no trailing newline, must be preserved
+EXPECT7=$'line1\nline2\nline3\nincoming4\nlocal-a\nlocal-b'
+REPO="$C7" bash "$GUARD_SCRIPT" > "$TEST_ROOT/out7" 2>&1; EXIT7=$?
+if [[ $EXIT7 -eq 0 ]] \
+   && [[ "$(git -C "$C7" rev-parse HEAD)" == "$(git -C "$C7" rev-parse origin/main)" ]] \
+   && printf '%s' "$EXPECT7" | cmp -s - "$C7/$BL" \
+   && grep -q "re-applied local appends to: $BL" "$TEST_ROOT/out7"; then
+  echo "  ✓ PASS: fast-forwarded and local suffix re-applied"
+  ((PASSED++)) || true
+else
+  echo "  ✗ FAIL: exit=$EXIT7"; sed -n 1,8p "$TEST_ROOT/out7"; cat "$C7/$BL"
+  ((FAILED++)) || true
+fi
+echo
+
+echo "[TEST 8] Local NON-append edit + incoming change → exit 3, nothing changed"
+make_append_fixture t8 "printf 'incoming4\n' >> $BL"
+C8="$TEST_ROOT/t8"
+printf 'line1\nLOCAL-EDIT\nline3\nextra\n' > "$C8/$BL"
+cp "$C8/$BL" "$TEST_ROOT/before8"; BEFORE8="$(git -C "$C8" rev-parse HEAD)"
+REPO="$C8" bash "$GUARD_SCRIPT" > "$TEST_ROOT/out8" 2>&1; EXIT8=$?
+if [[ $EXIT8 -eq 3 ]] && cmp -s "$C8/$BL" "$TEST_ROOT/before8" \
+   && [[ "$(git -C "$C8" rev-parse HEAD)" == "$BEFORE8" ]] \
+   && grep -q "Overlapping local edits.*$BL" "$TEST_ROOT/out8"; then
+  echo "  ✓ PASS: non-append edit blocks, file and HEAD untouched"
+  ((PASSED++)) || true
+else
+  echo "  ✗ FAIL: exit=$EXIT8"; sed -n 1,12p "$TEST_ROOT/out8"
+  ((FAILED++)) || true
+fi
+echo
+
+echo "[TEST 9] Allowlisted append + non-allowlisted overlapping edit → exit 3, nothing modified"
+make_append_fixture t9 "printf 'incoming4\n' >> $BL; echo changed >> other.txt"
+C9="$TEST_ROOT/t9"
+printf 'local-a\n' >> "$C9/$BL"
+echo local-other >> "$C9/other.txt"
+cp "$C9/$BL" "$TEST_ROOT/before9a"; cp "$C9/other.txt" "$TEST_ROOT/before9b"; BEFORE9="$(git -C "$C9" rev-parse HEAD)"
+REPO="$C9" bash "$GUARD_SCRIPT" > "$TEST_ROOT/out9" 2>&1; EXIT9=$?
+if [[ $EXIT9 -eq 3 ]] && cmp -s "$C9/$BL" "$TEST_ROOT/before9a" \
+   && cmp -s "$C9/other.txt" "$TEST_ROOT/before9b" \
+   && [[ "$(git -C "$C9" rev-parse HEAD)" == "$BEFORE9" ]] \
+   && grep -q "Overlapping local edits.*other.txt" "$TEST_ROOT/out9"; then
+  echo "  ✓ PASS: mixed overlap blocks, nothing modified"
+  ((PASSED++)) || true
+else
+  echo "  ✗ FAIL: exit=$EXIT9"; sed -n 1,12p "$TEST_ROOT/out9"
+  ((FAILED++)) || true
+fi
+echo
+
+echo "[TEST 10] ff fails after restore (untracked file collides with incoming add) → exit 3, byte-identical"
+make_append_fixture t10 "printf 'incoming4\n' >> $BL; echo new > collide.txt"
+C10="$TEST_ROOT/t10"
+printf 'local-a\nlocal-b' >> "$C10/$BL"
+echo mine > "$C10/collide.txt"
+cp -p "$C10/$BL" "$TEST_ROOT/before10"; BEFORE10="$(git -C "$C10" rev-parse HEAD)"
+REPO="$C10" bash "$GUARD_SCRIPT" > "$TEST_ROOT/out10" 2>&1; EXIT10=$?
+if [[ $EXIT10 -eq 3 ]] && cmp -s "$C10/$BL" "$TEST_ROOT/before10" \
+   && [[ "$(cat "$C10/collide.txt")" == "mine" ]] \
+   && [[ "$(git -C "$C10" rev-parse HEAD)" == "$BEFORE10" ]] \
+   && [[ -z "$(git -C "$C10" diff --cached --name-only)" ]]; then
+  echo "  ✓ PASS: failed ff rolled the tree back byte-for-byte"
+  ((PASSED++)) || true
+else
+  echo "  ✗ FAIL: exit=$EXIT10"; sed -n 1,12p "$TEST_ROOT/out10"
   ((FAILED++)) || true
 fi
 echo
