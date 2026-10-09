@@ -2019,6 +2019,9 @@ in {
         description = "AI stack health monitor (aq-qa 0 → attention queue)";
         after = ["ai-stack.target" "ai-hybrid-coordinator.service"];
         wants = ["ai-hybrid-coordinator.service"];
+        # bwrap: execution-cell checks (0.10.44) need it; it was only in the user
+        # profile, so the unit reported skipped-no-bwrap and failed.
+        path = [pkgs.bubblewrap];
         serviceConfig = {
           Type = "oneshot";
           User = cfg.primaryUser;
@@ -2026,8 +2029,8 @@ in {
           Environment = [
             "REPO_ROOT=${cfg.mcpServers.repoPath}"
             # Harness subprocess timeout: max(2.5 * measured_wall_time, 300s).
-            # Phase 0 measured at 171s; 2.5 * 171 = 427.5s ≈ 430s.
-            "HARNESS_TIMEOUT_S=430"
+            # Phase 0 with all checks running measured 282s (2026-10-08); 2.5 * 282 = 705s.
+            "HARNESS_TIMEOUT_S=705"
           ];
           # System cliPython (core/base.nix), the interpreter interactive phase 0
           # uses; the monitor prepends its bin to PATH so every check's child
@@ -2050,12 +2053,11 @@ in {
           ];
           PrivateTmp = true;
           # TimeoutStartSec: must exceed harness subprocess timeout + margin for cleanup.
-          # Subprocess timeout is 430s; add 60s margin = 490s.
-          TimeoutStartSec = "490";
-          # MemoryMax: 768M was hit exactly (MemoryPeak=cap, 2026-10-08) while 15
-          # checks failed early on imports; provisional until re-measured with all
-          # checks running (target ~1.3x measured MemoryPeak).
-          MemoryMax = "1536M";
+          # Subprocess timeout is 705s; add 60s margin = 765s (< 15min timer period).
+          TimeoutStartSec = "765";
+          # MemoryMax: measured MemoryPeak 551M with all checks running (2026-10-08);
+          # ~1.6x headroom.
+          MemoryMax = "896M";
         };
       };
 
