@@ -2495,6 +2495,42 @@ in {
         };
       };
 
+      # Detection side of the RSI loop: ingest persistent failure signals (failed
+      # units, phase-0 QA, delegation outcomes across all lanes, recurring service
+      # journal errors) into the incident ledger. Observation-only; dispatch above
+      # acts on what this records. Runs as the primary user (wheel) so journalctl
+      # can read system units; without it, error-only failures never became incidents.
+      systemd.services.ai-rsi-sweep = {
+        description = "RSI persistent-signal sweep (incident detection)";
+        after = ["ai-hybrid-coordinator.service"];
+        path = [pkgs.git pkgs.systemd "/run/current-system/sw"];
+        serviceConfig = {
+          Type = "oneshot";
+          User = cfg.primaryUser;
+          WorkingDirectory = cfg.mcpServers.repoPath;
+          ExecStart = "/run/current-system/sw/bin/python3 ${cfg.mcpServers.repoPath}/scripts/ai/aq-rsi sweep --json";
+          TimeoutSec = "300";
+          StandardOutput = "journal";
+          StandardError = "journal";
+          NoNewPrivileges = true;
+          ProtectSystem = "strict";
+          ProtectHome = "read-only";
+          PrivateTmp = true;
+          MemoryMax = "512M";
+          ReadWritePaths = [
+            "${cfg.mcpServers.repoPath}/.agent/collaboration"
+            "${cfg.mcpServers.repoPath}/.agent/memory/issues-backlog.md"
+            "${cfg.mcpServers.repoPath}/.agent/WORKAROUND-REGISTER.md"
+          ];
+        };
+      };
+
+      systemd.timers.ai-rsi-sweep = {
+        description = "Periodic RSI incident detection sweep";
+        wantedBy = ["timers.target"];
+        timerConfig = {OnBootSec = "10min"; OnUnitActiveSec = "15min"; Persistent = true;};
+      };
+
       systemd.timers.ai-prsi-rsi-dispatch = {
         description = "Periodic bounded PRSI incident queue sweep";
         wantedBy = ["timers.target"];

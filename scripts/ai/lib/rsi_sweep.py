@@ -50,6 +50,164 @@ def adapter_failed_units(runner=None):
     return ("findings" if findings else "ok"), findings, f"{len(findings)} failed unit(s)"
 
 
+DELEGATION_REGISTRY = Path(os.getenv("RSI_SWEEP_DELEGATION_REGISTRY") or _REPO / ".agents" / "delegation" / "registry.jsonl")
+DELEGATION_WINDOW_S = int(os.getenv("RSI_SWEEP_DELEGATION_WINDOW_S", str(7 * 86400)))
+ERROR_UNITS = os.getenv("RSI_SWEEP_ERROR_UNITS", "ai-hybrid-coordinator ai-aidb ai-switchboard command-center-dashboard-api").split()
+ERROR_WINDOW_S = int(os.getenv("RSI_SWEEP_ERROR_WINDOW_S", "3600"))
+ERROR_MIN_COUNT = int(os.getenv("RSI_SWEEP_ERROR_MIN_COUNT", "5"))
+_LOG_TAIL_BYTES = 4096
+_JOURNAL_MAX_BYTES = 4 << 20
+_BAD_STATUSES = {"failed", "timeout", "orphaned", "stale", "failed_orphaned_no_output"}
+_SKILL_RE = re.compile(r"failed to load skill\s+(\S+)", re.I)
+
+
+def _parse_iso(value):
+    from datetime import datetime, timezone
+    try:
+        dt = datetime.fromisoformat(str(value).replace("Z", "+00:00"))
+    except ValueError:
+        return None
+    return (dt if dt.tzinfo else dt.replace(tzinfo=timezone.utc)).timestamp()
+
+
+def _log_tail(output_file):
+    p = Path(output_file)
+    if not p.is_absolute():
+        p = _REPO / p
+    try:
+        with p.open("rb") as fh:
+            fh.seek(0, os.SEEK_END)
+            fh.seek(max(0, fh.tell() - _LOG_TAIL_BYTES))
+            return fh.read().decode("utf-8", "replace")
+    except OSError:
+        return ""
+
+
+def _classify_delegation(rec, tail):
+    """Return (class, detail) or None.  Log markers outrank the bare status."""
+    status = str(rec.get("status") or "")
+    if status == "cancelled":
+        return None
+    m = _SKILL_RE.search(tail)
+    if m:
+        return "skill-load-error", m.group(1).rstrip(".,;:'\")")
+    if "usage limit" in tail.lower():
+        return "quota", ""
+    if status == "done":
+        if any(ln.startswith("Blocked:") or "BLOCKED" in ln for ln in tail.splitlines()):
+            return "blocked", ""
+        return None
+    if status in _BAD_STATUSES:
+        return status, ""
+    return None
+
+
+def adapter_delegation_outcomes(registry=None, window_s=None, now=None):
+    """Group recent delegation failures by (lane, class[, skill path]), not by run."""
+    registry = Path(registry or DELEGATION_REGISTRY)
+    window = DELEGATION_WINDOW_S if window_s is None else window_s
+    now = now if now is not None else time.time()
+    try:
+        lines = registry.read_text(encoding="utf-8", errors="replace").splitlines()
+    except OSError as exc:
+        return "unknown", [], f"delegation registry unavailable: {exc}"
+    groups: dict[tuple, dict] = {}
+    seen = 0
+    for line in lines:
+        try:
+            rec = json.loads(line)
+        except json.JSONDecodeError:
+            continue
+        if not isinstance(rec, dict):
+            continue
+        ts = _parse_iso(rec.get("created"))
+        if ts is None or now - ts > window:
+            continue
+        seen += 1
+        cls = _classify_delegation(rec, _log_tail(rec["output_file"]) if rec.get("output_file") else "")
+        if not cls:
+            continue
+        lane = str(rec.get("agent") or "unknown").strip().lower()
+        g = groups.setdefault((lane, cls[0], cls[1]), {"count": 0, "latest": 0, "id": ""})
+        g["count"] += 1
+        if ts >= g["latest"]:
+            g["latest"], g["id"] = ts, str(rec.get("id") or "")
+    findings = []
+    for (lane, cls, extra), g in sorted(groups.items()):
+        label = f"{cls}:{extra}" if extra else cls
+        severity = "medium" if cls in ("quota", "skill-load-error") or g["count"] >= 3 else "low"
+        findings.append(dict(
+            subject=f"delegation:{lane}:{label}", producer=f"delegation:{lane}",
+            path=extra or ".agents/delegation/registry.jsonl", authority=lane,
+            # Identity is lane+class(+skill path); counts/run ids live in root_fix (refreshed each sighting).
+            os_error=f"{lane} delegation class {label}", severity=severity,
+            root_fix=f"{g['count']} run(s) in window; latest example .agents/delegation/outputs/{g['id']}.log; fix producer for class {cls}"))
+    return ("findings" if findings else "ok"), findings, f"{len(findings)} class(es) across {seen} recent run(s)"
+
+
+_SIG_SUBS = [
+    (re.compile(r"\d{4}-\d\d-\d\d[T ]\d\d:\d\d:\d\d(?:[.,]\d+)?(?:Z|[+-]\d\d:?\d\d)?"), ""),
+    (re.compile(r"\b[0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[0-9a-fA-F-]{4,}\b"), "<id>"),
+    (re.compile(r"\b0x[0-9a-fA-F]+\b|\b(?=[0-9a-fA-F]*\d)(?=[0-9a-fA-F]*[a-fA-F])[0-9a-fA-F]{6,}\b"), "<hex>"),
+    (re.compile(r"(?i)\b(request[_ -]?id|req[_ -]?id|trace[_ -]?id)\b[=:\s]*\S+"), r"\1=<id>"),
+    (re.compile(r"\d+"), "<n>"),
+]
+
+
+def _error_signature(line):
+    """Return a normalised signature for an error line, or None if it is not an error."""
+    msg = None
+    try:
+        rec = json.loads(line)
+    except json.JSONDecodeError:
+        rec = None
+    if isinstance(rec, dict):
+        if str(rec.get("level", "")).lower() == "error":
+            msg = str(rec.get("event") or rec.get("message") or rec.get("msg") or line)
+    if msg is None:
+        if not any(k in line for k in ("Traceback", "Permission denied", "EACCES")):
+            return None
+        msg = line
+    for rx, repl in _SIG_SUBS:
+        msg = rx.sub(repl, msg)
+    return re.sub(r"\s+", " ", msg).strip()[:160] or None
+
+
+def adapter_service_error_rate(runner=None, units=None, window_s=None, min_count=None):
+    """Recurring error signatures in services that stay 'active' (journal, bounded)."""
+    units = ERROR_UNITS if units is None else units
+    window = ERROR_WINDOW_S if window_s is None else window_s
+    threshold = ERROR_MIN_COUNT if min_count is None else min_count
+
+    def default(unit):
+        return subprocess.run(["journalctl", "-u", unit, "--since", f"-{window}s", "-o", "cat", "--no-pager"],
+                              capture_output=True, text=True, timeout=30)
+    run = runner or default
+    findings, readable = [], 0
+    for unit in units:
+        try:
+            r = run(unit)
+        except (OSError, subprocess.TimeoutExpired) as exc:
+            return "unknown", [], f"journalctl unavailable: {exc}"
+        if r.returncode != 0:
+            return "unknown", [], f"journalctl exit {r.returncode} for {unit}"
+        readable += 1
+        counts: dict[str, list] = {}
+        for line in (r.stdout or "")[-_JOURNAL_MAX_BYTES:].splitlines():
+            sig = _error_signature(line.strip())
+            if sig:
+                entry = counts.setdefault(sig, [0, line.strip()])
+                entry[0] += 1
+        for sig, (n, example) in sorted(counts.items()):
+            if n >= threshold:
+                findings.append(dict(
+                    subject=f"service-error:{unit}:{sig[:60]}", producer=f"journal:{unit}", path=unit,
+                    authority="journald", os_error=f"recurring error in {unit}: {sig}",
+                    severity="medium",
+                    root_fix=f"{n} occurrence(s) in last {window}s; example: {example[:200]}; journalctl -u {unit}; fix producer"))
+    return ("findings" if findings else "ok"), findings, f"{len(findings)} recurring signature(s) in {readable} unit(s)"
+
+
 def _default_alerts_path() -> Path:
     base = os.environ.get("AI_SECURITY_AUDIT_DIR") or str(Path.home() / ".local" / "share" / "nixos-ai-stack" / "security")
     return Path(base) / "github-code-scanning-alerts.json"
@@ -237,7 +395,8 @@ def run(dry_run=False, as_json=False, adapters=None) -> int:
     import rsi_lifecycle
     adapters = adapters or {
         "failed-units": adapter_failed_units, "code-scanning": adapter_code_scanning,
-        "aq-qa-phase0": adapter_qa_phase0, "payload-audit": adapter_payload_audit}
+        "aq-qa-phase0": adapter_qa_phase0, "payload-audit": adapter_payload_audit,
+        "delegation-outcomes": adapter_delegation_outcomes, "service-error-rate": adapter_service_error_rate}
     report = {}
     recorded = 0
     for name, fn in adapters.items():

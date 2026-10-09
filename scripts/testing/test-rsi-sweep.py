@@ -234,5 +234,61 @@ class RunTests(unittest.TestCase):
         self.assertFalse((rsi._RUNTIME / "rsi-incidents.json").exists())
 
 
+class DelegationServiceTests(unittest.TestCase):
+    def _reg(self, d, rows):
+        reg = Path(d) / "registry.jsonl"
+        reg.write_text("\n".join(json.dumps(r) for r in rows))
+        return reg
+
+    def _row(self, d, i, agent, status, log=None, age_s=3600):
+        from datetime import datetime, timezone
+        out = Path(d) / f"{i}.log"
+        if log is not None:
+            out.write_text(log)
+        created = datetime.fromtimestamp(time.time() - age_s, timezone.utc).isoformat().replace("+00:00", "Z")
+        return dict(id=i, agent=agent, status=status, created=created, output_file=str(out))
+
+    def test_delegation_classes_dedupe_window_and_markers(self):
+        with tempfile.TemporaryDirectory() as d:
+            rows = [self._row(d, f"la{n}", "local-agent", "failed", "boom") for n in range(5)]
+            rows += [self._row(d, "old", "codex", "failed", age_s=30 * 86400),
+                     self._row(d, "c1", "codex", "cancelled"),
+                     self._row(d, "ok", "claude", "done", "all fine"),
+                     self._row(d, "b1", "claude", "done", "x\nBlocked: need approval\n"),
+                     self._row(d, "q1", "codex", "failed", "ERROR: you hit your usage limit"),
+                     self._row(d, "s1", "codex", "done", "failed to load skill /a/SKILL.md: bad yaml"),
+                     self._row(d, "t1", "antigravity", "timeout")]
+            state, f, _ = sw.adapter_delegation_outcomes(self._reg(d, rows))
+            self.assertEqual(state, "findings")
+            by = {x["subject"]: x for x in f}
+            self.assertEqual(sorted(by), ["delegation:antigravity:timeout", "delegation:claude:blocked",
+                                          "delegation:codex:quota", "delegation:codex:skill-load-error:/a/SKILL.md",
+                                          "delegation:local-agent:failed"])
+            self.assertEqual(by["delegation:local-agent:failed"]["severity"], "medium")
+            self.assertIn("5 run(s)", by["delegation:local-agent:failed"]["root_fix"])
+            self.assertIn("outputs/la4.log", by["delegation:local-agent:failed"]["root_fix"])
+            self.assertEqual(by["delegation:codex:quota"]["severity"], "medium")
+            self.assertEqual(by["delegation:antigravity:timeout"]["severity"], "low")
+            self.assertEqual(by["delegation:claude:blocked"]["severity"], "low")
+            self.assertNotIn("delegation:codex:failed", by)  # old run outside window
+
+    def test_delegation_missing_registry_unknown(self):
+        self.assertEqual(sw.adapter_delegation_outcomes("/nonexistent/registry.jsonl")[0], "unknown")
+
+    def test_service_error_rate(self):
+        def ev(i): return json.dumps({"level": "error", "event": "learning_loop_error", "ts": f"2026-10-08T10:0{i}:00Z", "id": f"abc{i}def9"})
+        out = "\n".join([ev(n) for n in range(6)] + ['{"level":"info","event":"x"}',
+                          json.dumps({"level": "error", "event": "rare_error"}), "Permission denied: /x/1", "ok"])
+        state, f, _ = sw.adapter_service_error_rate(lambda u: _proc(out), units=["u1"], window_s=60, min_count=5)
+        self.assertEqual(state, "findings")
+        self.assertEqual(len(f), 1)
+        self.assertIn("learning_loop_error", f[0]["os_error"])
+        self.assertIn("6 occurrence", f[0]["root_fix"])
+        self.assertEqual(sw.adapter_service_error_rate(lambda u: _proc("quiet"), units=["u1"])[0], "ok")
+        def boom(u): raise OSError("no journalctl")
+        self.assertEqual(sw.adapter_service_error_rate(boom, units=["u1"])[0], "unknown")
+        self.assertEqual(sw.adapter_service_error_rate(lambda u: _proc("", 1), units=["u1"])[0], "unknown")
+
+
 if __name__ == "__main__":
     unittest.main()
