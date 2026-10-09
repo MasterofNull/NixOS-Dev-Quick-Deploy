@@ -356,6 +356,25 @@ def test_validate_harness_cli_accepts_hints_and_context_summary():
     assert timeout_seconds == 30.0
 
 
+def test_validate_harness_cli_graph_query_allowed_and_injection_rejected():
+    module = _load_runtime(AGENT_TOOLS_ENABLED="true")
+    assert "aq-graph-query" in module._ALLOWED_HARNESS_CLI_TOOLS
+
+    args, timeout_seconds = module._validate_harness_cli("aq-graph-query", ["search", "hints engine", "--limit", "5"])
+    assert args == ["search", "hints engine", "--limit", "5"] and timeout_seconds == 60.0
+    module._validate_harness_cli("aq-graph-query", ["--json", "neighbors", "scripts/ai/aq-prime", "--depth", "2"])
+    module._validate_harness_cli("aq-graph-query", ["staleness", "--check"])
+    module._validate_harness_cli("aq-graph-query", ["types"])
+
+    for bad in (["search; rm -rf /"], ["search;", "rm", "-rf", "/"], ["search", "x", "--root", "/etc"],
+                ["symbol", "a$(id)"], ["types", "extra"], ["delete", "x"], ["search", "x", "--limit", "5; ls"]):
+        try:
+            module._validate_harness_cli("aq-graph-query", bad)
+        except ValueError:
+            continue
+        raise AssertionError(f"expected rejection of {bad}")
+
+
 def test_phase_30_6_bootstrap_injection_constants_and_helper():
     module = _load_runtime(AGENT_INJECT_BOOTSTRAP="true", AGENT_BOOTSTRAP_TIMEOUT="20")
     

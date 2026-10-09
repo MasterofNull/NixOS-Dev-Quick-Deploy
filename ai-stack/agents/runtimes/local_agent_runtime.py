@@ -100,6 +100,7 @@ _ALLOWED_HARNESS_CLI_TOOLS = {
     "aq-feedback-loop": REPO_ROOT / "scripts" / "ai" / "aq-feedback-loop",
     "aq-hints": REPO_ROOT / "scripts" / "ai" / "aq-hints",
     "aq-runtime": REPO_ROOT / "scripts" / "ai" / "aq-runtime",
+    "aq-graph-query": REPO_ROOT / "scripts" / "ai" / "aq-graph-query",
 }
 
 # ── TOOL_CATALOG ─────────────────────────────────────────────────────────────
@@ -816,6 +817,32 @@ def _validate_harness_cli(tool: str, args: list[str]) -> tuple[list[str], float]
                 i += 1
                 continue
             raise ValueError(f"unsupported aq-hints argument: {token}")
+        return normalized, 60.0
+    if tool == "aq-graph-query":
+        # Read-only graph lookups. --root is deliberately not allowed (would point the
+        # query outside the repo graph); --json is the only global flag.
+        rest = [t for t in normalized if t != "--json"]
+        if not rest or rest[0] not in {"search", "symbol", "neighbors", "impact", "types", "staleness"}:
+            raise ValueError("aq-graph-query requires one of: search, symbol, neighbors, impact, types, staleness")
+        sub, tail = rest[0], rest[1:]
+        if sub == "types":
+            if tail:
+                raise ValueError("aq-graph-query types takes no arguments")
+        elif sub == "staleness":
+            if any(t != "--check" for t in tail):
+                raise ValueError("aq-graph-query staleness only accepts --check")
+        else:
+            if not tail or tail[0].startswith("--"):
+                raise ValueError(f"aq-graph-query {sub} requires a positional argument")
+            i = 1
+            allowed = {"search": {"--type", "--limit"}, "neighbors": {"--depth"}}.get(sub, set())
+            while i < len(tail):
+                if tail[i] in allowed and i + 1 < len(tail):
+                    if tail[i] != "--type" and not tail[i + 1].isdigit():
+                        raise ValueError(f"aq-graph-query {tail[i]} requires an integer")
+                    i += 2
+                    continue
+                raise ValueError(f"unsupported aq-graph-query {sub} argument: {tail[i]}")
         return normalized, 60.0
     if tool == "aq-runtime":
         if not normalized or normalized[0] not in {"diagnose", "plan", "act", "remediate"}:
