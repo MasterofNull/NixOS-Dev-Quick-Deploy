@@ -73,6 +73,7 @@ from schema import (
 from skills_loader import ParsedSkill, parse_skill_text, write_skill_file
 from ml_engine import MLEngine
 import registry_api
+import vector_sync
 import vscode_telemetry
 
 SERVICE_NAME = "aidb"
@@ -1749,8 +1750,52 @@ class MonitoringServer:
                 project=doc.get("project", "default"),
                 relative_path=doc.get("relative_path", ""),
                 source_trust_level=source_trust_level,
+                checksum=doc.get("checksum", ""),
             )
             return {"status": "ok", "message": "Document imported successfully"}
+
+        @self.app.post("/vector/reconcile/enqueue")
+        async def vector_reconcile_enqueue(payload: Dict[str, Any], request: Request) -> Dict[str, Any]:
+            """Spool approved Postgres docs for (re)vectorization; the drain loop paces the work.
+
+            payload: {"items": [{"project": str, "relative_path": str}, ...]} (max 1000/call).
+            """
+            self._require_api_key(request)
+            items = payload.get("items") or []
+            if not isinstance(items, list) or len(items) > 1000:
+                raise HTTPException(status_code=400, detail="items must be a list of <=1000")
+            keys = [(str(i.get("project", "")), str(i.get("relative_path", ""))) for i in items if isinstance(i, dict)]
+
+            def _load() -> List[Any]:
+                if not keys:
+                    return []
+                stmt = sa.select(
+                    IMPORTED_DOCUMENTS.c.project, IMPORTED_DOCUMENTS.c.relative_path,
+                    IMPORTED_DOCUMENTS.c.title, IMPORTED_DOCUMENTS.c.content,
+                    IMPORTED_DOCUMENTS.c.checksum, IMPORTED_DOCUMENTS.c.source_trust_level,
+                ).where(
+                    IMPORTED_DOCUMENTS.c.status == "approved",
+                    sa.tuple_(IMPORTED_DOCUMENTS.c.project, IMPORTED_DOCUMENTS.c.relative_path).in_(keys),
+                )
+                with self.mcp_server._engine.connect() as conn:
+                    return list(conn.execute(stmt))
+
+            rows = await asyncio.to_thread(_load)
+            for r in rows:
+                self.mcp_server._vectorize_spool.add(
+                    title=r.title, content=r.content, project=r.project,
+                    relative_path=r.relative_path, source_trust_level=r.source_trust_level,
+                    checksum=r.checksum,
+                )
+            return {
+                "enqueued": len(rows), "not_found": len(keys) - len(rows),
+                "spool_pending": len(self.mcp_server._vectorize_spool),
+            }
+
+        @self.app.get("/vector/sync/status")
+        async def vector_sync_status(request: Request) -> Dict[str, Any]:
+            self._require_api_key(request)
+            return self.mcp_server.qdrant_vectorization_status()
 
         @self.app.post("/vector/embed")
         async def embed_text(payload: Dict[str, Any]) -> Dict[str, Any]:
@@ -2232,6 +2277,13 @@ class MCPServer:
         self._qdrant_vectorize_completed = 0
         self._qdrant_vectorize_failed = 0
         self._qdrant_vectorize_skipped = 0
+        self._qdrant_vectorize_spooled = 0
+        self._vectorize_spool = vector_sync.PendingSpool(
+            Path(os.getenv("AIDB_VECTORIZE_SPOOL_FILE")
+                 or Path(os.getenv("AIDB_DATA_DIR") or os.getenv("DATA_DIR") or "/var/lib/ai-stack/aidb")
+                 / "vectorize-pending.jsonl")
+        )
+        self._vectorize_drain_task: Optional[asyncio.Task] = None
         self._vector_store = VectorStore(settings, self._engine)
         self._rag_pipeline = RAGPipeline(
             search_vectors=self.search_vectors,
@@ -2567,6 +2619,9 @@ class MCPServer:
         # Initialize health checker after all dependencies are ready
         self._monitoring.initialize_health_checker()
         LOGGER.info("Health checker initialized")
+        self._vectorize_drain_task = asyncio.create_task(
+            self._vectorize_drain_loop(), name="vectorize_spool_drain"
+        )
 
     def _ensure_pgvector_extension(self) -> None:
         try:
@@ -2579,6 +2634,8 @@ class MCPServer:
 
     async def shutdown(self) -> None:
         LOGGER.info("Stopping MCP server")
+        if self._vectorize_drain_task:
+            self._vectorize_drain_task.cancel()
         await self._tool_registry.persist_cache()
         await self._redis.close()
         await self._external_http.aclose()
@@ -2899,6 +2956,9 @@ class MCPServer:
             "completed": self._qdrant_vectorize_completed,
             "failed": self._qdrant_vectorize_failed,
             "skipped": self._qdrant_vectorize_skipped,
+            "spooled_total": self._qdrant_vectorize_spooled,
+            "spool_pending": len(self._vectorize_spool),
+            "spool_exhausted": self._vectorize_spool.exhausted(),
             "max_concurrency": max(1, _QDRANT_VECTORIZE_MAX_CONCURRENCY),
             "max_queue": max(0, _QDRANT_VECTORIZE_MAX_QUEUE),
             "timeout_s": _QDRANT_VECTORIZE_TIMEOUT_S,
@@ -2913,12 +2973,30 @@ class MCPServer:
         relative_path: str,
         source_trust_level: str = "unknown",
         collection: str = "knowledge",
+        checksum: str = "",
     ) -> bool:
-        """Schedule bounded background vectorization without starving foreground search."""
+        """Schedule bounded background vectorization without starving foreground search.
+
+        Returns True when a task started now. When the in-memory queue is full or disabled
+        the doc is written to the durable spool (drained by _vectorize_drain_loop) and
+        False is returned: spooled, never dropped.
+        """
+        def _spool(reason: str) -> None:
+            try:
+                self._vectorize_spool.add(
+                    title=title, content=content, project=project,
+                    relative_path=relative_path, source_trust_level=source_trust_level,
+                    collection=collection, checksum=checksum,
+                )
+                self._qdrant_vectorize_spooled += 1
+            except Exception as exc:  # noqa: BLE001
+                LOGGER.error("qdrant_vectorize_spool_failed reason=%s title=%s error=%s", reason, title, exc)
+
         max_queue = max(0, _QDRANT_VECTORIZE_MAX_QUEUE)
         if _QDRANT_VECTORIZE_MAX_CONCURRENCY <= 0 or max_queue <= 0:
             self._qdrant_vectorize_skipped += 1
             LOGGER.info("qdrant_vectorize_skipped disabled title=%s", title)
+            _spool("disabled")
             return False
         if self._qdrant_vectorize_pending >= max_queue:
             self._qdrant_vectorize_skipped += 1
@@ -2928,6 +3006,7 @@ class MCPServer:
                 max_queue,
                 title,
             )
+            _spool("queue_full")
             return False
 
         self._qdrant_vectorize_pending += 1
@@ -2935,7 +3014,7 @@ class MCPServer:
         async def _runner() -> None:
             try:
                 async with self._qdrant_vectorize_semaphore:
-                    await asyncio.wait_for(
+                    ok = await asyncio.wait_for(
                         self._vectorize_doc_to_qdrant(
                             title=title,
                             content=content,
@@ -2943,13 +3022,19 @@ class MCPServer:
                             relative_path=relative_path,
                             source_trust_level=source_trust_level,
                             collection=collection,
+                            checksum=checksum,
                         ),
                         timeout=max(1.0, _QDRANT_VECTORIZE_TIMEOUT_S),
                     )
-                self._qdrant_vectorize_completed += 1
+                if ok:
+                    self._qdrant_vectorize_completed += 1
+                else:
+                    self._qdrant_vectorize_failed += 1
+                    _spool("failed")
             except Exception as exc:  # noqa: BLE001
                 self._qdrant_vectorize_failed += 1
                 LOGGER.warning("qdrant_vectorize_failed title=%s error=%s", title, exc)
+                _spool("exception")
             finally:
                 self._qdrant_vectorize_pending = max(0, self._qdrant_vectorize_pending - 1)
 
@@ -3021,33 +3106,37 @@ class MCPServer:
         relative_path: str,
         source_trust_level: str,
         collection: str = "knowledge",
-    ) -> None:
+        checksum: str = "",
+    ) -> bool:
         """Embed content and upsert into the named Qdrant collection (default: 'knowledge').
+
+        Point id is uuid5(project|relative_path): re-vectorizing a doc upserts in place and
+        distinct docs never collide. Returns True only when Qdrant accepted the upsert
+        (callers spool on False so nothing is silently lost).
 
         Called as a fire-and-forget background task after POST /documents (knowledge)
         or POST /history/record (interaction-history). The hybrid-coordinator uses
         the resulting vectors for semantic search and RAG context injection.
         Failures are logged but never surface to the caller.
         """
-        import hashlib as _hashlib
         import os as _os
         import time as _time
 
         qdrant_url = _os.environ.get("QDRANT_URL", "").rstrip("/")
         if not qdrant_url:
             LOGGER.debug("_vectorize_doc_to_qdrant: QDRANT_URL not set, skipping")
-            return
+            return True  # nothing to retry against
 
         try:
-            # Truncate to embed service token limit (~512 tokens ≈ 1200 chars).
-            chunk = (title + "\n\n" + content)[:1200]
-            embeddings = await self.embed_texts([chunk])
-            vector = embeddings[0]
+            # Embed server slot ctx is 1024 tokens (--ctx-size 4096 --parallel 4); rows are
+            # ~2000-char chunks, so cap at 2400 chars and halve+retry on context overflow.
+            chunk = vector_sync.embed_input(title, content)
+            vector = await vector_sync.embed_with_shrink(self.embed_texts, chunk)
         except Exception as exc:  # noqa: BLE001
             LOGGER.warning("vectorize_doc_embed_failed title=%s error=%s", title, exc)
-            return
+            return False
 
-        point_id = int(_hashlib.md5(relative_path.encode()).hexdigest()[:8], 16)
+        point_id = vector_sync.point_id(project, relative_path)
         payload = {
             "project": project,
             "title": title,
@@ -3056,6 +3145,8 @@ class MCPServer:
             "source_trust_level": source_trust_level,
             "imported_at": str(_time.strftime("%Y-%m-%dT%H:%M:%SZ", _time.gmtime())),
         }
+        if checksum:
+            payload["checksum"] = checksum
         body = {"points": [{"id": point_id, "vector": vector, "payload": payload}]}
         try:
             resp = await self._external_http.put(
@@ -3068,10 +3159,56 @@ class MCPServer:
                     "vectorize_doc_qdrant_upsert_failed title=%s status=%s",
                     title, resp.status_code,
                 )
-            else:
-                LOGGER.info("vectorize_doc_qdrant_ok title=%s point_id=%s", title, point_id)
+                return False
+            LOGGER.info("vectorize_doc_qdrant_ok title=%s point_id=%s", title, point_id)
+            return True
         except Exception as exc:  # noqa: BLE001
             LOGGER.warning("vectorize_doc_qdrant_error title=%s error=%s", title, exc)
+            return False
+
+    async def drain_vectorize_spool_once(self, batch: Optional[int] = None) -> int:
+        """Retry spooled vectorizations; returns number completed. Bounded by queue/concurrency."""
+        free = max(1, _QDRANT_VECTORIZE_MAX_QUEUE - self._qdrant_vectorize_pending)
+        items = self._vectorize_spool.take(batch if batch is not None else free)
+        done = 0
+        for rec in items:
+            try:
+                async with self._qdrant_vectorize_semaphore:
+                    ok = await asyncio.wait_for(
+                        self._vectorize_doc_to_qdrant(
+                            title=rec.get("title", ""),
+                            content=rec.get("content", ""),
+                            project=rec["project"],
+                            relative_path=rec["relative_path"],
+                            source_trust_level=rec.get("source_trust_level", "unknown"),
+                            collection=rec.get("collection", "knowledge"),
+                            checksum=rec.get("checksum", ""),
+                        ),
+                        timeout=max(1.0, _QDRANT_VECTORIZE_TIMEOUT_S),
+                    )
+            except Exception as exc:  # noqa: BLE001
+                LOGGER.warning("vectorize_spool_drain_error id=%s error=%s", rec.get("id"), exc)
+                ok = False
+            if ok:
+                self._vectorize_spool.mark_done(rec["id"])
+                self._qdrant_vectorize_completed += 1
+                done += 1
+            else:
+                self._vectorize_spool.bump_attempt(rec["id"])
+        return done
+
+    async def _vectorize_drain_loop(self) -> None:
+        interval = float(os.getenv("AIDB_VECTORIZE_DRAIN_INTERVAL_S", "30"))
+        while True:
+            try:
+                await asyncio.sleep(interval)
+                if len(self._vectorize_spool):
+                    n = await self.drain_vectorize_spool_once()
+                    LOGGER.info("vectorize_spool_drain completed=%d remaining=%d", n, len(self._vectorize_spool))
+            except asyncio.CancelledError:
+                raise
+            except Exception as exc:  # noqa: BLE001
+                LOGGER.warning("vectorize_spool_drain_loop_error: %s", exc)
 
     def _get_document_content(self, document_id: int) -> str:
         with self._engine.connect() as conn:
