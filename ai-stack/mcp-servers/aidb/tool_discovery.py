@@ -12,6 +12,7 @@ Features:
 """
 
 import asyncio
+import hashlib
 import json
 import httpx
 import os
@@ -32,6 +33,15 @@ def _is_missing_collection_error(exc: Exception) -> bool:
         or "does not exist" in text
         or "not found" in text
     )
+
+
+def _stable_point_id(tool_id: str) -> int:
+    """Generate a stable Qdrant point ID from a tool_id.
+
+    Uses SHA1 hash to ensure the same tool_id always produces the same ID,
+    regardless of Python's hash randomization.
+    """
+    return int(hashlib.sha1(str(tool_id).encode("utf-8")).hexdigest()[:8], 16) % (10 ** 8)
 
 
 class ToolMetadata(BaseModel):
@@ -400,7 +410,7 @@ class ToolDiscoveryEngine:
 
                 # Create point
                 point = PointStruct(
-                    id=hash(tool.tool_id) % (10 ** 8),  # Convert to int
+                    id=_stable_point_id(tool.tool_id),
                     vector=embedding,
                     payload={
                         "tool_id": tool.tool_id,
