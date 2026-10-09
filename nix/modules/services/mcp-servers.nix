@@ -31,6 +31,11 @@ let
   ai = cfg.aiStack;
   sec = cfg.secrets;
   llama = ai.llamaCpp;
+  localShellToolPath = lib.makeBinPath [
+    hybridPython pkgs.bash pkgs.coreutils pkgs.git pkgs.curl pkgs.jq
+    pkgs.ripgrep pkgs.findutils pkgs.gnugrep pkgs.gnused pkgs.gawk
+    pkgs.systemd pkgs.nix
+  ];
   svcUser = cfg.primaryUser;
   svcGroup = lib.attrByPath ["users" "users" svcUser "group"] "users" config;
 
@@ -1415,6 +1420,8 @@ in {
                 "AI_HEAVY_SYNTHESIS_TOKENS_THRESHOLD=800"
                 # Phase 62.1: nsjail sandbox path (shell_tools.py reads NSJAIL_BIN)
                 "NSJAIL_BIN=${pkgs.nsjail}/bin/nsjail"
+                "NSJAIL_TOOL_PATH=${localShellToolPath}:${mcp.repoPath}/scripts/ai"
+                "NSJAIL_REPO_PATH=${mcp.repoPath}"
               ]
               ++ lib.optional mcp.postgres.enable
               "DATABASE_URL=${pgUrl}"

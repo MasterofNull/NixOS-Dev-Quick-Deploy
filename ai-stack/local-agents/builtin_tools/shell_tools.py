@@ -62,6 +62,13 @@ class NsjailSandbox:
 
     def build_argv(self, command: str, timeout_seconds: int) -> list:
         """Build nsjail argv wrapping the given shell command string."""
+        repo_path = os.environ.get("NSJAIL_REPO_PATH", "")
+        tool_path = os.environ.get("NSJAIL_TOOL_PATH", "/run/current-system/sw/bin")
+        mounts = []
+        if repo_path:
+            if not os.path.isabs(repo_path) or os.path.realpath(repo_path) == "/" or not os.path.isdir(repo_path):
+                raise ValueError("NSJAIL_REPO_PATH must name an existing non-root absolute directory")
+            mounts = ["--bindmount_ro", os.path.realpath(repo_path)]
         return [
             self.bin,
             "--mode", "once",
@@ -72,7 +79,12 @@ class NsjailSandbox:
             "--iface_no_lo",
             "--bindmount_ro", "/nix/store",
             "--bindmount_ro", "/run/current-system",
-            "--tmpfs", "/tmp:size=16m",
+            "--mount", "none:/tmp:tmpfs:size=16777216",
+            "--bindmount", "/dev/null",
+            *mounts,
+            "--env", f"PATH={tool_path}",
+            "--env", "HOME=/tmp",
+            "--env", "XDG_CACHE_HOME=/tmp",
             "--cwd", "/tmp",
             "--",
             "/run/current-system/sw/bin/sh", "-c", command,
@@ -197,6 +209,13 @@ async def run_command_handler(
                     "stderr": result.stderr,
                     "returncode": result.returncode,
                     "sandbox": "nsjail",
+                }
+            except ValueError as config_exc:
+                return {
+                    "success": False,
+                    "error": f"Invalid sandbox configuration: {config_exc}",
+                    "sandbox": "nsjail",
+                    "safety_reason": "sandbox_configuration_failed",
                 }
             except Exception as nsjail_exc:
                 logger.warning(

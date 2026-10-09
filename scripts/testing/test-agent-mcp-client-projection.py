@@ -41,6 +41,15 @@ def test_codex_yq_transform(base: str) -> None:
 
     fixture = """
 sentinel = "preserve"
+approval_policy = "never"
+approvals_reviewer = "auto_review"
+sandbox_mode = "danger-full-access"
+
+[sandbox_workspace_write]
+network_access = false
+writable_roots = ["/"]
+exclude_slash_tmp = true
+exclude_tmpdir_env_var = true
 
 [features]
 codex_hooks = true
@@ -59,17 +68,54 @@ command = "preserve-me"
     transform = extract_codex_yq_transform(base)
     with tempfile.TemporaryDirectory(prefix="agent-mcp-projection-") as temp_dir:
         source = Path(temp_dir) / "input.toml"
-        source.write_text(fixture, encoding="utf-8")
-        proc = subprocess.run(
-            [yq, "-p", "toml", "-o", "toml", transform, str(source)],
-            text=True,
-            stdout=subprocess.PIPE,
-            stderr=subprocess.PIPE,
-            check=False,
-        )
-    if proc.returncode != 0:
-        raise AssertionError(f"actual Codex yq transform failed: {proc.stderr.strip()}")
-    projected = tomllib.loads(proc.stdout)
+
+        def project(text: str) -> tuple[str, dict]:
+            if not text:
+                seed = re.search(r"printf '([^']+)' > \"\$codex_cfg\"", base)
+                assert seed is not None, "fresh Codex config must seed a TOML document"
+                text = seed.group(1).replace("\\n", "\n")
+            source.write_text(text, encoding="utf-8")
+            proc = subprocess.run(
+                [yq, "-p", "toml", "-o", "toml", transform, str(source)],
+                text=True, stdout=subprocess.PIPE, stderr=subprocess.PIPE, check=False,
+            )
+            if proc.returncode != 0:
+                raise AssertionError(f"actual Codex yq transform failed: {proc.stderr.strip()}")
+            parsed = tomllib.loads(proc.stdout)
+            assert parsed["approval_policy"] == "on-request"
+            assert parsed["approvals_reviewer"] == "user"
+            assert parsed["model_auto_compact_token_limit"] == 50000
+            return proc.stdout, parsed
+
+        output, projected = project(fixture)
+        assert project(output)[1] == projected, "Codex projection must be idempotent"
+        fresh_output, fresh = project("")
+        assert project(fresh_output)[1] == fresh
+        expected_sandbox = {
+            "network_access": True,
+            "writable_roots": ["/workspace/NixOS-Dev-Quick-Deploy"],
+            "exclude_slash_tmp": False,
+            "exclude_tmpdir_env_var": False,
+        }
+        for parsed in (fresh, projected):
+            assert parsed["sandbox_mode"] == "workspace-write"
+            assert parsed["sandbox_workspace_write"] == expected_sandbox
+
+        for modern_fixture in (
+            'default_permissions = ":workspace"\n',
+            '[permissions.custom]\nextends = ":workspace"\n'
+            '[permissions.custom.network]\nenabled = false\n',
+            'default_permissions = "custom"\n'
+            '[permissions.custom]\nextends = ":workspace"\n'
+            '[permissions.custom.network]\nenabled = true\n',
+        ):
+            original = tomllib.loads(modern_fixture)
+            modern_output, modern = project(modern_fixture)
+            assert "sandbox_mode" not in modern
+            assert "sandbox_workspace_write" not in modern
+            for key in ("permissions", "default_permissions"):
+                assert modern.get(key) == original.get(key)
+            assert project(modern_output)[1] == modern
 
     assert projected["sentinel"] == "preserve"
     assert projected["features"]["hooks"] is True
