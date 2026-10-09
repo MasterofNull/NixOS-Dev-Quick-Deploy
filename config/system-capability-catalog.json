@@ -34,7 +34,7 @@
       "category": "evaluation-redteam",
       "kind": "repo-cli",
       "state": "enabled",
-      "maturity": "integrated",
+      "maturity": "available-unused",
       "owner": "qa-automation",
       "summary": "Repo-local static eval and red-team suite wrapper for capability, agent-safety, and governance checks.",
       "agent_access": [
@@ -66,7 +66,9 @@
       "data_stores": [
         "model-evaluations",
         "eval_results"
-      ]
+      ],
+      "maturity_prior": "integrated",
+      "usage_evidence": "aq-capability-audit 2026-10-08 (30d): no invocation in 30d; wired+tested but not on any agent workflow path. Remediation: ci-7 (wire into QA/RSI cadence)."
     },
     {
       "id": "aq-inference-bench",
@@ -74,7 +76,7 @@
       "category": "local-inference",
       "kind": "repo-cli",
       "state": "enabled",
-      "maturity": "integrated",
+      "maturity": "available-unused",
       "owner": "mlops-engineering",
       "summary": "Local-only benchmark matrix for comparing enabled and planned inference backends across latency, throughput, strict JSON reliability, thermal, and memory signals.",
       "agent_access": [
@@ -106,7 +108,9 @@
       "data_stores": [
         "model-evaluations",
         "performance-metrics"
-      ]
+      ],
+      "maturity_prior": "integrated",
+      "usage_evidence": "aq-capability-audit 2026-10-08 (30d): no invocation in 30d. Remediation: ci-7 (run on model switch, e.g. aq-model-switch post-hook)."
     },
     {
       "id": "capability-intake",
@@ -179,7 +183,8 @@
         "MCP admission controllers",
         "scope-gated red-team tooling"
       ],
-      "data_stores": []
+      "data_stores": [],
+      "usage_evidence": "aq-capability-audit 2026-10-08 (30d): flagged STALE-CLAIM, but scope-gated by design (owner scope); no use is expected until the scope is granted. Claim kept."
     },
     {
       "id": "auto-skill-selection",
@@ -223,7 +228,7 @@
       "category": "agent-tools",
       "kind": "python-module",
       "state": "enabled",
-      "maturity": "production",
+      "maturity": "available-unused",
       "owner": "hybrid-coordinator",
       "summary": "Compact code-execution-friendly tool catalog used to auto-select workflow tools from user intent.",
       "agent_access": [
@@ -252,7 +257,9 @@
         "codebase-context",
         "skills-patterns",
         "error-solutions"
-      ]
+      ],
+      "maturity_prior": "production",
+      "usage_evidence": "aq-capability-audit 2026-10-08 (30d): tooling_manifest MCP tool had zero calls in 30d despite 14 wiring refs. Remediation: ci-4 (capability index served via the manifest) + ci-7."
     },
     {
       "id": "local-agent-delegation",
@@ -397,7 +404,7 @@
       "category": "code-intelligence",
       "kind": "repo-skill",
       "state": "partial",
-      "maturity": "integrated",
+      "maturity": "partial",
       "owner": "agent-runtime",
       "summary": "Codebase graph generation, dashboard visualization, diff impact, and graph-backed explanations. PARTIAL: graph queries (aq-graph-query, MCP graph_query) and staleness reporting are live; the knowledge graph itself is stale (generated 2026-07-01) and regeneration is pending.",
       "agent_access": [
@@ -432,7 +439,9 @@
       ],
       "data_stores": [
         "codebase-context"
-      ]
+      ],
+      "maturity_prior": "integrated",
+      "usage_evidence": "aq-capability-audit 2026-10-08: STALE-CLAIM (graph 100d / 1271 commits stale, no caller). 2026-10-09 (#443): staleness checks, aq-graph-query + MCP graph_query, live dashboard card, pinned upstream. Stays partial until the graph is regenerated and agents call graph_query (telemetry)."
     },
     {
       "id": "osint-research-store",
@@ -440,7 +449,7 @@
       "category": "osint",
       "kind": "dataset-workflow",
       "state": "enabled",
-      "maturity": "integrated",
+      "maturity": "partial",
       "owner": "osint-systems",
       "summary": "Passive public-source ingest and query path for source-grounded OSINT research records.",
       "agent_access": [
@@ -468,7 +477,9 @@
       ],
       "data_stores": [
         "osint-intelligence"
-      ]
+      ],
+      "maturity_prior": "integrated",
+      "usage_evidence": "aq-capability-audit 2026-10-08 (30d): Qdrant osint-intelligence collection holds 0 points while searched (~640 events); store is empty. Remediation: ci-6 (seed or retire)."
     },
     {
       "id": "local-surface-research",
@@ -476,7 +487,7 @@
       "category": "osint",
       "kind": "repo-cli",
       "state": "enabled",
-      "maturity": "integrated",
+      "maturity": "available-unused",
       "owner": "osint-systems",
       "summary": "Bounded local/private HTTP surface scanner for authorized harness webpages and service health surfaces.",
       "agent_access": [
@@ -506,7 +517,9 @@
       ],
       "data_stores": [
         "osint-intelligence"
-      ]
+      ],
+      "maturity_prior": "integrated",
+      "usage_evidence": "aq-capability-audit 2026-10-08 (30d): aq-local-surface-scan not invoked in 30d. Remediation: ci-7."
     },
     {
       "id": "aidb-rag-stores",
@@ -550,7 +563,8 @@
         "agent-memory-episodic",
         "agent-memory-semantic",
         "agent-memory-procedural"
-      ]
+      ],
+      "usage_evidence": "aq-capability-audit 2026-10-08 (30d): STALE-CLAIM is an audit false positive (23k hybrid searches/30d use these stores). The knowledge collection itself was rarely routed before the 2026-10-09 routing fix (#438) and is being re-vectorized (#437). Claim kept."
     },
     {
       "id": "workflow-blueprints",
@@ -558,7 +572,7 @@
       "category": "workflow",
       "kind": "config-module",
       "state": "enabled",
-      "maturity": "production",
+      "maturity": "available-unused",
       "owner": "agent-runtime",
       "summary": "Reusable MCP workflow blueprints and graph templates for orchestration.",
       "agent_access": [
@@ -585,7 +599,9 @@
         "CrewAI flows",
         "ADK orchestration"
       ],
-      "data_stores": []
+      "data_stores": [],
+      "maturity_prior": "production",
+      "usage_evidence": "aq-capability-audit 2026-10-08 (30d): workflow_blueprints MCP tool had zero calls in 30d. Remediation: ci-7."
     },
     {
       "id": "nixos-static-analysis",
@@ -665,7 +681,7 @@
       "category": "agent-runtime",
       "kind": "system-service",
       "state": "enabled",
-      "maturity": "integrated",
+      "maturity": "enabled-unmeasured",
       "owner": "coprocessor-engineering",
       "summary": "Core identity preservation module hosting the narrative engine, value constitution profiles, and session checkpointers.",
       "agent_access": [
@@ -694,7 +710,9 @@
       "data_stores": [
         "identity_narrative",
         "checkpoints"
-      ]
+      ],
+      "maturity_prior": "integrated",
+      "usage_evidence": "aq-capability-audit 2026-10-08 (30d): no tool-log or unit evidence of use; runs in-process, so the audit cannot measure it. Needs a usage signal before re-claiming integrated."
     },
     {
       "id": "affective-engine-module",
@@ -730,7 +748,8 @@
       "data_stores": [
         "temperament_states",
         "reciprocity_debts"
-      ]
+      ],
+      "usage_evidence": "aq-capability-audit 2026-10-08 (30d): STALE-CLAIM is an audit false positive (in-process in ai-hybrid-coordinator; tool logs cannot see it). Claim kept; audit mapping to be improved."
     }
   ]
 }
