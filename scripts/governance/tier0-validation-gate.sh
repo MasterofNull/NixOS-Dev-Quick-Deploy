@@ -149,8 +149,38 @@ log_failed_qa_rows() {
   failed_rows=$( { printf '%s\n' "${all_rows}" | grep -vE "${live_re}" || true; printf '%s\n' "${all_rows}" | grep -E "${live_re}" || true; } | grep '✗' | head -n "${max_rows}" || true)
   if [[ -n "${failed_rows}" ]]; then
     log "QA failed rows (first ${max_rows} of ${total}; non-live-service first):"
+    # The table truncates descriptions, so the failure reason is taken from aq-qa's
+    # progress JSONL (last "fail" record per check_id) instead of the rendered row.
+    local progress="${AQ_QA_PROGRESS_JSONL:-${AQ_QA_PROGRESS_DIR:-${REPO_ROOT}/.agent/qa}/latest-progress.jsonl}"
+    local -A qa_detail=()
+    local cid det
+    if [[ -r "${progress}" ]]; then
+      while IFS=$'\t' read -r cid det; do
+        [[ -n "${cid}" ]] && qa_detail["${cid}"]="${det}"
+      done < <(python3 - "${progress}" <<'PY' 2>/dev/null || true
+import json, sys
+last = {}
+for line in open(sys.argv[1], encoding="utf-8", errors="replace"):
+    try:
+        rec = json.loads(line)
+    except ValueError:
+        continue
+    if isinstance(rec, dict) and rec.get("check_id"):
+        last[rec["check_id"]] = rec
+for cid, rec in last.items():
+    if rec.get("state") == "fail":
+        detail = " ".join(str(rec.get("detail") or "").split())[:240]
+        print(f"{cid}\t{detail}")
+PY
+)
+    fi
     while IFS= read -r row; do
-      [[ -n "${row}" ]] && log "  ${row}"
+      [[ -z "${row}" ]] && continue
+      log "  ${row}"
+      cid=$(grep -oE '[0-9]+(\.[0-9]+)+(:[A-Za-z0-9_-]+)?' <<< "${row}" | head -n1 || true)
+      if [[ -n "${cid}" && -n "${qa_detail[${cid}]:-}" ]]; then
+        log "      ↳ ${qa_detail[${cid}]}"
+      fi
     done <<< "${failed_rows}"
   else
     log "QA output tail:"
