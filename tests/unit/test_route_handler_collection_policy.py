@@ -22,8 +22,10 @@ if "structlog" not in sys.modules:
     )
 sys.path.insert(0, str(ROOT / "ai-stack" / "mcp-servers"))
 sys.path.insert(0, str(ROOT / "ai-stack" / "mcp-servers" / "hybrid-coordinator"))
+sys.path.insert(0, str(ROOT / "ai-stack" / "offloading"))
 
 import route_handler  # noqa: E402
+from core import route_handler as core_route_handler  # noqa: E402
 
 
 def test_non_generative_hybrid_queries_use_compact_collection_fanout(monkeypatch):
@@ -33,7 +35,7 @@ def test_non_generative_hybrid_queries_use_compact_collection_fanout(monkeypatch
         lambda query, context, max_output_tokens=200: SimpleNamespace(task_type="reasoning"),
     )
     monkeypatch.setattr(
-        route_handler,
+        core_route_handler,
         "_COLLECTIONS",
         {
             "best-practices": {},
@@ -64,7 +66,7 @@ def test_generate_response_queries_keep_detailed_collection_budget(monkeypatch):
         lambda query, context, max_output_tokens=200: SimpleNamespace(task_type="reasoning"),
     )
     monkeypatch.setattr(
-        route_handler,
+        core_route_handler,
         "_COLLECTIONS",
         {
             "best-practices": {},
@@ -93,7 +95,7 @@ def test_memory_backed_continuation_queries_use_single_collection(monkeypatch):
         lambda query, context, max_output_tokens=200: SimpleNamespace(task_type="code"),
     )
     monkeypatch.setattr(
-        route_handler,
+        core_route_handler,
         "_COLLECTIONS",
         {
             "best-practices": {},
