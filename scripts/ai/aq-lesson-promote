@@ -1,4 +1,5 @@
 #!/usr/bin/env bash
+. "${BASH_SOURCE[0]%/*}/lib/aq-shim.sh" 2>/dev/null || true  # aq-usage-hook
 # aq-lesson-promote — Phase 56.8: Promote a candidate lesson to active
 #
 # Wraps POST /control/ai-coordinator/lessons/review with state=promoted.

@@ -56,6 +56,11 @@ def workflow_tool_catalog(query: str, memory_recall_priority: bool = False) -> L
 
     add("hints", "/hints", "Ranked workflow hints and known pitfalls for the query.")
     add("discovery", "/discovery/capabilities", "Progressive disclosure of available stack capabilities.")
+    add(
+        "capability_index",
+        "docs/agent-guides/CAPABILITY-INDEX.md",
+        "Check for an existing aq-*/skill/MCP tool before writing new code; machine form: config/capability-index.json.",
+    )
 
     explicit_retrieval_query = any(k in q for k in ("find", "search", "retrieve", "context", "rag", "semantic", "lexical"))
     if explicit_retrieval_query:
@@ -364,6 +369,12 @@ _TOOL_RUNTIME_SPECS: Dict[str, Dict[str, Any]] = {
         "args": ["q", "limit"],
         "output_focus": "Top hints, pitfalls, and prompt snippets only.",
     },
+    "capability_index": {
+        "method": "FILE",
+        "mcp_tool": "",
+        "args": [],
+        "output_focus": "Grep the index for the task keyword; read only matching rows (never the whole file).",
+    },
     "discovery": {
         "method": "GET",
         "mcp_tool": "",
@@ -598,8 +609,8 @@ def _phase_summary(tools: List[Dict[str, str]]) -> List[Dict[str, Any]]:
         return [name for name in names if name in tool_names]
 
     phases = [
-        {"id": "discover", "tools": pick(["hints", "discovery", "route_search", "tree_search", "shared_skill_registry", "osint_research_query", "osint_recon_status", "context_sandbox_offload"])},
-        {"id": "plan", "tools": pick(["workflow_plan", "hints", "discovery", "osint_recon_status", "context_sandbox_offload", "flat_prd_gate"])},
+        {"id": "discover", "tools": pick(["hints", "discovery", "capability_index", "route_search", "tree_search", "shared_skill_registry", "osint_research_query", "osint_recon_status", "context_sandbox_offload"])},
+        {"id": "plan", "tools": pick(["workflow_plan", "hints", "discovery", "capability_index", "osint_recon_status", "context_sandbox_offload", "flat_prd_gate"])},
         {
             "id": "execute",
             "tools": pick(

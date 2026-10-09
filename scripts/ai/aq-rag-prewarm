@@ -1,4 +1,5 @@
 #!/usr/bin/env bash
+. "${BASH_SOURCE[0]%/*}/lib/aq-shim.sh" 2>/dev/null || true  # aq-usage-hook
 # aq-rag-prewarm — bounded local RAG prewarm from aq-report candidates or explicit prompt ids.
 set -euo pipefail
 

@@ -1,4 +1,5 @@
 #!/usr/bin/env bash
+. "${BASH_SOURCE[0]%/*}/lib/aq-shim.sh" 2>/dev/null || true  # aq-usage-hook
 # aq-context-warm — World Model Predictive Context Warming (Phase 20)
 # Runs the intent forecaster and warms the semantic cache for predicted queries.
 #

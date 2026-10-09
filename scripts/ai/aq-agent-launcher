@@ -1,4 +1,5 @@
 #!/usr/bin/env bash
+. "${BASH_SOURCE[0]%/*}/lib/aq-shim.sh" 2>/dev/null || true  # aq-usage-hook
 # aq-agent-launcher — Direct CLI agent launcher for aq-workspace tiled panes
 #
 # Provides direct, native access to full agent CLI tools within Zellij panes:

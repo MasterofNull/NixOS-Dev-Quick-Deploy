@@ -1,4 +1,5 @@
 #!/usr/bin/env bash
+. "${BASH_SOURCE[0]%/*}/lib/aq-shim.sh" 2>/dev/null || true  # aq-usage-hook
 # aq-completions.sh — Phase 19.1.3
 # Bash/zsh tab-completion for all aq-* scripts.
 # Sourced from /etc/profile.d/ when mySystem.aiStack.shellCompletions = true.

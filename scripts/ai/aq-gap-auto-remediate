@@ -1,4 +1,5 @@
 #!/usr/bin/env bash
+. "${BASH_SOURCE[0]%/*}/lib/aq-shim.sh" 2>/dev/null || true  # aq-usage-hook
 # aq-gap-auto-remediate — Automatically remediate top knowledge gaps
 #
 # Phase 21.4: Self-Improvement Loop Gap Auto-Remediation
