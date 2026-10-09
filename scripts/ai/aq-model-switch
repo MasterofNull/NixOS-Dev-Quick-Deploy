@@ -100,6 +100,22 @@ def _run(cmd: list, dry_run: bool = False) -> int:
     return result.returncode
 
 
+def _is_nixos() -> bool:
+    """Check if running on NixOS."""
+    if Path("/etc/NIXOS").exists():
+        return True
+    # Also check if /etc/systemd/system is a read-only or nix-store symlink
+    try:
+        systemd_path = Path("/etc/systemd/system")
+        if systemd_path.is_symlink():
+            target = systemd_path.resolve()
+            if "/nix/store" in str(target):
+                return True
+    except Exception:
+        pass
+    return False
+
+
 def _check_root(dry_run: bool) -> None:
     if not dry_run and os.geteuid() != 0:
         sys.exit("ERROR: aq-model-switch must run as root (sudo aq-model-switch ...).")
@@ -192,44 +208,48 @@ def switch_model(key: str, embed: bool, dry_run: bool) -> None:
 
     # 3b. Apply per-model GPU layer override via systemd drop-in (chat model only).
     # Reads recommended_gpu_layers from catalog; skips if 0 or embed mode.
+    # On NixOS, GPU layers are declared in Nix and runtime drop-ins won't persist.
     if not embed:
-        gpu_layers = int(entry.get("recommended_gpu_layers", 0))
-        dropin_dir = Path(f"/etc/systemd/system/{service}.service.d")
-        dropin_path = dropin_dir / "99-model-gpu-layers.conf"
-        if gpu_layers > 0:
-            # Read current ExecStart, replace --n-gpu-layers value
-            try:
-                result = subprocess.run(
-                    ["systemctl", "show", f"{service}.service", "--property=ExecStart"],
-                    capture_output=True, text=True, check=True,
-                )
-                # Extract the argv string from systemctl output
-                import re as _re
-                m = _re.search(r"argv\[\]=(.+?) ; ignore_errors", result.stdout)
-                if m:
-                    exec_line = m.group(1).strip()
-                    new_exec = _re.sub(r"--n-gpu-layers\s+\d+", f"--n-gpu-layers {gpu_layers}", exec_line)
-                    dropin_content = f"[Service]\nExecStart=\nExecStart={new_exec}\n"
-                    if dry_run:
-                        print(f"  [dry-run] would write drop-in: {dropin_path}")
-                        print(f"    --n-gpu-layers -> {gpu_layers}")
+        if _is_nixos():
+            print(f"  GPU layers are declared in Nix (mySystem.aiStack.llamaCpp); skipping runtime drop-in")
+        else:
+            gpu_layers = int(entry.get("recommended_gpu_layers", 0))
+            dropin_dir = Path(f"/etc/systemd/system/{service}.service.d")
+            dropin_path = dropin_dir / "99-model-gpu-layers.conf"
+            if gpu_layers > 0:
+                # Read current ExecStart, replace --n-gpu-layers value
+                try:
+                    result = subprocess.run(
+                        ["systemctl", "show", f"{service}.service", "--property=ExecStart"],
+                        capture_output=True, text=True, check=True,
+                    )
+                    # Extract the argv string from systemctl output
+                    import re as _re
+                    m = _re.search(r"argv\[\]=(.+?) ; ignore_errors", result.stdout)
+                    if m:
+                        exec_line = m.group(1).strip()
+                        new_exec = _re.sub(r"--n-gpu-layers\s+\d+", f"--n-gpu-layers {gpu_layers}", exec_line)
+                        dropin_content = f"[Service]\nExecStart=\nExecStart={new_exec}\n"
+                        if dry_run:
+                            print(f"  [dry-run] would write drop-in: {dropin_path}")
+                            print(f"    --n-gpu-layers -> {gpu_layers}")
+                        else:
+                            dropin_dir.mkdir(parents=True, exist_ok=True)
+                            dropin_path.write_text(dropin_content)
+                            _run(["systemctl", "daemon-reload"], dry_run)
+                            print(f"  GPU layers drop-in: --n-gpu-layers {gpu_layers} ({dropin_path})")
                     else:
-                        dropin_dir.mkdir(parents=True, exist_ok=True)
-                        dropin_path.write_text(dropin_content)
-                        _run(["systemctl", "daemon-reload"], dry_run)
-                        print(f"  GPU layers drop-in: --n-gpu-layers {gpu_layers} ({dropin_path})")
+                        print(f"  WARNING: could not parse ExecStart for GPU drop-in; keeping current layers")
+                except Exception as exc:
+                    print(f"  WARNING: GPU drop-in skipped ({exc}); keeping current --n-gpu-layers")
+            elif dropin_path.exists():
+                # Catalog says 0 (use default) — remove any previous drop-in
+                if dry_run:
+                    print(f"  [dry-run] would remove GPU drop-in: {dropin_path}")
                 else:
-                    print(f"  WARNING: could not parse ExecStart for GPU drop-in; keeping current layers")
-            except Exception as exc:
-                print(f"  WARNING: GPU drop-in skipped ({exc}); keeping current --n-gpu-layers")
-        elif dropin_path.exists():
-            # Catalog says 0 (use default) — remove any previous drop-in
-            if dry_run:
-                print(f"  [dry-run] would remove GPU drop-in: {dropin_path}")
-            else:
-                dropin_path.unlink()
-                _run(["systemctl", "daemon-reload"], dry_run)
-                print(f"  GPU layers drop-in removed (using service default)")
+                    dropin_path.unlink()
+                    _run(["systemctl", "daemon-reload"], dry_run)
+                    print(f"  GPU layers drop-in removed (using service default)")
 
     # 4. Start service
     rc = _run(["systemctl", "start", service], dry_run)
@@ -271,22 +291,56 @@ def _run_post_switch_hooks(model_key: str) -> None:
     if not hooks:
         return
 
-    print(f"\nRunning {len(hooks)} post-switch hook(s) in background (model: {model_key}):")
+    if os.environ.get("AQ_POST_SWITCH_HOOKS", "1") == "0":
+        print("\nPost-switch hooks skipped (AQ_POST_SWITCH_HOOKS=0).")
+        return
+    # The switch runs under sudo, but hooks write repo runtime/config files; running
+    # them as root left root-owned 0600 files that broke the dashboard and agents
+    # (2026-10-09). Run them as the invoking user, or not at all.
+    run_as = _hook_user()
+    if run_as is None:
+        print("\nPost-switch hooks skipped: refusing to run repo hooks as root "
+              "(no SUDO_USER and repo owner is root).")
+        return
+    import pwd as _pwd
+    pw = _pwd.getpwnam(run_as)
+    env = dict(os.environ, HOME=pw.pw_dir, USER=run_as, LOGNAME=run_as)
+    print(f"\nRunning {len(hooks)} post-switch hook(s) in background as {run_as} "
+          f"(model: {model_key}; uses local inference; disable with AQ_POST_SWITCH_HOOKS=0):")
     for hook in hooks:
         cmd = hook.get("command", "")
         hid = hook.get("id", "hook")
         if not cmd:
             continue
         try:
+            drop = {"user": pw.pw_uid, "group": pw.pw_gid, "extra_groups": os.getgrouplist(run_as, pw.pw_gid)} \
+                if os.geteuid() == 0 else {}
             _sp.Popen(
-                cmd, shell=True, cwd=str(REPO_ROOT),
+                cmd, shell=True, cwd=str(REPO_ROOT), env=env,
                 stdout=open(f"/tmp/aq-post-switch-{hid}.log", "w"),
                 stderr=_sp.STDOUT,
                 start_new_session=True,
+                **drop,
             )
             print(f"  → {hid}: {cmd}")
         except Exception as exc:
             print(f"  ! {hid}: failed to start — {exc}")
+
+
+def _hook_user():
+    """User to run post-switch hooks as: the invoking user, never root."""
+    if os.geteuid() != 0:
+        import pwd
+        return pwd.getpwuid(os.geteuid()).pw_name
+    user = os.environ.get("SUDO_USER", "")
+    if user and user != "root":
+        return user
+    import pwd
+    try:
+        owner = pwd.getpwuid(REPO_ROOT.stat().st_uid).pw_name
+    except (KeyError, OSError):
+        return None
+    return owner if owner != "root" else None
 
 
 def _uid(name: str) -> int:

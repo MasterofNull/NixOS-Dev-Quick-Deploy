@@ -383,7 +383,7 @@ check_pattern "ai-stack/mcp-servers/hybrid-coordinator/core/route_handler.py" 'd
 check_pattern "ai-stack/mcp-servers/hybrid-coordinator/core/route_handler.py" 'retrieval_profile|collection_count' 'Route handler records retrieval profile metadata for route_search'
 check_pattern "ai-stack/mcp-servers/hybrid-coordinator/core/route_handler.py" 'lookup-focused|continuation-code|reasoning-focused|code-focused' 'Route handler narrows retrieval collections by task class and continuation context'
 check_pattern "ai-stack/mcp-servers/hybrid-coordinator/http_server_impl.py" 'retrieval_profile|retrieval_collection_count' 'HTTP query audit propagates retrieval-breadth metadata into tool-audit rows'
-check_pattern "scripts/testing/test-route-handler-collection-policy.py" '_select_route_collections|continuation-code|lookup-focused' 'Route-handler collection-policy test covers bounded task-class narrowing'
+check_pattern "tests/unit/test_route_handler_collection_policy.py" '_select_route_collections|continuation|lookup' 'Route-handler collection-policy test covers bounded task-class narrowing'
 check_pattern "scripts/ai/aq-report" 'def route_provider_fallback_health\(' 'aq-report computes recovered provider fallback health from route_search audit rows'
 check_pattern "scripts/ai/aq-report" 'def route_retrieval_breadth\(' 'aq-report computes recent route_search retrieval breadth from audit rows'
 check_pattern "scripts/ai/aq-report" '"diagnosis": diagnosis|"actions": actions' 'aq-report surfaces structured route-search pressure diagnosis and remediation'
