@@ -697,7 +697,8 @@ in {
           "f ${mutableLogDir}/hint-audit.jsonl   0660 ${hybridUser} ${aiGroup} - -"
           "z ${mutableLogDir}/hint-audit.jsonl   0660 ${hybridUser} ${aiGroup} - -"
           "f ${mutableLogDir}/hint-feedback.jsonl 0660 ${svcUser} ${aiGroup} - -"
-          "f ${mutableLogDir}/query-gaps.jsonl 0660 ${svcUser} ${aiGroup} - -"
+          "f ${mutableLogDir}/query-gaps.jsonl 0660 ${hybridUser} ${aiGroup} - -"
+          "r ${mutableLogDir}/query-gaps.tmp"
           # Audit sidecar log dir — coordinator (ai-stack group) needs rw to append Phase 56 events.
           "d /var/log/ai-audit-sidecar              0750 ${auditUser} ${aiGroup} -"
           "f /var/log/ai-audit-sidecar/tool-audit.jsonl 0660 ${auditUser} ${aiGroup} - -"
@@ -2891,6 +2892,9 @@ in {
             /nix/store/**/bin/journalctl ix,
             # Dashboard keyword signals
             /home/hyperd/.local/share/nixos-system-dashboard/** r,
+            # Dashboard consensus/planning cache
+            /home/hyperd/.cache/ai-harness/ r,
+            /home/hyperd/.cache/ai-harness/** r,
             # auto-added by apparmor-fix-agent 2026-06-07
             /proc/@{pids}/stat r,  # /proc/<pid> → @{pids}
             # auto-added by apparmor-fix-agent 2026-06-12
