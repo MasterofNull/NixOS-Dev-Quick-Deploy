@@ -44,6 +44,34 @@ class RecorderTests(unittest.TestCase):
         self.record()
         self.assertEqual(json.loads((rsi._RUNTIME / "rsi-incidents.json").read_text())["incidents"][ids[0]]["status"], "open")
 
+    def test_resolve_appends_single_done_line_and_is_idempotent(self):
+        iid = self.record()
+        before = rsi._BACKLOG.read_text()
+        rsi.resolve(iid, "cause", "regression", "validated ok")
+        after = rsi._BACKLOG.read_text()
+        self.assertTrue(after.startswith(before))
+        added = after[len(before):].splitlines()
+        self.assertEqual(len(added), 1)
+        self.assertRegex(added[0], rf"^\[DONE\] rsi-{iid} — resolved \d{{4}}-\d\d-\d\d: validated ok — ledger status=resolved$")
+        self.assertIn(f"[OPEN] rsi-{iid} ", after)
+        rsi._close_backlog_line(iid, "again")
+        self.assertEqual(rsi._BACKLOG.read_text(), after)
+
+    def test_resolve_works_with_writable_file_in_readonly_dir(self):
+        import os
+        if os.geteuid() == 0:
+            self.skipTest("root bypasses directory permissions")
+        sub = Path(self.tmp.name) / "ro"; sub.mkdir()
+        backlog = sub / "issues.md"
+        with patch.object(rsi, "_BACKLOG", backlog):
+            iid = self.record()
+            backlog.chmod(0o644); sub.chmod(0o555)
+            try:
+                rsi.resolve(iid, "cause", "regression", "validated")
+                self.assertEqual(backlog.read_text().count("[DONE] rsi-"), 1)
+            finally:
+                sub.chmod(0o755)
+
     def test_annotate_keeps_status_and_redacts(self):
         iid = self.record()
         rsi.annotate(iid, "awaiting rescan token=hunter2")

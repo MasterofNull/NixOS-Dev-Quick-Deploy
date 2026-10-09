@@ -52,6 +52,12 @@ async def main() -> int:
   Severity: medium
   Action: Keep parsing active issues.
   File: docs/second-open.md
+
+[OPEN] reopened-then-closed — superseded by a later DONE for the same scope — Root cause: old.
+  Severity: high
+  File: docs/closed-later.md
+
+[DONE] reopened-then-closed — resolved 2026-10-09: fixed — ledger status=resolved
 """,
         )
         _write(
@@ -105,6 +111,8 @@ async def main() -> int:
         assert_true("model-catalog" in categories, "stale model profile should create model-catalog candidate")
         assert_true("Resolve open issue: completed-issue" not in titles, "DONE issues should not create candidates")
         assert_true("Resolve open issue: second-open" in titles, "active issues after DONE should still create candidates")
+        assert_true("Resolve open issue: reopened-then-closed" not in titles,
+                    "a later DONE for the same scope must supersede the earlier OPEN")
         assert_true(
             all("should/not/appear.py" not in item.get("related_files", []) for item in payload.get("candidates", [])),
             "DONE issue file paths should not bleed into active candidates",

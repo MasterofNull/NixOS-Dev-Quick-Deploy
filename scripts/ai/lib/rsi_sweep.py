@@ -534,6 +534,7 @@ def run(dry_run=False, as_json=False, adapters=None) -> int:
     report = {}
     recorded = 0
     resolved = []
+    resolve_errors = []
     open_incidents = _open_incidents()
     for name, fn in adapters.items():
         try:
@@ -544,8 +545,12 @@ def run(dry_run=False, as_json=False, adapters=None) -> int:
         for f in findings:
             if dry_run:
                 continue
-            ids.append(rsi_lifecycle.failure(AGENT, f["subject"], f["producer"], f["path"], f["authority"],
-                                             f["os_error"], severity=f["severity"], root_fix=f["root_fix"]))
+            try:
+                ids.append(rsi_lifecycle.failure(AGENT, f["subject"], f["producer"], f["path"], f["authority"],
+                                                 f["os_error"], severity=f["severity"], root_fix=f["root_fix"]))
+            except Exception as exc:  # one failed record must not abort the other sources
+                resolve_errors.append({"id": f.get("subject", ""), "source": name,
+                                       "error": f"record: {type(exc).__name__}: {exc}"})
         recorded += len(ids)
         cleared = getattr(findings, "cleared", None)
         if state in ("ok", "findings") and cleared:
@@ -560,11 +565,16 @@ def run(dry_run=False, as_json=False, adapters=None) -> int:
                 if not evidence:
                     continue
                 if not dry_run:
-                    rsi_lifecycle.resolve(iid, f"condition cleared on re-observation: {evidence}",
-                                          f"rsi-sweep {name} adapter", evidence)
+                    try:
+                        rsi_lifecycle.resolve(iid, f"condition cleared on re-observation: {evidence}",
+                                              f"rsi-sweep {name} adapter", evidence)
+                    except Exception as exc:  # isolate: keep sweeping remaining incidents/sources
+                        resolve_errors.append({"id": iid, "source": name,
+                                               "error": f"{type(exc).__name__}: {exc}"})
+                        continue
                 resolved.append({"id": iid, "source": name, "evidence": evidence})
         report[name] = {"state": state, "findings": len(findings), "detail": detail}
-    summary = {"dry_run": dry_run, "recorded": recorded, "resolved": resolved, "sources": report,
+    summary = {"dry_run": dry_run, "recorded": recorded, "resolved": resolved, "resolve_errors": resolve_errors, "sources": report,
                "unknown": sorted(k for k, v in report.items() if v["state"] == "unknown"),
                "healthy_sources": sorted(k for k, v in report.items() if v["state"] == "ok")}
     # Healthy only when every source positively reported ok; unknown and findings both deny it.
@@ -577,4 +587,7 @@ def run(dry_run=False, as_json=False, adapters=None) -> int:
         for r in resolved:
             print(f"resolved {r['id']} ({r['source']}): {r['evidence']}")
         print(f"recorded={recorded} resolved={len(resolved)} dry_run={dry_run} healthy={summary['healthy']} unknown={summary['unknown']}")
-    return 0
+        for e in resolve_errors:
+            print(f"resolve-error {e['id']} ({e['source']}): {e['error']}")
+    # Non-zero so the unit shows the failure even though the sweep ran to completion.
+    return 1 if resolve_errors else 0

@@ -255,7 +255,9 @@ class ReconcileTests(unittest.TestCase):
         self.assertEqual(inc[self.ids["ghost"]]["status"], "open")
         text = rsi._BACKLOG.read_text()
         self.assertIn(f"[DONE", text)
-        self.assertNotIn(f"[OPEN] rsi-{self.ids['wheel']} ", text)
+        self.assertIn(f"[OPEN] rsi-{self.ids['wheel']} ", text)  # append-only: OPEN stays
+        self.assertIn(f"[DONE] rsi-{self.ids['wheel']} ", text)
+        self.assertNotIn(f"[DONE] rsi-{self.ids['ghost']} ", text)
         self.assertIn(f"[OPEN] rsi-{self.ids['ghost']} ", text)
 
     def test_dry_run_changes_nothing_and_fetch_failure_is_unknown(self):
@@ -360,6 +362,29 @@ class ResolveTests(unittest.TestCase):
         self.sweep(lambda: sw.adapter_failed_units(lambda: _proc("")))
         self.assertEqual(set(self.status("systemd:failed-unit").values()), {"resolved"})
         self.assertIn("[DONE", rsi._BACKLOG.read_text())
+
+    def test_resolve_error_isolated_reported_and_nonzero_exit(self):
+        two = "● a.service loaded failed failed A\n● b.service loaded failed failed B\n"
+        self.sweep(lambda: sw.adapter_failed_units(lambda: _proc(two)))
+        out = []
+        real = rsi.resolve
+        def flaky(iid, *a, **k):
+            if self.ledger()[iid]["path"] == "a.service":
+                raise OSError(30, "Read-only file system")
+            return real(iid, *a, **k)
+        with patch.object(rsi, "resolve", side_effect=flaky), \
+             patch("builtins.print", side_effect=lambda *a, **k: out.append(a[0])):
+            rc = sw.run(as_json=True, adapters={
+                "src": lambda: sw.adapter_failed_units(lambda: _proc("")),
+                "other": lambda: ("ok", [], "fine")})
+        s = json.loads(out[0])
+        self.assertEqual(rc, 1)
+        self.assertEqual(len(s["resolve_errors"]), 1)
+        self.assertEqual(s["resolve_errors"][0]["source"], "src")
+        self.assertIn("Read-only", s["resolve_errors"][0]["error"])
+        self.assertEqual(len(s["resolved"]), 1)
+        self.assertIn("other", s["sources"])
+        self.assertEqual(self.status("systemd:failed-unit"), {"a.service": "open", "b.service": "resolved"})
 
     def test_unknown_never_resolves(self):
         self.sweep(lambda: sw.adapter_failed_units(lambda: _proc("● a.service loaded failed failed A\n")))
