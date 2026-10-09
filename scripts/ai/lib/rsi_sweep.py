@@ -245,46 +245,99 @@ def adapter_code_scanning(alerts_path=None, max_age_s=None, now=None):
     return ("findings" if findings else "ok"), findings, f"{len(findings)} alert group(s)"
 
 
-def adapter_qa_phase0(progress=None, max_age_s=None, now=None):
-    """Read the latest aq-qa machine output; never runs aq-qa."""
+def adapter_qa_phase0(progress=None, max_age_s=None, now=None, health_monitor_json=None):
+    """Read the latest aq-qa machine output; fallback to health-monitor JSON if stale or missing.
+
+    Primary source: progress JSONL (aq-qa interactive output).
+    Fallback: health-monitor JSON when progress is missing/stale.
+    """
     progress = Path(progress or QA_PROGRESS)
+    health_monitor_path = Path(health_monitor_json or (os.getenv("RSI_SWEEP_HEALTH_MONITOR_JSON") or
+                                                       _REPO / ".agents" / "health-monitor" / "latest.json"))
     max_age = QA_MAX_AGE_S if max_age_s is None else max_age_s
     now = now if now is not None else time.time()
+
+    progress_age = None
+    progress_failed = False
+
+    # Try primary source: progress JSONL
     try:
-        age = now - progress.stat().st_mtime
-        with progress.open("rb") as fh:
-            fh.seek(0, os.SEEK_END)
-            size = fh.tell()
-            fh.seek(max(0, size - _TAIL_BYTES))
-            data = fh.read().decode("utf-8", "replace")
-    except OSError as exc:
-        return "unknown", [], f"aq-qa output unavailable: {exc}"
-    if age > max_age:
-        return "unknown", [], f"aq-qa output stale ({int(age)}s > {max_age}s)"
-    last: dict[str, dict] = {}
-    for line in data.splitlines():
-        try:
-            rec = json.loads(line)
-        except json.JSONDecodeError:
-            continue  # first line of a tail window may be cut
-        if isinstance(rec, dict) and str(rec.get("check_id", "")).startswith("0."):
-            last[str(rec["check_id"])] = rec
-    if not last:
-        return "unknown", [], "no phase-0 records in aq-qa output (empty, truncated or other phase)"
-    findings = []
-    for cid, rec in sorted(last.items()):
-        if rec.get("state") == "fail":
-            desc = str(rec.get("description") or "")[:120]
-            findings.append(dict(subject=f"aq-qa:{cid}", producer="aq-qa:phase0", path=f"aq-qa check {cid}",
-                                 authority="aq-qa", os_error=f"phase-0 check {cid} failing: {desc}",
-                                 severity="medium", root_fix=f"run aq-qa 0 --machine and fix check {cid} at its producer"))
-    if findings:
-        return "findings", findings, f"{len(findings)} failing phase-0 check(s) in {len(last)} seen"
-    unfinished = sorted(c for c, r in last.items() if r.get("state") not in ("pass", "skip"))
-    if unfinished:
-        # No failure seen, but the run never reached a verdict for these checks: not evidence of health.
-        return "unknown", [], f"aq-qa run incomplete or unrecognised state for {len(unfinished)} check(s), e.g. {unfinished[0]}"
-    return "ok", [], f"all {len(last)} phase-0 checks pass/skip"
+        progress_age = now - progress.stat().st_mtime
+        if progress_age <= max_age:
+            with progress.open("rb") as fh:
+                fh.seek(0, os.SEEK_END)
+                size = fh.tell()
+                fh.seek(max(0, size - _TAIL_BYTES))
+                data = fh.read().decode("utf-8", "replace")
+            last: dict[str, dict] = {}
+            for line in data.splitlines():
+                try:
+                    rec = json.loads(line)
+                except json.JSONDecodeError:
+                    continue  # first line of a tail window may be cut
+                if isinstance(rec, dict) and str(rec.get("check_id", "")).startswith("0."):
+                    last[str(rec["check_id"])] = rec
+            if last:
+                findings = []
+                for cid, rec in sorted(last.items()):
+                    if rec.get("state") == "fail":
+                        desc = str(rec.get("description") or "")[:120]
+                        findings.append(dict(subject=f"aq-qa:{cid}", producer="aq-qa:phase0", path=f"aq-qa check {cid}",
+                                             authority="aq-qa", os_error=f"phase-0 check {cid} failing: {desc}",
+                                             severity="medium", root_fix=f"run aq-qa 0 --machine and fix check {cid} at its producer"))
+                if findings:
+                    return "findings", findings, f"{len(findings)} failing phase-0 check(s) in {len(last)} seen (source: aq-qa progress)"
+                unfinished = sorted(c for c, r in last.items() if r.get("state") not in ("pass", "skip"))
+                if unfinished:
+                    # No failure seen, but the run never reached a verdict for these checks: not evidence of health.
+                    return "unknown", [], f"aq-qa run incomplete or unrecognised state for {len(unfinished)} check(s), e.g. {unfinished[0]}"
+                return "ok", [], f"all {len(last)} phase-0 checks pass/skip (source: aq-qa progress)"
+            # progress JSONL is fresh but has no phase-0 records; don't fall back
+            return "unknown", [], "no phase-0 records in aq-qa output (empty, truncated or other phase)"
+    except OSError:
+        progress_failed = True
+
+    # Fallback: health-monitor JSON (only if progress is stale or failed)
+    try:
+        monitor_age = now - health_monitor_path.stat().st_mtime
+        if monitor_age <= max_age:
+            monitor_data = json.loads(health_monitor_path.read_text())
+
+            # Parse health-monitor JSON for phase "0"
+            if not isinstance(monitor_data, dict):
+                return "unknown", [], "health-monitor JSON malformed: not a dict"
+            phase_results = monitor_data.get("phase_results", [])
+            phase0 = next((p for p in phase_results if str(p.get("phase")) == "0"), None)
+            if phase0 is None:
+                return "unknown", [], "health-monitor JSON: no phase-0 entry found"
+
+            findings = []
+            for failure in phase0.get("failures", []):
+                fid = str(failure.get("id") or "")
+                label = str(failure.get("label") or "")[:120]
+                if fid:
+                    findings.append(dict(subject=f"aq-qa:{fid}", producer="aq-qa:phase0", path=f"aq-qa check {fid}",
+                                         authority="aq-qa", os_error=f"phase-0 check {fid} failing: {label}",
+                                         severity="medium", root_fix=f"run aq-qa 0 --machine and fix check {fid} at its producer"))
+
+            if findings:
+                return "findings", findings, f"{len(findings)} failing phase-0 check(s) from health-monitor (source: health-monitor JSON)"
+
+            returncode = phase0.get("returncode")
+            total = phase0.get("total", 0)
+            if returncode == 0:
+                return "ok", [], f"all {total} phase-0 checks pass/skip (source: health-monitor JSON)"
+
+            return "unknown", [], f"health-monitor phase-0 returned {returncode} with no failures detail"
+    except (OSError, json.JSONDecodeError):
+        pass  # monitor unavailable or stale
+
+    # Both sources failed or unavailable
+    if progress_failed:
+        return "unknown", [], f"aq-qa output unavailable"
+    if progress_age is not None and progress_age > max_age:
+        return "unknown", [], f"aq-qa output stale ({int(progress_age)}s > {max_age}s)"
+    return "unknown", [], "aq-qa output unavailable"
 
 
 def adapter_payload_audit(runner=None):
