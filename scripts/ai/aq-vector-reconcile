@@ -1,0 +1,171 @@
+#!/usr/bin/env python3
+"""aq-vector-reconcile - compare AIDB Postgres imported_documents with the Qdrant knowledge collection.
+
+Read-only by default: reports per-project missing / stale / orphan counts, matching on the
+stable point id uuid5(project|relative_path) (ai-stack/mcp-servers/aidb/vector_sync.py).
+
+  --apply           spool missing+stale docs into AIDB (POST /vector/reconcile/enqueue); AIDB's
+                    drain loop vectorizes them at its own bounded pace. Client side is also
+                    rate limited (--batch, --max-pending, --sleep).
+  --prune-legacy    DELETE legacy integer-id points (old md5[:8] ids) from Qdrant. Off by default,
+                    needs --apply-prune too, and refuses while any doc is still missing unless
+                    --force. Orphans with UUID ids are never deleted.
+
+Credentials (never printed): Postgres via DATABASE_URL (+ AIDB_POSTGRES_PASSWORD_FILE or
+PGPASSWORD) using the psql binary; AIDB via AIDB_URL (default http://127.0.0.1:8002) and
+AIDB_API_KEY / AIDB_API_KEY_FILE. Qdrant via QDRANT_URL (default http://127.0.0.1:6333).
+Qdrant enumeration uses the read-only points/scroll endpoint.
+"""
+from __future__ import annotations
+
+import argparse
+import json
+import os
+import subprocess
+import sys
+import time
+import urllib.error
+import urllib.request
+from pathlib import Path
+
+_REPO = Path(__file__).resolve().parents[2]
+sys.path.insert(0, str(_REPO / "ai-stack" / "mcp-servers" / "aidb"))
+import vector_sync  # noqa: E402
+
+PG_SQL = (
+    "SELECT json_build_object('project',project,'relative_path',relative_path,"
+    "'checksum',checksum) FROM imported_documents WHERE status='approved'"
+)
+
+
+def _read_secret(env_value: str, env_file: str) -> str:
+    if os.environ.get(env_value):
+        return os.environ[env_value]
+    path = os.environ.get(env_file)
+    if path:
+        try:
+            return Path(path).read_text(encoding="utf-8").strip()
+        except OSError:
+            return ""
+    return ""
+
+
+def pg_rows(project: str | None) -> list[dict]:
+    url = os.environ.get("DATABASE_URL", "postgresql://aidb@127.0.0.1:5432/aidb")
+    env = dict(os.environ)
+    pw = _read_secret("PGPASSWORD", "AIDB_POSTGRES_PASSWORD_FILE")
+    if pw:
+        env["PGPASSWORD"] = pw
+    env["PGCONNECT_TIMEOUT"] = "10"
+    sql = PG_SQL + (" AND project = :'proj'" if project else "")
+    cmd = ["psql", url, "-X", "-At", "-v", "ON_ERROR_STOP=1"]
+    if project:
+        cmd += ["-v", f"proj={project}"]
+    proc = subprocess.run(cmd, input=sql, env=env, capture_output=True, text=True, timeout=300)
+    if proc.returncode != 0:
+        # stderr can echo the connection string; keep it terse and never include env.
+        raise SystemExit(f"postgres query failed: {proc.stderr.strip().splitlines()[-1] if proc.stderr.strip() else proc.returncode}")
+    return [json.loads(line) for line in proc.stdout.splitlines() if line.strip()]
+
+
+def _http(method: str, url: str, body=None, headers=None, timeout=60):
+    data = json.dumps(body).encode() if body is not None else None
+    req = urllib.request.Request(url, data=data, method=method,
+                                 headers={"content-type": "application/json", **(headers or {})})
+    with urllib.request.urlopen(req, timeout=timeout) as resp:
+        return json.load(resp)
+
+
+def qdrant_points(qurl: str, collection: str):
+    offset = None
+    while True:
+        body = {"limit": 1000, "with_payload": ["checksum", "project"], "with_vector": False}
+        if offset is not None:
+            body["offset"] = offset
+        res = _http("POST", f"{qurl}/collections/{collection}/points/scroll", body)["result"]
+        for p in res["points"]:
+            yield p["id"], (p.get("payload") or {}).get("checksum")
+        offset = res.get("next_page_offset")
+        if offset is None:
+            return
+
+
+def main(argv=None) -> int:
+    ap = argparse.ArgumentParser(description=__doc__, formatter_class=argparse.RawDescriptionHelpFormatter)
+    ap.add_argument("--project", help="limit to one project")
+    ap.add_argument("--collection", default="knowledge")
+    ap.add_argument("--apply", action="store_true", help="enqueue missing/stale docs into AIDB")
+    ap.add_argument("--no-stale", action="store_true", help="with --apply, enqueue only missing docs")
+    ap.add_argument("--batch", type=int, default=100)
+    ap.add_argument("--max-pending", type=int, default=500, help="pause enqueueing while AIDB spool exceeds this")
+    ap.add_argument("--sleep", type=float, default=1.0, help="seconds between batches")
+    ap.add_argument("--limit", type=int, default=0, help="with --apply, stop after N docs (0 = all)")
+    ap.add_argument("--prune-legacy", action="store_true", help="plan deletion of legacy integer-id points")
+    ap.add_argument("--apply-prune", action="store_true", help="actually delete (requires --prune-legacy)")
+    ap.add_argument("--force", action="store_true", help="allow prune while docs are still missing")
+    ap.add_argument("--json", action="store_true")
+    args = ap.parse_args(argv)
+
+    qurl = os.environ.get("QDRANT_URL", "http://127.0.0.1:6333").rstrip("/")
+    aidb = os.environ.get("AIDB_URL", "http://127.0.0.1:8002").rstrip("/")
+
+    rows = pg_rows(args.project)
+    points = list(qdrant_points(qurl, args.collection))
+    if args.project:
+        # Orphan accounting is only meaningful corpus-wide; per-project runs report missing/stale.
+        known = {vector_sync.point_id(r["project"], r["relative_path"]) for r in rows}
+        points = [p for p in points if str(p[0]) in known]
+    rep = vector_sync.reconcile(rows, points)
+
+    summary = {k: v for k, v in rep.items() if k in ("per_project", "totals")}
+    if args.json:
+        print(json.dumps(summary, indent=2, sort_keys=True))
+    else:
+        t = rep["totals"]
+        print(f"postgres(approved)={t['postgres']} qdrant={t['qdrant']} missing={t['missing']} "
+              f"stale={t['stale']} orphan={t['orphan']} (legacy-int-id={t['legacy_orphan']})")
+        for proj, c in sorted(rep["per_project"].items(), key=lambda kv: -kv[1]["missing"]):
+            print(f"  {proj:40s} postgres={c['postgres']:6d} missing={c['missing']:6d} stale={c['stale']:5d}")
+        if args.project:
+            print("  (orphan counts omitted for --project runs)")
+
+    if args.apply:
+        todo = list(rep["missing"]) + ([] if args.no_stale else list(rep["stale"]))
+        if args.limit:
+            todo = todo[: args.limit]
+        key = _read_secret("AIDB_API_KEY", "AIDB_API_KEY_FILE")
+        hdrs = {"X-API-Key": key} if key else {}
+        sent = 0
+        for i in range(0, len(todo), args.batch):
+            while True:
+                st = _http("GET", f"{aidb}/vector/sync/status", headers=hdrs)
+                if st.get("spool_pending", 0) <= args.max_pending:
+                    break
+                time.sleep(5)
+            batch = [{"project": r["project"], "relative_path": r["relative_path"]} for r in todo[i:i + args.batch]]
+            res = _http("POST", f"{aidb}/vector/reconcile/enqueue", {"items": batch}, headers=hdrs)
+            sent += res.get("enqueued", 0)
+            time.sleep(args.sleep)
+        print(f"enqueued={sent} of {len(todo)} (AIDB drains asynchronously)")
+
+    if args.prune_legacy:
+        ids = rep["legacy_ids"]
+        print(f"legacy integer-id points: {len(ids)}")
+        if args.project:
+            raise SystemExit("--prune-legacy needs a corpus-wide run (omit --project)")
+        if rep["totals"]["missing"] and not args.force:
+            print(f"REFUSING prune: {rep['totals']['missing']} docs still missing a new-id point "
+                  "(deleting legacy points would lose their only vectors). Run --apply and let the drain finish, or --force.")
+            return 2
+        if not args.apply_prune:
+            print("dry-run only; add --apply-prune to delete")
+        else:
+            for i in range(0, len(ids), 500):
+                _http("POST", f"{qurl}/collections/{args.collection}/points/delete?wait=true",
+                      {"points": ids[i:i + 500]})
+            print(f"deleted {len(ids)} legacy points")
+    return 0
+
+
+if __name__ == "__main__":
+    sys.exit(main())
