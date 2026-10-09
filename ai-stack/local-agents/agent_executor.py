@@ -2253,7 +2253,7 @@ class LocalAgentExecutor:
                 try:
                     _event = json.dumps({
                         "event_type": "agent_step_complete",
-                        "timestamp": datetime.now(timezone.utc).isoformat() + "Z",
+                        "timestamp": datetime.now(timezone.utc).isoformat().replace("+00:00", "Z"),
                         "query": task.objective,
                         "response": task.result if isinstance(task.result, str) else json.dumps(task.result),
                         "latency_ms": task.execution_time_ms,

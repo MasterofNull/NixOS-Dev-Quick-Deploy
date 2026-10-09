@@ -104,7 +104,7 @@ class CandidateLifecycleManager:
         cand["state"] = new_state
         
         log_entry = {
-            "timestamp": datetime.now(timezone.utc).isoformat() + "Z",
+            "timestamp": datetime.now(timezone.utc).isoformat().replace("+00:00", "Z"),
             "from_state": old_state,
             "to_state": new_state,
             "by": by,
