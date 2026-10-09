@@ -1,4 +1,5 @@
 #!/usr/bin/env bash
+. "${BASH_SOURCE[0]%/*}/lib/aq-shim.sh" 2>/dev/null || true  # aq-usage-hook
 # aq-refine — dispatch → quality-gate → refine-and-retry loop
 #
 # Wraps delegate-to-local with an automated quality check and retry cycle.

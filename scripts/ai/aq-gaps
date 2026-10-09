@@ -1,4 +1,5 @@
 #!/usr/bin/env bash
+. "${BASH_SOURCE[0]%/*}/lib/aq-shim.sh" 2>/dev/null || true  # aq-usage-hook
 # aq-gaps — Phase 3.2.2/3.2.3: Show the top 10 most-repeated gap queries of the last 7 days.
 #
 # A "gap query" is one where the AI stack returned context with confidence < 0.4,

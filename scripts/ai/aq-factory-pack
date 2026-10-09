@@ -1,4 +1,5 @@
 #!/usr/bin/env bash
+. "${BASH_SOURCE[0]%/*}/lib/aq-shim.sh" 2>/dev/null || true  # aq-usage-hook
 # aq-factory-pack — fp-1: local factory state packaging (pack + manifest + encrypt)
 #
 # Collects a running factory's accumulated STATE — Qdrant RAG/agent-memory collections,

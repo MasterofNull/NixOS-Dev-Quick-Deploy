@@ -1,4 +1,5 @@
 #!/usr/bin/env bash
+. "${BASH_SOURCE[0]%/*}/lib/aq-shim.sh" 2>/dev/null || true  # aq-usage-hook
 # aq-factory-push — fp-2: secret-scan + push a local factory pack to a remote destination
 #
 # Consumes a pack directory produced by `aq-factory-pack` (fp-1) and pushes it to a

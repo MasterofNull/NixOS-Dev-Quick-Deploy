@@ -15,6 +15,12 @@ Usage:
 The profile is cached at $AI_MODEL_PROFILE_PATH (default: config/model-profile.json).
 The hybrid-coordinator reads this profile at startup to set token budgets.
 """
+try:  # aq-usage-hook
+    import importlib.util as _aqu, os as _aqo
+    _aqs = _aqu.spec_from_file_location("aq_usage", _aqo.path.join(_aqo.path.dirname(_aqo.path.realpath(__file__)), "lib", "aq_usage.py"))
+    _aqm = _aqu.module_from_spec(_aqs); _aqs.loader.exec_module(_aqm); _aqm.record(__file__, __name__)
+except Exception:
+    pass
 
 import argparse
 import asyncio

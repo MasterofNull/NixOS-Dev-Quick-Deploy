@@ -21,6 +21,12 @@ Environment variables (all optional — uses sensible defaults):
   POSTGRES_HOST / PORT / DB / USER / PASSWORD
   AIDB_URL               Base URL for AIDB REST API (used by --aidb-import)
 """
+try:  # aq-usage-hook
+    import importlib.util as _aqu, os as _aqo
+    _aqs = _aqu.spec_from_file_location("aq_usage", _aqo.path.join(_aqo.path.dirname(_aqo.path.realpath(__file__)), "lib", "aq_usage.py"))
+    _aqm = _aqu.module_from_spec(_aqs); _aqs.loader.exec_module(_aqm); _aqm.record(__file__, __name__)
+except Exception:
+    pass
 
 import argparse
 import hashlib

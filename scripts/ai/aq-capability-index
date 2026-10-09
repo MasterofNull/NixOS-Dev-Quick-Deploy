@@ -1,0 +1,66 @@
+#!/usr/bin/env python3
+"""aq-capability-index - generate the agent-loaded capability index (deterministic, no LLM).
+
+Reads the newest .agents/reports/capability-audit-*.json (or --audit PATH, or runs
+the audit library directly with --run-audit) and writes docs/agent-guides/CAPABILITY-INDEX.md
+and config/capability-index.json. DEAD-CANDIDATE capabilities are excluded. Scripts are
+never executed: purposes are read statically.
+"""
+try:  # aq-usage-hook
+    import importlib.util as _aqu, os as _aqo
+    _aqs = _aqu.spec_from_file_location("aq_usage", _aqo.path.join(_aqo.path.dirname(_aqo.path.realpath(__file__)), "lib", "aq_usage.py"))
+    _aqm = _aqu.module_from_spec(_aqs); _aqs.loader.exec_module(_aqm); _aqm.record(__file__, __name__)
+except Exception:
+    pass
+import argparse
+import json
+import sys
+from pathlib import Path
+
+HERE = Path(__file__).resolve().parent
+sys.path.insert(0, str(HERE / "lib"))
+import capability_index as ci  # noqa: E402
+
+
+def main() -> int:
+    ap = argparse.ArgumentParser(description=__doc__.splitlines()[0])
+    ap.add_argument("--repo-root", default=str(HERE.parent.parent))
+    ap.add_argument("--audit", help="audit JSON (default: newest .agents/reports/capability-audit-*.json)")
+    ap.add_argument("--run-audit", action="store_true", help="run the audit library instead of reading a report")
+    ap.add_argument("--live-root", help="with --run-audit: tree holding runtime state")
+    ap.add_argument("--md-out", help="default <repo>/docs/agent-guides/CAPABILITY-INDEX.md")
+    ap.add_argument("--json-out", help="default <repo>/config/capability-index.json")
+    ap.add_argument("--check", action="store_true", help="exit 1 if outputs differ from what would be written")
+    a = ap.parse_args()
+    root = Path(a.repo_root)
+    src = ""
+    if a.run_audit:
+        import capability_audit as ca
+        audit = ca.run_audit(root, Path(a.live_root) if a.live_root else None, use_systemd=False, use_journal=False)
+    else:
+        p = Path(a.audit) if a.audit else ci.newest_audit(root)
+        if not p or not p.is_file():
+            print("aq-capability-index: no audit report found; pass --audit or --run-audit", file=sys.stderr)
+            return 2
+        audit, src = json.loads(p.read_text()), p.name
+    idx = ci.build_index(audit, root, src)
+    md = ci.render_markdown(idx)
+    js = json.dumps(idx, indent=1, sort_keys=True) + "\n"
+    md_p = Path(a.md_out) if a.md_out else root / "docs" / "agent-guides" / "CAPABILITY-INDEX.md"
+    js_p = Path(a.json_out) if a.json_out else root / "config" / "capability-index.json"
+    if a.check:
+        same = md_p.is_file() and js_p.is_file() and md_p.read_text() == md and js_p.read_text() == js
+        print("capability index up to date" if same else "capability index STALE")
+        return 0 if same else 1
+    for path, text in ((md_p, md), (js_p, js)):
+        path.parent.mkdir(parents=True, exist_ok=True)
+        path.write_text(text)
+    print(f"wrote {md_p} ({len(md.encode())} bytes) and {js_p}; {idx['count']} entries")
+    if len(md.encode()) > ci.MAX_BYTES:
+        print(f"WARNING: markdown exceeds {ci.MAX_BYTES} bytes", file=sys.stderr)
+        return 1
+    return 0
+
+
+if __name__ == "__main__":
+    sys.exit(main())
