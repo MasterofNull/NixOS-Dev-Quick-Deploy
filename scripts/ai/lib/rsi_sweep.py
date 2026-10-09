@@ -435,6 +435,93 @@ def adapter_payload_audit(runner=None):
     return ("findings" if findings else "ok"), findings, f"{len(findings)} high finding(s)"
 
 
+# Timer-written reports only (latest + dated subdir); committed one-off reports in the parent dir are never a baseline.
+CAPABILITY_REPORT_DIR = Path(os.getenv("RSI_SWEEP_CAPABILITY_REPORT_DIR") or _REPO / ".agents" / "reports" / "capability-audit")
+CAPABILITY_MAX_AGE_S = int(os.getenv("RSI_SWEEP_CAPABILITY_MAX_AGE_S", str(2 * 86400)))
+_CAP_RANK = {"ACTIVE": 0, "UNUSED-AVAILABLE": 1}  # any other class ranks worse (2)
+_CAP_THRESHOLDS = (("UNDISCOVERABLE", 10), ("STALE-CLAIM", 0), ("BROKEN", 0))
+
+
+def _cap_rank(cls):
+    return _CAP_RANK.get(cls, 2)
+
+
+def _cap_load(path):
+    d = json.loads(Path(path).read_text())
+    if not isinstance(d, dict) or "capabilities" not in d:
+        raise ValueError("not a capability-audit report")
+    return d
+
+
+def adapter_capability_audit(report_dir=None, max_age_s=None, now=None):
+    """Capability-class regressions between the latest and previous dated audit report."""
+    rdir = Path(report_dir or CAPABILITY_REPORT_DIR)
+    max_age = CAPABILITY_MAX_AGE_S if max_age_s is None else max_age_s
+    now = time.time() if now is None else now
+    latest_p = rdir / "latest.json"
+    try:
+        age = now - latest_p.stat().st_mtime
+        latest = _cap_load(latest_p)
+    except (OSError, ValueError) as exc:
+        return "unknown", [], f"capability report unavailable: {exc}"
+    if age > max_age:
+        return "unknown", [], f"capability report stale ({int(age)}s > {max_age}s)"
+    classes = {c["key"]: c.get("class") for c in latest.get("capabilities", []) if isinstance(c, dict) and "key" in c}
+    totals = (latest.get("totals") or {}).get("by_class") or {}
+    stamp = str(latest.get("generated_at") or "")
+    previous = None
+    for p in sorted(rdir.glob("20*.json"), reverse=True):
+        try:
+            d = _cap_load(p)
+        except (OSError, ValueError):
+            continue
+        if str(d.get("generated_at") or "") < stamp:
+            previous = d
+            break
+    # A different audit method makes class deltas meaningless; compare thresholds only.
+    comparable = previous is not None and previous.get("audit_version") == latest.get("audit_version")
+    findings = []
+    if comparable:
+        for c in previous.get("capabilities", []):
+            key, old, new = c.get("key"), c.get("class"), classes.get(c.get("key"))
+            if not key or new is None or new == old:
+                continue
+            worse = (old == "ACTIVE" or (old == "UNUSED-AVAILABLE" and _cap_rank(new) == 2) or new == "BROKEN")
+            if not worse or _cap_rank(new) <= _cap_rank(old):
+                continue
+            findings.append(dict(
+                subject=f"capability-audit:{key}", producer="capability-audit", path=key, authority="capability-audit",
+                os_error=f"capability {key} regressed from {old}",
+                severity="low" if new == "UNUSED-AVAILABLE" else "medium",
+                root_fix=f"class {old} -> {new} (report {stamp}); run aq-capability-audit --json and inspect "
+                         f"the capability evidence; restore wiring/discovery/usage"))
+    for cls, limit in _CAP_THRESHOLDS:
+        n = int(totals.get(cls, 0) or 0)
+        if n > limit:
+            findings.append(dict(
+                subject=f"capability-audit:threshold:{cls}", producer="capability-audit", path=f"threshold:{cls}",
+                authority="capability-audit", os_error=f"{cls} capabilities exceed {limit}",
+                severity="medium",
+                root_fix=f"{n} capabilities classed {cls} (limit {limit}, report {stamp}); see aq-capability-audit next_action"))
+
+    def cleared(inc):
+        if inc.get("producer") != "capability-audit":
+            return None
+        path = str(inc.get("path", ""))
+        if path.startswith("threshold:"):
+            cls = path.split(":", 1)[1]
+            limit = dict(_CAP_THRESHOLDS).get(cls)
+            n = int(totals.get(cls, 0) or 0)
+            return f"{cls} count {n} <= {limit} in report {stamp}" if limit is not None and n <= limit else None
+        m = re.match(r"^capability .* regressed from (\S+)$", str(inc.get("error", "")))
+        now_cls = classes.get(path)
+        if not m or now_cls is None or _cap_rank(now_cls) > _cap_rank(m.group(1)):
+            return None
+        return f"capability {path} restored to {now_cls} in report {stamp}"
+    return ("findings" if findings else "ok"), _with_cleared(findings, cleared), \
+        f"{len(findings)} regression/threshold finding(s); {len(classes)} capabilities, previous={'yes' if comparable else ('version-mismatch' if previous else 'none')}"
+
+
 def _load_intake():
     import importlib.util
     from importlib.machinery import SourceFileLoader
@@ -530,7 +617,8 @@ def run(dry_run=False, as_json=False, adapters=None) -> int:
     adapters = adapters or {
         "failed-units": adapter_failed_units, "code-scanning": adapter_code_scanning,
         "aq-qa-phase0": adapter_qa_phase0, "payload-audit": adapter_payload_audit,
-        "delegation-outcomes": adapter_delegation_outcomes, "service-error-rate": adapter_service_error_rate}
+        "delegation-outcomes": adapter_delegation_outcomes, "service-error-rate": adapter_service_error_rate,
+        "capability-audit": adapter_capability_audit}
     report = {}
     recorded = 0
     resolved = []

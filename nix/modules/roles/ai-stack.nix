@@ -1931,6 +1931,9 @@ in {
       # regardless of where the actual repo is located on the system.
       systemd.tmpfiles.rules = lib.mkAfter [
         "L+ /opt/nixos-quick-deploy - - - - ${cfg.mcpServers.repoPath}"
+        # ReadWritePaths of ai-capability-audit must exist before its mount namespace is built.
+        "d ${cfg.mcpServers.repoPath}/.agents/reports/capability-audit 0755 ${cfg.primaryUser} users -"
+        "d ${cfg.mcpServers.repoPath}/.agents/archive/capability-audit 0755 ${cfg.primaryUser} users -"
       ];
 
       # Agent-agnostic discovery manifest at well-known location.
@@ -2532,6 +2535,53 @@ in {
         description = "Periodic RSI incident detection sweep";
         wantedBy = ["timers.target"];
         timerConfig = {OnBootSec = "10min"; OnUnitActiveSec = "15min"; Persistent = true;};
+      };
+
+      # Daily capability audit: classifies every capability (ACTIVE / UNUSED-AVAILABLE /
+      # UNDISCOVERABLE / STALE-CLAIM / DEAD-CANDIDATE / BROKEN) and keeps dated reports so the
+      # RSI sweep's capability-audit adapter can detect class regressions. Reads only files,
+      # systemd and the journal; never touches the DB services. Primary user (wheel) so the
+      # per-unit journal probes can read system units.
+      systemd.services.ai-capability-audit = {
+        description = "Capability audit (class report for RSI regression detection)";
+        path = [pkgs.git pkgs.systemd pkgs.coreutils "/run/current-system/sw"];
+        serviceConfig = {
+          Type = "oneshot";
+          User = cfg.primaryUser;
+          WorkingDirectory = cfg.mcpServers.repoPath;
+          ExecStart = let
+            repo = cfg.mcpServers.repoPath;
+            reports = "${repo}/.agents/reports/capability-audit";
+            archive = "${repo}/.agents/archive/capability-audit";
+          in "${pkgs.writeShellScript "ai-capability-audit-run" ''
+            set -eu
+            mkdir -p ${reports} ${archive}
+            tmp=${reports}/.latest.tmp
+            /run/current-system/sw/bin/python3 ${repo}/scripts/ai/aq-capability-audit --live-root ${repo} --json --out "$tmp" >/dev/null
+            cp -f "$tmp" ${reports}/$(date +%Y%m%d).json
+            mv -f "$tmp" ${reports}/latest.json
+            # Rotation (no deletion): dated copies beyond the newest 14 are moved to the archive.
+            ls -1 ${reports}/20*.json | sort -r | tail -n +15 | while read -r old; do mv -f "$old" ${archive}/; done
+          ''}";
+          TimeoutSec = "600";
+          StandardOutput = "journal";
+          StandardError = "journal";
+          NoNewPrivileges = true;
+          ProtectSystem = "strict";
+          ProtectHome = "read-only";
+          PrivateTmp = true;
+          MemoryMax = "512M";
+          ReadWritePaths = [
+            "${cfg.mcpServers.repoPath}/.agents/reports/capability-audit"
+            "${cfg.mcpServers.repoPath}/.agents/archive/capability-audit"
+          ];
+        };
+      };
+
+      systemd.timers.ai-capability-audit = {
+        description = "Daily capability audit";
+        wantedBy = ["timers.target"];
+        timerConfig = {OnCalendar = "daily"; Persistent = true; RandomizedDelaySec = "30min";};
       };
 
       systemd.timers.ai-prsi-rsi-dispatch = {
