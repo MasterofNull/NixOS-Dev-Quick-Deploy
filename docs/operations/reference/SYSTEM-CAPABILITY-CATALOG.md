@@ -63,7 +63,7 @@ Core identity preservation module hosting the narrative engine, value constituti
 
 - Name: Identity Kernel Service
 - Owner: coprocessor-engineering
-- Maturity: integrated
+- Maturity: enabled-unmeasured
 - State: enabled
 - Primary refs: `ai-stack/identity-kernel/checkpoint_service.py`, `nix/modules/services/identity-kernel.nix`, `config/identity-values.yaml`
 - Data stores: `identity_narrative`, `checkpoints`
@@ -102,7 +102,7 @@ Compact code-execution-friendly tool catalog used to auto-select workflow tools 
 
 - Name: Tooling Manifest and Auto Tool Routing
 - Owner: hybrid-coordinator
-- Maturity: production
+- Maturity: available-unused
 - State: enabled
 - Primary refs: `ai-stack/mcp-servers/hybrid-coordinator/knowledge/tooling_manifest.py`
 - Data stores: `codebase-context`, `skills-patterns`, `error-solutions`
@@ -128,7 +128,7 @@ Codebase graph generation, dashboard visualization, diff impact, and graph-backe
 
 - Name: Understand Anything Graph Skills
 - Owner: agent-runtime
-- Maturity: integrated
+- Maturity: partial
 - State: partial
 - Primary refs: `.agent/skills/understand-anything/SKILL.md`, `scripts/ai/aq-understand-anything`, `scripts/ai/aq-graph-query`, `config/understand-anything.json`, `.understand-anything/knowledge-graph.json`
 - Data stores: `codebase-context`
@@ -154,7 +154,7 @@ Repo-local static eval and red-team suite wrapper for capability, agent-safety, 
 
 - Name: AQ Eval Harness
 - Owner: qa-automation
-- Maturity: integrated
+- Maturity: available-unused
 - State: enabled
 - Primary refs: `scripts/ai/aq-eval`, `config/aq-eval-suites.json`, `scripts/testing/test-aq-eval.py`
 - Data stores: `model-evaluations`, `eval_results`
@@ -167,7 +167,7 @@ Local-only benchmark matrix for comparing enabled and planned inference backends
 
 - Name: AQ Inference Benchmark Matrix
 - Owner: mlops-engineering
-- Maturity: integrated
+- Maturity: available-unused
 - State: enabled
 - Primary refs: `scripts/ai/aq-inference-bench`, `config/aq-inference-benchmarks.json`, `scripts/testing/test-aq-inference-bench.py`
 - Data stores: `model-evaluations`, `performance-metrics`
@@ -193,7 +193,7 @@ Bounded local/private HTTP surface scanner for authorized harness webpages and s
 
 - Name: Local Surface Research Scanner
 - Owner: osint-systems
-- Maturity: integrated
+- Maturity: available-unused
 - State: enabled
 - Primary refs: `scripts/ai/aq-local-surface-scan`, `scripts/testing/test-local-surface-scan.py`, `.agent/skills/osint-systems/SKILL.md`
 - Data stores: `osint-intelligence`
@@ -206,7 +206,7 @@ Passive public-source ingest and query path for source-grounded OSINT research r
 
 - Name: Passive OSINT Research Store
 - Owner: osint-systems
-- Maturity: integrated
+- Maturity: partial
 - State: enabled
 - Primary refs: `scripts/testing/test-osint-research-ingest.py`, `.agent/OSINT-SYSTEMS-INSTRUCTIONS.md`
 - Data stores: `osint-intelligence`
@@ -284,7 +284,7 @@ Reusable MCP workflow blueprints and graph templates for orchestration.
 
 - Name: Workflow Blueprints
 - Owner: agent-runtime
-- Maturity: production
+- Maturity: available-unused
 - State: enabled
 - Primary refs: `config/workflow-blueprints.json`, `docs/architecture/workflow-dsl-reference.md`
 - Data stores: none
