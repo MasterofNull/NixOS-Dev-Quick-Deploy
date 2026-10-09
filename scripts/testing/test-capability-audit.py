@@ -41,6 +41,10 @@ class CapabilityAuditTest(unittest.TestCase):
         w(r, "scripts/ai/aq-caller", "#!/usr/bin/env bash\naq-hidden --go\naq-active\n")
         # STALE-CLAIM: catalog says enabled/integrated, never used
         w(r, "scripts/ai/aq-claimed", py)
+        w(r, "scripts/ai/aq-gated", py)
+        w(r, "scripts/ai/aq-kept", py)
+        w(r, ".understand-anything/knowledge-graph.json", "{}", 0o644)
+        os.utime(r / ".understand-anything/knowledge-graph.json", (NOW - 100 * 86400, NOW - 100 * 86400))
         # DEAD-CANDIDATE: nothing references it
         w(r, "scripts/ai/aq-orphan", py)
         # BROKEN: python syntax error
@@ -59,6 +63,11 @@ class CapabilityAuditTest(unittest.TestCase):
         w(r, "config/system-capability-catalog.json", json.dumps({"entries": [
             {"id": "claimed-thing", "state": "enabled", "maturity": "integrated",
              "primary_refs": ["scripts/ai/aq-claimed"]},
+            {"id": "gated-thing", "state": "enabled", "maturity": "scope-gated",
+             "primary_refs": ["scripts/ai/aq-gated"]},
+            {"id": "kept-thing", "state": "enabled", "maturity": "integrated",
+             "usage_evidence": "audit false positive; claim kept",
+             "primary_refs": ["scripts/ai/aq-kept"]},
             {"id": "active-thing", "state": "enabled", "maturity": "production",
              "primary_refs": ["scripts/ai/aq-active"]},
             {"id": "quarantined-thing", "state": "quarantined", "maturity": "official",
@@ -110,6 +119,18 @@ class CapabilityAuditTest(unittest.TestCase):
         self.assertEqual(self.cls_of("aq-claimed"), "STALE-CLAIM")
         self.assertEqual(self.by["aq-claimed"]["next_action"], "refresh")
 
+    def test_non_integrated_maturity_is_never_stale_claim(self):
+        self.assertNotEqual(self.cls_of("aq-gated"), "STALE-CLAIM")
+
+    def test_documented_kept_claim_is_acknowledged(self):
+        self.assertEqual(self.cls_of("aq-kept"), "ACKNOWLEDGED")
+        self.assertEqual(self.by["aq-kept"]["next_action"], "none")
+
+    def test_stale_artifact_separate_from_claims(self):
+        art = [c for c in self.rep["capabilities"] if "artifact" in c["kinds"]][0]
+        self.assertEqual(art["class"], "STALE-ARTIFACT")
+        self.assertEqual(self.rep["audit_version"], ca.AUDIT_VERSION)
+
     def test_quarantined_claim_is_not_stale(self):
         self.assertEqual(self.cls_of("aq-orphan"), "DEAD-CANDIDATE")
         self.assertEqual(self.by["aq-orphan"]["next_action"], "archive-candidate")
@@ -148,7 +169,7 @@ class CapabilityAuditTest(unittest.TestCase):
     def test_actions_never_delete(self):
         self.assertTrue(set(c["next_action"] for c in self.rep["capabilities"])
                         <= {"none", "integrate-into-repertoire", "add-discovery", "fix", "refresh",
-                            "archive-candidate"})
+                            "archive-candidate", "regenerate"})
 
 
 if __name__ == "__main__":
