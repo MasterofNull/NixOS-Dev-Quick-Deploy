@@ -86,6 +86,9 @@ export HARNESS_GROUNDING_FILE="${HARNESS_GROUNDING_FILE:-$REPO_ROOT/config/local
 # turned on via its systemd Environment). 'repair' only constrains a malformed tool-call retry —
 # bench-validated non-harmful. Override with AQ_LOCAL_GBNF= to disable, or =1/on to always-constrain.
 export AQ_LOCAL_GBNF="${AQ_LOCAL_GBNF:-repair}"
+# MVP activation: FE-1 process-reward steering. Inert unless the task sets AQ_EDIT_VERIFY_CMD
+# (steering fires only on a behavioral_verify_failed verdict). Override AQ_PRM_STEERING=0 to disable.
+export AQ_PRM_STEERING="${AQ_PRM_STEERING:-1}"
 
 die()  { echo "ERROR: $*" >&2; exit 1; }
 info() { echo "[delegate-to-local] $*"; }

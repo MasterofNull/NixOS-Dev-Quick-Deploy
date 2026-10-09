@@ -617,3 +617,21 @@ This slice is repository repair awaiting activation, not a fully activated MVP. 
 - PM-tracked: `.agents/plans/factory-gate-templates/tracker.json` ft-4/ft-5 editorial notes link evidence; projected progress and owner acceptance are untouched.
 
 Evidence: `docs/harness-first/evidence/2026-10-08-factory-gates.md`. Independent acceptance, orchestrator tier0, commit, and live activation are pending; this is not an MVP release claim.
+
+## MVP activation batch (switchboard budget, PRM steering, completions, MOTD) — 2026-10-08
+
+Status of every item below: **enabled for MVP testing -- development continues.** Not complete, not a release claim. One rebuild applies the batch. No tracker status or acceptance fields were touched.
+
+| Item | Declaration | Verify live after rebuild | Expected | Turn off |
+|---|---|---|---|---|
+| SWB_ADAPTIVE_LOCAL_BUDGET=1 | `nix/modules/services/switchboard.nix` env; `config/env-contract.yaml` default now "1" | `systemctl show ai-switchboard -p Environment \| tr ' ' '\n' \| grep ADAPTIVE` | `SWB_ADAPTIVE_LOCAL_BUDGET=1` | change to `=0` in switchboard.nix, rebuild (or temporary drop-in override, reverted by next switch) |
+| AQ_PRM_STEERING=1 | coordinator env in `mcp-servers.nix` + export default in `scripts/ai/delegate-to-local` | `systemctl show ai-hybrid-coordinator -p Environment \| tr ' ' '\n' \| grep PRM`; `grep -n AQ_PRM_STEERING scripts/ai/delegate-to-local` | `AQ_PRM_STEERING=1`; export line present | `AQ_PRM_STEERING=0` in mcp-servers.nix; per-dispatch `AQ_PRM_STEERING=0 delegate-to-local ...` |
+| shellCompletions + motdReport | `mySystem.aiStack.shellCompletions/motdReport = lib.mkDefault true` in `nix/modules/profiles/ai-dev.nix` | `ls -l /etc/profile.d/aq-completions.sh /etc/profile.d/ai-report-motd.sh`; new login shell, `aq-hints <TAB>` | both files exist; tab completes; digest printed at most once per 24h | `lib.mkForce false` in host file; rebuild |
+
+Notes (honest limits):
+- PRM steering fires only on a `behavioral_verify_failed` verdict, which requires `AQ_EDIT_VERIFY_CMD`. Without it the only runtime effect is a try/except pre-edit file snapshot (agent_executor.py ~3127). Real steering is therefore not exercised until a task supplies a verify command.
+- MOTD runs `aq-report --since=7d` on interactive login at most once per 24h (stamp `/tmp/aq-report-motd-stamp`); first login may be slow.
+
+Left OFF (not activated):
+- `QUERY_EXPANSION_ENABLED=true`: no consumer. `Config.QUERY_EXPANSION_ENABLED` (core/config.py:239) is read nowhere; the live expansion path in `route_handler.py:1321` is gated by `AI_LLM_EXPANSION_ENABLED` (default false, 4s timeout, extra local LLM call per semantic/hybrid query on a ~3-5 tok/s APU). Setting the requested var would be a silent no-op. Decision needed: enable `AI_LLM_EXPANSION_ENABLED` instead (owner call, adds local-lane contention), and fix/retire the dead flag (feature-defaults.yaml:298 and the docs point at the wrong var).
+- `mySystem.aiStack.metaOptimization.enable`: would fail at runtime. (a) Postgres tables `harness_improvement_proposals`, `harness_evolution_history`, `harness_performance_baselines` exist only in `ai-stack/postgres/migrations/008_meta_optimization.sql`, which is not applied by alembic or any Nix unit. (b) Both scripts query a Postgres table `routing_log`, but routing log is a JSONL file (`.agents/telemetry/routing-decisions.jsonl`, switchboard.py:3001); no Postgres `routing_log` is created anywhere. (c) `meta_optimizer.py` main() takes no args, so the unit's `--days/--output-dir` are ignored (7 days hardcoded, `ANALYSIS_WINDOW_DAYS` unused). Imports are fine (verified with the unit's python env). Fix path: alembic migration for the harness_* tables plus a routing source, then enable with `autoApplyProposals = false`.

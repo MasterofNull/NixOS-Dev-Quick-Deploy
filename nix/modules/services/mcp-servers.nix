@@ -1123,6 +1123,9 @@ in {
                 # tool-call retry, never normal/final-answer turns). Fixes prose-as-tool-call + invalid
                 # JSON at the producer. 'repair' mode; set AQ_LOCAL_GBNF= to disable.
                 "AQ_LOCAL_GBNF=repair"
+                # MVP activation: FE-1 PRM steering (inert unless AQ_EDIT_VERIFY_CMD is set per task).
+                # Kill switch: AQ_PRM_STEERING=0.
+                "AQ_PRM_STEERING=1"
                 "LLAMA_CPP_BASE_URL=http://127.0.0.1:${toString llama.port}"
                 "LLAMA_CPP_INFERENCE_TIMEOUT_SECONDS=${toString llama.inferenceTimeoutSeconds}"
                 "SWITCHBOARD_URL=http://127.0.0.1:${toString ports.switchboard}"

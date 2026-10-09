@@ -170,6 +170,11 @@ in {
     mySystem.aiStack.affectiveEngine.enable = lib.mkDefault true;
     mySystem.aiStack.worldModel.enable = lib.mkDefault true;
 
+    # MVP activation (enabled for MVP testing -- development continues): aq-* tab completion
+    # and the stale-report login digest. Kill switch: set false (lib.mkForce) in the host file.
+    mySystem.aiStack.shellCompletions = lib.mkDefault true;
+    mySystem.aiStack.motdReport = lib.mkDefault true;
+
     # ── Touchpad defaults for modern laptops ────────────────────────────────────
     # clickfinger eliminates accidental middle-click on ClickPads
     services.libinput.touchpad = {
