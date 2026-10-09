@@ -12,14 +12,25 @@ Usage:
     python3 scripts/data/ingest-project-knowledge.py --dry-run
     python3 scripts/data/ingest-project-knowledge.py --max-docs 200
     python3 scripts/data/ingest-project-knowledge.py --paths docs/ nix/
+    python3 scripts/data/ingest-project-knowledge.py --full   # ignore state, re-post all
+
+Incremental: a state file (INGEST_STATE_FILE) maps "<project>|<chunk relative_path>"
+to the sha256 of the (post-redaction) chunk content. Unchanged chunks are skipped.
+AIDB POST /documents upserts on (project, relative_path) (ON CONFLICT DO UPDATE),
+so re-posting a changed chunk under the same key replaces it. State is written
+atomically (tmp + os.replace), periodically and on exit/SIGTERM, only for chunks
+whose POST succeeded, so a timeout-killed run resumes where it stopped.
+Known gap: chunks of a file that shrank/renamed are not deleted from AIDB.
 """
 
 from __future__ import annotations
 
 import argparse
+import hashlib
 import json
 import os
 import re
+import signal
 import sys
 import time
 import urllib.error
@@ -73,6 +84,12 @@ AIDB_KEY_FILE = os.getenv(
     "/run/secrets/aidb_api_key",
 )
 PROJECT_NAME = "nixos-dev-quick-deploy"
+# Must live in a path the reindex unit can write (ReadWritePaths = dataDir).
+STATE_FILE = os.getenv(
+    "INGEST_STATE_FILE",
+    "/var/lib/ai-stack/hybrid/telemetry/aidb-project-knowledge-state.json",
+)
+STATE_FLUSH_EVERY = 20  # posts between state flushes (hard-kill safety net)
 
 EXTENSIONS = {".md", ".nix", ".py", ".sh"}
 CHUNK_TOKENS = 512          # approximate — ~4 chars per token
@@ -139,6 +156,44 @@ def _load_api_key() -> str:
     if not key:
         print(f"[WARN] No API key found at {AIDB_KEY_FILE} and AIDB_API_KEY not set", file=sys.stderr)
     return key
+
+
+def _content_hash(text: str) -> str:
+    return hashlib.sha256(text.encode("utf-8", errors="replace")).hexdigest()
+
+
+def _load_state(path: str) -> dict:
+    try:
+        with open(path, encoding="utf-8") as fh:
+            data = json.load(fh)
+        hashes = data.get("hashes")
+        return hashes if isinstance(hashes, dict) else {}
+    except (OSError, ValueError, AttributeError):
+        return {}
+
+
+def _save_state(path: str, hashes: dict) -> None:
+    """Atomic write; never raises (state loss only costs a re-post)."""
+    tmp = f"{path}.tmp.{os.getpid()}"
+    try:
+        os.makedirs(os.path.dirname(path) or ".", exist_ok=True)
+        with open(tmp, "w", encoding="utf-8") as fh:
+            json.dump({"version": 1, "hashes": hashes}, fh)
+            fh.flush()
+            os.fsync(fh.fileno())
+        os.replace(tmp, path)
+    except OSError as e:
+        print(f"[WARN] could not write state {path}: {e}", file=sys.stderr)
+        try:
+            os.unlink(tmp)
+        except OSError:
+            pass
+
+
+def _health_check(api_key: str) -> None:
+    req = urllib.request.Request(f"{AIDB_URL}/health", headers={"X-API-Key": api_key})
+    with urllib.request.urlopen(req, timeout=5):
+        pass
 
 
 def _should_skip_path(rel: Path) -> bool:
@@ -268,7 +323,7 @@ def _post_document(
 # Main
 # ---------------------------------------------------------------------------
 
-def main() -> int:
+def main(argv=None) -> int:
     parser = argparse.ArgumentParser(
         description="Ingest project knowledge into AIDB (Phase 13.4)"
     )
@@ -292,19 +347,23 @@ def main() -> int:
         "--delay", type=float, default=2.0,
         help="Seconds between posts (throttle, default: 2.0 — AIDB limit is 60 RPM)",
     )
-    args = parser.parse_args()
+    parser.add_argument(
+        "--full", action="store_true",
+        help="Ignore stored hashes and re-post every chunk",
+    )
+    parser.add_argument(
+        "--state-file", default=None,
+        help=f"Hash state file (default: $INGEST_STATE_FILE or {STATE_FILE})",
+    )
+    args = parser.parse_args(argv)
+    state_path = args.state_file or STATE_FILE
 
     api_key = "" if args.dry_run else _load_api_key()
 
     if not args.dry_run:
         # Quick health check
         try:
-            req = urllib.request.Request(
-                f"{AIDB_URL}/health",
-                headers={"X-API-Key": api_key},
-            )
-            with urllib.request.urlopen(req, timeout=5):
-                pass
+            _health_check(api_key)
         except Exception as e:
             print(f"[FATAL] AIDB not reachable at {AIDB_URL}: {e}", file=sys.stderr)
             return 1
@@ -314,61 +373,96 @@ def main() -> int:
     posted_ok = 0
     posted_fail = 0
     skipped_empty = 0
+    skipped_unchanged = 0
+    would_post = 0
+
+    # Persist only chunks whose POST succeeded; dry-run never writes state.
+    hashes = _load_state(state_path)
+    since_flush = 0
+
+    def _term(signum, frame):  # timeout(1) sends SIGTERM; unwind so finally flushes state
+        raise SystemExit(128 + signum)
+
+    if not args.dry_run:
+        try:
+            signal.signal(signal.SIGTERM, _term)
+        except ValueError:  # not main thread (tests)
+            pass
 
     print(f"{'[DRY RUN] ' if args.dry_run else ''}Ingesting project knowledge → AIDB {args.project}")
     print(f"Scanning {len(args.paths)} paths from {REPO_ROOT}")
     print()
 
-    for abs_path in _iter_files(args.paths):
-        rel = abs_path.relative_to(REPO_ROOT)
-        try:
-            text = abs_path.read_text(encoding="utf-8", errors="replace")
-        except Exception:
-            continue
+    try:
+        for abs_path in _iter_files(args.paths):
+            rel = abs_path.relative_to(REPO_ROOT)
+            try:
+                text = abs_path.read_text(encoding="utf-8", errors="replace")
+            except Exception:
+                continue
 
-        chunks = _chunk_text(text, str(rel))
-        if not chunks:
-            skipped_empty += 1
-            continue
+            chunks = _chunk_text(text, str(rel))
+            if not chunks:
+                skipped_empty += 1
+                continue
 
-        files_seen += 1
-        for chunk_text, chunk_idx in chunks:
-            chunks_total += 1
-            if args.max_docs and chunks_total > args.max_docs:
+            files_seen += 1
+            for chunk_text, chunk_idx in chunks:
+                chunks_total += 1
+                if args.max_docs and chunks_total > args.max_docs:
+                    break
+
+                chunk_rel = f"{rel}" if len(chunks) == 1 else f"{rel}#chunk{chunk_idx}"
+                first_line = chunk_text.strip().splitlines()[0][:80].strip("# ").strip() or str(rel)
+                title = f"{rel.name}" if len(chunks) == 1 else f"{rel.name} [{chunk_idx+1}/{len(chunks)}]"
+
+                body, _ = _pre_redact(chunk_text)
+                digest = _content_hash(body)
+                state_key = f"{args.project}|{chunk_rel}"
+                if not args.full and hashes.get(state_key) == digest:
+                    skipped_unchanged += 1
+                    continue
+                if args.dry_run:
+                    would_post += 1
+                    continue
+
+                ok = _post_document(
+                    api_key=api_key,
+                    content=chunk_text,
+                    title=title,
+                    relative_path=chunk_rel,
+                    project=args.project,
+                    dry_run=args.dry_run,
+                )
+                if ok:
+                    posted_ok += 1
+                    hashes[state_key] = digest
+                    since_flush += 1
+                    if since_flush >= STATE_FLUSH_EVERY:
+                        _save_state(state_path, hashes)
+                        since_flush = 0
+                    if posted_ok % 50 == 0:
+                        print(f"  ...{posted_ok} chunks ingested ({files_seen} files)", flush=True)
+                else:
+                    posted_fail += 1
+
+                if not args.dry_run and args.delay > 0:
+                    time.sleep(args.delay)
+
+            if args.max_docs and chunks_total >= args.max_docs:
+                print(f"  [max-docs={args.max_docs} reached]")
                 break
-
-            chunk_rel = f"{rel}" if len(chunks) == 1 else f"{rel}#chunk{chunk_idx}"
-            first_line = chunk_text.strip().splitlines()[0][:80].strip("# ").strip() or str(rel)
-            title = f"{rel.name}" if len(chunks) == 1 else f"{rel.name} [{chunk_idx+1}/{len(chunks)}]"
-
-            ok = _post_document(
-                api_key=api_key,
-                content=chunk_text,
-                title=title,
-                relative_path=chunk_rel,
-                project=args.project,
-                dry_run=args.dry_run,
-            )
-            if ok:
-                posted_ok += 1
-                if posted_ok % 50 == 0:
-                    print(f"  ...{posted_ok} chunks ingested ({files_seen} files)", flush=True)
-            else:
-                posted_fail += 1
-
-            if not args.dry_run and args.delay > 0:
-                time.sleep(args.delay)
-
-        if args.max_docs and chunks_total >= args.max_docs:
-            print(f"  [max-docs={args.max_docs} reached]")
-            break
+    finally:
+        if not args.dry_run:
+            _save_state(state_path, hashes)
 
     print()
     print(f"Results:")
     print(f"  files:  {files_seen}")
     print(f"  chunks: {chunks_total}")
+    print(f"  unchanged (skipped): {skipped_unchanged}")
     if args.dry_run:
-        print(f"  (dry-run — nothing posted)")
+        print(f"  would post {would_post} of {chunks_total} chunks (dry-run — nothing posted)")
     else:
         print(f"  posted: {posted_ok} ok, {posted_fail} failed")
     if skipped_empty:

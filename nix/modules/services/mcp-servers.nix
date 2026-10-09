@@ -2125,6 +2125,8 @@ in {
           AIDB_API_KEY_FILE = "/run/secrets/aidb_api_key";
           INGEST_DELAY = cfg.deployment.aidbReindex.projectKnowledgeDelay;
           REINDEX_OUTPUT = "${dataDir}/hybrid/telemetry/aidb-reindex-latest.json";
+          # Hash state for incremental ingest (resumes after a timeout-killed run); inside ReadWritePaths.
+          INGEST_STATE_FILE = "${dataDir}/hybrid/telemetry/aidb-project-knowledge-state.json";
         };
       };
 
