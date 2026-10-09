@@ -1225,7 +1225,7 @@ async def delegate_to_aider_handler(
 _HARNESS_CLI_WHITELIST = frozenset({
     "aq-qa", "aq-hints", "aq-report", "aq-session-start",
     "aq-commit-facts", "aq-lesson-promote", "aq-crystallize",
-    "aqd",
+    "aqd", "aq-graph-query",
 })
 
 

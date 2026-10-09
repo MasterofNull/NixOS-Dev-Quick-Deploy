@@ -142,10 +142,13 @@ def main() -> int:
     assert_enabled_candidate(candidates["syft-grype"], "syft-1.38.0+grype-0.104.1")
     assert candidates["syft-grype"]["install"]["command"] == "syft"
     assert candidates["syft-grype"]["permissions"]["secrets"] is False
-    assert_enabled_candidate(
-        candidates["code-intelligence-graph-layer"],
-        "understand-anything-54754a6+graph-2026-07-09",
-    )
+    # partial: queries live, graph stale pending regeneration (Rule: catalog honesty)
+    graph_layer = candidates["code-intelligence-graph-layer"]
+    assert graph_layer["state"] == "partial"
+    assert graph_layer["pinned_version"] == "understand-anything-54754a6+graph-2026-07-01"
+    assert graph_layer["review_status"] == "accepted-with-mitigations"
+    assert graph_layer.get("mitigations")
+    assert graph_layer["tool_allowlist"] == ["graph_query"]
     assert_understand_graph_complete()
 
     print("PASS: enabled external MCP candidates are pinned and bounded")

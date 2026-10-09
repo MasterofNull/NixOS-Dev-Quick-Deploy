@@ -1,0 +1,115 @@
+#!/usr/bin/env python3
+"""aq-graph-query -- read-only, no-LLM queries over .understand-anything/knowledge-graph.json.
+
+  aq-graph-query search <text> [--type T] [--limit N]
+  aq-graph-query symbol <name>
+  aq-graph-query neighbors <node-id|path|name> [--depth N]
+  aq-graph-query impact <path>        nodes in the file + what depends on them
+  aq-graph-query types                node type counts before/after normalisation
+  aq-graph-query staleness [--check]  graph/wiki age and commits since generation
+
+Add --json for machine output. Graph answers are advisory (LLM-generated graph);
+verify against source. Root: --root, $UA_PROJECT_DIR, or this checkout.
+"""
+try:  # aq-usage-hook
+    import importlib.util as _aqu, os as _aqo
+    _aqs = _aqu.spec_from_file_location("aq_usage", _aqo.path.join(_aqo.path.dirname(_aqo.path.realpath(__file__)), "lib", "aq_usage.py"))
+    _aqm = _aqu.module_from_spec(_aqs); _aqs.loader.exec_module(_aqm); _aqm.record(__file__, __name__)
+except Exception:
+    pass
+import argparse
+import json
+import sys
+from pathlib import Path
+
+sys.path.insert(0, str(Path(__file__).resolve().parent / "lib"))
+import understand_graph as ug  # noqa: E402
+
+
+def emit(args, payload, lines):
+    if args.json:
+        print(json.dumps(payload, indent=2))
+    else:
+        print("\n".join(lines))
+
+
+def row(d):
+    loc = d["file"] + (f":{d['lines'][0]}" if d.get("lines") else "")
+    return f"{d['type']:<9} {d['name']}  [{loc}]" + (f"  - {d['summary'][:90]}" if d.get("summary") else "")
+
+
+def main(argv=None):
+    p = argparse.ArgumentParser(prog="aq-graph-query", description=__doc__,
+                                formatter_class=argparse.RawDescriptionHelpFormatter)
+    p.add_argument("--root", help="project dir containing .understand-anything/")
+    p.add_argument("--json", action="store_true")
+    sub = p.add_subparsers(dest="cmd", required=True)
+    s = sub.add_parser("search"); s.add_argument("text"); s.add_argument("--type"); s.add_argument("--limit", type=int, default=20)
+    s = sub.add_parser("symbol"); s.add_argument("name")
+    s = sub.add_parser("neighbors"); s.add_argument("node"); s.add_argument("--depth", type=int, default=1)
+    s = sub.add_parser("impact"); s.add_argument("path")
+    sub.add_parser("types")
+    s = sub.add_parser("staleness"); s.add_argument("--check", action="store_true")
+    args = p.parse_args(argv)
+
+    root = Path(args.root).resolve() if args.root else ug.repo_root()
+
+    if args.cmd == "staleness":
+        st = ug.staleness(root)
+        emit(args, st, ug.format_staleness(st))
+        return 1 if (args.check and st["stale"]) else 0
+
+    if not ug.graph_path(root).is_file():
+        print(f"no graph at {ug.graph_path(root)}", file=sys.stderr)
+        return 2
+
+    if args.cmd == "types":
+        tc = ug.type_counts(ug.load_graph(root))
+        lines = [f"raw ({len(tc['raw'])} spellings):"] + [f"  {k:<20} {v}" for k, v in tc["raw"].items()]
+        lines += [f"normalised ({len(tc['normalised'])} types):"] + [f"  {k:<20} {v}" for k, v in tc["normalised"].items()]
+        emit(args, tc, lines)
+        return 0
+
+    idx = ug.get_index(root)
+    if args.cmd == "search":
+        res = ug.search(idx, args.text, args.limit, args.type)
+        emit(args, {"query": args.text, "count": len(res), "results": res},
+             [f"{len(res)} result(s) for '{args.text}'"] + [f"  {r['score']:>3} {row(r)}" for r in res])
+        return 0
+    if args.cmd == "symbol":
+        res = ug.symbol(idx, args.name)
+        lines = []
+        for r in res:
+            lines.append(row(r))
+            lines.append(f"    id: {r['id']}")
+            if r["calls"]:
+                lines.append("    calls: " + ", ".join(r["calls"][:15]))
+            if r["called_by"]:
+                lines.append("    called_by: " + ", ".join(r["called_by"][:15]))
+        emit(args, {"name": args.name, "matches": res}, lines or [f"no symbol '{args.name}'"])
+        return 0 if res else 1
+    if args.cmd == "neighbors":
+        nid = ug.resolve(idx, args.node)
+        if not nid:
+            print(f"node not found or ambiguous: {args.node}", file=sys.stderr)
+            return 1
+        res = ug.neighbors(idx, nid, args.depth)
+        emit(args, {"node": ug.brief(idx.nodes[nid]), "depth": args.depth, "neighbors": res},
+             [f"{nid}: {len(res)} neighbor(s) within depth {args.depth}"]
+             + [f"  d{r['depth']} {r['direction']:<3} {r['via']:<9} {row(r)}" for r in res])
+        return 0
+    if args.cmd == "impact":
+        path = args.path[2:] if args.path.startswith("./") else args.path
+        res = ug.impact(idx, path)
+        if not res["nodes"]:
+            print(f"no graph nodes for path: {path}", file=sys.stderr)
+            return 1
+        emit(args, res,
+             [f"{path}: {len(res['nodes'])} node(s) in file, {len(res['dependents'])} dependent(s)"]
+             + [f"  <- {','.join(d['via']):<14} {row(d)}" for d in res["dependents"]])
+        return 0
+    return 2
+
+
+if __name__ == "__main__":
+    sys.exit(main())

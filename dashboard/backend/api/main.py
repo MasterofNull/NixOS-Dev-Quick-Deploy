@@ -251,6 +251,10 @@ app.include_router(approvals_mod.view_router, tags=["approvals-view"])
 from .routes import pm as pm_mod  # noqa: E402
 app.include_router(pm_mod.router, prefix="/api", tags=["pm"])
 
+# Understand-Anything graph summary (assets/modules/understand-anything.html + dashboard tile dot)
+from .routes import understand as understand_mod  # noqa: E402
+app.include_router(understand_mod.router, prefix="/api", tags=["understand"])
+
 from .routes import approval_inbox as approval_inbox_mod  # noqa: E402
 app.include_router(approval_inbox_mod.router, prefix="/api", tags=["approval-inbox"])
 

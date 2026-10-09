@@ -73,6 +73,10 @@
       background-color: var(--red);
       box-shadow: 0 0 8px var(--red);
     }
+    .status-dot.warning {
+      background-color: var(--yel);
+      box-shadow: 0 0 8px var(--yel);
+    }
     h1 {
       font-family: var(--hud);
       text-transform: uppercase;
@@ -308,15 +312,43 @@
   <div class="container">
     <header>
       <div class="logo-area">
-        <div class="status-dot enabled"></div>
+        <div class="status-dot warning"></div>
         <h1>Understand Anything Graph Skills</h1>
       </div>
       <a href="/index.html" class="back-btn">← Command Center</a>
     </header>
 
     <div class="description">
-      Codebase graph generation, dashboard visualization, diff impact, and graph-backed explanations.
+      Codebase graph generation, dashboard visualization, diff impact, and graph-backed explanations. PARTIAL: graph queries (aq-graph-query, MCP graph_query) and staleness reporting are live; the knowledge graph itself is stale (generated 2026-07-01) and regeneration is pending.
     </div>
+
+    <div class="card info" id="ua-live" style="margin-bottom:1.5rem;">
+      <div class="card-title">Live Graph Status <span style="font-size:0.7rem;color:var(--fg3)">GET /api/understand/summary</span></div>
+      <div id="ua-live-body" style="font-size:0.85rem;color:var(--fg2);">Loading...</div>
+    </div>
+    <script>
+    (function () {
+      var body = document.getElementById('ua-live-body');
+      var dot = document.querySelector('.status-dot');
+      function kv(k, v) { return '<div class="kv-row"><span class="kv-key">' + k + '</span><span class="kv-val">' + v + '</span></div>'; }
+      function esc(t) { return String(t).replace(/[&<>"]/g, function (c) { return {'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;'}[c]; }); }
+      fetch('/api/understand/summary', {cache: 'no-store'}).then(function (r) { if (!r.ok) throw new Error('HTTP ' + r.status); return r.json(); }).then(function (d) {
+        var s = d.staleness || {};
+        var types = Object.keys(d.node_types || {}).map(function (k) { return esc(k) + ' ' + d.node_types[k]; }).join(' &middot; ');
+        body.innerHTML =
+          kv('Verdict', s.stale ? '<span class="badge badge-warning">STALE</span> ' + esc((s.reasons || []).join('; ')) : '<span class="badge badge-enabled">FRESH</span>') +
+          kv('Graph generated', esc(s.graph_generated || 'missing') + ' (' + esc(s.graph_age_days) + ' d, max ' + esc(s.max_age_days) + ')') +
+          kv('Commits since graph', esc(s.commits_since_graph == null ? 'unknown' : s.commits_since_graph) + ' (max ' + esc(s.max_commits) + ')') +
+          kv('Wiki', esc(s.wiki_age_days == null ? 'n/a' : s.wiki_age_days + ' d old') + ' / ' + esc(s.wiki_vs_graph || 'n/a') + ' vs graph') +
+          kv('Nodes / edges', esc(d.nodes) + ' / ' + esc(d.edges)) +
+          '<div style="margin-top:0.6rem;font-size:0.75rem;">' + types + '</div>';
+        if (dot) { dot.className = 'status-dot ' + (s.stale ? 'warning' : 'enabled'); }
+      }).catch(function (e) {
+        body.textContent = 'Live status unavailable: ' + e.message;
+        if (dot) { dot.className = 'status-dot disabled'; }
+      });
+    })();
+    </script>
 
     <!-- WORKFLOW & RESEARCH PARADIGMS GRID -->
     <div class="grid2">
@@ -374,7 +406,7 @@ graph TD
       </div>
 
       <!-- General details -->
-      <div class="card enabled">
+      <div class="card warning">
         <div class="card-title">Metadata & Status Parameters</div>
         <div class="kv-row">
           <span class="kv-key">Module Key</span>
@@ -382,7 +414,7 @@ graph TD
         </div>
         <div class="kv-row">
           <span class="kv-key">Status State</span>
-          <span class="kv-val"><span class="badge badge-enabled">enabled</span></span>
+          <span class="kv-val"><span class="badge badge-warning">partial</span></span>
         </div>
         <div class="kv-row">
           <span class="kv-key">Maturity Level</span>
@@ -413,10 +445,10 @@ graph TD
         </div>
         <div class="kv-row">
           <span class="kv-key">Admission Type</span>
-          <span class="kv-val">local-governance</span>
+          <span class="kv-val">accepted-with-mitigations</span>
         </div>
         <div style="margin-top:0.75rem; font-size:0.8rem; color:var(--fg2);">Required Intake Gate Audit:</div>
-<div class="code-box">scripts/ai/aq-understand-anything ensure</div>
+<div class="code-box">scripts/ai/aq-understand-anything validate-batches</div>
       </div>
 
       <!-- Wumbology Status Card -->
@@ -441,6 +473,9 @@ graph TD
         <ul class="ref-list">
           <li>.agent/skills/understand-anything/SKILL.md</li>
 <li>scripts/ai/aq-understand-anything</li>
+<li>scripts/ai/aq-graph-query</li>
+<li>config/understand-anything.json</li>
+<li>.understand-anything/knowledge-graph.json</li>
         </ul>
       </div>
 
@@ -490,7 +525,7 @@ graph TD
         To execute sanity tests and verify compliance with NixOS system governance boundaries, execute the following command in the workspace directory:
       </div>
       <div>
-        <div class="code-box">scripts/ai/aq-understand-anything ensure</div>
+        <div class="code-box">scripts/ai/aq-understand-anything status --check</div>\n<div class="code-box">scripts/ai/aq-graph-query staleness --check</div>\n<div class="code-box">python3 scripts/testing/test-graph-query.py</div>\n<div class="code-box">scripts/ai/aq-understand-anything validate-batches</div>
       </div>
     </div>
 

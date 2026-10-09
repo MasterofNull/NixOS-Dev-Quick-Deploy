@@ -954,6 +954,26 @@ TOOLS = [
         },
     },
     {
+        "name": "graph_query",
+        "description": (
+            "Read-only codebase knowledge-graph queries (Understand-Anything graph, no LLM, no writes). "
+            "action=search (ranked name/summary match), symbol (function/class by name with callers/callees), "
+            "neighbors (graph neighbours of a node id/path/name, depth<=4), impact (nodes in a file path plus "
+            "what depends on them), staleness (graph age vs declared limits). Advisory: the graph is "
+            "LLM-generated, check 'staleness' and verify against source."
+        ),
+        "inputSchema": {
+            "type": "object",
+            "properties": {
+                "action": {"type": "string", "enum": ["search", "symbol", "neighbors", "impact", "staleness"]},
+                "target": {"type": "string", "description": "search text | symbol name | node id/path/name | repo-relative path (unused for staleness)"},
+                "depth": {"type": "integer", "default": 1, "description": "neighbors only (1-4)"},
+                "limit": {"type": "integer", "default": 20, "description": "search only"},
+            },
+            "required": ["action"],
+        },
+    },
+    {
         "name": "simulate_nix_change",
         "description": (
             "Dry-run validate a NixOS derivation build before committing any .nix file change. "
@@ -1554,6 +1574,28 @@ def _call_tool(name: str, args: dict) -> str:
             "anti_pattern_scan": "Run: npx impeccable detect <target-path>",
             "http_api": f"POST {HYBRID_URL}/query with project=impeccable-design",
         })
+
+    if name == "graph_query":
+        import shutil
+        action = str(args.get("action", ""))
+        target = str(args.get("target", "") or "")
+        if action not in ("search", "symbol", "neighbors", "impact", "staleness"):
+            return _format_result({"error": f"unknown action '{action}'", "valid_actions": ["search", "symbol", "neighbors", "impact", "staleness"]})
+        if action != "staleness" and not target:
+            return _format_result({"error": "target is required"})
+        cli = os.path.join(REPO_ROOT, "scripts", "ai", "aq-graph-query")
+        argv = [shutil.which("python3") or sys.executable, cli, "--json", action]
+        if action == "neighbors":
+            argv += ["--depth", str(int(args.get("depth", 1)))]
+        if action == "search":
+            argv += ["--limit", str(int(args.get("limit", 20)))]
+        if action != "staleness":
+            argv += ["--", target]
+        r = _run_local(argv, timeout=30)
+        try:
+            return _format_result(json.loads(r.get("stdout") or "null") if r.get("ok") else r)
+        except ValueError:
+            return _format_result(r)
 
     if name == "simulate_nix_change":
         derivation = args.get("derivation", ".#nixosConfigurations.hyperd.config.system.build.toplevel")
