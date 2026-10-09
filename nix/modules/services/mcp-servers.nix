@@ -2759,6 +2759,9 @@ in {
             # exact file contains no values, hashes, paths, or key material.
             /run/aqos-security/ r,
             /run/aqos-security/credential-status.json r,
+            # PRSI approval inbox view (read-only; prsi-orchestrator is the single writer).
+            ${mutableOptimizerDir}/prsi/ r,
+            ${mutableOptimizerDir}/prsi/{action-queue,approval-inbox,runtime-state}.json r,
             # /tmp SQLite databases: context.db fallback, workflow-store.db, and any
             # other SQLite temp files. w covers file creation; k required for file lock.
             /tmp/ r,

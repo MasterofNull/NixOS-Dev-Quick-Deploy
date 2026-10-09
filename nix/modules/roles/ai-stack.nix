@@ -2026,12 +2026,16 @@ in {
           Environment = [
             "REPO_ROOT=${cfg.mcpServers.repoPath}"
             # Harness subprocess timeout: max(2.5 * measured_wall_time, 300s).
-            # Phase 0 measured at 147s; 2.5 * 147 = 367.5s ≈ 370s (6min 10s).
+            # Phase 0 measured at 171s; 2.5 * 171 = 427.5s ≈ 430s.
             "HARNESS_TIMEOUT_S=430"
           ];
+          # System cliPython (core/base.nix), the interpreter interactive phase 0
+          # uses; the monitor prepends its bin to PATH so every check's child
+          # python3 gets the same module set (jsonschema/cryptography/pytest/
+          # fastapi/rich). A narrower env here failed 14 checks on import.
           ExecStart = let
             script = "${cfg.mcpServers.repoPath}/scripts/health/ai-stack-health-monitor.py";
-          in "${monitorPython}/bin/python3 ${script}";
+          in "/run/current-system/sw/bin/python3 ${script}";
           StandardOutput = "journal";
           StandardError = "journal";
           NoNewPrivileges = true;
@@ -2046,10 +2050,12 @@ in {
           ];
           PrivateTmp = true;
           # TimeoutStartSec: must exceed harness subprocess timeout + margin for cleanup.
-          # Subprocess timeout is 370s; add 60s margin = 430s (7m 10s).
+          # Subprocess timeout is 430s; add 60s margin = 490s.
           TimeoutStartSec = "490";
-          # MemoryMax: measured peak child RSS 504M (2026-10-08); ~1.5x headroom.
-          MemoryMax = "768M";
+          # MemoryMax: 768M was hit exactly (MemoryPeak=cap, 2026-10-08) while 15
+          # checks failed early on imports; provisional until re-measured with all
+          # checks running (target ~1.3x measured MemoryPeak).
+          MemoryMax = "1536M";
         };
       };
 
