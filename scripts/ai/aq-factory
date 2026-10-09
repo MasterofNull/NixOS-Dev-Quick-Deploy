@@ -8,29 +8,42 @@ try:  # aq-usage-hook
     _aqm = _aqu.module_from_spec(_aqs); _aqs.loader.exec_module(_aqm); _aqm.record(__file__, __name__)
 except Exception:
     pass
-import os
-import sys
+import argparse
 from pathlib import Path
 
-def create_tool(tool_name: str, purpose: str):
-    base_dir = Path("ai-stack/agents/skills") / tool_name
-    base_dir.mkdir(parents=True, exist_ok=True)
-    
-    # Generate SKILL.md
-    skill_content = f"# Skill: {tool_name}\n\n- **Purpose**: {purpose}\n- **Workflow**: ...\n"
-    (base_dir / "SKILL.md").write_text(skill_content)
-    
-    # Generate __init__.py
-    (base_dir / "__init__.py").write_text("def run(args):\n    return 'Not implemented'\n")
-    
-    # Generate Test
-    test_content = "import unittest\nfrom . import run\nclass TestTool(unittest.TestCase):\n    def test_run(self): pass\n"
-    (base_dir / "test.py").write_text(test_content)
-    
-    print(f"Tool '{tool_name}' scaffolded at {base_dir}")
+REPO_ROOT = Path(__file__).resolve().parents[2]
+DEFAULT_ROOT = REPO_ROOT / "ai-stack" / "agents" / "skills"
+TEMPLATE = DEFAULT_ROOT / "template-skill" / "SKILL.md"
+
+
+def render(name: str, purpose: str) -> str:
+    """Skill contract per scripts/governance/lint-skill-template.sh: name+description frontmatter."""
+    return (
+        f"---\nname: {name}\ndescription: {purpose}\n---\n\n"
+        f"# {name}\n\n## When to use\n\n{purpose}\n\n## Workflow\n\n1. (fill in)\n\n"
+        "## Maintenance\n- Version: 1.0.0\n- Keep this skill aligned with current repository workflows.\n"
+    )
+
+
+def main() -> int:
+    ap = argparse.ArgumentParser(description="Scaffold a lint-conformant skill (SKILL.md) from a name and purpose.")
+    ap.add_argument("name")
+    ap.add_argument("purpose")
+    ap.add_argument("--root", default=str(DEFAULT_ROOT), help="skills root (default ai-stack/agents/skills)")
+    ap.add_argument("--dry-run", action="store_true")
+    a = ap.parse_args()
+    target = Path(a.root) / a.name / "SKILL.md"
+    if target.exists():
+        print(f"refusing to overwrite {target}")
+        return 1
+    if a.dry_run:
+        print(render(a.name, a.purpose))
+        return 0
+    target.parent.mkdir(parents=True, exist_ok=True)
+    target.write_text(render(a.name, a.purpose), encoding="utf-8")
+    print(f"Skill '{a.name}' scaffolded at {target}; next: scripts/governance/lint-skill-template.sh")
+    return 0
+
 
 if __name__ == "__main__":
-    if len(sys.argv) < 3:
-        print("Usage: aq-factory <name> <purpose>")
-    else:
-        create_tool(sys.argv[1], sys.argv[2])
+    raise SystemExit(main())

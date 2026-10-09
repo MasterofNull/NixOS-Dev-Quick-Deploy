@@ -1,43 +1,130 @@
 {
  "schema": "capability-audit/1",
- "generated_at": "2026-10-09T17:27:39Z",
+ "audit_version": 3,
+ "generated_at": "2026-10-09T20:44:36Z",
  "window_days": 30,
  "repo_root": "/tmp/claude-1000/-home-hyperd-Documents-NixOS-Dev-Quick-Deploy/c30f6c3c-e25f-4e8e-8ce5-b4faa7687d3f/scratchpad/wt-t6",
  "live_root": "/home/hyperd/Documents/NixOS-Dev-Quick-Deploy",
  "totals": {
-  "capabilities": 449,
+  "capabilities": 450,
   "by_class": {
-   "ACTIVE": 151,
-   "UNUSED-AVAILABLE": 240,
+   "ACTIVE": 164,
+   "UNUSED-AVAILABLE": 247,
    "UNDISCOVERABLE": 5,
-   "STALE-CLAIM": 5,
-   "DEAD-CANDIDATE": 16,
-   "KEEP-DECLARED": 32,
+   "STALE-CLAIM": 0,
+   "ACKNOWLEDGED": 2,
+   "STALE-ARTIFACT": 1,
+   "DEAD-CANDIDATE": 1,
+   "KEEP-DECLARED": 30,
    "BROKEN": 0
   },
   "by_kind": {
+   "catalog": 8,
    "script": 249,
-   "unit": 84,
+   "unit": 85,
    "skill": 64,
    "mcp-tool": 46,
-   "catalog": 8,
    "artifact": 1
   }
  },
  "usage_sources": {
-  "tool_audit": 61261,
-  "hybrid_events": 40115,
+  "tool_audit": 62065,
+  "hybrid_events": 40926,
   "aq_usage": 0,
-  "aq_usage_local": 424,
-  "aq_usage_distinct_tools": 19,
+  "aq_usage_local": 1614,
+  "aq_usage_distinct_tools": 35,
   "aq_usage_preferred": true,
-  "agent_run_events": 23052,
-  "delegation_registry": 142,
-  "delegation_outputs": 1174,
+  "agent_run_events": 22708,
+  "delegation_registry": 143,
+  "delegation_outputs": 1179,
   "delegation_streams": 3,
-  "systemd_units_queried": 169
+  "systemd_units_queried": 171
  },
  "capabilities": [
+  {
+   "key": "affective-engine-module",
+   "name": "affective-engine-module",
+   "kinds": [
+    "catalog"
+   ],
+   "paths": [
+    "config/system-capability-catalog.json"
+   ],
+   "class": "ACKNOWLEDGED",
+   "next_action": "none",
+   "evidence": {
+    "discoverable": false,
+    "discovered_in": [],
+    "discovered_in_count": 0,
+    "used": false,
+    "use_count": 0,
+    "last_seen": null,
+    "use_sources": [],
+    "wired": true,
+    "wired_by_count": 1,
+    "wired_by": [
+     "scripts/ai/generate-module-dashboard.py"
+    ],
+    "tested": false,
+    "tested_by_count": 0,
+    "stale": true,
+    "dead": false,
+    "catalog_claims": [
+     {
+      "id": "affective-engine-module",
+      "state": "enabled",
+      "maturity": "integrated",
+      "usage_evidence": "aq-capability-audit 2026-10-08 (30d): STALE-CLAIM is an audit false positive (in-process in ai-hybrid-coordinator; tool logs cannot see it). Claim kept; audit mapping to be improved.",
+      "refs": [
+       "reciprocity-tracker",
+       "affective-engine"
+      ]
+     }
+    ]
+   }
+  },
+  {
+   "key": "aidb-rag-stores",
+   "name": "aidb-rag-stores",
+   "kinds": [
+    "catalog"
+   ],
+   "paths": [
+    "config/system-capability-catalog.json"
+   ],
+   "class": "ACKNOWLEDGED",
+   "next_action": "none",
+   "evidence": {
+    "discoverable": false,
+    "discovered_in": [],
+    "discovered_in_count": 0,
+    "used": false,
+    "use_count": 0,
+    "last_seen": null,
+    "use_sources": [],
+    "wired": true,
+    "wired_by_count": 1,
+    "wired_by": [
+     "scripts/ai/generate-module-dashboard.py"
+    ],
+    "tested": true,
+    "tested_by_count": 1,
+    "stale": true,
+    "dead": false,
+    "catalog_claims": [
+     {
+      "id": "aidb-rag-stores",
+      "state": "enabled",
+      "maturity": "production",
+      "usage_evidence": "aq-capability-audit 2026-10-08 (30d): STALE-CLAIM is an audit false positive (23k hybrid searches/30d use these stores). The knowledge collection itself was rarely routed before the 2026-10-09 routing fix (#438) and is being re-vectorized (#437). Claim kept.",
+      "refs": [
+       "memory-system-design",
+       "30-qdrant-operations"
+      ]
+     }
+    ]
+   }
+  },
   {
    "key": "-aq-qa-bash",
    "name": "_aq-qa-bash",
@@ -98,7 +185,7 @@
     "discovered_in_count": 2,
     "used": true,
     "use_count": 2,
-    "last_seen": "2026-10-09T17:00:43Z",
+    "last_seen": "2026-10-09T20:30:29Z",
     "use_sources": [
      "systemd"
     ],
@@ -147,8 +234,8 @@
     ],
     "discovered_in_count": 6,
     "used": true,
-    "use_count": 22,
-    "last_seen": "2026-10-09T16:39:53Z",
+    "use_count": 23,
+    "last_seen": "2026-10-09T18:46:09Z",
     "use_sources": [
      "delegation-text"
     ],
@@ -330,7 +417,7 @@
     "discovered_in_count": 2,
     "used": true,
     "use_count": 2,
-    "last_seen": "2026-10-09T17:24:17Z",
+    "last_seen": "2026-10-09T20:44:27Z",
     "use_sources": [
      "systemd"
     ],
@@ -474,7 +561,7 @@
     "discovered_in_count": 2,
     "used": true,
     "use_count": 4,
-    "last_seen": "2026-10-09T17:13:10Z",
+    "last_seen": "2026-10-09T20:43:17Z",
     "use_sources": [
      "delegation-text",
      "systemd"
@@ -522,7 +609,7 @@
     "discovered_in_count": 2,
     "used": true,
     "use_count": 5,
-    "last_seen": "2026-10-09T16:48:20Z",
+    "last_seen": "2026-10-09T19:48:21Z",
     "use_sources": [
      "delegation-text",
      "systemd"
@@ -570,7 +657,7 @@
     "discovered_in_count": 2,
     "used": true,
     "use_count": 2,
-    "last_seen": "2026-10-09T17:04:32Z",
+    "last_seen": "2026-10-09T20:32:10Z",
     "use_sources": [
      "systemd"
     ],
@@ -615,7 +702,7 @@
     "discovered_in_count": 2,
     "used": true,
     "use_count": 2,
-    "last_seen": "2026-10-09T17:16:59Z",
+    "last_seen": "2026-10-09T20:31:04Z",
     "use_sources": [
      "systemd"
     ],
@@ -1083,7 +1170,7 @@
     "discovered_in_count": 2,
     "used": true,
     "use_count": 2,
-    "last_seen": "2026-10-09T17:02:05Z",
+    "last_seen": "2026-10-09T20:03:33Z",
     "use_sources": [
      "systemd"
     ],
@@ -1128,7 +1215,7 @@
     "discovered_in_count": 2,
     "used": true,
     "use_count": 2,
-    "last_seen": "2026-10-09T17:15:01Z",
+    "last_seen": "2026-10-09T20:30:50Z",
     "use_sources": [
      "systemd"
     ],
@@ -1550,7 +1637,7 @@
     "discovered_in_count": 3,
     "used": true,
     "use_count": 4,
-    "last_seen": "2026-10-09T17:08:01Z",
+    "last_seen": "2026-10-09T20:00:32Z",
     "use_sources": [
      "delegation-text",
      "systemd"
@@ -1601,7 +1688,7 @@
     "discovered_in_count": 3,
     "used": true,
     "use_count": 9,
-    "last_seen": "2026-10-09T17:24:17Z",
+    "last_seen": "2026-10-09T20:44:21Z",
     "use_sources": [
      "delegation-text",
      "systemd"
@@ -1697,7 +1784,7 @@
     "discovered_in_count": 2,
     "used": true,
     "use_count": 2,
-    "last_seen": "2026-10-09T17:24:16Z",
+    "last_seen": "2026-10-09T20:39:21Z",
     "use_sources": [
      "systemd"
     ],
@@ -1742,7 +1829,7 @@
     "discovered_in_count": 2,
     "used": true,
     "use_count": 2,
-    "last_seen": "2026-10-09T17:03:53Z",
+    "last_seen": "2026-10-09T18:06:06Z",
     "use_sources": [
      "systemd"
     ],
@@ -1787,7 +1874,7 @@
     "discovered_in_count": 2,
     "used": true,
     "use_count": 6,
-    "last_seen": "2026-10-09T17:24:16Z",
+    "last_seen": "2026-10-09T20:39:21Z",
     "use_sources": [
      "delegation-text",
      "systemd"
@@ -1805,7 +1892,7 @@
     "unit": {
      "ai-stack-health-monitor.service": {
       "load": "loaded",
-      "active": "activating",
+      "active": "inactive",
       "result": "success"
      },
      "ai-stack-health-monitor.timer": {
@@ -1931,7 +2018,7 @@
     "discovered_in_count": 2,
     "used": true,
     "use_count": 3,
-    "last_seen": "2026-10-09T17:15:41Z",
+    "last_seen": "2026-10-09T20:34:08Z",
     "use_sources": [
      "delegation-text",
      "systemd"
@@ -2257,6 +2344,43 @@
    }
   },
   {
+   "key": "aq-agent-reap",
+   "name": "aq-agent-reap",
+   "kinds": [
+    "script"
+   ],
+   "paths": [
+    "scripts/ai/aq-agent-reap"
+   ],
+   "class": "ACTIVE",
+   "next_action": "none",
+   "evidence": {
+    "discoverable": true,
+    "discovered_in": [
+     "config/capability-index.json",
+     "docs/agent-guides/CAPABILITY-INDEX.md"
+    ],
+    "discovered_in_count": 2,
+    "used": true,
+    "use_count": 7,
+    "last_seen": "2026-10-09T20:30:29Z",
+    "use_sources": [
+     "exact-log"
+    ],
+    "wired": true,
+    "wired_by_count": 3,
+    "wired_by": [
+     "nix/modules/services/agent-reap.nix",
+     "nix/modules/services/default.nix",
+     "scripts/ai/aq-tui-dashboard"
+    ],
+    "tested": true,
+    "tested_by_count": 1,
+    "stale": false,
+    "dead": false
+   }
+  },
+  {
    "key": "aq-alerts",
    "name": "aq-alerts",
    "kinds": [
@@ -2278,8 +2402,8 @@
     ],
     "discovered_in_count": 6,
     "used": true,
-    "use_count": 1,
-    "last_seen": "2026-10-09T17:24:36Z",
+    "use_count": 16,
+    "last_seen": "2026-10-09T20:39:44Z",
     "use_sources": [
      "exact-log"
     ],
@@ -2317,8 +2441,8 @@
     ],
     "discovered_in_count": 4,
     "used": true,
-    "use_count": 3,
-    "last_seen": "2026-10-09T17:24:21Z",
+    "use_count": 52,
+    "last_seen": "2026-10-09T20:41:44Z",
     "use_sources": [
      "exact-log"
     ],
@@ -2356,8 +2480,8 @@
     ],
     "discovered_in_count": 4,
     "used": true,
-    "use_count": 59,
-    "last_seen": "2026-10-09T17:27:39Z",
+    "use_count": 242,
+    "last_seen": "2026-10-09T20:44:28Z",
     "use_sources": [
      "exact-log"
     ],
@@ -2366,6 +2490,46 @@
     "wired_by": [],
     "tested": true,
     "tested_by_count": 1,
+    "stale": false,
+    "dead": false
+   }
+  },
+  {
+   "key": "aq-approve",
+   "name": "aq-approve",
+   "kinds": [
+    "script"
+   ],
+   "paths": [
+    "scripts/ai/aq-approve"
+   ],
+   "class": "ACTIVE",
+   "next_action": "none",
+   "evidence": {
+    "discoverable": true,
+    "discovered_in": [
+     ".agent/CODEX.md",
+     ".agent/GEMINI.md",
+     ".agent/LOCAL-AGENT.md",
+     ".agent/WORKFLOW-CANON.md",
+     ".agent/skills/aq-workflow/SKILL.md"
+    ],
+    "discovered_in_count": 11,
+    "used": true,
+    "use_count": 1,
+    "last_seen": "2026-10-09T18:45:05Z",
+    "use_sources": [
+     "exact-log"
+    ],
+    "wired": true,
+    "wired_by_count": 17,
+    "wired_by": [
+     "ai-stack/local-agents/training_ingest.py",
+     "ai-stack/mcp-servers/hybrid-coordinator/extensions/mcp_handlers.py",
+     "ai-stack/mcp-servers/hybrid-coordinator/workflow/prsi_handlers.py"
+    ],
+    "tested": true,
+    "tested_by_count": 6,
     "stale": false,
     "dead": false
    }
@@ -2442,8 +2606,8 @@
     ],
     "discovered_in_count": 5,
     "used": true,
-    "use_count": 6,
-    "last_seen": "2026-10-09T17:27:38Z",
+    "use_count": 51,
+    "last_seen": "2026-10-09T20:43:12Z",
     "use_sources": [
      "exact-log"
     ],
@@ -2482,8 +2646,8 @@
     ],
     "discovered_in_count": 5,
     "used": true,
-    "use_count": 3,
-    "last_seen": "2026-10-09T17:24:36Z",
+    "use_count": 121,
+    "last_seen": "2026-10-09T20:43:28Z",
     "use_sources": [
      "exact-log"
     ],
@@ -2519,8 +2683,8 @@
     ],
     "discovered_in_count": 2,
     "used": true,
-    "use_count": 2,
-    "last_seen": "2026-10-09T17:13:34Z",
+    "use_count": 34,
+    "last_seen": "2026-10-09T20:43:27Z",
     "use_sources": [
      "exact-log"
     ],
@@ -2555,8 +2719,8 @@
     ],
     "discovered_in_count": 2,
     "used": true,
-    "use_count": 1,
-    "last_seen": "2026-10-09T17:16:59Z",
+    "use_count": 14,
+    "last_seen": "2026-10-09T20:31:04Z",
     "use_sources": [
      "exact-log"
     ],
@@ -2627,8 +2791,8 @@
     ],
     "discovered_in_count": 2,
     "used": true,
-    "use_count": 14,
-    "last_seen": "2026-10-09T17:25:35Z",
+    "use_count": 224,
+    "last_seen": "2026-10-09T20:40:48Z",
     "use_sources": [
      "exact-log"
     ],
@@ -2664,8 +2828,8 @@
     ],
     "discovered_in_count": 2,
     "used": true,
-    "use_count": 2,
-    "last_seen": "2026-10-09T17:13:55Z",
+    "use_count": 34,
+    "last_seen": "2026-10-09T20:43:45Z",
     "use_sources": [
      "exact-log"
     ],
@@ -2699,8 +2863,8 @@
     ],
     "discovered_in_count": 2,
     "used": true,
-    "use_count": 5,
-    "last_seen": "2026-10-09T17:13:45Z",
+    "use_count": 85,
+    "last_seen": "2026-10-09T20:43:35Z",
     "use_sources": [
      "exact-log"
     ],
@@ -2736,8 +2900,8 @@
     ],
     "discovered_in_count": 2,
     "used": true,
-    "use_count": 4,
-    "last_seen": "2026-10-09T17:25:06Z",
+    "use_count": 64,
+    "last_seen": "2026-10-09T20:40:13Z",
     "use_sources": [
      "exact-log"
     ],
@@ -2757,6 +2921,7 @@
       "id": "aq-eval-harness",
       "state": "enabled",
       "maturity": "available-unused",
+      "usage_evidence": "aq-capability-audit 2026-10-08 (30d): no invocation in 30d; wired+tested but not on any agent workflow path. Remediation: ci-7 (wire into QA/RSI cadence).",
       "refs": [
        "aq-eval",
        "aq-eval-suites",
@@ -2764,6 +2929,44 @@
       ]
      }
     ]
+   }
+  },
+  {
+   "key": "aq-event",
+   "name": "aq-event",
+   "kinds": [
+    "script"
+   ],
+   "paths": [
+    "scripts/ai/aq-event"
+   ],
+   "class": "ACTIVE",
+   "next_action": "none",
+   "evidence": {
+    "discoverable": true,
+    "discovered_in": [
+     ".agent/WORKAROUND-REGISTER.md",
+     "config/capability-index.json",
+     "docs/agent-guides/CAPABILITY-INDEX.md"
+    ],
+    "discovered_in_count": 3,
+    "used": true,
+    "use_count": 38,
+    "last_seen": "2026-10-09T19:21:31Z",
+    "use_sources": [
+     "exact-log"
+    ],
+    "wired": true,
+    "wired_by_count": 12,
+    "wired_by": [
+     "dashboard/backend/api/routes/pm.py",
+     "nix/modules/profiles/ai-dev.nix",
+     "nix/modules/services/activation-auto-revert-guard.nix"
+    ],
+    "tested": true,
+    "tested_by_count": 4,
+    "stale": false,
+    "dead": false
    }
   },
   {
@@ -2836,7 +3039,7 @@
     "discovered_in_count": 2,
     "used": true,
     "use_count": 2,
-    "last_seen": "2026-10-09T17:13:10Z",
+    "last_seen": "2026-10-09T20:43:17Z",
     "use_sources": [
      "systemd"
     ],
@@ -2881,8 +3084,8 @@
     ],
     "discovered_in_count": 3,
     "used": true,
-    "use_count": 5,
-    "last_seen": "2026-10-09T17:24:30Z",
+    "use_count": 80,
+    "last_seen": "2026-10-09T20:39:38Z",
     "use_sources": [
      "exact-log"
     ],
@@ -2890,6 +3093,45 @@
     "wired_by_count": 1,
     "wired_by": [
      "ai-stack/mcp-servers/hybrid-coordinator/knowledge/tooling_manifest.py"
+    ],
+    "tested": true,
+    "tested_by_count": 2,
+    "stale": false,
+    "dead": false
+   }
+  },
+  {
+   "key": "aq-gate-checkout",
+   "name": "aq-gate-checkout",
+   "kinds": [
+    "script"
+   ],
+   "paths": [
+    "scripts/ai/aq-gate-checkout"
+   ],
+   "class": "ACTIVE",
+   "next_action": "none",
+   "evidence": {
+    "discoverable": true,
+    "discovered_in": [
+     ".agent/CODEX.md",
+     ".agent/GEMINI.md",
+     ".agent/LOCAL-AGENT.md",
+     ".agent/WORKAROUND-REGISTER.md",
+     ".agent/WORKFLOW-CANON.md"
+    ],
+    "discovered_in_count": 12,
+    "used": true,
+    "use_count": 4,
+    "last_seen": "2026-10-09T19:21:32Z",
+    "use_sources": [
+     "exact-log"
+    ],
+    "wired": true,
+    "wired_by_count": 2,
+    "wired_by": [
+     "scripts/data/seed-rag-knowledge.py",
+     "scripts/governance/tier0-validation-gate.sh"
     ],
     "tested": true,
     "tested_by_count": 2,
@@ -2916,8 +3158,8 @@
     ],
     "discovered_in_count": 2,
     "used": true,
-    "use_count": 2,
-    "last_seen": "2026-10-09T16:21:13Z",
+    "use_count": 18,
+    "last_seen": "2026-10-09T20:43:50Z",
     "use_sources": [
      "exact-log"
     ],
@@ -2937,6 +3179,7 @@
       "id": "understand-anything",
       "state": "partial",
       "maturity": "partial",
+      "usage_evidence": "aq-capability-audit 2026-10-08: STALE-CLAIM (graph 100d / 1271 commits stale, no caller). 2026-10-09 (#443): staleness checks, aq-graph-query + MCP graph_query, live dashboard card, pinned upstream. Stays partial until the graph is regenerated and agents call graph_query (telemetry).",
       "refs": [
        "skill",
        "aq-understand-anything",
@@ -2970,13 +3213,13 @@
     ],
     "discovered_in_count": 27,
     "used": true,
-    "use_count": 12512,
-    "last_seen": "2026-10-09T17:24:36Z",
+    "use_count": 12663,
+    "last_seen": "2026-10-09T20:43:28Z",
     "use_sources": [
      "exact-log"
     ],
     "wired": true,
-    "wired_by_count": 46,
+    "wired_by_count": 44,
     "wired_by": [
      "ai-stack/agents/runtimes/local_agent_runtime.py",
      "ai-stack/continue/config.json",
@@ -3007,8 +3250,8 @@
     ],
     "discovered_in_count": 2,
     "used": true,
-    "use_count": 1,
-    "last_seen": "2026-10-09T17:24:31Z",
+    "use_count": 16,
+    "last_seen": "2026-10-09T20:39:39Z",
     "use_sources": [
      "exact-log"
     ],
@@ -3020,6 +3263,44 @@
     "stale": false,
     "dead": false,
     "keep_reason": "GraphRAG index builder (phase0 check, env-contract.yaml, test-aq-index-knowledge-graph.py)"
+   }
+  },
+  {
+   "key": "aq-integrity-scan",
+   "name": "aq-integrity-scan",
+   "kinds": [
+    "script"
+   ],
+   "paths": [
+    "scripts/ai/aq-integrity-scan"
+   ],
+   "class": "ACTIVE",
+   "next_action": "none",
+   "evidence": {
+    "discoverable": true,
+    "discovered_in": [
+     ".agent/WORKFLOW-CANON.md",
+     ".agent/skills/aq-workflow/SKILL.md",
+     ".agent/skills/domain-shells/SKILL.md",
+     "config/capability-index.json",
+     "docs/agent-guides/CAPABILITY-INDEX.md"
+    ],
+    "discovered_in_count": 5,
+    "used": true,
+    "use_count": 4,
+    "last_seen": "2026-10-09T19:27:51Z",
+    "use_sources": [
+     "exact-log"
+    ],
+    "wired": true,
+    "wired_by_count": 1,
+    "wired_by": [
+     "nix/modules/roles/ai-stack.nix"
+    ],
+    "tested": true,
+    "tested_by_count": 2,
+    "stale": false,
+    "dead": false
    }
   },
   {
@@ -3091,8 +3372,8 @@
     ],
     "discovered_in_count": 2,
     "used": true,
-    "use_count": 1,
-    "last_seen": "2026-10-09T17:25:00Z",
+    "use_count": 16,
+    "last_seen": "2026-10-09T20:40:08Z",
     "use_sources": [
      "exact-log"
     ],
@@ -3111,6 +3392,7 @@
       "id": "local-surface-research",
       "state": "enabled",
       "maturity": "available-unused",
+      "usage_evidence": "aq-capability-audit 2026-10-08 (30d): aq-local-surface-scan not invoked in 30d. Remediation: ci-7.",
       "refs": [
        "aq-local-surface-scan",
        "test-local-surface-scan",
@@ -3139,8 +3421,8 @@
     ],
     "discovered_in_count": 2,
     "used": true,
-    "use_count": 3,
-    "last_seen": "2026-10-09T17:25:46Z",
+    "use_count": 48,
+    "last_seen": "2026-10-09T20:41:01Z",
     "use_sources": [
      "exact-log"
     ],
@@ -3151,6 +3433,46 @@
     ],
     "tested": true,
     "tested_by_count": 2,
+    "stale": false,
+    "dead": false
+   }
+  },
+  {
+   "key": "aq-pm-tracker",
+   "name": "aq-pm-tracker",
+   "kinds": [
+    "script"
+   ],
+   "paths": [
+    "scripts/ai/aq-pm-tracker"
+   ],
+   "class": "ACTIVE",
+   "next_action": "none",
+   "evidence": {
+    "discoverable": true,
+    "discovered_in": [
+     ".agent/CODEX.md",
+     ".agent/GEMINI.md",
+     ".agent/LOCAL-AGENT.md",
+     ".agent/WORKFLOW-CANON.md",
+     "AGENTS.md"
+    ],
+    "discovered_in_count": 9,
+    "used": true,
+    "use_count": 38,
+    "last_seen": "2026-10-09T19:21:31Z",
+    "use_sources": [
+     "exact-log"
+    ],
+    "wired": true,
+    "wired_by_count": 8,
+    "wired_by": [
+     "dashboard/backend/api/main.py",
+     "dashboard/backend/api/routes/pm.py",
+     "nix/modules/services/mcp-servers.nix"
+    ],
+    "tested": true,
+    "tested_by_count": 3,
     "stale": false,
     "dead": false
    }
@@ -3174,8 +3496,8 @@
     ],
     "discovered_in_count": 2,
     "used": true,
-    "use_count": 9,
-    "last_seen": "2026-10-09T17:13:53Z",
+    "use_count": 153,
+    "last_seen": "2026-10-09T20:43:42Z",
     "use_sources": [
      "exact-log"
     ],
@@ -3210,10 +3532,10 @@
      ".agent/PROJECT-LOCAL-AI-FACTORY-CODEX-FABLE-SYNTHESIS.md",
      ".agent/PROMOTED-BUG-PATTERNS.md"
     ],
-    "discovered_in_count": 50,
+    "discovered_in_count": 51,
     "used": true,
     "use_count": 332,
-    "last_seen": "2026-10-08T07:33:28Z",
+    "last_seen": "2026-10-09T19:17:13Z",
     "use_sources": [
      "exact-log"
     ],
@@ -3226,6 +3548,82 @@
     ],
     "tested": true,
     "tested_by_count": 55,
+    "stale": false,
+    "dead": false
+   }
+  },
+  {
+   "key": "aq-refactor-status",
+   "name": "aq-refactor-status",
+   "kinds": [
+    "script"
+   ],
+   "paths": [
+    "scripts/ai/aq-refactor-status"
+   ],
+   "class": "ACTIVE",
+   "next_action": "none",
+   "evidence": {
+    "discoverable": true,
+    "discovered_in": [
+     "config/capability-index.json",
+     "docs/agent-guides/CAPABILITY-INDEX.md"
+    ],
+    "discovered_in_count": 2,
+    "used": true,
+    "use_count": 2,
+    "last_seen": "2026-10-09T19:21:31Z",
+    "use_sources": [
+     "exact-log"
+    ],
+    "wired": true,
+    "wired_by_count": 2,
+    "wired_by": [
+     "scripts/ai/aq-pm-tracker",
+     "scripts/governance/tier0.d/check-pm-tracker.sh"
+    ],
+    "tested": true,
+    "tested_by_count": 2,
+    "stale": false,
+    "dead": false
+   }
+  },
+  {
+   "key": "aq-resume",
+   "name": "aq-resume",
+   "kinds": [
+    "script"
+   ],
+   "paths": [
+    "scripts/ai/aq-resume"
+   ],
+   "class": "ACTIVE",
+   "next_action": "none",
+   "evidence": {
+    "discoverable": true,
+    "discovered_in": [
+     ".agent/CODEX.md",
+     ".agent/GEMINI.md",
+     ".agent/LOCAL-AGENT.md",
+     ".agent/SKILL_INDEX.md",
+     ".agent/WORKFLOW-CANON.md"
+    ],
+    "discovered_in_count": 19,
+    "used": true,
+    "use_count": 1,
+    "last_seen": "2026-10-09T18:45:05Z",
+    "use_sources": [
+     "exact-log"
+    ],
+    "wired": true,
+    "wired_by_count": 5,
+    "wired_by": [
+     "nix/modules/roles/ai-stack.nix",
+     "scripts/ai/aq-agent-launcher",
+     "scripts/ai/aq-prime"
+    ],
+    "tested": true,
+    "tested_by_count": 1,
     "stale": false,
     "dead": false
    }
@@ -3299,8 +3697,8 @@
     ],
     "discovered_in_count": 2,
     "used": true,
-    "use_count": 4,
-    "last_seen": "2026-10-09T17:26:22Z",
+    "use_count": 56,
+    "last_seen": "2026-10-09T20:41:43Z",
     "use_sources": [
      "exact-log"
     ],
@@ -3313,6 +3711,117 @@
     ],
     "tested": true,
     "tested_by_count": 2,
+    "stale": false,
+    "dead": false
+   }
+  },
+  {
+   "key": "aq-role-route",
+   "name": "aq-role-route",
+   "kinds": [
+    "script"
+   ],
+   "paths": [
+    "scripts/ai/aq-role-route"
+   ],
+   "class": "ACTIVE",
+   "next_action": "none",
+   "evidence": {
+    "discoverable": true,
+    "discovered_in": [
+     "config/capability-index.json",
+     "docs/agent-guides/CAPABILITY-INDEX.md"
+    ],
+    "discovered_in_count": 2,
+    "used": true,
+    "use_count": 1,
+    "last_seen": "2026-10-09T18:46:08Z",
+    "use_sources": [
+     "exact-log"
+    ],
+    "wired": true,
+    "wired_by_count": 8,
+    "wired_by": [
+     "ai-stack/local-agents/agent_executor.py",
+     "ai-stack/local-agents/context_assembler.py",
+     "ai-stack/mcp-servers/hybrid-coordinator/extensions/model_coordinator.py"
+    ],
+    "tested": true,
+    "tested_by_count": 6,
+    "stale": false,
+    "dead": false
+   }
+  },
+  {
+   "key": "aq-screenshot",
+   "name": "aq-screenshot",
+   "kinds": [
+    "script"
+   ],
+   "paths": [
+    "scripts/ai/aq-screenshot"
+   ],
+   "class": "ACTIVE",
+   "next_action": "none",
+   "evidence": {
+    "discoverable": true,
+    "discovered_in": [
+     ".agent/skills/webapp-testing/SKILL.md",
+     "config/capability-index.json",
+     "docs/agent-guides/CAPABILITY-INDEX.md"
+    ],
+    "discovered_in_count": 3,
+    "used": true,
+    "use_count": 4,
+    "last_seen": "2026-10-09T19:27:51Z",
+    "use_sources": [
+     "exact-log"
+    ],
+    "wired": false,
+    "wired_by_count": 0,
+    "wired_by": [],
+    "tested": true,
+    "tested_by_count": 1,
+    "stale": false,
+    "dead": false
+   }
+  },
+  {
+   "key": "aq-skill-suggest",
+   "name": "aq-skill-suggest",
+   "kinds": [
+    "script"
+   ],
+   "paths": [
+    "scripts/ai/aq-skill-suggest"
+   ],
+   "class": "ACTIVE",
+   "next_action": "none",
+   "evidence": {
+    "discoverable": true,
+    "discovered_in": [
+     ".agent/REFERENCE-INDEX.md",
+     ".agent/lanes/agents-reference.md",
+     ".agent/lanes/claude-reference.md",
+     "config/capability-index.json",
+     "docs/agent-guides/CAPABILITY-INDEX.md"
+    ],
+    "discovered_in_count": 5,
+    "used": true,
+    "use_count": 1,
+    "last_seen": "2026-10-09T18:46:09Z",
+    "use_sources": [
+     "exact-log"
+    ],
+    "wired": true,
+    "wired_by_count": 5,
+    "wired_by": [
+     "dashboard/backend/api/routes/aistack.py",
+     "nix/modules/roles/ai-stack.nix",
+     "scripts/ai/aq-capabilities"
+    ],
+    "tested": false,
+    "tested_by_count": 0,
     "stale": false,
     "dead": false
    }
@@ -3350,6 +3859,41 @@
     ],
     "tested": false,
     "tested_by_count": 0,
+    "stale": false,
+    "dead": false
+   }
+  },
+  {
+   "key": "aq-vector-reconcile",
+   "name": "aq-vector-reconcile",
+   "kinds": [
+    "script"
+   ],
+   "paths": [
+    "scripts/ai/aq-vector-reconcile"
+   ],
+   "class": "ACTIVE",
+   "next_action": "none",
+   "evidence": {
+    "discoverable": true,
+    "discovered_in": [
+     "config/capability-index.json",
+     "docs/agent-guides/CAPABILITY-INDEX.md"
+    ],
+    "discovered_in_count": 2,
+    "used": true,
+    "use_count": 1,
+    "last_seen": "2026-10-09T17:36:46Z",
+    "use_sources": [
+     "exact-log"
+    ],
+    "wired": true,
+    "wired_by_count": 1,
+    "wired_by": [
+     "ai-stack/mcp-servers/aidb/vector_sync.py"
+    ],
+    "tested": true,
+    "tested_by_count": 1,
     "stale": false,
     "dead": false
    }
@@ -3403,6 +3947,40 @@
    }
   },
   {
+   "key": "aq-worktree-write-guard",
+   "name": "aq-worktree-write-guard",
+   "kinds": [
+    "script"
+   ],
+   "paths": [
+    "scripts/ai/aq-worktree-write-guard"
+   ],
+   "class": "ACTIVE",
+   "next_action": "none",
+   "evidence": {
+    "discoverable": true,
+    "discovered_in": [
+     "config/capability-index.json",
+     "docs/agent-guides/CAPABILITY-INDEX.md"
+    ],
+    "discovered_in_count": 2,
+    "used": true,
+    "use_count": 5,
+    "last_seen": "2026-10-09T18:21:27Z",
+    "use_sources": [
+     "exact-log"
+    ],
+    "wired": false,
+    "wired_by_count": 0,
+    "wired_by": [],
+    "tested": true,
+    "tested_by_count": 1,
+    "stale": false,
+    "dead": false,
+    "keep_reason": "wired by .claude/settings.json PreToolUse hook (outside audit scan trees); has test"
+   }
+  },
+  {
    "key": "aqd",
    "name": "aqd",
    "kinds": [
@@ -3430,7 +4008,7 @@
      "delegation-text"
     ],
     "wired": true,
-    "wired_by_count": 17,
+    "wired_by_count": 16,
     "wired_by": [
      "ai-stack/data/tool-recommendations-seed.yaml",
      "ai-stack/local-agents/builtin_tools/ai_coordination.py",
@@ -3462,7 +4040,7 @@
     "discovered_in_count": 2,
     "used": true,
     "use_count": 2,
-    "last_seen": "2026-10-09T17:24:17Z",
+    "last_seen": "2026-10-09T20:44:27Z",
     "use_sources": [
      "systemd"
     ],
@@ -3563,6 +4141,7 @@
       "id": "capability-intake",
       "state": "enabled",
       "maturity": "production",
+      "usage_evidence": null,
       "refs": [
        "aq-capability-intake",
        "skill"
@@ -4226,6 +4805,7 @@
       "id": "local-agent-delegation",
       "state": "enabled",
       "maturity": "production",
+      "usage_evidence": null,
       "refs": [
        "delegate-to-local",
        "local-agent-task-eligibility"
@@ -4254,7 +4834,7 @@
     "discovered_in_count": 2,
     "used": true,
     "use_count": 4,
-    "last_seen": "2026-10-09T15:54:53Z",
+    "last_seen": "2026-10-09T18:59:26Z",
     "use_sources": [
      "delegation-text",
      "systemd"
@@ -4460,7 +5040,7 @@
     "discovered_in_count": 2,
     "used": true,
     "use_count": 2,
-    "last_seen": "2026-10-09T17:03:20Z",
+    "last_seen": "2026-10-09T20:06:29Z",
     "use_sources": [
      "systemd"
     ],
@@ -4507,8 +5087,8 @@
     ],
     "discovered_in_count": 6,
     "used": true,
-    "use_count": 12515,
-    "last_seen": "2026-10-09T17:24:36Z",
+    "use_count": 12665,
+    "last_seen": "2026-10-09T20:43:28Z",
     "use_sources": [
      "delegation-text",
      "exact-log"
@@ -4740,8 +5320,8 @@
     ],
     "discovered_in_count": 10,
     "used": true,
-    "use_count": 24055,
-    "last_seen": "2026-10-09T17:24:37Z",
+    "use_count": 24522,
+    "last_seen": "2026-10-09T20:43:28Z",
     "use_sources": [
      "exact-log"
     ],
@@ -4906,7 +5486,7 @@
      "systemd"
     ],
     "wired": true,
-    "wired_by_count": 57,
+    "wired_by_count": 56,
     "wired_by": [
      "ai-stack/autoresearch/local_model_optimizer.py",
      "ai-stack/data/tool-recommendations-seed.yaml",
@@ -5661,7 +6241,7 @@
      ".agent/INFRASTRUCTURE-CONSTRAINTS.md",
      ".agent/PROJECT-LOCAL-AI-FACTORY-CODEX-FABLE-SYNTHESIS.md"
     ],
-    "discovered_in_count": 26,
+    "discovered_in_count": 27,
     "used": true,
     "use_count": 1,
     "last_seen": "2026-10-08T20:25:29Z",
@@ -5669,14 +6249,14 @@
      "systemd"
     ],
     "wired": true,
-    "wired_by_count": 116,
+    "wired_by_count": 117,
     "wired_by": [
      "ai-stack/aidb/code_change_indexer.py",
      "ai-stack/aidb/interaction_indexer.py",
      "ai-stack/data/knowledge-sources.yaml"
     ],
     "tested": true,
-    "tested_by_count": 26,
+    "tested_by_count": 27,
     "stale": false,
     "dead": false,
     "unit": {
@@ -6355,8 +6935,8 @@
     ],
     "discovered_in_count": 7,
     "used": true,
-    "use_count": 66,
-    "last_seen": "2026-10-09T16:39:53Z",
+    "use_count": 67,
+    "last_seen": "2026-10-09T18:46:09Z",
     "use_sources": [
      "delegation-text"
     ],
@@ -6376,6 +6956,7 @@
       "id": "understand-anything",
       "state": "partial",
       "maturity": "partial",
+      "usage_evidence": "aq-capability-audit 2026-10-08: STALE-CLAIM (graph 100d / 1271 commits stale, no caller). 2026-10-09 (#443): staleness checks, aq-graph-query + MCP graph_query, live dashboard card, pinned upstream. Stays partial until the graph is regenerated and agents call graph_query (telemetry).",
       "refs": [
        "skill",
        "aq-understand-anything",
@@ -6540,153 +7121,13 @@
    }
   },
   {
-   "key": "ai-metrics-auto-updater",
-   "name": "ai-metrics-auto-updater.sh",
+   "key": "ai-capability-audit",
+   "name": "ai-capability-audit",
    "kinds": [
-    "script"
+    "unit"
    ],
    "paths": [
-    "scripts/ai/ai-metrics-auto-updater.sh"
-   ],
-   "class": "DEAD-CANDIDATE",
-   "next_action": "archive-candidate",
-   "evidence": {
-    "discoverable": false,
-    "discovered_in": [],
-    "discovered_in_count": 0,
-    "used": false,
-    "use_count": 0,
-    "last_seen": null,
-    "use_sources": [],
-    "wired": false,
-    "wired_by_count": 0,
-    "wired_by": [],
-    "tested": true,
-    "tested_by_count": 1,
-    "stale": false,
-    "dead": true
-   }
-  },
-  {
-   "key": "ai-model-setup",
-   "name": "ai-model-setup.sh",
-   "kinds": [
-    "script"
-   ],
-   "paths": [
-    "scripts/ai/ai-model-setup.sh"
-   ],
-   "class": "DEAD-CANDIDATE",
-   "next_action": "archive-candidate",
-   "evidence": {
-    "discoverable": false,
-    "discovered_in": [],
-    "discovered_in_count": 0,
-    "used": false,
-    "use_count": 0,
-    "last_seen": null,
-    "use_sources": [],
-    "wired": false,
-    "wired_by_count": 0,
-    "wired_by": [],
-    "tested": true,
-    "tested_by_count": 1,
-    "stale": false,
-    "dead": true
-   }
-  },
-  {
-   "key": "ai-stack-e2e-test",
-   "name": "ai-stack-e2e-test.sh",
-   "kinds": [
-    "script"
-   ],
-   "paths": [
-    "scripts/ai/ai-stack-e2e-test.sh"
-   ],
-   "class": "DEAD-CANDIDATE",
-   "next_action": "archive-candidate",
-   "evidence": {
-    "discoverable": false,
-    "discovered_in": [],
-    "discovered_in_count": 0,
-    "used": false,
-    "use_count": 0,
-    "last_seen": null,
-    "use_sources": [],
-    "wired": false,
-    "wired_by_count": 0,
-    "wired_by": [],
-    "tested": true,
-    "tested_by_count": 1,
-    "stale": false,
-    "dead": true
-   }
-  },
-  {
-   "key": "ai-stack-feature-scenario",
-   "name": "ai-stack-feature-scenario.sh",
-   "kinds": [
-    "script"
-   ],
-   "paths": [
-    "scripts/ai/ai-stack-feature-scenario.sh"
-   ],
-   "class": "DEAD-CANDIDATE",
-   "next_action": "archive-candidate",
-   "evidence": {
-    "discoverable": false,
-    "discovered_in": [],
-    "discovered_in_count": 0,
-    "used": false,
-    "use_count": 0,
-    "last_seen": null,
-    "use_sources": [],
-    "wired": false,
-    "wired_by_count": 0,
-    "wired_by": [],
-    "tested": true,
-    "tested_by_count": 1,
-    "stale": false,
-    "dead": true
-   }
-  },
-  {
-   "key": "ai-stack-resume-recovery",
-   "name": "ai-stack-resume-recovery.sh",
-   "kinds": [
-    "script"
-   ],
-   "paths": [
-    "scripts/ai/ai-stack-resume-recovery.sh"
-   ],
-   "class": "DEAD-CANDIDATE",
-   "next_action": "archive-candidate",
-   "evidence": {
-    "discoverable": false,
-    "discovered_in": [],
-    "discovered_in_count": 0,
-    "used": false,
-    "use_count": 0,
-    "last_seen": null,
-    "use_sources": [],
-    "wired": false,
-    "wired_by_count": 0,
-    "wired_by": [],
-    "tested": true,
-    "tested_by_count": 1,
-    "stale": false,
-    "dead": true
-   }
-  },
-  {
-   "key": "ai-stack-troubleshoot",
-   "name": "ai-stack-troubleshoot.sh",
-   "kinds": [
-    "script"
-   ],
-   "paths": [
-    "scripts/ai/ai-stack-troubleshoot.sh"
+    "nix/modules/roles/ai-stack.nix"
    ],
    "class": "DEAD-CANDIDATE",
    "next_action": "archive-candidate",
@@ -6704,287 +7145,19 @@
     "tested": false,
     "tested_by_count": 0,
     "stale": false,
-    "dead": true
-   }
-  },
-  {
-   "key": "aq-factory",
-   "name": "aq-factory",
-   "kinds": [
-    "script"
-   ],
-   "paths": [
-    "scripts/ai/aq-factory"
-   ],
-   "class": "DEAD-CANDIDATE",
-   "next_action": "archive-candidate",
-   "evidence": {
-    "discoverable": false,
-    "discovered_in": [],
-    "discovered_in_count": 0,
-    "used": false,
-    "use_count": 0,
-    "last_seen": null,
-    "use_sources": [],
-    "wired": false,
-    "wired_by_count": 0,
-    "wired_by": [],
-    "tested": false,
-    "tested_by_count": 0,
-    "stale": false,
-    "dead": true
-   }
-  },
-  {
-   "key": "aq-push-intelligence",
-   "name": "aq-push-intelligence",
-   "kinds": [
-    "script"
-   ],
-   "paths": [
-    "scripts/ai/aq-push-intelligence"
-   ],
-   "class": "DEAD-CANDIDATE",
-   "next_action": "archive-candidate",
-   "evidence": {
-    "discoverable": false,
-    "discovered_in": [],
-    "discovered_in_count": 0,
-    "used": false,
-    "use_count": 0,
-    "last_seen": null,
-    "use_sources": [],
-    "wired": false,
-    "wired_by_count": 0,
-    "wired_by": [],
-    "tested": false,
-    "tested_by_count": 0,
-    "stale": false,
-    "dead": true
-   }
-  },
-  {
-   "key": "aq-skill-factory",
-   "name": "aq-skill-factory",
-   "kinds": [
-    "script"
-   ],
-   "paths": [
-    "scripts/ai/aq-skill-factory"
-   ],
-   "class": "DEAD-CANDIDATE",
-   "next_action": "archive-candidate",
-   "evidence": {
-    "discoverable": false,
-    "discovered_in": [],
-    "discovered_in_count": 0,
-    "used": false,
-    "use_count": 0,
-    "last_seen": null,
-    "use_sources": [],
-    "wired": false,
-    "wired_by_count": 0,
-    "wired_by": [],
-    "tested": false,
-    "tested_by_count": 0,
-    "stale": false,
-    "dead": true
-   }
-  },
-  {
-   "key": "autonomous-coordinator-local",
-   "name": "autonomous-coordinator-local.sh",
-   "kinds": [
-    "script"
-   ],
-   "paths": [
-    "scripts/ai/autonomous-coordinator-local.sh"
-   ],
-   "class": "DEAD-CANDIDATE",
-   "next_action": "archive-candidate",
-   "evidence": {
-    "discoverable": false,
-    "discovered_in": [],
-    "discovered_in_count": 0,
-    "used": false,
-    "use_count": 0,
-    "last_seen": null,
-    "use_sources": [],
-    "wired": false,
-    "wired_by_count": 0,
-    "wired_by": [],
-    "tested": false,
-    "tested_by_count": 0,
-    "stale": false,
-    "dead": true
-   }
-  },
-  {
-   "key": "backfill-interaction-history-qdrant",
-   "name": "backfill-interaction-history-qdrant.py",
-   "kinds": [
-    "script"
-   ],
-   "paths": [
-    "scripts/ai/backfill-interaction-history-qdrant.py"
-   ],
-   "class": "DEAD-CANDIDATE",
-   "next_action": "archive-candidate",
-   "evidence": {
-    "discoverable": false,
-    "discovered_in": [],
-    "discovered_in_count": 0,
-    "used": false,
-    "use_count": 0,
-    "last_seen": null,
-    "use_sources": [],
-    "wired": false,
-    "wired_by_count": 0,
-    "wired_by": [],
-    "tested": false,
-    "tested_by_count": 0,
-    "stale": false,
-    "dead": true
-   }
-  },
-  {
-   "key": "generate-module-dashboard",
-   "name": "generate-module-dashboard.py",
-   "kinds": [
-    "script"
-   ],
-   "paths": [
-    "scripts/ai/generate-module-dashboard.py"
-   ],
-   "class": "DEAD-CANDIDATE",
-   "next_action": "archive-candidate",
-   "evidence": {
-    "discoverable": false,
-    "discovered_in": [],
-    "discovered_in_count": 0,
-    "used": false,
-    "use_count": 0,
-    "last_seen": null,
-    "use_sources": [],
-    "wired": false,
-    "wired_by_count": 0,
-    "wired_by": [],
-    "tested": false,
-    "tested_by_count": 0,
-    "stale": false,
-    "dead": true
-   }
-  },
-  {
-   "key": "llama-model-cli",
-   "name": "llama-model-cli.sh",
-   "kinds": [
-    "script"
-   ],
-   "paths": [
-    "scripts/ai/llama-model-cli.sh"
-   ],
-   "class": "DEAD-CANDIDATE",
-   "next_action": "archive-candidate",
-   "evidence": {
-    "discoverable": false,
-    "discovered_in": [],
-    "discovered_in_count": 0,
-    "used": false,
-    "use_count": 0,
-    "last_seen": null,
-    "use_sources": [],
-    "wired": false,
-    "wired_by_count": 0,
-    "wired_by": [],
-    "tested": true,
-    "tested_by_count": 1,
-    "stale": false,
-    "dead": true
-   }
-  },
-  {
-   "key": "prime-local-agent",
-   "name": "prime-local-agent",
-   "kinds": [
-    "script"
-   ],
-   "paths": [
-    "scripts/ai/prime-local-agent"
-   ],
-   "class": "DEAD-CANDIDATE",
-   "next_action": "archive-candidate",
-   "evidence": {
-    "discoverable": false,
-    "discovered_in": [],
-    "discovered_in_count": 0,
-    "used": false,
-    "use_count": 0,
-    "last_seen": null,
-    "use_sources": [],
-    "wired": false,
-    "wired_by_count": 0,
-    "wired_by": [],
-    "tested": false,
-    "tested_by_count": 0,
-    "stale": false,
-    "dead": true
-   }
-  },
-  {
-   "key": "render-continue-config",
-   "name": "render-continue-config.sh",
-   "kinds": [
-    "script"
-   ],
-   "paths": [
-    "scripts/ai/render-continue-config.sh"
-   ],
-   "class": "DEAD-CANDIDATE",
-   "next_action": "archive-candidate",
-   "evidence": {
-    "discoverable": false,
-    "discovered_in": [],
-    "discovered_in_count": 0,
-    "used": false,
-    "use_count": 0,
-    "last_seen": null,
-    "use_sources": [],
-    "wired": false,
-    "wired_by_count": 0,
-    "wired_by": [],
-    "tested": false,
-    "tested_by_count": 0,
-    "stale": false,
-    "dead": true
-   }
-  },
-  {
-   "key": "resume-model-download",
-   "name": "resume-model-download.sh",
-   "kinds": [
-    "script"
-   ],
-   "paths": [
-    "scripts/ai/resume-model-download.sh"
-   ],
-   "class": "DEAD-CANDIDATE",
-   "next_action": "archive-candidate",
-   "evidence": {
-    "discoverable": false,
-    "discovered_in": [],
-    "discovered_in_count": 0,
-    "used": false,
-    "use_count": 0,
-    "last_seen": null,
-    "use_sources": [],
-    "wired": false,
-    "wired_by_count": 0,
-    "wired_by": [],
-    "tested": false,
-    "tested_by_count": 0,
-    "stale": false,
-    "dead": true
+    "dead": true,
+    "unit": {
+     "ai-capability-audit.service": {
+      "load": "not-found",
+      "active": "inactive",
+      "result": "success"
+     },
+     "ai-capability-audit.timer": {
+      "load": "not-found",
+      "active": "inactive",
+      "result": "success"
+     }
+    }
    }
   },
   {
@@ -7644,38 +7817,6 @@
    }
   },
   {
-   "key": "aq-worktree-write-guard",
-   "name": "aq-worktree-write-guard",
-   "kinds": [
-    "script"
-   ],
-   "paths": [
-    "scripts/ai/aq-worktree-write-guard"
-   ],
-   "class": "KEEP-DECLARED",
-   "next_action": "none",
-   "evidence": {
-    "discoverable": true,
-    "discovered_in": [
-     "config/capability-index.json",
-     "docs/agent-guides/CAPABILITY-INDEX.md"
-    ],
-    "discovered_in_count": 2,
-    "used": false,
-    "use_count": 0,
-    "last_seen": null,
-    "use_sources": [],
-    "wired": false,
-    "wired_by_count": 0,
-    "wired_by": [],
-    "tested": true,
-    "tested_by_count": 1,
-    "stale": false,
-    "dead": false,
-    "keep_reason": "wired by .claude/settings.json PreToolUse hook (outside audit scan trees); has test"
-   }
-  },
-  {
    "key": "audit-rules-nixos",
    "name": "audit-rules-nixos",
    "kinds": [
@@ -8100,169 +8241,6 @@
    }
   },
   {
-   "key": "template-skill",
-   "name": "template-skill",
-   "kinds": [
-    "skill"
-   ],
-   "paths": [
-    ".agent/skills/template-skill/SKILL.md"
-   ],
-   "class": "KEEP-DECLARED",
-   "next_action": "none",
-   "evidence": {
-    "discoverable": true,
-    "discovered_in": [
-     "config/capability-index.json",
-     "docs/agent-guides/CAPABILITY-INDEX.md"
-    ],
-    "discovered_in_count": 2,
-    "used": false,
-    "use_count": 0,
-    "last_seen": null,
-    "use_sources": [],
-    "wired": false,
-    "wired_by_count": 0,
-    "wired_by": [],
-    "tested": false,
-    "tested_by_count": 0,
-    "stale": false,
-    "dead": false,
-    "keep_reason": "skill authoring template, intentionally never invoked"
-   }
-  },
-  {
-   "key": "affective-engine-module",
-   "name": "affective-engine-module",
-   "kinds": [
-    "catalog"
-   ],
-   "paths": [
-    "config/system-capability-catalog.json"
-   ],
-   "class": "STALE-CLAIM",
-   "next_action": "refresh",
-   "evidence": {
-    "discoverable": false,
-    "discovered_in": [],
-    "discovered_in_count": 0,
-    "used": false,
-    "use_count": 0,
-    "last_seen": null,
-    "use_sources": [],
-    "wired": true,
-    "wired_by_count": 1,
-    "wired_by": [
-     "scripts/ai/generate-module-dashboard.py"
-    ],
-    "tested": false,
-    "tested_by_count": 0,
-    "stale": true,
-    "dead": false,
-    "catalog_claims": [
-     {
-      "id": "affective-engine-module",
-      "state": "enabled",
-      "maturity": "integrated",
-      "refs": [
-       "reciprocity-tracker",
-       "affective-engine"
-      ]
-     }
-    ]
-   }
-  },
-  {
-   "key": "aidb-rag-stores",
-   "name": "aidb-rag-stores",
-   "kinds": [
-    "catalog"
-   ],
-   "paths": [
-    "config/system-capability-catalog.json"
-   ],
-   "class": "STALE-CLAIM",
-   "next_action": "refresh",
-   "evidence": {
-    "discoverable": false,
-    "discovered_in": [],
-    "discovered_in_count": 0,
-    "used": false,
-    "use_count": 0,
-    "last_seen": null,
-    "use_sources": [],
-    "wired": true,
-    "wired_by_count": 1,
-    "wired_by": [
-     "scripts/ai/generate-module-dashboard.py"
-    ],
-    "tested": true,
-    "tested_by_count": 1,
-    "stale": true,
-    "dead": false,
-    "catalog_claims": [
-     {
-      "id": "aidb-rag-stores",
-      "state": "enabled",
-      "maturity": "production",
-      "refs": [
-       "memory-system-design",
-       "30-qdrant-operations"
-      ]
-     }
-    ]
-   }
-  },
-  {
-   "key": "aq-tempest",
-   "name": "aq-tempest",
-   "kinds": [
-    "script"
-   ],
-   "paths": [
-    "scripts/ai/aq-tempest"
-   ],
-   "class": "STALE-CLAIM",
-   "next_action": "refresh",
-   "evidence": {
-    "discoverable": true,
-    "discovered_in": [
-     ".agent/SKILL_INDEX.md",
-     ".agent/skills/t3mp3st-intake/SKILL.md",
-     "config/capability-index.json",
-     "docs/agent-guides/CAPABILITY-INDEX.md"
-    ],
-    "discovered_in_count": 4,
-    "used": false,
-    "use_count": 0,
-    "last_seen": null,
-    "use_sources": [],
-    "wired": true,
-    "wired_by_count": 2,
-    "wired_by": [
-     "nix/modules/roles/ai-stack.nix",
-     "scripts/ai/generate-module-dashboard.py"
-    ],
-    "tested": true,
-    "tested_by_count": 1,
-    "stale": true,
-    "dead": false,
-    "catalog_claims": [
-     {
-      "id": "t3mp3st-intake",
-      "state": "enabled",
-      "maturity": "scope-gated",
-      "refs": [
-       "aq-tempest",
-       "test-aq-tempest",
-       "skill",
-       "project-t3mp3st-capability-intake-prd"
-      ]
-     }
-    ]
-   }
-  },
-  {
    "key": "knowledge-graph.json@.understand-anything/knowledge-graph",
    "name": "knowledge-graph.json@.understand-anything/knowledge-graph.json",
    "kinds": [
@@ -8271,8 +8249,8 @@
    "paths": [
     ".understand-anything/knowledge-graph.json"
    ],
-   "class": "STALE-CLAIM",
-   "next_action": "refresh",
+   "class": "STALE-ARTIFACT",
+   "next_action": "regenerate",
    "evidence": {
     "discoverable": false,
     "discovered_in": [],
@@ -8288,54 +8266,7 @@
     "tested_by_count": 0,
     "stale": true,
     "dead": true,
-    "artifact_age_days": 44.0
-   }
-  },
-  {
-   "key": "t3mp3st-intake",
-   "name": "t3mp3st-intake",
-   "kinds": [
-    "skill"
-   ],
-   "paths": [
-    ".agent/skills/t3mp3st-intake/SKILL.md"
-   ],
-   "class": "STALE-CLAIM",
-   "next_action": "refresh",
-   "evidence": {
-    "discoverable": true,
-    "discovered_in": [
-     ".agent/SKILL_INDEX.md",
-     "config/capability-index.json",
-     "docs/agent-guides/CAPABILITY-INDEX.md"
-    ],
-    "discovered_in_count": 3,
-    "used": false,
-    "use_count": 0,
-    "last_seen": null,
-    "use_sources": [],
-    "wired": true,
-    "wired_by_count": 1,
-    "wired_by": [
-     "scripts/ai/generate-module-dashboard.py"
-    ],
-    "tested": true,
-    "tested_by_count": 1,
-    "stale": true,
-    "dead": false,
-    "catalog_claims": [
-     {
-      "id": "t3mp3st-intake",
-      "state": "enabled",
-      "maturity": "scope-gated",
-      "refs": [
-       "aq-tempest",
-       "test-aq-tempest",
-       "skill",
-       "project-t3mp3st-capability-intake-prd"
-      ]
-     }
-    ]
+    "artifact_age_days": 44.1
    }
   },
   {
@@ -8372,6 +8303,7 @@
       "id": "github-mcp-readonly",
       "state": "enabled",
       "maturity": "official",
+      "usage_evidence": null,
       "refs": [
        "agent-capability-intake-candidates"
       ]
@@ -8412,6 +8344,7 @@
       "id": "identity-kernel-service",
       "state": "enabled",
       "maturity": "enabled-unmeasured",
+      "usage_evidence": "aq-capability-audit 2026-10-08 (30d): no tool-log or unit evidence of use; runs in-process, so the audit cannot measure it. Needs a usage signal before re-claiming integrated.",
       "refs": [
        "checkpoint-service",
        "identity-kernel",
@@ -8454,6 +8387,7 @@
       "id": "nixos-static-analysis",
       "state": "enabled",
       "maturity": "integrated",
+      "usage_evidence": null,
       "refs": [
        "nix-static-analysis",
        "agent-capability-intake-candidates"
@@ -8495,6 +8429,7 @@
       "id": "osint-research-store",
       "state": "enabled",
       "maturity": "partial",
+      "usage_evidence": "aq-capability-audit 2026-10-08 (30d): Qdrant osint-intelligence collection holds 0 points while searched (~640 events); store is empty. Remediation: ci-6 (seed or retire).",
       "refs": [
        "test-osint-research-ingest",
        "osint-systems-instructions"
@@ -8537,6 +8472,7 @@
       "id": "semgrep-mcp",
       "state": "enabled",
       "maturity": "official",
+      "usage_evidence": null,
       "refs": [
        "agent-capability-intake-candidates"
       ]
@@ -8655,6 +8591,41 @@
    }
   },
   {
+   "key": "ai-metrics-auto-updater",
+   "name": "ai-metrics-auto-updater.sh",
+   "kinds": [
+    "script"
+   ],
+   "paths": [
+    "scripts/ai/ai-metrics-auto-updater.sh"
+   ],
+   "class": "UNUSED-AVAILABLE",
+   "next_action": "integrate-into-repertoire",
+   "evidence": {
+    "discoverable": true,
+    "discovered_in": [
+     "ai-stack/mcp-servers/hybrid-coordinator/knowledge/static_rules.py",
+     "config/capability-index.json",
+     "docs/agent-guides/CAPABILITY-INDEX.md"
+    ],
+    "discovered_in_count": 3,
+    "used": false,
+    "use_count": 0,
+    "last_seen": null,
+    "use_sources": [],
+    "wired": true,
+    "wired_by_count": 1,
+    "wired_by": [
+     "ai-stack/mcp-servers/hybrid-coordinator/knowledge/static_rules.py"
+    ],
+    "tested": true,
+    "tested_by_count": 2,
+    "stale": false,
+    "dead": false,
+    "keep_reason": "triage 2026-10-09 REVIVE-INTEGRATE: Kept in place: archiving would break the CI/deploy verifier; wired via hints rule legacy_ai_stack_script_names; smoke --help."
+   }
+  },
+  {
    "key": "ai-model-manager",
    "name": "ai-model-manager.sh",
    "kinds": [
@@ -8668,17 +8639,19 @@
    "evidence": {
     "discoverable": true,
     "discovered_in": [
+     "ai-stack/mcp-servers/hybrid-coordinator/knowledge/static_rules.py",
      "config/capability-index.json",
      "docs/agent-guides/CAPABILITY-INDEX.md"
     ],
-    "discovered_in_count": 2,
+    "discovered_in_count": 3,
     "used": false,
     "use_count": 0,
     "last_seen": null,
     "use_sources": [],
     "wired": true,
-    "wired_by_count": 2,
+    "wired_by_count": 3,
     "wired_by": [
+     "ai-stack/mcp-servers/hybrid-coordinator/knowledge/static_rules.py",
      "scripts/ai/ai-model-setup.sh",
      "scripts/ai/llama-model-cli.sh"
     ],
@@ -8686,6 +8659,41 @@
     "tested_by_count": 1,
     "stale": false,
     "dead": false
+   }
+  },
+  {
+   "key": "ai-model-setup",
+   "name": "ai-model-setup.sh",
+   "kinds": [
+    "script"
+   ],
+   "paths": [
+    "scripts/ai/ai-model-setup.sh"
+   ],
+   "class": "UNUSED-AVAILABLE",
+   "next_action": "integrate-into-repertoire",
+   "evidence": {
+    "discoverable": true,
+    "discovered_in": [
+     "ai-stack/mcp-servers/hybrid-coordinator/knowledge/static_rules.py",
+     "config/capability-index.json",
+     "docs/agent-guides/CAPABILITY-INDEX.md"
+    ],
+    "discovered_in_count": 3,
+    "used": false,
+    "use_count": 0,
+    "last_seen": null,
+    "use_sources": [],
+    "wired": true,
+    "wired_by_count": 1,
+    "wired_by": [
+     "ai-stack/mcp-servers/hybrid-coordinator/knowledge/static_rules.py"
+    ],
+    "tested": true,
+    "tested_by_count": 2,
+    "stale": false,
+    "dead": false,
+    "keep_reason": "triage 2026-10-09 REVIVE-INTEGRATE: Same as ai-metrics-auto-updater.sh."
    }
   },
   {
@@ -8729,6 +8737,76 @@
       "result": "success"
      }
     }
+   }
+  },
+  {
+   "key": "ai-stack-e2e-test",
+   "name": "ai-stack-e2e-test.sh",
+   "kinds": [
+    "script"
+   ],
+   "paths": [
+    "scripts/ai/ai-stack-e2e-test.sh"
+   ],
+   "class": "UNUSED-AVAILABLE",
+   "next_action": "integrate-into-repertoire",
+   "evidence": {
+    "discoverable": true,
+    "discovered_in": [
+     "ai-stack/mcp-servers/hybrid-coordinator/knowledge/static_rules.py",
+     "config/capability-index.json",
+     "docs/agent-guides/CAPABILITY-INDEX.md"
+    ],
+    "discovered_in_count": 3,
+    "used": false,
+    "use_count": 0,
+    "last_seen": null,
+    "use_sources": [],
+    "wired": true,
+    "wired_by_count": 1,
+    "wired_by": [
+     "ai-stack/mcp-servers/hybrid-coordinator/knowledge/static_rules.py"
+    ],
+    "tested": true,
+    "tested_by_count": 2,
+    "stale": false,
+    "dead": false,
+    "keep_reason": "triage 2026-10-09 REVIVE-INTEGRATE: Same."
+   }
+  },
+  {
+   "key": "ai-stack-feature-scenario",
+   "name": "ai-stack-feature-scenario.sh",
+   "kinds": [
+    "script"
+   ],
+   "paths": [
+    "scripts/ai/ai-stack-feature-scenario.sh"
+   ],
+   "class": "UNUSED-AVAILABLE",
+   "next_action": "integrate-into-repertoire",
+   "evidence": {
+    "discoverable": true,
+    "discovered_in": [
+     "ai-stack/mcp-servers/hybrid-coordinator/knowledge/static_rules.py",
+     "config/capability-index.json",
+     "docs/agent-guides/CAPABILITY-INDEX.md"
+    ],
+    "discovered_in_count": 3,
+    "used": false,
+    "use_count": 0,
+    "last_seen": null,
+    "use_sources": [],
+    "wired": true,
+    "wired_by_count": 1,
+    "wired_by": [
+     "ai-stack/mcp-servers/hybrid-coordinator/knowledge/static_rules.py"
+    ],
+    "tested": true,
+    "tested_by_count": 2,
+    "stale": false,
+    "dead": false,
+    "keep_reason": "triage 2026-10-09 REVIVE-INTEGRATE: Same."
    }
   },
   {
@@ -8802,6 +8880,76 @@
     "tested_by_count": 0,
     "stale": false,
     "dead": false
+   }
+  },
+  {
+   "key": "ai-stack-resume-recovery",
+   "name": "ai-stack-resume-recovery.sh",
+   "kinds": [
+    "script"
+   ],
+   "paths": [
+    "scripts/ai/ai-stack-resume-recovery.sh"
+   ],
+   "class": "UNUSED-AVAILABLE",
+   "next_action": "integrate-into-repertoire",
+   "evidence": {
+    "discoverable": true,
+    "discovered_in": [
+     "ai-stack/mcp-servers/hybrid-coordinator/knowledge/static_rules.py",
+     "config/capability-index.json",
+     "docs/agent-guides/CAPABILITY-INDEX.md"
+    ],
+    "discovered_in_count": 3,
+    "used": false,
+    "use_count": 0,
+    "last_seen": null,
+    "use_sources": [],
+    "wired": true,
+    "wired_by_count": 1,
+    "wired_by": [
+     "ai-stack/mcp-servers/hybrid-coordinator/knowledge/static_rules.py"
+    ],
+    "tested": true,
+    "tested_by_count": 2,
+    "stale": false,
+    "dead": false,
+    "keep_reason": "triage 2026-10-09 REVIVE-INTEGRATE: Same."
+   }
+  },
+  {
+   "key": "ai-stack-troubleshoot",
+   "name": "ai-stack-troubleshoot.sh",
+   "kinds": [
+    "script"
+   ],
+   "paths": [
+    "scripts/ai/ai-stack-troubleshoot.sh"
+   ],
+   "class": "UNUSED-AVAILABLE",
+   "next_action": "integrate-into-repertoire",
+   "evidence": {
+    "discoverable": true,
+    "discovered_in": [
+     "ai-stack/mcp-servers/hybrid-coordinator/knowledge/static_rules.py",
+     "config/capability-index.json",
+     "docs/agent-guides/CAPABILITY-INDEX.md"
+    ],
+    "discovered_in_count": 3,
+    "used": false,
+    "use_count": 0,
+    "last_seen": null,
+    "use_sources": [],
+    "wired": true,
+    "wired_by_count": 1,
+    "wired_by": [
+     "ai-stack/mcp-servers/hybrid-coordinator/knowledge/static_rules.py"
+    ],
+    "tested": true,
+    "tested_by_count": 1,
+    "stale": false,
+    "dead": false,
+    "keep_reason": "triage 2026-10-09 REVIVE-INTEGRATE: Kept in place (has a bats test, unique bundle output); hints rule; bash -n smoke (run needs live services)."
    }
   },
   {
@@ -9020,41 +9168,6 @@
    }
   },
   {
-   "key": "aq-agent-reap",
-   "name": "aq-agent-reap",
-   "kinds": [
-    "script"
-   ],
-   "paths": [
-    "scripts/ai/aq-agent-reap"
-   ],
-   "class": "UNUSED-AVAILABLE",
-   "next_action": "integrate-into-repertoire",
-   "evidence": {
-    "discoverable": true,
-    "discovered_in": [
-     "config/capability-index.json",
-     "docs/agent-guides/CAPABILITY-INDEX.md"
-    ],
-    "discovered_in_count": 2,
-    "used": false,
-    "use_count": 0,
-    "last_seen": null,
-    "use_sources": [],
-    "wired": true,
-    "wired_by_count": 3,
-    "wired_by": [
-     "nix/modules/services/agent-reap.nix",
-     "nix/modules/services/default.nix",
-     "scripts/ai/aq-tui-dashboard"
-    ],
-    "tested": true,
-    "tested_by_count": 1,
-    "stale": false,
-    "dead": false
-   }
-  },
-  {
    "key": "aq-agent-send",
    "name": "aq-agent-send",
    "kinds": [
@@ -9156,44 +9269,6 @@
     ],
     "tested": true,
     "tested_by_count": 2,
-    "stale": false,
-    "dead": false
-   }
-  },
-  {
-   "key": "aq-approve",
-   "name": "aq-approve",
-   "kinds": [
-    "script"
-   ],
-   "paths": [
-    "scripts/ai/aq-approve"
-   ],
-   "class": "UNUSED-AVAILABLE",
-   "next_action": "integrate-into-repertoire",
-   "evidence": {
-    "discoverable": true,
-    "discovered_in": [
-     ".agent/CODEX.md",
-     ".agent/GEMINI.md",
-     ".agent/LOCAL-AGENT.md",
-     ".agent/WORKFLOW-CANON.md",
-     ".agent/skills/aq-workflow/SKILL.md"
-    ],
-    "discovered_in_count": 11,
-    "used": false,
-    "use_count": 0,
-    "last_seen": null,
-    "use_sources": [],
-    "wired": true,
-    "wired_by_count": 17,
-    "wired_by": [
-     "ai-stack/local-agents/training_ingest.py",
-     "ai-stack/mcp-servers/hybrid-coordinator/extensions/mcp_handlers.py",
-     "ai-stack/mcp-servers/hybrid-coordinator/workflow/prsi_handlers.py"
-    ],
-    "tested": true,
-    "tested_by_count": 6,
     "stale": false,
     "dead": false
    }
@@ -9565,13 +9640,14 @@
     "last_seen": null,
     "use_sources": [],
     "wired": true,
-    "wired_by_count": 2,
+    "wired_by_count": 4,
     "wired_by": [
+     "nix/modules/roles/ai-stack.nix",
      "scripts/ai/aq-capability-index",
      "scripts/ai/lib/capability_index.py"
     ],
     "tested": true,
-    "tested_by_count": 3,
+    "tested_by_count": 4,
     "stale": false,
     "dead": false
    }
@@ -9687,6 +9763,7 @@
       "id": "capability-intake",
       "state": "enabled",
       "maturity": "production",
+      "usage_evidence": null,
       "refs": [
        "aq-capability-intake",
        "skill"
@@ -10277,15 +10354,15 @@
      ".agent/lanes/agents-reference.md",
      ".agent/lanes/codex-reference.md",
      ".agent/skills/ai-stack-qa/SKILL.md",
-     "config/capability-index.json"
+     "ai-stack/mcp-servers/hybrid-coordinator/knowledge/static_rules.py"
     ],
-    "discovered_in_count": 8,
+    "discovered_in_count": 9,
     "used": false,
     "use_count": 0,
     "last_seen": null,
     "use_sources": [],
     "wired": true,
-    "wired_by_count": 18,
+    "wired_by_count": 19,
     "wired_by": [
      "ai-stack/agents/runtimes/local_agent_runtime.py",
      "ai-stack/continue/config.json",
@@ -10682,20 +10759,20 @@
    }
   },
   {
-   "key": "aq-event",
-   "name": "aq-event",
+   "key": "aq-enrich-plans",
+   "name": "aq-enrich-plans",
    "kinds": [
     "script"
    ],
    "paths": [
-    "scripts/ai/aq-event"
+    "scripts/ai/aq-enrich-plans"
    ],
    "class": "UNUSED-AVAILABLE",
    "next_action": "integrate-into-repertoire",
    "evidence": {
     "discoverable": true,
     "discovered_in": [
-     ".agent/WORKAROUND-REGISTER.md",
+     "ai-stack/mcp-servers/hybrid-coordinator/knowledge/static_rules.py",
      "config/capability-index.json",
      "docs/agent-guides/CAPABILITY-INDEX.md"
     ],
@@ -10705,16 +10782,50 @@
     "last_seen": null,
     "use_sources": [],
     "wired": true,
-    "wired_by_count": 12,
+    "wired_by_count": 1,
     "wired_by": [
-     "dashboard/backend/api/routes/pm.py",
-     "nix/modules/profiles/ai-dev.nix",
-     "nix/modules/services/activation-auto-revert-guard.nix"
+     "ai-stack/mcp-servers/hybrid-coordinator/knowledge/static_rules.py"
     ],
     "tested": true,
-    "tested_by_count": 4,
+    "tested_by_count": 1,
     "stale": false,
-    "dead": false
+    "dead": false,
+    "keep_reason": "triage 2026-10-09 REVIVE-INTEGRATE: Revived to scripts/ai/aq-enrich-plans; added --help. Trigger: `aq enrich-plans` (router auto-discovery) + hints rule annotate_plans_with_tools."
+   }
+  },
+  {
+   "key": "aq-factory",
+   "name": "aq-factory",
+   "kinds": [
+    "script"
+   ],
+   "paths": [
+    "scripts/ai/aq-factory"
+   ],
+   "class": "UNUSED-AVAILABLE",
+   "next_action": "integrate-into-repertoire",
+   "evidence": {
+    "discoverable": true,
+    "discovered_in": [
+     "ai-stack/mcp-servers/hybrid-coordinator/knowledge/static_rules.py",
+     "config/capability-index.json",
+     "docs/agent-guides/CAPABILITY-INDEX.md"
+    ],
+    "discovered_in_count": 3,
+    "used": false,
+    "use_count": 0,
+    "last_seen": null,
+    "use_sources": [],
+    "wired": true,
+    "wired_by_count": 1,
+    "wired_by": [
+     "ai-stack/mcp-servers/hybrid-coordinator/knowledge/static_rules.py"
+    ],
+    "tested": true,
+    "tested_by_count": 1,
+    "stale": false,
+    "dead": false,
+    "keep_reason": "triage 2026-10-09 REVIVE-INTEGRATE: Old output (no frontmatter, 'Not implemented' __init__.py) failed the current skill lint contract. Rewritten to emit name/description frontmatter SKILL.md; adde"
    }
   },
   {
@@ -10996,43 +11107,6 @@
    }
   },
   {
-   "key": "aq-gate-checkout",
-   "name": "aq-gate-checkout",
-   "kinds": [
-    "script"
-   ],
-   "paths": [
-    "scripts/ai/aq-gate-checkout"
-   ],
-   "class": "UNUSED-AVAILABLE",
-   "next_action": "integrate-into-repertoire",
-   "evidence": {
-    "discoverable": true,
-    "discovered_in": [
-     ".agent/CODEX.md",
-     ".agent/GEMINI.md",
-     ".agent/LOCAL-AGENT.md",
-     ".agent/WORKAROUND-REGISTER.md",
-     ".agent/WORKFLOW-CANON.md"
-    ],
-    "discovered_in_count": 12,
-    "used": false,
-    "use_count": 0,
-    "last_seen": null,
-    "use_sources": [],
-    "wired": true,
-    "wired_by_count": 2,
-    "wired_by": [
-     "scripts/data/seed-rag-knowledge.py",
-     "scripts/governance/tier0-validation-gate.sh"
-    ],
-    "tested": true,
-    "tested_by_count": 2,
-    "stale": false,
-    "dead": false
-   }
-  },
-  {
    "key": "aq-git-status-agent",
    "name": "aq-git-status-agent",
    "kinds": [
@@ -11242,6 +11316,7 @@
       "id": "aq-inference-bench",
       "state": "enabled",
       "maturity": "available-unused",
+      "usage_evidence": "aq-capability-audit 2026-10-08 (30d): no invocation in 30d. Remediation: ci-7 (run on model switch, e.g. aq-model-switch post-hook).",
       "refs": [
        "aq-inference-bench",
        "aq-inference-benchmarks",
@@ -11277,7 +11352,7 @@
     "last_seen": null,
     "use_sources": [],
     "wired": true,
-    "wired_by_count": 6,
+    "wired_by_count": 5,
     "wired_by": [
      "ai-stack/mcp-servers/hybrid-coordinator/extensions/operator_intelligence.py",
      "ai-stack/mcp-servers/hybrid-coordinator/intent_classifier.py",
@@ -11285,42 +11360,6 @@
     ],
     "tested": true,
     "tested_by_count": 1,
-    "stale": false,
-    "dead": false
-   }
-  },
-  {
-   "key": "aq-integrity-scan",
-   "name": "aq-integrity-scan",
-   "kinds": [
-    "script"
-   ],
-   "paths": [
-    "scripts/ai/aq-integrity-scan"
-   ],
-   "class": "UNUSED-AVAILABLE",
-   "next_action": "integrate-into-repertoire",
-   "evidence": {
-    "discoverable": true,
-    "discovered_in": [
-     ".agent/WORKFLOW-CANON.md",
-     ".agent/skills/aq-workflow/SKILL.md",
-     ".agent/skills/domain-shells/SKILL.md",
-     "config/capability-index.json",
-     "docs/agent-guides/CAPABILITY-INDEX.md"
-    ],
-    "discovered_in_count": 5,
-    "used": false,
-    "use_count": 0,
-    "last_seen": null,
-    "use_sources": [],
-    "wired": true,
-    "wired_by_count": 1,
-    "wired_by": [
-     "nix/modules/roles/ai-stack.nix"
-    ],
-    "tested": true,
-    "tested_by_count": 2,
     "stale": false,
     "dead": false
    }
@@ -12066,44 +12105,6 @@
    }
   },
   {
-   "key": "aq-pm-tracker",
-   "name": "aq-pm-tracker",
-   "kinds": [
-    "script"
-   ],
-   "paths": [
-    "scripts/ai/aq-pm-tracker"
-   ],
-   "class": "UNUSED-AVAILABLE",
-   "next_action": "integrate-into-repertoire",
-   "evidence": {
-    "discoverable": true,
-    "discovered_in": [
-     ".agent/CODEX.md",
-     ".agent/GEMINI.md",
-     ".agent/LOCAL-AGENT.md",
-     ".agent/WORKFLOW-CANON.md",
-     "AGENTS.md"
-    ],
-    "discovered_in_count": 9,
-    "used": false,
-    "use_count": 0,
-    "last_seen": null,
-    "use_sources": [],
-    "wired": true,
-    "wired_by_count": 8,
-    "wired_by": [
-     "dashboard/backend/api/main.py",
-     "dashboard/backend/api/routes/pm.py",
-     "nix/modules/services/mcp-servers.nix"
-    ],
-    "tested": true,
-    "tested_by_count": 3,
-    "stale": false,
-    "dead": false
-   }
-  },
-  {
    "key": "aq-prime",
    "name": "aq-prime",
    "kinds": [
@@ -12176,6 +12177,41 @@
     "tested_by_count": 2,
     "stale": false,
     "dead": false
+   }
+  },
+  {
+   "key": "aq-propose",
+   "name": "aq-propose",
+   "kinds": [
+    "script"
+   ],
+   "paths": [
+    "scripts/ai/aq-propose"
+   ],
+   "class": "UNUSED-AVAILABLE",
+   "next_action": "integrate-into-repertoire",
+   "evidence": {
+    "discoverable": true,
+    "discovered_in": [
+     "ai-stack/mcp-servers/hybrid-coordinator/knowledge/static_rules.py",
+     "config/capability-index.json",
+     "docs/agent-guides/CAPABILITY-INDEX.md"
+    ],
+    "discovered_in_count": 3,
+    "used": false,
+    "use_count": 0,
+    "last_seen": null,
+    "use_sources": [],
+    "wired": true,
+    "wired_by_count": 1,
+    "wired_by": [
+     "ai-stack/mcp-servers/hybrid-coordinator/knowledge/static_rules.py"
+    ],
+    "tested": true,
+    "tested_by_count": 1,
+    "stale": false,
+    "dead": false,
+    "keep_reason": "triage 2026-10-09 REVIVE-INTEGRATE: Revived to scripts/ai/aq-propose; added --dry-run/--help. Trigger: `aq propose` + hints rule generate_improvement_proposals."
    }
   },
   {
@@ -12422,40 +12458,6 @@
    }
   },
   {
-   "key": "aq-refactor-status",
-   "name": "aq-refactor-status",
-   "kinds": [
-    "script"
-   ],
-   "paths": [
-    "scripts/ai/aq-refactor-status"
-   ],
-   "class": "UNUSED-AVAILABLE",
-   "next_action": "integrate-into-repertoire",
-   "evidence": {
-    "discoverable": true,
-    "discovered_in": [
-     "config/capability-index.json",
-     "docs/agent-guides/CAPABILITY-INDEX.md"
-    ],
-    "discovered_in_count": 2,
-    "used": false,
-    "use_count": 0,
-    "last_seen": null,
-    "use_sources": [],
-    "wired": true,
-    "wired_by_count": 2,
-    "wired_by": [
-     "scripts/ai/aq-pm-tracker",
-     "scripts/governance/tier0.d/check-pm-tracker.sh"
-    ],
-    "tested": true,
-    "tested_by_count": 2,
-    "stale": false,
-    "dead": false
-   }
-  },
-  {
    "key": "aq-refine",
    "name": "aq-refine",
    "kinds": [
@@ -12565,6 +12567,7 @@
       "id": "dashboard-observability",
       "state": "enabled",
       "maturity": "production",
+      "usage_evidence": null,
       "refs": [
        "ai-insights",
        "aq-report"
@@ -12602,44 +12605,6 @@
     ],
     "tested": false,
     "tested_by_count": 0,
-    "stale": false,
-    "dead": false
-   }
-  },
-  {
-   "key": "aq-resume",
-   "name": "aq-resume",
-   "kinds": [
-    "script"
-   ],
-   "paths": [
-    "scripts/ai/aq-resume"
-   ],
-   "class": "UNUSED-AVAILABLE",
-   "next_action": "integrate-into-repertoire",
-   "evidence": {
-    "discoverable": true,
-    "discovered_in": [
-     ".agent/CODEX.md",
-     ".agent/GEMINI.md",
-     ".agent/LOCAL-AGENT.md",
-     ".agent/SKILL_INDEX.md",
-     ".agent/WORKFLOW-CANON.md"
-    ],
-    "discovered_in_count": 19,
-    "used": false,
-    "use_count": 0,
-    "last_seen": null,
-    "use_sources": [],
-    "wired": true,
-    "wired_by_count": 5,
-    "wired_by": [
-     "nix/modules/roles/ai-stack.nix",
-     "scripts/ai/aq-agent-launcher",
-     "scripts/ai/aq-prime"
-    ],
-    "tested": true,
-    "tested_by_count": 1,
     "stale": false,
     "dead": false
    }
@@ -12711,41 +12676,6 @@
     ],
     "tested": false,
     "tested_by_count": 0,
-    "stale": false,
-    "dead": false
-   }
-  },
-  {
-   "key": "aq-role-route",
-   "name": "aq-role-route",
-   "kinds": [
-    "script"
-   ],
-   "paths": [
-    "scripts/ai/aq-role-route"
-   ],
-   "class": "UNUSED-AVAILABLE",
-   "next_action": "integrate-into-repertoire",
-   "evidence": {
-    "discoverable": true,
-    "discovered_in": [
-     "config/capability-index.json",
-     "docs/agent-guides/CAPABILITY-INDEX.md"
-    ],
-    "discovered_in_count": 2,
-    "used": false,
-    "use_count": 0,
-    "last_seen": null,
-    "use_sources": [],
-    "wired": true,
-    "wired_by_count": 8,
-    "wired_by": [
-     "ai-stack/local-agents/agent_executor.py",
-     "ai-stack/local-agents/context_assembler.py",
-     "ai-stack/mcp-servers/hybrid-coordinator/extensions/model_coordinator.py"
-    ],
-    "tested": true,
-    "tested_by_count": 6,
     "stale": false,
     "dead": false
    }
@@ -12998,20 +12928,21 @@
     "discoverable": true,
     "discovered_in": [
      ".agent/skills/ai-stack-qa/SKILL.md",
+     "ai-stack/mcp-servers/hybrid-coordinator/knowledge/static_rules.py",
      "config/capability-index.json",
      "docs/agent-guides/CAPABILITY-INDEX.md"
     ],
-    "discovered_in_count": 3,
+    "discovered_in_count": 4,
     "used": false,
     "use_count": 0,
     "last_seen": null,
     "use_sources": [],
     "wired": true,
-    "wired_by_count": 5,
+    "wired_by_count": 6,
     "wired_by": [
+     "ai-stack/mcp-servers/hybrid-coordinator/knowledge/static_rules.py",
      "nix/modules/roles/ai-stack.nix",
-     "scripts/ai/ai-stack-resume-recovery.sh",
-     "scripts/ai/aq"
+     "scripts/ai/ai-stack-resume-recovery.sh"
     ],
     "tested": true,
     "tested_by_count": 2,
@@ -13124,38 +13055,6 @@
     ],
     "tested": false,
     "tested_by_count": 0,
-    "stale": false,
-    "dead": false
-   }
-  },
-  {
-   "key": "aq-screenshot",
-   "name": "aq-screenshot",
-   "kinds": [
-    "script"
-   ],
-   "paths": [
-    "scripts/ai/aq-screenshot"
-   ],
-   "class": "UNUSED-AVAILABLE",
-   "next_action": "integrate-into-repertoire",
-   "evidence": {
-    "discoverable": true,
-    "discovered_in": [
-     ".agent/skills/webapp-testing/SKILL.md",
-     "config/capability-index.json",
-     "docs/agent-guides/CAPABILITY-INDEX.md"
-    ],
-    "discovered_in_count": 3,
-    "used": false,
-    "use_count": 0,
-    "last_seen": null,
-    "use_sources": [],
-    "wired": false,
-    "wired_by_count": 0,
-    "wired_by": [],
-    "tested": true,
-    "tested_by_count": 1,
     "stale": false,
     "dead": false
    }
@@ -13378,6 +13277,7 @@
       "id": "auto-skill-selection",
       "state": "enabled",
       "maturity": "production",
+      "usage_evidence": null,
       "refs": [
        "aq-skill-auto",
        "test-skill-auto"
@@ -13387,41 +13287,38 @@
    }
   },
   {
-   "key": "aq-skill-suggest",
-   "name": "aq-skill-suggest",
+   "key": "aq-skill-factory",
+   "name": "aq-skill-factory",
    "kinds": [
     "script"
    ],
    "paths": [
-    "scripts/ai/aq-skill-suggest"
+    "scripts/ai/aq-skill-factory"
    ],
    "class": "UNUSED-AVAILABLE",
    "next_action": "integrate-into-repertoire",
    "evidence": {
     "discoverable": true,
     "discovered_in": [
-     ".agent/REFERENCE-INDEX.md",
-     ".agent/lanes/agents-reference.md",
-     ".agent/lanes/claude-reference.md",
+     "ai-stack/mcp-servers/hybrid-coordinator/knowledge/static_rules.py",
      "config/capability-index.json",
      "docs/agent-guides/CAPABILITY-INDEX.md"
     ],
-    "discovered_in_count": 5,
+    "discovered_in_count": 3,
     "used": false,
     "use_count": 0,
     "last_seen": null,
     "use_sources": [],
     "wired": true,
-    "wired_by_count": 5,
+    "wired_by_count": 1,
     "wired_by": [
-     "dashboard/backend/api/routes/aistack.py",
-     "nix/modules/roles/ai-stack.nix",
-     "scripts/ai/aq-capabilities"
+     "ai-stack/mcp-servers/hybrid-coordinator/knowledge/static_rules.py"
     ],
-    "tested": false,
-    "tested_by_count": 0,
+    "tested": true,
+    "tested_by_count": 1,
     "stale": false,
-    "dead": false
+    "dead": false,
+    "keep_reason": "triage 2026-10-09 REVIVE-INTEGRATE: Kept in place; hints rule scaffold_new_skill; smoke --help."
    }
   },
   {
@@ -13593,6 +13490,56 @@
     "tested_by_count": 2,
     "stale": false,
     "dead": false
+   }
+  },
+  {
+   "key": "aq-tempest",
+   "name": "aq-tempest",
+   "kinds": [
+    "script"
+   ],
+   "paths": [
+    "scripts/ai/aq-tempest"
+   ],
+   "class": "UNUSED-AVAILABLE",
+   "next_action": "integrate-into-repertoire",
+   "evidence": {
+    "discoverable": true,
+    "discovered_in": [
+     ".agent/SKILL_INDEX.md",
+     ".agent/skills/t3mp3st-intake/SKILL.md",
+     "config/capability-index.json",
+     "docs/agent-guides/CAPABILITY-INDEX.md"
+    ],
+    "discovered_in_count": 4,
+    "used": false,
+    "use_count": 0,
+    "last_seen": null,
+    "use_sources": [],
+    "wired": true,
+    "wired_by_count": 2,
+    "wired_by": [
+     "nix/modules/roles/ai-stack.nix",
+     "scripts/ai/generate-module-dashboard.py"
+    ],
+    "tested": true,
+    "tested_by_count": 1,
+    "stale": false,
+    "dead": false,
+    "catalog_claims": [
+     {
+      "id": "t3mp3st-intake",
+      "state": "enabled",
+      "maturity": "scope-gated",
+      "usage_evidence": "aq-capability-audit 2026-10-08 (30d): flagged STALE-CLAIM, but scope-gated by design (owner scope); no use is expected until the scope is granted. Claim kept.",
+      "refs": [
+       "aq-tempest",
+       "test-aq-tempest",
+       "skill",
+       "project-t3mp3st-capability-intake-prd"
+      ]
+     }
+    ]
    }
   },
   {
@@ -13847,6 +13794,7 @@
       "id": "understand-anything",
       "state": "partial",
       "maturity": "partial",
+      "usage_evidence": "aq-capability-audit 2026-10-08: STALE-CLAIM (graph 100d / 1271 commits stale, no caller). 2026-10-09 (#443): staleness checks, aq-graph-query + MCP graph_query, live dashboard card, pinned upstream. Stays partial until the graph is regenerated and agents call graph_query (telemetry).",
       "refs": [
        "skill",
        "aq-understand-anything",
@@ -13856,39 +13804,6 @@
       ]
      }
     ]
-   }
-  },
-  {
-   "key": "aq-vector-reconcile",
-   "name": "aq-vector-reconcile",
-   "kinds": [
-    "script"
-   ],
-   "paths": [
-    "scripts/ai/aq-vector-reconcile"
-   ],
-   "class": "UNUSED-AVAILABLE",
-   "next_action": "integrate-into-repertoire",
-   "evidence": {
-    "discoverable": true,
-    "discovered_in": [
-     "config/capability-index.json",
-     "docs/agent-guides/CAPABILITY-INDEX.md"
-    ],
-    "discovered_in_count": 2,
-    "used": false,
-    "use_count": 0,
-    "last_seen": null,
-    "use_sources": [],
-    "wired": true,
-    "wired_by_count": 1,
-    "wired_by": [
-     "ai-stack/mcp-servers/aidb/vector_sync.py"
-    ],
-    "tested": true,
-    "tested_by_count": 1,
-    "stale": false,
-    "dead": false
    }
   },
   {
@@ -14447,6 +14362,41 @@
    }
   },
   {
+   "key": "backfill-interaction-history-qdrant",
+   "name": "backfill-interaction-history-qdrant.py",
+   "kinds": [
+    "script"
+   ],
+   "paths": [
+    "scripts/ai/backfill-interaction-history-qdrant.py"
+   ],
+   "class": "UNUSED-AVAILABLE",
+   "next_action": "integrate-into-repertoire",
+   "evidence": {
+    "discoverable": true,
+    "discovered_in": [
+     "ai-stack/mcp-servers/hybrid-coordinator/knowledge/static_rules.py",
+     "config/capability-index.json",
+     "docs/agent-guides/CAPABILITY-INDEX.md"
+    ],
+    "discovered_in_count": 3,
+    "used": false,
+    "use_count": 0,
+    "last_seen": null,
+    "use_sources": [],
+    "wired": true,
+    "wired_by_count": 1,
+    "wired_by": [
+     "ai-stack/mcp-servers/hybrid-coordinator/knowledge/static_rules.py"
+    ],
+    "tested": true,
+    "tested_by_count": 1,
+    "stale": false,
+    "dead": false,
+    "keep_reason": "triage 2026-10-09 REVIVE-INTEGRATE: Kept in place (operator tool; a DB backfill is running now, not executed). Hints rule; --help smoke only."
+   }
+  },
+  {
    "key": "brand-guidelines",
    "name": "brand-guidelines",
    "kinds": [
@@ -14615,6 +14565,76 @@
    }
   },
   {
+   "key": "cli-enhanced",
+   "name": "cli-enhanced.sh",
+   "kinds": [
+    "script"
+   ],
+   "paths": [
+    "scripts/ai/cli-enhanced.sh"
+   ],
+   "class": "UNUSED-AVAILABLE",
+   "next_action": "integrate-into-repertoire",
+   "evidence": {
+    "discoverable": true,
+    "discovered_in": [
+     "ai-stack/mcp-servers/hybrid-coordinator/knowledge/static_rules.py",
+     "config/capability-index.json",
+     "docs/agent-guides/CAPABILITY-INDEX.md"
+    ],
+    "discovered_in_count": 3,
+    "used": false,
+    "use_count": 0,
+    "last_seen": null,
+    "use_sources": [],
+    "wired": true,
+    "wired_by_count": 1,
+    "wired_by": [
+     "ai-stack/mcp-servers/hybrid-coordinator/knowledge/static_rules.py"
+    ],
+    "tested": true,
+    "tested_by_count": 1,
+    "stale": false,
+    "dead": false,
+    "keep_reason": "triage 2026-10-09 REVIVE-INTEGRATE: Revived to scripts/ai/cli-enhanced.sh (source-able). Trigger: hints rule cli_output_helpers + smoke test. Merge into lib/l7-interaction left as follow-up (not s"
+   }
+  },
+  {
+   "key": "cli-utils",
+   "name": "cli-utils.py",
+   "kinds": [
+    "script"
+   ],
+   "paths": [
+    "scripts/ai/cli-utils.py"
+   ],
+   "class": "UNUSED-AVAILABLE",
+   "next_action": "integrate-into-repertoire",
+   "evidence": {
+    "discoverable": true,
+    "discovered_in": [
+     "ai-stack/mcp-servers/hybrid-coordinator/knowledge/static_rules.py",
+     "config/capability-index.json",
+     "docs/agent-guides/CAPABILITY-INDEX.md"
+    ],
+    "discovered_in_count": 3,
+    "used": false,
+    "use_count": 0,
+    "last_seen": null,
+    "use_sources": [],
+    "wired": true,
+    "wired_by_count": 1,
+    "wired_by": [
+     "ai-stack/mcp-servers/hybrid-coordinator/knowledge/static_rules.py"
+    ],
+    "tested": true,
+    "tested_by_count": 1,
+    "stale": false,
+    "dead": false,
+    "keep_reason": "triage 2026-10-09 REVIVE-INTEGRATE: Revived to scripts/ai/cli-utils.py. Trigger: hints rule cli_output_helpers + smoke test (humanize assertions)."
+   }
+  },
+  {
    "key": "collective-task",
    "name": "collective_task",
    "kinds": [
@@ -14668,11 +14688,9 @@
     "use_count": 0,
     "last_seen": null,
     "use_sources": [],
-    "wired": true,
-    "wired_by_count": 1,
-    "wired_by": [
-     "scripts/ai/autonomous-coordinator-local.sh"
-    ],
+    "wired": false,
+    "wired_by_count": 0,
+    "wired_by": [],
     "tested": false,
     "tested_by_count": 0,
     "stale": false,
@@ -14990,6 +15008,41 @@
    }
   },
   {
+   "key": "generate-module-dashboard",
+   "name": "generate-module-dashboard.py",
+   "kinds": [
+    "script"
+   ],
+   "paths": [
+    "scripts/ai/generate-module-dashboard.py"
+   ],
+   "class": "UNUSED-AVAILABLE",
+   "next_action": "integrate-into-repertoire",
+   "evidence": {
+    "discoverable": true,
+    "discovered_in": [
+     "ai-stack/mcp-servers/hybrid-coordinator/knowledge/static_rules.py",
+     "config/capability-index.json",
+     "docs/agent-guides/CAPABILITY-INDEX.md"
+    ],
+    "discovered_in_count": 3,
+    "used": false,
+    "use_count": 0,
+    "last_seen": null,
+    "use_sources": [],
+    "wired": true,
+    "wired_by_count": 1,
+    "wired_by": [
+     "ai-stack/mcp-servers/hybrid-coordinator/knowledge/static_rules.py"
+    ],
+    "tested": true,
+    "tested_by_count": 1,
+    "stale": false,
+    "dead": false,
+    "keep_reason": "triage 2026-10-09 REVIVE-INTEGRATE: Actively used; added --out-dir for safe preview; hints rule regenerate_module_dashboard_pages; smoke generates into tmp."
+   }
+  },
+  {
    "key": "get-skill-content",
    "name": "get_skill_content",
    "kinds": [
@@ -15013,10 +15066,9 @@
     "last_seen": null,
     "use_sources": [],
     "wired": true,
-    "wired_by_count": 2,
+    "wired_by_count": 1,
     "wired_by": [
-     "ai-stack/agents/skills/skill-creator/scripts/init_skill.py",
-     "scripts/ai/aq-factory"
+     "ai-stack/agents/skills/skill-creator/scripts/init_skill.py"
     ],
     "tested": false,
     "tested_by_count": 0,
@@ -15466,17 +15518,21 @@
    "evidence": {
     "discoverable": true,
     "discovered_in": [
+     "ai-stack/mcp-servers/hybrid-coordinator/knowledge/static_rules.py",
      "config/capability-index.json",
      "docs/agent-guides/CAPABILITY-INDEX.md"
     ],
-    "discovered_in_count": 2,
+    "discovered_in_count": 3,
     "used": false,
     "use_count": 0,
     "last_seen": null,
     "use_sources": [],
-    "wired": false,
-    "wired_by_count": 0,
-    "wired_by": [],
+    "wired": true,
+    "wired_by_count": 2,
+    "wired_by": [
+     "ai-stack/mcp-servers/hybrid-coordinator/knowledge/static_rules.py",
+     "scripts/ai/resume-model-download.sh"
+    ],
     "tested": false,
     "tested_by_count": 0,
     "stale": false,
@@ -15493,6 +15549,41 @@
       "result": "success"
      }
     }
+   }
+  },
+  {
+   "key": "llama-model-cli",
+   "name": "llama-model-cli.sh",
+   "kinds": [
+    "script"
+   ],
+   "paths": [
+    "scripts/ai/llama-model-cli.sh"
+   ],
+   "class": "UNUSED-AVAILABLE",
+   "next_action": "integrate-into-repertoire",
+   "evidence": {
+    "discoverable": true,
+    "discovered_in": [
+     "ai-stack/mcp-servers/hybrid-coordinator/knowledge/static_rules.py",
+     "config/capability-index.json",
+     "docs/agent-guides/CAPABILITY-INDEX.md"
+    ],
+    "discovered_in_count": 3,
+    "used": false,
+    "use_count": 0,
+    "last_seen": null,
+    "use_sources": [],
+    "wired": true,
+    "wired_by_count": 1,
+    "wired_by": [
+     "ai-stack/mcp-servers/hybrid-coordinator/knowledge/static_rules.py"
+    ],
+    "tested": true,
+    "tested_by_count": 2,
+    "stale": false,
+    "dead": false,
+    "keep_reason": "triage 2026-10-09 REVIVE-INTEGRATE: Same as ai-metrics-auto-updater.sh."
    }
   },
   {
@@ -15520,7 +15611,7 @@
     "last_seen": null,
     "use_sources": [],
     "wired": true,
-    "wired_by_count": 5,
+    "wired_by_count": 4,
     "wired_by": [
      "ai-stack/local-orchestrator/mcp_client.py",
      "ai-stack/mcp-servers/hybrid-coordinator/core/routing_contract.py",
@@ -15926,6 +16017,7 @@
       "id": "playwright-mcp",
       "state": "quarantined",
       "maturity": "official",
+      "usage_evidence": null,
       "refs": [
        "agent-capability-intake-candidates",
        "skill"
@@ -16171,10 +16263,9 @@
     "last_seen": null,
     "use_sources": [],
     "wired": true,
-    "wired_by_count": 2,
+    "wired_by_count": 1,
     "wired_by": [
-     "ai-stack/mcp-servers/ralph-wiggum/orchestrator.py",
-     "scripts/ai/autonomous-coordinator-local.sh"
+     "ai-stack/mcp-servers/ralph-wiggum/orchestrator.py"
     ],
     "tested": false,
     "tested_by_count": 0,
@@ -16253,6 +16344,41 @@
     "tested_by_count": 1,
     "stale": false,
     "dead": false
+   }
+  },
+  {
+   "key": "resume-model-download",
+   "name": "resume-model-download.sh",
+   "kinds": [
+    "script"
+   ],
+   "paths": [
+    "scripts/ai/resume-model-download.sh"
+   ],
+   "class": "UNUSED-AVAILABLE",
+   "next_action": "integrate-into-repertoire",
+   "evidence": {
+    "discoverable": true,
+    "discovered_in": [
+     "ai-stack/mcp-servers/hybrid-coordinator/knowledge/static_rules.py",
+     "config/capability-index.json",
+     "docs/agent-guides/CAPABILITY-INDEX.md"
+    ],
+    "discovered_in_count": 3,
+    "used": false,
+    "use_count": 0,
+    "last_seen": null,
+    "use_sources": [],
+    "wired": true,
+    "wired_by_count": 1,
+    "wired_by": [
+     "ai-stack/mcp-servers/hybrid-coordinator/knowledge/static_rules.py"
+    ],
+    "tested": true,
+    "tested_by_count": 1,
+    "stale": false,
+    "dead": false,
+    "keep_reason": "triage 2026-10-09 REVIVE-INTEGRATE: Generalised from hardcoded Qwen3.6 Q4: --repo/--file/--dest-dir/--dry-run. Hints rule resume_interrupted_model_download."
    }
   },
   {
@@ -16559,6 +16685,54 @@
    }
   },
   {
+   "key": "t3mp3st-intake",
+   "name": "t3mp3st-intake",
+   "kinds": [
+    "skill"
+   ],
+   "paths": [
+    ".agent/skills/t3mp3st-intake/SKILL.md"
+   ],
+   "class": "UNUSED-AVAILABLE",
+   "next_action": "integrate-into-repertoire",
+   "evidence": {
+    "discoverable": true,
+    "discovered_in": [
+     ".agent/SKILL_INDEX.md",
+     "config/capability-index.json",
+     "docs/agent-guides/CAPABILITY-INDEX.md"
+    ],
+    "discovered_in_count": 3,
+    "used": false,
+    "use_count": 0,
+    "last_seen": null,
+    "use_sources": [],
+    "wired": true,
+    "wired_by_count": 1,
+    "wired_by": [
+     "scripts/ai/generate-module-dashboard.py"
+    ],
+    "tested": true,
+    "tested_by_count": 1,
+    "stale": false,
+    "dead": false,
+    "catalog_claims": [
+     {
+      "id": "t3mp3st-intake",
+      "state": "enabled",
+      "maturity": "scope-gated",
+      "usage_evidence": "aq-capability-audit 2026-10-08 (30d): flagged STALE-CLAIM, but scope-gated by design (owner scope); no use is expected until the scope is granted. Claim kept.",
+      "refs": [
+       "aq-tempest",
+       "test-aq-tempest",
+       "skill",
+       "project-t3mp3st-capability-intake-prd"
+      ]
+     }
+    ]
+   }
+  },
+  {
    "key": "task-eligibility",
    "name": "task-eligibility",
    "kinds": [
@@ -16590,6 +16764,40 @@
     "tested_by_count": 0,
     "stale": false,
     "dead": false
+   }
+  },
+  {
+   "key": "template-skill",
+   "name": "template-skill",
+   "kinds": [
+    "skill"
+   ],
+   "paths": [
+    ".agent/skills/template-skill/SKILL.md"
+   ],
+   "class": "UNUSED-AVAILABLE",
+   "next_action": "integrate-into-repertoire",
+   "evidence": {
+    "discoverable": true,
+    "discovered_in": [
+     "config/capability-index.json",
+     "docs/agent-guides/CAPABILITY-INDEX.md"
+    ],
+    "discovered_in_count": 2,
+    "used": false,
+    "use_count": 0,
+    "last_seen": null,
+    "use_sources": [],
+    "wired": true,
+    "wired_by_count": 1,
+    "wired_by": [
+     "scripts/ai/aq-factory"
+    ],
+    "tested": false,
+    "tested_by_count": 0,
+    "stale": false,
+    "dead": false,
+    "keep_reason": "skill authoring template, intentionally never invoked"
    }
   },
   {
@@ -16722,7 +16930,7 @@
     "last_seen": null,
     "use_sources": [],
     "wired": true,
-    "wired_by_count": 13,
+    "wired_by_count": 14,
     "wired_by": [
      "ai-stack/mcp-servers/hybrid-coordinator/core/session_builders.py",
      "ai-stack/mcp-servers/hybrid-coordinator/extensions/auto_tool_select_handlers.py",
@@ -16737,6 +16945,7 @@
       "id": "tooling-manifest",
       "state": "enabled",
       "maturity": "available-unused",
+      "usage_evidence": "aq-capability-audit 2026-10-08 (30d): tooling_manifest MCP tool had zero calls in 30d despite 14 wiring refs. Remediation: ci-4 (capability index served via the manifest) + ci-7.",
       "refs": [
        "tooling-manifest"
       ]
@@ -16998,6 +17207,7 @@
       "id": "workflow-blueprints",
       "state": "enabled",
       "maturity": "available-unused",
+      "usage_evidence": "aq-capability-audit 2026-10-08 (30d): workflow_blueprints MCP tool had zero calls in 30d. Remediation: ci-7.",
       "refs": [
        "workflow-blueprints",
        "workflow-dsl-reference"
