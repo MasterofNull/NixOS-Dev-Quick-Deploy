@@ -166,22 +166,28 @@ def resolve(incident_id: str, root_cause: str, regression: str, validation: str)
                         resolution=dict(zip(("root_cause", "regression", "validation"),
                                             map(_clean, (root_cause, regression, validation)))))
         _save(ledger, state)
-        _close_backlog_line(incident_id)
+        _close_backlog_line(incident_id, validation)
 
 
-def _close_backlog_line(incident_id: str) -> None:
-    """Flip the incident's `[OPEN] rsi-<id>` backlog line to `[DONE <date>]` (no-op if absent)."""
+def _close_backlog_line(incident_id: str, evidence: str = "") -> None:
+    """Append a `[DONE]` closure line for an open `rsi-<id>` backlog entry (no-op if absent/closed).
+
+    Append-only on purpose: the sweep unit can write the backlog file but not its directory
+    (no temp+rename), and the nrs checkout preflight tolerates only pure appends to this file.
+    """
     try:
         text = _BACKLOG.read_text(encoding="utf-8")
     except OSError:
         return
-    marker = f"[OPEN] rsi-{incident_id} "
-    if marker not in text:
+    if f"[OPEN] rsi-{incident_id} " not in text:
         return
-    done = f"[DONE {_now()[:10]}] rsi-{incident_id} "
-    tmp = _BACKLOG.with_name(_BACKLOG.name + ".tmp")
-    tmp.write_text(text.replace(marker, done), encoding="utf-8")
-    os.replace(tmp, _BACKLOG)
+    if re.search(rf"^\[DONE(?: [0-9-]+)?\] rsi-{re.escape(incident_id)} ", text, re.MULTILINE):
+        return
+    evidence = _clean(evidence)[:160]
+    line = (f"[DONE] rsi-{incident_id} — resolved {_now()[:10]}: {evidence} — ledger status=resolved\n")
+    prefix = "" if text.endswith("\n") else "\n"
+    with _BACKLOG.open("a", encoding="utf-8") as handle:
+        handle.write(prefix + line)
 
 
 def annotate(incident_id: str, note: str) -> None:
