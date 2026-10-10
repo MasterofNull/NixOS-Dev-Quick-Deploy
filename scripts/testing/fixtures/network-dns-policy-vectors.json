@@ -1,0 +1,646 @@
+{
+  "description": "Network DNS Policy test vectors for pure resolver, transition, and telemetry sanitization.",
+  "schema_version": "1.0",
+  "permit_vector": {
+    "name": "sole_permit_tuple",
+    "input": {
+      "connection_class": "trusted_full",
+      "connectivity": "full",
+      "dns_topology": "ordinary",
+      "evidence_age_bucket": "fresh",
+      "link_kind": "wifi"
+    },
+    "expected_eligibility": {
+      "schema_version": "network.dns-policy-eligibility.v1",
+      "eligible": true,
+      "reason": "trusted_full",
+      "lease_duration_s": 55
+    }
+  },
+  "deny_vectors": [
+    {
+      "name": "untrusted_profile",
+      "input": {
+        "connection_class": "untrusted",
+        "connectivity": "full",
+        "dns_topology": "ordinary",
+        "evidence_age_bucket": "fresh",
+        "link_kind": "wifi"
+      },
+      "expected_eligibility": {
+        "schema_version": "network.dns-policy-eligibility.v1",
+        "eligible": false,
+        "reason": "untrusted_profile",
+        "lease_duration_s": 0
+      }
+    },
+    {
+      "name": "unknown_connection_class",
+      "input": {
+        "connection_class": "unknown",
+        "connectivity": "full",
+        "dns_topology": "ordinary",
+        "evidence_age_bucket": "fresh",
+        "link_kind": "wifi"
+      },
+      "expected_eligibility": {
+        "schema_version": "network.dns-policy-eligibility.v1",
+        "eligible": false,
+        "reason": "unknown_state",
+        "lease_duration_s": 0
+      }
+    },
+    {
+      "name": "portal_connectivity",
+      "input": {
+        "connection_class": "trusted_full",
+        "connectivity": "portal",
+        "dns_topology": "ordinary",
+        "evidence_age_bucket": "fresh",
+        "link_kind": "wifi"
+      },
+      "expected_eligibility": {
+        "schema_version": "network.dns-policy-eligibility.v1",
+        "eligible": false,
+        "reason": "portal",
+        "lease_duration_s": 0
+      }
+    },
+    {
+      "name": "limited_connectivity",
+      "input": {
+        "connection_class": "trusted_full",
+        "connectivity": "limited",
+        "dns_topology": "ordinary",
+        "evidence_age_bucket": "fresh",
+        "link_kind": "wifi"
+      },
+      "expected_eligibility": {
+        "schema_version": "network.dns-policy-eligibility.v1",
+        "eligible": false,
+        "reason": "limited_or_site",
+        "lease_duration_s": 0
+      }
+    },
+    {
+      "name": "site_connectivity",
+      "input": {
+        "connection_class": "trusted_full",
+        "connectivity": "site",
+        "dns_topology": "ordinary",
+        "evidence_age_bucket": "fresh",
+        "link_kind": "wifi"
+      },
+      "expected_eligibility": {
+        "schema_version": "network.dns-policy-eligibility.v1",
+        "eligible": false,
+        "reason": "limited_or_site",
+        "lease_duration_s": 0
+      }
+    },
+    {
+      "name": "none_connectivity",
+      "input": {
+        "connection_class": "trusted_full",
+        "connectivity": "none",
+        "dns_topology": "ordinary",
+        "evidence_age_bucket": "fresh",
+        "link_kind": "wifi"
+      },
+      "expected_eligibility": {
+        "schema_version": "network.dns-policy-eligibility.v1",
+        "eligible": false,
+        "reason": "limited_or_site",
+        "lease_duration_s": 0
+      }
+    },
+    {
+      "name": "unknown_connectivity",
+      "input": {
+        "connection_class": "trusted_full",
+        "connectivity": "unknown",
+        "dns_topology": "ordinary",
+        "evidence_age_bucket": "fresh",
+        "link_kind": "wifi"
+      },
+      "expected_eligibility": {
+        "schema_version": "network.dns-policy-eligibility.v1",
+        "eligible": false,
+        "reason": "unknown_state",
+        "lease_duration_s": 0
+      }
+    },
+    {
+      "name": "split_dns_topology",
+      "input": {
+        "connection_class": "trusted_full",
+        "connectivity": "full",
+        "dns_topology": "split",
+        "evidence_age_bucket": "fresh",
+        "link_kind": "wifi"
+      },
+      "expected_eligibility": {
+        "schema_version": "network.dns-policy-eligibility.v1",
+        "eligible": false,
+        "reason": "split_dns",
+        "lease_duration_s": 0
+      }
+    },
+    {
+      "name": "unknown_dns_topology",
+      "input": {
+        "connection_class": "trusted_full",
+        "connectivity": "full",
+        "dns_topology": "unknown",
+        "evidence_age_bucket": "fresh",
+        "link_kind": "wifi"
+      },
+      "expected_eligibility": {
+        "schema_version": "network.dns-policy-eligibility.v1",
+        "eligible": false,
+        "reason": "unknown_state",
+        "lease_duration_s": 0
+      }
+    },
+    {
+      "name": "stale_evidence",
+      "input": {
+        "connection_class": "trusted_full",
+        "connectivity": "full",
+        "dns_topology": "ordinary",
+        "evidence_age_bucket": "stale",
+        "link_kind": "wifi"
+      },
+      "expected_eligibility": {
+        "schema_version": "network.dns-policy-eligibility.v1",
+        "eligible": false,
+        "reason": "stale_evidence",
+        "lease_duration_s": 0
+      }
+    },
+    {
+      "name": "unknown_evidence_age",
+      "input": {
+        "connection_class": "trusted_full",
+        "connectivity": "full",
+        "dns_topology": "ordinary",
+        "evidence_age_bucket": "unknown",
+        "link_kind": "wifi"
+      },
+      "expected_eligibility": {
+        "schema_version": "network.dns-policy-eligibility.v1",
+        "eligible": false,
+        "reason": "unknown_state",
+        "lease_duration_s": 0
+      }
+    },
+    {
+      "name": "non_wifi_link",
+      "input": {
+        "connection_class": "trusted_full",
+        "connectivity": "full",
+        "dns_topology": "ordinary",
+        "evidence_age_bucket": "fresh",
+        "link_kind": "other"
+      },
+      "expected_eligibility": {
+        "schema_version": "network.dns-policy-eligibility.v1",
+        "eligible": false,
+        "reason": "non_wifi",
+        "lease_duration_s": 0
+      }
+    }
+  ],
+  "malformed_vectors": [
+    {
+      "name": "extra_key_rejected",
+      "input": {
+        "connection_class": "trusted_full",
+        "connectivity": "full",
+        "dns_topology": "ordinary",
+        "evidence_age_bucket": "fresh",
+        "link_kind": "wifi",
+        "ssid": "CorpHQ"
+      },
+      "expected_eligibility": {
+        "schema_version": "network.dns-policy-eligibility.v1",
+        "eligible": false,
+        "reason": "unknown_state",
+        "lease_duration_s": 0
+      }
+    },
+    {
+      "name": "missing_required_key",
+      "input": {
+        "connection_class": "trusted_full",
+        "dns_topology": "ordinary",
+        "evidence_age_bucket": "fresh",
+        "link_kind": "wifi"
+      },
+      "expected_eligibility": {
+        "schema_version": "network.dns-policy-eligibility.v1",
+        "eligible": false,
+        "reason": "unknown_state",
+        "lease_duration_s": 0
+      }
+    },
+    {
+      "name": "invalid_enum_value",
+      "input": {
+        "connection_class": "trusted_full",
+        "connectivity": "super_fast",
+        "dns_topology": "ordinary",
+        "evidence_age_bucket": "fresh",
+        "link_kind": "wifi"
+      },
+      "expected_eligibility": {
+        "schema_version": "network.dns-policy-eligibility.v1",
+        "eligible": false,
+        "reason": "unknown_state",
+        "lease_duration_s": 0
+      }
+    },
+    {
+      "name": "non_dict_payload",
+      "input": "not_an_object",
+      "expected_eligibility": {
+        "schema_version": "network.dns-policy-eligibility.v1",
+        "eligible": false,
+        "reason": "unknown_state",
+        "lease_duration_s": 0
+      }
+    }
+  ],
+  "transition_vectors": [
+    {
+      "name": "permit_clean_admit",
+      "eligibility": {
+        "schema_version": "network.dns-policy-eligibility.v1",
+        "eligible": true,
+        "reason": "trusted_full",
+        "lease_duration_s": 55
+      },
+      "executor_state": {
+        "prior_effect": "none",
+        "receipt_state": "missing",
+        "event": "admit",
+        "mode": "policy"
+      },
+      "expected_decision": {
+        "schema_version": "network.dns-policy-decision.v1",
+        "action": "apply_public_override",
+        "reason": "trusted_full",
+        "lease_ttl_s": 55,
+        "rollback_required": true,
+        "telemetry_state": {
+          "policy_state": "overriding",
+          "connectivity": "full",
+          "reason": "trusted_full",
+          "freshness": "fresh",
+          "lease": "active"
+        }
+      }
+    },
+    {
+      "name": "permit_active_refresh_idempotent",
+      "eligibility": {
+        "schema_version": "network.dns-policy-eligibility.v1",
+        "eligible": true,
+        "reason": "trusted_full",
+        "lease_duration_s": 55
+      },
+      "executor_state": {
+        "prior_effect": "active_override",
+        "receipt_state": "active_fresh",
+        "event": "refresh",
+        "mode": "policy"
+      },
+      "expected_decision": {
+        "schema_version": "network.dns-policy-decision.v1",
+        "action": "refresh_override",
+        "reason": "trusted_full",
+        "lease_ttl_s": 55,
+        "rollback_required": false,
+        "telemetry_state": {
+          "policy_state": "overriding",
+          "connectivity": "full",
+          "reason": "trusted_full",
+          "freshness": "fresh",
+          "lease": "active"
+        }
+      }
+    },
+    {
+      "name": "permit_active_admit_replay",
+      "eligibility": {
+        "schema_version": "network.dns-policy-eligibility.v1",
+        "eligible": true,
+        "reason": "trusted_full",
+        "lease_duration_s": 55
+      },
+      "executor_state": {
+        "prior_effect": "active_override",
+        "receipt_state": "active_fresh",
+        "event": "admit",
+        "mode": "policy"
+      },
+      "expected_decision": {
+        "schema_version": "network.dns-policy-decision.v1",
+        "action": "refresh_override",
+        "reason": "trusted_full",
+        "lease_ttl_s": 55,
+        "rollback_required": false,
+        "telemetry_state": {
+          "policy_state": "overriding",
+          "connectivity": "full",
+          "reason": "trusted_full",
+          "freshness": "fresh",
+          "lease": "active"
+        }
+      }
+    },
+    {
+      "name": "downgrade_from_active",
+      "eligibility": {
+        "schema_version": "network.dns-policy-eligibility.v1",
+        "eligible": false,
+        "reason": "limited_or_site",
+        "lease_duration_s": 0
+      },
+      "executor_state": {
+        "prior_effect": "active_override",
+        "receipt_state": "active_fresh",
+        "event": "downgrade",
+        "mode": "policy"
+      },
+      "expected_decision": {
+        "schema_version": "network.dns-policy-decision.v1",
+        "action": "revert_override",
+        "reason": "limited_or_site",
+        "lease_ttl_s": 0,
+        "rollback_required": true,
+        "telemetry_state": {
+          "policy_state": "reverted",
+          "connectivity": "limited",
+          "reason": "limited_or_site",
+          "freshness": "unknown",
+          "lease": "unknown"
+        }
+      }
+    },
+    {
+      "name": "link_down_from_active",
+      "eligibility": {
+        "schema_version": "network.dns-policy-eligibility.v1",
+        "eligible": false,
+        "reason": "non_wifi",
+        "lease_duration_s": 0
+      },
+      "executor_state": {
+        "prior_effect": "active_override",
+        "receipt_state": "active_fresh",
+        "event": "link_down",
+        "mode": "policy"
+      },
+      "expected_decision": {
+        "schema_version": "network.dns-policy-decision.v1",
+        "action": "revert_override",
+        "reason": "non_wifi",
+        "lease_ttl_s": 0,
+        "rollback_required": true,
+        "telemetry_state": {
+          "policy_state": "reverted",
+          "connectivity": "unknown",
+          "reason": "non_wifi",
+          "freshness": "unknown",
+          "lease": "unknown"
+        }
+      }
+    },
+    {
+      "name": "watchdog_expiry_from_active",
+      "eligibility": {
+        "schema_version": "network.dns-policy-eligibility.v1",
+        "eligible": false,
+        "reason": "stale_evidence",
+        "lease_duration_s": 0
+      },
+      "executor_state": {
+        "prior_effect": "active_override",
+        "receipt_state": "expired",
+        "event": "watchdog",
+        "mode": "policy"
+      },
+      "expected_decision": {
+        "schema_version": "network.dns-policy-decision.v1",
+        "action": "revert_override",
+        "reason": "stale_evidence",
+        "lease_ttl_s": 0,
+        "rollback_required": true,
+        "telemetry_state": {
+          "policy_state": "reverted",
+          "connectivity": "unknown",
+          "reason": "stale_evidence",
+          "freshness": "stale",
+          "lease": "expired"
+        }
+      }
+    },
+    {
+      "name": "restart_with_active_fresh_receipt",
+      "eligibility": {
+        "schema_version": "network.dns-policy-eligibility.v1",
+        "eligible": true,
+        "reason": "trusted_full",
+        "lease_duration_s": 55
+      },
+      "executor_state": {
+        "prior_effect": "active_override",
+        "receipt_state": "active_fresh",
+        "event": "restart",
+        "mode": "policy"
+      },
+      "expected_decision": {
+        "schema_version": "network.dns-policy-decision.v1",
+        "action": "refresh_override",
+        "reason": "trusted_full",
+        "lease_ttl_s": 55,
+        "rollback_required": false,
+        "telemetry_state": {
+          "policy_state": "overriding",
+          "connectivity": "full",
+          "reason": "trusted_full",
+          "freshness": "fresh",
+          "lease": "active"
+        }
+      }
+    },
+    {
+      "name": "restart_with_expired_receipt",
+      "eligibility": {
+        "schema_version": "network.dns-policy-eligibility.v1",
+        "eligible": true,
+        "reason": "trusted_full",
+        "lease_duration_s": 55
+      },
+      "executor_state": {
+        "prior_effect": "active_override",
+        "receipt_state": "expired",
+        "event": "restart",
+        "mode": "policy"
+      },
+      "expected_decision": {
+        "schema_version": "network.dns-policy-decision.v1",
+        "action": "revert_override",
+        "reason": "trusted_full",
+        "lease_ttl_s": 0,
+        "rollback_required": true,
+        "telemetry_state": {
+          "policy_state": "reverted",
+          "connectivity": "full",
+          "reason": "trusted_full",
+          "freshness": "fresh",
+          "lease": "expired"
+        }
+      }
+    },
+    {
+      "name": "pending_apply_crash_recovery",
+      "eligibility": {
+        "schema_version": "network.dns-policy-eligibility.v1",
+        "eligible": true,
+        "reason": "trusted_full",
+        "lease_duration_s": 55
+      },
+      "executor_state": {
+        "prior_effect": "pending_apply",
+        "receipt_state": "pending_apply_fresh",
+        "event": "admit",
+        "mode": "policy"
+      },
+      "expected_decision": {
+        "schema_version": "network.dns-policy-decision.v1",
+        "action": "revert_override",
+        "reason": "unknown_state",
+        "lease_ttl_s": 0,
+        "rollback_required": true,
+        "telemetry_state": {
+          "policy_state": "reverted",
+          "connectivity": "full",
+          "reason": "unknown_state",
+          "freshness": "fresh",
+          "lease": "unknown"
+        }
+      }
+    },
+    {
+      "name": "deny_clean_state_preserve",
+      "eligibility": {
+        "schema_version": "network.dns-policy-eligibility.v1",
+        "eligible": false,
+        "reason": "portal",
+        "lease_duration_s": 0
+      },
+      "executor_state": {
+        "prior_effect": "none",
+        "receipt_state": "missing",
+        "event": "admit",
+        "mode": "policy"
+      },
+      "expected_decision": {
+        "schema_version": "network.dns-policy-decision.v1",
+        "action": "preserve_link_dns",
+        "reason": "portal",
+        "lease_ttl_s": 0,
+        "rollback_required": false,
+        "telemetry_state": {
+          "policy_state": "preserving",
+          "connectivity": "portal",
+          "reason": "portal",
+          "freshness": "unknown",
+          "lease": "not_applicable"
+        }
+      }
+    },
+    {
+      "name": "legacy_mode_admit",
+      "eligibility": {
+        "schema_version": "network.dns-policy-eligibility.v1",
+        "eligible": false,
+        "reason": "untrusted_profile",
+        "lease_duration_s": 0
+      },
+      "executor_state": {
+        "prior_effect": "none",
+        "receipt_state": "missing",
+        "event": "admit",
+        "mode": "legacy"
+      },
+      "expected_decision": {
+        "schema_version": "network.dns-policy-decision.v1",
+        "action": "legacy_override",
+        "reason": "legacy_mode",
+        "lease_ttl_s": 0,
+        "rollback_required": false,
+        "telemetry_state": {
+          "policy_state": "overriding",
+          "connectivity": "unknown",
+          "reason": "legacy_mode",
+          "freshness": "unknown",
+          "lease": "not_applicable"
+        }
+      }
+    }
+  ],
+  "sanitizer_vectors": [
+    {
+      "name": "scrub_profile_uuid",
+      "raw": "nmcli connection 12345678-abcd-ef01-2345-6789abcdef01 up",
+      "expected": "nmcli connection [REDACTED_UUID] up"
+    },
+    {
+      "name": "scrub_mac_address",
+      "raw": "bssid 00:1a:2b:3c:4d:5e on wlan0",
+      "expected": "bssid [REDACTED_MAC] on wlan0"
+    },
+    {
+      "name": "scrub_ipv4_and_ipv6",
+      "raw": "nameserver 192.168.1.1 and 2001:4860:4860::8888",
+      "expected": "nameserver [REDACTED_IP] and [REDACTED_IP]"
+    },
+    {
+      "name": "scrub_domain_name",
+      "raw": "domain corp.internal search wifi.example.com",
+      "expected": "domain [REDACTED_DOMAIN] search [REDACTED_DOMAIN]"
+    },
+    {
+      "name": "scrub_hex_token",
+      "raw": "token a1b2c3d4e5f60718293a4b5c6d7e8f90",
+      "expected": "token [REDACTED_HEX]"
+    },
+    {
+      "name": "scrub_sensitive_dict_keys",
+      "raw": {
+        "ssid": "SuperSecretWifi",
+        "psk": "P@ssw0rd123!",
+        "normal_key": "ordinary_value"
+      },
+      "expected": {
+        "ssid": "[REDACTED]",
+        "psk": "[REDACTED]",
+        "normal_key": "ordinary_value"
+      }
+    },
+    {
+      "name": "preserve_schema_identifiers",
+      "raw": {
+        "schema_version": "network.dns-policy-decision.v1",
+        "action": "preserve_link_dns"
+      },
+      "expected": {
+        "schema_version": "network.dns-policy-decision.v1",
+        "action": "preserve_link_dns"
+      }
+    }
+  ]
+}
