@@ -4,6 +4,8 @@
 from __future__ import annotations
 
 import asyncio
+import os
+from unittest.mock import patch
 import sys
 from pathlib import Path
 
@@ -37,7 +39,18 @@ async def test_injection_and_sandbox_failure() -> None:
     finally:
         shell_tools._nsjail = original
 
-    print("PASS: local shell sandbox fails closed for injection and required nsjail failures")
+    sandbox = shell_tools.NsjailSandbox()
+    sandbox.available = True
+    sandbox.required = False
+    try:
+        shell_tools._nsjail = sandbox
+        with patch.dict(os.environ, {"NSJAIL_REPO_PATH": "/"}), patch.object(shell_tools.subprocess, "run", side_effect=AssertionError("must not execute unjailed")):
+            invalid = await shell_tools.run_command_handler("echo ok")
+            assert invalid["success"] is False, invalid
+            assert invalid.get("safety_reason") == "sandbox_configuration_failed", invalid
+    finally:
+        shell_tools._nsjail = original
+    print("PASS: local shell sandbox fails closed for injection, invalid configuration and required nsjail failures")
 
 
 # ---------------------------------------------------------------------------
@@ -125,7 +138,32 @@ async def test_real_injection_still_rejected() -> None:
     print("PASS: real shell-injection sequences (incl. embedded newlines) are still rejected")
 
 
+def test_declarative_tool_paths() -> None:
+    sandbox = shell_tools.NsjailSandbox()
+    with patch.dict(os.environ, {"NSJAIL_REPO_PATH": str(ROOT), "NSJAIL_TOOL_PATH": "/nix/store/test/bin:" + str(ROOT / "scripts/ai")}):
+        argv = sandbox.build_argv("git --version", 5)
+        assert ["--bindmount_ro", str(ROOT.resolve())] == argv[argv.index(str(ROOT.resolve())) - 1:argv.index(str(ROOT.resolve())) + 1]
+        assert "PATH=/nix/store/test/bin:" + str(ROOT / "scripts/ai") in argv
+        assert argv[argv.index("--mount") + 1] == "none:/tmp:tmpfs:size=16777216"
+        assert argv[argv.index("--bindmount") + 1] == "/dev/null"
+        assert "/dev" not in argv
+        assert "--tmpfs" not in argv
+        assert "HOME=/tmp" in argv and "XDG_CACHE_HOME=/tmp" in argv
+        assert "--iface_no_lo" in argv and "--disable_proc" in argv
+        assert "/run/dbus" not in argv and "/run/systemd" not in argv
+    for invalid in ("/", "relative/repo", str(ROOT / "missing-sandbox-repo")):
+        with patch.dict(os.environ, {"NSJAIL_REPO_PATH": invalid}):
+            try:
+                sandbox.build_argv("git --version", 5)
+            except ValueError:
+                pass
+            else:
+                raise AssertionError("unsafe repository mount accepted: " + invalid)
+    print("PASS: declarative tool paths preserve isolation and reject invalid repository roots")
+
+
 async def main_async() -> int:
+    test_declarative_tool_paths()
     await test_injection_and_sandbox_failure()
     await test_legitimate_trailing_punctuation_unchanged()
     await test_genuine_envelope_tail_is_stripped()
