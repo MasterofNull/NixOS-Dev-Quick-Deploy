@@ -30,6 +30,8 @@ SCHEMA_INPUT: str = "network.dns-policy-input.v1"
 SCHEMA_ELIGIBILITY: str = "network.dns-policy-eligibility.v1"
 SCHEMA_DECISION: str = "network.dns-policy-decision.v1"
 SCHEMA_HEALTH: str = "network.dns-policy-health.v1"
+SCHEMA_TRUST: str = "network.dns-policy-trust.v1"
+SCHEMA_RECEIPT: str = "network.dns-policy-receipt.v1"
 
 
 # ==============================================================================
@@ -356,6 +358,87 @@ def validate_health(data: Any) -> Tuple[bool, str]:
         return False, f"Invalid transition_count_bucket: {data['transition_count_bucket']}"
     if data["acquisition_error"] not in _ACQUISITION_ERRORS:
         return False, f"Invalid acquisition_error: {data['acquisition_error']}"
+    return True, ""
+
+
+def validate_trust(data: Any) -> Tuple[bool, str]:
+    """Validate network.dns-policy-trust.v1 payload."""
+    if not isinstance(data, dict):
+        return False, "Trust mapping must be a JSON object"
+    required = {"schema_version", "trusted_profile_uuids"}
+    actual = set(data.keys())
+    if actual != required:
+        extra = actual - required
+        missing = required - actual
+        if extra:
+            return False, f"Unexpected extra keys: {sorted(extra)}"
+        if missing:
+            return False, f"Missing required keys: {sorted(missing)}"
+
+    if data["schema_version"] != SCHEMA_TRUST:
+        return False, f"Invalid schema_version: {data['schema_version']}"
+
+    uuids = data["trusted_profile_uuids"]
+    if not isinstance(uuids, list):
+        return False, "trusted_profile_uuids must be an array"
+
+    seen = set()
+    for item in uuids:
+        if not isinstance(item, str) or not _RE_UUID.match(item):
+            return False, f"Invalid UUID entry: {item}"
+        if item in seen:
+            return False, f"Duplicate UUID entry: {item}"
+        seen.add(item)
+
+    return True, ""
+
+
+_RECEIPT_DOC_STATES: Set[str] = {"pending_apply", "active", "pending_revert", "inactive"}
+
+
+def validate_receipt(data: Any) -> Tuple[bool, str]:
+    """Validate network.dns-policy-receipt.v1 payload."""
+    if not isinstance(data, dict):
+        return False, "Receipt must be a JSON object"
+    required = {
+        "schema_version",
+        "receipt_state",
+        "boot_id",
+        "interface",
+        "action",
+        "reason",
+        "lease_expiry_epoch_s",
+        "updated_epoch_s",
+        "revision",
+    }
+    actual = set(data.keys())
+    if actual != required:
+        extra = actual - required
+        missing = required - actual
+        if extra:
+            return False, f"Unexpected extra keys: {sorted(extra)}"
+        if missing:
+            return False, f"Missing required keys: {sorted(missing)}"
+
+    if data["schema_version"] != SCHEMA_RECEIPT:
+        return False, f"Invalid schema_version: {data['schema_version']}"
+    if data["receipt_state"] not in _RECEIPT_DOC_STATES:
+        return False, f"Invalid receipt_state: {data['receipt_state']}"
+    if not isinstance(data["boot_id"], str) or not data["boot_id"]:
+        return False, "Invalid boot_id"
+    if not is_valid_interface(data["interface"]):
+        return False, f"Invalid interface token: {data['interface']}"
+    if data["action"] not in _ACTIONS:
+        return False, f"Invalid action: {data['action']}"
+    if data["reason"] not in _REASONS:
+        return False, f"Invalid reason: {data['reason']}"
+    if not isinstance(data["lease_expiry_epoch_s"], int) or data["lease_expiry_epoch_s"] < 0:
+        return False, "Invalid lease_expiry_epoch_s"
+    if not isinstance(data["updated_epoch_s"], int) or data["updated_epoch_s"] < 0:
+        return False, "Invalid updated_epoch_s"
+    if not isinstance(data["revision"], int) or data["revision"] < 0:
+        return False, "Invalid revision"
+
     return True, ""
 
 
@@ -838,7 +921,7 @@ def _sanitize_string(val: str) -> str:
         return val
 
     # Preserve schema constants verbatim
-    if val in (SCHEMA_INPUT, SCHEMA_ELIGIBILITY, SCHEMA_DECISION, SCHEMA_HEALTH):
+    if val in (SCHEMA_INPUT, SCHEMA_ELIGIBILITY, SCHEMA_DECISION, SCHEMA_HEALTH, SCHEMA_TRUST, SCHEMA_RECEIPT):
         return val
 
     # Scrub UUID
@@ -895,6 +978,19 @@ COMMAND_TIMEOUT_S: float = 2.0
 HEALTH_FILE_DEFAULT: Path = Path("/run/aq-network-policy/health.json")
 HEALTH_LOCK_DEFAULT: Path = Path("/run/lock/aq-network-policy/health.lock")
 TRUSTED_PROFILES_DEFAULT: Path = Path("/var/lib/aq-network-policy/private/trusted-profiles.json")
+TRUSTED_PROFILES_LOCK_DEFAULT: Path = Path("/run/lock/aq-network-policy/trusted-profiles.lock")
+OVERRIDE_LEASE_DEFAULT: Path = Path("/run/aq-network-policy/private/override-lease.json")
+OVERRIDE_LEASE_LOCK_DEFAULT: Path = Path("/run/lock/aq-network-policy/override-lease.lock")
+EFFECT_LOCK_DEFAULT: Path = Path("/run/lock/aq-network-policy/effect-operation.lock")
+
+MAX_TRUST_FILE_BYTES: int = 64 * 1024  # 64 KiB ceiling
+EFFECT_LOCK_TIMEOUT_S: float = 2.0
+MUTATION_DEADLINE_S: float = 5.0
+TOTAL_TRANSACTION_DEADLINE_S: float = 15.0
+WATCHDOG_INTERVAL_S: float = 10.0
+WATCHDOG_JITTER_S: float = 1.0
+WATCHDOG_RETRY_INTERVAL_S: float = 0.25
+WATCHDOG_MAX_RETRY_S: float = 5.0
 
 
 def is_valid_interface(iface: Any) -> bool:
@@ -1226,3 +1322,590 @@ def acquire_and_publish_health(
     record = derive_health_record(facts, acq_err)
     pub_ok = publish_health(record, health_path=health_path, lock_path=lock_path)
     return pub_ok, record
+
+
+# ==============================================================================
+# N2 Narrow Policy Executor, Watchdog, and Trust Map Interface
+# ==============================================================================
+
+class TrustReplaceResult(str, enum.Enum):
+    UPDATED = "updated"
+    INVALID_INPUT = "invalid_input"
+    UNSAFE_METADATA = "unsafe_metadata"
+    LOCK_TIMEOUT = "lock_timeout"
+    DURABLE_WRITE_FAILED = "durable_write_failed"
+
+
+def get_current_boot_id(boot_id_file: Optional[Path] = None) -> str:
+    """Read current host boot_id or return zero UUID fallback."""
+    path = boot_id_file or Path("/proc/sys/kernel/random/boot_id")
+    try:
+        if path.exists() and path.is_file():
+            return path.read_text(encoding="utf-8").strip()
+    except Exception:
+        pass
+    return "00000000-0000-0000-0000-000000000000"
+
+
+def replace_trust_map(
+    input_path: Union[str, Path],
+    target_path: Optional[Path] = None,
+    lock_path: Optional[Path] = None,
+    check_privileges: bool = True,
+    timeout_s: float = 2.0,
+) -> Tuple[TrustReplaceResult, int]:
+    """Atomically validate and replace private trusted-profiles.json map.
+
+    Exit codes:
+      0: updated
+      2: invalid_input
+      3: unsafe_metadata
+      4: lock_timeout
+      5: durable_write_failed
+    """
+    import fcntl
+    import os
+    import stat
+    import time
+
+    target = target_path or TRUSTED_PROFILES_DEFAULT
+    lock_file = lock_path or TRUSTED_PROFILES_LOCK_DEFAULT
+
+    if check_privileges:
+        if os.geteuid() != 0:
+            return TrustReplaceResult.UNSAFE_METADATA, 3
+
+    p = Path(input_path)
+    if not p.exists():
+        return TrustReplaceResult.INVALID_INPUT, 2
+    if p.is_symlink():
+        return TrustReplaceResult.UNSAFE_METADATA, 3
+    if not p.is_file():
+        return TrustReplaceResult.UNSAFE_METADATA, 3
+
+    try:
+        st = p.stat()
+        if check_privileges and st.st_uid != 0:
+            return TrustReplaceResult.UNSAFE_METADATA, 3
+        if st.st_mode & (stat.S_IWGRP | stat.S_IWOTH):
+            return TrustReplaceResult.UNSAFE_METADATA, 3
+        if st.st_size > MAX_TRUST_FILE_BYTES:
+            return TrustReplaceResult.INVALID_INPUT, 2
+    except OSError:
+        return TrustReplaceResult.UNSAFE_METADATA, 3
+
+    try:
+        content = p.read_text(encoding="utf-8")
+        if len(content.encode("utf-8")) > MAX_TRUST_FILE_BYTES:
+            return TrustReplaceResult.INVALID_INPUT, 2
+        data = json.loads(content)
+    except Exception:
+        return TrustReplaceResult.INVALID_INPUT, 2
+
+    ok, _ = validate_trust(data)
+    if not ok:
+        return TrustReplaceResult.INVALID_INPUT, 2
+
+    try:
+        lock_file.parent.mkdir(mode=0o700, parents=True, exist_ok=True)
+        target.parent.mkdir(mode=0o700, parents=True, exist_ok=True)
+    except OSError:
+        return TrustReplaceResult.DURABLE_WRITE_FAILED, 5
+
+    lock_fd = -1
+    temp_path = None
+    temp_fd = -1
+    try:
+        lock_fd = os.open(str(lock_file), os.O_RDWR | os.O_CREAT, 0o600)
+        start = time.monotonic()
+        locked = False
+        while time.monotonic() - start < timeout_s:
+            try:
+                fcntl.flock(lock_fd, fcntl.LOCK_EX | fcntl.LOCK_NB)
+                locked = True
+                break
+            except (BlockingIOError, OSError):
+                time.sleep(0.05)
+        if not locked:
+            return TrustReplaceResult.LOCK_TIMEOUT, 4
+
+        temp_path = target.parent / f"{target.name}.tmp.{os.getpid()}"
+        temp_fd = os.open(str(temp_path), os.O_WRONLY | os.O_CREAT | os.O_TRUNC, 0o600)
+        payload = json.dumps(data, indent=2, sort_keys=True) + "\n"
+        os.write(temp_fd, payload.encode("utf-8"))
+        os.fsync(temp_fd)
+        os.close(temp_fd)
+        temp_fd = -1
+
+        # Back up existing target file to .bak before replacing
+        if target.exists():
+            try:
+                bak_path = target.with_suffix(".bak")
+                bak_path.write_bytes(target.read_bytes())
+                bak_path.chmod(0o600)
+            except OSError:
+                pass
+
+        os.replace(str(temp_path), str(target))
+        temp_path = None
+
+        try:
+            dir_fd = os.open(str(target.parent), os.O_RDONLY)
+            os.fsync(dir_fd)
+            os.close(dir_fd)
+        except OSError:
+            pass
+
+        return TrustReplaceResult.UPDATED, 0
+    except Exception:
+        return TrustReplaceResult.DURABLE_WRITE_FAILED, 5
+    finally:
+        if temp_fd != -1:
+            try:
+                os.close(temp_fd)
+            except OSError:
+                pass
+        if temp_path and temp_path.exists():
+            try:
+                temp_path.unlink()
+            except OSError:
+                pass
+        if lock_fd != -1:
+            try:
+                fcntl.flock(lock_fd, fcntl.LOCK_UN)
+                os.close(lock_fd)
+            except OSError:
+                pass
+
+
+def publish_receipt(
+    receipt_data: Dict[str, Any],
+    receipt_path: Optional[Path] = None,
+    lock_path: Optional[Path] = None,
+) -> bool:
+    """Atomic durable writer for override-lease.json receipt."""
+    import fcntl
+    import os
+
+    ok, _ = validate_receipt(receipt_data)
+    if not ok:
+        return False
+
+    target_receipt = receipt_path or OVERRIDE_LEASE_DEFAULT
+    target_lock = lock_path or OVERRIDE_LEASE_LOCK_DEFAULT
+
+    try:
+        target_receipt.parent.mkdir(mode=0o700, parents=True, exist_ok=True)
+        target_lock.parent.mkdir(mode=0o700, parents=True, exist_ok=True)
+    except OSError:
+        return False
+
+    lock_fd = -1
+    temp_path = None
+    temp_fd = -1
+    try:
+        lock_fd = os.open(str(target_lock), os.O_RDWR | os.O_CREAT, 0o600)
+        fcntl.flock(lock_fd, fcntl.LOCK_EX)
+
+        temp_path = target_receipt.parent / f"{target_receipt.name}.tmp.{os.getpid()}"
+        temp_fd = os.open(str(temp_path), os.O_WRONLY | os.O_CREAT | os.O_TRUNC, 0o600)
+        payload = json.dumps(receipt_data, indent=2, sort_keys=True) + "\n"
+        os.write(temp_fd, payload.encode("utf-8"))
+        os.fsync(temp_fd)
+        os.close(temp_fd)
+        temp_fd = -1
+
+        os.replace(str(temp_path), str(target_receipt))
+        temp_path = None
+
+        try:
+            dir_fd = os.open(str(target_receipt.parent), os.O_RDONLY)
+            os.fsync(dir_fd)
+            os.close(dir_fd)
+        except OSError:
+            pass
+
+        return True
+    except Exception:
+        return False
+    finally:
+        if temp_fd != -1:
+            try:
+                os.close(temp_fd)
+            except OSError:
+                pass
+        if temp_path and temp_path.exists():
+            try:
+                temp_path.unlink()
+            except OSError:
+                pass
+        if lock_fd != -1:
+            try:
+                fcntl.flock(lock_fd, fcntl.LOCK_UN)
+                os.close(lock_fd)
+            except OSError:
+                pass
+
+
+def read_receipt(receipt_path: Optional[Path] = None) -> Optional[Dict[str, Any]]:
+    """Read and validate the sole lease receipt at /run/aq-network-policy/private/override-lease.json."""
+    target = receipt_path or OVERRIDE_LEASE_DEFAULT
+    if not target.exists() or not target.is_file():
+        return None
+
+    try:
+        with open(target, "r", encoding="utf-8") as f:
+            data = json.load(f)
+        ok, _ = validate_receipt(data)
+        if not ok:
+            return None
+        return data
+    except Exception:
+        return None
+
+
+def execute_policy_transaction(
+    iface: str,
+    event: str = "admit",
+    mode: str = "legacy",
+    now_epoch_s: Optional[int] = None,
+    boot_id: Optional[str] = None,
+    cmd_runner: Optional[Any] = None,
+    sysfs_base: Optional[Path] = None,
+    effect_lock_path: Optional[Path] = None,
+    receipt_path: Optional[Path] = None,
+    receipt_lock_path: Optional[Path] = None,
+    health_path: Optional[Path] = None,
+    health_lock_path: Optional[Path] = None,
+    trusted_profiles_path: Optional[Path] = None,
+) -> Tuple[bool, Dict[str, Any]]:
+    """Execute bounded policy or legacy transaction under exclusive effect-operation lock.
+
+    Lock order: effect-operation -> mapping -> receipt -> health.
+    """
+    import fcntl
+    import os
+    import time
+
+    runner = cmd_runner or _run_bounded_command
+    cur_time = int(now_epoch_s if now_epoch_s is not None else time.time())
+    cur_boot = boot_id or get_current_boot_id()
+
+    # Legacy branch — preserves exact pre-N2 behavior
+    if mode == "legacy":
+        if not is_valid_interface(iface):
+            return False, {"error": "unsafe_interface"}
+        is_wifi = is_wifi_interface(iface, sysfs_base)
+        if is_wifi and event in ("admit", "up", "dhcp4-change"):
+            runner(["resolvectl", "dns", iface, "1.1.1.1", "1.0.0.1", "8.8.8.8", "8.8.4.4"])
+            runner(["resolvectl", "domain", iface, "~."])
+            return True, {"action": "legacy_override", "iface": iface}
+        return True, {"action": "preserve_link_dns", "iface": iface}
+
+    # Policy branch — bounded effect lock
+    target_effect_lock = effect_lock_path or EFFECT_LOCK_DEFAULT
+    try:
+        target_effect_lock.parent.mkdir(mode=0o700, parents=True, exist_ok=True)
+    except OSError:
+        return False, {"error": "cannot_create_lock_dir"}
+
+    lock_fd = -1
+    try:
+        lock_fd = os.open(str(target_effect_lock), os.O_RDWR | os.O_CREAT, 0o600)
+        start_lock = time.monotonic()
+        locked = False
+        while time.monotonic() - start_lock < EFFECT_LOCK_TIMEOUT_S:
+            try:
+                fcntl.flock(lock_fd, fcntl.LOCK_EX | fcntl.LOCK_NB)
+                locked = True
+                break
+            except (BlockingIOError, OSError):
+                time.sleep(0.05)
+        if not locked:
+            return False, {"error": "lock_timeout"}
+
+        # In-lock fact acquisition and receipt read
+        facts, acq_err = acquire_facts(
+            iface,
+            sysfs_base=sysfs_base,
+            cmd_runner=runner,
+            trusted_profiles_path=trusted_profiles_path,
+        )
+
+        prior_rec = read_receipt(receipt_path)
+        prior_effect = PriorEffect.NONE.value
+        receipt_state = ReceiptState.MISSING.value
+        rev = 0
+        if prior_rec:
+            rev = prior_rec.get("revision", 0)
+            st = prior_rec.get("receipt_state")
+            rec_boot = prior_rec.get("boot_id", "")
+            if rec_boot and rec_boot != cur_boot:
+                prior_effect = PriorEffect.NONE.value
+                receipt_state = ReceiptState.EXPIRED.value
+            elif st == "active":
+                # Check expiry
+                if cur_time >= prior_rec.get("lease_expiry_epoch_s", 0):
+                    prior_effect = PriorEffect.NONE.value
+                    receipt_state = ReceiptState.EXPIRED.value
+                else:
+                    prior_effect = PriorEffect.ACTIVE_OVERRIDE.value
+                    receipt_state = ReceiptState.ACTIVE_FRESH.value
+            elif st == "pending_apply":
+                prior_effect = PriorEffect.PENDING_APPLY.value
+                receipt_state = ReceiptState.PENDING_APPLY_FRESH.value
+            elif st == "pending_revert":
+                prior_effect = PriorEffect.PENDING_REVERT.value
+                receipt_state = ReceiptState.PENDING_REVERT_FRESH.value
+            else:
+                receipt_state = ReceiptState.INVALID.value
+
+        # Pure decision
+        eligibility = resolve_eligibility(facts)
+        executor_state = {
+            "prior_effect": prior_effect,
+            "receipt_state": receipt_state,
+            "event": event,
+            "mode": mode,
+        }
+        decision = resolve_transition(eligibility, executor_state, input_data=facts)
+        act = decision["action"]
+        reason_val = decision["reason"]
+
+        if act in (Action.APPLY_PUBLIC_OVERRIDE.value, Action.REFRESH_OVERRIDE.value):
+            # Durable pending receipt before mutation
+            pending_receipt = {
+                "schema_version": SCHEMA_RECEIPT,
+                "receipt_state": "pending_apply",
+                "boot_id": cur_boot,
+                "interface": iface,
+                "action": act,
+                "reason": reason_val,
+                "lease_expiry_epoch_s": cur_time + RECEIPT_LEASE_DURATION_S,
+                "updated_epoch_s": cur_time,
+                "revision": rev + 1,
+            }
+            publish_receipt(pending_receipt, receipt_path, receipt_lock_path)
+
+            # Mutate per-link DNS
+            out_dns, err_dns = runner(["resolvectl", "dns", iface, "1.1.1.1", "1.0.0.1", "8.8.8.8", "8.8.4.4"])
+            out_dom, err_dom = runner(["resolvectl", "domain", iface, "~."])
+
+            if err_dns == AcquisitionError.NONE and err_dom == AcquisitionError.NONE:
+                active_receipt = dict(pending_receipt)
+                active_receipt["receipt_state"] = "active"
+                active_receipt["revision"] = rev + 2
+                publish_receipt(active_receipt, receipt_path, receipt_lock_path)
+
+                health_rec = derive_health_record(facts, acq_err)
+                health_rec["policy_state"] = PolicyState.OVERRIDING.value
+                health_rec["lease"] = LeaseState.ACTIVE.value
+                publish_health(health_rec, health_path, health_lock_path)
+                return True, decision
+            else:
+                # Mutation failed -> immediate same-lock revert
+                runner(["resolvectl", "revert", iface])
+                inactive_receipt = dict(pending_receipt)
+                inactive_receipt["receipt_state"] = "inactive"
+                inactive_receipt["revision"] = rev + 2
+                publish_receipt(inactive_receipt, receipt_path, receipt_lock_path)
+
+                health_rec = derive_health_record(facts, acq_err)
+                health_rec["policy_state"] = PolicyState.DEGRADED.value
+                health_rec["lease"] = LeaseState.NOT_APPLICABLE.value
+                publish_health(health_rec, health_path, health_lock_path)
+                return False, {"error": "mutation_failed", "action": act}
+
+        elif act == Action.REVERT_OVERRIDE.value:
+            pending_receipt = {
+                "schema_version": SCHEMA_RECEIPT,
+                "receipt_state": "pending_revert",
+                "boot_id": cur_boot,
+                "interface": iface,
+                "action": act,
+                "reason": reason_val,
+                "lease_expiry_epoch_s": cur_time,
+                "updated_epoch_s": cur_time,
+                "revision": rev + 1,
+            }
+            publish_receipt(pending_receipt, receipt_path, receipt_lock_path)
+
+            runner(["resolvectl", "revert", iface])
+
+            inactive_receipt = dict(pending_receipt)
+            inactive_receipt["receipt_state"] = "inactive"
+            inactive_receipt["revision"] = rev + 2
+            publish_receipt(inactive_receipt, receipt_path, receipt_lock_path)
+
+            health_rec = derive_health_record(facts, acq_err)
+            health_rec["policy_state"] = PolicyState.REVERTED.value
+            health_rec["lease"] = LeaseState.EXPIRED.value
+            publish_health(health_rec, health_path, health_lock_path)
+            return True, decision
+
+        else:  # PRESERVE_LINK_DNS
+            if prior_effect in (PriorEffect.ACTIVE_OVERRIDE.value, PriorEffect.PENDING_APPLY.value):
+                runner(["resolvectl", "revert", iface])
+                inactive_receipt = {
+                    "schema_version": SCHEMA_RECEIPT,
+                    "receipt_state": "inactive",
+                    "boot_id": cur_boot,
+                    "interface": iface,
+                    "action": act,
+                    "reason": reason_val,
+                    "lease_expiry_epoch_s": cur_time,
+                    "updated_epoch_s": cur_time,
+                    "revision": rev + 1,
+                }
+                publish_receipt(inactive_receipt, receipt_path, receipt_lock_path)
+
+            health_rec = derive_health_record(facts, acq_err)
+            health_rec["policy_state"] = PolicyState.PRESERVING.value
+            health_rec["lease"] = LeaseState.NOT_APPLICABLE.value
+            publish_health(health_rec, health_path, health_lock_path)
+            return True, decision
+
+    finally:
+        if lock_fd != -1:
+            try:
+                fcntl.flock(lock_fd, fcntl.LOCK_UN)
+                os.close(lock_fd)
+            except OSError:
+                pass
+
+
+def run_watchdog_or_recovery(
+    mode: str = "policy",
+    now_epoch_s: Optional[int] = None,
+    boot_id: Optional[str] = None,
+    cmd_runner: Optional[Any] = None,
+    sysfs_base: Optional[Path] = None,
+    effect_lock_path: Optional[Path] = None,
+    receipt_path: Optional[Path] = None,
+    receipt_lock_path: Optional[Path] = None,
+    health_path: Optional[Path] = None,
+    health_lock_path: Optional[Path] = None,
+) -> bool:
+    """Watchdog and boot-recovery transaction.
+
+    In legacy mode: immediate no-op.
+    In policy mode: inspects boot_id and lease_expiry_epoch_s; reverts expired or invalid state.
+    """
+    import fcntl
+    import os
+    import time
+
+    if mode == "legacy":
+        return True
+
+    runner = cmd_runner or _run_bounded_command
+    cur_time = int(now_epoch_s if now_epoch_s is not None else time.time())
+    cur_boot = boot_id or get_current_boot_id()
+
+    target_effect_lock = effect_lock_path or EFFECT_LOCK_DEFAULT
+    try:
+        target_effect_lock.parent.mkdir(mode=0o700, parents=True, exist_ok=True)
+    except OSError:
+        return False
+
+    lock_fd = -1
+    try:
+        lock_fd = os.open(str(target_effect_lock), os.O_RDWR | os.O_CREAT, 0o600)
+        # Watchdog retries every 250ms for up to 5s
+        start_lock = time.monotonic()
+        locked = False
+        while time.monotonic() - start_lock < WATCHDOG_MAX_RETRY_S:
+            try:
+                fcntl.flock(lock_fd, fcntl.LOCK_EX | fcntl.LOCK_NB)
+                locked = True
+                break
+            except (BlockingIOError, OSError):
+                time.sleep(WATCHDOG_RETRY_INTERVAL_S)
+        if not locked:
+            return False
+
+        rec = read_receipt(receipt_path)
+        if not rec:
+            _revert_wifi_links(runner, sysfs_base)
+            return True
+
+        iface = rec.get("interface", "")
+        rec_boot = rec.get("boot_id", "")
+        rec_state = rec.get("receipt_state", "")
+        expiry = rec.get("lease_expiry_epoch_s", 0)
+        rev = rec.get("revision", 0)
+
+        needs_revert = False
+        if rec_boot != cur_boot or rec_state in ("pending_apply", "pending_revert"):
+            needs_revert = True
+        elif rec_state == "active" and cur_time >= expiry:
+            needs_revert = True
+
+        if needs_revert:
+            if iface and is_valid_interface(iface):
+                runner(["resolvectl", "revert", iface])
+            else:
+                _revert_wifi_links(runner, sysfs_base)
+
+            inactive_rec = dict(rec)
+            inactive_rec["receipt_state"] = "inactive"
+            inactive_rec["updated_epoch_s"] = cur_time
+            inactive_rec["revision"] = rev + 1
+            publish_receipt(inactive_rec, receipt_path, receipt_lock_path)
+
+            h = fallback_unavailable_health()
+            h["policy_state"] = PolicyState.REVERTED.value
+            h["lease"] = LeaseState.EXPIRED.value
+            publish_health(h, health_path, health_lock_path)
+
+        return True
+    finally:
+        if lock_fd != -1:
+            try:
+                fcntl.flock(lock_fd, fcntl.LOCK_UN)
+                os.close(lock_fd)
+            except OSError:
+                pass
+
+
+def _revert_wifi_links(runner: Any, sysfs_base: Optional[Path] = None) -> None:
+    """Enumerate and revert only local sysfs-proven Wi-Fi interfaces."""
+    base = sysfs_base or Path("/sys/class/net")
+    if base.exists():
+        for p in sorted(base.iterdir()):
+            if (p / "wireless").is_dir() or (p / "phy80211").is_dir():
+                if is_valid_interface(p.name):
+                    runner(["resolvectl", "revert", p.name])
+
+
+def run_emergency_revert(
+    cmd_runner: Optional[Any] = None,
+    sysfs_base: Optional[Path] = None,
+    receipt_path: Optional[Path] = None,
+    receipt_lock_path: Optional[Path] = None,
+    health_path: Optional[Path] = None,
+    health_lock_path: Optional[Path] = None,
+) -> bool:
+    """Emergency fallback revert: immediately reverts Wi-Fi interfaces and marks degraded."""
+    runner = cmd_runner or _run_bounded_command
+    _revert_wifi_links(runner, sysfs_base)
+
+    rec = read_receipt(receipt_path)
+    rev = (rec.get("revision", 0) + 1) if rec else 1
+    inactive_receipt = {
+        "schema_version": SCHEMA_RECEIPT,
+        "receipt_state": "inactive",
+        "boot_id": get_current_boot_id(),
+        "interface": "wlan0",
+        "action": Action.REVERT_OVERRIDE.value,
+        "reason": Reason.UNKNOWN_STATE.value,
+        "lease_expiry_epoch_s": 0,
+        "updated_epoch_s": 0,
+        "revision": rev,
+    }
+    publish_receipt(inactive_receipt, receipt_path, receipt_lock_path)
+
+    h = fallback_unavailable_health(AcquisitionError.NONE)
+    h["policy_state"] = PolicyState.DEGRADED.value
+    publish_health(h, health_path, health_lock_path)
+    return True
