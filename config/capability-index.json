@@ -3428,7 +3428,7 @@
   },
   {
    "category": "Workflow, planning and PM",
-   "class": "UNUSED-AVAILABLE",
+   "class": "ACTIVE",
    "kind": "script",
    "name": "aq-slice-helper",
    "path": "scripts/ai/aq-slice-helper",
