@@ -6,13 +6,19 @@
 }: let
   cfg = config.mySystem.aiStack.metaOptimization;
   aiStackCfg = config.mySystem.aiStack;
+  mcp = config.mySystem.mcpServers;
   ports = config.mySystem.ports;
   svcUser = config.mySystem.primaryUser;
   svcGroup = lib.attrByPath ["users" "users" svcUser "group"] "users" config;
   sec = config.mySystem.secrets;
   secretPath = name: config.sops.secrets.${name}.path;
 
-  metaOptRoot = "${aiStackCfg.repoPath}/ai-stack/meta-optimization";
+  metaOptRoot = "${mcp.repoPath}/ai-stack/meta-optimization";
+
+  # Canonical agent-run event log (written by the hybrid coordinator / delegate-to-local).
+  # Dir is 0770 ai-hybrid:ai-stack; primaryUser is in the ai-stack group (roles/ai-stack.nix),
+  # and ProtectSystem=strict still permits reads, so no extra ReadOnlyPaths are needed.
+  agentRunEventsPath = "${mcp.dataDir}/hybrid/telemetry/agent-run-events.jsonl";
 
   metaOptPython = pkgs.python3.withPackages (ps:
     with ps; [
@@ -75,7 +81,7 @@ in {
         # Security hardening
         ProtectSystem = "strict";
         ProtectHome = "read-only";
-        ReadOnlyPaths = [aiStackCfg.repoPath];
+        ReadOnlyPaths = [mcp.repoPath];
         ReadWritePaths = [cfg.dataDir];
         PrivateTmp = true;
         NoNewPrivileges = true;
@@ -89,11 +95,12 @@ in {
         {
           POSTGRES_HOST = "127.0.0.1";
           POSTGRES_PORT = toString ports.postgres;
-          POSTGRES_USER = aiStackCfg.postgres.user;
-          POSTGRES_DB = aiStackCfg.postgres.database;
+          POSTGRES_USER = mcp.postgres.user;
+          POSTGRES_DB = mcp.postgres.database;
           LLAMA_CHAT_URL = "http://127.0.0.1:${toString aiStackCfg.llamaCpp.port}";
           META_OPT_DATA_DIR = cfg.dataDir;
           ANALYSIS_WINDOW_DAYS = toString cfg.analysisWindowDays;
+          AGENT_RUN_EVENTS_PATH = agentRunEventsPath;
         }
         // lib.optionalAttrs sec.enable {
           POSTGRES_PASSWORD_FILE = secretPath sec.names.postgresPassword;
@@ -142,7 +149,7 @@ in {
         # Security hardening
         ProtectSystem = "strict";
         ProtectHome = "read-only";
-        ReadOnlyPaths = [aiStackCfg.repoPath];
+        ReadOnlyPaths = [mcp.repoPath];
         ReadWritePaths = [cfg.dataDir];
         PrivateTmp = true;
         NoNewPrivileges = true;
@@ -156,10 +163,11 @@ in {
         {
           POSTGRES_HOST = "127.0.0.1";
           POSTGRES_PORT = toString ports.postgres;
-          POSTGRES_USER = aiStackCfg.postgres.user;
-          POSTGRES_DB = aiStackCfg.postgres.database;
-          REPO_ROOT = aiStackCfg.repoPath;
+          POSTGRES_USER = mcp.postgres.user;
+          POSTGRES_DB = mcp.postgres.database;
+          REPO_ROOT = mcp.repoPath;
           META_OPT_DATA_DIR = cfg.dataDir;
+          AGENT_RUN_EVENTS_PATH = agentRunEventsPath;
         }
         // lib.optionalAttrs sec.enable {
           POSTGRES_PASSWORD_FILE = secretPath sec.names.postgresPassword;
@@ -183,8 +191,8 @@ in {
             tracker = HarnessEvolutionTracker(
                 pg_host="127.0.0.1",
                 pg_port=${toString ports.postgres},
-                pg_user="${aiStackCfg.postgres.user}",
-                pg_database="${aiStackCfg.postgres.database}",
+                pg_user="${mcp.postgres.user}",
+                pg_database="${mcp.postgres.database}",
                 pg_password=os.getenv("POSTGRES_PASSWORD", "")
             )
             await tracker.connect()
@@ -231,13 +239,13 @@ in {
         Type = "oneshot";
         User = svcUser;
         Group = svcGroup;
-        WorkingDirectory = aiStackCfg.repoPath;
+        WorkingDirectory = mcp.repoPath;
 
         # More restrictive - can modify repo
         ProtectSystem = "strict";
         ProtectHome = "read-only";
         ReadWritePaths = [
-          aiStackCfg.repoPath
+          mcp.repoPath
           cfg.dataDir
         ];
         PrivateTmp = true;
@@ -248,9 +256,9 @@ in {
         {
           POSTGRES_HOST = "127.0.0.1";
           POSTGRES_PORT = toString ports.postgres;
-          POSTGRES_USER = aiStackCfg.postgres.user;
-          POSTGRES_DB = aiStackCfg.postgres.database;
-          REPO_ROOT = aiStackCfg.repoPath;
+          POSTGRES_USER = mcp.postgres.user;
+          POSTGRES_DB = mcp.postgres.database;
+          REPO_ROOT = mcp.repoPath;
         }
         // lib.optionalAttrs sec.enable {
           POSTGRES_PASSWORD_FILE = secretPath sec.names.postgresPassword;

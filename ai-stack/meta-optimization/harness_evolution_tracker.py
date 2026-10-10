@@ -14,11 +14,17 @@ import json
 import logging
 import os
 import subprocess
+import sys
 from collections import defaultdict
-from datetime import datetime, timedelta
+from datetime import datetime, timedelta, timezone
 from pathlib import Path
 from typing import Any, Dict, List, Optional, Tuple
 from uuid import uuid4
+
+_HERE = str(Path(__file__).resolve().parent)
+if _HERE not in sys.path:
+    sys.path.insert(0, _HERE)
+import routing_source
 
 logging.basicConfig(level=logging.INFO)
 logger = logging.getLogger("harness_evolution_tracker")
@@ -142,44 +148,26 @@ class HarnessEvolutionTracker:
         - hint_success_rate: % of hints leading to successful outcomes
         - lesson_retrieval_relevance: Average relevance score of retrieved lessons
         """
-        since = datetime.now() - timedelta(hours=window_hours)
+        since = datetime.now(timezone.utc) - timedelta(hours=window_hours)
 
         try:
             if metric_name == "routing_accuracy":
-                result = await self.conn.fetchrow(
-                    """
-                    SELECT
-                        COUNT(*) as total,
-                        SUM(CASE WHEN status = 'success' THEN 1 ELSE 0 END) as successes
-                    FROM routing_log
-                    WHERE timestamp >= $1
-                    """,
-                    since
-                )
-                if result and result["total"] > 0:
-                    return (result["successes"] / result["total"]) * 100.0
-                return None
+                return await asyncio.to_thread(routing_source.success_rate, window_hours)
 
             elif metric_name == "avg_route_latency_ms":
-                result = await self.conn.fetchval(
-                    """
-                    SELECT AVG(latency_ms)
-                    FROM routing_log
-                    WHERE timestamp >= $1
-                      AND status = 'success'
-                    """,
-                    since
-                )
-                return float(result) if result else None
+                return await asyncio.to_thread(routing_source.avg_latency_ms, window_hours)
 
             elif metric_name == "hint_success_rate":
+                if not await self.conn.fetchval("SELECT to_regclass('public.interaction_history') IS NOT NULL"):
+                    logger.info("No data source for hint_success_rate: interaction_history missing")
+                    return None
                 result = await self.conn.fetchrow(
                     """
                     SELECT
                         COUNT(*) as total,
-                        SUM(CASE WHEN outcome_success THEN 1 ELSE 0 END) as successes
+                        SUM(CASE WHEN outcome = 'success' THEN 1 ELSE 0 END) as successes
                     FROM interaction_history
-                    WHERE timestamp >= $1
+                    WHERE created_at >= $1
                       AND metadata->>'hint_template' IS NOT NULL
                     """,
                     since
