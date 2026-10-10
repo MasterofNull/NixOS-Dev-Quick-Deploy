@@ -1,6 +1,6 @@
 {
  "audit_window_days": 30,
- "count": 440,
+ "count": 441,
  "entries": [
   {
    "category": "Agents, delegation and loops",
@@ -532,7 +532,7 @@
   },
   {
    "category": "Agents, delegation and loops",
-   "class": "ACTIVE",
+   "class": "UNUSED-AVAILABLE",
    "kind": "skill",
    "name": "prsi-review",
    "path": ".agent/skills/prsi-review/SKILL.md",
@@ -588,7 +588,7 @@
   },
   {
    "category": "Capability, audit and reuse",
-   "class": "UNUSED-AVAILABLE",
+   "class": "ACTIVE",
    "kind": "script",
    "name": "aq-capability-catalog",
    "path": "scripts/ai/aq-capability-catalog",
@@ -1156,7 +1156,7 @@
   },
   {
    "category": "MCP tools",
-   "class": "ACTIVE",
+   "class": "UNUSED-AVAILABLE",
    "kind": "mcp-tool",
    "name": "prsi_orchestrate",
    "path": "scripts/ai/mcp-bridge-hybrid.py",
@@ -1468,7 +1468,7 @@
   },
   {
    "category": "Models and inference",
-   "class": "KEEP-DECLARED",
+   "class": "ACTIVE",
    "kind": "script",
    "name": "aq-prm-eval",
    "path": "scripts/ai/aq-prm-eval",
@@ -1684,7 +1684,7 @@
   },
   {
    "category": "Other tools",
-   "class": "ACTIVE",
+   "class": "UNUSED-AVAILABLE",
    "kind": "script",
    "name": "aq",
    "path": "scripts/ai/aq",
@@ -1860,7 +1860,7 @@
   },
   {
    "category": "Other tools",
-   "class": "UNUSED-AVAILABLE",
+   "class": "ACTIVE",
    "kind": "script",
    "name": "aq-understand-anything",
    "path": "scripts/ai/aq-understand-anything",
@@ -2684,7 +2684,7 @@
   },
   {
    "category": "Security, approval and governance",
-   "class": "ACTIVE",
+   "class": "UNUSED-AVAILABLE",
    "kind": "skill",
    "name": "security-scanner",
    "path": ".agent/skills/security-scanner/SKILL.md",
@@ -2700,7 +2700,7 @@
   },
   {
    "category": "Systemd units (services and timers)",
-   "class": "UNUSED-AVAILABLE",
+   "class": "ACTIVE",
    "kind": "unit",
    "name": "agent-reap",
    "path": "nix/modules/services/agent-reap.nix",
@@ -2716,7 +2716,7 @@
   },
   {
    "category": "Systemd units (services and timers)",
-   "class": "UNUSED-AVAILABLE",
+   "class": "ACTIVE",
    "kind": "unit",
    "name": "ai-aidb-reindex",
    "path": "nix/modules/services/mcp-servers.nix",
@@ -2732,7 +2732,7 @@
   },
   {
    "category": "Systemd units (services and timers)",
-   "class": "UNUSED-AVAILABLE",
+   "class": "ACTIVE",
    "kind": "unit",
    "name": "ai-amdgpu-metrics-exporter",
    "path": "nix/modules/services/monitoring.nix",
@@ -2740,7 +2740,7 @@
   },
   {
    "category": "Systemd units (services and timers)",
-   "class": "UNUSED-AVAILABLE",
+   "class": "ACTIVE",
    "kind": "unit",
    "name": "ai-audit-sidecar",
    "path": "nix/modules/services/mcp-servers.nix",
@@ -2748,7 +2748,7 @@
   },
   {
    "category": "Systemd units (services and timers)",
-   "class": "UNUSED-AVAILABLE",
+   "class": "ACTIVE",
    "kind": "unit",
    "name": "ai-auth-selftest",
    "path": "nix/modules/services/mcp-servers.nix",
@@ -2772,7 +2772,7 @@
   },
   {
    "category": "Systemd units (services and timers)",
-   "class": "UNUSED-AVAILABLE",
+   "class": "ACTIVE",
    "kind": "unit",
    "name": "ai-cache-prewarm",
    "path": "nix/modules/roles/ai-stack.nix",
@@ -2780,7 +2780,15 @@
   },
   {
    "category": "Systemd units (services and timers)",
-   "class": "UNUSED-AVAILABLE",
+   "class": "UNDISCOVERABLE",
+   "kind": "unit",
+   "name": "ai-capability-audit",
+   "path": "nix/modules/roles/ai-stack.nix",
+   "purpose": ""
+  },
+  {
+   "category": "Systemd units (services and timers)",
+   "class": "ACTIVE",
    "kind": "unit",
    "name": "ai-context-warmer",
    "path": "nix/modules/roles/ai-stack.nix",
@@ -2788,7 +2796,7 @@
   },
   {
    "category": "Systemd units (services and timers)",
-   "class": "UNUSED-AVAILABLE",
+   "class": "ACTIVE",
    "kind": "unit",
    "name": "ai-crystallize-sessions",
    "path": "nix/modules/services/mcp-servers.nix",
@@ -2796,7 +2804,7 @@
   },
   {
    "category": "Systemd units (services and timers)",
-   "class": "UNUSED-AVAILABLE",
+   "class": "ACTIVE",
    "kind": "unit",
    "name": "ai-drop-daemon",
    "path": "nix/modules/services/mcp-servers.nix",
@@ -2812,7 +2820,7 @@
   },
   {
    "category": "Systemd units (services and timers)",
-   "class": "UNUSED-AVAILABLE",
+   "class": "ACTIVE",
    "kind": "unit",
    "name": "ai-gap-import",
    "path": "nix/modules/roles/ai-stack.nix",
@@ -2828,7 +2836,7 @@
   },
   {
    "category": "Systemd units (services and timers)",
-   "class": "UNUSED-AVAILABLE",
+   "class": "ACTIVE",
    "kind": "unit",
    "name": "ai-health-spider",
    "path": "nix/modules/services/mcp-servers.nix",
@@ -2844,7 +2852,7 @@
   },
   {
    "category": "Systemd units (services and timers)",
-   "class": "UNUSED-AVAILABLE",
+   "class": "ACTIVE",
    "kind": "unit",
    "name": "ai-import-agent-instructions",
    "path": "nix/modules/roles/ai-stack.nix",
@@ -2852,7 +2860,7 @@
   },
   {
    "category": "Systemd units (services and timers)",
-   "class": "UNUSED-AVAILABLE",
+   "class": "ACTIVE",
    "kind": "unit",
    "name": "ai-local-model-access",
    "path": "nix/modules/roles/ai-stack.nix",
@@ -2860,7 +2868,7 @@
   },
   {
    "category": "Systemd units (services and timers)",
-   "class": "UNUSED-AVAILABLE",
+   "class": "ACTIVE",
    "kind": "unit",
    "name": "ai-local-training-loop",
    "path": "nix/modules/services/mcp-servers.nix",
@@ -2868,7 +2876,7 @@
   },
   {
    "category": "Systemd units (services and timers)",
-   "class": "UNUSED-AVAILABLE",
+   "class": "ACTIVE",
    "kind": "unit",
    "name": "ai-mcp-integrity-check",
    "path": "nix/modules/services/mcp-servers.nix",
@@ -2876,7 +2884,7 @@
   },
   {
    "category": "Systemd units (services and timers)",
-   "class": "UNUSED-AVAILABLE",
+   "class": "ACTIVE",
    "kind": "unit",
    "name": "ai-mcp-process-watch",
    "path": "nix/modules/services/mcp-servers.nix",
@@ -2884,7 +2892,7 @@
   },
   {
    "category": "Systemd units (services and timers)",
-   "class": "UNUSED-AVAILABLE",
+   "class": "ACTIVE",
    "kind": "unit",
    "name": "ai-mutable-path-bootstrap",
    "path": "nix/modules/services/mcp-servers.nix",
@@ -2892,7 +2900,7 @@
   },
   {
    "category": "Systemd units (services and timers)",
-   "class": "UNUSED-AVAILABLE",
+   "class": "ACTIVE",
    "kind": "unit",
    "name": "ai-nixos-docs",
    "path": "nix/modules/services/mcp-servers.nix",
@@ -2900,7 +2908,7 @@
   },
   {
    "category": "Systemd units (services and timers)",
-   "class": "UNUSED-AVAILABLE",
+   "class": "ACTIVE",
    "kind": "unit",
    "name": "ai-npm-security-monitor",
    "path": "nix/modules/services/mcp-servers.nix",
@@ -2908,7 +2916,7 @@
   },
   {
    "category": "Systemd units (services and timers)",
-   "class": "UNUSED-AVAILABLE",
+   "class": "ACTIVE",
    "kind": "unit",
    "name": "ai-optimizer",
    "path": "nix/modules/roles/ai-stack.nix",
@@ -2924,7 +2932,7 @@
   },
   {
    "category": "Systemd units (services and timers)",
-   "class": "UNUSED-AVAILABLE",
+   "class": "ACTIVE",
    "kind": "unit",
    "name": "ai-otel-collector",
    "path": "nix/modules/services/mcp-servers.nix",
@@ -2932,7 +2940,7 @@
   },
   {
    "category": "Systemd units (services and timers)",
-   "class": "UNUSED-AVAILABLE",
+   "class": "ACTIVE",
    "kind": "unit",
    "name": "ai-pgvector-bootstrap",
    "path": "nix/modules/services/mcp-servers.nix",
@@ -2940,7 +2948,7 @@
   },
   {
    "category": "Systemd units (services and timers)",
-   "class": "UNUSED-AVAILABLE",
+   "class": "ACTIVE",
    "kind": "unit",
    "name": "ai-post-deploy-converge",
    "path": "nix/modules/services/mcp-servers.nix",
@@ -2948,7 +2956,7 @@
   },
   {
    "category": "Systemd units (services and timers)",
-   "class": "UNUSED-AVAILABLE",
+   "class": "ACTIVE",
    "kind": "unit",
    "name": "ai-prompt-eval",
    "path": "nix/modules/roles/ai-stack.nix",
@@ -2980,7 +2988,7 @@
   },
   {
    "category": "Systemd units (services and timers)",
-   "class": "UNUSED-AVAILABLE",
+   "class": "ACTIVE",
    "kind": "unit",
    "name": "ai-rsi-sweep",
    "path": "nix/modules/roles/ai-stack.nix",
@@ -2988,7 +2996,7 @@
   },
   {
    "category": "Systemd units (services and timers)",
-   "class": "UNUSED-AVAILABLE",
+   "class": "ACTIVE",
    "kind": "unit",
    "name": "ai-security-audit",
    "path": "nix/modules/services/mcp-servers.nix",
@@ -3012,7 +3020,7 @@
   },
   {
    "category": "Systemd units (services and timers)",
-   "class": "UNUSED-AVAILABLE",
+   "class": "ACTIVE",
    "kind": "unit",
    "name": "ai-sync-knowledge-sources",
    "path": "nix/modules/services/mcp-servers.nix",
@@ -3028,7 +3036,7 @@
   },
   {
    "category": "Systemd units (services and timers)",
-   "class": "UNUSED-AVAILABLE",
+   "class": "ACTIVE",
    "kind": "unit",
    "name": "ai-tempo",
    "path": "nix/modules/services/monitoring.nix",
@@ -3036,7 +3044,7 @@
   },
   {
    "category": "Systemd units (services and timers)",
-   "class": "UNUSED-AVAILABLE",
+   "class": "ACTIVE",
    "kind": "unit",
    "name": "ai-throttler",
    "path": "nix/modules/services/mcp-servers.nix",
@@ -3044,7 +3052,7 @@
   },
   {
    "category": "Systemd units (services and timers)",
-   "class": "UNUSED-AVAILABLE",
+   "class": "ACTIVE",
    "kind": "unit",
    "name": "ai-training-ingest",
    "path": "nix/modules/services/mcp-servers.nix",
@@ -3052,7 +3060,7 @@
   },
   {
    "category": "Systemd units (services and timers)",
-   "class": "UNUSED-AVAILABLE",
+   "class": "ACTIVE",
    "kind": "unit",
    "name": "ai-weekly-report",
    "path": "nix/modules/roles/ai-stack.nix",
@@ -3092,7 +3100,7 @@
   },
   {
    "category": "Systemd units (services and timers)",
-   "class": "UNUSED-AVAILABLE",
+   "class": "ACTIVE",
    "kind": "unit",
    "name": "aq-execution-cell-runner-mirror",
    "path": "nix/modules/services/execution-cell-runner.nix",
@@ -3124,7 +3132,7 @@
   },
   {
    "category": "Systemd units (services and timers)",
-   "class": "UNUSED-AVAILABLE",
+   "class": "ACTIVE",
    "kind": "unit",
    "name": "aqos-security-credential-status",
    "path": "nix/modules/services/command-center-dashboard.nix",
@@ -3148,7 +3156,7 @@
   },
   {
    "category": "Systemd units (services and timers)",
-   "class": "UNUSED-AVAILABLE",
+   "class": "ACTIVE",
    "kind": "unit",
    "name": "command-center-dashboard-api",
    "path": "nix/modules/services/command-center-dashboard.nix",
@@ -3156,7 +3164,7 @@
   },
   {
    "category": "Systemd units (services and timers)",
-   "class": "UNUSED-AVAILABLE",
+   "class": "ACTIVE",
    "kind": "unit",
    "name": "cosmic-battery-bridge",
    "path": "nix/modules/hardware/mobile.nix",
@@ -3164,7 +3172,7 @@
   },
   {
    "category": "Systemd units (services and timers)",
-   "class": "UNUSED-AVAILABLE",
+   "class": "ACTIVE",
    "kind": "unit",
    "name": "cosmic-greeter-config-seed",
    "path": "nix/modules/roles/desktop.nix",
@@ -3172,7 +3180,7 @@
   },
   {
    "category": "Systemd units (services and timers)",
-   "class": "UNUSED-AVAILABLE",
+   "class": "ACTIVE",
    "kind": "unit",
    "name": "cpu-governor-amd",
    "path": "nix/modules/hardware/cpu/amd.nix",
@@ -3180,7 +3188,7 @@
   },
   {
    "category": "Systemd units (services and timers)",
-   "class": "UNUSED-AVAILABLE",
+   "class": "ACTIVE",
    "kind": "unit",
    "name": "crowdsec",
    "path": "nix/modules/services/crowdsec.nix",
@@ -3188,7 +3196,7 @@
   },
   {
    "category": "Systemd units (services and timers)",
-   "class": "UNUSED-AVAILABLE",
+   "class": "ACTIVE",
    "kind": "unit",
    "name": "crowdsec-firewall-bouncer",
    "path": "nix/modules/services/crowdsec.nix",
@@ -3196,7 +3204,7 @@
   },
   {
    "category": "Systemd units (services and timers)",
-   "class": "UNUSED-AVAILABLE",
+   "class": "ACTIVE",
    "kind": "unit",
    "name": "crowdsec-firewall-bouncer-key-sync",
    "path": "nix/modules/services/crowdsec.nix",
@@ -3204,7 +3212,7 @@
   },
   {
    "category": "Systemd units (services and timers)",
-   "class": "UNUSED-AVAILABLE",
+   "class": "ACTIVE",
    "kind": "unit",
    "name": "data-retention",
    "path": "nix/modules/services/data-retention.nix",
@@ -3228,7 +3236,7 @@
   },
   {
    "category": "Systemd units (services and timers)",
-   "class": "UNUSED-AVAILABLE",
+   "class": "ACTIVE",
    "kind": "unit",
    "name": "fs-integrity-monitor",
    "path": "nix/modules/core/fs-integrity-monitor.nix",
@@ -3236,7 +3244,7 @@
   },
   {
    "category": "Systemd units (services and timers)",
-   "class": "UNUSED-AVAILABLE",
+   "class": "ACTIVE",
    "kind": "unit",
    "name": "kernel-cve-scan",
    "path": "nix/modules/core/custom-kernel.nix",
@@ -3276,7 +3284,7 @@
   },
   {
    "category": "Systemd units (services and timers)",
-   "class": "UNUSED-AVAILABLE",
+   "class": "ACTIVE",
    "kind": "unit",
    "name": "llama-cpp-resume",
    "path": "nix/modules/roles/ai-stack.nix",
@@ -3292,7 +3300,7 @@
   },
   {
    "category": "Systemd units (services and timers)",
-   "class": "UNUSED-AVAILABLE",
+   "class": "ACTIVE",
    "kind": "unit",
    "name": "lore-sync",
    "path": "nix/modules/services/lore-sync.nix",
@@ -3324,7 +3332,7 @@
   },
   {
    "category": "Systemd units (services and timers)",
-   "class": "UNUSED-AVAILABLE",
+   "class": "ACTIVE",
    "kind": "unit",
    "name": "nvd-sync",
    "path": "nix/modules/services/nvd-sync.nix",
@@ -3332,7 +3340,7 @@
   },
   {
    "category": "Systemd units (services and timers)",
-   "class": "UNUSED-AVAILABLE",
+   "class": "ACTIVE",
    "kind": "unit",
    "name": "postgresql",
    "path": "nix/modules/services/mcp-servers.nix",
@@ -3340,7 +3348,7 @@
   },
   {
    "category": "Systemd units (services and timers)",
-   "class": "UNUSED-AVAILABLE",
+   "class": "ACTIVE",
    "kind": "unit",
    "name": "qdrant",
    "path": "nix/modules/roles/ai-stack.nix",
@@ -3527,5 +3535,5 @@
   "DEAD-CANDIDATE"
  ],
  "schema": "capability-index/1",
- "source_audit": ""
+ "source_audit": "audit-fu.json"
 }
