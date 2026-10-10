@@ -205,6 +205,8 @@ def _write_progress(
     model: Optional[str] = None,
     exit_code: Optional[int] = None,
     stderr_tail: Optional[str] = None,
+    agent_id: Optional[str] = None,
+    lane_id: Optional[str] = None,
 ) -> None:
     """Atomically update progress projection and canonical agent-run event stream.
 
@@ -212,6 +214,16 @@ def _write_progress(
     of truth is agent-run-events.jsonl via scripts/ai/lib/agent_run_events.py.
     Silently no-ops on any I/O error — never blocks the main inference path.
     """
+    effective_agent_id = (
+        agent_id
+        or os.getenv("AQ_AGENT_ID")
+        or ("local-qwen" if source == "delegate-to-local" else (role or source))
+    )
+    effective_lane_id = (
+        lane_id
+        or os.getenv("AQ_LANE_ID")
+        or ("local" if "local" in source else "unknown")
+    )
     data: dict = {
         "status": status,
         "tokens_out": tokens_out,
@@ -219,6 +231,10 @@ def _write_progress(
         "elapsed_s": round(elapsed_s, 1),
         "tok_per_sec": round(tok_per_sec, 2),
     }
+    if effective_agent_id:
+        data["agent_id"] = effective_agent_id
+    if effective_lane_id:
+        data["lane_id"] = effective_lane_id
     if eta_s is not None:
         data["eta_s"] = round(eta_s, 0)
     if exit_code is not None:
@@ -239,6 +255,8 @@ def _write_progress(
             "model_call",
             source=source,
             run_id=run_id or progress_file.name.replace(".progress.json", ""),
+            agent_id=effective_agent_id,
+            lane_id=effective_lane_id,
             status=event_status,
             duration_ms=round(elapsed_s * 1000, 1),
             model=model or os.getenv("LLAMA_MODEL_NAME") or "local-llama",
@@ -687,7 +705,8 @@ class DirectRunner:
                                 tps = _stream_toks / elapsed if elapsed > 0 else 0.0
                                 eta = (config.max_tokens - _stream_toks) / tps if tps > 0 else None
                                 _write_progress(progress_file, _stream_toks, config.max_tokens,
-                                                elapsed, tps, eta, "running")
+                                                elapsed, tps, eta, "running",
+                                                role=config.role, run_id=task_id)
                         except (json.JSONDecodeError, KeyError):
                             pass
 
@@ -696,7 +715,8 @@ class DirectRunner:
             final_toks = tokens_out or _stream_toks
             elapsed = time.monotonic() - _start
             tps = final_toks / elapsed if elapsed > 0 and final_toks > 0 else 0.0
-            _write_progress(progress_file, final_toks, config.max_tokens, elapsed, tps, None, "done")
+            _write_progress(progress_file, final_toks, config.max_tokens, elapsed, tps, None, "done",
+                            role=config.role, run_id=task_id)
 
             result = output_file.read_text() if output_file.exists() else ""
             if tokens_in or final_toks:
@@ -733,7 +753,8 @@ class DirectRunner:
             _release_queue_slot()
             _request_completed = time.monotonic()
             elapsed = time.monotonic() - _start
-            _write_progress(progress_file, 0, config.max_tokens, elapsed, 0.0, None, "failed")
+            _write_progress(progress_file, 0, config.max_tokens, elapsed, 0.0, None, "failed",
+                            role=config.role, run_id=task_id)
             output_file.write_text(f"HTTP {e.code}: {e.read().decode()}")
             _write_timing_receipt(
                 output_file,
@@ -763,7 +784,8 @@ class DirectRunner:
             _release_queue_slot()
             _request_completed = time.monotonic()
             elapsed = time.monotonic() - _start
-            _write_progress(progress_file, 0, config.max_tokens, elapsed, 0.0, None, "failed")
+            _write_progress(progress_file, 0, config.max_tokens, elapsed, 0.0, None, "failed",
+                            role=config.role, run_id=task_id)
             # Preserve any partial output that streamed before the failure
             if output_file.exists() and output_file.stat().st_size > 0:
                 try:
@@ -1018,6 +1040,7 @@ class AgentRunner:
                 tok_per_sec=0.0,
                 eta_s=None,
                 status="agent-loop-started",
+                role=config.role,
             )
             progress_path = Path(str(output_file) + ".progress.json")
             steps_path = Path(str(output_file) + ".steps.jsonl")
@@ -1067,6 +1090,7 @@ class AgentRunner:
                         status="failed",
                         exit_code=proc.returncode,
                         stderr_tail=stderr_tail or None,
+                        role=config.role,
                     )
                     output_file.write_text(diagnostic + "\n", encoding="utf-8")
                     return False
@@ -1141,6 +1165,7 @@ class AgentRunner:
                 status="failed",
                 exit_code=proc.returncode if proc.returncode not in (None, 0) else None,
                 stderr_tail=stderr_tail or None,
+                role=config.role,
             )
             terminal_detail = f"{timeout_reason}{progress_snippet}"
             if proc.returncode not in (None, 0):
@@ -1159,6 +1184,7 @@ class AgentRunner:
                 tok_per_sec=0.0,
                 eta_s=None,
                 status="failed",
+                role=config.role,
             )
             output_file.write_text(f"Agent runner error: {exc}")
             return False
