@@ -281,5 +281,166 @@ class TestNetworkDnsPolicyN0(unittest.TestCase):
             self.validator_health.validate(bad_enum_health)
 
 
+class TestNetworkDnsPolicyN1(unittest.TestCase):
+    @classmethod
+    def setUpClass(cls):
+        import scripts.ai.lib.network_dns_policy as ndp
+        cls.ndp = ndp
+
+    def setUp(self):
+        import tempfile
+        self.tmp_dir = tempfile.TemporaryDirectory()
+        self.tmp_path = Path(self.tmp_dir.name)
+        self.health_path = self.tmp_path / "health.json"
+        self.lock_path = self.tmp_path / "health.lock"
+        self.sysfs_dir = self.tmp_path / "sysfs_net"
+        self.sysfs_dir.mkdir()
+
+    def tearDown(self):
+        self.tmp_dir.cleanup()
+
+    def test_interface_validation(self):
+        """Verify interface token matching ^[A-Za-z0-9_.:-]{1,32}$."""
+        valid_ifaces = ["wlan0", "wlp3s0", "eth0", "enp2s0f0", "wlan_0", "net-1:2.3"]
+        for iface in valid_ifaces:
+            self.assertTrue(self.ndp.is_valid_interface(iface), f"Expected valid: {iface}")
+
+        invalid_ifaces = ["", "wlan 0", "wlan;rm -rf /", "wlan\n0", "../wlan", "a" * 33, None, 123]
+        for iface in invalid_ifaces:
+            self.assertFalse(self.ndp.is_valid_interface(iface), f"Expected invalid: {iface}")
+
+    def test_sysfs_wifi_detection(self):
+        """Verify Wi-Fi detection via sysfs wireless or phy80211 directories."""
+        # Non-wifi interface
+        eth = self.sysfs_dir / "eth0"
+        eth.mkdir()
+        self.assertFalse(self.ndp.is_wifi_interface("eth0", sysfs_base=self.sysfs_dir))
+
+        # Wi-Fi interface with wireless directory
+        wlan0 = self.sysfs_dir / "wlan0"
+        wlan0.mkdir()
+        (wlan0 / "wireless").mkdir()
+        self.assertTrue(self.ndp.is_wifi_interface("wlan0", sysfs_base=self.sysfs_dir))
+
+        # Wi-Fi interface with phy80211 directory
+        wlan1 = self.sysfs_dir / "wlan1"
+        wlan1.mkdir()
+        (wlan1 / "phy80211").mkdir()
+        self.assertTrue(self.ndp.is_wifi_interface("wlan1", sysfs_base=self.sysfs_dir))
+
+    def test_bounded_fact_acquisition_synthetic(self):
+        """Verify fact acquisition adapter maps synthetic outputs to N0 facts."""
+        wlan0 = self.sysfs_dir / "wlan0"
+        wlan0.mkdir()
+        (wlan0 / "wireless").mkdir()
+
+        # Synthetic runner simulating nmcli and resolvectl
+        def synthetic_runner(argv):
+            cmd = argv[0]
+            if cmd == "nmcli" and "CONNECTIVITY" in argv:
+                return "full\n", self.ndp.AcquisitionError.NONE
+            elif cmd == "nmcli" and "GENERAL.CON-UUID" in argv:
+                return "11111111-2222-3333-4444-555555555555\n", self.ndp.AcquisitionError.NONE
+            elif cmd == "resolvectl" and "domain" in argv:
+                return "Link 2 (wlan0): ~.\n", self.ndp.AcquisitionError.NONE
+            return None, self.ndp.AcquisitionError.MISSING_COMMAND
+
+        facts, err = self.ndp.acquire_facts("wlan0", sysfs_base=self.sysfs_dir, cmd_runner=synthetic_runner)
+        self.assertEqual(err, self.ndp.AcquisitionError.NONE)
+        self.assertEqual(facts["connectivity"], "full")
+        self.assertEqual(facts["dns_topology"], "split")
+        self.assertEqual(facts["link_kind"], "wifi")
+        self.assertEqual(facts["connection_class"], "untrusted")
+        self.assertEqual(facts["evidence_age_bucket"], "fresh")
+
+        # Derive health record
+        health = self.ndp.derive_health_record(facts, err)
+        self.assertEqual(health["policy_state"], "preserving")
+        self.assertEqual(health["connectivity"], "full")
+        self.assertEqual(health["reason"], "untrusted_profile")
+
+    def test_durable_atomic_health_persistence(self):
+        """Verify atomic publication, locking, fsync, and read_health."""
+        health_data = {
+            "schema_version": "network.dns-policy-health.v1",
+            "policy_state": "preserving",
+            "connectivity": "portal",
+            "reason": "portal",
+            "freshness": "fresh",
+            "lease": "not_applicable",
+            "last_transition_age": "lt_30s",
+            "transition_count_bucket": "1",
+            "acquisition_error": "none",
+        }
+
+        # Successful publication
+        ok = self.ndp.publish_health(health_data, health_path=self.health_path, lock_path=self.lock_path)
+        self.assertTrue(ok)
+        self.assertTrue(self.health_path.exists())
+
+        # Read back
+        read_back = self.ndp.read_health(self.health_path)
+        self.assertEqual(read_back["policy_state"], "preserving")
+        self.assertEqual(read_back["connectivity"], "portal")
+        self.assertEqual(read_back["reason"], "portal")
+
+        # Invalid data is rejected before writing
+        invalid_data = dict(health_data, extra_key="illegal")
+        ok_bad = self.ndp.publish_health(invalid_data, health_path=self.health_path, lock_path=self.lock_path)
+        self.assertFalse(ok_bad)
+
+        # Missing file falls back to closed unavailable
+        non_existent = self.tmp_path / "non_existent.json"
+        fallback = self.ndp.read_health(non_existent)
+        self.assertEqual(fallback["policy_state"], "unavailable")
+        self.assertEqual(fallback["connectivity"], "unknown")
+        self.assertEqual(fallback["reason"], "unknown_state")
+
+    def test_cli_facade_smoke(self):
+        """Verify aq-network-policy status, health, json, and verb prohibition."""
+        import subprocess
+
+        facade = _REPO / "scripts" / "ai" / "aq-network-policy"
+        self.assertTrue(facade.exists())
+
+        # Publish a valid health record first
+        health_data = {
+            "schema_version": "network.dns-policy-health.v1",
+            "policy_state": "preserving",
+            "connectivity": "full",
+            "reason": "untrusted_profile",
+            "freshness": "fresh",
+            "lease": "not_applicable",
+            "last_transition_age": "lt_30s",
+            "transition_count_bucket": "1",
+            "acquisition_error": "none",
+        }
+        self.ndp.publish_health(health_data, health_path=self.health_path, lock_path=self.lock_path)
+
+        # 1. status
+        res = subprocess.run([sys.executable, str(facade), "status", "--path", str(self.health_path)], capture_output=True, text=True)
+        self.assertEqual(res.returncode, 0)
+        self.assertIn("Network DNS Policy Status:", res.stdout)
+        self.assertIn("preserving", res.stdout)
+
+        # 2. health
+        res = subprocess.run([sys.executable, str(facade), "health", "--path", str(self.health_path)], capture_output=True, text=True)
+        self.assertEqual(res.returncode, 0)
+        parsed = json.loads(res.stdout)
+        self.assertEqual(parsed["policy_state"], "preserving")
+
+        # 3. json
+        res = subprocess.run([sys.executable, str(facade), "json", "--path", str(self.health_path)], capture_output=True, text=True)
+        self.assertEqual(res.returncode, 0)
+        parsed = json.loads(res.stdout)
+        self.assertEqual(parsed["schema_version"], "network.dns-policy-health.v1")
+
+        # 4. Prohibited verbs reject with code 2
+        for bad_verb in ["apply", "revert", "set", "modify"]:
+            res = subprocess.run([sys.executable, str(facade), bad_verb], capture_output=True, text=True)
+            self.assertEqual(res.returncode, 2)
+            self.assertIn("strictly prohibited", res.stderr)
+
+
 if __name__ == "__main__":
     unittest.main()

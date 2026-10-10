@@ -2107,6 +2107,41 @@ def _check_security_center(ctx: RunContext) -> list[CheckResult]:
     return results
 
 
+def _check_network_dns_policy(ctx: RunContext) -> list[CheckResult]:
+    """Phase 0 — Network Profile Interoperability passive health projection check."""
+    results: list[CheckResult] = []
+    facade_path = ctx.repo_root / "scripts" / "ai" / "aq-network-policy"
+    if not facade_path.exists():
+        return [failed(4, "0.17.1", "Network DNS Policy facade", "scripts/ai/aq-network-policy not found")]
+
+    try:
+        proc = subprocess.run(
+            [sys.executable, str(facade_path), "health"],
+            capture_output=True,
+            text=True,
+            timeout=5,
+            check=False,
+        )
+        if proc.returncode != 0:
+            return [failed(4, "0.17.1", "Network DNS Policy health validation", f"exited with code {proc.returncode}: {proc.stderr[:160]}")]
+        health_data = json.loads(proc.stdout)
+    except Exception as e:
+        return [failed(4, "0.17.1", "Network DNS Policy health projection", f"execution error: {str(e)[:160]}")]
+
+    state = health_data.get("policy_state")
+    reason = health_data.get("reason")
+    freshness = health_data.get("freshness")
+
+    if state == "overriding":
+        if reason != "trusted_full":
+            return [failed(4, "0.17.1", "Network DNS Policy consistency", f"state is 'overriding' but reason is '{reason}' (must be trusted_full)")]
+        if freshness != "fresh":
+            return [failed(4, "0.17.1", "Network DNS Policy consistency", f"state is 'overriding' but freshness is '{freshness}' (must be fresh)")]
+
+    results.append(passed(4, "0.17.1", f"Network DNS Policy health: state={state}, connectivity={health_data.get('connectivity')}, reason={reason}"))
+    return results
+
+
 def run(ctx: RunContext) -> list[CheckResult]:
     """Run all phase 0 checks and return a flat list of CheckResult."""
     results: list[CheckResult] = []
@@ -2222,6 +2257,7 @@ def run(ctx: RunContext) -> list[CheckResult]:
     results.extend(_check_factory_ci_pack(ctx))
     results.extend(_check_understand_graph_freshness(ctx))
     results.extend(_check_aq_eval_static_suites(ctx))
+    results.extend(_check_network_dns_policy(ctx))
     if ctx.dashboard_safe:
         results.extend(_dashboard_safe_host_only_skips())
     return results
