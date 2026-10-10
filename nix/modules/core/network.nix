@@ -21,6 +21,11 @@
       default = false;
       description = "Enable passive network policy observation and status projection.";
     };
+    mode = lib.mkOption {
+      type = lib.types.enum [ "legacy" "policy" ];
+      default = "legacy";
+      description = "Network policy operational mode (legacy default, policy selectable in N3).";
+    };
   };
 
   config = {
@@ -74,9 +79,13 @@
           case "$ACTION" in
             up|dhcp4-change)
               if [ -d "/sys/class/net/$IFACE/wireless" ]; then
-                /run/current-system/sw/bin/resolvectl dns "$IFACE" \
-                  1.1.1.1 1.0.0.1 8.8.8.8 8.8.4.4
-                /run/current-system/sw/bin/resolvectl domain "$IFACE" "~."
+                if [ "${config.mySystem.networkPolicyObservability.mode}" = "policy" ] && [ -x /run/current-system/sw/bin/aq-network-policy ]; then
+                  /run/current-system/sw/bin/aq-network-policy execute "$IFACE" "$ACTION" --mode policy >/dev/null 2>&1 || true
+                else
+                  /run/current-system/sw/bin/resolvectl dns "$IFACE" \
+                    1.1.1.1 1.0.0.1 8.8.8.8 8.8.4.4
+                  /run/current-system/sw/bin/resolvectl domain "$IFACE" "~."
+                fi
               fi
               ;;
           esac
@@ -121,9 +130,57 @@
     networking.tempAddresses = lib.mkDefault "default";
     networking.firewall.logRefusedConnections = lib.mkDefault true;
 
-    # Safety: ensure the symlink exists even before NM has run.
+    # Safety: ensure the symlink exists even before NM has run, and declare N2 private dirs and locks.
     systemd.tmpfiles.rules = lib.mkAfter [
       "L+ /etc/resolv.conf - - - - /run/systemd/resolve/stub-resolv.conf"
+      "d /var/lib/aq-network-policy 0755 root root - -"
+      "d /var/lib/aq-network-policy/private 0700 root root - -"
+      "d /run/aq-network-policy 0755 root root - -"
+      "d /run/aq-network-policy/private 0700 root root - -"
+      "d /run/lock/aq-network-policy 0755 root root - -"
+      "f /run/lock/aq-network-policy/effect-operation.lock 0600 root root - -"
+      "f /run/lock/aq-network-policy/trusted-profiles.lock 0600 root root - -"
+      "f /run/lock/aq-network-policy/override-lease.lock 0600 root root - -"
+      "f /run/lock/aq-network-policy/health.lock 0600 root root - -"
     ];
+
+    # Independent watchdog service and timer for policy-mode lease expiry
+    systemd.services.aq-network-policy-watchdog = lib.mkIf (config.mySystem.networkPolicyObservability.enable && config.mySystem.networkPolicyObservability.mode == "policy") {
+      description = "AQ Network Policy Watchdog and Expiry Revert";
+      after = [ "network.target" ];
+      onFailure = [ "aq-network-policy-emergency-revert.service" ];
+      serviceConfig = {
+        Type = "oneshot";
+        ExecStart = "/run/current-system/sw/bin/aq-network-policy watchdog --mode policy";
+        TimeoutStartSec = "15s";
+        ProtectSystem = "strict";
+        ProtectHome = true;
+        PrivateTmp = true;
+        ReadWritePaths = [
+          "/run/aq-network-policy"
+          "/run/lock/aq-network-policy"
+          "/var/lib/aq-network-policy"
+        ];
+      };
+    };
+
+    systemd.timers.aq-network-policy-watchdog = lib.mkIf (config.mySystem.networkPolicyObservability.enable && config.mySystem.networkPolicyObservability.mode == "policy") {
+      description = "AQ Network Policy Watchdog Timer";
+      wantedBy = [ "timers.target" ];
+      timerConfig = {
+        OnBootSec = "5s";
+        OnUnitActiveSec = "10s";
+        RandomizedDelaySec = "1s";
+      };
+    };
+
+    systemd.services.aq-network-policy-emergency-revert = lib.mkIf (config.mySystem.networkPolicyObservability.enable && config.mySystem.networkPolicyObservability.mode == "policy") {
+      description = "AQ Network Policy Emergency Revert Fallback";
+      serviceConfig = {
+        Type = "oneshot";
+        ExecStart = "/run/current-system/sw/bin/aq-network-policy emergency-revert";
+        TimeoutStartSec = "10s";
+      };
+    };
   };
 }

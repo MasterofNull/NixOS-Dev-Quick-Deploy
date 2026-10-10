@@ -22,16 +22,24 @@ if str(_REPO) not in sys.path:
 try:
     from scripts.ai.lib.network_dns_policy import (
         acquire_and_publish_health,
+        execute_policy_transaction,
         is_valid_interface,
         read_health,
+        replace_trust_map,
+        run_emergency_revert,
+        run_watchdog_or_recovery,
         validate_health,
     )
 except ImportError:
     # If installed in system path
     from network_dns_policy import (  # type: ignore
         acquire_and_publish_health,
+        execute_policy_transaction,
         is_valid_interface,
         read_health,
+        replace_trust_map,
+        run_emergency_revert,
+        run_watchdog_or_recovery,
         validate_health,
     )
 
@@ -110,6 +118,80 @@ def cmd_observe(args: argparse.Namespace) -> int:
     return 0 if pub_ok else 1
 
 
+def cmd_trust_replace(args: argparse.Namespace) -> int:
+    """Root-only, activation-gated trust map replacement interface."""
+    import os
+
+    n3_activated = os.environ.get("AQ_NETWORK_POLICY_N3_ACTIVATED", "0") == "1" or getattr(args, "n3_canary", False)
+    if not n3_activated:
+        if getattr(args, "machine", False):
+            print(json.dumps({"result": "invalid_input", "error": "blocked_until_n3"}, indent=2))
+        else:
+            sys.stderr.write("Error: trust replacement interface is blocked until N3 activation.\n")
+        return 2
+
+    input_path = Path(args.input)
+    target_path = Path(args.target) if getattr(args, "target", None) else None
+    lock_path = Path(args.lock_path) if getattr(args, "lock_path", None) else None
+    check_privileges = not getattr(args, "no_privilege_check", False)
+
+    result, exit_code = replace_trust_map(
+        input_path,
+        target_path=target_path,
+        lock_path=lock_path,
+        check_privileges=check_privileges,
+    )
+    if getattr(args, "machine", False):
+        print(json.dumps({"result": result.value}, indent=2))
+    else:
+        print(f"Trust map replacement: {result.value}")
+    return exit_code
+
+
+def cmd_watchdog(args: argparse.Namespace) -> int:
+    mode = getattr(args, "mode", "policy")
+    receipt_path = Path(args.receipt_path) if getattr(args, "receipt_path", None) else None
+    effect_lock_path = Path(args.lock_path) if getattr(args, "lock_path", None) else None
+    health_path = Path(args.health_path) if getattr(args, "health_path", None) else None
+
+    ok = run_watchdog_or_recovery(
+        mode=mode,
+        receipt_path=receipt_path,
+        effect_lock_path=effect_lock_path,
+        health_path=health_path,
+    )
+    return 0 if ok else 1
+
+
+def cmd_emergency_revert(args: argparse.Namespace) -> int:
+    receipt_path = Path(args.receipt_path) if getattr(args, "receipt_path", None) else None
+    health_path = Path(args.health_path) if getattr(args, "health_path", None) else None
+
+    ok = run_emergency_revert(receipt_path=receipt_path, health_path=health_path)
+    return 0 if ok else 1
+
+
+def cmd_execute(args: argparse.Namespace) -> int:
+    iface = args.iface
+    event = args.action
+    mode = getattr(args, "mode", "legacy")
+    receipt_path = Path(args.receipt_path) if getattr(args, "receipt_path", None) else None
+    effect_lock_path = Path(args.lock_path) if getattr(args, "lock_path", None) else None
+    health_path = Path(args.health_path) if getattr(args, "health_path", None) else None
+
+    ok, dec = execute_policy_transaction(
+        iface,
+        event=event,
+        mode=mode,
+        receipt_path=receipt_path,
+        effect_lock_path=effect_lock_path,
+        health_path=health_path,
+    )
+    if getattr(args, "json", False):
+        print(json.dumps(dec, indent=2, sort_keys=True))
+    return 0 if ok else 1
+
+
 def main() -> int:
     for arg in sys.argv[1:]:
         if arg.lower() in PROHIBITED_VERBS:
@@ -117,7 +199,7 @@ def main() -> int:
             return 2
 
     parser = argparse.ArgumentParser(
-        description="aq-network-policy: read-only machine facade for Network Profile Interoperability",
+        description="aq-network-policy: machine facade for Network Profile Interoperability",
     )
     subparsers = parser.add_subparsers(dest="command", help="Subcommand")
 
@@ -141,6 +223,39 @@ def main() -> int:
     p_observe.add_argument("--sysfs-base", help="Override sysfs base directory (testing)", default=None)
     p_observe.add_argument("--json", action="store_true", help="Output result as JSON")
 
+    # trust
+    p_trust = subparsers.add_parser("trust", help="Trust map management")
+    trust_subs = p_trust.add_subparsers(dest="trust_command", help="Trust subcommand")
+    p_trust_replace = trust_subs.add_parser("replace", help="Replace trusted profile map")
+    p_trust_replace.add_argument("--input", required=True, help="Input trusted profiles JSON file")
+    p_trust_replace.add_argument("--target", help="Override target path", default=None)
+    p_trust_replace.add_argument("--lock-path", help="Override lock file path", default=None)
+    p_trust_replace.add_argument("--machine", action="store_true", help="Machine JSON output")
+    p_trust_replace.add_argument("--no-privilege-check", action="store_true", help="Skip root check (testing)")
+    p_trust_replace.add_argument("--n3-canary", action="store_true", help="Owner N3 canary activation flag")
+
+    # watchdog
+    p_watchdog = subparsers.add_parser("watchdog", help="Run periodic watchdog / recovery check")
+    p_watchdog.add_argument("--mode", choices=["legacy", "policy"], default="policy", help="Operation mode")
+    p_watchdog.add_argument("--receipt-path", help="Override receipt path", default=None)
+    p_watchdog.add_argument("--lock-path", help="Override lock path", default=None)
+    p_watchdog.add_argument("--health-path", help="Override health path", default=None)
+
+    # emergency-revert
+    p_em_revert = subparsers.add_parser("emergency-revert", help="Run emergency fallback revert")
+    p_em_revert.add_argument("--receipt-path", help="Override receipt path", default=None)
+    p_em_revert.add_argument("--health-path", help="Override health path", default=None)
+
+    # execute
+    p_execute = subparsers.add_parser("execute", help="Execute network policy action")
+    p_execute.add_argument("iface", help="Network interface")
+    p_execute.add_argument("action", help="Event/action (up, down, dhcp4-change, etc.)")
+    p_execute.add_argument("--mode", choices=["legacy", "policy"], default="legacy", help="Operation mode")
+    p_execute.add_argument("--receipt-path", help="Override receipt path", default=None)
+    p_execute.add_argument("--lock-path", help="Override lock path", default=None)
+    p_execute.add_argument("--health-path", help="Override health path", default=None)
+    p_execute.add_argument("--json", action="store_true", help="JSON output")
+
     args = parser.parse_args()
 
     if not args.command or args.command == "status":
@@ -151,6 +266,17 @@ def main() -> int:
         return cmd_json(args)
     elif args.command == "observe":
         return cmd_observe(args)
+    elif args.command == "trust":
+        if getattr(args, "trust_command", None) == "replace":
+            return cmd_trust_replace(args)
+        p_trust.print_help()
+        return 1
+    elif args.command == "watchdog":
+        return cmd_watchdog(args)
+    elif args.command == "emergency-revert":
+        return cmd_emergency_revert(args)
+    elif args.command == "execute":
+        return cmd_execute(args)
     else:
         parser.print_help()
         return 1
