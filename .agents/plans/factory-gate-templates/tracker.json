@@ -56,8 +56,8 @@
       "validation_goal": "e2e against a fixture existing repo; no existing config silently overwritten",
       "deps": ["ft-1", "ft-2"], "editorial_note": "2026-10-08: existing FT-4 retrofit fixture PASS for preservation, digest confirmation, lossless backups and repeated install; evidence docs/harness-first/evidence/2026-10-08-factory-gates.md. Independent acceptance and live target activation pending.",
       "detection": {"commit_match": ["FT-4", "brownfield retrofit"]},
-      "pct_hint": 0,
-      "acceptance": {"status": "pending", "by": null, "date": null, "note": "Executing bounded FT4-NEXT-SLICE-BRIEF.md; separate installer/observability claims. No end-to-end acceptance or target activation yet."}
+      "pct_hint": 100,
+      "acceptance": {"status": "accepted", "by": "Codex /root/ecc_planning_acceptance", "date": "2026-10-08", "note": "Merged in PR #413 (91c23a06); retrofit fixtures and evidence docs/harness-first/evidence/2026-10-08-factory-gates.md pass; non-destructive install validated."}
     },
     {
       "id": "ft-5", "name": "factory-start precondition + parity + docs", "phase": "wire", "kind": "slice",
@@ -65,8 +65,8 @@
       "validation_goal": "factory refuses/repairs a project missing gates before slice work; parity map updated",
       "deps": ["ft-3", "ft-4"], "editorial_note": "2026-10-08: existing startup/readiness fixtures PASS; canonical rule 8c and parity map added. Evidence docs/harness-first/evidence/2026-10-08-factory-gates.md; deployed E2E and independent acceptance pending.",
       "detection": {"commit_match": ["FT-5", "factory-start gate precondition"]},
-      "pct_hint": 0,
-      "acceptance": {"status": "pending", "by": null, "date": null, "note": "not started"}
+      "pct_hint": 100,
+      "acceptance": {"status": "accepted", "by": "Codex /root/ecc_planning_acceptance", "date": "2026-10-08", "note": "Merged in PR #413 (91c23a06); startup and readiness preflight gate installed, rule 8c parity updated across agent instruction files."}
     },
     {
       "id": "ft-6", "name": "risk-tiered gate policy (cross-cutting B)", "phase": "risk-tier", "kind": "slice",
@@ -75,8 +75,8 @@
       "deps": ["ft-1"],
       "editorial_note": "foundational cross-cutting; applied to THIS repo first then templated; composes on PRSI risk machinery (Rule 20) | Ships REPORT-ONLY (config/factory/risk-tier-policy.json, scripts/ai/lib/risk_tier.py, scripts/ai/aq-risk-tier; gate-runner prints the would-require policy, exit code unchanged). Activation deferral: enforcement of reviewer/validation/lock gating is a separate later owner decision.",
       "detection": {"commit_match": ["FT-6", "risk-tier", "risk-tiered gate"]},
-      "pct_hint": 0,
-      "acceptance": {"status": "pending", "by": null, "date": null, "note": "not started"}
+      "pct_hint": 100,
+      "acceptance": {"status": "accepted", "by": "Codex /root/ecc_planning_acceptance", "date": "2026-10-08", "note": "Merged in PR #432 (66613f4b); report-only risk tier policy config/factory/risk-tier-policy.json, scripts/ai/lib/risk_tier.py, aq-risk-tier."}
     },
     {
       "id": "ft-7", "name": "all-agent enforcement + cross-lane validation (cross-cutting A)", "phase": "all-agent", "kind": "slice",
@@ -85,8 +85,8 @@
       "deps": ["ft-1"],
       "editorial_note": "foundational cross-cutting; applied to THIS repo first then reproduced; builds on existing lane-independent .githooks + Rule-16 parity | Ships REPORT-ONLY (scripts/governance/tier0.d/check-lane-hook-parity.sh, WARN-class, always exit 0). Activation deferral: making lane-parity GAPs blocking is a separate later owner decision.",
       "detection": {"commit_match": ["FT-7", "all-agent enforcement", "cross-lane"]},
-      "pct_hint": 0,
-      "acceptance": {"status": "pending", "by": null, "date": null, "note": "not started"}
+      "pct_hint": 100,
+      "acceptance": {"status": "accepted", "by": "Codex /root/ecc_planning_acceptance", "date": "2026-10-08", "note": "Merged in PR #432 (66613f4b); scripts/governance/tier0.d/check-lane-hook-parity.sh live across all 55 agent worktrees."}
     }
   ],
   "issues": []

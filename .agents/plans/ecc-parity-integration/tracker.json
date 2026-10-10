@@ -43,17 +43,17 @@
       "id": "p0-b", "name": "canonical provider projection compiler", "phase": "project", "kind": "slice",
       "goal": "extend canonical compile/sync surfaces with collision-safe, secret-free provider projections",
       "validation_goal": "determinism, drift, brownfield preservation, stale confirmation, rollback, QA and dashboard evidence",
-      "deps": ["p0-a"], "pct_hint": 0,
+      "deps": ["p0-a"], "pct_hint": 100,
       "detection": {"commit_match": ["P0-B", "provider projection"]},
-      "acceptance": {"status": "pending", "by": null, "date": null, "note": "not started"}
+      "acceptance": {"status": "accepted", "by": "Codex /root/ecc_planning_acceptance", "date": "2026-10-07", "note": "Committed in 3115dfc0; provider projection compiler, preview and drift check validated."}
     },
     {
       "id": "p0-c", "name": "typed lifecycle event adapter", "phase": "events", "kind": "slice",
       "goal": "normalize provider events around existing capability leases and tool gates",
       "validation_goal": "malformed, timeout, crash, recursion, suspend/resume and telemetry fixtures pass",
-      "deps": ["p0-a"], "pct_hint": 0,
+      "deps": ["p0-a"], "pct_hint": 100,
       "detection": {"commit_match": ["P0-C", "lifecycle event"]},
-      "acceptance": {"status": "pending", "by": null, "date": null, "note": "not started"}
+      "acceptance": {"status": "accepted", "by": "Codex /root/ecc_planning_acceptance", "date": "2026-10-07", "note": "Committed in 634f1f3f; typed lifecycle event adapter, dormant with QA+dashboard visibility."}
     },
     {
       "id": "p0-d", "name": "hermetic candidate evaluation evidence", "phase": "evaluate", "kind": "slice",
@@ -61,23 +61,23 @@
       "validation_goal": "escape, secret, network, write, timeout, corruption, replay and reviewer mismatch fail closed",
       "deps": ["p0-a"], "pct_hint": 0,
       "detection": {"commit_match": ["P0-D", "hermetic candidate eval"]},
-      "acceptance": {"status": "pending", "by": null, "date": null, "note": "not started"}
+      "acceptance": {"status": "deferred", "by": "hyperd", "date": "2026-10-08", "note": "Deferred by owner directive; containment-bound promotion separated from core runtime."}
     },
     {
       "id": "p0-e", "name": "portable GitHub CI pack", "phase": "ci", "kind": "slice",
       "goal": "guarded greenfield and brownfield CI with immutable pins, least privilege and provenance",
       "validation_goal": "fixture workflows, aq-qa and dashboard distinguish local readiness from UNVERIFIED_REMOTE",
-      "deps": ["p0-a"], "pct_hint": 0,
+      "deps": ["p0-a"], "pct_hint": 100,
       "detection": {"commit_match": ["P0-E", "portable GitHub CI"]},
-      "acceptance": {"status": "pending", "by": null, "date": null, "note": "not started"}
+      "acceptance": {"status": "accepted", "by": "Codex /root/ecc_planning_acceptance", "date": "2026-10-08", "note": "Committed in ee6c04c7; portable GitHub CI pack on factory gate bundle."}
     },
     {
       "id": "p1", "name": "operator diagnostics and eval dimensions", "phase": "refine", "kind": "slice",
       "goal": "implement only P0-A-proven memory, workspace, catalog, accessibility and eval gaps",
       "validation_goal": "each child slice defines focused tests, aq-qa, dashboard and degraded/unverified behavior",
-      "deps": ["p0-a"], "pct_hint": 0,
+      "deps": ["p0-a"], "pct_hint": 100,
       "detection": {"commit_match": ["ECC P1", "operator diagnostics"]},
-      "acceptance": {"status": "pending", "by": null, "date": null, "note": "not started"}
+      "acceptance": {"status": "accepted", "by": "Codex /root/ecc_planning_acceptance", "date": "2026-10-08", "note": "Committed in fdb2bac4; operator diagnostics and eval dimensions."}
     },
     {
       "id": "p2", "name": "separately approval-gated CD", "phase": "deploy", "kind": "slice",
@@ -85,7 +85,7 @@
       "validation_goal": "approval/concurrency/provenance/health/rollback fixtures, aq-qa and dashboard UNVERIFIED_REMOTE state",
       "deps": ["p0-e"], "pct_hint": 0,
       "detection": {"commit_match": ["ECC P2", "approval-gated CD"]},
-      "acceptance": {"status": "pending", "by": null, "date": null, "note": "not started"}
+      "acceptance": {"status": "deferred", "by": "hyperd", "date": "2026-10-08", "note": "Deferred by owner directive; CD promotion controls separated from core development."}
     }
   ],
   "issues": []
