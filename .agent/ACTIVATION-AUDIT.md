@@ -642,6 +642,10 @@ Status: configuration preparation; activation deferred to the owner's next rebui
 
 2026-10-09 sandbox runtime evidence: installed nsjail3.6 executes corrected source argv, Git2.54.0, temporary writes and read-only repository boundary pass (exit0). New service environment and Codex defaults remain deferred to next rebuild/new session; optional fallback is an existing limit.
 
+2026-10-10 post-rebuild check: active `/run/current-system` points to `nixos-system-hyperd-26.05.20261008.7c8764b`; the `ai-capability-audit.timer` unit is installed, enabled, and `active (waiting)`, scheduled for 2026-10-10 00:00 PDT. A manual snapshot command succeeded with schema `capability-audit/1`, 467 capabilities, and 0 `BROKEN`; it queried 0 systemd units. An attempted `systemctl start ai-capability-audit.service` was denied by polkit because interactive authentication is unavailable. Scheduled execution, live QA/dashboard and RSI ingestion remain unverified. Home Manager remains generation 150 from 2026-10-08; no `nsjail` executable is on the current PATH, so fresh-client sandbox behavior remains unverified. No readiness/activation acceptance claimed.
+
 ## CI3 capability audit timer + RSI feed — 2026-10-09 deferral
 
 Evidence: `docs/harness-first/evidence/2026-10-09-capability-audit-rsi.md`. Declarative timer activation is deferred to the next rebuild. Live enabled timer, periodic snapshot generation, QA/dashboard integration, and real RSI regression ingestion must be attested after activation; focused tests do not establish live readiness. No security or containment activation is authorized by this slice.
+
+2026-10-10 post-rebuild: active system generation includes the timer unit and its enabled symlink; read-only systemd status confirms `active (waiting)` with the first trigger at 2026-10-10 00:00 PDT. Manual snapshot generation succeeded (467 capabilities, 0 BROKEN). Manual service start was denied by polkit; scheduled execution, QA/dashboard live path, and RSI regression ingestion remain unverified.
