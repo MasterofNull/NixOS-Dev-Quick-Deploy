@@ -26,6 +26,15 @@ def _canonical_tier0(repo: Path) -> None:
 
 
 def main(argv: list[str]) -> int:
+    if argv[:1] == ["--draft-message"]:
+        # Read-only: prints a conventional-commit draft for the staged diff; never stages or commits.
+        from commit_draft import draft
+        text = draft(Path.cwd())
+        if text is None:
+            print("aq-commit-agent: nothing staged", file=sys.stderr)
+            return 2
+        sys.stdout.write(text)
+        return 0
     parser = argparse.ArgumentParser(
         description="Commit only repeated literal paths after canonical tier0 validation.",
         epilog=("First stage only the declared files, then pass git rev-parse HEAD and "
