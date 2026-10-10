@@ -2293,6 +2293,21 @@ else:
       _skip 7 "A.5.1" "TOOL_SCHEMAS parity check" "contract file not found: .agent/tool-parity-contract.json"
     fi
   fi
+
+  # 0.17.1 Network DNS Policy health projection check
+  if _should_run 4; then
+    local _ndp_facade="${REPO_ROOT}/scripts/ai/aq-network-policy"
+    if [[ -f "$_ndp_facade" ]]; then
+      local _ndp_out
+      if _ndp_out=$(python3 "$_ndp_facade" health 2>&1); then
+        _pass 4 "0.17.1" "Network DNS Policy health projection valid"
+      else
+        _fail 4 "0.17.1" "Network DNS Policy health projection" "health check failed: ${_ndp_out:0:160}"
+      fi
+    else
+      _fail 4 "0.17.1" "Network DNS Policy health projection" "facade script not found: $_ndp_facade"
+    fi
+  fi
 }
 
 # ---------------------------------------------------------------------------

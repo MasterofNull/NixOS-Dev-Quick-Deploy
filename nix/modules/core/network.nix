@@ -1,6 +1,7 @@
 {
   lib,
   pkgs,
+  config,
   ...
 }:
 # ---------------------------------------------------------------------------
@@ -14,6 +15,14 @@
 #   - /etc/resolv.conf pointing at wrong location after NetworkManager init
 # ---------------------------------------------------------------------------
 {
+  options.mySystem.networkPolicyObservability = {
+    enable = lib.mkOption {
+      type = lib.types.bool;
+      default = false;
+      description = "Enable passive network policy observation and status projection.";
+    };
+  };
+
   # systemd-resolved: stub DNS resolver with fallback servers.
   services.resolved = {
     enable = lib.mkDefault true;
@@ -55,7 +64,7 @@
   # hosts (NXDOMAIN for cache.nixos.org etc.) trips nix builds and API connections
   # even though fallbackDns is configured. Running after NM's DNS push guarantees
   # 1.1.1.1 handles all wifi queries.
-  networking.networkmanager.dispatcherScripts = lib.mkDefault [
+  networking.networkmanager.dispatcherScripts = [
     {
       source = pkgs.writeScript "10-wifi-reliable-dns" ''
         #!/bin/sh
@@ -73,7 +82,21 @@
       '';
       type = "basic";
     }
-  ];
+  ] ++ (lib.optional config.mySystem.networkPolicyObservability.enable {
+    source = pkgs.writeScript "20-aq-network-policy-observe" ''
+      #!/bin/sh
+      IFACE=$1
+      ACTION=$2
+      case "$ACTION" in
+        up|dhcp4-change|down|connectivity-change)
+          if [ -x /run/current-system/sw/bin/aq-network-policy ]; then
+            /run/current-system/sw/bin/aq-network-policy observe "$IFACE" >/dev/null 2>&1 || true
+          fi
+          ;;
+      esac
+    '';
+    type = "basic";
+  });
 
   # Captive portal + internet connectivity detection.
   # NM checks this URI periodically; a 204 response means CONNECTIVITY_FULL,

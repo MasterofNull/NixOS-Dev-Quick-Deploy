@@ -1,0 +1,160 @@
+#!/usr/bin/env python3
+"""aq-network-policy — read-only CLI facade for Network Profile Interoperability.
+
+PRD: .agent/PROJECT-NETWORK-PROFILE-INTEROPERABILITY-PRD.md
+Slice: N1 (passive projection and Service Coverage)
+
+Provides status, health inspection, JSON projection, and passive observation.
+Mutation verbs are prohibited by contract.
+"""
+from __future__ import annotations
+
+import argparse
+import json
+import sys
+from pathlib import Path
+
+# Locate repo root
+_REPO = Path(__file__).resolve().parents[2]
+if str(_REPO) not in sys.path:
+    sys.path.insert(0, str(_REPO))
+
+try:
+    from scripts.ai.lib.network_dns_policy import (
+        acquire_and_publish_health,
+        is_valid_interface,
+        read_health,
+        validate_health,
+    )
+except ImportError:
+    # If installed in system path
+    from network_dns_policy import (  # type: ignore
+        acquire_and_publish_health,
+        is_valid_interface,
+        read_health,
+        validate_health,
+    )
+
+PROHIBITED_VERBS = {
+    "apply",
+    "revert",
+    "set",
+    "modify",
+    "write",
+    "delete",
+    "mutate",
+    "update",
+    "override",
+}
+
+
+def cmd_status(args: argparse.Namespace) -> int:
+    """Print human-readable summary of health projection."""
+    health_path = Path(args.path) if args.path else None
+    data = read_health(health_path)
+
+    print(f"Network DNS Policy Status:")
+    print(f"  Schema:       {data.get('schema_version', 'unknown')}")
+    print(f"  State:        {data.get('policy_state', 'unknown')}")
+    print(f"  Connectivity: {data.get('connectivity', 'unknown')}")
+    print(f"  Reason:       {data.get('reason', 'unknown')}")
+    print(f"  Freshness:    {data.get('freshness', 'unknown')}")
+    print(f"  Lease:        {data.get('lease', 'unknown')}")
+    print(f"  Age:          {data.get('last_transition_age', 'unknown')}")
+    print(f"  Transitions:  {data.get('transition_count_bucket', 'unknown')}")
+    print(f"  Acq Error:    {data.get('acquisition_error', 'unknown')}")
+    return 0
+
+
+def cmd_health(args: argparse.Namespace) -> int:
+    """Print JSON representation and return 0 if valid."""
+    health_path = Path(args.path) if args.path else None
+    data = read_health(health_path)
+    ok, err = validate_health(data)
+    print(json.dumps(data, indent=2, sort_keys=True))
+    if not ok:
+        sys.stderr.write(f"Health validation failed: {err}\n")
+        return 1
+    return 0
+
+
+def cmd_json(args: argparse.Namespace) -> int:
+    """Print raw JSON health projection."""
+    health_path = Path(args.path) if args.path else None
+    data = read_health(health_path)
+    print(json.dumps(data, indent=2, sort_keys=True))
+    return 0
+
+
+def cmd_observe(args: argparse.Namespace) -> int:
+    """Execute bounded passive observation and publish health projection."""
+    iface = args.iface
+    if iface and not is_valid_interface(iface):
+        sys.stderr.write(f"Error: unsafe or invalid interface name '{iface}'\n")
+        return 1
+
+    health_path = Path(args.path) if args.path else None
+    lock_path = Path(args.lock_path) if args.lock_path else None
+    sysfs_base = Path(args.sysfs_base) if args.sysfs_base else None
+
+    pub_ok, record = acquire_and_publish_health(
+        iface=iface,
+        health_path=health_path,
+        lock_path=lock_path,
+        sysfs_base=sysfs_base,
+    )
+    if args.json:
+        print(json.dumps(record, indent=2, sort_keys=True))
+    else:
+        print(f"Observed network policy: state={record.get('policy_state')}, published={pub_ok}")
+    return 0 if pub_ok else 1
+
+
+def main() -> int:
+    for arg in sys.argv[1:]:
+        if arg.lower() in PROHIBITED_VERBS:
+            sys.stderr.write(f"Error: mutation verb '{arg}' is strictly prohibited in read-only facade.\n")
+            return 2
+
+    parser = argparse.ArgumentParser(
+        description="aq-network-policy: read-only machine facade for Network Profile Interoperability",
+    )
+    subparsers = parser.add_subparsers(dest="command", help="Subcommand")
+
+    # status
+    p_status = subparsers.add_parser("status", help="Show human-readable health summary")
+    p_status.add_argument("--path", help="Override health file path", default=None)
+
+    # health
+    p_health = subparsers.add_parser("health", help="Validate and output health JSON")
+    p_health.add_argument("--path", help="Override health file path", default=None)
+
+    # json
+    p_json = subparsers.add_parser("json", help="Output health JSON projection")
+    p_json.add_argument("--path", help="Override health file path", default=None)
+
+    # observe
+    p_observe = subparsers.add_parser("observe", help="Perform passive bounded observation")
+    p_observe.add_argument("iface", nargs="?", help="Interface to observe (default: auto-detected Wi-Fi)", default=None)
+    p_observe.add_argument("--path", help="Override health file path", default=None)
+    p_observe.add_argument("--lock-path", help="Override lock file path", default=None)
+    p_observe.add_argument("--sysfs-base", help="Override sysfs base directory (testing)", default=None)
+    p_observe.add_argument("--json", action="store_true", help="Output result as JSON")
+
+    args = parser.parse_args()
+
+    if not args.command or args.command == "status":
+        return cmd_status(args)
+    elif args.command == "health":
+        return cmd_health(args)
+    elif args.command == "json":
+        return cmd_json(args)
+    elif args.command == "observe":
+        return cmd_observe(args)
+    else:
+        parser.print_help()
+        return 1
+
+
+if __name__ == "__main__":
+    sys.exit(main())
