@@ -3,17 +3,37 @@
 
 set -euo pipefail
 
-MODEL_NAME="Qwen3.6-35B-A3B-UD-Q4_K_M"
+# Byte-range resume for large GGUF downloads (the llama-cpp-model-fetch unit restarts
+# from zero on interruption). Usage: resume-model-download.sh [--repo R] [--file F]
+# [--dest-dir D] [--dry-run]. Defaults keep the original Qwen3.6 Q4_K_M target.
 MODEL_REPO="unsloth/Qwen3.6-35B-A3B-GGUF"
-MODEL_FILE="${MODEL_NAME}.gguf"
+MODEL_FILE="Qwen3.6-35B-A3B-UD-Q4_K_M.gguf"
+DEST_DIR=""
+DRY_RUN=0
+while [[ $# -gt 0 ]]; do
+    case "$1" in
+        --repo) MODEL_REPO="$2"; shift 2 ;;
+        --file) MODEL_FILE="$2"; shift 2 ;;
+        --dest-dir) DEST_DIR="$2"; shift 2 ;;
+        --dry-run) DRY_RUN=1; shift ;;
+        -h|--help) sed -n '2,5p' "$0" | sed 's/^# \{0,1\}//'; exit 0 ;;
+        *) echo "Unknown option: $1" >&2; exit 2 ;;
+    esac
+done
+MODEL_NAME="${MODEL_FILE%.gguf}"
 CACHE_DIR="${HOME}/.cache/huggingface/hub"
-TARGET_FILE="${CACHE_DIR}/models--${MODEL_REPO/\//_}/snapshots/main/${MODEL_FILE}"
+TARGET_FILE="${DEST_DIR:-${CACHE_DIR}/models--${MODEL_REPO/\//_}/snapshots/main}/${MODEL_FILE}"
 
 echo "=== Qwen 3.6 Model Download Resume Script ==="
 echo ""
 echo "Model: ${MODEL_NAME}"
 echo "Target: ${TARGET_FILE}"
 echo ""
+
+if [[ "$DRY_RUN" -eq 1 ]]; then
+    echo "[dry-run] would resume: https://huggingface.co/${MODEL_REPO}/resolve/main/${MODEL_FILE} -> ${TARGET_FILE}"
+    exit 0
+fi
 
 # Create cache directory
 mkdir -p "$(dirname "${TARGET_FILE}")"
@@ -39,7 +59,7 @@ echo ""
 # Use curl with resume, progress bar, and better error handling
 if curl ${RESUME} -L --progress-bar --fail --retry 5 --retry-delay 10 \
     -o "${TARGET_FILE}" \
-    "https://huggingface.co/unsloth/Qwen3.6-35B-A3B-GGUF/resolve/main/${MODEL_FILE}"; then
+    "https://huggingface.co/${MODEL_REPO}/resolve/main/${MODEL_FILE}"; then
 
     echo ""
     echo "✓ Download complete!"
