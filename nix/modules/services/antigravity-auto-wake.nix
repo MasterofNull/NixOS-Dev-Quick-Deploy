@@ -56,9 +56,15 @@ print(d.get("next_eligible") or "")' 2>/dev/null)"
     out="$(${pkgs.python3}/bin/python3 "${aqInbox}" verify --json 2>/dev/null)"; rc=$?
     tmp="${cfg.drainHealthFile}.tmp.$$"
     printf '%s\n' "$out" > "$tmp" 2>/dev/null && ${pkgs.coreutils}/bin/mv -f "$tmp" "${cfg.drainHealthFile}" 2>/dev/null || true
+    # Undrained tasks are a finding, not a unit failure: the RSI sweep (adapter antigravity-drain) reads
+    # the snapshot above and owns the alert. Exit non-zero only when verify produced no JSON at all.
+    if ! printf '%s' "$out" | ${pkgs.python3}/bin/python3 -c 'import json,sys; json.load(sys.stdin)' 2>/dev/null; then
+      echo "antigravity drain verify FAILED to produce JSON (rc=$rc): $out" >&2
+      exit 1
+    fi
     if [ "$rc" -ne 0 ]; then
       echo "ANTIGRAVITY-DRAIN-ALERT: inbox has nudged-but-undrained task(s) — cli-nudge-ok is not completion; the IDE agent is not processing. $out" >&2
-      exit 1
+      exit 0
     fi
     echo "antigravity drain OK: $out"
   '';
