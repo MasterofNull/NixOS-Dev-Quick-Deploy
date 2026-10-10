@@ -328,7 +328,7 @@ async function loadCapabilities() {
   const sessSafety = safety.session_safety || {};
   const procWatchdog = safety.process_watchdog || {};
 
-  const sessTxt = sessSafety.safe 
+  const sessTxt = sessSafety.safe
     ? `0 bloated (${sessSafety.max_session_mb || 0} MB peak · <${sessSafety.threshold_mb || 2.5}MB limit)`
     : `${sessSafety.bloated_sessions} bloated sessions (>2.5MB!)`;
   const sessStatus = sessSafety.safe ? "ok" : "err";
@@ -8381,9 +8381,11 @@ document.addEventListener("DOMContentLoaded", () => {
     loadRemediations();
     loadAuditLog();
     loadObservability();
+    updateNetworkResilience();
   }, 400);
   // Periodic refresh
   setInterval(loadKPIs, 30_000);
+  setInterval(updateNetworkResilience, 30_000);
   setInterval(loadRagQuality, 60_000);
   setInterval(loadSystem, 30_000);
   setInterval(loadServices, 30_000);
@@ -9490,3 +9492,80 @@ window.mlCancel = mlCancel;
 window.mlRollback = mlRollback;
 window.loadAgentReplay = loadAgentReplay;
 window.sendControl = sendControl;
+window.updateNetworkResilience = updateNetworkResilience;
+
+// ─── Network Profile Interoperability — Network Resilience Card ────────────
+function _ensureNetworkResilienceCard() {
+  let card = document.getElementById("networkResilienceCard");
+  if (card) return card;
+  const container = document.getElementById("sysNavGrid") || document.querySelector(".panel-grid") || document.querySelector(".grid") || document.body;
+  if (!container) return null;
+  card = document.createElement("div");
+  card.id = "networkResilienceCard";
+  card.className = "card";
+  card.innerHTML = `
+    <div class="card-head" style="display:flex;justify-content:space-between;align-items:center;">
+      <span class="card-title" style="font-weight:600;font-size:0.95rem;">Network Resilience</span>
+      <span id="networkResilienceBadge" class="card-badge badge-info">UNAVAILABLE</span>
+    </div>
+    <div id="networkResilienceDetails" class="card-body" style="margin-top:0.5rem;font-size:0.85rem;">
+      <div class="fw-row"><span class="fk">State</span><span id="netPolicyState" class="fv">unavailable</span></div>
+      <div class="fw-row"><span class="fk">Connectivity</span><span id="netPolicyConn" class="fv">unknown</span></div>
+      <div class="fw-row"><span class="fk">Reason</span><span id="netPolicyReason" class="fv">unknown_state</span></div>
+      <div class="fw-row"><span class="fk">Freshness</span><span id="netPolicyFreshness" class="fv">unknown</span></div>
+      <div class="fw-row"><span class="fk">Lease</span><span id="netPolicyLease" class="fv">unknown</span></div>
+      <div class="fw-row"><span class="fk">Age</span><span id="netPolicyAge" class="fv">unknown</span></div>
+      <div class="fw-row" style="margin-top:0.4rem;border-top:1px solid rgba(255,255,255,0.05);padding-top:0.3rem;">
+        <span class="fk">Runbook</span>
+        <span class="fv"><a href="file:///home/hyperd/Documents/NixOS-Dev-Quick-Deploy/docs/operations/network-profile-interoperability.md" target="_blank" style="color:#58a6ff;text-decoration:none;">Diagnostics &amp; Runbook</a></span>
+      </div>
+    </div>
+  `;
+  container.appendChild(card);
+  return card;
+}
+
+async function updateNetworkResilience() {
+  _ensureNetworkResilienceCard();
+  const badge = document.getElementById("networkResilienceBadge");
+  try {
+    const d = await apiFetch("/aistack/network-policy");
+    if (!d || !d.policy_state) {
+      if (badge) {
+        badge.textContent = "UNAVAILABLE";
+        badge.className = "card-badge badge-err";
+      }
+      setText("netPolicyState", "unavailable");
+      setText("netPolicyConn", "unknown");
+      setText("netPolicyReason", "unknown_state");
+      setText("netPolicyFreshness", "unknown");
+      setText("netPolicyLease", "unknown");
+      setText("netPolicyAge", "unknown");
+      return;
+    }
+
+    const st = d.policy_state;
+    if (badge) {
+      badge.textContent = st.toUpperCase();
+      if (st === "preserving" || st === "overriding") {
+        badge.className = "card-badge badge-ok";
+      } else if (st === "transitioning" || st === "reverted") {
+        badge.className = "card-badge badge-warn";
+      } else {
+        badge.className = "card-badge badge-err";
+      }
+    }
+
+    setText("netPolicyState", st);
+    setText("netPolicyConn", d.connectivity || "unknown");
+    setText("netPolicyReason", d.reason || "unknown_state");
+    setText("netPolicyFreshness", d.freshness || "unknown");
+    setText("netPolicyLease", d.lease || "unknown");
+    setText("netPolicyAge", d.last_transition_age || "unknown");
+  } catch (err) {
+    if (badge) {
+      badge.textContent = "UNAVAILABLE";
+      badge.className = "card-badge badge-err";
+    }
+  }
+}
