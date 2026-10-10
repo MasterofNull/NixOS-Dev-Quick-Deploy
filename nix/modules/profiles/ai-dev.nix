@@ -169,6 +169,9 @@ in {
     mySystem.aiStack.agentMesh.enable = lib.mkDefault true;
     mySystem.aiStack.affectiveEngine.enable = lib.mkDefault true;
     mySystem.aiStack.worldModel.enable = lib.mkDefault true;
+    # Meta-optimization: daily analysis writes proposals only (autoApplyProposals stays false).
+    # Tables come from alembic aidb@head (20261010_01), applied in ai-aidb preStart.
+    mySystem.aiStack.metaOptimization.enable = lib.mkDefault true;
 
     # MVP activation (enabled for MVP testing -- development continues): aq-* tab completion
     # and the stale-report login digest. Kill switch: set false (lib.mkForce) in the host file.
