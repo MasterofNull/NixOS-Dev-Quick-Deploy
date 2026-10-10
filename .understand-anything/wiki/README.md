@@ -1,6 +1,6 @@
 # Codebase Wiki — Navigation Index
 
-Auto-generated from `knowledge-graph.json` (2026-07-01T16:10:40Z).  
+Auto-generated from `knowledge-graph.json` (2026-10-10T07:31:33Z).
 **Do not edit manually.** Refresh: `aq-wiki --update`
 
 ## Quick Reference
@@ -16,17 +16,17 @@ aq-wiki --seed-aidb         # push to AIDB for semantic search
 
 | Section | Nodes | Description |
 |---------|-------|-------------|
-| [`hybrid-coordinator`](hybrid-coordinator.md) | 685 | AI request routing, tool execution, intent classification, progressive disclosure |
-| [`switchboard`](switchboard.md) | 1 | Profile-based model routing, circuit breakers, remote/local delegation |
-| [`local-agent`](local-agent.md) | 71 | Local Qwen3-35B agent runtime, outer loop, grounding, task state management |
-| [`agent-runtimes`](agent-runtimes.md) | 2 | Agent runtime implementations: slot scheduling, local_agent_runtime |
-| [`aidb`](aidb.md) | 95 | AIDB RAG server, Qdrant collections, knowledge ingestion, semantic retrieval |
-| [`nix-modules`](nix-modules.md) | 70 | NixOS module declarations for all AI stack services and options SSOT |
-| [`nix-hosts`](nix-hosts.md) | 16 | Per-host NixOS configuration, deploy options, secrets wiring (gitignored) |
-| [`ai-scripts`](ai-scripts.md) | 225 | Agent CLI scripts: aq-loop, aq-wiki, delegate-to-*, aq-qa, aq-hints, aq-agent-loop |
-| [`governance`](governance.md) | 79 | Pre-commit gates, tier0 validation, repo structure linting |
-| [`configuration`](configuration.md) | 111 | System config: progressive disclosure domains, doc schema, switchboard profiles |
-| [`testing`](testing.md) | 689 | Test harness scripts, inference budget tests, slot scheduling tests |
+| [`hybrid-coordinator`](hybrid-coordinator.md) | 2795 | AI request routing, tool execution, intent classification, progressive disclosure |
+| [`switchboard`](switchboard.md) | 193 | Profile-based model routing, circuit breakers, remote/local delegation |
+| [`local-agent`](local-agent.md) | 498 | Local Qwen3-35B agent runtime, outer loop, grounding, task state management |
+| [`agent-runtimes`](agent-runtimes.md) | 62 | Agent runtime implementations: slot scheduling, local_agent_runtime |
+| [`aidb`](aidb.md) | 488 | AIDB RAG server, Qdrant collections, knowledge ingestion, semantic retrieval |
+| [`nix-modules`](nix-modules.md) | 605 | NixOS module declarations for all AI stack services and options SSOT |
+| [`nix-hosts`](nix-hosts.md) | 24 | Per-host NixOS configuration, deploy options, secrets wiring (gitignored) |
+| [`ai-scripts`](ai-scripts.md) | 4104 | Agent CLI scripts: aq-loop, aq-wiki, delegate-to-*, aq-qa, aq-hints, aq-agent-loop |
+| [`governance`](governance.md) | 359 | Pre-commit gates, tier0 validation, repo structure linting |
+| [`configuration`](configuration.md) | 189 | System config: progressive disclosure domains, doc schema, switchboard profiles |
+| [`testing`](testing.md) | 6947 | Test harness scripts, inference budget tests, slot scheduling tests |
 
 ## Agent Usage Pattern (OpenWiki-style)
 

@@ -8,7 +8,7 @@
   aq-graph-query types                node type counts before/after normalisation
   aq-graph-query staleness [--check]  graph/wiki age and commits since generation
 
-Add --json for machine output. Graph answers are advisory (LLM-generated graph);
+Add --json for machine output. Graph answers are advisory (static analysis; edges carry weights, <0.6 = name-only guess);
 verify against source. Root: --root, $UA_PROJECT_DIR, or this checkout.
 """
 try:  # aq-usage-hook

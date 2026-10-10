@@ -251,7 +251,7 @@ def _render_section(name: str, info: dict, nodes: list, graph_meta: dict) -> str
         "",
         f"> {info['desc']}",
         "",
-        "*Auto-generated from `knowledge-graph.json`. Do not edit manually.*  ",
+        "*Auto-generated from `knowledge-graph.json`. Do not edit manually.*",
         "*Refresh: `aq-wiki --update`  ·  Full regeneration: `aq-wiki --init --force`*",
         "",
     ]
@@ -330,7 +330,7 @@ def _write_index(wiki_meta: dict, graph_meta: dict):
     lines = [
         "# Codebase Wiki — Navigation Index",
         "",
-        f"Auto-generated from `knowledge-graph.json` ({graph_meta.get('generated', now)}).  ",
+        f"Auto-generated from `knowledge-graph.json` ({graph_meta.get('generated', now)}).",
         "**Do not edit manually.** Refresh: `aq-wiki --update`",
         "",
         "## Quick Reference",

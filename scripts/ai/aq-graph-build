@@ -1,0 +1,73 @@
+#!/usr/bin/env python3
+"""aq-graph-build -- deterministic, no-LLM rebuild of .understand-anything/knowledge-graph.json.
+
+  aq-graph-build                 build from git ls-files and write the graph atomically
+  aq-graph-build --check         exit 1 if the graph is missing, not built by this tool, or
+                                 any in-scope tracked file changed since its git_head
+  aq-graph-build --out PATH      write elsewhere (no LLM-graph backup move)
+  aq-graph-build --stats         print counts / import-resolution share as JSON
+
+Same schema as the upstream LLM graph, so aq-graph-query, aq-wiki, the MCP graph_query tool
+and the dashboard read it unchanged. The first overwrite moves the old LLM graph to
+.understand-anything/knowledge-graph.llm-2026-07-01.json (never deleted) and its richer
+summaries are carried forward (tag summary:llm-2026-07) where no docstring exists.
+Root: --root, $UA_PROJECT_DIR, or this checkout. Output is byte-identical for one HEAD.
+"""
+try:  # aq-usage-hook
+    import importlib.util as _aqu, os as _aqo
+    _aqs = _aqu.spec_from_file_location("aq_usage", _aqo.path.join(_aqo.path.dirname(_aqo.path.realpath(__file__)), "lib", "aq_usage.py"))
+    _aqm = _aqu.module_from_spec(_aqs); _aqs.loader.exec_module(_aqm); _aqm.record(__file__, __name__)
+except Exception:
+    pass
+import argparse
+import json
+import sys
+import time
+from collections import Counter
+from pathlib import Path
+
+sys.path.insert(0, str(Path(__file__).resolve().parent / "lib"))
+import graph_build as gb  # noqa: E402
+import understand_graph as ug  # noqa: E402
+
+
+def main(argv=None) -> int:
+    p = argparse.ArgumentParser(prog="aq-graph-build", description=__doc__,
+                                formatter_class=argparse.RawDescriptionHelpFormatter)
+    p.add_argument("--root", help="repo root (default: $UA_PROJECT_DIR or this checkout)")
+    p.add_argument("--out", help="output path (default: <root>/.understand-anything/knowledge-graph.json)")
+    p.add_argument("--check", action="store_true", help="exit 1 when the graph is stale; builds nothing")
+    p.add_argument("--stats", action="store_true", help="print build statistics as JSON")
+    a = p.parse_args(argv)
+
+    root = Path(a.root).resolve() if a.root else ug.repo_root()
+    default_out = ug.graph_path(root)
+    out = Path(a.out).resolve() if a.out else default_out
+
+    if a.check:
+        ok, why = gb.check_fresh(root, out)
+        print(("FRESH: " if ok else "STALE: ") + why)
+        return 0 if ok else 1
+
+    t0 = time.monotonic()
+    old = gb.load_llm(root, default_out.parent)
+    graph, info = gb.build(root, old)
+    moved = gb.write_atomic(out, graph, root, backup=(out == default_out))
+    dt = time.monotonic() - t0
+    nt = Counter(n["type"] for n in graph["nodes"])
+    et = Counter(e["type"] for e in graph["edges"])
+    summary = {
+        "out": str(out), "seconds": round(dt, 1), "nodes": len(graph["nodes"]), "edges": len(graph["edges"]),
+        "node_types": dict(sorted(nt.items())), "edge_types": dict(sorted(et.items())),
+        "git_head": graph["metadata"]["git_head"], "generated": graph["metadata"]["generated"],
+        "llm_graph_backup": str(moved) if moved else None, **info,
+    }
+    if a.stats:
+        print(json.dumps(summary, indent=2))
+    else:
+        print(f"aq-graph-build: {summary['nodes']} nodes, {summary['edges']} edges in {summary['seconds']}s -> {out}")
+    return 0
+
+
+if __name__ == "__main__":
+    sys.exit(main())
