@@ -639,5 +639,56 @@ class CapabilityAuditTests(unittest.TestCase):
         self.assertIsNone(f2.cleared({"producer": "other", "path": "a", "error": ""}))
 
 
+class AntigravityDrainTests(unittest.TestCase):
+    def _health(self, d, payload, raw=None):
+        p = Path(d) / "drain.json"
+        p.write_text(raw if raw is not None else json.dumps(payload))
+        return p
+
+    UNDRAINED = {"ok": False, "undrained_count": 2, "undrained": [
+        {"task_id": "antigravity-1", "phase": "claimed", "last_nudge_age_s": 7200, "task": "x"},
+        {"task_id": "antigravity-2", "phase": "nudged", "last_nudge_age_s": 3600, "task": "y"}]}
+
+    def test_ok(self):
+        with tempfile.TemporaryDirectory() as t:
+            state, f, _ = sw.adapter_antigravity_drain(self._health(t, {"ok": True, "undrained": []}))
+            self.assertEqual((state, list(f)), ("ok", []))
+
+    def test_undrained_two_findings(self):
+        with tempfile.TemporaryDirectory() as t:
+            state, f, detail = sw.adapter_antigravity_drain(self._health(t, self.UNDRAINED))
+            self.assertEqual(state, "findings")
+            self.assertEqual([x["subject"] for x in f], ["antigravity-drain:antigravity-1", "antigravity-drain:antigravity-2"])
+            self.assertTrue(all(x["producer"] == "antigravity-drain" and x["severity"] == "low" for x in f))
+            self.assertIn("antigravity-1", f[0]["root_fix"])
+            self.assertIn("claimed", f[0]["root_fix"])
+            self.assertIn("2.0h", f[0]["root_fix"])
+            self.assertIn("Rule 18", f[0]["root_fix"])
+            self.assertIn("2 undrained", detail)
+
+    def test_stale_missing_malformed_unknown(self):
+        with tempfile.TemporaryDirectory() as t:
+            p = self._health(t, self.UNDRAINED)
+            state, f, detail = sw.adapter_antigravity_drain(p, now=time.time() + 7200)
+            self.assertEqual((state, list(f)), ("unknown", []))
+            self.assertIn("stale", detail)
+            self.assertEqual(sw.adapter_antigravity_drain(Path(t) / "nope.json")[:2], ("unknown", []))
+            self.assertEqual(sw.adapter_antigravity_drain(self._health(t, None, raw="{not json"))[:2], ("unknown", []))
+            self.assertEqual(sw.adapter_antigravity_drain(self._health(t, None, raw="[1]"))[:2], ("unknown", []))
+
+    def test_cleared_resolves_only_unlisted(self):
+        with tempfile.TemporaryDirectory() as t:
+            _, f, _ = sw.adapter_antigravity_drain(self._health(t, self.UNDRAINED))
+            inc = lambda tid: {"producer": "antigravity-drain", "path": tid, "error": ""}
+            self.assertIsNone(f.cleared(inc("antigravity-1")))
+            partial = dict(self.UNDRAINED, undrained=self.UNDRAINED["undrained"][1:])
+            _, f2, _ = sw.adapter_antigravity_drain(self._health(t, partial))
+            self.assertIn("no longer undrained", f2.cleared(inc("antigravity-1")))
+            self.assertIsNone(f2.cleared(inc("antigravity-2")))
+            self.assertIsNone(f2.cleared({"producer": "other", "path": "antigravity-1", "error": ""}))
+            _, f3, _ = sw.adapter_antigravity_drain(self._health(t, {"ok": True, "undrained": []}))
+            self.assertIn("no longer undrained", f3.cleared(inc("antigravity-2")))
+
+
 if __name__ == "__main__":
     unittest.main()

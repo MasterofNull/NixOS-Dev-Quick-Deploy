@@ -144,6 +144,9 @@ aq-wiki --seed-aidb  (optional — pushes to Qdrant for semantic search)
 ```
 
 The knowledge graph is the **single source of truth**. The wiki is a derived, browsable view.
+Both are gitignored generated artifacts: `.githooks/post-merge` rebuilds the graph, runs
+`aq-wiki --init --force`, then `aq-wiki --seed-aidb` (detached; `AQ_WIKI_SEED_HOOK=0` skips the seed).
+On a fresh clone run `aq-graph-build && aq-wiki --init --force`.
 Agents should prefer the wiki for overview/orientation and fall back to the raw graph only for
 specific node/edge queries.
 

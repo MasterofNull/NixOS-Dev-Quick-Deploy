@@ -522,6 +522,49 @@ def adapter_capability_audit(report_dir=None, max_age_s=None, now=None):
         f"{len(findings)} regression/threshold finding(s); {len(classes)} capabilities, previous={'yes' if comparable else ('version-mismatch' if previous else 'none')}"
 
 
+ANTIGRAVITY_DRAIN_HEALTH = Path(os.getenv("RSI_SWEEP_ANTIGRAVITY_DRAIN_HEALTH")
+                                or _REPO / ".agent" / "collaboration" / "antigravity-drain-health.json")
+ANTIGRAVITY_DRAIN_MAX_AGE_S = int(os.getenv("RSI_SWEEP_ANTIGRAVITY_DRAIN_MAX_AGE_S", "3600"))
+
+
+def adapter_antigravity_drain(health_path=None, max_age_s=None, now=None):
+    """Nudged-but-undrained Antigravity inbox tasks, from the aq-antigravity-drain-verify snapshot."""
+    path = Path(health_path or ANTIGRAVITY_DRAIN_HEALTH)
+    max_age = ANTIGRAVITY_DRAIN_MAX_AGE_S if max_age_s is None else max_age_s
+    now = time.time() if now is None else now
+    try:
+        age = now - path.stat().st_mtime
+        data = json.loads(path.read_text())
+        if not isinstance(data, dict):
+            raise ValueError("not a JSON object")
+    except (OSError, ValueError) as exc:
+        return "unknown", [], f"antigravity drain health unavailable: {exc}"
+    if age > max_age:
+        return "unknown", [], f"antigravity drain health stale ({int(age)}s > {max_age}s)"
+    undrained = [u for u in (data.get("undrained") or []) if isinstance(u, dict) and u.get("task_id")]
+    listed = {str(u["task_id"]) for u in undrained}
+    findings = []
+    if not data.get("ok", False):
+        for u in undrained:
+            tid, phase = str(u["task_id"]), u.get("phase", "?")
+            hours = round(float(u.get("last_nudge_age_s") or 0) / 3600.0, 1)
+            findings.append(dict(
+                subject=f"antigravity-drain:{tid}", producer="antigravity-drain", path=tid,
+                authority="antigravity-drain", os_error=f"antigravity task {tid} nudged but not drained",
+                severity="low",
+                root_fix=f"task {tid} is {phase} and undrained {hours}h after the last nudge; check Antigravity "
+                         f"quota/IDE, then requeue via aq-antigravity-inbox or route the review to another "
+                         f"eligible lane (Rule 18)"))
+
+    def cleared(inc):
+        if inc.get("producer") != "antigravity-drain":
+            return None
+        tid = str(inc.get("path", ""))
+        return None if tid in listed else f"task {tid} no longer undrained in a fresh drain report"
+    return ("findings" if findings else "ok"), _with_cleared(findings, cleared), \
+        f"{len(findings)} undrained task(s)"
+
+
 def _load_intake():
     import importlib.util
     from importlib.machinery import SourceFileLoader
@@ -618,7 +661,7 @@ def run(dry_run=False, as_json=False, adapters=None) -> int:
         "failed-units": adapter_failed_units, "code-scanning": adapter_code_scanning,
         "aq-qa-phase0": adapter_qa_phase0, "payload-audit": adapter_payload_audit,
         "delegation-outcomes": adapter_delegation_outcomes, "service-error-rate": adapter_service_error_rate,
-        "capability-audit": adapter_capability_audit}
+        "capability-audit": adapter_capability_audit, "antigravity-drain": adapter_antigravity_drain}
     report = {}
     recorded = 0
     resolved = []
