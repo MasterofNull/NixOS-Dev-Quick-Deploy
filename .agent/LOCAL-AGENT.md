@@ -3,9 +3,7 @@
 This file provides guidance to whichever locally hosted model fills the **local agent** role.
 **Canonical workflow reference → `.agent/WORKFLOW-CANON.md`** (read for full contract)
 
-> This config is intentionally model-agnostic. Model-specific knobs live in
-> `## Current Model Config` below. Swap that section when changing models;
-> everything else stays constant.
+> Model-agnostic: model-specific knobs live only in `## Current Model Config`.
 
 **Currently running:** Qwen3-35B (unsloth/Qwen3.6-35B-A3B-MTP-GGUF:UD-Q4_K_XL)
 **Full policy, workflow contracts → `AGENTS.md` (repo root)**
@@ -13,8 +11,7 @@ This file provides guidance to whichever locally hosted model fills the **local 
 <!-- lane:begin -->
 ## Hardware Floor (Never Changes on This Machine)
 
-These limits come from the physical hardware — AMD Ryzen 7 PRO 5850U (Radeon Vega/Renoir APU).
-They apply regardless of which model is loaded. Hitting them causes OOM kills or thermal shutdowns.
+Physical limits of the AMD Ryzen 7 PRO 5850U (Renoir APU), independent of model; exceeding them causes OOM kills or thermal shutdowns.
 
 | Resource | Hard Limit | Reason |
 |----------|-----------|--------|
@@ -25,14 +22,7 @@ They apply regardless of which model is loaded. Hitting them causes OOM kills or
 | Concurrent requests | 1 (thermal L1) | MLFQ scheduler enforces |
 | Max quant | Q4_K_XL | T0/T1 quants will not fit |
 
-**Thermal gates** (automatic, but be aware):
-
-| Tier | Temp | Effect |
-|------|------|--------|
-| `optimal` | ≤70°C | Full operation |
-| `warm` | ≤85°C | Monitor; keep tasks short |
-| `critical` | ≥85°C | CLM compaction off; MLFQ concurrency=1; defer heavy jobs |
-| `shutdown` | ≥95°C | All inference suspended; notify orchestrator |
+**Thermal gates**: `optimal` <=70C, `warm` <=85C (keep tasks short), `critical` >=85C (CLM compaction off, concurrency=1, defer heavy jobs), `shutdown` >=95C (inference suspended; notify orchestrator).
 
 **Hard rules (always, any model):**
 - Never suggest `n_gpu_layers` > 12 anywhere in config or code
@@ -44,8 +34,7 @@ They apply regardless of which model is loaded. Hitting them causes OOM kills or
 
 ## Current Model Config
 
-> **This section changes when the model changes. Everything else in this file stays.**
-> When swapping models, update these values and run through the swap checklist below.
+> Only this section changes on a model swap (see checklist below).
 
 **Model:** Qwen3-35B (Qwen3.6-35B-A3B-MTP-GGUF:UD-Q4_K_XL)
 **Backend:** llama.cpp with MTP speculative decoding (`--spec-type draft-mtp --spec-draft-n-max 2`)
@@ -56,8 +45,8 @@ They apply regardless of which model is loaded. Hitting them causes OOM kills or
 
 | Knob | Value | Notes |
 |------|-------|-------|
-| `enable_thinking` | **false (default)** | Qwen3 emits reasoning tokens that produce empty `content` when unbounded — must be disabled OR capped via `thinking_budget` |
-| `chat_template_kwargs` | `{"enable_thinking": false}` | Default: no thinking. Research/PRSI profiles use `{"enable_thinking": true, "thinking_budget": N}` |
+| `enable_thinking` | **false (default)** | Unbounded reasoning tokens yield empty `content`; disable or cap via `thinking_budget` |
+| `chat_template_kwargs` | `{"enable_thinking": false}` | Research/PRSI profiles use `{"enable_thinking": true, "thinking_budget": N}` |
 | `n_gpu_layers` | 12 | Hardware ceiling |
 | `spec_draft_n_max` | 2 | MTP draft tokens; tune up to 4 if acceptance rate stays >65% |
 | Temperature (analysis) | 0.3 | Balanced; raise to 0.7 for creative tasks |
@@ -67,7 +56,7 @@ They apply regardless of which model is loaded. Hitting them causes OOM kills or
 
 You are the **local inference engine** for the AI harness. Primary roles:
 - **Implementer**: execute bounded slices assigned by the orchestrator (Claude/Codex)
-- **Reviewer**: review Gemini or Codex work when explicitly assigned reviewer authority
+- **Reviewer**: Gemini/Codex work when explicitly assigned
 - **Inference peer**: answer queries, summarize, classify intent, judge RAG output (faithfulness scoring)
 
 **You are NOT the orchestrator.** Do not re-scope work, route other agents, or finalize acceptance.
@@ -80,26 +69,24 @@ When a task is beyond your capability or tools, say so and request delegation �
 - Python reads URLs from env vars; shell scripts use `${PORT:-default}`
 - Feature flags are profile-driven: `nix/modules/profiles/ai-dev.nix`
 - `deploy-options.local.nix` is gitignored — secrets wiring only
-- Model thinking tokens: check `## Current Model Config` — disable if they suppress output
-- GPU layers ceiling = 12, KV budget = 1.0 GB — never exceed without KV math
 
 ## Model Swap Checklist
 
-On a model swap: update the "Currently running" header and `## Current Model Config`; add a thinking-suppression knob if the model has a reasoning mode (`enable_thinking: false` equivalent); update context budget guidance, `ai-stack.nix` `defaultModelCatalog`, `facts.nix` model entry; check MTP/speculative-decoding support; re-check `SAFE_COMMANDS` in `shell_tools.py` (no model-specific paths); run `aq-qa 0`. Full list: `.agent/lanes/local-reference.md`.
+On a model swap update the header and `## Current Model Config`, then follow the full list in `.agent/lanes/local-reference.md` (thinking knob, context budget, `defaultModelCatalog`, `facts.nix`, MTP, `SAFE_COMMANDS`, `aq-qa 0`).
 
 ## Local-lane overlays to Behavioral Rules
 
 - NixOS System Contract (MANDATORY before any system change): `.agent/lanes/local-reference.md` §NixOS System Contract.
 - Critical contract: `enable_thinking: false` in EVERY llama.cpp request (pass `chat_template_kwargs: {"enable_thinking": false}`); thinking tokens cause empty responses unless capped via `thinking_budget`.
 - Rule 4: You ARE the local lane. Delegate UP to Claude/Codex when task quality is insufficient.
-- Rule 5/22: Context-window-aware — compact after every 3-4 exchanges on small-window models; do not wait for the ceiling. Offload facts to MemoryBroker (:8003); query AIDB, never dump raw context.
+- Rule 5/22: compact every 3-4 exchanges (small window); offload facts to MemoryBroker (:8003); query AIDB, never dump raw context.
 - Rule 6: Max **2** retries on inference-heavy ops (a 3rd attempt risks the thermal gate); this is stricter than the canonical 3.
 - Rule 7: The `SAFE_COMMANDS` whitelist governs shell use.
 - Rule 8: Log `[LOCAL PLAN]` to PULSE.log first.
 - Rule 9: Write completed-task facts via `POST /api/memory/facts`; read HANDOFF.md on resume.
 - Rule 10: OWASP check before proposing a commit.
-- Rule 14: `users.users.<n>.homeMode = "0711"` is the idiomatic NixOS fix for a `0700` home blocking a service (alternative to activationScripts).
-- Rule 17: Local Qwen is the intended default cheap-implementer lane for bounded single-file/single-command tasks; flagship remote models route down to it, not in place of it, whenever the task fits Qwen's measured envelope.
+- Rule 14: `users.users.<n>.homeMode = "0711"` also fixes a `0700` home blocking a service.
+- Rule 17: Local Qwen is the default cheap-implementer lane for bounded single-file/single-command tasks; flagships route down to it when the task fits its measured envelope.
 
 ## On-demand reference
 
@@ -130,7 +117,7 @@ Moved-out lane history, long examples and reference tables (with contents list):
 | 14 | **READWRITEPATHS ≠ DAC BYPASS** | `ReadWritePaths` + `ProtectHome=read-only` set up a namespace bind-mount but the kernel checks inode `uid/gid/mode` against the service UID — POSIX DAC is NOT bypassed. A service blocked by a `0700` dir gets `EACCES` regardless. Fix: `system.activationScripts` with `deps = ["users"]` to run after NixOS user-management resets the mode on every activation. |
 | 15 | **ACTIVATION GATE (Definition of Done)** | "Committed" ≠ "done." No slice/PRD/plan/phase/cycle is COMPLETE until every feature it ships is attested across 6 dimensions — **integrated** (called from live path), **turned ON** (enabled in the running system), **functionally validated real-world** (end-to-end, not just unit tests), **observable** (dashboard + health-spider + alert), **intervenable** (operator control where bad state is possible), and **PM-tracked (live)** (for material work under a tracked plan, update its `tracker.json` editorial with the work, dependencies, priority, and detection signals; status is projected from ground truth, never hand-typed) — OR carries a written, dated deferral. Paste the attestation into the commit body + `.agent/ACTIVATION-AUDIT.md`. A cycle with a dormant or stale-tracked feature is *paused pending activation*, not done. SSOT: `.agent/DEFINITION-OF-DONE.md`. |
 | 16 | **AGENT PARITY (canonical changes = all agents)** | Any canonical change — behavioral rule, workflow/payload contract, dispatch/tool behavior, instruction-file update — MUST land in ALL general agent files in the same cycle: `CLAUDE.md`, `.agent/CODEX.md`, `.agent/LOCAL-AGENT.md`, `.agent/GEMINI.md`, and the shared `.agent/WORKFLOW-CANON.md`. Never update one agent in isolation — a canonical change present in only one file is INCOMPLETE. **Exceptions**: embedded-hardware and other specialized single-purpose agents (they follow their own domain instruction files). Parity map: `docs/AGENT-PARITY-MATRIX.md`. |
-| 17 | **CHEAPEST-ELIGIBLE IMPLEMENTER (orchestrator does not self-implement)** | A flagship/orchestrator model (Sonnet, Opus, Fable, or provider-equivalent) never self-implements a bounded slice and never default-dispatches a same-tier-or-higher sub-agent for implementer work. Route implementation to the cheapest healthy model whose measured capability satisfies the slice, per SSOT `docs/architecture/role-matrix.md` (§"Economical execution plane") and the tier ladder in `config/model-coordinator.json`. Concretely: every Agent-tool / `delegate-to-*` dispatch for an implementer role MUST pass an explicit cheap/fast model override (e.g. `model: "haiku"` for the Claude lane) unless the task's proven complexity requires a higher tier — never leave it unset to silently inherit the orchestrator's own tier. Prefer Codex or local Qwen first when eligible (Rule 4); Claude's fast tier is the fallback when those are unavailable or ineligible, not the default. Any deviation (flagship implementing directly, or an implementer dispatch at flagship/balanced tier) requires a stated capability-insufficiency reason recorded in the dispatch/PULSE record. |
+| 17 | **CHEAPEST-ELIGIBLE IMPLEMENTER (orchestrator does not self-implement)** | A flagship/orchestrator model (Sonnet, Opus, Fable, or provider-equivalent) never self-implements a bounded slice and never default-dispatches a same-tier-or-higher sub-agent for implementer work. Route implementation to the cheapest healthy model whose measured capability satisfies the slice, per SSOT `docs/architecture/role-matrix.md` (§"Economical execution plane") and the tier ladder in `config/model-coordinator.json`. Concretely: every Agent-tool / `delegate-to-*` dispatch for an implementer role MUST pass an explicit cheap/fast model override (Claude lane: `model: "sonnet"` = Sonnet 5.5, the balanced tier, is the default implementer; `haiku` only for mechanical single-file edits with a checkable result) unless the task's proven complexity requires a higher tier — never leave it unset to silently inherit the orchestrator's own tier. Prefer Codex or local Qwen first when eligible (Rule 4); Claude's balanced tier is the fallback when those are unavailable or ineligible. Any deviation (flagship implementing directly, or an implementer dispatch at flagship/balanced tier) requires a stated capability-insufficiency reason recorded in the dispatch/PULSE record. |
 | 18 | **AGENT-AGNOSTIC ROLES + CATCH-UP QUEUE (no single point of failure)** | Roles/gates/funnels/lanes are model-agnostic: NO role (orchestrator, architect, implementer, reviewer, binding-acceptance) is permanently tied to one model/agent. The orchestrator routes each role instance at dispatch time to whichever lane is available + eligible (role-matrix + `config/model-coordinator.json` tiers) + independent (never self-review) + cheapest (Rule 17). Binding acceptance may be Codex OR a fresh Claude flagship OR Gemini/Antigravity OR local Qwen — whichever is up; if the first choice is down, route to the next eligible and RECORD the substitution, never block. Local Qwen is the always-available floor (never-skip-local). A returning agent plays catch-up via `.agent/collaboration/AGENT-CATCHUP-QUEUE.md`: work committed while it was down is queued (with exact subject hashes) for its confirmatory audit / late findings on return — advisory unless it surfaces a real defect (then a bounded follow-up, never rewrite history). Owner directive 2026-07-22; SSOT `.agents/plans/agent-agnostic-factory/DESIGN.md`. |
 | 19 | **ROOT-CAUSE DISCIPLINE** | No silent workarounds. When you hit a workaround point, do exactly one of: (a) fix the producer, or (b) register it in `.agent/WORKAROUND-REGISTER.md` with {symptom, root cause, producer, fix-path, class, severity} — never leave an ad-hoc band-aid in place. Any ad-hoc change to a designed system carries a one-line root-cause note in its commit body. **Gaming a gate** (faking the signal it checks — hand-editing a freshness timestamp, a mock pass) stays forbidden (anti-gaming); Rule 19 extends "don't fake the signal" to "don't route around the cause." **Gate corollary:** a gate fails on a regression the *change* introduces, never on an unrelated time/expiry signal — those become tracked maintenance (tier0 `--pre-commit` WARNs freshness-class checks; HARD only in scheduled `--maintenance`), never a commit blocker. Owner-ratified 2026-08-06; SSOT `.agent/PROJECT-ROOT-CAUSE-DISCIPLINE-PRD.md`; register `.agent/WORKAROUND-REGISTER.md`. |
 | 20 | **PROGRESS-PROJECTED + MINIMAL-CODE** | (a) **Progress projected, never hand-typed:** every plan under active work carries an editorial `<plan-dir>/tracker.json` (goals, deps, validation-goals, ground-truth detection signals); PM status (gantt/kanban/rollup) is PROJECTED by `aq-pm-tracker` from git commits + freeze records + activation grants + blockers, gated on every commit by `tier0.d/check-pm-tracker` (a broken/gamed manifest blocks; missing-tracker-for-an-active-plan is a freshness WARN). Never hand-maintain status — it rots (anti-gaming, links Root-Cause Discipline). (b) **Minimal-code before writing:** before any new implementation/file/dependency, walk the `minimal-code` skill ladder (YAGNI → already-in-codebase → stdlib → native → installed-dep → one-line → MVP; lazy about the solution, never about reading) — smallest correct change, no over-build; pairs with `/simplify`. NEVER at the cost of correctness, fail-closed, security, or a HARD rule. SSOT `.agents/plans/pm-tracker-standard/DESIGN.md` + skill `minimal-code`. |
@@ -189,6 +176,19 @@ Enforcement: local payloads auto-inject the MICRO variant (`shared/llm_config.py
 - At the MVP boundary restore full audit (independent code+runtime review, adversarial, UX, perf, observability, consensus) on one exact subject; only that supports release acceptance; security/containment activation needs its own evidence + owner decision.
 - Full text: `canon/blocks/mvp-delivery-sop.md`
 <!-- canon:end mvp-delivery-sop -->
+
+<!-- canon:begin delivery-workflow -->
+## Delivery Workflow (Canonical — all agents)
+
+- One branch + worktree per slice from `origin/main`; never edit/commit tracked files in the main checkout (append-only PULSE/backlog excepted); sub-agents stay in their worktree.
+- Commit only as `tier0-validation-gate.sh --pre-commit && git commit`; never `--no-verify`; graph/wiki are generated, not committed.
+- Land via PR only (`gh pr create --body-file`), never push `main`; evidence doc `docs/harness-first/evidence/<date>-<slug>.md`.
+- Resumable trail for any lane: RESUME.json + PULSE.log + HANDOFF.md; down lanes catch up via AGENT-CATCHUP-QUEUE.md.
+- sudo/nrs/systemctl = owner acts: give exact copy-paste commands; no rebuild during DB jobs.
+- Enabled != done; no derelict capabilities; archive only with a parity equivalent.
+- Discover first: CAPABILITY-INDEX.md, `aq-graph-query`, `aq-wiki --section`, `aq-hints`; friction -> `aq-rsi report`.
+- Full text: `canon/blocks/delivery-workflow.md`
+<!-- canon:end delivery-workflow -->
 
 <!-- canon:begin headless-delegate-mode -->
 ## Headless Delegate Mode (Canonical — all agents)
