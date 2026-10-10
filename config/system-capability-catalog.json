@@ -339,7 +339,7 @@
       "category": "security-scanning",
       "kind": "external-mcp",
       "state": "enabled",
-      "maturity": "official",
+      "maturity": "available-unused",
       "owner": "security-systems",
       "summary": "Pinned Semgrep MCP scanner for generated-code security review.",
       "agent_access": [
@@ -364,7 +364,9 @@
         "MCP security scanners",
         "SAST agent integrations"
       ],
-      "data_stores": []
+      "data_stores": [],
+      "maturity_prior": "official",
+      "usage_evidence": "aq-capability-audit 2026-10-10: external MCP, discoverable (external-tool-packs domain, #451) but no invocation in 30d; available on demand."
     },
     {
       "id": "github-mcp-readonly",
@@ -372,7 +374,7 @@
       "category": "repository-intelligence",
       "kind": "external-mcp",
       "state": "enabled",
-      "maturity": "official",
+      "maturity": "available-unused",
       "owner": "agent-runtime",
       "summary": "Read-only GitHub repository, PR, Actions, and code-security intelligence through the local token-resolving MCP wrapper.",
       "agent_access": [
@@ -396,7 +398,9 @@
         "code review agents",
         "CI diagnosis agents"
       ],
-      "data_stores": []
+      "data_stores": [],
+      "maturity_prior": "official",
+      "usage_evidence": "aq-capability-audit 2026-10-10: external MCP, discoverable (external-tool-packs domain, #451) but no invocation in 30d; available on demand."
     },
     {
       "id": "understand-anything",
