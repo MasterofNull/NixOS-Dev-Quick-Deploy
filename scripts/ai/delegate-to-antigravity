@@ -35,6 +35,16 @@ Usage:
   delegate-to-antigravity --status <task-id>            # check status
   delegate-to-antigravity --list                        # list all tasks
   delegate-to-antigravity --prompt "..." --loop         # agentic loop (tool use)
+
+Implementer lane (inbox backend, --role implement|implementer|rsi|coordinator|subagent):
+  A private git worktree (.agents/delegation/worktrees/<task_id>, branch delegate/<task_id>)
+  is created via lib/worktree-isolation.sh; the task file carries `Workspace:`/`Branch:`
+  headers and aq-antigravity-inbox wakes the IDE with `antigravity --new-window <worktree>`
+  then `antigravity chat --reuse-window` so the agent edits only that folder. On completion
+  the main checkout's tracked-state fingerprint must be unchanged and the worktree must
+  differ from its base; the result is handed back as outputs/<task_id>.patch. Nothing is
+  merged — the orchestrator reviews the patch/branch. If the worktree cannot be created the
+  dispatch is refused with blocked_unsupported_ide_worktree_isolation.
 """
 
 import argparse
@@ -105,13 +115,101 @@ _VALID_ROLES = {
 _IDE_EDITING_ROLES = frozenset({"implement", "implementer", "rsi", "coordinator", "subagent"})
 
 
-def _require_advisory_ide_role(role: str) -> None:
-    """Reject roles that require edits: --reuse-window has no workspace binding."""
-    if role in _IDE_EDITING_ROLES:
+_FINGERPRINT_EXCLUDE = frozenset({".agent/collaboration/PULSE.log", ".agent/memory/issues-backlog.md"})
+_WT_LIB = _HERE / "lib" / "worktree-isolation.sh"
+
+_IMPLEMENTER_CONTRACT = """
+=== IMPLEMENTER CONTRACT (worktree-bound lane) ===
+Workspace: {workspace}
+Branch: {branch}
+- Edit ONLY files under the Workspace path above. Never touch the main checkout.
+- Do not push, do not merge, do not run tier0. Committing on the task Branch is allowed.
+- Leave your changes in the worktree; the orchestrator reviews the handed-back patch.
+- Write your summary and test output to the declared Output log.
+- Follow canon/blocks/delivery-workflow.summary.md.
+- Every claim in your summary must be verifiable from the diff or pasted test output.
+"""
+
+
+def _sh(cmd: "list[str]", cwd: "Path | None" = None) -> "subprocess.CompletedProcess":
+    return subprocess.run(cmd, cwd=cwd, capture_output=True, text=True, check=False)
+
+
+def _main_fingerprint() -> str:
+    """HEAD sha + hash of tracked-state porcelain of the MAIN checkout (append-only logs excluded)."""
+    head = _sh(["git", "-C", str(_REPO), "rev-parse", "HEAD"]).stdout.strip()
+    st = _sh(["git", "-C", str(_REPO), "status", "--porcelain", "--untracked-files=no"]).stdout
+    kept = [ln for ln in st.splitlines() if ln[3:].strip().strip('"') not in _FINGERPRINT_EXCLUDE]
+    return head + ":" + hashlib.sha256("\n".join(sorted(kept)).encode()).hexdigest()
+
+
+def _main_drift(recorded: str) -> str:
+    """'' when the main checkout is untouched since dispatch, else the reason.
+    A moved HEAD is allowed only when it is already on origin/main (the owner pulled merged
+    PRs during a long task); a local commit in the main checkout is still drift."""
+    old_head, _, old_hash = recorded.partition(":")
+    new_head, _, new_hash = _main_fingerprint().partition(":")
+    if new_hash != old_hash:
+        return "main checkout tracked files changed since dispatch"
+    if new_head != old_head and _sh(["git", "-C", str(_REPO), "merge-base", "--is-ancestor",
+                                     new_head, "origin/main"]).returncode != 0:
+        return "main checkout gained commits not on origin/main since dispatch"
+    return ""
+
+
+def _workspace_sidecar(task_id: str) -> Path:
+    return _OUTPUTS_DIR / f"{task_id}.workspace.json"
+
+
+def _require_implementer_workspace(task_id: str, role: str) -> "dict | None":
+    """Advisory roles: None. Editing roles: create (or reuse) a private worktree via
+    lib/worktree-isolation.sh wt_create and record the main-checkout fingerprint.
+    Fails closed (blocked_unsupported_ide_worktree_isolation) if isolation cannot be created."""
+    if role not in _IDE_EDITING_ROLES:
+        return None
+    sidecar = _workspace_sidecar(task_id)
+    if sidecar.exists():
+        try:
+            return json.loads(sidecar.read_text(encoding="utf-8"))
+        except (OSError, ValueError):
+            pass
+    r = _sh(["bash", "-c", 'source "$1" && wt_create "$2" "$3"', "_", str(_WT_LIB), str(_REPO), task_id])
+    wt = r.stdout.strip().splitlines()[-1] if r.returncode == 0 and r.stdout.strip() else ""
+    if not wt:
         sys.exit(
             "ERROR: blocked_unsupported_ide_worktree_isolation: "
-            "the Antigravity IDE bridge cannot verify a task-specific workspace binding"
+            "could not create an isolated worktree for the Antigravity implementer lane"
         )
+    base = _sh(["git", "-C", str(_REPO), "rev-parse", f"refs/delegate-base/{task_id}"]).stdout.strip()
+    info = {"task_id": task_id, "workspace": wt, "branch": f"delegate/{task_id}",
+            "base": base, "main_fingerprint": _main_fingerprint()}
+    _OUTPUTS_DIR.mkdir(parents=True, exist_ok=True)
+    sidecar.write_text(json.dumps(info, indent=2) + "\n", encoding="utf-8")
+    return info
+
+
+def _validate_implementer_completion(task_id: str) -> "tuple[bool, str]":
+    """Editing-role completions: main checkout untouched, worktree actually changed; then hand back a patch."""
+    sidecar = _workspace_sidecar(task_id)
+    if not sidecar.exists():
+        return True, ""
+    try:
+        info = json.loads(sidecar.read_text(encoding="utf-8"))
+        wt = info["workspace"]
+        drift = _main_drift(info["main_fingerprint"])
+        if drift:
+            return False, f"{drift} (implementer must edit only its worktree)"
+        dirty = _sh(["git", "-C", wt, "status", "--porcelain"]).stdout.strip()
+        committed = _sh(["git", "-C", wt, "diff", "--quiet", info["base"], "HEAD"]).returncode != 0
+        if not dirty and not committed:
+            return False, "worktree has no changes vs its dispatch base (no commits, no working-tree diff)"
+        r = _sh(["bash", "-c", 'source "$1" && wt_handback "$2" "$3" "$4" "$5"',
+                 "_", str(_WT_LIB), str(_REPO), wt, task_id, str(_OUTPUTS_DIR)])
+        if r.returncode != 0:
+            return False, f"patch handback failed: {r.stderr.strip()[:200]}"
+    except Exception as exc:
+        return False, f"implementer validation error: {exc}"
+    return True, ""
 
 _HARNESS_SYSTEM_BASE = (
     "You are an AI agent in the NixOS-Dev-Quick-Deploy harness.\n"
@@ -483,13 +581,14 @@ def _validate_inbox_completion(task_id: str) -> "tuple[bool, str]":
             return False, "completion has no output evidence"
     except Exception as exc:
         return False, str(exc)
-    return True, ""
+    return _validate_implementer_completion(task_id)
 
 
 def _run_inbox(task_id: str, prompt: str, role: str, timeout: int, log_path: Path,
                print_to_stdout: bool = False, shared_mode: bool = False) -> "tuple[str, int, int]":
-    """Drop task into sanctioned advisory inbox, wake IDE, and optionally await completion."""
-    _require_advisory_ide_role(role)
+    """Drop task into the inbox, wake the IDE, and optionally await completion.
+    Editing roles run worktree-bound (Workspace/Branch headers); advisory roles are unchanged."""
+    ws = _require_implementer_workspace(task_id, role)
     inbox_dir = _REPO / ".agent" / "collaboration" / "antigravity-inbox"
     receipts_dir = inbox_dir / "receipts"
     inbox_dir.mkdir(parents=True, exist_ok=True)
@@ -504,10 +603,15 @@ def _run_inbox(task_id: str, prompt: str, role: str, timeout: int, log_path: Pat
         f"Output: {rel_log}",
         f"Role: {role}",
     ]
+    if ws:
+        header.append(f"Workspace: {ws['workspace']}")
+        header.append(f"Branch: {ws['branch']}")
     header.append(f"Created: {datetime.now(timezone.utc).isoformat()}")
     header.append("")
 
     prompt_body = prompt.strip()
+    if ws:
+        prompt_body += "\n" + _IMPLEMENTER_CONTRACT.format(workspace=ws["workspace"], branch=ws["branch"])
 
     content = "\n".join(header) + "\n" + prompt_body + "\n"
 
@@ -705,8 +809,6 @@ def cmd_delegate(prompt: str, role: str, mode: str,
                  model_override: "str | None", max_tokens: int,
                  timeout: int, wait: bool, loop: bool = False,
                  backend: str = "inbox", shared_mode: bool = False):
-    if backend == "inbox":
-        _require_advisory_ide_role(role)
     _ensure_dirs()
     _dispatch_budget_gate("antigravity")
 
@@ -769,6 +871,10 @@ def cmd_delegate(prompt: str, role: str, mode: str,
                     "lane; use aq-collab-round (inbox drop, IDE OAuth, no keys) instead.\n"
                 )
             sys.exit(proc.returncode)
+
+    if backend == "inbox":
+        # Create the isolated worktree BEFORE forking/registering so a failure refuses the dispatch.
+        _require_implementer_workspace(tid, role)
 
     # Register before dispatch
     _registry_append(tid, role, prompt, log_path)
@@ -905,7 +1011,7 @@ def _build_parser() -> argparse.ArgumentParser:
                    default=os.environ.get("ANTIGRAVITY_BACKEND", "inbox"),
                    help="Delegation backend: inbox (sanctioned IDE OAuth bridge, default) or switchboard")
     p.add_argument("--shared", "--no-worktree", dest="shared_mode", action="store_true",
-                   help="Compatibility flag; editing inbox roles remain unsupported")
+                   help="Compatibility flag; editing inbox roles always run in a private worktree")
     return p
 
 
@@ -918,8 +1024,6 @@ def main():
     if args.mode not in _MODEL_MAP:
         p.error(f"Invalid --mode '{args.mode}'. Valid: {', '.join(sorted(_MODEL_MAP))}")
 
-    if not (args.list or args.check or args.status) and args.backend == "inbox":
-        _require_advisory_ide_role(args.role)
     _ensure_dirs()
 
     if args.list:
