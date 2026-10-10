@@ -23,6 +23,7 @@ except Exception:
 import argparse
 import json
 import os
+import signal
 import subprocess
 import sys
 import tempfile
@@ -31,6 +32,7 @@ from pathlib import Path
 
 ROOT = Path(__file__).resolve().parents[2]
 DELEGATE = ROOT / "scripts/ai/delegate-to-local"
+GRACE_S = 300  # wrapper may overrun --timeout by this much before the eval kills it
 
 # name, buggy source, reference-fixed source, check body (asserts on module `m`)
 TASKS = [
@@ -83,37 +85,132 @@ def passes(task: dict) -> bool:
                           capture_output=True, timeout=60).returncode == 0
 
 
+def _pid_alive(pid: int) -> bool:
+    try:
+        os.kill(pid, 0)
+    except ProcessLookupError:
+        return False
+    except PermissionError:
+        return True
+    try:  # a zombie is not running
+        return Path(f"/proc/{pid}/stat").read_text().rsplit(")", 1)[1].split()[0] != "Z"
+    except (OSError, IndexError):
+        return True
+
+
+def _signal_group(pid: int, sig: int) -> None:
+    try:
+        os.killpg(os.getpgid(pid), sig)
+    except (ProcessLookupError, PermissionError):
+        try:
+            os.kill(pid, sig)
+        except (ProcessLookupError, PermissionError):
+            pass
+
+
+def _kill_pids(pids: list, grace_s: float = 15.0) -> bool:
+    """SIGTERM each pid's process group, wait up to grace_s, then SIGKILL. True when all gone."""
+    for p in pids:
+        _signal_group(p, signal.SIGTERM)
+    end = time.monotonic() + grace_s
+    while time.monotonic() < end and any(_pid_alive(p) for p in pids):
+        time.sleep(0.2)
+    for p in pids:
+        if _pid_alive(p):
+            _signal_group(p, signal.SIGKILL)
+    end = time.monotonic() + 5
+    while time.monotonic() < end and any(_pid_alive(p) for p in pids):
+        time.sleep(0.1)
+    return not any(_pid_alive(p) for p in pids)
+
+
+def live_agent_pids(deleg: Path) -> list:
+    """PIDs of delegated agents recorded in this eval's own delegation registry that are still alive."""
+    reg = deleg / "registry.jsonl"
+    pids = []
+    if reg.exists():
+        for ln in reg.read_text().splitlines():
+            try:
+                pid = int(json.loads(ln).get("pid"))
+            except (ValueError, TypeError):
+                continue
+            if pid > 1 and pid != os.getpid() and pid not in pids and _pid_alive(pid):
+                pids.append(pid)
+    return pids
+
+
+def reap_agents(deleg: Path) -> tuple:
+    """Kill any agent still alive in this eval's delegation dir. Returns (killed_count, all_gone)."""
+    pids = live_agent_pids(deleg)
+    if not pids:
+        return 0, True
+    return len(pids), _kill_pids(pids)
+
+
 def run_arm(task: dict, steer: bool, timeout_s: int, state: Path) -> dict:
     Path(task["file"]).write_text(task["buggy"])
     events = state / f"events-{task['name']}-{'on' if steer else 'off'}.jsonl"
-    (state / "deleg").mkdir(exist_ok=True)
+    deleg = state / "deleg"
+    deleg.mkdir(exist_ok=True)
+    # An agent left over from a previous run would share the single inference slot and
+    # may still write the file: kill it and mark this row (and the result) invalid.
+    orphan_killed, _ = reap_agents(deleg)
+    Path(task["file"]).write_text(task["buggy"])
+    # Agent stops itself 120s before the eval gives up, so a timeout means a real hang.
+    wall_budget = max(60, timeout_s - 120)
     env = {**os.environ,
            "AQ_PRM_STEERING": "1" if steer else "0",
            "AQ_EDIT_VERIFY_CMD": task["verify_cmd"],
-           "AQ_AGENT_RUN_EVENTS_PATH": str(events), "AQ_DELEGATION_DIR": str(state / "deleg"),
+           "AQ_AGENT_RUN_EVENTS_PATH": str(events), "AQ_DELEGATION_DIR": str(deleg),
+           "AQ_AGENT_WALL_BUDGET_S": str(wall_budget),
            "AQ_LOCAL_GBNF": "1", "AQ_EDIT_FEEDBACK": "1", "AQ_WRITE_REGION": "1"}
     prompt = (f"{task['goal']}\nEdit ONLY the file {task['file']} using edit_file "
               f"(absolute path). After the edit succeeds, state in one sentence what you changed.")
     t0 = time.monotonic()
+    timed_out = False
+    proc = subprocess.Popen(
+        [str(DELEGATE), "--mode", "agent", "--role", "implementer", "--wait",
+         "--timeout", str(timeout_s), "--prompt", prompt],
+        env=env, cwd=str(ROOT), stdout=subprocess.PIPE, stderr=subprocess.PIPE, text=True,
+        start_new_session=True)
     try:
-        proc = subprocess.run(
-            [str(DELEGATE), "--mode", "agent", "--role", "implementer", "--wait",
-             "--timeout", str(timeout_s), "--prompt", prompt],
-            env=env, cwd=str(ROOT), capture_output=True, text=True, timeout=timeout_s + 300)
+        proc.communicate(timeout=timeout_s + GRACE_S)
         rc = proc.returncode
     except subprocess.TimeoutExpired:
+        timed_out = True
         rc = -1
-    prm = []
+        _kill_pids([proc.pid])
+        try:
+            proc.communicate(timeout=5)
+        except Exception:
+            pass
+    # The wrapper's group is gone, but the agent is detached (setsid): find it via the registry.
+    stray, gone = reap_agents(deleg)
+    if not _kill_pids([proc.pid], grace_s=1.0):
+        gone = False
+    wall = round(time.monotonic() - t0, 1)
+    prm, tool_calls, reason = [], 0, None
     if events.exists():
         for ln in events.read_text().splitlines():
             try:
                 e = json.loads(ln)
             except ValueError:
                 continue
-            if e.get("event_type") == "prm_steering":
+            et = e.get("event_type")
+            if et == "prm_steering":
                 prm.append({k: e.get(k) for k in ("candidates", "verified_index", "extra_steps", "wall_s")})
-    return {"task": task["name"], "steering": steer, "pass": passes(task),
-            "wall_s": round(time.monotonic() - t0, 1), "delegate_rc": rc, "prm_steering": prm}
+            elif et == "agent_tool_call":
+                tool_calls += 1
+            elif et == "agent_complete":
+                reason = e.get("result_preview") or "completed"
+    overlapped = bool(orphan_killed or stray or not gone)
+    return {"task": task["name"], "steering": steer,
+            "pass": passes(task),  # only after the agent process tree is confirmed gone
+            "wall_s": wall, "delegate_rc": rc, "prm_steering": prm,
+            "timed_out": timed_out, "orphan_killed": orphan_killed, "stray_agents_killed": stray,
+            "overlapped": overlapped, "cleanup_confirmed": gone,
+            "completion_reason": reason, "tool_calls": tool_calls,
+            "completed_cleanly": not timed_out and not overlapped}
 
 
 class _Keep:
@@ -154,8 +251,11 @@ def main() -> int:
         rs = [r for r in rows if r["steering"] == (arm == "on")]
         summary[arm] = {"n": len(rs), "pass_rate": round(sum(r["pass"] for r in rs) / max(1, len(rs)), 3),
                         "wall_s_total": round(sum(r["wall_s"] for r in rs), 1),
-                        "wall_s_mean": round(sum(r["wall_s"] for r in rs) / max(1, len(rs)), 1)}
-    res = {"arms": summary, "rows": rows,
+                        "wall_s_mean": round(sum(r["wall_s"] for r in rs) / max(1, len(rs)), 1),
+                        "completed_cleanly": sum(1 for r in rs if r["completed_cleanly"]),
+                        "timed_out": sum(1 for r in rs if r["timed_out"])}
+    valid = not any(r["timed_out"] or r["overlapped"] for r in rows)
+    res = {"valid": valid, "arms": summary, "rows": rows,
            "telemetry_hint": "grep prm_steering in agent-run-events.jsonl for candidates/verified_index/extra_steps/wall_s"}
     txt = json.dumps(res, indent=2)
     print(txt)
