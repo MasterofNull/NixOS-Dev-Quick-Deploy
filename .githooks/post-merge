@@ -9,15 +9,34 @@ freshness_script="${repo_root}/scripts/ai/aq-ctx-freshness"
 
 "$freshness_script" --ensure || true
 
-# Knowledge graph freshness: deterministic rebuild (no LLM, ~20s), detached so the merge
-# never waits, hard-capped at 180s, skipped when the graph is already current for HEAD.
-# Opt out with AQ_GRAPH_BUILD_HOOK=0. Failures are silent by design (re-run by hand:
-# scripts/ai/aq-graph-build). The graph is gitignored, so rebuilds never dirty the checkout.
+# Knowledge graph + wiki freshness: deterministic rebuild (no LLM, ~20s), detached so the merge
+# never waits, each step hard-capped, skipped when the graph/wiki are already current.
+# The wiki is rendered from the graph (aq-wiki --init --force) and then seeded into AIDB
+# (embedding service only, never the chat model). Both artifacts are gitignored, so rebuilds
+# never dirty the checkout. Opt out: AQ_GRAPH_BUILD_HOOK=0 (everything), AQ_WIKI_SEED_HOOK=0
+# (AIDB seed only). Failures are silent by design (re-run by hand: aq-graph-build, aq-wiki).
 graph_build="${repo_root}/scripts/ai/aq-graph-build"
+wiki_tool="${repo_root}/scripts/ai/aq-wiki"
 if [[ "${AQ_GRAPH_BUILD_HOOK:-1}" != "0" && -x "$graph_build" ]]; then
-    if ! "$graph_build" --root "$repo_root" --check >/dev/null 2>&1; then
+    graph_current=1
+    "$graph_build" --root "$repo_root" --check >/dev/null 2>&1 || graph_current=0
+    wiki_current=1
+    if [[ -x "$wiki_tool" ]]; then
+        "$wiki_tool" --status --check >/dev/null 2>&1 || wiki_current=0
+        [[ -f "${repo_root}/.understand-anything/wiki/.wiki-meta.json" ]] || wiki_current=0
+    fi
+    if [[ "$graph_current" == "0" || "$wiki_current" == "0" ]]; then
         (
-            nice -n 10 timeout 180 "$graph_build" --root "$repo_root" >/dev/null 2>&1 || true
+            built=1
+            if [[ "$graph_current" == "0" ]]; then
+                nice -n 10 timeout 180 "$graph_build" --root "$repo_root" >/dev/null 2>&1 || built=0
+            fi
+            if [[ "$built" == "1" && -x "$wiki_tool" ]]; then
+                if (cd "$repo_root" && nice -n 10 timeout 120 "$wiki_tool" --init --force >/dev/null 2>&1) \
+                    && [[ "${AQ_WIKI_SEED_HOOK:-1}" != "0" ]]; then
+                    (cd "$repo_root" && nice -n 10 timeout 300 "$wiki_tool" --seed-aidb >/dev/null 2>&1) || true
+                fi
+            fi
         ) </dev/null >/dev/null 2>&1 &
         disown 2>/dev/null || true
     fi
