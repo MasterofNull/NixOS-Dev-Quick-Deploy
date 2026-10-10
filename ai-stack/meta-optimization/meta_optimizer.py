@@ -20,7 +20,7 @@ import logging
 import os
 import sys
 from collections import defaultdict
-from datetime import datetime, timedelta
+from datetime import datetime, timedelta, timezone
 from typing import Any, Dict, List, Optional, Tuple
 from dataclasses import dataclass, asdict
 from enum import Enum
@@ -31,6 +31,11 @@ _SHARED = Path(__file__).resolve().parents[2] / "ai-stack" / "mcp-servers" / "sh
 if str(_SHARED) not in sys.path:
     sys.path.insert(0, str(_SHARED))
 from llm_config import build_llama_payload, AGENT_TASK_MAX_TOKENS
+
+_HERE = str(Path(__file__).resolve().parent)
+if _HERE not in sys.path:
+    sys.path.insert(0, _HERE)
+import routing_source
 
 logging.basicConfig(level=logging.INFO)
 logger = logging.getLogger("meta_optimizer")
@@ -163,33 +168,20 @@ class MetaOptimizer:
             logger.error(f"LLM call failed: {exc}")
             return ""
 
+    async def _table_exists(self, name: str) -> bool:
+        """True if a public table exists (to_regclass avoids an error on missing tables)."""
+        return bool(await self.conn.fetchval("SELECT to_regclass($1) IS NOT NULL", f"public.{name}"))
+
     async def analyze_routing_accuracy(
         self, days: int = 7
     ) -> Optional[ImprovementProposal]:
         """
         Analyze routing classification accuracy and suggest improvements.
         """
-        since = datetime.now() - timedelta(days=days)
-
-        # Get routing statistics from routing_log
+        # Routing statistics come from the agent-run event log.
         try:
-            # Query routing success/failure patterns
-            routing_stats = await self.conn.fetch(
-                """
-                SELECT
-                    model_used,
-                    agent_type,
-                    status,
-                    COUNT(*) as count,
-                    AVG(latency_ms) as avg_latency,
-                    AVG(tokens_used) as avg_tokens
-                FROM routing_log
-                WHERE timestamp >= $1
-                GROUP BY model_used, agent_type, status
-                ORDER BY count DESC
-                """,
-                since
-            )
+            routing_stats = await asyncio.to_thread(routing_source.aggregate_routing, days)
+            switchboard = await asyncio.to_thread(routing_source.switchboard_decisions, days)
 
             if not routing_stats:
                 logger.info("No routing data available for analysis")
@@ -241,7 +233,8 @@ JSON:"""
                 estimated_improvement_pct=float(analysis.get("expected_improvement_pct", 0)),
                 confidence_score=float(analysis.get("confidence", 0.5)),
                 evidence={
-                    "routing_stats": [dict(row) for row in routing_stats],
+                    "routing_stats": routing_stats[:50],
+                    "switchboard_decisions": switchboard,
                     "analysis_period_days": days,
                     "total_routes": sum(row["count"] for row in routing_stats),
                 },
@@ -267,20 +260,23 @@ JSON:"""
         """
         Analyze hint template effectiveness and suggest improvements.
         """
-        since = datetime.now() - timedelta(days=days)
+        since = datetime.now(timezone.utc) - timedelta(days=days)
 
         try:
+            if not await self._table_exists("interaction_history"):
+                logger.info("No data source for hint analysis: interaction_history table missing")
+                return None
             # Query hint usage and effectiveness from interaction_history
             hint_stats = await self.conn.fetch(
                 """
                 SELECT
                     metadata->>'hint_template' as hint_template,
                     COUNT(*) as usage_count,
-                    AVG(CASE WHEN outcome_success THEN 1.0 ELSE 0.0 END) as success_rate,
-                    AVG(completion_time_ms) as avg_completion_time,
-                    AVG(token_count) as avg_tokens
+                    AVG(CASE WHEN outcome = 'success' THEN 1.0 ELSE 0.0 END)::float8 as success_rate,
+                    AVG(latency_ms)::float8 as avg_completion_time,
+                    AVG(COALESCE(tokens_in, 0) + COALESCE(tokens_out, 0))::float8 as avg_tokens
                 FROM interaction_history
-                WHERE timestamp >= $1
+                WHERE created_at >= $1
                   AND metadata->>'hint_template' IS NOT NULL
                 GROUP BY metadata->>'hint_template'
                 HAVING COUNT(*) >= 5  -- Need statistical significance
@@ -369,9 +365,15 @@ JSON:"""
         """
         Analyze lesson library effectiveness and suggest curation.
         """
-        since = datetime.now() - timedelta(days=days)
+        since = datetime.now(timezone.utc) - timedelta(days=days)
 
         try:
+            if not await self._table_exists("agent_patterns"):
+                logger.info(
+                    "No data source for lesson analysis: agent_patterns table missing "
+                    "(only created by raw SQL 007_federated_learning.sql, not by alembic)"
+                )
+                return None
             # Query lesson usage and effectiveness from agent_patterns
             lesson_stats = await self.conn.fetch(
                 """
@@ -399,7 +401,7 @@ JSON:"""
             # Identify lessons to promote, demote, or remove
             high_value = [r for r in lesson_stats if r["success_rate"] > 0.8 and r["usage_count"] > 10]
             low_value = [r for r in lesson_stats if r["success_rate"] < 0.4 or r["usage_count"] == 0]
-            stale = [r for r in lesson_stats if r["last_used"] and (datetime.now() - r["last_used"]).days > 90]
+            stale = [r for r in lesson_stats if r["last_used"] and (datetime.now(timezone.utc) - r["last_used"]).days > 90]
 
             summary = f"""Lesson Library Analysis ({days} days):
 Total Lessons: {len(lesson_stats)}
@@ -626,14 +628,36 @@ JSON:"""
             return ProposalPriority.LOW
 
 
-async def main():
+def parse_args(argv: Optional[List[str]] = None):
+    """CLI flags passed by nix/modules/services/meta-optimization.nix."""
+    import argparse
+
+    parser = argparse.ArgumentParser(description="Generate harness improvement proposals")
+    parser.add_argument("--days", type=int, default=int(os.getenv("ANALYSIS_WINDOW_DAYS", "7")),
+                        help="analysis window in days (default: $ANALYSIS_WINDOW_DAYS or 7)")
+    parser.add_argument("--output-dir", default=None,
+                        help="directory where a proposals-<timestamp>.json dump is written")
+    return parser.parse_args(argv)
+
+
+def dump_proposals(proposals: List[ImprovementProposal], output_dir: str) -> Path:
+    """Write generated proposals as JSON into output_dir; returns the file path."""
+    out = Path(output_dir)
+    out.mkdir(parents=True, exist_ok=True)
+    path = out / f"proposals-{datetime.now(timezone.utc).strftime('%Y%m%dT%H%M%SZ')}.json"
+    path.write_text(json.dumps([asdict(p) for p in proposals], indent=2, default=str))
+    return path
+
+
+async def main(args=None):
     """Main entry point for testing."""
+    args = args or parse_args([])
     optimizer = MetaOptimizer()
     await optimizer.connect()
 
     try:
         print("Generating improvement proposals...")
-        proposals = await optimizer.generate_all_proposals(days=7)
+        proposals = await optimizer.generate_all_proposals(days=args.days)
 
         print(f"\nGenerated {len(proposals)} proposals:")
         for i, proposal in enumerate(proposals, 1):
@@ -646,6 +670,9 @@ async def main():
             # Store proposal
             await optimizer.store_proposal(proposal)
 
+        if args.output_dir:
+            print(f"\nProposals JSON written to {dump_proposals(proposals, args.output_dir)}")
+
         if not proposals:
             print("\nNo optimization opportunities identified at this time.")
 
@@ -654,4 +681,4 @@ async def main():
 
 
 if __name__ == "__main__":
-    asyncio.run(main())
+    asyncio.run(main(parse_args()))
