@@ -9,8 +9,10 @@ Covers:
 Extracted from http_server.py (Phase 12.4 decomposition).
 """
 
+import asyncio
 import json
 import logging
+import os
 import time
 from datetime import datetime, timezone
 from typing import Any, Dict, List, Optional
@@ -221,6 +223,78 @@ async def handle_hints(request: web.Request) -> web.Response:
         return web.json_response({"error": str(exc)}, status=500)
 
 
+async def _publish_hint_feedback_to_aidb(entry: Dict[str, Any]) -> None:
+    """Best-effort async forwarder: publishes hint feedback to AIDB interaction_history.
+
+    Populates metadata->>'hint_template' so meta_optimizer and harness_evolution_tracker
+    have real-world telemetry to evaluate hint effectiveness.
+    """
+    try:
+        aidb_url = os.environ.get("AIDB_URL", "http://127.0.0.1:8002").rstrip("/")
+        aidb_key_file = os.environ.get("AIDB_API_KEY_FILE", "")
+        aidb_key = ""
+        if aidb_key_file:
+            try:
+                with open(aidb_key_file, "r", encoding="utf-8") as f:
+                    aidb_key = f.read().strip()
+            except OSError:
+                pass
+        if not aidb_key:
+            aidb_key = os.environ.get("AIDB_API_KEY", "")
+
+        headers = {"Content-Type": "application/json"}
+        if aidb_key:
+            headers["X-API-Key"] = aidb_key
+
+        hint_id = entry.get("hint_id", "")
+        helpful = entry.get("helpful")
+        score_val = entry.get("score")
+        outcome = (
+            "success"
+            if (helpful is True or (score_val is not None and score_val >= 0.7))
+            else "failure"
+        )
+        val_score = float(score_val if score_val is not None else (1.0 if helpful else 0.0))
+
+        payload = {
+            "query": f"Hint feedback: {hint_id}",
+            "response": entry.get("comment") or f"Score: {score_val}, Helpful: {helpful}",
+            "agent_type": entry.get("agent") or "unknown",
+            "role": "agent",
+            "outcome": outcome,
+            "project": "hint-feedback",
+            "latency_ms": 0,
+            "tokens_in": 0,
+            "tokens_out": 0,
+            "value_score": val_score,
+            "metadata": {
+                "hint_template": hint_id,
+                "task_id": entry.get("task_id", ""),
+                "source": "agent_feedback",
+                "helpful": helpful,
+                "score": score_val,
+                "comment": entry.get("comment", ""),
+                "agent_preferences": entry.get("agent_preferences", {}),
+            },
+        }
+
+        import httpx
+        async with httpx.AsyncClient(timeout=3.0) as client:
+            resp = await client.post(
+                f"{aidb_url}/history/record",
+                json=payload,
+                headers=headers,
+            )
+            if resp.status_code not in (200, 201):
+                logger.warning(
+                    "aidb_hint_feedback_record_failed status=%s body=%s",
+                    resp.status_code,
+                    resp.text[:120],
+                )
+    except Exception as exc:
+        logger.debug("aidb_hint_feedback_forward_error: %s", exc)
+
+
 async def handle_hints_feedback(request: web.Request) -> web.Response:
     """POST /hints/feedback — explicit agent feedback loop for hint quality."""
     try:
@@ -286,6 +360,12 @@ async def handle_hints_feedback(request: web.Request) -> web.Response:
     except Exception as exc:
         logger.error("hint_feedback_write_failed error=%s", exc)
         return web.json_response({"error": "feedback_write_failed"}, status=500)
+
+    # Phase 20.3: Asynchronously forward feedback to AIDB interaction_history for meta-optimization
+    try:
+        asyncio.create_task(_publish_hint_feedback_to_aidb(entry))
+    except Exception as exc:
+        logger.debug("aidb_hint_feedback_task_schedule_failed: %s", exc)
 
     payload: Dict[str, Any] = {"status": "recorded", "hint_id": hint_id}
     async with _agent_lessons_lock:
