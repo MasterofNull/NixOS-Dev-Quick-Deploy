@@ -1,6 +1,11 @@
 {
   "version": "understand-anything-config.v1",
   "comment": "Single declared place for Understand-Anything refresh limits and the upstream pin. Read by scripts/ai/lib/understand_graph.py and scripts/ai/aq-understand-anything.",
+  "generator": {
+    "mode": "deterministic",
+    "tool": "scripts/ai/aq-graph-build",
+    "comment": "Graph is built from git ls-files by aq-graph-build (stdlib, no LLM, ~20s). The upstream pin below is only for the dashboard and /understand skills; the pre-2026-10 LLM graph is kept at .understand-anything/knowledge-graph.llm-2026-07-01.json."
+  },
   "staleness": {
     "max_age_days": 14,
     "max_commits": 300

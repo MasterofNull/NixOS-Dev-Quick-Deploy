@@ -87,9 +87,15 @@ def assert_enabled_candidate(entry: dict, pinned_version: str) -> None:
 
 
 def assert_understand_graph_complete() -> None:
-    graph = ROOT / ".understand-anything" / "knowledge-graph.json"
-    assert graph.exists(), "Understand-Anything graph must exist before graph-layer promotion"
-    payload = json.loads(graph.read_text(encoding="utf-8"))
+    # The graph is a generated, untracked artifact: build it from the repo to prove the
+    # producer works (deterministic, no LLM), instead of trusting whatever file is on disk.
+    import subprocess
+    import tempfile
+    with tempfile.TemporaryDirectory() as tmp:
+        graph = Path(tmp) / "knowledge-graph.json"
+        subprocess.run([str(ROOT / "scripts/ai/aq-graph-build"), "--root", str(ROOT), "--out", str(graph)],
+                       check=True, capture_output=True, timeout=300)
+        payload = json.loads(graph.read_text(encoding="utf-8"))
     nodes = payload.get("nodes") or []
     edges = payload.get("edges") or []
     metadata = payload.get("metadata") or {}
@@ -97,7 +103,8 @@ def assert_understand_graph_complete() -> None:
     assert edges, "Understand-Anything graph must contain edges"
     assert metadata.get("total_nodes") == len(nodes), "graph node count must match tracked metadata"
     assert metadata.get("total_edges") == len(edges), "graph edge count must match tracked metadata"
-    assert int(metadata.get("batch_count", 0)) > 0, "graph must record its completed batch count"
+    assert metadata.get("generator") == "aq-graph-build" and metadata.get("git_head"), \
+        "graph must record its deterministic generator and source commit"
 
 
 def main() -> int:

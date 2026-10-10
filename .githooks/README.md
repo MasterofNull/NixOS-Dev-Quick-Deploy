@@ -43,6 +43,12 @@ Runs fast commit-time governance and safety checks:
 git commit --no-verify
 ```
 
+### post-merge
+
+Runs `aq-ctx-freshness --ensure`, then (if `aq-graph-build --check` reports STALE) rebuilds
+`.understand-anything/knowledge-graph.json` in the background (deterministic, no LLM, about 20s,
+`nice` + 180s timeout, never blocks the merge). Opt out with `AQ_GRAPH_BUILD_HOOK=0`.
+
 ### pre-push
 
 Runs repository quick lint before push:

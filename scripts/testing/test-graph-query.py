@@ -5,6 +5,7 @@ import importlib.util
 import json
 import subprocess
 import sys
+import os
 import tempfile
 from datetime import datetime, timedelta, timezone
 from pathlib import Path
@@ -146,6 +147,10 @@ def test_dashboard_route(root):
 
 
 def test_bridge_tool():
+    # The real graph is an untracked generated artifact (absent in CI): use a fixture build.
+    tmp = tempfile.TemporaryDirectory()
+    fixture_root = make_root(Path(tmp.name), config={"staleness": {"max_age_days": 14, "max_commits": 300}})
+    os.environ["UA_GRAPH_PATH"] = str(ug.graph_path(fixture_root))
     spec = importlib.util.spec_from_file_location("bridge", REPO / "scripts/ai/mcp-bridge-hybrid.py")
     mod = importlib.util.module_from_spec(spec)
     spec.loader.exec_module(mod)

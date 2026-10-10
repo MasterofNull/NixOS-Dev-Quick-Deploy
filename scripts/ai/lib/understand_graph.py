@@ -74,6 +74,11 @@ def load_config(root: Path) -> dict:
 
 
 def graph_path(root: Path) -> Path:
+    # The graph is a generated, untracked artifact; UA_GRAPH_PATH lets tests and
+    # tooling point consumers at another build without touching the repo copy.
+    override = os.environ.get("UA_GRAPH_PATH")
+    if override:
+        return Path(override)
     return Path(root) / ".understand-anything" / "knowledge-graph.json"
 
 
@@ -131,12 +136,12 @@ def wiki_info(root: Path, graph_generated: Optional[str]) -> dict:
         meta = json.loads(meta_path.read_text(encoding="utf-8"))
     except (OSError, ValueError):
         return {"present": False, "sections": 0, "oldest_generated": None, "behind_graph": None}
-    gens = [r.get("generated") for r in meta.values() if isinstance(r, dict) and r.get("generated")]
+    # only per-section records count; aq-wiki also stores a "body_sha256" hash map in this file
+    recs = [r for r in meta.values() if isinstance(r, dict) and "graph_generated" in r]
+    gens = [r.get("generated") for r in recs if r.get("generated")]
     oldest = min(gens) if gens else None
-    behind = any(
-        isinstance(r, dict) and r.get("graph_generated") != graph_generated for r in meta.values()
-    )
-    return {"present": True, "sections": len(meta), "oldest_generated": oldest, "behind_graph": behind}
+    behind = any(r.get("graph_generated") != graph_generated for r in recs)
+    return {"present": True, "sections": len(recs), "oldest_generated": oldest, "behind_graph": behind}
 
 
 def staleness(root: Path, now: Optional[datetime] = None,
