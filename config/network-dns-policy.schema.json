@@ -1,0 +1,269 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://nixos-dev-quick-deploy.local/schemas/network-dns-policy.schema.json",
+  "title": "Network DNS Policy Schema and Constants",
+  "description": "Source of truth for network DNS policy input, eligibility, decision, and health schemas. Draft 2020-12 closed schemas with fixed constants.",
+  "contract_version": "1.0",
+  "constants": {
+    "receipt_lease_duration_s": 55,
+    "max_effect_ceiling_s": 90
+  },
+  "oneOf": [
+    { "$ref": "#/$defs/policyInput" },
+    { "$ref": "#/$defs/policyEligibility" },
+    { "$ref": "#/$defs/policyDecision" },
+    { "$ref": "#/$defs/policyHealth" }
+  ],
+  "$defs": {
+    "policyInput": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "connection_class",
+        "connectivity",
+        "dns_topology",
+        "evidence_age_bucket",
+        "link_kind"
+      ],
+      "properties": {
+        "connection_class": {
+          "type": "string",
+          "enum": ["trusted_full", "untrusted", "unknown"]
+        },
+        "connectivity": {
+          "type": "string",
+          "enum": ["full", "portal", "limited", "site", "none", "unknown"]
+        },
+        "dns_topology": {
+          "type": "string",
+          "enum": ["ordinary", "split", "unknown"]
+        },
+        "evidence_age_bucket": {
+          "type": "string",
+          "enum": ["fresh", "stale", "unknown"]
+        },
+        "link_kind": {
+          "type": "string",
+          "enum": ["wifi", "other"]
+        }
+      }
+    },
+    "policyEligibility": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "schema_version",
+        "eligible",
+        "reason",
+        "lease_duration_s"
+      ],
+      "properties": {
+        "schema_version": {
+          "const": "network.dns-policy-eligibility.v1"
+        },
+        "eligible": {
+          "type": "boolean"
+        },
+        "reason": {
+          "type": "string",
+          "enum": [
+            "trusted_full",
+            "untrusted_profile",
+            "portal",
+            "limited_or_site",
+            "split_dns",
+            "stale_evidence",
+            "unknown_state",
+            "non_wifi",
+            "legacy_mode"
+          ]
+        },
+        "lease_duration_s": {
+          "type": "integer",
+          "minimum": 0,
+          "maximum": 55
+        }
+      }
+    },
+    "telemetryState": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "policy_state",
+        "connectivity",
+        "reason",
+        "freshness",
+        "lease"
+      ],
+      "properties": {
+        "policy_state": {
+          "type": "string",
+          "enum": [
+            "preserving",
+            "transitioning",
+            "overriding",
+            "reverted",
+            "degraded",
+            "unavailable"
+          ]
+        },
+        "connectivity": {
+          "type": "string",
+          "enum": ["full", "portal", "limited", "site", "none", "unknown"]
+        },
+        "reason": {
+          "type": "string",
+          "enum": [
+            "trusted_full",
+            "untrusted_profile",
+            "portal",
+            "limited_or_site",
+            "split_dns",
+            "stale_evidence",
+            "unknown_state",
+            "non_wifi",
+            "legacy_mode"
+          ]
+        },
+        "freshness": {
+          "type": "string",
+          "enum": ["fresh", "stale", "unknown"]
+        },
+        "lease": {
+          "type": "string",
+          "enum": ["active", "expired", "not_applicable", "unknown"]
+        }
+      }
+    },
+    "policyDecision": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "schema_version",
+        "action",
+        "reason",
+        "lease_ttl_s",
+        "rollback_required",
+        "telemetry_state"
+      ],
+      "properties": {
+        "schema_version": {
+          "const": "network.dns-policy-decision.v1"
+        },
+        "action": {
+          "type": "string",
+          "enum": [
+            "preserve_link_dns",
+            "apply_public_override",
+            "refresh_override",
+            "revert_override",
+            "legacy_override"
+          ]
+        },
+        "reason": {
+          "type": "string",
+          "enum": [
+            "trusted_full",
+            "untrusted_profile",
+            "portal",
+            "limited_or_site",
+            "split_dns",
+            "stale_evidence",
+            "unknown_state",
+            "non_wifi",
+            "legacy_mode"
+          ]
+        },
+        "lease_ttl_s": {
+          "type": "integer",
+          "minimum": 0,
+          "maximum": 90
+        },
+        "rollback_required": {
+          "type": "boolean"
+        },
+        "telemetry_state": {
+          "$ref": "#/$defs/telemetryState"
+        }
+      }
+    },
+    "policyHealth": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "schema_version",
+        "policy_state",
+        "connectivity",
+        "reason",
+        "freshness",
+        "lease",
+        "last_transition_age",
+        "transition_count_bucket",
+        "acquisition_error"
+      ],
+      "properties": {
+        "schema_version": {
+          "const": "network.dns-policy-health.v1"
+        },
+        "policy_state": {
+          "type": "string",
+          "enum": [
+            "preserving",
+            "transitioning",
+            "overriding",
+            "reverted",
+            "degraded",
+            "unavailable"
+          ]
+        },
+        "connectivity": {
+          "type": "string",
+          "enum": ["full", "portal", "limited", "site", "none", "unknown"]
+        },
+        "reason": {
+          "type": "string",
+          "enum": [
+            "trusted_full",
+            "untrusted_profile",
+            "portal",
+            "limited_or_site",
+            "split_dns",
+            "stale_evidence",
+            "unknown_state",
+            "non_wifi",
+            "legacy_mode"
+          ]
+        },
+        "freshness": {
+          "type": "string",
+          "enum": ["fresh", "stale", "unknown"]
+        },
+        "lease": {
+          "type": "string",
+          "enum": ["active", "expired", "not_applicable", "unknown"]
+        },
+        "last_transition_age": {
+          "type": "string",
+          "enum": ["lt_30s", "lt_2m", "lt_15m", "gte_15m", "unknown"]
+        },
+        "transition_count_bucket": {
+          "type": "string",
+          "enum": ["0", "1", "2_5", "6_plus", "unknown"]
+        },
+        "acquisition_error": {
+          "type": "string",
+          "enum": [
+            "none",
+            "unsafe_interface",
+            "missing_command",
+            "timeout",
+            "nonzero",
+            "permission",
+            "too_large",
+            "malformed"
+          ]
+        }
+      }
+    }
+  }
+}
