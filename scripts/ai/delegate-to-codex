@@ -462,6 +462,7 @@ cmd_delegate() {
    uncommitted_changes[], resume_hint. This is the compaction anchor for all agents.
 10. ON-DEMAND TOOLS & CONTEXT: Use lean baseline tools; reach unlisted tools live via
     aq-tool <pkg> [args...] (pinned nixpkgs). Query AIDB (error-solutions) or aq-hints if ambiguous.
+11. DELIVERY WORKFLOW: work only in your worktree/branch; commits only via tier0 --pre-commit && git commit, landing via PR only (never push main); see canon/blocks/delivery-workflow.summary.md.
 === END CONSTRAINTS ===
 
 ${prompt}"

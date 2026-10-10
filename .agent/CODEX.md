@@ -14,39 +14,17 @@ Stack: NixOS (flake-based), Python (FastAPI/aiohttp), Nix modules, llama.cpp, Re
 **Full policy, workflow contracts → `AGENTS.md` (repo root)**
 
 **Upstream authorities**
-- Workflow SSOT: `.agent/WORKFLOW-CANON.md`
-- Kernel SSOT: `docs/architecture/canonical-kernel-declaration.md`
-- Role SSOT: `docs/architecture/role-matrix.md`
-- Routing/profile SSOT: `docs/architecture/routing-profile-inventory.md`
-- Tool contract: `docs/agent-guides/47-AGENT-TOOL-CONTRACT.md`
+Workflow `.agent/WORKFLOW-CANON.md`; kernel `docs/architecture/canonical-kernel-declaration.md`; roles `docs/architecture/role-matrix.md`; routing `docs/architecture/routing-profile-inventory.md`; tools `docs/agent-guides/47-AGENT-TOOL-CONTRACT.md`.
 
 ## Role and posture
 
 Codex is usually the **orchestrator**, **reviewer**, or bounded **implementer** for this harness.
 
-Typical strengths:
-- decomposition,
-- integration judgment,
-- code review,
-- final acceptance over complex slices,
-- turning architecture into executable plans.
-
 Codex must not treat model identity as authority. Role assignment is per slice, not permanent by model.
 
 ## Default operating mode
 
-For non-trivial work, Codex should:
-
-1. orient with the canonical workflow,
-2. inspect enough context to understand the real option space,
-3. frame meaningful tradeoffs before acting when intent matters,
-4. maintain the collaboration artifacts,
-5. execute one bounded slice at a time,
-6. **live test** changes in the running system — catch runtime errors before gating,
-7. **update progressive docs and seed RAG** with new patterns before committing,
-8. validate with `tier0-validation-gate.sh --pre-commit` then commit.
-
-Full 8-step sequence: ORIENT → RESEARCH → PRD/PLAN → MEMORY-CHECKPOINT → EXECUTE → VALIDATE → DOC-UPDATE → COMMIT. See `.agent/WORKFLOW-CANON.md`.
+Non-trivial work: orient, inspect, frame tradeoffs, keep collaboration artifacts, one bounded slice at a time, live test, update docs/seed RAG, then `tier0-validation-gate.sh --pre-commit` and commit. Full 8-step sequence: `.agent/WORKFLOW-CANON.md`.
 
 ## Tool use
 
@@ -56,35 +34,21 @@ Follow the canonical low-friction order:
 - path discovery: `als`, then `fd`
 - bounded reads: `acat`, then native read tools or `sed -n`
 
-If a preferred tool is unavailable, use one documented fallback and move on. Do not waste turns rediscovering the same absence. If there is no fallback, reach the tool live via `aq-tool <pkg>` — no restart, no manifest gate (the capability manifest is a record, never a runtime gate; Rule 16 parity).
+If a preferred tool is unavailable, use one documented fallback and move on. If none, reach the tool live via `aq-tool <pkg>` — no restart, no manifest gate (the capability manifest is a record, never a runtime gate; Rule 16 parity).
 
 ## Routing discipline
 
-Use the narrowest matching canonical profile and keep the object model distinct:
-
-- human alias ≠ semantic intent ≠ canonical profile ≠ provider/model realization
-- local/bounded implementation work should prefer local profiles when task quality permits
-- remote lanes are for task value, not habit
-- do not invent or rename routing semantics outside the routing/profile SSOT
+Use the narrowest matching canonical profile; human alias ≠ semantic intent ≠ canonical profile ≠ provider/model realization. Prefer local profiles for bounded work when quality permits; remote lanes are for task value, not habit; never invent or rename routing semantics outside the routing/profile SSOT.
 
 ## Delegation and review
 
-When Codex delegates:
-- assign a bounded slice,
-- define acceptance criteria,
-- state the write scope,
-- keep immediate blockers local when delegation would only add latency,
-- review returned work before integration.
+When Codex delegates: assign a bounded slice with acceptance criteria and write scope; keep immediate blockers local when delegation only adds latency; review returned work before integration.
 
-Codex may provide the final review verdict for Gemini- or Qwen-authored work when assigned reviewer authority, but must not self-accept its own implementation work in the same slice.
+Codex may give the final review verdict on Gemini- or Qwen-authored work when assigned reviewer authority; it must not self-accept its own work in the same slice.
 
 ## Codex must not do unilaterally
 
-- redefine kernel objects inline,
-- bypass review for destructive, dual-use, or external-account-affecting work,
-- expand a slice because a nearby cleanup looks tempting,
-- silently choose among meaningful product/architecture alternatives when the user's intent changes the right answer,
-- treat generated instruction projections as a license to drift from upstream SSOTs.
+Redefine kernel objects inline; bypass review for destructive, dual-use, or external-account work; expand a slice for nearby cleanup; silently choose among meaningful alternatives when user intent changes the answer; let generated projections drift from upstream SSOTs.
 
 ## Architecture Constraints (Non-Negotiable)
 
@@ -148,7 +112,7 @@ Moved-out lane history, long examples and reference tables (with contents list):
 | 14 | **READWRITEPATHS ≠ DAC BYPASS** | `ReadWritePaths` + `ProtectHome=read-only` set up a namespace bind-mount but the kernel checks inode `uid/gid/mode` against the service UID — POSIX DAC is NOT bypassed. A service blocked by a `0700` dir gets `EACCES` regardless. Fix: `system.activationScripts` with `deps = ["users"]` to run after NixOS user-management resets the mode on every activation. |
 | 15 | **ACTIVATION GATE (Definition of Done)** | "Committed" ≠ "done." No slice/PRD/plan/phase/cycle is COMPLETE until every feature it ships is attested across 6 dimensions — **integrated** (called from live path), **turned ON** (enabled in the running system), **functionally validated real-world** (end-to-end, not just unit tests), **observable** (dashboard + health-spider + alert), **intervenable** (operator control where bad state is possible), and **PM-tracked (live)** (for material work under a tracked plan, update its `tracker.json` editorial with the work, dependencies, priority, and detection signals; status is projected from ground truth, never hand-typed) — OR carries a written, dated deferral. Paste the attestation into the commit body + `.agent/ACTIVATION-AUDIT.md`. A cycle with a dormant or stale-tracked feature is *paused pending activation*, not done. SSOT: `.agent/DEFINITION-OF-DONE.md`. |
 | 16 | **AGENT PARITY (canonical changes = all agents)** | Any canonical change — behavioral rule, workflow/payload contract, dispatch/tool behavior, instruction-file update — MUST land in ALL general agent files in the same cycle: `CLAUDE.md`, `.agent/CODEX.md`, `.agent/LOCAL-AGENT.md`, `.agent/GEMINI.md`, and the shared `.agent/WORKFLOW-CANON.md`. Never update one agent in isolation — a canonical change present in only one file is INCOMPLETE. **Exceptions**: embedded-hardware and other specialized single-purpose agents (they follow their own domain instruction files). Parity map: `docs/AGENT-PARITY-MATRIX.md`. |
-| 17 | **CHEAPEST-ELIGIBLE IMPLEMENTER (orchestrator does not self-implement)** | A flagship/orchestrator model (Sonnet, Opus, Fable, or provider-equivalent) never self-implements a bounded slice and never default-dispatches a same-tier-or-higher sub-agent for implementer work. Route implementation to the cheapest healthy model whose measured capability satisfies the slice, per SSOT `docs/architecture/role-matrix.md` (§"Economical execution plane") and the tier ladder in `config/model-coordinator.json`. Concretely: every Agent-tool / `delegate-to-*` dispatch for an implementer role MUST pass an explicit cheap/fast model override (e.g. `model: "haiku"` for the Claude lane) unless the task's proven complexity requires a higher tier — never leave it unset to silently inherit the orchestrator's own tier. Prefer Codex or local Qwen first when eligible (Rule 4); Claude's fast tier is the fallback when those are unavailable or ineligible, not the default. Any deviation (flagship implementing directly, or an implementer dispatch at flagship/balanced tier) requires a stated capability-insufficiency reason recorded in the dispatch/PULSE record. |
+| 17 | **CHEAPEST-ELIGIBLE IMPLEMENTER (orchestrator does not self-implement)** | A flagship/orchestrator model (Sonnet, Opus, Fable, or provider-equivalent) never self-implements a bounded slice and never default-dispatches a same-tier-or-higher sub-agent for implementer work. Route implementation to the cheapest healthy model whose measured capability satisfies the slice, per SSOT `docs/architecture/role-matrix.md` (§"Economical execution plane") and the tier ladder in `config/model-coordinator.json`. Concretely: every Agent-tool / `delegate-to-*` dispatch for an implementer role MUST pass an explicit cheap/fast model override (Claude lane: `model: "sonnet"` = Sonnet 5.5, the balanced tier, is the default implementer; `haiku` only for mechanical single-file edits with a checkable result) unless the task's proven complexity requires a higher tier — never leave it unset to silently inherit the orchestrator's own tier. Prefer Codex or local Qwen first when eligible (Rule 4); Claude's balanced tier is the fallback when those are unavailable or ineligible. Any deviation (flagship implementing directly, or an implementer dispatch at flagship/balanced tier) requires a stated capability-insufficiency reason recorded in the dispatch/PULSE record. |
 | 18 | **AGENT-AGNOSTIC ROLES + CATCH-UP QUEUE (no single point of failure)** | Roles/gates/funnels/lanes are model-agnostic: NO role (orchestrator, architect, implementer, reviewer, binding-acceptance) is permanently tied to one model/agent. The orchestrator routes each role instance at dispatch time to whichever lane is available + eligible (role-matrix + `config/model-coordinator.json` tiers) + independent (never self-review) + cheapest (Rule 17). Binding acceptance may be Codex OR a fresh Claude flagship OR Gemini/Antigravity OR local Qwen — whichever is up; if the first choice is down, route to the next eligible and RECORD the substitution, never block. Local Qwen is the always-available floor (never-skip-local). A returning agent plays catch-up via `.agent/collaboration/AGENT-CATCHUP-QUEUE.md`: work committed while it was down is queued (with exact subject hashes) for its confirmatory audit / late findings on return — advisory unless it surfaces a real defect (then a bounded follow-up, never rewrite history). Owner directive 2026-07-22; SSOT `.agents/plans/agent-agnostic-factory/DESIGN.md`. |
 | 19 | **ROOT-CAUSE DISCIPLINE** | No silent workarounds. When you hit a workaround point, do exactly one of: (a) fix the producer, or (b) register it in `.agent/WORKAROUND-REGISTER.md` with {symptom, root cause, producer, fix-path, class, severity} — never leave an ad-hoc band-aid in place. Any ad-hoc change to a designed system carries a one-line root-cause note in its commit body. **Gaming a gate** (faking the signal it checks — hand-editing a freshness timestamp, a mock pass) stays forbidden (anti-gaming); Rule 19 extends "don't fake the signal" to "don't route around the cause." **Gate corollary:** a gate fails on a regression the *change* introduces, never on an unrelated time/expiry signal — those become tracked maintenance (tier0 `--pre-commit` WARNs freshness-class checks; HARD only in scheduled `--maintenance`), never a commit blocker. Owner-ratified 2026-08-06; SSOT `.agent/PROJECT-ROOT-CAUSE-DISCIPLINE-PRD.md`; register `.agent/WORKAROUND-REGISTER.md`. |
 | 20 | **PROGRESS-PROJECTED + MINIMAL-CODE** | (a) **Progress projected, never hand-typed:** every plan under active work carries an editorial `<plan-dir>/tracker.json` (goals, deps, validation-goals, ground-truth detection signals); PM status (gantt/kanban/rollup) is PROJECTED by `aq-pm-tracker` from git commits + freeze records + activation grants + blockers, gated on every commit by `tier0.d/check-pm-tracker` (a broken/gamed manifest blocks; missing-tracker-for-an-active-plan is a freshness WARN). Never hand-maintain status — it rots (anti-gaming, links Root-Cause Discipline). (b) **Minimal-code before writing:** before any new implementation/file/dependency, walk the `minimal-code` skill ladder (YAGNI → already-in-codebase → stdlib → native → installed-dep → one-line → MVP; lazy about the solution, never about reading) — smallest correct change, no over-build; pairs with `/simplify`. NEVER at the cost of correctness, fail-closed, security, or a HARD rule. SSOT `.agents/plans/pm-tracker-standard/DESIGN.md` + skill `minimal-code`. |
@@ -207,6 +171,19 @@ Enforcement: local payloads auto-inject the MICRO variant (`shared/llm_config.py
 - At the MVP boundary restore full audit (independent code+runtime review, adversarial, UX, perf, observability, consensus) on one exact subject; only that supports release acceptance; security/containment activation needs its own evidence + owner decision.
 - Full text: `canon/blocks/mvp-delivery-sop.md`
 <!-- canon:end mvp-delivery-sop -->
+
+<!-- canon:begin delivery-workflow -->
+## Delivery Workflow (Canonical — all agents)
+
+- One branch + worktree per slice from `origin/main`; never edit/commit tracked files in the main checkout (append-only PULSE/backlog excepted); sub-agents stay in their worktree.
+- Commit only as `tier0-validation-gate.sh --pre-commit && git commit`; never `--no-verify`; graph/wiki are generated, not committed.
+- Land via PR only (`gh pr create --body-file`), never push `main`; evidence doc `docs/harness-first/evidence/<date>-<slug>.md`.
+- Resumable trail for any lane: RESUME.json + PULSE.log + HANDOFF.md; down lanes catch up via AGENT-CATCHUP-QUEUE.md.
+- sudo/nrs/systemctl = owner acts: give exact copy-paste commands; no rebuild during DB jobs.
+- Enabled != done; no derelict capabilities; archive only with a parity equivalent.
+- Discover first: CAPABILITY-INDEX.md, `aq-graph-query`, `aq-wiki --section`, `aq-hints`; friction -> `aq-rsi report`.
+- Full text: `canon/blocks/delivery-workflow.md`
+<!-- canon:end delivery-workflow -->
 
 <!-- canon:begin headless-delegate-mode -->
 ## Headless Delegate Mode (Canonical — all agents)
