@@ -100,6 +100,21 @@ post_switch_hooks:
     background: true
     timeout_s: 300
 
+  # Benchmarks the freshly switched model (ci-7): 2 tiny cases (max_tokens 12/80)
+  # against the enabled localhost llama-cpp backend only. Read-only HTTP; the sole
+  # write is the result JSON. NOTE: this hook uses LOCAL INFERENCE (acceptable at
+  # switch time). Runs as the invoking user, never root. The result lands in
+  # $TELEMETRY_DIR when writable; the hook log /tmp/aq-post-switch-inference_bench.log
+  # always carries it too.
+  - id: inference_bench
+    description: "Benchmark newly switched model (ttft/tok-s/json-valid) via aq-inference-bench"
+    command: >-
+      d="${TELEMETRY_DIR:-/var/lib/ai-stack/hybrid/telemetry}";
+      if [ -w "$d" ]; then o="$d/inference-bench-latest.json"; else o=/dev/null; fi;
+      scripts/ai/aq-inference-bench --json run --backend llama-cpp-local --execute --timeout-seconds 60 | tee "$o"
+    background: true
+    timeout_s: 300
+
 # ── Agent routing rules ───────────────────────────────────────────────────────
 # Which agents are subject to this manifest.
 # "local" = local llama.cpp; remote agents are evaluated via hybrid-coordinator.
