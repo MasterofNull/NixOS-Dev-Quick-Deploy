@@ -2,82 +2,95 @@
 doc_type: reference
 title: "Wiki: Testing"
 subsystem: testing
-generated: 2026-07-02T01:49:23.505256Z
-graph_generated: 2026-07-01T16:10:40Z
-graph_nodes: 689
+generated: 2026-10-10T08:04:22.602254Z
+graph_generated: 2026-10-10T07:31:33Z
+graph_nodes: 6947
 ---
 
 # Testing
 
 > Test harness scripts, inference budget tests, slot scheduling tests
 
-*Auto-generated from `knowledge-graph.json`. Do not edit manually.*  
+*Auto-generated from `knowledge-graph.json`. Do not edit manually.*
 *Refresh: `aq-wiki --update`  ·  Full regeneration: `aq-wiki --init --force`*
 
 ## Key Files
 
 | File | Summary | Complexity |
 |------|---------|------------|
-| `run` | Main entry point for phase 0; orchestrates all checks and returns a ResultSet. | complex |
-| `_check_phase172_delegation_health` | Phase 172: delegation health including rate, latency, and error patterns. | complex |
-| `_check_golden_eval_parity` | Extensive golden eval parity checks across multiple agent capabilities. | complex |
-| `_check_graphrag` | Check GraphRAG endpoint and graph data integrity. | complex |
-| `_check_nsjail_sandbox` | Verify nsjail sandbox binary and policy files. | complex |
-| `_check_ragas_eval` | Full RAGAS evaluation pipeline check including faithfulness scoring. | complex |
-| `_check_phase146_identity_coverage` | Phase 146: identity coverage across auth surfaces. | complex |
-| `_check_s2_tool_auth_policy` | Check S2 tool auth policy configuration. | complex |
-| `_check_phase86_attention_queue` | Phase 86: attention queue processing check. | complex |
-| `test-route-handler-classifier-context-cap.py` | Unit tests for context cap enforcement in the route handler classifier. Tests that message | complex |
-| `test-route-handler-collection-policy.py` | Unit tests for AIDB collection selection policy in the route handler. Covers _select_route | complex |
-| `benchmark-acceleration-backends.sh` | benchmark-acceleration-backends.sh (450 lines) in testing. | complex |
-| `benchmark-collaboration.sh` | benchmark-collaboration.sh (341 lines) in testing. | complex |
-| `benchmark-query-performance.sh` | benchmark-query-performance.sh (306 lines) in testing. | complex |
-| `benchmark-workflow-automation.sh` | benchmark-workflow-automation.sh (340 lines) in testing. | complex |
-| `check-context-bootstrap.sh` | check-context-bootstrap.sh (203 lines) in testing. | complex |
-| `drill-rollback.sh` | drill-rollback.sh (225 lines) in testing. | complex |
-| `maeah-acceptance-tests.sh` | maeah-acceptance-tests.sh (277 lines) in testing. | complex |
-| `smoke-agent-harness-parity.sh` | smoke-agent-harness-parity.sh (210 lines) in testing. | complex |
-| `smoke-ide-adapter-compat.sh` | smoke-ide-adapter-compat.sh (258 lines) in testing. | complex |
-| `smoke-integration-complete.sh` | smoke-integration-complete.sh (227 lines) in testing. | complex |
-| `smoke-local-model.sh` | smoke-local-model.sh (312 lines) in testing. | complex |
-| `smoke-query-task-classes.sh` | smoke-query-task-classes.sh (221 lines) in testing. | complex |
-| `validate-query-agent-storage-learning.sh` | validate-query-agent-storage-learning.sh (343 lines) in testing. | complex |
-| `benchmark-quality-performance.py` | benchmark-quality-performance.py (273 lines) in testing. | complex |
+| `bench-local-agent.py` | Local agent benchmark — 13 tests across reasoning / tool-use / code-gen / coherence. | complex |
+| `process_lifecycle.py` | Pure, bounded ownership for deterministic QA probe subprocesses. | complex |
+| `phase0.py` | Phase 0 — Pre-flight smoke tests. | complex |
+| `execution-cell-perf-harness.py` | C3b R4 execution-cell performance-measurement harness (NON-ENFORCEMENT). | complex |
+| `qa-provider-probe.py` | Bounded aggregate owner for the four fixed flagship CLI probes. | complex |
+| `test-agent-ops-projection.py` | Executable M0 contract tests for the read-only Agent Ops projector. | complex |
+| `test-approval-signer.py` | Acceptance tests for the Approval Control Plane P1 signing service core | complex |
+| `test-aq-approve-headless.py` | Acceptance tests for the Approval Control Plane P4 headless CLI | complex |
+| `test-c2-gate-dispatch-wiring.py` | Offline hermetic tests — Foundation C, C2-SCI subslice B3: the | complex |
+| `test-capability-lease-gate.py` | Offline acceptance tests — Foundation C2 capability-lease enforcement gate. | complex |
+| `test-dashboard-program-progress.py` | Focused contract tests for the canonical AQ-OS program tracker. | complex |
+| `test-deployment-causality-clustering.py` | Test Suite: Causality Clustering and Scoring (Phase 3.2 Knowledge Graph) | complex |
+| `test-deployment-monitoring-alerting-e2e.py` | End-to-end test suite for deployment monitoring and alerting workflow. | complex |
+| `test-edit-verify.py` | Regression test for the POST-EDIT VERIFY-AND-COACH gate (2026-08-25). | complex |
+| `test-enforce-asymmetric-verify.py` | Offline acceptance tests — ALA-ENFORCE (enforce-asymmetric-verify). | complex |
+| `test-execution-cell-adapter.py` | Offline acceptance tests — Foundation C C3b R5 execution-cell-adapter. | complex |
+| `test-execution-cell-clone.py` | Offline acceptance tests — Foundation C C3b R2 self-contained clone | complex |
+| `test-execution-cell-runner.py` | Offline acceptance tests — Foundation C C3b R3 execution-cell-runner. | complex |
+| `test-factory-gate-readiness.py` | Focused FT-5 proof for the metadata-only factory readiness preflight. | complex |
+| `test-llm-cassette.py` | Tests for the LLM record/replay cassette harness. | complex |
+| `test-local-delegation-artifact.py` | Phase 159 regression: local delegation artifact persistence. | complex |
+| `test-local-inference-l2b.py` | Focused L2B-A shadow transport contract checks. | complex |
+| `test-multi-agent-collaboration.py` | Test Suite for Multi-Agent Collaboration System | complex |
+| `test-operator-retrieval-guidance.py` | Test Suite: Operator Retrieval Guidance (Phase 3.2 Knowledge Graph - P1) | complex |
+| `test-orchestration-comprehensive.py` | Comprehensive test coverage for orchestration framework - targeting 90%+ coverage. | complex |
 
 ## Key Functions
 
 | Function | File | Summary |
 |----------|------|---------|
-| `load_route_handler` | `test-route-handler-adaptive-timeouts.py` | Bootstraps the route handler module for isolated unit testing by injecting sys.modules stu |
-| `load_route_handler` | `test-route-handler-backend-audit.py` | Bootstraps the route handler for backend-audit tests by stub-injecting aiohttp, prometheus |
-| `load_route_handler` | `test-route-handler-classifier-context-cap.py` | Bootstraps the route handler for classifier-context-cap tests. Injects stubs for aiohttp,  |
-| `main_async` | `test-route-handler-classifier-context-cap.py` | Async test body covering three classifier context-cap scenarios: initial request (full con |
-| `load_route_handler` | `test-route-handler-collection-policy.py` | Bootstraps the route handler for collection-policy tests by injecting mock dependencies an |
-| `main` | `test-route-handler-collection-policy.py` | Test entry point for AIDB collection selection policy. Validates _select_route_collections |
-| `load_route_handler` | `test-route-handler-context-budget.py` | Bootstraps the route handler for context-budget tests by injecting mock dependencies and d |
-| `load_route_handler` | `test-route-handler-discovery-gating.py` | Bootstraps the route handler for discovery-gating tests by injecting mock dependencies and |
-| `main_async` | `test-route-handler-discovery-gating.py` | Async test body for discovery gating. Verifies that Qdrant collection discovery is skipped |
-| `load_route_handler` | `test-route-handler-local-synthesis-budget.py` | Bootstraps the route handler for local-synthesis-budget tests by injecting mock dependenci |
-| `main` | `test-route-handler-adaptive-timeouts.py` | Test entry point that calls load_route_handler and asserts calculate_adaptive_timeout beha |
-| `_run` | `test-route-handler-backend-audit.py` | Async test body for backend audit. Constructs mock request and response objects, invokes r |
-| `main_async` | `test-route-handler-context-budget.py` | Async test body for context-budget enforcement. Sets up _RecordingClient and _RecordingCom |
-| `main_async` | `test-route-handler-local-synthesis-budget.py` | Async test body for local synthesis token budget. Injects recording HTTP clients for local |
-| `_svc_url` | `_mock_config.py` | Constructs a service base URL by checking an explicit URL env var first, then falling back |
+| `main` | `bench-local-agent.py` | main() -> int |
+| `run_owned_process` | `process_lifecycle.py` | Run one local fixture command with descriptor-bound process-session ownership. |
+| `_check_golden_eval_parity` | `phase0.py` | Phase 152: golden eval set size + static checks for workflow/role/cross-model parity. |
+| `_check_phase86_attention_queue` | `phase0.py` | Phase 86: Human-in-the-Loop Alert Queue. |
+| `run_revocation_under_load` | `execution-cell-perf-harness.py` | Design §5: at the configured cap, with cells actively running, bump |
+| `test_agent_status_formatting` | `test-agent-status-reporting.py` | Test the agent status formatting logic. |
+| `main` | `test-ai-coordinator.py` | main() -> int |
+| `main` | `test-ai-insights-roadmap-surfaces.py` | main() -> int |
+| `main` | `test-ai-stack-health-monitor.py` | main() -> int |
+| `main` | `test-antigravity-inbox.py` | main() |
+| `main` | `test-aq-editor-rescue.py` | main() -> int |
+| `main` | `test-aq-report-runtime-actions.py` | main() -> int |
+| `main` | `test-boot-stability-regressions.py` | main() -> int |
+| `validate_c6_p0_trust_anchors` | `test-c6-p0-trust-anchors.py` | Validate C6-P0 declarative trust anchors. |
+| `test_mock_registry_checks` | `test-capability-intake.py` | test_mock_registry_checks() -> None |
+| `main` | `test-curated-web-research.py` | main() -> int |
+| `main` | `test-dashboard-advanced-runtime-summary.py` | main() -> int |
+| `main` | `test-dashboard-agent-replay.py` | main() -> int |
+| `main` | `test-dashboard-deployment-execution.py` | main() -> int |
+| `main` | `test-dashboard-runtime-controls.py` | main() -> int |
 
 ## Classes
 
 | Class | File | Summary |
 |-------|------|---------|
-| `_FakeResponse` | `test-route-handler-classifier-context-cap.py` | Test stub for aiohttp ClientResponse. No-ops raise_for_status and returns a fixed JSON pay |
-| `_RecordingClient` | `test-route-handler-classifier-context-cap.py` | Test stub for aiohttp ClientSession. Records all POST calls (URL, headers, JSON body) in a |
-| `_FakeResponse` | `test-route-handler-context-budget.py` | Test stub for aiohttp ClientResponse used in context-budget tests. Returns a fixed JSON pa |
-| `_RecordingClient` | `test-route-handler-context-budget.py` | Minimal test stub for aiohttp ClientSession in context-budget tests. Returns a fixed _Fake |
-| `_RecordingCompressor` | `test-route-handler-context-budget.py` | Test stub for the context compressor. Records compress_to_budget calls and returns a fixed |
-| `_FakeResponse` | `test-route-handler-local-synthesis-budget.py` | Test stub for aiohttp ClientResponse in local-synthesis-budget tests. |
-| `_RecordingClient` | `test-route-handler-local-synthesis-budget.py` | Test stub for aiohttp ClientSession in local-synthesis-budget tests. Records POST calls in |
+| `AgentOpsProjectionC05B` | `test-agent-ops-projection.py` | C0.5B pure injected review/feedback health contract. |
+| `AgentOpsProjectionM0` | `test-agent-ops-projection.py` | class AgentOpsProjectionM0(unittest.TestCase) |
+| `AgentOpsProjectionM2A` | `test-agent-ops-projection.py` | M2A adversarial tests: transactional writer, queued grace, barrier, and privacy. |
+| `RegistryCompatibilityR01` | `test-agent-ops-projection.py` | R0.1 compatibility reader, CLI, pure projection, and TUI contract. |
+| `AIInsightsTests` | `test-ai-insights-dashboard.py` | Test suite for AI insights API. |
+| `HealthMonitoringTests` | `test-ai-service-health-monitoring.py` | Test suite for health monitoring API. |
+| `MockCachePrewarmer` | `test-cache-prewarm-effectiveness.py` | Mock implementation of cache prewarmer. |
+| `DeploymentDashboardTests` | `test-deployment-dashboard.py` | class DeploymentDashboardTests() |
+| `MockRollbackSystem` | `test-deployment-operations-rollback.py` | Mock deployment rollback system. |
+| `IntegrationTester` | `test-integration-completeness.py` | Test suite for integration completeness |
+| `ReliabilityR0` | `test-local-delegation-reliability.py` | class ReliabilityR0(unittest.TestCase) |
+| `PromptEffectivenessTest` | `test-prompt-effectiveness.py` | Test framework for system prompt effectiveness. |
+| `AdoptionTests` | `test-qa-provider-probe-adoption.py` | class AdoptionTests(unittest.TestCase) |
+| `ContractTests` | `test-qa-provider-probe-lifecycle.py` | class ContractTests(unittest.TestCase) |
+| `MockQueryAgentStorageLearningLoop` | `test-query-agent-storage-learning-loop.py` | Mock implementation of learning loop. |
 
 ## Coverage
 
-- **Nodes**: 689 total (667 files, 15 functions, 7 classes)
+- **Nodes**: 6947 total (668 files, 5635 functions, 473 classes)
 - **Path prefix**: `scripts/testing/`
-- **Graph**: `.understand-anything/knowledge-graph.json`  (generated 2026-07-01T16:10:40Z)
+- **Graph**: `.understand-anything/knowledge-graph.json`  (generated 2026-10-10T07:31:33Z)
