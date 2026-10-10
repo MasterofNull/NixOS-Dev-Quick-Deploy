@@ -21,6 +21,7 @@ except Exception:
     pass
 
 import argparse
+import atexit
 import json
 import os
 import signal
@@ -147,11 +148,47 @@ def reap_agents(deleg: Path) -> tuple:
     return len(pids), _kill_pids(pids)
 
 
+_ACTIVE_PROC: subprocess.Popen | None = None
+_ACTIVE_DELEG: Path | None = None
+
+
+def emergency_cleanup() -> None:
+    """Reap running proc group and detached agent processes on abnormal exit."""
+    global _ACTIVE_PROC, _ACTIVE_DELEG
+    if _ACTIVE_PROC is not None:
+        try:
+            if _pid_alive(_ACTIVE_PROC.pid):
+                _kill_pids([_ACTIVE_PROC.pid], grace_s=2.0)
+        except Exception:
+            pass
+        _ACTIVE_PROC = None
+    if _ACTIVE_DELEG is not None:
+        try:
+            if _ACTIVE_DELEG.exists():
+                reap_agents(_ACTIVE_DELEG)
+        except Exception:
+            pass
+        _ACTIVE_DELEG = None
+
+
+def _signal_handler(signum: int, frame) -> None:
+    emergency_cleanup()
+    sys.exit(128 + signum)
+
+
+def register_signal_handlers() -> None:
+    signal.signal(signal.SIGTERM, _signal_handler)
+    signal.signal(signal.SIGINT, _signal_handler)
+    atexit.register(emergency_cleanup)
+
+
 def run_arm(task: dict, steer: bool, timeout_s: int, state: Path) -> dict:
+    global _ACTIVE_PROC, _ACTIVE_DELEG
     Path(task["file"]).write_text(task["buggy"])
     events = state / f"events-{task['name']}-{'on' if steer else 'off'}.jsonl"
     deleg = state / "deleg"
     deleg.mkdir(exist_ok=True)
+    _ACTIVE_DELEG = deleg
     # An agent left over from a previous run would share the single inference slot and
     # may still write the file: kill it and mark this row (and the result) invalid.
     orphan_killed, _ = reap_agents(deleg)
@@ -173,6 +210,7 @@ def run_arm(task: dict, steer: bool, timeout_s: int, state: Path) -> dict:
          "--timeout", str(timeout_s), "--prompt", prompt],
         env=env, cwd=str(ROOT), stdout=subprocess.PIPE, stderr=subprocess.PIPE, text=True,
         start_new_session=True)
+    _ACTIVE_PROC = proc
     try:
         proc.communicate(timeout=timeout_s + GRACE_S)
         rc = proc.returncode
@@ -184,10 +222,13 @@ def run_arm(task: dict, steer: bool, timeout_s: int, state: Path) -> dict:
             proc.communicate(timeout=5)
         except Exception:
             pass
+    finally:
+        _ACTIVE_PROC = None
     # The wrapper's group is gone, but the agent is detached (setsid): find it via the registry.
     stray, gone = reap_agents(deleg)
     if not _kill_pids([proc.pid], grace_s=1.0):
         gone = False
+    _ACTIVE_DELEG = None
     wall = round(time.monotonic() - t0, 1)
     prm, tool_calls, reason = [], 0, None
     if events.exists():
@@ -220,6 +261,7 @@ class _Keep:
 
 
 def main() -> int:
+    register_signal_handlers()
     ap = argparse.ArgumentParser()
     ap.add_argument("--dry-run", action="store_true")
     ap.add_argument("--tasks", type=int, default=len(TASKS))

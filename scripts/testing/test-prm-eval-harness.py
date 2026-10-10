@@ -112,6 +112,30 @@ def main():
                       and res["rows"][0]["pass"] is True)
             else:
                 check("summary: valid=false on timeout", res["valid"] is False and res["arms"]["on"]["timed_out"] == 1)
+
+        # 5. emergency cleanup reaps active proc and detached agent
+        orphan_proc = subprocess.Popen(["sleep", "300"], start_new_session=True)
+        orphan_agent = subprocess.Popen(["sleep", "300"], start_new_session=True)
+        with open(deleg / "registry.jsonl", "w") as fh:
+            fh.write(json.dumps({"id": "sig-test", "pid": orphan_agent.pid, "status": "running"}) + "\n")
+        m._ACTIVE_PROC = orphan_proc
+        m._ACTIVE_DELEG = deleg
+        m.emergency_cleanup()
+        check("emergency_cleanup: active proc killed", not alive(orphan_proc.pid))
+        check("emergency_cleanup: detached agent killed", not alive(orphan_agent.pid))
+        check("emergency_cleanup: active pointers reset", m._ACTIVE_PROC is None and m._ACTIVE_DELEG is None)
+
+        # 6. signal handler invokes emergency cleanup and exits with 128 + sig
+        import signal
+        orphan_proc2 = subprocess.Popen(["sleep", "300"], start_new_session=True)
+        m._ACTIVE_PROC = orphan_proc2
+        m._ACTIVE_DELEG = deleg
+        try:
+            m._signal_handler(signal.SIGTERM, None)
+            check("signal_handler: sys.exit raised", False)
+        except SystemExit as exc:
+            check("signal_handler: exit code 128 + SIGTERM", exc.code == 128 + signal.SIGTERM)
+        check("signal_handler: active proc killed", not alive(orphan_proc2.pid))
     print("FAILED %d" % fails if fails else "ALL PASS")
     return 1 if fails else 0
 
