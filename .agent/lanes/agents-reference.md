@@ -262,3 +262,9 @@ New domain activation — use `docs/architecture/domain-activation-template.md`.
   3. `git add <file>` to stage the deletion
   4. The pre-archive-scan-hook will auto-block commits with broken refs
 - Never use `rm`/`rmdir` (Rule 12 — archive instead)
+
+## Memory/RSI mandates (duplicated by canon memory-cache-sop and recursive-self-improvement-sop summaries) (moved from lane region, 2026-10-10, delivery-workflow budget trim)
+
+- **Memory, Cache & Token Efficiency Mandate (SOP)**: Zero runaway context. Sessions >2.5MB or >25 turns must diagnose size via `aq-session-compact` and compact via provider-supported mechanisms or fresh-session handoff before further turns; never archive or delete on-disk transcripts to simulate context compaction. Use the Tri-Phase Memory & Caching Loop: (1) frontend task prep via `lean-ctx` (`ctx_*`) and lightweight lazy cache/vector retrieval; (2) mid-phase AST scoping and vector search (`error-solutions`, `best-practices`); (3) backend task closeout updating MemoryBroker facts, seeding AIDB vectors, and updating `RESUME.json` for reuse by subsequent tasks.
+
+- **Recursive Self-Improvement (RSI) Closed-Loop Mandate (SOP)**: Every agent and task MUST close the self-improvement loop: (1) Detect & Measure: identify friction, tool contention, and anomalies; run tier0 via its wrapper, which serializes through `aq-gate-checkout`, to prevent agent races and hangs; (2) Diagnose & Register: root-cause issues into `.agent/memory/issues-backlog.md` (Rule 11a) and `.agent/WORKAROUND-REGISTER.md` (Rule 21); (3) Seed & Dogfood: store facts in MemoryBroker (`POST :8003/api/memory/facts`) and seed AIDB RAG (`error-solutions`, `best-practices`); (4) Synthesize Guards: enshrine automated guards, checks (`tier0.d/`) and tests to prevent recurrence; (5) Recursive Reuse: future tasks hydrate updated knowledge in Step 1 (ORIENT).

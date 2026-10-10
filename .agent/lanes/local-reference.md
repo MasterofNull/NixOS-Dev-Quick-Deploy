@@ -550,3 +550,47 @@ Source of truth: `nix/modules/core/options.nix`. Never hardcode.
 | gis-systems | `.agent/GIS-SYSTEMS-INSTRUCTIONS.md` |
 | embedded-hardware | `.agent/EMBEDDED-HARDWARE-INSTRUCTIONS.md` |
 | scientific-research | `.agent/SCIENTIFIC-RESEARCH-INSTRUCTIONS.md` |
+
+## Local thermal table (moved from lane region, 2026-10-10, delivery-workflow budget trim)
+
+**Thermal gates** (automatic, but be aware):
+
+| Tier | Temp | Effect |
+|------|------|--------|
+| `optimal` | ≤70°C | Full operation |
+| `warm` | ≤85°C | Monitor; keep tasks short |
+| `critical` | ≥85°C | CLM compaction off; MLFQ concurrency=1; defer heavy jobs |
+| `shutdown` | ≥95°C | All inference suspended; notify orchestrator |
+
+## Local lane prose (moved from lane region, 2026-10-10, delivery-workflow budget trim)
+
+On a model swap: update the "Currently running" header and `## Current Model Config`; add a thinking-suppression knob if the model has a reasoning mode (`enable_thinking: false` equivalent); update context budget guidance, `ai-stack.nix` `defaultModelCatalog`, `facts.nix` model entry; check MTP/speculative-decoding support; re-check `SAFE_COMMANDS` in `shell_tools.py` (no model-specific paths); run `aq-qa 0`. Full list: `.agent/lanes/local-reference.md`.
+
+- Model thinking tokens: check `## Current Model Config` — disable if they suppress output
+- GPU layers ceiling = 12, KV budget = 1.0 GB — never exceed without KV math
+
+These limits come from the physical hardware — AMD Ryzen 7 PRO 5850U (Radeon Vega/Renoir APU).
+They apply regardless of which model is loaded. Hitting them causes OOM kills or thermal shutdowns.
+
+## Local lane prose (2) (moved from lane region, 2026-10-10, delivery-workflow budget trim)
+
+Qwen3 emits reasoning tokens that produce empty `content` when unbounded — must be disabled OR capped via `thinking_budget`
+
+Default: no thinking. Research/PRSI profiles use `{"enable_thinking": true, "thinking_budget": N}`
+
+- Rule 5/22: Context-window-aware — compact after every 3-4 exchanges on small-window models; do not wait for the ceiling. Offload facts to MemoryBroker (:8003); query AIDB, never dump raw context.
+
+- Rule 14: `users.users.<n>.homeMode = "0711"` is the idiomatic NixOS fix for a `0700` home blocking a service (alternative to activationScripts).
+
+- Rule 17: Local Qwen is the intended default cheap-implementer lane for bounded single-file/single-command tasks; flagship remote models route down to it, not in place of it, whenever the task fits Qwen's measured envelope.
+
+- **Reviewer**: review Gemini or Codex work when explicitly assigned reviewer authority
+
+## Local header prose (moved from lane region, 2026-10-10, delivery-workflow budget trim)
+
+> This config is intentionally model-agnostic. Model-specific knobs live in
+> `## Current Model Config` below. Swap that section when changing models;
+> everything else stays constant.
+
+> **This section changes when the model changes. Everything else in this file stays.**
+> When swapping models, update these values and run through the swap checklist below.
