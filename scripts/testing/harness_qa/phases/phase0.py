@@ -1444,6 +1444,23 @@ def _check_understand_graph_freshness(ctx: RunContext) -> list[CheckResult]:
     return [passed(1, "0.10.59", f"{desc} [age {verdict.get('graph_age_days')}d, {verdict.get('commits_since_graph')} commits]")]
 
 
+def _check_aq_eval_static_suites(ctx: RunContext) -> list[CheckResult]:
+    """0.10.60: run the aq-eval static suites (no inference, ~5s). WARN-class: a failing suite reports as SKIP with the reason, never FAIL."""
+    desc = "aq-eval static suites execute (red-team + capability-catalog contracts, no inference)"
+    cli = ctx.repo_root / "scripts" / "ai" / "aq-eval"
+    if not cli.exists():
+        return [failed(1, "0.10.60", desc, "aq-eval missing")]
+    try:
+        proc = subprocess.run([sys.executable, str(cli), "--json", "run", "--execute"], cwd=str(ctx.repo_root),
+                              capture_output=True, text=True, timeout=120, check=False)
+        verdict = json.loads(proc.stdout)
+    except (OSError, subprocess.TimeoutExpired, ValueError) as error:
+        return [skipped(1, "0.10.60", desc, f"WARN: aq-eval run unavailable: {str(error)[:160]}")]
+    if verdict.get("status") != "pass":
+        return [skipped(1, "0.10.60", desc, f"WARN: {verdict.get('failed_required')} required suite command(s) failing -- run: aq-eval run --execute")]
+    return [passed(1, "0.10.60", f"{desc} [{verdict.get('suite_count')} suites]")]
+
+
 def _check_provider_projection(ctx: RunContext) -> list[CheckResult]:
     """0.10.55: ECC P0-B provider projection fixtures plus live drift status (preview-only)."""
     desc = "ECC P0-B provider projection: deterministic preview, drift/preserved/refusal fixtures, live drift status"
@@ -2204,6 +2221,7 @@ def run(ctx: RunContext) -> list[CheckResult]:
     results.extend(_check_ecc_diagnostics(ctx))
     results.extend(_check_factory_ci_pack(ctx))
     results.extend(_check_understand_graph_freshness(ctx))
+    results.extend(_check_aq_eval_static_suites(ctx))
     if ctx.dashboard_safe:
         results.extend(_dashboard_safe_host_only_skips())
     return results

@@ -358,6 +358,29 @@ STATIC_RULES: List[dict] = [
         ),
         "tags": ["documentation", "progressive", "disclosure"],
     },
+    # Keywords are single lowercase [a-z0-9]+ tokens (see token_manager._TOKEN_RE),
+    # so "multi-step" arrives as "multi" + "step".
+    {
+        "id": "use_workflow_blueprints_for_multistep",
+        "title": "Multi-step task: check workflow_blueprints first",
+        "keywords": ["multi", "step", "steps", "plan", "planning", "blueprint", "blueprints", "orchestrate"],
+        "snippet": (
+            "For multi-step or planned work call the `workflow_blueprints` MCP tool "
+            "(hybrid-coordinator) for a ready phase/role template before improvising a plan; "
+            "then `workflow_plan` / `workflow_run_start` to execute it."
+        ),
+        "tags": ["workflow", "blueprints", "planning"],
+    },
+    {
+        "id": "use_tooling_manifest_for_tool_choice",
+        "title": "Unsure which tool: call tooling_manifest",
+        "keywords": ["tool", "tools", "tooling", "which", "toolbox"],
+        "snippet": (
+            "To pick the right tool, call the `tooling_manifest` MCP tool (hybrid-coordinator) "
+            "for the live tool list and when-to-use notes instead of guessing or re-reading docs."
+        ),
+        "tags": ["tools", "discovery", "manifest"],
+    },
 ]
 
 # Backward-compat alias used by HintsEngine (which references _STATIC_RULES)

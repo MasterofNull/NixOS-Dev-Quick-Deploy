@@ -1729,6 +1729,14 @@ _check 1 "0.10.5" "model catalog/profile freshness" \
         _skip 1 "0.10.59" "Understand-Anything graph freshness (limits in config/understand-anything.json)" "WARN $(printf '%s' "$_ua_fresh" | grep verdict | sed 's/^ *verdict: //')"
       fi
     fi
+    # 0.10.60 aq-eval static suites execute (WARN-class: failing suite -> SKIP with reason, never FAIL; no inference)
+    if _should_run 1; then
+      if python3 "${REPO_ROOT}/scripts/ai/aq-eval" --json run --execute >/dev/null 2>&1; then
+        _pass 1 "0.10.60" "aq-eval static suites execute (red-team + capability-catalog contracts, no inference)"
+      else
+        _skip 1 "0.10.60" "aq-eval static suites execute (red-team + capability-catalog contracts, no inference)" "WARN: required suite command(s) failing -- run: aq-eval run --execute"
+      fi
+    fi
   fi
 
   # 0.9.4 Runtime safety contract policy (Phase 39)
