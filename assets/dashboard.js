@@ -4914,6 +4914,21 @@ async function loadPRSI() {
     ? `RSI: ${rsi.pending} pending · ${rsi.running} running · ${rsi.failed} failed · ${rsi.stalled} stalled · ${rsi.awaiting_validation} awaiting validation${rsi.oldest_pending ? ` · oldest ${relTime(rsi.oldest_pending)}` : ""}`
     : "RSI repair status unavailable";
   el.append(summary);
+  const audit = d?.prsi?.capability_audit;
+  const auditRow = document.createElement("div");
+  auditRow.className = "check-item";
+  if (audit && audit.counts) {
+    const prev = audit.previous_counts || {};
+    const parts = Object.entries(audit.counts).map(([name, count]) => {
+      const delta = name in prev ? count - prev[name] : 0;
+      return `${name}: ${count}${delta ? ` (${delta > 0 ? "+" : ""}${delta})` : ""}`;
+    });
+    const hours = audit.age_seconds == null ? "age unknown" : `${Math.floor(audit.age_seconds / 3600)}h old`;
+    auditRow.textContent = `Capability audit: ${audit.status} · ${hours} · ${parts.join(" · ")}`;
+  } else {
+    auditRow.textContent = `Capability audit: ${audit?.status || "unknown"} · counts unknown`;
+  }
+  el.append(auditRow);
   for (const a of items.slice(0, 10)) {
     const row = document.createElement("div");
     row.className = "check-item";

@@ -42,6 +42,51 @@ GRAPH_ARTIFACT = ".understand-anything/knowledge-graph.json"
 _GRAPH_MAX_AGE_FALLBACK = 14  # used only when config/understand-anything.json is unreadable
 
 
+REPORT_DIR_REL = Path(".agents/reports/capability-audit")
+REPORT_MAX_AGE_S = 2 * 86400  # matches the RSI adapter's staleness bound
+
+
+def report_status(report_dir: Path, now: Optional[float] = None, max_age_s: int = REPORT_MAX_AGE_S) -> Dict[str, Any]:
+    """Read-only health of the timer-written reports (latest.json + dated copies) for QA/dashboard.
+
+    status: fresh | stale | missing | invalid.  `previous_counts` comes from the newest dated report
+    older than latest (same audit_version only), so the card can show a trend without re-auditing.
+    """
+    now = dt.datetime.now(dt.timezone.utc).timestamp() if now is None else now
+    out: Dict[str, Any] = {"status": "missing", "counts": None, "previous_counts": None, "age_seconds": None}
+    try:
+        latest = json.loads((report_dir / "latest.json").read_text())
+    except FileNotFoundError:
+        return out
+    except (OSError, ValueError) as exc:
+        return {**out, "status": "invalid", "error": str(exc)[:200]}
+    try:
+        counts = latest["totals"]["by_class"]
+        stamp = str(latest["generated_at"])
+        generated = dt.datetime.fromisoformat(stamp.replace("Z", "+00:00"))
+        if not isinstance(counts, dict) or not all(type(v) is int and v >= 0 for v in counts.values()):
+            raise ValueError("invalid by_class counts")
+        if generated.tzinfo is None:
+            raise ValueError("generated_at lacks timezone")
+    except (KeyError, TypeError, AttributeError, ValueError) as exc:
+        return {**out, "status": "invalid", "error": str(exc)[:200]}
+    age = now - generated.timestamp()
+    out.update(status="invalid" if age < 0 else ("stale" if age > max_age_s else "fresh"),
+               generated_at=stamp, age_seconds=age, counts=counts,
+               audit_version=latest.get("audit_version"))
+    if age < 0:
+        out["error"] = "report timestamp is in the future"
+    for p in sorted(report_dir.glob("20*.json"), reverse=True):
+        try:
+            d = json.loads(p.read_text())
+            if str(d["generated_at"]) < stamp and d.get("audit_version") == latest.get("audit_version"):
+                out["previous_counts"] = d["totals"]["by_class"]
+                break
+        except (OSError, ValueError, KeyError, TypeError):
+            continue
+    return out
+
+
 def artifact_refresh_days(repo_root: Path) -> Dict[str, float]:
     """Artifact path (relative to live root) -> max age in days before it is stale.
 

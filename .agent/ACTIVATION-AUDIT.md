@@ -643,3 +643,9 @@ Status: configuration preparation; activation deferred to the owner's next rebui
 2026-10-09 sandbox runtime evidence: installed nsjail3.6 executes corrected source argv, Git2.54.0, temporary writes and read-only repository boundary pass (exit0). New service environment and Codex defaults remain deferred to next rebuild/new session; optional fallback is an existing limit.
 
 2026-10-10 status (Codex check, carried over): Home Manager was still generation 150 (2026-10-08), so no `nsjail` was on PATH and fresh-client sandbox behaviour was unverified. Verify after the next hms/nrs: `command -v nsjail`, then a local-agent shell-tool call that writes outside the repo must fail. No activation acceptance claimed.
+
+## Capability audit observability (ci-3) — 2026-10-10 — enabled for MVP testing, development continues
+- Dashboard: `/prsi/actions` now carries `capability_audit` (status fresh/stale/missing/invalid, class counts with deltas vs the previous same-version dated report); rendered in the PRSI panel. Live-verify: `curl -s 127.0.0.1:8889/api/aistack/prsi/actions | jq .capability_audit` after the first timer run.
+- QA: `rsi.3` capability-audit report freshness (latest.json < 2d), `rsi.4` ai-capability-audit.timer active.
+- Source: reconciled from Codex's parallel ci-3 (c735bdf8, preserved on codex/wip-sandbox-20261009); its timer/adapter/snapshot store were dropped as duplicates of #446.
+- Kill switch: revert the commit (read-only surfaces). No acceptance claimed.
