@@ -219,7 +219,7 @@ Read-only GitHub repository, PR, Actions, and code-security intelligence through
 
 - Name: GitHub MCP Read-only
 - Owner: agent-runtime
-- Maturity: official
+- Maturity: available-unused
 - State: enabled
 - Primary refs: `config/agent-capability-intake-candidates.json`
 - Data stores: none
@@ -258,7 +258,7 @@ Pinned Semgrep MCP scanner for generated-code security review.
 
 - Name: Semgrep MCP
 - Owner: security-systems
-- Maturity: official
+- Maturity: available-unused
 - State: enabled
 - Primary refs: `config/agent-capability-intake-candidates.json`
 - Data stores: none
