@@ -3,6 +3,7 @@
 
 import importlib
 import json
+import os
 import sys
 import tempfile
 import types
@@ -155,6 +156,76 @@ def test_cli_args(tmp):
     assert data[0]["id"] == "i" and data[0]["target"] == "routing_rules", data
 
 
+def test_analyses_never_overlap():
+    # Live failure 2026-10-10: gather() on one asyncpg connection -> "another operation is in progress".
+    import asyncio
+    import meta_optimizer as mo
+    opt = mo.MetaOptimizer.__new__(mo.MetaOptimizer)
+    state = {"active": 0, "max": 0, "order": []}
+
+    def probe(name, result):
+        async def run(days):
+            state["active"] += 1
+            state["max"] = max(state["max"], state["active"])
+            await asyncio.sleep(0.01)
+            state["active"] -= 1
+            state["order"].append(name)
+            if result == "boom":
+                raise RuntimeError("boom")
+            return result
+        return run
+
+    opt.analyze_routing_accuracy = probe("routing", "r")
+    opt.analyze_hint_effectiveness = probe("hints", "boom")
+    opt.analyze_lesson_library = probe("lessons", None)
+    opt.analyze_tool_discovery = probe("tools", "t")
+    got = asyncio.run(opt.generate_all_proposals(3))
+    assert state["max"] == 1, state
+    assert state["order"] == ["routing", "hints", "lessons", "tools"], state
+    assert got == ["r", "t"], got  # a failing analysis is logged and skipped, others still run
+
+
+def test_llm_failure_is_reported_not_hidden(tmp):
+    # Live failure 2026-10-10: a 120s client timeout raised TimeoutError (empty str) and the
+    # empty response was then logged as "no routing optimization opportunities".
+    import asyncio
+    import logging
+    import meta_optimizer as mo
+    records = []
+    handler = logging.Handler()
+    handler.emit = records.append
+    mo.logger.addHandler(handler)
+    try:
+        opt = mo.MetaOptimizer.__new__(mo.MetaOptimizer)
+        opt.llama_url = "http://127.0.0.1:1"
+
+        class TimingOut:
+            def post(self, *a, **k):
+                raise asyncio.TimeoutError()
+        opt.http_client = TimingOut()
+        assert asyncio.run(opt.call_local_llm("x")) == ""
+        assert any("TimeoutError" in r.getMessage() for r in records), [r.getMessage() for r in records]
+
+        events = tmp / "llm-events.jsonl"
+        ts = NOW.strftime("%Y-%m-%dT%H:%M:%SZ")
+        events.write_text(json.dumps({"event_type": "model_call", "model": "m", "agent_id": "a",
+                                      "status": "succeeded", "duration_ms": 10, "timestamp": ts,
+                                      "tokens": {"total": 5}, "source": "real"}) + "\n")
+        os.environ["AGENT_RUN_EVENTS_PATH"] = str(events)
+
+        async def empty(*a, **k):
+            return ""
+        opt.call_local_llm = empty
+        records.clear()
+        assert asyncio.run(opt.analyze_routing_accuracy(36500)) is None
+        msgs = [r.getMessage() for r in records]
+        assert any("skipped: local LLM returned nothing" in m for m in msgs), msgs
+        assert not any("No routing optimization opportunities" in m for m in msgs), msgs
+    finally:
+        mo.logger.removeHandler(handler)
+        os.environ.pop("AGENT_RUN_EVENTS_PATH", None)
+
+
 def test_no_routing_log_reference():
     for f in sorted(MO.glob("*.py")):
         assert "routing_log" not in f.read_text(), f"routing_log still referenced in {f.name}"
@@ -167,6 +238,8 @@ def main():
         test_missing_and_env(tmp)
         test_switchboard(tmp)
         test_cli_args(tmp)
+        test_llm_failure_is_reported_not_hidden(tmp)
+    test_analyses_never_overlap()
     test_migration()
     test_no_routing_log_reference()
     print("PASS")
