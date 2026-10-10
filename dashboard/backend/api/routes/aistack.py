@@ -4557,6 +4557,20 @@ async def get_system_audit_log() -> List[Dict[str, Any]]:
     return events[:20]
 
 
+async def _capability_audit_report_status() -> Dict[str, Any]:
+    """Read the timer-written capability-audit reports; dashboard polling never starts an audit."""
+    def read() -> Dict[str, Any]:
+        try:
+            lib_dir = str(_repo_root() / "scripts/ai/lib")
+            if lib_dir not in sys.path:
+                sys.path.insert(0, lib_dir)
+            import capability_audit
+            return capability_audit.report_status(_repo_root() / capability_audit.REPORT_DIR_REL)
+        except (ImportError, OSError) as exc:
+            return {"status": "invalid", "counts": None, "previous_counts": None, "age_seconds": None, "error": str(exc)[:200]}
+    return await asyncio.to_thread(read)
+
+
 @router.get("/prsi/actions")
 async def get_prsi_actions(status: Optional[str] = None, risk: Optional[str] = None) -> Dict[str, Any]:
     """List PRSI queued actions and counts."""
@@ -4604,6 +4618,7 @@ async def get_prsi_actions(status: Optional[str] = None, risk: Optional[str] = N
                 "blocked_approved": blocked_approved,
             },
             "policy": _prsi_policy_summary(policy),
+            "capability_audit": await _capability_audit_report_status(),
         },
         "timestamp": datetime.now(timezone.utc).isoformat(),
     }

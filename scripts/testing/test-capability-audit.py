@@ -176,5 +176,41 @@ class CapabilityAuditTest(unittest.TestCase):
                             "archive-candidate", "regenerate"})
 
 
+class ReportStatusTest(unittest.TestCase):
+    """report_status: read-only health + trend for the timer-written reports (QA rsi.3, dashboard card)."""
+    T = "2026-10-09T00:00:00+00:00"
+
+    def mk(self, d: Path, name: str, stamp: str, by_class: dict, version: int = 3):
+        (d / name).write_text(json.dumps({"generated_at": stamp, "audit_version": version,
+                                          "totals": {"by_class": by_class}, "capabilities": []}))
+
+    def setUp(self):
+        self.tmp = tempfile.TemporaryDirectory()
+        self.addCleanup(self.tmp.cleanup)
+        self.d = Path(self.tmp.name)
+        self.t0 = ca.dt.datetime.fromisoformat(self.T).timestamp()
+
+    def test_missing_and_invalid(self):
+        self.assertEqual(ca.report_status(self.d, self.t0)["status"], "missing")
+        (self.d / "latest.json").write_text("{not json")
+        self.assertEqual(ca.report_status(self.d, self.t0)["status"], "invalid")
+        self.mk(self.d, "latest.json", self.T, {"ACTIVE": "3"})
+        self.assertEqual(ca.report_status(self.d, self.t0)["status"], "invalid")
+        self.mk(self.d, "latest.json", "2026-10-09T00:00:00", {"ACTIVE": 3})
+        self.assertEqual(ca.report_status(self.d, self.t0)["status"], "invalid")
+
+    def test_fresh_stale_future_and_trend(self):
+        self.mk(self.d, "latest.json", self.T, {"ACTIVE": 5, "BROKEN": 1})
+        self.mk(self.d, "20261008.json", "2026-10-08T00:00:00+00:00", {"ACTIVE": 4, "BROKEN": 0})
+        self.mk(self.d, "20261007.json", "2026-10-07T00:00:00+00:00", {"ACTIVE": 1}, version=2)
+        st = ca.report_status(self.d, self.t0 + 3600)
+        self.assertEqual((st["status"], st["counts"], st["previous_counts"]), ("fresh", {"ACTIVE": 5, "BROKEN": 1}, {"ACTIVE": 4, "BROKEN": 0}))
+        self.assertEqual(ca.report_status(self.d, self.t0 + 3 * 86400)["status"], "stale")
+        self.assertEqual(ca.report_status(self.d, self.t0 - 60)["status"], "invalid")
+        # a different audit_version is never offered as a trend baseline
+        (self.d / "20261008.json").unlink()
+        self.assertIsNone(ca.report_status(self.d, self.t0)["previous_counts"])
+
+
 if __name__ == "__main__":
     unittest.main(verbosity=1)
