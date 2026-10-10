@@ -269,3 +269,65 @@ no hardcoded secrets), and correctness. Emit `APPROVED:`, `CONCERNS:`, or `REJEC
 | gis-systems | `.agent/GIS-SYSTEMS-INSTRUCTIONS.md` |
 | embedded-hardware | `.agent/EMBEDDED-HARDWARE-INSTRUCTIONS.md` |
 | scientific-research | `.agent/SCIENTIFIC-RESEARCH-INSTRUCTIONS.md` |
+
+## Codex lane prose (moved from lane region, 2026-10-10, delivery-workflow budget trim)
+
+Typical strengths:
+- decomposition,
+- integration judgment,
+- code review,
+- final acceptance over complex slices,
+- turning architecture into executable plans.
+
+## Default operating mode
+
+For non-trivial work, Codex should:
+
+1. orient with the canonical workflow,
+2. inspect enough context to understand the real option space,
+3. frame meaningful tradeoffs before acting when intent matters,
+4. maintain the collaboration artifacts,
+5. execute one bounded slice at a time,
+6. **live test** changes in the running system — catch runtime errors before gating,
+7. **update progressive docs and seed RAG** with new patterns before committing,
+8. validate with `tier0-validation-gate.sh --pre-commit` then commit.
+
+Full 8-step sequence: ORIENT → RESEARCH → PRD/PLAN → MEMORY-CHECKPOINT → EXECUTE → VALIDATE → DOC-UPDATE → COMMIT. See `.agent/WORKFLOW-CANON.md`.
+
+## Codex lane prose (2) (moved from lane region, 2026-10-10, delivery-workflow budget trim)
+
+Codex may provide the final review verdict for Gemini- or Qwen-authored work when assigned reviewer authority, but must not self-accept its own implementation work in the same slice.
+
+- redefine kernel objects inline,
+- bypass review for destructive, dual-use, or external-account-affecting work,
+- expand a slice because a nearby cleanup looks tempting,
+- silently choose among meaningful product/architecture alternatives when the user's intent changes the right answer,
+- treat generated instruction projections as a license to drift from upstream SSOTs.
+
+## Codex lane prose (3) (moved from lane region, 2026-10-10, delivery-workflow budget trim)
+
+When Codex delegates:
+- assign a bounded slice,
+- define acceptance criteria,
+- state the write scope,
+- keep immediate blockers local when delegation would only add latency,
+- review returned work before integration.
+
+## Codex lane prose (4) (moved from lane region, 2026-10-10, delivery-workflow budget trim)
+
+Use the narrowest matching canonical profile and keep the object model distinct:
+
+- human alias ≠ semantic intent ≠ canonical profile ≠ provider/model realization
+- local/bounded implementation work should prefer local profiles when task quality permits
+- remote lanes are for task value, not habit
+- do not invent or rename routing semantics outside the routing/profile SSOT
+
+## Codex lane prose (5) (moved from lane region, 2026-10-10, delivery-workflow budget trim)
+
+- Workflow SSOT: `.agent/WORKFLOW-CANON.md`
+- Kernel SSOT: `docs/architecture/canonical-kernel-declaration.md`
+- Role SSOT: `docs/architecture/role-matrix.md`
+- Routing/profile SSOT: `docs/architecture/routing-profile-inventory.md`
+- Tool contract: `docs/agent-guides/47-AGENT-TOOL-CONTRACT.md`
+
+If a preferred tool is unavailable, use one documented fallback and move on. Do not waste turns rediscovering the same absence. If there is no fallback,

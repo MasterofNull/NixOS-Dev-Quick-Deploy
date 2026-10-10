@@ -6,7 +6,7 @@ This file provides guidance to Claude Code when working in this repository.
 ## Project Overview
 
 Project: NixOS-Dev-Quick-Deploy AI Harness
-Goal: Local-first AI agent stack on NixOS — locally hosted LLM (currently Qwen3-35B), AIDB, hybrid-coordinator, switchboard, AGI scaffold
+Goal: Local-first AI agent stack on NixOS — local LLM (Qwen3-35B), AIDB, hybrid-coordinator, switchboard, AGI scaffold
 Owner: hyperd
 Stack: NixOS (flake-based), Python (FastAPI/aiohttp), Nix modules, llama.cpp, Redis, PostgreSQL, Qdrant
 
@@ -20,32 +20,20 @@ aq-prime                          # progressive disclosure onboarding
 aq-session-start --task "<task>"  # mandatory context hydration
 ```
 
-**After compaction / 401 failure recovery**: `aq-resume` outputs the last-known objective,
-phase, todo snapshot, and uncommitted changes. Read it before doing anything else.
-
-**When starting a new task**: immediately write/update `.agent/collaboration/RESUME.json`
-with the current objective, phase, and todo snapshot. This is the compaction anchor point.
+After compaction / 401 failure, read `aq-resume` output (objective, phase, todos, uncommitted changes) first. On a new task, immediately write/update `.agent/collaboration/RESUME.json` (compaction anchor).
 
 ## Tool-First Approach
 
-**Always use tools first** for:
-- discovery and codebase analysis (grep, glob patterns, file reads)
-- executing workflows (aqd commands, shell scripts)
-- validation and testing (test runners, linters, build commands)
+**Tools first** for discovery, workflow execution (aqd, scripts) and validation. Use direct implementation only once scope is clear, a validation plan exists, and AI-layer guidance is understood.
 
 Use the canonical low-friction order in `docs/agent-guides/47-AGENT-TOOL-CONTRACT.md`:
 - search: `agrep`, then `rg` — **never raw `grep` in shell commands**
 - path discovery: `als`, then `fd` — **never raw `ls` or `find` in shell commands**
 - bounded reads: `acat`, then native read tools or `sed -n` — **never raw `cat` in shell commands**
-- do not retry an unchanged failed tool call without a changed hypothesis
+- no retry of an unchanged failed call without a changed hypothesis
 - tool not on PATH and no fallback: reach it live via `aq-tool <pkg>` — no restart, no manifest gate (the capability manifest is a record, never a runtime gate; Rule 16 parity)
 
-**Agentic CLI wrappers are mandatory in Bash tool calls.** These wrappers add context injection, audit logging, and rate-limit guardrails. Bypassing them degrades harness observability.
-
-Use direct implementation only after:
-- problem scope is clear from tool output
-- validation plan is documented
-- AI-layer guidance is understood
+**Agentic CLI wrappers are mandatory in Bash tool calls.** They add context injection, audit logging and rate-limit guardrails.
 
 ## File Placement Contract
 
@@ -57,30 +45,23 @@ Use direct implementation only after:
 
 ## Delegation + Role Defaults
 
-**Role SSOT → `docs/architecture/role-matrix.md`** (Phase 58A.1). All role text below is a summary projection; the role matrix governs in case of conflict.
+**Role SSOT → `docs/architecture/role-matrix.md`** (governs on conflict; text below is a summary).
 
-- Default mode: orchestrator/reviewer first, direct implementation second. "Direct implementation second" means *after* checking whether a cheaper eligible lane exists (Rule 17) — it is not license to self-implement whenever delegation gets friction; a stalled/refusing sub-agent is grounds to fix the dispatch (correct model tier, better evidence), not to pull the work back to the orchestrator.
+- Default mode: orchestrator/reviewer first; direct implementation second, i.e. after checking for a cheaper eligible lane (Rule 17). A stalled/refusing sub-agent means fix the dispatch (tier, evidence), not self-implement.
 - Roles are defined by kernel responsibilities, not model identity:
   - `orchestrator`: workflow/delegation/review authority — opens/closes sessions, assigns slices, accepts work, commits final integration
   - `architect`: design/risk synthesis — drafts architecture docs, flags contradictions, writes PRDs; requires orchestrator review before commit
   - `implementer`: bounded execution — edits within assigned slice, validates, proposes commit; may not self-promote to reviewer
   - `reviewer`: acceptance gate — explicit pass/fail verdict against slice criteria; may not review its own work
-- Sub-agent non-orchestrator rule:
-  - sub-agents execute only assigned slices
-  - do not re-scope goals
-  - do not route other agents
-  - do not finalize acceptance
+- Sub-agents execute only assigned slices: no re-scoping goals, routing agents, or finalizing acceptance.
 
 ## Commit Discipline (Mandatory)
 
-Full operating sequence before any commit:
+Before any commit:
 1. **Live test** changes in the running system — catch runtime errors and friction
 2. **Fix** any issues found
 3. **Update docs**: HANDOFF.md + any changed agent .md files + AGENTS.md if workflow changed
-4. **Update the PM tracker** (owner-directed 2026-08-23; DoD dimension 6): for work under a tracked plan,
-   update that plan's `tracker.json` editorial (items/goals/deps/detection-signals) so the projected
-   gantt/kanban dashboard stays live. **Never hand-type status/% or the rendered charts** — the projector
-   computes status from git+systemd (anti-gaming, Rule 20). A stale/missing tracker for active work = not done.
+4. **Update the PM tracker** (DoD dim. 6): for tracked plans update `tracker.json` editorial (items/goals/deps/signals). **Never hand-type status/%** — projected from git+systemd (Rule 20). Stale/missing tracker = not done.
 5. **Seed RAG** with new bug/fix patterns (`error-solutions`, `best-practices`, `skills-patterns`)
 6. **Gate**: `scripts/governance/tier0-validation-gate.sh --pre-commit`
 7. **Commit**
@@ -93,9 +74,8 @@ git commit -m "type(scope): description
 Co-Authored-By: <active-agent-name> <noreply@anthropic.com>"
 ```
 
-- Replace `<active-agent-name>` with the model/agent that generated the work (e.g. the model shown in your current session).
+- Replace `<active-agent-name>` with the generating model/agent.
 - Never commit without live testing + doc update evidence.
-- Run `scripts/governance/tier0-validation-gate.sh --pre-commit` every time.
 
 ## Architecture Constraints (Non-Negotiable)
 
@@ -137,7 +117,7 @@ Lane reference: `.agent/lanes/claude-reference.md`. Shared: `.agent/REFERENCE-IN
 | 14 | **READWRITEPATHS ≠ DAC BYPASS** | `ReadWritePaths` + `ProtectHome=read-only` set up a namespace bind-mount but the kernel checks inode `uid/gid/mode` against the service UID — POSIX DAC is NOT bypassed. A service blocked by a `0700` dir gets `EACCES` regardless. Fix: `system.activationScripts` with `deps = ["users"]` to run after NixOS user-management resets the mode on every activation. |
 | 15 | **ACTIVATION GATE (Definition of Done)** | "Committed" ≠ "done." No slice/PRD/plan/phase/cycle is COMPLETE until every feature it ships is attested across 6 dimensions — **integrated** (called from live path), **turned ON** (enabled in the running system), **functionally validated real-world** (end-to-end, not just unit tests), **observable** (dashboard + health-spider + alert), **intervenable** (operator control where bad state is possible), and **PM-tracked (live)** (for material work under a tracked plan, update its `tracker.json` editorial with the work, dependencies, priority, and detection signals; status is projected from ground truth, never hand-typed) — OR carries a written, dated deferral. Paste the attestation into the commit body + `.agent/ACTIVATION-AUDIT.md`. A cycle with a dormant or stale-tracked feature is *paused pending activation*, not done. SSOT: `.agent/DEFINITION-OF-DONE.md`. |
 | 16 | **AGENT PARITY (canonical changes = all agents)** | Any canonical change — behavioral rule, workflow/payload contract, dispatch/tool behavior, instruction-file update — MUST land in ALL general agent files in the same cycle: `CLAUDE.md`, `.agent/CODEX.md`, `.agent/LOCAL-AGENT.md`, `.agent/GEMINI.md`, and the shared `.agent/WORKFLOW-CANON.md`. Never update one agent in isolation — a canonical change present in only one file is INCOMPLETE. **Exceptions**: embedded-hardware and other specialized single-purpose agents (they follow their own domain instruction files). Parity map: `docs/AGENT-PARITY-MATRIX.md`. |
-| 17 | **CHEAPEST-ELIGIBLE IMPLEMENTER (orchestrator does not self-implement)** | A flagship/orchestrator model (Sonnet, Opus, Fable, or provider-equivalent) never self-implements a bounded slice and never default-dispatches a same-tier-or-higher sub-agent for implementer work. Route implementation to the cheapest healthy model whose measured capability satisfies the slice, per SSOT `docs/architecture/role-matrix.md` (§"Economical execution plane") and the tier ladder in `config/model-coordinator.json`. Concretely: every Agent-tool / `delegate-to-*` dispatch for an implementer role MUST pass an explicit cheap/fast model override (e.g. `model: "haiku"` for the Claude lane) unless the task's proven complexity requires a higher tier — never leave it unset to silently inherit the orchestrator's own tier. Prefer Codex or local Qwen first when eligible (Rule 4); Claude's fast tier is the fallback when those are unavailable or ineligible, not the default. Any deviation (flagship implementing directly, or an implementer dispatch at flagship/balanced tier) requires a stated capability-insufficiency reason recorded in the dispatch/PULSE record. |
+| 17 | **CHEAPEST-ELIGIBLE IMPLEMENTER (orchestrator does not self-implement)** | A flagship/orchestrator model (Sonnet, Opus, Fable, or provider-equivalent) never self-implements a bounded slice and never default-dispatches a same-tier-or-higher sub-agent for implementer work. Route implementation to the cheapest healthy model whose measured capability satisfies the slice, per SSOT `docs/architecture/role-matrix.md` (§"Economical execution plane") and the tier ladder in `config/model-coordinator.json`. Concretely: every Agent-tool / `delegate-to-*` dispatch for an implementer role MUST pass an explicit cheap/fast model override (Claude lane: `model: "sonnet"` = Sonnet 5.5, the balanced tier, is the default implementer; `haiku` only for mechanical single-file edits with a checkable result) unless the task's proven complexity requires a higher tier — never leave it unset to silently inherit the orchestrator's own tier. Prefer Codex or local Qwen first when eligible (Rule 4); Claude's balanced tier is the fallback when those are unavailable or ineligible. Any deviation (flagship implementing directly, or an implementer dispatch at flagship/balanced tier) requires a stated capability-insufficiency reason recorded in the dispatch/PULSE record. |
 | 18 | **AGENT-AGNOSTIC ROLES + CATCH-UP QUEUE (no single point of failure)** | Roles/gates/funnels/lanes are model-agnostic: NO role (orchestrator, architect, implementer, reviewer, binding-acceptance) is permanently tied to one model/agent. The orchestrator routes each role instance at dispatch time to whichever lane is available + eligible (role-matrix + `config/model-coordinator.json` tiers) + independent (never self-review) + cheapest (Rule 17). Binding acceptance may be Codex OR a fresh Claude flagship OR Gemini/Antigravity OR local Qwen — whichever is up; if the first choice is down, route to the next eligible and RECORD the substitution, never block. Local Qwen is the always-available floor (never-skip-local). A returning agent plays catch-up via `.agent/collaboration/AGENT-CATCHUP-QUEUE.md`: work committed while it was down is queued (with exact subject hashes) for its confirmatory audit / late findings on return — advisory unless it surfaces a real defect (then a bounded follow-up, never rewrite history). Owner directive 2026-07-22; SSOT `.agents/plans/agent-agnostic-factory/DESIGN.md`. |
 | 19 | **ROOT-CAUSE DISCIPLINE** | No silent workarounds. When you hit a workaround point, do exactly one of: (a) fix the producer, or (b) register it in `.agent/WORKAROUND-REGISTER.md` with {symptom, root cause, producer, fix-path, class, severity} — never leave an ad-hoc band-aid in place. Any ad-hoc change to a designed system carries a one-line root-cause note in its commit body. **Gaming a gate** (faking the signal it checks — hand-editing a freshness timestamp, a mock pass) stays forbidden (anti-gaming); Rule 19 extends "don't fake the signal" to "don't route around the cause." **Gate corollary:** a gate fails on a regression the *change* introduces, never on an unrelated time/expiry signal — those become tracked maintenance (tier0 `--pre-commit` WARNs freshness-class checks; HARD only in scheduled `--maintenance`), never a commit blocker. Owner-ratified 2026-08-06; SSOT `.agent/PROJECT-ROOT-CAUSE-DISCIPLINE-PRD.md`; register `.agent/WORKAROUND-REGISTER.md`. |
 | 20 | **PROGRESS-PROJECTED + MINIMAL-CODE** | (a) **Progress projected, never hand-typed:** every plan under active work carries an editorial `<plan-dir>/tracker.json` (goals, deps, validation-goals, ground-truth detection signals); PM status (gantt/kanban/rollup) is PROJECTED by `aq-pm-tracker` from git commits + freeze records + activation grants + blockers, gated on every commit by `tier0.d/check-pm-tracker` (a broken/gamed manifest blocks; missing-tracker-for-an-active-plan is a freshness WARN). Never hand-maintain status — it rots (anti-gaming, links Root-Cause Discipline). (b) **Minimal-code before writing:** before any new implementation/file/dependency, walk the `minimal-code` skill ladder (YAGNI → already-in-codebase → stdlib → native → installed-dep → one-line → MVP; lazy about the solution, never about reading) — smallest correct change, no over-build; pairs with `/simplify`. NEVER at the cost of correctness, fail-closed, security, or a HARD rule. SSOT `.agents/plans/pm-tracker-standard/DESIGN.md` + skill `minimal-code`. |
@@ -196,6 +176,19 @@ Enforcement: local payloads auto-inject the MICRO variant (`shared/llm_config.py
 - At the MVP boundary restore full audit (independent code+runtime review, adversarial, UX, perf, observability, consensus) on one exact subject; only that supports release acceptance; security/containment activation needs its own evidence + owner decision.
 - Full text: `canon/blocks/mvp-delivery-sop.md`
 <!-- canon:end mvp-delivery-sop -->
+
+<!-- canon:begin delivery-workflow -->
+## Delivery Workflow (Canonical — all agents)
+
+- One branch + worktree per slice from `origin/main`; never edit/commit tracked files in the main checkout (append-only PULSE/backlog excepted); sub-agents stay in their worktree.
+- Commit only as `tier0-validation-gate.sh --pre-commit && git commit`; never `--no-verify`; graph/wiki are generated, not committed.
+- Land via PR only (`gh pr create --body-file`), never push `main`; evidence doc `docs/harness-first/evidence/<date>-<slug>.md`.
+- Resumable trail for any lane: RESUME.json + PULSE.log + HANDOFF.md; down lanes catch up via AGENT-CATCHUP-QUEUE.md.
+- sudo/nrs/systemctl = owner acts: give exact copy-paste commands; no rebuild during DB jobs.
+- Enabled != done; no derelict capabilities; archive only with a parity equivalent.
+- Discover first: CAPABILITY-INDEX.md, `aq-graph-query`, `aq-wiki --section`, `aq-hints`; friction -> `aq-rsi report`.
+- Full text: `canon/blocks/delivery-workflow.md`
+<!-- canon:end delivery-workflow -->
 
 <!-- canon:begin headless-delegate-mode -->
 ## Headless Delegate Mode (Canonical — all agents)

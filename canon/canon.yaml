@@ -66,6 +66,17 @@ blocks:
       - {path: .agent/LOCAL-AGENT.md, mode: summary}
       - .agent/WORKFLOW-CANON.md
 
+  delivery-workflow:
+    source: blocks/delivery-workflow.md
+    summary: blocks/delivery-workflow.summary.md
+    targets:
+      - {path: AGENTS.md, mode: summary}
+      - {path: CLAUDE.md, mode: summary}
+      - {path: .agent/CODEX.md, mode: summary}
+      - {path: .agent/GEMINI.md, mode: summary}
+      - {path: .agent/LOCAL-AGENT.md, mode: summary}
+      - .agent/WORKFLOW-CANON.md
+
   headless-delegate-mode:
     source: blocks/headless-delegate-mode.md
     summary: blocks/headless-delegate-mode.summary.md

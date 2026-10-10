@@ -61,3 +61,58 @@ scripts/governance/tier0-validation-gate.sh --pre-commit
 - Do NOT re-read files already read in the current session
 - Pass only slice-relevant context to sub-agents — not full history
 - Compact aggressively when approaching context limits
+
+## Claude lane prose (moved from lane region, 2026-10-10, delivery-workflow budget trim)
+
+Use direct implementation only after:
+- problem scope is clear from tool output
+- validation plan is documented
+- AI-layer guidance is understood
+
+- Sub-agent non-orchestrator rule:
+  - sub-agents execute only assigned slices
+  - do not re-scope goals
+  - do not route other agents
+  - do not finalize acceptance
+
+- Never commit without live testing + doc update evidence.
+- Run `scripts/governance/tier0-validation-gate.sh --pre-commit` every time.
+
+**Always use tools first** for:
+- discovery and codebase analysis (grep, glob patterns, file reads)
+- executing workflows (aqd commands, shell scripts)
+- validation and testing (test runners, linters, build commands)
+
+- Default mode: orchestrator/reviewer first, direct implementation second. "Direct implementation second" means *after* checking whether a cheaper eligible lane exists (Rule 17) — it is not license to self-implement whenever delegation gets friction; a stalled/refusing sub-agent is grounds to fix the dispatch (correct model tier, better evidence), not to pull the work back to the orchestrator.
+
+4. **Update the PM tracker** (owner-directed 2026-08-23; DoD dimension 6): for work under a tracked plan,
+   update that plan's `tracker.json` editorial (items/goals/deps/detection-signals) so the projected
+   gantt/kanban dashboard stays live. **Never hand-type status/% or the rendered charts** — the projector
+   computes status from git+systemd (anti-gaming, Rule 20). A stale/missing tracker for active work = not done.
+
+**After compaction / 401 failure recovery**: `aq-resume` outputs the last-known objective,
+phase, todo snapshot, and uncommitted changes. Read it before doing anything else.
+
+**When starting a new task**: immediately write/update `.agent/collaboration/RESUME.json`
+with the current objective, phase, and todo snapshot. This is the compaction anchor point.
+
+These wrappers add context injection, audit logging, and rate-limit guardrails. Bypassing them degrades harness observability.
+
+## Claude lane prose (2) (moved from lane region, 2026-10-10, delivery-workflow budget trim)
+
+**Role SSOT → `docs/architecture/role-matrix.md`** (Phase 58A.1). All role text below is a summary projection; the role matrix governs in case of conflict.
+
+with the model/agent that generated the work (e.g. the model shown in your current session).
+
+Full operating sequence before any commit:
+
+## Claude lane prose (3) (moved from lane region, 2026-10-10, delivery-workflow budget trim)
+
+- do not retry an unchanged failed tool call without a changed hypothesis
+
+Goal: Local-first AI agent stack on NixOS — locally hosted LLM (currently Qwen3-35B), AIDB, hybrid-coordinator, switchboard, AGI scaffold
+Owner: hyperd
+
+Validate with `scripts/governance/repo-structure-lint.sh --staged`
+
+## Delegation
