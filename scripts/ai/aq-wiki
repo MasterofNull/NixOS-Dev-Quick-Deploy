@@ -22,9 +22,11 @@ Usage by agents:
   aq-wiki --status                                     # freshness check before architecture work
 
 Refresh cadence:
-  After any code change:  aq-wiki --update  (adds to DOC-UPDATE step 7)
-  After graph refresh:    aq-wiki --init --force
-  In CI (if enabled):     aq-wiki --update && aq-wiki --seed-aidb
+  The wiki is a gitignored generated artifact (never committed). .githooks/post-merge rebuilds the
+  graph (aq-graph-build) and then runs `aq-wiki --init --force` and `aq-wiki --seed-aidb` detached
+  after every merge (AQ_GRAPH_BUILD_HOOK=0 disables all, AQ_WIKI_SEED_HOOK=0 disables the seed).
+  By hand after a graph refresh:  aq-wiki --init --force && aq-wiki --seed-aidb
+  Fresh clone / CI:               aq-graph-build && aq-wiki --init --force
 """
 try:  # aq-usage-hook
     import importlib.util as _aqu, os as _aqo
