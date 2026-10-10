@@ -311,6 +311,8 @@ def main():
     repo_root = os.path.dirname(os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
     catalog_path = os.path.join(repo_root, "config/system-capability-catalog.json")
     output_dir = os.path.join(repo_root, "assets/modules")
+    if "--out-dir" in sys.argv:
+        output_dir = sys.argv[sys.argv.index("--out-dir") + 1]
 
     # Ensure output directory exists
     os.makedirs(output_dir, exist_ok=True)

@@ -105,7 +105,6 @@ nixos-quick-deploy.sh
 README.md
 # Root markdown exceptions
 # Root script/code exceptions
-scripts/ai/ai-env-summary.sh
 scripts/ai/ai-metrics-auto-updater.sh
 scripts/ai/ai-model-manager.sh
 scripts/ai/ai-model-setup.sh
@@ -132,7 +131,6 @@ scripts/ai/complete-via-ralph.sh
 scripts/ai/harness-rpc.js
 scripts/ai/llama-model-cli.sh
 scripts/ai/mcp-bridge-hybrid.py
-scripts/ai/mcp-db-setup
 scripts/ai/mcp-db-validate
 scripts/ai/mcp-server
 scripts/ai/ralph-orchestrator.sh

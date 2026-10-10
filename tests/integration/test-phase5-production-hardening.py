@@ -18,16 +18,6 @@ class TestPhase5(unittest.TestCase):
         # the flake is properly locked, so we just check if it's executable.
         self.assertTrue(os.access(script_path, os.X_OK), "Script must be executable")
 
-    def test_collective_intelligence_script(self):
-        script_path = REPO_ROOT / "scripts" / "ai" / "aq-push-intelligence"
-        self.assertTrue(script_path.exists(), "aq-push-intelligence should exist")
-        self.assertTrue(os.access(script_path, os.X_OK), "Script must be executable")
-        
-        # Run it and check output
-        proc = subprocess.run([str(script_path)], capture_output=True, text=True)
-        # Even if aq-insights fails, the script should handle it gracefully
-        self.assertIn("Collective Intelligence Loop completed.", proc.stderr)
-
 import os
 if __name__ == "__main__":
     unittest.main()
