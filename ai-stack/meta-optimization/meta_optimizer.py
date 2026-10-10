@@ -117,7 +117,10 @@ class MetaOptimizer:
         self.llama_url = llama_url
 
         self.conn: Optional[asyncpg.Connection] = None
-        self.http_client = aiohttp.ClientSession(timeout=aiohttp.ClientTimeout(total=120))
+        # The local model is slow (minutes per long prompt) and may be serving another job; a short
+        # timeout turns every analysis into a silent empty result.
+        self.http_client = aiohttp.ClientSession(
+            timeout=aiohttp.ClientTimeout(total=float(os.getenv("META_OPT_LLM_TIMEOUT_S", "900"))))
 
     async def connect(self):
         """Establish database connection."""
@@ -165,7 +168,7 @@ class MetaOptimizer:
                 result = await response.json()
                 return result["choices"][0]["message"]["content"]
         except Exception as exc:
-            logger.error(f"LLM call failed: {exc}")
+            logger.error(f"LLM call failed: {type(exc).__name__}: {exc}")
             return ""
 
     async def _table_exists(self, name: str) -> bool:
@@ -212,6 +215,9 @@ Respond in JSON format:
 JSON:"""
 
             llm_response = await self.call_local_llm(prompt, max_tokens=1500)
+            if not llm_response:
+                logger.warning("Routing analysis skipped: local LLM returned nothing (see LLM call error)")
+                return None
 
             # Parse LLM response
             analysis = self._parse_llm_json_response(llm_response)
@@ -322,6 +328,9 @@ Respond in JSON format:
 JSON:"""
 
             llm_response = await self.call_local_llm(prompt, max_tokens=2000)
+            if not llm_response:
+                logger.warning("Hint analysis skipped: local LLM returned nothing (see LLM call error)")
+                return None
             analysis = self._parse_llm_json_response(llm_response)
 
             if not analysis or not (analysis.get("hints_to_revise") or analysis.get("new_hints_needed")):
@@ -437,6 +446,9 @@ Respond in JSON format:
 JSON:"""
 
             llm_response = await self.call_local_llm(prompt, max_tokens=2000)
+            if not llm_response:
+                logger.warning("Lesson analysis skipped: local LLM returned nothing (see LLM call error)")
+                return None
             analysis = self._parse_llm_json_response(llm_response)
 
             if not analysis:
@@ -496,21 +508,16 @@ JSON:"""
         """
         proposals = []
 
-        # Run all analyses in parallel
-        routing_task = self.analyze_routing_accuracy(days)
-        hints_task = self.analyze_hint_effectiveness(days)
-        lessons_task = self.analyze_lesson_library(days)
-        tools_task = self.analyze_tool_discovery(days)
-
-        results = await asyncio.gather(
-            routing_task, hints_task, lessons_task, tools_task,
-            return_exceptions=True
-        )
-
-        for result in results:
-            if isinstance(result, Exception):
-                logger.error(f"Analysis failed: {result}")
-            elif result is not None:
+        # Sequential: the analyses share one asyncpg connection (concurrent use raises
+        # "another operation is in progress") and the local model serves one slot.
+        for analyze in (self.analyze_routing_accuracy, self.analyze_hint_effectiveness,
+                        self.analyze_lesson_library, self.analyze_tool_discovery):
+            try:
+                result = await analyze(days)
+            except Exception as exc:
+                logger.error(f"Analysis failed: {exc}")
+                continue
+            if result is not None:
                 proposals.append(result)
 
         return proposals
