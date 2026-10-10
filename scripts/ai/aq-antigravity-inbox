@@ -17,6 +17,7 @@ import re
 import secrets
 import subprocess
 import sys
+import time
 from datetime import datetime, timezone
 from pathlib import Path
 from typing import Any
@@ -35,6 +36,19 @@ WAKE_PROMPT = (
     "Then run `aq-antigravity-inbox complete .claimed-<task-id> --output <declared-output> --json`."
 )
 WAKE_ARGV = ["antigravity", "chat", "--reuse-window", "--mode", "agent", WAKE_PROMPT]
+IMPLEMENTER_WAKE_PROMPT = (
+    "Implementer task for THIS workspace only ({workspace}). "
+    # The window is the worktree, but the inbox is untracked and lives only in the main repo:
+    # every inbox path below must be absolute or it resolves to the worktree's empty copy.
+    "Run `{repo}/scripts/ai/aq-antigravity-inbox claim {name} --actor ide-watch --json` BEFORE reading task work; if claim fails STOP. "
+    "Then read the claimed task file {inbox}/.claimed-{tid} and do the work "
+    "ONLY by editing files inside {workspace}. Never edit the main checkout ({repo}), never push, never run tier0. "
+    "Write the summary and test output to the declared Output path under {repo}, then run "
+    "`{repo}/scripts/ai/aq-antigravity-inbox complete .claimed-{tid} --output <declared-output> --json`."
+)
+_WORKSPACE = re.compile(r"^Workspace:[ \t]*(\S[^\r\n]*?)[ \t]*$", re.MULTILINE)
+_BRANCH = re.compile(r"^Branch:[ \t]*(\S[^\r\n]*?)[ \t]*$", re.MULTILINE)
+_NEW_WINDOW_TIMEOUT_S = 15
 _OUTPUT_PATTERNS = [
     re.compile(r"^(?:Output|output_file):[ \t]*([^\r\n]+?)[ \t]*$", re.MULTILINE),
     re.compile(r"Respond by writing(?: only:)?[ \t]*(?:\r?\n)?[`'\"]?([^`'\"\r\n]+?)[`'\"]?\.?[ \t]*$", re.MULTILINE),
@@ -107,11 +121,28 @@ def _task_role(raw: bytes) -> str | None:
     match = _ROLE.search(raw.decode("utf-8", errors="strict"))
     return match.group(1).lower() if match else None
 
+def _task_workspace(raw: bytes) -> str | None:
+    """Validated Workspace header: an existing dir that is a retained delegate worktree for this task id."""
+    text = raw.decode("utf-8", errors="strict")
+    m, b = _WORKSPACE.search(text), _BRANCH.search(text)
+    if not m or not b: return None
+    ws = Path(m.group(1))
+    root = Path(os.environ.get("AQ_DELEGATION_DIR") or (REPO / ".agents" / "delegation")) / "worktrees"
+    try:
+        real, root_real = ws.resolve(strict=True), root.resolve(strict=True)
+    except OSError: return None
+    if not ws.is_absolute() or real.parent != root_real or not real.is_dir(): return None
+    if b.group(1).strip() != f"delegate/{real.name}": return None
+    return str(real)
+
 def _require_advisory_ide_lane(raw: bytes) -> None:
-    """Reject edits because --reuse-window has no task-specific workspace binding."""
+    """Editing roles are admitted only with a verified task-specific worktree (Workspace/Branch headers);
+    otherwise --reuse-window has no workspace binding and edits are rejected."""
     role = _task_role(raw)
     if role in _EDITING_ROLES:
-        raise InboxError("blocked_unsupported_ide_worktree_isolation")
+        if _task_workspace(raw) is None:
+            raise InboxError("blocked_unsupported_ide_worktree_isolation")
+        return
     if role not in _ADVISORY_ROLES:
         raise InboxError("blocked_unsupported_ide_role")
 
@@ -210,10 +241,21 @@ def _emit(payload: dict[str, Any], as_json: bool) -> int:
     for k,v in payload.items(): print(f"{k}: {v}")
     return 0
 
-def _invoke_wake(timeout: int) -> tuple[str, int | None]:
+def _invoke_wake(timeout: int, workspace: str | None = None, task_name: str | None = None) -> tuple[str, int | None]:
     method="passive"; code=None
+    argv=WAKE_ARGV
+    if workspace:
+        # Bind the chat to the task worktree: open it in its own window first so --reuse-window targets it.
+        try:
+            opened=subprocess.run(["antigravity","--new-window",workspace],capture_output=True,text=True,timeout=min(timeout,_NEW_WINDOW_TIMEOUT_S))
+        except FileNotFoundError: return "cli-nudge-binary-missing",None
+        except subprocess.TimeoutExpired: return "cli-new-window-timeout",None
+        if opened.returncode != 0: return "cli-new-window-nonzero",opened.returncode
+        time.sleep(float(os.environ.get("AQ_ANTIGRAVITY_WINDOW_SETTLE_S","3")))
+        tid=_tid(task_name or Path(workspace).name)
+        argv=["antigravity","chat","--reuse-window","--mode","agent",IMPLEMENTER_WAKE_PROMPT.format(workspace=workspace,name=f"{tid}.md",tid=tid,repo=REPO,inbox=INBOX)]
     try:
-        result=subprocess.run(WAKE_ARGV,capture_output=True,text=True,timeout=timeout)
+        result=subprocess.run(argv,capture_output=True,text=True,timeout=timeout)
         code=result.returncode; method="cli-nudge-ok" if code == 0 else "cli-nudge-nonzero"
     except FileNotFoundError: method="cli-nudge-binary-missing"
     except subprocess.TimeoutExpired: method="cli-nudge-timeout"
@@ -298,8 +340,9 @@ def cmd_wake(args: argparse.Namespace)->int:
                 age = (datetime.now(timezone.utc) - max(recent_nudges)).total_seconds()
                 if 0 <= age < _WAKE_DEBOUNCE_S:
                     return _emit({"ok": True, "debounced": True, "task_id": tid, "method": "cli-nudge-ok", "exit_code": 0, "age_s": round(age, 2)}, args.json)
-        method,code=("passive",None) if args.passive_only else _invoke_wake(args.timeout)
-        record={"type":"wake_attempt","task_id":tid,"generation":generation,"ts":_now(),"actor":args.actor,"method":method,"exit_code":code,"non_passive":not args.passive_only}
+        ws=_task_workspace(raw)
+        method,code=("passive",None) if args.passive_only else (_invoke_wake(args.timeout,workspace=ws,task_name=path.name) if ws else _invoke_wake(args.timeout))
+        record={"type":"wake_attempt","task_id":tid,"generation":generation,"ts":_now(),"actor":args.actor,"method":method,"exit_code":code,"non_passive":not args.passive_only,"wake_path":"workspace-bound" if ws else "reuse-window"}
         _append(tid,record)
     except InboxError as exc: print(str(exc),file=sys.stderr); return 1
     ok=record["method"]=="cli-nudge-ok" or args.passive_only
@@ -444,14 +487,17 @@ def cmd_dispatch_once(args: argparse.Namespace)->int:
     if reservation is None:
         _emit(payload,args.json)
         return 0 if payload.get("ok") else 1
-    tid,gen,nonce=reservation; method,code=_invoke_wake(args.timeout)
+    tid,gen,nonce=reservation
+    try: ws=_task_workspace(_read_regular(INBOX/f"{tid}.md"))
+    except (InboxError,OSError): ws=None
+    method,code=_invoke_wake(args.timeout,workspace=ws,task_name=f"{tid}.md") if ws else _invoke_wake(args.timeout)
     try:
         with _locked(_supervisor_lock()) as lock:
             fcntl.flock(lock.fileno(),fcntl.LOCK_EX)
             try:
                 current=INBOX/f"{tid}.md"
                 if _regular(current) and _metadata(_read_regular(current))[1] == gen and any(r.get("nonce")==nonce for r in _records(tid,"wake_reservation",gen)) and not any(r.get("reservation")==nonce for r in _records(tid,"wake_attempt",gen)):
-                    _append(tid,{"type":"wake_attempt","task_id":tid,"generation":gen,"ts":_now(),"actor":"dispatch-once","method":method,"exit_code":code,"non_passive":True,"reservation":nonce}); payload={"ok":method=="cli-nudge-ok","state":"woken" if method=="cli-nudge-ok" else "wake-failed","task_id":tid,"method":method,"exit_code":code}
+                    _append(tid,{"type":"wake_attempt","task_id":tid,"generation":gen,"ts":_now(),"actor":"dispatch-once","method":method,"exit_code":code,"non_passive":True,"wake_path":"workspace-bound" if ws else "reuse-window","reservation":nonce}); payload={"ok":method=="cli-nudge-ok","state":"woken" if method=="cli-nudge-ok" else "wake-failed","task_id":tid,"method":method,"exit_code":code}
                 else: payload={"ok":False,"state":"reservation-lost","task_id":tid}
             finally: fcntl.flock(lock.fileno(),fcntl.LOCK_UN)
     except InboxError as exc: print(str(exc),file=sys.stderr); return 1
