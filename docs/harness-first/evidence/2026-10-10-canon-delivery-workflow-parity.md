@@ -1,6 +1,11 @@
-# Canonical delivery workflow for all lanes + Sonnet 5.5 balanced tier (2026-10-10)
+# Harness-First Task Evidence
 
-## Why
+Date: 2026-10-10
+Task ID: HF-20261010-090
+
+## Objective
+- Canonical delivery workflow for all lanes + Sonnet 5.5 balanced tier (2026-10-10)
+
 Owner: "all agents/models should follow and use the same workflows … so other models/agents can resume,
 complete, handoff, and share work … the last codex agent was not following our SOP's."
 
@@ -17,7 +22,6 @@ Audit of the five always-on agent files (AGENTS.md, CLAUDE.md, .agent/CODEX.md, 
 - `config/model-coordinator.json` balanced tier was `claude-sonnet-5`; Rule 17 named Haiku as the Claude
   implementer default, while Haiku repeatedly escaped its worktree / wrote vacuous tests this cycle.
 
-## What changed
 - New canon block `canon/blocks/delivery-workflow.md` (+ `.summary.md`), registered in `canon/canon.yaml`
   with the same targets as `mvp-delivery-sop` and compiled into all six files.
 - Rule 17 (`canon/blocks/behavioral-rules.md`): Claude-lane default implementer = `sonnet` (Sonnet 5.5,
@@ -29,16 +33,37 @@ Audit of the five always-on agent files (AGENTS.md, CLAUDE.md, .agent/CODEX.md, 
 - Budget held at 24000 bytes (not raised): lane regions condensed; every trimmed passage preserved verbatim
   in `.agent/lanes/{agents,claude,codex,local}-reference.md` under "moved from lane region".
 
-## Validation
+## Workflow/Session IDs
+- Session ID: c30f6c3c-e25f-4e8e-8ce5-b4faa7687d3f
+
+## Delegation Decision
+- Orchestrator authored the canon policy text; Sonnet implementer compiled it, condensed lane regions within budget, and updated the tier config.
+
+## Commands Executed
+```bash
+python3 scripts/governance/canon-compile.py --check
+python3 scripts/governance/check-agent-instruction-parity.py
+python3 scripts/testing/test-agent-instruction-parity.py
+python3 scripts/testing/test-aq-canon-compiler.py
+python3 scripts/testing/test-delegate-claude-model-routing.py
+```
+
+## Validation Evidence
 - `canon-compile.py --check`: OK, no drift. `check-agent-instruction-parity.py`: OK within budget.
 - `test-agent-instruction-parity.py` 6 OK; `test-aq-canon-compiler.py` 13 OK;
   `test-delegate-claude-model-routing.py` 4 OK; `test-model-tiering-health.py`, `test-model-budget.py` pass.
 - Sizes after (budget 24000): AGENTS 23606, CLAUDE 23973, CODEX 23956, LOCAL-AGENT 23992, GEMINI 22997.
 
-## Not done / limits
+## Rollback Plan
+- Revert the PR commit.
+
+## Residual Risk
 - Agent files are within ~50 bytes of budget; the next canonical addition needs a structural change
   (e.g. move more lane detail to references) rather than more trimming.
 - `delegate-to-antigravity` mentions worktrees but not PR/tier0; Antigravity reads its own file
   (.agent/GEMINI.md), which now carries the block. Local runs get it via LOCAL-AGENT.md; the local MICRO
   payload is behaviour-only and `config/local-agent-grounding.md` was not changed.
 - Instruction text is not enforcement: main-checkout commits are still only caught by the nrs guard.
+
+## Hint Feedback
+- None.
