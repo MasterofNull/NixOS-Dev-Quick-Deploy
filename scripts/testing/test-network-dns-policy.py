@@ -19,6 +19,7 @@ from __future__ import annotations
 
 import json
 import sys
+import tempfile
 import unittest
 from pathlib import Path
 
@@ -84,6 +85,16 @@ class TestNetworkDnsPolicyN0(unittest.TestCase):
             "$schema": "https://json-schema.org/draft/2020-12/schema",
             "$defs": defs,
             "$ref": "#/$defs/policyHealth",
+        })
+        cls.validator_trust = jsonschema.Draft202012Validator({
+            "$schema": "https://json-schema.org/draft/2020-12/schema",
+            "$defs": defs,
+            "$ref": "#/$defs/policyTrust",
+        })
+        cls.validator_receipt = jsonschema.Draft202012Validator({
+            "$schema": "https://json-schema.org/draft/2020-12/schema",
+            "$defs": defs,
+            "$ref": "#/$defs/policyReceipt",
         })
 
         # Load test vectors
@@ -288,7 +299,6 @@ class TestNetworkDnsPolicyN1(unittest.TestCase):
         cls.ndp = ndp
 
     def setUp(self):
-        import tempfile
         self.tmp_dir = tempfile.TemporaryDirectory()
         self.tmp_path = Path(self.tmp_dir.name)
         self.health_path = self.tmp_path / "health.json"
@@ -440,6 +450,625 @@ class TestNetworkDnsPolicyN1(unittest.TestCase):
             res = subprocess.run([sys.executable, str(facade), bad_verb], capture_output=True, text=True)
             self.assertEqual(res.returncode, 2)
             self.assertIn("strictly prohibited", res.stderr)
+
+
+class TestNetworkDnsPolicyN2(unittest.TestCase):
+    @classmethod
+    def setUpClass(cls):
+        import scripts.ai.lib.network_dns_policy as ndp
+        cls.ndp = ndp
+
+        schema_path = _REPO / "config" / "network-dns-policy.schema.json"
+        with open(schema_path, "r", encoding="utf-8") as f:
+            cls.schema_doc = json.load(f)
+        defs = cls.schema_doc["$defs"]
+        cls.validator_root = jsonschema.Draft202012Validator(cls.schema_doc)
+        cls.validator_trust = jsonschema.Draft202012Validator({
+            "$schema": "https://json-schema.org/draft/2020-12/schema",
+            "$defs": defs,
+            "$ref": "#/$defs/policyTrust",
+        })
+        cls.validator_receipt = jsonschema.Draft202012Validator({
+            "$schema": "https://json-schema.org/draft/2020-12/schema",
+            "$defs": defs,
+            "$ref": "#/$defs/policyReceipt",
+        })
+
+    def setUp(self):
+        self.tmp_dir = tempfile.TemporaryDirectory()
+        self.tmp_path = Path(self.tmp_dir.name)
+        self.receipt_path = self.tmp_path / "receipt.json"
+        self.receipt_lock_path = self.tmp_path / "receipt.lock"
+        self.effect_lock_path = self.tmp_path / "effect.lock"
+        self.health_path = self.tmp_path / "health.json"
+        self.health_lock_path = self.tmp_path / "health.lock"
+        self.trust_path = self.tmp_path / "trusted-profiles.json"
+        self.trust_lock_path = self.tmp_path / "trusted-profiles.lock"
+        self.sysfs_dir = self.tmp_path / "sysfs_net"
+        self.sysfs_dir.mkdir()
+
+        # Create Wi-Fi interface in sysfs
+        wlan0 = self.sysfs_dir / "wlan0"
+        wlan0.mkdir()
+        (wlan0 / "wireless").mkdir()
+
+    def tearDown(self):
+        self.tmp_dir.cleanup()
+
+    def test_trust_and_receipt_schema_validation(self):
+        """Verify Draft 2020-12 schema validation for trust and receipt documents."""
+        trust_doc = {
+            "schema_version": "network.dns-policy-trust.v1",
+            "trusted_profile_uuids": [
+                "11111111-2222-3333-4444-555555555555",
+                "aaaaaaaa-bbbb-cccc-dddd-eeeeeeeeeeee",
+            ],
+        }
+        self.validator_trust.validate(trust_doc)
+        self.validator_root.validate(trust_doc)
+        ok, msg = self.ndp.validate_trust(trust_doc)
+        self.assertTrue(ok, msg)
+
+        receipt_doc = {
+            "schema_version": "network.dns-policy-receipt.v1",
+            "receipt_state": "active",
+            "boot_id": "test-boot-123",
+            "interface": "wlan0",
+            "action": "apply_public_override",
+            "reason": "trusted_full",
+            "lease_expiry_epoch_s": 1700000055,
+            "updated_epoch_s": 1700000000,
+            "revision": 1,
+        }
+        self.validator_receipt.validate(receipt_doc)
+        self.validator_root.validate(receipt_doc)
+        ok, msg = self.ndp.validate_receipt(receipt_doc)
+        self.assertTrue(ok, msg)
+
+    def test_trust_schema_rejections(self):
+        """Verify rejection of invalid trust schemas and malformed UUIDs."""
+        base = {
+            "schema_version": "network.dns-policy-trust.v1",
+            "trusted_profile_uuids": ["11111111-2222-3333-4444-555555555555"],
+        }
+        # Non-dict
+        ok, _ = self.ndp.validate_trust("not-dict")
+        self.assertFalse(ok)
+
+        # Extra key
+        bad = dict(base, extra_key="illegal")
+        ok, _ = self.ndp.validate_trust(bad)
+        self.assertFalse(ok)
+        with self.assertRaises(jsonschema.ValidationError):
+            self.validator_trust.validate(bad)
+
+        # Bad UUID
+        bad_uuid = dict(base, trusted_profile_uuids=["not-a-uuid"])
+        ok, _ = self.ndp.validate_trust(bad_uuid)
+        self.assertFalse(ok)
+        with self.assertRaises(jsonschema.ValidationError):
+            self.validator_trust.validate(bad_uuid)
+
+        # Duplicate UUID
+        dup_uuid = dict(base, trusted_profile_uuids=[
+            "11111111-2222-3333-4444-555555555555",
+            "11111111-2222-3333-4444-555555555555",
+        ])
+        ok, _ = self.ndp.validate_trust(dup_uuid)
+        self.assertFalse(ok)
+        with self.assertRaises(jsonschema.ValidationError):
+            self.validator_trust.validate(dup_uuid)
+
+    def test_receipt_schema_rejections(self):
+        """Verify rejection of invalid receipt documents, bad states, and unsafe interfaces."""
+        base = {
+            "schema_version": "network.dns-policy-receipt.v1",
+            "receipt_state": "active",
+            "boot_id": "test-boot-123",
+            "interface": "wlan0",
+            "action": "apply_public_override",
+            "reason": "trusted_full",
+            "lease_expiry_epoch_s": 1700000055,
+            "updated_epoch_s": 1700000000,
+            "revision": 1,
+        }
+        # Non-dict
+        ok, _ = self.ndp.validate_receipt("not-dict")
+        self.assertFalse(ok)
+
+        # Extra key
+        bad = dict(base, extra="bad")
+        ok, _ = self.ndp.validate_receipt(bad)
+        self.assertFalse(ok)
+        with self.assertRaises(jsonschema.ValidationError):
+            self.validator_receipt.validate(bad)
+
+        # Bad receipt_state
+        bad_st = dict(base, receipt_state="nonexistent_state")
+        ok, _ = self.ndp.validate_receipt(bad_st)
+        self.assertFalse(ok)
+        with self.assertRaises(jsonschema.ValidationError):
+            self.validator_receipt.validate(bad_st)
+
+        # Unsafe interface
+        bad_iface = dict(base, interface="../wlan0;rm -rf /")
+        ok, _ = self.ndp.validate_receipt(bad_iface)
+        self.assertFalse(ok)
+
+        # Negative timestamp
+        bad_ts = dict(base, lease_expiry_epoch_s=-10)
+        ok, _ = self.ndp.validate_receipt(bad_ts)
+        self.assertFalse(ok)
+        with self.assertRaises(jsonschema.ValidationError):
+            self.validator_receipt.validate(bad_ts)
+
+    def test_replace_trust_map_permission_and_atomicity(self):
+        """Verify privilege gating, atomic write, and backup file creation for trust replacement."""
+        input_file = self.tmp_path / "candidate_trust.json"
+        valid_data = {
+            "schema_version": "network.dns-policy-trust.v1",
+            "trusted_profile_uuids": ["11111111-2222-3333-4444-555555555555"],
+        }
+        input_file.write_text(json.dumps(valid_data), encoding="utf-8")
+        input_file.chmod(0o600)
+
+        # 1. Unprivileged caller with check_privileges=True is rejected unless root
+        import os
+        if os.geteuid() != 0:
+            res, code = self.ndp.replace_trust_map(
+                input_file,
+                target_path=self.trust_path,
+                lock_path=self.trust_lock_path,
+                check_privileges=True,
+            )
+            self.assertEqual(res, self.ndp.TrustReplaceResult.UNSAFE_METADATA)
+            self.assertEqual(code, 3)
+
+        # 2. Privileged or check_privileges=False caller succeeds
+        res, code = self.ndp.replace_trust_map(
+            input_file,
+            target_path=self.trust_path,
+            lock_path=self.trust_lock_path,
+            check_privileges=False,
+        )
+        self.assertEqual(res, self.ndp.TrustReplaceResult.UPDATED)
+        self.assertEqual(code, 0)
+        self.assertTrue(self.trust_path.exists())
+
+        # 3. Second replacement creates .bak file
+        valid_data2 = {
+            "schema_version": "network.dns-policy-trust.v1",
+            "trusted_profile_uuids": [
+                "11111111-2222-3333-4444-555555555555",
+                "22222222-3333-4444-5555-666666666666",
+            ],
+        }
+        input_file.write_text(json.dumps(valid_data2), encoding="utf-8")
+        res2, code2 = self.ndp.replace_trust_map(
+            input_file,
+            target_path=self.trust_path,
+            lock_path=self.trust_lock_path,
+            check_privileges=False,
+        )
+        self.assertEqual(res2, self.ndp.TrustReplaceResult.UPDATED)
+        bak_file = self.trust_path.with_suffix(".bak")
+        self.assertTrue(bak_file.exists())
+        bak_content = json.loads(bak_file.read_text(encoding="utf-8"))
+        self.assertEqual(bak_content["trusted_profile_uuids"], ["11111111-2222-3333-4444-555555555555"])
+
+        # 4. Invalid candidate document fails closed without mutating active map
+        bad_file = self.tmp_path / "bad_trust.json"
+        bad_file.write_text('{"bad": "json"}', encoding="utf-8")
+        bad_file.chmod(0o600)
+        res_bad, code_bad = self.ndp.replace_trust_map(
+            bad_file,
+            target_path=self.trust_path,
+            lock_path=self.trust_lock_path,
+            check_privileges=False,
+        )
+        self.assertEqual(res_bad, self.ndp.TrustReplaceResult.INVALID_INPUT)
+        self.assertEqual(code_bad, 2)
+        # Active map preserved
+        active_content = json.loads(self.trust_path.read_text(encoding="utf-8"))
+        self.assertEqual(len(active_content["trusted_profile_uuids"]), 2)
+
+    def test_publish_and_read_receipt(self):
+        """Verify atomic publish and read_receipt roundtrip."""
+        receipt_data = {
+            "schema_version": "network.dns-policy-receipt.v1",
+            "receipt_state": "active",
+            "boot_id": "boot-test-1",
+            "interface": "wlan0",
+            "action": "apply_public_override",
+            "reason": "trusted_full",
+            "lease_expiry_epoch_s": 1700000055,
+            "updated_epoch_s": 1700000000,
+            "revision": 1,
+        }
+        ok = self.ndp.publish_receipt(receipt_data, self.receipt_path, self.receipt_lock_path)
+        self.assertTrue(ok)
+        self.assertTrue(self.receipt_path.exists())
+
+        rec = self.ndp.read_receipt(self.receipt_path)
+        self.assertEqual(rec, receipt_data)
+
+        # Missing file returns None
+        self.assertIsNone(self.ndp.read_receipt(self.tmp_path / "nonexistent.json"))
+
+    def test_execute_policy_transaction_permit_apply(self):
+        """Verify policy transaction admits trusted full Wi-Fi and applies public override."""
+        trusted_data = {
+            "schema_version": "network.dns-policy-trust.v1",
+            "trusted_profile_uuids": ["11111111-2222-3333-4444-555555555555"],
+        }
+        self.trust_path.write_text(json.dumps(trusted_data), encoding="utf-8")
+
+        commands_run = []
+
+        def synthetic_runner(argv):
+            commands_run.append(list(argv))
+            cmd = argv[0]
+            if cmd == "nmcli" and "CONNECTIVITY" in argv:
+                return "full\n", self.ndp.AcquisitionError.NONE
+            elif cmd == "nmcli" and "GENERAL.CON-UUID" in argv:
+                return "11111111-2222-3333-4444-555555555555\n", self.ndp.AcquisitionError.NONE
+            elif cmd == "resolvectl" and "domain" in argv and len(argv) == 3:
+                # Ordinary topology
+                return "Link 2 (wlan0):\n", self.ndp.AcquisitionError.NONE
+            elif cmd == "resolvectl":
+                return "", self.ndp.AcquisitionError.NONE
+            return None, self.ndp.AcquisitionError.MISSING_COMMAND
+
+        ok, dec = self.ndp.execute_policy_transaction(
+            "wlan0",
+            event="admit",
+            mode="policy",
+            now_epoch_s=1700000000,
+            boot_id="boot-xyz",
+            cmd_runner=synthetic_runner,
+            sysfs_base=self.sysfs_dir,
+            effect_lock_path=self.effect_lock_path,
+            receipt_path=self.receipt_path,
+            receipt_lock_path=self.receipt_lock_path,
+            health_path=self.health_path,
+            health_lock_path=self.health_lock_path,
+            trusted_profiles_path=self.trust_path,
+        )
+        self.assertTrue(ok)
+        self.assertEqual(dec["action"], "apply_public_override")
+        self.assertEqual(dec["reason"], "trusted_full")
+
+        # Verify mutation commands executed
+        dns_cmds = [c for c in commands_run if c[:3] == ["resolvectl", "dns", "wlan0"]]
+        dom_cmds = [c for c in commands_run if c[:3] == ["resolvectl", "domain", "wlan0"] and len(c) > 3]
+        self.assertEqual(len(dns_cmds), 1)
+        self.assertEqual(len(dom_cmds), 1)
+
+        # Verify active receipt
+        rec = self.ndp.read_receipt(self.receipt_path)
+        self.assertIsNotNone(rec)
+        self.assertEqual(rec["receipt_state"], "active")
+        self.assertEqual(rec["lease_expiry_epoch_s"], 1700000055)
+        self.assertEqual(rec["revision"], 2)
+
+        # Verify health
+        h = self.ndp.read_health(self.health_path)
+        self.assertEqual(h["policy_state"], "overriding")
+        self.assertEqual(h["lease"], "active")
+
+    def test_execute_policy_transaction_downgrade_revert(self):
+        """Verify transaction downgrades and reverts when connection drops to untrusted."""
+        active_rec = {
+            "schema_version": "network.dns-policy-receipt.v1",
+            "receipt_state": "active",
+            "boot_id": "boot-xyz",
+            "interface": "wlan0",
+            "action": "apply_public_override",
+            "reason": "trusted_full",
+            "lease_expiry_epoch_s": 1700000055,
+            "updated_epoch_s": 1700000000,
+            "revision": 2,
+        }
+        self.ndp.publish_receipt(active_rec, self.receipt_path, self.receipt_lock_path)
+
+        commands_run = []
+
+        def untrusted_runner(argv):
+            commands_run.append(list(argv))
+            cmd = argv[0]
+            if cmd == "nmcli" and "CONNECTIVITY" in argv:
+                return "portal\n", self.ndp.AcquisitionError.NONE
+            elif cmd == "nmcli" and "GENERAL.CON-UUID" in argv:
+                return "untrusted-uuid\n", self.ndp.AcquisitionError.NONE
+            elif cmd == "resolvectl":
+                return "", self.ndp.AcquisitionError.NONE
+            return None, self.ndp.AcquisitionError.MISSING_COMMAND
+
+        ok, dec = self.ndp.execute_policy_transaction(
+            "wlan0",
+            event="downgrade",
+            mode="policy",
+            now_epoch_s=1700000010,
+            boot_id="boot-xyz",
+            cmd_runner=untrusted_runner,
+            sysfs_base=self.sysfs_dir,
+            effect_lock_path=self.effect_lock_path,
+            receipt_path=self.receipt_path,
+            receipt_lock_path=self.receipt_lock_path,
+            health_path=self.health_path,
+            health_lock_path=self.health_lock_path,
+            trusted_profiles_path=self.trust_path,
+        )
+        self.assertTrue(ok)
+        self.assertEqual(dec["action"], "revert_override")
+
+        # Verify revert command executed
+        revert_cmds = [c for c in commands_run if c == ["resolvectl", "revert", "wlan0"]]
+        self.assertEqual(len(revert_cmds), 1)
+
+        # Verify inactive receipt
+        rec = self.ndp.read_receipt(self.receipt_path)
+        self.assertEqual(rec["receipt_state"], "inactive")
+
+        # Verify health
+        h = self.ndp.read_health(self.health_path)
+        self.assertEqual(h["policy_state"], "reverted")
+
+    def test_execute_policy_transaction_mutation_failure_rollback(self):
+        """Verify mutation error rolls back atomically to inactive receipt and degraded health."""
+        trusted_data = {
+            "schema_version": "network.dns-policy-trust.v1",
+            "trusted_profile_uuids": ["11111111-2222-3333-4444-555555555555"],
+        }
+        self.trust_path.write_text(json.dumps(trusted_data), encoding="utf-8")
+
+        commands_run = []
+
+        def failing_runner(argv):
+            commands_run.append(list(argv))
+            cmd = argv[0]
+            if cmd == "nmcli" and "CONNECTIVITY" in argv:
+                return "full\n", self.ndp.AcquisitionError.NONE
+            elif cmd == "nmcli" and "GENERAL.CON-UUID" in argv:
+                return "11111111-2222-3333-4444-555555555555\n", self.ndp.AcquisitionError.NONE
+            elif cmd == "resolvectl" and "domain" in argv and len(argv) == 3:
+                return "Link 2 (wlan0):\n", self.ndp.AcquisitionError.NONE
+            elif cmd == "resolvectl" and "dns" in argv:
+                # Mutation command fails!
+                return "", self.ndp.AcquisitionError.NONZERO
+            elif cmd == "resolvectl" and "revert" in argv:
+                return "", self.ndp.AcquisitionError.NONE
+            return None, self.ndp.AcquisitionError.MISSING_COMMAND
+
+        ok, dec = self.ndp.execute_policy_transaction(
+            "wlan0",
+            event="admit",
+            mode="policy",
+            now_epoch_s=1700000000,
+            boot_id="boot-xyz",
+            cmd_runner=failing_runner,
+            sysfs_base=self.sysfs_dir,
+            effect_lock_path=self.effect_lock_path,
+            receipt_path=self.receipt_path,
+            receipt_lock_path=self.receipt_lock_path,
+            health_path=self.health_path,
+            health_lock_path=self.health_lock_path,
+            trusted_profiles_path=self.trust_path,
+        )
+        self.assertFalse(ok)
+        self.assertEqual(dec.get("error"), "mutation_failed")
+
+        # Assert rollback revert command executed
+        revert_cmds = [c for c in commands_run if c == ["resolvectl", "revert", "wlan0"]]
+        self.assertEqual(len(revert_cmds), 1)
+
+        # Receipt marked inactive
+        rec = self.ndp.read_receipt(self.receipt_path)
+        self.assertEqual(rec["receipt_state"], "inactive")
+
+        # Health marked degraded
+        h = self.ndp.read_health(self.health_path)
+        self.assertEqual(h["policy_state"], "degraded")
+
+    def test_execute_policy_transaction_legacy_mode(self):
+        """Verify legacy mode preserves existing systemd-resolved without receipt mutation."""
+        commands_run = []
+
+        def legacy_runner(argv):
+            commands_run.append(list(argv))
+            return "", self.ndp.AcquisitionError.NONE
+
+        ok, dec = self.ndp.execute_policy_transaction(
+            "wlan0",
+            event="up",
+            mode="legacy",
+            cmd_runner=legacy_runner,
+            sysfs_base=self.sysfs_dir,
+            receipt_path=self.receipt_path,
+        )
+        self.assertTrue(ok)
+        self.assertEqual(dec["action"], "legacy_override")
+        # Receipt was NOT created
+        self.assertFalse(self.receipt_path.exists())
+
+    def test_watchdog_expiry_and_recovery(self):
+        """Verify watchdog detects expired lease and reverts Wi-Fi interface."""
+        expired_rec = {
+            "schema_version": "network.dns-policy-receipt.v1",
+            "receipt_state": "active",
+            "boot_id": "current-boot",
+            "interface": "wlan0",
+            "action": "apply_public_override",
+            "reason": "trusted_full",
+            "lease_expiry_epoch_s": 1700000050,
+            "updated_epoch_s": 1700000000,
+            "revision": 2,
+        }
+        self.ndp.publish_receipt(expired_rec, self.receipt_path, self.receipt_lock_path)
+
+        commands_run = []
+
+        def wd_runner(argv):
+            commands_run.append(list(argv))
+            return "", self.ndp.AcquisitionError.NONE
+
+        ok = self.ndp.run_watchdog_or_recovery(
+            mode="policy",
+            now_epoch_s=1700000060,
+            boot_id="current-boot",
+            cmd_runner=wd_runner,
+            sysfs_base=self.sysfs_dir,
+            effect_lock_path=self.effect_lock_path,
+            receipt_path=self.receipt_path,
+            receipt_lock_path=self.receipt_lock_path,
+            health_path=self.health_path,
+            health_lock_path=self.health_lock_path,
+        )
+        self.assertTrue(ok)
+        revert_cmds = [c for c in commands_run if c == ["resolvectl", "revert", "wlan0"]]
+        self.assertEqual(len(revert_cmds), 1)
+
+        rec = self.ndp.read_receipt(self.receipt_path)
+        self.assertEqual(rec["receipt_state"], "inactive")
+
+        # Fresh receipt (unexpired) -> no revert
+        fresh_rec = dict(expired_rec, lease_expiry_epoch_s=1700000100)
+        self.ndp.publish_receipt(fresh_rec, self.receipt_path, self.receipt_lock_path)
+        commands_run.clear()
+
+        ok_fresh = self.ndp.run_watchdog_or_recovery(
+            mode="policy",
+            now_epoch_s=1700000060,
+            boot_id="current-boot",
+            cmd_runner=wd_runner,
+            sysfs_base=self.sysfs_dir,
+            effect_lock_path=self.effect_lock_path,
+            receipt_path=self.receipt_path,
+            receipt_lock_path=self.receipt_lock_path,
+            health_path=self.health_path,
+            health_lock_path=self.health_lock_path,
+        )
+        self.assertTrue(ok_fresh)
+        self.assertEqual(len(commands_run), 0)
+
+        # Legacy mode -> immediate no-op
+        ok_legacy = self.ndp.run_watchdog_or_recovery(mode="legacy")
+        self.assertTrue(ok_legacy)
+
+    def test_cross_boot_recovery(self):
+        """Verify watchdog detects reboot across boot_id boundary and reverts orphan state."""
+        stale_boot_rec = {
+            "schema_version": "network.dns-policy-receipt.v1",
+            "receipt_state": "active",
+            "boot_id": "old-boot-uuid",
+            "interface": "wlan0",
+            "action": "apply_public_override",
+            "reason": "trusted_full",
+            "lease_expiry_epoch_s": 1700000100,
+            "updated_epoch_s": 1700000000,
+            "revision": 2,
+        }
+        self.ndp.publish_receipt(stale_boot_rec, self.receipt_path, self.receipt_lock_path)
+
+        commands_run = []
+
+        def wd_runner(argv):
+            commands_run.append(list(argv))
+            return "", self.ndp.AcquisitionError.NONE
+
+        ok = self.ndp.run_watchdog_or_recovery(
+            mode="policy",
+            now_epoch_s=1700000010,
+            boot_id="new-boot-uuid",
+            cmd_runner=wd_runner,
+            sysfs_base=self.sysfs_dir,
+            effect_lock_path=self.effect_lock_path,
+            receipt_path=self.receipt_path,
+            receipt_lock_path=self.receipt_lock_path,
+            health_path=self.health_path,
+            health_lock_path=self.health_lock_path,
+        )
+        self.assertTrue(ok)
+        revert_cmds = [c for c in commands_run if c == ["resolvectl", "revert", "wlan0"]]
+        self.assertEqual(len(revert_cmds), 1)
+
+    def test_emergency_revert(self):
+        """Verify emergency fallback revert resets state and reverts interfaces."""
+        commands_run = []
+
+        def em_runner(argv):
+            commands_run.append(list(argv))
+            return "", self.ndp.AcquisitionError.NONE
+
+        ok = self.ndp.run_emergency_revert(
+            cmd_runner=em_runner,
+            sysfs_base=self.sysfs_dir,
+            receipt_path=self.receipt_path,
+            receipt_lock_path=self.receipt_lock_path,
+            health_path=self.health_path,
+            health_lock_path=self.health_lock_path,
+        )
+        self.assertTrue(ok)
+        revert_cmds = [c for c in commands_run if c == ["resolvectl", "revert", "wlan0"]]
+        self.assertEqual(len(revert_cmds), 1)
+        rec = self.ndp.read_receipt(self.receipt_path)
+        self.assertEqual(rec["receipt_state"], "inactive")
+        h = self.ndp.read_health(self.health_path)
+        self.assertEqual(h["policy_state"], "degraded")
+
+    def test_cli_trust_replace_gating(self):
+        """Verify aq-network-policy trust replace CLI behavior and activation gate."""
+        import subprocess
+
+        facade = _REPO / "scripts" / "ai" / "aq-network-policy"
+        cand = self.tmp_path / "cand.json"
+        valid_data = {
+            "schema_version": "network.dns-policy-trust.v1",
+            "trusted_profile_uuids": ["11111111-2222-3333-4444-555555555555"],
+        }
+        cand.write_text(json.dumps(valid_data), encoding="utf-8")
+        cand.chmod(0o600)
+
+        # 1. Blocked without --n3-canary (exit code 2)
+        res = subprocess.run(
+            [sys.executable, str(facade), "trust", "replace", "--input", str(cand)],
+            capture_output=True,
+            text=True,
+        )
+        self.assertEqual(res.returncode, 2)
+        self.assertIn("blocked until N3 activation", res.stderr)
+
+        # 2. Blocked with --machine produces JSON error
+        res_m = subprocess.run(
+            [sys.executable, str(facade), "trust", "replace", "--input", str(cand), "--machine"],
+            capture_output=True,
+            text=True,
+        )
+        self.assertEqual(res_m.returncode, 2)
+        out_json = json.loads(res_m.stdout)
+        self.assertEqual(out_json.get("error"), "blocked_until_n3")
+
+        # 3. Allowed with --n3-canary and --no-privilege-check
+        res_canary = subprocess.run(
+            [
+                sys.executable,
+                str(facade),
+                "trust",
+                "replace",
+                "--input",
+                str(cand),
+                "--target",
+                str(self.trust_path),
+                "--lock-path",
+                str(self.trust_lock_path),
+                "--n3-canary",
+                "--no-privilege-check",
+            ],
+            capture_output=True,
+            text=True,
+        )
+        self.assertEqual(res_canary.returncode, 0)
+        self.assertTrue(self.trust_path.exists())
 
 
 if __name__ == "__main__":
