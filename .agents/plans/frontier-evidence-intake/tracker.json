@@ -199,8 +199,15 @@
       "deps": [
         "fa-2-context-seams"
       ],
-      "editorial_note": "FE-1 approved; target plan: local-agent harness; benchmark-first",
-      "notes": "BACKLOG status=in_review (design approved, implementation not started); behavioral-verify infrastructure exists (test-edit-verify.py validates it); pending local-agent integration; no detection signal until implementation begins"
+      "editorial_note": "FE-1 steering landed (05d9fb9e); harness isolation & signal cleanup completed",
+      "detection": {
+        "commit_match": [
+          "FE-1 process-reward steering",
+          "prm-steering"
+        ],
+        "freeze_record": "docs/harness-first/evidence/2026-10-08-fe1-prm-steering.md"
+      },
+      "pct_hint": 100
     },
     {
       "id": "fe-2-gepa",
