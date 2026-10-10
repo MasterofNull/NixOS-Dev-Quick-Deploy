@@ -622,6 +622,57 @@
           ]
         }
       }
+    },
+    "external-tool-packs": {
+      "name": "External Tool Packs",
+      "description": "Enabled external MCP servers and repo CLIs: security scanning, GitHub intelligence, Nix static analysis, OSINT store, identity kernel",
+      "triggers": [
+        "semgrep",
+        "static analysis",
+        "statix",
+        "deadnix",
+        "github pr",
+        "github actions",
+        "code scanning",
+        "osint",
+        "identity kernel",
+        "checkpoint"
+      ],
+      "disclosure": {
+        "minimal": {
+          "context": "Before ad-hoc scanning, check the enabled tool packs: semgrep-mcp (generated-code security scan), github-mcp-readonly (repo/PR/Actions intelligence), nixos-static-analysis (scripts/governance/nix-static-analysis.sh), osint-research-store (passive OSINT ingest/query), identity-kernel-service (identity checkpoints).",
+          "tools": [
+            "semgrep-mcp",
+            "github-mcp-readonly",
+            "nixos-static-analysis"
+          ],
+          "hints": [
+            "Run nixos-static-analysis on edited .nix files before commit",
+            "Use semgrep-mcp on generated code; github-mcp-readonly for PR/CI reads (read-only)"
+          ]
+        },
+        "standard": {
+          "extends": "minimal",
+          "tools": [
+            "osint-research-store",
+            "identity-kernel-service"
+          ],
+          "docs": [
+            "config/system-capability-catalog.json",
+            "docs/agent-guides/CAPABILITY-INDEX.md"
+          ],
+          "mcp_endpoints": [
+            "/hints"
+          ]
+        },
+        "full": {
+          "extends": "standard",
+          "docs": [
+            "config/agent-capability-intake-candidates.json",
+            ".agent/OSINT-SYSTEMS-INSTRUCTIONS.md"
+          ]
+        }
+      }
     }
   },
   "domain_detection": {
