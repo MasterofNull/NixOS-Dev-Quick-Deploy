@@ -27,7 +27,7 @@ nix-instantiate --parse nix/home/base.nix nix/modules/services/mcp-servers.nix  
 - Revert the commit, then run hms/nrs.
 
 ## Residual Risk
-- Activation needs the next hms/nrs plus a fresh agent client. As of 2026-10-10, nsjail was not on PATH (Home Manager gen 150), so live sandbox behaviour is unverified until then.
+- Activation needs the next hms/nrs plus a fresh agent client. nsjail is service-scoped (NSJAIL_BIN in the coordinator env), not on the user PATH; confirmed present after the 2026-10-10 nrs.
 
 ## Hint Feedback
 - None.
