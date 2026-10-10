@@ -130,10 +130,16 @@
       "editorial_note": "fold mechanism live; tier0 integration pending",
       "detection": {
         "commit_match": [
-          "FA-3 auto-fold + FA-4 scan-topic refresh + FA-5 parity sweep"
+          "FA-3 auto-fold + FA-4 scan-topic refresh + FA-5 parity sweep",
+          "FA-3 orphan-fold"
         ]
       },
-      "notes": "tier0.d check that binds scheduled->slice mapping is deferred; current tests validate idempotence + fail-closed logic"
+      "acceptance": {
+        "status": "accepted",
+        "by": "hyperd",
+        "date": "2026-10-08",
+        "note": "Owner chat 'accept 1-11' 2026-10-08; evidence: merged in PR #403 (c0cf0986); tier0 check check-frontier-orphan-fold passes"
+      }
     },
     {
       "id": "fa-4-scan-refresh",
@@ -172,10 +178,16 @@
       "editorial_note": "safety net, not the access path",
       "detection": {
         "commit_match": [
-          "FA-3 auto-fold + FA-4 scan-topic refresh + FA-5 parity sweep"
+          "FA-3 auto-fold + FA-4 scan-topic refresh + FA-5 parity sweep",
+          "FA-5 tests"
         ]
       },
-      "notes": "parity command live; no formal test suite; manual run validates 3 gaps + suggestions; optional timer NOT YET scheduled"
+      "acceptance": {
+        "status": "accepted",
+        "by": "hyperd",
+        "date": "2026-10-08",
+        "note": "Owner chat 'accept 1-11' 2026-10-08; evidence: merged in PR #403 (c0cf0986); test-frontier-parity-sweep passes"
+      }
     },
     {
       "id": "fe-1-prm-verify",
