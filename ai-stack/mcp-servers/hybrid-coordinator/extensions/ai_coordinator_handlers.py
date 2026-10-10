@@ -1481,6 +1481,9 @@ async def handle_ai_coordinator_delegate(request: web.Request) -> web.Response:
                     "planning",
                     source="hybrid-coordinator",
                     run_id=run_id or "unknown",
+                    agent_id=str(data.get("agent_id") or data.get("role") or "coordinator-delegate"),
+                    lane_id=str(data.get("lane_id") or "hybrid-coordinator"),
+                    role=data.get("role"),
                     status="succeeded" if ok else "failed",
                     model=model_name or None,
                     route_profile=profile_name or None,
@@ -1616,6 +1619,9 @@ async def handle_ai_coordinator_delegate(request: web.Request) -> web.Response:
                             "system_prompt",
                             source="hybrid-coordinator",
                             run_id=_sp_ev_run_id,
+                            agent_id=str(data.get("agent_id") or f"local-{agent_role}"),
+                            lane_id=str(data.get("lane_id") or "hybrid-coordinator"),
+                            role=agent_role,
                             status="started",
                             model=f"local-{agent_role}",
                             route_profile=selected_profile or None,
@@ -2433,6 +2439,9 @@ async def handle_ai_coordinator_delegate(request: web.Request) -> web.Response:
 
         if _AGENT_RUN_EVENTS_AVAILABLE and _are is not None:
             _are_run_id = str(data.get("task_id") or request.get("request_id", "") or id(request))
+            _are_agent_id = str(data.get("agent_id") or data.get("role") or "coordinator-delegate")
+            _are_lane_id = str(data.get("lane_id") or "hybrid-coordinator")
+            _are_role = data.get("role")
             _are_tok_in = int((body.get("usage") or {}).get("prompt_tokens", 0) or 0)
             _are_tok_out = int((body.get("usage") or {}).get("completion_tokens", 0) or 0)
             _are_total = _are_tok_in + _are_tok_out
@@ -2479,12 +2488,16 @@ async def handle_ai_coordinator_delegate(request: web.Request) -> web.Response:
                 _rejected=_are_rejected, _failed_retry=_are_failed_retry,
                 _plan_payload=_are_plan_payload,
                 _resp_text=_are_response_text, _task_text=_are_task_text,
+                _agent_id=_are_agent_id, _lane_id=_are_lane_id, _role=_are_role,
             ):
                 try:
                     plan_ev = _are.make_event(
                         "planning",
                         source="hybrid-coordinator",
                         run_id=_run_id or "unknown",
+                        agent_id=_agent_id,
+                        lane_id=_lane_id,
+                        role=_role,
                         status="succeeded" if _ok else "failed",
                         model=_model or None,
                         route_profile=_profile or None,
@@ -2501,6 +2514,9 @@ async def handle_ai_coordinator_delegate(request: web.Request) -> web.Response:
                         "model_call",
                         source="hybrid-coordinator",
                         run_id=_run_id or "unknown",
+                        agent_id=_agent_id,
+                        lane_id=_lane_id,
+                        role=_role,
                         status="succeeded" if _ok else "failed",
                         model=_model or None,
                         route_profile=_profile or None,
@@ -2513,6 +2529,9 @@ async def handle_ai_coordinator_delegate(request: web.Request) -> web.Response:
                         "token_usage",
                         source="hybrid-coordinator",
                         run_id=_run_id or "unknown",
+                        agent_id=_agent_id,
+                        lane_id=_lane_id,
+                        role=_role,
                         status="succeeded" if _ok else "failed",
                         model=_model or None,
                         route_profile=_profile or None,

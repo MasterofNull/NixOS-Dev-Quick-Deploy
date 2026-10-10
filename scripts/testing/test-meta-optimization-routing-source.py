@@ -231,6 +231,47 @@ def test_no_routing_log_reference():
         assert "routing_log" not in f.read_text(), f"routing_log still referenced in {f.name}"
 
 
+def test_model_call_telemetry_agent_id(tmp):
+    # Verify dispatch._write_progress emits agent_id and lane_id on model_call
+    sys.path.insert(0, str(ROOT / "scripts" / "ai" / "lib"))
+    import dispatch
+    events_path = tmp / "telemetry_events.jsonl"
+    os.environ["AQ_AGENT_RUN_EVENTS_PATH"] = str(events_path)
+    try:
+        progress_file = tmp / "test.progress.json"
+        # 1. Default fallback with source="delegate-to-local"
+        dispatch._write_progress(progress_file, 10, 100, 1.5, 6.7, None, "done", role="implementer")
+        lines = [json.loads(line) for line in events_path.read_text().splitlines() if line.strip()]
+        assert len(lines) >= 1
+        ev = lines[-1]
+        assert ev["event_type"] == "model_call"
+        assert ev["agent_id"] == "local-qwen"
+        assert ev["lane_id"] == "local"
+        assert ev["role"] == "implementer"
+
+        # 2. Explicit agent_id and lane_id
+        dispatch._write_progress(progress_file, 20, 100, 2.0, 10.0, None, "done",
+                                 agent_id="custom-agent", lane_id="custom-lane", role="reviewer")
+        lines = [json.loads(line) for line in events_path.read_text().splitlines() if line.strip()]
+        ev = lines[-1]
+        assert ev["agent_id"] == "custom-agent"
+        assert ev["lane_id"] == "custom-lane"
+        assert ev["role"] == "reviewer"
+
+        # 3. Environment variable override
+        os.environ["AQ_AGENT_ID"] = "env-agent"
+        os.environ["AQ_LANE_ID"] = "env-lane"
+        dispatch._write_progress(progress_file, 30, 100, 3.0, 10.0, None, "done")
+        lines = [json.loads(line) for line in events_path.read_text().splitlines() if line.strip()]
+        ev = lines[-1]
+        assert ev["agent_id"] == "env-agent"
+        assert ev["lane_id"] == "env-lane"
+    finally:
+        os.environ.pop("AQ_AGENT_RUN_EVENTS_PATH", None)
+        os.environ.pop("AQ_AGENT_ID", None)
+        os.environ.pop("AQ_LANE_ID", None)
+
+
 def main():
     with tempfile.TemporaryDirectory() as td:
         tmp = Path(td)
@@ -239,6 +280,7 @@ def main():
         test_switchboard(tmp)
         test_cli_args(tmp)
         test_llm_failure_is_reported_not_hidden(tmp)
+        test_model_call_telemetry_agent_id(tmp)
     test_analyses_never_overlap()
     test_migration()
     test_no_routing_log_reference()
