@@ -38,4 +38,25 @@ def run(ctx: RunContext) -> list[CheckResult]:
         results.append(passed(3, "rsi.2", "RSI wake-up coverage", phase="rsi"))
     except (OSError, subprocess.SubprocessError, ValueError) as exc:
         results.append(failed(3, "rsi.2", "RSI wake-up coverage", str(exc)[:300], phase="rsi"))
+    try:
+        lib_dir = str(ctx.repo_root / "scripts/ai/lib")
+        if lib_dir not in sys.path:
+            sys.path.insert(0, lib_dir)
+        from capability_snapshots import SNAPSHOT_PATH, snapshot_status
+        snapshot = snapshot_status(ctx.repo_root / SNAPSHOT_PATH)
+        if snapshot["status"] != "fresh":
+            raise ValueError(f"capability snapshots {snapshot['status']}")
+        results.append(passed(3, "rsi.3", "Capability audit snapshot integration", phase="rsi"))
+    except (OSError, ValueError, KeyError, TypeError, ImportError) as exc:
+        results.append(failed(3, "rsi.3", "Capability audit snapshot integration", str(exc)[:300], phase="rsi"))
+    try:
+        proc = subprocess.run(
+            ["systemctl", "is-active", "ai-capability-audit.timer"],
+            capture_output=True, text=True, timeout=10,
+        )
+        if proc.returncode != 0 or proc.stdout.strip() != "active":
+            raise ValueError("capability audit timer must be active")
+        results.append(passed(3, "rsi.4", "Capability audit scheduling", phase="rsi"))
+    except (OSError, subprocess.SubprocessError, ValueError) as exc:
+        results.append(failed(3, "rsi.4", "Capability audit scheduling", str(exc)[:300], phase="rsi"))
     return results

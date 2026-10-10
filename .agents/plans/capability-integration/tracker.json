@@ -90,7 +90,7 @@
       "goal": "the audit runs periodically; worsening class transitions become RSI incidents",
       "validation_goal": "timer active; a synthetic regression is recorded by aq-rsi sweep",
       "deps": [],
-      "editorial_note": "MVP: enabled-for-testing is not done; acceptance is the owner's.",
+      "editorial_note": "Evidence: docs/harness-first/evidence/2026-10-09-capability-audit-rsi.md. Timer activation is deferred to the next rebuild; live timer and RSI integration validation remain required. MVP acceptance is the owner's.",
       "detection": {
         "commit_match": [
           "capability-audit timer",

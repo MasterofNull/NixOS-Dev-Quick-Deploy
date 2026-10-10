@@ -4557,6 +4557,32 @@ async def get_system_audit_log() -> List[Dict[str, Any]]:
     return events[:20]
 
 
+async def _capability_audit_snapshot_status() -> Dict[str, Any]:
+    """Read scheduled snapshots; dashboard polling never starts an audit."""
+    def read_snapshot() -> Dict[str, Any]:
+        try:
+            lib_dir = str(_repo_root() / "scripts/ai/lib")
+            if lib_dir not in sys.path:
+                sys.path.insert(0, lib_dir)
+            from capability_snapshots import SNAPSHOT_PATH, snapshot_status
+            return snapshot_status(_repo_root() / SNAPSHOT_PATH)
+        except ImportError as exc:
+            return {"status": "invalid", "counts": None, "age_seconds": None, "error": str(exc)[:200]}
+
+    def timer_state() -> str:
+        try:
+            proc = subprocess.run(
+                ["systemctl", "is-active", "ai-capability-audit.timer"],
+                capture_output=True, text=True, timeout=5, check=False,
+            )
+            return proc.stdout.strip() or "unknown"
+        except (OSError, subprocess.SubprocessError):
+            return "unknown"
+
+    snapshot, timer = await asyncio.gather(asyncio.to_thread(read_snapshot), asyncio.to_thread(timer_state))
+    return {**snapshot, "timer_state": timer}
+
+
 @router.get("/prsi/actions")
 async def get_prsi_actions(status: Optional[str] = None, risk: Optional[str] = None) -> Dict[str, Any]:
     """List PRSI queued actions and counts."""
@@ -4604,6 +4630,7 @@ async def get_prsi_actions(status: Optional[str] = None, risk: Optional[str] = N
                 "blocked_approved": blocked_approved,
             },
             "policy": _prsi_policy_summary(policy),
+            "capability_audit": await _capability_audit_snapshot_status(),
         },
         "timestamp": datetime.now(timezone.utc).isoformat(),
     }

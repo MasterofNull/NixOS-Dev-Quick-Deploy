@@ -43,6 +43,74 @@ def _iso(ts):
     return time.strftime("%Y-%m-%dT%H:%M:%SZ", time.gmtime(ts))
 
 
+
+
+
+def _capability_report(report, now, max_age_s):
+    from capability_snapshots import validate_report
+    stamp = validate_report(report)
+    if not 0 <= now - stamp.timestamp() <= max_age_s:
+        raise ValueError("report timestamp stale or future")
+    return stamp.timestamp(), {row["key"]: row for row in report["capabilities"]}
+
+
+def adapter_capability_audit(snapshot_path=None, max_age_s=None, now=None):
+    from capability_snapshots import validate_bundle
+    path = Path(snapshot_path or os.getenv("RSI_SWEEP_CAPABILITY_SNAPSHOTS") or
+                _REPO / ".agent/collaboration/capability-audit-snapshots.json")
+    now = time.time() if now is None else now
+    try:
+        max_age_s = float(max_age_s if max_age_s is not None else os.getenv("RSI_SWEEP_CAPABILITY_MAX_AGE_S", str(26 * 3600)))
+        if not 0 < max_age_s < float("inf"):
+            raise ValueError("invalid maximum age")
+        bundle = json.loads(path.read_text())
+        validate_bundle(bundle)
+        if bundle["previous"] is None:
+            raise ValueError("previous snapshot unavailable")
+        previous, current = bundle["previous"], bundle["current"]
+        old_ts, old = _capability_report(previous, now, 2 * max_age_s)
+        new_ts, new = _capability_report(current, now, max_age_s)
+        if new_ts - old_ts > max_age_s:
+            raise ValueError("previous snapshot interval exceeds maximum age")
+        if old.keys() != new.keys():
+            raise ValueError("incomparable report inventories")
+    except (OSError, ValueError, KeyError, TypeError, AttributeError) as exc:
+        return "unknown", [], f"capability snapshots {path}: {exc}"
+    findings = []
+    for key, row in new.items():
+        before, target = old[key], row["class"]
+        a, b = before["evidence"], row["evidence"]
+        structural_loss = (a["discoverable"] and not b["discoverable"]) or (a["wired"] and not b["wired"])
+        regression = before["class"] != target and (
+            (target == "BROKEN" and before["class"] in ("ACTIVE", "UNUSED-AVAILABLE")) or
+            (target == "UNDISCOVERABLE" and a["discoverable"] and not b["discoverable"]) or
+            (target in ("DEAD-CANDIDATE", "STALE-CLAIM") and structural_loss))
+        if regression:
+            findings.append(dict(subject=f"capability:{key}:{target}", producer="capability-audit",
+                path=key, authority="capability-audit/1", os_error=f"capability regression: {target}",
+                severity="medium", root_fix=f"inspect capability {key} producer and evidence in {path}; restore and audit"))
+
+    def cleared(inc):
+        if inc.get("producer") != "capability-audit" or inc.get("authority") != "capability-audit/1":
+            return None
+        row = new.get(inc.get("path"))
+        if row is None:
+            return None
+        ev = row["evidence"]
+        target = inc.get("error", "").removeprefix("capability regression: ")
+        if row["class"] not in ("ACTIVE", "UNUSED-AVAILABLE") or ev.get("broken") or ev["stale"] or ev["dead"]:
+            return None
+        recovered = ((target == "BROKEN" and isinstance(ev.get("unit"), dict) and bool(ev["unit"]) and
+                      all(isinstance(unit, dict) and unit.get("active") == "active" and unit.get("result") == "success"
+                          for unit in ev["unit"].values())) or
+                     (target == "UNDISCOVERABLE" and ev["discoverable"]) or
+                     (target == "DEAD-CANDIDATE" and (ev["wired"] or ev["discoverable"])) or
+                     (target == "STALE-CLAIM" and ev["used"] and _parse_iso(ev["last_seen"]) > old_ts and
+                      (ev["wired"] or ev["discoverable"])))
+        return f"capability {inc['path']} recovered with positive {target} evidence at {current['generated_at']} in {path}" if recovered else None
+    return ("findings" if findings else "ok"), _with_cleared(findings, cleared), f"{len(new)} compared; {len(findings)} regressions; snapshots {path}"
+
+
 def _unit_key(name: str) -> str:
     # Instance suffixes/hashes vary per run; identity is the unit template.
     return re.sub(r"@.*(?=\.)", "@*", name)
@@ -529,6 +597,7 @@ def run(dry_run=False, as_json=False, adapters=None) -> int:
     import rsi_lifecycle
     adapters = adapters or {
         "failed-units": adapter_failed_units, "code-scanning": adapter_code_scanning,
+        "capability-audit": adapter_capability_audit,
         "aq-qa-phase0": adapter_qa_phase0, "payload-audit": adapter_payload_audit,
         "delegation-outcomes": adapter_delegation_outcomes, "service-error-rate": adapter_service_error_rate}
     report = {}

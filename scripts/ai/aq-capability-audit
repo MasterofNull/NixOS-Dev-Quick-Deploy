@@ -4,7 +4,7 @@
 Classifies every capability (catalog, scripts/ai, skills, MCP tools, systemd
 units) as ACTIVE / UNUSED-AVAILABLE / UNDISCOVERABLE / STALE-CLAIM /
 DEAD-CANDIDATE / BROKEN with an advisory next_action.  No LLM, no writes
-(except an explicit --out file), never archives anything.
+(except explicit --out/--snapshot files), never archives anything.
 """
 try:  # aq-usage-hook
     import importlib.util as _aqu, os as _aqo
@@ -20,11 +20,13 @@ from pathlib import Path
 HERE = Path(__file__).resolve().parent
 sys.path.insert(0, str(HERE / "lib"))
 import capability_audit as ca  # noqa: E402
+from capability_snapshots import SNAPSHOT_PATH, write_snapshot  # noqa: E402
 
 
 def main() -> int:
     ap = argparse.ArgumentParser(description=__doc__.splitlines()[0])
     ap.add_argument("--json", action="store_true", help="emit JSON instead of the human summary")
+    ap.add_argument("--snapshot", action="store_true", help="atomically rotate previous/current audit snapshots under the live root")
     ap.add_argument("--out", help="also write the JSON report to this path")
     ap.add_argument("--days", type=int, default=30, help="usage window in days (default 30)")
     ap.add_argument("--repo-root", default=str(HERE.parent.parent), help="tree to scan statically")
@@ -42,6 +44,8 @@ def main() -> int:
         delegation_dir=Path(a.delegation_dir) if a.delegation_dir else None,
         use_systemd=not a.no_systemd, use_journal=not a.no_journal,
     )
+    if a.snapshot:
+        write_snapshot((Path(a.live_root) if a.live_root else Path(a.repo_root)) / SNAPSHOT_PATH, rep)
     if a.out:
         Path(a.out).parent.mkdir(parents=True, exist_ok=True)
         Path(a.out).write_text(json.dumps(rep, indent=1) + "\n")

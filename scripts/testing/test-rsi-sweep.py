@@ -556,5 +556,146 @@ class DelegationServiceTests(unittest.TestCase):
         self.assertEqual(sw.adapter_service_error_rate(lambda u: _proc("", 1), units=["u1"])[0], "unknown")
 
 
+
+class CapabilityAuditTests(unittest.TestCase):
+    def setUp(self):
+        self.tmp = tempfile.TemporaryDirectory()
+        self.addCleanup(self.tmp.cleanup)
+        self.root = Path(self.tmp.name)
+        self.path = self.root / "snapshots.json"
+        self.now = time.time()
+
+    def row(self, category="ACTIVE", **changes):
+        evidence = dict(discoverable=True, discovered_in=["catalog"], discovered_in_count=1,
+                        used=True, use_count=1, last_seen=sw._iso(self.now - 100), use_sources=["usage"],
+                        wired=True, wired_by=["caller"], wired_by_count=1,
+                        tested=True, tested_by_count=1, stale=False, dead=False)
+        evidence.update(changes)
+        return dict(key="sample", name="sample", kinds=["tool"], paths=["sample.py"],
+                    **{"class": category}, evidence=evidence)
+
+    def report(self, row, age):
+        return dict(schema="capability-audit/1", generated_at=sw._iso(self.now - age),
+                    repo_root="/repo", live_root="/live", window_days=30,
+                    totals=dict(capabilities=1, by_class={c: int(c == row["class"]) for c in ("ACTIVE", "UNUSED-AVAILABLE", "BROKEN", "UNDISCOVERABLE", "DEAD-CANDIDATE", "STALE-CLAIM")}, by_kind={"tool": 1}),
+                    usage_sources=[], capabilities=[row])
+
+    def write(self, old, new, age=10):
+        self.path.write_text(json.dumps(dict(schema="capability-audit-snapshots/1",
+                            previous=self.report(old, age + 10), current=self.report(new, age))))
+
+    def adapter(self):
+        return sw.adapter_capability_audit(self.path, now=self.now)
+
+    def test_explicit_transitions_and_aging(self):
+        changes = {
+            "BROKEN": dict(broken="syntax invalid"),
+            "UNDISCOVERABLE": dict(discoverable=False, discovered_in=[], discovered_in_count=0),
+            "DEAD-CANDIDATE": dict(discoverable=False, discovered_in=[], discovered_in_count=0,
+                wired=False, wired_by=[], wired_by_count=0, used=False, use_count=0,
+                last_seen=None, use_sources=[], dead=True),
+            "STALE-CLAIM": dict(discoverable=False, discovered_in=[], discovered_in_count=0, stale=True),
+        }
+        for category, evidence in changes.items():
+            with self.subTest(category=category):
+                self.write(self.row(), self.row(category, **evidence))
+                state, findings, _ = self.adapter()
+                self.assertEqual(state, "findings")
+                self.assertEqual(findings[0]["os_error"], "capability regression: " + category)
+                self.write(self.row(category, **evidence), self.row(category, **evidence))
+                state, findings, _ = self.adapter()
+                self.assertEqual((state, len(findings)), ("ok", 0))
+                self.assertIsNone(findings.cleared(dict(producer="capability-audit", authority="capability-audit/1",
+                    path="sample", error="capability regression: " + category)))
+        self.write(self.row(), self.row("STALE-CLAIM", stale=True, used=False,
+                   use_count=0, last_seen=None, use_sources=[]))
+        self.assertEqual(self.adapter()[0:2], ("ok", []))
+        self.write(self.row(), self.row("UNUSED-AVAILABLE", used=False, use_count=0,
+                   last_seen=None, use_sources=[]))
+        self.assertEqual(self.adapter()[0:2], ("ok", []))
+
+    def test_daily_baseline_remains_comparable_until_current_expires(self):
+        old, new = self.row(), self.row("BROKEN", broken="unit failed")
+        for row in (old, new):
+            row["evidence"]["last_seen"] = sw._iso(self.now - 41 * 3600)
+        self.path.write_text(json.dumps({"schema": "capability-audit-snapshots/1",
+            "previous": self.report(old, 36 * 3600), "current": self.report(new, 12 * 3600)}))
+        self.assertEqual(self.adapter()[0], "findings")
+        self.path.write_text(json.dumps({"schema": "capability-audit-snapshots/1",
+            "previous": self.report(old, 40 * 3600), "current": self.report(new, 12 * 3600)}))
+        self.assertEqual(self.adapter()[0], "unknown")
+
+    def test_unknown_sources_never_clear(self):
+        self.assertEqual(self.adapter()[0], "unknown")
+        self.path.write_text("not json")
+        self.assertEqual(self.adapter()[0], "unknown")
+        mutations = [
+            lambda b: b.update(previous=None),
+            lambda b: b["current"].update(schema="wrong"),
+            lambda b: b["current"].update(generated_at="2020-01-01T00:00:00Z"),
+            lambda b: b["current"].update(generated_at="2026-10-09T00:00:00"),
+            lambda b: b["current"].update(generated_at=sw._iso(self.now + 100)),
+            lambda b: b["current"].update(repo_root="/other"),
+            lambda b: b["current"].update(live_root="/other"),
+            lambda b: b["current"].update(window_days=7),
+            lambda b: b["current"]["capabilities"].append(b["current"]["capabilities"][0]),
+            lambda b: b["current"]["capabilities"][0].update(key="different"),
+            lambda b: b["current"]["capabilities"][0]["evidence"].pop("wired"),
+            lambda b: b["current"]["capabilities"][0]["evidence"].update(use_count="1"),
+            lambda b: b["current"].update(generated_at=b["previous"]["generated_at"]),
+        ]
+        for mutate in mutations:
+            self.write(self.row(), self.row())
+            bundle = json.loads(self.path.read_text()); mutate(bundle)
+            self.path.write_text(json.dumps(bundle))
+            state, findings, _ = self.adapter()
+            self.assertEqual((state, findings), ("unknown", []))
+            self.assertIsNone(getattr(findings, "cleared", None))
+
+    def test_real_sweep_cli_records_and_dedupes_isolated_incident(self):
+        import subprocess
+        self.write(self.row(), self.row("BROKEN", broken="synthetic syntax failure"))
+        env = dict(os.environ, RSI_RUNTIME_DIR=str(self.root), RSI_BACKLOG_FILE=str(self.root / "cli-backlog.md"),
+                   RSI_WORKAROUNDS_FILE=str(self.root / "cli-workarounds.md"),
+                   RSI_SWEEP_CAPABILITY_SNAPSHOTS=str(self.path), A2A_EVENT_LOG=str(self.root / "events.jsonl"))
+        ids = []
+        for _ in range(2):
+            result = subprocess.run([sys.executable, str(ROOT / "scripts/ai/aq-rsi"), "sweep", "--json"],
+                                    env=env, capture_output=True, text=True, timeout=90)
+            self.assertEqual(result.returncode, 0, result.stderr)
+            report = json.loads(result.stdout)
+            source = report["sources"]["capability-audit"]
+            self.assertEqual(source["state"], "findings")
+            ledger = json.loads((self.root / "rsi-incidents.json").read_text())["incidents"]
+            ids.append([key for key, value in ledger.items() if value["producer"] == "capability-audit"])
+        self.assertEqual(ids[0], ids[1])
+        ledger = json.loads((self.root / "rsi-incidents.json").read_text())["incidents"]
+        incidents = [i for i in ledger.values() if i["producer"] == "capability-audit"]
+        self.assertEqual(len(incidents), 1)
+        self.assertEqual(incidents[0]["status"], "open")
+
+    def test_lifecycle_dedupe_rotation_and_positive_recovery(self):
+        for name, value in {"_RUNTIME": self.root, "_BACKLOG": self.root / "b.md", "_WORKAROUNDS": self.root / "w.md"}.items():
+            patcher = patch.object(rsi, name, value); patcher.start(); self.addCleanup(patcher.stop)
+        patcher = patch.object(rsi, "_event"); patcher.start(); self.addCleanup(patcher.stop)
+        def sweep():
+            with patch("builtins.print"):
+                self.assertEqual(sw.run(as_json=True, adapters={"capability-audit": self.adapter}), 0)
+            return json.loads((self.root / "rsi-incidents.json").read_text())["incidents"]
+        broken = self.row("BROKEN", broken="syntax invalid")
+        self.write(self.row(), broken)
+        first = sweep(); second = sweep()
+        self.assertEqual(len(second), 1)
+        self.assertEqual(set(first), set(second))
+        self.write(broken, broken, age=1)
+        self.assertEqual(next(iter(sweep().values()))["status"], "open")
+        self.path.write_text("invalid")
+        self.assertEqual(next(iter(sweep().values()))["status"], "open")
+        self.write(broken, self.row(tested=False, tested_by_count=0))
+        self.assertEqual(next(iter(sweep().values()))["status"], "open")
+        self.write(broken, self.row(unit={"sample.service": {"active": "active", "result": "success"}}))
+        self.assertEqual(next(iter(sweep().values()))["status"], "resolved")
+
+
 if __name__ == "__main__":
     unittest.main()

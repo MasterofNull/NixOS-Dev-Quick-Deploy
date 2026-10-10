@@ -2534,6 +2534,34 @@ in {
         timerConfig = {OnBootSec = "10min"; OnUnitActiveSec = "15min"; Persistent = true;};
       };
 
+      systemd.services.ai-capability-audit = {
+        description = "Daily deterministic capability integration snapshots";
+        after = ["ai-hybrid-coordinator.service"];
+        path = [pkgs.git pkgs.systemd "/run/current-system/sw"];
+        serviceConfig = {
+          Type = "oneshot";
+          User = cfg.primaryUser;
+          WorkingDirectory = cfg.mcpServers.repoPath;
+          ExecStart = "/run/current-system/sw/bin/python3 ${cfg.mcpServers.repoPath}/scripts/ai/aq-capability-audit --snapshot --json --repo-root ${cfg.mcpServers.repoPath} --no-journal";
+          TimeoutSec = "900";
+          StandardOutput = "journal";
+          StandardError = "journal";
+          NoNewPrivileges = true;
+          ProtectSystem = "strict";
+          ProtectHome = "read-only";
+          PrivateTmp = true;
+          MemoryMax = "512M";
+          CPUQuota = "25%";
+          ReadWritePaths = ["${cfg.mcpServers.repoPath}/.agent/collaboration"];
+        };
+      };
+
+      systemd.timers.ai-capability-audit = {
+        description = "Daily capability integration audit";
+        wantedBy = ["timers.target"];
+        timerConfig = {OnCalendar = "daily"; Persistent = true;};
+      };
+
       systemd.timers.ai-prsi-rsi-dispatch = {
         description = "Periodic bounded PRSI incident queue sweep";
         wantedBy = ["timers.target"];

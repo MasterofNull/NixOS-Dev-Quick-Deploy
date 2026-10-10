@@ -641,3 +641,7 @@ Left OFF (not activated):
 Status: configuration preparation; activation deferred to the owner's next rebuild. Codex Home Manager producer and local jail tool environment are the integration points. Not yet enabled/live-validated in a rebuilt system. Observability: focused config/jail regressions and post-rebuild CLI probes; no new service/dashboard surface. Intervention: declarative sandbox policy and scoped tool mounts; sudo remains owner-approved. PM: `.agent/PROJECT-SANDBOX-TOOL-ACCESS-PRD.md`; no release/readiness claim. Next gate: rebuild, new client session, jailed tool/version and workspace/network probes under each lane's own policy. Existing managed client policy remains authoritative.
 
 2026-10-09 sandbox runtime evidence: installed nsjail3.6 executes corrected source argv, Git2.54.0, temporary writes and read-only repository boundary pass (exit0). New service environment and Codex defaults remain deferred to next rebuild/new session; optional fallback is an existing limit.
+
+## CI3 capability audit timer + RSI feed — 2026-10-09 deferral
+
+Evidence: `docs/harness-first/evidence/2026-10-09-capability-audit-rsi.md`. Declarative timer activation is deferred to the next rebuild. Live enabled timer, periodic snapshot generation, QA/dashboard integration, and real RSI regression ingestion must be attested after activation; focused tests do not establish live readiness. No security or containment activation is authorized by this slice.
