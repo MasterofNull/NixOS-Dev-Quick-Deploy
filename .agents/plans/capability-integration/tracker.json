@@ -90,11 +90,12 @@
       "goal": "the audit runs periodically; worsening class transitions become RSI incidents",
       "validation_goal": "timer active; a synthetic regression is recorded by aq-rsi sweep",
       "deps": [],
-      "editorial_note": "MVP: enabled-for-testing is not done; acceptance is the owner's.",
+      "editorial_note": "MVP: enabled-for-testing is not done; acceptance is the owner's. Observability (2026-10-10): dashboard /prsi/actions capability_audit row + QA rsi.3 (report freshness) / rsi.4 (timer active), ported from Codex's parallel ci-3 onto #446's design. MVP: enabled-for-testing, not done.",
       "detection": {
         "commit_match": [
-          "capability-audit timer",
-          "capability audit rsi"
+          "capability audit observability",
+          "capability audit rsi",
+          "capability-audit timer"
         ]
       }
     },
