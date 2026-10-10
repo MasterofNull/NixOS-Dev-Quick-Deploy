@@ -23,9 +23,18 @@
 
     log "Starting NVD CVE sync..."
 
-    # Check if AIDB is available
-    if ! ${pkgs.curl}/bin/curl -sf "$AIDB_ENDPOINT/health" >/dev/null 2>&1; then
-      log "ERROR: AIDB not available at $AIDB_ENDPOINT"
+    # ai-aidb.service reaches "active" before its HTTP API answers (seen when a
+    # rebuild restarts AIDB as the timer fires), so wait for /health, bounded.
+    ready=0
+    for _ in $(${pkgs.coreutils}/bin/seq 1 36); do
+      if ${pkgs.curl}/bin/curl -sf "$AIDB_ENDPOINT/health" >/dev/null 2>&1; then
+        ready=1
+        break
+      fi
+      ${pkgs.coreutils}/bin/sleep 5
+    done
+    if [ "$ready" -ne 1 ]; then
+      log "ERROR: AIDB not available at $AIDB_ENDPOINT after 180s"
       exit 1
     fi
 
