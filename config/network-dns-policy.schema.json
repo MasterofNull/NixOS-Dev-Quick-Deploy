@@ -12,7 +12,9 @@
     { "$ref": "#/$defs/policyInput" },
     { "$ref": "#/$defs/policyEligibility" },
     { "$ref": "#/$defs/policyDecision" },
-    { "$ref": "#/$defs/policyHealth" }
+    { "$ref": "#/$defs/policyHealth" },
+    { "$ref": "#/$defs/policyTrust" },
+    { "$ref": "#/$defs/policyReceipt" }
   ],
   "$defs": {
     "policyInput": {
@@ -262,6 +264,94 @@
             "too_large",
             "malformed"
           ]
+        }
+      }
+    },
+    "policyTrust": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "schema_version",
+        "trusted_profile_uuids"
+      ],
+      "properties": {
+        "schema_version": {
+          "const": "network.dns-policy-trust.v1"
+        },
+        "trusted_profile_uuids": {
+          "type": "array",
+          "items": {
+            "type": "string",
+            "pattern": "^[0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{12}$"
+          },
+          "uniqueItems": true
+        }
+      }
+    },
+    "policyReceipt": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "schema_version",
+        "receipt_state",
+        "boot_id",
+        "interface",
+        "action",
+        "reason",
+        "lease_expiry_epoch_s",
+        "updated_epoch_s",
+        "revision"
+      ],
+      "properties": {
+        "schema_version": {
+          "const": "network.dns-policy-receipt.v1"
+        },
+        "receipt_state": {
+          "type": "string",
+          "enum": ["pending_apply", "active", "pending_revert", "inactive"]
+        },
+        "boot_id": {
+          "type": "string"
+        },
+        "interface": {
+          "type": "string",
+          "pattern": "^[A-Za-z0-9_.:-]{1,32}$"
+        },
+        "action": {
+          "type": "string",
+          "enum": [
+            "preserve_link_dns",
+            "apply_public_override",
+            "refresh_override",
+            "revert_override",
+            "legacy_override"
+          ]
+        },
+        "reason": {
+          "type": "string",
+          "enum": [
+            "trusted_full",
+            "untrusted_profile",
+            "portal",
+            "limited_or_site",
+            "split_dns",
+            "stale_evidence",
+            "unknown_state",
+            "non_wifi",
+            "legacy_mode"
+          ]
+        },
+        "lease_expiry_epoch_s": {
+          "type": "integer",
+          "minimum": 0
+        },
+        "updated_epoch_s": {
+          "type": "integer",
+          "minimum": 0
+        },
+        "revision": {
+          "type": "integer",
+          "minimum": 0
         }
       }
     }
