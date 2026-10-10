@@ -23,6 +23,16 @@
       "reason": "Nix-declared, option-gated unit (disabled by default or on this host only); enabled per host/profile; U3 unattended-update pipeline, default off, in suspend-resume-workloads.json"
     },
     {
+      "name": "aq-network-policy-emergency-revert",
+      "kind": "unit",
+      "reason": "Nix-declared, option-gated unit (disabled by default, enabled when mode=policy); Network Profile Interoperability N2 emergency revert service"
+    },
+    {
+      "name": "aq-network-policy-watchdog",
+      "kind": "unit",
+      "reason": "Nix-declared, option-gated unit (disabled by default, enabled when mode=policy); Network Profile Interoperability N2 watchdog service and timer"
+    },
+    {
       "name": "audit-rules-nixos",
       "kind": "unit",
       "reason": "Nix-declared in core/logging.nix (SuccessExitStatus override of upstream audit-rules unit); not an own unit"
