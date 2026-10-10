@@ -8944,3 +8944,32 @@ async def get_tool_performance() -> Dict[str, Any]:
         return {"available": True, "tools": rows, "generated_at": result.get("generated_at")}
     except Exception as exc:
         return {"available": False, "error": str(exc)}
+
+
+@router.get("/network-policy")
+async def get_network_policy_status() -> Dict[str, Any]:
+    """Read-only sanitized projection of network DNS policy health.
+
+    Adheres to Network Profile Interoperability N1 contract:
+    - Never independently interrogates NetworkManager or systemd-resolved.
+    - Reads sole health projection from /run/aq-network-policy/health.json.
+    - Sanitizes telemetry to guarantee zero leakage of SSIDs, UUIDs, IPs, or domains.
+    - Falls back safe to closed 'unavailable' schema.
+    """
+    try:
+        from scripts.ai.lib.network_dns_policy import read_health, sanitize_telemetry
+        data = read_health()
+        return sanitize_telemetry(data)
+    except Exception as exc:
+        logger.warning("network-policy health read failed: %s", exc)
+        return {
+            "schema_version": "network.dns-policy-health.v1",
+            "policy_state": "unavailable",
+            "connectivity": "unknown",
+            "reason": "unknown_state",
+            "freshness": "unknown",
+            "lease": "unknown",
+            "last_transition_age": "unknown",
+            "transition_count_bucket": "unknown",
+            "acquisition_error": "none",
+        }

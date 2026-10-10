@@ -882,3 +882,347 @@ def sanitize_telemetry(payload: Any) -> Any:
     else:
         # Numbers, booleans, None
         return payload
+
+
+# ==============================================================================
+# N1 Bounded Acquisition Adapter & Durable Health Projection
+# ==============================================================================
+
+RE_IFACE_TOKEN: re.Pattern = re.compile(r"^[A-Za-z0-9_.:-]{1,32}$")
+MAX_COMMAND_OUTPUT_BYTES: int = 16 * 1024  # 16 KiB ceiling
+COMMAND_TIMEOUT_S: float = 2.0
+
+HEALTH_FILE_DEFAULT: Path = Path("/run/aq-network-policy/health.json")
+HEALTH_LOCK_DEFAULT: Path = Path("/run/lock/aq-network-policy/health.lock")
+TRUSTED_PROFILES_DEFAULT: Path = Path("/var/lib/aq-network-policy/private/trusted-profiles.json")
+
+
+def is_valid_interface(iface: Any) -> bool:
+    """Validate interface token matching ^[A-Za-z0-9_.:-]{1,32}$."""
+    if not isinstance(iface, str):
+        return False
+    return bool(RE_IFACE_TOKEN.match(iface))
+
+
+def is_wifi_interface(iface: str, sysfs_base: Optional[Path] = None) -> bool:
+    """Prove interface is Wi-Fi through local sysfs."""
+    if not is_valid_interface(iface):
+        return False
+    base = sysfs_base or Path("/sys/class/net")
+    iface_dir = base / iface
+    return (iface_dir / "wireless").is_dir() or (iface_dir / "phy80211").is_dir()
+
+
+def _run_bounded_command(
+    argv: List[str],
+    env: Optional[Dict[str, str]] = None,
+) -> Tuple[Optional[str], AcquisitionError]:
+    """Execute fixed allowlisted argv with 2s timeout and 16KiB output ceiling.
+
+    Zero shell, zero stderr/raw output exposure, closed errors.
+    """
+    import subprocess
+
+    clean_env = env or {
+        "LC_ALL": "C",
+        "LANG": "C",
+        "PATH": "/run/current-system/sw/bin:/usr/bin:/bin",
+    }
+    try:
+        proc = subprocess.run(
+            argv,
+            shell=False,
+            capture_output=True,
+            timeout=COMMAND_TIMEOUT_S,
+            env=clean_env,
+            check=False,
+        )
+    except FileNotFoundError:
+        return None, AcquisitionError.MISSING_COMMAND
+    except PermissionError:
+        return None, AcquisitionError.PERMISSION
+    except subprocess.TimeoutExpired:
+        return None, AcquisitionError.TIMEOUT
+    except Exception:
+        return None, AcquisitionError.MALFORMED
+
+    combined_len = len(proc.stdout) + len(proc.stderr)
+    if combined_len > MAX_COMMAND_OUTPUT_BYTES:
+        return None, AcquisitionError.TOO_LARGE
+
+    if proc.returncode != 0:
+        return None, AcquisitionError.NONZERO
+
+    try:
+        out_str = proc.stdout.decode("utf-8", errors="replace").strip()
+        return out_str, AcquisitionError.NONE
+    except Exception:
+        return None, AcquisitionError.MALFORMED
+
+
+def acquire_facts(
+    iface: str,
+    sysfs_base: Optional[Path] = None,
+    cmd_runner: Optional[Any] = None,
+    trusted_profiles_path: Optional[Path] = None,
+) -> Tuple[Dict[str, Any], AcquisitionError]:
+    """Acquire N0 input facts using bounded inspection allowlist only.
+
+    Command allowlist:
+      ["nmcli", "--terse", "--fields", "CONNECTIVITY", "general"]
+      ["nmcli", "--get-values", "GENERAL.CON-UUID", "device", "show", IFACE]
+      ["resolvectl", "domain", IFACE]
+    """
+    runner = cmd_runner or _run_bounded_command
+
+    if not is_valid_interface(iface):
+        fallback = {
+            "connection_class": ConnectionClass.UNKNOWN.value,
+            "connectivity": Connectivity.UNKNOWN.value,
+            "dns_topology": DnsTopology.UNKNOWN.value,
+            "evidence_age_bucket": EvidenceAgeBucket.UNKNOWN.value,
+            "link_kind": LinkKind.OTHER.value,
+        }
+        return fallback, AcquisitionError.UNSAFE_INTERFACE
+
+    # 1. Sysfs Wi-Fi verification
+    is_wifi = is_wifi_interface(iface, sysfs_base)
+    link_kind = LinkKind.WIFI.value if is_wifi else LinkKind.OTHER.value
+
+    # 2. NetworkManager connectivity
+    out_conn, err_conn = runner(["nmcli", "--terse", "--fields", "CONNECTIVITY", "general"])
+    acq_err = AcquisitionError.NONE
+    if err_conn != AcquisitionError.NONE:
+        connectivity = Connectivity.UNKNOWN.value
+        acq_err = err_conn
+    else:
+        norm_conn = (out_conn or "").lower().strip()
+        if norm_conn in _CONNECTIVITIES:
+            connectivity = norm_conn
+        else:
+            connectivity = Connectivity.UNKNOWN.value
+            acq_err = AcquisitionError.MALFORMED
+
+    # 3. Connection Class (trust lookup) — UUID is consumed purely in-memory
+    con_uuid_out, _ = runner(["nmcli", "--get-values", "GENERAL.CON-UUID", "device", "show", iface])
+    connection_class = ConnectionClass.UNTRUSTED.value
+    tpath = trusted_profiles_path or TRUSTED_PROFILES_DEFAULT
+    if con_uuid_out and tpath.exists() and tpath.is_file():
+        try:
+            with open(tpath, "r", encoding="utf-8") as f:
+                tdata = json.load(f)
+            allowed_uuids = set(tdata.get("trusted_profile_uuids", []))
+            if con_uuid_out.strip() in allowed_uuids:
+                connection_class = ConnectionClass.TRUSTED_FULL.value
+        except Exception:
+            connection_class = ConnectionClass.UNKNOWN.value
+
+    # 4. DNS Topology (read-only query)
+    out_dom, err_dom = runner(["resolvectl", "domain", iface])
+    if err_dom != AcquisitionError.NONE:
+        dns_topology = DnsTopology.UNKNOWN.value
+        if acq_err == AcquisitionError.NONE:
+            acq_err = err_dom
+    else:
+        dom_text = out_dom or ""
+        if "~" in dom_text:
+            dns_topology = DnsTopology.SPLIT.value
+        else:
+            dns_topology = DnsTopology.ORDINARY.value
+
+    facts = {
+        "connection_class": connection_class,
+        "connectivity": connectivity,
+        "dns_topology": dns_topology,
+        "evidence_age_bucket": EvidenceAgeBucket.FRESH.value,
+        "link_kind": link_kind,
+    }
+
+    ok, _ = validate_input(facts)
+    if not ok:
+        fallback = {
+            "connection_class": ConnectionClass.UNKNOWN.value,
+            "connectivity": Connectivity.UNKNOWN.value,
+            "dns_topology": DnsTopology.UNKNOWN.value,
+            "evidence_age_bucket": EvidenceAgeBucket.UNKNOWN.value,
+            "link_kind": LinkKind.OTHER.value,
+        }
+        return fallback, AcquisitionError.MALFORMED
+
+    return facts, acq_err
+
+
+def derive_health_record(
+    facts: Dict[str, Any],
+    acq_error: AcquisitionError = AcquisitionError.NONE,
+) -> Dict[str, Any]:
+    """Derive versioned network.dns-policy-health.v1 projection from input facts."""
+    if acq_error in (AcquisitionError.UNSAFE_INTERFACE, AcquisitionError.MISSING_COMMAND):
+        policy_state = PolicyState.UNAVAILABLE.value
+    elif acq_error != AcquisitionError.NONE:
+        policy_state = PolicyState.DEGRADED.value
+    elif facts.get("connectivity") == Connectivity.UNKNOWN.value:
+        policy_state = PolicyState.UNAVAILABLE.value
+    else:
+        # In passive N1 observation, DHCP/link DNS is preserved
+        policy_state = PolicyState.PRESERVING.value
+
+    elig_res = resolve_eligibility(facts)
+    reason = elig_res.get("reason", Reason.UNKNOWN_STATE.value)
+
+    record = {
+        "schema_version": SCHEMA_HEALTH,
+        "policy_state": policy_state,
+        "connectivity": facts.get("connectivity", Connectivity.UNKNOWN.value),
+        "reason": reason,
+        "freshness": facts.get("evidence_age_bucket", EvidenceAgeBucket.FRESH.value),
+        "lease": LeaseState.NOT_APPLICABLE.value,
+        "last_transition_age": LastTransitionAge.LT_30S.value,
+        "transition_count_bucket": TransitionCountBucket.ONE.value,
+        "acquisition_error": acq_error.value,
+    }
+    return record
+
+
+def fallback_unavailable_health(acq_err: AcquisitionError = AcquisitionError.NONE) -> Dict[str, Any]:
+    """Return closed schema-conforming unavailable health object."""
+    return {
+        "schema_version": SCHEMA_HEALTH,
+        "policy_state": PolicyState.UNAVAILABLE.value,
+        "connectivity": Connectivity.UNKNOWN.value,
+        "reason": Reason.UNKNOWN_STATE.value,
+        "freshness": EvidenceAgeBucket.UNKNOWN.value,
+        "lease": LeaseState.UNKNOWN.value,
+        "last_transition_age": LastTransitionAge.UNKNOWN.value,
+        "transition_count_bucket": TransitionCountBucket.UNKNOWN.value,
+        "acquisition_error": acq_err.value,
+    }
+
+
+def publish_health(
+    health_data: Dict[str, Any],
+    health_path: Optional[Path] = None,
+    lock_path: Optional[Path] = None,
+) -> bool:
+    """Durable atomic health projection writer.
+
+    Adheres to PRD Section 4.5/5 contract:
+      - Closed schema validation before write
+      - Stable lock (0600)
+      - Root-owned 0700 dir (if privileged)
+      - Temporary regular file in same directory (0600)
+      - File fsync, atomic rename, and directory fsync
+    """
+    import fcntl
+    import os
+
+    ok, _ = validate_health(health_data)
+    if not ok:
+        return False
+
+    target_health = health_path or HEALTH_FILE_DEFAULT
+    target_lock = lock_path or HEALTH_LOCK_DEFAULT
+
+    try:
+        target_health.parent.mkdir(mode=0o700, parents=True, exist_ok=True)
+        target_lock.parent.mkdir(mode=0o700, parents=True, exist_ok=True)
+    except OSError:
+        return False
+
+    lock_fd = -1
+    temp_path = None
+    temp_fd = -1
+    try:
+        lock_fd = os.open(str(target_lock), os.O_RDWR | os.O_CREAT, 0o600)
+        fcntl.flock(lock_fd, fcntl.LOCK_EX)
+
+        temp_path = target_health.parent / f"{target_health.name}.tmp.{os.getpid()}"
+        temp_fd = os.open(str(temp_path), os.O_WRONLY | os.O_CREAT | os.O_TRUNC, 0o600)
+        payload = json.dumps(health_data, indent=2, sort_keys=True) + "\n"
+        os.write(temp_fd, payload.encode("utf-8"))
+        os.fsync(temp_fd)
+        os.close(temp_fd)
+        temp_fd = -1
+
+        os.replace(str(temp_path), str(target_health))
+        temp_path = None
+
+        try:
+            dir_fd = os.open(str(target_health.parent), os.O_RDONLY)
+            os.fsync(dir_fd)
+            os.close(dir_fd)
+        except OSError:
+            pass
+
+        return True
+    except Exception:
+        return False
+    finally:
+        if temp_fd != -1:
+            try:
+                os.close(temp_fd)
+            except OSError:
+                pass
+        if temp_path and temp_path.exists():
+            try:
+                temp_path.unlink()
+            except OSError:
+                pass
+        if lock_fd != -1:
+            try:
+                fcntl.flock(lock_fd, fcntl.LOCK_UN)
+                os.close(lock_fd)
+            except OSError:
+                pass
+
+
+def read_health(health_path: Optional[Path] = None) -> Dict[str, Any]:
+    """Read and validate the sole health projection at /run/aq-network-policy/health.json.
+
+    Readers never independently query NM or resolved.
+    Missing, invalid, or unreadable files fail safe as 'unavailable'.
+    """
+    target = health_path or HEALTH_FILE_DEFAULT
+    if not target.exists() or not target.is_file():
+        return fallback_unavailable_health(AcquisitionError.NONE)
+
+    try:
+        with open(target, "r", encoding="utf-8") as f:
+            data = json.load(f)
+        ok, _ = validate_health(data)
+        if not ok:
+            return fallback_unavailable_health(AcquisitionError.MALFORMED)
+        return sanitize_telemetry(data)
+    except Exception:
+        return fallback_unavailable_health(AcquisitionError.MALFORMED)
+
+
+def acquire_and_publish_health(
+    iface: Optional[str] = None,
+    health_path: Optional[Path] = None,
+    lock_path: Optional[Path] = None,
+    sysfs_base: Optional[Path] = None,
+    cmd_runner: Optional[Any] = None,
+    trusted_profiles_path: Optional[Path] = None,
+) -> Tuple[bool, Dict[str, Any]]:
+    """Bounded observation transaction: inspects facts, derives health, publishes projection."""
+    chosen_iface = iface
+    if not chosen_iface:
+        base = sysfs_base or Path("/sys/class/net")
+        if base.exists():
+            for p in sorted(base.iterdir()):
+                if (p / "wireless").is_dir() or (p / "phy80211").is_dir():
+                    chosen_iface = p.name
+                    break
+    if not chosen_iface:
+        chosen_iface = "wlan0"
+
+    facts, acq_err = acquire_facts(
+        chosen_iface,
+        sysfs_base=sysfs_base,
+        cmd_runner=cmd_runner,
+        trusted_profiles_path=trusted_profiles_path,
+    )
+    record = derive_health_record(facts, acq_err)
+    pub_ok = publish_health(record, health_path=health_path, lock_path=lock_path)
+    return pub_ok, record
