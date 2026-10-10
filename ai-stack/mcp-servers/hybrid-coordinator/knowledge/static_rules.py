@@ -381,6 +381,187 @@ STATIC_RULES: List[dict] = [
         ),
         "tags": ["tools", "discovery", "manifest"],
     },
+    # ── ci-7 batch 2: wire high-value unused capabilities (phrase keywords) ──
+    {
+        "id": "store_recall_facts_aq_memory",
+        "title": "Store or recall durable facts with aq-memory",
+        "keywords": ["store a fact", "recall a fact", "remember this", "save to memory", "memory search"],
+        "snippet": (
+            "To persist or look up durable facts use `scripts/ai/aq-memory add|search` (or the `recall_memory`/`store_memory` MCP tools) instead of ad-hoc notes files."
+        ),
+        "tags": ["memory"],
+    },
+    {
+        "id": "bootstrap_minimal_context",
+        "title": "Bootstrap minimal context for a task",
+        "keywords": ["bootstrap context", "minimal context", "start a task", "onboard to the task"],
+        "snippet": (
+            "Start a task with `scripts/ai/aq-context-bootstrap --task \"<task>\"` to get the minimal context cards and workflow entrypoints before reading raw files."
+        ),
+        "tags": ["context"],
+    },
+    {
+        "id": "monitor_context_window",
+        "title": "Monitor context window and checkpoint before it overflows",
+        "keywords": ["context window", "context usage", "context checkpoint", "running out of context", "token budget"],
+        "snippet": (
+            "Check window usage and checkpoint with `scripts/ai/aq-context-manage` (--task for a checkpoint summary) before compaction instead of letting context overflow."
+        ),
+        "tags": ["context", "compaction"],
+    },
+    {
+        "id": "extract_commit_facts",
+        "title": "Extract semantic facts from recent commits",
+        "keywords": ["commit facts", "facts from commits", "summarize recent commits", "index recent commits"],
+        "snippet": (
+            "Use `scripts/ai/aq-commit-facts --dry-run [--since SHA]` to extract semantic facts from recent commits into memory (local model; dry-run first)."
+        ),
+        "tags": ["memory", "git"],
+    },
+    {
+        "id": "sample_service_health",
+        "title": "Sample real service health with aq-health-spider",
+        "keywords": ["health spider", "service health", "services are down", "sample health", "health sampling"],
+        "snippet": (
+            "Run `scripts/ai/aq-health-spider --once` for one real health-sampling and autonomous-fix cycle rather than hand-probing each service."
+        ),
+        "tags": ["health"],
+    },
+    {
+        "id": "turn_feedback_into_loop",
+        "title": "Turn agent feedback into a bounded harness loop",
+        "keywords": ["agent feedback", "feedback loop", "turn feedback into", "friction report"],
+        "snippet": (
+            "Feed agent feedback into the harness with `scripts/ai/aq-feedback-loop --task \"<objective>\" [--feedback-file F]` so it becomes a bounded PRD/plan recommendation."
+        ),
+        "tags": ["feedback", "loop"],
+    },
+    {
+        "id": "diagnose_runtime_service",
+        "title": "Diagnose a failing service/package/runtime",
+        "keywords": ["service is failing", "runtime diagnosis", "diagnose runtime", "package fails at runtime", "unit failed"],
+        "snippet": (
+            "Diagnose failing services/packages with `scripts/ai/aq-runtime-diagnose` (generic diagnosis loop) before hand-reading journals."
+        ),
+        "tags": ["runtime", "debug"],
+    },
+    {
+        "id": "plan_runtime_incident",
+        "title": "Plan a multi-step runtime incident response",
+        "keywords": ["runtime incident", "incident plan", "incident response", "runtime plan"],
+        "snippet": (
+            "For a multi-step runtime incident use `scripts/ai/aq-runtime-plan` (multi-preset incident planner), then `aq-runtime-act` to execute guarded steps."
+        ),
+        "tags": ["runtime", "incident"],
+    },
+    {
+        "id": "list_pending_rsi_repairs",
+        "title": "List RSI repairs awaiting owner sign-off",
+        "keywords": ["rsi pending", "pending repairs", "awaiting sign off", "owner sign off", "pending approval"],
+        "snippet": (
+            "List high-risk RSI repairs awaiting owner sign-off with `scripts/ai/aq-rsi-pending [--count|--json]`; never self-approve."
+        ),
+        "tags": ["rsi", "approval"],
+    },
+    {
+        "id": "open_collab_round",
+        "title": "Fan a task out to all agents with aq-collab-round",
+        "keywords": ["collab round", "collaborative round", "fan out to all agents", "fan out the task", "consensus round"],
+        "snippet": (
+            "For a flat-collaborative round use `scripts/ai/aq-collab-round open --round <id> --task \"<task>\"` to fan the task out to all available agents and gather consensus."
+        ),
+        "tags": ["collaboration", "consensus"],
+    },
+    {
+        "id": "submit_workflow_deviation",
+        "title": "Record a workflow deviation receipt",
+        "keywords": ["workflow deviation", "deviation receipt", "deviated from the plan", "skipped a workflow step"],
+        "snippet": (
+            "Record a closed deviation with `scripts/ai/aq-workflow-deviation submit --record-file F` (check `health` first) instead of leaving it undocumented."
+        ),
+        "tags": ["workflow", "audit"],
+    },
+    {
+        "id": "analyze_recurring_patterns",
+        "title": "Analyze recurring telemetry patterns",
+        "keywords": ["recurring patterns", "recurring failures", "repeated failures", "telemetry patterns"],
+        "snippet": (
+            "Surface recurring failure/usage patterns with `scripts/ai/aq-patterns` before fixing one-off symptoms."
+        ),
+        "tags": ["patterns", "telemetry"],
+    },
+    {
+        "id": "show_top_gap_queries",
+        "title": "Show most-repeated knowledge-gap queries",
+        "keywords": ["knowledge gaps", "gap queries", "repeated gap", "missing knowledge"],
+        "snippet": (
+            "See the most-repeated unanswered gap queries with `scripts/ai/aq-gaps [--days N]` and seed the missing knowledge into RAG."
+        ),
+        "tags": ["gaps", "rag"],
+    },
+    {
+        "id": "weekly_stack_report",
+        "title": "Weekly AI-stack performance digest",
+        "keywords": ["performance digest", "weekly report", "stack report", "stack performance"],
+        "snippet": (
+            "Get the stack performance digest with `scripts/ai/aq-report --since 7d` before drawing conclusions about retrieval, routing or latency."
+        ),
+        "tags": ["report", "metrics"],
+    },
+    {
+        "id": "query_wiki_section_first",
+        "title": "Query the codebase wiki section before raw files",
+        "keywords": ["codebase wiki", "wiki section", "subsystem overview", "architecture overview"],
+        "snippet": (
+            "Use `scripts/ai/aq-wiki --section <name>` for a subsystem overview before reading raw source files."
+        ),
+        "tags": ["wiki", "discovery"],
+    },
+    {
+        "id": "recommend_context_card",
+        "title": "Recommend a progressive-disclosure context card",
+        "keywords": ["context card", "context cards", "low token onboarding", "progressive disclosure card"],
+        "snippet": (
+            "Render a low-token onboarding card with `scripts/ai/aq-context-card --recommend \"<task>\" --level brief`."
+        ),
+        "tags": ["context", "onboarding"],
+    },
+    {
+        "id": "prewarm_local_rag",
+        "title": "Prewarm local RAG for known prompts",
+        "keywords": ["prewarm rag", "rag prewarm", "warm the cache", "cold start retrieval"],
+        "snippet": (
+            "Warm local RAG for known prompt ids or report candidates with `scripts/ai/aq-rag-prewarm` (bounded) to avoid cold-start retrieval latency."
+        ),
+        "tags": ["rag", "cache"],
+    },
+    {
+        "id": "index_logic_patterns",
+        "title": "Index cross-cutting logic patterns into AIDB",
+        "keywords": ["logic patterns", "index patterns", "cross cutting logic", "index code patterns"],
+        "snippet": (
+            "Index cross-cutting logic patterns into AIDB with `scripts/ai/aq-index-logic-patterns --dry-run` first, then without it."
+        ),
+        "tags": ["aidb", "patterns"],
+    },
+    {
+        "id": "operational_perspective_bundle",
+        "title": "Compact operational evidence bundle",
+        "keywords": ["operational perspective", "operational evidence", "introspect the stack", "what is the stack doing"],
+        "snippet": (
+            "Gather a compact evidence bundle with `scripts/ai/aq-operational-perspective --task \"<q>\"` (memory + preflight + aq-report) before answering questions about live stack state."
+        ),
+        "tags": ["introspection", "evidence"],
+    },
+    {
+        "id": "reject_alert_with_reason",
+        "title": "Reject an alert with a recorded reason",
+        "keywords": ["reject alert", "reject the alert", "dismiss alert", "false positive alert"],
+        "snippet": (
+            "Reject a bad alert or proposal with `scripts/ai/aq-reject <id> --reason \"...\"` so the rejection is recorded and learned from."
+        ),
+        "tags": ["alerts", "feedback"],
+    },
 ]
 
 # Backward-compat alias used by HintsEngine (which references _STATIC_RULES)
