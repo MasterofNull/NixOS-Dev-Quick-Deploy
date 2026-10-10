@@ -8,4 +8,18 @@ freshness_script="${repo_root}/scripts/ai/aq-ctx-freshness"
 [[ -x "$freshness_script" ]] || exit 0
 
 "$freshness_script" --ensure || true
+
+# Knowledge graph freshness: deterministic rebuild (no LLM, ~20s), detached so the merge
+# never waits, hard-capped at 180s, skipped when the graph is already current for HEAD.
+# Opt out with AQ_GRAPH_BUILD_HOOK=0. Failures are silent by design (re-run by hand:
+# scripts/ai/aq-graph-build). The graph is gitignored, so rebuilds never dirty the checkout.
+graph_build="${repo_root}/scripts/ai/aq-graph-build"
+if [[ "${AQ_GRAPH_BUILD_HOOK:-1}" != "0" && -x "$graph_build" ]]; then
+    if ! "$graph_build" --root "$repo_root" --check >/dev/null 2>&1; then
+        (
+            nice -n 10 timeout 180 "$graph_build" --root "$repo_root" >/dev/null 2>&1 || true
+        ) </dev/null >/dev/null 2>&1 &
+        disown 2>/dev/null || true
+    fi
+fi
 exit 0

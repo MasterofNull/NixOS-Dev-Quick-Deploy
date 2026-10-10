@@ -410,7 +410,7 @@
       "state": "partial",
       "maturity": "partial",
       "owner": "agent-runtime",
-      "summary": "Codebase graph generation, dashboard visualization, diff impact, and graph-backed explanations. PARTIAL: graph queries (aq-graph-query, MCP graph_query) and staleness reporting are live; the knowledge graph itself is stale (generated 2026-07-01) and regeneration is pending.",
+      "summary": "Codebase graph generation, dashboard visualization, diff impact, and graph-backed explanations. PARTIAL: the graph is now built deterministically (no LLM) by aq-graph-build from git ls-files (py/sh/nix/md, import/call/test/doc/systemd edges) and refreshed by the post-merge hook; graph queries (aq-graph-query, MCP graph_query) and staleness reporting are live. Maturity stays partial until graph_query use is observed in agent sessions.",
       "agent_access": [
         "codex",
         "claude",
@@ -421,8 +421,9 @@
         ".agent/skills/understand-anything/SKILL.md",
         "scripts/ai/aq-understand-anything",
         "scripts/ai/aq-graph-query",
-        "config/understand-anything.json",
-        ".understand-anything/knowledge-graph.json"
+        "scripts/ai/aq-graph-build",
+        "scripts/ai/lib/graph_build.py",
+        "config/understand-anything.json"
       ],
       "security": {
         "admission": "accepted-with-mitigations",
@@ -434,6 +435,8 @@
         "scripts/ai/aq-understand-anything status --check",
         "scripts/ai/aq-graph-query staleness --check",
         "python3 scripts/testing/test-graph-query.py",
+        "python3 scripts/testing/test-graph-build.py",
+        "scripts/ai/aq-graph-build --check",
         "scripts/ai/aq-understand-anything validate-batches"
       ],
       "parity_targets": [
