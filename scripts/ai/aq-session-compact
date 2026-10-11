@@ -213,7 +213,13 @@ def main(argv: Optional[List[str]] = None) -> int:
     parser.add_argument("--threshold-mb", type=threshold_value, default=2.5, help="Positive size threshold in MB (default: 2.5)")
     parser.add_argument("--dry-run", action="store_true", help="Compatibility option; all scans are read-only")
     parser.add_argument("--verify-rollout", type=Path, help="Verify native compaction from explicit rollout telemetry; output JSON")
-    parser.add_argument("--verify-usage", type=Path, help="Verify provider-neutral measured usage JSON (all models)")
+    parser.add_argument(
+        "--verify-usage",
+        nargs="?",
+        type=Path,
+        const=Path(".agent/collaboration/session-usage.json"),
+        help="Verify provider-neutral measured usage JSON (all models; default: .agent/collaboration/session-usage.json)",
+    )
     parser.add_argument("--token-limit", type=int, default=50000, help="Measured input ceiling (default: 50000)")
     args = parser.parse_args(argv)
     if args.token_limit <= 0:
