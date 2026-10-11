@@ -115,13 +115,20 @@ _VALID_ROLES = {
 _IDE_EDITING_ROLES = frozenset({"implement", "implementer", "rsi", "coordinator", "subagent"})
 
 
-_FINGERPRINT_EXCLUDE = frozenset({".agent/collaboration/PULSE.log", ".agent/memory/issues-backlog.md"})
+# Runtime/shared ledgers rewritten by services at any time; never count as implementer drift.
+_FINGERPRINT_EXCLUDE = frozenset({
+    ".agent/collaboration/PULSE.log",
+    ".agent/memory/issues-backlog.md",
+    ".agent/collaboration/rsi-incidents.json",
+    ".agent/collaboration/AGENT-CATCHUP-QUEUE.md",
+})
 _WT_LIB = _HERE / "lib" / "worktree-isolation.sh"
 
 _IMPLEMENTER_CONTRACT = """
 === IMPLEMENTER CONTRACT (worktree-bound lane) ===
 Workspace: {workspace}
 Branch: {branch}
+- FIRST, before editing: check whether the requested change already exists on origin/main (read the target files; `git log origin/main -- <files>`). If it does, write `ALREADY PRESENT: <evidence>` to the Output log and complete without changes.
 - Edit ONLY files under the Workspace path above. Never touch the main checkout.
 - Do not push, do not merge, do not run tier0. Committing on the task Branch is allowed.
 - Leave your changes in the worktree; the orchestrator reviews the handed-back patch.
@@ -136,11 +143,23 @@ def _sh(cmd: "list[str]", cwd: "Path | None" = None) -> "subprocess.CompletedPro
 
 
 def _main_fingerprint() -> str:
-    """HEAD sha + hash of tracked-state porcelain of the MAIN checkout (append-only logs excluded)."""
+    """HEAD sha + hash of the SET OF PATHS of modified tracked files in the MAIN checkout.
+
+    Constraint: runtime writers (ledgers rewritten by services) and orchestrator staging
+    (`M ` <-> ` M`) must not read as agent drift, so status codes are ignored and runtime
+    ledgers excluded. Known limitation: an agent editing a file that was ALREADY modified
+    before dispatch is not detected."""
     head = _sh(["git", "-C", str(_REPO), "rev-parse", "HEAD"]).stdout.strip()
     st = _sh(["git", "-C", str(_REPO), "status", "--porcelain", "--untracked-files=no"]).stdout
-    kept = [ln for ln in st.splitlines() if ln[3:].strip().strip('"') not in _FINGERPRINT_EXCLUDE]
-    return head + ":" + hashlib.sha256("\n".join(sorted(kept)).encode()).hexdigest()
+    paths = set()
+    for ln in st.splitlines():
+        p = ln[3:].strip()
+        if " -> " in p:
+            p = p.split(" -> ", 1)[1]
+        p = p.strip('"')
+        if p and p not in _FINGERPRINT_EXCLUDE:
+            paths.add(p)
+    return head + ":" + hashlib.sha256("\n".join(sorted(paths)).encode()).hexdigest()
 
 
 def _main_drift(recorded: str) -> str:
@@ -202,6 +221,12 @@ def _validate_implementer_completion(task_id: str) -> "tuple[bool, str]":
         dirty = _sh(["git", "-C", wt, "status", "--porcelain"]).stdout.strip()
         committed = _sh(["git", "-C", wt, "diff", "--quiet", info["base"], "HEAD"]).returncode != 0
         if not dirty and not committed:
+            try:
+                out_text = (_OUTPUTS_DIR / f"{task_id}.log").read_text(encoding="utf-8", errors="replace")
+            except OSError:
+                out_text = ""
+            if "ALREADY PRESENT:" in out_text:
+                return True, "already-present: change already on origin/main; no patch (valid no-op)"
             return False, "worktree has no changes vs its dispatch base (no commits, no working-tree diff)"
         r = _sh(["bash", "-c", 'source "$1" && wt_handback "$2" "$3" "$4" "$5"',
                  "_", str(_WT_LIB), str(_REPO), wt, task_id, str(_OUTPUTS_DIR)])
@@ -657,6 +682,8 @@ def _run_inbox(task_id: str, prompt: str, role: str, timeout: int, log_path: Pat
                     if not valid:
                         print(f"[delegate-to-antigravity] rejected completion receipt: {reason}", file=sys.stderr)
                         return "failed", 0, 0
+                    if reason.startswith("already-present"):
+                        print(f"[delegate-to-antigravity] {task_id}: {reason}", file=sys.stderr)
                     out_text = ""
                     if log_path.exists():
                         out_text = log_path.read_text(encoding="utf-8")
@@ -746,6 +773,8 @@ def cmd_status(task_id: str):
                             valid, _reason = _validate_inbox_completion(task_id)
                             if valid:
                                 e["status"] = "completed"
+                                if _reason.startswith("already-present"):
+                                    e["outcome"] = "already-present"
                             else:
                                 e["status"] = "invalid-receipt"
                         elif any(r.get("type") == "claim" for r in recs):
