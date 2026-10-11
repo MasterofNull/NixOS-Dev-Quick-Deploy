@@ -488,6 +488,16 @@ def main():
 
         # Apply worktree removals
         for wt in reapable_wts:
+            wt_path_obj = Path(wt.path)
+            wt_bytes = 0
+            if wt_path_obj.exists():
+                try:
+                    wt_bytes = sum(
+                        f.stat().st_size for f in wt_path_obj.rglob("*") if f.is_file()
+                    )
+                except OSError:
+                    wt_bytes = 0
+
             success, msg = remove_worktree(repo_root, wt.path, wt.branch)
             result_entry = {
                 "timestamp": datetime.now(timezone.utc).isoformat(),
@@ -497,9 +507,7 @@ def main():
                 "result": "success" if success else f"error: {msg}",
             }
             if success:
-                stats.bytes_freed += sum(
-                    f.stat().st_size for f in Path(wt.path).rglob("*") if f.is_file()
-                )
+                stats.bytes_freed += wt_bytes
             with open(reap_log, "a") as f:
                 f.write(json.dumps(result_entry) + "\n")
 
@@ -515,6 +523,9 @@ def main():
             capture_output=True,
             check=False
         )
+
+        # Synchronize plan stats with applied actions
+        plan["stats"] = asdict(stats)
 
     # Output
     if args.json:
