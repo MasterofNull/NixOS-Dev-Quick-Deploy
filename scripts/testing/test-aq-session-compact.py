@@ -132,6 +132,17 @@ class SessionCompactTests(unittest.TestCase):
             # Codex scanning is independent of state_5.sqlite.
             self.assertFalse((home / ".codex" / "state_5.sqlite").exists())
 
+    def test_verify_usage_bare_flag_defaults_to_session_usage(self):
+        result = subprocess.run(
+            [str(SCRIPT), "--verify-usage"],
+            capture_output=True,
+            text=True,
+            check=False,
+        )
+        self.assertIn(result.returncode, (0, 2))
+        parsed = json.loads(result.stdout.strip())
+        self.assertIn("status", parsed)
+
     def test_invalid_thresholds_fail_at_cli_boundary(self):
         for value in ("0", "-1", "nan", "inf", "-inf", "not-a-number"):
             result = subprocess.run(

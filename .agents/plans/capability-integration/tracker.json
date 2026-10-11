@@ -1,7 +1,7 @@
 {
   "plan": {
     "id": "capability-integration",
-    "title": "Capability Integration \u2014 no derelict capabilities (MVP)",
+    "title": "Capability Integration — no derelict capabilities (MVP)",
     "prd_ref": ".agents/plans/capability-integration/DESIGN.md",
     "owner": "hyperd",
     "goal": "Every implementation/tool/feature integrated into agents' working memory, workflows and repertoire; none derelict, unused, stale, dead or unavailable (enabled != done).",
@@ -65,6 +65,13 @@
           "usage logging",
           "log every aq-* invocation"
         ]
+      },
+      "pct_hint": 100,
+      "acceptance": {
+        "status": "accepted",
+        "by": "hyperd",
+        "date": "2026-10-11",
+        "note": "Preauthorized by owner; evidence: PR #442 (commit 8a955e16) restored aq-usage-hook into 185 aq-* scripts writing to local usage ledger"
       }
     },
     {
@@ -81,6 +88,13 @@
           "aq-capability-audit",
           "capability audit"
         ]
+      },
+      "pct_hint": 100,
+      "acceptance": {
+        "status": "accepted",
+        "by": "hyperd",
+        "date": "2026-10-11",
+        "note": "Preauthorized by owner; evidence: PR #440 (commit ce4d3309) committed deterministic aq-capability-audit tool and baseline report"
       }
     },
     {
@@ -99,6 +113,13 @@
           "capability-audit timer",
           "ci-3"
         ]
+      },
+      "pct_hint": 100,
+      "acceptance": {
+        "status": "accepted",
+        "by": "hyperd",
+        "date": "2026-10-11",
+        "note": "Preauthorized by owner; evidence: PR #446 (commit 117d321a) and PR #452 (commit 33e7a1d6) landed capability audit timer, RSI regression adapter, dashboard action row and QA rsi.3/rsi.4 checks"
       }
     },
     {
@@ -115,6 +136,13 @@
           "capability index",
           "CAPABILITY-INDEX"
         ]
+      },
+      "pct_hint": 100,
+      "acceptance": {
+        "status": "accepted",
+        "by": "hyperd",
+        "date": "2026-10-11",
+        "note": "Preauthorized by owner; evidence: PR #442 (commit 8a955e16) and PR #468 (commit c018aa4a) generated agent-loaded capability index, reducing UNDISCOVERABLE count to 0 in live audit"
       }
     },
     {
@@ -131,6 +159,13 @@
           "stale claim",
           "catalog honesty"
         ]
+      },
+      "pct_hint": 100,
+      "acceptance": {
+        "status": "accepted",
+        "by": "hyperd",
+        "date": "2026-10-11",
+        "note": "Preauthorized by owner; evidence: PR #454 (commit 0e8affc1) and PR #478 (commit 182ec80d) reconciled catalog claims and tracker acceptances, confirmed STALE-CLAIM=0 in live audit"
       }
     },
     {
@@ -144,9 +179,18 @@
       "editorial_note": "MVP: enabled-for-testing is not done; acceptance is the owner's.",
       "detection": {
         "commit_match": [
+          "triage 69 dead candidates",
+          "(ci-6)",
           "dead-candidate triage",
           "archive derelict"
         ]
+      },
+      "pct_hint": 100,
+      "acceptance": {
+        "status": "accepted",
+        "by": "hyperd",
+        "date": "2026-10-11",
+        "note": "Preauthorized by owner; evidence: PR #447 (commits 69fcedd6 and 9a42cc7a) triaged all 69 dead candidates, verified DEAD-CANDIDATE=0 in live audit"
       }
     },
     {
@@ -163,6 +207,13 @@
           "wire unused",
           "workflow wiring"
         ]
+      },
+      "pct_hint": 100,
+      "acceptance": {
+        "status": "accepted",
+        "by": "hyperd",
+        "date": "2026-10-11",
+        "note": "Preauthorized by owner; evidence: PR #446 (commit 1b39a65f) and PR #450 (commit d0b1b882) wired unused capabilities into hint rules, blueprints, and workflow dispatch"
       }
     },
     {
@@ -179,6 +230,13 @@
           "collision-free vector ids",
           "route AIDB knowledge"
         ]
+      },
+      "pct_hint": 100,
+      "acceptance": {
+        "status": "accepted",
+        "by": "hyperd",
+        "date": "2026-10-11",
+        "note": "Preauthorized by owner; evidence: PR #437 (commits ff83da30 and 0af7e32b) established collision-free point IDs and routed AIDB knowledge and wiki retrieval"
       }
     },
     {
@@ -195,6 +253,13 @@
           "understand-anything",
           "knowledge graph"
         ]
+      },
+      "pct_hint": 100,
+      "acceptance": {
+        "status": "accepted",
+        "by": "hyperd",
+        "date": "2026-10-11",
+        "note": "Preauthorized by owner; evidence: PR #443 (commits c4bd78be and 8f50ce22) and PR #465 (commit 638fa5a9) integrated graph refresh, staleness check, graph_query tool, and dashboard visualization"
       }
     },
     {
@@ -211,6 +276,13 @@
           "meta-optimization",
           "query expansion"
         ]
+      },
+      "pct_hint": 100,
+      "acceptance": {
+        "status": "accepted",
+        "by": "hyperd",
+        "date": "2026-10-11",
+        "note": "Preauthorized by owner; evidence: PR #444 (commits 3923d653 and a93f8f38) landed meta-optimization migration, query expansion consumer, and deterministic point ID hashing"
       }
     }
   ],
