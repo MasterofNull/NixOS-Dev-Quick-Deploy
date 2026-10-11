@@ -86,7 +86,7 @@ def main():
   m._append("db",{"type":"wake_attempt","task_id":"db","generation":genDB,"method":"cli-nudge-ok","ts":now_iso})
   recs_before = len(m._load("db")["records"])
   assert m.main(["wake","db.md","--json"])==0
-  assert len(m._load("db")["records"])==recs_before, "debounced wake must not append duplicate record"
+  assert len(m._load("db")["records"])==recs_before+1 and m._load("db")["records"][-1]["method"]=="skipped-recent-wake", "deduped wake must only record skipped-recent-wake"
   # Blocked tasks must not starve advisory work, and every accepted role is explicit.
   roles=tmp/"roles"; m.REPO=roles; m.INBOX=roles/".agent/collaboration/antigravity-inbox"; m.STATE=m.INBOX/".lane-state.json"; m.INBOX.mkdir(parents=True)
   (m.INBOX/"a-edit.md").write_text("Role: implementer\nOutput: .agents/plans/a/antigravity.md\n")

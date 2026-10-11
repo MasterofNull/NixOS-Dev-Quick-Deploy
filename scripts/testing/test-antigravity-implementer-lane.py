@@ -11,6 +11,7 @@ import stat
 import subprocess
 import sys
 import tempfile
+import threading
 from pathlib import Path
 
 ROOT = Path(__file__).resolve().parents[2]
@@ -43,6 +44,9 @@ def make_repo(td: Path):
     (repo / ".agent/collaboration/PULSE.log").write_text("p\n")
     (repo / ".agent/memory").mkdir(parents=True)
     (repo / ".agent/memory/issues-backlog.md").write_text("b\n")
+    (repo / ".agent/collaboration/rsi-incidents.json").write_text("[]\n")
+    (repo / ".agent/collaboration/AGENT-CATCHUP-QUEUE.md").write_text("q\n")
+    (repo / "premod.txt").write_text("pre\n")
     (repo / ".gitignore").write_text(".agents/delegation/\n")
     git(repo, "add", "-A")
     git(repo, "commit", "-q", "-m", "init")
@@ -215,6 +219,76 @@ def main():
         ok, reason = mod._validate_inbox_completion(tid6)
         assert not ok and "not on origin/main" in reason, (ok, reason)
         print("PASS: fast-forward pull accepted; local main-checkout commit rejected")
+
+        # 3e. fingerprint = SET OF PATHS: staging churn + runtime ledgers are not drift; a new path is.
+        (repo / "premod.txt").write_text("pre-modified before dispatch\n")
+        git(repo, "add", "premod.txt")  # staged (M ) at dispatch
+        tid7 = "antigravity-20261010-120000-imp007"
+        dispatch(mod, repo, tid7)
+        (repo / ".agents/delegation/worktrees" / tid7 / "f.txt").write_text("f\n")
+        git(repo, "reset", "-q", "premod.txt")  # orchestrator unstages (' M')
+        (repo / ".agent/collaboration/rsi-incidents.json").write_text('[{"x":1}]\n')
+        (repo / ".agent/collaboration/AGENT-CATCHUP-QUEUE.md").write_text("q\nmore\n")
+        simulate_ide_completion(inbox, repo, tid7)
+        ok, reason = mod._validate_inbox_completion(tid7)
+        assert ok, reason
+        tid8 = "antigravity-20261010-120000-imp008"
+        dispatch(mod, repo, tid8)
+        (repo / ".agents/delegation/worktrees" / tid8 / "g.txt").write_text("g\n")
+        (repo / ".gitignore").write_text(".agents/delegation/\n# edited\n")
+        simulate_ide_completion(inbox, repo, tid8)
+        ok, reason = mod._validate_inbox_completion(tid8)
+        assert not ok and "main checkout" in reason, (ok, reason)
+        git(repo, "checkout", "-q", "--", ".gitignore")
+        print("PASS: path-set fingerprint ignores staging churn and runtime ledgers")
+
+        # 3f. ALREADY PRESENT no-op accepted with distinct outcome; plain no-change still rejected.
+        assert "ALREADY PRESENT:" in mod._IMPLEMENTER_CONTRACT and "origin/main" in mod._IMPLEMENTER_CONTRACT
+        tid9 = "antigravity-20261010-120000-imp009"
+        dispatch(mod, repo, tid9)
+        assert "ALREADY PRESENT:" in (repo / ".agent/collaboration/antigravity-inbox" / f"{tid9}.md").read_text()
+        simulate_ide_completion(inbox, repo, tid9)
+        out9 = mod._OUTPUTS_DIR / f"{tid9}.log"
+        ok, reason = mod._validate_inbox_completion(tid9)
+        assert not ok and "no changes" in reason, (ok, reason)
+        tid10 = "antigravity-20261010-120000-imp010"
+        dispatch(mod, repo, tid10)
+        out10 = mod._OUTPUTS_DIR / f"{tid10}.log"
+        out10.write_text("ALREADY PRESENT: commit abcd1234 on origin/main already does this\n")
+        assert inbox.main(["claim", f"{tid10}.md", "--actor", "ide-watch", "--json"]) == 0
+        assert inbox.main(["complete", f".claimed-{tid10}", "--output",
+                           f".agents/delegation/outputs/{tid10}.log", "--json"]) == 0
+        ok, reason = mod._validate_inbox_completion(tid10)
+        assert ok and reason.startswith("already-present"), (ok, reason)
+        assert not (mod._OUTPUTS_DIR / f"{tid10}.patch").exists()
+        print("PASS: ALREADY PRESENT contract + no-op acceptance")
+
+        # 2b. wake dedupe: one window per task within the window; concurrent wakes too.
+        argv_log.write_text("")
+        tidw = "antigravity-20261010-120000-wak011"
+        dispatch(mod, repo, tidw)
+        os.environ.pop("AQ_ANTIGRAVITY_WAKE_DEDUPE_S", None)
+        assert inbox.main(["wake", f"{tidw}.md", "--actor", "auto-delegate", "--json"]) == 0
+        assert inbox.main(["wake", f"{tidw}.md", "--actor", "owner-manual", "--json"]) == 0
+        c = calls(argv_log)
+        assert sum(1 for x in c if x and x[0] == "--new-window") == 1, c
+        last = [r for r in inbox._load(tidw)["records"] if r["type"] == "wake_attempt"][-1]
+        assert last["method"] == "skipped-recent-wake", last
+        os.environ["AQ_ANTIGRAVITY_WAKE_DEDUPE_S"] = "0"
+        assert inbox.main(["wake", f"{tidw}.md", "--actor", "owner-manual", "--json"]) == 0
+        assert sum(1 for x in calls(argv_log) if x and x[0] == "--new-window") == 2
+        os.environ.pop("AQ_ANTIGRAVITY_WAKE_DEDUPE_S", None)
+        argv_log.write_text("")
+        tidc = "antigravity-20261010-120000-wak012"
+        dispatch(mod, repo, tidc)
+        rcs = []
+        ths = [threading.Thread(target=lambda a=a: rcs.append(inbox.main(["wake", f"{tidc}.md", "--actor", a, "--json"])))
+               for a in ("auto-delegate", "owner-manual", "owner-manual")]
+        [x.start() for x in ths]
+        [x.join() for x in ths]
+        assert rcs == [0, 0, 0], rcs
+        assert sum(1 for x in calls(argv_log) if x and x[0] == "--new-window") == 1, calls(argv_log)
+        print("PASS: wake dedupe (sequential, expired window, concurrent)")
 
         # 4. advisory role dispatch: no worktree, no Workspace header.
         tid4 = "antigravity-20261010-120000-adv004"
