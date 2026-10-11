@@ -18,6 +18,7 @@ Tests:
 from __future__ import annotations
 
 import json
+import os
 import sys
 import tempfile
 import unittest
@@ -1029,14 +1030,14 @@ class TestNetworkDnsPolicyN2(unittest.TestCase):
         cand.write_text(json.dumps(valid_data), encoding="utf-8")
         cand.chmod(0o600)
 
-        # 1. Blocked without --n3-canary (exit code 2)
+        # 1. Blocked unconditionally (exit code 2)
         res = subprocess.run(
             [sys.executable, str(facade), "trust", "replace", "--input", str(cand)],
             capture_output=True,
             text=True,
         )
         self.assertEqual(res.returncode, 2)
-        self.assertIn("blocked until N3 activation", res.stderr)
+        self.assertIn("blocked until N3 owner activation", res.stderr)
 
         # 2. Blocked with --machine produces JSON error
         res_m = subprocess.run(
@@ -1048,27 +1049,23 @@ class TestNetworkDnsPolicyN2(unittest.TestCase):
         out_json = json.loads(res_m.stdout)
         self.assertEqual(out_json.get("error"), "blocked_until_n3")
 
-        # 3. Allowed with --n3-canary and --no-privilege-check
-        res_canary = subprocess.run(
-            [
-                sys.executable,
-                str(facade),
-                "trust",
-                "replace",
-                "--input",
-                str(cand),
-                "--target",
-                str(self.trust_path),
-                "--lock-path",
-                str(self.trust_lock_path),
-                "--n3-canary",
-                "--no-privilege-check",
-            ],
-            capture_output=True,
-            text=True,
+        # 3. The former bypasses (env var, --n3-canary) must not unlock; the flag is gone.
+        env = dict(os.environ, AQ_NETWORK_POLICY_N3_ACTIVATED="1")
+        res_env = subprocess.run(
+            [sys.executable, str(facade), "trust", "replace", "--input", str(cand),
+             "--target", str(self.trust_path), "--lock-path", str(self.trust_lock_path),
+             "--no-privilege-check"],
+            capture_output=True, text=True, env=env,
         )
-        self.assertEqual(res_canary.returncode, 0)
-        self.assertTrue(self.trust_path.exists())
+        self.assertEqual(res_env.returncode, 2)
+        res_flag = subprocess.run(
+            [sys.executable, str(facade), "trust", "replace", "--input", str(cand),
+             "--target", str(self.trust_path), "--lock-path", str(self.trust_lock_path),
+             "--n3-canary", "--no-privilege-check"],
+            capture_output=True, text=True, env=env,
+        )
+        self.assertNotEqual(res_flag.returncode, 0)
+        self.assertFalse(self.trust_path.exists())
 
 
 if __name__ == "__main__":
