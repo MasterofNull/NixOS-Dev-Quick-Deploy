@@ -135,6 +135,12 @@
         "commit_match": [
           "feat(dashboard): approval inbox view"
         ]
+      },
+      "acceptance": {
+        "status": "accepted",
+        "by": "hyperd",
+        "date": "2026-10-07",
+        "note": "Owner chat 'accept 1-6' 2026-10-07; evidence: read-only GET /api/approval-inbox; dashboard panel wired; 5/5 tests in test-dashboard-approval-inbox.py (PR #401, commit c5b9eac1)"
       }
     },
     {

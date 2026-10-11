@@ -5735,10 +5735,7 @@ File: scripts/ai/lib/worktree-isolation.sh; scripts/automation/prsi-orchestrator
 - [FIXED #424 2026-10-08] aidb-reindex-project-knowledge-timeout — commit 72e36127 / PR #424: incremental project knowledge indexing prevents 6000s timeout.
 - [FIXED 2026-10-08] ci-phase0-0.10.48-flaky — check 0.10.48 passed in tier0 (task-2686); worktree cleanup and timeout margins tuned.
 
-[OPEN] rsi-6b92eb176acb652b9d8f67d4 — aq-payload-audit failure in payload-audit:codex:6b. Root cause evidence: producer=aq-payload-audit; path=.agents/delegation/outputs/; authority=codex; os_error=payload audit check 6b high on lane codex. Detected=2026-10-09T03:09:05.099096Z.
-  Severity: high
-  Action: monitor token [REDACTED]; review task budgets (latest: measured 3 hits in 2 days vs zero)
-  File: .agents/delegation/outputs/
+- [FIXED 2026-10-11] rsi-6b92eb176acb652b9d8f67d4 — aq-payload-audit check 6b passing with 0 high errors.
 
 [OPEN] rsi-e5cf3d273302bb77771a3b84 — delegation:antigravity failure in delegation:antigravity:timeout. Root cause evidence: producer=delegation:antigravity; path=.agents/delegation/registry.jsonl; authority=antigravity; os_error=antigravity delegation class timeout. Detected=2026-10-09T03:09:05.615193Z.
   Severity: medium
@@ -5781,10 +5778,7 @@ File: scripts/ai/lib/worktree-isolation.sh; scripts/automation/prsi-orchestrator
   File: .agents/delegation/registry.jsonl
 - [FIXED #428 2026-10-08] rsi-aq-qa-incidents-no-auto-resolve — commit 05553580 / PR #428: auto-resolve incidents matching clean test runs and sweeps.
 
-[OPEN] rsi-3cfb668e21fd81fabada387f — aq-qa:phase0 failure in aq-qa:0.10.22. Root cause evidence: producer=aq-qa:phase0; path=aq-qa check 0.10.22; authority=aq-qa; os_error=phase-0 check 0.10.22 failing: LOCAL_TOK_PER_SEC throughput calibration (FAIL: throughput drift 78% exceeds 50% threshold.   Measured: 0.76 tok/s   Con. Detected=2026-10-09T03:39:04.748933Z.
-  Severity: medium
-  Action: run aq-qa 0 --machine and fix check 0.10.22 at its producer
-  File: aq-qa check 0.10.22
+- [FIXED 2026-10-11] rsi-3cfb668e21fd81fabada387f — aq-qa:0.10.22 LOCAL_TOK_PER_SEC throughput calibration verified passing (drift 15% <= 50% threshold).
 - [FIXED #427 2026-10-08] nrs-preflight-fails-after-every-merge — check-checkout-fresh.sh only reported "behind origin/main", so every GitHub merge forced a manual pull before nrs. It now fast-forwards with --ff-only (git refuses when local commits, edits, or untracked files would be touched); opt-out AUTO_FAST_FORWARD=0.
 - [FIXED #426 2026-10-08] rsi-phase0-source-stale — the sweep's phase-0 adapter read only interactive aq-qa output (2 days stale), so scheduled health-monitor failures never reached RSI. It now falls back to .agents/health-monitor/latest.json with the same incident identity.
 - [OPEN] llama-q5-memory-squeeze-throughput — after rebuilds, the Q5 model (~24 GB of 27 GB) is partly evicted and generation drops to 0.76 tok/s (0.10.22 FAIL). A restart restores ~2.8 tok/s, but the model is still not fully resident (RSS 12-14 GB; 8.7 GB system swap). Root cause: model size vs RAM; the Q4 option was deferred by the owner. Severity: medium (local lane speed). Action: owner decision on Q4; meanwhile restart llama-cpp after rebuilds.
@@ -5798,7 +5792,4 @@ File: scripts/ai/lib/worktree-isolation.sh; scripts/automation/prsi-orchestrator
 - [FIXED 2026-10-10] prm-eval-signal-cleanup — terminating aq-prm-eval itself (SIGTERM/SIGINT) now invokes emergency_cleanup to kill active wrapper process groups and reap detached agent processes registered in AQ_DELEGATION_DIR, preventing orphan processes and inference slot contention.
 - [FIXED 2026-10-11] security-audit-and-precommit-cve-rsi-gate-disconnected — Security audit and npm security monitor previously did not record high/critical CVE findings to aq-rsi lifecycle ledger, and .githooks/pre-commit lacked dependency vulnerability verification. Wired aq-rsi report into security-audit.sh and npm-security-monitor.sh, added run_dependency_cve_check to pre-commit hook and tier0.d/check-dependency-cve.sh, and enhanced aq-rsi-hook to capture security/CVE denials.
 
-[OPEN] rsi-9064268d1e98879a72713cd3 — npm-security-monitor failure in npm-security-monitor:cve. Root cause evidence: producer=npm-security-monitor; path=/tmp/npm-security-smoke-zO7DEy/npm-security-20261011T195853Z.json; authority=npm-audit; os_error=npm security monitor detected high/critical CVEs (critical=0, high=2). Detected=2026-10-11T19:58:55.846752Z.
-  Severity: high
-  Action: Inspect npm report /tmp/npm-security-smoke-zO7DEy/npm-security-20261011T195853Z.json and bump package versions or apply threat mitigations
-  File: /tmp/npm-security-smoke-zO7DEy/npm-security-20261011T195853Z.json
+- [FIXED 2026-10-11] rsi-9064268d1e98879a72713cd3 — npm-security-monitor high findings resolved by pinning zero-dependency package-lock.json files in ai-stack/mcp-servers/hybrid-coordinator and templates/vscode/max-ss.cyberpunk-1.2.14-universal.
