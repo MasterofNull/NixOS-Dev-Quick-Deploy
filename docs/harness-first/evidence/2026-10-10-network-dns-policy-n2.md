@@ -65,3 +65,11 @@ Deliver Slice N2 of the Network Profile Interoperability program:
 - **Observable**: Health projection state reflects `preserving`, `overriding`, `reverted`, or `degraded`.
 - **Intervenable**: Operators can run `sudo aq-network-policy emergency-revert` or start `aq-network-policy-emergency-revert.service`.
 - **Ceiling**: Exactly 6 implementation paths + evidence record. Zero seventh paths.
+
+## Correction (2026-10-10, independent review)
+
+The text above advertising `--n3-canary` (and the `AQ_NETWORK_POLICY_N3_ACTIVATED` env var) as a way to unlock
+`trust replace` is superseded: any root caller could self-activate, contradicting the plan's owner-activation
+requirement. Both bypasses were removed; `trust replace` now refuses unconditionally until N3 owner activation,
+and `mode = "policy"` fails NixOS evaluation via an assertion. See
+`docs/harness-first/evidence/2026-10-10-network-policy-n2-activation-gate.md`.
