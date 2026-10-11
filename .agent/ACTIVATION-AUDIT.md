@@ -37,6 +37,22 @@ Sweep four dormant surfaces, and for each: turn on → run a REAL functional tes
 | open-webui | ✅ (upstream) | ❌ intentionally OFF | n/a | blocked: npm-deps build broken in 26.05; re-enable when fixed |
 | **Python QA harness (harness_qa/)** | ✅ (full package: 163 checks, structured reporters) | ✅ **FIXED — now primary** | ✅ aq-qa 0 → 163 passed/0 failed/13s (vs bash 124/19s) | the bridge `scripts/ai/lib/harness_runner.py` was **never created**, so aq-qa silently fell back to `_aq-qa-bash` (124 checks) as its DEFAULT — a fallback running as the main workflow. Created the bridge; bash now genuine fallback |
 
+## Antigravity network policy CLI packaging — written deferral (2026-10-11)
+
+At baseline `9af93d863749edd51a97578742d4ee39b63415ce`, independent runtime review found
+`nix/modules/core/network.nix` invokes `/run/current-system/sw/bin/aq-network-policy` at lines
+82, 103, 154, and 181 without declaring/installing that executable; the current profile check
+reported `installed=no`. The watchdog unit live check reported `LoadState=not-found`,
+`ActiveState=inactive`, and empty `FragmentPath`, so no active watchdog failure is claimed.
+Impact is conditional on policy mode being enabled: the dispatcher cannot launch, the legacy
+unconditional public-DNS route remains, and the observer/watchdog/emergency-revert commands
+cannot execute. Current policy-mode enablement was not established.
+
+Bounded declarative packaging and a packaging regression check are within this repair and are under
+implementation and independent review. Runtime activation/system rebuild are outside this repair
+and deferred as of 2026-10-11; current workflow reserves systemctl/rebuild to the owner. No E2E
+activation evidence or release-wide acceptance is recorded here.
+
 ## Multi-agent / fan-out / delegation domain (2026-07-09 audit)
 Applied the same lens to the flat-collaborative-factory (F1/F2/F3) work. Findings:
 

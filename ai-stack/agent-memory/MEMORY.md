@@ -194,7 +194,7 @@ ralph-wiggum TaskRequest field: `prompt` (not `task`). AIDB vector search: POST 
 - M7 closeout & security: `.agent/memory/rsi-m7-20261002.md`, `.agent/memory/security-checks-20261002.md`.
 - 269 CVEs unmerged/tracked in `.agents/plans/cve-triage-20261002/TRIAGE.md` (Batches 1–4, open).
 - Multi-lane RSI repair: fallback across `repair_lanes` (`codex`, `claude`, `local`) with cooldown checks.
-- Antigravity env strengthened: lean-ctx/mcp/hooks enabled; advisory role boundary; aq-agent-loop/dispatch fixes.
-- Antigravity delegation review: receipt validation fails closed; live IDE mutation deferred pending verified workspace binding.
+- Antigravity: lean-ctx/MCP/hooks enabled; advisory boundary and aq-agent-loop/dispatch fixes; delegation receipts fail closed; live IDE mutation deferred pending verified workspace binding.
 - 2026-10-06 capability parity: `.agent/memory/parity-audit-20261006.md`; report `docs/architecture/capability-parity-audit-20261006.md`. QA 214 pass/0 fail/8 skip; five-turn crystallizer broker wiring gap; durable consolidation not proven.
 - Sandbox tool configuration (2026-10-09): `.agent/PROJECT-SANDBOX-TOOL-ACCESS-PRD.md`; next rebuild activation deferred; current managed restrictions remain authoritative. See WR-SANDBOX-TOOLS-20261009.
+- 2026-10-11 Antigravity independent audit: `.agent/PROJECT-ANTIGRAVITY-AUDIT-20261011-PRD.md` and `docs/harness-first/evidence/2026-10-11-antigravity-independent-audit.md`; PR #480/#481 scoped code review reports no new reproducible defect. Runtime review found a HIGH missing N2 policy executable installation at `9af93d86`; focused PR #476/#469 tests passed. No system activation or overall acceptance. Usage-measurement CLI friction and N2 finding are recorded in issues backlog.
