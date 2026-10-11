@@ -9,9 +9,9 @@
   "document_kind": "local-inference-chat-batch-parity-golden",
   "live_source_manifest": {
     "ai-stack/mcp-servers/shared/llm_config.py": "1901963582f45ec8be825713b881a93dcf1b6d4a8c6d6e2953a8d8ad1e82a5cd",
-    "scripts/ai/aq-chat": "4302af375b25aa98dfb6d923e671e9d7597c814759b45b5c12fe3c84cb6d8392"
+    "scripts/ai/aq-chat": "b0181653b767757cc3b5954ccb1ee256b25af52a7c5f3abf7ed3960fdafe8fae"
   },
-  "manifest_digest": "57a0f078c310cea1c014eacb3add6fbd9d81e653a59008cc0eb7c5d4ea76b8c5",
+  "manifest_digest": "3a2815d5aa5b31713036e695bbd21831bbafb6eb8545dae5cb7a631ef81d7c74",
   "schema_version": "1",
   "tiers": {
     "budget": {
