@@ -4,6 +4,21 @@
   config,
   ...
 }:
+let
+  networkPolicyRuntime = pkgs.runCommand "aq-network-policy-runtime" { } ''
+    install -Dm755 ${../../../scripts/ai/aq-network-policy} "$out/libexec/aq-network-policy"
+    install -Dm644 ${../../../scripts/ai/lib/network_dns_policy.py} "$out/libexec/network_dns_policy.py"
+  '';
+
+  networkPolicyCli = pkgs.writeShellApplication {
+    name = "aq-network-policy";
+    runtimeInputs = [ pkgs.python3 pkgs.networkmanager pkgs.systemd ];
+    text = ''
+      export PYTHONPATH="${networkPolicyRuntime}/libexec''${PYTHONPATH:+:$PYTHONPATH}"
+      exec python3 ${networkPolicyRuntime}/libexec/aq-network-policy "$@"
+    '';
+  };
+in
 # ---------------------------------------------------------------------------
 # Core network module — DNS resolution, resolved, NetworkManager integration.
 #
@@ -35,6 +50,10 @@
         message = "mySystem.networkPolicyObservability.mode = \"policy\" is not selectable until N3 owner activation (see .agents/plans/network-profile-interoperability/PROGRAM-PLAN.md).";
       }
     ];
+
+    environment.systemPackages = lib.optional
+      (config.mySystem.networkPolicyObservability.enable || config.mySystem.networkPolicyObservability.mode == "policy")
+      networkPolicyCli;
 
     # systemd-resolved: stub DNS resolver with fallback servers.
     services.resolved = {
