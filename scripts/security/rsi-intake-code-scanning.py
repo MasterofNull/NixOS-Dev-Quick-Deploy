@@ -308,7 +308,8 @@ def main() -> int:
         # Build root_fix (includes fixed version, count and severity)
         manifest = _resolve_manifest_path(category, package)
         if _is_nix_closure(category):
-            root_fix = f"nix flake update / fast-lane promotion: pull a nixpkgs revision with {package}>={fixed_ver} (flake.lock under {manifest}), rebuild hyperd-ai-dev, and confirm the nix-closure scan clears the alerts ({count} open alert(s), max severity {max_sev})"
+            target_ver = f">={fixed_ver}" if fixed_ver != "unknown" else " (patched revision)"
+            root_fix = f"nix flake update / fast-lane promotion: pull a nixpkgs revision with {package}{target_ver} (flake.lock at repo root), rebuild hyperd-ai-dev, and confirm the nix-closure scan clears the alerts ({count} open alert(s), max severity {max_sev})"
         else:
             root_fix = f"raise the minimum-version floor: {package}>={fixed_ver} in {manifest} (owner policy: floors, never exact == pins); rebuild image and confirm Trivy clears the alerts ({count} open alert(s), max severity {max_sev})"
 
