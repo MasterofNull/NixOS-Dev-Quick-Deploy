@@ -14,6 +14,20 @@ if [ "${AQ_DELEGATE_HANDBACK:-}" = "1" ]; then
   exit 0
 fi
 
+# Primary-checkout main guard: slices must be developed on a branch in a worktree and land via PR.
+if [ "${AQ_ALLOW_MAIN_CHECKOUT_COMMIT:-0}" != "1" ] && \
+   [ ! -f "$(git rev-parse --git-dir 2>/dev/null)/MERGE_HEAD" ] && \
+   [ "$(git symbolic-ref --short -q HEAD 2>/dev/null || true)" = "main" ]; then
+  _git_dir="$(cd "$(git rev-parse --git-dir)" 2>/dev/null && pwd -P)"
+  _git_common_dir="$(cd "$(git rev-parse --git-common-dir)" 2>/dev/null && pwd -P)"
+  if [ -n "$_git_dir" ] && [ "$_git_dir" = "$_git_common_dir" ]; then
+    echo "pre-commit: direct commits to 'main' in the primary checkout are refused." >&2
+    echo "Develop your slice on a branch in a git worktree and land via PR." >&2
+    echo "To override for maintenance (e.g. chore: flake.lock), set AQ_ALLOW_MAIN_CHECKOUT_COMMIT=1." >&2
+    exit 1
+  fi
+fi
+
 if ! command -v git >/dev/null 2>&1; then
   echo "pre-commit: git not found" >&2
   exit 1
