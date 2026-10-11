@@ -346,3 +346,10 @@ Codex lane absent).
 - class: T1 tooling; severity: medium; status: ACTIVATION DEFERRED 2026-10-09.
 - band-aid: none; managed filesystem rules, privileged operations, network-isolated jail boundaries and host sockets remain separate authorities.
 - runtime root causes: nsjail3.6 parsed colon tmpfs size as destination; /dev/null absent. Corrected producer mounts; live Git/read-only/temp probe exited0. Existing optional-mode host fallback remains a declared limitation.
+
+## WR-11 — apparmor-fix-agent commits directly on main in the primary checkout — OPEN
+- symptom: the pre-commit main-checkout guard (2026-10-10) refuses direct `main` commits in the primary checkout; `apparmor-fix-agent.py` (via `aq-approve` → `--commit-staged`, and `aq-health-spider`) commits owner-approved AppArmor rules exactly that way.
+- root cause: the fix agent predates the delivery workflow (worktree + PR); it writes rules into the live checkout and commits in place.
+- interim: its commit sets `AQ_ALLOW_MAIN_CHECKOUT_COMMIT=1` (explicit, grep-able exception; owner-approved path only).
+- fix-path: fix agent stages rules on a `apparmor/<alert-id>` branch in a worktree and opens a PR; `aq-approve` approves the PR instead of committing.
+- class T2 · severity LOW · status OPEN · opened 2026-10-10.
