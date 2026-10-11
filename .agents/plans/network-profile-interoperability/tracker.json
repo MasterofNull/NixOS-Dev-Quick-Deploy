@@ -1,0 +1,101 @@
+{
+  "plan": {
+    "id": "network-profile-interoperability",
+    "title": "Network Profile Interoperability",
+    "prd_ref": ".agent/PROJECT-NETWORK-PROFILE-INTEROPERABILITY-PRD.md",
+    "owner": "hyperd",
+    "goal": "Profile-aware DNS policy that interoperates with captive/campus networks, legacy by default, activated only by owner at N3",
+    "success_criteria": [
+      "Deployment stays mode=legacy until N3 owner activation",
+      "Two-network live canary passes with automatic revert"
+    ]
+  },
+  "phases": [
+    {
+      "id": "build",
+      "name": "Build",
+      "goal": "N0-N3 slices",
+      "order": 1
+    }
+  ],
+  "items": [
+    {
+      "id": "n0",
+      "name": "N0 pure resolver contract",
+      "phase": "build",
+      "kind": "slice",
+      "goal": "Pure policy/schema/vector kernel",
+      "validation_goal": "N0 vectors pass offline",
+      "deps": [],
+      "detection": {
+        "commit_match": [
+          "feat(network-profile-interoperability): pure resolver contract and closed schemas (slice N0)"
+        ]
+      }
+    },
+    {
+      "id": "n1",
+      "name": "N1 passive projection + Service Coverage",
+      "phase": "build",
+      "kind": "slice",
+      "goal": "Passive health projection with mandatory Service Coverage",
+      "validation_goal": "N1 projection and coverage tests pass",
+      "deps": [
+        "n0"
+      ],
+      "detection": {
+        "commit_match": [
+          "feat(network-profile-interoperability): passive projection and service coverage (slice N1)"
+        ]
+      }
+    },
+    {
+      "id": "n2",
+      "name": "N2 legacy-default executor + watchdog",
+      "phase": "build",
+      "kind": "slice",
+      "goal": "Policy executor/watchdog landed; deployment stays mode=legacy; trust replace blocked until N3",
+      "validation_goal": "test-network-dns-policy passes; policy mode assertion fires",
+      "deps": [
+        "n1"
+      ],
+      "detection": {
+        "commit_match": [
+          "feat(network): implement network profile interoperability slice N2 with watchdog and trust replace"
+        ]
+      }
+    },
+    {
+      "id": "n2-gate",
+      "name": "N2 activation gate hardening",
+      "phase": "build",
+      "kind": "slice",
+      "goal": "Remove self-activation bypass; assert mode!=policy until N3",
+      "validation_goal": "trust replace refuses unconditionally; policy-mode eval fails by assertion",
+      "deps": [
+        "n2"
+      ],
+      "detection": {
+        "commit_match": [
+          "fix(network): close N2 activation bypass"
+        ]
+      }
+    },
+    {
+      "id": "n3",
+      "name": "N3 owner two-network canary + cutover",
+      "phase": "build",
+      "kind": "slice",
+      "goal": "Owner-only live canary then scoped cutover; introduces owner-signed activation",
+      "validation_goal": "Two-network canary evidence and owner activation",
+      "deps": [
+        "n2-gate"
+      ],
+      "detection": {
+        "commit_match": [
+          "feat(network-profile-interoperability): N3 owner canary"
+        ]
+      }
+    }
+  ]
+}
