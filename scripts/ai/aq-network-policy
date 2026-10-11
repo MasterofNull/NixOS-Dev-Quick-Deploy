@@ -119,33 +119,16 @@ def cmd_observe(args: argparse.Namespace) -> int:
 
 
 def cmd_trust_replace(args: argparse.Namespace) -> int:
-    """Root-only, activation-gated trust map replacement interface."""
-    import os
+    """Trust map replacement: unconditionally blocked until N3 owner activation.
 
-    n3_activated = os.environ.get("AQ_NETWORK_POLICY_N3_ACTIVATED", "0") == "1" or getattr(args, "n3_canary", False)
-    if not n3_activated:
-        if getattr(args, "machine", False):
-            print(json.dumps({"result": "invalid_input", "error": "blocked_until_n3"}, indent=2))
-        else:
-            sys.stderr.write("Error: trust replacement interface is blocked until N3 activation.\n")
-        return 2
-
-    input_path = Path(args.input)
-    target_path = Path(args.target) if getattr(args, "target", None) else None
-    lock_path = Path(args.lock_path) if getattr(args, "lock_path", None) else None
-    check_privileges = not getattr(args, "no_privilege_check", False)
-
-    result, exit_code = replace_trust_map(
-        input_path,
-        target_path=target_path,
-        lock_path=lock_path,
-        check_privileges=check_privileges,
-    )
+    No flag or environment variable may unlock this; N3 introduces an owner-signed
+    activation. replace_trust_map() stays in the library for N3 to wire in.
+    """
     if getattr(args, "machine", False):
-        print(json.dumps({"result": result.value}, indent=2))
+        print(json.dumps({"result": "invalid_input", "error": "blocked_until_n3"}, indent=2))
     else:
-        print(f"Trust map replacement: {result.value}")
-    return exit_code
+        sys.stderr.write("Error: trust replacement interface is blocked until N3 owner activation.\n")
+    return 2
 
 
 def cmd_watchdog(args: argparse.Namespace) -> int:
@@ -232,7 +215,6 @@ def main() -> int:
     p_trust_replace.add_argument("--lock-path", help="Override lock file path", default=None)
     p_trust_replace.add_argument("--machine", action="store_true", help="Machine JSON output")
     p_trust_replace.add_argument("--no-privilege-check", action="store_true", help="Skip root check (testing)")
-    p_trust_replace.add_argument("--n3-canary", action="store_true", help="Owner N3 canary activation flag")
 
     # watchdog
     p_watchdog = subparsers.add_parser("watchdog", help="Run periodic watchdog / recovery check")

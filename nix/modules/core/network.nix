@@ -29,6 +29,13 @@
   };
 
   config = {
+    assertions = [
+      {
+        assertion = config.mySystem.networkPolicyObservability.mode != "policy";
+        message = "mySystem.networkPolicyObservability.mode = \"policy\" is not selectable until N3 owner activation (see .agents/plans/network-profile-interoperability/PROGRAM-PLAN.md).";
+      }
+    ];
+
     # systemd-resolved: stub DNS resolver with fallback servers.
     services.resolved = {
       enable = lib.mkDefault true;
