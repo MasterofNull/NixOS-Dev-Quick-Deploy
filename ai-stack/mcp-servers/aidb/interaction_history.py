@@ -41,8 +41,7 @@ class InteractionHistoryStore:
 
         def _insert():
             with self.engine.begin() as conn:
-                stmt = insert(INTERACTION_HISTORY).values(
-                    interaction_id=interaction.get("interaction_id"),
+                values = dict(
                     session_id=interaction.get("session_id"),
                     project=interaction.get("project"),
                     query=interaction["query"],
@@ -56,7 +55,13 @@ class InteractionHistoryStore:
                     latency_ms=interaction.get("latency_ms", 0),
                     value_score=interaction.get("value_score", 0.0),
                     metadata=metadata,
-                ).returning(INTERACTION_HISTORY.c.interaction_id)
+                )
+                # An explicit None would override the UUID server_default and violate the PK.
+                if interaction.get("interaction_id") is not None:
+                    values["interaction_id"] = interaction["interaction_id"]
+                stmt = insert(INTERACTION_HISTORY).values(**values).returning(
+                    INTERACTION_HISTORY.c.interaction_id
+                )
 
                 result = conn.execute(stmt)
                 return str(result.scalar())

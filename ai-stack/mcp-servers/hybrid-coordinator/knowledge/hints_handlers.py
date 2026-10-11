@@ -14,6 +14,7 @@ import json
 import logging
 import os
 import time
+import uuid
 from datetime import datetime, timezone
 from typing import Any, Dict, List, Optional
 
@@ -223,6 +224,10 @@ async def handle_hints(request: web.Request) -> web.Response:
         return web.json_response({"error": str(exc)}, status=500)
 
 
+# Strong references so fire-and-forget publish tasks are not garbage-collected mid-flight.
+_BACKGROUND_TASKS: set = set()
+
+
 async def _publish_hint_feedback_to_aidb(entry: Dict[str, Any]) -> None:
     """Best-effort async forwarder: publishes hint feedback to AIDB interaction_history.
 
@@ -257,6 +262,7 @@ async def _publish_hint_feedback_to_aidb(entry: Dict[str, Any]) -> None:
         val_score = float(score_val if score_val is not None else (1.0 if helpful else 0.0))
 
         payload = {
+            "interaction_id": str(uuid.uuid4()),
             "query": f"Hint feedback: {hint_id}",
             "response": entry.get("comment") or f"Score: {score_val}, Helpful: {helpful}",
             "agent_type": entry.get("agent") or "unknown",
@@ -363,7 +369,9 @@ async def handle_hints_feedback(request: web.Request) -> web.Response:
 
     # Phase 20.3: Asynchronously forward feedback to AIDB interaction_history for meta-optimization
     try:
-        asyncio.create_task(_publish_hint_feedback_to_aidb(entry))
+        _task = asyncio.create_task(_publish_hint_feedback_to_aidb(entry))
+        _BACKGROUND_TASKS.add(_task)
+        _task.add_done_callback(_BACKGROUND_TASKS.discard)
     except Exception as exc:
         logger.debug("aidb_hint_feedback_task_schedule_failed: %s", exc)
 
