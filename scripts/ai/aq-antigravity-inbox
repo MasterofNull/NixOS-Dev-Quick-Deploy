@@ -324,22 +324,30 @@ def cmd_claim(args: argparse.Namespace)->int:
     return _emit({"ok":True,"task_id":tid,"claimed":_rel(marker),"generation":generation,"declared_output":output},args.json)
 
 def cmd_wake(args: argparse.Namespace)->int:
+    # Serialize wakes per task: dispatcher and the path-unit auto-wake fire within ms of each other,
+    # and a workspace-bound wake opens an IDE window, so a second concurrent wake = a second window.
+    # Separate file from <tid>.lock because _append() flocks that one (same-process deadlock).
+    try:
+        tid0=_tid(_safe_member(args.name).name)
+        with _locked(_receipt_dir()/f"{tid0}.wake.lock") as wl:
+            fcntl.flock(wl.fileno(),fcntl.LOCK_EX)
+            try: return _cmd_wake_locked(args)
+            finally: fcntl.flock(wl.fileno(),fcntl.LOCK_UN)
+    except InboxError as exc: print(str(exc),file=sys.stderr); return 1
+
+def _cmd_wake_locked(args: argparse.Namespace)->int:
     try:
         if args.timeout < 1 or args.timeout > 120: raise InboxError("invalid wake timeout")
         path=_safe_member(args.name); raw=_read_regular(path); _require_advisory_ide_lane(raw); _,generation=_metadata(raw)
         tid=_tid(path.name)
         if not getattr(args, "force", False) and not args.passive_only:
-            recs = _load(tid)["records"]
-            recent_nudges = [
-                t for r in recs if r.get("generation") == generation
-                and r.get("type") == "wake_attempt"
-                and r.get("method") == "cli-nudge-ok"
-                for t in (_parse_ts(r.get("ts")),) if t
-            ]
-            if recent_nudges:
-                age = (datetime.now(timezone.utc) - max(recent_nudges)).total_seconds()
-                if 0 <= age < _WAKE_DEBOUNCE_S:
-                    return _emit({"ok": True, "debounced": True, "task_id": tid, "method": "cli-nudge-ok", "exit_code": 0, "age_s": round(age, 2)}, args.json)
+            # Dedupe window (replaces the old fixed 60s debounce): a successful wake inside it is skipped.
+            dedupe=float(os.environ.get("AQ_ANTIGRAVITY_WAKE_DEDUPE_S","120"))
+            okwakes=[t for r in _load(tid)["records"] if r.get("generation") == generation and r.get("type") == "wake_attempt"
+                     and r.get("method") == "cli-nudge-ok" for t in (_parse_ts(r.get("ts")),) if t]
+            if okwakes and dedupe > 0 and 0 <= (datetime.now(timezone.utc)-max(okwakes)).total_seconds() < dedupe:
+                _append(tid,{"type":"wake_attempt","task_id":tid,"generation":generation,"ts":_now(),"actor":args.actor,"method":"skipped-recent-wake","exit_code":None,"non_passive":False})
+                return _emit({"ok":True,"skipped":True,"debounced":True,"task_id":tid,"method":"skipped-recent-wake","exit_code":None},args.json)
         ws=_task_workspace(raw)
         method,code=("passive",None) if args.passive_only else (_invoke_wake(args.timeout,workspace=ws,task_name=path.name) if ws else _invoke_wake(args.timeout))
         record={"type":"wake_attempt","task_id":tid,"generation":generation,"ts":_now(),"actor":args.actor,"method":method,"exit_code":code,"non_passive":not args.passive_only,"wake_path":"workspace-bound" if ws else "reuse-window"}
