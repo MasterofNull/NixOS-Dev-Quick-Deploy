@@ -134,12 +134,7 @@
           "FA-3 orphan-fold"
         ]
       },
-      "acceptance": {
-        "status": "accepted",
-        "by": "hyperd",
-        "date": "2026-10-08",
-        "note": "Owner chat 'accept 1-11' 2026-10-08; evidence: merged in PR #403 (c0cf0986); tier0 check check-frontier-orphan-fold passes"
-      }
+      "notes": "tier0.d check that binds scheduled->slice mapping is deferred; current tests validate idempotence + fail-closed logic"
     },
     {
       "id": "fa-4-scan-refresh",
@@ -182,12 +177,7 @@
           "FA-5 tests"
         ]
       },
-      "acceptance": {
-        "status": "accepted",
-        "by": "hyperd",
-        "date": "2026-10-08",
-        "note": "Owner chat 'accept 1-11' 2026-10-08; evidence: merged in PR #403 (c0cf0986); test-frontier-parity-sweep passes"
-      }
+      "notes": "parity command live; no formal test suite; manual run validates 3 gaps + suggestions; optional timer NOT YET scheduled"
     },
     {
       "id": "fe-1-prm-verify",
@@ -206,8 +196,7 @@
           "prm-steering"
         ],
         "freeze_record": "docs/harness-first/evidence/2026-10-08-fe1-prm-steering.md"
-      },
-      "pct_hint": 100
+      }
     },
     {
       "id": "fe-2-gepa",

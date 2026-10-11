@@ -135,12 +135,6 @@
         "commit_match": [
           "feat(dashboard): approval inbox view"
         ]
-      },
-      "acceptance": {
-        "status": "accepted",
-        "by": "hyperd",
-        "date": "2026-10-07",
-        "note": "Owner chat 'accept 1-6' 2026-10-07; evidence: approval inbox view merged in PR #401 (c5b9eac1); dashboard inbox matches aq-approve count (verified by claude-opus-5.5 + haiku evidence pack)"
       }
     },
     {
