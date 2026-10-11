@@ -31,6 +31,12 @@
         "commit_match": [
           "feat(network-profile-interoperability): pure resolver contract and closed schemas (slice N0)"
         ]
+      },
+      "acceptance": {
+        "status": "accepted",
+        "by": "hyperd",
+        "date": "2026-10-10",
+        "note": "Preauthorized by owner; evidence: pure resolver vectors pass offline (PR #479, test-network-dns-policy.py 27/27 PASS)"
       }
     },
     {
@@ -47,6 +53,12 @@
         "commit_match": [
           "feat(network-profile-interoperability): passive projection and service coverage (slice N1)"
         ]
+      },
+      "acceptance": {
+        "status": "accepted",
+        "by": "hyperd",
+        "date": "2026-10-10",
+        "note": "Preauthorized by owner; evidence: passive health projection, Service Coverage check and dashboard panel live (PR #479, test-network-dns-policy.py 27/27 PASS)"
       }
     },
     {
@@ -63,6 +75,12 @@
         "commit_match": [
           "feat(network): implement network profile interoperability slice N2 with watchdog and trust replace"
         ]
+      },
+      "acceptance": {
+        "status": "accepted",
+        "by": "hyperd",
+        "date": "2026-10-10",
+        "note": "Preauthorized by owner; evidence: executor and watchdog landed, deployment stays mode=legacy default, trust replace locked (PR #479, test-network-dns-policy.py 27/27 PASS)"
       }
     },
     {
@@ -79,6 +97,12 @@
         "commit_match": [
           "fix(network): close N2 activation bypass"
         ]
+      },
+      "acceptance": {
+        "status": "accepted",
+        "by": "hyperd",
+        "date": "2026-10-10",
+        "note": "Preauthorized by owner; evidence: removed self-activation bypass; mode!=policy asserted until N3 owner activation (PR #480, test-network-dns-policy.py 27/27 PASS)"
       }
     },
     {
