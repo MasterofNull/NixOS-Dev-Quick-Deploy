@@ -339,6 +339,20 @@ if [[ ${high_or_critical} -gt 0 ]]; then
     > "${alert_file}"
   echo "High severity alert written: ${alert_file}"
 
+  # Record failure into RSI lifecycle ledger so PRSI tracks and remediates the CVEs
+  if [[ -x "${REPO_ROOT}/scripts/ai/aq-rsi" ]]; then
+    "${REPO_ROOT}/scripts/ai/aq-rsi" report \
+      "Security audit detected ${high_or_critical} high/critical CVEs (critical=${npm_total_critical}, high=${npm_total_high})" \
+      --agent "security-audit" \
+      --subject "security-audit:npm-cve" \
+      --producer "security-audit:npm" \
+      --path "${report_file}" \
+      --authority "npm-audit" \
+      --severity "$([[ ${npm_total_critical} -gt 0 ]] && echo critical || echo high)" \
+      --root-fix "Review vulnerable npm dependencies; run npm audit fix or update package versions" \
+      >/dev/null 2>&1 || true
+  fi
+
   if [[ -n "${NOTIFY_USER}" ]]; then
     user_id="$(id -u "${NOTIFY_USER}" 2>/dev/null || true)"
     if [[ -n "${user_id}" ]] && [[ -S "/run/user/${user_id}/bus" ]]; then

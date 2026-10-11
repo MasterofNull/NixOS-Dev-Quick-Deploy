@@ -133,5 +133,16 @@ class RecorderTests(unittest.TestCase):
         self.assertEqual(code, 2)
         self.assertIn(b"recording failed", err)
 
+    def test_security_cve_denial_recorded_as_security_incident(self):
+        code_src = "import sys, json; print(json.dumps({'decision': 'block', 'reason': 'High severity CVE detected in package'})); sys.exit(0)"
+        with patch.object(hook, "failure") as record:
+            code, _, _ = hook.run([sys.executable, "-c", code_src], b"{}")
+        self.assertEqual(code, 0)
+        record.assert_called_once()
+        args, kwargs = record.call_args
+        self.assertEqual(args[1], "pre-tool-security")
+        self.assertEqual(args[4], "security-gate")
+        self.assertEqual(kwargs.get("severity"), "high")
+
 
 if __name__ == "__main__": unittest.main()
