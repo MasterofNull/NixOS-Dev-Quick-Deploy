@@ -66,6 +66,16 @@ run_upstream_sync_check() {
 
   read -r behind_count ahead_count < <(git rev-list --left-right --count "${upstream_ref}...HEAD")
   if [[ "${behind_count}" -gt 0 ]]; then
+    # Check if this branch was rebased onto origin/main (or remote default base)
+    # where all upstream commits are accounted for via cherry-pick patch equivalence.
+    local unmerged_upstream
+    unmerged_upstream="$(git rev-list --left-only --cherry-pick "${upstream_ref}...HEAD" 2>/dev/null || true)"
+    local base_ref="${remote_name}/main"
+    if [[ -z "${unmerged_upstream}" ]] && git rev-parse --verify "${base_ref}" >/dev/null 2>&1 && git merge-base --is-ancestor "${base_ref}" HEAD 2>/dev/null; then
+      echo "pre-push: local branch '${current_branch}' rebased onto '${base_ref}' (${behind_count} upstream commit(s) accounted for) — allowing push"
+      return 0
+    fi
+
     cat >&2 <<EOF
 pre-push: local branch '${current_branch}' is behind '${upstream_ref}' by ${behind_count} commit(s).
 Sync before pushing:
