@@ -301,7 +301,78 @@ EOF
   return 0
 }
 
+run_dependency_cve_check() {
+  # Phase 11.4.2 — block commits that introduce high/critical CVEs in package manifests
+  if [[ "${SKIP_CVE_SCAN:-0}" == "1" ]]; then
+    return 0
+  fi
+
+  local staged_manifests=()
+  local file
+  while IFS= read -r file; do
+    [[ -z "$file" ]] && continue
+    if [[ "$file" =~ package\.json$ || "$file" =~ package-lock\.json$ ]]; then
+      staged_manifests+=("$file")
+    fi
+  done < <(git diff --cached --name-only --diff-filter=ACM)
+
+  [[ ${#staged_manifests[@]} -eq 0 ]] && return 0
+
+  if ! command -v npm >/dev/null 2>&1; then
+    return 0
+  fi
+
+  local checked_dirs=()
+  local cve_found=0
+
+  for manifest in "${staged_manifests[@]}"; do
+    local mdir
+    mdir="$(dirname "$manifest")"
+    [[ " ${checked_dirs[*]} " =~ " ${mdir} " ]] && continue
+    checked_dirs+=("$mdir")
+
+    if [[ -f "${mdir}/package-lock.json" ]]; then
+      local audit_out
+      audit_out="$( (cd "$mdir" && npm audit --omit=dev --json 2>/dev/null) || true )"
+      local high critical
+      high="$(echo "$audit_out" | jq '.metadata.vulnerabilities.high // 0' 2>/dev/null || echo 0)"
+      critical="$(echo "$audit_out" | jq '.metadata.vulnerabilities.critical // 0' 2>/dev/null || echo 0)"
+
+      if [[ "$critical" -gt 0 || "$high" -gt 0 ]]; then
+        echo "pre-commit: HIGH/CRITICAL CVE detected in ${mdir} (critical=${critical}, high=${high})" >&2
+        echo "Run '(cd ${mdir} && npm audit)' to view details and remediation." >&2
+
+        # Record failure directly into RSI lifecycle ledger so PRSI tracks the incident
+        if [[ -x "${repo_root}/scripts/ai/aq-rsi" ]]; then
+          "${repo_root}/scripts/ai/aq-rsi" report \
+            "High/critical CVEs detected in ${mdir} (critical=${critical}, high=${high})" \
+            --agent "pre-commit" \
+            --subject "pre-commit:cve:${mdir}" \
+            --producer "pre-commit:dependency-cve-gate" \
+            --path "${manifest}" \
+            --authority "npm-audit" \
+            --severity "$([[ "$critical" -gt 0 ]] && echo critical || echo high)" \
+            --root-fix "Run npm audit fix or update vulnerable dependencies in ${mdir}" \
+            >/dev/null 2>&1 || true
+        fi
+        cve_found=1
+      fi
+    fi
+  done
+
+  if [[ "$cve_found" -ne 0 ]]; then
+    cat >&2 <<'EOF'
+Commit blocked: high or critical CVE vulnerabilities introduced in package dependencies.
+Remediate the vulnerable packages, re-stage, and retry.
+To bypass for emergency maintenance: SKIP_CVE_SCAN=1 git commit
+EOF
+    return 1
+  fi
+  return 0
+}
+
 run_secret_scan
+run_dependency_cve_check
 run_shell_validation
 run_syntax_check
 run_whitespace_and_conflict_check

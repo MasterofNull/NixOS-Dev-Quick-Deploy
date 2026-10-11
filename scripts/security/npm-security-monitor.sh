@@ -525,6 +525,21 @@ incident_json="$(jq -c -n \
   }')"
 printf '%s\n' "${incident_json}" >> "${INCIDENT_LOG_FILE}"
 
+if [[ "${has_high_or_critical}" == "true" ]]; then
+  if [[ -x "${REPO_ROOT}/scripts/ai/aq-rsi" ]]; then
+    "${REPO_ROOT}/scripts/ai/aq-rsi" report \
+      "npm security monitor detected high/critical CVEs (critical=${critical_findings}, high=${high_findings})" \
+      --agent "npm-security-monitor" \
+      --subject "npm-security-monitor:cve" \
+      --producer "npm-security-monitor" \
+      --path "${report_file}" \
+      --authority "npm-audit" \
+      --severity "$([[ ${critical_findings} -gt 0 ]] && echo critical || echo high)" \
+      --root-fix "Inspect npm report ${report_file} and bump package versions or apply threat mitigations" \
+      >/dev/null 2>&1 || true
+  fi
+fi
+
 if [[ "${RESPONSE_MODE}" == "quarantine" ]]; then
   if [[ "${has_high_or_critical}" == "true" ]]; then
     jq -n \

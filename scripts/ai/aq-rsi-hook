@@ -18,6 +18,7 @@ def run(command, payload, timeout=12):
     except OSError:
         code, stdout, stderr = 2, b"", b"RSI: upstream hook unavailable; command blocked.\n"
     denied = code != 0
+    decision = {}
     try:
         decision = json.loads(stdout)
         denied |= decision.get("decision") == "block" or decision.get("hookSpecificOutput", {}).get("permissionDecision") == "deny"
@@ -30,9 +31,20 @@ def run(command, payload, timeout=12):
             # recording it opened a permanent incident (count 21) that no fix could ever close.
             return code, stdout, stderr
         try:
-            failure("codex", "pre-tool", "lean-ctx-pretooluse", "hook/codex-pretooluse",
-                    "installed pre-tool policy", "upstream hook denied or failed",
-                    root_fix="Diagnose hook routing and caller contract; preserve command semantics and policy")
+            hook_out = decision.get("hookSpecificOutput", {}) if isinstance(decision, dict) else {}
+            reason = hook_out.get("permissionDecisionReason") or (decision.get("reason") if isinstance(decision, dict) else None)
+            err_text = stderr.decode(errors="replace")
+            combined = f"{reason or ''} {err_text}".lower()
+
+            if any(k in combined for k in ("cve", "vulnerability", "security", "exploit")):
+                failure("codex", "pre-tool-security", "security-policy", "hook/pre-tool-security",
+                        "security-gate", reason or "upstream security hook denied tool execution",
+                        severity="high",
+                        root_fix="Remediate detected vulnerability or remove insecure package before re-executing")
+            else:
+                failure("codex", "pre-tool", "lean-ctx-pretooluse", "hook/codex-pretooluse",
+                        "installed pre-tool policy", reason or "upstream hook denied or failed",
+                        root_fix="Diagnose hook routing and caller contract; preserve command semantics and policy")
         except Exception as exc:
             stderr += f"RSI recording failed: {type(exc).__name__}; original hook decision preserved.\n".encode()
     return code, stdout, stderr
