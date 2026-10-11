@@ -217,12 +217,12 @@ def _write_progress(
     effective_agent_id = (
         agent_id
         or os.getenv("AQ_AGENT_ID")
-        or "local"
+        or ("local-qwen" if source == "delegate-to-local" else (role or source))
     )
     effective_lane_id = (
         lane_id
         or os.getenv("AQ_LANE_ID")
-        or "local-direct"
+        or ("local" if "local" in source else "unknown")
     )
     data: dict = {
         "status": status,

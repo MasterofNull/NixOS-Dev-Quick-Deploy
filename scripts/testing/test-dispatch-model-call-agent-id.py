@@ -2,7 +2,8 @@
 """Behavioural test: verify dispatch.py sets agent_id and lane_id on model_call events.
 
 Verifies:
-1. Default behavior: agent_id == 'local' and lane_id == 'local-direct'.
+1. Default behavior: agent_id == 'local-qwen' and lane_id == 'local' (delegate-to-local source);
+   other sources fall back to role-or-source / 'unknown'.
 2. Environment overrides: AQ_AGENT_ID and AQ_LANE_ID override defaults when present.
 3. Partial overrides: each env var overrides independently while the other retains default.
 
@@ -68,12 +69,12 @@ def run_tests() -> None:
         event1 = read_latest_event(event_file)
         assert event1["event_type"] == "model_call", f"Expected model_call, got {event1['event_type']}"
         assert event1["run_id"] == "run-default-test", f"Unexpected run_id: {event1['run_id']}"
-        assert event1["agent_id"] == "local", f"Expected agent_id == 'local', got {event1['agent_id']!r}"
-        assert event1["lane_id"] == "local-direct", f"Expected lane_id == 'local-direct', got {event1['lane_id']!r}"
+        assert event1["agent_id"] == "local-qwen", f"Expected agent_id == 'local-qwen', got {event1['agent_id']!r}"
+        assert event1["lane_id"] == "local", f"Expected lane_id == 'local', got {event1['lane_id']!r}"
         assert event1["route_profile"] == "local-direct", f"Expected route_profile == 'local-direct', got {event1['route_profile']!r}"
-        assert event1["payload"].get("agent_id") == "local", f"Expected payload.agent_id == 'local', got {event1['payload'].get('agent_id')!r}"
-        assert event1["payload"].get("lane_id") == "local-direct", f"Expected payload.lane_id == 'local-direct', got {event1['payload'].get('lane_id')!r}"
-        print("  [OK] Default: agent_id='local', lane_id='local-direct'")
+        assert event1["payload"].get("agent_id") == "local-qwen", f"Expected payload.agent_id == 'local-qwen', got {event1['payload'].get('agent_id')!r}"
+        assert event1["payload"].get("lane_id") == "local", f"Expected payload.lane_id == 'local', got {event1['payload'].get('lane_id')!r}"
+        print("  [OK] Default: agent_id='local-qwen', lane_id='local'")
 
         # -------------------------------------------------------------
         # Test 2: Both environment overrides active
@@ -123,10 +124,10 @@ def run_tests() -> None:
 
         event3 = read_latest_event(event_file)
         assert event3["agent_id"] == "solo-agent", f"Expected agent_id == 'solo-agent', got {event3['agent_id']!r}"
-        assert event3["lane_id"] == "local-direct", f"Expected lane_id == 'local-direct', got {event3['lane_id']!r}"
+        assert event3["lane_id"] == "local", f"Expected lane_id == 'local', got {event3['lane_id']!r}"
         assert event3["payload"].get("agent_id") == "solo-agent"
-        assert event3["payload"].get("lane_id") == "local-direct"
-        print("  [OK] Partial: agent_id='solo-agent', lane_id='local-direct' (default)")
+        assert event3["payload"].get("lane_id") == "local"
+        print("  [OK] Partial: agent_id='solo-agent', lane_id='local' (default)")
 
         # -------------------------------------------------------------
         # Test 4: Only AQ_LANE_ID overridden
@@ -147,11 +148,38 @@ def run_tests() -> None:
         )
 
         event4 = read_latest_event(event_file)
-        assert event4["agent_id"] == "local", f"Expected agent_id == 'local', got {event4['agent_id']!r}"
+        assert event4["agent_id"] == "local-qwen", f"Expected agent_id == 'local-qwen', got {event4['agent_id']!r}"
         assert event4["lane_id"] == "lane-dedicated", f"Expected lane_id == 'lane-dedicated', got {event4['lane_id']!r}"
-        assert event4["payload"].get("agent_id") == "local"
+        assert event4["payload"].get("agent_id") == "local-qwen"
         assert event4["payload"].get("lane_id") == "lane-dedicated"
-        print("  [OK] Partial: agent_id='local' (default), lane_id='lane-dedicated'")
+        print("  [OK] Partial: agent_id='local-qwen' (default), lane_id='lane-dedicated'")
+
+        # -------------------------------------------------------------
+        # Test 5: Non-local source falls back to role-or-source / 'unknown'
+        # -------------------------------------------------------------
+        os.environ.pop("AQ_AGENT_ID", None)
+        os.environ.pop("AQ_LANE_ID", None)
+
+        dispatch._write_progress(
+            progress_file=tmp_path / "run5.progress.json",
+            tokens_out=5, max_tokens=100, elapsed_s=1.0, tok_per_sec=5.0,
+            eta_s=None, status="done", run_id="run-role-fallback",
+            source="aq-chat", role="reviewer",
+        )
+        event5 = read_latest_event(event_file)
+        assert event5["agent_id"] == "reviewer", f"got {event5['agent_id']!r}"
+        assert event5["lane_id"] == "unknown", f"got {event5['lane_id']!r}"
+
+        dispatch._write_progress(
+            progress_file=tmp_path / "run6.progress.json",
+            tokens_out=5, max_tokens=100, elapsed_s=1.0, tok_per_sec=5.0,
+            eta_s=None, status="done", run_id="run-source-fallback",
+            source="aq-chat",
+        )
+        event6 = read_latest_event(event_file)
+        assert event6["agent_id"] == "aq-chat", f"got {event6['agent_id']!r}"
+        assert event6["lane_id"] == "unknown", f"got {event6['lane_id']!r}"
+        print("  [OK] Non-local source: agent_id=role-or-source, lane_id='unknown'")
 
     # Restore environment
     if orig_agent_id is not None:
