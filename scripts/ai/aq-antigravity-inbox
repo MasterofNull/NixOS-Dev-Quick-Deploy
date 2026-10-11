@@ -94,8 +94,17 @@ def _read_regular(path: Path) -> bytes:
 
 def _safe_member(name: str, *, claimed: bool = False) -> Path:
     base = Path(name).name
-    if base != name or not base or (claimed != base.startswith(".claimed-")): raise InboxError("invalid inbox member")
+    if base != name or not base: raise InboxError("invalid inbox member")
+    if not claimed and base.startswith(".claimed-"): raise InboxError("invalid inbox member")
     path = INBOX / base
+    if not _regular(path):
+        if not claimed and not base.endswith(".md") and _regular(INBOX / f"{base}.md"):
+            path = INBOX / f"{base}.md"
+            base = path.name
+        elif claimed and not base.startswith(".claimed-") and _regular(INBOX / f".claimed-{base}"):
+            path = INBOX / f".claimed-{base}"
+            base = path.name
+    if (claimed != base.startswith(".claimed-")): raise InboxError("invalid inbox member")
     if not _regular(path) or path.parent.resolve() != INBOX.resolve(): raise InboxError("unsafe inbox member")
     return path
 
