@@ -312,9 +312,12 @@ def _git_commit(message: str) -> Optional[str]:
             ["git", "-C", str(REPO_ROOT), "add", *[str(path) for path in paths]],
             check=True, capture_output=True,
         )
+        # Owner-approved rule commits still land directly on main in the primary checkout;
+        # the pre-commit main-checkout guard refuses that unless overridden (WR-11).
         subprocess.run(
             ["git", "-C", str(REPO_ROOT), "commit", "-m", message],
             check=True, capture_output=True,
+            env={**os.environ, "AQ_ALLOW_MAIN_CHECKOUT_COMMIT": "1"},
         )
         result = subprocess.run(
             ["git", "-C", str(REPO_ROOT), "rev-parse", "--short", "HEAD"],
