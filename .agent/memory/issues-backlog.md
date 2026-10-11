@@ -5796,3 +5796,9 @@ File: scripts/ai/lib/worktree-isolation.sh; scripts/automation/prsi-orchestrator
 - [FIXED #439 2026-10-09] aq-usage-logging-dead-since-july — commit 8a955e16; wired aq-usage-hook into 185 aq-* scripts writing to local usage ledger.
 - [FIXED #439 2026-10-09] capability-index-run-audit-worktree-blind — commits 8a955e16 and c018aa4a; aq-capability-index accepts --live-root.
 - [FIXED 2026-10-10] prm-eval-signal-cleanup — terminating aq-prm-eval itself (SIGTERM/SIGINT) now invokes emergency_cleanup to kill active wrapper process groups and reap detached agent processes registered in AQ_DELEGATION_DIR, preventing orphan processes and inference slot contention.
+- [FIXED 2026-10-11] security-audit-and-precommit-cve-rsi-gate-disconnected — Security audit and npm security monitor previously did not record high/critical CVE findings to aq-rsi lifecycle ledger, and .githooks/pre-commit lacked dependency vulnerability verification. Wired aq-rsi report into security-audit.sh and npm-security-monitor.sh, added run_dependency_cve_check to pre-commit hook and tier0.d/check-dependency-cve.sh, and enhanced aq-rsi-hook to capture security/CVE denials.
+
+[OPEN] rsi-9064268d1e98879a72713cd3 — npm-security-monitor failure in npm-security-monitor:cve. Root cause evidence: producer=npm-security-monitor; path=/tmp/npm-security-smoke-zO7DEy/npm-security-20261011T195853Z.json; authority=npm-audit; os_error=npm security monitor detected high/critical CVEs (critical=0, high=2). Detected=2026-10-11T19:58:55.846752Z.
+  Severity: high
+  Action: Inspect npm report /tmp/npm-security-smoke-zO7DEy/npm-security-20261011T195853Z.json and bump package versions or apply threat mitigations
+  File: /tmp/npm-security-smoke-zO7DEy/npm-security-20261011T195853Z.json
