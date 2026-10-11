@@ -63,10 +63,10 @@
       },
       "pct_hint": 100,
       "acceptance": {
-        "status": "pending",
-        "by": null,
-        "date": null,
-        "note": "owner sign-off pending"
+        "status": "accepted",
+        "by": "hyperd",
+        "date": "2026-10-10",
+        "note": "preauthorized; H0-INTAKE-REPORT complete"
       }
     },
     {
@@ -81,16 +81,19 @@
       ],
       "editorial_note": "physical implementation commit ea96bcbfc05fca32d164137fd2cef261f5c68acc is preserved; HM/Nix evaluation, no-link build, and deterministic SPDX SBOM evidence are complete; acceptance awaits an exact-hash independent PASS and the atomic correction commit",
       "detection": {
+        "commit_match": [
+          "ea96bcbf"
+        ],
         "physical_commit": "ea96bcbfc05fca32d164137fd2cef261f5c68acc",
-        "acceptance_status": "prepared-review-pending",
+        "acceptance_status": "accepted",
         "correction_design": ".agents/plans/herdr-agent-operations/H1-CORRECTION-DESIGN-20260815.md"
       },
       "pct_hint": 95,
       "acceptance": {
-        "status": "pending",
-        "by": null,
-        "date": null,
-        "note": "owner sign-off pending"
+        "status": "accepted",
+        "by": "hyperd",
+        "date": "2026-10-10",
+        "note": "preauthorized; ea96bcbf inert facade verified"
       }
     },
     {

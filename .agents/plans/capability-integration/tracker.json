@@ -62,7 +62,8 @@
       "detection": {
         "commit_match": [
           "aq-usage logging",
-          "usage logging"
+          "usage logging",
+          "log every aq-* invocation"
         ]
       }
     },
@@ -95,7 +96,8 @@
         "commit_match": [
           "capability audit observability",
           "capability audit rsi",
-          "capability-audit timer"
+          "capability-audit timer",
+          "ci-3"
         ]
       }
     },
