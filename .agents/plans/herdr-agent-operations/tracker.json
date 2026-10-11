@@ -88,7 +88,7 @@
         "acceptance_status": "accepted",
         "correction_design": ".agents/plans/herdr-agent-operations/H1-CORRECTION-DESIGN-20260815.md"
       },
-      "pct_hint": 95,
+      "pct_hint": 100,
       "acceptance": {
         "status": "accepted",
         "by": "hyperd",
