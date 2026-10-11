@@ -19,18 +19,21 @@ pass() {
 command -v git >/dev/null 2>&1 || fail "git is required"
 command -v python3 >/dev/null 2>&1 || fail "python3 is required"
 
-# PR-only gate unless explicitly forced (FORCE_HARNESS_FIRST_EVIDENCE_GATE=true).
+# Determine evaluation context:
+# 1. Explicit force: FORCE_HARNESS_FIRST_EVIDENCE_GATE=true
+# 2. CI PR context: GITHUB_EVENT_NAME=pull_request or GITHUB_BASE_REF is set
+# 3. Local/worktree context: current branch is a non-main feature branch
+current_branch="$(git branch --show-current 2>/dev/null || true)"
 if [[ "${FORCE_HARNESS_FIRST_EVIDENCE_GATE:-false}" != "true" ]]; then
   if [[ "${GITHUB_EVENT_NAME:-}" != "pull_request" && -z "${GITHUB_BASE_REF:-}" ]]; then
-    pass "non-PR context; skipping harness-first PR evidence gate"
-    exit 0
+    if [[ -z "${current_branch}" || "${current_branch}" == "main" || "${current_branch}" == "master" ]]; then
+      pass "main branch non-PR context; skipping harness-first PR evidence gate"
+      exit 0
+    fi
   fi
 fi
 
-BASE_REF="${BASE_REF:-${GITHUB_BASE_REF:-}}"
-if [[ -z "${BASE_REF}" ]]; then
-  fail "unable to determine base ref (set BASE_REF or GITHUB_BASE_REF)"
-fi
+BASE_REF="${BASE_REF:-${GITHUB_BASE_REF:-main}}"
 
 if ! git rev-parse --verify --quiet "origin/${BASE_REF}" >/dev/null; then
   git fetch --no-tags --depth=200 origin "${BASE_REF}:${BASE_REF}" >/dev/null 2>&1 || true
@@ -50,7 +53,10 @@ if ! git merge-base "${DIFF_BASE}" HEAD >/dev/null 2>&1; then
   DIFF_RANGE="${DIFF_BASE}..HEAD"
 fi
 
-mapfile -t changed_files < <(git diff --name-only --diff-filter=ACMR "${DIFF_RANGE}")
+mapfile -t changed_files < <({
+  git diff --name-only --diff-filter=ACMR "${DIFF_RANGE}" 2>/dev/null || true
+  git diff --cached --name-only --diff-filter=ACMR 2>/dev/null || true
+} | sort -u)
 
 if [[ ${#changed_files[@]} -eq 0 ]]; then
   pass "no changed files in diff; skipping"
@@ -75,9 +81,10 @@ if [[ ${#high_impact_changes[@]} -eq 0 ]]; then
   exit 0
 fi
 
-mapfile -t added_evidence_files < <(git diff --name-status --diff-filter=A "${DIFF_RANGE}" \
-  | awk '{print $2}' \
-  | grep -E '^docs/harness-first/evidence/[0-9]{4}-[0-9]{2}-[0-9]{2}-[A-Za-z0-9._-]+\.md$' || true)
+mapfile -t added_evidence_files < <({
+  git diff --name-status --diff-filter=A "${DIFF_RANGE}" 2>/dev/null || true
+  git diff --cached --name-status --diff-filter=A 2>/dev/null || true
+} | awk '{print $2}' | sort -u | grep -E '^docs/harness-first/evidence/[0-9]{4}-[0-9]{2}-[0-9]{2}-[A-Za-z0-9._-]+\.md$' || true)
 
 if [[ ${#added_evidence_files[@]} -eq 0 ]]; then
   {
