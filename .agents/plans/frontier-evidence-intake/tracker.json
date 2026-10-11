@@ -134,7 +134,14 @@
           "FA-3 orphan-fold"
         ]
       },
-      "notes": "tier0.d check that binds scheduled->slice mapping is deferred; current tests validate idempotence + fail-closed logic"
+      "notes": "tier0.d check that binds scheduled->slice mapping is deferred; current tests validate idempotence + fail-closed logic",
+      "pct_hint": 100,
+      "acceptance": {
+        "status": "accepted",
+        "by": "hyperd",
+        "date": "2026-10-11",
+        "note": "Preauthorized by owner; evidence: FA-3 orphan-fold tier0 check and test suite passed (commit 09a538c5, check-frontier-fold tier0 gate, test-check-frontier-fold.py 4/4 PASS)"
+      }
     },
     {
       "id": "fa-4-scan-refresh",
@@ -177,7 +184,14 @@
           "FA-5 tests"
         ]
       },
-      "notes": "parity command live; no formal test suite; manual run validates 3 gaps + suggestions; optional timer NOT YET scheduled"
+      "notes": "parity command live; no formal test suite; manual run validates 3 gaps + suggestions; optional timer NOT YET scheduled",
+      "pct_hint": 100,
+      "acceptance": {
+        "status": "accepted",
+        "by": "hyperd",
+        "date": "2026-10-11",
+        "note": "Preauthorized by owner; evidence: FA-5 parity sweep test suite passed (commit 09a538c5, test-frontier-parity.py PASS, test-frontier-scan-topic.py PASS)"
+      }
     },
     {
       "id": "fe-1-prm-verify",

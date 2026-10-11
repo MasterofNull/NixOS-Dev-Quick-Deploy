@@ -5794,7 +5794,6 @@ File: scripts/ai/lib/worktree-isolation.sh; scripts/automation/prsi-orchestrator
 
 - [FIXED 2026-10-11] rsi-9064268d1e98879a72713cd3 — npm-security-monitor high findings resolved by pinning zero-dependency package-lock.json files in ai-stack/mcp-servers/hybrid-coordinator and templates/vscode/max-ss.cyberpunk-1.2.14-universal.
 
-[OPEN] aq-session-compact-verify-usage-requires-json — audit setup followed the documented `aq-session-compact --verify-usage` form, but the CLI exited 2 because a JSON input path is required; no usage JSON was available. Root cause: the quick instruction omits a required argument or an input-discovery path. Severity: low (usage measurement unavailable). Action: correct the documented invocation or provide the current session usage JSON, then rerun measurement; until then report unknown/unverified.
-  File: AGENTS.md memory/cache SOP invocation; `aq-session-compact` CLI contract
+- [FIXED 2026-10-11] aq-session-compact-verify-usage-requires-json — scripts/ai/aq-session-compact accepts bare --verify-usage flag defaulting to .agent/collaboration/session-usage.json (nargs='?'), outputting valid JSON without requiring path argument; covered by test-aq-session-compact.py.
 - [FIXED 2026-10-11] antigravity-network-n2-policy-executable-missing — declared networkPolicyCli package wrapper in nix/modules/core/network.nix when enable or mode==policy is set, and added test-network-policy-packaging.sh regression check.
 - [FIXED 2026-10-11] agent-memory-surface-registry-line-limit — focused CI found `ai-stack/agent-memory/MEMORY.md` at 201 lines after the audit index addition. Combined adjacent existing Antigravity index bullets; index is 200 lines and test-agent-memory-surface-registry.py passes.
