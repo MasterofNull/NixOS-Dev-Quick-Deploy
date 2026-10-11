@@ -15,6 +15,7 @@ import os
 import sys
 import tempfile
 import unittest
+import uuid
 from pathlib import Path
 from unittest.mock import AsyncMock, MagicMock, patch
 
@@ -60,6 +61,7 @@ class TestHintsFeedbackAidbProducer(unittest.IsolatedAsyncioTestCase):
             await hints_handlers._publish_hint_feedback_to_aidb(entry)
 
         self.assertIsNotNone(posted_payload, "Expected post to be called")
+        self.assertEqual(str(uuid.UUID(posted_payload["interaction_id"])), posted_payload["interaction_id"])
         self.assertEqual(posted_payload["agent_type"], "codex")
         self.assertEqual(posted_payload["outcome"], "success")
         self.assertEqual(posted_payload["project"], "hint-feedback")
@@ -150,6 +152,100 @@ class TestHintsFeedbackAidbProducer(unittest.IsolatedAsyncioTestCase):
                     mock_pub.assert_called_once()
                     call_entry = mock_pub.call_args[0][0]
                     self.assertEqual(call_entry["hint_id"], "test_hint_e2e")
+
+    async def test_background_task_reference_retained_then_released(self):
+        """The fire-and-forget publish task must be strongly referenced until done."""
+        with tempfile.TemporaryDirectory(prefix="test-hints-feedback-") as tmpdir:
+            log_file = Path(tmpdir) / "hint-feedback.jsonl"
+            gate = asyncio.Event()
+
+            async def slow_pub(_entry):
+                await gate.wait()
+
+            with patch("hints_handlers._hint_feedback_log_path", return_value=log_file), \
+                    patch("hints_handlers._publish_hint_feedback_to_aidb", side_effect=slow_pub):
+                req = AsyncMock()
+                req.json = AsyncMock(return_value={"hint_id": "h", "helpful": True})
+                await hints_handlers.handle_hints_feedback(req)
+                await asyncio.sleep(0)
+                self.assertEqual(len(hints_handlers._BACKGROUND_TASKS), 1)
+                gate.set()
+                await asyncio.sleep(0.01)
+                self.assertEqual(len(hints_handlers._BACKGROUND_TASKS), 0)
+
+
+try:
+    import sqlalchemy  # noqa: F401
+    _HAVE_SA = True
+except ImportError:
+    _HAVE_SA = False
+
+
+@unittest.skipUnless(_HAVE_SA, "sqlalchemy not installed in this interpreter")
+class TestRecordInteractionIdHandling(unittest.IsolatedAsyncioTestCase):
+    """Exercise the real insert construction in aidb InteractionHistoryStore."""
+
+    def _store_and_captured(self):
+        sys.path.insert(0, str(_REPO / "ai-stack" / "mcp-servers" / "aidb"))
+        from sqlalchemy.dialects import postgresql
+        try:
+            import pgvector.sqlalchemy  # noqa: F401
+        except ImportError:  # column type is irrelevant to the id handling under test
+            import types
+            from sqlalchemy.types import UserDefinedType
+
+            class Vector(UserDefinedType):
+                cache_ok = True
+
+                def __init__(self, *a, **k):
+                    pass
+
+                def get_col_spec(self, **kw):
+                    return "VECTOR"
+
+            pkg = types.ModuleType("pgvector")
+            sub = types.ModuleType("pgvector.sqlalchemy")
+            sub.Vector = Vector
+            pkg.sqlalchemy = sub
+            sys.modules.update({"pgvector": pkg, "pgvector.sqlalchemy": sub})
+        import interaction_history
+        captured = {}
+
+        class Conn:
+            def execute(self, stmt):
+                c = stmt.compile(dialect=postgresql.dialect())
+                captured["sql"] = str(c)
+                captured["params"] = dict(c.params)
+                r = MagicMock()
+                r.scalar.return_value = captured["params"].get("interaction_id", "server-generated")
+                return r
+
+        class Engine:
+            def begin(self):
+                cm = MagicMock()
+                cm.__enter__.return_value = Conn()
+                cm.__exit__.return_value = False
+                return cm
+
+        return interaction_history.InteractionHistoryStore(Engine()), captured
+
+    async def test_none_interaction_id_omitted_for_server_default(self):
+        store, cap = self._store_and_captured()
+        await store.record_interaction({"query": "q", "interaction_id": None})
+        self.assertNotIn("interaction_id", cap["params"])
+        self.assertNotIn("interaction_id", cap["sql"].split("VALUES")[0])
+
+    async def test_missing_interaction_id_omitted(self):
+        store, cap = self._store_and_captured()
+        await store.record_interaction({"query": "q"})
+        self.assertNotIn("interaction_id", cap["params"])
+
+    async def test_supplied_interaction_id_still_inserted(self):
+        store, cap = self._store_and_captured()
+        iid = str(uuid.uuid4())
+        out = await store.record_interaction({"query": "q", "interaction_id": iid})
+        self.assertEqual(cap["params"]["interaction_id"], iid)
+        self.assertEqual(out, iid)
 
 
 if __name__ == "__main__":
