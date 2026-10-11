@@ -255,5 +255,60 @@ class TestAgeDetection(unittest.TestCase):
         temp_dir.cleanup()
 
 
+class TestReapStatsSynchronization(unittest.TestCase):
+    """Test cases for stats synchronization during reap --apply."""
+
+    def setUp(self):
+        self.temp_dir = tempfile.TemporaryDirectory()
+        self.repo_dir = Path(self.temp_dir.name) / "test-repo"
+        self.repo_dir.mkdir(parents=True)
+
+        self.origin_dir = Path(self.temp_dir.name) / "origin"
+        self.origin_dir.mkdir()
+        subprocess.run(["git", "init", "--bare"], cwd=str(self.origin_dir), check=True, capture_output=True)
+        subprocess.run(["git", "clone", str(self.origin_dir), str(self.repo_dir)], check=True, capture_output=True)
+        subprocess.run(["git", "config", "user.email", "test@example.com"], cwd=str(self.repo_dir), check=True, capture_output=True)
+        subprocess.run(["git", "config", "user.name", "Test User"], cwd=str(self.repo_dir), check=True, capture_output=True)
+
+        (self.repo_dir / "README.md").write_text("# Test\n")
+        subprocess.run(["git", "add", "README.md"], cwd=str(self.repo_dir), check=True, capture_output=True)
+        subprocess.run(["git", "commit", "-m", "Initial commit"], cwd=str(self.repo_dir), check=True, capture_output=True)
+        subprocess.run(["git", "push", "-u", "origin", "main"], cwd=str(self.repo_dir), check=True, capture_output=True)
+
+    def tearDown(self):
+        self.temp_dir.cleanup()
+
+    def test_apply_stats_reflects_freed_bytes(self):
+        """Verify plan['stats'] reflects bytes_freed when --apply is passed."""
+        wt_dir = self.repo_dir / ".agents" / "delegation" / "worktrees" / "test-wt"
+        wt_dir.parent.mkdir(parents=True, exist_ok=True)
+        subprocess.run(
+            ["git", "worktree", "add", "-b", "delegate/clean-reap", str(wt_dir), "main"],
+            cwd=str(self.repo_dir),
+            check=True,
+            capture_output=True
+        )
+        subprocess.run(["git", "push", "-u", "origin", "delegate/clean-reap"], cwd=str(self.repo_dir), check=True, capture_output=True)
+
+        payload_file = wt_dir / "payload.dat"
+        payload_file.write_bytes(b"A" * 10240)
+        subprocess.run(["git", "add", "payload.dat"], cwd=str(wt_dir), check=True, capture_output=True)
+        subprocess.run(["git", "commit", "-m", "add payload"], cwd=str(wt_dir), check=True, capture_output=True)
+        subprocess.run(["git", "push", "origin", "delegate/clean-reap"], cwd=str(wt_dir), check=True, capture_output=True)
+        subprocess.run(["git", "merge", "delegate/clean-reap"], cwd=str(self.repo_dir), check=True, capture_output=True)
+        subprocess.run(["git", "push", "origin", "main"], cwd=str(self.repo_dir), check=True, capture_output=True)
+
+        reap_script = Path(__file__).resolve().parents[1] / "ai" / "aq-worktree-reap"
+        res = subprocess.run(
+            [sys.executable, str(reap_script), "--repo", str(self.repo_dir), "--min-age-hours", "0", "--apply", "--json"],
+            capture_output=True,
+            text=True,
+            check=True
+        )
+        plan = json.loads(res.stdout)
+        self.assertGreater(plan["stats"]["bytes_freed"], 0)
+        self.assertEqual(plan["stats"]["reapable"], 1)
+
+
 if __name__ == "__main__":
     unittest.main()
