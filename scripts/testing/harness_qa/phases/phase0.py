@@ -1545,6 +1545,29 @@ def _check_frontier_fe2a_functional_eval(ctx: RunContext) -> list[CheckResult]:
     return [passed(5, "0.10.64", desc)]
 
 
+def _check_frontier_fe2b_prompt_compile(ctx: RunContext) -> list[CheckResult]:
+    """0.10.65: Frontier FE-2b GEPA build-time prompt compile plus dashboard visibility."""
+    desc = "Frontier FE-2b prompt compile: reflective optimization, candidate gating, compiled artifact, dashboard visibility"
+    test = ctx.repo_root / "scripts" / "testing" / "test-gepa-prompt-compile.py"
+    cli = ctx.repo_root / "scripts" / "ai" / "aq-prompt-compile"
+    lib = ctx.repo_root / "scripts" / "ai" / "lib" / "gepa_optimizer.py"
+    route = ctx.repo_root / "dashboard" / "backend" / "api" / "routes" / "aistack.py"
+    js = ctx.repo_root / "assets" / "dashboard.js"
+    missing = [str(p.relative_to(ctx.repo_root)) for p in (test, cli, lib, route, js) if not p.exists()]
+    if missing:
+        return [failed(5, "0.10.65", desc, f"missing: {', '.join(missing)}")]
+    try:
+        proc = subprocess.run([sys.executable, str(test)], cwd=str(ctx.repo_root), capture_output=True, text=True,
+                              timeout=120, check=False)
+        if proc.returncode != 0 or "ALL 7 FIXTURES PASS" not in proc.stdout:
+            return [failed(5, "0.10.65", desc, (proc.stderr or proc.stdout or "fixture failed")[-240:])]
+        if "_prompt_compile_health_summary" not in route.read_text(encoding="utf-8") or "· prompt compiler (GEPA)" not in js.read_text(encoding="utf-8"):
+            return [failed(5, "0.10.65", desc, "dashboard prompt compiler visibility contract missing")]
+    except (OSError, subprocess.TimeoutExpired) as error:
+        return [failed(5, "0.10.65", desc, str(error)[:240])]
+    return [passed(5, "0.10.65", desc)]
+
+
 
 def _check_provider_projection(ctx: RunContext) -> list[CheckResult]:
     """0.10.55: ECC P0-B provider projection fixtures plus live drift status (preview-only)."""
@@ -2346,6 +2369,7 @@ def run(ctx: RunContext) -> list[CheckResult]:
     results.extend(_check_hermetic_candidate_eval(ctx))
     results.extend(_check_ecc_p2_approval_gated_cd(ctx))
     results.extend(_check_frontier_fe2a_functional_eval(ctx))
+    results.extend(_check_frontier_fe2b_prompt_compile(ctx))
     results.extend(_check_network_dns_policy(ctx))
     if ctx.dashboard_safe:
         results.extend(_dashboard_safe_host_only_skips())

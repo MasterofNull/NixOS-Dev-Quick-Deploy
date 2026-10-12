@@ -1,0 +1,101 @@
+#!/usr/bin/env python3
+"""aq-prompt-compile — Frontier FE-2b GEPA build-time prompt compile CLI.
+
+Optimizes prompt templates offline via reflective failure traces from
+functional benchmarks, enforcing the strict gating rule that a compiled prompt
+is adopted only if it strictly outperforms the baseline pass rate.
+
+Usage:
+  aq-prompt-compile [--prompt ID] [--dry-run] [--adopt] [--check-only] [--verbose] [--json]
+"""
+from __future__ import annotations
+try:  # aq-usage-hook
+    import importlib.util as _aqu, os as _aqo
+    _aqs = _aqu.spec_from_file_location("aq_usage", _aqo.path.join(_aqo.path.dirname(_aqo.path.realpath(__file__)), "lib", "aq_usage.py"))
+    _aqm = _aqu.module_from_spec(_aqs); _aqs.loader.exec_module(_aqm); _aqm.record(__file__, __name__)
+except Exception:
+    pass
+
+import argparse
+import json
+import os
+import sys
+from pathlib import Path
+from typing import Any, Dict
+
+ROOT = Path(__file__).resolve().parents[2]
+sys.path.insert(0, str(ROOT / "scripts/ai/lib"))
+import gepa_optimizer as gepa  # noqa: E402
+
+
+def main() -> int:
+    parser = argparse.ArgumentParser(description="Frontier FE-2b GEPA build-time prompt compile CLI")
+    parser.add_argument("--prompt", default="aider_task_systems_code", help="Target prompt ID to compile")
+    parser.add_argument("--dry-run", action="store_true", help="Run deterministic offline compile cycle")
+    parser.add_argument("--adopt", action="store_true", help="Persist compiled artifact if gate passes")
+    parser.add_argument("--check-only", action="store_true", help="Verify compilation health and readiness")
+    parser.add_argument("--verbose", action="store_true", help="Show verbose reflection and diff traces")
+    parser.add_argument("--json", action="store_true", dest="json_output", help="Output JSON")
+    args = parser.parse_args()
+
+    opt = gepa.GepaOptimizer(repo_root=ROOT)
+
+    if args.check_only:
+        summary = gepa.health_summary(repo_root=ROOT)
+        existing = opt.load_compiled_artifact(args.prompt)
+        summary["target_compiled"] = existing is not None
+        if existing:
+            summary["baseline_score"] = existing.baseline_score
+            summary["compiled_score"] = existing.compiled_score
+            summary["score_lift"] = existing.score_lift
+            summary["gate_passed"] = existing.gate_passed
+
+        if args.json_output:
+            print(json.dumps(summary, indent=2))
+        else:
+            print(f"=== FE-2b Prompt Compiler Check: {args.prompt} ===")
+            print(f"Status:             {summary['status']}")
+            print(f"Compiled artifacts: {summary['compiled_templates']}")
+            print(f"Gate enforced:      {summary['gate_enforced']}")
+            print(f"Target compiled:    {summary['target_compiled']}")
+            if existing:
+                print(f"Baseline score:     {existing.baseline_score:.1%}")
+                print(f"Compiled score:     {existing.compiled_score:.1%}")
+                print(f"Score lift:         +{existing.score_lift:.1%}")
+        return 0
+
+    result = opt.compile(
+        prompt_id=args.prompt,
+        dry_run=args.dry_run,
+        adopt=args.adopt,
+    )
+
+    if args.json_output:
+        print(json.dumps(result, indent=2))
+    else:
+        print(f"=== FE-2b GEPA Prompt Compilation: {args.prompt} ===")
+        print(f"Baseline Score: {result.get('baseline_score', 0.0):.1%}")
+        print(f"Compiled Score: {result.get('compiled_score', 0.0):.1%}")
+        print(f"Score Lift:     +{result.get('score_lift', 0.0):.1%}")
+        print(f"Gate Passed:    {result.get('gate_passed', False)}")
+        print(f"Adopted:        {result.get('adopted', False)}")
+        if result.get("saved_path"):
+            print(f"Saved Path:     {result['saved_path']}")
+
+        if args.verbose:
+            print("\n--- Reflective Directives ---")
+            for fb in result.get("feedback", []):
+                print(f"  • {fb}")
+            if result.get("artifact", {}).get("compiled_template"):
+                print("\n--- Compiled Template Preview ---")
+                lines = result["artifact"]["compiled_template"].splitlines()
+                for line in lines[:25]:
+                    print(f"  {line}")
+                if len(lines) > 25:
+                    print("  ...")
+
+    return 0 if result.get("ok", False) else 1
+
+
+if __name__ == "__main__":
+    sys.exit(main())

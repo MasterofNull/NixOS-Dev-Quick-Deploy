@@ -4972,6 +4972,7 @@ async function loadRuntimeDetails() {
   const hrd = cg.herdr_presentation || {};
   const hce = cg.hermetic_candidate_eval || {};
   const fne = cg.functional_eval || {};
+  const prc = cg.prompt_compile || {};
   const lrn = s.learning || {};
   const rows = [
     fwRow("Offloading", fmtImplStatus(off.status), "ok"),
@@ -5075,6 +5076,13 @@ async function loadRuntimeDetails() {
         ? `${fne.baseline_ready ? "READY" : "UNVERIFIED"} · ${fne.tasks_available ?? 0} tasks · headroom:${fne.headroom_observable ? "yes" : "no"}`
         : "UNVERIFIED",
       fne.available && fne.baseline_ready ? "ok" : "warn"
+    ),
+    fwRow(
+      "· prompt compiler (GEPA)",
+      prc.available
+        ? `${String(prc.status || "unverified").toUpperCase()} · ${prc.compiled_templates ?? 0} compiled · gate:${prc.gate_enforced ? "yes" : "no"}`
+        : "UNVERIFIED",
+      prc.available && prc.status === "ready" ? "ok" : "info"
     ),
     fwRow("Learning", fmtImplStatus(lrn.status), "ok"),
     fwRow("· signals", lrn.signals_recorded ?? 0),
