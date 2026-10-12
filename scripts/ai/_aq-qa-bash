@@ -1749,6 +1749,9 @@ _check 1 "0.10.5" "model catalog/profile freshness" \
     # 0.10.64 Frontier FE-2a functional eval metric baseline
     _check 1 "0.10.64" "Frontier FE-2a functional eval: executable task fixtures, headroom measurement, CLI, dashboard visibility" \
       python3 "${REPO_ROOT}/scripts/testing/test-functional-prompt-eval.py"
+    # 0.10.65 Frontier FE-2b prompt compile (GEPA)
+    _check 1 "0.10.65" "Frontier FE-2b prompt compile: reflective optimization, candidate gating, compiled artifact, dashboard visibility" \
+      python3 "${REPO_ROOT}/scripts/testing/test-gepa-prompt-compile.py"
   fi
 
   # 0.9.4 Runtime safety contract policy (Phase 39)
