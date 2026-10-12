@@ -1501,6 +1501,27 @@ def _check_hermetic_candidate_eval(ctx: RunContext) -> list[CheckResult]:
     return [passed(1, "0.10.62", desc)]
 
 
+def _check_ecc_p2_approval_gated_cd(ctx: RunContext) -> list[CheckResult]:
+    """0.10.63: ECC P2 approval-gated CD pack fixtures plus dashboard visibility (local verdict only)."""
+    desc = "ECC P2 approval-gated CD pack: SHA pins, environment approvals, cancel-in-progress: false, rollback, dashboard visibility"
+    test = ctx.repo_root / "scripts" / "testing" / "test-factory-cd-pack.py"
+    route = ctx.repo_root / "dashboard" / "backend" / "api" / "routes" / "aistack.py"
+    js = ctx.repo_root / "assets" / "dashboard.js"
+    missing = [str(p.relative_to(ctx.repo_root)) for p in (test, route, js) if not p.exists()]
+    if missing:
+        return [failed(5, "0.10.63", desc, f"missing: {', '.join(missing)}")]
+    try:
+        proc = subprocess.run([sys.executable, str(test)], cwd=str(ctx.repo_root), capture_output=True, text=True,
+                              timeout=120, check=False)
+        if proc.returncode != 0 or "PASS: factory CD pack" not in proc.stdout:
+            return [failed(5, "0.10.63", desc, (proc.stderr or proc.stdout or "fixture failed")[-240:])]
+        if "_cd_pack_health_summary" not in route.read_text(encoding="utf-8") or "· CD pack" not in js.read_text(encoding="utf-8"):
+            return [failed(5, "0.10.63", desc, "dashboard CD pack visibility contract missing")]
+    except (OSError, subprocess.TimeoutExpired) as error:
+        return [failed(5, "0.10.63", desc, str(error)[:240])]
+    return [passed(5, "0.10.63", desc)]
+
+
 def _check_provider_projection(ctx: RunContext) -> list[CheckResult]:
     """0.10.55: ECC P0-B provider projection fixtures plus live drift status (preview-only)."""
     desc = "ECC P0-B provider projection: deterministic preview, drift/preserved/refusal fixtures, live drift status"
@@ -2299,6 +2320,7 @@ def run(ctx: RunContext) -> list[CheckResult]:
     results.extend(_check_aq_eval_static_suites(ctx))
     results.extend(_check_herdr_presentation_projection(ctx))
     results.extend(_check_hermetic_candidate_eval(ctx))
+    results.extend(_check_ecc_p2_approval_gated_cd(ctx))
     results.extend(_check_network_dns_policy(ctx))
     if ctx.dashboard_safe:
         results.extend(_dashboard_safe_host_only_skips())

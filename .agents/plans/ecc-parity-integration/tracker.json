@@ -83,9 +83,9 @@
       "id": "p2", "name": "separately approval-gated CD", "phase": "deploy", "kind": "slice",
       "goal": "render safe CD controls without mutating accounts, secrets, environments or deployments absent owner authority",
       "validation_goal": "approval/concurrency/provenance/health/rollback fixtures, aq-qa and dashboard UNVERIFIED_REMOTE state",
-      "deps": ["p0-e"], "pct_hint": 0,
-      "detection": {"commit_match": ["ECC P2", "approval-gated CD"]},
-      "acceptance": {"status": "pending", "by": null, "date": null, "note": "not started"}
+      "deps": ["p0-e"], "pct_hint": 100,
+      "detection": {"commit_match": ["ECC P2", "approval-gated CD", "feat(ecc): P2"]},
+      "acceptance": {"status": "accepted", "by": "hyperd", "date": "2026-10-12", "note": "Preauthorized by owner; evidence: ECC P2 separately approval-gated CD pack on factory gate bundle passed (test-factory-cd-pack.py 16/16 PASS, QA 0.10.63, test-ecc-p2-cd-pack-service-coverage.py PASS, dashboard visible)"}
     }
   ],
   "issues": []

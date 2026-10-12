@@ -1743,6 +1743,9 @@ _check 1 "0.10.5" "model catalog/profile freshness" \
     # 0.10.62 ECC P0-D hermetic candidate evaluation evidence
     _check 1 "0.10.62" "ECC P0-D hermetic candidate evaluation evidence: digest-bound containment, reviewer promotion, fail-closed" \
       python3 "${REPO_ROOT}/scripts/testing/test-hermetic-candidate-eval.py"
+    # 0.10.63 ECC P2 approval-gated CD pack
+    _check 1 "0.10.63" "ECC P2 approval-gated CD pack: SHA pins, environment approvals, cancel-in-progress: false, rollback, dashboard visibility" \
+      python3 "${REPO_ROOT}/scripts/testing/test-factory-cd-pack.py"
   fi
 
   # 0.9.4 Runtime safety contract policy (Phase 39)
