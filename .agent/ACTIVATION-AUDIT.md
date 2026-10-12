@@ -665,3 +665,35 @@ Status: configuration preparation; activation deferred to the owner's next rebui
 - QA: `rsi.3` capability-audit report freshness (latest.json < 2d), `rsi.4` ai-capability-audit.timer active.
 - Source: reconciled from Codex's parallel ci-3 (c735bdf8, preserved on codex/wip-sandbox-20261009); its timer/adapter/snapshot store were dropped as duplicates of #446.
 - Kill switch: revert the commit (read-only surfaces). No acceptance claimed.
+
+## ECC P2 approval-gated CD pack on factory gate bundle — 2026-10-11 — PR #492 (commit 6c42c2aa)
+- Integrated: Template `templates/factory-gate-bundle/ci/factory-cd.yml.tmpl`, policy checker `templates/factory-gate-bundle/ci/cd_policy.py`, and dashboard route `dashboard/backend/api/routes/aistack.py` (_cd_pack_health_summary).
+- Turned ON: Default-configured in template bundle; QA check `0.10.63` and dashboard capability enforcement panel live.
+- Functionally validated: 16-test suite `scripts/testing/test-factory-cd-pack.py` passes all fixtures (SHA pins, environment approvals, serialized concurrency `cancel-in-progress: false`, rollback handling, unverified remote claims).
+- Observable: Dashboard card row `· CD pack` showing local verdict (`LOCAL_READY` / `LOCAL_BLOCKED`) and remote status.
+- Intervenable: Declarative workflow edits and manual operator trigger / rollback steps.
+- PM-tracked: `.agents/plans/ecc-parity-integration/tracker.json` updated with p2 accepted (100% plan completion, 8/8 shipped).
+
+## Frontier FE-2a functional eval metric baseline — 2026-10-11 — PR #493 (commit 228701a3)
+- Integrated: Library `scripts/ai/lib/functional_eval.py`, CLI `scripts/ai/aq-functional-eval`, `aq-prompt-eval --functional` flag, and dashboard endpoint `_functional_eval_health_summary`.
+- Turned ON: Enabled in Phase 0 QA checks (`0.10.64`) and capability enforcement dashboard.
+- Functionally validated: 6/6 test fixtures in `scripts/testing/test-functional-prompt-eval.py` passing (canonical task definitions, code block parsing, AST & execution sandboxing, mock headroom measurement 0.0 to 1.0, CLI semantics, and dashboard visibility).
+- Observable: Dashboard card row `· functional eval baseline` and JSON health summary reporting `tasks_available`, `headroom_observable`, `baseline_ready`.
+- Intervenable: CLI flags (`--dry-run`, `--mock-ratio`, `--endpoint`, `--verbose`).
+- PM-tracked: `.agents/plans/frontier-evidence-intake/tracker.json` item `fe-2-gepa` editorial notes, detection signals, and progress tracking updated to 50% (unblocking FE-2b prompt compile).
+
+## Frontier FE-2b GEPA build-time prompt compile — 2026-10-12 — PR #495 (commit 173eaafc)
+- Integrated: Library `scripts/ai/lib/gepa_optimizer.py`, CLI `scripts/ai/aq-prompt-compile`, QA check `0.10.65`, and dashboard route `_prompt_compile_health_summary`.
+- Turned ON: Active in scripts/ai, dashboard endpoint, and tier0 gate checks.
+- Functionally validated: 7/7 test fixtures in `scripts/testing/test-gepa-prompt-compile.py` passing with reflective feedback synthesis, strict score gating, artifact serialization, and CLI execution.
+- Observable: Dashboard card row `· prompt compiler (GEPA)`, `aq-prompt-compile --check-only --json`, and QA check `0.10.65`.
+- Intervenable: CLI options `--dry-run`, `--check-only`, `--prompt-id`, and `--max-iterations` prevent unverified adoption.
+- PM-tracked: `.agents/plans/frontier-evidence-intake/tracker.json` item `fe-2-gepa` marked accepted (100%).
+
+## Central Workspace & Launcher Native Google agy CLI — 2026-10-12 — PR #497 (commit f481d0af)
+- Integrated: `scripts/ai/aq-agent-launcher` directly launches native `agy` CLI binary with session resumption `--continue`; `scripts/ai/aq-workspace` and Zellij layout `config/zellij/aq-agentic-workspace.kdl`.
+- Turned ON: Default execution path in terminal workspace for Google personal subscription lane without GUI IDE requirements.
+- Functionally validated: 2/2 tests in `scripts/testing/test-aq-agent-launcher.py` and 16/16 tests in `scripts/testing/test-aq-workspace.py` pass.
+- Observable: Displayed in `get_auth_status()` and terminal workspace Zellij pane headers.
+- Intervenable: Key-driven interactive controls for clean new sessions, resuming, login, and quitting.
+- PM-tracked: `.agent/archive/20261012-PROJECT-AQ-WORKSPACE-AGY-NATIVE-CLI-PRD.md`, PR #497, PULSE.log, and RESUME.json.
