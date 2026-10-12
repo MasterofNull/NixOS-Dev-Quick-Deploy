@@ -4963,6 +4963,7 @@ async function loadRuntimeDetails() {
   const lce = cg.lifecycle_events || {};
   const ecc = cg.ecc_diagnostics || {};
   const cip = cg.ci_pack || {};
+  const hrd = cg.herdr_presentation || {};
   const lrn = s.learning || {};
   const rows = [
     fwRow("Offloading", fmtImplStatus(off.status), "ok"),
@@ -5038,6 +5039,13 @@ async function loadRuntimeDetails() {
         ? `${cip.verdict || "UNVERIFIED"} · ${cip.remote || "UNVERIFIED_REMOTE"} · ${cip.unpinned_actions ?? 0} unpinned in ${cip.workflows_scanned ?? 0} workflows`
         : "UNVERIFIED",
       cip.available && cip.verdict === "LOCAL_READY" ? "info" : "warn"
+    ),
+    fwRow(
+      "· herdr presentation",
+      hrd.available
+        ? `${String(hrd.status || "unverified").toUpperCase()} · ${hrd.schema_version || "v1"} · ${hrd.digest ? hrd.digest.slice(0, 8) : "--"}`
+        : "UNVERIFIED",
+      hrd.available && (hrd.status === "dormant_preview" || hrd.status === "ok") ? "info" : "warn"
     ),
     fwRow("Learning", fmtImplStatus(lrn.status), "ok"),
     fwRow("· signals", lrn.signals_recorded ?? 0),

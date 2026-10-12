@@ -107,14 +107,16 @@
         "h1-package"
       ],
       "detection": {
-        "blocker_note": "requires accepted H1 package; runtime activation separately reviewed"
+        "commit_match": [
+          "H2 monitored presentation projection"
+        ]
       },
-      "pct_hint": 0,
+      "pct_hint": 100,
       "acceptance": {
-        "status": "pending",
-        "by": null,
-        "date": null,
-        "note": "owner sign-off pending"
+        "status": "accepted",
+        "by": "hyperd",
+        "date": "2026-10-11",
+        "note": "preauthorized; pure projection and Service Coverage verified"
       }
     },
     {
