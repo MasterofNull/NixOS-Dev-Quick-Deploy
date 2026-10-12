@@ -33,7 +33,7 @@ layout {
                         command "aq-agent-launcher"
                         args "codex" "prompt"
                     }
-                    pane name="󰚩 Google Antigravity / Gemini 3.8-Flash (Gemini CLI)" {
+                    pane name="󰚩 Google Gemini (Subscription CLI)" {
                         command "aq-agent-launcher"
                         args "gemini" "prompt"
                     }
@@ -70,7 +70,7 @@ layout {
                 command "aq-agent-launcher"
                 args "codex" "prompt"
             }
-            pane x="25%" y="49%" width="24%" height="47%" name="󰚩 Google Antigravity / Gemini 3.8-Flash (Gemini CLI)" {
+            pane x="25%" y="49%" width="24%" height="47%" name="󰚩 Google Gemini (Subscription CLI)" {
                 command "aq-agent-launcher"
                 args "gemini" "prompt"
             }
@@ -139,16 +139,16 @@ layout {
 
     tab name="Gemini & Sub-Agents" {
         pane split_direction="vertical" {
-            pane size="55%" name="󰚩 Google Antigravity / Gemini 3.8-Flash Console (Left Board)" focus=true {
+            pane size="55%" name="󰚩 Google Gemini (Subscription CLI) Console (Left Board)" focus=true {
                 command "aq-agent-launcher"
                 args "gemini" "prompt"
             }
             pane split_direction="horizontal" size="45%" {
-                pane size="40%" name="󰚩 Antigravity Sub-Agent Delegation Tree (Right Board)" {
+                pane size="40%" name="󰚩 Gemini Sub-Agent Delegation Tree (Right Board)" {
                     command "aq-fleet-monitor"
                     args "--tree" "--agent" "gemini"
                 }
-                pane size="60%" name="󰚩 Interactive Antigravity Sub-Agent Console" {
+                pane size="60%" name="󰚩 Interactive Gemini Sub-Agent Console" {
                     command "aq-subagent-interactive"
                 }
             }
