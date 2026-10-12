@@ -1,0 +1,22 @@
+{
+  "prompt_id": "aider_task_systems_code",
+  "baseline_score": 0.5,
+  "compiled_score": 1.0,
+  "score_lift": 0.5,
+  "iterations": 1,
+  "reflective_feedback": [
+    "Mean calculation: return 0.0 for empty input sequences; cast arithmetic result explicitly to float.",
+    "Deduplication: drop duplicate items while strictly preserving first-seen order (do not sort).",
+    "Systemd hardening: configure DynamicUser=True, ProtectSystem='strict', PrivateTmp=True, and environment-driven port."
+  ],
+  "compiled_template": "TASK: {{ task_description }}\n\nFILES: {{ files_list }}\n\nCONSTRAINTS:\nREFLECTIVE EXECUTION DIRECTIVES (GEPA COMPILED):\n- Mean calculation: return 0.0 for empty input sequences; cast arithmetic result explicitly to float.\n- Deduplication: drop duplicate items while strictly preserving first-seen order (do not sort).\n- Systemd hardening: configure DynamicUser=True, ProtectSystem='strict', PrivateTmp=True, and environment-driven port.\n- Never hardcode port numbers or service URLs; read from environment variables\n- NixOS modules: use lib.mkIf for conditional options, never // operator\n- Python services: use python3.withPackages, structlog for logging\n- systemd units: include PrivateTmp, NoNewPrivileges, ProtectSystem=strict\n- One logical change per invocation; do not touch unrelated code\n\nCHANGE:\n{{ numbered_change_list }}\n\nDO NOT: {{ exclusion_list }}\n\nOUTPUT: confirm each change with a diff-style summary line\n",
+  "timestamp": "2026-10-12T16:51:11Z",
+  "gate_passed": true,
+  "metadata": {
+    "optimizer": "gepa_reflective_v1",
+    "total_tasks": 6,
+    "baseline_passed": 3,
+    "compiled_passed": 6,
+    "dry_run": true
+  }
+}
