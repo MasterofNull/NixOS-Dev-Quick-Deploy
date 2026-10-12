@@ -1737,6 +1737,9 @@ _check 1 "0.10.5" "model catalog/profile freshness" \
         _skip 1 "0.10.60" "aq-eval static suites execute (red-team + capability-catalog contracts, no inference)" "WARN: required suite command(s) failing -- run: aq-eval run --execute"
       fi
     fi
+    # 0.10.61 Herdr H2 monitored presentation projection
+    _check 1 "0.10.61" "Herdr H2 monitored presentation projection: pure determinism, operator context, dashboard summary" \
+      python3 "${REPO_ROOT}/scripts/testing/test-herdr-h2-presentation-service-coverage.py"
   fi
 
   # 0.9.4 Runtime safety contract policy (Phase 39)

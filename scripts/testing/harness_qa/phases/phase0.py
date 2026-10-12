@@ -1461,6 +1461,26 @@ def _check_aq_eval_static_suites(ctx: RunContext) -> list[CheckResult]:
     return [passed(1, "0.10.60", f"{desc} [{verdict.get('suite_count')} suites]")]
 
 
+def _check_herdr_presentation_projection(ctx: RunContext) -> list[CheckResult]:
+    """0.10.61: Herdr H2 monitored presentation projection fixtures, cli, dashboard route and frontend visibility."""
+    desc = "Herdr H2 monitored presentation projection: pure determinism, operator context, dashboard summary"
+    test = ctx.repo_root / "scripts" / "testing" / "test-herdr-h2-presentation-service-coverage.py"
+    if not test.exists():
+        return [failed(1, "0.10.61", desc, "test-herdr-h2-presentation-service-coverage.py missing")]
+    proc = subprocess.run(
+        [sys.executable, str(test)],
+        cwd=ctx.repo_root,
+        text=True,
+        capture_output=True,
+        timeout=30,
+        check=False,
+    )
+    if proc.returncode != 0:
+        detail = (proc.stdout + proc.stderr).strip() or f"exit {proc.returncode}"
+        return [failed(1, "0.10.61", desc, detail[-240:])]
+    return [passed(1, "0.10.61", desc)]
+
+
 def _check_provider_projection(ctx: RunContext) -> list[CheckResult]:
     """0.10.55: ECC P0-B provider projection fixtures plus live drift status (preview-only)."""
     desc = "ECC P0-B provider projection: deterministic preview, drift/preserved/refusal fixtures, live drift status"
@@ -2257,6 +2277,7 @@ def run(ctx: RunContext) -> list[CheckResult]:
     results.extend(_check_factory_ci_pack(ctx))
     results.extend(_check_understand_graph_freshness(ctx))
     results.extend(_check_aq_eval_static_suites(ctx))
+    results.extend(_check_herdr_presentation_projection(ctx))
     results.extend(_check_network_dns_policy(ctx))
     if ctx.dashboard_safe:
         results.extend(_dashboard_safe_host_only_skips())
