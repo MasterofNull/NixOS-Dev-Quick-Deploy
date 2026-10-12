@@ -7157,6 +7157,24 @@ def _herdr_presentation_summary() -> Dict[str, Any]:
         }
 
 
+def _hermetic_candidate_eval_summary() -> Dict[str, Any]:
+    """Compact hermetic candidate evaluation summary (ECC P0-D, read-only)."""
+    try:
+        module_path = _repo_root() / "scripts" / "ai" / "lib" / "hermetic_candidate_eval.py"
+        spec = importlib.util.spec_from_file_location("aq_hermetic_candidate_eval", module_path)
+        if spec is None or spec.loader is None:
+            raise ImportError("hermetic candidate eval unavailable")
+        module = importlib.util.module_from_spec(spec)
+        spec.loader.exec_module(module)
+        return module.dashboard_summary(_repo_root())
+    except (OSError, ValueError, ImportError, SyntaxError) as exc:
+        return {
+            "available": False,
+            "status": "unverified",
+            "reason": f"hermetic_eval_unavailable:{type(exc).__name__}",
+        }
+
+
 @router.get("/advanced/runtime-summary")
 async def get_advanced_runtime_summary() -> Dict[str, Any]:
     """Aggregate advanced Phase 6-10 control-plane state for dashboard visibility."""
@@ -7227,6 +7245,7 @@ async def get_advanced_runtime_summary() -> Dict[str, Any]:
                 "ecc_diagnostics": await asyncio.to_thread(_ecc_diagnostics_summary),
                 "ci_pack": await asyncio.to_thread(_ci_pack_health_summary),
                 "herdr_presentation": await asyncio.to_thread(_herdr_presentation_summary),
+                "hermetic_candidate_eval": await asyncio.to_thread(_hermetic_candidate_eval_summary),
             },
             "learning": {
                 "status": _advanced_phase_readiness_status(readiness, "phase_10_learning"),
