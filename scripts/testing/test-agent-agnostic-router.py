@@ -15,6 +15,7 @@ from __future__ import annotations
 import importlib.machinery
 import importlib.util
 import json
+import os
 import tempfile
 import threading
 import time
@@ -341,6 +342,36 @@ def _reset_route_module(tmp: Path) -> None:
     # Real model-coordinator.json is read-only reference data (cost lookup);
     # no network involved, safe to reuse across the hermetic run.
     route_mod.MODEL_COORDINATOR = ROOT / "config" / "model-coordinator.json"
+
+    # Hermetic fixture registry: inject a dynamically valid eligibility registry
+    # into the test environment so unit tests never fail on calendar TTL expiry.
+    reg_path = tmp / "lane-eligibility-registry.json"
+    now = datetime.now(timezone.utc)
+    future = (now + timedelta(days=90)).isoformat()
+    roles = ["orchestrator", "architect", "implementer", "reviewer", "binding-acceptance", "research", "rsi"]
+    lanes = ["codex", "opus", "sonnet", "antigravity", "gemini", "local"]
+    reg_data = {
+        "schema_version": 1,
+        "roles": roles,
+        "default_ttl_days": 45,
+        "lanes": {
+            lane: {
+                "eligible": {
+                    role: {
+                        "measured_at": now.isoformat(),
+                        "expires_at": future,
+                        "evidence": "hermetic-test-fixture",
+                    }
+                    for role in roles
+                    if not (lane == "antigravity" and role == "implementer")
+                },
+                **({"ineligible": {"implementer": {"hard": True, "reason": "test-backstop"}}} if lane == "antigravity" else {}),
+            }
+            for lane in lanes
+        },
+    }
+    reg_path.write_text(json.dumps(reg_data, indent=2), encoding="utf-8")
+    os.environ[route_mod.LANE_ELIGIBILITY_REGISTRY_ENV] = str(reg_path)
 
 
 def test_role_route_baseline_binding_acceptance() -> None:
