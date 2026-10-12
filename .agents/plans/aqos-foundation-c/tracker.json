@@ -279,8 +279,8 @@
   "issues": [
     {
       "title": "c2-sci ledger-burn-before-signer-check + O2 observability",
-      "sev": "low",
-      "note": "bounded pre-activation polish (fail-closed, non-blocking)"
+      "sev": "resolved",
+      "note": "CLOSED by PR #491 (ebf8e36e) — durable ledger markers, dashboard O2 observability, operator reset test"
     },
     {
       "title": "c2-sci ALA/C2 lease-schema mismatch (Codex catch-up audit)",

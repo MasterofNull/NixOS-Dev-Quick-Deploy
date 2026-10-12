@@ -277,11 +277,20 @@ def _matches_exclude(lane_id: str, token: str) -> bool:
     token = token.strip().lower()
     if not token:
         return False
+    # Sub-agent instances (e.g. claude-subagent-X) or specific task-run IDs
+    # (e.g. claude-20261012-...) name an individual delegate, NOT the entire lane.
+    # An independent flagship or fresh instance of the lane remains eligible.
+    if "subagent" in token or "sub-agent" in token:
+        return False
+    parts = token.split("-")
+    if len(parts) > 1 and parts[0] == lane_id and parts[1].isdigit():
+        return False
+
     if token == lane_id or token in LANES[lane_id]["aliases"]:
         return True
     # First hyphen segment covers concrete model ids naming a lane, e.g.
     # "claude-sonnet" / "claude-sonnet-4-6" both reduce to lane "claude".
-    return token.split("-")[0] == lane_id
+    return parts[0] == lane_id
 
 
 def _emit(payload: dict[str, Any], as_json: bool) -> int:
