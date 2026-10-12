@@ -4156,6 +4156,11 @@ async function loadCapabilityEnforcement() {
       sci.ledger_durable ? "ok" : "warn"
     ),
     fwRow(
+      "C2-SCI Ledger Markers",
+      sci.ledger_marker_count != null ? String(sci.ledger_marker_count) : "--",
+      sci.ledger_marker_count != null ? "info" : "muted"
+    ),
+    fwRow(
       "C2-SCI Status",
       sci.status || "--",
       statusColor(sci.status)

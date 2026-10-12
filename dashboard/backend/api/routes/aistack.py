@@ -2184,11 +2184,21 @@ def get_capability_enforcement() -> Dict[str, Any]:
         sci_ledger_durable = sci_issuer.is_file() and "DurableSingleUseLedger" in sci_issuer.read_text()
     except Exception:
         sci_ledger_durable = False
+    sci_ledger_markers = None
+    sci_ledger_dir_str = env_vars.get("AQ_SCHEDULER_CONTEXT_LEDGER_DIR", "/var/lib/aq-c2-scheduler-context-issuer/ledger").strip()
+    try:
+        ld_path = Path(sci_ledger_dir_str)
+        if ld_path.is_dir():
+            sci_ledger_markers = sum(1 for entry in ld_path.iterdir() if entry.is_file() and not entry.name.startswith("."))
+    except Exception:
+        sci_ledger_markers = None
     result["c2_scheduler_context_issuer"] = {
         "context_issuer": "on" if sci_on else "off",
         "signer_allowlist_active_keys": sci_signer_active,
         "signer_allowlist_revision": sci_signer_revision,
         "ledger_durable": sci_ledger_durable,
+        "ledger_marker_count": sci_ledger_markers,
+        "operator_reset_command": f"rm {sci_ledger_dir_str}/<marker_digest>",
         # default-OFF is the healthy resting state; ON needs BOTH an active signer key AND a durable ledger
         "status": "ok" if (not sci_on or (sci_signer_active and sci_ledger_durable)) else "degraded",
     }
