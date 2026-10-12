@@ -222,8 +222,16 @@
       "deps": [
         "fe-1-prm-verify"
       ],
-      "editorial_note": "FE-2 scheduled; baseline measured (blocker found)",
-      "notes": "BACKLOG status=new (discovered 2026-09-08); FE-2a functional baseline in design phase; GEPA library (gepa-ai/gepa) exists but not integrated; pending FE-1 completion + baseline measurement; no detection signal until implementation"
+      "editorial_note": "FE-2a functional eval baseline complete; executable code tasks + headroom measurement unblock FE-2b compile",
+      "notes": "FE-2a functional baseline completed with executable test cases and headroom measurement; unblocks FE-2b offline prompt compile; test-functional-prompt-eval 6/6 PASS",
+      "pct_hint": 50,
+      "detection": {
+        "commit_match": [
+          "Frontier FE-2a functional eval metric baseline",
+          "FE-2a"
+        ],
+        "test_gate": "scripts/testing/test-functional-prompt-eval.py"
+      }
     },
     {
       "id": "fe-8-landlock-egress",
