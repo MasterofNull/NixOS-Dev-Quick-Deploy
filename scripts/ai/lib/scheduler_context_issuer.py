@@ -129,6 +129,7 @@ class SingleUseLedger(Protocol):
     conditions raise vs. return False."""
 
     def check_and_record(self, key: tuple[str, str]) -> bool: ...
+    def stats(self) -> dict[str, int]: ...
 
 
 class InMemorySingleUseLedger:
@@ -140,12 +141,17 @@ class InMemorySingleUseLedger:
 
     def __init__(self) -> None:
         self._used: set[tuple[str, str]] = set()
+        self._replays = 0
 
     def check_and_record(self, key: tuple[str, str]) -> bool:
         if key in self._used:
+            self._replays += 1
             return False
         self._used.add(key)
         return True
+
+    def stats(self) -> dict[str, int]:
+        return {"recorded": len(self._used), "replays": self._replays, "durable_markers": 0}
 
 
 class DurableSingleUseLedger:
@@ -247,12 +253,24 @@ class DurableSingleUseLedger:
         self._recorded += 1
         return True
 
+    def durable_count(self) -> int:
+        """Count actual persisted marker files in self._dir.
+        Survives restarts and reflects the true on-disk state.
+        Fails safely to 0 on any read error (e.g. directory vanished)."""
+        try:
+            return sum(1 for entry in os.scandir(self._dir) if entry.is_file() and not entry.name.startswith("."))
+        except OSError:
+            return 0
+
     def stats(self) -> dict[str, int]:
-        """Best-effort in-process counters for dashboard/O2 wiring — NOT
-        a durable audit trail (that is the marker files themselves); a
-        restart resets these to zero even though the ledger's actual
-        deny/allow decisions remain fully durable and correct."""
-        return {"recorded": self._recorded, "replays": self._replays}
+        """In-process and durable counters for dashboard/O2 wiring.
+        'recorded' and 'replays' track session events; 'durable_markers'
+        reflects persistent on-disk state across process restarts."""
+        return {
+            "recorded": self._recorded,
+            "replays": self._replays,
+            "durable_markers": self.durable_count(),
+        }
 
 
 # --------------------------------------------------------------------------

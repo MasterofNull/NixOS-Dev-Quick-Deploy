@@ -71,6 +71,7 @@ def main() -> int:
     issuer = open(os.path.join(ROOT, "scripts", "ai", "lib", "scheduler_context_issuer.py")).read()
     need("DurableSingleUseLedger" in issuer, "issuer must ship a DurableSingleUseLedger")
     need("O_EXCL" in issuer, "the durable ledger must use an atomic O_EXCL test-and-set")
+    need("durable_count" in issuer, "DurableSingleUseLedger must expose durable_count")
 
     # 5. gate + dispatch are FLAG-GATED (env-gated, not always-on)
     gate = open(os.path.join(ROOT, "ai-stack", "switchboard", "capability_lease_gate.py")).read()
@@ -83,11 +84,14 @@ def main() -> int:
     api = open(os.path.join(ROOT, "dashboard", "backend", "api", "routes", "aistack.py")).read()
     need('result["c2_scheduler_context_issuer"]' in api, "aistack.py /stats/capability-enforcement must expose c2_scheduler_context_issuer")
     need('"ledger_durable"' in api and '"context_issuer"' in api, "the c2_scheduler_context_issuer section must report issuer + ledger_durable")
+    need('"ledger_marker_count"' in api, "the c2_scheduler_context_issuer section must report ledger_marker_count")
+    need('"operator_reset_command"' in api, "the c2_scheduler_context_issuer section must report operator_reset_command")
 
     # 7. dashboard JS renders the C2-SCI rows
     js = open(os.path.join(ROOT, "assets", "dashboard.js")).read()
     need("c2_scheduler_context_issuer" in js, "dashboard.js must read the c2_scheduler_context_issuer section")
     need("C2-SCI" in js, "dashboard.js must render C2-SCI rows")
+    need("C2-SCI Ledger Markers" in js, "dashboard.js must render C2-SCI Ledger Markers row")
 
     # 8. the crypto/service tests exist
     for t in ("test-scheduler-context-issuer.py", "test-scheduler-context-ledger.py", "test-c2-gate-dispatch-wiring.py"):
