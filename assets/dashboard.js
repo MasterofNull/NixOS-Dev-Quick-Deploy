@@ -4964,6 +4964,7 @@ async function loadRuntimeDetails() {
   const ecc = cg.ecc_diagnostics || {};
   const cip = cg.ci_pack || {};
   const hrd = cg.herdr_presentation || {};
+  const hce = cg.hermetic_candidate_eval || {};
   const lrn = s.learning || {};
   const rows = [
     fwRow("Offloading", fmtImplStatus(off.status), "ok"),
@@ -5046,6 +5047,13 @@ async function loadRuntimeDetails() {
         ? `${String(hrd.status || "unverified").toUpperCase()} · ${hrd.schema_version || "v1"} · ${hrd.digest ? hrd.digest.slice(0, 8) : "--"}`
         : "UNVERIFIED",
       hrd.available && (hrd.status === "dormant_preview" || hrd.status === "ok") ? "info" : "warn"
+    ),
+    fwRow(
+      "· hermetic candidate eval",
+      hce.available
+        ? `${String(hce.status || "unverified").toUpperCase()} · ${(hce.containment_backends || []).join("/") || "bwrap"}`
+        : "UNVERIFIED",
+      hce.available && hce.status === "ok" ? "ok" : "warn"
     ),
     fwRow("Learning", fmtImplStatus(lrn.status), "ok"),
     fwRow("· signals", lrn.signals_recorded ?? 0),

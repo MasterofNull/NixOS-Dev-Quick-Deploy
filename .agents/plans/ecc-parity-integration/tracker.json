@@ -59,9 +59,9 @@
       "id": "p0-d", "name": "hermetic candidate evaluation evidence", "phase": "evaluate", "kind": "slice",
       "goal": "bind actual containment execution to digest, outcome evidence and reviewed promotion",
       "validation_goal": "escape, secret, network, write, timeout, corruption, replay and reviewer mismatch fail closed",
-      "deps": ["p0-a"], "pct_hint": 0,
-      "detection": {"commit_match": ["P0-D", "hermetic candidate eval"]},
-      "acceptance": {"status": "pending", "by": null, "date": null, "note": "not started"}
+      "deps": ["p0-a"], "pct_hint": 100,
+      "detection": {"commit_match": ["P0-D", "hermetic candidate eval", "feat(ecc): P0-D"]},
+      "acceptance": {"status": "accepted", "by": "hyperd", "date": "2026-10-11", "note": "Preauthorized by owner; evidence: P0-D hermetic candidate evaluation evidence, fail-closed containment, CLI and dashboard visibility passed (test-hermetic-candidate-eval.py 12/12 PASS, QA 0.10.62)"}
     },
     {
       "id": "p0-e", "name": "portable GitHub CI pack", "phase": "ci", "kind": "slice",
