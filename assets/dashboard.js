@@ -4968,6 +4968,7 @@ async function loadRuntimeDetails() {
   const lce = cg.lifecycle_events || {};
   const ecc = cg.ecc_diagnostics || {};
   const cip = cg.ci_pack || {};
+  const cdp = cg.cd_pack || {};
   const hrd = cg.herdr_presentation || {};
   const hce = cg.hermetic_candidate_eval || {};
   const lrn = s.learning || {};
@@ -5045,6 +5046,13 @@ async function loadRuntimeDetails() {
         ? `${cip.verdict || "UNVERIFIED"} · ${cip.remote || "UNVERIFIED_REMOTE"} · ${cip.unpinned_actions ?? 0} unpinned in ${cip.workflows_scanned ?? 0} workflows`
         : "UNVERIFIED",
       cip.available && cip.verdict === "LOCAL_READY" ? "info" : "warn"
+    ),
+    fwRow(
+      "· CD pack",
+      cdp.available
+        ? `${cdp.verdict || "UNVERIFIED"} · ${cdp.remote || "UNVERIFIED_REMOTE"} · env:${cdp.environment_configured ? "yes" : "no"} · rollback:${cdp.rollback_configured ? "yes" : "no"}`
+        : "UNVERIFIED",
+      cdp.available && cdp.verdict === "LOCAL_READY" ? "info" : "warn"
     ),
     fwRow(
       "· herdr presentation",
