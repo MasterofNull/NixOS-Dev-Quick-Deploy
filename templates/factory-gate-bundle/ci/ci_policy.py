@@ -88,11 +88,19 @@ def audit_repo(repo: Path) -> dict[str, Any]:
     return per_file
 
 
+def _is_pack_workflow(path: Path) -> bool:
+    try:
+        lines = path.read_text(encoding="utf-8", errors="replace").splitlines()
+        return bool(lines and lines[0].startswith("# factory-gate-"))
+    except OSError:
+        return False
+
+
 def check(repo: Path) -> dict[str, Any]:
     repo = repo.resolve()
     owned = repo / WORKFLOW
     per_file = audit_repo(repo)
-    foreign = {name: items for name, items in per_file.items() if name != str(WORKFLOW)}
+    foreign = {name: items for name, items in per_file.items() if name != str(WORKFLOW) and not _is_pack_workflow(repo / name)}
     foreign_violations = sum(1 for items in foreign.values() for i in items if i["severity"] == "violation")
     result: dict[str, Any] = {
         "remote": REMOTE,
