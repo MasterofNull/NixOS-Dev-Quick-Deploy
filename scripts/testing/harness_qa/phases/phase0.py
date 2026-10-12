@@ -520,7 +520,7 @@ def _check_flagship_cli(ctx: RunContext) -> list[CheckResult]:
         **os.environ,
         "AQ_PRIMARY_USER": ctx.primary_user,
         "AQ_PRIMARY_HOME": ctx.primary_home,
-        "PATH": f"{ctx.primary_home}/.npm-global/bin:{os.environ.get('PATH', '')}",
+        "PATH": f"{ctx.primary_home}/.local/bin:{ctx.primary_home}/.npm-global/bin:{os.environ.get('PATH', '')}",
     }
     # exit 0 = healthy -> pass. exit 3 = the oauth-personal delegation branch forwarding
     # antigravity-health.sh's "degraded for an EXTERNAL/environmental reason" contract
