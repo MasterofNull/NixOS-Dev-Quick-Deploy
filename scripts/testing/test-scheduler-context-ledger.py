@@ -79,10 +79,14 @@ def test_basic_record_and_replay() -> None:
         check("immediate replay (same instance) -> False", ledger.check_and_record(key) is False)
         check("stats: recorded == 1 after one new key", ledger.stats()["recorded"] == 1)
         check("stats: replays == 1 after one replay attempt", ledger.stats()["replays"] == 1)
+        check("durable_count == 1 after one new key", ledger.durable_count() == 1)
+        check("stats: durable_markers == 1", ledger.stats()["durable_markers"] == 1)
 
         other_key = ("lease-b", "digest-b")
         check("a DIFFERENT key is independent -> True", ledger.check_and_record(other_key) is True)
         check("stats: recorded == 2 after a second distinct key", ledger.stats()["recorded"] == 2)
+        check("durable_count == 2 after two distinct keys", ledger.durable_count() == 2)
+        check("stats: durable_markers == 2", ledger.stats()["durable_markers"] == 2)
     finally:
         shutil.rmtree(tmp, ignore_errors=True)
 
@@ -104,6 +108,10 @@ def test_durability_restart_simulation() -> None:
             "pre-restart: first use of the key -> True",
             ledger_before_restart.check_and_record(key) is True,
         )
+        check(
+            "pre-restart: durable_count == 1",
+            ledger_before_restart.durable_count() == 1,
+        )
         # Drop the reference entirely — nothing but the on-disk marker file
         # survives past this point, simulating a process exit/restart.
         del ledger_before_restart
@@ -114,11 +122,43 @@ def test_durability_restart_simulation() -> None:
             ledger_after_restart.check_and_record(key) is False,
         )
         check(
+            "post-restart: durable_count survives restart == 1",
+            ledger_after_restart.durable_count() == 1,
+        )
+        check(
+            "post-restart: in-process recorded resets to 0 while durable_markers is 1",
+            ledger_after_restart.stats()["recorded"] == 0 and ledger_after_restart.stats()["durable_markers"] == 1,
+        )
+        check(
             "post-restart: a genuinely NEW key still records fine -> True",
             ledger_after_restart.check_and_record(("lease-restart-2", "digest-restart-2")) is True,
         )
+        check(
+            "post-restart: durable_count == 2 after second key",
+            ledger_after_restart.durable_count() == 2,
+        )
+
+        # Operator intervenability reset path: delete the marker file for the first key
+        import hashlib
+        marker_name = hashlib.sha256(f"{key[0]}\x00{key[1]}".encode("utf-8")).hexdigest()
+        marker_path = os.path.join(ledger_dir, marker_name)
+        os.unlink(marker_path)
+        check("operator reset path: marker deleted", not os.path.exists(marker_path))
+        check("operator reset path: durable_count decremented to 1", ledger_after_restart.durable_count() == 1)
+        check(
+            "operator reset: previously used key can now record again -> True",
+            ledger_after_restart.check_and_record(key) is True,
+        )
     finally:
         shutil.rmtree(tmp, ignore_errors=True)
+
+
+def test_in_memory_stats() -> None:
+    mem = sci.InMemorySingleUseLedger()
+    check("in-memory: initial stats", mem.stats() == {"recorded": 0, "replays": 0, "durable_markers": 0})
+    mem.check_and_record(("k1", "d1"))
+    mem.check_and_record(("k1", "d1"))
+    check("in-memory: stats after record+replay", mem.stats() == {"recorded": 1, "replays": 1, "durable_markers": 0})
 
 
 # --------------------------------------------------------------------------
@@ -329,6 +369,7 @@ def test_end_to_end_mint_with_durable_ledger_then_restart_denies_replay() -> Non
 def main() -> int:
     test_basic_record_and_replay()
     test_durability_restart_simulation()
+    test_in_memory_stats()
     test_atomic_concurrency_threads()
     test_atomic_concurrency_processes()
     test_fail_closed_on_unwritable_dir()
