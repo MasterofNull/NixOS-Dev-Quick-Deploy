@@ -5800,3 +5800,82 @@ File: scripts/ai/lib/worktree-isolation.sh; scripts/automation/prsi-orchestrator
 - [FIXED 2026-10-11] aq-session-compact-verify-usage-requires-json — scripts/ai/aq-session-compact accepts bare --verify-usage flag defaulting to .agent/collaboration/session-usage.json (nargs='?'), outputting valid JSON without requiring path argument; covered by test-aq-session-compact.py.
 - [FIXED 2026-10-11] antigravity-network-n2-policy-executable-missing — declared networkPolicyCli package wrapper in nix/modules/core/network.nix when enable or mode==policy is set, and added test-network-policy-packaging.sh regression check.
 - [FIXED 2026-10-11] agent-memory-surface-registry-line-limit — focused CI found `ai-stack/agent-memory/MEMORY.md` at 201 lines after the audit index addition. Combined adjacent existing Antigravity index bullets; index is 200 lines and test-agent-memory-surface-registry.py passes.
+
+[OPEN] rsi-4d41cadd0e8d666cdf10fa4e — delegation:antigravity failure in delegation:antigravity:failed. Root cause evidence: producer=delegation:antigravity; path=.agents/delegation/registry.jsonl; authority=antigravity; os_error=antigravity delegation class failed. Detected=2026-10-12T03:54:55.280072Z.
+  Severity: low
+  Action: 1 run(s) in window; latest example .agents/delegation/outputs/antigravity-20261010-165325-4enn5v.log; fix producer for class failed
+  File: .agents/delegation/registry.jsonl
+
+[OPEN] rsi-e5cf3d273302bb77771a3b84 — delegation:antigravity failure in delegation:antigravity:timeout. Root cause evidence: producer=delegation:antigravity; path=.agents/delegation/registry.jsonl; authority=antigravity; os_error=antigravity delegation class timeout. Detected=2026-10-12T03:54:55.402504Z.
+  Severity: medium
+  Action: 6 run(s) in window; latest example .agents/delegation/outputs/antigravity-20261010-171047-m5d3cz.log; fix producer for class timeout
+  File: .agents/delegation/registry.jsonl
+
+[OPEN] rsi-9b01af8d2a77ee709b8ee1ac — delegation:codex failure in delegation:codex:blocked. Root cause evidence: producer=delegation:codex; path=.agents/delegation/registry.jsonl; authority=codex; os_error=codex delegation class blocked. Detected=2026-10-12T03:54:55.410758Z.
+  Severity: low
+  Action: 2 run(s) in window; latest example .agents/delegation/outputs/codex-20261008-142809-bxzpoa.log; fix producer for class blocked
+  File: .agents/delegation/registry.jsonl
+
+[OPEN] rsi-eff3516f8e8e2e6de3179709 — delegation:codex failure in delegation:codex:failed. Root cause evidence: producer=delegation:codex; path=.agents/delegation/registry.jsonl; authority=codex; os_error=codex delegation class failed. Detected=2026-10-12T03:54:55.418517Z.
+  Severity: low
+  Action: 2 run(s) in window; latest example .agents/delegation/outputs/codex-20261007-150820-z4lo21.log; fix producer for class failed
+  File: .agents/delegation/registry.jsonl
+
+[OPEN] rsi-9e3188179dc479e2729fe680 — delegation:local-agent failure in delegation:local-agent:failed. Root cause evidence: producer=delegation:local-agent; path=.agents/delegation/registry.jsonl; authority=local-agent; os_error=local-agent delegation class failed. Detected=2026-10-12T03:54:55.426480Z.
+  Severity: medium
+  Action: 3 run(s) in window; latest example .agents/delegation/outputs/local-20261008-212503-a6b4pk.log; fix producer for class failed
+  File: .agents/delegation/registry.jsonl
+
+[OPEN] rsi-fb424240e11071128c1a5b46 — delegation:local-direct failure in delegation:local-direct:failed. Root cause evidence: producer=delegation:local-direct; path=.agents/delegation/registry.jsonl; authority=local-direct; os_error=local-direct delegation class failed. Detected=2026-10-12T03:54:55.434129Z.
+  Severity: low
+  Action: 1 run(s) in window; latest example .agents/delegation/outputs/local-20261011-123226-yqni76.log; fix producer for class failed
+  File: .agents/delegation/registry.jsonl
+
+[OPEN] rsi-7a07ac592a1ba99c66161a47 — delegation:local-direct failure in delegation:local-direct:orphaned. Root cause evidence: producer=delegation:local-direct; path=.agents/delegation/registry.jsonl; authority=local-direct; os_error=local-direct delegation class orphaned. Detected=2026-10-12T03:54:55.441958Z.
+  Severity: low
+  Action: 1 run(s) in window; latest example .agents/delegation/outputs/local-20261007-225026-a5ab13.log; fix producer for class orphaned
+  File: .agents/delegation/registry.jsonl
+
+[OPEN] rsi-6e45c88de3ad4e164a6da6cb — journal:ai-hybrid-coordinator failure in service-error:ai-hybrid-coordinator:event_processing_failed. Root cause evidence: producer=journal:ai-hybrid-coordinator; path=ai-hybrid-coordinator; authority=journald; os_error=recurring error in ai-hybrid-coordinator: event_processing_failed. Detected=2026-10-12T07:10:03.081177Z.
+  Severity: medium
+  Action: 288 occurrence(s) in last 3600s; example: {"file": "hybrid-events.jsonl", "position": 14886912, "error": "Invalid isoformat string: '2026-10-07T21:15:22.750890+00:00Z'", "event": "event_processing_failed", "service": "hybrid-coordinator", "ve; journalctl -u ai-hybrid-coordinator; fix producer
+  File: ai-hybrid-coordinator
+
+[OPEN] rsi-4263f9daeb19f4adc7219106 — systemd:failed-unit failure in failed-unit:ai-sync-knowledge-sources.service. Root cause evidence: producer=systemd:failed-unit; path=ai-sync-knowledge-sources.service; authority=systemd; os_error=unit ai-sync-knowledge-sources.service in failed state. Detected=2026-10-12T16:13:04.801009Z.
+  Severity: medium
+  Action: journalctl -u ai-sync-knowledge-sources.service; fix producer, then systemctl reset-failed
+  File: ai-sync-knowledge-sources.service
+[DONE] rsi-6e45c88de3ad4e164a6da6cb — resolved 2026-10-12: journal of ai-hybrid-coordinator read OK; signature below 5 occurrence(s) in last 3600s (2026-10-12T16:13:05Z) — ledger status=resolved
+
+[OPEN] rsi-63023c51c6b42b3b7642019c — capability-audit failure in capability-audit:ai-sync-knowledge-sources. Root cause evidence: producer=capability-audit; path=ai-sync-knowledge-sources; authority=capability-audit; os_error=capability ai-sync-knowledge-sources regressed from ACTIVE. Detected=2026-10-12T16:13:05.868046Z.
+  Severity: medium
+  Action: class ACTIVE -> BROKEN (report 2026-10-12T14:35:53Z); run aq-capability-audit --json and inspect the capability evidence; restore wiring/discovery/usage
+  File: ai-sync-knowledge-sources
+
+[OPEN] rsi-e4947771be6d1fee05ed1517 — capability-audit failure in capability-audit:threshold:BROKEN. Root cause evidence: producer=capability-audit; path=threshold:BROKEN; authority=capability-audit; os_error=BROKEN capabilities exceed 0. Detected=2026-10-12T16:13:05.877124Z.
+  Severity: medium
+  Action: 1 capabilities classed BROKEN (limit 0, report 2026-10-12T14:35:53Z); see aq-capability-audit next_action
+  File: threshold:BROKEN
+
+[OPEN] rsi-ee58a732d9e44147fdf95d09 — aq-qa:phase0 failure in aq-qa:0.1.2. Root cause evidence: producer=aq-qa:phase0; path=aq-qa check 0.1.2; authority=aq-qa; os_error=phase-0 check 0.1.2 failing: no AI units in failed state (● ai-sync-knowledge-sources.service loaded failed failed AI knowledge source sync (AIDB imp. Detected=2026-10-12T16:28:05.404925Z.
+  Severity: medium
+  Action: run aq-qa 0 --machine and fix check 0.1.2 at its producer
+  File: aq-qa check 0.1.2
+[DONE] rsi-4263f9daeb19f4adc7219106 — resolved 2026-10-12: unit ai-sync-knowledge-sources.service no longer in systemctl --failed (2026-10-12T16:43:05Z) — ledger status=resolved
+
+[OPEN] rsi-fd60a72ca531056b9d0af683 — journal:ai-aidb failure in service-error:ai-aidb:invalid_document error_id=<hex>. Root cause evidence: producer=journal:ai-aidb; path=ai-aidb; authority=journald; os_error=recurring error in ai-aidb: invalid_document error_id=<hex>. Detected=2026-10-12T16:43:07.217630Z.
+  Severity: medium
+  Action: 13 occurrence(s) in last 3600s; example: {"event": "invalid_document error_id=17dc88114bdb", "exc_info": ["<class 'ValueError'>", "ValueError('content exceeds 50KB limit')", "<traceback object at 0x7b2548444c00>"], "request_id": "9bf7621d562; journalctl -u ai-aidb; fix producer
+  File: ai-aidb
+
+[OPEN] rsi-a7ed7ecadbf9eb38d9faa869 — journal:ai-aidb failure in service-error:ai-aidb:rate_limited error_id=<hex>. Root cause evidence: producer=journal:ai-aidb; path=ai-aidb; authority=journald; os_error=recurring error in ai-aidb: rate_limited error_id=<hex>. Detected=2026-10-12T16:43:07.233643Z.
+  Severity: medium
+  Action: 13 occurrence(s) in last 3600s; example: {"event": "rate_limited error_id=6048a4e931c6", "exc_info": ["<class 'PermissionError'>", "PermissionError('Rate limit exceeded')", "<traceback object at 0x7b2548391440>"], "request_id": "896b017694ed; journalctl -u ai-aidb; fix producer
+  File: ai-aidb
+[DONE] rsi-ee58a732d9e44147fdf95d09 — resolved 2026-10-12: phase-0 check 0.1.2 passing in health-monitor JSON run 2026-10-12T16:48:08Z — ledger status=resolved
+[DONE] rsi-a7ed7ecadbf9eb38d9faa869 — resolved 2026-10-12: journal of ai-aidb read OK; signature below 5 occurrence(s) in last 3600s (2026-10-12T17:43:10Z) — ledger status=resolved
+[DONE] rsi-fd60a72ca531056b9d0af683 — resolved 2026-10-12: journal of ai-aidb read OK; signature below 5 occurrence(s) in last 3600s (2026-10-12T17:43:10Z) — ledger status=resolved
+
+- [FIXED] Codex resume / stale working-memory checkpoint — session antigravity-independent-audit-20261011 still advertised pending delivery after PR485/487 merged and its temporary worktree disappeared; root cause: closeout state not reflected in that checkpoint. Severity: low. Action: reconciled git/evidence; replacement checkpoint and scoped review at /tmp/codex-antigravity-review-20261012/REVIEW.md. Reference: docs/harness-first/evidence/2026-10-11-antigravity-independent-audit.md ~1. Diagnostic friction: obsolete worktree path and assumed aq-role-dispatch path did not exist; resolved via live path discovery.
+
+[DONE] rsi-278f36d4d8f576786fb2f9be — resolved 2026-10-12: gemini-cli-health.sh falls back to ~/.local/bin/{gemini,agy}, checks oauth-personal before requiring npm CLI, and _aq-qa-bash and phase0.py check 0.6.2 include ~/.local/bin in PATH (2026-10-12T20:45:00Z) — ledger status=resolved

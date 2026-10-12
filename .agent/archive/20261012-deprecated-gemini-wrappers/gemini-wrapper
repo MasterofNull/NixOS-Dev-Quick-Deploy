@@ -1,0 +1,16 @@
+#!/usr/bin/env bash
+set -euo pipefail
+DEBUG_FLAG="${AI_TOOL_DEBUG:-0}"
+if [ -n "GEMINI_DEBUG" ]; then
+    val="${GEMINI_DEBUG:-}"
+    if [ -n "${val}" ]; then DEBUG_FLAG="${val}"; fi
+fi
+if [ "${DEBUG_FLAG}" = "1" ]; then
+    echo "[DEBUG] Gemini CLI wrapper starting" >&2
+fi
+CLI_PATH="/home/hyperd/.npm-global/lib/node_modules/@google/gemini-cli/dist/index.js"
+if [ ! -f "${CLI_PATH}" ]; then
+    echo "[Gemini CLI] CLI entry missing: ${CLI_PATH}" >&2
+    exit 127
+fi
+exec node "${CLI_PATH}" "$@"

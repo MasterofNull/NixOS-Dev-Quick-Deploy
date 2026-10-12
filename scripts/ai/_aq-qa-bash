@@ -738,7 +738,7 @@ _gemini_cli_health_check() {
   local _primary_h; _primary_h="$(_primary_home)"
   AQ_PRIMARY_USER="$(_primary_user)" \
   AQ_PRIMARY_HOME="${_primary_h}" \
-  PATH="${_primary_h}/.npm-global/bin:${PATH}" \
+  PATH="${_primary_h}/.local/bin:${_primary_h}/.npm-global/bin:${PATH}" \
   bash "${REPO_ROOT}/scripts/health/gemini-cli-health.sh" --check
 }
 

@@ -66,6 +66,12 @@ EOF
 done
 
 GEMINI_BIN="$(command -v gemini 2>/dev/null || true)"
+if [[ -z "${GEMINI_BIN}" && -x "${PRIMARY_HOME}/.local/bin/gemini" ]]; then
+  GEMINI_BIN="${PRIMARY_HOME}/.local/bin/gemini"
+fi
+if [[ -z "${GEMINI_BIN}" && -x "${PRIMARY_HOME}/.local/bin/agy" ]]; then
+  GEMINI_BIN="${PRIMARY_HOME}/.local/bin/agy"
+fi
 GEMINI_DIR="${PRIMARY_HOME}/.gemini"
 BACKUP_PATH=""
 STATUS="unknown"
@@ -162,12 +168,6 @@ repair_state_dir() {
 
 require_cmd timeout
 
-if [[ -z "${GEMINI_BIN}" ]]; then
-  STATUS="unhealthy"
-  REASON="gemini CLI not found in PATH"
-  emit_result 1
-fi
-
 if [[ -z "${PRIMARY_HOME}" ]]; then
   STATUS="unhealthy"
   REASON="HOME is not set"
@@ -213,6 +213,12 @@ except Exception:
       emit_result 1
     fi
   fi
+fi
+
+if [[ -z "${GEMINI_BIN}" ]]; then
+  STATUS="unhealthy"
+  REASON="gemini CLI not found in PATH or ~/.local/bin"
+  emit_result 1
 fi
 
 if gemini_help_ok; then
