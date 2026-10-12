@@ -4971,6 +4971,7 @@ async function loadRuntimeDetails() {
   const cdp = cg.cd_pack || {};
   const hrd = cg.herdr_presentation || {};
   const hce = cg.hermetic_candidate_eval || {};
+  const fne = cg.functional_eval || {};
   const lrn = s.learning || {};
   const rows = [
     fwRow("Offloading", fmtImplStatus(off.status), "ok"),
@@ -5067,6 +5068,13 @@ async function loadRuntimeDetails() {
         ? `${String(hce.status || "unverified").toUpperCase()} · ${(hce.containment_backends || []).join("/") || "bwrap"}`
         : "UNVERIFIED",
       hce.available && hce.status === "ok" ? "ok" : "warn"
+    ),
+    fwRow(
+      "· functional eval baseline",
+      fne.available
+        ? `${fne.baseline_ready ? "READY" : "UNVERIFIED"} · ${fne.tasks_available ?? 0} tasks · headroom:${fne.headroom_observable ? "yes" : "no"}`
+        : "UNVERIFIED",
+      fne.available && fne.baseline_ready ? "ok" : "warn"
     ),
     fwRow("Learning", fmtImplStatus(lrn.status), "ok"),
     fwRow("· signals", lrn.signals_recorded ?? 0),

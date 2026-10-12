@@ -43,6 +43,13 @@ except ImportError:
     print("ERROR: PyYAML required. Add python3Packages.pyyaml to your nix-shell or devShell.", file=sys.stderr)
     sys.exit(1)
 
+sys.path.insert(0, str(Path(__file__).resolve().parent / "lib"))
+try:
+    import functional_eval as fe
+except ImportError:
+    fe = None
+
+
 # ---------------------------------------------------------------------------
 # Configuration
 # ---------------------------------------------------------------------------
@@ -535,6 +542,7 @@ def run_eval(
     dry_run: bool,
     verbose: bool,
     model: str,
+    functional: bool = False,
 ) -> int:
     if not registry_path.exists():
         print(f"ERROR: registry not found at {registry_path}", file=sys.stderr)
@@ -576,41 +584,61 @@ def run_eval(
             print(f"\n{'─'*60}")
             print(f"  Prompt: {pid}")
             if is_code_gen:
-                print("  [code_generation] — using meta-quality probe")
+                if functional:
+                    print("  [code_generation] — using FE-2a functional assertion evaluation")
+                else:
+                    print("  [code_generation] — using meta-quality probe")
 
         case_results: List[bool] = []
         transport_error = False
-        for tc in tests:
-            rendered = render_template(template, tc.variables)
 
-            # For code-gen prompts: wrap in a meta-quality question
-            if is_code_gen:
-                probe = (
-                    f"Below is a task prompt for an AI coding assistant. "
-                    f"Rate whether it is clear, specific, and complete (yes/no):\n\n{rendered}"
-                )
-            else:
-                probe = rendered
+        if is_code_gen and functional and fe is not None:
+            for ft in fe.FUNCTIONAL_TASKS:
+                rendered = render_template(template, ft.prompt_variables)
+                try:
+                    response, latency = llm_call(rendered, model=model, timeout=LLM_CALL_TIMEOUT)
+                except Exception as exc:
+                    print(f"  ERROR {pid} / {ft.name}: {exc}", file=sys.stderr)
+                    transport_error = True
+                    continue
 
-            try:
-                response, latency = llm_call(probe, model=model, timeout=LLM_CALL_TIMEOUT)
-            except Exception as exc:
-                print(f"  ERROR {pid} / {tc.description}: {exc}", file=sys.stderr)
-                transport_error = True
-                # Do not set exit_code=1 here — a single prompt's transport error
-                # (e.g., switchboard 502 during service restart) should not fail the
-                # entire evaluation when other prompts score well.  Exit code is
-                # determined at the end based on overall pass-rate and transport rate.
-                continue
+                extracted = fe.extract_code_block(response)
+                passed, failures = fe.execute_functional_check(extracted, ft.check_script)
+                case_results.append(passed)
 
-            passed, failures = score_response(tc, response)
-            case_results.append(passed)
+                status = "PASS" if passed else "FAIL"
+                print(f"  {status}  {pid:<36} | {ft.description[:45]:<45} | {latency:.0f}ms")
+                if verbose or not passed:
+                    for f in failures:
+                        print(f"         ↳ {f}")
+        else:
+            for tc in tests:
+                rendered = render_template(template, tc.variables)
 
-            status = "PASS" if passed else "FAIL"
-            print(f"  {status}  {pid:<36} | {tc.description[:45]:<45} | {latency:.0f}ms")
-            if verbose or not passed:
-                for f in failures:
-                    print(f"         ↳ {f}")
+                # For code-gen prompts: wrap in a meta-quality question
+                if is_code_gen:
+                    probe = (
+                        f"Below is a task prompt for an AI coding assistant. "
+                        f"Rate whether it is clear, specific, and complete (yes/no):\n\n{rendered}"
+                    )
+                else:
+                    probe = rendered
+
+                try:
+                    response, latency = llm_call(probe, model=model, timeout=LLM_CALL_TIMEOUT)
+                except Exception as exc:
+                    print(f"  ERROR {pid} / {tc.description}: {exc}", file=sys.stderr)
+                    transport_error = True
+                    continue
+
+                passed, failures = score_response(tc, response)
+                case_results.append(passed)
+
+                status = "PASS" if passed else "FAIL"
+                print(f"  {status}  {pid:<36} | {tc.description[:45]:<45} | {latency:.0f}ms")
+                if verbose or not passed:
+                    for f in failures:
+                        print(f"         ↳ {f}")
                 if verbose:
                     excerpt = response[:120].replace("\n", " ")
                     print(f"         response: {excerpt}…")
@@ -682,6 +710,7 @@ def main() -> None:
     p.add_argument("--id", dest="target_id", default=None, help="Evaluate only this prompt ID")
     p.add_argument("--verbose", action="store_true", help="Show full responses and per-assertion results")
     p.add_argument("--model", default="local", help="Model name passed to llama.cpp (default: local)")
+    p.add_argument("--functional", action="store_true", help="Use functional code execution evaluation for code_generation prompts")
     args = p.parse_args()
 
     sys.exit(run_eval(
@@ -690,6 +719,7 @@ def main() -> None:
         dry_run=args.dry_run,
         verbose=args.verbose,
         model=args.model,
+        functional=args.functional,
     ))
 
 

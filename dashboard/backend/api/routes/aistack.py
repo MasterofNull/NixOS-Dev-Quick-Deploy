@@ -7114,6 +7114,21 @@ def _cd_pack_health_summary() -> Dict[str, Any]:
                 "reason": f"cd_pack_unavailable:{type(exc).__name__}"}
 
 
+def _functional_eval_health_summary() -> Dict[str, Any]:
+    """Bounded, read-only functional evaluation baseline readiness (Frontier FE-2a)."""
+    try:
+        module_path = _repo_root() / "scripts" / "ai" / "lib" / "functional_eval.py"
+        spec = importlib.util.spec_from_file_location("aq_functional_eval", module_path)
+        if spec is None or spec.loader is None:
+            raise ImportError("functional eval unavailable")
+        module = importlib.util.module_from_spec(spec)
+        spec.loader.exec_module(module)
+        return module.health_summary()
+    except (OSError, ValueError, ImportError, SyntaxError) as exc:
+        return {"available": False, "status": "unverified", "baseline_ready": False,
+                "reason": f"functional_eval_unavailable:{type(exc).__name__}"}
+
+
 def _lifecycle_events_health_summary() -> Dict[str, Any]:
     """Bounded, read-only lifecycle adapter health (dormant when no state file is configured)."""
     try:
@@ -7272,6 +7287,7 @@ async def get_advanced_runtime_summary() -> Dict[str, Any]:
                 "cd_pack": await asyncio.to_thread(_cd_pack_health_summary),
                 "herdr_presentation": await asyncio.to_thread(_herdr_presentation_summary),
                 "hermetic_candidate_eval": await asyncio.to_thread(_hermetic_candidate_eval_summary),
+                "functional_eval": await asyncio.to_thread(_functional_eval_health_summary),
             },
             "learning": {
                 "status": _advanced_phase_readiness_status(readiness, "phase_10_learning"),

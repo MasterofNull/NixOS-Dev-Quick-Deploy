@@ -1,0 +1,183 @@
+#!/usr/bin/env python3
+"""aq-functional-eval — Frontier FE-2a functional eval metric baseline CLI.
+
+Evaluates code generation prompts (default: aider_task_systems_code) against
+concrete executable functional tasks (clamp, slugify, evens, mean, dedupe, service_hardening).
+Measures real task pass-rate in [0.0, 1.0] and establishes headroom for GEPA optimization.
+
+Usage:
+  aq-functional-eval [--dry-run] [--prompt ID] [--verbose] [--json] [--model MODEL]
+"""
+from __future__ import annotations
+try:  # aq-usage-hook
+    import importlib.util as _aqu, os as _aqo
+    _aqs = _aqu.spec_from_file_location("aq_usage", _aqo.path.join(_aqo.path.dirname(_aqo.path.realpath(__file__)), "lib", "aq_usage.py"))
+    _aqm = _aqu.module_from_spec(_aqs); _aqs.loader.exec_module(_aqm); _aqm.record(__file__, __name__)
+except Exception:
+    pass
+
+import argparse
+import json
+import os
+import sys
+import time
+from pathlib import Path
+from typing import Any, Dict, List, Optional
+
+ROOT = Path(__file__).resolve().parents[2]
+sys.path.insert(0, str(ROOT / "scripts/ai/lib"))
+import functional_eval as fe  # noqa: E402
+
+REGISTRY_PATH = ROOT / "ai-stack/prompts/registry.yaml"
+
+
+def load_prompt_template(prompt_id: str) -> Optional[str]:
+    """Load prompt template from registry.yaml."""
+    if not REGISTRY_PATH.is_file():
+        return None
+    try:
+        import yaml
+        data = yaml.safe_load(REGISTRY_PATH.read_text(encoding="utf-8"))
+        for entry in data.get("prompts", []):
+            if entry.get("id") == prompt_id:
+                return entry.get("template")
+    except Exception:
+        pass
+    return None
+
+
+def render_template(template: str, variables: Dict[str, str]) -> str:
+    """Render template placeholders."""
+    result = template
+    for key, value in variables.items():
+        result = result.replace("{{ " + key + " }}", value)
+        result = result.replace("{{" + key + "}}", value)
+    return result.strip()
+
+
+def run_functional_eval(
+    prompt_id: str = "aider_task_systems_code",
+    dry_run: bool = False,
+    verbose: bool = False,
+    json_output: bool = False,
+    model: str = "local",
+    mock_ratio: Optional[float] = None,
+) -> int:
+    """Execute functional evaluation against canonical tasks."""
+    template = load_prompt_template(prompt_id)
+    tasks = fe.FUNCTIONAL_TASKS
+
+    if dry_run or mock_ratio is not None:
+        # Offline deterministic run
+        total = len(tasks)
+        if mock_ratio is not None:
+            k = int(round(mock_ratio * total))
+            pass_indices = list(range(k))
+        else:
+            # By default in dry-run, prove headroom by evaluating reference on first 4, flawed on remaining
+            pass_indices = list(range(min(4, total)))
+
+        summary = fe.evaluate_tasks_mock(tasks=tasks, pass_indices=pass_indices)
+        summary["prompt_id"] = prompt_id
+        summary["dry_run"] = True
+        summary["template_loaded"] = template is not None
+
+        if json_output:
+            print(json.dumps(summary, indent=2))
+        else:
+            print(f"=== FE-2a Functional Eval: {prompt_id} (Dry Run) ===")
+            print(f"Template loaded: {template is not None}")
+            print(f"Tasks evaluated: {summary['tasks_evaluated']}")
+            print(f"Tasks passed:    {summary['tasks_passed']}")
+            print(f"Score:           {summary['score']:.1%} ({summary['score']})")
+            print(f"Headroom:        {summary['headroom']:.1%} (GEPA target available)")
+            print(f"Status:          {summary['status']}")
+            if verbose:
+                for r in summary["results"]:
+                    mark = "PASS" if r["passed"] else "FAIL"
+                    print(f"  [{mark}] {r['task']:<20} | {r['description']}")
+                    for f in r.get("failures", []):
+                        print(f"         ↳ {f}")
+        return 0
+
+    # Live model execution path
+    try:
+        from urllib import request
+        llama_url = os.getenv("LLAMA_URL", "http://127.0.0.1:8080").rstrip("/")
+        timeout_s = float(os.getenv("AQ_PROMPT_EVAL_TIMEOUT_S", "120"))
+
+        results: List[Dict[str, Any]] = []
+        for t in tasks:
+            rendered = render_template(template or "", t.prompt_variables) if template else t.description
+            payload = json.dumps({
+                "model": model,
+                "messages": [{"role": "user", "content": rendered}],
+                "max_tokens": 512,
+                "temperature": 0.2,
+            }).encode("utf-8")
+
+            req = request.Request(f"{llama_url}/v1/chat/completions", data=payload, headers={"Content-Type": "application/json"})
+            start_t = time.monotonic()
+            with request.urlopen(req, timeout=timeout_s) as resp:
+                data = json.loads(resp.read().decode("utf-8"))
+            latency_ms = (time.monotonic() - start_t) * 1000
+
+            content = data["choices"][0]["message"]["content"]
+            extracted = fe.extract_code_block(content)
+            ok, errs = fe.execute_functional_check(extracted, t.check_script)
+            results.append({
+                "task": t.name,
+                "description": t.description,
+                "passed": ok,
+                "failures": errs,
+                "latency_ms": round(latency_ms, 1),
+            })
+
+        passed_count = sum(1 for r in results if r["passed"])
+        score = passed_count / len(tasks) if tasks else 0.0
+        summary = {
+            "metric": "functional_eval",
+            "prompt_id": prompt_id,
+            "tasks_evaluated": len(tasks),
+            "tasks_passed": passed_count,
+            "score": round(score, 4),
+            "headroom": round(1.0 - score, 4),
+            "status": "ready",
+            "results": results,
+            "dry_run": False,
+        }
+
+        if json_output:
+            print(json.dumps(summary, indent=2))
+        else:
+            print(f"=== FE-2a Functional Eval: {prompt_id} ===")
+            print(f"Score:    {score:.1%} ({passed_count}/{len(tasks)})")
+            print(f"Headroom: {summary['headroom']:.1%}")
+        return 0
+    except Exception as exc:
+        print(f"ERROR: Live execution failed ({exc}). Use --dry-run for offline verification.", file=sys.stderr)
+        return 1
+
+
+def main() -> int:
+    p = argparse.ArgumentParser(description="Evaluate code prompts against functional assertions")
+    p.add_argument("--dry-run", action="store_true", help="Run offline deterministic fixture evaluation")
+    p.add_argument("--prompt", dest="prompt_id", default="aider_task_systems_code", help="Prompt ID to evaluate")
+    p.add_argument("--verbose", action="store_true", help="Print per-task details and failure traces")
+    p.add_argument("--json", action="store_true", help="Output machine-readable JSON")
+    p.add_argument("--model", default="local", help="Model name for llama.cpp")
+    p.add_argument("--mock-ratio", type=float, default=None, help="Simulate a specific pass ratio in [0.0, 1.0]")
+    args = p.parse_args()
+
+    return run_functional_eval(
+        prompt_id=args.prompt_id,
+        dry_run=args.dry_run,
+        verbose=args.verbose,
+        json_output=args.json,
+        model=args.model,
+        mock_ratio=args.mock_ratio,
+    )
+
+
+if __name__ == "__main__":
+    raise SystemExit(main())
