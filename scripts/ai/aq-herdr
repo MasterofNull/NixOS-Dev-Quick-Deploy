@@ -101,8 +101,55 @@ case "${1:-}" in
     emit_status attach false
     exit 3
     ;;
+  project)
+    # H2 monitored presentation projection (pure, deterministic, dormant)
+    target="${2:-presentation}"
+    case "$target" in
+      presentation)
+        python3 -c "
+import json, sys
+from pathlib import Path
+root = Path('${BASH_SOURCE[0]}').resolve().parents[2]
+sys.path.insert(0, str(root / 'scripts' / 'ai' / 'lib'))
+import herdr_presentation_projection as hpp
+envelope = {
+    'observation_revision': 'dormant-preview',
+    'generated_at': '2026-10-12T00:00:00Z',
+    'static_expected': {
+        'version': '0.7.5',
+        'protocol': '1',
+        'layout_revision': 'h2-default',
+        'layout_digest': '0' * 64,
+        'session_count': {'state': 'known', 'value': 1},
+    },
+}
+res = hpp.project(envelope)
+print(json.dumps(res, indent=2))
+"
+        ;;
+      operator-context)
+        python3 -c "
+import json, sys
+from pathlib import Path
+root = Path('${BASH_SOURCE[0]}').resolve().parents[2]
+sys.path.insert(0, str(root / 'scripts' / 'ai' / 'lib'))
+import operator_context_projection as ocp
+fixture_path = root / 'scripts' / 'testing' / 'fixtures' / 'operator-context-golden.json'
+fixture = json.loads(fixture_path.read_text())
+vectors = {item['id']: item for item in fixture['vectors']}
+fresh = vectors.get('all-fresh-r1-r7', list(vectors.values())[0])
+res, _, _ = ocp.project(fresh['facts'])
+print(json.dumps(res, indent=2))
+"
+        ;;
+      *)
+        echo "aq-herdr: unsupported project target '$target' (expected 'presentation' or 'operator-context')" >&2
+        exit 2
+        ;;
+    esac
+    ;;
   *)
-    echo "usage: aq-herdr {status [--json]|doctor [--json]|version|attach}" >&2
+    echo "usage: aq-herdr {status [--json]|doctor [--json]|version|attach|project [presentation|operator-context]}" >&2
     exit 2
     ;;
 esac

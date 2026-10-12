@@ -7119,6 +7119,44 @@ def _ecc_diagnostics_summary() -> Dict[str, Any]:
                 "reason": f"diagnostics_unavailable:{type(exc).__name__}"}
 
 
+def _herdr_presentation_summary() -> Dict[str, Any]:
+    """Compact Herdr H2 monitored presentation projection status (read-only, deterministic)."""
+    try:
+        module_path = _repo_root() / "scripts" / "ai" / "lib" / "herdr_presentation_projection.py"
+        spec = importlib.util.spec_from_file_location("aq_herdr_presentation_projection", module_path)
+        if spec is None or spec.loader is None:
+            raise ImportError("herdr presentation unavailable")
+        module = importlib.util.module_from_spec(spec)
+        spec.loader.exec_module(module)
+        envelope = {
+            "observation_revision": "dormant-preview",
+            "generated_at": "2026-10-12T00:00:00Z",
+            "static_expected": {
+                "version": "0.7.5",
+                "protocol": "1",
+                "layout_revision": "h2-default",
+                "layout_digest": "0" * 64,
+                "session_count": {"state": "known", "value": 1},
+            },
+        }
+        res = module.project(envelope)
+        digest = module.projection_digest(res)
+        return {
+            "available": True,
+            "status": "dormant_preview",
+            "schema_version": res.get("schema_version"),
+            "observation_revision": res.get("observation_revision"),
+            "digest": digest,
+            "coverage": res.get("coverage", {}),
+        }
+    except (OSError, ValueError, ImportError, SyntaxError) as exc:
+        return {
+            "available": False,
+            "status": "unverified",
+            "reason": f"herdr_presentation_unavailable:{type(exc).__name__}",
+        }
+
+
 @router.get("/advanced/runtime-summary")
 async def get_advanced_runtime_summary() -> Dict[str, Any]:
     """Aggregate advanced Phase 6-10 control-plane state for dashboard visibility."""
@@ -7188,6 +7226,7 @@ async def get_advanced_runtime_summary() -> Dict[str, Any]:
                 "lifecycle_events": await asyncio.to_thread(_lifecycle_events_health_summary),
                 "ecc_diagnostics": await asyncio.to_thread(_ecc_diagnostics_summary),
                 "ci_pack": await asyncio.to_thread(_ci_pack_health_summary),
+                "herdr_presentation": await asyncio.to_thread(_herdr_presentation_summary),
             },
             "learning": {
                 "status": _advanced_phase_readiness_status(readiness, "phase_10_learning"),
