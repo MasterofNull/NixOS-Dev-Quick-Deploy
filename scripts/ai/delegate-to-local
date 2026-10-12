@@ -208,6 +208,9 @@ while [[ $# -gt 0 ]]; do
         --kill-all)      SUBCMD="kill-all";      shift   ;;
         --no-consult)    NO_CONSULT=true;        shift   ;;
         --shared|--no-worktree) SHARED_MODE=true; shift  ;;
+        --json)          JSON_FLAG=true; shift ;;
+        --no-color)      NO_COLOR_FLAG=true; shift ;;
+        --verbose)       VERBOSE_FLAG=true; shift ;;
         --internal-worktree-handback)
             SUBCMD="worktree-handback"
             SUBCMD_ARG="${2:-}"; WT_HB_PATH="${3:-}"; WT_HB_BRANCH="${4:-}"
