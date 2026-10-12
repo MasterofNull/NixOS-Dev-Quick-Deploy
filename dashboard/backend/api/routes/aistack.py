@@ -7129,6 +7129,21 @@ def _functional_eval_health_summary() -> Dict[str, Any]:
                 "reason": f"functional_eval_unavailable:{type(exc).__name__}"}
 
 
+def _prompt_compile_health_summary() -> Dict[str, Any]:
+    """Bounded, read-only health summary of prompt compilation (Frontier FE-2b)."""
+    try:
+        module_path = _repo_root() / "scripts" / "ai" / "lib" / "gepa_optimizer.py"
+        spec = importlib.util.spec_from_file_location("aq_gepa_optimizer", module_path)
+        if spec is None or spec.loader is None:
+            raise ImportError("gepa optimizer unavailable")
+        module = importlib.util.module_from_spec(spec)
+        spec.loader.exec_module(module)
+        return module.health_summary(_repo_root())
+    except (OSError, ValueError, ImportError, SyntaxError) as exc:
+        return {"available": False, "status": "unverified", "compiled_templates": 0,
+                "reason": f"prompt_compile_unavailable:{type(exc).__name__}"}
+
+
 def _lifecycle_events_health_summary() -> Dict[str, Any]:
     """Bounded, read-only lifecycle adapter health (dormant when no state file is configured)."""
     try:
@@ -7288,6 +7303,7 @@ async def get_advanced_runtime_summary() -> Dict[str, Any]:
                 "herdr_presentation": await asyncio.to_thread(_herdr_presentation_summary),
                 "hermetic_candidate_eval": await asyncio.to_thread(_hermetic_candidate_eval_summary),
                 "functional_eval": await asyncio.to_thread(_functional_eval_health_summary),
+                "prompt_compile": await asyncio.to_thread(_prompt_compile_health_summary),
             },
             "learning": {
                 "status": _advanced_phase_readiness_status(readiness, "phase_10_learning"),

@@ -222,15 +222,21 @@
       "deps": [
         "fe-1-prm-verify"
       ],
-      "editorial_note": "FE-2a functional eval baseline complete; executable code tasks + headroom measurement unblock FE-2b compile",
-      "notes": "FE-2a functional baseline completed with executable test cases and headroom measurement; unblocks FE-2b offline prompt compile; test-functional-prompt-eval 6/6 PASS",
-      "pct_hint": 50,
+      "editorial_note": "FE-2a functional eval baseline and FE-2b GEPA build-time prompt compile complete; reflective optimization + strict candidate score gating + compiled template storage verified",
+      "notes": "FE-2a + FE-2b completed: functional baseline test cases, reflective feedback extraction, strict score lift gating, CLI, and dashboard card. test-gepa-prompt-compile 7/7 PASS",
+      "pct_hint": 100,
       "detection": {
         "commit_match": [
-          "Frontier FE-2a functional eval metric baseline",
-          "FE-2a"
+          "Frontier FE-2b GEPA build-time prompt compile",
+          "FE-2b"
         ],
-        "test_gate": "scripts/testing/test-functional-prompt-eval.py"
+        "test_gate": "scripts/testing/test-gepa-prompt-compile.py"
+      },
+      "acceptance": {
+        "status": "accepted",
+        "by": "antigravity",
+        "date": "2026-10-12",
+        "note": "FE-2b GEPA build-time prompt compile complete; test-gepa-prompt-compile 7/7 PASS; QA check 0.10.65; dashboard visibility"
       }
     },
     {
