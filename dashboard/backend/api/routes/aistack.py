@@ -6568,6 +6568,11 @@ def _classify_sse_event_type(ev: dict) -> str:
 
 def _get_guidance_spool_dir() -> Path:
     """Return persistent guidance directory with /tmp fallback."""
+    env_dir = os.environ.get("AQ_AGENT_GUIDANCE_DIR")
+    if env_dir:
+        p = Path(env_dir)
+        p.mkdir(parents=True, exist_ok=True)
+        return p
     try:
         primary = Path(__file__).resolve().parents[4] / ".agents" / "guidance"
         primary.mkdir(parents=True, exist_ok=True)
