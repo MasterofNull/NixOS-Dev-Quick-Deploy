@@ -160,9 +160,10 @@ for session_path in "${sorted_sessions[@]}"; do
     continue
   fi
 
-  # Extract history client-side
-  _payload=$(python3 -c "${_PYTHON_EXTRACT}" "${session_path}" 2>/dev/null)
-  exit_code=$?
+  # Extract history client-side (capture exit code safely under set -e)
+  _payload=""
+  exit_code=0
+  _payload=$(python3 -c "${_PYTHON_EXTRACT}" "${session_path}" 2>/dev/null) || exit_code=$?
 
   if [[ $exit_code -eq 1 ]]; then
     # File error (unreadable, etc.)

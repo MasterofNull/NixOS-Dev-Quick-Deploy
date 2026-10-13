@@ -7148,6 +7148,21 @@ def _prompt_compile_health_summary() -> Dict[str, Any]:
                 "reason": f"prompt_compile_unavailable:{type(exc).__name__}"}
 
 
+def _triage_health_summary() -> Dict[str, Any]:
+    """Bounded, read-only health summary of System 1 stream triage engine (DP-1)."""
+    try:
+        module_path = _repo_root() / "scripts" / "ai" / "lib" / "triage_engine.py"
+        spec = importlib.util.spec_from_file_location("aq_triage_engine", module_path)
+        if spec is None or spec.loader is None:
+            raise ImportError("triage engine unavailable")
+        module = importlib.util.module_from_spec(spec)
+        spec.loader.exec_module(module)
+        return module.health_summary(_repo_root())
+    except (OSError, ValueError, ImportError, SyntaxError) as exc:
+        return {"available": False, "status": "unverified", "p95_ms": 0.0,
+                "reason": f"triage_unavailable:{type(exc).__name__}"}
+
+
 def _lifecycle_events_health_summary() -> Dict[str, Any]:
     """Bounded, read-only lifecycle adapter health (dormant when no state file is configured)."""
     try:
@@ -7308,6 +7323,7 @@ async def get_advanced_runtime_summary() -> Dict[str, Any]:
                 "hermetic_candidate_eval": await asyncio.to_thread(_hermetic_candidate_eval_summary),
                 "functional_eval": await asyncio.to_thread(_functional_eval_health_summary),
                 "prompt_compile": await asyncio.to_thread(_prompt_compile_health_summary),
+                "triage": await asyncio.to_thread(_triage_health_summary),
             },
             "learning": {
                 "status": _advanced_phase_readiness_status(readiness, "phase_10_learning"),
@@ -9093,3 +9109,38 @@ async def get_network_policy_status() -> Dict[str, Any]:
             "transition_count_bucket": "unknown",
             "acquisition_error": "none",
         }
+
+
+@router.get("/triage/status")
+async def get_triage_status() -> Dict[str, Any]:
+    """Return health summary of System 1 stream triage engine (DP-1)."""
+    return await asyncio.to_thread(_triage_health_summary)
+
+
+@router.post("/triage/classify")
+async def post_triage_classify(payload: Dict[str, Any]) -> Dict[str, Any]:
+    """Classify a message or log snippet through the fast structured classifier."""
+    msg = payload.get("message") or ""
+    source = payload.get("source") or payload.get("unit") or "manual"
+    try:
+        module_path = _repo_root() / "scripts" / "ai" / "lib" / "triage_engine.py"
+        spec = importlib.util.spec_from_file_location("aq_triage_engine", module_path)
+        if spec is None or spec.loader is None:
+            raise ImportError("triage engine unavailable")
+        module = importlib.util.module_from_spec(spec)
+        spec.loader.exec_module(module)
+        res = module.FastClassifier.classify(source=source, message=str(msg))
+        return {
+            "incident_id": res.incident_id,
+            "source": res.source,
+            "severity": res.severity,
+            "incident_class": res.incident_class,
+            "confidence": res.confidence,
+            "actionable": res.actionable,
+            "suggested_lane": res.suggested_lane,
+            "correlation_key": res.correlation_key,
+            "summary": res.summary,
+            "reproduction_cmd": res.reproduction_cmd,
+        }
+    except Exception as exc:
+        return {"error": str(exc), "actionable": False}

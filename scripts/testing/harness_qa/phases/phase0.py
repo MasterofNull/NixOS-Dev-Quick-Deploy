@@ -1568,6 +1568,29 @@ def _check_frontier_fe2b_prompt_compile(ctx: RunContext) -> list[CheckResult]:
     return [passed(5, "0.10.65", desc)]
 
 
+def _check_durable_triage_engine(ctx: RunContext) -> list[CheckResult]:
+    """0.10.66: System 1 High-Frequency Triage Engine (DP-1) plus dashboard visibility."""
+    desc = "System 1 triage engine: sub-200ms classification, persistent cursor, rate limiting, dashboard visibility"
+    test = ctx.repo_root / "scripts" / "testing" / "test-aq-triage.py"
+    cli = ctx.repo_root / "scripts" / "ai" / "aq-triage"
+    lib = ctx.repo_root / "scripts" / "ai" / "lib" / "triage_engine.py"
+    route = ctx.repo_root / "dashboard" / "backend" / "api" / "routes" / "aistack.py"
+    js = ctx.repo_root / "assets" / "dashboard.js"
+    missing = [str(p.relative_to(ctx.repo_root)) for p in (test, cli, lib, route, js) if not p.exists()]
+    if missing:
+        return [failed(5, "0.10.66", desc, f"missing: {', '.join(missing)}")]
+    try:
+        proc = subprocess.run([sys.executable, str(test)], cwd=str(ctx.repo_root), capture_output=True, text=True,
+                              timeout=120, check=False)
+        if proc.returncode != 0 or "ALL 6 FIXTURES PASS" not in proc.stdout:
+            return [failed(5, "0.10.66", desc, (proc.stderr or proc.stdout or "fixture failed")[-240:])]
+        if "_triage_health_summary" not in route.read_text(encoding="utf-8") or "· system 1 stream triage" not in js.read_text(encoding="utf-8"):
+            return [failed(5, "0.10.66", desc, "dashboard triage visibility contract missing")]
+    except (OSError, subprocess.TimeoutExpired) as error:
+        return [failed(5, "0.10.66", desc, str(error)[:240])]
+    return [passed(5, "0.10.66", desc)]
+
+
 
 def _check_provider_projection(ctx: RunContext) -> list[CheckResult]:
     """0.10.55: ECC P0-B provider projection fixtures plus live drift status (preview-only)."""
@@ -2370,6 +2393,7 @@ def run(ctx: RunContext) -> list[CheckResult]:
     results.extend(_check_ecc_p2_approval_gated_cd(ctx))
     results.extend(_check_frontier_fe2a_functional_eval(ctx))
     results.extend(_check_frontier_fe2b_prompt_compile(ctx))
+    results.extend(_check_durable_triage_engine(ctx))
     results.extend(_check_network_dns_policy(ctx))
     if ctx.dashboard_safe:
         results.extend(_dashboard_safe_host_only_skips())
