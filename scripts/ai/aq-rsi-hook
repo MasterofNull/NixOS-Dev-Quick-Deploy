@@ -51,6 +51,29 @@ def run(command, payload, timeout=12):
 
 
 if __name__ == "__main__":
+    if len(sys.argv) > 1 and sys.argv[1] == "osi":
+        if len(sys.argv) < 4:
+            print("Usage: aq-rsi-hook osi <layer> <error_description>", file=sys.stderr)
+            sys.exit(2)
+        layer = sys.argv[2]
+        error_msg = " ".join(sys.argv[3:])
+        try:
+            slug = failure(
+                agent="osi-monitor",
+                subject=f"osi:layer:{layer}",
+                producer="osi-layer-hook",
+                path=f"osi:layer:{layer}",
+                authority="osi-hook",
+                os_error=f"OSI layer {layer} failure: {error_msg}",
+                severity="high",
+                root_fix=f"Diagnose and recover OSI layer {layer} components",
+            )
+            print(f"RSI incident recorded for OSI layer {layer}: rsi-{slug}")
+            sys.exit(0)
+        except Exception as exc:
+            print(f"Failed to record OSI layer incident: {exc}", file=sys.stderr)
+            sys.exit(1)
+
     code, stdout, stderr = run(["/run/current-system/sw/bin/lean-ctx", "hook", "codex-pretooluse"], sys.stdin.buffer.read())
     sys.stdout.buffer.write(stdout)
     sys.stderr.buffer.write(stderr)
