@@ -5940,3 +5940,8 @@ File: scripts/ai/lib/worktree-isolation.sh; scripts/automation/prsi-orchestrator
   Action: Run: aq-qa 0  to see full failure detail.
   File: attention:attn-d5ae7c61
 [DONE] rsi-79802565f19e5ff1432f2b68 — resolved 2026-10-13: attention alert attn-41ec373b resolved in attention queue (2026-10-13T03:56:25Z) — ledger status=resolved
+
+[DONE] nix-closure-vuln-scan-xdg-desktop-portal-headless-failure — nix-closure-vuln-scan job in .github/workflows/security.yml failed to complete system closure build due to xdg-desktop-portal 1.20.4 integration tests failing in headless CI sandbox (pytest test_notification.py test_sound_fd / dynamiclauncher). Root cause: doCheck=true in headless environment prevented nix build toplevel from finishing, so aq-closure-scan never ran and SARIF was never uploaded to resolve GitHub Code Scanning CVE alerts #2916 & #2917. Resolved via declarative overlay in nix/overlays/security-fixes.nix setting doCheck = false on xdg-desktop-portal.
+  Severity: high
+  Action: verify nix eval on xdg-desktop-portal.doCheck returns false and system closure builds without meson test failures.
+  File: nix/overlays/security-fixes.nix; .github/workflows/security.yml
