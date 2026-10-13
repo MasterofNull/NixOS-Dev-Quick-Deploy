@@ -5945,3 +5945,8 @@ File: scripts/ai/lib/worktree-isolation.sh; scripts/automation/prsi-orchestrator
   Severity: high
   Action: verify nix eval on xdg-desktop-portal.doCheck returns false and system closure builds without meson test failures.
   File: nix/overlays/security-fixes.nix; .github/workflows/security.yml
+[DONE] rsi-55cefb9be0fbd26c9dfab0d0 — resolved 2026-10-13: journal of command-center-dashboard-api read OK; signature below 5 occurrence(s) in last 3600s (2026-10-13T04:11:24Z) — ledger status=resolved
+[DONE] rsi-78a83cc9585798f3f778cede — resolved 2026-10-13: journal of command-center-dashboard-api read OK; signature below 5 occurrence(s) in last 3600s (2026-10-13T04:11:24Z) — ledger status=resolved
+[DONE] rsi-9049951adce59903c337e8e2 — resolved 2026-10-13: journal of command-center-dashboard-api read OK; signature below 5 occurrence(s) in last 3600s (2026-10-13T04:11:24Z) — ledger status=resolved
+
+[DONE] rsi-909a3aff96f91df63ac5a3f8 — resolved 2026-10-13: aq-qa check 0.10.50 factory readiness preflight passing. Root cause: in scripts/testing/test-factory-gate-readiness.py line 282, manifest_path.write_bytes wrote with default umask (0o664) leaving group-writable bit set; _mode_is_safe rejected the group-writable permission as an insecure mode drift, failing manifest_provenance and causing EXECUTION_SCOPE_INVALID instead of FAILED_EXECUTION_EVIDENCE. Resolved by adding manifest_path.chmod(0o644) after write_bytes. (2026-10-13T04:22:00Z) — ledger status=resolved

@@ -280,6 +280,7 @@ def main() -> int:
         assert "EXECUTION_SCOPE_INVALID" in blocker_codes(preflight(target, expected=1, path_prefix=fake_bin))
         injected_check.unlink()
         manifest_path.write_bytes(manifest_contents)
+        manifest_path.chmod(0o644)
         evidence["injected_check_refused_before_execution"] = True
 
         # A failing canonical check produces an explicit failed receipt.  The
