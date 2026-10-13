@@ -573,6 +573,45 @@
         "external-integration"
       ],
       "activation_notes": "Metadata-only H0 intake record. Herdr is proposed as a presentation and PTY substrate, not lifecycle authority. No download, install, socket access, plugin, session restore, process launch, remote attach, or agent skill is enabled by this record."
+    },
+    {
+      "id": "rea-reverse-engineering",
+      "name": "REA: Reverse Engineer Anything",
+      "category": "code-understanding",
+      "source_url": "https://github.com/morluto/rea",
+      "maturity": "third-party-reference",
+      "priority": "very-high",
+      "state": "proposed",
+      "pinned_version": "0.1.0",
+      "review_status": "incomplete",
+      "blocked_reason": "Reverse engineering decompilation bridge; deep native binary analysis requires isolated workspace, capability-intake review, tool allowlist, and runtime sandboxing before activation.",
+      "unblock_condition": "Complete capability intake audit, define tool allowlist, sandbox Hopper/Ghidra/node process execution, verify MIT license compatibility, and add regression tests before runtime activation.",
+      "install": {
+        "type": "disabled-external-repo",
+        "command": "disabled-until-intake",
+        "args": []
+      },
+      "tool_allowlist": [
+        "analyze_javascript_application",
+        "analyze_dotnet_assembly",
+        "analyze_native_binary",
+        "rea_session_evidence"
+      ],
+      "permissions": {
+        "network": false,
+        "filesystem": "quarantine-read",
+        "writes": false,
+        "secrets": false
+      },
+      "value": "Provides reverse engineering across binaries, JavaScript/Electron applications, .NET assemblies, and runtime behavior for software dev factory analysis and feature reconstruction.",
+      "risks": [
+        "tool-execution",
+        "npm-package-execution",
+        "resource-exhaustion",
+        "scope-escape",
+        "log-sensitive-data"
+      ],
+      "activation_notes": "Proposed capability intake candidate. Reverse engineering analysis executes locally without remote network transmission. Deep analysis uses local decompilers."
     }
   ]
 }
