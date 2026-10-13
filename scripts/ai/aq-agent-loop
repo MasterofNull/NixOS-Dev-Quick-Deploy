@@ -543,13 +543,14 @@ async def run_task(
                 })
                 try:
                     def _write(_p: Path, _line: str) -> None:
+                        _p.parent.mkdir(parents=True, exist_ok=True)
                         with open(_p, "a", encoding="utf-8") as _f:
                             _f.write(_line + "\n")
                     await asyncio.to_thread(_write, _hybrid_path, _evt)
                 except Exception:
                     pass  # telemetry is best-effort
 
-            asyncio.create_task(_emit_training_signal())
+            await _emit_training_signal()
     else:
         rsi_failure(
             "aq-agent-loop", lifecycle_subject, "LocalAgentExecutor",
