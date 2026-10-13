@@ -35,4 +35,10 @@ in {
       hash = "sha256-qdyVZd/+hkD2TYY80poyvEo9vewFZqf8RMXW7nZ9Xzk=";
     };
   });
+
+  # xdg-desktop-portal: integration tests (test_notification.py sound_fd and dynamiclauncher)
+  # require a live desktop session and fail in headless container/CI build sandboxes.
+  xdg-desktop-portal = prev.xdg-desktop-portal.overrideAttrs (_old: {
+    doCheck = false;
+  });
 }

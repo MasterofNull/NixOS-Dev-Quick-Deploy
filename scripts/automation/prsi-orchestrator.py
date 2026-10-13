@@ -540,15 +540,18 @@ def _fetch_rsi_incident_actions() -> List[Dict[str, Any]]:
 
 
 def _is_safe_rsi_path(value: Any) -> bool:
-    """Accept a bounded repo-relative pointer; it is never executed."""
+    """Accept a bounded repo-relative pointer or safe operational namespace; it is never executed."""
     if not isinstance(value, str) or not value or len(value) > 256:
         return False
-    candidate = (REPO_ROOT / value).resolve()
+    # Accept operational namespaced identifiers (e.g. osi:layer:3, service:ai-switchboard, systemd:foo, attention:attn-123)
+    if re.match(r"^(osi|service|systemd|port|network|aq-qa|http|https|attention|dashboard)[:/][\w.:/ -]+$", value):
+        return True
     try:
+        candidate = (REPO_ROOT / value).resolve()
         candidate.relative_to(REPO_ROOT)
-    except ValueError:
+        return candidate != REPO_ROOT
+    except (ValueError, OSError):
         return False
-    return candidate != REPO_ROOT
 
 
 def _fetch_structured_actions(since: str) -> Tuple[List[Dict[str, Any]], Dict[str, Any]]:

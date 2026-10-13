@@ -36,7 +36,8 @@ class AdapterTests(unittest.TestCase):
     def test_qa_missing_stale_fresh(self):
         with tempfile.TemporaryDirectory() as t:
             p = Path(t) / "p.jsonl"
-            self.assertEqual(sw.adapter_qa_phase0(p)[0], "unknown")
+            m = Path(t) / "missing_monitor.json"
+            self.assertEqual(sw.adapter_qa_phase0(p, health_monitor_json=m)[0], "unknown")
             recs = [{"check_id": "0.1.1", "state": "fail", "description": "x"},
                     {"check_id": "0.1.1", "state": "fail", "description": "x"},
                     {"check_id": "0.1.2", "state": "pass"},
@@ -211,6 +212,98 @@ class AdapterTests(unittest.TestCase):
             state, f, _ = sw.adapter_code_scanning(p)
         self.assertEqual(state, "findings")
         self.assertNotIn("5.10.0", f[0]["os_error"])  # fixed version stays out of identity
+
+    def test_osi_layers_healthy_and_failing_and_cleared(self):
+        failing_payload = {
+            "status": "degraded",
+            "passed": 6,
+            "failed": 1,
+            "layers": {
+                "1": {"status": "ok", "name": "hardware"},
+                "3": {"status": "failed", "name": "network", "error": "socket bind failed"}
+            }
+        }
+        state, f, d = sw.adapter_osi_layers(runner=lambda: failing_payload)
+        self.assertEqual(state, "findings")
+        self.assertEqual(len(f), 1)
+        self.assertEqual(f[0]["subject"], "osi:layer:3")
+        self.assertEqual(f[0]["producer"], "osi-layered:probe")
+        self.assertEqual(f[0]["authority"], "osi-layers")
+        self.assertIn("socket bind failed", f[0]["os_error"])
+
+        cleared_fn = getattr(f, "cleared", None)
+        self.assertIsNotNone(cleared_fn)
+        self.assertIsNone(cleared_fn({"producer": "osi-layered:probe", "path": "osi:layer:3"}))
+        self.assertIsNotNone(cleared_fn({"producer": "osi-layered:probe", "path": "osi:layer:1"}))
+
+        healthy_payload = {
+            "status": "ok",
+            "passed": 7,
+            "failed": 0,
+            "layers": {
+                "1": {"status": "ok", "name": "hardware"},
+                "3": {"status": "ok", "name": "network"}
+            }
+        }
+        state, f, d = sw.adapter_osi_layers(runner=lambda: healthy_payload)
+        self.assertEqual(state, "ok")
+        self.assertEqual(len(f), 0)
+
+        pending_payload = {"pending": True}
+        state, f, d = sw.adapter_osi_layers(runner=lambda: pending_payload)
+        self.assertEqual(state, "ok")
+        self.assertEqual(len(f), 0)
+
+        def boom(): raise OSError("connection refused")
+        state, f, d = sw.adapter_osi_layers(runner=boom)
+        self.assertEqual(state, "unknown")
+
+    def test_attention_queue_pending_and_resolved(self):
+        with tempfile.TemporaryDirectory() as t:
+            queue_file = Path(t) / "ATTENTION.json"
+            state, f, d = sw.adapter_attention_queue(attention_file=queue_file)
+            self.assertEqual(state, "ok")
+
+            queue_data = {
+                "alerts": [
+                    {
+                        "id": "attn-test-1",
+                        "source": "health-spider",
+                        "severity": "high",
+                        "status": "pending",
+                        "title": "Service down",
+                        "detail": "Failed health check",
+                        "proposed_action": "Restart service"
+                    },
+                    {
+                        "id": "attn-test-2",
+                        "source": "health-spider",
+                        "severity": "low",
+                        "status": "pending",
+                        "title": "Minor warning"
+                    },
+                    {
+                        "id": "attn-test-3",
+                        "source": "health-spider",
+                        "severity": "critical",
+                        "status": "resolved",
+                        "title": "Old resolved"
+                    }
+                ]
+            }
+            queue_file.write_text(json.dumps(queue_data))
+            state, f, d = sw.adapter_attention_queue(attention_file=queue_file)
+            self.assertEqual(state, "findings")
+            self.assertEqual(len(f), 1)
+            self.assertEqual(f[0]["subject"], "attention:attn-test-1")
+            self.assertEqual(f[0]["producer"], "attention-queue:health-spider")
+            self.assertEqual(f[0]["path"], "attention:attn-test-1")
+
+            cleared_fn = getattr(f, "cleared", None)
+            self.assertIsNotNone(cleared_fn)
+            self.assertIsNone(cleared_fn({"producer": "attention-queue:health-spider", "path": "attention:attn-test-1"}))
+            self.assertIsNotNone(cleared_fn({"producer": "attention-queue:health-spider", "path": "attention:attn-other"}))
+
 
 
 def _alert(category, pkg, installed, state, **extra):

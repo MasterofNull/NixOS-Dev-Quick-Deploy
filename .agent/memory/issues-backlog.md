@@ -5894,3 +5894,54 @@ File: scripts/ai/lib/worktree-isolation.sh; scripts/automation/prsi-orchestrator
   Severity: medium
   Action: automated reconciliation via reconcile_branches.py; reduced branches from 414 to 44 and worktrees from 209 to 8
   File: .agents/delegation/outputs/
+
+[OPEN] rsi-0799cc4c4806b6508f2a09f5 — aq-qa:phase0 failure in aq-qa:0.10.50. Root cause evidence: producer=aq-qa:phase0; path=aq-qa check 0.10.50; authority=aq-qa; os_error=phase-0 check 0.10.50 failing: Factory readiness preflight: hash-bound evidence, fail-closed unconfigured checks, typed blockers (fixture exit 1). Detected=2026-10-13T01:38:03.932932Z.
+  Severity: medium
+  Action: run aq-qa 0 --machine and fix check 0.10.50 at its producer
+  File: aq-qa check 0.10.50
+
+[OPEN] rsi-78eeba629971cdbb4d821aff — aq-qa:phase0 failure in aq-qa:0.10.50. Root cause evidence: producer=aq-qa:phase0; path=aq-qa check 0.10.50; authority=aq-qa; os_error=phase-0 check 0.10.50 failing: Factory readiness preflight: hash-bound evidence, fail-closed unconfigured checks, typed blockers (Command '['python3', . Detected=2026-10-13T03:11:19.180837Z.
+  Severity: medium
+  Action: run aq-qa 0 --machine and fix check 0.10.50 at its producer
+  File: aq-qa check 0.10.50
+
+[OPEN] rsi-6b92eb176acb652b9d8f67d4 — aq-payload-audit failure in payload-audit:codex:6b. Root cause evidence: producer=aq-payload-audit; path=.agents/delegation/outputs/; authority=codex; os_error=payload audit check 6b high on lane codex. Detected=2026-10-13T03:26:19.905788Z.
+  Severity: high
+  Action: monitor token [REDACTED]; review task budgets (latest: measured 1 hits in 2 days vs zero)
+  File: .agents/delegation/outputs/
+
+[OPEN] rsi-2a0a9e6b664ab93e891b5853 — journal:ai-hybrid-coordinator failure in service-error:ai-hybrid-coordinator:Error handling request from <n>.<n>.<n>.<n>. Root cause evidence: producer=journal:ai-hybrid-coordinator; path=ai-hybrid-coordinator; authority=journald; os_error=recurring error in ai-hybrid-coordinator: Error handling request from <n>.<n>.<n>.<n>. Detected=2026-10-13T03:41:23.951219Z.
+  Severity: medium
+  Action: 8 occurrence(s) in last 3600s; example: {"event": "Error handling request from 127.0.0.1", "exc_info": ["<class 'NameError'>", "NameError(\"name 'homeostasis_manager' is not defined\")", "<traceback object at 0x72b40c13f380>"], "logger": "a; journalctl -u ai-hybrid-coordinator; fix producer
+  File: ai-hybrid-coordinator
+
+[OPEN] rsi-55cefb9be0fbd26c9dfab0d0 — journal:command-center-dashboard-api failure in service-error:command-center-dashboard-api:+ Exception Group Traceback (most recent call last):. Root cause evidence: producer=journal:command-center-dashboard-api; path=command-center-dashboard-api; authority=journald; os_error=recurring error in command-center-dashboard-api: + Exception Group Traceback (most recent call last):. Detected=2026-10-13T03:41:23.971050Z.
+  Severity: medium
+  Action: 9 occurrence(s) in last 3600s; example: + Exception Group Traceback (most recent call last):; journalctl -u command-center-dashboard-api; fix producer
+  File: command-center-dashboard-api
+
+[OPEN] rsi-9049951adce59903c337e8e2 — journal:command-center-dashboard-api failure in service-error:command-center-dashboard-api:Traceback (most recent call last):. Root cause evidence: producer=journal:command-center-dashboard-api; path=command-center-dashboard-api; authority=journald; os_error=recurring error in command-center-dashboard-api: Traceback (most recent call last):. Detected=2026-10-13T03:41:23.990812Z.
+  Severity: medium
+  Action: 9 occurrence(s) in last 3600s; example: Traceback (most recent call last):; journalctl -u command-center-dashboard-api; fix producer
+  File: command-center-dashboard-api
+
+[OPEN] rsi-78a83cc9585798f3f778cede — journal:command-center-dashboard-api failure in service-error:command-center-dashboard-api:| Traceback (most recent call last):. Root cause evidence: producer=journal:command-center-dashboard-api; path=command-center-dashboard-api; authority=journald; os_error=recurring error in command-center-dashboard-api: | Traceback (most recent call last):. Detected=2026-10-13T03:41:24.007946Z.
+  Severity: medium
+  Action: 9 occurrence(s) in last 3600s; example: | Traceback (most recent call last):; journalctl -u command-center-dashboard-api; fix producer
+  File: command-center-dashboard-api
+
+[OPEN] rsi-79802565f19e5ff1432f2b68 — attention-queue:ai-stack-health-monitor failure in attention:attn-41ec373b. Root cause evidence: producer=attention-queue:ai-stack-health-monitor; path=attention:attn-41ec373b; authority=attention-queue; os_error=[ai-stack-health-monitor] aq-qa phase 0: 1 check(s) failing: Scheduled health monitor found 1 failing check(s):   [0.10.50] Factory readiness preflight: hash-bound evidence, fail-closed unconfigured checks, typed blockers (fixture exit 1):   Run: aq-qa 0  for f. Detected=2026-10-13T03:41:24.136752Z.
+  Severity: medium
+  Action: Run: aq-qa 0  to see full failure detail.
+  File: attention:attn-41ec373b
+
+[OPEN] rsi-75d83b0341bc08782dc9bde5 — attention-queue:ai-stack-health-monitor failure in attention:attn-d5ae7c61. Root cause evidence: producer=attention-queue:ai-stack-health-monitor; path=attention:attn-d5ae7c61; authority=attention-queue; os_error=[ai-stack-health-monitor] aq-qa phase 0: 1 check(s) failing: Scheduled health monitor found 1 failing check(s):   [0.10.50] Factory readiness preflight: hash-bound evidence, fail-closed unconfigured checks, typed blockers (fixture exit 1):   Run: aq-qa 0  for f. Detected=2026-10-13T03:56:25.800404Z.
+  Severity: high
+  Action: Run: aq-qa 0  to see full failure detail.
+  File: attention:attn-d5ae7c61
+[DONE] rsi-79802565f19e5ff1432f2b68 — resolved 2026-10-13: attention alert attn-41ec373b resolved in attention queue (2026-10-13T03:56:25Z) — ledger status=resolved
+
+[DONE] nix-closure-vuln-scan-xdg-desktop-portal-headless-failure — nix-closure-vuln-scan job in .github/workflows/security.yml failed to complete system closure build due to xdg-desktop-portal 1.20.4 integration tests failing in headless CI sandbox (pytest test_notification.py test_sound_fd / dynamiclauncher). Root cause: doCheck=true in headless environment prevented nix build toplevel from finishing, so aq-closure-scan never ran and SARIF was never uploaded to resolve GitHub Code Scanning CVE alerts #2916 & #2917. Resolved via declarative overlay in nix/overlays/security-fixes.nix setting doCheck = false on xdg-desktop-portal.
+  Severity: high
+  Action: verify nix eval on xdg-desktop-portal.doCheck returns false and system closure builds without meson test failures.
+  File: nix/overlays/security-fixes.nix; .github/workflows/security.yml

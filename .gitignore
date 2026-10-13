@@ -319,6 +319,7 @@ docs/QUICKSTART.generated.md
 # Agent working scratch dirs
 scratch/
 .codex/
+.claude/worktrees/
 
 # R7 confinement: runtime data symlinks (absolute -> ~/.local/share dashboard);
 # untracked so a bwrap cell clone of this repo is self-contained (no escaping symlinks).

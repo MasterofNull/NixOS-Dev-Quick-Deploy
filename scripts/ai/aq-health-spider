@@ -53,6 +53,11 @@ except ImportError:
     def get_pending(*args, **kwargs): return []
     def resolve(*args, **kwargs): return False
 
+try:
+    from rsi_lifecycle import failure as rsi_failure
+except ImportError:
+    def rsi_failure(*args, **kwargs): return ""
+
 logging.basicConfig(level=logging.INFO, format="%(asctime)s [%(levelname)s] %(message)s")
 logger = logging.getLogger("health-spider")
 
@@ -905,6 +910,19 @@ class HealthSpider:
 
         elif atype == "service_down":
             svc = anomaly.get("service", zone)
+            try:
+                rsi_failure(
+                    agent="health-spider",
+                    subject=f"service:{svc}",
+                    producer="health-spider:service-down",
+                    path=f"service:{svc}",
+                    authority="systemd",
+                    os_error=f"Service {svc} is DOWN in zone {zone} (state={anomaly.get('state', 'unknown')})",
+                    severity="high",
+                    root_fix=f"systemctl restart {svc}; check journalctl -u {svc} -n 50",
+                )
+            except Exception as e:
+                logger.debug(f"rsi failure recording error: {e}")
             # human_gate, severity=high
             try:
                 push(
@@ -940,6 +958,20 @@ class HealthSpider:
             return True
 
         elif atype == "http_failure":
+            svc = ZONES.get(zone, {}).get("service", zone)
+            try:
+                rsi_failure(
+                    agent="health-spider",
+                    subject=f"http:{zone}",
+                    producer="health-spider:http-failure",
+                    path=f"service:{svc}",
+                    authority="health-spider",
+                    os_error=f"HTTP health check failed for zone {zone} at {anomaly.get('url')} (service_state={anomaly.get('service_state', 'unknown')})",
+                    severity="high",
+                    root_fix=f"journalctl -u {svc} -n 50; restart if needed",
+                )
+            except Exception as e:
+                logger.debug(f"rsi failure recording error: {e}")
             # human_gate, severity=high (Service down from user perspective)
             try:
                 push(
@@ -971,11 +1003,26 @@ class HealthSpider:
                     f"HTTP check failed at {anomaly.get('url')} (service state: {anomaly.get('service_state', 'unknown')}).",
                     resolution,
                 )
+            await self._queue_prsi(anomaly)
             return True
 
         elif atype == "dashboard_degraded":
             probe = anomaly.get("probe", "unknown")
             reason = anomaly.get("reason", "unknown")
+            is_osi = probe == "osi-layered"
+            try:
+                rsi_failure(
+                    agent="health-spider",
+                    subject=f"osi:{probe}" if is_osi else f"dashboard:{probe}",
+                    producer="health-spider:osi-layered" if is_osi else f"health-spider:dashboard-{probe}",
+                    path=f"osi:{probe}" if is_osi else f"dashboard:{probe}",
+                    authority="osi-health-probe" if is_osi else "dashboard-probe",
+                    os_error=f"OSI layered health probe degraded: {reason}" if is_osi else f"Dashboard probe {probe} degraded: {reason}",
+                    severity="high" if (is_osi and "failed" in str(reason)) else "medium",
+                    root_fix="Inspect /api/health/layered and systemd units for failing layers" if is_osi else "Inspect dashboard endpoint response and service status",
+                )
+            except Exception as e:
+                logger.debug(f"rsi failure recording error: {e}")
             try:
                 push(
                     source="health-spider",
@@ -1006,10 +1053,24 @@ class HealthSpider:
                     f"Probe {probe} failed: {reason}.",
                     resolution,
                 )
+            await self._queue_prsi(anomaly)
             return True
         elif atype == "systemd_failed_units":
             units = anomaly.get("units") or []
             unit_names = ", ".join(str(unit.get("unit", "unknown")) for unit in units[:8])
+            try:
+                rsi_failure(
+                    agent="health-spider",
+                    subject="systemd:failed-units",
+                    producer="health-spider:systemd-failed-units",
+                    path=f"systemd:{unit_names}",
+                    authority="systemd",
+                    os_error=f"Systemd failed units detected: {unit_names}",
+                    severity="high",
+                    root_fix=f"Inspect failed units: systemctl --failed; journalctl -u <unit> -n 80",
+                )
+            except Exception as e:
+                logger.debug(f"rsi failure recording error: {e}")
             try:
                 push(
                     source="health-spider",
@@ -1029,17 +1090,18 @@ class HealthSpider:
                 await asyncio.to_thread(
                     _seed_rag,
                     "systemd_failed_units",
-                    f"{len(units)} failed unit(s): {unit_names}",
-                    "Health spider global systemd failed-unit probe",
+                    f"Failed systemd units: {unit_names}",
+                    "Health spider systemctl --failed scan",
                     resolution,
-                    ["systemd", "failed-units", "health-spider"],
+                    ["systemd", "health-spider", "failed-units"],
                 )
                 await asyncio.to_thread(
                     _push_memory_fact,
-                    "systemd_failed_units", zone,
-                    f"{len(units)} failed unit(s): {unit_names}.",
+                    "systemd_failed_units", "systemd",
+                    f"Failed units detected: {unit_names}.",
                     resolution,
                 )
+            await self._queue_prsi(anomaly)
             return True
         elif atype == "llama_slot_wedged":
             # Orphaned/wedged single slot — starves ALL local dispatch. High severity; the remediation
