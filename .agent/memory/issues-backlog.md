@@ -5968,3 +5968,21 @@ File: scripts/ai/lib/worktree-isolation.sh; scripts/automation/prsi-orchestrator
   Severity: high
   Action: verify aq-local-training-loop --status renders deferred runs without KeyError, and test-training-pipeline-status-and-monitoring.py passes.
   File: scripts/ai/aq-local-training-loop; scripts/ai/aq-agent-loop; ai-stack/local-agents/training_ingest.py; dashboard/backend/api/routes/aistack.py
+
+[OPEN] rsi-64a8acce89d6dd5fa0d10f0d — systemd:failed-unit failure in failed-unit:ai-crystallize-sessions.service. Root cause evidence: producer=systemd:failed-unit; path=ai-crystallize-sessions.service; authority=systemd; os_error=unit ai-crystallize-sessions.service in failed state. Detected=2026-10-13T15:31:52.043661Z.
+  Severity: medium
+  Action: journalctl -u ai-crystallize-sessions.service; fix producer, then systemctl reset-failed
+  File: ai-crystallize-sessions.service
+
+[OPEN] rsi-5e1c5ac66d0c71685c08f3cf — aq-qa:phase0 failure in aq-qa:0.1.2. Root cause evidence: producer=aq-qa:phase0; path=aq-qa check 0.1.2; authority=aq-qa; os_error=phase-0 check 0.1.2 failing: no AI units in failed state (● ai-crystallize-sessions.service loaded failed failed Crystallize Continue sessions into A. Detected=2026-10-13T15:31:52.373144Z.
+  Severity: medium
+  Action: run aq-qa 0 --machine and fix check 0.1.2 at its producer
+  File: aq-qa check 0.1.2
+[DONE] rsi-63023c51c6b42b3b7642019c — resolved 2026-10-13: capability ai-sync-knowledge-sources restored to ACTIVE in report 2026-10-13T07:14:47Z — ledger status=resolved
+[DONE] rsi-e4947771be6d1fee05ed1517 — resolved 2026-10-13: BROKEN count 0 <= 0 in report 2026-10-13T07:14:47Z — ledger status=resolved
+
+[OPEN] rsi-a04b99e3d3f2ad289e64694f — attention-queue:ai-stack-health-monitor failure in attention:attn-45efa15b. Root cause evidence: producer=attention-queue:ai-stack-health-monitor; path=attention:attn-45efa15b; authority=attention-queue; os_error=[ai-stack-health-monitor] aq-qa phase 0: 1 check(s) failing: Scheduled health monitor found 1 failing check(s):   [0.1.2] no AI units in failed state (● ai-crystallize-sessions.service loaded failed failed Crystallize Continue sessions into AIDB episodic memory. Detected=2026-10-13T15:31:54.158854Z.
+  Severity: high
+  Action: Run: aq-qa 0  to see full failure detail.
+  File: attention:attn-45efa15b
+[DONE] rsi-085b0f3eb02989fabdd7bed6 — resolved 2026-10-13: attention alert attn-c001082c resolved in attention queue (2026-10-13T15:31:54Z) — ledger status=resolved
