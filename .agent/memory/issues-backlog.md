@@ -5879,3 +5879,18 @@ File: scripts/ai/lib/worktree-isolation.sh; scripts/automation/prsi-orchestrator
 - [FIXED] Codex resume / stale working-memory checkpoint — session antigravity-independent-audit-20261011 still advertised pending delivery after PR485/487 merged and its temporary worktree disappeared; root cause: closeout state not reflected in that checkpoint. Severity: low. Action: reconciled git/evidence; replacement checkpoint and scoped review at /tmp/codex-antigravity-review-20261012/REVIEW.md. Reference: docs/harness-first/evidence/2026-10-11-antigravity-independent-audit.md ~1. Diagnostic friction: obsolete worktree path and assumed aq-role-dispatch path did not exist; resolved via live path discovery.
 
 [DONE] rsi-278f36d4d8f576786fb2f9be — resolved 2026-10-12: gemini-cli-health.sh falls back to ~/.local/bin/{gemini,agy}, checks oauth-personal before requiring npm CLI, and _aq-qa-bash and phase0.py check 0.6.2 include ~/.local/bin in PATH (2026-10-12T20:45:00Z) — ledger status=resolved
+
+[DONE] security-cve-2026-103484-pgvector — Alert #2916 [HIGH]: pgvector before 0.8.7 IVFFlat out-of-bounds write arbitrary code execution in PostgreSQL. Root cause: pinned nixpkgs bundled pgvector 0.8.2. Resolved via declarative security overlay nix/overlays/security-fixes.nix bumping pgvector to 0.8.7 from nixpkgs-unstable cache and wiring in flake.nix & mcp-servers.nix.
+  Severity: high
+  Action: verify nix eval on postgresql.pkgs.pgvector.version returns "0.8.7" and finalPackage installs pgvector-0.8.7
+  File: nix/overlays/security-fixes.nix; nix/modules/services/mcp-servers.nix
+
+[DONE] security-cve-2026-106587-openssh — Alert #2917 [LOW]: OpenSSH before 10.6 option "none" treated as filename. Root cause: pinned nixpkgs bundled openssh 10.5p1. Resolved via declarative security overlay nix/overlays/security-fixes.nix bumping openssh to 10.6p1 from verified upstream release tarball.
+  Severity: low
+  Action: verify nix eval on openssh.version returns "10.6p1" and compiles cleanly from source
+  File: nix/overlays/security-fixes.nix; flake.nix
+
+[DONE] git-worktree-branch-reconciliation-20261012 — 209 active worktrees and 414 local branches accumulated due to lack of post-merge branch pruning and CS-1 recovery retention. Reconciled 201 dead/stale worktrees and 370 merged/harvested branches with 100% lossless patch archival (69 patches) in .agents/delegation/outputs/.
+  Severity: medium
+  Action: automated reconciliation via reconcile_branches.py; reduced branches from 414 to 44 and worktrees from 209 to 8
+  File: .agents/delegation/outputs/

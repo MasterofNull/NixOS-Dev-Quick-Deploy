@@ -88,14 +88,16 @@
       import nixpkgsInput {
         system = system';
         config.allowUnfree = true;
-        overlays = lib.optional hasUnstableInput (
-          import ./nix/overlays/fast-lane.nix {
-            unstablePkgs = import inputs."nixpkgs-unstable" {
-              system = system';
-              config.allowUnfree = true;
-            };
-          }
-        );
+        overlays =
+          (lib.optional hasUnstableInput (
+            import ./nix/overlays/fast-lane.nix {
+              unstablePkgs = import inputs."nixpkgs-unstable" {
+                system = system';
+                config.allowUnfree = true;
+              };
+            }
+          ))
+          ++ [(import ./nix/overlays/security-fixes.nix)];
       };
     hostPath = hostName: ./. + "/nix/hosts/${hostName}";
     factsPath = hostName: hostPath hostName + "/facts.nix";
