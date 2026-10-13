@@ -47,7 +47,7 @@
       "id": "dp-3", "name": "autonomous on-call daemon (aq-oncalld) and isolated implementers", "phase": "oncall", "kind": "slice",
       "goal": "implement systemd-managed on-call daemon that auto-spawns worktree-isolated implementers to remediate incidents with independent review",
       "validation_goal": "end-to-end incident injection test wakes daemon, fixes defect, passes Tier-0, and stages PR with Step 8 evidence",
-      "deps": ["dp-1", "dp-2"], "pct_hint": 0,
+      "deps": ["dp-1", "dp-2"], "pct_hint": 100,
       "detection": {"commit_match": ["DP-3", "aq-oncalld", "on-call daemon"]}
     },
     {

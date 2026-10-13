@@ -1643,6 +1643,30 @@ def _check_durable_runtime_engine(ctx: RunContext) -> list[CheckResult]:
     return [passed(5, "0.10.68", desc)]
 
 
+def _check_autonomous_oncall_daemon(ctx: RunContext) -> list[CheckResult]:
+    """0.10.69: Autonomous On-Call Daemon (aq-oncalld, DP-3) plus dashboard visibility."""
+    desc = "Autonomous on-call daemon: high-confidence triage wakeup, epoch fencing, credential scrubbing, candidate SHA binding"
+    test = ctx.repo_root / "scripts" / "testing" / "test-aq-oncalld.py"
+    cli = ctx.repo_root / "scripts" / "ai" / "aq-oncalld"
+    lib = ctx.repo_root / "scripts" / "ai" / "lib" / "oncalld_engine.py"
+    route = ctx.repo_root / "dashboard" / "backend" / "api" / "routes" / "aistack.py"
+    js = ctx.repo_root / "assets" / "dashboard.js"
+    missing = [str(p.relative_to(ctx.repo_root)) for p in (test, cli, lib, route, js) if not p.exists()]
+    if missing:
+        return [failed(5, "0.10.69", desc, f"missing: {', '.join(missing)}")]
+    try:
+        proc = subprocess.run([sys.executable, str(test)], cwd=str(ctx.repo_root), capture_output=True, text=True,
+                              timeout=120, check=False)
+        if proc.returncode != 0 or "ALL 7 FIXTURES PASS" not in proc.stdout:
+            return [failed(5, "0.10.69", desc, (proc.stderr or proc.stdout or "fixture failed")[-240:])]
+        if "_oncall_daemon_health_summary" not in route.read_text(encoding="utf-8") or "· autonomous on-call daemon" not in js.read_text(encoding="utf-8"):
+            return [failed(5, "0.10.69", desc, "dashboard on-call daemon visibility contract missing")]
+    except (OSError, subprocess.TimeoutExpired) as error:
+        return [failed(5, "0.10.69", desc, str(error)[:240])]
+    return [passed(5, "0.10.69", desc)]
+
+
+
 
 def _check_provider_projection(ctx: RunContext) -> list[CheckResult]:
     """0.10.55: ECC P0-B provider projection fixtures plus live drift status (preview-only)."""
@@ -2448,6 +2472,7 @@ def run(ctx: RunContext) -> list[CheckResult]:
     results.extend(_check_durable_triage_engine(ctx))
     results.extend(_check_pi_agent_streaming_canvas(ctx))
     results.extend(_check_durable_runtime_engine(ctx))
+    results.extend(_check_autonomous_oncall_daemon(ctx))
     results.extend(_check_network_dns_policy(ctx))
     if ctx.dashboard_safe:
         results.extend(_dashboard_safe_host_only_skips())
