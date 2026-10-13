@@ -44,6 +44,7 @@ def main() -> int:
     assert {"piyaz-patterns", "sn1per-reference", "raptor-loop-hunt-reference"} <= ids
     assert "herdr-agent-multiplexer" in ids
     assert "ecc-reference" in ids
+    assert "rea-reverse-engineering" in ids
 
     all_report = run_json("audit", "--all", "--json")
     reports = {item["id"]: item for item in all_report["reports"]}
@@ -135,7 +136,7 @@ def test_registry_schema() -> None:
         "trivy", "syft-grype", "mcp-admission-controller", "observability-query-skill",
         "nixos-specialist-tool-pack", "code-intelligence-graph-layer", "t3mp3st",
         "piyaz-patterns", "sn1per-reference", "raptor-loop-hunt-reference",
-        "herdr-agent-multiplexer", "ecc-reference",
+        "herdr-agent-multiplexer", "ecc-reference", "rea-reverse-engineering",
     }
     assert len(candidates[:11]) == 11
     assert candidates[10]["id"] == "t3mp3st"

@@ -1,0 +1,114 @@
+#!/usr/bin/env python3
+"""CLI for System 1 High-Frequency Triage Engine (`aq-triage`).
+
+Usage:
+  aq-triage --status [--json]
+  aq-triage --classify "<message>" [--unit "<unit>"] [--json]
+  aq-triage --ingest [--limit <N>] [--unit "<unit>"] [--json]
+  aq-triage --benchmark [--samples <N>] [--json]
+"""
+from __future__ import annotations
+
+import argparse
+import json
+import sys
+from pathlib import Path
+
+# Add repo scripts/ai/lib to sys.path
+_REPO_ROOT = Path(__file__).resolve().parents[2]
+sys.path.insert(0, str(_REPO_ROOT / "scripts" / "ai" / "lib"))
+
+from triage_engine import JournalStreamTriage, FastClassifier, health_summary
+
+
+def main() -> int:
+    parser = argparse.ArgumentParser(description="System 1 High-Frequency Stream Triage Engine")
+    parser.add_argument("--status", action="store_true", help="Print triage engine status and cursor metrics")
+    parser.add_argument("--classify", type=str, metavar="MSG", help="Classify a single log message")
+    parser.add_argument("--unit", type=str, default="", help="Unit or subsystem name for --classify or --ingest")
+    parser.add_argument("--ingest", action="store_true", help="Ingest recent journal logs and advance cursor")
+    parser.add_argument("--limit", type=int, default=50, help="Max entries to ingest from journald")
+    parser.add_argument("--benchmark", action="store_true", help="Run latency benchmark (P95 target < 200ms)")
+    parser.add_argument("--samples", type=int, default=500, help="Sample count for benchmark")
+    parser.add_argument("--state-dir", type=Path, default=None, help="Custom state directory for cursor storage")
+    parser.add_argument("--json", action="store_true", help="Output machine-readable JSON")
+
+    args = parser.parse_args()
+    engine = JournalStreamTriage(state_dir=args.state_dir)
+
+    if args.status:
+        summary = engine.health_summary()
+        if args.json:
+            print(json.dumps(summary, indent=2))
+        else:
+            print("=== System 1 Stream Triage Status ===")
+            print(f"Status:            {summary.get('status', 'unknown')}")
+            print(f"P95 Latency:       {summary.get('p95_ms', 0.0):.3f} ms (target < 200ms)")
+            print(f"Cursor Tracked:    {summary.get('cursor_tracked', False)}")
+            print(f"Total Classified:  {summary.get('total_classified', 0)}")
+            print(f"Actionable Count:  {summary.get('actionable_count', 0)}")
+            if summary.get("last_cursor"):
+                print(f"Last Cursor:       {summary.get('last_cursor')}")
+        return 0
+
+    if args.classify:
+        result = FastClassifier.classify(source=args.unit or "manual", message=args.classify)
+        data = {
+            "incident_id": result.incident_id,
+            "source": result.source,
+            "severity": result.severity,
+            "incident_class": result.incident_class,
+            "confidence": result.confidence,
+            "actionable": result.actionable,
+            "suggested_lane": result.suggested_lane,
+            "correlation_key": result.correlation_key,
+            "summary": result.summary,
+            "reproduction_cmd": result.reproduction_cmd,
+        }
+        if args.json:
+            print(json.dumps(data, indent=2))
+        else:
+            action_tag = "[ACTIONABLE]" if result.actionable else "[FILTERED]"
+            print(f"{action_tag} {result.severity} ({result.incident_class}, conf={result.confidence:.2f}, lane={result.suggested_lane})")
+            print(f"  Summary: {result.summary}")
+            if result.reproduction_cmd:
+                print(f"  Repro:   {result.reproduction_cmd}")
+        return 0
+
+    if args.ingest:
+        units = [args.unit] if args.unit else None
+        classifications = engine.ingest_live_journal(units=units, limit=args.limit)
+        actionable = [c for c in classifications if c.actionable]
+        if args.json:
+            print(json.dumps([c.__dict__ for c in actionable], indent=2))
+        else:
+            print(f"Ingested {len(classifications)} entries; {len(actionable)} actionable incidents identified:")
+            for inc in actionable:
+                print(f"  [{inc.severity}] {inc.source}: {inc.summary} (conf={inc.confidence:.2f})")
+        return 0
+
+    if args.benchmark:
+        res = engine.benchmark(sample_count=args.samples)
+        if args.json:
+            print(json.dumps(res, indent=2))
+        else:
+            print(f"=== System 1 Triage Benchmark ({res['samples']} samples) ===")
+            print(f"P50 Latency:   {res['p50_ms']:.4f} ms")
+            print(f"P90 Latency:   {res['p90_ms']:.4f} ms")
+            print(f"P95 Latency:   {res['p95_ms']:.4f} ms (Target: < {res['target_p95_ms']} ms)")
+            print(f"P99 Latency:   {res['p99_ms']:.4f} ms")
+            status_text = "PASS" if res["passed"] else "FAIL"
+            print(f"Verdict:       {status_text}")
+        return 0 if res["passed"] else 1
+
+    # Default action: print status
+    summary = engine.health_summary()
+    if args.json:
+        print(json.dumps(summary, indent=2))
+    else:
+        print(f"aq-triage: status={summary.get('status')} p95={summary.get('p95_ms')}ms cursor_tracked={summary.get('cursor_tracked')}")
+    return 0
+
+
+if __name__ == "__main__":
+    sys.exit(main())

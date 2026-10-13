@@ -4973,6 +4973,7 @@ async function loadRuntimeDetails() {
   const hce = cg.hermetic_candidate_eval || {};
   const fne = cg.functional_eval || {};
   const prc = cg.prompt_compile || {};
+  const trg = cg.triage || {};
   const lrn = s.learning || {};
   const rows = [
     fwRow("Offloading", fmtImplStatus(off.status), "ok"),
@@ -5083,6 +5084,13 @@ async function loadRuntimeDetails() {
         ? `${String(prc.status || "unverified").toUpperCase()} · ${prc.compiled_templates ?? 0} compiled · gate:${prc.gate_enforced ? "yes" : "no"}`
         : "UNVERIFIED",
       prc.available && prc.status === "ready" ? "ok" : "info"
+    ),
+    fwRow(
+      "· system 1 stream triage",
+      trg.available
+        ? `${String(trg.status || "unverified").toUpperCase()} · P95:${trg.p95_ms ?? 0}ms · cursor:${trg.cursor_tracked ? "active" : "none"}`
+        : "UNVERIFIED",
+      trg.available && trg.status === "ready" ? "ok" : "info"
     ),
     fwRow("Learning", fmtImplStatus(lrn.status), "ok"),
     fwRow("· signals", lrn.signals_recorded ?? 0),
