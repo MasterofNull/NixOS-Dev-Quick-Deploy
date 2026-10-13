@@ -51,15 +51,16 @@ def main() -> int:
         guidance_dir.mkdir(parents=True, exist_ok=True)
 
         os.environ["AQ_AGENT_RUN_EVENTS_PATH"] = str(events_file)
+        os.environ["AQ_AGENT_GUIDANCE_DIR"] = str(guidance_dir)
         os.environ["DASHBOARD_OPERATOR_AUDIT_LOG_PATH"] = str(tmp_path / "operator-audit.jsonl")
-        os.environ["DASHBOARD_MODE"] = "test"
-
-        dashboard_main = importlib.import_module("api.main")
+        from fastapi import FastAPI
         aistack_module = importlib.import_module("api.routes.aistack")
-        dashboard_main = importlib.reload(dashboard_main)
         aistack_module = importlib.reload(aistack_module)
 
-        with TestClient(dashboard_main.app) as client:
+        app = FastAPI()
+        app.include_router(aistack_module.router, prefix="/api/aistack")
+
+        with TestClient(app) as client:
 
             # ── 1. agent-tree — empty fallback ────────────────────────────────
             try:
