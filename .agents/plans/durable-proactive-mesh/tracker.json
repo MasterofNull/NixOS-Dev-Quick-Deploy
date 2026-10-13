@@ -10,7 +10,7 @@
       "Agent execution implements the Effect Sandwich pattern with explicit outcome reconciliation surviving simulated mid-step crashes",
       "Autonomous on-call daemon wakes on high-confidence incidents, isolates in worktree, generates Tier-0 validated fixes, and stages PRs",
       "Web Dashboard and Herdr presentation expose real-time multi-agent hierarchy tree, live token/tool streaming window, and operator guidance input",
-      "Service coverage contract satisfied with dedicated aq-qa checks 0.10.66 & 0.10.67, live dashboard panels, and zero security regressions"
+      "Service coverage contract satisfied with dedicated aq-qa checks 0.10.66, 0.10.67, & 0.10.68, live dashboard panels, and zero security regressions"
     ]
   },
   "phases": [
@@ -39,8 +39,8 @@
     {
       "id": "dp-2", "name": "durable agent runtime core (aq-durable) and effect reconciliation", "phase": "runtime", "kind": "slice",
       "goal": "implement Effect Sandwich middleware, atomic intent logging, idempotency store, and OUTCOME_UNKNOWN reconciliation in hybrid-coordinator",
-      "validation_goal": "unit tests test-aq-durable.py pass; crash-recovery simulation proves 100% replay safety without duplicate mutations",
-      "deps": ["dp-0"], "pct_hint": 0,
+      "validation_goal": "unit tests test-aq-durable.py pass; crash-recovery simulation proves 100% replay safety without duplicate mutations; QA check 0.10.68 passes; Tier-0 passes",
+      "deps": ["dp-0"], "pct_hint": 100,
       "detection": {"commit_match": ["DP-2", "aq-durable", "effect sandwich"]}
     },
     {
