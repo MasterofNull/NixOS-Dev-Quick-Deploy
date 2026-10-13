@@ -5986,3 +5986,55 @@ File: scripts/ai/lib/worktree-isolation.sh; scripts/automation/prsi-orchestrator
   Action: Run: aq-qa 0  to see full failure detail.
   File: attention:attn-45efa15b
 [DONE] rsi-085b0f3eb02989fabdd7bed6 — resolved 2026-10-13: attention alert attn-c001082c resolved in attention queue (2026-10-13T15:31:54Z) — ledger status=resolved
+
+[OPEN] rsi-28877e0f8bc820dcb4a1cab7 — attention-queue:ai-stack-health-monitor failure in attention:attn-51855f70. Root cause evidence: producer=attention-queue:ai-stack-health-monitor; path=attention:attn-51855f70; authority=attention-queue; os_error=[ai-stack-health-monitor] aq-qa phase 0: 1 check(s) failing: Scheduled health monitor found 1 failing check(s):   [0.1.2] no AI units in failed state (● ai-crystallize-sessions.service loaded failed failed Crystallize Continue sessions into AIDB episodic memory. Detected=2026-10-13T15:46:55.049396Z.
+  Severity: high
+  Action: Run: aq-qa 0  to see full failure detail.
+  File: attention:attn-51855f70
+[DONE] rsi-a04b99e3d3f2ad289e64694f — resolved 2026-10-13: attention alert attn-45efa15b resolved in attention queue (2026-10-13T15:46:55Z) — ledger status=resolved
+
+[OPEN] dp1-triage-cursor-loss — DP-1 triage can skip journal records after rate limiting. Root cause: ingestion continued after limiter rejection and persisted a cursor from a later accepted entry, making the rejected entry unreachable on the next poll. Severity: high (event loss). Action: stop processing at the first denied entry; focused regression in `scripts/testing/test-aq-triage.py`; review branch `fix/dp1-triage-cursor-loss`. File: `scripts/ai/lib/triage_engine.py` ~251.
+[DONE] dp1-triage-cursor-loss — fixed in `8c070b6e` on `fix/dp1-triage-cursor-loss`; 7 focused tests and Tier 0 (56 passed, 0 failed) pass. External/runtime live-service-class warning 0.1.2 remains separately tracked by the gate.
+
+[OPEN] dp2-spawn-reconciliation — durable effect storage is not yet integrated with workflow agent spawning because `POST /control/agents/spawn` has no idempotency-key lookup or authoritative reconciliation path. Severity: high (duplicate external agent dispatch after ambiguous response). Action: add server-side idempotency and query/reconcile contract before wiring durable retries; do not treat the generic store as live-safe. File: `ai-stack/mcp-servers/hybrid-coordinator/workflow/agents_task_handlers.py`.
+
+[OPEN] rsi-78eeba629971cdbb4d821aff — aq-qa:phase0 failure in aq-qa:0.10.50. Root cause evidence: producer=aq-qa:phase0; path=aq-qa check 0.10.50; authority=aq-qa; os_error=phase-0 check 0.10.50 failing: Factory readiness preflight: hash-bound evidence, fail-closed unconfigured checks, typed blockers (Command '['python3', . Detected=2026-10-13T16:01:52.414987Z.
+  Severity: medium
+  Action: run aq-qa 0 --machine and fix check 0.10.50 at its producer
+  File: aq-qa check 0.10.50
+
+[OPEN] rsi-29a8fbeaf13b926ce1aa5bb3 — attention-queue:ai-stack-health-monitor failure in attention:attn-892b826e. Root cause evidence: producer=attention-queue:ai-stack-health-monitor; path=attention:attn-892b826e; authority=attention-queue; os_error=[ai-stack-health-monitor] aq-qa phase 0: 2 check(s) failing: Scheduled health monitor found 2 failing check(s):   [0.1.2] no AI units in failed state (● ai-crystallize-sessions.service loaded failed failed Crystallize Continue sessions into AIDB episodic memory. Detected=2026-10-13T16:01:55.297114Z.
+  Severity: high
+  Action: Run: aq-qa 0  to see full failure detail.
+  File: attention:attn-892b826e
+[DONE] rsi-28877e0f8bc820dcb4a1cab7 — resolved 2026-10-13: attention alert attn-51855f70 resolved in attention queue (2026-10-13T16:01:55Z) — ledger status=resolved
+
+[OPEN] rsi-2b3fcb909b9f66aedd13cf64 — attention-queue:ai-stack-health-monitor failure in attention:attn-c7bf90fd. Root cause evidence: producer=attention-queue:ai-stack-health-monitor; path=attention:attn-c7bf90fd; authority=attention-queue; os_error=[ai-stack-health-monitor] aq-qa phase 0: 2 check(s) failing: Scheduled health monitor found 2 failing check(s):   [0.1.2] no AI units in failed state (● ai-crystallize-sessions.service loaded failed failed Crystallize Continue sessions into AIDB episodic memory. Detected=2026-10-13T16:17:00.235841Z.
+  Severity: high
+  Action: Run: aq-qa 0  to see full failure detail.
+  File: attention:attn-c7bf90fd
+[DONE] rsi-29a8fbeaf13b926ce1aa5bb3 — resolved 2026-10-13: attention alert attn-892b826e resolved in attention queue (2026-10-13T16:17:00Z) — ledger status=resolved
+
+[OPEN] dp2-tier0-timeout — Tier 0 pre-commit timed out test-enabled-external-mcp-candidates.py at 60s (55 gates passed); running the test standalone completed PASS after about 76s. Root cause: gate timeout is shorter than this regression test runtime under concurrent validation load. Severity: medium (pre-commit validation blocked). Action: treat as gate/test-runtime issue; do not change the test or timeout in this slice without a scoped fix. File: scripts/testing/test-enabled-external-mcp-candidates.py.
+
+[OPEN] rsi-0799cc4c4806b6508f2a09f5 — aq-qa:phase0 failure in aq-qa:0.10.50. Root cause evidence: producer=aq-qa:phase0; path=aq-qa check 0.10.50; authority=aq-qa; os_error=phase-0 check 0.10.50 failing: Factory readiness preflight: hash-bound evidence, fail-closed unconfigured checks, typed blockers (fixture exit 1). Detected=2026-10-13T16:31:53.631984Z.
+  Severity: medium
+  Action: run aq-qa 0 --machine and fix check 0.10.50 at its producer
+  File: aq-qa check 0.10.50
+
+[OPEN] rsi-d5a50b5ac1a92b44d4015730 — attention-queue:ai-stack-health-monitor failure in attention:attn-965e796d. Root cause evidence: producer=attention-queue:ai-stack-health-monitor; path=attention:attn-965e796d; authority=attention-queue; os_error=[ai-stack-health-monitor] aq-qa phase 0: 2 check(s) failing: Scheduled health monitor found 2 failing check(s):   [0.1.2] no AI units in failed state (● ai-crystallize-sessions.service loaded failed failed Crystallize Continue sessions into AIDB episodic memory. Detected=2026-10-13T16:32:02.772369Z.
+  Severity: high
+  Action: Run: aq-qa 0  to see full failure detail.
+  File: attention:attn-965e796d
+[DONE] rsi-2b3fcb909b9f66aedd13cf64 — resolved 2026-10-13: attention alert attn-c7bf90fd resolved in attention queue (2026-10-13T16:32:02Z) — ledger status=resolved
+
+[OPEN] rsi-d2a3d6468e890399a50143a9 — aq-qa:phase0 failure in aq-qa:0.10.22. Root cause evidence: producer=aq-qa:phase0; path=aq-qa check 0.10.22; authority=aq-qa; os_error=phase-0 check 0.10.22 failing: LOCAL_TOK_PER_SEC throughput calibration (FAIL: throughput drift 61% exceeds 50% threshold.   Measured: 1.36 tok/s   Con. Detected=2026-10-13T16:46:53.631542Z.
+  Severity: medium
+  Action: run aq-qa 0 --machine and fix check 0.10.22 at its producer
+  File: aq-qa check 0.10.22
+
+[OPEN] rsi-41b2826295e7d31afae3265a — attention-queue:ai-stack-health-monitor failure in attention:attn-94f17341. Root cause evidence: producer=attention-queue:ai-stack-health-monitor; path=attention:attn-94f17341; authority=attention-queue; os_error=[ai-stack-health-monitor] aq-qa phase 0: 2 check(s) failing: Scheduled health monitor found 2 failing check(s):   [0.1.2] no AI units in failed state (● ai-crystallize-sessions.service loaded failed failed Crystallize Continue sessions into AIDB episodic memory. Detected=2026-10-13T16:46:57.983097Z.
+  Severity: high
+  Action: Run: aq-qa 0  to see full failure detail.
+  File: attention:attn-94f17341
+[DONE] rsi-d5a50b5ac1a92b44d4015730 — resolved 2026-10-13: attention alert attn-965e796d resolved in attention queue (2026-10-13T16:46:58Z) — ledger status=resolved

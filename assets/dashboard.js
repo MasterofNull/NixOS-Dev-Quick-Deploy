@@ -9472,6 +9472,266 @@ async function sendControl(action) {
   }
 }
 
+// ─── DP-4 Pi-Style Coding Agent Canvas & Sub-Agent Mesh ────────────────────
+let _piActiveRunId = "orchestrator-main";
+let _piEventSource = null;
+
+function _escapeHtml(str) {
+  return String(str == null ? "" : str)
+    .replace(/&/g, "&amp;")
+    .replace(/</g, "&lt;")
+    .replace(/>/g, "&gt;")
+    .replace(/"/g, "&quot;")
+    .replace(/'/g, "&#039;");
+}
+
+function _renderTreeNode(node, depth) {
+  depth = depth || 0;
+  const isSelected = node.run_id === _piActiveRunId;
+  const statusColors = {
+    thinking: "var(--yel)",
+    tool_executing: "var(--cyan)",
+    paused: "var(--yel)",
+    awaiting_input: "var(--magenta)",
+    done: "var(--grn)",
+    succeeded: "var(--grn)",
+    failed: "var(--red)",
+    running: "var(--cyan)",
+    idle: "var(--fg3)",
+  };
+  const statusIcons = {
+    thinking: "🧠",
+    tool_executing: "⚙️",
+    paused: "⏸",
+    awaiting_input: "⏳",
+    done: "✓",
+    succeeded: "✓",
+    failed: "✗",
+    running: "▶",
+    idle: "○",
+  };
+  const icon = statusIcons[node.status] || "·";
+  const color = statusColors[node.status] || "var(--fg2)";
+  const indent = depth * 14;
+
+  const nodeHtml = `
+    <div onclick="selectPiAgent('${_escapeHtml(node.run_id)}', '${_escapeHtml(node.name)}', '${_escapeHtml(node.role)}', '${_escapeHtml(node.model)}')"
+      style="padding:.3rem .45rem;border-radius:3px;margin-left:${indent}px;cursor:pointer;background:${isSelected ? 'rgba(100,180,255,.12)' : 'var(--bg3)'};border:1px solid ${isSelected ? 'var(--cyan)' : 'var(--border)'};display:flex;flex-direction:column;gap:.2rem;transition:all .15s ease">
+      <div style="display:flex;justify-content:space-between;align-items:center">
+        <div style="display:flex;align-items:center;gap:.35rem">
+          <span style="font-size:.62rem">${icon}</span>
+          <span style="font-size:.62rem;font-weight:${isSelected ? '700' : '600'};color:${isSelected ? 'var(--cyan)' : 'var(--fg0)'}">${_escapeHtml(node.name || node.run_id)}</span>
+        </div>
+        <span style="font-size:.5rem;padding:.05rem .25rem;border-radius:2px;color:${color};border:1px solid ${color}">${_escapeHtml(node.status)}</span>
+      </div>
+      <div style="display:flex;justify-content:space-between;align-items:center;font-size:.52rem;color:var(--fg3)">
+        <span>${_escapeHtml(node.role)} · ${_escapeHtml(node.model)}</span>
+        <span>${(node.tokens && node.tokens.total) || 0} tok</span>
+      </div>
+      ${node.last_thought ? `<div style="font-size:.5rem;color:var(--fg2);font-style:italic;white-space:nowrap;overflow:hidden;text-overflow:ellipsis">"${_escapeHtml(node.last_thought)}"</div>` : ''}
+    </div>
+  `;
+
+  const childrenHtml = (node.children || []).map(c => _renderTreeNode(c, depth + 1)).join("");
+  return nodeHtml + childrenHtml;
+}
+
+async function loadPiAgentTree() {
+  const container = document.getElementById("piAgentTreeContainer");
+  const badge = document.getElementById("piAgentBadge");
+  if (!container) return;
+
+  try {
+    const res = await apiFetch("/aistack/agent-tree", {}, 10000).catch(() => null);
+    if (!res || !res.available) {
+      container.innerHTML = '<div style="color:var(--fg3);font-size:.58rem">Agent mesh inactive.</div>';
+      return;
+    }
+
+    if (badge) {
+      badge.textContent = `${res.active_count || 0} active · ${res.total_agents || 0} total`;
+      badge.className = res.active_count > 0 ? "card-badge badge-ok" : "card-badge badge-info";
+    }
+
+    const roots = res.roots || [];
+    if (!roots.length) {
+      container.innerHTML = '<div style="color:var(--fg3);font-size:.58rem">No agents detected.</div>';
+      return;
+    }
+
+    container.innerHTML = roots.map(r => _renderTreeNode(r, 0)).join("");
+
+    // If active agent not streaming, connect stream
+    if (!_piEventSource && roots.length) {
+      const firstRun = roots[0];
+      selectPiAgent(firstRun.run_id, firstRun.name, firstRun.role, firstRun.model);
+    }
+  } catch (err) {
+    container.innerHTML = `<div style="color:var(--red);font-size:.58rem">Tree error: ${_escapeHtml(err.message)}</div>`;
+  }
+}
+
+function selectPiAgent(runId, name, role, model) {
+  _piActiveRunId = runId;
+  const nameEl = document.getElementById("piActiveAgentName");
+  const roleEl = document.getElementById("piActiveAgentRole");
+  const modelEl = document.getElementById("piActiveAgentModel");
+  if (nameEl) nameEl.textContent = name || runId;
+  if (roleEl) roleEl.textContent = role || "agent";
+  if (modelEl) modelEl.textContent = model || "local";
+
+  connectPiAgentStream(runId);
+}
+
+function appendPiConsoleMessage(html) {
+  const consoleEl = document.getElementById("piStreamingConsole");
+  if (!consoleEl) return;
+  const div = document.createElement("div");
+  div.innerHTML = html;
+  consoleEl.appendChild(div);
+
+  const autoScroll = document.getElementById("piAutoScrollToggle");
+  if (autoScroll && autoScroll.checked) {
+    consoleEl.scrollTop = consoleEl.scrollHeight;
+  }
+}
+
+function clearPiConsole() {
+  const consoleEl = document.getElementById("piStreamingConsole");
+  if (consoleEl) {
+    consoleEl.innerHTML = '<div style="color:var(--fg3);font-size:.58rem">Console cleared. Awaiting live events...</div>';
+  }
+}
+
+function connectPiAgentStream(runId) {
+  if (_piEventSource) {
+    _piEventSource.close();
+    _piEventSource = null;
+  }
+
+  const badge = document.getElementById("piStreamStatusBadge");
+  if (badge) {
+    badge.textContent = "● CONNECTING";
+    badge.style.color = "var(--yel)";
+  }
+
+  const url = `${BASE}/api/aistack/agent-runs/${encodeURIComponent(runId)}/stream?tail=30`;
+  try {
+    _piEventSource = new EventSource(url);
+
+    _piEventSource.onopen = () => {
+      if (badge) {
+        badge.textContent = "● LIVE SSE";
+        badge.style.color = "var(--grn)";
+      }
+    };
+
+    _piEventSource.addEventListener("stream_ready", (e) => {
+      try {
+        const d = JSON.parse(e.data);
+        appendPiConsoleMessage(`<div style="color:var(--cyan);font-size:.56rem;border-bottom:1px solid rgba(100,180,255,.2);padding-bottom:.2rem">⚡ Connected to ${d.run_id} stream (${d.replayed || 0} historical events replayed)</div>`);
+      } catch (_) {}
+    });
+
+    _piEventSource.addEventListener("token_stream", (e) => {
+      try {
+        const d = JSON.parse(e.data);
+        const text = (d.payload && (d.payload.thought || d.payload.delta || d.payload.content)) || JSON.stringify(d.payload || {});
+        appendPiConsoleMessage(`<div style="color:var(--fg2);background:rgba(255,255,255,.02);padding:.2rem .35rem;border-left:2px solid var(--yel);border-radius:2px"><span style="color:var(--yel);font-weight:700">🧠 THOUGHT:</span> ${_escapeHtml(text)}</div>`);
+      } catch (_) {}
+    });
+
+    _piEventSource.addEventListener("tool_call", (e) => {
+      try {
+        const d = JSON.parse(e.data);
+        const tn = d.tool_name || (d.payload && d.payload.tool_name) || "tool";
+        const args = (d.payload && d.payload.args) || (d.payload && d.payload.command) || "";
+        appendPiConsoleMessage(`<div style="color:var(--cyan);background:rgba(100,180,255,.05);padding:.25rem .4rem;border-left:2px solid var(--cyan);border-radius:2px"><span style="font-weight:700">⚙️ TOOL CALL:</span> <code>${_escapeHtml(tn)}</code> <span style="color:var(--fg3)">${_escapeHtml(JSON.stringify(args).slice(0, 140))}</span></div>`);
+      } catch (_) {}
+    });
+
+    _piEventSource.addEventListener("tool_output", (e) => {
+      try {
+        const d = JSON.parse(e.data);
+        const stdout = (d.payload && (d.payload.stdout || d.payload.output)) || "";
+        appendPiConsoleMessage(`<div style="color:var(--fg1);background:var(--bg3);padding:.2rem .35rem;font-size:.55rem;border-radius:2px;overflow-x:auto;max-height:8rem"><pre style="margin:0">${_escapeHtml(String(stdout).slice(0, 500))}</pre></div>`);
+      } catch (_) {}
+    });
+
+    _piEventSource.addEventListener("human_control", (e) => {
+      try {
+        const d = JSON.parse(e.data);
+        const action = (d.payload && d.payload.action) || "control";
+        const reason = (d.payload && (d.payload.reason || d.payload.redirect_prompt)) || "";
+        appendPiConsoleMessage(`<div style="color:var(--magenta);background:rgba(187,134,252,.08);padding:.25rem .4rem;border-left:2px solid var(--magenta);border-radius:2px"><span style="font-weight:700">👤 OPERATOR [${_escapeHtml(action)}]:</span> ${_escapeHtml(reason)}</div>`);
+      } catch (_) {}
+    });
+
+    _piEventSource.addEventListener("lifecycle_delta", (e) => {
+      try {
+        const d = JSON.parse(e.data);
+        appendPiConsoleMessage(`<div style="color:var(--fg3);font-size:.54rem">· Lifecycle: ${_escapeHtml(d.status || d.event_type)} (${d.timestamp || ''})</div>`);
+      } catch (_) {}
+    });
+
+    _piEventSource.onerror = () => {
+      if (badge) {
+        badge.textContent = "○ IDLE (POLL)";
+        badge.style.color = "var(--fg3)";
+      }
+    };
+  } catch (err) {
+    if (badge) {
+      badge.textContent = "○ OFFLINE";
+      badge.style.color = "var(--red)";
+    }
+  }
+}
+
+async function sendPiGuidanceAction(action) {
+  const inputEl = document.getElementById("piGuidanceInput");
+  const resultEl = document.getElementById("piGuidanceResult");
+  const prompt = inputEl ? inputEl.value.trim() : "";
+  const runId = _piActiveRunId || "orchestrator-main";
+
+  if (action === "guidance" && !prompt) {
+    if (resultEl) resultEl.innerHTML = '<span style="color:var(--yel)">Type a prompt first</span>';
+    return;
+  }
+
+  if (resultEl) resultEl.innerHTML = `<span style="color:var(--fg3)">Dispatching ${action}…</span>`;
+
+  try {
+    let resp;
+    if (action === "guidance") {
+      resp = await fetch(`${BASE}/api/aistack/agent-runs/${encodeURIComponent(runId)}/guidance`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ prompt, action: "guidance", operator_id: "hyperd" }),
+      });
+    } else {
+      resp = await fetch(`${BASE}/api/aistack/agent-runs/${encodeURIComponent(runId)}/control`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ action, reason: prompt || `dashboard-operator-${action}`, operator_id: "hyperd" }),
+      });
+    }
+
+    const data = await resp.json();
+    if (resp.ok) {
+      if (resultEl) {
+        resultEl.innerHTML = `<span style="color:var(--grn)">✓ Injected ${action} (${data.event_id ? data.event_id.slice(0, 16) : 'persisted'})</span>`;
+      }
+      appendPiConsoleMessage(`<div style="color:var(--magenta);background:rgba(187,134,252,.1);padding:.25rem .4rem;border-left:2px solid var(--magenta);border-radius:2px"><span style="font-weight:700">👤 INJECTED [${_escapeHtml(action)}]:</span> ${_escapeHtml(prompt || action)}</div>`);
+      if (action === "guidance" && inputEl) inputEl.value = "";
+    } else {
+      if (resultEl) resultEl.innerHTML = `<span style="color:var(--red)">✗ Error ${resp.status}: ${_escapeHtml(JSON.stringify(data))}</span>`;
+    }
+  } catch (err) {
+    if (resultEl) resultEl.innerHTML = `<span style="color:var(--red)">Failed: ${_escapeHtml(err.message)}</span>`;
+  }
+}
+
 async function loadObservability() {
   await Promise.allSettled([
     loadLocalAgentMonitor(),
@@ -9479,6 +9739,7 @@ async function loadObservability() {
     loadSwimlane(),
     loadRaceComparison(),
     loadTokenContention(),
+    loadPiAgentTree(),
   ]);
   loadAgentReplay(); // deferred — triggers list then auto-loads latest
 }

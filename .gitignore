@@ -210,6 +210,7 @@ nix/hosts/*/.sops.yaml
 .agents/telemetry/*.jsonl
 .agents/observability/
 .agents/health-monitor/
+.agents/guidance/
 # Per-session agent tool call response cache (ephemeral, sourced from Qdrant/AIDB).
 .agents/context-artifacts/
 # Agent delegation task output logs and local registry are runtime state.
