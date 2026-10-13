@@ -807,7 +807,7 @@ in {
     (lib.mkIf (active && mcp.postgres.enable) {
       services.postgresql = {
         enable = lib.mkDefault true;
-        extensions = ps: with ps; [pgvector];
+        extensions = ps: [ pkgs.postgresql.pkgs.pgvector ];
         ensureDatabases = [mcp.postgres.database];
         ensureUsers = [
           {
