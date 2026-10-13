@@ -565,6 +565,138 @@ def adapter_antigravity_drain(health_path=None, max_age_s=None, now=None):
         f"{len(findings)} undrained task(s)"
 
 
+def adapter_osi_layers(probe_url=None, runner=None, timeout=5):
+    """Inspect OSI 7-layer health state; findings emitted for failing layers.
+
+    Layers:
+      1: Hardware / GPU / APU / thermals
+      2: Host OS / Kernel / systemd / AppArmor / bwrap
+      3: Network / Sockets / Ports / Connectivity
+      4: Transport / Coordination / routing
+      5: State / Persistence / DB
+      6: Cognitive / Inference / LLM slots
+      7: Application / UX / Dashboard
+    """
+    url = probe_url or os.getenv("RSI_SWEEP_OSI_HEALTH_URL", "http://127.0.0.1:8889/api/health/layered")
+    if runner is not None:
+        try:
+            res = runner()
+            data = res if isinstance(res, dict) else json.loads(res)
+        except Exception as exc:
+            return "unknown", [], f"runner error: {exc}"
+    else:
+        import urllib.request
+        try:
+            proxy_handler = urllib.request.ProxyHandler({})
+            opener = urllib.request.build_opener(proxy_handler)
+            req = urllib.request.Request(url, headers={"User-Agent": "rsi-sweep-osi/1.0"})
+            with opener.open(req, timeout=timeout) as resp:
+                data = json.loads(resp.read().decode("utf-8"))
+        except Exception as exc:
+            return "unknown", [], f"OSI layered endpoint unreachable: {exc}"
+
+    if not isinstance(data, dict):
+        return "unknown", [], "OSI layered health malformed: not a dict"
+
+    if data.get("pending") is True:
+        return "ok", [], "OSI layered checks pending"
+
+    layers = data.get("layers")
+    if not isinstance(layers, dict) or not layers:
+        return "unknown", [], "OSI layered health response missing 'layers' object"
+
+    findings = []
+    failing_layer_ids = set()
+
+    for layer_key, layer_val in sorted(layers.items(), key=lambda x: str(x[0])):
+        if not isinstance(layer_val, dict):
+            continue
+        status = str(layer_val.get("status") or "").lower()
+        if status in {"fail", "failed", "degraded", "down", "error", "unhealthy"}:
+            failing_layer_ids.add(str(layer_key))
+            layer_name = str(layer_val.get("name") or layer_key)
+            reason = str(layer_val.get("reason") or layer_val.get("error") or status)
+            findings.append(dict(
+                subject=f"osi:layer:{layer_key}",
+                producer="osi-layered:probe",
+                path=f"osi:layer:{layer_key}",
+                authority="osi-layers",
+                os_error=f"OSI layer {layer_key} ({layer_name}) failed: {reason}",
+                severity="high" if status in {"fail", "failed", "down"} else "medium",
+                root_fix=f"Diagnose and recover OSI layer {layer_key} ({layer_name}) components",
+            ))
+
+    def cleared(inc):
+        if inc.get("producer") != "osi-layered:probe":
+            return None
+        target_path = str(inc.get("path") or "")
+        layer_match = re.search(r"osi:layer:(\w+)", target_path)
+        if layer_match and layer_match.group(1) not in failing_layer_ids:
+            return f"OSI layer {layer_match.group(1)} recovered ({_iso(time.time())})"
+        if not failing_layer_ids:
+            return f"All OSI layers recovered ({_iso(time.time())})"
+        return None
+
+    if findings:
+        return "findings", _with_cleared(findings, cleared), f"{len(findings)} failing OSI layer(s)"
+    return "ok", _with_cleared([], cleared), "all OSI layers healthy"
+
+
+def adapter_attention_queue(attention_file=None):
+    """Ingest unresolved high/critical alerts from ATTENTION.json into RSI ledger."""
+    queue_path = Path(attention_file or (os.getenv("ATTENTION_QUEUE_FILE") or _REPO / ".agents" / "attention" / "ATTENTION.json"))
+    if not queue_path.exists():
+        return "ok", [], "attention queue empty/absent"
+    try:
+        data = json.loads(queue_path.read_text())
+    except (OSError, json.JSONDecodeError) as exc:
+        return "unknown", [], f"unreadable attention queue: {exc}"
+
+    alerts = data.get("alerts") if isinstance(data, dict) else []
+    if not isinstance(alerts, list):
+        return "unknown", [], "attention queue malformed"
+
+    findings = []
+    active_alert_ids = set()
+
+    for alert in alerts:
+        if not isinstance(alert, dict):
+            continue
+        status = alert.get("status")
+        severity = str(alert.get("severity") or "").lower()
+        if status in {"pending", "triaged"} and severity in {"high", "critical"}:
+            aid = str(alert.get("id") or "")
+            if not aid:
+                continue
+            active_alert_ids.add(aid)
+            src = str(alert.get("source") or "attention-queue")
+            title = str(alert.get("title") or "unspecified alert")
+            detail = str(alert.get("detail") or "")[:200]
+            action = str(alert.get("proposed_action") or "Review and resolve attention queue alert")
+            findings.append(dict(
+                subject=f"attention:{aid}",
+                producer=f"attention-queue:{src}",
+                path=f"attention:{aid}",
+                authority="attention-queue",
+                os_error=f"[{src}] {title}: {detail}",
+                severity="critical" if severity == "critical" else "high",
+                root_fix=action,
+            ))
+
+    def cleared(inc):
+        if not str(inc.get("producer", "")).startswith("attention-queue:"):
+            return None
+        target_path = str(inc.get("path") or "")
+        aid = target_path.removeprefix("attention:")
+        if aid and aid not in active_alert_ids:
+            return f"attention alert {aid} resolved in attention queue ({_iso(time.time())})"
+        return None
+
+    if findings:
+        return "findings", _with_cleared(findings, cleared), f"{len(findings)} unresolved high/critical attention alert(s)"
+    return "ok", _with_cleared([], cleared), "no unresolved high/critical attention alerts"
+
+
 def _load_intake():
     import importlib.util
     from importlib.machinery import SourceFileLoader
@@ -661,7 +793,8 @@ def run(dry_run=False, as_json=False, adapters=None) -> int:
         "failed-units": adapter_failed_units, "code-scanning": adapter_code_scanning,
         "aq-qa-phase0": adapter_qa_phase0, "payload-audit": adapter_payload_audit,
         "delegation-outcomes": adapter_delegation_outcomes, "service-error-rate": adapter_service_error_rate,
-        "capability-audit": adapter_capability_audit, "antigravity-drain": adapter_antigravity_drain}
+        "capability-audit": adapter_capability_audit, "antigravity-drain": adapter_antigravity_drain,
+        "osi-layers": adapter_osi_layers, "attention-queue": adapter_attention_queue}
     report = {}
     recorded = 0
     resolved = []
