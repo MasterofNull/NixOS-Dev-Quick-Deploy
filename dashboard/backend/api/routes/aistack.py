@@ -1,5 +1,6 @@
 """AI Stack specific API endpoints for learning stats, circuit breakers, and Ralph"""
 from fastapi import APIRouter, HTTPException, Query, Request, Response, Depends
+from fastapi.responses import StreamingResponse
 from pydantic import BaseModel, Field
 from typing import Dict, Any, Optional, List
 import hashlib
@@ -5953,20 +5954,26 @@ _FOCUSED_CI_JSON_PATH = Path(
     os.getenv("AQ_FOCUSED_CI_JSON_PATH", "/var/lib/ai-stack/hybrid/telemetry/latest-focused-ci.json")
 )
 
-# Pydantic model for human control actions (93.8)
+# Pydantic model for human control actions (93.8 & DP-4)
 class AgentControlAction(BaseModel):
     action: str = Field(
         ...,
-        description="pause | resume | redirect | approve | reject | request_review | promote_artifact | terminate",
+        description="pause | resume | redirect | approve | reject | request_review | promote_artifact | terminate | guidance | step_approve",
     )
     reason: Optional[str] = Field(None, description="Human-readable reason for the action")
-    redirect_prompt: Optional[str] = Field(None, description="New prompt when action=redirect")
+    redirect_prompt: Optional[str] = Field(None, description="New prompt when action=redirect or guidance")
     artifact_path: Optional[str] = Field(None, description="Artifact to promote when action=promote_artifact")
     operator_id: Optional[str] = Field(None, description="Operator identity for audit trail")
 
 
+class AgentGuidanceRequest(BaseModel):
+    prompt: str = Field(..., description="Operator guidance or steering instruction")
+    operator_id: Optional[str] = Field("hyperd", description="Operator identity for audit trail")
+    action: Optional[str] = Field("guidance", description="guidance | redirect | step_approve | pause | resume")
+
+
 _VALID_CONTROL_ACTIONS = frozenset(
-    {"pause", "resume", "redirect", "approve", "reject", "request_review", "promote_artifact", "terminate"}
+    {"pause", "resume", "redirect", "approve", "reject", "request_review", "promote_artifact", "terminate", "guidance", "step_approve"}
 )
 
 
@@ -6541,6 +6548,266 @@ async def post_agent_run_control(
         "coordinator_notified": coordinator_notified,
         "audit_note": "human_control event written to agent-run events JSONL",
     }
+
+
+def _classify_sse_event_type(ev: dict) -> str:
+    """Classify agent event into IndyDevDan / Pi UI SSE streaming event names."""
+    raw_type = ev.get("event_type") or ""
+    if raw_type in ("thought", "agent_thinking"):
+        return "token_stream"
+    if raw_type in ("tool_call", "agent_tool_call") or ev.get("tool_name"):
+        return "tool_call"
+    if raw_type in ("tool_output", "agent_tool_output"):
+        return "tool_output"
+    if raw_type == "human_control":
+        return "human_control"
+    if raw_type in ("run_start", "run_end", "final_outcome", "lifecycle_delta"):
+        return "lifecycle_delta"
+    return raw_type or "message"
+
+
+def _get_guidance_spool_dir() -> Path:
+    """Return persistent guidance directory with /tmp fallback."""
+    env_dir = os.environ.get("AQ_AGENT_GUIDANCE_DIR")
+    if env_dir:
+        p = Path(env_dir)
+        p.mkdir(parents=True, exist_ok=True)
+        return p
+    try:
+        primary = Path(__file__).resolve().parents[4] / ".agents" / "guidance"
+        primary.mkdir(parents=True, exist_ok=True)
+        return primary
+    except OSError:
+        fallback = Path("/tmp") / f"aq-guidance-{os.getuid()}"
+        fallback.mkdir(parents=True, exist_ok=True)
+        return fallback
+
+
+# DP-4 — Multi-agent hierarchy tree endpoint
+@router.get("/agent-tree")
+async def get_agent_tree(
+    active_only: bool = Query(False, description="Filter for currently active/recent runs"),
+    limit: int = Query(200, ge=1, le=1000),
+) -> Dict[str, Any]:
+    """Return the multi-agent hierarchy tree of root agents and spun-up sub-agents."""
+    events, source = _load_agent_run_events(limit=limit)
+    nodes: Dict[str, Dict[str, Any]] = {}
+
+    for ev in events:
+        run_id = ev.get("run_id") or ev.get("agent_id")
+        if not run_id:
+            continue
+
+        payload = ev.get("payload") or {}
+        parent_id = (
+            payload.get("parent_run_id")
+            or payload.get("parent_id")
+            or payload.get("parent_agent_id")
+            or None
+        )
+
+        if run_id not in nodes:
+            nodes[run_id] = {
+                "run_id": run_id,
+                "agent_id": ev.get("agent_id") or run_id,
+                "name": payload.get("name") or ev.get("role") or run_id,
+                "parent_id": parent_id,
+                "role": ev.get("role") or payload.get("role") or "agent",
+                "model": ev.get("model") or payload.get("model") or "local-qwen",
+                "status": "running",
+                "event_count": 0,
+                "tokens": {"input": 0, "output": 0, "total": 0},
+                "last_active": ev.get("timestamp") or datetime.now(timezone.utc).isoformat() + "Z",
+                "last_thought": None,
+                "last_tool": None,
+                "children": [],
+            }
+
+        node = nodes[run_id]
+        if parent_id and not node.get("parent_id"):
+            node["parent_id"] = parent_id
+        if payload.get("name") and node.get("name") in (run_id, "agent"):
+            node["name"] = payload["name"]
+        specific_role = ev.get("role") or payload.get("role")
+        if specific_role and (node.get("role") in ("agent", None) or specific_role != "agent"):
+            node["role"] = specific_role
+        node["event_count"] += 1
+        if ev.get("timestamp"):
+            node["last_active"] = ev["timestamp"]
+
+        # Accumulate token metrics
+        tok = ev.get("tokens") or {}
+        if isinstance(tok.get("input"), int):
+            node["tokens"]["input"] += tok["input"]
+        if isinstance(tok.get("output"), int):
+            node["tokens"]["output"] += tok["output"]
+        if isinstance(tok.get("total"), int):
+            node["tokens"]["total"] += tok["total"]
+
+        ev_type = ev.get("event_type") or ""
+        if ev_type in ("thought", "agent_thinking"):
+            node["status"] = "thinking"
+            thought_text = payload.get("thought") or payload.get("content") or payload.get("delta") or ""
+            if thought_text:
+                node["last_thought"] = str(thought_text)[:120]
+        elif ev_type in ("tool_call", "agent_tool_call") or ev.get("tool_name"):
+            node["status"] = "tool_executing"
+            node["last_tool"] = ev.get("tool_name") or payload.get("tool_name")
+        elif ev_type == "human_control":
+            action = payload.get("action")
+            if action == "pause":
+                node["status"] = "paused"
+            elif action in ("request_review", "awaiting_input"):
+                node["status"] = "awaiting_input"
+        elif ev_type in ("run_end", "final_outcome"):
+            node["status"] = ev.get("status") or "done"
+
+    # Assemble hierarchy tree
+    roots: List[Dict[str, Any]] = []
+    for rid, node in nodes.items():
+        pid = node["parent_id"]
+        if pid and pid in nodes and pid != rid:
+            nodes[pid]["children"].append(node)
+        else:
+            roots.append(node)
+
+    if not roots:
+        # Default ready root node for interactive dashboard UI
+        roots = [
+            {
+                "run_id": "orchestrator-main",
+                "agent_id": "orchestrator",
+                "name": "Orchestrator (Primary)",
+                "parent_id": None,
+                "role": "orchestrator",
+                "model": "claude-fable-5",
+                "status": "idle",
+                "event_count": 0,
+                "tokens": {"input": 0, "output": 0, "total": 0},
+                "last_active": datetime.now(timezone.utc).isoformat() + "Z",
+                "last_thought": "Awaiting incoming task or event trigger",
+                "last_tool": None,
+                "children": [],
+            }
+        ]
+
+    active_count = sum(1 for n in nodes.values() if n.get("status") in ("running", "thinking", "tool_executing"))
+    return {
+        "available": True,
+        "source": source,
+        "total_agents": len(nodes) or len(roots),
+        "active_count": active_count,
+        "roots": roots,
+    }
+
+
+# DP-4 — SSE Session Streaming Bus Endpoint
+@router.get("/agent-runs/{run_id}/stream")
+async def stream_agent_run(
+    run_id: str,
+    tail: int = Query(50, ge=0, le=500),
+    max_duration_seconds: int = Query(45, ge=5, le=300),
+) -> StreamingResponse:
+    """SSE endpoint streaming live agent thought tokens, tool executions, and lifecycle events."""
+    async def event_generator():
+        seen_event_ids: set[str] = set()
+
+        # 1. Catch-up replay of existing events
+        initial_events, _ = _load_agent_run_events(run_id=run_id, limit=tail)
+        for ev in initial_events:
+            eid = ev.get("event_id")
+            if eid:
+                seen_event_ids.add(eid)
+            event_name = _classify_sse_event_type(ev)
+            yield f"event: {event_name}\ndata: {json.dumps(ev)}\n\n"
+
+        # 2. Yield stream readiness packet
+        yield f"event: stream_ready\ndata: {json.dumps({'run_id': run_id, 'replayed': len(initial_events)})}\n\n"
+
+        # 3. Live tail loop with periodic check and keepalive
+        start_time = time.time()
+        while time.time() - start_time < max_duration_seconds:
+            await asyncio.sleep(0.5)
+            new_events, _ = _load_agent_run_events(run_id=run_id, limit=20)
+            emitted = False
+            for ev in new_events:
+                eid = ev.get("event_id")
+                if eid and eid not in seen_event_ids:
+                    seen_event_ids.add(eid)
+                    event_name = _classify_sse_event_type(ev)
+                    yield f"event: {event_name}\ndata: {json.dumps(ev)}\n\n"
+                    emitted = True
+            if not emitted:
+                yield ": keep-alive\n\n"
+
+    return StreamingResponse(
+        event_generator(),
+        media_type="text/event-stream",
+        headers={
+            "Cache-Control": "no-cache",
+            "Connection": "keep-alive",
+            "X-Accel-Buffering": "no",
+        },
+    )
+
+
+# DP-4 — Operator Guidance & Human-in-the-Loop Steering Endpoint
+@router.post("/agent-runs/{run_id}/guidance")
+async def post_agent_run_guidance(
+    run_id: str,
+    body: AgentGuidanceRequest,
+) -> Dict[str, Any]:
+    """Inject mid-flight guidance or human-in-the-loop steering into an ongoing agent run."""
+    # Build and persist human control action
+    action_body = AgentControlAction(
+        action=body.action or "guidance",
+        reason=body.prompt,
+        redirect_prompt=body.prompt,
+        operator_id=body.operator_id or "hyperd",
+    )
+    result = await post_agent_run_control(run_id, action_body)
+
+    # Also write to guidance spool file for asynchronous agent loop consumption
+    spool_dir = _get_guidance_spool_dir()
+    guidance_file = spool_dir / f"{run_id}.json"
+    guidance_payload = {
+        "run_id": run_id,
+        "prompt": body.prompt,
+        "action": body.action or "guidance",
+        "operator_id": body.operator_id or "hyperd",
+        "timestamp": datetime.now(timezone.utc).isoformat() + "Z",
+        "event_id": result.get("event_id"),
+        "consumed": False,
+    }
+    try:
+        guidance_file.write_text(json.dumps(guidance_payload, indent=2), encoding="utf-8")
+    except OSError as exc:
+        logger.warning("guidance spool file write error: %s", exc)
+
+    return {
+        "run_id": run_id,
+        "guidance": body.prompt,
+        "action": body.action or "guidance",
+        "operator_id": body.operator_id or "hyperd",
+        "event_id": result.get("event_id"),
+        "persisted": result.get("persisted", False),
+        "status": "injected",
+    }
+
+
+# DP-4 — Query active guidance for a run
+@router.get("/agent-runs/{run_id}/guidance")
+async def get_agent_run_guidance(run_id: str) -> Dict[str, Any]:
+    """Return active pending guidance for an agent run."""
+    spool_dir = _get_guidance_spool_dir()
+    guidance_file = spool_dir / f"{run_id}.json"
+    if guidance_file.exists():
+        try:
+            data = json.loads(guidance_file.read_text(encoding="utf-8"))
+            return {"run_id": run_id, "has_guidance": True, "guidance": data}
+        except Exception:
+            pass
+    return {"run_id": run_id, "has_guidance": False, "guidance": None}
 
 
 # 93.13 — Dashboard effectiveness scorecard endpoint
