@@ -212,14 +212,14 @@ def _check_qdrant_docs(ctx: RunContext) -> list[CheckResult]:
         colls = (data.get("result") or {}).get("collections", [])
         if not colls:
             return [failed(5, "0.2.3", "Qdrant has documents", "found 0")]
-        
+
         total_points = 0
         for coll in colls:
             name = coll["name"]
             cd = http_json(f"{ctx.qdrant_url}/collections/{name}", timeout=5)
             count = ((cd or {}).get("result") or {}).get("points_count", 0)
             total_points += count
-            
+
         if total_points > 0:
             return [passed(5, "0.2.3", f"Qdrant has {total_points} total points across {len(colls)} collections")]
         return [failed(5, "0.2.3", "Qdrant has documents", "found 0 points across all collections")]
@@ -1620,6 +1620,29 @@ def _check_pi_agent_streaming_canvas(ctx: RunContext) -> list[CheckResult]:
     return [passed(5, "0.10.67", desc)]
 
 
+def _check_durable_runtime_engine(ctx: RunContext) -> list[CheckResult]:
+    """0.10.68: Durable Agent Runtime & Effect Sandwich Reconciliation (DP-2) plus dashboard visibility."""
+    desc = "Durable runtime core: effect sandwich, atomic intent logging, outcome reconciliation, dashboard visibility"
+    test = ctx.repo_root / "scripts" / "testing" / "test-aq-durable.py"
+    cli = ctx.repo_root / "scripts" / "ai" / "aq-durable"
+    lib = ctx.repo_root / "scripts" / "ai" / "lib" / "durable_runtime.py"
+    route = ctx.repo_root / "dashboard" / "backend" / "api" / "routes" / "aistack.py"
+    js = ctx.repo_root / "assets" / "dashboard.js"
+    missing = [str(p.relative_to(ctx.repo_root)) for p in (test, cli, lib, route, js) if not p.exists()]
+    if missing:
+        return [failed(5, "0.10.68", desc, f"missing: {', '.join(missing)}")]
+    try:
+        proc = subprocess.run([sys.executable, str(test)], cwd=str(ctx.repo_root), capture_output=True, text=True,
+                              timeout=120, check=False)
+        if proc.returncode != 0 or "ALL 7 FIXTURES PASS" not in proc.stdout:
+            return [failed(5, "0.10.68", desc, (proc.stderr or proc.stdout or "fixture failed")[-240:])]
+        if "_durable_runtime_health_summary" not in route.read_text(encoding="utf-8") or "· durable effect runtime" not in js.read_text(encoding="utf-8"):
+            return [failed(5, "0.10.68", desc, "dashboard durable runtime visibility contract missing")]
+    except (OSError, subprocess.TimeoutExpired) as error:
+        return [failed(5, "0.10.68", desc, str(error)[:240])]
+    return [passed(5, "0.10.68", desc)]
+
+
 
 def _check_provider_projection(ctx: RunContext) -> list[CheckResult]:
     """0.10.55: ECC P0-B provider projection fixtures plus live drift status (preview-only)."""
@@ -2424,6 +2447,7 @@ def run(ctx: RunContext) -> list[CheckResult]:
     results.extend(_check_frontier_fe2b_prompt_compile(ctx))
     results.extend(_check_durable_triage_engine(ctx))
     results.extend(_check_pi_agent_streaming_canvas(ctx))
+    results.extend(_check_durable_runtime_engine(ctx))
     results.extend(_check_network_dns_policy(ctx))
     if ctx.dashboard_safe:
         results.extend(_dashboard_safe_host_only_skips())

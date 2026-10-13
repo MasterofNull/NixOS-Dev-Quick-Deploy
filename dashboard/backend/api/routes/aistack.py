@@ -7430,6 +7430,21 @@ def _triage_health_summary() -> Dict[str, Any]:
                 "reason": f"triage_unavailable:{type(exc).__name__}"}
 
 
+def _durable_runtime_health_summary() -> Dict[str, Any]:
+    """Bounded, read-only health summary of Durable Agent Runtime (DP-2)."""
+    try:
+        module_path = _repo_root() / "scripts" / "ai" / "lib" / "durable_runtime.py"
+        spec = importlib.util.spec_from_file_location("aq_durable_runtime", module_path)
+        if spec is None or spec.loader is None:
+            raise ImportError("durable runtime unavailable")
+        module = importlib.util.module_from_spec(spec)
+        spec.loader.exec_module(module)
+        return module.health_summary(_repo_root())
+    except (OSError, ValueError, ImportError, SyntaxError) as exc:
+        return {"available": False, "status": "unverified", "total_intents": 0,
+                "reason": f"durable_runtime_unavailable:{type(exc).__name__}"}
+
+
 def _lifecycle_events_health_summary() -> Dict[str, Any]:
     """Bounded, read-only lifecycle adapter health (dormant when no state file is configured)."""
     try:
@@ -7591,6 +7606,7 @@ async def get_advanced_runtime_summary() -> Dict[str, Any]:
                 "functional_eval": await asyncio.to_thread(_functional_eval_health_summary),
                 "prompt_compile": await asyncio.to_thread(_prompt_compile_health_summary),
                 "triage": await asyncio.to_thread(_triage_health_summary),
+                "durable_runtime": await asyncio.to_thread(_durable_runtime_health_summary),
             },
             "learning": {
                 "status": _advanced_phase_readiness_status(readiness, "phase_10_learning"),
@@ -9411,3 +9427,44 @@ async def post_triage_classify(payload: Dict[str, Any]) -> Dict[str, Any]:
         }
     except Exception as exc:
         return {"error": str(exc), "actionable": False}
+
+
+@router.get("/durable/status")
+async def get_durable_status() -> Dict[str, Any]:
+    """Return health and intent summary of Durable Agent Runtime (DP-2)."""
+    return await asyncio.to_thread(_durable_runtime_health_summary)
+
+
+@router.post("/durable/reconcile")
+async def post_durable_reconcile(payload: Optional[Dict[str, Any]] = None) -> Dict[str, Any]:
+    """Reconcile unresolved/crashed intents in Durable Agent Runtime (DP-2)."""
+    try:
+        module_path = _repo_root() / "scripts" / "ai" / "lib" / "durable_runtime.py"
+        spec = importlib.util.spec_from_file_location("aq_durable_runtime", module_path)
+        if spec is None or spec.loader is None:
+            raise ImportError("durable runtime unavailable")
+        module = importlib.util.module_from_spec(spec)
+        spec.loader.exec_module(module)
+
+        store = module.DurableEffectStore()
+        middleware = module.EffectSandwichMiddleware(store)
+        run_id = (payload or {}).get("run_id")
+        intent_id = (payload or {}).get("intent_id")
+
+        if intent_id:
+            target_intents = [store.get_intent(intent_id)]
+            if not target_intents[0]:
+                raise HTTPException(status_code=404, detail=f"Intent {intent_id} not found")
+        else:
+            target_intents = store.list_unresolved(run_id=run_id)
+
+        reconciled = []
+        for it in target_intents:
+            rec, _ = middleware.reconcile(it.intent_id)
+            reconciled.append({"intent_id": it.intent_id, "tool_name": it.tool_name, "state": rec.state})
+
+        return {"status": "ok", "reconciled_count": len(reconciled), "intents": reconciled}
+    except HTTPException:
+        raise
+    except Exception as exc:
+        raise HTTPException(status_code=500, detail=str(exc))
