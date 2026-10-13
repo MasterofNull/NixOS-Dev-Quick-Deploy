@@ -7445,6 +7445,21 @@ def _durable_runtime_health_summary() -> Dict[str, Any]:
                 "reason": f"durable_runtime_unavailable:{type(exc).__name__}"}
 
 
+def _oncall_daemon_health_summary() -> Dict[str, Any]:
+    """Bounded, read-only health summary of Autonomous On-Call Daemon (DP-3)."""
+    try:
+        module_path = _repo_root() / "scripts" / "ai" / "lib" / "oncalld_engine.py"
+        spec = importlib.util.spec_from_file_location("aq_oncalld_engine", module_path)
+        if spec is None or spec.loader is None:
+            raise ImportError("oncall daemon engine unavailable")
+        module = importlib.util.module_from_spec(spec)
+        spec.loader.exec_module(module)
+        return module.health_summary(repo_root=_repo_root())
+    except (OSError, ValueError, ImportError, SyntaxError) as exc:
+        return {"available": False, "status": "unverified", "total_incidents": 0,
+                "reason": f"oncalld_unavailable:{type(exc).__name__}"}
+
+
 def _lifecycle_events_health_summary() -> Dict[str, Any]:
     """Bounded, read-only lifecycle adapter health (dormant when no state file is configured)."""
     try:
@@ -7607,6 +7622,7 @@ async def get_advanced_runtime_summary() -> Dict[str, Any]:
                 "prompt_compile": await asyncio.to_thread(_prompt_compile_health_summary),
                 "triage": await asyncio.to_thread(_triage_health_summary),
                 "durable_runtime": await asyncio.to_thread(_durable_runtime_health_summary),
+                "oncall_daemon": await asyncio.to_thread(_oncall_daemon_health_summary),
             },
             "learning": {
                 "status": _advanced_phase_readiness_status(readiness, "phase_10_learning"),
@@ -9466,5 +9482,63 @@ async def post_durable_reconcile(payload: Optional[Dict[str, Any]] = None) -> Di
         return {"status": "ok", "reconciled_count": len(reconciled), "intents": reconciled}
     except HTTPException:
         raise
+    except Exception as exc:
+        raise HTTPException(status_code=500, detail=str(exc))
+
+
+@router.get("/oncall/status")
+async def get_oncall_status() -> Dict[str, Any]:
+    """Return health and metrics of Autonomous On-Call Incident Daemon (DP-3)."""
+    return await asyncio.to_thread(_oncall_daemon_health_summary)
+
+
+@router.post("/oncall/trigger")
+async def post_oncall_trigger(payload: Dict[str, Any]) -> Dict[str, Any]:
+    """Trigger or simulate incident admission and isolated remediation in aq-oncalld (DP-3)."""
+    try:
+        module_path = _repo_root() / "scripts" / "ai" / "lib" / "oncalld_engine.py"
+        spec = importlib.util.spec_from_file_location("aq_oncalld_engine", module_path)
+        if spec is None or spec.loader is None:
+            raise ImportError("oncall daemon engine unavailable")
+        module = importlib.util.module_from_spec(spec)
+        spec.loader.exec_module(module)
+
+        engine = module.OnCallDaemonEngine(repo_root=_repo_root())
+        inc = engine.admit_incident(payload)
+        if not inc:
+            return {"status": "rejected", "reason": "Incident filtered out or deduplicated"}
+
+        lane = payload.get("suggested_lane", "codex") or "codex"
+        claim = engine.claim_incident(inc.incident_id, claimant_lane=lane)
+        engine.create_isolated_worktree(claim)
+
+        return {
+            "status": "claimed",
+            "incident_id": inc.incident_id,
+            "claim_id": claim.claim_id,
+            "epoch": claim.epoch,
+            "claimant_lane": claim.claimant_lane,
+            "worktree_path": claim.worktree_path,
+            "worktree_branch": claim.worktree_branch,
+            "state": claim.state,
+        }
+    except Exception as exc:
+        raise HTTPException(status_code=500, detail=str(exc))
+
+
+@router.get("/oncall/claims")
+async def get_oncall_claims() -> List[Dict[str, Any]]:
+    """List active remediation claims in Autonomous On-Call Daemon (DP-3)."""
+    try:
+        module_path = _repo_root() / "scripts" / "ai" / "lib" / "oncalld_engine.py"
+        spec = importlib.util.spec_from_file_location("aq_oncalld_engine", module_path)
+        if spec is None or spec.loader is None:
+            raise ImportError("oncall daemon engine unavailable")
+        module = importlib.util.module_from_spec(spec)
+        spec.loader.exec_module(module)
+
+        engine = module.OnCallDaemonEngine(repo_root=_repo_root())
+        claims = engine.storage.list_active_claims()
+        return [c.__dict__ for c in claims]
     except Exception as exc:
         raise HTTPException(status_code=500, detail=str(exc))
