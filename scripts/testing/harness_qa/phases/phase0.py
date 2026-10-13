@@ -1591,6 +1591,35 @@ def _check_durable_triage_engine(ctx: RunContext) -> list[CheckResult]:
     return [passed(5, "0.10.66", desc)]
 
 
+def _check_pi_agent_streaming_canvas(ctx: RunContext) -> list[CheckResult]:
+    """0.10.67: Pi-Style Multi-Agent Streaming Canvas & Interactive Guidance (DP-4)."""
+    desc = "Pi-style multi-agent streaming canvas: agent-tree hierarchy, SSE execution streaming, operator steering"
+    test = ctx.repo_root / "scripts" / "testing" / "test-pi-agent-streaming-ui.py"
+    route = ctx.repo_root / "dashboard" / "backend" / "api" / "routes" / "aistack.py"
+    html = ctx.repo_root / "dashboard.html"
+    js = ctx.repo_root / "assets" / "dashboard.js"
+    missing = [str(p.relative_to(ctx.repo_root)) for p in (test, route, html, js) if not p.exists()]
+    if missing:
+        return [failed(5, "0.10.67", desc, f"missing: {', '.join(missing)}")]
+    try:
+        proc = subprocess.run([sys.executable, str(test)], cwd=str(ctx.repo_root), capture_output=True, text=True,
+                              timeout=120, check=False)
+        if proc.returncode != 0 or "5/5 tests passed" not in proc.stdout:
+            return [failed(5, "0.10.67", desc, (proc.stderr or proc.stdout or "fixture failed")[-240:])]
+        route_text = route.read_text(encoding="utf-8")
+        html_text = html.read_text(encoding="utf-8")
+        js_text = js.read_text(encoding="utf-8")
+        if "agent-tree" not in route_text or "/agent-runs/{run_id}/stream" not in route_text or "/guidance" not in route_text:
+            return [failed(5, "0.10.67", desc, "dashboard backend routes for agent-tree/stream/guidance missing")]
+        if "section-pi-agent-canvas" not in html_text:
+            return [failed(5, "0.10.67", desc, "dashboard.html section-pi-agent-canvas missing")]
+        if "loadPiAgentTree" not in js_text or "connectPiAgentStream" not in js_text or "sendPiGuidanceAction" not in js_text:
+            return [failed(5, "0.10.67", desc, "dashboard.js Pi streaming canvas functions missing")]
+    except (OSError, subprocess.TimeoutExpired) as error:
+        return [failed(5, "0.10.67", desc, str(error)[:240])]
+    return [passed(5, "0.10.67", desc)]
+
+
 
 def _check_provider_projection(ctx: RunContext) -> list[CheckResult]:
     """0.10.55: ECC P0-B provider projection fixtures plus live drift status (preview-only)."""
@@ -2394,6 +2423,7 @@ def run(ctx: RunContext) -> list[CheckResult]:
     results.extend(_check_frontier_fe2a_functional_eval(ctx))
     results.extend(_check_frontier_fe2b_prompt_compile(ctx))
     results.extend(_check_durable_triage_engine(ctx))
+    results.extend(_check_pi_agent_streaming_canvas(ctx))
     results.extend(_check_network_dns_policy(ctx))
     if ctx.dashboard_safe:
         results.extend(_dashboard_safe_host_only_skips())
