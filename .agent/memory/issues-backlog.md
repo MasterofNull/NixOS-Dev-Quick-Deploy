@@ -5950,3 +5950,21 @@ File: scripts/ai/lib/worktree-isolation.sh; scripts/automation/prsi-orchestrator
 [DONE] rsi-9049951adce59903c337e8e2 — resolved 2026-10-13: journal of command-center-dashboard-api read OK; signature below 5 occurrence(s) in last 3600s (2026-10-13T04:11:24Z) — ledger status=resolved
 
 [DONE] rsi-909a3aff96f91df63ac5a3f8 — resolved 2026-10-13: aq-qa check 0.10.50 factory readiness preflight passing. Root cause: in scripts/testing/test-factory-gate-readiness.py line 282, manifest_path.write_bytes wrote with default umask (0o664) leaving group-writable bit set; _mode_is_safe rejected the group-writable permission as an insecure mode drift, failing manifest_provenance and causing EXECUTION_SCOPE_INVALID instead of FAILED_EXECUTION_EVIDENCE. Resolved by adding manifest_path.chmod(0o644) after write_bytes. (2026-10-13T04:22:00Z) — ledger status=resolved
+[DONE] rsi-0799cc4c4806b6508f2a09f5 — resolved 2026-10-13: phase-0 check 0.10.50 passing in health-monitor JSON run 2026-10-13T04:17:59Z — ledger status=resolved
+[DONE] rsi-78eeba629971cdbb4d821aff — resolved 2026-10-13: phase-0 check 0.10.50 passing in health-monitor JSON run 2026-10-13T04:17:59Z — ledger status=resolved
+[DONE] rsi-2a0a9e6b664ab93e891b5853 — resolved 2026-10-13: journal of ai-hybrid-coordinator read OK; signature below 5 occurrence(s) in last 3600s (2026-10-13T04:26:26Z) — ledger status=resolved
+
+[OPEN] rsi-0799cc4c4806b6508f2a09f5 — aq-qa:phase0 failure in aq-qa:0.10.50. Root cause evidence: producer=aq-qa:phase0; path=aq-qa check 0.10.50; authority=aq-qa; os_error=phase-0 check 0.10.50 failing: Factory readiness preflight: hash-bound evidence, fail-closed unconfigured checks, typed blockers (fixture exit 1). Detected=2026-10-13T04:41:21.026014Z.
+  Severity: medium
+  Action: run aq-qa 0 --machine and fix check 0.10.50 at its producer
+  File: aq-qa check 0.10.50
+
+[OPEN] rsi-085b0f3eb02989fabdd7bed6 — attention-queue:ai-stack-health-monitor failure in attention:attn-c001082c. Root cause evidence: producer=attention-queue:ai-stack-health-monitor; path=attention:attn-c001082c; authority=attention-queue; os_error=[ai-stack-health-monitor] aq-qa phase 0: 1 check(s) failing: Scheduled health monitor found 1 failing check(s):   [0.10.50] Factory readiness preflight: hash-bound evidence, fail-closed unconfigured checks, typed blockers (fixture exit 1):   Run: aq-qa 0  for f. Detected=2026-10-13T04:41:24.377035Z.
+  Severity: high
+  Action: Run: aq-qa 0  to see full failure detail.
+  File: attention:attn-c001082c
+
+[DONE] training-pipeline-monitoring-wiring — resolved 2026-10-13: aq-local-training-loop status crash fixed (KeyError 'ingest' on deferred/uninitialized runs), proposal title/rationale raw formatting sanitized, aq-agent-loop training event emission reliably awaited, and dashboard loop status wired to reflect deferred and healthy states.
+  Severity: high
+  Action: verify aq-local-training-loop --status renders deferred runs without KeyError, and test-training-pipeline-status-and-monitoring.py passes.
+  File: scripts/ai/aq-local-training-loop; scripts/ai/aq-agent-loop; ai-stack/local-agents/training_ingest.py; dashboard/backend/api/routes/aistack.py
