@@ -3106,6 +3106,8 @@ async def get_loop_status() -> Dict[str, Any]:
         status = "interrupted"
     elif not has_clean_run:
         status = "never_ran"
+    elif (last_run or {}).get("status") == "deferred":
+        status = "deferred"
     elif int((last_run or {}).get("fail_count") or 0) > 0:
         status = "eval_failed"
     elif pending_corrections > int(os.environ.get("HS_CORRECTION_BACKLOG_MAX", "25")):
@@ -3139,9 +3141,11 @@ async def get_loop_status() -> Dict[str, Any]:
         "teacher": {"lane": "codex", "reachable": teacher_ok, "bin": str(codex_bin)},
         "last_run": {
             "run_id": (last_run or {}).get("run_id"),
+            "status": (last_run or {}).get("status", "completed"),
+            "reason": (last_run or {}).get("reason"),
             "age_hours": last_run_age_h,
-            "samples_added": ((last_run or {}).get("ingest") or {}).get("samples_added"),
-            "dataset_total": ((last_run or {}).get("ingest") or {}).get("dataset_total", dataset_total),
+            "samples_added": ((last_run or {}).get("ingest") or {}).get("samples_added") if isinstance((last_run or {}).get("ingest"), dict) else 0,
+            "dataset_total": ((last_run or {}).get("ingest") or {}).get("dataset_total", dataset_total) if isinstance((last_run or {}).get("ingest"), dict) else dataset_total,
             "pass_count": (last_run or {}).get("pass_count"),
             "fail_count": (last_run or {}).get("fail_count"),
             "pass_rate": (last_run or {}).get("pass_rate"),

@@ -771,6 +771,11 @@ class TrainingLoop:
                     "status": "deferred", "reason": "slot_contended", "detail": why,
                     "cases_total": 0, "pass_count": 0, "fail_count": 0, "pass_rate": None,
                     "corrected": corrected_count,
+                    "ingest": {
+                        "samples_added": ingest_report.get("samples_added", ingest_report.get("positive_samples_added", 0)),
+                        "dataset_total": ingest_report.get("dataset_total", 0),
+                    },
+                    "improvements_proposed": 0,
                 }
                 _persist_result(report)
                 return report
@@ -784,6 +789,11 @@ class TrainingLoop:
                 "status": "deferred", "reason": "model_not_ready",
                 "cases_total": 0, "pass_count": 0, "fail_count": 0, "pass_rate": None,
                 "corrected": corrected_count,
+                "ingest": {
+                    "samples_added": ingest_report.get("samples_added", ingest_report.get("positive_samples_added", 0)),
+                    "dataset_total": ingest_report.get("dataset_total", 0),
+                },
+                "improvements_proposed": 0,
             }
             _persist_result(report)
             return report
@@ -966,12 +976,27 @@ class TrainingLoop:
                 if improve_response:
                     # Parse JSON array from response (may be wrapped in markdown).
                     try:
-                        start = improve_response.find("[")
-                        end   = improve_response.rfind("]") + 1
+                        clean_resp = improve_response.strip()
+                        if "```json" in clean_resp:
+                            clean_resp = clean_resp.split("```json", 1)[1].split("```", 1)[0].strip()
+                        elif "```" in clean_resp:
+                            clean_resp = clean_resp.split("```", 1)[1].split("```", 1)[0].strip()
+                        start = clean_resp.find("[")
+                        end   = clean_resp.rfind("]") + 1
                         if start >= 0 and end > start:
-                            improvements = json.loads(improve_response[start:end])
+                            improvements = json.loads(clean_resp[start:end])
+                        else:
+                            raise ValueError("No JSON array bounds found")
                     except (json.JSONDecodeError, ValueError):
-                        improvements = [{"raw": improve_response[:500]}]
+                        # Extract non-empty bullet points or paragraphs if available
+                        paragraphs = [
+                            p.strip() for p in improve_response.split("\n\n")
+                            if p.strip() and not p.strip().startswith("```")
+                        ]
+                        if len(paragraphs) > 1:
+                            improvements = [{"raw": p[:500]} for p in paragraphs[:3]]
+                        else:
+                            improvements = [{"raw": improve_response[:500]}]
                     if self.verbose:
                         print(f"[training-loop]   {len(improvements)} improvement proposals")
 
@@ -986,11 +1011,30 @@ class TrainingLoop:
             # For now, log improvements as pending proposals for human review.
             proposals_path = TELEMETRY_DIR / "optimization_proposals.jsonl"
             for imp in improvements:
+                if not isinstance(imp, dict):
+                    imp = {"raw": str(imp)}
+                if imp.get("root_cause"):
+                    title = imp["root_cause"]
+                elif imp.get("title"):
+                    title = imp["title"]
+                elif imp.get("raw"):
+                    raw_text = str(imp["raw"]).strip()
+                    lines = [
+                        l.strip().lstrip("-*# 1234567890.").strip()
+                        for l in raw_text.splitlines()
+                        if l.strip().lstrip("-*# 1234567890.").strip()
+                    ]
+                    title = lines[0][:80] if lines else "Training loop finding"
+                else:
+                    title = "Training loop finding"
+
+                rationale = imp.get("change_description") or imp.get("rationale") or imp.get("raw") or ""
+
                 proposal = {
                     "proposal_id": f"loop-{run_id}-{len(validated_improvements)}",
                     "proposal_type": "training_loop_finding",
-                    "title": imp.get("root_cause", str(imp)[:60]),
-                    "rationale": imp.get("change_description", ""),
+                    "title": title,
+                    "rationale": rationale,
                     "evidence": {
                         "failing_cases": [s["case_id"] for s in failing],
                         "expected_keyword_gains": imp.get("expected_keyword_gains", []),
@@ -1023,7 +1067,7 @@ class TrainingLoop:
             "scorer_cert_reason": getattr(self, "_scorer_cert_reason", None),
             "pass_rate_trusted": bool(getattr(self, "_scorer_certified", False)),
             "ingest": {
-                "samples_added": ingest_report.get("positive_samples_added", 0),
+                "samples_added": ingest_report.get("samples_added", ingest_report.get("positive_samples_added", 0)),
                 "dataset_total": ingest_report.get("dataset_total", 0),
                 "top_failures": list(ingest_report.get("failure_summary", {}).items())[:5],
             },
@@ -1100,11 +1144,26 @@ def _status(n: int = 10) -> None:
     else:
         for run in sorted(runs.values(), key=lambda r: r.get("timestamp", ""))[-n:]:
             dr = " [dry]" if run.get("dry_run") else ""
+            status = run.get("status")
+            status_str = f" [{status}]" if status else ""
+            reason = run.get("reason")
+            reason_str = f" ({reason})" if reason else ""
+            ingest_data = run.get("ingest")
+            samples_added = (
+                ingest_data.get("samples_added", 0)
+                if isinstance(ingest_data, dict)
+                else 0
+            )
+            proposals = run.get("improvements_proposed", 0)
+            pass_count = run.get("pass_count", "?")
+            cases_total = run.get("cases_total", "?")
+            ts = (run.get("timestamp") or "")[:19]
+            run_id = run.get("run_id", "unknown")
             print(
-                f"{run['timestamp'][:19]}  {run['run_id']}"
-                f"  pass={run['pass_count']}/{run['cases_total']}"
-                f"  +{run['ingest']['samples_added']} samples"
-                f"  {run['improvements_proposed']} proposals{dr}"
+                f"{ts}  {run_id}"
+                f"  pass={pass_count}/{cases_total}"
+                f"  +{samples_added} samples"
+                f"  {proposals} proposals{dr}{status_str}{reason_str}"
             )
 
     if not PROGRESS_FILE.exists():

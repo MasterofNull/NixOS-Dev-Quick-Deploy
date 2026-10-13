@@ -520,11 +520,22 @@ class TrainingIngestor:
                     if not self.dry_run:
                         self._mark_proposal(p.get("proposal_id"), "auto_approved")
                     continue
+            title = p.get("title") or ""
+            if title.startswith("{'raw':") or title.startswith('{"raw":'):
+                import re
+                clean = re.sub(r"^\{['\"]raw['\"]:\s*['\"]?", "", title).rstrip("'\"}")
+                lines = [
+                    l.strip().lstrip("-*# 1234567890.").strip()
+                    for l in clean.splitlines()
+                    if l.strip().lstrip("-*# 1234567890.").strip()
+                ]
+                title = lines[0][:80] if lines else "Training loop proposal"
+
             needs_review.append({
                 "proposal_id": p.get("proposal_id"),
                 "type": ptype,
-                "title": p.get("title"),
-                "rationale": p.get("rationale"),
+                "title": title,
+                "rationale": p.get("rationale") or "",
             })
 
         return auto_approved, needs_review
