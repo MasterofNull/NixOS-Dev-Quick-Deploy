@@ -4974,6 +4974,7 @@ async function loadRuntimeDetails() {
   const fne = cg.functional_eval || {};
   const prc = cg.prompt_compile || {};
   const trg = cg.triage || {};
+  const drt = cg.durable_runtime || {};
   const lrn = s.learning || {};
   const rows = [
     fwRow("Offloading", fmtImplStatus(off.status), "ok"),
@@ -5091,6 +5092,13 @@ async function loadRuntimeDetails() {
         ? `${String(trg.status || "unverified").toUpperCase()} · P95:${trg.p95_ms ?? 0}ms · cursor:${trg.cursor_tracked ? "active" : "none"}`
         : "UNVERIFIED",
       trg.available && trg.status === "ready" ? "ok" : "info"
+    ),
+    fwRow(
+      "· durable effect runtime",
+      drt.available
+        ? `${String(drt.status || "unverified").toUpperCase()} · intents:${drt.total_intents ?? 0} · unres:${drt.unresolved_intents ?? 0}`
+        : "UNVERIFIED",
+      drt.available && drt.unresolved_intents === 0 ? "ok" : "warn"
     ),
     fwRow("Learning", fmtImplStatus(lrn.status), "ok"),
     fwRow("· signals", lrn.signals_recorded ?? 0),

@@ -1,0 +1,169 @@
+#!/usr/bin/env python3
+"""CLI utility for Durable Agent Runtime management and reconciliation (DP-2)."""
+
+from __future__ import annotations
+
+import argparse
+import json
+import os
+import sys
+from pathlib import Path
+
+# Add lib directory
+_ROOT = Path(__file__).resolve().parents[2]
+sys.path.insert(0, str(_ROOT / "scripts" / "ai" / "lib"))
+
+from durable_runtime import (
+    DurableEffectStore,
+    EffectSandwichMiddleware,
+    IntentState,
+    ToolClass,
+    classify_tool,
+)
+
+
+def cmd_status(args: argparse.Namespace) -> int:
+    store = DurableEffectStore(args.ledger)
+    intents = store.list_intents(run_id=args.run_id, state=args.state)
+
+    if args.json:
+        data = {
+            "ledger_path": str(store.ledger_path),
+            "count": len(intents),
+            "intents": [i.to_dict() for i in intents],
+        }
+        print(json.dumps(data, indent=2))
+        return 0
+
+    print(f"=== Durable Agent Runtime Ledger ({len(intents)} intents) ===")
+    print(f"Ledger path: {store.ledger_path}")
+    if not intents:
+        print("No intents found.")
+        return 0
+
+    header = f"{'INTENT ID':<18} {'RUN ID':<16} {'STEP':<5} {'TOOL':<22} {'CLASS':<18} {'STATE':<16} {'VER':<4}"
+    print(header)
+    print("-" * len(header))
+    for it in intents:
+        print(f"{it.intent_id:<18} {it.run_id:<16} {it.step_id:<5} {it.tool_name:<22} {it.tool_class:<18} {it.state:<16} {it.version:<4}")
+
+    unresolved = store.list_unresolved(run_id=args.run_id)
+    if unresolved:
+        print(f"\n[WARNING] {len(unresolved)} unresolved intent(s) in OUTCOME_UNKNOWN or EXECUTING state!")
+    return 0
+
+
+def cmd_classify(args: argparse.Namespace) -> int:
+    cls = classify_tool(args.tool_name)
+    out = {
+        "tool_name": args.tool_name,
+        "tool_class": cls.value,
+        "is_read_only": cls == ToolClass.CLASS_1_READ_ONLY,
+        "is_idempotent_write": cls == ToolClass.CLASS_2_IDEMPOTENT_WRITE,
+        "is_external_mutation": cls == ToolClass.CLASS_3_EXTERNAL_MUTATION,
+    }
+    if args.json:
+        print(json.dumps(out, indent=2))
+    else:
+        print(f"Tool '{args.tool_name}': {cls.value}")
+    return 0
+
+
+def cmd_reconcile(args: argparse.Namespace) -> int:
+    store = DurableEffectStore(args.ledger)
+    middleware = EffectSandwichMiddleware(store)
+
+    if args.intent_id:
+        target_intents = [store.get_intent(args.intent_id)]
+        if not target_intents[0]:
+            print(f"Error: intent '{args.intent_id}' not found.", file=sys.stderr)
+            return 1
+    else:
+        target_intents = store.list_unresolved(run_id=args.run_id)
+
+    if not target_intents:
+        print("No unresolved intents to reconcile.")
+        return 0
+
+    reconciled_count = 0
+    print(f"Reconciling {len(target_intents)} intent(s)...")
+    for it in target_intents:
+        rec, _ = middleware.reconcile(it.intent_id)
+        print(f"  {it.intent_id} ({it.tool_name}) -> {rec.state}")
+        reconciled_count += 1
+
+    print(f"Reconciliation complete: {reconciled_count} intent(s) processed.")
+    return 0
+
+
+def cmd_verify(args: argparse.Namespace) -> int:
+    store = DurableEffectStore(args.ledger)
+    intents = store.list_intents()
+
+    errors = []
+    seen_idempotency: dict[str, str] = {}
+
+    for it in intents:
+        # Check monotonic version >= 1
+        if it.version < 1:
+            errors.append(f"Invalid version {it.version} for intent {it.intent_id}")
+
+        # Check idempotency duplicate violations (two distinct non-reconciled intents with same key)
+        key = it.idempotency_key
+        if key in seen_idempotency and it.state not in (
+            IntentState.COMMITTED.value,
+            IntentState.RECONCILED_COMMITTED.value,
+        ):
+            errors.append(f"Duplicate active intent with key {key}: {it.intent_id} and {seen_idempotency[key]}")
+        seen_idempotency[key] = it.intent_id
+
+    if errors:
+        print(f"Verification FAILED with {len(errors)} error(s):", file=sys.stderr)
+        for err in errors:
+            print(f"  - {err}", file=sys.stderr)
+        return 1
+
+    print(f"PASS: Durable ledger integrity valid ({len(intents)} intents checked, 0 errors)")
+    return 0
+
+
+def main() -> int:
+    parser = argparse.ArgumentParser(description="Durable Agent Runtime & Effect Sandwich Management (DP-2)")
+    parser.add_argument("--ledger", help="Override path to durable ledger JSON file")
+
+    subparsers = parser.add_subparsers(dest="command", required=True)
+
+    # status
+    p_status = subparsers.add_parser("status", help="Show durable intent records")
+    p_status.add_argument("--run-id", help="Filter by agent run ID")
+    p_status.add_argument("--state", help="Filter by intent state")
+    p_status.add_argument("--json", action="store_true", help="Output JSON")
+
+    # classify
+    p_classify = subparsers.add_parser("classify", help="Classify tool side-effect mutability")
+    p_classify.add_argument("tool_name", help="Tool name to classify")
+    p_classify.add_argument("--json", action="store_true", help="Output JSON")
+
+    # reconcile
+    p_rec = subparsers.add_parser("reconcile", help="Reconcile unresolved/crashed intents")
+    p_rec.add_argument("--run-id", help="Filter by agent run ID")
+    p_rec.add_argument("--intent-id", help="Target specific intent ID")
+
+    # verify
+    subparsers.add_parser("verify", help="Verify ledger consistency and integrity")
+
+    args = parser.parse_args()
+
+    if args.command == "status":
+        return cmd_status(args)
+    elif args.command == "classify":
+        return cmd_classify(args)
+    elif args.command == "reconcile":
+        return cmd_reconcile(args)
+    elif args.command == "verify":
+        return cmd_verify(args)
+    return 1
+
+
+if __name__ == "__main__":
+    sys.exit(main())
