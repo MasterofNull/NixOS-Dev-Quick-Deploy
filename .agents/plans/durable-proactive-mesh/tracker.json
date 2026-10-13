@@ -10,7 +10,7 @@
       "Agent execution implements the Effect Sandwich pattern with explicit outcome reconciliation surviving simulated mid-step crashes",
       "Autonomous on-call daemon wakes on high-confidence incidents, isolates in worktree, generates Tier-0 validated fixes, and stages PRs",
       "Web Dashboard and Herdr presentation expose real-time multi-agent hierarchy tree, live token/tool streaming window, and operator guidance input",
-      "Service coverage contract satisfied with dedicated aq-qa check 0.10.66, live dashboard panel, and zero security regressions"
+      "Service coverage contract satisfied with dedicated aq-qa checks 0.10.66 & 0.10.67, live dashboard panels, and zero security regressions"
     ]
   },
   "phases": [
@@ -33,7 +33,7 @@
       "id": "dp-1", "name": "system 1 high-frequency triage engine (aq-triage)", "phase": "triage", "kind": "slice",
       "goal": "implement sub-second journald stream reader with persistent cursor tracking and fast structured classification engine",
       "validation_goal": "unit tests test-aq-triage.py pass; benchmark proves <200ms P95 classification latency; QA check 0.10.66 passes",
-      "deps": ["dp-0"], "pct_hint": 0,
+      "deps": ["dp-0"], "pct_hint": 100,
       "detection": {"commit_match": ["DP-1", "aq-triage", "system 1 triage"]}
     },
     {
@@ -53,8 +53,8 @@
     {
       "id": "dp-4", "name": "pi-style multi-agent streaming canvas and operator interaction plane", "phase": "ui_canvas", "kind": "slice",
       "goal": "implement SSE session streaming bus on Switchboard and Web Dashboard canvas showing agent hierarchy, streaming execution windows, and guidance prompt",
-      "validation_goal": "dashboard renders live sub-agent tree and real-time token/tool streams; operator guidance injection endpoint verified; Tier-0 passes",
-      "deps": ["dp-0"], "pct_hint": 0,
+      "validation_goal": "dashboard renders live sub-agent tree and real-time token/tool streams; operator guidance injection endpoint verified; QA check 0.10.67 passes; Tier-0 passes",
+      "deps": ["dp-0"], "pct_hint": 100,
       "detection": {"commit_match": ["DP-4", "pi streaming ui", "streaming canvas", "agent mesh ui"]}
     },
     {

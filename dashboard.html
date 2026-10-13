@@ -4775,6 +4775,76 @@
         </div>
       </div>
 
+      <!-- Pi-Style Multi-Agent Streaming Canvas & Interactive Guidance (DP-4) — full width -->
+      <div class="card full" id="section-pi-agent-canvas">
+        <div class="card-hd">
+          <div style="display:flex;align-items:center;gap:.5rem">
+            <span class="card-title">Pi Coding Agent Canvas &amp; Sub-Agent Mesh</span>
+            <span style="font-size:.54rem;color:var(--cyan);border:1px solid var(--cyan);padding:.1rem .3rem;border-radius:2px">DP-4 PARITY</span>
+          </div>
+          <span class="card-badge badge-info" id="piAgentBadge">INIT</span>
+        </div>
+        <div style="font-size:.53rem;color:var(--fg3);margin-bottom:.6rem">
+          IndyDevDan Pi UI Parity: visible multi-agent hierarchy tree · real-time SSE streaming window · mid-flight human-in-the-loop steering &amp; controls
+        </div>
+
+        <div style="display:grid;grid-template-columns:280px 1fr;gap:.8rem;min-height:22rem">
+          <!-- Left: Agent & Sub-Agent Hierarchy Tree -->
+          <div style="background:var(--bg2);border:1px solid var(--border);border-radius:4px;padding:.6rem;display:flex;flex-direction:column">
+            <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:.5rem;padding-bottom:.4rem;border-bottom:1px solid var(--border)">
+              <span style="font-size:.6rem;font-weight:700;color:var(--fg0);letter-spacing:.05em">AGENT MESH TOPOLOGY</span>
+              <button class="mini-btn" onclick="loadPiAgentTree()" style="font-size:.52rem;padding:.15rem .35rem">Refresh</button>
+            </div>
+            <div id="piAgentTreeContainer" style="flex:1;overflow-y:auto;display:flex;flex-direction:column;gap:.35rem">
+              <div style="color:var(--fg3);font-size:.58rem">Loading agent mesh topology...</div>
+            </div>
+          </div>
+
+          <!-- Right: Live Real-Time Streaming Console & Guidance Bar -->
+          <div style="background:var(--bg2);border:1px solid var(--border);border-radius:4px;padding:.6rem;display:flex;flex-direction:column">
+            <!-- Header status row -->
+            <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:.5rem;padding-bottom:.4rem;border-bottom:1px solid var(--border);flex-wrap:wrap;gap:.4rem">
+              <div style="display:flex;align-items:center;gap:.4rem">
+                <span id="piActiveAgentName" style="font-size:.65rem;font-weight:700;color:var(--cyan)">orchestrator-main</span>
+                <span id="piActiveAgentRole" style="font-size:.52rem;background:var(--bg3);border:1px solid var(--border);padding:.1rem .3rem;border-radius:2px;color:var(--fg1)">orchestrator</span>
+                <span id="piActiveAgentModel" style="font-size:.52rem;background:var(--bg3);border:1px solid var(--border);padding:.1rem .3rem;border-radius:2px;color:var(--yel)">claude-fable-5</span>
+              </div>
+              <div style="display:flex;align-items:center;gap:.45rem">
+                <span id="piStreamStatusBadge" style="font-size:.52rem;color:var(--grn);border:1px solid rgba(46,204,113,.3);padding:.1rem .35rem;border-radius:2px">● SSE STREAM</span>
+                <label style="font-size:.54rem;color:var(--fg3);display:flex;align-items:center;gap:.25rem;cursor:pointer">
+                  <input type="checkbox" id="piAutoScrollToggle" checked style="cursor:pointer"> Auto-scroll
+                </label>
+                <button class="mini-btn" onclick="clearPiConsole()" style="font-size:.52rem;padding:.15rem .35rem">Clear</button>
+              </div>
+            </div>
+
+            <!-- Terminal / Streaming Window -->
+            <div id="piStreamingConsole" style="flex:1;background:var(--bg0);border:1px solid var(--border);border-radius:3px;padding:.6rem;font-family:var(--hud);font-size:.6rem;overflow-y:auto;max-height:18rem;display:flex;flex-direction:column;gap:.4rem;line-height:1.4">
+              <div style="color:var(--fg3);font-size:.58rem">Connecting to agent live event stream...</div>
+            </div>
+
+            <!-- Operator Guidance & Human-in-the-Loop Interaction Bar -->
+            <div style="margin-top:.6rem;padding-top:.5rem;border-top:1px solid var(--border);display:flex;flex-direction:column;gap:.4rem">
+              <div style="display:flex;gap:.4rem;align-items:center">
+                <input type="text" id="piGuidanceInput" placeholder="Type guidance or steering instruction to inject mid-flight into active agent..."
+                  style="font-family:var(--hud);font-size:.6rem;background:var(--bg3);border:1px solid var(--border);color:var(--fg0);padding:.3rem .5rem;flex:1;border-radius:2px"
+                  onkeydown="if(event.key==='Enter')sendPiGuidanceAction('guidance')">
+                <button class="mini-btn" onclick="sendPiGuidanceAction('guidance')" style="background:var(--cyan);color:var(--bg0);font-weight:700">Inject Guidance ↵</button>
+              </div>
+              <div style="display:flex;justify-content:space-between;align-items:center;flex-wrap:wrap;gap:.4rem">
+                <div style="display:flex;gap:.3rem">
+                  <button class="mini-btn" onclick="sendPiGuidanceAction('step_approve')" title="Grant single-step approval" style="color:var(--grn);border-color:rgba(46,204,113,.4)">Step Approve ✓</button>
+                  <button class="mini-btn" onclick="sendPiGuidanceAction('pause')" title="Pause execution" style="color:var(--yel);border-color:rgba(241,196,15,.4)">Pause ⏸</button>
+                  <button class="mini-btn" onclick="sendPiGuidanceAction('resume')" title="Resume execution" style="color:var(--cyan);border-color:rgba(100,180,255,.4)">Resume ▶</button>
+                  <button class="mini-btn" onclick="sendPiGuidanceAction('terminate')" title="Terminate run" style="color:var(--red);border-color:rgba(231,76,60,.4)">Terminate ⏹</button>
+                </div>
+                <div id="piGuidanceResult" style="font-size:.54rem;color:var(--fg3)">Ready for operator steering.</div>
+              </div>
+            </div>
+          </div>
+        </div>
+      </div>
+
       <!-- Agent Run Replay — full width -->
       <div class="card full" id="section-agent-replay">
         <div class="card-hd">
