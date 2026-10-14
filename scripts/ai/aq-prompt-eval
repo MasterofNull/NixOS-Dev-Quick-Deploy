@@ -585,7 +585,7 @@ def run_eval(
             print(f"  Prompt: {pid}")
             if is_code_gen:
                 if functional:
-                    print("  [code_generation] — using FE-2a functional assertion evaluation")
+                    print(f"  [code_generation] — using FE-2a functional assertion evaluation (trust: {fe.TRUST if fe else 'n/a'})")
                 else:
                     print("  [code_generation] — using meta-quality probe")
 
@@ -652,6 +652,7 @@ def run_eval(
             "passed": sum(case_results),
             "total": len(tests),
             "transport_error": transport_error,
+            **({"trust": fe.TRUST} if (is_code_gen and functional and fe is not None) else {}),
         })
 
         if not dry_run and mean_score is not None:

@@ -708,3 +708,8 @@ Status: configuration preparation; activation deferred to the owner's next rebui
 
 ## DP3 and DP4 review correction — 2026-10-14
 DP3 PR506 at 7f9ef0f4 has no release acceptance: real worktree confinement, brokered reproduction, distinct-agent exact-tree review, actual PR, bounded concurrency, and process heartbeat are unproven or absent. Keep unmerged pending remediation and real E2E. DP4 guidance persistence is not live steering; no consumer/ack exists. Its live delivery is deferred until that contract is implemented and exercised.
+
+## CORRECTION — 2026-10-14 — FE-2a (#493) and FE-2b (#495) attestations (found by independent review of #498)
+- `aq-functional-eval --endpoint` does NOT exist (flags: `--dry-run`, `--prompt`, `--verbose`, `--json`, `--model`, `--mock-ratio`); the endpoint comes from env `LLAMA_URL` / `LLAMA_PORT`. The "Intervenable" line for FE-2a was wrong on that flag.
+- `aq-prompt-compile --max-iterations` does NOT exist (flags: `--prompt`, `--dry-run`, `--adopt`, `--check-only`, `--verbose`, `--json`). The FE-2b "Intervenable" line was wrong on that flag.
+- "AST and execution sandboxing" was NOT implemented: the FE-2a library `exec()`ed generated code in-process with no AST check and no isolation. Fixed 2026-10-14 (branch fix/post-merge-hygiene-488-500): untrusted code now runs in a `bwrap` subprocess (no network, tmpfs HOME/tmp, timeout) and live mode refuses when bwrap is absent; repo fixtures only use the trusted in-process path. There is still no AST validation.

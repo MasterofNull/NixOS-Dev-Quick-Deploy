@@ -368,3 +368,10 @@ Codex lane absent).
 - producer: dashboard/backend/api/routes/aistack.py guidance endpoint.
 - fix-path: report recorded/undelivered honestly now; design and validate consumer acknowledgment before claiming live steering.
 - class: T1 runtime; severity: HIGH; status: live delivery deferred 2026-10-14.
+
+## WR-XDP-DOCHECK-20261014 — xdg-desktop-portal doCheck=false applied globally — OPEN
+- symptom: `nix/overlays/security-fixes.nix` sets `xdg-desktop-portal` `doCheck = false` for every build, skipping its whole test suite.
+- root cause: integration tests (test_notification.py sound_fd, dynamiclauncher) need a live desktop session and fail in headless CI/container build sandboxes; only those tests are the problem, not the suite.
+- producer: `nix/overlays/security-fixes.nix` (xdg-desktop-portal overrideAttrs).
+- fix-path: replace blanket doCheck=false with a targeted test deselect (disable only the two failing tests) or gate on a headless-build flag; or drop once nixpkgs/upstream skips them without a session.
+- class T2 · severity LOW · status OPEN · opened 2026-10-14 (from #500 review).

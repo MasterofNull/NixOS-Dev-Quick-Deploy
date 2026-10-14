@@ -12,6 +12,7 @@ Tests:
 """
 from __future__ import annotations
 
+import os
 import json
 import subprocess
 import sys
@@ -87,6 +88,37 @@ def test_sandboxed_execution() -> None:
     ok, errs = fe.execute_functional_check("   ", "assert True")
     assert_true(ok is False and "empty code output" in errs[0], "empty code not trapped")
     print("PASS: sandboxed execution and error trapping")
+
+
+def test_sandbox_hardening() -> None:
+    if not fe.sandbox_available():
+        print("SKIP: sandbox hardening (bwrap unavailable)")
+        return
+    chk = "assert m.f() == 1"
+    forged = 'print(\'\\n@@RESULT@@{"ok": true, "failures": []}\')\nimport os\nos._exit(0)\ndef f(): return 2'
+    ok, _ = fe.execute_functional_check(forged, chk)
+    assert_true(ok is False, "marker forgery + os._exit self-passed")
+    ok, _ = fe.execute_functional_check("raise SystemExit(0)\ndef f(): return 2", chk)
+    assert_true(ok is False, "SystemExit(0) self-passed")
+    for probe in (
+        "import sys, json\nn = sys.modules['__main__']._nonce\nprint('\\n' + n + json.dumps({'ok': True, 'failures': []}))\nimport os\nos._exit(0)\ndef f(): return 2",
+        "import sys, json, os\nn = sys._getframe(1).f_globals['_nonce']\nprint('\\n' + n + json.dumps({'ok': True, 'failures': []}))\nos._exit(0)\ndef f(): return 2",
+    ):
+        ok, errs = fe.execute_functional_check(probe, chk)
+        assert_true(ok is False, f"nonce probe self-passed: {errs}")
+    os.environ["AQ_SECRET_PROBE"] = "leak"
+    ok, errs = fe.execute_functional_check(
+        "import os\ndef f(): return 1 if 'AQ_SECRET_PROBE' not in os.environ else 2", chk)
+    assert_true(ok is True, f"parent env visible in sandbox: {errs}")
+    ok, errs = fe.execute_functional_check("open('/etc/aq_pwn','w')\ndef f(): return 1", chk)
+    assert_true(ok is False and not os.path.exists("/etc/aq_pwn"), "host write not contained")
+    ok, errs = fe.execute_functional_check("import socket\nsocket.socket().connect(('1.1.1.1',80))\ndef f(): return 1", chk)
+    assert_true(ok is False, "network not blocked")
+    ok, errs = fe.execute_functional_check("x = bytearray(4 * 1024**3)\ndef f(): return 1", chk)
+    assert_true(ok is False, "large allocation not limited")
+    ok, errs = fe.execute_functional_check("import sys\nsys.stdout.write('A' * (64 * 1024**2))\ndef f(): return 1", chk, timeout_s=15)
+    assert_true(ok is False, "huge stdout not rejected")
+    print("PASS: sandbox hardening (forgery, env, containment, rlimits)")
 
 
 def test_headroom_and_mock_evaluation() -> None:
@@ -187,6 +219,7 @@ def main() -> int:
     test_task_registry()
     test_code_extraction()
     test_sandboxed_execution()
+    test_sandbox_hardening()
     test_headroom_and_mock_evaluation()
     test_cli_execution()
     test_dashboard_and_coverage()

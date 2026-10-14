@@ -344,12 +344,12 @@ data/token-savings.json
 
 # Antigravity drain-verification runtime snapshot and inbox receipts
 .agent/collaboration/antigravity-drain-health.json
-.agent/collaboration/antigravity-inbox/receipts/
+.agent/collaboration/antigravity-inbox/receipts/*.lock
 .agent/archive/antigravity-inbox-*/
 
-# Capability audit runtime snapshots and reports
+# Capability audit runtime snapshots (.agents/reports/ holds tracked evidence; not ignored)
 .agent/collaboration/capability-audit-snapshots.json
-.agents/reports/
+.agents/reports/capability-audit/
 
 # Worktree reap runtime spool
 .agent/collaboration/worktree-reap.jsonl
