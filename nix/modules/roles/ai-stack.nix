@@ -1934,6 +1934,7 @@ in {
         # ReadWritePaths of ai-capability-audit must exist before its mount namespace is built.
         "d ${cfg.mcpServers.repoPath}/.agents/reports/capability-audit 0755 ${cfg.primaryUser} users -"
         "d ${cfg.mcpServers.repoPath}/.agents/archive/capability-audit 0755 ${cfg.primaryUser} users -"
+        "d ${cfg.mcpServers.repoPath}/.agents/plans/frontier-evidence-intake 0755 ${cfg.primaryUser} users -"
       ];
 
       # Agent-agnostic discovery manifest at well-known location.
@@ -2582,6 +2583,37 @@ in {
         description = "Daily capability audit";
         wantedBy = ["timers.target"];
         timerConfig = {OnCalendar = "daily"; Persistent = true; RandomizedDelaySec = "30min";};
+      };
+
+      # Weekly bounded, review-gated frontier scan (owner-approved 2026-10-14 amendment to
+      # "pull, not poll"): fetches due PRIMARY sources via SSRF/robots-guarded GET and files
+      # status=new candidates only. Kill switch: aiHarness.runtime.frontierScan.enable.
+      systemd.services.ai-frontier-scan = lib.mkIf ai.aiHarness.runtime.frontierScan.enable {
+        description = "Frontier source scan-due (bounded, review-gated)";
+        after = ["network-online.target"];
+        wants = ["network-online.target"];
+        path = [pkgs.git pkgs.coreutils "/run/current-system/sw"];
+        serviceConfig = {
+          Type = "oneshot";
+          User = cfg.primaryUser;
+          WorkingDirectory = cfg.mcpServers.repoPath;
+          ExecStart = "/run/current-system/sw/bin/python3 ${cfg.mcpServers.repoPath}/scripts/ai/aq-frontier scan-due --max-sources ${toString ai.aiHarness.runtime.frontierScan.maxSources}";
+          TimeoutStartSec = "900";
+          StandardOutput = "journal";
+          StandardError = "journal";
+          NoNewPrivileges = true;
+          ProtectSystem = "strict";
+          ProtectHome = "read-only";
+          PrivateTmp = true;
+          MemoryMax = "512M";
+          ReadWritePaths = ["${cfg.mcpServers.repoPath}/.agents/plans/frontier-evidence-intake"];
+        };
+      };
+
+      systemd.timers.ai-frontier-scan = lib.mkIf ai.aiHarness.runtime.frontierScan.enable {
+        description = "Weekly frontier source scan";
+        wantedBy = ["timers.target"];
+        timerConfig = {OnCalendar = "weekly"; Persistent = true; RandomizedDelaySec = "6h";};
       };
 
       systemd.timers.ai-prsi-rsi-dispatch = {
