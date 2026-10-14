@@ -1,0 +1,295 @@
+{
+  "version": 1,
+  "description": "SSOT for CI-hard checks that run in seconds without network/services. CI workflows call scripts/governance/run-ci-checks.sh --all --only <id>; .githooks/pre-push runs --changed. Edit here, never inline the command in a workflow. Slow checks carry paths so --changed skips them; --all (CI) always runs them.",
+  "checks": [
+    {
+      "id": "harness-first-static-gates",
+      "cmd": "scripts/testing/check-harness-first-static-gates.sh",
+      "paths": [],
+      "needs": [
+        "git",
+        "python3"
+      ],
+      "ci_workflow": ".github/workflows/test.yml#syntax"
+    },
+    {
+      "id": "skill-source-of-truth",
+      "cmd": "scripts/testing/check-skill-source-of-truth.sh",
+      "paths": [
+        "**/SKILL.md",
+        ".agent/skills/**",
+        "ai-stack/agents/skills/**"
+      ],
+      "needs": [],
+      "ci_workflow": ".github/workflows/test.yml#skill-governance-lint"
+    },
+    {
+      "id": "skill-external-deps",
+      "cmd": "scripts/governance/lint-skill-external-deps.sh",
+      "paths": [
+        ".agent/skills/**",
+        "ai-stack/agents/skills/**"
+      ],
+      "needs": [],
+      "ci_workflow": ".github/workflows/test.yml#skill-governance-lint"
+    },
+    {
+      "id": "skill-template",
+      "cmd": "scripts/governance/lint-skill-template.sh",
+      "paths": [
+        ".agent/skills/**",
+        "ai-stack/agents/skills/**"
+      ],
+      "needs": [],
+      "ci_workflow": ".github/workflows/test.yml#skill-governance-lint"
+    },
+    {
+      "id": "template-placeholders",
+      "cmd": "scripts/governance/lint-template-placeholders.sh",
+      "paths": [
+        "templates/**"
+      ],
+      "needs": [],
+      "ci_workflow": ".github/workflows/test.yml#template-placeholder-lint"
+    },
+    {
+      "id": "aq-report-contract",
+      "cmd": "scripts/testing/check-aq-report-contract.sh",
+      "paths": [
+        "scripts/ai/aq-report*",
+        "scripts/testing/check-aq-report-*",
+        "config/ci-checks.json"
+      ],
+      "needs": [],
+      "ci_workflow": ".github/workflows/test.yml#syntax",
+      "note": "slow (90-180s): path-triggered in --changed"
+    },
+    {
+      "id": "aq-report-metric-smoke",
+      "cmd": "scripts/testing/check-aq-report-metric-smoke.sh",
+      "paths": [
+        "scripts/ai/aq-report*",
+        "scripts/testing/check-aq-report-*",
+        "config/ci-checks.json"
+      ],
+      "needs": [],
+      "ci_workflow": ".github/workflows/test.yml#syntax",
+      "note": "slow (90-180s): path-triggered in --changed"
+    },
+    {
+      "id": "prsi-cycle-contract",
+      "cmd": "scripts/testing/check-prsi-cycle-contract.sh",
+      "paths": [],
+      "needs": [],
+      "ci_workflow": ".github/workflows/test.yml#syntax"
+    },
+    {
+      "id": "prsi-bootstrap-integrity",
+      "cmd": "scripts/testing/check-prsi-bootstrap-integrity.sh",
+      "paths": [],
+      "needs": [],
+      "ci_workflow": ".github/workflows/test.yml#syntax"
+    },
+    {
+      "id": "prsi-phase7-static-gates",
+      "cmd": "scripts/testing/check-prsi-phase7-static-gates.sh",
+      "paths": [
+        "**/*prsi*",
+        "**/*PRSI*",
+        "config/runtime-prsi-*",
+        "config/ci-checks.json"
+      ],
+      "needs": [],
+      "ci_workflow": ".github/workflows/test.yml#syntax",
+      "note": "slow (90-180s): path-triggered in --changed"
+    },
+    {
+      "id": "tool-security-auditor-smoke",
+      "cmd": "scripts/testing/test-tool-security-auditor.py",
+      "paths": [],
+      "needs": [
+        "python3"
+      ],
+      "ci_workflow": ".github/workflows/test.yml#syntax"
+    },
+    {
+      "id": "validate-echo-colors",
+      "cmd": "scripts/testing/validate-echo-colors.sh",
+      "paths": [
+        "**/*.sh"
+      ],
+      "needs": [],
+      "ci_workflow": ".github/workflows/validate-shell-scripts.yml#validate-shell-color-echo"
+    },
+    {
+      "id": "world-writable",
+      "cmd": "scripts/governance/check-world-writable.sh",
+      "paths": [],
+      "needs": [
+        "find"
+      ],
+      "ci_workflow": ".github/workflows/test.yml#security"
+    },
+    {
+      "id": "security-audit",
+      "cmd": "scripts/security/security-audit.sh",
+      "paths": [
+        "scripts/security/**",
+        "nix/**",
+        "config/**"
+      ],
+      "needs": [],
+      "ci_workflow": ".github/workflows/security.yml#security-audit"
+    }
+  ],
+  "ci_exempt": [
+    {
+      "script": "scripts/testing/check-harness-first-platform-owner-approval.py",
+      "reason": "needs GITHUB_TOKEN and the PR reviews API; inherently remote"
+    },
+    {
+      "script": "scripts/testing/check-harness-first-runbook.sh",
+      "reason": "run via check-harness-first-static-gates (manifest entry); also listed in validate-structure required-file list"
+    },
+    {
+      "script": "scripts/testing/check-harness-first-evidence-template.sh",
+      "reason": "run via check-harness-first-static-gates; also listed in required-file list"
+    },
+    {
+      "script": "scripts/testing/check-harness-first-pr-evidence-gate.sh",
+      "reason": "run via check-harness-first-static-gates; also listed in required-file list"
+    },
+    {
+      "script": "scripts/automation/run-advanced-parity-suite.sh",
+      "reason": "heavy/dedicated CI job (advanced parity suite); follow-up to add manifest entry once runtime is bounded"
+    },
+    {
+      "script": "scripts/data/generate-harness-sdk-api-docs.sh",
+      "reason": "harness-sdk-release workflow generator, path-filtered release job"
+    },
+    {
+      "script": "scripts/data/generate-harness-sdk-provenance.sh",
+      "reason": "harness-sdk-release workflow generator, path-filtered release job"
+    },
+    {
+      "script": "scripts/data/generate-package-counts.sh",
+      "reason": "flake-validation job; path-triggered local registry check exists"
+    },
+    {
+      "script": "scripts/deploy/deploy-clean.sh",
+      "reason": "tests.yml dry-run deploy readiness; needs full environment"
+    },
+    {
+      "script": "scripts/governance/analyze-clean-deploy-readiness.sh",
+      "reason": "tests.yml deploy readiness analysis"
+    },
+    {
+      "script": "scripts/governance/check-archive-path-consistency.sh",
+      "reason": "repo-structure/doc lint already run locally by pre-push quick-deploy-lint.sh --mode fast"
+    },
+    {
+      "script": "scripts/governance/check-deprecated-docs-location.sh",
+      "reason": "repo-structure/doc lint already run locally by pre-push quick-deploy-lint.sh --mode fast"
+    },
+    {
+      "script": "scripts/governance/check-doc-links.sh",
+      "reason": "repo-structure/doc lint already run locally by pre-push quick-deploy-lint.sh --mode fast"
+    },
+    {
+      "script": "scripts/governance/check-doc-metadata-standards.sh",
+      "reason": "repo-structure/doc lint already run locally by pre-push quick-deploy-lint.sh --mode fast"
+    },
+    {
+      "script": "scripts/governance/check-doc-script-path-migration.sh",
+      "reason": "repo-structure/doc lint already run locally by pre-push quick-deploy-lint.sh --mode fast"
+    },
+    {
+      "script": "scripts/governance/check-generated-artifact-hygiene.sh",
+      "reason": "repo-structure/doc lint already run locally by pre-push quick-deploy-lint.sh --mode fast"
+    },
+    {
+      "script": "scripts/governance/check-legacy-deprecated-root.sh",
+      "reason": "repo-structure/doc lint already run locally by pre-push quick-deploy-lint.sh --mode fast"
+    },
+    {
+      "script": "scripts/governance/check-naming-label-consistency.sh",
+      "reason": "repo-structure/doc lint already run locally by pre-push quick-deploy-lint.sh --mode fast"
+    },
+    {
+      "script": "scripts/governance/check-repo-allowlist-integrity.sh",
+      "reason": "repo-structure/doc lint already run locally by pre-push quick-deploy-lint.sh --mode fast"
+    },
+    {
+      "script": "scripts/governance/check-root-file-hygiene.sh",
+      "reason": "repo-structure/doc lint already run locally by pre-push quick-deploy-lint.sh --mode fast"
+    },
+    {
+      "script": "scripts/governance/check-root-script-shim-only.sh",
+      "reason": "repo-structure/doc lint already run locally by pre-push quick-deploy-lint.sh --mode fast"
+    },
+    {
+      "script": "scripts/governance/check-script-header-standards.sh",
+      "reason": "needs PR base/head SHAs; pre-push quick-deploy-lint runs it for changed scripts"
+    },
+    {
+      "script": "scripts/governance/check-script-shim-consistency.sh",
+      "reason": "repo-structure/doc lint already run locally by pre-push quick-deploy-lint.sh --mode fast"
+    },
+    {
+      "script": "scripts/governance/lint-color-echo-usage.sh",
+      "reason": "pre-commit runs lint-color-echo --staged (staged-scope counterpart)"
+    },
+    {
+      "script": "scripts/governance/nix-static-analysis.sh",
+      "reason": "soft in CI (always exit 0); needs nix"
+    },
+    {
+      "script": "scripts/governance/repo-structure-lint.sh",
+      "reason": "pre-push quick-deploy-lint.sh --mode fast runs repo-structure-lint --all"
+    },
+    {
+      "script": "scripts/health/system-health-check.sh",
+      "reason": "invoked only inside required-files/health listing text, needs live host"
+    },
+    {
+      "script": "scripts/testing/check-harness-sdk-version-parity.sh",
+      "reason": "harness-sdk-release workflow, path-filtered release job"
+    },
+    {
+      "script": "scripts/testing/check-package-count-drift.sh",
+      "reason": "flake-validation job; path-triggered local registry check exists"
+    },
+    {
+      "script": "scripts/testing/harness-runner.sh",
+      "reason": "runs tier0 + aq-qa in bare env (parity-scorecard-gate); tier0 is the local counterpart"
+    },
+    {
+      "script": "scripts/testing/memory-regression-tests.py",
+      "reason": "memory-benchmarks workflow (py3.13, aidb deps)"
+    },
+    {
+      "script": "scripts/testing/run-targeted-coverage.sh",
+      "reason": "test-coverage workflow (uv, pytest); heavy"
+    },
+    {
+      "script": "scripts/testing/smoke-harness-sdk-packaging.sh",
+      "reason": "needs python3.12 + package build; harness-sdk workflows"
+    },
+    {
+      "script": "scripts/testing/smoke-skill-bundle-distribution.sh",
+      "reason": "bundle build smoke, not seconds; follow-up manifest entry"
+    },
+    {
+      "script": "scripts/testing/test-pre-archive-no-materialization.py",
+      "reason": "local counterpart: focused-CI registry check (path-triggered)"
+    },
+    {
+      "script": "scripts/testing/validate-runtime-declarative.sh",
+      "reason": "flake-validation job needs nix; already in pre-push quick-deploy-lint"
+    },
+    {
+      "script": "scripts/testing/verify-flake-first-roadmap-completion.sh",
+      "reason": "covered locally by tier0 gate_roadmap_verification"
+    }
+  ]
+}
