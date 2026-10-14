@@ -32,6 +32,8 @@ from oncalld_engine import (
     EpochFencingError,
     ContainmentViolationError,
     ReviewIntegrityError,
+    WorktreeIsolationError,
+    DuplicateClaimError,
     compute_candidate_sha256,
     verify_candidate_binding,
     scrub_credentials,
@@ -50,6 +52,8 @@ class TestOnCallDaemon(unittest.TestCase):
         self._orig_simulate = os.environ.get("AQ_ONCALL_SIMULATE_WORKTREE")
         os.environ["AQ_DELEGATION_DIR"] = str(self.delegation_dir)
         os.environ["AQ_ONCALL_SIMULATE_WORKTREE"] = "1"
+        self._orig_test_mode = os.environ.get("AQ_ONCALL_TEST_MODE")
+        os.environ["AQ_ONCALL_TEST_MODE"] = "1"
         self.engine = OnCallDaemonEngine(
             repo_root=_REPO_ROOT,
             state_dir=self.state_dir,
@@ -65,6 +69,10 @@ class TestOnCallDaemon(unittest.TestCase):
             os.environ["AQ_ONCALL_SIMULATE_WORKTREE"] = self._orig_simulate
         else:
             os.environ.pop("AQ_ONCALL_SIMULATE_WORKTREE", None)
+        if self._orig_test_mode is not None:
+            os.environ["AQ_ONCALL_TEST_MODE"] = self._orig_test_mode
+        else:
+            os.environ.pop("AQ_ONCALL_TEST_MODE", None)
         shutil.rmtree(self.temp_dir, ignore_errors=True)
 
     def test_01_admission_and_deduplication(self) -> None:
@@ -129,7 +137,7 @@ class TestOnCallDaemon(unittest.TestCase):
         self.assertEqual(claim1.epoch, 1)
 
         # Second claim increments epoch to 2 (fences out claim 1)
-        claim2 = self.engine.claim_incident(inc.incident_id, claimant_lane="local")
+        claim2 = self.engine.claim_incident(inc.incident_id, claimant_lane="local", takeover=True)
         self.assertEqual(claim2.epoch, 2)
 
         # Worker with stale claim 1 attempts to save progress -> raises EpochFencingError
@@ -150,14 +158,14 @@ class TestOnCallDaemon(unittest.TestCase):
             "PATH": "/nix/var/nix/profiles/default/bin:/usr/bin",
             "USER": "hyperd",
             "HOME": "/home/hyperd",
-            "GITHUB_TOKEN": "ghp_1234567890abcdef",
-            "GH_TOKEN": "ghp_secret",
-            "SOPS_AGE_KEY": "AGE-SECRET-KEY-XYZ",
-            "SSH_AUTH_SOCK": "/run/user/1000/ssh.sock",
-            "OPENAI_API_KEY": "sk-proj-xyz",
-            "ANTHROPIC_API_KEY": "sk-ant-abc",
-            "AWS_SECRET_ACCESS_KEY": "aws-secret",
-            "MY_CUSTOM_SECRET": "topsecret",
+            "GITHUB_TOKEN": "placeholder",
+            "GH_TOKEN": "placeholder",
+            "SOPS_AGE_KEY": "placeholder",
+            "SSH_AUTH_SOCK": "placeholder",
+            "OPENAI_API_KEY": "placeholder",
+            "ANTHROPIC_API_KEY": "placeholder",
+            "AWS_SECRET_ACCESS_KEY": "placeholder",
+            "MY_CUSTOM_SECRET": "placeholder",
             "TERM": "xterm-256color"
         }
         scrubbed = scrub_credentials(dirty_env)
@@ -227,7 +235,7 @@ class TestOnCallDaemon(unittest.TestCase):
                 reviewer_lane="codex"  # Self-review forbidden!
             )
 
-        # 2. Distinct model lane "antigravity" conducts review -> PASS
+        # 2. Distinct lane is assigned, but NO verdict exists until a real reviewer records one
         completed = self.engine.complete_remediation(
             claim_id=claim.claim_id,
             git_tree_hash="tree123",
@@ -235,8 +243,15 @@ class TestOnCallDaemon(unittest.TestCase):
             reviewer_lane="antigravity"
         )
         self.assertEqual(completed.reviewer_lane, "antigravity")
-        self.assertEqual(completed.reviewer_verdict, "PASS")
-        self.assertEqual(completed.state, "PR_STAGED")
+        self.assertIsNone(completed.reviewer_verdict)
+        self.assertEqual(completed.state, "AWAITING_REVIEW")
+
+        # 3. Real verdict with drifted tree is refused; matching one moves to PENDING_PR
+        with self.assertRaises(ReviewIntegrityError):
+            self.engine.record_review(claim.claim_id, "antigravity", "PASS", "ok", "other", "PASS all checks")
+        done = self.engine.record_review(claim.claim_id, "antigravity", "PASS", "ok", "tree123", "PASS all checks")
+        self.assertEqual(done.state, "PENDING_PR")
+        self.assertEqual(done.reviewer_verdict, "PASS")
 
     def test_06_remediation_lifecycle_state_machine(self) -> None:
         """Test full incident lifecycle state progression."""
@@ -267,17 +282,17 @@ class TestOnCallDaemon(unittest.TestCase):
             test_proofs="PASS 56/56 checks",
             reviewer_lane="codex"
         )
-        self.assertEqual(completed.state, "PR_STAGED")
+        self.assertEqual(completed.state, "AWAITING_REVIEW")
 
-        # Incident updated to RESOLVED
+        # No reviewer ran and no PR exists: incident must NOT be RESOLVED
         updated_inc = self.engine.storage.get_incident(inc.incident_id)
         self.assertIsNotNone(updated_inc)
-        self.assertEqual(updated_inc.status, "RESOLVED")
+        self.assertEqual(updated_inc.status, "CLAIMED")
 
-        # Summary verification
         summary = self.engine.health_summary()
-        self.assertEqual(summary["resolved_incidents"], 1)
-        self.assertEqual(summary["staged_prs"], 1)
+        self.assertEqual(summary["resolved_incidents"], 0)
+        self.assertEqual(summary["staged_prs"], 0)
+        self.assertEqual(summary["awaiting_review"], 1)
 
     def test_07_cli_integration(self) -> None:
         """Test aq-oncalld CLI invocation and command outputs."""
@@ -325,6 +340,173 @@ class TestOnCallDaemon(unittest.TestCase):
         self.assertEqual(trig_data["status"], "claimed")
         self.assertEqual(trig_data["incident_id"], "test-cli-inc")
 
+    # ── DP-3 review-revision regressions (F1-F6) ─────────────────────────────
+
+    def _admit_claim(self, iid: str, key: str):
+        inc = self.engine.admit_incident({
+            "incident_id": iid, "source": "svc", "severity": "high", "incident_class": "crash",
+            "actionable": True, "confidence": 0.9, "correlation_key": key, "summary": "s",
+            "reproduction_cmd": "exit 1",
+        })
+        self.assertIsNotNone(inc)
+        return self.engine.claim_incident(inc.incident_id, claimant_lane="codex")
+
+    def test_08_f1_no_fabricated_pass_or_pr(self) -> None:
+        claim = self._admit_claim("f1", "k-f1")
+        done = self.engine.complete_remediation(claim.claim_id, "tree", "PASS ok", reviewer_lane="antigravity")
+        self.assertIsNone(done.reviewer_verdict)
+        self.assertIsNone(done.pr_branch)
+        self.assertNotIn(done.state, ("PR_STAGED", "AWAIT_OPERATOR"))
+        self.assertNotEqual(self.engine.storage.get_incident("f1").status, "RESOLVED")
+        src = (_REPO_ROOT / "scripts/ai/lib/oncalld_engine.py").read_text()
+        self.assertNotIn("_conduct_review", src)
+
+    def test_09_f2_worktree_failure_fails_closed(self) -> None:
+        os.environ.pop("AQ_ONCALL_SIMULATE_WORKTREE", None)
+        claim = self._admit_claim("f2", "k-f2")
+        claim.worktree_branch = "bad..branch name"  # git rejects this ref name
+        with self.assertRaises(WorktreeIsolationError):
+            self.engine.create_isolated_worktree(claim)
+        self.assertFalse(Path(claim.worktree_path).exists())
+        self.assertEqual(self.engine.storage.get_claim(claim.claim_id).state, "FAILED")
+
+    def test_10_f3_reproduction_is_confined_or_deferred(self) -> None:
+        import shutil as _sh
+        from unittest import mock
+        claim = self._admit_claim("f3", "k-f3")
+        self.engine.create_isolated_worktree(claim)
+        with mock.patch("oncalld_engine.shutil.which", return_value=None), \
+             mock.patch("oncalld_engine.subprocess.run") as run:
+            res = self.engine.reproduce_incident(claim)
+            run.assert_not_called()
+        self.assertTrue(res.get("deferred"))
+        self.assertEqual(res["reason"], "no_sandbox_available")
+        # Missing worktree must never fall back to running in the repo root
+        claim.worktree_path = str(self.delegation_dir / "worktrees" / "missing")
+        with mock.patch("oncalld_engine.subprocess.run") as run:
+            res = self.engine.reproduce_incident(claim)
+            run.assert_not_called()
+        self.assertEqual(res["reason"], "no_isolated_worktree")
+        if _sh.which("bwrap"):
+            claim2 = self._admit_claim("f3b", "k-f3b")
+            self.engine.create_isolated_worktree(claim2)
+            r = self.engine.reproduce_incident(claim2, custom_cmd="exit 3")
+            self.assertEqual(r.get("confined"), "bwrap")
+
+    def test_11_f4_one_implementer_per_incident(self) -> None:
+        claim = self._admit_claim("f4", "k-f4")
+        with self.assertRaises(DuplicateClaimError):
+            self.engine.claim_incident("f4", claimant_lane="local")
+        # DB-level backstop: a raw second active claim is rejected by the unique index
+        dup = RemediationClaim(
+            claim_id="claim-f4-x", incident_id="f4", epoch=99, claimant_lane="local",
+            worktree_path=claim.worktree_path, worktree_branch="b", state="ISOLATING",
+            created_at="t", updated_at="t")
+        with self.assertRaises(DuplicateClaimError):
+            self.engine.storage.save_claim(dup)
+        # Same correlation key admitted twice (even with different ids) yields one incident
+        again = self.engine.admit_incident({
+            "incident_id": "f4-twin", "source": "svc", "severity": "high", "incident_class": "crash",
+            "actionable": True, "confidence": 0.9, "correlation_key": "k-f4"})
+        self.assertIsNone(again)
+
+    def test_12_f5_route_offloads_blocking_calls(self) -> None:
+        import ast
+        src = (_REPO_ROOT / "dashboard/backend/api/routes/aistack.py").read_text()
+        tree = ast.parse(src)
+        fn = next(n for n in ast.walk(tree)
+                  if isinstance(n, ast.AsyncFunctionDef) and n.name == "post_oncall_trigger")
+        body = ast.get_source_segment(src, fn)
+        self.assertIn("asyncio.to_thread", body)
+        self.assertNotIn("create_isolated_worktree", body)
+        self.assertNotIn("subprocess", body)
+
+    def test_13_f6_heartbeat_only_from_daemon_loop(self) -> None:
+        s0 = self.engine.health_summary()
+        self.assertEqual(s0["heartbeat"]["state"], "unknown")
+        self.assertIsNone(s0["last_heartbeat"])
+        self.assertEqual(s0["status"], "unverified")
+        self.engine.run_daemon(max_iterations=1, interval=0)
+        s1 = self.engine.health_summary()
+        self.assertEqual(s1["heartbeat"]["state"], "alive")
+        self.assertIsNotNone(s1["last_heartbeat"])
+        # Old heartbeat reads as stale
+        hb = json.loads(self.engine.heartbeat_path.read_text())
+        hb["ts"] = "2000-01-01T00:00:00+00:00"
+        self.engine.heartbeat_path.write_text(json.dumps(hb))
+        s2 = self.engine.health_summary()
+        self.assertEqual(s2["heartbeat"]["state"], "stale")
+        self.assertEqual(s2["status"], "stale")
+
+    def test_14_old_schema_duplicates_migrate_not_memory_fallback(self) -> None:
+        import sqlite3
+        db = Path(self.temp_dir) / "old" / "oncall.db"
+        db.parent.mkdir()
+        conn = sqlite3.connect(str(db))
+        conn.executescript("""
+            CREATE TABLE oncall_incidents (incident_id TEXT PRIMARY KEY, title TEXT, source TEXT,
+              severity TEXT, incident_class TEXT, confidence REAL, correlation_key TEXT NOT NULL,
+              reproduction_cmd TEXT, status TEXT NOT NULL, raw_details TEXT, created_at TEXT, updated_at TEXT);
+            INSERT INTO oncall_incidents VALUES ('a','t','s','HIGH','CRASH',0.9,'k','', 'ADMITTED','{}','1','1');
+            INSERT INTO oncall_incidents VALUES ('b','t','s','HIGH','CRASH',0.9,'k','', 'ADMITTED','{}','2','2');
+        """)
+        conn.commit(); conn.close()
+        st = OnCallStorage(db)
+        self.assertFalse(st._fallback_memory)
+        self.assertEqual(st.get_incident("a").status, "REJECTED")
+        self.assertEqual(st.get_incident("b").status, "ADMITTED")
+        # fallback, when forced, is visible in health_summary
+        eng = OnCallDaemonEngine(repo_root=_REPO_ROOT, state_dir=self.state_dir)
+        eng.storage._fallback_memory = True
+        eng.storage._mem_conn = sqlite3.connect(":memory:")
+        eng.storage._mem_conn.row_factory = sqlite3.Row
+        eng.storage._init_db()
+        hs = eng.health_summary()
+        self.assertTrue(hs["storage_fallback_memory"])
+        self.assertEqual(hs["status"], "degraded")
+
+    def test_15_failed_claim_releases_and_operator_paths(self) -> None:
+        claim = self._admit_claim("r1", "k-r1")
+        self.engine.complete_remediation(claim.claim_id, "tree", "FAIL tests", reviewer_lane="antigravity")
+        self.assertEqual(self.engine.storage.get_claim(claim.claim_id).state, "FAILED")
+        self.assertEqual(self.engine.storage.get_incident("r1").status, "ADMITTED")  # claimable, not RESOLVED
+        c2 = self.engine.claim_incident("r1", claimant_lane="local")  # re-claim works
+        self.engine.requeue_incident("r1", actor="op", note="retry")
+        self.assertEqual(self.engine.storage.get_claim(c2.claim_id).state, "FAILED")
+        inc = self.engine.storage.get_incident("r1")
+        self.assertEqual(inc.status, "ADMITTED")
+        self.engine.resolve_incident("r1", actor="op", note="fixed by hand")
+        inc = self.engine.storage.get_incident("r1")
+        self.assertEqual(inc.status, "RESOLVED")
+        last = inc.raw_details["operator_actions"][-1]
+        self.assertEqual((last["action"], last["actor"]), ("resolve", "op"))
+        self.assertTrue(last["ts"])
+        aq = _REPO_ROOT / "scripts" / "ai" / "aq-oncalld"
+        res = subprocess.run([sys.executable, str(aq), "--requeue", "nope", "--state-dir", str(self.state_dir)],
+                             capture_output=True, text=True)
+        self.assertEqual(res.returncode, 1)
+
+    def test_16_simulate_requires_test_mode_marker(self) -> None:
+        os.environ.pop("AQ_ONCALL_TEST_MODE", None)
+        claim = self._admit_claim("s1", "k-s1")
+        claim.worktree_branch = "bad..branch name"
+        with self.assertRaises(WorktreeIsolationError):
+            self.engine.create_isolated_worktree(claim)  # SIMULATE=1 alone must not bypass git
+        os.environ["AQ_ONCALL_TEST_MODE"] = "1"
+        claim2 = self._admit_claim("s2", "k-s2")
+        with self.assertLogs("aq-oncalld", level="WARNING"):
+            self.engine.create_isolated_worktree(claim2)
+
+    def test_17_self_review_leaves_state_unchanged(self) -> None:
+        claim = self._admit_claim("v1", "k-v1")
+        before = self.engine.storage.get_claim(claim.claim_id)
+        with self.assertRaises(ReviewIntegrityError):
+            self.engine.complete_remediation(claim.claim_id, "t", "PASS", reviewer_lane="codex")
+        after = self.engine.storage.get_claim(claim.claim_id)
+        self.assertEqual(after.state, before.state)
+        self.assertNotEqual(after.state, "REVIEWING")
+        self.assertIsNone(after.candidate_sha256)
+
 
 def main() -> int:
     print("=== Testing Autonomous On-Call Incident Daemon (DP-3) ===")
@@ -332,8 +514,8 @@ def main() -> int:
     runner = unittest.TextTestRunner(verbosity=2)
     result = runner.run(suite)
     if result.wasSuccessful():
-        print(f"\n7/7 fixtures passed.")
-        print("ALL 7 FIXTURES PASS")
+        print(f"\n{result.testsRun}/{result.testsRun} fixtures passed.")
+        print(f"ALL {result.testsRun} FIXTURES PASS")
         return 0
     return 1
 

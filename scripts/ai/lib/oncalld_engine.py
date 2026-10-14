@@ -18,8 +18,10 @@ import json
 import logging
 import os
 import re
+import shutil
 import sqlite3
 import subprocess
+import tempfile
 import time
 from dataclasses import asdict, dataclass
 from datetime import datetime, timezone
@@ -50,6 +52,16 @@ class ReviewIntegrityError(Exception):
     pass
 
 
+class WorktreeIsolationError(Exception):
+    """Raised when an isolated git worktree cannot be created (fail closed, no fallback)."""
+    pass
+
+
+class DuplicateClaimError(Exception):
+    """Raised when an incident already has an active implementer claim."""
+    pass
+
+
 @dataclass
 class OnCallIncident:
     incident_id: str
@@ -74,12 +86,14 @@ class RemediationClaim:
     claimant_lane: str  # e.g. "codex", "local", "claude", "antigravity"
     worktree_path: str
     worktree_branch: str
-    state: str  # "ISOLATING" | "REPRODUCING" | "DIAGNOSING" | "FIXING" | "VALIDATING" | "REVIEWING" | "PR_STAGED" | "AWAIT_OPERATOR" | "ACTIVATED" | "FAILED"
+    state: str  # "ISOLATING" | "REPRODUCING" | "DIAGNOSING" | "FIXING" | "VALIDATING" | "REVIEWING" | "AWAITING_REVIEW" | "PENDING_PR" | "PR_STAGED" | "AWAIT_OPERATOR" | "ACTIVATED" | "FAILED"
+    # AWAITING_REVIEW: candidate bound, no reviewer verdict recorded yet.
+    # PENDING_PR: real reviewer PASS recorded, no PR opened yet (PR_STAGED needs a real PR).
     candidate_sha256: Optional[str] = None
     git_tree_hash: Optional[str] = None
     test_proofs_hash: Optional[str] = None
     reviewer_lane: Optional[str] = None
-    reviewer_verdict: Optional[str] = None  # "PASS" | "CONCERNS" | "REJECTED"
+    reviewer_verdict: Optional[str] = None  # None until a real reviewer records one: "PASS" | "CONCERNS" | "REJECTED"
     review_explanation: Optional[str] = None
     pr_branch: Optional[str] = None
     created_at: str = ""
@@ -182,7 +196,10 @@ class OnCallStorage:
         try:
             self.db_path.parent.mkdir(parents=True, exist_ok=True)
             self._init_db()
-        except (OSError, sqlite3.Error):
+        except (OSError, sqlite3.Error) as err:
+            logger.error(
+                "oncalld storage at %s unusable (%s): FALLING BACK TO VOLATILE :memory: "
+                "- persisted state is NOT being used", self.db_path, err)
             self._fallback_memory = True
             self.db_path = Path(":memory:")
             self._mem_conn = sqlite3.connect(":memory:", timeout=30.0)
@@ -249,6 +266,32 @@ class OnCallStorage:
                     incident_id TEXT PRIMARY KEY,
                     current_epoch INTEGER NOT NULL
                 );
+            """)
+            # Old-schema DBs may hold duplicate active rows; supersede them (keep newest)
+            # before the unique indexes so index creation cannot fail.
+            conn.execute("""
+                UPDATE oncall_incidents SET status = 'REJECTED',
+                    updated_at = strftime('%Y-%m-%dT%H:%M:%f+00:00','now')
+                WHERE status NOT IN ('RESOLVED', 'REJECTED') AND rowid NOT IN (
+                    SELECT MAX(rowid) FROM oncall_incidents
+                    WHERE status NOT IN ('RESOLVED', 'REJECTED') GROUP BY correlation_key)
+            """)
+            conn.execute("""
+                UPDATE oncall_claims SET state = 'FAILED',
+                    review_explanation = 'superseded: duplicate active claim found at schema migration',
+                    updated_at = strftime('%Y-%m-%dT%H:%M:%f+00:00','now')
+                WHERE state NOT IN ('ACTIVATED', 'FAILED') AND rowid NOT IN (
+                    SELECT MAX(rowid) FROM oncall_claims
+                    WHERE state NOT IN ('ACTIVATED', 'FAILED') GROUP BY incident_id)
+            """)
+            conn.executescript("""
+                CREATE UNIQUE INDEX IF NOT EXISTS uq_incidents_active_correlation
+                ON oncall_incidents (correlation_key)
+                WHERE status NOT IN ('RESOLVED', 'REJECTED');
+
+                CREATE UNIQUE INDEX IF NOT EXISTS uq_claims_one_active_per_incident
+                ON oncall_claims (incident_id)
+                WHERE state NOT IN ('ACTIVATED', 'FAILED');
             """)
 
     def save_incident(self, inc: OnCallIncident) -> None:
@@ -360,31 +403,54 @@ class OnCallStorage:
                     f"Stale claim {claim.claim_id}: epoch {claim.epoch} < current epoch {curr_epoch}"
                 )
 
-            conn.execute("""
-                INSERT INTO oncall_claims (
-                    claim_id, incident_id, epoch, claimant_lane,
-                    worktree_path, worktree_branch, state,
-                    candidate_sha256, git_tree_hash, test_proofs_hash,
-                    reviewer_lane, reviewer_verdict, review_explanation,
-                    pr_branch, created_at, updated_at
-                ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
-                ON CONFLICT(claim_id) DO UPDATE SET
-                    state=excluded.state,
-                    candidate_sha256=excluded.candidate_sha256,
-                    git_tree_hash=excluded.git_tree_hash,
-                    test_proofs_hash=excluded.test_proofs_hash,
-                    reviewer_lane=excluded.reviewer_lane,
-                    reviewer_verdict=excluded.reviewer_verdict,
-                    review_explanation=excluded.review_explanation,
-                    pr_branch=excluded.pr_branch,
-                    updated_at=excluded.updated_at
-            """, (
-                claim.claim_id, claim.incident_id, claim.epoch, claim.claimant_lane,
-                claim.worktree_path, claim.worktree_branch, claim.state,
-                claim.candidate_sha256, claim.git_tree_hash, claim.test_proofs_hash,
-                claim.reviewer_lane, claim.reviewer_verdict, claim.review_explanation,
-                claim.pr_branch, claim.created_at, claim.updated_at
-            ))
+            try:
+                conn.execute("""
+                    INSERT INTO oncall_claims (
+                        claim_id, incident_id, epoch, claimant_lane,
+                        worktree_path, worktree_branch, state,
+                        candidate_sha256, git_tree_hash, test_proofs_hash,
+                        reviewer_lane, reviewer_verdict, review_explanation,
+                        pr_branch, created_at, updated_at
+                    ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+                    ON CONFLICT(claim_id) DO UPDATE SET
+                        state=excluded.state,
+                        candidate_sha256=excluded.candidate_sha256,
+                        git_tree_hash=excluded.git_tree_hash,
+                        test_proofs_hash=excluded.test_proofs_hash,
+                        reviewer_lane=excluded.reviewer_lane,
+                        reviewer_verdict=excluded.reviewer_verdict,
+                        review_explanation=excluded.review_explanation,
+                        pr_branch=excluded.pr_branch,
+                        updated_at=excluded.updated_at
+                """, (
+                    claim.claim_id, claim.incident_id, claim.epoch, claim.claimant_lane,
+                    claim.worktree_path, claim.worktree_branch, claim.state,
+                    claim.candidate_sha256, claim.git_tree_hash, claim.test_proofs_hash,
+                    claim.reviewer_lane, claim.reviewer_verdict, claim.review_explanation,
+                    claim.pr_branch, claim.created_at, claim.updated_at
+                ))
+            except sqlite3.IntegrityError as err:
+                raise DuplicateClaimError(
+                    f"Incident {claim.incident_id} already has an active implementer claim"
+                ) from err
+
+    def get_active_claim_for_incident(self, incident_id: str) -> Optional[str]:
+        with self._get_connection() as conn:
+            row = conn.execute(
+                "SELECT claim_id FROM oncall_claims WHERE incident_id = ? "
+                "AND state NOT IN ('ACTIVATED', 'FAILED')",
+                (incident_id,),
+            ).fetchone()
+            return row["claim_id"] if row else None
+
+    def supersede_active_claims(self, incident_id: str) -> None:
+        """Mark active claims FAILED (explicit takeover); the new epoch fences them out."""
+        with self._get_connection() as conn:
+            conn.execute(
+                "UPDATE oncall_claims SET state = 'FAILED', updated_at = ? "
+                "WHERE incident_id = ? AND state NOT IN ('ACTIVATED', 'FAILED')",
+                (datetime.now(timezone.utc).isoformat(), incident_id),
+            )
 
     def get_claim(self, claim_id: str) -> Optional[RemediationClaim]:
         with self._get_connection() as conn:
@@ -447,7 +513,11 @@ class OnCallStorage:
             inc_resolved = conn.execute("SELECT COUNT(*) FROM oncall_incidents WHERE status = 'RESOLVED'").fetchone()[0]
             claims_active = conn.execute("SELECT COUNT(*) FROM oncall_claims WHERE state NOT IN ('ACTIVATED', 'FAILED')").fetchone()[0]
             prs_staged = conn.execute("SELECT COUNT(*) FROM oncall_claims WHERE state IN ('PR_STAGED', 'AWAIT_OPERATOR')").fetchone()[0]
+            awaiting = conn.execute("SELECT COUNT(*) FROM oncall_claims WHERE state = 'AWAITING_REVIEW'").fetchone()[0]
+            pending_pr = conn.execute("SELECT COUNT(*) FROM oncall_claims WHERE state = 'PENDING_PR'").fetchone()[0]
             return {
+                "awaiting_review": awaiting,
+                "pending_pr": pending_pr,
                 "total_incidents": inc_total,
                 "resolved_incidents": inc_resolved,
                 "active_claims": claims_active,
@@ -538,19 +608,36 @@ class OnCallDaemonEngine:
             created_at=now_iso,
             updated_at=now_iso
         )
-        self.storage.save_incident(incident)
+        try:
+            self.storage.save_incident(incident)
+        except sqlite3.IntegrityError:
+            # Lost a race: unique index on active correlation_key already holds a twin.
+            logger.info("Deduplicated (race): active incident exists for key %s", correlation_key)
+            return None
         logger.info("Admitted incident %s (severity=%s, class=%s)", incident_id, incident.severity, incident.incident_class)
         return incident
 
     def claim_incident(
         self,
         incident_id: str,
-        claimant_lane: str = "codex"
+        claimant_lane: str = "codex",
+        takeover: bool = False
     ) -> RemediationClaim:
-        """Atomically claim an admitted incident with a monotonic fencing epoch."""
+        """Atomically claim an admitted incident with a monotonic fencing epoch.
+
+        Only one active implementer per incident: a second claim raises
+        DuplicateClaimError unless takeover=True, which fails the old claim and
+        fences it out via a higher epoch.
+        """
         incident = self.storage.get_incident(incident_id)
         if not incident:
             raise ValueError(f"Incident {incident_id} not found")
+
+        active = self.storage.get_active_claim_for_incident(incident_id)
+        if active and not takeover:
+            raise DuplicateClaimError(f"Incident {incident_id} already claimed by {active}")
+        if active:
+            self.storage.supersede_active_claims(incident_id)
 
         epoch = self.storage.allocate_epoch(incident_id)
         now_iso = datetime.now(timezone.utc).isoformat()
@@ -588,38 +675,71 @@ class OnCallDaemonEngine:
 
         return claim
 
+    def _release_incident(self, incident_id: str, status: str = "ADMITTED",
+                          actor: str = "system", action: str = "release", note: str = "") -> None:
+        """Return an incident to a claimable state (never RESOLVED) and audit it."""
+        inc = self.storage.get_incident(incident_id)
+        if not inc:
+            raise ValueError(f"Incident {incident_id} not found")
+        now_iso = datetime.now(timezone.utc).isoformat()
+        inc.status = status
+        inc.updated_at = now_iso
+        inc.raw_details.setdefault("operator_actions", []).append(
+            {"action": action, "actor": actor, "ts": now_iso, "note": note})
+        self.storage.save_incident(inc)
+
+    def _fail_claim(self, claim: RemediationClaim, reason: str) -> None:
+        claim.state = "FAILED"
+        claim.review_explanation = reason[:500]
+        claim.updated_at = datetime.now(timezone.utc).isoformat()
+        try:
+            self.storage.save_claim(claim, expected_epoch=claim.epoch)
+        except EpochFencingError:
+            return
+        self._release_incident(claim.incident_id, action="claim_failed", note=reason[:200])
+
+    def resolve_incident(self, incident_id: str, actor: str, note: str) -> None:
+        """Operator action: mark an incident RESOLVED and close its active claim."""
+        self.storage.supersede_active_claims(incident_id)
+        self._release_incident(incident_id, status="RESOLVED", actor=actor,
+                               action="resolve", note=note)
+
+    def requeue_incident(self, incident_id: str, actor: str, note: str = "") -> None:
+        """Operator action: fail the active claim and make the incident claimable again."""
+        self.storage.supersede_active_claims(incident_id)
+        self._release_incident(incident_id, status="ADMITTED", actor=actor,
+                               action="requeue", note=note)
+
     def create_isolated_worktree(self, claim: RemediationClaim) -> Path:
-        """Create git worktree in isolated workspace."""
+        """Create the git worktree for a claim. Fails closed: no plain-directory fallback."""
         wt_dir = Path(claim.worktree_path)
+        simulate = (os.getenv("AQ_ONCALL_SIMULATE_WORKTREE") == "1"
+                    and os.getenv("AQ_ONCALL_TEST_MODE") == "1")  # test-only: needs both markers
+        if simulate:
+            logger.warning("SIMULATED worktree (plain directory) in use for %s - test mode only",
+                           claim.claim_id)
         try:
             wt_dir.parent.mkdir(parents=True, exist_ok=True)
-        except OSError:
-            pass
-
-        simulate = os.getenv("AQ_ONCALL_SIMULATE_WORKTREE") == "1"
-        if simulate:
-            try:
+            if simulate:
                 wt_dir.mkdir(parents=True, exist_ok=True)
-            except OSError:
-                pass
-        elif not wt_dir.exists():
-            # Use git worktree add with hooks disabled and strict timeout
-            try:
+            elif wt_dir.exists():
+                if not (wt_dir / ".git").exists():
+                    raise WorktreeIsolationError(f"{wt_dir} exists but is not a git worktree")
+            else:
                 subprocess.run(
-                    ["git", "-c", "core.hooksPath=/dev/null", "worktree", "add", "-q", "-b", claim.worktree_branch, str(wt_dir), "HEAD"],
+                    ["git", "-c", "core.hooksPath=/dev/null", "worktree", "add", "-q",
+                     "-b", claim.worktree_branch, str(wt_dir), "HEAD"],
                     cwd=str(self.repo_root),
                     check=True,
                     capture_output=True,
                     text=True,
                     timeout=15
                 )
-            except (subprocess.CalledProcessError, OSError, subprocess.TimeoutExpired) as err:
-                logger.warning("Failed to create worktree via git: %s", err)
-                # Fallback to simulated directory in test/confined environments
-                try:
-                    wt_dir.mkdir(parents=True, exist_ok=True)
-                except OSError:
-                    pass
+        except (subprocess.CalledProcessError, OSError, subprocess.TimeoutExpired,
+                WorktreeIsolationError) as err:
+            detail = getattr(err, "stderr", None) or str(err)
+            self._fail_claim(claim, f"worktree_creation_failed: {detail}")
+            raise WorktreeIsolationError(f"Worktree creation failed for {claim.claim_id}: {detail}") from err
 
         claim.state = "REPRODUCING"
         claim.updated_at = datetime.now(timezone.utc).isoformat()
@@ -631,26 +751,38 @@ class OnCallDaemonEngine:
         claim: RemediationClaim,
         custom_cmd: Optional[str] = None
     ) -> Dict[str, Any]:
-        """Execute reproduction command in scrubbed environment."""
+        """Run the reproduction command confined by bubblewrap; refuse (defer) if unavailable."""
         incident = self.storage.get_incident(claim.incident_id)
         cmd = custom_cmd or (incident.reproduction_cmd if incident else None)
         if not cmd:
             return {"reproduced": False, "reason": "no_reproduction_command"}
 
-        scrubbed_env = scrub_credentials()
         wt_path = Path(claim.worktree_path)
+        if not wt_path.is_dir() or not verify_worktree_containment(str(wt_path), self.repo_root):
+            return {"reproduced": False, "deferred": True, "reason": "no_isolated_worktree"}
+        bwrap = shutil.which("bwrap")
+        if not bwrap:
+            return {"reproduced": False, "deferred": True, "reason": "no_sandbox_available"}
+
+        home = os.environ.get("HOME")
+        argv = [bwrap, "--ro-bind", "/", "/", "--dev", "/dev", "--proc", "/proc",
+                "--tmpfs", "/tmp"]
+        if home:
+            argv += ["--tmpfs", home]
+        argv += ["--bind", str(wt_path), str(wt_path), "--chdir", str(wt_path),
+                 "--unshare-all", "--die-with-parent", "bash", "-c", cmd]
 
         try:
             res = subprocess.run(
-                ["bash", "-c", cmd],
-                cwd=str(wt_path) if wt_path.exists() else str(self.repo_root),
-                env=scrubbed_env,
+                argv,
+                env=scrub_credentials(),
                 capture_output=True,
                 text=True,
                 timeout=30
             )
             return {
                 "reproduced": res.returncode != 0,
+                "confined": "bwrap",
                 "returncode": res.returncode,
                 "stdout": res.stdout[:2000],
                 "stderr": res.stderr[:2000]
@@ -670,7 +802,19 @@ class OnCallDaemonEngine:
         if not claim:
             raise ValueError(f"Claim {claim_id} not found")
 
-        # 1. Candidate SHA Binding
+        # 1. Independent reviewer assignment (Rule 18: distinct lane, never self-review).
+        # No reviewer integration exists in this engine: the claim stops at
+        # AWAITING_REVIEW until record_review() receives a real verdict.
+        selected_reviewer = reviewer_lane or (
+            "antigravity" if claim.claimant_lane != "antigravity" else "codex"
+        )
+        if selected_reviewer == claim.claimant_lane:
+            raise ReviewIntegrityError(
+                f"Rule 18 Violation: Claimant {claim.claimant_lane} cannot self-review. "
+                f"Must route to distinct model lane."
+            )
+
+        # 2. Candidate SHA Binding
         tree_hash, proofs_hash, candidate_sha = compute_candidate_sha256(
             git_tree_hash, test_proofs
         )
@@ -681,82 +825,130 @@ class OnCallDaemonEngine:
         claim.updated_at = datetime.now(timezone.utc).isoformat()
         self.storage.save_claim(claim, expected_epoch=claim.epoch)
 
-        # 2. Independent Review Gate (Rule 18: distinct model lane, never self-review)
-        selected_reviewer = reviewer_lane or (
-            "antigravity" if claim.claimant_lane != "antigravity" else "codex"
-        )
-        if selected_reviewer == claim.claimant_lane:
-            raise ReviewIntegrityError(
-                f"Rule 18 Violation: Claimant {claim.claimant_lane} cannot self-review. "
-                f"Must route to distinct model lane."
-            )
-
-        verdict, explanation = self._conduct_review(
-            claim=claim,
-            reviewer_lane=selected_reviewer,
-            candidate_sha=candidate_sha,
-            git_tree_hash=git_tree_hash,
-            test_proofs=test_proofs
-        )
-
         claim.reviewer_lane = selected_reviewer
-        claim.reviewer_verdict = verdict
-        claim.review_explanation = explanation
-
-        now_iso = datetime.now(timezone.utc).isoformat()
-        if verdict == "PASS":
-            claim.state = "PR_STAGED"
-            claim.pr_branch = claim.worktree_branch
-            incident = self.storage.get_incident(claim.incident_id)
-            if incident:
-                incident.status = "RESOLVED"
-                incident.updated_at = now_iso
-                self.storage.save_incident(incident)
+        claim.reviewer_verdict = None
+        if not test_proofs or "FAIL" in test_proofs:
+            self._fail_claim(claim, "Validation proofs missing or contain failure indicators")
+            return claim
         else:
-            claim.state = "FAILED"
-
-        claim.updated_at = now_iso
+            claim.state = "AWAITING_REVIEW"
+            claim.review_explanation = f"awaiting independent review by {selected_reviewer}"
+        claim.updated_at = datetime.now(timezone.utc).isoformat()
         self.storage.save_claim(claim, expected_epoch=claim.epoch)
         return claim
 
-    def _conduct_review(
+    def record_review(
         self,
-        claim: RemediationClaim,
+        claim_id: str,
         reviewer_lane: str,
-        candidate_sha: str,
+        verdict: str,
+        explanation: str,
         git_tree_hash: str,
-        test_proofs: str
-    ) -> Tuple[str, str]:
-        """Verify candidate binding and independent reviewer verdict."""
-        # Verify candidate binding integrity
-        if not verify_candidate_binding(candidate_sha, git_tree_hash, test_proofs):
-            return "REJECTED", "Candidate binding verification failed: git_tree or test_proofs drifted"
+        test_proofs: str,
+    ) -> RemediationClaim:
+        """Record a verdict produced by a real reviewer; verifies binding and independence.
 
-        # Check test proofs
-        if not test_proofs or "FAIL" in test_proofs:
-            return "REJECTED", "Validation proofs contain failure indicators"
+        PASS moves to PENDING_PR (no PR exists yet); the incident is NOT marked resolved.
+        """
+        claim = self.storage.get_claim(claim_id)
+        if not claim:
+            raise ValueError(f"Claim {claim_id} not found")
+        if claim.state != "AWAITING_REVIEW":
+            raise ReviewIntegrityError(f"Claim {claim_id} is {claim.state}, not AWAITING_REVIEW")
+        if reviewer_lane == claim.claimant_lane:
+            raise ReviewIntegrityError("Rule 18 Violation: reviewer is the claimant")
+        if verdict not in {"PASS", "CONCERNS", "REJECTED"}:
+            raise ReviewIntegrityError(f"Invalid verdict {verdict!r}")
+        if not claim.candidate_sha256 or not verify_candidate_binding(
+            claim.candidate_sha256, git_tree_hash, test_proofs
+        ):
+            raise ReviewIntegrityError("Candidate binding failed: git tree or proofs drifted")
 
-        explanation = (
-            f"Independent review by {reviewer_lane} passed: candidate SHA256 {candidate_sha[:16]} "
-            f"bound to git tree {git_tree_hash[:12]} with clean test proofs."
-        )
-        return "PASS", explanation
+        claim.reviewer_lane = reviewer_lane
+        claim.reviewer_verdict = verdict
+        claim.review_explanation = explanation
+        claim.state = "PENDING_PR" if verdict == "PASS" else "FAILED"
+        claim.updated_at = datetime.now(timezone.utc).isoformat()
+        self.storage.save_claim(claim, expected_epoch=claim.epoch)
+        if claim.state == "FAILED":
+            self._release_incident(claim.incident_id, action="review_rejected", note=explanation[:200])
+        return claim
+
+    # ── Heartbeat (written only by the running daemon loop) ──────────────────
+
+    @property
+    def heartbeat_path(self) -> Path:
+        return self.state_dir / "heartbeat.json"
+
+    def write_heartbeat(self, loop_count: int = 0) -> None:
+        payload = {"ts": datetime.now(timezone.utc).isoformat(), "pid": os.getpid(),
+                   "loop_count": loop_count}
+        self.state_dir.mkdir(parents=True, exist_ok=True)
+        fd, tmp = tempfile.mkstemp(dir=str(self.state_dir), prefix=".hb-")
+        with os.fdopen(fd, "w", encoding="utf-8") as fh:
+            json.dump(payload, fh)
+        os.replace(tmp, self.heartbeat_path)
+
+    def read_heartbeat(self) -> Dict[str, Any]:
+        """Return {"state": alive|stale|unknown, "last_heartbeat", "age_s"} from the daemon's file."""
+        stale_after = float(os.getenv("AQ_ONCALL_HEARTBEAT_STALE_S", "120"))
+        try:
+            data = json.loads(self.heartbeat_path.read_text(encoding="utf-8"))
+            ts = datetime.fromisoformat(data["ts"])
+            age = (datetime.now(timezone.utc) - ts).total_seconds()
+        except (OSError, ValueError, KeyError, TypeError):
+            return {"state": "unknown", "last_heartbeat": None, "age_s": None}
+        return {"state": "alive" if age <= stale_after else "stale",
+                "last_heartbeat": data["ts"], "age_s": round(age, 1), "pid": data.get("pid")}
+
+    def run_daemon(
+        self,
+        triage_engine: Optional[Any] = None,
+        interval: float = 30.0,
+        max_iterations: Optional[int] = None,
+        limit: int = 10,
+    ) -> int:
+        """Long-running loop: heartbeat, then one intake pass, every `interval` seconds."""
+        n = 0
+        while max_iterations is None or n < max_iterations:
+            n += 1
+            self.write_heartbeat(loop_count=n)
+            try:
+                self.run_once(triage_engine=triage_engine, limit=limit)
+            except Exception:  # keep the loop alive; the failure is logged
+                logger.exception("oncalld pass failed")
+            if max_iterations is None or n < max_iterations:
+                time.sleep(interval)
+        return n
 
     def health_summary(self) -> Dict[str, Any]:
         """Return engine health metrics and active remediation counts."""
         counts = self.storage.count_summary()
         active = self.storage.list_active_claims()
+        hb = self.read_heartbeat()
+        if hb["state"] == "unknown":
+            status = "unverified"
+        elif hb["state"] == "stale":
+            status = "stale"
+        else:
+            status = "healthy" if counts["active_claims"] == 0 else "remediating"
         return {
-            "status": "healthy" if counts["active_claims"] == 0 else "remediating",
+            "available": True,
+            "status": "degraded" if self.storage._fallback_memory else status,
+            "storage_fallback_memory": self.storage._fallback_memory,
+            "heartbeat_status": status,
+            "heartbeat": hb,
+            "awaiting_review": counts["awaiting_review"],
+            "pending_pr": counts["pending_pr"],
             "engine": "OnCallDaemonEngine",
-            "version": "1.0.0",
+            "version": "1.1.0",
             "confidence_threshold": self.confidence_threshold,
             "total_incidents": counts["total_incidents"],
             "resolved_incidents": counts["resolved_incidents"],
             "active_claims": counts["active_claims"],
             "staged_prs": counts["staged_prs"],
             "active_claim_ids": [c.claim_id for c in active],
-            "last_heartbeat": datetime.now(timezone.utc).isoformat(),
+            "last_heartbeat": hb["last_heartbeat"],
         }
 
     def run_once(
@@ -774,8 +966,12 @@ class OnCallDaemonEngine:
                 incident = self.admit_incident(rec)
                 if incident:
                     lane = getattr(rec, "suggested_lane", "codex") or "codex"
-                    claim = self.claim_incident(incident.incident_id, claimant_lane=lane)
-                    self.create_isolated_worktree(claim)
+                    try:
+                        claim = self.claim_incident(incident.incident_id, claimant_lane=lane)
+                        self.create_isolated_worktree(claim)
+                    except (DuplicateClaimError, WorktreeIsolationError) as err:
+                        logger.warning("Skipping incident %s: %s", incident.incident_id, err)
+                        continue
                     processed_claims.append(claim)
         return processed_claims
 
