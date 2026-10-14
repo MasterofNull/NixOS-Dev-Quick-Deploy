@@ -142,9 +142,11 @@ def main() -> int:
                 r = client.post("/api/aistack/agent-runs/run-root/guidance", json=payload)
                 assert_true(r.status_code == 200, f"expected 200, got {r.status_code}")
                 res = r.json()
-                assert_true(res["status"] == "injected", f"expected status injected, got {res.get('status')}")
+                assert_true(res["status"] == "recorded", f"expected status recorded, got {res.get('status')}")
                 assert_true(res["guidance"] == payload["prompt"], "guidance prompt mismatch")
                 assert_true(res["persisted"] is True, "guidance event should be persisted")
+                assert_true(res["delivery_status"] == "pending", "guidance delivery should remain pending")
+                assert_true(res["delivered"] is False, "guidance should not claim delivery without a consumer")
 
                 # Verify GET guidance endpoint reads it back
                 g_resp = client.get("/api/aistack/agent-runs/run-root/guidance")
@@ -153,13 +155,34 @@ def main() -> int:
                 assert_true(g_data.get("has_guidance") is True, "has_guidance should be true")
                 assert_true(g_data["guidance"]["prompt"] == payload["prompt"], "retrieved guidance prompt mismatch")
 
-                print("  PASS  DP-4: operator guidance injection persists human_control event and returns confirmation")
+                print("  PASS  DP-4: operator guidance is recorded with delivery pending")
                 passed += 1
             except Exception as e:
-                print(f"  FAIL  DP-4: operator guidance injection: {e}")
+                print(f"  FAIL  DP-4: operator guidance delivery status: {e}")
                 failed += 1
 
-            # ── 5. human controls: step-approve, pause, resume ──────────────
+            # ── 5. spool persistence failures must not claim delivery ────────
+            try:
+                original_spool_dir = aistack_module._get_guidance_spool_dir
+                aistack_module._get_guidance_spool_dir = lambda: tmp_path / "missing" / "guidance"
+                try:
+                    failed_guidance = client.post(
+                        "/api/aistack/agent-runs/run-root/guidance",
+                        json={"prompt": "This write must fail", "action": "guidance"},
+                    )
+                finally:
+                    aistack_module._get_guidance_spool_dir = original_spool_dir
+                assert_true(failed_guidance.status_code == 503, "spool failure should return 503")
+                failure = failed_guidance.json()["detail"]
+                assert_true(failure["status"] == "persistence_failed", "failure status mismatch")
+                assert_true(failure["delivery_status"] == "not_delivered", "failure must not imply delivery")
+                print("  PASS  DP-4: spool failure is explicit and not delivered")
+                passed += 1
+            except Exception as e:
+                print(f"  FAIL  DP-4: spool persistence failure: {e}")
+                failed += 1
+
+            # ── 6. human controls: step-approve, pause, resume ──────────────
             try:
                 for action in ("step_approve", "pause", "resume"):
                     r = client.post(f"/api/aistack/agent-runs/run-root/control", json={"action": action, "operator_id": "test-op"})
@@ -170,6 +193,10 @@ def main() -> int:
             except Exception as e:
                 print(f"  FAIL  DP-4: human controls: {e}")
                 failed += 1
+
+            if aistack_module._http_session and not aistack_module._http_session.closed:
+                client.portal.call(aistack_module._http_session.close)
+                aistack_module._http_session = None
 
     print(f"\n{passed}/{passed + failed} tests passed")
     return 1 if failed else 0

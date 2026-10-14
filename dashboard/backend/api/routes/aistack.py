@@ -6757,7 +6757,7 @@ async def post_agent_run_guidance(
     run_id: str,
     body: AgentGuidanceRequest,
 ) -> Dict[str, Any]:
-    """Inject mid-flight guidance or human-in-the-loop steering into an ongoing agent run."""
+    """Record guidance for later delivery by an agent-side consumer."""
     # Build and persist human control action
     action_body = AgentControlAction(
         action=body.action or "guidance",
@@ -6783,6 +6783,15 @@ async def post_agent_run_guidance(
         guidance_file.write_text(json.dumps(guidance_payload, indent=2), encoding="utf-8")
     except OSError as exc:
         logger.warning("guidance spool file write error: %s", exc)
+        raise HTTPException(
+            status_code=503,
+            detail={
+                "run_id": run_id,
+                "status": "persistence_failed",
+                "delivery_status": "not_delivered",
+                "message": "Guidance could not be recorded for delivery",
+            },
+        ) from exc
 
     return {
         "run_id": run_id,
@@ -6790,8 +6799,10 @@ async def post_agent_run_guidance(
         "action": body.action or "guidance",
         "operator_id": body.operator_id or "hyperd",
         "event_id": result.get("event_id"),
-        "persisted": result.get("persisted", False),
-        "status": "injected",
+        "persisted": True,
+        "status": "recorded",
+        "delivery_status": "pending",
+        "delivered": False,
     }
 
 
