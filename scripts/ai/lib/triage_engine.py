@@ -251,8 +251,8 @@ class JournalStreamTriage:
         for entry in entries:
             source = entry.get("_SYSTEMD_UNIT") or entry.get("unit") or entry.get("source") or "system"
             if not self.limiter.allow(source):
-                # Rate limited to prevent event flooding
-                continue
+                # Leave the cursor before this entry so the next poll can retry it.
+                break
 
             msg = entry.get("MESSAGE") or entry.get("message") or ""
             cursor_val = entry.get("__CURSOR") or entry.get("cursor") or ""
