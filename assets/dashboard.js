@@ -9735,10 +9735,16 @@ async function sendPiGuidanceAction(action) {
 
     const data = await resp.json();
     if (resp.ok) {
+      const isGuidance = action === "guidance";
       if (resultEl) {
-        resultEl.innerHTML = `<span style="color:var(--grn)">✓ Injected ${action} (${data.event_id ? data.event_id.slice(0, 16) : 'persisted'})</span>`;
+        resultEl.innerHTML = isGuidance
+          ? `<span style="color:var(--grn)">✓ Guidance recorded; agent delivery pending (${data.event_id ? data.event_id.slice(0, 16) : 'persisted'})</span>`
+          : `<span style="color:var(--grn)">✓ Injected ${action} (${data.event_id ? data.event_id.slice(0, 16) : 'persisted'})</span>`;
       }
-      appendPiConsoleMessage(`<div style="color:var(--magenta);background:rgba(187,134,252,.1);padding:.25rem .4rem;border-left:2px solid var(--magenta);border-radius:2px"><span style="font-weight:700">👤 INJECTED [${_escapeHtml(action)}]:</span> ${_escapeHtml(prompt || action)}</div>`);
+      const consoleLabel = isGuidance
+        ? "👤 GUIDANCE RECORDED [DELIVERY PENDING]"
+        : `👤 INJECTED [${_escapeHtml(action)}]`;
+      appendPiConsoleMessage(`<div style="color:var(--magenta);background:rgba(187,134,252,.1);padding:.25rem .4rem;border-left:2px solid var(--magenta);border-radius:2px"><span style="font-weight:700">${consoleLabel}:</span> ${_escapeHtml(prompt || action)}</div>`);
       if (action === "guidance" && inputEl) inputEl.value = "";
     } else {
       if (resultEl) resultEl.innerHTML = `<span style="color:var(--red)">✗ Error ${resp.status}: ${_escapeHtml(JSON.stringify(data))}</span>`;
