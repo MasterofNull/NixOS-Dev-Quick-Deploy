@@ -103,6 +103,19 @@ class TestAqTriage(unittest.TestCase):
         self.assertTrue(limiter.allow("svc_flood", now=now))
         self.assertFalse(limiter.allow("svc_flood", now=now))
 
+    def test_rate_limited_entry_does_not_advance_cursor_past_it(self) -> None:
+        """A throttled entry remains at the head of the next ingestion batch."""
+        self.engine.limiter = TokenBucketLimiter(capacity=1, refill_rate_per_sec=0.0)
+        entries = [
+            {"MESSAGE": f"failure {index}", "source": "svc", "__CURSOR": f"cursor-{index}", "__REALTIME_TIMESTAMP": str(index)}
+            for index in range(1, 4)
+        ]
+
+        results = self.engine.ingest_entries(entries, subsystem="journald")
+
+        self.assertEqual(len(results), 1)
+        self.assertEqual(self.engine.get_cursor("journald"), ("cursor-1", "1"))
+
     def test_fixture_4_actionable_filtering(self) -> None:
         """Fixture 4: Verify strict gating for actionable flag."""
         high_critical_entries = [
