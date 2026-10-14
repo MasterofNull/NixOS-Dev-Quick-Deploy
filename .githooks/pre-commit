@@ -52,6 +52,22 @@ run_secret_scan() {
     return 0
   fi
 
+  # CI parity: when gitleaks is available, .gitleaks.toml is the single source
+  # of truth (same rules CI runs). Root cause: the regex subset below missed
+  # generic-api-key findings that CI's gitleaks blocked (PR #506).
+  if command -v gitleaks >/dev/null 2>&1; then
+    local gl_repo_root
+    gl_repo_root="$(git rev-parse --show-toplevel)"
+    if ! gitleaks git --staged --pre-commit --no-banner --redact \
+        --config "${gl_repo_root}/.gitleaks.toml" --exit-code 1 \
+        "${gl_repo_root}" >&2; then
+      echo "pre-commit: gitleaks (CI-parity, .gitleaks.toml) blocked staged secrets. Fix and re-stage, or SKIP_SECRET_SCAN=1 (development only)." >&2
+      return 1
+    fi
+    return 0
+  fi
+  echo "pre-commit: WARNING gitleaks not on PATH; falling back to reduced regex scan - CI parity is degraded (CI may still flag findings)" >&2
+
   local regexes=(
     'sk-[A-Za-z0-9]{48}'
     '-----BEGIN (RSA |EC |OPENSSH )?PRIVATE KEY-----'
