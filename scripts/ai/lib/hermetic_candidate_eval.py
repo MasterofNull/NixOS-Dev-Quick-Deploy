@@ -17,6 +17,14 @@ from typing import Any, Mapping
 
 SCHEMA_VERSION = "aqos-hermetic-candidate-eval/v1"
 
+# No real executor exists yet (deferred to the planned shared `aq-confine`
+# launcher). Receipts built from caller-supplied execution results are
+# therefore never treated as real evidence unless a real backend ran them.
+REAL_EXECUTOR_BACKENDS: frozenset = frozenset()  # empty until the aq-confine executor exists
+# Allowlist of roles that may grant promotion (self-review roles are absent).
+ALLOWED_REVIEWER_ROLES = frozenset({"reviewer", "independent_reviewer", "binding_reviewer"})
+SIGNATURES_VERIFIED = False  # signature_ref is an opaque string; no crypto is checked.
+
 _SECRET_PATTERNS = (
     re.compile(r"-----BEGIN [A-Z ]*PRIVATE KEY-----"),
     re.compile(r"\bsk-[A-Za-z0-9_-]{20,}"),
@@ -100,8 +108,11 @@ def build_evaluation_receipt(
         "within_timeout": not timeout_hit,
     }
 
+    simulated = backend not in REAL_EXECUTOR_BACKENDS
     if not all(evidence.values()) or exit_code != 0:
         verdict = "FAIL_CLOSED"
+    elif simulated:
+        verdict = "SIMULATED_NOT_EVALUATED"
     else:
         verdict = "CANDIDATE_EXECUTED_PASS"
 
@@ -126,10 +137,14 @@ def build_evaluation_receipt(
         },
         "evidence": evidence,
         "evaluation_verdict": verdict,
+        "simulated": simulated,
     }
 
     if reviewer_promotion is not None:
-        core_payload["reviewer_promotion"] = dict(reviewer_promotion)
+        promo = dict(reviewer_promotion)
+        if simulated and promo.get("reviewer_verdict") == "PROMOTED":
+            promo["reviewer_verdict"] = "HOLD"  # simulated runs can never be PROMOTED
+        core_payload["reviewer_promotion"] = promo
 
     payload_hash = sha256_digest(canonical_bytes(core_payload))
     core_payload["receipt_digest"] = payload_hash
@@ -178,6 +193,9 @@ def verify_evaluation_receipt(receipt: Mapping[str, Any], expected_artifact_path
     if not evidence.get("within_timeout"):
         raise HermeticEvalError("timeout", "Execution exceeded allotted hermetic timeout limit")
 
+    if receipt.get("simulated") is not False or receipt.get("containment", {}).get("backend") not in REAL_EXECUTOR_BACKENDS:
+        raise HermeticEvalError("simulated_evaluation", "Receipt is simulated (mock backend / no real executor); cannot be promoted")
+
     if receipt.get("evaluation_verdict") != "CANDIDATE_EXECUTED_PASS":
         raise HermeticEvalError("execution_failed", f"Underlying execution failed: {receipt.get('evaluation_verdict')}")
 
@@ -187,8 +205,11 @@ def verify_evaluation_receipt(receipt: Mapping[str, Any], expected_artifact_path
         raise HermeticEvalError("promotion_missing", "Receipt integrity alone cannot promote; independent review required")
 
     reviewer_role = promotion.get("reviewer_role", "")
-    if reviewer_role in {"implementer", "author", "self"}:
-        raise HermeticEvalError("reviewer_conflict", f"Reviewer role '{reviewer_role}' cannot self-promote candidate")
+    if reviewer_role not in ALLOWED_REVIEWER_ROLES:
+        raise HermeticEvalError("reviewer_conflict", f"Reviewer role '{reviewer_role}' is not an allowed independent reviewer role")
+
+    if str(promotion.get("signature_ref", "")).startswith("unsigned:"):
+        raise HermeticEvalError("unsigned_review", "Reviewer promotion carries an unsigned signature_ref")
 
     verdict = promotion.get("reviewer_verdict")
     if verdict != "PROMOTED":
@@ -199,15 +220,36 @@ def verify_evaluation_receipt(receipt: Mapping[str, Any], expected_artifact_path
         "candidate_id": receipt.get("candidate_id"),
         "verdict": "PROMOTED",
         "receipt_digest": receipt_digest,
+        "signature_verified": False,
+        "note": "digest chain + reviewer role checked; reviewer signature_ref is NOT cryptographically verified",
     }
 
 
 def dashboard_summary(repo_root: Path | str | None = None) -> dict[str, Any]:
-    """Summary of hermetic candidate evaluation capability for dashboard integration."""
+    """Summary derived from actual receipts (*.json with this schema) under .agent/eval-receipts."""
+    root = Path(repo_root) if repo_root else Path(__file__).resolve().parents[3]
+    receipts_dir = root / ".agent" / "eval-receipts"
+    real = simulated = 0
+    if receipts_dir.is_dir():
+        for f in receipts_dir.glob("*.json"):
+            try:
+                r = json.loads(f.read_text(encoding="utf-8"))
+            except (OSError, ValueError):
+                continue
+            if not isinstance(r, dict) or r.get("schema_version") != SCHEMA_VERSION:
+                continue
+            if r.get("simulated") is False:
+                real += 1
+            else:
+                simulated += 1
     return {
         "available": True,
-        "status": "ok",
+        "status": "ok" if real else ("simulated_only" if simulated else "no_receipts"),
         "schema_version": SCHEMA_VERSION,
         "containment_backends": ["bwrap", "mock", "process"],
+        "real_executor_available": False,
+        "real_receipts": real,
+        "simulated_receipts": simulated,
+        "signatures_verified": SIGNATURES_VERIFIED,
         "policy": "fail_closed_independent_review_required",
     }
