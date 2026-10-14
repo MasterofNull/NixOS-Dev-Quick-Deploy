@@ -1,0 +1,187 @@
+#!/usr/bin/env python3
+"""CLI for Autonomous On-Call Incident Response Daemon (`aq-oncalld`).
+
+Usage:
+  aq-oncalld --status [--json]
+  aq-oncalld --trigger '<json_string>' [--json]
+  aq-oncalld --file <path_to_json> [--json]
+  aq-oncalld --run-once [--limit <N>] [--json]
+  aq-oncalld --list [--json]
+  aq-oncalld --verify [--json]
+"""
+from __future__ import annotations
+
+import argparse
+import json
+import sys
+from pathlib import Path
+
+# Add repo scripts/ai/lib to sys.path
+_REPO_ROOT = Path(__file__).resolve().parents[2]
+sys.path.insert(0, str(_REPO_ROOT / "scripts" / "ai" / "lib"))
+
+from oncalld_engine import (
+    OnCallDaemonEngine,
+    compute_candidate_sha256,
+    scrub_credentials,
+    verify_candidate_binding,
+    verify_worktree_containment,
+    health_summary,
+)
+
+
+def main() -> int:
+    parser = argparse.ArgumentParser(description="Autonomous On-Call Incident Daemon")
+    parser.add_argument("--status", action="store_true", help="Print on-call daemon status and metrics")
+    parser.add_argument("--trigger", type=str, metavar="JSON", help="Trigger an incident from a JSON string")
+    parser.add_argument("--file", type=Path, metavar="PATH", help="Trigger an incident from a JSON file")
+    parser.add_argument("--run-once", action="store_true", help="Run a single intake/remediation pass")
+    parser.add_argument("--limit", type=int, default=10, help="Max entries to process with --run-once")
+    parser.add_argument("--list", action="store_true", help="List active remediation claims")
+    parser.add_argument("--verify", action="store_true", help="Run engine self-check and integrity verification")
+    parser.add_argument("--state-dir", type=Path, default=None, help="Custom state directory for on-call db")
+    parser.add_argument("--json", action="store_true", help="Output machine-readable JSON")
+
+    args = parser.parse_args()
+    engine = OnCallDaemonEngine(repo_root=_REPO_ROOT, state_dir=args.state_dir)
+
+    if args.status:
+        summary = engine.health_summary()
+        if args.json:
+            print(json.dumps(summary, indent=2))
+        else:
+            print("=== Autonomous On-Call Daemon Status ===")
+            print(f"Status:             {summary.get('status', 'unknown')}")
+            print(f"Total Incidents:    {summary.get('total_incidents', 0)}")
+            print(f"Resolved Incidents: {summary.get('resolved_incidents', 0)}")
+            print(f"Active Claims:      {summary.get('active_claims', 0)}")
+            print(f"Staged PRs:         {summary.get('staged_prs', 0)}")
+            print(f"Confidence Target:  >= {summary.get('confidence_threshold', 0.70)}")
+            if summary.get("active_claim_ids"):
+                print(f"Active Claim IDs:   {', '.join(summary['active_claim_ids'])}")
+        return 0
+
+    if args.trigger or args.file:
+        try:
+            if args.trigger:
+                payload = json.loads(args.trigger)
+            else:
+                with open(args.file, "r", encoding="utf-8") as f:
+                    payload = json.load(f)
+        except Exception as e:
+            print(f"Error parsing incident payload: {e}", file=sys.stderr)
+            return 1
+
+        incident = engine.admit_incident(payload)
+        if not incident:
+            msg = {"status": "rejected", "reason": "Incident filtered out (not actionable, low confidence, or deduplicated)"}
+            if args.json:
+                print(json.dumps(msg, indent=2))
+            else:
+                print(f"[REJECTED] {msg['reason']}")
+            return 1
+
+        lane = payload.get("suggested_lane", "codex") or "codex"
+        claim = engine.claim_incident(incident.incident_id, claimant_lane=lane)
+        engine.create_isolated_worktree(claim)
+
+        result = {
+            "status": "claimed",
+            "incident_id": incident.incident_id,
+            "claim_id": claim.claim_id,
+            "epoch": claim.epoch,
+            "claimant_lane": claim.claimant_lane,
+            "worktree_path": claim.worktree_path,
+            "worktree_branch": claim.worktree_branch,
+            "state": claim.state
+        }
+        if args.json:
+            print(json.dumps(result, indent=2))
+        else:
+            print(f"[CLAIMED] Incident {incident.incident_id} claimed by {lane} (epoch={claim.epoch})")
+            print(f"  Worktree: {claim.worktree_path}")
+            print(f"  Branch:   {claim.worktree_branch}")
+        return 0
+
+    if args.list:
+        claims = engine.storage.list_active_claims()
+        if args.json:
+            print(json.dumps([c.__dict__ for c in claims], indent=2))
+        else:
+            print(f"=== Active On-Call Claims ({len(claims)}) ===")
+            for c in claims:
+                print(f"[{c.state}] {c.claim_id} (lane={c.claimant_lane}, epoch={c.epoch})")
+                print(f"  Incident: {c.incident_id}")
+                print(f"  Worktree: {c.worktree_path}")
+                if c.candidate_sha256:
+                    print(f"  Candidate SHA: {c.candidate_sha256[:16]}...")
+        return 0
+
+    if args.verify:
+        errors = []
+        # 1. Test credential scrubbing
+        test_env = {
+            "PATH": "/usr/bin",
+            "GITHUB_TOKEN": "ghp_secret123",
+            "SOPS_AGE_KEY": "AGE-SECRET-KEY",
+            "MY_CUSTOM_SECRET": "xyz",
+            "USER": "hyperd"
+        }
+        scrubbed = scrub_credentials(test_env)
+        if "GITHUB_TOKEN" in scrubbed or "SOPS_AGE_KEY" in scrubbed or "MY_CUSTOM_SECRET" in scrubbed:
+            errors.append("Credential scrubbing failed to strip secrets")
+        if scrubbed.get("AQ_ONCALL_CONFINED") != "1":
+            errors.append("AQ_ONCALL_CONFINED flag missing from scrubbed environment")
+
+        # 2. Test candidate SHA binding
+        _, _, c_sha = compute_candidate_sha256("abcd1234ef", "ALL TESTS PASSED")
+        if not verify_candidate_binding(c_sha, "abcd1234ef", "ALL TESTS PASSED"):
+            errors.append("Candidate SHA binding verification failed")
+        if verify_candidate_binding(c_sha, "drifted_tree", "ALL TESTS PASSED"):
+            errors.append("Candidate SHA failed to detect git tree drift")
+
+        # 3. Test worktree containment
+        allowed_wt = str(_REPO_ROOT / ".agents" / "delegation" / "worktrees" / "task-1")
+        disallowed_wt = str(_REPO_ROOT)
+        if not verify_worktree_containment(allowed_wt, _REPO_ROOT):
+            errors.append("Worktree containment rejected valid path")
+        if verify_worktree_containment(disallowed_wt, _REPO_ROOT):
+            errors.append("Worktree containment accepted repo root")
+
+        ver_res = {
+            "status": "PASS" if not errors else "FAIL",
+            "errors": errors,
+            "checks_run": 3
+        }
+        if args.json:
+            print(json.dumps(ver_res, indent=2))
+        else:
+            if not errors:
+                print("PASS: Autonomous On-Call Daemon engine verified (scrubbing, containment, SHA binding)")
+            else:
+                print("FAIL: On-Call engine verification failed:")
+                for e in errors:
+                    print(f"  - {e}")
+        return 0 if not errors else 1
+
+    if args.run_once:
+        # Check if triage_engine is available
+        try:
+            from triage_engine import JournalStreamTriage
+            triage_eng = JournalStreamTriage()
+        except ImportError:
+            triage_eng = None
+
+        claims = engine.run_once(triage_engine=triage_eng, limit=args.limit)
+        if args.json:
+            print(json.dumps([c.__dict__ for c in claims], indent=2))
+        else:
+            print(f"Run-once complete. Claimed and isolated {len(claims)} incident(s).")
+        return 0
+
+    parser.print_help()
+    return 0
+
+
+if __name__ == "__main__":
+    sys.exit(main())
