@@ -1,0 +1,19 @@
+name: review-disposition
+
+on:
+  pull_request:
+    types: [opened, edited, synchronize, reopened]
+  pull_request_review:
+    types: [submitted, edited, dismissed]
+
+permissions:
+  contents: read
+
+jobs:
+  review-disposition:
+    name: review-disposition
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@fbc6f3992d24b796d5a048ff273f7fcc4a7b6c09  # v5
+      - name: Verify independent, head-bound review disposition
+        run: python3 scripts/governance/check-review-disposition.py "$GITHUB_EVENT_PATH"

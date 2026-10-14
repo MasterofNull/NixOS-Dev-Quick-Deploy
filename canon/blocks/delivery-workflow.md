@@ -27,6 +27,10 @@ memory; that is why another lane committed straight into the main checkout. They
   `SKIP_PRE_PUSH_SYNC_CHECK=true git push --force-with-lease`.
 - Each PR carries an evidence doc `docs/harness-first/evidence/<YYYY-MM-DD>-<slug>.md`
   (what changed, why, test output, what is still not done).
+- The required `review-disposition` check (`.github/workflows/review-disposition.yml`) needs the PR body to
+  carry `Author-lane`, `Review-Disposition: PASS|PASS_WITH_FOLLOWUPS`, `Reviewed-subject-sha256`,
+  `Reviewed-head-sha` (== current PR head; re-review after each push) and `Reviewed-by` (lane != Author-lane).
+  Template: `.github/pull_request_template.md`. Identity is declarative until signed receipts exist.
 
 ### 4. Leave a resumable trail
 - Before ending a session or turn: `.agent/collaboration/RESUME.json` (objective, phase, todo snapshot,
