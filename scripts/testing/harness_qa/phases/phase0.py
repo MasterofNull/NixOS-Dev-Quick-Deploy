@@ -1657,7 +1657,7 @@ def _check_autonomous_oncall_daemon(ctx: RunContext) -> list[CheckResult]:
     try:
         proc = subprocess.run([sys.executable, str(test)], cwd=str(ctx.repo_root), capture_output=True, text=True,
                               timeout=120, check=False)
-        if proc.returncode != 0 or "ALL 7 FIXTURES PASS" not in proc.stdout:
+        if proc.returncode != 0 or "ALL 17 FIXTURES PASS" not in proc.stdout:
             return [failed(5, "0.10.69", desc, (proc.stderr or proc.stdout or "fixture failed")[-240:])]
         if "_oncall_daemon_health_summary" not in route.read_text(encoding="utf-8") or "· autonomous on-call daemon" not in js.read_text(encoding="utf-8"):
             return [failed(5, "0.10.69", desc, "dashboard on-call daemon visibility contract missing")]
