@@ -5,6 +5,7 @@ Usage:
   aq-oncalld --status [--json]
   aq-oncalld --trigger '<json_string>' [--json]
   aq-oncalld --file <path_to_json> [--json]
+  aq-oncalld --daemon [--interval <S>]
   aq-oncalld --run-once [--limit <N>] [--json]
   aq-oncalld --list [--json]
   aq-oncalld --verify [--json]
@@ -13,6 +14,7 @@ from __future__ import annotations
 
 import argparse
 import json
+import os
 import sys
 from pathlib import Path
 
@@ -21,6 +23,8 @@ _REPO_ROOT = Path(__file__).resolve().parents[2]
 sys.path.insert(0, str(_REPO_ROOT / "scripts" / "ai" / "lib"))
 
 from oncalld_engine import (
+    DuplicateClaimError,
+    WorktreeIsolationError,
     OnCallDaemonEngine,
     compute_candidate_sha256,
     scrub_credentials,
@@ -35,6 +39,12 @@ def main() -> int:
     parser.add_argument("--status", action="store_true", help="Print on-call daemon status and metrics")
     parser.add_argument("--trigger", type=str, metavar="JSON", help="Trigger an incident from a JSON string")
     parser.add_argument("--file", type=Path, metavar="PATH", help="Trigger an incident from a JSON file")
+    parser.add_argument("--resolve", metavar="INCIDENT_ID", help="Operator: mark incident RESOLVED")
+    parser.add_argument("--requeue", metavar="INCIDENT_ID", help="Operator: fail active claim, make claimable")
+    parser.add_argument("--note", default="", help="Note recorded with --resolve/--requeue")
+    parser.add_argument("--actor", default=os.environ.get("USER", "operator"), help="Actor recorded for operator actions")
+    parser.add_argument("--daemon", action="store_true", help="Run the long-lived loop (writes heartbeat)")
+    parser.add_argument("--interval", type=float, default=30.0, help="Seconds between --daemon passes")
     parser.add_argument("--run-once", action="store_true", help="Run a single intake/remediation pass")
     parser.add_argument("--limit", type=int, default=10, help="Max entries to process with --run-once")
     parser.add_argument("--list", action="store_true", help="List active remediation claims")
@@ -45,6 +55,19 @@ def main() -> int:
     args = parser.parse_args()
     engine = OnCallDaemonEngine(repo_root=_REPO_ROOT, state_dir=args.state_dir)
 
+    if args.resolve or args.requeue:
+        iid = args.resolve or args.requeue
+        try:
+            if args.resolve:
+                engine.resolve_incident(iid, args.actor, args.note)
+            else:
+                engine.requeue_incident(iid, args.actor, args.note)
+        except ValueError as err:
+            print(f"[ERROR] {err}", file=sys.stderr)
+            return 1
+        print(json.dumps({"status": "resolved" if args.resolve else "requeued", "incident_id": iid}))
+        return 0
+
     if args.status:
         summary = engine.health_summary()
         if args.json:
@@ -52,6 +75,10 @@ def main() -> int:
         else:
             print("=== Autonomous On-Call Daemon Status ===")
             print(f"Status:             {summary.get('status', 'unknown')}")
+            hb = summary.get("heartbeat", {})
+            print(f"Heartbeat:          {hb.get('state', 'unknown')} (last={hb.get('last_heartbeat')})")
+            print(f"Awaiting Review:    {summary.get('awaiting_review', 0)}")
+            print(f"Pending PR:         {summary.get('pending_pr', 0)}")
             print(f"Total Incidents:    {summary.get('total_incidents', 0)}")
             print(f"Resolved Incidents: {summary.get('resolved_incidents', 0)}")
             print(f"Active Claims:      {summary.get('active_claims', 0)}")
@@ -82,8 +109,13 @@ def main() -> int:
             return 1
 
         lane = payload.get("suggested_lane", "codex") or "codex"
-        claim = engine.claim_incident(incident.incident_id, claimant_lane=lane)
-        engine.create_isolated_worktree(claim)
+        try:
+            claim = engine.claim_incident(incident.incident_id, claimant_lane=lane)
+            engine.create_isolated_worktree(claim)
+        except (DuplicateClaimError, WorktreeIsolationError) as err:
+            print(json.dumps({"status": "error", "reason": str(err)}) if args.json else f"[ERROR] {err}",
+                  file=sys.stderr if not args.json else sys.stdout)
+            return 1
 
         result = {
             "status": "claimed",
@@ -122,9 +154,9 @@ def main() -> int:
         # 1. Test credential scrubbing
         test_env = {
             "PATH": "/usr/bin",
-            "GITHUB_TOKEN": "ghp_secret123",
-            "SOPS_AGE_KEY": "AGE-SECRET-KEY",
-            "MY_CUSTOM_SECRET": "xyz",
+            "GITHUB_TOKEN": "placeholder",
+            "SOPS_AGE_KEY": "placeholder",
+            "MY_CUSTOM_SECRET": "placeholder",
             "USER": "hyperd"
         }
         scrubbed = scrub_credentials(test_env)
@@ -163,6 +195,15 @@ def main() -> int:
                 for e in errors:
                     print(f"  - {e}")
         return 0 if not errors else 1
+
+    if args.daemon:
+        try:
+            from triage_engine import JournalStreamTriage
+            triage_eng = JournalStreamTriage()
+        except ImportError:
+            triage_eng = None
+        engine.run_daemon(triage_engine=triage_eng, interval=args.interval, limit=args.limit)
+        return 0
 
     if args.run_once:
         # Check if triage_engine is available
