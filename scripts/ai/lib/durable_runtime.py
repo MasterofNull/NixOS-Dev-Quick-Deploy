@@ -44,6 +44,26 @@ class IntentState(str, enum.Enum):
     RECONCILED_FAILED = "RECONCILED_FAILED"
 
 
+_LEGAL_TRANSITIONS = {
+    IntentState.PREPARED.value: {IntentState.EXECUTING.value},
+    IntentState.EXECUTING.value: {
+        IntentState.COMMITTED.value,
+        IntentState.FAILED_KNOWN.value,
+        IntentState.OUTCOME_UNKNOWN.value,
+    },
+    IntentState.FAILED_KNOWN.value: {IntentState.EXECUTING.value},
+    IntentState.OUTCOME_UNKNOWN.value: {IntentState.RECONCILING.value},
+    IntentState.RECONCILING.value: {
+        IntentState.OUTCOME_UNKNOWN.value,
+        IntentState.RECONCILED_COMMITTED.value,
+        IntentState.RECONCILED_FAILED.value,
+    },
+    IntentState.RECONCILED_FAILED.value: {IntentState.EXECUTING.value},
+    IntentState.COMMITTED.value: set(),
+    IntentState.RECONCILED_COMMITTED.value: set(),
+}
+
+
 class ConcurrencyConflictError(RuntimeError):
     """Raised when CAS (Compare-and-Swap) version check fails."""
     pass
@@ -253,7 +273,7 @@ class DurableEffectStore:
         result: Optional[Any] = None,
         error: Optional[str] = None,
     ) -> IntentRecord:
-        """Atomic CAS transition to target state."""
+        """Atomic CAS transition to a legal target state."""
         target_state_val = target_state.value if isinstance(target_state, IntentState) else str(target_state)
         now = datetime.datetime.now(datetime.timezone.utc).isoformat()
 
@@ -268,6 +288,12 @@ class DurableEffectStore:
             if current_version != expected_version:
                 raise ConcurrencyConflictError(
                     f"CAS failure on intent {intent_id}: expected version {expected_version}, got {current_version}"
+                )
+
+            current_state = current.get("state")
+            if target_state_val not in _LEGAL_TRANSITIONS.get(current_state, set()):
+                raise ValueError(
+                    f"Illegal transition for intent {intent_id}: {current_state} -> {target_state_val}"
                 )
 
             current["state"] = target_state_val
@@ -364,7 +390,27 @@ class EffectSandwichMiddleware:
             logger.info("Idempotent replay match: returning cached result for %s", intent.intent_id)
             return intent, intent.result
 
-        # Phase 2: EXECUTING (Transition to EXECUTING)
+        # Phase 2: atomically claim only work that is safe to execute.
+        # OUTCOME_UNKNOWN and active claims must be reconciled or resolved first.
+        if intent.state == IntentState.EXECUTING.value:
+            raise ConcurrencyConflictError(
+                f"Intent {intent.intent_id} is already executing and cannot be claimed again"
+            )
+        if intent.state in (IntentState.OUTCOME_UNKNOWN.value, IntentState.RECONCILING.value):
+            raise OutcomeUnknownError(
+                f"Intent {intent.intent_id} has unresolved outcome and requires reconciliation"
+            )
+        if intent.state == IntentState.FAILED_KNOWN.value and intent.tool_class != ToolClass.CLASS_1_READ_ONLY.value:
+            raise OutcomeUnknownError(
+                f"Intent {intent.intent_id} is not safe to replay without reconciliation"
+            )
+        if intent.state not in (
+            IntentState.PREPARED.value,
+            IntentState.FAILED_KNOWN.value,
+            IntentState.RECONCILED_FAILED.value,
+        ):
+            raise ValueError(f"Intent {intent.intent_id} cannot execute from state {intent.state}")
+
         intent = self.store.transition(intent.intent_id, IntentState.EXECUTING, intent.version)
 
         try:
@@ -378,18 +424,22 @@ class EffectSandwichMiddleware:
             )
             return intent, raw_result
 
-        except (ValueError, KeyError, FileNotFoundError, PermissionError) as known_err:
-            # Known domain failure -> FAILED_KNOWN
-            err_msg = str(known_err)
-            intent = self.store.transition(
-                intent.intent_id,
-                IntentState.FAILED_KNOWN,
-                intent.version,
-                error=err_msg,
-            )
-            raise
-
         except Exception as crash_or_interruption:
+            if (
+                isinstance(
+                    crash_or_interruption,
+                    (ValueError, KeyError, FileNotFoundError, PermissionError),
+                )
+                and intent.tool_class == ToolClass.CLASS_1_READ_ONLY.value
+            ):
+                self.store.transition(
+                    intent.intent_id,
+                    IntentState.FAILED_KNOWN,
+                    intent.version,
+                    error=str(crash_or_interruption),
+                )
+                raise
+
             # Crash / timeout / unknown failure -> OUTCOME_UNKNOWN
             err_msg = str(crash_or_interruption)
             logger.warning(
@@ -418,17 +468,22 @@ class EffectSandwichMiddleware:
         intent_id: str,
         target_inspector_fn: Optional[Callable[[Dict[str, Any]], Tuple[bool, Any]]] = None,
     ) -> Tuple[IntentRecord, Optional[Any]]:
-        """Reconcile an intent in OUTCOME_UNKNOWN or stuck in EXECUTING."""
+        """Reconcile an intent whose execution outcome is unknown."""
         intent = self.store.get_intent(intent_id)
         if not intent:
             raise KeyError(f"Intent {intent_id} not found")
 
-        # Only reconcile unresolved intents
-        if intent.state not in (
-            IntentState.OUTCOME_UNKNOWN.value,
-            IntentState.EXECUTING.value,
-            IntentState.RECONCILING.value,
-        ):
+        # A live EXECUTING claim cannot be distinguished from a crashed worker
+        # without a lease/owner protocol, so leave it untouched and fail closed.
+        if intent.state == IntentState.EXECUTING.value:
+            raise ConcurrencyConflictError(
+                f"Intent {intent.intent_id} is actively executing and cannot be reconciled"
+            )
+        if intent.state == IntentState.RECONCILING.value:
+            raise ConcurrencyConflictError(
+                f"Intent {intent.intent_id} is already being reconciled"
+            )
+        if intent.state != IntentState.OUTCOME_UNKNOWN.value:
             return intent, intent.result
 
         # Transition to RECONCILING

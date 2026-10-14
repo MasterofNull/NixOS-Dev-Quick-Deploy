@@ -697,3 +697,14 @@ Status: configuration preparation; activation deferred to the owner's next rebui
 - Observable: Displayed in `get_auth_status()` and terminal workspace Zellij pane headers.
 - Intervenable: Key-driven interactive controls for clean new sessions, resuming, login, and quitting.
 - PM-tracked: `.agent/archive/20261012-PROJECT-AQ-WORKSPACE-AGY-NATIVE-CLI-PRD.md`, PR #497, PULSE.log, and RESUME.json.
+
+## DP2 ambiguous replay repair — 2026-10-14 — activation deferred
+- Integrated: repaired existing EffectSandwichMiddleware library and regression callers. Repository search found no live spawn caller; no production integration claimed.
+- Turned ON: repository repair only; service activation NONE.
+- Functionally validated: focused callback/ledger regressions; live external spawning/reconciliation deferred pending authoritative target lookup and wiring.
+- Observable: existing ledger/status surface retained; live health-spider/alert attestation deferred with integration.
+- Intervenable: active/unresolved intents fail closed; abandoned EXECUTING recovery deferred pending authoritative lease/owner protocol. No unsafe reset introduced.
+- PM-tracked: clearance PRD and evidence record blockers; prior DP2 percentage is not readiness evidence. Status remains paused pending activation, not MVP complete.
+
+## DP3 and DP4 review correction — 2026-10-14
+DP3 PR506 at 7f9ef0f4 has no release acceptance: real worktree confinement, brokered reproduction, distinct-agent exact-tree review, actual PR, bounded concurrency, and process heartbeat are unproven or absent. Keep unmerged pending remediation and real E2E. DP4 guidance persistence is not live steering; no consumer/ack exists. Its live delivery is deferred until that contract is implemented and exercised.

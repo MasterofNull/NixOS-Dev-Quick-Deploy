@@ -353,3 +353,18 @@ Codex lane absent).
 - interim: its commit sets `AQ_ALLOW_MAIN_CHECKOUT_COMMIT=1` (explicit, grep-able exception; owner-approved path only).
 - fix-path: fix agent stages rules on a `apparmor/<alert-id>` branch in a worktree and opens a PR; `aq-approve` approves the PR instead of committing.
 - class T2 · severity LOW · status OPEN · opened 2026-10-10.
+
+## WR-DP2-ACTIVE-CLAIM-RECOVERY-20261014
+- symptom: EXECUTING or ambiguous intents cannot be replayed automatically.
+- root cause: runtime lacks authoritative lease/owner recovery and live spawn reconciliation.
+- producer: scripts/ai/lib/durable_runtime.py and future live spawn integration.
+- fix-path: establish target identity lookup and owner/lease recovery before allowing replay; preserve fail-closed state in the meantime.
+- class: T1 runtime; severity: HIGH; status: live recovery deferred 2026-10-14.
+- interim: reject unresolved/concurrent replay; no synthetic success, timestamp refresh, or manual ledger reset.
+
+## WR-DP4-GUIDANCE-DELIVERY-20261014
+- symptom: guidance file persistence has no agent acknowledgment.
+- root cause: DP4 shipped a spool endpoint without a consuming agent contract.
+- producer: dashboard/backend/api/routes/aistack.py guidance endpoint.
+- fix-path: report recorded/undelivered honestly now; design and validate consumer acknowledgment before claiming live steering.
+- class: T1 runtime; severity: HIGH; status: live delivery deferred 2026-10-14.
