@@ -577,7 +577,10 @@ def adapter_osi_layers(probe_url=None, runner=None, timeout=5):
       6: Cognitive / Inference / LLM slots
       7: Application / UX / Dashboard
     """
-    url = probe_url or os.getenv("RSI_SWEEP_OSI_HEALTH_URL", "http://127.0.0.1:8889/api/health/layered")
+    url = probe_url or os.getenv(
+        "RSI_SWEEP_OSI_HEALTH_URL",
+        f"{os.getenv('DASHBOARD_URL', 'http://127.0.0.1:' + os.getenv('DASHBOARD_PORT', '8889')).rstrip('/')}/api/health/layered",
+    )
     if runner is not None:
         try:
             res = runner()
