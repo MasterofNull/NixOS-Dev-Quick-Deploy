@@ -36,3 +36,29 @@ sudo mkdir -p /var/lib/ai-stack/nixos-docs/.archive-20261014-diskcache && sudo s
 - Observable: DEFERRED (dated 2026-10-14): no new dashboard/alert in this slice; existing logs/health unchanged.
 - Intervenable: DEFERRED (dated 2026-10-14): no new operator control in this slice; existing controls unchanged.
 - PM-tracked: no tracked plan item; no status hand-set.
+
+## Objective
+Clear the failing security gate on diskcache (PYSEC-2026-2447 / CVE-2025-69872) by moving the nixos-docs MCP server off the unmaintained, pickle-based diskcache to a stdlib sqlite3 TTL cache, with no behavior change for callers (cache dir mode tightened to 0700).
+
+## Workflow/Session IDs
+- Orchestrator session: eb012479-4564-462f-8e6f-4824d5a77754 (claude-opus-5-5), slice 14 of the 2026-10-14 landing manifest (`.agents/delegation/outputs/landing-manifest-20261014.md`).
+- Branch/worktree: `fix/nixos-docs-diskcache-no-pickle` in `/tmp/wt-diskcache`.
+
+## Delegation Decision
+Implementer: claude-sonnet sub-agent (Rule 17 balanced tier; bounded single-component change with a checkable test). Reviewer: separate claude-sonnet instance (same-lane; cross-lane confirmatory review queued in AGENT-CATCHUP-QUEUE). Orchestrator verified the revision delta (legacy cache.db schema collision fix).
+
+## Commands Executed
+- `python3 scripts/testing/test-nixos-docs-diskcache-no-pickle.py`
+- `gitleaks detect --redact --config .gitleaks.toml --source . --no-git --exit-code 1`
+- `scripts/governance/tier0-validation-gate.sh --pre-commit`
+
+## Rollback Plan
+Revert the PR merge commit (restores diskcache in requirements.txt and mcp-servers.nix). The new cache writes only `text-cache.db`; the legacy diskcache files are left in place until the owner archives them, so a revert finds its old cache intact.
+
+## Residual Risk
+- Cache is cold after deploy (new file); first lookups hit upstream docs until warm.
+- The diskcache security exception in `config/security-exceptions.json` must be removed after merge (tracked in Follow-ups).
+- Same-lane review only until the cross-lane confirmatory review lands.
+
+## Hint Feedback
+No aq-hints consulted for this slice; dependency decision followed the owner rule "dependency work only on a failing gate; abandoned -> maintained replacement" (stdlib chosen as smallest maintained replacement).
