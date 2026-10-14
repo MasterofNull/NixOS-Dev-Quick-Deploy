@@ -4975,6 +4975,7 @@ async function loadRuntimeDetails() {
   const prc = cg.prompt_compile || {};
   const trg = cg.triage || {};
   const drt = cg.durable_runtime || {};
+  const ocd = cg.oncall_daemon || {};
   const lrn = s.learning || {};
   const rows = [
     fwRow("Offloading", fmtImplStatus(off.status), "ok"),
@@ -5099,6 +5100,13 @@ async function loadRuntimeDetails() {
         ? `${String(drt.status || "unverified").toUpperCase()} · intents:${drt.total_intents ?? 0} · unres:${drt.unresolved_intents ?? 0}`
         : "UNVERIFIED",
       drt.available && drt.unresolved_intents === 0 ? "ok" : "warn"
+    ),
+    fwRow(
+      "· autonomous on-call daemon",
+      ocd.available
+        ? `${String(ocd.status || "unverified").toUpperCase()} · incs:${ocd.total_incidents ?? 0} · claims:${ocd.active_claims ?? 0} · prs:${ocd.staged_prs ?? 0}`
+        : "UNVERIFIED",
+      ocd.available && ocd.status === "healthy" ? "ok" : "info"
     ),
     fwRow("Learning", fmtImplStatus(lrn.status), "ok"),
     fwRow("· signals", lrn.signals_recorded ?? 0),

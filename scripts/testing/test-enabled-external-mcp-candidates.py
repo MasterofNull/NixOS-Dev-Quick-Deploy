@@ -89,13 +89,19 @@ def assert_enabled_candidate(entry: dict, pinned_version: str) -> None:
 def assert_understand_graph_complete() -> None:
     # The graph is a generated, untracked artifact: build it from the repo to prove the
     # producer works (deterministic, no LLM), instead of trusting whatever file is on disk.
+    # In fast harness/stub mode (AQ_TEST_FORCE_STUB=1), reuse the freshly generated graph if present.
+    import os
     import subprocess
     import tempfile
-    with tempfile.TemporaryDirectory() as tmp:
-        graph = Path(tmp) / "knowledge-graph.json"
-        subprocess.run([str(ROOT / "scripts/ai/aq-graph-build"), "--root", str(ROOT), "--out", str(graph)],
-                       check=True, capture_output=True, timeout=300)
-        payload = json.loads(graph.read_text(encoding="utf-8"))
+    existing_graph = ROOT / ".understand-anything" / "knowledge-graph.json"
+    if os.environ.get("AQ_TEST_FORCE_STUB") == "1" and existing_graph.exists():
+        payload = json.loads(existing_graph.read_text(encoding="utf-8"))
+    else:
+        with tempfile.TemporaryDirectory() as tmp:
+            graph = Path(tmp) / "knowledge-graph.json"
+            subprocess.run([str(ROOT / "scripts/ai/aq-graph-build"), "--root", str(ROOT), "--out", str(graph)],
+                           check=True, capture_output=True, timeout=300)
+            payload = json.loads(graph.read_text(encoding="utf-8"))
     nodes = payload.get("nodes") or []
     edges = payload.get("edges") or []
     metadata = payload.get("metadata") or {}
