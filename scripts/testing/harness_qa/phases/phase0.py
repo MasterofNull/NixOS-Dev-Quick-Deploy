@@ -1604,7 +1604,7 @@ def _check_pi_agent_streaming_canvas(ctx: RunContext) -> list[CheckResult]:
     try:
         proc = subprocess.run([sys.executable, str(test)], cwd=str(ctx.repo_root), capture_output=True, text=True,
                               timeout=120, check=False)
-        if proc.returncode != 0 or "5/5 tests passed" not in proc.stdout:
+        if proc.returncode != 0 or "6/6 tests passed" not in proc.stdout:
             return [failed(5, "0.10.67", desc, (proc.stderr or proc.stdout or "fixture failed")[-240:])]
         route_text = route.read_text(encoding="utf-8")
         html_text = html.read_text(encoding="utf-8")
