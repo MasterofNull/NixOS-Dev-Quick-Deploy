@@ -9514,36 +9514,43 @@ async def get_oncall_status() -> Dict[str, Any]:
     return await asyncio.to_thread(_oncall_daemon_health_summary)
 
 
-@router.post("/oncall/trigger")
-async def post_oncall_trigger(payload: Dict[str, Any]) -> Dict[str, Any]:
-    """Trigger or simulate incident admission and isolated remediation in aq-oncalld (DP-3)."""
+def _oncall_trigger_sync(payload: Dict[str, Any]) -> Dict[str, Any]:
+    """Blocking admit/claim/worktree path; run via asyncio.to_thread (git subprocess + sqlite)."""
+    module_path = _repo_root() / "scripts" / "ai" / "lib" / "oncalld_engine.py"
+    spec = importlib.util.spec_from_file_location("aq_oncalld_engine", module_path)
+    if spec is None or spec.loader is None:
+        raise ImportError("oncall daemon engine unavailable")
+    module = importlib.util.module_from_spec(spec)
+    spec.loader.exec_module(module)
+
+    engine = module.OnCallDaemonEngine(repo_root=_repo_root())
+    inc = engine.admit_incident(payload)
+    if not inc:
+        return {"status": "rejected", "reason": "Incident filtered out or deduplicated"}
+
+    lane = payload.get("suggested_lane", "codex") or "codex"
     try:
-        module_path = _repo_root() / "scripts" / "ai" / "lib" / "oncalld_engine.py"
-        spec = importlib.util.spec_from_file_location("aq_oncalld_engine", module_path)
-        if spec is None or spec.loader is None:
-            raise ImportError("oncall daemon engine unavailable")
-        module = importlib.util.module_from_spec(spec)
-        spec.loader.exec_module(module)
-
-        engine = module.OnCallDaemonEngine(repo_root=_repo_root())
-        inc = engine.admit_incident(payload)
-        if not inc:
-            return {"status": "rejected", "reason": "Incident filtered out or deduplicated"}
-
-        lane = payload.get("suggested_lane", "codex") or "codex"
         claim = engine.claim_incident(inc.incident_id, claimant_lane=lane)
         engine.create_isolated_worktree(claim)
+    except module.DuplicateClaimError as exc:
+        return {"status": "rejected", "reason": str(exc)}
+    return {
+        "status": "claimed",
+        "incident_id": inc.incident_id,
+        "claim_id": claim.claim_id,
+        "epoch": claim.epoch,
+        "claimant_lane": claim.claimant_lane,
+        "worktree_path": claim.worktree_path,
+        "worktree_branch": claim.worktree_branch,
+        "state": claim.state,
+    }
 
-        return {
-            "status": "claimed",
-            "incident_id": inc.incident_id,
-            "claim_id": claim.claim_id,
-            "epoch": claim.epoch,
-            "claimant_lane": claim.claimant_lane,
-            "worktree_path": claim.worktree_path,
-            "worktree_branch": claim.worktree_branch,
-            "state": claim.state,
-        }
+
+@router.post("/oncall/trigger")
+async def post_oncall_trigger(payload: Dict[str, Any]) -> Dict[str, Any]:
+    """Trigger incident admission and isolated remediation in aq-oncalld (DP-3)."""
+    try:
+        return await asyncio.to_thread(_oncall_trigger_sync, payload)
     except Exception as exc:
         raise HTTPException(status_code=500, detail=str(exc))
 
