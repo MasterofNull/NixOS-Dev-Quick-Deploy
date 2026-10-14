@@ -9459,11 +9459,22 @@ async def post_durable_reconcile(payload: Optional[Dict[str, Any]] = None) -> Di
             target_intents = store.list_unresolved(run_id=run_id)
 
         reconciled = []
+        skipped = []
         for it in target_intents:
-            rec, _ = middleware.reconcile(it.intent_id)
+            try:
+                rec, _ = middleware.reconcile(it.intent_id)
+            except module.ConcurrencyConflictError as exc:
+                skipped.append({"intent_id": it.intent_id, "tool_name": it.tool_name, "reason": str(exc)})
+                continue
             reconciled.append({"intent_id": it.intent_id, "tool_name": it.tool_name, "state": rec.state})
 
-        return {"status": "ok", "reconciled_count": len(reconciled), "intents": reconciled}
+        return {
+            "status": "ok",
+            "reconciled_count": len(reconciled),
+            "intents": reconciled,
+            "skipped_count": len(skipped),
+            "skipped": skipped,
+        }
     except HTTPException:
         raise
     except Exception as exc:

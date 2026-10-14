@@ -14,6 +14,7 @@ _ROOT = Path(__file__).resolve().parents[2]
 sys.path.insert(0, str(_ROOT / "scripts" / "ai" / "lib"))
 
 from durable_runtime import (
+    ConcurrencyConflictError,
     DurableEffectStore,
     EffectSandwichMiddleware,
     IntentState,
@@ -86,13 +87,19 @@ def cmd_reconcile(args: argparse.Namespace) -> int:
         return 0
 
     reconciled_count = 0
+    skipped_count = 0
     print(f"Reconciling {len(target_intents)} intent(s)...")
     for it in target_intents:
-        rec, _ = middleware.reconcile(it.intent_id)
+        try:
+            rec, _ = middleware.reconcile(it.intent_id)
+        except ConcurrencyConflictError as exc:
+            print(f"  {it.intent_id} ({it.tool_name}) -> SKIPPED: {exc}")
+            skipped_count += 1
+            continue
         print(f"  {it.intent_id} ({it.tool_name}) -> {rec.state}")
         reconciled_count += 1
 
-    print(f"Reconciliation complete: {reconciled_count} intent(s) processed.")
+    print(f"Reconciliation complete: {reconciled_count} intent(s) processed, {skipped_count} skipped.")
     return 0
 
 
