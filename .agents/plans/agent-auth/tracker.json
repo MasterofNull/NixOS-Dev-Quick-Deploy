@@ -1,0 +1,209 @@
+{
+  "plan": {
+    "id": "agent-auth",
+    "title": "Agent authentication and authorization",
+    "prd_ref": ".agents/plans/agent-auth/DESIGN.md",
+    "owner": "hyperd",
+    "goal": "Per-class authorization for coordinator callers, shadow first, with browser/DNS-rebinding defence and credential hygiene",
+    "success_criteria": [
+      "No client loses access before its migration (S5 depends on S7 per client)",
+      "Shadow window always has an expiry date",
+      "Raw credentials never reach audit rows"
+    ]
+  },
+  "phases": [
+    {
+      "id": "frozen",
+      "name": "Frozen scope AUTH-S0..S2",
+      "goal": "Credential hygiene, guard, shadow policy engine",
+      "order": 1
+    },
+    {
+      "id": "deferred",
+      "name": "Follow-on AUTH-S3..S10",
+      "goal": "Identity, containment, enforcement, ops",
+      "order": 2
+    }
+  ],
+  "items": [
+    {
+      "id": "AUTH-S0",
+      "name": "Credential hygiene",
+      "phase": "frozen",
+      "kind": "slice",
+      "goal": "Constant-time key compare, required-key fail-closed (coordinator + aidb), no raw token in audit rows, Tempo gRPC on loopback; all in-repo API-key compares converted (coordinator, aidb, dashboard models.py, nixos-docs, embeddings-service) with a grep-guard test",
+      "validation_goal": "Unit tests for compare/empty-key/audit identity; Nix eval shows AI_STACK_REQUIRE_API_KEY on both units",
+      "deps": [],
+      "detection": {
+        "commit_match": [
+          "feat\\(agent-auth\\): .*AUTH-S0"
+        ]
+      }
+    },
+    {
+      "id": "AUTH-S1",
+      "name": "Loopback guard (coordinator landed; switchboard + dashboard open)",
+      "phase": "frozen",
+      "kind": "slice",
+      "goal": "Host/Origin/content-type guard shared by coordinator, switchboard and dashboard API; shadow first",
+      "validation_goal": "Coordinator guard tests (28) pass; switchboard/dashboard guard tests when added",
+      "deps": [
+        "AUTH-S0"
+      ],
+      "detection": {
+        "commit_match": [
+          "fix\\(security\\): coordinator Host/Origin/content-type guard"
+        ]
+      }
+    },
+    {
+      "id": "AUTH-S2",
+      "name": "Policy engine + shadow authorization",
+      "phase": "frozen",
+      "kind": "slice",
+      "goal": "config/agent-auth-policy.json, matcher, shadow engine, mode/shadowUntil options, metrics, stats+explain, policy lint",
+      "validation_goal": "Longest-prefix/method/unknown-route tests; shadow would-deny rows for /research from legacy class; bench gate",
+      "deps": [
+        "AUTH-S0"
+      ],
+      "detection": {
+        "commit_match": [
+          "feat\\(agent-auth\\): .*AUTH-S2"
+        ]
+      }
+    },
+    {
+      "id": "AUTH-S3",
+      "name": "UDS listener + peer identity",
+      "phase": "deferred",
+      "kind": "slice",
+      "goal": "UnixSite agent listener, raw SO_PEERPIDFD, full cgroup path match, aq_http client",
+      "validation_goal": "First test: coordinator unit reads /proc/<owner-pid>/cgroup; 10k-client burst unknown-rate under 0.1 percent",
+      "deps": [
+        "AUTH-S2"
+      ],
+      "detection": {
+        "commit_match": [
+          "feat\\(agent-auth\\): .*AUTH-S3"
+        ]
+      }
+    },
+    {
+      "id": "AUTH-S4",
+      "name": "Switchboard and API-key containment",
+      "phase": "deferred",
+      "kind": "slice",
+      "goal": "Switchboard on service:switchboard over agent.sock via httpx UDS, api-key mode reduced to admin under enforce",
+      "validation_goal": "Switchboard GET /hints works keyless over UDS; gate observe-mode measurement",
+      "deps": [
+        "AUTH-S1",
+        "AUTH-S3"
+      ],
+      "detection": {
+        "commit_match": [
+          "feat\\(agent-auth\\): .*AUTH-S4"
+        ]
+      }
+    },
+    {
+      "id": "AUTH-S5",
+      "name": "Enforcement per family",
+      "phase": "deferred",
+      "kind": "slice",
+      "goal": "Per-family flips, guided deny bodies, lockdown, safety.tighten monotonic rule, fail-closed no-api-key-configured",
+      "validation_goal": "Per-family shadow soak shows zero non-admin api-key traffic before flip",
+      "deps": [
+        "AUTH-S2",
+        "AUTH-S3",
+        "AUTH-S4",
+        "AUTH-S7"
+      ],
+      "detection": {
+        "commit_match": [
+          "feat\\(agent-auth\\): .*AUTH-S5"
+        ]
+      }
+    },
+    {
+      "id": "AUTH-S6",
+      "name": "research.fetch SSRF hardening",
+      "phase": "deferred",
+      "kind": "slice",
+      "goal": "Pinned-IP connect, per-hop re-check, tighten-only switches, research.browser scope",
+      "validation_goal": "DNS-rebinding hostile test; test seam no longer disables SSRF",
+      "deps": [
+        "AUTH-S0"
+      ],
+      "detection": {
+        "commit_match": [
+          "feat\\(agent-auth\\): .*AUTH-S6"
+        ]
+      }
+    },
+    {
+      "id": "AUTH-S7",
+      "name": "Client migration off X-API-Key",
+      "phase": "deferred",
+      "kind": "slice",
+      "goal": "Bridge, CLIs, timers, dashboard use socket classes; key tightened afterwards",
+      "validation_goal": "Per-client checklist in design 8.3 complete",
+      "deps": [
+        "AUTH-S3"
+      ],
+      "detection": {
+        "commit_match": [
+          "feat\\(agent-auth\\): .*AUTH-S7"
+        ]
+      }
+    },
+    {
+      "id": "AUTH-S8",
+      "name": "Ops MVP",
+      "phase": "deferred",
+      "kind": "slice",
+      "goal": "Audit JSONL consumers, health-spider checks (shadow expired = RED), attention alerts, aq-agent-auth CLI; health-spider check must go RED when agent_auth_effective_mode shows configured=shadow and effective=off (policy degrade) or agent_auth_policy_error=1",
+      "validation_goal": "Health-spider RED when shadowUntil passes",
+      "deps": [
+        "AUTH-S2"
+      ],
+      "detection": {
+        "commit_match": [
+          "feat\\(agent-auth\\): .*AUTH-S8"
+        ]
+      }
+    },
+    {
+      "id": "AUTH-S9",
+      "name": "Probe/classify unverified services",
+      "phase": "deferred",
+      "kind": "slice",
+      "goal": "Probe ralph/aider/docs/llama.cpp/dashboard; dashboard Host/Origin enforce; llama.cpp socket-or-key decision",
+      "validation_goal": "Probe results recorded per port before first enforce flip (target 2026-10-21)",
+      "deps": [
+        "AUTH-S1"
+      ],
+      "detection": {
+        "commit_match": [
+          "feat\\(agent-auth\\): .*AUTH-S9"
+        ]
+      }
+    },
+    {
+      "id": "AUTH-S10",
+      "name": "aq-confine sandbox integration",
+      "phase": "deferred",
+      "kind": "slice",
+      "goal": "Sandbox class profile, broker-bound tokens, issuer (follow-up)",
+      "validation_goal": "Issuer and broker binding tests",
+      "deps": [
+        "AUTH-S3",
+        "AUTH-S5"
+      ],
+      "detection": {
+        "commit_match": [
+          "feat\\(agent-auth\\): .*AUTH-S10"
+        ]
+      }
+    }
+  ]
+}

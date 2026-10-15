@@ -14,6 +14,7 @@ Features:
 """
 
 import asyncio
+import hmac
 import logging
 import os
 import sys
@@ -422,7 +423,7 @@ async def auth_middleware(request: Request, call_next):
         token = request.headers.get("X-API-Key") or request.headers.get("Authorization", "")
         if token.startswith("Bearer "):
             token = token.split(" ", 1)[1]
-        if token != API_KEY:
+        if not hmac.compare_digest(token.encode(), API_KEY.encode()):
             return JSONResponse({"error": "unauthorized"}, status_code=401)
     return await call_next(request)
 

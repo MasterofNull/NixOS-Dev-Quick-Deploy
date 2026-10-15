@@ -6,6 +6,7 @@ Handles:
   GET /admin/v1/scheduler/status          — MLFQ scheduler status
   GET /admin/v1/policy/tool-deny-stats    — auth-profile tool denial counters (S2)
   GET /admin/v1/policy/rate-limit-stats   — active rate limit counters
+  GET /admin/v1/auth/stats|explain        — agent-auth shadow decisions (AUTH-S2)
   GET /control/model-fleet/status         — model fleet status (model_fleet_manager)
   *   /control/runtimes/*                 — runtime registry (delegated to runtime_control_handlers)
   GET /control/fleet/summary              — fleet summary (delegated to runtime_control_handlers)
@@ -73,6 +74,9 @@ def register_routes(app: web.Application) -> None:
     app.router.add_get("/admin/v1/scheduler/status", handle_scheduler_status)
     app.router.add_get("/admin/v1/policy/tool-deny-stats", handle_tool_deny_stats)
     app.router.add_get("/admin/v1/policy/rate-limit-stats", handle_rate_limit_stats)
+    from middleware.authz import handle_auth_explain, handle_auth_stats  # AUTH-S2
+    app.router.add_get("/admin/v1/auth/stats", handle_auth_stats)
+    app.router.add_get("/admin/v1/auth/explain", handle_auth_explain)
     app.router.add_get("/control/model-fleet/status", handle_fleet_status)
 
     # Runtime/budget/fleet/reasoning routes — already fully extracted
