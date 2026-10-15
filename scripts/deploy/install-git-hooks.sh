@@ -11,7 +11,7 @@ if [[ ! -d "${HOOKS_DIR}" ]]; then
 fi
 
 chmod +x "${HOOKS_DIR}"/*
-git -C "${REPO_ROOT}" config core.hooksPath "${HOOKS_DIR}"
+git -C "${REPO_ROOT}" config core.hooksPath .githooks  # RELATIVE: each worktree uses its own tree's hooks
 
 printf 'Installed git hooks from %s\n' "${HOOKS_DIR}"
 printf 'Active hooksPath: %s\n' "$(git -C "${REPO_ROOT}" config core.hooksPath)"

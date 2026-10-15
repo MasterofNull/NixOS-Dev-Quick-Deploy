@@ -10,15 +10,20 @@ gaps=0
 pass() { echo "${TAG} PASS: $*"; }
 gap()  { echo "${TAG} GAP: $*"; gaps=$((gaps + 1)); }
 
-hooks_ok() { # <worktree-root> -> resolved hooks dir is a .githooks with an executable pre-commit
+# Relative core.hooksPath (.githooks) resolves against EACH worktree's own tree; an absolute path pins
+# every worktree to the primary checkout's hooks, i.e. to whatever branch that checkout is on.
+hooks_ok() { # <worktree-root> -> that worktree's OWN .githooks is the active hooks dir with an executable pre-commit
   local wt="$1" hp dir
   hp="$(git -C "$wt" config --get core.hooksPath 2>/dev/null)" || return 1
-  [[ -n "$hp" ]] || return 1
-  [[ "$hp" = /* ]] && dir="$hp" || dir="$wt/$hp"
-  [[ "$(basename "$dir")" == ".githooks" && -x "$dir/pre-commit" ]]
+  [[ "$hp" == ".githooks" ]] || return 1
+  dir="$(git -C "$wt" rev-parse --path-format=absolute --git-path hooks 2>/dev/null)" || return 1
+  [[ "$dir" == "$(cd "$wt" && pwd -P)/.githooks" || "$dir" == "$wt/.githooks" ]] && [[ -x "$wt/.githooks/pre-commit" ]]
 }
 
-if hooks_ok "$ROOT"; then pass "repo root core.hooksPath -> .githooks"; else gap "repo root core.hooksPath does not resolve to .githooks (run: git config core.hooksPath .githooks)"; fi
+hp_root="$(git -C "$ROOT" config --get core.hooksPath 2>/dev/null || true)"
+if hooks_ok "$ROOT"; then pass "repo root core.hooksPath is relative .githooks"
+elif [[ "$hp_root" == /* ]]; then gap "core.hooksPath is ABSOLUTE ($hp_root): every worktree runs the primary checkout's hooks (run: git config core.hooksPath .githooks)"
+else gap "repo root core.hooksPath does not resolve to .githooks (run: git config core.hooksPath .githooks)"; fi
 
 # Agent worktrees the harness creates (delegate/* branches under .agents/delegation/worktrees).
 wt_total=0; wt_bad=""
@@ -27,7 +32,7 @@ while IFS= read -r wt; do
   wt_total=$((wt_total + 1)); [[ $wt_total -le 50 ]] || continue
   hooks_ok "$wt" || wt_bad="${wt_bad} $(basename "$wt")"
 done < <(git -C "$ROOT" worktree list --porcelain 2>/dev/null | sed -n 's/^worktree //p')
-if [[ -z "$wt_bad" ]]; then pass "agent worktrees (${wt_total}) resolve hooks to .githooks"; else gap "agent worktrees without .githooks:${wt_bad}"; fi
+if [[ -z "$wt_bad" ]]; then pass "agent worktrees (${wt_total}) resolve hooks to .githooks"; else gap "agent worktrees not resolving hooks from their own .githooks (absolute/foreign core.hooksPath or missing pre-commit):${wt_bad}"; fi
 
 bypass_re='--no-verify|core\.hooksPath=/dev/null|core\.hooksPath[= ]+""|-c +core\.hooksPath'
 # Shared worktree helper: commits it makes must not bypass hooks.
