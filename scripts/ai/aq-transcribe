@@ -62,6 +62,7 @@ elif command -v whisper-cli >/dev/null 2>&1; then need_whisper_bin="whisper-cli"
 missing=()
 command -v yt-dlp  >/dev/null 2>&1 || missing+=("yt-dlp")
 command -v ffmpeg  >/dev/null 2>&1 || missing+=("ffmpeg")
+command -v timeout >/dev/null 2>&1 || missing+=("timeout (coreutils)")
 [[ -n "$need_whisper_bin" ]]      || missing+=("openai-whisper (whisper)")
 if [[ ${#missing[@]} -gt 0 ]]; then
   cat >&2 <<EOF
@@ -124,7 +125,7 @@ if [[ $is_url -eq 1 ]]; then
 
   if [[ -z "$source_kind" ]]; then
     echo "[aq-transcribe] no caption track used; downloading audio for Whisper ASR"
-    yt-dlp --no-warnings -f bestaudio -x --audio-format wav \
+    yt-dlp --no-warnings --hls-prefer-native -f bestaudio -x --audio-format wav \
       -o "$work/audio.%(ext)s" "$INPUT" >/dev/null 2>&1 \
       || die "yt-dlp failed to download audio (network? geo-block?)"
     audio="$(find "$work" -name 'audio.*' | head -n1)"
@@ -132,8 +133,12 @@ if [[ $is_url -eq 1 ]]; then
 else
   printf '{"local_file":"%s"}\n' "$INPUT" > "$OUT/metadata.json"
   echo "[aq-transcribe] extracting audio from local file"
-  ffmpeg -y -i "$INPUT" -ar 16000 -ac 1 "$work/audio.wav" >/dev/null 2>&1 \
-    || die "ffmpeg failed to extract audio from $INPUT"
+  # Hardening (WR-SEC-3): a local file can be a playlist/manifest that makes ffmpeg open
+  # network protocols (HLS/DASH/RTSP/sftp CVEs, no fix released). Restrict to file+pipe,
+  # never read stdin, and bound the runtime (override: AQ_TRANSCRIBE_FFMPEG_TIMEOUT seconds).
+  timeout "${AQ_TRANSCRIBE_FFMPEG_TIMEOUT:-600}" ffmpeg -nostdin -y -protocol_whitelist file,pipe \
+    -i "$INPUT" -ar 16000 -ac 1 "$work/audio.wav" >/dev/null 2>&1 \
+    || die "ffmpeg failed (or timed out after ${AQ_TRANSCRIBE_FFMPEG_TIMEOUT:-600}s) extracting audio from $INPUT"
   audio="$work/audio.wav"
 fi
 
