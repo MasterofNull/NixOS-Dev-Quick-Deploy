@@ -135,6 +135,27 @@ if [[ ${#failures[@]} -gt 0 ]]; then
   exit 1
 fi
 
+# AUTH-S0: AI_STACK_REQUIRE_API_KEY makes the coordinator and aidb refuse to start on an empty key.
+# Catch a blank value BEFORE a rebuild without decrypting: sops stores an empty plaintext as
+# ENC[AES256_GCM,data:,iv:...] (empty data field), so an empty `data:` is detectable from ciphertext.
+# Limit: this cannot detect whitespace-only or placeholder values (needs decryption); the service
+# itself still fails closed on those at start (startup assertion strips whitespace).
+blank=()
+for attr in hybridApiKey aidbApiKey; do
+  name=$(echo "$names_map" | grep -E "^${attr}=" | cut -d= -f2 || true)
+  [[ -z "$name" ]] && continue
+  line=$(grep -E "^${name}:" "$SOPS_FILE" | head -1 || true)
+  [[ -z "$line" ]] && continue  # absence is reported by the missing-key check above
+  if [[ "$line" =~ ENC\[AES256_GCM,data:, ]]; then
+    blank+=("$name")
+  fi
+done
+if [[ ${#blank[@]} -gt 0 ]]; then
+  echo "$TAG FAIL: empty ciphertext for ${blank[*]} in $SOPS_FILE; AI_STACK_REQUIRE_API_KEY=1 would stop the service at start" >&2
+  echo "$TAG Fix: sops $SOPS_FILE and set a non-empty value." >&2
+  exit 1
+fi
+
 # Also warn if SOPS file has extra keys not declared in Nix (stale entries).
 stale=()
 while IFS= read -r key; do
