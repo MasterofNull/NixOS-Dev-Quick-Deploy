@@ -1101,6 +1101,8 @@ in {
               "${hybridPython}/bin/python3"
               "${repoMcp}/hybrid-coordinator/server.py"
             ];
+            # Must exceed the internal shutdown bounds (scheduler 20s, runner.cleanup 30s).
+            TimeoutStopSec = 45;
             Restart = "always";
             RestartSec = "5s";
             Environment =
@@ -1193,6 +1195,9 @@ in {
                 "CONTINUOUS_LEARNING_STATS_PATH=${dataDir}/hybrid/telemetry/continuous_learning_stats.json"
                 "HYBRID_TELEMETRY_PATH=${dataDir}/hybrid/telemetry/hybrid-events.jsonl"
                 "HYBRID_TELEMETRY_ENABLED=true"
+                # DEC-S0: writer path must be ai-hybrid-writable (/var/lib/ai-stack itself is root:ai-stack 0750).
+                "AQ_ROUTING_METRICS_DB_PATH=${dataDir}/hybrid/routing_metrics.db"
+                "AQ_ROUTING_METRICS_SNAPSHOT_PATH=${dataDir}/hybrid/routing_metrics.snapshot.db"
                 "THERMAL_CRITICAL_C=85"
                 "OPTIMIZATION_PROPOSALS_PATH=${dataDir}/hybrid/telemetry/optimization_proposals.jsonl"
                 "CONTINUOUS_LEARNING_CHECKPOINT_DIR=${dataDir}/hybrid/checkpoints"
