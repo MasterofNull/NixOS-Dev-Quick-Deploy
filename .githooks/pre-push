@@ -113,7 +113,14 @@ trap 'rm -f "${lint_log}"' EXIT
 lint_cmd=(./scripts/governance/quick-deploy-lint.sh --mode fast --script-header-scope "${SCRIPT_HEADER_SCOPE}")
 [[ -n "${SCRIPT_HEADER_BASE_REF}" ]] && lint_cmd+=(--base-ref "${SCRIPT_HEADER_BASE_REF}")
 [[ -n "${SCRIPT_HEADER_HEAD_REF}" ]] && lint_cmd+=(--head-ref "${SCRIPT_HEADER_HEAD_REF}")
+run_ci_manifest_checks() {
+  [[ -x "scripts/governance/run-ci-checks.sh" ]] || return 0
+  echo "Running pre-push CI-manifest checks (config/ci-checks.json --changed)..."
+  ./scripts/governance/run-ci-checks.sh --changed --base "${CI_CHECKS_BASE:-origin/main}"
+}
+
 if "${lint_cmd[@]}" 2>&1 | tee "${lint_log}"; then
+  run_ci_manifest_checks || { echo "pre-push: CI-manifest checks failed (same scripts CI runs)." >&2; exit 1; }
   exit 0
 fi
 

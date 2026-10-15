@@ -1,0 +1,517 @@
+{
+ "plan": {
+  "id": "sota-rounding",
+  "title": "SOTA rounding: isolation/sandboxing, REA, MCP conformance, frontier parity",
+  "prd_ref": ".agents/plans/sota-rounding/DESIGN.md",
+  "owner": "hyperd",
+  "goal": "Round off persistent/durable/proactive agent configs: one shared confinement mechanism, sandboxed REA, MCP 2026-07-28 conformance, cadence-driven frontier scanning, and validated parity with frontier multi-agent patterns.",
+  "success_criteria": [
+   "DP-3 and REA run only under aq-confine with hostile-fixture proof",
+   "hybrid bridge passes conformance audit on both handshakes",
+   "frontier candidates flow scan -> backlog -> 2-lane verdict -> tracker fold without manual discovery",
+   "every adopted pattern carries a reproducible validation"
+  ]
+ },
+ "phases": [
+  {
+   "id": "isolation",
+   "name": "agent isolation + sandboxing",
+   "goal": "agent isolation + sandboxing",
+   "order": 1
+  },
+  {
+   "id": "rea",
+   "name": "reverse engineering capability",
+   "goal": "reverse engineering capability",
+   "order": 2
+  },
+  {
+   "id": "mcp",
+   "name": "MCP conformance + frontier scan",
+   "goal": "MCP conformance + frontier scan",
+   "order": 3
+  },
+  {
+   "id": "frontier",
+   "name": "frontier parity patterns",
+   "goal": "frontier parity patterns",
+   "order": 4
+  },
+  {
+   "id": "review-enforcement",
+   "name": "machine-enforced independent review",
+   "goal": "no unreviewed merge to main",
+   "order": 0
+  },
+  {
+   "id": "ci-parity",
+   "name": "CI and local gate parity",
+   "goal": "local gates run the same checks as CI",
+   "order": 5
+  },
+  {
+   "id": "dep-hygiene",
+   "name": "gate-triggered dependency hygiene",
+   "goal": "failing gate -> upgrade, mitigate, or maintained replacement",
+   "order": 6
+  }
+ ],
+ "items": [
+  {
+   "id": "w2-s1",
+   "name": "land c735bdf8 capability-audit timer; tag-archive stale wip-sandbox branch",
+   "phase": "isolation",
+   "kind": "slice",
+   "goal": "land c735bdf8 capability-audit timer; tag-archive stale wip-sandbox branch",
+   "validation_goal": "test-capability-snapshots + test-rsi-sweep pass on main",
+   "deps": [],
+   "detection": {
+    "commit_match": [
+     "c735bdf8",
+     "capability-audit timer"
+    ]
+   }
+  },
+  {
+   "id": "w2-s2",
+   "name": "shared aq-confine bwrap launcher (absorbs DP-3 inline bwrap)",
+   "phase": "isolation",
+   "kind": "slice",
+   "goal": "shared aq-confine bwrap launcher (absorbs DP-3 inline bwrap)",
+   "validation_goal": "test-aq-confine: secrets unreadable, outside writes fail, net=none, git in worktree works, symlink escape fails",
+   "deps": [],
+   "detection": {
+    "commit_match": [
+     "aq-confine"
+    ]
+   }
+  },
+  {
+   "id": "w2-s3",
+   "name": "DP-3 confinement completion: oncalld Nix unit (default OFF) + AppArmor profile via aq-confine",
+   "phase": "isolation",
+   "kind": "slice",
+   "goal": "DP-3 confinement completion: oncalld Nix unit (default OFF) + AppArmor profile via aq-confine",
+   "validation_goal": "hostile-worker fixture denied for /run/secrets, ~/.ssh, egress, main-checkout writes",
+   "deps": [
+    "w2-s2"
+   ],
+   "detection": {
+    "commit_match": [
+     "oncalld.nix",
+     "aq-oncalld apparmor"
+    ]
+   }
+  },
+  {
+   "id": "w2-s4",
+   "name": "fe-8 landlock egress verdict -> monitor",
+   "phase": "isolation",
+   "kind": "slice",
+   "goal": "fe-8 landlock egress verdict -> monitor",
+   "validation_goal": "aq-frontier verdict recorded by 2 lanes",
+   "deps": [],
+   "detection": {
+    "commit_match": [
+     "fe-8 monitor"
+    ]
+   }
+  },
+  {
+   "id": "w2-s5",
+   "name": "isolation hygiene: tracker pct_hint removal, aq-report cell/confine status, coordinator apparmor mode",
+   "phase": "isolation",
+   "kind": "slice",
+   "goal": "isolation hygiene: tracker pct_hint removal, aq-report cell/confine status, coordinator apparmor mode",
+   "validation_goal": "tier0 check-pm-tracker green; aq-report shows confine + cell status",
+   "deps": [],
+   "detection": {
+    "commit_match": [
+     "isolation hygiene"
+    ]
+   }
+  },
+  {
+   "id": "w1-s1",
+   "name": "REA intake close-out + supply-chain pin (no npx @latest)",
+   "phase": "rea",
+   "kind": "slice",
+   "goal": "REA intake close-out + supply-chain pin (no npx @latest)",
+   "validation_goal": "test-capability-intake asserts pin/hash/no floating spec",
+   "deps": [],
+   "detection": {
+    "commit_match": [
+     "REA intake",
+     "rea pin"
+    ]
+   }
+  },
+  {
+   "id": "w1-s2",
+   "name": "REA sandboxed launcher (bwrap no-net, AppArmor, rlimits)",
+   "phase": "rea",
+   "kind": "slice",
+   "goal": "REA sandboxed launcher (bwrap no-net, AppArmor, rlimits)",
+   "validation_goal": "test-rea-sandbox: no net, secrets unreadable, target immutable, kill on limits, refuse unless enabled",
+   "deps": [
+    "w1-s1",
+    "w2-s2"
+   ],
+   "detection": {
+    "commit_match": [
+     "mcp-rea-sandboxed"
+    ]
+   }
+  },
+  {
+   "id": "w1-s3",
+   "name": "REA integrate + observe + kill switch",
+   "phase": "rea",
+   "kind": "slice",
+   "goal": "REA integrate + observe + kill switch",
+   "validation_goal": "live MCP analyze of fixture increments aq-report counter; disable refuses",
+   "deps": [
+    "w1-s2"
+   ],
+   "detection": {
+    "commit_match": [
+     "REA integrate"
+    ]
+   }
+  },
+  {
+   "id": "w1-s4",
+   "name": "REA tracker + activation attestation",
+   "phase": "rea",
+   "kind": "slice",
+   "goal": "REA tracker + activation attestation",
+   "validation_goal": "ACTIVATION-AUDIT entry + evidence doc",
+   "deps": [
+    "w1-s3"
+   ],
+   "detection": {
+    "commit_match": [
+     "REA activation"
+    ]
+   }
+  },
+  {
+   "id": "w3-s1",
+   "name": "MCP conformance audit tool (read-only)",
+   "phase": "mcp",
+   "kind": "slice",
+   "goal": "MCP conformance audit tool (read-only)",
+   "validation_goal": "per-server pass/fail per rule, fixture-tested",
+   "deps": [],
+   "detection": {
+    "commit_match": [
+     "aq-mcp-conformance"
+    ]
+   }
+  },
+  {
+   "id": "w3-s2",
+   "name": "hybrid bridge dual-stack MCP 2026-07-28 upgrade",
+   "phase": "mcp",
+   "kind": "slice",
+   "goal": "hybrid bridge dual-stack MCP 2026-07-28 upgrade",
+   "validation_goal": "test-mcp-bridge-compat both handshakes; live Claude Code call",
+   "deps": [
+    "w3-s1"
+   ],
+   "detection": {
+    "commit_match": [
+     "mcp-bridge 2026-07-28",
+     "server/discover"
+    ]
+   }
+  },
+  {
+   "id": "w3-s3",
+   "name": "hooks: SessionStart/PostToolUse/Stop",
+   "phase": "mcp",
+   "kind": "slice",
+   "goal": "hooks: SessionStart/PostToolUse/Stop",
+   "validation_goal": "hook tests, <100ms latency",
+   "deps": [],
+   "detection": {
+    "commit_match": [
+     "hooks SessionStart"
+    ]
+   }
+  },
+  {
+   "id": "w3-s4",
+   "name": "playwright intake record honesty",
+   "phase": "mcp",
+   "kind": "slice",
+   "goal": "playwright intake record honesty",
+   "validation_goal": "test-enabled-external-mcp-candidates covers it",
+   "deps": [],
+   "detection": {
+    "commit_match": [
+     "playwright intake"
+    ]
+   }
+  },
+  {
+   "id": "w3-s5",
+   "name": "recurring cadence-driven frontier scan (aq-frontier scan-due + timer, owner nod)",
+   "phase": "mcp",
+   "kind": "slice",
+   "goal": "recurring cadence-driven frontier scan (aq-frontier scan-due + timer, owner nod)",
+   "validation_goal": "test-frontier-scan-due fake clock/fetcher; kill switch Nix option",
+   "deps": [],
+   "detection": {
+    "commit_match": [
+     "scan-due"
+    ]
+   }
+  },
+  {
+   "id": "w3-s6",
+   "name": "browser_research structured extract + crawl budget (benchmark first)",
+   "phase": "mcp",
+   "kind": "slice",
+   "goal": "browser_research structured extract + crawl budget (benchmark first)",
+   "validation_goal": "20-URL benchmark on local hardware",
+   "deps": [],
+   "detection": {
+    "commit_match": [
+     "structured-extract"
+    ]
+   }
+  },
+  {
+   "id": "w4-s1",
+   "name": "owned-path scope gate at integrate/merge",
+   "phase": "frontier",
+   "kind": "slice",
+   "goal": "owned-path scope gate at integrate/merge",
+   "validation_goal": "in-scope pass, out-of-scope block, uncommitted block",
+   "deps": [],
+   "detection": {
+    "commit_match": [
+     "owned-path scope"
+    ]
+   }
+  },
+  {
+   "id": "w4-s2",
+   "name": "slice brief: token caps + mandatory check command + turn cap",
+   "phase": "frontier",
+   "kind": "slice",
+   "goal": "slice brief: token caps + mandatory check command + turn cap",
+   "validation_goal": "template lint rejects brief without check command",
+   "deps": [],
+   "detection": {
+    "commit_match": [
+     "token caps",
+     "check command"
+    ]
+   }
+  },
+  {
+   "id": "w4-s3",
+   "name": "skill with/without eval + prune",
+   "phase": "frontier",
+   "kind": "slice",
+   "goal": "skill with/without eval + prune",
+   "validation_goal": "per-skill delta report; zero-delta archived",
+   "deps": [],
+   "detection": {
+    "commit_match": [
+     "skill eval"
+    ]
+   }
+  },
+  {
+   "id": "w4-s4",
+   "name": "instruction files as index (<200 lines, all agents)",
+   "phase": "frontier",
+   "kind": "slice",
+   "goal": "instruction files as index (<200 lines, all agents)",
+   "validation_goal": "parity check green; line budget gate",
+   "deps": [],
+   "detection": {
+    "commit_match": [
+     "claudemd index"
+    ]
+   }
+  },
+  {
+   "id": "w5-s1",
+   "name": "review-disposition GitHub Actions required check",
+   "phase": "review-enforcement",
+   "kind": "slice",
+   "goal": "review-disposition GitHub Actions required check",
+   "validation_goal": "PR without independent sha-bound review record fails the check",
+   "deps": [],
+   "detection": {
+    "commit_match": [
+     "review-disposition check"
+    ]
+   }
+  },
+  {
+   "id": "w5-s2",
+   "name": "main branch protection requiring review-disposition (owner act)",
+   "phase": "review-enforcement",
+   "kind": "slice",
+   "goal": "main branch protection requiring review-disposition (owner act)",
+   "validation_goal": "gh api protection shows required check; test PR blocked",
+   "deps": [
+    "w5-s1"
+   ],
+   "detection": {
+    "commit_match": [
+     "branch protection"
+    ]
+   }
+  },
+  {
+   "id": "w5-s3",
+   "name": "tier0 anti-fabrication lint for tracker acceptances / owner-ratification claims",
+   "phase": "review-enforcement",
+   "kind": "slice",
+   "goal": "tier0 anti-fabrication lint for tracker acceptances / owner-ratification claims",
+   "validation_goal": "lint blocks pct_hint/accepted-by edits lacking aq-approve receipt",
+   "deps": [],
+   "detection": {
+    "commit_match": [
+     "anti-fabrication lint"
+    ]
+   }
+  },
+  {
+   "id": "w6-s1",
+   "name": "shared ci-checks manifest run by CI and pre-push",
+   "phase": "ci-parity",
+   "kind": "slice",
+   "goal": "shared ci-checks manifest run by CI and pre-push",
+   "validation_goal": "workflow script not in manifest fails tier0; harness-first gate runs in pre-push",
+   "deps": [],
+   "detection": {
+    "commit_match": [
+     "ci-checks manifest"
+    ]
+   }
+  },
+  {
+   "id": "w6-s2",
+   "name": "path-triggered pre-push nix flake/toplevel eval",
+   "phase": "ci-parity",
+   "kind": "slice",
+   "goal": "path-triggered pre-push nix flake/toplevel eval",
+   "validation_goal": "nix change that fails eval is blocked pre-push",
+   "deps": [],
+   "detection": {
+    "commit_match": [
+     "pre-push nix eval"
+    ]
+   }
+  },
+  {
+   "id": "w6-s3",
+   "name": "clean-env runner shared by CI and local",
+   "phase": "ci-parity",
+   "kind": "slice",
+   "goal": "clean-env runner shared by CI and local",
+   "validation_goal": "DP-4-style missing-dep fixture fails locally in clean env",
+   "deps": [
+    "w6-s1"
+   ],
+   "detection": {
+    "commit_match": [
+     "ci-clean-env"
+    ]
+   }
+  },
+  {
+   "id": "w6-s4",
+   "name": "security audit gate can fail (exit code, no continue-on-error)",
+   "phase": "ci-parity",
+   "kind": "slice",
+   "goal": "security audit gate can fail (exit code, no continue-on-error)",
+   "validation_goal": "seeded blocking finding fails the job",
+   "deps": [],
+   "detection": {
+    "commit_match": [
+     "security gate exit code"
+    ]
+   }
+  },
+  {
+   "id": "w6-s5",
+   "name": "tool-pins manifest + version-skew check",
+   "phase": "ci-parity",
+   "kind": "slice",
+   "goal": "tool-pins manifest + version-skew check",
+   "validation_goal": "skewed pin fails tier0 check",
+   "deps": [],
+   "detection": {
+    "commit_match": [
+     "tool-pins"
+    ]
+   }
+  },
+  {
+   "id": "w6-s6",
+   "name": "merge-commit parity worktree run",
+   "phase": "ci-parity",
+   "kind": "slice",
+   "goal": "merge-commit parity worktree run",
+   "validation_goal": "conflict-with-main regression caught pre-push",
+   "deps": [
+    "w6-s1"
+   ],
+   "detection": {
+    "commit_match": [
+     "merge-commit parity"
+    ]
+   }
+  },
+  {
+   "id": "w6-s7",
+   "name": "whole-tree maintenance run + missing-tool WARNs",
+   "phase": "ci-parity",
+   "kind": "slice",
+   "goal": "whole-tree maintenance run + missing-tool WARNs",
+   "validation_goal": "missing tool surfaces WARN",
+   "deps": [],
+   "detection": {
+    "commit_match": [
+     "whole-tree maintenance"
+    ]
+   }
+  },
+  {
+   "id": "w7-s1",
+   "name": "canonize gate-triggered dependency ladder (all agents)",
+   "phase": "dep-hygiene",
+   "kind": "slice",
+   "goal": "canonize gate-triggered dependency ladder (all agents)",
+   "validation_goal": "canon --check no drift; ladder present in all agent files",
+   "deps": [],
+   "detection": {
+    "commit_match": [
+     "dependency ladder canon"
+    ]
+   }
+  },
+  {
+   "id": "w7-s2",
+   "name": "security-audit prints fix-availability + maintenance signal on blocking findings",
+   "phase": "dep-hygiene",
+   "kind": "slice",
+   "goal": "security-audit prints fix-availability + maintenance signal on blocking findings",
+   "validation_goal": "seeded finding prints fix/maintained data",
+   "deps": [],
+   "detection": {
+    "commit_match": [
+     "maintenance signal"
+    ]
+   }
+  }
+ ]
+}
