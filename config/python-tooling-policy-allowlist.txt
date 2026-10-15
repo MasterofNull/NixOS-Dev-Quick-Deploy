@@ -8,6 +8,7 @@
 scripts/ai/aqd
 scripts/data/import-tool-recommendations.py
 scripts/data/sync-knowledge-sources
+scripts/governance/ci-clean-env.sh
 scripts/testing/run-a2a-tck.sh
 scripts/testing/test-blast-radius-classifier.py
 scripts/testing/test-python-tooling-policy.py
