@@ -393,3 +393,11 @@ Codex lane absent).
 - producer to fix: upstream diskcache, or nixos-docs swapping to a tested stdlib cache.
 - fix-path: add a nixos-docs cache test, then replace with sqlite3/shelve-based cache; or raise floor on fix.
 - class: T5 · severity: low-medium (local cache dir, same-user) · owner hyperd, approved 2026-10-14 chat · expires 2026-11-13.
+
+## WR-SEC-3 — ffmpeg 8.1.2 library-linkage CVEs ignored in .grype.yaml — OPEN (MAINT-DUE 2026-10-22 for the 8.1.3 group, 2026-11-14 for the rest)
+- symptom: Grype closure scan (alerts #2919-#2929) flags ffmpeg 8.1.2 (4 HIGH, 7 MEDIUM) from library consumers (pipewire, gst-libav, chromaprint, opencv, qtmultimedia, torchcodec, python av, pydub via ffmpeg-full); the ffmpeg CLI is already unstable 9.0.1 (fast-lane leaf).
+- band-aid in place? yes: 11 `ignore` entries in `.grype.yaml`, each with a machine token `expires=YYYY-MM-DD`; enforced by `scripts/governance/tier0.d/check-grype-ignore-expiry.sh` (WARN pre-commit, FAIL maintenance and the CI step in security.yml). Mitigation in `scripts/ai/aq-transcribe` (`timeout`, `-nostdin -protocol_whitelist file,pipe`, yt-dlp `--hls-prefer-native`).
+- root cause: (a) CVE-2026-52295/6/7 are CPE range false positives: 8.1.2 source already has the fixes (mov_read_iacb uses ff_alloc_extradata; iamf_writer.c pads extradata with INT_MAX guards; wmaenc.c av_mallocz(size+AV_INPUT_BUFFER_PADDING_SIZE)); (b) CVE-2026-107695/97 and 107660 are fixed in ffmpeg 8.1.3, which nixos-26.05 does not ship yet (backport nixpkgs#571601 targets staging-26.05); (c) CVE-2026-107696 (RTSP redirect infinite loop), 107675 (sftp missing host-key verification), 107676, 107677 (DASH loop), 107678 have no released fix ("through 9.0.2", master only), so the 9.0.1 CLI is affected too.
+- producer to fix: nixpkgs channel (b); upstream ffmpeg release (c).
+- fix-path: `nix flake update nixpkgs` once nixos-26.05 ffmpeg_8 >= 8.1.3, then drop the (a)+(b) ignores; drop (c) on a fixed release. Group (b) expires 2026-10-22 and is renewed weekly only while the channel lacks 8.1.3. No local overlay: ffmpeg_8 override rebuilds large referrer closures (measured by reviewer: 455/192/132 referrers for the three variants; see fast-lane-manifest.nix).
+- class: T5 · severity: HIGH (DoS/OOB-read in demux paths on untrusted media) · owner hyperd.
