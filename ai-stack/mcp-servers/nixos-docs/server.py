@@ -30,6 +30,7 @@ from fastapi.responses import JSONResponse, Response
 # Add parent directory to path for shared imports
 sys.path.insert(0, str(Path(__file__).parent.parent))
 from shared.auth_middleware import get_api_key_dependency
+from shared.api_key_auth import keys_equal
 from prometheus_client import Counter, Gauge, Histogram, generate_latest, CONTENT_TYPE_LATEST
 from pydantic import BaseModel, Field
 from opentelemetry import trace
@@ -295,7 +296,7 @@ async def api_key_middleware(request: Request, call_next):
     token = request.headers.get("X-API-Key") or request.headers.get("Authorization", "")
     if token.startswith("Bearer "):
         token = token.split(" ", 1)[1]
-    if token != API_KEY:
+    if not keys_equal(token, API_KEY):
         return JSONResponse(status_code=401, content={"error": "unauthorized"})
     return await call_next(request)
 
