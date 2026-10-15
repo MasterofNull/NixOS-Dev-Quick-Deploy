@@ -26,42 +26,42 @@
       "id": "dp-0", "name": "architecture, threat model, schema contracts and UI specifications", "phase": "contracts", "kind": "slice",
       "goal": "author PRD, design document, tracker, TriageClassification schema, DurableEffectSandwich contract, and Pi UI streaming specifications folded with Codex review",
       "validation_goal": "PRD passes schema validation; check-pm-tracker validates tracker; design covers threat model, reconciliation, and UI streaming protocol",
-      "deps": [], "pct_hint": 100,
+      "deps": [],
       "detection": {"commit_match": ["durable-proactive-mesh", "DP-0", "parity prd", "pi streaming ui"]}
     },
     {
       "id": "dp-1", "name": "system 1 high-frequency triage engine (aq-triage)", "phase": "triage", "kind": "slice",
       "goal": "implement sub-second journald stream reader with persistent cursor tracking and fast structured classification engine",
       "validation_goal": "unit tests test-aq-triage.py pass; benchmark proves <200ms P95 classification latency; QA check 0.10.66 passes",
-      "deps": ["dp-0"], "pct_hint": 100,
+      "deps": ["dp-0"],
       "detection": {"commit_match": ["DP-1", "aq-triage", "system 1 triage"]}
     },
     {
       "id": "dp-2", "name": "durable agent runtime core (aq-durable) and effect reconciliation", "phase": "runtime", "kind": "slice",
       "goal": "implement Effect Sandwich middleware, atomic intent logging, idempotency store, and OUTCOME_UNKNOWN reconciliation in hybrid-coordinator",
       "validation_goal": "unit tests test-aq-durable.py pass; crash-recovery simulation proves 100% replay safety without duplicate mutations; QA check 0.10.68 passes; Tier-0 passes",
-      "deps": ["dp-0"], "pct_hint": 100,
+      "deps": ["dp-0"],
       "detection": {"commit_match": ["DP-2", "aq-durable", "effect sandwich"]}
     },
     {
       "id": "dp-3", "name": "autonomous on-call daemon (aq-oncalld) and isolated implementers", "phase": "oncall", "kind": "slice",
       "goal": "implement systemd-managed on-call daemon that auto-spawns worktree-isolated implementers to remediate incidents with independent review",
       "validation_goal": "end-to-end incident injection test wakes daemon, fixes defect, passes Tier-0, and stages PR with Step 8 evidence",
-      "deps": ["dp-1", "dp-2"], "pct_hint": 100,
+      "deps": ["dp-1", "dp-2"],
       "detection": {"commit_match": ["DP-3", "aq-oncalld", "on-call daemon"]}
     },
     {
       "id": "dp-4", "name": "pi-style multi-agent streaming canvas and operator interaction plane", "phase": "ui_canvas", "kind": "slice",
       "goal": "implement SSE session streaming bus on Switchboard and Web Dashboard canvas showing agent hierarchy, streaming execution windows, and guidance prompt",
       "validation_goal": "dashboard renders live sub-agent tree and real-time token/tool streams; operator guidance injection endpoint verified; QA check 0.10.67 passes; Tier-0 passes",
-      "deps": ["dp-0"], "pct_hint": 100,
+      "deps": ["dp-0"],
       "detection": {"commit_match": ["DP-4", "pi streaming ui", "streaming canvas", "agent mesh ui"]}
     },
     {
       "id": "dp-5", "name": "end-to-end incident-to-canvas verification and activation gate", "phase": "activation", "kind": "slice",
       "goal": "execute full end-to-end journey test from incident injection to real-time UI streaming, operator guidance, and verified PR merge with activation DoD",
       "validation_goal": "full E2E test passes; Tier-0 56/56 PASS; dashboard panel and QA 0.10.66 live; Activation Definition of Done attested",
-      "deps": ["dp-3", "dp-4"], "pct_hint": 0,
+      "deps": ["dp-3", "dp-4"],
       "detection": {"commit_match": ["DP-5", "e2e oncall verification", "durable mesh activation"]}
     }
   ]

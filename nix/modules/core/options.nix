@@ -2366,6 +2366,20 @@
             description = "Declarative runtime scheduling policy for control-plane candidate selection.";
           };
 
+          frontierScan = {
+            enable = lib.mkOption {
+              type = lib.types.bool;
+              default = true;
+              description = "Kill switch: weekly bounded, review-gated frontier source scan (aq-frontier scan-due). Files status=new candidates only; never accepts or folds.";
+            };
+
+            maxSources = lib.mkOption {
+              type = lib.types.ints.positive;
+              default = 12;
+              description = "Max due sources fetched per scan run.";
+            };
+          };
+
           cachePrewarm = {
             enable = lib.mkOption {
               type = lib.types.bool;
