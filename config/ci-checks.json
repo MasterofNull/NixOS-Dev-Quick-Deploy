@@ -290,6 +290,10 @@
     {
       "script": "scripts/testing/verify-flake-first-roadmap-completion.sh",
       "reason": "covered locally by tier0 gate_roadmap_verification"
+    },
+    {
+      "script": "scripts/governance/check-review-disposition.py",
+      "reason": "reads the pull_request event payload ($GITHUB_EVENT_PATH: PR body + head sha); inherently remote. Local parity: .githooks/commit-msg Review-Disposition fields + scripts/testing/test-review-disposition-check.py"
     }
   ]
 }
