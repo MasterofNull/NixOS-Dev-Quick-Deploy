@@ -1,0 +1,21 @@
+{
+  "_comment": "Time-boxed pip-audit exceptions consumed by scripts/security/security-audit.sh. Expired entries are NOT applied (finding becomes blocking). Register: .agent/WORKAROUND-REGISTER.md WR-SEC-1/2.",
+  "exceptions": [
+    {
+      "id": "PYSEC-2026-3740",
+      "package": "nltk",
+      "reason": "CVE-2026-81726: path traversal in model save/load APIs (TransitionParser, AveragedPerceptron, PerceptronTagger.save_to_json, save_maxent_params). Fix merged on nltk develop (pathsec_open, PR #3945 et al.) but unreleased; 3.10.3 is latest on PyPI. Exposure: aidb never imports nltk (transitive via llama-index-core, which requires nltk>=3.9.3) => vulnerable APIs not reachable. Remove this exception when nltk >3.10.3 releases.",
+      "owner": "hyperd",
+      "approved": "2026-10-14 chat",
+      "expires": "2026-11-13"
+    },
+    {
+      "id": "PYSEC-2026-2447",
+      "package": "diskcache",
+      "reason": "CVE-2025-69872: pickle deserialization on cache read (needs cache-dir write access). diskcache is unmaintained (no release since 2023-08, OpenSSF Scorecard Maintained 0); upstream PRs #361/#364 unmerged. Resolution: replaced in nixos-docs by stdlib sqlite3 TextTTLCache (branch fix/nixos-docs-diskcache-no-pickle). Bridge only: remove this exception as soon as that branch merges (diskcache then leaves requirements and the Nix env).",
+      "owner": "hyperd",
+      "approved": "2026-10-14 chat",
+      "expires": "2026-11-13"
+    }
+  ]
+}
