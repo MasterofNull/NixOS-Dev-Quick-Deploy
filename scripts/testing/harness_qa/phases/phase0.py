@@ -1534,14 +1534,20 @@ def _check_frontier_fe2a_functional_eval(ctx: RunContext) -> list[CheckResult]:
     if missing:
         return [failed(5, "0.10.64", desc, f"missing: {', '.join(missing)}")]
     try:
+        env = dict(os.environ)
+        if not env.get("CI"):
+            env.setdefault("AQ_CONFINE_REQUIRE", "1")  # local: broken bwrap must fail loudly, not skip
         proc = subprocess.run([sys.executable, str(test)], cwd=str(ctx.repo_root), capture_output=True, text=True,
-                              timeout=120, check=False)
-        if proc.returncode != 0 or "ALL 6 FIXTURES PASS" not in proc.stdout:
+                              timeout=120, check=False, env=env)
+        if proc.returncode != 0 or not ("ALL 6 FIXTURES PASS" in proc.stdout or "PASS WITH SKIPS" in proc.stdout):
             return [failed(5, "0.10.64", desc, (proc.stderr or proc.stdout or "fixture failed")[-240:])]
         if "_functional_eval_health_summary" not in route.read_text(encoding="utf-8") or "· functional eval baseline" not in js.read_text(encoding="utf-8"):
             return [failed(5, "0.10.64", desc, "dashboard functional eval visibility contract missing")]
     except (OSError, subprocess.TimeoutExpired) as error:
         return [failed(5, "0.10.64", desc, str(error)[:240])]
+    if "SKIP-WARN:" in proc.stdout:
+        warn = next((ln for ln in proc.stdout.splitlines() if ln.startswith("SKIP-WARN: ") and "confinement unavailable" in ln), "SKIP-WARN")
+        return [skipped(5, "0.10.64", desc, f"pure fixtures pass; sandbox fixtures skipped ({warn[:180]})")]
     return [passed(5, "0.10.64", desc)]
 
 
@@ -1580,9 +1586,12 @@ def _check_durable_triage_engine(ctx: RunContext) -> list[CheckResult]:
     if missing:
         return [failed(5, "0.10.66", desc, f"missing: {', '.join(missing)}")]
     try:
+        env = dict(os.environ)
+        if not env.get("CI"):
+            env.setdefault("AQ_CONFINE_REQUIRE", "1")  # local: broken bwrap must fail loudly, not skip
         proc = subprocess.run([sys.executable, str(test)], cwd=str(ctx.repo_root), capture_output=True, text=True,
-                              timeout=120, check=False)
-        if proc.returncode != 0 or "ALL 6 FIXTURES PASS" not in proc.stdout:
+                              timeout=120, check=False, env=env)
+        if proc.returncode != 0 or not ("ALL 6 FIXTURES PASS" in proc.stdout or "PASS WITH SKIPS" in proc.stdout):
             return [failed(5, "0.10.66", desc, (proc.stderr or proc.stdout or "fixture failed")[-240:])]
         if "_triage_health_summary" not in route.read_text(encoding="utf-8") or "· system 1 stream triage" not in js.read_text(encoding="utf-8"):
             return [failed(5, "0.10.66", desc, "dashboard triage visibility contract missing")]
