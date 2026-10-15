@@ -3197,6 +3197,11 @@ if [[ "${RECOVERY_MODE}" == true ]]; then
   fi
 fi
 
+if [[ "${MODE}" != "build" ]]; then
+  # Deploy-source guard: refuse to switch/boot from a non-main, stale, or build-dirty checkout.
+  bash "${REPO_ROOT}/scripts/governance/check-deploy-source.sh" "${REPO_ROOT}" || exit $?
+fi
+
 require_command nix
 require_command nixos-rebuild
 enable_flakes_runtime
