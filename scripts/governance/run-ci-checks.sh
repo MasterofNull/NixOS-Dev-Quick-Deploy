@@ -4,6 +4,8 @@
 #   run-ci-checks.sh --all [--only <id>]
 #   run-ci-checks.sh --changed [--base origin/main] [--only <id>]
 #   run-ci-checks.sh --list [--changed]   # print selected ids only
+# A manifest entry may carry an "env" object (string vars set for that check only).
+# Merge-commit parity (CI tests the PR merge commit): scripts/governance/ci-merge-parity.sh
 # Env: CI_CHECKS_MANIFEST overrides the manifest path; CI_CHECKS_CHANGED_FILES (newline list)
 # overrides git change detection (tests).
 set -euo pipefail
@@ -71,7 +73,7 @@ def main(argv):
         if not os.path.isfile(parts[0]): results.append((c["id"], "FAIL", f"script not found: {parts[0]}")); continue
         t = time.time()
         interp = ["python3"] if parts[0].endswith(".py") else ["bash"]
-        r = subprocess.run(interp + parts, capture_output=True, text=True)
+        r = subprocess.run(interp + parts, capture_output=True, text=True, env={**os.environ, **c.get("env", {})})
         dt = f"{time.time()-t:.1f}s"
         if r.returncode == 0: results.append((c["id"], "PASS", dt))
         else:
