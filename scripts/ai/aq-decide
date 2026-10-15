@@ -1,0 +1,68 @@
+#!/usr/bin/env python3
+"""aq-decide: DEC-S1 CLI over scripts/ai/lib/aq_decide.py (library + shadow; no HTTP, no live path).
+
+  aq-decide decide  [--caller NAME] < request.json     contract request -> response JSON
+  aq-decide shadow  QUESTION TEXT                      T0.5 shadow prediction only (never acted on)
+  aq-decide stats                                      counters (log_failed, cache_rejected)
+  aq-decide explain QUESTION                           config summary for a question
+  aq-decide bench   [--n 500] [--question Q]           T0.5 in-process latency p50/p95/p99
+Kill switch: AQ_DECIDE=0 (every answer abstains DISABLED).
+"""
+from __future__ import annotations
+
+import argparse
+import json
+import sys
+import time
+from pathlib import Path
+
+sys.path.insert(0, str(Path(__file__).resolve().parent / "lib"))
+import aq_decide  # noqa: E402
+
+
+def _pct(xs: list[float], p: float) -> float:
+    xs = sorted(xs)
+    return xs[min(len(xs) - 1, int(round(p / 100.0 * (len(xs) - 1))))]
+
+
+def main(argv: list[str]) -> int:
+    ap = argparse.ArgumentParser(prog="aq-decide")
+    sub = ap.add_subparsers(dest="cmd", required=True)
+    d = sub.add_parser("decide"); d.add_argument("--caller", default="cli")
+    s = sub.add_parser("shadow"); s.add_argument("question"); s.add_argument("text")
+    e = sub.add_parser("explain"); e.add_argument("question")
+    sub.add_parser("stats")
+    b = sub.add_parser("bench"); b.add_argument("--n", type=int, default=500); b.add_argument("--question", default="task_profile")
+    a = ap.parse_args(argv)
+    dec = aq_decide.Decider()
+    if a.cmd == "decide":
+        try:
+            req = json.load(sys.stdin)
+        except Exception:
+            print(json.dumps({"error": "BAD_REQUEST"})); return 2
+        print(json.dumps(dec.decide(req, caller=a.caller), indent=2)); return 0
+    if a.cmd == "stats":
+        print(json.dumps(dec.counters)); return 0
+    if a.cmd == "shadow":
+        print(json.dumps(dec.shadow_predict(a.question, a.text), indent=2)); return 0
+    if a.cmd == "explain":
+        q = dec.cfg["questions"].get(a.question)
+        if not q:
+            print("unknown question", file=sys.stderr); return 1
+        m = dec.models.get(a.question)
+        print(json.dumps({"config_version": dec.cfg["_version"], "type": q["type"], "options": q["options"],
+                          "threshold": q.get("threshold"), "security_class": q.get("security_class"),
+                          "features": list(q["features"]), "counters": dec.counters, "rules": [r["id"] for r in q.get("rules", [])],
+                          "t05": {"mode": "shadow-only", "train_rows": m.n_train if m else 0,
+                                  "class_counts": m.class_counts if m else {}}}, indent=2)); return 0
+    texts = ["write a python function that parses the log file and returns counts " * (1 + i % 20) for i in range(a.n)]
+    dec.shadow_predict(a.question, texts[0])
+    lat = []
+    for t in texts:
+        t0 = time.perf_counter(); dec.shadow_predict(a.question, t); lat.append((time.perf_counter() - t0) * 1000)
+    print(json.dumps({"n": a.n, "p50_ms": round(_pct(lat, 50), 3), "p95_ms": round(_pct(lat, 95), 3),
+                      "p99_ms": round(_pct(lat, 99), 3), "max_ms": round(max(lat), 3)})); return 0
+
+
+if __name__ == "__main__":
+    sys.exit(main(sys.argv[1:]))
