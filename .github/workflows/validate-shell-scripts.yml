@@ -35,8 +35,8 @@ jobs:
 
       - name: Validate ANSI output support
         run: |
-          chmod +x scripts/testing/validate-echo-colors.sh
-          ./scripts/testing/validate-echo-colors.sh
+          chmod +x scripts/governance/run-ci-checks.sh
+          ./scripts/governance/run-ci-checks.sh --all --only validate-echo-colors
         
       - name: Comment on PR if issues found
         if: failure() && github.event_name == 'pull_request'
