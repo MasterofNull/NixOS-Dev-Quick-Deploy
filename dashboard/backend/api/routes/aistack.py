@@ -8796,6 +8796,38 @@ async def get_alerts_status() -> Dict[str, Any]:
     }
 
 
+@router.get("/alerts/{alert_id}/view")
+async def get_alert_view(alert_id: str, request: Request):
+    """Read-only HTML detail page for one attention alert (notification deep link).
+
+    Approval stays in aq-approve (always prompts); this page only shows the
+    alert and the exact commands.
+    """
+    import html as _html
+    from fastapi.responses import HTMLResponse
+    _lib = _repo_root() / "scripts" / "ai" / "lib"
+    if str(_lib) not in sys.path:
+        sys.path.insert(0, str(_lib))
+    from attention_queue import get_by_id, host_allowed, redact  # type: ignore
+    if not host_allowed(request.headers.get("host", "")):
+        return HTMLResponse("forbidden host", status_code=403)
+    if request.headers.get("sec-fetch-site", "none") not in ("none", "same-origin"):
+        return HTMLResponse("cross-site request refused", status_code=403)
+    a = await asyncio.to_thread(get_by_id, alert_id)
+    if not a:
+        return HTMLResponse("<h1>Alert not found</h1><p>Resolved or expired. Run <code>aq-approve list</code>.</p>", status_code=404)
+    e = lambda k: _html.escape(redact(str(a.get(k) or "")))  # noqa: E731
+    rows = "".join(
+        f"<h3>{lbl}</h3><pre>{e(k)}</pre>" for lbl, k in
+        (("What", "detail"), ("Why it matters", "why"), ("Next step", "next_step"),
+         ("Proposed action", "proposed_action"), ("Command", "command")) if a.get(k))
+    return HTMLResponse(
+        f"<!doctype html><meta charset=utf-8><title>{e('id')}</title>"
+        f"<body style='font-family:sans-serif;max-width:50rem;margin:2rem auto'>"
+        f"<h2>{e('title')}</h2><p>{e('id')} · {e('severity')} · {e('status')} · {e('source')}</p>{rows}"
+        f"<h3>Respond</h3><pre>aq-approve show {e('id')}\naq-approve review {e('id')}</pre></body>")
+
+
 # ── Missing-route stubs: JS expects these endpoints ──────────────────────────
 
 @router.get("/fleet/status")

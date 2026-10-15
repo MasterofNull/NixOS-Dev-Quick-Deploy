@@ -30,7 +30,7 @@ _PYTHON_BIN = str(Path(sys.executable).resolve().parent)
 _SYSTEM_BIN = "/run/current-system/sw/bin"
 _PHASES = ["0"]  # phase 0 = pre-flight smoke; fast enough for a 15-min timer
 _SOURCE = "ai-stack-health-monitor"
-_COOLDOWN_S = 600  # don't re-alert the same failure within 10 minutes
+_ALERT_TTL_S = 3600  # > 3x the 15-min timer so one failing issue stays ONE alert (updated in place)
 _HARNESS_TIMEOUT_S = int(os.environ.get("HARNESS_TIMEOUT_S", "430"))  # ~2.5x measured phase-0 wall (147-171s)
 
 
@@ -126,7 +126,11 @@ def main() -> int:
                     f"Check: systemctl status ai-stack-health-monitor.service"
                 ),
                 proposed_action="Investigate aq-qa and health monitor logs.",
-                ttl_s=_COOLDOWN_S,
+                dedup_key=f"qa-phase-{phase}-error",
+                why="Without this monitor, stack failures are not detected on schedule.",
+                next_step="Check the monitor service log.",
+                command="journalctl -u ai-stack-health-monitor.service -n 50 --no-pager",
+                ttl_s=_ALERT_TTL_S,
             )
             total_failures += 1
             continue
@@ -160,18 +164,25 @@ def main() -> int:
             message = c.get("message") or c.get("detail") or ""
             lines.append(f"  [{c.get('id', '?')}] {label}: {message}")
 
+        ids = [str(c.get("id", "?")) + " " + str(c.get("name") or c.get("description") or "?")[:28]
+               for c in failures]
+        shown = ", ".join(ids[:3]) + (f" +{len(ids) - 3} more" if len(ids) > 3 else "")
+        noun = "check" if len(failures) == 1 else "checks"
         push_alert(
             source=_SOURCE,
             severity="critical" if len(failures) >= 3 else "high",
             autonomy_boundary="human_gate",
-            title=f"aq-qa phase {phase}: {len(failures)} check(s) failing",
+            title=f"QA phase {phase}: {len(failures)} {noun} failing ({shown})",
             detail=(
-                f"Scheduled health monitor found {len(failures)} failing check(s):\n"
+                f"Scheduled health monitor found {len(failures)} failing {noun}:\n"
                 + "\n".join(lines)
-                + "\n\nRun: aq-qa 0  for full detail."
             ),
-            proposed_action="Run: aq-qa 0  to see full failure detail.",
-            ttl_s=_COOLDOWN_S,
+            proposed_action=f"Re-run `aq-qa {phase} --machine` and fix the failing check(s).",
+            ttl_s=_ALERT_TTL_S,
+            dedup_key=f"qa-phase-{phase}",
+            why="The AI stack pre-flight smoke test is failing; dependent services may be degraded.",
+            next_step="Re-run the phase to see per-check output.",
+            command=f"aq-qa {phase} --machine",
         )
         total_failures += len(failures)
 

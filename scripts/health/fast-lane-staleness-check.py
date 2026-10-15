@@ -225,6 +225,10 @@ def main() -> int:
             ),
             proposed_action="Review and, if desired, bump nixpkgs-unstable + rebuild-test.",
             ttl_s=_COOLDOWN_S,
+            dedup_key="fast-lane-behind",
+            why="Fast-lane packages lag nixpkgs-unstable; advisory only, nothing changed.",
+            next_step="Review the manifest and bump the pin if you want the newer versions.",
+            command="nix flake lock --update-input nixpkgs-unstable",
         )
     except Exception as e:  # noqa: BLE001 — notification must never crash the checker
         print(f"[{_SOURCE}] attention_queue push failed (non-fatal): {e}", file=sys.stderr)

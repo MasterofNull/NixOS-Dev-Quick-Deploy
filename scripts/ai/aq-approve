@@ -213,8 +213,50 @@ def approve_alert(alert_id: str, actor: str) -> int:
     return 0
 
 
+def show_alert(alert_id: str) -> int:
+    """Print one alert's full detail (read-only)."""
+    from attention_queue import dashboard_link, is_snoozed
+    a = get_by_id(alert_id)
+    if not a:
+        print(f"Alert {alert_id!r} not found (resolved or expired?). Try: aq-approve list", file=sys.stderr)
+        return 1
+    print(f"\n  {a.get('title')}")
+    print(f"  id: {a['id']}   status: {a.get('status')}   severity: {a.get('severity')}   source: {a.get('source')}")
+    for label, key in (("What", "detail"), ("Why", "why"), ("Next", "next_step"), ("Proposed", "proposed_action")):
+        if a.get(key):
+            print(f"\n  {label}: {a[key]}")
+    if a.get("command"):
+        print(f"\n  Command: {a['command']}")
+    if a.get("executor"):
+        print(f"\n  Approving runs executor: {a['executor']}  (review with: aq-approve review {a['id']})")
+    print(f"\n  Details: {a.get('link') or dashboard_link(a['id'])}")
+    if is_snoozed(a):
+        print("  (notifications snoozed)")
+    return 0
+
+
+def review_alert(alert_id: str) -> int:
+    """Show the alert, then PROMPT. Never approves without an interactive yes."""
+    rc = show_alert(alert_id)
+    if rc or not get_by_id(alert_id) or get_by_id(alert_id).get("status") != "pending":
+        return rc
+    if not sys.stdin.isatty():
+        print("  review needs an interactive terminal; nothing approved.", file=sys.stderr)
+        return 2
+    try:
+        answer = input("\n  Approve this action? [y/N] ").strip().lower()
+    except EOFError:
+        answer = ""
+    if answer not in ("y", "yes"):
+        print("  Not approved. Alert left pending.")
+        return 0
+    return approve_alert(alert_id, _resolve_actor("owner"))
+
+
 def main(argv=None) -> int:
     argv = list(sys.argv[1:] if argv is None else argv)
+    if len(argv) == 2 and argv[0] in ("show", "review") and argv[1].startswith("attn-"):
+        return (show_alert if argv[0] == "show" else review_alert)(argv[1])
     from approval_inbox import inbox_cli
     return inbox_cli(argv, approve_alert, _resolve_actor)
 

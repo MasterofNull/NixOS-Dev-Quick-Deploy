@@ -11,6 +11,9 @@ ROOT = Path(__file__).resolve().parents[2]
 HC_ROOT = ROOT / "ai-stack" / "mcp-servers" / "hybrid-coordinator"
 AUTH_PATH = HC_ROOT / "middleware" / "auth.py"
 sys.path.insert(0, str(HC_ROOT))
+# Mirror the service PYTHONPATH (repoMcp first): middleware.auth imports shared.api_key_auth, and an
+# ambient PYTHONPATH may point `shared` at another checkout that lacks the module.
+sys.path.insert(0, str(HC_ROOT.parent))
 
 # middleware.auth only needs Config.API_KEY for middleware construction. Keep the
 # unit test isolated from strict service env requirements in core.config.
