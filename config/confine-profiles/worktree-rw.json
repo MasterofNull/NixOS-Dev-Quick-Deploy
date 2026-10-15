@@ -59,6 +59,11 @@
     "core": 0,
     "as": 8589934592
   },
+  "cgroup": {
+    "memory_max": 3221225472,
+    "tasks_max": 300,
+    "allow_rlimit_only": false
+  },
   "size_caps": {
     "quarantine": 536870912,
     "worktree": 2147483648

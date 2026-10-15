@@ -331,6 +331,14 @@
     {
       "script": "scripts/governance/ci-gitleaks.sh",
       "reason": "CI keeps its inline gitleaks steps (security.yml secrets-scan, gitleaks.yml) because they emit SARIF for upload-sarif; same flags/config as manifest entry gitleaks-tree"
+    },
+    {
+      "script": "scripts/testing/test-aq-confine.py",
+      "reason": "dedicated confine-tests workflow job: needs unprivileged userns (bwrap), optional AppArmor userns profile and a systemd user manager; run locally via tier0 phase0 row 0.10.66 with AQ_CONFINE_REQUIRE=1"
+    },
+    {
+      "script": "scripts/ai/lib/confine.py",
+      "reason": "confine-tests workflow path filter only (library under test, not executed by a run step)"
     }
   ]
 }

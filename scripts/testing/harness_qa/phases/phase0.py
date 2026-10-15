@@ -1551,6 +1551,28 @@ def _check_frontier_fe2a_functional_eval(ctx: RunContext) -> list[CheckResult]:
     return [passed(5, "0.10.64", desc)]
 
 
+def _check_aq_confine_behavioral(ctx: RunContext) -> list[CheckResult]:
+    """0.10.66: aq-confine acceptance suite (cgroup scope, bwrap isolation, goldens). Local runs set AQ_CONFINE_REQUIRE=1 so a broken bwrap fails loudly."""
+    desc = "aq-confine acceptance: profiles, goldens, cgroup scope limits, bwrap isolation (AQ_CONFINE_REQUIRE=1 locally)"
+    test = ctx.repo_root / "scripts" / "testing" / "test-aq-confine.py"
+    if not test.exists():
+        return [failed(5, "0.10.66", desc, "missing: scripts/testing/test-aq-confine.py")]
+    env = dict(os.environ)
+    if not env.get("CI"):
+        env["AQ_CONFINE_REQUIRE"] = "1"
+    try:
+        proc = subprocess.run([sys.executable, str(test)], cwd=str(ctx.repo_root), capture_output=True, text=True,
+                              timeout=600, check=False, env=env)
+    except (OSError, subprocess.TimeoutExpired) as error:
+        return [failed(5, "0.10.66", desc, str(error)[:240])]
+    if proc.returncode != 0 or " 0 failed" not in proc.stdout:
+        tail = [ln for ln in proc.stdout.splitlines() if ln.startswith("FAIL")] or (proc.stderr or proc.stdout).splitlines()
+        return [failed(5, "0.10.66", desc, "; ".join(tail[-3:])[-240:])]
+    if "SKIP-WARN:" in proc.stdout:
+        return [skipped(5, "0.10.66", desc, "pure checks pass; behavioral groups skipped (confinement unavailable, CI mode)")]
+    return [passed(5, "0.10.66", desc)]
+
+
 def _check_frontier_fe2b_prompt_compile(ctx: RunContext) -> list[CheckResult]:
     """0.10.65: Frontier FE-2b GEPA build-time prompt compile plus dashboard visibility."""
     desc = "Frontier FE-2b prompt compile: reflective optimization, candidate gating, compiled artifact, dashboard visibility"
@@ -2477,6 +2499,7 @@ def run(ctx: RunContext) -> list[CheckResult]:
     results.extend(_check_hermetic_candidate_eval(ctx))
     results.extend(_check_ecc_p2_approval_gated_cd(ctx))
     results.extend(_check_frontier_fe2a_functional_eval(ctx))
+    results.extend(_check_aq_confine_behavioral(ctx))
     results.extend(_check_frontier_fe2b_prompt_compile(ctx))
     results.extend(_check_durable_triage_engine(ctx))
     results.extend(_check_pi_agent_streaming_canvas(ctx))

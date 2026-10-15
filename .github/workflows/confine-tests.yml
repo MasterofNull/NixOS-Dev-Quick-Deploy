@@ -1,0 +1,109 @@
+name: aq-confine Tests
+
+# Dedicated job: the suite needs unprivileged user namespaces (bwrap) and a systemd user manager
+# (cgroup scope limits). Hosted Ubuntu may restrict userns via AppArmor, so the job probes first,
+# loads a scoped userns profile for /usr/bin/bwrap if needed, and fails loudly (never skips) when
+# confinement still cannot work. The inline profile is deliberately flags=(unconfined) + userns for the
+# /usr/bin/bwrap binary only: the design's restrict-style profile (Ubuntu extra-profiles bwrap-userns-restrict,
+# which confines bwrap's children) could not be written from memory or validated here (no apparmor_parser on the
+# NixOS dev host, no hosted runner), and an unvalidated stricter profile would turn the job red for the wrong
+# reason. Follow-up: adopt the restrict-style profile once it has been run on a hosted runner. Design: .agents/plans/sota-rounding/aq-confine-DESIGN.md section 10.
+
+on:
+  push:
+    branches: [ main, develop, 'cursor/**' ]
+    paths:
+      - 'scripts/ai/lib/confine.py'
+      - 'scripts/ai/aq-confine'
+      - 'config/confine-profiles/**'
+      - 'config/confine-guidance.json'
+      - 'scripts/testing/test-aq-confine.py'
+      - 'scripts/testing/golden/aq-confine/**'
+      - '.github/workflows/confine-tests.yml'
+  pull_request:
+    branches: [ main ]
+    paths:
+      - 'scripts/ai/lib/confine.py'
+      - 'scripts/ai/aq-confine'
+      - 'config/confine-profiles/**'
+      - 'config/confine-guidance.json'
+      - 'scripts/testing/test-aq-confine.py'
+      - 'scripts/testing/golden/aq-confine/**'
+      - '.github/workflows/confine-tests.yml'
+
+permissions:
+  contents: read
+
+concurrency:
+  group: confine-tests-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  confine-tests:
+    name: aq-confine behavioral suite
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@fbc6f3992d24b796d5a048ff273f7fcc4a7b6c09  # v5
+
+      - name: Install bubblewrap
+        run: |
+          sudo apt-get update -qq
+          sudo apt-get install -y -qq bubblewrap apparmor-utils git
+
+      - name: Control check and bwrap probe (load scoped userns profile only if restricted)
+        run: |
+          set -u
+          echo "kernel: $(uname -r)"
+          for f in /proc/sys/kernel/apparmor_restrict_unprivileged_userns /proc/sys/kernel/unprivileged_userns_clone /proc/sys/user/max_user_namespaces; do
+            [ -r "$f" ] && echo "$f=$(cat "$f")"
+          done
+          # Control: raw unprivileged userns, printed so an unrestricted runner is visible (test is not vacuous).
+          if unshare --user true 2>/tmp/unshare.err; then echo "control: unshare --user OK (userns not restricted for plain unshare)"; else echo "control: unshare --user denied: $(cat /tmp/unshare.err)"; fi
+          probe() {
+            local args=(--unshare-all --unshare-user --unshare-net --disable-userns --die-with-parent --new-session --clearenv)
+            local d
+            for d in /usr /bin /lib /lib64 /etc/alternatives; do [ -e "$d" ] && args+=(--ro-bind "$d" "$d"); done
+            bwrap "${args[@]}" --proc /proc --dev /dev --tmpfs /tmp -- /usr/bin/python3 -c pass
+          }
+          if probe 2>/tmp/probe.err; then
+            echo "bwrap probe OK without a profile"
+          else
+            echo "bwrap probe failed ($(head -c 200 /tmp/probe.err)); loading scoped AppArmor userns profile for /usr/bin/bwrap"
+            sudo tee /etc/apparmor.d/aq-confine-bwrap >/dev/null <<'PROFILE'
+          abi <abi/4.0>,
+          include <tunables/global>
+          profile aq-confine-bwrap /usr/bin/bwrap flags=(unconfined) {
+            userns,
+            include if exists <local/aq-confine-bwrap>
+          }
+          PROFILE
+            sudo apparmor_parser -r /etc/apparmor.d/aq-confine-bwrap
+            if ! probe 2>/tmp/probe2.err; then
+              echo "::error::confinement unavailable after loading the userns profile: $(head -c 300 /tmp/probe2.err)"
+              exit 1
+            fi
+            echo "bwrap probe OK with the scoped profile"
+          fi
+
+      - name: Start systemd user manager (cgroup scope limits)
+        run: |
+          uid="$(id -u)"
+          sudo loginctl enable-linger "$USER" || true
+          sudo systemctl start "user@${uid}.service" || true
+          for _ in $(seq 1 20); do [ -S "/run/user/${uid}/bus" ] && break; sleep 0.5; done
+          echo "XDG_RUNTIME_DIR=/run/user/${uid}" >> "$GITHUB_ENV"
+          echo "DBUS_SESSION_BUS_ADDRESS=unix:path=/run/user/${uid}/bus" >> "$GITHUB_ENV"
+          export XDG_RUNTIME_DIR="/run/user/${uid}" DBUS_SESSION_BUS_ADDRESS="unix:path=/run/user/${uid}/bus"
+          cat "/sys/fs/cgroup/user.slice/user-${uid}.slice/user@${uid}.service/cgroup.controllers" 2>&1 || true
+          if ! systemd-run --user --scope --quiet -p MemoryMax=64M -p TasksMax=64 -- true; then
+            echo "::error::cannot create a systemd user scope with memory/pids limits on this runner; aq-confine fails closed without it"
+            exit 1
+          fi
+
+      - name: Run aq-confine suite (confinement required)
+        env:
+          AQ_CONFINE_REQUIRE: "1"
+        run: python3 scripts/testing/test-aq-confine.py

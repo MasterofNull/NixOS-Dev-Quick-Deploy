@@ -1,6 +1,6 @@
 {
   "schema": "aq-confine-profile-schema/1",
-  "description": "Allowed keys and types for aq-confine profiles. Unknown keys are rejected by scripts/ai/lib/confine.py load_profile(). Cross-field rules (unshare must be ['all'], disable_userns unless allow_nested_userns, no nesting for git profiles, git_refs 'heads' reserved, egress mode 'none' in S2a) are enforced in code.",
+  "description": "Allowed keys and types for aq-confine profiles. Unknown keys are rejected by scripts/ai/lib/confine.py load_profile(). Cross-field rules (unshare must be ['all'], disable_userns unless allow_nested_userns, no nesting for git profiles, git_refs 'heads' reserved, egress mode 'none' in S2a) are enforced in code. cgroup.memory_max (bytes) and cgroup.tasks_max are enforced via a transient systemd user scope (MemoryMax, MemorySwapMax=0, TasksMax); cgroup.allow_rlimit_only (default false) permits launching with rlimits alone when no scope can be created. ALL profiles therefore require a reachable systemd user manager with memory+pids delegation; without one every launch fails closed (exit 70 cgroup-scope-unavailable) unless the profile sets allow_rlimit_only. Services without a user manager (W2-S3 oncalld as a system service) need a decided mechanism before enabling.",
   "required": [
     "schema",
     "name",
@@ -21,6 +21,7 @@
     "env_base",
     "env_allow",
     "limits",
+    "cgroup",
     "size_caps",
     "timeout_s",
     "unshare",
@@ -122,6 +123,14 @@
         "nofile": "integer",
         "nproc": "integer",
         "core": "integer"
+      }
+    },
+    "cgroup": {
+      "type": "object",
+      "keys": {
+        "memory_max": "integer",
+        "tasks_max": "integer",
+        "allow_rlimit_only": "boolean"
       }
     },
     "size_caps": {

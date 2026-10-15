@@ -14,6 +14,8 @@ from __future__ import annotations
 import ast
 import dataclasses
 import hashlib
+import itertools
+import select
 import json
 import os
 import re
@@ -201,6 +203,11 @@ def load_profile(name: str) -> Profile:
             raise ConfineError(EXIT_PROFILE, "profile-invalid", f"{key}: unknown subkeys")
     if raw["name"] != name:
         raise ConfineError(EXIT_PROFILE, "profile-invalid", "name does not match file")
+    cg = raw["cgroup"]
+    if not isinstance(cg.get("memory_max"), int) or isinstance(cg.get("memory_max"), bool) or cg["memory_max"] < 16 * 1024 * 1024:
+        raise ConfineError(EXIT_PROFILE, "profile-invalid", "cgroup.memory_max required, integer bytes >= 16 MiB")
+    if not isinstance(cg.get("tasks_max"), int) or isinstance(cg.get("tasks_max"), bool) or cg["tasks_max"] < 8:
+        raise ConfineError(EXIT_PROFILE, "profile-invalid", "cgroup.tasks_max required, integer >= 8")
     if raw["unshare"] != ["all"]:
         raise ConfineError(EXIT_PROFILE, "profile-invalid", "unshare must be ['all'] (net is never shared)")
     if raw["git_refs"] == "heads":
@@ -798,6 +805,7 @@ class Plan:
     timeout_s: int
     status_fd: Optional[int] = None
     extra_ro_dirs: List[str] = dataclasses.field(default_factory=list)
+    systemd_run: str = ""    # non-empty: wrap the launch in a transient user scope carrying profile.cgroup
     scratch: bool = False
 
 
@@ -869,6 +877,16 @@ _LIMIT_FLAGS = (("as", "--as"), ("cpu", "--cpu"), ("fsize", "--fsize"), ("nofile
                 ("nproc", "--nproc"), ("core", "--core"))
 
 
+def scope_argv(plan: Plan) -> List[str]:
+    """systemd-run prefix: cgroup-v2 memory/pids bound for the whole sandbox (RLIMIT_AS stays as defense in depth)."""
+    if not plan.systemd_run:
+        return []
+    cg = plan.profile.cgroup
+    return [plan.systemd_run, "--user", "--scope", "--quiet", "--collect", f"--unit=aq-confine-{plan.run_id}",
+            "--description=aq-confine sandbox", "-p", f"MemoryMax={cg['memory_max']}", "-p", "MemorySwapMax=0",
+            "-p", f"TasksMax={cg['tasks_max']}", "-p", "OOMPolicy=kill", "--"]
+
+
 def build_argv(plan: Plan, facts: Optional[HostFacts] = None) -> List[str]:
     """Full launch argv: prlimit(1) wrapping bwrap. Pure given the plan."""
     p = plan.profile
@@ -915,7 +933,7 @@ def build_argv(plan: Plan, facts: Optional[HostFacts] = None) -> List[str]:
         a += ["--remount-ro", "/tmp", "--remount-ro", "/"]
     a += ["--chdir", L.worktree if L else (plan.cwd or p.home)]
     a += ["--"] + plan.cmd
-    pre = [plan.prlimit]
+    pre = scope_argv(plan) + [plan.prlimit]
     for key, flag in _LIMIT_FLAGS:
         if key in plan.limits:
             pre.append(f"{flag}={plan.limits[key]}")
@@ -935,7 +953,7 @@ def make_plan(profile: Profile, cmd: Sequence[str], *, worktree: Optional[str] =
               timeout: Optional[int] = None, rlimit_as: Optional[int] = None, run_id: Optional[str] = None,
               caller_env: Optional[Dict[str, str]] = None, allow_nested_userns: bool = False,
               facts: Optional[HostFacts] = None, bwrap: Optional[str] = None, prlimit: Optional[str] = None,
-              state: Optional[str] = None, scratch: bool = False) -> Plan:
+              state: Optional[str] = None, scratch: bool = False, systemd_run: Optional[str] = None) -> Plan:
     facts = facts or HostFacts()
     if not cmd or not all(isinstance(c, str) for c in cmd):
         raise _usage("no-command")
@@ -988,7 +1006,8 @@ def make_plan(profile: Profile, cmd: Sequence[str], *, worktree: Optional[str] =
     if scratch:
         env["AQ_CONFINE_SCRATCH"] = "/scratch"
     return Plan(profile, run_id, bw or "", pl or "", paths, layout, "", ro_l, rw_l, env, net,
-                allow_nested_userns, list(cmd), limits, tmo, extra_ro_dirs=extra, scratch=scratch)
+                allow_nested_userns, list(cmd), limits, tmo, extra_ro_dirs=extra, scratch=scratch,
+                systemd_run=(resolve_systemd_run() or "") if systemd_run is None else systemd_run)
 
 
 # ---------------------------------------------------------------------------
@@ -1004,6 +1023,65 @@ def resolve_bwrap() -> Optional[str]:
 
 def resolve_prlimit() -> Optional[str]:
     return shutil.which("prlimit")
+
+
+def resolve_systemd_run() -> Optional[str]:
+    cand = os.environ.get("AQ_CONFINE_SYSTEMD_RUN")
+    if cand is not None:
+        return cand if os.path.isfile(cand) and os.access(cand, os.X_OK) else None
+    return shutil.which("systemd-run")
+
+
+def host_scope_env() -> Dict[str, str]:
+    """Environment systemd-run --user needs to reach the user manager; nothing else from the caller."""
+    env = {"PATH": "/nonexistent"}
+    rt = os.environ.get("XDG_RUNTIME_DIR") or f"/run/user/{os.getuid()}"
+    if os.path.isdir(rt):
+        env["XDG_RUNTIME_DIR"] = rt
+    if os.environ.get("DBUS_SESSION_BUS_ADDRESS"):
+        env["DBUS_SESSION_BUS_ADDRESS"] = os.environ["DBUS_SESSION_BUS_ADDRESS"]
+    return env
+
+
+_PROBE_PY = ("c=[l.split('::',1)[1].strip() for l in open('/proc/self/cgroup') if '::' in l][0]\n"
+             "r='/sys/fs/cgroup'+c+'/'\n"
+             "print(open(r+'memory.max').read().strip(),open(r+'pids.max').read().strip(),open(r+'memory.swap.max').read().strip())")
+
+_scope_cache: Dict[str, Tuple[float, "PreflightResult"]] = {}
+_scope_lock = threading.Lock()
+_scope_seq = itertools.count()
+SCOPE_FAIL_TTL_S = 5.0   # failures are re-probed quickly so a transient error cannot refuse launches for a minute
+
+
+def scope_probe(systemd_run: str, *, use_cache: bool = True) -> "PreflightResult":
+    """Create a real scope and read back memory.max/pids.max/memory.swap.max: proves enforcement, not just the unit."""
+    with _scope_lock:   # one probe at a time per process; waiters reuse a fresh success
+        return _scope_probe_locked(systemd_run, use_cache)
+
+
+def _scope_probe_locked(systemd_run: str, use_cache: bool) -> "PreflightResult":
+    now = time.monotonic()
+    hit = _scope_cache.get(systemd_run)
+    if use_cache and hit and now - hit[0] < (PREFLIGHT_TTL_S if hit[1].ok else SCOPE_FAIL_TTL_S):
+        return hit[1]
+    mem, tasks = 64 * 1024 * 1024, 64
+    unit = f"aq-confine-probe{os.getpid()}-{next(_scope_seq)}-{uuid.uuid4().hex[:6]}"
+    argv = [systemd_run, "--user", "--scope", "--quiet", "--collect", f"--unit={unit}",
+            "-p", f"MemoryMax={mem}", "-p", "MemorySwapMax=0", "-p", f"TasksMax={tasks}", "--",
+            os.path.realpath(sys.executable), "-I", "-c", _PROBE_PY]
+    try:
+        cp = subprocess.run(argv, capture_output=True, timeout=15, check=False, env=host_scope_env(),
+                            stdin=subprocess.DEVNULL)
+        got = cp.stdout.decode("utf-8", "replace").split()
+        if cp.returncode == 0 and got == [str(mem), str(tasks), "0"]:
+            res = PreflightResult(True)
+        else:
+            res = PreflightResult(False, "cgroup-scope-unavailable",
+                                  (cp.stderr[:160].decode("utf-8", "replace").strip() or f"limits not enforced: {got}"))
+    except (OSError, subprocess.TimeoutExpired) as exc:
+        res = PreflightResult(False, "cgroup-scope-unavailable", str(exc)[:160])
+    _scope_cache[systemd_run] = (now, res)
+    return res
 
 
 @dataclasses.dataclass
@@ -1473,6 +1551,16 @@ def run(profile: "str | Profile", cmd: Sequence[str], *, worktree: Optional[str]
                            prof.name, plan.net, plan.run_id, worktree)
         _telemetry(res, plan)
         return res
+    if not plan.systemd_run or not scope_probe(plan.systemd_run).ok:
+        why = scope_probe(plan.systemd_run) if plan.systemd_run else PreflightResult(
+            False, "cgroup-scope-unavailable", "systemd-run not found")
+        if prof.cgroup.get("allow_rlimit_only", False):
+            plan.systemd_run = ""
+        else:
+            res = _fail_result(plan, ConfineError(EXIT_UNAVAILABLE, why.reason, why.detail), cmd, prof.name, plan.net,
+                               plan.run_id, worktree)
+            _telemetry(res, plan)
+            return res
     lock_fd = None
     try:
         if plan.layout:
@@ -1503,6 +1591,7 @@ def _telemetry(res: ConfineResult, plan: Optional[Plan]) -> None:
            "status": res.status, "rc": res.rc, "exit_code": res.exit_code, "net": res.net,
            "worktree": res.worktree, "duration_s": round(res.duration_s, 3), "argv_sha256": res.argv_sha256,
            "reason": res.reason.split(":", 1)[0], "limits": res.limits,
+           "cgroup": dict(plan.profile.cgroup, scoped=bool(plan.systemd_run)) if plan else None,
            "nested_userns": bool(plan and plan.nested_userns),
            "refs": {k: res.refs.get(k) for k in ("kinds", "promoted", "stale") if k in res.refs}}
     if plan and plan.nested_userns:
@@ -1546,7 +1635,7 @@ def _execute(plan: Plan, facts: HostFacts) -> ConfineResult:
     r_fd, w_fd = os.pipe()
     plan.status_fd = w_fd
     argv = build_argv(plan, facts)
-    host_env = {"PATH": "/nonexistent"}
+    host_env = host_scope_env() if plan.systemd_run else {"PATH": "/nonexistent"}
     out_sink: List[bytes] = []
     err_sink: List[bytes] = []
     reason = ""
@@ -1570,6 +1659,12 @@ def _execute(plan: Plan, facts: HostFacts) -> ConfineResult:
     threads.append(threading.Thread(target=_drain, args=(r_fd, 1 << 16, status_chunks), daemon=True))
     for t in threads:
         t.start()
+    oom: Dict[str, int] = {}
+    oom_stop = threading.Event()
+    oom_thread = None
+    if plan.systemd_run:
+        oom_thread = threading.Thread(target=_watch_oom, args=(plan.run_id, oom_stop, oom), daemon=True)
+        oom_thread.start()
 
     def kill() -> None:
         try:
@@ -1608,6 +1703,10 @@ def _execute(plan: Plan, facts: HostFacts) -> ConfineResult:
             break
     for t in threads:
         t.join(timeout=5)
+    oom_stop.set()
+    if oom_thread:
+        oom_thread.join(timeout=2)
+    oom_killed = oom.get("oom_kill", 0) > 0
     os.close(r_fd)
     rc = proc.returncode
     duration = time.monotonic() - t0
@@ -1622,7 +1721,7 @@ def _execute(plan: Plan, facts: HostFacts) -> ConfineResult:
     violation = ""
     if plan.layout:
         try:
-            no_promote = bool(timed_out or killed_by or size_reason or rc in (-9, EXIT_KILLED))
+            no_promote = bool(timed_out or killed_by or size_reason or oom_killed or rc in (-9, EXIT_KILLED))
             refs = _finalize_git(plan, pre, old, pre_emb, promote=not no_promote)
         except Exception as err:   # fail closed: any post-run failure is a structured, unpromoted failure
             refs = {"ok": False, "kinds": ["object-import-failed"], "rejected": [{
@@ -1645,6 +1744,8 @@ def _execute(plan: Plan, facts: HostFacts) -> ConfineResult:
         status, reason, exit_code = "child-failed", "size-cap", EXIT_POLICY
     elif violation:
         status, reason, exit_code = "child-failed", violation, EXIT_POLICY
+    elif oom_killed:
+        status, reason, exit_code = "child-failed", "oom-killed", EXIT_KILLED
     elif not ran:
         status, reason, exit_code = "setup-failed", "bwrap-setup-failed", EXIT_UNAVAILABLE
     elif timed_out:
@@ -1653,6 +1754,8 @@ def _execute(plan: Plan, facts: HostFacts) -> ConfineResult:
         status, reason, exit_code = "ok", "", 0
     elif rc in (EXIT_KILLED, -9):
         status, reason, exit_code = "child-failed", "killed", EXIT_KILLED
+    elif rc is not None and rc < 0:   # cgroup OOM / scope stop deliver SIGKILL or SIGTERM to the launch process
+        status, reason, exit_code = "child-failed", f"signaled-{-rc}", 128 - rc
     else:
         status, reason, exit_code = "child-failed", "child-exit", rc
     err_bytes = b"".join(err_sink)
@@ -1665,6 +1768,50 @@ def _execute(plan: Plan, facts: HostFacts) -> ConfineResult:
         _incident(res, plan, list(refs.get("kinds", [])), refs.get("promoted", []))
     _telemetry(res, plan)
     return res
+
+
+def _scope_events_path(run_id: str) -> Optional[str]:
+    uid = os.getuid()
+    base = f"/sys/fs/cgroup/user.slice/user-{uid}.slice/user@{uid}.service"
+    for sl in ("app.slice", "background.slice", "session.slice"):
+        cand = f"{base}/{sl}/aq-confine-{run_id}.scope/memory.events"
+        if os.path.exists(cand):
+            return cand
+    return None
+
+
+def _watch_oom(run_id: str, stop: threading.Event, out: Dict[str, int]) -> None:
+    """Track the scope's oom_kill counter. The scope vanishes with its last process, so the open
+    memory.events fd is polled (kernfs notifies on change) and read the moment the counter moves."""
+    fd = None
+    deadline = time.monotonic() + 5
+    while fd is None and not stop.is_set() and time.monotonic() < deadline:
+        path = _scope_events_path(run_id)
+        if path:
+            try:
+                fd = os.open(path, os.O_RDONLY)
+            except OSError:
+                fd = None
+        if fd is None:
+            time.sleep(0.02)
+    if fd is None:
+        return
+    po = select.poll()
+    po.register(fd, select.POLLPRI | select.POLLERR)
+    try:
+        while True:
+            try:
+                for line in os.pread(fd, 4096, 0).decode("ascii", "replace").splitlines():
+                    k, _, v = line.partition(" ")
+                    if k == "oom_kill" and v.isdigit():
+                        out["oom_kill"] = max(out.get("oom_kill", 0), int(v))
+            except OSError:
+                return
+            if stop.is_set():
+                return
+            po.poll(100)
+    finally:
+        os.close(fd)
 
 
 def _size_violation(plan: Plan) -> str:
