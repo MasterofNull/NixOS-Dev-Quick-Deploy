@@ -34,3 +34,11 @@ Functional-eval model code runs in a two-process bwrap sandbox; activation audit
 - Observable: DEFERRED (dated 2026-10-14): no new dashboard/alert in this slice; existing logs/health unchanged.
 - Intervenable: DEFERRED (dated 2026-10-14): no new operator control in this slice; existing controls unchanged.
 - PM-tracked: commit subject references #493/#498/#499/#500; no tracker status hand-set.
+
+## CI confinement preflight (2026-10-15)
+Reason: GitHub-hosted runners deny unprivileged user namespaces, so the bwrap sandbox used by `scripts/ai/lib/functional_eval.py` cannot start there and QA row 0.10.64 failed in CI while passing locally.
+- `functional_eval.sandbox_unavailable_reason()` runs a real bwrap preflight and caches only definitive results (success, bwrap not found, bwrap refusal); a timeout or OSError is reported but not cached.
+- The runtime stays fail-closed: untrusted model code is never executed without a working sandbox.
+- In `scripts/testing/test-functional-prompt-eval.py`, sandbox-dependent fixtures print `SKIP-WARN: ... confinement unavailable (<reason>)` when the preflight fails; pure fixtures always run. With `AQ_CONFINE_REQUIRE=1` the skip is a hard failure.
+- Phase 0 row 0.10.64 sets `AQ_CONFINE_REQUIRE=1` unless `CI` is set, so a broken local bwrap fails loudly; in CI it reports SKIP with the warning.
+- When groups were skipped the test prints `PASS WITH SKIPS` instead of the `ALL 6 FIXTURES PASS` banner.
