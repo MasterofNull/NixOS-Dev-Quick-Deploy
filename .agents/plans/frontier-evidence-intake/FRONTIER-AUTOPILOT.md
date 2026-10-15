@@ -29,6 +29,15 @@ flowchart TD
     PAR[PARITY SWEEP<br/>are we behind on X?] -.feeds.-> B
 ```
 
+> **Amendment 2026-10-14 (owner-approved): bounded, cadence-driven, review-gated scanning.** "Pull, not poll" is
+> relaxed for PRIMARY sources only: `aq-frontier scan-due` (weekly systemd timer `ai-frontier-scan`, kill switch
+> `aiHarness.runtime.frontierScan.enable`) re-fetches sources whose `sources.yaml` cadence has elapsed through the
+> SSRF- and robots-guarded fetcher, fingerprints the text, and on change files ONE candidate (`verdict=monitor`,
+> `status=new`, unreviewed). Bounds: max sources per run, per-fetch timeout, total runtime cap, `TimeoutStartSec=900`,
+> `MemoryMax=512M`. First sight of a source records a baseline only. It never accepts or folds: the multi-expert
+> debate gate below is unchanged. Per-source last-scan age is exposed via `aq-frontier scan-due --json`; state lives in
+> `scan-state.json` beside the backlog. Workflow-seam pull stays the primary access path.
+
 1. **PULL at the workflow seam (primary — see WORKFLOW-INTEGRATION.md).** Superseding the timer:
    agents pull frontier context at the moment they create a PRD, draft a plan, review a change, or
    author a slice (`aq-frontier context "<topic>"`). Fresh at the point of use; the info is available
