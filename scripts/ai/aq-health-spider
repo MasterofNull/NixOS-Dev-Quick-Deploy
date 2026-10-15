@@ -816,6 +816,64 @@ def _capability_enforcement_check() -> List[Dict[str, Any]]:
     return anomalies
 
 
+def _git_out(repo: Path, *args: str) -> Optional[str]:
+    try:
+        r = subprocess.run(["git", "-c", f"safe.directory={repo}", "-C", str(repo), *args],
+                           capture_output=True, text=True, timeout=10)
+        return r.stdout.strip() if r.returncode == 0 else None
+    except Exception:  # noqa: BLE001
+        return None
+
+
+def _read_deployed_revision() -> Optional[str]:
+    """system.configurationRevision of the running system (None if unreadable)."""
+    try:
+        r = subprocess.run(["nixos-version", "--configuration-revision"],
+                           capture_output=True, text=True, timeout=10)
+        return r.stdout.strip() if r.returncode == 0 else None
+    except Exception:  # noqa: BLE001
+        return None
+
+
+def _deployed_revision_check(rev: Optional[str] = None, repo: Optional[Path] = None) -> List[Dict[str, Any]]:
+    """Warn when the running system was built from a source that is not (an ancestor of) origin/main,
+    was built from a dirty tree (dirtyRev), has no recorded revision, or lags origin/main by more than
+    HS_DEPLOY_LAG_HOURS (24) / HS_DEPLOY_LAG_COMMITS (50). Local git only (uses the cached origin/main);
+    WARNING severity: never a service failure. Root cause guarded: 2026-10-15 deploy from a stale branch."""
+    repo = repo or REPO_ROOT
+    rev = _read_deployed_revision() if rev is None else rev
+    now = time.time()
+
+    def warn(detail: str) -> List[Dict[str, Any]]:
+        return [{"type": "deployed_revision_stale", "zone": "deploy-source", "severity": "warning",
+                 "detail": detail, "timestamp": now}]
+
+    if not rev or rev == "unknown":
+        return warn("running system records no git revision (system.configurationRevision unset/unknown); "
+                    "rebuild from a clean main checkout to record it")
+    if rev.endswith("-dirty"):
+        return warn(f"running system was built from a DIRTY tree ({rev}); rebuild from clean, committed main")
+    origin = _git_out(repo, "rev-parse", "--verify", "-q", "origin/main")
+    if not origin:
+        return []  # cannot assess without a local origin/main ref
+    if _git_out(repo, "cat-file", "-e", f"{rev}^{{commit}}") is None:
+        return warn(f"deployed revision {rev[:12]} is not in the local repository history (non-main/unfetched source?)")
+    full = _git_out(repo, "rev-parse", f"{rev}^{{commit}}") or rev
+    if full == origin:
+        return []
+    if _git_out(repo, "merge-base", "--is-ancestor", full, origin) is None:  # rc!=0 -> None
+        return warn(f"deployed revision {full[:12]} is NOT an ancestor of origin/main "
+                    f"({origin[:12]}): system was built from a branch/unmerged source")
+    behind = int(_git_out(repo, "rev-list", "--count", f"{full}..{origin}") or 0)
+    t_dep = int(_git_out(repo, "show", "-s", "--format=%ct", full) or 0)
+    t_org = int(_git_out(repo, "show", "-s", "--format=%ct", origin) or 0)
+    hours = (t_org - t_dep) / 3600.0
+    if behind > int(os.environ.get("HS_DEPLOY_LAG_COMMITS", "50")) or hours > float(os.environ.get("HS_DEPLOY_LAG_HOURS", "24")):
+        return warn(f"deployed revision {full[:12]} lags origin/main by {behind} commit(s) / {hours:.0f}h; "
+                    "merged work is not yet deployed (rebuild from main)")
+    return []
+
+
 # ── HealthSpider ───────────────────────────────────────────────────────────────
 
 class HealthSpider:
@@ -1170,6 +1228,10 @@ class HealthSpider:
                     atype, "closed-loop", detail, action,
                 )
             return True
+        elif atype == "deployed_revision_stale":
+            logger.warning(f"[deploy-source] {anomaly.get('detail')}")
+            return False  # advisory warning: event emitted above, not an unresolved failure
+
         elif atype in ("c2_lease_enforcement_disabled", "c2_lease_key_missing", "c5_span_truth_disabled"):
             # Capability enforcement flags — C2 and C5 silent-failure detection.
             # These are HIGH severity because a silent degradation of a security feature
@@ -1326,6 +1388,13 @@ class HealthSpider:
                     total += 1
         except Exception as e:
             logger.error(f"[capability-enforcement] error: {e}")
+        # Harness-level: deployed git revision vs origin/main (deploy-source drift).
+        try:
+            for a in await asyncio.to_thread(_deployed_revision_check):
+                if await self.handle_anomaly(a):
+                    total += 1
+        except Exception as e:
+            logger.error(f"[deployed-revision] error: {e}")
         return total
 
     async def run(self):
