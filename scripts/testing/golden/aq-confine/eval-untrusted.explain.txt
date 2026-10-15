@@ -1,5 +1,21 @@
 # aq-confine --explain profile=eval-untrusted net=none timeout_s=30
 ARGV
+/SYSTEMD-RUN
+--user
+--scope
+--quiet
+--collect
+--unit=aq-confine-run000000
+'--description=aq-confine sandbox'
+-p
+MemoryMax=536870912
+-p
+MemorySwapMax=0
+-p
+TasksMax=64
+-p
+OOMPolicy=kill
+--
 /PRLIMIT
 --as=1073741824
 --cpu=20

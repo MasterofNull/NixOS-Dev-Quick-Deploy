@@ -1,5 +1,21 @@
 # aq-confine --explain profile=worktree-rw net=none timeout_s=600
 ARGV
+/SYSTEMD-RUN
+--user
+--scope
+--quiet
+--collect
+--unit=aq-confine-run000000
+'--description=aq-confine sandbox'
+-p
+MemoryMax=3221225472
+-p
+MemorySwapMax=0
+-p
+TasksMax=300
+-p
+OOMPolicy=kill
+--
 /PRLIMIT
 --as=8589934592
 --cpu=600

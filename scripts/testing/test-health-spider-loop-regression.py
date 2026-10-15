@@ -97,3 +97,28 @@ if __name__ == "__main__":
     import pytest
 
     raise SystemExit(pytest.main([__file__, "-q"]))
+
+
+def test_confine_high_alerts_are_listed(monkeypatch):
+    alerts = [
+        {"id": "a1", "source": "aq-confine", "severity": "high", "title": "aq-confine ref-tamper run abcd1234", "created_at": "t1"},
+        {"id": "a2", "source": "aq-confine", "severity": "medium", "title": "minor", "created_at": "t2"},
+    ]
+    seen = {}
+
+    def fake_pending(source=None):
+        seen["source"] = source
+        return alerts
+
+    monkeypatch.setattr(health_spider, "get_pending", fake_pending)
+    rows = health_spider._confine_alerts_check()
+    assert seen["source"] == "aq-confine"
+    assert [r["alert_id"] for r in rows] == ["a1"]
+    assert rows[0]["type"] == "aq_confine_alert" and rows[0]["zone"] == "aq-confine"
+    assert "ref-tamper" in rows[0]["title"]
+
+    def boom(source=None):
+        raise RuntimeError("queue unreadable")
+
+    monkeypatch.setattr(health_spider, "get_pending", boom)
+    assert health_spider._confine_alerts_check() == []

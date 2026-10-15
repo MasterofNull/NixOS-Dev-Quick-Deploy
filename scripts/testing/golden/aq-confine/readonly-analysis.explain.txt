@@ -1,5 +1,21 @@
 # aq-confine --explain profile=readonly-analysis net=none timeout_s=300
 ARGV
+/SYSTEMD-RUN
+--user
+--scope
+--quiet
+--collect
+--unit=aq-confine-run000000
+'--description=aq-confine sandbox'
+-p
+MemoryMax=2147483648
+-p
+MemorySwapMax=0
+-p
+TasksMax=128
+-p
+OOMPolicy=kill
+--
 /PRLIMIT
 --as=4294967296
 --cpu=300
