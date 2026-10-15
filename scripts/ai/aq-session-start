@@ -55,6 +55,12 @@ _human_printf() {
 
 _human_printf '=== aq-session-start: %s ===\n' "$task"
 
+# Primary checkout off main => deploys from it are blocked; surface it (stderr in --machine mode).
+_pcw="$(bash "${REPO_ROOT}/scripts/governance/primary-checkout-warn.sh" "${REPO_ROOT}" 2>/dev/null || true)"
+if [[ -n "$_pcw" ]]; then
+    if [[ "$machine" -eq 0 ]]; then printf '%s\n' "$_pcw"; else printf '%s\n' "$_pcw" >&2; fi
+fi
+
 # ── Frontier context (pull frontier prior-art for this objective) ─────────────
 # Surfaces frontier techniques we've already assessed for this task, WITH OUR
 # verdicts/corrections, and flags any stale/gap concept + a targeted refresh — so

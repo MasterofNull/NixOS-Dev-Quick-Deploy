@@ -33,6 +33,7 @@ from opentelemetry import trace
 
 from config import Config
 from middleware.auth import create_api_key_middleware
+from middleware.authz import create_authz_middleware
 from middleware.http_guard import create_http_guard_middleware
 from metrics import REQUEST_COUNT, REQUEST_ERRORS, REQUEST_LATENCY
 from shared.rate_limiter import create_rate_limiter_middleware, RateLimiterConfig
@@ -222,6 +223,7 @@ def create_app(
         create_http_guard_middleware(),  # AUTH-S0: Host/Origin/content-type guard
         rate_limit_middleware,
         create_api_key_middleware(),
+        create_authz_middleware(),  # AUTH-S2: shadow authorization (off unless AQ_AGENT_AUTH_MODE)
     ]
     if extra_middlewares:
         middlewares.extend(extra_middlewares)

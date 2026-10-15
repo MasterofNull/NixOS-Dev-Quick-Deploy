@@ -1116,6 +1116,29 @@
         description = "Enable declarative AI stack runtime services when the aiStack role is active.";
       };
 
+      # agent-auth AUTH-S2 (DESIGN 6.1): shadow authorization lifecycle.
+      agentAuth = {
+        mode = lib.mkOption {
+          type = lib.types.enum ["off" "shadow"];
+          default = "off";
+          description = ''
+            Coordinator agent-auth mode. "shadow" records would-deny decisions
+            (X-AQ-Would-Deny header, agent-auth.jsonl, agent_auth_* metrics) and
+            never blocks. "enforce"/"lockdown" arrive with AUTH-S5.
+          '';
+        };
+        shadowUntil = lib.mkOption {
+          type = lib.types.nullOr lib.types.str;
+          default = null;
+          example = "2026-12-01";
+          description = ''
+            YYYY-MM-DD. REQUIRED when mode = "shadow". After this date the
+            agent_auth_shadow_expired metric is 1 (health-spider RED in AUTH-S8);
+            there is deliberately no silent auto-enforce.
+          '';
+        };
+      };
+
       backend = lib.mkOption {
         type = lib.types.enum ["llamacpp"];
         default = "llamacpp";

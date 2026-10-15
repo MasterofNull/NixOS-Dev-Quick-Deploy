@@ -177,6 +177,17 @@
         "FORCE_HARNESS_FIRST_EVIDENCE_GATE": "true"
       },
       "ci_workflow": ".github/workflows/test.yml#syntax"
+    },
+    {
+      "id": "grype-ignore-expiry",
+      "cmd": "scripts/governance/tier0.d/check-grype-ignore-expiry.sh --maintenance",
+      "paths": [
+        ".grype.yaml"
+      ],
+      "needs": [
+        "python3"
+      ],
+      "ci_workflow": ".github/workflows/security.yml#nix-closure-vuln-scan"
     }
   ],
   "ci_exempt": [

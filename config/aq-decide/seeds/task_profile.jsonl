@@ -1,0 +1,42 @@
+{"text": "return the result as a JSON object with keys name and id", "label": "structured", "source": "seed"}
+{"text": "format this table as strict JSON schema output", "label": "structured", "source": "seed"}
+{"text": "extract the fields into a yaml list", "label": "structured", "source": "seed"}
+{"text": "convert csv rows to json records", "label": "structured", "source": "seed"}
+{"text": "produce a json array matching this schema", "label": "structured", "source": "seed"}
+{"text": "fill in the template with the given values", "label": "structured", "source": "seed"}
+{"text": "what is the default port for the redis service", "label": "lookup", "source": "seed"}
+{"text": "where is the hybrid coordinator config file located", "label": "lookup", "source": "seed"}
+{"text": "list the files that define the approval inbox", "label": "lookup", "source": "seed"}
+{"text": "which module declares the llama cpp options", "label": "lookup", "source": "seed"}
+{"text": "find the definition of classify task type", "label": "lookup", "source": "seed"}
+{"text": "what does the env variable AQ_DECIDE do", "label": "lookup", "source": "seed"}
+{"text": "write a python function that parses the log file and returns counts", "label": "code", "source": "seed"}
+{"text": "fix the failing unit test in the dispatch module", "label": "code", "source": "seed"}
+{"text": "implement a bash script that rotates the logs", "label": "code", "source": "seed"}
+{"text": "add a nix option for the new service and wire it in", "label": "code", "source": "seed"}
+{"text": "refactor the router class to remove duplicate branches", "label": "code", "source": "seed"}
+{"text": "patch the bug where the cache key ignores the version", "label": "code", "source": "seed"}
+{"text": "explain why the build failed and what the tradeoffs of each fix are", "label": "reasoning", "source": "seed"}
+{"text": "compare the two designs and recommend one with justification", "label": "reasoning", "source": "seed"}
+{"text": "analyze the root cause of the latency regression", "label": "reasoning", "source": "seed"}
+{"text": "why does the service restart loop after the config change", "label": "reasoning", "source": "seed"}
+{"text": "weigh the risks of enabling this feature by default", "label": "reasoning", "source": "seed"}
+{"text": "reason about whether this migration is safe to run twice", "label": "reasoning", "source": "seed"}
+{"text": "run the tests then commit the change and open the pull request", "label": "agent", "source": "seed"}
+{"text": "use the tools to inspect the system and fix the misconfiguration autonomously", "label": "agent", "source": "seed"}
+{"text": "start the workflow session and execute each step in order", "label": "agent", "source": "seed"}
+{"text": "iterate on the failing check until the gate passes", "label": "agent", "source": "seed"}
+{"text": "dispatch the sub tasks to workers and collect their results", "label": "agent", "source": "seed"}
+{"text": "monitor the deployment and report when it completes", "label": "agent", "source": "seed"}
+{"text": "survey the literature on small embedding models for classification", "label": "research", "source": "seed"}
+{"text": "gather background on hashing vectorizers and summarize sources", "label": "research", "source": "seed"}
+{"text": "investigate options for local reranking and report findings", "label": "research", "source": "seed"}
+{"text": "compare published benchmarks for open weight embedders", "label": "research", "source": "seed"}
+{"text": "collect references about calibration of linear classifiers", "label": "research", "source": "seed"}
+{"text": "look into prior art for decision cache poisoning", "label": "research", "source": "seed"}
+{"text": "prove that the protocol cannot deadlock under any interleaving", "label": "deep_reasoning", "source": "seed"}
+{"text": "derive the formal invariants of the lease algorithm step by step", "label": "deep_reasoning", "source": "seed"}
+{"text": "design a full multi stage plan and verify every assumption rigorously", "label": "deep_reasoning", "source": "seed"}
+{"text": "think through all edge cases of the distributed consensus failure modes", "label": "deep_reasoning", "source": "seed"}
+{"text": "construct a rigorous argument for the security of this scheme", "label": "deep_reasoning", "source": "seed"}
+{"text": "exhaustively enumerate the failure states and prove coverage", "label": "deep_reasoning", "source": "seed"}

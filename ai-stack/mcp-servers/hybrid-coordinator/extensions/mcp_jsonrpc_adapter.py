@@ -26,6 +26,8 @@ from typing import Any
 
 from aiohttp import web
 
+from shared.api_key_auth import keys_equal
+
 logger = logging.getLogger("hybrid-coordinator")
 
 # ---------------------------------------------------------------------------
@@ -47,7 +49,7 @@ def _check_auth(request: web.Request, config_api_key: str) -> bool:
     if _is_loopback(request):
         return True
     provided = request.headers.get("X-API-Key", "")
-    return bool(provided and provided == config_api_key)
+    return bool(provided and keys_equal(provided, config_api_key))
 
 
 # ---------------------------------------------------------------------------
