@@ -400,22 +400,32 @@ def test_role_route_excludes_producer() -> None:
         )
 
 
-def test_role_route_subagent_exclude_retains_flagship() -> None:
-    with tempfile.TemporaryDirectory() as td:
-        _reset_route_module(Path(td))
-        # Exclude a specific sub-agent instance (e.g. claude-subagent-router-reclaim-toctou)
-        # The parent lane (claude) must NOT be excluded; it should remain eligible.
-        result = route_mod.route("binding-acceptance", "subject-subagent", ["claude-subagent-router-reclaim-toctou"])
-        check(result["ok"], "role-route: subagent-exclude case resolves ok")
-        check(
-            "claude" not in result["excluded"],
-            "role-route: parent lane 'claude' is not placed in excluded set when subagent token is used",
-        )
-        all_lanes = [result["chosen_agent"]] + [alt["agent"] for alt in result["alternates"]]
-        check(
-            "claude" in all_lanes,
-            "role-route: parent lane 'claude' remains present as candidate or chosen",
-        )
+def test_role_route_instance_tokens_exclude_whole_lane() -> None:
+    # Fail closed: sub-agent and task-run ids name the producer's lane, so the
+    # lane must never be its own independent reviewer/acceptor (Rule 18).
+    cases = [
+        ("claude", "claude-subagent-router-reclaim-toctou"),
+        ("claude", "claude-subagent-x"),
+        ("claude", "claude-sub-agent-x"),
+        ("codex", "codex-20261012-abc"),
+        ("gemini", "antigravity-20261012"),
+        ("local", "qwen-x"),
+        ("local", "qwen3.6-35b-a"),
+        ("claude", "Claude_subagent_x"),
+        ("codex", "codex_cli"),
+    ]
+    for lane, token in cases:
+        with tempfile.TemporaryDirectory() as td:
+            _reset_route_module(Path(td))
+            result = route_mod.route("binding-acceptance", "subject-inst", [token])
+            check(result["ok"], f"role-route: {token} resolves ok")
+            check(lane in result["excluded"], f"role-route: {token} excludes lane {lane}")
+            all_lanes = [result["chosen_agent"]] + [alt["agent"] for alt in result["alternates"]]
+            check(lane not in all_lanes, f"role-route: {token} leaves {lane} out of candidates")
+            check(
+                set(result["excluded"]) == {lane},
+                f"role-route: {token} excludes only {lane} (got {result['excluded']})",
+            )
 
 
 def test_role_route_never_hardcodes_codex_when_down() -> None:
@@ -490,7 +500,7 @@ def main() -> int:
 
     test_role_route_baseline_binding_acceptance()
     test_role_route_excludes_producer()
-    test_role_route_subagent_exclude_retains_flagship()
+    test_role_route_instance_tokens_exclude_whole_lane()
     test_role_route_never_hardcodes_codex_when_down()
     test_role_route_codex_cooldown_file_reused()
     test_role_route_all_down_fails_closed()
