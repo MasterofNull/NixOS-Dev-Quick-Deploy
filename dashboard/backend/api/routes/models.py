@@ -19,6 +19,7 @@ from loopback.
 from __future__ import annotations
 
 import asyncio
+import hmac
 import datetime as dt
 import json
 import logging
@@ -78,13 +79,13 @@ def _check_auth(request: Request) -> None:
     if is_admin and is_mutating:
         if internal:
             return
-        if _API_KEY and provided == _API_KEY:
+        if _API_KEY and hmac.compare_digest(provided.encode(), _API_KEY.encode()):
             return
         raise HTTPException(status_code=status.HTTP_403_FORBIDDEN, detail="admin lifecycle operation requires API key")
 
     if client_host in ("127.0.0.1", "::1", "localhost"):
         return
-    if _API_KEY and provided == _API_KEY:
+    if _API_KEY and hmac.compare_digest(provided.encode(), _API_KEY.encode()):
         return
     raise HTTPException(status_code=status.HTTP_403_FORBIDDEN, detail="unauthorized")
 

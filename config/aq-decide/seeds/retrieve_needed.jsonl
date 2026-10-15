@@ -1,0 +1,16 @@
+{"text": "what does the runbook say about restoring the qdrant collection", "label": "yes", "source": "seed"}
+{"text": "how is the approval inbox key format defined in this repo", "label": "yes", "source": "seed"}
+{"text": "which agents handled the last deployment according to the logs", "label": "yes", "source": "seed"}
+{"text": "summarize prior decisions about the embedding model choice", "label": "yes", "source": "seed"}
+{"text": "what failed in the previous run of the nightly training", "label": "yes", "source": "seed"}
+{"text": "find documentation of the switchboard profile settings", "label": "yes", "source": "seed"}
+{"text": "what are the known issues with the coordinator restart", "label": "yes", "source": "seed"}
+{"text": "recall the owner decision on remote labelling", "label": "yes", "source": "seed"}
+{"text": "hello there", "label": "no", "source": "seed"}
+{"text": "thanks that is all", "label": "no", "source": "seed"}
+{"text": "what is two plus two", "label": "no", "source": "seed"}
+{"text": "rewrite this sentence to be shorter", "label": "no", "source": "seed"}
+{"text": "translate good morning to french", "label": "no", "source": "seed"}
+{"text": "write a haiku about autumn", "label": "no", "source": "seed"}
+{"text": "fix the grammar in this paragraph", "label": "no", "source": "seed"}
+{"text": "say hi back", "label": "no", "source": "seed"}

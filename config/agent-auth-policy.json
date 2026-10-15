@@ -1,0 +1,290 @@
+{
+  "version": 1,
+  "comment": "agent-auth AUTH-S2 policy (DESIGN.md 4.1, 4.2). Longest-prefix match on (method, path); ties go to the rule with a methods list; unmatched routes fall to default_scope.",
+  "default_scope": "admin",
+  "public_paths_scope": "public",
+  "scopes": {
+    "public": {
+      "why": "Health and discovery endpoints are open.",
+      "hint": "No action needed.",
+      "sanctioned_paths": []
+    },
+    "read.hints": {
+      "why": "Retrieval endpoints are read-only.",
+      "hint": "Use GET /hints or /query for repo knowledge.",
+      "sanctioned_paths": [
+        {
+          "action": "read local knowledge",
+          "endpoint": "GET /query"
+        }
+      ]
+    },
+    "read.status": {
+      "why": "Observability endpoints are read-only.",
+      "hint": "Use GET /status or /stats.",
+      "sanctioned_paths": [
+        {
+          "action": "read status",
+          "endpoint": "GET /status"
+        }
+      ]
+    },
+    "memory.write": {
+      "why": "Memory writes persist and influence later agents, so they are provenance-stamped.",
+      "hint": "Write through the sanctioned memory path from your agent socket class.",
+      "sanctioned_paths": [
+        {
+          "action": "read instead",
+          "endpoint": "GET /memory/"
+        }
+      ]
+    },
+    "research.fetch": {
+      "why": "Server-side URL fetch can bypass a sandbox network policy.",
+      "hint": "Use GET /hints or /query for repo questions; request an egress grant for external pages.",
+      "sanctioned_paths": [
+        {
+          "action": "read local knowledge",
+          "endpoint": "GET /query"
+        }
+      ]
+    },
+    "orchestrate": {
+      "why": "Orchestration spawns or steers agents and consumes inference.",
+      "hint": "Run orchestration from the owner agent class.",
+      "sanctioned_paths": [
+        {
+          "action": "read hints",
+          "endpoint": "GET /hints"
+        }
+      ]
+    },
+    "qa.run": {
+      "why": "QA and eval runs execute host subprocesses.",
+      "hint": "Run aq-qa from the owner shell.",
+      "sanctioned_paths": [
+        {
+          "action": "read trends",
+          "endpoint": "GET /eval/trend"
+        }
+      ]
+    },
+    "safety.read": {
+      "why": "Safety state reads are open.",
+      "hint": "GET /control/safety/ to inspect.",
+      "sanctioned_paths": []
+    },
+    "safety.tighten": {
+      "why": "Safety mode may only be ratcheted up by sandboxed callers.",
+      "hint": "Raise the session safety mode; lowering needs the owner.",
+      "sanctioned_paths": []
+    },
+    "safety.loosen": {
+      "why": "Loosening safety controls or registering hooks needs owner approval.",
+      "hint": "Ask the owner to approve via aq-approve.",
+      "sanctioned_paths": [
+        {
+          "action": "request approval",
+          "command": "aq-approve"
+        }
+      ]
+    },
+    "prsi.read": {
+      "why": "PRSI queue reads are open.",
+      "hint": "GET /control/prsi/ to inspect.",
+      "sanctioned_paths": []
+    },
+    "agent.events": {
+      "why": "Agent event bus access is scoped.",
+      "hint": "Use the agent event endpoints from your agent class.",
+      "sanctioned_paths": []
+    },
+    "admin": {
+      "why": "Administrative and unclassified routes need the admin class.",
+      "hint": "Use a documented route family or ask the owner.",
+      "sanctioned_paths": [
+        {
+          "action": "read status",
+          "endpoint": "GET /status"
+        }
+      ]
+    }
+  },
+  "rules": [
+    {
+      "scope": "read.hints",
+      "prefixes": [
+        "/hints",
+        "/query",
+        "/search/",
+        "/discovery/",
+        "/augment_query",
+        "/context/",
+        "/skills/"
+      ]
+    },
+    {
+      "scope": "read.hints",
+      "prefixes": [
+        "/memory/",
+        "/learning/",
+        "/feedback"
+      ],
+      "methods": [
+        "GET"
+      ],
+      "note": "GET reads on write families; design 4.1 lists POST only for memory.write."
+    },
+    {
+      "scope": "read.status",
+      "prefixes": [
+        "/status",
+        "/stats",
+        "/alerts",
+        "/api/health/",
+        "/api/traces",
+        "/eval/trend"
+      ]
+    },
+    {
+      "scope": "read.status",
+      "prefixes": [
+        "/control/"
+      ],
+      "methods": [
+        "GET"
+      ]
+    },
+    {
+      "scope": "read.status",
+      "prefixes": [
+        "/control/ai-coordinator/",
+        "/cache/",
+        "/harness/",
+        "/parity/",
+        "/operator/"
+      ],
+      "methods": [
+        "GET"
+      ],
+      "note": "Not listed in design 4.1; assigned in S2 to keep existing loopback access visible, review during the shadow soak."
+    },
+    {
+      "scope": "memory.write",
+      "prefixes": [
+        "/memory/",
+        "/api/memory/facts",
+        "/feedback",
+        "/learning/"
+      ],
+      "methods": [
+        "POST"
+      ]
+    },
+    {
+      "scope": "research.fetch",
+      "prefixes": [
+        "/research/"
+      ]
+    },
+    {
+      "scope": "orchestrate",
+      "prefixes": [
+        "/v1/",
+        "/workflow/",
+        "/control/agents",
+        "/control/ai-coordinator/",
+        "/control/runtimes",
+        "/control/llm/"
+      ]
+    },
+    {
+      "scope": "orchestrate",
+      "prefixes": [
+        "/review/",
+        "/control/review/"
+      ],
+      "note": "Not listed in design 4.1; assigned in S2 to keep existing loopback access visible, review during the shadow soak."
+    },
+    {
+      "scope": "qa.run",
+      "prefixes": [
+        "/qa/",
+        "/eval/run"
+      ]
+    },
+    {
+      "scope": "safety.read",
+      "prefixes": [
+        "/control/safety/"
+      ],
+      "methods": [
+        "GET"
+      ]
+    },
+    {
+      "scope": "safety.tighten",
+      "prefixes": [
+        "/control/safety/gate"
+      ],
+      "methods": [
+        "POST"
+      ],
+      "note": "Tighten-versus-loosen distinction is content-based and arrives with S5 (monotonic rule)."
+    },
+    {
+      "scope": "safety.loosen",
+      "prefixes": [
+        "/control/safety/register-hook"
+      ]
+    },
+    {
+      "scope": "prsi.read",
+      "prefixes": [
+        "/control/prsi/"
+      ],
+      "methods": [
+        "GET"
+      ]
+    },
+    {
+      "scope": "agent.events",
+      "prefixes": [
+        "/api/agent-events",
+        "/api/agent-ops/",
+        "/agent/lifecycle/"
+      ]
+    }
+  ],
+  "classes": {
+    "owner-agent": [
+      "read.hints",
+      "read.status",
+      "memory.write",
+      "research.fetch",
+      "orchestrate",
+      "qa.run",
+      "safety.read",
+      "safety.tighten",
+      "prsi.read",
+      "agent.events"
+    ],
+    "legacy-loopback": [
+      "read.hints",
+      "read.status",
+      "memory.write",
+      "safety.read",
+      "safety.tighten",
+      "prsi.read"
+    ],
+    "api-key": [
+      "admin"
+    ],
+    "unknown": []
+  },
+  "class_notes": {
+    "legacy-loopback": "All TCP callers until S3 lands the UDS peer identity. memory.write is a 90-day compat grant (design 4.2).",
+    "api-key": "Design 5.3: under enforce the api-key mode maps to {admin} only; non-admin api-key traffic in the shadow log is the S7 migration signal."
+  },
+  "mode_per_family": {}
+}

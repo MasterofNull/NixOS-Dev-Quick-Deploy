@@ -1,0 +1,69 @@
+{
+  "schema": "aq-decide-config/1",
+  "version": "1",
+  "state_cap_chars": 1500,
+  "head_chars": 1000,
+  "truncation_marker": "\n…[cut]…\n",
+  "log_text_max_chars": 300,
+  "extra_reason_codes": [],
+  "unsafe_options": ["allow", "routine", "none", "grant", "approve", "relax"],
+  "questions": {
+    "task_profile": {
+      "type": "choice",
+      "instructions": "Pick the task profile that best fits the dispatch prompt.",
+      "options": ["structured", "lookup", "code", "reasoning", "agent", "research", "deep_reasoning"],
+      "security_class": false,
+      "threshold": 0.6,
+      "truncate": "headtail",
+      "log_text": true,
+      "features": {
+        "text": {"type": "text"},
+        "mode": {"type": "enum", "values": ["auto", "ralph", "agent", "direct", "hybrid"]}
+      },
+      "rules": [
+        {"id": "mode_ralph", "hard": true, "when": {"mode": {"eq": "ralph"}}, "answer": "deep_reasoning", "reason_code": "MODE_RALPH", "confidence": 1.0},
+        {"id": "mode_agent", "hard": true, "when": {"mode": {"eq": "agent"}}, "answer": "agent", "reason_code": "MODE_AGENT", "confidence": 1.0},
+        {"id": "kw_lookup", "when": {"text": {"regex": "^\\s*(what is|where is|which file|list the)\\b"}}, "answer": "lookup", "reason_code": "KW_LOOKUP", "confidence": 0.8, "cache": true},
+        {"id": "kw_code_weak", "when": {"text": {"contains": "refactor"}}, "answer": "code", "reason_code": "KW_CODE_WEAK", "confidence": 0.5}
+      ]
+    },
+    "retrieve_needed": {
+      "type": "noul",
+      "instructions": "Does answering this query need retrieval from the knowledge base?",
+      "options": ["yes", "no"],
+      "security_class": false,
+      "threshold": 0.6,
+      "truncate": "headtail",
+      "log_text": true,
+      "features": {
+        "text": {"type": "text"}
+      },
+      "rules": [
+        {"id": "kw_hello", "when": {"text": {"regex": "^\\s*(hi|hello|thanks|thank you)\\b"}}, "answer": "no", "reason_code": "SMALLTALK", "confidence": 0.9}
+      ]
+    },
+    "egress_friction": {
+      "type": "choice",
+      "instructions": "Grey-zone egress question. Friction only; never relaxes a deny.",
+      "options": ["flag", "hold"],
+      "security_class": true,
+      "threshold": 0.6,
+      "truncate": "head",
+      "log_text": false,
+      "features": {
+        "lane": {"type": "enum", "values": ["claude", "codex", "antigravity", "agy", "gemini-legacy", "switchboard", "coordinator", "mcp", "other"]},
+        "dest_class": {"type": "enum", "values": ["provider", "registry", "other"]},
+        "raw_ip": {"type": "bool"},
+        "punycode": {"type": "bool"},
+        "sni_mismatch": {"type": "bool"},
+        "label_count": {"type": "int", "min": 0, "max": 127},
+        "digit_ratio_pct": {"type": "int", "min": 0, "max": 100}
+      },
+      "rules": [
+        {"id": "raw_ip", "hard": true, "when": {"raw_ip": {"eq": true}}, "answer": "hold", "reason_code": "RAW_IP", "confidence": 1.0},
+        {"id": "sni", "hard": true, "when": {"sni_mismatch": {"eq": true}}, "answer": "hold", "reason_code": "SNI_MISMATCH", "confidence": 1.0},
+        {"id": "puny", "when": {"punycode": {"eq": true}}, "answer": "flag", "reason_code": "PUNYCODE", "confidence": 0.9}
+      ]
+    }
+  }
+}
