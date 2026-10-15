@@ -11,6 +11,7 @@
   aq-frontier accept <id>   # only on consensus: >=2 independent supports, no open reject
   aq-frontier reject <id> | defer <id> | drop <id>
   aq-frontier fold <id> --plan <dir>                        # accepted -> tracker slice
+  aq-frontier scan-due [--dry-run] [--json]  # bounded weekly scan of due PRIMARY sources; files status=new candidates only
   aq-frontier seed        # load this cycle's PROPOSED candidates if empty
 
 Store: .agents/plans/frontier-evidence-intake/BACKLOG.jsonl (append-only, deduped).
@@ -36,6 +37,7 @@ import frontier_sources as fs  # noqa: E402
 import frontier_relevance as fr  # noqa: E402
 import frontier_context as fc  # noqa: E402
 import frontier_fold as ff  # noqa: E402
+import frontier_scan as fsc  # noqa: E402
 
 REPO = Path(__file__).resolve().parents[2]
 STORE = str(REPO / fb.DEFAULT_STORE)
@@ -109,6 +111,8 @@ def main(argv: list[str] | None = None) -> int:
     cx = sub.add_parser("context"); cx.add_argument("topic"); cx.add_argument("--stale-days", type=int, default=30); cx.add_argument("--json", action="store_true")
     fd = sub.add_parser("fold"); fd.add_argument("id"); fd.add_argument("--plan", required=True, help="target plan dir with tracker.json"); fd.add_argument("--phase", default=None)
     st = sub.add_parser("scan-topic"); st.add_argument("topic")
+    sd = sub.add_parser("scan-due"); sd.add_argument("--dry-run", action="store_true"); sd.add_argument("--json", action="store_true")
+    sd.add_argument("--max-sources", type=int, default=6); sd.add_argument("--timeout", type=float, default=20.0); sd.add_argument("--budget", type=float, default=300.0)
     pa = sub.add_parser("parity"); pa.add_argument("--json", action="store_true")
     args = ap.parse_args(argv)
 
@@ -299,6 +303,17 @@ def main(argv: list[str] | None = None) -> int:
         print("    4. aq-frontier add --technique .. --source .. --claim .. --verdict .. "
               "--mapping .. --slice .. --acceptance ..")
         print(f"  (request logged -> {log.relative_to(REPO)})")
+        return 0
+
+    if args.cmd == "scan-due":  # W3-S5 — bounded, cadence-driven, review-gated (owner-approved 2026-10-14)
+        out = fsc.scan_due(fs.load_catalog(CATALOG), state_path=str(REPO / fsc.DEFAULT_STATE), store=STORE,
+                           fetcher=fsc.guarded_fetch, dry_run=args.dry_run, max_sources=args.max_sources,
+                           per_fetch_timeout=args.timeout, total_budget=args.budget)
+        if args.json:
+            print(json.dumps(out, indent=2)); return 0
+        print(f"scan-due{' (dry-run)' if args.dry_run else ''}: due={out['due']} scanned={out['scanned']} deferred_by_cap={out['deferred_by_cap']}")
+        for r in out["results"]:
+            print(f"  {r['id']:24} {r['outcome']}{' ' + r['error'] if r.get('error') else ''}")
         return 0
 
     if args.cmd == "parity":  # FA-5 — whole-taxonomy backstop sweep (on-demand, not a timer)

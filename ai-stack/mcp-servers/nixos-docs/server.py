@@ -42,7 +42,8 @@ from opentelemetry.sdk.trace.export import BatchSpanProcessor
 import redis
 import structlog
 from structlog.contextvars import bind_contextvars, merge_contextvars, clear_contextvars
-from diskcache import Cache
+import sqlite3
+import threading
 from git import Repo
 from bs4 import BeautifulSoup
 from markdownify import markdownify as md
@@ -187,11 +188,80 @@ def _get_process_memory_bytes() -> int:
         logger.debug("Failed to read process memory: %s", e)
         return 0
 
+class TextTTLCache:
+    """Minimal sqlite3 TTL cache for page text (str only; nothing is ever unpickled).
+
+    Replaces diskcache (unmaintained; CVE-2025-69872 unpickling of cache rows).
+    One shared connection guarded by a lock; handlers call it briefly.
+    """
+
+    def __init__(self, directory: str):
+        self._lock = threading.Lock()
+        self._db = sqlite3.connect(
+            os.path.join(directory, "text-cache.db"), check_same_thread=False, timeout=30
+        )
+        self._db.execute("PRAGMA journal_mode=WAL")
+        self._db.execute(
+            "CREATE TABLE IF NOT EXISTS cache "
+            "(key TEXT PRIMARY KEY, value TEXT NOT NULL, expires_at REAL)"
+        )
+        self._db.commit()
+        cols = [r[1] for r in self._db.execute("PRAGMA table_info(cache)")]
+        if cols != ["key", "value", "expires_at"]:
+            self._db.close()
+            raise RuntimeError(f"unexpected cache schema {cols}")
+
+    def get(self, key: str, default: Optional[str] = None) -> Optional[str]:
+        """Never raises: sqlite errors are a miss."""
+        try:
+            with self._lock:
+                row = self._db.execute(
+                    "SELECT value, expires_at FROM cache WHERE key = ?", (key,)
+                ).fetchone()
+                if row is None:
+                    return default
+                if row[1] is not None and row[1] <= time.time():
+                    self._db.execute("DELETE FROM cache WHERE key = ?", (key,))
+                    self._db.commit()
+                    return default
+                return row[0]
+        except sqlite3.Error as exc:
+            logger.warning("cache get failed (%s); treating as miss", exc)
+            return default
+
+    def set(self, key: str, value: str, expire: Optional[float] = None) -> None:
+        if not isinstance(key, str) or not isinstance(value, str):
+            raise TypeError("TextTTLCache stores str keys and str values only")
+        exp = time.time() + expire if expire is not None else None
+        with self._lock:
+            self._db.execute(
+                "INSERT OR REPLACE INTO cache (key, value, expires_at) VALUES (?, ?, ?)",
+                (key, value, exp),
+            )
+            self._db.commit()
+
+    def __len__(self) -> int:
+        with self._lock:
+            return self._db.execute(
+                "SELECT COUNT(*) FROM cache WHERE expires_at IS NULL OR expires_at > ?",
+                (time.time(),),
+            ).fetchone()[0]
+
+    def clear(self) -> None:
+        with self._lock:
+            self._db.execute("DELETE FROM cache")
+            self._db.commit()
+
+    def close(self) -> None:
+        with self._lock:
+            self._db.close()
+
+
 # Initialize cache — fall back to a temp dir if the state dir isn't writable yet
 # (e.g. during first-boot before systemd-tmpfiles creates the directory)
 try:
     CACHE_DIR.mkdir(parents=True, exist_ok=True)
-    disk_cache = Cache(str(CACHE_DIR))
+    disk_cache = TextTTLCache(str(CACHE_DIR))
     logger.info("Disk cache initialised at %s", CACHE_DIR)
 except Exception as _cache_exc:  # noqa: BLE001
     import tempfile as _tmpmod
@@ -200,7 +270,7 @@ except Exception as _cache_exc:  # noqa: BLE001
         "Disk cache unavailable at %s (%s); using temp fallback %s",
         CACHE_DIR, _cache_exc, _fallback,
     )
-    disk_cache = Cache(str(_fallback))
+    disk_cache = TextTTLCache(str(_fallback))
 redis_client = None
 
 try:
