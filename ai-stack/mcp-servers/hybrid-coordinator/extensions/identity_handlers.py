@@ -22,6 +22,7 @@ from pathlib import Path
 from typing import Any, Optional
 
 from aiohttp import web
+from shared.api_key_auth import keys_equal
 
 logger = logging.getLogger("hybrid-coordinator")
 
@@ -147,7 +148,7 @@ async def handle_identity_event(request: web.Request) -> web.Response:
     """POST /identity/event — append a typed event (internal, API-key protected)."""
     # Validate API key
     req_key = request.headers.get("X-API-Key", "").strip()
-    if _api_key and req_key != _api_key:
+    if _api_key and not keys_equal(req_key, _api_key):
         return web.Response(status=401, text="Unauthorized")
 
     if _engine is None:
