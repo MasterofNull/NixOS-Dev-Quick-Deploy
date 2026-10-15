@@ -40,4 +40,8 @@ with tempfile.TemporaryDirectory() as d:
     assert "GAP: repo root core.hooksPath" in out, out
     c = Path(d) / "bypass"; build(c, bypass=True); out = run(c)
     assert "GAP: lane local" in out and "lane codex: dispatch" in out, out
+    e = Path(d) / "abs"; build(e)
+    subprocess.run(["git", "-C", str(e), "config", "core.hooksPath", str(e / ".githooks")], check=True)
+    out = run(e)
+    assert "GAP: core.hooksPath is ABSOLUTE" in out, out
 print("PASS")
