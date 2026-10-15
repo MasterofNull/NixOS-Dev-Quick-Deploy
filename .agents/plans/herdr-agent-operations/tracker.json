@@ -61,7 +61,6 @@
         ],
         "freeze_record": ".agents/plans/herdr-agent-operations/H0-INTAKE-REPORT.md"
       },
-      "pct_hint": 100,
       "acceptance": {
         "status": "accepted",
         "by": "hyperd",
@@ -88,7 +87,6 @@
         "acceptance_status": "accepted",
         "correction_design": ".agents/plans/herdr-agent-operations/H1-CORRECTION-DESIGN-20260815.md"
       },
-      "pct_hint": 100,
       "acceptance": {
         "status": "accepted",
         "by": "hyperd",
@@ -111,12 +109,11 @@
           "H2 monitored presentation projection"
         ]
       },
-      "pct_hint": 100,
       "acceptance": {
-        "status": "accepted",
-        "by": "hyperd",
-        "date": "2026-10-11",
-        "note": "preauthorized; pure projection and Service Coverage verified"
+        "status": "pending",
+        "by": null,
+        "date": null,
+        "note": "pending; status projected from git/ground truth, not hand-set"
       }
     },
     {

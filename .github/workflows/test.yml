@@ -466,8 +466,8 @@ jobs:
 
       - name: Validate Harness-First static gates
         run: |
-          chmod +x scripts/governance/run-ci-checks.sh
-          ./scripts/governance/run-ci-checks.sh --all --only harness-first-static-gates
+          chmod +x scripts/governance/run-ci-checks.sh scripts/governance/ci-clean-env.sh
+          ./scripts/governance/ci-clean-env.sh --all --only harness-first-static-gates
 
       - name: Run tool security auditor regression smoke
         run: |

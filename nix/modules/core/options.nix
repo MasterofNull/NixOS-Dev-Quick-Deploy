@@ -2366,6 +2366,20 @@
             description = "Declarative runtime scheduling policy for control-plane candidate selection.";
           };
 
+          frontierScan = {
+            enable = lib.mkOption {
+              type = lib.types.bool;
+              default = true;
+              description = "Kill switch: weekly bounded, review-gated frontier source scan (aq-frontier scan-due). Files status=new candidates only; never accepts or folds.";
+            };
+
+            maxSources = lib.mkOption {
+              type = lib.types.ints.positive;
+              default = 12;
+              description = "Max due sources fetched per scan run.";
+            };
+          };
+
           cachePrewarm = {
             enable = lib.mkOption {
               type = lib.types.bool;
@@ -3539,6 +3553,27 @@
         type = lib.types.port;
         default = 8003;
         description = "TCP port for the hybrid-coordinator MCP server.";
+      };
+
+      hybridHttpGuard = {
+        mode = lib.mkOption {
+          type = lib.types.enum [ "enforce" "shadow" "off" ];
+          default = "enforce";
+          description = ''
+            Hybrid-coordinator Host/Origin/content-type guard (AUTH-S0, AQ_COORD_HTTP_GUARD).
+            enforce rejects DNS-rebinding and cross-site requests; shadow only logs; off disables.
+          '';
+        };
+        extraAllowedHosts = lib.mkOption {
+          type = lib.types.listOf lib.types.str;
+          default = [ ];
+          description = "Extra Host header values accepted by the coordinator guard (AQ_COORD_ALLOWED_HOSTS).";
+        };
+        extraAllowedOrigins = lib.mkOption {
+          type = lib.types.listOf lib.types.str;
+          default = [ ];
+          description = "Extra browser Origins accepted by the coordinator guard (AQ_COORD_ALLOWED_ORIGINS).";
+        };
       };
 
       ralphPort = lib.mkOption {

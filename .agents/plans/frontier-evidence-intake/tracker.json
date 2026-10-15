@@ -135,7 +135,6 @@
         ]
       },
       "notes": "tier0.d check that binds scheduled->slice mapping is deferred; current tests validate idempotence + fail-closed logic",
-      "pct_hint": 100,
       "acceptance": {
         "status": "accepted",
         "by": "hyperd",
@@ -185,7 +184,6 @@
         ]
       },
       "notes": "parity command live; no formal test suite; manual run validates 3 gaps + suggestions; optional timer NOT YET scheduled",
-      "pct_hint": 100,
       "acceptance": {
         "status": "accepted",
         "by": "hyperd",
@@ -222,9 +220,8 @@
       "deps": [
         "fe-1-prm-verify"
       ],
-      "editorial_note": "FE-2a functional eval baseline and FE-2b GEPA build-time prompt compile complete; reflective optimization + strict candidate score gating + compiled template storage verified",
-      "notes": "FE-2a + FE-2b completed: functional baseline test cases, reflective feedback extraction, strict score lift gating, CLI, and dashboard card. test-gepa-prompt-compile 7/7 PASS",
-      "pct_hint": 100,
+      "editorial_note": "FE-2a functional eval baseline done; FE-2b GEPA compile is simulated-only until a real model evaluator exists",
+      "notes": "FE-2a complete; FE-2b engine exists but has NO real evaluator (dry-run only, simulated scores, never adoptable): functional baseline test cases, reflective feedback extraction, strict score lift gating, CLI, and dashboard card. test-gepa-prompt-compile 8/8 PASS",
       "detection": {
         "commit_match": [
           "Frontier FE-2b GEPA build-time prompt compile",
@@ -233,10 +230,10 @@
         "test_gate": "scripts/testing/test-gepa-prompt-compile.py"
       },
       "acceptance": {
-        "status": "accepted",
-        "by": "antigravity",
-        "date": "2026-10-12",
-        "note": "FE-2b GEPA build-time prompt compile complete; test-gepa-prompt-compile 7/7 PASS; QA check 0.10.65; dashboard visibility"
+        "status": "pending",
+        "by": null,
+        "date": null,
+        "note": "pending; prior accepted-by-antigravity entry removed: GEPA gate scored fixed mock fixtures (see FE-2b honesty fix)"
       }
     },
     {
