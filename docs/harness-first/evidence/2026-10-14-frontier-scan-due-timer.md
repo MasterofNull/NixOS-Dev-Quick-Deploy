@@ -33,3 +33,30 @@ Root cause: frontier source scanning had no scheduled, bounded entry point; due 
 - Observable: DEFERRED (dated 2026-10-14): relies on existing frontier backlog/state files; no new dashboard in this slice.
 - Intervenable: YES - timer can be disabled via the Nix option; manual `aq-frontier` remains available.
 - PM-tracked: commit subject carries `W3-S5` for the sota-rounding tracker; status projected, not hand-set.
+
+## Objective
+Give frontier source scanning a bounded, scheduled entry point (owner-approved weekly) so due sources are scanned without operator recall (sota-rounding plan W3-S5).
+
+## Workflow/Session IDs
+- Orchestrator session: eb012479-4564-462f-8e6f-4824d5a77754 (claude-opus-5-5), slice 6 of the 2026-10-14 landing manifest (`.agents/delegation/outputs/landing-manifest-20261014.md`).
+- Branch/worktree: `feat/frontier-scan-due-timer` in `/tmp/wt-frontier-scan`.
+
+## Delegation Decision
+Implementer: claude-sonnet sub-agent (Rule 17 balanced tier; bounded script + timer slice with unit tests). Reviewer: separate claude-sonnet instance (same-lane; cross-lane confirmatory review queued in AGENT-CATCHUP-QUEUE). Integrator added `ai-frontier-scan` to `config/suspend-resume-workloads.json` to satisfy the suspend/resume contract gate.
+
+## Commands Executed
+- `python3 scripts/testing/test-frontier-scan-due.py`
+- Existing frontier suites (backlog, context, fold, relevance, sources, check-frontier-fold, FA-4, FA-5)
+- `gitleaks detect --redact --config .gitleaks.toml --source . --no-git --exit-code 1`
+- `scripts/governance/tier0-validation-gate.sh --pre-commit`
+
+## Rollback Plan
+Set `aiHarness.runtime.frontierScan.enable = false` (timer and service not installed) or revert the PR merge commit. The scan only appends to frontier state/backlog files; no data migration to undo.
+
+## Residual Risk
+- Low follow-ups from review: a fetch error still advances `last_scan`; robots.txt 5xx treated as allow; DST parse edge; state saved per source.
+- Outbound fetches are bounded and guarded, but run unattended once the timer is on.
+- Same-lane review only until the cross-lane confirmatory review lands.
+
+## Hint Feedback
+No aq-hints consulted for this slice; design followed the owner decision "frontier auto-scan: weekly, bounded" (2026-10-14).
