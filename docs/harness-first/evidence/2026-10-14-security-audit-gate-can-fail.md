@@ -1,5 +1,23 @@
 # Evidence: Security Audit Gate Can Fail (W6-S4)
 
+## Objective
+Make the security-audit CI gate able to fail: it must block on real npm/pip findings instead of grepping tokens the script never printed under continue-on-error, and pip scanning must target real requirements files instead of nonexistent `*.lock` files.
+
+## Workflow/Session IDs
+- Orchestrator sessions: eb012479-4564-462f-8e6f-4824d5a77754, 03acd9b7-086d-410f-b409-b1dd7d113856
+- Plan slice: 15 W6-S4 (sota-rounding tracker)
+- Branch: `fix/security-audit-gate-can-fail`
+
+## Delegation Decision
+- Implementer: claude-sonnet (cheapest eligible Claude lane, Rule 17), bounded to the files listed under Context.
+- Reviewer: claude-sonnet, independent of the implementing session, 4 review rounds, final disposition PASS.
+
+## Commands Executed
+- `git diff origin/main...HEAD --stat` to scope the change.
+- `bash scripts/testing/test-security-audit-gate.sh` (seeded-finding fixture: gate blocks; clean fixture: gate passes).
+- `FORCE_HARNESS_FIRST_EVIDENCE_GATE=true bash scripts/testing/check-harness-first-pr-evidence-gate.sh`.
+- `scripts/governance/tier0-validation-gate.sh --pre-commit` at commit time.
+
 ## Context
 Date: 2026-10-14
 Slice: `fix/security-audit-gate-can-fail`
@@ -16,13 +34,24 @@ Real pip coverage and CI pip-audit; npm/pip errors block in CI; time-boxed excep
 - `bash scripts/testing/test-security-audit-gate.sh`: `PASS: security-audit gate blocks on seeded finding, passes clean`.
 - tier0 `--pre-commit`: see commit/PR.
 
+## Rollback Plan
+Revert the PR (`git revert` of the merge commit). This restores the previous `security.yml` and `security-audit.sh` behavior (non-blocking gate) and the prior requirements floors; no runtime state or data migration is involved.
+
+## Residual Risk
+- nltk PYSEC-2026-3740 and diskcache PYSEC-2026-2447 are carried as time-boxed exceptions (to 2026-11-13) in `config/security-exceptions.json`.
+- The diskcache exception is now moot: PR #516 replaced diskcache with stdlib sqlite3 and has merged. A follow-up change removes that exception entry; it is intentionally not removed in this change.
+- Low: "applied" is printed before the package-match check, and a missing package field garbles the warning (fail-closed).
+
+## Hint Feedback
+No harness hints were consulted or rated for this slice; none to report.
+
 ## Review Record
 | Author-lane | Reviewer | Disposition |
 |---|---|---|
 | claude | claude-sonnet (independent reviewer, 4 rounds) | PASS |
 
 ## Follow-ups
-- Remove the diskcache exception once the nixos-docs diskcache replacement slice merges.
+- Remove the diskcache exception (replacement merged in PR #516; follow-up change).
 - Low: "applied" printed before package-match check; missing package field garbles warning (fail-closed).
 
 ## Rule 15 Activation Attestation
