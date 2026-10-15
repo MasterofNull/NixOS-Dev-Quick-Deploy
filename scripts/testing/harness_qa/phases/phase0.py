@@ -1565,7 +1565,7 @@ def _check_frontier_fe2b_prompt_compile(ctx: RunContext) -> list[CheckResult]:
     try:
         proc = subprocess.run([sys.executable, str(test)], cwd=str(ctx.repo_root), capture_output=True, text=True,
                               timeout=120, check=False)
-        if proc.returncode != 0 or "ALL 7 FIXTURES PASS" not in proc.stdout:
+        if proc.returncode != 0 or "ALL 8 FIXTURES PASS" not in proc.stdout:
             return [failed(5, "0.10.65", desc, (proc.stderr or proc.stdout or "fixture failed")[-240:])]
         if "_prompt_compile_health_summary" not in route.read_text(encoding="utf-8") or "· prompt compiler (GEPA)" not in js.read_text(encoding="utf-8"):
             return [failed(5, "0.10.65", desc, "dashboard prompt compiler visibility contract missing")]

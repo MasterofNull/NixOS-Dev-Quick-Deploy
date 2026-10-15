@@ -1,0 +1,15 @@
+{
+  "schema": "aq-confine-guidance/1",
+  "intro": "You are running inside aq-confine. There is no network access and no credentials. Failed network calls are expected; do not retry them in a loop.",
+  "profiles": {
+    "worktree-rw": "Only the current worktree is writable. Commit on the current branch with git add and git commit. Pushing is impossible by design; the orchestrator promotes your commits after the run.",
+    "readonly-analysis": "Inputs are read-only. Write results only to the scratch directory you were given.",
+    "eval-untrusted": "Only the temporary directory is writable."
+  },
+  "denials": {
+    "nonglobal": "Not reachable by design; use the model URL and the package mirrors if provided.",
+    "nogrant": "A request was filed; continue offline and do not retry in a loop.",
+    "service-down": "Not enabled on this host; report it in the handoff.",
+    "cap": "Rate limit reached; wait before retrying."
+  }
+}

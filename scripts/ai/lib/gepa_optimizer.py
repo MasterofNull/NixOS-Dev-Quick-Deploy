@@ -140,6 +140,18 @@ class GepaOptimizer:
                 "prompt_id": prompt_id,
             }
 
+        if not dry_run:
+            # No real model evaluation path exists; the former non-dry-run branch
+            # scored fixed mock fixtures, so its gate always passed. Refuse instead.
+            return {
+                "ok": False,
+                "gate_passed": False,
+                "adopted": False,
+                "saved_path": None,
+                "reason": "no real evaluator",
+                "prompt_id": prompt_id,
+            }
+
         tasks = fe.FUNCTIONAL_TASKS
         total_tasks = len(tasks)
 
@@ -147,9 +159,6 @@ class GepaOptimizer:
         if dry_run:
             base_pass_k = int(round(mock_baseline_ratio * total_tasks))
             base_indices = list(range(base_pass_k))
-            base_eval = fe.evaluate_tasks_mock(tasks=tasks, pass_indices=base_indices)
-        else:
-            base_indices = list(range(min(4, total_tasks)))
             base_eval = fe.evaluate_tasks_mock(tasks=tasks, pass_indices=base_indices)
 
         baseline_score = base_eval["score"]
@@ -164,9 +173,6 @@ class GepaOptimizer:
         if dry_run:
             cand_pass_k = int(round(mock_compiled_ratio * total_tasks))
             cand_indices = list(range(cand_pass_k))
-            cand_eval = fe.evaluate_tasks_mock(tasks=tasks, pass_indices=cand_indices)
-        else:
-            cand_indices = list(range(total_tasks))
             cand_eval = fe.evaluate_tasks_mock(tasks=tasks, pass_indices=cand_indices)
 
         compiled_score = cand_eval["score"]
@@ -191,11 +197,12 @@ class GepaOptimizer:
                 "baseline_passed": base_eval["tasks_passed"],
                 "compiled_passed": cand_eval["tasks_passed"],
                 "dry_run": dry_run,
+                "simulated": True,
             },
         )
 
         saved_path: Optional[str] = None
-        if gate_passed and adopt:
+        if gate_passed and adopt and not dry_run:  # simulated scores are never adoptable
             saved_path = str(self.save_compiled_artifact(artifact))
 
         return {
