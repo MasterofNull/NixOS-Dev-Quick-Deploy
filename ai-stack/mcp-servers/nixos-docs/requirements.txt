@@ -27,7 +27,6 @@ sqlalchemy>=2.0.36
 sentence-transformers>=3.3.1
 
 # Caching and utilities
-diskcache>=5.6.3
 python-dateutil>=2.9.0.post0
 pyyaml>=6.0.2
 
