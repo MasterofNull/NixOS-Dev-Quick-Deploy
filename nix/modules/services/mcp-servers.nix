@@ -486,6 +486,11 @@ in {
             mySystem.roles.aiStack.enable=true.
           '';
         }
+        # AUTH-S2 (DESIGN 6.1): a shadow window must expire.
+        {
+          assertion = ai.agentAuth.mode != "shadow" || ai.agentAuth.shadowUntil != null;
+          message = "mySystem.aiStack.agentAuth.shadowUntil (YYYY-MM-DD) is required when agentAuth.mode = \"shadow\".";
+        }
         # 6.5.3 — Port collision guard: service URL env vars must map to distinct ports.
         {
           assertion =
@@ -1052,6 +1057,9 @@ in {
               "DATABASE_URL=${pgUrl}"
               ++ lib.optional sec.enable "EMBEDDINGS_API_KEY_FILE=${secretPath embeddingsApiKeySecret}"
               ++ lib.optional sec.enable "AIDB_API_KEY_FILE=${secretPath aidbApiKeySecret}"
+              # AUTH-S0 (agent-auth DESIGN 8.1): mcpServers asserts sec.enable, so the key is always
+              # provisioned; an empty key must stop the service instead of failing open.
+              ++ lib.optional sec.enable "AI_STACK_REQUIRE_API_KEY=1"
               ++ lib.optional sec.enable "AIDB_POSTGRES_PASSWORD_FILE=${secretPath postgresPasswordSecret}";
           }
           // lib.optionalAttrs embedEnabled {
@@ -1435,6 +1443,15 @@ in {
               "DATABASE_URL=${pgUrl}"
               ++ lib.optional sec.enable "EMBEDDING_API_KEY_FILE=${secretPath embeddingsApiKeySecret}"
               ++ lib.optional sec.enable "HYBRID_API_KEY_FILE=${secretPath hybridApiKeySecret}"
+              # AUTH-S2 (DESIGN 6.1): shadow authorization; dates are compared at runtime.
+              ++ [
+                "AQ_AGENT_AUTH_MODE=${ai.agentAuth.mode}"
+                "AQ_AGENT_AUTH_POLICY=${mcp.repoPath}/config/agent-auth-policy.json"
+              ]
+              ++ lib.optional (ai.agentAuth.shadowUntil != null) "AQ_AGENT_AUTH_SHADOW_UNTIL=${ai.agentAuth.shadowUntil}"
+              # AUTH-S0 (agent-auth DESIGN 8.1): mcpServers asserts sec.enable, so the key is always
+              # provisioned; an empty key must stop the service instead of failing open.
+              ++ lib.optional sec.enable "AI_STACK_REQUIRE_API_KEY=1"
               ++ lib.optional sec.enable "RALPH_WIGGUM_API_KEY_FILE=${secretPath aidbApiKeySecret}"
               ++ lib.optional sec.enable "POSTGRES_PASSWORD_FILE=${secretPath postgresPasswordSecret}";
             EnvironmentFile = "-${mutableOptimizerDir}/overrides.env";

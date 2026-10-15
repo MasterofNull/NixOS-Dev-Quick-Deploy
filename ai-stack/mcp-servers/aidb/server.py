@@ -57,6 +57,7 @@ from discovery_endpoints import register_discovery_routes
 from cve_endpoints import register_cve_routes
 from settings_loader import Settings, load_settings
 from rag import RAGPipeline, RAGConfig
+from shared.api_key_auth import api_key_required, assert_key_provisioned, keys_equal
 from shared.tool_audit import write_audit_entry
 from shared.tool_security_auditor import ToolSecurityAuditor
 from interaction_history import InteractionHistoryStore
@@ -1341,12 +1342,15 @@ class MonitoringServer:
     def _require_api_key(self, request: Request) -> None:
         expected = self.settings.api_key
         if not expected:
+            if api_key_required():
+                # AUTH-S0 (design 8.1): required-but-empty key never fails open.
+                raise HTTPException(status_code=503, detail="api_key_not_provisioned")
             return
         header_token = request.headers.get("x-api-key")
         auth_header = request.headers.get("authorization") or ""
         bearer = auth_header.split()
         token = header_token or (bearer[1] if len(bearer) == 2 and bearer[0].lower() == "bearer" else None)
-        if token != expected:
+        if not keys_equal(token, expected):
             raise HTTPException(status_code=401, detail="invalid_api_key")
 
     def initialize_health_checker(self):
@@ -2467,12 +2471,15 @@ class MCPServer:
     def _require_api_key(self, request: Request) -> None:
         expected = self.settings.api_key
         if not expected:
+            if api_key_required():
+                # AUTH-S0 (design 8.1): required-but-empty key never fails open.
+                raise HTTPException(status_code=503, detail="api_key_not_provisioned")
             return
         header_token = request.headers.get("x-api-key")
         auth_header = request.headers.get("authorization") or ""
         bearer = auth_header.split()
         token = header_token or (bearer[1] if len(bearer) == 2 and bearer[0].lower() == "bearer" else None)
-        if token != expected:
+        if not keys_equal(token, expected):
             raise HTTPException(status_code=401, detail="invalid_api_key")
 
     async def record_telemetry(
@@ -2608,6 +2615,7 @@ class MCPServer:
 
     async def startup(self) -> None:
         LOGGER.info("Starting MCP server")
+        assert_key_provisioned(self.settings.api_key, "aidb")
         await asyncio.to_thread(self._ensure_pgvector_extension)
         METADATA.create_all(self._engine)
         await asyncio.to_thread(self._vector_store.ensure_indexes)
@@ -3783,9 +3791,11 @@ class MCPServer:
 
     def _authenticate(self, message: Dict[str, Any]) -> None:
         if not self.settings.api_key:
+            if api_key_required():
+                raise PermissionError("API key not provisioned")
             return
         token = message.get("api_key")
-        if token != self.settings.api_key:
+        if not keys_equal(token, self.settings.api_key):
             raise PermissionError("Invalid API key")
 
     def _validate_tool_disclosure(self, mode: str, api_key: Optional[str]) -> str:
@@ -3795,7 +3805,7 @@ class MCPServer:
             mode == "full"
             and self.settings.full_tool_disclosure_requires_key
             and self.settings.api_key
-            and api_key != self.settings.api_key
+            and not keys_equal(api_key, self.settings.api_key)
         ):
             raise PermissionError("Full tool disclosure requires a valid API key")
         return mode
