@@ -14,13 +14,15 @@ only when it carries these `Key: value` lines (same field syntax as commit-msg):
 Limitations (plain): all lanes share one GitHub account, so identity is
 DECLARATIVE. Author-lane/Reviewed-by are self-asserted text; this check proves
 a distinct reviewer was claimed and that the claim is bound to the current head
-(new pushes invalidate it), not that the reviewer is who they say. Reviewed-
+(new content pushes invalidate it; a merge-only update of the base into the
+PR branch is accepted when the net change is verbatim-patch-id (whitespace-exact) identical), not that the reviewer is who they say. Reviewed-
 subject-sha256 is format-checked only. Signed receipts are needed to close
 that gap. Uses only the event payload; no secrets or API calls.
 """
 import json
 import os
 import re
+import subprocess
 import sys
 
 DISPOSITIONS = {"PASS", "PASS_WITH_FOLLOWUPS"}
@@ -36,10 +38,45 @@ def norm(lane):
     return re.sub(r"\s+", " ", lane.strip().lower())
 
 
+def _git(*args):
+    return subprocess.run(["git", *args], capture_output=True, text=True, check=True, timeout=60).stdout.strip()
+
+
+def _patch_id(base, commit):
+    mb = _git("merge-base", base, commit)
+    diff = subprocess.run(["git", "diff", "--binary", mb, commit], capture_output=True, check=True, timeout=120).stdout
+    out = subprocess.run(["git", "patch-id", "--verbatim"], input=diff, capture_output=True, check=True, timeout=60).stdout
+    return out.split()[0].decode() if out.split() else ""
+
+
+def merge_only_update(rhead, head, base):
+    """Return (ok, detail): head is a merge-only update of reviewed rhead (fail closed)."""
+    try:
+        if not base:
+            return False, "base sha unavailable"
+        try:
+            _git("cat-file", "-e", rhead + "^{commit}")
+        except (subprocess.CalledProcessError, OSError):
+            return False, "reviewed commit unavailable"
+        try:
+            subprocess.run(["git", "merge-base", "--is-ancestor", rhead, head], check=True, capture_output=True, timeout=60)
+        except subprocess.CalledProcessError:
+            return False, "reviewed head is not an ancestor of PR head"
+        pid_r, pid_h = _patch_id(base, rhead), _patch_id(base, head)
+        if not pid_r or not pid_h:
+            return False, "empty patch-id"
+        if pid_r != pid_h:
+            return False, "net change differs from reviewed head"
+        return True, pid_h
+    except (subprocess.SubprocessError, OSError) as exc:
+        return False, f"git error: {exc.__class__.__name__}"
+
+
 def check(event):
     pr = event.get("pull_request") or {}
     body = (pr.get("body") or "").replace("\r\n", "\n")
     head = (pr.get("head") or {}).get("sha", "")
+    base = (pr.get("base") or {}).get("sha", "")
     errors = []
     disp = field(body, "Review-Disposition")
     if not disp:
@@ -57,7 +94,12 @@ def check(event):
     elif not re.fullmatch(r"[0-9a-f]{40}", rhead):
         errors.append("Reviewed-head-sha must be 40 lowercase hex")
     elif rhead != head:
-        errors.append(f"stale review: Reviewed-head-sha {rhead[:12]} != PR head {head[:12]}")
+        ok, detail = merge_only_update(rhead, head, base) if head else (False, "no PR head")
+        if ok:
+            print(f"review rebound: head {head[:12]} is a merge-only update of reviewed {rhead[:12]} "
+                  f"(net change identical, verbatim patch-id {detail})")
+        else:
+            errors.append(f"stale review: Reviewed-head-sha {rhead[:12]} != PR head {head[:12]} ({detail})")
     reviewer = field(body, "Reviewed-by")
     author = field(body, "Author-lane")
     if not reviewer:
