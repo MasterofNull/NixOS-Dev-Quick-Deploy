@@ -1110,6 +1110,10 @@ in {
                 "MCP_SERVER_MODE=http"
                 "MCP_SERVER_PORT=${toString mcp.hybridPort}"
                 "HOST=127.0.0.1"
+                # AUTH-S0: Host/Origin/content-type guard against DNS rebinding + CSRF
+                "AQ_COORD_HTTP_GUARD=${mcp.hybridHttpGuard.mode}"
+                "AQ_COORD_ALLOWED_HOSTS=${lib.concatStringsSep "," mcp.hybridHttpGuard.extraAllowedHosts}"
+                "AQ_COORD_ALLOWED_ORIGINS=${lib.concatStringsSep "," mcp.hybridHttpGuard.extraAllowedOrigins}"
                 # M3: coordinator PRSI handlers read the canonical queue (read-only; mutations shell out to prsi-orchestrator).
                 "PRSI_ACTION_QUEUE_PATH=${mutableOptimizerDir}/prsi/action-queue.json"
                 # s1c (END-TO-END-BARE-METAL-PLAN.md) finding: llama.activeModel

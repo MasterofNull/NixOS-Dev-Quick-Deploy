@@ -3555,6 +3555,27 @@
         description = "TCP port for the hybrid-coordinator MCP server.";
       };
 
+      hybridHttpGuard = {
+        mode = lib.mkOption {
+          type = lib.types.enum [ "enforce" "shadow" "off" ];
+          default = "enforce";
+          description = ''
+            Hybrid-coordinator Host/Origin/content-type guard (AUTH-S0, AQ_COORD_HTTP_GUARD).
+            enforce rejects DNS-rebinding and cross-site requests; shadow only logs; off disables.
+          '';
+        };
+        extraAllowedHosts = lib.mkOption {
+          type = lib.types.listOf lib.types.str;
+          default = [ ];
+          description = "Extra Host header values accepted by the coordinator guard (AQ_COORD_ALLOWED_HOSTS).";
+        };
+        extraAllowedOrigins = lib.mkOption {
+          type = lib.types.listOf lib.types.str;
+          default = [ ];
+          description = "Extra browser Origins accepted by the coordinator guard (AQ_COORD_ALLOWED_ORIGINS).";
+        };
+      };
+
       ralphPort = lib.mkOption {
         type = lib.types.port;
         default = 8004;
