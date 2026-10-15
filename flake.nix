@@ -158,6 +158,9 @@
             mySystem.nixpkgsTrack = lib.mkDefault nixpkgsTrack;
             nixpkgs.pkgs = mkPkgs selectedNixpkgs system';
             nixpkgs.hostPlatform = lib.mkDefault system';
+            # Record the deployed git revision (nixos-version --json -> configurationRevision);
+            # read by aq-health-spider to detect deploys from a stale/non-main source.
+            system.configurationRevision = lib.mkDefault (self.rev or self.dirtyRev or "unknown");
             warnings =
               lib.optional (nixpkgsTrack == "unstable" && !hasUnstableInput)
               "Host '${hostName}' requested mySystem.nixpkgsTrack=unstable, but flake input 'nixpkgs-unstable' is unavailable; falling back to stable nixpkgs.";

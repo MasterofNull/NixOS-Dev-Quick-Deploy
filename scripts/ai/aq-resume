@@ -85,6 +85,14 @@ def main():
     print("SESSION RESUME SIGNAL")
     print("=" * 60)
 
+    try:  # primary checkout not on main => deploys from it are blocked
+        w = subprocess.run(["bash", str(REPO_ROOT / "scripts/governance/primary-checkout-warn.sh"), str(REPO_ROOT)],
+                           capture_output=True, text=True, timeout=10)
+        if w.stdout.strip():
+            print(w.stdout.rstrip())
+    except Exception:
+        pass
+
     if state:
         obj = state.get('current_objective') or state.get('objective', 'N/A')
         ts = state.get('written_at') or state.get('last_update', 'N/A')
