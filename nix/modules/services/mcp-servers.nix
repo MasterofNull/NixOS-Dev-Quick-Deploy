@@ -321,7 +321,6 @@ let
   nixosDocsPython = pkgs.python3.withPackages (ps:
     sharedPythonPackages ps
     ++ (with ps; [
-      diskcache
       gitpython
       beautifulsoup4
       markdownify
@@ -711,7 +710,7 @@ in {
           "d ${dataDir}/aider-wrapper               0750 ${aiderUser} ${aiGroup} -"
           "d ${dataDir}/aider-wrapper/workspace     0750 ${aiderUser} ${aiGroup} -"
           "d ${dataDir}/nixos-docs           0750 ${docsUser} ${aiGroup} -"
-          "d ${dataDir}/nixos-docs/cache     0750 ${docsUser} ${aiGroup} -"
+          "d ${dataDir}/nixos-docs/cache     0700 ${docsUser} ${aiGroup} -"
           "d ${dataDir}/nixos-docs/repos     0750 ${docsUser} ${aiGroup} -"
         ]
         # Collision guard: security/npm is already declared above with auditUser (line 655).

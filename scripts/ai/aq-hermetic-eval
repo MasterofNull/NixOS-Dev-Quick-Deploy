@@ -34,7 +34,7 @@ def main() -> int:
     eval_p.add_argument("--candidate-id", required=True, help="Candidate identifier")
     eval_p.add_argument("--backend", default="mock", choices=["bwrap", "mock", "process"], help="Containment backend")
     eval_p.add_argument("--reviewer-role", default="reviewer", help="Role of independent reviewer")
-    eval_p.add_argument("--reviewer-verdict", default="PROMOTED", choices=["PROMOTED", "REJECTED", "HOLD"], help="Reviewer verdict")
+    eval_p.add_argument("--reviewer-verdict", default="HOLD", choices=["PROMOTED", "REJECTED", "HOLD"], help="Reviewer verdict")
     eval_p.add_argument("--json", action="store_true", help="Output in JSON format")
 
     args = parser.parse_args()
@@ -44,7 +44,7 @@ def main() -> int:
         if args.json:
             print(json.dumps(summary, indent=2))
         else:
-            print(f"Hermetic Candidate Evaluation: status={summary['status']}, policy={summary['policy']}")
+            print(f"Hermetic Candidate Evaluation: status={summary['status']}, real={summary['real_receipts']}, simulated={summary['simulated_receipts']}, policy={summary['policy']}")
         return 0
 
     elif args.command == "verify":
@@ -67,6 +67,9 @@ def main() -> int:
             return 1
 
     elif args.command == "evaluate":
+        if args.backend != "mock":
+            print("No real executor is available (deferred to the shared aq-confine launcher); only --backend mock (simulated) is supported.", file=sys.stderr)
+            return 1
         try:
             containment = {
                 "backend": args.backend,
@@ -76,6 +79,9 @@ def main() -> int:
                 "memory_limit_mb": 512,
                 "timeout_seconds": 30,
             }
+            # NOTE: no real executor exists yet (deferred to the shared aq-confine
+            # launcher). This result is a literal placeholder: the receipt is
+            # marked simulated and can never be PROMOTED.
             exec_result = {
                 "exit_code": 0,
                 "duration_ms": 12.5,
@@ -91,8 +97,8 @@ def main() -> int:
             reviewer = {
                 "reviewer_role": args.reviewer_role,
                 "reviewer_verdict": args.reviewer_verdict,
-                "signature_ref": f"sig:ecc:{args.candidate_id}:reviewed",
-                "promoted_at": "2026-10-12T00:00:00Z",
+                "signature_ref": f"unsigned:{args.candidate_id}",  # opaque; not verified
+                "promoted_at": None,
             }
             receipt = hce.build_evaluation_receipt(
                 artifact_path=args.artifact,
