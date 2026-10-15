@@ -1,0 +1,206 @@
+{
+  "plan": {
+    "id": "aq-decide",
+    "title": "aq-decide local decision engine",
+    "prd_ref": ".agents/plans/aq-decide/DESIGN.md",
+    "owner": "hyperd",
+    "goal": "Local open-weight decision engine (Jev parity): advisory + friction only, never grants",
+    "success_criteria": [
+      "No question grants privilege or relaxes a deterministic deny",
+      "Remote labelling sees seeds/synthetic text only",
+      "Learned heads gated by section 4.3 evidence"
+    ]
+  },
+  "phases": [
+    {
+      "id": "frozen",
+      "name": "Frozen scope DEC-S0..S4",
+      "goal": "MVP shadow + egress friction",
+      "order": 1
+    },
+    {
+      "id": "deferred",
+      "name": "Deferred DEC-S5..S10",
+      "goal": "Learned heads and later integrations",
+      "order": 2
+    }
+  ],
+  "items": [
+    {
+      "id": "DEC-S0",
+      "name": "Fix routing_decisions producer",
+      "phase": "frozen",
+      "kind": "slice",
+      "goal": "Live routing path persists routing_decisions rows; write failures observable",
+      "validation_goal": "Rows accrue from ModelCoordinator.classify_and_route; regression test fails when the hook is removed",
+      "deps": [],
+      "detection": {
+        "commit_match": [
+          "fix\\(routing\\): .*routing_decisions"
+        ]
+      }
+    },
+    {
+      "id": "DEC-S1",
+      "name": "aq-decide library, config, CLI (shadow)",
+      "phase": "frozen",
+      "kind": "slice",
+      "goal": "Contract, T0a rules, T0b cache, T0.5 shadow, decision log; no learned head",
+      "validation_goal": "Contract/abstain/enum/egress-schema tests; T0.5 p99 <= 3 ms; kill switch",
+      "deps": [
+        "DEC-S0"
+      ],
+      "detection": {
+        "commit_match": [
+          "feat\\(aq-decide\\): .*(library|DEC-S1)"
+        ]
+      }
+    },
+    {
+      "id": "DEC-S2",
+      "name": "Nix options, bge-small embed unit, counters",
+      "phase": "frozen",
+      "kind": "slice",
+      "goal": "All options default off; confined second embed unit; health check",
+      "validation_goal": "Dry build; assertion fails for unlisted repo; paired off/on/off check; state-cap test",
+      "deps": [
+        "DEC-S1"
+      ],
+      "detection": {
+        "commit_match": [
+          "feat\\(aq-decide\\): .*(nix|DEC-S2)"
+        ]
+      }
+    },
+    {
+      "id": "DEC-S3",
+      "name": "Task-profile routing shadow",
+      "phase": "frozen",
+      "kind": "slice",
+      "goal": "Shadow decisions beside classify_task_type; labeler; shadow-report",
+      "validation_goal": "500 shadow decisions; no behavior change diff test",
+      "deps": [
+        "DEC-S0",
+        "DEC-S1"
+      ],
+      "detection": {
+        "commit_match": [
+          "feat\\(aq-decide\\): .*(shadow|DEC-S3)"
+        ]
+      }
+    },
+    {
+      "id": "DEC-S4",
+      "name": "Egress friction rules table (W2-S7)",
+      "phase": "frozen",
+      "kind": "slice",
+      "goal": "Rules-only add-friction egress table; cannot relax a deterministic deny",
+      "validation_goal": "Hostile test matrix; budgets under 1000-host flood; every lane enum exercised",
+      "deps": [
+        "DEC-S1"
+      ],
+      "detection": {
+        "commit_match": [
+          "feat\\(aq-decide\\): .*(egress|DEC-S4)"
+        ]
+      }
+    },
+    {
+      "id": "DEC-S5",
+      "name": "First learned head via T1",
+      "phase": "deferred",
+      "kind": "slice",
+      "goal": "Head for first question passing section 4.3 gates; human-row calibration",
+      "validation_goal": "Gate evidence recorded",
+      "deps": [
+        "DEC-S2",
+        "DEC-S3"
+      ],
+      "detection": {
+        "commit_match": [
+          "feat\\(aq-decide\\): .*DEC-S5"
+        ]
+      }
+    },
+    {
+      "id": "DEC-S6",
+      "name": "Retry/escalate and RAG shadow; reranker",
+      "phase": "deferred",
+      "kind": "slice",
+      "goal": "I4/I3 shadow integrations",
+      "validation_goal": "Labels sufficient; reranker measured",
+      "deps": [
+        "DEC-S3"
+      ],
+      "detection": {
+        "commit_match": [
+          "feat\\(aq-decide\\): .*DEC-S6"
+        ]
+      }
+    },
+    {
+      "id": "DEC-S7",
+      "name": "T2 LLM tier",
+      "phase": "deferred",
+      "kind": "slice",
+      "goal": "Constrained-logprob small LLM tier, on-demand unit",
+      "validation_goal": "T2 measured below 4B; page-cache cost measured",
+      "deps": [
+        "DEC-S2"
+      ],
+      "detection": {
+        "commit_match": [
+          "feat\\(aq-decide\\): .*DEC-S7"
+        ]
+      }
+    },
+    {
+      "id": "DEC-S8",
+      "name": "Decide endpoint, dashboard card, drift alerts",
+      "phase": "deferred",
+      "kind": "slice",
+      "goal": "POST /decide behind agent-auth scope; PSI/calibration drift",
+      "validation_goal": "Scope lands; live head present",
+      "deps": [
+        "DEC-S5"
+      ],
+      "detection": {
+        "commit_match": [
+          "feat\\(aq-decide\\): .*DEC-S8"
+        ]
+      }
+    },
+    {
+      "id": "DEC-S9",
+      "name": "Approvals triage and commit-evidence WARN",
+      "phase": "deferred",
+      "kind": "slice",
+      "goal": "Advisory reorder/annotate; WARN-only check",
+      "validation_goal": "Advisory only; no grants",
+      "deps": [
+        "DEC-S5"
+      ],
+      "detection": {
+        "commit_match": [
+          "feat\\(aq-decide\\): .*DEC-S9"
+        ]
+      }
+    },
+    {
+      "id": "DEC-S10",
+      "name": "GLiClass ONNX candidate evaluation",
+      "phase": "deferred",
+      "kind": "slice",
+      "goal": "Evaluate after capability-intake of weights",
+      "validation_goal": "Intake passes; onnxruntime check in service env",
+      "deps": [
+        "DEC-S5"
+      ],
+      "detection": {
+        "commit_match": [
+          "feat\\(aq-decide\\): .*DEC-S10"
+        ]
+      }
+    }
+  ]
+}

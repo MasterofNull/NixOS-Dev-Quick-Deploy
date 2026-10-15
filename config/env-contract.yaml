@@ -36,8 +36,15 @@ variables:
     aliases: []
     default: "routing_metrics.db"
     layer: systemd
-    consumers: [autonomous-improvement]
-    description: "Canonical read-only SQLite routing metrics source consumed by the autonomous improvement observer."
+    consumers: [hybrid-coordinator, autonomous-improvement]
+    description: "Routing metrics SQLite. Writer (hybrid coordinator, llm_router, DEC-S0) points it at the live WAL db (owner-only). Read-only consumers (autonomous-improvement) point it at the snapshot file instead."
+
+  - canonical: AQ_ROUTING_METRICS_SNAPSHOT_PATH
+    aliases: []
+    default: "<live db path minus .db>.snapshot.db"
+    layer: systemd
+    consumers: [hybrid-coordinator]
+    description: "Group-readable (0644) atomic VACUUM INTO snapshot of the routing metrics DB, refreshed by the writer thread (AQ_ROUTING_METRICS_SNAPSHOT_INTERVAL_S, default 60 s, and on shutdown)."
 
   - canonical: AQ_WORKFLOW_DEVIATION_LOG_PATH
     aliases: []

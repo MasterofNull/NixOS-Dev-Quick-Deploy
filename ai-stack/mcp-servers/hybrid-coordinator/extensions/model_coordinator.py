@@ -522,6 +522,25 @@ class ModelCoordinator:
             prefer_local=prefer_local,
         )
 
+        # DEC-S0: persist the chosen route (routing_metrics.db). Failure is logged
+        # and counted inside the router; it must never break routing.
+        if _LLM_ROUTER_AVAILABLE:
+            try:
+                _primary = self._profiles.get(primary_model)
+                get_router().record_route_decision(
+                    task_type=classification.primary_role.value,
+                    complexity=str(classification.complexity),
+                    tier=(tier_suggestion or {}).get("tier", ""),
+                    model=primary_model,
+                    lane=("local" if (_primary and _primary.is_local) else "remote"),
+                    source="model_coordinator",
+                    alternatives=[p.name for p in primary_candidates if p.name != primary_model],
+                    cost_estimate=estimated_cost,
+                    handoff=classification.requires_handoff,
+                )
+            except Exception as e:  # noqa: BLE001 - recorder must not affect routing
+                logger.warning("routing decision persist failed: %s", e)
+
         # Record for telemetry
         self._routing_history.append({
             "timestamp": time.time(),
