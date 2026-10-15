@@ -46,6 +46,7 @@ from aiohttp import web
 import httpx
 from opentelemetry import trace
 from config import Config, OptimizationProposal, apply_proposal, routing_config
+from middleware.auth import AUTH_CONTEXT_KEY as _AUTH_CONTEXT_KEY
 from middleware.auth import API_KEY_HEADER as _API_KEY_HEADER  # R2.7: canonical header constant
 from metrics import (
     CAPABILITY_GAP_DETECTIONS,
@@ -498,13 +499,26 @@ def _http_path_to_tool_name(path: str, method: str) -> Optional[str]:
 # Model catalog, helper functions, and delegate task state moved to ai_coordinator_handlers.py
 
 
+def _audit_caller_identity(request: web.Request) -> str:
+    """Audit identity without the credential (AUTH-S0, design 8.1).
+
+    Uses the auth mode resolved by the auth middleware; the raw X-API-Key or
+    Authorization value must never reach an audit row.
+    """
+    ctx = request.get(_AUTH_CONTEXT_KEY)
+    mode = ctx.get("mode") if isinstance(ctx, dict) else ""
+    if mode:
+        return str(mode)
+    has_cred = request.headers.get(_API_KEY_HEADER) or request.headers.get("Authorization")
+    return "credentialed" if has_cred else "anonymous"
+
+
 def _audit_http_request(request: web.Request, status: int, latency_ms: float) -> None:
     """Emit tool-audit rows for HTTP endpoint usage (non-MCP transport)."""
     tool_name = _http_path_to_tool_name(request.path, request.method)
     if not tool_name:
         return
-    token = request.headers.get(_API_KEY_HEADER) or request.headers.get("Authorization", "")
-    caller_identity = token if token else "anonymous"
+    caller_identity = _audit_caller_identity(request)
     query_pairs = list(request.rel_url.query.items())[:10]
     metadata = {
         "http_status": int(status),
@@ -558,8 +572,7 @@ def _audit_internal_tool_execution(
     outcome: str = "success",
     error_message: Optional[str] = None,
 ) -> None:
-    token = request.headers.get(_API_KEY_HEADER) or request.headers.get("Authorization", "")
-    caller_identity = token if token else "anonymous"
+    caller_identity = _audit_caller_identity(request)
     payload = {
         "transport": "http-autorun",
         "parent_path": request.path,

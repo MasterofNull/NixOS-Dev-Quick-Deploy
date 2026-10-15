@@ -18,6 +18,7 @@ core/auth_middleware.py is kept as a re-export shim for backwards compatibility.
 
 from aiohttp import web
 from config import Config
+from shared.api_key_auth import api_key_required, assert_key_provisioned, keys_equal
 
 # ---------------------------------------------------------------------------
 # Constants
@@ -192,13 +193,16 @@ def resolve_auth_context(path: str, remote: str, headers, configured_api_key: st
         return _auth_context("loopback-agent", profile, True, "loopback_agent_prefix"), 0
 
     if not configured_api_key:
+        if api_key_required():
+            # AUTH-S0 (design 8.1): a required-but-empty key never fails open.
+            return {"error": "api_key_not_provisioned", "mode": "api-key"}, 503
         profile, error = _profile_for_mode("no-api-key-configured", requested_profile)
         if error:
             return {"error": error}, 403
         return _auth_context("no-api-key-configured", profile, True, "api_key_not_configured"), 0
 
     token = _extract_token(headers)
-    if token != configured_api_key:
+    if not keys_equal(token, configured_api_key):
         return {"error": "unauthorized", "mode": "api-key"}, 401
 
     profile, error = _profile_for_mode("api-key", requested_profile)
@@ -308,6 +312,7 @@ def auth_profile_policy_summary() -> dict:
 
 def create_api_key_middleware():
     """Return the aiohttp middleware that enforces API key authentication."""
+    assert_key_provisioned(Config.API_KEY, "hybrid-coordinator")
 
     @web.middleware
     async def api_key_middleware(request: web.Request, handler):
