@@ -34,13 +34,17 @@ import hermetic_candidate_eval as hce  # noqa: E402
 
 class TestHermeticCandidateEval(unittest.TestCase):
     def setUp(self) -> None:
+        # test-only: pretend a real executor backend exists
+        self._saved = hce.REAL_EXECUTOR_BACKENDS
+        hce.REAL_EXECUTOR_BACKENDS = frozenset({"process"})
         self.tmp_dir = tempfile.TemporaryDirectory()
         self.tmp_path = Path(self.tmp_dir.name)
         self.artifact = self.tmp_path / "candidate_plugin.py"
         self.artifact.write_text('def run(): return "harmless candidate"\n', encoding="utf-8")
 
         self.containment = {
-            "backend": "mock",
+            # "process" = stand-in for a real backend so verification logic is exercised
+            "backend": "process",
             "network": "none",
             "read_only_paths": ["/"],
             "writable_tmp": "/tmp/sandbox",
@@ -68,6 +72,7 @@ class TestHermeticCandidateEval(unittest.TestCase):
         }
 
     def tearDown(self) -> None:
+        hce.REAL_EXECUTOR_BACKENDS = self._saved
         self.tmp_dir.cleanup()
 
     def test_happy_path_evaluation_and_verification(self) -> None:
@@ -82,6 +87,40 @@ class TestHermeticCandidateEval(unittest.TestCase):
         self.assertEqual(res["status"], "verified")
         self.assertEqual(res["verdict"], "PROMOTED")
         self.assertEqual(res["candidate_id"], "cand-001")
+
+    def test_mock_eval_cannot_promote(self) -> None:
+        receipt = hce.build_evaluation_receipt(
+            artifact_path=self.artifact,
+            candidate_id="cand-mock",
+            containment_config=dict(self.containment, backend="mock"),
+            execution_result=self.clean_exec,
+            reviewer_promotion=self.reviewer_promotion,
+        )
+        self.assertTrue(receipt["simulated"])
+        self.assertNotEqual(receipt["evaluation_verdict"], "CANDIDATE_EXECUTED_PASS")
+        self.assertNotEqual(receipt["reviewer_promotion"]["reviewer_verdict"], "PROMOTED")
+        with self.assertRaises(hce.HermeticEvalError) as ctx:
+            hce.verify_evaluation_receipt(receipt)
+        self.assertEqual(ctx.exception.reason, "simulated_evaluation")
+
+    def test_unlisted_backend_and_unsigned_review_rejected(self) -> None:
+        r = hce.build_evaluation_receipt(self.artifact, "c", dict(self.containment, backend="bwrap"), self.clean_exec, self.reviewer_promotion)
+        self.assertTrue(r["simulated"])
+        with self.assertRaises(hce.HermeticEvalError) as ctx:
+            hce.verify_evaluation_receipt(r)
+        self.assertEqual(ctx.exception.reason, "simulated_evaluation")
+        promo = dict(self.reviewer_promotion, signature_ref="unsigned:c")
+        r2 = hce.build_evaluation_receipt(self.artifact, "c", self.containment, self.clean_exec, promo)
+        with self.assertRaises(hce.HermeticEvalError) as ctx:
+            hce.verify_evaluation_receipt(r2)
+        self.assertEqual(ctx.exception.reason, "unsigned_review")
+
+    def test_unknown_reviewer_role_rejected(self) -> None:
+        promo = dict(self.reviewer_promotion, reviewer_role="rubber-stamp")
+        receipt = hce.build_evaluation_receipt(self.artifact, "c", self.containment, self.clean_exec, promo)
+        with self.assertRaises(hce.HermeticEvalError) as ctx:
+            hce.verify_evaluation_receipt(receipt)
+        self.assertEqual(ctx.exception.reason, "reviewer_conflict")
 
     def test_escape_violation_fails_closed(self) -> None:
         bad_exec = dict(self.clean_exec, escape_detected=True)
@@ -218,33 +257,33 @@ class TestHermeticCandidateEval(unittest.TestCase):
         cli = REPO_ROOT / "scripts" / "ai" / "aq-hermetic-eval"
         receipt_path = self.tmp_path / "test_receipt.json"
 
-        # Summary
         proc = subprocess.run([str(cli), "summary", "--json"], cwd=REPO_ROOT, capture_output=True, text=True, check=True)
         data = json.loads(proc.stdout)
-        self.assertEqual(data.get("status"), "ok")
+        self.assertIn(data.get("status"), {"ok", "simulated_only", "no_receipts"})
+        self.assertFalse(data.get("real_executor_available"))
+        self.assertFalse(data.get("signatures_verified"))
 
-        # Evaluate
         eval_proc = subprocess.run(
             [str(cli), "evaluate", str(self.artifact), "--candidate-id", "cli-cand-1", "--backend", "mock", "--json"],
-            cwd=REPO_ROOT,
-            capture_output=True,
-            text=True,
-            check=True,
+            cwd=REPO_ROOT, capture_output=True, text=True, check=True,
         )
         receipt_data = json.loads(eval_proc.stdout)
+        self.assertTrue(receipt_data["simulated"])
+        self.assertNotEqual(receipt_data["reviewer_promotion"]["reviewer_verdict"], "PROMOTED")
         receipt_path.write_text(json.dumps(receipt_data), encoding="utf-8")
 
-        # Verify
         verify_proc = subprocess.run(
             [str(cli), "verify", str(receipt_path), "--artifact", str(self.artifact), "--json"],
-            cwd=REPO_ROOT,
-            capture_output=True,
-            text=True,
-            check=True,
+            cwd=REPO_ROOT, capture_output=True, text=True,
         )
-        verify_data = json.loads(verify_proc.stdout)
-        self.assertEqual(verify_data.get("status"), "verified")
-        self.assertEqual(verify_data.get("verdict"), "PROMOTED")
+        self.assertNotEqual(verify_proc.returncode, 0)
+        self.assertEqual(json.loads(verify_proc.stdout).get("reason"), "simulated_evaluation")
+
+        real_proc = subprocess.run(
+            [str(cli), "evaluate", str(self.artifact), "--candidate-id", "x", "--backend", "bwrap", "--json"],
+            cwd=REPO_ROOT, capture_output=True, text=True,
+        )
+        self.assertNotEqual(real_proc.returncode, 0)
 
 
 if __name__ == "__main__":

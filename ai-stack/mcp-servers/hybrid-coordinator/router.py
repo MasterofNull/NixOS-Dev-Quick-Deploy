@@ -33,6 +33,7 @@ from opentelemetry import trace
 
 from config import Config
 from middleware.auth import create_api_key_middleware
+from middleware.http_guard import create_http_guard_middleware
 from metrics import REQUEST_COUNT, REQUEST_ERRORS, REQUEST_LATENCY
 from shared.rate_limiter import create_rate_limiter_middleware, RateLimiterConfig
 
@@ -192,7 +193,8 @@ def create_app(
     Middleware order (same as http_server.py):
         1. tracing_middleware   — OTel span per request
         2. request_id_middleware — X-Request-ID + Prometheus metrics
-        3. rate_limit_middleware — sliding-window rate limiting
+        3. http_guard_middleware — Host/Origin/content-type guard (AUTH-S0)
+        3b. rate_limit_middleware — sliding-window rate limiting
         4. api_key_middleware   — API key authentication
 
     R2.1: Routing table is EMPTY — http_server.py handles all routes via its
@@ -217,6 +219,7 @@ def create_app(
     middlewares: List = [
         _make_tracing_middleware(),
         _make_request_id_middleware(audit_request_fn=audit_request_fn),
+        create_http_guard_middleware(),  # AUTH-S0: Host/Origin/content-type guard
         rate_limit_middleware,
         create_api_key_middleware(),
     ]

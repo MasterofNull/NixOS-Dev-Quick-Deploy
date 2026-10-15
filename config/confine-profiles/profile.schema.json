@@ -1,0 +1,165 @@
+{
+  "schema": "aq-confine-profile-schema/1",
+  "description": "Allowed keys and types for aq-confine profiles. Unknown keys are rejected by scripts/ai/lib/confine.py load_profile(). Cross-field rules (unshare must be ['all'], disable_userns unless allow_nested_userns, no nesting for git profiles, git_refs 'heads' reserved, egress mode 'none' in S2a) are enforced in code.",
+  "required": [
+    "schema",
+    "name",
+    "description",
+    "needs_worktree",
+    "net_ceiling",
+    "net_default",
+    "ro_system",
+    "path_from_system",
+    "home",
+    "tmp",
+    "rw_allowed_roots",
+    "git",
+    "git_refs",
+    "strict_history",
+    "egress",
+    "guidance",
+    "env_base",
+    "env_allow",
+    "limits",
+    "size_caps",
+    "timeout_s",
+    "unshare",
+    "disable_userns",
+    "readonly_root",
+    "ro_allowed_roots",
+    "tmp_size",
+    "home_size",
+    "scratch"
+  ],
+  "properties": {
+    "schema": {
+      "type": "string",
+      "enum": [
+        "aq-confine-profile/1"
+      ]
+    },
+    "name": {
+      "type": "string"
+    },
+    "description": {
+      "type": "string"
+    },
+    "needs_worktree": {
+      "type": "boolean"
+    },
+    "net_ceiling": {
+      "type": "string",
+      "enum": [
+        "none",
+        "loopback"
+      ]
+    },
+    "net_default": {
+      "type": "string",
+      "enum": [
+        "none",
+        "loopback"
+      ]
+    },
+    "ro_system": {
+      "type": "array"
+    },
+    "path_from_system": {
+      "type": "array"
+    },
+    "home": {
+      "type": "string"
+    },
+    "tmp": {
+      "type": "string",
+      "enum": [
+        "tmpfs"
+      ]
+    },
+    "rw_allowed_roots": {
+      "type": "array"
+    },
+    "git": {
+      "type": "string",
+      "enum": [
+        "worktree",
+        "none"
+      ]
+    },
+    "git_refs": {
+      "type": "string",
+      "enum": [
+        "namespace",
+        "heads"
+      ]
+    },
+    "strict_history": {
+      "type": "boolean"
+    },
+    "egress": {
+      "type": "object",
+      "keys": {
+        "mode": "string",
+        "grantable": "array",
+        "services": "array"
+      }
+    },
+    "guidance": {
+      "type": "boolean"
+    },
+    "env_base": {
+      "type": "object"
+    },
+    "env_allow": {
+      "type": "array"
+    },
+    "limits": {
+      "type": "object",
+      "keys": {
+        "as": "integer",
+        "cpu": "integer",
+        "fsize": "integer",
+        "nofile": "integer",
+        "nproc": "integer",
+        "core": "integer"
+      }
+    },
+    "size_caps": {
+      "type": "object",
+      "keys": {
+        "quarantine": "integer",
+        "worktree": "integer"
+      }
+    },
+    "timeout_s": {
+      "type": "integer"
+    },
+    "unshare": {
+      "type": "array"
+    },
+    "disable_userns": {
+      "type": "boolean"
+    },
+    "allow_nested_userns": {
+      "type": "boolean"
+    },
+    "seccomp": {
+      "type": "string"
+    },
+    "readonly_root": {
+      "type": "boolean"
+    },
+    "ro_allowed_roots": {
+      "type": "array"
+    },
+    "tmp_size": {
+      "type": "integer"
+    },
+    "home_size": {
+      "type": "integer"
+    },
+    "scratch": {
+      "type": "boolean"
+    }
+  }
+}

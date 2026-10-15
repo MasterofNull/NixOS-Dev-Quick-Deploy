@@ -115,8 +115,16 @@ lint_cmd=(./scripts/governance/quick-deploy-lint.sh --mode fast --script-header-
 [[ -n "${SCRIPT_HEADER_HEAD_REF}" ]] && lint_cmd+=(--head-ref "${SCRIPT_HEADER_HEAD_REF}")
 run_ci_manifest_checks() {
   [[ -x "scripts/governance/run-ci-checks.sh" ]] || return 0
-  echo "Running pre-push CI-manifest checks (config/ci-checks.json --changed)..."
-  ./scripts/governance/run-ci-checks.sh --changed --base "${CI_CHECKS_BASE:-origin/main}"
+  # CI tests the PR merge commit (branch + main), so the merge-parity run replaces the plain branch run.
+  # CI_MERGE_PARITY_SKIP=1 skips only that step (WARN) and falls back to the branch-only run.
+  if [[ "${CI_MERGE_PARITY_SKIP:-}" != "1" && -x "scripts/governance/ci-merge-parity.sh" ]]; then
+    echo "Running pre-push merge-commit parity (branch + ${CI_CHECKS_BASE:-origin/main}, config/ci-checks.json)..."
+    ./scripts/governance/ci-merge-parity.sh --base "${CI_CHECKS_BASE:-origin/main}"
+  else
+    [[ "${CI_MERGE_PARITY_SKIP:-}" != "1" ]] || echo "WARN: CI_MERGE_PARITY_SKIP=1 -> merge-commit parity NOT checked; running branch-only checks" >&2
+    echo "Running pre-push CI-manifest checks (config/ci-checks.json --changed)..."
+    ./scripts/governance/run-ci-checks.sh --changed --base "${CI_CHECKS_BASE:-origin/main}"
+  fi
 }
 
 if "${lint_cmd[@]}" 2>&1 | tee "${lint_log}"; then
