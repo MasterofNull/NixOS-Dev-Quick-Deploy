@@ -321,7 +321,6 @@ let
   nixosDocsPython = pkgs.python3.withPackages (ps:
     sharedPythonPackages ps
     ++ (with ps; [
-      diskcache
       gitpython
       beautifulsoup4
       markdownify
@@ -711,7 +710,7 @@ in {
           "d ${dataDir}/aider-wrapper               0750 ${aiderUser} ${aiGroup} -"
           "d ${dataDir}/aider-wrapper/workspace     0750 ${aiderUser} ${aiGroup} -"
           "d ${dataDir}/nixos-docs           0750 ${docsUser} ${aiGroup} -"
-          "d ${dataDir}/nixos-docs/cache     0750 ${docsUser} ${aiGroup} -"
+          "d ${dataDir}/nixos-docs/cache     0700 ${docsUser} ${aiGroup} -"
           "d ${dataDir}/nixos-docs/repos     0750 ${docsUser} ${aiGroup} -"
         ]
         # Collision guard: security/npm is already declared above with auditUser (line 655).
@@ -1111,6 +1110,10 @@ in {
                 "MCP_SERVER_MODE=http"
                 "MCP_SERVER_PORT=${toString mcp.hybridPort}"
                 "HOST=127.0.0.1"
+                # AUTH-S0: Host/Origin/content-type guard against DNS rebinding + CSRF
+                "AQ_COORD_HTTP_GUARD=${mcp.hybridHttpGuard.mode}"
+                "AQ_COORD_ALLOWED_HOSTS=${lib.concatStringsSep "," mcp.hybridHttpGuard.extraAllowedHosts}"
+                "AQ_COORD_ALLOWED_ORIGINS=${lib.concatStringsSep "," mcp.hybridHttpGuard.extraAllowedOrigins}"
                 # M3: coordinator PRSI handlers read the canonical queue (read-only; mutations shell out to prsi-orchestrator).
                 "PRSI_ACTION_QUEUE_PATH=${mutableOptimizerDir}/prsi/action-queue.json"
                 # s1c (END-TO-END-BARE-METAL-PLAN.md) finding: llama.activeModel

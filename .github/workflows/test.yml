@@ -112,18 +112,18 @@ jobs:
 
       - name: Run skill source-of-truth lint
         run: |
-          chmod +x scripts/testing/check-skill-source-of-truth.sh
-          ./scripts/testing/check-skill-source-of-truth.sh
+          chmod +x scripts/governance/run-ci-checks.sh
+          ./scripts/governance/run-ci-checks.sh --all --only skill-source-of-truth
 
       - name: Run skill external dependency lint
         run: |
-          chmod +x scripts/governance/lint-skill-external-deps.sh
-          ./scripts/governance/lint-skill-external-deps.sh
+          chmod +x scripts/governance/run-ci-checks.sh
+          ./scripts/governance/run-ci-checks.sh --all --only skill-external-deps
 
       - name: Run skill template lint
         run: |
-          chmod +x scripts/governance/lint-skill-template.sh
-          ./scripts/governance/lint-skill-template.sh
+          chmod +x scripts/governance/run-ci-checks.sh
+          ./scripts/governance/run-ci-checks.sh --all --only skill-template
 
   template-placeholder-lint:
     name: Template Placeholder Lint
@@ -134,8 +134,8 @@ jobs:
 
       - name: Lint placeholder proliferation
         run: |
-          chmod +x scripts/governance/lint-template-placeholders.sh
-          ./scripts/governance/lint-template-placeholders.sh
+          chmod +x scripts/governance/run-ci-checks.sh
+          ./scripts/governance/run-ci-checks.sh --all --only template-placeholders
 
   flake-validation:
     name: Flake Validation
@@ -441,37 +441,38 @@ jobs:
 
       - name: Validate aq-report JSON contract
         run: |
-          chmod +x scripts/testing/check-aq-report-contract.sh
-          ./scripts/testing/check-aq-report-contract.sh
+          chmod +x scripts/governance/run-ci-checks.sh
+          ./scripts/governance/run-ci-checks.sh --all --only aq-report-contract
 
       - name: Metric smoke check for aq-report sections
         run: |
-          chmod +x scripts/testing/check-aq-report-metric-smoke.sh
-          ./scripts/testing/check-aq-report-metric-smoke.sh
+          chmod +x scripts/governance/run-ci-checks.sh
+          ./scripts/governance/run-ci-checks.sh --all --only aq-report-metric-smoke
 
       - name: Validate PRSI cycle artifact contract
         run: |
-          chmod +x scripts/testing/check-prsi-cycle-contract.sh
-          ./scripts/testing/check-prsi-cycle-contract.sh
+          chmod +x scripts/governance/run-ci-checks.sh
+          ./scripts/governance/run-ci-checks.sh --all --only prsi-cycle-contract
 
       - name: Validate PRSI bootstrap integrity
         run: |
-          chmod +x scripts/testing/check-prsi-bootstrap-integrity.sh
-          ./scripts/testing/check-prsi-bootstrap-integrity.sh
+          chmod +x scripts/governance/run-ci-checks.sh
+          ./scripts/governance/run-ci-checks.sh --all --only prsi-bootstrap-integrity
 
       - name: Validate PRSI Phase 7 static gates
         run: |
-          chmod +x scripts/testing/check-prsi-phase7-static-gates.sh
-          ./scripts/testing/check-prsi-phase7-static-gates.sh
+          chmod +x scripts/governance/run-ci-checks.sh
+          ./scripts/governance/run-ci-checks.sh --all --only prsi-phase7-static-gates
 
       - name: Validate Harness-First static gates
         run: |
-          chmod +x scripts/testing/check-harness-first-static-gates.sh
-          ./scripts/testing/check-harness-first-static-gates.sh
+          chmod +x scripts/governance/run-ci-checks.sh scripts/governance/ci-clean-env.sh
+          ./scripts/governance/ci-clean-env.sh --all --only harness-first-static-gates
 
       - name: Run tool security auditor regression smoke
         run: |
-          python3 scripts/testing/test-tool-security-auditor.py
+          chmod +x scripts/governance/run-ci-checks.sh
+          ./scripts/governance/run-ci-checks.sh --all --only tool-security-auditor-smoke
 
   validate-structure:
     name: Validate Project Structure
@@ -762,15 +763,8 @@ jobs:
 
       - name: Check permissions
         run: |
-          echo "Checking file permissions..."
-
-          if find . -type f -perm -002 ! -path "./.git/*" 2>/dev/null | grep -q .; then
-            echo "✗ Found world-writable files:"
-            find . -type f -perm -002 ! -path "./.git/*" 2>/dev/null
-            exit 1
-          else
-            echo "✓ No world-writable files"
-          fi
+          chmod +x scripts/governance/run-ci-checks.sh
+          ./scripts/governance/run-ci-checks.sh --all --only world-writable
 
       - name: Security summary
         run: |

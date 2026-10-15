@@ -1,0 +1,5 @@
+# Python packages CI installs for the manifest-check jobs (test.yml/security.yml: `pip install pyyaml`).
+# scripts/governance/ci-clean-env.sh installs ONLY these into a throwaway venv so a check that
+# silently relies on a dev-machine package fails locally the way it fails in CI.
+# Heavier jobs (tests.yml parity-scorecard, unit-tests) install their own sets and are not in scope here.
+pyyaml

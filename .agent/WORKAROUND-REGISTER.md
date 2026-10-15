@@ -375,3 +375,21 @@ Codex lane absent).
 - producer: `nix/overlays/security-fixes.nix` (xdg-desktop-portal overrideAttrs).
 - fix-path: replace blanket doCheck=false with a targeted test deselect (disable only the two failing tests) or gate on a headless-build flag; or drop once nixpkgs/upstream skips them without a session.
 - class T2 · severity LOW · status OPEN · opened 2026-10-14 (from #500 review).
+
+## WR-SEC-1 — nltk PYSEC-2026-3740 excepted in security audit — OPEN (MAINT-DUE 2026-11-13)
+- symptom: pip-audit flags nltk 3.10.3 (path traversal in model-artifact APIs); no fixed release exists (3.10.3 is latest; OSV affected range is open-ended).
+- band-aid in place? yes: `config/security-exceptions.json` entry, applied as `--ignore-vuln` only while unexpired.
+- root cause: nltk is a hard dependency of llama-index-core (every 0.14.x requires nltk>=3.9.3); aidb never imports it.
+- assessed exposure: CVE-2026-81726 affects model save/load APIs (TransitionParser, AveragedPerceptron, PerceptronTagger.save_to_json, save_maxent_params); fix merged on nltk develop (pathsec_open, PR #3945 et al.), unreleased. aidb never imports nltk => not reachable. Remove exception when nltk >3.10.3 releases.
+- producer to fix: upstream nltk (fix release) or llama-index-core dropping nltk.
+- fix-path: re-check on expiry; raise `nltk>=<fixed>` floor when released, then delete the exception.
+- class: T5 producer-governance-fracture · severity: medium · owner hyperd, approved 2026-10-14 chat · expires 2026-11-13 (expired => blocking).
+
+## WR-SEC-2 — diskcache PYSEC-2026-2447 excepted in security audit — OPEN (MAINT-DUE 2026-11-13)
+- symptom: pip-audit flags diskcache 5.6.3 (pickle deserialization requires write access to cache dir); no fixed release (5.6.3 is latest).
+- band-aid in place? yes: `config/security-exceptions.json` entry (`--ignore-vuln`, unexpired only).
+- root cause: upstream diskcache pickles by default; used by `ai-stack/mcp-servers/nixos-docs/server.py:45,194` as a local cache. No test covers a stdlib replacement, so not replaced.
+- assessed exposure: CVE-2025-69872 is pickle-on-read and needs cache-dir write access; upstream PRs #361/#364 open, unreleased. Mitigation: branch fix/nixos-docs-diskcache-no-pickle (NoPickleDisk refuses MODE_PICKLE rows) + cache dir writable only by the service user.
+- producer to fix: upstream diskcache, or nixos-docs swapping to a tested stdlib cache.
+- fix-path: add a nixos-docs cache test, then replace with sqlite3/shelve-based cache; or raise floor on fix.
+- class: T5 · severity: low-medium (local cache dir, same-user) · owner hyperd, approved 2026-10-14 chat · expires 2026-11-13.
