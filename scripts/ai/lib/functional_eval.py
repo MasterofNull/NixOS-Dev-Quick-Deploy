@@ -9,7 +9,13 @@ Provides:
 """
 from __future__ import annotations
 
+import json
+import os
 import re
+import secrets
+import shutil
+import subprocess
+import sys
 import types
 from dataclasses import dataclass
 from typing import Any, Dict, List, Optional, Tuple
@@ -170,33 +176,172 @@ def extract_code_block(text: str) -> str:
     return text.strip()
 
 
-def execute_functional_check(code: str, check_script: str) -> Tuple[bool, List[str]]:
-    """Compile and execute code and assertions in an isolated module scope."""
-    failures: List[str] = []
+# Two-process design. The TRUSTED runner holds the nonce and never execs model code;
+# it spawns a CHILD (python -I, no nonce in argv/env/stdin) that execs model code + check
+# and prints a raw outcome. The runner maps that to the verdict and emits nonce+json itself,
+# so the model cannot read the nonce. RESIDUAL (documented, not fixable in-process): model
+# code shares a process with the check and can fake the child's outcome line; results are
+# therefore tagged TRUST = "untrusted-model-output". A child os._exit(0) emits no outcome
+# line and counts as failure. The runner also sets PR_SET_DUMPABLE=0 (best effort) so a
+# same-uid child cannot read runner memory via /proc/<pid>/mem on ptrace_scope=0 hosts.
+TRUST = "untrusted-model-output"
+_CHILD_MARK = "@@CHILD@@"
+
+_CHILD = r"""
+import json, sys, types
+req = json.load(sys.stdin)
+out = {"ok": False, "failures": []}
+try:
+    mod = types.ModuleType("generated_module")
+    exec(compile(req["code"], "<generated_code>", "exec"), mod.__dict__)
+    exec(compile(req["check"], "<check_script>", "exec"), {"m": mod, "__builtins__": __builtins__})
+    out["ok"] = True
+except SyntaxError as se:
+    out["failures"] = [f"Syntax error: {se.msg} (line {se.lineno})"]
+except AssertionError as ae:
+    out["failures"] = ["Assertion failed: " + (str(ae) or "assertion condition returned false")]
+except BaseException as exc:
+    out["failures"] = [f"Code execution error: {type(exc).__name__}: {exc}"]
+sys.stdout.flush()
+sys.stdout.write("\n@@CHILD@@" + json.dumps(out) + "\n")
+"""
+
+_RUNNER = r"""
+import json, subprocess, sys, tempfile
+try:
+    import ctypes
+    ctypes.CDLL(None).prctl(4, 0, 0, 0, 0)
+except Exception:
+    pass
+_nonce = sys.stdin.readline().strip()
+_req = sys.stdin.readline()
+_res = {"ok": False, "failures": ["child produced no outcome"]}
+try:
+    with tempfile.TemporaryFile() as fo:
+        p = subprocess.run([sys.executable, "-I", "-c", CHILD_SRC], input=_req.encode(),
+                           stdout=fo, stderr=subprocess.DEVNULL, timeout=TIMEOUT)
+        fo.seek(0)
+        _lines = [l for l in fo.read(1 << 20).decode("utf-8", "replace").splitlines() if l.startswith("@@CHILD@@")]
+    if p.returncode == 0 and len(_lines) >= 1:
+        _res = json.loads(_lines[-1][len("@@CHILD@@"):])
+    else:
+        _res["failures"] = [f"child rc={p.returncode}, outcome lines={len(_lines)}"]
+except subprocess.TimeoutExpired:
+    _res["failures"] = ["Code execution error: timeout"]
+sys.stdout.write("\n" + _nonce + json.dumps(_res) + "\n")
+"""
+
+_MAX_CAPTURE = 4 * 1024 * 1024
+
+
+_PREFLIGHT: Optional[str] = None
+_PREFLIGHT_DONE = False
+
+
+def sandbox_unavailable_reason() -> Optional[str]:
+    """None when an unprivileged bwrap can actually start; else a short reason.
+    PATH presence is not enough: hosted CI runners ship bwrap but deny user namespaces."""
+    global _PREFLIGHT, _PREFLIGHT_DONE
+    if _PREFLIGHT_DONE:
+        return _PREFLIGHT
+    reason: Optional[str] = None
+    if shutil.which("bwrap") is None:
+        reason = "bwrap not found"
+    else:
+        try:
+            r = subprocess.run(["bwrap", "--unshare-all", "--ro-bind", "/", "/", "true"],
+                               capture_output=True, timeout=10)
+            if r.returncode != 0:
+                reason = "bwrap preflight failed: " + (r.stderr.decode("utf-8", "replace").strip()[-160:] or f"rc={r.returncode}")
+        except (OSError, subprocess.TimeoutExpired) as exc:
+            # Transient (timeout/OSError): report unavailable now but do not cache.
+            return f"bwrap preflight error: {exc}"
+    _PREFLIGHT, _PREFLIGHT_DONE = reason, True
+    return reason
+
+
+def sandbox_available() -> bool:
+    return sandbox_unavailable_reason() is None
+
+
+def _bwrap_cmd(timeout_s: float = 20.0) -> List[str]:
+    cmd = ["bwrap", "--unshare-all", "--die-with-parent", "--new-session", "--clearenv",
+           "--setenv", "PATH", "/usr/bin:/bin", "--setenv", "HOME", "/tmp", "--setenv", "LANG", "C.UTF-8",
+           "--proc", "/proc", "--dev", "/dev", "--tmpfs", "/tmp"]
+    for ro in ("/nix/store", "/usr", "/bin", "/lib", "/lib64", "/etc/alternatives"):
+        if os.path.exists(ro):
+            cmd += ["--ro-bind", ro, ro]
+    for ro in {os.path.realpath(sys.prefix), os.path.realpath(sys.base_prefix)}:
+        if not ro.startswith(("/nix/store", "/usr", "/tmp")) and os.path.exists(ro):
+            cmd += ["--ro-bind", ro, ro]
+    src = "CHILD_SRC = %r\nTIMEOUT = %r\n" % (_CHILD, timeout_s) + _RUNNER
+    return cmd + [os.path.realpath(sys.executable), "-I", "-c", src]
+
+
+def _limits() -> None:
+    import resource
+    resource.setrlimit(resource.RLIMIT_AS, (1 << 30, 1 << 30))
+    resource.setrlimit(resource.RLIMIT_CPU, (20, 20))
+    resource.setrlimit(resource.RLIMIT_FSIZE, (_MAX_CAPTURE, _MAX_CAPTURE))
+    resource.setrlimit(resource.RLIMIT_CORE, (0, 0))
+
+
+def execute_functional_check(
+    code: str, check_script: str, trusted: bool = False, timeout_s: float = 20.0
+) -> Tuple[bool, List[str]]:
+    """Run code + assertions. Untrusted (model-generated) code runs in a bwrap
+    subprocess (no network, cleared env, tmpfs HOME, rlimits, bounded output); if bwrap
+    is missing the check is refused, never run in-process. The verdict line carries a
+    per-run random nonce (held only by the trusted runner; the child that execs model code
+    never sees it) and must appear exactly once with rc==0. Residual: model code shares a
+    process with the check and can fake the child's outcome line, so results are
+    trust="untrusted-model-output".
+    trusted=True is for repo fixtures only."""
     if not code.strip():
         return False, ["empty code output"]
+    if trusted:
+        return _execute_in_process(code, check_script)
+    if not sandbox_available():
+        return False, [f"sandbox unavailable: {sandbox_unavailable_reason()}; refusing to execute generated code"]
+    import tempfile
+    nonce = "@@R" + secrets.token_hex(16) + "@@"
+    payload = nonce + "\n" + json.dumps({"code": code, "check": check_script}) + "\n"
+    with tempfile.TemporaryFile() as fo, tempfile.TemporaryFile() as fe:
+        try:
+            proc = subprocess.run(
+                _bwrap_cmd(max(1.0, timeout_s - 2)), input=payload.encode(), stdout=fo, stderr=fe,
+                timeout=timeout_s, preexec_fn=_limits,
+            )
+        except subprocess.TimeoutExpired:
+            return False, [f"Code execution error: timeout after {timeout_s}s"]
+        fo.seek(0)
+        out = fo.read(_MAX_CAPTURE).decode("utf-8", "replace")
+        fe.seek(0)
+        err = fe.read(2000).decode("utf-8", "replace")
+    hits = [ln for ln in out.splitlines() if ln.startswith(nonce)]
+    if proc.returncode != 0 or len(hits) != 1 or out.count(nonce) != 1:
+        tail = (err or out).strip()[-300:]
+        return False, [f"Sandbox error (rc={proc.returncode}, verdicts={len(hits)}): {tail}"]
+    res = json.loads(hits[0][len(nonce):])
+    return bool(res["ok"]), list(res["failures"])
 
+
+def _execute_in_process(code: str, check_script: str) -> Tuple[bool, List[str]]:
+    """Trusted-fixture path only (reference/flawed code shipped in this module)."""
     try:
-        compiled_code = compile(code, "<generated_code>", "exec")
         mod = types.ModuleType("generated_module")
-        exec(compiled_code, mod.__dict__)
+        exec(compile(code, "<generated_code>", "exec"), mod.__dict__)
     except SyntaxError as se:
         return False, [f"Syntax error: {se.msg} (line {se.lineno})"]
     except Exception as exc:
         return False, [f"Code execution error: {type(exc).__name__}: {exc}"]
-
     try:
-        check_ns = {"m": mod, "__builtins__": __builtins__}
-        compiled_check = compile(check_script, "<check_script>", "exec")
-        exec(compiled_check, check_ns)
+        exec(compile(check_script, "<check_script>", "exec"), {"m": mod, "__builtins__": __builtins__})
         return True, []
     except AssertionError as ae:
-        msg = str(ae) or "assertion condition returned false"
-        failures.append(f"Assertion failed: {msg}")
-        return False, failures
+        return False, ["Assertion failed: " + (str(ae) or "assertion condition returned false")]
     except Exception as exc:
-        failures.append(f"Test evaluation error: {type(exc).__name__}: {exc}")
-        return False, failures
+        return False, [f"Test evaluation error: {type(exc).__name__}: {exc}"]
 
 
 def evaluate_tasks_mock(
@@ -210,7 +355,7 @@ def evaluate_tasks_mock(
 
     for idx, t in enumerate(eval_tasks):
         code = t.reference_code if idx in indices else t.flawed_code
-        ok, errs = execute_functional_check(code, t.check_script)
+        ok, errs = execute_functional_check(code, t.check_script, trusted=True)
         results.append({
             "task": t.name,
             "description": t.description,
@@ -247,4 +392,5 @@ def health_summary() -> Dict[str, Any]:
         "headroom_observable": True,
         "baseline_ready": True,
         "target_prompt": "aider_task_systems_code",
+        "trust": TRUST,
     }

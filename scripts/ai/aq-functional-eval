@@ -103,7 +103,12 @@ def run_functional_eval(
     # Live model execution path
     try:
         from urllib import request
-        llama_url = os.getenv("LLAMA_URL", "http://127.0.0.1:8080").rstrip("/")
+        if not fe.sandbox_available():
+            print("ERROR: bwrap not found; live mode refuses to execute model-generated code without a sandbox", file=sys.stderr)
+            return 2
+        llama_url = os.getenv(
+            "LLAMA_URL", f"http://{os.getenv('SERVICE_HOST', '127.0.0.1')}:{os.getenv('LLAMA_PORT', '8080')}"
+        ).rstrip("/")
         timeout_s = float(os.getenv("AQ_PROMPT_EVAL_TIMEOUT_S", "120"))
 
         results: List[Dict[str, Any]] = []
@@ -114,6 +119,7 @@ def run_functional_eval(
                 "messages": [{"role": "user", "content": rendered}],
                 "max_tokens": 512,
                 "temperature": 0.2,
+                "chat_template_kwargs": {"enable_thinking": False},
             }).encode("utf-8")
 
             req = request.Request(f"{llama_url}/v1/chat/completions", data=payload, headers={"Content-Type": "application/json"})
@@ -145,6 +151,7 @@ def run_functional_eval(
             "status": "ready",
             "results": results,
             "dry_run": False,
+            "trust": fe.TRUST,
         }
 
         if json_output:

@@ -8,7 +8,11 @@
 # - Alert #2917 [LOW]:  CVE-2026-106587 (openssh 10.5p1 -> 10.6p1)
 #   Fixes configuration option "none" treated as filename in sshd.
 final: prev: let
-  newPgvector = prev.postgresql_17.pkgs.pgvector.overrideAttrs (_old: {
+  # Floors only (policy): each override applies solely while nixpkgs ships an older version.
+  inherit (prev) lib;
+  pgvectorStale = lib.versionOlder prev.postgresql_17.pkgs.pgvector.version "0.8.7";
+  opensshStale = lib.versionOlder prev.openssh.version "10.6p1";
+  newPgvector = if !pgvectorStale then prev.postgresql_17.pkgs.pgvector else prev.postgresql_17.pkgs.pgvector.overrideAttrs (_old: {
     version = "0.8.7";
     src = final.fetchFromGitHub {
       owner = "pgvector";
@@ -28,7 +32,7 @@ in {
   postgresql = final.postgresql_17;
   postgresqlPackages = final.postgresql_17.pkgs;
 
-  openssh = prev.openssh.overrideAttrs (_old: rec {
+  openssh = if !opensshStale then prev.openssh else prev.openssh.overrideAttrs (_old: rec {
     version = "10.6p1";
     src = final.fetchurl {
       url = "mirror://openbsd/OpenSSH/portable/openssh-${version}.tar.gz";
