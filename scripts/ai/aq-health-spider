@@ -932,7 +932,11 @@ class HealthSpider:
                     title=f"Service {svc} is DOWN in zone {zone}",
                     detail=f"Service state: {anomaly.get('state', 'unknown')}. HTTP health check failed.",
                     proposed_action=f"Investigate and restart {svc} via systemctl.",
-                    payload=anomaly
+                    payload=anomaly,
+                    dedup_key=f"service-down:{svc}",
+                    why=f"{svc} is unreachable, so features that depend on it will fail.",
+                    next_step="Read the recent log, then restart if it is hung (restart needs sudo).",
+                    command=f"journalctl -u {svc} -n 50 --no-pager",
                 )
             except Exception:
                 pass
@@ -1080,6 +1084,10 @@ class HealthSpider:
                     detail=f"Failed units: {unit_names}",
                     proposed_action="Inspect with: systemctl --failed --no-pager && journalctl -u <unit> -n 80 --no-pager",
                     payload=anomaly,
+                    dedup_key="systemd-failed-units",
+                    why="Failed units mean a background service or timer is not running.",
+                    next_step="List the failed units, then read the log of each.",
+                    command="systemctl --failed --no-pager",
                 )
             except Exception:
                 pass
