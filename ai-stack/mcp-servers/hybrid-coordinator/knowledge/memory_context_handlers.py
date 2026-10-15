@@ -22,6 +22,7 @@ from typing import Any, Callable, Dict, List, Optional
 from uuid import uuid4
 
 from aiohttp import web
+from shared.api_key_auth import keys_equal
 
 import mcp_handlers
 from agent_registry import (
@@ -431,7 +432,7 @@ async def handle_token_budget_recommendations(request: web.Request) -> web.Respo
 async def handle_apply_proposal(request: web.Request) -> web.Response:
     """Apply a validated OptimizationProposal. Requires API key."""
     key = request.headers.get("X-API-Key", "")
-    if Config.API_KEY and key != Config.API_KEY:
+    if Config.API_KEY and not keys_equal(key, Config.API_KEY):
         return web.json_response({"error": "unauthorized"}, status=401)
     try:
         body = await request.json()

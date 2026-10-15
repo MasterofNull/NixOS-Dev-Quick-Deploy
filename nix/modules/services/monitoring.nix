@@ -18,6 +18,7 @@
     server:
       http_listen_address: 127.0.0.1
       http_listen_port: ${toString tracing.tempoPort}
+      grpc_listen_address: 127.0.0.1
       grpc_listen_port: 9096
 
     distributor:
