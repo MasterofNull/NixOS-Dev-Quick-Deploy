@@ -74,9 +74,10 @@ def test_strict_gating_rule_enforcement() -> None:
         )
         assert res_improving["gate_passed"] is True
         assert res_improving["score_lift"] > 0.0
-        assert res_improving["adopted"] is True
-        assert res_improving["saved_path"] is not None
-        assert Path(res_improving["saved_path"]).is_file()
+        # dry-run scores are simulated and must never be adopted
+        assert res_improving["adopted"] is False
+        assert res_improving["saved_path"] is None
+        assert res_improving["artifact"]["metadata"]["simulated"] is True
 
         # Case 2: Candidate does NOT beat baseline -> gate fails and artifact is NOT adopted
         res_non_improving = opt.compile(
@@ -90,6 +91,21 @@ def test_strict_gating_rule_enforcement() -> None:
         assert res_non_improving["score_lift"] <= 0.0
         assert res_non_improving["adopted"] is False
     print("  [PASS] test_strict_gating_rule_enforcement")
+
+
+def test_non_dry_run_without_evaluator_refuses() -> None:
+    with tempfile.TemporaryDirectory() as tmp_dir:
+        tmp_root = Path(tmp_dir)
+        (tmp_root / "ai-stack/prompts").mkdir(parents=True)
+        (tmp_root / "ai-stack/prompts/registry.yaml").write_text(
+            "prompts:\n  - id: p1\n    template: 'TASK: x\\nCONSTRAINTS:\\n- r'\n", encoding="utf-8"
+        )
+        res = gepa.GepaOptimizer(repo_root=tmp_root).compile(prompt_id="p1", dry_run=False, adopt=True)
+        assert res["gate_passed"] is False and res["ok"] is False
+        assert res["reason"] == "no real evaluator"
+        assert res["adopted"] is False
+        assert not list((tmp_root / "ai-stack/prompts/compiled").glob("*.gepa.json"))
+    print("  [PASS] test_non_dry_run_without_evaluator_refuses")
 
 
 def test_compiled_artifact_serialization() -> None:
@@ -171,10 +187,11 @@ def main() -> int:
     test_reflection_feedback_synthesis()
     test_synthesize_candidate_template()
     test_strict_gating_rule_enforcement()
+    test_non_dry_run_without_evaluator_refuses()
     test_compiled_artifact_serialization()
     test_cli_execution()
     test_dashboard_and_qa_contract()
-    print("ALL 7 FIXTURES PASS: Frontier FE-2b GEPA prompt compile verified")
+    print("ALL 8 FIXTURES PASS: Frontier FE-2b GEPA prompt compile verified")
     return 0
 
 
