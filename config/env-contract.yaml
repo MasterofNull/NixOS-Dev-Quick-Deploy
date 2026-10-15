@@ -211,6 +211,27 @@ variables:
     consumers: [hybrid-coordinator (self)]
     description: "Path to file containing the hybrid-coordinator API key"
 
+  - canonical: AQ_COORD_HTTP_GUARD
+    aliases: []
+    default: "enforce"
+    layer: nix
+    consumers: [hybrid-coordinator (self)]
+    description: "Coordinator Host/Origin/content-type guard mode: enforce | shadow (log only) | off (kill switch). AUTH-S0"
+
+  - canonical: AQ_COORD_ALLOWED_HOSTS
+    aliases: []
+    default: ""
+    layer: nix
+    consumers: [hybrid-coordinator (self)]
+    description: "Comma-separated extra Host header values (host or host:port) accepted besides loopback names. AUTH-S0"
+
+  - canonical: AQ_COORD_ALLOWED_ORIGINS
+    aliases: []
+    default: ""
+    layer: nix
+    consumers: [hybrid-coordinator (self)]
+    description: "Comma-separated exact browser Origin values accepted besides the coordinator's own loopback origin. AUTH-S0"
+
   - canonical: AI_TREE_SEARCH_ENABLED
     aliases: []
     default: "true"
