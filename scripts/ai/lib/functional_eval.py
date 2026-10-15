@@ -234,8 +234,34 @@ sys.stdout.write("\n" + _nonce + json.dumps(_res) + "\n")
 _MAX_CAPTURE = 4 * 1024 * 1024
 
 
+_PREFLIGHT: Optional[str] = None
+_PREFLIGHT_DONE = False
+
+
+def sandbox_unavailable_reason() -> Optional[str]:
+    """None when an unprivileged bwrap can actually start; else a short reason.
+    PATH presence is not enough: hosted CI runners ship bwrap but deny user namespaces."""
+    global _PREFLIGHT, _PREFLIGHT_DONE
+    if _PREFLIGHT_DONE:
+        return _PREFLIGHT
+    reason: Optional[str] = None
+    if shutil.which("bwrap") is None:
+        reason = "bwrap not found"
+    else:
+        try:
+            r = subprocess.run(["bwrap", "--unshare-all", "--ro-bind", "/", "/", "true"],
+                               capture_output=True, timeout=10)
+            if r.returncode != 0:
+                reason = "bwrap preflight failed: " + (r.stderr.decode("utf-8", "replace").strip()[-160:] or f"rc={r.returncode}")
+        except (OSError, subprocess.TimeoutExpired) as exc:
+            # Transient (timeout/OSError): report unavailable now but do not cache.
+            return f"bwrap preflight error: {exc}"
+    _PREFLIGHT, _PREFLIGHT_DONE = reason, True
+    return reason
+
+
 def sandbox_available() -> bool:
-    return shutil.which("bwrap") is not None
+    return sandbox_unavailable_reason() is None
 
 
 def _bwrap_cmd(timeout_s: float = 20.0) -> List[str]:
@@ -276,7 +302,7 @@ def execute_functional_check(
     if trusted:
         return _execute_in_process(code, check_script)
     if not sandbox_available():
-        return False, ["sandbox unavailable: bwrap not found; refusing to execute generated code"]
+        return False, [f"sandbox unavailable: {sandbox_unavailable_reason()}; refusing to execute generated code"]
     import tempfile
     nonce = "@@R" + secrets.token_hex(16) + "@@"
     payload = nonce + "\n" + json.dumps({"code": code, "check": check_script}) + "\n"

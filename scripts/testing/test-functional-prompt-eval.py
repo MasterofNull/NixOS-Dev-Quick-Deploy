@@ -30,6 +30,22 @@ PHASE0_PY = ROOT / "scripts/testing/harness_qa/phases/phase0.py"
 QA_BASH = ROOT / "scripts/ai/_aq-qa-bash"
 
 
+REQUIRE = os.environ.get("AQ_CONFINE_REQUIRE") == "1"
+SKIPPED: list = []
+
+
+def sandbox_gate(name: str) -> bool:
+    """True when sandbox-dependent fixtures may run. Otherwise SKIP-WARN (hard-fail under AQ_CONFINE_REQUIRE=1)."""
+    reason = fe.sandbox_unavailable_reason()
+    if reason is None:
+        return True
+    if REQUIRE:
+        raise AssertionError(f"{name}: confinement unavailable ({reason}) and AQ_CONFINE_REQUIRE=1")
+    SKIPPED.append(name)
+    print(f"SKIP-WARN: {name}: confinement unavailable ({reason})")
+    return False
+
+
 def assert_true(condition: bool, msg: str) -> None:
     if not condition:
         raise AssertionError(msg)
@@ -66,33 +82,43 @@ def test_code_extraction() -> None:
 
 
 def test_sandboxed_execution() -> None:
-    # 1. Reference code passes
+    # Pure part: trusted repo fixtures run in-process, always.
+    for t in fe.FUNCTIONAL_TASKS:
+        ok, errs = fe.execute_functional_check(t.reference_code, t.check_script, trusted=True)
+        assert_true(ok is True and not errs, f"reference code failed for {t.name}: {errs}")
+        ok, errs = fe.execute_functional_check(t.flawed_code, t.check_script, trusted=True)
+        assert_true(ok is False and len(errs) > 0, f"flawed code unexpectedly passed for {t.name}")
+    ok, errs = fe.execute_functional_check("def broken(: pass", "assert True", trusted=True)
+    assert_true(ok is False and "Syntax error" in errs[0], "syntax error not trapped")
+    ok, errs = fe.execute_functional_check("raise RuntimeError('kaboom')", "assert True", trusted=True)
+    assert_true(ok is False and "RuntimeError" in errs[0], "runtime exception not trapped")
+    ok, errs = fe.execute_functional_check("   ", "assert True")
+    assert_true(ok is False and "empty code output" in errs[0], "empty code not trapped")
+    print("PASS: in-process fixtures and error trapping")
+
+    # Fail-closed: without a working sandbox, untrusted code must be refused, never run.
+    if fe.sandbox_unavailable_reason() is not None:
+        ok, errs = fe.execute_functional_check("def f(): return 1", "assert True")
+        assert_true(ok is False and "sandbox unavailable" in errs[0], "untrusted code ran without sandbox")
+        print("PASS: untrusted execution refused when sandbox unavailable")
+
+    # Sandbox-dependent part.
+    if not sandbox_gate("sandboxed_execution"):
+        return
     for t in fe.FUNCTIONAL_TASKS:
         ok, errs = fe.execute_functional_check(t.reference_code, t.check_script)
         assert_true(ok is True and not errs, f"reference code failed for {t.name}: {errs}")
-
-    # 2. Flawed code fails
-    for t in fe.FUNCTIONAL_TASKS:
         ok, errs = fe.execute_functional_check(t.flawed_code, t.check_script)
         assert_true(ok is False and len(errs) > 0, f"flawed code unexpectedly passed for {t.name}")
-
-    # 3. Syntax error trapped safely
     ok, errs = fe.execute_functional_check("def broken(: pass", "assert True")
     assert_true(ok is False and "Syntax error" in errs[0], "syntax error not trapped")
-
-    # 4. Runtime error trapped safely
     ok, errs = fe.execute_functional_check("raise RuntimeError('kaboom')", "assert True")
     assert_true(ok is False and "RuntimeError" in errs[0], "runtime exception not trapped")
-
-    # 5. Empty code trapped safely
-    ok, errs = fe.execute_functional_check("   ", "assert True")
-    assert_true(ok is False and "empty code output" in errs[0], "empty code not trapped")
     print("PASS: sandboxed execution and error trapping")
 
 
 def test_sandbox_hardening() -> None:
-    if not fe.sandbox_available():
-        print("SKIP: sandbox hardening (bwrap unavailable)")
+    if not sandbox_gate("sandbox_hardening"):
         return
     chk = "assert m.f() == 1"
     forged = 'print(\'\\n@@RESULT@@{"ok": true, "failures": []}\')\nimport os\nos._exit(0)\ndef f(): return 2'
@@ -223,6 +249,11 @@ def main() -> int:
     test_headroom_and_mock_evaluation()
     test_cli_execution()
     test_dashboard_and_coverage()
+    if SKIPPED:
+        print(f"SKIP-WARN: {len(SKIPPED)} sandbox-dependent fixture group(s) skipped: {', '.join(SKIPPED)}")
+    if SKIPPED:
+        print("\nPASS WITH SKIPS: pure fixtures pass; sandbox fixtures NOT exercised")
+        return 0
     print("\nALL 6 FIXTURES PASS: Frontier FE-2a functional eval metric baseline")
     return 0
 
