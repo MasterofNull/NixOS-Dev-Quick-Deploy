@@ -9,7 +9,7 @@ export CI_WORKFLOW_DIR="${CI_WORKFLOW_DIR:-$REPO/.github/workflows}"
 python3 - <<'PY'
 import glob, json, os, re, sys
 m = json.load(open(os.environ["CI_MANIFEST_FILE"]))
-known = {c["cmd"].split()[0] for c in m["checks"]} | {"scripts/governance/run-ci-checks.sh"}
+known = {c["cmd"].split()[0] for c in m["checks"]} | {"scripts/governance/run-ci-checks.sh", "scripts/governance/ci-clean-env.sh", "scripts/governance/ci-merge-parity.sh"}
 exempt = {}
 for e in m.get("ci_exempt", []):
     if not e.get("reason"): print(f"[tier0.d/check-ci-manifest-coverage] FAIL: ci_exempt {e.get('script')} has no reason", file=sys.stderr); sys.exit(1)

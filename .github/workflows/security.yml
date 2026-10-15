@@ -37,35 +37,25 @@ jobs:
         run: |
           sudo apt-get update
           sudo apt-get install -y jq yq
-          pip install pyyaml
+          pip install pyyaml pip-audit
 
       - name: Run security audit script
         id: audit
+        # Exit code is the gate: non-zero when security-audit.sh finds blocking issues.
         run: |
-          bash scripts/security/security-audit.sh > security-audit-results.txt 2>&1
-          echo "exit_code=$?" >> $GITHUB_OUTPUT
-        continue-on-error: true
+          set -o pipefail
+          bash scripts/security/security-audit.sh 2>&1 | tee security-audit-results.txt
 
       - name: Upload audit results
+        if: always()
         uses: actions/upload-artifact@b7c566a772e6b6bfb58ed0dc250532a479d7789f  # v6
         with:
           name: security-audit-results
           path: security-audit-results.txt
           retention-days: 30
 
-      - name: Check audit results
-        run: |
-          cat security-audit-results.txt
-          if grep -q "BLOCKING" security-audit-results.txt; then
-            echo "::error::Security audit found blocking failures"
-            exit 1
-          fi
-          if grep -q "CRITICAL" security-audit-results.txt; then
-            echo "::warning::Security audit found critical issues"
-          fi
-
       - name: Comment PR with audit results
-        if: github.event_name == 'pull_request'
+        if: always() && github.event_name == 'pull_request'
         continue-on-error: true
         uses: actions/github-script@ed597411d8f924073f98dfc5c65a23a2325f34cd  # v8
         with:

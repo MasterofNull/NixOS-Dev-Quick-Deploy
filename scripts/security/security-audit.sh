@@ -7,13 +7,12 @@ HIGH_CVSS_THRESHOLD="${AI_SECURITY_AUDIT_HIGH_CVSS_THRESHOLD:-7.0}"
 NOTIFY_USER="${AI_SECURITY_AUDIT_NOTIFY_USER:-}"
 DASHBOARD_SCAN_SCRIPT="${REPO_ROOT}/scripts/security/dashboard-security-scan.sh"
 SECRETS_ROTATION_PLAN_SCRIPT="${REPO_ROOT}/scripts/security/secrets-rotation-plan.sh"
-LOCK_VERIFY_SCRIPT="${REPO_ROOT}/scripts/security/verify-python-lock-runtime.py"
 
 usage() {
   cat <<'EOF'
 Usage: scripts/security/security-audit.sh [--repo-root PATH] [--output-dir PATH] [--notify-user USER]
 
-Runs pip-audit on any ai-stack requirements.lock files (none since the 2026-10-01 Nix-only decision; closure scanning lives in scripts/security/aq-closure-scan) and npm audit on package.json roots.
+Runs pip-audit on ai-stack requirements.txt files and npm audit on package.json roots. Exits 1 on blocking findings. Under CI=true, zero pip coverage or an npm audit error is also blocking. Lock-integrity is not applicable (Nix-only, 2026-10-01; closure scanning lives in scripts/security/aq-closure-scan).
 Writes JSON report: audit-YYYY-MM-DD.json and latest-security-audit.json.
 EOF
 }
@@ -84,7 +83,6 @@ pip_results_dir="${tmp_root}/pip"
 npm_results_dir="${tmp_root}/npm"
 mkdir -p "${pip_results_dir}" "${npm_results_dir}"
 
-mapfile -t lockfiles < <(find "${REPO_ROOT}/ai-stack/mcp-servers" -type f -name 'requirements.lock' | sort)
 mapfile -t requirements_files < <(find "${REPO_ROOT}/ai-stack/mcp-servers" -type f -name 'requirements.txt' | sort)
 if git -C "${REPO_ROOT}" rev-parse --is-inside-work-tree >/dev/null 2>&1; then
   mapfile -t package_files < <(
@@ -110,19 +108,60 @@ fi
 
 pip_total_vulns=0
 pip_files_scanned=0
+pip_errors=0
+
+# Time-boxed exceptions: applied only while unexpired, valid YYYY-MM-DD (UTC) and <= 90 days out,
+# and only to a finding whose package name matches the exception's package.
+EXCEPTIONS_FILE="${SECURITY_EXCEPTIONS_FILE:-${REPO_ROOT}/config/security-exceptions.json}"
+EXCEPTION_MAX_DAYS=90
+applied_exceptions=()
+expired_exceptions=()
+exceptions_json='[]'
+if [[ -f "${EXCEPTIONS_FILE}" ]]; then
+  today_epoch="$(date -u -d "$(date -u +%F)" +%s)"
+  max_epoch=$((today_epoch + EXCEPTION_MAX_DAYS * 86400))
+  while IFS=$'\t' read -r ex_id ex_pkg ex_expires; do
+    [[ -n "${ex_id}" ]] || continue
+    ex_epoch=""
+    if [[ "${ex_expires}" =~ ^[0-9]{4}-[0-9]{2}-[0-9]{2}$ ]]; then
+      ex_epoch="$(date -u -d "${ex_expires}" +%s 2>/dev/null || true)"
+    fi
+    if [[ -n "${ex_epoch}" && "$(date -u -d "@${ex_epoch}" +%F)" == "${ex_expires}" && ${ex_epoch} -ge ${today_epoch} && ${ex_epoch} -le ${max_epoch} ]]; then
+      exceptions_json="$(jq -c --arg id "${ex_id}" --arg pkg "${ex_pkg}" '. + [{id: $id, package: $pkg}]' <<<"${exceptions_json}")"
+      applied_exceptions+=("${ex_id} (${ex_pkg}, expires ${ex_expires})")
+    else
+      expired_exceptions+=("${ex_id} (${ex_pkg}, expiry '${ex_expires:-unset}' expired, malformed or >${EXCEPTION_MAX_DAYS}d out)")
+    fi
+  done < <(jq -r '.exceptions[]? | [.id, .package, (.expires // "")] | @tsv' "${EXCEPTIONS_FILE}")
+fi
+mismatch_warnings=()
 
 if [[ "${pip_audit_available}" == true ]]; then
-  for lockfile in "${lockfiles[@]}"; do
-    base="$(echo "${lockfile#"${REPO_ROOT}/"}" | tr '/' '_')"
+  for req in "${requirements_files[@]}"; do
+    base="$(echo "${req#"${REPO_ROOT}/"}" | tr '/' '_')"
     out_json="${pip_results_dir}/${base}.json"
     set +e
-    "${pip_audit_cmd[@]}" -r "${lockfile}" --format json > "${out_json}" 2>"${out_json}.stderr"
+    "${pip_audit_cmd[@]}" -r "${req}" --format json > "${out_json}" 2>"${out_json}.stderr"
     rc=$?
     set -e
-    if [[ ${rc} -ne 0 && ${rc} -ne 1 ]]; then
-      jq -n --arg lockfile "${lockfile}" --arg err "$(cat "${out_json}.stderr")" \
-        '{dependencies: [], error: $err, lockfile: $lockfile}' > "${out_json}"
+    if [[ ${rc} -ne 0 && ${rc} -ne 1 ]] || ! jq -e '.dependencies' "${out_json}" >/dev/null 2>&1; then
+      jq -n --arg req "${req}" --arg err "$(cat "${out_json}.stderr")" \
+        '{dependencies: [], error: $err, requirements: $req}' > "${out_json}"
+      pip_errors=$((pip_errors + 1))
+      continue
     fi
+    while IFS= read -r mm; do
+      [[ -n "${mm}" ]] && mismatch_warnings+=("${mm}")
+    done < <(jq -r --argjson ex "${exceptions_json}" '
+      def norm: ascii_downcase | gsub("_"; "-");
+      .dependencies[]? as $d | $d.vulns[]? as $v | $ex[]?
+      | select(.id == $v.id and (.package | norm) != ($d.name | norm))
+      | "\(.id) excepted for \(.package) but found in \($d.name)"' "${out_json}")
+    jq --argjson ex "${exceptions_json}" '
+      def norm: ascii_downcase | gsub("_"; "-");
+      .dependencies |= map(. as $d | .vulns |= map(select(.id as $i
+        | ($ex | any(.id == $i and (.package | norm) == ($d.name | norm))) | not)))' \
+      "${out_json}" > "${out_json}.f" && mv "${out_json}.f" "${out_json}"
     count="$(jq '[.dependencies[]?.vulns[]?] | length' "${out_json}")"
     pip_total_vulns=$((pip_total_vulns + count))
     pip_files_scanned=$((pip_files_scanned + 1))
@@ -135,43 +174,12 @@ lock_results_dir="${tmp_root}/lock-integrity"
 mkdir -p "${lock_results_dir}"
 lock_integrity_issues=0
 lock_integrity_scanned=0
-
-if [[ -f "${LOCK_VERIFY_SCRIPT}" ]]; then
-  for requirements_file in "${requirements_files[@]}"; do
-    service_dir="$(dirname "${requirements_file}")"
-    lockfile="${service_dir}/requirements.lock"
-    service_name="$(basename "${service_dir}")"
-    out_json="${lock_results_dir}/${service_name}.json"
-    set +e
-    python3 "${LOCK_VERIFY_SCRIPT}" \
-      --service "${service_name}" \
-      --requirements "${requirements_file}" \
-      --lock "${lockfile}" \
-      > "${out_json}" 2>"${out_json}.stderr"
-    rc=$?
-    set -e
-    if [[ ${rc} -ne 0 ]]; then
-      if [[ -s "${out_json}.stderr" ]]; then
-        cat "${out_json}.stderr" > "${out_json}"
-      else
-        jq -n \
-          --arg service "${service_name}" \
-          --arg requirements "${requirements_file}" \
-          --arg lockfile "${lockfile}" \
-          '{event: "dependency_hash_mismatch", service: $service, requirements: $requirements, lockfile: $lockfile, error: "lock verification failed"}' \
-          > "${out_json}"
-      fi
-      lock_integrity_issues=$((lock_integrity_issues + 1))
-    fi
-    lock_integrity_scanned=$((lock_integrity_scanned + 1))
-  done
-else
-  jq -n --arg error "verify-python-lock-runtime.py not found" '{event: "scanner_unavailable", error: $error}' > "${lock_results_dir}/scanner-unavailable.json"
-fi
+jq -n '{event: "not_applicable", reason: "Nix-only, no lock files"}' > "${lock_results_dir}/not-applicable.json"
 
 npm_total_high=0
 npm_total_critical=0
 npm_files_scanned=0
+npm_errors=0
 
 if [[ "${npm_available}" == true ]]; then
   for package_file in "${package_files[@]}"; do
@@ -188,6 +196,9 @@ if [[ "${npm_available}" == true ]]; then
     if [[ ${rc} -ne 0 && ${rc} -ne 1 ]]; then
       jq -n --arg project_dir "${dir}" --arg err "$(cat "${out_json}.stderr")" \
         '{metadata: {vulnerabilities: {info: 0, low: 0, moderate: 0, high: 0, critical: 0, total: 0}}, error: $err, project_dir: $project_dir}' > "${out_json}"
+    fi
+    if jq -e 'has("error") or (.metadata.vulnerabilities == null)' "${out_json}" >/dev/null 2>&1; then
+      npm_errors=$((npm_errors + 1))
     fi
     high="$(jq '.metadata.vulnerabilities.high // 0' "${out_json}")"
     critical="$(jq '.metadata.vulnerabilities.critical // 0' "${out_json}")"
@@ -259,7 +270,7 @@ fi
 
 high_or_critical=$((npm_total_high + npm_total_critical))
 overall_status="ok"
-if [[ ${pip_total_vulns} -gt 0 || ${high_or_critical} -gt 0 || ${lock_integrity_issues} -gt 0 || "${dashboard_scan_status}" == "error" || "${secrets_rotation_status}" == "error" ]]; then
+if [[ ${pip_total_vulns} -gt 0 || ${high_or_critical} -gt 0 || "${dashboard_scan_status}" == "error" || "${secrets_rotation_status}" == "error" ]]; then
   overall_status="findings"
 fi
 
@@ -363,4 +374,46 @@ if [[ ${high_or_critical} -gt 0 ]]; then
   fi
 fi
 
+# Gate: blocking = what overall_status already treats as findings from the
+# vulnerability checks (pip vulns, npm high/critical); under CI=true also zero pip
+# coverage and npm audit errors (fail-closed).
+# dashboard/secrets-rotation errors and unavailable scanners stay warnings.
+blocking=0
+if [[ ${pip_total_vulns} -gt 0 ]]; then
+  echo "BLOCKING: pip-audit reported ${pip_total_vulns} vulnerabilities"; blocking=$((blocking + 1))
+fi
+if [[ ${high_or_critical} -gt 0 ]]; then
+  echo "BLOCKING: npm audit reported ${npm_total_critical} critical / ${npm_total_high} high vulnerabilities"; blocking=$((blocking + 1))
+fi
+for ex in "${applied_exceptions[@]}"; do echo "EXCEPTION applied: ${ex}"; done
+for ex in "${expired_exceptions[@]}"; do echo "WARNING: security exception EXPIRED, not applied: ${ex}"; done
+echo "pip coverage: ${pip_files_scanned} files"
+echo "lock-integrity: not applicable (Nix-only, no lock files)"
+ci="${CI:-false}"
+if [[ ${pip_files_scanned} -eq 0 ]]; then
+  if [[ "${ci}" == "true" ]]; then
+    echo "BLOCKING: zero pip-audit coverage in CI"; blocking=$((blocking + 1))
+  else
+    echo "WARNING: zero pip-audit coverage (scanner missing or requirements unscannable)"
+  fi
+fi
+for mm in "${mismatch_warnings[@]}"; do echo "WARNING: security exception package mismatch, not applied: ${mm}"; done
+if [[ ${pip_errors} -gt 0 ]]; then
+  if [[ "${ci}" == "true" ]]; then
+    echo "BLOCKING: pip-audit failed on ${pip_errors} requirements files in CI"; blocking=$((blocking + 1))
+  else
+    echo "WARNING: pip-audit failed on ${pip_errors} requirements files"
+  fi
+fi
+if [[ ${npm_errors} -gt 0 ]]; then
+  if [[ "${ci}" == "true" ]]; then
+    echo "BLOCKING: npm audit errored on ${npm_errors} projects in CI"; blocking=$((blocking + 1))
+  else
+    echo "WARNING: npm audit errored on ${npm_errors} projects"
+  fi
+fi
+[[ "${dashboard_scan_status}" == "error" ]] && echo "WARNING: dashboard security scan errored (non-blocking)"
+[[ "${secrets_rotation_status}" == "error" ]] && echo "WARNING: secrets rotation plan errored (non-blocking)"
+echo "Security audit summary: blocking=${blocking} status=${overall_status}"
+[[ ${blocking} -eq 0 ]] || exit 1
 exit 0
