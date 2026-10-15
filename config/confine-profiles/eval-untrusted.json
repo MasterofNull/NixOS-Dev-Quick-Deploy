@@ -1,0 +1,60 @@
+{
+  "schema": "aq-confine-profile/1",
+  "name": "eval-untrusted",
+  "description": "Model-generated code: tmpfs /tmp only, no network, tight limits.",
+  "needs_worktree": false,
+  "net_ceiling": "none",
+  "net_default": "none",
+  "ro_system": [
+    "/nix/store",
+    "/usr",
+    "/bin",
+    "/lib",
+    "/lib64",
+    "/etc/alternatives"
+  ],
+  "path_from_system": [
+    "python3",
+    "sh",
+    "env"
+  ],
+  "home": "/home/aq",
+  "tmp": "tmpfs",
+  "rw_allowed_roots": [],
+  "git": "none",
+  "git_refs": "namespace",
+  "strict_history": false,
+  "egress": {
+    "mode": "none",
+    "grantable": [],
+    "services": []
+  },
+  "guidance": true,
+  "env_base": {
+    "LANG": "C.UTF-8"
+  },
+  "env_allow": [
+    "LANG"
+  ],
+  "limits": {
+    "as": 1073741824,
+    "cpu": 20,
+    "fsize": 4194304,
+    "nproc": 32,
+    "core": 0
+  },
+  "size_caps": {
+    "quarantine": 536870912,
+    "worktree": 2147483648
+  },
+  "timeout_s": 30,
+  "unshare": [
+    "all"
+  ],
+  "disable_userns": true,
+  "readonly_root": false,
+  "ro_allowed_roots": [],
+  "tmp_size": 67108864,
+  "home_size": 16777216,
+  "scratch": false
+}

@@ -1,0 +1,94 @@
+#!/usr/bin/env python3
+"""aq-confine: thin CLI over scripts/ai/lib/confine.py (design: .agents/plans/sota-rounding/aq-confine-DESIGN.md)."""
+import argparse
+import json
+import os
+import sys
+
+sys.path.insert(0, os.path.join(os.path.dirname(os.path.realpath(__file__)), "lib"))
+import confine  # noqa: E402
+
+
+def _parser() -> argparse.ArgumentParser:
+    p = argparse.ArgumentParser(prog="aq-confine", description="Run a command in a bubblewrap sandbox from a named profile.")
+    p.add_argument("--profile")
+    p.add_argument("--worktree")
+    p.add_argument("--net", choices=["none", "loopback"])
+    p.add_argument("--ro", action="append", default=[])
+    p.add_argument("--rw", action="append", default=[])
+    p.add_argument("--env-allow", action="append", default=[])
+    p.add_argument("--timeout", type=int)
+    p.add_argument("--rlimit-as", type=int)
+    p.add_argument("--run-id")
+    p.add_argument("--scratch", action="store_true")
+    p.add_argument("--explain", action="store_true")
+    p.add_argument("--json", action="store_true")
+    p.add_argument("--allow-nested-userns", action="store_true")
+    p.add_argument("--egress-service", action="append", default=[])
+    p.add_argument("--egress-optional", action="store_true")
+    p.add_argument("--egress-grant", action="append", default=[])
+    p.add_argument("--preflight", action="store_true")
+    p.add_argument("--egress-status", nargs="?", const="")
+    p.add_argument("--egress-revoke")
+    p.add_argument("--kill", metavar="RUN")
+    p.add_argument("--lint-host-git", nargs="+", metavar="FILE")
+    p.add_argument("cmd", nargs="*")
+    return p
+
+
+def main(argv=None) -> int:
+    args = _parser().parse_args(argv)
+    if args.lint_host_git:
+        bad = confine.lint_script_names(args.lint_host_git)
+        for path, findings in bad.items():
+            for line, msg in findings:
+                print(f"{path}:{line}: {msg}")
+        return 1 if bad else 0
+    if args.preflight:
+        res = confine.preflight(use_cache=False)
+        if args.json:
+            print(json.dumps({"ok": res.ok, "reason": res.reason, "detail": res.detail}))
+        else:
+            print("ok" if res.ok else f"unavailable: {res.reason} {res.detail}".strip())
+        return 0 if res.ok else confine.EXIT_UNAVAILABLE
+    if args.kill:
+        code, msg = confine.kill_run(args.kill)
+        print(msg, file=sys.stderr)
+        return code
+    if args.egress_status is not None or args.egress_revoke or args.egress_service or args.egress_grant or args.egress_optional:
+        print("aq-confine: egress options are not implemented yet (S2c)", file=sys.stderr)
+        return confine.EXIT_USAGE
+    if not args.profile:
+        print("aq-confine: --profile is required", file=sys.stderr)
+        return confine.EXIT_USAGE
+    if args.explain:
+        try:
+            prof = confine.load_profile(args.profile)
+            plan = confine.make_plan(prof, args.cmd or ["true"], worktree=args.worktree, net=args.net, ro=args.ro,
+                                     rw=args.rw, env_allow=args.env_allow, timeout=args.timeout,
+                                     rlimit_as=args.rlimit_as, allow_nested_userns=args.allow_nested_userns,
+                                     run_id=args.run_id, scratch=args.scratch)
+        except confine.ConfineError as err:
+            print(f"aq-confine: {err}", file=sys.stderr)
+            return err.exit_code
+        sys.stdout.write(confine.explain_text(plan, confine.HostFacts()))
+        return 0
+    if not args.cmd:
+        print("aq-confine: command required after --", file=sys.stderr)
+        return confine.EXIT_USAGE
+    res = confine.run(args.profile, args.cmd, worktree=args.worktree, net=args.net, ro=args.ro, rw=args.rw,
+                      env_allow=args.env_allow, timeout=args.timeout, rlimit_as=args.rlimit_as,
+                      allow_nested_userns=args.allow_nested_userns, run_id=args.run_id, scratch=args.scratch)
+    sys.stdout.buffer.write(res.stdout)
+    sys.stdout.buffer.flush()
+    sys.stderr.buffer.write(res.stderr)
+    sys.stderr.buffer.flush()
+    if args.json:
+        print(res.json_line())
+    else:
+        print(res.json_line(), file=sys.stderr)
+    return res.exit_code
+
+
+if __name__ == "__main__":
+    sys.exit(main())
