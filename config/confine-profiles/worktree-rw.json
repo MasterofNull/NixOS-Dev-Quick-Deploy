@@ -1,0 +1,81 @@
+{
+  "schema": "aq-confine-profile/1",
+  "name": "worktree-rw",
+  "description": "One linked git worktree writable, claim ref namespace via host import; no network.",
+  "needs_worktree": true,
+  "net_ceiling": "loopback",
+  "net_default": "none",
+  "ro_system": [
+    "/nix/store",
+    "/usr",
+    "/bin",
+    "/lib",
+    "/lib64",
+    "/etc/alternatives"
+  ],
+  "path_from_system": [
+    "python3",
+    "git",
+    "sh",
+    "env",
+    "ls",
+    "grep",
+    "sed",
+    "find"
+  ],
+  "home": "/home/aq",
+  "tmp": "tmpfs",
+  "rw_allowed_roots": [],
+  "git": "worktree",
+  "git_refs": "namespace",
+  "strict_history": false,
+  "egress": {
+    "mode": "none",
+    "grantable": [],
+    "services": []
+  },
+  "guidance": true,
+  "env_base": {
+    "LANG": "C.UTF-8",
+    "GIT_AUTHOR_NAME": "aq-confine",
+    "GIT_AUTHOR_EMAIL": "aq-confine@localhost",
+    "GIT_COMMITTER_NAME": "aq-confine",
+    "GIT_COMMITTER_EMAIL": "aq-confine@localhost"
+  },
+  "env_allow": [
+    "LANG",
+    "TZ",
+    "TERM",
+    "GIT_AUTHOR_NAME",
+    "GIT_AUTHOR_EMAIL",
+    "GIT_COMMITTER_NAME",
+    "GIT_COMMITTER_EMAIL"
+  ],
+  "limits": {
+    "cpu": 600,
+    "nproc": 256,
+    "nofile": 1024,
+    "fsize": 268435456,
+    "core": 0,
+    "as": 8589934592
+  },
+  "size_caps": {
+    "quarantine": 536870912,
+    "worktree": 2147483648
+  },
+  "timeout_s": 600,
+  "unshare": [
+    "all"
+  ],
+  "disable_userns": true,
+  "readonly_root": true,
+  "ro_allowed_roots": [
+    "${REPO}",
+    "${AQ_DELEGATION_DIR}",
+    "/tmp",
+    "/var/tmp"
+  ],
+  "tmp_size": 67108864,
+  "home_size": 536870912,
+  "scratch": false
+}
