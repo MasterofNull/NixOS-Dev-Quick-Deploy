@@ -474,6 +474,11 @@ jobs:
           chmod +x scripts/governance/run-ci-checks.sh
           ./scripts/governance/run-ci-checks.sh --all --only tool-security-auditor-smoke
 
+      - name: Enforce Python tooling policy (uv-first)
+        run: |
+          chmod +x scripts/governance/run-ci-checks.sh
+          ./scripts/governance/run-ci-checks.sh --all --only python-tooling-policy
+
   validate-structure:
     name: Validate Project Structure
     runs-on: ubuntu-latest
