@@ -3,6 +3,21 @@
   "description": "SSOT for CI-hard checks that run in seconds without network/services. CI workflows call scripts/governance/run-ci-checks.sh --all --only <id>; .githooks/pre-push runs --changed. Edit here, never inline the command in a workflow. Slow checks carry paths so --changed skips them; --all (CI) always runs them.",
   "checks": [
     {
+      "id": "python-tooling-policy",
+      "cmd": "scripts/governance/check-python-tooling-policy.sh",
+      "paths": [
+        "scripts/**",
+        "**/*.sh",
+        "**/*.py",
+        ".github/workflows/**",
+        "config/python-tooling-policy-allowlist.txt"
+      ],
+      "needs": [
+        "python3"
+      ],
+      "ci_workflow": ".github/workflows/test.yml#syntax"
+    },
+    {
       "id": "harness-first-static-gates",
       "cmd": "scripts/testing/check-harness-first-static-gates.sh",
       "paths": [],
