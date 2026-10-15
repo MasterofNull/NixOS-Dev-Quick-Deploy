@@ -2645,9 +2645,17 @@ async def run_http_mode(port: int) -> None:
 
     async def _scheduler_startup(_app):
         await scheduler.start()
+        # DEC-S0: build the router (creates/migrates routing_metrics.db) off the
+        # request path so _init_metrics_db never runs inside the first request.
+        try:
+            from llm_router import get_router
+            await asyncio.get_running_loop().run_in_executor(None, get_router)
+        except Exception as exc:  # noqa: BLE001
+            logger.warning("routing router warm-up failed: %s", exc)
 
     async def _scheduler_cleanup(_app):
-        await scheduler.stop()
+        from llm_router import bounded_shutdown
+        await bounded_shutdown(scheduler.stop, stop_timeout=20.0)
 
     http_app.on_startup.append(_scheduler_startup)
     http_app.on_cleanup.append(_scheduler_cleanup)
@@ -2899,5 +2907,28 @@ async def run_http_mode(port: int) -> None:
 
     logger.info("✓ Hybrid Coordinator HTTP server running on http://%s:%d", bind_host, port)
 
-    # Keep server running
-    await asyncio.Event().wait()
+    # Keep server running until SIGTERM/SIGINT, then run the aiohttp cleanup chain
+    # (http_app.on_cleanup: scheduler.stop, routing-metrics writer flush+snapshot).
+    # Without this, systemd's SIGTERM killed the process and on_cleanup never ran.
+    stop_event = asyncio.Event()
+    loop = asyncio.get_running_loop()
+    _sig_count = [0]
+
+    def _on_signal():
+        _sig_count[0] += 1
+        if _sig_count[0] > 1:
+            logger.error("Second shutdown signal; exiting immediately")
+            os._exit(0)
+        stop_event.set()
+
+    for _sig in (signal.SIGTERM, signal.SIGINT):
+        try:
+            loop.add_signal_handler(_sig, _on_signal)
+        except (NotImplementedError, RuntimeError):
+            pass
+    await stop_event.wait()
+    logger.info("Shutdown signal received; running aiohttp cleanup")
+    try:
+        await asyncio.wait_for(runner.cleanup(), timeout=30.0)
+    except asyncio.TimeoutError:
+        logger.error("runner.cleanup() exceeded 30s; exiting")
