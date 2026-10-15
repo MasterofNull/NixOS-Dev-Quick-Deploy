@@ -135,7 +135,7 @@ in {
           AUTONOMOUS_MAX_EXPERIMENTS = toString autonomous.maxExperimentsPerCycle;
           AUTONOMOUS_AUTO_APPLY_BLAST_RADIUS_MAX = autonomous.autoApplyBlastRadiusMax;
           PRSI_ARTIFACT_DIR = "${dataDir}/prsi-artifacts/runs";
-          AQ_ROUTING_METRICS_DB_PATH = "${mcp.dataDir}/routing_metrics.db";
+          AQ_ROUTING_METRICS_DB_PATH = "${mcp.dataDir}/hybrid/routing_metrics.snapshot.db"; # read-only snapshot written by the hybrid coordinator (DEC-S0); never the live WAL db
           # Service-private deviation log. The shared telemetry dir (/var/lib/ai-stack/hybrid/telemetry)
           # is ai-hybrid-owned + group-writable (0770), which workflow_deviation_io._open_locked correctly
           # rejects as unsafe (deviation-target-unsafe) for this hyperd-run service. Write to the service's

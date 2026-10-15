@@ -11,7 +11,10 @@ import asyncio
 import importlib.machinery
 import importlib.util
 import logging
+import queue
 import sqlite3
+import threading
+import time
 import json
 import os
 import uuid
@@ -183,6 +186,43 @@ class TaskComplexity(Enum):
     CRITICAL = "critical"   # 1% → Opus
 
 
+_MAX_TEXT_CHARS = 200
+_WRITE_QUEUE_MAX = 1024
+_SNAPSHOT_INTERVAL_S = float(os.getenv("AQ_ROUTING_METRICS_SNAPSHOT_INTERVAL_S", "60"))
+_TICK = object()
+
+_ROUTING_DECISION_EXTRA_COLUMNS = (
+    ("lane", "TEXT"),
+    ("source", "TEXT"),
+    ("alternatives", "TEXT"),
+    ("handoff", "BOOLEAN DEFAULT 0"),
+)
+
+
+def _resolve_metrics_db(explicit: Optional[str] = None) -> str:
+    """DB path: explicit arg > AQ_ROUTING_METRICS_DB_PATH > DATA_DIR/routing_metrics.db > cwd.
+
+    The old cwd-relative default resolved to /var/lib/ai-stack (root:ai-stack 0750,
+    not writable by ai-hybrid) under systemd, so every insert failed."""
+    if explicit:
+        return explicit
+    env = os.getenv("AQ_ROUTING_METRICS_DB_PATH")
+    if env:
+        return env
+    data_dir = os.getenv("DATA_DIR")
+    if data_dir:
+        return str(Path(data_dir) / "routing_metrics.db")
+    return "routing_metrics.db"
+
+
+def _resolve_snapshot_db(live: str) -> str:
+    env = os.getenv("AQ_ROUTING_METRICS_SNAPSHOT_PATH")
+    if env:
+        return env
+    base, _ = os.path.splitext(live)
+    return base + ".snapshot.db"
+
+
 class LLMRouter:
     """
     Intelligent routing across local, free, and paid LLMs
@@ -205,8 +245,23 @@ class LLMRouter:
         self.hybrid_coordinator_endpoint = os.getenv("HYBRID_COORDINATOR_URL", "http://127.0.0.1:8003").rstrip("/")
 
         # Routing metrics
-        self.metrics_db = metrics_db or "routing_metrics.db"
-        self._init_metrics_db()
+        self.metrics_db = _resolve_metrics_db(metrics_db)
+        # Write-health counters (DEC-S0): a failed insert is logged and counted,
+        # never silent. Exposed via get_metrics()["write_health"].
+        self.write_stats: Dict[str, int] = {"queued": 0, "written": 0, "dropped": 0,
+                                            "failed": 0, "init_failed": 0, "snapshots": 0,
+                                            "snapshot_failed": 0, "last_snapshot_ts": 0}
+        self.snapshot_db = _resolve_snapshot_db(self.metrics_db)
+        self._snapshot_dirty = False
+        self._stats_lock = threading.Lock()
+        self._wq: "queue.Queue" = queue.Queue(maxsize=_WRITE_QUEUE_MAX)
+        self._writer: Optional[threading.Thread] = None
+        self._writer_lock = threading.Lock()
+        self.last_write_error: Optional[str] = None
+        try:
+            self._init_metrics_db()
+        except sqlite3.Error as exc:
+            self._note_write_failure("init", exc, init=True)
 
         # Advisor strategy support
         self.advisor_enabled = _ADVISOR_AVAILABLE and getattr(Config, "AI_ADVISOR_ENABLED", True) if Config else False
@@ -241,7 +296,10 @@ class LLMRouter:
 
     def _init_metrics_db(self):
         """Initialize routing metrics database"""
-        conn = sqlite3.connect(self.metrics_db)
+        conn = sqlite3.connect(self.metrics_db, timeout=1.0)
+        # WAL: readers (autonomous-improvement, mode=ro) never block the writer and
+        # the writer never fsyncs per commit (synchronous=NORMAL).
+        conn.execute("PRAGMA journal_mode=WAL")
         conn.executescript("""
             CREATE TABLE IF NOT EXISTS routing_decisions (
                 id INTEGER PRIMARY KEY AUTOINCREMENT,
@@ -292,8 +350,134 @@ class LLMRouter:
             CREATE INDEX IF NOT EXISTS idx_advisor_timestamp ON advisor_consultations(timestamp);
             CREATE INDEX IF NOT EXISTS idx_advisor_fallback_rank ON advisor_consultations(fallback_rank);
         """)
+        # DEC-S0 additive migration (PRAGMA table_info guard; idempotent).
+        have = {r[1] for r in conn.execute("PRAGMA table_info(routing_decisions)")}
+        for col, ddl in _ROUTING_DECISION_EXTRA_COLUMNS:
+            if col not in have:
+                conn.execute(f"ALTER TABLE routing_decisions ADD COLUMN {col} {ddl}")
         conn.commit()
         conn.close()
+        self._secure_db_file()
+
+    def _secure_db_file(self) -> None:
+        """Live DB stays owner-only (0640: ai-hybrid rw, group read); -wal/-shm keep
+        default modes. Consumers read the snapshot, never the live file."""
+        try:
+            os.chmod(self.metrics_db, 0o640)
+        except OSError:
+            pass
+
+    def _snapshot(self, conn) -> None:
+        """Consistent read-only copy: VACUUM INTO a tmp file, atomic rename, 0644.
+        Readers never need WAL files and never see a partial file."""
+        tmp = self.snapshot_db + ".tmp"
+        try:
+            try:
+                os.unlink(tmp)
+            except FileNotFoundError:
+                pass
+            conn.execute("VACUUM INTO ?", (tmp,))
+            os.chmod(tmp, 0o644)
+            os.replace(tmp, self.snapshot_db)
+            with self._stats_lock:
+                self.write_stats["snapshots"] += 1
+                self.write_stats["last_snapshot_ts"] = int(time.time())
+            self._snapshot_dirty = False
+        except (sqlite3.Error, OSError) as exc:
+            self._bump("snapshot_failed")
+            self.last_write_error = f"snapshot: {type(exc).__name__}: {exc}"[:300]
+            logger.error("routing_metrics snapshot failed db=%s error=%s", self.snapshot_db, exc)
+
+    def _note_write_failure(self, what: str, exc: Exception, init: bool = False) -> None:
+        key = "init_failed" if init else "failed"
+        with self._stats_lock:
+            self.write_stats[key] = self.write_stats.get(key, 0) + 1
+            n = self.write_stats[key]
+        self.last_write_error = f"{what}: {type(exc).__name__}: {exc}"[:300]
+        logger.error("routing_metrics write failed what=%s db=%s error=%s failures=%d",
+                     what, self.metrics_db, exc, n)
+
+    def _bump(self, key: str) -> None:
+        with self._stats_lock:
+            self.write_stats[key] = self.write_stats.get(key, 0) + 1
+
+    def _writer_loop(self) -> None:
+        conn = None
+        last_snap = float("-inf")
+        while True:
+            try:
+                item = self._wq.get(timeout=_SNAPSHOT_INTERVAL_S)
+            except queue.Empty:
+                item = _TICK
+            try:
+                if item is None:
+                    if conn is not None and self._snapshot_dirty:
+                        self._snapshot(conn)
+                    if conn is not None:
+                        conn.close()
+                    return
+                if item is not _TICK:
+                    what, sql, params = item
+                    try:
+                        if conn is None:
+                            conn = sqlite3.connect(self.metrics_db, timeout=1.0)
+                            conn.execute("PRAGMA synchronous=NORMAL")
+                        conn.execute(sql, params)
+                        conn.commit()
+                        self._bump("written")
+                        self._snapshot_dirty = True
+                    except sqlite3.Error as exc:
+                        self._note_write_failure(what, exc)
+                        if conn is not None:
+                            try:
+                                conn.close()
+                            except sqlite3.Error:
+                                pass
+                            conn = None
+                if (conn is not None and self._snapshot_dirty
+                        and time.monotonic() - last_snap >= _SNAPSHOT_INTERVAL_S):
+                    self._snapshot(conn)
+                    last_snap = time.monotonic()
+            finally:
+                self._wq.task_done()
+
+    def _write(self, what: str, sql: str, params: tuple) -> bool:
+        """Fire-and-forget insert: enqueue for the single writer thread. Never
+        blocks the caller; a full queue drops the row and counts it. Returns
+        True when queued."""
+        with self._writer_lock:
+            if self._writer is None or not self._writer.is_alive():
+                self._writer = threading.Thread(
+                    target=self._writer_loop, name="routing-metrics-writer", daemon=True)
+                self._writer.start()
+        try:
+            self._wq.put_nowait((what, sql, params))
+        except queue.Full:
+            self._bump("dropped")
+            logger.warning("routing_metrics queue full; dropped %s row", what)
+            return False
+        self._bump("queued")
+        return True
+
+    def flush(self, timeout: float = 5.0) -> bool:
+        """Wait until queued rows are written (tests/shutdown)."""
+        done = threading.Event()
+        def _w():
+            self._wq.join()
+            done.set()
+        threading.Thread(target=_w, daemon=True).start()
+        return done.wait(timeout)
+
+    def close(self, timeout: float = 5.0) -> None:
+        """Drain then stop the writer (coordinator shutdown hook)."""
+        self.flush(timeout)
+        w = self._writer
+        if w is not None and w.is_alive():
+            try:
+                self._wq.put(None, timeout=timeout)
+            except queue.Full:
+                return
+            w.join(timeout)
 
     def classify_complexity(self, task_description: str) -> TaskComplexity:
         """
@@ -1075,8 +1259,7 @@ Keep response under 500 words."""
         # Estimate advisor cost (rough approximation)
         advisor_cost = advisor_tokens * 0.000015  # ~$15 per 1M tokens for Opus
 
-        conn = sqlite3.connect(self.metrics_db)
-        conn.execute("""
+        self._write("advisor_consultations", """
             INSERT INTO advisor_consultations
             (task_id, decision_type, executor_tier, executor_model, advisor_model,
              advisor_tokens, advisor_cost, time_to_consult_ms, question, guidance_summary,
@@ -1084,11 +1267,10 @@ Keep response under 500 words."""
             VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
         """, (
             task_id, decision_type, executor_tier, executor_model, advisor_model,
-            int(advisor_tokens), advisor_cost, time_to_consult_ms, question, guidance_summary,
+            int(advisor_tokens), advisor_cost, time_to_consult_ms,
+            (question or "")[:_MAX_TEXT_CHARS], (guidance_summary or "")[:_MAX_TEXT_CHARS],
             task_success, fallback_rank
         ))
-        conn.commit()
-        conn.close()
 
     def _estimate_cost(self, tier: AgentTier) -> float:
         """Estimate cost per task by tier (sourced from routing_contract.CostEstimates)."""
@@ -1110,27 +1292,37 @@ Keep response under 500 words."""
                        cost_estimate: float = 0.0, escalated: bool = False,
                        escalated_from: str = None):
         """Record routing decision for metrics"""
-        conn = sqlite3.connect(self.metrics_db)
-        conn.execute("""
+        self._write("routing_decisions", """
             INSERT INTO routing_decisions
             (task_type, complexity, tier, model, success, escalated,
              escalated_from, response_time_ms, cost_estimate)
             VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)
         """, (task_type, complexity, tier, model, success, escalated,
               escalated_from, response_time_ms, cost_estimate))
-        conn.commit()
-        conn.close()
+
+    def record_route_decision(self, task_type: str, complexity: str, tier: str,
+                              model: str, lane: str = "", source: str = "",
+                              alternatives: Optional[List[str]] = None,
+                              cost_estimate: float = 0.0, handoff: bool = False) -> bool:
+        """Persist a chosen route (DEC-S0). Called from the live routing path
+        (ModelCoordinator.classify_and_route); outcome is unknown at this point
+        so success is NULL. No task text is stored, only classes and model names."""
+        alts = json.dumps([str(a)[:64] for a in (alternatives or [])][:8])
+        return self._write("routing_decisions", """
+            INSERT INTO routing_decisions
+            (task_type, complexity, tier, model, success, escalated, cost_estimate,
+             lane, source, alternatives, handoff)
+            VALUES (?, ?, ?, ?, NULL, 0, ?, ?, ?, ?, ?)
+        """, (str(task_type)[:64], str(complexity)[:32], str(tier)[:32], str(model)[:96],
+              cost_estimate, str(lane)[:32], str(source)[:32], alts, int(bool(handoff))))
 
     def _record_escalation(self, from_tier: str, to_tier: str,
                           reason: str, task_type: str):
         """Record escalation event"""
-        conn = sqlite3.connect(self.metrics_db)
-        conn.execute("""
+        self._write("escalations", """
             INSERT INTO escalations (from_tier, to_tier, reason, task_type)
             VALUES (?, ?, ?, ?)
-        """, (from_tier, to_tier, reason, task_type))
-        conn.commit()
-        conn.close()
+        """, (from_tier, to_tier, (reason or "")[:_MAX_TEXT_CHARS], task_type))
 
     def get_metrics(self) -> Dict:
         """Get routing metrics and cost savings"""
@@ -1174,7 +1366,9 @@ Keep response under 500 words."""
             "savings_usd": savings,
             "savings_percentage": (savings / potential_cost * 100) if potential_cost > 0 else 0,
             "escalation_count": escalations,
-            "escalation_rate": (escalations / total_tasks * 100) if total_tasks > 0 else 0
+            "escalation_rate": (escalations / total_tasks * 100) if total_tasks > 0 else 0,
+            "write_health": {**self.write_stats, "last_error": self.last_write_error,
+                             "db": self.metrics_db},
         }
 
     def get_advisor_metrics(self) -> Dict:
@@ -1281,6 +1475,28 @@ Keep response under 500 words."""
 # ============================================================================
 
 _router = None
+
+def shutdown_router() -> None:
+    """Flush and stop the metrics writer; safe if the router was never created."""
+    if _router is not None:
+        _router.close()
+
+
+async def bounded_shutdown(scheduler_stop, stop_timeout: float = 20.0) -> None:
+    """on_cleanup body: flush the metrics writer FIRST (so a hung scheduler cannot
+    cost rows or the final snapshot), then stop the scheduler within a bound."""
+    try:
+        await asyncio.get_running_loop().run_in_executor(None, shutdown_router)
+        logger.info("routing metrics writer flushed and snapshot published")
+    except Exception as exc:  # noqa: BLE001
+        logger.warning("routing metrics writer shutdown failed: %s", exc)
+    try:
+        await asyncio.wait_for(scheduler_stop(), timeout=stop_timeout)
+    except asyncio.TimeoutError:
+        logger.error("scheduler.stop() exceeded %.0fs; continuing shutdown", stop_timeout)
+    except Exception as exc:  # noqa: BLE001
+        logger.warning("scheduler.stop() failed: %s", exc)
+
 
 def get_router() -> LLMRouter:
     """Get singleton router instance"""
