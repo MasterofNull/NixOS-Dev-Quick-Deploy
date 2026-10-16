@@ -1,0 +1,196 @@
+{
+  "$schema": "../../plans/pm-tracker-standard/tracker.schema.json",
+  "plan_id": "software-dev-factory-rollout",
+  "title": "Universal Software-Dev Factory Kit",
+  "phases": [
+    {
+      "id": "v0.1",
+      "name": "Kit v0.1 (MVP: init + doctor, signed)",
+      "goal": "K1-K4",
+      "order": 1
+    },
+    {
+      "id": "v0.2-1.0",
+      "name": "Retrofit, update, parity",
+      "goal": "K6-K12",
+      "order": 2
+    }
+  ],
+  "items": [
+    {
+      "id": "k1",
+      "name": "Kit blockers B1/B2/B5/B17/B18 + commit-msg matrix",
+      "phase": "v0.1",
+      "kind": "slice",
+      "goal": "Kit blockers B1/B2/B5/B17/B18 + commit-msg matrix",
+      "validation_goal": "DESIGN.md section 8 K1 acceptance tests pass; release pre-0.1",
+      "deps": [],
+      "detection": {
+        "commit_match": [
+          "factory-kit-k1"
+        ]
+      }
+    },
+    {
+      "id": "k2",
+      "name": "Kit tree, KIT-MANIFEST allowlist, orphan-commit release, signed tag",
+      "phase": "v0.1",
+      "kind": "slice",
+      "goal": "Kit tree, KIT-MANIFEST allowlist, orphan-commit release, signed tag",
+      "validation_goal": "DESIGN.md section 8 K2 acceptance tests pass; release 0.1",
+      "deps": [
+        "k1"
+      ],
+      "detection": {
+        "commit_match": [
+          "factory-kit-k2"
+        ]
+      }
+    },
+    {
+      "id": "k3",
+      "name": "aq-factory standalone: fetch/verify/lock/init/doctor",
+      "phase": "v0.1",
+      "kind": "slice",
+      "goal": "aq-factory standalone: fetch/verify/lock/init/doctor",
+      "validation_goal": "DESIGN.md section 8 K3 acceptance tests pass; release 0.1",
+      "deps": [
+        "k2"
+      ],
+      "detection": {
+        "commit_match": [
+          "factory-kit-k3"
+        ]
+      }
+    },
+    {
+      "id": "k4",
+      "name": "Kit CI, review-disposition workflow, SHA-pin audit",
+      "phase": "v0.1",
+      "kind": "slice",
+      "goal": "Kit CI, review-disposition workflow, SHA-pin audit",
+      "validation_goal": "DESIGN.md section 8 K4 acceptance tests pass; release 0.1",
+      "deps": [
+        "k2"
+      ],
+      "detection": {
+        "commit_match": [
+          "factory-kit-k4"
+        ]
+      }
+    },
+    {
+      "id": "k6",
+      "name": "retrofit with foreign-hook refusal",
+      "phase": "v0.2-1.0",
+      "kind": "slice",
+      "goal": "retrofit with foreign-hook refusal",
+      "validation_goal": "DESIGN.md section 8 K6 acceptance tests pass; release 0.2",
+      "deps": [
+        "k3"
+      ],
+      "detection": {
+        "commit_match": [
+          "factory-kit-k6"
+        ]
+      }
+    },
+    {
+      "id": "k7",
+      "name": "Mendocino retrofit E2E (T17)",
+      "phase": "v0.2-1.0",
+      "kind": "slice",
+      "goal": "Mendocino retrofit E2E (T17)",
+      "validation_goal": "DESIGN.md section 8 K7 acceptance tests pass; release 0.2",
+      "deps": [
+        "k6"
+      ],
+      "detection": {
+        "commit_match": [
+          "factory-kit-k7"
+        ]
+      }
+    },
+    {
+      "id": "k8",
+      "name": "update with merge-file, rollback (T13)",
+      "phase": "v0.2-1.0",
+      "kind": "slice",
+      "goal": "update with merge-file, rollback (T13)",
+      "validation_goal": "DESIGN.md section 8 K8 acceptance tests pass; release 1.0",
+      "deps": [
+        "k6",
+        "k7"
+      ],
+      "detection": {
+        "commit_match": [
+          "factory-kit-k8"
+        ]
+      }
+    },
+    {
+      "id": "k9",
+      "name": "Parity engine, exceptions, HANDOFF/RESUME schemas",
+      "phase": "v0.2-1.0",
+      "kind": "slice",
+      "goal": "Parity engine, exceptions, HANDOFF/RESUME schemas",
+      "validation_goal": "DESIGN.md section 8 K9 acceptance tests pass; release 0.3",
+      "deps": [
+        "k3"
+      ],
+      "detection": {
+        "commit_match": [
+          "factory-kit-k9"
+        ]
+      }
+    },
+    {
+      "id": "k10",
+      "name": "Canon compile, skills subset, worktree helper, learn",
+      "phase": "v0.2-1.0",
+      "kind": "slice",
+      "goal": "Canon compile, skills subset, worktree helper, learn",
+      "validation_goal": "DESIGN.md section 8 K10 acceptance tests pass; release 0.3-0.4",
+      "deps": [
+        "k9"
+      ],
+      "detection": {
+        "commit_match": [
+          "factory-kit-k10"
+        ]
+      }
+    },
+    {
+      "id": "k11",
+      "name": "check-kit-parity + tier0 core refactor split",
+      "phase": "v0.2-1.0",
+      "kind": "slice",
+      "goal": "check-kit-parity + tier0 core refactor split",
+      "validation_goal": "DESIGN.md section 8 K11 acceptance tests pass; release 1.0",
+      "deps": [
+        "k8"
+      ],
+      "detection": {
+        "commit_match": [
+          "factory-kit-k11"
+        ]
+      }
+    },
+    {
+      "id": "k12",
+      "name": "Optional layers (host-nixos, sandbox, mcp-plugins, local-model)",
+      "phase": "v0.2-1.0",
+      "kind": "slice",
+      "goal": "Optional layers (host-nixos, sandbox, mcp-plugins, local-model)",
+      "validation_goal": "DESIGN.md section 8 K12 acceptance tests pass; release 0.4+",
+      "deps": [
+        "k10"
+      ],
+      "detection": {
+        "commit_match": [
+          "factory-kit-k12"
+        ]
+      }
+    }
+  ]
+}
