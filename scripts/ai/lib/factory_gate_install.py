@@ -3,8 +3,11 @@
 
 This program deliberately reads only repository metadata while resolving stack
 checks.  It never runs target commands; execution proof belongs to the caller's
-isolated fixture test.  Existing projects and hook configurations are refused
-for the confirm-gated brownfield slice.
+isolated fixture test.  Greenfield install refuses existing hook configurations;
+the confirm-gated retrofit path instead composes with them: its hook router runs
+any pre-existing .git/hooks/<name> first, then the factory hook.  Receipts store
+the target as "." (never an absolute path) and routers resolve the repo root at
+runtime via git.
 """
 from __future__ import annotations
 
@@ -165,6 +168,49 @@ def engine_capability(env_var: str) -> dict[str, str]:
     return {"state": "unavailable", "endpoint": "", "source": f"env:{env_var} (unset)", "curl_target": sentinel}
 
 
+OWNER_HANDLE_UNSET = "@OWNER-HANDLE-UNSET"
+
+
+_OWNER_RE = re.compile(r"^@?[A-Za-z0-9][A-Za-z0-9-]*(/[\w.-]+)?$")
+_owner_cache: dict[str, str] = {}
+
+
+def owner_handle() -> str:
+    """Local user's GitHub handle: FACTORY_OWNER_HANDLE or `gh api user`; never a default account."""
+    env = os.environ.get("FACTORY_OWNER_HANDLE", "")
+    key = env + "\0" + os.environ.get("PATH", "")
+    if key in _owner_cache:
+        return _owner_cache[key]
+    handle = env.strip()
+    if not handle and shutil.which("gh"):
+        try:
+            probe = subprocess.run(["gh", "api", "user", "--jq", ".login"], capture_output=True, text=True, check=False, timeout=10)
+            handle = probe.stdout.strip() if probe.returncode == 0 else ""
+        except (subprocess.TimeoutExpired, OSError):
+            handle = ""
+    if not _OWNER_RE.fullmatch(handle):
+        result = OWNER_HANDLE_UNSET
+    else:
+        result = handle if handle.startswith("@") else "@" + handle
+    _owner_cache[key] = result
+    return result
+
+
+def install_hints(blocked: list[str]) -> list[str]:
+    """B18: an actionable hint for every unconfigured required check."""
+    hints = []
+    for item in blocked:
+        name = str(item).split(":", 1)[0]
+        if name == "secret_scan":
+            hints.append(f"{item}: install 'gitleaks' (https://github.com/gitleaks/gitleaks) and re-run")
+        else:
+            hints.append(f"{item}: configure the {name} command (stack profile in .factory/gate-bundle/stack-adapters/profiles/ "
+                         f"or the matching scripts/governance/checks.d/ check) and re-run")
+    if owner_handle() == OWNER_HANDLE_UNSET:
+        hints.append("OWNER_HANDLE unset or invalid: set FACTORY_OWNER_HANDLE (or sign in with gh) and re-render CODEOWNERS")
+    return hints
+
+
 def render_values(project_name: str, commands: dict[str, str], layout_policy: str = "") -> dict[str, str]:
     hybrid = engine_capability("HYBRID_URL")
     aidb = engine_capability("AIDB_URL")
@@ -186,6 +232,7 @@ def render_values(project_name: str, commands: dict[str, str], layout_policy: st
         "PLAN_ROOT": ".agents/plans",
         "PM_TRACKER_PATH": "scripts/pm-tracker",
         "PROJECT_METADATA_FILE": str(RECEIPT),
+        "OWNER_HANDLE": owner_handle(),
         "PROJECT_NAME": project_name,
         "PROTECTED_BRANCHES": "main master trunk",
         "PULSE_PATH": ".agent/collaboration/PULSE.log",
@@ -350,7 +397,8 @@ def preview(target: Path, bundle_root: Path, stack: str | None, project_name: st
         "evidence_exclude": exclude_plan,
         "detector": detected,
         "checks": {"commands": commands, "state": "CONFIGURATION_BLOCKED" if blocked else "READY",
-                   "required_unconfigured": blocked},
+                   "required_unconfigured": blocked,
+                   "install_hints": install_hints(blocked)},
     }
 
 
@@ -648,7 +696,8 @@ def retrofit_preview(target: Path, bundle_root: Path, stack: str | None, project
                    "configured_path": configured, "upgrade": upgrade,
                    "evidence_exclude": exclude_plan,
                    "target_content_sha256": target_content_digest(target), "rendered_plan": rendered_plan,
-                   "check_configuration": {"commands": commands, "required_unconfigured": blocked},
+                   "check_configuration": {"commands": commands, "required_unconfigured": blocked,
+                   "install_hints": install_hints(blocked)},
                    "target": str(target), "stack": stack or ""}
     digest = hashlib.sha256(json.dumps(fingerprint, sort_keys=True, separators=(",", ":")).encode()).hexdigest()
     backup_paths = [str(backup_path(digest, Path(path))) for path in sorted(set(overwrites))]
@@ -660,13 +709,14 @@ def retrofit_preview(target: Path, bundle_root: Path, stack: str | None, project
             "preserved": sorted(preserved, key=lambda item: item["path"]), "overwrites": sorted(set(overwrites)),
             "hooks": {"configured_path": configured, "existing": hooks, "routing": ".git/hooks -> .githooks wrappers"},
             "backup_paths": backup_paths, "evidence_exclude": exclude_plan, "detector": detected,
-            "checks": {"commands": commands, "state": "CONFIGURATION_BLOCKED" if blocked else "READY", "required_unconfigured": blocked}}
+            "checks": {"commands": commands, "state": "CONFIGURATION_BLOCKED" if blocked else "READY", "required_unconfigured": blocked,
+                   "install_hints": install_hints(blocked)}}
 
 
 def router_script(target: Path, name: str, factory: bool) -> bytes:
-    root = shlex.quote(str(target))
-    body = f"#!/usr/bin/env bash\nset -euo pipefail\nrepo_root={root}\n"
-    body += f"original=\"${{repo_root}}/.git/hooks/{shlex.quote(name)}\"\nif [[ -x \"${{original}}\" ]]; then \"${{original}}\" \"$@\"; fi\n"
+    body = "#!/usr/bin/env bash\nset -euo pipefail\nrepo_root=\"$(git rev-parse --show-toplevel 2>/dev/null || dirname \"$(git rev-parse --absolute-git-dir)\")\"\n"
+    body += 'git_common="$(git rev-parse --git-common-dir)"\n'
+    body += f"original=\"${{git_common}}/hooks/{shlex.quote(name)}\"\nif [[ -x \"${{original}}\" ]]; then \"${{original}}\" \"$@\"; fi\n"
     if factory:
         body += "cd -- \"${repo_root}\"\n"
         body += f"exec \"${{repo_root}}/.factory/gate-retrofit-hooks/{name}\" \"$@\"\n"
@@ -723,7 +773,7 @@ def retrofit_install(target: Path, bundle_root: Path, stack: str | None, project
     for relative in managed_plan:
         path = target / relative
         managed_files[str(relative)] = file_record(path, "factory_owned" if str(relative) in report["writes"] else "preserved_local")
-    receipt = {"schema_version": SCHEMA_VERSION, "bundle_version": manifest.get("bundle_version"), "target": str(target), "retrofit": True,
+    receipt = {"schema_version": SCHEMA_VERSION, "bundle_version": manifest.get("bundle_version"), "target": ".", "retrofit": True,
                "preview_digest": report["preview_digest"], "backup_paths": report["backup_paths"], "checks": report["checks"],
                "hooks": {"configured_path": HOOKS_PATH, "state": "ACTIVE", "composed": sorted(routed)}, "upgrade": upgrade,
                "proof": {"state": "HOOK_PATH_VERIFIED", "detail": "Existing hooks are routed before factory hooks; execution proof is fixture-only."},
@@ -731,6 +781,7 @@ def retrofit_install(target: Path, bundle_root: Path, stack: str | None, project
                "managed_files": managed_files}
     (target / RECEIPT).parent.mkdir(parents=True, exist_ok=True)
     (target / RECEIPT).write_text(json.dumps(receipt, indent=2, sort_keys=True) + "\n", encoding="utf-8")
+    (target / RECEIPT).chmod(0o644)
     receipt["installation"] = {"state": "INSTALLED", "receipt_path": str(RECEIPT)}
     return receipt
 
@@ -756,8 +807,10 @@ def install(target: Path, bundle_root: Path, stack: str | None, project_name: st
         destination.parent.mkdir(parents=True, exist_ok=True)
         destination.write_bytes(content)
         bundle_entry = next((entry for entry in entries if Path(entry["install_target"]) == relative_destination), None)
-        if bundle_entry and (bundle_root / bundle_entry["bundle_path"]).stat().st_mode & stat.S_IXUSR:
-            destination.chmod(destination.stat().st_mode | stat.S_IXUSR | stat.S_IXGRP | stat.S_IXOTH)
+        if (bundle_entry and (bundle_root / bundle_entry["bundle_path"]).stat().st_mode & stat.S_IXUSR) or (relative_destination.name in {"pre-commit", "commit-msg"} and (relative_destination.parts[0] == HOOKS_PATH or "gate-retrofit-hooks" in relative_destination.parts)):
+            destination.chmod(0o755)
+        else:
+            destination.chmod(0o644)
     configured = git(target, "config", "--local", "core.hooksPath", HOOKS_PATH)
     if configured.returncode:
         raise RuntimeError(f"could not configure core.hooksPath: {configured.stderr.strip()}")
@@ -774,8 +827,8 @@ def install(target: Path, bundle_root: Path, stack: str | None, project_name: st
     receipt = {
         "schema_version": SCHEMA_VERSION,
         "bundle_version": manifest.get("bundle_version"),
-        "target": str(target),
-        "detector": report["detector"],
+        "target": ".",
+        "detector": {**report["detector"], "root": "."},
         "checks": report["checks"],
         "hooks": {"configured_path": HOOKS_PATH, "expected_path": HOOKS_PATH,
                   "state": "ACTIVE", "executable": {
@@ -789,6 +842,7 @@ def install(target: Path, bundle_root: Path, stack: str | None, project_name: st
     receipt_path = target / RECEIPT
     receipt_path.parent.mkdir(parents=True, exist_ok=True)
     receipt_path.write_text(json.dumps(receipt, indent=2, sort_keys=True) + "\n", encoding="utf-8")
+    receipt_path.chmod(0o644)
     receipt["installation"] = {"state": "INSTALLED", "receipt_path": str(RECEIPT), "manifest_path": str(BUNDLE_DESTINATION / "MANIFEST.json")}
     return receipt
 
@@ -836,7 +890,8 @@ def status(target: Path, bundle_root: Path, stack: str | None, project_name: str
         try:
             detected = resolver(bundle_root, target, stack)
             commands, blocked = command_values(detected)
-            checks = {"commands": commands, "state": "CONFIGURATION_BLOCKED" if blocked else "READY", "required_unconfigured": blocked}
+            checks = {"commands": commands, "state": "CONFIGURATION_BLOCKED" if blocked else "READY", "required_unconfigured": blocked,
+                   "install_hints": install_hints(blocked)}
         except RuntimeError as error:
             checks = receipt.get("checks") or {"state": "UNKNOWN", "required_unconfigured": [f"stack detector failed: {error}"]}
     else:

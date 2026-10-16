@@ -273,6 +273,8 @@ if [[ -x "${RISK_TIER_CMD}" ]]; then
     RISK_TIER="${RISK_TIER:-UNCLASSIFIED}"
     printf 'Factory gate (report-only) would require: %s\n' "$(printf '%s\n' "${_rt_out}" | head -1)"
   fi
+else
+  echo "Factory gate: risk classifier not installed (${RISK_TIER_CMD}); skipping report-only tier check" >&2
 fi
 export FACTORY_GATE_MODE="${MODE}" FACTORY_RISK_TIER="${RISK_TIER}"
 
