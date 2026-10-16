@@ -611,6 +611,28 @@ def _activation_fallback_drift_check() -> List[Dict[str, Any]]:
     return anomalies
 
 
+def _confine_alerts_check() -> List[Dict[str, Any]]:
+    """Surface pending high alerts raised by aq-confine (ref-tamper, object-import-failed, tamper burst).
+    Listing only: the alert already sits in the attention queue and resolves through aq-approve."""
+    anomalies: List[Dict[str, Any]] = []
+    try:
+        pending = get_pending("aq-confine")
+    except Exception:
+        return anomalies
+    for alert in pending:
+        if alert.get("severity") != "high":
+            continue
+        anomalies.append({
+            "type": "aq_confine_alert",
+            "zone": "aq-confine",
+            "alert_id": alert.get("id", ""),
+            "title": str(alert.get("title", ""))[:200],
+            "created_at": alert.get("created_at", ""),
+            "timestamp": time.time(),
+        })
+    return anomalies
+
+
 def _closed_loop_check() -> List[Dict[str, Any]]:
     """Harness-level probe for the closed local-improvement loop — the measurement layer for the
     capture->correct->ingest->train pipeline. Advisory (detect + warn): a stale loop or a stalled
@@ -1236,6 +1258,9 @@ class HealthSpider:
                     atype, "closed-loop", detail, action,
                 )
             return True
+        elif atype == "aq_confine_alert":
+            logger.warning(f"[aq-confine] pending high alert {anomaly.get('alert_id', '')}: {anomaly.get('title', '')}")
+            return True
         elif atype == "deployed_revision_stale":
             logger.warning(f"[deploy-source] {anomaly.get('detail')}")
             return False  # advisory warning: event emitted above, not an unresolved failure
@@ -1396,6 +1421,13 @@ class HealthSpider:
                     total += 1
         except Exception as e:
             logger.error(f"[capability-enforcement] error: {e}")
+        # Harness-level: pending high alerts from aq-confine (sandbox tamper incidents).
+        try:
+            for a in await asyncio.to_thread(_confine_alerts_check):
+                if await self.handle_anomaly(a):
+                    total += 1
+        except Exception as e:
+            logger.error(f"[aq-confine] error: {e}")
         # Harness-level: deployed git revision vs origin/main (deploy-source drift).
         try:
             for a in await asyncio.to_thread(_deployed_revision_check):

@@ -43,6 +43,11 @@
     "nproc": 32,
     "core": 0
   },
+  "cgroup": {
+    "memory_max": 536870912,
+    "tasks_max": 64,
+    "allow_rlimit_only": false
+  },
   "size_caps": {
     "quarantine": 536870912,
     "worktree": 2147483648
