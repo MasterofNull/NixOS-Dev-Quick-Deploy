@@ -13,7 +13,7 @@ import os
 import sqlite3
 import sys
 from dataclasses import dataclass
-from datetime import datetime, timedelta
+from datetime import datetime, timedelta, timezone
 from pathlib import Path
 from typing import Any, Dict, List, Optional, Tuple
 
@@ -33,6 +33,13 @@ try:
     from run_event_metrics import collect_run_event_metrics as _collect_run_events
 except ImportError:
     _collect_run_events = None  # type: ignore[assignment]
+
+
+def _to_utc(dt: datetime) -> datetime:
+    """Normalize to UTC-aware; naive values (sqlite sources) are assumed UTC."""
+    if dt.tzinfo is None:
+        return dt.replace(tzinfo=timezone.utc)
+    return dt.astimezone(timezone.utc)
 
 
 @dataclass
@@ -125,7 +132,8 @@ class TrendDatabase:
             return []
 
         snapshots = []
-        since = datetime.now() - timedelta(hours=since_hours)
+        # routing rows use SQLite CURRENT_TIMESTAMP: UTC, space separator
+        since = (datetime.now(timezone.utc) - timedelta(hours=since_hours)).strftime("%Y-%m-%d %H:%M:%S")
 
         with sqlite3.connect(f"file:{self.routing_metrics_db}?mode=ro", uri=True) as conn:
             cursor = conn.cursor()
@@ -144,10 +152,10 @@ class TrendDatabase:
                     WHERE timestamp >= ?
                     ORDER BY timestamp
                     """,
-                    (since.isoformat(),),
+                    (since,),
                 )
                 for timestamp, tier, success, latency_ms in cursor.fetchall():
-                    ts = datetime.fromisoformat(timestamp)
+                    ts = _to_utc(datetime.fromisoformat(timestamp))
                     snapshots.extend([
                         MetricSnapshot(
                             time=ts,
@@ -186,10 +194,10 @@ class TrendDatabase:
                 FROM routing_log
                 WHERE timestamp >= ?
                 ORDER BY timestamp
-            """, (since.isoformat(),))
+            """, (since,))
 
             for row in cursor.fetchall():
-                ts = datetime.fromisoformat(row[0])
+                ts = _to_utc(datetime.fromisoformat(row[0]))
                 cache_hit = bool(row[1])
 
                 snapshots.append(MetricSnapshot(
@@ -207,10 +215,10 @@ class TrendDatabase:
                 FROM routing_log
                 WHERE timestamp >= ?
                 ORDER BY timestamp
-            """, (since.isoformat(),))
+            """, (since,))
 
             for row in cursor.fetchall():
-                ts = datetime.fromisoformat(row[0])
+                ts = _to_utc(datetime.fromisoformat(row[0]))
                 used_local = bool(row[1])
 
                 snapshots.append(MetricSnapshot(
@@ -232,7 +240,8 @@ class TrendDatabase:
             return []
 
         snapshots = []
-        since = datetime.now() - timedelta(hours=since_hours)
+        # experiments.created_at is aware-UTC isoformat (autoresearch.py)
+        since = (datetime.now(timezone.utc) - timedelta(hours=since_hours)).isoformat()
 
         with sqlite3.connect(str(self.experiments_db)) as conn:
             cursor = conn.cursor()
@@ -251,10 +260,10 @@ class TrendDatabase:
                 FROM experiments
                 WHERE created_at >= ?
                 ORDER BY created_at
-            """, (since.isoformat(),))
+            """, (since,))
 
             for row in cursor.fetchall():
-                ts = datetime.fromisoformat(row[0])
+                ts = _to_utc(datetime.fromisoformat(row[0]))
                 accepted = bool(row[1])
 
                 snapshots.append(MetricSnapshot(
@@ -304,6 +313,10 @@ class TrendDatabase:
         all_metrics.extend(self.collect_routing_metrics(since_hours))
         all_metrics.extend(self.collect_experiment_metrics(since_hours))
         all_metrics.extend(self.collect_baseline_metrics())
+
+        # Defense in depth: every collector must yield UTC-aware times.
+        for m in all_metrics:
+            m.time = _to_utc(m.time)
 
         # Sort by time
         all_metrics.sort(key=lambda m: m.time)
