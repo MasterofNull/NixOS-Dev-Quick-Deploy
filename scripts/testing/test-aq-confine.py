@@ -193,7 +193,8 @@ def golden_plan(profile_name):
     plan = confine.Plan(prof, "run000000", "/BWRAP", "/PRLIMIT", confine.RunPaths.for_run("/STATE", "run000000"),
                         layout, "", [], [], confine.build_env(prof, {"LANG": "C.UTF-8", "SECRET_TOKEN": "x"}, [], layout,
                                                               confine._resolve_path_dirs(prof, facts)[0], facts),
-                        "none", False, ["/bin/true"], dict(prof.limits, **({"nproc": prof.limits["nproc"] + 100} if "nproc" in prof.limits else {})), prof.timeout_s)
+                        "none", False, ["/bin/true"], dict(prof.limits, **({"nproc": prof.limits["nproc"] + 100} if "nproc" in prof.limits else {})), prof.timeout_s,
+                        systemd_run="/SYSTEMD-RUN")
     return plan, facts
 
 
@@ -213,6 +214,11 @@ def test_profiles_and_schema():
         "egress mode other than none rejected": lambda d: d["egress"].update(mode="broker"),
         "denied env_allow name rejected": lambda d: d["env_allow"].append("GITHUB_TOKEN"),
         "wrong type rejected": lambda d: d.update(timeout_s="fast"),
+        "missing cgroup rejected": lambda d: d.pop("cgroup"),
+        "cgroup without tasks_max rejected": lambda d: d["cgroup"].pop("tasks_max"),
+        "cgroup unknown subkey rejected": lambda d: d["cgroup"].update(swap_max=1),
+        "cgroup memory_max below floor rejected": lambda d: d["cgroup"].update(memory_max=1024),
+        "cgroup tasks_max wrong type rejected": lambda d: d["cgroup"].update(tasks_max="many"),
     }
     for label, mut in cases.items():
         with ProfileDir(custom_profiles("worktree-rw", mut)):
@@ -226,6 +232,21 @@ def test_profiles_and_schema():
         bad("missing profile")
     except confine.ConfineError as e:
         check("missing profile exits 71", e.exit_code == 71)
+
+
+def test_cgroup_scope_pure():
+    plan, facts = golden_plan("worktree-rw")
+    a = confine.build_argv(plan, facts)
+    check("worktree-rw argv starts with a systemd-run user scope carrying MemoryMax/MemorySwapMax/TasksMax",
+          a[:4] == ["/SYSTEMD-RUN", "--user", "--scope", "--quiet"] and "MemoryMax=3221225472" in a
+          and "MemorySwapMax=0" in a and "TasksMax=300" in a and a.index("/PRLIMIT") > a.index("TasksMax=300"))
+    check("RLIMIT_AS stays as defense in depth under the scope", any(x.startswith("--as=") for x in a))
+    plan.systemd_run = ""
+    check("no scope prefix when systemd_run is empty (rlimit-only path)", confine.build_argv(plan, facts)[0] == "/PRLIMIT")
+    for n, mem, tasks in (("eval-untrusted", 512 << 20, 64), ("readonly-analysis", 2 << 30, 128)):
+        pr = confine.load_profile(n)
+        check(f"{n}: cgroup limits tighter than worktree-rw, rlimit-only off by default",
+              pr.cgroup == {"memory_max": mem, "tasks_max": tasks, "allow_rlimit_only": False}, str(pr.cgroup))
 
 
 def test_explain_goldens():
@@ -342,7 +363,7 @@ def test_fail_closed_simulated():
     check("static: no preexec_fn, no shell=True, no --share-net, no os.system",
           "preexec_fn=" not in src and "shell=True" not in src and '"--share-net"' not in src and "os.system(" not in src)
     tree = ast.parse(src)
-    allowed = {"host_git", "run_host_git", "import_objects", "preflight", "_execute", "_rebuild_index"}
+    allowed = {"host_git", "run_host_git", "import_objects", "preflight", "scope_probe", "_scope_probe_locked", "_execute", "_rebuild_index"}
     spawners = []
     for fn in [n for n in ast.walk(tree) if isinstance(n, ast.FunctionDef)]:
         for c in ast.walk(fn):
@@ -1090,12 +1111,122 @@ def test_h2_h1_m1_m3_behavioral():
           and wtree.stdout.strip() == tree, f"{res.refs.get('index')} {wtree.stdout} {wtree.stderr} {tree} {out(res)}")
 
 
+def _unit_load_state(run_id):
+    cp = subprocess.run(["systemctl", "--user", "show", "-p", "LoadState", "--value", f"aq-confine-{run_id}.scope"],
+                        capture_output=True, text=True, env=dict(os.environ))
+    return cp.stdout.strip()
+
+
+@behavioral
+def test_cgroup_behavioral():
+    plan, _ = golden_plan("eval-untrusted")
+    seen = {}
+
+    def peek():
+        time.sleep(1.5)
+        seen["show"] = subprocess.run(
+            ["systemctl", "--user", "show", "-p", "MemoryMax", "-p", "MemorySwapMax", "-p", "TasksMax", "-p", "ActiveState",
+             "aq-confine-cgscope00001.scope"], capture_output=True, text=True).stdout
+    th = threading.Thread(target=peek)
+    th.start()
+    res = sh("eval-untrusted", "sleep 3; echo done", run_id="cgscope00001")
+    th.join()
+    want = confine.load_profile("eval-untrusted").cgroup
+    check("confined launch runs in a live aq-confine-<run>.scope with MemoryMax/MemorySwapMax=0/TasksMax from the profile",
+          res.status == "ok" and f"MemoryMax={want['memory_max']}" in seen.get("show", "") and "MemorySwapMax=0" in seen["show"]
+          and f"TasksMax={want['tasks_max']}" in seen["show"] and "ActiveState=active" in seen["show"], seen.get("show", "") + res.reason)
+    check("scope is collected after the run (no leftover unit)", _unit_load_state("cgscope00001") in ("not-found", ""),
+          _unit_load_state("cgscope00001"))
+    check("telemetry records the cgroup limits and scoped=true",
+          '"scoped":true' in Path(confine.telemetry_path()).read_text())
+
+    def small_mem(d):
+        d["cgroup"]["memory_max"] = 128 * 1024 * 1024
+        d["limits"].pop("as", None)
+        d["limits"].pop("nproc", None)
+        d["timeout_s"] = 60
+    code = ("b=[]\nfor i in range(64):\n b.append(bytearray(32<<20))\n b[-1][::4096]=b'x'*len(b[-1][::4096])\nprint('SURVIVED')")
+    with ProfileDir(custom_profiles("eval-untrusted", small_mem)):
+        res = py("eval-untrusted", code, run_id="cgmem000001")
+    check("allocating past MemoryMax (rlimit-as removed) is killed by the cgroup, never completes",
+          "SURVIVED" not in out(res) and res.status == "child-failed" and res.reason == "oom-killed" and res.exit_code == 137,
+          f"{res.status} rc={res.rc} {out(res)[:80]}")
+    host_ok = confine.run("eval-untrusted", [PY, "-c", "print('after')"], run_id="cgmem000002")
+    check("host and subsequent runs unaffected by the contained OOM", host_ok.status == "ok" and "after" in out(host_ok),
+          host_ok.reason)
+    check("OOM scope is cleaned up", _unit_load_state("cgmem000001") in ("not-found", ""), _unit_load_state("cgmem000001"))
+
+    def small_tasks(d):
+        d["cgroup"]["tasks_max"] = 16
+        d["limits"].pop("nproc", None)
+        d["timeout_s"] = 60
+    forkcode = ("import os,time\nk=0\nfor i in range(60):\n try:\n  pid=os.fork()\n except OSError:\n  break\n"
+                " if pid==0:\n  time.sleep(5);os._exit(0)\n k+=1\nprint('FORKED',k)\nos.system('true')")
+    with ProfileDir(custom_profiles("eval-untrusted", small_tasks)):
+        res = py("eval-untrusted", forkcode, run_id="cgpid000001")
+    m = re.search(r"FORKED (\d+)", out(res))
+    check("forking beyond TasksMax fails (EAGAIN) well below the attempted 60",
+          m is not None and 0 < int(m.group(1)) < 16, f"{out(res)[:100]} {res.stderr.decode()[:200]}")
+    check("pids scope is cleaned up", _unit_load_state("cgpid000001") in ("not-found", ""))
+
+    # concurrent probes in one process must not collide on the unit name; failures are not cached long
+    confine._scope_cache.clear()
+    sr = confine.resolve_systemd_run()
+    results = []
+    ths = [threading.Thread(target=lambda: results.append(confine.scope_probe(sr, use_cache=False))) for _ in range(6)]
+    for t in ths:
+        t.start()
+    for t in ths:
+        t.join()
+    check("6 concurrent scope probes in one process all succeed (unique unit names, serialized)",
+          len(results) == 6 and all(r.ok for r in results), str([r.detail for r in results if not r.ok]))
+    confine._scope_cache[sr] = (time.monotonic() - confine.SCOPE_FAIL_TTL_S - 1, confine.PreflightResult(False, "cgroup-scope-unavailable", "x"))
+    check("a cached probe failure expires after SCOPE_FAIL_TTL_S (5 s), not 60 s", confine.scope_probe(sr).ok)
+    check("scope carries OOMPolicy=kill", "OOMPolicy=kill" in confine.build_argv(golden_plan("eval-untrusted")[0], FakeFacts()))
+
+    # fail closed when systemd-run is unavailable
+    marker = os.path.join(SCRATCH, "cg-ran")
+    old = os.environ.get("AQ_CONFINE_SYSTEMD_RUN")
+    os.environ["AQ_CONFINE_SYSTEMD_RUN"] = "/nonexistent/systemd-run"
+    confine._scope_cache.clear()
+    try:
+        res = sh("eval-untrusted", f"touch {marker}")
+        check("systemd-run unavailable: fail closed, exit 70 setup-failed, child never ran",
+              res.exit_code == 70 and res.status == "setup-failed" and "cgroup-scope-unavailable" in res.reason
+              and not os.path.exists(marker), f"{res.status} {res.exit_code} {res.reason}")
+        stub = os.path.join(SCRATCH, "stub-systemd-run")
+        Path(stub).write_text("#!/bin/sh\nexit 1\n")
+        os.chmod(stub, 0o755)
+        os.environ["AQ_CONFINE_SYSTEMD_RUN"] = stub
+        confine._scope_cache.clear()
+        res = sh("eval-untrusted", f"touch {marker}")
+        check("scope creation failing (stub exits 1): fail closed 70, child never ran",
+              res.exit_code == 70 and "cgroup-scope-unavailable" in res.reason and not os.path.exists(marker), res.reason)
+        Path(stub).write_text("#!/bin/sh\nwhile [ \"$1\" != \"--\" ]; do shift; done; shift; exec \"$@\"\n")
+        confine._scope_cache.clear()
+        res = sh("eval-untrusted", f"touch {marker}")
+        check("a stub that ignores the limits (runs the child unbounded) fails the enforcement probe",
+              res.exit_code == 70 and not os.path.exists(marker), res.reason)
+        os.environ["AQ_CONFINE_SYSTEMD_RUN"] = "/nonexistent/systemd-run"
+        confine._scope_cache.clear()
+        with ProfileDir(custom_profiles("eval-untrusted", lambda d: d["cgroup"].update(allow_rlimit_only=True))):
+            res = py("eval-untrusted", "print('rlimit-only')")
+        check("allow_rlimit_only profile flag runs rlimit-only when no scope can be created",
+              res.status == "ok" and "rlimit-only" in out(res), res.reason)
+    finally:
+        if old is None:
+            os.environ.pop("AQ_CONFINE_SYSTEMD_RUN", None)
+        else:
+            os.environ["AQ_CONFINE_SYSTEMD_RUN"] = old
+        confine._scope_cache.clear()
+
+
 def main():
-    pure = [test_profiles_and_schema, test_explain_goldens, test_env_and_path_policy, test_fail_closed_simulated, test_lint,
+    pure = [test_profiles_and_schema, test_cgroup_scope_pure, test_explain_goldens, test_env_and_path_policy, test_fail_closed_simulated, test_lint,
             test_host_git_hostile_layout, test_hostile_dirs_pure, test_guidance_pure, test_nproc_headroom, test_path_policy_h2]
     behav = [test_secrets_and_env, test_writes_and_net_and_commit, test_git_hostile_inside, test_import_cases,
              test_mid_run_and_kill, test_kill_limits_isolation_guidance, test_size_caps_and_telemetry, test_explain_cli_exact,
-             test_h2_h1_m1_m3_behavioral]
+             test_h2_h1_m1_m3_behavioral, test_cgroup_behavioral]
     if not PF.ok:
         print(f"SKIP-WARN: confinement unavailable ({PF.reason}); {len(behav)} behavioral test groups skipped"
               + (" -- AQ_CONFINE_REQUIRE=1 makes this a failure" if REQUIRE else ""))
