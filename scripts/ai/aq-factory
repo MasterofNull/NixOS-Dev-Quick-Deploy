@@ -1,6 +1,6 @@
 #!/usr/bin/env python3
 """
-aq-factory — Toolbox Factory for dynamic tool scaffolding.
+aq-factory — Universal software dev factory CLI & tool scaffolding.
 """
 try:  # aq-usage-hook
     import importlib.util as _aqu, os as _aqo
@@ -8,16 +8,39 @@ try:  # aq-usage-hook
     _aqm = _aqu.module_from_spec(_aqs); _aqs.loader.exec_module(_aqm); _aqm.record(__file__, __name__)
 except Exception:
     pass
+
 import argparse
+import fnmatch
+import json
+import os
+import re
+import shutil
+import subprocess
+import sys
 from pathlib import Path
 
-REPO_ROOT = Path(__file__).resolve().parents[2]
-DEFAULT_ROOT = REPO_ROOT / "ai-stack" / "agents" / "skills"
-TEMPLATE = DEFAULT_ROOT / "template-skill" / "SKILL.md"
+SCRIPT_DIR = Path(__file__).resolve().parent
+REPO_ROOT = SCRIPT_DIR.parents[1] if SCRIPT_DIR.name == "ai" else SCRIPT_DIR.parents[2]
+if not (REPO_ROOT / "scripts/ai/lib/factory_gate_install.py").exists():
+    curr = SCRIPT_DIR
+    while curr != curr.parent:
+        if (curr / "scripts/ai/lib/factory_gate_install.py").exists():
+            REPO_ROOT = curr
+            break
+        curr = curr.parent
+    else:
+        print("FAIL: repository root containing scripts/ai/lib/factory_gate_install.py not found.", file=sys.stderr)
+        sys.exit(1)
+
+DEFAULT_SKILLS_ROOT = REPO_ROOT / "ai-stack" / "agents" / "skills"
+DEFAULT_KIT_ROOT = REPO_ROOT / "templates" / "factory-kit"
+
+# Import existing installer operations
+sys.path.insert(0, str(REPO_ROOT / "scripts/ai/lib"))
+import factory_gate_install as fgi
 
 
-def render(name: str, purpose: str) -> str:
-    """Skill contract per scripts/governance/lint-skill-template.sh: name+description frontmatter."""
+def render_skill(name: str, purpose: str) -> str:
     return (
         f"---\nname: {name}\ndescription: {purpose}\n---\n\n"
         f"# {name}\n\n## When to use\n\n{purpose}\n\n## Workflow\n\n1. (fill in)\n\n"
@@ -25,24 +48,280 @@ def render(name: str, purpose: str) -> str:
     )
 
 
-def main() -> int:
-    ap = argparse.ArgumentParser(description="Scaffold a lint-conformant skill (SKILL.md) from a name and purpose.")
-    ap.add_argument("name")
-    ap.add_argument("purpose")
-    ap.add_argument("--root", default=str(DEFAULT_ROOT), help="skills root (default ai-stack/agents/skills)")
-    ap.add_argument("--dry-run", action="store_true")
-    a = ap.parse_args()
-    target = Path(a.root) / a.name / "SKILL.md"
+def cmd_skill(args: argparse.Namespace) -> int:
+    target = Path(args.root) / args.name / "SKILL.md"
     if target.exists():
-        print(f"refusing to overwrite {target}")
+        print(f"refusing to overwrite {target}", file=sys.stderr)
         return 1
-    if a.dry_run:
-        print(render(a.name, a.purpose))
+    if args.dry_run:
+        print(render_skill(args.name, args.purpose))
         return 0
     target.parent.mkdir(parents=True, exist_ok=True)
-    target.write_text(render(a.name, a.purpose), encoding="utf-8")
-    print(f"Skill '{a.name}' scaffolded at {target}; next: scripts/governance/lint-skill-template.sh")
+    target.write_text(render_skill(args.name, args.purpose), encoding="utf-8")
+    print(f"Skill '{args.name}' scaffolded at {target}; next: scripts/governance/lint-skill-template.sh")
     return 0
+
+
+def _git(cmd: list[str], cwd: Path) -> subprocess.CompletedProcess[str]:
+    return subprocess.run(["git", *cmd], cwd=cwd, capture_output=True, text=True, check=False)
+
+
+def _resolve_identity(repo: Path, owner_handle_arg: str | None) -> tuple[str, str, str]:
+    """Read local user identity (name, email, owner_handle). Exit 4 if unset."""
+    p_name = _git(["config", "user.name"], repo)
+    name = p_name.stdout.strip()
+    p_email = _git(["config", "user.email"], repo)
+    email = p_email.stdout.strip()
+    if not name or not email:
+        print("FAIL: user.name and user.email must be configured in git before running init.", file=sys.stderr)
+        print("Run:", file=sys.stderr)
+        print("  git config user.name 'Your Name'", file=sys.stderr)
+        print("  git config user.email 'you@example.com'", file=sys.stderr)
+        sys.exit(4)
+
+    handle = (owner_handle_arg or os.environ.get("FACTORY_OWNER_HANDLE", "")).strip()
+    if not handle and shutil.which("gh"):
+        p_gh = subprocess.run(["gh", "api", "user", "--jq", ".login"], capture_output=True, text=True, check=False, timeout=10)
+        if p_gh.returncode == 0:
+            handle = p_gh.stdout.strip()
+    if not handle:
+        print("FAIL: owner handle unset. Specify --owner-handle <handle> or sign in with gh.", file=sys.stderr)
+        sys.exit(4)
+    if not fgi._OWNER_RE.fullmatch(handle):
+        print(f"FAIL: owner handle {handle!r} is invalid. Must match {fgi._OWNER_RE.pattern}", file=sys.stderr)
+        sys.exit(4)
+    if not handle.startswith("@"):
+        handle = "@" + handle
+    return name, email, handle
+
+
+def cmd_init(args: argparse.Namespace) -> int:
+    repo = Path(args.repo).resolve()
+    kit_root = Path(args.kit_root).resolve()
+
+    if sys.platform == "win32":
+        print("FAIL: Native Windows unsupported. Please use WSL.", file=sys.stderr)
+        return 4
+
+    if not (repo / ".git").exists():
+        print(f"FAIL: {repo} is not a git repository.", file=sys.stderr)
+        return 4
+
+    # Idempotency check: if lock already exists
+    lock_file = repo / ".factory" / "kit.lock"
+    receipt_file = repo / ".factory" / "gate-install.json"
+    if lock_file.exists() and receipt_file.exists():
+        if args.json:
+            print(json.dumps({"state": "INSTALLED", "idempotent": True, "repo": str(repo)}))
+        else:
+            print(f"Repository {repo} is already initialized with factory kit.")
+        return 0
+
+    # Tree cleanliness check
+    st = _git(["status", "--porcelain"], repo)
+    if st.stdout.strip():
+        print("FAIL: Working tree is dirty. Stash or commit changes before running init.", file=sys.stderr)
+        return 4
+
+    name, email, handle = _resolve_identity(repo, args.owner_handle)
+    os.environ["FACTORY_OWNER_HANDLE"] = handle.lstrip("@")
+
+    # Preview
+    preview_report = fgi.preview(repo, kit_root, args.stack, args.project_name or repo.name)
+    preview_digest = preview_report["preview_digest"]
+
+    if args.dry_run:
+        if args.json:
+            print(json.dumps(preview_report, indent=2))
+        else:
+            print(f"Preview digest: {preview_digest}")
+            print(f"Manifest paths: {len(preview_report.get('managed_files', {}))}")
+        return 0
+
+    if args.confirm and args.confirm != preview_digest:
+        print(f"FAIL: Confirmation digest mismatch. Expected {preview_digest}, got {args.confirm}", file=sys.stderr)
+        return 4
+
+    # Install
+    install_report = fgi.install(repo, kit_root, args.stack, args.project_name or repo.name)
+
+    # Write kit.lock and .factory/kit.toml
+    factory_dir = repo / ".factory"
+    factory_dir.mkdir(parents=True, exist_ok=True)
+
+    lock_data = {
+        "schema_version": 1,
+        "kit_version": "0.1.0",
+        "preview_digest": preview_digest,
+        "bundle_sha256": preview_report.get("fingerprint", {}).get("bundle_sha256", ""),
+        "owner_handle": handle,
+    }
+    lock_file.write_text(json.dumps(lock_data, indent=2) + "\n", encoding="utf-8")
+
+    # Values formatted via json.dumps to guarantee valid TOML string syntax and prevent injection
+    toml_content = f"""# Factory Kit Configuration
+[owner]
+handle = {json.dumps(handle)}
+
+[kit]
+version = "0.1.0"
+"""
+    (factory_dir / "kit.toml").write_text(toml_content, encoding="utf-8")
+
+    # Set core.hooksPath
+    _git(["config", "core.hooksPath", ".githooks"], repo)
+
+    if args.json:
+        print(json.dumps(install_report, indent=2))
+    else:
+        print(f"Factory kit initialized successfully in {repo}.")
+        print("Suggested next commit:")
+        print("  git add -A && git commit -m 'chore: initialize factory kit'")
+    return 0
+
+
+def cmd_doctor(args: argparse.Namespace) -> int:
+    repo = Path(args.repo).resolve()
+    kit_root = Path(args.kit_root).resolve()
+
+    checks: list[dict[str, str]] = []
+    failures = 0
+
+    def check(name: str, status: str, detail: str = "", fix: str = ""):
+        nonlocal failures
+        if status == "FAIL":
+            failures += 1
+        checks.append({"name": name, "status": status, "detail": detail, "fix": fix})
+
+    # 1. Platform check
+    if sys.platform == "win32":
+        check("platform", "FAIL", "Native Windows detected", "Use WSL")
+    else:
+        check("platform", "OK", "Linux/POSIX environment")
+
+    # 2. Lock and receipt check
+    lock_path = repo / ".factory" / "kit.lock"
+    receipt_path = repo / ".factory" / "gate-install.json"
+    if not lock_path.exists():
+        check("lock_file", "FAIL", "Missing .factory/kit.lock", "Run `aq-factory init`")
+    else:
+        check("lock_file", "OK", str(lock_path))
+
+    if not receipt_path.exists():
+        check("receipt_file", "FAIL", "Missing .factory/gate-install.json", "Run `aq-factory init`")
+    else:
+        check("receipt_file", "OK", str(receipt_path))
+
+    # 3. Hooks configuration check
+    hp = _git(["config", "--get", "core.hooksPath"], repo).stdout.strip()
+    if hp != ".githooks":
+        check("core_hooks_path", "FAIL", f"core.hooksPath is {hp!r}, expected '.githooks'", "git config core.hooksPath .githooks")
+    else:
+        check("core_hooks_path", "OK", ".githooks configured")
+
+    # Check hook files executable
+    for hname in ("pre-commit", "commit-msg"):
+        hfile = repo / ".githooks" / hname
+        if not hfile.exists():
+            check(f"hook_{hname}", "FAIL", f"{hfile} missing", "Re-run init")
+        elif not os.access(hfile, os.X_OK):
+            check(f"hook_{hname}", "FAIL", f"{hfile} not executable", f"chmod +x {hfile}")
+        else:
+            check(f"hook_{hname}", "OK", f"{hfile} executable")
+
+    # 4. Leak/host path check
+    leak_re = re.compile(r"/home/|/run/current-system")
+    found_leaks = []
+    for hfile in (repo / ".githooks").glob("*"):
+        if hfile.is_file():
+            txt = hfile.read_text(encoding="utf-8", errors="ignore")
+            if leak_re.search(txt):
+                found_leaks.append(str(hfile.relative_to(repo)))
+    for ffile in (repo / ".factory").glob("*"):
+        if ffile.is_file():
+            txt = ffile.read_text(encoding="utf-8", errors="ignore")
+            if leak_re.search(txt):
+                found_leaks.append(str(ffile.relative_to(repo)))
+    if found_leaks:
+        check("host_path_leak", "FAIL", f"Host paths detected in {found_leaks}", "Re-run init with relative paths")
+    else:
+        check("host_path_leak", "OK", "No host paths in hooks or .factory files")
+
+    # 5. Required tools on PATH
+    for tool in ("git", "python3", "gitleaks"):
+        if not shutil.which(tool):
+            if tool == "gitleaks":
+                check("tool_gitleaks", "WARN", "gitleaks not found on PATH", "Install gitleaks (https://github.com/gitleaks/gitleaks)")
+            else:
+                check(f"tool_{tool}", "FAIL", f"{tool} not found on PATH", f"Install {tool}")
+        else:
+            check(f"tool_{tool}", "OK", shutil.which(tool) or tool)
+
+    # 6. Foreign hook managers
+    foreign = []
+    if (repo / ".husky").exists():
+        foreign.append(".husky")
+    if (repo / ".pre-commit-config.yaml").exists():
+        foreign.append(".pre-commit-config.yaml")
+    if (repo / "lefthook.yml").exists() or (repo / ".lefthook.yml").exists():
+        foreign.append("lefthook")
+    if foreign:
+        check("foreign_hook_managers", "FAIL", f"Foreign hook manager(s) detected: {foreign}", "Remove foreign hook manager or compose manually")
+    else:
+        check("foreign_hook_managers", "OK", "None detected")
+
+    if args.json:
+        print(json.dumps({"checks": checks, "failures": failures}, indent=2))
+    else:
+        for c in checks:
+            tag = f"[{c['status']}]"
+            print(f"{tag:<8} {c['name']}: {c['detail']}")
+            if c["status"] == "FAIL" and c.get("fix"):
+                print(f"         Fix: {c['fix']}")
+
+    return 1 if failures > 0 else 0
+
+
+def main(argv: list[str] | None = None) -> int:
+    args_list = list(sys.argv[1:] if argv is None else argv)
+    # Finding 5: support legacy positional CLI `aq-factory <name> "<purpose>" [--root <dir>] [--dry-run]`
+    # If argv[0] is not a known subcommand and not an option, treat as `skill`
+    known_subcommands = {"skill", "init", "doctor", "-h", "--help"}
+    if args_list and not args_list[0].startswith("-") and args_list[0] not in known_subcommands:
+        args_list.insert(0, "skill")
+
+    parser = argparse.ArgumentParser(description=__doc__)
+    sub = parser.add_subparsers(dest="command", required=True)
+
+    # Subcommand: skill
+    p_skill = sub.add_parser("skill", help="Scaffold a lint-conformant skill (SKILL.md).")
+    p_skill.add_argument("name")
+    p_skill.add_argument("purpose")
+    p_skill.add_argument("--root", default=str(DEFAULT_SKILLS_ROOT), help="skills root")
+    p_skill.add_argument("--dry-run", action="store_true")
+    p_skill.set_defaults(func=cmd_skill)
+
+    # Subcommand: init
+    p_init = sub.add_parser("init", help="Initialize factory kit in a repository.")
+    p_init.add_argument("--repo", default=".", help="target repository root")
+    p_init.add_argument("--kit-root", default=str(DEFAULT_KIT_ROOT), help="path to template kit")
+    p_init.add_argument("--stack", help="stack name override (e.g. python, node, nix, rust, go)")
+    p_init.add_argument("--project-name", help="project name override")
+    p_init.add_argument("--owner-handle", help="owner handle override (e.g. @username)")
+    p_init.add_argument("--confirm", help="preview digest confirmation for scripted run")
+    p_init.add_argument("--dry-run", action="store_true")
+    p_init.add_argument("--json", action="store_true")
+    p_init.set_defaults(func=cmd_init)
+
+    # Subcommand: doctor
+    p_doctor = sub.add_parser("doctor", help="Verify factory kit installation and health.")
+    p_doctor.add_argument("--repo", default=".", help="target repository root")
+    p_doctor.add_argument("--kit-root", default=str(DEFAULT_KIT_ROOT), help="path to template kit")
+    p_doctor.add_argument("--json", action="store_true")
+    p_doctor.set_defaults(func=cmd_doctor)
+
+    args = parser.parse_args(args_list)
+    return int(args.func(args))
 
 
 if __name__ == "__main__":
