@@ -722,3 +722,14 @@ DP3 PR506 at 7f9ef0f4 has no release acceptance: real worktree confinement, brok
 - Intervenable: `FACTORY_OWNER_HANDLE`; preview-before-install.
 - PM-tracked: `.agents/plans/software-dev-factory-rollout/tracker.json` (factory-kit-k1).
 - Evidence: `docs/harness-first/evidence/2026-10-15-factory-kit-k1.md`.
+
+## AIDB catalog rebuild fetch resilience — 2026-10-16
+
+- Status: **DEFERRED** pending PR integration and an owner-run service or script verification.
+- Integrated: no; the bounded producer change exists only in isolated worktree `fix/aidb-catalog-rebuild`.
+- Turned on: no runtime or Nix configuration changed.
+- Functionally validated: focused transient/permanent fetch regression coverage passed; a real run of the patched worktree script passed (247 MCP / 46 skills). Installed-service activation remains unverified until integration and owner-run service verification.
+- Observable: existing catalog validation reports the entry counts; no new dashboard or service was introduced by this producer-only repair.
+- Intervenable: owner can rerun the service or catalog-sync script after merge and inspect its truthful nonzero failure status.
+- PM-tracked: no pre-existing active plan tracker applies to this one-slice corrective work; evidence is `docs/harness-first/evidence/2026-10-16-aidb-catalog-rebuild.md`.
+- Deferral: verify the merged producer through an owner-run invocation before any activation claim.  Database collation maintenance is separately open and must reindex before refresh.

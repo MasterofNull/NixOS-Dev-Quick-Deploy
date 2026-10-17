@@ -196,6 +196,29 @@ post_documents_jsonl() {
   echo "${count}"
 }
 
+fetch_catalog_with_retries() {
+  local catalog_name="$1"
+  local output_file="$2"
+  local attempt candidate_file
+  shift 2
+
+  candidate_file="${output_file}.attempt"
+  for ((attempt = 1; attempt <= 3; attempt++)); do
+    if "$@" > "${candidate_file}"; then
+      mv "${candidate_file}" "${output_file}"
+      return 0
+    fi
+
+    echo "${catalog_name} fetch failed (attempt ${attempt}/3)." >&2
+    if (( attempt < 3 )); then
+      sleep 1
+    fi
+  done
+
+  echo "${catalog_name} fetch failed after 3 attempts; refusing catalog import." >&2
+  return 1
+}
+
 sync_mcp_catalog() {
   local tmp_dir api_key
   tmp_dir="$(mktemp -d)"
@@ -207,10 +230,8 @@ sync_mcp_catalog() {
   wait_for_aidb_health
 
   echo "Fetching MCP registry catalog..."
-  if ! curl -fsS --max-time 30 "${MCP_REGISTRY_URL}" > "${tmp_dir}/mcp_registry.json" 2>/dev/null; then
-    echo "WARNING: Could not reach MCP registry (network unavailable or DNS failure). Skipping sync." >&2
-    exit 0
-  fi
+  fetch_catalog_with_retries "MCP registry" "${tmp_dir}/mcp_registry.json" \
+    curl -fsS --connect-timeout 5 --max-time 30 "${MCP_REGISTRY_URL}"
   jq -c --arg project "${PROJECT}" --arg ts "$(date -u +"%Y-%m-%dT%H:%M:%SZ")" '
     (.servers // [])
     | map(.server)
@@ -267,7 +288,8 @@ sync_skill_catalog() {
   api_key="$(load_api_key)"
 
   echo "Fetching curated skills catalog..."
-  python "${SKILL_LISTER}" --format json > "${tmp_dir}/curated_skills.json"
+  fetch_catalog_with_retries "Curated skills catalog" "${tmp_dir}/curated_skills.json" \
+    timeout --foreground 30s python "${SKILL_LISTER}" --format json
   jq -c --arg project "${PROJECT}" --arg ts "$(date -u +"%Y-%m-%dT%H:%M:%SZ")" '
     .[]
     | {
@@ -314,6 +336,7 @@ main() {
   require_cmd curl
   require_cmd jq
   require_cmd python
+  require_cmd timeout
 
   local mode="sync-and-validate"
   while [[ $# -gt 0 ]]; do
