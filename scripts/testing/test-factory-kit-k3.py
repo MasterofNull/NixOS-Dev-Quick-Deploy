@@ -59,11 +59,26 @@ def test_init_and_doctor_lifecycle(base: Path) -> None:
                               capture_output=True, text=True)
     assert res_init.returncode == 0, f"init failed: {res_init.stderr}\n{res_init.stdout}"
     assert (repo / ".factory/kit.lock").is_file()
-    assert (repo / "kit.toml").is_file()
+    assert (repo / ".factory/kit.toml").is_file()
+    assert not (repo / "kit.toml").exists()
     assert (repo / ".githooks/pre-commit").is_file()
     assert (repo / ".githooks/commit-msg").is_file()
     assert os.access(repo / ".githooks/pre-commit", os.X_OK)
     assert os.access(repo / ".githooks/commit-msg", os.X_OK)
+
+    # Verify no host path leaks in .factory or repo
+    for p in (repo / ".factory").glob("*"):
+        if p.is_file():
+            content = p.read_text(encoding="utf-8")
+            assert "/home/" not in content, f"host path leak in {p}: {content}"
+            assert "/run/current-system" not in content, f"host path leak in {p}: {content}"
+
+    # Verify valid TOML parsing
+    if sys.version_info >= (3, 11):
+        import tomllib
+        with open(repo / ".factory/kit.toml", "rb") as f:
+            parsed = tomllib.load(f)
+            assert parsed.get("owner", {}).get("handle") == "@testuser"
 
     # Verify CODEOWNERS has handle
     codeowners = (repo / ".github/CODEOWNERS").read_text(encoding="utf-8")
@@ -80,13 +95,44 @@ def test_init_and_doctor_lifecycle(base: Path) -> None:
     assert res_idem.returncode == 0, f"idempotent init failed: {res_idem.stderr}"
 
 
+def test_legacy_cli_and_toml_escaping(base: Path) -> None:
+    # Test legacy CLI form: aq-factory <name> <purpose> [--dry-run]
+    res_legacy = subprocess.run([sys.executable, str(AQ_FACTORY), "legacy-tool", "Legacy purpose", "--dry-run"],
+                                capture_output=True, text=True)
+    assert res_legacy.returncode == 0, f"legacy CLI invocation failed: {res_legacy.stderr}"
+    assert "name: legacy-tool" in res_legacy.stdout
+
+    # Test quotes and invalid owner handles
+    repo = new_repo(base, "quote-user")
+    sh("git", "config", "user.name", 'Test "Quote" User', cwd=repo)
+    sh("git", "config", "user.email", "quote@example.test", cwd=repo)
+
+    # Invalid owner handle rejected (finding 6)
+    res_bad_handle = subprocess.run([sys.executable, str(AQ_FACTORY), "init", "--repo", str(repo), "--owner-handle", "bad;inject"],
+                                    capture_output=True, text=True)
+    assert res_bad_handle.returncode == 4, f"expected rc=4 for invalid handle, got {res_bad_handle.returncode}"
+
+    # Valid init with quote user
+    res_init = subprocess.run([sys.executable, str(AQ_FACTORY), "init", "--repo", str(repo), "--owner-handle", "tester"],
+                              capture_output=True, text=True)
+    assert res_init.returncode == 0, f"init with quote user failed: {res_init.stderr}"
+    assert (repo / ".factory/kit.toml").is_file()
+
+    if sys.version_info >= (3, 11):
+        import tomllib
+        with open(repo / ".factory/kit.toml", "rb") as f:
+            parsed = tomllib.load(f)
+            assert parsed.get("owner", {}).get("handle") == "@tester"
+
+
 def main() -> int:
     with tempfile.TemporaryDirectory(prefix="factory-k3-") as tmp:
         base = Path(tmp)
         test_skill_subcommand_preserved(base)
         test_init_identity_enforcement(base)
         test_init_and_doctor_lifecycle(base)
-    print("PASS: factory kit K3 (aq-factory init + doctor lifecycle, identity enforcement, skill preservation)")
+        test_legacy_cli_and_toml_escaping(base)
+    print("PASS: factory kit K3 (aq-factory init + doctor lifecycle, identity enforcement, skill preservation, legacy CLI, clean TOML)")
     return 0
 
 
