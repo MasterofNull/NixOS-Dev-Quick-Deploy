@@ -33,11 +33,11 @@
     },
     {
       "id": "k2",
-      "name": "Kit tree, KIT-MANIFEST allowlist, orphan-commit release, signed tag",
+      "name": "Kit template dir + clean-scan (no signing/release)",
       "phase": "v0.1",
       "kind": "slice",
-      "goal": "Kit tree, KIT-MANIFEST allowlist, orphan-commit release, signed tag",
-      "validation_goal": "DESIGN.md section 8 K2 acceptance tests pass; release 0.1",
+      "goal": "Kit template dir + clean-scan (no signing/release)",
+      "validation_goal": "scripts/testing/test-factory-kit-k2.py passes (clean kit passes; planted owner string, host path, secrets file, symlink fail); scripts/governance/check-factory-kit-clean.py exits 0 incl. gitleaks",
       "deps": [
         "k1"
       ],
@@ -49,11 +49,11 @@
     },
     {
       "id": "k3",
-      "name": "aq-factory standalone: fetch/verify/lock/init/doctor",
+      "name": "init/doctor via existing installer from the local clone",
       "phase": "v0.1",
       "kind": "slice",
-      "goal": "aq-factory standalone: fetch/verify/lock/init/doctor",
-      "validation_goal": "DESIGN.md section 8 K3 acceptance tests pass; release 0.1",
+      "goal": "init/doctor via existing installer from the local clone",
+      "validation_goal": "DESIGN.md v2.3 K3: init + read-only doctor via factory_gate_install.py, no signature verification; tests pass",
       "deps": [
         "k2"
       ],
