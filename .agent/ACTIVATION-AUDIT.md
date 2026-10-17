@@ -713,3 +713,12 @@ DP3 PR506 at 7f9ef0f4 has no release acceptance: real worktree confinement, brok
 - `aq-functional-eval --endpoint` does NOT exist (flags: `--dry-run`, `--prompt`, `--verbose`, `--json`, `--model`, `--mock-ratio`); the endpoint comes from env `LLAMA_URL` / `LLAMA_PORT`. The "Intervenable" line for FE-2a was wrong on that flag.
 - `aq-prompt-compile --max-iterations` does NOT exist (flags: `--prompt`, `--dry-run`, `--adopt`, `--check-only`, `--verbose`, `--json`). The FE-2b "Intervenable" line was wrong on that flag.
 - "AST and execution sandboxing" was NOT implemented: the FE-2a library `exec()`ed generated code in-process with no AST check and no isolation. Fixed 2026-10-14 (branch fix/post-merge-hygiene-488-500): untrusted code now runs in a `bwrap` subprocess (no network, tmpfs HOME/tmp, timeout) and live mode refuses when bwrap is absent; repo fixtures only use the trusted in-process path. There is still no AST validation.
+
+## Factory kit K1 blockers (B1/B2/B5/B17/B18) — 2026-10-15 — branch feat/factory-kit-k1
+- Integrated: `scripts/ai/lib/factory_gate_install.py` install/retrofit live path; bundle `templates/factory-gate-bundle/`.
+- Turned ON: default for all installs/retrofits.
+- Functionally validated: `scripts/testing/test-factory-kit-k1.py` + 7 existing factory suites + bundle self-test PASS. Real consumer retrofit deferred to K7 (T17), dated 2026-10-15.
+- Observable: `checks.install_hints` in preview/status/receipt; `doctor` deferred to K3, dated 2026-10-15.
+- Intervenable: `FACTORY_OWNER_HANDLE`; preview-before-install.
+- PM-tracked: `.agents/plans/software-dev-factory-rollout/tracker.json` (factory-kit-k1).
+- Evidence: `docs/harness-first/evidence/2026-10-15-factory-kit-k1.md`.
