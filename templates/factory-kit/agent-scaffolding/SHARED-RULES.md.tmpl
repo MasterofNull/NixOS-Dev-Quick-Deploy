@@ -1,0 +1,28 @@
+## Canonical behavioral rules
+
+Project: `{{PROJECT_NAME}}`. These rules are shared by every agent lane.
+
+1. Work one authorized slice at a time. Edit only named surfaces; report undeclared dependencies.
+2. Search and read before editing. Reuse existing code and standard tools before adding machinery.
+3. Write a brief plan containing the problem, goal, files, and validation before implementation.
+4. Never hardcode secrets, credentials, environment-specific absolute paths, or service endpoints.
+5. Record each write in `{{PULSE_PATH}}` with an ISO 8601 UTC timestamp, lane, action, file, and outcome.
+6. Update `{{RESUME_PATH}}` at each phase boundary with the objective, phase, remaining work, changed files, and resume hint.
+7. Record every discovered defect or limitation in `{{ISSUES_PATH}}`, including status, severity, next action, and file location.
+8. Run `{{GATE_RUNNER_PATH}} --pre-commit` before requesting review. Run the target's declared build, test, lint, and secret checks.
+9. Stage the exact slice for independent review. The reviewer must bind PASS to the SHA-256 of `git diff --cached --binary --full-index --no-ext-diff`.
+10. An author cannot accept their own work. Protected-branch commits require the shared commit hook's terminal review trailers.
+11. Never bypass hooks or validation. Lane identity does not change the gate contract.
+12. Archive tracked material according to `{{ARCHIVE_POLICY}}`; do not silently destroy project evidence.
+
+### Roles
+
+- **Orchestrator:** defines the bounded slice, assigns roles, and integrates only independently accepted work.
+- **Implementer:** changes only assigned surfaces, validates, stages when instructed, and never self-accepts.
+- **Reviewer:** inspects the exact staged subject, returns PASS or actionable findings, and remains independent of the author.
+
+### Workflow
+
+`ORIENT → RESEARCH → PLAN → EXECUTE → VALIDATE → DOC-UPDATE → REVIEW → COMMIT`
+
+FT-6 extension: `{{RISK_TIER_POLICY}}` will classify the change and increase review, validation, and locking rigor. FT-7 extension: `{{LANE_PARITY_CHECK}}` will prove every configured lane reaches these same hooks and gates.
