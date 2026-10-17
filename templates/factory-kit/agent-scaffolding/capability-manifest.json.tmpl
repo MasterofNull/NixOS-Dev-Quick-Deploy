@@ -1,0 +1,20 @@
+{
+  "schema_version": 1,
+  "generated_by": "factory_gate_install.render_values",
+  "source_repository": "{{SOURCE_REPOSITORY}}",
+  "declaration_policy": "state is one of available | unavailable | unauthorized; endpoint is a resolved reference bound to the deploying environment, never a copied host-specific literal; an unavailable or unauthorized capability MUST be treated as absent, never substituted with a guessed live target.",
+  "capabilities": {
+    "hybrid_coordinator": {
+      "kind": "shared_engine_transport",
+      "state": "{{HYBRID_COORDINATOR_STATE}}",
+      "endpoint": "{{HYBRID_COORDINATOR_ENDPOINT}}",
+      "source": "{{HYBRID_COORDINATOR_SOURCE}}"
+    },
+    "aidb": {
+      "kind": "shared_engine_transport",
+      "state": "{{AIDB_STATE}}",
+      "endpoint": "{{AIDB_ENDPOINT}}",
+      "source": "{{AIDB_SOURCE}}"
+    }
+  }
+}

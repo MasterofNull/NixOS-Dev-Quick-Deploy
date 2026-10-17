@@ -1,5 +1,7 @@
 # FACTORY-TEMPLATE-DESIGN v2 — in-repo signed kit, full-parity consumer repos that learn their project
 
+> **v2.3 owner simplification 2026-10-16 (binding).** Git repo + auth are each local user's own sign-in/config supplied at system init and deployment; the kit must not contain or depend on the owner's account info. SUPERSEDED: sections 1.1-1.4 (signed tag, orphan kit commit, verification, signer fields in `kit.lock`), tests T4b/T6/T6b/T9, `aq-factory release`, and the "Owner key" open decision. K2 = `templates/factory-kit/` + clean-scan (`scripts/governance/check-factory-kit-clean.py`: owner identity, host paths, secret-like filenames, symlinks, gitleaks). K3 = `init`/`doctor` via the existing installer (`scripts/ai/lib/factory_gate_install.py`) from the user's own clone, no signature verification.
+
 Status: DESIGN v2 (architect, 2026-10-15). Supersedes v1 (`FACTORY-TEMPLATE-DESIGN.md`, kept) for sections 0, 2, 3, 5, 6, 7 and the slice plan; v1 section 1 (asset inventory table) and section 4 (blockers B1-B16) remain valid and are amended in section 0.3 / section 8 here. Review input: `FACTORY-TEMPLATE-DESIGN-REVIEW.md` (findings F1-F9). Citations `file:line` verified in worktree dec-s1 (base 447c6d3e) or in the read-only inspect clone `mcp-repo-inspect/` of MasterofNull/Mendocino-Coastal-Plants (HEAD 4eac7a2). `[UNVERIFIED]` = not confirmed.
 
 v2.2 (2026-10-15, owner clarification): repo is PUBLIC; anonymous HTTPS fetch; each user's own identity; non-owner-consumer decision and Mendocino decision resolved (S1.1, S3.1, S5.1-5.2, S7 T18, S8).
