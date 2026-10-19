@@ -1648,6 +1648,110 @@
         };
       };
 
+      aqDecide = {
+        enable = lib.mkOption {
+          type = lib.types.bool;
+          default = false;
+          description = "Enable aq-decide System 1 local decision engine service, health monitoring, and state directories.";
+        };
+
+        mode = lib.mkOption {
+          type = lib.types.enum ["off" "shadow" "advise" "enforce"];
+          default = "off";
+          description = "Global decision enforcement mode ceiling (off, shadow, advise, enforce).";
+        };
+
+        embedder = {
+          enable = lib.mkOption {
+            type = lib.types.bool;
+            default = false;
+            description = "Enable dedicated small llama.cpp embedding instance (bge-small) for T1 open-weight decisions.";
+          };
+
+          port = lib.mkOption {
+            type = lib.types.port;
+            default = 8082;
+            description = "Port for aq-decide T1 dedicated embedding instance.";
+          };
+
+          huggingFaceRepo = lib.mkOption {
+            type = lib.types.str;
+            default = "CompendiumLabs/bge-small-en-v1.5-gguf";
+            description = "HuggingFace repo for aq-decide T1 embedder model.";
+          };
+
+          huggingFaceFile = lib.mkOption {
+            type = lib.types.str;
+            default = "bge-small-en-v1.5-q8_0.gguf";
+            description = "GGUF filename for aq-decide T1 embedder model.";
+          };
+
+          sha256 = lib.mkOption {
+            type = lib.types.nullOr lib.types.str;
+            default = "ec38e8da142596baa913124ae50550de284b6916bf59577ef2f0cb9660c2f514";
+            description = "SHA-256 integrity hash for aq-decide T1 embedder GGUF model.";
+          };
+
+          gpuLayers = lib.mkOption {
+            type = lib.types.int;
+            default = 0;
+            description = "GPU offload layers for T1 embedder. Starts CPU-only (0) to preserve main-model VRAM.";
+          };
+        };
+
+        integrations = {
+          taskProfile = {
+            mode = lib.mkOption {
+              type = lib.types.enum ["off" "shadow" "advise" "enforce"];
+              default = "off";
+              description = "Integration mode for task-profile classification.";
+            };
+          };
+
+          retryEscalate = {
+            mode = lib.mkOption {
+              type = lib.types.enum ["off" "shadow" "advise" "enforce"];
+              default = "off";
+              description = "Integration mode for retry/escalate classification.";
+            };
+          };
+
+          rag = {
+            mode = lib.mkOption {
+              type = lib.types.enum ["off" "shadow" "advise" "enforce"];
+              default = "off";
+              description = "Integration mode for RAG retrieval decisions.";
+            };
+          };
+
+          approvals = {
+            mode = lib.mkOption {
+              type = lib.types.enum ["off" "shadow" "advise" "enforce"];
+              default = "off";
+              description = "Integration mode for approvals triage.";
+            };
+          };
+
+          egress = {
+            mode = lib.mkOption {
+              type = lib.types.enum ["off" "shadow" "advise" "enforce"];
+              default = "off";
+              description = "Integration mode for egress friction table.";
+            };
+          };
+        };
+
+        train = {
+          timer = {
+            enable = lib.mkOption {
+              type = lib.types.bool;
+              default = false;
+              description = "Enable periodic offline retraining timer for decision models.";
+            };
+          };
+        };
+      };
+
       listenOnLan = lib.mkOption {
         type = lib.types.bool;
         default = false;
@@ -3345,6 +3449,12 @@
         type = lib.types.port;
         default = 8081;
         description = "llama.cpp embedding HTTP port.";
+      };
+
+      aqDecideEmbedder = lib.mkOption {
+        type = lib.types.port;
+        default = 8082;
+        description = "aq-decide T1 dedicated embedding instance HTTP port.";
       };
 
       qdrantHttp = lib.mkOption {
