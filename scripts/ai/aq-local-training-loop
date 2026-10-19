@@ -187,6 +187,8 @@ def _score_response(response: str, case: Dict) -> Dict[str, Any]:
         "missing_keywords": [k for k in keywords if k.lower() not in response.lower()],
         "word_count": words,
         "pass": score >= 0.6,
+        "prompt_excerpt": str(case.get("query", ""))[:400],
+        "response_excerpt": response.strip()[:400],
     }
 
 
@@ -633,6 +635,19 @@ def _build_improvement_context(ingest_report: Dict) -> str:
     return "\n".join(lines)
 
 
+ALLOWED_CHANGE_TYPES = ("system_prompt", "profile", "eval_case", "knowledge_seed", "switchboard_config")
+MIN_PROPOSAL_CONFIDENCE = 0.6
+_PROPOSAL_EXAMPLE = {
+    "root_cause": "The model answers generically because the system prompt never tells it that "
+                  "the harness routes embeddings through the hybrid coordinator.",
+    "change_type": "system_prompt",
+    "change_description": "Add one sentence to the local system prompt naming the hybrid coordinator "
+                          "as the embedding and retrieval entry point.",
+    "expected_keyword_gains": ["hybrid-coordinator"],
+    "confidence": 0.7,
+}
+
+
 def _generate_improvement_prompt(
     failing_cases: List[Dict],
     ingest_report: Dict,
@@ -642,22 +657,103 @@ def _generate_improvement_prompt(
     """
     ctx = _build_improvement_context(ingest_report)
     cases_text = "\n".join(
-        f"  - case={r['case_id']} score={r['score']} missing={r['missing_keywords']}"
-        for r in failing_cases[:8]
+        f"  - case={r['case_id']} score={r['score']} missing={r['missing_keywords']}\n"
+        f"    case prompt: {r.get('prompt_excerpt', '')[:400]!r}\n"
+        f"    model answer: {r.get('response_excerpt', '')[:400]!r}"
+        for r in failing_cases[:5]
     )
     return (
         f"{ctx}\n\n"
         "You are reviewing eval results for the local Qwen3-35B AI harness.\n\n"
         "FAILING EVAL CASES:\n"
         f"{cases_text}\n\n"
-        "Propose 3 concrete, targeted improvements to fix these failures. Each improvement must:\n"
-        "1. Identify the root cause (missing knowledge, wrong profile, prompt framing issue)\n"
-        "2. Specify the exact change (system prompt addition, profile tweak, switchboard config)\n"
-        "3. Predict which missing keywords would be covered after the change\n"
-        "4. Be safe to apply without human review (no secrets, no port changes, no model swap)\n\n"
-        "Output as JSON array with keys: root_cause, change_type, change_description, "
-        "expected_keyword_gains, confidence (0-1)."
+        "Propose up to 3 concrete, targeted improvements to fix these failures. Each must:\n"
+        "1. Identify the root cause by comparing the case prompt with the model answer\n"
+        "2. Specify the exact change (system prompt addition, profile tweak, eval case, "
+        "knowledge seed, switchboard config)\n"
+        "3. List only keywords from the 'missing' lists that the change would cover\n"
+        "4. Be safe to apply (no secrets, no port changes, no model swap)\n\n"
+        f"change_type must be one of: {', '.join(ALLOWED_CHANGE_TYPES)}. "
+        "confidence is a number from 0 to 1.\n"
+        "Respond with a JSON array only, no prose, no markdown. Example of one valid element:\n"
+        f"[{json.dumps(_PROPOSAL_EXAMPLE)}]"
     )
+
+
+def _parse_improvements(response: str) -> Optional[List[Any]]:
+    """Return the JSON array in ``response`` or None; never falls back to raw text."""
+    clean = (response or "").strip()
+    if "```" in clean:
+        parts = clean.split("```")
+        if len(parts) > 1:
+            clean = parts[1]
+            if clean.lstrip().lower().startswith("json"):
+                clean = clean.lstrip()[4:]
+            clean = clean.strip()
+    start, end = clean.find("["), clean.rfind("]") + 1
+    if start < 0 or end <= start:
+        return None
+    try:
+        parsed = json.loads(clean[start:end])
+    except json.JSONDecodeError:
+        return None
+    return parsed if isinstance(parsed, list) else None
+
+
+def _validate_proposal(imp: Any, failing: List[Dict]) -> "tuple[bool, List[str]]":
+    """Quality gate for a model-proposed improvement. Returns (ok, reasons)."""
+    if not isinstance(imp, dict):
+        return False, ["not_an_object"]
+    reasons: List[str] = []
+    for key in ("root_cause", "change_description"):
+        val = imp.get(key)
+        if not isinstance(val, str) or len(val.strip()) < 40:
+            reasons.append(f"{key}_missing_or_short")
+        elif re.search(r"\(score=\d", val):
+            reasons.append(f"{key}_is_retrieval_line")
+    if imp.get("change_type") not in ALLOWED_CHANGE_TYPES:
+        reasons.append("change_type_invalid")
+    gains = imp.get("expected_keyword_gains")
+    allowed_kw = {str(k).lower() for r in failing for k in r.get("missing_keywords", [])}
+    if not isinstance(gains, list) or not gains:
+        reasons.append("expected_keyword_gains_empty")
+    elif not all(isinstance(g, str) and g.lower() in allowed_kw for g in gains):
+        reasons.append("expected_keyword_gains_not_in_missing_keywords")
+    conf = imp.get("confidence")
+    if isinstance(conf, bool) or not isinstance(conf, (int, float)) or not 0 <= conf <= 1:
+        reasons.append("confidence_missing_or_out_of_range")
+    elif conf < MIN_PROPOSAL_CONFIDENCE:
+        reasons.append("confidence_below_threshold")
+    return not reasons, reasons
+
+
+def _norm_text(text: str) -> str:
+    return " ".join(str(text).lower().split())
+
+
+def _proposal_title(root_cause: str, limit: int = 120) -> str:
+    text = " ".join(root_cause.split())
+    if len(text) <= limit:
+        return text
+    return text[:limit].rsplit(" ", 1)[0]
+
+
+def _pending_proposal_keys(path: Path) -> set:
+    """(change_type, normalized root_cause) of proposals still awaiting review."""
+    keys: set = set()
+    try:
+        with open(path, encoding="utf-8") as fh:
+            for line in fh:
+                try:
+                    rec = json.loads(line)
+                except json.JSONDecodeError:
+                    continue
+                if rec.get("status") in ("pending", "review_pending"):
+                    ev = rec.get("evidence") or {}
+                    keys.add((rec.get("change_type"), _norm_text(ev.get("root_cause") or rec.get("title", ""))))
+    except OSError:
+        pass
+    return keys
 
 
 # ── loop ───────────────────────────────────────────────────────────────────────
@@ -964,41 +1060,27 @@ class TrainingLoop:
 
         # ── 4. IMPROVE ─────────────────────────────────────────────────────────
         improvements: List[Dict] = []
+        improve_parse_failure: Optional[str] = None
+        proposals_rejected: List[Dict] = []
         if failing:
             print(f"[training-loop] Phase 4: generating improvements for {len(failing)} failures")
             improve_prompt = _generate_improvement_prompt(failing, ingest_report)
             # SYNCHRONOUS foreground dispatch (same service-context fix as the
             # eval loop above — background dispatch never registered).
+            # "direct" = no RAG: retrieval hits must not leak into the proposals.
             improve_response, improve_tid = await asyncio.to_thread(
-                _run_task_sync, improve_prompt, "hybrid", 0, self.task_timeout,
+                _run_task_sync, improve_prompt, "direct", EVAL_DIRECT_TIMEOUT_S, self.task_timeout,
             )
-            if improve_tid or improve_response:
-                if improve_response:
-                    # Parse JSON array from response (may be wrapped in markdown).
-                    try:
-                        clean_resp = improve_response.strip()
-                        if "```json" in clean_resp:
-                            clean_resp = clean_resp.split("```json", 1)[1].split("```", 1)[0].strip()
-                        elif "```" in clean_resp:
-                            clean_resp = clean_resp.split("```", 1)[1].split("```", 1)[0].strip()
-                        start = clean_resp.find("[")
-                        end   = clean_resp.rfind("]") + 1
-                        if start >= 0 and end > start:
-                            improvements = json.loads(clean_resp[start:end])
-                        else:
-                            raise ValueError("No JSON array bounds found")
-                    except (json.JSONDecodeError, ValueError):
-                        # Extract non-empty bullet points or paragraphs if available
-                        paragraphs = [
-                            p.strip() for p in improve_response.split("\n\n")
-                            if p.strip() and not p.strip().startswith("```")
-                        ]
-                        if len(paragraphs) > 1:
-                            improvements = [{"raw": p[:500]} for p in paragraphs[:3]]
-                        else:
-                            improvements = [{"raw": improve_response[:500]}]
-                    if self.verbose:
-                        print(f"[training-loop]   {len(improvements)} improvement proposals")
+            if improve_response:
+                parsed = _parse_improvements(improve_response)
+                if parsed is None:
+                    improve_parse_failure = improve_response.strip()[:200]
+                    print("[training-loop] IMPROVE: response is not a JSON array — zero proposals",
+                          file=sys.stderr)
+                else:
+                    improvements = parsed
+                if self.verbose:
+                    print(f"[training-loop]   {len(improvements)} improvement proposals")
 
         # ── 5. VALIDATE ────────────────────────────────────────────────────────
         # (Placeholder for a future re-run-with-improvements cycle.
@@ -1010,38 +1092,35 @@ class TrainingLoop:
                 print("[training-loop] IMPROVE: proposals recorded but NOT applied — scorer uncertified")
             # For now, log improvements as pending proposals for human review.
             proposals_path = TELEMETRY_DIR / "optimization_proposals.jsonl"
+            seen = _pending_proposal_keys(proposals_path)
             for imp in improvements:
-                if not isinstance(imp, dict):
-                    imp = {"raw": str(imp)}
-                if imp.get("root_cause"):
-                    title = imp["root_cause"]
-                elif imp.get("title"):
-                    title = imp["title"]
-                elif imp.get("raw"):
-                    raw_text = str(imp["raw"]).strip()
-                    lines = [
-                        l.strip().lstrip("-*# 1234567890.").strip()
-                        for l in raw_text.splitlines()
-                        if l.strip().lstrip("-*# 1234567890.").strip()
-                    ]
-                    title = lines[0][:80] if lines else "Training loop finding"
-                else:
-                    title = "Training loop finding"
-
-                rationale = imp.get("change_description") or imp.get("rationale") or imp.get("raw") or ""
-
+                ok, reasons = _validate_proposal(imp, failing)
+                if ok:
+                    key = (imp["change_type"], _norm_text(imp["root_cause"]))
+                    if key in seen:
+                        ok, reasons = False, ["duplicate_pending"]
+                    else:
+                        seen.add(key)
+                if not ok:
+                    proposals_rejected.append({
+                        "reason": reasons,
+                        "root_cause": str(imp.get("root_cause", "") if isinstance(imp, dict) else imp)[:120],
+                    })
+                    continue
                 proposal = {
                     "proposal_id": f"loop-{run_id}-{len(validated_improvements)}",
                     "proposal_type": "training_loop_finding",
-                    "title": title,
-                    "rationale": rationale,
+                    "change_type": imp["change_type"],
+                    "title": _proposal_title(imp["root_cause"]),
+                    "rationale": imp["change_description"],
                     "evidence": {
+                        "root_cause": imp["root_cause"],
                         "failing_cases": [s["case_id"] for s in failing],
-                        "expected_keyword_gains": imp.get("expected_keyword_gains", []),
+                        "expected_keyword_gains": imp["expected_keyword_gains"],
                     },
                     "status": "pending",
                     "approval_required": True,
-                    "confidence": imp.get("confidence", 0.5),
+                    "confidence": imp["confidence"],
                     "created_at": _now(),
                     "source": "aq-local-training-loop",
                 }
@@ -1074,6 +1153,8 @@ class TrainingLoop:
             "scores": scores,
             "improvement_proposals": validated_improvements,
             "improvements_proposed": len(validated_improvements),
+            "proposals_rejected": proposals_rejected,
+            "improve_parse_failure": improve_parse_failure,
             "dry_run": self.dry_run,
         }
 
