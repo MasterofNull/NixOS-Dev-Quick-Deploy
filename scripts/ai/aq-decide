@@ -32,6 +32,7 @@ def main(argv: list[str]) -> int:
     s = sub.add_parser("shadow"); s.add_argument("question"); s.add_argument("text")
     e = sub.add_parser("explain"); e.add_argument("question")
     sub.add_parser("stats")
+    sr = sub.add_parser("shadow-report"); sr.add_argument("--question", default="task_profile")
     b = sub.add_parser("bench"); b.add_argument("--n", type=int, default=500); b.add_argument("--question", default="task_profile")
     a = ap.parse_args(argv)
     dec = aq_decide.Decider()
@@ -55,6 +56,38 @@ def main(argv: list[str]) -> int:
                           "features": list(q["features"]), "counters": dec.counters, "rules": [r["id"] for r in q.get("rules", [])],
                           "t05": {"mode": "shadow-only", "train_rows": m.n_train if m else 0,
                                   "class_counts": m.class_counts if m else {}}}, indent=2)); return 0
+    if a.cmd == "shadow-report":
+        total = 0
+        shadow_count = 0
+        agree_count = 0
+        decisions_by_answer: dict[str, int] = {}
+        if dec.log_path.exists():
+            for line in dec.log_path.read_text().splitlines():
+                if not line.strip():
+                    continue
+                try:
+                    row = json.loads(line)
+                    if row.get("question") == a.question:
+                        total += 1
+                        ans = row.get("answer")
+                        if ans:
+                            decisions_by_answer[ans] = decisions_by_answer.get(ans, 0) + 1
+                        sh = row.get("shadow")
+                        if sh:
+                            shadow_count += 1
+                            if ans and sh.get("answer") == ans:
+                                agree_count += 1
+                except Exception:
+                    pass
+        print(json.dumps({
+            "question": a.question,
+            "total_decisions": total,
+            "shadow_decisions": shadow_count,
+            "agreement_count": agree_count,
+            "agreement_rate": round(agree_count / shadow_count, 4) if shadow_count else None,
+            "decisions_by_answer": decisions_by_answer,
+        }, indent=2))
+        return 0
     texts = ["write a python function that parses the log file and returns counts " * (1 + i % 20) for i in range(a.n)]
     dec.shadow_predict(a.question, texts[0])
     lat = []
