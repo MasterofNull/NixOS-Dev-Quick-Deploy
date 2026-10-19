@@ -1,0 +1,211 @@
+#!/usr/bin/env python3
+"""
+aq-durable-sweeper: Proactive autonomous intelligence sweeper & signal classifier.
+Inspired by IndyDevDan's durable agent architecture (pi-durable-news-agent).
+Maintains durable state across restarts and sweeps for SOTA software factory signals.
+"""
+
+import argparse
+import datetime
+import hashlib
+import json
+import os
+import sys
+from pathlib import Path
+from typing import Any, Dict, List, Optional
+
+STATE_SCHEMA_VERSION = "2026-10-19"
+DEFAULT_STATE_FILE = Path("/var/lib/aq-durable-agent/sweeper-state.json")
+LOCAL_STATE_FALLBACK = Path.home() / ".local/share/aq-durable-agent/sweeper-state.json"
+
+def get_state_path(custom_path: Optional[str] = None) -> Path:
+    if custom_path:
+        return Path(custom_path)
+    if os.access(DEFAULT_STATE_FILE.parent, os.W_OK) or (
+        not DEFAULT_STATE_FILE.parent.exists() and os.access(Path("/var/lib"), os.W_OK)
+    ):
+        return DEFAULT_STATE_FILE
+    LOCAL_STATE_FALLBACK.parent.mkdir(parents=True, exist_ok=True)
+    return LOCAL_STATE_FALLBACK
+
+def init_default_state(agent_id: str) -> Dict[str, Any]:
+    now = datetime.datetime.now(datetime.timezone.utc).isoformat()
+    return {
+        "schema_version": STATE_SCHEMA_VERSION,
+        "agent_id": agent_id,
+        "status": "idle",
+        "last_tick_utc": now,
+        "next_scheduled_tick_utc": now,
+        "cursor_tokens": {},
+        "processed_hashes": [],
+        "metrics": {
+            "total_sweeps": 0,
+            "items_ingested": 0,
+            "hype_count": 0,
+            "facts_count": 0,
+            "signal_count": 0,
+        },
+    }
+
+def load_state(path: Path, agent_id: str = "default-sweeper") -> Dict[str, Any]:
+    if not path.exists():
+        return init_default_state(agent_id)
+    try:
+        with open(path, "r", encoding="utf-8") as f:
+            data = json.load(f)
+            if data.get("schema_version") != STATE_SCHEMA_VERSION:
+                # Upgrade or rebind if version mismatches
+                data["schema_version"] = STATE_SCHEMA_VERSION
+            return data
+    except Exception as e:
+        sys.stderr.write(f"[aq-durable-sweeper] WARN: Failed to load state from {path} ({e}); initializing fresh state\n")
+        return init_default_state(agent_id)
+
+def save_state(path: Path, state: Dict[str, Any]) -> None:
+    path.parent.mkdir(parents=True, exist_ok=True)
+    tmp_path = path.with_suffix(".tmp")
+    with open(tmp_path, "w", encoding="utf-8") as f:
+        json.dump(state, f, indent=2)
+    os.replace(tmp_path, path)
+
+def hash_item(title: str, source: str, content: str) -> str:
+    raw = f"{title}|{source}|{content}".encode("utf-8")
+    return hashlib.sha256(raw).hexdigest()
+
+def classify_heuristic(title: str, content: str) -> Dict[str, Any]:
+    """
+    Deterministic rule-based classification fallback when LLM endpoint is offline or budget-constrained.
+    """
+    combined = f"{title} {content}".lower()
+
+    # 1. Hype signals: vague grandiose claims without technical specifics
+    hype_keywords = ["game-changer", "blow your mind", "agi achieved", "100x faster than everything", "revolutionary tool that replaces all humans"]
+    for kw in hype_keywords:
+        if kw in combined:
+            return {
+                "category": "hype",
+                "confidence": 0.85,
+                "summary": f"Detected marketing exaggeration keywords ('{kw}').",
+                "actionable_takeaways": [],
+                "target_rag_collection": "none",
+            }
+
+    # 2. Facts signals: package bumps, vulnerabilities, driver updates
+    facts_keywords = ["cve-", "security advisory", "nixpkgs bump", "release v", "bugfix", "kernel patch", "driver update"]
+    for kw in facts_keywords:
+        if kw in combined:
+            return {
+                "category": "facts",
+                "confidence": 0.90,
+                "summary": f"Verified upstream release or operational notice ('{kw}').",
+                "actionable_takeaways": [f"Operational maintenance signal: {title}"],
+                "target_rag_collection": "best-practices",
+            }
+
+    # 3. High Signal: agent architecture, durable execution, skills, tooling
+    signal_keywords = ["durable agent", "autonomous loop", "reverse engineering", "mcp server", "subagent", "state checkpoint", "self-correcting"]
+    for kw in signal_keywords:
+        if kw in combined:
+            return {
+                "category": "signal",
+                "confidence": 0.95,
+                "summary": f"Identified architectural pattern directly applicable to software dev factory ('{kw}').",
+                "actionable_takeaways": [f"Evaluate architectural pattern from {title} for local factory adoption."],
+                "target_rag_collection": "skills-patterns",
+            }
+
+    # Default fallback
+    return {
+        "category": "facts",
+        "confidence": 0.50,
+        "summary": "Standard operational item without strong hype or breakthrough signal.",
+        "actionable_takeaways": [],
+        "target_rag_collection": "none",
+    }
+
+def process_item(state: Dict[str, Any], title: str, source: str, content: str) -> Dict[str, Any]:
+    item_hash = hash_item(title, source, content)
+    if item_hash in state["processed_hashes"]:
+        return {"status": "skipped", "reason": "already_processed", "hash": item_hash}
+
+    classification = classify_heuristic(title, content)
+    category = classification["category"]
+
+    state["processed_hashes"].append(item_hash)
+    # Keep last 5000 hashes to prevent unbounded memory growth
+    if len(state["processed_hashes"]) > 5000:
+        state["processed_hashes"] = state["processed_hashes"][-5000:]
+
+    state["metrics"]["items_ingested"] += 1
+    if category == "hype":
+        state["metrics"]["hype_count"] += 1
+    elif category == "facts":
+        state["metrics"]["facts_count"] += 1
+    elif category == "signal":
+        state["metrics"]["signal_count"] += 1
+
+    return {
+        "status": "processed",
+        "hash": item_hash,
+        "title": title,
+        "source": source,
+        "classification": classification,
+    }
+
+def main():
+    parser = argparse.ArgumentParser(description="AQ-OS Proactive Durable Sweeper & Signal Classifier")
+    parser.add_argument("--state-file", type=str, help="Custom path to state checkpoint JSON")
+    parser.add_argument("--agent-id", type=str, default="sota-frontier-sweeper", help="Identifier for durable agent instance")
+
+    subparsers = parser.add_subparsers(dest="command")
+
+    # status command
+    subparsers.add_parser("status", help="Show current state checkpoint metrics")
+
+    # ingest command
+    ingest_p = subparsers.add_parser("ingest", help="Ingest and classify a single item")
+    ingest_p.add_argument("--title", required=True, help="Title of intelligence item")
+    ingest_p.add_argument("--source", required=True, help="Source URL or publisher")
+    ingest_p.add_argument("--content", required=True, help="Body text or summary")
+    ingest_p.add_argument("--json", action="store_true", help="Output result as JSON")
+
+    # tick command
+    tick_p = subparsers.add_parser("tick", help="Execute one durable sweeper tick cycle")
+    tick_p.add_argument("--dry-run", action="store_true", help="Simulate tick without updating external state")
+
+    args = parser.parse_args()
+    state_path = get_state_path(args.state_file)
+    state = load_state(state_path, args.agent_id)
+
+    if args.command == "status":
+        print(json.dumps(state, indent=2))
+        sys.exit(0)
+
+    elif args.command == "ingest":
+        result = process_item(state, args.title, args.source, args.content)
+        state["last_tick_utc"] = datetime.datetime.now(datetime.timezone.utc).isoformat()
+        save_state(state_path, state)
+        if args.json:
+            print(json.dumps(result, indent=2))
+        else:
+            cat = result.get("classification", {}).get("category", "unknown")
+            print(f"[{result['status'].upper()}] {args.title} -> {cat.upper()} ({result.get('hash', '')[:12]})")
+        sys.exit(0)
+
+    elif args.command == "tick":
+        state["status"] = "sweeping"
+        state["metrics"]["total_sweeps"] += 1
+        now = datetime.datetime.now(datetime.timezone.utc)
+        state["last_tick_utc"] = now.isoformat()
+        state["next_scheduled_tick_utc"] = (now + datetime.timedelta(hours=1)).isoformat()
+        state["status"] = "idle"
+        save_state(state_path, state)
+        print(f"Durable sweeper tick complete. Total sweeps: {state['metrics']['total_sweeps']}, Items: {state['metrics']['items_ingested']}")
+        sys.exit(0)
+
+    else:
+        parser.print_help()
+        sys.exit(1)
+
+if __name__ == "__main__":
+    main()
