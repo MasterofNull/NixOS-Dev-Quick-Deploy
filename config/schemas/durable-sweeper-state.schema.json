@@ -1,0 +1,67 @@
+{
+  "$schema": "http://json-schema.org/draft-07/schema#",
+  "title": "DurableSweeperState",
+  "description": "State checkpoint schema for proactive durable agents across restarts and ticks",
+  "type": "object",
+  "required": [
+    "schema_version",
+    "agent_id",
+    "last_tick_utc",
+    "cursor_tokens",
+    "processed_hashes",
+    "metrics"
+  ],
+  "properties": {
+    "schema_version": {
+      "type": "string",
+      "enum": ["2026-10-19"]
+    },
+    "agent_id": {
+      "type": "string",
+      "pattern": "^[a-zA-Z0-9_-]+$"
+    },
+    "status": {
+      "type": "string",
+      "enum": ["idle", "sweeping", "ranking", "storing", "error_paused"]
+    },
+    "last_tick_utc": {
+      "type": "string",
+      "format": "date-time"
+    },
+    "next_scheduled_tick_utc": {
+      "type": "string",
+      "format": "date-time"
+    },
+    "cursor_tokens": {
+      "type": "object",
+      "additionalProperties": {
+        "type": "string"
+      }
+    },
+    "processed_hashes": {
+      "type": "array",
+      "items": {
+        "type": "string",
+        "pattern": "^[a-f0-9]{64}$"
+      }
+    },
+    "metrics": {
+      "type": "object",
+      "required": [
+        "total_sweeps",
+        "items_ingested",
+        "hype_count",
+        "facts_count",
+        "signal_count"
+      ],
+      "properties": {
+        "total_sweeps": { "type": "integer", "minimum": 0 },
+        "items_ingested": { "type": "integer", "minimum": 0 },
+        "hype_count": { "type": "integer", "minimum": 0 },
+        "facts_count": { "type": "integer", "minimum": 0 },
+        "signal_count": { "type": "integer", "minimum": 0 }
+      }
+    }
+  },
+  "additionalProperties": false
+}
