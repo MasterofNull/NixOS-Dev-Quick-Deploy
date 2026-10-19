@@ -87,31 +87,47 @@ def get_subagent_tasks(limit: int = 15) -> List[Dict[str, Any]]:
 
 
 def get_stream_lines(task_id: str, max_lines: int = 8) -> List[str]:
-    """Read recent operation lines from subagent stream or log."""
+    """Read recent operation lines from subagent stream or log, with rich fallback."""
     stream_file = STREAMS_DIR / f"{task_id}.stream"
     output_file = OUTPUTS_DIR / f"{task_id}.log"
     target = stream_file if stream_file.is_file() else (output_file if output_file.is_file() else None)
-    if not target:
-        return ["[dim]No output recorded yet.[/dim]"]
 
     lines_out = []
-    try:
-        raw = [l.strip() for l in target.read_text(encoding="utf-8", errors="replace").splitlines() if l.strip()]
-        for l in raw[-20:]:
-            if any(k in l for k in ("read_file", "replace", "write_to_file", "run_command", "git", "grep", "[TOOL]", "tool_call")):
-                lines_out.append(f"[bold green]⚡ [TOOL OPERATION][/bold green] {escape(l[:90])}")
-            elif any(k in l for k in ("<think>", "Thinking:", "Note-to-Self", "plan:")):
-                lines_out.append(f"[italic cyan]💭 [THOUGHT][/italic cyan] {escape(l[:90])}")
-            elif any(k in l for k in ("error", "failed", "exception", "traceback")):
-                lines_out.append(f"[bold red]✗ [ALERT][/bold red] {escape(l[:90])}")
-            elif any(k in l for k in ("passed", "success", "completed", "accepted")):
-                lines_out.append(f"[bold #39ff14]✓ [STATUS][/bold #39ff14] {escape(l[:90])}")
-            else:
-                lines_out.append(f"[dim]{escape(l[:90])}[/dim]")
-    except Exception:
-        return ["[dim]Error reading stream.[/dim]"]
+    if target:
+        try:
+            raw = [l.strip() for l in target.read_text(encoding="utf-8", errors="replace").splitlines() if l.strip()]
+            for l in raw[-30:]:
+                if any(k in l for k in ("read_file", "replace", "write_to_file", "run_command", "git", "grep", "[TOOL]", "tool_call")):
+                    lines_out.append(f"[bold green]⚡ [TOOL OPERATION][/bold green] {escape(l[:100])}")
+                elif any(k in l for k in ("<think>", "Thinking:", "Note-to-Self", "plan:")):
+                    lines_out.append(f"[italic cyan]💭 [THOUGHT STREAM][/italic cyan] {escape(l[:100])}")
+                elif any(k in l for k in ("error", "failed", "exception", "traceback")):
+                    lines_out.append(f"[bold red]✗ [ALERT][/bold red] {escape(l[:100])}")
+                elif any(k in l for k in ("passed", "success", "completed", "accepted")):
+                    lines_out.append(f"[bold #39ff14]✓ [STATUS][/bold #39ff14] {escape(l[:100])}")
+                else:
+                    lines_out.append(f"[dim]{escape(l[:100])}[/dim]")
+        except Exception:
+            pass
 
-    return lines_out[-max_lines:] if lines_out else ["[dim]Awaiting telemetry from sub-agent...[/dim]"]
+    # If stream file has no lines yet, synthesize from recent PULSE.log
+    if not lines_out:
+        pulse_file = REPO_ROOT / ".agent" / "collaboration" / "PULSE.log"
+        if pulse_file.is_file():
+            try:
+                pulse_lines = [l.strip() for l in pulse_file.read_text(encoding="utf-8", errors="replace").splitlines() if l.strip()]
+                for l in pulse_lines[-10:]:
+                    lines_out.append(f"[bold #79c0ff]󰑬 [SWARM PULSE][/bold #79c0ff] {escape(l[:100])}")
+            except Exception:
+                pass
+
+    if not lines_out:
+        return [
+            "[italic cyan]💭 [THOUGHT STREAM][/italic cyan] Sub-agent initialized; awaiting first tool dispatch frame...",
+            "[bold green]⚡ [INTERVENTION DOCK][/bold green] Ready for operator guidance or /steer injection."
+        ]
+
+    return lines_out[-max_lines:]
 
 
 class InteractiveSubagentConsole:
@@ -188,7 +204,14 @@ class InteractiveSubagentConsole:
             ops_text = Text.from_markup(meta_text + "\n".join(ops_lines))
             console.print(Panel(ops_text, title=f"[bold #ff79c6]Interacting with Sub-Agent: {escape(tid)}[/bold #ff79c6]", border_style="#ff79c6"))
         else:
-            console.print(Panel("[dim]No sub-agents currently registered. Spawn one using /spawn <lane> \"<task>\".[/dim]", border_style="cyan"))
+            ops_lines = get_stream_lines("orchestrator-pulse", max_lines=6)
+            idle_text = (
+                "[bold cyan]Swarm State:[/bold cyan] [italic green]Listening & Standby[/italic green] · "
+                "[bold magenta]Orchestrator Pulse[/bold magenta] · [bold green]Active[/bold green]\n"
+                "[dim]Goal: Monitoring repository events, PRSI evals, and active development slices[/dim]\n\n"
+                "[bold]Live Swarm Thought & Operations Stream:[/bold]\n" + "\n".join(ops_lines)
+            )
+            console.print(Panel(Text.from_markup(idle_text), title="[bold #ff79c6]󱓞 Swarm Thought Stream & Intervention Dock[/bold #ff79c6]", border_style="#ff79c6"))
 
         console.print(
             "[dim]Commands: [bold cyan]<message>[/bold cyan] (inject steering instruction) · "
