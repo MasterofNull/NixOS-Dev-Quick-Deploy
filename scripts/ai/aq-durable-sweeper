@@ -47,26 +47,45 @@ def init_default_state(agent_id: str) -> Dict[str, Any]:
         },
     }
 
+import fcntl
+
 def load_state(path: Path, agent_id: str = "default-sweeper") -> Dict[str, Any]:
     if not path.exists():
         return init_default_state(agent_id)
     try:
         with open(path, "r", encoding="utf-8") as f:
-            data = json.load(f)
+            fcntl.flock(f.fileno(), fcntl.LOCK_SH)
+            try:
+                data = json.load(f)
+            finally:
+                fcntl.flock(f.fileno(), fcntl.LOCK_UN)
             if data.get("schema_version") != STATE_SCHEMA_VERSION:
-                # Upgrade or rebind if version mismatches
                 data["schema_version"] = STATE_SCHEMA_VERSION
             return data
     except Exception as e:
-        sys.stderr.write(f"[aq-durable-sweeper] WARN: Failed to load state from {path} ({e}); initializing fresh state\n")
+        sys.stderr.write(f"[aq-durable-sweeper] ERROR: Failed to load state from {path} ({e})\n")
+        # Do not discard existing state on read failure; backup corrupted state
+        corrupted_backup = path.with_suffix(f".corrupted.{int(datetime.datetime.now().timestamp())}.json")
+        try:
+            if path.exists():
+                os.rename(path, corrupted_backup)
+                sys.stderr.write(f"[aq-durable-sweeper] Preserved corrupted state at {corrupted_backup}\n")
+        except Exception:
+            pass
         return init_default_state(agent_id)
 
 def save_state(path: Path, state: Dict[str, Any]) -> None:
     path.parent.mkdir(parents=True, exist_ok=True)
-    tmp_path = path.with_suffix(".tmp")
-    with open(tmp_path, "w", encoding="utf-8") as f:
-        json.dump(state, f, indent=2)
-    os.replace(tmp_path, path)
+    lock_file = path.with_suffix(".lock")
+    with open(lock_file, "w", encoding="utf-8") as lf:
+        fcntl.flock(lf.fileno(), fcntl.LOCK_EX)
+        try:
+            tmp_path = path.with_suffix(".tmp")
+            with open(tmp_path, "w", encoding="utf-8") as f:
+                json.dump(state, f, indent=2)
+            os.replace(tmp_path, path)
+        finally:
+            fcntl.flock(lf.fileno(), fcntl.LOCK_UN)
 
 def hash_item(title: str, source: str, content: str) -> str:
     raw = f"{title}|{source}|{content}".encode("utf-8")
@@ -114,11 +133,11 @@ def classify_heuristic(title: str, content: str) -> Dict[str, Any]:
                 "target_rag_collection": "skills-patterns",
             }
 
-    # Default fallback
+    # Default fallback: do not presume facts for unverified general text
     return {
         "category": "facts",
-        "confidence": 0.50,
-        "summary": "Standard operational item without strong hype or breakthrough signal.",
+        "confidence": 0.20,
+        "summary": "Unverified general text without actionable operational or architecture signal.",
         "actionable_takeaways": [],
         "target_rag_collection": "none",
     }
@@ -193,6 +212,9 @@ def main():
         sys.exit(0)
 
     elif args.command == "tick":
+        if args.dry_run:
+            print(f"[DRY-RUN] Simulated durable sweeper tick. Active status: {state['status']}, Total sweeps: {state['metrics']['total_sweeps']}")
+            sys.exit(0)
         state["status"] = "sweeping"
         state["metrics"]["total_sweeps"] += 1
         now = datetime.datetime.now(datetime.timezone.utc)
