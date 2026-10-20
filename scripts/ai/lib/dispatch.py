@@ -479,8 +479,29 @@ def classify_task_type(prompt: str, mode: str = "direct") -> str:
     if any(k in p for k in _TASK_REASONING_SIGNALS):
         return "reasoning"
     if has_code_signals:
-        return "code"
-    return "code"
+        heuristic = "code"
+    else:
+        heuristic = "code"
+
+    # DEC-S3: aq-decide I2 task-profile routing shadow
+    try:
+        from aq_decide import Decider  # type: ignore
+        _d = Decider()
+        if _d.enabled():
+            _res = _d.decide(
+                {
+                    "state": {"text": prompt, "mode": mode},
+                    "questions": {"task_profile": {"type": "choice"}},
+                },
+                caller="dispatch.classify_task_type",
+            )
+            # When aq-decide is promoted to advise/enforce in future slices,
+            # decided answers can be adopted. In DEC-S3 shadow phase, always
+            # preserve byte-for-byte existing heuristic return.
+    except Exception:
+        pass
+
+    return heuristic
 
 
 # ── harness grounding supplement ─────────────────────────────────────────────
