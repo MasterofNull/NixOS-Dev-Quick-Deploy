@@ -1,0 +1,120 @@
+#!/usr/bin/env python3
+"""
+aq-human-intervention — SOTA one-click/single-command human steering and intervention dock.
+Provides rapid operator control over active sub-agents:
+  • pause: signals running task to pause execution and await user instructions
+  • resume: signals paused task to resume execution
+  • skip: tells agent to skip current stuck step and proceed to next objective
+  • edit: injects modified intent/constraint into agent's active memory
+  • cancel: aborts running task cleanly with an audit pulse
+"""
+
+import argparse
+import json
+import os
+import sys
+from datetime import datetime, timezone
+from pathlib import Path
+from typing import Any, Dict, List, Optional
+
+REPO_ROOT = Path(__file__).resolve().parents[2]
+REGISTRY_FILE = REPO_ROOT / ".agents" / "delegation" / "registry.jsonl"
+CONTROL_DIR = REPO_ROOT / ".agents" / "delegation" / "control"
+PULSE_LOG = REPO_ROOT / ".agent" / "collaboration" / "PULSE.log"
+
+def get_latest_task_id() -> Optional[str]:
+    """Retrieve the most recent running or active subagent task id."""
+    if not REGISTRY_FILE.is_file():
+        return None
+    try:
+        lines = [l.strip() for l in REGISTRY_FILE.read_text(encoding="utf-8").splitlines() if l.strip()]
+        for line in reversed(lines):
+            rec = json.loads(line)
+            if rec.get("status", "").lower() in ("running", "active", "in_flight"):
+                return rec.get("id")
+        if lines:
+            return json.loads(lines[-1]).get("id")
+    except Exception:
+        pass
+    return None
+
+def send_control_message(task_id: str, kind: str, text: str) -> Dict[str, Any]:
+    """Atomically append a control message into the task's intervention queue."""
+    CONTROL_DIR.mkdir(parents=True, exist_ok=True)
+    queue_file = CONTROL_DIR / f"{task_id}.jsonl"
+    record = {
+        "ts": datetime.now(timezone.utc).isoformat(),
+        "kind": kind,
+        "text": text,
+        "from": "operator-dock",
+    }
+    with open(queue_file, "a", encoding="utf-8") as f:
+        f.write(json.dumps(record) + "\n")
+
+    # Record in pulse log
+    if PULSE_LOG.is_file():
+        try:
+            pulse_entry = f"[{record['ts']}] [operator] [intervention]: {task_id} — {kind.upper()}: {text}\n"
+            with open(PULSE_LOG, "a", encoding="utf-8") as pf:
+                pf.write(pulse_entry)
+        except Exception:
+            pass
+
+    return record
+
+def main():
+    parser = argparse.ArgumentParser(description="AQ-OS One-Click Human Intervention Dock")
+    parser.add_argument("--task-id", help="Target task ID (defaults to active running task)")
+    subparsers = parser.add_subparsers(dest="action", required=True)
+
+    # pause
+    p_pause = subparsers.add_parser("pause", help="Pause task and await operator guidance")
+    p_pause.add_argument("--reason", default="Operator requested pause", help="Pause rationale")
+
+    # resume
+    p_resume = subparsers.add_parser("resume", help="Resume paused task")
+    p_resume.add_argument("--instruction", default="Resume execution", help="Resume instruction")
+
+    # skip
+    p_skip = subparsers.add_parser("skip", help="Skip current stuck step")
+    p_skip.add_argument("--step-name", default="current-step", help="Name or description of step to skip")
+
+    # edit
+    p_edit = subparsers.add_parser("edit", help="Edit intent or inject constraint")
+    p_edit.add_argument("intent", help="New intent or constraint text")
+
+    # cancel
+    p_cancel = subparsers.add_parser("cancel", help="Cancel task")
+    p_cancel.add_argument("--reason", default="Operator requested cancellation", help="Cancel rationale")
+
+    args = parser.parse_args()
+    task_id = args.task_id or get_latest_task_id()
+
+    if not task_id:
+        print("[aq-human-intervention] ERROR: No active sub-agent found to steer.", file=sys.stderr)
+        sys.exit(1)
+
+    if args.action == "pause":
+        rec = send_control_message(task_id, "pause", args.reason)
+        print(f"✓ PAUSED {task_id}: {args.reason}")
+
+    elif args.action == "resume":
+        rec = send_control_message(task_id, "resume", args.instruction)
+        print(f"✓ RESUMED {task_id}: {args.instruction}")
+
+    elif args.action == "skip":
+        msg = f"Skip step '{args.step_name}' and proceed to the next milestone."
+        rec = send_control_message(task_id, "skip", msg)
+        print(f"✓ SKIPPED {task_id}: {msg}")
+
+    elif args.action == "edit":
+        msg = f"Intent updated by operator: {args.intent}"
+        rec = send_control_message(task_id, "edit_intent", msg)
+        print(f"✓ INTENT UPDATED for {task_id}: {args.intent}")
+
+    elif args.action == "cancel":
+        rec = send_control_message(task_id, "cancel", args.reason)
+        print(f"✓ CANCELLED {task_id}: {args.reason}")
+
+if __name__ == "__main__":
+    main()
