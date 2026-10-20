@@ -26,5 +26,6 @@
     ./revocation-epoch-authority.nix
     ./workflow-deviation-broker.nix
     ./activation-auto-revert-guard.nix
+    ./durable-sweeper.nix
   ];
 }
