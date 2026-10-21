@@ -147,3 +147,31 @@ class EgressRulesEngine:
             "reason_code": reason,
             "collapsed": False,
         }
+
+
+def check_egress_cli(lane: str, host: str, port: int = 443) -> int:
+    """CLI helper to evaluate an egress connection.
+    Prints result JSON and returns:
+      0: allow (outcome == 'none')
+      1: flagged (outcome == 'flag')
+      2: held/blocked (outcome == 'hold')
+    """
+    engine = EgressRulesEngine()
+    verdict = engine.evaluate({"lane": lane, "dest_host": host, "dest_port": port})
+    print(json.dumps(verdict))
+    if verdict.get("outcome") == "hold":
+        return 2
+    if verdict.get("outcome") == "flag":
+        return 1
+    return 0
+
+
+if __name__ == "__main__":
+    import sys
+    if len(sys.argv) < 3:
+        print(f"Usage: {sys.argv[0]} <lane> <dest_host> [dest_port]", file=sys.stderr)
+        sys.exit(3)
+    lane_arg = sys.argv[1]
+    host_arg = sys.argv[2]
+    port_arg = int(sys.argv[3]) if len(sys.argv) > 3 else 443
+    sys.exit(check_egress_cli(lane_arg, host_arg, port_arg))
