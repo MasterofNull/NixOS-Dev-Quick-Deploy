@@ -1355,16 +1355,22 @@ class TaskRegistry:
         return 0
 
     @staticmethod
-    def _pid_alive(pid: int) -> bool:
+    def _pid_alive(pid: object) -> bool:
+        if pid in (None, "", "null", "None"):
+            return False
         try:
-            os.kill(pid, 0)
+            val = int(pid)
+        except (TypeError, ValueError):
+            return False
+        try:
+            os.kill(val, 0)
         except ProcessLookupError:
             return False
         except PermissionError:
             return True
         # A zombie still answers kill(0); treat it as dead.
         try:
-            with open(f"/proc/{pid}/stat") as fh:
+            with open(f"/proc/{val}/stat") as fh:
                 return fh.read().rsplit(")", 1)[1].split()[0] != "Z"
         except (OSError, IndexError):
             return True

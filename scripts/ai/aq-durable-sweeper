@@ -171,6 +171,38 @@ def process_item(state: Dict[str, Any], title: str, source: str, content: str) -
         "classification": classification,
     }
 
+def sweep_local_sources(state: Dict[str, Any]) -> int:
+    """Sweep real system intelligence feeds:
+    1. Frontier evidence intake backlog (.agents/plans/frontier-evidence-intake/BACKLOG.jsonl)
+    2. Issues backlog and bug patterns
+    Returns number of newly processed items.
+    """
+    repo_root = Path(__file__).resolve().parents[2]
+    backlog_path = repo_root / ".agents/plans/frontier-evidence-intake/BACKLOG.jsonl"
+    ingested = 0
+
+    if backlog_path.is_file():
+        try:
+            with open(backlog_path, "r", encoding="utf-8") as f:
+                for line in f:
+                    line = line.strip()
+                    if not line:
+                        continue
+                    try:
+                        doc = json.loads(line)
+                        title = doc.get("technique") or doc.get("id") or "Untitled"
+                        source = doc.get("source") or "frontier-backlog"
+                        content = f"{doc.get('claim', '')} {doc.get('proposed_slice', '')}"
+                        res = process_item(state, title, source, content)
+                        if res.get("status") == "processed":
+                            ingested += 1
+                    except Exception:
+                        continue
+        except Exception as e:
+            sys.stderr.write(f"[aq-durable-sweeper] Warning: failed reading backlog: {e}\n")
+
+    return ingested
+
 def main():
     parser = argparse.ArgumentParser(description="AQ-OS Proactive Durable Sweeper & Signal Classifier")
     parser.add_argument("--state-file", type=str, help="Custom path to state checkpoint JSON")
@@ -217,12 +249,13 @@ def main():
             sys.exit(0)
         state["status"] = "sweeping"
         state["metrics"]["total_sweeps"] += 1
+        new_items = sweep_local_sources(state)
         now = datetime.datetime.now(datetime.timezone.utc)
         state["last_tick_utc"] = now.isoformat()
         state["next_scheduled_tick_utc"] = (now + datetime.timedelta(hours=1)).isoformat()
         state["status"] = "idle"
         save_state(state_path, state)
-        print(f"Durable sweeper tick complete. Total sweeps: {state['metrics']['total_sweeps']}, Items: {state['metrics']['items_ingested']}")
+        print(f"Durable sweeper tick complete. Total sweeps: {state['metrics']['total_sweeps']}, New items: {new_items}, Total ingested: {state['metrics']['items_ingested']}")
         sys.exit(0)
 
     else:

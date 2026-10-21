@@ -141,6 +141,24 @@ budget_gate_dispatch() {
     return 0  # never fail the caller under `set -e`
 }
 
+# Remote lane egress evaluation: evaluate outbound network endpoint friction
+# (config/remote-lane-egress.json) before launching the external CLI.
+# Audits connection targets and enforces rate-limited holds/flags on anomalous endpoints.
+egress_gate_eval() {
+    local lane="$1" target_host="${2:-api.openai.com}" target_port="${3:-443}"
+    local egress_tool="$SCRIPT_DIR/lib/remote_lane_egress.py"
+    [[ -f "$egress_tool" ]] || return 0
+    local verdict rc=0
+    verdict="$(python3 "$egress_tool" "$lane" "$target_host" "$target_port" 2>/dev/null)" || rc=$?
+    if [[ $rc -eq 2 ]]; then
+        die "Remote lane egress friction gate HELD this dispatch: ${verdict}
+  Destination host '${target_host}' tripped high-signal or hold rules.
+  Table: config/remote-lane-egress.json"
+    fi
+    [[ $rc -eq 1 ]] && info "Remote lane egress friction WARNING: ${verdict}"
+    return 0
+}
+
 require_codex() {
     [[ -x "$CODEX_BIN" ]] || die "Codex CLI not found at $CODEX_BIN
   Install: npm install -g @openai/codex
@@ -406,6 +424,7 @@ cmd_delegate() {
     policy_gate_action codex "$mode" "$id"
     guard_outbound_prompt "$prompt" "$id"
     budget_gate_dispatch codex
+    egress_gate_eval codex "${CODEX_API_HOST:-api.openai.com}"
 
     # Check daily headless token budget
     daily_budget_check "$force_budget"
