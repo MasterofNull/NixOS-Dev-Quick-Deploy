@@ -155,6 +155,8 @@ class TestAgenticWorkspace(unittest.TestCase):
         self.assertIn("AQ-OS Telemetry Cockpit", res.stdout)
         self.assertIn("AI Services", res.stdout)
         self.assertIn("Local Inference Engine", res.stdout)
+        self.assertIn("Durable Sweeper", res.stdout)
+        self.assertIn("System 1", res.stdout)
 
     def test_fleet_monitor_once(self):
         """Verify aq-fleet-monitor --once renders fleet matrix."""
