@@ -12,6 +12,7 @@ from __future__ import annotations
 
 import asyncio
 import os
+import re
 import tempfile
 import time
 from dataclasses import dataclass
@@ -44,6 +45,8 @@ class BrowserResearchPolicy:
     user_agent: str
     chromium_binary: str
     virtual_time_budget_ms: int
+    crawl_budget_max_requests: int
+    crawl_budget_max_seconds: float
 
 
 def _env_bool(name: str, default: str) -> bool:
@@ -89,7 +92,48 @@ def load_browser_research_policy() -> BrowserResearchPolicy:
         or "nixos-dev-quick-deploy-browser-research/1.0 (+respectful bounded browser fetch)",
         chromium_binary=os.getenv("AI_BROWSER_RESEARCH_CHROMIUM_BIN", "chromium").strip() or "chromium",
         virtual_time_budget_ms=_env_int("AI_BROWSER_RESEARCH_VIRTUAL_TIME_BUDGET_MS", 8000, minimum=1000),
+        crawl_budget_max_requests=_env_int("AI_BROWSER_RESEARCH_CRAWL_MAX_REQUESTS", 10, minimum=1),
+        crawl_budget_max_seconds=_env_float("AI_BROWSER_RESEARCH_CRAWL_MAX_SECONDS", 60.0, minimum=5.0),
     )
+
+
+def extract_structured_dom(soup: BeautifulSoup, base_url: str = "") -> Dict[str, Any]:
+    """Structured extraction: metadata, heading hierarchy, and tabular data."""
+    meta: Dict[str, str] = {}
+    for tag in soup.find_all("meta"):
+        name = tag.get("name") or tag.get("property") or tag.get("http-equiv")
+        content = tag.get("content")
+        if name and content:
+            clean_name = str(name).strip().lower()
+            clean_content = str(content).strip()
+            if clean_name and clean_content and len(clean_name) < 80:
+                meta[clean_name] = clean_content[:500]
+
+    headings: List[Dict[str, Any]] = []
+    for h in soup.find_all(re.compile(r"^h[1-6]$"))[:30]:
+        try:
+            level = int(h.name[1])
+            text = h.get_text(separator=" ", strip=True)
+            if text:
+                headings.append({"level": level, "text": text[:200]})
+        except (ValueError, IndexError):
+            pass
+
+    tables: List[List[List[str]]] = []
+    for t in soup.find_all("table")[:5]:
+        rows: List[List[str]] = []
+        for tr in t.find_all("tr")[:25]:
+            cells = [cell.get_text(separator=" ", strip=True)[:150] for cell in tr.find_all(["td", "th"])[:12]]
+            if any(cells):
+                rows.append(cells)
+        if rows:
+            tables.append(rows)
+
+    return {
+        "metadata": meta,
+        "headings": headings,
+        "tables": tables,
+    }
 
 
 async def _dump_browser_dom(
@@ -141,6 +185,9 @@ async def fetch_browser_research(
     urls: List[Any],
     selectors: Optional[List[Any]] = None,
     max_text_chars: Optional[int] = None,
+    structured_extract: bool = False,
+    crawl_budget_max_requests: Optional[int] = None,
+    crawl_budget_max_seconds: Optional[float] = None,
     transport: Optional[httpx.AsyncBaseTransport] = None,
     sleep_fn: Optional[Callable[[float], Awaitable[None]]] = None,
     browser_runner: Optional[Callable[..., Awaitable[tuple[int, str, str]]]] = None,
@@ -155,6 +202,9 @@ async def fetch_browser_research(
     effective_sleep = sleep_fn or asyncio.sleep
     enforce_ssrf = transport is None and browser_runner is None
 
+    max_reqs_budget = crawl_budget_max_requests if crawl_budget_max_requests is not None else policy.crawl_budget_max_requests
+    max_secs_budget = crawl_budget_max_seconds if crawl_budget_max_seconds is not None else policy.crawl_budget_max_seconds
+
     metrics = {
         "submitted_urls": len(list(urls)),
         "accepted_urls": len(normalized_urls),
@@ -162,6 +212,8 @@ async def fetch_browser_research(
         "robots_requests": 0,
         "delays_applied": 0,
         "delay_seconds_total": 0.0,
+        "crawl_budget_exceeded": False,
+        "crawl_elapsed_seconds": 0.0,
     }
     results: List[Dict[str, Any]] = []
     skipped: List[Dict[str, Any]] = []
@@ -172,8 +224,22 @@ async def fetch_browser_research(
         "User-Agent": policy.user_agent,
         "Accept": "text/html,application/xhtml+xml",
     }
+    crawl_start = time.monotonic()
     async with httpx.AsyncClient(timeout=policy.timeout_seconds, headers=headers, transport=transport) as client:
         for url in normalized_urls:
+            now = time.monotonic()
+            elapsed_crawl = now - crawl_start
+            metrics["crawl_elapsed_seconds"] = round(elapsed_crawl, 3)
+
+            if metrics["browser_requests"] >= max_reqs_budget:
+                metrics["crawl_budget_exceeded"] = True
+                skipped.append({"url": url, "reason": "crawl_budget_max_requests_exceeded"})
+                continue
+            if elapsed_crawl >= max_secs_budget:
+                metrics["crawl_budget_exceeded"] = True
+                skipped.append({"url": url, "reason": "crawl_budget_max_seconds_exceeded"})
+                continue
+
             parsed = urlparse(url)
             host = (parsed.hostname or "").strip().lower()
             if not host:
@@ -229,25 +295,29 @@ async def fetch_browser_research(
 
             soup = BeautifulSoup(html or "", "html.parser")
             extracted = _extract_text(soup, normalized_selectors, effective_max_text_chars)
-            results.append(
-                {
-                    "requested_url": url,
-                    "final_url": url,
-                    "status_code": 200,
-                    "host": host,
-                    "title": extracted["title"],
-                    "text_excerpt": extracted["text_excerpt"],
-                    "text_truncated": bool(extracted["text_truncated"]),
-                    "selector_hits": extracted["selector_hits"],
-                    "links": _extract_links(soup, url, policy.max_links),
-                    "content_type": "text/html; rendered",
-                    "read_bytes": len(html.encode("utf-8", errors="ignore")),
-                    "response_truncated": False,
-                    "redirect_history": [],
-                    "robots": robots_meta,
-                    "browser_stderr_excerpt": " ".join(stderr_text.split())[:240],
-                }
-            )
+            res_item: Dict[str, Any] = {
+                "requested_url": url,
+                "final_url": url,
+                "status_code": 200,
+                "host": host,
+                "title": extracted["title"],
+                "text_excerpt": extracted["text_excerpt"],
+                "text_truncated": bool(extracted["text_truncated"]),
+                "selector_hits": extracted["selector_hits"],
+                "links": _extract_links(soup, url, policy.max_links),
+                "content_type": "text/html; rendered",
+                "read_bytes": len(html.encode("utf-8", errors="ignore")),
+                "response_truncated": False,
+                "redirect_history": [],
+                "robots": robots_meta,
+                "browser_stderr_excerpt": " ".join(stderr_text.split())[:240],
+            }
+            if structured_extract:
+                res_item["structured"] = extract_structured_dom(soup, base_url=url)
+
+            results.append(res_item)
+
+    metrics["crawl_elapsed_seconds"] = round(time.monotonic() - crawl_start, 3)
 
     return {
         "status": "ok",
@@ -262,11 +332,14 @@ async def fetch_browser_research(
             "user_agent": policy.user_agent,
             "chromium_binary": policy.chromium_binary,
             "virtual_time_budget_ms": policy.virtual_time_budget_ms,
+            "crawl_budget_max_requests": max_reqs_budget,
+            "crawl_budget_max_seconds": max_secs_budget,
         },
         "request": {
             "urls": normalized_urls,
             "selectors": normalized_selectors,
             "max_text_chars": effective_max_text_chars,
+            "structured_extract": structured_extract,
         },
         "metrics": metrics,
         "results": results,
