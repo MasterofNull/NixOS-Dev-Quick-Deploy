@@ -437,7 +437,9 @@ def _maybe_notify(alert: dict, escalated: bool) -> None:
     """Apply gating (snooze, rate limit per identity) then spawn the notifier."""
     if alert.get("autonomy_boundary") != "human_gate" or alert.get("severity") not in ("critical", "high"):
         return
-    if os.environ.get("ATTENTION_NOTIFY", "1") == "0":
+    # Route all sub-agent and system alerts into coordinator feed/inbox rather than desktop popups:
+    # Desktop notify-send popups are disabled unless ATTENTION_DESKTOP_NOTIFY=1 is explicitly requested.
+    if os.environ.get("ATTENTION_DESKTOP_NOTIFY", "0") != "1":
         return
     ident = _alert_identity(alert)
     st = _state_update(ident)
