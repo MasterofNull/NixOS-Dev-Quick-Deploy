@@ -10,16 +10,16 @@ from pathlib import Path
 import httpx
 
 ROOT = Path(__file__).resolve().parents[2]
-os.environ.setdefault("AI_BROWSER_RESEARCH_ENABLED", "true")
-os.environ.setdefault("AI_BROWSER_RESEARCH_MAX_URLS", "1")
-os.environ.setdefault("AI_BROWSER_RESEARCH_MAX_SELECTORS", "4")
-os.environ.setdefault("AI_BROWSER_RESEARCH_TIMEOUT_SECONDS", "5")
-os.environ.setdefault("AI_BROWSER_RESEARCH_PER_HOST_DELAY_SECONDS", "0.1")
-os.environ.setdefault("AI_BROWSER_RESEARCH_MAX_TEXT_CHARS", "400")
-os.environ.setdefault("AI_BROWSER_RESEARCH_MAX_LINKS", "5")
-os.environ.setdefault("AI_BROWSER_RESEARCH_MAX_REDIRECTS", "1")
-os.environ.setdefault("AI_BROWSER_RESEARCH_CHROMIUM_BIN", "chromium")
-os.environ.setdefault("AI_BROWSER_RESEARCH_VIRTUAL_TIME_BUDGET_MS", "4000")
+os.environ["AI_BROWSER_RESEARCH_ENABLED"] = "true"
+os.environ["AI_BROWSER_RESEARCH_MAX_URLS"] = "5"
+os.environ["AI_BROWSER_RESEARCH_MAX_SELECTORS"] = "4"
+os.environ["AI_BROWSER_RESEARCH_TIMEOUT_SECONDS"] = "5"
+os.environ["AI_BROWSER_RESEARCH_PER_HOST_DELAY_SECONDS"] = "0.1"
+os.environ["AI_BROWSER_RESEARCH_MAX_TEXT_CHARS"] = "400"
+os.environ["AI_BROWSER_RESEARCH_MAX_LINKS"] = "5"
+os.environ["AI_BROWSER_RESEARCH_MAX_REDIRECTS"] = "1"
+os.environ["AI_BROWSER_RESEARCH_CHROMIUM_BIN"] = "chromium"
+os.environ["AI_BROWSER_RESEARCH_VIRTUAL_TIME_BUDGET_MS"] = "4000"
 if "structlog" not in sys.modules:
     sys.modules["structlog"] = types.SimpleNamespace(
         get_logger=lambda: types.SimpleNamespace(debug=lambda *a, **k: None, warning=lambda *a, **k: None)
@@ -63,6 +63,7 @@ async def main() -> int:
     result = await fetch_browser_research(
         urls=["https://example.com/page"],
         selectors=["main"],
+        structured_extract=True,
         transport=httpx.MockTransport(handler),
         sleep_fn=lambda _seconds: asyncio.sleep(0),
         browser_runner=browser_runner,
@@ -72,10 +73,28 @@ async def main() -> int:
     assert_true(metrics.get("accepted_urls") == 1, "accepted_urls mismatch")
     assert_true(metrics.get("robots_requests") == 1, "robots request missing")
     assert_true(metrics.get("browser_requests") == 1, "browser request missing")
+    assert_true(metrics.get("crawl_budget_exceeded") is False, "crawl budget exceeded unexpectedly")
     page = result["results"][0]
     assert_true(page["title"] == "Rendered Example", "browser title mismatch")
     assert_true("Rendered native plant data" in page["text_excerpt"], "rendered excerpt missing")
     assert_true(page["links"] == ["https://example.com/plants/oak"], "rendered links mismatch")
+    assert_true("structured" in page, "structured extraction missing")
+    assert_true(isinstance(page["structured"].get("metadata"), dict), "structured metadata missing")
+    assert_true(isinstance(page["structured"].get("headings"), list), "structured headings missing")
+    assert_true(isinstance(page["structured"].get("tables"), list), "structured tables missing")
+
+    # Test crawl budget enforcement
+    budget_result = await fetch_browser_research(
+        urls=["https://example.com/page", "https://example.com/challenge"],
+        crawl_budget_max_requests=1,
+        transport=httpx.MockTransport(handler),
+        sleep_fn=lambda _seconds: asyncio.sleep(0),
+        browser_runner=browser_runner,
+    )
+    b_metrics = budget_result.get("metrics", {})
+    assert_true(b_metrics.get("crawl_budget_exceeded") is True, "crawl budget should be exceeded")
+    assert_true(len(budget_result.get("skipped", [])) >= 1, "second request should be skipped by budget")
+    assert_true(budget_result["skipped"][0]["reason"] == "crawl_budget_max_requests_exceeded", "skipped reason mismatch")
 
     challenge = await fetch_browser_research(
         urls=["https://example.com/challenge"],
