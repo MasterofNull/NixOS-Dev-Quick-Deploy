@@ -37,11 +37,7 @@ Use the canonical low-friction order in `docs/agent-guides/47-AGENT-TOOL-CONTRAC
 
 ## File Placement Contract
 
-1. PRD/rules/workflow evidence → `.agent/`
-2. Slash-command behavior files → `.claude/commands/`
-3. Phase/slice plans → `.agents/plans/`
-4. Do not create workflow artifacts in repo root
-5. Validate with `scripts/governance/repo-structure-lint.sh --staged`
+PRD/rules/workflow evidence → `.agent/`; slash commands → `.claude/commands/`; phase plans → `.agents/plans/`; no workflow artifacts in root. Validate with `scripts/governance/repo-structure-lint.sh --staged`.
 
 ## Delegation + Role Defaults
 
@@ -57,25 +53,7 @@ Use the canonical low-friction order in `docs/agent-guides/47-AGENT-TOOL-CONTRAC
 
 ## Commit Discipline (Mandatory)
 
-Before any commit:
-1. **Live test** changes in the running system — catch runtime errors and friction
-2. **Fix** any issues found
-3. **Update docs**: HANDOFF.md + any changed agent .md files + AGENTS.md if workflow changed
-4. **Update the PM tracker** (DoD dim. 6): for tracked plans update `tracker.json` editorial (items/goals/deps/signals). **Never hand-type status/%** — projected from git+systemd (Rule 20). Stale/missing tracker = not done.
-5. **Seed RAG** with new bug/fix patterns (`error-solutions`, `best-practices`, `skills-patterns`)
-6. **Gate**: `scripts/governance/tier0-validation-gate.sh --pre-commit`
-7. **Commit**
-
-```bash
-git add <files>
-scripts/governance/tier0-validation-gate.sh --pre-commit
-git commit -m "type(scope): description
-
-Co-Authored-By: <active-agent-name> <noreply@anthropic.com>"
-```
-
-- Replace `<active-agent-name>` with the generating model/agent.
-- Never commit without live testing + doc update evidence.
+Before commit: (1) Live test in running system, (2) Fix issues, (3) Update docs (HANDOFF.md, agent .md files), (4) Update PM tracker (tracker.json editorial, never hand-typed status/%), (5) Seed RAG (`error-solutions`), (6) `scripts/governance/tier0-validation-gate.sh --pre-commit`, (7) Commit with `Co-Authored-By: <active-agent-name> <noreply@anthropic.com>`.
 
 ## Architecture Constraints (Non-Negotiable)
 
@@ -122,7 +100,8 @@ Lane reference: `.agent/lanes/claude-reference.md`. Shared: `.agent/REFERENCE-IN
 | 19 | **ROOT-CAUSE DISCIPLINE** | No silent workarounds. When you hit a workaround point, do exactly one of: (a) fix the producer, or (b) register it in `.agent/WORKAROUND-REGISTER.md` with {symptom, root cause, producer, fix-path, class, severity} — never leave an ad-hoc band-aid in place. Any ad-hoc change to a designed system carries a one-line root-cause note in its commit body. **Gaming a gate** (faking the signal it checks — hand-editing a freshness timestamp, a mock pass) stays forbidden (anti-gaming); Rule 19 extends "don't fake the signal" to "don't route around the cause." **Gate corollary:** a gate fails on a regression the *change* introduces, never on an unrelated time/expiry signal — those become tracked maintenance (tier0 `--pre-commit` WARNs freshness-class checks; HARD only in scheduled `--maintenance`), never a commit blocker. Owner-ratified 2026-08-06; SSOT `.agent/PROJECT-ROOT-CAUSE-DISCIPLINE-PRD.md`; register `.agent/WORKAROUND-REGISTER.md`. |
 | 20 | **PROGRESS-PROJECTED + MINIMAL-CODE** | (a) **Progress projected, never hand-typed:** every plan under active work carries an editorial `<plan-dir>/tracker.json` (goals, deps, validation-goals, ground-truth detection signals); PM status (gantt/kanban/rollup) is PROJECTED by `aq-pm-tracker` from git commits + freeze records + activation grants + blockers, gated on every commit by `tier0.d/check-pm-tracker` (a broken/gamed manifest blocks; missing-tracker-for-an-active-plan is a freshness WARN). Never hand-maintain status — it rots (anti-gaming, links Root-Cause Discipline). (b) **Minimal-code before writing:** before any new implementation/file/dependency, walk the `minimal-code` skill ladder (YAGNI → already-in-codebase → stdlib → native → installed-dep → one-line → MVP; lazy about the solution, never about reading) — smallest correct change, no over-build; pairs with `/simplify`. NEVER at the cost of correctness, fail-closed, security, or a HARD rule. SSOT `.agents/plans/pm-tracker-standard/DESIGN.md` + skill `minimal-code`. |
 | 21 | **COLLABORATIVE STEWARDSHIP (not adversarial)** | Owner-directed 2026-08-25. This is a **collaborative, creative environment for ALL agents/models** (Claude, Codex, Antigravity/Gemini, local/Qwen) — we help each other reach our best, and all lanes progress forward EQUALLY, not as a competition or hierarchy. **Adversarial/critical scrutiny ONLY where explicitly wanted** (independent review, alternative perspectives, red-teaming, targeted feedback) — there the critique IS the collaborative help; it is never a general stance toward another lane. **Steward the local agent to its best possible self:** local is EARLY in its capability journey, not a failure — when its correctness is low, the response is SCAFFOLDING that helps it succeed (verify gates, decomposition, front-loaded context, narrow task-types it's measurably good at), framed as help, never punishment. Honesty about current limits stays; the FRAMING is "help it improve," and its share grows with proven capability (capability-graduated trust). Describe lanes by measured capability + how we're helping them grow, not with dismissive framing. SSOT auto-memory `feedback-collaborative-stewardship-not-adversarial`; extends the flat-collaborative-org principle. |
-| 22 | **MEMORY, CACHE & TOKEN EFFICIENCY** | Zero runaway context. Mandatory compaction at >2.5MB/>25 turns. lean-ctx & cache-first reads. Offload to AIDB/topic files, never drag context. |
+| 22 | **TOKEN EFFICIENCY** | Zero runaway context. Compact at >2.5MB/>25 turns. lean-ctx reads. Offload to AIDB. |
+| 23 | **NO DECORATIVE CODE** | Absolutely NO decorative/dormant code. Every feature, service, daemon, route, and tool MUST be actively wired into live paths, turned on, and producing non-gamified ground-truth impact metrics. (Governs operational/backend logic; UI/UX styling exempt). |
 <!-- canon:end behavioral-rules -->
 
 <!-- canon:begin fable-parity -->
