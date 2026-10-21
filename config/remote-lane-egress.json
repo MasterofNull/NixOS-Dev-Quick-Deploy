@@ -1,0 +1,88 @@
+{
+  "schema": "remote-lane-egress/1",
+  "version": "1",
+  "lanes": {
+    "claude": {
+      "allowlist": [
+        "api.anthropic.com",
+        "claude.ai",
+        "claude.com",
+        "platform.claude.com"
+      ],
+      "provider_family": "anthropic"
+    },
+    "codex": {
+      "allowlist": [
+        "api.openai.com",
+        "chatgpt.com"
+      ],
+      "provider_family": "openai"
+    },
+    "antigravity": {
+      "allowlist": [
+        "cloudaicompanion.googleapis.com",
+        "generativelanguage.googleapis.com"
+      ],
+      "provider_family": "google"
+    },
+    "agy": {
+      "allowlist": [
+        "cloudaicompanion.googleapis.com",
+        "generativelanguage.googleapis.com"
+      ],
+      "provider_family": "google"
+    },
+    "gemini-legacy": {
+      "allowlist": [
+        "generativelanguage.googleapis.com"
+      ],
+      "provider_family": "google"
+    },
+    "switchboard": {
+      "allowlist": [
+        "generativelanguage.googleapis.com",
+        "openrouter.ai"
+      ],
+      "provider_family": "switchboard"
+    },
+    "coordinator": {
+      "allowlist": [
+        "api.anthropic.com",
+        "api.openai.com",
+        "openrouter.ai",
+        "github.com",
+        "api.github.com"
+      ],
+      "provider_family": "coordinator"
+    },
+    "mcp": {
+      "allowlist": [
+        "api.github.com",
+        "nvd.nist.gov"
+      ],
+      "provider_family": "mcp"
+    },
+    "other": {
+      "allowlist": [],
+      "provider_family": "other"
+    }
+  },
+  "hard_deny": [
+    "169.254.0.0/16",
+    "fe80::/10",
+    "127.0.0.0/8",
+    "10.0.0.0/8",
+    "172.16.0.0/12",
+    "192.168.0.0/16"
+  ],
+  "rate_budgets": {
+    "hold_per_hour": 5,
+    "flag_per_hour": 20,
+    "high_signal_unbudgeted_reasons": [
+      "EGR_RAW_IP",
+      "EGR_SNI_MISMATCH",
+      "EGR_PUNYCODE",
+      "EGR_UNATTRIBUTED"
+    ]
+  }
+}
