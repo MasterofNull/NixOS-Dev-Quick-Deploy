@@ -287,7 +287,14 @@
    "detection": {
     "commit_match": [
      "structured-extract"
-    ]
+    ],
+    "freeze_record": "docs/harness-first/evidence/2026-10-21-browser-research-structured-extract.md"
+   },
+   "acceptance": {
+    "status": "accepted",
+    "by": "test-browser-research.py",
+    "date": "2026-10-21",
+    "note": "20-URL benchmark verified; structured extraction and crawl budget enforced"
    }
   },
   {
