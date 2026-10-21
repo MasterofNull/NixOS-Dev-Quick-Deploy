@@ -265,7 +265,15 @@
    "detection": {
     "commit_match": [
      "scan-due"
-    ]
+    ],
+    "freeze_record": "docs/harness-first/evidence/2026-10-14-frontier-scan-due-timer.md",
+    "systemd_unit": "ai-frontier-scan.timer"
+   },
+   "acceptance": {
+    "status": "accepted",
+    "by": "test-frontier-scan-due.py",
+    "date": "2026-10-14",
+    "note": "Wired into weekly timer ai-frontier-scan.timer; test-frontier-scan-due.py passes 7/7"
    }
   },
   {
