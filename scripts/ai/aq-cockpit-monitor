@@ -45,6 +45,8 @@ REPO_ROOT = Path(__file__).resolve().parent.parent.parent
 PULSE_LOG = REPO_ROOT / ".agent" / "collaboration" / "PULSE.log"
 A2A_AUDIT = REPO_ROOT / ".agent" / "collaboration" / "a2a-audit.log"
 MODEL_PROFILE = REPO_ROOT / "config" / "model-profile.json"
+SWEEPER_STATE = Path.home() / ".local" / "share" / "aq-durable-agent" / "sweeper-state.json"
+DECISIONS_LOG = Path.home() / ".local" / "state" / "aq-decide" / "decisions.jsonl"
 
 console = Console()
 
@@ -170,6 +172,73 @@ def read_a2a_audit_tail(limit: int = 3) -> List[Tuple[str, str, str, str]]:
     return results
 
 
+def get_sweeper_telemetry() -> Dict[str, Any]:
+    """Read durable evidence sweeper state."""
+    telemetry = {
+        "status": "offline",
+        "sweeps": 0,
+        "ingested": 0,
+        "facts": 0,
+        "signals": 0,
+        "last_tick": "—"
+    }
+    if SWEEPER_STATE.is_file():
+        try:
+            data = json.loads(SWEEPER_STATE.read_text(encoding="utf-8"))
+            telemetry["status"] = data.get("status", "unknown")
+            metrics = data.get("metrics", {})
+            telemetry["sweeps"] = metrics.get("total_sweeps", 0)
+            telemetry["ingested"] = metrics.get("items_ingested", 0)
+            telemetry["facts"] = metrics.get("facts_count", 0)
+            telemetry["signals"] = metrics.get("signal_count", 0)
+            last = data.get("last_tick_utc", "")
+            if last and "T" in last:
+                telemetry["last_tick"] = last.split("T")[1][:8] + "Z"
+        except Exception:
+            pass
+    return telemetry
+
+
+def get_system1_telemetry() -> Dict[str, Any]:
+    """Read System 1 shadow decision evaluation stream."""
+    telemetry = {
+        "total": 0,
+        "shadow": 0,
+        "agreement_rate": 0.0,
+        "top_answer": "—"
+    }
+    if DECISIONS_LOG.is_file():
+        total = 0
+        shadow_count = 0
+        agree_count = 0
+        by_answer: Dict[str, int] = {}
+        try:
+            for line in DECISIONS_LOG.read_text(encoding="utf-8").splitlines():
+                if not line.strip():
+                    continue
+                row = json.loads(line)
+                if row.get("question") == "task_profile":
+                    total += 1
+                    ans = row.get("answer")
+                    if ans:
+                        by_answer[ans] = by_answer.get(ans, 0) + 1
+                    sh = row.get("shadow")
+                    if sh:
+                        shadow_count += 1
+                        if ans and sh.get("answer") == ans:
+                            agree_count += 1
+            telemetry["total"] = total
+            telemetry["shadow"] = shadow_count
+            if shadow_count > 0:
+                telemetry["agreement_rate"] = (agree_count / shadow_count) * 100.0
+            if by_answer:
+                top = max(by_answer.items(), key=lambda kv: kv[1])
+                telemetry["top_answer"] = f"{top[0]} ({top[1]})"
+        except Exception:
+            pass
+    return telemetry
+
+
 def render_cockpit() -> Panel:
     """Build the cockpit panel."""
     # 1. Services Table
@@ -202,7 +271,31 @@ def render_cockpit() -> Panel:
     res_table.add_row("VRAM / RAM", f"[magenta]{model_info['vram_gb']:.1f}GB APU[/magenta] / [dim]{model_info['ram_gb']:.0f}GB sys[/dim]")
     res_table.add_row("Context Win", f"[bold green]{model_info['context_window']:,} tokens[/bold green]")
 
-    # 3. Pulse Ops Ticker
+    # 3. Durable Sweeper Card
+    sweeper_info = get_sweeper_telemetry()
+    sw_table = Table(box=None, padding=(0, 1), show_header=False)
+    sw_table.add_column("Key", style="dim cyan", width=12)
+    sw_table.add_column("Value", style="bold white")
+
+    sw_status = Text(sweeper_info["status"].upper(), style="bold green" if sweeper_info["status"] in ("idle", "running") else "dim yellow")
+    sw_table.add_row("Status", sw_status)
+    sw_table.add_row("Total Sweeps", f"[bold cyan]{sweeper_info['sweeps']}[/bold cyan]")
+    sw_table.add_row("Ingested", f"[bold white]{sweeper_info['ingested']}[/bold white] items")
+    sw_table.add_row("Facts/Signals", f"[green]{sweeper_info['facts']} facts[/green] / [magenta]{sweeper_info['signals']} signals[/magenta]")
+    sw_table.add_row("Last Tick", f"[dim]{sweeper_info['last_tick']}[/dim]")
+
+    # 4. System 1 Shadow Decision Card
+    sys1_info = get_system1_telemetry()
+    s1_table = Table(box=None, padding=(0, 1), show_header=False)
+    s1_table.add_column("Key", style="dim cyan", width=12)
+    s1_table.add_column("Value", style="bold white")
+
+    s1_table.add_row("Decisions", f"[bold white]{sys1_info['total']}[/bold white] total")
+    s1_table.add_row("Shadow Evals", f"[bold magenta]{sys1_info['shadow']}[/bold magenta] runs")
+    s1_table.add_row("Agreement", f"[bold yellow]{sys1_info['agreement_rate']:.1f}%[/bold yellow]")
+    s1_table.add_row("Top Profile", f"[cyan]{sys1_info['top_answer']}[/cyan]")
+
+    # 5. Pulse Ops Ticker
     pulse_entries = read_pulse_tail(3)
     pulse_text = Text()
     for entry in pulse_entries:
@@ -226,10 +319,19 @@ def render_cockpit() -> Panel:
         Panel(res_table, title="[bold]Local Inference Engine[/bold]", border_style="magenta", padding=(0, 0)),
     )
 
+    ops_table = Table.grid(padding=(0, 2))
+    ops_table.add_column()
+    ops_table.add_column()
+    ops_table.add_row(
+        Panel(sw_table, title="[bold]Durable Sweeper (Frontier Ingest)[/bold]", border_style="green", padding=(0, 0)),
+        Panel(s1_table, title="[bold]System 1 (Shadow Routing)[/bold]", border_style="yellow", padding=(0, 0)),
+    )
+
     pulse_panel = Panel(pulse_text, title="[bold]Ops Pulse Ticker (PULSE.log)[/bold]", border_style="blue", padding=(0, 1))
 
     main_grid = Table.grid(padding=0)
     main_grid.add_row(body_table)
+    main_grid.add_row(ops_table)
     main_grid.add_row(pulse_panel)
 
     now = datetime.now(timezone.utc).strftime("%H:%M:%S UTC")
