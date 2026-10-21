@@ -269,6 +269,14 @@ def test_get_task_profile_helper():
     print("PASS  get_task_profile() helper works correctly")
 
 
+def test_classify_task_type_aq_decide_shadow():
+    mod = _load_dispatch()
+    prompt = "write a python function that sorts an array"
+    res = mod.classify_task_type(prompt, "direct")
+    assert_eq(res, "code", "classify_task_type code profile")
+    print("PASS  classify_task_type: aq-decide shadow routing executes without altering output")
+
+
 if __name__ == "__main__":
     passed = failed = 0
     tests = [
@@ -286,6 +294,7 @@ if __name__ == "__main__":
         test_classify_task_type_code,
         test_classify_task_type_mode_overrides,
         test_classify_task_type_agent_analysis_only,
+        test_classify_task_type_aq_decide_shadow,
         test_task_config_has_task_type,
         test_task_config_analysis_aliases_to_research,
         test_task_config_invalid_task_type_fallback,

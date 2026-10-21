@@ -811,6 +811,17 @@ let
       pooling = "mean";
       recommended = false;
     };
+    "bge-small-aqdecide" = {
+      name = "BGE-Small v1.5 (aq-decide System 1)";
+      repo = "CompendiumLabs/bge-small-en-v1.5-gguf";
+      file = "bge-small-en-v1.5-q8_0.gguf";
+      sha256 = "ec38e8da142596baa913124ae50550de284b6916bf59577ef2f0cb9660c2f514";
+      dimensions = 384;
+      maxTokens = 512;
+      ramEstimate = "~0.04 GB Q8";
+      pooling = "cls";
+      recommended = false;
+    };
   };
 in {
   config = lib.mkMerge [
@@ -968,6 +979,10 @@ in {
         {
           assertion = cfg.aiStack.modelAllowlist == [] || builtins.elem embedHfRepo cfg.aiStack.modelAllowlist;
           message = "mySystem.aiStack.embeddingServer.huggingFaceRepo \"${embedHfRepo}\" is not in mySystem.aiStack.modelAllowlist. Add to allowlist or change model repo.";
+        }
+        {
+          assertion = !cfg.aiStack.aqDecide.embedder.enable || cfg.aiStack.modelAllowlist == [] || builtins.elem cfg.aiStack.aqDecide.embedder.huggingFaceRepo cfg.aiStack.modelAllowlist;
+          message = "mySystem.aiStack.aqDecide.embedder.huggingFaceRepo \"${cfg.aiStack.aqDecide.embedder.huggingFaceRepo}\" is not in mySystem.aiStack.modelAllowlist. Add to allowlist or change model repo.";
         }
         # Phase 5.2.4 — hard block: AI stack requires at least 12 GB to load any model.
         {
@@ -1625,6 +1640,60 @@ in {
       networking.firewall.allowedTCPPorts = lib.mkIf ai.listenOnLan [
         embed.port
       ];
+    })
+
+    # ── DEC-S2: aq-decide System 1 Decision Engine Infrastructure ──────────
+    (lib.mkIf (roleEnabled && ai.aqDecide.enable) {
+      systemd.tmpfiles.rules = [
+        "d /var/lib/aq-decide 0755 root root -"
+        "d /var/lib/aq-decide/state 0700 root root -"
+      ];
+    })
+
+    (lib.mkIf (roleEnabled && ai.aqDecide.embedder.enable) {
+      systemd.services.llama-cpp-aqdecide = {
+        description = "aq-decide T1 dedicated llama.cpp embedding server (:${toString ai.aqDecide.embedder.port})";
+        wantedBy = ["multi-user.target"];
+        after = ["network.target"];
+        partOf = ["ai-stack.target"];
+        serviceConfig = {
+          Type = "simple";
+          User = "llama";
+          Group = "llama";
+          Restart = "on-failure";
+          RestartSec = "5s";
+          StateDirectory = "llama-cpp";
+          RuntimeDirectory = "llama-cpp-aqdecide";
+          LimitMEMLOCK = "infinity";
+          IPAddressAllow = ["127.0.0.1/8" "::1/128"];
+          IPAddressDeny = ["any"];
+          Environment = gpuEnvList;
+          PrivateTmp = true;
+          NoNewPrivileges = true;
+          ProtectSystem = "strict";
+          ProtectHome = "read-only";
+          ProtectKernelTunables = true;
+          ProtectKernelModules = true;
+          ProtectControlGroups = true;
+          RestrictNamespaces = true;
+          RestrictSUIDSGID = true;
+          PrivateDevices = false;
+          ExecStart = lib.concatStringsSep " " [
+            "${pkgs.llama-cpp}/bin/llama-server"
+            "--host 127.0.0.1"
+            "--port ${toString ai.aqDecide.embedder.port}"
+            "--model /var/lib/llama-cpp/models/${ai.aqDecide.embedder.huggingFaceFile}"
+            "--embedding"
+            "--pooling cls"
+            "--ctx-size 512"
+            "-ub 512"
+            "--threads 2"
+            "-ngl ${toString ai.aqDecide.embedder.gpuLayers}"
+            "--parallel 1"
+            "--metrics"
+          ];
+        };
+      };
     })
 
     # ── Phase 5.1.3 — AI workload kernel tuning ───────────────────────────────
