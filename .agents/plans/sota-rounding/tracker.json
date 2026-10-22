@@ -88,8 +88,16 @@
       "deps": [],
       "detection": {
         "commit_match": [
-          "aq-confine"
-        ]
+          "aq-confine",
+          "feat(confine)"
+        ],
+        "freeze_record": "docs/harness-first/evidence/2026-10-15-aq-confine-s2a.md"
+      },
+      "acceptance": {
+        "status": "accepted",
+        "by": "test-aq-confine.py",
+        "date": "2026-10-15",
+        "note": "aq-confine core library, CLI, bwrap profiles, and git quarantine/import implemented in d69a05aa; 204 unit checks pass in test-aq-confine.py"
       }
     },
     {
@@ -265,6 +273,12 @@
         "commit_match": [
           "playwright intake"
         ]
+      },
+      "acceptance": {
+        "status": "accepted",
+        "by": "test-enabled-external-mcp-candidates.py",
+        "date": "2026-10-22",
+        "note": "Playwright intake record matches live state: state is quarantined in config/agent-capability-intake-candidates.json, fail-closed wrapper verified, test-enabled-external-mcp-candidates.py passes"
       }
     },
     {
