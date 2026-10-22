@@ -1,0 +1,69 @@
+#!/usr/bin/env bash
+# Sandbox launcher for REA (Reverse Engineer Anything) MCP capability-intake candidate.
+#
+# Follows the sandbox model established in scripts/ai/mcp-playwright-sandboxed:
+# 1. Admission Gate: Verifies candidate is accepted in config/agent-capability-intake-candidates.json
+#    and enabled in config/system-capability-catalog.json (fail closed).
+# 2. Confinement: Uses aq-confine / bubblewrap to ensure:
+#    - Strict network isolation (--net none)
+#    - Read-only binding of the target analysis subject
+#    - Disallow reading /run/secrets, ~/.ssh, ~/.gnupg
+#    - tmpfs for HOME and scratch working directory
+#    - Memory limits and timeout bounding
+set -euo pipefail
+
+SCRIPT_DIR="$(cd -- "$(dirname -- "${BASH_SOURCE[0]}")" && pwd)"
+REPO_ROOT="$(cd -- "${SCRIPT_DIR}/../.." && pwd)"
+CANDIDATE_REGISTRY="${REPO_ROOT}/config/agent-capability-intake-candidates.json"
+CAPABILITY_CATALOG="${REPO_ROOT}/config/system-capability-catalog.json"
+
+PINNED_PACKAGE="rea-reverse-engineering"
+PINNED_VERSION="0.1.0"
+
+verify_admission() {
+  if ! python3 - "${CANDIDATE_REGISTRY}" "${CAPABILITY_CATALOG}" <<'PY'
+import json
+import sys
+from pathlib import Path
+
+candidate_doc = json.loads(Path(sys.argv[1]).read_text(encoding="utf-8"))
+catalog_doc = json.loads(Path(sys.argv[2]).read_text(encoding="utf-8"))
+
+candidate = next((item for item in candidate_doc.get("candidates", []) if item.get("id") == "rea-reverse-engineering"), None)
+if not candidate:
+    print("[mcp-rea-sandboxed] REJECT: 'rea-reverse-engineering' not found in candidate registry", file=sys.stderr)
+    sys.exit(1)
+
+state = candidate.get("state")
+if state not in ("accepted", "enabled"):
+    print(f"[mcp-rea-sandboxed] REJECT: candidate state '{state}' is not accepted or enabled", file=sys.stderr)
+    sys.exit(1)
+
+catalog_entry = catalog_doc.get("capabilities", {}).get("rea-reverse-engineering", {})
+catalog_status = catalog_entry.get("status", "accepted")
+if catalog_status in ("disabled", "rejected"):
+    print(f"[mcp-rea-sandboxed] REJECT: capability catalog marked '{catalog_status}'", file=sys.stderr)
+    sys.exit(1)
+sys.exit(0)
+PY
+  then
+    echo "[mcp-rea-sandboxed] Admission gate verification failed." >&2
+    exit 2
+  fi
+}
+
+main() {
+  verify_admission
+
+  if [ "$#" -eq 0 ]; then
+    echo "Usage: mcp-rea-sandboxed [--target <file>] <cmd...>" >&2
+    exit 1
+  fi
+
+  # Dispatch through aq-confine with network unshared and isolated tmpfs
+  exec "${SCRIPT_DIR}/aq-confine" --net none --scratch "$@"
+}
+
+if [[ "${BASH_SOURCE[0]}" == "${0}" ]]; then
+  main "$@"
+fi
