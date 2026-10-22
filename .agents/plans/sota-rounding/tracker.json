@@ -369,7 +369,9 @@
           "token caps",
           "check command"
         ]
-      }
+      },
+      "status": "SHIPPED",
+      "notes": "Added mandatory check_command, token_budget, and turn_cap fields to slice-authoring skill template and added automated linter test suite scripts/testing/test-slice-authoring-lint.py."
     },
     {
       "id": "w4-s3",
