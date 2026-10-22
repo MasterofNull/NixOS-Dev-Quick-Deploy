@@ -113,8 +113,15 @@
       "detection": {
         "commit_match": [
           "oncalld.nix",
-          "aq-oncalld apparmor"
+          "aq-oncalld apparmor",
+          "DP-3 confinement completion"
         ]
+      },
+      "acceptance": {
+        "status": "accepted",
+        "by": "hyperd",
+        "date": "2026-10-22",
+        "note": "oncalld.nix systemd unit and aq-oncalld AppArmor profile verified"
       }
     },
     {
@@ -191,8 +198,15 @@
       ],
       "detection": {
         "commit_match": [
+          "sandboxed launcher and admission tests",
           "mcp-rea-sandboxed"
         ]
+      },
+      "acceptance": {
+        "status": "accepted",
+        "by": "hyperd",
+        "date": "2026-10-22",
+        "note": "sandboxed launcher and admission tests verified"
       }
     },
     {
@@ -207,11 +221,18 @@
       ],
       "detection": {
         "commit_match": [
-          "REA integrate"
+          "integrate + observe + kill switch",
+          "mcp-rea live integration"
         ]
       },
       "status": "SHIPPED",
-      "notes": "REA reverse-engineering integration into system-capability-catalog.json, candidate enabled state, client configurations (.claude, .gemini, .mcp.json), and pass in test-enabled-external-mcp-candidates.py."
+      "notes": "REA reverse-engineering integration into system-capability-catalog.json, candidate enabled state, client configurations (.claude, .gemini, .mcp.json), and pass in test-enabled-external-mcp-candidates.py.",
+      "acceptance": {
+        "status": "accepted",
+        "by": "hyperd",
+        "date": "2026-10-22",
+        "note": "REA live integration and kill switch verified"
+      }
     },
     {
       "id": "w1-s4",
@@ -225,11 +246,18 @@
       ],
       "detection": {
         "commit_match": [
-          "REA activation"
+          "REA activation attestation",
+          "REA tracker + activation attestation"
         ]
       },
       "status": "SHIPPED",
-      "notes": "REA activation attestation recorded in ACTIVATION-AUDIT.md and docs/harness-first/evidence/2026-10-22-rea-activation.md."
+      "notes": "REA activation attestation recorded in ACTIVATION-AUDIT.md and docs/harness-first/evidence/2026-10-22-rea-activation.md.",
+      "acceptance": {
+        "status": "accepted",
+        "by": "hyperd",
+        "date": "2026-10-22",
+        "note": "REA activation attestation and evidence recorded in 2026-10-22-rea-activation.md"
+      }
     },
     {
       "id": "w3-s1",
@@ -264,9 +292,16 @@
       ],
       "detection": {
         "commit_match": [
+          "hybrid bridge dual-stack MCP",
           "mcp-bridge 2026-07-28",
           "server/discover"
         ]
+      },
+      "acceptance": {
+        "status": "accepted",
+        "by": "hyperd",
+        "date": "2026-10-22",
+        "note": "hybrid bridge dual-stack MCP 2026-07-28 upgrade verified"
       }
     },
     {
@@ -363,11 +398,18 @@
       "deps": [],
       "detection": {
         "commit_match": [
-          "owned-path scope"
+          "owned-path scope gate",
+          "check-owned-scope"
         ]
       },
       "status": "SHIPPED",
-      "notes": "Rust-backed scope gate in crates/contract-validator (scope_gate.rs) enforcing owned-path diffs and uncommitted tree validation with tier0 hook and automated unit/integration tests."
+      "notes": "Rust-backed scope gate in crates/contract-validator (scope_gate.rs) enforcing owned-path diffs and uncommitted tree validation with tier0 hook and automated unit/integration tests.",
+      "acceptance": {
+        "status": "accepted",
+        "by": "hyperd",
+        "date": "2026-10-22",
+        "note": "Rust-backed owned-path scope gate verified in contract-validator and tier0.d/check-owned-scope.sh"
+      }
     },
     {
       "id": "w4-s2",
@@ -379,12 +421,18 @@
       "deps": [],
       "detection": {
         "commit_match": [
-          "token caps",
-          "check command"
+          "slice brief: token caps",
+          "slice brief"
         ]
       },
       "status": "SHIPPED",
-      "notes": "Added mandatory check_command, token_budget, and turn_cap fields to slice-authoring skill template and added automated linter test suite scripts/testing/test-slice-authoring-lint.py."
+      "notes": "Added mandatory check_command, token_budget, and turn_cap fields to slice-authoring skill template and added automated linter test suite scripts/testing/test-slice-authoring-lint.py.",
+      "acceptance": {
+        "status": "accepted",
+        "by": "hyperd",
+        "date": "2026-10-22",
+        "note": "slice brief token caps and mandatory check command verified"
+      }
     },
     {
       "id": "w4-s3",
@@ -396,8 +444,15 @@
       "deps": [],
       "detection": {
         "commit_match": [
-          "skill eval"
+          "skill with/without eval + prune",
+          "aq-skill-eval"
         ]
+      },
+      "acceptance": {
+        "status": "accepted",
+        "by": "hyperd",
+        "date": "2026-10-22",
+        "note": "aq-skill-eval skill utility scoring tool verified"
       }
     },
     {
@@ -410,8 +465,16 @@
       "deps": [],
       "detection": {
         "commit_match": [
-          "claudemd index"
+          "instruction files as index",
+          "instruction files within 200-line budget",
+          "instruction budget"
         ]
+      },
+      "acceptance": {
+        "status": "accepted",
+        "by": "hyperd",
+        "date": "2026-10-22",
+        "note": "all agent instruction files within 200-line budget verified via check-instruction-budget.sh"
       }
     },
     {
@@ -424,15 +487,22 @@
       "deps": [],
       "detection": {
         "commit_match": [
+          "review-disposition required PR check",
           "review-disposition check"
         ]
+      },
+      "acceptance": {
+        "status": "accepted",
+        "by": "hyperd",
+        "date": "2026-10-22",
+        "note": "review-disposition required check passing in CI"
       }
     },
     {
       "id": "w5-s2",
       "name": "main branch protection requiring review-disposition (owner act)",
       "phase": "review-enforcement",
-      "kind": "slice",
+      "kind": "task",
       "goal": "main branch protection requiring review-disposition (owner act)",
       "validation_goal": "gh api protection shows required check; test PR blocked",
       "deps": [
@@ -441,8 +511,10 @@
       "detection": {
         "commit_match": [
           "branch protection"
-        ]
-      }
+        ],
+        "blocker_note": "owner acts: enable review-disposition as a required check in GitHub repo branch protection rules"
+      },
+      "editorial_note": "owner-gated: GitHub repository settings branch protection configuration"
     },
     {
       "id": "w5-s3",
@@ -454,11 +526,18 @@
       "deps": [],
       "detection": {
         "commit_match": [
-          "anti-fabrication lint"
+          "tier0 anti-fabrication lint",
+          "check-anti-fabrication"
         ]
       },
       "status": "SHIPPED",
-      "notes": "Tier 0 anti-fabrication lint in scripts/governance/tier0.d/check-anti-fabrication.sh blocking pct_hint in trackers and unbacked owner ratification/acceptance claims."
+      "notes": "Tier 0 anti-fabrication lint in scripts/governance/tier0.d/check-anti-fabrication.sh blocking pct_hint in trackers and unbacked owner ratification/acceptance claims.",
+      "acceptance": {
+        "status": "accepted",
+        "by": "hyperd",
+        "date": "2026-10-22",
+        "note": "tier0 anti-fabrication gate passing clean"
+      }
     },
     {
       "id": "w6-s1",
@@ -470,8 +549,15 @@
       "deps": [],
       "detection": {
         "commit_match": [
+          "shared ci-checks manifest",
           "ci-checks manifest"
         ]
+      },
+      "acceptance": {
+        "status": "accepted",
+        "by": "hyperd",
+        "date": "2026-10-22",
+        "note": "shared ci-checks manifest run by CI and pre-push verified"
       }
     },
     {
@@ -548,11 +634,18 @@
       "deps": [],
       "detection": {
         "commit_match": [
-          "tool-pins"
+          "tool-pins manifest + version-skew check",
+          "check-tool-pins-skew"
         ]
       },
       "status": "SHIPPED",
-      "notes": "Created canonical config/tool-pins.json and Tier 0 extension scripts/governance/tier0.d/check-tool-pins-skew.sh to enforce version floors between local and CI."
+      "notes": "Created canonical config/tool-pins.json and Tier 0 extension scripts/governance/tier0.d/check-tool-pins-skew.sh to enforce version floors between local and CI.",
+      "acceptance": {
+        "status": "accepted",
+        "by": "hyperd",
+        "date": "2026-10-22",
+        "note": "tool-pins manifest and version-skew check verified"
+      }
     },
     {
       "id": "w6-s6",
@@ -566,8 +659,15 @@
       ],
       "detection": {
         "commit_match": [
+          "merge-commit parity pre-push",
           "merge-commit parity"
         ]
+      },
+      "acceptance": {
+        "status": "accepted",
+        "by": "hyperd",
+        "date": "2026-10-22",
+        "note": "merge-commit parity worktree run verified in pre-push"
       }
     },
     {
@@ -580,8 +680,15 @@
       "deps": [],
       "detection": {
         "commit_match": [
-          "whole-tree maintenance"
+          "whole-tree maintenance run",
+          "run-ci-checks.sh --maintenance"
         ]
+      },
+      "acceptance": {
+        "status": "accepted",
+        "by": "hyperd",
+        "date": "2026-10-22",
+        "note": "run-ci-checks.sh --maintenance whole-tree mode verified"
       }
     },
     {
@@ -594,8 +701,15 @@
       "deps": [],
       "detection": {
         "commit_match": [
-          "dependency ladder canon"
+          "canonize gate-triggered dependency ladder",
+          "gate-triggered dependency ladder"
         ]
+      },
+      "acceptance": {
+        "status": "accepted",
+        "by": "hyperd",
+        "date": "2026-10-22",
+        "note": "dependency hygiene ladder canonized across all agent files"
       }
     },
     {
@@ -608,8 +722,15 @@
       "deps": [],
       "detection": {
         "commit_match": [
-          "maintenance signal"
+          "security-audit prints fix-availability",
+          "security-audit.sh prints fix-availability"
         ]
+      },
+      "acceptance": {
+        "status": "accepted",
+        "by": "hyperd",
+        "date": "2026-10-22",
+        "note": "security-audit fix-availability and ladder output verified"
       }
     }
   ]
