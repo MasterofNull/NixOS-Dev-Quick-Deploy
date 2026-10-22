@@ -1,0 +1,28 @@
+#!/usr/bin/env python3
+"""SessionStart hook for Claude Code / harness agents.
+
+Emits bounded resume summary from .agent/collaboration/RESUME.json.
+Latency budget: < 100 ms.
+"""
+import json
+import os
+import sys
+from pathlib import Path
+
+def main():
+    repo_root = Path(os.environ.get("CLAUDE_PROJECT_DIR", Path(__file__).resolve().parent.parent.parent))
+    resume_file = repo_root / ".agent" / "collaboration" / "RESUME.json"
+    if not resume_file.is_file():
+        return 0
+    try:
+        data = json.loads(resume_file.read_text(encoding="utf-8"))
+        obj = data.get("current_objective", "—")
+        phase = data.get("phase", "—")
+        hint = data.get("resume_hint", "—")
+        print(f"[SessionStart] Active Objective: {obj} | Phase: {phase} | Hint: {hint}")
+    except Exception:
+        pass
+    return 0
+
+if __name__ == "__main__":
+    sys.exit(main())
