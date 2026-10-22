@@ -3,8 +3,18 @@ name: Targeted Coverage
 on:
   push:
     branches: [ main, develop, "cursor/*" ]
+    paths:
+      - 'dashboard/**'
+      - 'ai-stack/**'
+      - 'scripts/**'
+      - '.github/workflows/test-coverage.yml'
   pull_request:
     branches: [ main ]
+    paths:
+      - 'dashboard/**'
+      - 'ai-stack/**'
+      - 'scripts/**'
+      - '.github/workflows/test-coverage.yml'
   workflow_dispatch:
 
 permissions:
