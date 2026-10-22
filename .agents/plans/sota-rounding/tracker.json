@@ -354,7 +354,9 @@
         "commit_match": [
           "owned-path scope"
         ]
-      }
+      },
+      "status": "SHIPPED",
+      "notes": "Rust-backed scope gate in crates/contract-validator (scope_gate.rs) enforcing owned-path diffs and uncommitted tree validation with tier0 hook and automated unit/integration tests."
     },
     {
       "id": "w4-s2",
