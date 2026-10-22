@@ -227,7 +227,9 @@
         "commit_match": [
           "REA activation"
         ]
-      }
+      },
+      "status": "SHIPPED",
+      "notes": "REA activation attestation recorded in ACTIVATION-AUDIT.md and docs/harness-first/evidence/2026-10-22-rea-activation.md."
     },
     {
       "id": "w3-s1",
@@ -277,8 +279,15 @@
       "deps": [],
       "detection": {
         "commit_match": [
+          "feat(hooks): harness lifecycle hooks for session start",
           "hooks SessionStart"
         ]
+      },
+      "acceptance": {
+        "status": "accepted",
+        "by": "hyperd",
+        "date": "2026-10-22",
+        "note": "Hooks test passes with <100ms latency"
       }
     },
     {
@@ -475,8 +484,15 @@
       "deps": [],
       "detection": {
         "commit_match": [
+          "path-triggered pre-push nix eval",
           "pre-push nix eval"
         ]
+      },
+      "acceptance": {
+        "status": "accepted",
+        "by": "hyperd",
+        "date": "2026-10-22",
+        "note": "pre-push-nix-eval verified via unit tests"
       }
     },
     {
@@ -493,6 +509,12 @@
         "commit_match": [
           "ci-clean-env"
         ]
+      },
+      "acceptance": {
+        "status": "accepted",
+        "by": "hyperd",
+        "date": "2026-10-22",
+        "note": "ci-clean-env runner verified"
       }
     },
     {
@@ -505,8 +527,15 @@
       "deps": [],
       "detection": {
         "commit_match": [
+          "security audit gate can fail",
           "security gate exit code"
         ]
+      },
+      "acceptance": {
+        "status": "accepted",
+        "by": "hyperd",
+        "date": "2026-10-22",
+        "note": "security audit fails on seeded findings"
       }
     },
     {

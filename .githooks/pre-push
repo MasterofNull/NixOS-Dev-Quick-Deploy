@@ -129,6 +129,9 @@ run_ci_manifest_checks() {
 
 if "${lint_cmd[@]}" 2>&1 | tee "${lint_log}"; then
   run_ci_manifest_checks || { echo "pre-push: CI-manifest checks failed (same scripts CI runs)." >&2; exit 1; }
+  if [[ -x "scripts/governance/pre-push-nix-eval.sh" ]]; then
+    ./scripts/governance/pre-push-nix-eval.sh "${CI_CHECKS_BASE:-origin/main}" "${SCRIPT_HEADER_HEAD_REF:-HEAD}" || { echo "pre-push: nix evaluation check failed." >&2; exit 1; }
+  fi
   exit 0
 fi
 
