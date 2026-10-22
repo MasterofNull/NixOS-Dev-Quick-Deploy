@@ -757,6 +757,43 @@
         "reciprocity_debts"
       ],
       "usage_evidence": "aq-capability-audit 2026-10-08 (30d): STALE-CLAIM is an audit false positive (in-process in ai-hybrid-coordinator; tool logs cannot see it). Claim kept; audit mapping to be improved."
+    },
+    {
+      "id": "rea-reverse-engineering",
+      "name": "REA: Reverse Engineer Anything",
+      "category": "code-understanding",
+      "kind": "external-mcp",
+      "state": "enabled",
+      "maturity": "third-party-reference",
+      "owner": "qa-automation",
+      "summary": "Sandboxed reverse engineering decompilation bridge; deep native binary and JavaScript application analysis under bubblewrap confinement.",
+      "agent_access": [
+        "codex",
+        "claude",
+        "gemini",
+        "local-agent"
+      ],
+      "primary_refs": [
+        "scripts/ai/mcp-rea-sandboxed",
+        "config/agent-capability-intake-candidates.json",
+        ".agent/skills/rea-reverse-engineering/SKILL.md"
+      ],
+      "security": {
+        "admission": "accepted-with-mitigations",
+        "intake_candidate_id": "rea-reverse-engineering",
+        "risk": "high",
+        "required_gate": "python3 scripts/testing/test-rea-sandbox.py"
+      },
+      "validation": [
+        "python3 scripts/testing/test-rea-sandbox.py",
+        "python3 scripts/testing/test-enabled-external-mcp-candidates.py"
+      ],
+      "parity_targets": [
+        "Ghidra",
+        "Radare2",
+        "binary analysis agents"
+      ],
+      "data_stores": []
     }
   ]
 }
