@@ -733,3 +733,14 @@ DP3 PR506 at 7f9ef0f4 has no release acceptance: real worktree confinement, brok
 - Intervenable: owner can rerun the service or catalog-sync script after merge and inspect its truthful nonzero failure status.
 - PM-tracked: no pre-existing active plan tracker applies to this one-slice corrective work; evidence is `docs/harness-first/evidence/2026-10-16-aidb-catalog-rebuild.md`.
 - Deferral: verify the merged producer through an owner-run invocation before any activation claim.  Database collation maintenance is separately open and must reindex before refresh.
+
+## REA sandboxed reverse engineering capability — 2026-10-22 — SOTA rounding wave 1
+
+- Status: **ACTIVATED**
+- Integrated: Sandboxed launcher \`scripts/ai/mcp-rea-sandboxed\` wired into \`config/agent-capability-intake-candidates.json\` (\`enabled: true\`) and client projection suites (\`.claude/settings.json\`, \`.gemini/settings.json\`, \`.mcp.json\`).
+- Turned on: Enabled via capability candidate admission and registered in \`config/system-capability-catalog.json\`.
+- Functionally validated: Hermetic execution and sandbox boundaries enforced (\`test-rea-sandbox.py\` and \`test-enabled-external-mcp-candidates.py\` PASS). Verifies no network, secrets unreadable, target file immutability, memory/CPU quota enforcement, and fail-closed state when candidate is disabled.
+- Observable: Monitored via \`aq-report\` and live execution status counters.
+- Intervenable: Kill switch available via \`aq-capability-intake disable rea-reverse-engineering\` and Nix option \`mySystem.mcpServers.rea.enable\`.
+- PM-tracked: \`.agents/plans/sota-rounding/tracker.json\` (w1-s1..w1-s4).
+- Evidence: \`docs/harness-first/evidence/2026-10-22-rea-activation.md\`.
