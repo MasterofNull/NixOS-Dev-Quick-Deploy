@@ -95,6 +95,17 @@ def _resolve_identity(repo: Path, owner_handle_arg: str | None) -> tuple[str, st
     return name, email, handle
 
 
+def _check_foreign_hook_managers(repo: Path) -> list[str]:
+    foreign = []
+    if (repo / ".husky").exists():
+        foreign.append(".husky")
+    if (repo / ".pre-commit-config.yaml").exists():
+        foreign.append(".pre-commit-config.yaml")
+    if (repo / "lefthook.yml").exists() or (repo / ".lefthook.yml").exists():
+        foreign.append("lefthook")
+    return foreign
+
+
 def cmd_init(args: argparse.Namespace) -> int:
     repo = Path(args.repo).resolve()
     kit_root = Path(args.kit_root).resolve()
@@ -180,6 +191,92 @@ version = "0.1.0"
     return 0
 
 
+def cmd_retrofit(args: argparse.Namespace) -> int:
+    repo = Path(args.repo).resolve()
+    kit_root = Path(args.kit_root).resolve()
+
+    if sys.platform == "win32":
+        print("FAIL: Native Windows unsupported. Please use WSL.", file=sys.stderr)
+        return 4
+
+    if not (repo / ".git").exists():
+        print(f"FAIL: {repo} is not a git repository.", file=sys.stderr)
+        return 4
+
+    # Tree cleanliness check
+    st = _git(["status", "--porcelain"], repo)
+    if st.stdout.strip():
+        print("FAIL: Working tree is dirty. Stash or commit changes before running retrofit.", file=sys.stderr)
+        return 4
+
+    # Foreign hook manager check
+    foreign = _check_foreign_hook_managers(repo)
+    if foreign:
+        print(f"FAIL: Foreign hook manager(s) detected: {foreign}. Remove foreign hook manager or compose manually before retrofit.", file=sys.stderr)
+        return 4
+
+    name, email, handle = _resolve_identity(repo, args.owner_handle)
+    os.environ["FACTORY_OWNER_HANDLE"] = handle.lstrip("@")
+
+    # Preview
+    preview_report = fgi.retrofit_preview(repo, kit_root, args.stack, args.project_name or repo.name)
+    preview_digest = preview_report["preview_digest"]
+
+    if args.dry_run:
+        if args.json:
+            print(json.dumps(preview_report, indent=2))
+        else:
+            print(f"Retrofit preview digest: {preview_digest}")
+            print(f"Managed writes: {len(preview_report.get('writes', []))}")
+            print(f"Overwrites: {len(preview_report.get('overwrites', []))}")
+        return 0
+
+    if not args.confirm:
+        print(f"CONFIRMATION_REQUIRED: To proceed, rerun with --confirm {preview_digest}", file=sys.stderr)
+        return 4
+
+    if args.confirm != preview_digest:
+        print(f"FAIL: Confirmation digest mismatch. Expected {preview_digest}, got {args.confirm}", file=sys.stderr)
+        return 4
+
+    # Retrofit install
+    install_report = fgi.retrofit_install(repo, kit_root, args.stack, args.project_name or repo.name, args.confirm)
+
+    # Write kit.lock and .factory/kit.toml
+    factory_dir = repo / ".factory"
+    factory_dir.mkdir(parents=True, exist_ok=True)
+
+    lock_data = {
+        "schema_version": 1,
+        "kit_version": "0.1.0",
+        "preview_digest": preview_digest,
+        "bundle_sha256": preview_report.get("fingerprint", {}).get("bundle_sha256", ""),
+        "owner_handle": handle,
+        "retrofit": True,
+    }
+    (factory_dir / "kit.lock").write_text(json.dumps(lock_data, indent=2) + chr(10), encoding="utf-8")
+
+    toml_content = f"""# Factory Kit Configuration
+[owner]
+handle = {json.dumps(handle)}
+
+[kit]
+version = "0.1.0"
+retrofit = true
+"""
+    (factory_dir / "kit.toml").write_text(toml_content, encoding="utf-8")
+
+    _git(["config", "core.hooksPath", ".githooks"], repo)
+
+    if args.json:
+        print(json.dumps(install_report, indent=2))
+    else:
+        print(f"Factory kit retrofitted successfully in {repo}.")
+        print("Suggested next commit:")
+        print("  git add -A && git commit -m 'chore: retrofit factory kit'")
+    return 0
+
+
 def cmd_doctor(args: argparse.Namespace) -> int:
     repo = Path(args.repo).resolve()
     kit_root = Path(args.kit_root).resolve()
@@ -258,13 +355,7 @@ def cmd_doctor(args: argparse.Namespace) -> int:
             check(f"tool_{tool}", "OK", shutil.which(tool) or tool)
 
     # 6. Foreign hook managers
-    foreign = []
-    if (repo / ".husky").exists():
-        foreign.append(".husky")
-    if (repo / ".pre-commit-config.yaml").exists():
-        foreign.append(".pre-commit-config.yaml")
-    if (repo / "lefthook.yml").exists() or (repo / ".lefthook.yml").exists():
-        foreign.append("lefthook")
+    foreign = _check_foreign_hook_managers(repo)
     if foreign:
         check("foreign_hook_managers", "FAIL", f"Foreign hook manager(s) detected: {foreign}", "Remove foreign hook manager or compose manually")
     else:
@@ -286,7 +377,7 @@ def main(argv: list[str] | None = None) -> int:
     args_list = list(sys.argv[1:] if argv is None else argv)
     # Finding 5: support legacy positional CLI `aq-factory <name> "<purpose>" [--root <dir>] [--dry-run]`
     # If argv[0] is not a known subcommand and not an option, treat as `skill`
-    known_subcommands = {"skill", "init", "doctor", "-h", "--help"}
+    known_subcommands = {"skill", "init", "doctor", "retrofit", "-h", "--help"}
     if args_list and not args_list[0].startswith("-") and args_list[0] not in known_subcommands:
         args_list.insert(0, "skill")
 
@@ -312,6 +403,18 @@ def main(argv: list[str] | None = None) -> int:
     p_init.add_argument("--dry-run", action="store_true")
     p_init.add_argument("--json", action="store_true")
     p_init.set_defaults(func=cmd_init)
+
+    # Subcommand: retrofit
+    p_retro = sub.add_parser("retrofit", help="Retrofit factory kit into an existing repository.")
+    p_retro.add_argument("--repo", default=".", help="target repository root")
+    p_retro.add_argument("--kit-root", default=str(DEFAULT_KIT_ROOT), help="path to template kit")
+    p_retro.add_argument("--stack", help="stack name override (e.g. python, node, nix, rust, go)")
+    p_retro.add_argument("--project-name", help="project name override")
+    p_retro.add_argument("--owner-handle", help="owner handle override (e.g. @username)")
+    p_retro.add_argument("--confirm", help="preview digest confirmation for scripted run")
+    p_retro.add_argument("--dry-run", action="store_true")
+    p_retro.add_argument("--json", action="store_true")
+    p_retro.set_defaults(func=cmd_retrofit)
 
     # Subcommand: doctor
     p_doctor = sub.add_parser("doctor", help="Verify factory kit installation and health.")
