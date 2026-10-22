@@ -44,7 +44,7 @@ scripts/ai/aq-capability-intake audit rea-reverse-engineering --json
 
 Inspect an Electron / JavaScript target:
 ```bash
-npx -y rea-agents@latest analyze-javascript-application /path/to/extracted-app --json
+scripts/ai/mcp-rea-sandboxed analyze-javascript-application /path/to/extracted-app --json
 ```
 
 ## References

@@ -158,6 +158,12 @@
           "REA intake",
           "rea pin"
         ]
+      },
+      "acceptance": {
+        "status": "accepted",
+        "by": "test-capability-intake.py",
+        "date": "2026-10-22",
+        "note": "REA candidate intake closed out with mitigations: version pinned to 0.1.0, floating npx @latest dropped from SKILL.md, tasks_inbox/capability-intake-rea.md recorded, test-capability-intake.py passes"
       }
     },
     {
