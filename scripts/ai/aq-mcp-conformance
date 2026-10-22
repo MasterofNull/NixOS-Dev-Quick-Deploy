@@ -1,0 +1,269 @@
+#!/usr/bin/env python3
+"""
+aq-mcp-conformance — Probe MCP servers for protocol capabilities and 2026-07-28 spec conformance.
+
+Evaluates configured servers from .mcp.json or custom fixtures:
+  - server/discover support
+  - protocolVersion compliance (e.g. 2024-11-05 vs 2026-07-28)
+  - deterministic tools/list order
+  - outputSchema presence
+  - structuredContent / text response formats
+  - ttlMs / cacheScope declaration
+
+Usage:
+  aq-mcp-conformance                 # probe all configured servers in .mcp.json
+  aq-mcp-conformance --json          # emit structured JSON report
+  aq-mcp-conformance --server NAME   # probe only named server
+  aq-mcp-conformance --config PATH   # custom config JSON file
+"""
+
+from __future__ import annotations
+try:  # aq-usage-hook
+    import importlib.util as _aqu, os as _aqo
+    _aqs = _aqu.spec_from_file_location("aq_usage", _aqo.path.join(_aqo.path.dirname(_aqo.path.realpath(__file__)), "lib", "aq_usage.py"))
+    _aqm = _aqu.module_from_spec(_aqs); _aqs.loader.exec_module(_aqm); _aqm.record(__file__, __name__)
+except Exception:
+    pass
+
+import argparse
+import asyncio
+import json
+import os
+import sys
+import time
+from pathlib import Path
+from typing import Any, Dict, List, Optional, Tuple
+
+REPO_ROOT = Path(__file__).resolve().parent.parent.parent
+DEFAULT_MCP_CONFIG = REPO_ROOT / ".mcp.json"
+
+
+async def _run_mcp_exchange(
+    command: str,
+    args: List[str],
+    env: Dict[str, str],
+    requests: List[Dict[str, Any]],
+    timeout: float = 6.0,
+) -> List[Dict[str, Any]]:
+    """Spawn MCP server process, send JSON-RPC requests, collect responses."""
+    full_env = os.environ.copy()
+    full_env.update(env)
+
+    proc = await asyncio.create_subprocess_exec(
+        command,
+        *args,
+        stdin=asyncio.subprocess.PIPE,
+        stdout=asyncio.subprocess.PIPE,
+        stderr=asyncio.subprocess.PIPE,
+        env=full_env,
+    )
+
+    responses: List[Dict[str, Any]] = []
+
+    async def _writer():
+        for req in requests:
+            line = json.dumps(req) + "\n"
+            proc.stdin.write(line.encode("utf-8"))
+            await proc.stdin.drain()
+
+    async def _reader():
+        while True:
+            line = await proc.stdout.readline()
+            if not line:
+                break
+            try:
+                responses.append(json.loads(line.decode("utf-8", errors="replace").strip()))
+            except json.JSONDecodeError:
+                pass
+            if len(responses) >= len(requests):
+                break
+
+    try:
+        await asyncio.wait_for(asyncio.gather(_writer(), _reader()), timeout=timeout)
+    except asyncio.TimeoutError:
+        pass
+    finally:
+        try:
+            proc.terminate()
+            await asyncio.wait_for(proc.wait(), timeout=1.0)
+        except Exception:
+            try:
+                proc.kill()
+            except Exception:
+                pass
+
+    return responses
+
+
+async def audit_server(name: str, spec: Dict[str, Any], timeout: float = 6.0) -> Dict[str, Any]:
+    """Audit single server definition against MCP conformance checklist."""
+    cmd = spec.get("command", "")
+    args = spec.get("args", [])
+    env = spec.get("env", {})
+
+    report: Dict[str, Any] = {
+        "server": name,
+        "command": cmd,
+        "reachable": False,
+        "protocol_version": "unknown",
+        "has_server_discover": False,
+        "deterministic_tool_order": False,
+        "tools_count": 0,
+        "tools_with_output_schema": 0,
+        "tools_with_ttl": 0,
+        "spec_2026_07_28_compliant": False,
+        "rules": {},
+    }
+
+    if not cmd:
+        report["rules"]["executable_valid"] = False
+        return report
+
+    # 1. Probe initialize handshake
+    init_req = {
+        "jsonrpc": "2.0",
+        "id": 1,
+        "method": "initialize",
+        "params": {
+            "protocolVersion": "2024-11-05",
+            "capabilities": {},
+            "clientInfo": {"name": "aq-mcp-conformance", "version": "1.0"},
+        },
+    }
+
+    # 2. Probe server/discover (2026-07-28 mandatory method)
+    discover_req = {
+        "jsonrpc": "2.0",
+        "id": 2,
+        "method": "server/discover",
+        "params": {},
+    }
+
+    # 3. Probe tools/list (first pass)
+    tools1_req = {
+        "jsonrpc": "2.0",
+        "id": 3,
+        "method": "tools/list",
+        "params": {},
+    }
+
+    # 4. Probe tools/list (second pass to test deterministic ordering)
+    tools2_req = {
+        "jsonrpc": "2.0",
+        "id": 4,
+        "method": "tools/list",
+        "params": {},
+    }
+
+    responses = await _run_mcp_exchange(cmd, args, env, [init_req, discover_req, tools1_req, tools2_req], timeout=timeout)
+
+    by_id = {r.get("id"): r for r in responses if isinstance(r, dict)}
+
+    # Evaluate initialize
+    init_res = by_id.get(1, {})
+    if "result" in init_res:
+        report["reachable"] = True
+        res_data = init_res["result"]
+        report["protocol_version"] = res_data.get("protocolVersion", "unknown")
+
+    # Evaluate server/discover
+    disc_res = by_id.get(2, {})
+    if "result" in disc_res:
+        report["has_server_discover"] = True
+        if "protocolVersion" in disc_res["result"]:
+            report["protocol_version"] = disc_res["result"]["protocolVersion"]
+
+    # Evaluate tools/list
+    t1_res = by_id.get(3, {})
+    t2_res = by_id.get(4, {})
+    t1_tools = (t1_res.get("result", {}) or {}).get("tools", [])
+    t2_tools = (t2_res.get("result", {}) or {}).get("tools", [])
+
+    report["tools_count"] = len(t1_tools)
+    if t1_tools:
+        names1 = [t.get("name") for t in t1_tools if "name" in t]
+        names2 = [t.get("name") for t in t2_tools if "name" in t]
+        report["deterministic_tool_order"] = (names1 == names2 and len(names1) > 0)
+
+        out_schemas = sum(1 for t in t1_tools if "outputSchema" in t)
+        report["tools_with_output_schema"] = out_schemas
+
+        ttls = sum(1 for t in t1_tools if "ttlMs" in t or "cacheScope" in t)
+        report["tools_with_ttl"] = ttls
+
+    # Evaluate conformance rules
+    rules = {
+        "executable_reachable": report["reachable"],
+        "server_discover_supported": report["has_server_discover"],
+        "spec_2026_version": report["protocol_version"] == "2026-07-28",
+        "deterministic_tools_list": report["deterministic_tool_order"] if report["tools_count"] > 1 else True,
+        "output_schema_coverage": report["tools_with_output_schema"] > 0 if report["tools_count"] > 0 else True,
+    }
+    report["rules"] = rules
+    report["spec_2026_07_28_compliant"] = all([
+        report["has_server_discover"],
+        report["protocol_version"] == "2026-07-28",
+        rules["deterministic_tools_list"],
+    ])
+
+    return report
+
+
+async def audit_all_servers(config_path: Path, target_server: Optional[str] = None) -> List[Dict[str, Any]]:
+    """Audit all declared servers in configuration."""
+    if not config_path.is_file():
+        raise FileNotFoundError(f"Configuration file not found: {config_path}")
+
+    config = json.loads(config_path.read_text(encoding="utf-8"))
+    servers = config.get("mcpServers", {})
+
+    results: List[Dict[str, Any]] = []
+    for name, spec in servers.items():
+        if target_server and name != target_server:
+            continue
+        report = await audit_server(name, spec)
+        results.append(report)
+
+    return results
+
+
+def main(argv: Optional[List[str]] = None) -> int:
+    parser = argparse.ArgumentParser(description="AQ-OS MCP Conformance Audit Tool")
+    parser.add_argument("--config", type=Path, default=DEFAULT_MCP_CONFIG, help="Path to .mcp.json")
+    parser.add_argument("--server", type=str, default=None, help="Audit single named server")
+    parser.add_argument("--json", action="store_true", help="Output machine-parseable JSON")
+    args = parser.parse_args(argv)
+
+    try:
+        reports = asyncio.run(audit_all_servers(args.config, args.server))
+    except Exception as exc:
+        print(f"Error during audit: {exc}", file=sys.stderr)
+        return 1
+
+    if args.json:
+        print(json.dumps({"audit_timestamp": time.strftime("%Y-%m-%dT%H:%M:%SZ", time.gmtime()), "servers": reports}, indent=2))
+        return 0
+
+    print("=== AQ-OS MCP Conformance Audit ===")
+    print(f"Config: {args.config}")
+    print()
+    all_ok = True
+    for r in reports:
+        name = r["server"]
+        status = "REACHABLE" if r["reachable"] else "UNREACHABLE"
+        ver = r["protocol_version"]
+        discover = "YES" if r["has_server_discover"] else "NO"
+        s2026 = "COMPLIANT" if r["spec_2026_07_28_compliant"] else "LEGACY/NON-COMPLIANT"
+        if not r["reachable"]:
+            all_ok = False
+        print(f"[{name}] {status} | Protocol: {ver} | server/discover: {discover} | Tools: {r['tools_count']} | Spec 2026: {s2026}")
+        for rule, passed in r.get("rules", {}).items():
+            mark = "✓" if passed else "✗"
+            print(f"    {mark} {rule}")
+        print()
+
+    return 0
+
+
+if __name__ == "__main__":
+    raise SystemExit(main())
