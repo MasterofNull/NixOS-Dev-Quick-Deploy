@@ -35,7 +35,7 @@ class TestScopeGate(unittest.TestCase):
             "cargo", "run", "--quiet", "--manifest-path", str(CRATE_DIR / "Cargo.toml"),
             "--", "--root", str(REPO_ROOT), "scope-gate",
             "--owned", "nonexistent-scope/**",
-            "--base", "HEAD",
+            "--base", "origin/main",
             "--allow-uncommitted",
         ]
         res = subprocess.run(cmd, capture_output=True, text=True)
