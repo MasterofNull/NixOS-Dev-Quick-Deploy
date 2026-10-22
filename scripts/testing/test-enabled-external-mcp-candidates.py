@@ -68,6 +68,12 @@ def assert_playwright_quarantined(candidate: dict) -> None:
     assert "UNAVAILABLE" in checked.stderr, checked.stderr
 
 
+
+def assert_rea_config(entry: dict) -> None:
+    args = entry.get("args") or []
+    assert "rea" in args
+    assert "scripts/ai/mcp-rea-sandboxed" in entry.get("command", "") or "mcp-rea-sandboxed" in entry.get("command", "")
+
 def assert_semgrep_config(entry: dict) -> None:
     # Nix-provided `semgrep mcp`; the uvx semgrep-mcp package is deprecated upstream.
     env = entry.get("env") or {}
@@ -123,6 +129,11 @@ def main() -> int:
     assert_playwright_config(gemini["mcpServers"]["Playwright MCP"])
     cont_pw = next(item for item in continue_cfg["mcpServers"] if item["name"] == "Playwright MCP")
     assert_playwright_config(cont_pw)
+    assert_rea_config(claude["mcpServers"]["rea"])
+    assert_rea_config(gemini["mcpServers"]["REA MCP"])
+    cont_rea = next(item for item in continue_cfg["mcpServers"] if item["name"] == "REA MCP")
+    assert_rea_config(cont_rea)
+    assert_rea_config(load_json(".mcp.json")["mcpServers"]["rea"])
     assert_semgrep_config(load_json(".mcp.json")["mcpServers"]["semgrep"])
     assert_semgrep_config(claude["mcpServers"]["semgrep"])
     assert_semgrep_config(gemini["mcpServers"]["Semgrep MCP"])

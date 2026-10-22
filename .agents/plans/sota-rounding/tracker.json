@@ -209,7 +209,9 @@
         "commit_match": [
           "REA integrate"
         ]
-      }
+      },
+      "status": "SHIPPED",
+      "notes": "REA reverse-engineering integration into system-capability-catalog.json, candidate enabled state, client configurations (.claude, .gemini, .mcp.json), and pass in test-enabled-external-mcp-candidates.py."
     },
     {
       "id": "w1-s4",
