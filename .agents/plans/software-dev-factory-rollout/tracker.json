@@ -27,8 +27,15 @@
       "deps": [],
       "detection": {
         "commit_match": [
+          "feat(factory): factory-kit-k1 blockers",
           "factory-kit-k1"
         ]
+      },
+      "acceptance": {
+        "status": "accepted",
+        "by": "hyperd",
+        "date": "2026-10-22",
+        "note": "K1 blockers verified in PR #534"
       }
     },
     {
@@ -43,8 +50,15 @@
       ],
       "detection": {
         "commit_match": [
+          "feat(factory): K2 kit template dir",
           "factory-kit-k2"
         ]
+      },
+      "acceptance": {
+        "status": "accepted",
+        "by": "hyperd",
+        "date": "2026-10-22",
+        "note": "K2 clean-scan and template dir verified in PR #536"
       }
     },
     {
@@ -59,8 +73,15 @@
       ],
       "detection": {
         "commit_match": [
+          "feat(factory): K3 init and doctor",
           "factory-kit-k3"
         ]
+      },
+      "acceptance": {
+        "status": "accepted",
+        "by": "hyperd",
+        "date": "2026-10-22",
+        "note": "K3 init and doctor verified in PR #537"
       }
     },
     {
@@ -75,8 +96,15 @@
       ],
       "detection": {
         "commit_match": [
+          "K4 Kit CI wiring",
           "factory-kit-k4"
         ]
+      },
+      "acceptance": {
+        "status": "accepted",
+        "by": "hyperd",
+        "date": "2026-10-22",
+        "note": "K4 Kit CI wiring, review-disposition, and SHA-pin audit passing clean in PR #574"
       }
     },
     {
@@ -91,8 +119,15 @@
       ],
       "detection": {
         "commit_match": [
+          "feat(factory): K6 retrofit",
           "factory-kit-k6"
         ]
+      },
+      "acceptance": {
+        "status": "accepted",
+        "by": "hyperd",
+        "date": "2026-10-22",
+        "note": "K6 retrofit command and foreign hook refusal verified via test-factory-kit-k6.py"
       }
     },
     {
