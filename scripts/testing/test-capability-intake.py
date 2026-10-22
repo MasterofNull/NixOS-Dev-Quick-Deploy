@@ -32,6 +32,22 @@ def run_json(*args: str) -> dict:
     return json.loads(proc.stdout)
 
 
+def test_rea_candidate_pinned_and_no_floating_spec() -> None:
+    """W1-S1: Assert REA candidate is pinned and has no floating @latest spec."""
+    registry = json.loads(REGISTRY_PATH.read_text(encoding="utf-8"))
+    candidates = {c["id"]: c for c in registry["candidates"]}
+    rea = candidates.get("rea-reverse-engineering")
+    assert rea is not None, "rea-reverse-engineering candidate must exist"
+    assert rea.get("pinned_version") == "0.1.0", "rea pinned_version must be 0.1.0"
+    assert rea.get("review_status") == "accepted-with-mitigations", "review_status must be accepted-with-mitigations"
+
+    # Check that SKILL.md does not contain floating npx @latest
+    skill_path = REPO_ROOT / ".agent/skills/rea-reverse-engineering/SKILL.md"
+    assert skill_path.exists(), "REA SKILL.md must exist"
+    skill_content = skill_path.read_text(encoding="utf-8")
+    assert "@latest" not in skill_content, "REA SKILL.md must not contain floating @latest"
+    print("SUBPASS: REA candidate pinned and no floating spec")
+
 def main() -> int:
     test_registry_schema()
     test_production_registry_rejections()
@@ -113,6 +129,7 @@ def main() -> int:
     # Run new security checks
     test_auditor_fuzzy()
     test_mock_registry_checks()
+    test_rea_candidate_pinned_and_no_floating_spec()
 
     print("PASS: capability intake checks")
     return 0
@@ -284,6 +301,7 @@ def test_auditor_fuzzy() -> None:
 
 
 def test_mock_registry_checks() -> None:
+    test_rea_candidate_pinned_and_no_floating_spec()
     mock_registry = {
         "version": "1.0-mock",
         "candidates": [
