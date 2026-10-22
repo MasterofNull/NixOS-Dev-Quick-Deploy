@@ -129,7 +129,6 @@
       "detection": {
         "blocker_note": "requires active dispatch broker/TEG and execution-cell boundary"
       },
-      "pct_hint": 0,
       "acceptance": {
         "status": "pending",
         "by": null,
@@ -150,7 +149,6 @@
       "detection": {
         "blocker_note": "no cutover before H3 acceptance and rebuild checkpoint"
       },
-      "pct_hint": 0,
       "acceptance": {
         "status": "pending",
         "by": null,

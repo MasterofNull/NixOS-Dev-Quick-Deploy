@@ -1,10 +1,10 @@
 {
   "plan": {
     "id": "aqos-requirements-inventory",
-    "title": "AQ-OS Requirements — honest program-level completion (owner review required)",
+    "title": "AQ-OS Requirements \u2014 honest program-level completion (owner review required)",
     "prd_ref": ".agents/plans/UNIFIED-PROGRAM-PLAN.md",
     "owner": "hyperd",
-    "goal": "The program-level requirement map: every Foundation/Product/Track/cross-cutting requirement the owner wants, on the honest tier scale. FIRST CUT assembled from the unified plan + 43 PRDs — OWNER MUST REVIEW/CORRECT; the orchestrator does not decide what is 'done'.",
+    "goal": "The program-level requirement map: every Foundation/Product/Track/cross-cutting requirement the owner wants, on the honest tier scale. FIRST CUT assembled from the unified plan + 43 PRDs \u2014 OWNER MUST REVIEW/CORRECT; the orchestrator does not decide what is 'done'.",
     "success_criteria": [
       "Every major requirement area accounted for, honestly marked",
       "Nothing reads complete without VALIDATED + owner acceptance",
@@ -55,7 +55,6 @@
           "Foundation A"
         ]
       },
-      "pct_hint": 100,
       "acceptance": {
         "status": "accepted",
         "by": "hyperd",
@@ -81,7 +80,6 @@
           "Foundation B"
         ]
       },
-      "pct_hint": 100,
       "acceptance": {
         "status": "accepted",
         "by": "hyperd",
@@ -109,7 +107,6 @@
           "ALA activation"
         ]
       },
-      "pct_hint": 100,
       "acceptance": {
         "status": "accepted",
         "by": "hyperd",
@@ -135,7 +132,6 @@
           "ACP-P2 build"
         ]
       },
-      "pct_hint": 100,
       "acceptance": {
         "status": "accepted",
         "by": "hyperd",
@@ -162,7 +158,6 @@
           "Product D"
         ]
       },
-      "pct_hint": 100,
       "acceptance": {
         "status": "accepted",
         "by": "hyperd",
@@ -188,7 +183,6 @@
           "Product E"
         ]
       },
-      "pct_hint": 100,
       "acceptance": {
         "status": "accepted",
         "by": "hyperd",
@@ -199,7 +193,7 @@
     },
     {
       "id": "req-product-f",
-      "name": "Product F — one CLI (aq <noun> <verb>) + command center",
+      "name": "Product F \u2014 one CLI (aq <noun> <verb>) + command center",
       "phase": "products",
       "kind": "slice",
       "goal": "unified CLI + typed console (Fleet/Runs/Evals/Approvals)",
@@ -212,7 +206,6 @@
       "detection": {
         "command": "scripts/ai/aq"
       },
-      "pct_hint": 100,
       "acceptance": {
         "status": "accepted",
         "by": "hyperd",
@@ -236,7 +229,6 @@
       "detection": {
         "command": "scripts/ai/edgeai"
       },
-      "pct_hint": 100,
       "acceptance": {
         "status": "accepted",
         "by": "hyperd",
@@ -247,7 +239,7 @@
     },
     {
       "id": "req-track-v",
-      "name": "Track V — Verified Factory (sealed oracles, risk-tiered gates)",
+      "name": "Track V \u2014 Verified Factory (sealed oracles, risk-tiered gates)",
       "phase": "tracks",
       "kind": "slice",
       "goal": "report!=record verifier, golden-task bank",
@@ -263,7 +255,6 @@
           "verified-factory"
         ]
       },
-      "pct_hint": 100,
       "acceptance": {
         "status": "accepted",
         "by": "hyperd",
@@ -274,7 +265,7 @@
     },
     {
       "id": "req-track-s",
-      "name": "Track S — Defensive Security architecture",
+      "name": "Track S \u2014 Defensive Security architecture",
       "phase": "tracks",
       "kind": "slice",
       "goal": "S0-A intake truth + defensive security",
@@ -287,7 +278,6 @@
           "security"
         ]
       },
-      "pct_hint": 100,
       "acceptance": {
         "status": "accepted",
         "by": "hyperd",
@@ -298,7 +288,7 @@
     },
     {
       "id": "req-flat-factory",
-      "name": "Track F — Flat collaborative factory (F1/F2/F3)",
+      "name": "Track F \u2014 Flat collaborative factory (F1/F2/F3)",
       "phase": "tracks",
       "kind": "slice",
       "goal": "intake->fan-out->consensus->A2A->validation",
@@ -314,7 +304,6 @@
           "flat collaborative"
         ]
       },
-      "pct_hint": 100,
       "acceptance": {
         "status": "accepted",
         "by": "hyperd",
@@ -324,7 +313,7 @@
     },
     {
       "id": "req-herdr",
-      "name": "HERDR — operator observation surface (H1/H2)",
+      "name": "HERDR \u2014 operator observation surface (H1/H2)",
       "phase": "products",
       "kind": "slice",
       "goal": "monitored presentation TUI",
@@ -338,7 +327,6 @@
           "H2A"
         ]
       },
-      "pct_hint": 100,
       "acceptance": {
         "status": "accepted",
         "by": "hyperd",
@@ -363,7 +351,6 @@
           "tier0"
         ]
       },
-      "pct_hint": 100,
       "acceptance": {
         "status": "accepted",
         "by": "hyperd",
@@ -388,7 +375,6 @@
           "AGENT-PARITY"
         ]
       },
-      "pct_hint": 100,
       "acceptance": {
         "status": "accepted",
         "by": "hyperd",
@@ -413,7 +399,6 @@
           "aqos-progress-tracker"
         ]
       },
-      "pct_hint": 100,
       "acceptance": {
         "status": "accepted",
         "by": "hyperd",
@@ -434,7 +419,6 @@
       "detection": {
         "freeze_record": "config/refactor-milestones.json"
       },
-      "pct_hint": 100,
       "acceptance": {
         "status": "accepted",
         "by": "hyperd",

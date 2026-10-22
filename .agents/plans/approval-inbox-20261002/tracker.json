@@ -32,7 +32,6 @@
           "feat(approvals): aq-approve inbox"
         ]
       },
-      "pct_hint": 100,
       "acceptance": {
         "status": "accepted",
         "by": "hyperd",
@@ -55,7 +54,6 @@
           "docs(approvals): approval inbox SOP"
         ]
       },
-      "pct_hint": 100,
       "acceptance": {
         "status": "accepted",
         "by": "hyperd",
@@ -79,7 +77,6 @@
           "docs(approvals): approval inbox SOP"
         ]
       },
-      "pct_hint": 100,
       "acceptance": {
         "status": "accepted",
         "by": "hyperd",
