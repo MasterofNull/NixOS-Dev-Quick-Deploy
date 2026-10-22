@@ -1697,23 +1697,43 @@ def main():
         method = req.get("method", "")
         params = req.get("params", {})
 
+        # Enforce modern MCP 2026-07-28 specification directly across all clients
         if method == "initialize":
             _respond(req_id, {
-                "protocolVersion": "2024-11-05",
-                "capabilities":    {"tools": {}},
-                "serverInfo":      {"name": "hybrid-coordinator-bridge", "version": "1.0"},
+                "protocolVersion": "2026-07-28",
+                "capabilities": {
+                    "tools": {
+                        "listChanged": True,
+                        "cacheScope": "session",
+                        "ttlMs": 300000,
+                    }
+                },
+                "serverInfo": {"name": "hybrid-coordinator-bridge", "version": "2.0"},
+            })
+        elif method in ("server/discover", "tools/discover"):
+            _respond(req_id, {
+                "protocolVersion": "2026-07-28",
+                "server": {"name": "hybrid-coordinator-bridge", "version": "2.0"},
+                "capabilities": {"tools": {"cacheScope": "session", "ttlMs": 300000}},
+                "tools": sorted(TOOLS, key=lambda t: t.get("name", "")),
             })
         elif method == "tools/list":
-            _respond(req_id, {"tools": TOOLS})
+            _respond(req_id, {"tools": sorted(TOOLS, key=lambda t: t.get("name", ""))})
         elif method == "tools/call":
             tool_name = params.get("name", "")
             tool_args = params.get("arguments", {})
             try:
                 result_text = _call_tool(tool_name, tool_args)
-                _respond(req_id, {
+                # First-class structuredContent with text fallback
+                resp_payload = {
                     "content": [{"type": "text", "text": result_text}],
                     "isError": False,
-                })
+                }
+                try:
+                    resp_payload["structuredContent"] = json.loads(result_text)
+                except Exception:
+                    resp_payload["structuredContent"] = {"raw": result_text}
+                _respond(req_id, resp_payload)
             except Exception as exc:
                 _respond(req_id, {
                     "content": [{"type": "text", "text": str(exc)}],

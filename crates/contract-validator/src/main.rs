@@ -1,3 +1,4 @@
+mod scope_gate;
 use std::collections::HashSet;
 use std::env;
 use std::fs;
@@ -52,11 +53,16 @@ const REQUIRED_TRACKED_MEMORY_PATHS: &[&str] = &[
     "docs/operations/agent-artifact-distribution-policy.md",
 ];
 
-#[derive(Clone, Copy)]
+#[derive(Clone)]
 enum Check {
     All,
     WritableState,
     MemorySurface,
+    ScopeGate {
+        owned_paths: Vec<String>,
+        base_ref: Option<String>,
+        check_uncommitted: bool,
+    },
 }
 
 impl Check {
@@ -65,6 +71,11 @@ impl Check {
             "all" => Some(Self::All),
             "writable-state" => Some(Self::WritableState),
             "memory-surface" => Some(Self::MemorySurface),
+            "scope-gate" => Some(Self::ScopeGate {
+                owned_paths: Vec::new(),
+                base_ref: None,
+                check_uncommitted: true,
+            }),
             _ => None,
         }
     }
@@ -89,6 +100,9 @@ fn run_cli(args: Vec<String>) -> Result<String, Vec<String>> {
     let mut check = Check::All;
     let mut root = env::current_dir().map_err(|err| vec![format!("cannot resolve cwd: {err}")])?;
     let mut index = 0;
+    let mut owned_paths = Vec::new();
+    let mut base_ref = None;
+    let mut check_uncommitted = true;
 
     while index < args.len() {
         match args[index].as_str() {
@@ -99,10 +113,32 @@ fn run_cli(args: Vec<String>) -> Result<String, Vec<String>> {
                 };
                 root = PathBuf::from(value);
             }
+            "--owned" => {
+                index += 1;
+                let Some(value) = args.get(index) else {
+                    return Err(vec!["--owned requires a comma-separated path list or path".to_string()]);
+                };
+                for part in value.split(',') {
+                    let trimmed = part.trim();
+                    if !trimmed.is_empty() {
+                        owned_paths.push(trimmed.to_string());
+                    }
+                }
+            }
+            "--base" => {
+                index += 1;
+                let Some(value) = args.get(index) else {
+                    return Err(vec!["--base requires a git ref".to_string()]);
+                };
+                base_ref = Some(value.clone());
+            }
+            "--allow-uncommitted" => {
+                check_uncommitted = false;
+            }
             value => {
                 let Some(parsed) = Check::parse(value) else {
                     return Err(vec![format!(
-                        "unknown check '{value}' (expected all, writable-state, or memory-surface)"
+                        "unknown check '{value}' (expected all, writable-state, memory-surface, or scope-gate)"
                     )]);
                 };
                 check = parsed;
@@ -111,7 +147,15 @@ fn run_cli(args: Vec<String>) -> Result<String, Vec<String>> {
         index += 1;
     }
 
-    let failures = run_check(check, &root);
+    if let Check::ScopeGate { .. } = check {
+        check = Check::ScopeGate {
+            owned_paths,
+            base_ref,
+            check_uncommitted,
+        };
+    }
+
+    let failures = run_check(&check, &root);
     if failures.is_empty() {
         Ok(match check {
             Check::All => "PASS: harness contract validators passed".to_string(),
@@ -120,13 +164,14 @@ fn run_cli(args: Vec<String>) -> Result<String, Vec<String>> {
                     .to_string()
             }
             Check::MemorySurface => "PASS: agent memory surface registry is enforced".to_string(),
+            Check::ScopeGate { .. } => "PASS: slice changes are strictly within owned scope".to_string(),
         })
     } else {
         Err(failures)
     }
 }
 
-fn run_check(check: Check, root: &Path) -> Vec<String> {
+fn run_check(check: &Check, root: &Path) -> Vec<String> {
     let mut failures = Vec::new();
     match check {
         Check::All => {
@@ -135,8 +180,37 @@ fn run_check(check: Check, root: &Path) -> Vec<String> {
         }
         Check::WritableState => validate_writable_state(root, &mut failures),
         Check::MemorySurface => validate_memory_surface(root, &mut failures),
+        Check::ScopeGate {
+            owned_paths,
+            base_ref,
+            check_uncommitted,
+        } => {
+            validate_scope_gate(root, owned_paths, base_ref.as_deref(), *check_uncommitted, &mut failures);
+        }
     }
     failures
+}
+
+fn validate_scope_gate(
+    root: &Path,
+    owned_paths: &[String],
+    base_ref: Option<&str>,
+    check_uncommitted: bool,
+    failures: &mut Vec<String>,
+) {
+    if owned_paths.is_empty() {
+        failures.push("scope-gate requires at least one owned path specified via --owned <paths>".to_string());
+        return;
+    }
+
+    match scope_gate::check_slice_scope(root, owned_paths, base_ref, check_uncommitted) {
+        Ok(res) => {
+            for violation in res.violations {
+                failures.push(format!("{} [{}]", violation.reason, violation.file));
+            }
+        }
+        Err(err) => failures.push(format!("scope gate execution failed: {err}")),
+    }
 }
 
 fn validate_writable_state(root: &Path, failures: &mut Vec<String>) {
@@ -541,7 +615,7 @@ mod tests {
     #[test]
     fn validators_pass_on_current_repo() {
         let root = repo_root();
-        let failures = run_check(Check::All, &root);
+        let failures = run_check(&Check::All, &root);
         assert!(
             failures.is_empty(),
             "contract validator failures:\n{}",

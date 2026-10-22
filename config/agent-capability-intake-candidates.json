@@ -696,15 +696,19 @@
       "source_url": "https://github.com/morluto/rea",
       "maturity": "third-party-reference",
       "priority": "very-high",
-      "state": "proposed",
+      "state": "enabled",
       "pinned_version": "0.1.0",
       "review_status": "accepted-with-mitigations",
       "blocked_reason": "Reverse engineering decompilation bridge; deep native binary analysis requires isolated workspace, capability-intake review, tool allowlist, and runtime sandboxing before activation.",
       "unblock_condition": "Sandboxed launcher (W1-S2) verifies integrity, enforces bwrap no-net isolation, and executes only approved allowlist tools.",
       "install": {
-        "type": "disabled-external-repo",
-        "command": "disabled-until-intake",
-        "args": []
+        "type": "mcp",
+        "command": "scripts/ai/mcp-rea-sandboxed",
+        "args": [
+          "rea",
+          "--transport",
+          "stdio"
+        ]
       },
       "tool_allowlist": [
         "analyze_javascript_application",

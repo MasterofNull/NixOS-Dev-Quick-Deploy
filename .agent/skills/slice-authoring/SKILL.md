@@ -5,7 +5,7 @@ description: "Slice Authoring Skill"
 
 # Slice Authoring Skill
 ## Tags
-slice, delegation, context, prompt, handoff, acceptance-criteria, scope, sub-agent, implementer
+slice, delegation, context, prompt, handoff, acceptance-criteria, scope, sub-agent, implementer, token_budget, check_command, turn_cap
 ## When to Use
 Writing a delegation prompt for Gemini/Codex/Local; structuring a sub-agent task; defining
 acceptance criteria; determining what context to include vs exclude; assigning a role to a delegatee.
@@ -16,10 +16,15 @@ acceptance criteria; determining what context to include vs exclude; assigning a
 
 A well-formed slice prompt contains exactly this — no more, no less:
 
-```
+```yaml
 slice_objective: <1-2 sentences — what to build, not how>
 role: implementer  # or reviewer, architect
 phase: Phase 86
+
+# Frontier Parity (W4-S2): Mandatory execution controls & checks-over-plans
+check_command: python3 scripts/testing/test-feature.py
+token_budget: 15000
+turn_cap: 8
 
 relevant_files:
   - scripts/ai/lib/attention_queue.py   # paths only — agent reads them
@@ -44,7 +49,18 @@ resume_checkpoint: .agent/collaboration/RESUME.json
 
 ---
 
-## 2. What to Include vs Exclude
+## 2. Mandatory Verification & Cap Fields (W4-S2)
+
+Every slice brief MUST declare:
+1. `check_command`: A single runnable verification command that asserts end-state correctness without relying on unvalidated plans.
+2. `token_budget`: The upper ceiling of tokens allocated for this slice to prevent runaway context.
+3. `turn_cap`: The maximum allowed agent conversation turns before halting and reporting back to the orchestrator.
+
+A slice brief missing any of these three fields is invalid and will be rejected by `test-slice-authoring-lint.py`.
+
+---
+
+## 3. What to Include vs Exclude
 
 | Include | Exclude |
 |---------|---------|
@@ -60,7 +76,7 @@ A sub-agent receiving 500 tokens of signal will deliver better output.
 
 ---
 
-## 3. Acceptance Criteria Format
+## 4. Acceptance Criteria Format
 
 Good acceptance criteria are binary — pass or fail, no ambiguity:
 
@@ -88,7 +104,7 @@ For Gemini (no shell): use file-verifiable criteria only:
 
 ---
 
-## 4. Role Assignment in Delegation Prompt
+## 5. Role Assignment in Delegation Prompt
 
 ```bash
 # In delegate-to-gemini:
@@ -109,7 +125,7 @@ Role assignment in the prompt also sets the context tone:
 
 ---
 
-## 5. Slice Boundaries (Scope Control)
+## 6. Slice Boundaries (Scope Control)
 
 Before writing the slice prompt, declare the scope boundary explicitly:
 
@@ -128,7 +144,7 @@ This prevents the implementer from "helpful" scope creep that breaks other thing
 
 ---
 
-## 6. Token Budget by Agent
+## 7. Token Budget by Agent
 
 | Agent | Prompt budget | File reading budget | Output budget |
 |-------|--------------|---------------------|---------------|
@@ -142,7 +158,7 @@ This prevents the implementer from "helpful" scope creep that breaks other thing
 
 ---
 
-## 7. VERDICT Request (for Reviewer Slices)
+## 8. VERDICT Request (for Reviewer Slices)
 
 When assigning reviewer role, always request an explicit verdict at the end:
 
