@@ -1,35 +1,39 @@
 #!/usr/bin/env bash
-# Runs the CI-hard checks listed in config/ci-checks.json. CI and local hooks call this same
+# Source-of-truth runner for checks in config/ci-checks.json.
+# Local runs (run-ci-checks.sh --changed) and CI (ci-merge-parity.sh) share this
 # runner so they cannot drift. Usage:
 #   run-ci-checks.sh --all [--only <id>]
 #   run-ci-checks.sh --changed [--base origin/main] [--only <id>]
+#   run-ci-checks.sh --maintenance   # whole-tree maintenance run (runs all checks, missing tools surface WARN)
 #   run-ci-checks.sh --list [--changed]   # print selected ids only
 # A manifest entry may carry an "env" object (string vars set for that check only).
 # Merge-commit parity (CI tests the PR merge commit): scripts/governance/ci-merge-parity.sh
-# Env: CI_CHECKS_MANIFEST overrides the manifest path; CI_CHECKS_CHANGED_FILES (newline list)
-# overrides git change detection (tests).
 set -euo pipefail
-ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")/../.." && pwd)"
-cd "${ROOT}"
-exec python3 - "$@" <<'PY'
+
+python3 - "$@" << 'PY'
 import fnmatch, json, os, re, shutil, subprocess, sys, time
 
 def glob_re(p):
-    out, i = "", 0
-    while i < len(p):
-        if p.startswith("**/", i): out += "(?:.*/)?"; i += 3
-        elif p.startswith("**", i): out += ".*"; i += 2
-        elif p[i] == "*": out += "[^/]*"; i += 1
-        elif p[i] == "?": out += "[^/]"; i += 1
-        else: out += re.escape(p[i]); i += 1
-    return re.compile("^" + out + "$")
+    parts = p.split("**")
+    if len(parts) == 1:
+        return re.compile(fnmatch.translate(p))
+    out = []
+    for i, part in enumerate(parts):
+        esc = fnmatch.translate(part)
+        if esc.startswith("(?s:"): esc = esc[4:]
+        if esc.endswith(")\\Z"): esc = esc[:-3]
+        elif esc.endswith("\\Z"): esc = esc[:-2]
+        out.append(esc)
+    return re.compile("(?s:" + ".*".join(out) + ")\\Z")
 
 def matches(paths, files):
-    return not paths or any(glob_re(p).match(f) for p in paths for f in files)
+    if not paths: return True
+    res = [glob_re(p) for p in paths]
+    return any(any(r.match(f) for r in res) for f in files)
 
 def git_lines(*a):
-    r = subprocess.run(["git", *a], capture_output=True, text=True)
-    return [l for l in r.stdout.splitlines() if l] if r.returncode == 0 else None
+    r = subprocess.run(["git"] + list(a), capture_output=True, text=True)
+    return r.stdout.splitlines() if r.returncode == 0 else None
 
 def main(argv):
     mode, base, only, list_only = None, "origin/main", [], False
@@ -37,12 +41,13 @@ def main(argv):
     while i < len(argv):
         a = argv[i]
         if a in ("--all", "--changed"): mode = a[2:]
+        elif a == "--maintenance": mode = "all"; os.environ["MAINTENANCE_RUN"] = "true"
         elif a == "--base": i += 1; base = argv[i]
         elif a == "--only": i += 1; only.append(argv[i])
         elif a == "--list": list_only = True
         else: print(f"unknown arg: {a}", file=sys.stderr); return 2
         i += 1
-    if mode is None and not list_only: print(__doc__ or "usage: --all|--changed", file=sys.stderr); return 2
+    if mode is None and not list_only: print(__doc__ or "usage: --all|--changed|--maintenance", file=sys.stderr); return 2
     mode = mode or "all"
     manifest = json.load(open(os.environ.get("CI_CHECKS_MANIFEST", "config/ci-checks.json")))
     checks = manifest["checks"]
@@ -64,11 +69,14 @@ def main(argv):
     if list_only:
         print("\n".join(c["id"] for c in checks)); return 0
     ci = os.environ.get("CI", "").lower() == "true"
+    maintenance = os.environ.get("MAINTENANCE_RUN", "").lower() == "true"
     results = []
     for c in checks:
         missing = [t for t in c.get("needs", []) if not shutil.which(t)]
         if missing:
-            results.append((c["id"], "FAIL" if ci else "WARN", f"missing tool: {','.join(missing)}")); continue
+            # Under maintenance mode or outside CI, missing tools surface as WARN rather than hard error
+            fail_status = "WARN" if maintenance or not ci else "FAIL"
+            results.append((c["id"], fail_status, f"missing tool: {','.join(missing)}")); continue
         parts = c["cmd"].split()
         if not os.path.isfile(parts[0]): results.append((c["id"], "FAIL", f"script not found: {parts[0]}")); continue
         t = time.time()

@@ -1,0 +1,2 @@
+- **Trigger**: ONLY failing security gate, strictly scoped to implicated package; no broad churn.
+- **Ladder**: (1) Fixed release -> raise floor; (2) Active upstream, fix unreleased -> mitigate + time-boxed exception (<=90d); (3) Abandoned/stale (>18m no commits) -> migrate to maintained replacement/stdlib; (4) Upstream PRs are owner-authored (propose-not-push).

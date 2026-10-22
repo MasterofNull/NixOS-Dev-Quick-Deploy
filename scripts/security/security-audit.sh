@@ -381,9 +381,30 @@ fi
 blocking=0
 if [[ ${pip_total_vulns} -gt 0 ]]; then
   echo "BLOCKING: pip-audit reported ${pip_total_vulns} vulnerabilities"; blocking=$((blocking + 1))
+  echo "--- Gate-Triggered Dependency Hygiene Ladder ---"
+  echo "Trigger: Blocking pip vulnerability detected."
+  echo "Ladder steps: (1) Check if fixed version exists -> bump floor; (2) Active upstream, unreleased fix -> mitigate + exception (<=90d); (3) Abandoned/stale -> replace package; (4) Upstream help is owner-authored."
+  # Print details from pip results to surface fix versions and affected packages
+  if compgen -G "${pip_results_dir}/*.json" >/dev/null; then
+    for pf in "${pip_results_dir}"/*.json; do
+      [[ -f "${pf}" ]] || continue
+      jq -r '.dependencies[]? | select(.vulns | length > 0) | "Package: \(.name) (\(.version)) | Vulns: \([.vulns[].id] | join(", ")) | Fix versions: \([.vulns[].fix_versions[]?] | unique | join(", "))"' "${pf}" 2>/dev/null || true
+    done
+  fi
+  echo "------------------------------------------------"
 fi
 if [[ ${high_or_critical} -gt 0 ]]; then
   echo "BLOCKING: npm audit reported ${npm_total_critical} critical / ${npm_total_high} high vulnerabilities"; blocking=$((blocking + 1))
+  echo "--- Gate-Triggered Dependency Hygiene Ladder ---"
+  echo "Trigger: Blocking npm vulnerability detected."
+  echo "Ladder steps: (1) Check if fixed version exists -> bump floor; (2) Active upstream, unreleased fix -> mitigate + exception (<=90d); (3) Abandoned/stale -> replace package; (4) Upstream help is owner-authored."
+  if compgen -G "${npm_results_dir}/*.json" >/dev/null; then
+    for nf in "${npm_results_dir}"/*.json; do
+      [[ -f "${nf}" ]] || continue
+      jq -r '.vulnerabilities[]? | select(.severity == "high" or .severity == "critical") | "Package: \(.name) | Severity: \(.severity) | Fix available: \(.fixAvailable)"' "${nf}" 2>/dev/null || true
+    done
+  fi
+  echo "------------------------------------------------"
 fi
 for ex in "${applied_exceptions[@]}"; do echo "EXCEPTION applied: ${ex}"; done
 for ex in "${expired_exceptions[@]}"; do echo "WARNING: security exception EXPIRED, not applied: ${ex}"; done
