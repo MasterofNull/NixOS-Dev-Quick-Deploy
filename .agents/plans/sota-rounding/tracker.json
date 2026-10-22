@@ -227,7 +227,9 @@
         "commit_match": [
           "REA activation"
         ]
-      }
+      },
+      "status": "SHIPPED",
+      "notes": "REA activation attestation recorded in ACTIVATION-AUDIT.md and docs/harness-first/evidence/2026-10-22-rea-activation.md."
     },
     {
       "id": "w3-s1",
