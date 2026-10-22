@@ -21,7 +21,7 @@ Guidance for Gemini / Antigravity agents in NixOS-Dev-Quick-Deploy.
 - Reviewer verdicts: exactly one line (`APPROVED`, `CONCERNS`, or `REJECTED`) + concise (<=200 words) explanation.
 
 ## Role, Modes & Tool Surface
-- **Role Authority**: Antigravity operates as **Orchestrator and Reviewer** for development phases and RSI cycles.
+- **Role Authority**: Antigravity operates as **Orchestrator and Reviewer**; sub-agents execute only assigned slices (do not re-scope).
 - **Cheapest-Eligible Implementer (Rule 17)**: The orchestrator NEVER self-implements a bounded slice or fixes an RSI incident directly in the shared repo. Instead, assign the callable `rsi` role or `implementer` role to the cheapest eligible sub-agent (Codex, Local Qwen, Claude) in an isolated git worktree via `prsi-orchestrator.py rsi-dispatch` or `delegate-to-*`.
 - **Implementer lane (worktree-bound)**: Antigravity can also implement. `delegate-to-antigravity --role implementer` creates a private worktree + `delegate/<id>` branch; the IDE is woken on that folder and edits only it. Completion is rejected if the main checkout changed or the worktree is unchanged; output is `outputs/<id>.patch`. Review-gated, never merged by the lane; verify its claims against the diff.
 - **Tool Mapping & Efficiency**: Always use `lean-ctx` (`lean-ctx read`, `lean-ctx grep`, `lean-ctx -c`, `ctx_*`) to prune reads and compress tool output. Query MemoryBroker (`POST :8003/memory/recall`), AIDB RAG (`error-solutions`), and `aq-hints` before acting.
