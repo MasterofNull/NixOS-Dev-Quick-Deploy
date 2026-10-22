@@ -479,6 +479,23 @@ jobs:
           chmod +x scripts/governance/run-ci-checks.sh
           ./scripts/governance/run-ci-checks.sh --all --only python-tooling-policy
 
+      - name: Install gitleaks for factory kit scan
+        run: |
+          GITLEAKS_VERSION=8.24.3
+          curl -sSfL "https://github.com/gitleaks/gitleaks/releases/download/v${GITLEAKS_VERSION}/gitleaks_${GITLEAKS_VERSION}_linux_x64.tar.gz" \
+            | tar -xz gitleaks
+          sudo install -m 0755 gitleaks /usr/local/bin/gitleaks
+
+      - name: Validate factory kit cleanliness
+        run: |
+          chmod +x scripts/governance/run-ci-checks.sh
+          ./scripts/governance/run-ci-checks.sh --all --only factory-kit-clean
+
+      - name: Run factory kit tests
+        run: |
+          chmod +x scripts/governance/run-ci-checks.sh
+          ./scripts/governance/run-ci-checks.sh --all --only factory-kit-tests
+
   validate-structure:
     name: Validate Project Structure
     runs-on: ubuntu-latest
