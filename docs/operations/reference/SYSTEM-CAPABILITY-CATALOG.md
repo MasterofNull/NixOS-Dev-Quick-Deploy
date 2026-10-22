@@ -29,6 +29,7 @@ External ingestion gate: `capability-intake`
 | tooling-manifest | agent-tools | python-module | enabled | local-governance / medium | codex, claude, gemini, local-agent | `python3 scripts/testing/test-tooling-manifest.py` |
 | playwright-mcp | browser-automation | external-mcp | quarantined | incomplete / high | codex, claude, local-agent | `python3 scripts/testing/test-enabled-external-mcp-candidates.py` |
 | understand-anything | code-intelligence | repo-skill | partial | accepted-with-mitigations / medium | codex, claude, gemini, local-agent | `scripts/ai/aq-understand-anything status --check`<br>`scripts/ai/aq-graph-query staleness --check`<br>`python3 scripts/testing/test-graph-query.py`<br>`python3 scripts/testing/test-graph-build.py`<br>`scripts/ai/aq-graph-build --check`<br>`scripts/ai/aq-understand-anything validate-batches` |
+| rea-reverse-engineering | code-understanding | external-mcp | enabled | accepted-with-mitigations / high | codex, claude, gemini, local-agent | `python3 scripts/testing/test-rea-sandbox.py`<br>`python3 scripts/testing/test-enabled-external-mcp-candidates.py` |
 | aidb-rag-stores | data-store | service-dataset | enabled | local-governance / medium | codex, claude, gemini, local-agent | `AQ_QA_SKIP_REPORT_BACKED_CHECKS=1 scripts/ai/aq-qa 0 --machine` |
 | aq-eval-harness | evaluation-redteam | repo-cli | enabled | local-governance / medium | codex, claude, gemini, local-agent | `python3 scripts/testing/test-aq-eval.py` |
 | aq-inference-bench | local-inference | repo-cli | enabled | local-governance / medium | codex, claude, gemini, local-agent | `python3 scripts/testing/test-aq-inference-bench.py` |
@@ -134,6 +135,19 @@ Codebase graph generation, dashboard visualization, diff impact, and graph-backe
 - Data stores: `codebase-context`
 - Parity targets: repo graph agents, impact analysis tools, codebase visualization systems
 - Security gate: `scripts/ai/aq-understand-anything validate-batches`
+
+### rea-reverse-engineering
+
+Sandboxed reverse engineering decompilation bridge; deep native binary and JavaScript application analysis under bubblewrap confinement.
+
+- Name: REA: Reverse Engineer Anything
+- Owner: qa-automation
+- Maturity: third-party-reference
+- State: enabled
+- Primary refs: `scripts/ai/mcp-rea-sandboxed`, `config/agent-capability-intake-candidates.json`, `.agent/skills/rea-reverse-engineering/SKILL.md`
+- Data stores: none
+- Parity targets: Ghidra, Radare2, binary analysis agents
+- Security gate: `python3 scripts/testing/test-rea-sandbox.py`
 
 ### aidb-rag-stores
 

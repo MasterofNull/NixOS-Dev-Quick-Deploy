@@ -3,8 +3,22 @@ name: Nix Build
 on:
   push:
     branches: [ main, develop, 'cursor/**' ]
+    paths:
+      - 'flake.nix'
+      - 'flake.lock'
+      - 'nix/**'
+      - 'hosts/**'
+      - 'pkgs/**'
+      - '.github/workflows/nix-build.yml'
   pull_request:
     branches: [ main, develop ]
+    paths:
+      - 'flake.nix'
+      - 'flake.lock'
+      - 'nix/**'
+      - 'hosts/**'
+      - 'pkgs/**'
+      - '.github/workflows/nix-build.yml'
 
 permissions:
   contents: read
