@@ -441,7 +441,9 @@
         "commit_match": [
           "anti-fabrication lint"
         ]
-      }
+      },
+      "status": "SHIPPED",
+      "notes": "Tier 0 anti-fabrication lint in scripts/governance/tier0.d/check-anti-fabrication.sh blocking pct_hint in trackers and unbacked owner ratification/acceptance claims."
     },
     {
       "id": "w6-s1",
