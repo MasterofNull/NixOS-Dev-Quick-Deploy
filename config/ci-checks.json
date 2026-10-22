@@ -188,6 +188,33 @@
         "python3"
       ],
       "ci_workflow": ".github/workflows/security.yml#nix-closure-vuln-scan"
+    },
+    {
+      "id": "factory-kit-clean",
+      "cmd": "scripts/governance/check-factory-kit-clean.py templates/factory-kit",
+      "paths": [
+        "templates/factory-kit/**",
+        "scripts/governance/check-factory-kit-clean.py"
+      ],
+      "needs": [
+        "python3",
+        "gitleaks"
+      ],
+      "ci_workflow": ".github/workflows/test.yml#syntax"
+    },
+    {
+      "id": "factory-kit-tests",
+      "cmd": "scripts/testing/test-factory-kit-k3.py",
+      "paths": [
+        "templates/factory-kit/**",
+        "scripts/ai/aq-factory",
+        "scripts/testing/test-factory-kit-*.py"
+      ],
+      "needs": [
+        "git",
+        "python3"
+      ],
+      "ci_workflow": ".github/workflows/test.yml#syntax"
     }
   ],
   "ci_exempt": [
