@@ -513,7 +513,9 @@
         "commit_match": [
           "tool-pins"
         ]
-      }
+      },
+      "status": "SHIPPED",
+      "notes": "Created canonical config/tool-pins.json and Tier 0 extension scripts/governance/tier0.d/check-tool-pins-skew.sh to enforce version floors between local and CI."
     },
     {
       "id": "w6-s6",

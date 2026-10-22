@@ -1,0 +1,25 @@
+{
+  "$schema": "./schemas/tool-pins.schema.json",
+  "version": "2026-10-22",
+  "description": "Canonical minimum version floors and tool pins shared across local gates, pre-push, and GitHub Actions CI.",
+  "pins": {
+    "gitleaks": {
+      "min_version": "8.24.0",
+      "ci_version": "8.24.0",
+      "scope": "security-secret-scan"
+    },
+    "python": {
+      "min_version": "3.11.0",
+      "recommended_local": "3.13.0",
+      "scope": "runtime-and-linting"
+    },
+    "semgrep": {
+      "min_version": "1.80.0",
+      "scope": "sast-code-scan"
+    },
+    "trivy": {
+      "min_version": "0.50.0",
+      "scope": "vulnerability-scan"
+    }
+  }
+}
