@@ -1,0 +1,88 @@
+#!/usr/bin/env python3
+"""aq-skill-eval — Evaluates skill utility, token footprint, and detects zero-delta candidates for pruning (W4-S3)."""
+from __future__ import annotations
+
+import argparse
+import json
+import os
+import sys
+from pathlib import Path
+
+REPO_ROOT = Path(__file__).resolve().parents[2]
+SKILLS_DIR = REPO_ROOT / ".agent" / "skills"
+
+
+def analyze_skills(skills_dir: Path) -> list[dict]:
+    results = []
+    if not skills_dir.is_dir():
+        return results
+
+    for entry in sorted(skills_dir.iterdir()):
+        if not entry.is_dir():
+            continue
+        skill_md = entry / "SKILL.md"
+        if not skill_md.is_file():
+            results.append({
+                "skill": entry.name,
+                "status": "invalid_missing_skill_md",
+                "line_count": 0,
+                "byte_size": 0,
+                "zero_delta": True,
+                "recommendation": "archive"
+            })
+            continue
+
+        raw = skill_md.read_bytes()
+        text = raw.decode("utf-8", errors="replace")
+        lines = len(text.splitlines())
+        byte_size = len(raw)
+
+        # Heuristic zero-delta: placeholder template or empty
+        is_placeholder = "Replace with description of the skill" in text or "template-skill" in entry.name
+        is_empty = byte_size < 100 or lines < 5
+
+        zero_delta = is_placeholder or is_empty
+
+        results.append({
+            "skill": entry.name,
+            "status": "placeholder" if is_placeholder else ("empty" if is_empty else "active"),
+            "line_count": lines,
+            "byte_size": byte_size,
+            "zero_delta": zero_delta,
+            "recommendation": "archive" if zero_delta else "retain"
+        })
+
+    return results
+
+
+def main() -> int:
+    parser = argparse.ArgumentParser(description="Evaluate skills and detect zero-delta prune candidates.")
+    parser.add_argument("--json", action="store_true", help="Output results as JSON")
+    parser.add_argument("--prune-candidates", action="store_true", help="Print only zero-delta candidates")
+    args = parser.parse_args()
+
+    skills = analyze_skills(SKILLS_DIR)
+
+    if args.json:
+        print(json.dumps(skills, indent=2))
+        return 0
+
+    zero_deltas = [s for s in skills if s["zero_delta"]]
+
+    if args.prune-candidates if hasattr(args, 'prune_candidates') and args.prune_candidates else False:
+        for z in zero_deltas:
+            print(f"{z['skill']}: {z['status']} ({z['line_count']} lines, {z['byte_size']} bytes) -> {z['recommendation']}")
+        return 0
+
+    print(f"Evaluated {len(skills)} skills in {SKILLS_DIR}")
+    print(f"Active: {len(skills) - len(zero_deltas)} | Zero-delta / Prune candidates: {len(zero_deltas)}")
+    if zero_deltas:
+        print("\nCandidates for archival (Rule 12):")
+        for z in zero_deltas:
+            print(f"  - {z['skill']}: {z['status']} -> {z['recommendation']}")
+
+    return 0
+
+
+if __name__ == "__main__":
+    sys.exit(main())

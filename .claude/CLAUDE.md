@@ -177,3 +177,8 @@ Enforcement: local payloads auto-inject the MICRO variant (`shared/llm_config.py
 - Orchestrator: commit slice deps, deliverable path shared-visible, quota headroom verified (Rule 18).
 - Full text: `canon/blocks/headless-delegate-mode.md`
 <!-- canon:end headless-delegate-mode -->
+
+<!-- canon:begin dependency-hygiene -->
+- **Trigger**: ONLY failing security gate, strictly scoped to implicated package; no broad churn.
+- **Ladder**: (1) Fixed release -> raise floor; (2) Active upstream, fix unreleased -> mitigate + time-boxed exception (<=90d); (3) Abandoned/stale (>18m no commits) -> migrate to maintained replacement/stdlib; (4) Upstream PRs are owner-authored (propose-not-push).
+<!-- canon:end dependency-hygiene -->

@@ -21,7 +21,7 @@ Guidance for Gemini / Antigravity agents in NixOS-Dev-Quick-Deploy.
 - Reviewer verdicts: exactly one line (`APPROVED`, `CONCERNS`, or `REJECTED`) + concise (<=200 words) explanation.
 
 ## Role, Modes & Tool Surface
-- **Role Authority**: Antigravity operates as **Orchestrator and Reviewer** for development phases and RSI cycles.
+- **Role Authority**: Antigravity operates as **Orchestrator and Reviewer**; sub-agents execute only assigned slices (do not re-scope).
 - **Cheapest-Eligible Implementer (Rule 17)**: The orchestrator NEVER self-implements a bounded slice or fixes an RSI incident directly in the shared repo. Instead, assign the callable `rsi` role or `implementer` role to the cheapest eligible sub-agent (Codex, Local Qwen, Claude) in an isolated git worktree via `prsi-orchestrator.py rsi-dispatch` or `delegate-to-*`.
 - **Implementer lane (worktree-bound)**: Antigravity can also implement. `delegate-to-antigravity --role implementer` creates a private worktree + `delegate/<id>` branch; the IDE is woken on that folder and edits only it. Completion is rejected if the main checkout changed or the worktree is unchanged; output is `outputs/<id>.patch`. Review-gated, never merged by the lane; verify its claims against the diff.
 - **Tool Mapping & Efficiency**: Always use `lean-ctx` (`lean-ctx read`, `lean-ctx grep`, `lean-ctx -c`, `ctx_*`) to prune reads and compress tool output. Query MemoryBroker (`POST :8003/memory/recall`), AIDB RAG (`error-solutions`), and `aq-hints` before acting.
@@ -37,14 +37,6 @@ Guidance for Gemini / Antigravity agents in NixOS-Dev-Quick-Deploy.
 6. **VALIDATE**: Review sub-agent receipt + worktree diff. Live test. Acquire `aq-gate-checkout acquire --gate tier0`. Run `tier0-validation-gate.sh --pre-commit`.
 7. **DOC-UPDATE**: Log to `issues-backlog.md` & `WORKAROUND-REGISTER.md`. Seed RAG (`seed-rag-knowledge.py`) & MemoryBroker. Update `HANDOFF.md`.
 8. **COMMIT**: Step 8 evidence contract (root cause, files changed, results, trailers). Release gate checkout.
-
-## Gemini lane overlays
-
-- **Orchestration & Review**: Steer and review; do not self-implement. Verify sub-agent receipts, worktree confinement, and test proofs.
-- **Sub-agents**: Execute only assigned slices; do not re-scope, route other agents, or finalize acceptance.
-- **Scope lock**: Verify slice scope before dispatching; no infrastructure edits without assignment.
-- **Deduplication**: Never repeat identical tool calls.
-- **Declarative only (Rule 13)**: Never propose imperative installs (`pip/npm/cargo install`); declare in Nix.
 
 ## On-demand reference
 
@@ -157,3 +149,8 @@ Enforcement: local payloads auto-inject the MICRO variant (`shared/llm_config.py
 - Orchestrator: commit slice deps, deliverable path shared-visible, quota headroom verified (Rule 18).
 - Full text: `canon/blocks/headless-delegate-mode.md`
 <!-- canon:end headless-delegate-mode -->
+
+<!-- canon:begin dependency-hygiene -->
+- **Trigger**: ONLY failing security gate, strictly scoped to implicated package; no broad churn.
+- **Ladder**: (1) Fixed release -> raise floor; (2) Active upstream, fix unreleased -> mitigate + time-boxed exception (<=90d); (3) Abandoned/stale (>18m no commits) -> migrate to maintained replacement/stdlib; (4) Upstream PRs are owner-authored (propose-not-push).
+<!-- canon:end dependency-hygiene -->

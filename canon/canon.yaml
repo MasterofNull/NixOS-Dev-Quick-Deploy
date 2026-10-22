@@ -88,6 +88,17 @@ blocks:
       - {path: .agent/LOCAL-AGENT.md, mode: summary}
       - .agent/WORKFLOW-CANON.md
 
+  dependency-hygiene:
+    source: blocks/dependency-hygiene.md
+    summary: blocks/dependency-hygiene.summary.md
+    targets:
+      - {path: AGENTS.md, mode: summary}
+      - {path: CLAUDE.md, mode: summary}
+      - {path: .agent/CODEX.md, mode: summary}
+      - {path: .agent/GEMINI.md, mode: summary}
+      - {path: .agent/LOCAL-AGENT.md, mode: summary}
+      - .agent/WORKFLOW-CANON.md
+
 # Always-on agent instruction files: required canon blocks are every block above
 # targeting the file; budgets are enforced by tier0.d/check-agent-instruction-parity.py.
 # lane_budget_bytes bounds the hand-written <!-- lane:begin/end --> region.
