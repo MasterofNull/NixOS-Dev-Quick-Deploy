@@ -7434,6 +7434,7 @@ def _triage_health_summary() -> Dict[str, Any]:
         if spec is None or spec.loader is None:
             raise ImportError("triage engine unavailable")
         module = importlib.util.module_from_spec(spec)
+        sys.modules["aq_triage_engine"] = module
         spec.loader.exec_module(module)
         return module.health_summary(_repo_root())
     except (OSError, ValueError, ImportError, SyntaxError) as exc:
