@@ -13,48 +13,123 @@
     ]
   },
   "phases": [
-    {"id": "isolate", "name": "worktree-isolate delegation scripts", "goal": "delegations run in isolated worktrees, hand back patch/branch", "order": 1},
-    {"id": "parity", "name": "discipline doc + parity", "goal": "principle in all agent instruction files", "order": 2},
-    {"id": "guard", "name": "backstop concurrent-staging guard", "goal": "refuse/lock concurrent shared-index staging", "order": 3},
-    {"id": "validate", "name": "concurrent-dispatch validation", "goal": "parallel lanes no longer contend; single-lane regression clean", "order": 4}
+    {
+      "id": "isolate",
+      "name": "worktree-isolate delegation scripts",
+      "goal": "delegations run in isolated worktrees, hand back patch/branch",
+      "order": 1
+    },
+    {
+      "id": "parity",
+      "name": "discipline doc + parity",
+      "goal": "principle in all agent instruction files",
+      "order": 2
+    },
+    {
+      "id": "guard",
+      "name": "backstop concurrent-staging guard",
+      "goal": "refuse/lock concurrent shared-index staging",
+      "order": 3
+    },
+    {
+      "id": "validate",
+      "name": "concurrent-dispatch validation",
+      "goal": "parallel lanes no longer contend; single-lane regression clean",
+      "order": 4
+    }
   ],
   "items": [
     {
-      "id": "cs-1", "name": "worktree-isolate delegate-to-codex + delegate-to-local", "phase": "isolate", "kind": "slice",
+      "id": "cs-1",
+      "name": "worktree-isolate delegate-to-codex + delegate-to-local",
+      "phase": "isolate",
+      "kind": "slice",
       "goal": "each dispatch creates a fresh `git worktree add HEAD` (per-task branch delegate/<task-id>), runs the agent with CWD=worktree, hands back a patch/branch (never stages/commits into shared main), tears down + archives the patch; add --shared/--no-worktree escape (default isolated); --check/--status/--list/quota-precheck unchanged",
       "validation_goal": "a dispatch runs in an isolated worktree + produces a patch/branch; shared main index untouched during it; existing subcommands unchanged; done while no delegation is live",
       "deps": [],
       "editorial_note": "core fix; reuse git worktree + the Agent-tool hand-back pattern (Rule 20); coordination-critical infra = top risk-tier, isolated impl + rigorous review",
-      "detection": {"commit_match": ["CS-1 — worktree-isolate delegation lanes"]},
-      "pct_hint": 100,
-      "acceptance": {"status": "accepted", "by": "hyperd", "date": "2026-10-06", "note": "Owner approved; test-worktree-isolation PASS"}
+      "detection": {
+        "commit_match": [
+          "CS-1 \u2014 worktree-isolate delegation lanes"
+        ]
+      },
+      "acceptance": {
+        "status": "accepted",
+        "by": "hyperd",
+        "date": "2026-10-06",
+        "note": "Owner approved; test-worktree-isolation PASS"
+      }
     },
     {
-      "id": "cs-2", "name": "discipline doc + parity (Rule 16)", "phase": "parity", "kind": "slice",
+      "id": "cs-2",
+      "name": "discipline doc + parity (Rule 16)",
+      "phase": "parity",
+      "kind": "slice",
       "goal": "write the isolate-implementers/orchestrator-only-commit-main principle into CLAUDE/CODEX/LOCAL/GEMINI/WORKFLOW-CANON from one source; update parity matrix",
       "validation_goal": "all 5 agent files carry it; parity-matrix updated; no lane in isolation",
-      "deps": ["cs-1"], "editorial_note": "canonical change",
-      "detection": {"commit_match": ["CS-1 — worktree-isolate delegation lanes"]},
-      "pct_hint": 100,
-      "acceptance": {"status": "accepted", "by": "hyperd", "date": "2026-10-06", "note": "Owner approved; canonical parity synchronized"}
+      "deps": [
+        "cs-1"
+      ],
+      "editorial_note": "canonical change",
+      "detection": {
+        "commit_match": [
+          "CS-1 \u2014 worktree-isolate delegation lanes"
+        ]
+      },
+      "acceptance": {
+        "status": "accepted",
+        "by": "hyperd",
+        "date": "2026-10-06",
+        "note": "Owner approved; canonical parity synchronized"
+      }
     },
     {
-      "id": "cs-3", "name": "backstop concurrent-staging guard", "phase": "guard", "kind": "slice",
+      "id": "cs-3",
+      "name": "backstop concurrent-staging guard",
+      "phase": "guard",
+      "kind": "slice",
       "goal": "a pre-commit/coordination check or advisory index-lock that refuses concurrent shared-index staging of another lane's claimed-in-flight paths (cooperative, not a security boundary)",
       "validation_goal": "a simulated concurrent stage is refused/serialized; test present",
-      "deps": ["cs-1"], "editorial_note": "defense-in-depth; same-user cooperative caveat",
-      "detection": {"commit_match": ["guard explicit commit transactions", "CS-1 — worktree-isolate delegation lanes"]},
-      "pct_hint": 100,
-      "acceptance": {"status": "accepted", "by": "Codex /root/cs3_final_review (independent non-author)", "date": "2026-09-17", "note": "CS3-F1 source accepted/synced f9ab7e429874eb32f91c04889aa7189daa213787, exact subject3332984f446889f3fd0aa52bd4e68e072f5ab1be58c42440f9bac3a2f21e24f1; actual independent PASS, Tier0 53/0, push22/22. Live production held lease/foreign-hook refusal/idle release observed; deletion/rename/hash/concurrency fixtures PASS. Explicit-path cooperative transaction, not all git-add interception or same-user security boundary. IMPLEMENTED_FOLLOWUP_REQUIRED: CS4 deployed dashboard and parallel-dispatch proof still pending."}
+      "deps": [
+        "cs-1"
+      ],
+      "editorial_note": "defense-in-depth; same-user cooperative caveat",
+      "detection": {
+        "commit_match": [
+          "guard explicit commit transactions",
+          "CS-1 \u2014 worktree-isolate delegation lanes"
+        ]
+      },
+      "acceptance": {
+        "status": "accepted",
+        "by": "Codex /root/cs3_final_review (independent non-author)",
+        "date": "2026-09-17",
+        "note": "CS3-F1 source accepted/synced f9ab7e429874eb32f91c04889aa7189daa213787, exact subject3332984f446889f3fd0aa52bd4e68e072f5ab1be58c42440f9bac3a2f21e24f1; actual independent PASS, Tier0 53/0, push22/22. Live production held lease/foreign-hook refusal/idle release observed; deletion/rename/hash/concurrency fixtures PASS. Explicit-path cooperative transaction, not all git-add interception or same-user security boundary. IMPLEMENTED_FOLLOWUP_REQUIRED: CS4 deployed dashboard and parallel-dispatch proof still pending."
+      }
     },
     {
-      "id": "cs-4", "name": "concurrent-dispatch validation + visibility", "phase": "validate", "kind": "slice",
+      "id": "cs-4",
+      "name": "concurrent-dispatch validation + visibility",
+      "phase": "validate",
+      "kind": "slice",
       "goal": "prove two parallel lanes land via patches without index contention; single-lane regression clean; dashboard/QA visibility of active delegated worktrees",
       "validation_goal": "live concurrent-dispatch proof; regression green; observable",
-      "deps": ["cs-1", "cs-3"], "editorial_note": "closes the loop with live proof",
-      "detection": {"commit_match": ["CS-4 concurrent-dispatch isolation proof"]},
-      "pct_hint": 100,
-      "acceptance": {"status": "accepted", "by": "hyperd", "date": "2026-10-06", "note": "Owner approved; test-concurrent-dispatch-isolation 8/8 PASS"}
+      "deps": [
+        "cs-1",
+        "cs-3"
+      ],
+      "editorial_note": "closes the loop with live proof",
+      "detection": {
+        "commit_match": [
+          "CS-4 concurrent-dispatch isolation proof"
+        ]
+      },
+      "acceptance": {
+        "status": "accepted",
+        "by": "hyperd",
+        "date": "2026-10-06",
+        "note": "Owner approved; test-concurrent-dispatch-isolation 8/8 PASS"
+      }
     }
   ],
   "issues": [

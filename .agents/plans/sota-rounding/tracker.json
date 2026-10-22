@@ -143,6 +143,12 @@
         "commit_match": [
           "isolation hygiene"
         ]
+      },
+      "acceptance": {
+        "status": "accepted",
+        "by": "antigravity",
+        "date": "2026-10-22",
+        "note": "Isolation hygiene complete: 118 legacy pct_hint entries purged across plan trackers per Rule 20 projection standard, tier0 check-pm-tracker valid"
       }
     },
     {

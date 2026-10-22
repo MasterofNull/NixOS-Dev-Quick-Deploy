@@ -1,7 +1,7 @@
 {
   "plan": {
     "id": "capability-integration",
-    "title": "Capability Integration — no derelict capabilities (MVP)",
+    "title": "Capability Integration \u2014 no derelict capabilities (MVP)",
     "prd_ref": ".agents/plans/capability-integration/DESIGN.md",
     "owner": "hyperd",
     "goal": "Every implementation/tool/feature integrated into agents' working memory, workflows and repertoire; none derelict, unused, stale, dead or unavailable (enabled != done).",
@@ -66,7 +66,6 @@
           "log every aq-* invocation"
         ]
       },
-      "pct_hint": 100,
       "acceptance": {
         "status": "accepted",
         "by": "hyperd",
@@ -89,7 +88,6 @@
           "capability audit"
         ]
       },
-      "pct_hint": 100,
       "acceptance": {
         "status": "accepted",
         "by": "hyperd",
@@ -114,7 +112,6 @@
           "ci-3"
         ]
       },
-      "pct_hint": 100,
       "acceptance": {
         "status": "accepted",
         "by": "hyperd",
@@ -137,7 +134,6 @@
           "CAPABILITY-INDEX"
         ]
       },
-      "pct_hint": 100,
       "acceptance": {
         "status": "accepted",
         "by": "hyperd",
@@ -160,7 +156,6 @@
           "catalog honesty"
         ]
       },
-      "pct_hint": 100,
       "acceptance": {
         "status": "accepted",
         "by": "hyperd",
@@ -185,7 +180,6 @@
           "archive derelict"
         ]
       },
-      "pct_hint": 100,
       "acceptance": {
         "status": "accepted",
         "by": "hyperd",
@@ -208,7 +202,6 @@
           "workflow wiring"
         ]
       },
-      "pct_hint": 100,
       "acceptance": {
         "status": "accepted",
         "by": "hyperd",
@@ -231,7 +224,6 @@
           "route AIDB knowledge"
         ]
       },
-      "pct_hint": 100,
       "acceptance": {
         "status": "accepted",
         "by": "hyperd",
@@ -254,7 +246,6 @@
           "knowledge graph"
         ]
       },
-      "pct_hint": 100,
       "acceptance": {
         "status": "accepted",
         "by": "hyperd",
@@ -277,7 +268,6 @@
           "query expansion"
         ]
       },
-      "pct_hint": 100,
       "acceptance": {
         "status": "accepted",
         "by": "hyperd",
