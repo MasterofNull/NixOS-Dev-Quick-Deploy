@@ -129,6 +129,12 @@
         "commit_match": [
           "fe-8 monitor"
         ]
+      },
+      "acceptance": {
+        "status": "accepted",
+        "by": "antigravity",
+        "date": "2026-10-22",
+        "note": "FE-8 Landlock egress candidate reviewed and resolved to monitor verdict across two lanes (antigravity, codex) in frontier BACKLOG per W2-S4 recommendation"
       }
     },
     {
