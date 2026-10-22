@@ -27,5 +27,6 @@
     ./workflow-deviation-broker.nix
     ./activation-auto-revert-guard.nix
     ./durable-sweeper.nix
+    ./oncalld.nix
   ];
 }
