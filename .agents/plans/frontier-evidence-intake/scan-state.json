@@ -1,0 +1,82 @@
+{
+ "a2a-spec": {
+  "last_error": "PermissionError: frontier_scan: host 'github.com' resolves to private/local network space",
+  "last_scan": "2026-10-19T16:00:52Z"
+ },
+ "aider-lb": {
+  "last_error": "PermissionError: frontier_scan: host 'aider.chat' resolves to private/local network space",
+  "last_scan": "2026-10-19T16:00:52Z"
+ },
+ "arxiv-cs-ai": {
+  "last_error": "PermissionError: frontier_scan: host 'arxiv.org' resolves to private/local network space",
+  "last_scan": "2026-10-19T16:00:52Z"
+ },
+ "arxiv-cs-cl": {
+  "last_error": "PermissionError: frontier_scan: host 'arxiv.org' resolves to private/local network space",
+  "last_scan": "2026-10-19T16:00:52Z"
+ },
+ "arxiv-cs-lg": {
+  "last_error": "PermissionError: frontier_scan: host 'arxiv.org' resolves to private/local network space",
+  "last_scan": "2026-10-19T16:00:52Z"
+ },
+ "arxiv-cs-ma": {
+  "last_error": "PermissionError: frontier_scan: host 'arxiv.org' resolves to private/local network space",
+  "last_scan": "2026-10-19T16:00:52Z"
+ },
+ "bitnet": {
+  "last_error": "PermissionError: frontier_scan: host 'github.com' resolves to private/local network space",
+  "last_scan": "2026-10-19T16:00:52Z"
+ },
+ "claude-code-changelog": {
+  "last_error": "PermissionError: frontier_scan: host 'code.claude.com' resolves to private/local network space",
+  "last_scan": "2026-10-19T16:00:52Z"
+ },
+ "disko": {
+  "last_error": "PermissionError: frontier_scan: host 'github.com' resolves to private/local network space",
+  "last_scan": "2026-10-19T16:00:52Z"
+ },
+ "dspy": {
+  "last_error": "PermissionError: frontier_scan: host 'github.com' resolves to private/local network space",
+  "last_scan": "2026-10-19T16:00:52Z"
+ },
+ "ebpf": {
+  "last_error": "PermissionError: frontier_scan: host 'github.com' resolves to private/local network space",
+  "last_scan": "2026-10-19T16:00:52Z"
+ },
+ "gepa": {
+  "last_error": "PermissionError: frontier_scan: host 'github.com' resolves to private/local network space",
+  "last_scan": "2026-10-19T16:00:52Z"
+ },
+ "hf-trending": {
+  "last_error": "PermissionError: frontier_scan: unsupported URL scheme 'hf'",
+  "last_scan": "2026-10-22T07:30:42Z"
+ },
+ "impermanence": {
+  "etag": "W/\"06bd379f39c1e21b70979d8e488af6a6\"",
+  "fingerprint": "335c29f2848126fe7a6568fe46815e7a17b2c3720a93af6d4d46d32f60a6ee07",
+  "last_error": null,
+  "last_scan": "2026-10-22T07:30:42Z"
+ },
+ "landlock": {
+  "etag": null,
+  "fingerprint": "05cb98d3a274a7e45fabc6d6a523d4adde9c09fec30e0e0766df91485cc80d10",
+  "last_error": null,
+  "last_scan": "2026-10-22T07:30:42Z"
+ },
+ "lean-ctx": {
+  "last_error": "HTTPError: HTTP Error 404: Not Found",
+  "last_scan": "2026-10-22T07:30:42Z"
+ },
+ "letta": {
+  "etag": "W/\"9e82984d24392e0b31528206d26d132c\"",
+  "fingerprint": "cf924728258c71fbaa98559b4b75c99350c87248fdc842366ef2879f4dc450f6",
+  "last_error": null,
+  "last_scan": "2026-10-22T07:30:42Z"
+ },
+ "llama-cpp": {
+  "etag": "W/\"c65e3889544eed3b1cc4d224bbd30744\"",
+  "fingerprint": "6347e50909742f9114fac36117fa9bd957ffe778da19004ef77aed9191c40d39",
+  "last_error": null,
+  "last_scan": "2026-10-22T07:30:42Z"
+ }
+}

@@ -56,7 +56,6 @@
         ],
         "freeze_record": ".agent/PROJECT-APPROVAL-CONTROL-PLANE-PRD.md"
       },
-      "pct_hint": 100,
       "acceptance": {
         "status": "accepted",
         "by": "hyperd",
@@ -84,7 +83,6 @@
         ],
         "freeze_record": ".agents/plans/approval-control-plane/ACP-P1-DESIGN-20260816.md"
       },
-      "pct_hint": 100,
       "acceptance": {
         "status": "accepted",
         "by": "hyperd",
@@ -109,7 +107,6 @@
         ],
         "freeze_record": ".agents/plans/approval-control-plane/ACP-P0-DESIGN-20260816.md"
       },
-      "pct_hint": 100,
       "acceptance": {
         "status": "accepted",
         "by": "hyperd",
@@ -134,7 +131,6 @@
         ],
         "freeze_record": ".agents/plans/approval-control-plane/ACP-P1-BUILD-20260816.md"
       },
-      "pct_hint": 100,
       "acceptance": {
         "status": "accepted",
         "by": "hyperd",
@@ -159,7 +155,6 @@
         ],
         "freeze_record": ".agents/plans/approval-control-plane/ACP-P2-BUILD-20260817.md"
       },
-      "pct_hint": 100,
       "acceptance": {
         "status": "accepted",
         "by": "hyperd",
@@ -184,7 +179,6 @@
         ],
         "freeze_record": ".agents/plans/approval-control-plane/ACP-P3-BUILD-20260817.md"
       },
-      "pct_hint": 100,
       "acceptance": {
         "status": "accepted",
         "by": "hyperd",
@@ -210,7 +204,6 @@
         ],
         "freeze_record": ".agents/plans/approval-control-plane/ACP-P1b-BUILD-20260817.md"
       },
-      "pct_hint": 100,
       "acceptance": {
         "status": "accepted",
         "by": "hyperd",
@@ -236,7 +229,6 @@
         ],
         "freeze_record": ".agents/plans/approval-control-plane/ACP-P4-BUILD-20260817.md"
       },
-      "pct_hint": 100,
       "acceptance": {
         "status": "accepted",
         "by": "hyperd",
@@ -265,7 +257,6 @@
         "blocker_note": "needs a dashboard service restart to serve /approve live",
         "freeze_record": ".agents/plans/approval-control-plane/ACP-DEPLOY-20260817.md"
       },
-      "pct_hint": 100,
       "acceptance": {
         "status": "accepted",
         "by": "hyperd",
@@ -290,7 +281,6 @@
       "detection": {
         "blocker_note": "DEFERRED (owner 2026-08-17): postpone user/system crypto signing until the system is better developed; priority is UI/UX + parity functioning first. Owner-gated: real key/WebAuthn steps require the owner's hands."
       },
-      "pct_hint": 0,
       "acceptance": {
         "status": "pending",
         "by": null,

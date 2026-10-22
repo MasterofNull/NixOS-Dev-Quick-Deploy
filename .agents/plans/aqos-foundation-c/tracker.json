@@ -62,7 +62,6 @@
         ],
         "freeze_record": ".agents/plans/aqos-foundation-c/ASYMMETRIC-LEASE-AUTHORITY-FREEZE-20260806.md"
       },
-      "pct_hint": 100,
       "acceptance": {
         "status": "pending",
         "by": null,
@@ -89,7 +88,6 @@
         ],
         "freeze_record": ".agents/plans/aqos-foundation-c/ENFORCE-ASYMMETRIC-VERIFY-FREEZE-20260807.md"
       },
-      "pct_hint": 100,
       "acceptance": {
         "status": "pending",
         "by": null,
@@ -116,7 +114,6 @@
         ],
         "freeze_record": ".agents/plans/aqos-foundation-c/C2-SCHEDULER-CONTEXT-ISSUER-FREEZE-20260807.md"
       },
-      "pct_hint": 100,
       "acceptance": {
         "status": "pending",
         "by": null,
@@ -143,7 +140,6 @@
         ],
         "blocker_note": "ACTIVATED + VALIDATED 2026-08-15 (grant 0aab588e). Live mint ROUND-TRIP PASS: real ALA lease -> signed context -> verifies vs allowlist b876b7ea, wrong-key denies. Surfaced+fixed 2 runtime blockers (epoch-starvation 3d45e03c; out-of-tree-SOPS key mismatch, re-provisioned via aq-provision-signer-key). Record: C2-SCI-ACTIVATION-20260815.md. Non-blocking follow-up: burn/replay counts on dashboard."
       },
-      "pct_hint": 100,
       "acceptance": {
         "status": "pending",
         "by": null,
@@ -166,7 +162,6 @@
           "C6-P0"
         ]
       },
-      "pct_hint": 100,
       "acceptance": {
         "status": "pending",
         "by": null,
@@ -196,7 +191,6 @@
         ],
         "freeze_record": ".agents/plans/aqos-foundation-c/C6-FREEZE-20260807.md"
       },
-      "pct_hint": 55,
       "acceptance": {
         "status": "pending",
         "by": null,
@@ -219,7 +213,6 @@
         "activation_subject": "c6-ACTIVATE",
         "blocker_note": "owner acts: A1 real owner key + enable + flag"
       },
-      "pct_hint": 0,
       "acceptance": {
         "status": "pending",
         "by": null,
@@ -245,7 +238,6 @@
           "TEG-C1"
         ]
       },
-      "pct_hint": 50,
       "acceptance": {
         "status": "pending",
         "by": null,
@@ -267,7 +259,6 @@
       "detection": {
         "blocker_note": "gated on C6 activation"
       },
-      "pct_hint": 0,
       "acceptance": {
         "status": "pending",
         "by": null,
@@ -280,7 +271,7 @@
     {
       "title": "c2-sci ledger-burn-before-signer-check + O2 observability",
       "sev": "resolved",
-      "note": "CLOSED by PR #491 (ebf8e36e) — durable ledger markers, dashboard O2 observability, operator reset test"
+      "note": "CLOSED by PR #491 (ebf8e36e) \u2014 durable ledger markers, dashboard O2 observability, operator reset test"
     },
     {
       "title": "c2-sci ALA/C2 lease-schema mismatch (Codex catch-up audit)",
