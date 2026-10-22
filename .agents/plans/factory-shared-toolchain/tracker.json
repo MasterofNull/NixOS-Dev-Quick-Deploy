@@ -9,25 +9,25 @@
   "phases": [
     {
       "id": "st1",
-      "name": "ST-1 — inert Nix module and installer contract",
+      "name": "ST-1 \u2014 inert Nix module and installer contract",
       "goal": "Default-off module, installer catalog/fieldset projection, and bound execution evidence.",
       "order": 1
     },
     {
       "id": "st2",
-      "name": "ST-2 — aq-tool live on-demand runtime reach",
+      "name": "ST-2 \u2014 aq-tool live on-demand runtime reach",
       "goal": "Live, mid-session reach to any package in pinned nixpkgs with no restart and no manifest gate.",
       "order": 2
     },
     {
       "id": "st3",
-      "name": "ST-3 — capability manifest declaration and readiness check",
+      "name": "ST-3 \u2014 capability manifest declaration and readiness check",
       "goal": "Manifest as declaration/record (append-live), + readiness WARN on declared-but-missing tools; manifest never gates runtime access.",
       "order": 3
     },
     {
       "id": "st4",
-      "name": "ST-4 — governed contribute-back flow",
+      "name": "ST-4 \u2014 governed contribute-back flow",
       "goal": "Governed workflow to contribute durable, pinned tools back to the shared toolchain via capability-intake and flake-review.",
       "order": 4
     },
@@ -53,7 +53,6 @@
           "baseline agentic-toolchain"
         ]
       },
-      "pct_hint": 100,
       "acceptance": {
         "status": "accepted",
         "by": "Codex / git history",
@@ -63,7 +62,7 @@
     },
     {
       "id": "st2-live-tool-reach",
-      "name": "ST-2 — aq-tool live on-demand runtime reach",
+      "name": "ST-2 \u2014 aq-tool live on-demand runtime reach",
       "phase": "st2",
       "kind": "slice",
       "goal": "Live on-demand tool reach from pinned nixpkgs without restart or manifest gate.",
@@ -72,10 +71,9 @@
       "detection": {
         "command": "scripts/ai/aq-tool",
         "commit_match": [
-          "aq-tool — live on-demand tool reach"
+          "aq-tool \u2014 live on-demand tool reach"
         ]
       },
-      "pct_hint": 100,
       "acceptance": {
         "status": "accepted",
         "by": "Codex / git history",
@@ -85,7 +83,7 @@
     },
     {
       "id": "st3-capability-manifest",
-      "name": "ST-3 — capability manifest declaration/record and readiness check",
+      "name": "ST-3 \u2014 capability manifest declaration/record and readiness check",
       "phase": "st3",
       "kind": "slice",
       "goal": "Capability manifest as declaration/record (append-live) + readiness WARN on declared-but-missing tools; manifest never gates runtime access.",
@@ -100,7 +98,6 @@
           "ST-3 capability manifest"
         ]
       },
-      "pct_hint": 100,
       "acceptance": {
         "status": "accepted",
         "by": "test-aq-capabilities.py",
@@ -110,7 +107,7 @@
     },
     {
       "id": "st4-governed-contribute-back",
-      "name": "ST-4 — governed contribute-back flow",
+      "name": "ST-4 \u2014 governed contribute-back flow",
       "phase": "st4",
       "kind": "slice",
       "goal": "Vetted contribute-back workflow via capability-intake + flake-review at FT-6 tier to pin tools fleet-wide.",
@@ -125,7 +122,6 @@
           "toolchain contribution"
         ]
       },
-      "pct_hint": 100,
       "acceptance": {
         "status": "accepted",
         "by": "test-aq-capabilities.py",
@@ -147,7 +143,6 @@
         "activation_subject": "agentic-toolchain",
         "command": "tmux"
       },
-      "pct_hint": 100,
       "acceptance": {
         "status": "accepted",
         "by": "hyperd (owner directive 2026-09-26)",

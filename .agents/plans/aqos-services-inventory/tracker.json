@@ -64,7 +64,6 @@
         "systemd_unit": "ai-aidb.service",
         "expect": "active"
       },
-      "pct_hint": 100,
       "acceptance": {
         "status": "accepted",
         "by": "hyperd",
@@ -85,7 +84,6 @@
         "systemd_unit": "ai-hybrid-coordinator.service",
         "expect": "active"
       },
-      "pct_hint": 100,
       "acceptance": {
         "status": "accepted",
         "by": "hyperd",
@@ -106,7 +104,6 @@
         "systemd_unit": "ai-switchboard.service",
         "expect": "active"
       },
-      "pct_hint": 100,
       "acceptance": {
         "status": "accepted",
         "by": "hyperd",
@@ -127,7 +124,6 @@
         "systemd_unit": "ai-drop-daemon.service",
         "expect": "active"
       },
-      "pct_hint": 100,
       "acceptance": {
         "status": "accepted",
         "by": "hyperd",
@@ -148,7 +144,6 @@
         "systemd_unit": "ai-otel-collector.service",
         "expect": "active"
       },
-      "pct_hint": 100,
       "acceptance": {
         "status": "accepted",
         "by": "hyperd",
@@ -171,7 +166,6 @@
         "systemd_unit": "ai-aidb-reindex.service",
         "expect": "timer-run-success"
       },
-      "pct_hint": 100,
       "acceptance": {
         "status": "accepted",
         "by": "hyperd",
@@ -194,7 +188,6 @@
         "systemd_unit": "ai-crystallize-sessions.service",
         "expect": "timer-run-success"
       },
-      "pct_hint": 100,
       "acceptance": {
         "status": "accepted",
         "by": "hyperd",
@@ -215,7 +208,6 @@
         "systemd_unit": "ai-pgvector-bootstrap.service",
         "expect": "exited"
       },
-      "pct_hint": 100,
       "acceptance": {
         "status": "accepted",
         "by": "hyperd",
@@ -236,7 +228,6 @@
         "systemd_unit": "ai-health-spider.service",
         "expect": "ran-success"
       },
-      "pct_hint": 100,
       "acceptance": {
         "status": "accepted",
         "by": "hyperd",
@@ -257,7 +248,6 @@
         "systemd_unit": "ai-stack-health-monitor.service",
         "expect": "timer-run-success"
       },
-      "pct_hint": 100,
       "acceptance": {
         "status": "accepted",
         "by": "hyperd",
@@ -278,7 +268,6 @@
         "systemd_unit": "ai-mcp-process-watch.service",
         "expect": "timer-run-success"
       },
-      "pct_hint": 100,
       "acceptance": {
         "status": "accepted",
         "by": "hyperd",
@@ -299,7 +288,6 @@
         "systemd_unit": "ai-security-audit.service",
         "expect": "timer-run-success"
       },
-      "pct_hint": 100,
       "acceptance": {
         "status": "accepted",
         "by": "hyperd",
@@ -320,7 +308,6 @@
         "systemd_unit": "ai-npm-security-monitor.service",
         "expect": "timer-run-success"
       },
-      "pct_hint": 100,
       "acceptance": {
         "status": "accepted",
         "by": "hyperd",
@@ -341,7 +328,6 @@
         "systemd_unit": "ai-mcp-integrity-check.service",
         "expect": "timer-run-success"
       },
-      "pct_hint": 100,
       "acceptance": {
         "status": "accepted",
         "by": "hyperd",
@@ -362,7 +348,6 @@
         "systemd_unit": "ai-audit-sidecar.service",
         "expect": "active"
       },
-      "pct_hint": 100,
       "acceptance": {
         "status": "accepted",
         "by": "hyperd",
@@ -383,7 +368,6 @@
         "systemd_unit": "ai-autonomous-improvement.service",
         "expect": "timer-run-success"
       },
-      "pct_hint": 100,
       "acceptance": {
         "status": "accepted",
         "by": "hyperd",
@@ -404,7 +388,6 @@
         "systemd_unit": "ai-training-ingest.service",
         "expect": "timer-run-success"
       },
-      "pct_hint": 100,
       "acceptance": {
         "status": "accepted",
         "by": "hyperd",
@@ -425,7 +408,6 @@
         "systemd_unit": "ai-local-training-loop.service",
         "expect": "active-or-run-success"
       },
-      "pct_hint": 100,
       "acceptance": {
         "status": "accepted",
         "by": "hyperd",
@@ -446,7 +428,6 @@
         "systemd_unit": "ai-prompt-eval.service",
         "expect": "timer-run-success"
       },
-      "pct_hint": 100,
       "acceptance": {
         "status": "accepted",
         "by": "hyperd",
@@ -467,7 +448,6 @@
         "systemd_unit": "lore-sync.service",
         "expect": "timer-run-success"
       },
-      "pct_hint": 100,
       "acceptance": {
         "status": "accepted",
         "by": "hyperd",
@@ -488,7 +468,6 @@
         "systemd_unit": "nvd-sync.service",
         "expect": "timer-run-success"
       },
-      "pct_hint": 100,
       "acceptance": {
         "status": "accepted",
         "by": "hyperd",
@@ -509,7 +488,6 @@
         "systemd_unit": "ai-sync-knowledge-sources.service",
         "expect": "timer-run-success"
       },
-      "pct_hint": 100,
       "acceptance": {
         "status": "accepted",
         "by": "hyperd",
@@ -532,7 +510,6 @@
         "systemd_unit": "ai-health-spider.service",
         "expect": "active"
       },
-      "pct_hint": 100,
       "acceptance": {
         "status": "accepted",
         "by": "hyperd",
