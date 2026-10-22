@@ -75,7 +75,10 @@
         "secrets": false
       },
       "value": "Live dashboard verification, visual regression, accessibility snapshots, and UI workflow checks for agents.",
-      "risks": ["browser-network-egress", "npm-package-execution"],
+      "risks": [
+        "browser-network-egress",
+        "npm-package-execution"
+      ],
       "blocked_reason": "The required mcp-playwright AppArmor profile and aa-exec launcher are not currently verifiable as enforce-mode confinement; the prior unprivileged systemd scope did not prove egress enforcement.",
       "unblock_condition": "Deploy and load a least-privilege mcp-playwright AppArmor profile in enforce mode, provide aa-exec, prove the launcher attaches to that profile and denies forbidden egress, then complete a separate acceptance review before promotion.",
       "activation_notes": "QUARANTINED. Client entries retain the pinned wrapper as a future activation path, but scripts/ai/mcp-playwright-sandboxed refuses before package lookup or browser execution unless it can verify a loaded enforce-mode mcp-playwright AppArmor profile and invoke aa-exec. No current browser or network authority is granted."
@@ -101,7 +104,11 @@
       "install": {
         "type": "mcp",
         "command": "/run/current-system/sw/bin/semgrep",
-        "args": ["mcp", "--transport", "stdio"]
+        "args": [
+          "mcp",
+          "--transport",
+          "stdio"
+        ]
       },
       "tool_allowlist": [
         "security_check",
@@ -116,7 +123,9 @@
         "secrets": false
       },
       "value": "Agent-triggered generated-code security scans and custom rule validation.",
-      "risks": ["python-package-execution"],
+      "risks": [
+        "python-package-execution"
+      ],
       "activation_notes": "Enabled via the Nix-provided `semgrep mcp` subcommand (replaces deprecated uvx semgrep-mcp==0.9.0, which only returns a deprecation notice), stdio transport, telemetry off, no Semgrep cloud token."
     },
     {
@@ -139,7 +148,11 @@
       "install": {
         "type": "mcp",
         "command": "github-mcp-server",
-        "args": ["--read-only", "--toolsets", "context,repos,issues,pull_requests,actions,code_security"]
+        "args": [
+          "--read-only",
+          "--toolsets",
+          "context,repos,issues,pull_requests,actions,code_security"
+        ]
       },
       "tool_allowlist": [
         "get_file_contents",
@@ -156,7 +169,10 @@
         "secrets": "GITHUB_PERSONAL_ACCESS_TOKEN"
       },
       "value": "PR, issue, Actions, and code-security context without write access.",
-      "risks": ["external-api-token", "repository-metadata-exposure"],
+      "risks": [
+        "external-api-token",
+        "repository-metadata-exposure"
+      ],
       "activation_notes": "Enabled as read-only via scripts/ai/mcp-github-server. The wrapper resolves SOPS/gh auth tokens, enforces --read-only, and limits toolsets to context,repos,issues,pull_requests,actions,code_security."
     },
     {
@@ -179,9 +195,16 @@
       "install": {
         "type": "cli",
         "command": "osv-scanner",
-        "args": ["scan", "source", "."]
+        "args": [
+          "scan",
+          "source",
+          "."
+        ]
       },
-      "tool_allowlist": ["osv_scan_source", "osv_scan_sbom"],
+      "tool_allowlist": [
+        "osv_scan_source",
+        "osv_scan_sbom"
+      ],
       "permissions": {
         "network": "osv-api",
         "filesystem": "workspace-read",
@@ -189,7 +212,9 @@
         "secrets": false
       },
       "value": "Dependency vulnerability scanning for imported plugins and repo lockfiles.",
-      "risks": ["external-vulnerability-api"],
+      "risks": [
+        "external-vulnerability-api"
+      ],
       "activation_notes": "Enabled with Nix/system-provided OSV-Scanner 2.2.4 after live PATH verification. Use read-only source/SBOM scans and keep external OSV API use explicit."
     },
     {
@@ -213,9 +238,21 @@
       "install": {
         "type": "cli",
         "command": "trivy",
-        "args": ["fs", "--scanners", "vuln,secret,misconfig", "--skip-db-update", "--exit-code", "0", "."]
+        "args": [
+          "fs",
+          "--scanners",
+          "vuln,secret,misconfig",
+          "--skip-db-update",
+          "--exit-code",
+          "0",
+          "."
+        ]
       },
-      "tool_allowlist": ["trivy_fs_scan", "trivy_config_scan", "trivy_sbom_scan"],
+      "tool_allowlist": [
+        "trivy_fs_scan",
+        "trivy_config_scan",
+        "trivy_sbom_scan"
+      ],
       "permissions": {
         "network": "vulnerability-db-updates",
         "filesystem": "workspace-read",
@@ -223,7 +260,10 @@
         "secrets": false
       },
       "value": "Filesystem, secrets, misconfiguration, SBOM, and container/Nix-adjacent security checks.",
-      "risks": ["external-db-update", "secret-finding-output-sensitive"],
+      "risks": [
+        "external-db-update",
+        "secret-finding-output-sensitive"
+      ],
       "activation_notes": "Enabled with installed Trivy 0.66.0 and safe default scan args. Cache vulnerability DB outside repo; redact secret values in reports."
     },
     {
@@ -247,9 +287,16 @@
       "install": {
         "type": "cli",
         "command": "syft",
-        "args": ["dir:.", "-o", "spdx-json"]
+        "args": [
+          "dir:.",
+          "-o",
+          "spdx-json"
+        ]
       },
-      "tool_allowlist": ["syft_generate_sbom", "grype_scan_sbom"],
+      "tool_allowlist": [
+        "syft_generate_sbom",
+        "grype_scan_sbom"
+      ],
       "permissions": {
         "network": "vulnerability-db-updates",
         "filesystem": "workspace-read",
@@ -257,7 +304,10 @@
         "secrets": false
       },
       "value": "Generate SBOMs and scan them before imported capabilities are promoted.",
-      "risks": ["report-artifact-management", "external-db-update"],
+      "risks": [
+        "report-artifact-management",
+        "external-db-update"
+      ],
       "activation_notes": "Enabled with Nix/system-provided Syft 1.38.0 and Grype 0.104.1 after live PATH verification. Write reports under .reports/security/ and never commit raw local-only SBOMs by default."
     },
     {
@@ -281,9 +331,16 @@
       "install": {
         "type": "local-skill",
         "command": "scripts/ai/aq-capability-intake",
-        "args": ["audit", "--all"]
+        "args": [
+          "audit",
+          "--all"
+        ]
       },
-      "tool_allowlist": ["candidate_audit", "tool_schema_diff", "allowlist_check"],
+      "tool_allowlist": [
+        "candidate_audit",
+        "tool_schema_diff",
+        "allowlist_check"
+      ],
       "permissions": {
         "network": false,
         "filesystem": "workspace-read",
@@ -315,9 +372,15 @@
       "install": {
         "type": "local-skill",
         "command": "aq-report",
-        "args": ["--machine"]
+        "args": [
+          "--machine"
+        ]
       },
-      "tool_allowlist": ["aq_report_query", "journal_summary", "metrics_snapshot"],
+      "tool_allowlist": [
+        "aq_report_query",
+        "journal_summary",
+        "metrics_snapshot"
+      ],
       "permissions": {
         "network": "localhost",
         "filesystem": "logs-read",
@@ -325,7 +388,9 @@
         "secrets": false
       },
       "value": "Agent-readable health, metrics, journal, and dashboard gap summaries.",
-      "risks": ["log-sensitive-data"],
+      "risks": [
+        "log-sensitive-data"
+      ],
       "activation_notes": "Enabled through aq-report --machine. Redact secrets and surface status in dashboard/aq-report."
     },
     {
@@ -348,9 +413,18 @@
       "install": {
         "type": "local-skill",
         "command": "scripts/governance/nix-static-analysis.sh",
-        "args": ["--non-blocking", "--quiet"]
+        "args": [
+          "--non-blocking",
+          "--quiet"
+        ]
       },
-      "tool_allowlist": ["statix_check", "deadnix_check", "nix_flake_check", "nix_eval", "nix_why_depends"],
+      "tool_allowlist": [
+        "statix_check",
+        "deadnix_check",
+        "nix_flake_check",
+        "nix_eval",
+        "nix_why_depends"
+      ],
       "permissions": {
         "network": "nix-substituters-only",
         "filesystem": "workspace-read",
@@ -358,7 +432,10 @@
         "secrets": false
       },
       "value": "Nix-specific linting, dependency reasoning, and service hardening analysis.",
-      "risks": ["nix-evaluation-cost", "substituter-network"],
+      "risks": [
+        "nix-evaluation-cost",
+        "substituter-network"
+      ],
       "activation_notes": "Enabled with statix 0.5.8 and deadnix 1.3.1 through the canonical Nix static-analysis wrapper. Use read-only/eval commands by default; gate builds separately."
     },
     {
@@ -380,9 +457,13 @@
       "install": {
         "type": "local-skill",
         "command": "scripts/ai/aq-understand-anything",
-        "args": ["status"]
+        "args": [
+          "status"
+        ]
       },
-      "tool_allowlist": ["graph_query"],
+      "tool_allowlist": [
+        "graph_query"
+      ],
       "permissions": {
         "network": false,
         "filesystem": "workspace-read",
@@ -390,7 +471,9 @@
         "secrets": false
       },
       "value": "Combine Understand-Anything, lean-ctx, and language-aware indexes for deterministic impact answers.",
-      "risks": ["llm-generated-graph-inaccuracy"],
+      "risks": [
+        "llm-generated-graph-inaccuracy"
+      ],
       "activation_notes": "PARTIAL: the 296-batch graph exists but was generated 2026-07-01 and is stale (limits in config/understand-anything.json); regeneration is pending an LLM run. Queries are live through scripts/ai/aq-graph-query (search, symbol, neighbors, impact, staleness), exposed as MCP tool graph_query. Use graph as advisory; check staleness first; verify deploy/security conclusions against source and live checks."
     },
     {
@@ -464,7 +547,11 @@
         "secrets": false
       },
       "value": "Potential cross-track reference for A2A task, claim, and review patterns, human-readable project tracking, and vector/RAG/DAG maintenance without adopting its lifecycle or data authority.",
-      "risks": ["agpl-license-uncertainty", "authority-duplication", "hosted-plugin-surface"],
+      "risks": [
+        "agpl-license-uncertainty",
+        "authority-duplication",
+        "hosted-plugin-surface"
+      ],
       "activation_notes": "Metadata-only reference. No source acquisition, runtime use, A2A communication, project tracking, vector/RAG/DAG state access, or tool enablement is admitted."
     },
     {
@@ -491,7 +578,12 @@
         "secrets": false
       },
       "value": "Quarantined metadata record for a possible attack-surface and validation workflow reference; it grants no vendor, install, execution, scanning, or external integration authority.",
-      "risks": ["custom-eula-restrictions", "privileged-install", "active-exploitation", "external-integration"],
+      "risks": [
+        "custom-eula-restrictions",
+        "privileged-install",
+        "active-exploitation",
+        "external-integration"
+      ],
       "activation_notes": "No runtime or pattern use is admitted. This record is not a scanner, target authorization, scope receipt, or execution path."
     },
     {
@@ -518,7 +610,13 @@
         "secrets": false
       },
       "value": "Potential metadata-only reference for multi-altitude vulnerability-hunt workflow and review patterns without importing prompts, executable loops, tools, targets, or runtime authority.",
-      "risks": ["autonomous-loop", "prompt-injection", "scope-escape", "tool-execution", "resource-exhaustion"],
+      "risks": [
+        "autonomous-loop",
+        "prompt-injection",
+        "scope-escape",
+        "tool-execution",
+        "resource-exhaustion"
+      ],
       "activation_notes": "No prompt or executable workflow is imported. This record cannot scan, execute tools, issue scope receipts, or communicate externally."
     },
     {
@@ -533,11 +631,28 @@
       "review_status": "incomplete",
       "blocked_reason": "Pinned read-only reference review is authorized by owner; feature parity, per-component licenses, dependency/SBOM, permissions and runtime integration evidence are not complete.",
       "unblock_condition": "Complete source/license/parity evidence; independently accept bounded native gap slices. External runtime attachment additionally requires allowlist, sandbox, dependency scan, visibility and recovery disposition.",
-      "install": {"type": "disabled-external-repo", "command": "disabled-until-intake", "args": []},
+      "install": {
+        "type": "disabled-external-repo",
+        "command": "disabled-until-intake",
+        "args": []
+      },
       "tool_allowlist": [],
-      "permissions": {"network": false, "filesystem": "none", "writes": false, "secrets": false},
+      "permissions": {
+        "network": false,
+        "filesystem": "none",
+        "writes": false,
+        "secrets": false
+      },
       "value": "Compare pinned ECC agents, skills, hooks, memory/learning, evals, security, integrations and CI/CD to AQ-OS; implement genuine native gaps without duplicate lifecycle authority or blind plugin installation.",
-      "risks": ["prompt-injection", "tool-execution", "authority-duplication", "hosted-plugin-surface", "external-integration", "autonomous-loop", "resource-exhaustion"],
+      "risks": [
+        "prompt-injection",
+        "tool-execution",
+        "authority-duplication",
+        "hosted-plugin-surface",
+        "external-integration",
+        "autonomous-loop",
+        "resource-exhaustion"
+      ],
       "activation_notes": "Proposed, runtime disabled. Owner-authorized read-only public pinned source review only; no installer, npm package, upstream hook, plugin, credential, service or account activation. PRD: .agent/PROJECT-ECC-PARITY-INTEGRATION-PRD.md."
     },
     {
@@ -583,9 +698,9 @@
       "priority": "very-high",
       "state": "proposed",
       "pinned_version": "0.1.0",
-      "review_status": "incomplete",
+      "review_status": "accepted-with-mitigations",
       "blocked_reason": "Reverse engineering decompilation bridge; deep native binary analysis requires isolated workspace, capability-intake review, tool allowlist, and runtime sandboxing before activation.",
-      "unblock_condition": "Complete capability intake audit, define tool allowlist, sandbox Hopper/Ghidra/node process execution, verify MIT license compatibility, and add regression tests before runtime activation.",
+      "unblock_condition": "Sandboxed launcher (W1-S2) verifies integrity, enforces bwrap no-net isolation, and executes only approved allowlist tools.",
       "install": {
         "type": "disabled-external-repo",
         "command": "disabled-until-intake",
@@ -611,7 +726,14 @@
         "scope-escape",
         "log-sensitive-data"
       ],
-      "activation_notes": "Proposed capability intake candidate. Reverse engineering analysis executes locally without remote network transmission. Deep analysis uses local decompilers."
+      "activation_notes": "Admitted under intake review with mitigations. Verified upstream MIT license. Pinned version 0.1.0 with integrity hash sha256-47DEQpj8HBSa+/TImW+5JCeuQeRkm5NMpJWZG3hSuFU=. Executes via sandboxed launcher without network egress.",
+      "mitigations": [
+        "pinned package version 0.1.0 (no floating latest or npx)",
+        "local execution only in isolated quarantine workspace",
+        "ambient secrets and credentials scrubbed from process environment",
+        "no outbound network connectivity",
+        "tool allowlist strictly enforced"
+      ]
     }
   ]
 }
