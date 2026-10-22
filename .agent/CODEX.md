@@ -43,15 +43,7 @@ Codex may give the final review verdict on Gemini- or Qwen-authored work when as
 Redefine kernel objects inline; bypass review for destructive, dual-use, or external-account work; expand a slice for nearby cleanup; silently choose among meaningful alternatives when user intent changes the answer; let generated projections drift from upstream SSOTs.
 
 ## Architecture Constraints (Non-Negotiable)
-
-- NixOS-first, flake-based — no bare `pip install`, no manual `systemctl`
-- **NEVER hardcode ports/URLs** — source of truth: `nix/modules/core/options.nix`
-- Python reads URLs from env vars; shell scripts use `${PORT:-default}`
-- Feature flags are profile-driven: `nix/modules/profiles/ai-dev.nix`
-- `deploy-options.local.nix` is gitignored — secrets wiring only, no eval-time policy
-- `enable_thinking: false` in EVERY llama.cpp request — current model thinking tokens cause empty responses; see `.agent/LOCAL-AGENT.md ## Current Model Config`
-- GPU layers ceiling = 12 (Renoir APU VRAM = 4 GB shared); never suggest n_gpu_layers > 12
-- Total usable RAM = 27 GB; model UMBM = 22.5 GB model / 1.0 GB KV / 3.0 GB OS reserve
+NixOS flake-based; ports SSOT `nix/modules/core/options.nix`; no bare installs/manual systemctl; GPU layers ceiling=12; usable RAM=27 GB. Full details: `.agent/lanes/codex-reference.md`.
 
 ## File Placement Contract
 
@@ -181,3 +173,8 @@ Enforcement: local payloads auto-inject the MICRO variant (`shared/llm_config.py
 - Orchestrator: commit slice deps, deliverable path shared-visible, quota headroom verified (Rule 18).
 - Full text: `canon/blocks/headless-delegate-mode.md`
 <!-- canon:end headless-delegate-mode -->
+
+<!-- canon:begin dependency-hygiene -->
+- **Trigger**: ONLY failing security gate, strictly scoped to implicated package; no broad churn.
+- **Ladder**: (1) Fixed release -> raise floor; (2) Active upstream, fix unreleased -> mitigate + time-boxed exception (<=90d); (3) Abandoned/stale (>18m no commits) -> migrate to maintained replacement/stdlib; (4) Upstream PRs are owner-authored (propose-not-push).
+<!-- canon:end dependency-hygiene -->

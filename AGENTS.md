@@ -37,16 +37,7 @@ no injection patterns (SQL/shell/path-traversal); treat LLM outputs as untrusted
 - Search first: `agrep "<keyword>" .` (Agentic Grep) before editing
 - Use the canonical low-friction tool order in `docs/agent-guides/47-AGENT-TOOL-CONTRACT.md`
 - Validate before commit: `scripts/governance/tier0-validation-gate.sh --pre-commit`
-- Commit evidence contract: keep one slice per atomic commit and follow `.agent/WORKFLOW-CANON.md`
-  Step 8. Every non-trivial body must record root cause/objective; material file and contract changes;
-  reasoning/tradeoffs; key measurements or failure evidence; implementer and independent
-  reviewer identities/roles; the exact reviewed subject hash when applicable; exact validation
-  commands/results; authority, activation, and explicit exclusions; and the next gate/blocker. End
-  with truthful machine-parseable authorship/review trailers. Only a final independent `PASS` earns
-  review trailers; earlier revision verdicts remain body evidence. Unavailable, timed-out, parked, or
-  abstaining agents must not be credited as reviewers. Omit inapplicable authorship/review trailers.
-  Trivial single-line commits may use the compact Step 8 form but retain atomicity and truthful evidence
-
+- Commit evidence contract: keep one slice per atomic commit per `.agent/WORKFLOW-CANON.md` Step 8.
 ## Port SSOT
 `nix/modules/core/options.nix` — never hardcode port values
 
@@ -174,3 +165,8 @@ Enforcement: local payloads auto-inject the MICRO variant (`shared/llm_config.py
 - Orchestrator: commit slice deps, deliverable path shared-visible, quota headroom verified (Rule 18).
 - Full text: `canon/blocks/headless-delegate-mode.md`
 <!-- canon:end headless-delegate-mode -->
+
+<!-- canon:begin dependency-hygiene -->
+- **Trigger**: ONLY failing security gate, strictly scoped to implicated package; no broad churn.
+- **Ladder**: (1) Fixed release -> raise floor; (2) Active upstream, fix unreleased -> mitigate + time-boxed exception (<=90d); (3) Abandoned/stale (>18m no commits) -> migrate to maintained replacement/stdlib; (4) Upstream PRs are owner-authored (propose-not-push).
+<!-- canon:end dependency-hygiene -->

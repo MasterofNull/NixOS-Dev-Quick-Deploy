@@ -13,15 +13,7 @@ This file provides guidance to whichever locally hosted model fills the **local 
 
 Physical limits of the AMD Ryzen 7 PRO 5850U (Renoir APU), independent of model; exceeding them causes OOM kills or thermal shutdowns.
 
-| Resource | Hard Limit | Reason |
-|----------|-----------|--------|
-| Usable RAM | ~27 GB | 4 GB reserved as shared VRAM |
-| GPU layers | **12 max** | 4 GB VRAM ceiling |
-| KV cache budget | 1.0 GB | Part of 27 GB total |
-| Concurrent requests | 1 (thermal L1) | MLFQ scheduler enforces |
-| Max quant | Q4_K_XL | T0/T1 quants will not fit |
-
-**Thermal gates**: `optimal` <=70C, `warm` <=85C (keep tasks short), `critical` >=85C (CLM compaction off, concurrency=1, defer heavy jobs), `shutdown` >=95C (inference suspended; notify orchestrator).
+Limits: Usable RAM ~27 GB (4 GB VRAM ceiling), GPU layers **12 max**, KV cache 1.0 GB, max quant Q4_K_XL. Thermal: optimal <=70C, warm <=85C, critical >=85C, shutdown >=95C. Details: `.agent/lanes/local-reference.md`.
 
 **Hard rules (always, any model):**
 - Never suggest `n_gpu_layers` > 12 anywhere in config or code
@@ -192,3 +184,8 @@ Enforcement: local payloads auto-inject the MICRO variant (`shared/llm_config.py
 - Orchestrator: commit slice deps, deliverable path shared-visible, quota headroom verified (Rule 18).
 - Full text: `canon/blocks/headless-delegate-mode.md`
 <!-- canon:end headless-delegate-mode -->
+
+<!-- canon:begin dependency-hygiene -->
+- **Trigger**: ONLY failing security gate, strictly scoped to implicated package; no broad churn.
+- **Ladder**: (1) Fixed release -> raise floor; (2) Active upstream, fix unreleased -> mitigate + time-boxed exception (<=90d); (3) Abandoned/stale (>18m no commits) -> migrate to maintained replacement/stdlib; (4) Upstream PRs are owner-authored (propose-not-push).
+<!-- canon:end dependency-hygiene -->

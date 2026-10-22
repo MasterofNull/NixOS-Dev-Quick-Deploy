@@ -38,14 +38,6 @@ Guidance for Gemini / Antigravity agents in NixOS-Dev-Quick-Deploy.
 7. **DOC-UPDATE**: Log to `issues-backlog.md` & `WORKAROUND-REGISTER.md`. Seed RAG (`seed-rag-knowledge.py`) & MemoryBroker. Update `HANDOFF.md`.
 8. **COMMIT**: Step 8 evidence contract (root cause, files changed, results, trailers). Release gate checkout.
 
-## Gemini lane overlays
-
-- **Orchestration & Review**: Steer and review; do not self-implement. Verify sub-agent receipts, worktree confinement, and test proofs.
-- **Sub-agents**: Execute only assigned slices; do not re-scope, route other agents, or finalize acceptance.
-- **Scope lock**: Verify slice scope before dispatching; no infrastructure edits without assignment.
-- **Deduplication**: Never repeat identical tool calls.
-- **Declarative only (Rule 13)**: Never propose imperative installs (`pip/npm/cargo install`); declare in Nix.
-
 ## On-demand reference
 
 Moved-out lane history, long examples and reference tables (with contents list): `.agent/lanes/gemini-reference.md`. Shared lookups: `.agent/REFERENCE-INDEX.md`.
@@ -157,3 +149,8 @@ Enforcement: local payloads auto-inject the MICRO variant (`shared/llm_config.py
 - Orchestrator: commit slice deps, deliverable path shared-visible, quota headroom verified (Rule 18).
 - Full text: `canon/blocks/headless-delegate-mode.md`
 <!-- canon:end headless-delegate-mode -->
+
+<!-- canon:begin dependency-hygiene -->
+- **Trigger**: ONLY failing security gate, strictly scoped to implicated package; no broad churn.
+- **Ladder**: (1) Fixed release -> raise floor; (2) Active upstream, fix unreleased -> mitigate + time-boxed exception (<=90d); (3) Abandoned/stale (>18m no commits) -> migrate to maintained replacement/stdlib; (4) Upstream PRs are owner-authored (propose-not-push).
+<!-- canon:end dependency-hygiene -->
