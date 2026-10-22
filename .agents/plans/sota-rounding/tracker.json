@@ -70,6 +70,12 @@
           "c735bdf8",
           "capability-audit timer"
         ]
+      },
+      "acceptance": {
+        "status": "accepted",
+        "by": "antigravity",
+        "date": "2026-10-21",
+        "note": "Capability audit timer and RSI observation landed via PR #446 and #452; stale branch tagged to archive/codex-wip-sandbox-20261009 and retired per Rule 12"
       }
     },
     {
