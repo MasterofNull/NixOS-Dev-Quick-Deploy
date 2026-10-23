@@ -110,10 +110,10 @@
         ]
       },
       "acceptance": {
-        "status": "pending",
-        "by": null,
-        "date": null,
-        "note": "pending; status projected from git/ground truth, not hand-set"
+        "status": "accepted",
+        "by": "antigravity",
+        "date": "2026-10-23",
+        "note": "Verified via phase0 check 0.10.61 PASS (pure determinism, operator context, dashboard summary)"
       }
     },
     {
