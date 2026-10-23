@@ -189,6 +189,12 @@
         "commit_match": [
           "factory-kit-k9"
         ]
+      },
+      "acceptance": {
+        "status": "accepted",
+        "by": "hyperd",
+        "date": "2026-10-22",
+        "note": "K9 schemas and LESSONS-CORE verified via test-factory-kit-k9.py"
       }
     },
     {
