@@ -39,7 +39,7 @@ def test_skill_subcommand_preserved(base: Path) -> None:
 
 def test_init_identity_enforcement(base: Path) -> None:
     repo = new_repo(base, "no-identity", with_identity=False)
-    res = subprocess.run([sys.executable, str(AQ_FACTORY), "init", "--repo", str(repo), "--owner-handle", "@alice"], env={k: v for k, v in os.environ.items() if not k.startswith("GIT_")} | {"GIT_CONFIG_GLOBAL": "/dev/null", "GIT_CONFIG_SYSTEM": "/dev/null"},
+    res = subprocess.run([sys.executable, str(AQ_FACTORY), "init", "--repo", str(repo), "--owner-handle", "@alice"], env={k: v for k, v in os.environ.items() if not k.startswith("GIT_")} | {"GIT_CONFIG_GLOBAL": "/dev/null", "GIT_CONFIG_SYSTEM": "/dev/null", "XDG_CONFIG_HOME": "/dev/null"},
                          capture_output=True, text=True)
     assert res.returncode == 4, f"expected rc=4 for missing git identity, got {res.returncode}"
     assert "user.name and user.email must be configured" in res.stderr

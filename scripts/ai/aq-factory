@@ -461,6 +461,66 @@ def cmd_update(args: argparse.Namespace) -> int:
     return 0
 
 
+def cmd_learn(args: argparse.Namespace) -> int:
+    repo = Path(args.repo).resolve()
+    if not (repo / ".git").exists():
+        print(f"FAIL: {repo} is not a git repository.", file=sys.stderr)
+        return 4
+
+    detected_stacks = []
+    if (repo / "package.json").exists():
+        detected_stacks.append("node")
+    if (repo / "pyproject.toml").exists() or (repo / "setup.py").exists() or (repo / "requirements.txt").exists():
+        detected_stacks.append("python")
+    if (repo / "Cargo.toml").exists():
+        detected_stacks.append("rust")
+    if (repo / "go.mod").exists():
+        detected_stacks.append("go")
+    if (repo / "flake.nix").exists() or (repo / "default.nix").exists():
+        detected_stacks.append("nix")
+
+    project_name = repo.name
+    facts = {
+        "project_name": project_name,
+        "stacks": detected_stacks,
+        "timestamp": time.strftime("%Y-%m-%dT%H:%M:%SZ", time.gmtime()),
+    }
+
+    mem_dir = repo / ".agent" / "memory"
+    if not args.dry_run and mem_dir.exists():
+        (mem_dir / "project-facts.json").write_text(json.dumps(facts, indent=2) + "\n", encoding="utf-8")
+
+    if args.json:
+        print(json.dumps(facts, indent=2))
+    else:
+        print(f"Learned facts for {project_name}: stacks={detected_stacks}")
+    return 0
+
+
+def cmd_worktree(args: argparse.Namespace) -> int:
+    repo = Path(args.repo).resolve()
+    if not (repo / ".git").exists():
+        print(f"FAIL: {repo} is not a git repository.", file=sys.stderr)
+        return 4
+
+    name = args.name
+    base_branch = args.base or "main"
+    worktree_parent = Path(args.dir).resolve() if args.dir else repo.parent / "worktrees"
+    wt_path = worktree_parent / name
+
+    if args.dry_run:
+        print(f"Worktree plan: path={wt_path}, branch={name}, base={base_branch}")
+        return 0
+
+    worktree_parent.mkdir(parents=True, exist_ok=True)
+    res = _git(["worktree", "add", str(wt_path), "-b", name, base_branch], repo)
+    if res.returncode != 0:
+        print(f"FAIL: git worktree add failed:\n{res.stderr}", file=sys.stderr)
+        return 1
+
+    print(f"Worktree created successfully at: {wt_path}")
+    return 0
+
 def cmd_doctor(args: argparse.Namespace) -> int:
     repo = Path(args.repo).resolve()
     kit_root = Path(args.kit_root).resolve()
@@ -561,7 +621,7 @@ def main(argv: list[str] | None = None) -> int:
     args_list = list(sys.argv[1:] if argv is None else argv)
     # Finding 5: support legacy positional CLI `aq-factory <name> "<purpose>" [--root <dir>] [--dry-run]`
     # If argv[0] is not a known subcommand and not an option, treat as `skill`
-    known_subcommands = {"skill", "init", "doctor", "retrofit", "update", "-h", "--help"}
+    known_subcommands = {"skill", "init", "doctor", "retrofit", "update", "learn", "worktree", "-h", "--help"}
     if args_list and not args_list[0].startswith("-") and args_list[0] not in known_subcommands:
         args_list.insert(0, "skill")
 
@@ -609,6 +669,22 @@ def main(argv: list[str] | None = None) -> int:
     p_update.add_argument("--dry-run", action="store_true")
     p_update.add_argument("--json", action="store_true")
     p_update.set_defaults(func=cmd_update)
+
+    # Subcommand: learn
+    p_learn = sub.add_parser("learn", help="Scan consumer repository and extract project facts.")
+    p_learn.add_argument("--repo", default=".", help="target repository root")
+    p_learn.add_argument("--dry-run", action="store_true")
+    p_learn.add_argument("--json", action="store_true")
+    p_learn.set_defaults(func=cmd_learn)
+
+    # Subcommand: worktree
+    p_wt = sub.add_parser("worktree", help="Create an isolated worktree helper for bounded slice development.")
+    p_wt.add_argument("name", help="branch and worktree name")
+    p_wt.add_argument("--repo", default=".", help="target repository root")
+    p_wt.add_argument("--base", help="base branch to branch from (default: main)")
+    p_wt.add_argument("--dir", help="custom worktree directory")
+    p_wt.add_argument("--dry-run", action="store_true")
+    p_wt.set_defaults(func=cmd_worktree)
 
     # Subcommand: doctor
     p_doctor = sub.add_parser("doctor", help="Verify factory kit installation and health.")

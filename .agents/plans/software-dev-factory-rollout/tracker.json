@@ -211,6 +211,12 @@
         "commit_match": [
           "factory-kit-k10"
         ]
+      },
+      "acceptance": {
+        "status": "accepted",
+        "by": "hyperd",
+        "date": "2026-10-22",
+        "note": "K10 learn and worktree helper verified via test-factory-kit-k10.py"
       }
     },
     {
