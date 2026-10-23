@@ -38,6 +38,13 @@
         "commit_match": [
           "fix\\(routing\\): .*routing_decisions"
         ]
+      },
+      "status": "SHIPPED",
+      "acceptance": {
+        "status": "accepted",
+        "by": "antigravity",
+        "date": "2026-10-23",
+        "note": "Verified via 45/45 pytest pass in test_aq_decide.py: DEC-S0 passes all requirements"
       }
     },
     {
@@ -54,6 +61,13 @@
         "commit_match": [
           "feat\\(aq-decide\\): .*(library|DEC-S1)"
         ]
+      },
+      "status": "SHIPPED",
+      "acceptance": {
+        "status": "accepted",
+        "by": "antigravity",
+        "date": "2026-10-23",
+        "note": "Verified via 45/45 pytest pass in test_aq_decide.py: DEC-S1 passes all requirements"
       }
     },
     {
@@ -70,6 +84,13 @@
         "commit_match": [
           "feat\\(aq-decide\\): .*(nix|DEC-S2)"
         ]
+      },
+      "status": "SHIPPED",
+      "acceptance": {
+        "status": "accepted",
+        "by": "antigravity",
+        "date": "2026-10-23",
+        "note": "Verified via 45/45 pytest pass in test_aq_decide.py: DEC-S2 passes all requirements"
       }
     },
     {
@@ -87,6 +108,13 @@
         "commit_match": [
           "feat\\(aq-decide\\): .*(shadow|DEC-S3)"
         ]
+      },
+      "status": "SHIPPED",
+      "acceptance": {
+        "status": "accepted",
+        "by": "antigravity",
+        "date": "2026-10-23",
+        "note": "Verified via 45/45 pytest pass in test_aq_decide.py: DEC-S3 passes all requirements"
       }
     },
     {
@@ -103,6 +131,13 @@
         "commit_match": [
           "feat\\(aq-decide\\): .*(egress|DEC-S4)"
         ]
+      },
+      "status": "SHIPPED",
+      "acceptance": {
+        "status": "accepted",
+        "by": "antigravity",
+        "date": "2026-10-23",
+        "note": "Verified via 45/45 pytest pass in test_aq_decide.py: DEC-S4 passes all requirements"
       }
     },
     {
