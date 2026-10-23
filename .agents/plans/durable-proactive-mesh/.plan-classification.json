@@ -1,0 +1,5 @@
+{
+  "classification": "durable_plan",
+  "tracking_route": "tracker.json",
+  "evidence": "tracker.json declares plan.id=durable-proactive-mesh with 6 items and goal: Establish full architectural parity with Pi Durable, TypeSafe Jev, and the IndyDevDan Pi UI interfac"
+}
