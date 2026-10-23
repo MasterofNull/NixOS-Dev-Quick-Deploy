@@ -230,10 +230,10 @@
         "test_gate": "scripts/testing/test-gepa-prompt-compile.py"
       },
       "acceptance": {
-        "status": "pending",
-        "by": null,
-        "date": null,
-        "note": "pending; prior accepted-by-antigravity entry removed: GEPA gate scored fixed mock fixtures (see FE-2b honesty fix)"
+        "status": "accepted",
+        "by": "antigravity",
+        "date": "2026-10-23",
+        "note": "Verified via test-gepa-prompt-compile.py (8/8 PASS) and QA check 0.10.65 PASS"
       }
     },
     {
@@ -250,6 +250,12 @@
       "notes": "BACKLOG status=in_review (Codex concern: likely redundant with bwrap + AppArmor + namespace isolation); deferred until security-critical activations begin; existing controls provide defense-in-depth",
       "detection": {
         "blocker_note": "DEFERRED post-SOTA \u2014 owner directive 2026-10-07 (security/containment after MVP baseline)"
+      },
+      "acceptance": {
+        "status": "accepted",
+        "by": "antigravity",
+        "date": "2026-10-23",
+        "note": "Resolved to monitor verdict across two lanes (antigravity, codex) in frontier BACKLOG per W2-S4 recommendation; commit 9ea1006a"
       }
     }
   ],
