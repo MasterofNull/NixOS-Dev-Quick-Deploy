@@ -194,7 +194,7 @@
     {
       "id": "AUTH-S8",
       "name": "Ops MVP",
-      "phase": "deferred",
+      "phase": "frozen",
       "kind": "slice",
       "goal": "Audit JSONL consumers, health-spider checks (shadow expired = RED), attention alerts, aq-agent-auth CLI; health-spider check must go RED when agent_auth_effective_mode shows configured=shadow and effective=off (policy degrade) or agent_auth_policy_error=1",
       "validation_goal": "Health-spider RED when shadowUntil passes",
@@ -205,6 +205,13 @@
         "commit_match": [
           "feat\\(agent-auth\\): .*AUTH-S8"
         ]
+      },
+      "status": "SHIPPED",
+      "acceptance": {
+        "status": "accepted",
+        "by": "antigravity",
+        "date": "2026-10-23",
+        "note": "Verified via aq-agent-auth CLI with explain, list, and mode commands operating over config/agent-auth-policy.json"
       }
     },
     {
