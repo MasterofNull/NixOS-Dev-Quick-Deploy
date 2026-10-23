@@ -1,0 +1,9 @@
+{
+  "name": "sandbox-linux",
+  "description": "Linux Landlock and Bubblewrap process boundary layer for agent tool confinement",
+  "enabled_by_default": false,
+  "requires": ["core"],
+  "checks": [
+    "sandbox-confinement"
+  ]
+}

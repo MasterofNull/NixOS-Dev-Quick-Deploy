@@ -1,0 +1,9 @@
+{
+  "name": "mcp-plugins",
+  "description": "Standardized FastMCP server bridge and dual-stack stdio/HTTP manifest layer",
+  "enabled_by_default": false,
+  "requires": ["core"],
+  "checks": [
+    "mcp-protocol-parity"
+  ]
+}
