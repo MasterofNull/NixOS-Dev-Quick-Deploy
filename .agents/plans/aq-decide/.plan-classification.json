@@ -1,0 +1,5 @@
+{
+  "classification": "durable_plan",
+  "tracking_route": "tracker.json",
+  "evidence": "tracker.json declares plan.id=aq-decide with 11 items and goal: Local open-weight decision engine (Jev parity): advisory + friction only, never grants"
+}

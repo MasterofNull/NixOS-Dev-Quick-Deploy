@@ -1,0 +1,5 @@
+{
+  "classification": "durable_plan",
+  "tracking_route": "tracker.json",
+  "evidence": "tracker.json declares plan.id=capability-integration with 10 items and goal: Every implementation/tool/feature integrated into agents' working memory, workflows and repertoire; "
+}
