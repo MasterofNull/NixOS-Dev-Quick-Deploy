@@ -1,0 +1,5 @@
+{
+  "classification": "durable_plan",
+  "tracking_route": "tracker.json",
+  "evidence": "tracker.json declares plan.id=agent-auth with 11 items and goal: Per-class authorization for coordinator callers, shadow first, with browser/DNS-rebinding defence an"
+}
