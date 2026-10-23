@@ -1103,13 +1103,18 @@ def acquire_facts(
     con_uuid_out, _ = runner(["nmcli", "--get-values", "GENERAL.CON-UUID", "device", "show", iface])
     connection_class = ConnectionClass.UNTRUSTED.value
     tpath = trusted_profiles_path or TRUSTED_PROFILES_DEFAULT
-    if con_uuid_out and tpath.exists() and tpath.is_file():
+    if con_uuid_out:
         try:
-            with open(tpath, "r", encoding="utf-8") as f:
-                tdata = json.load(f)
-            allowed_uuids = set(tdata.get("trusted_profile_uuids", []))
-            if con_uuid_out.strip() in allowed_uuids:
-                connection_class = ConnectionClass.TRUSTED_FULL.value
+            if tpath.exists() and tpath.is_file():
+                with open(tpath, "r", encoding="utf-8") as f:
+                    tdata = json.load(f)
+                allowed_uuids = set(tdata.get("trusted_profile_uuids", []))
+                if con_uuid_out.strip() in allowed_uuids:
+                    connection_class = ConnectionClass.TRUSTED_FULL.value
+        except PermissionError:
+            # If trusted profiles file is restricted/unreadable to non-root caller,
+            # default to untrusted (fail-closed) rather than unknown.
+            connection_class = ConnectionClass.UNTRUSTED.value
         except Exception:
             connection_class = ConnectionClass.UNKNOWN.value
 
