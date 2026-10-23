@@ -167,6 +167,12 @@
         "commit_match": [
           "factory-kit-k8"
         ]
+      },
+      "acceptance": {
+        "status": "accepted",
+        "by": "hyperd",
+        "date": "2026-10-22",
+        "note": "K8 update and rollback verified via test-factory-kit-k8.py"
       }
     },
     {
