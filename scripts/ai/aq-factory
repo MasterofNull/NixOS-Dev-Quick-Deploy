@@ -17,6 +17,8 @@ import re
 import shutil
 import subprocess
 import sys
+import time
+import tempfile
 from pathlib import Path
 
 SCRIPT_DIR = Path(__file__).resolve().parent
@@ -276,6 +278,188 @@ retrofit = true
         print("  git add -A && git commit -m 'chore: retrofit factory kit'")
     return 0
 
+def cmd_update(args: argparse.Namespace) -> int:
+    repo = Path(args.repo).resolve()
+    kit_root = Path(args.kit_root).resolve()
+
+    if sys.platform == "win32":
+        print("FAIL: Native Windows unsupported. Please use WSL.", file=sys.stderr)
+        return 4
+
+    if not (repo / ".git").exists():
+        print(f"FAIL: {repo} is not a git repository.", file=sys.stderr)
+        return 4
+
+    # Handle --rollback
+    if args.rollback:
+        backup_base = repo / ".factory" / "gate-backups"
+        if not backup_base.exists() or not list(backup_base.iterdir()):
+            print("FAIL: No backups found under .factory/gate-backups to rollback.", file=sys.stderr)
+            return 4
+
+        # Select target backup
+        if args.rollback is True or args.rollback == "latest":
+            available = sorted([d for d in backup_base.iterdir() if d.is_dir()], key=lambda d: d.stat().st_mtime, reverse=True)
+            if not available:
+                print("FAIL: No valid backup directories found.", file=sys.stderr)
+                return 4
+            target_backup = available[0]
+        else:
+            target_backup = backup_base / str(args.rollback)
+            if not target_backup.is_dir():
+                print(f"FAIL: Specified backup '{args.rollback}' not found.", file=sys.stderr)
+                return 4
+
+        backup_files_dir = target_backup / "files"
+        if not backup_files_dir.exists():
+            print(f"FAIL: Backup '{target_backup.name}' does not contain 'files/' tree.", file=sys.stderr)
+            return 4
+
+        restored_count = 0
+        for src_file in backup_files_dir.rglob("*"):
+            if src_file.is_file():
+                rel = src_file.relative_to(backup_files_dir)
+                dest = repo / rel
+                dest.parent.mkdir(parents=True, exist_ok=True)
+                shutil.copy2(src_file, dest)
+                restored_count += 1
+
+        print(f"Rollback complete: restored {restored_count} file(s) from backup {target_backup.name}.")
+        return 0
+
+    # Tree cleanliness check for forward update
+    st = _git(["status", "--porcelain"], repo)
+    if st.stdout.strip():
+        print("FAIL: Working tree is dirty. Stash or commit changes before running update.", file=sys.stderr)
+        return 4
+
+    # Ensure lock exists
+    lock_file = repo / ".factory" / "kit.lock"
+    if not lock_file.exists():
+        print("FAIL: Missing .factory/kit.lock. Run `aq-factory init` or `retrofit` first.", file=sys.stderr)
+        return 4
+
+    # Load existing lock
+    try:
+        lock_data = json.loads(lock_file.read_text(encoding="utf-8"))
+    except Exception:
+        lock_data = {}
+
+    import hashlib
+    backup_digest = hashlib.sha256(str(time.time()).encode()).hexdigest()[:16]
+    backup_dir = repo / ".factory" / "gate-backups" / backup_digest / "files"
+
+    updated_files = []
+    conflict_files = []
+    proposed_files = []
+
+    for template_path in kit_root.rglob("*"):
+        if template_path.is_file():
+            rel = template_path.relative_to(kit_root)
+            dest = repo / rel
+
+            if not dest.exists():
+                if not args.dry_run:
+                    dest.parent.mkdir(parents=True, exist_ok=True)
+                    shutil.copy2(template_path, dest)
+                updated_files.append(str(rel))
+                continue
+
+            # Check if identical
+            dest_content = dest.read_bytes()
+            new_content = template_path.read_bytes()
+
+            if dest_content == new_content:
+                continue
+
+            # Non-mergeable structured files
+            is_structured = rel.suffix in [".json", ".yml", ".yaml"] or ".githooks" in str(rel)
+
+            if not args.dry_run:
+                b_dest = backup_dir / rel
+                b_dest.parent.mkdir(parents=True, exist_ok=True)
+                shutil.copy2(dest, b_dest)
+
+            if is_structured:
+                proposed_path = dest.with_name(dest.name + ".kit-proposed")
+                if not args.dry_run:
+                    proposed_path.write_bytes(new_content)
+                proposed_files.append(str(proposed_path.relative_to(repo)))
+            else:
+                # Retrieve base content (the ancestor content before consumer customization).
+                # In factory kit architecture (DESIGN.md section 4.1):
+                # base = ancestor content as originally installed/recorded in lock.files_rendered or stored baseline.
+                # If lock has file content/sha or fallback to previous commit in history (HEAD~1):
+                base_bytes = None
+                rendered_files = lock_data.get("files", {})
+                if str(rel) in rendered_files and "content" in rendered_files[str(rel)]:
+                    base_bytes = rendered_files[str(rel)]["content"].encode("utf-8")
+
+                if base_bytes is None:
+                    # Fallback to HEAD~1 if exists, else dest_content
+                    head_prev = _git(["show", f"HEAD~1:{rel}"], repo)
+                    if head_prev.returncode == 0:
+                        base_bytes = head_prev.stdout.encode("utf-8")
+                    else:
+                        base_bytes = dest_content
+
+                with tempfile.NamedTemporaryFile() as base_tmp:
+                    base_tmp.write(base_bytes)
+                    base_tmp.flush()
+
+                    merge_res = subprocess.run(
+                        ["git", "merge-file", "-p", str(dest), base_tmp.name, str(template_path)],
+                        capture_output=True
+                    )
+                    if merge_res.returncode == 0:
+                        if not args.dry_run:
+                            dest.write_bytes(merge_res.stdout)
+                        updated_files.append(str(rel))
+                    else:
+                        if not args.dry_run:
+                            dest.write_bytes(merge_res.stdout)
+                        conflict_files.append(str(rel))
+
+    if not args.dry_run:
+        # Update lock kit_version if requested
+        if args.to:
+            lock_data["kit_version"] = args.to
+        lock_file.write_text(json.dumps(lock_data, indent=2) + "\n", encoding="utf-8")
+
+    if args.dry_run:
+        if args.json:
+            print(json.dumps({
+                "operation": "update-dry-run",
+                "updated": updated_files,
+                "proposed": proposed_files,
+                "conflicts": conflict_files
+            }, indent=2))
+        else:
+            print("Dry-run update preview:")
+            print(f"  Updated/Created: {len(updated_files)}")
+            print(f"  Proposed (.kit-proposed): {len(proposed_files)}")
+            print(f"  Conflicts: {len(conflict_files)}")
+        return 0
+
+    if args.json:
+        print(json.dumps({
+            "operation": "update",
+            "backup_digest": backup_digest,
+            "updated": updated_files,
+            "proposed": proposed_files,
+            "conflicts": conflict_files
+        }, indent=2))
+    else:
+        print(f"Update complete: {len(updated_files)} updated, {len(proposed_files)} proposed, {len(conflict_files)} conflicts.")
+        if backup_dir.exists():
+            print(f"Backup saved to: .factory/gate-backups/{backup_digest}")
+
+    if conflict_files:
+        print(f"CONFLICT: {len(conflict_files)} file(s) require manual conflict resolution: {conflict_files}", file=sys.stderr)
+        return 1
+
+    return 0
+
 
 def cmd_doctor(args: argparse.Namespace) -> int:
     repo = Path(args.repo).resolve()
@@ -377,7 +561,7 @@ def main(argv: list[str] | None = None) -> int:
     args_list = list(sys.argv[1:] if argv is None else argv)
     # Finding 5: support legacy positional CLI `aq-factory <name> "<purpose>" [--root <dir>] [--dry-run]`
     # If argv[0] is not a known subcommand and not an option, treat as `skill`
-    known_subcommands = {"skill", "init", "doctor", "retrofit", "-h", "--help"}
+    known_subcommands = {"skill", "init", "doctor", "retrofit", "update", "-h", "--help"}
     if args_list and not args_list[0].startswith("-") and args_list[0] not in known_subcommands:
         args_list.insert(0, "skill")
 
@@ -415,6 +599,16 @@ def main(argv: list[str] | None = None) -> int:
     p_retro.add_argument("--dry-run", action="store_true")
     p_retro.add_argument("--json", action="store_true")
     p_retro.set_defaults(func=cmd_retrofit)
+
+    # Subcommand: update
+    p_update = sub.add_parser("update", help="Update factory kit in a repository with three-way merge.")
+    p_update.add_argument("--repo", default=".", help="target repository root")
+    p_update.add_argument("--kit-root", default=str(DEFAULT_KIT_ROOT), help="path to template kit")
+    p_update.add_argument("--to", help="target kit version or tag")
+    p_update.add_argument("--rollback", nargs="?", const="latest", help="rollback to previous backup digest or latest")
+    p_update.add_argument("--dry-run", action="store_true")
+    p_update.add_argument("--json", action="store_true")
+    p_update.set_defaults(func=cmd_update)
 
     # Subcommand: doctor
     p_doctor = sub.add_parser("doctor", help="Verify factory kit installation and health.")
