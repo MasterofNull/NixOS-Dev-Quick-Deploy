@@ -1,0 +1,46 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "title": "FactoryAttentionItem",
+  "description": "Schema for attention queue items in consumer repos.",
+  "type": "object",
+  "required": [
+    "id",
+    "timestamp",
+    "urgency",
+    "category",
+    "summary",
+    "source"
+  ],
+  "properties": {
+    "id": {
+      "type": "string",
+      "pattern": "^[a-zA-Z0-9_-]+$"
+    },
+    "timestamp": {
+      "type": "string",
+      "format": "date-time"
+    },
+    "urgency": {
+      "type": "string",
+      "enum": ["low", "normal", "high", "critical"]
+    },
+    "category": {
+      "type": "string",
+      "enum": ["security", "build", "parity", "review", "ops", "drift"]
+    },
+    "summary": {
+      "type": "string",
+      "minLength": 5
+    },
+    "source": {
+      "type": "string"
+    },
+    "action_required": {
+      "type": "string"
+    },
+    "details": {
+      "type": "object"
+    }
+  },
+  "additionalProperties": false
+}

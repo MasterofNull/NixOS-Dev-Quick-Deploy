@@ -985,19 +985,19 @@ ignore:
     package:
       name: ffmpeg
       version: "8.1.2"
-    reason: "Fixed in ffmpeg 8.1.3 (released); nixos-26.05 still ships 8.1.2 (backport nixpkgs#571601 is on staging-26.05, not the channel). Reachable via a local .m3u8 or yt-dlp->ffmpeg HLS before aq-transcribe hardening; yt-dlp now uses native HLS and ffmpeg runs with a protocol whitelist. Resolve by `nix flake update nixpkgs` once the channel has 8.1.3; renew weekly only while it lacks it. Scoped to 8.1.2. WR-SEC-3 expires=2026-10-22"
+    reason: "Fixed in ffmpeg 8.1.3 (released); nixos-26.05 still ships 8.1.2 (backport nixpkgs#571601 is on staging-26.05, not the channel). Reachable via a local .m3u8 or yt-dlp->ffmpeg HLS before aq-transcribe hardening; yt-dlp now uses native HLS and ffmpeg runs with a protocol whitelist. Resolve by `nix flake update nixpkgs` once the channel has 8.1.3; renew weekly only while it lacks it. Scoped to 8.1.2. WR-SEC-3 expires=2026-10-29"
 
   - vulnerability: CVE-2026-107697
     package:
       name: ffmpeg
       version: "8.1.2"
-    reason: "Fixed in ffmpeg 8.1.3 (released); nixos-26.05 still ships 8.1.2 (backport nixpkgs#571601 is on staging-26.05, not the channel). Reachable via a local .m3u8 or yt-dlp->ffmpeg HLS before aq-transcribe hardening; yt-dlp now uses native HLS and ffmpeg runs with a protocol whitelist. Resolve by `nix flake update nixpkgs` once the channel has 8.1.3; renew weekly only while it lacks it. Scoped to 8.1.2. WR-SEC-3 expires=2026-10-22"
+    reason: "Fixed in ffmpeg 8.1.3 (released); nixos-26.05 still ships 8.1.2 (backport nixpkgs#571601 is on staging-26.05, not the channel). Reachable via a local .m3u8 or yt-dlp->ffmpeg HLS before aq-transcribe hardening; yt-dlp now uses native HLS and ffmpeg runs with a protocol whitelist. Resolve by `nix flake update nixpkgs` once the channel has 8.1.3; renew weekly only while it lacks it. Scoped to 8.1.2. WR-SEC-3 expires=2026-10-29"
 
   - vulnerability: CVE-2026-107660
     package:
       name: ffmpeg
       version: "8.1.2"
-    reason: "Fixed in ffmpeg 8.1.3 (released); nixos-26.05 still ships 8.1.2 (backport nixpkgs#571601 is on staging-26.05, not the channel). Reachable via a local .m3u8 or yt-dlp->ffmpeg HLS before aq-transcribe hardening; yt-dlp now uses native HLS and ffmpeg runs with a protocol whitelist. Resolve by `nix flake update nixpkgs` once the channel has 8.1.3; renew weekly only while it lacks it. Scoped to 8.1.2. WR-SEC-3 expires=2026-10-22"
+    reason: "Fixed in ffmpeg 8.1.3 (released); nixos-26.05 still ships 8.1.2 (backport nixpkgs#571601 is on staging-26.05, not the channel). Reachable via a local .m3u8 or yt-dlp->ffmpeg HLS before aq-transcribe hardening; yt-dlp now uses native HLS and ffmpeg runs with a protocol whitelist. Resolve by `nix flake update nixpkgs` once the channel has 8.1.3; renew weekly only while it lacks it. Scoped to 8.1.2. WR-SEC-3 expires=2026-10-29"
 
   - vulnerability: CVE-2026-107696
     package:
