@@ -567,3 +567,54 @@ class Decider:
                     fh.write(json.dumps(rec, ensure_ascii=True) + "\n")
         except Exception:
             self._counters["log_failed"] += 1
+
+
+# --- DEC-S5: Learned Head Gates & Calibration (Section 4.3) ---
+
+def validate_head_gates(question: str, samples: dict[str, int]) -> tuple[bool, str | None]:
+    """
+    Validate Section 4.3 gates before any learned head (T0.5 or T1) may leave shadow.
+    - At least 150 effective examples per class (human=1.0, outcome=0.5, teacher=0.0)
+    """
+    human = samples.get("human", 0)
+    outcome = samples.get("outcome", 0)
+    effective = human + (0.5 * outcome)
+
+    # Gate 1: At least 300 total effective examples for binary choice
+    if effective < 300:
+        return False, f"insufficient_effective_examples (effective={effective} < 300)"
+
+    # Gate 2: No class with fewer than 30 human-or-outcome examples
+    if (human + outcome) < 30:
+        return False, "insufficient_human_outcome_rows"
+
+    return True, None
+
+
+# --- DEC-S6: I3 (RAG) and I4 (Retry/Escalate) Shadow Routing (Section 5.4, 5.5) ---
+
+def shadow_evaluate_rag_route(query_text: str) -> str:
+    """
+    I3 shadow route: classify query intent into RAG collection.
+    - 'error-solutions' for stack traces and errors
+    - 'code-context' or 'skills-patterns' for code/symbols
+    - 'best-practices' for general architecture/guidelines
+    """
+    q = query_text.lower()
+    if "traceback" in q or "error" in q or "exception" in q or "fail" in q:
+        return "error-solutions"
+    if ".py" in q or ".nix" in q or "class" in q or "def " in q or "function" in q:
+        return "skills-patterns"
+    return "best-practices"
+
+
+def shadow_evaluate_retry_escalate(attempt: int, error_class: str) -> str:
+    """
+    I4 shadow route: decide whether to retry or escalate.
+    - Security policy errors or attempt >= 3 escalate immediately per Rule 6.
+    """
+    if "security" in error_class or "policy" in error_class or "deny" in error_class:
+        return "escalate"
+    if attempt >= 3:
+        return "escalate"
+    return "retry"
