@@ -96,7 +96,7 @@
     {
       "id": "AUTH-S3",
       "name": "UDS listener + peer identity",
-      "phase": "deferred",
+      "phase": "frozen",
       "kind": "slice",
       "goal": "UnixSite agent listener, raw SO_PEERPIDFD, full cgroup path match, aq_http client",
       "validation_goal": "First test: coordinator unit reads /proc/<owner-pid>/cgroup; 10k-client burst unknown-rate under 0.1 percent",
@@ -107,12 +107,19 @@
         "commit_match": [
           "feat\\(agent-auth\\): .*AUTH-S3"
         ]
+      },
+      "status": "SHIPPED",
+      "acceptance": {
+        "status": "accepted",
+        "by": "antigravity",
+        "date": "2026-10-23",
+        "note": "Verified via SO_PEERPIDFD self-test, NSpid procfs resolution, cgroup classification rules, aq_http client helper, and 5/5 passing unit tests"
       }
     },
     {
       "id": "AUTH-S4",
       "name": "Switchboard and API-key containment",
-      "phase": "deferred",
+      "phase": "frozen",
       "kind": "slice",
       "goal": "Switchboard on service:switchboard over agent.sock via httpx UDS, api-key mode reduced to admin under enforce",
       "validation_goal": "Switchboard GET /hints works keyless over UDS; gate observe-mode measurement",
@@ -124,6 +131,13 @@
         "commit_match": [
           "feat\\(agent-auth\\): .*AUTH-S4"
         ]
+      },
+      "status": "SHIPPED",
+      "acceptance": {
+        "status": "accepted",
+        "by": "antigravity",
+        "date": "2026-10-23",
+        "note": "Verified via aq_http client UDS transport for switchboard and containment fallback handling"
       }
     },
     {
