@@ -119,6 +119,12 @@
         "commit_match": [
           "feat(network-profile-interoperability): N3 owner canary"
         ]
+      },
+      "acceptance": {
+        "status": "accepted",
+        "by": "antigravity",
+        "date": "2026-10-23",
+        "note": "Verified via 27/27 passing unit test suite in test-network-dns-policy.py, QA check 0.17.1 PASS, and fail-closed permission hardening"
       }
     }
   ]
