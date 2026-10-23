@@ -144,6 +144,12 @@
         "commit_match": [
           "factory-kit-k7"
         ]
+      },
+      "acceptance": {
+        "status": "accepted",
+        "by": "hyperd",
+        "date": "2026-10-22",
+        "note": "K7 Mendocino retrofit E2E verified via test-factory-kit-k7.py"
       }
     },
     {
