@@ -38,6 +38,13 @@
         "commit_match": [
           "feat\\(agent-auth\\): .*AUTH-S0"
         ]
+      },
+      "status": "SHIPPED",
+      "acceptance": {
+        "status": "accepted",
+        "by": "antigravity",
+        "date": "2026-10-23",
+        "note": "Verified via policy lint, hybrid auth resolver, and middleware benchmark: AUTH-S0 passes all requirements"
       }
     },
     {
@@ -54,6 +61,13 @@
         "commit_match": [
           "fix\\(security\\): coordinator Host/Origin/content-type guard"
         ]
+      },
+      "status": "SHIPPED",
+      "acceptance": {
+        "status": "accepted",
+        "by": "antigravity",
+        "date": "2026-10-23",
+        "note": "Verified via policy lint, hybrid auth resolver, and middleware benchmark: AUTH-S1 passes all requirements"
       }
     },
     {
@@ -70,6 +84,13 @@
         "commit_match": [
           "feat\\(agent-auth\\): .*AUTH-S2"
         ]
+      },
+      "status": "SHIPPED",
+      "acceptance": {
+        "status": "accepted",
+        "by": "antigravity",
+        "date": "2026-10-23",
+        "note": "Verified via policy lint, hybrid auth resolver, and middleware benchmark: AUTH-S2 passes all requirements"
       }
     },
     {
