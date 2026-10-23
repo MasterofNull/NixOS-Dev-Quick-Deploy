@@ -1,0 +1,69 @@
+{
+  "version": "1.0.0",
+  "updated_at": "2026-10-23T06:09:53.211221+00:00",
+  "sources": [
+    {
+      "id": "cisa-kev",
+      "name": "CISA Known Exploited Vulnerabilities",
+      "category": "cve_national_authorities",
+      "url": "https://www.cisa.gov/sites/default/files/feeds/known_exploited_vulnerabilities.json",
+      "type": "api",
+      "trust_tier": "tier1_authoritative",
+      "active": true
+    },
+    {
+      "id": "osv-dev",
+      "name": "Open Source Vulnerabilities (OSV)",
+      "category": "cve_national_authorities",
+      "url": "https://api.osv.dev/v1/query",
+      "type": "api",
+      "trust_tier": "tier1_authoritative",
+      "active": true
+    },
+    {
+      "id": "arxiv-cs-se",
+      "name": "arXiv Software Engineering",
+      "category": "research_preprints",
+      "url": "https://export.arxiv.org/rss/cs.SE",
+      "type": "rss",
+      "trust_tier": "tier2_peer_reviewed",
+      "active": true
+    },
+    {
+      "id": "arxiv-cs-cr",
+      "name": "arXiv Cryptography and Security",
+      "category": "research_preprints",
+      "url": "https://export.arxiv.org/rss/cs.CR",
+      "type": "rss",
+      "trust_tier": "tier2_peer_reviewed",
+      "active": true
+    },
+    {
+      "id": "anthropic-research",
+      "name": "Anthropic Research Disclosures",
+      "category": "frontier_labs",
+      "url": "https://www.anthropic.com/research",
+      "type": "web_json",
+      "trust_tier": "tier1_authoritative",
+      "active": true
+    },
+    {
+      "id": "deepmind-research",
+      "name": "Google DeepMind Discoveries",
+      "category": "frontier_labs",
+      "url": "https://deepmind.google/discover/blog/",
+      "type": "web_json",
+      "trust_tier": "tier1_authoritative",
+      "active": true
+    },
+    {
+      "id": "vercel-geist-design",
+      "name": "Vercel & Geist Design Systems",
+      "category": "design_ui_ux",
+      "url": "https://vercel.com/design",
+      "type": "web_json",
+      "trust_tier": "tier2_peer_reviewed",
+      "active": true
+    }
+  ]
+}

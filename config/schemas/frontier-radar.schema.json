@@ -1,0 +1,39 @@
+{
+  "$schema": "http://json-schema.org/draft-07/schema#",
+  "title": "FrontierRadarManifest",
+  "type": "object",
+  "required": ["version", "sources"],
+  "properties": {
+    "version": { "type": "string" },
+    "updated_at": { "type": "string" },
+    "sources": {
+      "type": "array",
+      "items": {
+        "type": "object",
+        "required": ["id", "name", "category", "url", "type", "trust_tier"],
+        "properties": {
+          "id": { "type": "string" },
+          "name": { "type": "string" },
+          "category": {
+            "type": "string",
+            "enum": [
+              "research_preprints",
+              "frontier_labs",
+              "cve_national_authorities",
+              "runtime_systems",
+              "formal_verification",
+              "design_ui_ux",
+              "discovered_targets"
+            ]
+          },
+          "url": { "type": "string", "format": "uri" },
+          "type": { "type": "string", "enum": ["rss", "api", "git", "web_json"] },
+          "trust_tier": { "type": "string", "enum": ["tier1_authoritative", "tier2_peer_reviewed", "tier3_community"] },
+          "discovered_by": { "type": "string" },
+          "discovered_context": { "type": "string" },
+          "active": { "type": "boolean", "default": true }
+        }
+      }
+    }
+  }
+}
