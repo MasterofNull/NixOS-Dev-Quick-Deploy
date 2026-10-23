@@ -1,0 +1,10 @@
+{
+  "name": "host-nixos",
+  "description": "NixOS declarative harness integration layer (Flake evaluation, activation scripts, AppArmor & systemd sandbox)",
+  "enabled_by_default": false,
+  "requires": ["core"],
+  "checks": [
+    "flake-validation",
+    "nixos-option-parity"
+  ]
+}
