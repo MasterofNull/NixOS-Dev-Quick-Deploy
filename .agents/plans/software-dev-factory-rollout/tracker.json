@@ -199,6 +199,12 @@
     },
     {
       "id": "k10",
+      "acceptance": {
+        "status": "accepted",
+        "by": "hyperd",
+        "date": "2026-10-22",
+        "note": "K10 worktree helper, learn command, and canon core rules verified via test-factory-kit-k10.py"
+      },
       "name": "Canon compile, skills subset, worktree helper, learn",
       "phase": "v0.2-1.0",
       "kind": "slice",
@@ -221,6 +227,12 @@
     },
     {
       "id": "k11",
+      "acceptance": {
+        "status": "accepted",
+        "by": "hyperd",
+        "date": "2026-10-22",
+        "note": "K11 check-kit-parity gate verified via test-factory-kit-k11.py"
+      },
       "name": "check-kit-parity + tier0 core refactor split",
       "phase": "v0.2-1.0",
       "kind": "slice",
@@ -237,6 +249,12 @@
     },
     {
       "id": "k12",
+      "acceptance": {
+        "status": "accepted",
+        "by": "hyperd",
+        "date": "2026-10-22",
+        "note": "K12 optional layers manifests verified via test-factory-kit-k12.py"
+      },
       "name": "Optional layers (host-nixos, sandbox, mcp-plugins, local-model)",
       "phase": "v0.2-1.0",
       "kind": "slice",

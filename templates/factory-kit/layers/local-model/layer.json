@@ -1,0 +1,9 @@
+{
+  "name": "local-model",
+  "description": "System 1 local llama.cpp / Switchboard inference orchestration layer",
+  "enabled_by_default": false,
+  "requires": ["core"],
+  "checks": [
+    "local-inference-health"
+  ]
+}
