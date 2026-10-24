@@ -618,3 +618,24 @@ def shadow_evaluate_retry_escalate(attempt: int, error_class: str) -> str:
     if attempt >= 3:
         return "escalate"
     return "retry"
+
+# --- DEC-S8: Drift Detection (PSI) and Calibration Drift Alerts ---
+
+def compute_psi(actual: dict[str, float], baseline: dict[str, float], eps: float = 1e-4) -> float:
+    """Compute Population Stability Index (PSI) between actual and baseline probability distributions."""
+    all_keys = set(actual.keys()) | set(baseline.keys())
+    if not all_keys:
+        return 0.0
+    psi = 0.0
+    for k in sorted(all_keys):
+        a = max(actual.get(k, 0.0), eps)
+        b = max(baseline.get(k, 0.0), eps)
+        psi += (a - b) * math.log(a / b)
+    return round(psi, 4)
+
+
+def check_calibration_drift(predicted_prob: float, observed_rate: float, threshold: float = 0.15) -> tuple[bool, float]:
+    """Check if model calibration has drifted beyond tolerance threshold."""
+    gap = round(abs(predicted_prob - observed_rate), 4)
+    drifted = gap > threshold
+    return drifted, gap
