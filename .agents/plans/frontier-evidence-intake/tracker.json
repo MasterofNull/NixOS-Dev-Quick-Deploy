@@ -208,6 +208,13 @@
           "prm-steering"
         ],
         "freeze_record": "docs/harness-first/evidence/2026-10-08-fe1-prm-steering.md"
+      },
+      "status": "shipped",
+      "acceptance": {
+        "status": "accepted",
+        "by": "antigravity",
+        "date": "2026-10-23",
+        "note": "Verified via 10/10 passing unit tests in test-prm-steering.py and verified freeze record docs/harness-first/evidence/2026-10-08-fe1-prm-steering.md"
       }
     },
     {
