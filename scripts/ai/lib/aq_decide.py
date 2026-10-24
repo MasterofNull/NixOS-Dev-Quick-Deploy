@@ -618,3 +618,56 @@ def shadow_evaluate_retry_escalate(attempt: int, error_class: str) -> str:
     if attempt >= 3:
         return "escalate"
     return "retry"
+
+# --- DEC-S8: Drift Detection (PSI) and Calibration Drift Alerts ---
+
+def compute_psi(actual: dict[str, float], baseline: dict[str, float], eps: float = 1e-4) -> float:
+    """Compute Population Stability Index (PSI) between actual and baseline probability distributions."""
+    all_keys = set(actual.keys()) | set(baseline.keys())
+    if not all_keys:
+        return 0.0
+    psi = 0.0
+    for k in sorted(all_keys):
+        a = max(actual.get(k, 0.0), eps)
+        b = max(baseline.get(k, 0.0), eps)
+        psi += (a - b) * math.log(a / b)
+    return round(psi, 4)
+
+
+def check_calibration_drift(predicted_prob: float, observed_rate: float, threshold: float = 0.15) -> tuple[bool, float]:
+    """Check if model calibration has drifted beyond tolerance threshold."""
+    gap = round(abs(predicted_prob - observed_rate), 4)
+    drifted = gap > threshold
+    return drifted, gap
+def evaluate_gliclass_candidate(model_path: str | Path | None = None) -> dict[str, Any]:
+    """DEC-S10: GLiClass ModernBERT ONNX candidate evaluation.
+
+    Evaluates candidate weights availability, capability-intake verification,
+    and onnxruntime environment readiness.
+    """
+    path = Path(model_path) if model_path else Path("/var/lib/nixos-ai-stack/models/gliclass-modernbert.onnx")
+    onnx_available = False
+    try:
+        import onnxruntime  # noqa: F401
+        onnx_available = True
+    except ImportError:
+        onnx_available = False
+
+    model_present = path.exists() and path.is_file()
+    intake_verified = False
+    manifest_path = path.parent / f"{path.name}.manifest.json"
+    if model_present and manifest_path.exists():
+        try:
+            manifest = json.loads(manifest_path.read_text(encoding="utf-8"))
+            intake_verified = manifest.get("status") == "verified"
+        except Exception:
+            intake_verified = False
+
+    return {
+        "candidate": "gliclass-modernbert-onnx",
+        "model_path": str(path),
+        "onnxruntime_ready": onnx_available,
+        "model_present": model_present,
+        "intake_verified": intake_verified,
+        "evaluation_verdict": "READY" if (onnx_available and model_present and intake_verified) else "PENDING_INTAKE"
+    }

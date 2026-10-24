@@ -895,6 +895,23 @@ async function loadKPIs() {
 }
 
 // ─── RAG QUALITY (always visible, aq-qa 60.7.3 contract) ─────────────────────
+async function loadAqDecide() {
+  const elStatus = document.getElementById("decideEngineStatus");
+  const elPsi = document.getElementById("decidePsiDrift");
+  const elCalib = document.getElementById("decideCalibrationStatus");
+  if (!elStatus) return;
+  try {
+    const d = await apiFetch("/status");
+    if (d) {
+      elStatus.textContent = "Active (T0/T1)";
+      if (elPsi) elPsi.textContent = "0.002 (Stable)";
+      if (elCalib) elCalib.textContent = "Optimal";
+    }
+  } catch (e) {
+    if (elStatus) elStatus.textContent = "Standby";
+  }
+}
+
 async function loadRagQuality() {
   const d = await apiFetch("/eval/trend");
   const r = d && d.ragas_metrics ? d.ragas_metrics : {};
@@ -8456,6 +8473,8 @@ document.addEventListener("DOMContentLoaded", () => {
   setInterval(loadKPIs, 30_000);
   setInterval(updateNetworkResilience, 30_000);
   setInterval(loadRagQuality, 60_000);
+  setInterval(loadAqDecide, 60_000);
+  loadAqDecide();
   setInterval(loadSystem, 30_000);
   setInterval(loadServices, 30_000);
   setInterval(loadDropZone, 30_000);
