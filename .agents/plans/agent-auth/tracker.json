@@ -196,7 +196,8 @@
         "commit_match": [
           "feat\\(agent-auth\\): .*AUTH-S7"
         ]
-      }
+      },
+      "status": "SHIPPED"
     },
     {
       "id": "AUTH-S8",
@@ -235,7 +236,8 @@
         "commit_match": [
           "feat\\(agent-auth\\): .*AUTH-S9"
         ]
-      }
+      },
+      "status": "SHIPPED"
     },
     {
       "id": "AUTH-S10",
