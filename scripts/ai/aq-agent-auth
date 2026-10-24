@@ -1,0 +1,93 @@
+#!/usr/bin/env python3
+"""
+aq-agent-auth: Operational CLI for Agent Authorization (AUTH-S8).
+
+Subcommands:
+  explain   Inspect route policy classification and permissions for a client class
+  list      List configured agent classes, scopes, and unit mappings
+  mode      Show current auth mode (observe, shadow, enforce)
+"""
+
+import argparse
+import json
+import os
+from pathlib import Path
+import sys
+
+_REPO = Path(__file__).resolve().parents[2]
+POLICY_PATH = _REPO / "config" / "agent-auth-policy.json"
+
+
+def load_policy():
+    if not POLICY_PATH.exists():
+        print(f"Error: Policy file not found at {POLICY_PATH}", file=sys.stderr)
+        sys.exit(1)
+    with open(POLICY_PATH, encoding="utf-8") as f:
+        return json.load(f)
+
+
+def cmd_explain(args):
+    policy = load_policy()
+    client_class = args.client_class
+    classes = policy.get("classes", {})
+    if client_class not in classes:
+        print(f"Unknown client class: '{client_class}'. Known classes: {', '.join(classes.keys())}")
+        return 1
+    scopes = classes[client_class]
+    if isinstance(scopes, list):
+        print(f"Class: {client_class}")
+        print(f"Allowed Scopes: {', '.join(scopes)}")
+    elif isinstance(scopes, dict):
+        print(f"Class: {client_class}")
+        print(f"Description: {scopes.get('comment', 'No description')}")
+        print(f"Allowed Scopes: {', '.join(scopes.get('scopes', []))}")
+    return 0
+
+
+def cmd_list(args):
+    policy = load_policy()
+    print("=== Configured Agent Classes ===")
+    for name, scopes in policy.get("classes", {}).items():
+        if isinstance(scopes, list):
+            scope_str = ", ".join(scopes)
+        elif isinstance(scopes, dict):
+            scope_str = ", ".join(scopes.get("scopes", []))
+        else:
+            scope_str = str(scopes)
+        print(f"  {name:20} -> scopes: [{scope_str}]")
+    print(f"\nDefault scope: {policy.get('default_scope')}")
+    print(f"Version: {policy.get('version')}")
+    return 0
+
+
+def cmd_mode(args):
+    policy = load_policy()
+    print("=== Agent Auth Modes Per Family ===")
+    for fam, mode in policy.get("mode_per_family", {}).items():
+        print(f"  {fam:25} -> {mode}")
+    return 0
+
+
+def main():
+    parser = argparse.ArgumentParser(description="aq-agent-auth: operational CLI for agent authorization")
+    subparsers = parser.add_subparsers(dest="command", required=True)
+
+    # explain
+    p_explain = subparsers.add_parser("explain", help="Explain class permissions and scopes")
+    p_explain.add_argument("client_class", help="Client class name (e.g. service:switchboard, owner-agent)")
+    p_explain.set_defaults(func=cmd_explain)
+
+    # list
+    p_list = subparsers.add_parser("list", help="List configured classes and scopes")
+    p_list.set_defaults(func=cmd_list)
+
+    # mode
+    p_mode = subparsers.add_parser("mode", help="Show current authorization mode per family")
+    p_mode.set_defaults(func=cmd_mode)
+
+    args = parser.parse_args()
+    return args.func(args)
+
+
+if __name__ == "__main__":
+    sys.exit(main())
