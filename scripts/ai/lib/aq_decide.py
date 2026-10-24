@@ -639,3 +639,36 @@ def check_calibration_drift(predicted_prob: float, observed_rate: float, thresho
     gap = round(abs(predicted_prob - observed_rate), 4)
     drifted = gap > threshold
     return drifted, gap
+
+def evaluate_gliclass_candidate(model_path: str | Path | None = None) -> dict[str, Any]:
+    """DEC-S10: GLiClass ModernBERT ONNX candidate evaluation.
+
+    Evaluates candidate weights availability, capability-intake verification,
+    and onnxruntime environment readiness.
+    """
+    path = Path(model_path) if model_path else Path("/var/lib/nixos-ai-stack/models/gliclass-modernbert.onnx")
+    onnx_available = False
+    try:
+        import onnxruntime  # noqa: F401
+        onnx_available = True
+    except ImportError:
+        onnx_available = False
+
+    model_present = path.exists() and path.is_file()
+    intake_verified = False
+    manifest_path = path.parent / f"{path.name}.manifest.json"
+    if model_present and manifest_path.exists():
+        try:
+            manifest = json.loads(manifest_path.read_text(encoding="utf-8"))
+            intake_verified = manifest.get("status") == "verified"
+        except Exception:
+            intake_verified = False
+
+    return {
+        "candidate": "gliclass-modernbert-onnx",
+        "model_path": str(path),
+        "onnxruntime_ready": onnx_available,
+        "model_present": model_present,
+        "intake_verified": intake_verified,
+        "evaluation_verdict": "READY" if (onnx_available and model_present and intake_verified) else "PENDING_INTAKE"
+    }
