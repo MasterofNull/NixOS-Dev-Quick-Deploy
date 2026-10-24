@@ -200,7 +200,10 @@ async def fetch_browser_research(
     normalized_selectors = _normalize_selectors(selectors or [], policy.max_selectors)
     effective_max_text_chars = min(max_text_chars or policy.max_text_chars, policy.max_text_chars)
     effective_sleep = sleep_fn or asyncio.sleep
-    enforce_ssrf = transport is None and browser_runner is None
+    if transport is not None and browser_runner is not None and os.getenv("AQ_TEST_MODE") == "1":
+        enforce_ssrf = False
+    else:
+        enforce_ssrf = True
 
     max_reqs_budget = crawl_budget_max_requests if crawl_budget_max_requests is not None else policy.crawl_budget_max_requests
     max_secs_budget = crawl_budget_max_seconds if crawl_budget_max_seconds is not None else policy.crawl_budget_max_seconds

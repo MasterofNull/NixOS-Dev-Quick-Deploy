@@ -10,6 +10,7 @@ from pathlib import Path
 import httpx
 
 ROOT = Path(__file__).resolve().parents[2]
+os.environ["AQ_TEST_MODE"] = "1"
 os.environ["AI_BROWSER_RESEARCH_ENABLED"] = "true"
 os.environ["AI_BROWSER_RESEARCH_MAX_URLS"] = "5"
 os.environ["AI_BROWSER_RESEARCH_MAX_SELECTORS"] = "4"
