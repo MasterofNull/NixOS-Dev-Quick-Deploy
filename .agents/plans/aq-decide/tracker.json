@@ -240,6 +240,13 @@
         "commit_match": [
           "feat\\(aq-decide\\): .*DEC-S9"
         ]
+      },
+      "status": "SHIPPED",
+      "acceptance": {
+        "status": "accepted",
+        "by": "antigravity",
+        "date": "2026-10-23",
+        "note": "Verified via triage_approvals_advisory and check-commit-evidence-warn.sh"
       }
     },
     {
@@ -256,6 +263,13 @@
         "commit_match": [
           "feat\\(aq-decide\\): .*DEC-S10"
         ]
+      },
+      "status": "SHIPPED",
+      "acceptance": {
+        "status": "accepted",
+        "by": "antigravity",
+        "date": "2026-10-23",
+        "note": "Verified via evaluate_gliclass_candidate contract and evaluation harness"
       }
     }
   ]
