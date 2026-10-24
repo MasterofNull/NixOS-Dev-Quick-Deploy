@@ -157,7 +157,8 @@
         "commit_match": [
           "feat\\(agent-auth\\): .*AUTH-S5"
         ]
-      }
+      },
+      "status": "SHIPPED"
     },
     {
       "id": "AUTH-S6",
