@@ -340,3 +340,29 @@ def inbox_cli(argv: list, approve_alert, resolve_actor) -> int:
         if not ok:
             rc = rc or (2 if it["section"] == "deferred" else 1)
     return rc
+
+def triage_approvals_advisory(items: list[dict]) -> list[dict]:
+    """DEC-S9: Advisory approvals triage (reorder and annotate).
+
+    Per aq-decide DESIGN.md Section 5.6:
+    - Questions: approval_class (routine / needs_read / high_impact) and approval_urgency
+    - Reorders and annotates only
+    - Deterministic keyword matches (security, secret, sudo, rebuild, delete, force)
+      always yield high_impact and cannot be down-ranked.
+    - Advisory only; never grants or changes permissions.
+    """
+    critical_keywords = {"security", "secret", "sudo", "rebuild", "delete", "force"}
+    for item in items:
+        text = f"{item.get('title', '')} {item.get('detail', '')} {item.get('action', '')}".lower()
+        if any(kw in text for kw in critical_keywords):
+            item["approval_class"] = "high_impact"
+            item["approval_urgency"] = "high"
+        elif item.get("severity") in ("critical", "high"):
+            item["approval_class"] = "needs_read"
+            item["approval_urgency"] = "medium"
+        else:
+            item["approval_class"] = "routine"
+            item["approval_urgency"] = "low"
+
+    class_priority = {"high_impact": 0, "needs_read": 1, "routine": 2}
+    return sorted(items, key=lambda i: (class_priority.get(i.get("approval_class", "routine"), 2), _SEV.get(i.get("severity", "medium"), 9)))
