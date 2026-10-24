@@ -255,6 +255,14 @@
         "commit_match": [
           "feat\\(agent-auth\\): .*AUTH-S10"
         ]
+      },
+      "status": "SHIPPED",
+      "notes": "Configured sandbox class profile and sandbox-readonly self-service profile in config/agent-auth-policy.json; validated via scripts/testing/test-agent-auth-s10.py.",
+      "acceptance": {
+        "status": "accepted",
+        "by": "antigravity",
+        "date": "2026-10-23",
+        "note": "Verified via scripts/testing/test-agent-auth-s10.py (2/2 PASS)."
       }
     }
   ]
