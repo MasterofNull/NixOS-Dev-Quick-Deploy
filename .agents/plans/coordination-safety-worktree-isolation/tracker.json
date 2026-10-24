@@ -58,7 +58,8 @@
         "by": "hyperd",
         "date": "2026-10-06",
         "note": "Owner approved; test-worktree-isolation PASS"
-      }
+      },
+      "status": "SHIPPED"
     },
     {
       "id": "cs-2",
@@ -81,7 +82,8 @@
         "by": "hyperd",
         "date": "2026-10-06",
         "note": "Owner approved; canonical parity synchronized"
-      }
+      },
+      "status": "SHIPPED"
     },
     {
       "id": "cs-3",
@@ -105,7 +107,8 @@
         "by": "Codex /root/cs3_final_review (independent non-author)",
         "date": "2026-09-17",
         "note": "CS3-F1 source accepted/synced f9ab7e429874eb32f91c04889aa7189daa213787, exact subject3332984f446889f3fd0aa52bd4e68e072f5ab1be58c42440f9bac3a2f21e24f1; actual independent PASS, Tier0 53/0, push22/22. Live production held lease/foreign-hook refusal/idle release observed; deletion/rename/hash/concurrency fixtures PASS. Explicit-path cooperative transaction, not all git-add interception or same-user security boundary. IMPLEMENTED_FOLLOWUP_REQUIRED: CS4 deployed dashboard and parallel-dispatch proof still pending."
-      }
+      },
+      "status": "SHIPPED"
     },
     {
       "id": "cs-4",
@@ -129,7 +132,8 @@
         "by": "hyperd",
         "date": "2026-10-06",
         "note": "Owner approved; test-concurrent-dispatch-isolation 8/8 PASS"
-      }
+      },
+      "status": "SHIPPED"
     }
   ],
   "issues": [
