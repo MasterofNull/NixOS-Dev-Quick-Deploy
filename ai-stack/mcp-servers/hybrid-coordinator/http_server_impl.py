@@ -2896,6 +2896,27 @@ async def run_http_mode(port: int) -> None:
 
     http_app.router.add_get("/world/forecast", handle_world_forecast)
 
+    # DEC-S8: Decision oracle endpoint (scope: decide, restricted)
+    async def handle_decide_endpoint(request: web.Request) -> web.Response:
+        """POST /decide - query aq-decide engine under the 'decide' scope."""
+        try:
+            body = await request.json()
+        except Exception:
+            return web.json_response({"error": "invalid_json", "status": "bad_request"}, status=400)
+        if not isinstance(body, dict):
+            return web.json_response({"error": "body_must_be_object", "status": "bad_request"}, status=400)
+        try:
+            import scripts.ai.lib.aq_decide as aq_decide
+            decider = aq_decide.Decider()
+            caller = getattr(request, "remote", "unknown") or "unknown"
+            result = decider.decide(body, caller=caller)
+            return web.json_response(result)
+        except Exception as e:
+            logger.error(f"aq-decide /decide endpoint failure: {e}")
+            return web.json_response({"error": str(e), "status": "internal_error"}, status=500)
+
+    http_app.router.add_post("/decide", handle_decide_endpoint)
+
     # Phase 2.4: Register YAML workflow routes
     if YAML_WORKFLOWS_AVAILABLE:
         try:

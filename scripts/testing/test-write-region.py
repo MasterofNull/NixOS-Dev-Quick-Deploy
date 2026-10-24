@@ -206,7 +206,12 @@ def _outside_workspace_dir() -> Path:
     """/var/tmp is NOT in file_operations.ALLOWED_BASE_PATHS (unlike /tmp,
     ~/Documents, ~/.local/share/nixos-ai-stack) — use it as a target outside the
     workspace boundary for traversal/symlink-escape tests."""
-    return Path(tempfile.mkdtemp(prefix="wr-outside-", dir="/var/tmp"))
+    for candidate in ["/var/tmp", os.path.expanduser("~/.cache"), tempfile.gettempdir()]:
+        try:
+            return Path(tempfile.mkdtemp(prefix="wr-outside-", dir=candidate))
+        except OSError:
+            continue
+    return Path(tempfile.mkdtemp(prefix="wr-outside-"))
 
 
 async def test_path_traversal_rejected():

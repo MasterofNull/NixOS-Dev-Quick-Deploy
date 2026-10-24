@@ -118,6 +118,11 @@
           "endpoint": "POST /research/web/fetch"
         }
       ]
+    },
+    "decide": {
+      "why": "Local decision oracle evaluation (aq-decide DEC-S8). Restricted to prevent agent privilege probing.",
+      "hint": "Only internal monitor and admin processes may query the decision engine.",
+      "sanctioned_paths": []
     }
   },
   "rules": [
@@ -270,6 +275,16 @@
         "/api/agent-ops/",
         "/agent/lifecycle/"
       ]
+    },
+    {
+      "scope": "decide",
+      "prefixes": [
+        "/decide"
+      ],
+      "methods": [
+        "POST"
+      ],
+      "note": "DEC-S8: Decision oracle endpoint. Granted to no agent class by default."
     }
   ],
   "classes": {
