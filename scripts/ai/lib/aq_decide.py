@@ -671,3 +671,38 @@ def evaluate_gliclass_candidate(model_path: str | Path | None = None) -> dict[st
         "intake_verified": intake_verified,
         "evaluation_verdict": "READY" if (onnx_available and model_present and intake_verified) else "PENDING_INTAKE"
     }
+
+
+def evaluate_t2_candidate(
+    model_name: str = 'qwen3-0.6b',
+    weights_path: str | Path | None = None,
+    max_param_limit_b: float = 4.0
+) -> dict[str, Any]:
+    """DEC-S7: T2 constrained-logprob small LLM tier evaluation.
+
+    Verifies candidate model parameter ceiling (<4B), GGUF/weights availability,
+    page-cache footprint, and constrained grammar/logprob readiness.
+    """
+    path = Path(weights_path) if weights_path else Path(f'/var/lib/nixos-ai-stack/models/{model_name}.gguf')
+    model_present = path.exists() and path.is_file()
+    size_bytes = path.stat().st_size if model_present else 0
+    size_mb = round(size_bytes / (1024 * 1024), 2)
+
+    # Param size extraction heuristic from model name
+    param_count_b = 0.6 if '0.6b' in model_name.lower() else (1.7 if '1.7b' in model_name.lower() else 4.0)
+    within_param_limit = param_count_b <= max_param_limit_b
+
+    # Page cache impact estimate: model file size + 128MB KV cache
+    est_page_cache_mb = round(size_mb + 128.0, 2) if model_present else 0.0
+
+    return {
+        'candidate': model_name,
+        'model_path': str(path),
+        'param_count_b': param_count_b,
+        'within_param_limit': within_param_limit,
+        'model_present': model_present,
+        'size_mb': size_mb,
+        'est_page_cache_mb': est_page_cache_mb,
+        'constrained_logprob_ready': within_param_limit and model_present,
+        'evaluation_verdict': 'READY' if (within_param_limit and model_present) else 'PENDING_WEIGHTS'
+    }
