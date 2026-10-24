@@ -140,11 +140,14 @@ class ShadowMiddlewareTest(unittest.IsolatedAsyncioTestCase):
         self.assertNotIn("X-AQ-Would-Deny", r.headers)
         self.assertEqual(self._rows(), [])
 
-    async def test_enforce_not_implemented_behaves_as_shadow(self):
+    async def test_enforce_mode_blocks_unauthorized_post(self):
+        # Under AUTH-S5, enforce mode actively rejects unauthorized calls with 403
         c = await self._client("enforce")
         r = await c.post("/research/web/fetch")
-        self.assertEqual(r.status, 200)
-        self.assertIn("X-AQ-Would-Deny", r.headers)
+        self.assertEqual(r.status, 403)
+        body = await r.json()
+        self.assertEqual(body.get("error"), "forbidden")
+        self.assertEqual(body.get("reason"), "policy_denied")
 
     async def test_decision_error_never_500s(self):
         policy = load_policy(str(POLICY_PATH))
