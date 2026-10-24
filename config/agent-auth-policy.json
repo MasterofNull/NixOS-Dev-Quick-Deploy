@@ -108,6 +108,16 @@
           "endpoint": "GET /status"
         }
       ]
+    },
+    "research.browser": {
+      "why": "Headless browser execution has full network and DOM capabilities.",
+      "hint": "Request an elevated egress grant for headless browser fetch.",
+      "sanctioned_paths": [
+        {
+          "action": "fetch plain web text",
+          "endpoint": "POST /research/web/fetch"
+        }
+      ]
     }
   },
   "rules": [
@@ -179,6 +189,12 @@
       ],
       "methods": [
         "POST"
+      ]
+    },
+    {
+      "scope": "research.browser",
+      "prefixes": [
+        "/research/web/browser-fetch"
       ]
     },
     {

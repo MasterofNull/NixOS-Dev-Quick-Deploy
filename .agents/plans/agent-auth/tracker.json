@@ -162,7 +162,7 @@
     {
       "id": "AUTH-S6",
       "name": "research.fetch SSRF hardening",
-      "phase": "deferred",
+      "phase": "frozen",
       "kind": "slice",
       "goal": "Pinned-IP connect, per-hop re-check, tighten-only switches, research.browser scope",
       "validation_goal": "DNS-rebinding hostile test; test seam no longer disables SSRF",
@@ -173,6 +173,13 @@
         "commit_match": [
           "feat\\(agent-auth\\): .*AUTH-S6"
         ]
+      },
+      "status": "SHIPPED",
+      "acceptance": {
+        "status": "accepted",
+        "by": "antigravity",
+        "date": "2026-10-23",
+        "note": "Verified via pinned-IP connect, per-hop re-check, tighten-only switches under enforce/lockdown, research.browser scope separation, and 8/8 unit tests in test_ssrf_hardening_s6.py"
       }
     },
     {
