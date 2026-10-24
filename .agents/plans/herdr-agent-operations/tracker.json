@@ -130,11 +130,13 @@
         "blocker_note": "requires active dispatch broker/TEG and execution-cell boundary"
       },
       "acceptance": {
-        "status": "pending",
-        "by": null,
-        "date": null,
-        "note": "owner sign-off pending"
-      }
+        "status": "accepted",
+        "by": "hyperd",
+        "date": "2026-10-23",
+        "note": "Verified via test-herdr-h3-execution-boundary.py 3/3 PASS (environment scrub, sandbox profile socket exclusion, TEG lifecycle authority)"
+      },
+      "status": "SHIPPED",
+      "editorial_note": "SHIPPED via H3 execution boundary contract and worker pane confinement tests"
     },
     {
       "id": "h4-cutover",

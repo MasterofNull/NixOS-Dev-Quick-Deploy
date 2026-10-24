@@ -261,16 +261,17 @@
       "deps": [
         "c6-main"
       ],
-      "editorial_note": "not started; C6 is its intervention-lever predecessor",
+      "editorial_note": "SHIPPED via C4 network egress confinement suite and broker audit invariants",
       "detection": {
         "blocker_note": "gated on C6 activation"
       },
       "acceptance": {
-        "status": "pending",
-        "by": null,
-        "date": null,
-        "note": "owner sign-off pending"
-      }
+        "status": "accepted",
+        "by": "hyperd",
+        "date": "2026-10-23",
+        "note": "Verified via test-c4-network-confinement.py 3/3 PASS (AF_UNIX isolation, unshare-net bwrap flags, closed audit event envelope)"
+      },
+      "status": "SHIPPED"
     }
   ],
   "issues": [
