@@ -109,6 +109,16 @@
         }
       ]
     },
+    "research.browser": {
+      "why": "Headless browser execution has full network and DOM capabilities.",
+      "hint": "Request an elevated egress grant for headless browser fetch.",
+      "sanctioned_paths": [
+        {
+          "action": "fetch plain web text",
+          "endpoint": "POST /research/web/fetch"
+        }
+      ]
+    },
     "decide": {
       "why": "Local decision oracle evaluation (aq-decide DEC-S8). Restricted to prevent agent privilege probing.",
       "hint": "Only internal monitor and admin processes may query the decision engine.",
@@ -184,6 +194,12 @@
       ],
       "methods": [
         "POST"
+      ]
+    },
+    {
+      "scope": "research.browser",
+      "prefixes": [
+        "/research/web/browser-fetch"
       ]
     },
     {
