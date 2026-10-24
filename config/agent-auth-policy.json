@@ -311,11 +311,23 @@
     "api-key": [
       "admin"
     ],
-    "unknown": []
+    "unknown": [],
+    "sandbox": [
+      "read.hints",
+      "read.status",
+      "safety.tighten",
+      "prsi.read"
+    ]
   },
   "class_notes": {
     "legacy-loopback": "All TCP callers until S3 lands the UDS peer identity. memory.write is a 90-day compat grant (design 4.2).",
     "api-key": "Design 5.3: under enforce the api-key mode maps to {admin} only; non-admin api-key traffic in the shadow log is the S7 migration signal."
   },
-  "mode_per_family": {}
+  "mode_per_family": {},
+  "self_service": {
+    "sandbox-readonly": [
+      "read.hints",
+      "read.status"
+    ]
+  }
 }
