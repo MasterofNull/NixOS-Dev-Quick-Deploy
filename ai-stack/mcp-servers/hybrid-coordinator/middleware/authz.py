@@ -280,9 +280,6 @@ def create_authz_middleware(policy: Optional[Policy] = None, mode: Optional[str]
     STATE.shadow_until = os.getenv("AQ_AGENT_AUTH_SHADOW_UNTIL", "")
     if AUTH_SHADOW_EXPIRED is not None:
         AUTH_SHADOW_EXPIRED.set(1 if shadow_expired(configured, STATE.shadow_until) else 0)
-    if configured in ("enforce", "lockdown"):
-        logger.warning("agent-auth mode '%s' is not implemented until AUTH-S5; running as shadow", configured)
-        effective = "shadow"
     if effective == "off":
         _publish_mode(configured, "off", False)
         return _passthrough()
@@ -332,18 +329,53 @@ def create_authz_middleware(policy: Optional[Policy] = None, mode: Optional[str]
         return allowed, scope, deny_id
 
     @web.middleware
-    async def authz_shadow(request: web.Request, handler):
+    async def authz_middleware_handler(request: web.Request, handler):
         try:
             allowed, scope, deny_id = decide(request)
-        except Exception as exc:  # noqa: BLE001 - shadow must never fail a request
-            _note_shadow_error(exc)
-            return await handler(request)
+        except Exception as exc:  # noqa: BLE001
+            if effective == "shadow":
+                _note_shadow_error(exc)
+                return await handler(request)
+            else:
+                logger.error("agent-auth decision failed in enforce mode: %r", exc)
+                return web.json_response({
+                    "error": "internal_authz_failure",
+                    "reason": "decision_error",
+                    "detail": str(exc),
+                }, status=500)
+
+        # In lockdown mode: deny any write/mutation methods (POST, PUT, DELETE, PATCH)
+        if effective == "lockdown" and request.method in ("POST", "PUT", "DELETE", "PATCH"):
+            guidance = policy.guidance(scope)
+            return web.json_response({
+                "error": "forbidden",
+                "reason": "lockdown_active",
+                "deny_id": deny_id,
+                "scope": scope,
+                "method": request.method,
+                "path": request.path,
+                "guided_deny": guidance,
+                "message": "System is in emergency lockdown mode. Write mutations are suspended.",
+            }, status=403)
+
+        if not allowed and effective == "enforce":
+            guidance = policy.guidance(scope)
+            return web.json_response({
+                "error": "forbidden",
+                "reason": "policy_denied",
+                "deny_id": deny_id,
+                "scope": scope,
+                "method": request.method,
+                "path": request.path,
+                "guided_deny": guidance,
+            }, status=403)
+
         response = await handler(request)
         if not allowed and isinstance(response, web.StreamResponse) and not response.prepared:
             response.headers[WOULD_DENY_HEADER] = f"scope={scope};id={deny_id}"
         return response
 
-    return authz_shadow
+    return authz_middleware_handler
 
 
 # ---------------------------------------------------------------------------
