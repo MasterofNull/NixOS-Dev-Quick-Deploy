@@ -201,6 +201,14 @@
         "commit_match": [
           "feat\\(aq-decide\\): .*DEC-S7"
         ]
+      },
+      "status": "SHIPPED",
+      "notes": "Implemented T2 small LLM tier candidate evaluation in scripts/ai/lib/aq_decide.py with parameter ceilings (<4B) and page-cache footprint estimator; verified via test-aq-decide-s7.py.",
+      "acceptance": {
+        "status": "accepted",
+        "by": "antigravity",
+        "date": "2026-10-23",
+        "note": "Verified via scripts/testing/test-aq-decide-s7.py (3/3 PASS)."
       }
     },
     {
