@@ -146,27 +146,49 @@ def _resolve_workflow_target(target_dir_arg: str) -> tuple[str, str | None]:
 
 def _post(url: str, payload: dict, key: str, timeout: int = _DEFAULT_TIMEOUT_POST) -> dict:
     body = json.dumps(payload).encode()
-    req = urllib.request.Request(
-        url, data=body,
-        headers={
-            "Content-Type": "application/json",
-            "X-API-Key": key,
-            "X-Agent-Source": "mcp-bridge-hybrid",
-            "X-Agent-Role": "implementer",
-            "X-Agent-Boundary": "auto_ok",
-        },
-    )
+    headers = {
+        "Content-Type": "application/json",
+        "X-Agent-Source": "mcp-bridge-hybrid",
+        "X-Agent-Role": "implementer",
+        "X-Agent-Boundary": "auto_ok",
+    }
+    if key:
+        headers["X-API-Key"] = key
+
+    try:
+        from scripts.ai.lib.uds_client import request_http_or_uds
+        tcp_fallback = os.getenv("HYBRID_URL_FALLBACK", "http://127.0.0.1:8003")
+        return request_http_or_uds(url, method="POST", data=body, headers=headers, timeout=timeout, tcp_fallback_url=tcp_fallback)
+    except ImportError:
+        pass
+
+    req = urllib.request.Request(url, data=body, headers=headers)
     try:
         with urllib.request.urlopen(req, timeout=timeout) as r:
             return json.loads(r.read())
     except urllib.error.HTTPError as e:
-        return {"error": e.reason, "status": e.code}
+        try:
+            err_body = json.loads(e.read())
+            return {"error": err_body.get("reason", e.reason), "status": e.code, "guided_deny": err_body.get("guided_deny"), "body": err_body}
+        except Exception:
+            return {"error": e.reason, "status": e.code}
     except Exception as e:
         return {"error": str(e)}
 
 
 def _get(url: str, key: str, timeout: int = _DEFAULT_TIMEOUT_GET) -> dict:
-    req = urllib.request.Request(url, headers={"X-API-Key": key})
+    headers = {}
+    if key:
+        headers["X-API-Key"] = key
+
+    try:
+        from scripts.ai.lib.uds_client import request_http_or_uds
+        tcp_fallback = os.getenv("HYBRID_URL_FALLBACK", "http://127.0.0.1:8003")
+        return request_http_or_uds(url, method="GET", headers=headers, timeout=timeout, tcp_fallback_url=tcp_fallback)
+    except ImportError:
+        pass
+
+    req = urllib.request.Request(url, headers=headers)
     try:
         with urllib.request.urlopen(req, timeout=timeout) as r:
             return json.loads(r.read())
