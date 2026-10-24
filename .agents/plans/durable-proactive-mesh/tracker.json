@@ -175,7 +175,8 @@
         "by": "antigravity",
         "date": "2026-10-23",
         "note": "Verified via test-pi-agent-streaming-ui.py (6/6 PASS) and phase0 check 0.10.67 PASS"
-      }
+      },
+      "status": "SHIPPED"
     },
     {
       "id": "dp-5",
@@ -200,7 +201,8 @@
         "by": "antigravity",
         "date": "2026-10-23",
         "note": "Verified via end-to-end incident injection, QA checks 0.10.66/67/68 PASS, and Tier-0 gate"
-      }
+      },
+      "status": "SHIPPED"
     }
   ]
 }
