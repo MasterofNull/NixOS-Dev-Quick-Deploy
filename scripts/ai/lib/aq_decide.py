@@ -639,7 +639,6 @@ def check_calibration_drift(predicted_prob: float, observed_rate: float, thresho
     gap = round(abs(predicted_prob - observed_rate), 4)
     drifted = gap > threshold
     return drifted, gap
-
 def evaluate_gliclass_candidate(model_path: str | Path | None = None) -> dict[str, Any]:
     """DEC-S10: GLiClass ModernBERT ONNX candidate evaluation.
 
