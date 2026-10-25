@@ -47,6 +47,7 @@ A2A_AUDIT = REPO_ROOT / ".agent" / "collaboration" / "a2a-audit.log"
 MODEL_PROFILE = REPO_ROOT / "config" / "model-profile.json"
 SWEEPER_STATE = Path.home() / ".local" / "share" / "aq-durable-agent" / "sweeper-state.json"
 DECISIONS_LOG = Path.home() / ".local" / "state" / "aq-decide" / "decisions.jsonl"
+CONTROL_DIR = REPO_ROOT / ".agents" / "delegation" / "control"
 
 console = Console()
 
@@ -239,6 +240,35 @@ def get_system1_telemetry() -> Dict[str, Any]:
     return telemetry
 
 
+def get_intervention_telemetry() -> Dict[str, Any]:
+    """Retrieve active intervention dock control status."""
+    info = {"status": "READY", "active_signals": 0, "last_action": "None", "last_ts": "—"}
+    if not CONTROL_DIR.is_dir():
+        return info
+    total_signals = 0
+    last_rec = None
+    try:
+        for f in CONTROL_DIR.glob("*.jsonl"):
+            lines = [l.strip() for l in f.read_text(encoding="utf-8").splitlines() if l.strip()]
+            total_signals += len(lines)
+            if lines:
+                candidate = json.loads(lines[-1])
+                if not last_rec or candidate.get("ts", "") > last_rec.get("ts", ""):
+                    last_rec = candidate
+        info["active_signals"] = total_signals
+        if last_rec:
+            info["status"] = "PENDING" if last_rec.get("kind") in ("pause", "edit_intent") else "ACTIVE"
+            info["last_action"] = f"{last_rec.get('kind', '').upper()}"
+            ts = last_rec.get("ts", "")
+            if "T" in ts:
+                info["last_ts"] = ts.split("T")[1][:8] + "Z"
+            else:
+                info["last_ts"] = ts[:8]
+    except Exception:
+        pass
+    return info
+
+
 def render_cockpit() -> Panel:
     """Build the cockpit panel."""
     # 1. Services Table
@@ -295,7 +325,18 @@ def render_cockpit() -> Panel:
     s1_table.add_row("Agreement", f"[bold yellow]{sys1_info['agreement_rate']:.1f}%[/bold yellow]")
     s1_table.add_row("Top Profile", f"[cyan]{sys1_info['top_answer']}[/cyan]")
 
-    # 5. Pulse Ops Ticker
+    # 5. Human Intervention Dock Card
+    hitl_info = get_intervention_telemetry()
+    hitl_table = Table(box=None, padding=(0, 1), show_header=False)
+    hitl_table.add_column("Key", style="dim cyan", width=12)
+    hitl_table.add_column("Value", style="bold white")
+
+    hitl_table.add_row("Dock Status", f"[bold green]{hitl_info['status']}[/bold green]" if hitl_info['status'] == "READY" else f"[bold yellow]{hitl_info['status']}[/bold yellow]")
+    hitl_table.add_row("Signals Sent", f"[bold white]{hitl_info['active_signals']}[/bold white]")
+    hitl_table.add_row("Last Action", f"[cyan]{hitl_info['last_action']}[/cyan]")
+    hitl_table.add_row("Timestamp", f"[dim]{hitl_info['last_ts']}[/dim]")
+
+    # 6. Pulse Ops Ticker
     pulse_entries = read_pulse_tail(3)
     pulse_text = Text()
     for entry in pulse_entries:
@@ -322,9 +363,11 @@ def render_cockpit() -> Panel:
     ops_table = Table.grid(padding=(0, 2))
     ops_table.add_column()
     ops_table.add_column()
+    ops_table.add_column()
     ops_table.add_row(
-        Panel(sw_table, title="[bold]Durable Sweeper (Frontier Ingest)[/bold]", border_style="green", padding=(0, 0)),
-        Panel(s1_table, title="[bold]System 1 (Shadow Routing)[/bold]", border_style="yellow", padding=(0, 0)),
+        Panel(sw_table, title="[bold]Durable Sweeper[/bold]", border_style="green", padding=(0, 0)),
+        Panel(s1_table, title="[bold]System 1 (Shadow)[/bold]", border_style="yellow", padding=(0, 0)),
+        Panel(hitl_table, title="[bold]Intervention Dock[/bold]", border_style="cyan", padding=(0, 0)),
     )
 
     pulse_panel = Panel(pulse_text, title="[bold]Ops Pulse Ticker (PULSE.log)[/bold]", border_style="blue", padding=(0, 1))
