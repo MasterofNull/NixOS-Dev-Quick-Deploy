@@ -236,17 +236,16 @@ async def get_layered_health():
         result["cache_expires_in_s"] = int(_layered_cache["expires_at"] - now)
         return result
 
-    # Cold cache: check persisted verified evidence before falling back to pending
-    if _layered_cache["result"] is None:
-        persisted = _load_persisted_qa_results()
-        if persisted:
-            _layered_cache["result"] = persisted
-            _layered_cache["expires_at"] = now + _LAYERED_CACHE_TTL
-            result = dict(persisted)
-            result["cached"] = True
-            result["pending"] = False
-            result["cache_expires_in_s"] = int(_LAYERED_CACHE_TTL)
-            return result
+    # Check persisted verified QA evidence first (authoritative host evidence)
+    persisted = _load_persisted_qa_results()
+    if persisted:
+        _layered_cache["result"] = persisted
+        _layered_cache["expires_at"] = now + _LAYERED_CACHE_TTL
+        result = dict(persisted)
+        result["cached"] = True
+        result["pending"] = False
+        result["cache_expires_in_s"] = int(_LAYERED_CACHE_TTL)
+        return result
 
     # Cold cache — return a cheap pending response by default. aq-qa phase 0 is
     # heavy on this host and includes report-backed checks unless explicitly
