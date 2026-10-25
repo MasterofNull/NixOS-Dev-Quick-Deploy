@@ -1,0 +1,92 @@
+{
+  "plan": {
+    "id": "sota-dashboard-cockpit-revamp",
+    "title": "AI Command Center Dashboard Revamp & SOTA Observability Cockpit",
+    "prd_ref": ".agents/plans/sota-dashboard-cockpit-revamp/PRD.md",
+    "owner": "hyperd",
+    "goal": "Modernize the AI Command Center dashboard to eliminate 500 runtime errors, integrate live SOTA agent telemetry streams (Thought Stream, Intervention Dock, Triage Engine, Effect Sandwiches), and deliver a high-clarity operator experience adhering to Impeccable design standards.",
+    "success_criteria": [
+      "100% of the 97 monitored dashboard endpoints return HTTP 200 via scripts/testing/verify-dashboard-apis.py",
+      "Dynamic Python 3.13 module loading imports cleanly with sys.modules registration",
+      "Live thought stream, human intervention dock, and triage monitor panels active in dashboard.html",
+      "Tier-0 validation gate passes with zero regressions"
+    ]
+  },
+  "phases": [
+    {
+      "id": "backend_resiliency",
+      "name": "Backend Route Resiliency & Dynamic Import Fix",
+      "goal": "Fix dynamic import sys.modules registrations in aistack.py and achieve 97/97 API pass rate",
+      "order": 1
+    },
+    {
+      "id": "cockpit_panels",
+      "name": "SOTA Cockpit Cards & Telemetry Panels",
+      "goal": "Wire Thought Stream, Intervention Dock, and Triage metrics into dashboard.html and dashboard.js",
+      "order": 2
+    },
+    {
+      "id": "impeccable_styling",
+      "name": "Impeccable Visual Polish & Resilient Fallbacks",
+      "goal": "Apply OKLCH styling, responsive glassmorphism, and structured error fallback badges",
+      "order": 3
+    }
+  ],
+  "items": [
+    {
+      "id": "dsh-1",
+      "name": "Fix dynamic import sys.modules registrations in aistack.py",
+      "phase": "backend_resiliency",
+      "kind": "slice",
+      "goal": "Register all dynamic module specs into sys.modules to prevent Python 3.13 dataclass inspection crashes on /api/aistack/advanced/runtime-summary",
+      "validation_goal": "verify-dashboard-apis.py passes 97/97 endpoints without 500 errors",
+      "deps": [],
+      "detection": {
+        "commit_match": [
+          "DSH-1",
+          "runtime-summary",
+          "dashboard backend sys.modules"
+        ]
+      },
+      "status": "IN_PROGRESS"
+    },
+    {
+      "id": "dsh-2",
+      "name": "Mount SOTA Thought Stream and Intervention Dock cards in dashboard.html",
+      "phase": "cockpit_panels",
+      "kind": "slice",
+      "goal": "Add responsive HUD cards for real-time thought streaming, intervention controls, and triage engine latency",
+      "validation_goal": "test-dashboard-ai-insights-ui.py and test-cockpit-telemetry.py pass cleanly",
+      "deps": [
+        "dsh-1"
+      ],
+      "detection": {
+        "commit_match": [
+          "DSH-2",
+          "cockpit cards",
+          "thought stream panel"
+        ]
+      },
+      "status": "NOT_STARTED"
+    },
+    {
+      "id": "dsh-3",
+      "name": "Clean up stale dashboard configurations, broken stubs, and apply Impeccable styling",
+      "phase": "impeccable_styling",
+      "kind": "slice",
+      "goal": "Update dashboard.js with structured fallbacks for inactive endpoints, remove broken stubs, and apply refined OKLCH aesthetics",
+      "validation_goal": "tier0-validation-gate.sh --pre-commit passes with 0 failures",
+      "deps": [
+        "dsh-2"
+      ],
+      "detection": {
+        "commit_match": [
+          "DSH-3",
+          "impeccable styling",
+          "dashboard display cleanup"
+        ]
+      },
+      "status": "NOT_STARTED"
+    }
+  ]
+}

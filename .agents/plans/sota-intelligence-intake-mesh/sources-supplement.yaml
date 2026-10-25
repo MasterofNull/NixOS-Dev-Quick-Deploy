@@ -1,0 +1,61 @@
+# SOTA Agentic Educational & Research Channels Supplement
+# Curated for Continuous Ingestion, Dissemination, and Vectorization
+
+practitioner_channels:
+  - id: yt-indydevdan
+    name: "IndyDevDan"
+    url: "https://www.youtube.com/@indydevdan"
+    platform: "youtube"
+    pillar: "agentic-engineering"
+    focus: "Durable autonomous agents, Pi runtime, System 1/2 streaming triage, effect sandwich patterns, local LLM tooling"
+    cadence: "weekly"
+    trust_tier: "tier1-practitioner"
+    priority: "high"
+
+  - id: yt-ibm-technology
+    name: "IBM Technology"
+    url: "https://www.youtube.com/@IBMTechnology"
+    platform: "youtube"
+    pillar: "enterprise-agent-architecture"
+    focus: "Multi-agent systems, Bee Agent Framework, orchestration patterns, agentic safety & governance, RAG architecture"
+    cadence: "weekly"
+    trust_tier: "tier1-industry"
+    priority: "high"
+
+  - id: yt-typesafe-jev
+    name: "TypeSafe Jev"
+    url: "https://www.youtube.com/@typesafejev"
+    platform: "youtube"
+    pillar: "agentic-workflows"
+    focus: "Deterministic agentic workflows, LangGraph/LangChain production patterns, state machines in multi-agent factories"
+    cadence: "bi-weekly"
+    trust_tier: "tier1-practitioner"
+    priority: "high"
+
+research_laboratories:
+  - id: anthropic-research
+    name: "Anthropic Research & Engineering"
+    url: "https://www.anthropic.com/research"
+    pillar: "frontier-alignment-architecture"
+    focus: "Building effective agents, context windows, computer use, prompt engineering standards"
+    cadence: "continuous"
+    trust_tier: "tier0-lab"
+    priority: "critical"
+
+  - id: google-deepmind
+    name: "Google DeepMind Research"
+    url: "https://deepmind.google/research/"
+    pillar: "frontier-foundations"
+    focus: "Multi-agent systems, Gemini architecture, formal reasoning, agentic security & covert channel research"
+    cadence: "continuous"
+    trust_tier: "tier0-lab"
+    priority: "critical"
+
+  - id: openai-research
+    name: "OpenAI Research"
+    url: "https://openai.com/research"
+    pillar: "frontier-evals"
+    focus: "Swarm, agent evals, red-teaming, alignment, microarchitectural & security top-10"
+    cadence: "continuous"
+    trust_tier: "tier0-lab"
+    priority: "critical"

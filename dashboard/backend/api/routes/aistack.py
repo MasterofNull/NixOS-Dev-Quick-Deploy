@@ -7285,6 +7285,7 @@ def _capability_outcomes_module() -> Any:
     if spec is None or spec.loader is None:
         raise ValueError("outcome validator unavailable")
     module = importlib.util.module_from_spec(spec)
+    sys.modules[spec.name] = module
     spec.loader.exec_module(module)
     return module
 
@@ -7374,6 +7375,7 @@ def _ci_pack_health_summary() -> Dict[str, Any]:
         if spec is None or spec.loader is None:
             raise ImportError("ci pack unavailable")
         module = importlib.util.module_from_spec(spec)
+        sys.modules[spec.name] = module
         spec.loader.exec_module(module)
         return module.health_summary(_repo_root(), module_path.parent.parent)
     except (OSError, ValueError, ImportError, SyntaxError) as exc:
@@ -7389,6 +7391,7 @@ def _cd_pack_health_summary() -> Dict[str, Any]:
         if spec is None or spec.loader is None:
             raise ImportError("cd pack unavailable")
         module = importlib.util.module_from_spec(spec)
+        sys.modules[spec.name] = module
         spec.loader.exec_module(module)
         return module.health_summary(_repo_root(), module_path.parent.parent)
     except (OSError, ValueError, ImportError, SyntaxError) as exc:
@@ -7404,6 +7407,7 @@ def _functional_eval_health_summary() -> Dict[str, Any]:
         if spec is None or spec.loader is None:
             raise ImportError("functional eval unavailable")
         module = importlib.util.module_from_spec(spec)
+        sys.modules[spec.name] = module
         spec.loader.exec_module(module)
         return module.health_summary()
     except (OSError, ValueError, ImportError, SyntaxError) as exc:
@@ -7419,6 +7423,7 @@ def _prompt_compile_health_summary() -> Dict[str, Any]:
         if spec is None or spec.loader is None:
             raise ImportError("gepa optimizer unavailable")
         module = importlib.util.module_from_spec(spec)
+        sys.modules[spec.name] = module
         spec.loader.exec_module(module)
         return module.health_summary(_repo_root())
     except (OSError, ValueError, ImportError, SyntaxError) as exc:
@@ -7450,6 +7455,7 @@ def _durable_runtime_health_summary() -> Dict[str, Any]:
         if spec is None or spec.loader is None:
             raise ImportError("durable runtime unavailable")
         module = importlib.util.module_from_spec(spec)
+        sys.modules[spec.name] = module
         spec.loader.exec_module(module)
         return module.health_summary(_repo_root())
     except (OSError, ValueError, ImportError, SyntaxError) as exc:
@@ -7465,6 +7471,7 @@ def _oncall_daemon_health_summary() -> Dict[str, Any]:
         if spec is None or spec.loader is None:
             raise ImportError("oncall daemon engine unavailable")
         module = importlib.util.module_from_spec(spec)
+        sys.modules[spec.name] = module
         spec.loader.exec_module(module)
         return module.health_summary(repo_root=_repo_root())
     except (OSError, ValueError, ImportError, SyntaxError) as exc:
@@ -7480,6 +7487,7 @@ def _lifecycle_events_health_summary() -> Dict[str, Any]:
         if spec is None or spec.loader is None:
             raise ImportError("lifecycle adapter unavailable")
         module = importlib.util.module_from_spec(spec)
+        sys.modules[spec.name] = module
         spec.loader.exec_module(module)
         return module.health_summary(os.getenv("LIFECYCLE_EVENTS_STATE_FILE") or None)
     except (OSError, ValueError, ImportError, SyntaxError) as exc:
@@ -7495,6 +7503,7 @@ def _ecc_diagnostics_summary() -> Dict[str, Any]:
         if spec is None or spec.loader is None:
             raise ImportError("ecc diagnostics unavailable")
         module = importlib.util.module_from_spec(spec)
+        sys.modules[spec.name] = module
         spec.loader.exec_module(module)
         return module.dashboard_summary(_repo_root())
     except (OSError, ValueError, ImportError, SyntaxError) as exc:
@@ -7510,6 +7519,7 @@ def _herdr_presentation_summary() -> Dict[str, Any]:
         if spec is None or spec.loader is None:
             raise ImportError("herdr presentation unavailable")
         module = importlib.util.module_from_spec(spec)
+        sys.modules[spec.name] = module
         spec.loader.exec_module(module)
         envelope = {
             "observation_revision": "dormant-preview",
@@ -7548,6 +7558,7 @@ def _hermetic_candidate_eval_summary() -> Dict[str, Any]:
         if spec is None or spec.loader is None:
             raise ImportError("hermetic candidate eval unavailable")
         module = importlib.util.module_from_spec(spec)
+        sys.modules[spec.name] = module
         spec.loader.exec_module(module)
         return module.dashboard_summary(_repo_root())
     except (OSError, ValueError, ImportError, SyntaxError) as exc:
@@ -9048,6 +9059,7 @@ def _integration_guard_status(repo: Path) -> Dict[str, Any]:
         if spec is None or spec.loader is None:
             raise RuntimeError("guard module unavailable")
         module = importlib.util.module_from_spec(spec)
+        sys.modules[spec.name] = module
         spec.loader.exec_module(module)
         value = module.status(repo)
         return value if isinstance(value, dict) else {"available": False, "state": "unavailable", "reason": "invalid guard status"}
@@ -9471,6 +9483,7 @@ async def post_triage_classify(payload: Dict[str, Any]) -> Dict[str, Any]:
         if spec is None or spec.loader is None:
             raise ImportError("triage engine unavailable")
         module = importlib.util.module_from_spec(spec)
+        sys.modules[spec.name] = module
         spec.loader.exec_module(module)
         res = module.FastClassifier.classify(source=source, message=str(msg))
         return {
@@ -9504,6 +9517,7 @@ async def post_durable_reconcile(payload: Optional[Dict[str, Any]] = None) -> Di
         if spec is None or spec.loader is None:
             raise ImportError("durable runtime unavailable")
         module = importlib.util.module_from_spec(spec)
+        sys.modules[spec.name] = module
         spec.loader.exec_module(module)
 
         store = module.DurableEffectStore()
@@ -9554,6 +9568,7 @@ def _oncall_trigger_sync(payload: Dict[str, Any]) -> Dict[str, Any]:
     if spec is None or spec.loader is None:
         raise ImportError("oncall daemon engine unavailable")
     module = importlib.util.module_from_spec(spec)
+    sys.modules[spec.name] = module
     spec.loader.exec_module(module)
 
     engine = module.OnCallDaemonEngine(repo_root=_repo_root())
@@ -9597,6 +9612,7 @@ async def get_oncall_claims() -> List[Dict[str, Any]]:
         if spec is None or spec.loader is None:
             raise ImportError("oncall daemon engine unavailable")
         module = importlib.util.module_from_spec(spec)
+        sys.modules[spec.name] = module
         spec.loader.exec_module(module)
 
         engine = module.OnCallDaemonEngine(repo_root=_repo_root())
