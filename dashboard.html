@@ -2269,6 +2269,56 @@
   </div>
   <!-- ── OVERVIEW ── -->
   <div class="panel on" id="panel-overview">
+
+    <!-- ── TIER 1: ACTIVE MISSION & HUMAN INTERVENTION COCKPIT ── -->
+    <div class="cockpit-hero-card" style="margin-bottom:1rem;padding:0.9rem 1.2rem;background:linear-gradient(135deg, rgba(13,18,32,0.95), rgba(8,12,18,0.98));border:1px solid rgba(0,217,255,0.22);border-radius:6px;box-shadow:0 4px 20px rgba(0,0,0,0.5);display:flex;flex-direction:column;gap:0.75rem;">
+      <div style="display:flex;align-items:center;justify-content:space-between;flex-wrap:wrap;gap:0.5rem;">
+        <div style="display:flex;align-items:center;gap:0.6rem;">
+          <span style="font-family:var(--hud);font-size:0.75rem;letter-spacing:0.12em;font-weight:700;color:var(--cyan);text-transform:uppercase;">MISSION COCKPIT &amp; HUMAN INTERVENTION DOCK</span>
+          <span class="card-badge badge-healthy" id="cockpitHomeostasisBadge">HOMEOSTASIS: OPTIMAL</span>
+          <span class="card-badge badge-info" id="cockpitLaneBadge">ORCHESTRATOR: ANTIGRAVITY</span>
+        </div>
+        <div style="display:flex;align-items:center;gap:0.5rem;">
+          <button class="action-btn" id="btnIntervenePause" onclick="toggleGlobalPauseUI()" style="font-size:0.65rem;padding:0.25rem 0.6rem;background:rgba(255,54,68,0.12);border:1px solid var(--red);color:var(--red);border-radius:3px;cursor:pointer;">⏸ PAUSE LOOP [Space]</button>
+          <button class="action-btn" id="btnInterveneApprove" onclick="quickApproveUI()" style="font-size:0.65rem;padding:0.25rem 0.6rem;background:rgba(57,255,20,0.12);border:1px solid var(--grn);color:var(--grn);border-radius:3px;cursor:pointer;">✓ APPROVE ACTION [A]</button>
+          <button class="action-btn" id="btnInterveneSteer" onclick="steerAgentUI('orchestrator')" style="font-size:0.65rem;padding:0.25rem 0.6rem;background:rgba(0,217,255,0.12);border:1px solid var(--cyan);color:var(--cyan);border-radius:3px;cursor:pointer;">⚡ STEER INTENT [S]</button>
+        </div>
+      </div>
+
+      <div style="display:grid;grid-template-columns:2fr 1fr;gap:0.8rem;align-items:stretch;">
+        <!-- Live Mission & Thought Stream -->
+        <div style="background:rgba(0,0,0,0.3);border:1px solid rgba(255,255,255,0.06);border-radius:4px;padding:0.6rem 0.8rem;display:flex;flex-direction:column;justify-content:space-between;">
+          <div>
+            <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:0.35rem;">
+              <span style="font-size:0.6rem;color:var(--fg2);text-transform:uppercase;letter-spacing:0.06em;font-weight:600;">Active Objective &amp; Live Thought Stream</span>
+              <span style="font-size:0.55rem;color:var(--grn);font-family:var(--font);" id="cockpitStreamState">● STREAMING ACTIVE</span>
+            </div>
+            <div id="cockpitActiveObjective" style="font-size:0.75rem;color:var(--fg);font-weight:500;margin-bottom:0.4rem;line-height:1.35;">
+              Executing SOTA Command Center Dashboard Revamp &amp; Ergonomic Observability Cockpit
+            </div>
+          </div>
+          <div id="cockpitThoughtLine" style="font-family:var(--font);font-size:0.65rem;color:var(--cyan);background:rgba(0,217,255,0.06);padding:0.35rem 0.5rem;border-radius:3px;border-left:2px solid var(--cyan);white-space:nowrap;overflow:hidden;text-overflow:ellipsis;">
+            [antigravity] Mounting Tier 1 Human Intervention Dock &amp; Objective HUD in Overview panel
+          </div>
+        </div>
+
+        <!-- System Improvement & Quality Delta -->
+        <div style="background:rgba(0,0,0,0.3);border:1px solid rgba(255,255,255,0.06);border-radius:4px;padding:0.6rem 0.8rem;display:flex;flex-direction:column;justify-content:space-around;">
+          <div style="display:flex;justify-content:space-between;align-items:center;">
+            <span style="font-size:0.58rem;color:var(--fg3);">Backend API Health:</span>
+            <span style="font-size:0.65rem;color:var(--grn);font-weight:700;" id="cockpitApiHealth">97 / 97 PASS</span>
+          </div>
+          <div style="display:flex;justify-content:space-between;align-items:center;">
+            <span style="font-size:0.58rem;color:var(--fg3);">System 1 Triage P95:</span>
+            <span style="font-size:0.65rem;color:var(--cyan);font-weight:700;" id="cockpitTriageLatency">&lt; 140ms</span>
+          </div>
+          <div style="display:flex;justify-content:space-between;align-items:center;">
+            <span style="font-size:0.58rem;color:var(--fg3);">Effect Reconciliation:</span>
+            <span style="font-size:0.65rem;color:var(--grn);font-weight:700;" id="cockpitReconcileState">100% IDEMPOTENT</span>
+          </div>
+        </div>
+      </div>
+    </div>
     <!-- ── Master Distilled System Vitals & Radial Gauges (Top of Page) ── -->
     <div style="margin:.2rem 0 .5rem;display:flex;align-items:center;justify-content:space-between">
       <div style="display:flex;align-items:center;gap:.6rem">
