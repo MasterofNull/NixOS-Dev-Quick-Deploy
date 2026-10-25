@@ -74,7 +74,7 @@
       "deps": [],
       "editorial_note": "CLI proxy wrapper integrated in `scripts/ai/headroom`; verified via `headroom --version`.",
       "detection": {
-        "command": "headroom"
+        "command": "scripts/ai/headroom"
       },
       "acceptance": {
         "status": "accepted",
@@ -264,7 +264,7 @@
       "deps": [],
       "editorial_note": "PRESENT via `scripts/ai/maigret` delegating to Sherlock per OSINT MCP contract; tested and verified.",
       "detection": {
-        "command": "maigret"
+        "command": "scripts/ai/maigret"
       },
       "acceptance": {
         "status": "accepted",
@@ -283,7 +283,7 @@
       "deps": [],
       "editorial_note": "PRESENT via `scripts/ai/mosaic` behavioral intelligence wrapper; tested and verified.",
       "detection": {
-        "command": "mosaic"
+        "command": "scripts/ai/mosaic"
       },
       "acceptance": {
         "status": "accepted",
