@@ -24,6 +24,7 @@ except Exception:
     pass
 import json
 import os
+import re
 import subprocess
 import sys
 from pathlib import Path
@@ -199,6 +200,17 @@ def _project_command(cmd: str, accepted: bool) -> tuple[str, int]:
     return ("SHIPPED", 100) if accepted else ("IN-PROGRESS", 55)
 
 
+def _count_commit_hits(pattern: str, gitlog: str) -> int:
+    """Count hits for a commit match pattern, supporting regex with safe literal fallback."""
+    try:
+        matches = re.findall(pattern, gitlog, re.IGNORECASE)
+        if matches:
+            return len(matches)
+    except re.error:
+        pass
+    return gitlog.count(pattern)
+
+
 def project_item(item: dict, gitlog: str, grants: str, source_health: str = "complete") -> tuple[str, int | None]:
     det = item.get("detection", {}) or {}
     accepted = (item.get("acceptance") or {}).get("status") == "accepted"
@@ -212,7 +224,7 @@ def project_item(item: dict, gitlog: str, grants: str, source_health: str = "com
     if cmd:
         return _project_command(cmd, accepted)
 
-    hits = sum(gitlog.count(s) for s in (det.get("commit_match") or []))
+    hits = sum(_count_commit_hits(s, gitlog) for s in (det.get("commit_match") or []))
     freeze = det.get("freeze_record")
     freeze_exists = bool(freeze) and (REPO / freeze).is_file()
     subj = det.get("activation_subject")
