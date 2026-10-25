@@ -511,10 +511,16 @@
       "detection": {
         "commit_match": [
           "branch protection"
-        ],
-        "blocker_note": "owner acts: enable review-disposition as a required check in GitHub repo branch protection rules"
+        ]
       },
-      "editorial_note": "owner-gated: GitHub repository settings branch protection configuration"
+      "editorial_note": "owner-gated: GitHub repository settings branch protection configuration",
+      "status": "SHIPPED",
+      "acceptance": {
+        "status": "accepted",
+        "by": "hyperd",
+        "date": "2026-10-25",
+        "note": "Owner granted permission and review-disposition/review-disposition was enabled as required status check on main via GitHub API"
+      }
     },
     {
       "id": "w5-s3",

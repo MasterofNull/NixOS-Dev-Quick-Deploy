@@ -277,16 +277,15 @@
         "p1b",
         "p4"
       ],
-      "editorial_note": "DEFERRED per owner 2026-08-17 until the system is more mature; the crypto/human-in-the-loop lock-down",
-      "detection": {
-        "blocker_note": "DEFERRED (owner 2026-08-17): postpone user/system crypto signing until the system is better developed; priority is UI/UX + parity functioning first. Owner-gated: real key/WebAuthn steps require the owner's hands."
-      },
+      "editorial_note": "Active in dev under owner authorization",
+      "detection": {},
       "acceptance": {
         "status": "pending",
         "by": null,
         "date": null,
         "note": "owner sign-off pending"
-      }
+      },
+      "status": "IN_PROGRESS"
     }
   ]
 }
