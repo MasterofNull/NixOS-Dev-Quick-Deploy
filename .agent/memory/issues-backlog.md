@@ -6121,3 +6121,4 @@ File: scripts/ai/lib/worktree-isolation.sh; scripts/automation/prsi-orchestrator
   Severity: high
   Action: Re-run `aq-qa 0 --machine` and fix the failing check(s).
   File: attention:attn-63235b177c5a4b2e
+[DONE] rsi-129ebc11295eeb7697562968 — resolved 2026-10-25: phase-0 check 0.16.2 passing in health-monitor JSON run 2026-10-25T16:42:26Z — ledger status=resolved

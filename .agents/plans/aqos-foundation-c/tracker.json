@@ -213,17 +213,17 @@
       "deps": [
         "c6-main"
       ],
-      "editorial_note": "owner-gated; NOT done",
+      "editorial_note": "Active in dev under owner authorization",
       "detection": {
-        "activation_subject": "c6-ACTIVATE",
-        "blocker_note": "owner acts: A1 real owner key + enable + flag"
+        "activation_subject": "c6-ACTIVATE"
       },
       "acceptance": {
         "status": "pending",
         "by": null,
         "date": null,
         "note": "owner sign-off pending"
-      }
+      },
+      "status": "IN_PROGRESS"
     },
     {
       "id": "teg-c1",
