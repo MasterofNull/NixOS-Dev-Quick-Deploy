@@ -73,5 +73,18 @@ class TestHumanIntervention(unittest.TestCase):
         lines = [json.loads(l) for l in self.queue_file.read_text().splitlines() if l.strip()]
         self.assertEqual(lines[-1]["kind"], "cancel")
 
+    def test_cockpit_monitor_integration(self):
+        """Verify aq-cockpit-monitor displays intervention dock status correctly."""
+        res_pause = self.run_cli(["pause", "--reason", "Cockpit integration test"])
+        self.assertEqual(res_pause.returncode, 0)
+
+        # Run cockpit monitor in single-frame mode
+        monitor_cli = REPO_ROOT / "scripts/ai/aq-cockpit-monitor"
+        res_monitor = subprocess.run([str(monitor_cli), "--once"], stdout=subprocess.PIPE, stderr=subprocess.PIPE, text=True)
+        self.assertEqual(res_monitor.returncode, 0)
+        self.assertIn("Intervention Dock", res_monitor.stdout)
+        self.assertIn("PENDING", res_monitor.stdout)
+        self.assertIn("PAUSE", res_monitor.stdout)
+
 if __name__ == "__main__":
     unittest.main()
