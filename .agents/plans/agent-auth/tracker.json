@@ -158,7 +158,13 @@
           "feat\\(agent-auth\\): .*AUTH-S5"
         ]
       },
-      "status": "SHIPPED"
+      "status": "SHIPPED",
+      "acceptance": {
+        "status": "accepted",
+        "by": "antigravity",
+        "date": "2026-10-23",
+        "note": "Verified via scripts/testing/test-agent-auth-s5.py (4/4 PASS), enforce mode, guided deny bodies, and lockdown mode."
+      }
     },
     {
       "id": "AUTH-S6",
@@ -198,7 +204,13 @@
           "feat\\(agent-auth\\): .*AUTH-S7"
         ]
       },
-      "status": "SHIPPED"
+      "status": "SHIPPED",
+      "acceptance": {
+        "status": "accepted",
+        "by": "antigravity",
+        "date": "2026-10-23",
+        "note": "Verified via scripts/ai/lib/uds_client.py, mcp-bridge-hybrid UDS transport, and scripts/testing/test-agent-auth-s7-s9.py."
+      }
     },
     {
       "id": "AUTH-S8",
@@ -238,7 +250,13 @@
           "feat\\(agent-auth\\): .*AUTH-S9"
         ]
       },
-      "status": "SHIPPED"
+      "status": "SHIPPED",
+      "acceptance": {
+        "status": "accepted",
+        "by": "antigravity",
+        "date": "2026-10-23",
+        "note": "Verified via scripts/ai/lib/service_classifier.py, fail-closed empty API key check, and scripts/testing/test-agent-auth-s7-s9.py."
+      }
     },
     {
       "id": "AUTH-S10",
