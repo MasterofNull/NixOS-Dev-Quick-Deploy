@@ -6122,3 +6122,21 @@ File: scripts/ai/lib/worktree-isolation.sh; scripts/automation/prsi-orchestrator
   Action: Re-run `aq-qa 0 --machine` and fix the failing check(s).
   File: attention:attn-63235b177c5a4b2e
 [DONE] rsi-129ebc11295eeb7697562968 — resolved 2026-10-25: phase-0 check 0.16.2 passing in health-monitor JSON run 2026-10-25T16:42:26Z — ledger status=resolved
+
+[OPEN] rsi-78eeba629971cdbb4d821aff — aq-qa:phase0 failure in aq-qa:0.10.50. Root cause evidence: producer=aq-qa:phase0; path=aq-qa check 0.10.50; authority=aq-qa; os_error=phase-0 check 0.10.50 failing: Factory readiness preflight: hash-bound evidence, fail-closed unconfigured checks, typed blockers (Command '['python3', . Detected=2026-10-25T17:25:58.917076Z.
+  Severity: medium
+  Action: run aq-qa 0 --machine and fix check 0.10.50 at its producer
+  File: aq-qa check 0.10.50
+
+[OPEN] rsi-23b0c2d9a46a00da6703544e — attention-queue:ai-stack-health-monitor failure in attention:attn-63235b177c5a4b2e. Root cause evidence: producer=attention-queue:ai-stack-health-monitor; path=attention:attn-63235b177c5a4b2e; authority=attention-queue; os_error=[ai-stack-health-monitor] QA phase 0: 2 checks failing (0.10.50 Factory readiness preflight:, 0.10.66 aq-…: QA phase 0: 2 checks failing (0.10.50 Factory readiness preflight:, 0.10.66 aq-confine acceptance: profi)  Scheduled health monitor found 2 failing checks:   [0.10.50] Factory readiness preflight: has. Detected=2026-10-25T17:26:02.526968Z.
+  Severity: high
+  Action: Re-run `aq-qa 0 --machine` and fix the failing check(s).
+  File: attention:attn-63235b177c5a4b2e
+
+[OPEN] rsi-967d65e207c0d2d42cd11eac — attention-queue:ai-stack-health-monitor failure in attention:attn-db1ecb1d57bb4e3d. Root cause evidence: producer=attention-queue:ai-stack-health-monitor; path=attention:attn-db1ecb1d57bb4e3d; authority=attention-queue; os_error=[ai-stack-health-monitor] QA phase 0: 1 check failing (0.10.66 aq-confine acceptance: profi): Scheduled health monitor found 1 failing check:   [0.10.66] aq-confine acceptance: profiles, goldens, cgroup scope limits, bwrap isolation (AQ_CONFINE_REQUIRE=1 locally) (dex: host write-tree equals t. Detected=2026-10-25T18:41:10.489746Z.
+  Severity: high
+  Action: Re-run `aq-qa 0 --machine` and fix the failing check(s).
+  File: attention:attn-db1ecb1d57bb4e3d
+[DONE] rsi-23b0c2d9a46a00da6703544e — resolved 2026-10-25: attention alert attn-63235b177c5a4b2e resolved in attention queue (2026-10-25T18:41:10Z) — ledger status=resolved
+[DONE] rsi-64d528cb2a3b167a0c4648df — resolved 2026-10-25: attention alert attn-63235b177c5a4b2e resolved in attention queue (2026-10-25T18:41:10Z) — ledger status=resolved
+[DONE] rsi-e9c17315d33303ae77cbfeb4 — resolved 2026-10-25: attention alert attn-63235b177c5a4b2e resolved in attention queue (2026-10-25T18:41:10Z) — ledger status=resolved
