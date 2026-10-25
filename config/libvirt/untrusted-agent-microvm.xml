@@ -1,0 +1,41 @@
+<!-- Reference KVM Libvirt Domain Tuning Specification: Microarchitectural Side-Channel Mitigation -->
+<domain type='kvm'>
+  <name>untrusted-agent-microvm</name>
+  <memory unit='KiB'>4194304</memory>
+  <currentMemory unit='KiB'>4194304</currentMemory>
+  <vcpu placement='static'>4</vcpu>
+
+  <!-- STRICT PHYSICAL CORE PINNING (Isolated Host Cores 4-7) -->
+  <cputune>
+    <vcpupin vcpu='0' cpuset='4'/>
+    <vcpupin vcpu='1' cpuset='5'/>
+    <vcpupin vcpu='2' cpuset='6'/>
+    <vcpupin vcpu='3' cpuset='7'/>
+    <emulatorpin cpuset='4-7'/>
+    <sched vcpu='0' scheduler='fifo' priority='1'/>
+    <sched vcpu='1' scheduler='fifo' priority='1'/>
+    <sched vcpu='2' scheduler='fifo' priority='1'/>
+    <sched vcpu='3' scheduler='fifo' priority='1'/>
+  </cputune>
+
+  <features>
+    <acpi/>
+    <apic/>
+    <kvm>
+      <hidden state='on'/>
+    </kvm>
+  </features>
+
+  <!-- HIDE SMT / TOPOLOGY FABRIC FROM GUEST OS -->
+  <cpu mode='host-passthrough' check='none'>
+    <topology sockets='1' dies='1' clusters='1' cores='4' threads='1'/>
+    <cache mode='passthrough'/>
+    <!-- Disable timestamp counters inside guest if strict side-channel resistance is demanded -->
+    <feature policy='disable' name='rdtscp'/>
+  </cpu>
+
+  <devices>
+    <emulator>/run/current-system/sw/bin/qemu-system-x86_64</emulator>
+    <interface type='none'/>
+  </devices>
+</domain>
