@@ -1,0 +1,501 @@
+#!/usr/bin/env python3
+"""aq-help-center — Interactive SOTA Help Center, User Manual, & Training Explorer.
+
+Serves an interactive desktop & browser help center aggregating:
+- AQ-OS User Manual & Novice-to-Frontier Guides
+- Multi-Agent Software Development Factory Workflows & Roles
+- Agentic Factory Canon, 8-Step Lifecycle, & Verification Gates
+- Keyboard Shortcuts, CLI Reference, and Troubleshooting Guides
+- Searchable Knowledge Base with live link navigation & terminal launchers
+
+Usage:
+  aq-help-center              # Start help server and open desktop window/browser
+  aq-help-center --port 8890  # Custom port
+  aq-help-center --no-open    # Start HTTP server without opening browser
+  aq-help-center --cli        # Interactive terminal guide
+  aq-help-center --search <q> # Search user guides and help manuals directly
+"""
+
+from __future__ import annotations
+import argparse
+import http.server
+import json
+import os
+import re
+import socketserver
+import subprocess
+import sys
+from pathlib import Path
+
+REPO_ROOT = Path(__file__).resolve().parents[2]
+DOCS_DIR = REPO_ROOT / "docs"
+USER_GUIDES_DIR = DOCS_DIR / "user-guides"
+OPERATIONS_DIR = DOCS_DIR / "operations"
+CANON_DIR = REPO_ROOT / ".agent"
+
+HELP_HTML_TEMPLATE = """<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>AQ-OS Frontier Help Center & Training Manual</title>
+  <style>
+    :root {
+      --bg: #0b0f19;
+      --card-bg: rgba(18, 24, 38, 0.85);
+      --card-border: #1e293b;
+      --primary: #38bdf8;
+      --primary-hover: #0284c7;
+      --secondary: #818cf8;
+      --accent: #a855f7;
+      --text: #f8fafc;
+      --text-muted: #94a3b8;
+      --code-bg: #0f172a;
+      --success: #34d399;
+      --warning: #fbbf24;
+    }
+    * { box-sizing: border-box; margin: 0; padding: 0; }
+    body {
+      font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, "Helvetica Neue", Arial, sans-serif;
+      background: var(--bg);
+      color: var(--text);
+      line-height: 1.6;
+      display: flex;
+      height: 100vh;
+      overflow: hidden;
+    }
+    #sidebar {
+      width: 320px;
+      background: rgba(11, 15, 25, 0.95);
+      border-right: 1px solid var(--card-border);
+      display: flex;
+      flex-direction: column;
+      flex-shrink: 0;
+    }
+    .header {
+      padding: 1.25rem;
+      border-bottom: 1px solid var(--card-border);
+    }
+    .header h1 {
+      font-size: 1.15rem;
+      font-weight: 700;
+      color: var(--primary);
+      display: flex;
+      align-items: center;
+      gap: 0.5rem;
+    }
+    .badge {
+      font-size: 0.7rem;
+      padding: 0.2rem 0.5rem;
+      background: rgba(56, 189, 248, 0.15);
+      border: 1px solid var(--primary);
+      border-radius: 9999px;
+      color: var(--primary);
+      text-transform: uppercase;
+      font-weight: 600;
+    }
+    .search-box {
+      padding: 1rem 1.25rem;
+      border-bottom: 1px solid var(--card-border);
+    }
+    .search-box input {
+      width: 100%;
+      padding: 0.6rem 0.8rem;
+      border-radius: 0.5rem;
+      background: var(--code-bg);
+      border: 1px solid var(--card-border);
+      color: var(--text);
+      font-size: 0.875rem;
+    }
+    .search-box input:focus {
+      outline: none;
+      border-color: var(--primary);
+    }
+    .nav-list {
+      flex: 1;
+      overflow-y: auto;
+      padding: 0.75rem 0.5rem;
+      list-style: none;
+    }
+    .nav-category {
+      font-size: 0.75rem;
+      text-transform: uppercase;
+      color: var(--text-muted);
+      letter-spacing: 0.05em;
+      padding: 0.75rem 0.75rem 0.25rem 0.75rem;
+      font-weight: 700;
+    }
+    .nav-item {
+      padding: 0.6rem 0.75rem;
+      border-radius: 0.375rem;
+      cursor: pointer;
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      color: var(--text-muted);
+      font-size: 0.875rem;
+      transition: all 0.15s ease;
+      text-decoration: none;
+    }
+    .nav-item:hover, .nav-item.active {
+      background: rgba(56, 189, 248, 0.1);
+      color: var(--primary);
+      font-weight: 500;
+    }
+    #content-pane {
+      flex: 1;
+      display: flex;
+      flex-direction: column;
+      overflow: hidden;
+    }
+    .top-bar {
+      height: 56px;
+      border-bottom: 1px solid var(--card-border);
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      padding: 0 1.5rem;
+      background: rgba(15, 23, 42, 0.4);
+    }
+    .top-actions {
+      display: flex;
+      gap: 0.75rem;
+    }
+    .btn {
+      padding: 0.4rem 0.8rem;
+      border-radius: 0.375rem;
+      font-size: 0.8rem;
+      font-weight: 600;
+      cursor: pointer;
+      border: 1px solid var(--card-border);
+      background: var(--card-bg);
+      color: var(--text);
+      display: inline-flex;
+      align-items: center;
+      gap: 0.4rem;
+      transition: all 0.15s ease;
+      text-decoration: none;
+    }
+    .btn:hover {
+      border-color: var(--primary);
+      color: var(--primary);
+    }
+    .btn-primary {
+      background: var(--primary);
+      border-color: var(--primary);
+      color: #0b0f19;
+    }
+    .btn-primary:hover {
+      background: var(--primary-hover);
+      color: #0b0f19;
+    }
+    .article-container {
+      flex: 1;
+      overflow-y: auto;
+      padding: 2.5rem;
+      max-width: 960px;
+      margin: 0 auto;
+      width: 100%;
+    }
+    .article-content h1 { font-size: 2rem; margin-bottom: 1rem; color: #fff; border-bottom: 1px solid var(--card-border); padding-bottom: 0.5rem; }
+    .article-content h2 { font-size: 1.4rem; margin-top: 1.5rem; margin-bottom: 0.75rem; color: var(--primary); }
+    .article-content h3 { font-size: 1.15rem; margin-top: 1.25rem; margin-bottom: 0.5rem; color: var(--secondary); }
+    .article-content p { margin-bottom: 1rem; color: #cbd5e1; font-size: 1rem; }
+    .article-content ul, .article-content ol { margin-bottom: 1.25rem; padding-left: 1.5rem; color: #cbd5e1; }
+    .article-content li { margin-bottom: 0.35rem; }
+    .article-content code { background: var(--code-bg); padding: 0.2rem 0.4rem; border-radius: 0.25rem; font-family: ui-monospace, SFMono-Regular, Menlo, monospace; font-size: 0.875rem; color: #38bdf8; border: 1px solid rgba(255,255,255,0.05); }
+    .article-content pre { background: var(--code-bg); border: 1px solid var(--card-border); border-radius: 0.5rem; padding: 1rem; margin-bottom: 1.25rem; overflow-x: auto; }
+    .article-content pre code { background: none; padding: 0; border: none; color: #e2eaf4; }
+    .article-content blockquote { border-left: 3px solid var(--primary); padding-left: 1rem; margin-bottom: 1.25rem; color: var(--text-muted); font-style: italic; background: rgba(56, 189, 248, 0.03); padding-top: 0.5rem; padding-bottom: 0.5rem; }
+    .article-content table { width: 100%; border-collapse: collapse; margin-bottom: 1.5rem; }
+    .article-content th, .article-content td { border: 1px solid var(--card-border); padding: 0.6rem 0.8rem; text-align: left; font-size: 0.875rem; }
+    .article-content th { background: rgba(255,255,255,0.03); color: var(--primary); font-weight: 600; }
+    .article-content tr:nth-child(even) { background: rgba(255,255,255,0.015); }
+  </style>
+</head>
+<body>
+  <div id="sidebar">
+    <div class="header">
+      <h1>AQ-OS Help & Training <span class="badge">SOTA v2.0</span></h1>
+      <p style="font-size: 0.75rem; color: var(--text-muted); margin-top: 0.25rem;">Frontier Agentic Development Factory</p>
+    </div>
+    <div class="search-box">
+      <input type="text" id="searchInput" placeholder="Search guides, workflows, CLI..." onkeyup="filterDocs()">
+    </div>
+    <ul class="nav-list" id="navList">
+      <li class="nav-category">Core User Manuals</li>
+      <li><a class="nav-item active" onclick="loadDoc('sota-manual')">AQ-OS SOTA User Manual</a></li>
+      <li><a class="nav-item" onclick="loadDoc('quick-start')">Quick Start Guide</a></li>
+      <li><a class="nav-item" onclick="loadDoc('shortcuts')">Keyboard Shortcuts</a></li>
+      <li><a class="nav-item" onclick="loadDoc('history-browser')">Execution History Browser</a></li>
+
+      <li class="nav-category">Agentic Factory & Operations</li>
+      <li><a class="nav-item" onclick="loadDoc('workspace-operator')">Workspace Swarm Operator</a></li>
+      <li><a class="nav-item" onclick="loadDoc('workflow-canon')">8-Step Canonical Workflow</a></li>
+      <li><a class="nav-item" onclick="loadDoc('definition-of-done')">Definition of Done (DoD)</a></li>
+      <li><a class="nav-item" onclick="loadDoc('role-contracts')">Agent-Agnostic Role Matrix</a></li>
+
+      <li class="nav-category">Interactive Tool Launchers</li>
+      <li><a class="nav-item" onclick="launchApp('dashboard')">Open Command Center ↗</a></li>
+      <li><a class="nav-item" onclick="launchApp('terminal')">Open Agent Terminal ↗</a></li>
+    </ul>
+  </div>
+
+  <div id="content-pane">
+    <div class="top-bar">
+      <div id="docTitle" style="font-weight: 600; font-size: 0.95rem; color: #f1f5f9;">AQ-OS SOTA User Manual</div>
+      <div class="top-actions">
+        <a class="btn" href="http://localhost:8889" target="_blank">Command Center :8889</a>
+        <button class="btn btn-primary" onclick="copyCurrentLink()">Share Link</button>
+      </div>
+    </div>
+    <div class="article-container">
+      <div class="article-content" id="articleBody">
+        <!-- Loaded via JS -->
+      </div>
+    </div>
+  </div>
+
+  <script>
+    async function loadDoc(id) {
+      document.querySelectorAll('.nav-item').forEach(el => el.classList.remove('active'));
+      const activeEl = Array.from(document.querySelectorAll('.nav-item')).find(el => el.getAttribute('onclick')?.includes(id));
+      if (activeEl) activeEl.classList.add('active');
+
+      const res = await fetch('/api/doc?id=' + id);
+      const data = await res.json();
+      document.getElementById('docTitle').innerText = data.title;
+      document.getElementById('articleBody').innerHTML = data.html;
+    }
+
+    function filterDocs() {
+      const q = document.getElementById('searchInput').value.toLowerCase();
+      document.querySelectorAll('#navList li:not(.nav-category)').forEach(li => {
+        const text = li.innerText.toLowerCase();
+        li.style.display = text.includes(q) ? '' : 'none';
+      });
+    }
+
+    function copyCurrentLink() {
+      navigator.clipboard.writeText(window.location.href);
+      alert('Link copied to clipboard!');
+    }
+
+    function launchApp(app) {
+      if (app === 'dashboard') {
+        window.open('http://localhost:8889', '_blank');
+      } else {
+        alert('Run `aq-workspace` or `aq-approve` directly in your terminal to interact with active agents.');
+      }
+    }
+
+    // Initial load
+    window.onload = () => loadDoc('sota-manual');
+  </script>
+</body>
+</html>
+"""
+
+def markdown_to_html(md_text: str) -> str:
+    """Minimal, robust markdown-to-HTML parser for local rendering."""
+    lines = md_text.splitlines()
+    html_lines = []
+    in_code_block = False
+    in_table = False
+    in_list = False
+
+    for line in lines:
+        if line.strip().startswith("```"):
+            if in_code_block:
+                html_lines.append("</code></pre>")
+                in_code_block = False
+            else:
+                html_lines.append("<pre><code>")
+                in_code_block = True
+            continue
+
+        if in_code_block:
+            safe = line.replace("&", "&amp;").replace("<", "&lt;").replace(">", "&gt;")
+            html_lines.append(safe)
+            continue
+
+        # Tables
+        if "|" in line:
+            parts = [p.strip() for p in line.split("|")[1:-1]]
+            if not in_table:
+                html_lines.append("<table><thead><tr>")
+                for p in parts:
+                    html_lines.append(f"<th>{p}</th>")
+                html_lines.append("</tr></thead><tbody>")
+                in_table = True
+            elif all(set(p).issubset({"-", ":", " "}) for p in parts):
+                continue
+            else:
+                html_lines.append("<tr>")
+                for p in parts:
+                    html_lines.append(f"<td>{p}</td>")
+                html_lines.append("</tr>")
+            continue
+        elif in_table:
+            html_lines.append("</tbody></table>")
+            in_table = False
+
+        # Lists
+        if re.match(r"^[-*]\s+", line):
+            if not in_list:
+                html_lines.append("<ul>")
+                in_list = True
+            content = re.sub(r"^[-*]\s+", "", line)
+            content = re.sub(r"`([^`]+)`", r"<code>\1</code>", content)
+            content = re.sub(r"\*\*([^*]+)\*\*", r"<strong>\1</strong>", content)
+            html_lines.append(f"<li>{content}</li>")
+            continue
+        elif in_list and line.strip() == "":
+            html_lines.append("</ul>")
+            in_list = False
+
+        # Headings
+        if line.startswith("# "):
+            html_lines.append(f"<h1>{line[2:]}</h1>")
+        elif line.startswith("## "):
+            html_lines.append(f"<h2>{line[3:]}</h2>")
+        elif line.startswith("### "):
+            html_lines.append(f"<h3>{line[4:]}</h3>")
+        elif line.startswith("> "):
+            html_lines.append(f"<blockquote>{line[2:]}</blockquote>")
+        elif line.strip() != "":
+            content = line
+            content = re.sub(r"`([^`]+)`", r"<code>\1</code>", content)
+            content = re.sub(r"\*\*([^*]+)\*\*", r"<strong>\1</strong>", content)
+            content = re.sub(r"\[([^\]]+)\]\(([^)]+)\)", r'<a href="\2" target="_blank" style="color: #38bdf8;">\1</a>', content)
+            html_lines.append(f"<p>{content}</p>")
+
+    if in_code_block:
+        html_lines.append("</code></pre>")
+    if in_table:
+        html_lines.append("</tbody></table>")
+    if in_list:
+        html_lines.append("</ul>")
+
+    return "\n".join(html_lines)
+
+
+class HelpHandler(http.server.BaseHTTPRequestHandler):
+    DOC_MAP = {
+        "sota-manual": {
+            "title": "AQ-OS SOTA User Manual",
+            "path": USER_GUIDES_DIR / "AQ-OS-SOTA-USER-MANUAL.md",
+        },
+        "quick-start": {
+            "title": "Quick Start Guide",
+            "path": USER_GUIDES_DIR / "quick-start.md",
+        },
+        "shortcuts": {
+            "title": "Keyboard Shortcuts",
+            "path": USER_GUIDES_DIR / "keyboard-shortcuts.md",
+        },
+        "history-browser": {
+            "title": "Execution History Browser",
+            "path": USER_GUIDES_DIR / "execution-history-browser.md",
+        },
+        "workspace-operator": {
+            "title": "Workspace Swarm Operator Manual",
+            "path": OPERATIONS_DIR / "AQ-WORKSPACE-OPERATOR-MANUAL.md",
+        },
+        "workflow-canon": {
+            "title": "8-Step Canonical Workflow",
+            "path": CANON_DIR / "WORKFLOW-CANON.md",
+        },
+        "definition-of-done": {
+            "title": "Definition of Done (DoD)",
+            "path": CANON_DIR / "DEFINITION-OF-DONE.md",
+        },
+        "role-contracts": {
+            "title": "Role Contracts Matrix",
+            "path": CANON_DIR / "skills" / "role-contracts" / "SKILL.md",
+        },
+    }
+
+    def do_GET(self):
+        if self.path in ("/", "/index.html"):
+            self.send_response(200)
+            self.send_header("Content-Type", "text/html; charset=utf-8")
+            self.end_headers()
+            self.wfile.write(HELP_HTML_TEMPLATE.encode("utf-8"))
+            return
+
+        if self.path.startswith("/api/doc"):
+            doc_id = "sota-manual"
+            if "?id=" in self.path:
+                doc_id = self.path.split("?id=")[1].split("&")[0]
+
+            item = self.DOC_MAP.get(doc_id, self.DOC_MAP["sota-manual"])
+            file_path = item["path"]
+            if file_path.is_file():
+                raw = file_path.read_text(encoding="utf-8")
+                html = markdown_to_html(raw)
+            else:
+                html = f"<p>Document not found at: {file_path}</p>"
+
+            self.send_response(200)
+            self.send_header("Content-Type", "application/json")
+            self.end_headers()
+            self.wfile.write(json.dumps({"id": doc_id, "title": item["title"], "html": html}).encode("utf-8"))
+            return
+
+        self.send_response(404)
+        self.end_headers()
+
+    def log_message(self, format, *args):
+        # Quiet standard output
+        pass
+
+
+def run_server(port: int = 8890, open_browser: bool = True):
+    server = socketserver.TCPServer(("127.0.0.1", port), HelpHandler)
+    url = f"http://localhost:{port}"
+    print(f"🚀 AQ-OS Help Center & Training Manual running at: {url}")
+    if open_browser:
+        try:
+            subprocess.Popen(["xdg-open", url], stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL)
+        except Exception:
+            pass
+    try:
+        server.serve_forever()
+    except KeyboardInterrupt:
+        print("\nStopping Help Center server.")
+        server.server_close()
+
+
+def main():
+    parser = argparse.ArgumentParser(description="AQ-OS Help Center & Training Manual")
+    parser.add_argument("--port", type=int, default=8890, help="Port to serve help center on (default: 8890)")
+    parser.add_argument("--no-open", action="store_true", help="Do not auto-open browser")
+    parser.add_argument("--search", type=str, help="Search documents from terminal")
+    args = parser.parse_args()
+
+    if args.search:
+        q = args.search.lower()
+        print(f"Searching docs for: '{q}'\n")
+        hits = 0
+        for doc_id, doc in HelpHandler.DOC_MAP.items():
+            p = doc["path"]
+            if p.is_file():
+                lines = p.read_text(encoding="utf-8").splitlines()
+                matching = [line for line in lines if q in line.lower()]
+                if matching:
+                    hits += 1
+                    print(f"📄 [{doc['title']}] ({p.name})")
+                    for m in matching[:3]:
+                        print(f"   • {m.strip()}")
+                    print()
+        if not hits:
+            print("No matches found.")
+        return 0
+
+    run_server(port=args.port, open_browser=not args.no_open)
+    return 0
+
+
+if __name__ == "__main__":
+    sys.exit(main())
