@@ -2941,6 +2941,9 @@ in {
             /proc/@{pids}/statm r,  # /proc/<pid> → @{pids}
             # auto-added by apparmor-fix-agent 2026-08-01
             /proc/@{pids}/mountinfo r,  # /proc/<pid> → @{pids}
+            /proc/@{pids}/attr/current r,
+            /proc/@{pids}/cmdline r,
+            /dev/shm/sem.* rwk,
             deny /home/** wx,
             deny /root/** rwx,
           }
