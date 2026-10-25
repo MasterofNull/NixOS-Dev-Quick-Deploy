@@ -37,6 +37,12 @@
       "name": "Automated Vectorization & Memory Seeding",
       "goal": "Wire high-signal findings into AIDB Qdrant collections and MemoryBroker semantic memory",
       "order": 4
+    },
+    {
+      "id": "taxonomy_expansion",
+      "name": "RAG Taxonomy & Continuous Intelligence Mesh Expansion",
+      "goal": "Expand Qdrant RAG topic dimensions, seed verification schemas, and automated sweeper pipelines across all 6 architectural pillars",
+      "order": 5
     }
   ],
   "items": [
@@ -137,6 +143,25 @@
         "date": "2026-10-24",
         "note": "Verified via live POST to :8003/api/memory/facts and dry-run AIDB seed suite"
       }
+    },
+    {
+      "id": "sim-5",
+      "name": "Expand RAG collections taxonomy and continuous verification schema",
+      "phase": "taxonomy_expansion",
+      "kind": "slice",
+      "goal": "Formalize 6-pillar RAG taxonomy, Hype/Fact/Signal verification contract, and structured provenance schemas for automated sweeper ingestion",
+      "validation_goal": "TAXONOMY-AND-SCHEMA.md validated against Qdrant collections; check-pm-tracker passes clean",
+      "deps": [
+        "sim-4"
+      ],
+      "detection": {
+        "commit_match": [
+          "SIM-5",
+          "taxonomy expansion",
+          "rag taxonomy and schema"
+        ]
+      },
+      "status": "IN_PROGRESS"
     }
   ]
 }
