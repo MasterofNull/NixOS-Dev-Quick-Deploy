@@ -6056,3 +6056,43 @@ File: scripts/ai/lib/worktree-isolation.sh; scripts/automation/prsi-orchestrator
 
 - [RESOLVED] aidb-catalog-memory-index-limit (2026-10-16) — Scope: `ai-stack/agent-memory/MEMORY.md`. Root cause: the catalog evidence index entry increased the 200-line base to 201, failing focused CI memory governance. Severity: low. Action: merged the AIDB pointer into the adjacent maintenance index entry without removing content; file is 200 lines and `python3 scripts/testing/test-agent-memory-surface-registry.py` passes.
 - [OPEN] tier0-qa-memory-token-diagnosis (2026-10-16) — Scope: full tier0 pre-commit. Full run reported 58 passed and two failing gates: aq-qa phase-0 `0.10.8` (memory) and `0.10.2` (token usage). Root cause: pending reviewer diagnosis; not attributed to the catalog-fetch repair. Severity: medium. Action: diagnose in a separate slice before claiming tier0 success. File: tier0 pre-commit output.
+[DONE] rsi-64a8acce89d6dd5fa0d10f0d — resolved 2026-10-25: unit ai-crystallize-sessions.service no longer in systemctl --failed (2026-10-25T16:10:48Z) — ledger status=resolved
+
+[OPEN] rsi-b268144250035ad327a16202 — aq-qa:phase0 failure in aq-qa:0.10.66. Root cause evidence: producer=aq-qa:phase0; path=aq-qa check 0.10.66; authority=aq-qa; os_error=phase-0 check 0.10.66 failing: aq-confine acceptance: profiles, goldens, cgroup scope limits, bwrap isolation (AQ_CONFINE_REQUIRE=1 locally) (dex: host. Detected=2026-10-25T16:10:48.971703Z.
+  Severity: medium
+  Action: run aq-qa 0 --machine and fix check 0.10.66 at its producer
+  File: aq-qa check 0.10.66
+[DONE] rsi-5e1c5ac66d0c71685c08f3cf — resolved 2026-10-25: phase-0 check 0.1.2 passing in health-monitor JSON run 2026-10-25T15:55:44Z — ledger status=resolved
+[DONE] rsi-d2a3d6468e890399a50143a9 — resolved 2026-10-25: phase-0 check 0.10.22 passing in health-monitor JSON run 2026-10-25T15:55:44Z — ledger status=resolved
+
+[OPEN] rsi-d52a7f6c4700a109bcb20e71 — delegation:claude failure in delegation:claude:orphaned. Root cause evidence: producer=delegation:claude; path=.agents/delegation/registry.jsonl; authority=claude; os_error=claude delegation class orphaned. Detected=2026-10-25T16:10:49.327562Z.
+  Severity: low
+  Action: 1 run(s) in window; latest example .agents/delegation/outputs/claude-20261022-072003-5tq3dp.log; fix producer for class orphaned
+  File: .agents/delegation/registry.jsonl
+
+[OPEN] rsi-575a4d9663770ced7c0d3afb — delegation:codex failure in delegation:codex:orphaned. Root cause evidence: producer=delegation:codex; path=.agents/delegation/registry.jsonl; authority=codex; os_error=codex delegation class orphaned. Detected=2026-10-25T16:10:49.341426Z.
+  Severity: low
+  Action: 2 run(s) in window; latest example .agents/delegation/outputs/codex-20261022-072009-0d2edx.log; fix producer for class orphaned
+  File: .agents/delegation/registry.jsonl
+[DONE] rsi-4d41cadd0e8d666cdf10fa4e — resolved 2026-10-25: delegation class delegation:antigravity:failed had zero occurrences in the last 604800s (96 run(s) read from registry, 2026-10-25T16:10:49Z) — ledger status=resolved
+[DONE] rsi-7a07ac592a1ba99c66161a47 — resolved 2026-10-25: delegation class delegation:local-direct:orphaned had zero occurrences in the last 604800s (96 run(s) read from registry, 2026-10-25T16:10:49Z) — ledger status=resolved
+[DONE] rsi-9b01af8d2a77ee709b8ee1ac — resolved 2026-10-25: delegation class delegation:codex:blocked had zero occurrences in the last 604800s (96 run(s) read from registry, 2026-10-25T16:10:49Z) — ledger status=resolved
+[DONE] rsi-9e3188179dc479e2729fe680 — resolved 2026-10-25: delegation class delegation:local-agent:failed had zero occurrences in the last 604800s (96 run(s) read from registry, 2026-10-25T16:10:49Z) — ledger status=resolved
+[DONE] rsi-eff3516f8e8e2e6de3179709 — resolved 2026-10-25: delegation class delegation:codex:failed had zero occurrences in the last 604800s (96 run(s) read from registry, 2026-10-25T16:10:49Z) — ledger status=resolved
+[DONE] rsi-fb424240e11071128c1a5b46 — resolved 2026-10-25: delegation class delegation:local-direct:failed had zero occurrences in the last 604800s (96 run(s) read from registry, 2026-10-25T16:10:49Z) — ledger status=resolved
+
+[OPEN] rsi-e9f47ea71bf886346356922a — journal:ai-hybrid-coordinator failure in service-error:ai-hybrid-coordinator:{"event": "sync_query_gaps_failed error=[Errno <n>] Permissi. Root cause evidence: producer=journal:ai-hybrid-coordinator; path=ai-hybrid-coordinator; authority=journald; os_error=recurring error in ai-hybrid-coordinator: {"event": "sync_query_gaps_failed error=[Errno <n>] Permission denied: '/var/log/nixos-ai-stack/query-gaps.tmp'", "version": "<n>.<n>.<n>", "service": "hybrid-c. Detected=2026-10-25T16:10:52.969949Z.
+  Severity: medium
+  Action: 7 occurrence(s) in last 3600s; example: {"event": "sync_query_gaps_failed error=[Errno 13] Permission denied: '/var/log/nixos-ai-stack/query-gaps.tmp'", "version": "1.0.0", "service": "hybrid-coordinator", "logger": "hybrid-coordinator", "l; journalctl -u ai-hybrid-coordinator; fix producer
+  File: ai-hybrid-coordinator
+
+[OPEN] rsi-4884e43ca37d2a2bc241d16e — capability-audit failure in capability-audit:threshold:UNDISCOVERABLE. Root cause evidence: producer=capability-audit; path=threshold:UNDISCOVERABLE; authority=capability-audit; os_error=UNDISCOVERABLE capabilities exceed 10. Detected=2026-10-25T16:10:53.008541Z.
+  Severity: medium
+  Action: 13 capabilities classed UNDISCOVERABLE (limit 10, report 2026-10-25T07:02:47Z); see aq-capability-audit next_action
+  File: threshold:UNDISCOVERABLE
+
+[OPEN] rsi-64d528cb2a3b167a0c4648df — attention-queue:ai-stack-health-monitor failure in attention:attn-63235b177c5a4b2e. Root cause evidence: producer=attention-queue:ai-stack-health-monitor; path=attention:attn-63235b177c5a4b2e; authority=attention-queue; os_error=[ai-stack-health-monitor] QA phase 0: 1 check failing (0.10.66 aq-confine acceptance: profi): Scheduled health monitor found 1 failing check:   [0.10.66] aq-confine acceptance: profiles, goldens, cgroup scope limits, bwrap isolation (AQ_CONFINE_REQUIRE=1 locally) (dex: host write-tree equals t. Detected=2026-10-25T16:10:53.086284Z.
+  Severity: high
+  Action: Re-run `aq-qa 0 --machine` and fix the failing check(s).
+  File: attention:attn-63235b177c5a4b2e
+[DONE] rsi-41b2826295e7d31afae3265a — resolved 2026-10-25: attention alert attn-94f17341 resolved in attention queue (2026-10-25T16:10:53Z) — ledger status=resolved
