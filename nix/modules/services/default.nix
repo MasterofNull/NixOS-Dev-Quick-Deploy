@@ -28,5 +28,6 @@
     ./activation-auto-revert-guard.nix
     ./durable-sweeper.nix
     ./oncalld.nix
+    ./aq-help-center.nix
   ];
 }
