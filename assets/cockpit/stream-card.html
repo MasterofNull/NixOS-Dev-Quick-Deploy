@@ -1,0 +1,155 @@
+<!-- SOTA Cockpit Stream Card: Impeccable Design Token Standards -->
+<div class="cockpit-stream-card" id="cockpit-stream-card">
+  <div class="card-header">
+    <div class="status-indicator">
+      <span class="pulse-dot"></span>
+      <span class="status-title">ACTIVE AGENT THOUGHT STREAM</span>
+    </div>
+    <div class="agent-badge" id="active-agent-badge">
+      <span class="lane-tag">antigravity</span>
+      <span class="role-tag">orchestrator</span>
+    </div>
+  </div>
+
+  <div class="card-body">
+    <div class="objective-box">
+      <div class="label">CURRENT OBJECTIVE</div>
+      <div class="content" id="active-objective">SOTA Durable Agent Sweeper & Cockpit Interface Rollout</div>
+    </div>
+
+    <div class="stream-terminal" id="stream-terminal">
+      <div class="thought-line"><span class="timestamp">[12:20:05Z]</span> <span class="prefix">THOUGHT:</span> Verifying systemd units and live telemetry pipelines.</div>
+      <div class="tool-line"><span class="timestamp">[12:20:06Z]</span> <span class="prefix">TOOL:</span> <span class="tool-name">probe_http</span> (port: 8003, status: 200 OK)</div>
+      <div class="output-line"><span class="timestamp">[12:20:07Z]</span> <span class="prefix">STREAM:</span> Ingested 3 frontier research vectors into MemoryBroker.</div>
+    </div>
+  </div>
+
+  <div class="card-footer">
+    <div class="intervention-dock">
+      <button class="btn btn-pause" title="Pause agent execution">[p] Pause</button>
+      <button class="btn btn-resume" title="Resume agent loop">[r] Resume</button>
+      <button class="btn btn-steer" title="Inject custom guidance prompt">[s] Steer</button>
+    </div>
+    <div class="metrics">
+      <span class="metric">Tokens: <strong id="metric-tokens">3,420</strong></span>
+      <span class="metric">P95: <strong id="metric-latency">1.6ms</strong></span>
+    </div>
+  </div>
+</div>
+
+<style>
+.cockpit-stream-card {
+  background: rgba(15, 23, 42, 0.95);
+  border: 1px solid rgba(56, 189, 248, 0.25);
+  border-radius: 12px;
+  padding: 16px;
+  font-family: ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, monospace;
+  color: #f8fafc;
+  box-shadow: 0 10px 25px -5px rgba(0, 0, 0, 0.5);
+}
+.card-header {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  border-bottom: 1px solid rgba(255, 255, 255, 0.1);
+  padding-bottom: 8px;
+  margin-bottom: 12px;
+}
+.status-indicator {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  font-weight: 600;
+  font-size: 0.85rem;
+  letter-spacing: 0.05em;
+  color: #38bdf8;
+}
+.pulse-dot {
+  width: 8px;
+  height: 8px;
+  border-radius: 50%;
+  background-color: #22c55e;
+  box-shadow: 0 0 8px #22c55e;
+}
+.agent-badge .lane-tag {
+  background: #0284c7;
+  color: #fff;
+  padding: 2px 8px;
+  border-radius: 4px;
+  font-size: 0.75rem;
+  font-weight: bold;
+}
+.agent-badge .role-tag {
+  background: #334155;
+  color: #cbd5e1;
+  padding: 2px 6px;
+  border-radius: 4px;
+  font-size: 0.75rem;
+  margin-left: 4px;
+}
+.objective-box {
+  background: rgba(30, 41, 59, 0.6);
+  border-left: 3px solid #38bdf8;
+  padding: 8px 12px;
+  border-radius: 4px;
+  margin-bottom: 12px;
+}
+.objective-box .label {
+  font-size: 0.7rem;
+  color: #94a3b8;
+  text-transform: uppercase;
+}
+.objective-box .content {
+  font-size: 0.9rem;
+  color: #e2e8f0;
+  margin-top: 2px;
+}
+.stream-terminal {
+  background: #090d16;
+  border: 1px solid rgba(255, 255, 255, 0.05);
+  border-radius: 8px;
+  padding: 12px;
+  height: 160px;
+  overflow-y: auto;
+  font-size: 0.8rem;
+  line-height: 1.5;
+}
+.thought-line { color: #a5b4fc; }
+.tool-line { color: #38bdf8; }
+.output-line { color: #86efac; }
+.timestamp { color: #64748b; margin-right: 6px; }
+.prefix { font-weight: bold; margin-right: 4px; }
+.card-footer {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  margin-top: 12px;
+  padding-top: 8px;
+  border-top: 1px solid rgba(255, 255, 255, 0.1);
+}
+.intervention-dock {
+  display: flex;
+  gap: 8px;
+}
+.btn {
+  background: #1e293b;
+  border: 1px solid #475569;
+  color: #f1f5f9;
+  padding: 4px 10px;
+  border-radius: 6px;
+  font-size: 0.75rem;
+  cursor: pointer;
+  transition: all 0.2s ease;
+}
+.btn:hover {
+  background: #334155;
+  border-color: #38bdf8;
+}
+.metrics {
+  font-size: 0.75rem;
+  color: #94a3b8;
+  display: flex;
+  gap: 12px;
+}
+.metrics strong { color: #f8fafc; }
+</style>
