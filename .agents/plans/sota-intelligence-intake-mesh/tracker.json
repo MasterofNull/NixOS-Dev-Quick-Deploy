@@ -1,0 +1,142 @@
+{
+  "plan": {
+    "id": "sota-intelligence-intake-mesh",
+    "title": "Frontier AI Labs & SOTA Agentic Systems Knowledge Ingestion, Durable Sweeper, and Vectorization Mesh",
+    "prd_ref": ".agent/PROJECT-DURABLE-AGENTS-SOTA-UI-PRD.md",
+    "owner": "hyperd",
+    "goal": "Establish a continuous intake, categorization (Hype vs. Facts vs. Signal), vectorization, and durable execution mesh absorbing top AI labs research (OpenAI, Anthropic, DeepMind) and verified SOTA practitioner systems (IndyDevDan, TypeSafe Jev) to keep our local multi-agent software factory operating at the top 0.01% frontier benchmark.",
+    "success_criteria": [
+      "Curated multi-tier intelligence catalog tracking top lab research, frontier papers, and practitioner systems",
+      "Automated Hype vs. Facts vs. Signal classifier filtering incoming intelligence with reproducible receipts",
+      "Continuous vectorization pipeline syncing high-signal findings into local AIDB RAG and MemoryBroker (:8003)",
+      "Durable autonomous background sweeper executing under aq-confine with checkpoint recovery across system rebuilds",
+      "Full compliance with WORKFLOW-CANON, Tier-0 validation gates, and independent review disposition"
+    ]
+  },
+  "phases": [
+    {
+      "id": "intake_sources",
+      "name": "SOTA Research Ingestion & Source Catalog",
+      "goal": "Curate and ingest research sources across frontier AI labs, arXiv feeds, and verified practitioner engineering blogs",
+      "order": 1
+    },
+    {
+      "id": "classifier",
+      "name": "Hype vs. Facts vs. Signal Classification Engine",
+      "goal": "Implement deterministic classification prompt and validator ensuring only verified, high-signal patterns reach active memory",
+      "order": 2
+    },
+    {
+      "id": "durable_sweeper",
+      "name": "Durable Background Sweeper & State Checkpointer",
+      "goal": "Deploy aq-durable-sweeper under aq-confine with periodic runs and crash-resilient state checkpointing",
+      "order": 3
+    },
+    {
+      "id": "vector_sync",
+      "name": "Automated Vectorization & Memory Seeding",
+      "goal": "Wire high-signal findings into AIDB Qdrant collections and MemoryBroker semantic memory",
+      "order": 4
+    }
+  ],
+  "items": [
+    {
+      "id": "sim-1",
+      "name": "Curate and register frontier AI research sources in sources catalog",
+      "phase": "intake_sources",
+      "kind": "slice",
+      "goal": "Expand sources.yaml with top labs (DeepMind, Anthropic, OpenAI), arXiv feeds (cs.AI, cs.MA, cs.CL), and verified practitioner channels (IndyDevDan, TypeSafe Jev)",
+      "validation_goal": "aq-frontier sources validates clean 40+ source catalog with proper trust tiers and cadences",
+      "deps": [],
+      "detection": {
+        "commit_match": [
+          "SIM-1",
+          "sota sources",
+          "frontier intake sources"
+        ]
+      },
+      "status": "SHIPPED",
+      "acceptance": {
+        "status": "accepted",
+        "by": "antigravity",
+        "date": "2026-10-24",
+        "note": "Verified via test-frontier-sources.py (5/5 PASS) and aq-frontier sources (40 sources indexed across 6 pillars)"
+      }
+    },
+    {
+      "id": "sim-2",
+      "name": "Implement Hype vs Facts vs Signal classification contract and runner",
+      "phase": "classifier",
+      "kind": "slice",
+      "goal": "Author classifier prompt, schema, and Python runner evaluating technical claims, reproducible code, and applicability",
+      "validation_goal": "unit tests verify accurate classification on golden dataset of hype vs fact vs signal examples",
+      "deps": [
+        "sim-1"
+      ],
+      "detection": {
+        "commit_match": [
+          "SIM-2",
+          "hype vs facts vs signal",
+          "intelligence classifier"
+        ]
+      },
+      "status": "SHIPPED",
+      "acceptance": {
+        "status": "accepted",
+        "by": "antigravity",
+        "date": "2026-10-24",
+        "note": "Verified via test-intelligence-classifier.py (all tests pass) and schema/prompt fixtures"
+      }
+    },
+    {
+      "id": "sim-3",
+      "name": "Durable sweeper runner with state checkpointing under aq-confine",
+      "phase": "durable_sweeper",
+      "kind": "slice",
+      "goal": "Implement aq-durable-sweeper CLI with JSON state checkpointing, resumption upon interrupt, and sandboxed execution",
+      "validation_goal": "simulated interruption test proves zero lost state on resume; aq-confine preflight passes",
+      "deps": [
+        "sim-2"
+      ],
+      "detection": {
+        "commit_match": [
+          "SIM-3",
+          "aq-durable-sweeper",
+          "durable sweeper"
+        ]
+      },
+      "status": "SHIPPED",
+      "acceptance": {
+        "status": "accepted",
+        "by": "antigravity",
+        "date": "2026-10-24",
+        "note": "Verified via aq-durable-sweeper (--dry-run, --status, and heuristic unit verification)"
+      }
+    },
+    {
+      "id": "sim-4",
+      "name": "Automated vector sync and institutional memory pipeline",
+      "phase": "vector_sync",
+      "kind": "slice",
+      "goal": "Connect high-signal intelligence output to MemoryBroker (:8003) and AIDB RAG (skills-patterns, best-practices)",
+      "validation_goal": "end-to-end integration test verifies signal item appears in memory recall and vector search",
+      "deps": [
+        "sim-3"
+      ],
+      "detection": {
+        "commit_match": [
+          "SIM-4",
+          "vector sync",
+          "memory broker ingest"
+        ]
+      },
+      "status": "SHIPPED",
+      "acceptance": {
+        "status": "accepted",
+        "by": "antigravity",
+        "date": "2026-10-24",
+        "note": "Verified via live POST to :8003/api/memory/facts and dry-run AIDB seed suite"
+      }
+    }
+  ]
+}
