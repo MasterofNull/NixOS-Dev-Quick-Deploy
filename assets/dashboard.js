@@ -4992,6 +4992,7 @@ async function loadRuntimeDetails() {
   const prc = cg.prompt_compile || {};
   const trg = cg.triage || {};
   const drt = cg.durable_runtime || {};
+  const dsw = cg.durable_sweeper || {};
   const ocd = cg.oncall_daemon || {};
   const lrn = s.learning || {};
   const rows = [
@@ -5117,6 +5118,13 @@ async function loadRuntimeDetails() {
         ? `${String(drt.status || "unverified").toUpperCase()} · intents:${drt.total_intents ?? 0} · unres:${drt.unresolved_intents ?? 0}`
         : "UNVERIFIED",
       drt.available && drt.unresolved_intents === 0 ? "ok" : "warn"
+    ),
+    fwRow(
+      "· durable sweeper & taxonomy",
+      dsw.available
+        ? `${String(dsw.status || "unverified").toUpperCase()} · sweeps:${dsw.total_sweeps ?? 0} · sig:${dsw.signal_count ?? 0} · facts:${dsw.facts_count ?? 0}`
+        : "UNVERIFIED",
+      dsw.available && (dsw.status === "idle" || dsw.status === "running") ? "ok" : "info"
     ),
     fwRow(
       "· autonomous on-call daemon",
@@ -10034,7 +10042,14 @@ async function updateMissionCockpitTelemetry() {
     if (reconEl && runtimeData.status === "fulfilled" && runtimeData.value) {
       const cap = (runtimeData.value.summary || {}).capability_gap || {};
       const durable = cap.durable_runtime || {};
-      const state = durable.available ? (durable.reconciled_count != null ? `${durable.reconciled_count} synced` : "ONLINE") : "100% IDEMPOTENT";
+      const sweeper = cap.durable_sweeper || {};
+      let state = "100% IDEMPOTENT";
+      if (durable.available) {
+        state = durable.reconciled_count != null ? `${durable.reconciled_count} synced` : "ONLINE";
+      }
+      if (sweeper.available && sweeper.signal_count != null) {
+        state += ` · ${sweeper.signal_count} SOTA sig`;
+      }
       reconEl.textContent = state;
     }
   } catch (err) {
