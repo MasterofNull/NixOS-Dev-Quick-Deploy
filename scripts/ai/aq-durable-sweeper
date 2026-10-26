@@ -2,7 +2,13 @@
 """
 aq-durable-sweeper: Proactive autonomous intelligence sweeper & signal classifier.
 Inspired by IndyDevDan's durable agent architecture (pi-durable-news-agent).
-Maintains durable state across restarts and sweeps for SOTA software factory signals.
+Maintains durable state across restarts and sweeps for SOTA software factory signals
+across 5 core engineering disciplines:
+1. Agentic Factory & Multi-Agent Architecture
+2. Declarative Systems, OS & Microarchitectural Confinement
+3. High-Quality Frontend Design, Cockpit & Ergonomics
+4. Quantitative, Stochastic & Signal Analytics
+5. Reliability, Testing & Formal Verification
 """
 
 import argparse
@@ -10,6 +16,7 @@ import datetime
 import hashlib
 import json
 import os
+import subprocess
 import sys
 from pathlib import Path
 from typing import Any, Dict, List, Optional
@@ -17,6 +24,16 @@ from typing import Any, Dict, List, Optional
 STATE_SCHEMA_VERSION = "2026-10-19"
 DEFAULT_STATE_FILE = Path("/var/lib/aq-durable-agent/sweeper-state.json")
 LOCAL_STATE_FALLBACK = Path.home() / ".local/share/aq-durable-agent/sweeper-state.json"
+
+DOMAIN_CATEGORIES = [
+    "agentic_architecture",
+    "os_systems_confinement",
+    "frontend_cockpit_ux",
+    "quant_financial_stochastic",
+    "testing_verification",
+    "operational_facts",
+    "hype"
+]
 
 def get_state_path(custom_path: Optional[str] = None) -> Path:
     if custom_path:
@@ -44,6 +61,7 @@ def init_default_state(agent_id: str) -> Dict[str, Any]:
             "hype_count": 0,
             "facts_count": 0,
             "signal_count": 0,
+            "domain_counts": {d: 0 for d in DOMAIN_CATEGORIES}
         },
     }
 
@@ -61,10 +79,10 @@ def load_state(path: Path, agent_id: str = "default-sweeper") -> Dict[str, Any]:
                 fcntl.flock(f.fileno(), fcntl.LOCK_UN)
             if data.get("schema_version") != STATE_SCHEMA_VERSION:
                 data["schema_version"] = STATE_SCHEMA_VERSION
+            data.setdefault("metrics", {}).setdefault("domain_counts", {d: 0 for d in DOMAIN_CATEGORIES})
             return data
     except Exception as e:
         sys.stderr.write(f"[aq-durable-sweeper] ERROR: Failed to load state from {path} ({e})\n")
-        # Do not discard existing state on read failure; backup corrupted state
         corrupted_backup = path.with_suffix(f".corrupted.{int(datetime.datetime.now().timestamp())}.json")
         try:
             if path.exists():
@@ -93,16 +111,17 @@ def hash_item(title: str, source: str, content: str) -> str:
 
 def classify_heuristic(title: str, content: str) -> Dict[str, Any]:
     """
-    Deterministic rule-based classification fallback when LLM endpoint is offline or budget-constrained.
+    Multi-domain deterministic classifier mapping items across the 5 core engineering domains.
     """
     combined = f"{title} {content}".lower()
 
-    # 1. Hype signals: vague grandiose claims without technical specifics
+    # 1. Hype signals
     hype_keywords = ["game-changer", "blow your mind", "agi achieved", "100x faster than everything", "revolutionary tool that replaces all humans"]
     for kw in hype_keywords:
         if kw in combined:
             return {
                 "category": "hype",
+                "domain": "hype",
                 "confidence": 0.85,
                 "summary": f"Detected marketing exaggeration keywords ('{kw}').",
                 "actionable_takeaways": [],
@@ -115,29 +134,84 @@ def classify_heuristic(title: str, content: str) -> Dict[str, Any]:
         if kw in combined:
             return {
                 "category": "facts",
+                "domain": "os_systems_confinement" if any(k in combined for k in ["cve-", "security advisory", "kernel patch"]) else "operational_facts",
                 "confidence": 0.90,
                 "summary": f"Verified upstream release or operational notice ('{kw}').",
                 "actionable_takeaways": [f"Operational maintenance signal: {title}"],
                 "target_rag_collection": "best-practices",
             }
 
-    # 3. High Signal: agent architecture, durable execution, skills, tooling
-    signal_keywords = ["durable agent", "autonomous loop", "reverse engineering", "mcp server", "subagent", "state checkpoint", "self-correcting"]
-    for kw in signal_keywords:
+    # 3. OS, Systems & Confinement
+    os_keywords = ["landlock", "ebpf", "bubblewrap", "bwrap", "firecracker", "microvm", "qemu", "virtio", "apparmor", "cgroups", "seccomp"]
+    for kw in os_keywords:
         if kw in combined:
             return {
                 "category": "signal",
+                "domain": "os_systems_confinement",
                 "confidence": 0.95,
-                "summary": f"Identified architectural pattern directly applicable to software dev factory ('{kw}').",
+                "summary": f"Identified systems or microarchitectural isolation pattern ('{kw}').",
+                "actionable_takeaways": [f"Review declarative confinement pattern from: {title}"],
+                "target_rag_collection": "best-practices",
+            }
+
+    # 3. Agentic Architecture & Factory
+    agent_keywords = ["durable agent", "autonomous loop", "multi-agent", "reasoning", "subagent", "state checkpoint", "self-improvement", "prm", "speculative decoding", "kv cache", "token efficiency"]
+    for kw in agent_keywords:
+        if kw in combined:
+            return {
+                "category": "signal",
+                "domain": "agentic_architecture",
+                "confidence": 0.95,
+                "summary": f"Identified agentic architecture or factory advancement ('{kw}').",
                 "actionable_takeaways": [f"Evaluate architectural pattern from {title} for local factory adoption."],
                 "target_rag_collection": "skills-patterns",
             }
 
-    # Default fallback: do not presume facts for unverified general text
+    # 4. Frontend & Cockpit Ergonomics
+    ui_keywords = ["design system", "human-computer interaction", "cockpit", "hud", "oklch", "d3", "canvas", "telemetry", "websocket", "latency"]
+    for kw in ui_keywords:
+        if kw in combined:
+            return {
+                "category": "signal",
+                "domain": "frontend_cockpit_ux",
+                "confidence": 0.90,
+                "summary": f"Identified frontend design, cockpit telemetry, or ergonomics pattern ('{kw}').",
+                "actionable_takeaways": [f"Adopt cockpit telemetry / UX improvement from {title}."],
+                "target_rag_collection": "skills-patterns",
+            }
+
+    # 5. Quantitative, Stochastic & Financial
+    quant_keywords = ["market microstructure", "portfolio management", "stochastic", "kalman", "state filtering", "game theory", "mechanism design", "causal inference", "hawkes process"]
+    for kw in quant_keywords:
+        if kw in combined:
+            return {
+                "category": "signal",
+                "domain": "quant_financial_stochastic",
+                "confidence": 0.90,
+                "summary": f"Identified quantitative or stochastic decision modeling pattern ('{kw}').",
+                "actionable_takeaways": [f"Incorporate stochastic / quantitative strategy from {title} into TradingAgents."],
+                "target_rag_collection": "best-practices",
+            }
+
+    # 6. Testing, Reliability & Verification
+    test_keywords = ["fuzzing", "property-based testing", "mutation testing", "invariant", "smt solver", "sat solver", "flake elimination", "regression test"]
+    for kw in test_keywords:
+        if kw in combined:
+            return {
+                "category": "signal",
+                "domain": "testing_verification",
+                "confidence": 0.90,
+                "summary": f"Identified formal verification or testing pattern ('{kw}').",
+                "actionable_takeaways": [f"Integrate testing / verification pattern from {title}."],
+                "target_rag_collection": "error-solutions",
+            }
+
+    # Default facts
     return {
         "category": "facts",
-        "confidence": 0.20,
-        "summary": "Unverified general text without actionable operational or architecture signal.",
+        "domain": "operational_facts",
+        "confidence": 0.50,
+        "summary": "Operational note or general technical update.",
         "actionable_takeaways": [],
         "target_rag_collection": "none",
     }
@@ -149,13 +223,15 @@ def process_item(state: Dict[str, Any], title: str, source: str, content: str) -
 
     classification = classify_heuristic(title, content)
     category = classification["category"]
+    domain = classification.get("domain", "operational_facts")
 
     state["processed_hashes"].append(item_hash)
-    # Keep last 5000 hashes to prevent unbounded memory growth
     if len(state["processed_hashes"]) > 5000:
         state["processed_hashes"] = state["processed_hashes"][-5000:]
 
     state["metrics"]["items_ingested"] += 1
+    state["metrics"].setdefault("domain_counts", {})[domain] = state["metrics"].setdefault("domain_counts", {}).get(domain, 0) + 1
+
     if category == "hype":
         state["metrics"]["hype_count"] += 1
     elif category == "facts":
@@ -168,19 +244,17 @@ def process_item(state: Dict[str, Any], title: str, source: str, content: str) -
         "hash": item_hash,
         "title": title,
         "source": source,
+        "domain": domain,
         "classification": classification,
     }
 
-def sweep_local_sources(state: Dict[str, Any]) -> int:
-    """Sweep real system intelligence feeds:
-    1. Frontier evidence intake backlog (.agents/plans/frontier-evidence-intake/BACKLOG.jsonl)
-    2. Issues backlog and bug patterns
-    Returns number of newly processed items.
-    """
+def sweep_local_sources(state: Dict[str, Any], scan_radar: bool = False) -> int:
+    """Sweep local intelligence feeds and conditionally trigger live multi-domain radar scan."""
     repo_root = Path(__file__).resolve().parents[2]
-    backlog_path = repo_root / ".agents/plans/frontier-evidence-intake/BACKLOG.jsonl"
     ingested = 0
 
+    # 1. Sweep local frontier evidence backlog
+    backlog_path = repo_root / ".agents/plans/frontier-evidence-intake/BACKLOG.jsonl"
     if backlog_path.is_file():
         try:
             with open(backlog_path, "r", encoding="utf-8") as f:
@@ -200,6 +274,31 @@ def sweep_local_sources(state: Dict[str, Any]) -> int:
                         continue
         except Exception as e:
             sys.stderr.write(f"[aq-durable-sweeper] Warning: failed reading backlog: {e}\n")
+
+    # 2. Sweep research papers directory (.agent/research/papers/*.json)
+    papers_dir = repo_root / ".agent/research/papers"
+    if papers_dir.is_dir():
+        for pfile in papers_dir.glob("*.json"):
+            try:
+                pdata = json.loads(pfile.read_text(encoding="utf-8"))
+                title = pdata.get("title") or pfile.stem
+                source = pdata.get("url") or pdata.get("source_id") or "arxiv"
+                content = f"{pdata.get('summary', '')} {' '.join(pdata.get('matched_keywords', []))}"
+                res = process_item(state, title, source, content)
+                if res.get("status") == "processed":
+                    ingested += 1
+            except Exception:
+                continue
+
+    # 3. Trigger live radar ingest scan across all 5 engineering domains when requested
+    if scan_radar:
+        radar_bin = repo_root / "scripts/ai/aq-radar-ingest"
+        if radar_bin.is_file() and os.access(radar_bin, os.X_OK):
+            try:
+                cmd = [sys.executable, str(radar_bin), "scan", "--deep", "--limit", "2", "--auto-embed"]
+                subprocess.run(cmd, capture_output=True, timeout=120)
+            except Exception as e:
+                sys.stderr.write(f"[aq-durable-sweeper] Warning: radar sweep execution: {e}\n")
 
     return ingested
 
@@ -223,6 +322,7 @@ def main():
     # tick command
     tick_p = subparsers.add_parser("tick", help="Execute one durable sweeper tick cycle")
     tick_p.add_argument("--dry-run", action="store_true", help="Simulate tick without updating external state")
+    tick_p.add_argument("--with-radar", action="store_true", help="Trigger live multi-domain radar ingest scan")
 
     args = parser.parse_args()
     state_path = get_state_path(args.state_file)
@@ -240,7 +340,8 @@ def main():
             print(json.dumps(result, indent=2))
         else:
             cat = result.get("classification", {}).get("category", "unknown")
-            print(f"[{result['status'].upper()}] {args.title} -> {cat.upper()} ({result.get('hash', '')[:12]})")
+            dom = result.get("domain", "operational_facts")
+            print(f"[{result['status'].upper()}] [{dom.upper()}] {args.title} -> {cat.upper()} ({result.get('hash', '')[:12]})")
         sys.exit(0)
 
     elif args.command == "tick":
@@ -249,7 +350,8 @@ def main():
             sys.exit(0)
         state["status"] = "sweeping"
         state["metrics"]["total_sweeps"] += 1
-        new_items = sweep_local_sources(state)
+        with_radar = getattr(args, "with_radar", False)
+        new_items = sweep_local_sources(state, scan_radar=with_radar)
         now = datetime.datetime.now(datetime.timezone.utc)
         state["last_tick_utc"] = now.isoformat()
         state["next_scheduled_tick_utc"] = (now + datetime.timedelta(hours=1)).isoformat()

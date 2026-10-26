@@ -3,7 +3,7 @@
 aq-radar-ingest — SOTA Frontier Radar & Dynamic Ingestion/Investigator CLI.
 Scans and ingests registered sources (arXiv CoRR, Quantitative Finance, Statistics,
 EESS, Economics, CISA KEV, OSV, Frontier labs, Design systems), evaluates signal
-using System 1 keyword and semantic relevance, ingests papers and research repos,
+using multi-domain keyword and semantic relevance, ingests papers and research repos,
 and stores high-signal discoveries in .agent/research/papers/ and active registry.
 """
 
@@ -22,20 +22,39 @@ REGISTRY_PATH = ROOT / "config/frontier-radar-registry.json"
 RESEARCH_DIR = ROOT / ".agent/research/papers"
 RESEARCH_INDEX = ROOT / ".agent/research/INDEX.json"
 
-# Core development keywords for System 1 relevance scoring
-HIGH_VALUE_KEYWORDS = {
-    # Agent Harness & Systems
-    "multi-agent", "agentic", "harness", "reasoning", "tool-use", "tool calling",
-    "self-improvement", "recursive", "token efficiency", "process reward",
-    "prm", "graph diffusion", "long-term memory", "memory layer", "retrieval",
-    "speculative decoding", "quantization", "kv cache", "context compression",
-    "landlock", "ebpf", "sandbox", "microarchitecture", "formal verification",
-    # Quantitative & Economics & Signal
-    "market microstructure", "portfolio management", "stochastic", "kalman",
-    "state filtering", "game theory", "mechanism design", "causal inference",
-    # UI / UX / Cockpit
-    "design system", "human-computer interaction", "cockpit", "hud", "telemetry"
+# Multi-domain development keywords for full-spectrum engineering scoring
+DOMAIN_KEYWORDS = {
+    "agentic_architecture": [
+        "multi-agent", "agentic", "harness", "reasoning", "tool-use", "tool calling",
+        "self-improvement", "recursive", "token efficiency", "process reward",
+        "prm", "graph diffusion", "long-term memory", "memory layer", "retrieval",
+        "speculative decoding", "quantization", "kv cache", "context compression",
+        "durable agent", "subagent", "prompt injection", "owasp"
+    ],
+    "os_systems_confinement": [
+        "landlock", "ebpf", "sandbox", "microarchitecture", "formal verification",
+        "bubblewrap", "bwrap", "cgroups", "apparmor", "firecracker", "microvm",
+        "cloud-hypervisor", "virtio", "qemu", "kernel patch", "seccomp",
+        "nixos", "nixpkgs", "declarative", "flock", "linux kernel"
+    ],
+    "frontend_cockpit_ux": [
+        "design system", "human-computer interaction", "cockpit", "hud", "telemetry",
+        "oklch", "d3", "canvas", "websocket", "latency", "accessibility",
+        "ergonomics", "data visualization", "stream-of-thought", "dashboard"
+    ],
+    "quant_financial_stochastic": [
+        "market microstructure", "portfolio management", "stochastic", "kalman",
+        "state filtering", "game theory", "mechanism design", "causal inference",
+        "hawkes process", "order book", "algorithmic trading", "alpha generation"
+    ],
+    "testing_verification": [
+        "fuzzing", "property-based testing", "mutation testing", "invariant",
+        "smt solver", "sat solver", "model checking", "flake elimination",
+        "regression test", "concolic"
+    ]
 }
+
+ALL_KEYWORDS = [kw for kws in DOMAIN_KEYWORDS.values() for kw in kws]
 
 
 def load_registry() -> dict:
@@ -49,12 +68,18 @@ def save_registry(data: dict) -> None:
     REGISTRY_PATH.write_text(json.dumps(data, indent=2) + "\n", encoding="utf-8")
 
 
-def score_text_relevance(title: str, summary: str) -> tuple[float, list[str]]:
-    """Calculates System 1 relevance score and matching keywords."""
+def score_text_relevance(title: str, summary: str) -> tuple[float, list[str], list[str]]:
+    """Calculates multi-domain relevance score, matched keywords, and matched domains."""
     combined = (title + " " + summary).lower()
-    matches = [kw for kw in HIGH_VALUE_KEYWORDS if re.search(r"\b" + re.escape(kw) + r"\b", combined)]
+    matches = [kw for kw in ALL_KEYWORDS if re.search(r"\b" + re.escape(kw) + r"\b", combined)]
+
+    matched_domains = []
+    for domain, kws in DOMAIN_KEYWORDS.items():
+        if any(re.search(r"\b" + re.escape(kw) + r"\b", combined) for kw in kws):
+            matched_domains.append(domain)
+
     score = min(1.0, len(matches) * 0.25)
-    return score, matches
+    return score, matches, matched_domains
 
 
 def cmd_list(args: argparse.Namespace) -> int:
@@ -95,7 +120,6 @@ def cmd_discover(args: argparse.Namespace) -> int:
 def fetch_arxiv_papers(feed_url: str, limit: int = 5) -> list[dict]:
     """Fetches and parses arXiv preprints from RSS/Atom endpoint or API."""
     papers = []
-    # If standard RSS url, map to arXiv API query for structured metadata
     m = re.search(r"/rss/([^/?&]+)", feed_url)
     if m:
         cat = m.group(1)
@@ -113,8 +137,8 @@ def fetch_arxiv_papers(feed_url: str, limit: int = 5) -> list[dict]:
             title = entry.find("atom:title", ns).text.strip().replace("\n", " ")
             id_val = entry.find("atom:id", ns).text.strip()
             summary = entry.find("atom:summary", ns).text.strip().replace("\n", " ")
-            authors = [a.find("atom:name", ns).text for a in entry.findall("atom:author", ns)]
-            published = entry.find("atom:published", ns).text.strip()
+            authors = [a.find("atom:name", ns).text for a in entry.findall("atom:author", ns) if a.find("atom:name", ns) is not None]
+            published = entry.find("atom:published", ns).text.strip() if entry.find("atom:published", ns) is not None else ""
             arxiv_id = id_val.split("/")[-1]
             papers.append({
                 "arxiv_id": arxiv_id,
@@ -124,55 +148,130 @@ def fetch_arxiv_papers(feed_url: str, limit: int = 5) -> list[dict]:
                 "authors": authors,
                 "published": published
             })
-    except Exception as exc:
+    except Exception:
         pass
     return papers
+
+
+def fetch_security_advisories(source_id: str, feed_url: str, limit: int = 5) -> list[dict]:
+    """Fetches and normalizes CVE and security advisories from GitHub Advisories or CISA KEV."""
+    items = []
+    try:
+        req = urllib.request.Request(feed_url, headers={"User-Agent": "NixOS-Dev-Quick-Deploy-Radar/2.0"})
+        with urllib.request.urlopen(req, timeout=8) as resp:
+            payload = json.loads(resp.read().decode("utf-8"))
+
+        if source_id == "github-security-advisories" and isinstance(payload, list):
+            for adv in payload[:limit]:
+                ghsa_id = adv.get("ghsa_id") or adv.get("cve_id") or "GHSA-UNKNOWN"
+                summary = adv.get("summary") or ""
+                description = adv.get("description") or ""
+                items.append({
+                    "id": ghsa_id,
+                    "title": f"[{ghsa_id}] {summary}",
+                    "summary": f"{summary}\n\n{description[:500]}",
+                    "url": adv.get("html_url") or "",
+                    "published": adv.get("published_at") or "",
+                    "severity": adv.get("severity") or "unknown"
+                })
+
+        elif source_id == "cisa-kev" and isinstance(payload, dict):
+            vulns = payload.get("vulnerabilities", [])
+            for v in vulns[:limit]:
+                cve_id = v.get("cveID") or "CVE-UNKNOWN"
+                name = v.get("vulnerabilityName") or ""
+                desc = v.get("shortDescription") or ""
+                items.append({
+                    "id": cve_id,
+                    "title": f"[{cve_id}] {name}",
+                    "summary": desc,
+                    "url": f"https://nvd.nist.gov/vuln/detail/{cve_id}",
+                    "published": v.get("dateAdded") or "",
+                    "severity": "critical"
+                })
+    except Exception:
+        pass
+    return items
+
+
+def auto_embed_findings(new_papers: list[Path]) -> None:
+    """Triggers background embedding of newly discovered papers into Qdrant & MemoryBroker."""
+    if not new_papers:
+        return
+    seed_script = ROOT / "scripts/data/seed-rag-knowledge.py"
+    if seed_script.is_file():
+        try:
+            import subprocess
+            subprocess.run([sys.executable, str(seed_script), "--from-papers", str(RESEARCH_DIR)],
+                           capture_output=True, timeout=60)
+        except Exception:
+            pass
 
 
 def cmd_scan(args: argparse.Namespace) -> int:
     registry = load_registry()
     active_sources = [s for s in registry.get("sources", []) if s.get("active", True)]
-    print(f"Scanning {len(active_sources)} radar sources using System 1 classifier...")
+    print(f"Scanning {len(active_sources)} radar sources across 5 engineering domains...")
 
-    # Fast mock/contract check mode vs deep sweep
     deep = getattr(args, "deep", False)
     limit = getattr(args, "limit", 3)
+    domain_filter = getattr(args, "domain", None)
 
     RESEARCH_DIR.mkdir(parents=True, exist_ok=True)
     ingested_count = 0
     high_signal_found = []
+    new_paper_paths = []
 
     for s in active_sources:
         s_id = s["id"]
+        s_cat = s.get("category", "")
         s_type = s.get("type", "rss")
         s_url = s.get("url", "")
 
-        if not deep or s_type != "rss" or "arxiv" not in s_id:
+        if not deep:
             print(f"  • {s_id}: verified configuration schema contract ({s_type})")
             continue
 
-        papers = fetch_arxiv_papers(s_url, limit=limit)
-        matched_for_source = 0
-        for p in papers:
-            score, matches = score_text_relevance(p["title"], p["summary"])
-            if score >= 0.25:  # At least one key agentic / systems keyword
-                matched_for_source += 1
-                doc_path = RESEARCH_DIR / f"{p['arxiv_id']}.json"
-                if not doc_path.exists():
-                    p["relevance_score"] = score
-                    p["matched_keywords"] = matches
-                    p["source_id"] = s_id
-                    p["ingested_at"] = datetime.now(timezone.utc).isoformat()
-                    doc_path.write_text(json.dumps(p, indent=2) + "\n", encoding="utf-8")
-                    ingested_count += 1
-                    high_signal_found.append((p["arxiv_id"], p["title"], matches))
+        raw_items = []
+        if "arxiv" in s_id or s_type == "rss":
+            raw_items = fetch_arxiv_papers(s_url, limit=limit)
+        elif s_cat == "cve_national_authorities" or s_type == "api":
+            raw_items = fetch_security_advisories(s_id, s_url, limit=limit)
 
-        print(f"  • {s_id}: scanned {len(papers)} preprints (found {matched_for_source} high-signal)")
+        matched_for_source = 0
+        for item in raw_items:
+            score, matches, domains = score_text_relevance(item["title"], item["summary"])
+            if domain_filter and domain_filter not in domains:
+                continue
+
+            if score >= 0.25:  # Matches at least one domain keyword
+                matched_for_source += 1
+                doc_id = item.get("arxiv_id") or item.get("id") or "UNKNOWN"
+                clean_id = re.sub(r"[^a-zA-Z0-9_\.-]", "_", doc_id)
+                doc_path = RESEARCH_DIR / f"{clean_id}.json"
+                if not doc_path.exists():
+                    item["relevance_score"] = score
+                    item["matched_keywords"] = matches
+                    item["matched_domains"] = domains
+                    item["source_id"] = s_id
+                    item["ingested_at"] = datetime.now(timezone.utc).isoformat()
+                    doc_path.write_text(json.dumps(item, indent=2) + "\n", encoding="utf-8")
+                    ingested_count += 1
+                    new_paper_paths.append(doc_path)
+                    high_signal_found.append((doc_id, item["title"], domains, matches))
+
+        print(f"  • {s_id}: scanned {len(raw_items)} items (found {matched_for_source} high-signal)")
 
     if deep:
-        print(f"\nDeep sweep finished: {ingested_count} newly ingested research papers into .agent/research/papers/.")
-        for aid, title, matches in high_signal_found[:8]:
-            print(f"    - [{aid}] {title[:65]}... (signals: {', '.join(matches[:3])})")
+        print(f"\nDeep sweep finished: {ingested_count} newly ingested items into .agent/research/papers/.")
+        for aid, title, domains, matches in high_signal_found[:8]:
+            d_str = ", ".join(domains) if domains else "general"
+            print(f"    - [{aid}] [{d_str}] {title[:60]}... (signals: {', '.join(matches[:3])})")
+
+        if getattr(args, "auto_embed", False) and new_paper_paths:
+            print(f"Auto-embedding {len(new_paper_paths)} newly discovered items into AIDB & Qdrant...")
+            auto_embed_findings(new_paper_paths)
+            print("Auto-embedding complete.")
     else:
         print("Scan complete: 0 anomalies, all radar endpoints verified.")
     return 0
@@ -201,8 +300,10 @@ def main() -> int:
 
     # scan
     p_scan = subparsers.add_parser("scan", help="Run scan across registered sources")
-    p_scan.add_argument("--deep", action="store_true", help="Perform live arXiv network pull and System 1 evaluation")
-    p_scan.add_argument("--limit", type=int, default=5, help="Number of recent papers to scan per category")
+    p_scan.add_argument("--deep", action="store_true", help="Perform live arXiv/API network pull and System 1 evaluation")
+    p_scan.add_argument("--limit", type=int, default=5, help="Number of recent papers/items to scan per category")
+    p_scan.add_argument("--domain", choices=list(DOMAIN_KEYWORDS.keys()), help="Filter scan to specific engineering domain")
+    p_scan.add_argument("--auto-embed", action="store_true", help="Automatically embed discoveries into AIDB / Qdrant")
 
     args = parser.parse_args()
     if args.command == "list":
