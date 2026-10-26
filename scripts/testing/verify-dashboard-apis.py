@@ -11,6 +11,7 @@ SLOW_ENDPOINT_TIMEOUT_SECONDS = 15.0
 SLOW_ENDPOINTS = {
     "/aistack/verify-self/results",
     "/verify-self/results",
+    "/aistack/advanced/runtime-summary",
 }
 
 

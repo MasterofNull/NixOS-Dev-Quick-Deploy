@@ -1,0 +1,19 @@
+{
+  "arxiv_id": "2610.32978v1",
+  "title": "SceneBloom: Agentic Indoor Environment Generation with Realistic and Diverse Layouts for Embodied Learning",
+  "url": "http://arxiv.org/abs/2610.32978v1",
+  "summary": "Training generalizable embodied agents requires realistic, varied, and simulation-ready indoor environments. Language-guided methods support semantic planning and object-level reasoning, but precise spatial grounding remains difficult. Visual generative models offer rich priors over plausible arrangements, yet their outputs require geometric reasoning to become physically valid 3D scenes. We introduce SceneBloom, an agentic framework that combines visual layout sampling with contract-guided 3D compilation. A hierarchical sampler uses diffusion priors to generate furniture arrangements within functional zones. A compiler then uses relations extracted from each proposal to guide geometric fitting and local pose correction. Across five room types, SceneBloom attains the highest visual quality and physical stability among the compared methods and is the only method with no detected mesh collisions and out-of-bounds objects. Its layouts are also closer to the distribution of real rooms than those of all compared baselines. Object navigation policies trained in these realistic scenes achieve a higher success rate in held-out real scans than those trained on an equal number of real training scans. Code is available at https://github.com/Tinaliu0123/scenebloom.",
+  "authors": [
+    "Yuhan Liu",
+    "Lianhui Qin",
+    "Shenji Wan"
+  ],
+  "published": "2026-10-23T17:59:21Z",
+  "relevance_score": 0.5,
+  "matched_keywords": [
+    "reasoning",
+    "agentic"
+  ],
+  "source_id": "arxiv-cs-ai",
+  "ingested_at": "2026-10-26T04:37:15.624848+00:00"
+}

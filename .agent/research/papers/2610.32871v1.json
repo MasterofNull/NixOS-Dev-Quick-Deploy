@@ -1,0 +1,22 @@
+{
+  "arxiv_id": "2610.32871v1",
+  "title": "J-Comm: Jacobian-Guided Latent Communication between LLM Agents",
+  "url": "http://arxiv.org/abs/2610.32871v1",
+  "summary": "Latent communication requires both an effective continuous reasoning process and an interface through which an external model can leverage its intermediate computation. We present J-Comm, a framework comprising two core components. First, a training-free Geometric Agreement for Latent Reasoning (GEAR) reweights token candidates over existing model embeddings, which monotonically optimizes geometric consensus among candidate tokens in embedding space at each step. Second, we introduce an H+J (Hidden-and-Jacobian) communication interface that gives the Receiver two complementary views of the Sender's reasoning. The H channel supplies continuous inputs derived from feedback distributions, while the J channel conveys intermediate-state cues in vocabulary-indexed Jacobian-lens coordinates. Intuitively, H provides inputs for the Receiver to reason from, while J offers additional guidance within its computation. The Receiver reconstructs these cues using its own dictionary and injects them into intermediate layers during prefill, enabling communication without sharing key-value caches or requiring identical model widths. In Qwen3-8B to Qwen3-4B communication, J-Comm achieves the highest mean score across seven benchmarks, including 94.80% on MATH500, 54.55% on GPQA-Diamond, 73.33% on AIME2024+2025, and 62.93% success on ALFWorld. Compared with TextMAS, it improves performance by 1.29-8.59 percentage points and reduces generated text tokens by 19.2-74.8%.",
+  "authors": [
+    "Xiangwei Wang",
+    "Wei Wang",
+    "Sachith Seneviratne",
+    "Ken Chen",
+    "Yu Xia",
+    "Peng Wang",
+    "Saman Halgamuge"
+  ],
+  "published": "2026-10-23T16:42:38Z",
+  "relevance_score": 0.25,
+  "matched_keywords": [
+    "reasoning"
+  ],
+  "source_id": "arxiv-cs-ma",
+  "ingested_at": "2026-10-26T04:37:42.560875+00:00"
+}

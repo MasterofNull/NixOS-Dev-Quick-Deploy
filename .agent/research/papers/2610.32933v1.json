@@ -1,0 +1,18 @@
+{
+  "arxiv_id": "2610.32933v1",
+  "title": "Yalda-Embedding: Open Development of a Competitive Persian Retrieval Model",
+  "url": "http://arxiv.org/abs/2610.32933v1",
+  "summary": "Despite advances in multilingual text representations, effective dense retrieval for Persian remains constrained by the limited availability of language-specific training resources and compact embedding models. We present Yalda Embedding, a 595.8-million-parameter Persian retrieval model adapted from Qwen3-Embedding-0.6B using more than one million query-document pairs. On eight Persian retrieval tasks from FaMTEB, the model achieves the highest macro-average among the evaluated 0.6B models, scoring 0.5488 and outperforming Qwen3-Embedding-0.6B and F2LLM-v2-0.6B on every task. It also approaches Qwen3-Embedding-4B, winning on four tasks, tying on one, and trailing by 0.0075 in macro-average. An incremental ablation study examines contrastive batch size, optimization stabilization, and relational knowledge distillation from F2LLM-v2-8B. Under the one-epoch training setup, contrastive fine-tuning alone yields a modest mean improvement over initialization and regressions on two tasks. The final distilled configuration improves all eight tasks over the non-distilled model, raising the mean from 0.4813 to 0.5488 without increasing inference-time model size. These gains include hard-negative evaluation tasks despite training without explicitly mined or supplied hard negatives. We release model weights, training and evaluation code, the pairwise dataset, and its teacher-embedded counterpart, enabling inspection of data composition and training procedures, independent evaluation, and reuse without repeating expensive teacher inference.",
+  "authors": [
+    "Yalda Taheri",
+    "Mohammad Hassan Heydari",
+    "Armon Rasooli"
+  ],
+  "published": "2026-10-23T17:30:40Z",
+  "relevance_score": 0.25,
+  "matched_keywords": [
+    "retrieval"
+  ],
+  "source_id": "arxiv-cs-cl",
+  "ingested_at": "2026-10-26T04:37:16.219560+00:00"
+}

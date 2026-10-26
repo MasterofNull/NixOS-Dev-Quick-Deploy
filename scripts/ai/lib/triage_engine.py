@@ -184,18 +184,18 @@ class JournalStreamTriage:
             self.state_dir.mkdir(parents=True, exist_ok=True)
             self.db_path = self.state_dir / "triage_state.sqlite"
             self._init_db()
-        except OSError:
+        except (OSError, sqlite3.OperationalError):
             try:
                 fallback_dir.mkdir(parents=True, exist_ok=True)
                 self.state_dir = fallback_dir
                 self.db_path = self.state_dir / "triage_state.sqlite"
                 self._init_db()
-            except OSError:
+            except (OSError, sqlite3.OperationalError):
                 self.db_path = Path(":memory:")
                 self._init_db()
 
     def _init_db(self) -> None:
-        with sqlite3.connect(self.db_path) as conn:
+        with sqlite3.connect(self.db_path, timeout=5.0) as conn:
             conn.execute("""
                 CREATE TABLE IF NOT EXISTS cursors (
                     subsystem TEXT PRIMARY KEY,

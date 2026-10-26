@@ -1,0 +1,19 @@
+{
+  "arxiv_id": "2610.26568v1",
+  "title": "Reward Objectives for Robust (PO)MDPs: A Law-Preserving Equivalence with (Partially Observable) Games",
+  "url": "http://arxiv.org/abs/2610.26568v1",
+  "summary": "Robust partially observable Markov decision processes model agents that act under partial observability while adversarial environment resolves uncertainty in the transition probabilities. Reward objectives such as discounted-sum, long-run average and cumulative reward under finite and infinite horizons allow quantifying the utility of an agent. We consider the problem of solving RPOMDPs under all four reward objectives, where the goal is to decide whether the value of a risk measure with respect to a reward objective exceeds a given threshold. We consider different risk measures, such as (1)~expected value, (2)~mean-variance (MV), (3)~conditional value-at-risk (CVaR), and (4)~entropic risk (ERisk). Our results can be summarized as follows. First, we formalize the class of law-invariant risk measures, that subsume all four risk measures above. Second, we propose a unified framework for solving RPOMDPs with discounted-sum, long-run average and cumulative reward objectives under any law-invariant risk measure, by reducing the problem to solving partially observable stochastic games (POSGs). Our unified framework applies to (s,a)-rectangular RPOMDPs with polytopic uncertainty sets, which we show to be {\\em equivalent} to POSGs, for each of the four reward objectives and any law-invariant risk measure. We prove equivalence by designing logspace reductions between the RPOMDP and POSG models, that map strategies to strategies and preserve the distribution of the reward objective, up to a constant rescaling factor. Third, as a corollary, we derive new computational complexity results for R(PO)MDPs and POSGs. In particular, we show that solving (s,a)-rectangular RMDPs is as hard as solving simple stochastic games.",
+  "authors": [
+    "Durgam Latha",
+    "Dion Reji",
+    "Dorde Zikelic",
+    "Shankaranarayanan Krishna"
+  ],
+  "published": "2026-10-19T15:23:02Z",
+  "relevance_score": 0.25,
+  "matched_keywords": [
+    "stochastic"
+  ],
+  "source_id": "arxiv-cs-fl",
+  "ingested_at": "2026-10-26T04:37:38.797252+00:00"
+}

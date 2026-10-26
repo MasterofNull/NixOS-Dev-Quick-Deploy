@@ -1,0 +1,17 @@
+{
+  "arxiv_id": "2610.32898v1",
+  "title": "Polyhedral RIS Architecture with Quantum-Assisted Facet Selection for Uniform Coverage",
+  "url": "http://arxiv.org/abs/2610.32898v1",
+  "summary": "Reconfigurable intelligent surfaces (RISs) direct coverage toward moving user equipment (UE), but practical deployments involve discrete phase control, uncertain facet positions, and UE mobility, which require the problem to be re-solved continually. We consider these challenges for the chamfered hexagonal polyhedral RIS, which provides nearly uniform coverage. With both incidence and departure angles, we bound in closed form the gain loss of its best facet relative to the best possible reflecting facet, include the known b-bit quantization loss, and extend the bound to joint random mounting errors of all facets. For a precoded multi-user downlink, each facet-selection subproblem of the max-min rate design is shown to be an exact quadratic unconstrained binary optimization (QUBO) problem, suited to repeated time-constrained solving. The deployment of the base station in relation to the RIS allows the polyhedral surface to bring down the percentage of dead zones in vertical planar panels from 77% to 0.3% and increase the minimum rate by 34% relative to the STAR panel. The simulated annealing algorithm finds the optimum solution in 95% of the cases. The quantum approximation algorithm fails to do so.",
+  "authors": [
+    "Noha Hassan",
+    "Halim Yanikomeroglu"
+  ],
+  "published": "2026-10-23T17:04:25Z",
+  "relevance_score": 0.25,
+  "matched_keywords": [
+    "quantization"
+  ],
+  "source_id": "arxiv-cs-it",
+  "ingested_at": "2026-10-26T04:37:41.543224+00:00"
+}

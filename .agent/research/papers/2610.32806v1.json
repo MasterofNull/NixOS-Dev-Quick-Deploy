@@ -1,0 +1,17 @@
+{
+  "arxiv_id": "2610.32806v1",
+  "title": "Low-Crossing Spanning Paths via Quasi-Uniform Sampling and their Applications",
+  "url": "http://arxiv.org/abs/2610.32806v1",
+  "summary": "Given a set system (X, S), we consider the problems of constructing perfect matchings and spanning paths (also known as Welzl orders) of X with low crossing numbers with respect to S. Matchings with low crossing numbers were originally introduced in the late 1980s in the seminal works of Welzl [29, 30] and Chazelle-Welzl [7], who showed that any set system (X, S) with bounded dual VC-dimension d has a matching with crossing number O |X| 1-1/d , which is optimal.  Low-crossing matchings and spanning paths have found several applications outside of their initial realm of computational geometry, including algorithmic graph theory, model checking, and game theory. In many of these applications, |S| is near-linear in |X|, which motivated the search for an improved construction for this regime. However, the proposed new algorithms provided only average-case bounds or sub-optimal crossing number guarantees for d $\\ge$ 2 [5, 12].  We propose a new quasi-uniform sampling based framework. This allows us to obtain a simple algorithm with expected running time of __ |X| 2 + |S| $\\bullet$ |X| , which improves upon the previous-best  Our result has several immediate consequences, including new faster algorithms for constructing low-crossing spanning paths for set systems induced by balls, as well as for neighborhood set systems of graphs. Moreover, we get the first quadratic-time algorithm for combinatorial discrepancy, with nearly optimal discrepancy (up to a log factor), for bounded dual VC-dimension set systems. Beyond these applications, we believe that our idea could be applied to other algorithms that use the multiplicative weight update method.",
+  "authors": [
+    "M\u00f3nika Csik\u00f3s",
+    "Nabil H Mustafa"
+  ],
+  "published": "2026-10-23T15:44:17Z",
+  "relevance_score": 0.25,
+  "matched_keywords": [
+    "game theory"
+  ],
+  "source_id": "arxiv-cs-cg",
+  "ingested_at": "2026-10-26T04:37:25.399441+00:00"
+}

@@ -202,14 +202,14 @@ class OnCallStorage:
                 "- persisted state is NOT being used", self.db_path, err)
             self._fallback_memory = True
             self.db_path = Path(":memory:")
-            self._mem_conn = sqlite3.connect(":memory:", timeout=30.0)
+            self._mem_conn = sqlite3.connect(":memory:", timeout=2.0)
             self._mem_conn.row_factory = sqlite3.Row
             self._init_db()
 
     def _get_connection(self) -> sqlite3.Connection:
         if self._fallback_memory and self._mem_conn is not None:
             return self._mem_conn
-        conn = sqlite3.connect(str(self.db_path), timeout=30.0)
+        conn = sqlite3.connect(str(self.db_path), timeout=2.0)
         conn.row_factory = sqlite3.Row
         try:
             conn.execute("PRAGMA journal_mode=WAL")

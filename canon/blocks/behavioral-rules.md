@@ -9,7 +9,7 @@
 | 5 | **CONTEXT LIMITS** | Compact aggressively near context ceiling. Sub-agents receive slice-relevant context only. |
 | 6 | **RETRY BUDGET** | Max 3 retries on any failing op. 3rd failure → stop and report to orchestrator. |
 | 7 | **SHELL SAFETY** | No injection patterns. Sanitize external input. Never bypass tool whitelists. |
-| 8 | **PRD GATE** | No coding without a written plan. Log plan to PULSE.log before touching any file. |
+| 8 | **PRD & EXPERT DESIGN GATE** | No coding without a written plan and debated PRD. Non-trivial work must undergo multi-perspective expert scrutiny (architecture, failure modes, UX, security) and freeze MVP scope before edits. Shallow subagent churn forbidden; single lead maintains context ownership. Log plan to PULSE.log. |
 | 8c | **FACTORY GATE** | `aqd workflows factory-gate-preflight` must pass before factory work. |
 | 8a | **ATOMIC PULSE** | Append one line to `.agent/collaboration/PULSE.log` after every successful write/commit: `[ISO-timestamp] [agent] [action]: [file-or-scope] — [outcome]`. Never skip this step. |
 | 8b | **ATOMIC RESUME** | Write `.agent/collaboration/RESUME.json` when starting a new user task AND after each completed todo item. Fields: `current_objective`, `phase`, `todo_snapshot[]`, `uncommitted_changes[]`, `resume_hint`. This is the compaction anchor — survives 401 summarization failures. |
