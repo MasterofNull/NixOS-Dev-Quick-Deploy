@@ -15,5 +15,6 @@
     "stochastic"
   ],
   "source_id": "arxiv-qfin-st",
-  "ingested_at": "2026-10-26T04:37:52.460022+00:00"
+  "ingested_at": "2026-10-26T04:37:52.460022+00:00",
+  "harness_implications": "Quantitative Volatility Bounds: Calibrated spread models for financial agent risk management and downside constraints."
 }

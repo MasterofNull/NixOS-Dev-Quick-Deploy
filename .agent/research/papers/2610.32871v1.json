@@ -18,5 +18,6 @@
     "reasoning"
   ],
   "source_id": "arxiv-cs-ma",
-  "ingested_at": "2026-10-26T04:37:42.560875+00:00"
+  "ingested_at": "2026-10-26T04:37:42.560875+00:00",
+  "harness_implications": "J-Comm Latent Agent Protocol: Jacobian-guided latent state alignment across local models (Qwen-Antigravity-Codex)."
 }

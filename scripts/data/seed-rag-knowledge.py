@@ -19,6 +19,7 @@ Env:
 
 import argparse
 import json
+import glob
 import os
 import re
 import sys
@@ -1980,6 +1981,58 @@ def findings_to_best_practices(findings: list, prd_name: str) -> list:
 # Main
 # ---------------------------------------------------------------------------
 
+
+def papers_to_skills_patterns(papers_dir: str) -> list:
+    records = []
+    for p in sorted(glob.glob(os.path.join(papers_dir, "*.json"))):
+        with open(p) as f:
+            d = json.load(f)
+        arxiv_id = d.get("arxiv_id", "unknown")
+        title = d.get("title", "Unknown Title")
+        summary = d.get("summary", "")
+        imp = d.get("harness_implications")
+        safe_id = re.sub(r"[^a-z0-9_]", "_", arxiv_id.lower())
+        records.append({
+            "skill_name": f"paper_{safe_id}",
+            "description": f"Frontier Research: {title}",
+            "usage_pattern": imp if imp else f"Abstract: {summary[:250]}...",
+            "success_examples": [d.get("url", arxiv_id)],
+            "failure_examples": [],
+            "prerequisites": ["bge-m3-embeddings"],
+            "related_skills": ["aidb-knowledge", "frontier-radar"],
+            "value_score": 0.85 if imp else 0.70,
+            "last_updated": d.get("ingested_at", NOW),
+            "tags": ["frontier-radar", "arxiv", arxiv_id],
+            "source_paper": arxiv_id,
+            "title": title,
+        })
+    return records
+
+
+def papers_to_best_practices(papers_dir: str) -> list:
+    records = []
+    for p in sorted(glob.glob(os.path.join(papers_dir, "*.json"))):
+        with open(p) as f:
+            d = json.load(f)
+        arxiv_id = d.get("arxiv_id", "unknown")
+        title = d.get("title", "Unknown Title")
+        summary = d.get("summary", "")
+        imp = d.get("harness_implications")
+        records.append({
+            "category": "frontier-research",
+            "title": f"{arxiv_id}: {title[:80]}",
+            "description": (
+                f"Research finding from {arxiv_id} ({title}). "
+                f"Harness implication: {imp if imp else summary[:200]}"
+            ),
+            "examples": [d.get("url", "")],
+            "anti_patterns": [],
+            "endorsement_count": 3 if imp else 1,
+            "tags": ["frontier-radar", "arxiv", arxiv_id],
+            "source_paper": arxiv_id,
+        })
+    return records
+
 SEED_DATA = {
     "error-solutions":  ERROR_SOLUTIONS,
     "skills-patterns":  SKILLS_PATTERNS,
@@ -2018,6 +2071,8 @@ def main() -> None:
                         help="Delete wrong-schema points from error-solutions before seeding")
     parser.add_argument("--from-prd", metavar="PATH",
                         help="Parse severity matrix tables from PRD and seed skills-patterns + best-practices")
+    parser.add_argument("--from-papers", metavar="DIR",
+                        help="Parse frontier radar paper summaries from directory and seed skills-patterns + best-practices")
     parser.add_argument("--collections", nargs="+",
                         default=["skills-patterns", "best-practices"],
                         metavar="COLLECTION",
@@ -2048,6 +2103,21 @@ def main() -> None:
             seed_collection(name, records, dry_run=args.dry_run, clear_wrong=False)
             total += len(records)
         print(f"\ndone — {total} records processed across {len(prd_collections)} collections (from PRD)")
+        return
+
+    if args.from_papers:
+        print(f"Parsing radar papers from: {args.from_papers}")
+        paper_collections: dict = {}
+        if "skills-patterns" in args.collections:
+            paper_collections["skills-patterns"] = papers_to_skills_patterns(args.from_papers)
+        if "best-practices" in args.collections:
+            paper_collections["best-practices"] = papers_to_best_practices(args.from_papers)
+
+        total = 0
+        for name, records in paper_collections.items():
+            seed_collection(name, records, dry_run=args.dry_run, clear_wrong=False)
+            total += len(records)
+        print(f"\ndone — {total} records processed across {len(paper_collections)} collections (from papers)")
         return
 
     collections = SEED_DATA if args.collection == "all" else {args.collection: SEED_DATA[args.collection]}

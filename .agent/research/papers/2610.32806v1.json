@@ -13,5 +13,6 @@
     "game theory"
   ],
   "source_id": "arxiv-cs-cg",
-  "ingested_at": "2026-10-26T04:37:25.399441+00:00"
+  "ingested_at": "2026-10-26T04:37:25.399441+00:00",
+  "harness_implications": "Low-Crossing Spanning Graphs: Quasi-uniform sampling for topological layout and visualization in Understand-Anything graphs."
 }

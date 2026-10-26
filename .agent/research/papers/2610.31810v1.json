@@ -14,5 +14,6 @@
     "agentic"
   ],
   "source_id": "arxiv-cs-lo",
-  "ingested_at": "2026-10-26T04:37:21.149877+00:00"
+  "ingested_at": "2026-10-26T04:37:21.149877+00:00",
+  "harness_implications": "Interactive Formalization: Author-in-the-loop autoformalization of declarative NixOS system contracts and invariants."
 }

@@ -21,5 +21,6 @@
     "kv cache"
   ],
   "source_id": "arxiv-cs-os",
-  "ingested_at": "2026-10-26T04:37:20.383542+00:00"
+  "ingested_at": "2026-10-26T04:37:20.383542+00:00",
+  "harness_implications": "SARIA Persistence KV Cache: Coordinated DRAM-SSD reload for long-running LLM agent sessions to prevent cold-start latency."
 }

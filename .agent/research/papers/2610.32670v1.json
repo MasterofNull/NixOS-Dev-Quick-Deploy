@@ -12,5 +12,6 @@
     "recursive"
   ],
   "source_id": "arxiv-cs-cg",
-  "ingested_at": "2026-10-26T04:37:25.400484+00:00"
+  "ingested_at": "2026-10-26T04:37:25.400484+00:00",
+  "harness_implications": "Online Convex Target Chasing: Guarantees competitive ratio bounds in adaptive MLFQ thermal and power budget scheduling."
 }
