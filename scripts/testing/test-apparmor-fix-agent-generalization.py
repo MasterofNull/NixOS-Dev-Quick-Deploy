@@ -1,4 +1,5 @@
 #!/usr/bin/env python3
+import tempfile
 """
 Unit tests for apparmor-fix-agent rule generalization:
 - Volatile /tmp mknod files are skipped
@@ -47,6 +48,41 @@ class TestAppArmorFixAgentGeneralization(unittest.TestCase):
     def test_glob_covers_semaphore(self):
         covers = _agent._apparmor_glob_covers("/dev/shm/sem.*", "/dev/shm/sem.Abc123")
         self.assertTrue(covers)
+
+
+
+    def test_insert_rules_for_profile_inserts_before_deny_home(self):
+        sample_nix = """
+security.apparmor.policies."command-center-dashboard-api" = {
+  profile = ''
+    /bin/sh ix,
+    deny /home/** wx,
+  '';
+};
+"""
+        with tempfile.NamedTemporaryFile("w", delete=False) as f:
+            f.write(sample_nix)
+            tmp_path = Path(f.name)
+
+        orig_nix = _agent.NIX_FILE
+        try:
+            _agent.NIX_FILE = tmp_path
+            ok = _agent._insert_rules_for_profile("command-center-dashboard-api", [
+                ("/proc/@{pids}/cmdline r,", "test comment"),
+                ("/dev/shm/sem.* rwk,", "posix semaphores")
+            ])
+            self.assertTrue(ok)
+            content = tmp_path.read_text()
+            self.assertIn("/proc/@{pids}/cmdline r,  # test comment", content)
+            self.assertIn("/dev/shm/sem.* rwk,  # posix semaphores", content)
+            # verify insertion is before deny /home/**
+            idx_rule = content.find("/dev/shm/sem.* rwk,")
+            idx_deny = content.find("deny /home/**")
+            self.assertLess(idx_rule, idx_deny)
+        finally:
+            _agent.NIX_FILE = orig_nix
+            if tmp_path.exists():
+                tmp_path.unlink()
 
 
 if __name__ == "__main__":
