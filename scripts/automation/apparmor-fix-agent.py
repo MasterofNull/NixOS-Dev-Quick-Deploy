@@ -38,11 +38,12 @@ if str(_LIB) not in sys.path:
     sys.path.insert(0, str(_LIB))
 
 try:
-    from attention_queue import push, resolve
+    from attention_queue import push, resolve, get_by_id
 except ImportError:
     # Fallback for environments where attention_queue is not yet available
     def push(*args, **kwargs): return None
     def resolve(*args, **kwargs): return False
+    def get_by_id(*args, **kwargs): return None
 
 # Use REPO_ROOT env var when set (inherited from health-spider systemd env); __file__
 # resolves to read-only Nix store when spawned from the health-spider service.
@@ -292,6 +293,41 @@ def _path_already_covered(nix_text: str, profile: str, candidate_rule: str) -> b
     return False
 
 
+def _insert_rules_for_profile(profile: str, rules_with_comments: List[Tuple[str, str]]) -> bool:
+    """Insert new rules into NIX_FILE for the given profile. Deduplicates against existing content."""
+    if not NIX_FILE.exists():
+        sys.stderr.write(f"{NIX_FILE} does not exist\n")
+        return False
+    nix_text = NIX_FILE.read_text(encoding="utf-8")
+    lines = nix_text.splitlines(keepends=True)
+    deny_idx, _ = _find_profile_block(lines, profile)
+    if deny_idx == -1:
+        sys.stderr.write(f"Could not find profile block for '{profile}' in {NIX_FILE}\n")
+        return False
+
+    to_insert: List[Tuple[str, str]] = []
+    for rule, cmt in rules_with_comments:
+        if not _path_already_covered(nix_text, profile, rule):
+            to_insert.append((rule, cmt))
+
+    if not to_insert:
+        return True
+
+    ts = datetime.now(timezone.utc).strftime("%Y-%m-%d")
+    insert_block = (
+        f"            # auto-added by apparmor-fix-agent {ts}\n"
+        + "\n".join(f"{rule}  # {cmt}" for rule, cmt in to_insert)
+        + "\n"
+    )
+    lines.insert(deny_idx, insert_block)
+    try:
+        NIX_FILE.write_text("".join(lines), encoding="utf-8")
+        return True
+    except OSError as e:
+        sys.stderr.write(f"[apparmor-fix-agent] error writing {NIX_FILE}: {e}\n")
+        return False
+
+
 # ── Git helpers ────────────────────────────────────────────────────────────────
 
 def _git_commit(message: str) -> Optional[str]:
@@ -513,11 +549,26 @@ def main() -> int:
 
     # --- Mode: Commit Staged (Human approved) ---
     if args.commit_staged:
-        # We need a message for the commit. If we don't have denials context here,
-        # we'll use a generic message or try to reconstruct it.
+        # If an alert-id is given, retrieve the proposed rules from the attention queue and apply them to NIX_FILE
+        target_profile = args.profile
+        rules_to_apply: List[str] = []
+        if args.alert_id:
+            alert = get_by_id(args.alert_id)
+            if alert:
+                payload = alert.get("payload", {})
+                target_profile = target_profile or payload.get("profile")
+                rules_to_apply = payload.get("rules_proposed", [])
+
+        if target_profile and rules_to_apply:
+            rules_tuples = [(r.strip(), "applied via aq-approve") for r in rules_to_apply if r.strip()]
+            if not _insert_rules_for_profile(target_profile, rules_tuples):
+                sys.stderr.write(f"[apparmor-fix-agent] failed to write proposed rules for {target_profile}\n")
+
         msg = "fix(apparmor): commit human-approved rule changes\n\nApproved via attention queue."
         if args.alert_id:
             msg += f"\n\nAlert-Id: {args.alert_id}"
+        if target_profile:
+            msg += f"\nProfile: {target_profile}"
         
         commit_hash = _git_commit(msg)
         if commit_hash:
@@ -570,28 +621,14 @@ def main() -> int:
         json.dump({"rules_added": [r for r, _ in deduped], "commit_hash": None, "message": "dry-run"}, sys.stdout)
         return 0
 
-    # --- Insert rules into mcp-servers.nix ---
-    lines = nix_text.splitlines(keepends=True)
-    deny_idx, _ = _find_profile_block(lines, args.profile)
-    if deny_idx == -1:
-        sys.stderr.write(f"Could not find profile block for '{args.profile}' in {NIX_FILE}\n")
-        return 1
-
-    ts = datetime.now(timezone.utc).strftime("%Y-%m-%d")
-    insert_block = (
-        f"            # auto-added by apparmor-fix-agent {ts}\n"
-        + "\n".join(f"{rule}  # {cmt}" for rule, cmt in deduped)
-        + "\n"
-    )
-    lines.insert(deny_idx, insert_block)
-    try:
-        NIX_FILE.write_text("".join(lines), encoding="utf-8")
-    except OSError as e:
+    # --- Insert rules into mcp-servers.nix (best effort if writable) ---
+    write_ok = _insert_rules_for_profile(args.profile, deduped)
+    if not write_ok:
         # Running as ai-hybrid (health-spider service user); mcp-servers.nix is owned
-        # hyperd:hyperd 644 — write will fail with EPERM. This is expected. The attention
-        # queue human_gate alert below carries the proposed rules for human application.
-        sys.stderr.write(f"[apparmor-fix-agent] warn: could not write {NIX_FILE}: {e}\n")
-        sys.stderr.write("[apparmor-fix-agent] Proceeding to attention queue for human review.\n")
+        # hyperd:hyperd 644 — write fails with EPERM or Read-only file system. This is expected.
+        # The attention queue human_gate alert below carries the proposed rules for human application.
+        sys.stderr.write(f"[apparmor-fix-agent] warn: could not write {NIX_FILE}\n")
+        sys.stderr.write("[apparmor-fix-agent] Proceeding to attention queue for operator review.\n")
 
     # --- Push to Attention Queue instead of direct commit ---
     denial_paths = [d["path"] for d in denials]
