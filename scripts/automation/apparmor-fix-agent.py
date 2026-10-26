@@ -102,6 +102,11 @@ def _make_rule(operation: str, path: str, mask: str, peer: str = "") -> Optional
     if operation == "mknod" and re.fullmatch(r"/tmp/[A-Za-z0-9_]{6,12}", path):
         return None
 
+    # POSIX named semaphores (/dev/shm/sem.<random>) — generalize to /dev/shm/sem.* rwk,
+    # rather than accumulating dozens of volatile random semaphore names.
+    if path.startswith("/dev/shm/sem."):
+        return f"{INDENT}/dev/shm/sem.* rwk,", "POSIX semaphores (IPC synchronization)"
+
     # ── File path operations ───────────────────────────────────────────────────
     # Nix store — generalize hash-prefixed derivation name.
     # Path: /nix/store/<hash-name>/sub/path
@@ -255,10 +260,10 @@ def _path_already_covered(nix_text: str, profile: str, candidate_rule: str) -> b
         return key in block
 
     # Extract the path portion from the rule
-    m = re.search(r"(/[^\s]+)\s+[a-z,]+,$", rule_stripped)
+    m = re.search(r"(/[^\s]*)\s+[a-z,]+,$", rule_stripped)
     if not m:
         return False
-    candidate_path = m.group(1).rstrip("/")
+    candidate_path = m.group(1).rstrip("/") or "/"
 
     # Find the profile block: 200 lines around the deny /home/** line for this profile
     lines = nix_text.splitlines()
