@@ -6198,3 +6198,23 @@ File: scripts/ai/lib/worktree-isolation.sh; scripts/automation/prsi-orchestrator
   Severity: critical
   Action: Re-ran Phase 0 (206/206 passed) and Tier 0 gate (71/71 passed).
   File: attention:attn-da84442017944802
+[DONE] rsi-1f4f3cc572ce1760e15522c3 — resolved 2026-10-26: phase-0 check 0.10.65 passing in health-monitor JSON run 2026-10-26T05:28:52Z — ledger status=resolved
+
+[OPEN] rsi-078190e1dde00e8ddbb767c4 — attention-queue:ai-stack-health-monitor failure in attention:attn-da84442017944802. Root cause evidence: producer=attention-queue:ai-stack-health-monitor; path=attention:attn-da84442017944802; authority=attention-queue; os_error=[ai-stack-health-monitor] QA phase 0: 3 checks failing (0.154.1 agentic workflow parity (FAI, 0.10.61 Her…: QA phase 0: 3 checks failing (0.154.1 agentic workflow parity (FAI, 0.10.61 Herdr H2 monitored presentat, 0.10.66 aq-confine acceptance: profi)  Scheduled health monitor found 3 failing checks:   [0.1. Detected=2026-10-26T05:41:28.477915Z.
+  Severity: critical
+  Action: Re-run `aq-qa 0 --machine` and fix the failing check(s).
+  File: attention:attn-da84442017944802
+[DONE] rsi-2488ad51acdfc222bbe9a33f — resolved 2026-10-26: phase-0 check 0.10.61 passing in health-monitor JSON run 2026-10-26T05:44:06Z — ledger status=resolved
+
+[OPEN] rsi-b14a56f02e72228dea7c852b — aq-qa:phase0 failure in aq-qa:0.10.2. Root cause evidence: producer=aq-qa:phase0; path=aq-qa check 0.10.2; authority=aq-qa; os_error=phase-0 check 0.10.2 failing: token_usage coverage (Command '['python3', '/home/hyperd/Documents/NixOS-Dev-Quick-Deploy/scripts/testing/test-token-usa. Detected=2026-10-26T06:41:24.604802Z.
+  Severity: medium
+  Action: run aq-qa 0 --machine and fix check 0.10.2 at its producer
+  File: aq-qa check 0.10.2
+
+[OPEN] rsi-f62e45d01bf7bb64c20a0cba — attention-queue:ai-stack-health-monitor failure in attention:attn-da84442017944802. Root cause evidence: producer=attention-queue:ai-stack-health-monitor; path=attention:attn-da84442017944802; authority=attention-queue; os_error=[ai-stack-health-monitor] QA phase 0: 2 checks failing (0.10.2 token_usage coverage (Comman, 0.10.66 aq-c…: QA phase 0: 2 checks failing (0.10.2 token_usage coverage (Comman, 0.10.66 aq-confine acceptance: profi)  Scheduled health monitor found 2 failing checks:   [0.10.2] token_usage coverage (Command '['p. Detected=2026-10-26T06:41:28.831378Z.
+  Severity: high
+  Action: Re-run `aq-qa 0 --machine` and fix the failing check(s).
+  File: attention:attn-da84442017944802
+[DONE] rsi-b14a56f02e72228dea7c852b — resolved 2026-10-26: phase-0 check 0.10.2 passing in health-monitor JSON run 2026-10-26T06:44:01Z — ledger status=resolved
+
+[DONE] rsi-6e45c88de3ad4e164a6da6cb — resolved 2026-10-26: fixed timestamp parsing in ContinuousLearningPipeline._parse_event_timestamp to handle +00:00Z and trailing Z ISO variants — ledger status=resolved
