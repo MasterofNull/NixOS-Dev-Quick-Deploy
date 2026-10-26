@@ -7463,6 +7463,48 @@ def _durable_runtime_health_summary() -> Dict[str, Any]:
                 "reason": f"durable_runtime_unavailable:{type(exc).__name__}"}
 
 
+def _durable_sweeper_health_summary() -> Dict[str, Any]:
+    """Bounded, read-only health summary of Durable Agent Sweeper & Signal Classifier."""
+    try:
+        candidates = [
+            Path("/var/lib/aq-durable-agent/sweeper-state.json"),
+            Path.home() / ".local" / "share" / "aq-durable-agent" / "sweeper-state.json",
+        ]
+        state_file = next((p for p in candidates if p.exists()), None)
+        if not state_file:
+            return {
+                "available": False,
+                "status": "unconfigured",
+                "total_sweeps": 0,
+                "items_ingested": 0,
+                "facts_count": 0,
+                "signal_count": 0,
+                "last_tick_utc": None,
+            }
+
+        with open(state_file, "r", encoding="utf-8") as fh:
+            data = json.load(fh)
+
+        metrics = data.get("metrics", {})
+        return {
+            "available": True,
+            "status": data.get("status", "idle"),
+            "total_sweeps": int(metrics.get("total_sweeps", 0)),
+            "items_ingested": int(metrics.get("items_ingested", 0)),
+            "facts_count": int(metrics.get("facts_count", 0)),
+            "signal_count": int(metrics.get("signal_count", 0)),
+            "hype_count": int(metrics.get("hype_count", 0)),
+            "last_tick_utc": data.get("last_tick_utc"),
+            "path": str(state_file),
+        }
+    except (OSError, ValueError, TypeError, json.JSONDecodeError) as exc:
+        return {
+            "available": False,
+            "status": "unverified",
+            "reason": f"sweeper_unavailable:{type(exc).__name__}",
+        }
+
+
 def _oncall_daemon_health_summary() -> Dict[str, Any]:
     """Bounded, read-only health summary of Autonomous On-Call Daemon (DP-3)."""
     try:
@@ -7645,6 +7687,7 @@ async def get_advanced_runtime_summary() -> Dict[str, Any]:
                 "prompt_compile": await asyncio.to_thread(_prompt_compile_health_summary),
                 "triage": await asyncio.to_thread(_triage_health_summary),
                 "durable_runtime": await asyncio.to_thread(_durable_runtime_health_summary),
+                "durable_sweeper": await asyncio.to_thread(_durable_sweeper_health_summary),
                 "oncall_daemon": await asyncio.to_thread(_oncall_daemon_health_summary),
             },
             "learning": {
@@ -9620,3 +9663,9 @@ async def get_oncall_claims() -> List[Dict[str, Any]]:
         return [c.__dict__ for c in claims]
     except Exception as exc:
         raise HTTPException(status_code=500, detail=str(exc))
+
+
+@router.get("/durable/sweeper")
+async def get_durable_sweeper() -> Dict[str, Any]:
+    """Return health and taxonomy metrics of Durable Agent Sweeper & Classifier."""
+    return await asyncio.to_thread(_durable_sweeper_health_summary)
