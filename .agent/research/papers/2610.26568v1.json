@@ -15,5 +15,6 @@
     "stochastic"
   ],
   "source_id": "arxiv-cs-fl",
-  "ingested_at": "2026-10-26T04:37:38.797252+00:00"
+  "ingested_at": "2026-10-26T04:37:38.797252+00:00",
+  "harness_implications": "Robust Agent Policy Bounds: Equivalence modeling for partially observable agent loops and failure-mode recovery boundaries."
 }

@@ -18,5 +18,6 @@
     "retrieval"
   ],
   "source_id": "arxiv-cs-ar",
-  "ingested_at": "2026-10-26T04:37:40.258654+00:00"
+  "ingested_at": "2026-10-26T04:37:40.258654+00:00",
+  "harness_implications": "Model Checker Guided Repair: Formal verification feedback loops for automated multi-line bug remediation in harness PRs."
 }

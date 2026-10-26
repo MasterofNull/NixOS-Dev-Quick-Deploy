@@ -14,5 +14,6 @@
     "retrieval"
   ],
   "source_id": "arxiv-cs-cl",
-  "ingested_at": "2026-10-26T04:37:16.219560+00:00"
+  "ingested_at": "2026-10-26T04:37:16.219560+00:00",
+  "harness_implications": "Dense Retrieval Calibration: Retrieval score normalization and multi-lingual BGE-M3 threshold tuning for AIDB."
 }

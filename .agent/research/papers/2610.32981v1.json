@@ -17,5 +17,6 @@
     "quantization"
   ],
   "source_id": "arxiv-eess-sp",
-  "ingested_at": "2026-10-26T04:37:56.955964+00:00"
+  "ingested_at": "2026-10-26T04:37:56.955964+00:00",
+  "harness_implications": "Spherical Codec Compression: High-efficiency perceptual compression methods for edge sensor streams and audio telemetry."
 }

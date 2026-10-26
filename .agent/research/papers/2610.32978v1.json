@@ -15,5 +15,6 @@
     "agentic"
   ],
   "source_id": "arxiv-cs-ai",
-  "ingested_at": "2026-10-26T04:37:15.624848+00:00"
+  "ingested_at": "2026-10-26T04:37:15.624848+00:00",
+  "harness_implications": "Synthetic Simulation Environments: Agentic indoor scene layout generation for multi-agent spatial coordination testing."
 }

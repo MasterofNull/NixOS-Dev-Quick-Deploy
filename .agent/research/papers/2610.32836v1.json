@@ -15,5 +15,6 @@
     "retrieval"
   ],
   "source_id": "arxiv-cs-ds",
-  "ingested_at": "2026-10-26T04:37:27.863640+00:00"
+  "ingested_at": "2026-10-26T04:37:27.863640+00:00",
+  "harness_implications": "Fast Sparse Context Graph Routing: Compresses boolean reachability matrices in lean-ctx and call-graph indexers."
 }

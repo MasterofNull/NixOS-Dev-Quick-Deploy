@@ -12,5 +12,6 @@
     "reasoning"
   ],
   "source_id": "arxiv-qfin-gn",
-  "ingested_at": "2026-10-26T04:37:50.052586+00:00"
+  "ingested_at": "2026-10-26T04:37:50.052586+00:00",
+  "harness_implications": "Trading Agents Market Sentiment: Leverages tone analysis and surprise weighting in multi-agent trading models (:8003/api/trading)."
 }

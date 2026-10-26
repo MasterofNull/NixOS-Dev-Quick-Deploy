@@ -13,5 +13,6 @@
     "quantization"
   ],
   "source_id": "arxiv-cs-it",
-  "ingested_at": "2026-10-26T04:37:41.543224+00:00"
+  "ingested_at": "2026-10-26T04:37:41.543224+00:00",
+  "harness_implications": "Constrained Resource Allocation: Quantum-assisted and combinatorial facet selection for GPU APU memory tiering."
 }
