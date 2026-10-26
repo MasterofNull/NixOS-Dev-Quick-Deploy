@@ -544,17 +544,53 @@ class EffectSandwichMiddleware:
 def health_summary(repo_root: Optional[Path] = None) -> Dict[str, Any]:
     """Bounded, read-only health summary of Durable Agent Runtime (DP-2)."""
     try:
-        store = DurableEffectStore()
-        intents = store.list_intents()
-        unresolved = store.list_unresolved()
-        committed = [i for i in intents if i.state in (IntentState.COMMITTED.value, IntentState.RECONCILED_COMMITTED.value)]
+        env_path = os.environ.get("AQ_DURABLE_STORE_PATH")
+        if env_path:
+            ledger_path = Path(env_path)
+        elif repo_root:
+            ledger_path = Path(repo_root) / ".agents" / "durable" / "ledger.json"
+        else:
+            root = Path(__file__).resolve().parents[3]
+            ledger_path = root / ".agents" / "durable" / "ledger.json"
+
+        if not ledger_path.exists():
+            return {
+                "available": False,
+                "status": "unconfigured",
+                "total_intents": 0,
+                "unresolved_intents": 0,
+                "committed_intents": 0,
+                "ledger_path": str(ledger_path),
+            }
+
+        # Read directly without acquiring write lock or mutating store
+        with open(ledger_path, "r", encoding="utf-8") as fh:
+            data = json.load(fh)
+
+        intents_dict = data.get("intents", {})
+        intents = [IntentRecord.from_dict(v) for v in intents_dict.values()]
+        unresolved = [
+            i for i in intents
+            if i.state in (
+                IntentState.OUTCOME_UNKNOWN.value,
+                IntentState.FAILED_KNOWN.value,
+                IntentState.RECONCILING.value,
+            )
+        ]
+        committed = [
+            i for i in intents
+            if i.state in (
+                IntentState.COMMITTED.value,
+                IntentState.RECONCILED_COMMITTED.value,
+            )
+        ]
         return {
             "available": True,
             "status": "operational",
             "total_intents": len(intents),
             "unresolved_intents": len(unresolved),
             "committed_intents": len(committed),
-            "ledger_path": str(store.ledger_path),
+            "ledger_path": str(ledger_path),
         }
     except Exception as exc:
         return {
