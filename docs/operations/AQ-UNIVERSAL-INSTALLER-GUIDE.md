@@ -66,6 +66,10 @@ sudo dd if=$(echo result-iso/iso/*.iso) of=/dev/sdX bs=4M status=progress conv=f
 
 ---
 
+### 2.3 Verified Flake Derivations (Pre-Flight Evaluated)
+- **Plain Ext4/ZFS Target**: `/nix/store/r4nq257k8nn4vy97cdccv7y4i62238p7-nixos-system-aqos-install-vm-26.05.20261015.26f4107.drv`
+- **TPM2/LUKS Encrypted Target**: `/nix/store/v8g0635nsmq04fxklgz5bdycbjahankl-nixos-system-aqos-install-vm-26.05.20261015.26f4107.drv`
+
 ## 3. Universal Hardware Target Matrices
 
 | Hardware Class | Recommended Profile | Storage Layout | Model Offload Envelope |
