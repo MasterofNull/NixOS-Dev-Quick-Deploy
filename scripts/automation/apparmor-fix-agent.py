@@ -353,6 +353,19 @@ def _git_commit(message: str) -> Optional[str]:
             ["git", "-C", str(REPO_ROOT), "add", *[str(path) for path in paths]],
             check=True, capture_output=True,
         )
+        # If no changes were staged (e.g. proposed rules were already covered),
+        # return HEAD cleanly rather than letting git commit fail on empty tree.
+        diff_res = subprocess.run(
+            ["git", "-C", str(REPO_ROOT), "diff", "--cached", "--quiet"],
+            check=False,
+        )
+        if diff_res.returncode == 0:
+            result = subprocess.run(
+                ["git", "-C", str(REPO_ROOT), "rev-parse", "--short", "HEAD"],
+                capture_output=True, text=True,
+            )
+            return result.stdout.strip()
+
         # Owner-approved rule commits still land directly on main in the primary checkout;
         # the pre-commit main-checkout guard refuses that unless overridden (WR-11).
         subprocess.run(
