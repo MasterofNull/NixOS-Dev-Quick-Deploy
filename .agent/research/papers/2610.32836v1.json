@@ -1,0 +1,19 @@
+{
+  "arxiv_id": "2610.32836v1",
+  "title": "Compressed Boolean Matrix Multiplication using Bicliques",
+  "url": "http://arxiv.org/abs/2610.32836v1",
+  "summary": "Boolean matrix multiplication is a fundamental operation in many graph-based applications, including web and social network analysis, information retrieval, and graph query evaluation. However, conventional sparse representations such as CSR}/CSC still incur significant space and time costs on large graphs. In this work, we introduce a method for multiplying Boolean matrices based on a biclique-based compressed representation that decomposes them into dense bipartite subgraphs, thereby capturing large sets of implicit edges. We first improve the iterative biclique extraction algorithm of Hern\u00e1ndez and Navarro by introducing percentile-based parameter adaptation that dynamically adjusts its parameters according to the degree distribution, enhancing both extraction efficiency and compression ratio. We then extend the Schoor multiplication algorithm to operate directly on biclique-encoded matrices, thereby enabling a compositional form of multiplication where the output can also be represented as a collection of bicliques. Our experimental results on large real-world web and social graphs show that our approach achieves substantial reductions in space and computation time with respect to CSR/CSC-based representations. For example, using biclique extraction just as a tool to speed up multiplication (but retaining the CSR/CSC format) yields up to 34-fold speedups. Further, using the biclique-based representation for input and output yields up to a 10-fold reduction in space and up to a 290-fold speedup for matrix multiplication. These results demonstrate that our representation based on bicliques is both space- and time-effective to support an algebra of Boolean matrices.",
+  "authors": [
+    "Nicol\u00e1s Araya",
+    "Jos\u00e9 Zagal",
+    "Cecilia Hern\u00e1ndez",
+    "Gonzalo Navarro"
+  ],
+  "published": "2026-10-23T16:10:07Z",
+  "relevance_score": 0.25,
+  "matched_keywords": [
+    "retrieval"
+  ],
+  "source_id": "arxiv-cs-ds",
+  "ingested_at": "2026-10-26T04:37:27.863640+00:00"
+}

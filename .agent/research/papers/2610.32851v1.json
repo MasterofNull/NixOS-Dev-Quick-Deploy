@@ -1,0 +1,23 @@
+{
+  "arxiv_id": "2610.32851v1",
+  "title": "Reimagining Enterprise RAG for Multi-Agent Systems: A Knowledge Layer That Organizes Before It Retrieves",
+  "authors": [
+    "Garima Agrawal",
+    "Prasun Das",
+    "Akshay Sarvade",
+    "Priyanka L",
+    "Minisha N",
+    "Sravani Joshna",
+    "Hemath Manivannan",
+    "Lavanya Korada",
+    "Sambhrit Pattanayak",
+    "Srashti Gupta",
+    "Siddu R",
+    "Prasad Kalyanasundaram"
+  ],
+  "published": "2026-10-23T16:21:56Z",
+  "summary": "Enterprises are deploying agentic AI across the software development lifecycle, and they need the behavioral logic of the systems they act on, not stakeholder documentation. A seven-agent reverse-engineering pipeline recovered this logic, processing 241 repositories across 18 services into thousands of artifacts describing scope, journeys, rules and acceptance criteria. Recovery does not confer usability. Entities like offer, eligibility, and activation recur across services under a shared vocabulary, related in name but operationally distinct, so one end-to-end journey implicates over a thousand near-identical rules that must not be conflated. Flat vector retrieval fails, returning an identical rule from the wrong service at high similarity with no signal of error. Content-level ontology, the traditional remedy, did not exist, and relating every occurrence of recurring entities would have cost more than the engagement and not survived a release cycle. We place the ontology at the artifact level. In this machine-generated corpus, each artifact retains its producer, component, service, domain and type, provenance that disambiguates before content is read. We present a knowledge layer that organizes before retrieving: a self-describing catalog, a sparse metadata registry, and a navigation hypergraph defined over artifacts rather than extracted entities. Queries resolve to artifact identifiers that constrain vector search, so the competing rule from another service is absent rather than outranked, making disambiguation structural, not statistical. Built in under a week and admitting new services by convention, the layer serves SDLC agents, developers, quality engineers and analysts. It supported root-cause analysis and resolution of 100+ production defects with developer verification and attributed 35 release regression failures to specific rules and services.",
+  "url": "http://arxiv.org/abs/2610.32851v1",
+  "ingested_at": "2026-10-26T04:30:34.473049+00:00",
+  "harness_implications": "Organize-Before-Retrieve: pre-structures system behavioral logic into knowledge graphs before vector search, directly informing AIDB crystalline memory layers."
+}

@@ -12,6 +12,25 @@ parallel agents; signaling task completion; structuring RESUME.json for cross-ag
 
 ---
 
+
+## 0. Mandatory Expert-Team Full-Stack Perspective for PRDs & Plans
+
+When authoring, debating, or reviewing PRDs and architectural plans (Behavioral Rule 8), every agent MUST act as a complete cross-functional expert full-stack engineering team. Even when operating as a single lead agent, the proposal must explicitly debate and address all 9 mandatory perspectives:
+
+1. **Product / Operator UX Lead**: Workflow discovery, operator cognitive load, clear intent, zero friction.
+2. **Dashboard / Information Architect**: Visual hierarchy, Impeccable OKLCH design tokens, real-time streaming HUD, zero decorative stubs.
+3. **CLI / Terminal UX Designer**: Coherent CLI commands (), progress indicators, discoverability.
+4. **Agent-Orchestration Architect**: Lead-agent context ownership, coordination contracts, session lifecycle, token economics.
+5. **Systems / NixOS Implementer**: Declarative configuration, systemd units, flake outputs, microarchitecture offload limits.
+6. **Security & Sandbox Reviewer**: Landlock loopback pins, AppArmor LSM, bwrap cell isolation, secret handling ().
+7. **Observability & SRE Owner**: P95 latency, WAL SQLite concurrency, Prometheus metrics, structured health endpoints.
+8. **QA & Eval Engineer**: Binary pass/fail acceptance commands, regression tests, 6-dimensional DoD attestation.
+9. **Performance & Tokenomics Engineer**: Context window ceiling, KV-cache tiering, fast-path caching.
+
+Disagreements between perspectives must be called out and resolved in a consolidated decision record before scope is frozen as .
+
+---
+
 ## 1. Role Matrix (summary)
 
 | Role | Can do | Cannot do |

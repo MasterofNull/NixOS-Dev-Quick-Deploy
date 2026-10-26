@@ -1,0 +1,16 @@
+{
+  "arxiv_id": "2610.32670v1",
+  "title": "A Linear Lower Bound for Convex Body Chasing in Every $\\ell_p$ Norm",
+  "url": "http://arxiv.org/abs/2610.32670v1",
+  "summary": "We establish an $\u03a9(d)$ lower bound on the competitive ratio of convex body chasing in $\\mathbb{R}^d$ with $\\ell_p$ movement costs for any $p \\in [1, \\infty)$. Previously, the best known lower bound for general $p$ was $\u03a9(\\max\\{\\sqrt{d}, d^{1-1/p}\\})$, established by Bubeck et al. (2019); a linear lower bound was known only for $p = \\infty$, realized by the standard construction of chasing faces of a hypercube. Our lower bound strictly improves on the prior bound for every fixed $p \\in [1, \\infty)$ and shows that the functional Steiner point algorithm of Sellke (2023) - which has competitive ratio $O(d)$ - is asymptotically optimal for every $\\ell_p$ norm. Our lower bound is based on the recursive construction of Bubeck, Coester, and Rabani (2023) for metrical service systems, which gives a lower bound of $\u03a9(r^2)$ for requests of size $O(r)$ in that setting. We show that requests in their construction, each comprising a set of discrete points in a graph metric, can be mapped to the vertices of convex requests in a $(2r+1)$-dimensional vector space while approximately preserving movement costs up to a factor of $O(r)$, which establishes the lower bound.",
+  "authors": [
+    "Nicolas Christianson"
+  ],
+  "published": "2026-10-23T14:12:52Z",
+  "relevance_score": 0.25,
+  "matched_keywords": [
+    "recursive"
+  ],
+  "source_id": "arxiv-cs-cg",
+  "ingested_at": "2026-10-26T04:37:25.400484+00:00"
+}

@@ -6140,3 +6140,61 @@ File: scripts/ai/lib/worktree-isolation.sh; scripts/automation/prsi-orchestrator
 [DONE] rsi-23b0c2d9a46a00da6703544e — resolved 2026-10-25: attention alert attn-63235b177c5a4b2e resolved in attention queue (2026-10-25T18:41:10Z) — ledger status=resolved
 [DONE] rsi-64d528cb2a3b167a0c4648df — resolved 2026-10-25: attention alert attn-63235b177c5a4b2e resolved in attention queue (2026-10-25T18:41:10Z) — ledger status=resolved
 [DONE] rsi-e9c17315d33303ae77cbfeb4 — resolved 2026-10-25: attention alert attn-63235b177c5a4b2e resolved in attention queue (2026-10-25T18:41:10Z) — ledger status=resolved
+
+[OPEN] rsi-98dce46d38b95218e57afb58 — aq-qa:phase0 failure in aq-qa:0.10.65. Root cause evidence: producer=aq-qa:phase0; path=aq-qa check 0.10.65; authority=aq-qa; os_error=phase-0 check 0.10.65 failing: Frontier FE-2b prompt compile: reflective optimization, candidate gating, compiled artifact, dashboard visibility (ython. Detected=2026-10-26T03:41:23.038062Z.
+  Severity: medium
+  Action: run aq-qa 0 --machine and fix check 0.10.65 at its producer
+  File: aq-qa check 0.10.65
+
+[OPEN] rsi-420ad988f2b1d9931a6b8bce — attention-queue:ai-stack-health-monitor failure in attention:attn-0409f3eab57c4b1c. Root cause evidence: producer=attention-queue:ai-stack-health-monitor; path=attention:attn-0409f3eab57c4b1c; authority=attention-queue; os_error=[ai-stack-health-monitor] QA phase 0: 2 checks failing (0.10.66 aq-confine acceptance: profi, 0.10.65 Fro…: QA phase 0: 2 checks failing (0.10.66 aq-confine acceptance: profi, 0.10.65 Frontier FE-2b prompt compil)  Scheduled health monitor found 2 failing checks:   [0.10.66] aq-confine acceptance: profiles,. Detected=2026-10-26T03:41:27.986713Z.
+  Severity: high
+  Action: Re-run `aq-qa 0 --machine` and fix the failing check(s).
+  File: attention:attn-0409f3eab57c4b1c
+[DONE] rsi-967d65e207c0d2d42cd11eac — resolved 2026-10-26: attention alert attn-db1ecb1d57bb4e3d resolved in attention queue (2026-10-26T03:41:28Z) — ledger status=resolved
+[DONE] rsi-98dce46d38b95218e57afb58 — resolved 2026-10-26: phase-0 check 0.10.65 passing in health-monitor JSON run 2026-10-26T03:44:45Z — ledger status=resolved
+[DONE] rsi-420ad988f2b1d9931a6b8bce — resolved 2026-10-26: attention alert attn-0409f3eab57c4b1c resolved in attention queue (2026-10-26T03:56:27Z) — ledger status=resolved
+
+[OPEN] rsi-1549866afcdabca6e02d831d — systemd:failed-unit failure in failed-unit:hyperd.service. Root cause evidence: producer=systemd:failed-unit; path=hyperd.service; authority=systemd; os_error=unit hyperd.service in failed state. Detected=2026-10-26T04:11:22.934934Z.
+  Severity: medium
+  Action: journalctl -u hyperd.service; fix producer, then systemctl reset-failed
+  File: hyperd.service
+
+[OPEN] rsi-62ba2338108908b812889485 — attention-queue:ai-stack-health-monitor failure in attention:attn-da84442017944802. Root cause evidence: producer=attention-queue:ai-stack-health-monitor; path=attention:attn-da84442017944802; authority=attention-queue; os_error=[ai-stack-health-monitor] QA phase 0: 1 check failing (0.10.66 aq-confine acceptance: profi): Scheduled health monitor found 1 failing check:   [0.10.66] aq-confine acceptance: profiles, goldens, cgroup scope limits, bwrap isolation (AQ_CONFINE_REQUIRE=1 locally) (dex: host write-tree equals t. Detected=2026-10-26T04:11:27.344402Z.
+  Severity: high
+  Action: Re-run `aq-qa 0 --machine` and fix the failing check(s).
+  File: attention:attn-da84442017944802
+
+[OPEN] rsi-2a0a9e6b664ab93e891b5853 — journal:ai-hybrid-coordinator failure in service-error:ai-hybrid-coordinator:Error handling request from <n>.<n>.<n>.<n>. Root cause evidence: producer=journal:ai-hybrid-coordinator; path=ai-hybrid-coordinator; authority=journald; os_error=recurring error in ai-hybrid-coordinator: Error handling request from <n>.<n>.<n>.<n>. Detected=2026-10-26T04:26:27.981389Z.
+  Severity: medium
+  Action: 5 occurrence(s) in last 3600s; example: {"event": "Error handling request from 127.0.0.1", "exc_info": ["<class 'NameError'>", "NameError(\"name 'homeostasis_manager' is not defined\")", "<traceback object at 0x72403d080c80>"], "logger": "a; journalctl -u ai-hybrid-coordinator; fix producer
+  File: ai-hybrid-coordinator
+
+[OPEN] rsi-9049951adce59903c337e8e2 — journal:command-center-dashboard-api failure in service-error:command-center-dashboard-api:Traceback (most recent call last):. Root cause evidence: producer=journal:command-center-dashboard-api; path=command-center-dashboard-api; authority=journald; os_error=recurring error in command-center-dashboard-api: Traceback (most recent call last):. Detected=2026-10-26T04:56:27.737983Z.
+  Severity: medium
+  Action: 11 occurrence(s) in last 3600s; example: Traceback (most recent call last):; journalctl -u command-center-dashboard-api; fix producer
+  File: command-center-dashboard-api
+
+[OPEN] rsi-2488ad51acdfc222bbe9a33f — aq-qa:phase0 failure in aq-qa:0.10.61. Root cause evidence: producer=aq-qa:phase0; path=aq-qa check 0.10.61; authority=aq-qa; os_error=phase-0 check 0.10.61 failing: Herdr H2 monitored presentation projection: pure determinism, operator context, dashboard summary ( [c.__dict__ for c in. Detected=2026-10-26T05:11:23.749148Z.
+  Severity: medium
+  Action: run aq-qa 0 --machine and fix check 0.10.61 at its producer
+  File: aq-qa check 0.10.61
+
+[OPEN] rsi-1f4f3cc572ce1760e15522c3 — aq-qa:phase0 failure in aq-qa:0.10.65. Root cause evidence: producer=aq-qa:phase0; path=aq-qa check 0.10.65; authority=aq-qa; os_error=phase-0 check 0.10.65 failing: Frontier FE-2b prompt compile: reflective optimization, candidate gating, compiled artifact, dashboard visibility (pile". Detected=2026-10-26T05:11:23.784143Z.
+  Severity: medium
+  Action: run aq-qa 0 --machine and fix check 0.10.65 at its producer
+  File: aq-qa check 0.10.65
+
+[OPEN] rsi-11655e9d339646223ecc0903 — attention-queue:ai-stack-health-monitor failure in attention:attn-da84442017944802. Root cause evidence: producer=attention-queue:ai-stack-health-monitor; path=attention:attn-da84442017944802; authority=attention-queue; os_error=[ai-stack-health-monitor] QA phase 0: 3 checks failing (0.10.61 Herdr H2 monitored presentat, 0.10.66 aq-…: QA phase 0: 3 checks failing (0.10.61 Herdr H2 monitored presentat, 0.10.66 aq-confine acceptance: profi, 0.10.65 Frontier FE-2b prompt compil)  Scheduled health monitor found 3 failing checks:   [0.1. Detected=2026-10-26T05:11:28.368822Z.
+  Severity: critical
+  Action: Re-run `aq-qa 0 --machine` and fix the failing check(s).
+  File: attention:attn-da84442017944802
+
+[RESOLVED] rsi-dc6a45e1b64e14659d9e82b5 — aq-qa:phase0 failure in aq-qa:0.154.1. Root cause evidence: producer=aq-qa:phase0; path=aq-qa check 0.154.1; authority=aq-qa; os_error=phase-0 check 0.154.1 failing: agentic workflow parity (FAIL: .agent/GEMINI.md missing: prd_gate FAIL: .agent/CODEX.md missing: prd_gate FAIL: .agent/L. Detected=2026-10-26T05:26:24.018046Z. Resolved=2026-10-26T05:38:25Z.
+  Severity: medium
+  Action: Aligned Rule 8 PRD gate wording in canon/blocks/behavioral-rules.md with test-agentic-workflow-parity.py pattern matchers and compiled to all agent instruction files. Phase 0 and Tier 0 now 100% clean.
+  File: aq-qa check 0.154.1
+
+[RESOLVED] rsi-da950aa9f41a2e6779564d96 — attention-queue:ai-stack-health-monitor failure in attention:attn-da84442017944802. Root cause evidence: producer=attention-queue:ai-stack-health-monitor; path=attention:attn-da84442017944802; authority=attention-queue; os_error=[ai-stack-health-monitor] QA phase 0: 4 checks failing (0.154.1 agentic workflow parity (FAI, 0.10.61 Her…: QA phase 0: 4 checks failing (0.154.1 agentic workflow parity (FAI, 0.10.61 Herdr H2 monitored presentat, 0.10.66 aq-confine acceptance: profi +1 more)  Scheduled health monitor found 4 failing checks. Detected=2026-10-26T05:26:28.791192Z. Resolved=2026-10-26T05:38:25Z.
+  Severity: critical
+  Action: Re-ran Phase 0 (206/206 passed) and Tier 0 gate (71/71 passed).
+  File: attention:attn-da84442017944802

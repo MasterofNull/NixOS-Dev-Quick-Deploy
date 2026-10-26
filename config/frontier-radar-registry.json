@@ -1,6 +1,6 @@
 {
-  "version": "1.0.0",
-  "updated_at": "2026-10-23T06:09:53.211221+00:00",
+  "version": "2.1.0",
+  "updated_at": "2026-10-26T04:37:11.283126+00:00",
   "sources": [
     {
       "id": "cisa-kev",
@@ -21,6 +21,42 @@
       "active": true
     },
     {
+      "id": "github-security-advisories",
+      "name": "GitHub Security Advisory Database",
+      "category": "cve_national_authorities",
+      "url": "https://api.github.com/advisories",
+      "type": "api",
+      "trust_tier": "tier1_authoritative",
+      "active": true
+    },
+    {
+      "id": "arxiv-cs-ai",
+      "name": "arXiv Artificial Intelligence",
+      "category": "research_preprints",
+      "url": "https://export.arxiv.org/rss/cs.AI",
+      "type": "rss",
+      "trust_tier": "tier2_peer_reviewed",
+      "active": true
+    },
+    {
+      "id": "arxiv-cs-cl",
+      "name": "arXiv Computation and Language",
+      "category": "research_preprints",
+      "url": "https://export.arxiv.org/rss/cs.CL",
+      "type": "rss",
+      "trust_tier": "tier2_peer_reviewed",
+      "active": true
+    },
+    {
+      "id": "arxiv-cs-lg",
+      "name": "arXiv Machine Learning",
+      "category": "research_preprints",
+      "url": "https://export.arxiv.org/rss/cs.LG",
+      "type": "rss",
+      "trust_tier": "tier2_peer_reviewed",
+      "active": true
+    },
+    {
       "id": "arxiv-cs-se",
       "name": "arXiv Software Engineering",
       "category": "research_preprints",
@@ -34,6 +70,42 @@
       "name": "arXiv Cryptography and Security",
       "category": "research_preprints",
       "url": "https://export.arxiv.org/rss/cs.CR",
+      "type": "rss",
+      "trust_tier": "tier2_peer_reviewed",
+      "active": true
+    },
+    {
+      "id": "arxiv-cs-dc",
+      "name": "arXiv Distributed, Parallel, and Cluster Computing",
+      "category": "research_preprints",
+      "url": "https://export.arxiv.org/rss/cs.DC",
+      "type": "rss",
+      "trust_tier": "tier2_peer_reviewed",
+      "active": true
+    },
+    {
+      "id": "arxiv-cs-os",
+      "name": "arXiv Operating Systems",
+      "category": "research_preprints",
+      "url": "https://export.arxiv.org/rss/cs.OS",
+      "type": "rss",
+      "trust_tier": "tier2_peer_reviewed",
+      "active": true
+    },
+    {
+      "id": "arxiv-cs-lo",
+      "name": "arXiv Logic in Computer Science",
+      "category": "research_preprints",
+      "url": "https://export.arxiv.org/rss/cs.LO",
+      "type": "rss",
+      "trust_tier": "tier2_peer_reviewed",
+      "active": true
+    },
+    {
+      "id": "arxiv-cs-hc",
+      "name": "arXiv Human-Computer Interaction",
+      "category": "research_preprints",
+      "url": "https://export.arxiv.org/rss/cs.HC",
       "type": "rss",
       "trust_tier": "tier2_peer_reviewed",
       "active": true
@@ -57,11 +129,542 @@
       "active": true
     },
     {
+      "id": "openai-research",
+      "name": "OpenAI Research & Model Cards",
+      "category": "frontier_labs",
+      "url": "https://openai.com/research",
+      "type": "web_json",
+      "trust_tier": "tier1_authoritative",
+      "active": true
+    },
+    {
+      "id": "meta-fair-research",
+      "name": "Meta AI (FAIR) Research",
+      "category": "frontier_labs",
+      "url": "https://ai.meta.com/research/",
+      "type": "web_json",
+      "trust_tier": "tier1_authoritative",
+      "active": true
+    },
+    {
+      "id": "microsoft-research-ai",
+      "name": "Microsoft Research AI & Systems",
+      "category": "frontier_labs",
+      "url": "https://www.microsoft.com/en-us/research/research-area/artificial-intelligence/",
+      "type": "web_json",
+      "trust_tier": "tier1_authoritative",
+      "active": true
+    },
+    {
       "id": "vercel-geist-design",
       "name": "Vercel & Geist Design Systems",
       "category": "design_ui_ux",
       "url": "https://vercel.com/design",
       "type": "web_json",
+      "trust_tier": "tier2_peer_reviewed",
+      "active": true
+    },
+    {
+      "id": "shadcn-ui-patterns",
+      "name": "shadcn/ui & Radix UI Component Primitives",
+      "category": "design_ui_ux",
+      "url": "https://ui.shadcn.com",
+      "type": "web_json",
+      "trust_tier": "tier2_peer_reviewed",
+      "active": true
+    },
+    {
+      "id": "kernel-org-releases",
+      "name": "Linux Kernel Releases & Vulnerabilities",
+      "category": "runtime_systems",
+      "url": "https://www.kernel.org/releases.json",
+      "type": "api",
+      "trust_tier": "tier1_authoritative",
+      "active": true
+    },
+    {
+      "id": "nixos-security-advisories",
+      "name": "NixOS Security Disclosures",
+      "category": "runtime_systems",
+      "url": "https://github.com/NixOS/nixpkgs/security/advisories",
+      "type": "api",
+      "trust_tier": "tier1_authoritative",
+      "active": true
+    },
+    {
+      "id": "arxiv-cs-cc",
+      "name": "arXiv Computational Complexity",
+      "category": "research_preprints",
+      "url": "https://export.arxiv.org/rss/cs.CC",
+      "type": "rss",
+      "trust_tier": "tier2_peer_reviewed",
+      "active": true
+    },
+    {
+      "id": "arxiv-cs-ce",
+      "name": "arXiv Computational Engineering, Finance, and Science",
+      "category": "research_preprints",
+      "url": "https://export.arxiv.org/rss/cs.CE",
+      "type": "rss",
+      "trust_tier": "tier2_peer_reviewed",
+      "active": true
+    },
+    {
+      "id": "arxiv-cs-cg",
+      "name": "arXiv Computational Geometry",
+      "category": "research_preprints",
+      "url": "https://export.arxiv.org/rss/cs.CG",
+      "type": "rss",
+      "trust_tier": "tier2_peer_reviewed",
+      "active": true
+    },
+    {
+      "id": "arxiv-cs-gt",
+      "name": "arXiv Computer Science and Game Theory",
+      "category": "research_preprints",
+      "url": "https://export.arxiv.org/rss/cs.GT",
+      "type": "rss",
+      "trust_tier": "tier2_peer_reviewed",
+      "active": true
+    },
+    {
+      "id": "arxiv-cs-cv",
+      "name": "arXiv Computer Vision and Pattern Recognition",
+      "category": "research_preprints",
+      "url": "https://export.arxiv.org/rss/cs.CV",
+      "type": "rss",
+      "trust_tier": "tier2_peer_reviewed",
+      "active": true
+    },
+    {
+      "id": "arxiv-cs-cy",
+      "name": "arXiv Computers and Society",
+      "category": "research_preprints",
+      "url": "https://export.arxiv.org/rss/cs.CY",
+      "type": "rss",
+      "trust_tier": "tier2_peer_reviewed",
+      "active": true
+    },
+    {
+      "id": "arxiv-cs-ds",
+      "name": "arXiv Data Structures and Algorithms",
+      "category": "research_preprints",
+      "url": "https://export.arxiv.org/rss/cs.DS",
+      "type": "rss",
+      "trust_tier": "tier2_peer_reviewed",
+      "active": true
+    },
+    {
+      "id": "arxiv-cs-db",
+      "name": "arXiv Databases",
+      "category": "research_preprints",
+      "url": "https://export.arxiv.org/rss/cs.DB",
+      "type": "rss",
+      "trust_tier": "tier2_peer_reviewed",
+      "active": true
+    },
+    {
+      "id": "arxiv-cs-dl",
+      "name": "arXiv Digital Libraries",
+      "category": "research_preprints",
+      "url": "https://export.arxiv.org/rss/cs.DL",
+      "type": "rss",
+      "trust_tier": "tier2_peer_reviewed",
+      "active": true
+    },
+    {
+      "id": "arxiv-cs-dm",
+      "name": "arXiv Discrete Mathematics",
+      "category": "research_preprints",
+      "url": "https://export.arxiv.org/rss/cs.DM",
+      "type": "rss",
+      "trust_tier": "tier2_peer_reviewed",
+      "active": true
+    },
+    {
+      "id": "arxiv-cs-et",
+      "name": "arXiv Emerging Technologies",
+      "category": "research_preprints",
+      "url": "https://export.arxiv.org/rss/cs.ET",
+      "type": "rss",
+      "trust_tier": "tier2_peer_reviewed",
+      "active": true
+    },
+    {
+      "id": "arxiv-cs-fl",
+      "name": "arXiv Formal Languages and Automata Theory",
+      "category": "research_preprints",
+      "url": "https://export.arxiv.org/rss/cs.FL",
+      "type": "rss",
+      "trust_tier": "tier2_peer_reviewed",
+      "active": true
+    },
+    {
+      "id": "arxiv-cs-gl",
+      "name": "arXiv General Literature",
+      "category": "research_preprints",
+      "url": "https://export.arxiv.org/rss/cs.GL",
+      "type": "rss",
+      "trust_tier": "tier2_peer_reviewed",
+      "active": true
+    },
+    {
+      "id": "arxiv-cs-gr",
+      "name": "arXiv Graphics",
+      "category": "research_preprints",
+      "url": "https://export.arxiv.org/rss/cs.GR",
+      "type": "rss",
+      "trust_tier": "tier2_peer_reviewed",
+      "active": true
+    },
+    {
+      "id": "arxiv-cs-ar",
+      "name": "arXiv Hardware Architecture",
+      "category": "research_preprints",
+      "url": "https://export.arxiv.org/rss/cs.AR",
+      "type": "rss",
+      "trust_tier": "tier2_peer_reviewed",
+      "active": true
+    },
+    {
+      "id": "arxiv-cs-ir",
+      "name": "arXiv Information Retrieval",
+      "category": "research_preprints",
+      "url": "https://export.arxiv.org/rss/cs.IR",
+      "type": "rss",
+      "trust_tier": "tier2_peer_reviewed",
+      "active": true
+    },
+    {
+      "id": "arxiv-cs-it",
+      "name": "arXiv Information Theory",
+      "category": "research_preprints",
+      "url": "https://export.arxiv.org/rss/cs.IT",
+      "type": "rss",
+      "trust_tier": "tier2_peer_reviewed",
+      "active": true
+    },
+    {
+      "id": "arxiv-cs-ms",
+      "name": "arXiv Mathematical Software",
+      "category": "research_preprints",
+      "url": "https://export.arxiv.org/rss/cs.MS",
+      "type": "rss",
+      "trust_tier": "tier2_peer_reviewed",
+      "active": true
+    },
+    {
+      "id": "arxiv-cs-ma",
+      "name": "arXiv Multiagent Systems",
+      "category": "research_preprints",
+      "url": "https://export.arxiv.org/rss/cs.MA",
+      "type": "rss",
+      "trust_tier": "tier2_peer_reviewed",
+      "active": true
+    },
+    {
+      "id": "arxiv-cs-mm",
+      "name": "arXiv Multimedia",
+      "category": "research_preprints",
+      "url": "https://export.arxiv.org/rss/cs.MM",
+      "type": "rss",
+      "trust_tier": "tier2_peer_reviewed",
+      "active": true
+    },
+    {
+      "id": "arxiv-cs-ni",
+      "name": "arXiv Networking and Internet Architecture",
+      "category": "research_preprints",
+      "url": "https://export.arxiv.org/rss/cs.NI",
+      "type": "rss",
+      "trust_tier": "tier2_peer_reviewed",
+      "active": true
+    },
+    {
+      "id": "arxiv-cs-ne",
+      "name": "arXiv Neural and Evolutionary Computing",
+      "category": "research_preprints",
+      "url": "https://export.arxiv.org/rss/cs.NE",
+      "type": "rss",
+      "trust_tier": "tier2_peer_reviewed",
+      "active": true
+    },
+    {
+      "id": "arxiv-cs-na",
+      "name": "arXiv Numerical Analysis",
+      "category": "research_preprints",
+      "url": "https://export.arxiv.org/rss/cs.NA",
+      "type": "rss",
+      "trust_tier": "tier2_peer_reviewed",
+      "active": true
+    },
+    {
+      "id": "arxiv-cs-oh",
+      "name": "arXiv Other Computer Science",
+      "category": "research_preprints",
+      "url": "https://export.arxiv.org/rss/cs.OH",
+      "type": "rss",
+      "trust_tier": "tier2_peer_reviewed",
+      "active": true
+    },
+    {
+      "id": "arxiv-cs-pf",
+      "name": "arXiv Performance",
+      "category": "research_preprints",
+      "url": "https://export.arxiv.org/rss/cs.PF",
+      "type": "rss",
+      "trust_tier": "tier2_peer_reviewed",
+      "active": true
+    },
+    {
+      "id": "arxiv-cs-pl",
+      "name": "arXiv Programming Languages",
+      "category": "research_preprints",
+      "url": "https://export.arxiv.org/rss/cs.PL",
+      "type": "rss",
+      "trust_tier": "tier2_peer_reviewed",
+      "active": true
+    },
+    {
+      "id": "arxiv-cs-ro",
+      "name": "arXiv Robotics",
+      "category": "research_preprints",
+      "url": "https://export.arxiv.org/rss/cs.RO",
+      "type": "rss",
+      "trust_tier": "tier2_peer_reviewed",
+      "active": true
+    },
+    {
+      "id": "arxiv-cs-si",
+      "name": "arXiv Social and Information Networks",
+      "category": "research_preprints",
+      "url": "https://export.arxiv.org/rss/cs.SI",
+      "type": "rss",
+      "trust_tier": "tier2_peer_reviewed",
+      "active": true
+    },
+    {
+      "id": "arxiv-cs-sd",
+      "name": "arXiv Sound",
+      "category": "research_preprints",
+      "url": "https://export.arxiv.org/rss/cs.SD",
+      "type": "rss",
+      "trust_tier": "tier2_peer_reviewed",
+      "active": true
+    },
+    {
+      "id": "arxiv-cs-sc",
+      "name": "arXiv Symbolic Computation",
+      "category": "research_preprints",
+      "url": "https://export.arxiv.org/rss/cs.SC",
+      "type": "rss",
+      "trust_tier": "tier2_peer_reviewed",
+      "active": true
+    },
+    {
+      "id": "arxiv-cs-sy",
+      "name": "arXiv Systems and Control",
+      "category": "research_preprints",
+      "url": "https://export.arxiv.org/rss/cs.SY",
+      "type": "rss",
+      "trust_tier": "tier2_peer_reviewed",
+      "active": true
+    },
+    {
+      "id": "arxiv-qfin-cp",
+      "name": "arXiv Computational Finance",
+      "category": "research_preprints",
+      "url": "https://export.arxiv.org/rss/q-fin.CP",
+      "type": "rss",
+      "trust_tier": "tier2_peer_reviewed",
+      "active": true
+    },
+    {
+      "id": "arxiv-qfin-ec",
+      "name": "arXiv Economics (q-fin)",
+      "category": "research_preprints",
+      "url": "https://export.arxiv.org/rss/q-fin.EC",
+      "type": "rss",
+      "trust_tier": "tier2_peer_reviewed",
+      "active": true
+    },
+    {
+      "id": "arxiv-qfin-gn",
+      "name": "arXiv General Finance",
+      "category": "research_preprints",
+      "url": "https://export.arxiv.org/rss/q-fin.GN",
+      "type": "rss",
+      "trust_tier": "tier2_peer_reviewed",
+      "active": true
+    },
+    {
+      "id": "arxiv-qfin-mf",
+      "name": "arXiv Mathematical Finance",
+      "category": "research_preprints",
+      "url": "https://export.arxiv.org/rss/q-fin.MF",
+      "type": "rss",
+      "trust_tier": "tier2_peer_reviewed",
+      "active": true
+    },
+    {
+      "id": "arxiv-qfin-pm",
+      "name": "arXiv Portfolio Management",
+      "category": "research_preprints",
+      "url": "https://export.arxiv.org/rss/q-fin.PM",
+      "type": "rss",
+      "trust_tier": "tier2_peer_reviewed",
+      "active": true
+    },
+    {
+      "id": "arxiv-qfin-pr",
+      "name": "arXiv Pricing of Securities",
+      "category": "research_preprints",
+      "url": "https://export.arxiv.org/rss/q-fin.PR",
+      "type": "rss",
+      "trust_tier": "tier2_peer_reviewed",
+      "active": true
+    },
+    {
+      "id": "arxiv-qfin-rm",
+      "name": "arXiv Risk Management",
+      "category": "research_preprints",
+      "url": "https://export.arxiv.org/rss/q-fin.RM",
+      "type": "rss",
+      "trust_tier": "tier2_peer_reviewed",
+      "active": true
+    },
+    {
+      "id": "arxiv-qfin-st",
+      "name": "arXiv Statistical Finance",
+      "category": "research_preprints",
+      "url": "https://export.arxiv.org/rss/q-fin.ST",
+      "type": "rss",
+      "trust_tier": "tier2_peer_reviewed",
+      "active": true
+    },
+    {
+      "id": "arxiv-qfin-tr",
+      "name": "arXiv Trading and Market Microstructure",
+      "category": "research_preprints",
+      "url": "https://export.arxiv.org/rss/q-fin.TR",
+      "type": "rss",
+      "trust_tier": "tier2_peer_reviewed",
+      "active": true
+    },
+    {
+      "id": "arxiv-stat-ap",
+      "name": "arXiv Statistics - Applications",
+      "category": "research_preprints",
+      "url": "https://export.arxiv.org/rss/stat.AP",
+      "type": "rss",
+      "trust_tier": "tier2_peer_reviewed",
+      "active": true
+    },
+    {
+      "id": "arxiv-stat-co",
+      "name": "arXiv Statistics - Computation",
+      "category": "research_preprints",
+      "url": "https://export.arxiv.org/rss/stat.CO",
+      "type": "rss",
+      "trust_tier": "tier2_peer_reviewed",
+      "active": true
+    },
+    {
+      "id": "arxiv-stat-ml",
+      "name": "arXiv Statistics - Machine Learning",
+      "category": "research_preprints",
+      "url": "https://export.arxiv.org/rss/stat.ML",
+      "type": "rss",
+      "trust_tier": "tier2_peer_reviewed",
+      "active": true
+    },
+    {
+      "id": "arxiv-stat-me",
+      "name": "arXiv Statistics - Methodology",
+      "category": "research_preprints",
+      "url": "https://export.arxiv.org/rss/stat.ME",
+      "type": "rss",
+      "trust_tier": "tier2_peer_reviewed",
+      "active": true
+    },
+    {
+      "id": "arxiv-stat-ot",
+      "name": "arXiv Other Statistics",
+      "category": "research_preprints",
+      "url": "https://export.arxiv.org/rss/stat.OT",
+      "type": "rss",
+      "trust_tier": "tier2_peer_reviewed",
+      "active": true
+    },
+    {
+      "id": "arxiv-stat-th",
+      "name": "arXiv Statistics Theory",
+      "category": "research_preprints",
+      "url": "https://export.arxiv.org/rss/stat.TH",
+      "type": "rss",
+      "trust_tier": "tier2_peer_reviewed",
+      "active": true
+    },
+    {
+      "id": "arxiv-eess-as",
+      "name": "arXiv Audio and Speech Processing",
+      "category": "research_preprints",
+      "url": "https://export.arxiv.org/rss/eess.AS",
+      "type": "rss",
+      "trust_tier": "tier2_peer_reviewed",
+      "active": true
+    },
+    {
+      "id": "arxiv-eess-iv",
+      "name": "arXiv Image and Video Processing",
+      "category": "research_preprints",
+      "url": "https://export.arxiv.org/rss/eess.IV",
+      "type": "rss",
+      "trust_tier": "tier2_peer_reviewed",
+      "active": true
+    },
+    {
+      "id": "arxiv-eess-sp",
+      "name": "arXiv Signal Processing",
+      "category": "research_preprints",
+      "url": "https://export.arxiv.org/rss/eess.SP",
+      "type": "rss",
+      "trust_tier": "tier2_peer_reviewed",
+      "active": true
+    },
+    {
+      "id": "arxiv-eess-sy",
+      "name": "arXiv Systems and Control (eess)",
+      "category": "research_preprints",
+      "url": "https://export.arxiv.org/rss/eess.SY",
+      "type": "rss",
+      "trust_tier": "tier2_peer_reviewed",
+      "active": true
+    },
+    {
+      "id": "arxiv-econ-em",
+      "name": "arXiv Econometrics",
+      "category": "research_preprints",
+      "url": "https://export.arxiv.org/rss/econ.EM",
+      "type": "rss",
+      "trust_tier": "tier2_peer_reviewed",
+      "active": true
+    },
+    {
+      "id": "arxiv-econ-gn",
+      "name": "arXiv General Economics",
+      "category": "research_preprints",
+      "url": "https://export.arxiv.org/rss/econ.GN",
+      "type": "rss",
+      "trust_tier": "tier2_peer_reviewed",
+      "active": true
+    },
+    {
+      "id": "arxiv-econ-th",
+      "name": "arXiv Theoretical Economics",
+      "category": "research_preprints",
+      "url": "https://export.arxiv.org/rss/econ.TH",
+      "type": "rss",
       "trust_tier": "tier2_peer_reviewed",
       "active": true
     }

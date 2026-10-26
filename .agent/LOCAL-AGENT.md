@@ -56,22 +56,20 @@ Local inference engine for AI harness: implementer (bounded slices), reviewer (w
 - `deploy-options.local.nix` is gitignored — secrets wiring only
 
 ## Model Swap Checklist
-
-On a model swap update the header and `## Current Model Config`, then follow the full list in `.agent/lanes/local-reference.md` (thinking knob, context budget, `defaultModelCatalog`, `facts.nix`, MTP, `SAFE_COMMANDS`, `aq-qa 0`).
+On a model swap update header/config; follow checklist in `.agent/lanes/local-reference.md`.
 
 ## Local-lane overlays to Behavioral Rules
-
-- NixOS System Contract (MANDATORY before any system change): `.agent/lanes/local-reference.md` §NixOS System Contract.
-- Critical contract: `enable_thinking: false` in EVERY llama.cpp request (pass `chat_template_kwargs: {"enable_thinking": false}`); thinking tokens cause empty responses unless capped via `thinking_budget`.
-- Rule 4: You ARE the local lane. Delegate UP to Claude/Codex when task quality is insufficient.
-- Rule 5/22: compact every 3-4 exchanges (small window); offload facts to MemoryBroker (:8003); query AIDB, never dump raw context.
-- Rule 6: Max **2** retries on inference-heavy ops (a 3rd attempt risks the thermal gate); this is stricter than the canonical 3.
-- Rule 7: The `SAFE_COMMANDS` whitelist governs shell use.
+- NixOS System Contract (MANDATORY before change): `.agent/lanes/local-reference.md`.
+- Critical contract: `enable_thinking: false` in EVERY llama.cpp request (thinking tokens cause empty responses).
+- Rule 4: You ARE local lane. Delegate UP when quality is insufficient.
+- Rule 5/22: compact every 3-4 exchanges; offload to MemoryBroker (:8003); query AIDB.
+- Rule 6: Max 2 retries on inference-heavy ops (thermal gate protection).
+- Rule 7: `SAFE_COMMANDS` whitelist governs shell use.
 - Rule 8: Log `[LOCAL PLAN]` to PULSE.log first.
-- Rule 9: Write completed-task facts via `POST /api/memory/facts`; read HANDOFF.md on resume.
-- Rule 10: OWASP check before proposing a commit.
-- Rule 14: `users.users.<n>.homeMode = "0711"` also fixes a `0700` home blocking a service.
-- Rule 17: Local Qwen is the default cheap-implementer lane for bounded single-file/single-command tasks; flagships route down to it when the task fits its measured envelope.
+- Rule 9: Write facts via `POST /api/memory/facts`; read HANDOFF.md on resume.
+- Rule 10: OWASP check before proposing commit.
+- Rule 14: `users.users.<n>.homeMode = "0711"` fixes `0700` home blocking service.
+- Rule 17: Local Qwen is default cheap-implementer for bounded tasks; flagships route down to it.
 
 ## On-demand reference
 
@@ -90,7 +88,7 @@ Moved-out lane history, long examples and reference tables (with contents list):
 | 5 | **CONTEXT LIMITS** | Compact aggressively near context ceiling. Sub-agents receive slice-relevant context only. |
 | 6 | **RETRY BUDGET** | Max 3 retries on any failing op. 3rd failure → stop and report to orchestrator. |
 | 7 | **SHELL SAFETY** | No injection patterns. Sanitize external input. Never bypass tool whitelists. |
-| 8 | **PRD GATE** | No coding without a written plan. Log plan to PULSE.log before touching any file. |
+| 8 | **PRD & EXPERT DESIGN GATE** | No coding without a written plan and debated PRD. Non-trivial work must undergo multi-perspective expert scrutiny (architecture, failure modes, UX, security) and freeze MVP scope before edits. Shallow subagent churn forbidden; single lead maintains context ownership. Log plan to PULSE.log. |
 | 8c | **FACTORY GATE** | `aqd workflows factory-gate-preflight` must pass before factory work. |
 | 8a | **ATOMIC PULSE** | Append one line to `.agent/collaboration/PULSE.log` after every successful write/commit: `[ISO-timestamp] [agent] [action]: [file-or-scope] — [outcome]`. Never skip this step. |
 | 8b | **ATOMIC RESUME** | Write `.agent/collaboration/RESUME.json` when starting a new user task AND after each completed todo item. Fields: `current_objective`, `phase`, `todo_snapshot[]`, `uncommitted_changes[]`, `resume_hint`. This is the compaction anchor — survives 401 summarization failures. |

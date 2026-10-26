@@ -1,0 +1,17 @@
+{
+  "arxiv_id": "2610.32698v1",
+  "title": "Agent-Based Transport Model Calibration via Online Stochastic Batch Optimization",
+  "url": "http://arxiv.org/abs/2610.32698v1",
+  "summary": "Calibrating agent-based models (ABMs) is computationally demanding, as traditional black-box optimization typically requires hundreds or thousands of independent simulation runs. To reduce this burden, we introduce an online calibration framework that estimates parameters within a single simulation run. The approach combines black-box optimization with stochastic batch optimization, a method widely applied in machine learning but not yet explored in ABM calibration. Using MATSim as a case study, we treat each simulation iteration as a stochastic batch, enabling incremental parameter updates as agents make decisions. This online calibration paradigm allows model parameters and agent behaviors to co-evolve, achieving convergence without restarting the simulation. We demonstrate the effectiveness of our method by calibrating utility function parameters in MATSim for a large-scale transportation scenario of Switzerland. Results show that mode shares align closely with observed data within a typical simulation timeframe, confirming the feasibility and efficiency of the approach. By embedding calibration directly into the simulation loop, our method opens new possibilities for real-time, scalable, and efficient calibration of complex ABMs.",
+  "authors": [
+    "Abdelkader Dib",
+    "Milos Balac"
+  ],
+  "published": "2026-10-23T14:23:36Z",
+  "relevance_score": 0.25,
+  "matched_keywords": [
+    "stochastic"
+  ],
+  "source_id": "arxiv-cs-ma",
+  "ingested_at": "2026-10-26T04:37:42.561716+00:00"
+}

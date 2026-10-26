@@ -1,0 +1,19 @@
+{
+  "arxiv_id": "2610.28071v1",
+  "title": "Arithmetic Models for Commodity Futures, Vanilla, and Calendar Spread Options",
+  "url": "http://arxiv.org/abs/2610.28071v1",
+  "summary": "We develop an arithmetic multi-factor stochastic volatility model for commodity futures and options. The arithmetic specification yields a low-dimensional Markovian representation of the futures curve and semi-closed-form pricing formulas for vanilla and basket options, including calendar spread options. These properties make the model suitable for large-scale empirical estimation.   We estimate the model using an unscented Kalman filter on a panel of WTI crude oil futures, vanilla options, and calendar spread options spanning 2013-2024. We find that three stochastic volatility factors are needed to capture both the level and slope of the volatility term structure, and that hedges based on these factors remove almost all of the daily risk of a portfolio of vanilla options. Calendar spread options provide information about the dependence structure of futures prices that is not captured by futures and vanilla options alone. A model estimated without calendar spread options systematically overprices them by overstating the decorrelation between adjacent futures contracts. Including these options in the estimation brings the model's decorrelation close to the observed decorrelation, which removes the overpricing and improves their hedges, at only a small loss of accuracy in the pricing and hedging of vanilla options. Finally, we show that the arithmetic model fits futures and vanilla options better than its geometric counterpart and hedges the vanilla options slightly better.",
+  "authors": [
+    "Malthe Rauh Johansen",
+    "Nina Lange",
+    "David Skovmand"
+  ],
+  "published": "2026-10-20T11:52:29Z",
+  "relevance_score": 0.5,
+  "matched_keywords": [
+    "kalman",
+    "stochastic"
+  ],
+  "source_id": "arxiv-qfin-st",
+  "ingested_at": "2026-10-26T04:37:52.460022+00:00"
+}

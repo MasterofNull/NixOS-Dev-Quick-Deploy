@@ -5,10 +5,8 @@ This file provides guidance to Claude Code when working in this repository.
 <!-- lane:begin -->
 ## Project Overview
 
-Project: NixOS-Dev-Quick-Deploy AI Harness
-Goal: Local-first AI agent stack on NixOS — local LLM (Qwen3-35B), AIDB, hybrid-coordinator, switchboard, AGI scaffold
-Owner: hyperd
-Stack: NixOS (flake-based), Python (FastAPI/aiohttp), Nix modules, llama.cpp, Redis, PostgreSQL, Qdrant
+Project: NixOS AI Harness (Qwen3-35B, AIDB, coordinator, switchboard)
+Owner: hyperd · Stack: NixOS flake, FastAPI/aiohttp, llama.cpp, Redis, Postgres, Qdrant
 
 **Full policy, workflow contracts, and agent guidance → `AGENTS.md` (repo root)**
 
@@ -53,16 +51,16 @@ PRD/rules/workflow evidence → `.agent/`; slash commands → `.claude/commands/
 
 ## Commit Discipline (Mandatory)
 
-Before commit: (1) Live test in running system, (2) Fix issues, (3) Update docs (HANDOFF.md, agent .md files), (4) Update PM tracker (tracker.json editorial, never hand-typed status/%), (5) Seed RAG (`error-solutions`), (6) `scripts/governance/tier0-validation-gate.sh --pre-commit`, (7) Commit with `Co-Authored-By: <active-agent-name> <noreply@anthropic.com>`.
+Before commit: (1) Live test in running system, (2) Fix issues, (3) Update docs (HANDOFF.md, agent files), (4) Update PM tracker (`tracker.json`), (5) Seed RAG (`error-solutions`), (6) `scripts/governance/tier0-validation-gate.sh --pre-commit`, (7) Commit with clean author attribution.
 
 ## Architecture Constraints (Non-Negotiable)
 
 - NixOS-first, flake-based — no bare pip install, no manual systemctl
-- Never hardcode ports/URLs — source of truth: `nix/modules/core/options.nix`
+- Never hardcode ports/URLs — SSOT: `nix/modules/core/options.nix`
 - Python reads URLs from env vars; shell scripts use `${PORT:-default}`
 - Feature flags are profile-driven: `nix/modules/profiles/ai-dev.nix`
-- `deploy-options.local.nix` is gitignored — secrets wiring only, no eval-time policy
-- `enable_thinking: false` in EVERY llama.cpp request — current model thinking tokens cause empty responses; see `.agent/LOCAL-AGENT.md ## Current Model Config` for model-specific setting
+- `deploy-options.local.nix` is gitignored — secrets wiring only
+- `enable_thinking: false` in llama.cpp requests — see `.agent/LOCAL-AGENT.md`
 - GPU layers ceiling = 12 (Renoir APU VRAM = 4 GB shared); never suggest n_gpu_layers > 12
 - Total usable RAM = 27 GB; model UMBM = 22.5 GB model / 1.0 GB KV / 3.0 GB OS reserve
 
@@ -83,7 +81,7 @@ Lane reference: `.agent/lanes/claude-reference.md`. Shared: `.agent/REFERENCE-IN
 | 5 | **CONTEXT LIMITS** | Compact aggressively near context ceiling. Sub-agents receive slice-relevant context only. |
 | 6 | **RETRY BUDGET** | Max 3 retries on any failing op. 3rd failure → stop and report to orchestrator. |
 | 7 | **SHELL SAFETY** | No injection patterns. Sanitize external input. Never bypass tool whitelists. |
-| 8 | **PRD GATE** | No coding without a written plan. Log plan to PULSE.log before touching any file. |
+| 8 | **PRD & EXPERT DESIGN GATE** | No coding without a written plan and debated PRD. Non-trivial work must undergo multi-perspective expert scrutiny (architecture, failure modes, UX, security) and freeze MVP scope before edits. Shallow subagent churn forbidden; single lead maintains context ownership. Log plan to PULSE.log. |
 | 8c | **FACTORY GATE** | `aqd workflows factory-gate-preflight` must pass before factory work. |
 | 8a | **ATOMIC PULSE** | Append one line to `.agent/collaboration/PULSE.log` after every successful write/commit: `[ISO-timestamp] [agent] [action]: [file-or-scope] — [outcome]`. Never skip this step. |
 | 8b | **ATOMIC RESUME** | Write `.agent/collaboration/RESUME.json` when starting a new user task AND after each completed todo item. Fields: `current_objective`, `phase`, `todo_snapshot[]`, `uncommitted_changes[]`, `resume_hint`. This is the compaction anchor — survives 401 summarization failures. |
