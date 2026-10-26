@@ -228,15 +228,9 @@ async def get_layered_health():
     global _layered_running
     now = time.monotonic()
 
-    # Cache hit — return immediately
-    if _layered_cache["result"] is not None and now < _layered_cache["expires_at"]:
-        result = dict(_layered_cache["result"])
-        result["cached"] = True
-        result["pending"] = False
-        result["cache_expires_in_s"] = int(_layered_cache["expires_at"] - now)
-        return result
-
-    # Check persisted verified QA evidence first (authoritative host evidence)
+    # Check authoritative persisted QA evidence first (from host QA runs).
+    # Host QA is the source of truth and prevents sandboxed execution failures
+    # (such as AppArmor DAC/confinement limits) from poisoning the dashboard card.
     persisted = _load_persisted_qa_results()
     if persisted:
         _layered_cache["result"] = persisted
@@ -245,6 +239,14 @@ async def get_layered_health():
         result["cached"] = True
         result["pending"] = False
         result["cache_expires_in_s"] = int(_LAYERED_CACHE_TTL)
+        return result
+
+    # Cache hit for existing in-memory result
+    if _layered_cache["result"] is not None and now < _layered_cache["expires_at"]:
+        result = dict(_layered_cache["result"])
+        result["cached"] = True
+        result["pending"] = False
+        result["cache_expires_in_s"] = int(_layered_cache["expires_at"] - now)
         return result
 
     # Cold cache — return a cheap pending response by default. aq-qa phase 0 is
