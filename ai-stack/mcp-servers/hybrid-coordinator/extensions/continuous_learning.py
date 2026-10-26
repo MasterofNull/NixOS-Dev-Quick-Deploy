@@ -987,6 +987,21 @@ class ContinuousLearningPipeline:
 
         return patterns
 
+    @staticmethod
+    def _parse_event_timestamp(ts_raw: Any) -> datetime:
+        """Robust ISO-8601 parsing supporting +00:00Z and trailing Z."""
+        if not ts_raw:
+            return datetime.now(timezone.utc)
+        clean = str(ts_raw).strip()
+        if clean.endswith('Z') and ('+00:00' in clean or '-00:00' in clean):
+            clean = clean[:-1]
+        elif clean.endswith('Z'):
+            clean = clean[:-1] + '+00:00'
+        try:
+            return datetime.fromisoformat(clean)
+        except Exception:
+            return datetime.now(timezone.utc)
+
     async def _extract_pattern_from_event(
         self, event: Dict[str, Any]
     ) -> Optional[InteractionPattern]:
@@ -1021,8 +1036,8 @@ class ContinuousLearningPipeline:
                         "efficiency": 1.0 / max(iterations, 1),
                     },
                     iterations=iterations,
-                    timestamp=datetime.fromisoformat(
-                        event.get("timestamp", datetime.now(timezone.utc).isoformat())
+                    timestamp=self._parse_event_timestamp(
+                        event.get("timestamp")
                     ),
                     backend=task.get("backend", "unknown"),
                 )
@@ -1045,8 +1060,8 @@ class ContinuousLearningPipeline:
                 context=self._sanitize_pattern_context(event.get("context", {})),
                 success_metrics={"resolution_time": event.get("resolution_time", 0.0)},
                 iterations=1,
-                timestamp=datetime.fromisoformat(
-                    event.get("timestamp", datetime.now(timezone.utc).isoformat())
+                timestamp=self._parse_event_timestamp(
+                    event.get("timestamp")
                 ),
             )
 
@@ -1078,8 +1093,8 @@ class ContinuousLearningPipeline:
                     }),
                     success_metrics={"latency_ms": latency_ms},
                     iterations=1,
-                    timestamp=datetime.fromisoformat(
-                        event.get("timestamp", datetime.now(timezone.utc).isoformat())
+                    timestamp=self._parse_event_timestamp(
+                        event.get("timestamp")
                     ),
                     backend=event.get("model") or event.get("source") or "local",
                 )
