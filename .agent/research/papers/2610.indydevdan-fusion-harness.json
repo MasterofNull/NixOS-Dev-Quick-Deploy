@@ -1,0 +1,13 @@
+{
+  "topic": "indydevdan-fusion-harness-multi-model-software-factory",
+  "source": "indydevdan/fusion-harness",
+  "timestamp": "2026-10-26T21:18:00Z",
+  "summary": "IndyDevDan released fusion-harness (disler/fusion-harness) expanding on SSSF and multi-model collaboration. Core patterns: (1) Model Fusion over Monoculture: prompt routed concurrently across 2-5 models (Claude, GPT, Gemini, local) to evaluate opinions and token economics; (2) Role specialization: Architect (planning/ambiguity) vs Main Builder vs Sidekicks; (3) Explicit workflow commands: /fh-opinion (multi-model design plans), /fh-debate (cross-model critique/gap-filling), /fh-fusion (synthesizing consensus code), /fh-auto-validate (writer-lease atomic access and test gates); (4) Tokenomics optimization: metric of effective agent hours per token cost to combine frontier leads with cheap/fast sidekicks.",
+  "relevance": [
+    "Rule 8 PRD debate",
+    "Rule 17 cheapest implementer",
+    "Rule 18 agent-agnostic roles",
+    "Rule 21 collaborative stewardship",
+    "harness design"
+  ]
+}

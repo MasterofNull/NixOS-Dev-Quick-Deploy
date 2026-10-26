@@ -10015,10 +10015,11 @@ function quickApproveUI() {
 // ─── MISSION COCKPIT LIVE TELEMETRY (Rule 23 Non-Gamified Engine) ───────────
 async function updateMissionCockpitTelemetry() {
   try {
-    const [triageData, runtimeData, homeostasisData] = await Promise.allSettled([
+    const [triageData, runtimeData, homeostasisData, collabData] = await Promise.allSettled([
       apiFetch("/aistack/task-classification/stats"),
       apiFetch("/aistack/advanced/runtime-summary"),
       apiFetch("/affective/state"),
+      apiFetch("/aistack/agent/collab-state"),
     ]);
 
     // Update Homeostasis Badge
@@ -10027,6 +10028,24 @@ async function updateMissionCockpitTelemetry() {
       const state = homeostasisData.value.state || "OPTIMAL";
       homeoBadge.textContent = `HOMEOSTASIS: ${state.toUpperCase()}`;
       homeoBadge.className = `card-badge ${state.toUpperCase() === "OPTIMAL" ? "badge-healthy" : "badge-warn"}`;
+    }
+
+    // Update Active Objective & Live Thought Stream from Collab State
+    if (collabData.status === "fulfilled" && collabData.value) {
+      const resume = collabData.value.resume || {};
+      const pulse = collabData.value.pulse || [];
+      const objEl = document.getElementById("cockpitActiveObjective");
+      if (objEl && resume.current_objective) {
+        objEl.textContent = resume.current_objective;
+      }
+      const laneBadge = document.getElementById("cockpitLaneBadge");
+      if (laneBadge && resume.phase) {
+        laneBadge.textContent = `PHASE: ${resume.phase.toUpperCase()}`;
+      }
+      const thoughtEl = document.getElementById("cockpitThoughtLine");
+      if (thoughtEl && pulse.length > 0) {
+        thoughtEl.textContent = pulse[0];
+      }
     }
 
     // Update Triage Latency & Health
