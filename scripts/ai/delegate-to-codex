@@ -17,6 +17,7 @@
 #   --prompt-file FILE    Read prompt from file
 #   --mode MODE           Execution mode: safe|edit  [default: safe]
 #   --model MODEL         Model override (e.g. o3, o4-mini)
+#   --role ROLE           Registry role: implement|review|research  [default: implement]
 #   --effort LEVEL        Reasoning effort: low|medium|high  [default: medium]
 #   --wait                Block until task completes
 #   --force-quota-retry   Bypass an active quota cooldown for one call
@@ -182,8 +183,8 @@ registry_append() {
     # Row built in python from argv (no shell re-parse); written via the shared-lock +
     # atomic-replace TaskRegistry path.
     local row
-    row="$(python3 -c 'import json,sys; print(json.dumps({"id":sys.argv[1],"agent":"codex","description":sys.argv[2],"output_file":sys.argv[3],"pid":None,"status":"running","created":sys.argv[4]}))' \
-        "$id" "$description" "$output_file" "$ts")"
+    row="$(python3 -c 'import json,sys; print(json.dumps({"id":sys.argv[1],"agent":"codex","role":sys.argv[5],"description":sys.argv[2],"output_file":sys.argv[3],"pid":None,"status":"running","created":sys.argv[4]}))' \
+        "$id" "$description" "$output_file" "$ts" "$ROLE")"
     python3 "$SCRIPT_DIR/lib/registry-update.py" append "$REGISTRY" "$row"
 }
 
@@ -591,6 +592,7 @@ PROMPT_FILE=""
 MODE="safe"
 MODEL=""
 EFFORT="medium"
+ROLE="implement"
 WAIT=false
 FORCE_QUOTA_RETRY=false
 FORCE_BUDGET=false
@@ -608,6 +610,7 @@ while [[ $# -gt 0 ]]; do
         --mode)        MODE="$2";         shift 2 ;;
         --model)       MODEL="$2";        shift 2 ;;
         --effort)      EFFORT="$2";       shift 2 ;;
+        --role)        ROLE="$2";         shift 2 ;;
         --wait)        WAIT=true;         shift   ;;
         --force-quota-retry) FORCE_QUOTA_RETRY=true; shift ;;
         --force-budget) FORCE_BUDGET=true; shift ;;
