@@ -10079,7 +10079,10 @@ function formatRoutingRatio(w) {
   if (!w || typeof w !== "object") return "--";
   const { count, local_pct: l, remote_pct: r } = w;
   const pct = (v) => typeof v === "number" && Number.isFinite(v) && v >= 0 && v <= 100;
-  if (!Number.isInteger(count) || count <= 0 || !pct(l) || !pct(r) || Math.abs(l + r - 100) > 1) return "--";
+  if (!Number.isSafeInteger(count) || count <= 0 || !pct(l) || !pct(r) || Math.abs(l + r - 100) > 1) return "--";
+  // Producer rounds pct to 1 decimal (aistack.py routing summary): l% of count must land within that error of a whole event.
+  const events = (l * count) / 100;
+  if (Math.abs(events - Math.round(events)) > (count * 0.05) / 100 + 1e-9) return "--";
   const s1 = Math.round(l);
   return `S1: ${s1}% · S2: ${100 - s1}% (24h, n=${count})`;
 }

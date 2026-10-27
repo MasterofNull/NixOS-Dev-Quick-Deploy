@@ -23,6 +23,12 @@ const cases = [
   ["undefined", undefined, "--"],
   ["missing count", { local_pct: 50, remote_pct: 50 }, "--"],
   ["non-integer count", { count: 1.5, local_pct: 50, remote_pct: 50 }, "--"],
+  ["count 1 split 50/50", { count: 1, local_pct: 50, remote_pct: 50 }, "--"],
+  ["count 2 split 50/50", { count: 2, local_pct: 50, remote_pct: 50 }, "S1: 50% · S2: 50% (24h, n=2)"],
+  ["count 3 rounded thirds", { count: 3, local_pct: 33.3, remote_pct: 66.7 }, "S1: 33% · S2: 67% (24h, n=3)"],
+  ["count 3 two-decimal thirds", { count: 3, local_pct: 33.33, remote_pct: 66.67 }, "S1: 33% · S2: 67% (24h, n=3)"],
+  ["unsafe count", { count: 9007199254740993, local_pct: 50, remote_pct: 50 }, "--"],
+  ["huge count", { count: 1e100, local_pct: 50, remote_pct: 50 }, "--"],
 ];
 
 let failed = 0;
