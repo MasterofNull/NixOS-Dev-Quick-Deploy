@@ -409,3 +409,11 @@ Codex lane absent).
 - producer to fix: lane identity / signing layer.
 - fix-path: per-lane signing key held by a confined signer (pattern: `scripts/ai/lib/approval_signer.py` ACP); receipt carries a signature verified in CI against a lane-key allowlist.
 - class: governance · severity: high
+
+## WR-REA-1 — rea MCP server still cannot start under aq-confine — OPEN
+- symptom: `scripts/ai/mcp-rea-sandboxed` now calls `aq-confine --profile readonly-analysis --net none --scratch -- rea --transport stdio` correctly, but the live launch fails with `bwrap: execvp rea: No such file or directory` (rc 1); the `rea` MCP server stays down.
+- band-aid in place? no: the server is simply unavailable; nothing pretends it works.
+- root cause: (1) no `rea` binary is packaged or on PATH, and the `readonly-analysis` profile's `path_from_system` only exposes python3/sh/env/ls/cat; (2) `scripts/ai/lib/confine.py` `run` uses `subprocess.run(capture_output=True)`, buffering stdout/stderr and passing no stdin, so a long-lived stdio MCP server cannot talk through aq-confine.
+- producer to fix: REA packaging (Nix) plus a REA-specific confine profile exposing it; confine.py streaming/stdin pass-through mode.
+- fix-path: package REA declaratively and add a `rea` profile; add a streaming mode to confine.run with a test that round-trips an MCP initialize through the sandbox.
+- class: T3 · severity: medium (capability down, no security exposure) · found 2026-10-27 retro-review batch G (Gemini PR #561).

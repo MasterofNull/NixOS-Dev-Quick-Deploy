@@ -215,6 +215,34 @@
         "python3"
       ],
       "ci_workflow": ".github/workflows/test.yml#syntax"
+    },
+    {
+      "id": "rea-sandbox-tests",
+      "cmd": "scripts/testing/test-rea-sandbox.py",
+      "paths": [
+        "scripts/ai/mcp-rea-sandboxed",
+        "scripts/ai/aq-confine",
+        "config/confine-profiles/**",
+        "scripts/testing/test-rea-sandbox.py"
+      ],
+      "needs": [
+        "python3"
+      ],
+      "ci_workflow": ".github/workflows/test.yml#syntax"
+    },
+    {
+      "id": "intelligence-classifier-tests",
+      "cmd": "scripts/testing/test-intelligence-classifier.py",
+      "paths": [
+        "config/schemas/intelligence-classification.schema.json",
+        "prompts/intelligence/**",
+        "scripts/ai/aq-durable-sweeper",
+        "scripts/testing/test-intelligence-classifier.py"
+      ],
+      "needs": [
+        "python3"
+      ],
+      "ci_workflow": ".github/workflows/test.yml#syntax"
     }
   ],
   "ci_exempt": [

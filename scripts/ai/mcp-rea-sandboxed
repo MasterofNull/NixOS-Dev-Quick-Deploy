@@ -60,8 +60,10 @@ main() {
     exit 1
   fi
 
-  # Dispatch through aq-confine with network unshared and isolated tmpfs
-  exec "${SCRIPT_DIR}/aq-confine" --net none --scratch "$@"
+  # aq-confine requires --profile (rc 64 otherwise). readonly-analysis is the most
+  # restrictive existing profile (no net, no git, read-only roots, tmpfs HOME/tmp);
+  # no REA-specific profile exists. "--" keeps server args out of aq-confine's parser.
+  exec "${SCRIPT_DIR}/${AQ_CONFINE_BIN:-aq-confine}" --profile readonly-analysis --net none --scratch -- "$@"
 }
 
 if [[ "${BASH_SOURCE[0]}" == "${0}" ]]; then
