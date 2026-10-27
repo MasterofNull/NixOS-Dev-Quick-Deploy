@@ -3304,13 +3304,55 @@ async def get_pending_approvals() -> Dict[str, Any]:
 
 
 class LoopControlRequest(BaseModel):
-    action: str = Field(..., description="start | stop | restart")
+    action: str = Field(..., description="start | stop | restart | pause | resume | steer")
+    agent: Optional[str] = Field(None, description="Optional target agent/lane identifier for steering")
+    message: Optional[str] = Field(None, description="Optional operator guidance message for steering")
 
 
 @router.post("/loop/control")
 async def post_loop_control(body: LoopControlRequest) -> Dict[str, Any]:
-    """Operator control for the local-improvement loop systemd unit."""
+    """Operator control for the local-improvement loop and autonomous agent steering."""
     action = body.action.strip().lower()
+
+    # Dynamic Agent Steering & Guidance Action (Wave 10)
+    if action == "steer":
+        agent_id = (body.agent or "orchestrator").strip()
+        guidance_msg = (body.message or "").strip()
+        if not guidance_msg:
+            raise HTTPException(status_code=400, detail="Guidance message cannot be empty for steer action")
+
+        # Record guidance in collaboration PULSE log
+        pulse_path = _repo_root() / ".agent" / "collaboration" / "PULSE.log"
+        ts = datetime.now(timezone.utc).isoformat()
+        log_line = f"[{ts}] [operator] [steer]: {agent_id} — \"{guidance_msg}\"\n"
+        try:
+            with open(pulse_path, "a", encoding="utf-8") as f:
+                f.write(log_line)
+        except OSError:
+            pass
+
+        # Update RESUME hint if available
+        resume_path = _repo_root() / ".agent" / "collaboration" / "RESUME.json"
+        try:
+            if resume_path.exists():
+                r_data = json.loads(resume_path.read_text(encoding="utf-8"))
+                r_data["resume_hint"] = f"Operator Guidance ({agent_id}): {guidance_msg}"
+                resume_path.write_text(json.dumps(r_data, indent=2), encoding="utf-8")
+        except (OSError, json.JSONDecodeError):
+            pass
+
+        status = await get_loop_status()
+        return {
+            "ok": True,
+            "action": "steer",
+            "agent": agent_id,
+            "message": guidance_msg,
+            "returncode": 0,
+            "stdout": f"Guidance registered for {agent_id}",
+            "stderr": "",
+            "status": status,
+        }
+
     sudo_bin = os.environ.get("SUDO_BIN", "/run/wrappers/bin/sudo")
     systemctl_bin = os.environ.get("SYSTEMCTL_BIN", "systemctl")
     commands = {
@@ -3318,11 +3360,12 @@ async def post_loop_control(body: LoopControlRequest) -> Dict[str, Any]:
         "trigger": [sudo_bin, "-n", systemctl_bin, "start", "ai-local-training-loop.service"],
         "stop": [sudo_bin, "-n", systemctl_bin, "stop", "ai-local-training-loop.service"],
         "pause": [sudo_bin, "-n", systemctl_bin, "stop", "ai-local-training-loop.service"],
+        "resume": [sudo_bin, "-n", systemctl_bin, "start", "ai-local-training-loop.service"],
         "restart": [sudo_bin, "-n", systemctl_bin, "restart", "ai-local-training-loop.service"],
     }
     cmd = commands.get(action)
     if cmd is None:
-        raise HTTPException(status_code=400, detail="action must be start, stop, pause, trigger, or restart")
+        raise HTTPException(status_code=400, detail="action must be start, stop, pause, resume, trigger, restart, or steer")
 
     try:
         proc = await asyncio.to_thread(
