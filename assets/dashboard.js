@@ -10074,6 +10074,16 @@ function quickApproveUI() {
 }
 
 // ─── MISSION COCKPIT LIVE TELEMETRY (Rule 23 Non-Gamified Engine) ───────────
+// Pure; test-dashboard-routing-ratio.js extracts this block by name, keep it self-contained.
+function formatRoutingRatio(w) {
+  if (!w || typeof w !== "object") return "--";
+  const { count, local_pct: l, remote_pct: r } = w;
+  const pct = (v) => typeof v === "number" && Number.isFinite(v) && v >= 0 && v <= 100;
+  if (!Number.isInteger(count) || count <= 0 || !pct(l) || !pct(r) || Math.abs(l + r - 100) > 1) return "--";
+  const s1 = Math.round(l);
+  return `S1: ${s1}% · S2: ${100 - s1}% (24h, n=${count})`;
+}
+
 async function updateMissionCockpitTelemetry() {
   try {
     const [triageData, runtimeData, homeostasisData, collabData, routingData] = await Promise.allSettled([
@@ -10126,12 +10136,7 @@ async function updateMissionCockpitTelemetry() {
     if (ratioEl) {
       // S1 = local, S2 = remote; measured routing share over the last 24h
       const w = routingData.status === "fulfilled" ? routingData.value?.routing_windows?.windows?.["24h"] : null;
-      if (w && typeof w.local_pct === "number" && typeof w.remote_pct === "number") {
-        const s1 = Math.round(w.local_pct);
-        ratioEl.textContent = `S1: ${s1}% · S2: ${100 - s1}% (24h, n=${w.count})`;
-      } else {
-        ratioEl.textContent = "--";
-      }
+      ratioEl.textContent = formatRoutingRatio(w);
     }
 
     // Update Reconcile State from Durable Mesh
