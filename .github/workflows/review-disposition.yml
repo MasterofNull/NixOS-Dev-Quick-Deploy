@@ -19,3 +19,5 @@ jobs:
           fetch-depth: 0
       - name: Verify independent, head-bound review disposition
         run: python3 scripts/governance/check-review-disposition.py "$GITHUB_EVENT_PATH"
+      - name: Verify PR body layout (Details, What, How, Why)
+        run: python3 scripts/governance/check-pr-body-format.py "$GITHUB_EVENT_PATH"
