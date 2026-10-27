@@ -104,7 +104,7 @@ ORIENT ➔ RESEARCH ➔ PRD/PLAN ➔ MEMORY-CHECKPOINT ➔ EXECUTE ➔ VALIDATE 
 
 AQ-OS implements defense-in-depth to safely run autonomous coding agents:
 - **Cheapest-Eligible Implementer (Rule 17)**: High-altitude flagship models plan and review; economical models (Qwen, Claude Haiku) implement bounded tasks.
-- **Independent Cross-Lane Review**: No agent can approve its own code. PRs require a cryptographic `Review-Disposition: PASS` from an independent model before merging.
+- **Independent Cross-Lane Review**: No agent can approve its own code. PRs require a `Review-Disposition: PASS` plus a `Review-Receipt` minted by `aq-review-receipt` from a real independent reviewer run. Receipts are detection-grade (auditable with `aq-review-receipt audit`), not cryptographic; per-lane signing is tracked as WR-REVIEW-1.
 - **Bubblewrap & AppArmor Confinement**: External tool calls, web requests, and code executions run inside ephemeral sandboxes without ambient host access.
 - **Declarative NixOS State (Rule 13)**: All system modifications must be declared in Nix flake modules (`nix/modules/`), ensuring reproducible system rebuilds.
 
