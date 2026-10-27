@@ -535,13 +535,74 @@ function appendThoughtStream(text, level = "info") {
 }
 
 function steerAgentUI(agentId) {
-  const msg = prompt(`[OPERATOR STEERING] Enter guidance instruction for ${agentId}:`);
-  if (!msg || !msg.trim()) return;
-  appendThoughtStream(`⚡ [STEER -> ${agentId}] Guidance injected: "${msg.trim()}"`, "action");
+  openSteeringModalUI(agentId);
+}
+
+function openSteeringModalUI(agentId = "orchestrator") {
+  let modal = document.getElementById("aqSteeringModal");
+  if (!modal) {
+    modal = document.createElement("div");
+    modal.id = "aqSteeringModal";
+    modal.style.cssText = "position:fixed;top:0;left:0;width:100vw;height:100vh;background:rgba(0,0,0,0.75);backdrop-filter:blur(4px);z-index:9999;display:flex;align-items:center;justify-content:center;";
+    modal.innerHTML = `
+      <div style="background:linear-gradient(135deg, rgba(15,23,42,0.98), rgba(8,12,20,0.99));border:1px solid rgba(0,217,255,0.3);border-radius:8px;padding:1.2rem;width:90%;max-width:540px;box-shadow:0 10px 30px rgba(0,0,0,0.8);font-family:var(--font);color:var(--fg);">
+        <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:0.8rem;border-bottom:1px solid rgba(255,255,255,0.1);padding-bottom:0.4rem;">
+          <div style="display:flex;align-items:center;gap:0.5rem;">
+            <span style="font-family:var(--hud);font-size:0.75rem;letter-spacing:0.1em;color:var(--cyan);font-weight:700;">⚡ OPERATOR STEERING DOCK</span>
+            <span class="card-badge badge-info" id="steeringTargetBadge">TARGET: ${agentId}</span>
+          </div>
+          <button onclick="closeSteeringModalUI()" style="background:none;border:none;color:var(--fg3);font-size:1rem;cursor:pointer;">✕</button>
+        </div>
+        <p style="font-size:0.65rem;color:var(--fg2);margin-bottom:0.6rem;line-height:1.4;">
+          Inject real-time guidance directly into the active loop. Instructions are audited in <code style="color:var(--cyan);">PULSE.log</code> and prioritized by the coordinator.
+        </p>
+        <textarea id="steeringInstructionInput" rows="3" placeholder="Enter tactical steering instruction (e.g. Focus on Phase 4 acceptance criteria, verify edge cases)..." style="width:100%;box-sizing:border-box;background:rgba(0,0,0,0.5);border:1px solid rgba(0,217,255,0.25);border-radius:4px;color:var(--fg);padding:0.6rem;font-size:0.75rem;font-family:inherit;outline:none;resize:vertical;"></textarea>
+        <div style="display:flex;justify-content:flex-end;gap:0.6rem;margin-top:0.8rem;">
+          <button onclick="closeSteeringModalUI()" class="action-btn" style="font-size:0.65rem;padding:0.3rem 0.8rem;background:rgba(255,255,255,0.06);border:1px solid rgba(255,255,255,0.2);color:var(--fg2);border-radius:3px;cursor:pointer;">Cancel</button>
+          <button onclick="submitSteeringInstructionUI()" class="action-btn" style="font-size:0.65rem;padding:0.3rem 0.8rem;background:rgba(0,217,255,0.18);border:1px solid var(--cyan);color:var(--cyan);border-radius:3px;cursor:pointer;font-weight:600;">⚡ Inject Guidance</button>
+        </div>
+      </div>
+    `;
+    document.body.appendChild(modal);
+  } else {
+    const badge = document.getElementById("steeringTargetBadge");
+    if (badge) badge.textContent = `TARGET: ${agentId}`;
+    modal.style.display = "flex";
+  }
+  const input = document.getElementById("steeringInstructionInput");
+  if (input) {
+    input.dataset.targetAgent = agentId;
+    input.value = "";
+    setTimeout(() => input.focus(), 50);
+  }
+}
+
+function closeSteeringModalUI() {
+  const modal = document.getElementById("aqSteeringModal");
+  if (modal) modal.style.display = "none";
+}
+
+function submitSteeringInstructionUI() {
+  const input = document.getElementById("steeringInstructionInput");
+  if (!input) return;
+  const msg = input.value.trim();
+  const agentId = input.dataset.targetAgent || "orchestrator";
+  if (!msg) return;
+
+  closeSteeringModalUI();
+  appendThoughtStream(`⚡ [STEER -> ${agentId}] Guidance injected: "${msg}"`, "action");
+
+  const thought = document.getElementById("cockpitThoughtLine");
+  if (thought) {
+    thought.textContent = `⚡ [Operator Guidance -> ${agentId}] "${msg}"`;
+    thought.style.borderColor = "var(--cyan)";
+    thought.style.color = "var(--cyan)";
+  }
+
   apiFetch("/loop/control", {
     method: "POST",
     headers: { "Content-Type": "application/json" },
-    body: JSON.stringify({ action: "steer", agent: agentId, message: msg.trim() })
+    body: JSON.stringify({ action: "steer", agent: agentId, message: msg })
   }).catch(() => {});
 }
 
