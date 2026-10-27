@@ -401,3 +401,11 @@ Codex lane absent).
 - producer to fix: nixpkgs channel (b); upstream ffmpeg release (c).
 - fix-path: `nix flake update nixpkgs` once nixos-26.05 ffmpeg_8 >= 8.1.3, then drop the (a)+(b) ignores; drop (c) on a fixed release. Group (b) expires 2026-10-22 and is renewed weekly only while the channel lacks 8.1.3. No local overlay: ffmpeg_8 override rebuilds large referrer closures (measured by reviewer: 455/192/132 referrers for the three variants; see fast-lane-manifest.nix).
 - class: T5 · severity: HIGH (DoS/OOB-read in demux paths on untrusted media) · owner hyperd.
+
+## WR-REVIEW-1 — review claims are receipt-backed but not cryptographically attributable — OPEN
+- symptom: ~85 merged PRs carry `Reviewed-by: codex|claude-sonnet|...` with no matching reviewer run (fabricated/self-asserted reviewer claims).
+- band-aid in place? yes: `Review-Receipt:` field required by `scripts/governance/check-review-disposition.py`; receipt minted by `scripts/ai/aq-review-receipt` from a real `registry.jsonl` reviewer run (output hash + head sha + disposition); `aq-review-receipt audit` re-verifies against the local registry. Detection-grade: CI cannot see the local registry, and any lane can write receipt/registry/log files.
+- root cause: all lanes share one GitHub account and one Unix user, so there is no lane identity an attacker lane cannot forge.
+- producer to fix: lane identity / signing layer.
+- fix-path: per-lane signing key held by a confined signer (pattern: `scripts/ai/lib/approval_signer.py` ACP); receipt carries a signature verified in CI against a lane-key allowlist.
+- class: governance · severity: high

@@ -1,0 +1,181 @@
+#!/usr/bin/env python3
+"""Mint, verify and audit review receipts that back PR `Review-Receipt:` claims.
+
+A receipt ties a PR review claim to a real harness reviewer run recorded in
+.agents/delegation/registry.jsonl. Detection-grade only: lanes share one Unix
+user, so the receipt is not cryptographically signed (see WORKAROUND-REGISTER).
+"""
+from __future__ import annotations
+try:  # aq-usage-hook
+    import importlib.util as _aqu, os as _aqo
+    _aqs = _aqu.spec_from_file_location("aq_usage", _aqo.path.join(_aqo.path.dirname(_aqo.path.realpath(__file__)), "lib", "aq_usage.py"))
+    _aqm = _aqu.module_from_spec(_aqs); _aqs.loader.exec_module(_aqm); _aqm.record(__file__, __name__)
+except Exception:
+    pass
+
+import argparse
+import hashlib
+import json
+import re
+import sys
+from datetime import datetime, timezone
+from pathlib import Path
+
+ROOT = Path(__file__).resolve().parents[2]
+RECEIPT_DIR = ".agent/reviews/receipts"
+VERDICTS = ("PASS", "PASS_WITH_FOLLOWUPS", "REQUEST_CHANGES")
+
+
+def norm(lane: str) -> str:
+    return re.sub(r"\s+", " ", (lane or "").strip().lower())
+
+
+def load_registry(path: Path) -> dict:
+    rows: dict = {}
+    if path.is_file():
+        for line in path.read_text(encoding="utf-8").splitlines():
+            try:
+                row = json.loads(line)
+            except ValueError:
+                continue
+            if isinstance(row, dict) and row.get("id"):
+                rows[row["id"]] = row  # last row wins
+    return rows
+
+
+def _rel(root: Path, p: str) -> tuple[Path, str]:
+    full = Path(p) if Path(p).is_absolute() else root / p
+    full = full.resolve()
+    try:
+        return full, str(full.relative_to(root.resolve()))
+    except ValueError:
+        raise SystemExit(f"output_file {full} is outside the repo")
+
+
+def _run_checks(entry, root: Path):
+    """Return (errors, output_path, rel, text) for a registry entry."""
+    errs = []
+    if not entry:
+        return ["run-id not in registry"], None, None, ""
+    if entry.get("status") != "done":
+        errs.append(f"registry status is {entry.get('status')!r}, need 'done'")
+    if "review" not in str(entry.get("role", "")).lower():
+        errs.append(f"registry role {entry.get('role')!r} is not a review role")
+    if not entry.get("output_file"):
+        return errs + ["registry entry has no output_file"], None, None, ""
+    full, rel = _rel(root, entry["output_file"])
+    if not full.is_file():
+        return errs + [f"output_file missing: {rel}"], full, rel, ""
+    return errs, full, rel, full.read_text(encoding="utf-8", errors="replace")
+
+
+def cmd_mint(a) -> int:
+    root = Path(a.root).resolve()
+    reg = load_registry(Path(a.registry) if a.registry else root / ".agents/delegation/registry.jsonl")
+    entry = reg.get(a.run_id)
+    errs, full, rel, text = _run_checks(entry, root)
+    if not re.fullmatch(r"[0-9a-f]{40}", a.head):
+        errs.append("--head must be 40 lowercase hex")
+    if entry and norm(entry.get("agent")) == norm(a.author_lane):
+        errs.append(f"reviewer lane {entry.get('agent')!r} equals author lane")
+    verdict = ""
+    if text:
+        if a.head not in text and a.head[:12] not in text:
+            errs.append("output does not mention the head sha")
+        m = re.findall(r"^Review-Disposition:[ \t]*(\S+)[ \t]*$", text, re.M)
+        verdict = m[-1] if m else ""
+        if verdict not in VERDICTS:
+            errs.append(f"output lacks a valid 'Review-Disposition:' line (got {verdict!r})")
+    if errs:
+        for e in errs:
+            print(f"mint FAILED: {e}", file=sys.stderr)
+        return 1
+    receipt = {
+        "schema": 1, "pr": a.pr, "reviewed_head_sha": a.head, "run_id": a.run_id,
+        "reviewer_lane": entry["agent"], "author_lane": a.author_lane, "verdict": verdict,
+        "output_file": rel, "output_sha256": hashlib.sha256(full.read_bytes()).hexdigest(),
+        "created_at": datetime.now(timezone.utc).strftime("%Y-%m-%dT%H:%M:%SZ"),
+    }
+    out = root / RECEIPT_DIR / f"pr{a.pr}-{a.head[:12]}.json"
+    out.parent.mkdir(parents=True, exist_ok=True)
+    out.write_text(json.dumps(receipt, indent=2) + "\n", encoding="utf-8")
+    print(f"wrote {out.relative_to(root)}")
+    return 0
+
+
+def verify_receipt(path: Path, root: Path, registry: Path) -> list[str]:
+    try:
+        r = json.loads(path.read_text(encoding="utf-8"))
+    except (OSError, ValueError) as exc:
+        return [f"unreadable receipt: {exc.__class__.__name__}"]
+    if not isinstance(r, dict) or r.get("schema") != 1:
+        return ["not a schema 1 receipt"]
+    entry = load_registry(registry).get(r.get("run_id"))
+    errs, full, rel, text = _run_checks(entry, root)
+    if entry and norm(entry.get("agent")) != norm(r.get("reviewer_lane")):
+        errs.append("registry agent != receipt reviewer_lane")
+    if norm(r.get("reviewer_lane")) == norm(r.get("author_lane")):
+        errs.append("reviewer_lane == author_lane")
+    if rel is not None and rel != r.get("output_file"):
+        errs.append("registry output_file != receipt output_file")
+    if full is not None and full.is_file():
+        if hashlib.sha256(full.read_bytes()).hexdigest() != r.get("output_sha256"):
+            errs.append("output_sha256 mismatch")
+        if r.get("reviewed_head_sha", "")[:12] not in text:
+            errs.append("output does not mention reviewed head")
+    return errs
+
+
+def cmd_verify(a) -> int:
+    root = Path(a.root).resolve()
+    reg = Path(a.registry) if a.registry else root / ".agents/delegation/registry.jsonl"
+    errs = verify_receipt(Path(a.receipt), root, reg)
+    for e in errs:
+        print(f"verify FAILED: {e}", file=sys.stderr)
+    if not errs:
+        print("receipt OK")
+    return 1 if errs else 0
+
+
+def cmd_audit(a) -> int:
+    root = Path(a.root).resolve()
+    reg = Path(a.registry) if a.registry else root / ".agents/delegation/registry.jsonl"
+    bad = 0
+    print(f"{'receipt':40} {'reviewer':12} {'verdict':20} result")
+    for p in sorted((root / RECEIPT_DIR).glob("*.json")):
+        try:
+            r = json.loads(p.read_text(encoding="utf-8"))
+        except ValueError:
+            r = {}
+        if a.since and str(r.get("created_at", ""))[:10] < a.since:
+            continue
+        errs = verify_receipt(p, root, reg)
+        bad += bool(errs)
+        print(f"{p.name:40} {str(r.get('reviewer_lane', '?')):12} {str(r.get('verdict', '?')):20} "
+              f"{'OK' if not errs else 'FAIL: ' + '; '.join(errs)}")
+    return 1 if bad else 0
+
+
+def main() -> int:
+    ap = argparse.ArgumentParser(description=__doc__.splitlines()[0])
+    ap.add_argument("--root", default=str(ROOT))
+    ap.add_argument("--registry", default="")
+    sub = ap.add_subparsers(dest="cmd", required=True)
+    m = sub.add_parser("mint")
+    m.add_argument("--run-id", required=True)
+    m.add_argument("--pr", type=int, required=True)
+    m.add_argument("--head", required=True)
+    m.add_argument("--author-lane", required=True)
+    m.set_defaults(fn=cmd_mint)
+    v = sub.add_parser("verify")
+    v.add_argument("receipt")
+    v.set_defaults(fn=cmd_verify)
+    u = sub.add_parser("audit")
+    u.add_argument("--since", default="")
+    u.set_defaults(fn=cmd_audit)
+    a = ap.parse_args()
+    return a.fn(a)
+
+
+if __name__ == "__main__":
+    sys.exit(main())
