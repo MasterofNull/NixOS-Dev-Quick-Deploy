@@ -1,6 +1,6 @@
 #!/usr/bin/env python3
 """
-apparmor-fix-agent.py — AppArmor denial scanner → rule generator → git commit.
+apparmor-fix-agent.py — AppArmor denial scanner → rule generator → validated staging (no git).
 
 Reads denial data from stdin (JSON) or scans journalctl directly.
 Generates AppArmor rules, deduplicates against existing profile in
@@ -44,6 +44,8 @@ except ImportError:
     def push(*args, **kwargs): return None
     def resolve(*args, **kwargs): return False
     def get_by_id(*args, **kwargs): return None
+
+from apparmor_rules import rule_error, comment_error  # noqa: E402
 
 # Use REPO_ROOT env var when set (inherited from health-spider systemd env); __file__
 # resolves to read-only Nix store when spawned from the health-spider service.
@@ -295,6 +297,12 @@ def _path_already_covered(nix_text: str, profile: str, candidate_rule: str) -> b
 
 def _insert_rules_for_profile(profile: str, rules_with_comments: List[Tuple[str, str]]) -> bool:
     """Insert new rules into NIX_FILE for the given profile. Deduplicates against existing content."""
+    # Defense in depth: reject the whole batch if any rule/comment fails the allowlist.
+    for rule, cmt in rules_with_comments:
+        err = rule_error(rule) or comment_error(cmt)
+        if err:
+            sys.stderr.write(f"[apparmor-fix-agent] REJECTED rule {rule!r}: {err}\n")
+            return False
     if not NIX_FILE.exists():
         sys.stderr.write(f"{NIX_FILE} does not exist\n")
         return False
@@ -326,61 +334,6 @@ def _insert_rules_for_profile(profile: str, rules_with_comments: List[Tuple[str,
     except OSError as e:
         sys.stderr.write(f"[apparmor-fix-agent] error writing {NIX_FILE}: {e}\n")
         return False
-
-
-# ── Git helpers ────────────────────────────────────────────────────────────────
-
-def _git_commit(message: str) -> Optional[str]:
-    """Stage tracked AppArmor changes and commit. Returns short hash or None."""
-    paths = [NIX_FILE.relative_to(REPO_ROOT)]
-    try:
-        ignored = subprocess.run(
-            ["git", "-C", str(REPO_ROOT), "check-ignore", "-q", str(HANDOFF_MD.relative_to(REPO_ROOT))],
-            check=False,
-        )
-        tracked = subprocess.run(
-            ["git", "-C", str(REPO_ROOT), "ls-files", "--error-unmatch", str(HANDOFF_MD.relative_to(REPO_ROOT))],
-            check=False,
-            stdout=subprocess.DEVNULL,
-            stderr=subprocess.DEVNULL,
-        )
-        if ignored.returncode != 0 or tracked.returncode == 0:
-            paths.append(HANDOFF_MD.relative_to(REPO_ROOT))
-    except Exception:
-        pass
-    try:
-        subprocess.run(
-            ["git", "-C", str(REPO_ROOT), "add", *[str(path) for path in paths]],
-            check=True, capture_output=True,
-        )
-        # If no changes were staged (e.g. proposed rules were already covered),
-        # return HEAD cleanly rather than letting git commit fail on empty tree.
-        diff_res = subprocess.run(
-            ["git", "-C", str(REPO_ROOT), "diff", "--cached", "--quiet"],
-            check=False,
-        )
-        if diff_res.returncode == 0:
-            result = subprocess.run(
-                ["git", "-C", str(REPO_ROOT), "rev-parse", "--short", "HEAD"],
-                capture_output=True, text=True,
-            )
-            return result.stdout.strip()
-
-        # Owner-approved rule commits still land directly on main in the primary checkout;
-        # the pre-commit main-checkout guard refuses that unless overridden (WR-11).
-        subprocess.run(
-            ["git", "-C", str(REPO_ROOT), "commit", "-m", message],
-            check=True, capture_output=True,
-            env={**os.environ, "AQ_ALLOW_MAIN_CHECKOUT_COMMIT": "1"},
-        )
-        result = subprocess.run(
-            ["git", "-C", str(REPO_ROOT), "rev-parse", "--short", "HEAD"],
-            capture_output=True, text=True,
-        )
-        return result.stdout.strip()
-    except subprocess.CalledProcessError as e:
-        sys.stderr.write(f"git commit failed: {e.stderr.decode()[:200]}\n")
-        return None
 
 
 # ── RAG seeding ────────────────────────────────────────────────────────────────
@@ -560,9 +513,11 @@ def main() -> int:
     parser.add_argument("--alert-id", help="Alert ID to resolve after commit")
     args = parser.parse_args()
 
-    # --- Mode: Commit Staged (Human approved) ---
+    # --- Mode: Apply Staged (Human approved) ---
+    # No git operations here: the agent only edits the profile file. Committing is
+    # left to the PR workflow (worktree + tier0 gate); the agent never commits in
+    # the main checkout and never stages anything.
     if args.commit_staged:
-        # If an alert-id is given, retrieve the proposed rules from the attention queue and apply them to NIX_FILE
         target_profile = args.profile
         rules_to_apply: List[str] = []
         if args.alert_id:
@@ -571,25 +526,22 @@ def main() -> int:
                 payload = alert.get("payload", {})
                 target_profile = target_profile or payload.get("profile")
                 rules_to_apply = payload.get("rules_proposed", [])
-
-        if target_profile and rules_to_apply:
-            rules_tuples = [(r.strip(), "applied via aq-approve") for r in rules_to_apply if r.strip()]
-            if not _insert_rules_for_profile(target_profile, rules_tuples):
-                sys.stderr.write(f"[apparmor-fix-agent] failed to write proposed rules for {target_profile}\n")
-
-        msg = "fix(apparmor): commit human-approved rule changes\n\nApproved via attention queue."
-        if args.alert_id:
-            msg += f"\n\nAlert-Id: {args.alert_id}"
-        if target_profile:
-            msg += f"\nProfile: {target_profile}"
-        
-        commit_hash = _git_commit(msg)
-        if commit_hash:
-            if args.alert_id:
-                resolve(args.alert_id, "approved")
-            print(json.dumps({"status": "committed", "hash": commit_hash}))
-            return 0
-        return 1
+        if not (args.alert_id and target_profile and rules_to_apply):
+            sys.stderr.write("[apparmor-fix-agent] no alert/profile/rules to apply\n")
+            return 1
+        for r in rules_to_apply:
+            err = rule_error(r)
+            if err:
+                sys.stderr.write(f"[apparmor-fix-agent] REJECTED staged rule {r!r}: {err}\n")
+                return 1
+        rules_tuples = [(r.strip(), "applied via aq-approve") for r in rules_to_apply]
+        if not _insert_rules_for_profile(target_profile, rules_tuples):
+            sys.stderr.write(f"[apparmor-fix-agent] failed to write proposed rules for {target_profile}\n")
+            return 1
+        resolve(args.alert_id, "approved")
+        print(json.dumps({"status": "applied_uncommitted", "profile": target_profile,
+                          "rules": [r.strip() for r in rules_to_apply]}))
+        return 0
 
     if not args.profile:
         parser.error("--profile is required unless using --commit-staged")
@@ -625,6 +577,15 @@ def main() -> int:
         if key not in seen_rules:
             seen_rules.add(key)
             deduped.append((rule_line, comment))
+
+    safe: List[Tuple[str, str]] = []
+    for rule_line, comment in deduped:
+        err = rule_error(rule_line) or comment_error(comment)
+        if err:
+            sys.stderr.write(f"[apparmor-fix-agent] REJECTED generated rule {rule_line.strip()!r}: {err}\n")
+            continue
+        safe.append((rule_line, comment))
+    deduped = safe
 
     if not deduped:
         json.dump({"rules_added": [], "commit_hash": None, "message": "all paths already covered"}, sys.stdout)

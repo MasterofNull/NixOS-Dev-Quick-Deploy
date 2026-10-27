@@ -86,27 +86,8 @@ security.apparmor.policies."command-center-dashboard-api" = {
 
 
 
-    def test_git_commit_no_staged_changes_returns_head(self):
-        from unittest.mock import patch, MagicMock
-        with patch("subprocess.run") as mock_run:
-            mock_diff = MagicMock()
-            mock_diff.returncode = 0
-
-            mock_rev = MagicMock()
-            mock_rev.stdout = "abc1234\n"
-
-            def side_effect(cmd, *args, **kwargs):
-                if "diff" in cmd:
-                    return mock_diff
-                if "rev-parse" in cmd:
-                    return mock_rev
-                m = MagicMock()
-                m.returncode = 0
-                return m
-
-            mock_run.side_effect = side_effect
-            res = _agent._git_commit("test commit")
-            self.assertEqual(res, "abc1234")
+    def test_agent_has_no_git_commit_path(self):
+        self.assertFalse(hasattr(_agent, "_git_commit"))
 
 
 if __name__ == "__main__":
