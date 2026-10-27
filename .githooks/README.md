@@ -27,6 +27,16 @@ follow-up integration additionally must be explicitly safe at rest, have no
 activation authority, and name its bounded next slice. `ACTIVATION_BLOCKED`,
 `REJECTED`, and provisional work stay isolated.
 
+### Review receipts (PR check, not a hook)
+
+The required `review-disposition` PR check also demands `Review-Receipt: <path>`.
+Start the reviewer run with a review role so the registry row qualifies (e.g. `scripts/ai/delegate-to-codex --role review --prompt-file <f>`).
+Mint it after the reviewer run finishes: `scripts/ai/aq-review-receipt mint --run-id <id> --pr <n> --head <40hex> --author-lane <lane>`,
+commit `.agent/reviews/receipts/pr<n>-<head12>.json` (a receipt-only commit does not invalidate the review),
+and audit with `scripts/ai/aq-review-receipt audit`. Detection-grade, not cryptographic.
+A receipt-only update may only add or modify regular `*.json` files under `.agent/reviews/receipts/` (renames, deletions and symlinks re-require review);
+verify/audit re-check the receipt verdict and head against the reviewer's output log, and mint rejects an empty log.
+
 ### pre-commit
 
 Runs fast commit-time governance and safety checks:
