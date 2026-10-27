@@ -389,8 +389,31 @@ def project_all() -> dict:
     }
 
 
+_AGENT_LANE_RE = re.compile(
+    r"(?<![A-Za-z0-9])(antigravity|gemini|codex|claude|qwen|local-agent|sonnet|opus|haiku)(?![A-Za-z0-9])",
+    re.IGNORECASE)
+LEGACY_ACCEPTANCES_FILE = REPO / "config" / "pm-tracker-legacy-acceptances.json"
+# Legacy agent/test acceptances counted by the last validate_manifest() call (WARN only).
+GRANDFATHERED_ACCEPTANCES: list[str] = []
+
+
+def _legacy_allowlist() -> set[tuple[str, str, str]]:
+    """Frozen (plan, item, by) triples; entries may only ever be removed. Date is never consulted."""
+    try:
+        data = json.loads(LEGACY_ACCEPTANCES_FILE.read_text())
+    except Exception:
+        return set()
+    return {(e.get("plan"), e.get("item"), e.get("by")) for e in data.get("entries", [])}
+
+
+def _agent_acceptor(by) -> bool:
+    by = str(by or "")
+    return bool(_AGENT_LANE_RE.search(by)) or by.strip().lower().endswith(".py")
+
+
 def validate_manifest(plan_dir: Path) -> list[str]:
     errs = []
+    GRANDFATHERED_ACCEPTANCES.clear()
     p = plan_dir / "tracker.json"
     if not p.is_file():
         return [f"no tracker.json in {plan_dir}"]
@@ -409,6 +432,21 @@ def validate_manifest(plan_dir: Path) -> list[str]:
         ids.add(it.get("id"))
         if not it.get("goal") or not it.get("validation_goal"):
             errs.append(f"item {it.get('id')} missing goal/validation_goal (editorial required)")
+    legacy = _legacy_allowlist()
+    for it in m.get("items", []):
+        # Acceptance is the independent sign-off gate: an agent lane / test script may
+        # not accept its own work unless a review receipt backs it (frozen allowlist grandfathered).
+        acc = it.get("acceptance")
+        if isinstance(acc, dict) and acc.get("status") == "accepted" and _agent_acceptor(acc.get("by")):
+            rcpt = str(acc.get("receipt") or "")
+            if rcpt.startswith(".agent/reviews/receipts/") and ".." not in rcpt and (REPO / rcpt).is_file():
+                pass
+            elif (plan_dir.name, it.get("id"), acc.get("by")) in legacy:
+                GRANDFATHERED_ACCEPTANCES.append(f"{plan_dir.name}:{it.get('id')}")
+            else:
+                errs.append(f"plan {plan_dir.name} item {it.get('id')}: acceptance accepted by "
+                            f"agent/test '{acc.get('by')}' without independent review receipt "
+                            f"(add `receipt` under .agent/reviews/receipts/ or have a human accept)")
     for it in m.get("items", []):
         for d in it.get("deps", []):
             if d not in ids:
@@ -467,6 +505,9 @@ def main() -> int:
                 print(f"FAIL: {e}")
             return 1
         project(plan_dir)  # ensure it projects without error
+        if GRANDFATHERED_ACCEPTANCES:
+            print(f"WARN: {plan_dir.name}: {len(GRANDFATHERED_ACCEPTANCES)} allowlisted legacy "
+                  f"agent/test acceptance(s) lack independent review (config/pm-tracker-legacy-acceptances.json)")
         print(f"PASS: {plan_dir.name}/tracker.json valid + projects")
         return 0
     data = project(plan_dir)

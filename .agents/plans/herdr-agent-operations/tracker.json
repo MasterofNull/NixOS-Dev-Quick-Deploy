@@ -1,7 +1,7 @@
 {
   "plan": {
     "id": "herdr-agent-operations",
-    "title": "Herdr Agent Operations \u2014 persistent AQ-OS terminal presentation",
+    "title": "Herdr Agent Operations — persistent AQ-OS terminal presentation",
     "prd_ref": ".agent/PROJECT-HERDR-AGENT-OPERATIONS-PRD.md",
     "owner": "hyperd",
     "goal": "A persistent, role-aware terminal workspace that makes AQ-OS work visible without becoming a second task, dispatch, review, or release authority.",
@@ -16,31 +16,31 @@
   "phases": [
     {
       "id": "h0",
-      "name": "H0 \u2014 capability intake",
+      "name": "H0 — capability intake",
       "goal": "deny-by-default threat model and authority boundary",
       "order": 1
     },
     {
       "id": "h1",
-      "name": "H1 \u2014 inert packaging",
+      "name": "H1 — inert packaging",
       "goal": "reproducible package and read-only operator facade with no runtime",
       "order": 2
     },
     {
       "id": "h2",
-      "name": "H2 \u2014 monitored presentation",
+      "name": "H2 — monitored presentation",
       "goal": "deterministic layout projection and Service Coverage",
       "order": 3
     },
     {
       "id": "h3",
-      "name": "H3 \u2014 brokered panes",
+      "name": "H3 — brokered panes",
       "goal": "admitted tasks execute in socket-blind confined Herdr PTYs",
       "order": 4
     },
     {
       "id": "h4",
-      "name": "H4 \u2014 dogfood and cutover",
+      "name": "H4 — dogfood and cutover",
       "goal": "soak, remote attach, reconstruction and cmux terminology retirement",
       "order": 5
     }
@@ -110,10 +110,10 @@
         ]
       },
       "acceptance": {
-        "status": "accepted",
-        "by": "antigravity",
-        "date": "2026-10-23",
-        "note": "Verified via phase0 check 0.10.61 PASS (pure determinism, operator context, dashboard summary)"
+        "status": "pending",
+        "by": null,
+        "date": null,
+        "note": "reset 2026-10-27: self-acceptance by author lane antigravity without independent review (gaming audit, .agent/memory/issues-backlog.md). Was: Verified via phase0 check 0.10.61 PASS (pure determinism, operator context, dashboard summary)"
       }
     },
     {

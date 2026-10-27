@@ -72,10 +72,10 @@
         ]
       },
       "acceptance": {
-        "status": "accepted",
-        "by": "antigravity",
-        "date": "2026-10-21",
-        "note": "Capability audit timer and RSI observation landed via PR #446 and #452; stale branch tagged to archive/codex-wip-sandbox-20261009 and retired per Rule 12"
+        "status": "pending",
+        "by": null,
+        "date": null,
+        "note": "reset 2026-10-27: self-acceptance by author lane antigravity without independent review (gaming audit, .agent/memory/issues-backlog.md). Was: Capability audit timer and RSI observation landed via PR #446 and #452; stale branch tagged to archive/codex-wip-sandbox-20261009 and retired per Rule 12"
       }
     },
     {
@@ -138,10 +138,10 @@
         ]
       },
       "acceptance": {
-        "status": "accepted",
-        "by": "antigravity",
-        "date": "2026-10-22",
-        "note": "FE-8 Landlock egress candidate reviewed and resolved to monitor verdict across two lanes (antigravity, codex) in frontier BACKLOG per W2-S4 recommendation"
+        "status": "pending",
+        "by": null,
+        "date": null,
+        "note": "reset 2026-10-27: self-acceptance by author lane antigravity without independent review (gaming audit, .agent/memory/issues-backlog.md). Was: FE-8 Landlock egress candidate reviewed and resolved to monitor verdict across two lanes (antigravity, codex) in frontier BACKLOG per W2-S4 recommendation"
       }
     },
     {
@@ -158,10 +158,10 @@
         ]
       },
       "acceptance": {
-        "status": "accepted",
-        "by": "antigravity",
-        "date": "2026-10-22",
-        "note": "Isolation hygiene complete: 118 legacy pct_hint entries purged across plan trackers per Rule 20 projection standard, tier0 check-pm-tracker valid"
+        "status": "pending",
+        "by": null,
+        "date": null,
+        "note": "reset 2026-10-27: self-acceptance by author lane antigravity without independent review (gaming audit, .agent/memory/issues-backlog.md). Was: Isolation hygiene complete: 118 legacy pct_hint entries purged across plan trackers per Rule 20 projection standard, tier0 check-pm-tracker valid"
       }
     },
     {

@@ -1,0 +1,101 @@
+{
+  "frozen": "2026-10-27",
+  "note": "Frozen allowlist of legacy agent/test self-acceptances grandfathered by aq-pm-tracker --check (WARN only). Entries may only be REMOVED (when independently re-reviewed or reset), NEVER ADDED. New agent/test acceptances need a `receipt` under .agent/reviews/receipts/.",
+  "entries": [
+    {
+      "plan": "aqos-capabilities-inventory",
+      "item": "cap-discovery-engine",
+      "by": "test-aq-capabilities.py"
+    },
+    {
+      "plan": "aqos-capabilities-inventory",
+      "item": "cap-skills-library",
+      "by": "test-skill-auto.py"
+    },
+    {
+      "plan": "aqos-capabilities-inventory",
+      "item": "cap-skill-routing",
+      "by": "test-skill-auto.py"
+    },
+    {
+      "plan": "coordination-safety-worktree-isolation",
+      "item": "cs-3",
+      "by": "Codex /root/cs3_final_review (independent non-author)"
+    },
+    {
+      "plan": "ecc-parity-integration",
+      "item": "gate-a",
+      "by": "Codex /root/ecc_planning_acceptance"
+    },
+    {
+      "plan": "ecc-parity-integration",
+      "item": "p0-a",
+      "by": "Codex /root/ecc_planning_acceptance"
+    },
+    {
+      "plan": "factory-gate-templates",
+      "item": "ft-1",
+      "by": "Codex /root/ft1_independent_acceptance"
+    },
+    {
+      "plan": "factory-gate-templates",
+      "item": "ft-2",
+      "by": "Codex /root/ft1_independent_acceptance"
+    },
+    {
+      "plan": "factory-gate-templates",
+      "item": "ft-3",
+      "by": "Codex /root/ft1_independent_acceptance"
+    },
+    {
+      "plan": "factory-shared-toolchain",
+      "item": "st1-installer-contract",
+      "by": "Codex / git history"
+    },
+    {
+      "plan": "factory-shared-toolchain",
+      "item": "st2-live-tool-reach",
+      "by": "Codex / git history"
+    },
+    {
+      "plan": "factory-shared-toolchain",
+      "item": "st3-capability-manifest",
+      "by": "test-aq-capabilities.py"
+    },
+    {
+      "plan": "factory-shared-toolchain",
+      "item": "st4-governed-contribute-back",
+      "by": "test-aq-capabilities.py"
+    },
+    {
+      "plan": "sota-rounding",
+      "item": "w2-s2",
+      "by": "test-aq-confine.py"
+    },
+    {
+      "plan": "sota-rounding",
+      "item": "w1-s1",
+      "by": "test-capability-intake.py"
+    },
+    {
+      "plan": "sota-rounding",
+      "item": "w3-s1",
+      "by": "test-aq-mcp-conformance.py"
+    },
+    {
+      "plan": "sota-rounding",
+      "item": "w3-s4",
+      "by": "test-enabled-external-mcp-candidates.py"
+    },
+    {
+      "plan": "sota-rounding",
+      "item": "w3-s5",
+      "by": "test-frontier-scan-due.py"
+    },
+    {
+      "plan": "sota-rounding",
+      "item": "w3-s6",
+      "by": "test-browser-research.py"
+    }
+  ]
+}
