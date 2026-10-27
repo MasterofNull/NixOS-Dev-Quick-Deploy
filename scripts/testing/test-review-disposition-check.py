@@ -40,7 +40,9 @@ class T(unittest.TestCase):
     def setUp(self):
         self._orig = crd._git
         self.rcpt = receipt()
-        crd._git = lambda *a: self.rcpt if a[0] == "show" else self._orig(*a)
+        self.mode = "100644"
+        crd._git = lambda *a: (self.rcpt if a[0] == "show" else f"{self.mode} blob {'e' * 40}\t{RPATH}" if a[0] == "ls-tree"
+                               else self._orig(*a))
 
     def tearDown(self):
         crd._git = self._orig
@@ -85,6 +87,16 @@ class T(unittest.TestCase):
     def test_bad_disposition_and_hex(self):
         errs = crd.check(ev(BODY.replace("PASS", "ACCEPTED", 1).replace("b" * 64, "xyz")))
         self.assertEqual(len(errs), 3)  # disposition, hex, receipt verdict mismatch
+
+    def test_receipt_type_confusion_rejected(self):
+        for kw in ({"schema": True}, {"run_id": {"a": 1}}, {"reviewer_lane": None}, {"author_lane": None},
+                   {"pr": True}, {"verdict": ""}, {"reviewed_head_sha": "a" * 12}, {"run_id": " "}):
+            self.rcpt = receipt(**kw)
+            self.assertNotEqual(crd.check(ev(BODY)), [], kw)
+
+    def test_receipt_symlink_rejected(self):
+        self.mode = "120000"
+        self.assertTrue(any("regular file" in e for e in crd.check(ev(BODY))))
 
     def test_cli_exit_codes(self):
         with tempfile.TemporaryDirectory() as d:
@@ -151,6 +163,33 @@ class MergeTolerant(unittest.TestCase):
         (pathlib.Path(self.d) / "feat.txt").write_text("changed\n")
         self.g("commit", "-qam", "extra")
         errs = self._check(self.g("rev-parse", "HEAD"), base=self.base0)
+        self.assertTrue(any("stale review" in e for e in errs), errs)
+
+    def _followup_errs(self, mutate):
+        mutate(self.g)
+        return self._check(self.g("rev-parse", "HEAD"), base=self.base0)
+
+    def test_rename_out_of_reviewed_path_into_receipts_rejected(self):
+        (pathlib.Path(self.d) / ".agent/reviews/receipts").mkdir(parents=True, exist_ok=True)
+
+        def mv(g):
+            g("mv", "feat.txt", ".agent/reviews/receipts/feat.json")
+            g("commit", "-qm", "sneak")
+        errs = self._followup_errs(mv)
+        self.assertTrue(any("stale review" in e for e in errs), errs)
+
+    def test_receipt_deletion_and_non_json_rejected(self):
+        def add_txt(g):
+            (pathlib.Path(self.d) / ".agent/reviews/receipts/x.txt").write_text("x")
+            g("add", "."); g("commit", "-qm", "txt")
+        errs = self._followup_errs(add_txt)
+        self.assertTrue(any("stale review" in e for e in errs), errs)
+
+    def test_receipt_symlink_followup_rejected(self):
+        def ln(g):
+            os.symlink("../../../feat.txt", pathlib.Path(self.d) / ".agent/reviews/receipts/l.json")
+            g("add", "."); g("commit", "-qm", "link")
+        errs = self._followup_errs(ln)
         self.assertTrue(any("stale review" in e for e in errs), errs)
 
     def test_merge_only_update_passes(self):

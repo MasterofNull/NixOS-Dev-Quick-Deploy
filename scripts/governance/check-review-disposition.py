@@ -78,22 +78,37 @@ def merge_only_update(rhead, head, base):
             return False, "empty patch-id"
         if pid_r != pid_h:
             return False, "net change differs from reviewed head"
+        # _patch_id excludes the receipt dir, so vet its changes separately.
+        rok, rdetail = receipt_only_update(rhead, head, only=False)
+        if not rok:
+            return False, rdetail
         return True, pid_h
     except (subprocess.SubprocessError, OSError) as exc:
         return False, f"git error: {exc.__class__.__name__}"
 
 
-def receipt_only_update(rhead, head):
-    """Return (ok, detail): everything in rhead..head lives under RECEIPT_PREFIX (fail closed)."""
+def receipt_only_update(rhead, head, only=True):
+    """Return (ok, detail): rhead..head only adds/modifies regular *.json receipts (fail closed).
+
+    only=False ignores paths outside RECEIPT_PREFIX (used to vet the receipt dir the patch-id excludes).
+    """
     try:
         subprocess.run(["git", "merge-base", "--is-ancestor", rhead, head], check=True, capture_output=True, timeout=60)
-        files = [f for f in _git("diff", "--name-only", rhead, head).splitlines() if f]
+        rows = [l for l in _git("diff", "--raw", "--no-renames", "-z", rhead, head).split("\0") if l]
     except (subprocess.SubprocessError, OSError):
         return False, "reviewed commit unavailable or not an ancestor"
-    if not files:
+    if not rows and only:
         return False, "no changes"
-    bad = [f for f in files if not f.startswith(RECEIPT_PREFIX) or ".." in f]
-    return (not bad), (f"non-receipt change: {bad[0]}" if bad else "receipt-only")
+    # -z --raw: ":<srcmode> <dstmode> <srcsha> <dstsha> <status>" then path as the next token.
+    for meta, path in zip(rows[0::2], rows[1::2]):
+        if not only and not path.startswith(RECEIPT_PREFIX):
+            continue
+        fields = meta.lstrip(":").split()
+        status, dmode = fields[4][:1], fields[1]
+        if (status not in ("A", "M") or dmode != "100644" or not path.startswith(RECEIPT_PREFIX)
+                or ".." in path.split("/") or not path.endswith(".json")):
+            return False, f"non-receipt change: {path}"
+    return True, "receipt-only"
 
 
 def check_receipt(path, head, rhead, reviewer, author, disp):
@@ -105,25 +120,35 @@ def check_receipt(path, head, rhead, reviewer, author, disp):
     if not head:
         return ["no PR head to read Review-Receipt from"]
     try:
-        raw = _git("show", f"{head}:{path}")
-        r = json.loads(raw)
-    except (subprocess.SubprocessError, OSError, ValueError):
+        mode = _git("ls-tree", head, "--", path).split()[0]
+        if mode != "100644":
+            return [f"Review-Receipt {path} must be a regular file (mode {mode})"]
+        r = json.loads(_git("show", f"{head}:{path}"))
+    except (subprocess.SubprocessError, OSError, ValueError, IndexError):
         return [f"Review-Receipt {path} not found or not JSON at PR head"]
-    if not isinstance(r, dict) or r.get("schema") != 1:
+    if not isinstance(r, dict) or type(r.get("schema")) is not int or r["schema"] != 1:
         return ["Review-Receipt is not schema 1"]
     errs = []
-    if r.get("reviewed_head_sha") != rhead:
+    if type(r.get("pr")) is not int:
+        errs.append("receipt pr must be an integer")
+    for k in ("run_id", "reviewer_lane", "author_lane", "verdict", "reviewed_head_sha", "output_sha256"):
+        v = r.get(k)
+        if not isinstance(v, str) or not v.strip():
+            errs.append(f"receipt {k} must be a non-empty string")
+    if errs:
+        return errs
+    if not re.fullmatch(r"[0-9a-f]{40}", r["reviewed_head_sha"]):
+        errs.append("receipt reviewed_head_sha must be 40 lowercase hex")
+    elif r["reviewed_head_sha"] != rhead:
         errs.append("receipt reviewed_head_sha != Reviewed-head-sha")
-    if norm(str(r.get("reviewer_lane", ""))) != norm(reviewer):
+    if norm(r["reviewer_lane"]) != norm(reviewer):
         errs.append("receipt reviewer_lane != Reviewed-by")
-    if norm(str(r.get("author_lane", ""))) != norm(author):
+    if norm(r["author_lane"]) != norm(author):
         errs.append("receipt author_lane != Author-lane")
-    if r.get("verdict") != disp or r.get("verdict") == "REQUEST_CHANGES":
+    if r["verdict"] != disp or r["verdict"] == "REQUEST_CHANGES":
         errs.append("receipt verdict != Review-Disposition (or is REQUEST_CHANGES)")
-    if not re.fullmatch(r"[0-9a-f]{64}", str(r.get("output_sha256", ""))):
+    if not re.fullmatch(r"[0-9a-f]{64}", r["output_sha256"]):
         errs.append("receipt output_sha256 must be 64 lowercase hex")
-    if not r.get("run_id"):
-        errs.append("receipt lacks run_id")
     return errs
 
 

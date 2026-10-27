@@ -34,6 +34,8 @@ Start the reviewer run with a review role so the registry row qualifies (e.g. `s
 Mint it after the reviewer run finishes: `scripts/ai/aq-review-receipt mint --run-id <id> --pr <n> --head <40hex> --author-lane <lane>`,
 commit `.agent/reviews/receipts/pr<n>-<head12>.json` (a receipt-only commit does not invalidate the review),
 and audit with `scripts/ai/aq-review-receipt audit`. Detection-grade, not cryptographic.
+A receipt-only update may only add or modify regular `*.json` files under `.agent/reviews/receipts/` (renames, deletions and symlinks re-require review);
+verify/audit re-check the receipt verdict and head against the reviewer's output log, and mint rejects an empty log.
 
 ### pre-commit
 

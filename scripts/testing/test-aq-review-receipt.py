@@ -60,6 +60,25 @@ class T(unittest.TestCase):
         self.set_entry()
         self.assertNotEqual(self.mint().returncode, 0)
 
+    def test_verify_rejects_verdict_edit(self):
+        self.log.write_text(f"reviewed {HEAD[:12]}\nReview-Disposition: REQUEST_CHANGES\n")
+        self.assertEqual(self.mint().returncode, 0)  # minting records the real verdict
+        rec = json.loads(self.rfile.read_text())
+        self.assertEqual(rec["verdict"], "REQUEST_CHANGES")
+        rec["verdict"] = "PASS"
+        self.rfile.write_text(json.dumps(rec))
+        r = self.run_tool("verify", str(self.rfile))
+        self.assertNotEqual(r.returncode, 0)
+        self.assertIn("verdict", r.stderr)
+        self.assertNotEqual(self.run_tool("audit").returncode, 0)
+
+    def test_empty_output_rejected(self):
+        self.log.write_text("")
+        r = self.mint()
+        self.assertNotEqual(r.returncode, 0)
+        self.assertIn("empty", r.stderr)
+        self.assertFalse(self.rfile.exists())
+
     def test_verify_detects_tamper_and_missing_run(self):
         self.assertEqual(self.mint().returncode, 0)
         self.log.write_text(self.log.read_text() + "edited\n")
