@@ -184,6 +184,33 @@ class AcceptanceAuthority(unittest.TestCase):
                                      "ls-tree": (0, "x\n"), "show": (0, shrunk)})
         self.assertEqual(m.check_legacy_allowlist(base_add), 1)
 
+    @staticmethod
+    def _tip_git(mb_ls, tip_ls, tip_show=""):
+        """Fake git distinguishing ls-tree at the merge-base ('abc') from the base ref tip."""
+        def git(*a):
+            if a[0] == "ls-tree":
+                rc, out = mb_ls if a[1] == "abc" else tip_ls
+            elif a[0] == "show":
+                rc, out = 0, tip_show
+            elif a[0] == "merge-base":
+                rc, out = 0, "abc\n"
+            else:
+                rc, out = 0, "x\n"
+            return subprocess.CompletedProcess(a, rc, out, "err")
+        return git
+
+    def test_absent_at_merge_base_present_at_tip(self):
+        m = self._mod()
+        cur = json.loads(m.LEGACY_ACCEPTANCES_FILE.read_text())
+        absent, present = (0, ""), (0, "100644 blob 1\tf\n")
+        fewer = json.dumps({"entries": cur["entries"][1:]})
+        self.assertEqual(m.check_legacy_allowlist(self._tip_git(absent, present, fewer)), 1)
+        self.assertEqual(m.check_legacy_allowlist(self._tip_git(absent, present, json.dumps(cur))), 0)
+        superset = json.dumps({"entries": cur["entries"] + [{"plan": "p", "item": "i", "by": "b"}]})
+        self.assertEqual(m.check_legacy_allowlist(self._tip_git(absent, present, superset)), 0)
+        self.assertEqual(m.check_legacy_allowlist(self._tip_git(absent, absent)), 0)
+        self.assertEqual(m.check_legacy_allowlist(self._tip_git(absent, (128, ""))), 1)
+
     def test_strict_entries_rejects_malformed(self):
         m = self._mod()
         for bad in ("nope", "[]", '{"entries":{}}', '{"entries":["x"]}',

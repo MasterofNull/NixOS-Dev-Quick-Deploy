@@ -496,15 +496,19 @@ def _resolve_legacy_base(rel: str, git=_git_run) -> tuple[str, str]:
     base = mb.stdout.strip()
     if mb.returncode != 0 or not base:
         return "error", f"git merge-base HEAD {ref} failed: {mb.stderr.strip()}"
-    ls = git("ls-tree", base, "--", rel)
-    if ls.returncode != 0:
-        return "error", f"git ls-tree {base} failed: {ls.stderr.strip()}"
-    if not ls.stdout.strip():
-        return "absent", ""
-    show = git("show", f"{base}:{rel}")
-    if show.returncode != 0:
-        return "error", f"git show {base}:{rel} failed: {show.stderr.strip()}"
-    return "ok", show.stdout
+    # Absent at the merge-base is not enough (a branch cut before the file existed could
+    # add arbitrary entries): fall through to the base ref tip. Absent at both = introducing commit.
+    for rev in (base, ref):
+        ls = git("ls-tree", rev, "--", rel)
+        if ls.returncode != 0:
+            return "error", f"git ls-tree {rev} failed: {ls.stderr.strip()}"
+        if not ls.stdout.strip():
+            continue
+        show = git("show", f"{rev}:{rel}")
+        if show.returncode != 0:
+            return "error", f"git show {rev}:{rel} failed: {show.stderr.strip()}"
+        return "ok", show.stdout
+    return "absent", ""
 
 
 def check_legacy_allowlist(git=_git_run) -> int:
@@ -519,7 +523,7 @@ def check_legacy_allowlist(git=_git_run) -> int:
         print(f"[legacy-allowlist] FAIL: cannot resolve base (fail closed): {text}")
         return 1
     if status == "absent":
-        print("[legacy-allowlist] no base version at merge-base; treating current file as base (introducing commit)")
+        print("[legacy-allowlist] no base version at merge-base or base ref tip; treating current file as base (introducing commit)")
         return 0
     try:
         base = _strict_legacy_entries(text)

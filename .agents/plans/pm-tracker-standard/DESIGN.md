@@ -115,6 +115,6 @@ canonical doc change (agent parity), not hash-bound.
 `acceptance` is the independent sign-off gate. `aq-pm-tracker --check` accepts an `accepted` block only when:
 - `by` is the owner identity (`hyperd` or `hyperd (...)`), or
 - it carries `receipt`: a schema-1 review receipt under `.agent/reviews/receipts/` (PASS/PASS_WITH_FOLLOWUPS, reviewer != author, reviewer == `by`), minted by `scripts/ai/aq-review-receipt` from a real reviewer run, or
-- the exact (plan, item, by) triple is in `config/pm-tracker-legacy-acceptances.json` (frozen, remove-only; enforced by `--check-legacy-allowlist` in `tier0.d/check-pm-tracker.sh`). The check diffs against the merge-base with `origin/main` (fallback `main`) and fails closed on any git or JSON error; only a file absent at the merge-base counts as the introducing commit.
+- the exact (plan, item, by) triple is in `config/pm-tracker-legacy-acceptances.json` (frozen, remove-only; enforced by `--check-legacy-allowlist` in `tier0.d/check-pm-tracker.sh`). The check diffs against the merge-base with `origin/main` (fallback `main`) and fails closed on any git or JSON error; the introducing-commit case requires the file to be absent at both the merge-base and the base ref (`origin/main`/`main`) tip; if it exists at the tip, that version is the base.
 
 Everything else fails closed. Origin: 2026-10-27 audit found 48 author-lane self-acceptances (reset in this change). Limitation: `hyperd` is self-asserted text; real owner acceptance needs an aq-approve-backed record.
