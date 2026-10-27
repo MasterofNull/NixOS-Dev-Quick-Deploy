@@ -17,3 +17,5 @@ Implements `check-test-coverage.sh` in `scripts/governance/tier0.d/` fulfilling 
 - [x] Functionally validated: `test-coverage-gate.py` passes (0.02s).
 - [x] Observable: Standard `[tier0.d/check-test-coverage]` output prefix.
 - [x] Intervenable: Cleanly bypassed for non-intersecting edits.
+
+> 2026-10-27: gate archived — it printed PASS without checking anything (retro-review batch D, PR #580). See issues-backlog STUB-TIER0-GATES.
