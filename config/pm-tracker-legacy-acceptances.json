@@ -66,36 +66,6 @@
       "plan": "factory-shared-toolchain",
       "item": "st4-governed-contribute-back",
       "by": "test-aq-capabilities.py"
-    },
-    {
-      "plan": "sota-rounding",
-      "item": "w2-s2",
-      "by": "test-aq-confine.py"
-    },
-    {
-      "plan": "sota-rounding",
-      "item": "w1-s1",
-      "by": "test-capability-intake.py"
-    },
-    {
-      "plan": "sota-rounding",
-      "item": "w3-s1",
-      "by": "test-aq-mcp-conformance.py"
-    },
-    {
-      "plan": "sota-rounding",
-      "item": "w3-s4",
-      "by": "test-enabled-external-mcp-candidates.py"
-    },
-    {
-      "plan": "sota-rounding",
-      "item": "w3-s5",
-      "by": "test-frontier-scan-due.py"
-    },
-    {
-      "plan": "sota-rounding",
-      "item": "w3-s6",
-      "by": "test-browser-research.py"
     }
   ]
 }
