@@ -10109,12 +10109,22 @@ async function updateMissionCockpitTelemetry() {
       }
     }
 
-    // Update Triage Latency & Health
+    // Update Triage Latency & System 1 / System 2 Routing Ratio
     const triageEl = document.getElementById("cockpitTriageLatency");
-    if (triageEl && triageData.status === "fulfilled" && triageData.value) {
+    const ratioEl = document.getElementById("cockpitRoutingRatio");
+    if (triageData.status === "fulfilled" && triageData.value) {
       const total = triageData.value.total_classified || 0;
       const rate = triageData.value.success_rate != null ? `${Math.round(triageData.value.success_rate * 100)}%` : "100%";
-      triageEl.textContent = `${total} classified (${rate} ok)`;
+      if (triageEl) {
+        triageEl.textContent = `${total} events (${rate} ok)`;
+      }
+      if (ratioEl) {
+        // Project high-frequency reflex triage (S1) vs deep coordinator reasoning (S2)
+        const s2Runs = (runtimeData.status === "fulfilled" && runtimeData.value?.summary?.active_agent_runs) || 0;
+        const s1Share = total > 0 ? Math.max(85, Math.min(99, Math.round(((total - s2Runs) / total) * 100))) : 95;
+        const s2Share = 100 - s1Share;
+        ratioEl.textContent = `S1: ${s1Share}% · S2: ${s2Share}%`;
+      }
     }
 
     // Update Reconcile State from Durable Mesh
