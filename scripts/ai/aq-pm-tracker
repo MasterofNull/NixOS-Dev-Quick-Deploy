@@ -458,27 +458,75 @@ def legacy_additions(current: set, base: set) -> set:
     return current - base
 
 
-def check_legacy_allowlist() -> int:
-    rel = LEGACY_ACCEPTANCES_FILE.relative_to(REPO).as_posix()
+def _strict_legacy_entries(text: str) -> set[tuple]:
+    """Like _legacy_entries but raises ValueError on unparsable JSON or malformed entries."""
+    try:
+        data = json.loads(text)
+    except Exception as e:
+        raise ValueError(f"unparsable JSON ({e})")
+    entries = data.get("entries") if isinstance(data, dict) else None
+    if not isinstance(entries, list):
+        raise ValueError("'entries' missing or not a list")
+    out = set()
+    for e in entries:
+        if not isinstance(e, dict):
+            raise ValueError(f"malformed entry {e!r}")
+        t = tuple(e.get(k) for k in ("plan", "item", "by"))
+        if not all(isinstance(v, str) and v.strip() for v in t):
+            raise ValueError(f"malformed entry {e!r} (plan/item/by must be non-empty strings)")
+        out.add(t)
+    return out
 
-    def git(*a):
-        return subprocess.run(["git", "-C", str(REPO), *a], capture_output=True, text=True)
 
-    base_text = None
-    for ref in ("origin/main",):
-        mb = git("merge-base", "HEAD", ref)
-        for r in ([mb.stdout.strip()] if mb.returncode == 0 and mb.stdout.strip() else []) + [ref]:
-            show = git("show", f"{r}:{rel}")
-            if show.returncode == 0:
-                base_text = show.stdout
-                break
-        if base_text is not None:
+def _git_run(*a):
+    return subprocess.run(["git", "-C", str(REPO), *a], capture_output=True, text=True)
+
+
+def _resolve_legacy_base(rel: str, git=_git_run) -> tuple[str, str]:
+    """Return ("ok", base_text) | ("absent", "") | ("error", reason). Only a verified
+    missing path at a resolved base is "absent"; every git failure is "error" (fail closed)."""
+    ref = None
+    for cand in ("origin/main", "main"):
+        if git("rev-parse", "--verify", "--quiet", f"{cand}^{{commit}}").returncode == 0:
+            ref = cand
             break
-    if base_text is None:
-        # Not in origin/main yet: the introducing commit defines the base.
-        print("[legacy-allowlist] no base version in origin/main; treating current file as base (introducing commit)")
+    if ref is None:
+        return "error", "no base ref (origin/main or main) resolves"
+    mb = git("merge-base", "HEAD", ref)
+    base = mb.stdout.strip()
+    if mb.returncode != 0 or not base:
+        return "error", f"git merge-base HEAD {ref} failed: {mb.stderr.strip()}"
+    ls = git("ls-tree", base, "--", rel)
+    if ls.returncode != 0:
+        return "error", f"git ls-tree {base} failed: {ls.stderr.strip()}"
+    if not ls.stdout.strip():
+        return "absent", ""
+    show = git("show", f"{base}:{rel}")
+    if show.returncode != 0:
+        return "error", f"git show {base}:{rel} failed: {show.stderr.strip()}"
+    return "ok", show.stdout
+
+
+def check_legacy_allowlist(git=_git_run) -> int:
+    rel = LEGACY_ACCEPTANCES_FILE.relative_to(REPO).as_posix()
+    try:
+        current = _strict_legacy_entries(LEGACY_ACCEPTANCES_FILE.read_text())
+    except (OSError, ValueError) as e:
+        print(f"[legacy-allowlist] FAIL: current {rel} invalid: {e}")
+        return 1
+    status, text = _resolve_legacy_base(rel, git)
+    if status == "error":
+        print(f"[legacy-allowlist] FAIL: cannot resolve base (fail closed): {text}")
+        return 1
+    if status == "absent":
+        print("[legacy-allowlist] no base version at merge-base; treating current file as base (introducing commit)")
         return 0
-    added = legacy_additions(_legacy_allowlist(), _legacy_entries(base_text))
+    try:
+        base = _strict_legacy_entries(text)
+    except ValueError as e:
+        print(f"[legacy-allowlist] FAIL: base {rel} invalid: {e}")
+        return 1
+    added = legacy_additions(current, base)
     if added:
         for t in sorted(map(str, added)):
             print(f"[legacy-allowlist] FAIL: entry added (allowlist is remove-only): {t}")

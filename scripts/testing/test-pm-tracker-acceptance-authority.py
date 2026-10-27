@@ -115,6 +115,86 @@ class AcceptanceAuthority(unittest.TestCase):
         self.assertEqual(mod._legacy_entries('{"entries":[{"plan":"p","item":"i","by":"x"}]}'),
                          {("p", "i", "x")})
 
+    def _mod(self):
+        import importlib.machinery
+        import importlib.util
+        loader = importlib.machinery.SourceFileLoader("aq_pm_tracker2", str(TRACKER))
+        spec = importlib.util.spec_from_loader("aq_pm_tracker2", loader)
+        mod = importlib.util.module_from_spec(spec)
+        loader.exec_module(mod)
+        return mod
+
+    @staticmethod
+    def _fake_git(**over):
+        """Fake git runner; over maps subcommand -> (rc, stdout)."""
+        def git(*a):
+            rc, out = over.get(a[0], (0, ""))
+            return subprocess.CompletedProcess(a, rc, out, "err")
+        return git
+
+    def test_resolve_base_fail_closed(self):
+        m = self._mod()
+        ok = {"rev-parse": (0, "x\n"), "merge-base": (0, "abc\n"),
+              "ls-tree": (0, "100644 blob 1\tf\n"), "show": (0, "{}")}
+        self.assertEqual(m._resolve_legacy_base("f", self._fake_git(**ok)), ("ok", "{}"))
+        self.assertEqual(m._resolve_legacy_base("f", self._fake_git(**{**ok, "ls-tree": (0, "")})),
+                         ("absent", ""))
+        for k in ("rev-parse", "merge-base", "ls-tree", "show"):
+            st, _ = m._resolve_legacy_base("f", self._fake_git(**{**ok, k: (128, "")}))
+            self.assertEqual(st, "error", k)
+        st, _ = m._resolve_legacy_base("f", self._fake_git(**{**ok, "merge-base": (0, "")}))
+        self.assertEqual(st, "error")
+
+    def test_resolve_base_falls_back_to_main(self):
+        m = self._mod()
+        seen = []
+
+        def git(*a):
+            seen.append(a)
+            if a[0] == "rev-parse":
+                return subprocess.CompletedProcess(a, 1 if "origin/main" in a[-1] else 0, "", "")
+            return subprocess.CompletedProcess(a, 0, "abc\n" if a[0] == "merge-base" else "", "")
+        self.assertEqual(m._resolve_legacy_base("f", git)[0], "absent")
+        self.assertIn(("merge-base", "HEAD", "main"), seen)
+
+    def test_check_allowlist_fails_closed_on_git_error(self):
+        m = self._mod()
+        self.assertEqual(m.check_legacy_allowlist(self._fake_git(**{"rev-parse": (1, "")})), 1)
+
+    def test_check_allowlist_introducing_commit_allowed(self):
+        m = self._mod()
+        g = self._fake_git(**{"rev-parse": (0, ""), "merge-base": (0, "abc"), "ls-tree": (0, "")})
+        self.assertEqual(m.check_legacy_allowlist(g), 0)
+
+    def test_check_allowlist_bad_base_json_fails(self):
+        m = self._mod()
+        g = self._fake_git(**{"rev-parse": (0, ""), "merge-base": (0, "abc"),
+                              "ls-tree": (0, "x\n"), "show": (0, "not json")})
+        self.assertEqual(m.check_legacy_allowlist(g), 1)
+
+    def test_check_allowlist_detects_addition_and_pass(self):
+        m = self._mod()
+        cur = json.loads(m.LEGACY_ACCEPTANCES_FILE.read_text())
+        full = json.dumps(cur)
+        base_pass = self._fake_git(**{"rev-parse": (0, ""), "merge-base": (0, "abc"),
+                                      "ls-tree": (0, "x\n"), "show": (0, full)})
+        self.assertEqual(m.check_legacy_allowlist(base_pass), 0)
+        shrunk = json.dumps({"entries": cur["entries"][1:]})
+        base_add = self._fake_git(**{"rev-parse": (0, ""), "merge-base": (0, "abc"),
+                                     "ls-tree": (0, "x\n"), "show": (0, shrunk)})
+        self.assertEqual(m.check_legacy_allowlist(base_add), 1)
+
+    def test_strict_entries_rejects_malformed(self):
+        m = self._mod()
+        for bad in ("nope", "[]", '{"entries":{}}', '{"entries":["x"]}',
+                    '{"entries":[{"plan":"p","item":"i"}]}',
+                    '{"entries":[{"plan":"p","item":1,"by":"b"}]}',
+                    '{"entries":[{"plan":"p","item":"i","by":""}]}'):
+            with self.assertRaises(ValueError, msg=bad):
+                m._strict_legacy_entries(bad)
+        self.assertEqual(m._strict_legacy_entries('{"entries":[{"plan":"p","item":"i","by":"b"}]}'),
+                         {("p", "i", "b")})
+
 
 if __name__ == "__main__":
     unittest.main()
