@@ -55,6 +55,20 @@ class TestAqTriage(unittest.TestCase):
             self.assertLessEqual(res.confidence, 1.0)
             self.assertTrue(bool(res.correlation_key))
 
+    def test_wave12_patterns_systemd_apparmor_exit_code(self) -> None:
+        """Wave 12 patterns: systemd crash, AppArmor denial, exit-code failure."""
+        cases = [
+            ("llama.service: Main process exited, code=dumped, status=11/SEGV", "CRITICAL", "CRASH", "local"),
+            ("systemd[1]: foo.service: Failed with result 'exit-code'.", "HIGH", "HEALTH_CHECK_FAILURE", "local"),
+            ('audit: type=1400 apparmor="DENIED" operation="open" profile="x"', "CRITICAL", "SECURITY_VIOLATION", "antigravity"),
+        ]
+        for msg, exp_sev, exp_cls, exp_lane in cases:
+            res = FastClassifier.classify(source="test.service", message=msg)
+            self.assertEqual(res.incident_class, exp_cls, f"class mismatch for '{msg}': {res.incident_class}")
+            self.assertEqual(res.severity, exp_sev, f"severity mismatch for '{msg}': {res.severity}")
+            self.assertEqual(res.suggested_lane, exp_lane, f"lane mismatch for '{msg}': {res.suggested_lane}")
+            self.assertTrue(res.actionable)
+
     def test_fixture_2_persistent_cursor(self) -> None:
         """Fixture 2: Verify cursor persistence and recovery across engine instances."""
         batch1 = [
