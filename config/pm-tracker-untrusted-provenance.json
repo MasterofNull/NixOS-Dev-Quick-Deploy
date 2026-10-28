@@ -92,5 +92,11 @@
       "since": "2026-10-27"
     }
   ],
-  "clears": {}
+  "clears": {},
+  "items": [
+    "aqos-requirements-inventory/req-foundation-c",
+    "aqos-requirements-inventory/req-herdr",
+    "capability-integration/ci-2",
+    "ecc-parity-integration/gate-a"
+  ]
 }

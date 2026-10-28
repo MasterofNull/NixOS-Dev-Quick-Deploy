@@ -34,6 +34,14 @@ Program rollup 98% -> 88%; 38 items SHIPPED -> UNVERIFIED.
 - `bash scripts/governance/tier0.d/check-ci-manifest-coverage.sh` -> PASS
 - `bash scripts/governance/tier0.d/check-pm-tracker.sh` -> PASS: 27 plan tracker(s) valid
 
+## Hardening (Codex review codex-20261028-123423-qympvo, REQUEST_CHANGES)
+- P1 evidence-type bypass: the hold no longer exempts `systemd_unit`/`command` items.
+- P1 detection-edit bypass: config `items` freezes the held set (`plan/item`); `--check-untrusted-items` (tier0) is remove-only, removal needs a bound-receipt clearance.
+- P1 unrelated receipts: a receipt clears only if its PR is a trusted PR whose commit matches the item, or `clears["plan/item"]` names it.
+- Fail-open projection: missing/malformed config marks output degraded (`hold_degraded`, `rollup_authoritative: false`) and commit-derived completions read UNKNOWN.
+- Dates parsed as ISO-8601 (malformed never clears); receipt registry resolved via `scripts/ai/lib/delegation_dir.py`.
+- Held items, `--all-json` (source_health complete), before -> after hardening: aqos-requirements-inventory 2 -> 2, capability-integration 1 -> 1, ecc-parity-integration 1 -> 1, all other plans 0 -> 0 (total 4 -> 4; frozen into `items`). No systemd/command item currently has untrusted matching evidence.
+
 ## Limitations
 - Only items that project SHIPPED/ACTIVATED are held; items already below that (IN-PROGRESS) are untouched.
 - `assets/aqos-progress-tracker.html` now lists UNVERIFIED (own kanban column, dashed red border).

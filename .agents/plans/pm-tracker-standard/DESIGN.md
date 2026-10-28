@@ -122,12 +122,22 @@ Everything else fails closed. Origin: 2026-10-27 audit found 48 author-lane self
 ## Untrusted-author hold (owner directive 2026-10-27)
 Work shipped by the Gemini/Antigravity lane is untrusted until independently re-verified (retro-review of PRs
 #542-#632: 36 NOT_CORRECT / 34 PARTIAL / 14 CORRECT). `config/pm-tracker-untrusted-provenance.json` lists the
-untrusted PR numbers per lane. Projection stays derived: if an item would project SHIPPED/ACTIVATED and any
+untrusted PR numbers per lane. Projection stays derived: if an item would project SHIPPED/ACTIVATED and ANY
 commit matching its `detection.commit_match` is a squash commit ending `(#N)` with N untrusted, it projects
-**UNVERIFIED** (40%, below IN-PROGRESS in the rollup) and carries a `hold` record (lane, PRs, reason).
-Clears (no hand-typed status): (a) a matching commit from a trusted (non-listed) PR that is NEWER than the newest untrusted matching commit (git log order), or (b) a valid review
-receipt, either `acceptance.review_receipt` (with `status: accepted`) or `clears[<item-id>]` in the config. The
-receipt must pass `aq-review-receipt`'s registry-backed `verify_receipt`, carry a PASS/PASS_WITH_FOLLOWUPS
-verdict, be dated on/after the hold's `since`, and not come from the untrusted lane. Missing/malformed config:
-`--check` fails (tier0 blocks); plain projection renders with a stderr warning and no hold. Items with no
-untrusted commit evidence (systemd/command/grant-only) are unaffected. Test: `scripts/testing/test-pm-tracker-untrusted-hold.py`.
+**UNVERIFIED** (40%, below IN-PROGRESS in the rollup) and carries a `hold` record. The hold applies regardless of
+other evidence types (a `systemd_unit`/`command` item with an untrusted matching commit is held too).
+- **Frozen held set:** the config `items` list (`"<plan>/<item-id>"`) holds every listed item regardless of its
+  current detection, so editing/removing `commit_match` cannot drop the hold. The list is remove-only:
+  `aq-pm-tracker --check-untrusted-items` (wired into `tier0.d/check-pm-tracker.sh`) fails if an entry is removed
+  vs the base ref unless that item's hold is cleared by a bound receipt; unresolvable base/item fails closed.
+- **Clears (no hand-typed status):** (a) unlisted items only: a trusted (non-listed) matching commit NEWER than the
+  newest untrusted one; (b) a valid review receipt (`acceptance.review_receipt` with `status: accepted`, or
+  `clears["<plan>/<item-id>"]`) that passes `aq-review-receipt`'s registry-backed `verify_receipt` (registry
+  resolved via `scripts/ai/lib/delegation_dir.py`, the shared main-worktree dir), has a PASS/PASS_WITH_FOLLOWUPS
+  verdict, an ISO-8601 `created_at` on/after the hold's `since` (malformed dates never clear), and a reviewer that
+  is not the untrusted lane. The receipt is **bound to the item**: its `pr` must be a trusted PR whose squash
+  commit on current history matches the item's `commit_match`, unless `clears` names this exact item + receipt.
+- **Degraded mode:** missing/malformed config: `--check` fails (tier0 blocks); plain projections (human + JSON)
+  are marked degraded (`hold_degraded: true`, `rollup_authoritative: false`, DEGRADED banner, stderr warning) and
+  every item that would project SHIPPED/ACTIVATED from commit evidence reports UNKNOWN (no numeric claim).
+Test: `scripts/testing/test-pm-tracker-untrusted-hold.py`.
