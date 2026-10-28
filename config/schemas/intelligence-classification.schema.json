@@ -7,7 +7,7 @@
     "item_id",
     "source",
     "title",
-    "classification",
+    "category",
     "confidence",
     "rationale",
     "reproducible_evidence",
@@ -26,10 +26,10 @@
       "type": "string",
       "description": "Concise summary title of the finding."
     },
-    "classification": {
+    "category": {
       "type": "string",
-      "enum": ["HYPE", "FACT", "SIGNAL"],
-      "description": "HYPE: Marketing claims without code/proof. FACT: Verified updates/CVEs/specs. SIGNAL: Breakthrough architectures/patterns with measurable local impact."
+      "enum": ["hype", "facts", "signal"],
+      "description": "Lowercase labels, matching the classifier prompt and aq-durable-sweeper metrics. hype: Marketing claims without code/proof. facts: Verified updates/CVEs/specs. signal: Breakthrough architectures/patterns with measurable local impact."
     },
     "confidence": {
       "type": "number",
@@ -52,7 +52,7 @@
     },
     "target_rag_collection": {
       "type": ["string", "null"],
-      "enum": ["skills-patterns", "best-practices", "error-solutions", null],
+      "enum": ["skills-patterns", "best-practices", "error-solutions", "none", null],
       "description": "Target AIDB collection if recommended_action is SEED_RAG."
     }
   },
