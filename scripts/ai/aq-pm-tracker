@@ -12,6 +12,9 @@ Modes:
   aq-pm-tracker --all                 aggregate human summary across every .agents/plans/*/tracker.json
   aq-pm-tracker --all-json            aggregate projection (JSON): {generated_at, plans[], program_rollup_pct}
 Status precedence: ACTIVATED > SHIPPED > BLOCKED > FROZEN > IN-PROGRESS > DESIGNED > NOT-STARTED.
+UNVERIFIED (untrusted-author hold): an item that would project SHIPPED/ACTIVATED but whose commit evidence
+comes ONLY from `(#N)` squash commits listed in config/pm-tracker-untrusted-provenance.json is capped at
+UNVERIFIED until a valid independent review receipt or a later trusted commit clears it (see DESIGN.md).
 `source_health` is a closed provenance signal: complete, shallow_incomplete,
 or unavailable. A read path never deepens, fetches, or otherwise mutates git.
 """
@@ -36,7 +39,11 @@ _GIT_LOG_CACHE_PATHS = (
     Path("/var/lib/nixos-system-dashboard/telemetry/pm-git-log.cache"),
 )
 _STATUS_PCT_FLOOR = {"ACTIVATED": 100, "SHIPPED": 100, "BLOCKED": 0, "FROZEN": 20,
-                     "IN-PROGRESS": 50, "DESIGNED": 10, "NOT-STARTED": 0}
+                     "UNVERIFIED": 40, "IN-PROGRESS": 50, "DESIGNED": 10, "NOT-STARTED": 0}
+_UNVERIFIED_PCT = _STATUS_PCT_FLOOR["UNVERIFIED"]
+UNTRUSTED_CONFIG = REPO / "config" / "pm-tracker-untrusted-provenance.json"
+_PR_SUBJECT = re.compile(r"\(#(\d+)\)\s*$")
+_RECEIPT_OK_VERDICTS = ("PASS", "PASS_WITH_FOLLOWUPS")
 _SOURCE_HEALTH = frozenset(("complete", "shallow_incomplete", "unavailable"))
 
 
@@ -211,6 +218,139 @@ def _count_commit_hits(pattern: str, gitlog: str) -> int:
     return gitlog.count(pattern)
 
 
+def load_untrusted(path: Path | None = None) -> tuple[dict | None, list[str]]:
+    """Load + validate the untrusted-provenance config. Returns (config, errors);
+    config is None when missing/malformed so callers can fail closed (--check) or warn."""
+    path = Path(os.environ.get("AQ_PM_UNTRUSTED_CONFIG") or path or UNTRUSTED_CONFIG)
+    if not path.is_file():
+        return None, [f"untrusted-provenance config missing: {path}"]
+    try:
+        raw = json.loads(path.read_text(encoding="utf-8"))
+    except (OSError, ValueError) as e:
+        return None, [f"untrusted-provenance config unreadable/invalid JSON: {e}"]
+    errs: list[str] = []
+    if not isinstance(raw, dict) or not isinstance(raw.get("lanes"), list):
+        return None, ["untrusted-provenance config must be an object with lanes[]"]
+    if not isinstance(raw.get("clears", {}), dict):
+        errs.append("clears must be an object {item-id: receipt-path}")
+    prs: dict[int, dict] = {}
+    for n, lane in enumerate(raw["lanes"]):
+        if not isinstance(lane, dict) or not isinstance(lane.get("name"), str) or not lane["name"].strip():
+            errs.append(f"lanes[{n}] needs a non-empty name")
+            continue
+        nums = lane.get("pr_numbers")
+        if not isinstance(nums, list) or not nums or not all(type(x) is int and x > 0 for x in nums):
+            errs.append(f"lanes[{n}].pr_numbers must be a non-empty list of positive integers")
+            continue
+        if not isinstance(lane.get("since"), str) or not re.fullmatch(r"\d{4}-\d{2}-\d{2}", lane["since"]):
+            errs.append(f"lanes[{n}].since must be YYYY-MM-DD")
+            continue
+        if not isinstance(lane.get("reason"), str) or not lane["reason"].strip():
+            errs.append(f"lanes[{n}].reason must be a non-empty string")
+            continue
+        for x in nums:
+            prs.setdefault(x, lane)
+    if errs:
+        return None, errs
+    return {"prs": prs, "clears": raw.get("clears", {})}, []
+
+
+_RECEIPT_MOD = None
+
+
+def _receipt_module():
+    global _RECEIPT_MOD
+    if _RECEIPT_MOD is None:
+        from importlib import machinery, util
+        src = str(Path(__file__).resolve().parent / "aq-review-receipt")
+        spec = util.spec_from_loader("aq_review_receipt", machinery.SourceFileLoader("aq_review_receipt", src))
+        _RECEIPT_MOD = util.module_from_spec(spec)
+        spec.loader.exec_module(_RECEIPT_MOD)
+    return _RECEIPT_MOD
+
+
+def _hold_receipt_problem(item: dict, lane: dict, untrusted: dict) -> str | None:
+    """None when the item carries a valid independent review receipt dated on/after the hold;
+    otherwise the reason it does not. Reuses aq-review-receipt's registry-backed verify."""
+    acc = item.get("acceptance") or {}
+    rel = acc.get("review_receipt") if acc.get("status") == "accepted" else None
+    rel = rel or untrusted["clears"].get(item.get("id"))
+    if not rel:
+        return "no review receipt"
+    if not isinstance(rel, str) or rel.startswith("/") or ".." in Path(rel).parts:
+        return "receipt path must be repo-relative"
+    path = REPO / rel
+    try:
+        errs = _receipt_module().verify_receipt(path, REPO, REPO / ".agents" / "delegation" / "registry.jsonl")
+        r = json.loads(path.read_text(encoding="utf-8")) if not errs else {}
+    except (OSError, ValueError, SystemExit) as e:
+        return f"receipt unverifiable: {e.__class__.__name__}"
+    if errs:
+        return "receipt invalid: " + "; ".join(errs)
+    if r.get("verdict") not in _RECEIPT_OK_VERDICTS:
+        return f"receipt verdict {r.get('verdict')!r} is not a pass"
+    if str(r.get("created_at", ""))[:10] < lane["since"]:
+        return "receipt predates the hold"
+    tokens = [t for t in re.split(r"[^a-z0-9]+", lane["name"].lower()) if t]
+    reviewer = str(r.get("reviewer_lane", "")).lower()
+    if any(t in reviewer for t in tokens):
+        return "receipt reviewer is the untrusted lane"
+    return None
+
+
+def _line_matches(pattern: str, line: str) -> bool:
+    try:
+        if re.search(pattern, line, re.IGNORECASE):
+            return True
+    except re.error:
+        pass
+    return pattern in line
+
+
+def _untrusted_hold(item: dict, gitlog: str, untrusted: dict | None) -> dict | None:
+    """Hold record when ANY matching commit is an untrusted-PR squash commit, unless a trusted
+    (non-listed) matching commit is NEWER than the newest untrusted one (git log is newest-first,
+    so newer == earlier line) or a valid review receipt clears it."""
+    patterns = (item.get("detection") or {}).get("commit_match") or []
+    if not untrusted or not patterns:
+        return None
+    prs: list[int] = []
+    newest_untrusted = None   # smallest line index == newest commit
+    newest_trusted = None
+    lane = None
+    for idx, line in enumerate(gitlog.splitlines()):
+        if not any(_line_matches(p, line) for p in patterns):
+            continue
+        m = _PR_SUBJECT.search(line)
+        if m and int(m.group(1)) in untrusted["prs"]:
+            prs.append(int(m.group(1)))
+            lane = lane or untrusted["prs"][int(m.group(1))]
+            newest_untrusted = idx if newest_untrusted is None else newest_untrusted
+        elif newest_trusted is None:
+            newest_trusted = idx
+    if not prs:
+        return None
+    if newest_trusted is not None and newest_trusted < newest_untrusted:
+        return None
+    if _hold_receipt_problem(item, lane, untrusted) is None:
+        return None
+    return {"lane": lane["name"], "since": lane["since"], "prs": sorted(set(prs)),
+            "reason": f"commit evidence includes untrusted-lane PRs ({lane['name']}) with no newer trusted commit; "
+                      f"needs an independent review receipt or a later trusted commit"}
+
+
+def project_item_full(item: dict, gitlog: str, grants: str, source_health: str = "complete",
+                      untrusted: dict | None = None) -> tuple[str, int | None, dict | None]:
+    status, pct = project_item(item, gitlog, grants, source_health)
+    if status in ("SHIPPED", "ACTIVATED"):
+        det = item.get("detection") or {}
+        if not det.get("systemd_unit") and not det.get("command"):
+            hold = _untrusted_hold(item, gitlog, untrusted)
+            if hold:
+                return "UNVERIFIED", _UNVERIFIED_PCT, hold
+    return status, pct, None
+
+
 def project_item(item: dict, gitlog: str, grants: str, source_health: str = "complete") -> tuple[str, int | None]:
     det = item.get("detection", {}) or {}
     accepted = (item.get("acceptance") or {}).get("status") == "accepted"
@@ -284,18 +424,23 @@ def project(plan_dir: Path) -> dict:
     manifest = json.loads((plan_dir / "tracker.json").read_text())
     gitlog, source_health = _git_log()
     grants = _aq_grants()
+    untrusted, uerrs = load_untrusted()
+    for e in uerrs:
+        print(f"aq-pm-tracker: WARNING {e}; untrusted-author hold NOT applied", file=sys.stderr)
     items = []
     for it in manifest.get("items", []):
-        status, pct = project_item(it, gitlog, grants, source_health)
+        status, pct, hold = project_item_full(it, gitlog, grants, source_health, untrusted)
         items.append({"id": it["id"], "name": it.get("name"), "phase": it.get("phase"),
                       "kind": it.get("kind"), "goal": it.get("goal"),
                       "validation_goal": it.get("validation_goal"), "deps": it.get("deps", []),
-                      "status": status, "pct": pct})
+                      "status": status, "pct": pct, "hold": hold})
     rollup, known_items, unknown_items = _rollup(items)
     shipped = sum(1 for i in items if i["status"] in ("SHIPPED", "ACTIVATED"))
     return {"plan": manifest.get("plan", {}), "phases": manifest.get("phases", []),
             "items": items, "issues": manifest.get("issues", []),
             "rollup_pct": rollup, "shipped": shipped, "total": len(items),
+            "held": sum(1 for i in items if i["status"] == "UNVERIFIED"),
+            "hold_config_errors": uerrs,
             "known_items": known_items, "unknown_items": unknown_items,
             "source_health": source_health,
             "rollup_authoritative": source_health == "complete"}
@@ -341,6 +486,9 @@ def project_all() -> dict:
 
     gitlog, source_health = _git_log()
     grants = _aq_grants()
+    untrusted, uerrs = load_untrusted()
+    for e in uerrs:
+        print(f"aq-pm-tracker: WARNING {e}; untrusted-author hold NOT applied", file=sys.stderr)
     plans_out = []
     total_items = 0
     weighted_pct_sum = 0
@@ -353,10 +501,10 @@ def project_all() -> dict:
             continue
         items = []
         for it in manifest.get("items", []):
-            status, pct = project_item(it, gitlog, grants, source_health)
+            status, pct, hold = project_item_full(it, gitlog, grants, source_health, untrusted)
             items.append({"id": it["id"], "name": it.get("name"), "phase": it.get("phase"),
                           "deps": it.get("deps", []), "priority_lane": it.get("priority_lane"),
-                          "status": status, "pct": pct})
+                          "status": status, "pct": pct, "hold": hold})
         rollup, known_items, unknown_items = _rollup(items)
         shipped = sum(1 for i in items if i["status"] in ("SHIPPED", "ACTIVATED"))
         plan_meta = manifest.get("plan", {})
@@ -365,6 +513,7 @@ def project_all() -> dict:
             "title": plan_meta.get("title", plan_dir.name),
             "rollup_pct": rollup,
             "shipped": shipped,
+            "held": sum(1 for i in items if i["status"] == "UNVERIFIED"),
             "total": len(items),
             "known_items": known_items,
             "unknown_items": unknown_items,
@@ -385,6 +534,7 @@ def project_all() -> dict:
         "unknown_items": unknown_items,
         "source_health": source_health,
         "rollup_authoritative": source_health == "complete",
+        "hold_config_errors": uerrs,
         "portfolio": project_plan_portfolio(),
     }
 
@@ -585,6 +735,14 @@ def validate_manifest(plan_dir: Path) -> list[str]:
     return errs
 
 
+def _print_hold(it: dict, indent: str) -> None:
+    h = it.get("hold")
+    if h:
+        prs = ", ".join(f"#{n}" for n in h["prs"])
+        print(f"{indent}held: evidence includes untrusted {h['lane']} PRs {prs} since {h['since']}; "
+              f"clear via review receipt or later trusted commit")
+
+
 def main() -> int:
     args = [a for a in sys.argv[1:]]
     if "--check-legacy-allowlist" in args:
@@ -601,7 +759,8 @@ def main() -> int:
         print(f"# Program rollup — {data['program_rollup_pct']}%  "
               f"({len(data['plans'])} tracked plans)  generated {data['generated_at']}")
         for p in data["plans"]:
-            print(f"\n## {p['title']}  —  {p['rollup_pct']}%  ({p['shipped']}/{p['total']} shipped)")
+            held = f", {p['held']} UNVERIFIED" if p["held"] else ""
+            print(f"\n## {p['title']}  —  {p['rollup_pct']}%  ({p['shipped']}/{p['total']} shipped{held})")
             by_phase = {}
             for it in p["items"]:
                 by_phase.setdefault(it["phase"], []).append(it)
@@ -612,6 +771,7 @@ def main() -> int:
                 print(f"  {ph['name']}:")
                 for it in rows:
                     print(f"    [{it['status']:<11}] {_format_pct(it['pct'])}%  {it['name']}")
+                    _print_hold(it, "      ")
         return 0
 
     mode = "summary"
@@ -633,6 +793,7 @@ def main() -> int:
             plan_dir = alt
     if mode == "check":
         errs = validate_manifest(plan_dir)
+        errs += load_untrusted()[1]
         if errs:
             for e in errs:
                 print(f"FAIL: {e}")
@@ -648,7 +809,8 @@ def main() -> int:
         print(json.dumps(data, indent=2))
         return 0
     pl = data["plan"]
-    print(f"# {pl.get('title', plan_dir.name)}  —  {data['rollup_pct']}%  ({data['shipped']}/{data['total']} shipped)")
+    held = f", {data['held']} UNVERIFIED" if data["held"] else ""
+    print(f"# {pl.get('title', plan_dir.name)}  —  {data['rollup_pct']}%  ({data['shipped']}/{data['total']} shipped{held})")
     print(f"  goal: {pl.get('goal', '')}")
     by_phase = {}
     for it in data["items"]:
@@ -658,6 +820,7 @@ def main() -> int:
         print(f"\n## {ph['name']}")
         for it in rows:
             print(f"  [{it['status']:<11}] {_format_pct(it['pct'])}%  {it['name']}")
+            _print_hold(it, "    ")
     if data["issues"]:
         print("\n## issues")
         for i in data["issues"]:

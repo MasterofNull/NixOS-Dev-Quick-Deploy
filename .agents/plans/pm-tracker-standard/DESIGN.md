@@ -118,3 +118,16 @@ canonical doc change (agent parity), not hash-bound.
 - the exact (plan, item, by) triple is in `config/pm-tracker-legacy-acceptances.json` (frozen, remove-only; enforced by `--check-legacy-allowlist` in `tier0.d/check-pm-tracker.sh`). The check diffs against the merge-base with `origin/main` (fallback `main`) and fails closed on any git or JSON error; the introducing-commit case requires the file to be absent at both the merge-base and the base ref (`origin/main`/`main`) tip; if it exists at the tip, that version is the base.
 
 Everything else fails closed. Origin: 2026-10-27 audit found 48 author-lane self-acceptances (reset in this change). Limitation: `hyperd` is self-asserted text; real owner acceptance needs an aq-approve-backed record.
+
+## Untrusted-author hold (owner directive 2026-10-27)
+Work shipped by the Gemini/Antigravity lane is untrusted until independently re-verified (retro-review of PRs
+#542-#632: 36 NOT_CORRECT / 34 PARTIAL / 14 CORRECT). `config/pm-tracker-untrusted-provenance.json` lists the
+untrusted PR numbers per lane. Projection stays derived: if an item would project SHIPPED/ACTIVATED and any
+commit matching its `detection.commit_match` is a squash commit ending `(#N)` with N untrusted, it projects
+**UNVERIFIED** (40%, below IN-PROGRESS in the rollup) and carries a `hold` record (lane, PRs, reason).
+Clears (no hand-typed status): (a) a matching commit from a trusted (non-listed) PR that is NEWER than the newest untrusted matching commit (git log order), or (b) a valid review
+receipt, either `acceptance.review_receipt` (with `status: accepted`) or `clears[<item-id>]` in the config. The
+receipt must pass `aq-review-receipt`'s registry-backed `verify_receipt`, carry a PASS/PASS_WITH_FOLLOWUPS
+verdict, be dated on/after the hold's `since`, and not come from the untrusted lane. Missing/malformed config:
+`--check` fails (tier0 blocks); plain projection renders with a stderr warning and no hold. Items with no
+untrusted commit evidence (systemd/command/grant-only) are unaffected. Test: `scripts/testing/test-pm-tracker-untrusted-hold.py`.

@@ -119,6 +119,19 @@
       "note": "slow (90-180s): path-triggered in --changed"
     },
     {
+      "id": "pm-tracker-untrusted-hold",
+      "cmd": "scripts/testing/test-pm-tracker-untrusted-hold.py",
+      "paths": [
+        "scripts/ai/aq-pm-tracker",
+        "config/pm-tracker-untrusted-provenance.json"
+      ],
+      "needs": [
+        "python3",
+        "git"
+      ],
+      "ci_workflow": ".github/workflows/test.yml#syntax"
+    },
+    {
       "id": "tool-security-auditor-smoke",
       "cmd": "scripts/testing/test-tool-security-auditor.py",
       "paths": [],
