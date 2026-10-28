@@ -17,16 +17,19 @@
       "workload_class": "managed-daemon",
       "implementation_paths": [
         "nix/modules/roles/ai-stack.nix",
-        "scripts/ai/lib/dispatch.py"
+        "scripts/ai/lib/dispatch.py",
+        "scripts/ai/aq-llama-resume-gate",
+        "scripts/ai/lib/conn_retry.py",
+        "scripts/ai/delegate-to-local"
       ],
       "suspend_behavior": {
-        "mode": "restart_on_resume",
+        "mode": "restart_on_resume_if_unhealthy",
         "resume_trigger": "llama-cpp-resume.service",
         "implementation_status": "implemented"
       },
       "state_safety": {
         "checkpoint_required": false,
-        "idempotency": "A stateless inference daemon may be restarted; in-flight requests must tolerate interruption.",
+        "idempotency": "A stateless inference daemon may be restarted; in-flight requests must tolerate interruption. delegate-to-local direct mode re-runs a connection-dropped task once after /health recovers.",
         "signal_behavior": "systemd stop/restart lifecycle"
       },
       "readiness": {
@@ -205,6 +208,45 @@
       },
       "compliance": "partial",
       "next_slice": "Surface latest class counts on the dashboard; RSI capability-audit adapter already consumes the reports."
+    },
+    {
+      "id": "aq-keep-awake",
+      "workload_class": "managed-daemon",
+      "implementation_paths": [
+        "nix/modules/services/keep-awake.nix",
+        "scripts/ai/aq-keep-awake"
+      ],
+      "suspend_behavior": {
+        "mode": "holds_inhibitor_while_delegated_task_runs",
+        "resume_trigger": "aq-keep-awake.service (user, Restart=on-failure; re-evaluates every 30s tick)",
+        "implementation_status": "implemented"
+      },
+      "state_safety": {
+        "checkpoint_required": false,
+        "idempotency": "Stateless watcher; opt-in mode lives in ${XDG_STATE_HOME}/aq/keep-awake.json. On restart it re-derives hold/release from registry, power and thermal readings.",
+        "signal_behavior": "SIGTERM ends the child systemd-inhibit lock; logind then applies normal lid/sleep handling. Releasing with the lid closed triggers systemctl suspend."
+      },
+      "readiness": {
+        "strategy": "bounded_poll",
+        "evidence": "scripts/ai/aq-keep-awake decide(): 30s tick; AC/battery>=threshold and thermal<=limit guards",
+        "max_wait_seconds": 30,
+        "implementation_status": "implemented"
+      },
+      "resume_outcomes": {
+        "required": [
+          "ready",
+          "timeout",
+          "interrupted"
+        ],
+        "implementation_status": "planned"
+      },
+      "observability": {
+        "telemetry": "implemented",
+        "dashboard": "planned",
+        "qa": "implemented"
+      },
+      "compliance": "partial",
+      "next_slice": "Typed resume outcome telemetry and dashboard surface for keep-awake holds/releases; live lid-close validation."
     }
   ]
 }

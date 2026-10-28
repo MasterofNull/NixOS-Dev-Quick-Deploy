@@ -453,7 +453,8 @@ ${prompt}"
         # backgrounded so its PID is recorded and heartbeated, then reap it.
         local exit_code=0 provider_pid tail_pid=""
         : > "$output_file"
-        "${cmd[@]}" > "$output_file" 2>&1 </dev/null &
+        source "$SCRIPT_DIR/lib/sleep-inhibit.sh"; aq_sleep_inhibit_prefix "$id"
+        "${AQ_INHIBIT_PREFIX[@]}" "${cmd[@]}" > "$output_file" 2>&1 </dev/null &
         provider_pid=$!; PROVIDER_PID=$provider_pid
         reg_update "$id" "pid=$provider_pid" "wrapper_pid=$$" \
             "heartbeat_at=$(date -u +%Y-%m-%dT%H:%M:%SZ)" || true
@@ -488,7 +489,8 @@ ${prompt}"
         # worker inherits the slot fd, holding the slot until the provider dies.
         local _coord_url="${HYBRID_COORDINATOR_URL:-http://127.0.0.1:8003}"
         local _audit_helper; _audit_helper="$SCRIPT_DIR/lib/audit-post.sh"
-        nohup bash "$SCRIPT_DIR/lib/claude-background-worker.sh" \
+        source "$SCRIPT_DIR/lib/sleep-inhibit.sh"; aq_sleep_inhibit_prefix "$id"
+        nohup "${AQ_INHIBIT_PREFIX[@]}" bash "$SCRIPT_DIR/lib/claude-background-worker.sh" \
             "$output_file" "$_audit_helper" "$_coord_url" "$REGISTRY" "$id" "$role" "$prompt" \
             "${cmd[@]}" </dev/null >> "$output_file" 2>&1 &
         local pid=$!

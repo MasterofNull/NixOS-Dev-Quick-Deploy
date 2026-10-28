@@ -601,7 +601,8 @@ ${prompt}"
         [[ -n "$wt_path" ]] && _cd_dir="$wt_path"
         # Background: dynamic values travel as argv to a fixed worker (never re-parsed by a
         # shell). Launch errors go to the task output file, not /dev/null.
-        nohup bash "$SCRIPT_DIR/lib/codex-background-worker.sh" \
+        source "$SCRIPT_DIR/lib/sleep-inhibit.sh"; aq_sleep_inhibit_prefix "$id"
+        nohup "${AQ_INHIBIT_PREFIX[@]}" bash "$SCRIPT_DIR/lib/codex-background-worker.sh" \
             "$output_file" "$_audit_helper" "$_coord_url" "$REGISTRY" "$id" "$mode" "$prompt" \
             "$SCRIPT_PATH" "$wt_path" "$wt_branch" "$_cd_dir" -- "${cmd[@]}" \
             </dev/null >> "$output_file" 2>&1 &

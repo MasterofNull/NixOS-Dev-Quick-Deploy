@@ -120,3 +120,15 @@ AQ-OS implements defense-in-depth to safely run autonomous coding agents:
 | **Run pre-commit gate** | `scripts/governance/tier0-validation-gate.sh --pre-commit` |
 | **Check context freshness** | `aq-ctx-freshness --status` |
 | **Deploy system configuration** | `./scripts/deployment/nixos-quick-deploy.sh` |
+
+### Keeping the laptop awake for long local tasks (`aq-keep-awake`)
+
+Closing the lid suspends the machine and, on resume, interrupts running local-model tasks. Keep-awake is opt-in and off by default; with it off, lid close and manual suspend behave normally.
+
+```bash
+aq-keep-awake on [--threshold 40] [--temp-limit 90]   # allow staying awake with lid closed while delegated tasks run
+aq-keep-awake status                                   # mode, AC/battery, temperature, lock held, reason
+aq-keep-awake off
+```
+
+It holds the lid/sleep lock only while a delegated task is running and the machine is on AC or battery at or above the threshold, and no thermal zone exceeds the limit. When a guard trips or the task ends with the lid closed, the laptop suspends. Requires the watcher service (`mySystem.aiStack.keepAwake.enable = true`, then a rebuild).

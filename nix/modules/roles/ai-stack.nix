@@ -1394,7 +1394,16 @@ in {
         after = ["sleep.target"];
         serviceConfig = {
           Type = "oneshot";
-          ExecStart = "${pkgs.systemd}/bin/systemctl restart --no-block llama-cpp.service";
+          # Health-gated: restart only if llama-cpp is not serving ~60s after resume
+          # (Vulkan backend usually survives suspend; an unconditional restart killed
+          # in-flight delegated tasks). Fallback keeps the --no-block semantics.
+          ExecStart = "${pkgs.bash}/bin/bash ${config.mySystem.mcpServers.repoPath}/scripts/ai/aq-llama-resume-gate";
+          Environment = [
+            "LLAMA_BASE_URL=http://127.0.0.1:${toString llama.port}"
+            "RESUME_WAIT_S=60"
+            "RESUME_RESTART_CMD=${pkgs.systemd}/bin/systemctl restart --no-block llama-cpp.service"
+            "PATH=${lib.makeBinPath [pkgs.curl pkgs.coreutils pkgs.systemd]}"
+          ];
         };
       };
 
