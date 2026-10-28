@@ -6,6 +6,8 @@
 # Env: CI_MERGE_PARITY_SKIP=1 skips ONLY this merge step (prints WARN; checks on the branch still run elsewhere).
 set -euo pipefail
 ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")/../.." && pwd)"
+# shellcheck source=lib/clean-git-env.sh
+source "$(dirname "${BASH_SOURCE[0]}")/lib/clean-git-env.sh"
 BASE="origin/main"; SCOPE="--changed"
 while [[ $# -gt 0 ]]; do
   case "$1" in --base) BASE="$2"; shift ;; --all) SCOPE="--all" ;; *) echo "unknown arg: $1" >&2; exit 2 ;; esac
@@ -40,9 +42,9 @@ rc=0
 if [[ "${SCOPE}" == "--changed" ]] && pr_files="$(git diff --name-only "${BASE}...HEAD" 2>/dev/null)"; then
   export CI_CHECKS_CHANGED_FILES="${pr_files}"
 fi
-(cd "${WT}" && ./scripts/governance/run-ci-checks.sh "${SCOPE}" --base "${BASE}") || rc=1
+(cd "${WT}" && clean_git_env_run ./scripts/governance/run-ci-checks.sh "${SCOPE}" --base "${BASE}") || rc=1
 if [[ -f "${WT}/scripts/governance/tier0.d/check-ci-manifest-coverage.sh" ]]; then
-  (cd "${WT}" && bash scripts/governance/tier0.d/check-ci-manifest-coverage.sh) || rc=1
+  (cd "${WT}" && clean_git_env_run bash scripts/governance/tier0.d/check-ci-manifest-coverage.sh) || rc=1
 fi
 [[ ${rc} -eq 0 ]] || echo "ci-merge-parity: FAIL (a check fails on the merge commit CI will test)" >&2
 exit ${rc}
