@@ -10,9 +10,17 @@ from pathlib import Path
 
 REPO_ROOT = Path(__file__).resolve().parent.parent.parent
 
+# Git hooks export GIT_DIR/GIT_INDEX_FILE/GIT_WORK_TREE; inherited by a test run from
+# pre-commit they redirect `git init/add/commit` in the temp repo onto the REAL repo
+# (2026-10-28: set core.bare=true and committed a tree-wiping "init" onto a branch).
+BASE_ENV = {k: v for k, v in os.environ.items() if not k.startswith("GIT_")}
+for _k in [k for k in os.environ if k.startswith("GIT_")]:
+    del os.environ[_k]  # in-process git calls (e.g. delegation_dir) must not see the hook's repo either
+
 
 def git(cwd, *args):
-    subprocess.run(["git", *args], cwd=cwd, check=True, capture_output=True, text=True)
+    return subprocess.run(["git", *args], cwd=cwd, check=True, capture_output=True,
+                          text=True, env=BASE_ENV)
 
 
 def main() -> int:
@@ -21,6 +29,10 @@ def main() -> int:
         (main_repo / "scripts").mkdir(parents=True)
         shutil.copytree(REPO_ROOT / "scripts" / "ai", main_repo / "scripts" / "ai")
         git(main_repo, "init", "-q")
+        git_dir = Path(git(main_repo, "rev-parse", "--absolute-git-dir").stdout.strip())
+        if Path(td) not in git_dir.parents:
+            print(f"FAIL: temp repo git dir escaped the temp tree: {git_dir}")
+            return 1
         git(main_repo, "add", "-A")
         git(main_repo, "-c", "user.name=t", "-c", "user.email=t@t", "commit", "-qm", "init")
         wt = Path(td) / "wt"
@@ -31,7 +43,7 @@ def main() -> int:
         today = datetime.now().strftime("%Y%m%d")
         (outputs / f"codex-{today}-aaa111.log").write_text("tokens used\n12,345\n")
 
-        env = {k: v for k, v in os.environ.items()
+        env = {k: v for k, v in BASE_ENV.items()
                if k not in ("AQ_DELEGATION_DIR", "DELEGATE_OUTPUTS_DIR")}
         r = subprocess.run(
             ["bash", str(wt / "scripts" / "ai" / "delegate-to-codex"), "--budget-check-only"],
