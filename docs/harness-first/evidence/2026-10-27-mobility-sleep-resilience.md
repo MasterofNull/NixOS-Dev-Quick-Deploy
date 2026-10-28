@@ -25,3 +25,5 @@ Host journal 2026-10-27: all 5 suspends were lid closes (`systemd-logind: Lid cl
 - Retry is one shot and does not resume partial streamed output (output is overwritten). Only direct mode; agent/hybrid/ralph are not covered.
 - Thermal/battery sensors that are absent are treated as passing.
 - `config/suspend-resume-workloads.json`: `aq-keep-awake` registered; `llama-cpp-inference` updated to `restart_on_resume_if_unhealthy`.
+
+Follow-up (2026-10-28): the delegate scripts load `lib/sleep-inhibit.sh` optionally. A missing helper prints a stderr warning and the task runs without an idle inhibitor (it is a convenience, not a safety control). Unconditional sourcing had broken three Claude-path tests whose fixtures run `delegate-to-claude` from a partial `lib/` copy (test-delegate-claude-model-routing, test-claude-dispatch-payload-safety, test-delegate-to-claude-lifecycle); they pass again.

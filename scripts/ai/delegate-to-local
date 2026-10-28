@@ -503,7 +503,7 @@ print(classify_mode(sys.argv[1]))
             # process already returned by then — that re-entry point is what
             # performs the patch/branch handback + teardown for the
             # background-mode case).
-            source "$SCRIPT_DIR/lib/sleep-inhibit.sh"; aq_sleep_inhibit_prefix "$ID"
+            if source "$SCRIPT_DIR/lib/sleep-inhibit.sh" 2>/dev/null; then aq_sleep_inhibit_prefix "$ID"; else AQ_INHIBIT_PREFIX=(); echo "WARN: sleep-inhibit.sh not sourceable; task runs without an idle inhibitor" >&2; fi
             if [[ -n "$WT_PATH" ]]; then
                 setsid "${AQ_INHIBIT_PREFIX[@]}" bash -c "child_rc=0; cd $(printf '%q' "$WT_PATH") && $(printf '%q ' "${_DISPATCH_ARGS[@]}") || child_rc=\$?; handback_rc=0; $(printf '%q' "$SCRIPT_PATH") --internal-worktree-handback $(printf '%q' "$ID") $(printf '%q' "$WT_PATH") $(printf '%q' "$WT_BRANCH") >/dev/null 2>&1 || handback_rc=\$?; [[ \$handback_rc -eq 0 ]] || exit \$handback_rc; exit \$child_rc" > /dev/null 2>&1 &
             else

@@ -601,7 +601,7 @@ ${prompt}"
         [[ -n "$wt_path" ]] && _cd_dir="$wt_path"
         # Background: dynamic values travel as argv to a fixed worker (never re-parsed by a
         # shell). Launch errors go to the task output file, not /dev/null.
-        source "$SCRIPT_DIR/lib/sleep-inhibit.sh"; aq_sleep_inhibit_prefix "$id"
+        if source "$SCRIPT_DIR/lib/sleep-inhibit.sh" 2>/dev/null; then aq_sleep_inhibit_prefix "$id"; else AQ_INHIBIT_PREFIX=(); echo "WARN: sleep-inhibit.sh not sourceable; task runs without an idle inhibitor" >&2; fi
         nohup "${AQ_INHIBIT_PREFIX[@]}" bash "$SCRIPT_DIR/lib/codex-background-worker.sh" \
             "$output_file" "$_audit_helper" "$_coord_url" "$REGISTRY" "$id" "$mode" "$prompt" \
             "$SCRIPT_PATH" "$wt_path" "$wt_branch" "$_cd_dir" -- "${cmd[@]}" \
