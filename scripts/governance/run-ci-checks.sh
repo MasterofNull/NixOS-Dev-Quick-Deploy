@@ -13,6 +13,9 @@ set -euo pipefail
 python3 - "$@" << 'PY'
 import fnmatch, json, os, re, shutil, subprocess, sys, time
 
+sys.path.insert(0, os.path.join(os.getcwd(), "scripts/governance/lib"))
+from clean_git_env import clean_git_env
+
 def glob_re(p):
     parts = p.split("**")
     if len(parts) == 1:
@@ -81,7 +84,7 @@ def main(argv):
         if not os.path.isfile(parts[0]): results.append((c["id"], "FAIL", f"script not found: {parts[0]}")); continue
         t = time.time()
         interp = ["python3"] if parts[0].endswith(".py") else ["bash"]
-        r = subprocess.run(interp + parts, capture_output=True, text=True, env={**os.environ, **c.get("env", {})})
+        r = subprocess.run(interp + parts, capture_output=True, text=True, env={**clean_git_env(), **c.get("env", {})})
         dt = f"{time.time()-t:.1f}s"
         if r.returncode == 0: results.append((c["id"], "PASS", dt))
         else:
