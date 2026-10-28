@@ -1,0 +1,12 @@
+{
+  "schema": 1,
+  "pr": 639,
+  "reviewed_head_sha": "4c1d593d9caa0615cb89e0cc37824a316ad7e3dc",
+  "run_id": "local-20261027-133133-s8iuvy",
+  "reviewer_lane": "local-direct",
+  "author_lane": "claude",
+  "verdict": "PASS_WITH_FOLLOWUPS",
+  "output_file": ".agents/delegation/outputs/local-20261027-133133-s8iuvy.log",
+  "output_sha256": "42aa020c20671b350af7a9e65aa7d38e69e84f15326551b3e2ab7a256152ab04",
+  "created_at": "2026-10-28T01:10:18Z"
+}
