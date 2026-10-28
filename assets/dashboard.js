@@ -10074,13 +10074,27 @@ function quickApproveUI() {
 }
 
 // ─── MISSION COCKPIT LIVE TELEMETRY (Rule 23 Non-Gamified Engine) ───────────
+// Pure; test-dashboard-routing-ratio.js extracts this block by name, keep it self-contained.
+function formatRoutingRatio(w) {
+  if (!w || typeof w !== "object") return "--";
+  const { count, local_pct: l, remote_pct: r } = w;
+  const pct = (v) => typeof v === "number" && Number.isFinite(v) && v >= 0 && v <= 100;
+  if (!Number.isSafeInteger(count) || count <= 0 || !pct(l) || !pct(r) || Math.abs(l + r - 100) > 1) return "--";
+  // Producer rounds pct to 1 decimal (aistack.py routing summary): l% of count must land within that error of a whole event.
+  const events = (l * count) / 100;
+  if (Math.abs(events - Math.round(events)) > (count * 0.05) / 100 + 1e-9) return "--";
+  const s1 = Math.round(l);
+  return `S1: ${s1}% · S2: ${100 - s1}% (24h, n=${count})`;
+}
+
 async function updateMissionCockpitTelemetry() {
   try {
-    const [triageData, runtimeData, homeostasisData, collabData] = await Promise.allSettled([
+    const [triageData, runtimeData, homeostasisData, collabData, routingData] = await Promise.allSettled([
       apiFetch("/aistack/task-classification/stats"),
       apiFetch("/aistack/advanced/runtime-summary"),
       apiFetch("/affective/state"),
       apiFetch("/aistack/agent/collab-state"),
+      apiFetch("/aistack/routing/summary"),
     ]);
 
     // Update Homeostasis Badge
@@ -10112,19 +10126,20 @@ async function updateMissionCockpitTelemetry() {
     // Update Triage Latency & System 1 / System 2 Routing Ratio
     const triageEl = document.getElementById("cockpitTriageLatency");
     const ratioEl = document.getElementById("cockpitRoutingRatio");
-    if (triageData.status === "fulfilled" && triageData.value) {
-      const total = triageData.value.total_classified || 0;
-      const rate = triageData.value.success_rate != null ? `${Math.round(triageData.value.success_rate * 100)}%` : "100%";
-      if (triageEl) {
+    if (triageEl) {
+      if (triageData.status === "fulfilled" && triageData.value) {
+        const total = triageData.value.total_classified || 0;
+        const sr = triageData.value.success_rate;
+        const rate = typeof sr === "number" ? `${Math.round(sr)}%` : "--";
         triageEl.textContent = `${total} events (${rate} ok)`;
+      } else {
+        triageEl.textContent = "--";
       }
-      if (ratioEl) {
-        // Project high-frequency reflex triage (S1) vs deep coordinator reasoning (S2)
-        const s2Runs = (runtimeData.status === "fulfilled" && runtimeData.value?.summary?.active_agent_runs) || 0;
-        const s1Share = total > 0 ? Math.max(85, Math.min(99, Math.round(((total - s2Runs) / total) * 100))) : 95;
-        const s2Share = 100 - s1Share;
-        ratioEl.textContent = `S1: ${s1Share}% · S2: ${s2Share}%`;
-      }
+    }
+    if (ratioEl) {
+      // S1 = local, S2 = remote; measured routing share over the last 24h
+      const w = routingData.status === "fulfilled" ? routingData.value?.routing_windows?.windows?.["24h"] : null;
+      ratioEl.textContent = formatRoutingRatio(w);
     }
 
     // Update Reconcile State from Durable Mesh
@@ -10133,7 +10148,7 @@ async function updateMissionCockpitTelemetry() {
       const cap = (runtimeData.value.summary || {}).capability_gap || {};
       const durable = cap.durable_runtime || {};
       const sweeper = cap.durable_sweeper || {};
-      let state = "100% IDEMPOTENT";
+      let state = "--";
       if (durable.available) {
         state = durable.reconciled_count != null ? `${durable.reconciled_count} synced` : "ONLINE";
       }
