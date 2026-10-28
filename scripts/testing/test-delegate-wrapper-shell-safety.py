@@ -52,6 +52,8 @@ def make_sandbox() -> Path:
         symlinks=True,
     )
     (root / "config").mkdir()
+    # Egress gate fails closed without its config.
+    shutil.copy2(REPO_ROOT / "config" / "remote-lane-egress.json", root / "config" / "remote-lane-egress.json")
     (root / ".agents" / "delegation" / "outputs").mkdir(parents=True)
     stub = root / "stub-provider"
     stub.write_text(STUB)
