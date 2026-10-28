@@ -21,7 +21,7 @@
 #   --effort LEVEL        Reasoning effort: low|medium|high  [default: medium]
 #   --wait                Block until task completes
 #   --force-quota-retry   Bypass an active quota cooldown for one call
-#   --force-budget        Bypass daily headless token budget limit for one call
+#   --force-budget        Bypass the headless token budget limit for one call
 #   --shared, --no-worktree
 #                         Run in the SHARED checkout (REPO_ROOT) instead of an
 #                         isolated git worktree. Default is ISOLATED: every
@@ -35,11 +35,16 @@
 #   --check ID            Print output of a completed task
 #   --status ID           Show task status
 #   --list                List all registered tasks
-#   --budget-check-only   Check daily headless budget only, then exit
+#   --budget-check-only   Report budget (used/total, implement + review headroom,
+#                         window, next free time) for --role, then exit; exit 3 if
+#                         that role would be refused
 #   --help                Show this help
 #
-# Token budget: daily headless token limit (env DELEGATE_CODEX_DAILY_TOKEN_BUDGET,
-# default 250000). Sums tokens from .agents/delegation/outputs/codex-<YYYYMMDD>-*.log.
+# Token budget: rolling-window headless limit (env DELEGATE_CODEX_DAILY_TOKEN_BUDGET,
+# default 250000). Sums tokens from .agents/delegation/outputs/codex-*.log whose mtime is
+# within DELEGATE_CODEX_BUDGET_WINDOW_HOURS (default 24). DELEGATE_CODEX_REVIEW_RESERVE_PCT
+# (default 40) of the budget is reserved for --role review: other roles are refused at
+# budget*(100-reserve)/100, review may use the full budget. Refusals print when headroom frees.
 # Quota-aware pre-check: after a "usage limit" error, dispatches fast-fail
 # until the parsed reset time (.agents/delegation/.codex-quota-cooldown).
 # Bypass once: DELEGATE_CODEX_IGNORE_COOLDOWN=1 or --force-quota-retry.
@@ -49,7 +54,9 @@ set -euo pipefail
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 SCRIPT_PATH="$SCRIPT_DIR/$(basename "${BASH_SOURCE[0]}")"
 REPO_ROOT="$(cd "$SCRIPT_DIR/../.." && pwd)"
-DELEGATION_DIR="${AQ_DELEGATION_DIR:-$REPO_ROOT/.agents/delegation}"
+# shellcheck source=lib/delegation-dir.sh
+source "${SCRIPT_DIR}/lib/delegation-dir.sh" 2>/dev/null || resolve_delegation_dir() { echo "WARN: delegation-dir.sh not sourceable; delegation dir falls back to script-relative path" >&2; echo "$(cd "$1/../.." && pwd)/.agents/delegation"; }
+DELEGATION_DIR="${AQ_DELEGATION_DIR:-$(resolve_delegation_dir "$SCRIPT_DIR")}"
 export AQ_DELEGATION_DIR="$DELEGATION_DIR"
 OUTPUTS_DIR="$DELEGATION_DIR/outputs"
 REGISTRY="$DELEGATION_DIR/registry.jsonl"
@@ -220,38 +227,62 @@ record_worktree_handback_failure() {
     audit_event_end "codex" "$task_id" "error" "1" "worktree_handback_failed" "$mode"
 }
 
-# ── daily headless token budget check ───────────────────────────────────────
-# Sums tokens from today's .agents/delegation/outputs/codex-<YYYYMMDD>-*.log files.
-# Compares against DELEGATE_CODEX_DAILY_TOKEN_BUDGET (default 250000).
-# Returns 0 if under budget; exits 3 and prints error if over budget (unless --force-budget).
+# ── headless token budget check (rolling window, review reserve) ────────────
+# Sums tokens from .agents/delegation/outputs/codex-*.log files whose mtime is within the
+# last DELEGATE_CODEX_BUDGET_WINDOW_HOURS (default 24; timezone-independent) and compares
+# against DELEGATE_CODEX_DAILY_TOKEN_BUDGET (default 250000). A share of the budget,
+# DELEGATE_CODEX_REVIEW_RESERVE_PCT (default 40), is reserved for --role *review* dispatches:
+# other roles are refused once usage >= budget*(100-reserve)/100; review may use the full budget.
+# Exits 3 with the time headroom frees when refused (unless --force-budget).
 
 daily_budget_check() {
-    local force_budget="${1:-false}"
+    local force_budget="${1:-false}" role="${2:-implement}" print_summary="${3:-false}"
     local budget="${DELEGATE_CODEX_DAILY_TOKEN_BUDGET:-250000}"
-    local today; today="$(date +%Y%m%d)"
+    local window_h="${DELEGATE_CODEX_BUDGET_WINDOW_HOURS:-24}"
+    local reserve_pct="${DELEGATE_CODEX_REVIEW_RESERVE_PCT:-40}"
     # Support env override for testing
     local outdir="${DELEGATE_OUTPUTS_DIR:-$OUTPUTS_DIR}"
-    local budget_file="${outdir}/codex-${today}-*.log"
-    local total_tokens=0
+    local now; now="$(date +%s)"
+    local cutoff=$((now - window_h * 3600))
+    local total_tokens=0 oldest=0 mtime logfile file_tokens
 
-    # Sum tokens from log files matching today's date
-    for logfile in $budget_file; do
+    for logfile in "$outdir"/codex-*.log; do
         [[ -f "$logfile" ]] || continue
-        # Parse lines exactly matching "tokens used" followed by token count with commas
-        # Format: "tokens used" or "tokens used: 12,345"
-        local file_tokens
+        mtime="$(stat -c %Y "$logfile" 2>/dev/null || echo 0)"
+        [[ $mtime -ge $cutoff ]] || continue
+        # Format: "tokens used" followed on the next line by a count with commas
         file_tokens="$(grep -A1 '^tokens used' "$logfile" 2>/dev/null | grep -v '^tokens used$' | tr -d ',' | tail -1 || echo '0')"
         file_tokens="${file_tokens:-0}"
+        [[ "$file_tokens" =~ ^[0-9]+$ ]] || file_tokens=0
         total_tokens=$((total_tokens + file_tokens))
+        if [[ $file_tokens -gt 0 ]] && { [[ $oldest -eq 0 ]] || [[ $mtime -lt $oldest ]]; }; then oldest=$mtime; fi
     done
 
-    info "Token budget: ${total_tokens}/${budget} (daily headless)"
+    local impl_limit=$((budget * (100 - reserve_pct) / 100))
+    local impl_room=$((impl_limit - total_tokens)); [[ $impl_room -gt 0 ]] || impl_room=0
+    local review_room=$((budget - total_tokens)); [[ $review_room -gt 0 ]] || review_room=0
+    local next_free="n/a (nothing counted)"
+    [[ $oldest -eq 0 ]] || next_free="$(date -d "@$((oldest + window_h * 3600))" '+%Y-%m-%d %H:%M:%S %Z')"
 
+    info "Token budget: ${total_tokens}/${budget} (${window_h}h rolling headless)"
+    if [[ "$print_summary" == "true" ]]; then
+        echo "used: ${total_tokens}/${budget} tokens (${window_h}h window)"
+        echo "implement headroom: ${impl_room} (limit ${impl_limit}, ${reserve_pct}% reserved for review)"
+        echo "review headroom: ${review_room}"
+        echo "next free: ${next_free}"
+    fi
+
+    local refuse=""
     if [[ $total_tokens -ge $budget ]]; then
+        refuse="daily headless budget exhausted: ${total_tokens}/${budget} tokens in the last ${window_h}h; reserving quota for interactive sessions. Headroom frees at ${next_free}. Route to another lane or set --force-budget."
+    elif [[ "$role" != *review* && $total_tokens -ge $impl_limit ]]; then
+        refuse="role '${role}' refused: ${total_tokens} tokens used >= implement limit ${impl_limit} (${reserve_pct}% of ${budget} reserved for review; review headroom ${review_room}). Implement headroom frees at ${next_free}. Route to another lane or set --force-budget."
+    fi
+    if [[ -n "$refuse" ]]; then
         if [[ "$force_budget" != "true" ]]; then
-            die_budget "daily headless budget exhausted: ${total_tokens}/${budget} tokens; reserving quota for interactive sessions. Route to another lane or set --force-budget."
+            die_budget "$refuse"
         fi
-        info "Daily budget exhausted but --force-budget passed; proceeding at risk."
+        info "Budget refusal bypassed by --force-budget; proceeding at risk."
     fi
 }
 
@@ -428,7 +459,7 @@ cmd_delegate() {
     egress_gate_eval codex "${CODEX_API_HOST:-}"
 
     # Check daily headless token budget
-    daily_budget_check "$force_budget"
+    daily_budget_check "$force_budget" "$ROLE"
 
     # Quota-aware pre-check: fast-fail before spawning codex if a prior run
     # recorded a quota-exhausted cooldown. Bypass once with
@@ -639,7 +670,7 @@ case "${SUBCMD:-}" in
     check)  ensure_dirs; cmd_check "$SUBCMD_ARG" ;;
     budget-check)
         ensure_dirs
-        daily_budget_check "$FORCE_BUDGET"
+        daily_budget_check "$FORCE_BUDGET" "$ROLE" true
         exit 0
         ;;
     # Internal re-entry point: the background (nohup) run mode is a separate

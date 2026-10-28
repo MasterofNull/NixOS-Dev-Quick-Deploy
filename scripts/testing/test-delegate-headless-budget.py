@@ -3,11 +3,14 @@
 Test suite for delegate-to-codex headless token budget and grounding.
 
 Tests:
-1. Budget sum parsing from fixture logs (today's date)
+1. Budget sum parsing from fixture logs
+   (budget window is mtime-based, rolling DELEGATE_CODEX_BUDGET_WINDOW_HOURS)
 2. DELEGATE_OUTPUTS_DIR env override
 3. --budget-check-only flag behavior
 4. Daily budget enforcement (refuse at/over budget without --force-budget)
-5. Grounding block contains "DELEGATE MODE" and size constraint
+5. Rolling window ignores old logs; review reserve (implement refused before review);
+   --force-budget bypass; next-free time printed
+6. Grounding block contains "DELEGATE MODE" and size constraint
 """
 
 import os
@@ -172,6 +175,58 @@ def test_budget_check_only_flag():
         print(f"PASS: --budget-check-only flag behavior correct")
         return True
 
+def test_budget_window_and_review_reserve():
+    """Rolling mtime window, 40% review reserve, force-budget, next-free time."""
+    import time
+    with tempfile.TemporaryDirectory() as tmpdir:
+        outputs_dir = Path(tmpdir) / "outputs"
+        outputs_dir.mkdir()
+        env = {OUTPUTS_DIR_ENV: str(outputs_dir), "DELEGATE_CODEX_DAILY_TOKEN_BUDGET": "250000",
+               "DELEGATE_CODEX_REVIEW_RESERVE_PCT": "40", "DELEGATE_CODEX_BUDGET_WINDOW_HOURS": "24"}
+        chk = lambda role, extra="": run_cmd(f"bash {DELEGATE_SCRIPT} --budget-check-only --role {role} {extra}", env=env)
+
+        # Old log (48h) must be ignored even though its filename is "today".
+        old = outputs_dir / "codex-old.log"
+        old.write_text("tokens used\n900,000\n")
+        t_old = time.time() - 48 * 3600
+        os.utime(old, (t_old, t_old))
+        rc, out, err = chk("implement")
+        if rc != 0 or "used: 0/250000" not in out:
+            print(f"FAIL: old log not ignored rc={rc} out={out!r} err={err!r}")
+            return False
+
+        # 180000 used: implement limit is 150000 -> implement refused, review allowed.
+        recent = outputs_dir / "codex-recent.log"
+        recent.write_text("tokens used\n180,000\n")
+        t_rec = time.time() - 3600
+        os.utime(recent, (t_rec, t_rec))
+        rc, out, err = chk("implement")
+        if rc != 3 or "review headroom 70000" not in err or "frees at" not in err:
+            print(f"FAIL: implement should be refused rc={rc} err={err!r}")
+            return False
+        rc, out, err = chk("review")
+        if rc != 0 or "review headroom: 70000" not in out or "implement headroom: 0" not in out:
+            print(f"FAIL: review should be allowed rc={rc} out={out!r}")
+            return False
+        if "next free:" not in out or "n/a" in out:
+            print(f"FAIL: next free time missing: {out!r}")
+            return False
+        rc, _, err = chk("implement", "--force-budget")
+        if rc != 0:
+            print(f"FAIL: --force-budget should bypass rc={rc}")
+            return False
+
+        # At/over total: both refused.
+        (outputs_dir / "codex-more.log").write_text("tokens used\n70,000\n")
+        for role in ("implement", "review"):
+            rc, _, err = chk(role)
+            if rc != 3 or "daily headless budget exhausted" not in err:
+                print(f"FAIL: {role} should be refused at total rc={rc} err={err!r}")
+                return False
+
+        print("PASS: rolling window, review reserve, force-budget, next-free time")
+        return True
+
 def test_effort_flag():
     """Test --effort flag is recognized and passed to codex."""
     # Check syntax
@@ -222,6 +277,7 @@ def main():
         ("Budget parsing", test_budget_parsing),
         ("Effort flag", test_effort_flag),
         ("Budget check only flag", test_budget_check_only_flag),
+        ("Budget window + review reserve", test_budget_window_and_review_reserve),
     ]
 
     passed = 0

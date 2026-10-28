@@ -67,7 +67,9 @@ from pathlib import Path
 # ── paths ──────────────────────────────────────────────────────────────────
 _HERE = Path(__file__).resolve().parent
 _REPO = Path(os.environ.get("REPO_ROOT", str(_HERE.parent.parent)))
-_DELEGATION_DIR = _REPO / ".agents" / "delegation"
+sys.path.insert(0, str(_HERE / "lib"))
+from delegation_dir import resolve_delegation_dir  # noqa: E402
+_DELEGATION_DIR = resolve_delegation_dir(_HERE)
 _OUTPUTS_DIR = _DELEGATION_DIR / "outputs"
 _REGISTRY = _DELEGATION_DIR / "registry.jsonl"
 _PENDING_UPDATE = _HERE / "lib" / "pending-update"

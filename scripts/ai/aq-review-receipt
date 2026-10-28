@@ -22,6 +22,12 @@ from datetime import datetime, timezone
 from pathlib import Path
 
 ROOT = Path(__file__).resolve().parents[2]
+sys.path.insert(0, str(Path(__file__).resolve().parent / "lib"))
+from delegation_dir import resolve_delegation_dir, resolve_main_root  # noqa: E402
+
+# Registry + outputs live in the MAIN worktree's delegation dir (shared by worktree copies).
+DEFAULT_REGISTRY = resolve_delegation_dir(Path(__file__).resolve().parent) / "registry.jsonl"
+MAIN_ROOT = resolve_main_root(Path(__file__).resolve().parent)
 RECEIPT_DIR = ".agent/reviews/receipts"
 VERDICTS = ("PASS", "PASS_WITH_FOLLOWUPS", "REQUEST_CHANGES")
 
@@ -45,11 +51,15 @@ def load_registry(path: Path) -> dict:
 
 def _rel(root: Path, p: str) -> tuple[Path, str]:
     full = Path(p) if Path(p).is_absolute() else root / p
+    if not full.exists() and not Path(p).is_absolute() and (MAIN_ROOT / p).exists():
+        full = MAIN_ROOT / p
     full = full.resolve()
-    try:
-        return full, str(full.relative_to(root.resolve()))
-    except ValueError:
-        raise SystemExit(f"output_file {full} is outside the repo")
+    for base in (root.resolve(), MAIN_ROOT.resolve()):
+        try:
+            return full, str(full.relative_to(base))
+        except ValueError:
+            continue
+    raise SystemExit(f"output_file {full} is outside the repo")
 
 
 def _run_checks(entry, root: Path):
@@ -76,7 +86,7 @@ def parse_verdict(text: str) -> str:
 
 def cmd_mint(a) -> int:
     root = Path(a.root).resolve()
-    reg = load_registry(Path(a.registry) if a.registry else root / ".agents/delegation/registry.jsonl")
+    reg = load_registry(Path(a.registry) if a.registry else DEFAULT_REGISTRY)
     entry = reg.get(a.run_id)
     errs, full, rel, text = _run_checks(entry, root)
     if not re.fullmatch(r"[0-9a-f]{40}", a.head):
@@ -138,7 +148,7 @@ def verify_receipt(path: Path, root: Path, registry: Path) -> list[str]:
 
 def cmd_verify(a) -> int:
     root = Path(a.root).resolve()
-    reg = Path(a.registry) if a.registry else root / ".agents/delegation/registry.jsonl"
+    reg = Path(a.registry) if a.registry else DEFAULT_REGISTRY
     errs = verify_receipt(Path(a.receipt), root, reg)
     for e in errs:
         print(f"verify FAILED: {e}", file=sys.stderr)
@@ -149,7 +159,7 @@ def cmd_verify(a) -> int:
 
 def cmd_audit(a) -> int:
     root = Path(a.root).resolve()
-    reg = Path(a.registry) if a.registry else root / ".agents/delegation/registry.jsonl"
+    reg = Path(a.registry) if a.registry else DEFAULT_REGISTRY
     bad = 0
     print(f"{'receipt':40} {'reviewer':12} {'verdict':20} result")
     for p in sorted((root / RECEIPT_DIR).glob("*.json")):
