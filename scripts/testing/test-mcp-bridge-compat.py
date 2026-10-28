@@ -28,7 +28,7 @@ class TestMcpBridgeModern(unittest.TestCase):
         return responses
 
     def test_enforces_modern_initialize(self):
-        req = [{"jsonrpc": "2.0", "id": 1, "method": "initialize", "params": {}}]
+        req = [{"jsonrpc": "2.0", "id": 1, "method": "initialize", "params": {"protocolVersion": "2026-07-28"}}]
         res = self._run_rpc(req)
         self.assertEqual(len(res), 1)
         result = res[0].get("result", {})

@@ -1705,7 +1705,22 @@ def _error(req_id, code: int, message: str):
     sys.stdout.flush()
 
 
+# Newest first. Per the MCP lifecycle spec the server echoes the client's
+# requested version when supported, else answers with its newest version.
+SUPPORTED_PROTOCOL_VERSIONS = ("2026-07-28", "2025-06-18", "2025-03-26", "2024-11-05")
+_STRUCTURED_CONTENT_MIN = "2025-06-18"  # structuredContent introduced in this revision
+_CACHE_HINTS_VERSION = "2026-07-28"  # cacheScope/ttlMs capability hints
+
+
+def _negotiate_protocol_version(params) -> str:
+    requested = params.get("protocolVersion") if isinstance(params, dict) else None
+    if isinstance(requested, str) and requested in SUPPORTED_PROTOCOL_VERSIONS:
+        return requested
+    return SUPPORTED_PROTOCOL_VERSIONS[0]
+
+
 def main():
+    negotiated = SUPPORTED_PROTOCOL_VERSIONS[0]
     for line in sys.stdin:
         line = line.strip()
         if not line:
@@ -1719,17 +1734,14 @@ def main():
         method = req.get("method", "")
         params = req.get("params", {})
 
-        # Enforce modern MCP 2026-07-28 specification directly across all clients
         if method == "initialize":
+            negotiated = _negotiate_protocol_version(params)
+            tools_cap = {"listChanged": True}
+            if negotiated >= _CACHE_HINTS_VERSION:
+                tools_cap.update({"cacheScope": "session", "ttlMs": 300000})
             _respond(req_id, {
-                "protocolVersion": "2026-07-28",
-                "capabilities": {
-                    "tools": {
-                        "listChanged": True,
-                        "cacheScope": "session",
-                        "ttlMs": 300000,
-                    }
-                },
+                "protocolVersion": negotiated,
+                "capabilities": {"tools": tools_cap},
                 "serverInfo": {"name": "hybrid-coordinator-bridge", "version": "2.0"},
             })
         elif method in ("server/discover", "tools/discover"):
@@ -1751,10 +1763,11 @@ def main():
                     "content": [{"type": "text", "text": result_text}],
                     "isError": False,
                 }
-                try:
-                    resp_payload["structuredContent"] = json.loads(result_text)
-                except Exception:
-                    resp_payload["structuredContent"] = {"raw": result_text}
+                if negotiated >= _STRUCTURED_CONTENT_MIN:
+                    try:
+                        resp_payload["structuredContent"] = json.loads(result_text)
+                    except Exception:
+                        resp_payload["structuredContent"] = {"raw": result_text}
                 _respond(req_id, resp_payload)
             except Exception as exc:
                 _respond(req_id, {
