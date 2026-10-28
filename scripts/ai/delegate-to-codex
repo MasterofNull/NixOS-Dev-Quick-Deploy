@@ -153,7 +153,7 @@ budget_gate_dispatch() {
 # (config/remote-lane-egress.json) before launching the external CLI.
 # Audits connection targets and enforces rate-limited holds/flags on anomalous endpoints.
 egress_gate_eval() {
-    local lane="$1" target_host="${2:-api.openai.com}" target_port="${3:-443}"
+    local lane="$1" target_host="${2:-}" target_port="${3:-443}"
     local egress_tool="$SCRIPT_DIR/lib/remote_lane_egress.py"
     [[ -f "$egress_tool" ]] || return 0
     local verdict rc=0
@@ -456,7 +456,7 @@ cmd_delegate() {
     policy_gate_action codex "$mode" "$id"
     guard_outbound_prompt "$prompt" "$id"
     budget_gate_dispatch codex
-    egress_gate_eval codex "${CODEX_API_HOST:-api.openai.com}"
+    egress_gate_eval codex "${CODEX_API_HOST:-}"
 
     # Check daily headless token budget
     daily_budget_check "$force_budget" "$ROLE"

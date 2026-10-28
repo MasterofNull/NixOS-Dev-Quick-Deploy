@@ -6,22 +6,22 @@
     "owner": "hyperd",
     "goal": "Fold current + frontier AI research into our system by default: a pull-model context provider wired into every PRD/plan/review/session, backed by a verified, deduped, source-scored backlog and a concept taxonomy that both ranks relevance (focus on the core) and guarantees coverage (all relevant subjects). No polling; fresh at the point of use; every adopt passes a benchmark gate.",
     "success_criteria": [
-      "Creating a PRD/plan or starting a session automatically surfaces our verified frontier verdicts for the subject \u2014 agents never re-chase what we measured/dropped or corrected",
+      "Creating a PRD/plan or starting a session automatically surfaces our verified frontier verdicts for the subject — agents never re-chase what we measured/dropped or corrected",
       "Every candidate is primary-source-verified, mapped to an AQ-OS measurement, and adopted only after a baseline-before/after benchmark on our hardware",
-      "Coverage gaps (subjects with no source or candidate) are visible and turned into targeted, need-driven research \u2014 not a blanket timer",
+      "Coverage gaps (subjects with no source or candidate) are visible and turned into targeted, need-driven research — not a blanket timer",
       "Source quality is measured (adopt-rate) so low-signal sources are pruned and high-signal ones prioritized"
     ]
   },
   "phases": [
     {
       "id": "fa",
-      "name": "FA \u2014 Autopilot infrastructure (the loop)",
+      "name": "FA — Autopilot infrastructure (the loop)",
       "goal": "backlog, catalog, relevance, coverage, on-demand context, seam wiring, auto-fold, refresh, parity backstop",
       "order": 1
     },
     {
       "id": "fe",
-      "name": "FE \u2014 Verified candidates (adopt via benchmark gate)",
+      "name": "FE — Verified candidates (adopt via benchmark gate)",
       "goal": "evidence-backed techniques mapped to AQ-OS slices with acceptance goals",
       "order": 2
     }
@@ -211,10 +211,10 @@
       },
       "status": "shipped",
       "acceptance": {
-        "status": "accepted",
-        "by": "antigravity",
-        "date": "2026-10-23",
-        "note": "Verified via 10/10 passing unit tests in test-prm-steering.py and verified freeze record docs/harness-first/evidence/2026-10-08-fe1-prm-steering.md"
+        "status": "pending",
+        "by": null,
+        "date": null,
+        "note": "reset 2026-10-27: self-acceptance by author lane antigravity without independent review (gaming audit, .agent/memory/issues-backlog.md). Was: Verified via 10/10 passing unit tests in test-prm-steering.py and verified freeze record docs/harness-first/evidence/2026-10-08-fe1-prm-steering.md"
       }
     },
     {
@@ -237,10 +237,10 @@
         "test_gate": "scripts/testing/test-gepa-prompt-compile.py"
       },
       "acceptance": {
-        "status": "accepted",
-        "by": "antigravity",
-        "date": "2026-10-23",
-        "note": "Verified via test-gepa-prompt-compile.py (8/8 PASS) and QA check 0.10.65 PASS"
+        "status": "pending",
+        "by": null,
+        "date": null,
+        "note": "reset 2026-10-27: self-acceptance by author lane antigravity without independent review (gaming audit, .agent/memory/issues-backlog.md). Was: Verified via test-gepa-prompt-compile.py (8/8 PASS) and QA check 0.10.65 PASS"
       }
     },
     {
@@ -256,13 +256,13 @@
       "editorial_note": "FE-8 approved; target plan: aqos-foundation-c (surfaced there via the context seam)",
       "notes": "BACKLOG status=in_review (Codex concern: likely redundant with bwrap + AppArmor + namespace isolation); deferred until security-critical activations begin; existing controls provide defense-in-depth",
       "detection": {
-        "blocker_note": "DEFERRED post-SOTA \u2014 owner directive 2026-10-07 (security/containment after MVP baseline)"
+        "blocker_note": "DEFERRED post-SOTA — owner directive 2026-10-07 (security/containment after MVP baseline)"
       },
       "acceptance": {
-        "status": "accepted",
-        "by": "antigravity",
-        "date": "2026-10-23",
-        "note": "Resolved to monitor verdict across two lanes (antigravity, codex) in frontier BACKLOG per W2-S4 recommendation; commit 9ea1006a"
+        "status": "pending",
+        "by": null,
+        "date": null,
+        "note": "reset 2026-10-27: self-acceptance by author lane antigravity without independent review (gaming audit, .agent/memory/issues-backlog.md). Was: Resolved to monitor verdict across two lanes (antigravity, codex) in frontier BACKLOG per W2-S4 recommendation; commit 9ea1006a"
       }
     }
   ],

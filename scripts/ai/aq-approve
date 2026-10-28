@@ -34,6 +34,21 @@ from dispatch import dispatch_task                # noqa: E402
 # executor field in the alert must match a KEY here. Free-form shell strings
 # are NOT executed. This prevents arbitrary code execution via alert injection.
 
+def _print_apparmor_rules(alert: dict) -> None:
+    """Render the exact rule text the owner is approving (repr exposes hidden chars)."""
+    if alert.get("executor") != "apparmor_fix":
+        return
+    from apparmor_rules import rule_error
+    payload = alert.get("payload", {})
+    rules = payload.get("rules_proposed", []) or []
+    print(f"\n  AppArmor profile: {payload.get('profile')!r}   rules to insert: {len(rules)}")
+    for i, rule in enumerate(rules, 1):
+        err = rule_error(rule)
+        print(f"    {i}. {str(rule).strip()}" + (f"    [REJECTED: {err}]" if err else ""))
+        if err:
+            print(f"       raw: {rule!r}")
+
+
 def _handle_apparmor_fix(alert: dict) -> bool:
     """Apply staged AppArmor rules and commit via apparmor-fix-agent."""
     payload = alert.get("payload", {})
@@ -41,6 +56,11 @@ def _handle_apparmor_fix(alert: dict) -> bool:
     rules = payload.get("rules_proposed", [])
     if not rules:
         print("  No rules in payload — nothing to apply.", file=sys.stderr)
+        return False
+    from apparmor_rules import rule_error
+    bad = [r for r in rules if rule_error(r)]
+    if bad:
+        print(f"  Refusing: {len(bad)} rule(s) fail validation: {bad!r}", file=sys.stderr)
         return False
     print(f"  Applying {len(rules)} AppArmor rule(s) to profile {profile!r}...")
     # Delegate the actual commit back to apparmor-fix-agent in commit-only mode
@@ -52,7 +72,7 @@ def _handle_apparmor_fix(alert: dict) -> bool:
             cwd=str(repo_root), capture_output=True, text=True, timeout=60,
         )
         if result.returncode == 0:
-            print("  AppArmor fix applied and committed.")
+            print("  AppArmor rules applied to the profile file (NOT committed; use the PR workflow).")
             return True
         print(f"  apparmor-fix-agent --commit-staged failed:\n{result.stderr}", file=sys.stderr)
         return False
@@ -176,6 +196,7 @@ def approve_alert(alert_id: str, actor: str) -> int:
     boundary = alert.get("autonomy_boundary", "")
     print(f"\n  Approving: {alert.get('title', alert_id)}")
     print(f"  Boundary:  {boundary}")
+    _print_apparmor_rules(alert)
 
     executor_key = alert.get("executor")
     ok, err = True, ""
@@ -227,6 +248,7 @@ def show_alert(alert_id: str) -> int:
             print(f"\n  {label}: {a[key]}")
     if a.get("command"):
         print(f"\n  Command: {a['command']}")
+    _print_apparmor_rules(a)
     if a.get("executor"):
         print(f"\n  Approving runs executor: {a['executor']}  (review with: aq-approve review {a['id']})")
     print(f"\n  Details: {a.get('link') or dashboard_link(a['id'])}")

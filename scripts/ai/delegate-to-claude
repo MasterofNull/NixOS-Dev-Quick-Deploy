@@ -148,7 +148,7 @@ PYEOF
 # Remote lane egress evaluation: evaluate outbound network endpoint friction
 # (config/remote-lane-egress.json) before launching the external CLI.
 egress_gate_eval() {
-    local lane="$1" target_host="${2:-api.anthropic.com}" target_port="${3:-443}"
+    local lane="$1" target_host="${2:-}" target_port="${3:-443}"
     local egress_tool="$SCRIPT_DIR/lib/remote_lane_egress.py"
     [[ -f "$egress_tool" ]] || return 0
     local verdict rc=0
@@ -390,7 +390,7 @@ cmd_delegate() {
     require_claude
     ensure_dirs
 
-    egress_gate_eval claude "${CLAUDE_API_HOST:-api.anthropic.com}"
+    egress_gate_eval claude "${CLAUDE_API_HOST:-}"
 
     local id; id="$(task_id)"
     local output_file="$OUTPUTS_DIR/${id}.log"

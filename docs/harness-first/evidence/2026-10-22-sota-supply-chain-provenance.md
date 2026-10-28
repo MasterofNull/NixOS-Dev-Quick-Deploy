@@ -17,3 +17,5 @@ Implements `check-supply-chain-provenance.sh` in `scripts/governance/tier0.d/` f
 - [x] Functionally validated: `test-supply-chain-provenance-gate.py` passes (0.02s).
 - [x] Observable: Standard `[tier0.d/check-supply-chain-provenance]` output prefix.
 - [x] Intervenable: Constant time bypass on non-intersecting edits.
+
+> 2026-10-27: gate archived — it printed PASS without checking anything (retro-review batch D, PR #580). See issues-backlog STUB-TIER0-GATES.

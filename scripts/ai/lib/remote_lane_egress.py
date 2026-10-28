@@ -7,6 +7,7 @@ No runtime dependency on aq-decide, but matches contract return format.
 from __future__ import annotations
 
 import collections
+import ipaddress
 import json
 import os
 import re
@@ -18,7 +19,7 @@ REPO_ROOT = Path(__file__).resolve().parents[3]
 DEFAULT_CONFIG = REPO_ROOT / "config" / "remote-lane-egress.json"
 
 LANES = frozenset({
-    "claude", "codex", "antigravity", "agy", "gemini-legacy",
+    "claude", "codex", "gemini", "antigravity", "agy", "gemini-legacy",
     "switchboard", "coordinator", "mcp", "other"
 })
 
@@ -34,6 +35,25 @@ HIGH_SIGNAL_REASONS = frozenset({
 })
 
 IP_REGEX = re.compile(r"^(?:\d{1,3}\.){3}\d{1,3}$")
+
+
+def _normalize_host(host: str) -> str:
+    h = (host or "").strip().lower().rstrip(".")
+    if h.startswith("[") and h.endswith("]"):
+        h = h[1:-1]
+    return h
+
+
+def is_raw_ip(host: str) -> bool:
+    """True for any IPv4/IPv6 literal (bracketed or not, incl. zone ids)."""
+    h = _normalize_host(host).split("%", 1)[0]
+    if IP_REGEX.match(h):
+        return True
+    try:
+        ipaddress.ip_address(h)
+        return True
+    except ValueError:
+        return False
 
 
 class EgressRulesEngine:
@@ -72,8 +92,8 @@ class EgressRulesEngine:
         if lane not in LANES:
             lane = "other"
 
-        dest_host = payload.get("dest_host", "").lower()
-        raw_ip = bool(payload.get("raw_ip") or IP_REGEX.match(dest_host))
+        dest_host = _normalize_host(payload.get("dest_host", ""))
+        raw_ip = bool(payload.get("raw_ip") or is_raw_ip(dest_host))
         punycode = bool(payload.get("punycode") or dest_host.startswith("xn--"))
         sni_mismatch = bool(payload.get("sni_mismatch"))
         unattributed = bool(payload.get("unattributed") or lane == "other")
@@ -157,6 +177,9 @@ def check_egress_cli(lane: str, host: str, port: int = 443) -> int:
       2: held/blocked (outcome == 'hold')
     """
     engine = EgressRulesEngine()
+    if not host:
+        # Caller has no explicit destination: use the lane's configured endpoint.
+        host = engine.lanes.get(lane, {}).get("default_host", "")
     verdict = engine.evaluate({"lane": lane, "dest_host": host, "dest_port": port})
     print(json.dumps(verdict))
     if verdict.get("outcome") == "hold":
@@ -168,10 +191,10 @@ def check_egress_cli(lane: str, host: str, port: int = 443) -> int:
 
 if __name__ == "__main__":
     import sys
-    if len(sys.argv) < 3:
-        print(f"Usage: {sys.argv[0]} <lane> <dest_host> [dest_port]", file=sys.stderr)
+    if len(sys.argv) < 2:
+        print(f"Usage: {sys.argv[0]} <lane> [dest_host] [dest_port]", file=sys.stderr)
         sys.exit(3)
     lane_arg = sys.argv[1]
-    host_arg = sys.argv[2]
-    port_arg = int(sys.argv[3]) if len(sys.argv) > 3 else 443
+    host_arg = sys.argv[2] if len(sys.argv) > 2 else ""
+    port_arg = int(sys.argv[3]) if len(sys.argv) > 3 and sys.argv[3] else 443
     sys.exit(check_egress_cli(lane_arg, host_arg, port_arg))

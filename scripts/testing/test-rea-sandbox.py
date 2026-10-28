@@ -16,42 +16,58 @@ class TestReaSandbox(unittest.TestCase):
         self.assertTrue(LAUNCHER.exists(), f"Launcher does not exist at {LAUNCHER}")
         self.assertTrue(os.access(LAUNCHER, os.X_OK), "Launcher is not executable")
 
-    def test_refuses_when_candidate_state_not_enabled(self):
-        # Currently rea-reverse-engineering is in state 'proposed' (pre-W1-S3 activation)
-        proc = subprocess.run(
-            [str(LAUNCHER), "--", "echo", "should_fail"],
-            stdout=subprocess.PIPE,
-            stderr=subprocess.PIPE,
-            text=True,
+    def _run_with_stub_confine(self, candidates, catalog):
+        """Run the real launcher against fixture registries and a stub aq-confine that records argv."""
+        with tempfile.TemporaryDirectory() as td:
+            td = Path(td)
+            argv_out = td / "argv.txt"
+            stub = td / "stub-confine"
+            stub.write_text('#!/usr/bin/env bash\nprintf "%s\\n" "$@" > "$ARGV_OUT"\n')
+            stub.chmod(0o755)
+            # Launcher resolves config and aq-confine relative to its own location; build a throwaway repo layout.
+            root = td / "repo"
+            (root / "scripts" / "ai").mkdir(parents=True)
+            (root / "config").mkdir()
+            (root / "config" / "agent-capability-intake-candidates.json").write_text(json.dumps(candidates))
+            (root / "config" / "system-capability-catalog.json").write_text(json.dumps(catalog))
+            launcher = root / "scripts" / "ai" / "mcp-rea-sandboxed"
+            launcher.write_bytes(LAUNCHER.read_bytes())
+            launcher.chmod(0o755)
+            env = dict(os.environ, ARGV_OUT=str(argv_out), AQ_CONFINE_BIN="../../../" + stub.name)
+            (root / stub.name).symlink_to(stub)
+            proc = subprocess.run([str(launcher), "rea", "--transport", "stdio"], env=env,
+                                  stdout=subprocess.PIPE, stderr=subprocess.PIPE, text=True, timeout=30)
+            argv = argv_out.read_text().splitlines() if argv_out.exists() else None
+            return proc, argv
+
+    def test_refuses_when_candidate_not_admitted(self):
+        proc, argv = self._run_with_stub_confine(
+            {"candidates": [{"id": "rea-reverse-engineering", "state": "proposed"}]},
+            {"capabilities": {"rea-reverse-engineering": {"status": "enabled"}}},
         )
-        self.assertEqual(proc.returncode, 2, f"Expected admission failure return code 2, got: {proc.returncode}")
+        self.assertEqual(proc.returncode, 2, proc.stderr)
         self.assertIn("REJECT", proc.stderr)
+        self.assertIsNone(argv, "aq-confine must not be reached when admission fails")
 
-    def test_admission_passes_when_enabled(self):
-        with tempfile.NamedTemporaryFile("w+", encoding="utf-8") as tmp_cand, \
-             tempfile.NamedTemporaryFile("w+", encoding="utf-8") as tmp_cat:
-            cand_data = {
-                "candidates": [
-                    {"id": "rea-reverse-engineering", "state": "enabled"}
-                ]
-            }
-            cat_data = {"capabilities": {"rea-reverse-engineering": {"status": "enabled"}}}
-            json.dump(cand_data, tmp_cand)
-            json.dump(cat_data, tmp_cat)
-            tmp_cand.flush()
-            tmp_cat.flush()
+    def test_admitted_launch_passes_profile_to_aq_confine(self):
+        proc, argv = self._run_with_stub_confine(
+            {"candidates": [{"id": "rea-reverse-engineering", "state": "enabled"}]},
+            {"capabilities": {"rea-reverse-engineering": {"status": "enabled"}}},
+        )
+        self.assertEqual(proc.returncode, 0, proc.stderr)
+        self.assertEqual(
+            argv,
+            ["--profile", "readonly-analysis", "--net", "none", "--scratch", "--", "rea", "--transport", "stdio"],
+        )
 
-            verify_script = f"""
-import json, sys
-candidate_doc = json.loads(open("{tmp_cand.name}").read())
-catalog_doc = json.loads(open("{tmp_cat.name}").read())
-candidate = next((item for item in candidate_doc.get("candidates", []) if item.get("id") == "rea-reverse-engineering"), None)
-if not candidate or candidate.get("state") not in ("accepted", "enabled"):
-    sys.exit(2)
-sys.exit(0)
-"""
-            res = subprocess.run(["python3", "-c", verify_script])
-            self.assertEqual(res.returncode, 0)
+    def test_real_aq_confine_accepts_launcher_argv(self):
+        # aq-confine --explain needs no root and validates the profile + argv shape the launcher builds.
+        proc = subprocess.run(
+            [str(REPO_ROOT / "scripts" / "ai" / "aq-confine"), "--profile", "readonly-analysis", "--net", "none",
+             "--scratch", "--explain", "--", "rea", "--transport", "stdio"],
+            stdout=subprocess.PIPE, stderr=subprocess.PIPE, text=True, timeout=30,
+        )
+        self.assertEqual(proc.returncode, 0, proc.stderr)
 
 
 if __name__ == "__main__":

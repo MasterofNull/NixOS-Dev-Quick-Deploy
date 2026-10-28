@@ -64,6 +64,39 @@ class TestRemoteLaneEgress(unittest.TestCase):
         self.assertEqual(res_raw["reason_code"], "EGR_RAW_IP")
         self.assertFalse(res_raw["collapsed"])
 
+    def test_gemini_lane_real_hosts_allowed(self):
+        for h in ("cloudcode-pa.googleapis.com", "generativelanguage.googleapis.com"):
+            res = self.engine.evaluate({"lane": "gemini", "dest_host": h, "dest_port": 443})
+            self.assertEqual(res["outcome"], "none", h)
+            self.assertEqual(res["reason_code"], "RULE_ALLOWLISTED")
+
+    def test_gemini_unknown_host_not_allowed(self):
+        res = self.engine.evaluate({"lane": "gemini", "dest_host": "evil.example.org", "dest_port": 443})
+        self.assertNotEqual(res["outcome"], "none")
+        self.assertEqual(res["reason_code"], "EGR_NOVEL_DOMAIN")
+
+    def test_unknown_lane_still_held(self):
+        res = self.engine.evaluate({"lane": "nonesuch", "dest_host": "api.openai.com", "dest_port": 443})
+        self.assertEqual(res["outcome"], "hold")
+        self.assertEqual(res["reason_code"], "EGR_UNATTRIBUTED")
+
+    def test_raw_ip_literals_hold(self):
+        for h in ("198.51.100.1", "::1", "[2001:db8::1]", "2001:db8::1", "fe80::1%eth0"):
+            res = self.engine.evaluate({"lane": "gemini", "dest_host": h, "dest_port": 443})
+            self.assertEqual(res["outcome"], "hold", h)
+            self.assertEqual(res["reason_code"], "EGR_RAW_IP", h)
+
+    def test_codex_claude_unchanged(self):
+        for lane, h in (("codex", "api.openai.com"), ("claude", "api.anthropic.com")):
+            res = self.engine.evaluate({"lane": lane, "dest_host": h, "dest_port": 443})
+            self.assertEqual(res["outcome"], "none")
+
+    def test_default_host_from_config(self):
+        import remote_lane_egress as m
+        self.assertEqual(m.check_egress_cli("gemini", ""), 0)
+        self.assertEqual(m.check_egress_cli("codex", ""), 0)
+        self.assertEqual(m.check_egress_cli("claude", ""), 0)
+
     def test_free_text_payload_rejected(self):
         with self.assertRaises(ValueError):
             self.engine.evaluate({"lane": "claude", "dest_host": "example.org", "dest_port": 443, "prompt": "malicious input"})

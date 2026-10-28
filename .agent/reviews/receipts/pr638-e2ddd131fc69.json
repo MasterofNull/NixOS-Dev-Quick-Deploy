@@ -1,0 +1,12 @@
+{
+  "schema": 1,
+  "pr": 638,
+  "reviewed_head_sha": "e2ddd131fc69bffe74daa11f0f30a035ce35d2c8",
+  "run_id": "local-20261027-125209-xeenzs",
+  "reviewer_lane": "local-direct",
+  "author_lane": "claude",
+  "verdict": "PASS",
+  "output_file": ".agents/delegation/outputs/local-20261027-125209-xeenzs.log",
+  "output_sha256": "8351c9deaaa9b61d2dda97bf5169df47a589f33cdb562b3d607620304f9ec09b",
+  "created_at": "2026-10-28T01:10:17Z"
+}

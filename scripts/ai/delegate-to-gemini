@@ -132,7 +132,7 @@ budget_gate_dispatch() {
 # Remote lane egress evaluation: evaluate outbound network endpoint friction
 # (config/remote-lane-egress.json) before launching the external CLI.
 egress_gate_eval() {
-    local lane="$1" target_host="${2:-generativelanguage.googleapis.com}" target_port="${3:-443}"
+    local lane="$1" target_host="${2:-}" target_port="${3:-443}"
     local egress_tool="$SCRIPT_DIR/lib/remote_lane_egress.py"
     [[ -f "$egress_tool" ]] || return 0
     local verdict rc=0
@@ -348,7 +348,7 @@ cmd_delegate() {
     policy_gate_action gemini "$mode" "$id"
     guard_outbound_prompt "$prompt" "$id"
     budget_gate_dispatch gemini
-    egress_gate_eval gemini "${GEMINI_API_HOST:-generativelanguage.googleapis.com}"
+    egress_gate_eval gemini "${GEMINI_API_HOST:-}"
     local output_file="$OUTPUTS_DIR/${id}.log"
     local rel_output=".agents/delegation/outputs/${id}.log"
 

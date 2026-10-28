@@ -1,0 +1,227 @@
+#!/usr/bin/env python3
+"""Regression: agent lanes / test scripts cannot self-accept tracker items."""
+import json
+import subprocess
+import sys
+import tempfile
+import unittest
+from pathlib import Path
+
+REPO = Path(__file__).resolve().parents[2]
+TRACKER = REPO / "scripts" / "ai" / "aq-pm-tracker"
+
+
+def run_check(acceptance: dict, plan_name="plan-x", item_id="I1"):
+    with tempfile.TemporaryDirectory() as td:
+        plan = Path(td) / plan_name
+        plan.mkdir()
+        manifest = {
+            "plan": {"title": "x"},
+            "phases": [{"id": "p1", "name": "P1"}],
+            "items": [{"id": item_id, "name": "i", "phase": "p1", "goal": "g",
+                       "validation_goal": "v", "acceptance": acceptance}],
+        }
+        (plan / "tracker.json").write_text(json.dumps(manifest))
+        r = subprocess.run([sys.executable, str(TRACKER), str(plan), "--check"],
+                           capture_output=True, text=True, cwd=REPO, timeout=120)
+        return r.returncode, r.stdout + r.stderr
+
+
+SHA40 = "a" * 40
+SHA64 = "b" * 64
+
+
+def good_receipt(**over):
+    d = {"schema": 1, "pr": 1, "reviewed_head_sha": SHA40, "run_id": "r1",
+         "reviewer_lane": "codex", "author_lane": "claude", "verdict": "PASS",
+         "output_file": "x", "output_sha256": SHA64, "created_at": "2026-10-27T00:00:00Z"}
+    d.update(over)
+    return d
+
+
+def run_with_receipt(content, by="codex"):
+    rdir = REPO / ".agent" / "reviews" / "receipts"
+    rdir.mkdir(parents=True, exist_ok=True)
+    with tempfile.NamedTemporaryFile(dir=rdir, suffix=".json", mode="w") as f:
+        f.write(content if isinstance(content, str) else json.dumps(content))
+        f.flush()
+        rel = Path(f.name).relative_to(REPO).as_posix()
+        return run_check({"status": "accepted", "by": by, "date": "2026-10-27", "receipt": rel})
+
+
+class AcceptanceAuthority(unittest.TestCase):
+    def test_non_owner_strings_fail(self):
+        for by in ["antigravity", "anti-gravity", "G3mini", "codex2", "test-foo.sh", "test-foo.py",
+                   None, "", "Claude Sonnet"]:
+            rc, out = run_check({"status": "accepted", "by": by, "date": "2026-10-27"})
+            self.assertEqual(rc, 1, f"{by!r}: {out}")
+            self.assertIn("plan-x", out)
+            self.assertIn("I1", out)
+            if by:
+                self.assertIn(str(by), out)
+
+    def test_owner_passes(self):
+        for by in ["hyperd", "hyperd (owner directive 2026-09-26)"]:
+            rc, out = run_check({"status": "accepted", "by": by, "date": "2026-10-27"})
+            self.assertEqual(rc, 0, f"{by!r}: {out}")
+
+    def test_valid_receipt_passes(self):
+        rc, out = run_with_receipt(good_receipt())
+        self.assertEqual(rc, 0, out)
+        rc, out = run_with_receipt(good_receipt(verdict="PASS_WITH_FOLLOWUPS", reviewer_lane=" Codex "))
+        self.assertEqual(rc, 0, out)
+
+    def test_invalid_receipts_fail(self):
+        cases = {
+            "empty": "",
+            "request_changes": good_receipt(verdict="REQUEST_CHANGES"),
+            "same_lane": good_receipt(author_lane="Codex"),
+            "reviewer_ne_by": good_receipt(reviewer_lane="gemini"),
+            "bad_schema": good_receipt(schema=2),
+            "bad_head": good_receipt(reviewed_head_sha="abc"),
+            "bad_out_sha": good_receipt(output_sha256="B" * 64),
+            "no_run_id": good_receipt(run_id=""),
+            "not_object": "[1]",
+        }
+        for name, c in cases.items():
+            rc, out = run_with_receipt(c)
+            self.assertEqual(rc, 1, f"{name}: {out}")
+
+    def test_missing_or_escaping_receipt_fails(self):
+        for r in [".agent/reviews/receipts/does-not-exist.json",
+                  ".agent/reviews/receipts/../../README.md", "/etc/passwd"]:
+            rc, out = run_check({"status": "accepted", "by": "codex", "date": "2026-10-27", "receipt": r})
+            self.assertEqual(rc, 1, f"{r}: {out}")
+
+    def test_allowlisted_legacy_passes_with_warn(self):
+        data = json.loads((REPO / "config" / "pm-tracker-legacy-acceptances.json").read_text())
+        e = data["entries"][0]
+        rc, out = run_check({"status": "accepted", "by": e["by"], "date": "2026-10-27"},
+                            plan_name=e["plan"], item_id=e["item"])
+        self.assertEqual(rc, 0, out)
+        self.assertIn("WARN", out)
+
+    def test_legacy_allowlist_remove_only(self):
+        import importlib.machinery
+        import importlib.util
+        loader = importlib.machinery.SourceFileLoader("aq_pm_tracker", str(TRACKER))
+        spec = importlib.util.spec_from_loader("aq_pm_tracker", loader)
+        mod = importlib.util.module_from_spec(spec)
+        loader.exec_module(mod)
+        base = {("p", "i1", "a"), ("p", "i2", "b")}
+        self.assertEqual(mod.legacy_additions({("p", "i1", "a")}, base), set())
+        self.assertEqual(mod.legacy_additions(base, base), set())
+        self.assertEqual(mod.legacy_additions(base | {("p", "i3", "c")}, base), {("p", "i3", "c")})
+        self.assertEqual(mod._legacy_entries('{"entries":[{"plan":"p","item":"i","by":"x"}]}'),
+                         {("p", "i", "x")})
+
+    def _mod(self):
+        import importlib.machinery
+        import importlib.util
+        loader = importlib.machinery.SourceFileLoader("aq_pm_tracker2", str(TRACKER))
+        spec = importlib.util.spec_from_loader("aq_pm_tracker2", loader)
+        mod = importlib.util.module_from_spec(spec)
+        loader.exec_module(mod)
+        return mod
+
+    @staticmethod
+    def _fake_git(**over):
+        """Fake git runner; over maps subcommand -> (rc, stdout)."""
+        def git(*a):
+            rc, out = over.get(a[0], (0, ""))
+            return subprocess.CompletedProcess(a, rc, out, "err")
+        return git
+
+    def test_resolve_base_fail_closed(self):
+        m = self._mod()
+        ok = {"rev-parse": (0, "x\n"), "merge-base": (0, "abc\n"),
+              "ls-tree": (0, "100644 blob 1\tf\n"), "show": (0, "{}")}
+        self.assertEqual(m._resolve_legacy_base("f", self._fake_git(**ok)), ("ok", "{}"))
+        self.assertEqual(m._resolve_legacy_base("f", self._fake_git(**{**ok, "ls-tree": (0, "")})),
+                         ("absent", ""))
+        for k in ("rev-parse", "merge-base", "ls-tree", "show"):
+            st, _ = m._resolve_legacy_base("f", self._fake_git(**{**ok, k: (128, "")}))
+            self.assertEqual(st, "error", k)
+        st, _ = m._resolve_legacy_base("f", self._fake_git(**{**ok, "merge-base": (0, "")}))
+        self.assertEqual(st, "error")
+
+    def test_resolve_base_falls_back_to_main(self):
+        m = self._mod()
+        seen = []
+
+        def git(*a):
+            seen.append(a)
+            if a[0] == "rev-parse":
+                return subprocess.CompletedProcess(a, 1 if "origin/main" in a[-1] else 0, "", "")
+            return subprocess.CompletedProcess(a, 0, "abc\n" if a[0] == "merge-base" else "", "")
+        self.assertEqual(m._resolve_legacy_base("f", git)[0], "absent")
+        self.assertIn(("merge-base", "HEAD", "main"), seen)
+
+    def test_check_allowlist_fails_closed_on_git_error(self):
+        m = self._mod()
+        self.assertEqual(m.check_legacy_allowlist(self._fake_git(**{"rev-parse": (1, "")})), 1)
+
+    def test_check_allowlist_introducing_commit_allowed(self):
+        m = self._mod()
+        g = self._fake_git(**{"rev-parse": (0, ""), "merge-base": (0, "abc"), "ls-tree": (0, "")})
+        self.assertEqual(m.check_legacy_allowlist(g), 0)
+
+    def test_check_allowlist_bad_base_json_fails(self):
+        m = self._mod()
+        g = self._fake_git(**{"rev-parse": (0, ""), "merge-base": (0, "abc"),
+                              "ls-tree": (0, "x\n"), "show": (0, "not json")})
+        self.assertEqual(m.check_legacy_allowlist(g), 1)
+
+    def test_check_allowlist_detects_addition_and_pass(self):
+        m = self._mod()
+        cur = json.loads(m.LEGACY_ACCEPTANCES_FILE.read_text())
+        full = json.dumps(cur)
+        base_pass = self._fake_git(**{"rev-parse": (0, ""), "merge-base": (0, "abc"),
+                                      "ls-tree": (0, "x\n"), "show": (0, full)})
+        self.assertEqual(m.check_legacy_allowlist(base_pass), 0)
+        shrunk = json.dumps({"entries": cur["entries"][1:]})
+        base_add = self._fake_git(**{"rev-parse": (0, ""), "merge-base": (0, "abc"),
+                                     "ls-tree": (0, "x\n"), "show": (0, shrunk)})
+        self.assertEqual(m.check_legacy_allowlist(base_add), 1)
+
+    @staticmethod
+    def _tip_git(mb_ls, tip_ls, tip_show=""):
+        """Fake git distinguishing ls-tree at the merge-base ('abc') from the base ref tip."""
+        def git(*a):
+            if a[0] == "ls-tree":
+                rc, out = mb_ls if a[1] == "abc" else tip_ls
+            elif a[0] == "show":
+                rc, out = 0, tip_show
+            elif a[0] == "merge-base":
+                rc, out = 0, "abc\n"
+            else:
+                rc, out = 0, "x\n"
+            return subprocess.CompletedProcess(a, rc, out, "err")
+        return git
+
+    def test_absent_at_merge_base_present_at_tip(self):
+        m = self._mod()
+        cur = json.loads(m.LEGACY_ACCEPTANCES_FILE.read_text())
+        absent, present = (0, ""), (0, "100644 blob 1\tf\n")
+        fewer = json.dumps({"entries": cur["entries"][1:]})
+        self.assertEqual(m.check_legacy_allowlist(self._tip_git(absent, present, fewer)), 1)
+        self.assertEqual(m.check_legacy_allowlist(self._tip_git(absent, present, json.dumps(cur))), 0)
+        superset = json.dumps({"entries": cur["entries"] + [{"plan": "p", "item": "i", "by": "b"}]})
+        self.assertEqual(m.check_legacy_allowlist(self._tip_git(absent, present, superset)), 0)
+        self.assertEqual(m.check_legacy_allowlist(self._tip_git(absent, absent)), 0)
+        self.assertEqual(m.check_legacy_allowlist(self._tip_git(absent, (128, ""))), 1)
+
+    def test_strict_entries_rejects_malformed(self):
+        m = self._mod()
+        for bad in ("nope", "[]", '{"entries":{}}', '{"entries":["x"]}',
+                    '{"entries":[{"plan":"p","item":"i"}]}',
+                    '{"entries":[{"plan":"p","item":1,"by":"b"}]}',
+                    '{"entries":[{"plan":"p","item":"i","by":""}]}'):
+            with self.assertRaises(ValueError, msg=bad):
+                m._strict_legacy_entries(bad)
+        self.assertEqual(m._strict_legacy_entries('{"entries":[{"plan":"p","item":"i","by":"b"}]}'),
+                         {("p", "i", "b")})
+
+
+if __name__ == "__main__":
+    unittest.main()

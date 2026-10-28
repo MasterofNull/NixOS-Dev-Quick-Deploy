@@ -17,3 +17,5 @@ Implements `check-perf-regression.sh` in `scripts/governance/tier0.d/` fulfillin
 - [x] Functionally validated: `test-perf-regression-gate.py` passes (0.02s).
 - [x] Observable: Prefixed output `[tier0.d/check-perf-regression]`.
 - [x] Intervenable: Constant time bypass on non-intersecting edits.
+
+> 2026-10-27: gate archived — it printed PASS without checking anything (retro-review batch D, PR #580). See issues-backlog STUB-TIER0-GATES.

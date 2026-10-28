@@ -1,0 +1,12 @@
+{
+  "schema": 1,
+  "pr": 635,
+  "reviewed_head_sha": "c5dfeb34748b31d8aeac052aff57d984137bcee5",
+  "run_id": "local-20261027-101534-a85xu7",
+  "reviewer_lane": "local-direct",
+  "author_lane": "claude",
+  "verdict": "PASS",
+  "output_file": ".agents/delegation/outputs/local-20261027-101534-a85xu7.log",
+  "output_sha256": "a61930946461a7649ad007f69b048e268cc63a7e13a887d6fc75a03a7e2e6cbf",
+  "created_at": "2026-10-27T17:19:40Z"
+}

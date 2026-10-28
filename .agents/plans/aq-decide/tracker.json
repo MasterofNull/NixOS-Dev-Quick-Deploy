@@ -41,10 +41,10 @@
       },
       "status": "SHIPPED",
       "acceptance": {
-        "status": "accepted",
-        "by": "antigravity",
-        "date": "2026-10-23",
-        "note": "Verified via 45/45 pytest pass in test_aq_decide.py: DEC-S0 passes all requirements"
+        "status": "pending",
+        "by": null,
+        "date": null,
+        "note": "reset 2026-10-27: self-acceptance by author lane antigravity without independent review (gaming audit, .agent/memory/issues-backlog.md). Was: Verified via 45/45 pytest pass in test_aq_decide.py: DEC-S0 passes all requirements"
       }
     },
     {
@@ -64,10 +64,10 @@
       },
       "status": "SHIPPED",
       "acceptance": {
-        "status": "accepted",
-        "by": "antigravity",
-        "date": "2026-10-23",
-        "note": "Verified via 45/45 pytest pass in test_aq_decide.py: DEC-S1 passes all requirements"
+        "status": "pending",
+        "by": null,
+        "date": null,
+        "note": "reset 2026-10-27: self-acceptance by author lane antigravity without independent review (gaming audit, .agent/memory/issues-backlog.md). Was: Verified via 45/45 pytest pass in test_aq_decide.py: DEC-S1 passes all requirements"
       }
     },
     {
@@ -87,10 +87,10 @@
       },
       "status": "SHIPPED",
       "acceptance": {
-        "status": "accepted",
-        "by": "antigravity",
-        "date": "2026-10-23",
-        "note": "Verified via 45/45 pytest pass in test_aq_decide.py: DEC-S2 passes all requirements"
+        "status": "pending",
+        "by": null,
+        "date": null,
+        "note": "reset 2026-10-27: self-acceptance by author lane antigravity without independent review (gaming audit, .agent/memory/issues-backlog.md). Was: Verified via 45/45 pytest pass in test_aq_decide.py: DEC-S2 passes all requirements"
       }
     },
     {
@@ -111,10 +111,10 @@
       },
       "status": "SHIPPED",
       "acceptance": {
-        "status": "accepted",
-        "by": "antigravity",
-        "date": "2026-10-23",
-        "note": "Verified via 45/45 pytest pass in test_aq_decide.py: DEC-S3 passes all requirements"
+        "status": "pending",
+        "by": null,
+        "date": null,
+        "note": "reset 2026-10-27: self-acceptance by author lane antigravity without independent review (gaming audit, .agent/memory/issues-backlog.md). Was: Verified via 45/45 pytest pass in test_aq_decide.py: DEC-S3 passes all requirements"
       }
     },
     {
@@ -134,10 +134,10 @@
       },
       "status": "SHIPPED",
       "acceptance": {
-        "status": "accepted",
-        "by": "antigravity",
-        "date": "2026-10-23",
-        "note": "Verified via 45/45 pytest pass in test_aq_decide.py: DEC-S4 passes all requirements"
+        "status": "pending",
+        "by": null,
+        "date": null,
+        "note": "reset 2026-10-27: self-acceptance by author lane antigravity without independent review (gaming audit, .agent/memory/issues-backlog.md). Was: Verified via 45/45 pytest pass in test_aq_decide.py: DEC-S4 passes all requirements"
       }
     },
     {
@@ -158,10 +158,10 @@
       },
       "status": "SHIPPED",
       "acceptance": {
-        "status": "accepted",
-        "by": "antigravity",
-        "date": "2026-10-23",
-        "note": "Verified via validate_head_gates implementation matching Section 4.3 gate definitions"
+        "status": "pending",
+        "by": null,
+        "date": null,
+        "note": "reset 2026-10-27: self-acceptance by author lane antigravity without independent review (gaming audit, .agent/memory/issues-backlog.md). Was: Verified via validate_head_gates implementation matching Section 4.3 gate definitions"
       }
     },
     {
@@ -181,10 +181,10 @@
       },
       "status": "SHIPPED",
       "acceptance": {
-        "status": "accepted",
-        "by": "antigravity",
-        "date": "2026-10-23",
-        "note": "Verified via shadow_evaluate_rag_route and shadow_evaluate_retry_escalate matching I3 and I4 specifications"
+        "status": "pending",
+        "by": null,
+        "date": null,
+        "note": "reset 2026-10-27: self-acceptance by author lane antigravity without independent review (gaming audit, .agent/memory/issues-backlog.md). Was: Verified via shadow_evaluate_rag_route and shadow_evaluate_retry_escalate matching I3 and I4 specifications"
       }
     },
     {
@@ -205,10 +205,10 @@
       "status": "SHIPPED",
       "notes": "Implemented T2 small LLM tier candidate evaluation in scripts/ai/lib/aq_decide.py with parameter ceilings (<4B) and page-cache footprint estimator; verified via test-aq-decide-s7.py.",
       "acceptance": {
-        "status": "accepted",
-        "by": "antigravity",
-        "date": "2026-10-23",
-        "note": "Verified via scripts/testing/test-aq-decide-s7.py (3/3 PASS)."
+        "status": "pending",
+        "by": null,
+        "date": null,
+        "note": "reset 2026-10-27: self-acceptance by author lane antigravity without independent review (gaming audit, .agent/memory/issues-backlog.md). Was: Verified via scripts/testing/test-aq-decide-s7.py (3/3 PASS)."
       }
     },
     {
@@ -228,10 +228,10 @@
       },
       "status": "SHIPPED",
       "acceptance": {
-        "status": "accepted",
-        "by": "antigravity",
-        "date": "2026-10-23",
-        "note": "Verified via scripts/testing/test-aq-decide-s8.py (4/4 PASS): POST /decide endpoint, decide agent-auth scope, PSI drift, calibration drift, and dashboard card."
+        "status": "pending",
+        "by": null,
+        "date": null,
+        "note": "reset 2026-10-27: self-acceptance by author lane antigravity without independent review (gaming audit, .agent/memory/issues-backlog.md). Was: Verified via scripts/testing/test-aq-decide-s8.py (4/4 PASS): POST /decide endpoint, decide agent-auth scope, PSI drift, calibration drift, and dashboard card."
       }
     },
     {
@@ -251,10 +251,10 @@
       },
       "status": "SHIPPED",
       "acceptance": {
-        "status": "accepted",
-        "by": "antigravity",
-        "date": "2026-10-23",
-        "note": "Verified via triage_approvals_advisory and check-commit-evidence-warn.sh"
+        "status": "pending",
+        "by": null,
+        "date": null,
+        "note": "reset 2026-10-27: self-acceptance by author lane antigravity without independent review (gaming audit, .agent/memory/issues-backlog.md). Was: Verified via triage_approvals_advisory and check-commit-evidence-warn.sh"
       }
     },
     {
@@ -274,10 +274,10 @@
       },
       "status": "SHIPPED",
       "acceptance": {
-        "status": "accepted",
-        "by": "antigravity",
-        "date": "2026-10-23",
-        "note": "Verified via evaluate_gliclass_candidate contract and evaluation harness"
+        "status": "pending",
+        "by": null,
+        "date": null,
+        "note": "reset 2026-10-27: self-acceptance by author lane antigravity without independent review (gaming audit, .agent/memory/issues-backlog.md). Was: Verified via evaluate_gliclass_candidate contract and evaluation harness"
       }
     }
   ]

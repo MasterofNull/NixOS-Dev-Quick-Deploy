@@ -216,6 +216,34 @@
       ],
       "ci_workflow": ".github/workflows/test.yml#syntax"
     },
+    {
+      "id": "rea-sandbox-tests",
+      "cmd": "scripts/testing/test-rea-sandbox.py",
+      "paths": [
+        "scripts/ai/mcp-rea-sandboxed",
+        "scripts/ai/aq-confine",
+        "config/confine-profiles/**",
+        "scripts/testing/test-rea-sandbox.py"
+      ],
+      "needs": [
+        "python3"
+      ],
+      "ci_workflow": ".github/workflows/test.yml#syntax"
+    },
+    {
+      "id": "intelligence-classifier-tests",
+      "cmd": "scripts/testing/test-intelligence-classifier.py",
+      "paths": [
+        "config/schemas/intelligence-classification.schema.json",
+        "prompts/intelligence/**",
+        "scripts/ai/aq-durable-sweeper",
+        "scripts/testing/test-intelligence-classifier.py"
+      ],
+      "needs": [
+        "python3"
+      ],
+      "ci_workflow": ".github/workflows/test.yml#syntax"
+    },
     {"id": "delegate-headless-budget-tests", "cmd": "scripts/testing/test-delegate-headless-budget.py", "paths": ["scripts/ai/delegate-to-codex", "scripts/testing/test-delegate-headless-budget.py"], "needs": ["python3", "bash"], "ci_workflow": ".github/workflows/test.yml#syntax"},
     {"id": "delegation-dir-resolution-tests", "cmd": "scripts/testing/test-delegation-dir-resolution.py", "paths": ["scripts/ai/lib/delegation-dir.sh", "scripts/ai/lib/delegation_dir.py", "scripts/testing/test-delegation-dir-resolution.py"], "needs": ["python3", "bash", "git"], "ci_workflow": ".github/workflows/test.yml#syntax"},
     {"id": "aq-review-request-tests", "cmd": "scripts/testing/test-aq-review-request.py", "paths": ["scripts/ai/aq-review-request", "scripts/testing/test-aq-review-request.py"], "needs": ["python3"], "ci_workflow": ".github/workflows/test.yml#syntax"}
@@ -368,6 +396,10 @@
     {
       "script": "scripts/governance/check-review-disposition.py",
       "reason": "reads the pull_request event payload ($GITHUB_EVENT_PATH: PR body + head sha); inherently remote. Local parity: .githooks/commit-msg Review-Disposition fields + scripts/testing/test-review-disposition-check.py"
+    },
+    {
+      "script": "scripts/governance/check-pr-body-format.py",
+      "reason": "reads the pull_request event payload ($GITHUB_EVENT_PATH: PR body); inherently remote. Local parity: scripts/testing/test-pr-body-format-check.py"
     },
     {
       "script": "scripts/governance/ci-gitleaks.sh",
