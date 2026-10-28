@@ -1,0 +1,124 @@
+#!/usr/bin/env python3
+"""aq-review-request: build a lean, diff-inline review prompt for a PR and dispatch it.
+
+Headless reviewers that start from a bare PR number explore the whole repo and burn
+47k-99k tokens per review. This tool resolves the PR head, embeds a size-capped diff
+in the prompt, tells the reviewer to stay read-only and read extra files only when a
+finding requires it, and then hands the prompt file to the codex or local lane.
+
+Usage:
+  aq-review-request --pr N [--head SHA] --lane codex|local [--focus TEXT]
+                    [--paths P ...] [--max-diff-bytes N] [--dry-run]
+
+Env overrides (tests): DELEGATE_TO_CODEX, DELEGATE_TO_LOCAL, GH_BIN, GIT_BIN,
+DELEGATE_OUTPUTS_DIR.
+"""
+import argparse
+import json
+import os
+import re
+import subprocess
+import sys
+from pathlib import Path
+
+REPO_ROOT = Path(__file__).resolve().parent.parent.parent
+sys.path.insert(0, str(Path(__file__).resolve().parent / "lib"))
+from delegation_dir import resolve_delegation_dir  # noqa: E402
+DEFAULT_MAX_DIFF = 40000
+
+
+def run(cmd, check=True):
+    r = subprocess.run(cmd, capture_output=True, text=True, cwd=REPO_ROOT)
+    if check and r.returncode != 0:
+        sys.exit(f"[aq-review-request] command failed: {' '.join(cmd)}\n{r.stderr.strip()}")
+    return r.stdout
+
+
+def main():
+    ap = argparse.ArgumentParser(description=__doc__.split("\n")[0])
+    ap.add_argument("--pr", type=int, required=True)
+    ap.add_argument("--head")
+    ap.add_argument("--lane", choices=["codex", "local"], required=True)
+    ap.add_argument("--focus", default="")
+    ap.add_argument("--paths", nargs="*", default=[])
+    ap.add_argument("--max-diff-bytes", type=int, default=DEFAULT_MAX_DIFF)
+    ap.add_argument("--dry-run", action="store_true")
+    a = ap.parse_args()
+
+    gh = os.environ.get("GH_BIN", "gh")
+    git = os.environ.get("GIT_BIN", "git")
+
+    info = json.loads(run([gh, "pr", "view", str(a.pr), "--json", "headRefOid,title,body"]) or "{}")
+    head = a.head or info.get("headRefOid")
+    if not head:
+        sys.exit("[aq-review-request] could not resolve head sha; pass --head")
+    title = info.get("title", "(unknown title)")
+    m = re.search(r"Author-lane:\s*([^\n\r]+)", info.get("body") or "", re.I)
+    author_lane = m.group(1).strip() if m else "unknown"
+
+    run([git, "fetch", "origin", f"pull/{a.pr}/head", "main"])
+    base = run([git, "merge-base", "origin/main", head]).strip()
+    path_args = ["--", *a.paths] if a.paths else []
+    diff = run([git, "diff", f"{base}..{head}", *path_args])
+    stat = run([git, "diff", "--stat", f"{base}..{head}", *path_args]).strip()
+
+    raw = diff.encode()
+    truncated = len(raw) > a.max_diff_bytes
+    if truncated:
+        diff = raw[: a.max_diff_bytes].decode(errors="ignore")
+
+    parts = [
+        f"# Review request: PR #{a.pr}",
+        f"Title: {title}",
+        f"Head: {head}",
+        f"Base (merge-base with origin/main): {base}",
+        f"author lane: {author_lane}",
+        "",
+        "## Instructions",
+        "- Review from the diff provided below. READ-ONLY: make no edits, commits or pushes.",
+        "- Read additional files ONLY when a finding requires it, by exact path and line range.",
+        "- Run at most the PR's own named tests.",
+        "- No repo-wide searches.",
+        "",
+        "## Output contract",
+        f"- First line exactly: `Reviewed-head-sha: {head}`",
+        "- Findings: each with file:line and a concrete failure scenario.",
+        "- Last line exactly one of: `Review-Disposition: PASS` | "
+        "`Review-Disposition: PASS_WITH_FOLLOWUPS` | `Review-Disposition: REQUEST_CHANGES`",
+        "",
+    ]
+    if a.focus:
+        parts += ["## Focus", a.focus, ""]
+    parts += ["## Diff stat", "```", stat, "```", ""]
+    if truncated:
+        parts += [f"NOTE: diff truncated to {a.max_diff_bytes} of {len(raw)} bytes; "
+                  "use the stat above and read the remaining files by exact path/line range if needed.", ""]
+    parts += ["## Diff", "```diff", diff, "```", ""]
+    prompt = "\n".join(parts)
+
+    outdir = Path(os.environ.get("DELEGATE_OUTPUTS_DIR") or resolve_delegation_dir(Path(__file__).resolve().parent) / "outputs")
+    outdir.mkdir(parents=True, exist_ok=True)
+    pf = outdir / f"review-prompt-pr{a.pr}-{head[:12]}.md"
+    pf.write_text(prompt)
+
+    if a.lane == "codex":
+        exe = os.environ.get("DELEGATE_TO_CODEX", str(REPO_ROOT / "scripts/ai/delegate-to-codex"))
+        cmd = [exe, "--role", "review", "--effort", "medium", "--mode", "safe", "--prompt-file", str(pf)]
+    else:
+        exe = os.environ.get("DELEGATE_TO_LOCAL", str(REPO_ROOT / "scripts/ai/delegate-to-local"))
+        cmd = [exe, "--mode", "direct", "--role", "reviewer", "--prompt-file", str(pf)]
+
+    if a.dry_run:
+        print(f"prompt: {pf} ({len(prompt.encode())} bytes)")
+        print("command: " + " ".join(cmd))
+        return 0
+    r = subprocess.run(cmd, capture_output=True, text=True, cwd=REPO_ROOT)
+    sys.stdout.write(r.stdout)
+    sys.stderr.write(r.stderr)
+    if r.returncode == 0:
+        print(f"prompt: {pf}")
+    return r.returncode
+
+
+if __name__ == "__main__":
+    sys.exit(main())
