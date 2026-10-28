@@ -37,6 +37,9 @@ fi
 python3 - <<'PYEOF'
 import json, os, subprocess, sys, shlex, time
 
+sys.path.insert(0, os.path.join(os.getcwd(), "scripts/governance/lib"))
+from clean_git_env import clean_git_env
+
 registry_path = os.environ.get("REGISTRY", "config/validation-check-registry.json")
 mode = os.environ.get("MODE", "--pre-commit")
 json_out_path = os.environ.get("FOCUSED_CI_JSON", "").strip()
@@ -169,7 +172,7 @@ for check in registry.get("checks", []):
     stdout_captured = ""
     stderr_captured = ""
     try:
-        result = sp.run(final_cmd, timeout=timeout, capture_output=True, text=True)
+        result = sp.run(final_cmd, timeout=timeout, capture_output=True, text=True, env=clean_git_env())
         exit_code = result.returncode
         stdout_captured = result.stdout
         stderr_captured = result.stderr

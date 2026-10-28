@@ -7,6 +7,8 @@ set -euo pipefail
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 REPO_ROOT="$(cd "${SCRIPT_DIR}/../.." && pwd)"
 cd "${REPO_ROOT}"
+# shellcheck source=lib/clean-git-env.sh
+source "${SCRIPT_DIR}/lib/clean-git-env.sh"
 
 # Parse args: --pre-commit | --pre-deploy set MODE; --tap enables TAP output;
 # --staged-isolated opts into validating the STAGED INDEX in a clean temp
@@ -495,7 +497,7 @@ gate_aqos_install_plan_schema() {
   fi
 
   log "Checking AQ-OS install-plan schema contract..."
-  if python3 scripts/testing/test-aqos-install-plan-schema.py; then
+  if clean_git_env_run python3 scripts/testing/test-aqos-install-plan-schema.py; then
     pass "AQ-OS install-plan schema contract valid"
   else
     fail "AQ-OS install-plan schema contract failed"
@@ -520,7 +522,7 @@ gate_aqos_ai_fit_policy() {
   fi
 
   log "Checking AQ-OS AI-fit policy contract..."
-  if python3 scripts/testing/test-ai-fit.py; then
+  if clean_git_env_run python3 scripts/testing/test-ai-fit.py; then
     pass "AQ-OS AI-fit policy contract valid"
   else
     fail "AQ-OS AI-fit policy contract failed"
@@ -548,7 +550,7 @@ gate_aqos_module_catalog() {
   fi
 
   log "Checking AQ-OS module catalog contract..."
-  if python3 scripts/testing/test-module-catalog.py; then
+  if clean_git_env_run python3 scripts/testing/test-module-catalog.py; then
     pass "AQ-OS module catalog contract valid"
   else
     fail "AQ-OS module catalog contract failed"
@@ -571,7 +573,7 @@ gate_aqos_install_resolver() {
     return 0
   fi
   log "Checking AQ-OS install resolver contract..."
-  if python3 scripts/testing/test-aqos-install-resolver.py; then
+  if clean_git_env_run python3 scripts/testing/test-aqos-install-resolver.py; then
     pass "AQ-OS install resolver contract valid"
   else
     fail "AQ-OS install resolver contract failed"
@@ -593,7 +595,7 @@ gate_aqos_mysystem_fieldset() {
     return 0
   fi
   log "Checking AQ-OS mySystem field-set contract..."
-  if python3 scripts/testing/test-aqos-mysystem-fieldset.py; then
+  if clean_git_env_run python3 scripts/testing/test-aqos-mysystem-fieldset.py; then
     pass "AQ-OS mySystem field-set contract valid"
   else
     fail "AQ-OS mySystem field-set contract failed"
@@ -615,7 +617,7 @@ gate_aqos_install_execution_verifier() {
     return 0
   fi
   log "Checking inert AQ-OS install execution verifier..."
-  if python3 scripts/testing/test-aqos-install-execution.py; then
+  if clean_git_env_run python3 scripts/testing/test-aqos-install-execution.py; then
     pass "AQ-OS install execution verifier valid"
   else
     fail "AQ-OS install execution verifier failed"
@@ -637,7 +639,7 @@ gate_aqos_golden_profile() {
     return 0
   fi
   log "Checking AQ-OS Workstation golden profile contract..."
-  if python3 scripts/testing/test-aqos-golden-profile.py; then
+  if clean_git_env_run python3 scripts/testing/test-aqos-golden-profile.py; then
     pass "AQ-OS golden profile contract valid"
   else
     fail "AQ-OS golden profile contract failed"
@@ -886,7 +888,7 @@ gate_focused_ci_checks() {
 gate_roadmap_verification() {
   log "Running roadmap verification..."
   local output
-  output=$("${REPO_ROOT}/scripts/testing/verify-flake-first-roadmap-completion.sh" 2>&1)
+  output=$(clean_git_env_run "${REPO_ROOT}/scripts/testing/verify-flake-first-roadmap-completion.sh" 2>&1)
   if echo "$output" | grep -q "Summary:.*pass, 0 fail"; then
     local passes
     passes=$(echo "$output" | grep -oP '\d+(?= pass)' | head -1)
@@ -914,7 +916,7 @@ gate_qa_phase0() {
     AQ_QA_SKIP_REPORT_BACKED_CHECKS=1 \
     AQ_QA_CONTINUE_LOCAL_MAX_TIME="${continue_local_timeout}" \
     AQ_FLAGSHIP_HELP_TIMEOUT_SECONDS="${flagship_help_timeout}" \
-    timeout --foreground "${qa_timeout}" "${REPO_ROOT}/scripts/ai/aq-qa" 0 2>&1
+    clean_git_env_run timeout --foreground "${qa_timeout}" "${REPO_ROOT}/scripts/ai/aq-qa" 0 2>&1
   ) || status=$?
   if [[ "${status}" -eq 124 ]]; then
     log_failed_qa_rows "$output" 30
@@ -1181,7 +1183,7 @@ gate_canon_compiler_determinism() {
     pass "Canon-compiler determinism (skipped — test suite absent)"
     return 0
   fi
-  if python3 "${test_script}" >/dev/null 2>&1; then
+  if clean_git_env_run python3 "${test_script}" >/dev/null 2>&1; then
     pass "Canon-compiler determinism (offline suite passed)"
   else
     fail "Canon-compiler determinism check failed"
@@ -1202,7 +1204,7 @@ gate_evidence_collector() {
     fail "Evidence-collector suite missing (required)"
     return 1
   fi
-  if python3 "${test_script}" >/dev/null 2>&1; then
+  if clean_git_env_run python3 "${test_script}" >/dev/null 2>&1; then
     pass "Evidence-collector suite (offline suite passed)"
   else
     fail "Evidence-collector suite failed"
@@ -1266,7 +1268,7 @@ gate_agent_harness_regression_suites() {
       continue
     fi
     output_file="$(mktemp)"
-    if AQ_TEST_FORCE_STUB=1 timeout "${suite_timeout_seconds}s" python3 "${test_script}" >"${output_file}" 2>&1; then
+    if AQ_TEST_FORCE_STUB=1 clean_git_env_run timeout "${suite_timeout_seconds}s" python3 "${test_script}" >"${output_file}" 2>&1; then
       pass "Harness regression suite: ${suite}"
     else
       status=$?

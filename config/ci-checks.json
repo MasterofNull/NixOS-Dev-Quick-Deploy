@@ -243,6 +243,24 @@
         "python3"
       ],
       "ci_workflow": ".github/workflows/test.yml#syntax"
+    },
+    {
+      "id": "hook-git-env-isolation",
+      "cmd": "scripts/testing/test-hook-git-env-isolation.py",
+      "paths": [
+        ".githooks/pre-push",
+        "scripts/governance/lib/**",
+        "scripts/governance/tier0-validation-gate.sh",
+        "scripts/governance/run-ci-checks.sh",
+        "scripts/governance/run-focused-ci-checks.sh",
+        "scripts/governance/ci-merge-parity.sh",
+        "scripts/testing/test-hook-git-env-isolation.py"
+      ],
+      "needs": [
+        "python3",
+        "git"
+      ],
+      "ci_workflow": ".github/workflows/test.yml#syntax"
     }
   ],
   "ci_exempt": [

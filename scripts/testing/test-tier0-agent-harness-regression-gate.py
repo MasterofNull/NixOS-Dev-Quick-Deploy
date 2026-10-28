@@ -84,6 +84,7 @@ def run_gate(suite_names: tuple[str, ...], *, fake_timeout: bool = False) -> sub
             "pass() { printf 'PASS:%s\\n' \"$*\"; }\n"
             "fail() { printf 'FAIL:%s\\n' \"$*\"; }\n"
             "log() { printf 'LOG:%s\\n' \"$*\"; }\n"
+            f"source {ROOT}/scripts/governance/lib/clean-git-env.sh\n"
             f"REPO_ROOT={root!s}\n"
             f"{extract_gate_function()}\n"
             "gate_agent_harness_regression_suites\n",
@@ -112,6 +113,7 @@ def run_evidence_collector_gate(*, suite_present: bool) -> subprocess.CompletedP
             "pass() { printf 'PASS:%s\\n' \"$*\"; }\n"
             "fail() { printf 'FAIL:%s\\n' \"$*\"; }\n"
             "log() { printf 'LOG:%s\\n' \"$*\"; }\n"
+            f"source {ROOT}/scripts/governance/lib/clean-git-env.sh\n"
             f"REPO_ROOT={root!s}\n"
             f"{extract_named_gate_function('gate_evidence_collector')}\n"
             "gate_evidence_collector\n",
@@ -132,7 +134,7 @@ def main() -> int:
     assert "Harness regression suite missing (required)" in source
     assert "Evidence-collector suite missing (required)" in source
     assert "Evidence-collector suite (skipped — test suite absent)" not in source
-    assert 'timeout "${suite_timeout_seconds}s" python3' in source
+    assert 'clean_git_env_run timeout "${suite_timeout_seconds}s" python3' in source
     assert "Harness regression diagnostics" in source
     assert '".claude/settings.json"' in source
 
