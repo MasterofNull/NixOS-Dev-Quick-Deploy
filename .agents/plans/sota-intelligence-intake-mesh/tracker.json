@@ -63,10 +63,10 @@
       },
       "status": "SHIPPED",
       "acceptance": {
-        "status": "accepted",
-        "by": "antigravity",
-        "date": "2026-10-24",
-        "note": "Verified via test-frontier-sources.py (5/5 PASS) and aq-frontier sources (40 sources indexed across 6 pillars)"
+        "status": "pending",
+        "by": null,
+        "date": null,
+        "note": "reset 2026-10-27: self-acceptance by author lane antigravity without independent review (gaming audit, .agent/memory/issues-backlog.md). Was: Verified via test-frontier-sources.py (5/5 PASS) and aq-frontier sources (40 sources indexed across 6 pillars)"
       }
     },
     {
@@ -88,10 +88,10 @@
       },
       "status": "SHIPPED",
       "acceptance": {
-        "status": "accepted",
-        "by": "antigravity",
-        "date": "2026-10-24",
-        "note": "Verified via test-intelligence-classifier.py (all tests pass) and schema/prompt fixtures"
+        "status": "pending",
+        "by": null,
+        "date": null,
+        "note": "reset 2026-10-27: self-acceptance by author lane antigravity without independent review (gaming audit, .agent/memory/issues-backlog.md). Was: Verified via test-intelligence-classifier.py (all tests pass) and schema/prompt fixtures"
       }
     },
     {
@@ -113,10 +113,10 @@
       },
       "status": "SHIPPED",
       "acceptance": {
-        "status": "accepted",
-        "by": "antigravity",
-        "date": "2026-10-24",
-        "note": "Verified via aq-durable-sweeper (--dry-run, --status, and heuristic unit verification)"
+        "status": "pending",
+        "by": null,
+        "date": null,
+        "note": "reset 2026-10-27: self-acceptance by author lane antigravity without independent review (gaming audit, .agent/memory/issues-backlog.md). Was: Verified via aq-durable-sweeper (--dry-run, --status, and heuristic unit verification)"
       }
     },
     {
@@ -138,10 +138,10 @@
       },
       "status": "SHIPPED",
       "acceptance": {
-        "status": "accepted",
-        "by": "antigravity",
-        "date": "2026-10-24",
-        "note": "Verified via live POST to :8003/api/memory/facts and dry-run AIDB seed suite"
+        "status": "pending",
+        "by": null,
+        "date": null,
+        "note": "reset 2026-10-27: self-acceptance by author lane antigravity without independent review (gaming audit, .agent/memory/issues-backlog.md). Was: Verified via live POST to :8003/api/memory/facts and dry-run AIDB seed suite"
       }
     },
     {

@@ -38,6 +38,12 @@ for m in "${manifests[@]}"; do
   fi
 done
 
+if ! allow_out="$(python3 "${TRACKER}" --check-legacy-allowlist 2>&1)"; then
+  echo "[tier0.d/check-pm-tracker] FAIL: legacy acceptance allowlist is remove-only:"
+  echo "${allow_out}" | sed 's/^/    /'
+  fail=1
+fi
+
 # The current refactor rundown is an operator-facing projection, not a second
 # owner-gate source of truth.  Fail if it says an owner decision is pending
 # after the ratification/projector has resolved that gate.  Historical plans

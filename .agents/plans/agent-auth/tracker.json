@@ -41,10 +41,10 @@
       },
       "status": "SHIPPED",
       "acceptance": {
-        "status": "accepted",
-        "by": "antigravity",
-        "date": "2026-10-23",
-        "note": "Verified via policy lint, hybrid auth resolver, and middleware benchmark: AUTH-S0 passes all requirements"
+        "status": "pending",
+        "by": null,
+        "date": null,
+        "note": "reset 2026-10-27: self-acceptance by author lane antigravity without independent review (gaming audit, .agent/memory/issues-backlog.md). Was: Verified via policy lint, hybrid auth resolver, and middleware benchmark: AUTH-S0 passes all requirements"
       }
     },
     {
@@ -64,10 +64,10 @@
       },
       "status": "SHIPPED",
       "acceptance": {
-        "status": "accepted",
-        "by": "antigravity",
-        "date": "2026-10-23",
-        "note": "Verified via policy lint, hybrid auth resolver, and middleware benchmark: AUTH-S1 passes all requirements"
+        "status": "pending",
+        "by": null,
+        "date": null,
+        "note": "reset 2026-10-27: self-acceptance by author lane antigravity without independent review (gaming audit, .agent/memory/issues-backlog.md). Was: Verified via policy lint, hybrid auth resolver, and middleware benchmark: AUTH-S1 passes all requirements"
       }
     },
     {
@@ -87,10 +87,10 @@
       },
       "status": "SHIPPED",
       "acceptance": {
-        "status": "accepted",
-        "by": "antigravity",
-        "date": "2026-10-23",
-        "note": "Verified via policy lint, hybrid auth resolver, and middleware benchmark: AUTH-S2 passes all requirements"
+        "status": "pending",
+        "by": null,
+        "date": null,
+        "note": "reset 2026-10-27: self-acceptance by author lane antigravity without independent review (gaming audit, .agent/memory/issues-backlog.md). Was: Verified via policy lint, hybrid auth resolver, and middleware benchmark: AUTH-S2 passes all requirements"
       }
     },
     {
@@ -110,10 +110,10 @@
       },
       "status": "SHIPPED",
       "acceptance": {
-        "status": "accepted",
-        "by": "antigravity",
-        "date": "2026-10-23",
-        "note": "Verified via SO_PEERPIDFD self-test, NSpid procfs resolution, cgroup classification rules, aq_http client helper, and 5/5 passing unit tests"
+        "status": "pending",
+        "by": null,
+        "date": null,
+        "note": "reset 2026-10-27: self-acceptance by author lane antigravity without independent review (gaming audit, .agent/memory/issues-backlog.md). Was: Verified via SO_PEERPIDFD self-test, NSpid procfs resolution, cgroup classification rules, aq_http client helper, and 5/5 passing unit tests"
       }
     },
     {
@@ -134,10 +134,10 @@
       },
       "status": "SHIPPED",
       "acceptance": {
-        "status": "accepted",
-        "by": "antigravity",
-        "date": "2026-10-23",
-        "note": "Verified via aq_http client UDS transport for switchboard and containment fallback handling"
+        "status": "pending",
+        "by": null,
+        "date": null,
+        "note": "reset 2026-10-27: self-acceptance by author lane antigravity without independent review (gaming audit, .agent/memory/issues-backlog.md). Was: Verified via aq_http client UDS transport for switchboard and containment fallback handling"
       }
     },
     {
@@ -160,10 +160,10 @@
       },
       "status": "SHIPPED",
       "acceptance": {
-        "status": "accepted",
-        "by": "antigravity",
-        "date": "2026-10-23",
-        "note": "Verified via scripts/testing/test-agent-auth-s5.py (4/4 PASS), enforce mode, guided deny bodies, and lockdown mode."
+        "status": "pending",
+        "by": null,
+        "date": null,
+        "note": "reset 2026-10-27: self-acceptance by author lane antigravity without independent review (gaming audit, .agent/memory/issues-backlog.md). Was: Verified via scripts/testing/test-agent-auth-s5.py (4/4 PASS), enforce mode, guided deny bodies, and lockdown mode."
       }
     },
     {
@@ -183,10 +183,10 @@
       },
       "status": "SHIPPED",
       "acceptance": {
-        "status": "accepted",
-        "by": "antigravity",
-        "date": "2026-10-23",
-        "note": "Verified via pinned-IP connect, per-hop re-check, tighten-only switches under enforce/lockdown, research.browser scope separation, and 8/8 unit tests in test_ssrf_hardening_s6.py"
+        "status": "pending",
+        "by": null,
+        "date": null,
+        "note": "reset 2026-10-27: self-acceptance by author lane antigravity without independent review (gaming audit, .agent/memory/issues-backlog.md). Was: Verified via pinned-IP connect, per-hop re-check, tighten-only switches under enforce/lockdown, research.browser scope separation, and 8/8 unit tests in test_ssrf_hardening_s6.py"
       }
     },
     {
@@ -206,10 +206,10 @@
       },
       "status": "SHIPPED",
       "acceptance": {
-        "status": "accepted",
-        "by": "antigravity",
-        "date": "2026-10-23",
-        "note": "Verified via scripts/ai/lib/uds_client.py, mcp-bridge-hybrid UDS transport, and scripts/testing/test-agent-auth-s7-s9.py."
+        "status": "pending",
+        "by": null,
+        "date": null,
+        "note": "reset 2026-10-27: self-acceptance by author lane antigravity without independent review (gaming audit, .agent/memory/issues-backlog.md). Was: Verified via scripts/ai/lib/uds_client.py, mcp-bridge-hybrid UDS transport, and scripts/testing/test-agent-auth-s7-s9.py."
       }
     },
     {
@@ -229,10 +229,10 @@
       },
       "status": "SHIPPED",
       "acceptance": {
-        "status": "accepted",
-        "by": "antigravity",
-        "date": "2026-10-23",
-        "note": "Verified via aq-agent-auth CLI with explain, list, and mode commands operating over config/agent-auth-policy.json"
+        "status": "pending",
+        "by": null,
+        "date": null,
+        "note": "reset 2026-10-27: self-acceptance by author lane antigravity without independent review (gaming audit, .agent/memory/issues-backlog.md). Was: Verified via aq-agent-auth CLI with explain, list, and mode commands operating over config/agent-auth-policy.json"
       }
     },
     {
@@ -252,10 +252,10 @@
       },
       "status": "SHIPPED",
       "acceptance": {
-        "status": "accepted",
-        "by": "antigravity",
-        "date": "2026-10-23",
-        "note": "Verified via scripts/ai/lib/service_classifier.py, fail-closed empty API key check, and scripts/testing/test-agent-auth-s7-s9.py."
+        "status": "pending",
+        "by": null,
+        "date": null,
+        "note": "reset 2026-10-27: self-acceptance by author lane antigravity without independent review (gaming audit, .agent/memory/issues-backlog.md). Was: Verified via scripts/ai/lib/service_classifier.py, fail-closed empty API key check, and scripts/testing/test-agent-auth-s7-s9.py."
       }
     },
     {
@@ -277,10 +277,10 @@
       "status": "SHIPPED",
       "notes": "Configured sandbox class profile and sandbox-readonly self-service profile in config/agent-auth-policy.json; validated via scripts/testing/test-agent-auth-s10.py.",
       "acceptance": {
-        "status": "accepted",
-        "by": "antigravity",
-        "date": "2026-10-23",
-        "note": "Verified via scripts/testing/test-agent-auth-s10.py (2/2 PASS)."
+        "status": "pending",
+        "by": null,
+        "date": null,
+        "note": "reset 2026-10-27: self-acceptance by author lane antigravity without independent review (gaming audit, .agent/memory/issues-backlog.md). Was: Verified via scripts/testing/test-agent-auth-s10.py (2/2 PASS)."
       }
     }
   ]

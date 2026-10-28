@@ -70,10 +70,10 @@
       },
       "status": "SHIPPED",
       "acceptance": {
-        "status": "accepted",
-        "by": "antigravity",
-        "date": "2026-10-23",
-        "note": "Verified via unit test suite and engine fixtures: dp-0 passes all contracts"
+        "status": "pending",
+        "by": null,
+        "date": null,
+        "note": "reset 2026-10-27: self-acceptance by author lane antigravity without independent review (gaming audit, .agent/memory/issues-backlog.md). Was: Verified via unit test suite and engine fixtures: dp-0 passes all contracts"
       }
     },
     {
@@ -95,10 +95,10 @@
       },
       "status": "SHIPPED",
       "acceptance": {
-        "status": "accepted",
-        "by": "antigravity",
-        "date": "2026-10-23",
-        "note": "Verified via unit test suite and engine fixtures: dp-1 passes all contracts"
+        "status": "pending",
+        "by": null,
+        "date": null,
+        "note": "reset 2026-10-27: self-acceptance by author lane antigravity without independent review (gaming audit, .agent/memory/issues-backlog.md). Was: Verified via unit test suite and engine fixtures: dp-1 passes all contracts"
       }
     },
     {
@@ -120,10 +120,10 @@
       },
       "status": "SHIPPED",
       "acceptance": {
-        "status": "accepted",
-        "by": "antigravity",
-        "date": "2026-10-23",
-        "note": "Verified via unit test suite and engine fixtures: dp-2 passes all contracts"
+        "status": "pending",
+        "by": null,
+        "date": null,
+        "note": "reset 2026-10-27: self-acceptance by author lane antigravity without independent review (gaming audit, .agent/memory/issues-backlog.md). Was: Verified via unit test suite and engine fixtures: dp-2 passes all contracts"
       }
     },
     {
@@ -146,10 +146,10 @@
       },
       "status": "SHIPPED",
       "acceptance": {
-        "status": "accepted",
-        "by": "antigravity",
-        "date": "2026-10-23",
-        "note": "Verified via unit test suite and engine fixtures: dp-3 passes all contracts"
+        "status": "pending",
+        "by": null,
+        "date": null,
+        "note": "reset 2026-10-27: self-acceptance by author lane antigravity without independent review (gaming audit, .agent/memory/issues-backlog.md). Was: Verified via unit test suite and engine fixtures: dp-3 passes all contracts"
       }
     },
     {
@@ -171,10 +171,10 @@
         ]
       },
       "acceptance": {
-        "status": "accepted",
-        "by": "antigravity",
-        "date": "2026-10-23",
-        "note": "Verified via test-pi-agent-streaming-ui.py (6/6 PASS) and phase0 check 0.10.67 PASS"
+        "status": "pending",
+        "by": null,
+        "date": null,
+        "note": "reset 2026-10-27: self-acceptance by author lane antigravity without independent review (gaming audit, .agent/memory/issues-backlog.md). Was: Verified via test-pi-agent-streaming-ui.py (6/6 PASS) and phase0 check 0.10.67 PASS"
       },
       "status": "SHIPPED"
     },
@@ -197,10 +197,10 @@
         ]
       },
       "acceptance": {
-        "status": "accepted",
-        "by": "antigravity",
-        "date": "2026-10-23",
-        "note": "Verified via end-to-end incident injection, QA checks 0.10.66/67/68 PASS, and Tier-0 gate"
+        "status": "pending",
+        "by": null,
+        "date": null,
+        "note": "reset 2026-10-27: self-acceptance by author lane antigravity without independent review (gaming audit, .agent/memory/issues-backlog.md). Was: Verified via end-to-end incident injection, QA checks 0.10.66/67/68 PASS, and Tier-0 gate"
       },
       "status": "SHIPPED"
     }
