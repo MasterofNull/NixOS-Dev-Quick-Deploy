@@ -42,6 +42,12 @@ Program rollup 98% -> 88%; 38 items SHIPPED -> UNVERIFIED.
 - Dates parsed as ISO-8601 (malformed never clears); receipt registry resolved via `scripts/ai/lib/delegation_dir.py`.
 - Held items, `--all-json` (source_health complete), before -> after hardening: aqos-requirements-inventory 2 -> 2, capability-integration 1 -> 1, ecc-parity-integration 1 -> 1, all other plans 0 -> 0 (total 4 -> 4; frozen into `items`). No systemd/command item currently has untrusted matching evidence.
 
+## Hardening round 2 (Codex re-review codex-20261028-130418-l36g73)
+- Receipt binding now required on every clearing path (incl. `clears` and frozen-entry removal): trusted `(#N)` commit matching the frozen patterns and touching the plan tracker / freeze record.
+- Direct (no `(#N)`) commits no longer count as trusted. `items` is now an object of original patterns covering all 41 items with any untrusted matching commit in history.
+- Remove-only check compares against the union of merge-base and base-ref-tip configs.
+- Held counts (`--all-json`): 4 -> 5 (aqos-requirements-inventory 2 -> 3, capability-integration 1, ecc-parity-integration 1; others 0). Most of the 41 frozen items are currently IN-PROGRESS, so the hold is dormant for them until they project SHIPPED.
+
 ## Limitations
 - Only items that project SHIPPED/ACTIVATED are held; items already below that (IN-PROGRESS) are untouched.
 - `assets/aqos-progress-tracker.html` now lists UNVERIFIED (own kanban column, dashed red border).

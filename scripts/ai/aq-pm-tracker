@@ -250,10 +250,13 @@ def load_untrusted(path: Path | None = None) -> tuple[dict | None, list[str]]:
         return None, ["untrusted-provenance config must be an object with lanes[]"]
     if not isinstance(raw.get("clears", {}), dict):
         errs.append("clears must be an object {\"<plan>/<item-id>\": receipt-path}")
-    items = raw.get("items", [])
-    if not isinstance(items, list) or not all(isinstance(x, str) and re.fullmatch(r"[^/\s]+/[^/\s]+", x) for x in items):
-        errs.append("items must be a list of \"<plan>/<item-id>\" strings")
-        items = []
+    items = raw.get("items", {})
+    if not isinstance(items, dict) or not all(
+            isinstance(k, str) and re.fullmatch(r"[^/\s]+/[^/\s]+", k) and isinstance(v, dict)
+            and isinstance(v.get("commit_match"), list)
+            and all(isinstance(x, str) and x for x in v["commit_match"]) for k, v in items.items()):
+        errs.append('items must be an object {"<plan>/<item-id>": {"commit_match": [patterns]}}')
+        items = {}
     prs: dict[int, dict] = {}
     for n, lane in enumerate(raw["lanes"]):
         if not isinstance(lane, dict) or not isinstance(lane.get("name"), str) or not lane["name"].strip():
@@ -273,7 +276,7 @@ def load_untrusted(path: Path | None = None) -> tuple[dict | None, list[str]]:
             prs.setdefault(x, lane)
     if errs:
         return None, errs
-    return {"prs": prs, "clears": raw.get("clears", {}), "items": set(items), "lanes": raw["lanes"]}, []
+    return {"prs": prs, "clears": raw.get("clears", {}), "items": {k: list(v["commit_match"]) for k, v in items.items()}, "lanes": raw["lanes"]}, []
 
 
 _RECEIPT_MOD = None
@@ -294,6 +297,39 @@ def _item_key(plan: str, item: dict) -> str:
     return f"{plan}/{item.get('id')}"
 
 
+def _commit_files(commit: str) -> set[str] | None:
+    """Files a commit modifies (read-only); None when unreadable."""
+    if not re.fullmatch(r"[0-9a-f]{7,40}", commit):
+        return None
+    try:
+        r = subprocess.run(["git", "--no-optional-locks", "-C", str(REPO), "show", "--name-only", "--format=", commit],
+                           capture_output=True, text=True, timeout=20)
+    except (OSError, subprocess.SubprocessError):
+        return None
+    return set(r.stdout.split("\n")) - {""} if r.returncode == 0 else None
+
+
+def _receipt_bound(item: dict, plan: str, gitlog: str, untrusted: dict, pr) -> bool:
+    """The receipt's PR is a trusted explicit `(#N)` squash commit that matches the item's detection
+    (frozen patterns for listed items, never the editable current ones) AND modifies the item's plan
+    tracker or its detection-named freeze record."""
+    if type(pr) is not int or pr in untrusted["prs"]:
+        return False
+    frozen = untrusted["items"].get(_item_key(plan, item))
+    patterns = frozen if frozen is not None else ((item.get("detection") or {}).get("commit_match") or [])
+    allowed = {f".agents/plans/{plan}/tracker.json"}
+    fr = (item.get("detection") or {}).get("freeze_record")
+    if isinstance(fr, str) and fr:
+        allowed.add(fr)
+    for line in gitlog.splitlines():
+        m = _PR_SUBJECT.search(line)
+        if m and int(m.group(1)) == pr and any(_line_matches(p, line) for p in patterns):
+            files = _commit_files(line.split()[0])
+            if files and files & allowed:
+                return True
+    return False
+
+
 def _registry_path() -> Path:
     """Shared main-worktree delegation registry (same resolution as aq-review-receipt)."""
     sys.path.insert(0, str(Path(__file__).resolve().parent / "lib"))
@@ -310,8 +346,7 @@ def _hold_receipt_problem(item: dict, lane: dict, untrusted: dict, gitlog: str =
     config `clears` names this exact item + receipt); otherwise the reason it does not."""
     acc = item.get("acceptance") or {}
     rel = acc.get("review_receipt") if acc.get("status") == "accepted" else None
-    cleared = untrusted["clears"].get(_item_key(plan, item))
-    rel = rel or cleared
+    rel = rel or untrusted["clears"].get(_item_key(plan, item))
     if not rel:
         return "no review receipt"
     if not isinstance(rel, str) or rel.startswith("/") or ".." in Path(rel).parts:
@@ -333,17 +368,9 @@ def _hold_receipt_problem(item: dict, lane: dict, untrusted: dict, gitlog: str =
     reviewer = str(r.get("reviewer_lane", "")).lower()
     if any(t in reviewer for t in tokens):
         return "receipt reviewer is the untrusted lane"
-    if cleared and rel == cleared:
-        return None  # config names this exact item + receipt
-    pr = r.get("pr")
-    patterns = (item.get("detection") or {}).get("commit_match") or []
-    if type(pr) is not int or pr in untrusted["prs"]:
-        return "receipt PR is missing or itself untrusted"
-    for line in gitlog.splitlines():
-        m = _PR_SUBJECT.search(line)
-        if m and int(m.group(1)) == pr and any(_line_matches(p, line) for p in patterns):
-            return None
-    return "receipt is not bound to this item (its PR commit does not match the item's detection)"
+    if not _receipt_bound(item, plan, gitlog, untrusted, r.get("pr")):
+        return "receipt is not bound to this item (PR must be a trusted (#N) commit matching the frozen detection and touching the item's tracker)"
+    return None
 
 
 def _line_matches(pattern: str, line: str) -> bool:
@@ -362,8 +389,9 @@ def _untrusted_hold(item: dict, gitlog: str, untrusted: dict | None, plan: str =
     `items` list are held regardless of their current detection and clear ONLY via a bound receipt."""
     if not untrusted:
         return None
-    patterns = (item.get("detection") or {}).get("commit_match") or []
-    listed = _item_key(plan, item) in untrusted["items"]
+    frozen = untrusted["items"].get(_item_key(plan, item))
+    listed = frozen is not None
+    patterns = list((item.get("detection") or {}).get("commit_match") or []) + list(frozen or [])
     prs: list[int] = []
     newest_untrusted = None   # smallest line index == newest commit
     newest_trusted = None
@@ -376,7 +404,7 @@ def _untrusted_hold(item: dict, gitlog: str, untrusted: dict | None, plan: str =
             prs.append(int(m.group(1)))
             lane = lane or untrusted["prs"][int(m.group(1))]
             newest_untrusted = idx if newest_untrusted is None else newest_untrusted
-        elif newest_trusted is None:
+        elif m and newest_trusted is None:   # only explicit (#N) squash commits count as trusted
             newest_trusted = idx
     if not prs and not listed:
         return None
@@ -747,6 +775,44 @@ def check_legacy_allowlist(git=_git_run) -> int:
     return 0
 
 
+def _untrusted_base_items(rel: str, git=_git_run) -> tuple[dict, str, str]:
+    """Union of frozen items at BOTH the merge-base and the base-ref tip (a stale merge-base or a
+    pre-freeze config must not make removals free). ("ok"|"absent"|"error", reason)."""
+    ref = next((c for c in ("origin/main", "main")
+                if git("rev-parse", "--verify", "--quiet", f"{c}^{{commit}}").returncode == 0), None)
+    if ref is None:
+        return {}, "error", "no base ref (origin/main or main) resolves"
+    mb = git("merge-base", "HEAD", ref)
+    base = mb.stdout.strip()
+    if mb.returncode != 0 or not base:
+        return {}, "error", f"git merge-base HEAD {ref} failed: {mb.stderr.strip()}"
+    union: dict[str, list] = {}
+    present = False
+    for rev in dict.fromkeys((base, ref)):
+        ls = git("ls-tree", rev, "--", rel)
+        if ls.returncode != 0:
+            return {}, "error", f"git ls-tree {rev} failed: {ls.stderr.strip()}"
+        if not ls.stdout.strip():
+            continue
+        show = git("show", f"{rev}:{rel}")
+        if show.returncode != 0:
+            return {}, "error", f"git show {rev}:{rel} failed: {show.stderr.strip()}"
+        present = True
+        try:
+            raw = json.loads(show.stdout)
+            items = raw.get("items", {}) if isinstance(raw, dict) else None
+            if isinstance(items, list):          # pre-freeze list form: keys only
+                items = {k: {"commit_match": []} for k in items if isinstance(k, str)}
+            if not isinstance(items, dict):
+                raise ValueError("items not an object")
+            for k, v in items.items():
+                union.setdefault(k, [])
+                union[k] += [x for x in (v.get("commit_match") if isinstance(v, dict) else []) or [] if x not in union[k]]
+        except (ValueError, AttributeError, TypeError) as e:
+            return {}, "error", f"base {rev}:{rel} unparsable: {e}"
+    return (union, "ok", "") if present else ({}, "absent", "")
+
+
 def check_untrusted_items(git=_git_run) -> int:
     """The config `items` list is remove-only: an entry may be removed vs base only if that item's
     hold is cleared by a bound valid receipt. Fails closed on any unresolved/invalid state."""
@@ -756,22 +822,14 @@ def check_untrusted_items(git=_git_run) -> int:
     if cur is None or errs:
         print(f"{tag} FAIL: current {rel} invalid: {'; '.join(errs)}")
         return 1
-    status, text = _resolve_legacy_base(rel, git)
+    base_items, status, why = _untrusted_base_items(rel, git)
     if status == "error":
-        print(f"{tag} FAIL: cannot resolve base (fail closed): {text}")
+        print(f"{tag} FAIL: cannot resolve base (fail closed): {why}")
         return 1
     if status == "absent":
-        print(f"{tag} no base version; treating current file as base (introducing commit)")
+        print(f"{tag} no base version at merge-base or base ref tip; treating current file as base (introducing commit)")
         return 0
-    try:
-        raw = json.loads(text)
-        base_items = set(raw.get("items", []))
-        if not all(isinstance(x, str) for x in base_items):
-            raise ValueError("non-string item entry")
-    except (ValueError, TypeError, AttributeError) as e:
-        print(f"{tag} FAIL: base {rel} invalid: {e}")
-        return 1
-    removed = sorted(base_items - cur["items"])
+    removed = sorted(set(base_items) - set(cur["items"]))
     if not removed:
         print(f"{tag} PASS: no entries removed vs base")
         return 0
@@ -786,7 +844,7 @@ def check_untrusted_items(git=_git_run) -> int:
             print(f"{tag} FAIL: removed entry {key} has no resolvable tracker item (fail closed)")
             bad = 1
             continue
-        forced = {**cur, "items": cur["items"] | {key}}
+        forced = {**cur, "items": {**cur["items"], key: base_items[key]}}
         if _untrusted_hold(item, gitlog, forced, plan) is not None:
             print(f"{tag} FAIL: entry {key} removed but its hold is not cleared by a bound valid receipt")
             bad = 1

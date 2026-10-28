@@ -93,10 +93,238 @@
     }
   ],
   "clears": {},
-  "items": [
-    "aqos-requirements-inventory/req-foundation-c",
-    "aqos-requirements-inventory/req-herdr",
-    "capability-integration/ci-2",
-    "ecc-parity-integration/gate-a"
-  ]
+  "items": {
+    "agent-auth/AUTH-S10": {
+      "commit_match": [
+        "feat\\(agent-auth\\): .*AUTH-S10"
+      ]
+    },
+    "agent-auth/AUTH-S3": {
+      "commit_match": [
+        "feat\\(agent-auth\\): .*AUTH-S3"
+      ]
+    },
+    "agent-auth/AUTH-S4": {
+      "commit_match": [
+        "feat\\(agent-auth\\): .*AUTH-S4"
+      ]
+    },
+    "agent-auth/AUTH-S5": {
+      "commit_match": [
+        "feat\\(agent-auth\\): .*AUTH-S5"
+      ]
+    },
+    "agent-auth/AUTH-S6": {
+      "commit_match": [
+        "feat\\(agent-auth\\): .*AUTH-S6"
+      ]
+    },
+    "agent-auth/AUTH-S7": {
+      "commit_match": [
+        "feat\\(agent-auth\\): .*AUTH-S7"
+      ]
+    },
+    "agent-auth/AUTH-S8": {
+      "commit_match": [
+        "feat\\(agent-auth\\): .*AUTH-S8"
+      ]
+    },
+    "agent-auth/AUTH-S9": {
+      "commit_match": [
+        "feat\\(agent-auth\\): .*AUTH-S9"
+      ]
+    },
+    "aq-decide/DEC-S1": {
+      "commit_match": [
+        "feat\\(aq-decide\\): .*(library|DEC-S1)"
+      ]
+    },
+    "aq-decide/DEC-S10": {
+      "commit_match": [
+        "feat\\(aq-decide\\): .*DEC-S10"
+      ]
+    },
+    "aq-decide/DEC-S2": {
+      "commit_match": [
+        "feat\\(aq-decide\\): .*(nix|DEC-S2)"
+      ]
+    },
+    "aq-decide/DEC-S3": {
+      "commit_match": [
+        "feat\\(aq-decide\\): .*(shadow|DEC-S3)"
+      ]
+    },
+    "aq-decide/DEC-S4": {
+      "commit_match": [
+        "feat\\(aq-decide\\): .*(egress|DEC-S4)"
+      ]
+    },
+    "aq-decide/DEC-S5": {
+      "commit_match": [
+        "feat\\(aq-decide\\): .*DEC-S5"
+      ]
+    },
+    "aq-decide/DEC-S6": {
+      "commit_match": [
+        "feat\\(aq-decide\\): .*DEC-S6"
+      ]
+    },
+    "aq-decide/DEC-S7": {
+      "commit_match": [
+        "feat\\(aq-decide\\): .*DEC-S7"
+      ]
+    },
+    "aq-decide/DEC-S8": {
+      "commit_match": [
+        "feat\\(aq-decide\\): .*DEC-S8"
+      ]
+    },
+    "aq-decide/DEC-S9": {
+      "commit_match": [
+        "feat\\(aq-decide\\): .*DEC-S9"
+      ]
+    },
+    "aqos-foundation-c/c2sci-activate": {
+      "commit_match": [
+        "C2-SCI activation",
+        "c2-scheduler-context-issuer-ACTIVATE"
+      ]
+    },
+    "aqos-foundation-c/c2sci-build": {
+      "commit_match": [
+        "C2 scheduler-context issuer B",
+        "C2-SCI"
+      ]
+    },
+    "aqos-requirements-inventory/req-foundation-c": {
+      "commit_match": [
+        "C2-SCI",
+        "C6-B",
+        "ALA activation"
+      ]
+    },
+    "aqos-requirements-inventory/req-herdr": {
+      "commit_match": [
+        "herdr",
+        "H2A"
+      ]
+    },
+    "aqos-requirements-inventory/req-track-s": {
+      "commit_match": [
+        "security"
+      ]
+    },
+    "capability-integration/ci-2": {
+      "commit_match": [
+        "aq-capability-audit",
+        "capability audit"
+      ]
+    },
+    "durable-proactive-mesh/dp-0": {
+      "commit_match": [
+        "durable-proactive-mesh",
+        "DP-0",
+        "parity prd",
+        "pi streaming ui"
+      ]
+    },
+    "durable-proactive-mesh/dp-3": {
+      "commit_match": [
+        "DP-3",
+        "aq-oncalld",
+        "on-call daemon"
+      ]
+    },
+    "durable-proactive-mesh/dp-4": {
+      "commit_match": [
+        "DP-4",
+        "pi streaming ui",
+        "streaming canvas",
+        "agent mesh ui"
+      ]
+    },
+    "durable-proactive-mesh/dp-5": {
+      "commit_match": [
+        "DP-5",
+        "e2e oncall verification",
+        "durable mesh activation"
+      ]
+    },
+    "ecc-parity-integration/gate-a": {
+      "commit_match": [
+        "ECC",
+        "Gate A",
+        "parity evidence"
+      ]
+    },
+    "software-dev-factory-rollout/k4": {
+      "commit_match": [
+        "K4 Kit CI wiring",
+        "factory-kit-k4"
+      ]
+    },
+    "software-dev-factory-rollout/k6": {
+      "commit_match": [
+        "feat(factory): K6 retrofit",
+        "factory-kit-k6"
+      ]
+    },
+    "sota-intelligence-intake-mesh/sim-3": {
+      "commit_match": [
+        "SIM-3",
+        "aq-durable-sweeper",
+        "durable sweeper"
+      ]
+    },
+    "sota-rounding/w1-s1": {
+      "commit_match": [
+        "REA intake",
+        "rea pin"
+      ]
+    },
+    "sota-rounding/w1-s2": {
+      "commit_match": [
+        "sandboxed launcher and admission tests",
+        "mcp-rea-sandboxed"
+      ]
+    },
+    "sota-rounding/w2-s3": {
+      "commit_match": [
+        "oncalld.nix",
+        "aq-oncalld apparmor",
+        "DP-3 confinement completion"
+      ]
+    },
+    "sota-rounding/w2-s5": {
+      "commit_match": [
+        "isolation hygiene"
+      ]
+    },
+    "sota-rounding/w3-s3": {
+      "commit_match": [
+        "feat(hooks): harness lifecycle hooks for session start",
+        "hooks SessionStart"
+      ]
+    },
+    "sota-rounding/w3-s5": {
+      "commit_match": [
+        "scan-due"
+      ]
+    },
+    "sota-rounding/w3-s6": {
+      "commit_match": [
+        "structured-extract"
+      ]
+    },
+    "system-integrity-recovery/P4.1": {
+      "commit_match": [
+        "fix\\(security\\):"
+      ]
+    },
+    "system-integrity-recovery/P4.2": {
+      "commit_match": [
+        "fix\\(dashboard\\):"
+      ]
+    }
+  }
 }

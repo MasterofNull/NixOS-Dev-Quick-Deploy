@@ -126,17 +126,21 @@ untrusted PR numbers per lane. Projection stays derived: if an item would projec
 commit matching its `detection.commit_match` is a squash commit ending `(#N)` with N untrusted, it projects
 **UNVERIFIED** (40%, below IN-PROGRESS in the rollup) and carries a `hold` record. The hold applies regardless of
 other evidence types (a `systemd_unit`/`command` item with an untrusted matching commit is held too).
-- **Frozen held set:** the config `items` list (`"<plan>/<item-id>"`) holds every listed item regardless of its
-  current detection, so editing/removing `commit_match` cannot drop the hold. The list is remove-only:
+- **Frozen held set:** the config `items` object (`"<plan>/<item-id>": {"commit_match": [original patterns]}`)
+  lists every item that has ANY untrusted matching commit in history; each is held regardless of its current
+  detection, so editing/removing `commit_match` cannot drop the hold. The list is remove-only (compared against
+  the UNION of the merge-base and base-ref-tip configs; absent at both = introducing commit only):
   `aq-pm-tracker --check-untrusted-items` (wired into `tier0.d/check-pm-tracker.sh`) fails if an entry is removed
   vs the base ref unless that item's hold is cleared by a bound receipt; unresolvable base/item fails closed.
-- **Clears (no hand-typed status):** (a) unlisted items only: a trusted (non-listed) matching commit NEWER than the
+- **Clears (no hand-typed status):** (a) unlisted items only: a trusted explicit `(#N)` squash commit (direct commits never count) NEWER than the
   newest untrusted one; (b) a valid review receipt (`acceptance.review_receipt` with `status: accepted`, or
   `clears["<plan>/<item-id>"]`) that passes `aq-review-receipt`'s registry-backed `verify_receipt` (registry
   resolved via `scripts/ai/lib/delegation_dir.py`, the shared main-worktree dir), has a PASS/PASS_WITH_FOLLOWUPS
   verdict, an ISO-8601 `created_at` on/after the hold's `since` (malformed dates never clear), and a reviewer that
-  is not the untrusted lane. The receipt is **bound to the item**: its `pr` must be a trusted PR whose squash
-  commit on current history matches the item's `commit_match`, unless `clears` names this exact item + receipt.
+  is not the untrusted lane. EVERY clearing path (including `clears`, and removal of a frozen entry) requires the
+  receipt to be **bound to the item**: its `pr` must be a trusted `(#N)` squash commit matching the item's FROZEN
+  patterns (not the editable current ones) AND modifying `.agents/plans/<plan>/tracker.json` or the item's
+  `freeze_record`.
 - **Degraded mode:** missing/malformed config: `--check` fails (tier0 blocks); plain projections (human + JSON)
   are marked degraded (`hold_degraded: true`, `rollup_authoritative: false`, DEGRADED banner, stderr warning) and
   every item that would project SHIPPED/ACTIVATED from commit evidence reports UNKNOWN (no numeric claim).
