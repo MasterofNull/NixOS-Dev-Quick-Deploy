@@ -1055,6 +1055,7 @@ memory; that is why another lane committed straight into the main checkout. They
   carry `Author-lane`, `Review-Disposition: PASS|PASS_WITH_FOLLOWUPS`, `Reviewed-subject-sha256`,
   `Reviewed-head-sha` (== current PR head; re-review after each content push; merge-only base updates with identical verbatim (whitespace-exact) patch-id are accepted) and `Reviewed-by` (lane != Author-lane) plus `Review-Receipt: <path>` minted by `scripts/ai/aq-review-receipt mint` from a real reviewer run (receipt-only follow-up commits stay bound).
   Template: `.github/pull_request_template.md`. Identity is declarative until signed receipts exist.
+- PR body layout (CI-enforced by `scripts/governance/check-pr-body-format.py` in the `review-disposition` workflow): `## Details` first (scope, merge order, tests with results, risk, then `### Review record`), followed by plain-language `## What`, `## How`, `## Why`, each non-empty.
 
 ### 4. Leave a resumable trail
 - Before ending a session or turn: `.agent/collaboration/RESUME.json` (objective, phase, todo snapshot,
