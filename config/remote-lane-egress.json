@@ -9,14 +9,24 @@
         "claude.com",
         "platform.claude.com"
       ],
-      "provider_family": "anthropic"
+      "provider_family": "anthropic",
+      "default_host": "api.anthropic.com"
     },
     "codex": {
       "allowlist": [
         "api.openai.com",
         "chatgpt.com"
       ],
-      "provider_family": "openai"
+      "provider_family": "openai",
+      "default_host": "api.openai.com"
+    },
+    "gemini": {
+      "allowlist": [
+        "cloudcode-pa.googleapis.com",
+        "generativelanguage.googleapis.com"
+      ],
+      "default_host": "cloudcode-pa.googleapis.com",
+      "provider_family": "google"
     },
     "antigravity": {
       "allowlist": [
