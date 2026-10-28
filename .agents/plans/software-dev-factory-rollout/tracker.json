@@ -238,6 +238,7 @@
       "kind": "slice",
       "goal": "check-kit-parity + tier0 core refactor split",
       "validation_goal": "DESIGN.md section 8 K11 acceptance tests pass; release 1.0",
+      "notes": "2026-10-27: the check-kit-parity gate was archived as a stub (printed PASS without checking anything; retro-review batch D, PR #580). See issues-backlog STUB-TIER0-GATES.",
       "deps": [
         "k8"
       ],

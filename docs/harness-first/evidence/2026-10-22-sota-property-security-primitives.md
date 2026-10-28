@@ -17,3 +17,5 @@ Implements `check-property-security-primitives.sh` in `scripts/governance/tier0.
 - [x] Functionally validated: `test-property-security-primitives.py` passes (0.02s).
 - [x] Observable: Standard `[tier0.d/check-property-security-primitives]` prefix.
 - [x] Intervenable: Constant time bypass on non-intersecting edits.
+
+> 2026-10-27: gate archived — it printed PASS without checking anything (retro-review batch D, PR #580). See issues-backlog STUB-TIER0-GATES.
