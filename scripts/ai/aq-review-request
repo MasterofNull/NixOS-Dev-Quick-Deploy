@@ -22,6 +22,8 @@ import sys
 from pathlib import Path
 
 REPO_ROOT = Path(__file__).resolve().parent.parent.parent
+sys.path.insert(0, str(Path(__file__).resolve().parent / "lib"))
+from delegation_dir import resolve_delegation_dir  # noqa: E402
 DEFAULT_MAX_DIFF = 40000
 
 
@@ -94,7 +96,7 @@ def main():
     parts += ["## Diff", "```diff", diff, "```", ""]
     prompt = "\n".join(parts)
 
-    outdir = Path(os.environ.get("DELEGATE_OUTPUTS_DIR") or REPO_ROOT / ".agents" / "delegation" / "outputs")
+    outdir = Path(os.environ.get("DELEGATE_OUTPUTS_DIR") or resolve_delegation_dir(Path(__file__).resolve().parent) / "outputs")
     outdir.mkdir(parents=True, exist_ok=True)
     pf = outdir / f"review-prompt-pr{a.pr}-{head[:12]}.md"
     pf.write_text(prompt)
