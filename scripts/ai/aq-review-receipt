@@ -23,11 +23,11 @@ from pathlib import Path
 
 ROOT = Path(__file__).resolve().parents[2]
 sys.path.insert(0, str(Path(__file__).resolve().parent / "lib"))
-from delegation_dir import resolve_delegation_dir  # noqa: E402
+from delegation_dir import resolve_delegation_dir, resolve_main_root  # noqa: E402
 
 # Registry + outputs live in the MAIN worktree's delegation dir (shared by worktree copies).
 DEFAULT_REGISTRY = resolve_delegation_dir(Path(__file__).resolve().parent) / "registry.jsonl"
-MAIN_ROOT = DEFAULT_REGISTRY.parent.parent.parent
+MAIN_ROOT = resolve_main_root(Path(__file__).resolve().parent)
 RECEIPT_DIR = ".agent/reviews/receipts"
 VERDICTS = ("PASS", "PASS_WITH_FOLLOWUPS", "REQUEST_CHANGES")
 

@@ -38,7 +38,7 @@ set -euo pipefail
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 REPO_ROOT="$(cd "$SCRIPT_DIR/../.." && pwd)"
 # shellcheck source=lib/delegation-dir.sh
-source "${SCRIPT_DIR}/lib/delegation-dir.sh" 2>/dev/null || resolve_delegation_dir() { echo "$(cd "$1/../.." && pwd)/.agents/delegation"; }
+source "${SCRIPT_DIR}/lib/delegation-dir.sh" 2>/dev/null || resolve_delegation_dir() { echo "WARN: delegation-dir.sh not sourceable; delegation dir falls back to script-relative path" >&2; echo "$(cd "$1/../.." && pwd)/.agents/delegation"; }
 DELEGATION_DIR="${AQ_DELEGATION_DIR:-$(resolve_delegation_dir "$SCRIPT_DIR")}"
 export AQ_DELEGATION_DIR="$DELEGATION_DIR"
 OUTPUTS_DIR="$DELEGATION_DIR/outputs"
