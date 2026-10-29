@@ -12,7 +12,7 @@ def main() -> int:
     bad = []
     for name in REQUIRED:
         src = (ROOT / "scripts" / "ai" / name).read_text(encoding="utf-8")
-        if not re.search(r'^DELEGATION_DIR="\$\{AQ_DELEGATION_DIR:-\$REPO_ROOT/\.agents/delegation\}"$', src, re.M):
+        if not re.search(r'^DELEGATION_DIR="\$\{AQ_DELEGATION_DIR:-\$\(resolve_delegation_dir "\$SCRIPT_DIR"\)\}"$', src, re.M):
             bad.append(name)
     if bad:
         print(f"FAIL: delegates ignore AQ_DELEGATION_DIR: {bad}")

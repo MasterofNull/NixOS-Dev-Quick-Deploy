@@ -24,14 +24,17 @@ set -uo pipefail
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 REPO_ROOT="$(cd "$SCRIPT_DIR/../.." && pwd)"
 DELEGATE="$REPO_ROOT/scripts/ai/delegate-to-codex"
-DELEGATION_DIR="$REPO_ROOT/.agents/delegation"
-COOLDOWN_FILE="$DELEGATION_DIR/.codex-quota-cooldown"
-REGISTRY="$DELEGATION_DIR/registry.jsonl"
-OUTPUTS_DIR="$DELEGATION_DIR/outputs"
 
 [[ -x "$DELEGATE" ]] || { echo "FAIL: delegate-to-codex not found/executable at $DELEGATE"; exit 1; }
 
 WORKDIR="$(mktemp -d)"
+# delegate-to-codex resolves a SHARED delegation dir (main worktree) since 36c97f94/7c747581;
+# isolate to a private dir so live cooldown/budget/registry state never leaks in or out.
+DELEGATION_DIR="$WORKDIR/delegation"; mkdir -p "$DELEGATION_DIR/outputs"
+export AQ_DELEGATION_DIR="$DELEGATION_DIR"
+COOLDOWN_FILE="$DELEGATION_DIR/.codex-quota-cooldown"
+REGISTRY="$DELEGATION_DIR/registry.jsonl"
+OUTPUTS_DIR="$DELEGATION_DIR/outputs"
 STUB_BIN="$WORKDIR/codex"
 MARKER="$WORKDIR/stub-invoked.marker"
 STUB_MODE_FILE="$WORKDIR/stub-mode"

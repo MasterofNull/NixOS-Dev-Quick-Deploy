@@ -10,7 +10,9 @@ Tests that:
 
 import subprocess
 import json
+import os
 import sys
+import tempfile
 from pathlib import Path
 
 REPO_ROOT = Path(__file__).parent.parent.parent
@@ -20,9 +22,13 @@ DELEGATE_CODEX = REPO_ROOT / "scripts" / "ai" / "delegate-to-codex"
 def run_delegate(args):
     """Run delegate-to-codex and return stdout."""
     cmd = [str(DELEGATE_CODEX)] + args
+    # Private delegation dir: the live shared ledger's budget state must not decide the outcome.
+    env = {k: v for k, v in os.environ.items() if not k.startswith("GIT_")}
+    env["AQ_DELEGATION_DIR"] = tempfile.mkdtemp(prefix="aq-deleg-test-")
     try:
         result = subprocess.run(
             cmd,
+            env=env,
             capture_output=True,
             text=True,
             timeout=5,
@@ -73,7 +79,10 @@ def test_print_argv_with_shared_mode():
     # The next line should be the repo root path (containing 'NixOS-Dev-Quick-Deploy')
     assert "NixOS-Dev-Quick-Deploy" in lines[c_index + 1], f"Missing repo root after -C: {lines[c_index+1]}"
     # Should NOT reference worktrees (only used in isolated mode)
-    argv_line = " ".join(lines)
+    # -C must be exactly the repo root; the checkout itself may live under .../worktrees/
+    # (delegated slices), so only the remainder after removing REPO_ROOT is checked.
+    assert lines[c_index + 1] == str(REPO_ROOT.resolve()) or lines[c_index + 1] == str(REPO_ROOT), f"-C not repo root: {lines[c_index+1]}"
+    argv_line = " ".join(lines).replace(str(REPO_ROOT.resolve()), "").replace(str(REPO_ROOT), "")
     assert "worktrees" not in argv_line, f"Shared mode should not reference worktree: {argv_line}"
     print("✓ test_print_argv_with_shared_mode passed")
 
