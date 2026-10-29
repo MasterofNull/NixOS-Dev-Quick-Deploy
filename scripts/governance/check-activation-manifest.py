@@ -154,8 +154,11 @@ def added_lines_nix(repo, diff_args):
 
 def detect_new(repo, staged, base):
     if staged:
-        diff_args = ["--cached"]
-        added = git(repo, "diff", "--cached", "--name-only", "--diff-filter=A").split()
+        # While merging, compare against the incoming side: files main brought in are not
+        # new in this change (Rule 19 corollary).
+        merging = git(repo, "rev-parse", "-q", "--verify", "MERGE_HEAD", check=False).strip()
+        diff_args = ["--cached", merging] if merging else ["--cached"]
+        added = git(repo, "diff", *diff_args, "--name-only", "--diff-filter=A").split()
         untracked = []
     else:
         resolved = resolve_base(repo, base)

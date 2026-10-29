@@ -83,6 +83,22 @@ class Case(unittest.TestCase):
         self.assertEqual(rc, 1, out)
         self.assertIn("aq-baz", out)
 
+    def test_merge_ignores_entrypoints_from_incoming_side(self):
+        repo = self.make_repo([entry()])
+        sh(repo, "checkout", "-q", "-b", "other")
+        (repo / "scripts/ai/aq-theirs").write_text("#!/bin/sh\n")
+        sh(repo, "add", "-A")
+        sh(repo, "commit", "-q", "-m", "theirs")
+        sh(repo, "checkout", "-q", "main")
+        (repo / "scripts/ai/aq-ours").write_text("#!/bin/sh\n")
+        sh(repo, "add", "-A")
+        sh(repo, "commit", "-q", "-m", "ours")
+        sh(repo, "merge", "-q", "--no-commit", "--no-ff", "other")
+        rc, out = self.run_check(repo, "--staged")
+        self.assertEqual(rc, 1, out)
+        self.assertIn("scripts/ai/aq-ours", out)
+        self.assertNotIn("aq-theirs", out)
+
     def test_live_caller_not_referencing_fails(self):
         repo = self.make_repo([entry()], files={"scripts/ai/caller.sh": "nothing here\n"})
         rc, out = self.run_check(repo)
