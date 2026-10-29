@@ -578,14 +578,17 @@ def main() -> int:
             seen_rules.add(key)
             deduped.append((rule_line, comment))
 
-    safe: List[Tuple[str, str]] = []
+    # Reject the whole batch if any rule/comment fails the allowlist: no partial apply.
+    rejected = 0
     for rule_line, comment in deduped:
         err = rule_error(rule_line) or comment_error(comment)
         if err:
+            rejected += 1
             sys.stderr.write(f"[apparmor-fix-agent] REJECTED generated rule {rule_line.strip()!r}: {err}\n")
-            continue
-        safe.append((rule_line, comment))
-    deduped = safe
+    if rejected:
+        json.dump({"rules_added": [], "commit_hash": None,
+                   "message": f"rejected: {rejected} rule(s) failed validation"}, sys.stdout)
+        return 3
 
     if not deduped:
         json.dump({"rules_added": [], "commit_hash": None, "message": "all paths already covered"}, sys.stdout)

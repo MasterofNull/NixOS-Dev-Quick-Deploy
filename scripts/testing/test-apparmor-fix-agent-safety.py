@@ -122,6 +122,84 @@ class T(unittest.TestCase):
         self.assertIn("REJECTED", o)
         self.assertFalse(mod._handle_apparmor_fix({"id": "z", "payload": alert["payload"]}))
 
+    def _run_agent(self, denials):
+        """Run agent.main() on a temp nix file; return (rc, stdout, stderr, queued, nix_text)."""
+        out, err, queued = io.StringIO(), io.StringIO(), []
+        stdin = io.StringIO(json.dumps({"denials": denials}))
+        with tempfile.TemporaryDirectory() as d:
+            p = Path(d) / "m.nix"
+            p.write_text(NIX)
+            with patch.object(agent, "NIX_FILE", p), \
+                 patch.object(agent, "push", lambda **k: queued.append(k) or "A1"), \
+                 patch.object(agent, "_update_handoff", lambda *a, **k: None), \
+                 patch.object(agent, "_seed_rag", lambda *a, **k: None), \
+                 patch.object(agent, "_push_memory_fact", lambda *a, **k: None), \
+                 patch.object(agent, "_emit_training_event", lambda *a, **k: None), \
+                 patch.object(sys, "argv", ["x", "--profile", "x", "--input-json", "-"]), \
+                 patch.object(sys, "stdin", stdin), \
+                 redirect_stdout(out), redirect_stderr(err):
+                rc = agent.main()
+            return rc, out.getvalue(), err.getvalue(), queued, p.read_text()
+
+    def test_mixed_batch_rejected_whole(self):
+        rc, out, err, queued, nix = self._run_agent([
+            {"operation": "open", "path": "/etc/ok.conf", "mask": "r"},
+            {"operation": "open", "path": "/etc/${evil}", "mask": "r"}])
+        self.assertNotIn(rc, (0, 2))
+        self.assertNotEqual(rc, 0)
+        self.assertEqual(queued, [])
+        self.assertEqual(nix, NIX)
+        self.assertIn("REJECTED", err)
+        self.assertIn("rejected: 1 rule(s) failed validation", json.loads(out)["message"])
+
+    def test_all_rejected_not_reported_as_covered(self):
+        rc, out, err, queued, nix = self._run_agent([
+            {"operation": "open", "path": "/etc/${evil}", "mask": "r"}])
+        self.assertNotIn(rc, (0, 2))
+        self.assertNotIn("already covered", out)
+        self.assertEqual(queued, [])
+        self.assertEqual(nix, NIX)
+
+    def _approve(self, rules, nix_text):
+        mod = SourceFileLoader("aqa", str(ROOT / "scripts/ai/aq-approve")).load_module()
+        alert = {"id": "A1", "status": "pending", "executor": "apparmor_fix",
+                 "payload": {"profile": "x", "rules_proposed": rules}}
+        ran, fin = [], []
+        out, err = io.StringIO(), io.StringIO()
+        with tempfile.TemporaryDirectory() as d:
+            nix = Path(d) / "nix" / "modules" / "services" / "mcp-servers.nix"
+            nix.parent.mkdir(parents=True)
+            nix.write_text(nix_text)
+            with patch.object(mod, "_REPO_ROOT", Path(d)), \
+                 patch.object(mod, "get_by_id", lambda i: alert), \
+                 patch.object(mod, "claim_for_execution", lambda i, a: (True, "", alert)), \
+                 patch.object(mod, "finalize_claim", lambda i, ok, **k: fin.append((ok, k)) or True), \
+                 patch.dict(mod._EXECUTOR_TABLE, {"apparmor_fix": lambda a: ran.append(a) or True}), \
+                 redirect_stdout(out), redirect_stderr(err):
+                rc = mod.approve_alert("A1", "t")
+        return rc, out.getvalue(), ran, fin
+
+    def test_approve_invalid_rule_in_comment_not_approved(self):
+        nix = "security.apparmor.policies.\"x\" = {\n  profile = ''\n    # capability sys_admin,\n    deny /home/** wx,\n  '';\n};\n"
+        rc, out, ran, fin = self._approve(["capability sys_admin,"], nix)
+        self.assertNotEqual(rc, 0)
+        self.assertNotIn("Approved", out)
+        self.assertEqual(ran, [])
+        self.assertEqual([f[0] for f in fin], [False])
+
+    def test_approve_comment_or_other_profile_not_present(self):
+        mod = SourceFileLoader("aqa2", str(ROOT / "scripts/ai/aq-approve")).load_module()
+        nix = ("security.apparmor.policies.\"x\" = {\n  profile = ''\n    # /a/b r,\n    deny /home/** wx,\n  '';\n};\n"
+               "security.apparmor.policies.\"y\" = {\n  profile = ''\n    /c/d r,\n  '';\n};\n")
+        with tempfile.TemporaryDirectory() as d:
+            f = Path(d) / "nix" / "modules" / "services" / "mcp-servers.nix"
+            f.parent.mkdir(parents=True)
+            f.write_text(nix)
+            with patch.object(mod, "_REPO_ROOT", Path(d)):
+                self.assertFalse(mod._apparmor_rules_already_present("x", ["/a/b r,"]))
+                self.assertFalse(mod._apparmor_rules_already_present("x", ["/c/d r,"]))
+                self.assertTrue(mod._apparmor_rules_already_present("y", ["/c/d r,"]))
+
 
 if __name__ == "__main__":
     unittest.main()
