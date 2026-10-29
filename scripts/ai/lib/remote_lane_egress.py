@@ -11,6 +11,7 @@ import ipaddress
 import json
 import os
 import re
+import socket
 import time
 from pathlib import Path
 from typing import Any, Dict, List, Optional, Tuple
@@ -47,12 +48,26 @@ def _normalize_host(host: str) -> str:
 def is_raw_ip(host: str) -> bool:
     """True for any IPv4/IPv6 literal (bracketed or not, incl. zone ids)."""
     h = _normalize_host(host).split("%", 1)[0]
+    if not h:
+        return False
     if IP_REGEX.match(h):
         return True
     try:
         ipaddress.ip_address(h)
         return True
     except ValueError:
+        pass
+    # inet_aton accepts decimal (2130706433), octal (0177.0.0.1), hex (0x7f.0.0.1)
+    # and short (127.1) IPv4 forms that the stdlib ipaddress module rejects.
+    try:
+        socket.inet_aton(h)
+        return True
+    except (OSError, ValueError):
+        pass
+    try:
+        socket.inet_pton(socket.AF_INET6, h)
+        return True
+    except (OSError, ValueError):
         return False
 
 
@@ -99,20 +114,20 @@ class EgressRulesEngine:
         unattributed = bool(payload.get("unattributed") or lane == "other")
 
         now = time.time()
-        # High-signal checks (Never digest-collapsed)
+        # Fail-closed: every non-allowlisted destination is a hold. Unattributed is
+        # evaluated first so no warning-only rule can pre-empt it.
+        if unattributed:
+            return self._verdict(lane, "hold", "EGR_UNATTRIBUTED", now, is_high_signal=True)
         if raw_ip:
             return self._verdict(lane, "hold", "EGR_RAW_IP", now, is_high_signal=True)
         if sni_mismatch:
             return self._verdict(lane, "hold", "EGR_SNI_MISMATCH", now, is_high_signal=True)
         if punycode:
-            return self._verdict(lane, "flag", "EGR_PUNYCODE", now, is_high_signal=True)
-        if unattributed:
-            return self._verdict(lane, "hold", "EGR_UNATTRIBUTED", now, is_high_signal=True)
+            return self._verdict(lane, "hold", "EGR_PUNYCODE", now, is_high_signal=True)
 
-        # Check lane allowlist
         lane_spec = self.lanes.get(lane, {})
         allowlist = set(lane_spec.get("allowlist", []))
-        if dest_host in allowlist:
+        if dest_host and dest_host in allowlist:
             return {
                 "outcome": "none",
                 "reason_code": "RULE_ALLOWLISTED",
@@ -120,20 +135,14 @@ class EgressRulesEngine:
                 "collapsed": False,
             }
 
-        # Check cross-lane: is it on another lane's allowlist?
-        for other_lane, spec in self.lanes.items():
-            if other_lane != lane and dest_host in set(spec.get("allowlist", [])):
-                return self._verdict(lane, "flag", "EGR_CROSS_LANE", now, is_high_signal=False)
-
-        # Legacy lane check
         if lane == "gemini-legacy":
             return self._verdict(lane, "hold", "EGR_LEGACY_LANE", now, is_high_signal=False)
 
-        # Novel domain for this lane
-        action = "flag"
-        if lane in {"coordinator", "switchboard"}:
-            action = "flag"
-        return self._verdict(lane, action, "EGR_NOVEL_DOMAIN", now, is_high_signal=False)
+        for other_lane, spec in self.lanes.items():
+            if other_lane != lane and dest_host in set(spec.get("allowlist", [])):
+                return self._verdict(lane, "hold", "EGR_CROSS_LANE", now, is_high_signal=False)
+
+        return self._verdict(lane, "hold", "EGR_NOVEL_DOMAIN", now, is_high_signal=False)
 
     def _verdict(self, lane: str, action: str, reason: str, now: float, is_high_signal: bool) -> Dict[str, Any]:
         key = (lane, reason)
@@ -153,9 +162,10 @@ class EgressRulesEngine:
         limit = self.max_hold if action == "hold" else self.max_flag
         count = len(self._history[key])
         if count >= limit:
+            # Collapse only dedups alerting; a hold stays a hold (never fail open).
             return {
-                "outcome": "none",
-                "action": "none",
+                "outcome": "flag" if action == "flag" else "hold",
+                "action": action,
                 "reason_code": reason,
                 "collapsed": True,
             }
