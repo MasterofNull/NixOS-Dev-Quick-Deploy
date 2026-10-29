@@ -27,3 +27,37 @@ Host journal 2026-10-27: all 5 suspends were lid closes (`systemd-logind: Lid cl
 - `config/suspend-resume-workloads.json`: `aq-keep-awake` registered; `llama-cpp-inference` updated to `restart_on_resume_if_unhealthy`.
 
 Follow-up (2026-10-28): the delegate scripts load `lib/sleep-inhibit.sh` optionally. A missing helper prints a stderr warning and the task runs without an idle inhibitor (it is a convenience, not a safety control). Unconditional sourcing had broken three Claude-path tests whose fixtures run `delegate-to-claude` from a partial `lib/` copy (test-delegate-claude-model-routing, test-claude-dispatch-payload-safety, test-delegate-to-claude-lifecycle); they pass again.
+
+## Objective
+Stop sleep and resume from killing local delegated work (P1.6 and P1.8). Resume should not restart a healthy model, a request dropped by one restart should be retried once, and lid-closed keep-awake should be available as opt-in.
+
+## Workflow/Session IDs
+- Orchestrator session 50391bdd. Branch `fix/delegate-sleep-inhibit`, reviewed head fe78418a.
+- Part reviews: `local-20261028-122302-evtd5q` (task lock), `local-20261028-123124-4f3kb2` (keep-awake), `local-20261028-124406-juikmv` (resume gate plus retry).
+- Integration review: `local-20261028-135324-cqxzfo`.
+
+## Delegation Decision
+The orchestrator dispatched the implementation to a worktree. Local Qwen gave the part reviews and the integration review. Codex's daily budget was exhausted, so local Qwen substituted (Rule 18). The author lane did not review its own work.
+
+## Commands Executed
+- `python3 scripts/testing/test-mobility-sleep-resilience.py`
+- `python3 scripts/testing/test-delegate-sleep-inhibit.py`
+- `bash -n` on the changed shell scripts, and `nix-instantiate --parse` on the changed Nix files
+- `scripts/governance/tier0.d/check-ci-manifest-coverage.sh`
+- `scripts/governance/tier0-validation-gate.sh --pre-commit`
+- `scripts/governance/ci-merge-parity.sh`
+
+## Validation Evidence
+- The mobility test passes 12 tests, and the inhibitor test passes 3.
+- The manifest coverage check passes.
+- On the main merge commit, tier0 reported 65 passed and 0 failed.
+
+## Rollback Plan
+- Keep-awake: `aq-keep-awake off`, or set `mySystem.aiStack.keepAwake.enable = false` and rebuild.
+- Resume gate and retry: revert the PR. The gate restarts llama-cpp whenever its health probe fails, so a faulty gate falls back to the old behavior.
+
+## Residual Risk
+See Known gap above: no live lid-close, `systemctl suspend` from the user service, or post-resume gate run yet. Retry is one shot, direct mode only. Absent sensors count as passing.
+
+## Hint Feedback
+The harness had no signal tying the lost reviews to lid suspends. The cause was found from the journal. Keep-awake transitions now go to the journal, and the retry records `retry_of` in the registry.
