@@ -23,7 +23,9 @@ def run_one(test: str):
     interp = "python3" if test.endswith(".py") else "bash"
     with tempfile.TemporaryDirectory(prefix="aq-test-group-") as d:
         # PYTHONPATH is dropped: operator shells point it at the MAIN checkout, which shadows this tree's modules.
-        env = {**{k: v for k, v in clean_git_env().items() if k != "PYTHONPATH"},
+        # CI_CHECKS_* is dropped: ci-merge-parity exports CI_CHECKS_CHANGED_FILES for its own runner, and tests
+        # of that runner must not inherit it.
+        env = {**{k: v for k, v in clean_git_env().items() if k != "PYTHONPATH" and not k.startswith("CI_CHECKS_")},
                "TMPDIR": d, "AQ_DELEGATION_DIR": f"{d}/delegation"}
         try:
             r = subprocess.run([interp, test], cwd=REPO, env=env, stdin=subprocess.DEVNULL,
