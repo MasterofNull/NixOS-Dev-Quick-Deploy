@@ -1,0 +1,330 @@
+{
+  "lanes": [
+    {
+      "name": "gemini-antigravity",
+      "pr_numbers": [
+        542,
+        543,
+        544,
+        545,
+        546,
+        547,
+        548,
+        549,
+        550,
+        551,
+        552,
+        553,
+        554,
+        555,
+        556,
+        557,
+        558,
+        559,
+        560,
+        561,
+        562,
+        563,
+        570,
+        571,
+        572,
+        573,
+        574,
+        575,
+        576,
+        577,
+        578,
+        579,
+        580,
+        581,
+        582,
+        583,
+        584,
+        585,
+        586,
+        587,
+        588,
+        589,
+        590,
+        591,
+        592,
+        593,
+        594,
+        595,
+        596,
+        597,
+        598,
+        599,
+        600,
+        601,
+        602,
+        603,
+        604,
+        605,
+        606,
+        607,
+        608,
+        609,
+        610,
+        611,
+        612,
+        613,
+        614,
+        615,
+        616,
+        617,
+        618,
+        619,
+        620,
+        621,
+        623,
+        624,
+        625,
+        626,
+        627,
+        628,
+        629,
+        630,
+        631,
+        632
+      ],
+      "reason": "Owner directive 2026-10-27: work shipped by the Gemini/Antigravity lane is untrusted until independently re-verified. Retro-review of PRs #542-#632 (2026-10-19..27; #580-#589 were labeled claude/sonnet but produced by Gemini) found 36 NOT_CORRECT, 34 PARTIAL, 14 CORRECT. A tracker item whose only commit evidence is these PRs projects UNVERIFIED, not SHIPPED, until a valid independent review receipt or a later trusted commit clears it.",
+      "since": "2026-10-27"
+    }
+  ],
+  "clears": {},
+  "items": {
+    "agent-auth/AUTH-S10": {
+      "commit_match": [
+        "feat\\(agent-auth\\): .*AUTH-S10"
+      ]
+    },
+    "agent-auth/AUTH-S3": {
+      "commit_match": [
+        "feat\\(agent-auth\\): .*AUTH-S3"
+      ]
+    },
+    "agent-auth/AUTH-S4": {
+      "commit_match": [
+        "feat\\(agent-auth\\): .*AUTH-S4"
+      ]
+    },
+    "agent-auth/AUTH-S5": {
+      "commit_match": [
+        "feat\\(agent-auth\\): .*AUTH-S5"
+      ]
+    },
+    "agent-auth/AUTH-S6": {
+      "commit_match": [
+        "feat\\(agent-auth\\): .*AUTH-S6"
+      ]
+    },
+    "agent-auth/AUTH-S7": {
+      "commit_match": [
+        "feat\\(agent-auth\\): .*AUTH-S7"
+      ]
+    },
+    "agent-auth/AUTH-S8": {
+      "commit_match": [
+        "feat\\(agent-auth\\): .*AUTH-S8"
+      ]
+    },
+    "agent-auth/AUTH-S9": {
+      "commit_match": [
+        "feat\\(agent-auth\\): .*AUTH-S9"
+      ]
+    },
+    "aq-decide/DEC-S1": {
+      "commit_match": [
+        "feat\\(aq-decide\\): .*(library|DEC-S1)"
+      ]
+    },
+    "aq-decide/DEC-S10": {
+      "commit_match": [
+        "feat\\(aq-decide\\): .*DEC-S10"
+      ]
+    },
+    "aq-decide/DEC-S2": {
+      "commit_match": [
+        "feat\\(aq-decide\\): .*(nix|DEC-S2)"
+      ]
+    },
+    "aq-decide/DEC-S3": {
+      "commit_match": [
+        "feat\\(aq-decide\\): .*(shadow|DEC-S3)"
+      ]
+    },
+    "aq-decide/DEC-S4": {
+      "commit_match": [
+        "feat\\(aq-decide\\): .*(egress|DEC-S4)"
+      ]
+    },
+    "aq-decide/DEC-S5": {
+      "commit_match": [
+        "feat\\(aq-decide\\): .*DEC-S5"
+      ]
+    },
+    "aq-decide/DEC-S6": {
+      "commit_match": [
+        "feat\\(aq-decide\\): .*DEC-S6"
+      ]
+    },
+    "aq-decide/DEC-S7": {
+      "commit_match": [
+        "feat\\(aq-decide\\): .*DEC-S7"
+      ]
+    },
+    "aq-decide/DEC-S8": {
+      "commit_match": [
+        "feat\\(aq-decide\\): .*DEC-S8"
+      ]
+    },
+    "aq-decide/DEC-S9": {
+      "commit_match": [
+        "feat\\(aq-decide\\): .*DEC-S9"
+      ]
+    },
+    "aqos-foundation-c/c2sci-activate": {
+      "commit_match": [
+        "C2-SCI activation",
+        "c2-scheduler-context-issuer-ACTIVATE"
+      ]
+    },
+    "aqos-foundation-c/c2sci-build": {
+      "commit_match": [
+        "C2 scheduler-context issuer B",
+        "C2-SCI"
+      ]
+    },
+    "aqos-requirements-inventory/req-foundation-c": {
+      "commit_match": [
+        "C2-SCI",
+        "C6-B",
+        "ALA activation"
+      ]
+    },
+    "aqos-requirements-inventory/req-herdr": {
+      "commit_match": [
+        "herdr",
+        "H2A"
+      ]
+    },
+    "aqos-requirements-inventory/req-track-s": {
+      "commit_match": [
+        "security"
+      ]
+    },
+    "capability-integration/ci-2": {
+      "commit_match": [
+        "aq-capability-audit",
+        "capability audit"
+      ]
+    },
+    "durable-proactive-mesh/dp-0": {
+      "commit_match": [
+        "durable-proactive-mesh",
+        "DP-0",
+        "parity prd",
+        "pi streaming ui"
+      ]
+    },
+    "durable-proactive-mesh/dp-3": {
+      "commit_match": [
+        "DP-3",
+        "aq-oncalld",
+        "on-call daemon"
+      ]
+    },
+    "durable-proactive-mesh/dp-4": {
+      "commit_match": [
+        "DP-4",
+        "pi streaming ui",
+        "streaming canvas",
+        "agent mesh ui"
+      ]
+    },
+    "durable-proactive-mesh/dp-5": {
+      "commit_match": [
+        "DP-5",
+        "e2e oncall verification",
+        "durable mesh activation"
+      ]
+    },
+    "ecc-parity-integration/gate-a": {
+      "commit_match": [
+        "ECC",
+        "Gate A",
+        "parity evidence"
+      ]
+    },
+    "software-dev-factory-rollout/k4": {
+      "commit_match": [
+        "K4 Kit CI wiring",
+        "factory-kit-k4"
+      ]
+    },
+    "software-dev-factory-rollout/k6": {
+      "commit_match": [
+        "feat(factory): K6 retrofit",
+        "factory-kit-k6"
+      ]
+    },
+    "sota-intelligence-intake-mesh/sim-3": {
+      "commit_match": [
+        "SIM-3",
+        "aq-durable-sweeper",
+        "durable sweeper"
+      ]
+    },
+    "sota-rounding/w1-s1": {
+      "commit_match": [
+        "REA intake",
+        "rea pin"
+      ]
+    },
+    "sota-rounding/w1-s2": {
+      "commit_match": [
+        "sandboxed launcher and admission tests",
+        "mcp-rea-sandboxed"
+      ]
+    },
+    "sota-rounding/w2-s3": {
+      "commit_match": [
+        "oncalld.nix",
+        "aq-oncalld apparmor",
+        "DP-3 confinement completion"
+      ]
+    },
+    "sota-rounding/w2-s5": {
+      "commit_match": [
+        "isolation hygiene"
+      ]
+    },
+    "sota-rounding/w3-s3": {
+      "commit_match": [
+        "feat(hooks): harness lifecycle hooks for session start",
+        "hooks SessionStart"
+      ]
+    },
+    "sota-rounding/w3-s5": {
+      "commit_match": [
+        "scan-due"
+      ]
+    },
+    "sota-rounding/w3-s6": {
+      "commit_match": [
+        "structured-extract"
+      ]
+    },
+    "system-integrity-recovery/P4.1": {
+      "commit_match": [
+        "fix\\(security\\):"
+      ]
+    },
+    "system-integrity-recovery/P4.2": {
+      "commit_match": [
+        "fix\\(dashboard\\):"
+      ]
+    }
+  }
+}
