@@ -80,5 +80,16 @@ with tempfile.TemporaryDirectory() as t:
     rc, r, f = run(t, gen=5.0, ac=True, profile="performance", mem_kb=GOOD_MEM, busy=True)
     check("busy -> skipped, exit 0, nothing written", rc == 0 and r["status"] == "skipped" and not f.exists(), (rc, r))
 
+# Ordering-cycle guard: power-profiles-daemon is After=multi-user.target, so a unit that is both
+# After= the daemon and WantedBy=multi-user.target makes the transaction cyclic (nixos switch exit 4).
+import re  # noqa: E402
+
+_nix = (REPO / "nix/modules/core/power-policy.nix").read_text()
+_m = re.search(r"power-policy-apply = \{.*?wantedBy = \[([^\]]*)\];", _nix, re.S)
+check("power-policy-apply has wantedBy", bool(_m))
+if _m:
+    check("power-policy-apply not WantedBy multi-user.target (ordering cycle)", "multi-user.target" not in _m.group(1), _m.group(1))
+    check("power-policy-apply WantedBy graphical.target", "graphical.target" in _m.group(1), _m.group(1))
+
 SRV.shutdown()
 sys.exit(1 if fails else 0)
