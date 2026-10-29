@@ -30,5 +30,11 @@
       remoteBudget.dailyTokenCap = lib.mkDefault 0;
       remoteBudget.fallbackToLocal = lib.mkDefault true;
     };
+
+    # P1.7 + sleep resilience (#646, #647). Host-specific: this laptop runs power-profiles-daemon.
+    # keepAwake only runs the watcher; holding the sleep/lid inhibitor stays opt-in via `aq-keep-awake on`.
+    mySystem.deployment.powerPolicy.acAwareProfile.enable = true;
+    mySystem.deployment.powerPolicy.speedProbe.enable = true;
+    mySystem.aiStack.keepAwake.enable = true;
   };
 }
