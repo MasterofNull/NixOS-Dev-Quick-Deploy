@@ -26,3 +26,38 @@ Diagnosis `.agents/delegation/outputs/llama-throughput-diagnosis-20261027.md`: o
 
 ## Activation (Rule 15)
 Integrated: yes (flake import, spider hook). ON: not until owner sets the options (deferred, owner rebuild). Validated real-world: pending live run. Observable: jsonl + spider advisory. Intervenable: both options default off; probe timer stoppable.
+
+## Objective
+Stop the local model's throughput loss on battery (P1.7). Detect a slowdown within one probe interval and label its likely cause (POWER, MEMORY or UNKNOWN).
+
+## Workflow/Session IDs
+- Orchestrator session 50391bdd. Branch `feat/power-policy-tokps-probe`, implementation commit 52fdf5c0.
+- Review runs: `local-20261028-174322-7k9m3h` (Nix part) and `local-20261028-175625-wm59o2` (scripts part).
+
+## Delegation Decision
+The orchestrator dispatched the implementation to a worktree. Local Qwen reviewed it in two parts. Codex's daily budget was exhausted, so local Qwen substituted (Rule 18). The author lane did not review its own work.
+
+## Commands Executed
+- `python3 scripts/testing/test-llm-speed-probe.py`
+- `scripts/governance/run-ci-checks.sh --all --only llm-speed-probe-tests`
+- `nix-instantiate --parse` on power-policy.nix, options.nix and flake.nix, plus `nix eval` of `nixosConfigurations.hyperd-ai-dev` with both options on
+- `scripts/governance/tier0-validation-gate.sh --pre-commit`
+- `scripts/ai/aq-qa 0`
+- `scripts/governance/ci-merge-parity.sh`
+
+## Validation Evidence
+- The probe test passes all five cases (ok, POWER, MEMORY, UNKNOWN, skipped), and the CI entry passes.
+- `nix eval` yields the expected services, timer, udev rule and environment.
+- On the main merge commit, tier0 reported 65 passed and 0 failed.
+- `aq-qa 0` run standalone reported 206 passed, 0 failed and 9 skipped.
+
+## Rollback Plan
+Set `acAwareProfile.enable` and `speedProbe.enable` to false and rebuild, or revert the PR. While off, neither option changes anything. After turning the AC-aware profile off, `powerprofilesctl set <profile>` restores a manual profile.
+
+## Residual Risk
+- No live probe run and no AC/battery toggle on real hardware yet (owner rebuild needed).
+- A manual `powerprofilesctl set` is overwritten on the next AC change while the AC-aware profile is on.
+- The cause label is a heuristic.
+
+## Hint Feedback
+None of the harness hints flagged the power profile. The diagnosis came from manual timing (`llama-throughput-diagnosis-20261027.md`). With the probe enabled, a future slowdown shows up as a spider `llm_speed_slow` advisory instead.
