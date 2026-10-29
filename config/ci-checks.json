@@ -216,6 +216,7 @@
       ],
       "ci_workflow": ".github/workflows/test.yml#syntax"
     },
+    {"id": "activation-manifest-tests", "cmd": "scripts/testing/test-activation-manifest.py", "paths": ["scripts/governance/check-activation-manifest.py", "scripts/governance/tier0.d/check-activation-manifest.sh", "config/activation-manifest.json", "scripts/testing/test-activation-manifest.py"], "needs": ["python3"], "ci_workflow": ".github/workflows/test.yml#syntax"},
     {
       "id": "rea-sandbox-tests",
       "cmd": "scripts/testing/test-rea-sandbox.py",
