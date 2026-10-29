@@ -247,6 +247,7 @@
     {"id": "delegate-headless-budget-tests", "cmd": "scripts/testing/test-delegate-headless-budget.py", "paths": ["scripts/ai/delegate-to-codex", "scripts/testing/test-delegate-headless-budget.py"], "needs": ["python3", "bash"], "ci_workflow": ".github/workflows/test.yml#syntax"},
     {"id": "delegation-dir-resolution-tests", "cmd": "scripts/testing/test-delegation-dir-resolution.py", "paths": ["scripts/ai/lib/delegation-dir.sh", "scripts/ai/lib/delegation_dir.py", "scripts/testing/test-delegation-dir-resolution.py"], "needs": ["python3", "bash", "git"], "ci_workflow": ".github/workflows/test.yml#syntax"},
     {"id": "aq-review-request-tests", "cmd": "scripts/testing/test-aq-review-request.py", "paths": ["scripts/ai/aq-review-request", "scripts/testing/test-aq-review-request.py"], "needs": ["python3"], "ci_workflow": ".github/workflows/test.yml#syntax"},
+    {"id": "llm-speed-probe-tests", "cmd": "scripts/testing/test-llm-speed-probe.py", "paths": ["scripts/ai/aq-llm-speed-probe", "scripts/testing/test-llm-speed-probe.py"], "needs": ["python3"], "ci_workflow": ".github/workflows/test.yml#syntax"},
     {
       "id": "hook-git-env-isolation",
       "cmd": "scripts/testing/test-hook-git-env-isolation.py",

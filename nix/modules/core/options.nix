@@ -485,6 +485,42 @@
         };
       };
 
+      # P1.7 (system-integrity-recovery): battery/AC-aware power policy + local-model
+      # speed probe. Both default OFF (host-specific: only meaningful on a laptop running
+      # power-profiles-daemon); enable per host in deploy-options.local.nix.
+      powerPolicy = {
+        acAwareProfile.enable = lib.mkOption {
+          type = lib.types.bool;
+          default = false;
+          description = ''
+            Switch power-profiles-daemon to `performance` on AC and `balanced` on battery
+            (udev on power_supply change + once at boot/resume). Never forces performance
+            on battery. A manual `powerprofilesctl set` is overwritten at the next AC
+            plug/unplug event (no per-user override mechanism exists in the repo).
+          '';
+        };
+
+        speedProbe = {
+          enable = lib.mkOption {
+            type = lib.types.bool;
+            default = false;
+            description = "Run aq-llm-speed-probe periodically and 90 s after resume; writes llm-speed-probe.jsonl to the hybrid telemetry dir (read by aq-health-spider).";
+          };
+
+          intervalMinutes = lib.mkOption {
+            type = lib.types.ints.positive;
+            default = 15;
+            description = "How often to run the local-model speed probe.";
+          };
+
+          minTokPerSec = lib.mkOption {
+            type = lib.types.str;
+            default = "3.2";
+            description = "Generation tok/s below which the probe exits non-zero (default = 60% of the 5.3 tok/s baseline).";
+          };
+        };
+      };
+
       # Split-channel packaging (.agents/plans/split-channel-packaging/DESIGN.md
       # sc-2): NOTIFY-ONLY staleness checker for the curated fast-lane package
       # list (nix/overlays/fast-lane-manifest.nix). Never runs `nix flake
