@@ -1,0 +1,686 @@
+{
+  "plan": {
+    "id": "system-integrity-recovery",
+    "title": "System integrity recovery: trustworthy gates, live-harm fixes, sweeps, retro-review, remediation",
+    "prd_ref": ".agents/plans/system-integrity-recovery/DESIGN.md",
+    "owner": "hyperd",
+    "goal": "Restore trustworthy verification, stop live harm, find and fix unfound issues, then resume feature work",
+    "success_criteria": [
+      "No PR merges with a fabricated review, fake gate, red test, or forged acceptance",
+      "All P2 sweeps run clean or every finding is tracked",
+      "Every retro-review NOT_CORRECT item fixed, archived, or deferred with a date"
+    ]
+  },
+  "phases": [
+    {
+      "id": "p0",
+      "name": "Trustworthy verification",
+      "goal": "Gates that can fail and cannot be faked",
+      "order": 1
+    },
+    {
+      "id": "p1",
+      "name": "Stop live harm",
+      "goal": "Fix security and broken live paths",
+      "order": 2
+    },
+    {
+      "id": "p2",
+      "name": "Whole-system sweeps",
+      "goal": "Find failure classes everywhere",
+      "order": 3
+    },
+    {
+      "id": "p3",
+      "name": "Retro-review 2026-10-13..18",
+      "goal": "Complete the two-week review",
+      "order": 4
+    },
+    {
+      "id": "p4",
+      "name": "Remediate by plan",
+      "goal": "Fix findings by priority",
+      "order": 5
+    },
+    {
+      "id": "p5",
+      "name": "Resume feature work",
+      "goal": "Return to roadmap on honest state",
+      "order": 6
+    }
+  ],
+  "items": [
+    {
+      "id": "P0.1",
+      "name": "Review receipts required",
+      "phase": "p0",
+      "kind": "slice",
+      "goal": "PR review claims bound to minted receipts from real reviewer runs (#634)",
+      "validation_goal": "review-disposition rejects a PR without a valid receipt; tests green",
+      "deps": [],
+      "detection": {
+        "commit_match": [
+          "\\(#634\\)"
+        ]
+      },
+      "acceptance": {
+        "status": "pending",
+        "by": null,
+        "date": null,
+        "note": ""
+      }
+    },
+    {
+      "id": "P0.2",
+      "name": "Always-PASS stub gates removed",
+      "phase": "p0",
+      "kind": "slice",
+      "goal": "Archive six tier0 gates that cannot fail (#637)",
+      "validation_goal": "tier0 count equals real gates",
+      "deps": [],
+      "detection": {
+        "commit_match": [
+          "\\(#637\\)"
+        ]
+      },
+      "acceptance": {
+        "status": "pending",
+        "by": null,
+        "date": null,
+        "note": ""
+      }
+    },
+    {
+      "id": "P0.3",
+      "name": "PR body layout enforced",
+      "phase": "p0",
+      "kind": "slice",
+      "goal": "Details first, then What/How/Why; CI-checked (#636)",
+      "validation_goal": "check-pr-body-format fails a non-conforming body",
+      "deps": [],
+      "detection": {
+        "commit_match": [
+          "\\(#636\\)"
+        ]
+      },
+      "acceptance": {
+        "status": "pending",
+        "by": null,
+        "date": null,
+        "note": ""
+      }
+    },
+    {
+      "id": "P0.4",
+      "name": "Forged/self acceptances reset + acceptor check",
+      "phase": "p0",
+      "kind": "slice",
+      "goal": "Reset 91 acceptances; --check rejects agent/test acceptors (#635)",
+      "validation_goal": "aq-pm-tracker --check rejects agent/test acceptor; tests green",
+      "deps": [],
+      "detection": {
+        "commit_match": [
+          "\\(#635\\)"
+        ]
+      },
+      "acceptance": {
+        "status": "pending",
+        "by": null,
+        "date": null,
+        "note": ""
+      }
+    },
+    {
+      "id": "P0.5",
+      "name": "All test files run in CI",
+      "phase": "p0",
+      "kind": "slice",
+      "goal": "Gate fails if any scripts/testing/test-*.py is red or unregistered",
+      "validation_goal": "manifest-vs-filesystem gate fails on an undeclared test-*.py; a deliberately red test fails CI",
+      "deps": [],
+      "detection": {
+        "commit_match": [
+          "feat\\(ci\\): .*all test files"
+        ]
+      },
+      "acceptance": {
+        "status": "pending",
+        "by": null,
+        "date": null,
+        "note": ""
+      }
+    },
+    {
+      "id": "P0.6",
+      "name": "Tests cannot mutate live state",
+      "phase": "p0",
+      "kind": "slice",
+      "goal": "Gate fails if a test run changes PULSE.log or RESUME.json",
+      "validation_goal": "tests run with state paths in a temp dir; gate fails if git status changes after the test run",
+      "deps": [],
+      "detection": {
+        "commit_match": [
+          "fix\\(tests\\): .*live state"
+        ]
+      },
+      "acceptance": {
+        "status": "pending",
+        "by": null,
+        "date": null,
+        "note": ""
+      }
+    },
+    {
+      "id": "P0.7",
+      "name": "Owner sign-off bound to aq-approve",
+      "phase": "p0",
+      "kind": "slice",
+      "goal": "by: hyperd acceptances require an aq-approve record",
+      "validation_goal": "an acceptance without an approval record fails --check",
+      "deps": [],
+      "detection": {
+        "commit_match": [
+          "feat\\(pm-tracker\\): .*aq-approve"
+        ]
+      },
+      "acceptance": {
+        "status": "pending",
+        "by": null,
+        "date": null,
+        "note": ""
+      }
+    },
+    {
+      "id": "P0.8",
+      "name": "Gate mutation tests",
+      "phase": "p0",
+      "kind": "slice",
+      "goal": "Every tier0.d gate has a test proving it can fail",
+      "validation_goal": "mutation suite: each gate fails on its known-bad input",
+      "deps": [],
+      "detection": {
+        "commit_match": [
+          "test\\(governance\\): .*gate mutation"
+        ]
+      },
+      "acceptance": {
+        "status": "pending",
+        "by": null,
+        "date": null,
+        "note": ""
+      }
+    },
+    {
+      "id": "P0.9",
+      "name": "SHIPPED requires activation evidence",
+      "phase": "p0",
+      "kind": "slice",
+      "goal": "aq-pm-tracker projects SHIPPED only with an activation signal (wired caller, enabled unit, or live check) plus a registered test; otherwise caps at BUILT",
+      "validation_goal": "a tracker item with code but no activation signal projects BUILT, not SHIPPED; test proves it",
+      "deps": [],
+      "detection": {
+        "commit_match": [
+          "feat\\(pm-tracker\\): .*activation evidence"
+        ]
+      },
+      "acceptance": {
+        "status": "pending",
+        "by": null,
+        "date": null,
+        "note": ""
+      }
+    },
+    {
+      "id": "P0.10",
+      "name": "Untrusted-author hold on Gemini-shipped items",
+      "phase": "p0",
+      "kind": "slice",
+      "goal": "Provenance hold on every tracker item shipped by Gemini PRs 2026-10-19..27; projection capped below SHIPPED until receipt-backed re-verification",
+      "validation_goal": "a held item projects below SHIPPED; clearing requires a valid receipt; test proves both",
+      "deps": [],
+      "detection": {
+        "commit_match": [
+          "feat\\(pm-tracker\\): .*untrusted-author hold"
+        ]
+      },
+      "acceptance": {
+        "status": "pending",
+        "by": null,
+        "date": null,
+        "note": ""
+      }
+    },
+    {
+      "id": "P1.1",
+      "name": "AppArmor rule insertion safety",
+      "phase": "p1",
+      "kind": "slice",
+      "goal": "Validate rules, show rule text in aq-approve, no auto-commit",
+      "validation_goal": "injection regression tests; reviewed PR",
+      "deps": [],
+      "detection": {
+        "commit_match": [
+          "fix\\(security\\): validate AppArmor fix-agent rules"
+        ]
+      },
+      "acceptance": {
+        "status": "pending",
+        "by": null,
+        "date": null,
+        "note": ""
+      }
+    },
+    {
+      "id": "P1.2",
+      "name": "Gemini egress attribution",
+      "phase": "p1",
+      "kind": "slice",
+      "goal": "Attribute gemini lane; hold raw IPs",
+      "validation_goal": "egress CLI allows gemini; raw IPs hold; live dispatch succeeds",
+      "deps": [],
+      "detection": {
+        "commit_match": [
+          "fix\\(egress\\): attribute gemini lane"
+        ]
+      },
+      "acceptance": {
+        "status": "pending",
+        "by": null,
+        "date": null,
+        "note": ""
+      }
+    },
+    {
+      "id": "P1.3",
+      "name": "MCP protocol negotiation",
+      "phase": "p1",
+      "kind": "slice",
+      "goal": "Hybrid bridge negotiates protocol version",
+      "validation_goal": "Claude Code connects to hybrid-coordinator after deploy",
+      "deps": [],
+      "detection": {
+        "commit_match": [
+          "fix\\(mcp\\): negotiate protocol version"
+        ]
+      },
+      "acceptance": {
+        "status": "pending",
+        "by": null,
+        "date": null,
+        "note": ""
+      }
+    },
+    {
+      "id": "P1.4",
+      "name": "REA launcher + classifier tests gated",
+      "phase": "p1",
+      "kind": "slice",
+      "goal": "Launcher calls aq-confine correctly; both tests green and in CI; WR-REA-1 tracked",
+      "validation_goal": "tests green in CI",
+      "deps": [],
+      "detection": {
+        "commit_match": [
+          "fix\\(rea,intel\\):"
+        ]
+      },
+      "acceptance": {
+        "status": "pending",
+        "by": null,
+        "date": null,
+        "note": ""
+      }
+    },
+    {
+      "id": "P1.5",
+      "name": "Lean Codex reviews + budget measuring real use",
+      "phase": "p1",
+      "kind": "slice",
+      "goal": "aq-review-request builds a front-loaded review prompt (diff inline, narrow questions, output contract) for codex or local; delegate-to-codex budget becomes a rolling 24h window with a reserved review share; usage-limit cooldown remains primary",
+      "validation_goal": "a real Codex review completes well under the old ~65k tokens; implement-role dispatch refused while review headroom remains; budget tests cover rolling window and reserve",
+      "deps": [],
+      "detection": {
+        "commit_match": [
+          "feat\\(delegation\\): .*review"
+        ]
+      },
+      "acceptance": {
+        "status": "pending",
+        "by": null,
+        "date": null,
+        "note": ""
+      }
+    },
+    {
+      "id": "P1.6",
+      "name": "No sleep during agent work",
+      "phase": "p1",
+      "kind": "slice",
+      "goal": "delegate-to-* hold a systemd sleep inhibitor while tasks run",
+      "validation_goal": "a running delegated task shows in systemd-inhibit --list; no resume restart mid-task",
+      "deps": [],
+      "detection": {
+        "commit_match": [
+          "fix\\(delegation\\): .*inhibit"
+        ]
+      },
+      "acceptance": {
+        "status": "pending",
+        "by": null,
+        "date": null,
+        "note": ""
+      }
+    },
+    {
+      "id": "P1.7",
+      "name": "Local model throughput restored",
+      "phase": "p1",
+      "kind": "slice",
+      "goal": "Measured root cause of 1.7-2.0 tok/s fixed declaratively; tok/s probe + alert",
+      "validation_goal": "warm gen tok/s back to >= baseline 5.3; probe alerts below threshold",
+      "deps": [],
+      "detection": {
+        "commit_match": [
+          "fix\\(llama\\):"
+        ]
+      },
+      "acceptance": {
+        "status": "pending",
+        "by": null,
+        "date": null,
+        "note": ""
+      }
+    },
+    {
+      "id": "P1.8",
+      "name": "Sleep-resilient, mobile local work",
+      "phase": "p1",
+      "kind": "slice",
+      "goal": "Health-gated restart on resume, auto-retry of interrupted delegated tasks, opt-in keep-awake (lid) mode with battery/thermal guards",
+      "validation_goal": "suspend/resume during a running local task: task completes without manual retry; keep-awake holds lid inhibitor only while tasks run and releases on guard trip",
+      "deps": [
+        "P1.6"
+      ],
+      "detection": {
+        "commit_match": [
+          "feat\\(mobility\\):"
+        ]
+      },
+      "acceptance": {
+        "status": "pending",
+        "by": null,
+        "date": null,
+        "note": ""
+      }
+    },
+    {
+      "id": "P2.1",
+      "name": "Sweep: every test file",
+      "phase": "p2",
+      "kind": "slice",
+      "goal": "Execute all test files; dated red list",
+      "validation_goal": "report under docs/harness-first/evidence",
+      "deps": [],
+      "detection": {
+        "commit_match": [
+          "feat\\(sweep\\): .*tests"
+        ]
+      },
+      "acceptance": {
+        "status": "pending",
+        "by": null,
+        "date": null,
+        "note": ""
+      }
+    },
+    {
+      "id": "P2.2",
+      "name": "Sweep: gates under known-bad input",
+      "phase": "p2",
+      "kind": "slice",
+      "goal": "List gates that cannot fail",
+      "validation_goal": "report",
+      "deps": [
+        "P0.8"
+      ],
+      "detection": {
+        "commit_match": [
+          "feat\\(sweep\\): .*gates"
+        ]
+      },
+      "acceptance": {
+        "status": "pending",
+        "by": null,
+        "date": null,
+        "note": ""
+      }
+    },
+    {
+      "id": "P2.3",
+      "name": "Sweep: enabled units/timers",
+      "phase": "p2",
+      "kind": "slice",
+      "goal": "Every enabled unit running and producing output",
+      "validation_goal": "report",
+      "deps": [],
+      "detection": {
+        "commit_match": [
+          "feat\\(sweep\\): .*units"
+        ]
+      },
+      "acceptance": {
+        "status": "pending",
+        "by": null,
+        "date": null,
+        "note": ""
+      }
+    },
+    {
+      "id": "P2.4",
+      "name": "Sweep: dashboard card provenance",
+      "phase": "p2",
+      "kind": "slice",
+      "goal": "Card -> fetch -> route -> producer; hardcoded-literal scan",
+      "validation_goal": "report",
+      "deps": [],
+      "detection": {
+        "commit_match": [
+          "feat\\(sweep\\): .*dashboard"
+        ]
+      },
+      "acceptance": {
+        "status": "pending",
+        "by": null,
+        "date": null,
+        "note": ""
+      }
+    },
+    {
+      "id": "P2.5",
+      "name": "Sweep: tracker claims vs evidence",
+      "phase": "p2",
+      "kind": "slice",
+      "goal": "Every tracker item: code on main, wired, enabled, observable, tested",
+      "validation_goal": "report",
+      "deps": [],
+      "detection": {
+        "commit_match": [
+          "feat\\(sweep\\): .*tracker"
+        ]
+      },
+      "acceptance": {
+        "status": "pending",
+        "by": null,
+        "date": null,
+        "note": ""
+      }
+    },
+    {
+      "id": "P2.6",
+      "name": "Sweep: MCP servers and agent lanes",
+      "phase": "p2",
+      "kind": "slice",
+      "goal": "Each connects / dispatches",
+      "validation_goal": "report",
+      "deps": [],
+      "detection": {
+        "commit_match": [
+          "feat\\(sweep\\): .*lanes"
+        ]
+      },
+      "acceptance": {
+        "status": "pending",
+        "by": null,
+        "date": null,
+        "note": ""
+      }
+    },
+    {
+      "id": "P3.1",
+      "name": "Retro-review 2026-10-13..18",
+      "phase": "p3",
+      "kind": "slice",
+      "goal": "40 PRs (#499-#538) + 98 PR-less commits, same rubric; non-Claude reviewer for Claude work",
+      "validation_goal": "batch reports in .agents/delegation/outputs",
+      "deps": [],
+      "detection": {
+        "commit_match": [
+          "docs\\(review\\): .*2026-10-13"
+        ]
+      },
+      "acceptance": {
+        "status": "pending",
+        "by": null,
+        "date": null,
+        "note": ""
+      }
+    },
+    {
+      "id": "P4.1",
+      "name": "Remediate security findings",
+      "phase": "p4",
+      "kind": "slice",
+      "goal": "All NOT_CORRECT security items from batches A-C fixed or archived",
+      "validation_goal": "each slice: failing test first, receipt, PR",
+      "deps": [
+        "P0.1",
+        "P0.5"
+      ],
+      "detection": {
+        "commit_match": [
+          "fix\\(security\\):"
+        ]
+      },
+      "acceptance": {
+        "status": "pending",
+        "by": null,
+        "date": null,
+        "note": ""
+      }
+    },
+    {
+      "id": "P4.2",
+      "name": "Remediate dashboard truth",
+      "phase": "p4",
+      "kind": "slice",
+      "goal": "No hardcoded/fake card values; unbacked cards show --",
+      "validation_goal": "P2.4 sweep clean",
+      "deps": [
+        "P2.4"
+      ],
+      "detection": {
+        "commit_match": [
+          "fix\\(dashboard\\):"
+        ]
+      },
+      "acceptance": {
+        "status": "pending",
+        "by": null,
+        "date": null,
+        "note": ""
+      }
+    },
+    {
+      "id": "P4.3",
+      "name": "Dormant features: wire+activate or archive",
+      "phase": "p4",
+      "kind": "slice",
+      "goal": "Rule 23 for every dormant item found",
+      "validation_goal": "P2.5 sweep clean",
+      "deps": [
+        "P2.5"
+      ],
+      "detection": {
+        "commit_match": [
+          "fix\\(dormant\\):"
+        ]
+      },
+      "acceptance": {
+        "status": "pending",
+        "by": null,
+        "date": null,
+        "note": ""
+      }
+    },
+    {
+      "id": "P4.4",
+      "name": "Real open-weights System 1 model",
+      "phase": "p4",
+      "kind": "slice",
+      "goal": "Small local model for pre/post-agent tasks within the RAM budget set by P1.7",
+      "validation_goal": "measured latency/quality on triage+classification fixtures; live and wired",
+      "deps": [
+        "P1.7"
+      ],
+      "detection": {
+        "commit_match": [
+          "feat\\(system1\\):"
+        ]
+      },
+      "acceptance": {
+        "status": "pending",
+        "by": null,
+        "date": null,
+        "note": ""
+      }
+    },
+    {
+      "id": "P5.1",
+      "name": "Resume feature work",
+      "phase": "p5",
+      "kind": "slice",
+      "goal": "Active plans resume from projected state after P0+P1 exit",
+      "validation_goal": "owner go",
+      "deps": [
+        "P0.1",
+        "P0.2",
+        "P0.3",
+        "P0.4",
+        "P0.5",
+        "P0.6",
+        "P0.7",
+        "P0.8",
+        "P1.1",
+        "P1.2",
+        "P1.3",
+        "P1.4",
+        "P0.9",
+        "P1.5",
+        "P0.10",
+        "P1.6",
+        "P1.7",
+        "P1.8"
+      ],
+      "detection": {
+        "commit_match": [
+          "chore\\(plans\\): resume"
+        ]
+      },
+      "acceptance": {
+        "status": "pending",
+        "by": null,
+        "date": null,
+        "note": ""
+      }
+    }
+  ]
+}
