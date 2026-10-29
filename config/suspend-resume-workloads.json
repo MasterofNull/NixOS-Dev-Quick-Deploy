@@ -247,6 +247,46 @@
       },
       "compliance": "partial",
       "next_slice": "Typed resume outcome telemetry and dashboard surface for keep-awake holds/releases; live lid-close validation."
+    },
+    {
+      "id": "power-policy-and-speed-probe",
+      "workload_class": "resumable-job",
+      "implementation_paths": [
+        "nix/modules/core/power-policy.nix",
+        "scripts/ai/aq-llm-speed-probe"
+      ],
+      "suspend_behavior": {
+        "mode": "rerun_on_next_trigger",
+        "resume_trigger": "aq-llm-speed-probe-resume.service; power-policy-apply re-runs post-resume",
+        "implementation_status": "implemented"
+      },
+      "state_safety": {
+        "checkpoint_required": false,
+        "idempotency": "power-policy-apply sets the profile from current AC state; the probe is one bounded request that appends one line, so an interrupted run is simply re-run.",
+        "signal_behavior": "oneshot; interruption loses at most one probe sample"
+      },
+      "readiness": {
+        "strategy": "bounded_completion",
+        "evidence": "scripts/ai/aq-llm-speed-probe skips when llama is busy and exits 2 on error",
+        "max_wait_seconds": 180,
+        "implementation_status": "implemented"
+      },
+      "resume_outcomes": {
+        "required": [
+          "ok",
+          "slow",
+          "skipped",
+          "error"
+        ],
+        "implementation_status": "implemented"
+      },
+      "observability": {
+        "telemetry": "implemented",
+        "dashboard": "planned",
+        "qa": "implemented"
+      },
+      "compliance": "partial",
+      "next_slice": "Surface llm-speed-probe.jsonl on the dashboard; health-spider advisory already reads it."
     }
   ]
 }
