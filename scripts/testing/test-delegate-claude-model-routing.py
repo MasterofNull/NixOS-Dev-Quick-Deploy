@@ -25,6 +25,9 @@ class ClaudeModelRoutingTest(unittest.TestCase):
         self.wrapper = self.repo / "scripts/ai/delegate-to-claude"
         shutil.copy2(ROOT / "scripts/ai/delegate-to-claude", self.wrapper)
         shutil.copy2(ROOT / "config/model-coordinator.json", self.repo / "config")
+        # Egress gate fails closed without its tool and config.
+        shutil.copy2(ROOT / "config/remote-lane-egress.json", self.repo / "config")
+        shutil.copy2(ROOT / "scripts/ai/lib/remote_lane_egress.py", self.repo / "scripts/ai/lib")
         (self.repo / "scripts/ai/lib/audit-write.sh").write_text(
             "audit_event_start() { :; }\n"
             "audit_event_end() { :; }\n"

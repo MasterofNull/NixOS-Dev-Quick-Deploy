@@ -328,6 +328,7 @@
     max-width: 100%;
   }
   .item-chip[data-status="SHIPPED"], .item-chip[data-status="ACTIVATED"] { border-left-color: var(--good); }
+  .item-chip[data-status="UNVERIFIED"] { border-left-color: var(--blocked); border-left-style: dashed; }
   .item-chip[data-status="IN-PROGRESS"] { border-left-color: var(--active); }
   .item-chip[data-status="BLOCKED"] { border-left-color: var(--blocked); }
   .item-chip[data-status="FROZEN"] { border-left-color: var(--frozen); }
@@ -374,6 +375,7 @@
     padding: 10px;
   }
   .kanban-column[data-status="SHIPPED"], .kanban-column[data-status="ACTIVATED"] { border-top-color: var(--good); }
+  .kanban-column[data-status="UNVERIFIED"] { border-top-color: var(--blocked); border-top-style: dashed; }
   .kanban-column[data-status="IN-PROGRESS"] { border-top-color: var(--active); }
   .kanban-column[data-status="BLOCKED"] { border-top-color: var(--blocked); }
   .kanban-column[data-status="FROZEN"] { border-top-color: var(--frozen); }
@@ -555,7 +557,7 @@
   let fetchCount = 0;
   let inFlight = false;
 
-  const STATUS_ORDER = ['ACTIVATED', 'SHIPPED', 'IN-PROGRESS', 'FROZEN', 'DESIGNED', 'BLOCKED', 'NOT-STARTED', 'UNKNOWN'];
+  const STATUS_ORDER = ['ACTIVATED', 'SHIPPED', 'UNVERIFIED', 'IN-PROGRESS', 'FROZEN', 'DESIGNED', 'BLOCKED', 'NOT-STARTED', 'UNKNOWN'];
 
   function escapeHtml(s) {
     return String(s == null ? '' : s).replace(/[&<>"']/g, c => ({
