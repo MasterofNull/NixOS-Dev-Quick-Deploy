@@ -19,3 +19,6 @@ Source: retro-review batch G (PR #550). Plan item P1.2 of `.agents/plans/system-
 ## Known gap
 - The gemini CLI chooses its own host at runtime; this pre-launch gate checks the configured endpoint, not live traffic.
 - Rate budgets are per process and never accumulate across CLI calls. Backlog: EGRESS-RATE-BUDGETS-PER-PROCESS.
+
+## Follow-up 2026-10-28 (fail-closed hardening)
+Codex review findings addressed: non-allowlisted, cross-lane and punycode destinations now HOLD (no flag-only outcomes remain), obfuscated IPv4 (decimal/octal/hex/short) and IPv4-mapped IPv6 are raw-IP holds, the unattributed-lane hold is evaluated first, rate-budget collapse no longer relaxes a hold, and all three delegate-to-* scripts refuse to launch on any non-zero gate rc. OPEN: endpoint-binding gap - the gate validates the configured host (e.g. GEMINI_API_HOST), not the endpoint the CLI actually contacts at runtime.

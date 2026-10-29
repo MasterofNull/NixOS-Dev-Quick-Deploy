@@ -155,15 +155,18 @@ budget_gate_dispatch() {
 egress_gate_eval() {
     local lane="$1" target_host="${2:-}" target_port="${3:-443}"
     local egress_tool="$SCRIPT_DIR/lib/remote_lane_egress.py"
-    [[ -f "$egress_tool" ]] || return 0
     local verdict rc=0
-    verdict="$(python3 "$egress_tool" "$lane" "$target_host" "$target_port" 2>/dev/null)" || rc=$?
-    if [[ $rc -eq 2 ]]; then
+    if [[ -f "$egress_tool" ]]; then
+        verdict="$(python3 "$egress_tool" "$lane" "$target_host" "$target_port" 2>/dev/null)" || rc=$?
+    else
+        # A missing gate must not silently allow egress.
+        verdict='{"outcome": "hold", "reason_code": "EGR_GATE_MISSING"}'; rc=2
+    fi
+    if [[ $rc -ne 0 ]]; then
         die "Remote lane egress friction gate HELD this dispatch: ${verdict}
-  Destination host '${target_host}' tripped high-signal or hold rules.
+  Destination host '${target_host}' is not allowlisted or tripped a hold rule (rc=${rc}).
   Table: config/remote-lane-egress.json"
     fi
-    [[ $rc -eq 1 ]] && info "Remote lane egress friction WARNING: ${verdict}"
     return 0
 }
 
