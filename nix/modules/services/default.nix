@@ -27,6 +27,7 @@
     ./workflow-deviation-broker.nix
     ./activation-auto-revert-guard.nix
     ./durable-sweeper.nix
+    ./keep-awake.nix
     ./oncalld.nix
     ./aq-help-center.nix
   ];

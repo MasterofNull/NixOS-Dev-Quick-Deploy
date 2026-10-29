@@ -1,0 +1,25 @@
+#!/usr/bin/env bash
+# Health-gated llama-cpp resume: after suspend, restart llama-cpp only if it is not
+# actually serving. Ports come from the environment (set by the Nix module).
+set -u
+BASE="${LLAMA_BASE_URL:?LLAMA_BASE_URL required}"
+WAIT_S="${RESUME_WAIT_S:-60}"
+RESTART_CMD="${RESUME_RESTART_CMD:-systemctl restart --no-block llama-cpp.service}"
+deadline=$((SECONDS + WAIT_S))
+probe() {
+    curl -sf --max-time 5 "$BASE/health" >/dev/null 2>&1 || return 1
+    curl -sf --max-time 20 "$BASE/v1/chat/completions" -H 'Content-Type: application/json' \
+        -d '{"messages":[{"role":"user","content":"hi"}],"max_tokens":1,"chat_template_kwargs":{"enable_thinking":false}}' \
+        >/dev/null 2>&1
+}
+while :; do
+    if probe; then
+        echo "llama-cpp healthy after resume; no restart"
+        exit 0
+    fi
+    [ "$SECONDS" -ge "$deadline" ] && break
+    sleep "${RESUME_POLL_S:-2}"
+done
+echo "llama-cpp unhealthy ${WAIT_S}s after resume; restarting"
+# shellcheck disable=SC2086
+exec $RESTART_CMD
