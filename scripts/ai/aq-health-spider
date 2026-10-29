@@ -693,6 +693,28 @@ def _closed_loop_check() -> List[Dict[str, Any]]:
     return anomalies
 
 
+def _llm_speed_check() -> List[Dict[str, Any]]:
+    """Advisory: latest aq-llm-speed-probe result (non-skipped) was slow or is stale. Best-effort."""
+    now = time.time()
+    path = _first_existing([d / "llm-speed-probe.jsonl" for d in _LOOP_TELEMETRY_DIRS])
+    if path is None:
+        return []  # probe timer not enabled on this host: nothing to assess
+    try:
+        last = None
+        for line in path.read_text().splitlines()[-50:]:
+            try:
+                last = json.loads(line)
+            except ValueError:
+                continue
+        if last and last.get("status") == "slow" and now - path.stat().st_mtime < 3 * 3600:
+            return [{"type": "llm_speed_slow", "zone": "llama-cpp", "timestamp": now,
+                     "detail": f"local model {last.get('gen_tokps')} tok/s (< {last.get('threshold_tokps')}); "
+                               f"cause={last.get('cause')} profile={last.get('power_profile')} ac={last.get('ac_online')}"}]
+    except OSError:
+        pass
+    return []
+
+
 def _llama_slot_wedged_check() -> List[Dict[str, Any]]:
     """Detect an ORPHANED/wedged llama.cpp slot — the root cause behind cascading local-agent failures.
     On the single-slot APU, an abandoned generation (client timed out, but llama.cpp keeps prefilling)
@@ -1226,7 +1248,7 @@ class HealthSpider:
                 )
             return True
         elif atype in ("loop_teacher_down", "loop_never_ran", "loop_stalled",
-                       "loop_correction_backlog", "loop_eval_regression"):
+                       "loop_correction_backlog", "loop_eval_regression", "llm_speed_slow"):
             # Closed local-improvement loop advisories — detect + warn (the measurement layer the
             # operator flagged as missing). teacher_down is the most serious (loop can't learn at all).
             detail = anomaly.get("detail", atype)
@@ -1236,6 +1258,7 @@ class HealthSpider:
                 "loop_never_ran": "Trigger a run: systemctl start ai-local-training-loop.service (or scripts/ai/aq-local-training-loop --resume).",
                 "loop_stalled": "Check ai-local-training-loop.timer is active and the last run didn't error (training-loop-results.jsonl).",
                 "loop_correction_backlog": "Run scripts/ai/aq-correct-failures --max 25 (codex teacher) to drain the backlog.",
+                "llm_speed_slow": "Check cause in llm-speed-probe.jsonl: POWER -> plug in / powerprofilesctl set performance; MEMORY -> free RAM or check swap.",
                 "loop_eval_regression": "Inspect the latest training-loop scores and hold LoRA promotion until the regression is explained.",
             }.get(atype, "Inspect the closed local-improvement loop telemetry.")
             try:
@@ -1407,6 +1430,13 @@ class HealthSpider:
                     total += 1
         except Exception as e:
             logger.error(f"[closed-loop] error: {e}")
+        # Harness-level: local model throughput regression (power/memory) from aq-llm-speed-probe.
+        try:
+            for a in await asyncio.to_thread(_llm_speed_check):
+                if await self.handle_anomaly(a):
+                    total += 1
+        except Exception as e:
+            logger.error(f"[llm-speed] error: {e}")
         # Harness-level: wedged llama.cpp slot (orphaned generation starving all local work).
         try:
             for a in await asyncio.to_thread(_llama_slot_wedged_check):

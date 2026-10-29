@@ -135,6 +135,9 @@ def caller_fixture(wrapper: Path, *, local: bool, background: bool) -> None:
     with tempfile.TemporaryDirectory(prefix="worktree-caller-") as temp:
         repo = Path(temp) / "repo"
         shutil.copytree(ROOT / "scripts/ai", repo / "scripts/ai")
+        # The egress gate fails closed without its config; the fixture exercises handback, not egress.
+        (repo / "config").mkdir()
+        shutil.copy2(ROOT / "config/remote-lane-egress.json", repo / "config/remote-lane-egress.json")
         git(Path(temp), "init", "-q", str(repo))
         git(repo, "config", "user.email", "fixture@example.invalid")
         git(repo, "config", "user.name", "fixture")

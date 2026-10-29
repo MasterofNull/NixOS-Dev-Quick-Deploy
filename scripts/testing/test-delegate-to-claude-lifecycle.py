@@ -27,6 +27,9 @@ class DelegateClaudeLifecycleTest(unittest.TestCase):
         shutil.copy2(ROOT / "scripts/ai/delegate-to-claude", self.wrapper)
         shutil.copy2(ROOT / "scripts/ai/lib/claude-background-worker.sh", lib)
         shutil.copy2(ROOT / "config/model-coordinator.json", self.repo / "config")
+        # Egress gate fails closed without its tool and config.
+        shutil.copy2(ROOT / "config/remote-lane-egress.json", self.repo / "config")
+        shutil.copy2(ROOT / "scripts/ai/lib/remote_lane_egress.py", lib)
         (lib / "audit-write.sh").write_text(
             "audit_event_start() { :; }\naudit_event_end() { :; }\naudit_save_session() { :; }\n")
         (lib / "harness-grounding.sh").write_text("harness_grounding() { :; }\n")

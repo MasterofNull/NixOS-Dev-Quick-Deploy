@@ -1,0 +1,12 @@
+{
+  "schema": 1,
+  "pr": 647,
+  "reviewed_head_sha": "98cd7e9a9d9e613296a50ff5e570f308d05bcb70",
+  "run_id": "local-20261029-001404-tldsak",
+  "reviewer_lane": "local-direct",
+  "author_lane": "claude",
+  "verdict": "PASS",
+  "output_file": ".agents/delegation/outputs/local-20261029-001404-tldsak.log",
+  "output_sha256": "8f0ce9c81c354aaa1fb224b7e8d56dcdd35bbb533c7066803a9732f27b12f3b2",
+  "created_at": "2026-10-29T07:50:30Z"
+}

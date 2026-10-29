@@ -150,14 +150,17 @@ PYEOF
 egress_gate_eval() {
     local lane="$1" target_host="${2:-}" target_port="${3:-443}"
     local egress_tool="$SCRIPT_DIR/lib/remote_lane_egress.py"
-    [[ -f "$egress_tool" ]] || return 0
     local verdict rc=0
-    verdict="$(python3 "$egress_tool" "$lane" "$target_host" "$target_port" 2>/dev/null)" || rc=$?
-    if [[ $rc -eq 2 ]]; then
+    if [[ -f "$egress_tool" ]]; then
+        verdict="$(python3 "$egress_tool" "$lane" "$target_host" "$target_port" 2>/dev/null)" || rc=$?
+    else
+        # A missing gate must not silently allow egress.
+        verdict='{"outcome": "hold", "reason_code": "EGR_GATE_MISSING"}'; rc=2
+    fi
+    if [[ $rc -ne 0 ]]; then
         echo "[delegate-to-claude] Remote lane egress friction gate HELD this dispatch: ${verdict}" >&2
         exit 3
     fi
-    [[ $rc -eq 1 ]] && info "Remote lane egress friction WARNING: ${verdict}"
     return 0
 }
 
@@ -453,7 +456,8 @@ ${prompt}"
         # backgrounded so its PID is recorded and heartbeated, then reap it.
         local exit_code=0 provider_pid tail_pid=""
         : > "$output_file"
-        "${cmd[@]}" > "$output_file" 2>&1 </dev/null &
+        if source "$SCRIPT_DIR/lib/sleep-inhibit.sh" 2>/dev/null; then aq_sleep_inhibit_prefix "$id"; else AQ_INHIBIT_PREFIX=(); echo "WARN: sleep-inhibit.sh not sourceable; task runs without an idle inhibitor" >&2; fi
+        "${AQ_INHIBIT_PREFIX[@]}" "${cmd[@]}" > "$output_file" 2>&1 </dev/null &
         provider_pid=$!; PROVIDER_PID=$provider_pid
         reg_update "$id" "pid=$provider_pid" "wrapper_pid=$$" \
             "heartbeat_at=$(date -u +%Y-%m-%dT%H:%M:%SZ)" || true
@@ -488,7 +492,8 @@ ${prompt}"
         # worker inherits the slot fd, holding the slot until the provider dies.
         local _coord_url="${HYBRID_COORDINATOR_URL:-http://127.0.0.1:8003}"
         local _audit_helper; _audit_helper="$SCRIPT_DIR/lib/audit-post.sh"
-        nohup bash "$SCRIPT_DIR/lib/claude-background-worker.sh" \
+        if source "$SCRIPT_DIR/lib/sleep-inhibit.sh" 2>/dev/null; then aq_sleep_inhibit_prefix "$id"; else AQ_INHIBIT_PREFIX=(); echo "WARN: sleep-inhibit.sh not sourceable; task runs without an idle inhibitor" >&2; fi
+        nohup "${AQ_INHIBIT_PREFIX[@]}" bash "$SCRIPT_DIR/lib/claude-background-worker.sh" \
             "$output_file" "$_audit_helper" "$_coord_url" "$REGISTRY" "$id" "$role" "$prompt" \
             "${cmd[@]}" </dev/null >> "$output_file" 2>&1 &
         local pid=$!

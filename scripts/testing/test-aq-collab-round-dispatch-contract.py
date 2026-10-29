@@ -8,6 +8,7 @@ by a 30s run() timeout before launching. Round sat DISPATCHED with 0 lanes live.
 """
 import importlib.machinery
 import importlib.util
+import os
 import subprocess
 import sys
 from pathlib import Path
@@ -20,8 +21,17 @@ mod = importlib.util.module_from_spec(spec)
 loader.exec_module(mod)
 
 
-def _cp(stdout="", stderr="", rc=0):
-    return subprocess.CompletedProcess(args=[], returncode=rc, stdout=stdout, stderr=stderr)
+def _popen(stdout="", stderr="", rc=0, timeout=False):
+    """Fake subprocess.Popen: _dispatch_process launches via Popen+communicate (fa18096d-era
+    start_new_session launch), not subprocess.run."""
+    proc = mock.MagicMock()
+    proc.returncode = rc
+    proc.pid = 999999
+    if timeout:
+        proc.communicate.side_effect = [subprocess.TimeoutExpired("x", 1), ("", "")]
+    else:
+        proc.communicate.return_value = (stdout, stderr)
+    return mock.MagicMock(return_value=proc)
 
 
 def test_parse_task_id_ignores_trailing_lines():
@@ -34,7 +44,7 @@ def test_parse_task_id_ignores_trailing_lines():
 
 def test_codex_dispatched_isolated_not_shared(tmp_path):
     pf = tmp_path / "p.txt"; pf.write_text("x")
-    with mock.patch.object(mod.subprocess, "run", return_value=_cp("[d] Delegating task: codex-1\n")) as run:
+    with mock.patch.object(mod.subprocess, "Popen", _popen("[d] Delegating task: codex-1\n")) as run:
         assert mod._dispatch_process("codex", pf, 60) == "codex-1"
     cmd = run.call_args.args[0]
     assert "--shared" not in cmd and "--mode" in cmd
@@ -42,25 +52,27 @@ def test_codex_dispatched_isolated_not_shared(tmp_path):
 
 def test_refused_launch_is_reported_not_recorded(tmp_path):
     pf = tmp_path / "p.txt"; pf.write_text("x")
-    refused = _cp("[d] Delegating task: codex-2\n", "ERROR: shared editing is not authorized", rc=1)
-    with mock.patch.object(mod.subprocess, "run", return_value=refused):
+    refused = _popen("[d] Delegating task: codex-2\n", "ERROR: shared editing is not authorized", rc=1)
+    with mock.patch.object(mod.subprocess, "Popen", refused):
         r = mod._dispatch_process("codex", pf, 60)
     assert r.startswith("error:rc=1:") and "not authorized" in r
 
 
 def test_launch_budget_exceeds_preflight_gates(tmp_path):
     pf = tmp_path / "p.txt"; pf.write_text("x")
-    with mock.patch.object(mod.subprocess, "run", return_value=_cp("[d] Delegating task: local-3\n")) as run:
+    fake = _popen("[d] Delegating task: local-3\n")
+    with mock.patch.object(mod.subprocess, "Popen", fake):
         assert mod._dispatch_process("local", pf, 60) == "local-3"
-    assert run.call_args.kwargs["timeout"] >= 120
-    with mock.patch.object(mod.subprocess, "run", side_effect=subprocess.TimeoutExpired("x", 1)):
+    assert fake.return_value.communicate.call_args.kwargs["timeout"] >= 120
+    with mock.patch.object(mod.subprocess, "Popen", _popen(timeout=True)), mock.patch.object(mod.os, "killpg"):
         assert mod._dispatch_process("local", pf, 60) == "error:launch-timeout"
 
 
 def test_uncommitted_task_inputs_detected(tmp_path):
     # Committed file -> clean; untracked file -> flagged; nonexistent path -> ignored.
     repo = tmp_path / "r"; (repo / "docs").mkdir(parents=True)
-    run = lambda *a: subprocess.run(["git", "-C", str(repo), *a], check=True, capture_output=True)
+    genv = {k: v for k, v in os.environ.items() if not k.startswith("GIT_")}
+    run = lambda *a: subprocess.run(["git", "-C", str(repo), *a], check=True, capture_output=True, env=genv)
     run("init", "-q"); run("config", "user.email", "t@t"); run("config", "user.name", "t")
     (repo / "docs/committed.md").write_text("a"); run("add", "."); run("commit", "-qm", "x")
     (repo / "docs/new-prd.md").write_text("b")
