@@ -16,6 +16,7 @@ try:  # aq-usage-hook
 except Exception:
     pass
 
+import re
 import subprocess
 import sys
 from pathlib import Path
@@ -150,32 +151,124 @@ _EXECUTOR_TABLE = {
 }
 
 
+def _nix_scan(text: str):
+    """Lex Nix just enough to separate real code from comments and strings.
+
+    Returns (code_mask, ind_spans): code_mask[i] is True when text[i] is top-level
+    code (not in a comment or string); ind_spans lists (start, end) of top-level
+    '' strings (content only). Returns None on malformed input so callers fail safe.
+    """
+    n = len(text)
+    mask = [False] * n
+    spans = []
+    stack = [["code", 0]]  # ["code", brace_depth] | ["ind", start] | ["dq"]
+    i = 0
+    while i < n:
+        mode = stack[-1][0]
+        c = text[i]
+        if mode == "code":
+            if text.startswith("/*", i):
+                j = text.find("*/", i + 2)
+                if j == -1:
+                    return None
+                i = j + 2
+                continue
+            if c == "#":
+                j = text.find("\n", i)
+                i = n if j == -1 else j
+                continue
+            if text.startswith("''", i):
+                stack.append(["ind", i + 2])
+                i += 2
+                continue
+            if c == '"':
+                stack.append(["dq"])
+                i += 1
+                continue
+            if c == "{":
+                stack[-1][1] += 1
+            elif c == "}":
+                if stack[-1][1] == 0:
+                    if len(stack) == 1:
+                        return None
+                    stack.pop()
+                    i += 1
+                    continue
+                stack[-1][1] -= 1
+            if len(stack) == 1:
+                mask[i] = True
+            i += 1
+        elif mode == "ind":
+            if text.startswith("${", i):
+                stack.append(["code", 0])
+                i += 2
+            elif text.startswith("'''", i) or text.startswith("''$", i) or text.startswith("''\\", i):
+                i += 3
+            elif text.startswith("''", i):
+                if len(stack) == 2:
+                    spans.append((stack[-1][1], i))
+                stack.pop()
+                i += 2
+            else:
+                i += 1
+        else:  # dq
+            if c == "\\":
+                i += 2
+            elif text.startswith("${", i):
+                stack.append(["code", 0])
+                i += 2
+            elif c == '"':
+                stack.pop()
+                i += 1
+            else:
+                i += 1
+    return (mask, spans) if len(stack) == 1 else None
+
+
 def _apparmor_rules_already_present(profile: str, rules: list) -> bool:
-    """True when every rule is an effective (non-comment) line inside the target profile's block."""
+    """True only when every rule is an effective line in the real profile body.
+
+    Fails safe (False, so the executor runs and validates) unless the header
+    security.apparmor.policies."<profile>" occurs exactly once as real code
+    (not in a comment/string), starts its line, and is followed by a real
+    `profile = ''...''` string before any other policies header.
+    """
     if not profile or not rules:
         return False
     nix_file = _REPO_ROOT / "nix" / "modules" / "services" / "mcp-servers.nix"
     try:
-        lines = nix_file.read_text(encoding="utf-8").splitlines()
+        text = nix_file.read_text(encoding="utf-8")
     except OSError:
         return False
-    header = f'security.apparmor.policies."{profile}"'
-    start = next((i for i, ln in enumerate(lines) if header in ln), -1)
-    if start == -1:
+    scan = _nix_scan(text)
+    if scan is None:
+        return False
+    mask, spans = scan
+    prefix = "security.apparmor.policies."
+    code_hits = [m.start() for m in re.finditer(re.escape(prefix), text) if mask[m.start()]]
+    header = f'{prefix}"{profile}"'
+    hits = [h for h in code_hits if text.startswith(header, h)]
+    if len(hits) != 1:
+        return False
+    start = hits[0]
+    line_start = text.rfind("\n", 0, start) + 1
+    if text[line_start:start].strip():
+        return False
+    nxt = min([h for h in code_hits if h > start] or [len(text)])
+    body = None
+    for s_, e_ in spans:
+        if start < s_ < nxt:
+            before = text[:s_ - 2].rstrip()
+            if re.search(r"(?:^|[\s;{])profile\s*=$", before):
+                body = text[s_:e_]
+                break
+    if body is None:
         return False
     effective = set()
-    in_profile = False
-    for ln in lines[start + 1:]:
-        body = ln.strip()
-        if body.startswith("security.apparmor.policies."):
-            break
-        if not in_profile:
-            in_profile = body.startswith("profile = ''")
-            continue
-        if body == "'';":
-            break
-        if body and not body.startswith("#"):
-            effective.add(body.split("  #", 1)[0].strip())
+    for ln in body.splitlines():
+        ln = ln.strip()
+        if ln and not ln.startswith("#"):
+            effective.add(ln.split("  #", 1)[0].strip())
     return all(str(rule).strip() in effective for rule in rules)
 
 
