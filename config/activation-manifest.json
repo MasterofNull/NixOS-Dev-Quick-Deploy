@@ -1,0 +1,41 @@
+{
+  "schema_version": 1,
+  "features": [
+    {
+      "feature": "aq-oncalld autonomous on-call incident daemon",
+      "entrypoint": "scripts/ai/aq-oncalld",
+      "live_caller": "nix/modules/services/oncalld.nix",
+      "enable": "services.aiOncalld.enable",
+      "health_signal": "dashboard/backend/api/routes/aistack.py:oncalld_unavailable",
+      "deferral": {
+        "date": "2026-10-28",
+        "reason": "Merged in #506/#573 but the NixOS option services.aiOncalld.enable (nix/modules/services/oncalld.nix:11) is set to true nowhere under nix/, so the systemd unit never runs; the dashboard route only loads lib/oncalld_engine.py on demand. Found in the 2026-10-28 P3 retro-review.",
+        "tracking": ".agent/memory/issues-backlog.md: 2026-10-28 P3 retro-review"
+      }
+    },
+    {
+      "feature": "operator guidance spool (aq-human-intervention control queue)",
+      "entrypoint": "scripts/ai/aq-human-intervention",
+      "live_caller": "ai-stack/local-agents/agent_executor.py",
+      "enable": null,
+      "health_signal": "scripts/ai/aq-cockpit-monitor:CONTROL_DIR",
+      "deferral": {
+        "date": "2026-10-28",
+        "reason": "Merged in #504/#510. The writer (scripts/ai/aq-human-intervention:44-52) appends to .agents/delegation/control/<task_id>.jsonl; only local-agent tasks drain that queue (agent_executor.py:2752 via control_channel.poll), nothing in a production path invokes aq-human-intervention (only scripts/testing/test-human-intervention.py), and sub-agents dispatched by other lanes never read the spool. live_caller is the closest real consumer, which does not reference the entrypoint name. Found in the 2026-10-28 P3 retro-review.",
+        "tracking": ".agent/memory/issues-backlog.md: 2026-10-28 P3 retro-review"
+      }
+    },
+    {
+      "feature": "durable runtime (idempotent effect ledger, aq-durable)",
+      "entrypoint": "scripts/ai/lib/durable_runtime.py",
+      "live_caller": "dashboard/backend/api/routes/aistack.py",
+      "enable": null,
+      "health_signal": "dashboard/backend/api/routes/aistack.py:_durable_runtime_health_summary",
+      "deferral": {
+        "date": "2026-10-28",
+        "reason": "Merged in #505/#509. The only non-test importer is the dashboard health summary (aistack.py:7493-7506), which reads state; no production agent loop calls DurableEffectStore to record intents, so the ledger is never written outside scripts/ai/aq-durable and tests. Found in the 2026-10-28 P3 retro-review.",
+        "tracking": ".agent/memory/issues-backlog.md: 2026-10-28 P3 retro-review"
+      }
+    }
+  ]
+}
