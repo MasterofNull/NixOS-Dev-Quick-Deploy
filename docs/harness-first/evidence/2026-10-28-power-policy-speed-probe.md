@@ -20,7 +20,7 @@ Diagnosis `.agents/delegation/outputs/llama-throughput-diagnosis-20261027.md`: o
 - Not done (owner act): rebuild, live probe against the running server, battery/AC toggle on real hardware.
 
 ## Owner steps
-1. Merge, then in `deploy-options.local.nix` (or host config): `mySystem.deployment.powerPolicy = { acAwareProfile.enable = true; speedProbe.enable = true; };`
+1. Merge, then in the tracked host file `nix/hosts/<host>/deploy-options.nix` (not `deploy-options.local.nix`: it is gitignored and invisible to pure flake eval): `mySystem.deployment.powerPolicy = { acAwareProfile.enable = true; speedProbe.enable = true; };`
 2. `sudo nixos-rebuild switch --flake .#hyperd-ai-dev` (or `nrs`).
 3. Verify: `systemctl status power-policy-apply aq-llm-speed-probe.timer`; `powerprofilesctl get` (unplug/replug AC); `systemctl start aq-llm-speed-probe.service; tail -n1 /var/lib/ai-stack/hybrid/telemetry/llm-speed-probe.jsonl`.
 
