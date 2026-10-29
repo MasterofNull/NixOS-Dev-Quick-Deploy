@@ -76,11 +76,10 @@ def test_print_argv_with_shared_mode():
     assert "-C" in lines, f"Shared mode missing -C flag: {lines}"
     c_index = lines.index("-C")
     assert c_index + 1 < len(lines), f"Expected REPO_ROOT after -C: {lines}"
-    # The next line should be the repo root path (containing 'NixOS-Dev-Quick-Deploy')
-    assert "NixOS-Dev-Quick-Deploy" in lines[c_index + 1], f"Missing repo root after -C: {lines[c_index+1]}"
     # Should NOT reference worktrees (only used in isolated mode)
-    # -C must be exactly the repo root; the checkout itself may live under .../worktrees/
-    # (delegated slices), so only the remainder after removing REPO_ROOT is checked.
+    # -C must be exactly the repo root, wherever the checkout lives (CI and merge-parity use
+    # temp dirs); the checkout itself may live under .../worktrees/ (delegated slices), so only
+    # the remainder after removing REPO_ROOT is checked.
     assert lines[c_index + 1] == str(REPO_ROOT.resolve()) or lines[c_index + 1] == str(REPO_ROOT), f"-C not repo root: {lines[c_index+1]}"
     argv_line = " ".join(lines).replace(str(REPO_ROOT.resolve()), "").replace(str(REPO_ROOT), "")
     assert "worktrees" not in argv_line, f"Shared mode should not reference worktree: {argv_line}"
