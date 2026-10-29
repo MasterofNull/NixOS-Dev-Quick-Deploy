@@ -151,17 +151,32 @@ _EXECUTOR_TABLE = {
 
 
 def _apparmor_rules_already_present(profile: str, rules: list) -> bool:
-    """Return True when all proposed AppArmor rules already exist in mcp-servers.nix."""
+    """True when every rule is an effective (non-comment) line inside the target profile's block."""
     if not profile or not rules:
         return False
     nix_file = _REPO_ROOT / "nix" / "modules" / "services" / "mcp-servers.nix"
     try:
-        text = nix_file.read_text(encoding="utf-8")
+        lines = nix_file.read_text(encoding="utf-8").splitlines()
     except OSError:
         return False
-    if profile not in text:
+    header = f'security.apparmor.policies."{profile}"'
+    start = next((i for i, ln in enumerate(lines) if header in ln), -1)
+    if start == -1:
         return False
-    return all(str(rule).strip() in text for rule in rules)
+    effective = set()
+    in_profile = False
+    for ln in lines[start + 1:]:
+        body = ln.strip()
+        if body.startswith("security.apparmor.policies."):
+            break
+        if not in_profile:
+            in_profile = body.startswith("profile = ''")
+            continue
+        if body == "'';":
+            break
+        if body and not body.startswith("#"):
+            effective.add(body.split("  #", 1)[0].strip())
+    return all(str(rule).strip() in effective for rule in rules)
 
 
 def _resolve_actor(label: str = "") -> str:
@@ -202,8 +217,16 @@ def approve_alert(alert_id: str, actor: str) -> int:
     ok, err = True, ""
     try:
         if executor_key:
+            if executor_key == "apparmor_fix":
+                from apparmor_rules import rule_error
+                bad = [r for r in alert.get("payload", {}).get("rules_proposed", []) or [] if rule_error(r)]
+                if bad:
+                    print(f"  Refusing: {len(bad)} rule(s) fail validation: {bad!r}", file=sys.stderr)
+                    ok, err = False, "rule validation failed"
+                    executor_key = None
             if (
-                executor_key == "apparmor_fix"
+                ok
+                and executor_key == "apparmor_fix"
                 and _apparmor_rules_already_present(
                     alert.get("payload", {}).get("profile", ""),
                     alert.get("payload", {}).get("rules_proposed", []),
