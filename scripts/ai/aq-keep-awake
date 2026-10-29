@@ -1,0 +1,249 @@
+#!/usr/bin/env python3
+"""aq-keep-awake: opt-in guard that keeps the laptop awake (lid closed) while delegated tasks run.
+
+  aq-keep-awake on|off|status [--threshold 40] [--temp-limit 90]
+  aq-keep-awake watch [--interval 30]     (run by the aq-keep-awake user service)
+
+Default is OFF: lid close and manual suspend behave normally. When ON, the watcher holds a
+logind `handle-lid-switch:sleep` inhibitor only while a delegated task runs AND guards pass
+(AC online or battery >= threshold, no thermal zone above the limit). If the lock is released
+while the lid is closed, the machine is suspended so it sleeps as the user expected.
+"""
+import argparse
+import json
+import os
+import subprocess
+import sys
+import time
+from pathlib import Path
+
+DEFAULT_THRESHOLD = 40
+DEFAULT_TEMP_LIMIT = 90.0
+REPO_ROOT = Path(__file__).resolve().parents[2]
+
+
+def state_path():
+    base = os.environ.get("XDG_STATE_HOME") or str(Path.home() / ".local" / "state")
+    return Path(os.environ.get("AQ_KEEP_AWAKE_STATE") or Path(base) / "aq" / "keep-awake.json")
+
+
+def load_state():
+    try:
+        d = json.loads(state_path().read_text())
+    except (OSError, ValueError):
+        d = {}
+    return {
+        "mode": "on" if d.get("mode") == "on" else "off",
+        "threshold": int(d.get("threshold", DEFAULT_THRESHOLD)),
+        "temp_limit": float(d.get("temp_limit", DEFAULT_TEMP_LIMIT)),
+    }
+
+
+def save_state(st):
+    p = state_path()
+    p.parent.mkdir(parents=True, exist_ok=True)
+    tmp = p.with_suffix(".tmp")
+    tmp.write_text(json.dumps(st))
+    tmp.replace(p)
+
+
+def decide(mode_on, tasks_running, ac_online, battery_pct, threshold,
+           max_temp_c, temp_limit, lid_closed, lock_held):
+    """Pure decision. Unknown sensors (None) do not trip a guard (desktop / no sensor)."""
+    power_ok = True
+    if ac_online is not True and battery_pct is not None:
+        power_ok = battery_pct >= threshold
+    elif ac_online is False and battery_pct is None:
+        power_ok = False
+    thermal_ok = max_temp_c is None or max_temp_c <= temp_limit
+    guards_ok = power_ok and thermal_ok
+    hold = bool(mode_on and tasks_running and guards_ok)
+    if not mode_on:
+        reason = "mode off"
+    elif not tasks_running:
+        reason = "no delegated task running"
+    elif not power_ok:
+        reason = f"power guard: on battery {battery_pct}% < {threshold}%"
+    elif not thermal_ok:
+        reason = f"thermal guard: {max_temp_c:.0f}C > {temp_limit:.0f}C"
+    else:
+        reason = "task running, guards ok"
+    suspend = bool(lock_held and not hold and lid_closed)
+    return {"hold": hold, "suspend": suspend, "reason": reason,
+            "guards_ok": guards_ok, "power_ok": power_ok, "thermal_ok": thermal_ok}
+
+
+def _read(p):
+    try:
+        return Path(p).read_text().strip()
+    except OSError:
+        return None
+
+
+def read_power(root="/sys/class/power_supply"):
+    ac = None
+    bat = None
+    base = Path(root)
+    if base.is_dir():
+        for d in sorted(base.iterdir()):
+            t = _read(d / "type")
+            if t == "Mains":
+                if _read(d / "online") == "1":
+                    ac = True
+                elif ac is None:
+                    ac = False
+            elif t == "Battery":
+                cap = _read(d / "capacity")
+                if cap and cap.isdigit():
+                    bat = int(cap) if bat is None else min(bat, int(cap))
+    return ac, bat
+
+
+def read_max_temp(root="/sys/class/thermal"):
+    temps = []
+    base = Path(root)
+    if base.is_dir():
+        for z in base.glob("thermal_zone*"):
+            v = _read(z / "temp")
+            try:
+                temps.append(int(v) / 1000.0)
+            except (TypeError, ValueError):
+                pass
+    return max(temps) if temps else None
+
+
+def lid_closed(root="/proc/acpi/button/lid"):
+    base = Path(root)
+    if base.is_dir():
+        for d in base.iterdir():
+            s = _read(d / "state")
+            if s and "closed" in s:
+                return True
+    return False
+
+
+def delegated_tasks_running(delegation_dir):
+    reg = Path(delegation_dir) / "registry.jsonl"
+    try:
+        for line in reg.read_text().splitlines():
+            try:
+                e = json.loads(line)
+            except ValueError:
+                continue
+            if e.get("status") != "running":
+                continue
+            pid = e.get("pid")
+            if not pid:
+                return True
+            try:
+                os.kill(int(pid), 0)
+                return True
+            except ProcessLookupError:
+                continue
+            except (PermissionError, ValueError):
+                return True
+    except OSError:
+        pass
+    try:
+        out = subprocess.run(["systemd-inhibit", "--list", "--no-legend"],
+                             capture_output=True, text=True, timeout=5).stdout
+        return "aq-delegate" in out
+    except (OSError, subprocess.SubprocessError):
+        return False
+
+
+def snapshot(st, delegation_dir):
+    ac, bat = read_power()
+    return {"tasks": delegated_tasks_running(delegation_dir), "ac": ac, "battery": bat,
+            "temp": read_max_temp(), "lid": lid_closed(), "state": st}
+
+
+def decide_from(snap, lock_held):
+    st = snap["state"]
+    return decide(st["mode"] == "on", snap["tasks"], snap["ac"], snap["battery"],
+                  st["threshold"], snap["temp"], st["temp_limit"], snap["lid"], lock_held)
+
+
+def log(msg):
+    print(f"aq-keep-awake: {msg}", flush=True)  # stdout -> journal under systemd
+
+
+def cmd_watch(args):
+    delegation_dir = args.delegation_dir
+    holder = None
+    last = None
+    while True:
+        if holder is not None and holder.poll() is not None:
+            holder = None
+        snap = snapshot(load_state(), delegation_dir)
+        d = decide_from(snap, holder is not None)
+        if d["hold"] and holder is None:
+            holder = subprocess.Popen(
+                ["systemd-inhibit", "--what=handle-lid-switch:sleep", "--who=aq-keep-awake",
+                 "--why=delegated task running (keep-awake on)", "--mode=block", "sleep", "infinity"])
+            log("HOLD lock: " + d["reason"])
+        elif not d["hold"] and holder is not None:
+            holder.terminate()
+            try:
+                holder.wait(timeout=5)
+            except subprocess.TimeoutExpired:
+                holder.kill()
+            holder = None
+            log("RELEASE lock: " + d["reason"])
+            if d["suspend"]:
+                log("lid closed while releasing; suspending")
+                subprocess.run(["systemctl", "suspend"], check=False)
+        key = (d["hold"], d["reason"])
+        if key != last:
+            if not (d["hold"] or holder is not None) or last is None:
+                log(f"state: hold={d['hold']} reason={d['reason']}")
+            last = key
+        time.sleep(args.interval)
+
+
+def cmd_status(args):
+    st = load_state()
+    snap = snapshot(st, args.delegation_dir)
+    held = "aq-keep-awake" in (subprocess.run(["systemd-inhibit", "--list", "--no-legend"],
+                               capture_output=True, text=True).stdout if _have("systemd-inhibit") else "")
+    d = decide_from(snap, held)
+    print(f"mode: {st['mode']}  threshold: {st['threshold']}%  temp-limit: {st['temp_limit']:.0f}C")
+    print(f"tasks running: {snap['tasks']}  lid closed: {snap['lid']}")
+    print(f"ac: {snap['ac']}  battery: {snap['battery']}  max temp: {snap['temp']}")
+    print(f"guards ok: {d['guards_ok']} (power {d['power_ok']}, thermal {d['thermal_ok']})")
+    print(f"lock held: {held}  would hold: {d['hold']}  reason: {d['reason']}")
+    return 0
+
+
+def _have(cmd):
+    from shutil import which
+    return which(cmd) is not None
+
+
+def main(argv=None):
+    ap = argparse.ArgumentParser(prog="aq-keep-awake")
+    ap.add_argument("cmd", choices=["on", "off", "status", "watch"])
+    ap.add_argument("--threshold", type=int)
+    ap.add_argument("--temp-limit", type=float)
+    ap.add_argument("--interval", type=float, default=30.0)
+    ap.add_argument("--delegation-dir",
+                    default=os.environ.get("AQ_DELEGATION_DIR") or str(REPO_ROOT / ".agents" / "delegation"))
+    args = ap.parse_args(argv)
+    if args.cmd in ("on", "off"):
+        st = load_state()
+        st["mode"] = args.cmd
+        if args.threshold is not None:
+            st["threshold"] = args.threshold
+        if args.temp_limit is not None:
+            st["temp_limit"] = args.temp_limit
+        save_state(st)
+        print(f"keep-awake {args.cmd} (threshold {st['threshold']}%, temp-limit {st['temp_limit']:.0f}C)")
+        return 0
+    if args.cmd == "status":
+        return cmd_status(args)
+    cmd_watch(args)
+    return 0
+
+
+if __name__ == "__main__":
+    sys.exit(main())

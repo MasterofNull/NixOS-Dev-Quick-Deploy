@@ -447,7 +447,8 @@ ${prompt}"
         # task output file, not /dev/null.
         local _coord_url="${HYBRID_COORDINATOR_URL:-http://127.0.0.1:8003}"
         local _audit_helper; _audit_helper="$SCRIPT_DIR/lib/audit-post.sh"
-        nohup bash "$SCRIPT_DIR/lib/gemini-background-worker.sh" \
+        if source "$SCRIPT_DIR/lib/sleep-inhibit.sh" 2>/dev/null; then aq_sleep_inhibit_prefix "$id"; else AQ_INHIBIT_PREFIX=(); echo "WARN: sleep-inhibit.sh not sourceable; task runs without an idle inhibitor" >&2; fi
+        nohup "${AQ_INHIBIT_PREFIX[@]}" bash "$SCRIPT_DIR/lib/gemini-background-worker.sh" \
             "$output_file" "$_audit_helper" "$_coord_url" "$REGISTRY" "$id" "$role" "$prompt" \
             "$GEMINI_MIN_CONTENT_BYTES" -- "${cmd[@]}" \
             </dev/null >> "$output_file" 2>&1 &

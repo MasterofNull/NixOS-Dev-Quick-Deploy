@@ -278,6 +278,37 @@
         "git"
       ],
       "ci_workflow": ".github/workflows/test.yml#syntax"
+    },
+    {
+      "id": "delegate-sleep-inhibit",
+      "cmd": "scripts/testing/test-delegate-sleep-inhibit.py",
+      "paths": [
+        "scripts/ai/delegate-to-*",
+        "scripts/ai/lib/sleep-inhibit.sh",
+        "scripts/testing/test-delegate-sleep-inhibit.py"
+      ],
+      "needs": [
+        "bash",
+        "python3"
+      ],
+      "ci_workflow": ".github/workflows/test.yml#syntax"
+    },
+    {
+      "id": "mobility-sleep-resilience",
+      "cmd": "scripts/testing/test-mobility-sleep-resilience.py",
+      "paths": [
+        "scripts/ai/aq-keep-awake",
+        "scripts/ai/aq-llama-resume-gate",
+        "scripts/ai/lib/conn_retry.py",
+        "scripts/testing/test-mobility-sleep-resilience.py",
+        "scripts/ai/delegate-to-local"
+      ],
+      "needs": [
+        "bash",
+        "python3",
+        "curl"
+      ],
+      "ci_workflow": ".github/workflows/test.yml#syntax"
     }
   ],
   "ci_exempt": [

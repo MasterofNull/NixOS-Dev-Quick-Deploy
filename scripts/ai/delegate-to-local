@@ -412,6 +412,18 @@ print(classify_mode(sys.argv[1]))
         [[ -n "$TASK_TYPE" ]] && _DISPATCH_ARGS+=(--task-type "$TASK_TYPE")
         [[ -n "$MAX_TOKENS" ]] && _DISPATCH_ARGS+=(--max-tokens "$MAX_TOKENS")
 
+        # llama-cpp restarts on suspend/resume and drops in-flight requests: in direct mode,
+        # re-run the same dispatch once after /health recovers (connection errors only).
+        if [[ "$_EFFECTIVE_MODE" == "direct" ]]; then
+            _DISPATCH_ARGS=(
+                python3 "$LIB_DIR/conn_retry.py"
+                --task-id "$ID" --output "$OUTPUT_FILE"
+                --llama-url "http://127.0.0.1:${LLAMA_PORT}"
+                --delegation-dir "$DELEGATION_DIR"
+                -- "${_DISPATCH_ARGS[@]}"
+            )
+        fi
+
         if [[ "$WAIT" == "true" ]]; then
             info "Running in blocking mode (timeout: ${TIMEOUT}s)..."
             DISPATCH_OK=true
@@ -491,10 +503,11 @@ print(classify_mode(sys.argv[1]))
             # process already returned by then — that re-entry point is what
             # performs the patch/branch handback + teardown for the
             # background-mode case).
+            if source "$SCRIPT_DIR/lib/sleep-inhibit.sh" 2>/dev/null; then aq_sleep_inhibit_prefix "$ID"; else AQ_INHIBIT_PREFIX=(); echo "WARN: sleep-inhibit.sh not sourceable; task runs without an idle inhibitor" >&2; fi
             if [[ -n "$WT_PATH" ]]; then
-                setsid bash -c "child_rc=0; cd $(printf '%q' "$WT_PATH") && $(printf '%q ' "${_DISPATCH_ARGS[@]}") || child_rc=\$?; handback_rc=0; $(printf '%q' "$SCRIPT_PATH") --internal-worktree-handback $(printf '%q' "$ID") $(printf '%q' "$WT_PATH") $(printf '%q' "$WT_BRANCH") >/dev/null 2>&1 || handback_rc=\$?; [[ \$handback_rc -eq 0 ]] || exit \$handback_rc; exit \$child_rc" > /dev/null 2>&1 &
+                setsid "${AQ_INHIBIT_PREFIX[@]}" bash -c "child_rc=0; cd $(printf '%q' "$WT_PATH") && $(printf '%q ' "${_DISPATCH_ARGS[@]}") || child_rc=\$?; handback_rc=0; $(printf '%q' "$SCRIPT_PATH") --internal-worktree-handback $(printf '%q' "$ID") $(printf '%q' "$WT_PATH") $(printf '%q' "$WT_BRANCH") >/dev/null 2>&1 || handback_rc=\$?; [[ \$handback_rc -eq 0 ]] || exit \$handback_rc; exit \$child_rc" > /dev/null 2>&1 &
             else
-                setsid "${_DISPATCH_ARGS[@]}" > /dev/null 2>&1 &
+                setsid "${AQ_INHIBIT_PREFIX[@]}" "${_DISPATCH_ARGS[@]}" > /dev/null 2>&1 &
             fi
             BG_PID=$!
             disown "$BG_PID"
