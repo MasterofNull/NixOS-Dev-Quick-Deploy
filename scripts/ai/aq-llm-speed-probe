@@ -1,0 +1,186 @@
+#!/usr/bin/env python3
+"""aq-llm-speed-probe — fixed small completion against the local llama server; records
+gen/prompt tok/s plus power + memory context and labels the likely cause when slow.
+
+Why: on battery in power-saver the local model ran at ~1.7-2.0 tok/s vs 5.3 baseline
+(.agents/delegation/outputs/llama-throughput-diagnosis-20261027.md). This makes that
+regression visible instead of silent.
+
+Exit: 0 ok or skipped(busy), 1 slow (< threshold), 2 probe error (server unreachable).
+Env: LLAMA_URL | LLAMA_CPP_BASE_URL | LLAMA_PORT (default 8080), AQ_TELEMETRY_DIR,
+AQ_SPEED_MIN_TOKPS (3.2), AQ_SPEED_MODEL_GB (22.5), AQ_SPEED_MAJFAULT_RISE (2000).
+Test overrides: AQ_PROBE_SYSFS_ROOT, AQ_PROBE_CPUINFO, AQ_PROBE_MEMINFO, AQ_PROBE_VMSTAT,
+AQ_PROBE_POWER_PROFILE, AQ_PROBE_NO_PGREP=1.
+"""
+import json
+import os
+import subprocess
+import sys
+import time
+import urllib.request
+from pathlib import Path
+
+PROMPT = "Count from one to twenty in English words, separated by commas."
+BUSY_PGREP = "agent_executor|aq-agent-loop|delegate-to-local"
+
+
+def base_url():
+    for k in ("LLAMA_URL", "LLAMA_CPP_BASE_URL"):
+        if os.environ.get(k):
+            return os.environ[k].rstrip("/")
+    return f"http://127.0.0.1:{os.environ.get('LLAMA_PORT', '8080')}"
+
+
+def read(path, default=""):
+    try:
+        return Path(path).read_text()
+    except OSError:
+        return default
+
+
+def ac_online(sysfs):
+    found = None
+    for d in sorted(Path(sysfs, "class/power_supply").glob("*")):
+        if read(d / "type").strip() in ("Mains", "USB"):
+            found = bool(found) or read(d / "online").strip() == "1"
+    return found  # None => no AC supply node (desktop/unknown)
+
+
+def power_profile(sysfs):
+    ov = os.environ.get("AQ_PROBE_POWER_PROFILE")
+    if ov:
+        return ov
+    try:
+        out = subprocess.run(["powerprofilesctl", "get"], capture_output=True, text=True, timeout=5)
+        if out.returncode == 0 and out.stdout.strip():
+            return out.stdout.strip()
+    except Exception:  # noqa: BLE001
+        pass
+    pp = read(Path(sysfs, "firmware/acpi/platform_profile")).strip()
+    return {"low-power": "power-saver", "balanced": "balanced", "performance": "performance"}.get(pp, pp or "unknown")
+
+
+def max_cpu_mhz():
+    vals = []
+    for line in read(os.environ.get("AQ_PROBE_CPUINFO", "/proc/cpuinfo")).splitlines():
+        if line.startswith("cpu MHz"):
+            try:
+                vals.append(float(line.split(":")[1]))
+            except ValueError:
+                pass
+    return round(max(vals), 1) if vals else None
+
+
+def mem_available_mb():
+    for line in read(os.environ.get("AQ_PROBE_MEMINFO", "/proc/meminfo")).splitlines():
+        if line.startswith("MemAvailable:"):
+            return int(line.split()[1]) // 1024
+    return None
+
+
+def majfaults():
+    for line in read(os.environ.get("AQ_PROBE_VMSTAT", "/proc/vmstat")).splitlines():
+        if line.startswith("pgmajfault "):
+            return int(line.split()[1])
+    return None
+
+
+def slot_busy(base):
+    try:
+        with urllib.request.urlopen(f"{base}/slots", timeout=5) as r:
+            slots = json.loads(r.read().decode())
+        slots = slots if isinstance(slots, list) else [slots]
+        if any(s.get("is_processing") for s in slots):
+            return "llama slot busy"
+    except Exception:  # noqa: BLE001 — /slots may be disabled
+        pass
+    if not os.environ.get("AQ_PROBE_NO_PGREP"):
+        try:
+            out = subprocess.run(["pgrep", "-f", BUSY_PGREP], capture_output=True, text=True, timeout=5)
+            mine = {str(os.getpid()), str(os.getppid())}
+            if [p for p in out.stdout.split() if p not in mine]:
+                return "delegated task running"
+        except Exception:  # noqa: BLE001
+            pass
+    return None
+
+
+def complete(base):
+    body = json.dumps({
+        "messages": [{"role": "user", "content": PROMPT}],
+        "max_tokens": 60, "temperature": 0, "stream": False,
+        "chat_template_kwargs": {"enable_thinking": False},
+    }).encode()
+    req = urllib.request.Request(f"{base}/v1/chat/completions", body, {"Content-Type": "application/json"})
+    t0 = time.time()
+    with urllib.request.urlopen(req, timeout=float(os.environ.get("AQ_SPEED_TIMEOUT", "300"))) as r:
+        data = json.loads(r.read().decode())
+    wall = time.time() - t0
+    tm = data.get("timings") or {}
+    gen, pp = tm.get("predicted_per_second"), tm.get("prompt_per_second")
+    if gen is None:
+        n = (data.get("usage") or {}).get("completion_tokens")
+        gen = round(n / wall, 2) if n and wall > 0 else None
+    return gen, pp
+
+
+def telemetry_path():
+    cands = [os.environ.get("AQ_TELEMETRY_DIR"), "/var/lib/ai-stack/hybrid/telemetry",
+             str(Path.home() / ".local/state/aq")]
+    for d in filter(None, cands):
+        try:
+            Path(d).mkdir(parents=True, exist_ok=True)
+            if os.access(d, os.W_OK):
+                return Path(d) / "llm-speed-probe.jsonl"
+        except OSError:
+            continue
+    return None
+
+
+def main():
+    sysfs = os.environ.get("AQ_PROBE_SYSFS_ROOT", "/sys")
+    threshold = float(os.environ.get("AQ_SPEED_MIN_TOKPS", "3.2"))
+    model_mb = float(os.environ.get("AQ_SPEED_MODEL_GB", "22.5")) * 1024
+    base = base_url()
+    rec = {"ts": time.strftime("%Y-%m-%dT%H:%M:%S%z"), "threshold_tokps": threshold}
+
+    busy = slot_busy(base)
+    if busy:
+        rec.update(status="skipped", reason=busy)
+        print(json.dumps(rec))
+        return 0
+
+    mf0 = majfaults()
+    try:
+        gen, pp = complete(base)
+    except Exception as e:  # noqa: BLE001
+        rec.update(status="error", reason=f"{type(e).__name__}: {e}")
+        print(json.dumps(rec))
+        return 2
+    mf1 = majfaults()
+
+    ac, prof, mem = ac_online(sysfs), power_profile(sysfs), mem_available_mb()
+    rec.update(gen_tokps=gen, prompt_tokps=pp, ac_online=ac, power_profile=prof,
+               max_cpu_mhz=max_cpu_mhz(), mem_available_mb=mem,
+               majfault_delta=(mf1 - mf0) if mf0 is not None and mf1 is not None else None)
+    slow = gen is None or gen < threshold
+    causes = []
+    if slow:
+        if ac is False or prof not in ("performance", "unknown"):
+            causes.append("POWER")
+        rise = rec["majfault_delta"] or 0
+        if (mem is not None and mem < model_mb) or rise > int(os.environ.get("AQ_SPEED_MAJFAULT_RISE", "2000")):
+            causes.append("MEMORY")
+    rec["status"] = "slow" if slow else "ok"
+    rec["cause"] = ("+".join(causes) or "UNKNOWN") if slow else None
+
+    path = telemetry_path()
+    if path:
+        with path.open("a") as f:
+            f.write(json.dumps(rec) + "\n")
+    print(json.dumps(rec))
+    return 1 if slow else 0
+
+
+if __name__ == "__main__":
+    sys.exit(main())
