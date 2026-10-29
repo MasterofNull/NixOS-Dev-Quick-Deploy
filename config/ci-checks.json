@@ -1427,6 +1427,8 @@
         "scripts/testing/test-prm-steering.py",
         "scripts/testing/test-progressive-disclosure-implementation.py",
         "scripts/testing/test-prompt-eval-transport-guard.py",
+        "scripts/testing/test-radar-ingest.py",
+        "scripts/testing/test-runtime-state-out-of-tracked-config.py",
         "scripts/testing/test-provider-projection.py",
         "scripts/testing/test-prsi-budget-reservation.py",
         "scripts/testing/test-prsi-queue-fail-closed.py",
@@ -1524,6 +1526,8 @@
         "scripts/testing/test-prm-steering.py",
         "scripts/testing/test-progressive-disclosure-implementation.py",
         "scripts/testing/test-prompt-eval-transport-guard.py",
+        "scripts/testing/test-radar-ingest.py",
+        "scripts/testing/test-runtime-state-out-of-tracked-config.py",
         "scripts/testing/test-provider-projection.py",
         "scripts/testing/test-prsi-budget-reservation.py",
         "scripts/testing/test-prsi-queue-fail-closed.py",
@@ -2383,10 +2387,6 @@
     {
       "script": "scripts/testing/test-query-performance.py",
       "reason": "fails on main: ModuleNotFoundError 'lib.search' (sys.path/dependency not available), tracked in backlog"
-    },
-    {
-      "script": "scripts/testing/test-radar-ingest.py",
-      "reason": "mutates tracked repo state when run in-tree (writes .agent/*, config/*, or sqlite files); needs tmpdir isolation before it can be a gate, tracked in backlog"
     },
     {
       "script": "scripts/testing/test-real-time-learning-integration.py",

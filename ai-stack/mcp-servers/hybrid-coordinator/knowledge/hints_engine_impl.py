@@ -1330,6 +1330,17 @@ class HintsEngine:
         else:
             entries = data.get("prompts") or data.get("templates") or []
 
+        # Runtime scores live in eval-state.json (aq-prompt-eval); state wins over the static registry.
+        state_path = Path(
+            os.getenv("AQ_PROMPT_EVAL_STATE", str(Path(self._registry_path).with_name("eval-state.json")))
+        )
+        try:
+            eval_state = json.loads(state_path.read_text(encoding="utf-8"))
+        except (OSError, ValueError):
+            eval_state = {}
+        if not isinstance(eval_state, dict):
+            eval_state = {}
+
         hints: List[Hint] = []
         for entry in entries:
             if not isinstance(entry, dict):
@@ -1338,6 +1349,10 @@ class HintsEngine:
             entry_id = str(entry.get("id") or entry.get("name") or "")
             if not entry_id:
                 continue
+
+            state_entry = eval_state.get(entry_id)
+            if isinstance(state_entry, dict) and "mean_score" in state_entry:
+                entry = {**entry, "mean_score": state_entry["mean_score"]}
 
             title = str(entry.get("title") or entry.get("name") or entry_id)
             tags: List[str] = list(entry.get("tags") or [])
