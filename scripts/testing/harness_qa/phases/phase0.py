@@ -1597,7 +1597,7 @@ def _check_frontier_fe2b_prompt_compile(ctx: RunContext) -> list[CheckResult]:
 
 
 def _check_durable_triage_engine(ctx: RunContext) -> list[CheckResult]:
-    """0.10.66: System 1 High-Frequency Triage Engine (DP-1) plus dashboard visibility."""
+    """0.10.70: System 1 High-Frequency Triage Engine (DP-1) plus dashboard visibility."""
     desc = "System 1 triage engine: sub-200ms classification, persistent cursor, rate limiting, dashboard visibility"
     test = ctx.repo_root / "scripts" / "testing" / "test-aq-triage.py"
     cli = ctx.repo_root / "scripts" / "ai" / "aq-triage"
@@ -1606,7 +1606,7 @@ def _check_durable_triage_engine(ctx: RunContext) -> list[CheckResult]:
     js = ctx.repo_root / "assets" / "dashboard.js"
     missing = [str(p.relative_to(ctx.repo_root)) for p in (test, cli, lib, route, js) if not p.exists()]
     if missing:
-        return [failed(5, "0.10.66", desc, f"missing: {', '.join(missing)}")]
+        return [failed(5, "0.10.70", desc, f"missing: {', '.join(missing)}")]
     try:
         env = dict(os.environ)
         if not env.get("CI"):
@@ -1614,12 +1614,12 @@ def _check_durable_triage_engine(ctx: RunContext) -> list[CheckResult]:
         proc = subprocess.run([sys.executable, str(test)], cwd=str(ctx.repo_root), capture_output=True, text=True,
                               timeout=120, check=False, env=env)
         if proc.returncode != 0 or not ("ALL 6 FIXTURES PASS" in proc.stdout or "PASS WITH SKIPS" in proc.stdout):
-            return [failed(5, "0.10.66", desc, (proc.stderr or proc.stdout or "fixture failed")[-240:])]
+            return [failed(5, "0.10.70", desc, (proc.stderr or proc.stdout or "fixture failed")[-240:])]
         if "_triage_health_summary" not in route.read_text(encoding="utf-8") or "· system 1 stream triage" not in js.read_text(encoding="utf-8"):
-            return [failed(5, "0.10.66", desc, "dashboard triage visibility contract missing")]
+            return [failed(5, "0.10.70", desc, "dashboard triage visibility contract missing")]
     except (OSError, subprocess.TimeoutExpired) as error:
-        return [failed(5, "0.10.66", desc, str(error)[:240])]
-    return [passed(5, "0.10.66", desc)]
+        return [failed(5, "0.10.70", desc, str(error)[:240])]
+    return [passed(5, "0.10.70", desc)]
 
 
 def _check_pi_agent_streaming_canvas(ctx: RunContext) -> list[CheckResult]:
