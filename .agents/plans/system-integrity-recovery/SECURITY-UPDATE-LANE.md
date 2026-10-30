@@ -26,17 +26,17 @@ Status: DRAFT for independent review. Owner-directed 2026-10-29: the system must
 2. Refresh in a worktree based on `origin/main`: `nix flake update`, then build the system and Home Manager closures inside the existing idle lease. Reuse `aq-auto-update`'s lease, memory and llama stop/start logic; do not duplicate it.
 3. Open a lock-only PR `chore(flake): refresh flake.lock (<date>)` whose body lists every input (old → new revision and date), the closure paths, and the CVE ids the closure scan reports as fixed.
 4. Deterministic fast-track review: a checker mints the review receipt only when
-   - the diff touches `flake.lock` alone,
-   - every changed input's `lastModified` moved forward,
-   - no input's source (type, owner, repo, url) changed,
-   - both closures built.
+   - the diff touches `flake.lock` alone;
+   - the comparison covers every node in `flake.lock` (nested inputs and `follows` targets node by node), not only root inputs;
+   - no node was added or removed;
+   - no node's `original` or `locked` type/owner/repo/url changed;
+   - every changed node's `lastModified` moved forward;
+   - no node has an unchanged `rev` with a changed `narHash`;
+   - both closures were built from the PR head in this run: the checker re-evaluates the system and Home Manager `drvPath` from the PR head and requires that exact output path in the local store (a cached path from the old lock does not count).
 
    Any other diff gets a normal review. The receipt names the checker as reviewer lane `deterministic-lock-check`, so it is never confused with a model review.
-   Hardening after local review `local-20261029-131218-j920v4` (REQUEST_CHANGES):
-   - The checks run over **every node** in `flake.lock`, not only root inputs. Nested inputs and `follows` targets are compared node by node. Any added or removed node, or any change to a node's `original` or `locked` type/owner/repo/url, disqualifies the fast track.
-   - A node whose `rev` is unchanged but whose `narHash` changed disqualifies the fast track; same revision with different content is a red flag.
-   - Build proof is bound to the new lock: the checker re-evaluates both closures' `drvPath` from the PR head and requires that exact store path to exist in the local store (built in this run). A cached path from the old lock does not count.
-   - If the idle lease is not acquired, the cycle is deferred. It never builds while llama.cpp is running (no OOM path).
+   Criteria 2, 3, 4, 6 and 7 were added after local review `local-20261029-131218-j920v4` (REQUEST_CHANGES).
+   If the idle lease is not acquired, the whole cycle is deferred to the next trigger: no build, no branch push and no PR are produced. The lane never opens a lock PR without both closures built, and it never builds while llama.cpp is running (no OOM path).
 5. After the owner merges: `aq-deploy-current` pulls and rebuilds atomically, then verifies the running revision equals `origin/main`.
 6. Rework `aq-auto-update` so it never edits the checkout's lock. Its `run` path deploys only what `origin/main` pins (refresh happens in step 2).
 
