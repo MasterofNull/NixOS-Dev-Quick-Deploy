@@ -1,0 +1,12 @@
+{
+  "schema": 1,
+  "pr": 662,
+  "reviewed_head_sha": "79033f6ca451910f59720684cd75c96eb3f61f19",
+  "run_id": "codex-20261030-010638-nyv9or",
+  "reviewer_lane": "codex",
+  "author_lane": "claude",
+  "verdict": "PASS_WITH_FOLLOWUPS",
+  "output_file": ".agents/delegation/outputs/codex-20261030-010638-nyv9or.log",
+  "output_sha256": "319b4e3b98c946784bc49fd1364bce45940993874a3d40410bd125e3dfa8f320",
+  "created_at": "2026-10-30T08:09:20Z"
+}
