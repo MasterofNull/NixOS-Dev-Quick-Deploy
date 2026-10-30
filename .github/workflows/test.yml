@@ -479,6 +479,23 @@ jobs:
           chmod +x scripts/governance/run-ci-checks.sh
           ./scripts/governance/run-ci-checks.sh --all --only python-tooling-policy
 
+      - name: Set up Python (activation chain test)
+        uses: actions/setup-python@ece7cb06caefa5fff74198d8649806c4678c61a1  # v6
+        with:
+          python-version: "3.11"
+
+      - name: Set up uv
+        uses: astral-sh/setup-uv@d0cc045d04ccac9d8b7881df0226f9e82c39688e  # v6
+
+      - name: Install activation chain test dependencies
+        run: |
+          uv pip install --system cryptography
+
+      - name: Run activation chain verifier tests
+        run: |
+          chmod +x scripts/governance/run-ci-checks.sh
+          ./scripts/governance/run-ci-checks.sh --all --only activation-chain-test
+
       - name: Install gitleaks for factory kit scan
         run: |
           GITLEAKS_VERSION=8.24.3

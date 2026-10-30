@@ -49,36 +49,52 @@ def _is_hex(s, n: int) -> bool:
     return isinstance(s, str) and re.fullmatch(r"[0-9a-f]{%d}" % n, s) is not None
 
 
-def _check_envelope(env: dict) -> str | None:
-    """Structural check of the signed bytes; None when well-formed."""
+def _str(v) -> bool:
+    return isinstance(v, str) and bool(v)
+
+
+def _check_tuple(t) -> str | None:
+    if not isinstance(t, dict) or set(t) != set(_ITEM_FIELDS):
+        return "bad item tuple fields"
+    if not all(_str(t[f]) for f in ("plan", "item_id", "subject", "system_closure")):
+        return "bad item tuple strings"
+    if not (_is_hex(t["attestation_sha256"], 64) and _is_hex(t["evidence_baseline_sha256"], 64)):
+        return "bad item tuple hashes"
+    return None
+
+
+def _check_envelope(env) -> str | None:
+    """Strict structural check of the signed bytes (types first, exact field sets); None when well-formed."""
     if not isinstance(env, dict) or env.get("v") != ENVELOPE_VERSION or env.get("domain") != DOMAIN:
         return "bad version/domain"
     op = env.get("op")
-    if op not in OPS:
-        return f"unknown op {op!r}"
-    if type(env.get("seq")) is not int or env["seq"] < 0 or not _is_hex(env.get("prev_hash"), 64):
+    if not isinstance(op, str) or op not in OPS:
+        return "unknown op"
+    seq = env.get("seq")
+    if type(seq) is not int or seq < 0 or not _is_hex(env.get("prev_hash"), 64):
         return "bad seq/prev_hash"
-    for f in ("deployment_id", "approver", "ts", "request_id"):
-        if not isinstance(env.get(f), str) or not env[f]:
-            return f"missing {f}"
+    if not all(_str(env.get(f)) for f in ("deployment_id", "approver", "ts", "request_id")):
+        return "bad common fields"
+    extra = {"genesis": set(), "revoke": {"plan", "item_id", "subject"}, "grant": set(_ITEM_FIELDS),
+             "wave-grant": {"wave_id", "items"}}[op]
+    if set(env) != set(_COMMON) | extra:
+        return "unexpected or missing fields"
     if op == "genesis":
-        return None if env["seq"] == 0 else "genesis must be seq 0"
-    if env["seq"] == 0:
+        return None if seq == 0 else "genesis must be seq 0"
+    if seq == 0:
         return "seq 0 must be genesis"
-    if op in ("grant", "revoke"):
-        needed = _ITEM_FIELDS if op == "grant" else ("plan", "item_id", "subject")
-        for f in needed:
-            if not isinstance(env.get(f), str) or not env[f]:
-                return f"missing {f}"
-        return None
-    # wave-grant
-    items = env.get("items")
-    if not isinstance(env.get("wave_id"), str) or not isinstance(items, list) or not items:
+    if op == "revoke":
+        return None if all(_str(env[f]) for f in extra) else "bad revoke identity"
+    if op == "grant":
+        return _check_tuple({f: env[f] for f in _ITEM_FIELDS})
+    items = env["items"]
+    if not _str(env["wave_id"]) or not isinstance(items, list) or not items:
         return "wave needs wave_id and items"
     seen_i, seen_s = set(), set()
     for t in items:
-        if not isinstance(t, dict) or any(not isinstance(t.get(f), str) or not t[f] for f in _ITEM_FIELDS):
-            return "bad wave tuple"
+        err = _check_tuple(t)
+        if err:
+            return err
         if (t["plan"], t["item_id"]) in seen_i or t["subject"] in seen_s:
             return "duplicate wave entry"
         seen_i.add((t["plan"], t["item_id"]))
@@ -162,13 +178,21 @@ def apply_envelope(items: dict, env: dict) -> None:
         st.evidence_baseline_sha256 = t["evidence_baseline_sha256"]
 
 
-def load_chain(log_dir, head_path, allowlist: list[str], deployment_id: str | None = None) -> ChainState:
+def load_chain(log_dir, head_path, allowlist: list[str], deployment_id: str) -> ChainState:
     """Verify every segment from genesis to the head checkpoint and fold the item states.
 
     Fails closed (blocked_all) for: missing/unreadable/corrupt head, missing segment dir or segments,
     gaps/duplicates, bad signature, broken prev_hash, head hash mismatch, a head beyond the highest
     segment (truncated tail), and any segment beyond the head (unfinalized write, possibly a revoke)."""
-    log_dir, head_path = Path(log_dir), Path(head_path)
+    if not _str(deployment_id):
+        return _fail("expected deployment_id unavailable")
+    try:
+        return _load_chain(Path(log_dir), Path(head_path), allowlist, deployment_id)
+    except Exception as e:  # any surprise is chain-invalid, never a crash in the projector
+        return _fail(f"verification error: {type(e).__name__}")
+
+
+def _load_chain(log_dir: Path, head_path: Path, allowlist: list[str], deployment_id: str) -> ChainState:
     try:
         head = _read_json(head_path)
     except (OSError, ValueError):
@@ -200,7 +224,7 @@ def load_chain(log_dir, head_path, allowlist: list[str], deployment_id: str | No
             return _fail(f"segment {seq} unreadable/corrupt", dep)
         env, sig = (seg.get("envelope"), seg.get("sig")) if isinstance(seg, dict) else (None, None)
         err = _check_envelope(env)
-        if err or not isinstance(sig, str) or not _is_hex(sig, 128):
+        if err or not _is_hex(sig, 128):
             return _fail(f"segment {seq} malformed: {err or 'bad sig'}", dep)
         if env["seq"] != seq or env["prev_hash"] != prev:
             return _fail(f"segment {seq} breaks chain", dep)
@@ -208,7 +232,7 @@ def load_chain(log_dir, head_path, allowlist: list[str], deployment_id: str | No
             return _fail(f"segment {seq} signature invalid", dep)
         if seq == 0:
             dep = env["deployment_id"]
-            if deployment_id is not None and dep != deployment_id:
+            if dep != deployment_id:
                 return _fail("genesis deployment_id differs from this machine", dep)
         elif env["deployment_id"] != dep:
             return _fail(f"segment {seq} deployment_id mismatch", dep)

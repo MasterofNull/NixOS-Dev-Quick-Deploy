@@ -5,7 +5,6 @@ import hashlib
 import importlib.machinery
 import importlib.util
 import json
-import os
 import shutil
 import sys
 import tempfile
@@ -15,15 +14,8 @@ from pathlib import Path
 REPO = Path(__file__).resolve().parents[2]
 sys.path.insert(0, str(REPO / "scripts" / "ai" / "lib"))
 import activation_chain as ac  # noqa: E402
-try:
-    from cryptography.hazmat.primitives import serialization  # noqa: E402
-    from cryptography.hazmat.primitives.asymmetric.ed25519 import Ed25519PrivateKey  # noqa: E402
-except ImportError:
-    # The CI syntax job runs the runner's bare python; locally (NixOS env) the module is always present.
-    if os.environ.get("CI") == "true":
-        print("SKIP: python 'cryptography' not installed in CI python; signature-dependent tests not run")
-        sys.exit(0)
-    raise
+from cryptography.hazmat.primitives import serialization  # noqa: E402  (hard dependency: CI installs it, a missing module fails the suite)
+from cryptography.hazmat.primitives.asymmetric.ed25519 import Ed25519PrivateKey  # noqa: E402
 
 _loader = importlib.machinery.SourceFileLoader("aq_pm_tracker_ac", str(REPO / "scripts" / "ai" / "aq-pm-tracker"))
 tracker = importlib.util.module_from_spec(importlib.util.spec_from_loader("aq_pm_tracker_ac", _loader))
@@ -44,7 +36,7 @@ class Chain:
     def __init__(self, root: Path, key=None):
         self.key = key or Ed25519PrivateKey.generate()
         self.log, self.head = root / "log", root / "head"
-        self.log.mkdir()
+        self.log.mkdir(parents=True)
         self.seq, self.prev = 0, ac.GENESIS_PREV
         self.hashes = []
         self.add("genesis", finalize=True)
@@ -78,7 +70,7 @@ class Chain:
         self.add("wave-grant", wave_id="w1", items=sorted((self.tup(i) for i in items), key=lambda t: t["item_id"]))
 
     def state(self):
-        return ac.load_chain(self.log, self.head, [pub_hex(self.key)])
+        return ac.load_chain(self.log, self.head, [pub_hex(self.key)], "dep1")
 
 
 def view(item="i1", sha=SHA):
@@ -126,7 +118,7 @@ class ChainTests(unittest.TestCase):
 
     def test_wrong_key_rejected(self):
         self.c.grant("i1")
-        st = ac.load_chain(self.c.log, self.c.head, [pub_hex(Ed25519PrivateKey.generate())])
+        st = ac.load_chain(self.c.log, self.c.head, [pub_hex(Ed25519PrivateKey.generate())], "dep1")
         self.assertFalse(st.ok)
 
     def test_replay_of_older_grant_breaks_chain(self):
@@ -216,6 +208,66 @@ class ChainTests(unittest.TestCase):
         st = ac.load_chain(self.c.log, self.c.head, [pub_hex(self.c.key)], deployment_id="other-machine")
         self.assertFalse(st.ok)
 
+    def test_expected_deployment_id_is_mandatory(self):
+        self.c.grant("i1")
+        for dep in (None, "", 5):
+            st = ac.load_chain(self.c.log, self.c.head, [pub_hex(self.c.key)], dep)
+            self.assertFalse(st.ok)
+            self.assertTrue(st.blocked_all)
+
+    def _resign(self, seq, mutate):
+        """Rewrite segment `seq` with a mutated envelope that is correctly signed (so only structure can reject it)."""
+        seg = self.c.log / f"{seq}.json"
+        d = json.loads(seg.read_text())
+        mutate(d["envelope"])
+        d["sig"] = self.c.key.sign(ac.signing_input(d["envelope"])).hex()
+        seg.write_text(json.dumps(d))
+
+    def test_malformed_envelopes_are_chain_invalid_never_exceptions(self):
+        self.c.grant("i1")
+        mutations = {
+            "op=[]": lambda e: e.update(op=[]), "op={}": lambda e: e.update(op={}), "op=None": lambda e: e.update(op=None),
+            "op=unknown": lambda e: e.update(op="nuke"), 'seq="1"': lambda e: e.update(seq="1"),
+            "seq=-1": lambda e: e.update(seq=-1), "seq=True": lambda e: e.update(seq=True),
+            "short prev_hash": lambda e: e.update(prev_hash="ab"), "prev_hash=None": lambda e: e.update(prev_hash=None),
+            "short attestation hash": lambda e: e.update(attestation_sha256="abc"),
+            "item_id=[]": lambda e: e.update(item_id=[]), "plan=None": lambda e: e.update(plan=None),
+            "unknown extra field": lambda e: e.update(extra="x"), "missing field": lambda e: e.pop("subject"),
+            "deployment_id=7": lambda e: e.update(deployment_id=7), "v=2": lambda e: e.update(v=2),
+        }
+        for name, m in mutations.items():
+            c = Chain(self.td / ("m" + str(abs(hash(name)))))  # fresh chain per mutation
+            c.grant("i1")
+            d = json.loads((c.log / "1.json").read_text())
+            m(d["envelope"])
+            d["sig"] = c.key.sign(ac.signing_input(d["envelope"])).hex() if name != "op=None" else d["sig"]
+            (c.log / "1.json").write_text(json.dumps(d))
+            st = c.state()                                   # must not raise
+            self.assertFalse(st.ok, name)
+            self.assertTrue(st.blocked_all, name)
+            self.assertEqual(ac.activation_status(view(), st, CLOSURE), "chain-invalid", name)
+
+    def test_malformed_wave_and_segment_json(self):
+        self.c.wave("i1")
+        self._resign(1, lambda e: e["items"][0].update(extra=1))
+        self.assertFalse(self.c.state().ok)
+        c2 = Chain(self.td / "w2")
+        c2.wave("i1")
+        self._resign_in(c2, 1, lambda e: e.update(items="notalist"))
+        self.assertFalse(c2.state().ok)
+        c3 = Chain(self.td / "w3")
+        c3.grant("i1")
+        (c3.log / "1.json").write_text("[1, 2]")
+        self.assertFalse(c3.state().ok)
+
+    @staticmethod
+    def _resign_in(c, seq, mutate):
+        seg = c.log / f"{seq}.json"
+        d = json.loads(seg.read_text())
+        mutate(d["envelope"])
+        d["sig"] = c.key.sign(ac.signing_input(d["envelope"])).hex()
+        seg.write_text(json.dumps(d))
+
     def test_no_genesis_dir_fails(self):
         shutil.rmtree(self.c.log)
         self.c.log.mkdir()
@@ -239,7 +291,7 @@ class TrackerTests(unittest.TestCase):
         self.addCleanup(setattr, tracker, "_ACTIVATION_ATTESTATIONS", REPO / ".agents" / "activation" / "attestations")
 
     def ctx(self, closure=CLOSURE):
-        return {"ac": ac, "state": self.c.state(), "closure": closure}
+        return {"ac": ac, "state": self.c.state(), "closure": closure, "claimed": True}
 
     def grant(self, item="i1"):
         self.c.grant(item, sha=self.sha)
@@ -267,9 +319,9 @@ class TrackerTests(unittest.TestCase):
         self.assertEqual(run_item(item, self.ctx())[0], "IN-PROGRESS")
         self.grant()
         self.assertEqual(run_item(item, self.ctx()), ("ACTIVATED", 100))
-        self.assertEqual(run_item(item, self.ctx("/nix/store/other"))[0], "IN-PROGRESS")   # stale
+        self.assertEqual(run_item(item, self.ctx("/nix/store/other"))[0], "SHIPPED")   # stale grant, live unit active
         (self.att / "p" / f"i1-{self.sha[:12]}.md").write_bytes(b"edited after signing")
-        self.assertEqual(run_item(item, self.ctx())[0], "IN-PROGRESS")                     # attestation replaced
+        self.assertEqual(run_item(item, self.ctx())[0], "SHIPPED")                         # attestation replaced
         # service not actually running => live ground truth wins, no ACTIVATED
         tracker._SYSTEMD_CACHE["x.service"] = {"ActiveState": "inactive", "UnitFileState": "disabled"}
         (self.att / "p" / f"i1-{self.sha[:12]}.md").write_bytes(self.body)
@@ -284,6 +336,98 @@ class TrackerTests(unittest.TestCase):
             self.assertNotEqual(run_item(it, None)[0], "ACTIVATED")
         self.c.revoke("i1")
         self.assertNotEqual(run_item(plain, self.ctx())[0], "ACTIVATED")
+
+    def real_ctx(self, dep="dep1", signers=True):
+        """Context built by the projector's own loader from (patched) fixed paths."""
+        sf = self.td / "signers.json"
+        sf.write_text(json.dumps({"keys": [pub_hex(self.c.key)] if signers else []}))
+        df = self.td / "deployment-id"
+        if dep is not None:
+            df.write_text(dep + "\n")
+        saved = (tracker._ACTIVATION_LOG_DIR, tracker._ACTIVATION_HEAD, tracker._ACTIVATION_SIGNERS,
+                 tracker._ACTIVATION_DEPLOYMENT_ID)
+        tracker._ACTIVATION_LOG_DIR, tracker._ACTIVATION_HEAD = self.c.log, self.c.head
+        tracker._ACTIVATION_SIGNERS, tracker._ACTIVATION_DEPLOYMENT_ID = sf, df
+        try:
+            return tracker._load_activation_ctx()
+        finally:
+            (tracker._ACTIVATION_LOG_DIR, tracker._ACTIVATION_HEAD, tracker._ACTIVATION_SIGNERS,
+             tracker._ACTIVATION_DEPLOYMENT_ID) = saved
+
+    def test_foreign_deployment_chain_rejected_by_projector(self):
+        tracker._SYSTEMD_CACHE["x.service"] = {"ActiveState": "active"}
+        self.addCleanup(tracker._SYSTEMD_CACHE.pop, "x.service", None)
+        item = {"id": "i1", "detection": {"activation_subject": "p:i1", "systemd_unit": "x.service"}}
+        self.grant()
+        good = self.real_ctx("dep1")
+        good["closure"] = CLOSURE
+        self.assertEqual(run_item(item, good), ("ACTIVATED", 100))
+        foreign = self.real_ctx("some-other-machine")          # validly signed chain, different deployment
+        foreign["closure"] = CLOSURE
+        self.assertFalse(foreign["state"].ok)
+        self.assertNotEqual(run_item(item, foreign)[0], "ACTIVATED")
+        self.assertTrue(tracker._activation_flags(item, "p", foreign)["grants_unverified"])
+        missing = self.real_ctx(None)                           # no deployment-id file: fail closed
+        missing["closure"] = CLOSURE
+        self.assertFalse(missing["state"].ok)
+        self.assertNotEqual(run_item(item, missing)[0], "ACTIVATED")
+        nosigners = self.real_ctx("dep1", signers=False)
+        self.assertNotEqual(run_item(item, nosigners)[0], "ACTIVATED")
+
+    def test_stale_and_unverified_reporting_through_projector(self):
+        unit = {"id": "i1", "detection": {"activation_subject": "p:i1", "systemd_unit": "x.service"}}
+        owner = {"id": "i2", "kind": "task", "detection": {"activation_subject": "p:i2", "blocker_note": "owner acts"}}
+        tracker._SYSTEMD_CACHE["x.service"] = {"ActiveState": "active"}
+        self.addCleanup(tracker._SYSTEMD_CACHE.pop, "x.service", None)
+        self.grant("i1")
+        self.grant("i2")
+        ok = self.ctx()
+        for it in (unit, owner):
+            self.assertEqual(run_item(it, ok), ("ACTIVATED", 100))
+            self.assertEqual(tracker._activation_flags(it, "p", ok), {"activation_stale": False, "grants_unverified": False})
+        # closure changed: SHIPPED + activation_stale (not ACTIVATED, not NOT-STARTED/IN-PROGRESS)
+        changed = self.ctx("/nix/store/other")
+        for it in (unit, owner):
+            self.assertEqual(run_item(it, changed), ("SHIPPED", 100))
+            self.assertEqual(tracker._activation_flags(it, "p", changed), {"activation_stale": True, "grants_unverified": False})
+        # attestation edited after signing: same
+        (self.att / "p" / f"i1-{self.sha[:12]}.md").write_bytes(b"edited")
+        self.assertEqual(run_item(unit, ok), ("SHIPPED", 100))
+        self.assertTrue(tracker._activation_flags(unit, "p", ok)["activation_stale"])
+        # failed verification (tampered segment): grants_unverified, no ACTIVATED, not reported stale
+        (self.att / "p" / f"i1-{self.sha[:12]}.md").write_bytes(self.body)
+        seg = self.c.log / "1.json"
+        d = json.loads(seg.read_text())
+        d["sig"] = "0" * 128
+        seg.write_text(json.dumps(d))
+        bad = self.ctx()
+        self.assertFalse(bad["state"].ok)
+        self.assertNotEqual(run_item(owner, bad)[0], "ACTIVATED")
+        self.assertEqual(tracker._activation_flags(owner, "p", bad), {"activation_stale": False, "grants_unverified": True})
+
+    def test_plan_projection_emits_counters(self):
+        import os
+        closure = os.path.realpath("/run/current-system")
+        self.c.grant("i1", closure=closure, sha=self.sha)
+        (self.att / "p" / f"i1-{self.sha[:12]}.md").write_bytes(self.body)
+        self.c.grant("i2", closure="/nix/store/not-deployed", sha=self.sha)
+        (self.att / "p" / f"i2-{self.sha[:12]}.md").write_bytes(self.body)
+        plan = self.td / "p"
+        plan.mkdir()
+        mk = lambda i: {"id": i, "name": i, "phase": "ph", "goal": "g", "validation_goal": "v", "kind": "task",
+                        "detection": {"activation_subject": f"p:{i}", "blocker_note": "owner acts"}}
+        (plan / "tracker.json").write_text(json.dumps({"plan": {"title": "p"}, "phases": [{"id": "ph", "name": "ph"}],
+                                                       "items": [mk("i1"), mk("i2"), mk("i3")]}))
+        ctx = self.real_ctx("dep1")
+        saved = tracker._load_activation_ctx
+        tracker._load_activation_ctx = lambda: ctx
+        self.addCleanup(setattr, tracker, "_load_activation_ctx", saved)
+        out = tracker.project(plan)
+        by = {i["id"]: i for i in out["items"]}
+        self.assertEqual(by["i1"]["status"], "ACTIVATED")
+        self.assertEqual((by["i2"]["status"], by["i2"]["activation_stale"]), ("SHIPPED", True))
+        self.assertEqual((by["i3"]["status"], by["i3"]["activation_stale"]), ("NOT-STARTED", False))
+        self.assertEqual((out["activation_stale"], out["grants_unverified"]), (1, 0))
 
     def test_projector_has_no_other_activated_route(self):
         src = (REPO / "scripts" / "ai" / "aq-pm-tracker").read_text()

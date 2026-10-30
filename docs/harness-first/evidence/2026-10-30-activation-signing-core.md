@@ -35,7 +35,9 @@ Revert the slice commit. Reverting only the `aq-pm-tracker` hunk is not a valid 
 
 - The checkout projector reads chain, head and signers from fixed paths (`/var/lib/aq-activation`, `/etc/aq-activation/signers.json`) that do not exist yet, so nothing can be ACTIVATED until slice 2. It is not yet the store-installed verifier; the `unverified-checkout` marking is slice 2.
 - `evidence_baseline_sha256` is carried and compared by the signed grant but not recomputed from a root-owned evidence copy yet.
-- The test and library need the `cryptography` package in the CI python.
+- The CI `syntax` job now installs `cryptography` (setup-python + `uv pip install --system`) and runs `activation-chain-test`; the test fails hard if the module is missing.
+- The expected deployment id comes from `/etc/aq-activation/deployment-id` (slice 2 provisions it from Nix); until present the chain is invalid and nothing ACTIVATES.
+- Per-item `activation_stale` / `grants_unverified` and per-plan counters are emitted by the projector; a stale grant projects SHIPPED.
 
 ## Hint Feedback
 

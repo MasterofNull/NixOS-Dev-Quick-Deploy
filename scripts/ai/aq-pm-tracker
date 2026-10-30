@@ -114,6 +114,7 @@ def _git_log() -> tuple[str, str]:
 _ACTIVATION_LOG_DIR = Path("/var/lib/aq-activation/log")
 _ACTIVATION_HEAD = Path("/var/lib/aq-activation/head")
 _ACTIVATION_SIGNERS = Path("/etc/aq-activation/signers.json")
+_ACTIVATION_DEPLOYMENT_ID = Path("/etc/aq-activation/deployment-id")   # slice 2 provisions it from Nix; absent => fail closed
 _ACTIVATION_ATTESTATIONS = REPO / ".agents" / "activation" / "attestations"
 
 
@@ -135,9 +136,16 @@ def _load_activation_ctx() -> dict:
             signers = []
     except (OSError, ValueError, AttributeError):
         signers = []
-    state = ac.load_chain(_ACTIVATION_LOG_DIR, _ACTIVATION_HEAD, signers) if signers else ac.ChainState(
-        reason="signer allowlist missing/empty")
-    return {"ac": ac, "state": state, "closure": os.path.realpath("/run/current-system")}
+    try:
+        dep = _ACTIVATION_DEPLOYMENT_ID.read_text(encoding="utf-8").strip()
+    except OSError:
+        dep = ""
+    if not signers:
+        state = ac.ChainState(reason="signer allowlist missing/empty")
+    else:
+        state = ac.load_chain(_ACTIVATION_LOG_DIR, _ACTIVATION_HEAD, signers, dep)
+    return {"ac": ac, "state": state, "closure": os.path.realpath("/run/current-system"),
+            "claimed": _ACTIVATION_LOG_DIR.is_dir()}
 
 
 def _signed_attestation_hash(plan: str, item_id: str, signed_sha: str) -> str | None:
@@ -150,17 +158,26 @@ def _signed_attestation_hash(plan: str, item_id: str, signed_sha: str) -> str | 
         return None
 
 
-def _item_activation_verified(item: dict, plan: str, ctx: dict | None) -> bool:
-    """The ONLY route to ACTIVATED: delegates to activation_chain.activation_verified."""
+def _item_activation(item: dict, plan: str, ctx: dict | None) -> tuple[bool, str]:
+    """(verified, reason). `verified` comes ONLY from activation_chain.activation_verified; `reason` is
+    activation_status (activated | none | revoked | grant-stale | chain-invalid | no-subject)."""
     subj = (item.get("detection") or {}).get("activation_subject")
     if not ctx or not subj:
-        return False
+        return False, "no-subject"
     ac = ctx["ac"]
     iid = str(item.get("id"))
     st = ctx["state"].items.get(ac.item_key(plan, iid, subj))
     view = {"plan": plan, "item_id": iid, "subject": subj,
             "attestation_sha256": _signed_attestation_hash(plan, iid, st.attestation_sha256) if st else None}
-    return ac.activation_verified(view, ctx["state"], ctx["closure"])
+    return ac.activation_verified(view, ctx["state"], ctx["closure"]), ac.activation_status(view, ctx["state"], ctx["closure"])
+
+
+def _activation_flags(item: dict, plan: str, ctx: dict | None) -> dict:
+    """Rev7 reporting: activation_stale (closure/attestation changed) and grants_unverified (a chain exists
+    on disk but failed verification, so any grant in it is ignored)."""
+    _, reason = _item_activation(item, plan, ctx)
+    return {"activation_stale": reason == "grant-stale",
+            "grants_unverified": reason == "chain-invalid" and bool(ctx and ctx.get("claimed"))}
 
 
 _SYSTEMD_CACHE: dict = {}
@@ -482,7 +499,8 @@ def _untrusted_hold(item: dict, gitlog: str, untrusted: dict | None, plan: str =
 def project_item_full(item: dict, gitlog: str, source_health: str = "complete",
                       untrusted: dict | None = None, plan: str = "",
                       activation_ctx: dict | None = None) -> tuple[str, int | None, dict | None]:
-    status, pct = project_item(item, gitlog, source_health, _item_activation_verified(item, plan, activation_ctx))
+    verified, reason = _item_activation(item, plan, activation_ctx)
+    status, pct = project_item(item, gitlog, source_health, verified, reason == "grant-stale")
     if status in ("SHIPPED", "ACTIVATED"):
         if untrusted is None:
             # Provenance config unavailable: commit-derived completion cannot be trusted.
@@ -496,19 +514,22 @@ def project_item_full(item: dict, gitlog: str, source_health: str = "complete",
     return status, pct, None
 
 
-def project_item(item: dict, gitlog: str, source_health: str = "complete", verified: bool = False) -> tuple[str, int | None]:
-    """`verified` = activation_verified result (via _item_activation_verified); the only input that can yield ACTIVATED."""
+def project_item(item: dict, gitlog: str, source_health: str = "complete", verified: bool = False,
+                 stale: bool = False) -> tuple[str, int | None]:
+    """`verified` = activation_verified result (via _item_activation); the only input that can yield ACTIVATED.
+    `stale` = a signed grant exists but the closure/attestation changed: it counts as past sign-off for the ground-truth
+    tier (SHIPPED, never ACTIVATED); the caller reports activation_stale."""
     det = item.get("detection", {}) or {}
     accepted = (item.get("acceptance") or {}).get("status") == "accepted"
 
     # Ground-truth systemd projection (services domain) — never complete w/o sign-off.
     unit = det.get("systemd_unit")
     if unit:
-        return _live_or_activated(_project_systemd(unit, accepted or verified), verified)
+        return _live_or_activated(_project_systemd(unit, accepted or verified or stale), verified)
     # Ground-truth tool-presence projection (tools domain).
     cmd = det.get("command")
     if cmd:
-        return _live_or_activated(_project_command(cmd, accepted or verified, _commit_hits_or_none(det, gitlog)), verified)
+        return _live_or_activated(_project_command(cmd, accepted or verified or stale, _commit_hits_or_none(det, gitlog)), verified)
 
     hits = sum(_count_commit_hits(s, gitlog) for s in (det.get("commit_match") or []))
     freeze = det.get("freeze_record")
@@ -530,7 +551,7 @@ def project_item(item: dict, gitlog: str, source_health: str = "complete", verif
     # Positive evidence remains useful even when commit history is partial.
     # Only the *absence* of commit evidence becomes UNKNOWN in that case.
     if is_activation:
-        return ("ACTIVATED", 100) if verified else ("NOT-STARTED", 0)
+        return ("ACTIVATED", 100) if verified else (("SHIPPED", 100) if stale else ("NOT-STARTED", 0))
     if verified:
         return ("ACTIVATED", 100)
     if source_health != "complete" and det.get("commit_match"):
@@ -576,13 +597,16 @@ def project(plan_dir: Path) -> dict:
         items.append({"id": it["id"], "name": it.get("name"), "phase": it.get("phase"),
                       "kind": it.get("kind"), "goal": it.get("goal"),
                       "validation_goal": it.get("validation_goal"), "deps": it.get("deps", []),
-                      "status": status, "pct": pct, "hold": hold})
+                      "status": status, "pct": pct, "hold": hold,
+                      **_activation_flags(it, plan_dir.name, activation_ctx)})
     rollup, known_items, unknown_items = _rollup(items)
     shipped = sum(1 for i in items if i["status"] in ("SHIPPED", "ACTIVATED"))
     return {"plan": manifest.get("plan", {}), "phases": manifest.get("phases", []),
             "items": items, "issues": manifest.get("issues", []),
             "rollup_pct": rollup, "shipped": shipped, "total": len(items),
             "held": sum(1 for i in items if i["status"] == "UNVERIFIED"),
+            "activation_stale": sum(1 for i in items if i["activation_stale"]),
+            "grants_unverified": sum(1 for i in items if i["grants_unverified"]),
             "hold_config_errors": uerrs,
             "known_items": known_items, "unknown_items": unknown_items,
             "source_health": source_health,
@@ -648,7 +672,8 @@ def project_all() -> dict:
             status, pct, hold = project_item_full(it, gitlog, source_health, untrusted, plan_dir.name, activation_ctx)
             items.append({"id": it["id"], "name": it.get("name"), "phase": it.get("phase"),
                           "deps": it.get("deps", []), "priority_lane": it.get("priority_lane"),
-                          "status": status, "pct": pct, "hold": hold})
+                          "status": status, "pct": pct, "hold": hold,
+                          **_activation_flags(it, plan_dir.name, activation_ctx)})
         rollup, known_items, unknown_items = _rollup(items)
         shipped = sum(1 for i in items if i["status"] in ("SHIPPED", "ACTIVATED"))
         plan_meta = manifest.get("plan", {})
@@ -658,6 +683,8 @@ def project_all() -> dict:
             "rollup_pct": rollup,
             "shipped": shipped,
             "held": sum(1 for i in items if i["status"] == "UNVERIFIED"),
+            "activation_stale": sum(1 for i in items if i["activation_stale"]),
+            "grants_unverified": sum(1 for i in items if i["grants_unverified"]),
             "total": len(items),
             "known_items": known_items,
             "unknown_items": unknown_items,
