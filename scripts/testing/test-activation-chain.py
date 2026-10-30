@@ -342,7 +342,9 @@ class TrackerTests(unittest.TestCase):
         sf = self.td / "signers.json"
         sf.write_text(json.dumps({"keys": [pub_hex(self.c.key)] if signers else []}))
         df = self.td / "deployment-id"
-        if dep is not None:
+        if dep is None:
+            df.unlink(missing_ok=True)      # isolate the absence path from any earlier fixture
+        else:
             df.write_text(dep + "\n")
         saved = (tracker._ACTIVATION_LOG_DIR, tracker._ACTIVATION_HEAD, tracker._ACTIVATION_SIGNERS,
                  tracker._ACTIVATION_DEPLOYMENT_ID)
@@ -369,7 +371,9 @@ class TrackerTests(unittest.TestCase):
         self.assertTrue(tracker._activation_flags(item, "p", foreign)["grants_unverified"])
         missing = self.real_ctx(None)                           # no deployment-id file: fail closed
         missing["closure"] = CLOSURE
+        self.assertFalse((self.td / "deployment-id").exists())
         self.assertFalse(missing["state"].ok)
+        self.assertEqual(missing["state"].reason, "expected deployment_id unavailable")
         self.assertNotEqual(run_item(item, missing)[0], "ACTIVATED")
         nosigners = self.real_ctx("dep1", signers=False)
         self.assertNotEqual(run_item(item, nosigners)[0], "ACTIVATED")
@@ -405,6 +409,16 @@ class TrackerTests(unittest.TestCase):
         self.assertNotEqual(run_item(owner, bad)[0], "ACTIVATED")
         self.assertEqual(tracker._activation_flags(owner, "p", bad), {"activation_stale": False, "grants_unverified": True})
 
+    def test_generic_item_stale_projects_shipped(self):
+        plain = {"id": "i1", "phase": "build", "detection": {"activation_subject": "p:i1"}}
+        self.grant()
+        self.assertEqual(run_item(plain, self.ctx()), ("ACTIVATED", 100))
+        stale = self.ctx("/nix/store/other")
+        self.assertEqual(run_item(plain, stale), ("SHIPPED", 100))
+        self.assertTrue(tracker._activation_flags(plain, "p", stale)["activation_stale"])
+        self.c.revoke("i1")                                  # revoked: no SHIPPED carry-over
+        self.assertNotEqual(run_item(plain, self.ctx())[0], "SHIPPED")
+
     def test_plan_projection_emits_counters(self):
         import os
         closure = os.path.realpath("/run/current-system")
@@ -428,6 +442,11 @@ class TrackerTests(unittest.TestCase):
         self.assertEqual((by["i2"]["status"], by["i2"]["activation_stale"]), ("SHIPPED", True))
         self.assertEqual((by["i3"]["status"], by["i3"]["activation_stale"]), ("NOT-STARTED", False))
         self.assertEqual((out["activation_stale"], out["grants_unverified"]), (1, 0))
+        self.assertEqual(out["missing_activation_subject"], 0)
+        manifest = json.loads((plan / "tracker.json").read_text())
+        manifest["items"].append({"id": "i4", "name": "i4", "phase": "ph", "goal": "g", "validation_goal": "v"})
+        (plan / "tracker.json").write_text(json.dumps(manifest))
+        self.assertEqual(tracker.project(plan)["missing_activation_subject"], 1)
 
     def test_projector_has_no_other_activated_route(self):
         src = (REPO / "scripts" / "ai" / "aq-pm-tracker").read_text()

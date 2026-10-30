@@ -27,6 +27,13 @@ Bounded single-slice implementation on the Claude balanced tier (Rule 17). Indep
 - `aq-pm-tracker --all-json` before: SHIPPED 143 / ACTIVATED 0; after: SHIPPED 140 / ACTIVATED 0 (3 items SHIPPED to IN-PROGRESS, from the false-SHIPPED fix).
 - Not covered here (slice 2): evidence-copy baseline recompute, Nix allowlist/eligibility manifest, signer, live round trip.
 
+### Codex round 2 follow-up (codex-20261030-103829-lujllf)
+
+- Stale grants now keep SHIPPED (with `activation_stale`) for every item kind in `scripts/ai/aq-pm-tracker` `project_item`; a plain item no longer falls to DESIGNED.
+- The missing-deployment-id test uses an isolated fixture and asserts the absence reason.
+- The board reports `missing_activation_subject` per plan and in total (270 on 2026-10-30): those items cannot reach ACTIVATED until they declare `detection.activation_subject`.
+- `scripts/testing/test-activation-chain.py`: 26 tests pass.
+
 ## Rollback Plan
 
 Revert the slice commit. Reverting only the `aq-pm-tracker` hunk is not a valid rollback (it restores the unsigned `accepted`-based ACTIVATED path); keep the verifier and revert only new tooling per the design's Rollback section.

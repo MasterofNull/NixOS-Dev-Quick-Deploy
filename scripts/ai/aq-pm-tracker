@@ -172,6 +172,11 @@ def _item_activation(item: dict, plan: str, ctx: dict | None) -> tuple[bool, str
     return ac.activation_verified(view, ctx["state"], ctx["closure"]), ac.activation_status(view, ctx["state"], ctx["closure"])
 
 
+def _missing_subject(manifest: dict) -> int:
+    """Items that cannot be activated until a detection.activation_subject is added (rev7: shown on the board)."""
+    return sum(1 for it in manifest.get("items", []) if not (it.get("detection") or {}).get("activation_subject"))
+
+
 def _activation_flags(item: dict, plan: str, ctx: dict | None) -> dict:
     """Rev7 reporting: activation_stale (closure/attestation changed) and grants_unverified (a chain exists
     on disk but failed verification, so any grant in it is ignored)."""
@@ -554,6 +559,8 @@ def project_item(item: dict, gitlog: str, source_health: str = "complete", verif
         return ("ACTIVATED", 100) if verified else (("SHIPPED", 100) if stale else ("NOT-STARTED", 0))
     if verified:
         return ("ACTIVATED", 100)
+    if stale:   # the signed grant attested it shipped; staleness only withdraws ACTIVATED (reported as activation_stale)
+        return ("SHIPPED", 100)
     if source_health != "complete" and det.get("commit_match"):
         if accepted:
             return ("SHIPPED", 100)
@@ -607,6 +614,7 @@ def project(plan_dir: Path) -> dict:
             "held": sum(1 for i in items if i["status"] == "UNVERIFIED"),
             "activation_stale": sum(1 for i in items if i["activation_stale"]),
             "grants_unverified": sum(1 for i in items if i["grants_unverified"]),
+            "missing_activation_subject": _missing_subject(manifest),
             "hold_config_errors": uerrs,
             "known_items": known_items, "unknown_items": unknown_items,
             "source_health": source_health,
@@ -685,6 +693,7 @@ def project_all() -> dict:
             "held": sum(1 for i in items if i["status"] == "UNVERIFIED"),
             "activation_stale": sum(1 for i in items if i["activation_stale"]),
             "grants_unverified": sum(1 for i in items if i["grants_unverified"]),
+            "missing_activation_subject": _missing_subject(manifest),
             "total": len(items),
             "known_items": known_items,
             "unknown_items": unknown_items,
@@ -700,6 +709,7 @@ def project_all() -> dict:
     return {
         "generated_at": datetime.now(timezone.utc).strftime("%Y-%m-%dT%H:%M:%SZ"),
         "plans": plans_out,
+        "missing_activation_subject": sum(p["missing_activation_subject"] for p in plans_out),
         "program_rollup_pct": program_rollup_pct,
         "known_items": known_items,
         "unknown_items": unknown_items,
