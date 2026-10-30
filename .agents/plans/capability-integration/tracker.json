@@ -261,7 +261,7 @@
       "goal": "missing migrations/routing source added; expansion flag has a consumer; then enabled for MVP testing",
       "validation_goal": "units succeed live; expansion telemetry shows use",
       "deps": [],
-      "editorial_note": "MVP: enabled-for-testing is not done; acceptance is the owner's.",
+      "editorial_note": "MVP: enabled-for-testing is not done; acceptance is the owner's. 2026-10-29: QUERY_EXPANSION_ENABLED has no consumer; the live consumer is AI_LLM_EXPANSION_ENABLED (route_handler.py, 4s timeout, one local-LLM call per semantic/hybrid query). Held OFF on the 5 tok/s box pending a speed-gated design; see docs/harness-first/evidence/2026-10-29-ci-activation-wave1.md.",
       "detection": {
         "commit_match": [
           "meta-optimization",
