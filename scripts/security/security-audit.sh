@@ -57,6 +57,42 @@ has_cmd() {
 require_cmd jq
 require_cmd python3
 
+# Single gate for every scanner result. A report counts only if the file exists, is non-empty,
+# parses as a JSON object, satisfies the scanner's required-key schema, and its status is in an
+# explicit allowlist. Sets REPORT_STATUS on success, REPORT_WHY on failure.
+#   validate_scanner_report <name> <file> <jq-schema-check> <jq-status-expr> <allowed-status-regex>
+REPORT_STATUS=""
+REPORT_WHY=""
+invalid_reasons=()
+validate_scanner_report() {
+  local name="$1" file="$2" schema="$3" status_expr="$4" allowed="$5"
+  REPORT_STATUS=""
+  REPORT_WHY=""
+  if [[ ! -f "${file}" ]]; then
+    REPORT_WHY="file missing"
+  elif [[ ! -s "${file}" ]]; then
+    REPORT_WHY="empty output"
+  elif ! jq -e 'type == "object"' "${file}" >/dev/null 2>&1; then
+    REPORT_WHY="not a JSON object"
+  elif ! jq -e "${schema}" "${file}" >/dev/null 2>&1; then
+    REPORT_WHY="missing or wrong-typed required keys"
+  else
+    local st
+    st="$(jq -r "${status_expr}" "${file}" 2>/dev/null || true)"
+    if [[ "${st}" =~ ^(${allowed})$ ]]; then
+      REPORT_STATUS="${st}"
+      return 0
+    fi
+    REPORT_WHY="unrecognized status '${st}'"
+  fi
+  invalid_reasons+=("${name} report invalid: ${REPORT_WHY}")
+  return 1
+}
+PIP_SCHEMA='(has("error") | not) and ((.dependencies | type) == "array") and all(.dependencies[]; type == "object" and has("name"))'
+NPM_SCHEMA='(has("error") | not) and ((.metadata.vulnerabilities | type) == "object") and (((.metadata.vulnerabilities.high // 0) | type) == "number") and (((.metadata.vulnerabilities.critical // 0) | type) == "number")'
+DASHBOARD_SCHEMA='has("generated_at") and ((.status | type) == "string")'
+SECRETS_SCHEMA='has("generated_at") and ((.rotation_ready | type) == "boolean")'
+
 pip_audit_available=false
 npm_available=false
 pip_audit_cmd=()
@@ -144,7 +180,7 @@ if [[ "${pip_audit_available}" == true ]]; then
     "${pip_audit_cmd[@]}" -r "${req}" --format json > "${out_json}" 2>"${out_json}.stderr"
     rc=$?
     set -e
-    if [[ ${rc} -ne 0 && ${rc} -ne 1 ]] || ! jq -e '.dependencies' "${out_json}" >/dev/null 2>&1; then
+    if [[ ${rc} -ne 0 && ${rc} -ne 1 ]] || ! validate_scanner_report "pip-audit" "${out_json}" "${PIP_SCHEMA}" '"ok"' 'ok'; then
       jq -n --arg req "${req}" --arg err "$(cat "${out_json}.stderr")" \
         '{dependencies: [], error: $err, requirements: $req}' > "${out_json}"
       pip_errors=$((pip_errors + 1))
@@ -198,11 +234,9 @@ if [[ "${npm_available}" == true ]]; then
       jq -n --arg project_dir "${dir}" --arg err "$(cat "${out_json}.stderr")" \
         '{metadata: {vulnerabilities: {info: 0, low: 0, moderate: 0, high: 0, critical: 0, total: 0}}, error: $err, project_dir: $project_dir}' > "${out_json}"
     fi
-    # Explicit structure check: empty/unparseable output or a missing metadata.vulnerabilities
-    # object is a scanner error (jq -e on empty input must not read as "no error").
     high=0
     critical=0
-    if jq -e 'type == "object" and (has("error") | not) and ((.metadata.vulnerabilities | type) == "object")' "${out_json}" >/dev/null 2>&1; then
+    if validate_scanner_report "npm audit" "${out_json}" "${NPM_SCHEMA}" '"ok"' 'ok'; then
       high="$(jq '.metadata.vulnerabilities.high // 0' "${out_json}")"
       critical="$(jq '.metadata.vulnerabilities.critical // 0' "${out_json}")"
     else
@@ -246,8 +280,12 @@ if [[ -x "${DASHBOARD_SCAN_SCRIPT}" ]]; then
   "${DASHBOARD_SCAN_SCRIPT}" --output "${dashboard_scan_report}" >"${tmp_root}/dashboard-scan.stdout" 2>"${tmp_root}/dashboard-scan.stderr"
   dashboard_rc=$?
   set -e
-  if [[ ${dashboard_rc} -eq 0 && -f "${dashboard_scan_report}" ]]; then
-    dashboard_scan_status="$(jq -r '.status // "unknown"' "${dashboard_scan_report}")"
+  if [[ ${dashboard_rc} -eq 0 ]]; then
+    if validate_scanner_report "dashboard scan" "${dashboard_scan_report}" "${DASHBOARD_SCHEMA}" '.status' 'ok|degraded'; then
+      dashboard_scan_status="${REPORT_STATUS}"
+    else
+      dashboard_scan_status="invalid"
+    fi
   else
     jq -n \
       --arg generated_at "${timestamp}" \
@@ -267,8 +305,12 @@ if [[ -x "${SECRETS_ROTATION_PLAN_SCRIPT}" ]]; then
   "${SECRETS_ROTATION_PLAN_SCRIPT}" --output "${secrets_rotation_report}" >"${tmp_root}/secrets-plan.stdout" 2>"${tmp_root}/secrets-plan.stderr"
   secrets_plan_rc=$?
   set -e
-  if [[ ${secrets_plan_rc} -eq 0 && -f "${secrets_rotation_report}" ]]; then
-    secrets_rotation_status="$(jq -r 'if .rotation_ready then "ready" else "planning_required" end' "${secrets_rotation_report}")"
+  if [[ ${secrets_plan_rc} -eq 0 ]]; then
+    if validate_scanner_report "secrets rotation" "${secrets_rotation_report}" "${SECRETS_SCHEMA}" 'if .rotation_ready then "ready" else "planning_required" end' 'ready|planning_required'; then
+      secrets_rotation_status="${REPORT_STATUS}"
+    else
+      secrets_rotation_status="invalid"
+    fi
   else
     jq -n \
       --arg generated_at "${timestamp}" \
@@ -298,6 +340,7 @@ fi
 [[ $((npm_errors - npm_unscanned)) -gt 0 ]] && degraded_reasons+=("npm audit errored on $((npm_errors - npm_unscanned)) projects")
 [[ "${dashboard_scan_status}" == "error" ]] && degraded_reasons+=("dashboard security scan errored")
 [[ "${secrets_rotation_status}" == "error" ]] && degraded_reasons+=("secrets rotation plan errored")
+for r in "${invalid_reasons[@]+"${invalid_reasons[@]}"}"; do degraded_reasons+=("${r}"); done
 [[ "${dashboard_scan_status}" == "unavailable" ]] && degraded_reasons+=("dashboard scanner unavailable")
 [[ "${secrets_rotation_status}" == "unavailable" ]] && degraded_reasons+=("secrets rotation scanner unavailable")
 # Exit-code decision is independent of the presentation status: any scanner error,

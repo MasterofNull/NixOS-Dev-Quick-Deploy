@@ -84,6 +84,24 @@ returns `status` and now `degraded_reasons`.
     $ bash scripts/testing/test-mcp-integrity-baseline.sh
     PASS: mcp-integrity missing baseline is non-ok, tamper alerts, baseline never auto-created
 
+Third review follow-up (fix the class): scripts/security/security-audit.sh routes every scanner result (pip-audit,
+npm audit, dashboard scan, secrets rotation plan) through one helper, `validate_scanner_report`. A report is
+accepted only if the file exists, is non-empty, parses as a JSON object, has the scanner's required keys with the
+right types, and its status is in an explicit allowlist (pip/npm: no `error` key; dashboard: `ok|degraded`;
+secrets: `ready|planning_required`). Otherwise the degraded reason is "<name> report invalid: <why>" and the run
+is `coverage_incomplete`. Scanner x failure mode, with the resulting status and exit under
+`SECURITY_AUDIT_FAIL_ON_DEGRADED=1` (every cell is a test case in scripts/testing/test-security-audit-gate.sh):
+
+| Scanner | missing tool/script | nonzero exit | empty output | malformed JSON | `{}` | unknown status/shape |
+|---|---|---|---|---|---|---|
+| pip-audit | degraded, 3 | degraded, 3 | degraded, 3 | degraded, 3 | degraded, 3 | degraded, 3 |
+| npm audit | degraded, 3 | degraded, 3 | degraded, 3 | degraded, 3 | degraded, 3 | degraded, 3 |
+| dashboard scan | degraded, 3 | findings, 3 | degraded, 3 | degraded, 3 | degraded, 3 | degraded, 3 |
+| secrets rotation | degraded, 3 | findings, 3 | degraded, 3 | degraded, 3 | degraded, 3 | degraded, 3 |
+
+Dashboard and secrets scanner execution errors keep the presentation status `findings` (existing behavior) but
+still fail the unit via `coverage_incomplete`. A healthy baseline (all four scanners valid) stays `ok`, exit 0.
+
 Second review follow-up: npm output that is empty or lacks a `metadata.vulnerabilities` object (even with exit 0) is
 counted as an npm audit error; a missing or non-executable dashboard or secrets scan script is a degraded reason
 ("<check> scanner unavailable") and sets `coverage_incomplete`. Tests: empty-output npm => degraded, exit 3 under

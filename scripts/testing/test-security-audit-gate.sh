@@ -126,11 +126,11 @@ rc=0; out="$(PATH="$T/bin:$PATH" env -u CI bash "$ROOT/scripts/security/security
 # npm exits 0 with EMPTY output: scanner error, not clean (dashboard/secrets fakes healthy so only npm is at fault).
 cat > "$T/ok-dashboard.sh" <<'N'
 #!/usr/bin/env bash
-printf '{"status":"ok"}' > "$2"
+printf '{"generated_at":"t","status":"ok"}' > "$2"
 N
 cat > "$T/ok-secrets.sh" <<'N'
 #!/usr/bin/env bash
-printf '{"rotation_ready":true}' > "$2"
+printf '{"generated_at":"t","rotation_ready":true}' > "$2"
 N
 chmod +x "$T/ok-dashboard.sh" "$T/ok-secrets.sh"
 cat > "$T/bin/npm" <<'N'
@@ -149,6 +149,66 @@ rc=0; out="$(PATH="$T/bin:$PATH" env -u CI SECURITY_AUDIT_FAIL_ON_DEGRADED=1 DAS
 [[ $rc -eq 3 ]] && [[ "$(jq -r .status "$T/o23/latest-security-audit.json")" == "degraded" ]] && jq -e '.degraded_reasons | map(test("dashboard scanner unavailable")) | any' "$T/o23/latest-security-audit.json" >/dev/null \
   || { echo "FAIL: unavailable dashboard scanner not degraded/exit 3 rc=$rc"; echo "$out"; exit 1; }
 unset DASHBOARD_SCAN_SCRIPT SECRETS_ROTATION_PLAN_SCRIPT
+
+# Table-driven: every scanner x failure mode must be non-ok, carry a degraded reason, and exit 3 under the flag.
+PIP_OK='{"dependencies":[{"name":"x","version":"1","vulns":[]}]}'
+NPM_OK='{"metadata":{"vulnerabilities":{"high":0,"critical":0}}}'
+DASH_OK='{"generated_at":"t","status":"ok"}'
+SEC_OK='{"generated_at":"t","rotation_ready":true}'
+run_case() { # <scanner> <mode> ; echoes nothing, sets CASE_RC CASE_OUT CASE_DIR
+  local sc="$1" mode="$2" d="$T/tc-$1-$2" c p
+  mkdir -p "$d/bin"
+  for c in bash jq python3 date find mktemp mkdir cat tr sort dirname rm cp mv git env wc sed head cut; do
+    p="$(command -v "$c" 2>/dev/null || true)"; [[ -n "$p" ]] && ln -sf "$p" "$d/bin/$c"
+  done
+  printf '#!/usr/bin/env bash\nprintf "%%s" "$PIP_BODY"; exit "${PIP_RC:-0}"\n' > "$d/bin/pip-audit"
+  printf '#!/usr/bin/env bash\nprintf "%%s" "$NPM_BODY"; exit "${NPM_RC:-0}"\n' > "$d/bin/npm"
+  printf '#!/usr/bin/env bash\nprintf "%%s" "$DASH_BODY" > "$2"; exit "${DASH_RC:-0}"\n' > "$d/dash.sh"
+  printf '#!/usr/bin/env bash\nprintf "%%s" "$SEC_BODY" > "$2"; exit "${SEC_RC:-0}"\n' > "$d/sec.sh"
+  chmod +x "$d/bin/pip-audit" "$d/bin/npm" "$d/dash.sh" "$d/sec.sh"
+  local pb="$PIP_OK" nb="$NPM_OK" db="$DASH_OK" sb="$SEC_OK" body="" rc=0 unknown=""
+  case "$sc" in
+    pip) unknown='{"dependencies":"nope"}' ;;
+    npm) unknown='{"metadata":{"vulnerabilities":"x"}}' ;;
+    dashboard) unknown='{"generated_at":"t","status":"weird"}' ;;
+    secrets) unknown='{"generated_at":"t","rotation_ready":"maybe"}' ;;
+  esac
+  case "$mode" in
+    nonzero) rc=2; body="" ;;
+    empty) body="" ;;
+    malformed) body='{not json' ;;
+    emptyobj) body='{}' ;;
+    unknown) body="$unknown" ;;
+  esac
+  local prc="" nrc="" drc="" src="" dscript="$d/dash.sh" sscript="$d/sec.sh"
+  case "$sc:$mode" in
+    pip:missing) rm -f "$d/bin/pip-audit" ;;
+    npm:missing) rm -f "$d/bin/npm" ;;
+    dashboard:missing) dscript=/nonexistent ;;
+    secrets:missing) sscript=/nonexistent ;;
+    pip:*) pb="$body"; prc="$rc" ;;
+    npm:*) nb="$body"; nrc="$rc" ;;
+    dashboard:*) db="$body"; drc="$rc" ;;
+    secrets:*) sb="$body"; src="$rc" ;;
+  esac
+  CASE_RC=0
+  CASE_OUT="$(PATH="$d/bin" env -u CI SECURITY_AUDIT_FAIL_ON_DEGRADED=1 PIP_BODY="$pb" PIP_RC="$prc" NPM_BODY="$nb" NPM_RC="$nrc" \
+    DASH_BODY="$db" DASH_RC="$drc" SEC_BODY="$sb" SEC_RC="$src" DASHBOARD_SCAN_SCRIPT="$dscript" SECRETS_ROTATION_PLAN_SCRIPT="$sscript" \
+    "$(command -v bash)" "$ROOT/scripts/security/security-audit.sh" --repo-root "$T/nonpm" --output-dir "$d/out" 2>&1)" || CASE_RC=$?
+  CASE_DIR="$d/out"
+}
+run_case none healthy
+[[ $CASE_RC -eq 0 && "$(jq -r .status "$CASE_DIR/latest-security-audit.json")" == "ok" ]] || { echo "FAIL: healthy baseline not ok rc=$CASE_RC"; echo "$CASE_OUT"; exit 1; }
+for sc in pip npm dashboard secrets; do
+  for mode in missing nonzero empty malformed emptyobj unknown; do
+    run_case "$sc" "$mode"
+    st="$(jq -r .status "$CASE_DIR/latest-security-audit.json")"
+    if [[ $CASE_RC -ne 3 || "$st" == "ok" ]] || ! jq -e '.degraded_reasons | length > 0' "$CASE_DIR/latest-security-audit.json" >/dev/null; then
+      echo "FAIL: $sc/$mode rc=$CASE_RC status=$st"; echo "$CASE_OUT"; exit 1
+    fi
+    echo "case $sc/$mode: status=$st exit=$CASE_RC"
+  done
+done
 # A clean scan with real coverage stays ok.
 cat > "$T/bin/pip-audit" <<'N'
 #!/usr/bin/env bash
