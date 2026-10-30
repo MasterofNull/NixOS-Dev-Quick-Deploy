@@ -200,6 +200,47 @@ class T(unittest.TestCase):
                 self.assertFalse(mod._apparmor_rules_already_present("x", ["/c/d r,"]))
                 self.assertTrue(mod._apparmor_rules_already_present("y", ["/c/d r,"]))
 
+    def _present(self, nix, profile, rules):
+        mod = SourceFileLoader("aqa3", str(ROOT / "scripts/ai/aq-approve")).load_module()
+        with tempfile.TemporaryDirectory() as d:
+            f = Path(d) / "nix" / "modules" / "services" / "mcp-servers.nix"
+            f.parent.mkdir(parents=True)
+            f.write_text(nix)
+            with patch.object(mod, "_REPO_ROOT", Path(d)):
+                return mod._apparmor_rules_already_present(profile, rules)
+
+    def test_present_block_commented_decoy_profile_not_present(self):
+        nix = ("/*\nsecurity.apparmor.policies.\"x\" = {\n  profile = ''\n    /ok r,\n  '';\n};\n*/\n"
+               "security.apparmor.policies.\"x\" = {\n  profile = ''\n    deny /home/** wx,\n  '';\n};\n")
+        self.assertFalse(self._present(nix, "x", ["/ok r,"]))
+        self.assertTrue(self._present(nix, "x", ["deny /home/** wx,"]))
+
+    def test_present_rule_only_in_extraconfig_not_present(self):
+        pre = ("security.apparmor.policies.\"x\" = {\n  extraConfig = ''\n    /ok r,\n  '';\n"
+               "  profile = ''\n    deny /home/** wx,\n  '';\n};\n")
+        self.assertFalse(self._present(pre, "x", ["/ok r,"]))
+        # profile closed inline: legacy line parser ran on into extraConfig
+        post = ("security.apparmor.policies.\"x\" = {\n  profile = ''\n    deny /home/** wx, '';\n"
+                "  extraConfig = ''\n    /ok r,\n  '';\n};\n")
+        self.assertFalse(self._present(post, "x", ["/ok r,"]))
+
+    def test_present_duplicate_header_or_string_header_not_present(self):
+        real = "security.apparmor.policies.\"x\" = {\n  profile = ''\n    /ok r,\n  '';\n};\n"
+        self.assertTrue(self._present(real, "x", ["/ok r,"]))
+        self.assertFalse(self._present(real + real, "x", ["/ok r,"]))
+        decoy = "doc = ''\n" + real + "'';\n"
+        self.assertFalse(self._present(decoy, "x", ["/ok r,"]))
+
+    def test_present_escaped_quote_escape_is_four_chars(self):
+        # ''\' is a 4-char escape; the following ' must not pair with it into a closing ''.
+        real = "security.apparmor.policies.\"x\" = {\n  profile = ''\n    /ok r,\n  '';\n};\n"
+        nix = "doc = ''\n  a ''\\''\n" + real.replace("''\n    /ok r,\n  ''", "\"/ok r,\"") + "'';\n" \
+            + "security.apparmor.policies.\"y\" = {\n  profile = ''\n    /other r,\n  '';\n};\n"
+        self.assertFalse(self._present(nix, "x", ["/ok r,"]))
+        nix2 = "doc = ''\n  a ''\\''\n" + real + "'';\n"
+        self.assertFalse(self._present(nix2, "x", ["/ok r,"]))
+        self.assertTrue(self._present(nix2 + real.replace('"x"', '"z"'), "z", ["/ok r,"]))
+
 
 if __name__ == "__main__":
     unittest.main()
