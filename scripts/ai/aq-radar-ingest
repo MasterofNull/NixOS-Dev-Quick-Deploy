@@ -18,7 +18,9 @@ from datetime import datetime, timezone
 from pathlib import Path
 
 ROOT = Path(__file__).resolve().parent.parent.parent
-REGISTRY_PATH = ROOT / "config/frontier-radar-registry.json"
+REGISTRY_PATH = Path(os.getenv("AQ_RADAR_REGISTRY_PATH") or ROOT / "config/frontier-radar-registry.json")
+# Runtime-mutable fields (updated_at) live here, gitignored, so the tracked registry stays static.
+STATE_PATH = Path(os.getenv("AQ_RADAR_STATE_PATH") or ROOT / "config/frontier-radar-state.json")
 RESEARCH_DIR = ROOT / ".agent/research/papers"
 RESEARCH_INDEX = ROOT / ".agent/research/INDEX.json"
 
@@ -59,13 +61,27 @@ ALL_KEYWORDS = [kw for kws in DOMAIN_KEYWORDS.values() for kw in kws]
 
 def load_registry() -> dict:
     if not REGISTRY_PATH.is_file():
-        return {"version": "2.1.0", "updated_at": datetime.now(timezone.utc).isoformat(), "sources": []}
-    return json.loads(REGISTRY_PATH.read_text(encoding="utf-8"))
+        data = {"version": "2.1.0", "sources": []}
+    else:
+        data = json.loads(REGISTRY_PATH.read_text(encoding="utf-8"))
+    try:  # state wins; an in-file updated_at is a legacy value
+        state = json.loads(STATE_PATH.read_text(encoding="utf-8"))
+        if isinstance(state, dict) and state.get("updated_at"):
+            data["updated_at"] = state["updated_at"]
+    except (OSError, ValueError):
+        pass
+    return data
 
 
 def save_registry(data: dict) -> None:
-    data["updated_at"] = datetime.now(timezone.utc).isoformat()
-    REGISTRY_PATH.write_text(json.dumps(data, indent=2) + "\n", encoding="utf-8")
+    data = {k: v for k, v in data.items() if k != "updated_at"}
+    STATE_PATH.write_text(
+        json.dumps({"updated_at": datetime.now(timezone.utc).isoformat()}, indent=2) + "\n",
+        encoding="utf-8",
+    )
+    rendered = json.dumps(data, indent=2) + "\n"
+    if not REGISTRY_PATH.is_file() or REGISTRY_PATH.read_text(encoding="utf-8") != rendered:
+        REGISTRY_PATH.write_text(rendered, encoding="utf-8")
 
 
 def score_text_relevance(title: str, summary: str) -> tuple[float, list[str], list[str]]:
