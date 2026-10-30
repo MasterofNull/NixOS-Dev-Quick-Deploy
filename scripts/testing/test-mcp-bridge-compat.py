@@ -37,13 +37,25 @@ class TestMcpBridgeModern(unittest.TestCase):
         self.assertEqual(result.get("capabilities", {}).get("tools", {}).get("ttlMs"), 300000)
 
     def test_server_discover(self):
+        # discover reports the version negotiated at initialize; 2026-07-28 only on explicit request
+        req = [
+            {"jsonrpc": "2.0", "id": 1, "method": "initialize", "params": {"protocolVersion": "2026-07-28"}},
+            {"jsonrpc": "2.0", "id": 2, "method": "server/discover", "params": {}},
+        ]
+        res = self._run_rpc(req)
+        self.assertEqual(len(res), 2)
+        result = res[1].get("result", {})
+        self.assertEqual(result.get("protocolVersion"), "2026-07-28")
+        self.assertIn("tools", result)
+        self.assertTrue(len(result["tools"]) > 0)
+
+    def test_server_discover_without_initialize_uses_fallback(self):
         req = [{"jsonrpc": "2.0", "id": 2, "method": "server/discover", "params": {}}]
         res = self._run_rpc(req)
         self.assertEqual(len(res), 1)
         result = res[0].get("result", {})
-        self.assertEqual(result.get("protocolVersion"), "2026-07-28")
-        self.assertIn("tools", result)
-        self.assertTrue(len(result["tools"]) > 0)
+        self.assertEqual(result.get("protocolVersion"), "2025-06-18")
+        self.assertTrue(len(result.get("tools", [])) > 0)
 
     def test_deterministic_sorted_tools(self):
         req = [{"jsonrpc": "2.0", "id": 3, "method": "tools/list", "params": {}}]
