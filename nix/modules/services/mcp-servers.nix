@@ -698,10 +698,9 @@ in {
           "d /var/log/ai-stack                      0750 root ${aiGroup} -"
           "f /var/log/ai-stack/tool-audit.jsonl     0660 ${svcUser} ${aiGroup} - -"
           "f /var/log/ai-stack/agent-commands.jsonl 0660 ${svcUser} ${aiGroup} - -"
-          # base.nix creates mutableLogDir via its mutableUserServicePaths d-rule (0750 primaryUser users).
-          # We must NOT add a second d-rule here (systemd-tmpfiles warns on duplicate paths).
-          # Use z-only to override ownership/mode so service-owned child logs are not
-          # unsafe transitions under a user-owned parent.
+          # Sole tmpfiles declaration of mutableLogDir: base.nix omits it when roles.aiStack is
+          # enabled, so owner/mode cannot depend on rule order. primaryUser reaches it via ai-stack group.
+          "d ${mutableLogDir}                       0770 root ${aiGroup} -"
           "z ${mutableLogDir}                       0770 root ${aiGroup} -"
           "f ${mutableLogDir}/hint-audit.jsonl   0660 ${hybridUser} ${aiGroup} - -"
           "z ${mutableLogDir}/hint-audit.jsonl   0660 ${hybridUser} ${aiGroup} - -"
@@ -751,12 +750,7 @@ in {
         after = ["network-online.target"];
       };
 
-      # base.nix generates a z-rule for mutableLogDir (= mutableUserServicePaths)
-      # that resets owner/group to primaryUser:primaryGroup. Using lib.mkAfter ensures
-      # this z-rule is appended AFTER base.nix's rule so service-owned child logs are
-      # not unsafe transitions under a user-owned parent.
       systemd.tmpfiles.rules = lib.mkAfter [
-        "z ${mutableLogDir} 0770 root ${aiGroup} -"
         # M3 (Rule 14): ai-hybrid must traverse the hyperd-owned optimizer dir to read the
         # canonical PRSI queue. Additive ACL (traverse only) keeps owner/group/mode from base.nix;
         # prsi/ (0755) and action-queue.json (group ai-stack) are already readable.
