@@ -1709,6 +1709,12 @@ def _execute(plan: Plan, facts: HostFacts) -> ConfineResult:
     oom_killed = oom.get("oom_kill", 0) > 0
     os.close(r_fd)
     rc = proc.returncode
+    # Under host load the scope can be created and reaped before the watcher thread ever opens its
+    # memory.events (starved thread / sub-poll-interval OOM). With no counter observed, a SIGKILL
+    # that none of our own kill paths issued in an OOMPolicy=kill scope is the cgroup OOM kill.
+    if (plan.systemd_run and not oom_killed and not oom.get("attached")
+            and not (timed_out or killed_by or size_reason) and rc in (-9, EXIT_KILLED)):
+        oom_killed = True
     duration = time.monotonic() - t0
     events = _read_status_events(b"".join(status_chunks))
     ran = any("child-pid" in e for e in events)
@@ -1796,6 +1802,7 @@ def _watch_oom(run_id: str, stop: threading.Event, out: Dict[str, int]) -> None:
             time.sleep(0.02)
     if fd is None:
         return
+    out["attached"] = 1
     po = select.poll()
     po.register(fd, select.POLLPRI | select.POLLERR)
     try:
