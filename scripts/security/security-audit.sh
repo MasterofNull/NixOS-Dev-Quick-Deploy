@@ -5,8 +5,8 @@ REPO_ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")/../.." && pwd)"
 OUTPUT_DIR="${AI_SECURITY_AUDIT_DIR:-${HOME}/.local/share/nixos-ai-stack/security}"
 HIGH_CVSS_THRESHOLD="${AI_SECURITY_AUDIT_HIGH_CVSS_THRESHOLD:-7.0}"
 NOTIFY_USER="${AI_SECURITY_AUDIT_NOTIFY_USER:-}"
-DASHBOARD_SCAN_SCRIPT="${REPO_ROOT}/scripts/security/dashboard-security-scan.sh"
-SECRETS_ROTATION_PLAN_SCRIPT="${REPO_ROOT}/scripts/security/secrets-rotation-plan.sh"
+DASHBOARD_SCAN_SCRIPT="${DASHBOARD_SCAN_SCRIPT:-${REPO_ROOT}/scripts/security/dashboard-security-scan.sh}"
+SECRETS_ROTATION_PLAN_SCRIPT="${SECRETS_ROTATION_PLAN_SCRIPT:-${REPO_ROOT}/scripts/security/secrets-rotation-plan.sh}"
 
 usage() {
   cat <<'EOF'
@@ -56,6 +56,49 @@ has_cmd() {
 
 require_cmd jq
 require_cmd python3
+
+# Single gate for every scanner result. A report counts only if the file exists, is non-empty,
+# parses as a JSON object, satisfies the scanner's required-key schema, and its status is in an
+# explicit allowlist. Sets REPORT_STATUS on success, REPORT_WHY on failure.
+#   validate_scanner_report <name> <file> <jq-schema-check> <jq-status-expr> <allowed-status-regex>
+REPORT_STATUS=""
+REPORT_WHY=""
+invalid_reasons=()
+validate_scanner_report() {
+  local name="$1" file="$2" schema="$3" status_expr="$4" allowed="$5"
+  REPORT_STATUS=""
+  REPORT_WHY=""
+  if [[ ! -f "${file}" ]]; then
+    REPORT_WHY="file missing"
+  elif [[ ! -s "${file}" ]]; then
+    REPORT_WHY="empty output"
+  elif ! jq -e 'type == "object"' "${file}" >/dev/null 2>&1; then
+    REPORT_WHY="not a JSON object"
+  elif ! jq -e "${schema}" "${file}" >/dev/null 2>&1; then
+    REPORT_WHY="missing or wrong-typed required keys"
+  else
+    local st
+    st="$(jq -r "${status_expr}" "${file}" 2>/dev/null || true)"
+    if [[ "${st}" =~ ^(${allowed})$ ]]; then
+      REPORT_STATUS="${st}"
+      return 0
+    fi
+    REPORT_WHY="unrecognized status '${st}'"
+  fi
+  invalid_reasons+=("${name} report invalid: ${REPORT_WHY}")
+  return 1
+}
+# Every scanner-provided number is bounded (<= 1000000) so bash arithmetic on it can never wrap; blocking
+# decisions use per-report booleans computed in jq, not sums.
+# Schemas demand explicit coverage evidence, never defaults: an audited dependency carries a vulns
+# array (or a skip_reason); npm carries every severity counter as a number; the dashboard report
+# carries a status for each of its three checks; the secrets plan carries core_ready and a non-zero
+# managed-secret count.
+PIP_SCHEMA='(has("error") | not) and ((.dependencies | type) == "array") and all(.dependencies[]; type == "object" and has("name") and (has("skip_reason") or ((.vulns | type) == "array")))'
+NPM_SCHEMA='(has("error") | not) and ((.metadata.vulnerabilities | type) == "object") and all(.metadata.vulnerabilities.info, .metadata.vulnerabilities.low, .metadata.vulnerabilities.moderate, .metadata.vulnerabilities.high, .metadata.vulnerabilities.critical; type == "number" and . >= 0 and . <= 1000000 and . == floor)'
+DASHBOARD_SCHEMA='has("generated_at") and ((.status | type) == "string") and all(.checks.root.status, .checks.compliance.status, .checks.integrity.status; type == "string")'
+DASHBOARD_STATUS='if .status == "ok" and ([.checks.root.status, .checks.compliance.status, .checks.integrity.status] | all(. == "ok")) then "ok" elif .status == "degraded" then "degraded" else "inconsistent" end'
+SECRETS_SCHEMA='has("generated_at") and ((.rotation_ready | type) == "boolean") and ((.core_ready | type) == "boolean") and ((.summary.total_managed_secrets | type) == "number") and (.summary.total_managed_secrets >= 1) and (.summary.total_managed_secrets <= 1000000) and (.summary.total_managed_secrets == (.summary.total_managed_secrets | floor))'
 
 pip_audit_available=false
 npm_available=false
@@ -136,19 +179,70 @@ if [[ -f "${EXCEPTIONS_FILE}" ]]; then
 fi
 mismatch_warnings=()
 
+# Reviewed list of dependencies pip-audit legitimately cannot audit. Any other skip_reason is a
+# coverage gap. A malformed file or an entry without package+reason allowlists nothing.
+PIP_SKIP_ALLOWLIST="${SECURITY_AUDIT_PIP_SKIP_ALLOWLIST:-${REPO_ROOT}/config/security-audit-pip-skip-allowlist.json}"
+pip_skip_allow='[]'
+if [[ -f "${PIP_SKIP_ALLOWLIST}" ]]; then
+  pip_skip_allow="$(jq -c '[.allowed_skips[]? | select((.package | type) == "string" and (.package | length) > 0 and (.reason | type) == "string" and (.reason | length) > 0) | .package | ascii_downcase | gsub("_"; "-")]' "${PIP_SKIP_ALLOWLIST}" 2>/dev/null || echo '[]')"
+  [[ -n "${pip_skip_allow}" ]] || pip_skip_allow='[]'
+fi
+pip_skip_files=0
+
+# Count requirement lines, following -r/--requirement includes (relative to the including file,
+# cycle-safe). -c/--constraint and other option lines are not requirements. An unreadable include
+# counts as one requirement so it can never reduce the evidence demanded.
+count_requirements() {
+  local file="$1" line inc total=0 key
+  key="$(readlink -f "${file}" 2>/dev/null || echo "${file}")"
+  case " ${count_requirements_seen} " in *" ${key} "*) echo 0; return ;; esac
+  count_requirements_seen="${count_requirements_seen} ${key}"
+  if [[ ! -r "${file}" ]]; then echo 1; return; fi
+  while IFS= read -r line || [[ -n "${line}" ]]; do
+    line="${line%%#*}"
+    line="${line#"${line%%[![:space:]]*}"}"
+    [[ -z "${line}" ]] && continue
+    if [[ "${line}" =~ ^(-r|--requirement)([[:space:]=]+|$)(.*)$ || "${line}" =~ ^-r(.+)$ ]]; then
+      inc="${BASH_REMATCH[3]:-${BASH_REMATCH[1]}}"
+      inc="${inc%"${inc##*[![:space:]]}"}"
+      [[ "${inc}" == /* ]] || inc="$(dirname "${file}")/${inc}"
+      total=$((total + $(count_requirements "${inc}")))
+    elif [[ "${line}" =~ ^(-e|--editable)([[:space:]=]|$) || "${line}" =~ ^-e. ]]; then
+      total=$((total + 1))
+    elif [[ "${line}" == -* ]]; then
+      continue
+    else
+      total=$((total + 1))
+    fi
+  done < "${file}"
+  echo "${total}"
+}
+
 if [[ "${pip_audit_available}" == true ]]; then
   for req in "${requirements_files[@]}"; do
     base="$(echo "${req#"${REPO_ROOT}/"}" | tr '/' '_')"
     out_json="${pip_results_dir}/${base}.json"
+    # A requirements file with >=1 requirement line must yield >=1 actually audited (non-skipped) dependency.
+    count_requirements_seen=""
+    req_lines="$(count_requirements "${req}")"
+    pip_schema="${PIP_SCHEMA}"
+    [[ "${req_lines:-0}" -ge 1 ]] && pip_schema="${PIP_SCHEMA} and ([.dependencies[] | select(has(\"skip_reason\") | not)] | length) >= 1"
     set +e
     "${pip_audit_cmd[@]}" -r "${req}" --format json > "${out_json}" 2>"${out_json}.stderr"
     rc=$?
     set -e
-    if [[ ${rc} -ne 0 && ${rc} -ne 1 ]] || ! jq -e '.dependencies' "${out_json}" >/dev/null 2>&1; then
+    if [[ ${rc} -ne 0 && ${rc} -ne 1 ]] || ! validate_scanner_report "pip-audit" "${out_json}" "${pip_schema}" '"ok"' 'ok'; then
       jq -n --arg req "${req}" --arg err "$(cat "${out_json}.stderr")" \
         '{dependencies: [], error: $err, requirements: $req}' > "${out_json}"
       pip_errors=$((pip_errors + 1))
       continue
+    fi
+    unknown_skips="$(jq -r --argjson allow "${pip_skip_allow}" '
+      def norm: ascii_downcase | gsub("_"; "-");
+      [.dependencies[] | select(has("skip_reason")) | .name | select((norm) as $n | ($allow | index($n)) == null)] | join(", ")' "${out_json}")"
+    if [[ -n "${unknown_skips}" ]]; then
+      pip_skip_files=$((pip_skip_files + 1))
+      invalid_reasons+=("pip-audit skipped unaudited dependencies not on the reviewed allowlist: ${unknown_skips}")
     fi
     while IFS= read -r mm; do
       [[ -n "${mm}" ]] && mismatch_warnings+=("${mm}")
@@ -180,6 +274,28 @@ npm_total_high=0
 npm_total_critical=0
 npm_files_scanned=0
 npm_errors=0
+npm_unscanned=0
+npm_hc_files=0
+
+# A package.json without package-lock.json cannot be audited. That is a coverage gap unless the
+# project is on the reviewed allowlist (entries need a repo-relative "path" and a concrete "reason").
+NPM_UNSCANNED_ALLOWLIST="${SECURITY_AUDIT_NPM_UNSCANNED_ALLOWLIST:-${REPO_ROOT}/config/security-audit-npm-unscanned-allowlist.json}"
+npm_unscanned_allow='[]'
+if [[ -f "${NPM_UNSCANNED_ALLOWLIST}" ]]; then
+  npm_unscanned_allow="$(jq -c '[.allowed_unscanned[]? | select((.path | type) == "string" and (.path | length) > 0 and (.reason | type) == "string" and (.reason | length) > 0) | .path]' "${NPM_UNSCANNED_ALLOWLIST}" 2>/dev/null || echo '[]')"
+  [[ -n "${npm_unscanned_allow}" ]] || npm_unscanned_allow='[]'
+fi
+npm_nolock=()
+for package_file in "${package_files[@]}"; do
+  dir="$(dirname "${package_file}")"
+  [[ -f "${dir}/package-lock.json" ]] && continue
+  rel_dir="${dir#"${REPO_ROOT}"}"
+  rel_dir="${rel_dir#/}"
+  [[ -n "${rel_dir}" ]] || rel_dir="."
+  if [[ "$(jq -n --argjson a "${npm_unscanned_allow}" --arg p "${rel_dir}" '$a | index($p) | not')" == "true" ]]; then
+    npm_nolock+=("${rel_dir}")
+  fi
+done
 
 if [[ "${npm_available}" == true ]]; then
   for package_file in "${package_files[@]}"; do
@@ -197,16 +313,26 @@ if [[ "${npm_available}" == true ]]; then
       jq -n --arg project_dir "${dir}" --arg err "$(cat "${out_json}.stderr")" \
         '{metadata: {vulnerabilities: {info: 0, low: 0, moderate: 0, high: 0, critical: 0, total: 0}}, error: $err, project_dir: $project_dir}' > "${out_json}"
     fi
-    if jq -e 'has("error") or (.metadata.vulnerabilities == null)' "${out_json}" >/dev/null 2>&1; then
+    high=0
+    critical=0
+    if validate_scanner_report "npm audit" "${out_json}" "${NPM_SCHEMA}" '"ok"' 'ok'; then
+      high="$(jq '.metadata.vulnerabilities.high // 0' "${out_json}")"
+      critical="$(jq '.metadata.vulnerabilities.critical // 0' "${out_json}")"
+      [[ "$(jq '(.metadata.vulnerabilities.high > 0) or (.metadata.vulnerabilities.critical > 0)' "${out_json}")" == "true" ]] && npm_hc_files=$((npm_hc_files + 1))
+    else
       npm_errors=$((npm_errors + 1))
     fi
-    high="$(jq '.metadata.vulnerabilities.high // 0' "${out_json}")"
-    critical="$(jq '.metadata.vulnerabilities.critical // 0' "${out_json}")"
     npm_total_high=$((npm_total_high + high))
     npm_total_critical=$((npm_total_critical + critical))
     npm_files_scanned=$((npm_files_scanned + 1))
   done
 else
+  # Scanner unavailable: every npm project that needs scanning is unscanned, which is a
+  # coverage gap (counted as an error so CI fails closed and status cannot be ok).
+  for package_file in "${package_files[@]}"; do
+    [[ -f "$(dirname "${package_file}")/package-lock.json" ]] && npm_unscanned=$((npm_unscanned + 1))
+  done
+  npm_errors=$((npm_errors + npm_unscanned))
   jq -n --arg error "npm not installed" '{metadata: {vulnerabilities: {info: 0, low: 0, moderate: 0, high: 0, critical: 0, total: 0}}, error: $error}' > "${npm_results_dir}/scanner-unavailable.json"
 fi
 
@@ -230,12 +356,17 @@ persisted_npm_dir="$(persist_results_dir "${npm_results_dir}" "${OUTPUT_DIR}/npm
 dashboard_scan_report="${OUTPUT_DIR}/latest-dashboard-security-scan.json"
 dashboard_scan_status="unavailable"
 if [[ -x "${DASHBOARD_SCAN_SCRIPT}" ]]; then
+  : > "${dashboard_scan_report}"  # a prior run's report must never satisfy this run
   set +e
   "${DASHBOARD_SCAN_SCRIPT}" --output "${dashboard_scan_report}" >"${tmp_root}/dashboard-scan.stdout" 2>"${tmp_root}/dashboard-scan.stderr"
   dashboard_rc=$?
   set -e
-  if [[ ${dashboard_rc} -eq 0 && -f "${dashboard_scan_report}" ]]; then
-    dashboard_scan_status="$(jq -r '.status // "unknown"' "${dashboard_scan_report}")"
+  if [[ ${dashboard_rc} -eq 0 ]]; then
+    if validate_scanner_report "dashboard scan" "${dashboard_scan_report}" "${DASHBOARD_SCHEMA}" "${DASHBOARD_STATUS}" 'ok|degraded'; then
+      dashboard_scan_status="${REPORT_STATUS}"
+    else
+      dashboard_scan_status="invalid"
+    fi
   else
     jq -n \
       --arg generated_at "${timestamp}" \
@@ -251,12 +382,17 @@ fi
 secrets_rotation_report="${OUTPUT_DIR}/latest-secrets-rotation-plan.json"
 secrets_rotation_status="unavailable"
 if [[ -x "${SECRETS_ROTATION_PLAN_SCRIPT}" ]]; then
+  : > "${secrets_rotation_report}"  # a prior run's report must never satisfy this run
   set +e
   "${SECRETS_ROTATION_PLAN_SCRIPT}" --output "${secrets_rotation_report}" >"${tmp_root}/secrets-plan.stdout" 2>"${tmp_root}/secrets-plan.stderr"
   secrets_plan_rc=$?
   set -e
-  if [[ ${secrets_plan_rc} -eq 0 && -f "${secrets_rotation_report}" ]]; then
-    secrets_rotation_status="$(jq -r 'if .rotation_ready then "ready" else "planning_required" end' "${secrets_rotation_report}")"
+  if [[ ${secrets_plan_rc} -eq 0 ]]; then
+    if validate_scanner_report "secrets rotation" "${secrets_rotation_report}" "${SECRETS_SCHEMA}" 'if .rotation_ready then "ready" else "planning_required" end' 'ready|planning_required'; then
+      secrets_rotation_status="${REPORT_STATUS}"
+    else
+      secrets_rotation_status="invalid"
+    fi
   else
     jq -n \
       --arg generated_at "${timestamp}" \
@@ -270,15 +406,45 @@ fi
 
 high_or_critical=$((npm_total_high + npm_total_critical))
 overall_status="ok"
-if [[ ${pip_total_vulns} -gt 0 || ${high_or_critical} -gt 0 || "${dashboard_scan_status}" == "error" || "${secrets_rotation_status}" == "error" ]]; then
+if [[ ${pip_total_vulns} -gt 0 || ${npm_hc_files} -gt 0 || "${dashboard_scan_status}" == "error" || "${secrets_rotation_status}" == "error" ]]; then
   overall_status="findings"
 fi
+# "Could not scan" is distinct from "scanned and clean" and from "found vulns".
+# A genuine finding keeps status=findings; otherwise any coverage gap is degraded.
+degraded_reasons=()
+if [[ "${pip_audit_available}" != true ]]; then
+  degraded_reasons+=("pip-audit scanner missing")
+elif [[ ${pip_files_scanned} -eq 0 ]]; then
+  degraded_reasons+=("zero pip-audit coverage (0 requirements files scanned)")
+fi
+[[ ${pip_errors} -gt 0 ]] && degraded_reasons+=("pip-audit failed on ${pip_errors} requirements files")
+[[ ${npm_unscanned} -gt 0 ]] && degraded_reasons+=("npm scanner missing (${npm_unscanned} npm projects unscanned)")
+[[ $((npm_errors - npm_unscanned)) -gt 0 ]] && degraded_reasons+=("npm audit errored on $((npm_errors - npm_unscanned)) projects")
+[[ "${dashboard_scan_status}" == "error" ]] && degraded_reasons+=("dashboard security scan errored")
+[[ "${secrets_rotation_status}" == "error" ]] && degraded_reasons+=("secrets rotation plan errored")
+for r in "${invalid_reasons[@]+"${invalid_reasons[@]}"}"; do degraded_reasons+=("${r}"); done
+# dashboard "degraded" means one of its checks failed: the scan is incomplete. secrets
+# "planning_required" means the plan ran and rotation prerequisites are not met: a state finding,
+# not a coverage gap, so it stays informational.
+[[ ${#npm_nolock[@]} -gt 0 ]] && degraded_reasons+=("npm projects without package-lock.json not on the reviewed allowlist: $(IFS=', '; echo "${npm_nolock[*]}")")
+[[ "${dashboard_scan_status}" == "degraded" ]] && degraded_reasons+=("dashboard scan reported degraded (a check failed)")
+[[ "${dashboard_scan_status}" == "unavailable" ]] && degraded_reasons+=("dashboard scanner unavailable")
+[[ "${secrets_rotation_status}" == "unavailable" ]] && degraded_reasons+=("secrets rotation scanner unavailable")
+# Exit-code decision is independent of the presentation status: any scanner error,
+# missing scanner or zero coverage means the audit is incomplete.
+coverage_incomplete=false
+[[ ${#degraded_reasons[@]} -gt 0 ]] && coverage_incomplete=true
+if [[ "${overall_status}" == "ok" && ${#degraded_reasons[@]} -gt 0 ]]; then
+  overall_status="degraded"
+fi
+degraded_reasons_json="$(printf '%s\n' "${degraded_reasons[@]+"${degraded_reasons[@]}"}" | jq -R . | jq -s 'map(select(length > 0))')"
 
 jq -n \
   --arg generated_at "${timestamp}" \
   --arg repo_root "${REPO_ROOT}" \
   --arg threshold "${HIGH_CVSS_THRESHOLD}" \
   --arg status "${overall_status}" \
+  --argjson degraded_reasons "${degraded_reasons_json}" \
   --argjson pip_total_vulns "${pip_total_vulns}" \
   --argjson pip_files_scanned "${pip_files_scanned}" \
   --argjson lock_integrity_scanned "${lock_integrity_scanned}" \
@@ -300,6 +466,7 @@ jq -n \
     repo_root: $repo_root,
     high_cvss_threshold: ($threshold | tonumber),
     status: $status,
+    degraded_reasons: $degraded_reasons,
     summary: {
       pip: {
         scanner_available: $pip_audit_available,
@@ -338,7 +505,7 @@ cp "${report_file}" "${latest_file}"
 echo "Security audit report written: ${report_file}"
 echo "Latest report: ${latest_file}"
 
-if [[ ${high_or_critical} -gt 0 ]]; then
+if [[ ${npm_hc_files} -gt 0 ]]; then
   alert_file="${OUTPUT_DIR}/latest-high-cve-alert.json"
   jq -n \
     --arg generated_at "${timestamp}" \
@@ -393,7 +560,7 @@ if [[ ${pip_total_vulns} -gt 0 ]]; then
   fi
   echo "------------------------------------------------"
 fi
-if [[ ${high_or_critical} -gt 0 ]]; then
+if [[ ${npm_hc_files} -gt 0 ]]; then
   echo "BLOCKING: npm audit reported ${npm_total_critical} critical / ${npm_total_high} high vulnerabilities"; blocking=$((blocking + 1))
   echo "--- Gate-Triggered Dependency Hygiene Ladder ---"
   echo "Trigger: Blocking npm vulnerability detected."
@@ -419,6 +586,20 @@ if [[ ${pip_files_scanned} -eq 0 ]]; then
   fi
 fi
 for mm in "${mismatch_warnings[@]}"; do echo "WARNING: security exception package mismatch, not applied: ${mm}"; done
+if [[ ${#npm_nolock[@]} -gt 0 ]]; then
+  if [[ "${ci}" == "true" ]]; then
+    echo "BLOCKING: ${#npm_nolock[@]} npm projects without package-lock.json in CI"; blocking=$((blocking + 1))
+  else
+    echo "WARNING: ${#npm_nolock[@]} npm projects without package-lock.json (unscanned)"
+  fi
+fi
+if [[ ${pip_skip_files} -gt 0 ]]; then
+  if [[ "${ci}" == "true" ]]; then
+    echo "BLOCKING: pip-audit skipped unallowlisted dependencies in ${pip_skip_files} requirements files in CI"; blocking=$((blocking + 1))
+  else
+    echo "WARNING: pip-audit skipped unallowlisted dependencies in ${pip_skip_files} requirements files"
+  fi
+fi
 if [[ ${pip_errors} -gt 0 ]]; then
   if [[ "${ci}" == "true" ]]; then
     echo "BLOCKING: pip-audit failed on ${pip_errors} requirements files in CI"; blocking=$((blocking + 1))
@@ -437,4 +618,10 @@ fi
 [[ "${secrets_rotation_status}" == "error" ]] && echo "WARNING: secrets rotation plan errored (non-blocking)"
 echo "Security audit summary: blocking=${blocking} status=${overall_status}"
 [[ ${blocking} -eq 0 ]] || exit 1
+# Scheduled runs set SECURITY_AUDIT_FAIL_ON_DEGRADED=1 so a scan that checked
+# nothing fails the unit (picked up by systemctl --failed / aq-health-spider).
+if [[ "${coverage_incomplete}" == true && "${SECURITY_AUDIT_FAIL_ON_DEGRADED:-0}" == "1" ]]; then
+  echo "DEGRADED: audit could not fully scan: $(IFS='; '; echo "${degraded_reasons[*]}")" >&2
+  exit 3
+fi
 exit 0

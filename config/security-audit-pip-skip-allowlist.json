@@ -1,0 +1,4 @@
+{
+  "_comment": "Reviewed dependencies pip-audit legitimately cannot audit; entries need package + a concrete reason. Calibration 2026-10-30 (aidb, hybrid-coordinator, nixos-docs requirements): no skips, so the list is empty.",
+  "allowed_skips": []
+}

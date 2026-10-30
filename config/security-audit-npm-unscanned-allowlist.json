@@ -1,0 +1,4 @@
+{
+  "_comment": "Reviewed npm projects (package.json without package-lock.json) that genuinely cannot be audited; entries need a repo-relative path + a concrete reason. Inventory 2026-10-30: both package.json projects in the repo have lockfiles, so the list is empty.",
+  "allowed_unscanned": []
+}
