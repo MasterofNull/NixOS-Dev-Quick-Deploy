@@ -147,6 +147,12 @@ config/security-audit-npm-unscanned-allowlist.json ships empty (entries need a r
 requirements (`-e`, `--editable`, `-e git+...`) now count as requirements. Cases: no-lockfile not allowlisted -> 3;
 allowlisted -> ok; allowlist entry without reason -> 3; editable-only file with empty report -> 3.
 
+Seventh review follow-up (numeric validation). Every numeric field the validator reads must be a non-negative
+integer: the five npm severity counters and `summary.total_managed_secrets`. Negative or fractional values make the
+report invalid (degraded, exit 3), so `high:-1,critical:1` can no longer cancel to zero. High and critical are read
+only from a validated report, so no sum of unvalidated values reaches the blocking decision. Table cases `nocov4`
+(negative) and `nocov5` (fractional) run for every scanner.
+
 Former residual (npm project without `package-lock.json` skipped silently) is closed by the sixth follow-up above.
 
 Dashboard and secrets scanner execution errors keep the presentation status `findings` (existing behavior) but

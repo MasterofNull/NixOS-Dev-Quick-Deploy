@@ -93,10 +93,10 @@ validate_scanner_report() {
 # carries a status for each of its three checks; the secrets plan carries core_ready and a non-zero
 # managed-secret count.
 PIP_SCHEMA='(has("error") | not) and ((.dependencies | type) == "array") and all(.dependencies[]; type == "object" and has("name") and (has("skip_reason") or ((.vulns | type) == "array")))'
-NPM_SCHEMA='(has("error") | not) and ((.metadata.vulnerabilities | type) == "object") and all(.metadata.vulnerabilities.info, .metadata.vulnerabilities.low, .metadata.vulnerabilities.moderate, .metadata.vulnerabilities.high, .metadata.vulnerabilities.critical; type == "number")'
+NPM_SCHEMA='(has("error") | not) and ((.metadata.vulnerabilities | type) == "object") and all(.metadata.vulnerabilities.info, .metadata.vulnerabilities.low, .metadata.vulnerabilities.moderate, .metadata.vulnerabilities.high, .metadata.vulnerabilities.critical; type == "number" and . >= 0 and . == floor)'
 DASHBOARD_SCHEMA='has("generated_at") and ((.status | type) == "string") and all(.checks.root.status, .checks.compliance.status, .checks.integrity.status; type == "string")'
 DASHBOARD_STATUS='if .status == "ok" and ([.checks.root.status, .checks.compliance.status, .checks.integrity.status] | all(. == "ok")) then "ok" elif .status == "degraded" then "degraded" else "inconsistent" end'
-SECRETS_SCHEMA='has("generated_at") and ((.rotation_ready | type) == "boolean") and ((.core_ready | type) == "boolean") and ((.summary.total_managed_secrets | type) == "number") and (.summary.total_managed_secrets >= 1)'
+SECRETS_SCHEMA='has("generated_at") and ((.rotation_ready | type) == "boolean") and ((.core_ready | type) == "boolean") and ((.summary.total_managed_secrets | type) == "number") and (.summary.total_managed_secrets >= 1) and (.summary.total_managed_secrets == (.summary.total_managed_secrets | floor))'
 
 pip_audit_available=false
 npm_available=false

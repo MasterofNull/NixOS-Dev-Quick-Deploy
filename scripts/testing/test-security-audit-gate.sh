@@ -173,17 +173,19 @@ run_case() { # <scanner> <mode> ; echoes nothing, sets CASE_RC CASE_OUT CASE_DIR
     dashboard) unknown='{"generated_at":"t","status":"weird"}' ;;
     secrets) unknown='{"generated_at":"t","rotation_ready":"maybe"}' ;;
   esac
-  local nocov nocov2 nocov3
+  local nocov nocov2 nocov3 nocov4 nocov5
   case "$sc" in
-    pip) nocov='{"dependencies":[]}'; nocov2='{"dependencies":[{"name":"x","version":"1","skip_reason":"not on index"}]}'; nocov3='{"dependencies":[{"name":"x","version":"1"}]}' ;;
-    npm) nocov='{"metadata":{"vulnerabilities":{}}}'; nocov2='{"metadata":{"vulnerabilities":{"info":0,"low":0,"moderate":0,"high":"0","critical":0}}}'; nocov3='{"metadata":{"vulnerabilities":{"high":0,"critical":0,"total":0}}}' ;;
-    dashboard) nocov='{"generated_at":"t","status":"ok"}'; nocov2='{"generated_at":"t","status":"ok","checks":{"root":{"status":"ok"},"compliance":{"status":"unavailable"},"integrity":{"status":"ok"}}}'; nocov3='{"generated_at":"t","status":"degraded","checks":{"root":{"status":"ok"},"compliance":{"status":"unavailable"},"integrity":{"status":"ok"}}}' ;;
-    secrets) nocov='{"generated_at":"t","rotation_ready":true}'; nocov2='{"generated_at":"t","rotation_ready":true,"core_ready":true,"summary":{"total_managed_secrets":0}}'; nocov3='{"generated_at":"t","rotation_ready":true,"core_ready":true,"summary":{}}' ;;
+    pip) nocov='{"dependencies":[]}'; nocov2='{"dependencies":[{"name":"x","version":"1","skip_reason":"not on index"}]}'; nocov3='{"dependencies":[{"name":"x","version":"1"}]}'; nocov4='{"dependencies":[]}'; nocov5='{"dependencies":[]}' ;;
+    npm) nocov='{"metadata":{"vulnerabilities":{}}}'; nocov2='{"metadata":{"vulnerabilities":{"info":0,"low":0,"moderate":0,"high":"0","critical":0}}}'; nocov3='{"metadata":{"vulnerabilities":{"high":0,"critical":0,"total":0}}}'; nocov4='{"metadata":{"vulnerabilities":{"info":0,"low":0,"moderate":0,"high":-1,"critical":1,"total":0}}}'; nocov5='{"metadata":{"vulnerabilities":{"info":0,"low":0,"moderate":0,"high":0.5,"critical":0,"total":0}}}' ;;
+    dashboard) nocov='{"generated_at":"t","status":"ok"}'; nocov2='{"generated_at":"t","status":"ok","checks":{"root":{"status":"ok"},"compliance":{"status":"unavailable"},"integrity":{"status":"ok"}}}'; nocov3='{"generated_at":"t","status":"degraded","checks":{"root":{"status":"ok"},"compliance":{"status":"unavailable"},"integrity":{"status":"ok"}}}'; nocov4='{"generated_at":"t","status":"ok"}'; nocov5='{"generated_at":"t","status":"ok"}' ;;
+    secrets) nocov='{"generated_at":"t","rotation_ready":true}'; nocov2='{"generated_at":"t","rotation_ready":true,"core_ready":true,"summary":{"total_managed_secrets":0}}'; nocov3='{"generated_at":"t","rotation_ready":true,"core_ready":true,"summary":{}}'; nocov4='{"generated_at":"t","rotation_ready":true,"core_ready":true,"summary":{"total_managed_secrets":-1}}'; nocov5='{"generated_at":"t","rotation_ready":true,"core_ready":true,"summary":{"total_managed_secrets":1.5}}' ;;
   esac
   case "$mode" in
     nocov) body="$nocov" ;;
     nocov2) body="$nocov2" ;;
     nocov3) body="$nocov3" ;;
+    nocov4) body="$nocov4" ;;
+    nocov5) body="$nocov5" ;;
     nonzero) rc=2; body="" ;;
     empty) body="" ;;
     malformed) body='{not json' ;;
@@ -210,7 +212,7 @@ run_case() { # <scanner> <mode> ; echoes nothing, sets CASE_RC CASE_OUT CASE_DIR
 run_case none healthy
 [[ $CASE_RC -eq 0 && "$(jq -r .status "$CASE_DIR/latest-security-audit.json")" == "ok" ]] || { echo "FAIL: healthy baseline not ok rc=$CASE_RC"; echo "$CASE_OUT"; exit 1; }
 for sc in pip npm dashboard secrets; do
-  for mode in missing nonzero empty malformed emptyobj unknown nocov nocov2 nocov3; do
+  for mode in missing nonzero empty malformed emptyobj unknown nocov nocov2 nocov3 nocov4 nocov5; do
     run_case "$sc" "$mode"
     st="$(jq -r .status "$CASE_DIR/latest-security-audit.json")"
     if [[ $CASE_RC -ne 3 || "$st" == "ok" ]] || ! jq -e '.degraded_reasons | length > 0' "$CASE_DIR/latest-security-audit.json" >/dev/null; then
