@@ -1278,17 +1278,18 @@ in {
       # Continue mutates files under its own extension dir; install a pinned
       # writable VSIX copy instead of immutable Nix-store linkage.
       echo "[vscodium] Installing Continue extension..."
-      if env -u NIXOS_OZONE_WL "$_codium" --install-extension ${continueMutableVsix} --force 2>&1 | tail -3; then
+      if (set -o pipefail; env -u NIXOS_OZONE_WL ${pkgs.coreutils}/bin/timeout 120 "$_codium" --install-extension ${continueMutableVsix} --force 2>&1 | tail -3); then
         echo "[vscodium] Continue extension installed"
       else
-        echo "[vscodium] WARNING: Continue extension install exited non-zero" >&2
+        echo "[vscodium] Skipped continue.continue (timeout or failure); install later: codium --install-extension continue.continue --force" >&2
       fi
       for ext_id in ${lib.concatStringsSep " " vscodeMutableRuntimeExtensions}; do
         alias_path="$ext_root/$ext_id"
         if [ -L "$alias_path" ]; then
           rm -f "$alias_path"
         fi
-        env -u NIXOS_OZONE_WL "$_codium" --install-extension "$ext_id" --force 2>/dev/null || true
+        env -u NIXOS_OZONE_WL ${pkgs.coreutils}/bin/timeout 120 "$_codium" --install-extension "$ext_id" --force 2>/dev/null ||
+          echo "[vscodium] Skipped $ext_id (timeout or failure); install later: codium --install-extension $ext_id --force" >&2 || true
       done
       obsolete="$ext_root/.obsolete"
       if [ -f "$obsolete" ] && command -v python3 >/dev/null 2>&1; then
